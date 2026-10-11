@@ -60,10 +60,14 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
     {
         var row = await db.MeetingRecordings.FirstOrDefaultAsync(r => r.Id == recordingId && r.Status == MeetingRecordingStatus.Recording, ct);
         if (row is null) return new(null, "not_found");
-        var inside = await liveKit.ListAsync(MeetingRoomKeys.LiveKitRoom(row.RoomKey), ct);
+        IReadOnlyList<LiveKitParticipant> inside;
+        try { inside = await liveKit.ListAsync(MeetingRoomKeys.LiveKitRoom(row.RoomKey), ct); }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { return new(null, "egress_unavailable"); }
         if (inside.All(p => p.Identity != userId.ToString())) return new(null, "not_in_room");
         try { await egress.StopAsync(row.EgressId, ct); }
-        catch (HttpRequestException) { /* already ended; the worker reads the final state */ }
+        catch (HttpRequestException e) when (e.StatusCode == System.Net.HttpStatusCode.NotFound)
+        { /* already ended; the worker reads the final state */ }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { return new(null, "egress_unavailable"); }
         row.Status = MeetingRecordingStatus.Processing;
         row.EndedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
@@ -87,8 +91,14 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
         var rec = await db.MeetingRecordings.Where(r => r.RoomKey == key && r.Status == MeetingRecordingStatus.Recording)
             .Select(r => r.Id).FirstOrDefaultAsync(ct);
         if (rec == Guid.Empty || await db.MeetingRecordingViewers.AnyAsync(v => v.RecordingId == rec && v.UserId == userId, ct)) return;
-        db.MeetingRecordingViewers.Add(new MeetingRecordingViewer { RecordingId = rec, UserId = userId });
-        await db.SaveChangesAsync(ct);
+        var viewer = new MeetingRecordingViewer { RecordingId = rec, UserId = userId };
+        db.MeetingRecordingViewers.Add(viewer);
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException)
+        {
+            // A concurrent join may have inserted this viewer after our existence check.
+            db.Entry(viewer).State = EntityState.Detached;
+        }
     }
 
     public async Task<bool> CanViewAsync(Guid userId, bool admin, Guid recordingId, CancellationToken ct) =>
@@ -109,7 +119,7 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
     public async Task<bool> DeleteAsync(Guid recordingId, CancellationToken ct)
     {
         var row = await db.MeetingRecordings.FirstOrDefaultAsync(r => r.Id == recordingId && r.Status != MeetingRecordingStatus.Deleted, ct);
-        if (row is null) return false;
+        if (row is null || row.Status == MeetingRecordingStatus.Recording) return false;
         row.Status = MeetingRecordingStatus.Deleted;   // the worker removes the NAS file
         await db.SaveChangesAsync(ct);
         return true;

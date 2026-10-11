@@ -16,10 +16,16 @@ public class MeetingRecordingServiceTests
         public bool IsConfigured { get; set; } = true;
         public List<(string Room, string Path)> Started { get; } = [];
         public List<string> Stopped { get; } = [];
+        public Exception? StopThrows { get; set; }
         public Dictionary<string, LiveKitEgressInfo> Infos { get; } = new();
         public Task<string> StartRoomCompositeAsync(string room, string filepath, CancellationToken ct)
         { Started.Add((room, filepath)); return Task.FromResult($"EG_{Started.Count}"); }
-        public Task StopAsync(string egressId, CancellationToken ct) { Stopped.Add(egressId); return Task.CompletedTask; }
+        public Task StopAsync(string egressId, CancellationToken ct)
+        {
+            if (StopThrows is not null) throw StopThrows;
+            Stopped.Add(egressId);
+            return Task.CompletedTask;
+        }
         public Task<LiveKitEgressInfo?> GetAsync(string egressId, CancellationToken ct) => Task.FromResult(Infos.GetValueOrDefault(egressId));
     }
 
@@ -135,6 +141,57 @@ public class MeetingRecordingServiceTests
         await svc.NoteJoinAsync(a.Id, "kalosi", default);
         Assert.Empty(await t.Verify().MeetingRecordings.ToListAsync());
         Assert.Empty(await t.Verify().MeetingRecordingViewers.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData("list")]
+    [InlineData("http")]
+    [InlineData("timeout")]
+    public async Task Stop_outages_preserve_the_recording_reservation(string failure)
+    {
+        using var t = new TestDb(); var a = t.AddUser("A1");
+        var lk = new MeetingRoomServiceTests.FakeRoomAdmin();
+        lk.Rooms["hall-kalosi"] = [new(a.Id.ToString(), "A", [], new Dictionary<string, string>())];
+        var eg = new FakeEgress(); var svc = Make(t, lk, eg);
+        var rec = (await svc.StartAsync(a.Id, "kalosi", default)).Recording!;
+        if (failure == "list") lk.Throws = true;
+        else eg.StopThrows = failure == "timeout" ? new TaskCanceledException("timeout")
+            : new HttpRequestException("down", null, System.Net.HttpStatusCode.ServiceUnavailable);
+
+        Assert.Equal("egress_unavailable", (await svc.StopAsync(a.Id, rec.Id, default)).Error);
+        var row = await t.Verify().MeetingRecordings.SingleAsync();
+        Assert.Equal(MeetingRecordingStatus.Recording, row.Status);
+        Assert.Null(row.EndedAt);
+        lk.Throws = false;
+        Assert.Equal("already_recording", (await svc.StartAsync(a.Id, "kalosi", default)).Error);
+    }
+
+    [Fact]
+    public async Task Stop_404_moves_an_already_ended_recording_to_processing()
+    {
+        using var t = new TestDb(); var a = t.AddUser("A1");
+        var lk = new MeetingRoomServiceTests.FakeRoomAdmin();
+        lk.Rooms["hall-kalosi"] = [new(a.Id.ToString(), "A", [], new Dictionary<string, string>())];
+        var eg = new FakeEgress(); var svc = Make(t, lk, eg);
+        var rec = (await svc.StartAsync(a.Id, "kalosi", default)).Recording!;
+        eg.StopThrows = new HttpRequestException("already ended", null, System.Net.HttpStatusCode.NotFound);
+        Assert.Null((await svc.StopAsync(a.Id, rec.Id, default)).Error);
+        var row = await t.Verify().MeetingRecordings.SingleAsync();
+        Assert.Equal(MeetingRecordingStatus.Processing, row.Status);
+        Assert.NotNull(row.EndedAt);
+    }
+
+    [Fact]
+    public async Task Delete_refuses_a_running_recording_and_keeps_its_reservation()
+    {
+        using var t = new TestDb(); var a = t.AddUser("A1");
+        var lk = new MeetingRoomServiceTests.FakeRoomAdmin();
+        lk.Rooms["hall-kalosi"] = [new(a.Id.ToString(), "A", [], new Dictionary<string, string>())];
+        var svc = Make(t, lk, new FakeEgress());
+        var rec = (await svc.StartAsync(a.Id, "kalosi", default)).Recording!;
+        Assert.False(await svc.DeleteAsync(rec.Id, default));
+        Assert.Equal(MeetingRecordingStatus.Recording, (await t.Verify().MeetingRecordings.SingleAsync()).Status);
+        Assert.Equal("already_recording", (await svc.StartAsync(a.Id, "kalosi", default)).Error);
     }
 
     [Fact]
