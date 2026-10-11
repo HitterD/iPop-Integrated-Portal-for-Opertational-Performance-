@@ -20,13 +20,21 @@ public sealed class IdeskOptions
     public string BaseUrl { get; init; } = "https://idesk.santos.co.id/api/v1/integrations/ipop/";
     public string ClientId { get; init; } = "ipop";
     public string ClientSecret { get; init; } = "";
+    /// Where users open iDesk; links iDesk sends with another host (its LAN address) are moved here.
+    public string PublicUrl { get; init; } = DefaultPublicUrl;
+    public const string DefaultPublicUrl = "https://idesk.santos.co.id";
+    /// The address the parsers below use (static so webhook parsing needs no instance); set from config at startup.
+    public static string CurrentPublicUrl { get; set; } = DefaultPublicUrl;
     public bool IsConfigured => ClientSecret.Length >= MinSecretLength;
 
     public static IdeskOptions Bind(IConfiguration config)
     {
         var baseUrl = (config["IDesk:BaseUrl"] ?? "").Trim();
+        var publicUrl = (config["IDesk:PublicUrl"] ?? "").Trim();
+        CurrentPublicUrl = string.IsNullOrEmpty(publicUrl) ? DefaultPublicUrl : publicUrl.TrimEnd('/');
         return new IdeskOptions
         {
+            PublicUrl = CurrentPublicUrl,
             BaseUrl = string.IsNullOrEmpty(baseUrl) ? "https://idesk.santos.co.id/api/v1/integrations/ipop/" : baseUrl.TrimEnd('/') + "/",
             ClientId = string.IsNullOrWhiteSpace(config["IDesk:ClientId"]) ? "ipop" : config["IDesk:ClientId"]!.Trim(),
             ClientSecret = (config["IDesk:ClientSecret"] ?? "").Trim(),
@@ -175,7 +183,7 @@ public sealed class HttpIdeskClient : IIdeskClient
             var list = root.TryGetProperty("messages", out var arr) && arr.ValueKind == JsonValueKind.Array
                 ? arr.EnumerateArray().Select(ParseMessage).OfType<IdeskMessage>().ToList()
                 : [];
-            return new(IdeskOutcome.Ok, new IdeskMessages(Str(root, "url"), list));
+            return new(IdeskOutcome.Ok, new IdeskMessages(PublicLink(Str(root, "url")), list));
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
@@ -292,7 +300,7 @@ public sealed class HttpIdeskClient : IIdeskClient
             Date(t, "updatedAt") ?? created,
             Date(t, "resolvedAt"),
             Date(t, "closedAt"),
-            Str(t, "url"),
+            PublicLink(Str(t, "url")),
             ParseVisit(t));
     }
 
@@ -329,8 +337,11 @@ public sealed class HttpIdeskClient : IIdeskClient
             zoom.ValueKind == JsonValueKind.Object ? Str(zoom, "joinUrl") : null,
             zoom.ValueKind == JsonValueKind.Object ? Str(zoom, "meetingId") : null,
             zoom.ValueKind == JsonValueKind.Object ? Str(zoom, "passcode") : null,
-            people, Str(b, "url"));
+            people, PublicLink(Str(b, "url")));
     }
+
+    /// iDesk links as users must open them (public host, see <see cref="IdeskLinks"/>).
+    public static string? PublicLink(string? url) => IdeskLinks.Public(url, IdeskOptions.CurrentPublicUrl);
 
     private static string? Str(JsonElement e, string name) =>
         e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;

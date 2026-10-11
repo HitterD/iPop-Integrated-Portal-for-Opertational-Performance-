@@ -50,6 +50,8 @@ public partial class Tickets
     private readonly HashSet<Guid> freshRows = [];
     private readonly HashSet<string> freshEvents = [];
 
+    /// My own chat messages show my initials (not "You").
+    private string MyName => IPop.Application.PersonName.Display(Auth.Me?.Name) is { Length: > 0 } n ? n : "You";
     private bool Offline => list?.Offline == true;
     private bool NotRegistered => list?.NotRegistered == true;
     private int OpenCount => list?.Tickets.Count(t => TicketStatus.IsOpen(t.Status)) ?? 0;

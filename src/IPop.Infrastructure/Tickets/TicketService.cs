@@ -84,16 +84,16 @@ public sealed class TicketService(
             await db.SaveChangesAsync(ct);
             await ChangedAsync(userId, null, null, ct);
         }
-        if (t.TicketNumber is null || IsPending(t.Status)) return new TicketMessagesDto([], unread, t.Url, false, null);
+        if (t.TicketNumber is null || IsPending(t.Status)) return new TicketMessagesDto([], unread, HttpIdeskClient.PublicLink(t.Url), false, null);
 
         var r = await idesk.GetMessagesAsync(t.TicketNumber, ct);
         if (r.Ok)
             return new TicketMessagesDto(r.Value!.Messages.Select(m => new TicketMessageDto(m.Id,
                 m.FromRequester ? null : m.SenderName, m.FromRequester, m.Content, m.Attachments, m.CreatedAt)).ToList(),
-                unread, r.Value.Url ?? t.Url, false, null);
+                unread, r.Value.Url ?? HttpIdeskClient.PublicLink(t.Url), false, null);
         var last = t.LastMessagePreview is null ? null
             : new TicketMessageDto("last", t.LastMessageSender, false, t.LastMessagePreview, [], t.LastMessageAt ?? t.UpdatedAt);
-        return new TicketMessagesDto([], unread, t.Url, true, last);
+        return new TicketMessagesDto([], unread, HttpIdeskClient.PublicLink(t.Url), true, last);
     }
 
     // ── Sync / reconcile (silent: realtime only, no notifications) ──────
@@ -597,7 +597,7 @@ public sealed class TicketService(
         return new TicketDetailDto(t.Id, t.TicketNumber, t.ExternalRef, t.Origin, t.Status, t.Priority, t.Module, t.ModuleName,
             t.Category, t.Title, t.Description, t.Device, t.Software, t.CriticalReason, t.HardwareType, t.ScheduledDate, t.ScheduledTime,
             t.AssigneeName is null ? null : new TicketPersonDto(t.AssigneeName), t.SlaTarget, t.CreatedAt, t.UpdatedAt,
-            t.ResolvedAt, t.ClosedAt, t.Url, t.LastError, attachments,
+            t.ResolvedAt, t.ClosedAt, HttpIdeskClient.PublicLink(t.Url), t.LastError, attachments,
             events.OrderBy(e => e.OccurredAt).Select(e => new TicketEventDto(e.Kind, e.FromStatus, e.ToStatus, e.Assignee, e.OccurredAt)).ToList(),
             IdeskCalendarSync.VisitOf(t) is { } v ? new TicketVisitDto(v.Start, v.End) : null, t.UnreadMessages);
     }

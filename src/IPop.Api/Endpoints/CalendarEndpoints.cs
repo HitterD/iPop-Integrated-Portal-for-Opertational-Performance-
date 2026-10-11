@@ -455,7 +455,7 @@ public static partial class CalendarEndpoints
         var names = await db.Users.AsNoTracking().Where(u => nameIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => new { u.Name, u.Nik }, ct);
         string? NameOf(Guid? id) => id is { } x ? names.GetValueOrDefault(x)?.Name : null;
         var canEdit = ev.Source is null && (ev.OwnerId == viewerId || (delegateFor == ev.OwnerId && DelegateLevel.CanEdit(delegateLevel)));
-        var external = ev.Source is null ? null : new ExternalDto(ev.Source, ev.ExternalUrl,
+        var external = ev.Source is null ? null : new ExternalDto(ev.Source, IPop.Infrastructure.Tickets.HttpIdeskClient.PublicLink(ev.ExternalUrl),
             IPop.Infrastructure.Tickets.IdeskCalendarSync.People(ev.ExternalPeople)
                 .Select(p => new ExternalPersonDto(p.Name, p.UserId, p.Booker, p.UserId == viewerId)).ToList(),
             ev.OwnerId == viewerId);

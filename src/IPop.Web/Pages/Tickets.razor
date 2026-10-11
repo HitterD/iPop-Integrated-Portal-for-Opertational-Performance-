@@ -284,7 +284,7 @@
                                 var isNew = !m.Mine && i >= msgs.Messages.Count - msgsUnread;
                                 var who = m.Mine ? "You" : m.Sender ?? "ICT";
                                 <div class="tk-msg @(m.Mine ? "mine" : "") @(isNew ? "new" : "")" @key="m.Id">
-                                    <span class="av" style="background:@(m.Mine ? "var(--accent)" : AvatarPalette.For(who))">@TicketUi.Initials(who)</span>
+                                    <span class="av" style="background:@(m.Mine ? "var(--accent)" : AvatarPalette.For(who))">@TicketUi.Initials(m.Mine ? MyName : who)</span>
                                     <div class="bub"><span class="who">@who</span>@m.Content<time>@TicketUi.Stamp(m.CreatedAt)</time>
                                         @foreach (var f in m.Attachments)
                                         {

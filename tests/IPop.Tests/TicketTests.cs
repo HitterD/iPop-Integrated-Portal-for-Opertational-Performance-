@@ -753,4 +753,32 @@ public class TicketTests
         // iDesk answers 400 when from..to (inclusive) spans more than 92 days.
         Assert.True(IdeskCalendarWorker.PastDays + IdeskCalendarWorker.AheadDays + 1 <= 92);
     }
+
+    // ── iDesk links use the public address ────────────────────────────────
+
+    [Theory]
+    [InlineData("http://192.168.2.136:3080/client/tickets/b22a81e7", "https://idesk.santos.co.id/client/tickets/b22a81e7")]
+    [InlineData("http://192.168.2.136:3080/zoom-calendar?booking=306d5569", "https://idesk.santos.co.id/zoom-calendar?booking=306d5569")]
+    [InlineData("https://idesk.santos.co.id/client/tickets/x", "https://idesk.santos.co.id/client/tickets/x")]
+    [InlineData("/tickets/abc", "/tickets/abc")]
+    [InlineData(null, null)]
+    public void Idesk_links_move_to_the_public_host(string? input, string? expected) =>
+        Assert.Equal(expected, IdeskLinks.Public(input, "https://idesk.santos.co.id"));
+
+    [Fact]
+    public async Task Stored_lan_links_never_reach_the_client()
+    {
+        var x = Setup(); using var _ = x.T;
+        var u = x.T.AddUser("U1");
+        await x.Svc.ApplyWebhookAsync(Webhook("l1", "ticket.assigned", Remote(null, "U1", TicketStatus.InProgress, assignee: "A")));
+        var row = await x.T.Db.Tickets.SingleAsync();
+        row.Url = "http://192.168.2.136:3080/client/tickets/old";   // written before the fix
+        await x.T.Db.SaveChangesAsync();
+
+        var detail = await x.Svc.GetAsync(u.Id, row.Id);
+        var msgs = await x.Svc.GetMessagesAsync(u.Id, row.Id);
+
+        Assert.Equal("https://idesk.santos.co.id/client/tickets/old", detail!.Url);
+        Assert.DoesNotContain("192.168.", JsonSerializer.Serialize(msgs));
+    }
 }
