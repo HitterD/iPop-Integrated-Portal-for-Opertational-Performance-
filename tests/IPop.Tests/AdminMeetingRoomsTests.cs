@@ -100,15 +100,18 @@ public class AdminMeetingRoomsTests
         else Assert.Empty(api.Writes);
     }
 
-    [Fact]
-    public async Task Failed_delete_keeps_row_and_explains_active_recording()
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound, "Stop the recording first.")]
+    [InlineData(HttpStatusCode.InternalServerError, "Could not delete the recording. Try again.")]
+    [InlineData(HttpStatusCode.Forbidden, "Could not delete the recording. Try again.")]
+    public async Task Failed_delete_keeps_row_and_explains_failure(HttpStatusCode status, string message)
     {
-        var api = new Api { WriteStatus = HttpStatusCode.NotFound };
+        var api = new Api { WriteStatus = status };
         using var ctx = Context(api);
         var cut = ctx.Render<AdminMeetingRooms>();
         cut.Find(".amr-delete").Click();
         await cut.InvokeAsync(() => ctx.Services.GetRequiredService<ConfirmService>().Resolve(true));
-        cut.WaitForAssertion(() => Assert.Contains(ctx.Services.GetRequiredService<ToastService>().Active, t => t.Message == "Stop the recording first."));
+        cut.WaitForAssertion(() => Assert.Contains(ctx.Services.GetRequiredService<ToastService>().Active, t => t.Message == message));
         Assert.Single(cut.FindAll(".amr-recording"));
     }
 
@@ -146,18 +149,27 @@ public class AdminMeetingRoomsTests
         Assert.True(cut.Find($"[aria-label='{label}']").HasAttribute("disabled"));
     }
 
-    [Fact]
-    public void Failed_retention_does_not_claim_saved_and_can_be_retried()
+    [Theory]
+    [InlineData(HttpStatusCode.InternalServerError, false)]
+    [InlineData(HttpStatusCode.BadRequest, false)]
+    [InlineData(HttpStatusCode.OK, true)]
+    public void Failed_retention_does_not_claim_saved_and_can_be_retried(HttpStatusCode status, bool throws)
     {
-        var api = new Api { WriteStatus = HttpStatusCode.InternalServerError };
+        var api = new Api { WriteStatus = status, ThrowOnWrite = throws };
         using var ctx = Context(api);
         var cut = ctx.Render<AdminMeetingRooms>();
         cut.Find("input").Input("30");
         cut.Find("input").Blur();
-        cut.WaitForAssertion(() => Assert.Single(api.Writes));
+        cut.WaitForAssertion(() => Assert.Equal("90", cut.Find("input").GetAttribute("value")));
+        Assert.Single(api.Writes);
+        cut.Find("input").Blur();
+        Assert.Single(api.Writes); // The restored accepted value needs no save.
+        cut.Find("input").Input("30");
         cut.Find("input").Blur();
         cut.WaitForAssertion(() => Assert.Equal(2, api.Writes.Count));
-        Assert.NotEmpty(ctx.Services.GetRequiredService<ToastService>().Active);
+        Assert.Equal("90", cut.Find("input").GetAttribute("value"));
+        if (status == HttpStatusCode.BadRequest) Assert.Contains("Use 1 to 3650 days.", cut.Markup);
+        else Assert.NotEmpty(ctx.Services.GetRequiredService<ToastService>().Active);
     }
 
     private static BunitContext Context(Api api)
@@ -173,6 +185,7 @@ public class AdminMeetingRoomsTests
 
     private sealed class Api : HttpMessageHandler
     {
+        public bool ThrowOnWrite { get; init; }
         public int Days { get; init; } = 90;
         public string Egress { get; init; } = "online";
         public HttpStatusCode WriteStatus { get; init; } = HttpStatusCode.OK;
@@ -191,6 +204,7 @@ public class AdminMeetingRoomsTests
                     new MeetingRoomDto("arabika", "Arabika", 20, true, true,
                         Enumerable.Range(0, 6).Select(i => new MeetingRoomPerson(Guid.NewGuid(), $"Person {i}", false, false)).ToList(), null, null, null) }) };
             Writes.Add((req.Method.Method, path, req.Content is null ? "" : await req.Content.ReadAsStringAsync(ct)));
+            if (ThrowOnWrite) throw new HttpRequestException("Test network failure");
             return new(WriteStatus);
         }
     }

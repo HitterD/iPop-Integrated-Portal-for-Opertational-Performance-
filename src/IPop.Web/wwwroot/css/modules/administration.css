@@ -267,6 +267,7 @@
 .amr button:focus-visible, .amr input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 [data-theme="dark"] .amr-group { background: var(--surface); border-color: var(--line); }
 [data-theme="dark"] .amr-steps { background: rgba(120,120,128,.24); }
+[data-theme="dark"] .amr-switch[aria-checked="false"] { background: #3a3a3c; }
 [data-theme="dark"] .amr-delete { color: #ff6961; }
 @media (max-width: 520px) { .amr-row { flex-wrap: wrap; } .amr-stepper { margin-left: auto; } .amr-recording .amr-text { flex-basis: calc(100% - 52px); } .amr-delete { margin-left: auto; } }
 @media (prefers-reduced-motion: reduce) { .amr-switch, .amr-switch::after { transition: none; } }

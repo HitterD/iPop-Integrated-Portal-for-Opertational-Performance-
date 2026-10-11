@@ -132,7 +132,7 @@ else
         }
         catch (HttpRequestException) { Toasts.Show("Could not save retention. Try again.", ToastKind.Error); }
         catch (OperationCanceledException) { if (!disposed) Toasts.Show("Could not save retention. Try again.", ToastKind.Error); }
-        finally { busy = false; }
+        finally { daysText = settings.RetentionDays.ToString(); busy = false; }
     }
     private async Task DeleteAsync(MeetingRecordingDto recording)
     {
@@ -143,10 +143,11 @@ else
             if (!await Confirm.AskAsync($"Delete {recording.Title}?", "This server recording will be permanently removed.", "Delete", danger: true) || disposed) return;
             using var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/admin/meeting-rooms/recordings/{recording.Id}", ct: lifetime.Token);
             if (res.IsSuccessStatusCode) settings.Recordings.RemoveAll(r => r.Id == recording.Id);
-            else Toasts.Show("Stop the recording first.", ToastKind.Error);
+            else Toasts.Show(res.StatusCode == System.Net.HttpStatusCode.NotFound
+                ? "Stop the recording first." : "Could not delete the recording. Try again.", ToastKind.Error);
         }
-        catch (HttpRequestException) { Toasts.Show("Could not delete recording. Try again.", ToastKind.Error); }
-        catch (OperationCanceledException) { if (!disposed) Toasts.Show("Could not delete recording. Try again.", ToastKind.Error); }
+        catch (HttpRequestException) { Toasts.Show("Could not delete the recording. Try again.", ToastKind.Error); }
+        catch (OperationCanceledException) { if (!disposed) Toasts.Show("Could not delete the recording. Try again.", ToastKind.Error); }
         finally { busy = false; }
     }
     public void Dispose() { disposed = true; lifetime.Cancel(); lifetime.Dispose(); }
