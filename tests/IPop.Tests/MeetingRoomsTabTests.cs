@@ -314,6 +314,30 @@ public class MeetingRoomsTabTests
         Assert.Empty(cut.FindAll(".mrt-error"));
     }
 
+    [Fact]
+    public async Task Leaving_the_tab_during_a_retry_never_joins_the_deep_linked_room()
+    {
+        // /calls?tab=rooms&join=kalosi while the API is down: nothing to join yet, so the link waits.
+        var api = new Api { Rooms = FiveRooms(), RoomsStatus = HttpStatusCode.InternalServerError };
+        using var ctx = Context(api);
+        var cut = ctx.Render<MeetingRoomsTab>(p => p
+            .Add(c => c.JoinKey, "kalosi")
+            .Add(c => c.PollInterval, TimeSpan.FromHours(1)));
+        cut.WaitForAssertion(() => cut.Find(".mrt-rooms-error"));
+        Assert.Empty(api.Joins);
+
+        // Retry; the server comes back, but slowly, and the user leaves the tab before it answers.
+        api.RoomsStatus = HttpStatusCode.OK;
+        api.RoomsGate = new TaskCompletionSource();
+        cut.Find(".mrt-rooms-error button.mrt-retry").Click();
+        await ctx.DisposeComponentsAsync();
+        api.RoomsGate.SetResult();
+        await Task.Delay(300);
+
+        Assert.Empty(api.Joins);                                     // no POST /join
+        Assert.Empty(ctx.JSInterop.Invocations["ipopRooms.join"]);   // and no media started
+    }
+
     // ---------------------------------------------------------------- harness
 
     private static BunitContext Context(Api api)
@@ -348,6 +372,8 @@ public class MeetingRoomsTabTests
         public List<string> Joins { get; } = [];
         /// When set, GET /api/meeting-rooms waits for it (a slow first load).
         public TaskCompletionSource? Gate { get; init; }
+        /// Set mid-test: the next GET /api/meeting-rooms waits for it.
+        public volatile TaskCompletionSource? RoomsGate;
         private int roomGets, recordingGets;
         public int RoomGets => Volatile.Read(ref roomGets);
         public int RecordingGets => Volatile.Read(ref recordingGets);
@@ -359,6 +385,7 @@ public class MeetingRoomsTabTests
             {
                 Interlocked.Increment(ref roomGets);
                 if (Gate is not null) await Gate.Task;
+                if (RoomsGate is { } later) await later.Task;
                 return RoomsStatus == HttpStatusCode.OK ? await Json(Rooms) : new HttpResponseMessage(RoomsStatus);
             }
             if (request.Method == HttpMethod.Get && path == "/api/meeting-rooms/recordings")

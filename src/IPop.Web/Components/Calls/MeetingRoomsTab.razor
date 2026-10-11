@@ -279,11 +279,16 @@
 
     private async Task HandleDeepLinksAsync()
     {
+        // Callers resume after awaits (poll, Retry, first render): once the tab is gone, a link must never
+        // join a room behind the user's back.
+        if (disposed) return;
         if (!string.IsNullOrWhiteSpace(JoinKey) && rooms is not null && joinedDeepLink != JoinKey)
         {
             joinedDeepLink = JoinKey;
+            if (disposed) return;
             await JoinAsync(JoinKey);
         }
+        if (disposed) return;
         if (ApplyRecordingLink()) StateHasChanged();
     }
 
@@ -329,6 +334,7 @@
         retrying = true;
         try { await Task.WhenAll(LoadRoomsAsync(), recordingsError ? LoadRecordingsAsync() : Task.CompletedTask); }
         finally { retrying = false; }
+        if (disposed) return;
         await HandleDeepLinksAsync();
     }
 
