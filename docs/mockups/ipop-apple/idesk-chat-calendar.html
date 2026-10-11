@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iPop — iDesk chat replies + iDesk on the calendar (mockup)</title>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  :root { --canvas:#e9e7e2; --surface:#fff; --surface-2:#faf9f7; --surface-3:#f4f2ef; --line:#edebe7; --line-2:#e2dfd9;
+    --ink:#191816; --ink-2:#5d5a54; --ink-3:#8f8c85; --accent:#2e9d6b; --accent-soft:#e7f4ed; --danger:#c2442e;
+    --warn:#a8760c; --warn-soft:#fdf6e7; --info:#2563eb; --info-soft:#eef4ff; --idesk:#0f7cc4; --idesk-soft:#e6f2fb;
+    --sh-pop:0 16px 40px -12px rgba(25,24,22,.22); --p-me:#2e9d6b; --ease:cubic-bezier(.32,.72,0,1); }
+  [data-theme="dark"] { --canvas:#131211; --surface:#1c1b19; --surface-2:#232220; --surface-3:#201f1d; --line:#2c2a27; --line-2:#36342f;
+    --ink:#f2f0ec; --ink-2:#b5b1a9; --ink-3:#85817a; --accent:#4cd787; --accent-soft:#1d3428; --warn-soft:#3a2f17; --info-soft:#1a2540;
+    --idesk:#5db3ec; --idesk-soft:#16283a; --sh-pop:0 16px 40px -12px rgba(0,0,0,.6); --p-me:#4cd787; }
+  * { box-sizing: border-box; }
+  body { background: var(--canvas); color: var(--ink); font-family: -apple-system, "Segoe UI", system-ui, sans-serif; margin: 0; font-size: 13.5px; }
+  svg.lucide { width: 16px; height: 16px; }
+  .mk-nav { position: sticky; top: 0; z-index: 50; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 10px 18px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .mk-nav b { margin-right: 8px; font-size: 14px; }
+  .mk-nav button { border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 12.5px; cursor: pointer; }
+  .mk-nav button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .mk-nav .sp { flex: 1; }
+  .stage { display: none; padding: 28px; justify-content: center; align-items: flex-start; gap: 24px; flex-wrap: wrap; }
+  .stage.on { display: flex; }
+  .note { width: 320px; flex: none; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+  .note h3 { font-size: 14px; color: var(--ink); margin: 0 0 6px; }
+  .note li { margin-bottom: 6px; }
+  .note .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); margin-bottom: 8px; }
+  .note .nik { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--warn-soft); color: var(--ink); font-size: 12.5px; }
+  .win { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--sh-pop); overflow: hidden; position: relative; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; text-decoration: none; transition: transform .12s var(--ease); }
+  .btn:active { transform: scale(.97); }
+  .btn.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.sm { height: 28px; font-size: 12.5px; padding: 0 10px; }
+  .btn.ghost { border-color: transparent; background: none; }
+  .btn.ic { width: 32px; padding: 0; justify-content: center; }
+  .av { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: #fff; font-size: 10.5px; font-weight: 600; flex: none; }
+  .badge-id { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 6px; border-radius: 6px; background: var(--idesk-soft); color: var(--idesk); font-size: 10.5px; font-weight: 700; letter-spacing: .02em; }
+  .badge-id svg { width: 11px; height: 11px; }
+  .ai { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--idesk-soft); color: var(--idesk); flex: none; }
+
+  /* 1 · toast + notification center */
+  .desk { width: 760px; height: 520px; background: var(--surface-2); position: relative; }
+  .toast { position: absolute; right: 18px; top: 18px; width: 380px; display: flex; gap: 11px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--sh-pop); border-radius: 14px; padding: 12px 14px; animation: tin .5s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes tin { from { opacity: 0; transform: translateX(30px); } }
+  .toast .t { flex: 1; min-width: 0; }
+  .toast .t b { font-size: 13px; display: flex; gap: 6px; align-items: center; }
+  .toast .t .sub { color: var(--ink-3); font-size: 12px; margin-top: 1px; }
+  .toast .t p { margin: 6px 0 0; font-size: 12.5px; color: var(--ink-2); line-height: 1.45; }
+  .toast small { color: var(--ink-3); font-size: 11px; }
+  .cnt { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--idesk); color: #fff; font-size: 10.5px; font-weight: 700; }
+  .cnt.bump { animation: bump .4s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes bump { 50% { transform: scale(1.35); } }
+  .nc { position: absolute; left: 18px; top: 18px; width: 340px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--sh-pop); }
+  .nc h4 { margin: 0; padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 14px; display: flex; justify-content: space-between; }
+  .nr { display: flex; gap: 10px; padding: 11px 14px; border-bottom: 1px solid var(--line); position: relative; }
+  .nr.unread::before { content: ""; position: absolute; left: 5px; top: 22px; width: 6px; height: 6px; border-radius: 50%; background: var(--idesk); }
+  .nr .t { flex: 1; min-width: 0; font-size: 12.5px; }
+  .nr .t b { display: block; font-size: 13px; }
+  .nr .t span:not(.cnt) { color: var(--ink-2); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nr small { color: var(--ink-3); font-size: 11px; }
+  .sim { position: absolute; left: 18px; bottom: 18px; display: flex; gap: 8px; }
+
+  /* 2 · ticket detail with messages */
+  .det { width: 760px; }
+  .det-h { display: flex; align-items: center; gap: 8px; padding: 12px 22px; border-bottom: 1px solid var(--line); }
+  .det-h .sp { flex: 1; }
+  .det-b { padding: 20px 28px 26px; }
+  .det-b .no { color: var(--ink-3); font-size: 12px; font-weight: 600; display: flex; gap: 8px; align-items: center; }
+  .st { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 6px; background: var(--info-soft); color: var(--info); font-size: 11px; font-weight: 700; }
+  .det-b h2 { font-size: 22px; margin: 6px 0 14px; }
+  .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; }
+  .meta div { background: var(--surface-2); border: 1px solid var(--line); border-radius: 11px; padding: 8px 10px; font-size: 12px; color: var(--ink-3); }
+  .meta div b { display: block; color: var(--ink); font-size: 13px; margin-top: 2px; }
+  h4.h { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); margin: 18px 0 8px; display: flex; align-items: center; gap: 8px; }
+  h4.h .sp { flex: 1; }
+  .msgs { border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: var(--surface-2); display: flex; flex-direction: column; gap: 10px; }
+  .m { display: flex; gap: 9px; max-width: 86%; }
+  .m.me { align-self: flex-end; flex-direction: row-reverse; }
+  .m .bub { background: var(--surface); border: 1px solid var(--line); border-radius: 14px 14px 14px 4px; padding: 8px 11px; font-size: 13px; line-height: 1.45; }
+  .m.me .bub { background: var(--accent-soft); border-color: transparent; border-radius: 14px 14px 4px 14px; }
+  .m .bub .who { font-size: 11.5px; font-weight: 600; color: var(--idesk); display: block; margin-bottom: 2px; }
+  .m.me .bub .who { color: var(--accent); }
+  .m .bub time { font-size: 10.5px; color: var(--ink-3); margin-left: 8px; }
+  .m.new .bub { animation: rise .4s var(--ease); box-shadow: 0 0 0 2px var(--idesk-soft); }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+  .file { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 6px 9px; border-radius: 9px; background: var(--surface-3); font-size: 12px; color: var(--ink-2); }
+  .file a { margin-left: auto; color: var(--idesk); font-weight: 600; text-decoration: none; }
+  .replybar { display: flex; align-items: center; gap: 10px; margin-top: 4px; padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--line-2); background: var(--surface); color: var(--ink-2); font-size: 12.5px; }
+  .replybar .sp { flex: 1; }
+  .fallback { margin-top: 10px; display: flex; gap: 8px; padding: 9px 11px; border-radius: 10px; background: var(--warn-soft); font-size: 12px; color: var(--ink); }
+  .tl { font-size: 12.5px; color: var(--ink-2); }
+  .tl div { display: flex; gap: 8px; padding: 5px 0; }
+  .tl small { margin-left: auto; color: var(--ink-3); }
+
+  /* 3 · success sheet */
+  .succ { width: 440px; padding: 30px 28px 24px; text-align: center; }
+  .succ .ok { width: 58px; height: 58px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; margin: 0 auto 14px; animation: pop .5s cubic-bezier(.34,1.56,.64,1); }
+  .succ .ok svg { width: 30px; height: 30px; stroke-width: 3; }
+  @keyframes pop { from { transform: scale(.4); opacity: 0; } }
+  .succ h3 { margin: 0 0 4px; font-size: 18px; }
+  .succ p { margin: 0 0 16px; color: var(--ink-2); line-height: 1.5; }
+  .succ .tno { display: inline-flex; gap: 8px; align-items: center; padding: 6px 12px; border-radius: 10px; background: var(--surface-3); font-weight: 700; font-family: ui-monospace, Consolas, monospace; margin-bottom: 16px; }
+  .succ .acts { display: flex; flex-direction: column; gap: 8px; }
+  .succ .acts .btn { justify-content: center; height: 38px; }
+  .succ .acts .row { display: flex; gap: 8px; }
+  .succ .acts .row .btn { flex: 1; }
+  .succ .visit { margin: 0 0 16px; text-align: left; display: flex; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--idesk-soft); font-size: 12.5px; }
+
+  /* 4 · calendar */
+  .cal { width: 1000px; }
+  .tb { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .tb h2 { margin: 0 8px 0 4px; font-size: 17px; }
+  .tb .sp { flex: 1; }
+  .grid { position: relative; }
+  .gh { display: grid; border-bottom: 1px solid var(--line); }
+  .gh div { padding: 8px 6px; font-size: 12px; color: var(--ink-2); text-align: center; border-left: 1px solid var(--line); }
+  .gh div b { display: block; font-size: 17px; color: var(--ink); }
+  .gh div.today b { color: var(--accent); }
+  .body { position: relative; display: grid; height: 520px; }
+  .hours { position: relative; }
+  .hours span { position: absolute; right: 6px; font-size: 10.5px; color: var(--ink-3); transform: translateY(-6px); }
+  .col { position: relative; border-left: 1px solid var(--line); background-image: linear-gradient(var(--line) 1px, transparent 1px); background-size: 100% 52px; }
+  .ev { position: absolute; border-radius: 7px; padding: 4px 6px; font-size: 11.5px; line-height: 1.25; overflow: hidden; border-left: 3px solid; cursor: pointer; transition: transform .15s var(--ease), box-shadow .15s; }
+  .ev:hover { transform: translateY(-1px); box-shadow: 0 4px 12px -4px rgba(0,0,0,.18); }
+  .ev b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 16px; }
+  .ev span { opacity: .8; font-size: 10.5px; }
+  .ev .ico { position: absolute; right: 4px; top: 4px; color: var(--idesk); }
+  .ev .ico svg { width: 12px; height: 12px; }
+  .ev.idesk { background: var(--idesk-soft); border-color: var(--idesk); }
+  .ev.busy { background-color: var(--surface-3) !important; border-color: var(--ink-3) !important; color: var(--ink-2); background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgba(127,127,127,.12) 6px 12px) !important; }
+  .ev.due { background: transparent; border: 1.5px dashed var(--warn); border-left-width: 3px; color: var(--warn); }
+  .ev.sel { box-shadow: 0 0 0 2px var(--idesk); }
+  .now { position: absolute; left: 52px; right: 0; height: 2px; background: var(--danger); z-index: 3; }
+  .pop { position: absolute; width: 320px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--sh-pop); padding: 14px; z-index: 10; font-size: 13px; animation: rise .22s var(--ease); }
+  .pop h5 { margin: 6px 0 4px; font-size: 15px; }
+  .pop .when { color: var(--ink-2); font-size: 12.5px; margin-bottom: 8px; }
+  .pop .r { display: flex; gap: 8px; align-items: flex-start; color: var(--ink-2); margin: 6px 0; font-size: 12.5px; }
+  .pop .r svg { flex: none; margin-top: 1px; }
+  .pop .r code { font-size: 12px; color: var(--ink); background: var(--surface-3); padding: 1px 5px; border-radius: 5px; }
+  .pop .ppl { display: flex; flex-wrap: wrap; gap: 4px; }
+  .pop .ppl span { font-size: 11.5px; padding: 2px 7px; border-radius: 6px; background: var(--surface-3); color: var(--ink); }
+  .pop .ppl span.guest { color: var(--ink-3); }
+  .pop .hint { margin-top: 10px; padding: 8px 10px; border-radius: 9px; background: var(--surface-3); color: var(--ink-2); font-size: 12px; line-height: 1.45; }
+  .pop .acts { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+
+  /* 5 · three viewers */
+  .views { display: grid; grid-template-columns: repeat(3, 300px); gap: 16px; }
+  .vw { padding: 14px; }
+  .vw h6 { margin: 0 0 4px; font-size: 13px; display: flex; gap: 6px; align-items: center; }
+  .vw .lv { font-size: 11.5px; color: var(--ink-3); margin-bottom: 12px; }
+  .vw .e { border-radius: 8px; padding: 8px 10px; font-size: 12.5px; border-left: 3px solid var(--idesk); background: var(--idesk-soft); }
+  .vw .e.busy { border-color: var(--ink-3); background: var(--surface-3); background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgba(127,127,127,.12) 6px 12px); color: var(--ink-2); }
+  .vw .e b { display: block; }
+  .vw .e span { color: var(--ink-2); font-size: 11.5px; }
+  .vw .x { margin-top: 10px; font-size: 12px; color: var(--ink-2); display: flex; flex-direction: column; gap: 5px; }
+  .vw .x div { display: flex; gap: 7px; align-items: center; }
+  .vw .x .no { color: var(--ink-3); text-decoration: line-through; }
+
+  /* 6 · zoom invite notifications */
+  .ntf { width: 420px; padding: 14px; display: flex; gap: 12px; margin-bottom: 12px; }
+  .ntf .t { flex: 1; }
+  .ntf .t b { font-size: 13.5px; }
+  .ntf .t p { margin: 3px 0 10px; color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
+  .ntf .acts { display: flex; gap: 6px; }
+  .ntf .ai.warn { background: var(--warn-soft); color: var(--warn); }
+  .ntf .ai.red { background: rgba(194,68,46,.12); color: var(--danger); }
+  .ntf .t s { color: var(--ink-3); }
+</style>
+</head>
+<body>
+<div class="mk-nav">
+  <b>iDesk chat + calendar</b>
+  <button data-s="s1" class="on">1 · Reply notification</button>
+  <button data-s="s2">2 · Ticket detail · Messages</button>
+  <button data-s="s3">3 · After creating a ticket</button>
+  <button data-s="s4">4 · iDesk on my calendar</button>
+  <button data-s="s5">5 · What others see</button>
+  <button data-s="s6">6 · Zoom invite notifications</button>
+  <span class="sp"></span>
+  <button id="theme">◐ Dark</button>
+</div>
+
+<!-- ═════ 1 · reply notification ═════ -->
+<section class="stage on" id="s1">
+  <div class="win desk">
+    <div class="nc">
+      <h4>Notifications <span style="color:var(--ink-3);font-weight:400;font-size:12px">Mark all read</span></h4>
+      <div class="nr unread" id="ncRow"><span class="ai"><i data-lucide="message-square-text"></i></span>
+        <div class="t"><b>New reply on 041026-INS-0001 <span class="cnt" id="ncCnt" style="vertical-align:1px;margin-left:4px">2</span></b><span>Wifi lantai 2 mati</span><span id="ncPrev">Rizky Aditya: “Sudah saya cek, mohon restart laptop Anda…”</span></div><small>now</small></div>
+      <div class="nr"><span class="ai"><i data-lucide="user-check"></i></span>
+        <div class="t"><b>Rizky Aditya picked up your ticket</b><span>Wifi lantai 2 mati</span></div><small>12m</small></div>
+      <div class="nr"><span class="ai" style="background:var(--accent-soft);color:var(--accent)"><i data-lucide="calendar"></i></span>
+        <div class="t"><b>Infra review starts in 15 min</b><span>Room 3</span></div><small>1h</small></div>
+    </div>
+    <div class="toast" id="toast"><span class="ai"><i data-lucide="message-square-text"></i></span>
+      <div class="t"><b>New reply on 041026-INS-0001 <span class="cnt" id="tCnt">2</span></b>
+        <div class="sub">Wifi lantai 2 mati</div>
+        <p><b style="font-size:12.5px">Rizky Aditya:</b> <span id="tPrev">“Sudah saya cek, mohon restart laptop Anda lalu coba lagi”</span></p>
+        <div style="display:flex;gap:6px;margin-top:10px"><a class="btn sm pri" href="#" data-go="s2"><i data-lucide="messages-square"></i>Open chat</a><a class="btn sm" href="#">Reply in iDesk <i data-lucide="external-link"></i></a></div></div>
+      <small>now</small></div>
+    <div class="sim"><button class="btn sm" id="simMsg"><i data-lucide="play"></i>ICT sends another message</button></div>
+  </div>
+  <div class="note">
+    <span class="tag">webhook ticket.message_created</span>
+    <h3>One notification per ticket</h3>
+    <ul>
+      <li>Each ICT reply <b>updates</b> the same notification: latest preview + a counter that bumps. No stack of 5 toasts for 5 messages.</li>
+      <li>Toast + Windows push use the <b>Tickets</b> sound.</li>
+      <li><b>Open chat</b> (and clicking the notification) opens the ticket in iPop on its <b>Messages</b> and marks the notification read.</li>
+      <li><b>Reply in iDesk</b> opens the ticket in iDesk in a new tab.</li>
+      <li>Only messages from others notify. Your own replies, internal notes and status changes don't.</li>
+    </ul>
+    <div class="nik">🔒 Matched to you on the server by NIK. The notification itself only carries the ticket number, title, sender name and preview.</div>
+  </div>
+</section>
+
+<!-- ═════ 2 · ticket detail ═════ -->
+<section class="stage" id="s2">
+  <div class="win det">
+    <div class="det-h"><button class="btn ic ghost"><i data-lucide="chevron-left"></i></button><b>Tickets</b><span class="sp"></span>
+      <button class="btn sm"><i data-lucide="calendar-plus"></i>Schedule follow-up</button><a class="btn sm pri" href="#">Open in iDesk <i data-lucide="external-link"></i></a></div>
+    <div class="det-b">
+      <div class="no">041026-INS-0001 <span class="st">In progress</span></div>
+      <h2>Wifi lantai 2 mati</h2>
+      <div class="meta"><div>Assigned to<b>Rizky Aditya</b></div><div>Priority<b>High</b></div><div>Target<b>Mon 12 Oct, 16:00</b></div></div>
+      <h4 class="h"><i data-lucide="messages-square"></i>Messages <span class="cnt">2 new</span><span class="sp"></span><span style="text-transform:none;letter-spacing:0;font-weight:400">from iDesk · read-only</span></h4>
+      <div class="msgs" id="msgs">
+        <div class="m me"><span class="av" style="background:var(--accent)">BS</span><div class="bub"><span class="who">You</span>Tidak bisa konek sejak pagi, sudah restart laptop.<time>08:02</time></div></div>
+        <div class="m new"><span class="av" style="background:var(--idesk)">RA</span><div class="bub"><span class="who">Rizky Aditya</span>Sudah saya cek, AP lantai 2 sempat mati listrik. Mohon restart laptop Anda lalu coba lagi.<time>10:14</time></div></div>
+        <div class="m new"><span class="av" style="background:var(--idesk)">RA</span><div class="bub"><span class="who">Rizky Aditya</span>Ini panduan reset adapter-nya.<time>10:15</time>
+          <div class="file"><i data-lucide="file-text"></i>reset-wifi.pdf<a href="#">Open in iDesk</a></div></div></div>
+        <div class="replybar"><i data-lucide="corner-down-left"></i>Replies and attachments are sent from iDesk.<span class="sp"></span><a class="btn sm pri" href="#">Reply in iDesk <i data-lucide="external-link"></i></a></div>
+      </div>
+      <div class="fallback"><i data-lucide="wifi-off"></i><div><b>If iDesk can't be reached</b> the section shows the last previews we received (“Rizky Aditya: Ini panduan reset…”) and a Retry.</div></div>
+      <h4 class="h"><i data-lucide="activity"></i>Activity</h4>
+      <div class="tl">
+        <div><i data-lucide="message-square"></i>Rizky Aditya replied (2)<small>10:15</small></div>
+        <div><i data-lucide="loader"></i>Status → In progress<small>10:14</small></div>
+        <div><i data-lucide="user-check"></i>Assigned to Rizky Aditya<small>09:40</small></div>
+        <div><i data-lucide="plus-circle"></i>Created from iPop<small>08:02</small></div>
+      </div>
+    </div>
+  </div>
+  <div class="note">
+    <span class="tag">/tickets/{id}</span>
+    <h3>Messages, read-only</h3>
+    <ul>
+      <li>New section above Activity: the ticket's <b>public</b> conversation, loaded from iDesk when you open the ticket (new iDesk endpoint). Internal notes never come through.</li>
+      <li>Messages that came in since you last looked are softly highlighted; the counter in the header clears when you open it.</li>
+      <li>Attachments show their name; opening them goes to iDesk.</li>
+      <li>No reply box in iPop — <b>Reply in iDesk</b> at the bottom, and <b>Open in iDesk</b> stays in the header.</li>
+      <li>The old footer “Chat with ICT…” goes away.</li>
+    </ul>
+    <div class="nik">🔒 Senders are shown by name and initials only. iDesk sends no NIK for messages.</div>
+  </div>
+</section>
+
+<!-- ═════ 3 · after creating ═════ -->
+<section class="stage" id="s3">
+  <div class="win succ">
+    <div class="ok"><i data-lucide="check"></i></div>
+    <h3>Ticket sent to ICT</h3>
+    <p>You'll get a notification when ICT picks it up or replies.</p>
+    <div class="tno"><i data-lucide="ticket"></i>111026-INS-0007</div>
+    <div class="acts">
+      <a class="btn pri" href="#"><i data-lucide="messages-square"></i>Open chat in iDesk</a>
+      <div class="row"><a class="btn" href="#" data-go="s2">View ticket</a><a class="btn" href="#">New ticket</a></div>
+    </div>
+  </div>
+  <div class="win succ">
+    <div class="ok"><i data-lucide="check"></i></div>
+    <h3>Installation booked</h3>
+    <p>ICT will come by at the slot you picked.</p>
+    <div class="tno"><i data-lucide="ticket"></i>111026-INS-0008</div>
+    <div class="visit"><span class="ai"><i data-lucide="calendar-check"></i></span><div><b>Added to your calendar</b><br>Tue 13 Oct · 09:00 – 10:00 · Printer installation</div></div>
+    <div class="acts">
+      <a class="btn pri" href="#"><i data-lucide="messages-square"></i>Open chat in iDesk</a>
+      <div class="row"><a class="btn" href="#" data-go="s4">View in calendar</a><a class="btn" href="#">View ticket</a></div>
+    </div>
+  </div>
+  <div class="note">
+    <span class="tag">/tickets/new · success</span>
+    <h3>Straight to the conversation</h3>
+    <ul>
+      <li>The ticket number is shown right away; <b>Open chat in iDesk</b> is the primary action so you can add details or answer ICT there.</li>
+      <li>Hardware installation (date + slot) also says it was put on your calendar, with a link to it.</li>
+      <li>If iDesk is slow, the existing “Sending…” state stays as today; the chat button appears once the ticket number is known.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ═════ 4 · calendar ═════ -->
+<section class="stage" id="s4">
+  <div class="win cal">
+    <div class="tb"><button class="btn">Today</button><button class="btn ic"><i data-lucide="chevron-left"></i></button><button class="btn ic"><i data-lucide="chevron-right"></i></button>
+      <h2>12 – 16 October 2026</h2><span class="sp"></span><button class="btn pri"><i data-lucide="plus"></i>New</button></div>
+    <div class="grid" id="g4"></div>
+  </div>
+  <div class="note">
+    <span class="tag">source idesk-zoom · idesk-visit</span>
+    <h3>iDesk items are real calendar events</h3>
+    <ul>
+      <li><b>Zoom bookings</b> made in iDesk land on the calendar of the booker and every invited colleague.</li>
+      <li><b>Installation visits</b> land on the requester's calendar at the chosen slot (1 hour).</li>
+      <li>Light-blue with a small <span class="badge-id"><i data-lucide="life-buoy"></i>iDesk</span> mark. They count as busy, block <b>Find a time</b> and get the usual reminders.</li>
+      <li>Read-only here: no Edit/Delete, instead <b>Manage in iDesk</b>. Reschedule or cancel in iDesk and iPop follows within seconds (nightly resync catches anything missed).</li>
+      <li>Other tickets keep the dashed <b>Ticket due</b> marker — not busy, only visible to you.</li>
+    </ul>
+    <div class="nik">🔒 Attendees are shown by name. Colleagues who use iPop link to their profile; others are plain names. No NIK anywhere.</div>
+  </div>
+</section>
+
+<!-- ═════ 5 · what others see ═════ -->
+<section class="stage" id="s5">
+  <div class="views">
+    <div class="win vw"><h6><i data-lucide="users"></i>Everyone at SJA</h6><div class="lv">See when I'm busy (automatic)</div>
+      <div class="e busy"><b>Busy</b><span>Mon 09:00 – 10:30</span></div>
+      <div class="x"><div class="no"><i data-lucide="type"></i>Title</div><div class="no"><i data-lucide="video"></i>Zoom link, ID, passcode</div><div class="no"><i data-lucide="users"></i>Attendees</div></div></div>
+    <div class="win vw"><h6><i data-lucide="user"></i>Shared · See event titles</h6><div class="lv">Someone you granted titles</div>
+      <div class="e"><b>Weekly sync <span class="badge-id">iDesk</span></b><span>Mon 09:00 – 10:30</span></div>
+      <div class="x"><div><i data-lucide="type"></i>Title</div><div class="no"><i data-lucide="video"></i>Zoom link, ID, passcode</div><div class="no"><i data-lucide="users"></i>Attendees</div></div></div>
+    <div class="win vw"><h6><i data-lucide="user-check"></i>Shared · See all details</h6><div class="lv">Or attendee of the same meeting</div>
+      <div class="e"><b>Weekly sync <span class="badge-id">iDesk</span></b><span>Mon 09:00 – 10:30 · Zoom 1</span></div>
+      <div class="x"><div><i data-lucide="type"></i>Title</div><div><i data-lucide="video"></i>Zoom link, ID, passcode</div><div><i data-lucide="users"></i>Attendees · Agenda</div></div></div>
+  </div>
+  <div class="note">
+    <span class="tag">existing calendar access rules</span>
+    <h3>Same ladder as every other event</h3>
+    <ul>
+      <li>Not shared with someone → they see a grey <b>Busy</b> block and the time, nothing else.</li>
+      <li><b>See event titles</b> → title only. The passcode and join link never show at this level.</li>
+      <li><b>See all details</b> (or being invited to the same meeting) → everything.</li>
+      <li>You can still mark one iDesk event <b>Private</b> in iPop; then it's Busy even for people with details.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ═════ 6 · zoom invite notifications ═════ -->
+<section class="stage" id="s6">
+  <div>
+    <div class="win ntf"><span class="ai"><i data-lucide="video"></i></span><div class="t"><b>Budi Santoso invited you to a Zoom meeting</b><p>Weekly sync · Mon 12 Oct, 09:00 – 10:30<br>Added to your calendar.</p>
+      <div class="acts"><a class="btn sm pri" href="#" data-go="s4">View in calendar</a><a class="btn sm" href="#">Join link</a></div></div></div>
+    <div class="win ntf"><span class="ai warn"><i data-lucide="calendar-clock"></i></span><div class="t"><b>Zoom meeting moved</b><p>Weekly sync · <s>Mon 09:00</s> → Tue 13 Oct, 10:00 – 11:30</p>
+      <div class="acts"><a class="btn sm" href="#">View in calendar</a></div></div></div>
+    <div class="win ntf"><span class="ai red"><i data-lucide="calendar-x"></i></span><div class="t"><b>Zoom meeting cancelled</b><p>Weekly sync · Tue 13 Oct, 10:00 — removed from your calendar.</p></div></div>
+  </div>
+  <div class="note">
+    <span class="tag">zoom_booking.created / updated / cancelled</span>
+    <h3>Invited colleagues hear about it</h3>
+    <ul>
+      <li>Invited people get a notification when a booking is made, moved or cancelled. The booker doesn't — they just did it.</li>
+      <li>A recurring booking notifies once for the series, not once per week.</li>
+      <li>Calendar reminders work like any meeting (default 15 min).</li>
+    </ul>
+  </div>
+</section>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const H0 = 8, HPX = 52;
+function grid(el, cols, evs, opt = {}) {
+  const head = `<div class="gh" style="grid-template-columns:52px repeat(${cols.length},1fr)"><div style="border:0"></div>${cols.map(c => `<div class="${c.today ? 'today' : ''}">${c.l}<b>${c.d}</b></div>`).join('')}</div>`;
+  const hours = Array.from({ length: 10 }, (_, i) => `<span style="top:${i * HPX}px">${String(H0 + i).padStart(2, '0')}:00</span>`).join('');
+  const colsHtml = cols.map((c, ci) => `<div class="col">${evs.filter(e => e.c === ci).map(e => `<div class="ev ${e.k || ''}" data-id="${e.id || ''}" style="top:${(e.s - H0) * HPX + 2}px;height:${(e.e - e.s) * HPX - 4}px;left:3px;right:3px;${e.k ? '' : 'background:var(--accent-soft);border-color:var(--p-me)'}"><b>${e.t}</b><span>${e.sub || ''}</span>${e.i ? `<span class="ico"><i data-lucide="${e.i}"></i></span>` : ''}</div>`).join('')}</div>`).join('');
+  el.innerHTML = head + `<div class="body" style="grid-template-columns:52px repeat(${cols.length},1fr)"><div class="hours">${hours}</div>${colsHtml}${opt.now ? `<div class="now" style="top:${(opt.now - H0) * HPX + 36}px"></div>` : ''}</div>`;
+}
+grid($('#g4'), [{ l: 'Mon', d: 12, today: true }, { l: 'Tue', d: 13 }, { l: 'Wed', d: 14 }, { l: 'Thu', d: 15 }, { l: 'Fri', d: 16 }], [
+  { c: 0, s: 9, e: 10.5, t: 'Weekly sync', sub: 'Zoom · Zoom 1', k: 'idesk', i: 'video', id: 'zoom' },
+  { c: 0, s: 13, e: 14, t: 'Infra review', sub: 'Room 3' },
+  { c: 0, s: 15.5, e: 16, t: 'Ticket due · 041026-INS-0001', sub: 'Wifi lantai 2', k: 'due' },
+  { c: 1, s: 9, e: 10, t: 'Printer installation', sub: 'ICT visit · 111026-INS-0008', k: 'idesk', i: 'wrench', id: 'visit' },
+  { c: 1, s: 14, e: 15.5, t: 'Vendor meeting', sub: 'Room 2' },
+  { c: 2, s: 9, e: 10.5, t: 'Weekly sync', sub: 'Zoom · Zoom 1', k: 'idesk', i: 'video', id: 'zoom' },
+  { c: 3, s: 10, e: 11, t: 'Oracle K2 walkthrough', sub: 'Zoom · Zoom 2', k: 'idesk', i: 'video', id: 'zoom' },
+], { now: 2 });
+
+const pops = {
+  zoom: `<div class="pop" style="left:120px;top:120px"><span class="badge-id"><i data-lucide="life-buoy"></i>iDesk · Zoom</span><h5>Weekly sync</h5>
+    <div class="when">Mon 12 Oct · 09:00 – 10:30 · repeats weekly</div>
+    <div class="r"><i data-lucide="video"></i><div><a href="#" style="color:var(--idesk);font-weight:600">Join Zoom meeting</a><br>ID <code>812 3456 7890</code> · Passcode <code>abc123</code></div></div>
+    <div class="r"><i data-lucide="users"></i><div class="ppl"><span>Budi Santoso · booker</span><span>You</span><span>Sari Dewi</span><span class="guest">Rina (not on iPop)</span></div></div>
+    <div class="r"><i data-lucide="align-left"></i>Agenda Q4</div>
+    <div class="hint">Booked in iDesk. Move or cancel it there and your calendar updates automatically.</div>
+    <div class="acts"><a class="btn sm pri" href="#">Join</a><a class="btn sm" href="#">Manage in iDesk <i data-lucide="external-link"></i></a><button class="btn sm ghost"><i data-lucide="lock"></i>Make private</button></div></div>`,
+  visit: `<div class="pop" style="left:300px;top:110px"><span class="badge-id"><i data-lucide="life-buoy"></i>iDesk · ICT visit</span><h5>Printer installation</h5>
+    <div class="when">Tue 13 Oct · 09:00 – 10:00</div>
+    <div class="r"><i data-lucide="ticket"></i>111026-INS-0008 · Assigned to Rizky Aditya</div>
+    <div class="r"><i data-lucide="printer"></i>Hardware: Printer</div>
+    <div class="hint">ICT comes to your desk at this time. To change the slot, ask in the ticket chat.</div>
+    <div class="acts"><a class="btn sm pri" href="#" data-go="s2">View ticket</a><a class="btn sm" href="#">Open chat in iDesk <i data-lucide="external-link"></i></a></div></div>`
+};
+$('#g4').addEventListener('click', e => {
+  const ev = e.target.closest('.ev'); $('#g4 .pop')?.remove(); $('#g4 .ev.sel')?.classList.remove('sel');
+  if (!ev || !pops[ev.dataset.id]) return;
+  ev.classList.add('sel'); $('#g4 .body').insertAdjacentHTML('beforeend', pops[ev.dataset.id]); lucide.createIcons();
+});
+setTimeout(() => $('#g4 .ev[data-id="zoom"]').click(), 0);
+
+let n = 2;
+const previews = ['“Kalau masih belum bisa, saya ke meja Anda jam 11.”', '“Sudah normal kembali? Mohon konfirmasi di iDesk.”', '“📎 2 lampiran”'];
+$('#simMsg').onclick = () => {
+  n++; const p = previews[(n - 3) % previews.length];
+  for (const id of ['tCnt', 'ncCnt']) { const c = $('#' + id); c.textContent = n; c.classList.remove('bump'); void c.offsetWidth; c.classList.add('bump'); }
+  $('#tPrev').textContent = p; $('#ncPrev').textContent = 'Rizky Aditya: ' + p;
+  const t = $('#toast'); t.style.animation = 'none'; void t.offsetWidth; t.style.animation = '';
+};
+document.addEventListener('click', e => {
+  const g = e.target.closest('[data-go]'); if (!g) return; e.preventDefault();
+  $(`.mk-nav [data-s="${g.dataset.go}"]`).click();
+});
+document.querySelectorAll('.mk-nav [data-s]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.mk-nav [data-s]').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.stage').forEach(s => s.classList.toggle('on', s.id === b.dataset.s));
+});
+$('#theme').onclick = () => { const d = document.documentElement; d.dataset.theme = d.dataset.theme === 'dark' ? '' : 'dark'; };
+lucide.createIcons();
+</script>
+</body>
+</html>
