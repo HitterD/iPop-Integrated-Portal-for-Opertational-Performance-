@@ -22,7 +22,8 @@ public class MeetingRoomServiceTests
         public Task<bool> MuteAsync(string room, string identity, CancellationToken ct) => Task.FromResult(true);
         public Task<bool> RemoveAsync(string room, string identity, CancellationToken ct) => Task.FromResult(true);
         public Task CreateRoomAsync(string room, int max, CancellationToken ct) { Created.Add((room, max)); return Task.CompletedTask; }
-        public Task UpdateRoomMetadataAsync(string room, string metadata, CancellationToken ct) => Task.CompletedTask;
+        public List<(string Room, string Metadata)> MetadataUpdates { get; } = [];
+        public Task UpdateRoomMetadataAsync(string room, string metadata, CancellationToken ct) { MetadataUpdates.Add((room, metadata)); return Task.CompletedTask; }
         public Task<bool> SetSourcesAsync(string room, string identity, IReadOnlyList<string> sources, CancellationToken ct)
         {
             if (identity == ThrowFor) throw new HttpRequestException("participant update failed");

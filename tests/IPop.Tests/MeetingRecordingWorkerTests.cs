@@ -181,6 +181,22 @@ public class MeetingRecordingWorkerTests : IDisposable
     }
 
     [Fact]
+    public async Task Failed_egress_clears_the_room_recording_banner()
+    {
+        // QA 2026-10-12: Egress aborted ("Start signal not received") but the room metadata kept the recording, so every
+        // participant saw "Recording · started by …" forever and Stop answered 404.
+        using var t = new TestDb(); var a = t.AddUser("A1");
+        Row(t, MeetingRecordingStatus.Recording, a.Id, a.Id);
+        var eg = new MeetingRecordingServiceTests.FakeEgress();
+        eg.Infos["EG_1"] = new("EGRESS_ABORTED", null, null, null, "Start signal not received");
+        var rooms = new MeetingRoomServiceTests.FakeRoomAdmin();
+        var (provider, _) = Services(t, eg, new Nas(), new Gateway(), rooms);
+        using var sp = provider;
+        await MeetingRecordingWorker.FinishAsync(provider, default);
+        Assert.Contains(("hall-kalosi", "{}"), rooms.MetadataUpdates);
+    }
+
+    [Fact]
     public async Task Purge_deletes_old_and_admin_deleted_files_from_the_nas()
     {
         using var t = new TestDb(); var a = t.AddUser("A1");

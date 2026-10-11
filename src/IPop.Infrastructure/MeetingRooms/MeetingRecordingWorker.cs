@@ -80,6 +80,13 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
                 if (string.IsNullOrEmpty(row.EgressId)) continue;
                 var info = await egress.GetAsync(row.EgressId, ct);
                 if (info is null) continue;
+                // Egress ended on its own (abort, failure, limit) while the room still shows "Recording · started by …":
+                // clear the banner, or everyone keeps seeing it and Stop answers 404.
+                if (row.Status == MeetingRecordingStatus.Recording && info.Status is "EGRESS_FAILED" or "EGRESS_ABORTED" or "EGRESS_COMPLETE" or "EGRESS_LIMIT_REACHED")
+                {
+                    try { await rooms.UpdateRoomMetadataAsync(MeetingRoomKeys.LiveKitRoom(row.RoomKey), "{}", ct); }
+                    catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { /* the room may be gone already */ }
+                }
                 if (info.Status is "EGRESS_FAILED" or "EGRESS_ABORTED")
                 {
                     row.Status = MeetingRecordingStatus.Failed; row.Error = info.Error; row.EndedAt ??= DateTime.UtcNow;
