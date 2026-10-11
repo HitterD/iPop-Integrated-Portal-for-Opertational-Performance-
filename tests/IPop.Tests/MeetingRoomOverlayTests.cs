@@ -141,6 +141,38 @@ public class MeetingRoomOverlayTests
     }
 
     [Fact]
+    public async Task Switching_rooms_clears_the_old_room_even_if_the_browser_leave_throws()
+    {
+        using var ctx = Context(out var state, out _, new Json("""
+            {"key":"kalosi","name":"Kalosi","liveKitRoom":"hall-kalosi","url":"wss://x","token":"token-b","videoAllowed":true,"identity":"me"}
+            """));
+        state.SetForTest(new("arabika", "Arabika", "hall-arabika", "wss://x", "token-a", true, "me"));
+        state.OnRoomPeople([new("me", "Bagastyo", false, true, false, false, false, true)]);
+        state.OnRoomMetadata("""{"recording":{"id":"7f1c0a4e-0000-4000-8000-000000000001","by":"Budi","startedAt":"2026-10-11T03:00:00Z"}}""");
+        ctx.JSInterop.SetupVoid("ipopRooms.leave").SetException(new InvalidOperationException("JS runtime gone"));
+        ctx.JSInterop.Setup<bool>("ipopRooms.join", _ => true).SetResult(true);
+
+        var (error, _) = await state.JoinAsync("kalosi");
+
+        Assert.Null(error);
+        Assert.Equal("kalosi", state.Room?.Key);
+        Assert.Empty(state.People);
+        Assert.Null(state.RecordingServer);
+        Assert.False(state.MicOn);
+        Assert.Equal("token-b", Assert.Single(ctx.JSInterop.Invocations["ipopRooms.join"]).Arguments[1]);
+    }
+
+    [Fact]
+    public async Task Leave_clears_the_room_even_if_the_browser_leave_throws()
+    {
+        using var ctx = Context(out var state);
+        state.SetForTest(new("arabika", "Arabika", "hall-arabika", "wss://x", "t", true, "me"));
+        ctx.JSInterop.SetupVoid("ipopRooms.leave").SetException(new TaskCanceledException());
+        await state.LeaveAsync();
+        Assert.Null(state.Room);
+    }
+
+    [Fact]
     public async Task Join_network_failure_returns_an_error_instead_of_throwing()
     {
         using var ctx = Context(out var state, out _, new Throwing());

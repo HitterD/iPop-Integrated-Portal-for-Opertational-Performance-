@@ -123,9 +123,14 @@ public sealed class MeetingRoomState(AuthState auth, IJSRuntime js, CallState ca
     public async Task LeaveAsync()
     {
         if (Room is null) return;
-        try { await js.InvokeVoidAsync("ipopRooms.leave"); } catch (JSException) { }
-        Clear();
-        Raise();
+        try { await js.InvokeVoidAsync("ipopRooms.leave"); }
+        catch (Exception e) when (e is JSException or JSDisconnectedException or TaskCanceledException or InvalidOperationException) { }
+        finally
+        {
+            // Whatever the browser did, the old room must not linger (JoinAsync's room switch relies on it).
+            Clear();
+            Raise();
+        }
     }
 
     private void Clear()
