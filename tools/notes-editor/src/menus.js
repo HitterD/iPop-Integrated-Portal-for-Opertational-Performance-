@@ -134,7 +134,9 @@ export function mentionSuggestion(host) {
       ]).run();
       host.mentioned(props);
     },
-    render: () => listPopup(p => `<span class="nt-av" style="background:${host.avatarColor(p.nik)}">${esc(host.initials(p.name))}</span><div><div class="nm">${esc(p.name)}</div><div class="ds">${esc(p.position || p.nik)}</div></div>`,
+    // Second line: department (never the NIK — office rule). People who can't open the page are
+    // marked; picking one asks whether to share the page with them (host.mentioned).
+    render: () => listPopup(p => `<span class="nt-av" style="background:${host.avatarColor(p.nik || p.id)}">${esc(host.initials(p.name))}</span><div><div class="nm">${esc(p.name)}</div><div class="ds">${esc(p.department || '')}</div></div>${p.hasAccess === false ? '<span class="nt-noacc">No access</span>' : ''}`,
       'Type at least 2 letters of a name'),
   };
 }

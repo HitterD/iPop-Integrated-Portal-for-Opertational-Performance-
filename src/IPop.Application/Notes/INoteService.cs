@@ -137,7 +137,12 @@ public record NoteSearchPageDto(IReadOnlyList<NoteSearchRowDto> Items, int Total
 /// Chat card payload, stored as "[note]" + json in ChatMessage.Content.
 public record NoteCardDto(Guid Id, string Title, string? Emoji, string? Cover, string Accent, string Level, string? Excerpt);
 
-public record NotePersonDto(Guid Id, string Nik, string Name, string? Position);
+/// A person in the Notes pickers. Nik is the photo/colour key only and is never shown (office rule,
+/// same as the other DTOs); Department is the second line. HasAccess is set when the search is made
+/// for a page (null otherwise).
+public record NotePersonDto(Guid Id, string Nik, string Name, string? Position, string? Department = null, bool? HasAccess = null);
+
+public record NoteAccessCheckRequest(IReadOnlyList<Guid> UserIds);
 
 public interface INoteService
 {
@@ -195,8 +200,11 @@ public interface INoteService
     Task<NoteResult<bool>> CanUploadAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task LinkAttachmentAsync(Guid pageId, Guid attachmentId, CancellationToken ct);
 
-    /// People picker for sharing and @mentions (active users by name or NIK).
-    Task<IReadOnlyList<NotePersonDto>> SearchPeopleAsync(string query, CancellationToken ct);
+    /// People picker for sharing and @mentions (active users by name or email). With a page, each row
+    /// says whether that person can open it.
+    Task<IReadOnlyList<NotePersonDto>> SearchPeopleAsync(string query, CancellationToken ct, Guid? userId = null, Guid? pageId = null);
+    /// Which of these people can open the page (the caller must be able to open it too).
+    Task<NoteResult<IReadOnlyList<Guid>>> WhoCanAccessAsync(Guid userId, Guid pageId, IReadOnlyList<Guid> userIds, CancellationToken ct);
     /// An @mention typed into the page body: returns the mentioned users who can open the page.
     Task<NoteResult<IReadOnlyList<Guid>>> MentionInDocAsync(Guid userId, Guid pageId, IReadOnlyList<Guid> mentions, CancellationToken ct);
 }

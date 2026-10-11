@@ -362,15 +362,35 @@ public sealed partial class NoteService
 
     // ── People ───────────────────────────────────────────────────────────────
 
-    public async Task<IReadOnlyList<NotePersonDto>> SearchPeopleAsync(string query, CancellationToken ct)
+    public async Task<IReadOnlyList<NotePersonDto>> SearchPeopleAsync(string query, CancellationToken ct,
+        Guid? userId = null, Guid? pageId = null)
     {
         var q = query.Trim().ToLower();
         if (q.Length < 2) return [];
-        return await db.Users.AsNoTracking()
+        var rows = await db.Users.AsNoTracking()
             .Where(u => u.IsActive && (u.Name.ToLower().Contains(q) || (u.Email != null && u.Email.ToLower().Contains(q))))
             .OrderBy(u => u.Name).Take(8)
-            .Select(u => new NotePersonDto(u.Id, u.Nik, u.Name, null))
+            .Select(u => new { u.Id, u.Nik, u.Name, Department = u.Department != null ? u.Department.Name : null })
             .ToListAsync(ct);
+        // Access flags only for someone who can open the page themselves (no probing of other pages).
+        var flag = userId is { } me && pageId is { } pid && await GetAccessAsync(me, pid, ct) > NoteAccess.None;
+        var result = new List<NotePersonDto>(rows.Count);
+        foreach (var u in rows)
+        {
+            bool? has = flag ? await GetAccessAsync(u.Id, pageId!.Value, ct) > NoteAccess.None : null;
+            result.Add(new NotePersonDto(u.Id, u.Nik, u.Name, null, u.Department, has));
+        }
+        return result;
+    }
+
+    public async Task<NoteResult<IReadOnlyList<Guid>>> WhoCanAccessAsync(Guid userId, Guid pageId, IReadOnlyList<Guid> userIds, CancellationToken ct)
+    {
+        var access = await GetAccessAsync(userId, pageId, ct);
+        if (access == NoteAccess.None) return Fail<IReadOnlyList<Guid>>(Denied(access));
+        var result = new List<Guid>();
+        foreach (var id in (userIds ?? []).Distinct().Take(100))
+            if (await GetAccessAsync(id, pageId, ct) > NoteAccess.None) result.Add(id);
+        return Ok<IReadOnlyList<Guid>>(result);
     }
 
     public async Task<NoteResult<IReadOnlyList<Guid>>> MentionInDocAsync(Guid userId, Guid pageId, IReadOnlyList<Guid> mentions, CancellationToken ct)

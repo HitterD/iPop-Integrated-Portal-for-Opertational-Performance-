@@ -231,6 +231,19 @@
 .nt-editor hr { border:0; height:1px; background:var(--line); margin:18px 0; }
 .nt-editor hr.ProseMirror-selectednode { background:var(--pc); }
 .nt-editor .nt-mention { color:var(--pc-ink); background:var(--pc-soft); border-radius:5px; padding:0 4px; font-weight:500; white-space:nowrap; }
+/* Tagged person can't open the page: greyed, never notified (title explains on hover). */
+.nt-editor .nt-mention.noaccess { color:var(--ink-3); background:var(--fill, rgba(118,118,128,.12)); text-decoration:underline dotted; text-decoration-thickness:1px; text-underline-offset:3px; cursor:help; }
+/* @mention picker: "No access" tag on people the page isn't shared with. */
+.nt-list .nt-noacc { margin-left:auto; flex:none; font-size:11px; font-weight:600; color:var(--ink-3); background:var(--fill, rgba(118,118,128,.12)); border-radius:99px; padding:2px 8px; white-space:nowrap; }
+/* "Share this page with X?" after tagging someone without access. */
+.nt-share-ask { position:fixed; z-index:1070; width:300px; padding:14px 14px 12px; border-radius:14px; background:var(--surface); box-shadow:var(--nt-pop-sh); color:var(--ink); font:13px/1.45 var(--nt-font); animation:nt-pop .14s ease-out; }
+.nt-share-ask .t { font-size:14px; font-weight:650; margin-bottom:4px; }
+.nt-share-ask .d { color:var(--ink-2); margin-bottom:12px; }
+.nt-share-ask .b { display:flex; justify-content:flex-end; gap:8px; }
+.nt-share-ask .b button { height:32px; padding:0 14px; border-radius:9px; font-weight:600; }
+.nt-share-ask .b .no { background:var(--fill, rgba(118,118,128,.12)); }
+.nt-share-ask .b .yes { background:var(--accent); color:#fff; }
+.nt-share-ask .b .yes:disabled { opacity:.6; cursor:default; }
 .nt-editor .nt-cmt { background:var(--hl); border-bottom:2px solid rgba(255,204,0,.8); cursor:pointer; border-radius:2px; }
 .nt-editor .nt-cmt.focus { background:var(--hl-strong); }
 .nt-editor p.is-empty::before, .nt-editor :is(h1,h2,h3).is-empty::before { content:attr(data-placeholder); color:var(--ink-4); float:left; height:0; pointer-events:none; }

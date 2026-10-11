@@ -18,8 +18,8 @@ import * as Y from 'yjs';
 import { Awareness, encodeAwarenessUpdate, applyAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness';
 import * as signalR from '@microsoft/signalr';
 
-import { BlockBackground, Callout, NoteWidget, SubPage, NoteFile, CommentHighlights, commentKey, countTodos, releaseBlobs } from './nodes.js';
-import { SlashMenu, mentionSuggestion, createToolbar, createHandle, createBlockMenu } from './menus.js';
+import { BlockBackground, Callout, NoteWidget, SubPage, NoteFile, CommentHighlights, commentKey, countTodos, releaseBlobs, esc } from './nodes.js';
+import { SlashMenu, mentionSuggestion, createToolbar, createHandle, createBlockMenu, place } from './menus.js';
 import { NoteImage, NoteGallery, NoteBookmark, NoteEmbed, RichTaskItem, TodoExtras, tableExtensions, taskItemAt, todoInsertPos, createRichUi, closeLightboxes } from './rich.js';
 import { TEMPLATES, GUIDE_COMMENT_TEXT } from './templates.js';
 import { importer, exportPages } from './transfer.js';
@@ -127,7 +127,14 @@ export async function mount(el, opts) {
     apiBase,
     tablePicker: () => rich?.tablePicker(),
     askLink: kind => rich?.askLink(kind),
-    searchPeople: async q => { try { const r = await api(`/api/notes/people?q=${encodeURIComponent(q)}`); return r.ok ? await r.json() : []; } catch { return []; } },
+    searchPeople: async q => {
+      try {
+        const r = await api(`/api/notes/people?q=${encodeURIComponent(q)}&pageId=${pageId}`);
+        const rows = r.ok ? await r.json() : [];
+        rows.forEach(p => { if (p.hasAccess != null) accessKnown.set(p.id, p.hasAccess); });
+        return rows;
+      } catch { return []; }
+    },
     mentioned: p => queueMention(p),
     avatarColor: nik => palette[[...String(nik)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % palette.length],
     initials: name => String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join(''),
@@ -396,6 +403,8 @@ export async function mount(el, opts) {
   }
 
   // ── Mentions in the body notify people (batched) ──────────────────────────
+  // Only people who can open the page are ever notified (the server checks again). Tagging someone
+  // without access asks the owner to share the page; otherwise the tag stays as plain text.
   const mentionQueue = new Map();
   const sendMentions = debounce(async () => {
     if (!mentionQueue.size) return;
@@ -411,7 +420,78 @@ export async function mount(el, opts) {
     const context = $from.parent.textContent.slice(0, 200);
     await api(`/api/notes/${pageId}/mentions`, { method: 'POST', json: { userIds: ids, context } }).catch(() => {});
   }, 4000);
-  function queueMention(p) { if (canEdit) { mentionQueue.set(p.id, p); sendMentions(); } }
+  function queueMention(p) {
+    if (!canEdit) return;
+    if (p.hasAccess === false) { offerShare(p); paintAccess(); return; }
+    mentionQueue.set(p.id, p); sendMentions();
+  }
+
+  // "Share this page with X?" — owners can grant access (then X is notified); editors can't share,
+  // so they only get a hint. Either way the tag stays in the text.
+  function offerShare(p) {
+    if (closing) return;
+    document.querySelectorAll('.nt-share-ask').forEach(e => e.remove());
+    const first = String(p.name || '').split(/\s+/)[0] || 'They';
+    const ask = document.createElement('div');
+    ask.className = 'nt-pop nt-share-ask show';
+    ask.setAttribute('role', 'dialog');
+    ask.innerHTML = opts.access === 'owner'
+      ? `<div class="t">${esc(p.name)} can't open this page</div>
+         <div class="d">Share it so ${esc(first)} can see the note and gets your mention.</div>
+         <div class="b"><button type="button" class="no">Not now</button><button type="button" class="yes">Share (can edit)</button></div>`
+      : `<div class="t">${esc(p.name)} can't open this page</div>
+         <div class="d">They won't be notified. Ask the page owner to share it.</div>
+         <div class="b"><button type="button" class="no">OK</button></div>`;
+    document.body.appendChild(ask);
+    const sel = window.getSelection();
+    const r = sel && sel.rangeCount ? sel.getRangeAt(0).getBoundingClientRect() : editor.view.dom.getBoundingClientRect();
+    place(ask, r);
+    const close = () => { ask.remove(); document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', onKey, true); };
+    const outside = e => { if (!ask.contains(e.target)) close(); };
+    const onKey = e => { if (e.key === 'Escape') { e.preventDefault(); close(); editor.commands.focus(); } };
+    setTimeout(() => { document.addEventListener('mousedown', outside, true); document.addEventListener('keydown', onKey, true); }, 0);
+    ask.querySelector('.no').addEventListener('click', () => { close(); editor.commands.focus(); });
+    ask.querySelector('.yes')?.addEventListener('click', async () => {
+      const btn = ask.querySelector('.yes'); btn.disabled = true; btn.textContent = 'Sharing…';
+      const ok = await net.invokeMethodAsync('ShareFromMention', p.id, p.name).catch(() => false);
+      close(); editor.commands.focus();
+      if (!ok) return;
+      accessKnown.set(p.id, true); paintAccess();
+      mentionQueue.set(p.id, p); sendMentions();
+    });
+  }
+
+  // Tags of people who can't open the page are greyed ("No access" tooltip). Asked once per person
+  // when the page opens, then kept up to date from picker results and shares made here.
+  const accessKnown = new Map();
+  function mentionIds() {
+    const ids = new Set();
+    editor.state.doc.descendants(n => { if (n.type.name === 'mention' && n.attrs.id) ids.add(n.attrs.id); });
+    return ids;
+  }
+  function paintAccess() {
+    if (closing) return;
+    for (const span of editor.view.dom.querySelectorAll('.nt-mention[data-id]')) {
+      const no = accessKnown.get(span.dataset.id) === false;
+      span.classList.toggle('noaccess', no);
+      if (no) span.title = "Can't open this page — not notified"; else if (span.title) span.removeAttribute('title');
+    }
+  }
+  const checkAccess = debounce(async () => {
+    if (closing) return;
+    const unknown = [...mentionIds()].filter(id => !accessKnown.has(id));
+    if (unknown.length) {
+      try {
+        const r = await api(`/api/notes/${pageId}/access-check`, { method: 'POST', json: { userIds: unknown } });
+        if (r.ok) { const ok = new Set(await r.json()); unknown.forEach(id => accessKnown.set(id, ok.has(id))); }
+      } catch { /* leave them unknown: rendered as normal tags */ }
+    }
+    paintAccess();
+  }, 600);
+  editor.on('update', checkAccess);
+  checkAccess();
+  host.accessChanged = () => { accessKnown.clear(); checkAccess(); };
+  window.addEventListener('focus', host.accessChanged);
 
   // ── Uploads ──────────────────────────────────────────────────────────────
   function pickFiles(accept, pos) {
@@ -481,6 +561,8 @@ export async function mount(el, opts) {
       if (r) editor.view.domAtPos(r.from)?.node?.parentElement?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     },
     setAccent(k) { accent = k; accentListeners.forEach(f => f()); },
+    /// Shares changed (dialog or a share from a mention): re-check who the tags can reach.
+    sharesChanged() { host.accessChanged?.(); },
     setPages(list) { pages = new Map((list || []).map(p => [p.id, p])); if (!closing) editor.view.dispatch(editor.state.tr.setMeta('pagesChanged', true)); },
     applyTemplate(key) {
       if (closing || !canEdit || !TEMPLATES[key]) return false;
@@ -509,6 +591,8 @@ export async function mount(el, opts) {
       await hub.invoke('LeavePage', pageId).catch(() => {});
       await hub.stop().catch(() => {});
       closeLightboxes(host);
+      window.removeEventListener('focus', host.accessChanged);
+      document.querySelectorAll('.nt-share-ask').forEach(e => e.remove());
       toolbar.destroy(); blockMenu.destroy(); rich?.destroy();
       editor.destroy(); awareness.destroy(); ydoc.destroy();
       releaseBlobs();

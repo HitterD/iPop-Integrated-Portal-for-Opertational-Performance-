@@ -323,4 +323,50 @@ public class NoteServiceTests
         await Svc(t).AddShareAsync(a.Id, root, new AddNoteShareRequest(view.Id, null, NoteLevels.View), Ct);
         Assert.Equal("forbidden", (await Svc(t).DuplicateAsync(view.Id, root, Ct)).Error);
     }
+
+    [Fact]
+    public async Task People_search_for_a_page_flags_who_can_open_it()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("pa"); var b = t.AddUser("pb"); var c = t.AddUser("pc");
+        var root = await PageAsync(t, a.Id);
+        await Svc(t).AddShareAsync(a.Id, root, new AddNoteShareRequest(b.Id, null, NoteLevels.View), Ct);
+
+        var rows = await Svc(t).SearchPeopleAsync("user p", Ct, a.Id, root);
+        Assert.True(rows.Single(r => r.Id == b.Id).HasAccess);
+        Assert.False(rows.Single(r => r.Id == c.Id).HasAccess);
+        Assert.All(rows, r => Assert.Null(r.Position));
+
+        // Without a page (share dialog) or for someone who can't open it: no access flags at all.
+        Assert.All(await Svc(t).SearchPeopleAsync("user p", Ct), r => Assert.Null(r.HasAccess));
+        Assert.All(await Svc(t).SearchPeopleAsync("user p", Ct, c.Id, root), r => Assert.Null(r.HasAccess));
+    }
+
+    [Fact]
+    public async Task Access_check_returns_only_people_who_can_open_the_page()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("qa"); var b = t.AddUser("qb"); var c = t.AddUser("qc");
+        var root = await PageAsync(t, a.Id);
+        var child = await PageAsync(t, a.Id, root);
+        await Svc(t).AddShareAsync(a.Id, root, new AddNoteShareRequest(b.Id, null, NoteLevels.Comment), Ct);
+
+        var ok = await Svc(t).WhoCanAccessAsync(a.Id, child, [a.Id, b.Id, c.Id], Ct);
+        Assert.True(ok.Success);
+        Assert.Equal(new[] { a.Id, b.Id }.OrderBy(x => x), ok.Data!.OrderBy(x => x));
+        // A stranger can't ask about a page they can't open.
+        Assert.False((await Svc(t).WhoCanAccessAsync(c.Id, child, [a.Id], Ct)).Success);
+    }
+
+    [Fact]
+    public async Task Mentioning_someone_without_access_notifies_nobody()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("ma"); var b = t.AddUser("mb"); var c = t.AddUser("mc");
+        var root = await PageAsync(t, a.Id);
+        await Svc(t).AddShareAsync(a.Id, root, new AddNoteShareRequest(b.Id, null, NoteLevels.View), Ct);
+
+        var r = await Svc(t).MentionInDocAsync(a.Id, root, [b.Id, c.Id], Ct);
+        Assert.Equal(new[] { b.Id }, r.Data);
+    }
 }

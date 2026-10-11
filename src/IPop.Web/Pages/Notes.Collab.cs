@@ -203,6 +203,30 @@ public partial class Notes
         Toasts.Show($"{FirstName(p.Name)} can now {LevelVerb(inviteLevel)} this note", ToastKind.Success);
         await LoadSharesAsync();
         await ReloadPageMetaAsync();
+        await SharesChangedInEditorAsync();
+    }
+
+    /// "Share (can edit)" on the editor's prompt after tagging someone without access. Owner only;
+    /// the editor then sends the mention notification itself.
+    [JSInvokable]
+    public async Task<bool> ShareFromMention(string userId, string name)
+    {
+        if (note is null || !IsOwner || !Guid.TryParse(userId, out var uid)) return false;
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notes/{note.Id}/shares", new AddNoteShareRequest(uid, null, "edit"));
+        if (!res.IsSuccessStatusCode) { Toasts.Show($"Couldn't share with {name}", ToastKind.Error); return false; }
+        Toasts.Show($"{FirstName(name)} can now edit this note", ToastKind.Success);
+        if (shares is not null) await LoadSharesAsync();
+        await ReloadPageMetaAsync();
+        return true;
+    }
+
+    /// Greyed tags in the page follow share changes made in the dialog.
+    private async Task SharesChangedInEditorAsync()
+    {
+        if (editor is null) return;
+        try { await editor.InvokeVoidAsync("sharesChanged"); }
+        catch (JSDisconnectedException) { }
+        catch (JSException) { }
     }
 
     private async Task ChangeShare(NoteShareDto s, string? level)
@@ -220,6 +244,7 @@ public partial class Notes
         if (!res.IsSuccessStatusCode) Toasts.Show("Couldn't change access", ToastKind.Error);
         await LoadSharesAsync();
         await ReloadPageMetaAsync();
+        await SharesChangedInEditorAsync();
     }
 
     private async Task SendToChat()
@@ -239,6 +264,7 @@ public partial class Notes
             Toasts.Show($"Sent to {name}", ToastKind.Success);
             pop = Pop.None;
             await ReloadPageMetaAsync();
+            await SharesChangedInEditorAsync();
         }
         finally { busy = false; }
     }

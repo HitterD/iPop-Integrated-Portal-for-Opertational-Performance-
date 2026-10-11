@@ -39,8 +39,9 @@ public static class NotesEndpoints
             Run(http, async me => Results.Ok(await svc.SearchAsync(me.Id, q ?? "", ct))));
         g.MapGet("/trash", (HttpContext http, INoteService svc, CancellationToken ct) =>
             Run(http, async me => Results.Ok(await svc.GetTrashAsync(me.Id, ct))));
-        g.MapGet("/people", (string? q, HttpContext http, INoteService svc, CancellationToken ct) =>
-            Run(http, async _ => Results.Ok(await svc.SearchPeopleAsync(q ?? "", ct))));
+        // ?pageId= adds "can open this page" per person (the @mention picker asks to share with the others).
+        g.MapGet("/people", (string? q, Guid? pageId, HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => Results.Ok(await svc.SearchPeopleAsync(q ?? "", ct, me.Id, pageId))));
 
         g.MapGet("/{id:guid}", (Guid id, HttpContext http, INoteService svc, CancellationToken ct) =>
             Run(http, async me => From(await svc.GetPageAsync(me.Id, id, ct))));
@@ -215,6 +216,9 @@ public static class NotesEndpoints
                 await NotifyAsync(notify, uid, "note.mention", $"{me.Name} mentioned you in {title}", req.Context, id, ct);
             return Results.Ok(new { notified = r.Data.Count });
         })).RequirePermission("notes.write");
+        // Mentions already in the page: which of these people can open it (the rest render greyed).
+        g.MapPost("/{id:guid}/access-check", (Guid id, NoteAccessCheckRequest req, HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.WhoCanAccessAsync(me.Id, id, req.UserIds, ct))));
         g.MapPost("/{id:guid}/guide-thread", (Guid id, GuideThreadRequest req, HttpContext http, INoteService svc, CancellationToken ct) =>
             Run(http, async me => From(await svc.AddGuideThreadAsync(me.Id, id, req.Quote, req.Anchor, ct))));
 
