@@ -129,8 +129,8 @@
       .on(E.ParticipantNameChanged, changed)
       .on(E.ParticipantAttributesChanged, changed)
       .on(E.RoomMetadataChanged, (m) => ref.invokeMethodAsync('OnRoomMetadata', m || '{}').catch(() => {}))
-      .on(E.ConnectionStateChanged, (s) => { if (['connected', 'reconnecting', 'disconnected'].includes(String(s))) ref.invokeMethodAsync('OnRoomState', String(s)).catch(() => {}); })
-      .on(E.Disconnected, () => ref.invokeMethodAsync('OnRoomState', 'disconnected').catch(() => {}))
+      .on(E.ConnectionStateChanged, (s) => { if (['connected', 'reconnecting'].includes(String(s))) ref.invokeMethodAsync('OnRoomState', String(s)).catch(() => {}); })
+      .on(E.Disconnected, () => teardown(current, false))
       .on(E.ParticipantPermissionsChanged, async (_prev, p) => {
         if (p !== room.localParticipant) return;
         const allowed = canCamera();
@@ -176,18 +176,22 @@
     return true;
   }
 
-  async function leave() {
+  async function teardown(r, disconnect) {
+    if (!r || room !== r) return;
     ++session;
     clearTimeout(peopleTimer);
     if (rec) stopPcRecording();
-    const r = room, oldRef = ref, oldOpts = opts;
+    const oldRef = ref, oldOpts = opts;
     room = null; ref = null; opts = null; lastVideoAllowed = null;
     document.querySelectorAll('[data-mr-audio]').forEach(a => a.remove());
     const strip = oldOpts && el(oldOpts.stripId); if (strip) strip.innerHTML = '';
     const stage = oldOpts && el(oldOpts.stageId);
     if (stage) { stage.classList.remove('sharing', 'grid'); const v = stage.querySelector('video.mr-share'); if (v) v.srcObject = null; }
-    if (r) { await r.disconnect().catch(() => {}); oldRef?.invokeMethodAsync('OnRoomState', 'disconnected').catch(() => {}); }
+    if (disconnect) await r.disconnect().catch(() => {});
+    oldRef?.invokeMethodAsync('OnRoomState', 'disconnected').catch(() => {});
   }
+
+  async function leave() { await teardown(room, true); }
 
   async function setMic(on) {
     if (!room) return false;
@@ -210,20 +214,33 @@
   }
 
   async function setShare(on, takeover) {
-    if (!room) return 'denied';
+    const r = room;
+    if (!r) return 'denied';
+    const sharing = p => { const s = p.getTrackPublication(LK().Track.Source.ScreenShare); return !!s && !s.isMuted; };
+    const otherSharer = () => [...r.remoteParticipants.values()].find(sharing);
     try {
       if (on) {
-        const other = [...room.remoteParticipants.values()].find(p => {
-          const s = p.getTrackPublication(LK().Track.Source.ScreenShare); return s && !s.isMuted;
-        });
+        const other = otherSharer();
         if (other && !takeover) return 'busy';
         if (other) {
           const data = new TextEncoder().encode(JSON.stringify({ t: 'share-takeover', target: other.identity }));
-          await room.localParticipant.publishData(data, { reliable: true, destinationIdentities: [other.identity] });
+          await r.localParticipant.publishData(data, { reliable: true, destinationIdentities: [other.identity] });
+          if (room !== r) return 'denied';
+          // Allow the previous presenter to stop; bounded even if they never respond.
+          for (let waited = 0; waited < 3000 && r.remoteParticipants.has(other.identity) && sharing(other); waited += 100) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            if (room !== r) return 'denied';
+          }
         }
       }
-      await room.localParticipant.setScreenShareEnabled(on, { audio: false, resolution: { width: 1280, height: 720, frameRate: 10 } });
-    } catch { return 'denied'; }   // user cancelled the picker
+      await r.localParticipant.setScreenShareEnabled(on, { audio: false, resolution: { width: 1280, height: 720, frameRate: 10 } });
+      if (room !== r) return 'denied';
+      if (on && !takeover && otherSharer()) {
+        await r.localParticipant.setScreenShareEnabled(false);
+        if (room !== r) return 'denied';
+        changed(); return 'busy';
+      }
+    } catch { return 'denied'; }
     changed(); return 'ok';
   }
 
@@ -235,6 +252,7 @@
   // Record to this PC: draw the stage + tiles onto a canvas, mix every voice, and save a .webm when stopped.
   function startPcRecording() {
     if (!room || rec || typeof MediaRecorder === 'undefined' || typeof AudioContext === 'undefined') return false;
+    const recordingRoom = room;
     let ac, stream;
     try {
       const canvas = document.createElement('canvas'); canvas.width = 1280; canvas.height = 720;
@@ -281,13 +299,22 @@
       const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm';
       const mr = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 2_000_000 });
       const recording = { mr, raf: 0, name: (room.name || 'meeting').replace(/^hall-/, '') };
+      let cleaned = false;
+      const clearAttr = () => {
+        if (room === recordingRoom && recordingRoom.state === 'connected')
+          recordingRoom.localParticipant.setAttributes({ rec: '' }).catch(() => {});
+      };
       const cleanup = () => {
+        if (cleaned) return;
+        cleaned = true;
         cancelAnimationFrame(recording.raf);
         stream.getTracks().forEach(t => t.stop());
         sources.forEach(s => s.disconnect());
         ac.close().catch(() => {});
-        if (rec === recording) { rec = null; setRecordingAttr(''); }
+        if (rec === recording) rec = null;
+        clearAttr();
       };
+      recording.cleanup = cleanup;
       const chunks = [];
       mr.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
       mr.onstop = () => {
@@ -316,9 +343,10 @@
 
   function stopPcRecording() {
     if (!rec) return;
-    cancelAnimationFrame(rec.raf);
-    if (rec.mr.state !== 'inactive') rec.mr.stop();
-    setRecordingAttr('');
+    const recording = rec;
+    cancelAnimationFrame(recording.raf);
+    if (recording.mr.state !== 'inactive') recording.mr.stop();
+    recording.cleanup();
   }
 
   window.ipopRooms = { join, leave, setMic, setCamera, setShare, startPcRecording, stopPcRecording, setRecordingAttr, tileLayout };

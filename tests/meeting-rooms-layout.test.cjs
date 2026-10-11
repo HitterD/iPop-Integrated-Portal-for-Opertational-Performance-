@@ -33,11 +33,11 @@ function harness(protocol = 'https:', extras = {}) {
     }
     on(event, handler) { this.handlers[event] = handler; return this; }
     emit(event, ...args) { return this.handlers[event]?.(...args); }
-    async connect(url) { this.url = url; this.emit(E.ConnectionStateChanged, 'connected'); }
-    async disconnect() { this.emit(E.Disconnected); }
+    async connect(url) { this.state = 'connected'; this.url = url; this.emit(E.ConnectionStateChanged, 'connected'); }
+    async disconnect() { this.state = 'disconnected'; this.emit(E.Disconnected); }
   }
   const window = { LivekitClient: { Room, RoomEvent: E, Track: { Source: S }, createLocalAudioTrack: async () => ({ mute: async function () { this.muted = true; steps.push('mute'); }, stop() {} }) } };
-  vm.runInNewContext(source, { window, location: { protocol, host: 'ipop.test' }, document: { getElementById: () => null, querySelectorAll: () => [] }, setTimeout: fn => { timers.push(fn); return timers.length; }, clearTimeout() {}, TextEncoder, TextDecoder, console, ...extras });
+  vm.runInNewContext(source, { window, location: { protocol, host: 'ipop.test' }, document: { getElementById: () => null, querySelectorAll: () => [] }, setTimeout: (fn, ms) => { if (ms === 100) { fn(); return 0; } timers.push(fn); return timers.length; }, clearTimeout() {}, TextEncoder, TextDecoder, console, ...extras });
   return { api: window.ipopRooms, rooms, steps, callbacks, E, S, timers, ref: { invokeMethodAsync: (...args) => { callbacks.push(args); return Promise.resolve(); } } };
 }
 test('browser joins muted, camera off, exact capture settings and HTTPS host rewrite', async () => {
@@ -109,11 +109,60 @@ test('PC recorder stops idempotently, saves WebM and releases generated tracks/c
   assert.equal(h.api.startPcRecording(), true);
   assert.equal(h.rooms[0].localParticipant.attributes.rec, 'pc');
   assert.equal(h.api.startPcRecording(), false);
-  h.api.stopPcRecording(); h.api.stopPcRecording();
-  assert.equal(h.rooms[0].localParticipant.attributes.rec, '');
+  h.rooms[0].state = 'disconnected';
+  await h.rooms[0].emit(h.E.Disconnected);
+  h.api.stopPcRecording();
+  assert.equal(stopped, 2); assert.equal(closed, 1);
   await h.api.leave();
+  await h.api.join('ws://lan', 'token', h.ref, {});
+  await h.api.setRecordingAttr('new-room-marker');
   recorders[0].ondataavailable({ data: new Blob(['test']) });
   recorders[0].onstop();
   assert.match(outputs[0], /^test .*\.webm$/);
   assert.equal(stopped, 2); assert.equal(closed, 1); assert.ok(cancelled > 0);
+});
+test('share rechecks after picker and retracts when another presenter wins', async () => {
+  const h = harness(); await h.api.join('ws://lan', 'token', h.ref, {});
+  const r = h.rooms[0], enabled = [];
+  r.localParticipant.setScreenShareEnabled = async on => {
+    enabled.push(on);
+    if (on) r.remoteParticipants.set('other', { identity: 'other', getTrackPublication: () => ({ isMuted: false }) });
+  };
+  assert.equal(await h.api.setShare(true, false), 'busy');
+  assert.deepStrictEqual(enabled, [true, false]);
+});
+test('share refuses stale picker and stale takeover results', async () => {
+  const h = harness(); await h.api.join('ws://lan', 'token', h.ref, {});
+  const r = h.rooms[0];
+  r.localParticipant.setScreenShareEnabled = async () => { await h.api.leave(); };
+  assert.equal(await h.api.setShare(true, false), 'denied');
+  await h.api.join('ws://lan', 'token', h.ref, {});
+  const next = h.rooms[1];
+  next.remoteParticipants.set('other', { identity: 'other', getTrackPublication: () => ({ isMuted: false }) });
+  next.localParticipant.publishData = async () => { await h.api.leave(); };
+  assert.equal(await h.api.setShare(true, true), 'denied');
+  assert.equal(h.steps.filter(s => s[0] === 'share').length, 0);
+});
+test('takeover waits for publication to disappear or bounded timeout before publishing', async () => {
+  let polls = 0;
+  const h = harness('https:', { setTimeout: (fn, ms) => { if (ms === 100) { polls++; fn(); } return 1; } });
+  await h.api.join('ws://lan', 'token', h.ref, {});
+  const r = h.rooms[0];
+  r.remoteParticipants.set('other', { identity: 'other', getTrackPublication: () => polls < 2 ? { isMuted: false } : undefined });
+  assert.equal(await h.api.setShare(true, true), 'ok'); assert.equal(polls, 2);
+  polls = 0;
+  r.remoteParticipants.set('other', { identity: 'other', getTrackPublication: () => ({ isMuted: false }) });
+  assert.equal(await h.api.setShare(true, true), 'ok'); assert.equal(polls, 30);
+});
+test('unexpected disconnect cleans DOM, denies controls, and notifies only once', async () => {
+  let removed = 0;
+  const strip = { innerHTML: 'tiles' };
+  const h2 = harness('https:', { document: { getElementById: id => id === 'strip' ? strip : null, querySelectorAll: () => [{ remove() { removed++; } }] } });
+  await h2.api.join('ws://lan', 'token', h2.ref, { stripId: 'strip', stageId: 'stage' });
+  h2.rooms[0].state = 'disconnected';
+  await h2.rooms[0].emit(h2.E.Disconnected);
+  await h2.api.leave();
+  assert.equal(strip.innerHTML, ''); assert.equal(removed, 1);
+  assert.equal(await h2.api.setMic(true), false);
+  assert.equal(h2.callbacks.filter(c => c[0] === 'OnRoomState' && c[1] === 'disconnected').length, 1);
 });
