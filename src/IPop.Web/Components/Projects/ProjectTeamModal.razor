@@ -1,35 +1,190 @@
 @using IPop.Application.Projects
 @using IPop.Web.Services
+@inject AuthState Auth
+@inject IJSRuntime JS
+@implements IDisposable
 
+@* "Add people to this project" (approved 2026-10-11, docs/mockups/ipop-apple/projects-friendly.html):
+   ① search a name or pick a suggestion, ② choose Member/Viewer per person, then one Add button.
+   People who can't manage members see the list only, with a hint. *@
 <div class="proj-modal-backdrop" @onclick="OnClose"></div>
-<div class="proj-modal v6-project-modal v6-team-modal" role="dialog" aria-modal="true" aria-label="Manage Team Members">
-    <div class="proj-modal-head"><span class="vpm-tile team"><i data-lucide="users"></i></span><span>Project team members <small>@Members.Count</small></span><button type="button" class="vpm-close" @onclick="OnClose" aria-label="Close"><i data-lucide="x"></i></button></div>
+<div class="proj-modal v6-project-modal v6-team-modal ap-modal" role="dialog" aria-modal="true" aria-labelledby="ap-title">
+    <div class="proj-modal-head">
+        <span class="vpm-tile team"><i data-lucide="@(CanManage ? "user-plus" : "users")"></i></span>
+        <span id="ap-title">@(CanManage ? "Add people to this project" : "Project members")</span>
+        <button type="button" class="vpm-close" @onclick="OnClose" aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
     <div class="proj-modal-body">
-        <label class="vpm-team-label">Add project members</label>
-        <div class="vpm-team-search"><IPop.Web.Components.AppMemberPicker Placeholder="Search people by name..." ValueChanged="AddMember" /></div>
+        @if (CanManage)
+        {
+            <p class="ap-lead">Find a colleague by name, then press <b>Add</b>. Members can work on tasks; viewers can only look.</p>
+            <div class="ap-step"><span class="ap-num">1</span>Search a name or pick a suggestion</div>
+            <div class="ap-search">
+                <i data-lucide="search"></i>
+                <input @ref="searchRef" type="text" placeholder="Type a name, e.g. Yudi" autocomplete="off" aria-label="Search people by name"
+                       value="@query" @oninput="OnQuery" @onkeydown="OnKey" />
+                @if (searching) { <i data-lucide="loader-circle" class="ap-spin"></i> }
+            </div>
+            @if (query.Trim().Length < 2) { <div class="ap-hint">Type at least 2 letters. Full names work too.</div> }
+            <div class="ap-list" role="listbox" aria-label="People">
+                @if (query.Trim().Length >= 2 && !searching && results.Count == 0)
+                {
+                    <div class="ap-empty">No one named “@query.Trim()”. Check the spelling or try another part of the name.</div>
+                }
+                else if (Shown.Count > 0)
+                {
+                    <div class="ap-label">@(query.Trim().Length >= 2 ? "Results" : "Suggested for you")</div>
+                    @foreach (var p in Shown)
+                    {
+                        var on = picked.ContainsKey(p.UserId);
+                        <div class="ap-row" role="option" aria-selected="@(on ? "true" : "false")">
+                            <PersonAvatar Nik="@p.Nik" Name="@p.Name" Size="36" Class="ap-av" Decorative="true" />
+                            <span class="ap-who"><strong>@p.Name</strong>@if (!string.IsNullOrWhiteSpace(p.Department)) { <small>@p.Department</small> }</span>
+                            <button type="button" class="ap-add @(on ? "on" : "")" @onclick="() => Toggle(p)" aria-label="@(on ? $"Remove {p.Name}" : $"Add {p.Name}")">
+                                @if (on) { <i data-lucide="check"></i><span>Added</span> } else { <i data-lucide="plus"></i><span>Add</span> }
+                            </button>
+                        </div>
+                    }
+                }
+            </div>
+            @if (picked.Count > 0)
+            {
+                <div class="ap-step"><span class="ap-num">2</span>Choose what they can do</div>
+                <div class="ap-chips">
+                    @foreach (var (id, pick) in picked)
+                    {
+                        <span class="ap-chip">
+                            <PersonAvatar Nik="@pick.Person.Nik" Name="@pick.Person.Name" Size="26" Class="ap-av" Decorative="true" />
+                            <span class="ap-chip-name">@FirstName(pick.Person.Name)</span>
+                            <select aria-label="@($"Role for {pick.Person.Name}")" value="@pick.Role" @onchange="e => SetRole(id, e.Value?.ToString())">
+                                <option value="member">Member</option>
+                                <option value="viewer">Viewer</option>
+                            </select>
+                            <button type="button" class="ap-chip-x" aria-label="@($"Remove {pick.Person.Name}")" @onclick="() => picked.Remove(id)"><i data-lucide="x"></i></button>
+                        </span>
+                    }
+                </div>
+            }
+        }
+        <div class="ap-label ap-already">@(CanManage ? $"Already in this project · {Members.Count}" : $"{Members.Count} members")</div>
         <div class="vpm-team-list">
-            @if (Members.Count == 0) { <div class="vpm-team-empty">No team members yet. Search people to add someone.</div> }
             @foreach (var m in Members)
             {
                 <div class="vpm-member">
-                    <PersonAvatar Nik="@m.Nik" Name="@m.Name" Size="36" Class="vpm-member-avatar" Status="on" Decorative="true" />
-                    <span class="vpm-member-text"><strong>@m.Name</strong><small>@m.Role</small></span>
-                    @if (m.Role != "owner") { <button type="button" class="vpm-member-remove" @onclick="() => OnRemoveMember.InvokeAsync(m.UserId)" title="Remove from team" aria-label="Remove @m.Name"><i data-lucide="x"></i></button> }
-                    else { <span class="vpm-member-owner">Owner</span> }
+                    <PersonAvatar Nik="@m.Nik" Name="@m.Name" Size="36" Class="vpm-member-avatar" Decorative="true" />
+                    <span class="vpm-member-text"><strong>@m.Name</strong><small>@RoleLabel(m.Role)</small></span>
+                    @if (m.Role == "owner") { <span class="vpm-member-owner">Owner</span> }
+                    else if (CanManage) { <button type="button" class="vpm-member-remove" @onclick="() => OnRemoveMember.InvokeAsync(m.UserId)" title="Remove from project" aria-label="Remove @m.Name"><i data-lucide="x"></i></button> }
                 </div>
             }
         </div>
     </div>
-    <div class="proj-modal-foot"><span class="vpm-team-hint">Search and select people to add them</span><button type="button" class="btn-sm accent" @onclick="OnClose">Done</button></div>
+    <div class="proj-modal-foot">
+        @if (CanManage)
+        {
+            <span class="vpm-team-hint">@(picked.Count == 0 ? "Nobody selected yet." : "They'll get a notification.")</span>
+            <button type="button" class="btn-sm" @onclick="OnClose">@(picked.Count == 0 ? "Close" : "Cancel")</button>
+            <button type="button" class="btn-sm accent" disabled="@(picked.Count == 0 || adding)" @onclick="AddPicked">
+                @(adding ? "Adding…" : picked.Count switch { 0 => "Add people", 1 => "Add 1 person", var n => $"Add {n} people" })
+            </button>
+        }
+        else
+        {
+            <span class="vpm-team-hint">Only the project owner or a manager can add people.</span>
+            <button type="button" class="btn-sm accent" @onclick="OnClose">Done</button>
+        }
+    </div>
 </div>
 
 @code {
+    [Parameter, EditorRequired] public Guid ProjectId { get; set; }
     [Parameter] public List<ProjectMemberDto> Members { get; set; } = [];
+    [Parameter] public bool CanManage { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
-    [Parameter] public EventCallback<MemberSearchRow> OnAddMember { get; set; }
+    /// Adds the picked people; the page reloads members and toasts.
+    [Parameter] public EventCallback<IReadOnlyList<(ProjectPersonDto Person, string Role)>> OnAddPeople { get; set; }
     [Parameter] public EventCallback<Guid> OnRemoveMember { get; set; }
-    private async Task AddMember(MemberSearchRow? member)
+
+    private sealed record Pick(ProjectPersonDto Person, string Role);
+
+    private ElementReference searchRef;
+    private string query = "";
+    private bool searching, adding, focused;
+    private List<ProjectPersonDto> results = [];
+    private List<ProjectPersonDto> suggestions = [];
+    private readonly Dictionary<Guid, Pick> picked = [];
+    private CancellationTokenSource? cts;
+
+    private List<ProjectPersonDto> Shown => query.Trim().Length >= 2 ? results : suggestions;
+
+    protected override async Task OnInitializedAsync()
     {
-        if (member is not null) await OnAddMember.InvokeAsync(member);
+        if (CanManage) suggestions = await Auth.GetAsync<List<ProjectPersonDto>>($"/api/projects/{ProjectId}/people") ?? [];
     }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("ipop.icons");
+            if (CanManage && !focused) { focused = true; await searchRef.FocusAsync(); }
+        }
+        catch (JSException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    private async Task OnQuery(ChangeEventArgs e)
+    {
+        query = e.Value?.ToString() ?? "";
+        cts?.Cancel();
+        var q = query.Trim();
+        if (q.Length < 2) { results = []; searching = false; return; }
+        var t = cts = new CancellationTokenSource();
+        searching = true;
+        try { await Task.Delay(180, t.Token); } catch (OperationCanceledException) { return; }
+        var rows = await Auth.GetAsync<List<ProjectPersonDto>>($"/api/projects/{ProjectId}/people?q={Uri.EscapeDataString(q)}");
+        if (t.IsCancellationRequested) return;
+        results = rows ?? [];
+        searching = false;
+    }
+
+    /// Enter adds the first result (keyboard users can search → Enter → search again).
+    private void OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && Shown.FirstOrDefault(p => !picked.ContainsKey(p.UserId)) is { } first) Toggle(first);
+        if (e.Key == "Escape" && query.Length > 0) { query = ""; results = []; }
+    }
+
+    private void Toggle(ProjectPersonDto p)
+    {
+        if (!picked.Remove(p.UserId)) picked[p.UserId] = new Pick(p, "member");
+    }
+
+    private void SetRole(Guid id, string? role)
+    {
+        if (picked.TryGetValue(id, out var p) && role is "member" or "viewer") picked[id] = p with { Role = role };
+    }
+
+    private async Task AddPicked()
+    {
+        if (picked.Count == 0 || adding) return;
+        adding = true;
+        try
+        {
+            await OnAddPeople.InvokeAsync(picked.Values.Select(p => (p.Person, p.Role)).ToList());
+            picked.Clear();
+            query = ""; results = [];
+            suggestions = await Auth.GetAsync<List<ProjectPersonDto>>($"/api/projects/{ProjectId}/people") ?? [];
+        }
+        finally { adding = false; }
+    }
+
+    private static string FirstName(string name) => name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name;
+
+    private static string RoleLabel(string role) => role switch
+    {
+        "owner" => "Owner", "manager" => "Manager", "viewer" => "Viewer (can only look)", _ => "Member"
+    };
+
+    public void Dispose() => cts?.Cancel();
 }

@@ -32,6 +32,9 @@ public record DeleteGroupResultDto(bool Success, DeletedProjectGroupDto? Deleted
 public record AddProjectMemberRequest(Guid UserId, string Role, string? Nik = null);
 public record ProjectMemberDto(Guid UserId, string Nik, string Name, string Role, DateTime JoinedAt);
 
+/// "Add people" dialog row: who can be added to a project. Nik is the photo key only (never shown).
+public record ProjectPersonDto(Guid UserId, string Nik, string Name, string? Department);
+
 // Task DTOs
 public record CreateTaskRequest(Guid ProjectId, Guid? ParentTaskId, string Title, string? Description,
     string Status, string? Priority, DateTime? StartDate, DateTime? DueDate,

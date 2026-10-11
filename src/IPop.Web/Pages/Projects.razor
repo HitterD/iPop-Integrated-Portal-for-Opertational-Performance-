@@ -74,7 +74,9 @@
                 OnCopyLink="CopyProjectLink"
                 OnDeleteProject="HandleDeleteProject"
                 OnMarkCompleted="HandleMarkProjectCompleted"
-                OnBack="CloseMobileDetail" />
+                OnBack="CloseMobileDetail"
+                CanWrite="CanWriteTasks"
+                OnNewTask="CreateTaskAndOpen" />
 
             @* Canvas View Switcher Bar (Overview / Board / List / Timeline / Workload) *@
             <div class="proj-canvas-bar">
@@ -355,8 +357,10 @@
 
 @if (showTaskEditor && editingTask is not null)
 {
-    <ProjectTaskDrawer
+    <ProjectTaskDrawer @ref="taskDrawer"
         ReadOnly="@(!CanWriteTasks)"
+        OnAutoSave="HandleAutoSaveTask"
+        TakeFocusTitle="focusNewTaskTitle"
         Task="editingTask"
         ProjectName="@(selectedProject?.Name ?? "Project")"
         ProjectColor="@selectedProject?.Color"
@@ -402,9 +406,11 @@
 @if (showTeamModal && selectedProject is not null)
 {
     <ProjectTeamModal
+        ProjectId="selectedProjectId"
         Members="projectMembers"
+        CanManage="CanManageMembers"
         OnClose="() => showTeamModal = false"
-        OnAddMember="HandleAddTeamMember"
+        OnAddPeople="HandleAddPeople"
         OnRemoveMember="HandleRemoveTeamMember" />
 }
 
@@ -505,6 +511,9 @@
     // Task Inspector Drawer state
     private ProjectTaskDto? editingTask;
     private bool showTaskEditor;
+    private ProjectTaskDrawer? taskDrawer;
+    /// Set by the header's "New task" so the drawer puts the cursor in the title once.
+    private bool focusNewTaskTitle;
     private List<ProjectTaskDto> subtasks = [];
 
     // Task Evidence Modal state
@@ -1535,6 +1544,7 @@
 
     private async Task OpenTaskEditor(ProjectTaskDto t)
     {
+        if (editingTask?.Id != t.Id && !focusNewTaskTitle) focusNewTaskTitle = false;
         editingTask = t;
         _ = Notifs.MarkReadByTargetAsync("task", t.Id);
         showTaskEditor = true;
@@ -1948,6 +1958,28 @@
             Toasts.Show("Recurring task: the next one has been created.", ToastKind.Info);
     }
 
+    /// Drawer autosave: same PUT as Save changes, but the drawer stays open, the task is refreshed in
+    /// place and no toast is shown (the drawer shows "Saved").
+    private async Task HandleAutoSaveTask(ProjectTaskDrawer.TaskSaveModel m)
+    {
+        focusNewTaskTitle = false;
+        if (!CanWriteTasks) { taskDrawer?.ReportSaved(false); return; }
+        var req = new UpdateTaskRequest(
+            m.Title, m.Description, null, m.Priority ?? "", m.StartDate, m.DueDate,
+            m.EstimatedHours, null, null, null, null, null, null, m.Tags ?? "",
+            ClearStartDate: m.StartDate is null, ClearDueDate: m.DueDate is null, ClearEstimatedHours: m.EstimatedHours is null);
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{m.Id}", req);
+        if (!res.IsSuccessStatusCode) { taskDrawer?.ReportSaved(false); return; }
+        ProjectTaskDto? saved = null;
+        try { saved = await res.Content.ReadFromJsonAsync<ProjectTaskDto>(); } catch { }
+        taskDrawer?.ReportSaved(true);
+        if (saved is not null && editingTask?.Id == saved.Id) editingTask = saved;
+        await LoadKanban();
+        await LoadTaskList();
+        if (tab == 6) await ReloadCalendar();
+        StateHasChanged();
+    }
+
     private async Task HandleSaveTask(ProjectTaskDrawer.TaskSaveModel m)
     {
         if (!CanWriteTasks) return;
@@ -2181,19 +2213,38 @@
         }
     }
 
-    private async Task HandleAddTeamMember(MemberSearchRow r)
+    private async Task HandleAddPeople(IReadOnlyList<(ProjectPersonDto Person, string Role)> people)
     {
-        if (selectedProjectId == Guid.Empty || string.IsNullOrWhiteSpace(r.Nik)) return;
-        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{selectedProjectId}/members", new AddProjectMemberRequest(Guid.Empty, "member", r.Nik));
-        if (res.IsSuccessStatusCode)
+        if (selectedProjectId == Guid.Empty || people.Count == 0) return;
+        var added = new List<string>();
+        var failed = new List<string>();
+        foreach (var (p, role) in people)
         {
-            await LoadMembers();
-            Toasts.Show($"Added {r.Name} to the project team.", ToastKind.Success);
+            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{selectedProjectId}/members", new AddProjectMemberRequest(p.UserId, role));
+            (res.IsSuccessStatusCode ? added : failed).Add(p.Name);
         }
-        else
-        {
-            Toasts.Show("Failed to add member.", ToastKind.Error);
-        }
+        await LoadMembers();
+        if (added.Count > 0)
+            Toasts.Show(added.Count == 1 ? $"Added {added[0]} to the project." : $"Added {added.Count} people to the project.", ToastKind.Success);
+        if (failed.Count > 0)
+            Toasts.Show($"Couldn't add {string.Join(", ", failed)}.", ToastKind.Error);
+        StateHasChanged();
+    }
+
+    /// Header "New task": creates a blank To Do task and opens it, so the starter checklist guides
+    /// the rest (assign, due date, details).
+    private async Task CreateTaskAndOpen()
+    {
+        if (!CanWriteTasks || selectedProjectId == Guid.Empty) return;
+        var req = new CreateTaskRequest(selectedProjectId, null, "New task", null, "todo", null, null, null, null, null, null);
+        var r = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{selectedProjectId}/tasks", req);
+        if (!r.IsSuccessStatusCode) { Toasts.Show("Failed to add new task.", ToastKind.Error); return; }
+        ProjectTaskDto? created = null;
+        try { created = await r.Content.ReadFromJsonAsync<ProjectTaskDto>(); } catch { }
+        await LoadKanban();
+        await LoadTaskList();
+        selectedProject = await Auth.GetAsync<ProjectDto>($"/api/projects/{selectedProjectId}");
+        if (created is not null) { focusNewTaskTitle = true; await OpenTaskEditor(created); }
         StateHasChanged();
     }
 

@@ -223,6 +223,49 @@ public static class ProjectEndpoints
             return Results.Ok(members);
         });
 
+        // GET /api/projects/{id}/people?q= — the "Add people" dialog. With q: every word must match
+        // (full names with spaces), names starting with q first. Without q: suggestions — people the
+        // caller shares other projects with, then colleagues from the caller's department.
+        // Current members are never returned. Department is the second line; NIK is not shown.
+        g.MapGet("/{id:guid}/people", async (Guid id, string? q,
+            HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            if (await svc.GetProjectAsync(id, userId.Value, ct) is null)
+                return Results.Json(new { code = "project_not_found", message = "Not a member of this project." }, statusCode: 404);
+            var taken = await db.ProjectMembers.Where(m => m.ProjectId == id).Select(m => m.UserId).ToListAsync(ct);
+            var people = db.Users.AsNoTracking().Where(u => u.IsActive && !taken.Contains(u.Id));
+
+            var query = (q ?? "").Trim().ToLower();
+            if (query.Length >= 2)
+            {
+                var words = query.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(4).ToArray();
+                foreach (var w in words) people = people.Where(u => u.Name.ToLower().Contains(w));
+                var first = words[0];
+                return Results.Ok(await people
+                    .OrderBy(u => u.Name.ToLower().StartsWith(query) ? 0 : u.Name.ToLower().StartsWith(first) ? 1 : u.Name.ToLower().Contains(" " + first) ? 2 : 3)
+                    .ThenBy(u => u.Name).Take(12)
+                    .Select(u => new ProjectPersonDto(u.Id, u.Nik, u.Name, u.Department != null ? u.Department.Name : null))
+                    .ToListAsync(ct));
+            }
+            if (query.Length > 0) return Results.Ok(Array.Empty<ProjectPersonDto>());
+
+            var myProjects = db.ProjectMembers.Where(m => m.UserId == userId.Value).Select(m => m.ProjectId);
+            var coworkers = await db.ProjectMembers.Where(m => myProjects.Contains(m.ProjectId) && m.UserId != userId.Value && !taken.Contains(m.UserId))
+                .GroupBy(m => m.UserId).Select(g => new { UserId = g.Key, N = g.Count() })
+                .OrderByDescending(x => x.N).Take(6).Select(x => x.UserId).ToListAsync(ct);
+            var myDept = await db.Users.Where(u => u.Id == userId.Value).Select(u => u.DepartmentId).FirstOrDefaultAsync(ct);
+            var sameDept = myDept is null ? [] : await people
+                .Where(u => u.Id != userId.Value && u.DepartmentId == myDept && !coworkers.Contains(u.Id))
+                .OrderBy(u => u.Name).Take(6).Select(u => u.Id).ToListAsync(ct);
+            var ids = coworkers.Concat(sameDept).Take(6).ToList();
+            var rows = await people.Where(u => ids.Contains(u.Id))
+                .Select(u => new ProjectPersonDto(u.Id, u.Nik, u.Name, u.Department != null ? u.Department.Name : null))
+                .ToListAsync(ct);
+            return Results.Ok(ids.Select(i => rows.FirstOrDefault(r => r.UserId == i)).Where(r => r is not null));
+        });
+
         // POST /api/projects/{id}/members — { userId, role }
         g.MapPost("/{id:guid}/members", async (Guid id, AddProjectMemberRequest req,
             HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, IChatNotifier chat, CancellationToken ct) =>

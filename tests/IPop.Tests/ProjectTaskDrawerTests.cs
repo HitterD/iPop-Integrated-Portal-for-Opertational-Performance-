@@ -107,27 +107,27 @@ public class ProjectTaskDrawerTests
     }
 
     [Fact]
-    public void Pager_asks_before_discarding_unsaved_edits()
+    public void Pager_saves_pending_edits_before_moving_on()
     {
         using var ctx = NewContext(out var confirm);
         var a = MakeTask("A"); var b = MakeTask("B");
         ProjectTaskDto? navigated = null;
-        var cut = ctx.Render<ProjectTaskDrawer>(p => p
+        ProjectTaskDrawer.TaskSaveModel? saved = null;
+        IRenderedComponent<ProjectTaskDrawer>? cut = null;
+        cut = ctx.Render<ProjectTaskDrawer>(p => p
             .Add(x => x.Task, a)
             .Add(x => x.NavTasks, new List<ProjectTaskDto> { a, b })
-            .Add(x => x.OnNavigate, (ProjectTaskDto t) => navigated = t));
+            .Add(x => x.OnNavigate, (ProjectTaskDto t) => navigated = t)
+            .Add(x => x.OnAutoSave, (ProjectTaskDrawer.TaskSaveModel m) => { saved = m; cut!.Instance.ReportSaved(true); }));
 
         cut.Find("input.td-title").Change("A (edited)");
-        Assert.Contains("Unsaved changes", cut.Find(".td-foot").TextContent);
-
         cut.Find("button[aria-label='Next task']").Click();
-        Assert.NotNull(confirm.Current);
-        confirm.Resolve(false);
-        cut.WaitForAssertion(() => Assert.Null(navigated));
 
-        cut.Find("button[aria-label='Next task']").Click();
-        confirm.Resolve(true);
+        // Autosave: no "discard?" question; the edit is saved, then the pager moves.
+        Assert.Null(confirm.Current);
         cut.WaitForAssertion(() => Assert.Same(b, navigated));
+        Assert.Equal("A (edited)", saved?.Title);
+        Assert.DoesNotContain("Save changes", cut.Markup);
     }
 
     [Fact]
@@ -160,32 +160,35 @@ public class ProjectTaskDrawerTests
     }
 
     [Fact]
-    public void Evidence_is_its_own_section_and_hours_stay_under_additional_details()
+    public void Evidence_opens_with_work_and_hours_live_under_more_options()
     {
         using var ctx = NewContext(out _);
-        var cut = ctx.Render<ProjectTaskDrawer>(p => p.Add(x => x.Task, MakeTask("E")));
+        var todo = ctx.Render<ProjectTaskDrawer>(p => p.Add(x => x.Task, MakeTask("E")));
+        // A To Do task keeps evidence folded away; the group header says what it holds.
+        Assert.Empty(todo.FindAll("section.td-evidence, .td-evidence"));
+        Assert.Contains("Progress &amp; evidence", todo.Markup);
 
-        var section = cut.Find("section.td-evidence");
+        var doing = ctx.Render<ProjectTaskDrawer>(p => p.Add(x => x.Task, MakeTask("E2", "doing")));
+        var section = doing.Find(".td-evidence");
         // Field photos + deliverables; the NAS task-files list (td-files-section) sits beside them.
         Assert.Equal(2, section.QuerySelectorAll(".task-evidence-section:not(.td-files-section)").Length);
-        Assert.Null(section.Closest("details"));
-        var extra = cut.Find("details.td-extra");
-        Assert.NotNull(extra.QuerySelector(".td-hours"));
-        Assert.Null(extra.QuerySelector(".task-evidence-section"));
-        Assert.DoesNotContain("Auto-save", cut.Markup);
+
+        doing.FindAll("button.td-group-head").First(b => b.TextContent.Contains("More options")).Click();
+        Assert.NotNull(doing.Find(".td-hours input"));
+        Assert.Null(doing.Find(".td-hours").Closest(".td-evidence"));
     }
 
     [Fact]
     public void Actual_hours_are_not_typed_and_time_has_its_own_section()
     {
         using var ctx = NewContext(out _);
-        var cut = ctx.Render<ProjectTaskDrawer>(p => p.Add(x => x.Task, MakeTask("T")));
+        var cut = ctx.Render<ProjectTaskDrawer>(p => p.Add(x => x.Task, MakeTask("T", "doing")));
 
         Assert.DoesNotContain("Actual hours", cut.Markup);
-        Assert.Single(cut.Find(".td-hours").QuerySelectorAll("input"));
         var time = cut.Find("section.td-time");
-        Assert.Null(time.Closest("details"));
         Assert.Contains("TIME", time.TextContent);
+        cut.FindAll("button.td-group-head").First(b => b.TextContent.Contains("More options")).Click();
+        Assert.Single(cut.Find(".td-hours").QuerySelectorAll("input"));
     }
 
     [Fact]
@@ -247,6 +250,18 @@ public class ProjectTaskDrawerTests
         Assert.Empty(cut.FindAll(".task-discussion textarea"));
         Assert.Empty(cut.FindAll(".td-time-add-toggle"));
         Assert.False(cut.Find(".task-drawer").HasAttribute("data-attach-scope"));
-        Assert.True(cut.Find(".task-drawer-foot .primary").HasAttribute("disabled"));
+        Assert.Contains("You can view this task", cut.Markup);
+        Assert.Empty(cut.FindAll(".td-starter"));
+        Assert.Empty(cut.FindAll(".td-save-state"));
+    }
+
+    [Fact]
+    public void New_task_shows_the_get_started_checklist_and_ticks_due_date()
+    {
+        using var ctx = NewContext(out _);
+        var cut = ctx.Render<ProjectTaskDrawer>(p => p.Add(x => x.Task, MakeTask("Fresh")));
+        Assert.Contains("0 of 3", cut.Find(".td-starter").TextContent);
+        cut.FindAll("button.td-quick").First(b => b.TextContent == "Today").Click();
+        Assert.Contains("1 of 3", cut.Find(".td-starter").TextContent);
     }
 }

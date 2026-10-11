@@ -22,58 +22,36 @@
         </div>
     </div>
 
-    @* Head Actions *@
-    <div class="proj-head-actions">
-        @* Team avatars pile *@
-        <div class="proj-team-pile" @onclick="OnOpenTeamModal" style="cursor:pointer" title="Manage Team Members (@Members.Count members)">
-            @foreach (var m in Members.Take(4))
-            {
-                <PersonAvatar Nik="@m.Nik" Name="@m.Name" Size="30" Class="team-avatar-circ" Title="@($"{m.Name} ({m.Role})")" />
-            }
-            @if (Members.Count > 4)
-            {
-                <div class="team-avatar-circ" style="background:var(--ink-3);font-size:9px">
-                    +@(Members.Count - 4)
-                </div>
-            }
-        </div>
-        <button type="button" class="team-add-circ" title="Add Member" aria-label="Add member" @onclick="OnOpenTeamModal">
-            <i data-lucide="plus"></i>
+    @* Head actions: three labelled buttons (Members, Chat, New task) and a labelled More menu. *@
+    <div class="proj-head-actions ph-friendly">
+        <button type="button" class="ph-members" @onclick="OnOpenTeamModal" title="See and add project members" aria-label="Members (@Members.Count)">
+            <span class="ph-stack">
+                @foreach (var m in Members.Take(3))
+                {
+                    <PersonAvatar Nik="@m.Nik" Name="@m.Name" Size="28" Class="ph-av" Decorative="true" />
+                }
+            </span>
+            <span class="ph-lbl">Members</span><span class="ph-count">@Members.Count</span>
         </button>
-
-        @* Chat Interconnect *@
-        <button type="button" class="icon-btn proj-hbtn pm-fold" @onclick="OnOpenChatRoom" title="Open project chat" aria-label="Open project chat">
-            <i data-lucide="message-circle"></i>
-        </button>
-
-        <button type="button" class="icon-btn proj-hbtn" title="Meeting with project members" aria-label="Meeting with project members" @onclick="ScheduleTeam"><i data-lucide="calendar-plus"></i></button>
-
-        @* Edit Project Button *@
-        <button type="button" class="icon-btn proj-hbtn pm-fold" @onclick="OnOpenEditModal" title="Edit project" aria-label="Edit project">
-            <i data-lucide="pencil"></i>
-        </button>
-
-        @* Export Snapshot *@
-        <button type="button" class="icon-btn proj-hbtn pm-fold" @onclick="OnExport" title="Export snapshot" aria-label="Export snapshot">
-            <i data-lucide="download"></i>
-        </button>
-
-        @* More actions dropdown *@
-        <div style="position:relative">
-            <button type="button" class="icon-btn proj-hbtn" title="More options" aria-label="More options" @onclick="() => showMore = !showMore">
-                <i data-lucide="more-horizontal"></i>
-            </button>
+        <button type="button" class="ph-btn" @onclick="OnOpenChatRoom" title="Open the project's chat room"><i data-lucide="message-circle"></i><span class="ph-lbl">Chat</span></button>
+        @if (CanWrite)
+        {
+            <button type="button" class="ph-btn primary" @onclick="OnNewTask" title="Add a task to this project"><i data-lucide="plus"></i><span class="ph-lbl">New task</span></button>
+        }
+        <div class="ph-more-wrap">
+            <button type="button" class="ph-btn ghost" aria-haspopup="menu" aria-expanded="@(showMore ? "true" : "false")" @onclick="() => showMore = !showMore"><i data-lucide="more-horizontal"></i><span class="ph-lbl">More</span></button>
             @if (showMore)
             {
-                <div class="app-select-pop on proj-more-pop" style="right:0;top:38px;width:180px;z-index:100" @onclick:stopPropagation="true">
-                    @* Phone only: the chat/edit/export buttons fold into this menu (css/mobile/projects.css). *@
-                    <button type="button" class="app-select-opt pm-only" @onclick="() => Run(OnOpenChatRoom)"><i data-lucide="message-circle" style="width:13px;height:13px"></i> Open project chat</button>
-                    <button type="button" class="app-select-opt pm-only" @onclick="() => Run(OnOpenEditModal)"><i data-lucide="pencil" style="width:13px;height:13px"></i> Edit project</button>
-                    <button type="button" class="app-select-opt pm-only" @onclick="() => Run(OnExport)"><i data-lucide="download" style="width:13px;height:13px"></i> Export snapshot</button>
-                    <button type="button" class="app-select-opt" @onclick="CopyLink"><i data-lucide="link" style="width:13px;height:13px"></i> Copy link</button>
-                    <button type="button" class="app-select-opt" @onclick="OpenSaveTemplate"><i data-lucide="layout-template" style="width:13px;height:13px"></i> Save as template…</button>
-                    <button type="button" class="app-select-opt" @onclick="MarkDone"><i data-lucide="check-circle" style="width:13px;height:13px"></i> Mark completed</button>
-                    <button type="button" class="app-select-opt" style="color:var(--danger)" @onclick="Delete"><i data-lucide="trash-2" style="width:13px;height:13px"></i> Delete project</button>
+                <div class="ph-menu-backdrop" @onclick="() => showMore = false"></div>
+                <div class="ph-menu" role="menu" @onclick:stopPropagation="true">
+                    <button type="button" role="menuitem" @onclick="() => { showMore = false; ScheduleTeam(); }"><i data-lucide="calendar-plus"></i>Schedule team meeting</button>
+                    <button type="button" role="menuitem" @onclick="() => Run(OnOpenEditModal)"><i data-lucide="pencil"></i>Edit project details</button>
+                    <button type="button" role="menuitem" @onclick="() => Run(OnExport)"><i data-lucide="download"></i>Export to Excel (CSV)</button>
+                    <button type="button" role="menuitem" @onclick="CopyLink"><i data-lucide="link"></i>Copy link</button>
+                    <button type="button" role="menuitem" @onclick="OpenSaveTemplate"><i data-lucide="layout-template"></i>Save as template…</button>
+                    <div class="ph-sep"></div>
+                    <button type="button" role="menuitem" @onclick="MarkDone"><i data-lucide="check-circle"></i>Mark project completed</button>
+                    <button type="button" role="menuitem" class="danger" @onclick="Delete"><i data-lucide="trash-2"></i>Delete project</button>
                 </div>
             }
         </div>
@@ -144,6 +122,9 @@
     [Parameter] public EventCallback OnDeleteProject { get; set; }
     [Parameter] public EventCallback OnMarkCompleted { get; set; }
     [Parameter] public EventCallback OnBack { get; set; }
+    /// Owner/manager/member: shows "New task".
+    [Parameter] public bool CanWrite { get; set; }
+    [Parameter] public EventCallback OnNewTask { get; set; }
 
     private bool showMore;
 

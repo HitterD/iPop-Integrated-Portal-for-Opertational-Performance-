@@ -75,6 +75,8 @@ window.ipop = {
     window.ipop.setTheme(t);
     return t;
   },
+  /// Selects the text of the focused input (a fresh "New task" title is typed over).
+  selectFocused() { const el = document.activeElement; if (el && typeof el.select === "function") el.select(); },
   icons() {
     // Render every <i data-lucide> icon into its own element, then swap the SVG
     // content into the ORIGINAL <i>. The <i> node itself is never touched by the
