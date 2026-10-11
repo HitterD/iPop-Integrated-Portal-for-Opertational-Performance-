@@ -235,3 +235,40 @@
 
 
 
+
+/* ---- Meeting rooms: iOS Settings grouped rows ---- */
+.amr { max-width: 820px; }
+.amr-heading { margin: 22px 16px 7px; font-size: 13px; font-weight: 500; color: var(--ink-3); }
+.amr .amr-group { padding: 0; border-radius: 14px; overflow: hidden; }
+.amr-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 16px 8px 14px; position: relative; }
+.amr-row + .amr-row::before { content: ""; position: absolute; top: 0; left: 56px; right: 0; height: 1px; background: var(--line-soft); }
+.amr-sq { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; color: #fff; flex: none; font-weight: 700; font-size: 16px; }
+.amr-room { background: radial-gradient(120% 120% at 0% 0%, var(--a), var(--b)); font-size: 12px; }
+.amr-orange { background: #ff9f0a; }.amr-blue { background: #0a84ff; }.amr-green { background: #34c759; }.amr-gray { background: #8e8e93; }
+.amr-text { flex: 1; min-width: 0; }
+.amr-text b { display: block; font-size: 15px; font-weight: 500; letter-spacing: -.015em; overflow-wrap: anywhere; }
+.amr-text small { display: block; font-size: 12.5px; color: var(--ink-3); overflow-wrap: anywhere; }
+.amr-foot { margin: 7px 16px 0; font-size: 12.5px; line-height: 1.45; color: var(--ink-3); max-width: 640px; }
+.amr-switch { width: 51px; height: 31px; border: 0; border-radius: 999px; background: rgba(120,120,128,.24); position: relative; flex: none; cursor: pointer; transition: background .25s; }
+.amr-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff; box-shadow: 0 3px 8px rgba(0,0,0,.15); transition: transform .25s; }
+.amr-switch[aria-checked="true"] { background: #34c759; }
+.amr-switch[aria-checked="true"]::after { transform: translateX(20px); }
+.amr-stepper { display: flex; align-items: center; gap: 12px; }
+.amr-stepper label { white-space: nowrap; font-size: 15px; font-variant-numeric: tabular-nums; }
+.amr-stepper input { width: 4.5ch; border: 0; padding: 3px 0; background: transparent; color: var(--ink); text-align: right; font: inherit; }
+.amr-steps { display: flex; border-radius: 8px; overflow: hidden; background: var(--tray); }
+.amr-steps button { width: 44px; height: 30px; border: 0; color: var(--ink); background: transparent; font-size: 20px; cursor: pointer; }
+.amr-steps button + button { border-left: 1px solid var(--line-soft); }
+.amr-value { display: flex; align-items: center; gap: 6px; font-size: 14.5px; color: var(--ink-3); }
+.amr-dot { width: 8px; height: 8px; border-radius: 50%; background: #34c759; }
+.amr-delete { padding: 7px 10px; background: transparent; color: var(--danger); border: 0; border-radius: 8px; font: inherit; font-size: 13px; cursor: pointer; }
+.amr-error { margin: 0 16px 8px 56px; font-size: 12.5px; color: var(--danger); }
+.amr button:disabled, .amr input:disabled { opacity: .5; cursor: default; }
+.amr button:focus-visible, .amr input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+[data-theme="dark"] .amr-group { background: var(--surface); border-color: var(--line); }
+[data-theme="dark"] .amr-steps { background: rgba(120,120,128,.24); }
+[data-theme="dark"] .amr-delete { color: #ff6961; }
+@media (max-width: 520px) { .amr-row { flex-wrap: wrap; } .amr-stepper { margin-left: auto; } .amr-recording .amr-text { flex-basis: calc(100% - 52px); } .amr-delete { margin-left: auto; } }
+@media (prefers-reduced-motion: reduce) { .amr-switch, .amr-switch::after { transition: none; } }
+
+.amr-sq .lucide { width: 16px; height: 16px; }

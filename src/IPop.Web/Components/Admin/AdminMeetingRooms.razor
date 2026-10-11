@@ -1,0 +1,153 @@
+@using IPop.Application.MeetingRooms
+@inject AuthState Auth
+@inject ToastService Toasts
+@inject ConfirmService Confirm
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="amr">
+@if (settings is null)
+{
+    @if (loadError) { <div class="adm-empty" role="alert">Meeting room settings could not be loaded. <button type="button" class="btn-sm" @onclick="LoadAsync">Retry</button></div> }
+    else { <div class="skel" aria-label="Loading meeting room settings"></div> }
+}
+else
+{
+    <h3 class="amr-heading">Video</h3>
+    <div class="adm-card amr-group">
+        @foreach (var room in Rooms)
+        {
+            var allowed = settings.Video.GetValueOrDefault(room.Key);
+            <div class="amr-row" @key="room.Key">
+                <span class="amr-sq amr-room" style="--a:@room.A;--b:@room.B">@room.Name[0]</span>
+                <div class="amr-text"><b>@room.Name</b><small>@PeopleLine(room.Key)</small></div>
+                <button type="button" class="amr-switch" role="switch" aria-label="Video in @room.Name" aria-checked="@(allowed ? "true" : "false")" disabled="@busy" @onclick="() => ToggleAsync(room.Key, !allowed)"></button>
+            </div>
+        }
+    </div>
+    <p class="amr-foot">Turning video off stops every camera in that room straight away. Voice and screen sharing keep working. Cameras are limited to 360p so the server stays fast.</p>
+
+    <h3 class="amr-heading">Server recordings</h3>
+    <div class="adm-card amr-group">
+        <div class="amr-row">
+            <span class="amr-sq amr-orange"><i data-lucide="calendar-x-2"></i></span><div class="amr-text"><b>Keep recordings for</b></div>
+            <div class="amr-stepper">
+                <label><input type="text" inputmode="numeric" aria-label="Recording retention days" aria-invalid="@(invalid ? "true" : "false")" aria-describedby="@(invalid ? "amr-days-error" : null)" value="@daysText" @oninput="e => daysText = e.Value?.ToString() ?? string.Empty" @onblur="SaveDaysAsync" @onkeydown="DaysKey" disabled="@busy" /> days</label>
+                <div class="amr-steps"><button type="button" aria-label="Fewer days" disabled="@(busy || settings.RetentionDays <= 1)" @onclick="() => StepAsync(-1)">−</button><button type="button" aria-label="More days" disabled="@(busy || settings.RetentionDays >= 3650)" @onclick="() => StepAsync(1)">+</button></div>
+            </div>
+        </div>
+        @if (invalid) { <p id="amr-days-error" class="amr-error" role="alert">Use 1 to 3650 days.</p> }
+        <div class="amr-row"><span class="amr-sq amr-blue"><i data-lucide="hard-drive"></i></span><div class="amr-text"><b>Saved on</b><small>NAS ict, SJA SPJ / ICT / recordings</small></div></div>
+        <div class="amr-row amr-service"><span class="amr-sq amr-green"><i data-lucide="server"></i></span><div class="amr-text"><b>Recording service</b></div><span class="amr-value">@if (settings.Egress == "online") { <span class="amr-dot"></span> }@ServiceLabel</span></div>
+    </div>
+    <p class="amr-foot">Old recordings are removed every night at 02:30. Changing the number of days also applies to recordings that already exist.</p>
+
+    <h3 class="amr-heading">All recordings</h3>
+    <div class="adm-card amr-group">
+        @if (settings.Recordings.Count == 0) { <div class="adm-empty">No recordings yet.</div> }
+        @foreach (var recording in settings.Recordings)
+        {
+            <div class="amr-row amr-recording" @key="recording.Id">
+                <span class="amr-sq amr-gray"><i data-lucide="film"></i></span>
+                <div class="amr-text"><b>@recording.Title</b><small>@recording.RoomName · @recording.StartedAt.ToLocalTime().ToString("d MMM yyyy HH:mm") · @recording.Status</small></div>
+                <button type="button" class="amr-delete" aria-label="Delete @recording.Title" disabled="@busy" @onclick="() => DeleteAsync(recording)">Delete</button>
+            </div>
+        }
+    </div>
+}
+</div>
+
+@code {
+    public sealed record Settings(Dictionary<string, bool> Video, int RetentionDays, string Egress, List<MeetingRecordingDto> Recordings);
+    private sealed record Room(string Key, string Name, string A, string B);
+    private static readonly Room[] Rooms = [new("robusta", "Robusta", "#9a6849", "#3d251a"), new("arabika", "Arabika", "#e2a965", "#8e5228"), new("kalosi", "Kalosi", "#86bf8b", "#255a3e"), new("kapal-api", "Kapal Api", "#f37758", "#9c2318"), new("toraja", "Toraja", "#8b98ea", "#2b3683")];
+    private Settings? settings;
+    private List<MeetingRoomDto>? people;
+    private string daysText = "";
+    private bool busy, invalid, loadError, disposed;
+    private readonly CancellationTokenSource lifetime = new();
+    private string ServiceLabel => settings?.Egress switch { "online" => "Online", "offline" => "Offline", _ => "Not configured" };
+    private string PeopleLine(string key) => people is null ? "People count unavailable" : people.FirstOrDefault(r => r.Key == key)?.People.Count is > 0 and var n ? $"{n} people" : "Empty";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        _ = PollAsync();
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
+    private async Task LoadAsync()
+    {
+        settings = await Auth.GetAsync<Settings>("/api/admin/meeting-rooms", lifetime.Token);
+        loadError = settings is null;
+        if (settings is not null) daysText = settings.RetentionDays.ToString();
+        people = await Auth.GetAsync<List<MeetingRoomDto>>("/api/meeting-rooms", lifetime.Token);
+    }
+    private async Task PollAsync()
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(15));
+            while (await timer.WaitForNextTickAsync(lifetime.Token))
+            {
+                var next = await Auth.GetAsync<List<MeetingRoomDto>>("/api/meeting-rooms", lifetime.Token);
+                if (disposed) return;
+                await InvokeAsync(() => { people = next; StateHasChanged(); });
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+    private async Task ToggleAsync(string key, bool allowed)
+    {
+        if (busy || settings is null) return;
+        busy = true;
+        try
+        {
+            using var res = await Auth.SendAsync(HttpMethod.Put, $"/api/admin/meeting-rooms/{key}/video", new { allowed }, lifetime.Token);
+            if (res.IsSuccessStatusCode) settings.Video[key] = allowed;
+            else Toasts.Show("Could not change video. Try again.", ToastKind.Error);
+        }
+        catch (HttpRequestException) { Toasts.Show("Could not change video. Try again.", ToastKind.Error); }
+        catch (OperationCanceledException) { if (!disposed) Toasts.Show("Could not change video. Try again.", ToastKind.Error); }
+        finally { busy = false; }
+    }
+    private async Task DaysKey(KeyboardEventArgs e) { if (e.Key == "Enter") await SaveDaysAsync(); }
+    private async Task StepAsync(int delta)
+    {
+        if (settings is null || busy) return;
+        daysText = Math.Clamp(settings.RetentionDays + delta, 1, 3650).ToString();
+        await SaveDaysAsync();
+    }
+    private async Task SaveDaysAsync()
+    {
+        if (busy || settings is null) return;
+        invalid = !int.TryParse(daysText, out var days) || days < 1 || days > 3650;
+        if (invalid || days == settings.RetentionDays) return;
+        busy = true;
+        try
+        {
+            using var res = await Auth.SendAsync(HttpMethod.Put, "/api/admin/meeting-rooms/retention", new { days }, lifetime.Token);
+            if (res.IsSuccessStatusCode) { settings = settings with { RetentionDays = days }; daysText = days.ToString(); }
+            else if (res.StatusCode == System.Net.HttpStatusCode.BadRequest) invalid = true;
+            else Toasts.Show("Could not save retention. Try again.", ToastKind.Error);
+        }
+        catch (HttpRequestException) { Toasts.Show("Could not save retention. Try again.", ToastKind.Error); }
+        catch (OperationCanceledException) { if (!disposed) Toasts.Show("Could not save retention. Try again.", ToastKind.Error); }
+        finally { busy = false; }
+    }
+    private async Task DeleteAsync(MeetingRecordingDto recording)
+    {
+        if (busy || settings is null) return;
+        busy = true;
+        try
+        {
+            if (!await Confirm.AskAsync($"Delete {recording.Title}?", "This server recording will be permanently removed.", "Delete", danger: true) || disposed) return;
+            using var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/admin/meeting-rooms/recordings/{recording.Id}", ct: lifetime.Token);
+            if (res.IsSuccessStatusCode) settings.Recordings.RemoveAll(r => r.Id == recording.Id);
+            else Toasts.Show("Stop the recording first.", ToastKind.Error);
+        }
+        catch (HttpRequestException) { Toasts.Show("Could not delete recording. Try again.", ToastKind.Error); }
+        catch (OperationCanceledException) { if (!disposed) Toasts.Show("Could not delete recording. Try again.", ToastKind.Error); }
+        finally { busy = false; }
+    }
+    public void Dispose() { disposed = true; lifetime.Cancel(); lifetime.Dispose(); }
+}

@@ -46,7 +46,7 @@ else if (Current is not null)
     <section class="adm-main" aria-labelledby="adm-main-title">
         <header class="adm-main-head">
             <h2 id="adm-main-title">@Current.Label</h2>
-            <p>@Current.Hint</p>
+            <p>@(Current.Slug == "meeting-rooms" ? "Choose where cameras are allowed and how long server recordings are kept." : Current.Hint)</p>
         </header>
 
         @switch (Current.Slug)
@@ -88,6 +88,9 @@ else if (Current is not null)
             case "hris":
                 <AdminHrisSync @ref="hrisRef" />
                 break;
+            case "meeting-rooms":
+                <AdminMeetingRooms />
+                break;
             case "calendar":
                 <AdminHolidays />
                 break;
@@ -108,7 +111,8 @@ else if (Current is not null)
         new("People", [new("users", "Users", "Accounts, roles and access", "users", "blue")]),
         new("Structure", [new("organization", "Organization", "Plants, divisions and departments", "building-2", "green")]),
         new("Security", [new("security", "Security", "Sessions and audit log", "shield-check", "red")]),
-        new("Communication", [new("announcements", "Announcements", "Launch videos that pop up after login", "clapperboard", "orange"),
+        new("Communication", [new("meeting-rooms", "Meeting rooms", "Video per room and server recordings", "door-open", "green"),
+                              new("announcements", "Announcements", "Launch videos that pop up after login", "clapperboard", "orange"),
                               new("calendar", "Holidays", "National and company holidays on everyone's calendar", "party-popper", "red")]),
         new("Integrations", [new("hris", "HRIS sync", "Employee data from HRIS", "refresh-cw", "violet")]),
     ];
