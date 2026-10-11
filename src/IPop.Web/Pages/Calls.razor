@@ -422,8 +422,14 @@
 
     private string? _lastHandledQuery;
 
+    /// Same-page navigation (a notification's /calls?tab=rooms&join=... while already on /calls) does not
+    /// re-render by itself: re-render once the link has set the tab and the room deep-link values.
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
-        => _ = InvokeAsync(HandleDeeplinkAsync);
+        => _ = InvokeAsync(async () =>
+        {
+            await HandleDeeplinkAsync();
+            StateHasChanged();
+        });
 
     private async Task HandleDeeplinkAsync()
     {

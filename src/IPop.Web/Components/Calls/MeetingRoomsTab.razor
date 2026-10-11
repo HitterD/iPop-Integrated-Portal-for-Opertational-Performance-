@@ -21,7 +21,14 @@
     <div class="mrt-page">
         <div class="mrt-section-h"><h2>Rooms</h2><p>Walk in any time. Up to 20 people per room, the same rooms as SJA Hall.</p></div>
 
-        @if (rooms is null)
+        @if (roomsError)
+        {
+            <div class="mrt-group mrt-error mrt-rooms-error" role="status">
+                <i data-lucide="wifi-off"></i><span>Meeting rooms can't be reached right now.</span>
+                <button type="button" class="mrt-retry" disabled="@retrying" @onclick="RetryAsync">Retry</button>
+            </div>
+        }
+        else if (rooms is null)
         {
             <div class="mrt-rooms" aria-busy="true">
                 @foreach (var (key, _) in HallBooking.Rooms) { <div class="mrt-room mrt-skeleton mrt-r-@key"></div> }
@@ -84,7 +91,18 @@
         }
 
         <div class="mrt-section-h"><h2>Recordings</h2><p>Server recordings of meetings you were in.</p></div>
-        @if (recordings is { Count: > 0 })
+        @if (recordingsError)
+        {
+            <div class="mrt-group mrt-error mrt-recs-error" role="status">
+                <i data-lucide="cloud-off"></i><span>Recordings can't be loaded right now.</span>
+                <button type="button" class="mrt-retry" disabled="@retrying" @onclick="RetryAsync">Retry</button>
+            </div>
+        }
+        else if (recordings is null)
+        {
+            <div class="mrt-group mrt-rec-empty" aria-busy="true"><span class="mrt-spinner"></span><span>Loading recordings…</span></div>
+        }
+        else if (recordings.Count > 0)
         {
             <div class="mrt-group">
                 @foreach (var rec in recordings)
@@ -132,7 +150,7 @@
                 }
             </div>
         }
-        else if (recordings is not null)
+        else
         {
             <div class="mrt-group mrt-rec-empty"><i data-lucide="film"></i><span>No recordings yet. Server recordings you attend appear here.</span></div>
         }
@@ -187,6 +205,10 @@
     [Parameter] public string? JoinKey { get; set; }
     /// /calls?tab=rooms&recording={id}: scroll to that recording and open the player when it is ready.
     [Parameter] public Guid? RecordingId { get; set; }
+    /// How often rooms (and unfinished recordings) refresh while the tab is visible. Tests shorten it.
+    [Parameter] public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(10);
+    /// MeetingRoomState.Changed bursts (speaking, mic, people) collapse into at most one rooms reload per gap.
+    [Parameter] public TimeSpan ChangedReloadGap { get; set; } = TimeSpan.FromSeconds(1);
 
     private static readonly CultureInfo En = CultureInfo.InvariantCulture;
     private const int DefaultRetentionDays = 90;
@@ -195,13 +217,19 @@
     private List<MeetingRecordingDto>? recordings;
     private string? joiningKey;
     private string? joinedDeepLink;
-    private Guid? revealedRecording;
+    private Guid? scrolledRecording;   // the deep-linked row was scrolled into view
+    private Guid? openedRecording;     // the player was opened for it (only once it is ready)
+    private bool roomsError;
+    private bool recordingsError;
+    private bool retrying;
+    private bool reloading;
+    private bool reloadAgain;
+    private DateTime lastChangedReload = DateTime.MinValue;
     private FullAlert? fullAlert;
     private MeetingRecordingDto? playing;
     private System.Threading.Timer? poll;
     private bool disposed;
     private Guid? pendingReveal;
-    private string? seenRoomKey;
 
     private sealed record FullAlert(MeetingRoomDto Room, List<MeetingRoomDto> Alternatives);
     private sealed record Cap(string Text, string Class);
@@ -220,10 +248,11 @@
 
     protected override async Task OnInitializedAsync()
     {
-        seenRoomKey = Rooms.Room?.Key;
         Rooms.Changed += OnRoomsChanged;
         await Task.WhenAll(LoadRoomsAsync(), LoadRecordingsAsync());
-        poll = new System.Threading.Timer(_ => _ = InvokeAsync(PollAsync), null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+        // Left the tab while the first load was still running: Dispose already ran, so start nothing.
+        if (disposed) return;
+        poll = new System.Threading.Timer(_ => _ = InvokeAsync(PollAsync), null, PollInterval, PollInterval);
     }
 
     protected override async Task OnParametersSetAsync()
@@ -255,15 +284,24 @@
             joinedDeepLink = JoinKey;
             await JoinAsync(JoinKey);
         }
-        if (RecordingId is { } id && recordings is not null && revealedRecording != id
-            && recordings.FirstOrDefault(r => r.Id == id) is { } rec)
-        {
-            revealedRecording = id;
-            pendingReveal = id;                     // scrolled into view after the row has rendered
-            if (rec.Status == "ready") playing = rec;
-            StateHasChanged();
-        }
+        if (ApplyRecordingLink()) StateHasChanged();
     }
+
+    /// Re-run after every recordings load: the row is scrolled to once it exists, and the player opens once
+    /// the recording is ready, so a link to a recording still being prepared opens it when it finishes.
+    private bool ApplyRecordingLink()
+    {
+        if (RecordingId is not { } id || recordings?.FirstOrDefault(r => r.Id == id) is not { } rec) return false;
+        var changed = false;
+        if (scrolledRecording != id) { scrolledRecording = id; pendingReveal = id; changed = true; }
+        if (openedRecording != id && rec.Status == "ready") { openedRecording = id; playing = rec; changed = true; }
+        return changed;
+    }
+
+    /// The deep-linked recording is not playable yet (not listed yet, or still processing).
+    private bool WaitingForLinkedRecording =>
+        RecordingId is { } id && openedRecording != id
+        && recordings?.FirstOrDefault(r => r.Id == id) is not { Status: "failed" };
 
     // ---------------------------------------------------------------- loading
 
@@ -276,30 +314,59 @@
             if (await JS.InvokeAsync<string>("ipop.visibility") is "hidden") return;
         }
         catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException) { }
+        // Rooms refresh on every tick; a failed load is simply retried on the next one.
         await LoadRoomsAsync();
-        if (recordings?.Any(r => r.Status == "processing") == true) await LoadRecordingsAsync();
-        if (!disposed) StateHasChanged();
+        if (disposed) return;
+        if (recordingsError || WaitingForLinkedRecording || recordings?.Any(r => r.Status == "processing") == true)
+            await LoadRecordingsAsync();
+        if (disposed) return;
+        StateHasChanged();
+        await HandleDeepLinksAsync();          // a join link waits for the first successful rooms load
     }
 
-    /// Changed also fires for every speaking/mic update while in a room; only joining or leaving (the room key
-    /// changing) moves the people counts, so only that reloads.
-    private void OnRoomsChanged() => _ = InvokeAsync(async () =>
+    private async Task RetryAsync()
     {
-        if (disposed || Rooms.Room?.Key == seenRoomKey) return;
-        seenRoomKey = Rooms.Room?.Key;
-        await LoadRoomsAsync();
-        if (!disposed) StateHasChanged();
-    });
+        retrying = true;
+        try { await Task.WhenAll(LoadRoomsAsync(), recordingsError ? LoadRecordingsAsync() : Task.CompletedTask); }
+        finally { retrying = false; }
+        await HandleDeepLinksAsync();
+    }
+
+    /// Someone joined, left, started sharing or recording: MeetingRoomState.Changed. It fires in bursts (every
+    /// speaking/mic update), so reloads are coalesced: at most one per ChangedReloadGap, and events that arrive
+    /// while a reload is waiting or running schedule exactly one more after it.
+    private void OnRoomsChanged() => _ = InvokeAsync(CoalescedReloadAsync);
+
+    private async Task CoalescedReloadAsync()
+    {
+        if (disposed) return;
+        if (reloading) { reloadAgain = true; return; }
+        reloading = true;
+        try
+        {
+            do
+            {
+                var wait = lastChangedReload + ChangedReloadGap - DateTime.UtcNow;
+                if (wait > TimeSpan.Zero) await Task.Delay(wait);
+                if (disposed) return;
+                reloadAgain = false;            // this reload covers every event so far
+                lastChangedReload = DateTime.UtcNow;
+                await LoadRoomsAsync();
+                if (!disposed) StateHasChanged();
+            } while (reloadAgain && !disposed);
+        }
+        finally { reloading = false; }
+    }
 
     private async Task LoadRoomsAsync()
     {
         try
         {
             var r = await Auth.GetResultAsync<List<MeetingRoomDto>>("/api/meeting-rooms");
-            if (r.Status == GetStatus.Ok && r.Value is not null) rooms = r.Value;
-            else rooms ??= [];
+            if (r.Status == GetStatus.Ok && r.Value is not null) { rooms = r.Value; roomsError = false; }
+            else roomsError = true;
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException) { rooms ??= []; }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException) { roomsError = true; }
     }
 
     private async Task LoadRecordingsAsync()
@@ -307,10 +374,15 @@
         try
         {
             var r = await Auth.GetResultAsync<List<MeetingRecordingDto>>("/api/meeting-rooms/recordings");
-            if (r.Status == GetStatus.Ok && r.Value is not null) recordings = r.Value.OrderByDescending(x => x.StartedAt).ToList();
-            else recordings ??= [];
+            if (r.Status is GetStatus.Ok or GetStatus.Empty)
+            {
+                recordings = (r.Value ?? []).OrderByDescending(x => x.StartedAt).ToList();
+                recordingsError = false;
+                ApplyRecordingLink();
+            }
+            else recordingsError = true;
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException) { recordings ??= []; }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException) { recordingsError = true; }
     }
 
     // ---------------------------------------------------------------- actions

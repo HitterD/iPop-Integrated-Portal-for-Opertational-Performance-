@@ -14,8 +14,11 @@ public static class QueryTokenRule
     public static bool Allows(PathString path)
     {
         if (path.StartsWithSegments(Hubs)) return true;
+        // Exactly /api/meeting-rooms/recordings/{guid}/file: no empty segment (//), no trailing slash, nothing after.
         if (!path.StartsWithSegments(Recordings, StringComparison.OrdinalIgnoreCase, out var rest)) return false;
-        var parts = (rest.Value ?? "").Split('/', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length == 2 && Guid.TryParse(parts[0], out _) && parts[1].Equals("file", StringComparison.OrdinalIgnoreCase);
+        var parts = (rest.Value ?? "").Split('/');
+        return parts.Length == 3 && parts[0].Length == 0
+            && Guid.TryParseExact(parts[1], "D", out _)
+            && parts[2].Equals("file", StringComparison.OrdinalIgnoreCase);
     }
 }
