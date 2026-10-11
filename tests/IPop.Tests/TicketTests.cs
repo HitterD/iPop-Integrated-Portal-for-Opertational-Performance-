@@ -746,4 +746,11 @@ public class TicketTests
         Assert.Equal(TicketWebhookKind.Applied, await x.Svc.ApplyWebhookAsync(body));
         Assert.Empty(await x.T.Verify().CalendarEvents.ToListAsync());
     }
+
+    [Fact]
+    public void Resync_window_fits_idesks_92_day_limit_counting_both_ends()
+    {
+        // iDesk answers 400 when from..to (inclusive) spans more than 92 days.
+        Assert.True(IdeskCalendarWorker.PastDays + IdeskCalendarWorker.AheadDays + 1 <= 92);
+    }
 }

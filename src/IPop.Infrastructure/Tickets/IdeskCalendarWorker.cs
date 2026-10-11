@@ -9,13 +9,14 @@ namespace IPop.Infrastructure.Tickets;
 
 /// Keeps iDesk Zoom bookings on iPop calendars when webhooks were missed: a full pass shortly after
 /// start (also the first backfill after deploy), then every night around 02:00 WIB. Each pass replaces
-/// every active user's iDesk entries from 7 days ago to 92 days ahead with what iDesk lists.
+/// every active user's iDesk entries from 7 days ago to 84 days ahead with what iDesk lists.
 /// Also forgets processed webhook ids older than 30 days.
 public sealed class IdeskCalendarWorker(IServiceScopeFactory scopes, ILogger<IdeskCalendarWorker> log) : BackgroundService
 {
     private static readonly TimeSpan Wib = TimeSpan.FromHours(7);
     public const int PastDays = 7;
-    public const int AheadDays = 85;   // iDesk allows 92 days per request: -7 .. +85
+    /// iDesk allows at most 92 days per request, counting both ends: -7 .. +84 is 92 days.
+    public const int AheadDays = 84;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
