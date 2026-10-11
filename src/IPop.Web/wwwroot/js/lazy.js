@@ -24,6 +24,7 @@
     }
     wrap(window.ipopGroupCall, 'join', livekit);
     wrap(window.ipopMeeting, 'join', livekit);
+    wrap(window.ipopRooms, 'join', livekit);
     wrap(window.ipop, 'exportXlsx', xlsx);
     wrap(window.ipop, 'renderOffice', xlsx);
     wrap(window.ipop, 'renderXls', xlsx);
