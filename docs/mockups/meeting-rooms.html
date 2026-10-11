@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>iPop · Calls & Meetings — Meeting Rooms (Apple style, v2)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+/* ============================================================
+   Tokens — Apple system colours on iPop's forest shell
+   ============================================================ */
+:root{
+  --frame:#123528; --frame-2:#1b4635; --frame-ink:#e9f1ec; --frame-ink-2:#9fb9ab; --frame-line:rgba(255,255,255,.09);
+  --content:#f5f5f7; --card:#ffffff; --fill:rgba(118,118,128,.12); --fill-2:rgba(118,118,128,.08);
+  --sep:rgba(60,60,67,.14); --ink:#1d1d1f; --ink-2:#424245; --ink-3:#6e6e73; --ink-4:#aeaeb2;
+  --green:#2e9e5b; --green-sys:#34c759; --red:#ff3b30; --blue:#0a84ff; --orange:#ff9f0a; --indigo:#5e5ce6;
+  --glass:rgba(255,255,255,.72); --glass-line:rgba(255,255,255,.55);
+  --pop:0 24px 60px -18px rgba(0,0,0,.35), 0 0 0 .5px rgba(0,0,0,.08);
+  --ease:cubic-bezier(.32,.72,0,1);
+}
+.dark{
+  --frame:#0a1f17; --frame-2:#143326; --content:#000; --card:#1c1c1e; --fill:rgba(118,118,128,.24); --fill-2:rgba(118,118,128,.16);
+  --sep:rgba(84,84,88,.6); --ink:#f5f5f7; --ink-2:#d1d1d6; --ink-3:#98989d; --ink-4:#636366;
+  --green:#30d158; --glass:rgba(44,44,46,.72); --glass-line:rgba(255,255,255,.12);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-font-smoothing:antialiased}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,"Segoe UI",system-ui,sans-serif;font-size:14px;line-height:1.45;letter-spacing:-.011em;color:var(--ink);background:var(--frame)}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+svg.lucide{width:18px;height:18px;stroke-width:1.8;flex:none}
+:focus-visible{outline:3px solid rgba(10,132,255,.55);outline-offset:2px;border-radius:10px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---------- mockup chrome ---------- */
+.mock-nav{position:fixed;z-index:200;left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:2px;padding:4px;border-radius:14px;
+  background:rgba(28,28,30,.86);backdrop-filter:blur(20px) saturate(1.6);-webkit-backdrop-filter:blur(20px) saturate(1.6);box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.mock-nav button{color:#d1d1d6;font-size:12.5px;font-weight:600;padding:7px 12px;border-radius:10px;white-space:nowrap}
+.mock-nav button.on{background:#fff;color:#1d1d1f}
+.mock-nav .sep{width:1px;background:rgba(255,255,255,.15);margin:4px 4px}
+.ann{position:fixed;z-index:190;right:16px;bottom:70px;width:280px;padding:12px 14px;border-radius:14px;background:rgba(255,251,230,.96);
+  color:#4d3d0f;font-size:12px;line-height:1.5;box-shadow:0 10px 30px rgba(0,0,0,.18);cursor:pointer}
+.ann b{display:block;margin-bottom:4px;font-size:12.5px}
+.ann ul{padding-left:16px}
+
+/* ============================================================
+   Shell (forest frame, content panel, tab-style active item)
+   ============================================================ */
+.shell{display:grid;grid-template-columns:248px 1fr;grid-template-rows:64px 1fr;height:100vh;background:var(--frame);color:var(--frame-ink)}
+.side{grid-row:1/span 2;display:flex;flex-direction:column;padding:16px 0 14px 14px;min-height:0}
+.brand{display:flex;align-items:center;gap:10px;padding:2px 10px 12px;font-weight:800;font-size:20px;letter-spacing:-.02em}
+.brand i{width:32px;height:32px;border-radius:10px;background:linear-gradient(140deg,#d9a46a,#8a5a3c);display:grid;place-items:center;font-style:normal;font-size:13px;color:#fff}
+.nav{flex:1;overflow:auto;scrollbar-width:none}
+.grp{padding:8px 0 4px}
+.grp + .grp{border-top:1px solid var(--frame-line);margin-right:14px}
+.grp-h{display:flex;align-items:center;gap:8px;padding:2px 10px 6px;font-size:12.5px;font-weight:700;color:#fff}
+.grp-h span{width:20px;height:20px;border-radius:6px;display:grid;place-items:center}
+.grp-h span svg{width:12px;height:12px;color:#fff}
+.item{position:relative;display:flex;align-items:center;gap:12px;height:38px;padding:0 12px;margin:0 14px 1px 0;border-radius:11px;font-size:14.5px;font-weight:550;color:var(--frame-ink)}
+.item svg{width:19px;height:19px}
+.item:hover{background:var(--frame-2)}
+.item.active{margin-right:0;border-radius:13px 0 0 13px;background:var(--content);color:var(--ink);font-weight:700}
+.item.active::before,.item.active::after{content:"";position:absolute;right:0;width:16px;height:16px;pointer-events:none}
+.item.active::before{top:-16px;border-bottom-right-radius:13px;box-shadow:6px 6px 0 6px var(--content)}
+.item.active::after{bottom:-16px;border-top-right-radius:13px;box-shadow:6px -6px 0 6px var(--content)}
+.g-work svg{color:#6fd3a3}.g-comm svg{color:#8ab6f5}.g-res svg{color:#f2b56b}.g-adm svg{color:#c3b5f5}
+.item.active svg{color:var(--green)!important}
+.me{display:flex;align-items:center;gap:10px;margin:8px 14px 0 0;padding:8px;border-radius:13px;border:1px solid var(--frame-line)}
+.me .av{width:36px;height:36px;border-radius:10px;background:linear-gradient(140deg,#d9a46a,#8a5a3c);display:grid;place-items:center;font-weight:700;color:#fff;font-size:13px}
+.me b{display:block;font-size:13.5px}.me small{color:var(--frame-ink-2);font-size:12px}
+.top{display:flex;align-items:center;gap:14px;padding:0 24px 0 18px}
+.top h1{font-size:20px;font-weight:700;letter-spacing:-.022em;color:#fff}
+.top .search{margin-left:auto;width:340px;height:40px;border-radius:12px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.14);display:flex;align-items:center;gap:9px;padding:0 13px;color:#bcd0c5;font-size:14px}
+.top .ib{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;color:#dbe7e0}
+.top .ib:hover{background:rgba(255,255,255,.1)}
+.panel{background:var(--content);border-radius:18px 0 0 0;overflow:auto;min-height:0;color:var(--ink)}
+.page{max-width:1180px;margin:0 auto;padding:22px 32px 110px}
+
+/* ============================================================
+   Toolbar (segmented control + actions)
+   ============================================================ */
+.toolbar{display:flex;align-items:center;gap:10px;margin-bottom:26px}
+.segmented{display:inline-flex;padding:2px;border-radius:10px;background:var(--fill)}
+.segmented button{display:flex;align-items:center;gap:7px;height:32px;padding:0 14px;border-radius:8px;font-size:13.5px;font-weight:500;color:var(--ink-2)}
+.segmented button svg{width:15px;height:15px}
+.segmented button em{font-style:normal;color:var(--ink-3);font-size:12.5px}
+.segmented button.on{background:var(--card);color:var(--ink);font-weight:600;box-shadow:0 3px 8px rgba(0,0,0,.08),0 0 0 .5px rgba(0,0,0,.04)}
+.spacer{flex:1}
+.btn{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 14px;border-radius:999px;font-size:13.5px;font-weight:600;white-space:nowrap}
+.btn svg{width:16px;height:16px}
+.btn.plain{color:var(--ink-2)} .btn.plain:hover{background:var(--fill-2)}
+.btn.tinted{background:rgba(46,158,91,.12);color:var(--green)}
+.btn.filled{background:var(--green);color:#fff}
+.btn.filled:hover{filter:brightness(1.06)}
+
+/* ============================================================
+   Room tiles — the one bold element: roast-tone rooms
+   ============================================================ */
+.section-h{display:flex;align-items:baseline;gap:12px;margin:0 2px 14px}
+.section-h h2{font-size:22px;font-weight:700;letter-spacing:-.025em}
+.section-h p{color:var(--ink-3);font-size:14px}
+.rooms{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px;margin-bottom:40px}
+.room{--a:#000;--b:#000;position:relative;height:292px;border-radius:22px;overflow:hidden;color:#fff;isolation:isolate;
+  background:radial-gradient(120% 90% at 10% 0%,var(--a) 0%,var(--b) 72%);box-shadow:0 1px 2px rgba(0,0,0,.08),0 14px 30px -18px var(--b);
+  transition:transform .35s var(--ease),box-shadow .35s var(--ease)}
+.room:hover{transform:translateY(-3px);box-shadow:0 1px 2px rgba(0,0,0,.08),0 24px 40px -20px var(--b)}
+.room::after{content:"";position:absolute;inset:0;z-index:-1;background:radial-gradient(70% 50% at 100% 100%,rgba(255,255,255,.14),transparent 70%)}
+.bean{position:absolute;right:-26px;top:38px;width:150px;height:150px;opacity:.16;z-index:-1;transform:rotate(-24deg)}
+.room-head{padding:16px 16px 0;padding-right:92px;min-height:70px}
+.room-head h3{font-size:21px;font-weight:700;letter-spacing:-.025em;line-height:1.15}
+.room-head small{display:block;font-size:12.5px;opacity:.78;font-weight:500;margin-top:2px}
+.cap{position:absolute;top:16px;right:14px;display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:999px;font-size:11.5px;font-weight:650;
+  background:rgba(255,255,255,.2);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);white-space:nowrap}
+.cap.live::before,.cap.is-rec::before{content:"";width:7px;height:7px;border-radius:50%;background:#30d158;box-shadow:0 0 0 3px rgba(48,209,88,.25)}
+.cap.is-rec{background:rgba(255,59,48,.92)} .cap.is-rec::before{background:#fff;box-shadow:none;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35}}
+.glass{position:absolute;left:8px;right:8px;bottom:8px;padding:12px;border-radius:16px;background:rgba(255,255,255,.16);
+  backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5);border:.5px solid rgba(255,255,255,.28)}
+.who{display:flex;align-items:center;gap:8px;min-height:30px}
+.faces{display:flex}
+.faces b{width:30px;height:30px;border-radius:50%;margin-left:-8px;border:1.5px solid rgba(255,255,255,.85);display:grid;place-items:center;font-size:10px;letter-spacing:-.02em;font-weight:700;color:#fff}
+.faces b:first-child{margin-left:0}
+.who span{font-size:13px;font-weight:600}
+.who span em{font-style:normal;opacity:.75;font-weight:500}
+.empty-seat{display:flex;align-items:center;gap:7px;font-size:13px;opacity:.85}
+.empty-seat svg{width:16px;height:16px}
+.line{font-size:12px;opacity:.82;margin:6px 0 10px;display:flex;gap:6px;align-items:flex-start;line-height:1.35;min-height:32px}
+.line svg{width:13px;height:13px;margin-top:2px;opacity:.9}
+.join{width:100%;height:36px;border-radius:999px;background:#fff;color:#1d1d1f;font-weight:650;font-size:14px;display:flex;align-items:center;justify-content:center;gap:6px}
+.join svg{width:16px;height:16px}
+.join:hover{background:#f2f2f7}
+.join.full{background:rgba(255,255,255,.22);color:rgba(255,255,255,.85);cursor:default}
+.room-tools{position:absolute;top:50px;right:12px;display:flex;flex-direction:column;gap:6px}
+.r-robusta{--a:#9a6849;--b:#3d251a}
+.r-arabika{--a:#e2a965;--b:#8e5228}
+.r-kalosi{--a:#86bf8b;--b:#255a3e}
+.r-kapal{--a:#f37758;--b:#9c2318}
+.r-toraja{--a:#8b98ea;--b:#2b3683}
+.mini-vid{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;opacity:.8;margin-top:6px}
+.mini-vid svg{width:13px;height:13px}
+
+/* ---------- inset grouped list (recordings) ---------- */
+.group{background:var(--card);border-radius:16px;overflow:hidden;box-shadow:0 0 0 .5px var(--sep)}
+.rec{display:grid;grid-template-columns:132px 1fr auto;gap:16px;align-items:center;padding:12px 16px 12px 12px;position:relative}
+.rec + .rec::before{content:"";position:absolute;top:0;left:160px;right:0;height:.5px;background:var(--sep)}
+.thumb{width:132px;height:74px;border-radius:10px;position:relative;overflow:hidden;background:radial-gradient(120% 120% at 0% 0%,var(--a),var(--b))}
+.thumb .play{position:absolute;inset:0;display:grid;place-items:center}
+.thumb .play i{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.28);backdrop-filter:blur(8px);display:grid;place-items:center;color:#fff}
+.thumb .play svg{width:15px;height:15px;fill:#fff}
+.thumb .dur{position:absolute;right:6px;bottom:6px;font-size:11px;font-weight:600;color:#fff;background:rgba(0,0,0,.45);padding:1px 6px;border-radius:6px;font-variant-numeric:tabular-nums}
+.rec-t b{display:block;font-size:15px;font-weight:600;letter-spacing:-.015em}
+.rec-t span{display:block;color:var(--ink-3);font-size:13px;margin-top:1px}
+.rec-t .room-chip{display:inline-flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;color:var(--ink-2);font-weight:550}
+.rec-t .room-chip i{width:10px;height:10px;border-radius:3px;background:var(--b)}
+.rec-a{display:flex;align-items:center;gap:6px;color:var(--ink-3);font-size:13px}
+.round{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:var(--green);background:rgba(46,158,91,.1)}
+.round:hover{background:rgba(46,158,91,.18)}
+.round svg{width:17px;height:17px}
+.processing{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--ink-3)}
+.spinner{width:15px;height:15px;border-radius:50%;border:2px solid var(--fill);border-top-color:var(--ink-3);animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.foot-note{color:var(--ink-3);font-size:12.5px;margin:8px 16px 0}
+
+/* ---------- alert (room full) ---------- */
+.scrim{position:fixed;inset:0;z-index:120;display:grid;place-items:center;background:rgba(0,0,0,.28);animation:fade .2s ease}
+@keyframes fade{from{opacity:0}}
+.alert{width:340px;border-radius:18px;overflow:hidden;background:rgba(246,246,248,.86);backdrop-filter:blur(30px) saturate(1.8);-webkit-backdrop-filter:blur(30px) saturate(1.8);
+  box-shadow:var(--pop);color:#1d1d1f;text-align:center;animation:pop .32s var(--ease)}
+@keyframes pop{from{transform:scale(1.08);opacity:0}}
+.alert-body{padding:22px 20px 14px}
+.alert .sym{width:54px;height:54px;border-radius:14px;margin:0 auto 12px;display:grid;place-items:center;color:#fff}
+.alert .sym svg{width:28px;height:28px}
+.alert h3{font-size:17px;font-weight:700;letter-spacing:-.02em}
+.alert p{font-size:13px;color:#3c3c43;margin-top:4px;line-height:1.4}
+.alt{margin:14px 0 2px;background:#fff;border-radius:12px;text-align:left;overflow:hidden}
+.alt button{width:100%;text-align:left;display:flex;align-items:center;gap:11px;padding:10px 12px;position:relative}
+.alt button + button::before{content:"";position:absolute;top:0;left:51px;right:0;height:.5px;background:rgba(60,60,67,.18)}
+.alt .sw{width:28px;height:28px;border-radius:8px;background:radial-gradient(120% 120% at 0% 0%,var(--a),var(--b))}
+.alt b{font-size:14px;font-weight:600;display:block}
+.alt small{font-size:12px;color:#6e6e73}
+.alt em{margin-left:auto;font-style:normal;color:var(--blue);font-weight:600;font-size:14px}
+.alert-actions{display:flex;border-top:.5px solid rgba(60,60,67,.25)}
+.alert-actions button{flex:1;height:44px;font-size:16px;color:var(--blue)}
+.alert-actions button + button{border-left:.5px solid rgba(60,60,67,.25)}
+.alert-actions .strong{font-weight:650}
+
+/* ============================================================
+   In the room — FaceTime-like
+   ============================================================ */
+.meet{position:fixed;inset:0 0 56px 0;background:#0b0b0c;color:#f5f5f7;overflow:hidden}
+.meet-bg{position:absolute;inset:0;background:radial-gradient(60% 60% at 15% 0%,rgba(226,169,101,.20),transparent 60%),radial-gradient(50% 50% at 100% 100%,rgba(48,209,88,.08),transparent 60%)}
+.m-top{position:absolute;top:0;left:0;right:0;height:72px;display:flex;align-items:center;gap:12px;padding:0 22px;z-index:5}
+.m-room{display:flex;align-items:center;gap:11px}
+.m-room .sw{width:34px;height:34px;border-radius:10px;background:radial-gradient(120% 120% at 0% 0%,#e2a965,#8e5228)}
+.m-room b{display:block;font-size:16px;font-weight:700;letter-spacing:-.02em}
+.m-room small{display:block;color:#a1a1a6;font-size:12.5px;font-variant-numeric:tabular-nums}
+.m-right{margin-left:auto;display:flex;gap:8px}
+.gbtn{height:36px;padding:0 13px;border-radius:999px;display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:#f5f5f7;
+  background:rgba(255,255,255,.1);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:.5px solid rgba(255,255,255,.12)}
+.gbtn:hover{background:rgba(255,255,255,.16)}
+.gbtn svg{width:16px;height:16px}
+.reccap{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 12px 0 10px;border-radius:999px;background:rgba(255,59,48,.16);
+  border:.5px solid rgba(255,59,48,.5);color:#ff8a80;font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums}
+.reccap::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--red);animation:pulse 1.4s ease-in-out infinite}
+.stage{position:absolute;top:72px;left:22px;right:22px;bottom:118px;display:grid;grid-template-columns:1fr 228px;gap:14px}
+.screen{position:relative;border-radius:18px;overflow:hidden;background:#1c1c1e;display:grid;place-items:center}
+.doc{width:92%;aspect-ratio:16/9;max-height:92%;background:#fff;border-radius:8px;display:grid;grid-template-columns:24% 1fr;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.doc .l{background:#f2f2f7;padding:16px 12px;display:flex;flex-direction:column;gap:8px}
+.doc .l i{height:9px;border-radius:5px;background:#dcdce1}
+.doc .r{padding:22px;display:flex;flex-direction:column;gap:12px}
+.doc .r h4{color:#1d1d1f;font-size:18px;letter-spacing:-.02em}
+.bars{flex:1;display:flex;align-items:flex-end;gap:12px;padding:12px 6px 0;border-bottom:1px solid #e5e5ea}
+.bars i{flex:1;border-radius:6px 6px 0 0;background:linear-gradient(#5ec58a,#2e9e5b)}
+.kpis{display:flex;gap:10px}
+.kpis div{flex:1;background:#f5f5f7;border-radius:10px;padding:8px 10px;color:#1d1d1f;font-size:11px}
+.kpis b{display:block;font-size:17px}
+.who-shares{position:absolute;left:12px;top:12px;display:flex;align-items:center;gap:8px;height:30px;padding:0 12px 0 6px;border-radius:999px;
+  background:rgba(0,0,0,.55);backdrop-filter:blur(12px);font-size:12.5px;font-weight:600}
+.who-shares .mono{width:20px;height:20px;font-size:9px}
+.filmstrip{display:flex;flex-direction:column;gap:10px;overflow:auto;padding-right:2px}
+.tile{position:relative;flex:none;aspect-ratio:16/10;border-radius:14px;overflow:hidden;background:#2c2c2e;display:grid;place-items:center;
+  box-shadow:inset 0 0 0 .5px rgba(255,255,255,.08)}
+.tile.speaking{box-shadow:inset 0 0 0 2.5px #30d158}
+.mono{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-weight:600;font-size:18px;color:#fff;
+  background:linear-gradient(180deg,#a1a1a6,#7c7c80)}
+.tile .nm{z-index:2;position:absolute;left:8px;bottom:8px;display:flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:999px;
+  background:rgba(0,0,0,.45);backdrop-filter:blur(12px);font-size:12px;font-weight:600}
+.tile .nm svg{width:13px;height:13px}
+.tile .nm .off{color:#ff6961}
+.cam{background:radial-gradient(70% 60% at 50% 35%,var(--wall,#6f5a4b),#2a211c)}
+.cam::before{content:"";position:absolute;left:50%;top:22%;width:30%;aspect-ratio:1;border-radius:50%;transform:translateX(-50%);background:var(--skin,#c99a78);filter:blur(.4px)}
+.cam::after{content:"";position:absolute;left:50%;bottom:-6%;width:62%;height:42%;border-radius:50% 50% 0 0;transform:translateX(-50%);background:var(--shirt,#3f5f8f)}
+.cam .mono{display:none}
+.more{flex:none;height:52px;border-radius:14px;background:#1c1c1e;display:grid;place-items:center;color:#a1a1a6;font-size:13px;font-weight:600}
+
+/* grid view (no share) */
+.stage.grid{grid-template-columns:1fr}
+.gridwrap{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;gap:12px}
+.gridwrap .tile{aspect-ratio:auto}
+.gridwrap .mono{width:84px;height:84px;font-size:30px}
+
+/* control capsule */
+.dock{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);display:flex;align-items:flex-start;gap:6px;padding:10px 14px 8px;border-radius:26px;
+  background:rgba(44,44,46,.72);backdrop-filter:blur(30px) saturate(1.6);-webkit-backdrop-filter:blur(30px) saturate(1.6);border:.5px solid rgba(255,255,255,.14);
+  box-shadow:0 20px 50px rgba(0,0,0,.5);z-index:6}
+.ctl{width:64px;display:flex;flex-direction:column;align-items:center;gap:5px;font-size:11px;font-weight:550;color:#d1d1d6}
+.ctl i{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.14);color:#fff;transition:background .2s,transform .2s var(--ease)}
+.ctl:hover i{background:rgba(255,255,255,.22)}
+.ctl:active i{transform:scale(.94)}
+.ctl i svg{width:22px;height:22px}
+.ctl.on i{background:#fff;color:#1d1d1f}
+.ctl.muted i{background:rgba(255,255,255,.14)}
+.ctl.muted i svg{color:#ff6961}
+.ctl.recording i{background:var(--red)}
+.ctl.disabled{opacity:.38;cursor:not-allowed}
+.ctl.leave i{background:var(--red)}
+.dock .div{width:.5px;align-self:stretch;margin:6px 6px 20px;background:rgba(255,255,255,.18)}
+
+/* popover (record) */
+.popover{position:absolute;z-index:8;bottom:118px;left:50%;transform:translateX(-12px);width:340px;padding:6px;border-radius:16px;color:#1d1d1f;
+  background:rgba(246,246,248,.9);backdrop-filter:blur(30px) saturate(1.8);-webkit-backdrop-filter:blur(30px) saturate(1.8);box-shadow:var(--pop);animation:pop .3s var(--ease)}
+.popover::after{content:"";position:absolute;bottom:-7px;left:44px;width:14px;height:14px;background:rgba(246,246,248,.9);transform:rotate(45deg);border-radius:2px}
+.popover h4{font-size:13px;font-weight:600;color:#6e6e73;padding:8px 10px 6px}
+.opt{width:100%;display:flex;gap:12px;align-items:flex-start;text-align:left;padding:10px;border-radius:11px}
+.opt:hover{background:rgba(0,0,0,.05)}
+.opt .ico{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:#fff;flex:none}
+.opt .ico svg{width:19px;height:19px}
+.opt b{display:block;font-size:14.5px;font-weight:600;letter-spacing:-.015em}
+.opt span{display:block;font-size:12.5px;color:#6e6e73;line-height:1.4;margin-top:1px}
+.opt.dis{opacity:.45;pointer-events:none}
+.pop-note{display:flex;gap:8px;align-items:center;font-size:12px;color:#6e6e73;padding:8px 10px 6px;border-top:.5px solid rgba(60,60,67,.18);margin-top:4px}
+.pop-note svg{width:14px;height:14px}
+
+/* island notice */
+.island{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:9;display:flex;align-items:center;gap:12px;padding:10px 18px 10px 10px;border-radius:999px;
+  background:#000;color:#fff;box-shadow:0 16px 40px rgba(0,0,0,.6),0 0 0 .5px rgba(255,255,255,.1);animation:island .55s var(--ease)}
+@keyframes island{from{width:120px;opacity:0;padding:10px}}
+.island i{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:rgba(255,159,10,.22);color:#ffb340}
+.island b{display:block;font-size:13.5px;font-weight:600}
+.island span{display:block;font-size:12px;color:#a1a1a6}
+
+/* people sheet */
+.people{position:absolute;top:72px;right:22px;bottom:118px;width:300px;border-radius:18px;padding:14px;z-index:7;
+  background:rgba(44,44,46,.8);backdrop-filter:blur(30px) saturate(1.6);-webkit-backdrop-filter:blur(30px);border:.5px solid rgba(255,255,255,.12)}
+.people h4{display:flex;justify-content:space-between;font-size:15px;font-weight:700;margin:2px 4px 10px}
+.people h4 span{color:#a1a1a6;font-weight:500;font-variant-numeric:tabular-nums}
+.p{display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:10px;font-size:14px}
+.p .mono{width:32px;height:32px;font-size:12px}
+.p .st{margin-left:auto;display:flex;gap:8px;color:#a1a1a6}
+.p .st svg{width:15px;height:15px}
+.p .st .off{color:#ff6961}
+.p small{display:block;color:#a1a1a6;font-size:12px}
+
+/* macOS alert (share takeover) */
+.mac-alert{width:300px;padding:20px 18px 16px;border-radius:14px;text-align:center;color:#1d1d1f;
+  background:rgba(236,236,238,.9);backdrop-filter:blur(30px) saturate(1.8);-webkit-backdrop-filter:blur(30px);box-shadow:var(--pop);animation:pop .3s var(--ease)}
+.mac-alert .appicon{width:56px;height:56px;margin:0 auto 12px;border-radius:14px;display:grid;place-items:center;color:#fff;background:linear-gradient(180deg,#34c759,#248a3d)}
+.mac-alert .appicon svg{width:30px;height:30px}
+.mac-alert h3{font-size:14px;font-weight:700}
+.mac-alert p{font-size:12px;color:#3c3c43;margin:6px 4px 16px;line-height:1.45}
+.mac-alert .row{display:flex;gap:8px}
+.mac-alert .row button{flex:1;height:30px;border-radius:7px;font-size:13px;font-weight:500;background:#fff;box-shadow:0 .5px 1.5px rgba(0,0,0,.2)}
+.mac-alert .row .def{background:var(--green);color:#fff;font-weight:600}
+
+/* ============================================================
+   Administration — iOS Settings
+   ============================================================ */
+.adm{display:grid;grid-template-columns:260px 1fr;gap:28px}
+.adm-nav{display:flex;flex-direction:column;gap:2px}
+.adm-nav a{display:flex;align-items:center;gap:11px;height:40px;padding:0 10px;border-radius:10px;color:var(--ink);text-decoration:none;font-size:14.5px;font-weight:500}
+.adm-nav a.on{background:var(--green);color:#fff}
+.adm-nav a.on .sq{box-shadow:0 0 0 1.5px rgba(255,255,255,.6)}
+.sq{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:#fff;flex:none}
+.sq svg{width:16px;height:16px}
+.adm-main h2{font-size:28px;font-weight:700;letter-spacing:-.03em;margin:4px 0 4px}
+.adm-main > p{color:var(--ink-3);font-size:14.5px;margin-bottom:22px;max-width:640px}
+.g-h{font-size:13px;color:var(--ink-3);margin:22px 16px 7px;font-weight:500}
+.g-f{font-size:12.5px;color:var(--ink-3);margin:7px 16px 0;line-height:1.45;max-width:640px}
+.row{display:flex;align-items:center;gap:12px;min-height:52px;padding:8px 16px 8px 14px;position:relative}
+.row + .row::before{content:"";position:absolute;top:0;left:56px;right:0;height:.5px;background:var(--sep)}
+.row .t{flex:1}
+.row .t b{display:block;font-size:15px;font-weight:500;letter-spacing:-.015em}
+.row .t span{display:block;font-size:12.5px;color:var(--ink-3)}
+.row .v{color:var(--ink-3);font-size:14.5px;display:flex;align-items:center;gap:6px}
+.row .v svg{width:15px;height:15px;color:var(--ink-4)}
+.toggle{width:51px;height:31px;border-radius:999px;background:rgba(120,120,128,.24);position:relative;flex:none;transition:background .25s}
+.toggle::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.08);transition:transform .3s var(--ease)}
+.toggle[aria-checked="true"]{background:var(--green-sys)}
+.toggle[aria-checked="true"]::after{transform:translateX(20px)}
+.stepper{display:flex;align-items:center;gap:12px}
+.stepper output{font-size:15px;font-variant-numeric:tabular-nums;min-width:70px;text-align:right;color:var(--ink)}
+.stepper .st{display:flex;background:var(--fill);border-radius:8px;overflow:hidden}
+.stepper .st button{width:44px;height:30px;display:grid;place-items:center}
+.stepper .st button + button{border-left:.5px solid var(--sep)}
+.stepper .st svg{width:16px;height:16px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--green-sys);display:inline-block}
+.room-sq{background:radial-gradient(120% 120% at 0% 0%,var(--a),var(--b));font-weight:700;font-size:12px}
+.meter{width:110px;height:6px;border-radius:9px;background:var(--fill);overflow:hidden}
+.meter i{display:block;height:100%;background:var(--green-sys);border-radius:9px}
+.danger{color:var(--red);font-weight:500;font-size:15px}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="bean" viewBox="0 0 100 100"><path fill="#fff" d="M50 4c22 0 40 20 40 46S72 96 50 96 10 76 10 50 28 4 50 4Zm-6 10c-8 10-6 22 0 34s8 24-2 36c14-2 22-14 18-30-3-12-12-22-10-34 0-2-2-6-6-6Z"/></symbol>
+</svg>
+
+<nav class="mock-nav" aria-label="Mockup screens">
+  <button data-s="rooms">Meeting Rooms tab</button>
+  <button data-s="full">Room full</button>
+  <span class="sep"></span>
+  <button data-s="grid">In room · grid</button>
+  <button data-s="meet">Sharing + Record</button>
+  <button data-s="meetrec">Recording · video off</button>
+  <button data-s="take">Share take-over</button>
+  <span class="sep"></span>
+  <button data-s="admin">Administration</button>
+  <span class="sep"></span>
+  <button id="theme">Dark</button>
+</nav>
+<aside class="ann" id="ann" title="Click to hide"></aside>
+<div id="root"></div>
+
+<!-- ======================= SHELL ======================= -->
+<template id="t-shell">
+  <div class="shell">
+    <aside class="side">
+      <div class="brand"><i>iP</i>iPop</div>
+      <nav class="nav">
+        <div class="grp g-work"><div class="grp-h"><span style="background:#2e9e5b"><i data-lucide="briefcase"></i></span>Workspace</div>
+          <a class="item"><i data-lucide="layout-grid"></i>Dashboard</a>
+          <a class="item"><i data-lucide="kanban-square"></i>Projects</a>
+          <a class="item"><i data-lucide="notebook-pen"></i>Notes</a>
+          <a class="item"><i data-lucide="life-buoy"></i>Tickets</a></div>
+        <div class="grp g-comm"><div class="grp-h"><span style="background:#3b7fe0"><i data-lucide="message-circle"></i></span>Communication</div>
+          <a class="item"><i data-lucide="message-circle"></i>Chat</a>
+          <a class="item"><i data-lucide="mail"></i>Mail</a>
+          <a class="item"><i data-lucide="newspaper"></i>News &amp; Memos</a>
+          <a class="item nav-calls"><i data-lucide="video"></i>Calls &amp; Meetings</a>
+          <a class="item"><i data-lucide="bell"></i>Notifications</a></div>
+        <div class="grp g-res"><div class="grp-h"><span style="background:#e08a2e"><i data-lucide="folder"></i></span>Resources</div>
+          <a class="item"><i data-lucide="folder"></i>Files</a>
+          <a class="item"><i data-lucide="calendar"></i>Calendar</a></div>
+        <div class="grp g-adm"><div class="grp-h"><span style="background:#7a63d6"><i data-lucide="shield"></i></span>Administration</div>
+          <a class="item nav-admin"><i data-lucide="settings-2"></i>Administration</a></div>
+      </nav>
+      <div class="me"><div class="av">BG</div><div><b>Bagastyo</b><small>Online</small></div></div>
+    </aside>
+    <header class="top"><h1 class="ttl">Calls &amp; Meetings</h1>
+      <div class="search"><i data-lucide="search"></i>Search iPop</div>
+      <button class="ib"><i data-lucide="circle-help"></i></button><button class="ib"><i data-lucide="bell"></i></button></header>
+    <main class="panel"><div class="page"></div></main>
+  </div>
+</template>
+
+<!-- ======================= 1 · ROOMS TAB ======================= -->
+<template id="t-rooms">
+  <div class="toolbar">
+    <div class="segmented" role="tablist">
+      <button role="tab"><i data-lucide="history"></i>Recents <em>128</em></button>
+      <button role="tab"><i data-lucide="calendar-clock"></i>Scheduled <em>3</em></button>
+      <button role="tab" class="on" aria-selected="true"><i data-lucide="door-open"></i>Meeting Rooms</button>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn plain"><i data-lucide="headphones"></i>Test devices</button>
+    <button class="btn tinted"><i data-lucide="calendar-plus"></i>Book a room</button>
+    <button class="btn filled"><i data-lucide="phone"></i>New call</button>
+  </div>
+
+  <div class="section-h"><h2>Rooms</h2><p>Walk in any time. Up to 20 people per room, the same rooms as SJA Hall.</p></div>
+
+  <div class="rooms">
+    <article class="room r-robusta">
+      <svg class="bean"><use href="#bean"/></svg>
+      <div class="room-head"><div><h3>Robusta</h3><small>Free now</small></div></div>
+      <div class="glass">
+        <div class="empty-seat"><i data-lucide="armchair"></i>Nobody here yet</div>
+        <div class="line"><i data-lucide="calendar"></i><span>Weekly ICT sync at 14:00, booked by Bagastyo</span></div>
+        <button class="join"><i data-lucide="video"></i>Join</button>
+      </div>
+    </article>
+
+    <article class="room r-arabika">
+      <svg class="bean"><use href="#bean"/></svg>
+      <div class="room-head"><div><h3>Arabika</h3><small>Production review</small></div><span class="cap is-rec">Recording</span></div>
+      <div class="glass">
+        <div class="who"><div class="faces"><b style="background:#c47b45">SA</b><b style="background:#3f7d5a">BD</b><b style="background:#5562b8">RW</b></div><span>6 <em>of 20</em></span></div>
+        <div class="line"><i data-lucide="monitor-up"></i><span>Budi is sharing a screen. Ends at 11:00.</span></div>
+        <button class="join"><i data-lucide="video"></i>Join</button>
+      </div>
+    </article>
+
+    <article class="room r-kalosi">
+      <svg class="bean"><use href="#bean"/></svg>
+      <div class="room-head"><div><h3>Kalosi</h3><small>Audio and screen share only</small></div><span class="cap live">In use</span></div>
+      <div class="glass">
+        <div class="who"><div class="faces"><b style="background:#8a5a3c">AN</b><b style="background:#3f7d5a">YS</b></div><span>2 <em>of 20</em></span></div>
+        <div class="line"><i data-lucide="calendar"></i><span>No bookings today</span></div>
+        <button class="join"><i data-lucide="mic"></i>Join</button>
+      </div>
+    </article>
+
+    <article class="room r-kapal">
+      <svg class="bean"><use href="#bean"/></svg>
+      <div class="room-head"><div><h3>Kapal Api</h3><small>HR town hall</small></div><span class="cap">Full</span></div>
+      <div class="glass">
+        <div class="who"><div class="faces"><b style="background:#b0412d">HR</b><b style="background:#c47b45">LT</b><b style="background:#5562b8">MF</b><b style="background:rgba(0,0,0,.35)">+17</b></div><span>20 <em>of 20</em></span></div>
+        <div class="line"><i data-lucide="clock"></i><span>Ends at 12:00</span></div>
+        <button class="join full" disabled>Room is full</button>
+      </div>
+    </article>
+
+    <article class="room r-toraja">
+      <svg class="bean"><use href="#bean"/></svg>
+      <div class="room-head"><div><h3>Toraja</h3><small>Free now</small></div></div>
+      <div class="glass">
+        <div class="empty-seat"><i data-lucide="armchair"></i>Nobody here yet</div>
+        <div class="line"><i data-lucide="calendar"></i><span>QC weekly tomorrow at 09:00</span></div>
+        <button class="join"><i data-lucide="video"></i>Join</button>
+      </div>
+    </article>
+  </div>
+
+  <div class="section-h"><h2>Recordings</h2><p>Server recordings of meetings you were in.</p></div>
+  <div class="group">
+    <div class="rec">
+      <div class="thumb r-arabika" style="--a:#e2a965;--b:#8e5228"><div class="play"><div class="spinner" style="border-color:rgba(255,255,255,.3);border-top-color:#fff"></div></div></div>
+      <div class="rec-t"><b>Production review</b><span>Today at 09:02, recorded by Budi</span><span class="room-chip"><i style="--b:#8e5228"></i>Arabika, 7 people</span></div>
+      <div class="rec-a"><span class="processing"><span class="spinner"></span>Preparing video</span></div>
+    </div>
+    <div class="rec">
+      <div class="thumb" style="--a:#9a6849;--b:#3d251a"><div class="play"><i><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></i></div><span class="dur">1:02:40</span></div>
+      <div class="rec-t"><b>Weekly ICT sync</b><span>Monday 6 October at 14:00, recorded by Bagastyo</span><span class="room-chip"><i style="--b:#3d251a"></i>Robusta, 9 people</span></div>
+      <div class="rec-a">418 MB<button class="round" title="Download"><i data-lucide="arrow-down-to-line"></i></button><button class="round" title="Play"><i data-lucide="play"></i></button></div>
+    </div>
+    <div class="rec">
+      <div class="thumb" style="--a:#86bf8b;--b:#255a3e"><div class="play"><i><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></i></div><span class="dur">22:05</span></div>
+      <div class="rec-t"><b>Kalosi meeting</b><span>Thursday 2 October at 10:31, recorded by Andi</span><span class="room-chip"><i style="--b:#255a3e"></i>Kalosi, 3 people</span></div>
+      <div class="rec-a">96 MB<button class="round" title="Download"><i data-lucide="arrow-down-to-line"></i></button><button class="round" title="Play"><i data-lucide="play"></i></button></div>
+    </div>
+  </div>
+  <p class="foot-note">Recordings are deleted automatically after 90 days.</p>
+</template>
+
+<!-- ======================= 1b · FULL ALERT ======================= -->
+<template id="t-full">
+  <div class="scrim"><div class="alert" role="alertdialog" aria-labelledby="full-t">
+    <div class="alert-body">
+      <div class="sym" style="background:radial-gradient(120% 120% at 0% 0%,#f37758,#9c2318)"><i data-lucide="users"></i></div>
+      <h3 id="full-t">Kapal Api is full</h3>
+      <p>All 20 places are taken. These rooms have space now.</p>
+      <div class="alt">
+        <button><span class="sw" style="--a:#9a6849;--b:#3d251a"></span><span><b>Robusta</b><small>Empty</small></span><em>Join</em></button>
+        <button><span class="sw" style="--a:#86bf8b;--b:#255a3e"></span><span><b>Kalosi</b><small>2 people, audio only</small></span><em>Join</em></button>
+        <button><span class="sw" style="--a:#8b98ea;--b:#2b3683"></span><span><b>Toraja</b><small>Empty</small></span><em>Join</em></button>
+      </div>
+    </div>
+    <div class="alert-actions"><button class="strong">OK</button></div>
+  </div></div>
+</template>
+
+<!-- ======================= 2 · IN ROOM ======================= -->
+<template id="t-meet">
+  <div class="meet">
+    <div class="meet-bg"></div>
+    <header class="m-top">
+      <div class="m-room"><span class="sw"></span><div><b>Arabika</b><small class="sub">Production review, 6 people, 24:13</small></div></div>
+      <span class="recslot"></span>
+      <div class="m-right">
+        <button class="gbtn"><i data-lucide="link"></i>Copy link</button>
+        <button class="gbtn"><i data-lucide="minimize-2"></i>Minimize</button>
+      </div>
+    </header>
+
+    <section class="stage share-stage">
+      <div class="screen">
+        <div class="doc"><div class="l"><i></i><i style="width:70%"></i><i></i><i style="width:55%"></i><i></i></div>
+          <div class="r"><h4>Output October</h4>
+            <div class="kpis"><div><b>1,284 t</b>Roasted</div><div><b>97.2%</b>On spec</div><div><b>3</b>Line stops</div></div>
+            <div class="bars"><i style="height:45%"></i><i style="height:62%"></i><i style="height:58%"></i><i style="height:80%"></i><i style="height:71%"></i><i style="height:92%"></i></div>
+          </div></div>
+        <div class="who-shares"><span class="mono" style="background:#3f7d5a">BD</span>Budi's screen</div>
+      </div>
+      <div class="filmstrip">
+        <div class="tile cam speaking" style="--wall:#7b5e48;--skin:#d2a27f;--shirt:#2f6a4a"><span class="mono">SA</span><span class="nm"><i data-lucide="mic"></i>Sari</span></div>
+        <div class="tile"><span class="mono" style="background:#3f7d5a">BD</span><span class="nm"><i data-lucide="mic"></i>Budi</span></div>
+        <div class="tile cam" style="--wall:#4d5a78;--skin:#b98563;--shirt:#8c3b2e"><span class="mono">RW</span><span class="nm"><i data-lucide="mic-off" class="off"></i>Rina</span></div>
+        <div class="tile"><span class="mono">DN</span><span class="nm"><i data-lucide="mic-off" class="off"></i>Dani</span></div>
+        <div class="more">2 more</div>
+      </div>
+    </section>
+
+    <nav class="dock" aria-label="Meeting controls">
+      <button class="ctl muted"><i><svg class="lucide" data-lucide="mic-off"></svg></i>Unmute</button>
+      <button class="ctl c-cam"><i><svg class="lucide" data-lucide="video-off"></svg></i>Camera</button>
+      <button class="ctl"><i><svg class="lucide" data-lucide="monitor-up"></svg></i>Share</button>
+      <button class="ctl c-rec"><i><svg class="lucide" data-lucide="circle-dot"></svg></i>Record</button>
+      <span class="div"></span>
+      <button class="ctl"><i><svg class="lucide" data-lucide="users"></svg></i>People</button>
+      <button class="ctl leave"><i><svg class="lucide" data-lucide="phone-off"></svg></i>Leave</button>
+    </nav>
+  </div>
+</template>
+
+<template id="t-recpop">
+  <div class="popover" role="menu" aria-label="Record this meeting">
+    <h4>Record this meeting</h4>
+    <button class="opt" role="menuitem"><span class="ico" style="background:linear-gradient(180deg,#5ac8fa,#0a84ff)"><i data-lucide="laptop"></i></span>
+      <span><b>Record to this PC</b><span>The whole meeting with everyone's voice. Saved to Downloads as a video when you stop.</span></span></button>
+    <button class="opt" role="menuitem"><span class="ico" style="background:linear-gradient(180deg,#5ed688,#248a3d)"><i data-lucide="server"></i></span>
+      <span><b>Record to server</b><span>Saved for 90 days. Everyone in the room can watch it later in Recordings.</span></span></button>
+    <div class="pop-note"><i data-lucide="eye"></i>Everyone here will see that you're recording.</div>
+  </div>
+</template>
+
+<template id="t-take">
+  <div class="scrim" style="position:absolute"><div class="mac-alert" role="alertdialog">
+    <div class="appicon"><i data-lucide="monitor-up"></i></div>
+    <h3>Budi is sharing a screen</h3>
+    <p>Only one screen can be shared at a time. If you share, Budi's screen stops and Budi is told you took over.</p>
+    <div class="row"><button>Cancel</button><button class="def">Share My Screen</button></div>
+  </div></div>
+</template>
+
+<template id="t-people">
+  <aside class="people">
+    <h4>In this room <span>6 of 20</span></h4>
+    <div class="p"><span class="mono" style="background:#c47b45">SA</span><div>Sari Andini<small>Speaking</small></div><span class="st"><i data-lucide="mic"></i><i data-lucide="video"></i></span></div>
+    <div class="p"><span class="mono" style="background:#3f7d5a">BD</span><div>Budi Darmawan<small>Sharing screen</small></div><span class="st"><i data-lucide="monitor-up"></i><i data-lucide="mic"></i></span></div>
+    <div class="p"><span class="mono" style="background:#5562b8">RW</span><div>Rina Wulandari</div><span class="st"><i data-lucide="mic-off" class="off"></i><i data-lucide="video"></i></span></div>
+    <div class="p"><span class="mono" style="background:#b0412d">DN</span><div>Dani Nugroho</div><span class="st"><i data-lucide="mic-off" class="off"></i></span></div>
+    <div class="p"><span class="mono" style="background:#8a5a3c">HR</span><div>Hendra Rahman</div><span class="st"><i data-lucide="mic-off" class="off"></i></span></div>
+    <div class="p"><span class="mono" style="background:#c08a4a">BG</span><div>Bagastyo<small>You</small></div><span class="st"><i data-lucide="mic-off" class="off"></i></span></div>
+  </aside>
+</template>
+
+<!-- grid view -->
+<template id="t-grid">
+  <div class="meet">
+    <div class="meet-bg"></div>
+    <header class="m-top">
+      <div class="m-room"><span class="sw" style="background:radial-gradient(120% 120% at 0% 0%,#9a6849,#3d251a)"></span><div><b>Robusta</b><small>Weekly ICT sync, 6 people, 08:41</small></div></div>
+      <div class="m-right"><button class="gbtn"><i data-lucide="link"></i>Copy link</button><button class="gbtn"><i data-lucide="minimize-2"></i>Minimize</button></div>
+    </header>
+    <section class="stage grid"><div class="gridwrap">
+      <div class="tile cam speaking" style="--wall:#7b5e48;--skin:#d2a27f;--shirt:#2f6a4a"><span class="mono">SA</span><span class="nm"><i data-lucide="mic"></i>Sari</span></div>
+      <div class="tile cam" style="--wall:#56627c;--skin:#c08f6c;--shirt:#1d1d1f"><span class="mono">YS</span><span class="nm"><i data-lucide="mic-off" class="off"></i>Yusuf</span></div>
+      <div class="tile"><span class="mono" style="background:#3f7d5a">BD</span><span class="nm"><i data-lucide="mic-off" class="off"></i>Budi</span></div>
+      <div class="tile cam" style="--wall:#4d5a78;--skin:#b98563;--shirt:#8c3b2e"><span class="mono">RW</span><span class="nm"><i data-lucide="mic-off" class="off"></i>Rina</span></div>
+      <div class="tile"><span class="mono" style="background:#b0412d">DN</span><span class="nm"><i data-lucide="mic-off" class="off"></i>Dani</span></div>
+      <div class="tile cam" style="--wall:#6c7a5a;--skin:#c49372;--shirt:#e0b44a"><span class="mono">BG</span><span class="nm"><i data-lucide="mic"></i>You</span></div>
+    </div></section>
+    <nav class="dock" aria-label="Meeting controls">
+      <button class="ctl"><i><svg class="lucide" data-lucide="mic"></svg></i>Mute</button>
+      <button class="ctl on"><i><svg class="lucide" data-lucide="video"></svg></i>Camera</button>
+      <button class="ctl"><i><svg class="lucide" data-lucide="monitor-up"></svg></i>Share</button>
+      <button class="ctl"><i><svg class="lucide" data-lucide="circle-dot"></svg></i>Record</button>
+      <span class="div"></span>
+      <button class="ctl"><i><svg class="lucide" data-lucide="users"></svg></i>People</button>
+      <button class="ctl leave"><i><svg class="lucide" data-lucide="phone-off"></svg></i>Leave</button>
+    </nav>
+  </div>
+</template>
+
+<!-- ======================= 3 · ADMIN ======================= -->
+<template id="t-admin">
+  <div class="adm">
+    <nav class="adm-nav">
+      <a><span class="sq" style="background:#0a84ff"><i data-lucide="users"></i></span>Users</a>
+      <a><span class="sq" style="background:#34c759"><i data-lucide="building-2"></i></span>Organization</a>
+      <a><span class="sq" style="background:#ff3b30"><i data-lucide="shield-check"></i></span>Security</a>
+      <a><span class="sq" style="background:#ff9f0a"><i data-lucide="clapperboard"></i></span>Announcements</a>
+      <a><span class="sq" style="background:#ff375f"><i data-lucide="party-popper"></i></span>Holidays</a>
+      <a class="on"><span class="sq" style="background:linear-gradient(180deg,#d9a46a,#8a5a3c)"><i data-lucide="door-open"></i></span>Meeting rooms</a>
+      <a><span class="sq" style="background:#5e5ce6"><i data-lucide="refresh-cw"></i></span>HRIS sync</a>
+    </nav>
+    <div class="adm-main">
+      <h2>Meeting rooms</h2>
+      <p>Choose where cameras are allowed and how long server recordings are kept.</p>
+
+      <div class="g-h">Video</div>
+      <div class="group">
+        <div class="row"><span class="sq room-sq" style="--a:#9a6849;--b:#3d251a">R</span><div class="t"><b>Robusta</b><span>Empty</span></div><button class="toggle" role="switch" aria-checked="true" aria-label="Video in Robusta"></button></div>
+        <div class="row"><span class="sq room-sq" style="--a:#e2a965;--b:#8e5228">A</span><div class="t"><b>Arabika</b><span>6 people, 2 cameras on</span></div><button class="toggle" role="switch" aria-checked="true" aria-label="Video in Arabika"></button></div>
+        <div class="row"><span class="sq room-sq" style="--a:#86bf8b;--b:#255a3e">K</span><div class="t"><b>Kalosi</b><span>2 people</span></div><button class="toggle" role="switch" aria-checked="false" aria-label="Video in Kalosi"></button></div>
+        <div class="row"><span class="sq room-sq" style="--a:#f37758;--b:#9c2318">K</span><div class="t"><b>Kapal Api</b><span>20 people, 5 cameras on</span></div><button class="toggle" role="switch" aria-checked="true" aria-label="Video in Kapal Api"></button></div>
+        <div class="row"><span class="sq room-sq" style="--a:#8b98ea;--b:#2b3683">T</span><div class="t"><b>Toraja</b><span>Empty</span></div><button class="toggle" role="switch" aria-checked="true" aria-label="Video in Toraja"></button></div>
+      </div>
+      <p class="g-f">Turning video off stops every camera in that room straight away. Voice and screen sharing keep working. Cameras are limited to 360p so the server stays fast.</p>
+
+      <div class="g-h">Server recordings</div>
+      <div class="group">
+        <div class="row"><span class="sq" style="background:#ff9f0a"><i data-lucide="calendar-x-2"></i></span><div class="t"><b>Keep recordings for</b></div>
+          <div class="stepper"><output>90 days</output><div class="st"><button aria-label="Fewer days"><i data-lucide="minus"></i></button><button aria-label="More days"><i data-lucide="plus"></i></button></div></div></div>
+        <div class="row"><span class="sq" style="background:#0a84ff"><i data-lucide="hard-drive"></i></span><div class="t"><b>Saved on</b><span>NAS ict, SJA SPJ / ICT / recordings</span></div><div class="v">412 GB free</div></div>
+        <div class="row"><span class="sq" style="background:#34c759"><i data-lucide="server"></i></span><div class="t"><b>Recording service</b><span>1 recording running</span></div><div class="v"><span class="dot"></span>Online</div></div>
+      </div>
+      <p class="g-f">Old recordings are removed every night at 02:30. Changing the number of days also applies to recordings that already exist.</p>
+
+      <div class="g-h">All recordings</div>
+      <div class="group">
+        <div class="row"><span class="sq" style="background:#8e8e93"><i data-lucide="film"></i></span><div class="t"><b>18 recordings</b><span>4.2 GB, the oldest is removed on 9 January</span></div><div class="v">Show all<i data-lucide="chevron-right"></i></div></div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+const notes = {
+  rooms: ['Meeting Rooms tab', ['Third segment in the Calls & Meetings toolbar; sidebar + title renamed.', 'Each room is a large tile in its own roast tone (same hue as SJA Hall), with a frosted panel for who is inside, the booking line and Join.', 'Status capsule: In use / Recording / Full; empty rooms show "Nobody here yet".', 'Recordings = iOS grouped list; Preparing video while the server finishes.']],
+  full: ['21st person', ['iOS-style alert with rooms that still have space; Join goes straight in.']],
+  grid: ['In the room, nobody sharing', ['FaceTime-style grid; camera off when you join.', 'Floating glass control dock with labels (friendlier for 40+ users).']],
+  meet: ['Sharing + Record', ['Shared screen takes the stage, people move to the right strip.', 'Record popover: two choices with Settings-style icons, To this PC (blue) and To server (green).']],
+  meetrec: ['Recording, admin turned video off', ['Red capsule "Recording · Bagastyo" visible to everyone.', 'Island notice at the top when an admin turns video off; camera button greyed out.', 'People panel (glass sheet) shows who is speaking, sharing, muted.']],
+  take: ['Share take-over', ['macOS-style alert; Budi is told you took over.']],
+  admin: ['Administration → Meeting rooms', ['iOS Settings look: grouped rows, room squircles, green switches.', 'Retention as a stepper (default 90 days), NAS space and recording service health.']],
+};
+const $ = s => document.querySelector(s);
+let theme = 'light';
+function shell(tpl, nav, title) {
+  const s = $('#t-shell').content.cloneNode(true);
+  s.querySelector('.page').append($(tpl).content.cloneNode(true));
+  s.querySelector(nav).classList.add('active');
+  s.querySelector('.ttl').textContent = title;
+  return s;
+}
+function render(name) {
+  const root = $('#root'); root.innerHTML = ''; root.className = theme;
+  if (name === 'rooms' || name === 'full') root.append(shell('#t-rooms', '.nav-calls', 'Calls & Meetings'));
+  if (name === 'full') root.append($('#t-full').content.cloneNode(true));
+  if (name === 'admin') root.append(shell('#t-admin', '.nav-admin', 'Administration'));
+  if (name === 'grid') root.append($('#t-grid').content.cloneNode(true));
+  if (['meet', 'meetrec', 'take'].includes(name)) {
+    root.append($('#t-meet').content.cloneNode(true));
+    const m = root.querySelector('.meet');
+    if (name === 'meet') m.append($('#t-recpop').content.cloneNode(true));
+    if (name === 'take') m.append($('#t-take').content.cloneNode(true));
+    if (name === 'meetrec') {
+      root.querySelector('.recslot').innerHTML = '<span class="reccap">Recording · Bagastyo · 03:41</span>';
+      const rec = root.querySelector('.c-rec'); rec.classList.add('recording'); rec.innerHTML = '<i><svg class="lucide" data-lucide="square"></svg></i>Stop';
+      const cam = root.querySelector('.c-cam'); cam.classList.add('disabled'); cam.title = 'An admin turned video off for this room'; cam.lastChild.textContent = 'Video off';
+      root.querySelectorAll('.filmstrip .cam').forEach(t => t.classList.remove('cam'));
+      root.querySelector('.filmstrip').style.visibility = 'hidden';
+      m.append($('#t-people').content.cloneNode(true));
+      m.insertAdjacentHTML('beforeend', '<div class="island" role="status"><i><svg class="lucide" data-lucide="video-off"></svg></i><div><b>Video turned off for Arabika</b><span>An admin turned cameras off. Voice and screen share still work.</span></div></div>');
+    }
+  }
+  const [t, items] = notes[name];
+  const ann = $('#ann'); ann.style.display = '';
+  ann.innerHTML = `<b>${t}</b><ul>${items.map(i => `<li>${i}</li>`).join('')}</ul>`;
+  document.querySelectorAll('.mock-nav [data-s]').forEach(b => b.classList.toggle('on', b.dataset.s === name));
+  lucide.createIcons();
+}
+let current = location.hash.slice(1) || 'rooms';
+document.querySelectorAll('.mock-nav [data-s]').forEach(b => b.onclick = () => { current = b.dataset.s; history.replaceState(null, '', '#' + current); render(current); });
+$('#theme').onclick = () => { theme = theme === 'light' ? 'dark' : 'light'; $('#theme').textContent = theme === 'light' ? 'Dark' : 'Light'; render(current); };
+$('#ann').onclick = () => $('#ann').style.display = 'none';
+window.addEventListener('hashchange', () => { current = location.hash.slice(1) || 'rooms'; render(current); });
+render(current);
+</script>
+</body>
+</html>
