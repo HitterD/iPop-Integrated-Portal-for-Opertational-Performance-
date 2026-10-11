@@ -78,7 +78,7 @@ window.ipopMicro = (() => {
       glide.setAttribute('aria-hidden', 'true');
       glide.style.transition = 'none';
       // Navy shell: inside the scrolling menu (.nav-scroll) so the tab scrolls with its row.
-      const host = side.querySelector(':scope > .nav-scroll') || side;
+      const host = side.querySelector('.nav-scroll') || side;
       host.style.position = host.style.position || 'relative';
       host.prepend(glide);
       side.classList.add('mi-glide');
@@ -127,6 +127,7 @@ window.ipopMicro = (() => {
       glide.animate([{ transform: `${to} translateX(${width + 20}px)` }, { transform: to }],
         { duration: 340, delay: 70, easing: 'cubic-bezier(.16, 1, .3, 1)', fill: 'backwards' });
     }
+    if (from === undefined || +from !== top) revealNavItem(item, from !== undefined);
     glide.dataset.top = top;
     glide.style.opacity = '1';
     glide.style.left = left + 'px';
@@ -138,12 +139,42 @@ window.ipopMicro = (() => {
   }
 
 
+  // Short screens: the menu scrolls with no scrollbar. Fade whichever edge hides rows and show the
+  // "More" pill while rows sit below; bring a row the tab is moving to fully into view (with room
+  // for the tab's curves). The tab lives inside the scroller, so it rides along either way.
+  function navEdges(scroller) {
+    const wrap = scroller && scroller.parentElement;
+    if (!wrap || !wrap.classList.contains('nav-wrap')) return;
+    const max = scroller.scrollHeight - scroller.clientHeight;
+    wrap.classList.toggle('can-up', scroller.scrollTop > 2);
+    wrap.classList.toggle('can-down', scroller.scrollTop < max - 2);
+  }
+  function revealNavItem(item, smooth) {
+    const scroller = item.closest('.nav-scroll');
+    if (!scroller || scroller.scrollHeight <= scroller.clientHeight) return;
+    const room = 26, top = item.offsetTop, bottom = top + item.offsetHeight;
+    let to = null;
+    if (top - room < scroller.scrollTop) to = top - room;
+    else if (bottom + room > scroller.scrollTop + scroller.clientHeight) to = bottom + room - scroller.clientHeight;
+    if (to === null) return;
+    scroller.scrollTo({ top: to, behavior: smooth && !reduced() ? 'smooth' : 'auto' });
+  }
+  function onNavMore(e) {
+    const more = e.target.closest && e.target.closest('.sidebar .nav-more');
+    if (!more) return;
+    const scroller = more.parentElement.querySelector('.nav-scroll');
+    scroller.scrollBy({ top: scroller.clientHeight * 0.7, behavior: reduced() ? 'auto' : 'smooth' });
+  }
+
   // The panel's rounded top-left corner and the tab's upper curve compete for the same spot when
   // the open page is the first menu item: shrink the corner and the curve to the room between them.
   function shapePanelCorner(item) {
     const panel = document.querySelector('.main-panel');
     if (!panel) return;
-    const gap = item.getBoundingClientRect().top - panel.getBoundingClientRect().top;
+    const scroller = item.closest('.nav-scroll');
+    const r = item.getBoundingClientRect(), view = scroller ? scroller.getBoundingClientRect() : r;
+    // Scrolled out of sight: the tab is gone, so the panel keeps its full corner.
+    const gap = r.bottom <= view.top || r.top >= view.bottom ? 99 : Math.max(r.top, view.top) - panel.getBoundingClientRect().top;
     const curve = Math.max(0, Math.min(18, gap));
     const corner = Math.max(0, Math.min(26, gap - curve));
     const root = document.documentElement.style;
@@ -388,6 +419,7 @@ window.ipopMicro = (() => {
     queued = false;
     scanSliders();
     placeGlide();
+    navEdges(document.querySelector('.sidebar .nav-scroll'));
     placePaletteSel();
     scanBadges();
     scanPresence();
@@ -405,6 +437,14 @@ window.ipopMicro = (() => {
     document.addEventListener('focusout', hideTip, true);
     document.addEventListener('mousedown', hideTip, true);
     document.addEventListener('scroll', hideTip, true);
+    document.addEventListener('scroll', e => {
+      const t = e.target;
+      if (!t.classList || !t.classList.contains('nav-scroll')) return;
+      navEdges(t);
+      const active = t.querySelector('.nav-item.mi-tab-to') || t.querySelector('.nav-item.active');
+      if (active) shapePanelCorner(active);
+    }, true);
+    document.addEventListener('click', onNavMore, true);
     document.addEventListener('click', onClick, true);
     schedule();
   }

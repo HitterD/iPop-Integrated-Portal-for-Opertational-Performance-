@@ -25,6 +25,7 @@
             </a>
             <button class="collapse-btn" title="Collapse sidebar ( [ )" @onclick="ToggleSidebar"><i data-lucide="panel-left"></i></button>
         </div>
+        <div class="nav-wrap">
         <nav class="nav-scroll" aria-label="Main">
         @foreach (var group in NavGroups)
         {
@@ -32,7 +33,7 @@
             @if (items.Count > 0)
             {
                 <div class="nav-group nav-g-@group.Key">
-                    <div class="nav-label"><span class="nav-chip" aria-hidden="true"><i data-lucide="@group.Icon"></i></span>@group.Label</div>
+                    <div class="nav-label">@group.Label</div>
                     @foreach (var item in items)
                     {
                         <NavLink class="nav-item" href="@item.Href" data-tip="@item.Tip"
@@ -48,6 +49,10 @@
             }
         }
         </nav>
+            @* Short screens: the menu scrolls without a scrollbar (it would cut the tab off from the
+               panel); micro.js fades the clipped edge and shows this pill while more rows sit below. *@
+            <button type="button" class="nav-more" tabindex="-1" aria-hidden="true"><i data-lucide="chevron-down"></i>More</button>
+        </div>
         <div class="sidebar-foot">
             <button type="button" class="me-card" title="Your account" aria-haspopup="menu" aria-expanded="@(meMenuOpen ? "true" : "false")"
                     @onclick="ToggleMeMenu" @onclick:stopPropagation>
@@ -362,31 +367,31 @@
     {
         public string Tip { get; init; } = Tip ?? Label;
     }
-    private record NavGroup(string Label, string Key, string Icon, NavItem[] Items);
+    private record NavGroup(string Label, string Key, NavItem[] Items);
 
     /// One table drives the sidebar (v6 grouped nav). Devices stays hidden until it has a design.
     private static readonly NavGroup[] NavGroups =
     [
-        new("Workspace", "work", "briefcase", [
+        new("Workspace", "work", [
             new("Dashboard", "layout-grid", "/dashboard"),
             new("Directory", "users", "/directory"),
             new("Projects", "kanban", "/projects"),
             new("Notes", "notebook-pen", "/notes"),
             new("Tickets", "life-buoy", "/tickets", BadgeKey: "tickets"),
         ]),
-        new("Communication", "comm", "message-circle", [
+        new("Communication", "comm", [
             new("Chat", "message-circle", "/chat", BadgeKey: "chat"),
             new("Mail", "mail", "/mail", BadgeKey: "mail"),
             new("News & Memos", "newspaper", "/news", BadgeKey: "news"),
             new("Calls", "phone", "/calls", BadgeKey: "calls"),
+            new("Notifications", "bell", "/notifications", BadgeKey: "notif"),
         ]),
-        new("Resources", "res", "folder", [
+        new("Resources", "res", [
             new("Files", "folder", "/files"),
             new("Calendar", "calendar", "/calendar"),
         ]),
-        new("Administration", "admin", "shield", [
-            new("Administration", "sliders-horizontal", "/admin", AdminOnly: true),
-            new("Notifications", "bell", "/notifications", BadgeKey: "notif"),
+        new("Administration", "admin", [
+            new("Admin settings", "sliders-horizontal", "/admin", AdminOnly: true),
         ]),
     ];
 

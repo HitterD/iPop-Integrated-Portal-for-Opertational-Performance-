@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>iPop · Sidebar B — scroll + tab bubble</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --frame: #123528; --frame-2: #1a4535; --frame-line: rgba(255,255,255,.12);
+    --ink: rgba(255,255,255,.92); --ink-2: #a9c7b8; --label: #b3d0c1;
+    --panel: #f3f4f6; --card: #ffffff; --text: #1d2420; --muted: #6b766f;
+    --c-work: #3a86c8; --c-work-ic: #8fc6f2;
+    --c-comm: #cf6a4c; --c-comm-ic: #f4a98f;
+    --c-res:  #d19a2a; --c-res-ic:  #f2c96c;
+    --c-admin:#6f8290; --c-admin-ic:#bccad3;
+    --row: 42px; --curve: 18px;
+  }
+  [data-theme="dark"] {
+    --frame: #0b2219; --frame-2: #133126; --frame-line: rgba(255,255,255,.10);
+    --ink: rgba(255,255,255,.90); --ink-2: #93b3a4; --label: #9fbfaf;
+    --panel: #0f1211; --card: #1a1e1c; --text: #e8ece9; --muted: #8d9891;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Inter", -apple-system, "Segoe UI", system-ui, sans-serif; background: #d9ddd9; color: #1d2420; }
+  [data-theme="dark"] body { background: #050807; color: #e8ece9; }
+  header.page { display: flex; align-items: center; gap: 16px; padding: 18px 28px; flex-wrap: wrap; }
+  header.page h1 { font-size: 20px; margin: 0; }
+  header.page p { margin: 2px 0 0; font-size: 14px; opacity: .75; max-width: 820px; }
+  .seg { display: inline-flex; background: rgba(0,0,0,.08); border-radius: 10px; padding: 3px; }
+  [data-theme="dark"] .seg { background: rgba(255,255,255,.08); }
+  .seg button { border: 0; background: none; padding: 7px 14px; border-radius: 8px; font: 600 13px/1 inherit; font-family: inherit; color: inherit; cursor: pointer; }
+  .seg button.on { background: #fff; color: #123528; box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+  .spacer { flex: 1; }
+
+  .grid { display: flex; gap: 28px; padding: 4px 28px 40px; overflow-x: auto; align-items: flex-start; }
+  .opt { flex: none; }
+  .opt h2 { font-size: 15px; margin: 0 0 4px; }
+  .opt .sub { font-size: 12.5px; opacity: .7; margin: 0 0 10px; max-width: 420px; }
+
+  /* ---------- device ---------- */
+  .device { width: 440px; display: flex; background: var(--frame); border-radius: 14px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.18); }
+  .side { width: 280px; flex: none; display: flex; flex-direction: column; color: var(--ink); position: relative; }
+  .panel { flex: 1; background: var(--panel); margin-top: 64px; border-top-left-radius: 18px; padding: 22px 0 0 20px; overflow: hidden; }
+  .panel .ph { height: 12px; width: 70px; border-radius: 6px; background: var(--muted); opacity: .35; margin-bottom: 10px; }
+  .panel .ph.big { height: 22px; width: 130px; opacity: .55; background: var(--text); }
+  .panel .tile { height: 110px; border-radius: 16px; background: var(--card); margin: 16px 0 14px; width: 220px; }
+
+  .side-head { height: 64px; display: flex; align-items: center; gap: 10px; padding: 0 14px 0 22px; flex: none; }
+  .logo { width: 30px; height: 30px; border-radius: 9px; background: conic-gradient(#e5484d 0 33%, #2fa36b 0 66%, #3a86c8 0); }
+  .brand { font-size: 23px; font-weight: 700; color: #fff; letter-spacing: -.01em; }
+  .collapse { margin-left: auto; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--ink-2); }
+
+  /* ---------- scroll area ----------
+     No native scrollbar: it would eat the right edge and leave a gap between the
+     tab and the panel. Overflow is shown with soft fades + a "More" pill instead. */
+  .nav-wrap { flex: 1; min-height: 0; position: relative; }
+  nav { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
+        padding: var(--curve) 0 var(--curve); overscroll-behavior: contain; }
+  nav::-webkit-scrollbar { display: none; }
+  .nav-inner { position: relative; }  /* the bubble lives here, so it scrolls with the rows */
+
+  .fade { position: absolute; left: 0; right: 0; height: 36px; pointer-events: none; opacity: 0; transition: opacity .2s; z-index: 3; }
+  .fade.top { top: 0; background: linear-gradient(var(--frame), transparent); }
+  .fade.bot { bottom: 0; background: linear-gradient(transparent, var(--frame)); }
+  .nav-wrap.can-up .fade.top, .nav-wrap.can-down .fade.bot { opacity: 1; }
+  /* the fade must not paint over the open tab where it meets the panel */
+  .fade { right: 14px; }
+
+  .more { position: absolute; left: 50%; bottom: 0; transform: translate(-50%, 50%) scale(.9); z-index: 4; opacity: 0; pointer-events: none;
+          display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px 0 9px; border-radius: 99px; border: 1px solid var(--frame-line);
+          background: var(--frame-2); color: var(--ink); font: 600 13px/1 inherit; font-family: inherit; cursor: pointer;
+          box-shadow: 0 4px 12px rgba(0,0,0,.25); transition: opacity .2s, transform .2s; }
+  .more svg { width: 16px; height: 16px; }
+  .nav-wrap.can-down .more { opacity: 1; pointer-events: auto; transform: translate(-50%, 50%); }
+  .more:hover { background: var(--frame); }
+
+  /* ---------- groups (option B) ---------- */
+  .grp { padding-top: 0; }
+  .grp + .grp { margin-top: 12px; padding-top: 16px; position: relative; }
+  .grp + .grp::before { content: ""; position: absolute; top: 0; left: 24px; right: 26px; height: 1px; background: var(--frame-line); }
+  .glabel { padding: 0 24px 8px; font-size: 12px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--label); }
+
+  .item { position: relative; z-index: 1; display: flex; align-items: center; gap: 13px; height: var(--row); margin: 1px 14px 1px 12px; padding: 0 12px;
+          border-radius: 12px; font-size: 16px; font-weight: 600; color: var(--ink); cursor: pointer; user-select: none;
+          transition: background .15s, color .18s; }
+  .item svg { width: 22px; height: 22px; flex: none; stroke-width: 2; transition: color .18s, transform .25s; }
+  .item:hover:not(.active) { background: var(--frame-2); }
+  .item .badge { margin-left: auto; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 99px; background: #e5484d; color: #fff; font-size: 13px; font-weight: 700; display: grid; place-items: center; }
+  .g-work  .item svg { color: var(--c-work-ic); }
+  .g-comm  .item svg { color: var(--c-comm-ic); }
+  .g-res   .item svg { color: var(--c-res-ic); }
+  .g-admin .item svg { color: var(--c-admin-ic); }
+  .item.active { color: var(--text); }
+  .g-work  .item.active svg { color: var(--c-work); }
+  .g-comm  .item.active svg { color: var(--c-comm); }
+  .g-res   .item.active svg { color: var(--c-res); }
+  .g-admin .item.active svg { color: var(--c-admin); }
+  .item.pop svg { animation: pop .32s ease; }
+  @keyframes pop { 40% { transform: scale(1.18); } }
+
+  /* ---------- the tab bubble ----------
+     One element positioned with offsetTop (not getBoundingClientRect, so a hover
+     translate or the scroll position never skews it). Curves are radial cut-outs. */
+  .bubble { position: absolute; left: 12px; right: 0; height: var(--row); top: 0; z-index: 0; pointer-events: none;
+            background: var(--panel); border-radius: 12px 0 0 12px; }
+  .bubble::before, .bubble::after { content: ""; position: absolute; right: 0; width: var(--curve); height: var(--curve); }
+  .bubble::before { top: calc(-1 * var(--curve)); background: radial-gradient(circle at 0 0, transparent calc(var(--curve) - .5px), var(--panel) var(--curve)); }
+  .bubble::after  { bottom: calc(-1 * var(--curve)); background: radial-gradient(circle at 0 100%, transparent calc(var(--curve) - .5px), var(--panel) var(--curve)); }
+
+  .foot { flex: none; padding: 8px 14px 14px 12px; position: relative; border-top: 1px solid transparent; transition: border-color .2s; }
+  .nav-wrap.can-down + .foot { border-top-color: var(--frame-line); }
+  .foot::after { content: ""; position: absolute; inset: auto 0 0 0; height: 120px; pointer-events: none; opacity: .14;
+                 background: url("../../../src/IPop.Web/wwwroot/img/brand/batik-kopi-oval.svg") 0 0 / 54px;
+                 -webkit-mask: linear-gradient(to top, #000, transparent); mask: linear-gradient(to top, #000, transparent); }
+  .me { display: flex; align-items: center; gap: 11px; padding: 9px 10px; border-radius: 14px; border: 1px solid var(--frame-line); position: relative; z-index: 1; }
+  .me .av { width: 40px; height: 40px; border-radius: 11px; background: linear-gradient(135deg,#e5484d,#2fa36b); }
+  .me .n { font-size: 15px; font-weight: 600; color: #fff; }
+  .me .r { font-size: 13px; color: var(--ink-2); }
+
+  @media (prefers-reduced-motion: reduce) { .item.pop svg { animation: none; } }
+
+  .notes { padding: 0 28px 40px; max-width: 1100px; font-size: 14px; line-height: 1.6; }
+  .notes h3 { font-size: 15px; margin: 18px 0 4px; }
+  .notes ul { margin: 0; padding-left: 20px; }
+</style>
+</head>
+<body>
+<header class="page">
+  <div>
+    <h1>Sidebar B — label + garis halus, versi layar kecil</h1>
+    <p>Klik menu mana saja di kedua layar. Di laptop kecil, coba klik <b>Admin settings</b> atau <b>Calendar</b> yang ada di bawah: menu otomatis bergeser dulu, lalu bubble tab masuk. Scroll dengan mouse untuk melihat bubble ikut bergerak bersama menunya.</p>
+  </div>
+  <span class="spacer"></span>
+  <div class="seg" id="theme"><button class="on" data-v="light">Terang</button><button data-v="dark">Gelap</button></div>
+</header>
+
+<div class="grid" id="grid"></div>
+
+<div class="notes">
+  <h3>Perbaikan layar kecil</h3>
+  <ul>
+    <li><b>Scrollbar bawaan disembunyikan.</b> Scrollbar itulah yang memakan tepi kanan, jadi bubble tidak nyambung ke panel konten dan lengkungannya kelihatan terpotong.</li>
+    <li><b>Penanda masih ada menu di bawah:</b> bayangan halus di atas/bawah, plus tombol kecil <b>“More”</b> yang bisa diklik. Begitu sampai bawah, tombolnya hilang.</li>
+    <li><b>Bubble ikut di dalam daftar menu</b>, jadi waktu di-scroll bubble bergerak bersama menunya dan lengkungan atas/bawahnya tetap utuh.</li>
+    <li><b>Klik menu yang setengah tertutup:</b> daftar bergeser dulu sampai menunya terlihat penuh, baru bubble pindah.</li>
+    <li>Animasi pindah tab: bubble lama keluar ke kanan masuk ke panel, bubble baru keluar dari panel (sama seperti sekarang), ditambah ikon yang sedikit membesar sesaat.</li>
+  </ul>
+</div>
+
+<template id="tpl">
+  <div class="device">
+    <aside class="side">
+      <div class="side-head"><div class="logo"></div><div class="brand">iPop</div>
+        <div class="collapse"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg></div></div>
+      <div class="nav-wrap">
+        <nav><div class="nav-inner"><div class="bubble"></div></div></nav>
+        <div class="fade top"></div><div class="fade bot"></div>
+        <button class="more" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>More</button>
+      </div>
+      <div class="foot"><div class="me"><div class="av"></div><div><div class="n">IPop Administrator</div><div class="r">Super admin</div></div></div></div>
+    </aside>
+    <div class="panel"><div class="ph"></div><div class="ph big"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div></div>
+  </div>
+</template>
+
+<script>
+const P = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const I = {
+  dashboard: P('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'),
+  directory: P('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'),
+  projects: P('<path d="M6 5v11"/><path d="M12 5v6"/><path d="M18 5v14"/>'),
+  notes: P('<path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4"/><path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><path d="M21.4 5.6a2 2 0 1 0-2.8-2.8l-5.3 5.3a2 2 0 0 0-.5.9l-.8 2.9 2.9-.8a2 2 0 0 0 .9-.5z"/>'),
+  tickets: P('<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/>'),
+  chat: P('<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>'),
+  mail: P('<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>'),
+  news: P('<path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/>'),
+  calls: P('<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>'),
+  bell: P('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>'),
+  files: P('<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>'),
+  calendar: P('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>'),
+  admin: P('<path d="M21 4h-7"/><path d="M10 4H3"/><path d="M21 12h-9"/><path d="M8 12H3"/><path d="M21 20h-5"/><path d="M12 20H3"/><path d="M14 2v4"/><path d="M8 10v4"/><path d="M16 18v4"/>'),
+};
+const GROUPS = [
+  ['work', 'Workspace', [['dashboard','Dashboard'],['directory','Directory'],['projects','Projects'],['notes','Notes'],['tickets','Tickets']]],
+  ['comm', 'Communication', [['chat','Chat',4],['mail','Mail'],['news','News & Memos'],['calls','Calls'],['bell','Notifications',3]]],
+  ['res', 'Resources', [['files','Files'],['calendar','Calendar']]],
+  ['admin', 'Administration', [['admin','Admin settings']]],
+];
+const DEVICES = [
+  ['Layar besar · 1920×1080', 'Semua menu muat, tidak ada scroll.', 940],
+  ['Laptop kecil · 1366×768', 'Tinggi area aplikasi ±650px — menu di-scroll, kartu akun tetap terlihat.', 650],
+];
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const grid = document.getElementById('grid');
+const tpl = document.getElementById('tpl');
+
+for (const [title, sub, h] of DEVICES) {
+  const wrap = document.createElement('div');
+  wrap.className = 'opt';
+  wrap.innerHTML = `<h2>${title}</h2><p class="sub">${sub}</p>`;
+  const dev = tpl.content.firstElementChild.cloneNode(true);
+  dev.style.height = h + 'px';
+  const inner = dev.querySelector('.nav-inner');
+  for (const [key, label, items] of GROUPS) {
+    const g = document.createElement('div');
+    g.className = 'grp g-' + key;
+    g.innerHTML = `<div class="glabel">${label}</div>` +
+      items.map(([k, t, b]) => `<div class="item" data-k="${k}" tabindex="0">${I[k]}<span>${t}</span>${b ? `<span class="badge">${b}</span>` : ''}</div>`).join('');
+    inner.appendChild(g);
+  }
+  wrap.appendChild(dev);
+  grid.appendChild(wrap);
+  setup(dev);
+}
+
+function setup(dev) {
+  const wrap = dev.querySelector('.nav-wrap');
+  const nav = dev.querySelector('nav');
+  const inner = dev.querySelector('.nav-inner');
+  const bubble = dev.querySelector('.bubble');
+  const more = dev.querySelector('.more');
+  let current = inner.querySelector('.item[data-k=dashboard]');
+
+  // offsetTop relative to .nav-inner — unaffected by scroll or hover transforms
+  const topOf = (el) => { let y = 0; for (let n = el; n && n !== inner; n = n.offsetParent) y += n.offsetTop; return y; };
+  const place = (el) => { bubble.style.top = topOf(el) + 'px'; };
+
+  const edges = () => {
+    wrap.classList.toggle('can-up', nav.scrollTop > 2);
+    wrap.classList.toggle('can-down', nav.scrollTop + nav.clientHeight < nav.scrollHeight - 2);
+  };
+  nav.addEventListener('scroll', edges, { passive: true });
+  new ResizeObserver(edges).observe(nav);
+  more.addEventListener('click', () => nav.scrollBy({ top: nav.clientHeight * 0.7, behavior: reduce ? 'auto' : 'smooth' }));
+
+  // bring a row fully into view (with room for its curves) before the tab moves
+  const reveal = (el) => new Promise((done) => {
+    const pad = 18 + 8, top = topOf(el) + parseFloat(getComputedStyle(nav).paddingTop);
+    let target = null;
+    if (top - pad < nav.scrollTop) target = top - pad;
+    else if (top + el.offsetHeight + pad > nav.scrollTop + nav.clientHeight) target = top + el.offsetHeight + pad - nav.clientHeight;
+    if (target === null) return done();
+    if (reduce) { nav.scrollTop = target; return done(); }
+    nav.scrollTo({ top: target, behavior: 'smooth' });
+    let last = -1, still = 0;
+    const tick = () => { if (Math.abs(nav.scrollTop - last) < .5) still++; else still = 0; last = nav.scrollTop;
+                         still > 3 ? done() : requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  });
+
+  async function go(el) {
+    if (el === current) return;
+    await reveal(el);
+    const old = current; current = el;
+    old.classList.remove('active');
+    if (!reduce) {
+      // old tab slides back into the panel, new one slides out of it
+      const ghost = bubble.cloneNode(); inner.prepend(ghost);
+      ghost.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(105%)' }], { duration: 220, easing: 'cubic-bezier(.4,0,1,1)' }).finished.then(() => ghost.remove());
+      place(el);
+      bubble.animate([{ transform: 'translateX(105%)' }, { transform: 'translateX(0)' }], { duration: 300, delay: 90, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' });
+      setTimeout(() => { el.classList.add('active', 'pop'); setTimeout(() => el.classList.remove('pop'), 340); }, 150);
+    } else { place(el); el.classList.add('active'); }
+  }
+
+  inner.addEventListener('click', (e) => { const it = e.target.closest('.item'); if (it) go(it); });
+  inner.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { const it = e.target.closest('.item'); if (it) { e.preventDefault(); go(it); } } });
+  current.classList.add('active'); place(current); edges();
+}
+
+const seg = document.getElementById('theme');
+seg.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return;
+  seg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  document.documentElement.dataset.theme = b.dataset.v === 'dark' ? 'dark' : ''; });
+</script>
+</body>
+</html>

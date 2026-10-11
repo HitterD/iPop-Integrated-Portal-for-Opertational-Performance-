@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>iPop · Sidebar clean — 3 options</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --frame: #123528; --frame-2: #1a4535; --frame-line: rgba(255,255,255,.12);
+    --ink: rgba(255,255,255,.92); --ink-2: #a9c7b8; --label: #b3d0c1;
+    --panel: #f3f4f6; --card: #ffffff; --text: #1d2420; --muted: #6b766f;
+    --c-work: #3a86c8; --c-work-ic: #8fc6f2;
+    --c-comm: #cf6a4c; --c-comm-ic: #f4a98f;
+    --c-res:  #d19a2a; --c-res-ic:  #f2c96c;
+    --c-admin:#6f8290; --c-admin-ic:#bccad3;
+    --frame-h: 940px;
+  }
+  [data-theme="dark"] {
+    --frame: #0b2219; --frame-2: #133126; --frame-line: rgba(255,255,255,.10);
+    --ink: rgba(255,255,255,.90); --ink-2: #93b3a4; --label: #9fbfaf;
+    --panel: #0f1211; --card: #1a1e1c; --text: #e8ece9; --muted: #8d9891;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Inter", -apple-system, "Segoe UI", system-ui, sans-serif; background: #d9ddd9; color: #1d2420; }
+  [data-theme="dark"] body, body[data-theme="dark"] { background: #050807; color: #e8ece9; }
+  header.page { display: flex; align-items: center; gap: 16px; padding: 18px 28px; flex-wrap: wrap; }
+  header.page h1 { font-size: 20px; margin: 0; }
+  header.page p { margin: 0; font-size: 14px; opacity: .75; }
+  .seg { display: inline-flex; background: rgba(0,0,0,.08); border-radius: 10px; padding: 3px; }
+  [data-theme="dark"] .seg { background: rgba(255,255,255,.08); }
+  .seg button { border: 0; background: none; padding: 7px 14px; border-radius: 8px; font: 600 13px inherit; font-family: inherit; color: inherit; cursor: pointer; }
+  .seg button.on { background: #fff; color: #123528; box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+  .spacer { flex: 1; }
+
+  .grid { display: flex; gap: 22px; padding: 4px 28px 40px; overflow-x: auto; align-items: flex-start; }
+  .opt { flex: none; }
+  .opt h2 { font-size: 15px; margin: 0 0 4px; }
+  .opt h2 .rec { font-size: 11px; background: #123528; color: #fff; padding: 2px 8px; border-radius: 99px; margin-left: 6px; vertical-align: 2px; }
+  .opt .sub { font-size: 12.5px; opacity: .7; margin: 0 0 10px; max-width: 380px; min-height: 34px; }
+
+  /* ---------- device ---------- */
+  .device { width: 392px; height: var(--frame-h); display: flex; background: var(--frame); border-radius: 14px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.18); }
+  .side { width: 280px; flex: none; display: flex; flex-direction: column; color: var(--ink); position: relative; }
+  .panel { flex: 1; background: var(--panel); margin-top: 64px; border-top-left-radius: 18px; padding: 22px 0 0 18px; overflow: hidden; }
+  .panel .ph { height: 12px; width: 70px; border-radius: 6px; background: var(--muted); opacity: .35; margin-bottom: 10px; }
+  .panel .ph.big { height: 22px; width: 150px; opacity: .55; background: var(--text); }
+  .panel .tile { height: 110px; border-radius: 16px; background: var(--card); margin: 16px 0 14px; width: 160px; }
+
+  .side-head { height: 64px; display: flex; align-items: center; gap: 10px; padding: 0 14px 0 22px; flex: none; }
+  .logo { width: 30px; height: 30px; border-radius: 9px; background: conic-gradient(#e5484d 0 33%, #2fa36b 0 66%, #3a86c8 0); }
+  .brand { font-size: 23px; font-weight: 700; color: #fff; letter-spacing: -.01em; }
+  .collapse { margin-left: auto; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--ink-2); }
+
+  nav { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 4px 0 8px; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+  nav:hover { scrollbar-color: rgba(255,255,255,.25) transparent; }
+
+  .item { position: relative; display: flex; align-items: center; gap: 13px; height: 42px; margin: 1px 14px 1px 12px; padding: 0 12px;
+          border-radius: 12px; font-size: 16px; font-weight: 600; color: var(--ink); cursor: pointer; user-select: none; transition: background .15s; }
+  .item svg { width: 22px; height: 22px; flex: none; stroke-width: 2; }
+  .item:hover { background: var(--frame-2); }
+  .item .badge { margin-left: auto; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 99px; background: #e5484d; color: #fff; font-size: 13px; font-weight: 700; display: grid; place-items: center; }
+  .g-work  .item svg { color: var(--c-work-ic); }
+  .g-comm  .item svg { color: var(--c-comm-ic); }
+  .g-res   .item svg { color: var(--c-res-ic); }
+  .g-admin .item svg { color: var(--c-admin-ic); }
+
+  /* active = tab merging into the panel */
+  .item.active { background: var(--panel); color: var(--text); margin-right: 0; border-radius: 12px 0 0 12px; }
+  .item.active::before, .item.active::after { content: ""; position: absolute; right: 0; width: 18px; height: 18px; pointer-events: none; }
+  .item.active::before { top: -18px; background: radial-gradient(circle at 0 0, transparent 17.5px, var(--panel) 18px); }
+  .item.active::after  { bottom: -18px; background: radial-gradient(circle at 0 100%, transparent 17.5px, var(--panel) 18px); }
+  .g-work  .item.active svg { color: var(--c-work); }
+  .g-comm  .item.active svg { color: var(--c-comm); }
+  .g-res   .item.active svg { color: var(--c-res); }
+  .g-admin .item.active svg { color: var(--c-admin); }
+
+  .foot { flex: none; padding: 10px 14px 14px 12px; position: relative; }
+  .foot::after { content: ""; position: absolute; inset: auto 0 0 0; height: 120px; pointer-events: none; opacity: .14;
+                 background: url("../../../src/IPop.Web/wwwroot/img/brand/batik-kopi-oval.svg") 0 0 / 54px;
+                 -webkit-mask: linear-gradient(to top, #000, transparent); mask: linear-gradient(to top, #000, transparent); }
+  .me { display: flex; align-items: center; gap: 11px; padding: 9px 10px; border-radius: 14px; border: 1px solid var(--frame-line); position: relative; z-index: 1; }
+  .me .av { width: 40px; height: 40px; border-radius: 11px; background: linear-gradient(135deg,#e5484d,#2fa36b); }
+  .me .n { font-size: 15px; font-weight: 600; color: #fff; }
+  .me .r { font-size: 13px; color: var(--ink-2); }
+
+  /* ---------- CURRENT (for comparison) ---------- */
+  .v-now .grp + .grp { border-top: 1px solid rgba(255,255,255,.10); margin-right: 14px; }
+  .v-now .grp + .grp .item:not(.active) { margin-right: 0; }
+  .v-now .grp { padding: 8px 0 2px; }
+  .v-now .glabel { display: flex; align-items: center; gap: 9px; padding: 4px 24px 6px; font-size: 13px; font-weight: 700; color: #fff; }
+  .v-now .chip { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; }
+  .v-now .chip svg { width: 14px; height: 14px; color: #fff; }
+  .v-now .g-work .chip { background: var(--c-work); } .v-now .g-comm .chip { background: var(--c-comm); }
+  .v-now .g-res .chip { background: var(--c-res); } .v-now .g-admin .chip { background: var(--c-admin); }
+  .v-now .item { font-size: 15px; font-weight: 550; height: 40px; }
+  .v-now .item svg { width: 20px; height: 20px; stroke-width: 1.75; color: var(--ink) !important; }
+  .v-now .item.active svg { color: var(--text) !important; }
+
+  /* ---------- A: quiet small-caps label, space only ---------- */
+  .v-a .grp { padding-top: 22px; }
+  .v-a .grp:first-child { padding-top: 6px; }
+  .v-a .glabel { padding: 0 24px 8px; font-size: 12px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--label); }
+
+  /* ---------- B: label + hairline ---------- */
+  .v-b .grp { padding-top: 6px; }
+  .v-b .grp + .grp { margin-top: 12px; padding-top: 16px; position: relative; }
+  .v-b .grp + .grp::before { content: ""; position: absolute; top: 0; left: 24px; right: 26px; height: 1px; background: var(--frame-line); }
+  .v-b .glabel { padding: 0 24px 8px; font-size: 12px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--label); }
+
+  /* ---------- C: card per group ---------- */
+  .v-c nav { padding-top: 2px; }
+  .v-c .grp { margin: 0 0 10px 10px; padding: 10px 0 6px; border-radius: 16px 0 0 16px; background: rgba(255,255,255,.045); position: relative; }
+  [data-theme="dark"] .v-c .grp { background: rgba(255,255,255,.035); }
+  .v-c .grp::after { content: ""; position: absolute; top: 0; bottom: 0; right: 0; width: 12px; background: var(--frame); } /* card ends 12px before the edge */
+  .v-c .grp .item { margin-left: 6px; margin-right: 18px; }
+  .v-c .grp .item.active { margin-right: 0; z-index: 1; }
+  .v-c .glabel { padding: 0 18px 6px; font-size: 12px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--label); }
+
+  .notes { padding: 0 28px 40px; max-width: 1100px; font-size: 14px; line-height: 1.6; }
+  .notes h3 { font-size: 15px; margin: 18px 0 4px; }
+  .notes ul { margin: 0; padding-left: 20px; }
+</style>
+</head>
+<body>
+<header class="page">
+  <div>
+    <h1>Sidebar — lebih clean, lebih terbaca (40+)</h1>
+    <p>Klik menu mana saja untuk mencoba tab aktif. Semua pilihan memakai teks 16px semibold, ikon 22px berwarna kategori, baris 42px.</p>
+  </div>
+  <span class="spacer"></span>
+  <div class="seg" id="theme"><button class="on" data-v="light">Terang</button><button data-v="dark">Gelap</button></div>
+  <div class="seg" id="height"><button class="on" data-v="940px">Layar 1080p</button><button data-v="720px">Laptop 1366×768</button></div>
+</header>
+
+<div class="grid" id="grid"></div>
+
+<div class="notes">
+  <h3>Yang berubah di semua pilihan (A/B/C)</h3>
+  <ul>
+    <li><b>Judul kategori jadi kalem</b> — huruf kapital kecil 12px, hijau pucat, tanpa chip. Mata langsung tahu: ini judul, bukan tombol.</li>
+    <li><b>Menu jadi yang menonjol</b> — 16px semibold, putih 92%, ikon 22px tebal (stroke 2) dengan warna kategori: Workspace biru, Communication terakota, Resources emas, Administration slate.</li>
+    <li><b>Notifications pindah ke Communication</b>; menu “Administration” → <b>Admin settings</b> (tidak dobel lagi).</li>
+    <li>Tetap: frame hijau hutan, tab aktif menyatu ke konten, batik kopi di bawah, kartu akun, mode gelap.</li>
+    <li>Di laptop 768px menu bisa scroll halus (kartu akun tetap terlihat) — coba tombol “Laptop 1366×768”.</li>
+  </ul>
+</div>
+
+<template id="tpl">
+  <div class="device">
+    <aside class="side">
+      <div class="side-head"><div class="logo"></div><div class="brand">iPop</div>
+        <div class="collapse"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg></div></div>
+      <nav></nav>
+      <div class="foot"><div class="me"><div class="av"></div><div><div class="n">IPop Administrator</div><div class="r">Super admin</div></div></div></div>
+    </aside>
+    <div class="panel"><div class="ph"></div><div class="ph big"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div></div>
+  </div>
+</template>
+
+<script>
+const P = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const I = {
+  dashboard: P('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'),
+  directory: P('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'),
+  projects: P('<path d="M6 5v11"/><path d="M12 5v6"/><path d="M18 5v14"/>'),
+  notes: P('<path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4"/><path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><path d="M21.4 5.6a2 2 0 1 0-2.8-2.8l-5.3 5.3a2 2 0 0 0-.5.9l-.8 2.9 2.9-.8a2 2 0 0 0 .9-.5z"/>'),
+  tickets: P('<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/>'),
+  chat: P('<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>'),
+  mail: P('<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>'),
+  news: P('<path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/>'),
+  calls: P('<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>'),
+  bell: P('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>'),
+  files: P('<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>'),
+  calendar: P('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>'),
+  admin: P('<path d="M21 4h-7"/><path d="M10 4H3"/><path d="M21 12h-9"/><path d="M8 12H3"/><path d="M21 20h-5"/><path d="M12 20H3"/><path d="M14 2v4"/><path d="M8 10v4"/><path d="M16 18v4"/>'),
+  g_work: P('<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>'),
+  g_comm: P('<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>'),
+  g_res: P('<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>'),
+  g_admin: P('<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>'),
+};
+
+// New grouping (A/B/C): Notifications under Communication, "Admin settings"
+const NEW = [
+  ['work', 'Workspace', [['dashboard','Dashboard'],['directory','Directory'],['projects','Projects'],['notes','Notes'],['tickets','Tickets']]],
+  ['comm', 'Communication', [['chat','Chat',4],['mail','Mail'],['news','News & Memos'],['calls','Calls'],['bell','Notifications',3]]],
+  ['res', 'Resources', [['files','Files'],['calendar','Calendar']]],
+  ['admin', 'Administration', [['admin','Admin settings']]],
+];
+// Current live grouping
+const NOW = [
+  ['work', 'Workspace', [['dashboard','Dashboard'],['directory','Directory'],['projects','Projects'],['notes','Notes'],['tickets','Tickets']]],
+  ['comm', 'Communication', [['chat','Chat'],['mail','Mail'],['news','News & Memos'],['calls','Calls']]],
+  ['res', 'Resources', [['files','Files'],['calendar','Calendar']]],
+  ['admin', 'Administration', [['admin','Administration'],['bell','Notifications',3]]],
+];
+
+const OPTIONS = [
+  ['v-now', 'Sekarang (live)', 'Judul kategori & menu sama-sama putih tebal; pemisah garis tipis yang menempel ke judul berikutnya.', NOW],
+  ['v-a', 'A · Label kalem', 'Gaya macOS Finder: judul kapital kecil hijau pucat, kelompok dipisah jarak lega saja — paling bersih.', NEW],
+  ['v-b', 'B · Label + garis halus', 'Seperti A, plus garis tipis di atas tiap kelompok dengan jarak cukup — batas lebih tegas tanpa ramai.', NEW, true],
+  ['v-c', 'C · Kartu per kelompok', 'Tiap kategori di panel membulat yang sedikit lebih terang — pemisahan paling jelas, sedikit lebih “berat”.', NEW],
+];
+
+let active = 'dashboard';
+const grid = document.getElementById('grid');
+const tpl = document.getElementById('tpl');
+
+for (const [cls, title, sub, groups, rec] of OPTIONS) {
+  const wrap = document.createElement('div');
+  wrap.className = 'opt ' + cls;
+  wrap.innerHTML = `<h2>${title}${rec ? '<span class="rec">Rekomendasi</span>' : ''}</h2><p class="sub">${sub}</p>`;
+  const dev = tpl.content.firstElementChild.cloneNode(true);
+  const nav = dev.querySelector('nav');
+  for (const [key, label, items] of groups) {
+    const g = document.createElement('div');
+    g.className = 'grp g-' + key;
+    g.innerHTML = `<div class="glabel">${cls === 'v-now' ? `<span class="chip">${I['g_' + key]}</span>` : ''}${label}</div>` +
+      items.map(([k, t, b]) => `<div class="item" data-k="${k}">${I[k]}<span>${t}</span>${b ? `<span class="badge">${b}</span>` : ''}</div>`).join('');
+    nav.appendChild(g);
+  }
+  wrap.appendChild(dev);
+  grid.appendChild(wrap);
+}
+
+function paint() { document.querySelectorAll('.item').forEach(el => el.classList.toggle('active', el.dataset.k === active)); }
+grid.addEventListener('click', e => { const it = e.target.closest('.item'); if (it) { active = it.dataset.k; paint(); } });
+paint();
+
+function seg(id, fn) {
+  const s = document.getElementById(id);
+  s.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return;
+    s.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); fn(b.dataset.v); });
+}
+seg('theme', v => document.documentElement.dataset.theme = v === 'dark' ? 'dark' : '');
+seg('height', v => document.documentElement.style.setProperty('--frame-h', v));
+</script>
+</body>
+</html>
