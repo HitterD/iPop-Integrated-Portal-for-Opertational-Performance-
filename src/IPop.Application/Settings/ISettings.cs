@@ -15,6 +15,8 @@ public static class SettingKeys
     public const string NotifDndStart = "notif.dnd.start";
     public const string NotifDndEnd = "notif.dnd.end";
     public const string NotifDigestTime = "notif.digest.time";
+    public const string MeetingRoomsVideo = "meetingRooms.video";
+    public const string MeetingRoomsRetentionDays = "meetingRooms.retentionDays";
 
     public static readonly IReadOnlyDictionary<string, object> Defaults = new Dictionary<string, object>
     {
@@ -23,5 +25,7 @@ public static class SettingKeys
         [NotifDndStart] = "22:00",
         [NotifDndEnd] = "07:00",
         [NotifDigestTime] = "07:30",
+        [MeetingRoomsVideo] = new Dictionary<string, bool>(),
+        [MeetingRoomsRetentionDays] = 90,
     };
 }

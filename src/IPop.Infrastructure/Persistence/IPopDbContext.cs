@@ -152,6 +152,8 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<CallHistory> CallHistories => Set<CallHistory>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
     public DbSet<HallRoom> HallRooms => Set<HallRoom>();
+    public DbSet<MeetingRecording> MeetingRecordings => Set<MeetingRecording>();
+    public DbSet<MeetingRecordingViewer> MeetingRecordingViewers => Set<MeetingRecordingViewer>();
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<EmailOutboxMessage> EmailOutbox => Set<EmailOutboxMessage>();
     public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
@@ -179,6 +181,22 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Key).HasMaxLength(32);
             e.Property(x => x.Name).HasMaxLength(64);
             e.HasData(HallRooms_Seed);
+        });
+        b.Entity<MeetingRecording>(e =>
+        {
+            e.Property(x => x.RoomKey).HasMaxLength(32);
+            e.Property(x => x.Title).HasMaxLength(300);
+            e.Property(x => x.EgressId).HasMaxLength(64);
+            e.Property(x => x.SpoolPath).HasMaxLength(500);
+            e.Property(x => x.NasPath).HasMaxLength(500);
+            e.HasIndex(x => new { x.RoomKey, x.Status });
+            e.HasIndex(x => x.RoomKey).IsUnique().HasFilter("\"Status\" = 0").HasDatabaseName("IX_MeetingRecordings_OneLivePerRoom");
+            e.HasMany(x => x.Viewers).WithOne().HasForeignKey(v => v.RecordingId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<MeetingRecordingViewer>(e =>
+        {
+            e.HasKey(x => new { x.RecordingId, x.UserId });
+            e.HasIndex(x => x.UserId);
         });
         b.Entity<Department>(e =>
         {
