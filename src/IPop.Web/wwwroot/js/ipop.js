@@ -391,8 +391,8 @@ window.ipop = {
       }
     };
     const onClick = e => {
-      // The account menu closes itself: clicking one of its items must reach Blazor first.
-      if (!e.target.closest(".notif-pop, .bell-btn, .me-menu, .me-card")) {
+      // The account and status menus close themselves: clicking one of their items must reach Blazor first.
+      if (!e.target.closest(".notif-pop, .bell-btn, .me-menu, .me-card, .status-wrap")) {
         dotnet.invokeMethodAsync("OnClickAway");
       }
     };
