@@ -37,17 +37,21 @@
 .ph-sep { height: 1px; margin: 5px 8px; background: var(--line-soft); }
 
 /* ---------- Add people dialog ---------- */
-.ap-modal .proj-modal-body { padding-top: 4px; }
+.ap-modal .proj-modal-body { padding-top: 4px; gap: 0; }
+/* The body is a scrolling flex column: nothing in it may shrink (the search box collapsed to ~19px). */
+.ap-modal .proj-modal-body > * { flex-shrink: 0; }
 .ap-lead { margin: 0 0 12px; font-size: 13.5px; color: var(--ink-2); line-height: 1.5; }
 .ap-step { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; font-size: 13px; font-weight: 650; color: var(--ink-2); }
 .ap-num { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; display: grid; place-items: center; flex: none; }
 .ap-search {
-  height: 46px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 12px;
+  flex: none; height: 46px; min-height: 46px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 12px;
   border: 2px solid var(--accent); background: var(--surface);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 .ap-search .lucide { width: 18px; height: 18px; color: var(--ink-3); flex: none; }
-.ap-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: inherit; font-size: 15px; color: var(--ink); }
+.ap-search input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: none; font: inherit; font-size: 15px; color: var(--ink); }
+/* The box itself shows focus (green ring); the global :focus-visible outline would draw a second box inside it. */
+.ap-search input:focus, .ap-search input:focus-visible { outline: none; box-shadow: none; }
 .ap-search input::placeholder { color: var(--ink-3); }
 .ap-spin { animation: ap-spin .9s linear infinite; }
 @keyframes ap-spin { to { transform: rotate(360deg); } }
@@ -160,3 +164,23 @@ button.td-group-head:hover { background: color-mix(in srgb, var(--fill) 50%, tra
   .ph-btn { padding: 0 11px; }
   .td-group-body.td-properties { grid-template-columns: 1fr; gap: 4px; }
 }
+
+/* ---------- Shared Projects form fixes (user screenshots 2026-10-11) ---------- */
+/* New project / Edit project: text inputs keep their 40px height inside the flex column field
+   (they collapsed to ~18px when the body ran short on space). */
+.v6-project-modal .proj-modal-body > * { flex-shrink: 0; }
+.v6-project-modal .field > input.org-input { flex: none; height: 40px; min-height: 40px; }
+.v6-project-modal .field > textarea.org-input { flex: none; }
+
+/* Task comments: one rounded box, text and send button on the same centre line. */
+.td-comments .task-discussion > div:has(> textarea) {
+  display: flex; align-items: center !important; gap: 8px; min-height: 48px;
+  padding: 6px 6px 6px 14px; border-radius: 14px; background: var(--surface);
+}
+.td-comments .task-discussion > div:has(> textarea):focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent); }
+.td-comments .task-discussion textarea {
+  height: 24px !important; min-height: 24px !important; max-height: 120px; padding: 0 !important; margin: 0;
+  line-height: 24px; font-size: 14px !important; field-sizing: content; box-shadow: none !important; outline: none !important;
+}
+.td-comments .task-discussion .btn-sm.accent { width: 34px; height: 34px; flex: none; display: grid; place-items: center; align-self: center; }
+.td-comments .task-discussion .btn-sm.accent .lucide { width: 15px !important; height: 15px !important; }
