@@ -69,6 +69,34 @@ public class LiveKitTokenTests
         Assert.Throws<InvalidOperationException>(() => lk.GenerateToken("r", "u", "n"));
     }
 
+    [Fact]
+    public void Sources_and_own_metadata_are_granted_only_when_asked()
+    {
+        var svc = CreateService();
+        var plain = Payload(svc.GenerateToken("r", "u", "U")).GetProperty("video");
+        Assert.False(plain.TryGetProperty("canPublishSources", out _));
+        Assert.False(plain.TryGetProperty("canUpdateOwnMetadata", out _));
+
+        var v = Payload(svc.GenerateToken("r", "u", "U", sources: ["microphone", "screen_share"], canUpdateOwnMetadata: true)).GetProperty("video");
+        Assert.Equal(["microphone", "screen_share"], v.GetProperty("canPublishSources").EnumerateArray().Select(x => x.GetString()));
+        Assert.True(v.GetProperty("canUpdateOwnMetadata").GetBoolean());
+    }
+
+    [Fact]
+    public void Admin_token_grants_room_admin_and_optionally_record()
+    {
+        var svc = CreateService();
+        var v = Payload(svc.GenerateAdminToken("hall-kalosi", record: true)).GetProperty("video");
+        Assert.True(v.GetProperty("roomAdmin").GetBoolean());
+        Assert.True(v.GetProperty("roomCreate").GetBoolean());
+        Assert.True(v.GetProperty("roomRecord").GetBoolean());
+        Assert.Equal("hall-kalosi", v.GetProperty("room").GetString());
+        Assert.False(Payload(svc.GenerateAdminToken(null)).GetProperty("video").TryGetProperty("roomRecord", out _));
+    }
+
+    private static JsonElement Payload(string token) =>
+        JsonDocument.Parse(Encoding.UTF8.GetString(Base64UrlDecode(token.Split('.')[1]))).RootElement;
+
     private static byte[] Base64UrlDecode(string input)
     {
         var output = input.Replace('-', '+').Replace('_', '/');
