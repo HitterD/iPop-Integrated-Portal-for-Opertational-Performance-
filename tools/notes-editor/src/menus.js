@@ -63,15 +63,16 @@ export function slashCommands(host) {
 }
 
 /// A keyboard-driven popup list used by both "/" and "@".
+/// emptyText: a string, or (query) => string for a message that follows what was typed.
 function listPopup(renderItem, emptyText) {
-  let pop = null, items = [], sel = 0, command = null;
+  let pop = null, items = [], sel = 0, command = null, query = '';
   const paint = () => {
     let g = '', html = '';
     items.forEach((it, i) => {
       if (it.group && it.group !== g) { g = it.group; html += `<div class="grp">${esc(g)}</div>`; }
       html += `<div class="it ${i === sel ? 'sel' : ''}" data-i="${i}">${renderItem(it)}</div>`;
     });
-    pop.innerHTML = html || `<div class="empty">${emptyText}</div>`;
+    pop.innerHTML = html || `<div class="empty">${typeof emptyText === 'function' ? emptyText(query) : emptyText}</div>`;
     pop.querySelector('.it.sel')?.scrollIntoView({ block: 'nearest' });
   };
   return {
@@ -86,7 +87,7 @@ function listPopup(renderItem, emptyText) {
       this.onUpdate(props);
     },
     onUpdate(props) {
-      items = props.items; command = props.command; sel = Math.min(sel, Math.max(items.length - 1, 0));
+      items = props.items; command = props.command; query = props.query ?? ''; sel = Math.min(sel, Math.max(items.length - 1, 0));
       paint();
       const r = props.clientRect?.(); if (r) place(pop, r);
     },
@@ -127,7 +128,11 @@ export const SlashMenu = Extension.create({
 export function mentionSuggestion(host) {
   return {
     char: '@',
-    items: async ({ query }) => (query.length < 2 ? [] : await host.searchPeople(query)),
+    // Full names have spaces: keep the popup open while typing "yudi arta", close after two spaces.
+    allowSpaces: true,
+    // Two spaces in a row = the user moved on: no popup at all (not even "No one named …").
+    allow: ({ state, range }) => !/\s{2,}/.test(state.doc.textBetween(range.from, range.to, ' ')),
+    items: async ({ query }) => (query.trim().length < 2 || /\s{2,}/.test(query) ? [] : await host.searchPeople(query.trim())),
     command: ({ editor, range, props }) => {
       editor.chain().focus().insertContentAt(range, [
         { type: 'mention', attrs: { id: props.id, label: props.name } }, { type: 'text', text: ' ' },
@@ -137,7 +142,7 @@ export function mentionSuggestion(host) {
     // Second line: department (never the NIK — office rule). People who can't open the page are
     // marked; picking one asks whether to share the page with them (host.mentioned).
     render: () => listPopup(p => `<span class="nt-av" style="background:${host.avatarColor(p.nik || p.id)}">${esc(host.initials(p.name))}</span><div><div class="nm">${esc(p.name)}</div><div class="ds">${esc(p.department || '')}</div></div>${p.hasAccess === false ? '<span class="nt-noacc">No access</span>' : ''}`,
-      'Type at least 2 letters of a name'),
+      q => (q.trim().length < 2 ? 'Type at least 2 letters of a name' : `No one named “${esc(q.trim())}”`)),
   };
 }
 

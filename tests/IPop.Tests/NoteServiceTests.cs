@@ -369,4 +369,25 @@ public class NoteServiceTests
         var r = await Svc(t).MentionInDocAsync(a.Id, root, [b.Id, c.Id], Ct);
         Assert.Equal(new[] { b.Id }, r.Data);
     }
+
+    [Fact]
+    public async Task People_search_matches_every_word_and_ranks_name_starts_first()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("s0");
+        foreach (var (nik, name) in new[] { ("s1", "AGUS WAHYUDI"), ("s2", "ARI WAHYUDI"), ("s3", "YUDI ARTA TRIRENSILA"), ("s4", "BUDI YUDISTIRA") })
+        {
+            var u = t.AddUser(nik); u.Name = name;
+        }
+        t.Db.SaveChanges();
+
+        var yudi = await Svc(t).SearchPeopleAsync("yudi", Ct);
+        Assert.Equal("YUDI ARTA TRIRENSILA", yudi[0].Name);          // name starts with it
+        Assert.Equal("BUDI YUDISTIRA", yudi[1].Name);                // a word starts with it
+        Assert.Contains(yudi, p => p.Name == "AGUS WAHYUDI");        // contains it: still listed, after
+
+        var full = await Svc(t).SearchPeopleAsync("yudi arta", Ct);  // spaces: every word must match
+        Assert.Equal("YUDI ARTA TRIRENSILA", Assert.Single(full).Name);
+        Assert.Equal("YUDI ARTA TRIRENSILA", Assert.Single(await Svc(t).SearchPeopleAsync("arta yudi", Ct)).Name);
+    }
 }

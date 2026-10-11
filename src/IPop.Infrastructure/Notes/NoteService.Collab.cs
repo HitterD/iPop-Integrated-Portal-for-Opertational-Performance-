@@ -367,9 +367,19 @@ public sealed partial class NoteService
     {
         var q = query.Trim().ToLower();
         if (q.Length < 2) return [];
-        var rows = await db.Users.AsNoTracking()
-            .Where(u => u.IsActive && (u.Name.ToLower().Contains(q) || (u.Email != null && u.Email.ToLower().Contains(q))))
-            .OrderBy(u => u.Name).Take(8)
+        // Every typed word must appear (any order): "yudi arta" finds YUDI ARTA TRIRENSILA. Ranking puts
+        // names that start with the query, then names with a word starting with it, ahead of names that
+        // merely contain it ("yudi" → YUDI … before WAHYUDI).
+        var words = q.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(4).ToArray();
+        var people = db.Users.AsNoTracking().Where(u => u.IsActive);
+        foreach (var w in words)
+            people = people.Where(u => u.Name.ToLower().Contains(w) || (u.Email != null && u.Email.ToLower().Contains(w)));
+        var first = words[0];
+        var rows = await people
+            .OrderBy(u => u.Name.ToLower().StartsWith(q) ? 0
+                : u.Name.ToLower().StartsWith(first) ? 1
+                : u.Name.ToLower().Contains(" " + first) ? 2 : 3)
+            .ThenBy(u => u.Name).Take(12)
             .Select(u => new { u.Id, u.Nik, u.Name, Department = u.Department != null ? u.Department.Name : null })
             .ToListAsync(ct);
         // Access flags only for someone who can open the page themselves (no probing of other pages).
