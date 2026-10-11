@@ -13,6 +13,7 @@ public class MeetingRoomServiceTests
     {
         public bool IsConfigured { get; set; } = true;
         public bool Throws { get; set; }
+        public string? ThrowFor { get; set; }
         public Dictionary<string, List<LiveKitParticipant>> Rooms { get; } = new();
         public List<(string Room, int Max)> Created { get; } = [];
         public List<(string Room, string Identity, string Sources)> SourceChanges { get; } = [];
@@ -23,7 +24,11 @@ public class MeetingRoomServiceTests
         public Task CreateRoomAsync(string room, int max, CancellationToken ct) { Created.Add((room, max)); return Task.CompletedTask; }
         public Task UpdateRoomMetadataAsync(string room, string metadata, CancellationToken ct) => Task.CompletedTask;
         public Task<bool> SetSourcesAsync(string room, string identity, IReadOnlyList<string> sources, CancellationToken ct)
-        { SourceChanges.Add((room, identity, string.Join(",", sources))); return Task.FromResult(true); }
+        {
+            if (identity == ThrowFor) throw new HttpRequestException("participant update failed");
+            SourceChanges.Add((room, identity, string.Join(",", sources)));
+            return Task.FromResult(true);
+        }
         public void Fill(string key, int count, string? plus = null)
         {
             var list = Enumerable.Range(0, count).Select(i => new LiveKitParticipant(Guid.NewGuid().ToString(), $"P{i}", [], new Dictionary<string, string>())).ToList();
@@ -110,6 +115,23 @@ public class MeetingRoomServiceTests
         lk.Throws = true;
         var down = await Make(t, lk).ListAsync(default);
         Assert.All(down, r => Assert.False(r.Available));
+    }
+
+    [Fact]
+    public async Task Turning_video_off_continues_after_one_participant_update_fails()
+    {
+        using var t = new TestDb();
+        var lk = new FakeRoomAdmin(); lk.Fill("toraja", 2);
+        var people = lk.Rooms["hall-toraja"];
+        lk.ThrowFor = people[0].Identity;
+        var svc = Make(t, lk);
+
+        await svc.SetVideoAsync("toraja", false, "admin", default);
+
+        var change = Assert.Single(lk.SourceChanges);
+        Assert.Equal(("hall-toraja", people[1].Identity), (change.Room, change.Identity));
+        Assert.DoesNotContain("camera", change.Sources);
+        Assert.False((await svc.VideoAsync(default))["toraja"]);
     }
 
     [Fact]

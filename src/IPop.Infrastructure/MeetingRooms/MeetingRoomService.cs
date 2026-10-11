@@ -99,7 +99,13 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
         {
             foreach (var p in await liveKit.ListAsync(room, ct))
                 if (!p.Identity.StartsWith("EG_", StringComparison.Ordinal))
-                    await liveKit.SetSourcesAsync(room, p.Identity, sources, ct);
+                {
+                    try
+                    {
+                        await liveKit.SetSourcesAsync(room, p.Identity, sources, ct);
+                    }
+                    catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { /* continue updating other participants */ }
+                }
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { /* saved; applies on next join */ }
     }
