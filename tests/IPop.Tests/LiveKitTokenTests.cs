@@ -21,6 +21,23 @@ public class LiveKitTokenTests
         return new LiveKitTokenService(cfg);
     }
 
+    [Theory]
+    [InlineData(null, "wss://livekit.test.local")]
+    [InlineData("", "wss://livekit.test.local")]
+    [InlineData("   ", "wss://livekit.test.local")]
+    [InlineData("http://127.0.0.1:7880", "http://127.0.0.1:7880")]
+    public void Server_api_override_does_not_change_the_browser_url(string? serverUrl, string expected)
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Calls:LiveKit:Url"] = "wss://livekit.test.local",
+            ["Calls:LiveKit:ServerUrl"] = serverUrl,
+        }).Build();
+        ILiveKitTokenService service = new LiveKitTokenService(config);
+        Assert.Equal(expected, service.ServerApiUrl);
+        Assert.Equal("wss://livekit.test.local", service.ServerUrl);
+    }
+
     [Fact]
     public void GenerateToken_ProducesValidJwtWithLiveKitVideoGrants()
     {

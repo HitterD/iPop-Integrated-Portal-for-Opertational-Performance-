@@ -19,7 +19,7 @@ public sealed class LiveKitEgress(HttpClient http, ILiveKitTokenService tokens) 
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     public bool IsConfigured => tokens.IsConfigured;
-    private Uri Base => new(tokens.ServerUrl!.Replace("wss://", "https://").Replace("ws://", "http://").TrimEnd('/') + "/twirp/livekit.Egress/");
+    private Uri Base => new(tokens.ServerApiUrl!.Replace("wss://", "https://").Replace("ws://", "http://").TrimEnd('/') + "/twirp/livekit.Egress/");
 
     private async Task<JsonElement> CallAsync(string method, string? room, object body, CancellationToken ct)
     {

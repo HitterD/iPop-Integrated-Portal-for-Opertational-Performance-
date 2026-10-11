@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory)] [string] $NodeIp,
     [Parameter(Mandatory)] [string] $PublicDomain,
     [string] $ApiKey = "ipopkey",
+    [string] $SpoolDir = "F:\ipop-data\recordings-spool",
     [switch] $SkipFirewall
 )
 $ErrorActionPreference = "Stop"
@@ -15,15 +16,23 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw "Docker is 
 $envFile = Join-Path $PSScriptRoot ".env"
 $secret = $null
 if (Test-Path $envFile) {
-    $m = Select-String -Path $envFile -Pattern '^LIVEKIT_KEYS=\s*([^:]+):\s*(.+)$'
-    if ($m) { $ApiKey = $m.Matches[0].Groups[1].Value.Trim(); $secret = $m.Matches[0].Groups[2].Value.Trim() }
+    $line = Get-Content $envFile | Where-Object { $_ -match '^LIVEKIT_KEYS=' } | Select-Object -First 1
+    if ($line) {
+        $keys = ($line -replace '^LIVEKIT_KEYS=\s*', '').Trim().Trim('"').Trim("'")
+        if ($keys -match '^([^:]+):\s*(.+)$') {
+            $ApiKey = $Matches[1].Trim()
+            $secret = $Matches[2].Trim()
+        } else { throw "Existing LIVEKIT_KEYS is invalid; refusing to replace its secret." }
+    }
 }
 if (-not $secret) {
     $bytes = New-Object byte[] 32
     [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
     $secret = -join ($bytes | ForEach-Object { $_.ToString("x2") })
 }
-[IO.File]::WriteAllText($envFile, "LIVEKIT_KEYS=${ApiKey}: $secret`n", $utf8)
+[IO.Directory]::CreateDirectory($SpoolDir) | Out-Null
+$spoolMount = $SpoolDir.Replace('\', '/')
+[IO.File]::WriteAllText($envFile, "LIVEKIT_KEYS=`"${ApiKey}: $secret`"`nRECORDINGS_SPOOL=$spoolMount`n", $utf8)
 
 $yaml = @"
 port: 7880
@@ -37,8 +46,14 @@ rtc:
 turn:
   enabled: true
   udp_port: 3478
+redis:
+  address: redis:6379
 "@
 [IO.File]::WriteAllText((Join-Path $PSScriptRoot "livekit.yaml"), $yaml, $utf8)
+
+$egress = [IO.File]::ReadAllText((Join-Path $PSScriptRoot "egress.yaml.template"))
+$egress = $egress.Replace('__API_KEY__', $ApiKey).Replace('__API_SECRET__', $secret)
+[IO.File]::WriteAllText((Join-Path $PSScriptRoot "egress.yaml"), $egress, $utf8)
 
 if (-not $SkipFirewall) {
     foreach ($r in @(
@@ -63,6 +78,8 @@ try {
 Write-Host ""
 Write-Host "=== Put these in the API config (appsettings.Local.json or environment variables) ===" -ForegroundColor Cyan
 Write-Host "Calls__LiveKit__Url=wss://$PublicDomain"
+Write-Host "Calls__LiveKit__ServerUrl=http://127.0.0.1:7880"
+Write-Host "MeetingRooms__SpoolDir=$SpoolDir"
 Write-Host "Calls__LiveKit__ApiKey=$ApiKey"
 Write-Host "Calls__LiveKit__ApiSecret=$secret"
 Write-Host ""

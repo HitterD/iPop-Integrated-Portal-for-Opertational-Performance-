@@ -41,6 +41,7 @@ public class MeetingRoomServiceTests
     {
         public bool IsConfigured { get; set; } = true;
         public string? ServerUrl => "wss://lk.test";
+        public string? ServerApiUrl => ServerUrl;
         public string? LastSources;
         public string GenerateToken(string roomName, string identity, string name, TimeSpan? ttl = null, IReadOnlyList<string>? sources = null, bool canUpdateOwnMetadata = false)
         { LastSources = sources is null ? null : string.Join(",", sources); return $"tok:{roomName}:{identity}"; }

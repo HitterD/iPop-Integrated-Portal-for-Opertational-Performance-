@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using IPop.Infrastructure.Calls;
+using Microsoft.Extensions.Configuration;
 using Xunit;
 
 namespace IPop.Tests;
@@ -20,6 +21,24 @@ public class LiveKitEgressTests
             Authorization = request.Headers.Authorization?.ToString();
             return new(status) { Content = new StringContent(response, Encoding.UTF8, "application/json") };
         }
+    }
+
+    [Theory]
+    [InlineData(null, "https://lk.test")]
+    [InlineData("http://127.0.0.1:7880", "http://127.0.0.1:7880")]
+    public async Task Twirp_uses_server_override_or_falls_back_to_client_url(string? serverUrl, string expectedBase)
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Calls:LiveKit:Url"] = "wss://lk.test",
+            ["Calls:LiveKit:ServerUrl"] = serverUrl,
+            ["Calls:LiveKit:ApiKey"] = "test-key",
+            ["Calls:LiveKit:ApiSecret"] = "test-secret",
+        }).Build();
+        var handler = new Handler("{}");
+        var client = new LiveKitEgress(new HttpClient(handler), new LiveKitTokenService(config));
+        await client.StopAsync("EG_test", default);
+        Assert.Equal(expectedBase + "/twirp/livekit.Egress/StopEgress", handler.Uri!.ToString());
     }
 
     [Fact]

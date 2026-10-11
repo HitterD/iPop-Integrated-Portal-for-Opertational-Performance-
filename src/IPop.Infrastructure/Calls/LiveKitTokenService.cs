@@ -11,6 +11,7 @@ public class LiveKitTokenService(IConfiguration config) : ILiveKitTokenService
     private string? ApiKey => config["Calls:LiveKit:ApiKey"] ?? config["LiveKit:ApiKey"];
     private string? ApiSecret => config["Calls:LiveKit:ApiSecret"] ?? config["LiveKit:ApiSecret"];
     public string? ServerUrl => NullIfBlank(config["Calls:LiveKit:Url"] ?? config["LiveKit:Url"]);
+    public string? ServerApiUrl => NullIfBlank(config["Calls:LiveKit:ServerUrl"]) ?? ServerUrl;
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ApiKey) && !string.IsNullOrWhiteSpace(ApiSecret) && ServerUrl is not null;
 
     public string GenerateToken(string roomName, string identity, string name, TimeSpan? ttl = null,

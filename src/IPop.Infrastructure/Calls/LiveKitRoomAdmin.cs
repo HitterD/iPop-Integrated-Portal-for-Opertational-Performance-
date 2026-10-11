@@ -5,7 +5,7 @@ using IPop.Application.Calls;
 namespace IPop.Infrastructure.Calls;
 
 /// Server-side LiveKit RoomService (Twirp over HTTP): who is in a room, create it with a cap, change what a
-/// participant may publish, mute or remove someone. The http(s) base comes from the same Calls:LiveKit:Url as the clients.
+/// participant may publish, mute or remove someone. Calls:LiveKit:ServerUrl overrides the client URL for server requests.
 public interface ILiveKitRoomAdmin
 {
     bool IsConfigured { get; }
@@ -36,7 +36,7 @@ public sealed class LiveKitRoomAdmin(HttpClient http, ILiveKitTokenService token
 
     public bool IsConfigured => tokens.IsConfigured;
 
-    private Uri Base => new(tokens.ServerUrl!.Replace("wss://", "https://").Replace("ws://", "http://").TrimEnd('/') + "/twirp/livekit.RoomService/");
+    private Uri Base => new(tokens.ServerApiUrl!.Replace("wss://", "https://").Replace("ws://", "http://").TrimEnd('/') + "/twirp/livekit.RoomService/");
 
     private async Task<JsonElement?> CallAsync(string method, string room, object body, CancellationToken ct, bool allowNotFound = true)
     {

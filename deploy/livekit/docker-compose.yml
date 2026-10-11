@@ -1,4 +1,11 @@
+name: ipop-livekit
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: ipop-livekit-redis
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no
+
   livekit:
     image: livekit/livekit-server:latest
     container_name: ipop-livekit
@@ -13,3 +20,16 @@ services:
       - "7881:7881"
       - "3478:3478/udp"
       - "50000-50050:50000-50050/udp"
+    depends_on: [redis]
+
+  egress:
+    image: livekit/egress:latest
+    container_name: ipop-livekit-egress
+    restart: unless-stopped
+    cap_add: [SYS_ADMIN]
+    environment:
+      EGRESS_CONFIG_FILE: /egress.yaml
+    volumes:
+      - ./egress.yaml:/egress.yaml:ro
+      - ${RECORDINGS_SPOOL}:/out
+    depends_on: [livekit, redis]

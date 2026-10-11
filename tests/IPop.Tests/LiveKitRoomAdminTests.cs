@@ -20,18 +20,31 @@ public class LiveKitRoomAdminTests
         }
     }
 
-    private static (LiveKitRoomAdmin Admin, Stub Http) Make(Func<HttpRequestMessage, string, HttpResponseMessage> respond)
+    private static (LiveKitRoomAdmin Admin, Stub Http) Make(Func<HttpRequestMessage, string, HttpResponseMessage> respond, string? serverUrl = null)
     {
         var cfg = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Calls:LiveKit:ApiKey"] = "k", ["Calls:LiveKit:ApiSecret"] = "s-123456789012345678901234567890",
             ["Calls:LiveKit:Url"] = "ws://lk.test:7880",
+            ["Calls:LiveKit:ServerUrl"] = serverUrl,
         }).Build();
         var stub = new Stub(respond);
         return (new LiveKitRoomAdmin(new HttpClient(stub), new LiveKitTokenService(cfg)), stub);
     }
 
     private static HttpResponseMessage Json(string json) => new(HttpStatusCode.OK) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
+
+    [Theory]
+    [InlineData(null, "http://lk.test:7880")]
+    [InlineData("", "http://lk.test:7880")]
+    [InlineData("http://127.0.0.1:7880", "http://127.0.0.1:7880")]
+    public async Task Twirp_uses_server_override_or_falls_back_to_client_url(string? serverUrl, string expectedBase)
+    {
+        Uri? requested = null;
+        var (admin, _) = Make((r, _) => { requested = r.RequestUri; return Json("{}"); }, serverUrl);
+        await admin.ListAsync("hall-kalosi", default);
+        Assert.Equal(expectedBase + "/twirp/livekit.RoomService/ListParticipants", requested!.ToString());
+    }
 
     [Fact]
     public async Task List_parses_participants_tracks_and_attributes()
