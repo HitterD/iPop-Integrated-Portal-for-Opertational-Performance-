@@ -187,7 +187,7 @@ public static partial class CalendarEndpoints
 
     // ── Event CRUD ────────────────────────────────────────────────────────────
 
-    public enum SaveResult { Ok, NotFound, Forbidden, InvalidTitle, InvalidRange, NotRoomMember, Cancelled, External }
+    public enum SaveResult { Ok, NotFound, Forbidden, InvalidTitle, InvalidRange, NotRoomMember, Cancelled, External, RoomBooked }
 
     /// The owner of an event mirrored from another system (iDesk), or null for events made in iPop.
     private static Task<Guid?> ExternalOwnerAsync(IPopDbContext db, Guid id, CancellationToken ct) =>
@@ -202,6 +202,7 @@ public static partial class CalendarEndpoints
         SaveResult.InvalidRange => Results.Json(new { code = "invalid_range", message = "End must be after start." }, statusCode: 422),
         SaveResult.Cancelled => Results.Json(new { code = "cancelled", message = "This meeting was cancelled." }, statusCode: 409),
         SaveResult.External => Results.Json(new { code = "external", message = "This was booked in iDesk. Change or cancel it there." }, statusCode: 409),
+        SaveResult.RoomBooked => Results.Json(new { code = "room_booked", message = "That meeting room is already booked at this time." }, statusCode: 409),
         _ => Results.StatusCode(500),
     };
 
@@ -233,7 +234,7 @@ public static partial class CalendarEndpoints
         var reminder = req.ReminderMinutes is > 0 and <= 10080 ? req.ReminderMinutes : null;
         if (ev.StartAt != start || ev.ReminderMinutes != reminder) ev.ReminderSentAt = null;
         ev.Title = title; ev.StartAt = start; ev.EndAt = end; ev.AllDay = req.AllDay;
-        ev.Location = Clean(req.Location, 300);
+        ev.Location = IPop.Application.Hall.HallBooking.Normalize(Clean(req.Location, 300));
         ev.Link = Clean(req.Link, 1000);
         ev.Notes = Clean(req.Notes, 4000);
         ev.ReminderMinutes = reminder;
@@ -249,6 +250,11 @@ public static partial class CalendarEndpoints
     {
         var (r, title, start, end) = Normalize(req);
         if (r != SaveResult.Ok) return (r, null, []);
+        // SJA Hall meeting rooms ("SJA Hall - Toraja" style locations) are booked once at a time, and a booking is always a meeting
+        // (with or without invitees) so the Meeting Rooms card and "Join room" can see it.
+        var hallRoom = IPop.Application.Hall.HallBooking.RoomKey(req.Location) is not null;
+        if (hallRoom && await IPop.Infrastructure.Hall.HallBookings.ConflictAsync(db, req.Location, start, end, null, ct) is not null)
+            return (SaveResult.RoomBooked, null, []);
         var ev = new CalendarEvent
         {
             Id = Guid.NewGuid(), Title = title, OwnerId = userId, RoomId = req.RoomId, CreatedAt = DateTime.UtcNow, Type = "kerja",
@@ -257,7 +263,7 @@ public static partial class CalendarEndpoints
         ApplyDetails(ev, req, title, start, end);
 
         IReadOnlyList<Guid> invited = [];
-        if (req.RoomId is not null || req.HasAttendees)
+        if (req.RoomId is not null || req.HasAttendees || hallRoom)
         {
             var (ok, ids) = await ResolveAttendeesAsync(db, userId, req, ct);
             if (!ok) return (SaveResult.NotRoomMember, null, []);
@@ -310,6 +316,7 @@ public static partial class CalendarEndpoints
             }
             var upd = new MeetingEndpoints.UpdateMeetingRequest(title, start, end, req.Location, req.Link, req.Notes, niks, req.ReminderMinutes ?? 0);
             var (res, added, _) = await MeetingEndpoints.ApplyUpdateAsync(db, meetingId, userId, upd, ct);
+            if (res == MeetingEndpoints.UpdateResult.RoomBooked) return (SaveResult.RoomBooked, null, []);
             if (res != MeetingEndpoints.UpdateResult.Applied) return (SaveResult.InvalidRange, null, []);
             invited = added;
             ev = await db.CalendarEvents.FirstAsync(e => e.Id == id, ct);
@@ -319,10 +326,13 @@ public static partial class CalendarEndpoints
         }
         else
         {
+            var hallRoom = IPop.Application.Hall.HallBooking.RoomKey(req.Location) is not null;
+            if (hallRoom && await IPop.Infrastructure.Hall.HallBookings.ConflictAsync(db, req.Location, start, end, null, ct) is not null)
+                return (SaveResult.RoomBooked, null, []);
             ApplyDetails(ev, req, title, start, end);
             ev.UpdatedById = actedBy;
             // Menambah peserta/grup ke event pribadi menjadikannya rapat.
-            if (req.RoomId is not null || req.HasAttendees)
+            if (req.RoomId is not null || req.HasAttendees || hallRoom)
             {
                 var (ok, ids) = await ResolveAttendeesAsync(db, userId, req, ct);
                 if (!ok) return (SaveResult.NotRoomMember, null, []);
