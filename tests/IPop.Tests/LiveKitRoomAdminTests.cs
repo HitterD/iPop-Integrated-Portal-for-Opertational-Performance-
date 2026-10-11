@@ -69,6 +69,60 @@ public class LiveKitRoomAdminTests
     }
 
     [Fact]
+    public async Task Empty_sources_disables_publishing()
+    {
+        var (admin, http) = Make((r, _) => r.RequestUri!.AbsolutePath.EndsWith("ListParticipants")
+            ? Json("""{"participants":[{"identity":"u1"}]}""")
+            : Json("{}"));
+        Assert.True(await admin.SetSourcesAsync("hall-kalosi", "u1", [], default));
+
+        using var body = JsonDocument.Parse(http.Calls.Single(c => c.Path.EndsWith("UpdateParticipant")).Body);
+        var permission = body.RootElement.GetProperty("permission");
+        Assert.False(permission.GetProperty("can_publish").GetBoolean());
+        Assert.Empty(permission.GetProperty("can_publish_sources").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Set_sources_returns_false_when_participant_leaves_before_update()
+    {
+        var (admin, http) = Make((r, _) => r.RequestUri!.AbsolutePath.EndsWith("ListParticipants")
+            ? Json("""{"participants":[{"identity":"u1","tracks":[{"sid":"C1","source":"CAMERA"}]}]}""")
+            : new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        Assert.False(await admin.SetSourcesAsync("hall-kalosi", "u1", ["microphone"], default));
+        Assert.DoesNotContain(http.Calls, c => c.Path.EndsWith("MutePublishedTrack"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Muting_returns_false_when_track_mutation_returns_not_found(bool setSources)
+    {
+        var (admin, _) = Make((r, _) => r.RequestUri!.AbsolutePath.EndsWith("ListParticipants")
+            ? Json("""{"participants":[{"identity":"u1","tracks":[{"sid":"M1","source":"MICROPHONE","muted":false}]}]}""")
+            : r.RequestUri.AbsolutePath.EndsWith("MutePublishedTrack")
+                ? new HttpResponseMessage(HttpStatusCode.NotFound)
+                : Json("{}"));
+
+        var result = setSources
+            ? await admin.SetSourcesAsync("hall-kalosi", "u1", ["camera"], default)
+            : await admin.MuteAsync("hall-kalosi", "u1", default);
+        Assert.False(result);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Room_mutations_throw_when_room_returns_not_found(bool updateMetadata)
+    {
+        var (admin, _) = Make((_, _) => new HttpResponseMessage(HttpStatusCode.NotFound));
+        var error = await Assert.ThrowsAsync<HttpRequestException>(() => updateMetadata
+            ? admin.UpdateRoomMetadataAsync("hall-kalosi", "{}", default)
+            : admin.CreateRoomAsync("hall-kalosi", 21, default));
+        Assert.Equal(HttpStatusCode.NotFound, error.StatusCode);
+    }
+
+    [Fact]
     public async Task Create_room_sends_max_participants()
     {
         var (admin, http) = Make((_, _) => Json("{}"));

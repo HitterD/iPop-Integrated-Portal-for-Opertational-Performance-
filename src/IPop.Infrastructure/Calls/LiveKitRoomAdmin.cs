@@ -38,13 +38,13 @@ public sealed class LiveKitRoomAdmin(HttpClient http, ILiveKitTokenService token
 
     private Uri Base => new(tokens.ServerUrl!.Replace("wss://", "https://").Replace("ws://", "http://").TrimEnd('/') + "/twirp/livekit.RoomService/");
 
-    private async Task<JsonElement?> CallAsync(string method, string room, object body, CancellationToken ct)
+    private async Task<JsonElement?> CallAsync(string method, string room, object body, CancellationToken ct, bool allowNotFound = true)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post, new Uri(Base, method)) { Content = JsonContent.Create(body, options: Json) };
         req.Headers.Authorization = new("Bearer", tokens.GenerateAdminToken(room));
         using var res = await http.SendAsync(req, ct);
         // Twirp "not_found" (unknown room/participant) comes back as 404.
-        if (res.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        if (allowNotFound && res.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
         res.EnsureSuccessStatusCode();
         return await res.Content.ReadFromJsonAsync<JsonElement>(Json, ct);
     }
@@ -72,7 +72,8 @@ public sealed class LiveKitRoomAdmin(HttpClient http, ILiveKitTokenService token
         var p = (await ListAsync(room, ct)).FirstOrDefault(x => x.Identity == identity);
         if (p is null) return false;
         foreach (var t in p.Tracks.Where(t => !t.Muted && t.IsSource("MICROPHONE")))
-            await CallAsync("MutePublishedTrack", room, new { room, identity, track_sid = t.Sid, muted = true }, ct);
+            if (await CallAsync("MutePublishedTrack", room, new { room, identity, track_sid = t.Sid, muted = true }, ct) is null)
+                return false;
         return true;
     }
 
@@ -80,23 +81,25 @@ public sealed class LiveKitRoomAdmin(HttpClient http, ILiveKitTokenService token
         await CallAsync("RemoveParticipant", room, new { room, identity }, ct) is not null;
 
     public async Task CreateRoomAsync(string room, int maxParticipants, CancellationToken ct) =>
-        await CallAsync("CreateRoom", room, new { name = room, max_participants = maxParticipants, empty_timeout = 300 }, ct);
+        await CallAsync("CreateRoom", room, new { name = room, max_participants = maxParticipants, empty_timeout = 300 }, ct, allowNotFound: false);
 
     public async Task UpdateRoomMetadataAsync(string room, string metadata, CancellationToken ct) =>
-        await CallAsync("UpdateRoomMetadata", room, new { room, metadata }, ct);
+        await CallAsync("UpdateRoomMetadata", room, new { room, metadata }, ct, allowNotFound: false);
 
     public async Task<bool> SetSourcesAsync(string room, string identity, IReadOnlyList<string> sources, CancellationToken ct)
     {
         var p = (await ListAsync(room, ct)).FirstOrDefault(x => x.Identity == identity);
         if (p is null) return false;
         var upper = sources.Select(s => s.ToUpperInvariant()).ToList();
-        await CallAsync("UpdateParticipant", room, new
+        if (await CallAsync("UpdateParticipant", room, new
         {
             room, identity,
-            permission = new { can_subscribe = true, can_publish = true, can_publish_data = true, can_update_metadata = true, can_publish_sources = upper },
-        }, ct);
+            permission = new { can_subscribe = true, can_publish = upper.Count > 0, can_publish_data = true, can_update_metadata = true, can_publish_sources = upper },
+        }, ct) is null)
+            return false;
         foreach (var t in p.Tracks.Where(t => !t.Muted && !upper.Any(t.IsSource)))
-            await CallAsync("MutePublishedTrack", room, new { room, identity, track_sid = t.Sid, muted = true }, ct);
+            if (await CallAsync("MutePublishedTrack", room, new { room, identity, track_sid = t.Sid, muted = true }, ct) is null)
+                return false;
         return true;
     }
 }
