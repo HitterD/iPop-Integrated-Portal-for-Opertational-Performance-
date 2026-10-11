@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>iPop · Projects — friendlier header, members and task sheet</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --accent: #2E9E5B; --accent-hover: #27884e; --accent-soft: #DDF2E4; --accent-ink: #1f7a45;
+    --bg: #F5F5F7; --surface: #fff; --surface-2: #F7F7F9; --fill: rgba(118,118,128,.12);
+    --line: rgba(0,0,0,.1); --line-soft: rgba(0,0,0,.06);
+    --ink: #1D1D1F; --ink-2: #3A3A3C; --ink-3: #8E8E93; --ink-4: #AEAEB2;
+    --blue: #0A84FF; --orange: #FF9F0A; --red: #FF3B30;
+  }
+  [data-theme="dark"] {
+    --accent: #30D158; --accent-hover: #28b84c; --accent-soft: rgba(48,209,88,.18); --accent-ink: #5FD98A;
+    --bg: #000; --surface: #1C1C1E; --surface-2: #232325; --fill: rgba(118,118,128,.28);
+    --line: rgba(255,255,255,.1); --line-soft: rgba(255,255,255,.08);
+    --ink: #F5F5F7; --ink-2: #D1D1D6; --ink-3: #8E8E93; --ink-4: #636366;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Inter", -apple-system, "Segoe UI", system-ui, sans-serif; background: #d9ddd9; color: #1d2420; }
+  [data-theme="dark"] body { background: #050807; color: #e8ece9; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  header.page { display: flex; align-items: center; gap: 14px; padding: 18px 28px 4px; flex-wrap: wrap; }
+  header.page h1 { font-size: 20px; margin: 0; }
+  header.page p { margin: 2px 0 0; font-size: 14px; opacity: .75; max-width: 900px; }
+  .seg { display: inline-flex; background: rgba(0,0,0,.08); border-radius: 10px; padding: 3px; }
+  [data-theme="dark"] .seg { background: rgba(255,255,255,.08); }
+  .seg button { border: 0; background: none; padding: 7px 14px; border-radius: 8px; font-weight: 600; font-size: 13px; }
+  .seg button.on { background: #fff; color: #123528; box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+  .spacer { flex: 1; }
+  section.cmp { padding: 14px 28px 28px; }
+  section.cmp h2 { font-size: 16px; margin: 0 0 4px; }
+  section.cmp .sub { font-size: 13.5px; opacity: .75; margin: 0 0 14px; max-width: 1000px; line-height: 1.5; }
+  .pair { display: flex; gap: 26px; flex-wrap: wrap; align-items: flex-start; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 3px 9px; border-radius: 99px; margin-bottom: 8px; }
+  .tag.now { background: rgba(0,0,0,.08); } [data-theme="dark"] .tag.now { background: rgba(255,255,255,.1); }
+  .tag.new { background: #123528; color: #fff; }
+  svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .card { background: var(--surface); color: var(--ink); border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.14); }
+
+  /* ---------- header ---------- */
+  .hdr { width: 1080px; display: flex; align-items: center; gap: 14px; padding: 16px 20px; border-radius: 16px; }
+  .pav { width: 42px; height: 42px; border-radius: 11px; background: var(--accent); color: #fff; font-weight: 700; display: grid; place-items: center; flex: none; }
+  .hdr .tt { flex: 1; min-width: 0; }
+  .hdr .tt b { font-size: 18px; display: inline-flex; align-items: center; gap: 10px; }
+  .hdr .tt .st { font-size: 12px; font-weight: 600; color: #B25E00; background: #FFF3DC; padding: 3px 9px; border-radius: 99px; }
+  [data-theme="dark"] .hdr .tt .st { background: #3a2c12; color: #FFBC55; }
+  .hdr .tt small { display: block; font-size: 13px; color: var(--ink-3); margin-top: 3px; }
+  .icons { display: flex; gap: 6px; align-items: center; }
+  .ib { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); display: grid; place-items: center; color: var(--ink-2); }
+  .ib svg { width: 16px; height: 16px; }
+  .ib.dash { border-style: dashed; }
+  .av { width: 30px; height: 30px; border-radius: 9px; color: #fff; font-size: 11.5px; font-weight: 700; display: grid; place-items: center; border: 2px solid var(--surface); flex: none; }
+  .stack { display: flex; } .stack .av + .av { margin-left: -8px; }
+  .btn { height: 38px; padding: 0 14px; border-radius: 11px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .btn:hover { background: var(--surface-2); }
+  .btn.primary { background: var(--accent); border-color: transparent; color: #fff; }
+  .btn.primary:hover { background: var(--accent-hover); }
+  .btn.ghost { border-color: transparent; background: var(--fill); }
+  .btn svg { width: 17px; height: 17px; }
+  .members { display: inline-flex; align-items: center; gap: 10px; padding: 3px 12px 3px 4px; height: 40px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-size: 14px; font-weight: 600; }
+  .members .n { color: var(--ink-3); font-weight: 500; }
+  .menu-wrap { position: relative; }
+  .menu { position: absolute; right: 0; top: 46px; z-index: 30; width: 250px; padding: 6px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 14px 34px rgba(0,0,0,.18); display: none; }
+  .menu.open { display: block; animation: popin .15s ease-out; }
+  @keyframes popin { from { opacity: 0; transform: translateY(-4px); } }
+  .menu button { display: flex; align-items: center; gap: 11px; width: 100%; height: 40px; padding: 0 10px; border: 0; border-radius: 9px; background: none; font-size: 14px; text-align: left; }
+  .menu button:hover { background: var(--fill); }
+  .menu button svg { width: 17px; height: 17px; color: var(--ink-3); }
+  .menu .sep { height: 1px; background: var(--line-soft); margin: 5px 8px; }
+  .menu .danger { color: var(--red); } .menu .danger svg { color: var(--red); }
+  .menu small { margin-left: auto; color: var(--ink-3); font-size: 12px; }
+
+  /* ---------- people dialog ---------- */
+  .dlg { width: 520px; overflow: hidden; }
+  .dlg .dh { display: flex; align-items: center; gap: 12px; padding: 18px 20px 6px; }
+  .dlg .dh .ic { width: 38px; height: 38px; border-radius: 11px; background: var(--accent); color: #fff; display: grid; place-items: center; }
+  .dlg .dh b { font-size: 17px; flex: 1; }
+  .dlg .dh .x { width: 32px; height: 32px; border-radius: 50%; border: 0; background: var(--fill); display: grid; place-items: center; }
+  .dlg .lead { padding: 0 20px 12px; font-size: 13.5px; color: var(--ink-2); line-height: 1.5; }
+  .step { display: flex; gap: 8px; align-items: center; padding: 6px 20px 8px; font-size: 13px; font-weight: 650; color: var(--ink-2); }
+  .step .num { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; display: grid; place-items: center; }
+  .step .num.off { background: var(--fill); color: var(--ink-3); }
+  .srch { margin: 0 20px; height: 46px; border-radius: 12px; border: 2px solid var(--accent); background: var(--surface); display: flex; align-items: center; gap: 10px; padding: 0 12px; box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent); }
+  .srch input { flex: 1; border: 0; outline: 0; background: none; font: inherit; font-size: 15px; color: var(--ink); }
+  .srch input::placeholder { color: var(--ink-3); }
+  .hint { padding: 6px 22px 0; font-size: 12px; color: var(--ink-3); }
+  .plist { padding: 6px 12px 4px; }
+  .plist .lbl { font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); padding: 8px 8px 6px; }
+  .prow { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 12px; }
+  .prow:hover { background: var(--surface-2); }
+  .prow .who { flex: 1; min-width: 0; }
+  .prow .who b { display: block; font-size: 14px; font-weight: 600; }
+  .prow .who small { font-size: 12.5px; color: var(--ink-3); }
+  .prow .av { width: 36px; height: 36px; border-radius: 10px; border: 0; font-size: 13px; }
+  .add { height: 32px; padding: 0 12px; border-radius: 99px; border: 1px solid var(--accent); background: none; color: var(--accent-ink); font-size: 13px; font-weight: 650; display: inline-flex; align-items: center; gap: 5px; }
+  .add.on { background: var(--accent); color: #fff; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 20px 6px; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 6px 0 4px; border-radius: 12px; background: var(--accent-soft); font-size: 13.5px; font-weight: 600; }
+  .chip .av { width: 28px; height: 28px; border: 0; font-size: 11px; }
+  .chip select { border: 0; background: rgba(255,255,255,.7); border-radius: 8px; height: 26px; font: inherit; font-size: 12.5px; color: var(--ink); padding: 0 4px; }
+  [data-theme="dark"] .chip select { background: rgba(0,0,0,.3); }
+  .chip .rm { width: 22px; height: 22px; border-radius: 50%; border: 0; background: none; color: var(--ink-3); display: grid; place-items: center; }
+  .dfoot { display: flex; align-items: center; gap: 10px; padding: 14px 20px 18px; border-top: 1px solid var(--line-soft); margin-top: 8px; }
+  .dfoot .note { flex: 1; font-size: 12.5px; color: var(--ink-3); }
+  .already { padding: 2px 12px 8px; }
+  .already .prow .role { font-size: 12.5px; color: var(--ink-3); }
+  /* old dialog */
+  .old-dlg .dh b { font-size: 17px; }
+  .old-dlg .srch { border: 1px solid var(--line); box-shadow: none; background: var(--fill); height: 42px; }
+
+  /* ---------- task sheet ---------- */
+  .sheet { width: 480px; height: 860px; display: flex; flex-direction: column; overflow: hidden; }
+  .sh-head { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--line-soft); }
+  .sh-head .proj { flex: 1; font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .sh-head .proj i { width: 10px; height: 10px; border-radius: 3px; background: var(--blue); }
+  .sh-head .saved { font-size: 12.5px; color: var(--accent-ink); display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+  .sh-head .saved svg { width: 14px; height: 14px; }
+  .rb { width: 32px; height: 32px; border-radius: 50%; border: 0; background: var(--fill); display: grid; place-items: center; color: var(--ink-2); }
+  .rb svg { width: 15px; height: 15px; }
+  .sh-body { flex: 1; overflow: auto; padding: 16px 18px 24px; scrollbar-width: thin; }
+  .ttl { font-size: 20px; font-weight: 700; line-height: 1.3; margin: 0 0 12px; border: 0; outline: 0; width: 100%; background: none; color: var(--ink); font-family: inherit; }
+  .status { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 4px; border-radius: 14px; background: var(--fill); margin-bottom: 14px; }
+  .status button { height: 36px; border: 0; border-radius: 10px; background: none; font-size: 13px; font-weight: 600; color: var(--ink-2); display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  .status button i { width: 8px; height: 8px; border-radius: 50%; }
+  .status button.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+  .starter { border-radius: 14px; background: color-mix(in srgb, var(--accent) 9%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); padding: 12px 14px; margin-bottom: 16px; }
+  .starter b { font-size: 13.5px; display: flex; align-items: center; gap: 8px; }
+  .starter b span { margin-left: auto; font-size: 12px; color: var(--accent-ink); }
+  .starter ol { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .starter li { display: flex; align-items: center; gap: 9px; font-size: 13.5px; color: var(--ink-2); }
+  .starter li .ck { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--ink-4); display: grid; place-items: center; flex: none; }
+  .starter li.done { color: var(--ink-3); text-decoration: line-through; }
+  .starter li.done .ck { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .starter li.done .ck svg { width: 12px; height: 12px; stroke-width: 3; }
+  .grp { border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line-soft); margin-bottom: 12px; overflow: hidden; }
+  .grp > .gh { display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: default; }
+  .grp > .gh .gi { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: #fff; flex: none; }
+  .grp > .gh .gi svg { width: 15px; height: 15px; }
+  .grp > .gh .gt { flex: 1; }
+  .grp > .gh .gt b { font-size: 14px; display: block; }
+  .grp > .gh .gt small { font-size: 12px; color: var(--ink-3); }
+  .grp > .gh .chev { color: var(--ink-3); transition: transform .2s; }
+  .grp.collapsible > .gh { cursor: pointer; }
+  .grp.closed > .gb { display: none; }
+  .grp.closed > .gh .chev { transform: rotate(-90deg); }
+  .grp > .gh .badge { font-size: 11.5px; font-weight: 650; color: var(--ink-3); background: var(--fill); padding: 2px 8px; border-radius: 99px; }
+  .gb { padding: 2px 14px 14px; }
+  .fld { display: grid; grid-template-columns: 96px 1fr; align-items: center; gap: 10px; min-height: 40px; }
+  .fld + .fld { border-top: 1px solid var(--line-soft); }
+  .fld > label { font-size: 13px; color: var(--ink-3); font-weight: 500; }
+  .val { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 14px; }
+  .pill { height: 30px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+  .pill.empty { border-style: dashed; color: var(--ink-3); }
+  .pill .av { width: 22px; height: 22px; border-radius: 6px; font-size: 9.5px; border: 0; }
+  .pill svg { width: 14px; height: 14px; }
+  .prio i { width: 8px; height: 8px; border-radius: 50%; background: var(--orange); }
+  textarea.desc { width: 100%; min-height: 84px; resize: vertical; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); padding: 10px 12px; font: inherit; font-size: 14px; color: var(--ink); outline: 0; }
+  .sublbl { font-size: 12.5px; font-weight: 650; color: var(--ink-2); margin: 12px 0 6px; display: flex; justify-content: space-between; }
+  .sublbl span { color: var(--ink-3); font-weight: 500; }
+  .subtask { display: flex; align-items: center; gap: 9px; height: 36px; font-size: 14px; }
+  .subtask .ck { width: 18px; height: 18px; border-radius: 5px; border: 2px solid var(--ink-4); flex: none; }
+  .addrow { display: flex; align-items: center; gap: 9px; height: 38px; padding: 0 10px; border-radius: 10px; border: 1px dashed var(--line); color: var(--ink-3); font-size: 13.5px; }
+  .addrow svg { width: 15px; height: 15px; }
+  .evi { border-radius: 12px; background: var(--surface); border: 1px solid var(--line-soft); padding: 12px; margin-top: 10px; }
+  .evi b { font-size: 13.5px; display: flex; align-items: center; gap: 8px; }
+  .evi b span { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--ink-3); background: var(--fill); padding: 2px 8px; border-radius: 99px; }
+  .evi p { margin: 4px 0 10px; font-size: 12.5px; color: var(--ink-3); line-height: 1.45; }
+  .evi .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .timer { display: flex; align-items: center; gap: 10px; }
+  .timer .t { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .comments { margin-top: 6px; }
+  .comments h4 { font-size: 13px; margin: 6px 2px 8px; color: var(--ink-2); }
+  .cbox { display: flex; gap: 8px; align-items: center; height: 44px; padding: 0 6px 0 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-3); font-size: 14px; }
+  .cbox .send { margin-left: auto; width: 32px; height: 32px; border-radius: 9px; background: var(--accent); color: #fff; display: grid; place-items: center; }
+  .sh-foot { padding: 12px 16px; border-top: 1px solid var(--line-soft); display: flex; align-items: center; gap: 10px; }
+  .sh-foot .note { flex: 1; font-size: 12.5px; color: var(--ink-3); }
+  /* old sheet: a cramped grid of controls */
+  .old .sh-body { font-size: 13px; }
+  .old .stp { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .old .stp span { height: 30px; padding: 0 10px; border-radius: 99px; border: 1px solid var(--line); display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
+  .old .stp span i { width: 7px; height: 7px; border-radius: 50%; }
+  .old .ofld { display: grid; grid-template-columns: 100px 1fr; align-items: center; min-height: 36px; font-size: 13px; color: var(--ink-3); }
+  .old .ofld .v { color: var(--ink); display: flex; gap: 6px; flex-wrap: wrap; }
+  .old .ofld .v span { height: 28px; padding: 0 9px; border-radius: 8px; border: 1px solid var(--line); display: inline-flex; align-items: center; font-size: 12.5px; }
+  .old .osec { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; color: var(--ink-3); margin: 16px 0 8px; }
+  .old .obox { height: 70px; border-radius: 10px; background: var(--fill); }
+  .old .orow { height: 34px; border-radius: 8px; border: 1px solid var(--line); display: inline-flex; align-items: center; padding: 0 10px; font-size: 12.5px; margin: 0 6px 6px 0; }
+
+  .notes { padding: 4px 28px 50px; font-size: 14px; line-height: 1.6; max-width: 1100px; }
+</style>
+</head>
+<body>
+<header class="page">
+  <div>
+    <h1>Projects — lebih jelas harus ngapain</h1>
+    <p>Klik untuk mencoba: <b>⋯ More</b> di header, tombol <b>+ Add</b> / pencarian di dialog anggota, dan judul bagian <b>Progress &amp; evidence</b> / <b>More options</b> di panel task (buka-tutup). Status <b>In Progress / Done</b> membuka bagian Progress otomatis.</p>
+  </div>
+  <span class="spacer"></span>
+  <div class="seg" id="theme"><button class="on" data-v="light">Terang</button><button data-v="dark">Gelap</button></div>
+</header>
+
+<!-- ============ 1. Header ============ -->
+<section class="cmp">
+  <h2>1 · Header project</h2>
+  <p class="sub">Tujuh ikon tanpa tulisan diganti tiga tombol berlabel: <b>Members</b> (avatar + jumlah), <b>Chat</b>, dan tombol utama <b>+ New task</b>. Sisanya masuk <b>⋯ More</b> dengan nama yang jelas.</p>
+  <div class="tag now">Sekarang</div>
+  <div class="card hdr">
+    <div class="pav">IZ</div>
+    <div class="tt"><b>Integrasi Chestny Znak <span class="st">Planning</span></b><small>Integrasi Chestny Znak · 14% complete</small></div>
+    <div class="icons">
+      <div class="av" style="background:#5c7f2a">MI</div>
+      <div class="ib dash"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></div>
+      <div class="ib"><svg class="i" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg></div>
+      <div class="ib"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M12 14v4M10 16h4"/></svg></div>
+      <div class="ib"><svg class="i" viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></div>
+      <div class="ib"><svg class="i" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></div>
+      <div class="ib"><svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></div>
+    </div>
+  </div>
+  <div style="height:16px"></div>
+  <div class="tag new">Baru</div>
+  <div class="card hdr">
+    <div class="pav">IZ</div>
+    <div class="tt"><b>Integrasi Chestny Znak <span class="st">Planning</span></b><small>14% complete · 7 tasks · due Nov 30</small></div>
+    <button class="members" id="openPeople"><span class="stack"><span class="av" style="background:#5c7f2a">MI</span><span class="av" style="background:#3a86c8">YA</span><span class="av" style="background:#cf6a4c">AD</span></span>Members <span class="n">3</span></button>
+    <button class="btn"><svg class="i" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>Chat</button>
+    <button class="btn primary"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>New task</button>
+    <div class="menu-wrap">
+      <button class="btn ghost" id="moreBtn"><svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>More</button>
+      <div class="menu" id="moreMenu">
+        <button><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M12 14v4M10 16h4"/></svg>Schedule team meeting</button>
+        <button><svg class="i" viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>Edit project details</button>
+        <button><svg class="i" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Export to Excel (CSV)</button>
+        <button><svg class="i" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>Copy link</button>
+        <button><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>Save as template…</button>
+        <div class="sep"></div>
+        <button><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Mark project completed</button>
+        <button class="danger"><svg class="i" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Delete project</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2. Members dialog ============ -->
+<section class="cmp">
+  <h2>2 · Tambah anggota</h2>
+  <p class="sub">Langkah bernomor (① cari / pilih → ② atur peran → tambahkan). Kolom cari langsung aktif dengan contoh, dan di bawahnya ada <b>Suggested</b> (rekan satu departemen &amp; yang sering kerja bareng) yang tinggal diklik <b>+ Add</b>. Yang dipilih jadi chip dengan peran <b>Member / Viewer</b>, lalu satu tombol <b>Add 2 people</b>. Cari nama lengkap dengan spasi bisa ("yudi arta").</p>
+  <div class="pair">
+    <div>
+      <div class="tag now">Sekarang</div>
+      <div class="card dlg old-dlg">
+        <div class="dh"><div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg></div><b>Project team members <span style="font-size:12px;background:var(--fill);padding:2px 7px;border-radius:99px">1</span></b><button class="x"><svg class="i" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+        <div class="lead" style="font-weight:600">Add project members</div>
+        <div class="srch"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input placeholder="Search people by name..." disabled></div>
+        <div class="already" style="margin-top:8px"><div class="prow"><div class="av" style="background:#5c7f2a">MI</div><div class="who"><b>MUHAMMAD IMAN DWI SURYA ANANTA</b><small>owner</small></div><span class="role">Owner</span></div></div>
+        <div class="dfoot"><span class="note">Search and select people to add them</span><button class="btn primary">Done</button></div>
+      </div>
+    </div>
+    <div>
+      <div class="tag new">Baru</div>
+      <div class="card dlg" id="dlgNew">
+        <div class="dh"><div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg></div><b>Add people to this project</b><button class="x"><svg class="i" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+        <div class="lead">Find a colleague by name, then press <b>Add</b>. Members can work on tasks; viewers can only look.</div>
+        <div class="step"><span class="num">1</span>Search a name or pick a suggestion</div>
+        <div class="srch"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="pq" placeholder="Type a name, e.g. Yudi" autocomplete="off"></div>
+        <div class="hint" id="phint">Type at least 2 letters. Full names work too.</div>
+        <div class="plist" id="plist"></div>
+        <div id="pickedWrap" style="display:none">
+          <div class="step"><span class="num">2</span>Choose what they can do</div>
+          <div class="chips" id="chips"></div>
+        </div>
+        <div class="already">
+          <div class="plist" style="padding:0"><div class="lbl">Already in this project · 1</div></div>
+          <div class="prow"><div class="av" style="background:#5c7f2a">MI</div><div class="who"><b>MUHAMMAD IMAN DWI SURYA ANANTA</b><small>Network &amp; Infrastructure</small></div><span class="role">Owner</span></div>
+        </div>
+        <div class="dfoot"><span class="note" id="pnote">Nobody selected yet.</span><button class="btn">Cancel</button><button class="btn primary" id="paddBtn" disabled style="opacity:.5">Add people</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3. Task sheet ============ -->
+<section class="cmp">
+  <h2>3 · Panel task</h2>
+  <p class="sub">Isi dari atas ke bawah mengikuti urutan kerja: <b>status</b> → <b>Who &amp; when</b> → <b>Details</b> → <b>Progress &amp; evidence</b> (tertutup; terbuka otomatis saat In Progress / Done) → <b>More options</b> (tertutup) → <b>Comments</b>. Semua tersimpan otomatis (“Saved ✓”), jadi tidak ada lagi Cancel / Save changes. Task baru menampilkan checklist “Get started”.</p>
+  <div class="pair">
+    <div>
+      <div class="tag now">Sekarang</div>
+      <div class="card sheet old">
+        <div class="sh-head"><div class="proj"><i></i>Bug/Fitur</div><button class="rb">‹</button><span style="font-size:12px;color:var(--ink-3)">2 / 6</span><button class="rb">›</button><button class="rb">⋯</button><button class="rb">✕</button></div>
+        <div class="sh-body">
+          <div style="font-size:14px;margin-bottom:12px">Menu mark as read di Calls</div>
+          <div class="stp"><span><i style="background:#8E8E93"></i>To Do</span><span><i style="background:#0A84FF"></i>In Progress</span><span><i style="background:#FF9F0A"></i>Review</span><span style="background:var(--accent-soft)"><i style="background:#34C759"></i>Done</span></div>
+          <div class="ofld">Priority<div class="v"><span>No priority ⌄</span></div></div>
+          <div class="ofld">Assignees<div class="v"><span>JK JASON KRISTANTO ×</span><span>+ Assign</span></div></div>
+          <div class="ofld">Start<div class="v"><span>dd/mm/yyyy</span></div></div>
+          <div class="ofld">Due<div class="v"><span>dd/mm/yyyy</span></div></div>
+          <div class="ofld">Calendar<div class="v"><span>Block time</span><span>Meeting with assignees</span></div></div>
+          <div class="ofld">Tags<div class="v">+ Add tag</div></div>
+          <div class="ofld">Waiting on<div class="v"><span>+ Add</span></div></div>
+          <div class="ofld">Repeat<div class="v"><span>Never</span><span>Daily</span><span>Weekly</span><span>Monthly</span></div></div>
+          <div class="osec">DESCRIPTION</div><div class="obox"></div>
+          <div class="osec">SUBTASKS</div><div class="orow">+ Add a subtask and press Enter</div>
+          <div class="osec">TIME</div><div class="orow" style="background:var(--accent);color:#fff;border:0">▷ Start timer</div><div class="orow">+ Add time manually</div>
+          <div class="osec">EVIDENCE</div>
+          <div class="orow">Progress Breakdown &amp; Field Evidence · DONE</div><div class="orow">Upload field photos</div>
+          <div class="orow">Completion Evidence &amp; Deliverables · DONE</div><div class="orow">Attach photo or document</div>
+          <div class="osec">ATTACHMENTS</div><div class="orow">Upload a file</div><div class="orow">From NAS</div>
+          <div class="osec">COMMENTS</div>
+        </div>
+        <div class="sh-foot"><span class="note"></span><button class="btn">Cancel</button><button class="btn primary">✓ Save changes</button></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="tag new">Baru</div>
+      <div class="card sheet" id="sheetNew">
+        <div class="sh-head">
+          <div class="proj"><i></i>Bug/Fitur</div>
+          <span class="saved" id="saved"><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Saved</span>
+          <button class="rb" title="Previous task">‹</button><button class="rb" title="Next task">›</button><button class="rb" title="More">⋯</button><button class="rb" title="Close">✕</button>
+        </div>
+        <div class="sh-body">
+          <input class="ttl" value="Menu mark as read di Calls">
+          <div class="status" id="status">
+            <button data-s="todo" class="on"><i style="background:#8E8E93"></i>To Do</button>
+            <button data-s="prog"><i style="background:#0A84FF"></i>In Progress</button>
+            <button data-s="rev"><i style="background:#FF9F0A"></i>Review</button>
+            <button data-s="done"><i style="background:#34C759"></i>Done</button>
+          </div>
+
+          <div class="starter" id="starter">
+            <b><svg class="i" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Get started <span id="starterCount">1 of 3</span></b>
+            <ol>
+              <li class="done"><span class="ck"><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>Assign someone</li>
+              <li id="stDue"><span class="ck"></span>Set a due date</li>
+              <li><span class="ck"></span>Add details (description or subtasks)</li>
+            </ol>
+          </div>
+
+          <div class="grp">
+            <div class="gh"><span class="gi" style="background:#0A84FF"><svg class="i" viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4"/><circle cx="18" cy="17" r="3"/><path d="M18 15.5V17l1 1"/></svg></span><span class="gt"><b>Who &amp; when</b><small>Who does it and by when</small></span></div>
+            <div class="gb">
+              <div class="fld"><label>Assignees</label><div class="val"><span class="pill"><span class="av" style="background:#8a6d3b">JK</span>Jason Kristanto ×</span><span class="pill empty"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add person</span></div></div>
+              <div class="fld"><label>Due date</label><div class="val"><span class="pill empty" id="dueBtn"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/></svg>Pick a date</span><span class="pill" style="border:0;background:var(--fill)">Today</span><span class="pill" style="border:0;background:var(--fill)">This Friday</span></div></div>
+              <div class="fld"><label>Start</label><div class="val"><span class="pill empty">Optional</span></div></div>
+              <div class="fld"><label>Priority</label><div class="val"><span class="pill">Low</span><span class="pill prio" style="border-color:var(--orange)"><i></i>Medium</span><span class="pill">High</span><span class="pill">Urgent</span></div></div>
+            </div>
+          </div>
+
+          <div class="grp">
+            <div class="gh"><span class="gi" style="background:#8E8E93"><svg class="i" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span><span class="gt"><b>Details</b><small>What needs to be done</small></span></div>
+            <div class="gb">
+              <textarea class="desc" placeholder="Describe the task: what, where, and anything the team should know…"></textarea>
+              <div class="sublbl">Checklist (subtasks) <span>0 of 0</span></div>
+              <div class="addrow"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add a step and press Enter</div>
+            </div>
+          </div>
+
+          <div class="grp collapsible closed" id="progGrp">
+            <div class="gh"><span class="gi" style="background:#34A853"><svg class="i" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span><span class="gt"><b>Progress &amp; evidence</b><small>Time spent, photos and files as proof of work</small></span><span class="badge">1 file</span><svg class="i chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></div>
+            <div class="gb">
+              <div class="timer"><span class="t">0:00</span><button class="btn primary" style="height:34px">▷ Start timer</button><button class="btn" style="height:34px">+ Add time</button></div>
+              <div class="evi"><b>📷 While working <span>Optional</span></b><p>Add progress steps and field photos so others can follow along.</p><div class="row"><button class="btn" style="height:34px">+ Progress step</button><button class="btn" style="height:34px">Upload photos</button></div></div>
+              <div class="evi"><b>✅ When it's done <span>Optional</span></b><p>Attach the result (photo or document) and a short note. You'll be asked for this when you mark the task Done.</p><div class="row"><button class="btn" style="height:34px">Attach result</button></div></div>
+              <div class="evi"><b>📎 Other files <span>1</span></b><p>Supporting documents — from your computer or the NAS.</p><div class="row"><button class="btn" style="height:34px">Upload file</button><button class="btn" style="height:34px">From NAS</button></div></div>
+            </div>
+          </div>
+
+          <div class="grp collapsible closed" id="moreGrp">
+            <div class="gh"><span class="gi" style="background:#AF52DE"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></span><span class="gt"><b>More options</b><small>Tags, waiting on, repeat, calendar</small></span><svg class="i chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></div>
+            <div class="gb">
+              <div class="fld"><label>Tags</label><div class="val"><span class="pill empty">+ Add tag</span></div></div>
+              <div class="fld"><label>Waiting on</label><div class="val"><span class="pill empty">+ Pick a task this depends on</span></div></div>
+              <div class="fld"><label>Repeat</label><div class="val"><span class="pill" style="background:var(--fill);border:0">Never</span><span class="pill">Daily</span><span class="pill">Weekly</span><span class="pill">Monthly</span></div></div>
+              <div class="fld"><label>Calendar</label><div class="val"><span class="pill">Block time</span><span class="pill">Meeting with assignees</span></div></div>
+            </div>
+          </div>
+
+          <div class="comments">
+            <h4>Comments</h4>
+            <div class="cbox">Write a comment or @mention someone…<span class="send"><svg class="i" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/></svg></span></div>
+          </div>
+        </div>
+        <div class="sh-foot"><span class="note">Changes save automatically.</span><button class="btn">Close</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="notes">
+  <b>Catatan</b>
+  <ul>
+    <li>Tombol <b>Members</b> membuka dialog anggota yang baru; klik avatar juga.</li>
+    <li>Dialog anggota hanya bisa menambah orang kalau Anda owner/manager project; yang lain melihat daftar saja dengan keterangan “Only the project owner can add people”.</li>
+    <li>Saat status diubah ke <b>Done</b>, permintaan bukti tetap muncul seperti sekarang (opsional, bisa dilewati).</li>
+    <li>Viewer (hanya lihat) melihat panel yang sama, semua kontrol abu-abu, dan keterangan “You can view this task”.</li>
+  </ul>
+</div>
+
+<script>
+// theme
+const seg = document.getElementById('theme');
+seg.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return;
+  seg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  document.documentElement.dataset.theme = b.dataset.v === 'dark' ? 'dark' : ''; });
+// ⋯ More
+const more = document.getElementById('moreMenu');
+document.getElementById('moreBtn').addEventListener('click', e => { e.stopPropagation(); more.classList.toggle('open'); });
+document.addEventListener('click', e => { if (!e.target.closest('.menu')) more.classList.remove('open'); });
+
+// people dialog
+const PEOPLE = [
+  ['YUDI ARTA TRIRENSILA', 'Network & Infrastructure', '#3a86c8', 'YA'], ['AMELIA DWI RAHMADIAH', 'Network & Infrastructure', '#cf6a4c', 'AD'],
+  ['JASON KRISTANTO', 'Application Development', '#8a6d3b', 'JK'], ['SONY BUDI INDARTO', 'Network & Infrastructure', '#5856D6', 'SB'],
+  ['YUDI APRIYADI', 'Production', '#30B0C7', 'YA'], ['YUDI EFENDI', 'Warehouse', '#A2845E', 'YE'], ['AGUS WAHYUDI', 'Finance, Tax & Accounting', '#34C759', 'AW'],
+];
+const SUGGESTED = [0, 1, 2];
+const picked = new Map();
+const plist = document.getElementById('plist'), chips = document.getElementById('chips');
+function row(i) {
+  const [n, d, c, ini] = PEOPLE[i], on = picked.has(i);
+  return `<div class="prow"><div class="av" style="background:${c}">${ini}</div><div class="who"><b>${n}</b><small>${d}</small></div><button class="add ${on ? 'on' : ''}" data-i="${i}">${on ? '✓ Added' : '+ Add'}</button></div>`;
+}
+function search(q) {
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  if (q.trim().length < 2) return null;
+  return PEOPLE.map((p, i) => [p, i]).filter(([p]) => words.every(w => p[0].toLowerCase().includes(w)))
+    .sort((a, b) => (a[0][0].toLowerCase().startsWith(q.toLowerCase()) ? 0 : 1) - (b[0][0].toLowerCase().startsWith(q.toLowerCase()) ? 0 : 1)).map(x => x[1]);
+}
+function paint() {
+  const q = document.getElementById('pq').value;
+  const hits = search(q);
+  if (hits === null) plist.innerHTML = `<div class="lbl">Suggested for you</div>` + SUGGESTED.map(row).join('');
+  else plist.innerHTML = hits.length ? `<div class="lbl">Results</div>` + hits.map(row).join('') : `<div class="hint" style="padding:10px 8px">No one named “${q.trim()}”. Check the spelling or try another part of the name.</div>`;
+  document.getElementById('phint').style.display = hits === null ? '' : 'none';
+  chips.innerHTML = [...picked.entries()].map(([i, role]) => `<span class="chip"><span class="av" style="background:${PEOPLE[i][2]}">${PEOPLE[i][3]}</span>${PEOPLE[i][0].split(' ')[0]}<select data-i="${i}"><option ${role === 'member' ? 'selected' : ''}>Member</option><option ${role === 'viewer' ? 'selected' : ''}>Viewer</option></select><button class="rm" data-rm="${i}">✕</button></span>`).join('');
+  document.getElementById('pickedWrap').style.display = picked.size ? '' : 'none';
+  const btn = document.getElementById('paddBtn');
+  btn.disabled = !picked.size; btn.style.opacity = picked.size ? 1 : .5;
+  btn.textContent = picked.size ? `Add ${picked.size} ${picked.size === 1 ? 'person' : 'people'}` : 'Add people';
+  document.getElementById('pnote').textContent = picked.size ? 'They’ll get a notification.' : 'Nobody selected yet.';
+}
+document.getElementById('pq').addEventListener('input', paint);
+document.getElementById('dlgNew').addEventListener('click', e => {
+  const a = e.target.closest('.add'); if (a) { const i = +a.dataset.i; picked.has(i) ? picked.delete(i) : picked.set(i, 'member'); paint(); }
+  const r = e.target.closest('[data-rm]'); if (r) { picked.delete(+r.dataset.rm); paint(); }
+});
+paint();
+
+// task sheet: collapsible groups, status opens progress, due ticks the starter
+document.querySelectorAll('.grp.collapsible > .gh').forEach(h => h.addEventListener('click', () => h.parentElement.classList.toggle('closed')));
+const flashSaved = () => { const s = document.getElementById('saved'); s.style.opacity = .3; setTimeout(() => s.style.opacity = 1, 250); };
+document.getElementById('status').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#status button').forEach(x => x.classList.toggle('on', x === b));
+  if (b.dataset.s === 'prog' || b.dataset.s === 'done') document.getElementById('progGrp').classList.remove('closed');
+  flashSaved();
+});
+document.querySelectorAll('#sheetNew .fld .pill').forEach(p => p.addEventListener('click', () => {
+  if (p.textContent.includes('Today') || p.textContent.includes('Friday') || p.id === 'dueBtn') {
+    const btn = document.getElementById('dueBtn'); btn.classList.remove('empty'); btn.innerHTML = '📅 ' + (p.textContent.includes('Friday') ? 'Fri, Oct 16' : 'Today');
+    document.getElementById('stDue').classList.add('done'); document.getElementById('stDue').querySelector('.ck').innerHTML = '<svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>';
+    document.getElementById('starterCount').textContent = '2 of 3';
+  }
+  flashSaved();
+}));
+</script>
+</body>
+</html>
