@@ -448,6 +448,36 @@
                 }
             </div>
 
+            @* ---- Pinned bar: one pin at a time; a tap jumps to it and shows the next older one ---- *@
+            @if (pinnedMessages.Count > 0)
+            {
+                var pins = PinsNewestFirst;
+                var shownPin = pins[Math.Clamp(pinCursor, 0, pins.Count - 1)];
+                var shownIndex = Math.Clamp(pinCursor, 0, pins.Count - 1);
+                <div class="sticky-pinned-bar glass" role="button" tabindex="0" title="Show pinned message" @onclick="ShowPinnedAndAdvance">
+                    @if (pins.Count > 1)
+                    {
+                        <div class="pin-rail" aria-hidden="true">
+                            @for (var i = 0; i < Math.Min(pins.Count, 4); i++)
+                            {
+                                <i class="@(RailSlot(shownIndex, pins.Count) == i ? "on" : "")"></i>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="pin-rail" aria-hidden="true"><i class="on"></i></div>
+                    }
+                    <div class="pin-body">
+                        <span class="pin-tag"><i data-lucide="pin"></i>Pinned · @shownPin.SenderName @if (pins.Count > 1) { <span class="pin-count">@(shownIndex + 1)/@pins.Count</span> }</span>
+                        <span class="pin-text" @key="shownPin.MessageId">@(!string.IsNullOrEmpty(shownPin.Content) ? TruncateStr(shownPin.Content, 140) : "Pinned message")</span>
+                    </div>
+                    <button type="button" class="pin-all-btn" title="All pinned messages" aria-label="All pinned messages" @onclick="OpenPinnedSection" @onclick:stopPropagation>
+                        <i data-lucide="list"></i>
+                    </button>
+                </div>
+            }
+
             @* ---- Live group call banner (Chat.GroupCall.cs) ---- *@
             @if (ActiveGroupCallBanner is { } liveGroupCall)
             {
@@ -468,7 +498,7 @@
                 </div>
             }
 
-            <div class="conv-body-flex @(pinnedMessages.Count > 0 ? "has-pins" : "")">
+            <div class="conv-body-flex">
                 <div class="conv-chat-flow">
                     @* ---- In-conversation Search ---- *@
                     @if (searchOpen)
@@ -500,36 +530,6 @@
                         {
                             <div class="search-results empty">No messages match “@searchQuery”.</div>
                         }
-                    }
-
-                    @* ---- Pinned bar: one pin at a time; a tap jumps to it and shows the next older one ---- *@
-                    @if (pinnedMessages.Count > 0)
-                    {
-                        var pins = PinsNewestFirst;
-                        var shownPin = pins[Math.Clamp(pinCursor, 0, pins.Count - 1)];
-                        var shownIndex = Math.Clamp(pinCursor, 0, pins.Count - 1);
-                        <div class="sticky-pinned-bar glass" role="button" tabindex="0" title="Show pinned message" @onclick="ShowPinnedAndAdvance">
-                            @if (pins.Count > 1)
-                            {
-                                <div class="pin-rail" aria-hidden="true">
-                                    @for (var i = 0; i < Math.Min(pins.Count, 4); i++)
-                                    {
-                                        <i class="@(RailSlot(shownIndex, pins.Count) == i ? "on" : "")"></i>
-                                    }
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="pin-rail" aria-hidden="true"><i class="on"></i></div>
-                            }
-                            <div class="pin-body">
-                                <span class="pin-tag"><i data-lucide="pin"></i>Pinned · @shownPin.SenderName @if (pins.Count > 1) { <span class="pin-count">@(shownIndex + 1)/@pins.Count</span> }</span>
-                                <span class="pin-text" @key="shownPin.MessageId">@(!string.IsNullOrEmpty(shownPin.Content) ? TruncateStr(shownPin.Content, 140) : "Pinned message")</span>
-                            </div>
-                            <button type="button" class="pin-all-btn" title="All pinned messages" aria-label="All pinned messages" @onclick="OpenPinnedSection" @onclick:stopPropagation>
-                                <i data-lucide="list"></i>
-                            </button>
-                        </div>
                     }
 
                     @* ---- Messages ---- *@
