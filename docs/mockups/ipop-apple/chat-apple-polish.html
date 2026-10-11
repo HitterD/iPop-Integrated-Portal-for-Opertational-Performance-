@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>iPop · Chat — Apple-style polish</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --accent: #2E9E5B; --accent-hover: #27884e; --accent-soft: #DDF2E4; --accent-ink: #1f7a45;
+    --bg: #F5F5F7; --surface: #fff; --surface-2: #F2F2F7; --fill: rgba(118,118,128,.12); --tray: #ECECEF;
+    --line: rgba(0,0,0,.1); --line-soft: rgba(0,0,0,.06);
+    --ink: #1D1D1F; --ink-2: #3A3A3C; --ink-3: #8E8E93; --ink-4: #AEAEB2;
+    --wall: #f4f6f2; --recv: #fff; --glass: rgba(255,255,255,.78);
+    --frame: #123528; --frame-2: #1a4535;
+    --r: 18px;
+  }
+  [data-theme="dark"] {
+    --accent: #30D158; --accent-hover: #28b84c; --accent-soft: rgba(48,209,88,.2); --accent-ink: #5FD98A;
+    --bg: #000; --surface: #1C1C1E; --surface-2: #232325; --fill: rgba(118,118,128,.28); --tray: #2C2C2E;
+    --line: rgba(255,255,255,.1); --line-soft: rgba(255,255,255,.08);
+    --ink: #F5F5F7; --ink-2: #D1D1D6; --ink-3: #8E8E93; --ink-4: #636366;
+    --wall: #16231b; --recv: #2C2C2E; --glass: rgba(28,28,30,.78);
+    --frame: #0b2219; --frame-2: #133126;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Inter", -apple-system, "Segoe UI", system-ui, sans-serif; background: #d9ddd9; color: #1d2420; }
+  [data-theme="dark"] body { background: #050807; color: #e8ece9; }
+  button { font: inherit; color: inherit; }
+  header.page { display: flex; align-items: center; gap: 14px; padding: 18px 28px 6px; flex-wrap: wrap; }
+  header.page h1 { font-size: 20px; margin: 0; }
+  header.page p { margin: 2px 0 0; font-size: 14px; opacity: .75; max-width: 900px; }
+  .seg { display: inline-flex; background: rgba(0,0,0,.08); border-radius: 10px; padding: 3px; }
+  [data-theme="dark"] .seg { background: rgba(255,255,255,.08); }
+  .seg button { border: 0; background: none; padding: 7px 14px; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; }
+  .seg button.on { background: #fff; color: #123528; box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+  .spacer { flex: 1; }
+  section.cmp { padding: 10px 28px 26px; }
+  section.cmp h2 { font-size: 15px; margin: 0 0 4px; }
+  section.cmp .sub { font-size: 13px; opacity: .72; margin: 0 0 12px; max-width: 1000px; }
+  .pair { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 3px 9px; border-radius: 99px; margin-bottom: 8px; }
+  .tag.now { background: rgba(0,0,0,.08); }
+  [data-theme="dark"] .tag.now { background: rgba(255,255,255,.1); }
+  .tag.new { background: #123528; color: #fff; }
+
+  svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  /* ===================== app frame ===================== */
+  .app { width: 1180px; height: 700px; display: grid; grid-template-columns: 320px 1fr; border-radius: 16px; overflow: hidden;
+         background: var(--bg); color: var(--ink); box-shadow: 0 12px 34px rgba(0,0,0,.18); position: relative; }
+  .app.with-info { grid-template-columns: 320px 1fr 320px; }
+
+  /* ----- room pane ----- */
+  .rooms { background: var(--bg); border-right: 1px solid var(--line-soft); display: flex; flex-direction: column; min-height: 0; }
+  .r-top { display: flex; gap: 8px; padding: 14px 14px 10px; align-items: center; }
+  .search { flex: 1; height: 36px; border-radius: 10px; background: var(--fill); display: flex; align-items: center; gap: 8px; padding: 0 11px; color: var(--ink-3); font-size: 14px; }
+  .search svg { width: 16px; height: 16px; }
+  .icon-btn { width: 36px; height: 36px; border-radius: 10px; border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; color: var(--ink-2); position: relative; }
+  .icon-btn:hover { background: var(--fill); }
+  .icon-btn.solid { background: var(--accent); color: #fff; }
+  .icon-btn.solid:hover { background: var(--accent-hover); }
+  .chips { display: flex; gap: 6px; padding: 0 14px 10px; }
+  .chip { height: 30px; padding: 0 12px; border-radius: 99px; border: 0; background: var(--fill); font-size: 13px; font-weight: 600; color: var(--ink-2); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+  .chip .n { font-size: 11.5px; font-weight: 700; color: var(--accent-ink); }
+  .chip.on { background: var(--ink); color: var(--surface); }
+  .chip.on .n { color: inherit; opacity: .8; }
+  .rlist { flex: 1; overflow: auto; padding: 0 8px 10px; scrollbar-width: thin; }
+  .rsec { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); padding: 8px 10px 6px; }
+  .room { display: flex; gap: 12px; align-items: center; padding: 10px; border-radius: 12px; cursor: pointer; }
+  .room:hover { background: rgba(0,0,0,.04); }
+  [data-theme="dark"] .room:hover { background: rgba(255,255,255,.06); }
+  .room.on { background: var(--accent-soft); }
+  .av { width: 44px; height: 44px; border-radius: 12px; flex: none; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 14px; position: relative; }
+  .av .dot { position: absolute; right: -2px; bottom: -2px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--bg); background: #34C759; }
+  .av .dot.off { background: #AEAEB2; }
+  .rmain { flex: 1; min-width: 0; }
+  .rrow { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .rname { font-size: 14.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rtime { font-size: 12px; color: var(--ink-3); flex: none; }
+  .rprev { font-size: 13.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; display: flex; gap: 6px; align-items: center; }
+  .rprev .p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .ubadge { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 99px; background: var(--accent); color: #fff; font-size: 11.5px; font-weight: 700; display: grid; place-items: center; flex: none; }
+  .pinmini { width: 13px; height: 13px; color: var(--ink-4); flex: none; }
+
+  /* old room pane bits */
+  .old .navcard { margin: 0 14px 10px; background: var(--surface); border: 1px solid var(--line-soft); border-radius: 12px; overflow: hidden; }
+  .old .navcard div { height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 12px; font-size: 13px; }
+  .old .navcard div + div { border-top: 1px solid var(--line-soft); }
+  .old .navcard svg { width: 15px; height: 15px; color: #6E6E73; }
+  .old .navcard .chev { margin-left: auto; color: var(--ink-4); }
+  .old .segm { margin: 0 14px 10px; display: flex; padding: 2px; border-radius: 10px; background: var(--fill); }
+  .old .segm div { flex: 1; height: 28px; display: grid; place-items: center; font-size: 13px; font-weight: 500; border-radius: 8px; }
+  .old .segm div.on { background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .old .room .av { border-radius: 50%; width: 42px; height: 42px; }
+  .old .rname { font-size: 13px; } .old .rprev { font-size: 12px; }
+
+  /* menu popover */
+  .pop { position: absolute; z-index: 20; min-width: 220px; padding: 6px; border-radius: 14px; background: var(--glass); backdrop-filter: blur(20px) saturate(1.6);
+         -webkit-backdrop-filter: blur(20px) saturate(1.6); border: 1px solid var(--line); box-shadow: 0 12px 32px rgba(0,0,0,.18); display: none; }
+  .pop.open { display: block; animation: popin .16s ease-out; }
+  @keyframes popin { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
+  .pop button { display: flex; align-items: center; gap: 10px; width: 100%; height: 38px; padding: 0 10px; border: 0; background: none; border-radius: 9px; font-size: 14px; cursor: pointer; text-align: left; }
+  .pop button:hover { background: var(--fill); }
+  .pop button svg { width: 17px; height: 17px; color: var(--ink-3); }
+  .pop .sep { height: 1px; background: var(--line-soft); margin: 5px 8px; }
+  .pop .hint { margin-left: auto; font-size: 12px; color: var(--ink-3); }
+
+  /* ----- conversation ----- */
+  .conv { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface); position: relative; }
+  .chead { height: 64px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 14px 0 20px; border-bottom: 1px solid var(--line-soft); background: var(--surface); position: relative; z-index: 3; }
+  .chead .av { width: 40px; height: 40px; border-radius: 11px; cursor: pointer; }
+  .chead .who { flex: 1; min-width: 0; cursor: pointer; }
+  .chead .nm { font-size: 16px; font-weight: 650; }
+  .chead .st { font-size: 12.5px; color: var(--ink-3); margin-top: 1px; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chead .st .sd { width: 7px; height: 7px; border-radius: 50%; background: #AEAEB2; flex: none; }
+  .hacts { display: flex; gap: 2px; align-items: center; }
+  .hacts .icon-btn { width: 38px; height: 38px; color: var(--ink-2); }
+  .hacts .icon-btn svg { width: 20px; height: 20px; }
+  .hacts .icon-btn.on { background: var(--accent-soft); color: var(--accent-ink); }
+  .old .hacts .icon-btn { width: 32px; height: 32px; } .old .hacts .icon-btn svg { width: 16px; height: 16px; }
+  .old .chead .nm { font-size: 14px; font-weight: 600; } .old .chead .st { font-size: 12px; }
+
+  /* pinned — old */
+  .pin-old { flex: none; display: flex; align-items: center; gap: 10px; padding: 9px 16px; background: #FFFBF2; border-left: 3px solid #FF9F0A; font-size: 12px; }
+  [data-theme="dark"] .pin-old { background: #342B19; }
+  .pin-old .t { color: #B25E00; font-weight: 600; } [data-theme="dark"] .pin-old .t { color: #FFBC55; }
+  .pin-old .x { flex: 1; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pin-old .va { color: var(--accent); font-weight: 600; font-size: 11.5px; }
+  .pin-old svg { width: 14px; height: 14px; color: #B25E00; }
+
+  /* pinned — new: floating glass bar over the wallpaper */
+  .msgs-wrap { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
+  .pin-new { position: absolute; z-index: 2; top: 10px; left: 16px; right: 16px; display: flex; align-items: center; gap: 12px;
+             padding: 8px 8px 8px 12px; border-radius: 14px; background: var(--glass); backdrop-filter: blur(18px) saturate(1.5); -webkit-backdrop-filter: blur(18px) saturate(1.5);
+             border: 1px solid var(--line-soft); box-shadow: 0 4px 16px rgba(0,0,0,.08); cursor: pointer; }
+  .pin-new .rail { display: flex; flex-direction: column; gap: 3px; align-self: stretch; padding: 2px 0; }
+  .pin-new .rail i { width: 3px; flex: 1; border-radius: 3px; background: var(--ink-4); opacity: .45; transition: background .2s, opacity .2s; }
+  .pin-new .rail i.on { background: var(--accent); opacity: 1; }
+  .pin-new .pbody { flex: 1; min-width: 0; }
+  .pin-new .ph { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 650; color: var(--accent-ink); }
+  .pin-new .ph svg { width: 13px; height: 13px; }
+  .pin-new .ph .cnt { color: var(--ink-3); font-weight: 600; }
+  .pin-new .pt { font-size: 14px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; transition: opacity .15s; }
+  .pin-new .pt b { font-weight: 600; }
+  .pin-new .icon-btn { width: 34px; height: 34px; color: var(--ink-3); }
+  .pin-new .thumb { width: 36px; height: 36px; border-radius: 8px; flex: none; background: linear-gradient(135deg, #123528, #2E9E5B); }
+
+  .msgs { flex: 1; overflow: auto; padding: 18px 24px 14px; background-color: var(--wall);
+          background-image: url("../../../src/IPop.Web/wwwroot/images/chat/coffee-light.svg"); background-size: 1120px 1190px; scrollbar-width: thin; }
+  [data-theme="dark"] .msgs { background-image: url("../../../src/IPop.Web/wwwroot/images/chat/coffee-dark.svg"); }
+  .msgs.pinned { padding-top: 76px; }
+  .day { text-align: center; margin: 6px 0 12px; }
+  .day span { font-size: 12px; font-weight: 600; color: var(--ink-3); background: var(--glass); padding: 4px 10px; border-radius: 99px; backdrop-filter: blur(10px); }
+  .row { display: flex; margin-top: 8px; }
+  .row.g { margin-top: 2px; }
+  .row.sent { justify-content: flex-end; }
+  .b { position: relative; max-width: 66%; padding: 9px 13px 8px; border-radius: var(--r); background: var(--recv); color: var(--ink); font-size: 14.5px; line-height: 1.42;
+       box-shadow: 0 1px 1px rgba(0,0,0,.06); overflow-wrap: anywhere; }
+  .sent .b { background: var(--accent); color: #fff; }
+  .row.recv .b.tail { border-bottom-left-radius: 5px; } .row.sent .b.tail { border-bottom-right-radius: 5px; }
+  .meta { float: right; margin: 7px -3px -3px 10px; font-size: 11px; line-height: 1; color: var(--ink-3); display: inline-flex; gap: 3px; align-items: center; }
+  .sent .meta { color: rgba(255,255,255,.9); }
+  .meta svg { width: 14px; height: 14px; stroke-width: 2.2; }
+  .b a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+  .b.jump { animation: flash 1.2s ease; }
+  @keyframes flash { 0%, 60% { box-shadow: 0 0 0 3px rgba(255,159,10,.75); } 100% { box-shadow: 0 1px 1px rgba(0,0,0,.06); } }
+
+  /* image + caption */
+  .img { display: block; border-radius: 12px; background: #e5e5ea; overflow: hidden; }
+  .shot { width: 100%; height: 100%; display: block; }
+  /* OLD: bubble grows to the caption */
+  .old-media .b { max-width: 74%; padding: 6px; background: #E9E9ED; color: var(--ink); }
+  [data-theme="dark"] .old-media .b { background: #2C2C2E; }
+  .old-media .img { width: 300px; height: 210px; }
+  .old-media .cap { padding: 6px 6px 2px; font-size: 13px; }
+  /* NEW: bubble = image width */
+  .media .b { padding: 4px; width: min(340px, 100%); max-width: none; }
+  .media .img { width: 100%; aspect-ratio: 300 / 210; }
+  .media .cap { padding: 7px 9px 4px; }
+  .media .b.only { padding: 0; background: none; box-shadow: none; }
+  .media .b.only .meta-over { position: absolute; right: 8px; bottom: 8px; background: rgba(0,0,0,.55); color: #fff; padding: 3px 7px; border-radius: 10px; font-size: 11px; display: inline-flex; gap: 3px; align-items: center; }
+
+  /* link preview */
+  .old-link .lp { margin-top: 4px; width: 340px; display: flex; border-radius: 12px; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--accent); }
+  .old-link .lp .th { width: 80px; flex: none; background: #f1f1f4; }
+  .old-link .lp .tx { padding: 8px 10px; font-size: 12px; }
+  .old-link .lp .tx b { display: block; font-size: 13px; margin: 2px 0; color: var(--ink); }
+  .old-link .lp .tx .d { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; color: var(--ink-3); }
+  .old-link .stack { display: flex; flex-direction: column; align-items: flex-end; max-width: 80%; }
+  .old-link .stack .b { max-width: 100%; }
+
+  .link .b { width: min(340px, 100%); padding: 4px 4px 8px; }
+  .lcard { display: block; border-radius: 13px; overflow: hidden; background: rgba(0,0,0,.05); color: inherit; text-decoration: none; }
+  .b .lcard, .b .lcard * { text-decoration: none; }
+  .sent .lcard { background: rgba(255,255,255,.16); }
+  .lcard .hero { height: 150px; display: grid; place-items: center; background: #eef0f3; }
+  [data-theme="dark"] .lcard .hero { background: #2c2c2e; }
+  .lcard .lt { padding: 8px 10px 9px; }
+  .lcard .ld { font-size: 11.5px; color: var(--ink-3); display: flex; align-items: center; gap: 5px; }
+  .sent .lcard .ld { color: rgba(255,255,255,.82); }
+  .lcard .ld img, .lcard .fav { width: 14px; height: 14px; border-radius: 3px; }
+  .lcard .lh { font-size: 14px; font-weight: 650; margin-top: 2px; line-height: 1.3; }
+  .lcard .ls { font-size: 12.5px; opacity: .78; margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .link .ltxt { padding: 7px 9px 0; }
+  .link .ltxt a { display: inline-block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+
+  /* composer */
+  .comp { flex: none; display: flex; align-items: center; gap: 10px; padding: 10px 16px 12px; background: var(--surface); border-top: 1px solid var(--line-soft); }
+  .comp .field { flex: 1; height: 42px; border-radius: 21px; background: var(--fill); display: flex; align-items: center; padding: 0 8px 0 16px; color: var(--ink-3); font-size: 14.5px; }
+  .comp .field .icon-btn { margin-left: auto; width: 32px; height: 32px; color: var(--ink-3); }
+  .comp .plus { width: 38px; height: 38px; border-radius: 50%; background: var(--fill); }
+
+  /* info panel */
+  .info { border-left: 1px solid var(--line-soft); background: var(--bg); overflow: auto; display: none; }
+  .app.with-info .info { display: block; animation: slidein .2s ease-out; }
+  @keyframes slidein { from { opacity: 0; transform: translateX(14px); } }
+  .info .hero { text-align: center; padding: 22px 16px 14px; }
+  .info .hero .av { width: 76px; height: 76px; border-radius: 20px; margin: 0 auto 10px; font-size: 24px; }
+  .info .hero .n { font-size: 17px; font-weight: 700; }
+  .info .hero .d { font-size: 13px; color: var(--ink-3); margin-top: 2px; }
+  .qa { display: flex; gap: 8px; justify-content: center; padding: 4px 16px 16px; }
+  .qa button { width: 66px; padding: 9px 0 7px; border: 0; border-radius: 12px; background: var(--surface); display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 600; color: var(--accent-ink); cursor: pointer; }
+  .qa button svg { width: 19px; height: 19px; }
+  .inset { margin: 0 14px 14px; background: var(--surface); border-radius: 12px; overflow: hidden; }
+  .inset .row2 { height: 44px; display: flex; align-items: center; gap: 11px; padding: 0 12px; font-size: 14px; cursor: pointer; }
+  .inset .row2 + .row2 { border-top: 1px solid var(--line-soft); }
+  .inset .row2:hover { background: var(--surface-2); }
+  .inset .row2 svg { width: 18px; height: 18px; color: var(--accent-ink); }
+  .inset .row2 .c { margin-left: auto; font-size: 13px; color: var(--ink-3); display: flex; align-items: center; gap: 4px; }
+  .inset .row2 .c svg { width: 14px; height: 14px; color: var(--ink-4); }
+  .inset .row2.new-tag .c::before { content: "moved here"; font-size: 10.5px; font-weight: 700; color: #fff; background: #cf6a4c; border-radius: 99px; padding: 2px 7px; margin-right: 6px; }
+  .info .lbl { font-size: 12px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; padding: 4px 26px 6px; }
+
+  .notes { padding: 4px 28px 50px; font-size: 14px; line-height: 1.6; max-width: 1180px; }
+  .notes li { margin: 2px 0; }
+</style>
+</head>
+<body>
+<header class="page">
+  <div>
+    <h1>Chat — lebih simpel, lebih elegan</h1>
+    <p>Klik untuk mencoba: <b>chip filter</b>, <b>⋯</b> di sebelah tombol tulis, ikon <b>Telepon</b> dan <b>Info (ⓘ)</b> di header, dan <b>bar pinned</b> (klik untuk pindah ke pin berikutnya).</p>
+  </div>
+  <span class="spacer"></span>
+  <div class="seg" id="theme"><button class="on" data-v="light">Terang</button><button data-v="dark">Gelap</button></div>
+</header>
+
+<section class="cmp">
+  <h2>1 · Halaman chat (header 3 ikon, chip filter, pinned kaca)</h2>
+  <p class="sub">Header hanya <b>Cari · Telepon · Info</b>. Kalender, jadwal meeting, pin percakapan, pesan disematkan dan file pindah ke panel Info (ditandai “moved here”). Empat baris di atas daftar chat dan tab Direct/Groups diganti chip filter; Saved &amp; Pinned ada di menu ⋯.</p>
+  <div class="tag new">Baru</div>
+  <div class="app" id="appNew">
+    <aside class="rooms">
+      <div class="r-top">
+        <div class="search"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search chats &amp; messages</div>
+        <button class="icon-btn" id="moreBtn" title="More"><svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg></button>
+        <button class="icon-btn solid" title="New chat"><svg class="i" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
+        <div class="pop" id="morePop" style="top:54px; left:150px">
+          <button><svg class="i" viewBox="0 0 24 24"><path d="M12 17v5"/><path d="M9 10.8V4h6v6.8l3 3.2H6z"/></svg>Pinned messages<span class="hint">12</span></button>
+          <button><svg class="i" viewBox="0 0 24 24"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>Saved messages<span class="hint">4</span></button>
+          <div class="sep"></div>
+          <button><svg class="i" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9"/></svg>New group</button>
+        </div>
+      </div>
+      <div class="chips" id="chips">
+        <button class="chip on">All</button>
+        <button class="chip">Unread <span class="n">3</span></button>
+        <button class="chip">Groups</button>
+        <button class="chip">Mentions <span class="n">1</span></button>
+      </div>
+      <div class="rlist" id="rlistNew"></div>
+    </aside>
+    <main class="conv">
+      <div class="chead">
+        <div class="av" style="background:#5c7f6a">YA</div>
+        <div class="who" data-info><div class="nm">Yudi Arta Trirensila</div><div class="st"><span class="sd"></span>Last seen today 12:10 · Network &amp; Infrastructure</div></div>
+        <div class="hacts">
+          <button class="icon-btn" title="Search in chat"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
+          <button class="icon-btn" id="callBtn" title="Call"><svg class="i" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z"/></svg></button>
+          <button class="icon-btn" id="infoBtn" title="Info"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M12 16v-4.5"/><path d="M12 8h.01"/></svg></button>
+        </div>
+        <div class="pop" id="callPop" style="top:56px; right:56px">
+          <button><svg class="i" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z"/></svg>Voice call</button>
+          <button><svg class="i" viewBox="0 0 24 24"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>Video call</button>
+        </div>
+      </div>
+      <div class="msgs-wrap">
+        <div class="pin-new" id="pinBar" title="Show pinned message">
+          <div class="rail" id="pinRail"></div>
+          <div class="pbody">
+            <div class="ph"><svg class="i" viewBox="0 0 24 24"><path d="M12 17v5"/><path d="M9 10.8V4h6v6.8l3 3.2H6z"/></svg><span id="pinWho">Pinned · iPop Administrator</span><span class="cnt" id="pinCnt"></span></div>
+            <div class="pt" id="pinText"></div>
+          </div>
+          <button class="icon-btn" id="pinList" title="All pinned messages"><svg class="i" viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg></button>
+        </div>
+        <div class="msgs pinned" id="msgsNew"></div>
+      </div>
+      <div class="comp">
+        <button class="icon-btn plus" title="Attach"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
+        <div class="field">Message Yudi Arta<button class="icon-btn" title="Emoji"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01"/><path d="M15 9h.01"/></svg></button></div>
+        <button class="icon-btn" title="Voice note"><svg class="i" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><path d="M12 18v4"/></svg></button>
+      </div>
+    </main>
+    <aside class="info">
+      <div class="hero"><div class="av" style="background:#5c7f6a">YA</div><div class="n">Yudi Arta Trirensila</div><div class="d">Network &amp; Infrastructure</div></div>
+      <div class="qa">
+        <button><svg class="i" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z"/></svg>Call</button>
+        <button><svg class="i" viewBox="0 0 24 24"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>Video</button>
+        <button><svg class="i" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="m2 2 20 20"/></svg>Mute</button>
+        <button><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search</button>
+      </div>
+      <div class="inset">
+        <div class="row2 new-tag"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>View calendar<span class="c"><svg class="i" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></span></div>
+        <div class="row2 new-tag"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="M12 14v4"/><path d="M10 16h4"/></svg>Schedule meeting<span class="c"><svg class="i" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      </div>
+      <div class="inset">
+        <div class="row2 new-tag"><svg class="i" viewBox="0 0 24 24"><path d="M12 17v5"/><path d="M9 10.8V4h6v6.8l3 3.2H6z"/></svg>Pinned messages<span class="c">3<svg class="i" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></span></div>
+        <div class="row2 new-tag"><svg class="i" viewBox="0 0 24 24"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>Files &amp; media<span class="c">48<svg class="i" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      </div>
+      <div class="inset">
+        <div class="row2 new-tag"><svg class="i" viewBox="0 0 24 24"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>Pin chat to top<span class="c"><svg class="i" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></span></div>
+        <div class="row2"><svg class="i" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Clear my history<span class="c"></span></div>
+      </div>
+    </aside>
+  </div>
+
+  <div style="height:22px"></div>
+  <div class="tag now">Sekarang</div>
+  <div class="app old">
+    <aside class="rooms">
+      <div class="r-top">
+        <div class="search" style="height:34px;font-size:13px"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search conversations...</div>
+        <button class="icon-btn solid" style="width:34px;height:34px"><svg class="i" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
+      </div>
+      <div class="navcard">
+        <div><svg class="i" viewBox="0 0 24 24"><path d="M12 17v5"/><path d="M9 10.8V4h6v6.8l3 3.2H6z"/></svg>Pinned messages<svg class="i chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></div>
+        <div><svg class="i" viewBox="0 0 24 24"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>Saved messages<svg class="i chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></div>
+        <div><svg class="i" viewBox="0 0 24 24"><path d="M3 6h13"/><path d="M3 12h9"/><circle cx="17" cy="15" r="3"/><path d="m21 19-1.8-1.8"/></svg>Search all conversations<svg class="i chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></div>
+        <div><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg>Unread mentions<svg class="i chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></div>
+      </div>
+      <div class="segm"><div class="on">Direct</div><div>Groups</div></div>
+      <div class="rlist" id="rlistOld"></div>
+    </aside>
+    <main class="conv">
+      <div class="chead">
+        <div class="av" style="background:#5c7f6a;border-radius:10px">YA</div>
+        <div class="who"><div class="nm">Yudi Arta Trirensila</div><div class="st"><span class="sd"></span>Last seen today 12:10 · Network &amp; Infrastructure</div></div>
+        <div class="hacts" id="oldActs"></div>
+      </div>
+      <div class="pin-old"><svg class="i" viewBox="0 0 24 24"><path d="M12 17v5"/><path d="M9 10.8V4h6v6.8l3 3.2H6z"/></svg><span class="t">Pinned message · By iPop Administrator</span><span class="x">@YUDI ARTA TRIRENSILA mas yud</span><span class="va">View all</span></div>
+      <div class="msgs" id="msgsOld"></div>
+      <div class="comp"><button class="icon-btn plus"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button><div class="field">Message Yudi Arta</div></div>
+    </main>
+  </div>
+</section>
+
+<section class="cmp">
+  <h2>2 · Gambar + caption</h2>
+  <p class="sub">Lebar bubble mengikuti gambar (maks 360px, min 240px). Caption membungkus di bawah gambar dalam lebar yang sama, jam di pojok kanan bawah.</p>
+  <div class="pair">
+    <div><div class="tag now">Sekarang</div><div class="app old-media" style="width:760px;height:auto;display:block"><div class="msgs" style="height:340px" id="mediaOld"></div></div></div>
+    <div><div class="tag new">Baru</div><div class="app media" style="width:760px;height:auto;display:block"><div class="msgs" style="height:740px" id="mediaNew"></div></div></div>
+  </div>
+</section>
+
+<section class="cmp">
+  <h2>3 · Link + preview dalam satu bubble</h2>
+  <p class="sub">Kartu preview (gambar, domain, judul) di atas, teks/link di bawahnya dalam bubble yang sama. URL panjang dipotong dengan “…”. Hanya link pertama yang dapat preview.</p>
+  <div class="pair">
+    <div><div class="tag now">Sekarang</div><div class="app old-link" style="width:760px;height:auto;display:block"><div class="msgs" style="height:440px" id="linkOld"></div></div></div>
+    <div><div class="tag new">Baru</div><div class="app link" style="width:760px;height:auto;display:block"><div class="msgs" style="height:640px" id="linkNew"></div></div></div>
+  </div>
+</section>
+
+<div class="notes">
+  <b>Catatan</b>
+  <ul>
+    <li>Header grup: <b>Cari · Telepon grup · Info</b>; Members dan Group settings ada di panel Info (sudah ada di sana sekarang).</li>
+    <li>Klik nama/avatar di header juga membuka panel Info (seperti iMessage).</li>
+    <li>Pinned bar mengambang di atas wallpaper dengan efek kaca; garis kecil di kiri menunjukkan pin ke-berapa (maks 4 garis). Klik = lompat ke pesan &amp; tampilkan pin sebelumnya.</li>
+    <li>Di HP: aturan bubble (gambar &amp; link) dan bar pinned yang sama; header HP tidak diubah.</li>
+  </ul>
+</div>
+
+<script>
+const S = (d, c = 'i') => `<svg class="${c}" viewBox="0 0 24 24">${d}</svg>`;
+const TICK = S('<path d="m2 12 5 5L18 6"/><path d="m11 16 1 1L22 7"/>');
+
+// --- room lists
+const ROOMS = [
+  ['Pinned', [['Jason Kristanto', 'JK', '#4f6d8f', 'Mon', 'langsung bisa diklik kyk WA', 0, true]]],
+  ['Recent', [
+    ['Yudi Arta Trirensila', 'YA', '#5c7f6a', 'Yesterday', 'dari tulisan workspace,comunication, resouce dan…', 0, false, true],
+    ['Amelia Yolanda', 'AY', '#8a6d3b', 'Fri', 'cek en yang', 2],
+    ['Adrio Andhika Antoninus', 'AA', '#6d5a8a', 'Fri', 'iya pak adrio', 0],
+    ['ICT Team', 'IT', '#cf6a4c', 'Thu', 'Sony: ini settingan dari komputer…', 1],
+    ['Elsha Larasati', 'EL', '#a2546c', 'Thu', 'siapp', 0],
+    ['Sony Budi Indarto', 'SB', '#3a86c8', 'Wed', 'ini settingan dari komputer,…', 0],
+  ]],
+];
+function roomsHtml(old) {
+  return ROOMS.map(([sec, list]) => `<div class="rsec">${sec}</div>` + list.map(([n, i, c, t, p, u, pin, on]) =>
+    `<div class="room${on ? ' on' : ''}"><div class="av" style="background:${c}">${i}<span class="dot${u ? '' : ' off'}"></span></div><div class="rmain"><div class="rrow"><span class="rname">${n}</span><span class="rtime">${t}</span></div><div class="rprev"><span class="p">${p}</span>${u ? `<span class="ubadge">${u}</span>` : ''}${!old && pin ? S('<path d="M12 17v5"/><path d="M9 10.8V4h6v6.8l3 3.2H6z"/>', 'i pinmini') : ''}</div></div></div>`).join('')).join('');
+}
+document.getElementById('rlistNew').innerHTML = roomsHtml(false);
+document.getElementById('rlistOld').innerHTML = roomsHtml(true);
+
+// --- old header icons (8)
+const OLD_ICONS = ['<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z"/>',
+  '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><circle cx="12" cy="16" r="2"/>',
+  '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="M12 14v4"/><path d="M10 16h4"/>',
+  '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/><path d="M5 3h14"/>',
+  '<path d="M12 17v5"/><path d="M9 10.8V4h6v6.8l3 3.2H6z"/>',
+  '<path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/>',
+  '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/>'];
+document.getElementById('oldActs').innerHTML = OLD_ICONS.map(d => `<button class="icon-btn">${S(d)}</button>`).join('');
+
+// --- fake "screenshot" image used for media bubbles
+const SHOT = `<svg class="shot" viewBox="0 0 300 210" preserveAspectRatio="xMidYMid slice"><rect width="300" height="210" fill="#123528"/>
+  ${[['Notes',34],['Tickets',70]].map(([t,y])=>`<rect x="18" y="${y-12}" width="16" height="16" rx="3" fill="none" stroke="#8fc6f2" stroke-width="2"/><text x="44" y="${y+1}" fill="#fff" font-size="14" font-weight="600" font-family="Inter,Segoe UI">${t}</text>`).join('')}
+  <rect x="18" y="92" width="16" height="16" rx="4" fill="#cf6a4c"/><text x="44" y="105" fill="#fff" font-size="13" font-weight="700" font-family="Inter,Segoe UI">Communication</text>
+  <rect x="8" y="118" width="292" height="30" rx="10" fill="#f3f4f6"/><text x="44" y="138" fill="#1d2420" font-size="14" font-weight="700" font-family="Inter,Segoe UI">Chat</text><circle cx="26" cy="133" r="7" fill="none" stroke="#cf6a4c" stroke-width="2"/>
+  ${[['Mail',170],['News & Memos',198]].map(([t,y])=>`<rect x="18" y="${y-12}" width="16" height="13" rx="2" fill="none" stroke="#f4a98f" stroke-width="2"/><text x="44" y="${y}" fill="#fff" font-size="14" font-weight="600" font-family="Inter,Segoe UI">${t}</text>`).join('')}</svg>`;
+const CAP = 'dari tulisan workspace,comunication, resouce dan administration itukan header mungkin bisa diperbesar 2 point sebagai pembeda menu';
+
+document.getElementById('mediaOld').innerHTML = `
+  <div class="row recv"><div class="b"><div class="img">${SHOT}</div><div class="cap">${CAP} <span class="meta">14:11</span></div></div></div>`;
+document.getElementById('mediaNew').innerHTML = `
+  <div class="row recv"><div class="b tail"><div class="img">${SHOT}</div><div class="cap">${CAP}<span class="meta">14:11</span></div></div></div>
+  <div class="row sent"><div class="b tail"><div class="img">${SHOT}</div><div class="cap">Siap, nanti saya besarkan<span class="meta">14:12 ${TICK}</span></div></div></div>
+  <div class="row recv"><div class="b only"><div class="img" style="width:300px">${SHOT}</div><span class="meta-over">14:13</span></div></div>`;
+
+// --- links
+const SHEET = '<svg viewBox="0 0 120 80" width="120" height="80"><rect x="8" y="6" width="104" height="68" rx="4" fill="#fff" stroke="#d0d4da"/><rect x="8" y="6" width="104" height="10" rx="4" fill="#1e8e3e"/>' +
+  Array.from({ length: 6 }, (_, r) => Array.from({ length: 4 }, (_, c) => `<rect x="${14 + c * 25}" y="${22 + r * 8}" width="21" height="4" rx="1" fill="#e3e6ea"/>`).join('')).join('') + '</svg>';
+const GEM = '<svg viewBox="0 0 160 60" width="160" height="60"><path d="M30 8c2 14 8 20 22 22-14 2-20 8-22 22-2-14-8-20-22-22 14-2 20-8 22-22Z" fill="#4285f4"/><text x="62" y="38" font-size="22" font-family="Inter,Segoe UI" fill="#1f1f1f">Gemini</text></svg>';
+const URL1 = 'https://docs.google.com/spreadsheets/d/1mHqx0Q8j1EBBAoQI1CAcSCujAabfnPIMm2bpHNhwsPE/edit?gid=1082517454#gid=1082517454';
+document.getElementById('linkOld').innerHTML = `
+  <div class="row sent"><div class="b">test<span class="meta">23:49 ${TICK}</span></div></div>
+  <div class="row sent"><div class="stack"><div class="b"><a>${URL1}</a><span class="meta">23:49 ${TICK}</span></div>
+    <div class="lp"><div class="th"></div><div class="tx"><span class="d">GOOGLE DOCS</span><b>Sosialisasi iDesk - 28 September 2026</b></div></div></div></div>
+  <div class="row sent"><div class="stack"><div class="b"><a>https://gemini.google.com/</a><span class="meta">23:50 ${TICK}</span></div>
+    <div class="lp"><div class="th" style="display:grid;place-items:center">✦</div><div class="tx"><span class="d">GEMINI</span><b>Google Gemini</b>Perkenalkan Gemini, asisten AI Google…</div></div></div></div>`;
+document.getElementById('linkNew').innerHTML = `
+  <div class="row sent"><div class="b">test<span class="meta">23:49 ${TICK}</span></div></div>
+  <div class="row sent g"><div class="b tail"><a class="lcard"><div class="hero">${SHEET}</div><div class="lt"><div class="ld"><span class="fav" style="background:#1e8e3e"></span>docs.google.com</div><div class="lh">Sosialisasi iDesk - 28 September 2026</div></div></a>
+    <div class="ltxt"><a>${URL1}</a><span class="meta">23:49 ${TICK}</span></div></div></div>
+  <div class="row recv"><div class="b tail"><a class="lcard"><div class="hero" style="height:110px">${GEM}</div><div class="lt"><div class="ld"><span class="fav" style="background:#4285f4"></span>gemini.google.com</div><div class="lh">Google Gemini</div><div class="ls">Perkenalkan Gemini, asisten AI Google. Dapatkan bantuan untuk menulis, merencanakan, belajar, dan banyak lagi.</div></div></a>
+    <div class="ltxt">coba pakai ini mas buat ringkasan <a>https://gemini.google.com/</a><span class="meta">23:50</span></div></div></div>`;
+
+// --- main conversation (new + old)
+const CONV = (old) => `
+  <div class="day"><span>Today</span></div>
+  <div class="row sent"><div class="b tail" data-id="m1">@YUDI ARTA TRIRENSILA mas yud<span class="meta">13:20 ${TICK}</span></div></div>
+  <div class="row recv"><div class="b">shitttt<span class="meta">13:24</span></div></div>
+  <div class="row recv g"><div class="b">mantapp<span class="meta">13:24</span></div></div>
+  <div class="row recv g"><div class="b tail" data-id="m2">KWKWWWK<span class="meta">13:24</span></div></div>
+  ${old
+    ? `<div class="row recv" style="--x:1"><div class="b" style="max-width:74%;padding:6px;background:#E9E9ED;color:#1D1D1F"><div class="img" style="width:300px;height:210px">${SHOT}</div><div style="padding:6px 6px 2px;font-size:13px">${CAP} <span class="meta">14:11</span></div></div></div>`
+    : `<div class="row recv media"><div class="b tail" data-id="m3"><div class="img">${SHOT}</div><div class="cap">${CAP}<span class="meta">14:11</span></div></div></div>`}`;
+document.getElementById('msgsNew').innerHTML = CONV(false);
+document.getElementById('msgsOld').innerHTML = CONV(true);
+
+// --- pinned bar: cycles through pins and jumps to each
+const PINS = [
+  ['iPop Administrator', '<b>@YUDI ARTA TRIRENSILA</b> mas yud', 'm1'],
+  ['Yudi Arta Trirensila', 'KWKWWWK', 'm2'],
+  ['Yudi Arta Trirensila', '📷 Photo · dari tulisan workspace, comunication, resouce dan administration…', 'm3'],
+];
+let pinIdx = PINS.length - 1;
+function paintPin() {
+  const [who, text] = PINS[pinIdx];
+  document.getElementById('pinWho').textContent = 'Pinned · ' + who;
+  document.getElementById('pinCnt').textContent = PINS.length > 1 ? `${pinIdx + 1}/${PINS.length}` : '';
+  const t = document.getElementById('pinText'); t.style.opacity = 0;
+  setTimeout(() => { t.innerHTML = text; t.style.opacity = 1; }, 120);
+  document.getElementById('pinRail').innerHTML = PINS.map((_, i) => `<i class="${i === pinIdx ? 'on' : ''}"></i>`).join('');
+}
+paintPin();
+document.getElementById('pinBar').addEventListener('click', e => {
+  if (e.target.closest('#pinList')) { document.getElementById('appNew').classList.add('with-info'); document.getElementById('infoBtn').classList.add('on'); return; }
+  const target = document.querySelector(`#msgsNew [data-id="${PINS[pinIdx][2]}"]`);
+  if (target) { target.scrollIntoView({ block: 'center', behavior: 'smooth' }); target.classList.remove('jump'); void target.offsetWidth; target.classList.add('jump'); }
+  pinIdx = (pinIdx - 1 + PINS.length) % PINS.length; // next tap shows the older pin
+  paintPin();
+});
+
+// --- popovers + info panel
+function wirePop(btnId, popId) {
+  const btn = document.getElementById(btnId), pop = document.getElementById(popId);
+  btn.addEventListener('click', e => { e.stopPropagation(); document.querySelectorAll('.pop.open').forEach(p => p !== pop && p.classList.remove('open')); pop.classList.toggle('open'); });
+}
+wirePop('moreBtn', 'morePop'); wirePop('callBtn', 'callPop');
+document.addEventListener('click', e => { if (!e.target.closest('.pop')) document.querySelectorAll('.pop.open').forEach(p => p.classList.remove('open')); });
+const toggleInfo = () => { const a = document.getElementById('appNew'); a.classList.toggle('with-info'); document.getElementById('infoBtn').classList.toggle('on', a.classList.contains('with-info')); };
+document.getElementById('infoBtn').addEventListener('click', toggleInfo);
+document.querySelector('[data-info]').addEventListener('click', toggleInfo);
+document.getElementById('chips').addEventListener('click', e => { const c = e.target.closest('.chip'); if (!c) return; document.querySelectorAll('#chips .chip').forEach(x => x.classList.toggle('on', x === c)); });
+
+const seg = document.getElementById('theme');
+seg.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return;
+  seg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  document.documentElement.dataset.theme = b.dataset.v === 'dark' ? 'dark' : ''; });
+</script>
+</body>
+</html>
