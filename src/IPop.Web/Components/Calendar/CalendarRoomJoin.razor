@@ -1,0 +1,9 @@
+@if (MeetingStatus != "cancelled" && IPop.Application.Hall.HallBooking.RoomKey(Location) is { } roomKey)
+{
+    <div class="cal-detail-row"><i data-lucide="door-open"></i><a class="cal-btn primary" href="/calls?tab=rooms&join=@roomKey">Join room</a></div>
+}
+
+@code {
+    [Parameter] public string? Location { get; set; }
+    [Parameter] public string? MeetingStatus { get; set; }
+}

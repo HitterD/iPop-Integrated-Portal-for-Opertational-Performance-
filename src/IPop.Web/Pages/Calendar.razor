@@ -414,6 +414,7 @@
                         else { <span>@(DateTime.UtcNow >= detail.EndAt ? "Meeting has ended" : CallsSchedule.JoinTooltip)</span> }
                     </div>
                 }
+                <IPop.Web.Components.Calendar.CalendarRoomJoin Location="@detail.Location" MeetingStatus="@detail.MeetingStatus" />
                 @if (detail.External is { Source: "idesk-zoom" } && detail.Link is not null)
                 {
                     <div class="cal-detail-row"><i data-lucide="video"></i><a class="cal-btn primary" href="@detail.Link" target="_blank" rel="noopener noreferrer">Join Zoom meeting</a></div>
@@ -712,7 +713,13 @@
                     }
                     else
                     {
-                        <label class="cal-row"><i data-lucide="map-pin"></i><input class="cal-row-input" placeholder="Room or location" aria-label="Location" @bind="form.Location" maxlength="300" /></label>
+                        <label class="cal-row"><i data-lucide="map-pin"></i><input class="cal-row-input" placeholder="Room or location" aria-label="Location" @bind="form.Location" maxlength="300" list="hall-rooms" /></label>
+                        <datalist id="hall-rooms">
+                            @foreach (var room in IPop.Application.Hall.HallBooking.Rooms)
+                            {
+                                <option value="@IPop.Application.Hall.HallBooking.Location(room.Name)"></option>
+                            }
+                        </datalist>
                         <label class="cal-row"><i data-lucide="video"></i><input class="cal-row-input" placeholder="External meeting link (optional)" aria-label="Meeting link" @bind="form.Link" maxlength="1000" /></label>
                     }
                     <label class="cal-row cal-row-top"><i data-lucide="align-left"></i><textarea class="cal-row-input" rows="3" @bind="form.Notes" maxlength="4000" placeholder="Notes, agenda…" aria-label="Notes"></textarea></label>

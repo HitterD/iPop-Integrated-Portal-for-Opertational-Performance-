@@ -27,6 +27,16 @@ public class CalendarLinksTests
     }
 
     [Fact]
+    public void Room_location_is_escaped_trimmed_and_bounded()
+    {
+        var links = new CalendarLinks(new PeopleLinks());
+        Assert.Contains("location=SJA%20Hall%20%C2%B7%20Kalosi", links.NewMeeting(location: " SJA Hall · Kalosi "));
+        Assert.Equal("/calendar?new=1", links.NewMeeting(location: "  "));
+        var q = System.Web.HttpUtility.ParseQueryString(new Uri("https://ipop.test" + links.NewMeeting(location: new string('x', 400))).Query);
+        Assert.Equal(300, q["location"]!.Length);
+    }
+
+    [Fact]
     public void Empty_values_are_omitted_and_long_text_is_bounded()
     {
         var links = new CalendarLinks(new PeopleLinks());

@@ -11,6 +11,7 @@ public partial class Calendar
 {
     [SupplyParameterFromQuery(Name = "new")] public int? NewQuery { get; set; }
     [SupplyParameterFromQuery(Name = "title")] public string? TitleQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "location")] public string? LocationQuery { get; set; }
     [SupplyParameterFromQuery(Name = "people")] public string? PeopleQuery { get; set; }
     [SupplyParameterFromQuery(Name = "room")] public Guid? RoomQuery { get; set; }
     [SupplyParameterFromQuery(Name = "start")] public string? StartQuery { get; set; }
@@ -36,6 +37,7 @@ public partial class Calendar
             form.EndDate = e.Date; form.EndTime = TimeOnly.FromDateTime(e);
         }
         if (!string.IsNullOrWhiteSpace(TitleQuery)) form.Title = TitleQuery.Trim().Length > 200 ? TitleQuery.Trim()[..200] : TitleQuery.Trim();
+        if (!string.IsNullOrWhiteSpace(LocationQuery)) { form.Online = false; form.Location = LocationQuery.Trim(); }
         if (!string.IsNullOrWhiteSpace(NotesQuery)) form.Notes = NotesQuery;
         if (PrivateQuery == 1) form.Visibility = "private";
         var added = 0;
