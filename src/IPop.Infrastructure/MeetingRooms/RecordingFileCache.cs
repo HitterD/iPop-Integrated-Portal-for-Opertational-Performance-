@@ -23,10 +23,21 @@ public sealed class RecordingFileCache(IFileAccessService nas, IConfiguration co
             if (!File.Exists(path))
             {
                 var tmp = path + ".part";
-                await using (var src = await nas.DownloadAsServiceAsync(row.NasPath, ct))
-                await using (var dst = File.Create(tmp))
-                    await src.CopyToAsync(dst, ct);
-                File.Move(tmp, path, overwrite: true);
+                try
+                {
+                    await using (var src = await nas.DownloadAsServiceAsync(row.NasPath, ct))
+                    await using (var dst = File.Create(tmp))
+                        await src.CopyToAsync(dst, ct);
+                    File.Move(tmp, path, overwrite: true);
+                }
+                catch
+                {
+                    // Streams are disposed before cleanup; retain the original download error.
+                    try { File.Delete(tmp); }
+                    catch (IOException) { }
+                    catch (UnauthorizedAccessException) { }
+                    throw;
+                }
             }
             File.SetLastAccessTimeUtc(path, DateTime.UtcNow);
             return path;

@@ -9,6 +9,7 @@ using IPop.Infrastructure.Settings;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace IPop.Tests;
@@ -25,11 +26,14 @@ public class MeetingRecordingWorkerTests : IDisposable
         public List<string> Deleted { get; } = [];
         public int Downloads { get; private set; }
         public bool FailUpload { get; set; }
+        public string? FailUploadFilename { get; set; }
+        public string? FailDeletePath { get; set; }
+        public Func<Stream>? DownloadStream { get; set; }
         public bool HasServiceAccount => true;
         public string? ServiceServer => "ict";
-        public Task UploadAsServiceAsync(string dir, string filename, Stream content, CancellationToken ct) { if (FailUpload) throw new IOException("NAS offline"); Uploaded.Add($"{dir}/{filename}"); return Task.CompletedTask; }
-        public Task DeleteAsServiceAsync(string path, CancellationToken ct) { Deleted.Add(path); return Task.CompletedTask; }
-        public Task<Stream> DownloadAsServiceAsync(string path, CancellationToken ct) { Downloads++; return Task.FromResult<Stream>(new MemoryStream([1, 2, 3])); }
+        public Task UploadAsServiceAsync(string dir, string filename, Stream content, CancellationToken ct) { if (FailUpload || filename == FailUploadFilename) throw new IOException("NAS offline"); Uploaded.Add($"{dir}/{filename}"); return Task.CompletedTask; }
+        public Task DeleteAsServiceAsync(string path, CancellationToken ct) { if (path == FailDeletePath) throw new IOException("delete failed"); Deleted.Add(path); return Task.CompletedTask; }
+        public Task<Stream> DownloadAsServiceAsync(string path, CancellationToken ct) { Downloads++; return Task.FromResult<Stream>(DownloadStream?.Invoke() ?? new MemoryStream([1, 2, 3])); }
         public Task UploadAsync(Guid userId, string server, string dir, string filename, Stream content, CancellationToken ct) => throw new NotSupportedException();
         public Task<(bool Ok, string? Error)> SetCredentialAsync(Guid userId, string server, string username, string password, CancellationToken ct) => throw new NotSupportedException();
         public Task<(bool Found, CredentialDto? Credential)> GetCredentialAsync(Guid userId, string server, CancellationToken ct) => throw new NotSupportedException();
@@ -70,7 +74,7 @@ public class MeetingRecordingWorkerTests : IDisposable
         public Task<NotificationDeliveryState?> RetryDeliveryAsync(Guid requestId, Guid userId, CancellationToken ct) => throw new NotImplementedException();
     }
 
-    private (ServiceProvider Sp, string Spool) Services(TestDb t, MeetingRecordingServiceTests.FakeEgress eg, Nas nas, Gateway gw)
+    private (ServiceProvider Sp, string Spool) Services(TestDb t, ILiveKitEgress eg, Nas nas, Gateway gw)
     {
         var spool = Path.Combine(Path.GetTempPath(), "ipop-rec-" + Guid.NewGuid().ToString("N"));
         _dirs.Add(spool);
@@ -212,7 +216,7 @@ public class MeetingRecordingWorkerTests : IDisposable
         var eg = new MeetingRecordingServiceTests.FakeEgress(); eg.Infos["EG_1"] = new("EGRESS_COMPLETE", null, 3, null, null);
         var nas = new Nas { FailUpload = true }; var gw = new Gateway(); var (sp, spool) = Services(t, eg, nas, gw); using var provider = sp;
         var local = Path.Combine(spool, "kalosi", "2026-10-11", "1000-x.mp4"); Directory.CreateDirectory(Path.GetDirectoryName(local)!); await File.WriteAllBytesAsync(local, [1, 2, 3]);
-        await Assert.ThrowsAsync<IOException>(() => MeetingRecordingWorker.FinishAsync(sp, default));
+        Assert.Equal(0, await MeetingRecordingWorker.FinishAsync(sp, default));
         Assert.True(File.Exists(local)); using var db = t.Verify(); Assert.Equal(MeetingRecordingStatus.Processing, (await db.MeetingRecordings.SingleAsync()).Status); Assert.Empty(gw.Sent);
         nas.FailUpload = false; Assert.Equal(1, await MeetingRecordingWorker.FinishAsync(sp, default));
         Assert.Equal(0, await MeetingRecordingWorker.FinishAsync(sp, default)); Assert.Single(nas.Uploaded); Assert.Single(gw.Sent);
@@ -249,5 +253,126 @@ public class MeetingRecordingWorkerTests : IDisposable
         Assert.Equal(1, await MeetingRecordingWorker.PurgeAsync(sp, now, default)); Assert.Equal($"/n/{expired.Id}.mp4", Assert.Single(nas.Deleted));
         Assert.Equal(0, await MeetingRecordingWorker.PurgeAsync(sp, now, default));
         using var after = t.Verify(); Assert.Equal(MeetingRecordingStatus.Recording, (await after.MeetingRecordings.SingleAsync(r => r.Id == active.Id)).Status);
+    }
+
+    private sealed class LookupEgress(Func<string, CancellationToken, Task<LiveKitEgressInfo?>> lookup) : ILiveKitEgress
+    {
+        public bool IsConfigured => true;
+        public Task<LiveKitEgressInfo?> GetAsync(string id, CancellationToken ct) => lookup(id, ct);
+        public Task<string> StartRoomCompositeAsync(string room, string path, CancellationToken ct) => throw new NotSupportedException();
+        public Task StopAsync(string id, CancellationToken ct) => throw new NotSupportedException();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Failed_first_egress_lookup_does_not_block_second_recording(bool timeout)
+    {
+        using var t = new TestDb(); var a = t.AddUser("A1");
+        Row(t, MeetingRecordingStatus.Processing, a.Id, a.Id);
+        var second = Row(t, MeetingRecordingStatus.Processing, a.Id, a.Id); second.EgressId = "EG_2"; t.Db.SaveChanges();
+        var lookedUp = new List<string>();
+        var eg = new LookupEgress((id, _) =>
+        {
+            lookedUp.Add(id);
+            if (lookedUp.Count == 1) throw timeout ? new TaskCanceledException("HTTP timeout") : new IOException("Egress down");
+            return Task.FromResult<LiveKitEgressInfo?>(new("EGRESS_COMPLETE", null, 3, null, null));
+        });
+        var nas = new Nas(); var (sp, spool) = Services(t, eg, nas, new Gateway()); using var provider = sp;
+        var path = Path.Combine(spool, "kalosi", "2026-10-11", "1000-x.mp4"); Directory.CreateDirectory(Path.GetDirectoryName(path)!); await File.WriteAllBytesAsync(path, [1, 2, 3]);
+        Assert.Equal(1, await MeetingRecordingWorker.FinishAsync(sp, default)); Assert.Equal(2, lookedUp.Count);
+        using var db = t.Verify(); var rows = await db.MeetingRecordings.ToListAsync();
+        Assert.Equal(MeetingRecordingStatus.Processing, rows.Single(r => r.EgressId == lookedUp[0]).Status);
+        Assert.Equal(MeetingRecordingStatus.Ready, rows.Single(r => r.EgressId == lookedUp[1]).Status);
+    }
+
+    [Fact]
+    public async Task Purge_failure_is_isolated_and_successful_deletion_is_persisted()
+    {
+        using var t = new TestDb(); var a = t.AddUser("A1");
+        var bad = Row(t, MeetingRecordingStatus.Ready, a.Id, a.Id); var good = Row(t, MeetingRecordingStatus.Ready, a.Id, a.Id);
+        foreach (var row in new[] { bad, good }) { row.NasPath = $"/n/{row.Id}.mp4"; row.StartedAt = DateTime.UtcNow.AddDays(-91); }
+        t.Db.SaveChanges(); var nas = new Nas { FailDeletePath = bad.NasPath };
+        var (sp, _) = Services(t, new MeetingRecordingServiceTests.FakeEgress(), nas, new Gateway()); using var provider = sp;
+        Assert.Equal(1, await MeetingRecordingWorker.PurgeAsync(sp, DateTime.UtcNow, default));
+        using var db = t.Verify(); var rows = await db.MeetingRecordings.ToDictionaryAsync(r => r.Id);
+        Assert.Equal(MeetingRecordingStatus.Deleted, rows[good.Id].Status); Assert.Null(rows[good.Id].NasPath);
+        Assert.Equal(MeetingRecordingStatus.Ready, rows[bad.Id].Status); Assert.Equal(bad.NasPath, rows[bad.Id].NasPath);
+        nas.FailDeletePath = null; Assert.Equal(1, await MeetingRecordingWorker.PurgeAsync(sp, DateTime.UtcNow, default));
+    }
+
+    private sealed class BrokenCopyStream(bool cancel) : MemoryStream
+    {
+        public override async Task CopyToAsync(Stream destination, int bufferSize, CancellationToken cancellationToken)
+        {
+            await destination.WriteAsync(new byte[] { 1 }, cancellationToken);
+            if (cancel) throw new TaskCanceledException("download timeout");
+            throw new IOException("download interrupted");
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Cache_failed_copy_removes_partial_file_and_allows_retry(bool cancel)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ipop-cache-" + Guid.NewGuid().ToString("N")); _dirs.Add(dir);
+        var row = new MeetingRecording { Id = Guid.NewGuid(), RoomKey = "kalosi", Title = "Weekly sync", EgressId = "EG_1", NasPath = "/n/file.mp4" };
+        var nas = new Nas { DownloadStream = () => new BrokenCopyStream(cancel) }; var cache = new RecordingFileCache(nas, CacheConfig(dir));
+        if (cancel) await Assert.ThrowsAsync<TaskCanceledException>(() => cache.OpenAsync(row, default));
+        else await Assert.ThrowsAsync<IOException>(() => cache.OpenAsync(row, default));
+        Assert.Empty(Directory.GetFiles(dir));
+        nas.DownloadStream = null; Assert.NotNull(await cache.OpenAsync(row, default)); Assert.Equal(2, nas.Downloads);
+    }
+
+    private sealed class WarningLogger : ILogger<MeetingRecordingWorker>
+    {
+        public TaskCompletionSource Warned { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel level) => true;
+        public void Log<TState>(LogLevel level, EventId id, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        { if (level == LogLevel.Warning) Warned.TrySetResult(); }
+    }
+
+    [Fact]
+    public async Task Background_worker_survives_unrelated_timeout_and_stops_on_host_cancellation()
+    {
+        var sc = new ServiceCollection();
+        sc.AddScoped<IPopDbContext>(_ => throw new TaskCanceledException("dependency HTTP timeout"));
+        using var sp = sc.BuildServiceProvider(); var logger = new WarningLogger();
+        using var worker = new MeetingRecordingWorker(sp, logger);
+        await worker.StartAsync(default);
+        await logger.Warned.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(worker.ExecuteTask!.IsCompleted);
+        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5)); await worker.StopAsync(stop.Token);
+        Assert.True(worker.ExecuteTask.IsCompleted);
+    }
+
+    [Fact]
+    public async Task Failed_upload_does_not_block_another_ready_recording()
+    {
+        using var t = new TestDb(); var a = t.AddUser("A1");
+        var bad = Row(t, MeetingRecordingStatus.Processing, a.Id, a.Id);
+        var good = Row(t, MeetingRecordingStatus.Processing, a.Id, a.Id); good.SpoolPath = "kalosi/2026-10-11/good.mp4"; t.Db.SaveChanges();
+        var eg = new MeetingRecordingServiceTests.FakeEgress(); eg.Infos["EG_1"] = new("EGRESS_COMPLETE", null, 3, null, null);
+        var nas = new Nas { FailUploadFilename = "1000-x.mp4" }; var (sp, spool) = Services(t, eg, nas, new Gateway()); using var provider = sp;
+        foreach (var row in new[] { bad, good })
+        {
+            var path = Path.Combine(spool, row.SpoolPath!); Directory.CreateDirectory(Path.GetDirectoryName(path)!); await File.WriteAllBytesAsync(path, [1, 2, 3]);
+        }
+        Assert.Equal(1, await MeetingRecordingWorker.FinishAsync(sp, default));
+        using var db = t.Verify(); var rows = await db.MeetingRecordings.ToDictionaryAsync(r => r.Id);
+        Assert.Equal(MeetingRecordingStatus.Processing, rows[bad.Id].Status); Assert.Equal(MeetingRecordingStatus.Ready, rows[good.Id].Status);
+        Assert.True(File.Exists(Path.Combine(spool, bad.SpoolPath!)));
+    }
+
+    [Fact]
+    public async Task Host_cancellation_is_not_swallowed_by_finish_or_purge()
+    {
+        using var t = new TestDb(); var a = t.AddUser("A1"); Row(t, MeetingRecordingStatus.Processing, a.Id, a.Id);
+        using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+        var (sp, _) = Services(t, new MeetingRecordingServiceTests.FakeEgress(), new Nas(), new Gateway()); using var provider = sp;
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => MeetingRecordingWorker.FinishAsync(sp, cancelled.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => MeetingRecordingWorker.PurgeAsync(sp, DateTime.UtcNow, cancelled.Token));
     }
 }

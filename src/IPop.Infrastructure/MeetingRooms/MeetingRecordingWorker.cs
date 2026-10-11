@@ -22,22 +22,28 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
         var lastPurge = DateOnly.MinValue;
         while (!stoppingToken.IsCancellationRequested)
         {
-            try
+            try { await FinishAsync(services, stoppingToken, log); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            catch (Exception e) { log.LogWarning(e, "Meeting recording finish pass failed"); }
+
+            // A finish failure must not prevent the independent nightly retention pass.
+            var local = DateTime.Now;
+            if (local.TimeOfDay >= new TimeSpan(2, 30, 0) && DateOnly.FromDateTime(local) != lastPurge)
             {
-                await FinishAsync(services, stoppingToken);
-                var local = DateTime.Now;
-                if (local.TimeOfDay >= new TimeSpan(2, 30, 0) && DateOnly.FromDateTime(local) != lastPurge)
+                try
                 {
-                    await PurgeAsync(services, DateTime.UtcNow, stoppingToken);
+                    await PurgeAsync(services, DateTime.UtcNow, stoppingToken, log);
                     lastPurge = DateOnly.FromDateTime(local);
                 }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+                catch (Exception e) { log.LogWarning(e, "Meeting recording purge pass failed"); }
             }
-            catch (Exception e) when (e is not OperationCanceledException) { log.LogWarning(e, "Meeting recording worker pass failed"); }
-            await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
+            try { await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
         }
     }
 
-    public static async Task<int> FinishAsync(IServiceProvider sp, CancellationToken ct)
+    public static async Task<int> FinishAsync(IServiceProvider sp, CancellationToken ct, ILogger<MeetingRecordingWorker>? logger = null)
     {
         using var scope = sp.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<IPopDbContext>();
@@ -54,45 +60,55 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
             .ToListAsync(ct);
         foreach (var row in open)
         {
-            if (string.IsNullOrEmpty(row.EgressId)) continue;
-            var info = await egress.GetAsync(row.EgressId, ct);
-            if (info is null) continue;
-            if (info.Status is "EGRESS_FAILED" or "EGRESS_ABORTED")
+            ct.ThrowIfCancellationRequested();
+            try
             {
-                row.Status = MeetingRecordingStatus.Failed; row.Error = info.Error; row.EndedAt ??= DateTime.UtcNow;
-                await db.SaveChangesAsync(ct);
-                await notify.PublishInternalAsync("meetings", "meeting.recording.failed", "Recording failed",
-                    $"The server recording of {row.Title} could not be saved.", new NotificationTarget(UserId: row.StartedById),
-                    targetUrl: "/calls?tab=rooms", ct: ct);
-                done++;
-                continue;
-            }
-            if (info.Status is not ("EGRESS_COMPLETE" or "EGRESS_LIMIT_REACHED")) continue;
+                if (string.IsNullOrEmpty(row.EgressId)) continue;
+                var info = await egress.GetAsync(row.EgressId, ct);
+                if (info is null) continue;
+                if (info.Status is "EGRESS_FAILED" or "EGRESS_ABORTED")
+                {
+                    row.Status = MeetingRecordingStatus.Failed; row.Error = info.Error; row.EndedAt ??= DateTime.UtcNow;
+                    await db.SaveChangesAsync(ct);
+                    await notify.PublishInternalAsync("meetings", "meeting.recording.failed", "Recording failed",
+                        $"The server recording of {row.Title} could not be saved.", new NotificationTarget(UserId: row.StartedById),
+                        targetUrl: "/calls?tab=rooms", ct: ct);
+                    done++;
+                    continue;
+                }
+                if (info.Status is not ("EGRESS_COMPLETE" or "EGRESS_LIMIT_REACHED")) continue;
 
-            if (!nas.HasServiceAccount || string.IsNullOrEmpty(row.SpoolPath)) continue;
-            var local = Path.Combine(spool, row.SpoolPath!.Replace('/', Path.DirectorySeparatorChar));
-            if (!File.Exists(local)) continue;   // the container may still be flushing; try next pass
-            var dir = $"{nasRoot}/{Path.GetDirectoryName(row.SpoolPath)!.Replace('\\', '/')}";
-            var file = Path.GetFileName(row.SpoolPath);
-            await using (var fs = File.OpenRead(local))
-                await nas.UploadAsServiceAsync(dir, file, fs, ct);
-            row.NasPath = $"{dir}/{file}";
-            row.SizeBytes = info.Size;
-            row.DurationSeconds = info.DurationNs is { } ns ? (int)(ns / 1_000_000_000) : null;
-            row.Status = MeetingRecordingStatus.Ready;
-            row.EndedAt ??= DateTime.UtcNow;
-            await db.SaveChangesAsync(ct);
-            File.Delete(local);
-            await notify.PublishInternalAsync("meetings", "meeting.recording.ready", "Recording ready",
-                $"{row.Title} ({HallBooking.Rooms.FirstOrDefault(r => r.Key == row.RoomKey).Name}) can be watched now.",
-                new NotificationTarget(UserIds: row.Viewers.Select(v => v.UserId).ToList()),
-                targetUrl: $"/calls?tab=rooms&recording={row.Id}", ct: ct);
-            done++;
+                if (!nas.HasServiceAccount || string.IsNullOrEmpty(row.SpoolPath)) continue;
+                var local = Path.Combine(spool, row.SpoolPath!.Replace('/', Path.DirectorySeparatorChar));
+                if (!File.Exists(local)) continue;   // the container may still be flushing; try next pass
+                var dir = $"{nasRoot}/{Path.GetDirectoryName(row.SpoolPath)!.Replace('\\', '/')}";
+                var file = Path.GetFileName(row.SpoolPath);
+                await using (var fs = File.OpenRead(local))
+                    await nas.UploadAsServiceAsync(dir, file, fs, ct);
+                row.NasPath = $"{dir}/{file}";
+                row.SizeBytes = info.Size;
+                row.DurationSeconds = info.DurationNs is { } ns ? (int)(ns / 1_000_000_000) : null;
+                row.Status = MeetingRecordingStatus.Ready;
+                row.EndedAt ??= DateTime.UtcNow;
+                await db.SaveChangesAsync(ct);
+                File.Delete(local);
+                await notify.PublishInternalAsync("meetings", "meeting.recording.ready", "Recording ready",
+                    $"{row.Title} ({HallBooking.Rooms.FirstOrDefault(r => r.Key == row.RoomKey).Name}) can be watched now.",
+                    new NotificationTarget(UserIds: row.Viewers.Select(v => v.UserId).ToList()),
+                    targetUrl: $"/calls?tab=rooms&recording={row.Id}", ct: ct);
+                done++;
+            }
+            catch (Exception e) when (!ct.IsCancellationRequested)
+            {
+                logger?.LogWarning(e, "Meeting recording {RecordingId} finish failed", row.Id);
+                // Do not let unsaved changes from this row leak into another row's save.
+                db.Entry(row).State = EntityState.Unchanged;
+            }
         }
         return done;
     }
 
-    public static async Task<int> PurgeAsync(IServiceProvider sp, DateTime nowUtc, CancellationToken ct)
+    public static async Task<int> PurgeAsync(IServiceProvider sp, DateTime nowUtc, CancellationToken ct, ILogger<MeetingRecordingWorker>? logger = null)
     {
         using var scope = sp.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<IPopDbContext>();
@@ -104,13 +120,24 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
             .Where(r => r.NasPath != null && (r.Status == MeetingRecordingStatus.Deleted
                 || ((r.Status == MeetingRecordingStatus.Ready || r.Status == MeetingRecordingStatus.Failed) && r.StartedAt < cutoff)))
             .ToListAsync(ct);
+        var deleted = 0;
         foreach (var r in rows)
         {
-            await nas.DeleteAsServiceAsync(r.NasPath!, ct);
-            r.NasPath = null;
-            r.Status = MeetingRecordingStatus.Deleted;
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                await nas.DeleteAsServiceAsync(r.NasPath!, ct);
+                r.NasPath = null;
+                r.Status = MeetingRecordingStatus.Deleted;
+                await db.SaveChangesAsync(ct);
+                deleted++;
+            }
+            catch (Exception e) when (!ct.IsCancellationRequested)
+            {
+                logger?.LogWarning(e, "Meeting recording {RecordingId} purge failed", r.Id);
+                db.Entry(r).State = EntityState.Unchanged;
+            }
         }
-        await db.SaveChangesAsync(ct);
-        return rows.Count;
+        return deleted;
     }
 }
