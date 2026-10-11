@@ -13,17 +13,32 @@
 @inject IPop.Web.Services.PeopleLinks PLinks
 @inject IPop.Web.Services.CalendarLinks CalLinks
 
-<PageTitle>Calls — IPop</PageTitle>
+<PageTitle>Calls &amp; Meetings — IPop</PageTitle>
 
-<div class="calls-v6 @(mDetail ? "m-detail" : "")">
+<div class="calls-v6 @(mDetail ? "m-detail" : "") @(tab == "rooms" ? "calls-rooms" : "")">
     <div class="toolbar calls-toolbar">
         <div class="calls-tabs">
             <button class="@(tab == "recents" ? "active" : "")" @onclick='() => SetTab("recents")'><i data-lucide="history"></i> Recents <span>@history.Total</span></button>
             <button class="@(tab == "scheduled" ? "active" : "")" @onclick='() => SetTab("scheduled")'><i data-lucide="calendar-clock"></i> Scheduled <span>@meetings.Count</span></button>
+            <button class="@(tab == "rooms" ? "active" : "")" @onclick='() => SetTab("rooms")'><i data-lucide="door-open"></i> Meeting Rooms <span>5</span></button>
         </div>
-        <div class="v6-search calls-search"><i data-lucide="search"></i><input type="search" aria-label="Search calls or meetings" placeholder="Search calls" @bind="search" @bind:event="oninput" /></div>
+        @if (tab == "rooms")
+        {
+            <span class="calls-toolbar-spacer"></span>
+        }
+        else
+        {
+            <div class="v6-search calls-search"><i data-lucide="search"></i><input type="search" aria-label="Search calls or meetings" placeholder="Search calls" @bind="search" @bind:event="oninput" /></div>
+        }
         <button type="button" class="ghost-btn" @onclick="() => showDeviceTest = true"><i data-lucide="headphones"></i>Test devices</button>
-        <button type="button" class="ghost-btn" @onclick="OpenSchedule"><i data-lucide="calendar-plus"></i>Schedule</button>
+        @if (tab == "rooms")
+        {
+            <button type="button" class="ghost-btn calls-book-room" @onclick="BookRoom"><i data-lucide="calendar-plus"></i>Book a room</button>
+        }
+        else
+        {
+            <button type="button" class="ghost-btn" @onclick="OpenSchedule"><i data-lucide="calendar-plus"></i>Schedule</button>
+        }
         <button type="button" class="btn-primary" @onclick="FocusCallPicker"><i data-lucide="phone"></i>New call</button>
     </div>
 
@@ -39,6 +54,12 @@
     }
     <CallDeviceTest Open="showDeviceTest" OpenChanged="v => showDeviceTest = v" />
 
+    @if (tab == "rooms")
+    {
+        <MeetingRoomsTab JoinKey="@roomJoinKey" RecordingId="@roomRecordingId" />
+    }
+    else
+    {
     <div class="calls-split"><div class="calls-list">
     <div class="calls-favorites">
         <div class="calls-favorites-head"><strong>FAVORITES</strong><a href="/directory">Manage</a></div>
@@ -68,7 +89,7 @@
     <div class="tray rise rise-1" id="calls-picker" hidden="@(!showPicker && selectedPeer is null)">
         <div class="core" style="padding:0;overflow:hidden">
             <div class="panel-head" style="flex-wrap:wrap;gap:10px">
-                <i data-lucide="phone"></i> <span>Calls</span>
+                <i data-lucide="phone"></i> <span>Calls &amp; Meetings</span>
                 <span class="meta conn"><i data-lucide="wifi" style="width:12px;height:12px"></i> @(CallSvc.IsConnected ? "Live" : "Connecting…")</span>
             </div>
             <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;flex-wrap:wrap">
@@ -281,6 +302,7 @@
         }
         else { <div class="calls-empty">Select a call or meeting to see its details.</div> }
     </aside></div>
+    }
 </div>
 
 @code {
@@ -300,6 +322,8 @@
     private MemberSearchRow? selectedPeer;
     private string notice = "";
     private string tab = "recents";
+    private string? roomJoinKey;
+    private Guid? roomRecordingId;
     private string search = "";
     private string historyFilter = "all";
     private bool showPicker;
@@ -331,7 +355,7 @@
 
     protected override void OnInitialized()
     {
-        Layout.SetHeader("Calls", "Direct calls · meetings · history");
+        Layout.SetHeader("Calls & Meetings", "Direct calls · meeting rooms · history");
         CallSvc.StateChanged += OnStateChanged;
         CallSvc.CallEnded += OnCallEnded;
         // ipop-32d: ProfileDrawer's Call button deep-links /calls?callee=…; the drawer is
@@ -404,7 +428,13 @@
     private async Task HandleDeeplinkAsync()
     {
         var query = System.Web.HttpUtility.ParseQueryString(Nav.ToAbsoluteUri(Nav.Uri).Query);
-        if (query["tab"] is "recents" or "scheduled") tab = query["tab"]!;
+        if (query["tab"] is "recents" or "scheduled" or "rooms") tab = query["tab"]!;
+        if (tab == "rooms")
+        {
+            // Rooms deep links: ?join={key} joins once; ?recording={id} scrolls to it and opens the player.
+            roomJoinKey = string.IsNullOrWhiteSpace(query["join"]) ? null : query["join"];
+            roomRecordingId = Guid.TryParse(query["recording"], out var rec) ? rec : null;
+        }
         if (Guid.TryParse(query["meeting"], out var id))
         {
             tab = "scheduled";
@@ -572,6 +602,9 @@
     private void SetTab(string selected)
     {
         tab = selected;
+        // A deep link acts once: coming back to the Rooms tab by hand must not join or open the player again.
+        roomJoinKey = null;
+        roomRecordingId = null;
         detailMeeting = null;
         detailCall = null;
         if (mDetail) _ = MobileBack();
@@ -707,6 +740,7 @@
 
     /// Scheduling and editing open the one Calendar meeting form.
     private void OpenSchedule() => Nav.NavigateTo(CalLinks.NewMeeting(from: "From Calls"));
+    private void BookRoom() => Nav.NavigateTo(CalLinks.NewMeeting(location: IPop.Application.Hall.HallBooking.Prefix, from: "From Meeting Rooms"));
 
     private Task EditMeeting(MeetingDto m) => OpenInCalendarAsync(m.Id);
 

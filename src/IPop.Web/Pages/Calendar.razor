@@ -505,7 +505,7 @@
                 }
                 @if (detail.MeetingId is not null)
                 {
-                    <a class="cal-btn" href="@(detail.RoomId is not null ? $"/chat/{detail.RoomId}" : $"/calls?tab=scheduled&meeting={detail.MeetingId}")"><i data-lucide="external-link"></i> Open in @(detail.RoomId is not null ? "Chat" : "Calls")</a>
+                    <a class="cal-btn" href="@(detail.RoomId is not null ? $"/chat/{detail.RoomId}" : $"/calls?tab=scheduled&meeting={detail.MeetingId}")"><i data-lucide="external-link"></i> Open in @(detail.RoomId is not null ? "Chat" : "Calls & Meetings")</a>
                 }
             </div>
         }

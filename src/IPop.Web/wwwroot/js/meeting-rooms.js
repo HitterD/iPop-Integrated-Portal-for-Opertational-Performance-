@@ -349,5 +349,13 @@
     recording.cleanup();
   }
 
-  window.ipopRooms = { join, leave, setMic, setCamera, setShare, startPcRecording, stopPcRecording, setRecordingAttr, tileLayout };
+  // Rooms tab deep link (/calls?tab=rooms&recording={id}): bring that recording row into view.
+  function reveal(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ block: 'center', behavior: smooth ? 'smooth' : 'auto' });
+  }
+
+  window.ipopRooms = { join, leave, setMic, setCamera, setShare, startPcRecording, stopPcRecording, setRecordingAttr, tileLayout, reveal };
 })();

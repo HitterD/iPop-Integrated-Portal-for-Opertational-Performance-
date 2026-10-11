@@ -151,7 +151,7 @@ public static class TutorialRegistry
             },
             [("Search iPop", Palette)], HasPractice: true),
 
-        new("calls", "Calls", "phone", "#dc2626",
+        new("calls", "Calls & Meetings", "phone", "#dc2626",
             "Voice, video & meetings", "Learn how to call someone and schedule a meeting. Practice mode never rings anyone.",
             [
                 S(".calls-tabs", "Calls or meetings", "<p>Your call history, and upcoming scheduled meetings.</p>"),

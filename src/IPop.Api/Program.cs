@@ -111,14 +111,15 @@ builder.Services.AddHttpClient<ISynologyGateway, HttpSynologyGateway>()
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
     {
-        // SignalR browser clients can't set headers on the websocket handshake,
-        // so they send the JWT as ?access_token=. Lift it onto the request here.
+        // SignalR browser clients can't set headers on the websocket handshake, and <video src> can't set them
+        // for a meeting recording, so those send the JWT as ?access_token=. Lift it onto the request here —
+        // only for the paths QueryTokenRule allows.
         o.Events = new JwtBearerEvents
         {
             OnMessageReceived = ctx =>
             {
                 var token = ctx.Request.Query["access_token"];
-                if (!string.IsNullOrEmpty(token) && ctx.HttpContext.Request.Path.StartsWithSegments("/hubs"))
+                if (!string.IsNullOrEmpty(token) && IPop.Api.QueryTokenRule.Allows(ctx.HttpContext.Request.Path))
                     ctx.Token = token;
                 return Task.CompletedTask;
             },

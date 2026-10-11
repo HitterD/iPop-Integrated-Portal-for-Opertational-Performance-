@@ -1,0 +1,457 @@
+@* Calls & Meetings → Meeting Rooms: the five SJA Hall rooms as roast-tone tiles, the room-full alert and the
+   server Recordings list. Ported from docs/mockups/meeting-rooms.html ("Meeting Rooms tab", "Room full").
+   Joining hands over to MeetingRoomState; MeetingRoomOverlay (MainLayout) draws the room once joined. *@
+@implements IDisposable
+@using System.Globalization
+@using IPop.Application.Hall
+@using IPop.Application.MeetingRooms
+@inject AuthState Auth
+@inject MeetingRoomState Rooms
+@inject ToastService Toasts
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject HttpClient Http
+@inject IPop.Web.Services.CalendarLinks CalLinks
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="mrt-bean" viewBox="0 0 100 100"><path fill="#fff" d="M50 4c22 0 40 20 40 46S72 96 50 96 10 76 10 50 28 4 50 4Zm-6 10c-8 10-6 22 0 34s8 24-2 36c14-2 22-14 18-30-3-12-12-22-10-34 0-2-2-6-6-6Z"/></symbol>
+</svg>
+
+<div class="mrt">
+    <div class="mrt-page">
+        <div class="mrt-section-h"><h2>Rooms</h2><p>Walk in any time. Up to 20 people per room, the same rooms as SJA Hall.</p></div>
+
+        @if (rooms is null)
+        {
+            <div class="mrt-rooms" aria-busy="true">
+                @foreach (var (key, _) in HallBooking.Rooms) { <div class="mrt-room mrt-skeleton mrt-r-@key"></div> }
+            </div>
+        }
+        else
+        {
+            <div class="mrt-rooms">
+                @foreach (var room in Ordered(rooms))
+                {
+                    var r = room;
+                    var count = r.People.Count;
+                    var full = count >= r.Capacity;
+                    var canJoin = r.Available && !full && joiningKey is null;
+                    var cap = Capsule(r);
+                    <article class="mrt-room mrt-r-@r.Key @(r.Available ? "" : "mrt-off")" id="mrt-room-@r.Key" aria-label="@r.Name">
+                        <svg class="mrt-bean" aria-hidden="true"><use href="#mrt-bean" /></svg>
+                        <div class="mrt-room-head"><div><h3>@r.Name</h3><small>@Subtitle(r)</small></div>
+                            @if (cap is { } c) { <span class="mrt-cap @c.Class">@c.Text</span> }
+                        </div>
+                        <div class="mrt-tools">
+                            <button type="button" class="mrt-tool" title="Book @r.Name" aria-label="Book @r.Name" @onclick="() => Book(r)"><i data-lucide="calendar-plus"></i></button>
+                        </div>
+                        <div class="mrt-glass">
+                            @if (count == 0)
+                            {
+                                <div class="mrt-empty-seat"><i data-lucide="armchair"></i>Nobody here yet</div>
+                            }
+                            else
+                            {
+                                <div class="mrt-who">
+                                    <div class="mrt-faces" title="@string.Join(", ", r.People.Select(p => p.Name))">
+                                        @foreach (var p in r.People.Take(count > 4 ? 3 : 4)) { <b style="background:@FaceColor(p.Name)">@IPop.Web.Models.AvatarPhotos.Initials(p.Name)</b> }
+                                        @if (count > 4) { <b class="mrt-more">+@(count - 3)</b> }
+                                    </div>
+                                    <span>@count <em>of @r.Capacity</em></span>
+                                </div>
+                            }
+                            @{ var line = InfoLine(r); }
+                            <div class="mrt-line"><i data-lucide="@line.Icon"></i><span>@line.Text</span></div>
+                            @if (!r.Available)
+                            {
+                                <button type="button" class="mrt-join mrt-full" disabled>Unavailable</button>
+                            }
+                            else if (full)
+                            {
+                                <button type="button" class="mrt-join mrt-full" disabled>Room is full</button>
+                            }
+                            else
+                            {
+                                <button type="button" class="mrt-join" disabled="@(!canJoin)" @onclick="() => JoinAsync(r.Key)">
+                                    @if (joiningKey == r.Key) { <span class="mrt-spin" aria-hidden="true"></span><text>Joining…</text> }
+                                    else { <i data-lucide="@(r.VideoAllowed ? "video" : "mic")"></i><text>Join</text> }
+                                </button>
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+
+        <div class="mrt-section-h"><h2>Recordings</h2><p>Server recordings of meetings you were in.</p></div>
+        @if (recordings is { Count: > 0 })
+        {
+            <div class="mrt-group">
+                @foreach (var rec in recordings)
+                {
+                    var x = rec;
+                    var ready = x.Status == "ready";
+                    <div class="mrt-rec @(x.Id == RecordingId ? "mrt-target" : "")" id="mrt-rec-@x.Id">
+                        <div class="mrt-thumb mrt-r-@x.RoomKey">
+                            @if (ready)
+                            {
+                                <button type="button" class="mrt-thumb-play" aria-label="Play @x.Title" @onclick="() => Play(x)"><i><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg></i></button>
+                                @if (x.DurationSeconds is { } secs) { <span class="mrt-dur">@Duration(secs)</span> }
+                            }
+                            else if (x.Status == "processing")
+                            {
+                                <div class="mrt-thumb-play"><span class="mrt-spinner mrt-spinner-light"></span></div>
+                            }
+                            else
+                            {
+                                <div class="mrt-thumb-play"><i data-lucide="triangle-alert"></i></div>
+                            }
+                        </div>
+                        <div class="mrt-rec-t">
+                            <b>@x.Title</b>
+                            <span>@WhenLabel(x.StartedAt), recorded by @x.StartedByName</span>
+                            <span class="mrt-room-chip"><i class="mrt-r-@x.RoomKey"></i>@x.RoomName, @x.PeopleCount @(x.PeopleCount == 1 ? "person" : "people")</span>
+                        </div>
+                        <div class="mrt-rec-a">
+                            @if (ready)
+                            {
+                                @if (x.SizeBytes is { } size) { <span class="mrt-size">@Size(size)</span> }
+                                <a class="mrt-round mrt-download" href="@FileUrl(Http.BaseAddress, x.Id, Auth.AccessToken, download: true)" download title="Download" aria-label="Download @x.Title"><i data-lucide="arrow-down-to-line"></i></a>
+                                <button type="button" class="mrt-round mrt-play" title="Play" aria-label="Play @x.Title" @onclick="() => Play(x)"><i data-lucide="play"></i></button>
+                            }
+                            else if (x.Status == "processing")
+                            {
+                                <span class="mrt-processing"><span class="mrt-spinner"></span>Preparing video</span>
+                            }
+                            else
+                            {
+                                <span class="mrt-processing mrt-failed">Recording failed</span>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        else if (recordings is not null)
+        {
+            <div class="mrt-group mrt-rec-empty"><i data-lucide="film"></i><span>No recordings yet. Server recordings you attend appear here.</span></div>
+        }
+        <p class="mrt-foot">Recordings are deleted automatically after @RetentionDays days.</p>
+    </div>
+</div>
+
+@if (fullAlert is { } fa)
+{
+    <div class="mrt-scrim" @onclick="CloseAlert">
+        <div class="mrt-alert" role="alertdialog" aria-modal="true" aria-labelledby="mrt-full-t" @onclick:stopPropagation="true">
+            <div class="mrt-alert-body">
+                <div class="mrt-sym mrt-r-@fa.Room.Key"><i data-lucide="users"></i></div>
+                <h3 id="mrt-full-t">@fa.Room.Name is full</h3>
+                <p>All @fa.Room.Capacity places are taken. @(fa.Alternatives.Count > 0 ? "These rooms have space now." : "No other room has space right now.")</p>
+                @if (fa.Alternatives.Count > 0)
+                {
+                    <div class="mrt-alt">
+                        @foreach (var alt in fa.Alternatives)
+                        {
+                            var a = alt;
+                            <button type="button" @onclick="() => JoinAlternativeAsync(a.Key)">
+                                <span class="mrt-sw mrt-r-@a.Key"></span>
+                                <span><b>@a.Name</b><small>@AltLine(a)</small></span>
+                                <em>Join</em>
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="mrt-alert-actions"><button type="button" class="mrt-strong" @onclick="CloseAlert">OK</button></div>
+        </div>
+    </div>
+}
+
+@if (playing is { } pl)
+{
+    <div class="mrt-scrim" @onclick="ClosePlayer">
+        <div class="mrt-player" role="dialog" aria-modal="true" aria-label="@pl.Title" @onclick:stopPropagation="true">
+            <div class="mrt-player-head">
+                <div><b>@pl.Title</b><small>@pl.RoomName · @WhenLabel(pl.StartedAt)</small></div>
+                <a class="mrt-round mrt-download" href="@FileUrl(Http.BaseAddress, pl.Id, Auth.AccessToken, download: true)" download title="Download" aria-label="Download @pl.Title"><i data-lucide="arrow-down-to-line"></i></a>
+                <button type="button" class="mrt-round mrt-close" title="Close" aria-label="Close" @onclick="ClosePlayer"><i data-lucide="x"></i></button>
+            </div>
+            <video controls autoplay playsinline preload="metadata" src="@FileUrl(Http.BaseAddress, pl.Id, Auth.AccessToken, download: false)"></video>
+        </div>
+    </div>
+}
+
+@code {
+    /// /calls?tab=rooms&join={key}: join that room once, after the first load.
+    [Parameter] public string? JoinKey { get; set; }
+    /// /calls?tab=rooms&recording={id}: scroll to that recording and open the player when it is ready.
+    [Parameter] public Guid? RecordingId { get; set; }
+
+    private static readonly CultureInfo En = CultureInfo.InvariantCulture;
+    private const int DefaultRetentionDays = 90;
+
+    private List<MeetingRoomDto>? rooms;
+    private List<MeetingRecordingDto>? recordings;
+    private string? joiningKey;
+    private string? joinedDeepLink;
+    private Guid? revealedRecording;
+    private FullAlert? fullAlert;
+    private MeetingRecordingDto? playing;
+    private System.Threading.Timer? poll;
+    private bool disposed;
+    private Guid? pendingReveal;
+    private string? seenRoomKey;
+
+    private sealed record FullAlert(MeetingRoomDto Room, List<MeetingRoomDto> Alternatives);
+    private sealed record Cap(string Text, string Class);
+    private sealed record Line(string Icon, string Text);
+
+    /// The player/download address. &lt;video src&gt; and &lt;a download&gt; cannot send the Authorization header, so the
+    /// JWT rides as ?access_token= — the API accepts it for this one route only (QueryTokenRule).
+    public static string FileUrl(Uri? apiBase, Guid id, string? accessToken, bool download)
+    {
+        var q = new List<string>();
+        if (download) q.Add("download=1");
+        if (!string.IsNullOrEmpty(accessToken)) q.Add("access_token=" + Uri.EscapeDataString(accessToken));
+        var path = $"/api/meeting-rooms/recordings/{id}/file" + (q.Count > 0 ? "?" + string.Join('&', q) : "");
+        return apiBase is null ? path : new Uri(apiBase, path).ToString();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        seenRoomKey = Rooms.Room?.Key;
+        Rooms.Changed += OnRoomsChanged;
+        await Task.WhenAll(LoadRoomsAsync(), LoadRecordingsAsync());
+        poll = new System.Threading.Timer(_ => _ = InvokeAsync(PollAsync), null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (rooms is not null) await HandleDeepLinksAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await HandleDeepLinksAsync();
+        if (pendingReveal is { } reveal)
+        {
+            pendingReveal = null;
+            try { await JS.InvokeVoidAsync("ipopRooms.reveal", $"mrt-rec-{reveal}"); }
+            catch (JSException) { }
+            catch (InvalidOperationException) { }
+        }
+        try { await JS.InvokeVoidAsync("ipop.icons"); }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    private async Task HandleDeepLinksAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(JoinKey) && rooms is not null && joinedDeepLink != JoinKey)
+        {
+            joinedDeepLink = JoinKey;
+            await JoinAsync(JoinKey);
+        }
+        if (RecordingId is { } id && recordings is not null && revealedRecording != id
+            && recordings.FirstOrDefault(r => r.Id == id) is { } rec)
+        {
+            revealedRecording = id;
+            pendingReveal = id;                     // scrolled into view after the row has rendered
+            if (rec.Status == "ready") playing = rec;
+            StateHasChanged();
+        }
+    }
+
+    // ---------------------------------------------------------------- loading
+
+    private async Task PollAsync()
+    {
+        if (disposed) return;
+        try
+        {
+            // Only while someone is looking: a background tab stops polling until it is visible again.
+            if (await JS.InvokeAsync<string>("ipop.visibility") is "hidden") return;
+        }
+        catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException) { }
+        await LoadRoomsAsync();
+        if (recordings?.Any(r => r.Status == "processing") == true) await LoadRecordingsAsync();
+        if (!disposed) StateHasChanged();
+    }
+
+    /// Changed also fires for every speaking/mic update while in a room; only joining or leaving (the room key
+    /// changing) moves the people counts, so only that reloads.
+    private void OnRoomsChanged() => _ = InvokeAsync(async () =>
+    {
+        if (disposed || Rooms.Room?.Key == seenRoomKey) return;
+        seenRoomKey = Rooms.Room?.Key;
+        await LoadRoomsAsync();
+        if (!disposed) StateHasChanged();
+    });
+
+    private async Task LoadRoomsAsync()
+    {
+        try
+        {
+            var r = await Auth.GetResultAsync<List<MeetingRoomDto>>("/api/meeting-rooms");
+            if (r.Status == GetStatus.Ok && r.Value is not null) rooms = r.Value;
+            else rooms ??= [];
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException) { rooms ??= []; }
+    }
+
+    private async Task LoadRecordingsAsync()
+    {
+        try
+        {
+            var r = await Auth.GetResultAsync<List<MeetingRecordingDto>>("/api/meeting-rooms/recordings");
+            if (r.Status == GetStatus.Ok && r.Value is not null) recordings = r.Value.OrderByDescending(x => x.StartedAt).ToList();
+            else recordings ??= [];
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException) { recordings ??= []; }
+    }
+
+    // ---------------------------------------------------------------- actions
+
+    private async Task JoinAsync(string key)
+    {
+        if (joiningKey is not null) return;
+        joiningKey = key;
+        StateHasChanged();
+        try
+        {
+            var (error, suggestions) = await Rooms.JoinAsync(key);
+            switch (error)
+            {
+                case null: break;
+                case "room_full":
+                    await LoadRoomsAsync();
+                    var room = rooms?.FirstOrDefault(r => r.Key == key) ?? Fallback(key);
+                    var alts = suggestions.Select(s => rooms?.FirstOrDefault(r => r.Key == s)).OfType<MeetingRoomDto>().ToList();
+                    fullAlert = new(room, alts);
+                    break;
+                case "in_call": Toasts.Show("Leave your current call first.", ToastKind.Warning); break;
+                case "busy": break;
+                case "unknown_room": Toasts.Show("That room does not exist.", ToastKind.Error); break;
+                default: Toasts.Show("The meeting server is not reachable right now.", ToastKind.Error); break;
+            }
+        }
+        finally
+        {
+            joiningKey = null;
+            if (!disposed) StateHasChanged();
+        }
+    }
+
+    private async Task JoinAlternativeAsync(string key)
+    {
+        fullAlert = null;
+        await JoinAsync(key);
+    }
+
+    private void CloseAlert() => fullAlert = null;
+    private void Play(MeetingRecordingDto rec) => playing = rec;
+    private void ClosePlayer() => playing = null;
+
+    private void Book(MeetingRoomDto room) =>
+        Nav.NavigateTo(CalLinks.NewMeeting(location: HallBooking.Location(room.Name), from: "From Meeting Rooms"));
+
+    // ---------------------------------------------------------------- presentation
+
+    /// Always the hall order (Robusta … Toraja), whatever order the API answers in.
+    private static IEnumerable<MeetingRoomDto> Ordered(IEnumerable<MeetingRoomDto> list) =>
+        list.OrderBy(r => Array.FindIndex(HallBooking.Rooms, h => h.Key == r.Key) is var i and >= 0 ? i : int.MaxValue).ThenBy(r => r.Name);
+
+    private static MeetingRoomDto Fallback(string key) =>
+        new(key, HallBooking.Rooms.FirstOrDefault(r => r.Key == key).Name ?? key, HallLimits.RoomCapacity, true, true, [], null, null, null);
+
+    private static Cap? Capsule(MeetingRoomDto r)
+    {
+        if (!r.Available) return new("Unavailable", "mrt-cap-off");
+        if (r.Recording is not null || r.People.Any(p => p.RecordingToPc)) return new("Recording", "is-rec");
+        if (r.People.Count >= r.Capacity) return new("Full", "");
+        if (r.People.Count > 0) return new("In use", "live");
+        return null;
+    }
+
+    private static string Subtitle(MeetingRoomDto r)
+    {
+        if (!r.Available) return "Not available right now";
+        if (r.Now is { } now) return now.Title;
+        if (!r.VideoAllowed) return "Audio and screen share only";
+        return r.People.Count == 0 ? "Free now" : "Walk-in meeting";
+    }
+
+    private static Line InfoLine(MeetingRoomDto r)
+    {
+        var sharer = r.People.FirstOrDefault(p => p.Sharing);
+        var ends = r.Now is { } n ? $"Ends at {Local(n.EndAt):HH:mm}" : null;
+        if (sharer is not null)
+            return new("monitor-up", $"{FirstName(sharer.Name)} is sharing a screen." + (ends is null ? "" : $" {ends}."));
+        if (ends is not null) return new("clock", ends);
+        if (r.Next is { } next) return new("calendar", NextLabel(next, DateTime.Now));
+        return new("calendar", "No bookings today");
+    }
+
+    private static string NextLabel(MeetingRoomBookingDto b, DateTime nowLocal)
+    {
+        var start = Local(b.StartAt);
+        var by = string.IsNullOrWhiteSpace(b.OrganizerName) ? "" : $", booked by {FirstName(b.OrganizerName)}";
+        if (start.Date == nowLocal.Date) return $"{b.Title} at {start:HH:mm}{by}";
+        if (start.Date == nowLocal.Date.AddDays(1)) return $"{b.Title} tomorrow at {start:HH:mm}";
+        return $"{b.Title} {start.ToString("ddd d MMM", En)} at {start:HH:mm}";
+    }
+
+    private static string AltLine(MeetingRoomDto r)
+    {
+        var n = r.People.Count;
+        var who = n == 0 ? "Empty" : n == 1 ? "1 person" : $"{n} people";
+        return r.VideoAllowed ? who : $"{who}, audio only";
+    }
+
+    private int RetentionDays =>
+        recordings?.Select(r => (int)Math.Round((ToUtc(r.DeleteAfter) - ToUtc(r.StartedAt)).TotalDays)).FirstOrDefault(d => d > 0) is { } d and > 0
+            ? d : DefaultRetentionDays;
+
+    private static string WhenLabel(DateTime utc)
+    {
+        var t = Local(utc);
+        var today = DateTime.Now.Date;
+        if (t.Date == today) return $"Today at {t:HH:mm}";
+        if (t.Date == today.AddDays(-1)) return $"Yesterday at {t:HH:mm}";
+        return t.Year == today.Year ? $"{t.ToString("dddd d MMMM", En)} at {t:HH:mm}" : $"{t.ToString("d MMMM yyyy", En)} at {t:HH:mm}";
+    }
+
+    private static string Duration(int seconds)
+    {
+        var t = TimeSpan.FromSeconds(Math.Max(0, seconds));
+        return t.TotalHours >= 1 ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}" : $"{t.Minutes}:{t.Seconds:00}";
+    }
+
+    private static string Size(long bytes)
+    {
+        var mb = bytes / 1024d / 1024d;
+        return mb >= 1024 ? (mb / 1024).ToString("0.0", En) + " GB" : Math.Max(1, Math.Round(mb)).ToString("0", En) + " MB";
+    }
+
+    private static readonly string[] Faces = ["#c47b45", "#3f7d5a", "#5562b8", "#8a5a3c", "#b0412d", "#2f7f8a"];
+    private static string FaceColor(string name)
+    {
+        var h = 0;
+        foreach (var c in name) h = unchecked(h * 31 + c);
+        return Faces[(h & int.MaxValue) % Faces.Length];
+    }
+
+    private static string FirstName(string name) => name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name;
+    private static DateTime ToUtc(DateTime d) => d.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(d, DateTimeKind.Utc) : d.ToUniversalTime();
+    private static DateTime Local(DateTime d) => ToUtc(d).ToLocalTime();
+
+    public void Dispose()
+    {
+        disposed = true;
+        Rooms.Changed -= OnRoomsChanged;
+        poll?.Dispose();
+    }
+}
