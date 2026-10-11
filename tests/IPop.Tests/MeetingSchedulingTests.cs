@@ -200,6 +200,29 @@ public class MeetingSchedulingTests
         Assert.Null((await v.MeetingReminders.SingleAsync(r => r.MeetingId == dead.Id)).SentAt);
     }
 
+    [Theory]
+    [InlineData("SJA Hall · Kalosi", true)]
+    [InlineData("Online · iPop Meeting", false)]
+    public async Task ReminderWorker_TargetsHallRoomOrExistingCalendar(string location, bool hallRoom)
+    {
+        using var t = new TestDb();
+        var org = t.AddUser("RW_ROOM_ORG");
+        var start = DateTime.UtcNow.AddMinutes(5);
+        var (_, id, _) = await MeetingEndpoints.ApplyCreateAsync(t.Db, org.Id,
+            Req(start, 1) with { Location = location }, default);
+        var reminder = await t.Db.MeetingReminders.SingleAsync(r => r.MeetingId == id);
+        reminder.SendAt = DateTime.UtcNow.AddMinutes(-1);
+        await t.Db.SaveChangesAsync();
+        var ev = await t.Db.CalendarEvents.SingleAsync(e => e.MeetingId == id);
+
+        var gateway = new RecordingGateway();
+        var sent = await MeetingReminderWorker.ProcessDueRemindersAsync(t.Db, gateway, default);
+
+        Assert.Equal(1, sent);
+        Assert.Equal(hallRoom ? "/calls?tab=rooms&join=kalosi"
+            : $"/calendar?event={ev.Id}&date={start.ToLocalTime():yyyy-MM-dd}", Assert.Single(gateway.Calls).Url);
+    }
+
     [Fact]
     public async Task Upcoming_ReturnsMineWithAttendees_SoonestFirst_ExcludingEndedAndOthers()
     {

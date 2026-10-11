@@ -111,7 +111,9 @@ public sealed class MeetingReminderWorker(IServiceScopeFactory scopeFactory, ILo
                 target: new NotificationTarget(UserId: row.UserId),
                 priority: "high",
                 // Open the meeting itself on the person's calendar (their own row when they have one).
-                targetUrl: await db.CalendarEvents.AsNoTracking().Where(e => e.MeetingId == row.Meeting.Id)
+                targetUrl: IPop.Application.Hall.HallBooking.RoomKey(row.Meeting.Location) is { } roomKey
+                    ? $"/calls?tab=rooms&join={roomKey}"
+                    : await db.CalendarEvents.AsNoTracking().Where(e => e.MeetingId == row.Meeting.Id)
                         .OrderBy(e => e.OwnerId == row.UserId ? 0 : 1).Select(e => (Guid?)e.Id).FirstOrDefaultAsync(ct) is { } evId
                     ? $"/calendar?event={evId}&date={row.Meeting.StartAt.ToLocalTime():yyyy-MM-dd}"
                     : $"/calls?tab=scheduled&meeting={row.Meeting.Id}",

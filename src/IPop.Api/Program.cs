@@ -441,6 +441,7 @@ app.MapProjectFields();
 app.MapProjectTime();
 app.MapProjectPortfolio();
 app.MapMeetings();
+app.MapMeetingRooms();
 app.MapCalendar();
 app.MapCalendarSharing();
 app.MapCalendarDelegates();
