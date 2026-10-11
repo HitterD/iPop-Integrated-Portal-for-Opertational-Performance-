@@ -34,7 +34,7 @@
       t.innerHTML = `<div class="mr-tile-av"></div><video autoplay playsinline muted></video><span class="mr-tile-nm"></span>`;
       strip.appendChild(t);
     }
-    t.querySelector('.mr-tile-av').textContent = (name || '?').split(/s+/).map(s => s[0] || '').join('').slice(0, 2).toUpperCase();
+    t.querySelector('.mr-tile-av').textContent = (name || '?').split(/\s+/).map(s => s[0] || '').join('').slice(0, 2).toUpperCase();
     t.querySelector('.mr-tile-nm').textContent = isLocal ? 'You' : name || identity;
     return t;
   }

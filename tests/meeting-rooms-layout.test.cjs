@@ -154,6 +154,20 @@ test('takeover waits for publication to disappear or bounded timeout before publ
   r.remoteParticipants.set('other', { identity: 'other', getTrackPublication: () => ({ isMuted: false }) });
   assert.equal(await h.api.setShare(true, true), 'ok'); assert.equal(polls, 30);
 });
+test('participant tile displays BD initials for Budi Darmawan', async () => {
+  const avatar = {}, label = {}, video = {};
+  const tile = { dataset: { identity: 'me' }, classList: { remove() {}, toggle() {} },
+    querySelector: selector => selector === '.mr-tile-av' ? avatar : selector === '.mr-tile-nm' ? label : video };
+  const strip = { querySelector: () => tile, querySelectorAll: () => [tile] };
+  const stage = { querySelector: () => null, classList: { remove() {}, toggle() {} } };
+  const document = { getElementById: id => id === 'strip' ? strip : stage, querySelectorAll: () => [] };
+  const h = harness('https:', { document, CSS: { escape: value => value } });
+  await h.api.join('ws://lan', 'token', h.ref, { stripId: 'strip', stageId: 'stage' });
+  h.rooms[0].localParticipant.name = 'Budi Darmawan';
+  h.rooms[0].emit(h.E.ParticipantNameChanged);
+  assert.equal(avatar.textContent, 'BD');
+  await h.api.leave();
+});
 test('unexpected disconnect cleans DOM, denies controls, and notifies only once', async () => {
   let removed = 0;
   const strip = { innerHTML: 'tiles' };
