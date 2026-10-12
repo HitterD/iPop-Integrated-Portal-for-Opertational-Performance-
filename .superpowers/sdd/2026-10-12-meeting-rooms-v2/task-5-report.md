@@ -112,3 +112,15 @@ Both Important findings were verified and addressed only in the recording script
 - `git diff --check` passed.
 - No .NET source/schema changed, so the full .NET suite was not rerun, as requested. No prod/Docker/database or other-worktree changes. Existing scratch files preserved.
 - Remaining concern unchanged: real Egress Chromium/encoded output verification belongs to Task 9; published video that never subscribes/decodes deliberately cannot force recording to start via a timeout.
+
+## Review fix round 2 (base 99a9d5a)
+
+Verified the readiness stall: A's one-shot first-frame callback runs while B's camera publication is pending, correctly blocks, but B later leaving/muting did not re-evaluate readiness while A's video publication remained.
+
+- After **every** render/reconciliation, schedule readiness evaluation after the rendered view (two animation frames). Retain the same pending-publication, decoded-frame, stale-track, current-tile, connected, ended and start-once guards. No timeout bypass was added.
+- Added regressions for pending B disconnecting and pending B muting while A remains ready; a third regression proves that still-pending B continues blocking despite reconciliation and fallback timer execution.
+- RED: `node --test tests/meeting-rooms-recording.test.cjs` — **18 passed, 2 failed**. Both leave/mute cases expected START_RECORDING but observed no marker. The still-pending case passed.
+- GREEN: `node --test tests/meeting-rooms-recording.test.cjs` — **20 passed, 0 failed**.
+- Full relevant GREEN: `node --test tests/meeting-rooms-*.test.cjs` — **32 passed, 0 failed**.
+- `git diff --check` passed. No .NET changes or .NET rerun; no prod/Docker/database/other-worktree changes; existing scratch preserved.
+- Concern unchanged: real Egress Chromium/output QA remains Task 9. A genuinely still-pending active video publication deliberately continues to block recording start.

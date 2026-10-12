@@ -152,8 +152,9 @@
             }
         }
         for (const [key, item] of audio) if (!wantedAudio.has(key)) { detach(item); audio.delete(key); }
-        if (!people.some(p => publication(p.participant, LK.Track.Source.Camera) || p.sharing) && people.length)
-            root.requestAnimationFrame(() => root.requestAnimationFrame(() => startSignal()));
+        // Ready frames may already have arrived while another publication was pending.
+        // Re-evaluate after every view update (leave/mute included), using the same guards.
+        root.requestAnimationFrame(() => root.requestAnimationFrame(() => startSignal()));
     }
     for (const event of ['ParticipantConnected', 'ParticipantDisconnected', 'TrackMuted', 'TrackUnmuted', 'ParticipantNameChanged', 'ActiveSpeakersChanged'])
         room.on(LK.RoomEvent[event], render);

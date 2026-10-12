@@ -83,6 +83,26 @@ for (const source of ['camera', 'screen_share']) {
         assert.deepEqual(h.logs, ['START_RECORDING']);
     });
 }
+for (const change of ['leave', 'mute', 'still-pending']) {
+    test(`readiness reconciles ${change} after another participant already decoded its first frame`, async () => {
+        const h = harness(); await settle();
+        const ready = { identity: 'A', trackPublications: new Map([['camera', { source: 'camera', kind: 'video', track: h.track('video') }]]) };
+        const pendingPub = { source: 'camera', kind: 'video', track: undefined };
+        const pending = { identity: 'B', trackPublications: new Map([['camera', pendingPub]]) };
+        const room = h.rooms[0];
+        room.remoteParticipants.set('A', ready); room.remoteParticipants.set('B', pending);
+        room.handlers.ParticipantConnected();
+        h.frames[0](); // A decoded once; B still blocks this one-shot callback.
+        assert.deepEqual(h.logs, []);
+        if (change === 'leave') {
+            room.remoteParticipants.delete('B'); room.handlers.ParticipantDisconnected(pending);
+        } else if (change === 'mute') {
+            pendingPub.isMuted = true; room.handlers.TrackMuted(pendingPub, pending);
+        } else room.handlers.ActiveSpeakersChanged();
+        h.timers.forEach(fn => fn());
+        assert.deepEqual(h.logs, change === 'still-pending' ? [] : ['START_RECORDING']);
+    });
+}
 test('empty fallback rechecks participants arriving with pending video', async () => {
     const h = harness(); await settle();
     h.rooms[0].remoteParticipants.set('user', { identity: 'user', trackPublications: new Map([['camera', { source: 'camera', kind: 'video' }]]) });
