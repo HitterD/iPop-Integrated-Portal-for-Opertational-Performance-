@@ -57,13 +57,7 @@ public static class MeetingRoomEndpoints
             var me = await UserIdAsync(http, db, ct) ?? Guid.Empty;
             string status;
             if (!egress.IsConfigured) status = "not_configured";
-            else
-            {
-                // Ask the Egress service itself (an id that cannot exist answers an empty list), not the room service.
-                try { await egress.GetAsync("EG_ipop_health_probe", ct); status = "online"; }
-                catch (HttpRequestException) { status = "offline"; }
-                catch (TaskCanceledException) { status = "offline"; }
-            }
+            else status = await egress.PingAsync(ct) ? "online" : "offline";   // the Egress service itself, not the room service
             return Results.Ok(new
             {
                 video = await rooms.VideoAsync(ct),

@@ -66,6 +66,16 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
             ct.ThrowIfCancellationRequested();
             try
             {
+                // Egress finished but the NAS never took the file: stop retrying and tell whoever started it.
+                if (row.Status == MeetingRecordingStatus.Processing && row.EndedAt is { } ended && ended < now - UploadTimeout)
+                {
+                    row.Status = MeetingRecordingStatus.Failed; row.Error = "upload timed out";
+                    await db.SaveChangesAsync(ct);
+                    DeleteSpool(spool, row);
+                    await NotifyFailedAsync(notify, row, ct);
+                    done++;
+                    continue;
+                }
                 if (string.IsNullOrEmpty(row.EgressId))
                 {
                     // Start was interrupted between the row insert and storing the Egress id (request aborted,
@@ -74,6 +84,7 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
                     {
                         row.Status = MeetingRecordingStatus.Failed; row.Error = "start interrupted"; row.EndedAt ??= now;
                         await db.SaveChangesAsync(ct);
+                        DeleteSpool(spool, row);
                         await ClearBannerAsync(rooms, row.RoomKey, ct);
                         done++;
                     }
@@ -91,15 +102,6 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
                     }
                     await db.SaveChangesAsync(ct);
                 }
-                // Egress finished but the NAS never took the file: stop retrying and tell whoever started it.
-                if (row.Status == MeetingRecordingStatus.Processing && row.EndedAt is { } ended && ended < now - UploadTimeout)
-                {
-                    row.Status = MeetingRecordingStatus.Failed; row.Error = "upload timed out";
-                    await db.SaveChangesAsync(ct);
-                    await NotifyFailedAsync(notify, row, ct);
-                    done++;
-                    continue;
-                }
                 var info = await egress.GetAsync(row.EgressId, ct);
                 if (info is null) continue;
                 // Egress ended on its own (abort, failure, limit) while the room still shows "Recording · started by …":
@@ -110,6 +112,7 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
                 {
                     row.Status = MeetingRecordingStatus.Failed; row.Error = info.Error; row.EndedAt ??= now;
                     await db.SaveChangesAsync(ct);
+                    DeleteSpool(spool, row);
                     await NotifyFailedAsync(notify, row, ct);
                     done++;
                     continue;
@@ -160,6 +163,18 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
     public static readonly TimeSpan StartGrace = TimeSpan.FromMinutes(2);
     /// A finished recording that has not reached the NAS this long after it ended is given up on.
     public static readonly TimeSpan UploadTimeout = TimeSpan.FromHours(6);
+
+    /// A failed recording's partial file in the spool folder is of no use: remove it (best effort).
+    private static void DeleteSpool(string spool, MeetingRecording row)
+    {
+        if (string.IsNullOrEmpty(row.SpoolPath)) return;
+        try
+        {
+            var local = Path.Combine(spool, row.SpoolPath.Replace('/', Path.DirectorySeparatorChar));
+            if (File.Exists(local)) File.Delete(local);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { }
+    }
 
     private static async Task ClearBannerAsync(ILiveKitRoomAdmin rooms, string roomKey, CancellationToken ct)
     {

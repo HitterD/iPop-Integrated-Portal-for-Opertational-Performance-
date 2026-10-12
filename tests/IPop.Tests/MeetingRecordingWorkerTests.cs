@@ -538,4 +538,64 @@ public class MeetingRecordingWorkerTests : IDisposable
             new DbSettings(svcDb), MeetingRecordingServiceTests.Config());
         Assert.DoesNotContain(await svc.ListAsync(a.Id, true, default), r => r.Id == oldFailed.Id);
     }
+
+    // ---------------------------------------------------------------- re-review follow-ups
+
+    [Fact]
+    public async Task Processing_row_without_egress_id_still_times_out_after_six_hours()
+    {
+        using var t = new TestDb(); var a = t.AddUser("A1");
+        var row = Row(t, MeetingRecordingStatus.Processing, a.Id, a.Id);
+        using (var db = t.Verify())
+        {
+            var r = db.MeetingRecordings.Single(x => x.Id == row.Id);
+            r.EgressId = ""; r.EndedAt = DateTime.UtcNow.AddHours(-7);
+            db.SaveChanges();
+        }
+        var gw = new Gateway(); var (sp, _) = Services(t, new MeetingRecordingServiceTests.FakeEgress(), new Nas(), gw); using var provider = sp;
+
+        Assert.Equal(1, await MeetingRecordingWorker.FinishAsync(sp, default));
+
+        using var after = t.Verify(); var saved = await after.MeetingRecordings.SingleAsync();
+        Assert.Equal((MeetingRecordingStatus.Failed, "upload timed out"), (saved.Status, saved.Error));
+        Assert.Single(gw.Sent, s => s.EventType == "meeting.recording.failed");
+    }
+
+    [Theory]
+    [InlineData("start interrupted")]
+    [InlineData("upload timed out")]
+    [InlineData("egress failed")]
+    public async Task Failed_rows_lose_their_local_spool_file(string reason)
+    {
+        using var t = new TestDb(); var a = t.AddUser("A1");
+        var row = Row(t, reason == "upload timed out" ? MeetingRecordingStatus.Processing : MeetingRecordingStatus.Recording, a.Id, a.Id);
+        using (var db = t.Verify())
+        {
+            var r = db.MeetingRecordings.Single(x => x.Id == row.Id);
+            if (reason == "start interrupted") { r.EgressId = ""; r.StartedAt = DateTime.UtcNow.AddMinutes(-3); }
+            if (reason == "upload timed out") r.EndedAt = DateTime.UtcNow.AddHours(-7);
+            db.SaveChanges();
+        }
+        var eg = new MeetingRecordingServiceTests.FakeEgress();
+        if (reason == "egress failed") eg.Infos["EG_1"] = new("EGRESS_FAILED", null, null, null, "chrome crashed");
+        var (sp, spool) = Services(t, eg, new Nas { FailUpload = true }, new Gateway()); using var provider = sp;
+        var local = Path.Combine(spool, "kalosi", "2026-10-11", "1000-x.mp4");
+        Directory.CreateDirectory(Path.GetDirectoryName(local)!); await File.WriteAllBytesAsync(local, [1, 2, 3]);
+
+        Assert.Equal(1, await MeetingRecordingWorker.FinishAsync(sp, default));
+
+        using var after = t.Verify();
+        Assert.Equal(MeetingRecordingStatus.Failed, (await after.MeetingRecordings.SingleAsync()).Status);
+        Assert.False(File.Exists(local));
+    }
+
+    [Fact]
+    public async Task Failing_without_a_spool_file_is_fine()
+    {
+        using var t = new TestDb(); var a = t.AddUser("A1");
+        Row(t, MeetingRecordingStatus.Recording, a.Id, a.Id);
+        var eg = new MeetingRecordingServiceTests.FakeEgress(); eg.Infos["EG_1"] = new("EGRESS_ABORTED", null, null, null, "aborted");
+        var (sp, _) = Services(t, eg, new Nas(), new Gateway()); using var provider = sp;   // spool dir does not even exist
+        Assert.Equal(1, await MeetingRecordingWorker.FinishAsync(sp, default));
+    }
 }

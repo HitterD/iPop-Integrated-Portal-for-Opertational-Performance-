@@ -99,4 +99,31 @@ public class LiveKitEgressTests
         var unavailable = new LiveKitEgress(new HttpClient(new Handler("{}", HttpStatusCode.ServiceUnavailable)), new MeetingRoomServiceTests.FakeTokens());
         await Assert.ThrowsAsync<HttpRequestException>(() => unavailable.StopAsync("EG_test", default));
     }
+
+    [Theory]
+    [InlineData(HttpStatusCode.OK, true)]
+    [InlineData(HttpStatusCode.NotFound, true)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, false)]
+    public async Task Ping_lists_active_egress_without_an_id_and_treats_404_as_reachable(HttpStatusCode status, bool expected)
+    {
+        var handler = new Handler("{\"items\":[]}", status);
+        var client = new LiveKitEgress(new HttpClient(handler), new MeetingRoomServiceTests.FakeTokens());
+        Assert.Equal(expected, await client.PingAsync(default));
+        Assert.EndsWith("/ListEgress", handler.Uri!.ToString());
+        using var body = JsonDocument.Parse(handler.Body!);
+        Assert.False(body.RootElement.TryGetProperty("egress_id", out _));
+        Assert.True(body.RootElement.GetProperty("active").GetBoolean());
+    }
+
+    private sealed class Throwing(Exception e) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) => throw e;
+    }
+
+    [Fact]
+    public async Task Ping_is_false_when_egress_cannot_be_reached()
+    {
+        Assert.False(await new LiveKitEgress(new HttpClient(new Throwing(new HttpRequestException("refused"))), new MeetingRoomServiceTests.FakeTokens()).PingAsync(default));
+        Assert.False(await new LiveKitEgress(new HttpClient(new Throwing(new TaskCanceledException("timeout"))), new MeetingRoomServiceTests.FakeTokens()).PingAsync(default));
+    }
 }

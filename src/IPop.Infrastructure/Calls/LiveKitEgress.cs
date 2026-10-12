@@ -11,6 +11,8 @@ public interface ILiveKitEgress
     Task<string> StartRoomCompositeAsync(string room, string filepath, CancellationToken ct);
     Task StopAsync(string egressId, CancellationToken ct);
     Task<LiveKitEgressInfo?> GetAsync(string egressId, CancellationToken ct);
+    /// Health check for the admin page: true when the Egress API answers at all (any 2xx, or 404).
+    Task<bool> PingAsync(CancellationToken ct) => Task.FromResult(IsConfigured);
 }
 
 public record LiveKitEgressInfo(string Status, string? Filename, long? Size, long? DurationNs, string? Error);
@@ -38,6 +40,14 @@ public sealed class LiveKitEgress(HttpClient http, ILiveKitTokenService tokens) 
             file_outputs = new[] { new { file_type = "MP4", filepath } },
         }, ct);
         return r.GetProperty("egress_id").GetString()!;
+    }
+
+    /// ListEgress for active egresses only (no egress_id: an unknown id answers 404 and would read as "offline").
+    public async Task<bool> PingAsync(CancellationToken ct)
+    {
+        try { await CallAsync("ListEgress", null, new { active = true }, ct); return true; }
+        catch (HttpRequestException e) when (e.StatusCode == System.Net.HttpStatusCode.NotFound) { return true; }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { return false; }
     }
 
     public async Task StopAsync(string egressId, CancellationToken ct) => await CallAsync("StopEgress", null, new { egress_id = egressId }, ct);
