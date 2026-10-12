@@ -8,6 +8,9 @@ public static class MeetingRoomKeys
     public static readonly string[] VideoSources = ["microphone", "camera", "screen_share", "screen_share_audio"];
     /// LiveKit hard cap: 20 people + 1 hidden Egress recorder.
     public const int LiveKitMaxParticipants = 21;
+    /// Meeting-room LiveKit tokens are short-lived so a token cannot be reused to walk back in after the booking
+    /// (LiveKit refreshes tokens of connected sessions itself, so a running meeting is not cut off).
+    public static readonly TimeSpan TokenTtl = TimeSpan.FromMinutes(10);
 }
 
 public record MeetingRoomPerson(Guid UserId, string Name, bool Sharing, bool RecordingToPc);
@@ -30,6 +33,7 @@ public interface IMeetingRoomService
     /// "too_many_attempts", "room_full" (Suggestions = keys of rooms with space).
     Task<MeetingRoomJoinResult> JoinAsync(Guid userId, string key, string? password, CancellationToken ct);
     /// Books a free room from this minute for <paramref name="minutes"/> through the normal meeting create path.
+    /// Minutes: 30, 60 or 90; a shorter value (≥ 15) only when the next booking caps the room.
     /// Errors: "unknown_room", "invalid_minutes", "room_booked" (MaxMinutes = minutes until the next booking's lock
     /// window when that is at least 15, else null).
     Task<(Guid? MeetingId, string? Error, int? MaxMinutes)> UseNowAsync(Guid userId, string key, int minutes, string? title,

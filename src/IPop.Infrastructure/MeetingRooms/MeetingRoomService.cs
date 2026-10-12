@@ -17,8 +17,9 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
     : IMeetingRoomService
 {
     public const string PrivateTitle = "Booked";
+    /// Durations the "Use now" sheet offers; a shorter one only when the next booking caps the room (then ≥ UseNowMinMinutes).
+    public static readonly int[] UseNowDurations = [30, 60, 90];
     public const int UseNowMinMinutes = 15;
-    public const int UseNowMaxMinutes = 240;
 
     public async Task<IReadOnlyList<MeetingRoomDto>> ListAsync(Guid viewerId, CancellationToken ct)
     {
@@ -106,7 +107,7 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
         var video = (await VideoAsync(ct))[key];
         var name = await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.Name).FirstAsync(ct);
         var lkRoom = MeetingRoomKeys.LiveKitRoom(key);
-        var token = tokens.GenerateToken(lkRoom, me, name, TimeSpan.FromHours(6),
+        var token = tokens.GenerateToken(lkRoom, me, name, MeetingRoomKeys.TokenTtl,
             video ? MeetingRoomKeys.VideoSources : MeetingRoomKeys.AudioSources, canUpdateOwnMetadata: true);
         var retention = await settings.GetAsync(SettingKeys.MeetingRoomsRetentionDays, 90, ct);
         return new(new MeetingRoomJoinDto(room.Key, room.Name, lkRoom, tokens.ServerUrl!, token, video, me, retention), null, []);
@@ -118,13 +119,11 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
         var access = await RoomAccess.ForAsync(db, key, userId, DateTime.UtcNow, occupied, ct);
         if (access.Current is not { } booking) return "no_booking";
         if (RoomAccess.MayEnter(access.Role)) return null;
-        if (passwordLimiter.IsBlocked(userId, booking.MeetingId)) return "too_many_attempts";
         if (string.IsNullOrWhiteSpace(password)) return "password_required";
-        if (!RoomPasswords.Matches(booking.Password, password))
-        {
-            passwordLimiter.Fail(userId, booking.MeetingId);
-            return "wrong_password";
-        }
+        // Reserve the attempt before comparing (atomic); give it back only when the password was right.
+        if (!passwordLimiter.TryConsume(userId, booking.MeetingId)) return "too_many_attempts";
+        if (!RoomPasswords.Matches(booking.Password, password)) return "wrong_password";
+        passwordLimiter.Refund(userId, booking.MeetingId);
         db.MeetingRoomGuests.Add(new MeetingRoomGuest { MeetingId = booking.MeetingId, UserId = userId, AdmittedAt = DateTime.UtcNow });
         try { await db.SaveChangesAsync(ct); }
         catch (DbUpdateException) { db.ChangeTracker.Clear(); }   // a parallel join admitted the same guest first
@@ -136,18 +135,25 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
     {
         var room = await db.HallRooms.AsNoTracking().FirstOrDefaultAsync(r => r.Key == key, ct);
         if (room is null) return (null, "unknown_room", null);
-        if (minutes is < UseNowMinMinutes or > UseNowMaxMinutes) return (null, "invalid_minutes", null);
+        if (minutes < UseNowMinMinutes || minutes > UseNowDurations.Max()) return (null, "invalid_minutes", null);
         var now = DateTime.UtcNow;
         var start = new DateTime(now.Ticks - now.Ticks % TimeSpan.TicksPerMinute, DateTimeKind.Utc);
         var occupied = await ParticipantsAsync(key, ct) is { Count: > 0 };   // unreachable LiveKit: rely on the bookings alone
         var access = await RoomAccess.ForAsync(db, key, userId, now, occupied, ct);
         if (access.Current is not null) return (null, "room_booked", null);
-        if (access.Next is { } next && start.AddMinutes(minutes) > next.StartAt - RoomAccess.Early)
-        {
-            // Never into the next booking's lock window (Review Focus 4).
-            var max = Math.Min((int)Math.Floor((next.StartAt - RoomAccess.Early - start).TotalMinutes), UseNowMaxMinutes);
-            return (null, "room_booked", max >= UseNowMinMinutes ? max : null);
-        }
+        // A booking that ended earlier in this minute: start at its end, not at the floored minute (no overlap with it).
+        var loc = HallBooking.Location(room.Name);
+        var justEnded = await db.Meetings.AsNoTracking()
+            .Where(m => m.Status != MeetingStatus.Cancelled && m.Location == loc && m.EndAt > start && m.EndAt <= now)
+            .MaxAsync(m => (DateTime?)m.EndAt, ct);
+        if (justEnded is { } ended && ended > start) start = DateTime.SpecifyKind(ended, DateTimeKind.Utc);
+
+        // Never into the next booking's lock window (Review Focus 4).
+        int? cap = access.Next is { } next ? (int)Math.Floor((next.StartAt - RoomAccess.Early - start).TotalMinutes) : null;
+        int? offer = cap is >= UseNowMinMinutes ? cap : null;
+        if (cap is { } limit && minutes > limit) return (null, "room_booked", offer);
+        // 30/60/90 only; another value (≥ 15, checked above) only when the next booking caps the room below 90.
+        if (!UseNowDurations.Contains(minutes) && cap is not < 90) return (null, "invalid_minutes", null);
         var name = string.IsNullOrWhiteSpace(title) ? $"{room.Name} meeting" : title.Trim();
         if (name.Length > 200) name = name[..200];
         var id = await bookings.CreateAsync(userId, name, start, start.AddMinutes(minutes), HallBooking.Location(room.Name),

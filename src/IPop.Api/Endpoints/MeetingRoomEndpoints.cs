@@ -46,7 +46,7 @@ public static class MeetingRoomEndpoints
             {
                 case "unknown_room": return Results.Json(new { code = error, message = "That room does not exist." }, statusCode: 404);
                 case "invalid_minutes":
-                    return Results.Json(new { code = error, message = $"Choose {MeetingRoomService.UseNowMinMinutes} to {MeetingRoomService.UseNowMaxMinutes} minutes." }, statusCode: 422);
+                    return Results.Json(new { code = error, message = "Choose 30, 60 or 90 minutes." }, statusCode: 400);
                 case not null:
                     return Results.Json(new { code = "room_booked", message = "This room is booked at that time.", maxMinutes = max }, statusCode: 409);
             }

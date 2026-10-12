@@ -9,6 +9,7 @@ using IPop.Infrastructure.Hall;
 using IPop.Infrastructure.MeetingRooms;
 using IPop.Infrastructure.Settings;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Xunit;
 using static IPop.Tests.MeetingRoomServiceTests;
 
@@ -312,6 +313,39 @@ public class MeetingRoomAccessTests
         Assert.Equal("unknown_room", (await svc.UseNowAsync(me.Id, "gayo", 30, null, [], default)).Error);
         Assert.Equal("invalid_minutes", (await svc.UseNowAsync(me.Id, "robusta", 5, null, [], default)).Error);
         Assert.Equal("invalid_minutes", (await svc.UseNowAsync(me.Id, "robusta", 600, null, [], default)).Error);
+        // Only 30/60/90 on a room with nothing next.
+        Assert.Equal("invalid_minutes", (await svc.UseNowAsync(me.Id, "robusta", 45, null, [], default)).Error);
+        Assert.Equal("invalid_minutes", (await svc.UseNowAsync(me.Id, "robusta", 120, null, [], default)).Error);
+    }
+
+    [Fact]
+    public async Task Use_now_takes_any_duration_of_at_least_15_only_when_the_next_booking_caps_it()
+    {
+        using var t = new TestDb(); var me = t.AddUser("U1"); var org = t.AddUser("O1");
+        await BookAsync(t, org.Id, DateTime.UtcNow.AddHours(3), 30);   // far away: 30/60/90 only
+        var svc = Make(t);
+        Assert.Equal("invalid_minutes", (await svc.UseNowAsync(me.Id, "kalosi", 45, null, [], default)).Error);
+        Assert.Equal("invalid_minutes", (await svc.UseNowAsync(me.Id, "kalosi", 14, null, [], default)).Error);
+        await BookAsync(t, org.Id, DateTime.UtcNow.AddMinutes(50), 30, "SJA Hall · Toraja");   // cap ≈ 39–40
+        Assert.Null((await svc.UseNowAsync(me.Id, "toraja", 25, null, [], default)).Error);
+    }
+
+    [Fact]
+    public async Task Use_now_right_after_a_booking_ended_this_minute_starts_at_its_end()
+    {
+        using var t = new TestDb(); var me = t.AddUser("U1"); var org = t.AddUser("O1");
+        var now = DateTime.UtcNow;
+        var floored = new DateTime(now.Ticks - now.Ticks % TimeSpan.TicksPerMinute, DateTimeKind.Utc);
+        var ended = now.AddMilliseconds(-1);
+        if (ended < floored) return;   // ran in the first millisecond of a minute: nothing to test
+        var prev = await BookAsync(t, org.Id, ended.AddMinutes(-30), 30);
+        var r = await Make(t).UseNowAsync(me.Id, "kalosi", 30, null, [], default);
+        Assert.Null(r.Error);
+        var mine = t.Verify().Meetings.Single(x => x.Id == r.MeetingId);
+        var before = t.Verify().Meetings.Single(x => x.Id == prev);
+        Assert.True(mine.StartAt >= before.EndAt, $"{mine.StartAt:O} < {before.EndAt:O}");
+        Assert.Equal(TimeSpan.FromMinutes(30), mine.EndAt - mine.StartAt);
+        Assert.Null(await HallBookings.ConflictAsync(t.Verify(), "SJA Hall · Kalosi", before.StartAt, before.EndAt, before.Id, default));
     }
 
     [Fact]
@@ -351,14 +385,73 @@ public class MeetingRoomAccessTests
     }
 
     [Fact]
-    public void Password_limiter_counts_per_user_and_booking()
+    public void Password_limiter_counts_per_user_and_booking_and_refunds_right_answers()
     {
-        var lim = new RoomPasswordLimiter();
+        using var lim = new RoomPasswordLimiter();
         var u = Guid.NewGuid(); var m1 = Guid.NewGuid(); var m2 = Guid.NewGuid();
-        for (var i = 0; i < RoomPasswordLimiter.MaxAttempts; i++) { Assert.False(lim.IsBlocked(u, m1)); lim.Fail(u, m1); }
-        Assert.True(lim.IsBlocked(u, m1));
-        Assert.False(lim.IsBlocked(u, m2));
-        Assert.False(lim.IsBlocked(Guid.NewGuid(), m1));
+        Assert.True(lim.TryConsume(u, m1)); lim.Refund(u, m1);   // a right answer costs nothing
+        for (var i = 0; i < RoomPasswordLimiter.MaxAttempts; i++) Assert.True(lim.TryConsume(u, m1));
+        Assert.False(lim.TryConsume(u, m1));
+        Assert.True(lim.TryConsume(u, m2));
+        Assert.True(lim.TryConsume(Guid.NewGuid(), m1));
+    }
+
+    [Fact]
+    public async Task Twenty_parallel_wrong_passwords_evaluate_at_most_five()
+    {
+        using var lim = new RoomPasswordLimiter();
+        var u = Guid.NewGuid(); var m = Guid.NewGuid();
+        using var go = new ManualResetEventSlim();
+        var tasks = Enumerable.Range(0, 20).Select(_ => Task.Run(() => { go.Wait(); return lim.TryConsume(u, m); })).ToArray();
+        go.Set();
+        var granted = (await Task.WhenAll(tasks)).Count(x => x);
+        Assert.Equal(RoomPasswordLimiter.MaxAttempts, granted);
+    }
+
+    [Fact]
+    public async Task Twenty_wrong_joins_evaluate_five_then_lock_even_the_right_password()
+    {
+        using var t = new TestDb(); var org = t.AddUser("O1"); var x = t.AddUser("X1");
+        var id = await BookAsync(t, org.Id, DateTime.UtcNow.AddMinutes(-5), 60);
+        var pw = PasswordOf(t, id);
+        var lim = new RoomPasswordLimiter();
+        // Sequential: the in-memory SQLite connection cannot serve parallel requests; the parallel case is proven on the
+        // limiter itself (Twenty_parallel_wrong_passwords_evaluate_at_most_five).
+        var results = new List<string?>();
+        for (var i = 0; i < 20; i++) results.Add((await Make(t, limiter: lim).JoinAsync(x.Id, "kalosi", Wrong(pw), default)).Error);
+        Assert.Equal(RoomPasswordLimiter.MaxAttempts, results.Count(e => e == "wrong_password"));
+        Assert.Equal(20 - RoomPasswordLimiter.MaxAttempts, results.Count(e => e == "too_many_attempts"));
+        Assert.Equal("too_many_attempts", (await Make(t, limiter: lim).JoinAsync(x.Id, "kalosi", pw, default)).Error);
+    }
+
+    [Fact]
+    public void Password_limiter_fails_closed_when_its_cache_is_full()
+    {
+        using var lim = new RoomPasswordLimiter(sizeLimit: 1);
+        Assert.True(lim.TryConsume(Guid.NewGuid(), Guid.NewGuid()));   // fills the cache
+        Assert.False(lim.TryConsume(Guid.NewGuid(), Guid.NewGuid()));  // cannot be remembered → refused
+    }
+
+    [Fact]
+    public async Task Room_tokens_expire_within_ten_minutes()
+    {
+        using var t = new TestDb(); var org = t.AddUser("O1");
+        await BookAsync(t, org.Id, DateTime.UtcNow.AddMinutes(-5), 60);
+        var cfg = new Microsoft.Extensions.Configuration.ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Calls:LiveKit:ApiKey"] = "test_livekit_key",
+            ["Calls:LiveKit:ApiSecret"] = "test_only_livekit_secret_32_bytes_xx",
+            ["Calls:LiveKit:Url"] = "ws://lk.test:7880",
+        }).Build();
+        var svc = new MeetingRoomService(t.Db, new FakeRoomAdmin(), new IPop.Infrastructure.Calls.LiveKitTokenService(cfg), new DbSettings(t.Db),
+            new RoomPasswordLimiter(), new RoomMeetingCreator(t.Db));
+        var r = await svc.JoinAsync(org.Id, "kalosi", null, default);
+        Assert.Null(r.Error);
+        var payload = r.Join!.Token.Split('.')[1].Replace('-', '+').Replace('_', '/');
+        payload = payload.PadRight(payload.Length + (4 - payload.Length % 4) % 4, '=');
+        var exp = JsonDocument.Parse(Convert.FromBase64String(payload)).RootElement.GetProperty("exp").GetInt64();
+        Assert.True(exp <= DateTimeOffset.UtcNow.Add(TimeSpan.FromMinutes(10)).AddSeconds(5).ToUnixTimeSeconds(),
+            $"token valid until {DateTimeOffset.FromUnixTimeSeconds(exp):O}");
     }
 
     [Fact]
