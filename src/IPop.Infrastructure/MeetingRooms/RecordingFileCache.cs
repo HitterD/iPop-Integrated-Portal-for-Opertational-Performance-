@@ -10,6 +10,16 @@ public sealed class RecordingFileCache(IFileAccessService nas, IConfiguration co
     private string Dir => config["MeetingRooms:CacheDir"]
         ?? Path.Combine(Path.GetDirectoryName((config["MeetingRooms:SpoolDir"] ?? @"F:\ipop-data\recordings-spool").TrimEnd('\\', '/'))!, "recordings-cache");
 
+    /// Drops the local playback copy of a deleted recording (best effort; a locked file ages out after 24 h).
+    public async Task EvictAsync(Guid recordingId, CancellationToken ct)
+    {
+        var path = Path.Combine(Dir, recordingId.ToString("N") + ".mp4");
+        await Gate.WaitAsync(ct);
+        try { if (File.Exists(path)) File.Delete(path); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        finally { Gate.Release(); }
+    }
+
     public async Task<string?> OpenAsync(MeetingRecording row, CancellationToken ct)
     {
         if (row.NasPath is null) return null;

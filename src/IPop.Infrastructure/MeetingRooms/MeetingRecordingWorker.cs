@@ -15,7 +15,8 @@ using Microsoft.Extensions.Logging;
 namespace IPop.Infrastructure.MeetingRooms;
 
 /// Every 15 s: finished Egress recordings go from the spool folder to the NAS and their viewers are told.
-/// Once a night (02:30 local): recordings past the retention days, and ones an admin deleted, leave the NAS.
+/// Once a night (02:30 local): recordings past the retention days leave the NAS, and so do deleted ones whose immediate
+/// NAS delete failed (they keep their NasPath).
 public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<MeetingRecordingWorker> log) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -134,13 +135,29 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
                 var file = Path.GetFileName(row.SpoolPath);
                 await using (var fs = File.OpenRead(local))
                     await nas.UploadAsServiceAsync(dir, file, fs, ct);
-                row.NasPath = $"{dir}/{file}";
-                row.SizeBytes = info.Size;
-                row.DurationSeconds = info.DurationNs is { } ns ? (int)(ns / 1_000_000_000) : null;
-                row.Status = MeetingRecordingStatus.Ready;
-                row.EndedAt ??= now;
-                await db.SaveChangesAsync(ct);
+                var nasPath = $"{dir}/{file}";
+                long? size = info.Size;
+                int? duration = info.DurationNs is { } ns ? (int)(ns / 1_000_000_000) : null;
+                var endedAt = row.EndedAt ?? now;
+                // Conditional: someone may have deleted the recording while it uploaded. A plain save would turn that
+                // Deleted row back into Ready.
+                var became = await db.MeetingRecordings
+                    .Where(r => r.Id == row.Id && r.Status == MeetingRecordingStatus.Processing)
+                    .ExecuteUpdateAsync(u => u.SetProperty(r => r.NasPath, nasPath).SetProperty(r => r.SizeBytes, size)
+                        .SetProperty(r => r.DurationSeconds, duration).SetProperty(r => r.EndedAt, endedAt)
+                        .SetProperty(r => r.Status, MeetingRecordingStatus.Ready), ct);
+                db.Entry(row).State = EntityState.Detached;
                 File.Delete(local);
+                if (became == 0)
+                {
+                    // Deleted meanwhile: record the file on the row so the nightly purge removes it if this fails.
+                    await db.MeetingRecordings.Where(r => r.Id == row.Id && r.Status == MeetingRecordingStatus.Deleted)
+                        .ExecuteUpdateAsync(u => u.SetProperty(r => r.NasPath, nasPath), ct);
+                    await nas.DeleteAsServiceAsync(nasPath, ct);
+                    await db.MeetingRecordings.Where(r => r.Id == row.Id && r.Status == MeetingRecordingStatus.Deleted)
+                        .ExecuteUpdateAsync(u => u.SetProperty(r => r.NasPath, (string?)null), ct);
+                    continue;
+                }
                 await notify.PublishInternalAsync("meetings", "meeting.recording.ready", "Recording ready",
                     $"{row.Title} ({HallBooking.Rooms.FirstOrDefault(r => r.Key == row.RoomKey).Name}) can be watched now.",
                     new NotificationTarget(UserIds: row.Viewers.Select(v => v.UserId).ToList()),

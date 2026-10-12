@@ -123,13 +123,14 @@ public class MeetingRecordingServiceTests
         Assert.Equal("processing", dto.Status);
         Assert.Equal(dto.StartedAt.AddDays(90), dto.DeleteAfter);
         Assert.Equal(1, dto.PeopleCount);
-        Assert.Single(await svc.ListAsync(outsider.Id, true, default));
+        Assert.Empty(await svc.ListAsync(outsider.Id, true, default));   // admins are not merged into the user list
+        Assert.Single(await svc.ListAllAsync(default));
         Assert.Empty(await svc.ListAsync(outsider.Id, false, default));
-        Assert.True(await svc.DeleteAsync(rec.Id, default));
-        Assert.False(await svc.DeleteAsync(rec.Id, default));
+        Assert.Null(await svc.DeleteAsync(a.Id, false, rec.Id, default));
+        Assert.Equal("not_found", await svc.DeleteAsync(a.Id, false, rec.Id, default));
         Assert.False(await svc.CanViewAsync(a.Id, false, rec.Id, default));
         Assert.False(await svc.CanViewAsync(outsider.Id, true, rec.Id, default));
-        Assert.Empty(await svc.ListAsync(outsider.Id, true, default));
+        Assert.Empty(await svc.ListAllAsync(default));
         Assert.Equal("not_found", (await svc.StopAsync(a.Id, rec.Id, default)).Error);
         Assert.Equal(MeetingRecordingStatus.Deleted, (await t.Verify().MeetingRecordings.SingleAsync()).Status);
     }
@@ -196,7 +197,7 @@ public class MeetingRecordingServiceTests
         lk.Rooms["hall-kalosi"] = [new(a.Id.ToString(), "A", [], new Dictionary<string, string>())];
         var svc = Make(t, lk, new FakeEgress());
         var rec = (await svc.StartAsync(a.Id, "kalosi", default)).Recording!;
-        Assert.False(await svc.DeleteAsync(rec.Id, default));
+        Assert.Equal("recording", await svc.DeleteAsync(a.Id, true, rec.Id, default));
         Assert.Equal(MeetingRecordingStatus.Recording, (await t.Verify().MeetingRecordings.SingleAsync()).Status);
         Assert.Equal("already_recording", (await svc.StartAsync(a.Id, "kalosi", default)).Error);
     }

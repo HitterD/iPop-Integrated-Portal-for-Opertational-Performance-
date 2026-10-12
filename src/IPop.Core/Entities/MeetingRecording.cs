@@ -3,7 +3,7 @@ namespace IPop.Core.Entities;
 public enum MeetingRecordingStatus { Recording = 0, Processing = 1, Ready = 2, Failed = 3, Deleted = 4 }
 
 /// A server (LiveKit Egress) recording of a meeting room. The file lives on the NAS; only Viewers
-/// (people in the room while it recorded) and admins may see it.
+/// (people in the room while it recorded) see it in their list; admins see every one in Administration.
 public class MeetingRecording
 {
     public Guid Id { get; set; }
@@ -11,6 +11,8 @@ public class MeetingRecording
     public required string Title { get; set; }
     public required string EgressId { get; set; }
     public Guid StartedById { get; set; }
+    /// The booking (Meeting) the room was running when the recording started; its organizer may delete it.
+    public Guid? MeetingId { get; set; }
     public DateTime StartedAt { get; set; }
     public DateTime? EndedAt { get; set; }
     public MeetingRecordingStatus Status { get; set; }

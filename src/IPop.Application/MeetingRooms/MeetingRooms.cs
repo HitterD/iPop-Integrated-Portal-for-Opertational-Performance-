@@ -71,8 +71,10 @@ public interface IRoomBookingWriter
     Task<string?> SetEndAsync(Guid organizerId, Guid meetingId, DateTime endUtc, CancellationToken ct);
 }
 
+/// CanDelete: whether the requesting user may delete it (started it, organized the booking, or Admin).
+/// ChatCount: in-meeting chat messages saved with the recording.
 public record MeetingRecordingDto(Guid Id, string RoomKey, string RoomName, string Title, string StartedByName, DateTime StartedAt,
-    int? DurationSeconds, long? SizeBytes, int PeopleCount, string Status, DateTime DeleteAfter);
+    int? DurationSeconds, long? SizeBytes, int PeopleCount, string Status, DateTime DeleteAfter, bool CanDelete = false, int ChatCount = 0);
 public record MeetingRecordingResult(MeetingRecordingDto? Recording, string? Error);
 public interface IMeetingRecordingService
 {
@@ -80,11 +82,18 @@ public interface IMeetingRecordingService
     Task<MeetingRecordingResult> StartAsync(Guid userId, string key, CancellationToken ct);
     /// Anyone in the room may stop it. Errors: "not_found", "not_in_room".
     Task<MeetingRecordingResult> StopAsync(Guid userId, Guid recordingId, CancellationToken ct);
-    /// Ready/Processing recordings the user may see (viewers), or all when admin.
+    /// Ready/Processing recordings the user was present for (viewers only; Admins are not merged in).
+    /// <paramref name="admin"/> only decides CanDelete.
     Task<IReadOnlyList<MeetingRecordingDto>> ListAsync(Guid userId, bool admin, CancellationToken ct);
+    /// Every Ready/Processing/Failed recording, for Administration → Meeting rooms (audit/delete).
+    Task<IReadOnlyList<MeetingRecordingDto>> ListAllAsync(CancellationToken ct);
+    /// Started it, organized the booking it was recorded in, or Admin.
+    Task<bool> CanDeleteAsync(Guid userId, bool admin, Guid recordingId, CancellationToken ct);
     Task<bool> CanViewAsync(Guid userId, bool admin, Guid recordingId, CancellationToken ct);
     /// Adds a viewer if a server recording is running in that room (called on every join).
     Task NoteJoinAsync(Guid userId, string key, CancellationToken ct);
-    Task<bool> DeleteAsync(Guid recordingId, CancellationToken ct);
+    /// Marks it Deleted and removes the NAS file right away (a NAS failure leaves NasPath for the nightly purge).
+    /// Errors: "not_found" (gone, or the caller may neither see nor delete it), "forbidden", "recording" (still running).
+    Task<string?> DeleteAsync(Guid userId, bool admin, Guid recordingId, CancellationToken ct);
 }
 

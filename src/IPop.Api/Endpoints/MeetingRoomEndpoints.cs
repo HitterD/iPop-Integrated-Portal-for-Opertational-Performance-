@@ -97,8 +97,13 @@ public static class MeetingRoomEndpoints
         g.MapPost("/recordings/{id:guid}/stop", async (Guid id, HttpContext http, IPopDbContext db, IMeetingRecordingService recs, CancellationToken ct) =>
             await UserIdAsync(http, db, ct) is { } me ? RecordingResponse(await recs.StopAsync(me, id, ct)) : Results.Unauthorized());
 
+        // Only recordings the user was in the room for, Admins included (they audit from Administration).
         g.MapGet("/recordings", async (HttpContext http, IPopDbContext db, IMeetingRecordingService recs, CancellationToken ct) =>
-            await UserIdAsync(http, db, ct) is { } me ? Results.Ok(await recs.ListAsync(me, false, ct)) : Results.Unauthorized());
+            await UserIdAsync(http, db, ct) is { } me ? Results.Ok(await recs.ListAsync(me, http.User.IsInRole("Admin"), ct)) : Results.Unauthorized());
+
+        // Delete for everyone: who started it, the booking organizer, or an Admin. The NAS file goes right away.
+        g.MapDelete("/recordings/{id:guid}", (Guid id, HttpContext http, IPopDbContext db, IMeetingRecordingService recs, CancellationToken ct) =>
+            DeleteRecordingAsync(id, http, db, recs, ct));
 
         // <video src> / <a download> cannot send the Authorization header: the client asks for a ticket scoped to this
         // recording and user (6 h) and uses the URL it returns. No JWT ever goes into a URL.
@@ -125,7 +130,7 @@ public static class MeetingRoomEndpoints
                 video = await rooms.VideoAsync(ct),
                 retentionDays = await settings.GetAsync(SettingKeys.MeetingRoomsRetentionDays, 90, ct),
                 egress = status,
-                recordings = await recs.ListAsync(me, true, ct),
+                recordings = await recs.ListAllAsync(ct),
             });
         });
 
@@ -143,8 +148,8 @@ public static class MeetingRoomEndpoints
             return Results.NoContent();
         });
 
-        a.MapDelete("/recordings/{id:guid}", async (Guid id, IMeetingRecordingService recs, CancellationToken ct) =>
-            await recs.DeleteAsync(id, ct) ? Results.NoContent() : Results.NotFound());
+        a.MapDelete("/recordings/{id:guid}", (Guid id, HttpContext http, IPopDbContext db, IMeetingRecordingService recs, CancellationToken ct) =>
+            DeleteRecordingAsync(id, http, db, recs, ct));
 
         return app;
     }
@@ -172,6 +177,21 @@ public static class MeetingRoomEndpoints
     };
 
     public record TicketResponse(string Url);
+
+    /// DELETE …/recordings/{id} (user and admin routes): 204; 404 when it is gone or the caller may not even see it;
+    /// 403 when the caller sees it but may not delete it; 409 while it is still recording.
+    public static async Task<IResult> DeleteRecordingAsync(Guid id, HttpContext http, IPopDbContext db, IMeetingRecordingService recs,
+        CancellationToken ct)
+    {
+        if (await UserIdAsync(http, db, ct) is not { } me) return Results.Unauthorized();
+        return await recs.DeleteAsync(me, http.User.IsInRole("Admin"), id, ct) switch
+        {
+            null => Results.NoContent(),
+            "forbidden" => Results.Json(new { code = "forbidden", message = "Only the person who started the recording, the meeting organizer or an admin can delete it." }, statusCode: 403),
+            "recording" => Results.Json(new { code = "still_recording", message = "Stop the recording first." }, statusCode: 409),
+            _ => Results.Json(new { code = "not_found", message = "This recording was deleted." }, statusCode: 404),
+        };
+    }
 
     /// POST …/recordings/{id}/ticket (calls.use): a file URL for this recording and this user, valid 6 h. 404 when the
     /// user may not see it (same check as the list, Admin role included).

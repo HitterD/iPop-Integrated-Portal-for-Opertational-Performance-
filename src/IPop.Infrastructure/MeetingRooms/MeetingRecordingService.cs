@@ -1,3 +1,4 @@
+using IPop.Application.Files;
 using IPop.Application.Hall;
 using IPop.Application.MeetingRooms;
 using IPop.Application.Settings;
@@ -7,11 +8,13 @@ using IPop.Infrastructure.Hall;
 using IPop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace IPop.Infrastructure.MeetingRooms;
 
 public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin liveKit, ILiveKitEgress egress, ISettings settings, IConfiguration config,
-    RoomOccupancyTracker? occupancyTracker = null)
+    RoomOccupancyTracker? occupancyTracker = null, IFileAccessService? nas = null, RecordingFileCache? fileCache = null,
+    ILogger<MeetingRecordingService>? log = null)
     : IMeetingRecordingService
 {
     private readonly RoomOccupancyTracker occupancy = occupancyTracker ?? new RoomOccupancyTracker();
@@ -38,7 +41,7 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
         var rel = $"{key}/{now.ToLocalTime():yyyy-MM-dd}/{now.ToLocalTime():HHmm}-{id:N}.mp4";
         var row = new MeetingRecording
         {
-            Id = id, RoomKey = key, Title = booking?.Title ?? $"{room.Name} · ad-hoc", EgressId = "", StartedById = userId,
+            Id = id, RoomKey = key, Title = booking?.Title ?? $"{room.Name} · ad-hoc", EgressId = "", StartedById = userId, MeetingId = booking?.MeetingId,
             StartedAt = now, Status = MeetingRecordingStatus.Recording, SpoolPath = rel,
         };
         foreach (var p in inside)
@@ -60,7 +63,7 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
         }
         await db.SaveChangesAsync(CancellationToken.None);
         await PublishStateAsync(row.RoomKey, null, CancellationToken.None);
-        return new(await DtoAsync(row.Id, ct), null);
+        return new(await DtoAsync(row.Id, userId, false, ct), null);
     }
 
     public async Task<MeetingRecordingResult> StopAsync(Guid userId, Guid recordingId, CancellationToken ct)
@@ -79,7 +82,7 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
         row.EndedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         await PublishStateAsync(row.RoomKey, row.Id, ct);
-        return new(await DtoAsync(row.Id, ct), null);
+        return new(await DtoAsync(row.Id, userId, false, ct), null);
     }
 
     /// Room metadata carries the running server recording so every client shows "Recording · started by X"; it is
@@ -106,36 +109,89 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
         await db.MeetingRecordings.AnyAsync(r => r.Id == recordingId && r.Status != MeetingRecordingStatus.Deleted
             && (admin || r.Viewers.Any(v => v.UserId == userId)), ct);
 
+    private IQueryable<MeetingRecording> Listed => db.MeetingRecordings.AsNoTracking()
+        .Where(r => r.Status != MeetingRecordingStatus.Deleted && r.Status != MeetingRecordingStatus.Recording);
+
+    /// Only recordings the user was present for. Admins are not merged in: they audit from Administration.
     public async Task<IReadOnlyList<MeetingRecordingDto>> ListAsync(Guid userId, bool admin, CancellationToken ct)
     {
-        var ids = await db.MeetingRecordings.AsNoTracking()
-            .Where(r => r.Status != MeetingRecordingStatus.Deleted && r.Status != MeetingRecordingStatus.Recording
-                && (admin || r.Viewers.Any(v => v.UserId == userId)))
+        var ids = await Listed.Where(r => r.Viewers.Any(v => v.UserId == userId))
             .OrderByDescending(r => r.StartedAt).Select(r => r.Id).Take(200).ToListAsync(ct);
         var list = new List<MeetingRecordingDto>();
-        foreach (var id in ids) list.Add(await DtoAsync(id, ct));
+        foreach (var id in ids) list.Add(await DtoAsync(id, userId, admin, ct));
         return list;
     }
 
-    public async Task<bool> DeleteAsync(Guid recordingId, CancellationToken ct)
+    public async Task<IReadOnlyList<MeetingRecordingDto>> ListAllAsync(CancellationToken ct)
     {
-        var row = await db.MeetingRecordings.FirstOrDefaultAsync(r => r.Id == recordingId && r.Status != MeetingRecordingStatus.Deleted, ct);
-        if (row is null || row.Status == MeetingRecordingStatus.Recording) return false;
-        row.Status = MeetingRecordingStatus.Deleted;   // the worker removes the NAS file
-        await db.SaveChangesAsync(ct);
-        return true;
+        var ids = await Listed.OrderByDescending(r => r.StartedAt).Select(r => r.Id).Take(200).ToListAsync(ct);
+        var list = new List<MeetingRecordingDto>();
+        foreach (var id in ids) list.Add(await DtoAsync(id, Guid.Empty, true, ct));
+        return list;
     }
 
-    private async Task<MeetingRecordingDto> DtoAsync(Guid id, CancellationToken ct)
+    public Task<bool> CanDeleteAsync(Guid userId, bool admin, Guid recordingId, CancellationToken ct) =>
+        db.MeetingRecordings.AnyAsync(r => r.Id == recordingId && r.Status != MeetingRecordingStatus.Deleted
+            && (admin || r.StartedById == userId
+                || (r.MeetingId != null && db.Meetings.Any(m => m.Id == r.MeetingId && m.OrganizerId == userId))), ct);
+
+    public async Task<string?> DeleteAsync(Guid userId, bool admin, Guid recordingId, CancellationToken ct)
+    {
+        var row = await db.MeetingRecordings.FirstOrDefaultAsync(r => r.Id == recordingId && r.Status != MeetingRecordingStatus.Deleted, ct);
+        if (row is null) return "not_found";
+        if (!await CanDeleteAsync(userId, admin, recordingId, ct))
+            // Someone who could not even see it learns nothing about its existence.
+            return await CanViewAsync(userId, admin, recordingId, ct) ? "forbidden" : "not_found";
+        if (row.Status == MeetingRecordingStatus.Recording) return "recording";
+
+        row.Status = MeetingRecordingStatus.Deleted;
+        await db.SaveChangesAsync(ct);
+        // The row is Deleted from here on (players and tickets answer 404); the file cleanup must finish even if the
+        // caller goes away, so it does not use the request token.
+        if (row.NasPath is { } path && nas is { HasServiceAccount: true })
+        {
+            try
+            {
+                await nas.DeleteAsServiceAsync(path, CancellationToken.None);
+                row.NasPath = null;
+                await db.SaveChangesAsync(CancellationToken.None);
+            }
+            catch (Exception e)
+            {
+                // NasPath stays: the nightly purge retries Deleted rows that still have a file.
+                log?.LogWarning(e, "Meeting recording {RecordingId}: NAS delete failed, the nightly purge will retry", row.Id);
+            }
+        }
+        DeleteSpool(row);
+        if (fileCache is not null) await fileCache.EvictAsync(row.Id, CancellationToken.None);
+        return null;
+    }
+
+    /// A Processing recording deleted before the upload: its finished file in the spool folder goes too (best effort).
+    private void DeleteSpool(MeetingRecording row)
+    {
+        if (string.IsNullOrEmpty(row.SpoolPath)) return;
+        try
+        {
+            var spool = config["MeetingRooms:SpoolDir"] ?? @"F:\ipop-data\recordings-spool";
+            var local = Path.Combine(spool, row.SpoolPath.Replace('/', Path.DirectorySeparatorChar));
+            if (File.Exists(local)) File.Delete(local);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { }
+    }
+
+    private async Task<MeetingRecordingDto> DtoAsync(Guid id, Guid userId, bool admin, CancellationToken ct)
     {
         var days = await settings.GetAsync(SettingKeys.MeetingRoomsRetentionDays, 90, ct);
         var r = await db.MeetingRecordings.AsNoTracking().Where(x => x.Id == id).Select(x => new
         {
             x.Id, x.RoomKey, x.Title, x.StartedAt, x.DurationSeconds, x.SizeBytes, x.Status, People = x.Viewers.Count,
             By = db.Users.Where(u => u.Id == x.StartedById).Select(u => u.Name).FirstOrDefault(),
+            CanDelete = admin || x.StartedById == userId
+                || (x.MeetingId != null && db.Meetings.Any(m => m.Id == x.MeetingId && m.OrganizerId == userId)),
         }).SingleAsync(ct);
         var name = HallBooking.Rooms.FirstOrDefault(x => x.Key == r.RoomKey).Name ?? r.RoomKey;
         return new(r.Id, r.RoomKey, name, r.Title, r.By ?? "", r.StartedAt, r.DurationSeconds, r.SizeBytes, r.People,
-            r.Status.ToString().ToLowerInvariant(), r.StartedAt.AddDays(days));
+            r.Status.ToString().ToLowerInvariant(), r.StartedAt.AddDays(days), r.CanDelete, ChatCount: 0);
     }
 }

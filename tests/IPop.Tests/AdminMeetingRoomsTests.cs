@@ -101,7 +101,7 @@ public class AdminMeetingRoomsTests
     }
 
     [Theory]
-    [InlineData(HttpStatusCode.NotFound, "Stop the recording first.")]
+    [InlineData(HttpStatusCode.Conflict, "Stop the recording first.")]
     [InlineData(HttpStatusCode.InternalServerError, "Could not delete the recording. Try again.")]
     [InlineData(HttpStatusCode.Forbidden, "Could not delete the recording. Try again.")]
     public async Task Failed_delete_keeps_row_and_explains_failure(HttpStatusCode status, string message)
@@ -113,6 +113,18 @@ public class AdminMeetingRoomsTests
         await cut.InvokeAsync(() => ctx.Services.GetRequiredService<ConfirmService>().Resolve(true));
         cut.WaitForAssertion(() => Assert.Contains(ctx.Services.GetRequiredService<ToastService>().Active, t => t.Message == message));
         Assert.Single(cut.FindAll(".amr-recording"));
+    }
+
+    [Fact]
+    public async Task Delete_answered_404_means_already_deleted_and_drops_the_row()
+    {
+        var api = new Api { WriteStatus = HttpStatusCode.NotFound };
+        using var ctx = Context(api);
+        var cut = ctx.Render<AdminMeetingRooms>();
+        cut.Find(".amr-delete").Click();
+        await cut.InvokeAsync(() => ctx.Services.GetRequiredService<ConfirmService>().Resolve(true));
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll(".amr-recording")));
+        Assert.Empty(ctx.Services.GetRequiredService<ToastService>().Active);
     }
 
     [Fact]

@@ -31,7 +31,8 @@ public class MeetingRecordingWorkerTests : IDisposable
         public Func<Stream>? DownloadStream { get; set; }
         public bool HasServiceAccount => true;
         public string? ServiceServer => "ict";
-        public Task UploadAsServiceAsync(string dir, string filename, Stream content, CancellationToken ct) { if (FailUpload || filename == FailUploadFilename) throw new IOException("NAS offline"); Uploaded.Add($"{dir}/{filename}"); return Task.CompletedTask; }
+        public Action? OnUpload { get; set; }
+        public Task UploadAsServiceAsync(string dir, string filename, Stream content, CancellationToken ct) { OnUpload?.Invoke(); if (FailUpload || filename == FailUploadFilename) throw new IOException("NAS offline"); Uploaded.Add($"{dir}/{filename}"); return Task.CompletedTask; }
         public Task DeleteAsServiceAsync(string path, CancellationToken ct) { if (path == FailDeletePath) throw new IOException("delete failed"); Deleted.Add(path); return Task.CompletedTask; }
         public Task<Stream> DownloadAsServiceAsync(string path, CancellationToken ct) { Downloads++; return Task.FromResult<Stream>(DownloadStream?.Invoke() ?? new MemoryStream([1, 2, 3])); }
         public Task UploadAsync(Guid userId, string server, string dir, string filename, Stream content, CancellationToken ct) => throw new NotSupportedException();
@@ -159,6 +160,31 @@ public class MeetingRecordingWorkerTests : IDisposable
         Assert.Equal(2, gw.Sent.Count(s => s.EventType == "meeting.recording.ready"));
         Assert.Equal(new[] { a.Id, b.Id }.Order(), gw.Sent.Select(s => s.Target.UserId!.Value).Order());
         Assert.All(gw.Sent, s => Assert.Equal($"/calls?tab=rooms&recording={row.Id}", s.Url));
+    }
+
+    [Fact]
+    public async Task Recording_deleted_during_its_upload_stays_deleted_and_the_uploaded_file_is_removed()
+    {
+        using var t = new TestDb(); var a = t.AddUser("A1");
+        var row = Row(t, MeetingRecordingStatus.Processing, a.Id, a.Id);
+        var eg = new MeetingRecordingServiceTests.FakeEgress();
+        eg.Infos["EG_1"] = new("EGRESS_COMPLETE", "/out/kalosi/2026-10-11/1000-x.mp4", 1234, 125_000_000_000, null);
+        var nas = new Nas(); var gw = new Gateway();
+        // The starter deletes it from the Rooms tab while the worker is copying the file to the NAS.
+        nas.OnUpload = () => { using var db = t.Verify(); db.MeetingRecordings.Single(r => r.Id == row.Id).Status = MeetingRecordingStatus.Deleted; db.SaveChanges(); };
+        var (provider, spool) = Services(t, eg, nas, gw);
+        using var sp = provider;
+        Directory.CreateDirectory(Path.Combine(spool, "kalosi", "2026-10-11"));
+        await File.WriteAllBytesAsync(Path.Combine(spool, "kalosi", "2026-10-11", "1000-x.mp4"), [1, 2, 3]);
+
+        await MeetingRecordingWorker.FinishAsync(provider, default);
+
+        var saved = await t.Verify().MeetingRecordings.SingleAsync();
+        Assert.Equal(MeetingRecordingStatus.Deleted, saved.Status);
+        Assert.Null(saved.NasPath);
+        Assert.Equal(["/sja/SJA SPJ/ICT/recordings/kalosi/2026-10-11/1000-x.mp4"], nas.Deleted);
+        Assert.Empty(gw.Sent);
+        Assert.False(File.Exists(Path.Combine(spool, "kalosi", "2026-10-11", "1000-x.mp4")));
     }
 
     [Theory]
@@ -536,7 +562,7 @@ public class MeetingRecordingWorkerTests : IDisposable
         using var svcDb = t.Verify();
         var svc = new MeetingRecordingService(svcDb, new MeetingRoomServiceTests.FakeRoomAdmin(), new MeetingRecordingServiceTests.FakeEgress(),
             new DbSettings(svcDb), MeetingRecordingServiceTests.Config());
-        Assert.DoesNotContain(await svc.ListAsync(a.Id, true, default), r => r.Id == oldFailed.Id);
+        Assert.DoesNotContain(await svc.ListAllAsync(default), r => r.Id == oldFailed.Id);
     }
 
     // ---------------------------------------------------------------- re-review follow-ups

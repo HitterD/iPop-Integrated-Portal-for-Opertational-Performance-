@@ -142,8 +142,9 @@ else
         {
             if (!await Confirm.AskAsync($"Delete {recording.Title}?", "This server recording will be permanently removed.", "Delete", danger: true) || disposed) return;
             using var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/admin/meeting-rooms/recordings/{recording.Id}", ct: lifetime.Token);
-            if (res.IsSuccessStatusCode) settings.Recordings.RemoveAll(r => r.Id == recording.Id);
-            else Toasts.Show(res.StatusCode == System.Net.HttpStatusCode.NotFound
+            // 404: someone else deleted it already; either way it is gone.
+            if (res.IsSuccessStatusCode || res.StatusCode == System.Net.HttpStatusCode.NotFound) settings.Recordings.RemoveAll(r => r.Id == recording.Id);
+            else Toasts.Show(res.StatusCode == System.Net.HttpStatusCode.Conflict
                 ? "Stop the recording first." : "Could not delete the recording. Try again.", ToastKind.Error);
         }
         catch (HttpRequestException) { Toasts.Show("Could not delete the recording. Try again.", ToastKind.Error); }
