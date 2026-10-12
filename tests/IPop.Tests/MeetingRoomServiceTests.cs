@@ -68,14 +68,19 @@ public class MeetingRoomServiceTests
     }
 
     private static MeetingRoomService Make(TestDb t, FakeRoomAdmin lk, FakeTokens? tokens = null) =>
-        new(t.Db, lk, tokens ?? new FakeTokens(), new DbSettings(t.Db));
+        new(t.Db, lk, tokens ?? new FakeTokens(), new DbSettings(t.Db), new RoomPasswordLimiter(), new IPop.Api.MeetingRooms.RoomMeetingCreator(t.Db));
+
+    /// v2: rooms are booking-only, so join tests first book the room for <paramref name="me"/> (running now).
+    private static Task<Guid> BookNowAsync(TestDb t, Guid me, string roomName) =>
+        BookAsync(t, me, "Sync", DateTime.UtcNow.AddMinutes(-5), 60, $"SJA Hall · {roomName}");
 
     [Fact]
     public async Task Join_mints_a_token_for_the_hall_room_with_camera_when_video_is_allowed()
     {
         using var t = new TestDb(); var me = t.AddUser("U1");
+        await BookNowAsync(t, me.Id, "Kalosi");
         var lk = new FakeRoomAdmin(); var tokens = new FakeTokens();
-        var r = await Make(t, lk, tokens).JoinAsync(me.Id, "kalosi", default);
+        var r = await Make(t, lk, tokens).JoinAsync(me.Id, "kalosi", null, default);
 
         Assert.Null(r.Error);
         Assert.Equal(("hall-kalosi", me.Id.ToString(), true), (r.Join!.LiveKitRoom, r.Join.Identity, r.Join.VideoAllowed));
@@ -87,9 +92,10 @@ public class MeetingRoomServiceTests
     public async Task Video_off_room_gets_no_camera_source()
     {
         using var t = new TestDb(); var me = t.AddUser("U1");
+        await BookNowAsync(t, me.Id, "Kalosi");
         var lk = new FakeRoomAdmin(); var tokens = new FakeTokens(); var svc = Make(t, lk, tokens);
         await svc.SetVideoAsync("kalosi", false, "admin", default);
-        var r = await svc.JoinAsync(me.Id, "kalosi", default);
+        var r = await svc.JoinAsync(me.Id, "kalosi", null, default);
         Assert.False(r.Join!.VideoAllowed);
         Assert.DoesNotContain("camera", tokens.LastSources);
     }
@@ -98,8 +104,9 @@ public class MeetingRoomServiceTests
     public async Task Twenty_first_person_is_refused_with_rooms_that_have_space()
     {
         using var t = new TestDb(); var me = t.AddUser("U1");
+        await BookNowAsync(t, me.Id, "Kapal Api");
         var lk = new FakeRoomAdmin(); lk.Fill("kapal-api", 20); lk.Fill("robusta", 20);
-        var r = await Make(t, lk).JoinAsync(me.Id, "kapal-api", default);
+        var r = await Make(t, lk).JoinAsync(me.Id, "kapal-api", null, default);
         Assert.Equal("room_full", r.Error);
         Assert.Equal(["arabika", "kalosi", "toraja"], r.Suggestions);
     }
@@ -108,17 +115,19 @@ public class MeetingRoomServiceTests
     public async Task Rejoining_myself_in_a_full_room_is_not_refused()
     {
         using var t = new TestDb(); var me = t.AddUser("U1");
+        await BookNowAsync(t, me.Id, "Kapal Api");
         var lk = new FakeRoomAdmin(); lk.Fill("kapal-api", 19, plus: me.Id.ToString());
-        Assert.Null((await Make(t, lk).JoinAsync(me.Id, "kapal-api", default)).Error);
+        Assert.Null((await Make(t, lk).JoinAsync(me.Id, "kapal-api", null, default)).Error);
     }
 
     [Fact]
     public async Task Unknown_room_and_unconfigured_media_are_errors_not_exceptions()
     {
         using var t = new TestDb(); var me = t.AddUser("U1");
-        Assert.Equal("unknown_room", (await Make(t, new FakeRoomAdmin()).JoinAsync(me.Id, "gayo", default)).Error);
-        Assert.Equal("media_unavailable", (await Make(t, new FakeRoomAdmin(), new FakeTokens { IsConfigured = false }).JoinAsync(me.Id, "kalosi", default)).Error);
-        Assert.Equal("media_unavailable", (await Make(t, new FakeRoomAdmin { Throws = true }).JoinAsync(me.Id, "kalosi", default)).Error);
+        await BookNowAsync(t, me.Id, "Kalosi");
+        Assert.Equal("unknown_room", (await Make(t, new FakeRoomAdmin()).JoinAsync(me.Id, "gayo", null, default)).Error);
+        Assert.Equal("media_unavailable", (await Make(t, new FakeRoomAdmin(), new FakeTokens { IsConfigured = false }).JoinAsync(me.Id, "kalosi", null, default)).Error);
+        Assert.Equal("media_unavailable", (await Make(t, new FakeRoomAdmin { Throws = true }).JoinAsync(me.Id, "kalosi", null, default)).Error);
     }
 
     [Fact]
@@ -244,8 +253,9 @@ public class MeetingRoomServiceTests
     public async Task Join_carries_the_recording_retention_days()
     {
         using var t = new TestDb(); var me = t.AddUser("U1");
+        await BookNowAsync(t, me.Id, "Kalosi");
         await new DbSettings(t.Db).SetAsync(IPop.Application.Settings.SettingKeys.MeetingRoomsRetentionDays, 30, null);
-        var r = await Make(t, new FakeRoomAdmin()).JoinAsync(me.Id, "kalosi", default);
+        var r = await Make(t, new FakeRoomAdmin()).JoinAsync(me.Id, "kalosi", null, default);
         Assert.Equal(30, r.Join!.RetentionDays);
     }
 }

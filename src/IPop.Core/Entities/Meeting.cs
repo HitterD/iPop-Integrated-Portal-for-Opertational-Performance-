@@ -25,6 +25,9 @@ public class Meeting
     public string Visibility { get; set; } = CalendarVisibility.Busy;
     /// A delegate who sent this meeting on the organizer's behalf ("Sent by X on behalf of Y").
     public Guid? SentById { get; set; }
+    /// 6-digit password for people who are not invited to a hall-room booking (Location "SJA Hall · …"); null for
+    /// other meetings. Shown only to the organizer and non-declined attendees, never logged.
+    public string? RoomPassword { get; set; }
     public DateTime CreatedAt { get; set; }
 
     public User Organizer { get; set; } = default!;

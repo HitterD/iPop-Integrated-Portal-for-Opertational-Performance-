@@ -154,6 +154,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<HallRoom> HallRooms => Set<HallRoom>();
     public DbSet<MeetingRecording> MeetingRecordings => Set<MeetingRecording>();
     public DbSet<MeetingRecordingViewer> MeetingRecordingViewers => Set<MeetingRecordingViewer>();
+    public DbSet<MeetingRoomGuest> MeetingRoomGuests => Set<MeetingRoomGuest>();
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<EmailOutboxMessage> EmailOutbox => Set<EmailOutboxMessage>();
     public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
@@ -197,6 +198,13 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
         {
             e.HasKey(x => new { x.RecordingId, x.UserId });
             e.HasIndex(x => x.UserId);
+        });
+        b.Entity<MeetingRoomGuest>(e =>
+        {
+            e.HasKey(x => new { x.MeetingId, x.UserId });
+            e.HasIndex(x => x.UserId);
+            e.HasOne<Meeting>().WithMany().HasForeignKey(x => x.MeetingId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<Department>(e =>
         {
@@ -907,6 +915,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Status).HasMaxLength(16);
             e.Property(x => x.TimeZone).HasMaxLength(64);
             e.Property(x => x.Agenda).HasMaxLength(4000);
+            e.Property(x => x.RoomPassword).HasMaxLength(6);
             // Existing rows become Busy only, so no old title turns public on rollout.
             e.Property(x => x.Visibility).HasMaxLength(8).HasDefaultValue(CalendarVisibility.Busy);
             e.HasOne(x => x.Organizer).WithMany().HasForeignKey(x => x.OrganizerId).OnDelete(DeleteBehavior.Restrict);

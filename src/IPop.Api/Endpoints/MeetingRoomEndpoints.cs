@@ -1,6 +1,8 @@
 using IPop.Api.Rbac;
 using IPop.Application.Rbac;
 using IPop.Application.MeetingRooms;
+using IPop.Application.Notifications;
+using IPop.Application.Realtime;
 using IPop.Application.Settings;
 using IPop.Infrastructure.Calls;
 using IPop.Infrastructure.MeetingRooms;
@@ -14,6 +16,9 @@ public static class MeetingRoomEndpoints
 {
     public record VideoRequest(bool Allowed);
     public record RetentionRequest(int Days);
+    public record JoinRequest(string? Password);
+    public record UseNowRequest(int Minutes, string? Title, IReadOnlyList<string>? AttendeeNiks);
+    public record UseNowResponse(Guid MeetingId, MeetingRoomJoinDto? Join);
 
     public static IEndpointRouteBuilder MapMeetingRooms(this IEndpointRouteBuilder app)
     {
@@ -22,11 +27,46 @@ public static class MeetingRoomEndpoints
         g.MapGet("", async (HttpContext http, IPopDbContext db, IMeetingRoomService rooms, CancellationToken ct) =>
             await UserIdAsync(http, db, ct) is { } me ? Results.Ok(await rooms.ListAsync(me, ct)) : Results.Unauthorized());
 
+        // Body { password? } is optional: invited people (and the v1 client) post nothing.
         g.MapPost("/{key}/join", async (string key, HttpContext http, IPopDbContext db, IMeetingRoomService rooms,
             CancellationToken ct) =>
         {
             if (await UserIdAsync(http, db, ct) is not { } me) return Results.Unauthorized();
-            return JoinResponse(await rooms.JoinAsync(me, key, ct));
+            var req = await OptionalBodyAsync<JoinRequest>(http, ct);
+            return JoinResponse(await rooms.JoinAsync(me, key, req?.Password, ct));
+        });
+
+        // "Use now": book a free room from this minute (a real meeting: invites, calendar, password) and join it.
+        g.MapPost("/{key}/use-now", async (string key, UseNowRequest req, HttpContext http, IPopDbContext db, IMeetingRoomService rooms,
+            INotificationGatewayService? notifs, IRealtime realtime, CancellationToken ct) =>
+        {
+            if (await UserIdAsync(http, db, ct) is not { } me) return Results.Unauthorized();
+            var (meetingId, error, max) = await rooms.UseNowAsync(me, key, req.Minutes, req.Title, req.AttendeeNiks ?? [], ct);
+            switch (error)
+            {
+                case "unknown_room": return Results.Json(new { code = error, message = "That room does not exist." }, statusCode: 404);
+                case "invalid_minutes":
+                    return Results.Json(new { code = error, message = $"Choose {MeetingRoomService.UseNowMinMinutes} to {MeetingRoomService.UseNowMaxMinutes} minutes." }, statusCode: 422);
+                case not null:
+                    return Results.Json(new { code = "room_booked", message = "This room is booked at that time.", maxMinutes = max }, statusCode: 409);
+            }
+            await MeetingEndpoints.NotifyMeetingChangedAsync(db, realtime, meetingId!.Value, [], ct);
+            var invited = await db.MeetingAttendees.AsNoTracking().Where(a => a.MeetingId == meetingId && a.UserId != me).Select(a => a.UserId).ToListAsync(ct);
+            if (notifs is not null && invited.Count > 0)
+            {
+                var title = await db.Meetings.AsNoTracking().Where(m => m.Id == meetingId).Select(m => m.Title).FirstAsync(ct);
+                var name = await db.Users.AsNoTracking().Where(u => u.Id == me).Select(u => u.Name).FirstAsync(ct);
+                var start = await db.Meetings.AsNoTracking().Where(m => m.Id == meetingId).Select(m => m.StartAt).FirstAsync(ct);
+                var log = MeetingEndpoints.NotifyLog(http);
+                // Same notification and delegate forwarding as an invite from the meeting form (awaited in sequence: one DbContext).
+                await MeetingEndpoints.PublishBestEffortAsync(notifs, log, "meeting.invited", $"Meeting invite: {title}",
+                    $"{name} invited you to \"{title}\" on {start.ToLocalTime():dd MMM, HH:mm}.", invited, "normal",
+                    $"/calls?tab=scheduled&meeting={meetingId}");
+                await CalendarDelegateEndpoints.ForwardInvitesAsync(db, notifs, log, invited, title, start, name, null, ct);
+            }
+            // The booking stands even when joining fails (e.g. media down): the client can join from the card.
+            var join = await rooms.JoinAsync(me, key, null, ct);
+            return Results.Ok(new UseNowResponse(meetingId.Value, join.Join));
         });
 
         g.MapPost("/{key}/recordings", async (string key, HttpContext http, IPopDbContext db, IMeetingRecordingService recs, CancellationToken ct) =>
@@ -92,6 +132,11 @@ public static class MeetingRoomEndpoints
         null => Results.Ok(r.Join),
         "unknown_room" => Results.Json(new { code = r.Error, message = "That room does not exist." }, statusCode: 404),
         "room_full" => Results.Json(new { code = r.Error, message = "This room is full (20 people).", suggestions = r.Suggestions }, statusCode: 409),
+        "no_booking" => Results.Json(new { code = r.Error, message = "Book a room to use it." }, statusCode: 409),
+        "password_required" => Results.Json(new { code = r.Error, message = "Enter the 6-digit password from the iPop meeting invite." }, statusCode: 403),
+        // Generic: never says whether the booking or the user exists.
+        "wrong_password" => Results.Json(new { code = r.Error, message = "That password is not right." }, statusCode: 403),
+        "too_many_attempts" => Results.Json(new { code = r.Error, message = "Too many tries. Wait 5 minutes and try again." }, statusCode: 429),
         _ => Results.Json(new { code = "media_unavailable", message = "The meeting server is not reachable right now." }, statusCode: 503),
     };
 
@@ -155,6 +200,14 @@ public static class MeetingRoomEndpoints
         if (await UserIdAsync(http, db, ct) is not { } me) return null;
         if (!await permissions.IsAllowedAsync(me, "calls.use", null, ct)) return null;
         return new FileViewer(me, http.User.IsInRole("Admin"));
+    }
+
+    /// A JSON body when one was sent; null for an empty body (no Content-Type / Content-Length 0) or one that is not JSON.
+    private static async Task<T?> OptionalBodyAsync<T>(HttpContext http, CancellationToken ct) where T : class
+    {
+        if (http.Request.ContentLength == 0 || !http.Request.HasJsonContentType()) return null;
+        try { return await http.Request.ReadFromJsonAsync<T>(ct); }
+        catch (System.Text.Json.JsonException) { return null; }
     }
 
     private static async Task<Guid?> UserIdAsync(HttpContext http, IPopDbContext db, CancellationToken ct)

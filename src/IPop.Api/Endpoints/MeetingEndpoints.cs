@@ -248,6 +248,23 @@ public static class MeetingEndpoints
             return Results.Ok(dto);
         });
 
+        // POST /api/meetings/{id}/room-password — organizer sets a new hall-room password (old one stops working).
+        g.MapPost("/{id:guid}/room-password", async (Guid id, HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            var (result, password) = await ApplyNewRoomPasswordAsync(db, id, userId.Value, ct);
+            switch (result)
+            {
+                case RoomPasswordResult.NotFound: return Results.NotFound();
+                case RoomPasswordResult.Forbidden: return Results.Json(new { code = "forbidden", message = "Only the organizer can set a new password." }, statusCode: 403);
+                case RoomPasswordResult.Cancelled: return Results.Json(new { code = "cancelled", message = "This meeting was cancelled." }, statusCode: 409);
+                case RoomPasswordResult.NotHallRoom: return Results.Json(new { code = "not_hall_room", message = "This meeting is not in a meeting room." }, statusCode: 409);
+            }
+            await NotifyMeetingChangedAsync(db, realtime, id, [], ct);
+            return Results.Ok(new RoomPasswordDto(password!));
+        });
+
         // GET /api/meetings/join/{roomName} — resolve a /meet/{room} link to its meeting and,
         // when LiveKit is configured, mint a room token. Only the organizer/attendees may join.
         g.MapGet("/join/{roomName}", async (string roomName, HttpContext http, IPopDbContext db,
@@ -307,7 +324,7 @@ public static class MeetingEndpoints
         var rows = await query.AsNoTracking()
             .Select(m => new
             {
-                m.Id, m.Title, m.StartAt, m.EndAt, m.TimeZone, m.Location, m.Link, m.OrganizerId,
+                m.Id, m.Title, m.StartAt, m.EndAt, m.TimeZone, m.Location, m.Link, m.OrganizerId, m.RoomPassword,
                 OrganizerName = m.Organizer.Name, OrganizerNik = m.Organizer.Nik, m.Status, m.Agenda, m.RoomId, m.ReminderMinutes,
                 Attendees = m.Attendees.OrderBy(a => a.User.Name)
                     .Select(a => new MeetingAttendeeDto(a.UserId, a.User.Name, a.User.Nik, a.Required, a.RsvpStatus, a.Note)).ToList(),
@@ -321,7 +338,9 @@ public static class MeetingEndpoints
             m.Attendees.Count(a => a.RsvpStatus == "decline"),
             m.Attendees.Count(a => a.RsvpStatus == "pending"),
             m.Attendees.FirstOrDefault(a => a.UserId == viewerId)?.RsvpStatus ?? "pending",
-            m.Agenda, RoomNameFor(m.Id), m.RoomId, m.ReminderMinutes)).ToList();
+            m.Agenda, RoomNameFor(m.Id), m.RoomId, m.ReminderMinutes,
+            // Room password: organizer and attendees who did not decline only (v2 §1).
+            m.OrganizerId == viewerId || m.Attendees.Any(a => a.UserId == viewerId && a.RsvpStatus != "decline") ? m.RoomPassword : null)).ToList();
     }
 
     public enum CreateResult { Created, InvalidTitle, InvalidRange, NotRoomMember, RoomBooked }
@@ -358,6 +377,7 @@ public static class MeetingEndpoints
             ReminderMinutes = reminder, CreatedAt = DateTime.UtcNow,
             Visibility = await CalendarSharingEndpoints.DefaultEventVisibilityAsync(db, userId, ct),
         };
+        SyncRoomPassword(meeting);
         db.Meetings.Add(meeting);
 
         // Match Calendar's current group membership; explicit attendees are unioned below.
@@ -501,6 +521,34 @@ public static class MeetingEndpoints
         roomName is not null && roomName.StartsWith("meeting-", StringComparison.Ordinal)
             && Guid.TryParseExact(roomName["meeting-".Length..], "N", out var id) ? id : null;
 
+    /// A meeting in a hall room ("SJA Hall · …") has a 6-digit room password; it is made when the meeting is created
+    /// there or moved there, kept while it stays, and dropped when the meeting moves elsewhere.
+    public static void SyncRoomPassword(Meeting m)
+    {
+        if (IPop.Application.Hall.HallBooking.RoomKey(m.Location) is null) m.RoomPassword = null;
+        else m.RoomPassword ??= IPop.Application.Hall.RoomPasswords.New();
+    }
+
+    public enum RoomPasswordResult { Applied, NotFound, Forbidden, Cancelled, NotHallRoom }
+
+    /// Organizer only: a new room password. The old one stops working; guests already admitted stay admitted.
+    public static async Task<(RoomPasswordResult Result, string? Password)> ApplyNewRoomPasswordAsync(IPopDbContext db, Guid meetingId,
+        Guid userId, CancellationToken ct)
+    {
+        var m = await db.Meetings.FirstOrDefaultAsync(x => x.Id == meetingId, ct);
+        if (m is null) return (RoomPasswordResult.NotFound, null);
+        if (m.OrganizerId != userId) return (RoomPasswordResult.Forbidden, null);
+        if (m.Status == MeetingStatus.Cancelled) return (RoomPasswordResult.Cancelled, null);
+        if (IPop.Application.Hall.HallBooking.RoomKey(m.Location) is null) return (RoomPasswordResult.NotHallRoom, null);
+        string next;
+        do next = IPop.Application.Hall.RoomPasswords.New(); while (next == m.RoomPassword);
+        m.RoomPassword = next;
+        await db.SaveChangesAsync(ct);
+        return (RoomPasswordResult.Applied, next);
+    }
+
+    public record RoomPasswordDto(string Password);
+
     public enum UpdateResult { Applied, NotFound, Forbidden, InvalidTitle, InvalidRange, Cancelled, RoomBooked }
 
     /// Organizer-only edit: fields, attendee list (by NIK; organizer always stays), calendar
@@ -523,6 +571,7 @@ public static class MeetingEndpoints
         m.StartAt = AsUtc(req.StartAt);
         m.EndAt = AsUtc(req.EndAt);
         m.Location = string.IsNullOrWhiteSpace(req.Location) ? null : IPop.Application.Hall.HallBooking.Normalize(req.Location.Trim());
+        SyncRoomPassword(m);
         m.Link = string.IsNullOrWhiteSpace(req.Link) ? null : req.Link.Trim();
         m.Agenda = string.IsNullOrWhiteSpace(req.Agenda) ? null : req.Agenda.Trim();
         if (req.ReminderMinutes is not null) m.ReminderMinutes = req.ReminderMinutes > 0 ? req.ReminderMinutes : null;
@@ -616,6 +665,6 @@ public static class MeetingEndpoints
     public record MeetingDto(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string? TimeZone, string? Location, string? Link,
         Guid OrganizerId, string OrganizerName, string OrganizerNik, string Status, IReadOnlyList<MeetingAttendeeDto> Attendees,
         int AcceptCount, int MaybeCount, int DeclineCount, int PendingCount, string MyResponse,
-        string? Agenda = null, string? RoomName = null, Guid? RoomId = null, int? ReminderMinutes = null);
+        string? Agenda = null, string? RoomName = null, Guid? RoomId = null, int? ReminderMinutes = null, string? RoomPassword = null);
     public record CalendarEventDto(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string Type, Guid? MeetingId, Guid? RoomId);
 }

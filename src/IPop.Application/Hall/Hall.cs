@@ -35,3 +35,21 @@ public record HallRoomBooking(Guid MeetingId, string Title, DateTime EndAt, bool
 
 /// The next booking of a room (for the room card). Allowed = the asking user is the organizer or a non-declined attendee.
 public record HallNextBooking(Guid MeetingId, string Title, DateTime StartAt, DateTime EndAt, string OrganizerName, bool Allowed);
+
+/// The 6-digit password of a hall-room booking (meeting rooms v2 §1). Random per meeting; compared in constant time.
+public static class RoomPasswords
+{
+    public const int Length = 6;
+
+    public static string New() => System.Security.Cryptography.RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
+
+    /// True when <paramref name="typed"/> (spaces ignored, as the invite shows "123 456") equals <paramref name="stored"/>.
+    public static bool Matches(string? stored, string? typed)
+    {
+        if (stored is not { Length: Length } || typed is null) return false;
+        var clean = new string(typed.Where(c => !char.IsWhiteSpace(c)).ToArray());
+        if (clean.Length != Length || !clean.All(char.IsAsciiDigit)) return false;
+        return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+            System.Text.Encoding.ASCII.GetBytes(stored), System.Text.Encoding.ASCII.GetBytes(clean));
+    }
+}

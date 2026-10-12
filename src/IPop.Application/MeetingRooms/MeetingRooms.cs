@@ -24,11 +24,28 @@ public interface IMeetingRoomService
     /// Booking titles and organizers only for the viewer's own bookings (organizer or non-declined attendee);
     /// everyone else sees "Booked" with the times.
     Task<IReadOnlyList<MeetingRoomDto>> ListAsync(Guid viewerId, CancellationToken ct);
-    /// Errors: "unknown_room", "media_unavailable", "room_full" (Suggestions = keys of rooms with space).
-    Task<MeetingRoomJoinResult> JoinAsync(Guid userId, string key, CancellationToken ct);
+    /// Only inside a booking (RoomAccess): organizer and non-declined attendees directly, admitted guests directly,
+    /// anyone else with the booking's password (then admitted as a guest). Admin has no bypass.
+    /// Errors: "unknown_room", "media_unavailable", "no_booking", "password_required", "wrong_password",
+    /// "too_many_attempts", "room_full" (Suggestions = keys of rooms with space).
+    Task<MeetingRoomJoinResult> JoinAsync(Guid userId, string key, string? password, CancellationToken ct);
+    /// Books a free room from this minute for <paramref name="minutes"/> through the normal meeting create path.
+    /// Errors: "unknown_room", "invalid_minutes", "room_booked" (MaxMinutes = minutes until the next booking's lock
+    /// window when that is at least 15, else null).
+    Task<(Guid? MeetingId, string? Error, int? MaxMinutes)> UseNowAsync(Guid userId, string key, int minutes, string? title,
+        IReadOnlyList<string> attendeeNiks, CancellationToken ct);
     Task<IReadOnlyDictionary<string, bool>> VideoAsync(CancellationToken ct);
     /// Saves the switch and, when turned off, stops every camera in that room now.
     Task SetVideoAsync(string key, bool allowed, string? actorNik, CancellationToken ct);
+}
+
+/// Creates a hall-room booking as an ordinary meeting (attendees, calendar row, password). Implemented in the API on top
+/// of MeetingEndpoints.ApplyCreateAsync so "Use now" and the meeting form share one create path.
+public interface IRoomBookingWriter
+{
+    /// Null MeetingId = the room is already booked in that time (the meeting create conflict check).
+    Task<Guid?> CreateAsync(Guid organizerId, string title, DateTime startUtc, DateTime endUtc, string location,
+        IReadOnlyList<string> attendeeNiks, CancellationToken ct);
 }
 
 public record MeetingRecordingDto(Guid Id, string RoomKey, string RoomName, string Title, string StartedByName, DateTime StartedAt,

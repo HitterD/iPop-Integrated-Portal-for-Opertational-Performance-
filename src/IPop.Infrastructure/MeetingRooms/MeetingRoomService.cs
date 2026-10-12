@@ -11,10 +11,14 @@ using Microsoft.EntityFrameworkCore;
 namespace IPop.Infrastructure.MeetingRooms;
 
 /// The five SJA Hall rooms as drop-in meeting rooms. LiveKit is the truth for who is inside.
-public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveKit, ILiveKitTokenService tokens, ISettings settings)
+/// Rooms are booking-only (v2 §1): who may enter is decided by <see cref="RoomAccess"/>.
+public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveKit, ILiveKitTokenService tokens, ISettings settings,
+    RoomPasswordLimiter passwordLimiter, IRoomBookingWriter bookings)
     : IMeetingRoomService
 {
     public const string PrivateTitle = "Booked";
+    public const int UseNowMinMinutes = 15;
+    public const int UseNowMaxMinutes = 240;
 
     public async Task<IReadOnlyList<MeetingRoomDto>> ListAsync(Guid viewerId, CancellationToken ct)
     {
@@ -75,7 +79,7 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
                 p.Attributes.TryGetValue("rec", out var rec) && rec == "pc");
         }).ToList();
 
-    public async Task<MeetingRoomJoinResult> JoinAsync(Guid userId, string key, CancellationToken ct)
+    public async Task<MeetingRoomJoinResult> JoinAsync(Guid userId, string key, string? password, CancellationToken ct)
     {
         var room = await db.HallRooms.AsNoTracking().FirstOrDefaultAsync(r => r.Key == key, ct);
         if (room is null) return new(null, "unknown_room", []);
@@ -84,7 +88,9 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
         try
         {
             var inside = await liveKit.ListAsync(MeetingRoomKeys.LiveKitRoom(key), ct);
-            var others = inside.Count(p => p.Identity != me && !p.Identity.StartsWith("EG_", StringComparison.Ordinal));
+            var people = inside.Where(p => !p.Identity.StartsWith("EG_", StringComparison.Ordinal)).ToList();
+            if (await AdmitAsync(userId, key, people.Count > 0, password, ct) is { } refused) return new(null, refused, []);
+            var others = people.Count(p => p.Identity != me);
             if (others >= room.Capacity)
             {
                 var free = new List<string>();
@@ -104,6 +110,49 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
             video ? MeetingRoomKeys.VideoSources : MeetingRoomKeys.AudioSources, canUpdateOwnMetadata: true);
         var retention = await settings.GetAsync(SettingKeys.MeetingRoomsRetentionDays, 90, ct);
         return new(new MeetingRoomJoinDto(room.Key, room.Name, lkRoom, tokens.ServerUrl!, token, video, me, retention), null, []);
+    }
+
+    /// Null = may enter. The password is only looked at for outsiders; the right one admits a guest for this booking.
+    private async Task<string?> AdmitAsync(Guid userId, string key, bool occupied, string? password, CancellationToken ct)
+    {
+        var access = await RoomAccess.ForAsync(db, key, userId, DateTime.UtcNow, occupied, ct);
+        if (access.Current is not { } booking) return "no_booking";
+        if (RoomAccess.MayEnter(access.Role)) return null;
+        if (passwordLimiter.IsBlocked(userId, booking.MeetingId)) return "too_many_attempts";
+        if (string.IsNullOrWhiteSpace(password)) return "password_required";
+        if (!RoomPasswords.Matches(booking.Password, password))
+        {
+            passwordLimiter.Fail(userId, booking.MeetingId);
+            return "wrong_password";
+        }
+        db.MeetingRoomGuests.Add(new MeetingRoomGuest { MeetingId = booking.MeetingId, UserId = userId, AdmittedAt = DateTime.UtcNow });
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException) { db.ChangeTracker.Clear(); }   // a parallel join admitted the same guest first
+        return null;
+    }
+
+    public async Task<(Guid? MeetingId, string? Error, int? MaxMinutes)> UseNowAsync(Guid userId, string key, int minutes, string? title,
+        IReadOnlyList<string> attendeeNiks, CancellationToken ct)
+    {
+        var room = await db.HallRooms.AsNoTracking().FirstOrDefaultAsync(r => r.Key == key, ct);
+        if (room is null) return (null, "unknown_room", null);
+        if (minutes is < UseNowMinMinutes or > UseNowMaxMinutes) return (null, "invalid_minutes", null);
+        var now = DateTime.UtcNow;
+        var start = new DateTime(now.Ticks - now.Ticks % TimeSpan.TicksPerMinute, DateTimeKind.Utc);
+        var occupied = await ParticipantsAsync(key, ct) is { Count: > 0 };   // unreachable LiveKit: rely on the bookings alone
+        var access = await RoomAccess.ForAsync(db, key, userId, now, occupied, ct);
+        if (access.Current is not null) return (null, "room_booked", null);
+        if (access.Next is { } next && start.AddMinutes(minutes) > next.StartAt - RoomAccess.Early)
+        {
+            // Never into the next booking's lock window (Review Focus 4).
+            var max = Math.Min((int)Math.Floor((next.StartAt - RoomAccess.Early - start).TotalMinutes), UseNowMaxMinutes);
+            return (null, "room_booked", max >= UseNowMinMinutes ? max : null);
+        }
+        var name = string.IsNullOrWhiteSpace(title) ? $"{room.Name} meeting" : title.Trim();
+        if (name.Length > 200) name = name[..200];
+        var id = await bookings.CreateAsync(userId, name, start, start.AddMinutes(minutes), HallBooking.Location(room.Name),
+            attendeeNiks ?? [], ct);
+        return id is null ? (null, "room_booked", null) : (id, null, null);
     }
 
     public async Task<IReadOnlyDictionary<string, bool>> VideoAsync(CancellationToken ct)

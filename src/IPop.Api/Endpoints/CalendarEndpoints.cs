@@ -273,6 +273,7 @@ public static partial class CalendarEndpoints
                 RoomId = req.RoomId, Location = ev.Location, Link = ev.Link, Agenda = ev.Notes,
                 ReminderMinutes = ev.ReminderMinutes, Visibility = ev.Visibility, CreatedAt = DateTime.UtcNow, SentById = actedBy,
             };
+            MeetingEndpoints.SyncRoomPassword(meeting);
             db.Meetings.Add(meeting);
             foreach (var uid in ids)
                 db.MeetingAttendees.Add(new MeetingAttendee
@@ -342,6 +343,7 @@ public static partial class CalendarEndpoints
                     RoomId = req.RoomId, Location = ev.Location, Link = ev.Link, Agenda = ev.Notes,
                     ReminderMinutes = ev.ReminderMinutes, Visibility = ev.Visibility, CreatedAt = DateTime.UtcNow, SentById = actedBy,
                 };
+                MeetingEndpoints.SyncRoomPassword(meeting);
                 db.Meetings.Add(meeting);
                 foreach (var uid in ids)
                     db.MeetingAttendees.Add(new MeetingAttendee
