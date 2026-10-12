@@ -148,3 +148,53 @@ Coverage: 20 Task 6 tests plus 12 existing layout/v1 behavior tests and 20 recor
 - `C:/Users/IT12/orca/workspaces/meeting-rooms/tests/meeting-rooms-media.test.cjs`
 - `C:/Users/IT12/orca/workspaces/meeting-rooms/tests/meeting-rooms-layout.test.cjs`
 - `C:/Users/IT12/orca/workspaces/meeting-rooms/.superpowers/sdd/2026-10-12-meeting-rooms-v2/task-6-report.md`
+
+## Review fix round 1 (2026-10-12)
+
+All four requested findings addressed in the same existing worktree, without .NET/UI/config/DB/Docker changes or scratch cleanup.
+
+1. **Server-only chat:** `ipop.chat` events now require `participant === undefined`. Client participant packets are discarded before parsing/interop. Server relay still invokes OnRoomChat; existing takeover messages remain on their separate path. This supersedes the earlier receive-origin concern: topic alone is no longer accepted as origin evidence.
+2. **Front/back flip:** `nextCamera(devices, currentId, currentFacing?)` now selects the first opposite-facing actual device rather than another rear lens. Current track settings facingMode takes precedence, then an unambiguous single facingMode capability, then current-device label. Device labels classify front/user vs back/rear/environment. If any device has known facing but the current or opposite facing cannot be identified, no lens switch is performed. Plain cycling remains only when all enumerated device facings are unknown. Existing blank-ID mobile facingMode fallback remains available.
+3. **No repeated share toast:** the missing-audio check runs only after a new capture, not repeated setShare(true) while already sharing.
+4. **Remember flipped camera:** after a successful, still-current and allowed flip, room videoCaptureDefaults stores the exact chosen device ID or fallback facingMode (removing conflicting exact deviceId). SDK camera off/on/recapture therefore keeps that selection. Defaults are room-local and not transferred to replacement rooms; failed/stale flips do not overwrite them.
+
+Added five review regression tests. Real RED before fixes:
+
+```text
+node --test tests/meeting-rooms-*.test.cjs
+Exit code 1
+ℹ tests 57
+ℹ pass 52
+ℹ fail 5
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 314.5745
+
+✖ review: participant chat forgery is dropped but server relay still arrives
+  Actual OnRoomChat count 1, expected 0.
+✖ review: front/back flip skips secondary rear lenses and unknown-facing lists still cycle
+  Actual rear-lens device '2', expected front device '0'.
+✖ review: flip uses current facing capabilities before conflicting current-device label
+  Actual success true, expected false (no other opposite-facing device).
+✖ review: repeated share enable emits no duplicate missing-audio notice
+  Actual notice count 2, expected 1.
+✖ review: fallback facing selection is remembered for camera off/on and cleared on room replacement
+  Actual stored facing undefined, expected environment.
+```
+
+GREEN after fixes:
+
+```text
+node --test tests/meeting-rooms-*.test.cjs
+Exit code 0
+ℹ tests 57
+ℹ pass 57
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 291.4988
+```
+
+Task 7 public interface signatures unchanged. Flip now honors front/back instead of cycling recognized rear lenses; share_no_audio is once per new capture. Real-phone label/capability visibility and browser support remain best effort; physical device/real audio/stats QA still belongs to Task 9.

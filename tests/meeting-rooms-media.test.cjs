@@ -75,6 +75,50 @@ function harness() {
     return { api, calls, rooms, elements, devices, navigator, makeTrack, ref, source, async join() { await api.join('ws://test', 'token', ref, {}); return rooms.at(-1); }, camera(r) { r.localParticipant.isCameraEnabled = true; const track = makeTrack('video', source.Camera); r.localParticipant.publications.set(source.Camera, { track, isMuted: false }); return track; } };
 }
 
+test('review: participant chat forgery is dropped but server relay still arrives', async () => {
+    const h = harness(), r = await h.join();
+    await r.handlers[sdk.RoomEvent.DataReceived](encode(message), { identity: 'attacker' }, 0, 'ipop.chat');
+    assert.equal(h.calls.filter(c => c[1] === 'OnRoomChat').length, 0);
+    await r.handlers[sdk.RoomEvent.DataReceived](encode(message), undefined, 0, 'ipop.chat');
+    assert.equal(h.calls.filter(c => c[1] === 'OnRoomChat').length, 1);
+});
+test('review: front/back flip skips secondary rear lenses and unknown-facing lists still cycle', () => {
+    const cameras = ['Front', 'Back', 'Back Dual Wide', 'Back Ultra Wide'].map((label, i) => ({ kind: 'videoinput', deviceId: String(i), label }));
+    assert.equal(media.nextCamera(cameras, '0', 'user').deviceId, '1');
+    assert.equal(media.nextCamera(cameras, '1', 'environment').deviceId, '0');
+    assert.equal(media.nextCamera(cameras, '2').deviceId, '0');
+    const unknown = cameras.map(d => ({ ...d, label: '' }));
+    assert.equal(media.nextCamera(unknown, '1').deviceId, '2');
+    assert.equal(media.nextCamera(cameras.slice(1), '1', 'environment'), null);
+});
+test('review: flip uses current facing capabilities before conflicting current-device label', async () => {
+    const h = harness(), r = await h.join(), track = h.camera(r);
+    h.devices.push({ kind: 'videoinput', deviceId: 'wide', label: 'Back Ultra Wide' });
+    track.mediaStreamTrack.getSettings = () => ({ deviceId: 'front' });
+    track.mediaStreamTrack.getCapabilities = () => ({ facingMode: ['environment'] });
+    const result = await h.api.flipCamera();
+    assert.equal(result.success, false); // current is physically rear despite the misleading label; no other front device
+    assert.equal(h.calls.filter(c => c[0] === 'switch').length, 0);
+});
+test('review: repeated share enable emits no duplicate missing-audio notice', async () => {
+    const h = harness(); await h.join();
+    assert.equal(await h.api.setShare(true), 'ok');
+    assert.equal(await h.api.setShare(true), 'ok');
+    assert.equal(h.calls.filter(c => c[1] === 'OnRoomNotice' && c[2] === 'share_no_audio').length, 1);
+    assert.equal(h.calls.filter(c => c[0] === 'capture').length, 1);
+});
+test('review: fallback facing selection is remembered for camera off/on and cleared on room replacement', async () => {
+    const h = harness(), r = await h.join(), track = h.camera(r);
+    h.navigator.userAgent = 'iPhone'; h.devices.forEach(d => { d.label = ''; d.deviceId = ''; });
+    r.options.videoCaptureDefaults.deviceId = { exact: 'old-front' };
+    assert.equal((await h.api.flipCamera()).success, true);
+    await h.api.setCamera(false); await h.api.setCamera(true);
+    assert.equal(r.options.videoCaptureDefaults.facingMode, 'environment');
+    assert.equal(r.options.videoCaptureDefaults.deviceId, undefined);
+    assert.equal(r.options.videoCaptureDefaults.resolution.height, 720);
+    const next = await h.join();
+    assert.equal(next.options.videoCaptureDefaults.facingMode, undefined);
+});
 test('join configures h720 camera and explicit h180/h360 simulcast while retaining adaptation', async () => {
     const h = harness(), r = await h.join();
     assert.equal(r.options.videoCaptureDefaults.resolution.width, 1280);

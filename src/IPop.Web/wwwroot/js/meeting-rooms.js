@@ -28,9 +28,23 @@
     } catch { return null; }
   }
 
-  function nextCamera(devices, currentId) {
+  function cameraFacing(device) {
+    if (['user', 'environment'].includes(device?.facingMode)) return device.facingMode;
+    const label = device?.label || '';
+    if (/\b(front|user)\b/i.test(label)) return 'user';
+    if (/\b(back|rear|environment)\b/i.test(label)) return 'environment';
+    return '';
+  }
+
+  function nextCamera(devices, currentId, currentFacing) {
     const unique = [...new Map(devices.filter(d => d.kind === 'videoinput' && d.deviceId).map(d => [d.deviceId, d])).values()];
     const index = unique.findIndex(d => d.deviceId === currentId);
+    const facing = currentFacing || cameraFacing(unique[index]);
+    if (unique.some(d => cameraFacing(d))) {
+      if (!facing) return null; // Do not choose another lens when we cannot identify the current facing.
+      const opposite = facing === 'user' ? 'environment' : 'user';
+      return unique.find(d => d.deviceId !== currentId && cameraFacing(d) === opposite) || null;
+    }
     return unique.find((d, i) => i === (index + 1) % unique.length && d.deviceId !== currentId) || null;
   }
   if (typeof module !== 'undefined') { module.exports = { tileLayout, parseChatPayload, nextCamera }; return; }
@@ -180,6 +194,8 @@
       })
       .on(E.DataReceived, async (payload, participant, _kind, topic) => {
         if (topic === 'ipop.chat') {
+          // RoomService.SendData has no participant; client publishData must not forge persisted chat.
+          if (participant !== undefined) return;
           const chat = parseChatPayload(payload);
           if (chat) ref.invokeMethodAsync('OnRoomChat', JSON.stringify(chat)).catch(() => {});
           return;
@@ -280,11 +296,14 @@
       if (!valid()) return failure;
       const settings = track.mediaStreamTrack.getSettings();
       const cameras = devices.filter(d => d.kind === 'videoinput');
-      const next = nextCamera(cameras, settings.deviceId || r.getActiveDevice('videoinput'));
+      const capabilityFacing = track.mediaStreamTrack.getCapabilities?.().facingMode;
+      const currentFacing = ['user', 'environment'].includes(settings.facingMode) ? settings.facingMode :
+        (capabilityFacing?.length === 1 ? capabilityFacing[0] : '');
+      const next = nextCamera(cameras, settings.deviceId || r.getActiveDevice('videoinput'), currentFacing);
       let success, facingMode;
       if (next) success = await r.switchActiveDevice('videoinput', next.deviceId);
       else if (cameras.length > 1 && cameras.every(d => !d.label) && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)) {
-        facingMode = settings.facingMode === 'environment' ? 'user' : 'environment';
+        facingMode = (currentFacing || r.options.videoCaptureDefaults.facingMode) === 'environment' ? 'user' : 'environment';
         // Do not carry an exact deviceId into the facingMode fallback.
         await track.restartTrack({ facingMode, resolution: LK().VideoPresets.h720.resolution });
         success = true;
@@ -292,6 +311,14 @@
       if (room !== r) { track.stop(); return failure; }
       if (!valid()) { await r.localParticipant.setCameraEnabled(false).catch(() => {}); return failure; }
       if (!success) return failure;
+      // Defaults belong to this room only, and must survive camera mute/unmute or recapture.
+      if (next) {
+        r.options.videoCaptureDefaults.deviceId = { exact: next.deviceId };
+        delete r.options.videoCaptureDefaults.facingMode;
+      } else {
+        delete r.options.videoCaptureDefaults.deviceId;
+        r.options.videoCaptureDefaults.facingMode = facingMode;
+      }
       changed();
       const actual = track.mediaStreamTrack.getSettings();
       return { success: true, deviceId: r.getActiveDevice('videoinput') || actual.deviceId || '',
@@ -362,7 +389,7 @@
         if (room !== r) return 'denied';
         changed(); return 'busy';
       }
-      if (on) {
+      if (on && tracks.length) {
         const audio = r.localParticipant.getTrackPublication(L.Track.Source.ScreenShareAudio);
         if (!audio?.track || audio.track.mediaStreamTrack?.readyState === 'ended')
           ref.invokeMethodAsync('OnRoomNotice', 'share_no_audio', null).catch(() => {});
