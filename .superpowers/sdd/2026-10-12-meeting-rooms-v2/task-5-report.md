@@ -89,3 +89,26 @@ Down drops the two tables and two added columns. Snapshot changes contain only t
 - EF CLI 10.0.0 reported that the project runtime is 10.0.12. Generation succeeded; no model drift. Existing ProjectTask global-query-filter model warnings also appeared during generation.
 - Full .NET restore reports pre-existing ImageSharp 3.1.12 vulnerability advisories; initial compilation also reported existing unrelated nullability/analyzer warnings. Not changed in this scoped task.
 - Existing untracked scratch files were preserved; only Task 5 source/tests/generated migration/report were staged. No other worktree or prod/Docker configuration was modified.
+
+## Review fix round 1 (base 4163c83)
+
+Both Important findings were verified and addressed only in the recording script and its Node tests.
+
+### Changes
+
+- Distinguish unmuted published video from subscribed video: a camera/share publication counts as expected media even when `publication.track` is not yet set. A pending share selects the share layout rather than being mistaken for camera-off.
+- Start readiness now checks the current rendered media: expected visible video must have decoded its first frame. Audio-only populated rooms start after the initials view renders. Removed the populated-room timeout bypass: the three-second fallback rechecks current non-EG_ participants and may start only a genuinely empty room. Arrival during the empty fallback wait cannot trigger premature start.
+- Frame callbacks verify that their tile/track is still current; a decoded callback from detached/unsubscribed video cannot satisfy readiness.
+- Handle TrackUnsubscribed explicitly using a WeakSet of unsubscribed track objects, because the SDK publication may still reference the old track during the event. Render reconciliation immediately detaches stale audio/video and will not reattach that object on intervening events. TrackSubscribed re-enables the actual subscribed object.
+- Audio reconciliation compares stored track objects as well as SIDs: a same-SID replacement detaches/removes the old media, attaches the replacement and plays it. Covers both an unsubscribe transition and replacement without an unsubscribe. Video reconciliation also clears/replaces stale tiles.
+- Ten additional regressions cover camera/share publications without tracks; subscribed video without decoded frames; current versus stale first-frame callbacks; genuinely empty/EG_-only fallback; arrival during empty fallback; audio-only initials; audio and video unsubscribe-before-publication-clear ordering; and same-SID audio replacement.
+
+### RED/GREEN
+
+- RED: `node --test tests/meeting-rooms-recording.test.cjs` before implementation — **8 passed, 6 failed**. Camera/share tests observed premature START_RECORDING; arrival/fallback test observed premature start; audio/video unsubscribe tests observed missing detach; same-SID replacement test observed missing detach/attach. Evidence: `.scratch/task5-fix1-red.log`.
+- An intermediate expanded run found one test-harness assertion mismatch: removing a video tile removes its parent, not the video child directly. Corrected the assertion to check the actual detached tile parent; the real detach assertion remains intact.
+- Final GREEN: `node --test tests/meeting-rooms-recording.test.cjs` — **17 passed, 0 failed**.
+- Final full relevant Node suite: `node --test tests/meeting-rooms-*.test.cjs` — **29 passed, 0 failed**.
+- `git diff --check` passed.
+- No .NET source/schema changed, so the full .NET suite was not rerun, as requested. No prod/Docker/database or other-worktree changes. Existing scratch files preserved.
+- Remaining concern unchanged: real Egress Chromium/encoded output verification belongs to Task 9; published video that never subscribes/decodes deliberately cannot force recording to start via a timeout.

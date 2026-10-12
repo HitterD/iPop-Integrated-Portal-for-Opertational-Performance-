@@ -31,9 +31,22 @@
     const audioHost = document.getElementById('audio');
     const tiles = new Map();
     const audio = new Map();
+    // TrackUnsubscribed can precede the SDK clearing publication.track.
+    const unsubscribed = new WeakSet();
     let started = false, ended = false, connected = false, fallback;
-    function startSignal() {
+    function participants() {
+        return [...room.remoteParticipants.values()].filter(p => !p.identity.startsWith('EG_'));
+    }
+    function startSignal(allowEmpty = false) {
         if (!connected || started || ended) return;
+        const people = participants();
+        if (!people.length && !allowEmpty) return;
+        if (people.length) {
+            const expectedVideo = people.some(p => publication(p, LK.Track.Source.Camera) || publication(p, LK.Track.Source.ScreenShare));
+            const visible = [...tiles.values()];
+            if (visible.some(item => item.expectedVideo && !item.ready)) return;
+            if (expectedVideo && !visible.some(item => item.ready)) return;
+        }
         started = true;
         clearTimeout(fallback);
         console.log('START_RECORDING');
@@ -52,7 +65,8 @@
     }
     function play(media) { const result = media.play(); if (result?.catch) result.catch(() => {}); }
     function publication(participant, source) {
-        return [...participant.trackPublications.values()].find(p => p.source === source && p.track && !p.isMuted);
+        // A published, unmuted video is expected even while subscription is pending.
+        return [...participant.trackPublications.values()].find(p => p.source === source && !p.isMuted);
     }
     function makeTile(person, track, sharing) {
         const element = document.createElement('section');
@@ -61,14 +75,21 @@
         const name = document.createElement('span'); name.className = 'name';
         element.append(mono, name);
         let media;
+        const item = { element, mono, name, track, ready: false };
         if (track) {
             media = document.createElement('video'); media.autoplay = true; media.muted = true; media.playsInline = true;
             element.append(media); track.attach(media); play(media);
             // Start only after decoded media reaches the compositor, not on TrackSubscribed alone.
-            if (media.requestVideoFrameCallback) media.requestVideoFrameCallback(() => root.requestAnimationFrame(startSignal));
-            else media.addEventListener('loadeddata', () => root.requestAnimationFrame(startSignal), { once: true });
+            const ready = () => {
+                if (unsubscribed.has(track) || ![...tiles.values()].includes(item)) return;
+                item.ready = true;
+                root.requestAnimationFrame(() => startSignal());
+            };
+            if (media.requestVideoFrameCallback) media.requestVideoFrameCallback(ready);
+            else media.addEventListener('loadeddata', ready, { once: true });
         }
-        return { element, mono, name, track, media };
+        item.media = media;
+        return item;
     }
     if (!LK || !query.get('url') || !query.get('token')) {
         const message = document.createElement('p'); message.className = 'empty'; message.textContent = 'Waiting for meeting connection'; stage.append(message);
@@ -79,7 +100,7 @@
     const room = new LK.Room({ adaptiveStream: false, dynacast: false });
     function render() {
         if (ended) return;
-        const people = [...room.remoteParticipants.values()].filter(p => !p.identity.startsWith('EG_')).map(p => ({
+        const people = participants().map(p => ({
             identity: p.identity, name: p.name, participant: p,
             sharing: !!publication(p, LK.Track.Source.ScreenShare),
         }));
@@ -91,12 +112,14 @@
         function tile(person, sharing) {
             const key = (sharing ? 'share:' : 'camera:') + person.identity;
             wanted.add(key);
-            const track = publication(person.participant, sharing ? LK.Track.Source.ScreenShare : LK.Track.Source.Camera)?.track;
+            const pub = publication(person.participant, sharing ? LK.Track.Source.ScreenShare : LK.Track.Source.Camera);
+            const track = pub?.track && !unsubscribed.has(pub.track) ? pub.track : undefined;
             let item = tiles.get(key);
             if (!item || item.track !== track) {
                 if (item) detach(item);
                 item = makeTile(person, track, sharing); tiles.set(key, item);
             }
+            item.expectedVideo = !!pub;
             item.mono.textContent = initials(displayName(person));
             item.name.textContent = displayName(person) + (sharing ? ' · sharing' : '');
             item.element.classList.toggle('speaking', person.participant.isSpeaking);
@@ -118,9 +141,11 @@
         // Audio is independent of visible tiles: record everyone, including screen-share audio.
         const wantedAudio = new Set();
         for (const person of people) for (const pub of person.participant.trackPublications.values()) {
-            if (!pub.track || pub.kind !== LK.Track.Kind.Audio || pub.isMuted) continue;
+            if (!pub.track || unsubscribed.has(pub.track) || pub.kind !== LK.Track.Kind.Audio || pub.isMuted) continue;
             wantedAudio.add(pub.trackSid);
-            if (!audio.has(pub.trackSid)) {
+            const current = audio.get(pub.trackSid);
+            if (!current || current.track !== pub.track) {
+                if (current) detach(current);
                 const media = document.createElement('audio'); media.autoplay = true;
                 audioHost.append(media); pub.track.attach(media); play(media);
                 audio.set(pub.trackSid, { element: media, media, track: pub.track });
@@ -128,17 +153,29 @@
         }
         for (const [key, item] of audio) if (!wantedAudio.has(key)) { detach(item); audio.delete(key); }
         if (!people.some(p => publication(p.participant, LK.Track.Source.Camera) || p.sharing) && people.length)
-            root.requestAnimationFrame(() => root.requestAnimationFrame(startSignal));
+            root.requestAnimationFrame(() => root.requestAnimationFrame(() => startSignal()));
     }
-    for (const event of ['ParticipantConnected', 'ParticipantDisconnected', 'TrackSubscribed', 'TrackUnsubscribed', 'TrackMuted', 'TrackUnmuted', 'ParticipantNameChanged', 'ActiveSpeakersChanged'])
+    for (const event of ['ParticipantConnected', 'ParticipantDisconnected', 'TrackMuted', 'TrackUnmuted', 'ParticipantNameChanged', 'ActiveSpeakersChanged'])
         room.on(LK.RoomEvent[event], render);
+    room.on(LK.RoomEvent.TrackUnsubscribed, track => {
+        unsubscribed.add(track);
+        // Reconciliation ignores this object even if the SDK publication still references it.
+        render();
+    });
+    room.on(LK.RoomEvent.TrackSubscribed, track => {
+        unsubscribed.delete(track);
+        render();
+    });
     room.on(LK.RoomEvent.Disconnected, endSignal);
     room.connect(query.get('url'), query.get('token'), { autoSubscribe: true }).then(async () => {
         connected = true;
         // Egress Chromium permits autoplay; startAudio also resumes the SDK audio context.
         try { await room.startAudio(); } catch { /* media elements continue attempting playback */ }
         render();
-        fallback = setTimeout(() => root.requestAnimationFrame(startSignal), 3000);
+        fallback = setTimeout(() => {
+            // Only an actually empty room may use the timeout; pending media must wait.
+            if (!participants().length) root.requestAnimationFrame(() => startSignal(true));
+        }, 3000);
     }).catch(() => {
         // No error object/URL logging: SDK errors can contain connection credentials.
         console.error('Recording connection failed'); endSignal();

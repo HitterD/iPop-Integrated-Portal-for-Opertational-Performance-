@@ -67,6 +67,101 @@ function harness(people = []) {
     return { logs, timers, frames, rooms, elements, attached, detached, levels, track };
 }
 const settle = async () => { await new Promise(resolve => setImmediate(resolve)); };
+for (const source of ['camera', 'screen_share']) {
+    test(`published ${source} waits for subscription and a decoded frame, never the empty fallback`, async () => {
+        const pub = { source, kind: 'video', trackSid: source, track: undefined };
+        const person = { identity: 'user', name: 'User', trackPublications: new Map([[source, pub]]) };
+        const h = harness([person]); await settle();
+        assert.deepEqual(h.logs, []);
+        h.timers.forEach(fn => fn());
+        assert.deepEqual(h.logs, []);
+        pub.track = h.track('video');
+        h.rooms[0].handlers.TrackSubscribed(pub.track, pub, person);
+        h.timers.forEach(fn => fn());
+        assert.deepEqual(h.logs, []);
+        h.frames[0]();
+        assert.deepEqual(h.logs, ['START_RECORDING']);
+    });
+}
+test('empty fallback rechecks participants arriving with pending video', async () => {
+    const h = harness(); await settle();
+    h.rooms[0].remoteParticipants.set('user', { identity: 'user', trackPublications: new Map([['camera', { source: 'camera', kind: 'video' }]]) });
+    h.rooms[0].handlers.ParticipantConnected();
+    h.timers.forEach(fn => fn());
+    assert.deepEqual(h.logs, []);
+});
+test('subscribed video with no decoded frame cannot use the three-second fallback', async () => {
+    const h = harness(); await settle();
+    const track = h.track('video');
+    const person = { identity: 'user', trackPublications: new Map([['camera', { source: 'camera', kind: 'video', track }]]) };
+    h.rooms[0].remoteParticipants.set('user', person);
+    h.rooms[0].handlers.ParticipantConnected();
+    h.timers.forEach(fn => fn());
+    assert.deepEqual(h.logs, []);
+    h.frames[0]();
+    assert.deepEqual(h.logs, ['START_RECORDING']);
+});
+test('only the current video frame can satisfy readiness after unsubscribe', async () => {
+    const h = harness(); await settle();
+    const first = h.track('video');
+    const pub = { source: 'camera', kind: 'video', trackSid: 'same', track: first };
+    const person = { identity: 'user', trackPublications: new Map([['camera', pub]]) };
+    h.rooms[0].remoteParticipants.set('user', person);
+    h.rooms[0].handlers.TrackSubscribed(first, pub, person);
+    h.rooms[0].handlers.TrackUnsubscribed(first, pub, person);
+    h.frames[0](); h.timers.forEach(fn => fn());
+    assert.deepEqual(h.logs, []);
+    pub.track = h.track('video');
+    h.rooms[0].handlers.TrackSubscribed(pub.track, pub, person);
+    h.frames[1]();
+    assert.deepEqual(h.logs, ['START_RECORDING']);
+});
+test('genuinely empty room with only EG_ participant uses the fallback', async () => {
+    const h = harness([{ identity: 'EG_recorder', trackPublications: new Map() }]); await settle();
+    assert.deepEqual(h.logs, []);
+    h.timers.forEach(fn => fn());
+    assert.deepEqual(h.logs, ['START_RECORDING']);
+});
+test('a populated audio-only room starts after its initials render', async () => {
+    const h = harness([{ identity: 'user', name: 'Audio user', trackPublications: new Map() }]); await settle();
+    assert.equal(h.elements.get('stage').children[0].children[0].textContent, 'AU');
+    assert.deepEqual(h.logs, ['START_RECORDING']);
+});
+for (const kind of ['audio', 'video']) {
+    test(`${kind} unsubscribe clears stale media before SDK publication mutation and same-SID replacement attaches`, async () => {
+        const h = harness(); await settle();
+        const first = h.track(kind), replacement = h.track(kind);
+        const pub = { source: kind === 'audio' ? 'microphone' : 'camera', kind, trackSid: 'same-sid', track: first };
+        const person = { identity: 'user', name: 'User', trackPublications: new Map([['pub', pub]]) };
+        const room = h.rooms[0]; room.remoteParticipants.set('user', person);
+        room.handlers.TrackSubscribed(first, pub, person);
+        const oldMedia = h.attached[0];
+        const oldElement = kind === 'audio' ? oldMedia : h.elements.get('stage').children[0];
+        room.handlers.TrackUnsubscribed(first, pub, person); // SDK still exposes first here.
+        assert.equal(h.detached.length, 1);
+        assert.equal(oldElement.removed, true);
+        room.handlers.ActiveSpeakersChanged(); // Must not reattach the stale publication track.
+        assert.equal(h.attached.length, 1);
+        pub.track = replacement;
+        room.handlers.TrackSubscribed(replacement, pub, person);
+        assert.equal(h.attached.length, 2);
+        assert.notEqual(h.attached[1], oldMedia);
+        assert.equal(h.attached[1].played, true);
+        room.handlers.Disconnected();
+        assert.equal(h.detached.length, 2);
+    });
+}
+test('same-SID subscribed audio replacement detaches the previous track even without an unsubscribe', async () => {
+    const h = harness(); await settle();
+    const pub = { source: 'microphone', kind: 'audio', trackSid: 'same', track: h.track('audio') };
+    const person = { identity: 'user', trackPublications: new Map([['pub', pub]]) };
+    h.rooms[0].remoteParticipants.set('user', person);
+    h.rooms[0].handlers.TrackSubscribed(pub.track, pub, person);
+    pub.track = h.track('audio');
+    h.rooms[0].handlers.TrackSubscribed(pub.track, pub, person);
+    assert.equal(h.detached.length, 1);
+    assert.equal(h.attached.length, 2);
+});
 test('Egress connection preserves Docker URL, uses safe badge text, silences credential-bearing SDK logs, starts once and ends once', async () => {
     const h = harness(); await settle();
     assert.equal(h.rooms[0].connection.url, 'ws://livekit:7880');
