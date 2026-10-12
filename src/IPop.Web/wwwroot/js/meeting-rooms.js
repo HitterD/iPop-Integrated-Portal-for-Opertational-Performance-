@@ -555,5 +555,11 @@
     if (el && el.focus) el.focus();
   }
 
-  window.ipopRooms = { join, leave, setMic, setCamera, listCameras, flipCamera, setShare, startPcRecording, stopPcRecording, setRecordingAttr, tileLayout, reveal, download, seek, focus };
+  // Password field: write the filtered digits back when Blazor's value did not change (a letter or a 7th digit).
+  function setValue(id, value) {
+    const el = document.getElementById(id);
+    if (el && el.value !== value) el.value = value;
+  }
+
+  window.ipopRooms = { join, leave, setMic, setCamera, listCameras, flipCamera, setShare, startPcRecording, stopPcRecording, setRecordingAttr, tileLayout, reveal, download, seek, focus, setValue };
 })();

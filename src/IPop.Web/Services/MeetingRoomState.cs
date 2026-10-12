@@ -180,7 +180,7 @@ public sealed class MeetingRoomState : IAsyncDisposable
         Room = null; People = []; MicOn = CamOn = Sharing = RecordingPc = false; RecordingServer = null;
         Minimized = false; MeetingTitle = null; ConnectionState = "";
         chat.Clear(); chatIds.Clear(); Unread = 0; ChatOpen = false;
-        Booking = null; leavingWarnedFor = null; CameraCount = 0;
+        Booking = null; leavingWarnedFor = null; CameraCount = 0; RoomPassword = null; passwordFor = null;
     }
 
     public async Task ToggleMicAsync()
@@ -295,6 +295,13 @@ public sealed class MeetingRoomState : IAsyncDisposable
             // "next booking" notice, which fires once per takeover moment.
             Booking = ParseBooking(doc);
         }
+        if (Booking is { MeetingId: var bookingMeeting } && bookingMeeting != Guid.Empty && bookingMeeting != passwordFor)
+        {
+            passwordFor = bookingMeeting;
+            RoomPassword = null;
+            _ = LoadRoomPasswordAsync(bookingMeeting);
+        }
+        else if (Booking is null) { passwordFor = null; RoomPassword = null; }
         if (Booking is { Leaving: true, TakeoverAt: { } takeover, NextStartAt: var next } && leavingWarnedFor != takeover)
         {
             leavingWarnedFor = takeover;
@@ -411,7 +418,7 @@ public sealed class MeetingRoomState : IAsyncDisposable
 
     /// The current booking from the room metadata. Leaving = this user is not allowed in the next booking and will be
     /// moved out at TakeoverAt (the API fills the list only from one minute before).
-    public record BookingInfo(Guid OrganizerId, DateTime EndAt, DateTime? NextStartAt, DateTime? TakeoverAt, bool Leaving);
+    public record BookingInfo(Guid OrganizerId, DateTime EndAt, DateTime? NextStartAt, DateTime? TakeoverAt, bool Leaving, Guid MeetingId = default);
 
     public BookingInfo? Booking { get; private set; }
     public bool IsOrganizer => Booking is { } b && MyId != Guid.Empty && b.OrganizerId == MyId;
@@ -491,9 +498,33 @@ public sealed class MeetingRoomState : IAsyncDisposable
             var me = Room?.Identity;
             var leaving = me is not null && b.TryGetProperty("leaving", out var l) && l.ValueKind == JsonValueKind.Array
                 && l.EnumerateArray().Any(x => x.ValueKind == JsonValueKind.String && x.GetString() == me);
-            return new BookingInfo(organizer, end, Time(b, "nextStartAt"), Time(b, "takeoverAt"), leaving);
+            var meetingId = b.TryGetProperty("meetingId", out var mid) && mid.ValueKind == JsonValueKind.String && mid.TryGetGuid(out var g) ? g : Guid.Empty;
+            return new BookingInfo(organizer, end, Time(b, "nextStartAt"), Time(b, "takeoverAt"), leaving, meetingId);
         }
         catch (Exception e) when (e is InvalidOperationException or FormatException) { return null; }
+    }
+
+    // ---------------------------------------------------------------- room password (v2 §1.4)
+
+    /// The current booking's 6 digits, for the organizer and invitees only: GET /api/meetings/{id} answers RoomPassword just
+    /// to them (a password guest or anyone else gets null or 404). Never taken from room metadata.
+    public string? RoomPassword { get; private set; }
+    private Guid? passwordFor;
+
+    private sealed record MeetingPasswordDto(Guid Id, string? RoomPassword);
+
+    private async Task LoadRoomPasswordAsync(Guid meetingId)
+    {
+        try
+        {
+            var res = await auth.SendAsync(HttpMethod.Get, $"/api/meetings/{meetingId}");
+            if (!res.IsSuccessStatusCode) return;
+            var dto = await res.Content.ReadFromJsonAsync<MeetingPasswordDto>(ChatJson);
+            if (passwordFor != meetingId || Room is null) return;
+            RoomPassword = dto?.RoomPassword is { Length: 6 } pw ? pw : null;
+            Raise();
+        }
+        catch (Exception e) when (e is HttpRequestException or JsonException or TaskCanceledException or NotSupportedException) { }
     }
 
     // ---------------------------------------------------------------- cameras (v2 §5)

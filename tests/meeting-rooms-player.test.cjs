@@ -40,3 +40,15 @@ test('seek ignores bad input and a missing player', () => {
   assert.equal(api.seek('nope', 3), false);
   assert.equal(v.currentTime, 5);
 });
+
+test('setValue writes the filtered digits back only when they differ', () => {
+  const field = { value: '1234567' };
+  const window = { LivekitClient: {} };
+  vm.runInNewContext(fs.readFileSync(file, 'utf8'), {
+    window, document: { getElementById: (id) => (id === 'mrt-pin-in' ? field : null), querySelector: () => null },
+    navigator: { userAgent: 'Desktop' }, location: { protocol: 'http:' }, console, setTimeout, clearTimeout,
+  });
+  window.ipopRooms.setValue('mrt-pin-in', '123456');
+  assert.equal(field.value, '123456');
+  window.ipopRooms.setValue('missing', '1');
+});

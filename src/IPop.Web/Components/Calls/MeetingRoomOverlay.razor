@@ -129,6 +129,14 @@
         {
             <aside class="mr-people" aria-label="People in this room">
                 <h4>In this room <span>@Rooms.People.Count of 20</span></h4>
+                @if (Rooms.RoomPassword is { } roomPw)
+                {
+                    @* Organizer and invitees only (the API gives nobody else the password): share it with a guest. *@
+                    <div class="mr-pw-row">
+                        <i data-lucide="key-round"></i><span>Room password <b>@IPop.Application.Hall.RoomPasswords.Format(roomPw)</b></span>
+                        <button type="button" class="mr-pw-copy" @onclick="CopyPasswordAsync">Copy</button>
+                    </div>
+                }
                 @foreach (var p in Rooms.People)
                 {
                     <div class="mr-p @(p.Speaking ? "speaking" : "")">
@@ -316,6 +324,15 @@
         peopleOpen = false; menuOpen = false;
         Rooms.SetChatOpen(!Rooms.ChatOpen);
         if (!Rooms.ChatOpen) emojiOpen = false;
+    }
+
+    private async Task CopyPasswordAsync()
+    {
+        if (Rooms.RoomPassword is not { } pw) return;
+        bool ok;
+        try { ok = await JS.InvokeAsync<bool>("ipopLinks.copy", pw); }
+        catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException) { ok = false; }
+        ShowToast(ok ? "Password copied." : $"Couldn't copy. The password is {IPop.Application.Hall.RoomPasswords.Format(pw)}.", "key-round");
     }
 
     private void TogglePeople()

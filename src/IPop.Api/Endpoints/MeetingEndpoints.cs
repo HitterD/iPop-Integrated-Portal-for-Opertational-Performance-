@@ -31,12 +31,10 @@ public static class MeetingEndpoints
             }
             await NotifyMeetingChangedAsync(db, realtime, meetingId!.Value, [], ct);
             var dto = await LoadMeetingDto(meetingId!.Value, userId.Value, db, ct);
-            // A mail invitation (SourceMailId) already notified its recipients through mail.new.
-            if (notifs is not null && dto is not null && req.SourceMailId is null)
-            {
-                await PublishInvitedAsync(notifs, dto, invited, ct, NotifyLog(http));
-                await CalendarDelegateEndpoints.ForwardInvitesAsync(db, notifs, NotifyLog(http), invited, dto.Title, dto.StartAt, dto.OrganizerName, null, ct);
-            }
+            // A mail invitation (SourceMailId) already notified its recipients through mail.new; a hall room still sends the
+            // invite so the room password reaches them.
+            if (notifs is not null && dto is not null)
+                await PublishCreatedAsync(db, notifs, dto, invited, req.SourceMailId, NotifyLog(http), ct);
             return Results.Ok(dto);
         }).RequirePermission("mail.send");
 
@@ -75,7 +73,7 @@ public static class MeetingEndpoints
             {
                 RsvpResult.InvalidResponse => Results.Json(new { code = "invalid_response", message = "Response must be accept/maybe/decline." }, statusCode: 422),
                 RsvpResult.NotInvited => Results.Json(new { code = "not_invited", message = "You are not an attendee of this meeting." }, statusCode: 403),
-                _ => Results.Ok(await LoadMeetingDto(id, attendee, db, ct)),
+                _ => Results.Ok(await RsvpDtoAsync(db, id, attendee, actedBy, ct)),
             };
         });
 
@@ -434,6 +432,30 @@ public static class MeetingEndpoints
         IPop.Application.Hall.HallBooking.RoomKey(location) is not null && !string.IsNullOrEmpty(roomPassword)
             ? $" Room password: {IPop.Application.Hall.RoomPasswords.Format(roomPassword)}"
             : "";
+
+    /// The RSVP answer. A delegate answering for the invited owner (actedBy set) sees the meeting as the owner does, but
+    /// never its room password: the password is only for the organizer and the invitees themselves (v2 §1.4).
+    public static async Task<MeetingDto?> RsvpDtoAsync(IPopDbContext db, Guid id, Guid attendee, Guid? actedBy, CancellationToken ct)
+    {
+        var dto = await LoadMeetingDto(id, attendee, db, ct);
+        return dto is not null && actedBy is { } a && a != attendee ? dto with { RoomPassword = null } : dto;
+    }
+
+    /// Notifications after a create. A mail invitation (SourceMailId) already told its recipients through mail.new, so only a
+    /// hall-room meeting still sends meeting.invited: the mail does not carry the room password.
+    public static async Task PublishCreatedAsync(IPopDbContext db, INotificationGatewayService notifs, MeetingDto dto, IReadOnlyList<Guid> invited,
+        Guid? sourceMailId, ILogger? log, CancellationToken ct)
+    {
+        if (sourceMailId is null)
+        {
+            await PublishInvitedAsync(notifs, dto, invited, ct, log);
+            await CalendarDelegateEndpoints.ForwardInvitesAsync(db, notifs, log, invited, dto.Title, dto.StartAt, dto.OrganizerName, null, ct);
+        }
+        else if (IPop.Application.Hall.HallBooking.RoomKey(dto.Location) is not null && !string.IsNullOrEmpty(dto.RoomPassword))
+        {
+            await PublishInvitedAsync(notifs, dto, invited, ct, log);
+        }
+    }
 
     /// meeting.invited to every invitee (not the organizer), deep-linked to the meeting.
     /// Best-effort (see <see cref="PublishBestEffortAsync"/>): the meeting is already saved.

@@ -286,8 +286,8 @@
                             <span class="@(filled ? "f" : i == pin.Length ? "c" : "")">@(filled ? pin[i].ToString() : "·")</span>
                         }
                     </span>
-                    <input class="mrt-pin-in" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="12" aria-label="6-digit room password"
-                           value="@pin" @oninput="OnPin" />
+                    <input class="mrt-pin-in" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" aria-label="6-digit room password"
+                           id="mrt-pin-in" value="@pin" @oninput="OnPin" />
                 </label>
                 @if (pwError is not null) { <p class="mrt-pin-err" role="alert">@pwError</p> }
                 <p class="mrt-pin-hint">Enter the 6-digit password from the iPop meeting invite.<br />Not invited? Ask the organizer for it.</p>
@@ -708,11 +708,19 @@
     private void ClosePassword() { if (!pwBusy) pwRoom = null; }
 
     /// Digits only, at most 6 (a pasted "123 456" becomes 123456).
-    private void OnPin(ChangeEventArgs e)
+    private async Task OnPin(ChangeEventArgs e)
     {
-        var digits = new string((e.Value?.ToString() ?? "").Where(char.IsAsciiDigit).ToArray());
+        var typed = e.Value?.ToString() ?? "";
+        var digits = new string(typed.Where(char.IsAsciiDigit).ToArray());
         pin = digits.Length > 6 ? digits[..6] : digits;
         pwError = null;
+        // A letter or a 7th digit leaves `pin` unchanged, so Blazor sees no diff and would keep the raw text in the field:
+        // write the filtered digits back so the boxes and the field never disagree.
+        if (typed != pin)
+        {
+            try { await JS.InvokeVoidAsync("ipopRooms.setValue", "mrt-pin-in", pin); }
+            catch (Exception ex) when (ex is JSException or InvalidOperationException or TaskCanceledException) { }
+        }
     }
 
     private async Task SubmitPasswordAsync()
@@ -726,7 +734,7 @@
             if (disposed) return;
             switch (error)
             {
-                case null: pwRoom = null; break;
+                case null: pwRoom = null; pin = ""; break;
                 case "wrong_password" or "password_required": pwError = WrongPasswordText; pin = ""; _ = FocusAsync(".mrt-pin-in"); break;
                 case "too_many_attempts": pwError = TooManyText; break;
                 case "no_booking": pwError = NoBookingText; break;
@@ -752,11 +760,17 @@
 
     private void OpenUseNow(MeetingRoomDto room)
     {
-        useNow = room; offerMinutes = null; useError = null; useBusy = false; invitees.Clear();
+        useNow = room; useError = null; useBusy = false; invitees.Clear();
         useTitle = $"{room.Name} meeting";
         var options = UseNowOptions(room);
         minutes = options.Contains(60) ? 60 : options.Count > 0 ? options[^1] : 60;
+        // None of 30/60/90 fit but at least 15 minutes do: offer exactly that (the server accepts 15..cap then).
+        offerMinutes = options.Count == 0 && FreeMinutes(room) is >= 15 and < 30 and var free ? free : null;
     }
+
+    /// Whole minutes until the next booking's lock window (StartAt − 10 min); null = no next booking.
+    private static int? FreeMinutes(MeetingRoomDto room) =>
+        room.Next is { } next ? (int)Math.Floor((ToUtc(next.StartAt).AddMinutes(-10) - DateTime.UtcNow).TotalMinutes) : null;
 
     private void CloseUseNow() { if (!useBusy) useNow = null; }
 
@@ -787,7 +801,10 @@
             if (res.IsSuccessStatusCode)
             {
                 useNow = null; useBusy = false;
-                await LoadRoomsAsync();
+                joiningKey = key;                  // the card can't open Use now again while the rooms reload
+                StateHasChanged();
+                try { await LoadRoomsAsync(); }
+                finally { joiningKey = null; }
                 if (disposed) return;
                 await JoinAsync(key);
                 return;

@@ -448,6 +448,128 @@ public class MeetingRoomsTabV2Tests
         Assert.Equal(first, cut.Instance.SegmentRuns);
     }
 
+    // ---------------------------------------------------------------- review fix round 1
+
+    [Fact]
+    public void Use_now_with_15_to_29_minutes_left_offers_that_time_locally()
+    {
+        var rooms = Rooms();
+        // Next booking in 35 min: its lock window opens in ~25 min, so none of 30/60/90 fit.
+        rooms[4] = Room("toraja", "Toraja", "free", next: Booking("Board", Now.AddMinutes(35).AddSeconds(30), Now.AddMinutes(95)));
+        var api = new Api { RoomList = rooms };
+        api.UseNowAnswers.Enqueue((HttpStatusCode.OK, $$"""{"meetingId":"{{Guid.NewGuid()}}","join":null}"""));
+        api.JoinAnswers.Enqueue((HttpStatusCode.ServiceUnavailable, """{"code":"media_unavailable"}"""));
+        using var ctx = Context(api);
+        var cut = ctx.Render<MeetingRoomsTab>(Slow);
+        cut.WaitForAssertion(() => Assert.Equal(5, cut.FindAll(".mrt-room").Count));
+        cut.FindAll(".mrt-room")[4].QuerySelector(".mrt-join")!.Click();
+
+        Assert.Empty(cut.FindAll(".mrt-seg3 button"));
+        var go = cut.Find(".mrt-un-go");
+        Assert.Equal("Use for 25 min", go.TextContent.Trim());
+        Assert.False(go.HasAttribute("disabled"));
+        go.Click();
+        cut.WaitForAssertion(() => Assert.Single(api.UseNowBodies));
+        Assert.Equal(25, JsonDocument.Parse(api.UseNowBodies.Single()).RootElement.GetProperty("minutes").GetInt32());
+    }
+
+    [Fact]
+    public void Use_now_with_under_15_minutes_left_cannot_book()
+    {
+        var rooms = Rooms();
+        rooms[4] = Room("toraja", "Toraja", "free", next: Booking("Board", Now.AddMinutes(20), Now.AddMinutes(80)));
+        using var ctx = Context(new Api { RoomList = rooms });
+        var cut = ctx.Render<MeetingRoomsTab>(Slow);
+        cut.WaitForAssertion(() => Assert.Equal(5, cut.FindAll(".mrt-room").Count));
+        cut.FindAll(".mrt-room")[4].QuerySelector(".mrt-join")!.Click();
+        Assert.True(cut.Find(".mrt-un-go").HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void Pin_input_keeps_only_six_digits_in_the_field_and_backspace_follows()
+    {
+        using var ctx = Context(new Api { RoomList = Rooms() });
+        var cut = ctx.Render<MeetingRoomsTab>(Slow);
+        cut.WaitForAssertion(() => Assert.Equal(5, cut.FindAll(".mrt-room").Count));
+        cut.FindAll(".mrt-room")[2].QuerySelector(".mrt-join")!.Click();
+
+        cut.Find(".mrt-pin-in").Input("123456");
+        cut.Find(".mrt-pin-in").Input("1234567");                 // a 7th digit is dropped, in the field too
+        Assert.Equal("123456", cut.Find(".mrt-pin-in").GetAttribute("value"));
+        Assert.Equal("6", cut.Find(".mrt-pin-in").GetAttribute("maxlength"));
+        cut.Find(".mrt-pin-in").Input("12345");                   // backspace removes the last real digit
+        Assert.Equal("12345", cut.Find(".mrt-pin-in").GetAttribute("value"));
+        Assert.Equal(["1", "2", "3", "4", "5", "·"], cut.FindAll(".mrt-pin span").Select(s => s.TextContent).ToArray());
+        cut.Find(".mrt-pin-in").Input("12345a");                  // a letter never reaches the field
+        Assert.Equal("12345", cut.Find(".mrt-pin-in").GetAttribute("value"));
+        // The field writes back through JS so the DOM value equals the filtered digits even when Blazor skips the diff.
+        Assert.Contains(ctx.JSInterop.Invocations["ipopRooms.setValue"], i => (string?)i.Arguments[1] == "12345");
+    }
+
+    [Fact]
+    public void A_successful_password_join_clears_the_pin()
+    {
+        var api = new Api { RoomList = Rooms() };
+        api.JoinAnswers.Enqueue((HttpStatusCode.OK, """{"key":"kalosi","name":"Kalosi","liveKitRoom":"hall-kalosi","url":"wss://x","token":"t","videoAllowed":true,"identity":"me"}"""));
+        using var ctx = Context(api);
+        ctx.JSInterop.Setup<bool>("ipopRooms.join", _ => true).SetResult(true);
+        var cut = ctx.Render<MeetingRoomsTab>(Slow);
+        cut.WaitForAssertion(() => Assert.Equal(5, cut.FindAll(".mrt-room").Count));
+        cut.FindAll(".mrt-room")[2].QuerySelector(".mrt-join")!.Click();
+        cut.Find(".mrt-pin-in").Input("482917");
+        cut.Find(".mrt-pin-go").Click();
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll(".mrt-sheet")));
+        var pin = typeof(MeetingRoomsTab).GetField("pin", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        Assert.Equal("", pin.GetValue(cut.Instance));
+    }
+
+    [Fact]
+    public void After_use_now_the_card_is_busy_while_the_rooms_reload()
+    {
+        var api = new Api { RoomList = Rooms() };
+        api.UseNowAnswers.Enqueue((HttpStatusCode.OK, $$"""{"meetingId":"{{Guid.NewGuid()}}","join":null}"""));
+        api.JoinAnswers.Enqueue((HttpStatusCode.ServiceUnavailable, """{"code":"media_unavailable"}"""));
+        using var ctx = Context(api);
+        var cut = ctx.Render<MeetingRoomsTab>(Slow);
+        cut.WaitForAssertion(() => Assert.Equal(5, cut.FindAll(".mrt-room").Count));
+        cut.FindAll(".mrt-room")[4].QuerySelector(".mrt-join")!.Click();
+        api.RoomsGate = new TaskCompletionSource();               // the reload after booking is slow
+        cut.Find(".mrt-un-go").Click();
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll(".mrt-sheet")));
+        Assert.True(cut.FindAll(".mrt-room")[4].QuerySelector(".mrt-join")!.HasAttribute("disabled"));
+        api.RoomsGate.SetResult();
+        cut.WaitForAssertion(() => Assert.Equal(["toraja"], api.Joins));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void In_meeting_people_sheet_shows_the_room_password_only_to_who_the_api_gives_it(bool invited)
+    {
+        var meetingId = Guid.Parse("33333333-3333-4333-8333-333333333333");
+        var api = new Api();
+        // GET /api/meetings/{id}: organizer/invitee get the password; a password guest is not an attendee (404).
+        if (invited) api.Meetings[meetingId] = $$"""{"id":"{{meetingId}}","organizerId":"{{Organizer}}","roomPassword":"482917"}""";
+        using var ctx = Context(api, Organizer);
+        var state = ctx.Services.GetRequiredService<MeetingRoomState>();
+        state.SetForTest(new("kalosi", "Kalosi", "hall-kalosi", "wss://x", "t", true, (invited ? Organizer : Outsider).ToString()));
+        state.OnRoomMetadata($$$"""{"booking":{"meetingId":"{{{meetingId}}}","organizerId":"{{{Organizer}}}","endAt":"{{{Now.AddHours(1):o}}}"}}""");
+        var cut = ctx.Render<MeetingRoomOverlay>();
+        cut.Find("button.mr-people-btn").Click();
+
+        if (invited)
+        {
+            cut.WaitForAssertion(() => Assert.Contains("482 917", cut.Find(".mr-people .mr-pw-row").TextContent));
+            Assert.NotNull(cut.Find(".mr-pw-row .mr-pw-copy"));
+        }
+        else
+        {
+            cut.WaitForAssertion(() => Assert.Equal(1, api.MeetingGets));
+            Assert.Empty(cut.FindAll(".mr-pw-row"));
+            Assert.DoesNotContain("482", cut.Markup);
+        }
+    }
+
     // ---------------------------------------------------------------- harness
 
     private static void Slow(ComponentParameterCollectionBuilder<MeetingRoomsTab> p) => p.Add(c => c.PollInterval, TimeSpan.FromHours(1));
@@ -483,6 +605,7 @@ public class MeetingRoomsTabV2Tests
     {
         private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
         public List<MeetingRoomDto> RoomList { get; set; } = [];
+        public volatile TaskCompletionSource? RoomsGate;
         public List<MeetingRecordingDto> Recordings { get; set; } = [];
         public Queue<(HttpStatusCode, string)> JoinAnswers { get; } = new();
         public Queue<(HttpStatusCode, string)> UseNowAnswers { get; } = new();
@@ -504,7 +627,11 @@ public class MeetingRoomsTabV2Tests
             var path = request.RequestUri!.AbsolutePath;
             var body = request.Content is null ? "" : await request.Content.ReadAsStringAsync(ct);
             var seg = path.Split('/');
-            if (request.Method == HttpMethod.Get && path == "/api/meeting-rooms") return Json(RoomList);
+            if (request.Method == HttpMethod.Get && path == "/api/meeting-rooms")
+            {
+                if (RoomsGate is { } gate) await gate.Task;
+                return Json(RoomList);
+            }
             if (request.Method == HttpMethod.Get && path == "/api/meeting-rooms/recordings") return Json(Recordings);
             if (request.Method == HttpMethod.Get && path.StartsWith("/api/meeting-rooms/recordings/") && path.EndsWith("/chat"))
                 return Raw(HttpStatusCode.OK, Chat.TryGetValue(Guid.Parse(seg[^2]), out var c) ? c : "[]");
