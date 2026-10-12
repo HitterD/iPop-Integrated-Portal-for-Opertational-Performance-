@@ -33,5 +33,5 @@ public static class HallBooking
 /// The booking holding a hall room right now. Allowed = the asking user is the organizer or an attendee.
 public record HallRoomBooking(Guid MeetingId, string Title, DateTime EndAt, bool Allowed);
 
-/// The next booking of a room (for the room card).
-public record HallNextBooking(Guid MeetingId, string Title, DateTime StartAt, DateTime EndAt, string OrganizerName);
+/// The next booking of a room (for the room card). Allowed = the asking user is the organizer or a non-declined attendee.
+public record HallNextBooking(Guid MeetingId, string Title, DateTime StartAt, DateTime EndAt, string OrganizerName, bool Allowed);

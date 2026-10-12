@@ -86,11 +86,12 @@ public class HallBookingTests
         await MeetingEndpoints.ApplyCreateAsync(t.Verify(), org.Id, Req(now.AddHours(2), 30, "SJA Hall · Toraja"), default);
         await MeetingEndpoints.ApplyCreateAsync(t.Verify(), org.Id, Req(now.AddHours(1), 30, "SJA Hall · Robusta"), default);
 
-        var next = await HallBookings.NextAsync(t.Verify(), "toraja", now, default);
+        var next = await HallBookings.NextAsync(t.Verify(), "toraja", org.Id, now, default);
         Assert.NotNull(next);
         Assert.Equal(now.AddHours(2), next!.StartAt, TimeSpan.FromSeconds(1));
         Assert.Equal("User O2", next.OrganizerName);
-        Assert.Null(await HallBookings.NextAsync(t.Verify(), "kalosi", now, default));
+        Assert.True(next.Allowed);
+        Assert.Null(await HallBookings.NextAsync(t.Verify(), "kalosi", org.Id, now, default));
     }
 
     [Fact]

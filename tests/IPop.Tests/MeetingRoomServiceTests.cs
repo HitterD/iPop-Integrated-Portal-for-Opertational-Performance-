@@ -14,11 +14,29 @@ public class MeetingRoomServiceTests
         public bool IsConfigured { get; set; } = true;
         public bool Throws { get; set; }
         public string? ThrowFor { get; set; }
+        /// LiveKit rooms whose participant list fails (only that room).
+        public HashSet<string> ThrowRooms { get; } = [];
+        /// Each ListAsync waits this long first (to prove the five rooms are asked in parallel).
+        public TimeSpan ListDelay { get; set; }
+        private int _inFlight, _maxInFlight;
+        public int MaxConcurrentLists => Volatile.Read(ref _maxInFlight);
         public Dictionary<string, List<LiveKitParticipant>> Rooms { get; } = new();
         public List<(string Room, int Max)> Created { get; } = [];
         public List<(string Room, string Identity, string Sources)> SourceChanges { get; } = [];
-        public Task<IReadOnlyList<LiveKitParticipant>> ListAsync(string room, CancellationToken ct) =>
-            Throws ? throw new HttpRequestException("down") : Task.FromResult<IReadOnlyList<LiveKitParticipant>>(Rooms.GetValueOrDefault(room) ?? []);
+        public async Task<IReadOnlyList<LiveKitParticipant>> ListAsync(string room, CancellationToken ct)
+        {
+            if (Throws) throw new HttpRequestException("down");
+            var now = Interlocked.Increment(ref _inFlight);
+            try
+            {
+                int seen;
+                while (now > (seen = Volatile.Read(ref _maxInFlight)) && Interlocked.CompareExchange(ref _maxInFlight, now, seen) != seen) { }
+                if (ListDelay > TimeSpan.Zero) await Task.Delay(ListDelay, ct);
+                if (ThrowRooms.Contains(room)) throw new TaskCanceledException("LiveKit timeout");
+                return Rooms.GetValueOrDefault(room) ?? [];
+            }
+            finally { Interlocked.Decrement(ref _inFlight); }
+        }
         public Task<bool> MuteAsync(string room, string identity, CancellationToken ct) => Task.FromResult(true);
         public Task<bool> RemoveAsync(string room, string identity, CancellationToken ct) => Task.FromResult(true);
         public Task CreateRoomAsync(string room, int max, CancellationToken ct) { Created.Add((room, max)); return Task.CompletedTask; }
@@ -109,13 +127,13 @@ public class MeetingRoomServiceTests
         using var t = new TestDb();
         var lk = new FakeRoomAdmin();
         lk.Rooms["hall-arabika"] = [new("u1", "Budi", [new LiveKitTrack("S", "SCREEN_SHARE", false)], new Dictionary<string, string> { ["rec"] = "pc" })];
-        var rooms = await Make(t, lk).ListAsync(default);
+        var rooms = await Make(t, lk).ListAsync(Guid.NewGuid(), default);
         Assert.Equal(5, rooms.Count);
         var arabika = rooms.Single(r => r.Key == "arabika");
         Assert.Equal(new MeetingRoomPerson(Guid.Empty, "Budi", true, true) with { UserId = arabika.People[0].UserId }, arabika.People[0]);
 
         lk.Throws = true;
-        var down = await Make(t, lk).ListAsync(default);
+        var down = await Make(t, lk).ListAsync(Guid.NewGuid(), default);
         Assert.All(down, r => Assert.False(r.Available));
     }
 
@@ -145,5 +163,89 @@ public class MeetingRoomServiceTests
         Assert.Equal(2, lk.SourceChanges.Count);
         Assert.All(lk.SourceChanges, c => Assert.DoesNotContain("camera", c.Sources));
         Assert.False((await Make(t, lk).VideoAsync(default))["toraja"]);
+    }
+
+    // ---------------------------------------------------------------- final review fixes
+
+    private static async Task<Guid> BookAsync(TestDb t, Guid organizer, string title, DateTime start, int minutes, string room, params Guid[] attendees)
+    {
+        var (_, id, _) = await IPop.Api.Endpoints.MeetingEndpoints.ApplyCreateAsync(t.Verify(), organizer,
+            new(title, start, start.AddMinutes(minutes), null, room, null, attendees, null, null, null), default);
+        return id!.Value;
+    }
+
+    [Fact]
+    public async Task Room_cards_show_booking_titles_only_to_the_organizer_and_attendees()
+    {
+        using var t = new TestDb();
+        var org = t.AddUser("ORG"); var guest = t.AddUser("GUEST"); var declined = t.AddUser("DECL"); var outsider = t.AddUser("OUT");
+        var now = DateTime.UtcNow;
+        await BookAsync(t, org.Id, "Salary review", now.AddMinutes(-10), 60, "SJA Hall · Arabika", guest.Id, declined.Id);
+        await BookAsync(t, org.Id, "Layoff planning", now.AddHours(3), 30, "SJA Hall · Toraja", guest.Id, declined.Id);
+        using (var db = t.Verify())
+        {
+            foreach (var a in db.MeetingAttendees.Where(a => a.UserId == declined.Id)) a.RsvpStatus = "decline";
+            db.SaveChanges();
+        }
+        var svc = Make(t, new FakeRoomAdmin());
+
+        foreach (var who in new[] { org.Id, guest.Id })
+        {
+            var rooms = await svc.ListAsync(who, default);
+            Assert.Equal("Salary review", rooms.Single(r => r.Key == "arabika").Now!.Title);
+            var next = rooms.Single(r => r.Key == "toraja").Next!;
+            Assert.Equal(("Layoff planning", "User ORG"), (next.Title, next.OrganizerName));
+        }
+        foreach (var who in new[] { outsider.Id, declined.Id })
+        {
+            var rooms = await svc.ListAsync(who, default);
+            var current = rooms.Single(r => r.Key == "arabika").Now!;
+            Assert.Equal("Booked", current.Title);
+            Assert.Null(current.OrganizerName);
+            var next = rooms.Single(r => r.Key == "toraja").Next!;
+            Assert.Equal("Booked", next.Title);
+            Assert.Null(next.OrganizerName);
+            Assert.Equal(now.AddHours(3), next.StartAt, TimeSpan.FromSeconds(1));   // times stay visible
+        }
+    }
+
+    [Fact]
+    public async Task List_asks_livekit_for_the_five_rooms_in_parallel_and_one_failing_room_marks_only_that_room()
+    {
+        using var t = new TestDb();
+        var lk = new FakeRoomAdmin { ListDelay = TimeSpan.FromMilliseconds(150) };
+        lk.Fill("arabika", 2);
+        lk.ThrowRooms.Add("hall-kalosi");
+
+        var rooms = await Make(t, lk).ListAsync(Guid.NewGuid(), default);
+
+        Assert.True(lk.MaxConcurrentLists >= 5, $"at most {lk.MaxConcurrentLists} LiveKit calls ran together");
+        Assert.False(rooms.Single(r => r.Key == "kalosi").Available);
+        Assert.Empty(rooms.Single(r => r.Key == "kalosi").People);
+        Assert.All(rooms.Where(r => r.Key != "kalosi"), r => Assert.True(r.Available));
+        Assert.Equal(2, rooms.Single(r => r.Key == "arabika").People.Count);
+    }
+
+    [Fact]
+    public async Task Room_people_names_come_from_the_directory_not_from_livekit()
+    {
+        using var t = new TestDb(); var budi = t.AddUser("BUDI");
+        var lk = new FakeRoomAdmin();
+        lk.Rooms["hall-robusta"] = [
+            new(budi.Id.ToString(), "The CEO", [], new Dictionary<string, string>()),          // spoofed display name
+            new(Guid.NewGuid().ToString(), "Guest Name", [], new Dictionary<string, string>()), // not in Users: keeps LiveKit name
+        ];
+        var people = (await Make(t, lk).ListAsync(Guid.NewGuid(), default)).Single(r => r.Key == "robusta").People;
+        Assert.Equal(["User BUDI", "Guest Name"], people.Select(p => p.Name));
+        Assert.Equal(budi.Id, people[0].UserId);
+    }
+
+    [Fact]
+    public async Task Join_carries_the_recording_retention_days()
+    {
+        using var t = new TestDb(); var me = t.AddUser("U1");
+        await new DbSettings(t.Db).SetAsync(IPop.Application.Settings.SettingKeys.MeetingRoomsRetentionDays, 30, null);
+        var r = await Make(t, new FakeRoomAdmin()).JoinAsync(me.Id, "kalosi", default);
+        Assert.Equal(30, r.Join!.RetentionDays);
     }
 }

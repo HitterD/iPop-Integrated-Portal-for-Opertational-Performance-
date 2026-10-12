@@ -14,9 +14,14 @@ namespace IPop.Infrastructure.MeetingRooms;
 public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveKit, ILiveKitTokenService tokens, ISettings settings)
     : IMeetingRoomService
 {
-    public async Task<IReadOnlyList<MeetingRoomDto>> ListAsync(CancellationToken ct)
+    public const string PrivateTitle = "Booked";
+
+    public async Task<IReadOnlyList<MeetingRoomDto>> ListAsync(Guid viewerId, CancellationToken ct)
     {
         var rooms = await db.HallRooms.AsNoTracking().OrderBy(r => r.SortOrder).ToListAsync(ct);
+        // LiveKit first and in parallel (each call may take its 5 s timeout); one unreachable room only marks that room.
+        var inside = await Task.WhenAll(rooms.Select(r => ParticipantsAsync(r.Key, ct)));
+        var names = await NamesAsync(inside.Where(x => x is not null).SelectMany(x => x!), ct);
         var video = await VideoAsync(ct);
         var now = DateTime.UtcNow;
         var recordings = await db.MeetingRecordings.AsNoTracking()
@@ -24,33 +29,51 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
             .Select(r => new { r.RoomKey, r.Id, r.StartedAt, Name = db.Users.Where(u => u.Id == r.StartedById).Select(u => u.Name).FirstOrDefault() })
             .ToListAsync(ct);
         var list = new List<MeetingRoomDto>();
-        foreach (var room in rooms)
+        for (var i = 0; i < rooms.Count; i++)
         {
-            var (people, available) = await PeopleAsync(room.Key, ct);
-            var current = await HallBookings.CurrentAsync(db, room.Key, Guid.Empty, now, ct);
-            var next = await HallBookings.NextAsync(db, room.Key, now, ct);
+            var room = rooms[i];
+            var available = inside[i] is not null;
+            var people = available ? People(inside[i]!, names) : [];
+            var current = await HallBookings.CurrentAsync(db, room.Key, viewerId, now, ct);
+            var next = await HallBookings.NextAsync(db, room.Key, viewerId, now, ct);
             var rec = recordings.FirstOrDefault(r => r.RoomKey == room.Key);
             list.Add(new MeetingRoomDto(room.Key, room.Name, room.Capacity, video[room.Key], available, people,
-                current is null ? null : new MeetingRoomBookingDto(current.MeetingId, current.Title, now, current.EndAt, null),
-                next is null ? null : new MeetingRoomBookingDto(next.MeetingId, next.Title, next.StartAt, next.EndAt, next.OrganizerName),
+                current is null ? null : new MeetingRoomBookingDto(current.MeetingId, current.Allowed ? current.Title : PrivateTitle, now, current.EndAt, null),
+                next is null ? null : new MeetingRoomBookingDto(next.MeetingId, next.Allowed ? next.Title : PrivateTitle, next.StartAt, next.EndAt,
+                    next.Allowed ? next.OrganizerName : null),
                 rec is null ? null : new MeetingRoomRecordingState(rec.Id, rec.Name ?? "", rec.StartedAt)));
         }
         return list;
     }
 
-    private async Task<(IReadOnlyList<MeetingRoomPerson> People, bool Available)> PeopleAsync(string key, CancellationToken ct)
+    /// Who is in the room per LiveKit, without the hidden Egress recorder; null = LiveKit not reachable for this room.
+    private async Task<IReadOnlyList<LiveKitParticipant>?> ParticipantsAsync(string key, CancellationToken ct)
     {
-        if (!liveKit.IsConfigured) return ([], false);
+        if (!liveKit.IsConfigured) return null;
         try
         {
             var ps = await liveKit.ListAsync(MeetingRoomKeys.LiveKitRoom(key), ct);
-            return (ps.Where(p => !p.Identity.StartsWith("EG_", StringComparison.Ordinal))   // the hidden Egress recorder
-                .Select(p => new MeetingRoomPerson(Guid.TryParse(p.Identity, out var id) ? id : Guid.Empty, p.Name,
-                    p.Tracks.Any(t => !t.Muted && t.IsSource("SCREEN_SHARE")),
-                    p.Attributes.TryGetValue("rec", out var rec) && rec == "pc")).ToList(), true);
+            return ps.Where(p => !p.Identity.StartsWith("EG_", StringComparison.Ordinal)).ToList();
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { return ([], false); }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { return null; }
     }
+
+    /// Display names come from the Users table by identity, not from the name a LiveKit client claims.
+    private async Task<Dictionary<Guid, string>> NamesAsync(IEnumerable<LiveKitParticipant> participants, CancellationToken ct)
+    {
+        var ids = participants.Select(p => Guid.TryParse(p.Identity, out var id) ? id : Guid.Empty).Where(id => id != Guid.Empty).Distinct().ToList();
+        if (ids.Count == 0) return [];
+        return await db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.Name, ct);
+    }
+
+    private static List<MeetingRoomPerson> People(IReadOnlyList<LiveKitParticipant> ps, Dictionary<Guid, string> names) =>
+        ps.Select(p =>
+        {
+            var id = Guid.TryParse(p.Identity, out var g) ? g : Guid.Empty;
+            return new MeetingRoomPerson(id, names.GetValueOrDefault(id) ?? p.Name,
+                p.Tracks.Any(t => !t.Muted && t.IsSource("SCREEN_SHARE")),
+                p.Attributes.TryGetValue("rec", out var rec) && rec == "pc");
+        }).ToList();
 
     public async Task<MeetingRoomJoinResult> JoinAsync(Guid userId, string key, CancellationToken ct)
     {
@@ -79,7 +102,8 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
         var lkRoom = MeetingRoomKeys.LiveKitRoom(key);
         var token = tokens.GenerateToken(lkRoom, me, name, TimeSpan.FromHours(6),
             video ? MeetingRoomKeys.VideoSources : MeetingRoomKeys.AudioSources, canUpdateOwnMetadata: true);
-        return new(new MeetingRoomJoinDto(room.Key, room.Name, lkRoom, tokens.ServerUrl!, token, video, me), null, []);
+        var retention = await settings.GetAsync(SettingKeys.MeetingRoomsRetentionDays, 90, ct);
+        return new(new MeetingRoomJoinDto(room.Key, room.Name, lkRoom, tokens.ServerUrl!, token, video, me, retention), null, []);
     }
 
     public async Task<IReadOnlyDictionary<string, bool>> VideoAsync(CancellationToken ct)

@@ -34,8 +34,8 @@ public static class HallBookings
             .Select(m => m.Title).FirstOrDefaultAsync(ct);
     }
 
-    /// The earliest active meeting of this room that starts after now (null = nothing booked).
-    public static async Task<HallNextBooking?> NextAsync(IPopDbContext db, string roomKey, DateTime nowUtc, CancellationToken ct)
+    /// The earliest active meeting of this room that starts after now (null = nothing booked); Allowed for <paramref name="userId"/>.
+    public static async Task<HallNextBooking?> NextAsync(IPopDbContext db, string roomKey, Guid userId, DateTime nowUtc, CancellationToken ct)
     {
         var name = HallBooking.Rooms.FirstOrDefault(r => r.Key == roomKey).Name;
         if (name is null) return null;
@@ -44,7 +44,8 @@ public static class HallBookings
             .Where(m => m.Status != MeetingStatus.Cancelled && m.Location == loc && m.StartAt > nowUtc)
             .OrderBy(m => m.StartAt)
             .Select(m => new HallNextBooking(m.Id, m.Title, m.StartAt, m.EndAt,
-                db.Users.Where(u => u.Id == m.OrganizerId).Select(u => u.Name).FirstOrDefault() ?? ""))
+                db.Users.Where(u => u.Id == m.OrganizerId).Select(u => u.Name).FirstOrDefault() ?? "",
+                m.OrganizerId == userId || m.Attendees.Any(a => a.UserId == userId && a.RsvpStatus != "decline")))
             .FirstOrDefaultAsync(ct);
     }
 }

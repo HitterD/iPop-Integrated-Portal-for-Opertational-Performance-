@@ -111,9 +111,8 @@ builder.Services.AddHttpClient<ISynologyGateway, HttpSynologyGateway>()
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
     {
-        // SignalR browser clients can't set headers on the websocket handshake, and <video src> can't set them
-        // for a meeting recording, so those send the JWT as ?access_token=. Lift it onto the request here —
-        // only for the paths QueryTokenRule allows.
+        // SignalR browser clients can't set headers on the websocket handshake, so they send the JWT as
+        // ?access_token=. Lift it onto the request here — only for the paths QueryTokenRule allows (/hubs).
         o.Events = new JwtBearerEvents
         {
             OnMessageReceived = ctx =>
@@ -203,6 +202,9 @@ builder.Services.AddHostedService<IPop.Infrastructure.Meetings.MeetingReminderWo
 builder.Services.AddScoped<IPop.Application.MeetingRooms.IMeetingRoomService, IPop.Infrastructure.MeetingRooms.MeetingRoomService>();
 builder.Services.AddScoped<IPop.Application.MeetingRooms.IMeetingRecordingService, IPop.Infrastructure.MeetingRooms.MeetingRecordingService>();
 builder.Services.AddScoped<IPop.Infrastructure.MeetingRooms.RecordingFileCache>();
+// Recording file tickets: HMAC key HKDF-derived from Jwt:Key with its own purpose label (never the JWT key itself).
+builder.Services.AddSingleton(new IPop.Infrastructure.MeetingRooms.RecordingTicketSigner(
+    builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key is required")));
 builder.Services.AddHostedService<IPop.Infrastructure.MeetingRooms.MeetingRecordingWorker>();
 
 // Mail module
