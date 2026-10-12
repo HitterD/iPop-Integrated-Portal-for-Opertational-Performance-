@@ -137,9 +137,15 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
         }
     }
 
-    public async Task<bool> CanViewAsync(Guid userId, bool admin, Guid recordingId, CancellationToken ct) =>
-        await db.MeetingRecordings.AnyAsync(r => r.Id == recordingId && r.Status != MeetingRecordingStatus.Deleted
-            && (admin || r.Viewers.Any(v => v.UserId == userId)), ct);
+    private bool LocalRecordingPath(string? path) => path is null ||
+        RecordingPaths.NasFile(config["MeetingRooms:NasFolder"] ?? "/sja/SJA SPJ/ICT/recordings", path) is not null;
+
+    public async Task<bool> CanViewAsync(Guid userId, bool admin, Guid recordingId, CancellationToken ct)
+    {
+        var row = await db.MeetingRecordings.AsNoTracking().Where(r => r.Id == recordingId && r.Status != MeetingRecordingStatus.Deleted
+            && (admin || r.Viewers.Any(v => v.UserId == userId))).Select(r => new { r.NasPath }).FirstOrDefaultAsync(ct);
+        return row is not null && LocalRecordingPath(row.NasPath);
+    }
 
     private IQueryable<MeetingRecording> Listed => db.MeetingRecordings.AsNoTracking()
         .Where(r => r.Status != MeetingRecordingStatus.Deleted && r.Status != MeetingRecordingStatus.Recording);
@@ -148,17 +154,17 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
     public async Task<IReadOnlyList<MeetingRecordingDto>> ListAsync(Guid userId, bool admin, CancellationToken ct)
     {
         var ids = await Listed.Where(r => r.Viewers.Any(v => v.UserId == userId))
-            .OrderByDescending(r => r.StartedAt).Select(r => r.Id).Take(200).ToListAsync(ct);
+            .OrderByDescending(r => r.StartedAt).Select(r => new { r.Id, r.NasPath }).Take(200).ToListAsync(ct);
         var list = new List<MeetingRecordingDto>();
-        foreach (var id in ids) list.Add(await DtoAsync(id, userId, admin, ct));
+        foreach (var row in ids.Where(r => LocalRecordingPath(r.NasPath))) list.Add(await DtoAsync(row.Id, userId, admin, ct));
         return list;
     }
 
     public async Task<IReadOnlyList<MeetingRecordingDto>> ListAllAsync(CancellationToken ct)
     {
-        var ids = await Listed.OrderByDescending(r => r.StartedAt).Select(r => r.Id).Take(200).ToListAsync(ct);
+        var ids = await Listed.OrderByDescending(r => r.StartedAt).Select(r => new { r.Id, r.NasPath }).Take(200).ToListAsync(ct);
         var list = new List<MeetingRecordingDto>();
-        foreach (var id in ids) list.Add(await DtoAsync(id, Guid.Empty, true, ct));
+        foreach (var row in ids.Where(r => LocalRecordingPath(r.NasPath))) list.Add(await DtoAsync(row.Id, Guid.Empty, true, ct));
         return list;
     }
 

@@ -37,6 +37,48 @@ public sealed class MeetingRoomMedia
             throw new InvalidOperationException("MeetingRooms:BookingWorkerEnabled must be true or false.");
     }
 
+    /// Deployment identity is explicit: production currently runs ASP.NET Development, so that environment is not a boundary.
+    public static void ValidateDeployment(IConfiguration config)
+    {
+        var mode = config["MeetingRooms:DeploymentMode"] ?? "Isolated";
+        if (mode is not ("Production" or "Isolated"))
+            throw new InvalidOperationException("MeetingRooms:DeploymentMode must be Production or Isolated.");
+        var media = new MeetingRoomMedia(config);
+        if (mode == "Production") return;
+        var ns = config["MeetingRooms:MediaNamespace"];
+        var nas = config["MeetingRooms:NasFolder"];
+        var spool = CanonicalLocalRoot(config["MeetingRooms:SpoolDir"]);
+        var cache = CanonicalLocalRoot(config["MeetingRooms:CacheDir"]);
+        var prodSpool = CanonicalLocalRoot(@"F:\ipop-data\recordings-spool")!;
+        var prodCache = CanonicalLocalRoot(@"F:\ipop-data\recordings-cache")!;
+        if (string.IsNullOrWhiteSpace(ns) || media.Namespace == DefaultNamespace
+            || string.IsNullOrWhiteSpace(config["MeetingRooms:BookingWorkerEnabled"])
+            || RecordingPaths.NasFile(nas, nas?.TrimEnd('/') + "/boundary-check.mp4") is null
+            || (nas is not null && Overlaps(nas.TrimEnd('/'), "/sja/SJA SPJ/ICT/recordings"))
+            || spool is null || cache is null || Overlaps(spool, cache)
+            || Overlaps(spool, prodSpool) || Overlaps(spool, prodCache)
+            || Overlaps(cache, prodSpool) || Overlaps(cache, prodCache))
+            throw new InvalidOperationException("Isolated meeting rooms require a non-hall namespace, explicit BookingWorkerEnabled, and distinct explicit NAS, SpoolDir and CacheDir roots outside production roots.");
+    }
+
+    private static bool Overlaps(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase)
+        || a.StartsWith(b + "/", StringComparison.OrdinalIgnoreCase) || b.StartsWith(a + "/", StringComparison.OrdinalIgnoreCase);
+
+    private static string? CanonicalLocalRoot(string? root)
+    {
+        if (string.IsNullOrWhiteSpace(root)) return null;
+        try
+        {
+            var normalized = Path.GetFullPath(root).Replace('\\', '/').TrimEnd('/');
+            // Absolute, not a drive/filesystem root; no aliasing through dot segments or junctions.
+            var typed = root.Replace('\\', '/').TrimEnd('/');
+            if (!Path.IsPathFullyQualified(root) || normalized.Length <= 3 || typed.Split('/').Any(s => s is "." or "..")
+                || RecordingPaths.LocalFile(root, "boundary-check.mp4") is null) return null;
+            return normalized;
+        }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException or IOException) { return null; }
+    }
+
     public string Namespace { get; }
     public bool BookingWorkerEnabled { get; }
 

@@ -68,7 +68,7 @@ public class MeetingRecordingTicketTests : IDisposable
             var r = new MeetingRecording
             {
                 Id = id, RoomKey = "kalosi", Title = "Weekly sync", EgressId = "EG_1", StartedById = viewerId, StartedAt = DateTime.UtcNow.AddHours(-1),
-                Status = MeetingRecordingStatus.Ready, NasPath = $"/n/{id}.mp4",
+                Status = MeetingRecordingStatus.Ready, NasPath = $"/sja/SJA SPJ/ICT/recordings/{id}.mp4",
                 Viewers = [new MeetingRecordingViewer { RecordingId = id, UserId = viewerId }],
             };
             t.Db.MeetingRecordings.Add(r);

@@ -23,7 +23,8 @@ public sealed class RecordingFileCache(IFileAccessService nas, IConfiguration co
 
     public async Task<string?> OpenAsync(MeetingRecording row, CancellationToken ct)
     {
-        if (row.NasPath is null) return null;
+        var nasPath = RecordingPaths.NasFile(config["MeetingRooms:NasFolder"] ?? "/sja/SJA SPJ/ICT/recordings", row.NasPath);
+        if (nasPath is null) return null; // quarantined foreign paths cannot download or reuse a cached copy
         Directory.CreateDirectory(Dir);
         var path = RecordingPaths.LocalFile(Dir, row.Id.ToString("N") + ".mp4");
         if (path is null) return null;
@@ -38,7 +39,7 @@ public sealed class RecordingFileCache(IFileAccessService nas, IConfiguration co
                 if (tmp is null) return null;
                 try
                 {
-                    await using (var src = await nas.DownloadAsServiceAsync(row.NasPath, ct))
+                    await using (var src = await nas.DownloadAsServiceAsync(nasPath, ct))
                     await using (var dst = File.Create(tmp))
                         await src.CopyToAsync(dst, ct);
                     File.Move(tmp, path, overwrite: true);

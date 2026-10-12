@@ -38,12 +38,26 @@ Generated `.env`, `livekit.yaml` and `egress.yaml` are git-ignored. Both `.env` 
 | `Calls:LiveKit:ServerUrl` | Optional server-to-server RoomService/Egress Twirp URL. On this host use `http://127.0.0.1:7880`: Docker ports cannot be reached through the host's own LAN IP (hairpin). When unset or blank, falls back to `Calls:LiveKit:Url`; WebSocket schemes are converted to HTTP(S) for Twirp. Does not change browser URLs or token grants. |
 | `Calls:LiveKit:ApiKey` | Key generated/reused by setup. |
 | `Calls:LiveKit:ApiSecret` | Secret generated/reused by setup. |
+| `MeetingRooms:DeploymentMode` | `Production` or `Isolated` (default `Isolated`). Independent of `ASPNETCORE_ENVIRONMENT`: the production API uses `Development`, so it must explicitly set `Production`. |
+| `MeetingRooms:MediaNamespace` | Default `hall`; v2 names media `{namespace}-{roomKey}-{meetingId:N}`. Isolated deployments must explicitly use a distinct value, e.g. `qa-hall`. Legacy `hall-{roomKey}` is not managed by v2. |
+| `MeetingRooms:BookingWorkerEnabled` | Default true; Isolated deployments must explicitly choose true/false. False disables booking enforcement/metadata/chat cleanup, not recording finish/purge. |
 | `MeetingRooms:SpoolDir` | Host spool path, default `F:\ipop-data\recordings-spool`. Must match `-SpoolDir` / `RECORDINGS_SPOOL`. |
 | `MeetingRooms:EgressOutDir` | Container-side output directory, default `/out`; must match the bind mount target. |
 | `MeetingRooms:NasFolder` | NAS upload root, default `/sja/SJA SPJ/ICT/recordings`. |
 | `MeetingRooms:CacheDir` | Local playback cache. Defaults to a sibling `recordings-cache` folder beside the spool, normally `F:\ipop-data\recordings-cache`. |
 
 Set these in `appsettings.Local.json` or as environment variables (replace `:` with `__`, e.g. `Calls__LiveKit__ServerUrl` and `MeetingRooms__SpoolDir`), then restart the API.
+
+## v2 release / isolation checklist
+
+- Review and apply the ownership-ledger migration only during an explicitly authorized release, after DB backup; startup then backfills eligible legacy booking passwords. Do not drop the ledger while v2 serves traffic.
+- Set `MeetingRooms:DeploymentMode=Production` explicitly on the real production API, regardless of ASP.NET environment. This permits the production namespace and filesystem defaults; no deployment is authorized by this document.
+- Every QA/staging API must use `DeploymentMode=Isolated` (also the default), a non-`hall` namespace, explicit `BookingWorkerEnabled`, and **explicit distinct NAS, spool and cache roots**. Missing local roots, default production roots, equal/nested local roots and roots overlapping the known production spool/cache are rejected before serving. Configure any additional production/custom roots operationally so QA cannot access them; prefer separate least-privilege credentials.
+- Example isolated roots: NAS `/sja/SJA SPJ/ICT/recordings-qa`, spool `F:/ipop-qa/recordings-spool`, cache `F:/ipop-qa/recordings-cache`. The Egress mount must match that spool; changing the mount/shared stack requires separate approval.
+- Copied NAS paths outside the configured NAS root are quarantined: no delete, download, cached playback, list or new ticket. Rejected deletion keeps NasPath for operator investigation; no public special error discloses another environment's path.
+- Drain legacy physical-room sessions/recordings before authorized v2 cutover. Future sja-hall must use v2 booking-specific admission/token names.
+- Egress reconciliation requires authoritative `ListEgress(room_name)` items with `egress_id`, `room_name`, status. After a lost start response, grace expires then room jobs are stopped and re-listed; unknown responses/timeouts remain fail-closed and retry. Ordinary user Stop still marks Processing after acceptance; successor admission independently demands terminal confirmation.
+- Polling still cannot detect empty/rejoin entirely between samples. Full lifecycle closure requires authenticated ordered/idempotent LiveKit webhooks and separately approved delivery configuration.
 
 ## Network and troubleshooting
 

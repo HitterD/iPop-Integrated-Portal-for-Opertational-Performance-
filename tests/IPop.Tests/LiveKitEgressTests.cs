@@ -95,6 +95,19 @@ public class LiveKitEgressTests
     }
 
     [Fact]
+    public async Task Room_reconciliation_lists_by_exact_room_and_requires_an_authoritative_array()
+    {
+        const string room = "qa-hall-kalosi-0123456789abcdef0123456789abcdef";
+        var handler = new Handler("{\"items\":[{\"egress_id\":\"EG_lost\",\"room_name\":\"" + room + "\",\"status\":1}]}");
+        var client = new LiveKitEgress(new HttpClient(handler), new MeetingRoomServiceTests.FakeTokens());
+        var job = Assert.Single(await client.ListForRoomAsync(room, default));
+        Assert.Equal("EG_lost", job.Id); Assert.Equal(room, job.Info.Room); Assert.Equal("EGRESS_ACTIVE", job.Info.Status);
+        Assert.Equal(room, JsonDocument.Parse(handler.Body!).RootElement.GetProperty("room_name").GetString());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new LiveKitEgress(new HttpClient(new Handler("{}")),
+            new MeetingRoomServiceTests.FakeTokens()).ListForRoomAsync(room, default));
+    }
+
+    [Fact]
     public async Task Stop_posts_the_egress_id_and_http_errors_propagate()
     {
         var handler = new Handler("{}");

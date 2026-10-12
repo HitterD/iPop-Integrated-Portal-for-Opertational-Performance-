@@ -12,6 +12,31 @@ public static class RecordingBoundary
     public static bool Belongs(MeetingRoomMedia media, MeetingRecording row, LiveKitEgressInfo info) =>
         row.MeetingId is { } id && info.Room == media.Room(row.RoomKey, id);
 
+    /// A lost Egress id may mean the remote start succeeded before our process died. List the booking room's
+    /// Egress jobs, stop each nonterminal job, and re-query: only an authoritative terminal/empty list releases it.
+    public static async Task<bool> ReconcileInterruptedAsync(IPopDbContext db, ILiveKitEgress? egress, MeetingRoomMedia media,
+        MeetingRecording row, DateTime now, CancellationToken ct)
+    {
+        if (row.Status != MeetingRecordingStatus.Recording || row.StartedAt >= now - MeetingRecordingWorker.StartGrace
+            || row.MeetingId is not { } id || egress is not { IsConfigured: true }) return false;
+        try
+        {
+            var room = media.Room(row.RoomKey, id);
+            var jobs = await egress.ListForRoomAsync(room, ct);
+            if (jobs.Any(j => !Belongs(media, row, j.Info) || string.IsNullOrWhiteSpace(j.Id))) return false;
+            foreach (var job in jobs.Where(j => !Terminal(j.Info.Status)))
+                await egress.StopAsync(job.Id, ct);
+            var confirmed = await egress.ListForRoomAsync(room, ct);
+            if (confirmed.Any(j => !Belongs(media, row, j.Info) || !Terminal(j.Info.Status))) return false;
+            row.Status = MeetingRecordingStatus.Failed;
+            row.Error = "start interrupted; room egress cessation confirmed";
+            row.EndedAt ??= now;
+            await db.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (Exception) when (!ct.IsCancellationRequested) { return false; }
+    }
+
     public static async Task<bool> EndPreviousAsync(IPopDbContext db, ILiveKitEgress? egress, MeetingRoomMedia media,
         string key, Guid? current, DateTime now, CancellationToken ct)
     {
@@ -19,7 +44,12 @@ public static class RecordingBoundary
             && (r.Status == MeetingRecordingStatus.Recording || r.Status == MeetingRecordingStatus.Processing)).ToListAsync(ct);
         foreach (var row in rows)
         {
-            if (egress is not { IsConfigured: true } || string.IsNullOrEmpty(row.EgressId)) return false;
+            if (string.IsNullOrEmpty(row.EgressId))
+            {
+                if (!await ReconcileInterruptedAsync(db, egress, media, row, now, ct)) return false;
+                continue;
+            }
+            if (egress is not { IsConfigured: true }) return false;
             try
             {
                 var info = await egress.GetAsync(row.EgressId, ct);

@@ -13,11 +13,12 @@ namespace IPop.Infrastructure.MeetingRooms;
 /// In-meeting chat (meeting rooms v2 §3): messages go through the API (stored per booking, linked to a running server
 /// recording) and are then relayed to the LiveKit room on topic <see cref="MeetingChat.Topic"/>.
 public sealed class MeetingChatService(IPopDbContext db, ILiveKitRoomAdmin liveKit, MeetingChatRateLimiter limiter,
-    RoomOccupancyTracker? occupancyTracker = null, ILogger<MeetingChatService>? log = null, MeetingRoomMedia? mediaRooms = null) : IMeetingChatService
+    RoomOccupancyTracker? occupancyTracker = null, ILogger<MeetingChatService>? log = null, MeetingRoomMedia? mediaRooms = null, TimeProvider? timeProvider = null) : IMeetingChatService
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private readonly RoomOccupancyTracker occupancy = occupancyTracker ?? new RoomOccupancyTracker();
     private readonly MeetingRoomMedia media = mediaRooms ?? MeetingRoomMedia.Default;
+    private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
 
     public async Task<MeetingChatResult> SendAsync(Guid userId, string key, string? text, CancellationToken ct)
     {
@@ -26,12 +27,15 @@ public sealed class MeetingChatService(IPopDbContext db, ILiveKitRoomAdmin liveK
         if (body.Length > MeetingChat.MaxLength) return new(null, "too_long");
         if (!IsRoom(key)) return new(null, "unknown_room");
         if (!liveKit.IsConfigured) return new(null, "media_unavailable");
-        IReadOnlyList<LiveKitParticipant> inside;
-        try { inside = (await BookingMediaSession.ObserveAsync(db, liveKit, occupancy, media, key, DateTime.UtcNow, ct)).People; }
+        (Booking? Booking, IReadOnlyList<LiveKitParticipant> People) session;
+        try { session = await BookingMediaSession.ObserveAsync(db, liveKit, occupancy, media, key, clock.GetUtcNow().UtcDateTime, ct); }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { return new(null, "media_unavailable"); }
-        var now = DateTime.UtcNow;
-        var access = await AccessAsync(key, userId, inside, now, ct);
+        if (session.Booking is null) return new(null, "no_booking");
+        var inside = session.People;
+        var now = clock.GetUtcNow().UtcDateTime;
+        var access = await RoomAccess.ForAsync(db, key, userId, now, occupancy.Snapshot(key, now), ct);
         if (access.Current is null) return new(null, "no_booking");
+        if (access.Current.MeetingId != session.Booking.MeetingId) return new(null, "not_in_room");
         if (inside.All(p => p.Identity != userId.ToString())) return new(null, "not_in_room");
         if (!RoomAccess.MayEnter(access.Role)) return new(null, "forbidden");
         if (!limiter.TryAcquire(userId, now)) return new(null, "rate_limited");

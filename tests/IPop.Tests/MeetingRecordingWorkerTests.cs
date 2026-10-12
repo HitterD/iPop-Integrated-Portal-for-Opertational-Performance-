@@ -476,7 +476,7 @@ public class MeetingRecordingWorkerTests : IDisposable
         Assert.Equal(1, await MeetingRecordingWorker.FinishAsync(sp, default));
 
         using var after = t.Verify(); var saved = await after.MeetingRecordings.SingleAsync();
-        Assert.Equal((MeetingRecordingStatus.Failed, "start interrupted"), (saved.Status, saved.Error));
+        Assert.Equal((MeetingRecordingStatus.Failed, "start interrupted; room egress cessation confirmed"), (saved.Status, saved.Error));
         Assert.NotNull(saved.EndedAt);
         Assert.Contains(rooms.MetadataUpdates, m => m.Room == MeetingRoomMedia.Default.Room("kalosi", stuck.MeetingId!.Value) && !m.Metadata.Contains("recording"));
     }

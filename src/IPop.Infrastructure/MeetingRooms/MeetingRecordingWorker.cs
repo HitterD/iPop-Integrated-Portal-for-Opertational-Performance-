@@ -69,6 +69,17 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
             ct.ThrowIfCancellationRequested();
             try
             {
+                // Reconcile lost remote-start responses before booking-boundary checks, never assume an empty id is stopped.
+                if (string.IsNullOrEmpty(row.EgressId) && row.Status == MeetingRecordingStatus.Recording)
+                {
+                    if (await RecordingBoundary.ReconcileInterruptedAsync(db, egress, media, row, now, ct))
+                    {
+                        DeleteSpool(spool, row);
+                        await ClearBannerAsync(db, rooms, tracker, row, ct, media);
+                        done++;
+                    }
+                    continue;
+                }
                 var info = string.IsNullOrEmpty(row.EgressId) ? null : await egress.GetAsync(row.EgressId, ct);
                 if (info is not null && !RecordingBoundary.Belongs(media, row, info)) continue; // copied foreign Egress
                 if (info is null && !string.IsNullOrEmpty(row.EgressId)
@@ -92,20 +103,7 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
                     done++;
                     continue;
                 }
-                if (string.IsNullOrEmpty(row.EgressId))
-                {
-                    // Start was interrupted between the row insert and storing the Egress id (request aborted,
-                    // API restarted): nothing is recording, but the row holds the room's single recording slot.
-                    if (row.Status == MeetingRecordingStatus.Recording && row.StartedAt < now - StartGrace)
-                    {
-                        row.Status = MeetingRecordingStatus.Failed; row.Error = "start interrupted"; row.EndedAt ??= now;
-                        await db.SaveChangesAsync(ct);
-                        DeleteSpool(spool, row);
-                        await ClearBannerAsync(db, rooms, tracker, row, ct, media);
-                        done++;
-                    }
-                    continue;
-                }
+                if (string.IsNullOrEmpty(row.EgressId)) continue;
                 if (row.Status == MeetingRecordingStatus.Recording)
                 {
                     var participants = await rooms.ListAsync(media.Room(row.RoomKey, row.MeetingId ?? Guid.Empty), ct);

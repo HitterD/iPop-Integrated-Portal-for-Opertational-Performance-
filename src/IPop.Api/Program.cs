@@ -204,13 +204,8 @@ builder.Services.AddScoped<IPop.Application.MeetingRooms.IRoomBookingWriter, IPo
 // Wrong room-password counts (5 / 5 min per user and booking), in memory: one API instance, resets on restart.
 builder.Services.AddSingleton<IPop.Infrastructure.MeetingRooms.RoomPasswordLimiter>();
 var meetingMedia = new IPop.Infrastructure.MeetingRooms.MeetingRoomMedia(builder.Configuration);
-// Non-production must not silently inherit production defaults against shared LiveKit/NAS credentials.
-if (!builder.Environment.IsProduction() &&
-    (string.IsNullOrWhiteSpace(builder.Configuration["MeetingRooms:MediaNamespace"]) || meetingMedia.Namespace == "hall"
-     || string.IsNullOrWhiteSpace(builder.Configuration["MeetingRooms:BookingWorkerEnabled"])
-     || string.IsNullOrWhiteSpace(builder.Configuration["MeetingRooms:NasFolder"])
-     || builder.Configuration["MeetingRooms:NasFolder"]?.TrimEnd('/') == "/sja/SJA SPJ/ICT/recordings"))
-    throw new InvalidOperationException("Non-production meeting rooms require a distinct MediaNamespace and NasFolder, and explicit BookingWorkerEnabled.");
+// Explicit deployment identity, independent of ASP.NET environment (production also uses Development).
+IPop.Infrastructure.MeetingRooms.MeetingRoomMedia.ValidateDeployment(builder.Configuration);
 builder.Services.AddSingleton(meetingMedia);
 // When each hall room was last empty (overrun rule) + last metadata written; in memory, starts "empty at app start".
 builder.Services.AddSingleton<IPop.Infrastructure.MeetingRooms.RoomOccupancyTracker>();

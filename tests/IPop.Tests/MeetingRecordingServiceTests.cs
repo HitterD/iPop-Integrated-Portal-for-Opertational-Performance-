@@ -42,6 +42,12 @@ public class MeetingRecordingServiceTests
             return Task.CompletedTask;
         }
         public Task<LiveKitEgressInfo?> GetAsync(string egressId, CancellationToken ct) => Task.FromResult(Infos.GetValueOrDefault(egressId));
+        public Exception? ListThrows { get; set; }
+        public Task<IReadOnlyList<(string Id, LiveKitEgressInfo Info)>> ListForRoomAsync(string room, CancellationToken ct)
+        {
+            if (ListThrows is not null) throw ListThrows;
+            return Task.FromResult<IReadOnlyList<(string Id, LiveKitEgressInfo Info)>>(Infos.Where(x => x.Value.Room == room).Select(x => (x.Key, x.Value)).ToList());
+        }
     }
 
     internal static IConfiguration Config() => new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>

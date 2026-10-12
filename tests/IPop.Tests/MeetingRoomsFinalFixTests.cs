@@ -586,6 +586,108 @@ public class MeetingRoomsFinalFixTests : IDisposable
         Assert.DoesNotContain(t.Verify().MeetingRoomOwnerships, x => x.MeetingId == a);
     }
 
+    // Scoped review round 1 regressions
+    private static IConfiguration Deployment(string? mode = null, string? ns = "qa-hall", string? nas = "/qa/recordings",
+        string? spool = "C:/ipop-qa/spool", string? cache = "C:/ipop-qa/cache") => Cfg(
+        ("MeetingRooms:DeploymentMode", mode), ("ASPNETCORE_ENVIRONMENT", "Development"),
+        ("MeetingRooms:MediaNamespace", ns), ("MeetingRooms:BookingWorkerEnabled", "false"),
+        ("MeetingRooms:NasFolder", nas), ("MeetingRooms:SpoolDir", spool), ("MeetingRooms:CacheDir", cache));
+
+    [Fact]
+    public void Explicit_production_deployment_is_accepted_even_in_Development()
+    {
+        MeetingRoomMedia.ValidateDeployment(Deployment("Production", "hall", "/sja/SJA SPJ/ICT/recordings",
+            "F:/ipop-data/recordings-spool", "F:/ipop-data/recordings-cache"));
+        MeetingRoomMedia.ValidateDeployment(Deployment()); // default Isolated with safe explicit roots
+    }
+
+    [Theory]
+    [InlineData(null, "qa-hall", "/qa/recordings", null, "C:/ipop-qa/cache")]
+    [InlineData(null, "qa-hall", "/qa/recordings", "C:/ipop-qa/spool", null)]
+    [InlineData(null, "hall", "/qa/recordings", "C:/ipop-qa/spool", "C:/ipop-qa/cache")]
+    [InlineData("Isolated", "qa-hall", "/sja/SJA SPJ/ICT/recordings", "C:/ipop-qa/spool", "C:/ipop-qa/cache")]
+    [InlineData("Isolated", "qa-hall", "/sja/SJA SPJ/ICT", "C:/ipop-qa/spool", "C:/ipop-qa/cache")]
+    [InlineData("Isolated", "qa-hall", "/qa/recordings", "F:/ipop-data", "C:/ipop-qa/cache")]
+    [InlineData("Isolated", "qa-hall", "/qa/recordings", "C:/ipop-qa/spool", "C:/ipop-qa/spool/cache")]
+    [InlineData("Isolated", "qa-hall", "/qa/recordings", "F:/ipop-data/recordings-spool", "C:/ipop-qa/cache")]
+    [InlineData("Isolated", "qa-hall", "/qa/recordings", "C:/ipop-qa/spool", "F:/ipop-data/recordings-cache")]
+    [InlineData("Isolated", "qa-hall", "/qa/recordings", "C:/ipop-qa/spool", "c:/ipop-qa/spool/")]
+    [InlineData("garbage", "qa-hall", "/qa/recordings", "C:/ipop-qa/spool", "C:/ipop-qa/cache")]
+    public void Isolated_deployment_rejects_missing_production_or_equal_roots(string? mode, string ns, string nas, string? spool, string? cache) =>
+        Assert.Throws<InvalidOperationException>(() => MeetingRoomMedia.ValidateDeployment(Deployment(mode, ns, nas, spool, cache)));
+
+    [Theory]
+    [InlineData("foreign", false)]
+    [InlineData("nested", true)]
+    public async Task Playback_never_downloads_a_foreign_NAS_row(string kind, bool allowed)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ipop-review-" + Guid.NewGuid().ToString("N")); dirs.Add(root);
+        var nas = new Nas();
+        var cfg = QaCfg(Path.Combine(root, "spool"));
+        var row = new MeetingRecording { Id = Guid.NewGuid(), RoomKey = "kalosi", Title = "Test", EgressId = "EG_TEST", NasPath = kind == "foreign"
+            ? "/sja/SJA SPJ/ICT/recordings/prod.mp4" : "/sja/SJA SPJ/ICT/recordings-qa/kalosi/day/a.mp4" };
+        var result = await new RecordingFileCache(nas, cfg).OpenAsync(row, default);
+        Assert.Equal(allowed, result is not null);
+        Assert.Equal(allowed ? 1 : 0, nas.Downloads);
+    }
+
+    [Fact]
+    public async Task Foreign_recording_is_quarantined_from_lists_and_tickets()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ipop-review-" + Guid.NewGuid().ToString("N")); dirs.Add(root);
+        var (t, org, rec) = ReadyRecording("/sja/SJA SPJ/ICT/recordings/prod.mp4"); using var _ = t;
+        var svc = Recs(t, new FakeRoomAdmin(), new FakeEgress(), QaCfg(Path.Combine(root, "spool")));
+        Assert.Empty(await svc.ListAsync(org.Id, false, default));
+        Assert.Empty(await svc.ListAllAsync(default));
+        Assert.False(await svc.CanViewAsync(org.Id, false, rec.Id, default));
+        Assert.False(await svc.CanViewAsync(org.Id, true, rec.Id, default));
+    }
+
+    [Fact]
+    public async Task Interrupted_start_after_takeover_retries_until_room_egress_cessation_is_confirmed()
+    {
+        using var t = new TestDb(); var (a, _, w) = await TakeoverAsync(t);
+        var rec = AddRecording(t, a, w.AOrg.Id, "");
+        var eg = new FakeEgress { ListThrows = new TaskCanceledException("timeout") };
+        var lk = new FakeRoomAdmin();
+        using (var sp = WithGateway(t, lk, eg)) await MeetingRecordingWorker.FinishAsync(sp, default);
+        Assert.Equal(MeetingRecordingStatus.Recording, t.Verify().MeetingRecordings.Single().Status);
+        Assert.Equal("media_unavailable", (await Rooms(t, lk, eg).JoinAsync(w.BOrg.Id, "kalosi", null, default)).Error);
+        eg.ListThrows = null;
+        eg.Infos["EG_LOST"] = new("EGRESS_ACTIVE", null, null, null, null, Media("kalosi", a));
+        using (var sp = WithGateway(t, lk, eg)) await MeetingRecordingWorker.FinishAsync(sp, default);
+        Assert.Equal(MeetingRecordingStatus.Recording, t.Verify().MeetingRecordings.Single().Status);
+        Assert.Equal("media_unavailable", (await Rooms(t, lk, eg).JoinAsync(w.BOrg.Id, "kalosi", null, default)).Error);
+        eg.OnStop = id => eg.Infos[id] = eg.Infos[id] with { Status = "EGRESS_COMPLETE" };
+        using (var sp = WithGateway(t, lk, eg)) await MeetingRecordingWorker.FinishAsync(sp, default);
+        Assert.Equal(MeetingRecordingStatus.Failed, t.Verify().MeetingRecordings.Single().Status);
+        Assert.Null((await Rooms(t, lk, eg).JoinAsync(w.BOrg.Id, "kalosi", null, default)).Error);
+    }
+
+    private sealed class SequenceClock(DateTime before, DateTime after) : TimeProvider
+    {
+        private int calls;
+        public override DateTimeOffset GetUtcNow() => new(Interlocked.Increment(ref calls) == 1 ? before : after);
+    }
+
+    [Fact]
+    public async Task Chat_sampled_in_A_cannot_post_into_B_even_if_sender_is_invited_to_both()
+    {
+        using var t = new TestDb();
+        var w = new Domain.World(t.AddUser("AORG"), t.AddUser("BORG"), t.AddUser("BOTH"));
+        var before = DateTime.UtcNow;
+        var a = await Book(t, w.AOrg.Id, before.AddMinutes(-50), 55, attendees: w.Both.Id);
+        var b = await Book(t, w.BOrg.Id, before.AddMinutes(10).AddSeconds(5), 60, attendees: w.Both.Id);
+        var after = before.AddSeconds(6);
+        var lk = new FakeRoomAdmin(); lk.PutIn(Media("kalosi", a), w.Both.Id.ToString()); lk.PutIn(Media("kalosi", b));
+        AddRecording(t, b, w.BOrg.Id);
+        var svc = new MeetingChatService(t.Verify(), lk, new MeetingChatRateLimiter(), occ, timeProvider: new SequenceClock(before, after));
+        var result = await svc.SendAsync(w.Both.Id, "kalosi", "must not enter B", default);
+        Assert.NotNull(result.Error);
+        Assert.Empty(t.Verify().MeetingChatMessages);
+        Assert.Empty(lk.DataSent);
+    }
+
     // ================================================================ 5. overrun continuity (fail closed)
 
     [Fact]

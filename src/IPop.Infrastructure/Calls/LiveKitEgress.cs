@@ -11,6 +11,8 @@ public interface ILiveKitEgress
     Task<string> StartRoomCompositeAsync(string room, string filepath, string templateUrl, CancellationToken ct);
     Task StopAsync(string egressId, CancellationToken ct);
     Task<LiveKitEgressInfo?> GetAsync(string egressId, CancellationToken ct);
+    Task<IReadOnlyList<(string Id, LiveKitEgressInfo Info)>> ListForRoomAsync(string room, CancellationToken ct) =>
+        throw new NotSupportedException("Room Egress reconciliation is unavailable.");
     /// Health check for the admin page: true when the Egress API answers at all (any 2xx, or 404).
     Task<bool> PingAsync(CancellationToken ct) => Task.FromResult(IsConfigured);
 }
@@ -59,7 +61,20 @@ public sealed class LiveKitEgress(HttpClient http, ILiveKitTokenService tokens) 
     {
         var r = await CallAsync("ListEgress", null, new { egress_id = egressId }, ct);
         if (!r.TryGetProperty("items", out var items) || items.GetArrayLength() == 0) return null;
-        var e = items[0];
+        return Parse(items[0]);
+    }
+
+    public async Task<IReadOnlyList<(string Id, LiveKitEgressInfo Info)>> ListForRoomAsync(string room, CancellationToken ct)
+    {
+        var r = await CallAsync("ListEgress", room, new { room_name = room }, ct);
+        if (!r.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
+            throw new InvalidOperationException("Egress reconciliation returned no authoritative items list.");
+        return items.EnumerateArray().Select(e => (e.GetProperty("egress_id").GetString()
+            ?? throw new InvalidOperationException("Egress id missing"), Parse(e))).ToList();
+    }
+
+    private static LiveKitEgressInfo Parse(JsonElement e)
+    {
         string? file = null; long? size = null; long? dur = null;
         if (e.TryGetProperty("file_results", out var fr) && fr.GetArrayLength() > 0)
         {
