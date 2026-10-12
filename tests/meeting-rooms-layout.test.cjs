@@ -13,6 +13,7 @@ test('twenty people stay inside the canvas', () => {
 const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync(require.resolve('../src/IPop.Web/wwwroot/js/meeting-rooms.js'), 'utf8');
+const sdk = require('../src/IPop.Web/wwwroot/js/livekit-client.umd.js');
 function harness(protocol = 'https:', extras = {}) {
   const callbacks = [], rooms = [], steps = [], timers = [];
   const S = { Camera: 'camera', Microphone: 'microphone', ScreenShare: 'screen_share' };
@@ -23,7 +24,12 @@ function harness(protocol = 'https:', extras = {}) {
       this.localParticipant = {
         identity: 'me', name: 'Me', permissions: { canPublish: true, canPublishSources: [2, 3, 4] }, attributes: {},
         getTrackPublication: () => undefined,
-        publishTrack: async track => { steps.push('publish'); assert.equal(track.muted, true); },
+        publishTrack: async track => { if (track.source !== S.ScreenShare) { steps.push('publish'); assert.equal(track.muted, true); } },
+        createScreenTracks: async options => {
+          await this.localParticipant.setScreenShareEnabled(true, options);
+          return [{ source: S.ScreenShare, mediaStreamTrack: { addEventListener() {} }, stop() {} }];
+        },
+        unpublishTrack: async () => {},
         setMicrophoneEnabled: async on => { this.localParticipant.isMicrophoneEnabled = on; this.emit(E.TrackMuted, { source: S.Microphone }, this.localParticipant); },
         setCameraEnabled: async on => { steps.push('camera:' + on); this.localParticipant.isCameraEnabled = on; },
         setScreenShareEnabled: async (on, options) => { steps.push(['share', on, options]); },
@@ -36,7 +42,7 @@ function harness(protocol = 'https:', extras = {}) {
     async connect(url) { this.state = 'connected'; this.url = url; this.emit(E.ConnectionStateChanged, 'connected'); }
     async disconnect() { this.state = 'disconnected'; this.emit(E.Disconnected); }
   }
-  const window = { LivekitClient: { Room, RoomEvent: E, Track: { Source: S }, createLocalAudioTrack: async () => ({ mute: async function () { this.muted = true; steps.push('mute'); }, stop() {} }) } };
+  const window = { LivekitClient: { VideoPreset: sdk.VideoPreset, VideoPresets: sdk.VideoPresets, ScreenSharePresets: sdk.ScreenSharePresets, Room, RoomEvent: E, Track: { Source: S }, createLocalAudioTrack: async () => ({ mute: async function () { this.muted = true; steps.push('mute'); }, stop() {} }) } };
   vm.runInNewContext(source, { window, location: { protocol, host: 'ipop.test' }, document: { getElementById: () => null, querySelectorAll: () => [] }, setTimeout: (fn, ms) => { if (ms === 100) { fn(); return 0; } timers.push(fn); return timers.length; }, clearTimeout() {}, TextEncoder, TextDecoder, console, ...extras });
   return { api: window.ipopRooms, rooms, steps, callbacks, E, S, timers, ref: { invokeMethodAsync: (...args) => { callbacks.push(args); return Promise.resolve(); } } };
 }
@@ -45,9 +51,9 @@ test('browser joins muted, camera off, exact capture settings and HTTPS host rew
   assert.equal(await h.api.join('wss://other.test', 'token', h.ref, {}), true);
   assert.equal(h.rooms[0].url, 'wss://ipop.test');
   assert.deepStrictEqual(h.steps, ['mute', 'publish']);
-  assert.equal(h.rooms[0].options.videoCaptureDefaults.resolution.width, 640);
-  assert.equal(h.rooms[0].options.videoCaptureDefaults.resolution.height, 360);
-  assert.equal(h.rooms[0].options.videoCaptureDefaults.resolution.frameRate, 15);
+  assert.equal(h.rooms[0].options.videoCaptureDefaults.resolution.width, 1280);
+  assert.equal(h.rooms[0].options.videoCaptureDefaults.resolution.height, 720);
+  assert.equal(h.rooms[0].options.videoCaptureDefaults.resolution.frameRate, 30);
   assert.equal(h.api.startPcRecording(), false);
   await h.api.leave();
 });
@@ -75,7 +81,7 @@ test('share busy/takeover, server mute notice, own mute suppression and stale ev
   assert.equal(await h.api.setShare(true, false), 'busy');
   assert.equal(await h.api.setShare(true, true), 'ok');
   assert.equal(h.steps.find(s => s[0] === 'data')[1].target, 'other');
-  assert.equal(h.steps.find(s => s[0] === 'share')[2].resolution.frameRate, 10);
+  assert.equal(h.steps.find(s => s[0] === 'share')[2].resolution.frameRate, 60);
   assert.equal(await h.api.setMic(false), false);
   assert.equal(h.callbacks.filter(c => c[1] === 'muted_by_server').length, 0);
   r.emit(h.E.TrackMuted, { source: h.S.Microphone }, r.localParticipant);
@@ -129,7 +135,9 @@ test('share rechecks after picker and retracts when another presenter wins', asy
     if (on) r.remoteParticipants.set('other', { identity: 'other', getTrackPublication: () => ({ isMuted: false }) });
   };
   assert.equal(await h.api.setShare(true, false), 'busy');
-  assert.deepStrictEqual(enabled, [true, false]);
+  // v2 captures first and checks the room before publishing; discard the unpublished capture.
+  assert.deepStrictEqual(enabled, [true]);
+  assert.equal(h.steps.filter(s => s === 'publish').length, 1); // only the muted microphone
 });
 test('share refuses stale picker and stale takeover results', async () => {
   const h = harness(); await h.api.join('ws://lan', 'token', h.ref, {});

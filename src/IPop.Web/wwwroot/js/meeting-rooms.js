@@ -12,10 +12,38 @@
     }
     return { cols: best.cols, rows: best.rows, w: best.w, h: best.h };
   }
-  if (typeof module !== 'undefined') { module.exports = { tileLayout }; return; }
+  // Server chat is text-only. Whitelist fields before crossing the .NET interop boundary.
+  function parseChatPayload(payload) {
+    if (!ArrayBuffer.isView(payload) || payload.byteLength > 16_384) return null;
+    try {
+      const m = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(payload));
+      const guid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+      if (!m || Array.isArray(m) || typeof m.id !== 'string' || typeof m.userId !== 'string' || !guid.test(m.id) || !guid.test(m.userId) ||
+          typeof m.name !== 'string' || m.name.length > 256 ||
+          typeof m.text !== 'string' || !m.text.trim() || m.text.length > 2000 ||
+          typeof m.sentAt !== 'string' || m.sentAt.length > 64 ||
+          !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?(?:Z|[+-]\d{2}:\d{2})$/.test(m.sentAt) || !Number.isFinite(Date.parse(m.sentAt)) ||
+          !['text', 'system'].includes(m.kind)) return null;
+      return { id: m.id, userId: m.userId, name: m.name, text: m.text, sentAt: m.sentAt, kind: m.kind };
+    } catch { return null; }
+  }
+
+  function nextCamera(devices, currentId) {
+    const unique = [...new Map(devices.filter(d => d.kind === 'videoinput' && d.deviceId).map(d => [d.deviceId, d])).values()];
+    const index = unique.findIndex(d => d.deviceId === currentId);
+    return unique.find((d, i) => i === (index + 1) % unique.length && d.deviceId !== currentId) || null;
+  }
+  if (typeof module !== 'undefined') { module.exports = { tileLayout, parseChatPayload, nextCamera }; return; }
 
   const LK = () => window.LivekitClient;
   let room = null, ref = null, opts = null, rec = null, peopleTimer = 0, lastVideoAllowed = null, micChanging = false, session = 0;
+  let shareChanging = null, cameraChanging = null;
+  const remoteAudio = new Map();
+
+  function detachAudio(track) {
+    track.detach().forEach(x => { if (x.dataset.mrAudio) { x.srcObject = null; x.remove(); } });
+    remoteAudio.delete(track);
+  }
 
   function resolveUrl(url) {
     // Same rule as livekit-call.js: on https use the page host (the proxy forwards /rtc).
@@ -105,8 +133,9 @@
     if (!L?.Room) return false;
     room = new L.Room({
       adaptiveStream: true, dynacast: true,
-      videoCaptureDefaults: { resolution: { width: 640, height: 360, frameRate: 15 } },
-      publishDefaults: { videoEncoding: { maxBitrate: 450_000, maxFramerate: 15 }, screenShareEncoding: { maxBitrate: 1_500_000, maxFramerate: 10 } },
+      videoCaptureDefaults: { resolution: L.VideoPresets.h720.resolution },
+      publishDefaults: { videoEncoding: L.VideoPresets.h720.encoding, simulcast: true,
+        videoSimulcastLayers: [L.VideoPresets.h180, L.VideoPresets.h360] },
       audioCaptureDefaults: { deviceId: opts.inputDeviceId || undefined, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
     const current = room;
@@ -117,8 +146,16 @@
       return events;
     } };
     events.on(E.ParticipantConnected, changed).on(E.ParticipantDisconnected, changed)
-      .on(E.TrackSubscribed, (track) => { if (track.kind === 'audio') { const a = track.attach(); a.dataset.mrAudio = '1'; document.body.appendChild(a); } changed(); })
-      .on(E.TrackUnsubscribed, (track) => { track.detach().forEach(x => { if (x.dataset.mrAudio) x.remove(); }); changed(); })
+      .on(E.TrackSubscribed, (track) => {
+        if (track.kind === 'audio' && !remoteAudio.has(track)) {
+          const a = track.attach(); a.dataset.mrAudio = '1'; remoteAudio.set(track, a);
+          document.body.appendChild(a);
+          // Explicit play covers both microphone and ScreenShareAudio; autoplay policies still apply.
+          a.play()?.catch(() => {});
+        }
+        changed();
+      })
+      .on(E.TrackUnsubscribed, (track) => { detachAudio(track); changed(); })
       .on(E.TrackMuted, (pub, participant) => {
         if (participant === current.localParticipant && pub.source === L.Track.Source.Microphone && !micChanging)
           ref.invokeMethodAsync('OnRoomNotice', 'muted_by_server', null).catch(() => {});
@@ -141,7 +178,12 @@
         }
         lastVideoAllowed = allowed; changed();
       })
-      .on(E.DataReceived, async (payload, participant) => {
+      .on(E.DataReceived, async (payload, participant, _kind, topic) => {
+        if (topic === 'ipop.chat') {
+          const chat = parseChatPayload(payload);
+          if (chat) ref.invokeMethodAsync('OnRoomChat', JSON.stringify(chat)).catch(() => {});
+          return;
+        }
         try {
           const msg = JSON.parse(new TextDecoder().decode(payload));
           if (participant && msg.t === 'share-takeover' && msg.target === current.localParticipant.identity) {
@@ -183,6 +225,8 @@
     if (rec) stopPcRecording();
     const oldRef = ref, oldOpts = opts;
     room = null; ref = null; opts = null; lastVideoAllowed = null;
+    shareChanging = null; cameraChanging = null;
+    [...remoteAudio.keys()].forEach(detachAudio);
     document.querySelectorAll('[data-mr-audio]').forEach(a => a.remove());
     const strip = oldOpts && el(oldOpts.stripId); if (strip) strip.innerHTML = '';
     const stage = oldOpts && el(oldOpts.stageId);
@@ -213,9 +257,62 @@
     changed(); return current.localParticipant.isCameraEnabled;
   }
 
+  // enumerateDevices does not prompt or acquire temporary tracks (unlike SDK getLocalDevices).
+  async function listCameras() {
+    const current = room;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      if (room !== current) return 0;
+      return devices.filter(d => d.kind === 'videoinput').length;
+    } catch { return 0; }
+  }
+
+  async function flipCamera() {
+    const r = room, failure = { success: false };
+    const publication = r?.localParticipant.getTrackPublication(LK().Track.Source.Camera);
+    const track = publication?.track;
+    const valid = () => room === r && canCamera() && r.localParticipant.isCameraEnabled &&
+      !publication.isMuted && r.localParticipant.getTrackPublication(LK().Track.Source.Camera)?.track === track;
+    if (!r || !track || !valid() || cameraChanging === r) return failure;
+    cameraChanging = r;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      if (!valid()) return failure;
+      const settings = track.mediaStreamTrack.getSettings();
+      const cameras = devices.filter(d => d.kind === 'videoinput');
+      const next = nextCamera(cameras, settings.deviceId || r.getActiveDevice('videoinput'));
+      let success, facingMode;
+      if (next) success = await r.switchActiveDevice('videoinput', next.deviceId);
+      else if (cameras.length > 1 && cameras.every(d => !d.label) && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)) {
+        facingMode = settings.facingMode === 'environment' ? 'user' : 'environment';
+        // Do not carry an exact deviceId into the facingMode fallback.
+        await track.restartTrack({ facingMode, resolution: LK().VideoPresets.h720.resolution });
+        success = true;
+      } else return failure;
+      if (room !== r) { track.stop(); return failure; }
+      if (!valid()) { await r.localParticipant.setCameraEnabled(false).catch(() => {}); return failure; }
+      if (!success) return failure;
+      changed();
+      const actual = track.mediaStreamTrack.getSettings();
+      return { success: true, deviceId: r.getActiveDevice('videoinput') || actual.deviceId || '',
+        facingMode: facingMode || actual.facingMode || '', label: next?.label || '' };
+    } catch {
+      if (room !== r) track.stop();
+      return failure;
+    } finally { if (cameraChanging === r) cameraChanging = null; }
+  }
+
   async function setShare(on, takeover) {
     const r = room;
-    if (!r) return 'denied';
+    if (!r || shareChanging === r) return 'denied';
+    shareChanging = r;
+    let tracks = [];
+    const discard = async () => {
+      for (const track of tracks) {
+        await r.localParticipant.unpublishTrack(track).catch(() => {});
+        track.stop();
+      }
+    };
     const sharing = p => { const s = p.getTrackPublication(LK().Track.Source.ScreenShare); return !!s && !s.isMuted; };
     const otherSharer = () => [...r.remoteParticipants.values()].find(sharing);
     try {
@@ -233,14 +330,45 @@
           }
         }
       }
-      await r.localParticipant.setScreenShareEnabled(on, { audio: false, resolution: { width: 1280, height: 720, frameRate: 10 } });
+      const L = LK();
+      if (on && !sharing(r.localParticipant)) {
+        const preset = new L.VideoPreset(1920, 1080, 6_000_000, 60);
+        // SDK 2.22.3 drops top-level suppressLocalAudioPlayback in its display constraints adapter.
+        // Its audio object passes through unchanged, so request the browser constraint there too.
+        tracks = await r.localParticipant.createScreenTracks({ audio: { suppressLocalAudioPlayback: true },
+          suppressLocalAudioPlayback: true, systemAudio: 'include', selfBrowserSurface: 'exclude',
+          surfaceSwitching: 'include', resolution: preset.resolution, contentHint: 'detail' });
+        if (room !== r) { await discard(); return 'denied'; }
+        if (!takeover && otherSharer()) { await discard(); changed(); return 'busy'; }
+        const video = tracks.find(t => t.source === L.Track.Source.ScreenShare);
+        // SDK ends each publication separately; explicitly stop paired audio if only video ends.
+        video?.mediaStreamTrack.addEventListener('ended', () => {
+          const audio = tracks.find(t => t.source === L.Track.Source.ScreenShareAudio);
+          if (audio) {
+            audio.stop();
+            r.localParticipant.unpublishTrack(audio).catch(() => {});
+          }
+        }, { once: true });
+        const publish = { screenShareEncoding: preset.encoding, simulcast: true, videoCodec: 'vp8',
+          screenShareSimulcastLayers: [L.ScreenSharePresets.h720fps30], degradationPreference: 'maintain-resolution' };
+        for (const track of tracks) {
+          await r.localParticipant.publishTrack(track, publish);
+          if (room !== r) { await discard(); return 'denied'; }
+        }
+      } else if (!on) await r.localParticipant.setScreenShareEnabled(false);
       if (room !== r) return 'denied';
       if (on && !takeover && otherSharer()) {
         await r.localParticipant.setScreenShareEnabled(false);
         if (room !== r) return 'denied';
         changed(); return 'busy';
       }
-    } catch { return 'denied'; }
+      if (on) {
+        const audio = r.localParticipant.getTrackPublication(L.Track.Source.ScreenShareAudio);
+        if (!audio?.track || audio.track.mediaStreamTrack?.readyState === 'ended')
+          ref.invokeMethodAsync('OnRoomNotice', 'share_no_audio', null).catch(() => {});
+      }
+    } catch { await discard(); return 'denied'; }
+    finally { if (shareChanging === r) shareChanging = null; }
     changed(); return 'ok';
   }
 
@@ -364,5 +492,5 @@
     document.body.appendChild(a); a.click(); a.remove();
   }
 
-  window.ipopRooms = { join, leave, setMic, setCamera, setShare, startPcRecording, stopPcRecording, setRecordingAttr, tileLayout, reveal, download };
+  window.ipopRooms = { join, leave, setMic, setCamera, listCameras, flipCamera, setShare, startPcRecording, stopPcRecording, setRecordingAttr, tileLayout, reveal, download };
 })();
