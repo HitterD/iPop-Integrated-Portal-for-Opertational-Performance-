@@ -523,6 +523,7 @@ public class MeetingRoomBookingTests
         public Task CreateRoomAsync(string r, int m, CancellationToken ct) => inner.CreateRoomAsync(r, m, ct);
         public Task UpdateRoomMetadataAsync(string r, string m, CancellationToken ct) => inner.UpdateRoomMetadataAsync(r, m, ct);
         public Task<bool> SetSourcesAsync(string r, string i, IReadOnlyList<string> s, CancellationToken ct) => inner.SetSourcesAsync(r, i, s, ct);
+        public Task SendDataAsync(string r, byte[] p, string t, CancellationToken ct) => inner.SendDataAsync(r, p, t, ct);
     }
 
     [Fact]
@@ -567,6 +568,7 @@ public class MeetingRoomBookingTests
         public Task CreateRoomAsync(string r, int m, CancellationToken ct) => inner.CreateRoomAsync(r, m, ct);
         public Task UpdateRoomMetadataAsync(string r, string m, CancellationToken ct) => throw new InvalidOperationException("twirp shape changed");
         public Task<bool> SetSourcesAsync(string r, string i, IReadOnlyList<string> s, CancellationToken ct) => inner.SetSourcesAsync(r, i, s, ct);
+        public Task SendDataAsync(string r, byte[] p, string t, CancellationToken ct) => inner.SendDataAsync(r, p, t, ct);
     }
 
     // ---------------------------------------------------------------- fix round 2

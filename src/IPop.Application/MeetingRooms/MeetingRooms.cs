@@ -97,3 +97,32 @@ public interface IMeetingRecordingService
     Task<string?> DeleteAsync(Guid userId, bool admin, Guid recordingId, CancellationToken ct);
 }
 
+
+/// One in-meeting chat line. <paramref name="Kind"/>: "text" | "system" (recording started/stopped; UserId = Guid.Empty).
+/// <paramref name="OffsetSeconds"/>: second of the server recording it was sent during (null without one).
+public record MeetingChatMessageDto(Guid Id, Guid UserId, string Name, string Text, DateTime SentAt, string Kind, int? OffsetSeconds);
+public record MeetingChatResult(MeetingChatMessageDto? Message, string? Error);
+
+public static class MeetingChat
+{
+    public const int MaxLength = 2000;
+    /// LiveKit data topic the API relays chat lines on.
+    public const string Topic = "ipop.chat";
+    public const string KindText = "text", KindSystem = "system";
+    /// Room history returned on join.
+    public const int HistoryLimit = 500;
+}
+
+/// In-meeting chat of a hall room (meeting rooms v2 §3): stored per booking, relayed to the LiveKit room, and saved with
+/// a server recording when one runs.
+public interface IMeetingChatService
+{
+    /// The sender must be allowed in the room's current booking (organizer, invited, guest) AND be in the LiveKit room now.
+    /// Errors: "empty", "too_long", "unknown_room", "media_unavailable", "not_in_room", "no_booking", "forbidden",
+    /// "rate_limited" (10 per 10 s per user). The relay to the room is best effort: the message is stored either way.
+    Task<MeetingChatResult> SendAsync(Guid userId, string key, string? text, CancellationToken ct);
+    /// History of the current booking, oldest first (max 500). Errors: "unknown_room", "no_booking", "forbidden".
+    Task<(IReadOnlyList<MeetingChatMessageDto>? Messages, string? Error)> HistoryAsync(Guid userId, string key, CancellationToken ct);
+    /// Lines saved with a recording, by offset. Null when the user may not view the recording (viewers and Admins).
+    Task<IReadOnlyList<MeetingChatMessageDto>?> RecordingChatAsync(Guid userId, bool admin, Guid recordingId, CancellationToken ct);
+}

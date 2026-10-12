@@ -155,6 +155,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<MeetingRecording> MeetingRecordings => Set<MeetingRecording>();
     public DbSet<MeetingRecordingViewer> MeetingRecordingViewers => Set<MeetingRecordingViewer>();
     public DbSet<MeetingRoomGuest> MeetingRoomGuests => Set<MeetingRoomGuest>();
+    public DbSet<MeetingChatMessage> MeetingChatMessages => Set<MeetingChatMessage>();
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<EmailOutboxMessage> EmailOutbox => Set<EmailOutboxMessage>();
     public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
@@ -198,6 +199,16 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
         {
             e.HasKey(x => new { x.RecordingId, x.UserId });
             e.HasIndex(x => x.UserId);
+        });
+        b.Entity<MeetingChatMessage>(e =>
+        {
+            // No FK to Meeting or MeetingRecording: recording-linked lines outlive the booking, and the booking worker /
+            // recording delete clean up explicitly.
+            e.Property(x => x.RoomKey).HasMaxLength(32);
+            e.Property(x => x.Kind).HasMaxLength(16);
+            e.Property(x => x.Text).HasMaxLength(2000);
+            e.HasIndex(x => new { x.MeetingId, x.SentAt });
+            e.HasIndex(x => x.RecordingId);
         });
         b.Entity<MeetingRoomGuest>(e =>
         {

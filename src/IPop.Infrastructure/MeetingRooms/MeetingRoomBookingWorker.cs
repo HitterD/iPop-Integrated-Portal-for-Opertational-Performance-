@@ -3,6 +3,7 @@ using IPop.Application.MeetingRooms;
 using IPop.Infrastructure.Calls;
 using IPop.Infrastructure.Hall;
 using IPop.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -19,6 +20,8 @@ namespace IPop.Infrastructure.MeetingRooms;
 /// <item>rewrites the room metadata (<see cref="RoomMetadata"/>): endAt / nextStartAt / takeoverAt and, one minute
 /// before a takeover, who will be moved out.</item>
 /// </list>
+/// Then it deletes the in-meeting chat of bookings that ended over an hour ago and no longer hold an occupied room,
+/// except lines saved with a server recording (they go with the recording).
 /// After EndAt with no next booking the room stays current while it stays occupied (at most 4 h); once it is seen empty
 /// (<see cref="RoomOccupancyTracker"/>), RoomAccess has no current booking and nobody can rejoin, even with a valid token.
 public sealed class MeetingRoomBookingWorker(IServiceProvider services, ILogger<MeetingRoomBookingWorker> log) : BackgroundService
@@ -55,6 +58,8 @@ public sealed class MeetingRoomBookingWorker(IServiceProvider services, ILogger<
         var tracker = scope.ServiceProvider.GetRequiredService<RoomOccupancyTracker>();
         if (!liveKit.IsConfigured) return null;
         DateTime? due = null;
+        var held = new HashSet<Guid>();          // bookings still running in an occupied room
+        var unknown = new HashSet<string>();     // rooms whose pass failed: their chat is left for a later pass
         // nowUtc is the tick's start; each room is dated by when its own LiveKit listing returned.
         var clock = System.Diagnostics.Stopwatch.StartNew();
         foreach (var (key, _) in HallBooking.Rooms)
@@ -62,19 +67,22 @@ public sealed class MeetingRoomBookingWorker(IServiceProvider services, ILogger<
             ct.ThrowIfCancellationRequested();
             try
             {
-                if (await RoomAsync(db, liveKit, tracker, key, () => nowUtc + clock.Elapsed, ct) is { } d && (due is null || d < due)) due = d;
+                if (await RoomAsync(db, liveKit, tracker, key, () => nowUtc + clock.Elapsed, held, ct) is { } d && (due is null || d < due)) due = d;
             }
             catch (Exception e) when (!ct.IsCancellationRequested)
             {
                 logger?.LogWarning(e, "Meeting room {Room}: booking pass failed", key);
                 db.ChangeTracker.Clear();
+                unknown.Add(key);
             }
         }
+        try { await CleanupChatAsync(db, nowUtc, held, unknown, ct); }
+        catch (Exception e) when (!ct.IsCancellationRequested) { logger?.LogWarning(e, "Meeting room chat cleanup failed"); }
         return due;
     }
 
     private static async Task<DateTime?> RoomAsync(IPopDbContext db, ILiveKitRoomAdmin liveKit, RoomOccupancyTracker tracker, string key,
-        Func<DateTime> clock, CancellationToken ct)
+        Func<DateTime> clock, HashSet<Guid> held, CancellationToken ct)
     {
         var lkRoom = MeetingRoomKeys.LiveKitRoom(key);
         var inside = (await liveKit.ListAsync(lkRoom, ct)).Select(p => p.Identity)
@@ -84,6 +92,7 @@ public sealed class MeetingRoomBookingWorker(IServiceProvider services, ILogger<
         var occupancy = tracker.Observe(key, inside.Count > 0, nowUtc);
         var (current, next) = await RoomAccess.BookingsAsync(db, key, nowUtc, occupancy, ct);
         if (inside.Count == 0) return NextDue(next, nowUtc);
+        if (current is not null) held.Add(current.MeetingId);
 
         var stay = new List<string>();
         foreach (var identity in inside)
@@ -104,6 +113,24 @@ public sealed class MeetingRoomBookingWorker(IServiceProvider services, ILogger<
             }
         }
         return NextDue(next, nowUtc);
+    }
+
+    /// How long a booking's chat outlives its end (once nobody of that booking is in the room any more).
+    public static readonly TimeSpan ChatKeep = TimeSpan.FromHours(1);
+
+    /// Deletes the chat of bookings that ended more than <see cref="ChatKeep"/> ago (or no longer exist) and are not
+    /// <paramref name="held"/> (running in an occupied room), skipping rooms whose state is <paramref name="unknown"/>.
+    /// Lines with a RecordingId stay: they are deleted with the recording.
+    private static async Task CleanupChatAsync(IPopDbContext db, DateTime nowUtc, HashSet<Guid> held, HashSet<string> unknown,
+        CancellationToken ct)
+    {
+        var cutoff = nowUtc - ChatKeep;
+        var candidates = await db.MeetingChatMessages.AsNoTracking()
+            .Where(m => m.RecordingId == null && !db.Meetings.Any(x => x.Id == m.MeetingId && x.EndAt >= cutoff))
+            .Select(m => new { m.MeetingId, m.RoomKey }).Distinct().ToListAsync(ct);
+        var ids = candidates.Where(c => !held.Contains(c.MeetingId) && !unknown.Contains(c.RoomKey)).Select(c => c.MeetingId).Distinct().ToList();
+        if (ids.Count == 0) return;
+        await db.MeetingChatMessages.Where(m => m.RecordingId == null && ids.Contains(m.MeetingId)).ExecuteDeleteAsync(ct);
     }
 
     private static DateTime? NextDue(Booking? next, DateTime nowUtc)

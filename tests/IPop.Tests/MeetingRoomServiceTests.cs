@@ -57,6 +57,14 @@ public class MeetingRoomServiceTests
             SourceChanges.Add((room, identity, string.Join(",", sources)));
             return Task.FromResult(true);
         }
+        public List<(string Room, byte[] Payload, string Topic)> DataSent { get; } = [];
+        public bool SendDataThrows { get; set; }
+        public Task SendDataAsync(string room, byte[] payload, string topic, CancellationToken ct)
+        {
+            if (SendDataThrows) throw new HttpRequestException("send data failed");
+            DataSent.Add((room, payload, topic));
+            return Task.CompletedTask;
+        }
         public void Fill(string key, int count, string? plus = null)
         {
             var list = Enumerable.Range(0, count).Select(i => new LiveKitParticipant(Guid.NewGuid().ToString(), $"P{i}", [], new Dictionary<string, string>())).ToList();

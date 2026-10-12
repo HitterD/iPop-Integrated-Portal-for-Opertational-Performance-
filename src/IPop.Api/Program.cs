@@ -206,6 +206,8 @@ builder.Services.AddSingleton<IPop.Infrastructure.MeetingRooms.RoomPasswordLimit
 // When each hall room was last empty (overrun rule) + last metadata written; in memory, starts "empty at app start".
 builder.Services.AddSingleton<IPop.Infrastructure.MeetingRooms.RoomOccupancyTracker>();
 builder.Services.AddScoped<IPop.Application.MeetingRooms.IMeetingRecordingService, IPop.Infrastructure.MeetingRooms.MeetingRecordingService>();
+builder.Services.AddSingleton<IPop.Infrastructure.MeetingRooms.MeetingChatRateLimiter>();
+builder.Services.AddScoped<IPop.Application.MeetingRooms.IMeetingChatService, IPop.Infrastructure.MeetingRooms.MeetingChatService>();
 builder.Services.AddScoped<IPop.Infrastructure.MeetingRooms.RecordingFileCache>();
 // Recording file tickets: HMAC key HKDF-derived from Jwt:Key with its own purpose label (never the JWT key itself).
 builder.Services.AddSingleton(new IPop.Infrastructure.MeetingRooms.RecordingTicketSigner(

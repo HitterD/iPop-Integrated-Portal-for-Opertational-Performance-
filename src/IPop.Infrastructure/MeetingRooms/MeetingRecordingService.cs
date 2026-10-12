@@ -63,6 +63,9 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
         }
         await db.SaveChangesAsync(CancellationToken.None);
         await PublishStateAsync(row.RoomKey, null, CancellationToken.None);
+        var starter = await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.Name).FirstOrDefaultAsync(CancellationToken.None);
+        await MeetingChatService.PostSystemAsync(db, liveKit, row, $"{(string.IsNullOrWhiteSpace(starter) ? "Someone" : starter)} started recording",
+            DateTime.UtcNow, log, CancellationToken.None);
         return new(await DtoAsync(row.Id, userId, false, ct), null);
     }
 
@@ -82,6 +85,7 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
         row.EndedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         await PublishStateAsync(row.RoomKey, row.Id, ct);
+        await MeetingChatService.PostSystemAsync(db, liveKit, row, "Recording stopped", row.EndedAt.Value, log, CancellationToken.None);
         return new(await DtoAsync(row.Id, userId, false, ct), null);
     }
 
@@ -146,6 +150,8 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
 
         row.Status = MeetingRecordingStatus.Deleted;
         await db.SaveChangesAsync(ct);
+        // The chat saved with it goes with it (its booking's chat was kept only for this recording).
+        await DeleteChatAsync(db, row.Id, CancellationToken.None);
         // The row is Deleted from here on (players and tickets answer 404); the file cleanup must finish even if the
         // caller goes away, so it does not use the request token.
         if (row.NasPath is { } path && nas is { HasServiceAccount: true })
@@ -167,6 +173,10 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
         return null;
     }
 
+    /// Removes the in-meeting chat lines saved with a recording (delete for everyone, and the retention purge).
+    public static Task<int> DeleteChatAsync(IPopDbContext db, Guid recordingId, CancellationToken ct) =>
+        db.MeetingChatMessages.Where(m => m.RecordingId == recordingId).ExecuteDeleteAsync(ct);
+
     /// A Processing recording deleted before the upload: its finished file in the spool folder goes too (best effort).
     private void DeleteSpool(MeetingRecording row)
     {
@@ -187,11 +197,12 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
         {
             x.Id, x.RoomKey, x.Title, x.StartedAt, x.DurationSeconds, x.SizeBytes, x.Status, People = x.Viewers.Count,
             By = db.Users.Where(u => u.Id == x.StartedById).Select(u => u.Name).FirstOrDefault(),
+            Chat = db.MeetingChatMessages.Count(m => m.RecordingId == x.Id),
             CanDelete = admin || x.StartedById == userId
                 || (x.MeetingId != null && db.Meetings.Any(m => m.Id == x.MeetingId && m.OrganizerId == userId)),
         }).SingleAsync(ct);
         var name = HallBooking.Rooms.FirstOrDefault(x => x.Key == r.RoomKey).Name ?? r.RoomKey;
         return new(r.Id, r.RoomKey, name, r.Title, r.By ?? "", r.StartedAt, r.DurationSeconds, r.SizeBytes, r.People,
-            r.Status.ToString().ToLowerInvariant(), r.StartedAt.AddDays(days), r.CanDelete, ChatCount: 0);
+            r.Status.ToString().ToLowerInvariant(), r.StartedAt.AddDays(days), r.CanDelete, ChatCount: r.Chat);
     }
 }

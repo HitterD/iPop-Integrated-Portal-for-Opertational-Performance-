@@ -217,6 +217,10 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
             .ToListAsync(ct);
         foreach (var r in stale) r.Status = MeetingRecordingStatus.Deleted;
         if (stale.Count > 0) await db.SaveChangesAsync(ct);
+        foreach (var r in stale) await MeetingRecordingService.DeleteChatAsync(db, r.Id, ct);
+        // Chat of any recording already Deleted (e.g. its delete-time cleanup did not finish) goes too.
+        await db.MeetingChatMessages.Where(m => m.RecordingId != null
+            && db.MeetingRecordings.Any(r => r.Id == m.RecordingId && r.Status == MeetingRecordingStatus.Deleted)).ExecuteDeleteAsync(ct);
         var deleted = stale.Count;
         if (!nas.HasServiceAccount) return deleted;
         var rows = await db.MeetingRecordings
@@ -232,6 +236,7 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
                 r.NasPath = null;
                 r.Status = MeetingRecordingStatus.Deleted;
                 await db.SaveChangesAsync(ct);
+                await MeetingRecordingService.DeleteChatAsync(db, r.Id, ct);
                 deleted++;
             }
             catch (Exception e) when (!ct.IsCancellationRequested)

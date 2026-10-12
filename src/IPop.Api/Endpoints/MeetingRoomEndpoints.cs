@@ -20,6 +20,7 @@ public static class MeetingRoomEndpoints
     public record UseNowRequest(int Minutes, string? Title, IReadOnlyList<string>? AttendeeNiks);
     public record UseNowResponse(Guid MeetingId, MeetingRoomJoinDto? Join);
     public record ExtendResponse(DateTime EndAt);
+    public record ChatRequest(string? Text);
 
     public static IEndpointRouteBuilder MapMeetingRooms(this IEndpointRouteBuilder app)
     {
@@ -90,6 +91,15 @@ public static class MeetingRoomEndpoints
             await MeetingEndpoints.NotifyMeetingChangedAsync(db, realtime, meetingId!.Value, [], ct);
             return Results.Ok(new ExtendResponse(endAt!.Value));
         });
+
+        // In-meeting chat (v2 §3): history of the current booking, and send (stored, then relayed on LiveKit topic ipop.chat).
+        g.MapGet("/{key}/chat", (string key, HttpContext http, IPopDbContext db, IMeetingChatService chat, CancellationToken ct) =>
+            ChatHistoryAsync(key, http, db, chat, ct));
+        g.MapPost("/{key}/chat", (string key, ChatRequest req, HttpContext http, IPopDbContext db, IMeetingChatService chat, CancellationToken ct) =>
+            ChatSendAsync(key, req, http, db, chat, ct));
+        // The chat saved with a server recording, by offset (same viewers as the recording; 404 otherwise).
+        g.MapGet("/recordings/{id:guid}/chat", (Guid id, HttpContext http, IPopDbContext db, IMeetingChatService chat, CancellationToken ct) =>
+            RecordingChatAsync(id, http, db, chat, ct));
 
         g.MapPost("/{key}/recordings", async (string key, HttpContext http, IPopDbContext db, IMeetingRecordingService recs, CancellationToken ct) =>
             await UserIdAsync(http, db, ct) is { } me ? RecordingResponse(await recs.StartAsync(me, key, ct)) : Results.Unauthorized());
@@ -177,6 +187,48 @@ public static class MeetingRoomEndpoints
     };
 
     public record TicketResponse(string Url);
+
+    public static async Task<IResult> ChatSendAsync(string key, ChatRequest req, HttpContext http, IPopDbContext db, IMeetingChatService chat,
+        CancellationToken ct)
+    {
+        if (await UserIdAsync(http, db, ct) is not { } me) return Results.Unauthorized();
+        var r = await chat.SendAsync(me, key, req.Text, ct);
+        return r.Error switch
+        {
+            null => Results.Ok(r.Message),
+            "empty" => Results.Json(new { code = r.Error, message = "Type a message first." }, statusCode: 400),
+            "too_long" => Results.Json(new { code = r.Error, message = $"Messages can be at most {MeetingChat.MaxLength} characters." }, statusCode: 400),
+            "rate_limited" => Results.Json(new { code = r.Error, message = "You are sending messages too fast. Wait a few seconds." }, statusCode: 429),
+            "media_unavailable" => Results.Json(new { code = r.Error, message = "The meeting server is not reachable right now." }, statusCode: 503),
+            _ => ChatDenied(r.Error),
+        };
+    }
+
+    public static async Task<IResult> ChatHistoryAsync(string key, HttpContext http, IPopDbContext db, IMeetingChatService chat, CancellationToken ct)
+    {
+        if (await UserIdAsync(http, db, ct) is not { } me) return Results.Unauthorized();
+        var (messages, error) = await chat.HistoryAsync(me, key, ct);
+        return error switch
+        {
+            null => Results.Ok(messages),
+            "media_unavailable" => Results.Json(new { code = error, message = "The meeting server is not reachable right now." }, statusCode: 503),
+            _ => ChatDenied(error),
+        };
+    }
+
+    public static async Task<IResult> RecordingChatAsync(Guid id, HttpContext http, IPopDbContext db, IMeetingChatService chat, CancellationToken ct)
+    {
+        if (await UserIdAsync(http, db, ct) is not { } me) return Results.Unauthorized();
+        return await chat.RecordingChatAsync(me, http.User.IsInRole("Admin"), id, ct) is { } list ? Results.Ok(list) : Results.NotFound();
+    }
+
+    private static IResult ChatDenied(string error) => error switch
+    {
+        "unknown_room" => Results.Json(new { code = error, message = "That room does not exist." }, statusCode: 404),
+        "no_booking" => Results.Json(new { code = error, message = "This room has no booking right now." }, statusCode: 409),
+        "not_in_room" => Results.Json(new { code = error, message = "Join the room first." }, statusCode: 403),
+        _ => Results.Json(new { code = "forbidden", message = "You are not part of this meeting." }, statusCode: 403),
+    };
 
     /// DELETE …/recordings/{id} (user and admin routes): 204; 404 when it is gone or the caller may not even see it;
     /// 403 when the caller sees it but may not delete it; 409 while it is still recording.

@@ -19,6 +19,9 @@ public interface ILiveKitRoomAdmin
     Task UpdateRoomMetadataAsync(string room, string metadata, CancellationToken ct);
     /// Replaces what the participant may publish; tracks of sources no longer allowed are muted at once.
     Task<bool> SetSourcesAsync(string room, string identity, IReadOnlyList<string> sources, CancellationToken ct);
+    /// Sends a reliable data packet on <paramref name="topic"/> to everyone in the room (RoomService.SendData).
+    /// A room that does not exist is not an error (nobody to tell).
+    Task SendDataAsync(string room, byte[] payload, string topic, CancellationToken ct);
 }
 
 public record LiveKitParticipant(string Identity, string Name, IReadOnlyList<LiveKitTrack> Tracks, IReadOnlyDictionary<string, string> Attributes);
@@ -85,6 +88,10 @@ public sealed class LiveKitRoomAdmin(HttpClient http, ILiveKitTokenService token
 
     public async Task UpdateRoomMetadataAsync(string room, string metadata, CancellationToken ct) =>
         await CallAsync("UpdateRoomMetadata", room, new { room, metadata }, ct, allowNotFound: false);
+
+    public async Task SendDataAsync(string room, byte[] payload, string topic, CancellationToken ct) =>
+        // Twirp JSON: bytes as base64; kind RELIABLE (ordered, retransmitted).
+        await CallAsync("SendData", room, new { room, data = Convert.ToBase64String(payload), kind = "RELIABLE", topic }, ct);
 
     public async Task<bool> SetSourcesAsync(string room, string identity, IReadOnlyList<string> sources, CancellationToken ct)
     {

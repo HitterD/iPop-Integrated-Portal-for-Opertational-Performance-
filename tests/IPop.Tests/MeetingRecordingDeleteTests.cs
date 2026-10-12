@@ -100,7 +100,7 @@ public class MeetingRecordingDeleteTests : IDisposable
         Assert.Empty(await svc.ListAsync(w.Admin.Id, true, default));
         var all = Assert.Single(await svc.ListAllAsync(default));
         Assert.True(all.CanDelete);
-        Assert.Equal(0, all.ChatCount);
+        Assert.Equal(1, all.ChatCount);   // the "… started recording" system line (Task 4)
         // Viewing for audit from Administration still works.
         Assert.True(await svc.CanViewAsync(w.Admin.Id, true, w.RecordingId, default));
         // The organizer was not in the room either: no row in their list, although they could delete it.
