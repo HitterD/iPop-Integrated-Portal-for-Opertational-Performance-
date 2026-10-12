@@ -52,6 +52,21 @@
   const LK = () => window.LivekitClient;
   let room = null, ref = null, opts = null, rec = null, peopleTimer = 0, lastVideoAllowed = null, micChanging = false, session = 0;
   let shareChanging = null, cameraChanging = null;
+  // navigator.mediaDevices 'devicechange' → .NET OnDevicesChanged (Flip shows only with >1 camera). One listener per room.
+  let deviceWatch = null;
+  function watchDevices(dotnetRef, isCurrent) {
+    unwatchDevices();
+    const md = typeof navigator !== 'undefined' && navigator.mediaDevices;
+    if (!md?.addEventListener) return;
+    let timer = 0;
+    const handler = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => { if (isCurrent()) dotnetRef.invokeMethodAsync('OnDevicesChanged').catch(() => {}); }, 300);
+    };
+    md.addEventListener('devicechange', handler);
+    deviceWatch = () => { clearTimeout(timer); md.removeEventListener('devicechange', handler); };
+  }
+  function unwatchDevices() { if (deviceWatch) { deviceWatch(); deviceWatch = null; } }
   const remoteAudio = new Map();
 
   function detachAudio(track) {
@@ -78,6 +93,7 @@
     }
     t.querySelector('.mr-tile-av').textContent = (name || '?').split(/\s+/).map(s => s[0] || '').join('').slice(0, 2).toUpperCase();
     t.querySelector('.mr-tile-nm').textContent = isLocal ? 'You' : name || identity;
+    t.classList.toggle('local', !!isLocal);
     return t;
   }
 
@@ -230,6 +246,7 @@
     } catch { mic?.stop(); /* microphone permission may be denied; joining listen-only still works */ }
     if (ticket !== session || room !== current) return false;
     if (room.metadata) ref.invokeMethodAsync('OnRoomMetadata', room.metadata).catch(() => {});
+    watchDevices(ref, () => room === current && ticket === session);
     changed();
     return true;
   }
@@ -238,6 +255,7 @@
     if (!r || room !== r) return;
     ++session;
     clearTimeout(peopleTimer);
+    unwatchDevices();
     if (rec) stopPcRecording();
     const oldRef = ref, oldOpts = opts;
     room = null; ref = null; opts = null; lastVideoAllowed = null;

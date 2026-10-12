@@ -214,8 +214,117 @@ body:has(.mr-meet:not(.mr-hidden)) .toast-host { z-index: 1190; }
 .mr-pill-rec::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #fff; animation: mr-pulse 1.4s ease-in-out infinite; }
 .mr-pill svg.lucide { width: 16px; height: 16px; color: #a1a1a6; }
 
+/* ============================================================
+   v2 in-meeting (docs/mockups/meeting-rooms-v2.html "In meeting + chat", "Time running out", "Phone")
+   ============================================================ */
+/* dock: Chat badge */
+.mr-ctl { position: relative; }
+.mr-badge {
+  position: absolute; top: -3px; right: 4px; min-width: 18px; height: 18px; border-radius: 9px; padding: 0 5px;
+  background: var(--mr-red); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 2px rgba(44,44,46,.9);
+}
+.mr-pill .mr-pill-badge { position: static; box-shadow: none; }
+
+/* time chip "Ends in m:ss" */
+.mr-timechip {
+  display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 12px; border-radius: 999px; white-space: nowrap;
+  background: rgba(255,214,10,.14); border: .5px solid rgba(255,214,10,.45); color: #ffd60a; font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.mr-meet .mr-timechip svg.lucide { width: 14px; height: 14px; }
+
+/* 5-minute banner */
+.mr-banner {
+  position: absolute; top: 84px; left: 50%; transform: translateX(-50%); z-index: 9; display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px 10px 16px; border-radius: 16px; max-width: calc(100vw - 32px);
+  background: rgba(44,44,46,.94); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: .5px solid rgba(255,255,255,.14);
+  box-shadow: 0 16px 40px rgba(0,0,0,.5); font-size: 13.5px; animation: mr-pop .3s var(--mr-ease);
+}
+.mr-banner > span { min-width: 0; }
+.mr-meet .mr-banner > svg.lucide { color: #ffd60a; }
+.mr-meet .mr-bb { height: 32px; padding: 0 14px; border-radius: 999px; background: #fff; color: #1d1d1f; font-weight: 650; font-size: 13px; white-space: nowrap; flex: none; }
+.mr-meet .mr-bb:hover { background: #f2f2f7; }
+.mr-meet .mr-bb:disabled { opacity: .6; cursor: default; }
+.mr-meet .mr-bb.mr-bb-g { background: rgba(255,255,255,.14); color: #fff; }
+.mr-meet .mr-bb.mr-bb-g:hover { background: rgba(255,255,255,.22); }
+
+/* in-room toast (share without sound, chat/extend refusals) */
+.mr-toast {
+  position: absolute; bottom: 126px; left: 50%; transform: translateX(-50%); z-index: 9; display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px; border-radius: 999px; max-width: calc(100vw - 32px);
+  background: rgba(44,44,46,.94); border: .5px solid rgba(255,255,255,.14); font-size: 13px; color: #f2f2f7;
+  box-shadow: 0 16px 40px rgba(0,0,0,.45); animation: mr-pop .3s var(--mr-ease);
+}
+.mr-meet .mr-toast svg.lucide { width: 16px; height: 16px; color: #ffd60a; }
+
+/* chat panel */
+.mr-chat {
+  position: absolute; top: 72px; right: 22px; bottom: 118px; width: 340px; border-radius: 18px; display: flex; flex-direction: column; z-index: 7;
+  background: rgba(28,28,30,.88); backdrop-filter: blur(30px) saturate(1.6); -webkit-backdrop-filter: blur(30px) saturate(1.6); border: .5px solid rgba(255,255,255,.12);
+  animation: mr-fade .2s ease;
+}
+/* The panel sits over the stage's right edge: shrink the stage so the shared screen and strip stay visible. */
+.mr-meet:has(> .mr-chat) #mr-stage.mr-stage { right: 378px; }
+.mr-chat h4 { display: flex; align-items: center; gap: 8px; margin: 0; padding: 14px 16px 10px; font-size: 15px; font-weight: 700; border-bottom: .5px solid rgba(255,255,255,.08); }
+.mr-chat-t { flex: 1; }
+.mr-chat-back { display: none; }
+.mr-chat-rec { font-size: 12px; color: #ff8a80; font-weight: 600; display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+.mr-chat-rec::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--mr-red); }
+.mr-msgs { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; scrollbar-width: thin; }
+.mr-chat-empty { margin: auto; max-width: 220px; text-align: center; color: #8e8e93; font-size: 13px; }
+.mr-m { display: flex; gap: 9px; align-items: flex-start; }
+.mr-m .mr-m-av { width: 28px; height: 28px; font-size: 10.5px; flex: none; }
+.mr-bub { min-width: 0; }
+.mr-nm { display: block; font-size: 12.5px; font-weight: 650; color: #d1d1d6; overflow-wrap: anywhere; }
+.mr-nm time { font-weight: 500; color: #8e8e93; margin-left: 6px; font-size: 11.5px; }
+.mr-bub p { margin: 2px 0 0; font-size: 13.5px; line-height: 1.4; color: #f2f2f7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mr-bub a { color: #64d2ff; text-decoration: none; }
+.mr-bub a:hover { text-decoration: underline; }
+.mr-m.mine { flex-direction: row-reverse; }
+.mr-m.mine .mr-bub { text-align: right; }
+.mr-m.mine .mr-bub p { background: #2e9e5b; color: #fff; padding: 7px 11px; border-radius: 14px 14px 4px 14px; display: inline-block; text-align: left; }
+.mr-m.mine .mr-bub a { color: #fff; text-decoration: underline; }
+.mr-sysm { align-self: center; text-align: center; font-size: 11.5px; color: #8e8e93; background: rgba(255,255,255,.06); padding: 3px 10px; border-radius: 999px; }
+.mr-composer { position: relative; display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-top: .5px solid rgba(255,255,255,.08); }
+.mr-in-wrap { flex: 1; min-width: 0; height: 38px; border-radius: 999px; background: rgba(255,255,255,.1); display: flex; align-items: center; padding: 0 6px 0 14px; }
+.mr-in { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: none; color: #f2f2f7; font: inherit; font-size: 13.5px; }
+.mr-in::placeholder { color: #8e8e93; }
+.mr-in-wrap:focus-within { box-shadow: 0 0 0 2px rgba(10,132,255,.55); }
+.mr-meet .mr-emoji-btn { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: #8e8e93; }
+.mr-meet .mr-emoji-btn:hover { color: #f2f2f7; }
+.mr-meet .mr-emoji-btn svg.lucide { width: 16px; height: 16px; }
+.mr-meet .mr-send { width: 38px; height: 38px; border-radius: 50%; background: #2e9e5b; display: grid; place-items: center; color: #fff; flex: none; transition: opacity .2s; }
+.mr-meet .mr-send:disabled { opacity: .45; cursor: default; }
+.mr-meet .mr-send svg.lucide { width: 16px; height: 16px; }
+.mr-count { position: absolute; right: 64px; top: -20px; font-size: 11px; color: #8e8e93; font-variant-numeric: tabular-nums; background: rgba(28,28,30,.9); padding: 1px 7px; border-radius: 999px; }
+.mr-count.full { color: #ff8a80; }
+.mr-emoji-pop { position: absolute; right: 8px; bottom: calc(100% + 8px); z-index: 10; }
+
 /* ---------- small screens ---------- */
 @media (max-width: 767px) {
+  /* Phone (mockup "Phone"): main speaker, own camera as picture-in-picture, compact dock, chat full screen. */
+  .mr-share-btn, .mr-recwrap, .mr-people-btn, .mr-div { display: none !important; }
+  .mr-meet:has(> .mr-chat) #mr-stage.mr-stage { right: 10px; }
+  #mr-stage.grid .mr-strip:has(> .mr-tile:nth-child(2)) .mr-tile.local {
+    position: absolute; right: 12px; bottom: 12px; width: 92px; height: 124px; aspect-ratio: auto; z-index: 4; border-radius: 16px;
+    box-shadow: 0 10px 24px rgba(0,0,0,.5); border: 1.5px solid rgba(255,255,255,.25);
+  }
+  #mr-stage.grid .mr-strip:has(> .mr-tile:nth-child(2)) .mr-tile.local .mr-tile-av { width: 44px; height: 44px; font-size: 16px; }
+  #mr-stage.grid .mr-strip:has(> .mr-tile:nth-child(2)) .mr-tile.local .mr-tile-nm { left: 6px; bottom: 6px; height: 20px; font-size: 10.5px; padding: 0 7px; }
+  .mr-chat {
+    position: fixed; inset: 0; width: auto; border-radius: 0; z-index: 12; background: #0b0b0c;
+    backdrop-filter: none; -webkit-backdrop-filter: none; border: 0; padding-top: env(safe-area-inset-top, 0px);
+  }
+  .mr-chat h4 { padding: 14px 16px 12px; font-size: 17px; border-bottom-color: rgba(255,255,255,.1); }
+  .mr-meet .mr-chat-back { display: grid; place-items: center; width: 32px; height: 32px; margin: -4px 0 -4px -8px; color: #64d2ff; }
+  .mr-meet .mr-chat-back svg.lucide { width: 22px; height: 22px; }
+  .mr-chat .mr-composer { padding: 10px 12px calc(14px + env(safe-area-inset-bottom, 0px)); }
+  .mr-in { font-size: 16px; } /* iOS: no zoom on focus */
+  .mr-emoji-pop { position: fixed; left: 8px; right: 8px; bottom: 72px; }
+  .mr-timechip { height: 30px; padding: 0 10px; }
+  .mr-banner { top: 72px; left: 10px; right: 10px; transform: none; flex-wrap: wrap; white-space: normal; padding: 10px 12px; }
+  .mr-banner > span { flex: 1 1 200px; }
+  .mr-toast { bottom: 112px; left: 10px; right: 10px; transform: none; border-radius: 16px; white-space: normal; }
   .mr-top { padding: 0 12px; height: 64px; }
   .mr-gbtn.mr-copy { display: none; }
   .mr-reccap { position: absolute; top: 64px; left: 12px; }
@@ -233,6 +342,17 @@ body:has(.mr-meet:not(.mr-hidden)) .toast-host { z-index: 1190; }
   .mr-menu { position: fixed; left: 12px; right: 12px; bottom: 104px; width: auto; transform-origin: 50% 100%; }
   .mr-menu::after { display: none; }
   .mr-pill { right: 10px; bottom: calc(var(--m-safe-b, 0px) + 76px); }
+  /* Own tile floats as picture-in-picture, so two people = one big tile (after the column rules above). */
+  #mr-stage.grid .mr-strip:not(:has(> .mr-tile:nth-child(3))) { --mr-cols: 1; }
+  /* Three or more: the first other person is the main tile, the rest a row of small tiles under it (mockup p-main/p-strip). */
+  #mr-stage.grid .mr-strip:has(> .mr-tile:nth-child(3)) { display: flex; flex-wrap: wrap; align-content: stretch; gap: 8px; overflow: hidden; }
+  #mr-stage.grid .mr-strip:has(> .mr-tile:nth-child(3)) > .mr-tile:not(.local) { flex: none; width: 58px; height: 58px; border-radius: 14px; }
+  #mr-stage.grid .mr-strip:has(> .mr-tile:nth-child(3)) > .mr-tile:not(.local) .mr-tile-av { width: 34px; height: 34px; font-size: 13px; }
+  #mr-stage.grid .mr-strip:has(> .mr-tile:nth-child(3)) > .mr-tile:not(.local) .mr-tile-nm { display: none; }
+  #mr-stage.grid .mr-strip:has(> .mr-tile:nth-child(3)) > .mr-tile.local + .mr-tile { width: 100%; height: calc(100% - 66px); border-radius: 22px; }
+  #mr-stage.grid .mr-strip:has(> .mr-tile:nth-child(3)) > .mr-tile.local + .mr-tile .mr-tile-av { width: 84px; height: 84px; font-size: 30px; }
+  #mr-stage.grid .mr-strip:has(> .mr-tile:nth-child(3)) > .mr-tile.local + .mr-tile .mr-tile-nm { display: flex; }
+  #mr-stage.grid .mr-strip:has(> .mr-tile:nth-child(3)) .mr-tile.local { bottom: 78px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -28,6 +28,10 @@
                 <span class="mr-recbar mr-reccap" role="status" title="Recording to their PC">Recording · started by @(pc.IsLocal ? "you" : pc.Name)</span>
             }
             <div class="mr-right">
+                @if (TimeLeft is { } left && left <= TimeSpan.FromMinutes(15))
+                {
+                    <span class="mr-timechip" role="timer" aria-live="off"><i data-lucide="timer"></i>Ends in @Countdown(left)</span>
+                }
                 <button type="button" class="mr-gbtn mr-copy" @onclick="CopyLinkAsync"><i data-lucide="link"></i>Copy link</button>
                 <button type="button" class="mr-gbtn mr-minimize" @onclick="Minimize"><i data-lucide="minimize-2"></i>Minimize</button>
             </div>
@@ -41,6 +45,24 @@
             </div>
         }
 
+        @if (ShowBanner && Rooms.Booking is { } bk)
+        {
+            <div class="mr-banner" role="status">
+                <i data-lucide="timer"></i>
+                <span>This booking ends at @Local(bk.EndAt). @(bk.NextStartAt is { } nx ? $"The next booking starts at {Local(nx)}." : "The room is free after that.")</span>
+                @if (Rooms.CanExtend)
+                {
+                    <button type="button" class="mr-bb mr-extend" disabled="@extending" @onclick="ExtendAsync">Extend 15 min</button>
+                }
+                <button type="button" class="mr-bb mr-bb-g mr-ok" @onclick="() => bannerDismissedFor = bk.EndAt">OK</button>
+            </div>
+        }
+
+        @if (toast is not null)
+        {
+            <div class="mr-toast" role="status" aria-live="polite"><i data-lucide="@toastIcon"></i><span>@toast</span></div>
+        }
+
         <section id="mr-stage" class="mr-stage grid">
             <video class="mr-share" autoplay playsinline muted></video>
             @if (Sharer is { } sh)
@@ -49,6 +71,59 @@
             }
             <div id="mr-strip" class="mr-strip"></div>
         </section>
+
+        @if (Rooms.ChatOpen)
+        {
+            <aside class="mr-chat" aria-label="Meeting chat">
+                <h4>
+                    <button type="button" class="mr-chat-back" aria-label="Close chat" @onclick="ToggleChat"><i data-lucide="chevron-left"></i></button>
+                    <span class="mr-chat-t">Meeting chat</span>
+                    @if (Rooms.RecordingServer is not null) { <span class="mr-chat-rec">Saved with the recording</span> }
+                </h4>
+                <div class="mr-msgs" @ref="msgsRef" role="log" aria-live="polite">
+                    @if (Rooms.Chat.Count == 0)
+                    {
+                        <div class="mr-chat-empty">Messages here are seen by everyone in the meeting.</div>
+                    }
+                    @foreach (var line in Rooms.Chat)
+                    {
+                        if (line.Kind == "system")
+                        {
+                            <div class="mr-sysm" @key="line.Id">@line.Text</div>
+                            continue;
+                        }
+                        var mine = line.UserId == Rooms.MyId;
+                        <div class="mr-m @(mine ? "mine" : "")" @key="line.Id">
+                            <span class="mr-mono mr-m-av" style="background:@Tint(line.UserId)" aria-hidden="true">@Initials(line.Name)</span>
+                            <div class="mr-bub">
+                                <span class="mr-nm">@(mine ? "You" : line.Name)<time datetime="@line.SentAt.ToString("o")">@Local(line.SentAt)</time></span>
+                                <p>@foreach (var seg in Segments(line.Text))
+                                   {
+                                       if (seg.Href is { } href) { <a href="@href" target="_blank" rel="noopener noreferrer">@seg.Text</a> }
+                                       else { @seg.Text }
+                                   }</p>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="mr-composer">
+                    <div class="mr-in-wrap">
+                        <input type="text" class="mr-in" placeholder="Message everyone…" aria-label="Message everyone" maxlength="@MeetingRoomState.ChatMaxLength"
+                               autocomplete="off" spellcheck="true" @bind="draft" @bind:event="oninput" @onkeydown="ComposerKeyAsync" />
+                        <button type="button" class="mr-emoji-btn" aria-label="Emoji" data-emoji-toggle @onclick="() => emojiOpen = !emojiOpen"><i data-lucide="smile"></i></button>
+                    </div>
+                    <button type="button" class="mr-send" aria-label="Send" disabled="@(sending || string.IsNullOrWhiteSpace(draft))" @onclick="SendAsync"><i data-lucide="arrow-up"></i></button>
+                    @if (draft.Length >= MeetingRoomState.ChatMaxLength - 200)
+                    {
+                        <span class="mr-count @(draft.Length >= MeetingRoomState.ChatMaxLength ? "full" : "")" aria-live="polite">@draft.Length / @MeetingRoomState.ChatMaxLength</span>
+                    }
+                    @if (emojiOpen)
+                    {
+                        <div class="mr-emoji-pop"><EmojiPicker OnPick="PickEmoji" OnClose="() => emojiOpen = false" OnDismiss="() => emojiOpen = false" /></div>
+                    }
+                </div>
+            </aside>
+        }
 
         @if (peopleOpen)
         {
@@ -79,6 +154,13 @@
                     aria-pressed="@(Rooms.CamOn ? "true" : "false")">
                 <span class="mr-ci"><i data-lucide="@(Rooms.CamOn ? "video" : "video-off")"></i></span>@(Rooms.VideoAllowed ? "Camera" : "Video off")
             </button>
+            @if (Rooms.CanFlip)
+            {
+                <button type="button" class="mr-ctl mr-flip" disabled="@(!Rooms.CamOn)" title="@(Rooms.CamOn ? "Switch between the front and back camera" : "Turn the camera on to flip it")"
+                        @onclick="FlipAsync">
+                    <span class="mr-ci"><i data-lucide="switch-camera"></i></span>Flip
+                </button>
+            }
             <button type="button" class="mr-ctl mr-share-btn @(Rooms.Sharing ? "on" : "")" @onclick="() => ShareAsync(false)"
                     aria-pressed="@(Rooms.Sharing ? "true" : "false")">
                 <span class="mr-ci"><i data-lucide="monitor-up"></i></span>@(Rooms.Sharing ? "Stop share" : "Share")
@@ -115,7 +197,13 @@
                 }
             </span>
             <span class="mr-div" aria-hidden="true"></span>
-            <button type="button" class="mr-ctl mr-people-btn @(peopleOpen ? "on" : "")" @onclick="() => peopleOpen = !peopleOpen"
+            <button type="button" class="mr-ctl mr-chat-btn @(Rooms.ChatOpen ? "on" : "")" @onclick="ToggleChat"
+                    aria-pressed="@(Rooms.ChatOpen ? "true" : "false")" aria-label="@(Rooms.Unread > 0 ? $"Chat, {Rooms.Unread} unread" : "Chat")">
+                <span class="mr-ci"><i data-lucide="message-circle"></i></span>
+                @if (Rooms.Unread > 0) { <span class="mr-badge" aria-hidden="true">@(Rooms.Unread > 99 ? "99+" : Rooms.Unread.ToString())</span> }
+                Chat
+            </button>
+            <button type="button" class="mr-ctl mr-people-btn @(peopleOpen ? "on" : "")" @onclick="TogglePeople"
                     aria-pressed="@(peopleOpen ? "true" : "false")">
                 <span class="mr-ci"><i data-lucide="users"></i></span>People
             </button>
@@ -145,6 +233,7 @@
             <span class="mr-sw" aria-hidden="true"></span>
             <span class="mr-pill-t"><b>@room.Name</b><small>@PeopleCount(Rooms.People.Count)</small></span>
             @if (Rooms.RecordingPc || Rooms.RecordingServer is not null || Rooms.People.Any(p => p.RecPc)) { <span class="mr-pill-rec">REC</span> }
+            @if (Rooms.Unread > 0) { <span class="mr-badge mr-pill-badge" aria-label="@Rooms.Unread unread">@(Rooms.Unread > 99 ? "99+" : Rooms.Unread.ToString())</span> }
             <i data-lucide="maximize-2"></i>
         </button>
     }
@@ -152,6 +241,146 @@
 
 @code {
     private sealed record Island(string Icon, string Title, string Text);
+
+    /// Chat text as plain-text runs and links. Only absolute http(s) URLs with a host become links (no javascript:,
+    /// no relative paths); trailing punctuation stays text. Rendered by Razor, so nothing is ever parsed as HTML.
+    public sealed record Segment(string Text, string? Href);
+
+    private static readonly System.Text.RegularExpressions.Regex UrlRx =
+        new(@"https?://[^\s<>""']+", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    public static IReadOnlyList<Segment> Segments(string text)
+    {
+        var list = new List<Segment>();
+        var pending = new System.Text.StringBuilder();
+        var at = 0;
+        foreach (System.Text.RegularExpressions.Match m in UrlRx.Matches(text))
+        {
+            if (m.Index < at) continue;
+            var raw = m.Value.TrimEnd('.', ',', ';', ':', '!', '?', '\'', '"', ']', '}', '>');
+            while (raw.EndsWith(')') && raw.Count(c => c == ')') > raw.Count(c => c == '(')) raw = raw[..^1];
+            if (Uri.TryCreate(raw, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+                && !string.IsNullOrEmpty(uri.Host))
+            {
+                pending.Append(text, at, m.Index - at);
+                if (pending.Length > 0) { list.Add(new(pending.ToString(), null)); pending.Clear(); }
+                list.Add(new(raw, uri.AbsoluteUri));
+                at = m.Index + raw.Length;
+            }
+        }
+        pending.Append(text, at, text.Length - at);
+        if (pending.Length > 0) list.Add(new(pending.ToString(), null));
+        return list;
+    }
+
+    private static readonly string[] Tints = ["#c47b45", "#5562b8", "#3f7d5a", "#8a5a3c", "#b0412d", "#6b5bb5", "#2f7d8c", "#9a6849"];
+    private static string Tint(Guid id) => Tints[id.ToByteArray().Aggregate(0, (h, b) => (h * 31 + b) & 0xffff) % Tints.Length];
+    private static string Local(DateTime utc) => utc.ToLocalTime().ToString("HH:mm");
+
+    private string draft = "";
+    private bool sending, emojiOpen, extending;
+    private DateTime? bannerDismissedFor;
+    private ElementReference msgsRef;
+    private int renderedChat;
+    private string? toast;
+    private string toastIcon = "info";
+    private CancellationTokenSource? toastCts;
+
+    private TimeSpan? TimeLeft => Rooms.Booking is { } b && b.EndAt > Rooms.Clock() ? b.EndAt - Rooms.Clock() : null;
+    private bool ShowBanner => TimeLeft is { } left && left <= TimeSpan.FromMinutes(5) && bannerDismissedFor != Rooms.Booking?.EndAt;
+
+    /// "4:52": whole seconds, rounded up so the chip never shows 0:00 while time is left.
+    internal static string Countdown(TimeSpan left)
+    {
+        var s = (int)Math.Ceiling(left.TotalSeconds);
+        return $"{s / 60}:{s % 60:00}";
+    }
+
+    private void ToggleChat()
+    {
+        peopleOpen = false; menuOpen = false;
+        Rooms.SetChatOpen(!Rooms.ChatOpen);
+        if (!Rooms.ChatOpen) emojiOpen = false;
+    }
+
+    private void TogglePeople()
+    {
+        peopleOpen = !peopleOpen;
+        if (peopleOpen && Rooms.ChatOpen) { Rooms.SetChatOpen(false); emojiOpen = false; }
+    }
+
+    private async Task ComposerKeyAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey && !e.IsComposing) await SendAsync();
+    }
+
+    private void PickEmoji(string emoji)
+    {
+        if (draft.Length + emoji.Length <= MeetingRoomState.ChatMaxLength) draft += emoji;
+        emojiOpen = false;
+    }
+
+    private async Task SendAsync()
+    {
+        if (sending || string.IsNullOrWhiteSpace(draft)) return;
+        sending = true;
+        var text = draft;
+        try
+        {
+            var err = await Rooms.SendChatAsync(text);
+            if (err is null) { if (draft == text) draft = ""; return; }
+            ShowToast(err switch
+            {
+                "rate_limited" => "Slow down — you're sending messages too fast.",
+                "too_long" => $"Messages can be at most {MeetingRoomState.ChatMaxLength} characters.",
+                "no_booking" => "This booking has ended, so the chat is closed.",
+                "not_in_room" or "forbidden" => "You can't send messages in this room right now.",
+                "empty" => "Type a message first.",
+                _ => "Could not send the message. Try again.",
+            }, "message-circle-warning");
+        }
+        finally { sending = false; }
+    }
+
+    private async Task ExtendAsync()
+    {
+        if (extending) return;
+        extending = true;
+        try
+        {
+            var (_, err) = await Rooms.ExtendAsync();
+            if (err is null) return;
+            ShowToast(err switch
+            {
+                "room_booked" => "The room is booked right after this.",
+                "forbidden" => "Only the organizer can extend this booking.",
+                "no_booking" => "This booking has already ended.",
+                "media_unavailable" => "The meeting server is not reachable right now. Try again.",
+                _ => "Could not extend the booking. Try again.",
+            }, "timer");
+        }
+        finally { extending = false; }
+    }
+
+    private async Task FlipAsync()
+    {
+        if (!await Rooms.FlipAsync()) ShowToast("Could not switch the camera.", "switch-camera");
+    }
+
+    /// The in-room toast (mockup "toast2"). While minimized the app's toasts carry it instead.
+    private void ShowToast(string text, string icon = "info")
+    {
+        if (Rooms.Minimized) { Toasts.Show(text, ToastKind.Warning); return; }
+        toastCts?.Cancel(); toastCts?.Dispose();
+        var cts = toastCts = new CancellationTokenSource();
+        toast = text; toastIcon = icon;
+        StateHasChanged();
+        _ = Task.Delay(6000, cts.Token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            _ = InvokeAsync(() => { if (ReferenceEquals(toastCts, cts)) { toast = null; StateHasChanged(); } });
+        }, TaskScheduler.Default);
+    }
 
     private bool menuOpen;
     private bool peopleOpen;
@@ -202,7 +431,18 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (Rooms.Room is null) return;
+        if (Rooms.Room is null) { renderedChat = 0; return; }
+        // New chat lines: follow the bottom unless the reader scrolled up (ipop.scrollBottom soft mode).
+        if (Rooms.ChatOpen && Rooms.Chat.Count != renderedChat)
+        {
+            var first = renderedChat == 0;
+            renderedChat = Rooms.Chat.Count;
+            try { await JS.InvokeAsync<bool>("ipop.scrollBottom", msgsRef, !first); }
+            catch (JSException) { }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+        }
+        else if (!Rooms.ChatOpen) renderedChat = 0;
         try { await JS.InvokeVoidAsync("ipop.icons"); }
         catch (JSException) { }
         catch (JSDisconnectedException) { }
@@ -211,7 +451,7 @@
 
     private void OnChanged()
     {
-        if (Rooms.Room is null) { menuOpen = peopleOpen = false; takeoverName = null; }
+        if (Rooms.Room is null) { menuOpen = peopleOpen = emojiOpen = false; takeoverName = null; draft = ""; toast = null; bannerDismissedFor = null; }
         _ = InvokeAsync(StateHasChanged);
     }
 
@@ -224,8 +464,14 @@
             "video_on" => new("video", $"Video is back on in {room}", "You can turn your camera on again."),
             "share_taken" => new("monitor-up", $"{name ?? "Someone"} took over the screen", "Only one screen can be shared at a time."),
             "muted_by_server" => new("mic-off", "You were muted", "Unmute when you want to talk."),
+            "next_booking" => new("timer", $"The next booking starts at {name} — you'll be moved out in 1 minute.", "People invited to the next booking can stay."),
             _ => null,
         };
+        if (code == "share_no_audio")
+        {
+            ShowToast("This window shares no sound. To share audio, choose a Tab or Entire screen.", "volume-x");
+            return;
+        }
         if (next is null) return;
         if (Rooms.Minimized) { Toasts.Show(next.Title, ToastKind.Info); return; }
         ShowIsland(next);
@@ -253,12 +499,12 @@
         old.Dispose();
     }
 
-    private void Minimize() { menuOpen = false; Rooms.Minimized = true; }
+    private void Minimize() { menuOpen = emojiOpen = false; Rooms.Minimized = true; }
     private void Restore() => Rooms.Minimized = false;
 
     private async Task LeaveAsync()
     {
-        menuOpen = peopleOpen = false;
+        menuOpen = peopleOpen = emojiOpen = false;
         takeoverName = null;
         if (Rooms.RecordingPc) await Rooms.StopPcRecordingAsync();
         await Rooms.LeaveAsync();
@@ -326,6 +572,7 @@
         Rooms.Changed -= OnChanged;
         Rooms.Notice -= OnNotice;
         CancelIsland();
+        toastCts?.Cancel(); toastCts?.Dispose();
         tick?.Dispose();
     }
 }

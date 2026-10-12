@@ -41,7 +41,12 @@ public sealed class MeetingRoomState : IAsyncDisposable
     private bool joining;
 
     public MeetingRoomJoinDto? Room { get; private set; }
-    public bool Minimized { get; set; }
+    private bool minimized;
+    public bool Minimized
+    {
+        get => minimized;
+        set { minimized = value; if (!value && ChatOpen) Unread = 0; }
+    }
     public bool MicOn { get; private set; }
     public bool CamOn { get; private set; }
     public bool Sharing { get; private set; }
@@ -113,6 +118,8 @@ public sealed class MeetingRoomState : IAsyncDisposable
                 return ("connect_failed", []);
             }
             _ = LoadTitleAsync(dto.Key);
+            _ = LoadChatAsync();
+            _ = RefreshCamerasAsync();
             return (null, []);
         }
         finally { joining = false; }
@@ -169,6 +176,8 @@ public sealed class MeetingRoomState : IAsyncDisposable
     {
         Room = null; People = []; MicOn = CamOn = Sharing = RecordingPc = false; RecordingServer = null;
         Minimized = false; MeetingTitle = null; ConnectionState = "";
+        chat.Clear(); chatIds.Clear(); Unread = 0; ChatOpen = false;
+        Booking = null; leavingWarnedFor = null; CameraCount = 0;
     }
 
     public async Task ToggleMicAsync()
@@ -181,6 +190,8 @@ public sealed class MeetingRoomState : IAsyncDisposable
     {
         if (Room is null || !VideoAllowed) return;
         CamOn = await js.InvokeAsync<bool>("ipopRooms.setCamera", !CamOn); Raise();
+        // Camera permission reveals the other cameras (labels/ids), so count again once it is on.
+        if (CamOn) await RefreshCamerasAsync();
     }
 
     /// "ok" | "busy" (someone shares — ask, then call with takeover: true) | "denied"
@@ -243,7 +254,9 @@ public sealed class MeetingRoomState : IAsyncDisposable
         if (state == "disconnected" && Room is { } room)
         {
             // Dropped by the network or the server (not our Leave, not a join that never connected): say so.
-            if (!leaving && was is "connected" or "reconnecting")
+            if (!leaving && Booking is { Leaving: true })
+                toasts?.Show($"The next booking starts now. You were moved out of {room.Name}.", ToastKind.Info);
+            else if (!leaving && was is "connected" or "reconnecting")
                 toasts?.Show($"You were disconnected from {room.Name}.", ToastKind.Warning);
             Clear();
         }
@@ -262,15 +275,29 @@ public sealed class MeetingRoomState : IAsyncDisposable
     [JSInvokable]
     public void OnRoomMetadata(string json)
     {
-        try
+        JsonDocument? parsed = null;
+        try { parsed = JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json); }
+        catch (JsonException) { }
+        using (parsed)
         {
-            using var parsed = JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json);
-            var doc = parsed.RootElement;
-            RecordingServer = doc.ValueKind == JsonValueKind.Object && doc.TryGetProperty("recording", out var r) && r.ValueKind == JsonValueKind.Object
-                ? new ServerRecording(r.GetProperty("id").GetGuid(), r.GetProperty("by").GetString() ?? "", r.GetProperty("startedAt").GetDateTime())
-                : null;
+            var doc = parsed?.RootElement ?? default;
+            try
+            {
+                RecordingServer = doc.ValueKind == JsonValueKind.Object && doc.TryGetProperty("recording", out var r) && r.ValueKind == JsonValueKind.Object
+                    ? new ServerRecording(r.GetProperty("id").GetGuid(), r.GetProperty("by").GetString() ?? "", r.GetProperty("startedAt").GetDateTime())
+                    : null;
+            }
+            catch (Exception e) when (e is FormatException or KeyNotFoundException or InvalidOperationException) { RecordingServer = null; }
+            // Booking writes can race and briefly revert: the UI just follows (no toasts), except the 1-minute
+            // "next booking" notice, which fires once per takeover moment.
+            Booking = ParseBooking(doc);
         }
-        catch (Exception e) when (e is JsonException or FormatException or KeyNotFoundException or InvalidOperationException) { RecordingServer = null; }
+        if (Booking is { Leaving: true, TakeoverAt: { } takeover, NextStartAt: var next } && leavingWarnedFor != takeover)
+        {
+            leavingWarnedFor = takeover;
+            LeavingNotices++;
+            Notice?.Invoke("next_booking", (next ?? takeover.AddMinutes(10)).ToLocalTime().ToString("HH:mm"));
+        }
         Raise();
     }
 
@@ -283,6 +310,215 @@ public sealed class MeetingRoomState : IAsyncDisposable
         if (code == "muted_by_server") MicOn = false;
         Notice?.Invoke(code, name);
         Raise();
+    }
+
+    // ---------------------------------------------------------------- in-meeting chat (v2 §3)
+
+    /// One chat line. Kind "system" = joined/left/recording lines (UserId empty). Text and Name are plain text: the
+    /// overlay renders them as Razor text, never as markup.
+    public record ChatLine(Guid Id, Guid UserId, string Name, string Text, DateTime SentAt, string Kind);
+
+    public const int ChatMaxLength = 2000;
+    private static readonly JsonSerializerOptions ChatJson = new(JsonSerializerDefaults.Web);
+    private readonly List<ChatLine> chat = [];
+    private readonly HashSet<Guid> chatIds = [];
+
+    /// Oldest → newest, one entry per message id (history, own POST answer and the room relay all merge here).
+    public IReadOnlyList<ChatLine> Chat => chat;
+    /// Messages from others that arrived while the chat panel was closed (or the room minimized).
+    public int Unread { get; private set; }
+    public bool ChatOpen { get; private set; }
+
+    /// The user's own id: the LiveKit identity is the iPop user id.
+    public Guid MyId => Room is { } r && Guid.TryParse(r.Identity, out var id) ? id : Guid.Empty;
+
+    public void SetChatOpen(bool open)
+    {
+        ChatOpen = open;
+        if (open && !Minimized) Unread = 0;
+        Raise();
+    }
+
+    /// Loads the booking's chat history (on join). History is not "unread": it was there before you came in.
+    public async Task LoadChatAsync()
+    {
+        if (Room is not { } room) return;
+        try
+        {
+            var res = await auth.SendAsync(HttpMethod.Get, $"/api/meeting-rooms/{room.Key}/chat");
+            if (!res.IsSuccessStatusCode) return;
+            var lines = await res.Content.ReadFromJsonAsync<List<ChatLine>>(ChatJson);
+            if (Room?.Key != room.Key || lines is null) return;
+            foreach (var line in lines) Merge(line, countUnread: false);
+            Raise();
+        }
+        catch (Exception e) when (e is HttpRequestException or JsonException or TaskCanceledException or NotSupportedException) { }
+    }
+
+    /// null = sent; else "empty" | "too_long" | "rate_limited" | "not_in_room" | "no_booking" | "forbidden" | "failed".
+    public async Task<string?> SendChatAsync(string text)
+    {
+        if (Room is not { } room) return "not_in_room";
+        text = text.Trim();
+        if (text.Length == 0) return "empty";
+        if (text.Length > ChatMaxLength) return "too_long";
+        try
+        {
+            var res = await auth.SendAsync(HttpMethod.Post, $"/api/meeting-rooms/{room.Key}/chat", new { text });
+            if (res.IsSuccessStatusCode)
+            {
+                var line = await res.Content.ReadFromJsonAsync<ChatLine>(ChatJson);
+                if (line is not null && Room?.Key == room.Key && Valid(line)) { Merge(line, countUnread: false); Raise(); }
+                return null;
+            }
+            if (res.StatusCode == System.Net.HttpStatusCode.TooManyRequests) return "rate_limited";
+            return await ReadCodeAsync(res) ?? "failed";
+        }
+        catch (Exception e) when (e is HttpRequestException or JsonException or TaskCanceledException or NotSupportedException) { return "failed"; }
+    }
+
+    /// A chat line relayed by the API through LiveKit (topic ipop.chat; js/meeting-rooms.js validated its shape).
+    [JSInvokable]
+    public void OnRoomChat(string json)
+    {
+        ChatLine? line;
+        try { line = JsonSerializer.Deserialize<ChatLine>(json, ChatJson); }
+        catch (Exception e) when (e is JsonException or NotSupportedException) { return; }
+        if (line is null || Room is null || !Valid(line)) return;
+        if (Merge(line, countUnread: true)) Raise();
+    }
+
+    private static bool Valid(ChatLine l) =>
+        l.Id != Guid.Empty && l.Text is { Length: > 0 and <= ChatMaxLength } && l.Name is not null && l.Kind is "text" or "system";
+
+    /// False when the id is already there (a relay of a line we already have).
+    private bool Merge(ChatLine line, bool countUnread)
+    {
+        if (!chatIds.Add(line.Id)) return false;
+        var sentAt = line.SentAt.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(line.SentAt, DateTimeKind.Utc) : line.SentAt.ToUniversalTime();
+        line = line with { SentAt = sentAt };
+        var at = chat.Count;
+        while (at > 0 && chat[at - 1].SentAt > sentAt) at--;
+        chat.Insert(at, line);
+        if (countUnread && line.Kind == "text" && line.UserId != MyId && (!ChatOpen || Minimized)) Unread++;
+        return true;
+    }
+
+    // ---------------------------------------------------------------- booking (v2 §1.5)
+
+    /// The current booking from the room metadata. Leaving = this user is not allowed in the next booking and will be
+    /// moved out at TakeoverAt (the API fills the list only from one minute before).
+    public record BookingInfo(Guid OrganizerId, DateTime EndAt, DateTime? NextStartAt, DateTime? TakeoverAt, bool Leaving);
+
+    public BookingInfo? Booking { get; private set; }
+    public bool IsOrganizer => Booking is { } b && MyId != Guid.Empty && b.OrganizerId == MyId;
+    /// How many times the 1-minute "next booking" notice fired (once per takeover moment, whatever the metadata flicker).
+    public int LeavingNotices { get; private set; }
+    private DateTime? leavingWarnedFor;
+    /// Injectable for tests; the overlay's countdown uses it too.
+    public Func<DateTime> Clock { get; set; } = () => DateTime.UtcNow;
+
+    /// Extend 15 min applies to the booking only when the next booking's window starts at or after the new end.
+    public bool CanExtend
+    {
+        get
+        {
+            if (!IsOrganizer || Booking is not { } b) return false;
+            if (b.TakeoverAt is not { } takeover) return true;
+            var start = b.EndAt > Clock() ? b.EndAt : Clock();
+            return start.AddMinutes(15) <= takeover;
+        }
+    }
+
+    /// (new end, null) or (null, code): "room_booked" | "forbidden" | "no_booking" | "media_unavailable" | "failed".
+    public async Task<(DateTime? EndAt, string? Error)> ExtendAsync()
+    {
+        if (Room is not { } room) return (null, "no_booking");
+        try
+        {
+            var res = await auth.SendAsync(HttpMethod.Post, $"/api/meeting-rooms/{room.Key}/extend");
+            if (res.IsSuccessStatusCode)
+            {
+                DateTime? end = null;
+                try
+                {
+                    var body = await res.Content.ReadFromJsonAsync<JsonElement>();
+                    if (body.ValueKind == JsonValueKind.Object && body.TryGetProperty("endAt", out var e) && e.TryGetDateTime(out var t))
+                        end = ToUtc(t);
+                }
+                catch (Exception ex) when (ex is JsonException or NotSupportedException) { }
+                // The metadata follows within a moment; show the new end now so the banner goes away.
+                if (end is { } newEnd && Booking is { } b && Room?.Key == room.Key) { Booking = b with { EndAt = newEnd }; Raise(); }
+                return (end, null);
+            }
+            var code = await ReadCodeAsync(res);
+            return (null, res.StatusCode switch
+            {
+                System.Net.HttpStatusCode.Forbidden => "forbidden",
+                System.Net.HttpStatusCode.ServiceUnavailable => "media_unavailable",
+                System.Net.HttpStatusCode.Conflict when code is "no_booking" or "cancelled" => "no_booking",
+                System.Net.HttpStatusCode.Conflict => "room_booked",
+                _ => code ?? "failed",
+            });
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { return (null, "media_unavailable"); }
+    }
+
+    private static async Task<string?> ReadCodeAsync(HttpResponseMessage res)
+    {
+        try
+        {
+            var err = await res.Content.ReadFromJsonAsync<JsonElement>();
+            return err.ValueKind == JsonValueKind.Object && err.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString() : null;
+        }
+        catch (Exception e) when (e is JsonException or NotSupportedException) { return null; }
+    }
+
+    private static DateTime ToUtc(DateTime t) => t.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(t, DateTimeKind.Utc) : t.ToUniversalTime();
+
+    private BookingInfo? ParseBooking(JsonElement doc)
+    {
+        try
+        {
+            if (doc.ValueKind != JsonValueKind.Object || !doc.TryGetProperty("booking", out var b) || b.ValueKind != JsonValueKind.Object) return null;
+            static DateTime? Time(JsonElement o, string name) =>
+                o.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String && v.TryGetDateTime(out var t) ? ToUtc(t) : null;
+            if (!b.TryGetProperty("organizerId", out var org) || !org.TryGetGuid(out var organizer)) return null;
+            if (Time(b, "endAt") is not { } end) return null;
+            var me = Room?.Identity;
+            var leaving = me is not null && b.TryGetProperty("leaving", out var l) && l.ValueKind == JsonValueKind.Array
+                && l.EnumerateArray().Any(x => x.ValueKind == JsonValueKind.String && x.GetString() == me);
+            return new BookingInfo(organizer, end, Time(b, "nextStartAt"), Time(b, "takeoverAt"), leaving);
+        }
+        catch (Exception e) when (e is InvalidOperationException or FormatException) { return null; }
+    }
+
+    // ---------------------------------------------------------------- cameras (v2 §5)
+
+    public int CameraCount { get; private set; }
+    /// Flip is offered only when the device has more than one camera.
+    public bool CanFlip => CameraCount > 1 && VideoAllowed;
+
+    /// Browsers list every camera only after permission, so this runs on join, after the camera turns on and on devicechange.
+    public async Task RefreshCamerasAsync()
+    {
+        if (Room is null) return;
+        try { CameraCount = await js.InvokeAsync<int>("ipopRooms.listCameras"); }
+        catch (Exception e) when (e is JSException or JSDisconnectedException or TaskCanceledException or InvalidOperationException) { CameraCount = 0; }
+        Raise();
+    }
+
+    [JSInvokable]
+    public Task OnDevicesChanged() => RefreshCamerasAsync();
+
+    public record FlipResult(bool Success);
+
+    /// True when the camera switched (front ↔ back).
+    public async Task<bool> FlipAsync()
+    {
+        if (Room is null || !CamOn) return false;
+        try { return (await js.InvokeAsync<FlipResult?>("ipopRooms.flipCamera"))?.Success ?? false; }
+        catch (Exception e) when (e is JSException or JSDisconnectedException or TaskCanceledException or InvalidOperationException) { return false; }
     }
 
     internal void SetForTest(MeetingRoomJoinDto room, string connection = "connected")
