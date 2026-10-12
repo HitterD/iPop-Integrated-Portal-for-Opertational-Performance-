@@ -11,6 +11,8 @@ public interface ILiveKitRoomAdmin
     bool IsConfigured { get; }
     /// Participants in a room (empty when the room does not exist).
     Task<IReadOnlyList<LiveKitParticipant>> ListAsync(string room, CancellationToken ct);
+    /// Names only; callers must filter their namespace before any participant/admin operation.
+    Task<IReadOnlyList<string>> ListRoomsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<string>>([]);
     /// Mutes every published microphone track of the participant. False when they are not in the room.
     Task<bool> MuteAsync(string room, string identity, CancellationToken ct);
     Task<bool> RemoveAsync(string room, string identity, CancellationToken ct);
@@ -68,6 +70,13 @@ public sealed class LiveKitRoomAdmin(HttpClient http, ILiveKitTokenService token
             p.TryGetProperty("attributes", out var a) && a.ValueKind == JsonValueKind.Object
                 ? a.EnumerateObject().ToDictionary(x => x.Name, x => x.Value.GetString() ?? "")
                 : new Dictionary<string, string>())).ToList();
+    }
+
+    public async Task<IReadOnlyList<string>> ListRoomsAsync(CancellationToken ct)
+    {
+        var r = await CallAsync("ListRooms", "", new { }, ct);
+        if (r is not { } doc || !doc.TryGetProperty("rooms", out var list)) return [];
+        return list.EnumerateArray().Select(x => x.GetProperty("name").GetString() ?? "").ToList();
     }
 
     public async Task<bool> MuteAsync(string room, string identity, CancellationToken ct)

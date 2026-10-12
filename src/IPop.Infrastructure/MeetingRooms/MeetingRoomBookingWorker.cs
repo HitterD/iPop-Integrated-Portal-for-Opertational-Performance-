@@ -56,7 +56,16 @@ public sealed class MeetingRoomBookingWorker(IServiceProvider services, ILogger<
         var db = scope.ServiceProvider.GetRequiredService<IPopDbContext>();
         var liveKit = scope.ServiceProvider.GetRequiredService<ILiveKitRoomAdmin>();
         var tracker = scope.ServiceProvider.GetRequiredService<RoomOccupancyTracker>();
-        if (!liveKit.IsConfigured) return null;
+        var media = scope.ServiceProvider.GetService<MeetingRoomMedia>() ?? new MeetingRoomMedia(scope.ServiceProvider.GetService<Microsoft.Extensions.Configuration.IConfiguration>());
+        if (!media.BookingWorkerEnabled || !liveKit.IsConfigured) return null;
+        var egress = scope.ServiceProvider.GetService<ILiveKitEgress>();
+        List<string> mediaRooms;
+        try { mediaRooms = (await liveKit.ListRoomsAsync(ct)).Where(x => media.Parse(x) is not null).ToList(); }
+        catch
+        {
+            foreach (var (key, _) in HallBooking.Rooms) tracker.ObserveFailed(key);
+            throw;
+        }
         DateTime? due = null;
         var held = new HashSet<Guid>();          // bookings still running in an occupied room
         var unknown = new HashSet<string>();     // rooms whose pass failed: their chat is left for a later pass
@@ -67,13 +76,14 @@ public sealed class MeetingRoomBookingWorker(IServiceProvider services, ILogger<
             ct.ThrowIfCancellationRequested();
             try
             {
-                if (await RoomAsync(db, liveKit, tracker, key, () => nowUtc + clock.Elapsed, held, ct) is { } d && (due is null || d < due)) due = d;
+                if (await RoomAsync(db, liveKit, tracker, media, egress, mediaRooms, key, () => nowUtc + clock.Elapsed, held, ct) is { } d && (due is null || d < due)) due = d;
             }
             catch (Exception e) when (!ct.IsCancellationRequested)
             {
                 logger?.LogWarning(e, "Meeting room {Room}: booking pass failed", key);
                 db.ChangeTracker.Clear();
                 unknown.Add(key);
+                tracker.ObserveFailed(key);
             }
         }
         try { await CleanupChatAsync(db, nowUtc, held, unknown, ct); }
@@ -81,23 +91,29 @@ public sealed class MeetingRoomBookingWorker(IServiceProvider services, ILogger<
         return due;
     }
 
-    private static async Task<DateTime?> RoomAsync(IPopDbContext db, ILiveKitRoomAdmin liveKit, RoomOccupancyTracker tracker, string key,
+    private static async Task<DateTime?> RoomAsync(IPopDbContext db, ILiveKitRoomAdmin liveKit, RoomOccupancyTracker tracker,
+        MeetingRoomMedia media, ILiveKitEgress? egress, IReadOnlyList<string> mediaRooms, string key,
         Func<DateTime> clock, HashSet<Guid> held, CancellationToken ct)
     {
-        var lkRoom = MeetingRoomKeys.LiveKitRoom(key);
-        var inside = (await liveKit.ListAsync(lkRoom, ct)).Select(p => p.Identity)
-            .Where(i => !i.StartsWith("EG_", StringComparison.Ordinal)).ToList();
-        // Dated when the listing returned (earlier rooms of this pass and the LiveKit call itself take time).
+        var session = await BookingMediaSession.ObserveAsync(db, liveKit, tracker, media, key, clock(), ct);
         var nowUtc = clock();
-        var occupancy = tracker.Observe(key, inside.Count > 0, nowUtc);
+        var occupancy = session.Booking is null ? RoomOccupancy.Empty : tracker.Observe(key, session.People.Count > 0, nowUtc);
         var (current, next) = await RoomAccess.BookingsAsync(db, key, nowUtc, occupancy, ct);
+        var boundaryOk = await RecordingBoundary.EndPreviousAsync(db, egress, media, key, current?.MeetingId, nowUtc, ct);
+        // Old tokens may reconnect only to their old session. Evict them there, never admit them into the successor.
+        foreach (var stale in mediaRooms.Where(r => media.Parse(r) is { } p && p.Key == key && p.MeetingId != current?.MeetingId))
+            foreach (var p in await liveKit.ListAsync(stale, ct))
+                if (!p.Identity.StartsWith("EG_", StringComparison.Ordinal)) await liveKit.RemoveAsync(stale, p.Identity, ct);
+        if (current is null) return NextDue(next, nowUtc);
+        var lkRoom = media.Room(key, current.MeetingId);
+        var inside = session.People.Select(p => p.Identity).ToList();
         if (inside.Count == 0) return NextDue(next, nowUtc);
         if (current is not null) held.Add(current.MeetingId);
 
         var stay = new List<string>();
         foreach (var identity in inside)
         {
-            var allowed = current is not null && Guid.TryParse(identity, out var uid)
+            var allowed = boundaryOk && current is not null && Guid.TryParse(identity, out var uid)
                 && RoomAccess.MayEnter(await RoomAccess.RoleAsync(db, current, uid, ct));
             if (allowed) { stay.Add(identity); continue; }
             try { await liveKit.RemoveAsync(lkRoom, identity, ct); }

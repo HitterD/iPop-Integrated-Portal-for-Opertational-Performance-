@@ -23,7 +23,7 @@ public class MeetingRecordingDeleteTests : IDisposable
     private IConfiguration Cfg() => new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
     {
         ["MeetingRooms:SpoolDir"] = Path.Combine(_dir, "spool"), ["MeetingRooms:CacheDir"] = Path.Combine(_dir, "cache"),
-        ["MeetingRooms:EgressOutDir"] = "/out",
+        ["MeetingRooms:EgressOutDir"] = "/out", ["MeetingRooms:NasFolder"] = "/nas/rec",
     }).Build();
 
     private sealed record World(TestDb T, User Organizer, User Starter, User Viewer, User Outsider, User Admin, Guid MeetingId, Guid RecordingId,
@@ -56,6 +56,7 @@ public class MeetingRecordingDeleteTests : IDisposable
         lk.Rooms["hall-kalosi"] = [new(starter.Id.ToString(), "S", [], new Dictionary<string, string>()),
             new(viewer.Id.ToString(), "V", [], new Dictionary<string, string>())];
         var w = new World(t, organizer, starter, viewer, outsider, admin, meetingId, Guid.Empty, new MeetingRecordingWorkerTests.Nas(), lk);
+        MeetingRoomTestBookings.Ensure(t, "kalosi", organizer.Id, starter.Id, viewer.Id);
         var rec = (await Svc(w).StartAsync(starter.Id, "kalosi", default)).Recording!;
         using (var db = t.Verify())
         {
@@ -87,9 +88,10 @@ public class MeetingRecordingDeleteTests : IDisposable
         using var t = new TestDb(); var a = t.AddUser("A1");
         var lk = new MeetingRoomServiceTests.FakeRoomAdmin();
         lk.Rooms["hall-toraja"] = [new(a.Id.ToString(), "A", [], new Dictionary<string, string>())];
-        await new MeetingRecordingService(t.Db, lk, new MeetingRecordingServiceTests.FakeEgress(), new DbSettings(t.Db), Cfg())
+        var result = await new MeetingRecordingService(t.Db, lk, new MeetingRecordingServiceTests.FakeEgress(), new DbSettings(t.Db), Cfg())
             .StartAsync(a.Id, "toraja", default);
-        Assert.Null((await t.Verify().MeetingRecordings.SingleAsync()).MeetingId);
+        Assert.Equal("no_booking", result.Error);
+        Assert.Empty(await t.Verify().MeetingRecordings.ToListAsync());
     }
 
     [Fact]
@@ -189,6 +191,7 @@ public class MeetingRecordingDeleteTests : IDisposable
 
         w.Nas.FailDeletePath = null;
         var sc = new ServiceCollection();
+        sc.AddSingleton<IConfiguration>(Cfg());
         sc.AddScoped(_ => t.Verify());
         sc.AddScoped<IPop.Application.Settings.ISettings>(p => new DbSettings(p.GetRequiredService<IPop.Infrastructure.Persistence.IPopDbContext>()));
         sc.AddSingleton<IPop.Application.Files.IFileAccessService>(w.Nas);

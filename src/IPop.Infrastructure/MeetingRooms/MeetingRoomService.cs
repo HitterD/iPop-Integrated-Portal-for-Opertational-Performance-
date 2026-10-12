@@ -15,11 +15,13 @@ namespace IPop.Infrastructure.MeetingRooms;
 /// Rooms are booking-only (v2 §1): who may enter is decided by <see cref="RoomAccess"/>.
 public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveKit, ILiveKitTokenService tokens, ISettings settings,
     RoomPasswordLimiter passwordLimiter, IRoomBookingWriter bookings, RoomOccupancyTracker? occupancyTracker = null,
-    ILogger<MeetingRoomService>? log = null)
+    ILogger<MeetingRoomService>? log = null, MeetingRoomMedia? mediaRooms = null, ILiveKitEgress? egress = null)
     : IMeetingRoomService
 {
     /// Singleton in the app (DI); a private one when a test does not pass it.
     private readonly RoomOccupancyTracker occupancy = occupancyTracker ?? new RoomOccupancyTracker();
+
+    private readonly MeetingRoomMedia media = mediaRooms ?? MeetingRoomMedia.Default;
 
     public const string PrivateTitle = "Booked";
     /// Durations the "Use now" sheet offers; a shorter one only when the next booking caps the room (then ≥ UseNowMinMinutes).
@@ -30,13 +32,16 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
     {
         var rooms = await db.HallRooms.AsNoTracking().OrderBy(r => r.SortOrder).ToListAsync(ct);
         // LiveKit first and in parallel (each call may take its 5 s timeout); one unreachable room only marks that room.
-        var inside = await Task.WhenAll(rooms.Select(r => ParticipantsAsync(r.Key, ct)));
+        var sessions = new Dictionary<string, Booking?>();
+        foreach (var r in rooms)
+            sessions[r.Key] = (await RoomAccess.BookingsAsync(db, r.Key, DateTime.UtcNow, occupancy.Snapshot(r.Key, DateTime.UtcNow), ct)).Current;
+        var inside = await Task.WhenAll(rooms.Select(r => ListPeopleAsync(r.Key, sessions[r.Key], ct)));
         var names = await NamesAsync(inside.Where(x => x is not null).SelectMany(x => x!), ct);
         var video = await VideoAsync(ct);
         var now = DateTime.UtcNow;
         var recordings = await db.MeetingRecordings.AsNoTracking()
             .Where(r => r.Status == MeetingRecordingStatus.Recording)
-            .Select(r => new { r.RoomKey, r.Id, r.StartedAt, Name = db.Users.Where(u => u.Id == r.StartedById).Select(u => u.Name).FirstOrDefault() })
+            .Select(r => new { r.RoomKey, r.MeetingId, r.Id, r.StartedAt, Name = db.Users.Where(u => u.Id == r.StartedById).Select(u => u.Name).FirstOrDefault() })
             .ToListAsync(ct);
         var list = new List<MeetingRoomDto>();
         for (var i = 0; i < rooms.Count; i++)
@@ -47,7 +52,7 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
             // Same rules as join (RoomAccess): the 10-minute early window and an overrunning occupied booking count.
             var access = await RoomAccess.ForAsync(db, room.Key, viewerId, now,
                 available ? occupancy.Observe(room.Key, people.Count > 0, now) : RoomOccupancy.Empty, ct);
-            var rec = recordings.FirstOrDefault(r => r.RoomKey == room.Key);
+            var rec = recordings.FirstOrDefault(r => r.RoomKey == room.Key && r.MeetingId == access.Current?.MeetingId);
             list.Add(new MeetingRoomDto(room.Key, room.Name, room.Capacity, video[room.Key], available, people,
                 access.Current is { } cur ? await BookingDtoAsync(cur, viewerId, ct) : null,
                 access.Next is { } nxt ? await BookingDtoAsync(nxt, viewerId, ct) : null,
@@ -109,7 +114,7 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
     /// cancellation is logged and the booking worker writes it again within 30 s.
     private async Task PublishMetadataSafeAsync(string key, CancellationToken ct)
     {
-        try { await RoomMetadata.PublishAsync(db, liveKit, occupancy, key, DateTime.UtcNow, ct); }
+        try { await RoomMetadata.PublishAsync(db, liveKit, occupancy, key, DateTime.UtcNow, ct, mediaRooms: media); }
         catch (Exception e) when (!ct.IsCancellationRequested)
         {
             log?.LogWarning(e, "Meeting room {Room}: metadata update failed", key);
@@ -120,12 +125,16 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
     private async Task<IReadOnlyList<LiveKitParticipant>?> ParticipantsAsync(string key, CancellationToken ct)
     {
         if (!liveKit.IsConfigured) return null;
-        try
-        {
-            var ps = await liveKit.ListAsync(MeetingRoomKeys.LiveKitRoom(key), ct);
-            return ps.Where(p => !p.Identity.StartsWith("EG_", StringComparison.Ordinal)).ToList();
-        }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { return null; }
+        try { return (await BookingMediaSession.ObserveAsync(db, liveKit, occupancy, media, key, DateTime.UtcNow, ct)).People; }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { occupancy.ObserveFailed(key); return null; }
+    }
+
+    private async Task<IReadOnlyList<LiveKitParticipant>?> ListPeopleAsync(string key, Booking? booking, CancellationToken ct)
+    {
+        if (!liveKit.IsConfigured) return null;
+        if (booking is null) return [];
+        try { return (await liveKit.ListAsync(media.Room(key, booking.MeetingId), ct)).Where(p => !p.Identity.StartsWith("EG_", StringComparison.Ordinal)).ToList(); }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { occupancy.ObserveFailed(key); return null; }
     }
 
     /// Display names come from the Users table by identity, not from the name a LiveKit client claims.
@@ -151,27 +160,34 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
         if (room is null) return new(null, "unknown_room", []);
         if (!tokens.IsConfigured || !liveKit.IsConfigured) return new(null, "media_unavailable", []);
         var me = userId.ToString();
+        Booking? admitted;
         try
         {
-            var inside = await liveKit.ListAsync(MeetingRoomKeys.LiveKitRoom(key), ct);
-            var people = inside.Where(p => !p.Identity.StartsWith("EG_", StringComparison.Ordinal)).ToList();
+            var session = await BookingMediaSession.ObserveAsync(db, liveKit, occupancy, media, key, DateTime.UtcNow, ct);
+            admitted = session.Booking;
+            var people = session.People;
+            if (admitted is null) return new(null, "no_booking", []);
+            if (!await RecordingBoundary.EndPreviousAsync(db, egress, media, key, admitted.MeetingId, DateTime.UtcNow, ct))
+                return new(null, "media_unavailable", []);
             if (await AdmitAsync(userId, key, occupancy.Observe(key, people.Count > 0, DateTime.UtcNow), password, ct) is { } refused) return new(null, refused, []);
             var others = people.Count(p => p.Identity != me);
             if (others >= room.Capacity)
             {
                 var free = new List<string>();
                 foreach (var r in await db.HallRooms.AsNoTracking().Where(r => r.Key != key).OrderBy(r => r.SortOrder).ToListAsync(ct))
-                    if ((await liveKit.ListAsync(MeetingRoomKeys.LiveKitRoom(r.Key), ct)).Count(p => !p.Identity.StartsWith("EG_", StringComparison.Ordinal)) < r.Capacity)
+                    if ((await ParticipantsAsync(r.Key, ct)) is { } ps && ps.Count < r.Capacity)
                         free.Add(r.Key);
                 return new(null, "room_full", free);
             }
-            await liveKit.CreateRoomAsync(MeetingRoomKeys.LiveKitRoom(key), MeetingRoomKeys.LiveKitMaxParticipants, ct);
+            await liveKit.CreateRoomAsync(media.Room(key, admitted.MeetingId), MeetingRoomKeys.LiveKitMaxParticipants, ct);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { return new(null, "media_unavailable", []); }
 
         var video = (await VideoAsync(ct))[key];
         var name = await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.Name).FirstAsync(ct);
-        var lkRoom = MeetingRoomKeys.LiveKitRoom(key);
+        var final = (await RoomAccess.BookingsAsync(db, key, DateTime.UtcNow, occupancy.Snapshot(key, DateTime.UtcNow), ct)).Current;
+        if (final?.MeetingId != admitted.MeetingId) return new(null, "no_booking", []);
+        var lkRoom = media.Room(key, admitted.MeetingId);
         var token = tokens.GenerateToken(lkRoom, me, name, MeetingRoomKeys.TokenTtl,
             video ? MeetingRoomKeys.VideoSources : MeetingRoomKeys.AudioSources, canUpdateOwnMetadata: true);
         var retention = await settings.GetAsync(SettingKeys.MeetingRoomsRetentionDays, 90, ct);
@@ -241,7 +257,9 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
         await settings.SetAsync(SettingKeys.MeetingRoomsVideo, saved, actorNik, ct);
         if (!liveKit.IsConfigured) return;
         var sources = allowed ? MeetingRoomKeys.VideoSources : MeetingRoomKeys.AudioSources;
-        var room = MeetingRoomKeys.LiveKitRoom(key);
+        var booking = (await RoomAccess.BookingsAsync(db, key, DateTime.UtcNow, occupancy.Snapshot(key, DateTime.UtcNow), ct)).Current;
+        if (booking is null) return;
+        var room = media.Room(key, booking.MeetingId);
         try
         {
             foreach (var p in await liveKit.ListAsync(room, ct))

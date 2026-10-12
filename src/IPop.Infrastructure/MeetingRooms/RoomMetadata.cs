@@ -30,13 +30,13 @@ public static class RoomMetadata
         RoomOccupancy occupancy, CancellationToken ct, Guid? endedRecordingId = null)
     {
         var doc = new Dictionary<string, object>();
+        var (current, next) = await RoomAccess.BookingsAsync(db, roomKey, nowUtc, occupancy, ct);
         var rec = await db.MeetingRecordings.AsNoTracking()
-            .Where(r => r.RoomKey == roomKey && r.Status == MeetingRecordingStatus.Recording && r.EgressId != "" && r.Id != endedRecordingId)
+            .Where(r => r.RoomKey == roomKey && current != null && r.MeetingId == current.MeetingId && r.Status == MeetingRecordingStatus.Recording && r.EgressId != "" && r.Id != endedRecordingId)
             .Select(r => new { r.Id, r.StartedAt, By = db.Users.Where(u => u.Id == r.StartedById).Select(u => u.Name).FirstOrDefault() })
             .FirstOrDefaultAsync(ct);
         if (rec is not null) doc["recording"] = new { id = rec.Id, by = rec.By ?? "", startedAt = Utc(rec.StartedAt) };
 
-        var (current, next) = await RoomAccess.BookingsAsync(db, roomKey, nowUtc, occupancy, ct);
         if (current is not null)
         {
             List<string>? leaving = null;
@@ -64,21 +64,24 @@ public static class RoomMetadata
     /// room (<paramref name="tracker"/>). Best effort: LiveKit down or the room gone is ignored (the booking worker writes
     /// again within 30 s). Returns the composed JSON, or null when LiveKit could not be asked or written.
     public static async Task<string?> PublishAsync(IPopDbContext db, ILiveKitRoomAdmin liveKit, RoomOccupancyTracker tracker, string roomKey,
-        DateTime nowUtc, CancellationToken ct, Guid? endedRecordingId = null)
+        DateTime nowUtc, CancellationToken ct, Guid? endedRecordingId = null, MeetingRoomMedia? mediaRooms = null)
     {
+        var media = mediaRooms ?? MeetingRoomMedia.Default;
+        var current = (await RoomAccess.BookingsAsync(db, roomKey, nowUtc, tracker.Snapshot(roomKey, nowUtc), ct)).Current;
+        if (current is null) return null;
         if (!liveKit.IsConfigured) return null;
         IReadOnlyList<string> identities;
         var clock = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            identities = (await liveKit.ListAsync(MeetingRoomKeys.LiveKitRoom(roomKey), ct)).Select(p => p.Identity)
+            identities = (await liveKit.ListAsync(media.Room(roomKey, current.MeetingId), ct)).Select(p => p.Identity)
                 .Where(i => !i.StartsWith("EG_", StringComparison.Ordinal)).ToList();
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { return null; }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { tracker.ObserveFailed(roomKey); return null; }
         var seenAt = nowUtc + clock.Elapsed;   // when the listing returned
         var occupancy = tracker.Observe(roomKey, identities.Count > 0, seenAt);
         var json = await ComposeAsync(db, roomKey, seenAt, identities, occupancy, ct, endedRecordingId);
-        return await WriteAsync(liveKit, tracker, roomKey, json, seenAt, ct) ? json : null;
+        return await WriteAsync(liveKit, tracker, media.Room(roomKey, current.MeetingId), json, seenAt, ct) ? json : null;
     }
 
     /// Writes <paramref name="json"/> unless the room already got it recently (<see cref="RoomOccupancyTracker.MetadataDue"/>).
@@ -89,7 +92,7 @@ public static class RoomMetadata
         if (!tracker.MetadataDue(roomKey, json, nowUtc)) return true;
         try
         {
-            await liveKit.UpdateRoomMetadataAsync(MeetingRoomKeys.LiveKitRoom(roomKey), json, ct);
+            await liveKit.UpdateRoomMetadataAsync(roomKey, json, ct);
             tracker.MetadataWritten(roomKey, json, nowUtc);
             return true;
         }

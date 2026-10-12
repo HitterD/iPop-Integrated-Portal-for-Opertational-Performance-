@@ -15,7 +15,7 @@ public interface ILiveKitEgress
     Task<bool> PingAsync(CancellationToken ct) => Task.FromResult(IsConfigured);
 }
 
-public record LiveKitEgressInfo(string Status, string? Filename, long? Size, long? DurationNs, string? Error);
+public record LiveKitEgressInfo(string Status, string? Filename, long? Size, long? DurationNs, string? Error, string? Room = null);
 
 public sealed class LiveKitEgress(HttpClient http, ILiveKitTokenService tokens) : ILiveKitEgress
 {
@@ -70,6 +70,7 @@ public sealed class LiveKitEgress(HttpClient http, ILiveKitTokenService tokens) 
         }
         var status = e.TryGetProperty("status", out var st) ? st.ToString() : "";
         status = status switch { "0" => "EGRESS_STARTING", "1" => "EGRESS_ACTIVE", "2" => "EGRESS_ENDING", "3" => "EGRESS_COMPLETE", "4" => "EGRESS_FAILED", "5" => "EGRESS_ABORTED", "6" => "EGRESS_LIMIT_REACHED", _ => status };
-        return new(status, file, size, dur, e.TryGetProperty("error", out var err) ? err.GetString() : null);
+        return new(status, file, size, dur, e.TryGetProperty("error", out var err) ? err.GetString() : null,
+            e.TryGetProperty("room_name", out var room) ? room.GetString() : null);
     }
 }

@@ -13,7 +13,8 @@ public sealed class RecordingFileCache(IFileAccessService nas, IConfiguration co
     /// Drops the local playback copy of a deleted recording (best effort; a locked file ages out after 24 h).
     public async Task EvictAsync(Guid recordingId, CancellationToken ct)
     {
-        var path = Path.Combine(Dir, recordingId.ToString("N") + ".mp4");
+        var path = RecordingPaths.LocalFile(Dir, recordingId.ToString("N") + ".mp4");
+        if (path is null) return;
         await Gate.WaitAsync(ct);
         try { if (File.Exists(path)) File.Delete(path); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
@@ -24,15 +25,17 @@ public sealed class RecordingFileCache(IFileAccessService nas, IConfiguration co
     {
         if (row.NasPath is null) return null;
         Directory.CreateDirectory(Dir);
-        var path = Path.Combine(Dir, row.Id.ToString("N") + ".mp4");
+        var path = RecordingPaths.LocalFile(Dir, row.Id.ToString("N") + ".mp4");
+        if (path is null) return null;
         await Gate.WaitAsync(ct);
         try
         {
             foreach (var old in new DirectoryInfo(Dir).GetFiles("*.mp4").Where(f => f.LastAccessTimeUtc < DateTime.UtcNow.AddHours(-24) && f.FullName != path))
-                try { old.Delete(); } catch (IOException) { }
+                try { if (RecordingPaths.LocalFile(Dir, old.Name) is not null) old.Delete(); } catch (IOException) { }
             if (!File.Exists(path))
             {
-                var tmp = path + ".part";
+                var tmp = RecordingPaths.LocalFile(Dir, row.Id.ToString("N") + ".mp4.part");
+                if (tmp is null) return null;
                 try
                 {
                     await using (var src = await nas.DownloadAsServiceAsync(row.NasPath, ct))

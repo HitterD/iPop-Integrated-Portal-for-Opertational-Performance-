@@ -14,10 +14,11 @@ namespace IPop.Infrastructure.MeetingRooms;
 
 public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin liveKit, ILiveKitEgress egress, ISettings settings, IConfiguration config,
     RoomOccupancyTracker? occupancyTracker = null, IFileAccessService? nas = null, RecordingFileCache? fileCache = null,
-    ILogger<MeetingRecordingService>? log = null)
+    ILogger<MeetingRecordingService>? log = null, MeetingRoomMedia? mediaRooms = null)
     : IMeetingRecordingService
 {
     private readonly RoomOccupancyTracker occupancy = occupancyTracker ?? new RoomOccupancyTracker();
+    private readonly MeetingRoomMedia media = mediaRooms ?? new MeetingRoomMedia(config);
     private string OutDir => (config["MeetingRooms:EgressOutDir"] ?? "/out").TrimEnd('/');
 
     private string TemplateUrl(string room, string title, DateTime date) =>
@@ -36,7 +37,13 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
         var room = await db.HallRooms.AsNoTracking().FirstOrDefaultAsync(r => r.Key == key, ct);
         if (room is null) return new(null, "unknown_room");
         if (!egress.IsConfigured || !liveKit.IsConfigured) return new(null, "egress_unavailable");
-        var lkRoom = MeetingRoomKeys.LiveKitRoom(key);
+        (Booking? Booking, IReadOnlyList<LiveKitParticipant> People) session;
+        try { session = await BookingMediaSession.ObserveAsync(db, liveKit, occupancy, media, key, DateTime.UtcNow, ct); }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { return new(null, "egress_unavailable"); }
+        if (session.Booking is not { } booking) return new(null, "no_booking");
+        var lkRoom = media.Room(key, booking.MeetingId);
+        if (!await RecordingBoundary.EndPreviousAsync(db, egress, media, key, booking.MeetingId, DateTime.UtcNow, ct))
+            return new(null, "egress_unavailable");
         IReadOnlyList<LiveKitParticipant> inside;
         try { inside = await liveKit.ListAsync(lkRoom, ct); }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { return new(null, "egress_unavailable"); }
@@ -47,7 +54,8 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
         var now = DateTime.UtcNow;
         // Same booking as join and the room list (early window, overrun while occupied).
         var occupied = occupancy.Observe(key, inside.Any(p => !p.Identity.StartsWith("EG_", StringComparison.Ordinal)), now);
-        var booking = (await RoomAccess.ForAsync(db, key, userId, now, occupied, ct)).Current;
+        var access = await RoomAccess.ForAsync(db, key, userId, now, occupied, ct);
+        if (access.Current?.MeetingId != booking.MeetingId || !RoomAccess.MayEnter(access.Role)) return new(null, "not_in_room");
         var id = Guid.NewGuid();
         var rel = $"{key}/{now.ToLocalTime():yyyy-MM-dd}/{now.ToLocalTime():HHmm}-{id:N}.mp4";
         var row = new MeetingRecording
@@ -56,7 +64,8 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
             StartedAt = now, Status = MeetingRecordingStatus.Recording, SpoolPath = rel,
         };
         foreach (var p in inside)
-            if (Guid.TryParse(p.Identity, out var uid) && row.Viewers.All(v => v.UserId != uid))
+            if (Guid.TryParse(p.Identity, out var uid) && row.Viewers.All(v => v.UserId != uid)
+                && RoomAccess.MayEnter(await RoomAccess.RoleAsync(db, booking, uid, ct)))
                 row.Viewers.Add(new MeetingRecordingViewer { RecordingId = id, UserId = uid });
         db.MeetingRecordings.Add(row);
         try { await db.SaveChangesAsync(ct); }
@@ -76,7 +85,7 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
         await PublishStateAsync(row.RoomKey, null, CancellationToken.None);
         var starter = await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.Name).FirstOrDefaultAsync(CancellationToken.None);
         await MeetingChatService.PostSystemAsync(db, liveKit, row, $"{(string.IsNullOrWhiteSpace(starter) ? "Someone" : starter)} started recording",
-            DateTime.UtcNow, log, CancellationToken.None);
+            DateTime.UtcNow, log, CancellationToken.None, media);
         return new(await DtoAsync(row.Id, userId, false, ct), null);
     }
 
@@ -85,10 +94,15 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
         var row = await db.MeetingRecordings.FirstOrDefaultAsync(r => r.Id == recordingId && r.Status == MeetingRecordingStatus.Recording, ct);
         if (row is null) return new(null, "not_found");
         IReadOnlyList<LiveKitParticipant> inside;
-        try { inside = await liveKit.ListAsync(MeetingRoomKeys.LiveKitRoom(row.RoomKey), ct); }
+        try { inside = await liveKit.ListAsync(media.Room(row.RoomKey, row.MeetingId ?? Guid.Empty), ct); }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { return new(null, "egress_unavailable"); }
         if (inside.All(p => p.Identity != userId.ToString())) return new(null, "not_in_room");
-        try { await egress.StopAsync(row.EgressId, ct); }
+        try
+        {
+            var info = await egress.GetAsync(row.EgressId, ct);
+            if (info is null || !RecordingBoundary.Belongs(media, row, info)) return new(null, "egress_unavailable");
+            await egress.StopAsync(row.EgressId, ct);
+        }
         catch (HttpRequestException e) when (e.StatusCode == System.Net.HttpStatusCode.NotFound)
         { /* already ended; the worker reads the final state */ }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { return new(null, "egress_unavailable"); }
@@ -96,18 +110,21 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
         row.EndedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         await PublishStateAsync(row.RoomKey, row.Id, ct);
-        await MeetingChatService.PostSystemAsync(db, liveKit, row, "Recording stopped", row.EndedAt.Value, log, CancellationToken.None);
+        await MeetingChatService.PostSystemAsync(db, liveKit, row, "Recording stopped", row.EndedAt.Value, log, CancellationToken.None, media);
         return new(await DtoAsync(row.Id, userId, false, ct), null);
     }
 
     /// Room metadata carries the running server recording so every client shows "Recording · started by X"; it is
     /// composed with the booking info (<see cref="RoomMetadata"/>), never replacing it.
     private Task PublishStateAsync(string roomKey, Guid? endedRecordingId, CancellationToken ct) =>
-        RoomMetadata.PublishAsync(db, liveKit, occupancy, roomKey, DateTime.UtcNow, ct, endedRecordingId);
+        RoomMetadata.PublishAsync(db, liveKit, occupancy, roomKey, DateTime.UtcNow, ct, endedRecordingId, media);
 
     public async Task NoteJoinAsync(Guid userId, string key, CancellationToken ct)
     {
-        var rec = await db.MeetingRecordings.Where(r => r.RoomKey == key && r.Status == MeetingRecordingStatus.Recording)
+        var now = DateTime.UtcNow;
+        var access = await RoomAccess.ForAsync(db, key, userId, now, occupancy.Snapshot(key, now), ct);
+        if (access.Current is null || !RoomAccess.MayEnter(access.Role)) return;
+        var rec = await db.MeetingRecordings.Where(r => r.RoomKey == key && r.MeetingId == access.Current.MeetingId && r.Status == MeetingRecordingStatus.Recording)
             .Select(r => r.Id).FirstOrDefaultAsync(ct);
         if (rec == Guid.Empty || await db.MeetingRecordingViewers.AnyAsync(v => v.RecordingId == rec && v.UserId == userId, ct)) return;
         var viewer = new MeetingRecordingViewer { RecordingId = rec, UserId = userId };
@@ -165,7 +182,7 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
         await DeleteChatAsync(db, row.Id, CancellationToken.None);
         // The row is Deleted from here on (players and tickets answer 404); the file cleanup must finish even if the
         // caller goes away, so it does not use the request token.
-        if (row.NasPath is { } path && nas is { HasServiceAccount: true })
+        if (RecordingPaths.NasFile(config["MeetingRooms:NasFolder"] ?? "/sja/SJA SPJ/ICT/recordings", row.NasPath) is { } path && nas is { HasServiceAccount: true })
         {
             try
             {
@@ -195,7 +212,7 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
         try
         {
             var spool = config["MeetingRooms:SpoolDir"] ?? @"F:\ipop-data\recordings-spool";
-            var local = Path.Combine(spool, row.SpoolPath.Replace('/', Path.DirectorySeparatorChar));
+            var local = RecordingPaths.LocalFile(spool, row.SpoolPath);
             if (File.Exists(local)) File.Delete(local);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { }

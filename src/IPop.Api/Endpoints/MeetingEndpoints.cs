@@ -538,6 +538,9 @@ public static class MeetingEndpoints
         if (meeting.OrganizerId != userId) return (CancelResult.Forbidden, meeting, []);
         if (meeting.Status == MeetingStatus.Cancelled) return (CancelResult.AlreadyCancelled, meeting, []);
 
+        if (IPop.Application.Hall.HallBooking.RoomKey(meeting.Location) is { } originalRoom)
+            await IPop.Infrastructure.Hall.RoomAccess.BookingsAsync(db, originalRoom, DateTime.UtcNow,
+                IPop.Infrastructure.Hall.RoomOccupancy.Empty, ct);
         meeting.Status = MeetingStatus.Cancelled;
         db.MeetingReminders.RemoveRange(await db.MeetingReminders.Where(r => r.MeetingId == meetingId && r.SentAt == null).ToListAsync(ct));
         db.CalendarEvents.RemoveRange(await db.CalendarEvents.Where(e => e.MeetingId == meetingId).ToListAsync(ct));
@@ -600,6 +603,10 @@ public static class MeetingEndpoints
         if (await IPop.Infrastructure.Hall.HallBookings.ConflictAsync(db, req.Location, AsUtc(req.StartAt), AsUtc(req.EndAt), m.Id, ct) is not null)
             return (UpdateResult.RoomBooked, [], []);
 
+        // Claim the original physical room BEFORE mutable fields are rewritten, even if no client/worker observed it.
+        if (IPop.Application.Hall.HallBooking.RoomKey(m.Location) is { } originalRoom)
+            await IPop.Infrastructure.Hall.RoomAccess.BookingsAsync(db, originalRoom, DateTime.UtcNow,
+                IPop.Infrastructure.Hall.RoomOccupancy.Empty, ct);
         var timeChanged = AsUtc(req.StartAt) != m.StartAt || AsUtc(req.EndAt) != m.EndAt;
         m.Title = title;
         m.StartAt = AsUtc(req.StartAt);

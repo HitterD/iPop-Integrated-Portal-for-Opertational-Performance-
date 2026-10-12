@@ -155,6 +155,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<MeetingRecording> MeetingRecordings => Set<MeetingRecording>();
     public DbSet<MeetingRecordingViewer> MeetingRecordingViewers => Set<MeetingRecordingViewer>();
     public DbSet<MeetingRoomGuest> MeetingRoomGuests => Set<MeetingRoomGuest>();
+    public DbSet<MeetingRoomOwnership> MeetingRoomOwnerships => Set<MeetingRoomOwnership>();
     public DbSet<MeetingChatMessage> MeetingChatMessages => Set<MeetingChatMessage>();
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<EmailOutboxMessage> EmailOutbox => Set<EmailOutboxMessage>();
@@ -183,6 +184,12 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Key).HasMaxLength(32);
             e.Property(x => x.Name).HasMaxLength(64);
             e.HasData(HallRooms_Seed);
+        });
+        b.Entity<MeetingRoomOwnership>(e =>
+        {
+            e.Property(x => x.RoomKey).HasMaxLength(32);
+            e.HasIndex(x => new { x.RoomKey, x.MeetingId }).IsUnique();
+            // Deliberately no FK: mutable/deleted meetings must never erase takeover history.
         });
         b.Entity<MeetingRecording>(e =>
         {

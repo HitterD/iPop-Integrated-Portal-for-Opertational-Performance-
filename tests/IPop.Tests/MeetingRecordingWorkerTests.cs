@@ -82,6 +82,13 @@ public class MeetingRecordingWorkerTests : IDisposable
         _dirs.Add(spool);
         var cfg = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             { ["MeetingRooms:SpoolDir"] = spool, ["MeetingRooms:NasFolder"] = "/sja/SJA SPJ/ICT/recordings" }).Build();
+        if (eg is MeetingRecordingServiceTests.FakeEgress fake)
+        foreach (var info in fake.Infos.ToList())
+        {
+            var recording = t.Verify().MeetingRecordings.FirstOrDefault(x => x.EgressId == info.Key);
+            if (recording?.MeetingId is { } id && info.Value.Room is null)
+                fake.Infos[info.Key] = info.Value with { Room = MeetingRoomMedia.Default.Room(recording.RoomKey, id) };
+        }
         var sc = new ServiceCollection();
         sc.AddSingleton<IConfiguration>(cfg);
         sc.AddScoped(_ => t.Verify());
@@ -102,6 +109,7 @@ public class MeetingRecordingWorkerTests : IDisposable
             Status = status, SpoolPath = "kalosi/2026-10-11/1000-x.mp4",
             Viewers = viewers.Select(v => new MeetingRecordingViewer { RecordingId = id, UserId = v }).ToList(),
         };
+        r.MeetingId = MeetingRoomTestBookings.Ensure(t, "kalosi", viewers.Prepend(by).Distinct().ToArray());
         t.Db.MeetingRecordings.Add(r); t.Db.SaveChanges();
         return r;
     }
@@ -120,6 +128,7 @@ public class MeetingRecordingWorkerTests : IDisposable
             new(b.Id.ToString(), "Repeated", [], new Dictionary<string, string>()),
             new("EG_x", "Recorder", [], new Dictionary<string, string>()),
         ];
+        MeetingRoomTestBookings.Ensure(t, "kalosi", a.Id, b.Id);
         var eg = new MeetingRecordingServiceTests.FakeEgress();
         eg.Infos["EG_1"] = new("EGRESS_ACTIVE", null, null, null, null);
         var (sp, _) = Services(t, eg, new Nas(), new Gateway(), rooms);
@@ -212,14 +221,14 @@ public class MeetingRecordingWorkerTests : IDisposable
         // QA 2026-10-12: Egress aborted ("Start signal not received") but the room metadata kept the recording, so every
         // participant saw "Recording · started by …" forever and Stop answered 404.
         using var t = new TestDb(); var a = t.AddUser("A1");
-        Row(t, MeetingRecordingStatus.Recording, a.Id, a.Id);
+        var row = Row(t, MeetingRecordingStatus.Recording, a.Id, a.Id);
         var eg = new MeetingRecordingServiceTests.FakeEgress();
         eg.Infos["EG_1"] = new("EGRESS_ABORTED", null, null, null, "Start signal not received");
         var rooms = new MeetingRoomServiceTests.FakeRoomAdmin();
         var (provider, _) = Services(t, eg, new Nas(), new Gateway(), rooms);
         using var sp = provider;
         await MeetingRecordingWorker.FinishAsync(provider, default);
-        Assert.Contains(("hall-kalosi", "{}"), rooms.MetadataUpdates);
+        Assert.Contains(rooms.MetadataUpdates, m => m.Room == MeetingRoomMedia.Default.Room("kalosi", row.MeetingId!.Value) && !m.Metadata.Contains("recording"));
     }
 
     [Fact]
@@ -230,14 +239,14 @@ public class MeetingRecordingWorkerTests : IDisposable
         var fresh = Row(t, MeetingRecordingStatus.Ready, a.Id, a.Id);
         var gone = Row(t, MeetingRecordingStatus.Deleted, a.Id, a.Id);
         var db = t.Verify();
-        foreach (var r in db.MeetingRecordings) r.NasPath = $"/n/{r.Id}.mp4";
+        foreach (var r in db.MeetingRecordings) r.NasPath = $"/sja/SJA SPJ/ICT/recordings/{r.Id}.mp4";
         db.MeetingRecordings.Single(r => r.Id == old.Id).StartedAt = DateTime.UtcNow.AddDays(-91);
         db.SaveChanges();
         var nas = new Nas(); var (provider, _) = Services(t, new MeetingRecordingServiceTests.FakeEgress(), nas, new Gateway());
 
         using var sp = provider;
         Assert.Equal(2, await MeetingRecordingWorker.PurgeAsync(provider, DateTime.UtcNow, default));
-        Assert.Equal(new[] { $"/n/{old.Id}.mp4", $"/n/{gone.Id}.mp4" }.Order(), nas.Deleted.Order());
+        Assert.Equal(new[] { $"/sja/SJA SPJ/ICT/recordings/{old.Id}.mp4", $"/sja/SJA SPJ/ICT/recordings/{gone.Id}.mp4" }.Order(), nas.Deleted.Order());
         var after = t.Verify().MeetingRecordings.ToDictionary(r => r.Id);
         Assert.Equal(MeetingRecordingStatus.Deleted, after[old.Id].Status);
         Assert.Null(after[gone.Id].NasPath);
@@ -251,7 +260,7 @@ public class MeetingRecordingWorkerTests : IDisposable
     public async Task Cache_copies_once_and_concurrent_scoped_instances_share_the_seekable_file()
     {
         var dir = Path.Combine(Path.GetTempPath(), "ipop-cache-" + Guid.NewGuid().ToString("N")); _dirs.Add(dir);
-        var nas = new Nas(); var row = new MeetingRecording { RoomKey = "kalosi", Title = "Weekly sync", EgressId = "EG_1", Id = Guid.NewGuid(), NasPath = "/n/file.mp4" };
+        var nas = new Nas(); var row = new MeetingRecording { RoomKey = "kalosi", Title = "Weekly sync", EgressId = "EG_1", Id = Guid.NewGuid(), NasPath = "/sja/SJA SPJ/ICT/recordings/file.mp4" };
         var paths = await Task.WhenAll(Enumerable.Range(0, 5).Select(_ => new RecordingFileCache(nas, CacheConfig(dir)).OpenAsync(row, default)));
         Assert.Equal(1, nas.Downloads);
         Assert.All(paths, path => Assert.Equal(paths[0], path));
@@ -271,7 +280,7 @@ public class MeetingRecordingWorkerTests : IDisposable
     public async Task Cache_removes_untouched_files_but_preserves_recent_and_requested_files()
     {
         var dir = Path.Combine(Path.GetTempPath(), "ipop-cache-" + Guid.NewGuid().ToString("N")); _dirs.Add(dir); Directory.CreateDirectory(dir);
-        var row = new MeetingRecording { RoomKey = "kalosi", Title = "Weekly sync", EgressId = "EG_1", Id = Guid.NewGuid(), NasPath = "/n/file.mp4" };
+        var row = new MeetingRecording { RoomKey = "kalosi", Title = "Weekly sync", EgressId = "EG_1", Id = Guid.NewGuid(), NasPath = "/sja/SJA SPJ/ICT/recordings/file.mp4" };
         var current = Path.Combine(dir, row.Id.ToString("N") + ".mp4");
         var old = Path.Combine(dir, "old.mp4"); var recent = Path.Combine(dir, "recent.mp4");
         foreach (var path in new[] { current, old, recent }) await File.WriteAllBytesAsync(path, [1, 2, 3]);
@@ -317,12 +326,12 @@ public class MeetingRecordingWorkerTests : IDisposable
         var active = Row(t, MeetingRecordingStatus.Recording, a.Id, a.Id);
         using (var db = t.Verify())
         {
-            foreach (var row in db.MeetingRecordings) { row.NasPath = $"/n/{row.Id}.mp4"; row.StartedAt = now.AddDays(-effectiveDays).AddSeconds(-1); }
+            foreach (var row in db.MeetingRecordings) { row.NasPath = $"/sja/SJA SPJ/ICT/recordings/{row.Id}.mp4"; row.StartedAt = now.AddDays(-effectiveDays).AddSeconds(-1); }
             db.MeetingRecordings.Single(r => r.Id == boundary.Id).StartedAt = now.AddDays(-effectiveDays);
             await db.SaveChangesAsync(); await new DbSettings(db).SetAsync(SettingKeys.MeetingRoomsRetentionDays, days, null);
         }
         var nas = new Nas(); var (sp, _) = Services(t, new MeetingRecordingServiceTests.FakeEgress(), nas, new Gateway()); using var provider = sp;
-        Assert.Equal(1, await MeetingRecordingWorker.PurgeAsync(sp, now, default)); Assert.Equal($"/n/{expired.Id}.mp4", Assert.Single(nas.Deleted));
+        Assert.Equal(1, await MeetingRecordingWorker.PurgeAsync(sp, now, default)); Assert.Equal($"/sja/SJA SPJ/ICT/recordings/{expired.Id}.mp4", Assert.Single(nas.Deleted));
         Assert.Equal(0, await MeetingRecordingWorker.PurgeAsync(sp, now, default));
         using var after = t.Verify(); Assert.Equal(MeetingRecordingStatus.Recording, (await after.MeetingRecordings.SingleAsync(r => r.Id == active.Id)).Status);
     }
@@ -348,7 +357,7 @@ public class MeetingRecordingWorkerTests : IDisposable
         {
             lookedUp.Add(id);
             if (lookedUp.Count == 1) throw timeout ? new TaskCanceledException("HTTP timeout") : new IOException("Egress down");
-            return Task.FromResult<LiveKitEgressInfo?>(new("EGRESS_COMPLETE", null, 3, null, null));
+            return Task.FromResult<LiveKitEgressInfo?>(new("EGRESS_COMPLETE", null, 3, null, null, MeetingRoomMedia.Default.Room("kalosi", second.MeetingId!.Value)));
         });
         var nas = new Nas(); var (sp, spool) = Services(t, eg, nas, new Gateway()); using var provider = sp;
         var path = Path.Combine(spool, "kalosi", "2026-10-11", "1000-x.mp4"); Directory.CreateDirectory(Path.GetDirectoryName(path)!); await File.WriteAllBytesAsync(path, [1, 2, 3]);
@@ -363,7 +372,7 @@ public class MeetingRecordingWorkerTests : IDisposable
     {
         using var t = new TestDb(); var a = t.AddUser("A1");
         var bad = Row(t, MeetingRecordingStatus.Ready, a.Id, a.Id); var good = Row(t, MeetingRecordingStatus.Ready, a.Id, a.Id);
-        foreach (var row in new[] { bad, good }) { row.NasPath = $"/n/{row.Id}.mp4"; row.StartedAt = DateTime.UtcNow.AddDays(-91); }
+        foreach (var row in new[] { bad, good }) { row.NasPath = $"/sja/SJA SPJ/ICT/recordings/{row.Id}.mp4"; row.StartedAt = DateTime.UtcNow.AddDays(-91); }
         t.Db.SaveChanges(); var nas = new Nas { FailDeletePath = bad.NasPath };
         var (sp, _) = Services(t, new MeetingRecordingServiceTests.FakeEgress(), nas, new Gateway()); using var provider = sp;
         Assert.Equal(1, await MeetingRecordingWorker.PurgeAsync(sp, DateTime.UtcNow, default));
@@ -389,7 +398,7 @@ public class MeetingRecordingWorkerTests : IDisposable
     public async Task Cache_failed_copy_removes_partial_file_and_allows_retry(bool cancel)
     {
         var dir = Path.Combine(Path.GetTempPath(), "ipop-cache-" + Guid.NewGuid().ToString("N")); _dirs.Add(dir);
-        var row = new MeetingRecording { Id = Guid.NewGuid(), RoomKey = "kalosi", Title = "Weekly sync", EgressId = "EG_1", NasPath = "/n/file.mp4" };
+        var row = new MeetingRecording { Id = Guid.NewGuid(), RoomKey = "kalosi", Title = "Weekly sync", EgressId = "EG_1", NasPath = "/sja/SJA SPJ/ICT/recordings/file.mp4" };
         var nas = new Nas { DownloadStream = () => new BrokenCopyStream(cancel) }; var cache = new RecordingFileCache(nas, CacheConfig(dir));
         if (cancel) await Assert.ThrowsAsync<TaskCanceledException>(() => cache.OpenAsync(row, default));
         else await Assert.ThrowsAsync<IOException>(() => cache.OpenAsync(row, default));
@@ -469,7 +478,7 @@ public class MeetingRecordingWorkerTests : IDisposable
         using var after = t.Verify(); var saved = await after.MeetingRecordings.SingleAsync();
         Assert.Equal((MeetingRecordingStatus.Failed, "start interrupted"), (saved.Status, saved.Error));
         Assert.NotNull(saved.EndedAt);
-        Assert.Contains(("hall-kalosi", "{}"), rooms.MetadataUpdates);
+        Assert.Contains(rooms.MetadataUpdates, m => m.Room == MeetingRoomMedia.Default.Room("kalosi", stuck.MeetingId!.Value) && !m.Metadata.Contains("recording"));
     }
 
     [Fact]

@@ -47,7 +47,35 @@ public static class RoomAccess
 
     /// The room's Current and Next booking (same rules as <see cref="ForAsync"/>) without a viewer — for the booking
     /// worker and the room metadata, which then ask <see cref="RoleAsync"/> per person.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> ClaimGates = new();
+
     public static async Task<(Booking? Current, Booking? Next)> BookingsAsync(IPopDbContext db, string roomKey, DateTime nowUtc,
+        RoomOccupancy occupancy, CancellationToken ct)
+    {
+        var gate = ClaimGates.GetOrAdd(roomKey, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct);
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? transaction = null;
+        try
+        {
+            // Cross-process serialization on PostgreSQL; transaction-scoped advisory lock is independent of mutable Meetings.
+            if (db.Database.IsNpgsql() && db.Database.CurrentTransaction is null)
+            {
+                transaction = await db.Database.BeginTransactionAsync(ct);
+                var lockKey = "ipop-meeting-room-" + roomKey;
+                await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtext({lockKey}))", ct);
+            }
+            var result = await BookingsCoreAsync(db, roomKey, nowUtc, occupancy, ct);
+            if (transaction is not null) await transaction.CommitAsync(ct);
+            return result;
+        }
+        finally
+        {
+            if (transaction is not null) await transaction.DisposeAsync();
+            gate.Release();
+        }
+    }
+
+    private static async Task<(Booking? Current, Booking? Next)> BookingsCoreAsync(IPopDbContext db, string roomKey, DateTime nowUtc,
         RoomOccupancy occupancy, CancellationToken ct)
     {
         var name = HallBooking.Rooms.FirstOrDefault(r => r.Key == roomKey).Name;
@@ -68,6 +96,34 @@ public static class RoomAccess
             var (id, end) = (latest.MeetingId, latest.EndAt);
             if (!await db.Meetings.AsNoTracking().AnyAsync(m => m.Location == loc && m.Id != id && m.StartAt >= end && m.StartAt <= windowOpen, ct))
                 current = latest;
+        }
+        // Immutable claims survive cancellation, relocation and rescheduling. An earlier booking that already
+        // lost this physical room can never claim it again, even while its scheduled EndAt is still in the future.
+        var owner = await db.MeetingRoomOwnerships.AsNoTracking().Where(x => x.RoomKey == roomKey)
+            .OrderByDescending(x => x.WindowStartAt).ThenByDescending(x => x.ClaimedAt).ThenByDescending(x => x.Id).FirstOrDefaultAsync(ct);
+        if (current is not null && owner?.MeetingId != current.MeetingId)
+        {
+            var candidateId = current.MeetingId;
+            var claimed = await db.MeetingRoomOwnerships.AnyAsync(x => x.RoomKey == roomKey && x.MeetingId == candidateId, ct);
+            var created = await db.Meetings.Where(x => x.Id == candidateId).Select(x => x.CreatedAt).SingleAsync(ct);
+            if (claimed || (owner is not null && WindowStart(current) <= owner.WindowStartAt && created <= owner.ClaimedAt))
+                current = null;
+            else
+            {
+                var claim = new MeetingRoomOwnership { RoomKey = roomKey, MeetingId = candidateId,
+                    WindowStartAt = owner is not null && WindowStart(current) <= owner.WindowStartAt
+                        ? owner.WindowStartAt.AddTicks(10) : WindowStart(current), ClaimedAt = nowUtc };
+                db.MeetingRoomOwnerships.Add(claim);
+                try { await db.SaveChangesAsync(ct); }
+                catch (DbUpdateException)
+                {
+                    db.Entry(claim).State = EntityState.Detached; // concurrent claim of this same booking
+                }
+                var latestOwner = await db.MeetingRoomOwnerships.AsNoTracking().Where(x => x.RoomKey == roomKey)
+                    .OrderByDescending(x => x.WindowStartAt).ThenByDescending(x => x.ClaimedAt).ThenByDescending(x => x.Id)
+                    .Select(x => x.MeetingId).FirstOrDefaultAsync(ct);
+                if (latestOwner != candidateId) current = null;
+            }
         }
         var next = await bookings.Where(m => m.StartAt > windowOpen).OrderBy(m => m.StartAt)
             .Select(m => new Booking(m.Id, m.Title, m.StartAt, m.EndAt, m.OrganizerId, m.RoomPassword)).FirstOrDefaultAsync(ct);

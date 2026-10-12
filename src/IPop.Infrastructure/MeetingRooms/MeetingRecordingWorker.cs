@@ -57,6 +57,7 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
         var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
         var spool = config["MeetingRooms:SpoolDir"] ?? @"F:\ipop-data\recordings-spool";
         var nasRoot = (config["MeetingRooms:NasFolder"] ?? "/sja/SJA SPJ/ICT/recordings").TrimEnd('/');
+        var media = scope.ServiceProvider.GetService<MeetingRoomMedia>() ?? new MeetingRoomMedia(config);
         var done = 0;
         var now = DateTime.UtcNow;
 
@@ -68,6 +69,19 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
             ct.ThrowIfCancellationRequested();
             try
             {
+                var info = string.IsNullOrEmpty(row.EgressId) ? null : await egress.GetAsync(row.EgressId, ct);
+                if (info is not null && !RecordingBoundary.Belongs(media, row, info)) continue; // copied foreign Egress
+                if (info is null && !string.IsNullOrEmpty(row.EgressId)
+                    && !(row.Status == MeetingRecordingStatus.Processing && row.EndedAt < now - UploadTimeout)) continue;
+                if (row.MeetingId is { } bookingId && row.Status == MeetingRecordingStatus.Recording)
+                {
+                    var current = (await IPop.Infrastructure.Hall.RoomAccess.BookingsAsync(db, row.RoomKey, now, tracker.Snapshot(row.RoomKey, now), ct)).Current;
+                    if (current?.MeetingId != bookingId)
+                    {
+                        if (!await RecordingBoundary.EndPreviousAsync(db, egress, media, row.RoomKey, current?.MeetingId, now, ct)) continue;
+                        info = await egress.GetAsync(row.EgressId, ct);
+                    }
+                }
                 // Egress finished but the NAS never took the file: stop retrying and tell whoever started it.
                 if (row.Status == MeetingRecordingStatus.Processing && row.EndedAt is { } ended && ended < now - UploadTimeout)
                 {
@@ -87,29 +101,32 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
                         row.Status = MeetingRecordingStatus.Failed; row.Error = "start interrupted"; row.EndedAt ??= now;
                         await db.SaveChangesAsync(ct);
                         DeleteSpool(spool, row);
-                        await ClearBannerAsync(db, rooms, tracker, row, ct);
+                        await ClearBannerAsync(db, rooms, tracker, row, ct, media);
                         done++;
                     }
                     continue;
                 }
                 if (row.Status == MeetingRecordingStatus.Recording)
                 {
-                    var participants = await rooms.ListAsync(MeetingRoomKeys.LiveKitRoom(row.RoomKey), ct);
+                    var participants = await rooms.ListAsync(media.Room(row.RoomKey, row.MeetingId ?? Guid.Empty), ct);
                     var viewers = row.Viewers.Select(v => v.UserId).ToHashSet();
                     foreach (var participant in participants)
                     {
                         if (participant.Identity.StartsWith("EG_", StringComparison.Ordinal)
                             || !Guid.TryParse(participant.Identity, out var userId) || !viewers.Add(userId)) continue;
+                        var booking = (await IPop.Infrastructure.Hall.RoomAccess.BookingsAsync(db, row.RoomKey, now,
+                            tracker.Snapshot(row.RoomKey, now), ct)).Current;
+                        if (booking?.MeetingId != row.MeetingId || !IPop.Infrastructure.Hall.RoomAccess.MayEnter(
+                            await IPop.Infrastructure.Hall.RoomAccess.RoleAsync(db, booking, userId, ct))) continue;
                         row.Viewers.Add(new MeetingRecordingViewer { RecordingId = row.Id, UserId = userId });
                     }
                     await db.SaveChangesAsync(ct);
                 }
-                var info = await egress.GetAsync(row.EgressId, ct);
                 if (info is null) continue;
                 // Egress ended on its own (abort, failure, limit) while the room still shows "Recording · started by …":
                 // clear the banner, or everyone keeps seeing it and Stop answers 404.
                 if (row.Status == MeetingRecordingStatus.Recording && info.Status is "EGRESS_FAILED" or "EGRESS_ABORTED" or "EGRESS_COMPLETE" or "EGRESS_LIMIT_REACHED")
-                    await ClearBannerAsync(db, rooms, tracker, row, ct);
+                    await ClearBannerAsync(db, rooms, tracker, row, ct, media);
                 if (info.Status is "EGRESS_FAILED" or "EGRESS_ABORTED")
                 {
                     row.Status = MeetingRecordingStatus.Failed; row.Error = info.Error; row.EndedAt ??= now;
@@ -129,10 +146,12 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
                 }
 
                 if (!nas.HasServiceAccount || string.IsNullOrEmpty(row.SpoolPath)) continue;
-                var local = Path.Combine(spool, row.SpoolPath!.Replace('/', Path.DirectorySeparatorChar));
+                var local = RecordingPaths.LocalFile(spool, row.SpoolPath);
+                if (local is null) continue;
                 if (!File.Exists(local)) continue;   // the container may still be flushing; try next pass
                 var dir = $"{nasRoot}/{Path.GetDirectoryName(row.SpoolPath)!.Replace('\\', '/')}";
                 var file = Path.GetFileName(row.SpoolPath);
+                if (RecordingPaths.NasFile(nasRoot, $"{dir}/{file}") is null) continue;
                 await using (var fs = File.OpenRead(local))
                     await nas.UploadAsServiceAsync(dir, file, fs, ct);
                 var nasPath = $"{dir}/{file}";
@@ -188,7 +207,7 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
         if (string.IsNullOrEmpty(row.SpoolPath)) return;
         try
         {
-            var local = Path.Combine(spool, row.SpoolPath.Replace('/', Path.DirectorySeparatorChar));
+            var local = RecordingPaths.LocalFile(spool, row.SpoolPath);
             if (File.Exists(local)) File.Delete(local);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { }
@@ -196,8 +215,8 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
 
     /// Rewrites the room metadata without this recording (the booking info stays). Best effort: the room may be gone.
     private static Task ClearBannerAsync(IPopDbContext db, ILiveKitRoomAdmin rooms, RoomOccupancyTracker tracker, MeetingRecording row,
-        CancellationToken ct) =>
-        RoomMetadata.PublishAsync(db, rooms, tracker, row.RoomKey, DateTime.UtcNow, ct, endedRecordingId: row.Id);
+        CancellationToken ct, MeetingRoomMedia media) =>
+        RoomMetadata.PublishAsync(db, rooms, tracker, row.RoomKey, DateTime.UtcNow, ct, endedRecordingId: row.Id, mediaRooms: media);
 
     private static Task NotifyFailedAsync(INotificationGatewayService notify, MeetingRecording row, CancellationToken ct) =>
         notify.PublishInternalAsync("meetings", "meeting.recording.failed", "Recording failed",
@@ -232,7 +251,10 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
             ct.ThrowIfCancellationRequested();
             try
             {
-                await nas.DeleteAsServiceAsync(r.NasPath!, ct);
+                var config = scope.ServiceProvider.GetService<IConfiguration>();
+                var path = RecordingPaths.NasFile(config?["MeetingRooms:NasFolder"] ?? "/sja/SJA SPJ/ICT/recordings", r.NasPath);
+                if (path is null) continue; // quarantine: retain NasPath, never claim deletion succeeded
+                await nas.DeleteAsServiceAsync(path, ct);
                 r.NasPath = null;
                 r.Status = MeetingRecordingStatus.Deleted;
                 await db.SaveChangesAsync(ct);

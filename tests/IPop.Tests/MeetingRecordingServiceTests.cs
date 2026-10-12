@@ -27,12 +27,18 @@ public class MeetingRecordingServiceTests
             OnStart?.Invoke();
             if (StartThrows is not null) throw StartThrows;
             TemplateUrls.Add(templateUrl);
-            Started.Add((room, filepath)); return Task.FromResult($"EG_{Started.Count}");
+            Started.Add((room, filepath));
+            var id = $"EG_{Started.Count}";
+            Infos[id] = new("EGRESS_ACTIVE", null, null, null, null, room);
+            return Task.FromResult(id);
         }
+        /// Runs after a successful StopAsync (e.g. Egress reports the recording complete).
+        public Action<string>? OnStop { get; set; }
         public Task StopAsync(string egressId, CancellationToken ct)
         {
             if (StopThrows is not null) throw StopThrows;
             Stopped.Add(egressId);
+            OnStop?.Invoke(egressId);
             return Task.CompletedTask;
         }
         public Task<LiveKitEgressInfo?> GetAsync(string egressId, CancellationToken ct) => Task.FromResult(Infos.GetValueOrDefault(egressId));
@@ -44,7 +50,17 @@ public class MeetingRecordingServiceTests
     }).Build();
 
     private static MeetingRecordingService Make(TestDb t, MeetingRoomServiceTests.FakeRoomAdmin lk, FakeEgress eg) =>
-        new(t.Db, lk, eg, new DbSettings(t.Db), Config());
+        MakeBooked(t, lk, eg);
+
+    private static MeetingRecordingService MakeBooked(TestDb t, MeetingRoomServiceTests.FakeRoomAdmin lk, FakeEgress eg)
+    {
+        foreach (var key in new[] { "kalosi", "arabika" })
+            if (lk.Rooms.TryGetValue("hall-" + key, out var ps))
+                MeetingRoomTestBookings.Ensure(t, key, ps.Select(p => Guid.Parse(p.Identity)).ToArray());
+        return new(t.Db, lk, eg, new DbSettings(t.Db), Config());
+    }
+
+    private static Guid rowId(TestDb t) => t.Verify().MeetingRecordings.Single().MeetingId!.Value;
 
     [Fact]
     public async Task Start_records_the_room_and_makes_everyone_inside_a_viewer()
@@ -58,11 +74,11 @@ public class MeetingRecordingServiceTests
 
         Assert.Null(r.Error);
         var (room, path) = eg.Started.Single();
-        Assert.Equal("hall-kalosi", room);
+        Assert.Equal(MeetingRoomServiceTests.FakeRoomAdmin.Media("kalosi", rowId(t)), room);
         Assert.StartsWith("/out/kalosi/", path);
         Assert.EndsWith(".mp4", path);
         var row = await t.Verify().MeetingRecordings.Include(x => x.Viewers).SingleAsync();
-        Assert.Equal((MeetingRecordingStatus.Recording, "Kalosi · ad-hoc"), (row.Status, row.Title));
+        Assert.Equal((MeetingRecordingStatus.Recording, "Weekly sync"), (row.Status, row.Title));
         Assert.Equal(new[] { a.Id, b.Id }.Order(), row.Viewers.Select(v => v.UserId).Order());
     }
 
@@ -143,6 +159,7 @@ public class MeetingRecordingServiceTests
         lk.Rooms["hall-kalosi"] = [new(a.Id.ToString(), "A", [], new Dictionary<string, string>())];
         var svc = Make(t, lk, new FakeEgress());
         var rec = (await svc.StartAsync(a.Id, "kalosi", default)).Recording!;
+        MeetingRoomTestBookings.Ensure(t, "kalosi", a.Id, late.Id);
         await svc.NoteJoinAsync(late.Id, "kalosi", default);
         await svc.NoteJoinAsync(late.Id, "kalosi", default);   // idempotent
 
@@ -184,6 +201,7 @@ public class MeetingRecordingServiceTests
     {
         using var t = new TestDb(); var a = t.AddUser("A1");
         var lk = new MeetingRoomServiceTests.FakeRoomAdmin();
+        MeetingRoomTestBookings.Ensure(t, "kalosi", a.Id);
         var svc = Make(t, lk, new FakeEgress());
         Assert.Equal("unknown_room", (await svc.StartAsync(a.Id, "missing", default)).Error);
         lk.Throws = true;
@@ -291,6 +309,6 @@ public class MeetingRecordingServiceTests
 
         var row = await t.Verify().MeetingRecordings.SingleAsync();
         Assert.Equal(("EG_1", MeetingRecordingStatus.Recording), (row.EgressId, row.Status));
-        Assert.Contains(lk.MetadataUpdates, m => m.Room == "hall-kalosi" && m.Metadata.Contains(row.Id.ToString()));
+        Assert.Contains(lk.MetadataUpdates, m => m.Room == MeetingRoomServiceTests.FakeRoomAdmin.Media("kalosi", row.MeetingId!.Value) && m.Metadata.Contains(row.Id.ToString()));
     }
 }

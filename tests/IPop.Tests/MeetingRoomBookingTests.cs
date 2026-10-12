@@ -22,7 +22,7 @@ public class MeetingRoomBookingTests
     /// One tracker per test (xunit makes a new instance per test), shared by the services and the worker like the DI
     /// singleton. "Started" long ago: a room that is occupied counts as occupied since before any booking ended, unless
     /// a test lets the worker or a service see it empty.
-    private readonly RoomOccupancyTracker occ = new(DateTime.MinValue);
+    private readonly RoomOccupancyTracker occ = new(DateTime.MinValue, TimeSpan.MaxValue);
 
     private MeetingRoomService Make(TestDb t, FakeRoomAdmin? lk = null) =>
         new(t.Db, lk ?? new FakeRoomAdmin(), new FakeTokens(), new DbSettings(t.Db), new RoomPasswordLimiter(), new RoomMeetingCreator(t.Db), occ);
@@ -52,7 +52,7 @@ public class MeetingRoomBookingTests
     }
 
     private static JsonElement LastMetadata(FakeRoomAdmin lk, string key = "kalosi") =>
-        JsonDocument.Parse(lk.MetadataUpdates.Last(m => m.Room == MeetingRoomKeys.LiveKitRoom(key)).Metadata).RootElement;
+        JsonDocument.Parse(lk.MetadataUpdates.Last(m => FakeRoomAdmin.Logical(m.Room) == MeetingRoomKeys.LiveKitRoom(key)).Metadata).RootElement;
 
     private static void Decline(TestDb t, Guid meetingId, Guid userId)
     {
@@ -200,7 +200,7 @@ public class MeetingRoomBookingTests
     {
         using var t = new TestDb(); var x = t.AddUser("X1");
         var lk = new FakeRoomAdmin();
-        lk.Put("kalosi", x.Id.ToString(), "EG_abc", "not-a-guid");   // e.g. an old token reused after the booking
+        lk.PutIn(FakeRoomAdmin.Media("kalosi", Guid.NewGuid()), x.Id.ToString(), "EG_abc", "not-a-guid");   // e.g. an old token reused after the booking
         await TickAsync(t, lk, DateTime.UtcNow);
         Assert.Equal([x.Id.ToString(), "not-a-guid"], lk.Removed.Select(r => r.Identity).OrderBy(i => i == "not-a-guid").ToList());
         Assert.DoesNotContain(lk.Removed, r => r.Identity.StartsWith("EG_"));
@@ -218,7 +218,7 @@ public class MeetingRoomBookingTests
 
         await TickAsync(t, lk, DateTime.UtcNow);
 
-        Assert.Equal([("hall-kalosi", x.Id.ToString())], lk.Removed);
+        Assert.Equal([(FakeRoomAdmin.Media("kalosi", id), x.Id.ToString())], lk.Removed);
     }
 
     [Fact]
@@ -238,7 +238,7 @@ public class MeetingRoomBookingTests
         Assert.Equal(MeetingEndpoints.UpdateResult.Applied, (await MeetingEndpoints.ApplyUpdateAsync(t.Verify(), id, org.Id, upd, default)).Result);
         await TickAsync(t, lk, DateTime.UtcNow);
 
-        Assert.Equal([("hall-kalosi", inv.Id.ToString())], lk.Removed);
+        Assert.Equal([(FakeRoomAdmin.Media("kalosi", id), inv.Id.ToString())], lk.Removed);
         Assert.Equal("password_required", (await Make(t, lk).JoinAsync(inv.Id, "kalosi", null, default)).Error);
     }
 
@@ -251,7 +251,7 @@ public class MeetingRoomBookingTests
         lk.Put("kalosi", org.Id.ToString(), inv.Id.ToString());
         Decline(t, id, inv.Id);
         await TickAsync(t, lk, DateTime.UtcNow);
-        Assert.Equal([("hall-kalosi", inv.Id.ToString())], lk.Removed);
+        Assert.Equal([(FakeRoomAdmin.Media("kalosi", id), inv.Id.ToString())], lk.Removed);
     }
 
     [Fact]
@@ -265,7 +265,7 @@ public class MeetingRoomBookingTests
         var bId = await BookAsync(t, b.Id, bStart, 30, attendees: [both.Id, bInv.Id]);           // … window opens 10 min before
         var takeover = bStart.AddMinutes(-10);
         var lk = new FakeRoomAdmin();
-        lk.Put("kalosi", a.Id.ToString(), aOnly.Id.ToString(), both.Id.ToString());
+        lk.PutIn(FakeRoomAdmin.Media("kalosi", aId), a.Id.ToString(), aOnly.Id.ToString(), both.Id.ToString());
 
         // Long before: nobody leaves, the metadata announces the takeover, no leaving list yet; the worker asks to wake
         // at the warning moment.
@@ -287,11 +287,11 @@ public class MeetingRoomBookingTests
         Assert.Equal(new[] { a.Id.ToString(), aOnly.Id.ToString() }.Order(), leaving.Order());
 
         // B's invitee may already come in early (window started) — and at the takeover A's people not in B leave.
-        lk.Rooms["hall-kalosi"].Add(new LiveKitParticipant(bInv.Id.ToString(), "B2", [], new Dictionary<string, string>()));
+        lk.PutIn(FakeRoomAdmin.Media("kalosi", bId), both.Id.ToString(), bInv.Id.ToString());
         await TickAsync(t, lk, takeover.AddSeconds(1));
-        Assert.Equal(new[] { a.Id.ToString(), aOnly.Id.ToString() }.Order(), lk.Removed.Select(r => r.Identity).Order());
+        Assert.Equal(new[] { a.Id.ToString(), aOnly.Id.ToString(), both.Id.ToString() }.Order(), lk.Removed.Select(r => r.Identity).Order());
         Assert.Equal(bId, LastMetadata(lk).GetProperty("booking").GetProperty("meetingId").GetGuid());
-        Assert.Equal(new[] { both.Id.ToString(), bInv.Id.ToString() }.Order(), lk.Rooms["hall-kalosi"].Select(p => p.Identity).Order());
+        Assert.Equal(new[] { both.Id.ToString(), bInv.Id.ToString() }.Order(), lk.Rooms[FakeRoomAdmin.Media("kalosi", bId)].Select(p => p.Identity).Order());
     }
 
     [Fact]
@@ -360,18 +360,18 @@ public class MeetingRoomBookingTests
     {
         using var t = new TestDb(); var org = t.AddUser("O1"); var inv = t.AddUser("I1");
         var end = DateTime.UtcNow.AddMinutes(-5);
-        await BookAsync(t, org.Id, end.AddMinutes(-30), 30, attendees: inv.Id);
+        var id = await BookAsync(t, org.Id, end.AddMinutes(-30), 30, attendees: inv.Id);
         var lk = new FakeRoomAdmin();
-        lk.Put("kalosi", org.Id.ToString(), inv.Id.ToString());
+        lk.PutIn(FakeRoomAdmin.Media("kalosi", id), org.Id.ToString(), inv.Id.ToString());
         await TickAsync(t, lk, DateTime.UtcNow);
         Assert.Empty(lk.Removed);                                   // still overrunning, continuously occupied
 
-        lk.Put("kalosi");                                           // everyone left
+        lk.PutIn(FakeRoomAdmin.Media("kalosi", id));                  // everyone left
         await TickAsync(t, lk, DateTime.UtcNow);
-        lk.Put("kalosi", inv.Id.ToString());                        // reconnect with a token that is still valid
+        lk.PutIn(FakeRoomAdmin.Media("kalosi", id), inv.Id.ToString()); // reconnect with a token that is still valid
         await TickAsync(t, lk, DateTime.UtcNow);
 
-        Assert.Equal([("hall-kalosi", inv.Id.ToString())], lk.Removed);
+        Assert.Equal([(FakeRoomAdmin.Media("kalosi", id), inv.Id.ToString())], lk.Removed);
         Assert.Equal("no_booking", (await Make(t, lk).JoinAsync(org.Id, "kalosi", null, default)).Error);
         Assert.Equal(MeetingRoomAccess.Free, (await Make(t, lk).ListAsync(org.Id, default)).Single(r => r.Key == "kalosi").Access);
     }
@@ -397,8 +397,8 @@ public class MeetingRoomBookingTests
         var now1 = await BookAsync(t, org.Id, DateTime.UtcNow.AddMinutes(-10), 60);
         var now2 = await BookAsync(t, org.Id, DateTime.UtcNow.AddMinutes(-10), 60, "SJA Hall · Toraja");
         var lk = new FakeRoomAdmin();
-        lk.Put("kalosi", org.Id.ToString(), old.Id.ToString());
-        lk.Put("toraja", org.Id.ToString(), old.Id.ToString());
+        lk.PutIn(FakeRoomAdmin.Media("kalosi", now1), org.Id.ToString(), old.Id.ToString());
+        lk.PutIn(FakeRoomAdmin.Media("toraja", now2), org.Id.ToString(), old.Id.ToString());
         await TickAsync(t, lk, DateTime.UtcNow);
 
         await MeetingEndpoints.ApplyCancelAsync(t.Verify(), now1, org.Id, default);
@@ -506,7 +506,7 @@ public class MeetingRoomBookingTests
         lk.Put("kalosi", x.Id.ToString());
         lk.Put("toraja", x.Id.ToString());
         await TickAsync(t, lk, DateTime.UtcNow);
-        Assert.Equal(new[] { "hall-kalosi", "hall-toraja" }, lk.Removed.Select(r => r.Room).Order());
+        Assert.Equal(new[] { "hall-kalosi", "hall-toraja" }, lk.Removed.Select(r => FakeRoomAdmin.Logical(r.Room)).Order());
     }
 
     /// LiveKit that answers, but whose answer for one room makes processing blow up (not an HTTP error).
@@ -514,10 +514,11 @@ public class MeetingRoomBookingTests
     {
         private readonly FakeRoomAdmin inner = new();
         public List<(string Room, string Identity)> Removed => inner.Removed;
-        public void Put(string key, params string[] ids) => inner.Put(key, ids);
+        public void Put(string key, params string[] ids) => inner.PutIn(FakeRoomAdmin.Media(key, Guid.NewGuid()), ids);
+        public Task<IReadOnlyList<string>> ListRoomsAsync(CancellationToken ct) => inner.ListRoomsAsync(ct);
         public bool IsConfigured => true;
         public Task<IReadOnlyList<LiveKitParticipant>> ListAsync(string r, CancellationToken ct) =>
-            r == room ? throw new InvalidOperationException("bad data") : inner.ListAsync(r, ct);
+            FakeRoomAdmin.Logical(r) == room ? throw new InvalidOperationException("bad data") : inner.ListAsync(r, ct);
         public Task<bool> MuteAsync(string r, string i, CancellationToken ct) => inner.MuteAsync(r, i, ct);
         public Task<bool> RemoveAsync(string r, string i, CancellationToken ct) => inner.RemoveAsync(r, i, ct);
         public Task CreateRoomAsync(string r, int m, CancellationToken ct) => inner.CreateRoomAsync(r, m, ct);
@@ -537,13 +538,13 @@ public class MeetingRoomBookingTests
         await TickAsync(t, lk, now);
         await TickAsync(t, lk, now.AddSeconds(30));
         await TickAsync(t, lk, now.AddSeconds(60));
-        Assert.Single(lk.MetadataUpdates, m => m.Room == "hall-kalosi");
+        Assert.Single(lk.MetadataUpdates, m => FakeRoomAdmin.Logical(m.Room) == "hall-kalosi");
         // After the room was empty (LiveKit drops it with its metadata) the next pass writes again.
         lk.Put("kalosi");
         await TickAsync(t, lk, now.AddSeconds(90));
         lk.Put("kalosi", org.Id.ToString());
         await TickAsync(t, lk, now.AddSeconds(120));
-        Assert.Equal(2, lk.MetadataUpdates.Count(m => m.Room == "hall-kalosi"));
+        Assert.Equal(2, lk.MetadataUpdates.Count(m => FakeRoomAdmin.Logical(m.Room) == "hall-kalosi"));
     }
 
     [Fact]
@@ -605,15 +606,17 @@ public class MeetingRoomBookingTests
         var now = DateTime.UtcNow;
         await TickAsync(t, lk, now);
         await TickAsync(t, lk, now.AddMinutes(4));
-        Assert.Single(lk.MetadataUpdates, m => m.Room == "hall-kalosi");
+        Assert.Single(lk.MetadataUpdates, m => FakeRoomAdmin.Logical(m.Room) == "hall-kalosi");
         await TickAsync(t, lk, now.AddMinutes(5).AddSeconds(1));
-        Assert.Equal(2, lk.MetadataUpdates.Count(m => m.Room == "hall-kalosi"));
+        Assert.Equal(2, lk.MetadataUpdates.Count(m => FakeRoomAdmin.Logical(m.Room) == "hall-kalosi"));
     }
 
     [Fact]
     public async Task Seen_empty_is_dated_when_the_livekit_listing_returned()
     {
-        using var t = new TestDb();
+        using var t = new TestDb(); var org = t.AddUser("O1");
+        foreach (var (_, name) in IPop.Application.Hall.HallBooking.Rooms)
+            await BookAsync(t, org.Id, DateTime.UtcNow.AddMinutes(-5), 60, "SJA Hall · " + name);
         var lk = new FakeRoomAdmin { ListDelay = TimeSpan.FromMilliseconds(300) };
         var tickStart = DateTime.UtcNow;
         await TickAsync(t, lk, tickStart);

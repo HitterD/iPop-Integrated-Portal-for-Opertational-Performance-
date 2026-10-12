@@ -203,6 +203,15 @@ builder.Services.AddScoped<IPop.Application.MeetingRooms.IMeetingRoomService, IP
 builder.Services.AddScoped<IPop.Application.MeetingRooms.IRoomBookingWriter, IPop.Api.MeetingRooms.RoomMeetingCreator>();
 // Wrong room-password counts (5 / 5 min per user and booking), in memory: one API instance, resets on restart.
 builder.Services.AddSingleton<IPop.Infrastructure.MeetingRooms.RoomPasswordLimiter>();
+var meetingMedia = new IPop.Infrastructure.MeetingRooms.MeetingRoomMedia(builder.Configuration);
+// Non-production must not silently inherit production defaults against shared LiveKit/NAS credentials.
+if (!builder.Environment.IsProduction() &&
+    (string.IsNullOrWhiteSpace(builder.Configuration["MeetingRooms:MediaNamespace"]) || meetingMedia.Namespace == "hall"
+     || string.IsNullOrWhiteSpace(builder.Configuration["MeetingRooms:BookingWorkerEnabled"])
+     || string.IsNullOrWhiteSpace(builder.Configuration["MeetingRooms:NasFolder"])
+     || builder.Configuration["MeetingRooms:NasFolder"]?.TrimEnd('/') == "/sja/SJA SPJ/ICT/recordings"))
+    throw new InvalidOperationException("Non-production meeting rooms require a distinct MediaNamespace and NasFolder, and explicit BookingWorkerEnabled.");
+builder.Services.AddSingleton(meetingMedia);
 // When each hall room was last empty (overrun rule) + last metadata written; in memory, starts "empty at app start".
 builder.Services.AddSingleton<IPop.Infrastructure.MeetingRooms.RoomOccupancyTracker>();
 builder.Services.AddScoped<IPop.Application.MeetingRooms.IMeetingRecordingService, IPop.Infrastructure.MeetingRooms.MeetingRecordingService>();
@@ -392,6 +401,11 @@ if (app.Environment.IsDevelopment())
     await DevSeed.EnsureSeededAsync(db, scope.ServiceProvider.GetRequiredService<IPop.Application.Auth.IPasswordHasher>());
     // Reference data: built-in project templates (idempotent, by fixed id).
     await IPop.Infrastructure.Projects.BuiltInProjectTemplates.EnsureSeededAsync(db);
+}
+{
+    using var scope = app.Services.CreateScope();
+    await IPop.Infrastructure.MeetingRooms.RoomPasswordBackfill.RunAsync(
+        scope.ServiceProvider.GetRequiredService<IPopDbContext>(), DateTime.UtcNow, CancellationToken.None, app.Logger);
 }
 {
     // One-time move of group photos from chat-files/avatars into the database (no-op afterwards).

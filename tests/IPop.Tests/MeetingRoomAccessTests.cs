@@ -21,7 +21,7 @@ public class MeetingRoomAccessTests
 {
     private static MeetingRoomService Make(TestDb t, FakeRoomAdmin? lk = null, RoomPasswordLimiter? limiter = null) =>
         new(t.Db, lk ?? new FakeRoomAdmin(), new FakeTokens(), new DbSettings(t.Db), limiter ?? new RoomPasswordLimiter(),
-            new RoomMeetingCreator(t.Db), new RoomOccupancyTracker(DateTime.MinValue));
+            new RoomMeetingCreator(t.Db), new RoomOccupancyTracker(DateTime.MinValue, TimeSpan.MaxValue));
 
     private static async Task<Guid> BookAsync(TestDb t, Guid organizer, DateTime start, int minutes, string room = "SJA Hall · Kalosi",
         params Guid[] attendees)

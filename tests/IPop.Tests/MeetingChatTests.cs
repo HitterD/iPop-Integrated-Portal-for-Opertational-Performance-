@@ -19,8 +19,9 @@ namespace IPop.Tests;
 /// server recording, cleaned up after the booking.
 public class MeetingChatTests
 {
-    private readonly RoomOccupancyTracker occ = new(DateTime.MinValue);
+    private readonly RoomOccupancyTracker occ = new(DateTime.MinValue, TimeSpan.MaxValue);
     private readonly MeetingChatRateLimiter limiter = new();
+    private readonly MeetingRecordingServiceTests.FakeEgress eg = new();
 
     private sealed record World(TestDb T, User Organizer, User Invited, User Guest, User Outsider, User Admin, Guid MeetingId, FakeRoomAdmin Lk);
 
@@ -45,7 +46,7 @@ public class MeetingChatTests
     private MeetingChatService Chat(World w, IPopDbContext? db = null) => new(db ?? w.T.Db, w.Lk, limiter, occ);
 
     private MeetingRecordingService Recs(World w) =>
-        new(w.T.Db, w.Lk, new MeetingRecordingServiceTests.FakeEgress(), new DbSettings(w.T.Db), MeetingRecordingServiceTests.Config(), occ);
+        new(w.T.Db, w.Lk, eg, new DbSettings(w.T.Db), MeetingRecordingServiceTests.Config(), occ);
 
     private static HttpContext Http(User u, params string[] roles) => new DefaultHttpContext
     {
@@ -174,7 +175,7 @@ public class MeetingChatTests
             await db.Users.Where(u => u.Id == w.Invited.Id).ExecuteUpdateAsync(s => s.SetProperty(u => u.Name, "Ina Wulandari"));
         var dto = (await Chat(w).SendAsync(w.Invited.Id, "kalosi", "see https://x.test", default)).Message!;
         var (room, payload, topic) = Assert.Single(w.Lk.DataSent);
-        Assert.Equal("hall-kalosi", room);
+        Assert.Equal(FakeRoomAdmin.Media("kalosi", w.MeetingId), room);
         Assert.Equal("ipop.chat", topic);
         var json = System.Text.Encoding.UTF8.GetString(payload);
         Assert.DoesNotContain(w.Invited.Nik, json);

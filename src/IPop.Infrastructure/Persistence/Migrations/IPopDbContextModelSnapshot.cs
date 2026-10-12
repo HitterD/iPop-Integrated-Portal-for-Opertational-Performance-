@@ -2220,6 +2220,36 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("MeetingRoomGuests");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.MeetingRoomOwnership", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("ClaimedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("MeetingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RoomKey")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("WindowStartAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoomKey", "MeetingId")
+                        .IsUnique();
+
+                    b.ToTable("MeetingRoomOwnerships");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.NewsAcknowledgement", b =>
                 {
                     b.Property<Guid>("NewsPostId")

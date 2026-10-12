@@ -12,28 +12,38 @@ namespace IPop.Infrastructure.MeetingRooms;
 /// rewrite at least every <see cref="MetadataRefresh"/> (heals a recreated LiveKit room or a lost concurrent write).</item>
 /// </list>
 /// Per process; lost on restart (by design, see above).
-public sealed class RoomOccupancyTracker(DateTime startedAtUtc)
+public sealed class RoomOccupancyTracker(DateTime startedAtUtc, TimeSpan? maxGap = null)
 {
     public RoomOccupancyTracker() : this(DateTime.UtcNow) { }
 
     public static readonly TimeSpan MetadataRefresh = TimeSpan.FromMinutes(5);
     public DateTime StartedAtUtc { get; } = startedAtUtc;
     private readonly ConcurrentDictionary<string, DateTime> _lastEmpty = new();
+    private readonly ConcurrentDictionary<string, DateTime> _lastObserved = new();
+    private readonly TimeSpan gapLimit = maxGap ?? TimeSpan.FromSeconds(45);
     private readonly ConcurrentDictionary<string, (string Json, DateTime At)> _lastMetadata = new();
 
     /// Records what a caller just saw in LiveKit and returns the occupancy to pass to RoomAccess. Pass the time the
     /// LiveKit listing RETURNED (not when the request started): "empty" must never be dated before it was true.
     public RoomOccupancy Observe(string roomKey, bool occupied, DateTime nowUtc)
     {
-        if (!occupied)
+        var continuous = _lastObserved.TryGetValue(roomKey, out var previous) && nowUtc >= previous && nowUtc - previous <= gapLimit;
+        _lastObserved.AddOrUpdate(roomKey, nowUtc, (_, old) => old > nowUtc ? old : nowUtc);
+        if (!occupied || (!continuous && gapLimit != TimeSpan.MaxValue))
         {
             _lastEmpty.AddOrUpdate(roomKey, nowUtc, (_, old) => old > nowUtc ? old : nowUtc);
             // An empty LiveKit room is deleted after its empty timeout and comes back with blank metadata.
             _lastMetadata.TryRemove(roomKey, out _);
-            return RoomOccupancy.Empty;
+            if (!occupied) return RoomOccupancy.Empty;
         }
         return new RoomOccupancy(true, _lastEmpty.GetValueOrDefault(roomKey, StartedAtUtc));
     }
+
+    public void ObserveFailed(string roomKey) => _lastObserved.TryRemove(roomKey, out _);
+
+    public RoomOccupancy Snapshot(string roomKey, DateTime nowUtc) =>
+        gapLimit == TimeSpan.MaxValue || (_lastObserved.TryGetValue(roomKey, out var last) && nowUtc >= last && nowUtc - last <= gapLimit)
+            ? new(true, LastEmptyAt(roomKey)) : RoomOccupancy.Empty;
 
     /// The last time the room was seen empty (app start when never).
     public DateTime LastEmptyAt(string roomKey) => _lastEmpty.GetValueOrDefault(roomKey, StartedAtUtc);
