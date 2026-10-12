@@ -7,15 +7,20 @@ using IPop.Infrastructure.Calls;
 using IPop.Infrastructure.Hall;
 using IPop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace IPop.Infrastructure.MeetingRooms;
 
 /// The five SJA Hall rooms as drop-in meeting rooms. LiveKit is the truth for who is inside.
 /// Rooms are booking-only (v2 §1): who may enter is decided by <see cref="RoomAccess"/>.
 public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveKit, ILiveKitTokenService tokens, ISettings settings,
-    RoomPasswordLimiter passwordLimiter, IRoomBookingWriter bookings)
+    RoomPasswordLimiter passwordLimiter, IRoomBookingWriter bookings, RoomOccupancyTracker? occupancyTracker = null,
+    ILogger<MeetingRoomService>? log = null)
     : IMeetingRoomService
 {
+    /// Singleton in the app (DI); a private one when a test does not pass it.
+    private readonly RoomOccupancyTracker occupancy = occupancyTracker ?? new RoomOccupancyTracker();
+
     public const string PrivateTitle = "Booked";
     /// Durations the "Use now" sheet offers; a shorter one only when the next booking caps the room (then ≥ UseNowMinMinutes).
     public static readonly int[] UseNowDurations = [30, 60, 90];
@@ -40,7 +45,8 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
             var available = inside[i] is not null;
             var people = available ? People(inside[i]!, names) : [];
             // Same rules as join (RoomAccess): the 10-minute early window and an overrunning occupied booking count.
-            var access = await RoomAccess.ForAsync(db, room.Key, viewerId, now, people.Count > 0, ct);
+            var access = await RoomAccess.ForAsync(db, room.Key, viewerId, now,
+                available ? occupancy.Observe(room.Key, people.Count > 0, now) : RoomOccupancy.Empty, ct);
             var rec = recordings.FirstOrDefault(r => r.RoomKey == room.Key);
             list.Add(new MeetingRoomDto(room.Key, room.Name, room.Capacity, video[room.Key], available, people,
                 access.Current is { } cur ? await BookingDtoAsync(cur, viewerId, ct) : null,
@@ -78,18 +84,35 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
     {
         if (!HallBooking.Rooms.Any(r => r.Key == key)) return (null, null, "unknown_room");
         var now = DateTime.UtcNow;
-        var occupied = await ParticipantsAsync(key, ct) is { Count: > 0 };
-        var access = await RoomAccess.ForAsync(db, key, userId, now, occupied, ct);
-        if (access.Current is not { } booking) return (null, null, "no_booking");
+        var inside = await ParticipantsAsync(key, ct);
+        var access = await RoomAccess.ForAsync(db, key, userId, now,
+            inside is null ? RoomOccupancy.Empty : occupancy.Observe(key, inside.Count > 0, now), ct);
+        // Without LiveKit an overrun cannot be told apart from an ended booking: say so instead of "no booking".
+        if (access.Current is not { } booking) return (null, null, inside is null ? "media_unavailable" : "no_booking");
         if (booking.OrganizerId != userId) return (null, null, "forbidden");
+        // RoomAccess already caps an overrun at 4 h and ignores bookings from before today; checked again here because
+        // this path rewrites the meeting.
+        if (now >= Utc(booking.EndAt) + RoomAccess.MaxOverrun || Utc(booking.EndAt) <= RoomAccess.DayStartUtc(now))
+            return (null, null, "no_booking");
         // From the later of the booked end and now: an overrunning meeting gets 15 minutes from now.
         var baseEnd = Utc(booking.EndAt) > now ? Utc(booking.EndAt) : new DateTime(now.Ticks - now.Ticks % TimeSpan.TicksPerMinute, DateTimeKind.Utc);
         var end = baseEnd + ExtendBy;
         if (access.Next is { } next && end > RoomAccess.WindowStart(next)) return (null, null, "room_booked");
         var error = await bookings.SetEndAsync(userId, booking.MeetingId, end, ct);
-        if (error is not null) return (null, null, error is "not_found" or "cancelled" ? "no_booking" : error);
-        await RoomMetadata.PublishAsync(db, liveKit, key, now, ct);
+        if (error is not null) return (null, null, error == "not_found" ? "no_booking" : error);
+        await PublishMetadataSafeAsync(key, ct);
         return (booking.MeetingId, end, null);
+    }
+
+    /// Room metadata after a join or an extend. Never turns a successful action into an error: anything but
+    /// cancellation is logged and the booking worker writes it again within 30 s.
+    private async Task PublishMetadataSafeAsync(string key, CancellationToken ct)
+    {
+        try { await RoomMetadata.PublishAsync(db, liveKit, occupancy, key, DateTime.UtcNow, ct); }
+        catch (Exception e) when (!ct.IsCancellationRequested)
+        {
+            log?.LogWarning(e, "Meeting room {Room}: metadata update failed", key);
+        }
     }
 
     /// Who is in the room per LiveKit, without the hidden Egress recorder; null = LiveKit not reachable for this room.
@@ -131,7 +154,7 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
         {
             var inside = await liveKit.ListAsync(MeetingRoomKeys.LiveKitRoom(key), ct);
             var people = inside.Where(p => !p.Identity.StartsWith("EG_", StringComparison.Ordinal)).ToList();
-            if (await AdmitAsync(userId, key, people.Count > 0, password, ct) is { } refused) return new(null, refused, []);
+            if (await AdmitAsync(userId, key, occupancy.Observe(key, people.Count > 0, DateTime.UtcNow), password, ct) is { } refused) return new(null, refused, []);
             var others = people.Count(p => p.Identity != me);
             if (others >= room.Capacity)
             {
@@ -152,12 +175,12 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
             video ? MeetingRoomKeys.VideoSources : MeetingRoomKeys.AudioSources, canUpdateOwnMetadata: true);
         var retention = await settings.GetAsync(SettingKeys.MeetingRoomsRetentionDays, 90, ct);
         // Fresh booking info (endAt / nextStartAt) for the room before the client connects; the worker keeps it current.
-        await RoomMetadata.PublishAsync(db, liveKit, key, DateTime.UtcNow, ct);
+        await PublishMetadataSafeAsync(key, ct);
         return new(new MeetingRoomJoinDto(room.Key, room.Name, lkRoom, tokens.ServerUrl!, token, video, me, retention), null, []);
     }
 
     /// Null = may enter. The password is only looked at for outsiders; the right one admits a guest for this booking.
-    private async Task<string?> AdmitAsync(Guid userId, string key, bool occupied, string? password, CancellationToken ct)
+    private async Task<string?> AdmitAsync(Guid userId, string key, RoomOccupancy occupied, string? password, CancellationToken ct)
     {
         var access = await RoomAccess.ForAsync(db, key, userId, DateTime.UtcNow, occupied, ct);
         if (access.Current is not { } booking) return "no_booking";
@@ -181,7 +204,8 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
         if (minutes < UseNowMinMinutes || minutes > UseNowDurations.Max()) return (null, "invalid_minutes", null);
         var now = DateTime.UtcNow;
         var start = new DateTime(now.Ticks - now.Ticks % TimeSpan.TicksPerMinute, DateTimeKind.Utc);
-        var occupied = await ParticipantsAsync(key, ct) is { Count: > 0 };   // unreachable LiveKit: rely on the bookings alone
+        // Unreachable LiveKit: rely on the bookings alone.
+        var occupied = await ParticipantsAsync(key, ct) is { } inside ? occupancy.Observe(key, inside.Count > 0, now) : RoomOccupancy.Empty;
         var access = await RoomAccess.ForAsync(db, key, userId, now, occupied, ct);
         if (access.Current is not null) return (null, "room_booked", null);
         // A booking that ended earlier in this minute: start at its end, not at the floored minute (no overlap with it).

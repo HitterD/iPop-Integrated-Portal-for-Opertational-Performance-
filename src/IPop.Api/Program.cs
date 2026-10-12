@@ -203,6 +203,8 @@ builder.Services.AddScoped<IPop.Application.MeetingRooms.IMeetingRoomService, IP
 builder.Services.AddScoped<IPop.Application.MeetingRooms.IRoomBookingWriter, IPop.Api.MeetingRooms.RoomMeetingCreator>();
 // Wrong room-password counts (5 / 5 min per user and booking), in memory: one API instance, resets on restart.
 builder.Services.AddSingleton<IPop.Infrastructure.MeetingRooms.RoomPasswordLimiter>();
+// When each hall room was last empty (overrun rule) + last metadata written; in memory, starts "empty at app start".
+builder.Services.AddSingleton<IPop.Infrastructure.MeetingRooms.RoomOccupancyTracker>();
 builder.Services.AddScoped<IPop.Application.MeetingRooms.IMeetingRecordingService, IPop.Infrastructure.MeetingRooms.MeetingRecordingService>();
 builder.Services.AddScoped<IPop.Infrastructure.MeetingRooms.RecordingFileCache>();
 // Recording file tickets: HMAC key HKDF-derived from Jwt:Key with its own purpose label (never the JWT key itself).

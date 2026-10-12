@@ -23,10 +23,11 @@ public static class RoomMetadata
     public static readonly TimeSpan TakeoverWarning = TimeSpan.FromMinutes(1);
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    /// <paramref name="identities"/> = who is in the LiveKit room now (without EG_ recorders); non-empty means occupied.
-    /// <paramref name="endedRecordingId"/> is left out even if its row still says Recording (the caller is finishing it).
+    /// <paramref name="identities"/> = who is in the LiveKit room now (without EG_ recorders); <paramref name="occupancy"/>
+    /// as for RoomAccess. <paramref name="endedRecordingId"/> is left out even if its row still says Recording (the caller
+    /// is finishing it).
     public static async Task<string> ComposeAsync(IPopDbContext db, string roomKey, DateTime nowUtc, IReadOnlyCollection<string> identities,
-        CancellationToken ct, Guid? endedRecordingId = null)
+        RoomOccupancy occupancy, CancellationToken ct, Guid? endedRecordingId = null)
     {
         var doc = new Dictionary<string, object>();
         var rec = await db.MeetingRecordings.AsNoTracking()
@@ -35,7 +36,7 @@ public static class RoomMetadata
             .FirstOrDefaultAsync(ct);
         if (rec is not null) doc["recording"] = new { id = rec.Id, by = rec.By ?? "", startedAt = Utc(rec.StartedAt) };
 
-        var (current, next) = await RoomAccess.BookingsAsync(db, roomKey, nowUtc, identities.Count > 0, ct);
+        var (current, next) = await RoomAccess.BookingsAsync(db, roomKey, nowUtc, occupancy, ct);
         if (current is not null)
         {
             List<string>? leaving = null;
@@ -59,22 +60,41 @@ public static class RoomMetadata
         return JsonSerializer.Serialize(doc, Json);
     }
 
-    /// Asks LiveKit who is inside, composes and writes the metadata. Best effort: LiveKit down or the room gone is
-    /// ignored (the booking worker writes it again within 30 s). Returns what was written, or null.
-    public static async Task<string?> PublishAsync(IPopDbContext db, ILiveKitRoomAdmin liveKit, string roomKey, DateTime nowUtc,
-        CancellationToken ct, Guid? endedRecordingId = null)
+    /// Asks LiveKit who is inside, composes the metadata and writes it unless it equals what was last written to that
+    /// room (<paramref name="tracker"/>). Best effort: LiveKit down or the room gone is ignored (the booking worker writes
+    /// again within 30 s). Returns the composed JSON, or null when LiveKit could not be asked or written.
+    public static async Task<string?> PublishAsync(IPopDbContext db, ILiveKitRoomAdmin liveKit, RoomOccupancyTracker tracker, string roomKey,
+        DateTime nowUtc, CancellationToken ct, Guid? endedRecordingId = null)
     {
         if (!liveKit.IsConfigured) return null;
+        IReadOnlyList<string> identities;
         try
         {
-            var lkRoom = MeetingRoomKeys.LiveKitRoom(roomKey);
-            var identities = (await liveKit.ListAsync(lkRoom, ct)).Select(p => p.Identity)
+            identities = (await liveKit.ListAsync(MeetingRoomKeys.LiveKitRoom(roomKey), ct)).Select(p => p.Identity)
                 .Where(i => !i.StartsWith("EG_", StringComparison.Ordinal)).ToList();
-            var json = await ComposeAsync(db, roomKey, nowUtc, identities, ct, endedRecordingId);
-            await liveKit.UpdateRoomMetadataAsync(lkRoom, json, ct);
-            return json;
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { return null; }
+        var occupancy = tracker.Observe(roomKey, identities.Count > 0, nowUtc);
+        var json = await ComposeAsync(db, roomKey, nowUtc, identities, occupancy, ct, endedRecordingId);
+        return await WriteAsync(liveKit, tracker, roomKey, json, ct) ? json : null;
+    }
+
+    /// Writes <paramref name="json"/> unless the room already has it. False when the write failed.
+    public static async Task<bool> WriteAsync(ILiveKitRoomAdmin liveKit, RoomOccupancyTracker tracker, string roomKey, string json,
+        CancellationToken ct)
+    {
+        if (!tracker.MetadataChanged(roomKey, json)) return true;
+        try
+        {
+            await liveKit.UpdateRoomMetadataAsync(MeetingRoomKeys.LiveKitRoom(roomKey), json, ct);
+            tracker.MetadataWritten(roomKey, json);
+            return true;
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
+        {
+            tracker.ForgetMetadata(roomKey);
+            return false;
+        }
     }
 
     private static DateTime Utc(DateTime t) => t.Kind == DateTimeKind.Utc ? t : DateTime.SpecifyKind(t, DateTimeKind.Utc);

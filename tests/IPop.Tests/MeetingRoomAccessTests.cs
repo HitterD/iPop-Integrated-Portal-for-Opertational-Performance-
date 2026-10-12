@@ -21,7 +21,7 @@ public class MeetingRoomAccessTests
 {
     private static MeetingRoomService Make(TestDb t, FakeRoomAdmin? lk = null, RoomPasswordLimiter? limiter = null) =>
         new(t.Db, lk ?? new FakeRoomAdmin(), new FakeTokens(), new DbSettings(t.Db), limiter ?? new RoomPasswordLimiter(),
-            new RoomMeetingCreator(t.Db));
+            new RoomMeetingCreator(t.Db), new RoomOccupancyTracker(DateTime.MinValue));
 
     private static async Task<Guid> BookAsync(TestDb t, Guid organizer, DateTime start, int minutes, string room = "SJA Hall · Kalosi",
         params Guid[] attendees)
@@ -155,7 +155,7 @@ public class MeetingRoomAccessTests
         Assert.Equal((id, g.Id), (row.MeetingId, row.UserId));
         Assert.Null((await svc.JoinAsync(g.Id, "kalosi", null, default)).Error);
         Assert.Single(t.Verify().MeetingRoomGuests);   // not admitted twice
-        Assert.Equal("guest", (await RoomAccess.ForAsync(t.Verify(), "kalosi", g.Id, DateTime.UtcNow, false, default)).Role);
+        Assert.Equal("guest", (await RoomAccess.ForAsync(t.Verify(), "kalosi", g.Id, DateTime.UtcNow, RoomOccupancy.Empty, default)).Role);
     }
 
     [Fact]
@@ -165,7 +165,7 @@ public class MeetingRoomAccessTests
         var id = await BookAsync(t, org.Id, DateTime.UtcNow.AddMinutes(-5), 60, attendees: no.Id);
         Decline(t, id, no.Id);
         Assert.Equal("password_required", (await Make(t).JoinAsync(no.Id, "kalosi", null, default)).Error);
-        Assert.Equal("outsider", (await RoomAccess.ForAsync(t.Verify(), "kalosi", no.Id, DateTime.UtcNow, false, default)).Role);
+        Assert.Equal("outsider", (await RoomAccess.ForAsync(t.Verify(), "kalosi", no.Id, DateTime.UtcNow, RoomOccupancy.Empty, default)).Role);
     }
 
     [Fact]
@@ -211,16 +211,16 @@ public class MeetingRoomAccessTests
         var start = new DateTime(2026, 10, 12, 9, 0, 0, DateTimeKind.Utc);
         var id = await BookAsync(t, org.Id, start, 60);
 
-        var before = await RoomAccess.ForAsync(t.Verify(), "kalosi", x.Id, start.AddMinutes(-10).AddSeconds(-1), false, default);
+        var before = await RoomAccess.ForAsync(t.Verify(), "kalosi", x.Id, start.AddMinutes(-10).AddSeconds(-1), RoomOccupancy.Empty, default);
         Assert.Equal("free", before.Role);
         Assert.Equal(id, before.Next!.MeetingId);
 
-        var early = await RoomAccess.ForAsync(t.Verify(), "kalosi", org.Id, start.AddMinutes(-10), false, default);
+        var early = await RoomAccess.ForAsync(t.Verify(), "kalosi", org.Id, start.AddMinutes(-10), RoomOccupancy.Empty, default);
         Assert.Equal(("organizer", id), (early.Role, early.Current!.MeetingId));
         Assert.Null(early.Next);
 
-        Assert.Equal("free", (await RoomAccess.ForAsync(t.Verify(), "kalosi", x.Id, start.AddMinutes(61), false, default)).Role);
-        var overrun = await RoomAccess.ForAsync(t.Verify(), "kalosi", x.Id, start.AddMinutes(61), true, default);
+        Assert.Equal("free", (await RoomAccess.ForAsync(t.Verify(), "kalosi", x.Id, start.AddMinutes(61), RoomOccupancy.Empty, default)).Role);
+        var overrun = await RoomAccess.ForAsync(t.Verify(), "kalosi", x.Id, start.AddMinutes(61), RoomOccupancy.Continuous, default);
         Assert.Equal(("outsider", id), (overrun.Role, overrun.Current!.MeetingId));
     }
 
@@ -233,12 +233,12 @@ public class MeetingRoomAccessTests
         var idB = await BookAsync(t, b.Id, start.AddMinutes(60), 60);
 
         // 9:49: still A's; B is next.
-        var s1 = await RoomAccess.ForAsync(t.Verify(), "kalosi", b.Id, start.AddMinutes(49), true, default);
+        var s1 = await RoomAccess.ForAsync(t.Verify(), "kalosi", b.Id, start.AddMinutes(49), RoomOccupancy.Continuous, default);
         Assert.Equal(("outsider", idA, idB), (s1.Role, s1.Current!.MeetingId, s1.Next!.MeetingId));
         // 9:50: B's window has started while A runs to 10:00 → B is current, A's organizer is an outsider now.
-        var s2 = await RoomAccess.ForAsync(t.Verify(), "kalosi", b.Id, start.AddMinutes(50), true, default);
+        var s2 = await RoomAccess.ForAsync(t.Verify(), "kalosi", b.Id, start.AddMinutes(50), RoomOccupancy.Continuous, default);
         Assert.Equal(("organizer", idB), (s2.Role, s2.Current!.MeetingId));
-        Assert.Equal("outsider", (await RoomAccess.ForAsync(t.Verify(), "kalosi", a.Id, start.AddMinutes(50), true, default)).Role);
+        Assert.Equal("outsider", (await RoomAccess.ForAsync(t.Verify(), "kalosi", a.Id, start.AddMinutes(50), RoomOccupancy.Continuous, default)).Role);
     }
 
     [Fact]
@@ -247,9 +247,9 @@ public class MeetingRoomAccessTests
         using var t = new TestDb(); var org = t.AddUser("O1");
         var start = new DateTime(2026, 10, 12, 9, 0, 0, DateTimeKind.Utc);
         var id = await BookAsync(t, org.Id, start, 60);
-        Assert.Equal("free", (await RoomAccess.ForAsync(t.Verify(), "toraja", org.Id, start.AddMinutes(5), false, default)).Role);
+        Assert.Equal("free", (await RoomAccess.ForAsync(t.Verify(), "toraja", org.Id, start.AddMinutes(5), RoomOccupancy.Empty, default)).Role);
         await MeetingEndpoints.ApplyCancelAsync(t.Verify(), id, org.Id, default);
-        Assert.Equal("free", (await RoomAccess.ForAsync(t.Verify(), "kalosi", org.Id, start.AddMinutes(5), false, default)).Role);
+        Assert.Equal("free", (await RoomAccess.ForAsync(t.Verify(), "kalosi", org.Id, start.AddMinutes(5), RoomOccupancy.Empty, default)).Role);
     }
 
     // ---------------------------------------------------------------- use now

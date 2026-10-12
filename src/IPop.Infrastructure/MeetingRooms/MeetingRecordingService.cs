@@ -10,9 +10,11 @@ using Microsoft.Extensions.Configuration;
 
 namespace IPop.Infrastructure.MeetingRooms;
 
-public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin liveKit, ILiveKitEgress egress, ISettings settings, IConfiguration config)
+public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin liveKit, ILiveKitEgress egress, ISettings settings, IConfiguration config,
+    RoomOccupancyTracker? occupancyTracker = null)
     : IMeetingRecordingService
 {
+    private readonly RoomOccupancyTracker occupancy = occupancyTracker ?? new RoomOccupancyTracker();
     private string OutDir => (config["MeetingRooms:EgressOutDir"] ?? "/out").TrimEnd('/');
 
     public async Task<MeetingRecordingResult> StartAsync(Guid userId, string key, CancellationToken ct)
@@ -30,7 +32,7 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
 
         var now = DateTime.UtcNow;
         // Same booking as join and the room list (early window, overrun while occupied).
-        var occupied = inside.Any(p => !p.Identity.StartsWith("EG_", StringComparison.Ordinal));
+        var occupied = occupancy.Observe(key, inside.Any(p => !p.Identity.StartsWith("EG_", StringComparison.Ordinal)), now);
         var booking = (await RoomAccess.ForAsync(db, key, userId, now, occupied, ct)).Current;
         var id = Guid.NewGuid();
         var rel = $"{key}/{now.ToLocalTime():yyyy-MM-dd}/{now.ToLocalTime():HHmm}-{id:N}.mp4";
@@ -83,7 +85,7 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
     /// Room metadata carries the running server recording so every client shows "Recording · started by X"; it is
     /// composed with the booking info (<see cref="RoomMetadata"/>), never replacing it.
     private Task PublishStateAsync(string roomKey, Guid? endedRecordingId, CancellationToken ct) =>
-        RoomMetadata.PublishAsync(db, liveKit, roomKey, DateTime.UtcNow, ct, endedRecordingId);
+        RoomMetadata.PublishAsync(db, liveKit, occupancy, roomKey, DateTime.UtcNow, ct, endedRecordingId);
 
     public async Task NoteJoinAsync(Guid userId, string key, CancellationToken ct)
     {

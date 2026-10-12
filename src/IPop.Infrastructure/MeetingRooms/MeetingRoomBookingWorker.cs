@@ -19,8 +19,8 @@ namespace IPop.Infrastructure.MeetingRooms;
 /// <item>rewrites the room metadata (<see cref="RoomMetadata"/>): endAt / nextStartAt / takeoverAt and, one minute
 /// before a takeover, who will be moved out.</item>
 /// </list>
-/// After EndAt with no next booking the room stays current while occupied; once empty, RoomAccess has no current
-/// booking and nobody can rejoin.
+/// After EndAt with no next booking the room stays current while it stays occupied (at most 4 h); once it is seen empty
+/// (<see cref="RoomOccupancyTracker"/>), RoomAccess has no current booking and nobody can rejoin, even with a valid token.
 public sealed class MeetingRoomBookingWorker(IServiceProvider services, ILogger<MeetingRoomBookingWorker> log) : BackgroundService
 {
     public static readonly TimeSpan Interval = TimeSpan.FromSeconds(30);
@@ -45,12 +45,14 @@ public sealed class MeetingRoomBookingWorker(IServiceProvider services, ILogger<
     }
 
     /// One pass over the five rooms. Returns the earliest upcoming moment that needs a pass of its own (a takeover's
-    /// one-minute warning or the takeover itself), or null.
+    /// one-minute warning or the takeover itself), or null. A failure in one room (LiveKit, database, anything) is
+    /// logged and the other rooms still get their pass.
     public static async Task<DateTime?> TickAsync(IServiceProvider sp, DateTime nowUtc, CancellationToken ct, ILogger? logger = null)
     {
         using var scope = sp.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<IPopDbContext>();
         var liveKit = scope.ServiceProvider.GetRequiredService<ILiveKitRoomAdmin>();
+        var tracker = scope.ServiceProvider.GetRequiredService<RoomOccupancyTracker>();
         if (!liveKit.IsConfigured) return null;
         DateTime? due = null;
         foreach (var (key, _) in HallBooking.Rooms)
@@ -58,25 +60,27 @@ public sealed class MeetingRoomBookingWorker(IServiceProvider services, ILogger<
             ct.ThrowIfCancellationRequested();
             try
             {
-                if (await RoomAsync(db, liveKit, key, nowUtc, ct) is { } d && (due is null || d < due)) due = d;
+                if (await RoomAsync(db, liveKit, tracker, key, nowUtc, ct) is { } d && (due is null || d < due)) due = d;
             }
-            catch (Exception e) when (!ct.IsCancellationRequested && e is HttpRequestException or TaskCanceledException)
+            catch (Exception e) when (!ct.IsCancellationRequested)
             {
-                logger?.LogDebug(e, "Meeting room {Room}: LiveKit not reachable", key);
+                logger?.LogWarning(e, "Meeting room {Room}: booking pass failed", key);
+                db.ChangeTracker.Clear();
             }
         }
         return due;
     }
 
-    private static async Task<DateTime?> RoomAsync(IPopDbContext db, ILiveKitRoomAdmin liveKit, string key, DateTime nowUtc, CancellationToken ct)
+    private static async Task<DateTime?> RoomAsync(IPopDbContext db, ILiveKitRoomAdmin liveKit, RoomOccupancyTracker tracker, string key,
+        DateTime nowUtc, CancellationToken ct)
     {
         var lkRoom = MeetingRoomKeys.LiveKitRoom(key);
         var inside = (await liveKit.ListAsync(lkRoom, ct)).Select(p => p.Identity)
             .Where(i => !i.StartsWith("EG_", StringComparison.Ordinal)).ToList();
-        if (inside.Count == 0) return NextDue(await RoomAccess.BookingsAsync(db, key, nowUtc, false, ct), nowUtc);
+        var occupancy = tracker.Observe(key, inside.Count > 0, nowUtc);
+        var (current, next) = await RoomAccess.BookingsAsync(db, key, nowUtc, occupancy, ct);
+        if (inside.Count == 0) return NextDue(next, nowUtc);
 
-        // occupied = true: an overrunning booking keeps the room until the next booking's window starts.
-        var (current, next) = await RoomAccess.BookingsAsync(db, key, nowUtc, true, ct);
         var stay = new List<string>();
         foreach (var identity in inside)
         {
@@ -88,15 +92,19 @@ public sealed class MeetingRoomBookingWorker(IServiceProvider services, ILogger<
         }
         if (stay.Count > 0)
         {
-            var json = await RoomMetadata.ComposeAsync(db, key, nowUtc, stay, ct);
-            await liveKit.UpdateRoomMetadataAsync(lkRoom, json, ct);
+            var json = await RoomMetadata.ComposeAsync(db, key, nowUtc, stay, occupancy, ct);
+            if (tracker.MetadataChanged(key, json))
+            {
+                await liveKit.UpdateRoomMetadataAsync(lkRoom, json, ct);
+                tracker.MetadataWritten(key, json);
+            }
         }
-        return NextDue((current, next), nowUtc);
+        return NextDue(next, nowUtc);
     }
 
-    private static DateTime? NextDue((Booking? Current, Booking? Next) b, DateTime nowUtc)
+    private static DateTime? NextDue(Booking? next, DateTime nowUtc)
     {
-        if (b.Next is not { } next) return null;
+        if (next is null) return null;
         var takeover = RoomAccess.WindowStart(next);
         var warn = takeover - RoomMetadata.TakeoverWarning;
         return warn > nowUtc ? warn : takeover > nowUtc ? takeover : null;

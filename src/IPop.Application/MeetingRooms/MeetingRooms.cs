@@ -51,7 +51,8 @@ public interface IMeetingRoomService
         IReadOnlyList<string> attendeeNiks, CancellationToken ct);
     /// Organizer only: the current booking ends 15 minutes later (through the normal meeting update path).
     /// Errors: "unknown_room", "no_booking" (nothing current), "forbidden" (not the organizer), "room_booked" (the new end
-    /// would reach the next booking's lock window, StartAt − 10 min). Returns the booking and its new EndAt.
+    /// would reach the next booking's lock window, StartAt − 10 min), "cancelled", "media_unavailable" (LiveKit not reachable,
+    /// so an overrun cannot be confirmed). Returns the booking and its new EndAt.
     Task<(Guid? MeetingId, DateTime? EndAt, string? Error)> ExtendAsync(Guid userId, string key, CancellationToken ct);
     Task<IReadOnlyDictionary<string, bool>> VideoAsync(CancellationToken ct);
     /// Saves the switch and, when turned off, stops every camera in that room now.

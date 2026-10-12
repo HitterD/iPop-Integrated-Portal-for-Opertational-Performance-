@@ -81,6 +81,9 @@ public static class MeetingRoomEndpoints
                 case "unknown_room": return Results.Json(new { code = error, message = "That room does not exist." }, statusCode: 404);
                 case "no_booking": return Results.Json(new { code = error, message = "This room has no booking right now." }, statusCode: 409);
                 case "forbidden": return Results.Json(new { code = error, message = "Only the organizer can extend this booking." }, statusCode: 403);
+                case "cancelled": return Results.Json(new { code = error, message = "This booking was cancelled." }, statusCode: 409);
+                case "media_unavailable":
+                    return Results.Json(new { code = error, message = "The meeting server is not reachable right now." }, statusCode: 503);
                 case not null: return Results.Json(new { code = "room_booked", message = "The room is booked right after this meeting." }, statusCode: 409);
             }
             // Calendars and meeting lists of everyone involved follow the new end.
