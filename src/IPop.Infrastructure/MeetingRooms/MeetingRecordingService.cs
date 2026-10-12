@@ -20,6 +20,15 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
     private readonly RoomOccupancyTracker occupancy = occupancyTracker ?? new RoomOccupancyTracker();
     private string OutDir => (config["MeetingRooms:EgressOutDir"] ?? "/out").TrimEnd('/');
 
+    private string TemplateUrl(string room, string title, DateTime date) =>
+        Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(
+            config["MeetingRooms:TemplateUrl"] ?? "http://host.docker.internal:5103/recording/index.html",
+            new Dictionary<string, string?>
+            {
+                ["room"] = room, ["title"] = title,
+                ["date"] = date.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+            });
+
     public async Task<MeetingRecordingResult> StartAsync(Guid userId, string key, CancellationToken ct)
     {
         var room = await db.HallRooms.AsNoTracking().FirstOrDefaultAsync(r => r.Key == key, ct);
@@ -54,7 +63,7 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
         // From here the row must end consistent even if the caller goes away (closed tab, aborted request):
         // the compensating remove and the EgressId save never use the request token, or a stuck
         // "Recording" row would block the room until the worker gives up on it.
-        try { row.EgressId = await egress.StartRoomCompositeAsync(lkRoom, $"{OutDir}/{rel}", ct); }
+        try { row.EgressId = await egress.StartRoomCompositeAsync(lkRoom, $"{OutDir}/{rel}", TemplateUrl(room.Name, row.Title, now), ct); }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
         {
             db.MeetingRecordings.Remove(row);

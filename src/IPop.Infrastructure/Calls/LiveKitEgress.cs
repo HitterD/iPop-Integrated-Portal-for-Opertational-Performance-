@@ -8,7 +8,7 @@ namespace IPop.Infrastructure.Calls;
 public interface ILiveKitEgress
 {
     bool IsConfigured { get; }
-    Task<string> StartRoomCompositeAsync(string room, string filepath, CancellationToken ct);
+    Task<string> StartRoomCompositeAsync(string room, string filepath, string templateUrl, CancellationToken ct);
     Task StopAsync(string egressId, CancellationToken ct);
     Task<LiveKitEgressInfo?> GetAsync(string egressId, CancellationToken ct);
     /// Health check for the admin page: true when the Egress API answers at all (any 2xx, or 404).
@@ -32,11 +32,14 @@ public sealed class LiveKitEgress(HttpClient http, ILiveKitTokenService tokens) 
         return await res.Content.ReadFromJsonAsync<JsonElement>(Json, ct);
     }
 
-    public async Task<string> StartRoomCompositeAsync(string room, string filepath, CancellationToken ct)
+    public async Task<string> StartRoomCompositeAsync(string room, string filepath, string templateUrl, CancellationToken ct)
     {
         var r = await CallAsync("StartRoomCompositeEgress", room, new
         {
-            room_name = room, layout = "speaker", preset = "H264_720P_30",
+            room_name = room, layout = "speaker", custom_base_url = templateUrl,
+            // EncodingOptions.audio_codec supports AAC (LiveKit protocol AudioCodec = 2).
+            // preset and advanced are a protobuf oneof: send only advanced.
+            advanced = new { width = 1920, height = 1080, framerate = 30, video_bitrate = 4500, audio_codec = "AAC" },
             file_outputs = new[] { new { file_type = "MP4", filepath } },
         }, ct);
         return r.GetProperty("egress_id").GetString()!;

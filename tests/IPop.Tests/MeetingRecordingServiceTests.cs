@@ -15,16 +15,18 @@ public class MeetingRecordingServiceTests
     {
         public bool IsConfigured { get; set; } = true;
         public List<(string Room, string Path)> Started { get; } = [];
+        public List<string> TemplateUrls { get; } = [];
         public List<string> Stopped { get; } = [];
         public Exception? StopThrows { get; set; }
         public Dictionary<string, LiveKitEgressInfo> Infos { get; } = new();
         /// Runs inside StartRoomCompositeAsync (e.g. the browser aborts the request meanwhile).
         public Action? OnStart { get; set; }
         public Exception? StartThrows { get; set; }
-        public Task<string> StartRoomCompositeAsync(string room, string filepath, CancellationToken ct)
+        public Task<string> StartRoomCompositeAsync(string room, string filepath, string templateUrl, CancellationToken ct)
         {
             OnStart?.Invoke();
             if (StartThrows is not null) throw StartThrows;
+            TemplateUrls.Add(templateUrl);
             Started.Add((room, filepath)); return Task.FromResult($"EG_{Started.Count}");
         }
         public Task StopAsync(string egressId, CancellationToken ct)
@@ -74,6 +76,30 @@ public class MeetingRecordingServiceTests
         lk.Rooms["hall-arabika"] = [new(a.Id.ToString(), "A", [], new Dictionary<string, string>())];
         await Make(t, lk, new FakeEgress()).StartAsync(a.Id, "arabika", default);
         Assert.Equal("Production review", (await t.Verify().MeetingRecordings.SingleAsync()).Title);
+    }
+
+    [Theory]
+    [InlineData(null, "http://host.docker.internal:5103/recording/index.html")]
+    [InlineData("https://record.test/recording/index.html?theme=dark", "https://record.test/recording/index.html")]
+    public async Task Template_url_uses_config_and_encodes_badge_values(string? configured, string expectedBase)
+    {
+        using var t = new TestDb(); var a = t.AddUser("A1");
+        const string title = "Review & planning #1 / <team> 日本";
+        await IPop.Api.Endpoints.MeetingEndpoints.ApplyCreateAsync(t.Db, a.Id,
+            new(title, DateTime.UtcNow.AddMinutes(-5), DateTime.UtcNow.AddMinutes(55), null, "SJA Hall · Arabika", null, null, null, null, null), default);
+        var lk = new MeetingRoomServiceTests.FakeRoomAdmin();
+        lk.Rooms["hall-arabika"] = [new(a.Id.ToString(), "A", [], new Dictionary<string, string>())];
+        var eg = new FakeEgress();
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["MeetingRooms:TemplateUrl"] = configured }).Build();
+        await new MeetingRecordingService(t.Db, lk, eg, new DbSettings(t.Db), config).StartAsync(a.Id, "arabika", default);
+        var url = new Uri(Assert.Single(eg.TemplateUrls));
+        Assert.Equal(expectedBase, url.GetLeftPart(UriPartial.Path));
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(url.Query);
+        Assert.Equal("Arabika", query["room"].ToString());
+        Assert.Equal(title, query["title"].ToString());
+        Assert.True(DateTimeOffset.TryParse(query["date"], out _));
+        if (configured is not null) Assert.Equal("dark", query["theme"].ToString());
+        Assert.False(query.ContainsKey("token"));
     }
 
     [Fact]

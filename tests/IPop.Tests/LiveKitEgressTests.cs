@@ -47,14 +47,21 @@ public class LiveKitEgressTests
         var handler = new Handler("{\"egress_id\":\"EG_test\"}");
         var client = new LiveKitEgress(new HttpClient(handler), new MeetingRoomServiceTests.FakeTokens());
         Assert.True(client.IsConfigured);
-        Assert.Equal("EG_test", await client.StartRoomCompositeAsync("hall-kalosi", "/out/kalosi/test.mp4", default));
+        Assert.Equal("EG_test", await client.StartRoomCompositeAsync("hall-kalosi", "/out/kalosi/test.mp4", "http://host.docker.internal:5103/recording/index.html", default));
         Assert.Equal("https://lk.test/twirp/livekit.Egress/StartRoomCompositeEgress", handler.Uri!.ToString());
         Assert.Equal("Bearer admin", handler.Authorization);
         using var body = JsonDocument.Parse(handler.Body!);
         var root = body.RootElement;
         Assert.Equal("hall-kalosi", root.GetProperty("room_name").GetString());
         Assert.Equal("speaker", root.GetProperty("layout").GetString());
-        Assert.Equal("H264_720P_30", root.GetProperty("preset").GetString());
+        Assert.False(root.TryGetProperty("preset", out _));
+        Assert.Equal("http://host.docker.internal:5103/recording/index.html", root.GetProperty("custom_base_url").GetString());
+        var advanced = root.GetProperty("advanced");
+        Assert.Equal(1920, advanced.GetProperty("width").GetInt32());
+        Assert.Equal(1080, advanced.GetProperty("height").GetInt32());
+        Assert.Equal(30, advanced.GetProperty("framerate").GetInt32());
+        Assert.Equal(4500, advanced.GetProperty("video_bitrate").GetInt32());
+        Assert.Equal("AAC", advanced.GetProperty("audio_codec").GetString());
         Assert.Equal("MP4", root.GetProperty("file_outputs")[0].GetProperty("file_type").GetString());
         Assert.Equal("/out/kalosi/test.mp4", root.GetProperty("file_outputs")[0].GetProperty("filepath").GetString());
     }

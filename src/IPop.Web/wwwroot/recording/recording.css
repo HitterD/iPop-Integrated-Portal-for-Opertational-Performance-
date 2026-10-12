@@ -1,0 +1,19 @@
+:root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #f6f7f8; background: #131619; }
+* { box-sizing: border-box; }
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+#stage { width: 100vw; height: 100vh; padding: 76px 24px 24px; display: grid; gap: 16px; }
+#stage.grid { grid-template-columns: repeat(var(--columns), minmax(0, 1fr)); grid-template-rows: repeat(var(--rows), minmax(0, 1fr)); }
+#stage.share { grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: minmax(0, 1fr); }
+.strip { min-height: 0; display: grid; gap: 12px; grid-template-rows: repeat(var(--rows), minmax(0, 1fr)); }
+.tile { position: relative; min-width: 0; min-height: 0; overflow: hidden; border-radius: 16px; background: #24292e; border: 3px solid transparent; display: flex; align-items: center; justify-content: center; }
+.tile.speaking { border-color: #77c69a; }
+.tile video { position: absolute; width: 100%; height: 100%; object-fit: contain; background: #101214; }
+.initials { width: 104px; height: 104px; border-radius: 50%; display: grid; place-items: center; font-size: 36px; font-weight: 600; background: #3f7d5a; }
+.name { position: absolute; z-index: 1; left: 14px; bottom: 12px; max-width: calc(100% - 28px); padding: 6px 11px; border-radius: 8px; background: #131619d9; font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.share-main { background: #101214; }
+#badge { position: absolute; top: 20px; left: 24px; right: 24px; height: 38px; display: flex; align-items: center; gap: 12px; font-size: 18px; overflow: hidden; }
+#swatch { width: 14px; height: 14px; border-radius: 50%; background: #c47b45; flex: none; }
+#room-name { flex: none; }
+#meeting-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #c6ccd1; }
+#meeting-date { color: #c6ccd1; white-space: nowrap; margin-left: auto; }
+.empty { align-self: center; justify-self: center; color: #adb6bf; font-size: 24px; }

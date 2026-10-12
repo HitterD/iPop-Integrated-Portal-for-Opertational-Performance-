@@ -1963,6 +1963,10 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("RoomId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("RoomPassword")
+                        .HasMaxLength(6)
+                        .HasColumnType("character varying(6)");
+
                     b.Property<Guid?>("SentById")
                         .HasColumnType("uuid");
 
@@ -2044,6 +2048,51 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("MeetingAttendees");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.MeetingChatMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("MeetingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("OffsetSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("RecordingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RoomKey")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecordingId");
+
+                    b.HasIndex("MeetingId", "SentAt");
+
+                    b.ToTable("MeetingChatMessages");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.MeetingRecording", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2063,6 +2112,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Error")
                         .HasColumnType("text");
+
+                    b.Property<Guid?>("MeetingId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("NasPath")
                         .HasMaxLength(500)
@@ -2148,6 +2200,24 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("SendAt", "SentAt");
 
                     b.ToTable("MeetingReminders");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MeetingRoomGuest", b =>
+                {
+                    b.Property<Guid>("MeetingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("AdmittedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("MeetingId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("MeetingRoomGuests");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.NewsAcknowledgement", b =>
@@ -5964,6 +6034,21 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Meeting");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MeetingRoomGuest", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.Meeting", null)
+                        .WithMany()
+                        .HasForeignKey("MeetingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.NewsAcknowledgement", b =>

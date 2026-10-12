@@ -331,7 +331,7 @@ public class MeetingRecordingWorkerTests : IDisposable
     {
         public bool IsConfigured => true;
         public Task<LiveKitEgressInfo?> GetAsync(string id, CancellationToken ct) => lookup(id, ct);
-        public Task<string> StartRoomCompositeAsync(string room, string path, CancellationToken ct) => throw new NotSupportedException();
+        public Task<string> StartRoomCompositeAsync(string room, string path, string templateUrl, CancellationToken ct) => throw new NotSupportedException();
         public Task StopAsync(string id, CancellationToken ct) => throw new NotSupportedException();
     }
 
