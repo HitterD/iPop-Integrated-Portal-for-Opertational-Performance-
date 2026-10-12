@@ -55,12 +55,14 @@ public sealed class MeetingRoomBookingWorker(IServiceProvider services, ILogger<
         var tracker = scope.ServiceProvider.GetRequiredService<RoomOccupancyTracker>();
         if (!liveKit.IsConfigured) return null;
         DateTime? due = null;
+        // nowUtc is the tick's start; each room is dated by when its own LiveKit listing returned.
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         foreach (var (key, _) in HallBooking.Rooms)
         {
             ct.ThrowIfCancellationRequested();
             try
             {
-                if (await RoomAsync(db, liveKit, tracker, key, nowUtc, ct) is { } d && (due is null || d < due)) due = d;
+                if (await RoomAsync(db, liveKit, tracker, key, () => nowUtc + clock.Elapsed, ct) is { } d && (due is null || d < due)) due = d;
             }
             catch (Exception e) when (!ct.IsCancellationRequested)
             {
@@ -72,11 +74,13 @@ public sealed class MeetingRoomBookingWorker(IServiceProvider services, ILogger<
     }
 
     private static async Task<DateTime?> RoomAsync(IPopDbContext db, ILiveKitRoomAdmin liveKit, RoomOccupancyTracker tracker, string key,
-        DateTime nowUtc, CancellationToken ct)
+        Func<DateTime> clock, CancellationToken ct)
     {
         var lkRoom = MeetingRoomKeys.LiveKitRoom(key);
         var inside = (await liveKit.ListAsync(lkRoom, ct)).Select(p => p.Identity)
             .Where(i => !i.StartsWith("EG_", StringComparison.Ordinal)).ToList();
+        // Dated when the listing returned (earlier rooms of this pass and the LiveKit call itself take time).
+        var nowUtc = clock();
         var occupancy = tracker.Observe(key, inside.Count > 0, nowUtc);
         var (current, next) = await RoomAccess.BookingsAsync(db, key, nowUtc, occupancy, ct);
         if (inside.Count == 0) return NextDue(next, nowUtc);
@@ -93,10 +97,10 @@ public sealed class MeetingRoomBookingWorker(IServiceProvider services, ILogger<
         if (stay.Count > 0)
         {
             var json = await RoomMetadata.ComposeAsync(db, key, nowUtc, stay, occupancy, ct);
-            if (tracker.MetadataChanged(key, json))
+            if (tracker.MetadataDue(key, json, nowUtc))
             {
                 await liveKit.UpdateRoomMetadataAsync(lkRoom, json, ct);
-                tracker.MetadataWritten(key, json);
+                tracker.MetadataWritten(key, json, nowUtc);
             }
         }
         return NextDue(next, nowUtc);

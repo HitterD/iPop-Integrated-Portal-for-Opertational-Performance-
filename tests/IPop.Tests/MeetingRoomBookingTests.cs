@@ -568,4 +568,55 @@ public class MeetingRoomBookingTests
         public Task UpdateRoomMetadataAsync(string r, string m, CancellationToken ct) => throw new InvalidOperationException("twirp shape changed");
         public Task<bool> SetSourcesAsync(string r, string i, IReadOnlyList<string> s, CancellationToken ct) => inner.SetSourcesAsync(r, i, s, ct);
     }
+
+    // ---------------------------------------------------------------- fix round 2
+
+    [Fact]
+    public async Task A_booking_made_into_a_slot_freed_by_a_cancellation_can_still_overrun()
+    {
+        using var t = new TestDb(); var a = t.AddUser("A1"); var b = t.AddUser("B1"); var inv = t.AddUser("I1");
+        var day = RoomAccess.DayStartUtc(DateTime.UtcNow);
+        var b1330 = await BookAsync(t, b.Id, day.AddHours(13.5), 60);                    // B 13:30–14:30 …
+        await MeetingEndpoints.ApplyCancelAsync(t.Verify(), b1330, b.Id, default);        // … cancelled
+        var a1300 = await BookAsync(t, a.Id, day.AddHours(13), 60, attendees: inv.Id);    // A 13:00–14:00 booked after
+        var lk = new FakeRoomAdmin();
+        lk.Put("kalosi", a.Id.ToString(), inv.Id.ToString());
+        await TickAsync(t, lk, day.AddHours(13.5));                                      // continuously occupied …
+        var at = day.AddHours(14).AddMinutes(5);                                           // … at 14:05
+        await TickAsync(t, lk, at);
+
+        Assert.Empty(lk.Removed);
+        Assert.Equal(a1300, (await RoomAccess.ForAsync(t.Verify(), "kalosi", a.Id, at, occ.Observe("kalosi", true, at), default)).Current?.MeetingId);
+        // A cancelled booking starting at or after A's end still ends the overrun once its window opens.
+        var c = await BookAsync(t, b.Id, day.AddHours(14.25), 30);                        // 14:15
+        await MeetingEndpoints.ApplyCancelAsync(t.Verify(), c, b.Id, default);
+        Assert.Null((await RoomAccess.ForAsync(t.Verify(), "kalosi", a.Id, at, occ.Observe("kalosi", true, at), default)).Current);
+    }
+
+    [Fact]
+    public async Task Unchanged_metadata_is_still_rewritten_every_five_minutes()
+    {
+        using var t = new TestDb(); var org = t.AddUser("O1");
+        await BookAsync(t, org.Id, DateTime.UtcNow.AddMinutes(-5), 60);
+        var lk = new FakeRoomAdmin();
+        lk.Put("kalosi", org.Id.ToString());
+        var now = DateTime.UtcNow;
+        await TickAsync(t, lk, now);
+        await TickAsync(t, lk, now.AddMinutes(4));
+        Assert.Single(lk.MetadataUpdates, m => m.Room == "hall-kalosi");
+        await TickAsync(t, lk, now.AddMinutes(5).AddSeconds(1));
+        Assert.Equal(2, lk.MetadataUpdates.Count(m => m.Room == "hall-kalosi"));
+    }
+
+    [Fact]
+    public async Task Seen_empty_is_dated_when_the_livekit_listing_returned()
+    {
+        using var t = new TestDb();
+        var lk = new FakeRoomAdmin { ListDelay = TimeSpan.FromMilliseconds(300) };
+        var tickStart = DateTime.UtcNow;
+        await TickAsync(t, lk, tickStart);
+        // Five rooms listed one after another, 300 ms each: the last room was seen empty ≥ 1.5 s after the tick began.
+        Assert.True(occ.LastEmptyAt("toraja") >= tickStart.AddMilliseconds(1400), $"{occ.LastEmptyAt("toraja"):O} vs {tickStart:O}");
+        Assert.True(occ.LastEmptyAt("robusta") >= tickStart.AddMilliseconds(250));
+    }
 }

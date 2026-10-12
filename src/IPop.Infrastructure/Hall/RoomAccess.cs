@@ -35,7 +35,8 @@ public static class RoomAccess
     /// Current = the latest active booking whose window has started and which ends after today's local midnight
     /// (Asia/Jakarta — never yesterday's), if it has not ended — or it overruns: the room is occupied now, has not been
     /// seen empty since its EndAt (a reconnect into an emptied room does not revive it), EndAt was less than
-    /// <see cref="MaxOverrun"/> ago, and no later booking's window has opened since (a cancelled one included). Next = the earliest booking whose window has not started yet.
+    /// <see cref="MaxOverrun"/> ago, and no booking starting at or after its EndAt has opened its window since (a cancelled
+    /// one included). Next = the earliest booking whose window has not started yet.
     public static async Task<RoomAccessInfo> ForAsync(IPopDbContext db, string roomKey, Guid userId, DateTime nowUtc, RoomOccupancy occupancy,
         CancellationToken ct)
     {
@@ -59,12 +60,13 @@ public static class RoomAccess
         var latest = await bookings.Where(m => m.StartAt <= windowOpen && m.EndAt > dayStart).OrderByDescending(m => m.StartAt)
             .Select(m => new Booking(m.Id, m.Title, m.StartAt, m.EndAt, m.OrganizerId, m.RoomPassword)).FirstOrDefaultAsync(ct);
         var current = latest is not null && nowUtc < latest.EndAt ? latest : null;
-        // An overrun belongs only to the last booking that took the room: once a later booking's window opened — even
-        // if that booking was cancelled since — the earlier one cannot come back (people stay → they are moved out).
+        // An overrun belongs only to the last booking that took the room: once a booking that starts at or after its end
+        // has opened its window — even if that one was cancelled since — the overrun is over (people are moved out).
+        // Cancelled bookings that started before this one's end (a slot freed and rebooked) do not count.
         if (current is null && latest is not null && Overruns(latest, nowUtc, occupancy))
         {
-            var (id, start) = (latest.MeetingId, latest.StartAt);
-            if (!await db.Meetings.AsNoTracking().AnyAsync(m => m.Location == loc && m.Id != id && m.StartAt > start && m.StartAt <= windowOpen, ct))
+            var (id, end) = (latest.MeetingId, latest.EndAt);
+            if (!await db.Meetings.AsNoTracking().AnyAsync(m => m.Location == loc && m.Id != id && m.StartAt >= end && m.StartAt <= windowOpen, ct))
                 current = latest;
         }
         var next = await bookings.Where(m => m.StartAt > windowOpen).OrderBy(m => m.StartAt)

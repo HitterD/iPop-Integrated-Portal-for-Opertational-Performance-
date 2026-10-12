@@ -68,26 +68,29 @@ public static class RoomMetadata
     {
         if (!liveKit.IsConfigured) return null;
         IReadOnlyList<string> identities;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             identities = (await liveKit.ListAsync(MeetingRoomKeys.LiveKitRoom(roomKey), ct)).Select(p => p.Identity)
                 .Where(i => !i.StartsWith("EG_", StringComparison.Ordinal)).ToList();
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { return null; }
-        var occupancy = tracker.Observe(roomKey, identities.Count > 0, nowUtc);
-        var json = await ComposeAsync(db, roomKey, nowUtc, identities, occupancy, ct, endedRecordingId);
-        return await WriteAsync(liveKit, tracker, roomKey, json, ct) ? json : null;
+        var seenAt = nowUtc + clock.Elapsed;   // when the listing returned
+        var occupancy = tracker.Observe(roomKey, identities.Count > 0, seenAt);
+        var json = await ComposeAsync(db, roomKey, seenAt, identities, occupancy, ct, endedRecordingId);
+        return await WriteAsync(liveKit, tracker, roomKey, json, seenAt, ct) ? json : null;
     }
 
-    /// Writes <paramref name="json"/> unless the room already has it. False when the write failed.
+    /// Writes <paramref name="json"/> unless the room already got it recently (<see cref="RoomOccupancyTracker.MetadataDue"/>).
+    /// False when the write failed.
     public static async Task<bool> WriteAsync(ILiveKitRoomAdmin liveKit, RoomOccupancyTracker tracker, string roomKey, string json,
-        CancellationToken ct)
+        DateTime nowUtc, CancellationToken ct)
     {
-        if (!tracker.MetadataChanged(roomKey, json)) return true;
+        if (!tracker.MetadataDue(roomKey, json, nowUtc)) return true;
         try
         {
             await liveKit.UpdateRoomMetadataAsync(MeetingRoomKeys.LiveKitRoom(roomKey), json, ct);
-            tracker.MetadataWritten(roomKey, json);
+            tracker.MetadataWritten(roomKey, json, nowUtc);
             return true;
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException)

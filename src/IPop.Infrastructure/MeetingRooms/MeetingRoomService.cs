@@ -85,6 +85,7 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
         if (!HallBooking.Rooms.Any(r => r.Key == key)) return (null, null, "unknown_room");
         var now = DateTime.UtcNow;
         var inside = await ParticipantsAsync(key, ct);
+        now = DateTime.UtcNow;   // after the LiveKit listing returned
         var access = await RoomAccess.ForAsync(db, key, userId, now,
             inside is null ? RoomOccupancy.Empty : occupancy.Observe(key, inside.Count > 0, now), ct);
         // Without LiveKit an overrun cannot be told apart from an ended booking: say so instead of "no booking".
@@ -205,7 +206,7 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
         var now = DateTime.UtcNow;
         var start = new DateTime(now.Ticks - now.Ticks % TimeSpan.TicksPerMinute, DateTimeKind.Utc);
         // Unreachable LiveKit: rely on the bookings alone.
-        var occupied = await ParticipantsAsync(key, ct) is { } inside ? occupancy.Observe(key, inside.Count > 0, now) : RoomOccupancy.Empty;
+        var occupied = await ParticipantsAsync(key, ct) is { } inside ? occupancy.Observe(key, inside.Count > 0, DateTime.UtcNow) : RoomOccupancy.Empty;
         var access = await RoomAccess.ForAsync(db, key, userId, now, occupied, ct);
         if (access.Current is not null) return (null, "room_booked", null);
         // A booking that ended earlier in this minute: start at its end, not at the floored minute (no overlap with it).
