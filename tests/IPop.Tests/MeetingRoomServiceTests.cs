@@ -38,7 +38,16 @@ public class MeetingRoomServiceTests
             finally { Interlocked.Decrement(ref _inFlight); }
         }
         public Task<bool> MuteAsync(string room, string identity, CancellationToken ct) => Task.FromResult(true);
-        public Task<bool> RemoveAsync(string room, string identity, CancellationToken ct) => Task.FromResult(true);
+        public List<(string Room, string Identity)> Removed { get; } = [];
+        public Task<bool> RemoveAsync(string room, string identity, CancellationToken ct)
+        {
+            Removed.Add((room, identity));
+            Rooms.GetValueOrDefault(room)?.RemoveAll(p => p.Identity == identity);
+            return Task.FromResult(true);
+        }
+        /// Puts these identities in the room (replacing whoever was there).
+        public void Put(string key, params string[] identities) =>
+            Rooms[MeetingRoomKeys.LiveKitRoom(key)] = identities.Select(i => new LiveKitParticipant(i, i, [], new Dictionary<string, string>())).ToList();
         public Task CreateRoomAsync(string room, int max, CancellationToken ct) { Created.Add((room, max)); return Task.CompletedTask; }
         public List<(string Room, string Metadata)> MetadataUpdates { get; } = [];
         public Task UpdateRoomMetadataAsync(string room, string metadata, CancellationToken ct) { MetadataUpdates.Add((room, metadata)); return Task.CompletedTask; }

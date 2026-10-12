@@ -19,6 +19,7 @@ public static class MeetingRoomEndpoints
     public record JoinRequest(string? Password);
     public record UseNowRequest(int Minutes, string? Title, IReadOnlyList<string>? AttendeeNiks);
     public record UseNowResponse(Guid MeetingId, MeetingRoomJoinDto? Join);
+    public record ExtendResponse(DateTime EndAt);
 
     public static IEndpointRouteBuilder MapMeetingRooms(this IEndpointRouteBuilder app)
     {
@@ -67,6 +68,24 @@ public static class MeetingRoomEndpoints
             // The booking stands even when joining fails (e.g. media down): the client can join from the card.
             var join = await rooms.JoinAsync(me, key, null, ct);
             return Results.Ok(new UseNowResponse(meetingId.Value, join.Join));
+        });
+
+        // "Extend 15 min" (organizer of the current booking): the meeting ends 15 minutes later via the normal update path.
+        g.MapPost("/{key}/extend", async (string key, HttpContext http, IPopDbContext db, IMeetingRoomService rooms, IRealtime realtime,
+            CancellationToken ct) =>
+        {
+            if (await UserIdAsync(http, db, ct) is not { } me) return Results.Unauthorized();
+            var (meetingId, endAt, error) = await rooms.ExtendAsync(me, key, ct);
+            switch (error)
+            {
+                case "unknown_room": return Results.Json(new { code = error, message = "That room does not exist." }, statusCode: 404);
+                case "no_booking": return Results.Json(new { code = error, message = "This room has no booking right now." }, statusCode: 409);
+                case "forbidden": return Results.Json(new { code = error, message = "Only the organizer can extend this booking." }, statusCode: 403);
+                case not null: return Results.Json(new { code = "room_booked", message = "The room is booked right after this meeting." }, statusCode: 409);
+            }
+            // Calendars and meeting lists of everyone involved follow the new end.
+            await MeetingEndpoints.NotifyMeetingChangedAsync(db, realtime, meetingId!.Value, [], ct);
+            return Results.Ok(new ExtendResponse(endAt!.Value));
         });
 
         g.MapPost("/{key}/recordings", async (string key, HttpContext http, IPopDbContext db, IMeetingRecordingService recs, CancellationToken ct) =>

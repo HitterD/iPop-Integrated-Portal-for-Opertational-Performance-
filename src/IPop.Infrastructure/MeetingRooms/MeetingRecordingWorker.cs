@@ -85,7 +85,7 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
                         row.Status = MeetingRecordingStatus.Failed; row.Error = "start interrupted"; row.EndedAt ??= now;
                         await db.SaveChangesAsync(ct);
                         DeleteSpool(spool, row);
-                        await ClearBannerAsync(rooms, row.RoomKey, ct);
+                        await ClearBannerAsync(db, rooms, row, ct);
                         done++;
                     }
                     continue;
@@ -107,7 +107,7 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
                 // Egress ended on its own (abort, failure, limit) while the room still shows "Recording · started by …":
                 // clear the banner, or everyone keeps seeing it and Stop answers 404.
                 if (row.Status == MeetingRecordingStatus.Recording && info.Status is "EGRESS_FAILED" or "EGRESS_ABORTED" or "EGRESS_COMPLETE" or "EGRESS_LIMIT_REACHED")
-                    await ClearBannerAsync(rooms, row.RoomKey, ct);
+                    await ClearBannerAsync(db, rooms, row, ct);
                 if (info.Status is "EGRESS_FAILED" or "EGRESS_ABORTED")
                 {
                     row.Status = MeetingRecordingStatus.Failed; row.Error = info.Error; row.EndedAt ??= now;
@@ -176,11 +176,9 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { }
     }
 
-    private static async Task ClearBannerAsync(ILiveKitRoomAdmin rooms, string roomKey, CancellationToken ct)
-    {
-        try { await rooms.UpdateRoomMetadataAsync(MeetingRoomKeys.LiveKitRoom(roomKey), "{}", ct); }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { /* the room may be gone already */ }
-    }
+    /// Rewrites the room metadata without this recording (the booking info stays). Best effort: the room may be gone.
+    private static Task ClearBannerAsync(IPopDbContext db, ILiveKitRoomAdmin rooms, MeetingRecording row, CancellationToken ct) =>
+        RoomMetadata.PublishAsync(db, rooms, row.RoomKey, DateTime.UtcNow, ct, endedRecordingId: row.Id);
 
     private static Task NotifyFailedAsync(INotificationGatewayService notify, MeetingRecording row, CancellationToken ct) =>
         notify.PublishInternalAsync("meetings", "meeting.recording.failed", "Recording failed",

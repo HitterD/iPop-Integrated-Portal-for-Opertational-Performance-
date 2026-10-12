@@ -14,10 +14,21 @@ public static class MeetingRoomKeys
 }
 
 public record MeetingRoomPerson(Guid UserId, string Name, bool Sharing, bool RecordingToPc);
-public record MeetingRoomBookingDto(Guid MeetingId, string Title, DateTime StartAt, DateTime EndAt, string? OrganizerName);
+/// <paramref name="IsOrganizer"/>: the viewer organizes this booking (shows Extend).
+public record MeetingRoomBookingDto(Guid MeetingId, string Title, DateTime StartAt, DateTime EndAt, string? OrganizerName, bool IsOrganizer = false);
 public record MeetingRoomRecordingState(Guid Id, string StartedByName, DateTime StartedAt);
+/// <paramref name="Access"/> for the viewer (v2 §1.6): "free" (no booking holds the room: Use now / Book), "invited" (the
+/// viewer may walk in: organizer, attendee or admitted guest), "starting" (same, but inside the 10-minute early window:
+/// "Starts HH:mm · Join early"), "locked" (someone else's booking: Enter with password).
+/// <paramref name="Now"/> = RoomAccess' current booking (also while it overruns an occupied room), with its real StartAt.
 public record MeetingRoomDto(string Key, string Name, int Capacity, bool VideoAllowed, bool Available,
-    IReadOnlyList<MeetingRoomPerson> People, MeetingRoomBookingDto? Now, MeetingRoomBookingDto? Next, MeetingRoomRecordingState? Recording);
+    IReadOnlyList<MeetingRoomPerson> People, MeetingRoomBookingDto? Now, MeetingRoomBookingDto? Next, MeetingRoomRecordingState? Recording,
+    string Access = MeetingRoomAccess.Free);
+
+public static class MeetingRoomAccess
+{
+    public const string Free = "free", Invited = "invited", Starting = "starting", Locked = "locked";
+}
 public record MeetingRoomJoinDto(string Key, string Name, string LiveKitRoom, string Url, string Token, bool VideoAllowed, string Identity,
     int RetentionDays = 90);
 public record MeetingRoomJoinResult(MeetingRoomJoinDto? Join, string? Error, IReadOnlyList<string> Suggestions);
@@ -38,6 +49,10 @@ public interface IMeetingRoomService
     /// window when that is at least 15, else null).
     Task<(Guid? MeetingId, string? Error, int? MaxMinutes)> UseNowAsync(Guid userId, string key, int minutes, string? title,
         IReadOnlyList<string> attendeeNiks, CancellationToken ct);
+    /// Organizer only: the current booking ends 15 minutes later (through the normal meeting update path).
+    /// Errors: "unknown_room", "no_booking" (nothing current), "forbidden" (not the organizer), "room_booked" (the new end
+    /// would reach the next booking's lock window, StartAt − 10 min). Returns the booking and its new EndAt.
+    Task<(Guid? MeetingId, DateTime? EndAt, string? Error)> ExtendAsync(Guid userId, string key, CancellationToken ct);
     Task<IReadOnlyDictionary<string, bool>> VideoAsync(CancellationToken ct);
     /// Saves the switch and, when turned off, stops every camera in that room now.
     Task SetVideoAsync(string key, bool allowed, string? actorNik, CancellationToken ct);
@@ -50,6 +65,9 @@ public interface IRoomBookingWriter
     /// Null MeetingId = the room is already booked in that time (the meeting create conflict check).
     Task<Guid?> CreateAsync(Guid organizerId, string title, DateTime startUtc, DateTime endUtc, string location,
         IReadOnlyList<string> attendeeNiks, CancellationToken ct);
+    /// Moves the meeting's end (organizer only) through the normal update path, keeping title, place, attendees and
+    /// reminders. Errors: "not_found", "forbidden", "cancelled", "room_booked".
+    Task<string?> SetEndAsync(Guid organizerId, Guid meetingId, DateTime endUtc, CancellationToken ct);
 }
 
 public record MeetingRecordingDto(Guid Id, string RoomKey, string RoomName, string Title, string StartedByName, DateTime StartedAt,

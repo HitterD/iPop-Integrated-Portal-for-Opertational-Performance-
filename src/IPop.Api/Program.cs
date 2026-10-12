@@ -209,6 +209,8 @@ builder.Services.AddScoped<IPop.Infrastructure.MeetingRooms.RecordingFileCache>(
 builder.Services.AddSingleton(new IPop.Infrastructure.MeetingRooms.RecordingTicketSigner(
     builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key is required")));
 builder.Services.AddHostedService<IPop.Infrastructure.MeetingRooms.MeetingRecordingWorker>();
+// Every 30 s: removes people no longer allowed in a hall room (booking ended / next booking / removed attendee) and keeps the room's booking metadata fresh.
+builder.Services.AddHostedService<IPop.Infrastructure.MeetingRooms.MeetingRoomBookingWorker>();
 
 // Mail module
 builder.Services.AddScoped<IMailService, MailService>();

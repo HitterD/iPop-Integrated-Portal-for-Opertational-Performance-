@@ -29,7 +29,9 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
             return new(null, "already_recording");
 
         var now = DateTime.UtcNow;
-        var booking = await HallBookings.CurrentAsync(db, key, userId, now, ct);
+        // Same booking as join and the room list (early window, overrun while occupied).
+        var occupied = inside.Any(p => !p.Identity.StartsWith("EG_", StringComparison.Ordinal));
+        var booking = (await RoomAccess.ForAsync(db, key, userId, now, occupied, ct)).Current;
         var id = Guid.NewGuid();
         var rel = $"{key}/{now.ToLocalTime():yyyy-MM-dd}/{now.ToLocalTime():HHmm}-{id:N}.mp4";
         var row = new MeetingRecording
@@ -55,7 +57,7 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
             return new(null, "egress_unavailable");
         }
         await db.SaveChangesAsync(CancellationToken.None);
-        await PublishStateAsync(lkRoom, row, CancellationToken.None);
+        await PublishStateAsync(row.RoomKey, null, CancellationToken.None);
         return new(await DtoAsync(row.Id, ct), null);
     }
 
@@ -74,20 +76,14 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
         row.Status = MeetingRecordingStatus.Processing;
         row.EndedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
-        await PublishStateAsync(MeetingRoomKeys.LiveKitRoom(row.RoomKey), null, ct);
+        await PublishStateAsync(row.RoomKey, row.Id, ct);
         return new(await DtoAsync(row.Id, ct), null);
     }
 
-    /// Room metadata carries the running server recording so every client shows "Recording · started by X".
-    private async Task PublishStateAsync(string lkRoom, MeetingRecording? row, CancellationToken ct)
-    {
-        var json = row is null ? "{}" : System.Text.Json.JsonSerializer.Serialize(new
-        {
-            recording = new { id = row.Id, by = await db.Users.Where(u => u.Id == row.StartedById).Select(u => u.Name).FirstAsync(ct), startedAt = row.StartedAt },
-        });
-        try { await liveKit.UpdateRoomMetadataAsync(lkRoom, json, ct); }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { }
-    }
+    /// Room metadata carries the running server recording so every client shows "Recording · started by X"; it is
+    /// composed with the booking info (<see cref="RoomMetadata"/>), never replacing it.
+    private Task PublishStateAsync(string roomKey, Guid? endedRecordingId, CancellationToken ct) =>
+        RoomMetadata.PublishAsync(db, liveKit, roomKey, DateTime.UtcNow, ct, endedRecordingId);
 
     public async Task NoteJoinAsync(Guid userId, string key, CancellationToken ct)
     {

@@ -553,8 +553,10 @@ public static class MeetingEndpoints
 
     /// Organizer-only edit: fields, attendee list (by NIK; organizer always stays), calendar
     /// row and unsent reminders follow the new time. Returns newly invited + all other attendees.
+    /// <paramref name="keepAnswers"/>: a new time normally sends everyone's RSVP back to pending; a meeting-room
+    /// "Extend 15 min" keeps them (and so keeps a decline a decline — declined people stay out of the room).
     public static async Task<(UpdateResult Result, IReadOnlyList<Guid> Added, IReadOnlyList<Guid> Others)> ApplyUpdateAsync(
-        IPopDbContext db, Guid meetingId, Guid userId, UpdateMeetingRequest req, CancellationToken ct)
+        IPopDbContext db, Guid meetingId, Guid userId, UpdateMeetingRequest req, CancellationToken ct, bool keepAnswers = false)
     {
         var m = await db.Meetings.Include(x => x.Attendees).FirstOrDefaultAsync(x => x.Id == meetingId, ct);
         if (m is null) return (UpdateResult.NotFound, [], []);
@@ -598,7 +600,7 @@ public static class MeetingEndpoints
         }
 
         // A new time invalidates earlier answers — everyone but the organizer answers again.
-        if (timeChanged)
+        if (timeChanged && !keepAnswers)
             foreach (var a in m.Attendees.Where(a => a.UserId != userId))
             {
                 a.RsvpStatus = "pending";

@@ -26,8 +26,18 @@ public static class RoomAccess
     public static async Task<RoomAccessInfo> ForAsync(IPopDbContext db, string roomKey, Guid userId, DateTime nowUtc, bool occupied,
         CancellationToken ct)
     {
+        var (current, next) = await BookingsAsync(db, roomKey, nowUtc, occupied, ct);
+        if (current is null) return new(null, next, "free");
+        return new(current, next, await RoleAsync(db, current, userId, ct));
+    }
+
+    /// The room's Current and Next booking (same rules as <see cref="ForAsync"/>) without a viewer — for the booking
+    /// worker and the room metadata, which then ask <see cref="RoleAsync"/> per person.
+    public static async Task<(Booking? Current, Booking? Next)> BookingsAsync(IPopDbContext db, string roomKey, DateTime nowUtc,
+        bool occupied, CancellationToken ct)
+    {
         var name = HallBooking.Rooms.FirstOrDefault(r => r.Key == roomKey).Name;
-        if (name is null) return new(null, null, "free");
+        if (name is null) return (null, null);
         var loc = HallBooking.Location(name);
         var windowOpen = nowUtc + Early;   // StartAt − 10 min ≤ now  ⇔  StartAt ≤ now + 10 min
         var bookings = db.Meetings.AsNoTracking().Where(m => m.Status != MeetingStatus.Cancelled && m.Location == loc);
@@ -37,11 +47,15 @@ public static class RoomAccess
         var current = latest is not null && (nowUtc < latest.EndAt || occupied) ? latest : null;
         var next = await bookings.Where(m => m.StartAt > windowOpen).OrderBy(m => m.StartAt)
             .Select(m => new Booking(m.Id, m.Title, m.StartAt, m.EndAt, m.OrganizerId, m.RoomPassword)).FirstOrDefaultAsync(ct);
-        if (current is null) return new(null, next, "free");
-        return new(current, next, await RoleAsync(db, current, userId, ct));
+        return (current, next);
     }
 
-    private static async Task<string> RoleAsync(IPopDbContext db, Booking b, Guid userId, CancellationToken ct)
+    /// When <paramref name="b"/> takes the room: its StartAt − 10 min. People of the booking before it who are not
+    /// allowed in this one are moved out at that moment.
+    public static DateTime WindowStart(Booking b) => b.StartAt - Early;
+
+    /// "organizer" | "invited" | "guest" | "outsider" for <paramref name="userId"/> in booking <paramref name="b"/>.
+    public static async Task<string> RoleAsync(IPopDbContext db, Booking b, Guid userId, CancellationToken ct)
     {
         if (b.OrganizerId == userId) return "organizer";
         if (await db.MeetingAttendees.AsNoTracking().AnyAsync(a => a.MeetingId == b.MeetingId && a.UserId == userId && a.RsvpStatus != "decline", ct))
