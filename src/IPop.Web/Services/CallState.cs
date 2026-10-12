@@ -116,6 +116,18 @@ public partial class CallState : IAsyncDisposable
 
     public event Action? StateChanged;
 
+    /// Raised (and awaited) right before a 1:1, group or scheduled-meeting call starts using the microphone:
+    /// placing a call, accepting one, joining a group call or meeting. MeetingRoomState listens and leaves its
+    /// room first, so the two never run side by side. (An event, not a dependency: MeetingRoomState already
+    /// depends on CallState.)
+    public event Func<Task>? MediaStarting;
+
+    private async Task RaiseMediaStartingAsync()
+    {
+        if (MediaStarting is not { } handlers) return;
+        foreach (var h in handlers.GetInvocationList().Cast<Func<Task>>()) await h();
+    }
+
     /// Raised once a call closes (any reason) so history lists can refresh.
     public event Action? CallEnded;
 
@@ -522,6 +534,7 @@ public partial class CallState : IAsyncDisposable
         if (!await _createGate.WaitAsync(0)) return null;
         try
         {
+            await RaiseMediaStartingAsync();
             // Pre-call check: ask for the microphone BEFORE ringing anyone, so a blocked mic
             // is explained here instead of producing a silent call on the other side.
             var mic = await _js.InvokeAsync<MicCheck>("ipopAudio.prepareMic", (string?)null);
@@ -607,6 +620,7 @@ public partial class CallState : IAsyncDisposable
     {
         if (Current is null) return null;
         if (IsGroup) return await JoinGroupAsync(Current.Id);
+        await RaiseMediaStartingAsync();
         await RememberOwnedCallAsync(Current.Id);
         await _js.InvokeVoidAsync("ipopAudio.stopAudioTones");
         return await SignalAsync(Current.Id, "accept");

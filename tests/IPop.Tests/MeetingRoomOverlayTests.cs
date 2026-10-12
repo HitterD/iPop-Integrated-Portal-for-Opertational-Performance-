@@ -42,6 +42,10 @@ public class MeetingRoomOverlayTests
         state.OnRoomMetadata("""{"recording":{"id":"7f1c0a4e-0000-4000-8000-000000000001","by":"Budi","startedAt":"2026-10-11T03:00:00Z"}}""");
         var cut = ctx.Render<MeetingRoomOverlay>();
         Assert.Contains("started by Budi", cut.Find(".mr-recbar").TextContent);
+        cut.Find("button.mr-rec").Click();
+        var stop = cut.Find(".mr-menu .mr-opt-stop").TextContent;
+        Assert.Contains("Stop server recording", stop);
+        Assert.Contains("Started by Budi", stop);
     }
 
     [Fact]
@@ -210,7 +214,11 @@ public class MeetingRoomOverlayTests
         state.OnRoomMetadata("""{"recording":{"id":"7f1c0a4e-0000-4000-8000-000000000001","by":"Budi","startedAt":"2026-10-11T03:00:00Z"}}""");
         var cut = ctx.Render<MeetingRoomOverlay>();
 
-        cut.Find("button.mr-rec").Click();     // shows "Stop" while the room records
+        cut.Find("button.mr-rec").Click();     // opens the menu
+        cut.Find(".mr-menu .mr-opt-stop").Click();
+        var confirm = ctx.Services.GetRequiredService<ConfirmService>();
+        cut.WaitForAssertion(() => Assert.NotNull(confirm.Current));
+        confirm.Resolve(true);
 
         cut.WaitForAssertion(() => Assert.Contains(toasts.Active, t => t.Message == "Could not stop the recording. Try again." && t.Kind == ToastKind.Error));
         Assert.NotNull(state.RecordingServer); // metadata stays the source of truth for the banner
@@ -230,6 +238,159 @@ public class MeetingRoomOverlayTests
         Assert.Equal("egress_unavailable", await downState.StopServerRecordingAsync());
     }
 
+    // ---------------------------------------------------------------- final review fixes
+
+    private const string ServerRecMeta = """{"recording":{"id":"7f1c0a4e-0000-4000-8000-000000000001","by":"Budi","startedAt":"2026-10-11T03:00:00Z"}}""";
+
+    [Fact]
+    public void Server_recording_never_turns_record_into_a_one_click_stop()
+    {
+        using var ctx = Context(out var state, out _, new Recorder());
+        var api = ctx.Services.GetRequiredService<Recorder>();
+        state.SetForTest(new("arabika", "Arabika", "hall-arabika", "wss://x", "t", true, "me"));
+        state.OnRoomPeople([new("me", "Bagastyo", false, true, false, false, false, true)]);
+        state.OnRoomMetadata(ServerRecMeta);
+        var cut = ctx.Render<MeetingRoomOverlay>();
+
+        var rec = cut.Find("button.mr-rec");
+        Assert.Contains("Record", rec.TextContent);
+        Assert.DoesNotContain("Stop", rec.TextContent);
+        rec.Click();
+
+        Assert.Empty(api.Posts);                                      // nothing stopped
+        var menu = cut.Find(".mr-menu");
+        var pc = menu.QuerySelectorAll(".mr-opt").First(b => b.TextContent.Contains("Record to this PC"));
+        Assert.False(pc.HasAttribute("disabled"));                    // Record to this PC stays available
+        Assert.NotNull(menu.QuerySelector(".mr-opt-stop"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Stopping_the_server_recording_asks_first_and_only_stops_when_confirmed(bool confirmed)
+    {
+        using var ctx = Context(out var state, out _, new Recorder());
+        var api = ctx.Services.GetRequiredService<Recorder>();
+        var confirm = ctx.Services.GetRequiredService<ConfirmService>();
+        state.SetForTest(new("arabika", "Arabika", "hall-arabika", "wss://x", "t", true, "me"));
+        state.OnRoomMetadata(ServerRecMeta);
+        var cut = ctx.Render<MeetingRoomOverlay>();
+
+        cut.Find("button.mr-rec").Click();
+        cut.Find(".mr-menu .mr-opt-stop").Click();
+        cut.WaitForAssertion(() => Assert.Equal("Stop the server recording for everyone?", confirm.Current?.Title));
+        Assert.Empty(api.Posts);
+        confirm.Resolve(confirmed);
+
+        if (confirmed)
+            cut.WaitForAssertion(() => Assert.Equal(["/api/meeting-rooms/recordings/7f1c0a4e-0000-4000-8000-000000000001/stop"], api.Posts));
+        else { Thread.Sleep(100); Assert.Empty(api.Posts); }
+    }
+
+    [Fact]
+    public void Own_pc_recording_is_still_a_one_click_stop()
+    {
+        using var ctx = Context(out var state);
+        state.SetForTest(new("arabika", "Arabika", "hall-arabika", "wss://x", "t", true, "me"));
+        state.OnRoomPeople([new("me", "Bagastyo", false, true, false, false, true, true)]);
+        var cut = ctx.Render<MeetingRoomOverlay>();
+        Assert.Contains("Stop", cut.Find("button.mr-rec").TextContent);
+        cut.Find("button.mr-rec").Click();
+        Assert.Single(ctx.JSInterop.Invocations["ipopRooms.stopPcRecording"]);
+        Assert.Empty(cut.FindAll(".mr-menu"));
+    }
+
+    [Fact]
+    public void Record_to_server_shows_the_real_retention_days()
+    {
+        using var ctx = Context(out var state);
+        state.SetForTest(new("arabika", "Arabika", "hall-arabika", "wss://x", "t", true, "me", RetentionDays: 30));
+        var cut = ctx.Render<MeetingRoomOverlay>();
+        cut.Find("button.mr-rec").Click();
+        Assert.Contains("Saved for 30 days.", cut.Find(".mr-menu").TextContent);
+        Assert.DoesNotContain("90 days", cut.Find(".mr-menu").TextContent);
+    }
+
+    [Theory]
+    [InlineData("accept")]
+    [InlineData("place")]
+    public async Task Taking_a_call_leaves_the_meeting_room_first_with_a_toast(string how)
+    {
+        using var ctx = Context(out var state, out var calls);
+        var toasts = ctx.Services.GetRequiredService<ToastService>();
+        state.SetForTest(new("arabika", "Arabika", "hall-arabika", "wss://x", "t", true, "me"));
+        if (how == "accept")
+        {
+            typeof(CallState).GetProperty(nameof(CallState.Current))!.SetValue(calls, new CallRoomDto(
+                Guid.NewGuid(), CallKind.User, CallStatus.Ringing, null, Guid.NewGuid(), DateTime.UtcNow, null, null, null,
+                [new CallParticipantDto(Guid.NewGuid(), "200", "Budi Santoso", CallParticipantStatus.Accepted, false, false, null)]));
+            await calls.AcceptCurrentAsync();
+        }
+        else await calls.CreateAsync("200");
+
+        Assert.Null(state.Room);
+        Assert.Single(ctx.JSInterop.Invocations["ipopRooms.leave"]);
+        Assert.Contains(toasts.Active, t => t.Message == "You left Arabika to take the call.");
+    }
+
+    [Fact]
+    public async Task Joining_a_group_call_leaves_the_meeting_room_first()
+    {
+        using var ctx = Context(out var state, out var calls);
+        state.SetForTest(new("arabika", "Arabika", "hall-arabika", "wss://x", "t", true, "me"));
+        await calls.StartGroupAsync(Guid.NewGuid());
+        Assert.Null(state.Room);
+        Assert.Single(ctx.JSInterop.Invocations["ipopRooms.leave"]);
+    }
+
+    [Fact]
+    public async Task Taking_a_call_without_a_room_does_nothing_to_rooms()
+    {
+        using var ctx = Context(out _, out var calls);
+        var toasts = ctx.Services.GetRequiredService<ToastService>();
+        await calls.CreateAsync("200");
+        Assert.Empty(ctx.JSInterop.Invocations["ipopRooms.leave"]);
+        Assert.DoesNotContain(toasts.Active, t => t.Message.Contains("to take the call"));
+    }
+
+    [Fact]
+    public void Unexpected_disconnect_says_so()
+    {
+        using var ctx = Context(out var state);
+        var toasts = ctx.Services.GetRequiredService<ToastService>();
+        state.SetForTest(new("arabika", "Arabika", "hall-arabika", "wss://x", "t", true, "me"));
+        state.OnRoomState("disconnected");          // network/server dropped us
+        Assert.Null(state.Room);
+        Assert.Contains(toasts.Active, t => t.Message == "You were disconnected from Arabika.");
+    }
+
+    [Fact]
+    public async Task Pressing_leave_shows_no_disconnect_toast()
+    {
+        using var ctx = Context(out var state);
+        var toasts = ctx.Services.GetRequiredService<ToastService>();
+        state.SetForTest(new("arabika", "Arabika", "hall-arabika", "wss://x", "t", true, "me"));
+        // The browser reports "disconnected" from inside ipopRooms.leave, before it resolves.
+        var js = ctx.JSInterop.SetupVoid("ipopRooms.leave");
+        var leave = state.LeaveAsync();
+        state.OnRoomState("disconnected");
+        js.SetVoidResult();
+        await leave;
+        Assert.Null(state.Room);
+        Assert.DoesNotContain(toasts.Active, t => t.Message.Contains("disconnected"));
+    }
+
+    /// Records every POST path; answers 200 with an empty object.
+    private sealed class Recorder : HttpMessageHandler
+    {
+        public List<string> Posts { get; } = [];
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            if (request.Method == HttpMethod.Post) lock (Posts) Posts.Add(request.RequestUri!.AbsolutePath);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") });
+        }
+    }
+
     private static readonly HttpMessageHandler JoinOk = new Json("""
         {"key":"arabika","name":"Arabika","liveKitRoom":"hall-arabika","url":"wss://x","token":"t","videoAllowed":true,"identity":"me"}
         """);
@@ -244,12 +405,15 @@ public class MeetingRoomOverlayTests
         var js = ctx.JSInterop.JSRuntime;
         var auth = new AuthState(http, js);
         calls = new CallState(auth, http, js);
-        state = new MeetingRoomState(auth, js, calls);
+        var toasts = new ToastService();
+        state = new MeetingRoomState(auth, js, calls, toasts);
         ctx.Services.AddSingleton(auth);
         ctx.Services.AddSingleton(calls);
         ctx.Services.AddSingleton(state);
         ctx.Services.AddSingleton(http);
-        ctx.Services.AddSingleton(new ToastService());
+        if (handler is Recorder r) ctx.Services.AddSingleton(r);
+        ctx.Services.AddSingleton(toasts);
+        ctx.Services.AddSingleton(new ConfirmService());
         ctx.Services.AddScoped<PhotoViewerState>();
         ctx.Services.AddScoped<OverlayStack>();
         return ctx;

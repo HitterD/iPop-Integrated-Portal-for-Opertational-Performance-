@@ -7,8 +7,33 @@ namespace IPop.Web.Services;
 
 /// The meeting room the user is in (one at a time). Lives for the session so the meeting keeps running while
 /// the user moves between modules; MeetingRoomOverlay draws it, js/meeting-rooms.js owns the media.
-public sealed class MeetingRoomState(AuthState auth, IJSRuntime js, CallState calls) : IAsyncDisposable
+public sealed class MeetingRoomState : IAsyncDisposable
 {
+    private readonly AuthState auth;
+    private readonly IJSRuntime js;
+    private readonly CallState calls;
+    private readonly ToastService? toasts;
+    private bool leaving;
+
+    public MeetingRoomState(AuthState auth, IJSRuntime js, CallState calls, ToastService? toasts = null)
+    {
+        this.auth = auth; this.js = js; this.calls = calls; this.toasts = toasts;
+        // A 1:1/group call or scheduled meeting is about to use the microphone: one at a time, so leave the room.
+        calls.MediaStarting += OnCallMediaStartingAsync;
+    }
+
+    private async Task OnCallMediaStartingAsync()
+    {
+        if (Room is not { } room) return;
+        if (RecordingPc)
+        {
+            try { await StopPcRecordingAsync(); }
+            catch (Exception e) when (e is JSException or JSDisconnectedException or TaskCanceledException or InvalidOperationException) { }
+        }
+        await LeaveAsync();
+        toasts?.Show($"You left {room.Name} to take the call.", ToastKind.Info);
+    }
+
     public record Person(string Identity, string Name, bool Speaking, bool MicOn, bool CamOn, bool Sharing, bool RecPc, bool IsLocal);
     public record ServerRecording(Guid Id, string By, DateTime StartedAt);
 
@@ -26,6 +51,8 @@ public sealed class MeetingRoomState(AuthState auth, IJSRuntime js, CallState ca
     public IReadOnlyList<Person> People { get; private set; } = [];
     public string ConnectionState { get; private set; } = "";
     public DateTime JoinedAt { get; private set; }
+    /// Days a server recording is kept (from the join answer), for the Record menu.
+    public int RetentionDays { get; private set; } = 90;
     /// The booking running in the room when we joined (null = ad-hoc). Shown in the top bar.
     public string? MeetingTitle { get; private set; }
 
@@ -61,6 +88,7 @@ public sealed class MeetingRoomState(AuthState auth, IJSRuntime js, CallState ca
 
             selfRef ??= DotNetObjectReference.Create(this);
             Room = dto; VideoAllowed = dto.VideoAllowed; Minimized = false; JoinedAt = DateTime.UtcNow;
+            RetentionDays = dto.RetentionDays > 0 ? dto.RetentionDays : 90;
             MicOn = CamOn = Sharing = RecordingPc = false; RecordingServer = null; People = []; ConnectionState = "connecting";
             MeetingTitle = null;
             Raise();
@@ -76,8 +104,10 @@ public sealed class MeetingRoomState(AuthState auth, IJSRuntime js, CallState ca
             }
             if (!ok)
             {
+                leaving = true;
                 try { await js.InvokeVoidAsync("ipopRooms.leave"); }
                 catch (Exception e) when (e is JSException or TaskCanceledException or InvalidOperationException) { }
+                finally { leaving = false; }
                 Clear();
                 Raise();
                 return ("connect_failed", []);
@@ -123,10 +153,12 @@ public sealed class MeetingRoomState(AuthState auth, IJSRuntime js, CallState ca
     public async Task LeaveAsync()
     {
         if (Room is null) return;
+        leaving = true;
         try { await js.InvokeVoidAsync("ipopRooms.leave"); }
         catch (Exception e) when (e is JSException or JSDisconnectedException or TaskCanceledException or InvalidOperationException) { }
         finally
         {
+            leaving = false;
             // Whatever the browser did, the old room must not linger (JoinAsync's room switch relies on it).
             Clear();
             Raise();
@@ -206,8 +238,15 @@ public sealed class MeetingRoomState(AuthState auth, IJSRuntime js, CallState ca
     [JSInvokable]
     public void OnRoomState(string state)
     {
+        var was = ConnectionState;
         ConnectionState = state;
-        if (state == "disconnected" && Room is not null) Clear();
+        if (state == "disconnected" && Room is { } room)
+        {
+            // Dropped by the network or the server (not our Leave, not a join that never connected): say so.
+            if (!leaving && was is "connected" or "reconnecting")
+                toasts?.Show($"You were disconnected from {room.Name}.", ToastKind.Warning);
+            Clear();
+        }
         Raise();
     }
 
@@ -246,10 +285,14 @@ public sealed class MeetingRoomState(AuthState auth, IJSRuntime js, CallState ca
         Raise();
     }
 
-    internal void SetForTest(MeetingRoomJoinDto room) { Room = room; VideoAllowed = room.VideoAllowed; JoinedAt = DateTime.UtcNow; Raise(); }
+    internal void SetForTest(MeetingRoomJoinDto room, string connection = "connected")
+    {
+        Room = room; VideoAllowed = room.VideoAllowed; JoinedAt = DateTime.UtcNow; RetentionDays = room.RetentionDays; ConnectionState = connection; Raise();
+    }
 
     public async ValueTask DisposeAsync()
     {
+        calls.MediaStarting -= OnCallMediaStartingAsync;
         try { await LeaveAsync(); } catch (JSDisconnectedException) { } catch (TaskCanceledException) { }
         selfRef?.Dispose();
     }

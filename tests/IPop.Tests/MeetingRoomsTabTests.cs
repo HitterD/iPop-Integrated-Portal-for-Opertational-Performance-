@@ -149,26 +149,99 @@ public class MeetingRoomsTabTests
         Assert.Contains("Weekly ICT sync", rows[1].TextContent);
         Assert.Equal("1:02:40", rows[1].QuerySelector(".mrt-dur")!.TextContent);
         Assert.Contains("418 MB", rows[1].TextContent);
-        var dl = rows[1].QuerySelector("a.mrt-download")!;
-        Assert.Contains($"/api/meeting-rooms/recordings/{ready.Id}/file?download=1", dl.GetAttribute("href"));
+        Assert.NotNull(rows[1].QuerySelector("button.mrt-download"));
         Assert.NotNull(rows[1].QuerySelector("button.mrt-play"));
         // Retention comes from the recordings themselves (DeleteAfter - StartedAt).
         Assert.Contains("Recordings are deleted automatically after 30 days.", cut.Find(".mrt-foot").TextContent);
 
         rows[1].QuerySelector("button.mrt-play")!.Click();
-        var video = cut.Find(".mrt-player video");
-        Assert.Equal($"http://localhost/api/meeting-rooms/recordings/{ready.Id}/file", video.GetAttribute("src"));
+        cut.WaitForAssertion(() => cut.Find(".mrt-player video"));
+        Assert.Equal($"http://localhost/api/meeting-rooms/recordings/{ready.Id}/file?t=tk-{ready.Id:N}", cut.Find(".mrt-player video").GetAttribute("src"));
+    }
+
+    // ---------------------------------------------------------------- final review fixes
+
+    [Fact]
+    public void Player_uses_one_recording_ticket_and_keeps_it_across_polls_and_never_puts_the_session_token_in_a_url()
+    {
+        var ready = new MeetingRecordingDto(Guid.NewGuid(), "robusta", "Robusta", "Weekly ICT sync", "Bagastyo", Now.AddDays(-2),
+            3760, 418L * 1024 * 1024, 9, "ready", Now.AddDays(28));
+        var api = new Api { Rooms = FiveRooms(), Recordings = [ready] };
+        using var ctx = Context(api);
+        var cut = ctx.Render<MeetingRoomsTab>(p => p.Add(c => c.PollInterval, TimeSpan.FromMilliseconds(60)));
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll(".mrt-rec")));
+
+        cut.Find("button.mrt-play").Click();
+        cut.WaitForAssertion(() => cut.Find(".mrt-player video"));
+        var src = cut.Find(".mrt-player video").GetAttribute("src");
+        Assert.Equal($"http://localhost/api/meeting-rooms/recordings/{ready.Id}/file?t=tk-{ready.Id:N}", src);
+        Assert.Equal($"{src}&download=1", cut.Find(".mrt-player a.mrt-download").GetAttribute("href"));
+        Assert.DoesNotContain("access_token", cut.Markup);
+
+        var gets = api.RoomGets;
+        cut.WaitForAssertion(() => Assert.True(api.RoomGets >= gets + 3), TimeSpan.FromSeconds(3));   // several polls re-rendered
+        Assert.Equal(src, cut.Find(".mrt-player video").GetAttribute("src"));
+        Assert.Equal([ready.Id], api.Tickets);                                                        // fetched once
     }
 
     [Fact]
-    public void Recording_urls_carry_the_access_token_because_video_tags_cannot_send_headers()
+    public void Download_fetches_a_ticket_on_click_and_saves_with_download_1()
     {
-        var id = Guid.Parse("7f1c0a4e-0000-4000-8000-000000000001");
-        var http = new HttpClient { BaseAddress = new Uri("https://ipop.example:7103/") };
-        Assert.Equal("https://ipop.example:7103/api/meeting-rooms/recordings/7f1c0a4e-0000-4000-8000-000000000001/file?access_token=a%2Bb%3D",
-            MeetingRoomsTab.FileUrl(http.BaseAddress, id, "a+b=", download: false));
-        Assert.Equal("https://ipop.example:7103/api/meeting-rooms/recordings/7f1c0a4e-0000-4000-8000-000000000001/file?download=1&access_token=t",
-            MeetingRoomsTab.FileUrl(http.BaseAddress, id, "t", download: true));
+        var ready = new MeetingRecordingDto(Guid.NewGuid(), "robusta", "Robusta", "Weekly ICT sync", "Bagastyo", Now.AddDays(-2),
+            3760, 418L * 1024 * 1024, 9, "ready", Now.AddDays(28));
+        var api = new Api { Rooms = FiveRooms(), Recordings = [ready] };
+        using var ctx = Context(api);
+        var cut = ctx.Render<MeetingRoomsTab>(p => p.Add(c => c.PollInterval, TimeSpan.FromHours(1)));
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll(".mrt-rec")));
+        Assert.Empty(api.Tickets);   // nothing asked before the click
+
+        cut.Find(".mrt-rec button.mrt-download").Click();
+
+        cut.WaitForAssertion(() => Assert.Single(ctx.JSInterop.Invocations["ipopRooms.download"]));
+        Assert.Equal($"http://localhost/api/meeting-rooms/recordings/{ready.Id}/file?t=tk-{ready.Id:N}&download=1",
+            ctx.JSInterop.Invocations["ipopRooms.download"].Single().Arguments[0]);
+    }
+
+    [Fact]
+    public void Ticket_refused_shows_a_toast_and_opens_no_player()
+    {
+        var ready = new MeetingRecordingDto(Guid.NewGuid(), "robusta", "Robusta", "Weekly ICT sync", "Bagastyo", Now.AddDays(-2),
+            3760, 418L * 1024 * 1024, 9, "ready", Now.AddDays(28));
+        var api = new Api { Rooms = FiveRooms(), Recordings = [ready], TicketStatus = HttpStatusCode.NotFound };
+        using var ctx = Context(api);
+        var toasts = ctx.Services.GetRequiredService<ToastService>();
+        var cut = ctx.Render<MeetingRoomsTab>(p => p.Add(c => c.PollInterval, TimeSpan.FromHours(1)));
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll(".mrt-rec")));
+        cut.Find("button.mrt-play").Click();
+        cut.WaitForAssertion(() => Assert.Contains(toasts.Active, t => t.Message == "This recording can't be opened right now."));
+        Assert.Empty(cut.FindAll(".mrt-player"));
+    }
+
+    [Fact]
+    public void Join_deep_link_is_consumed_by_replacing_the_url()
+    {
+        var api = new Api { Rooms = FiveRooms(), JoinStatus = HttpStatusCode.Conflict, JoinBody = """{"code":"room_full","suggestions":[]}""" };
+        using var ctx = Context(api);
+        var nav = ctx.Services.GetRequiredService<Bunit.TestDoubles.BunitNavigationManager>();
+        nav.NavigateTo("/calls?tab=rooms&join=kalosi");
+        var cut = ctx.Render<MeetingRoomsTab>(p => p.Add(c => c.JoinKey, "kalosi"));
+        cut.WaitForAssertion(() => Assert.Equal(["kalosi"], api.Joins));
+        Assert.EndsWith("/calls?tab=rooms", nav.Uri);
+        Assert.True(nav.History.First().Options.ReplaceHistoryEntry);
+    }
+
+    [Fact]
+    public void Room_state_changes_reload_at_most_once_per_five_seconds_by_default()
+    {
+        var api = new Api { Rooms = FiveRooms() };
+        using var ctx = Context(api);
+        var state = ctx.Services.GetRequiredService<MeetingRoomState>();
+        var cut = ctx.Render<MeetingRoomsTab>(p => p.Add(c => c.PollInterval, TimeSpan.FromHours(1)));
+        cut.WaitForAssertion(() => Assert.Equal(5, cut.FindAll(".mrt-room").Count));
+        Assert.Equal(TimeSpan.FromSeconds(5), cut.Instance.ChangedReloadGap);
+        for (var i = 0; i < 20; i++) state.OnRoomPeople([]);   // speaking updates
+        Thread.Sleep(1500);
+        Assert.InRange(api.RoomGets, 1, 2);                       // first load + at most one immediate reload, the rest waits
     }
 
     [Fact]
@@ -190,24 +263,6 @@ public class MeetingRoomsTabTests
         Assert.Equal(["kalosi"], api.Joins);
         Assert.Contains("No other room has space right now.", cut.Find(".mrt-alert").TextContent);
     }
-
-    [Theory]
-    [InlineData("/hubs/app", true)]
-    [InlineData("/api/meeting-rooms/recordings/7f1c0a4e-0000-4000-8000-000000000001/file", true)]
-    [InlineData("/api/meeting-rooms/recordings", false)]
-    [InlineData("/api/meeting-rooms/recordings/7f1c0a4e-0000-4000-8000-000000000001", false)]
-    [InlineData("/api/meeting-rooms/recordings/not-a-guid/file", false)]
-    [InlineData("/api/meeting-rooms/recordings/7f1c0a4e-0000-4000-8000-000000000001/file/extra", false)]
-    [InlineData("/api/files/x/file", false)]
-    [InlineData("/api/me", false)]
-    [InlineData("/api/meeting-rooms/recordings/7f1c0a4e-0000-4000-8000-000000000001/file/", false)]   // trailing slash
-    [InlineData("/api/meeting-rooms/recordings//7f1c0a4e-0000-4000-8000-000000000001/file", false)]   // double slash
-    [InlineData("/api/meeting-rooms/recordings/7f1c0a4e-0000-4000-8000-000000000001//file", false)]
-    [InlineData("/api/meeting-rooms/recordings/7f1c0a4e-0000-4000-8000-000000000001/stop", false)]    // other route
-    [InlineData("/api/meeting-rooms/recordings/{7f1c0a4e-0000-4000-8000-000000000001}/file", false)]  // only the plain guid form
-    [InlineData("/api/meeting-rooms/arabika/recordings", false)]
-    public void Query_token_is_accepted_only_for_hubs_and_recording_files(string path, bool allowed) =>
-        Assert.Equal(allowed, IPop.Api.QueryTokenRule.Allows(new PathString(path)));
 
     // ---------------------------------------------------------------- fix round 1
 
@@ -370,6 +425,8 @@ public class MeetingRoomsTabTests
         public HttpStatusCode JoinStatus { get; init; } = HttpStatusCode.NotFound;
         public string JoinBody { get; init; } = "{}";
         public List<string> Joins { get; } = [];
+        public List<Guid> Tickets { get; } = [];
+        public HttpStatusCode TicketStatus { get; init; } = HttpStatusCode.OK;
         /// When set, GET /api/meeting-rooms waits for it (a slow first load).
         public TaskCompletionSource? Gate { get; init; }
         /// Set mid-test: the next GET /api/meeting-rooms waits for it.
@@ -392,6 +449,14 @@ public class MeetingRoomsTabTests
             {
                 Interlocked.Increment(ref recordingGets);
                 return RecordingsStatus == HttpStatusCode.OK ? await Json(Recordings) : new HttpResponseMessage(RecordingsStatus);
+            }
+            if (request.Method == HttpMethod.Post && path.EndsWith("/ticket"))
+            {
+                var id = Guid.Parse(path.Split('/')[^2]);
+                lock (Tickets) Tickets.Add(id);
+                return TicketStatus == HttpStatusCode.OK
+                    ? await Json(new { url = $"/api/meeting-rooms/recordings/{id}/file?t=tk-{id:N}" })
+                    : new HttpResponseMessage(TicketStatus);
             }
             if (request.Method == HttpMethod.Post && path.EndsWith("/join"))
             {

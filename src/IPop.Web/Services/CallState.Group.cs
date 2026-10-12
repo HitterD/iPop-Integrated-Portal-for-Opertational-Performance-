@@ -259,6 +259,7 @@ public partial class CallState
         if (!await _groupGate.WaitAsync(0)) return null;
         try
         {
+            await RaiseMediaStartingAsync();
             await _js.InvokeVoidAsync("ipopAudio.stopAudioTones");
             using var res = await _auth.SendAsync(HttpMethod.Post, url);
             if (!res.IsSuccessStatusCode)

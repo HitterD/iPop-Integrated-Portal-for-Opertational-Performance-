@@ -371,7 +371,7 @@
 .mrt-rec-a { display: flex; align-items: center; gap: 6px; color: var(--ink-3); font-size: 13px; white-space: nowrap; }
 .mrt-size { margin-right: 4px; font-variant-numeric: tabular-nums; }
 .mrt .mrt-round, .mrt-scrim .mrt-round {
-  width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; flex: none; border: 0; cursor: pointer;
+  width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; flex: none; border: 0; padding: 0; cursor: pointer;
   color: var(--accent); background: rgba(var(--accent-rgb), .1); text-decoration: none; transition: background .2s;
 }
 .mrt .mrt-round:hover { background: rgba(var(--accent-rgb), .18); }

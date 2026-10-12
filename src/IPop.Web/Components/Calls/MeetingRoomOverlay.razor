@@ -5,6 +5,7 @@
 @implements IDisposable
 @inject MeetingRoomState Rooms
 @inject ToastService Toasts
+@inject ConfirmService Confirm
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 
@@ -85,7 +86,7 @@
             <span class="mr-recwrap">
                 <button type="button" class="mr-ctl mr-rec @(Recording ? "recording" : "")" @onclick="RecordClick"
                         aria-haspopup="menu" aria-expanded="@(menuOpen ? "true" : "false")">
-                    <span class="mr-ci"><i data-lucide="@(Recording ? "square" : "circle-dot")"></i></span>@(Recording ? "Stop" : "Record")
+                    <span class="mr-ci"><i data-lucide="@(Rooms.RecordingPc ? "square" : "circle-dot")"></i></span>@(Rooms.RecordingPc ? "Stop" : "Record")
                 </button>
                 @if (menuOpen)
                 {
@@ -95,10 +96,20 @@
                             <span class="mr-ico mr-ico-pc"><i data-lucide="laptop"></i></span>
                             <span><b>Record to this PC</b><span>The whole meeting with everyone's voice. Saved to Downloads as a video when you stop.</span></span>
                         </button>
-                        <button type="button" class="mr-opt" role="menuitem" disabled="@(Rooms.RecordingServer is not null)" @onclick="RecordServerAsync">
-                            <span class="mr-ico mr-ico-srv"><i data-lucide="server"></i></span>
-                            <span><b>Record to server</b><span>@(Rooms.RecordingServer is null ? "Saved for 90 days. Everyone in the room can watch it later in Recordings." : "This room is already being recorded to the server.")</span></span>
-                        </button>
+                        @if (Rooms.RecordingServer is { } running)
+                        {
+                            <button type="button" class="mr-opt mr-opt-stop" role="menuitem" @onclick="StopServerAsync">
+                                <span class="mr-ico mr-ico-srv"><i data-lucide="square"></i></span>
+                                <span><b>Stop server recording</b><span>Started by @running.By</span></span>
+                            </button>
+                        }
+                        else
+                        {
+                            <button type="button" class="mr-opt" role="menuitem" @onclick="RecordServerAsync">
+                                <span class="mr-ico mr-ico-srv"><i data-lucide="server"></i></span>
+                                <span><b>Record to server</b><span>Saved for @Rooms.RetentionDays @(Rooms.RetentionDays == 1 ? "day" : "days"). Everyone in the room can watch it later in Recordings.</span></span>
+                            </button>
+                        }
                         <div class="mr-pop-note"><i data-lucide="eye"></i>Everyone here will see that you're recording.</div>
                     </div>
                 }
@@ -273,16 +284,21 @@
         else if (r == "denied") Toasts.Show("Screen sharing was blocked or cancelled.", ToastKind.Warning);
     }
 
+    /// Your own PC recording: one click stops it. Anything else opens the menu, so a server recording someone
+    /// else started is never stopped by a single click on Record.
     private async Task RecordClick()
     {
         if (Rooms.RecordingPc) { await Rooms.StopPcRecordingAsync(); return; }
-        if (Rooms.RecordingServer is not null && Recording)
-        {
-            // The banner follows the room metadata; only a failed request needs telling.
-            if (await Rooms.StopServerRecordingAsync() is not null) Toasts.Show("Could not stop the recording. Try again.", ToastKind.Error);
-            return;
-        }
         menuOpen = !menuOpen;
+    }
+
+    private async Task StopServerAsync()
+    {
+        menuOpen = false;
+        if (!await Confirm.AskAsync("Stop the server recording for everyone?",
+                $"{Rooms.RecordingServer?.By ?? "Someone"} started it. Everyone in the room stops being recorded.", "Stop recording")) return;
+        // The banner follows the room metadata; only a failed request needs telling.
+        if (await Rooms.StopServerRecordingAsync() is not null) Toasts.Show("Could not stop the recording. Try again.", ToastKind.Error);
     }
 
     private async Task RecordPcAsync()

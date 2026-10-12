@@ -357,5 +357,12 @@
     el.scrollIntoView({ block: 'center', behavior: smooth ? 'smooth' : 'auto' });
   }
 
-  window.ipopRooms = { join, leave, setMic, setCamera, setShare, startPcRecording, stopPcRecording, setRecordingAttr, tileLayout, reveal };
+  // Recordings: save a file from its ticket URL (the API answers with Content-Disposition: attachment).
+  function download(url) {
+    const a = document.createElement('a');
+    a.href = url; a.download = ''; a.rel = 'noopener'; a.style.display = 'none';
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  window.ipopRooms = { join, leave, setMic, setCamera, setShare, startPcRecording, stopPcRecording, setRecordingAttr, tileLayout, reveal, download };
 })();

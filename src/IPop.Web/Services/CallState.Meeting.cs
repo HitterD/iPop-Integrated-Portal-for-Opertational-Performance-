@@ -32,6 +32,7 @@ public partial class CallState
         if (!await _groupGate.WaitAsync(0)) return false;
         try
         {
+            await RaiseMediaStartingAsync();
             using var res = await _auth.SendAsync(HttpMethod.Get, $"/api/meetings/join/{Uri.EscapeDataString(roomName)}");
             if (!res.IsSuccessStatusCode)
             {

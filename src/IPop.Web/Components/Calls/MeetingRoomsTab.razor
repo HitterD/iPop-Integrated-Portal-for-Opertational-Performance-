@@ -134,7 +134,7 @@
                             @if (ready)
                             {
                                 @if (x.SizeBytes is { } size) { <span class="mrt-size">@Size(size)</span> }
-                                <a class="mrt-round mrt-download" href="@FileUrl(Http.BaseAddress, x.Id, Auth.AccessToken, download: true)" download title="Download" aria-label="Download @x.Title"><i data-lucide="arrow-down-to-line"></i></a>
+                                <button type="button" class="mrt-round mrt-download" title="Download" aria-label="Download @x.Title" @onclick="() => DownloadAsync(x)"><i data-lucide="arrow-down-to-line"></i></button>
                                 <button type="button" class="mrt-round mrt-play" title="Play" aria-label="Play @x.Title" @onclick="() => Play(x)"><i data-lucide="play"></i></button>
                             }
                             else if (x.Status == "processing")
@@ -186,16 +186,16 @@
     </div>
 }
 
-@if (playing is { } pl)
+@if (playing is { } pl && playingSrc is not null)
 {
     <div class="mrt-scrim" @onclick="ClosePlayer">
         <div class="mrt-player" role="dialog" aria-modal="true" aria-label="@pl.Title" @onclick:stopPropagation="true">
             <div class="mrt-player-head">
                 <div><b>@pl.Title</b><small>@pl.RoomName · @WhenLabel(pl.StartedAt)</small></div>
-                <a class="mrt-round mrt-download" href="@FileUrl(Http.BaseAddress, pl.Id, Auth.AccessToken, download: true)" download title="Download" aria-label="Download @pl.Title"><i data-lucide="arrow-down-to-line"></i></a>
+                <a class="mrt-round mrt-download" href="@(playingSrc + "&download=1")" download title="Download" aria-label="Download @pl.Title"><i data-lucide="arrow-down-to-line"></i></a>
                 <button type="button" class="mrt-round mrt-close" title="Close" aria-label="Close" @onclick="ClosePlayer"><i data-lucide="x"></i></button>
             </div>
-            <video controls autoplay playsinline preload="metadata" src="@FileUrl(Http.BaseAddress, pl.Id, Auth.AccessToken, download: false)"></video>
+            <video controls autoplay playsinline preload="metadata" src="@playingSrc"></video>
         </div>
     </div>
 }
@@ -208,7 +208,7 @@
     /// How often rooms (and unfinished recordings) refresh while the tab is visible. Tests shorten it.
     [Parameter] public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(10);
     /// MeetingRoomState.Changed bursts (speaking, mic, people) collapse into at most one rooms reload per gap.
-    [Parameter] public TimeSpan ChangedReloadGap { get; set; } = TimeSpan.FromSeconds(1);
+    [Parameter] public TimeSpan ChangedReloadGap { get; set; } = TimeSpan.FromSeconds(5);
 
     private static readonly CultureInfo En = CultureInfo.InvariantCulture;
     private const int DefaultRetentionDays = 90;
@@ -227,6 +227,8 @@
     private DateTime lastChangedReload = DateTime.MinValue;
     private FullAlert? fullAlert;
     private MeetingRecordingDto? playing;
+    /// The open player's ticket URL: fetched once when the player opens, never rebuilt on re-render or poll.
+    private string? playingSrc;
     private System.Threading.Timer? poll;
     private bool disposed;
     private Guid? pendingReveal;
@@ -235,16 +237,22 @@
     private sealed record Cap(string Text, string Class);
     private sealed record Line(string Icon, string Text);
 
-    /// The player/download address. &lt;video src&gt; and &lt;a download&gt; cannot send the Authorization header, so the
-    /// JWT rides as ?access_token= — the API accepts it for this one route only (QueryTokenRule).
-    public static string FileUrl(Uri? apiBase, Guid id, string? accessToken, bool download)
+    /// The player/download address: &lt;video src&gt; and &lt;a download&gt; cannot send the Authorization header, so the
+    /// API hands out a URL with a ticket scoped to this recording and user (POST …/ticket). Null = not allowed/offline.
+    private async Task<string?> TicketUrlAsync(Guid id)
     {
-        var q = new List<string>();
-        if (download) q.Add("download=1");
-        if (!string.IsNullOrEmpty(accessToken)) q.Add("access_token=" + Uri.EscapeDataString(accessToken));
-        var path = $"/api/meeting-rooms/recordings/{id}/file" + (q.Count > 0 ? "?" + string.Join('&', q) : "");
-        return apiBase is null ? path : new Uri(apiBase, path).ToString();
+        try
+        {
+            using var res = await Auth.SendAsync(HttpMethod.Post, $"/api/meeting-rooms/recordings/{id}/ticket");
+            if (!res.IsSuccessStatusCode) return null;
+            var body = await System.Net.Http.Json.HttpContentJsonExtensions.ReadFromJsonAsync<TicketDto>(res.Content);
+            if (string.IsNullOrEmpty(body?.Url)) return null;
+            return Http.BaseAddress is null ? body.Url : new Uri(Http.BaseAddress, body.Url).ToString();
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or NotSupportedException) { return null; }
     }
+
+    private sealed record TicketDto(string? Url);
 
     protected override async Task OnInitializedAsync()
     {
@@ -257,6 +265,8 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        // The consumed link was replaced by /calls?tab=rooms: a later link to the same room is a new request.
+        if (string.IsNullOrWhiteSpace(JoinKey) && joiningKey is null) joinedDeepLink = null;
         if (rooms is not null) await HandleDeepLinksAsync();
     }
 
@@ -284,9 +294,11 @@
         if (disposed) return;
         if (!string.IsNullOrWhiteSpace(JoinKey) && rooms is not null && joinedDeepLink != JoinKey)
         {
-            joinedDeepLink = JoinKey;
+            var key = joinedDeepLink = JoinKey;
             if (disposed) return;
-            await JoinAsync(JoinKey);
+            // Consume the link: a reload or Back must not join again. (The parent then clears JoinKey; the key is captured.)
+            Nav.NavigateTo("/calls?tab=rooms", replace: true);
+            await JoinAsync(key);
         }
         if (disposed) return;
         if (ApplyRecordingLink()) StateHasChanged();
@@ -299,7 +311,7 @@
         if (RecordingId is not { } id || recordings?.FirstOrDefault(r => r.Id == id) is not { } rec) return false;
         var changed = false;
         if (scrolledRecording != id) { scrolledRecording = id; pendingReveal = id; changed = true; }
-        if (openedRecording != id && rec.Status == "ready") { openedRecording = id; playing = rec; changed = true; }
+        if (openedRecording != id && rec.Status == "ready") { openedRecording = id; _ = InvokeAsync(() => Play(rec)); }
         return changed;
     }
 
@@ -430,8 +442,25 @@
     }
 
     private void CloseAlert() => fullAlert = null;
-    private void Play(MeetingRecordingDto rec) => playing = rec;
-    private void ClosePlayer() => playing = null;
+    private async Task Play(MeetingRecordingDto rec)
+    {
+        if (playing?.Id == rec.Id && playingSrc is not null) return;
+        var url = await TicketUrlAsync(rec.Id);
+        if (disposed) return;
+        if (url is null) { Toasts.Show("This recording can't be opened right now.", ToastKind.Error); return; }
+        playing = rec; playingSrc = url;
+        StateHasChanged();
+    }
+
+    private void ClosePlayer() { playing = null; playingSrc = null; }
+
+    private async Task DownloadAsync(MeetingRecordingDto rec)
+    {
+        var url = await TicketUrlAsync(rec.Id);
+        if (url is null) { Toasts.Show("This recording can't be downloaded right now.", ToastKind.Error); return; }
+        try { await JS.InvokeVoidAsync("ipopRooms.download", url + "&download=1"); }
+        catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException) { }
+    }
 
     private void Book(MeetingRoomDto room) =>
         Nav.NavigateTo(CalLinks.NewMeeting(location: HallBooking.Location(room.Name), from: "From Meeting Rooms"));
