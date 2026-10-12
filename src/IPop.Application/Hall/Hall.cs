@@ -43,6 +43,10 @@ public static class RoomPasswords
 
     public static string New() => System.Security.Cryptography.RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
 
+    /// "123 456": how the password is shown in the invite, the reminder and Calendar (Matches ignores the space).
+    public static string Format(string password) =>
+        password is { Length: Length } ? $"{password[..3]} {password[3..]}" : password;
+
     /// True when <paramref name="typed"/> (spaces ignored, as the invite shows "123 456") equals <paramref name="stored"/>.
     public static bool Matches(string? stored, string? typed)
     {

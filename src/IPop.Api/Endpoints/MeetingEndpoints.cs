@@ -238,7 +238,7 @@ public static class MeetingEndpoints
                 // Awaited, in sequence: both run on the request's DbContext (see PublishBestEffortAsync).
                 var log = NotifyLog(http);
                 await PublishBestEffortAsync(notifs, log, "meeting.invited", $"Meeting invite: {dto.Title}",
-                    $"{dto.OrganizerName} invited you to \"{dto.Title}\" on {dto.StartAt.ToLocalTime():dd MMM, HH:mm}.",
+                    InviteMessage(dto.OrganizerName, dto.Title, dto.StartAt, dto.Location, dto.RoomPassword),
                     added.ToList(), "normal", link);
                 await PublishBestEffortAsync(notifs, log, "meeting.updated", $"Meeting updated: {dto.Title}",
                     $"{dto.OrganizerName} updated \"{dto.Title}\".",
@@ -424,13 +424,23 @@ public static class MeetingEndpoints
         return (CreateResult.Created, meeting.Id, attendeeIds.Where(id => id != userId).ToList());
     }
 
+    /// The meeting.invited text. A meeting in an SJA Hall room adds its password ("Room password: 123 456"), so a guest
+    /// the invitee forwards it to can get in; the recipients are the invitees themselves (v2 §1.4). Never in the link.
+    public static string InviteMessage(string who, string title, DateTime startUtc, string? location, string? roomPassword) =>
+        $"{who} invited you to \"{title}\" on {startUtc.ToLocalTime():dd MMM, HH:mm}." + RoomPasswordLine(location, roomPassword);
+
+    /// " Room password: 123 456" for a hall-room meeting with a password, else "".
+    public static string RoomPasswordLine(string? location, string? roomPassword) =>
+        IPop.Application.Hall.HallBooking.RoomKey(location) is not null && !string.IsNullOrEmpty(roomPassword)
+            ? $" Room password: {IPop.Application.Hall.RoomPasswords.Format(roomPassword)}"
+            : "";
+
     /// meeting.invited to every invitee (not the organizer), deep-linked to the meeting.
     /// Best-effort (see <see cref="PublishBestEffortAsync"/>): the meeting is already saved.
     public static Task PublishInvitedAsync(INotificationGatewayService notifs, MeetingDto dto, IReadOnlyList<Guid> invited, CancellationToken ct, ILogger? log = null)
     {
-        var when = dto.StartAt.ToLocalTime();
         return PublishBestEffortAsync(notifs, log, "meeting.invited", $"Meeting invite: {dto.Title}",
-            $"{dto.OrganizerName} invited you to \"{dto.Title}\" on {when:dd MMM, HH:mm}.",
+            InviteMessage(dto.OrganizerName, dto.Title, dto.StartAt, dto.Location, dto.RoomPassword),
             invited, "normal", $"/calls?tab=scheduled&meeting={dto.Id}");
     }
 

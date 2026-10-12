@@ -107,7 +107,10 @@ public sealed class MeetingReminderWorker(IServiceScopeFactory scopeFactory, ILo
                 clientSlug: "meetings",
                 eventType: "meeting.reminder",
                 title: $"Meeting Reminder: {row.Meeting.Title}",
-                message: $"Meeting \"{row.Meeting.Title}\" starts at {row.Meeting.StartAt.ToLocalTime():dd MMM yyyy HH:mm}.",
+                // A hall-room booking adds its password (the recipient is the organizer or an invitee; never in the link).
+                message: $"Meeting \"{row.Meeting.Title}\" starts at {row.Meeting.StartAt.ToLocalTime():dd MMM yyyy HH:mm}."
+                    + (IPop.Application.Hall.HallBooking.RoomKey(row.Meeting.Location) is not null && !string.IsNullOrEmpty(row.Meeting.RoomPassword)
+                        ? $" Room password: {IPop.Application.Hall.RoomPasswords.Format(row.Meeting.RoomPassword)}" : ""),
                 target: new NotificationTarget(UserId: row.UserId),
                 priority: "high",
                 // Open the meeting itself on the person's calendar (their own row when they have one).

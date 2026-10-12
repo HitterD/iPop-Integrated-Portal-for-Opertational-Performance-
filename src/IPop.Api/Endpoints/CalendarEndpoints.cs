@@ -422,8 +422,12 @@ public static partial class CalendarEndpoints
         var organizer = await db.Users.AsNoTracking().Where(u => u.Id == organizerId).Select(u => u.Name).FirstOrDefaultAsync(ct) ?? "Someone";
         var sender = sentBy is { } sb ? await db.Users.AsNoTracking().Where(u => u.Id == sb).Select(u => u.Name).FirstOrDefaultAsync(ct) : null;
         var who = sender is null ? organizer : $"{organizer} (sent by {sender} on their behalf)";
+        // A hall-room meeting adds its password for the invitees (v2 §1.4).
+        var place = ev.MeetingId is { } mid
+            ? await db.Meetings.AsNoTracking().Where(m => m.Id == mid).Select(m => new { m.Location, m.RoomPassword }).FirstOrDefaultAsync(ct)
+            : null;
         await MeetingEndpoints.PublishBestEffortAsync(notifs, log, "meeting.invited", $"Meeting invite: {ev.Title}",
-            $"{who} invited you to \"{ev.Title}\" on {ev.StartAt.ToLocalTime():dd MMM, HH:mm}.",
+            MeetingEndpoints.InviteMessage(who, ev.Title, ev.StartAt, place?.Location, place?.RoomPassword),
             invited.Where(i => i != sentBy).ToList(), "normal", $"/calendar?event={ev.Id}&date={ev.StartAt.ToLocalTime():yyyy-MM-dd}");
         await CalendarDelegateEndpoints.ForwardInvitesAsync(db, notifs, log, invited, ev.Title, ev.StartAt, organizer, sentBy, ct);
     }

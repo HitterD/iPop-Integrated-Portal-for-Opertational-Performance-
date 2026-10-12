@@ -97,7 +97,7 @@
                             <span class="mr-mono mr-m-av" style="background:@Tint(line.UserId)" aria-hidden="true">@Initials(line.Name)</span>
                             <div class="mr-bub">
                                 <span class="mr-nm">@(mine ? "You" : line.Name)<time datetime="@line.SentAt.ToString("o")">@Local(line.SentAt)</time></span>
-                                <p>@foreach (var seg in Segments(line.Text))
+                                <p>@foreach (var seg in SegmentsOf(line))
                                    {
                                        if (seg.Href is { } href) { <a href="@href" target="_blank" rel="noopener noreferrer">@seg.Text</a> }
                                        else { @seg.Text }
@@ -245,6 +245,21 @@
     /// Chat text as plain-text runs and links. Only absolute http(s) URLs with a host become links (no javascript:,
     /// no relative paths); trailing punctuation stays text. Rendered by Razor, so nothing is ever parsed as HTML.
     public sealed record Segment(string Text, string? Href);
+
+    /// Link runs per chat message id: split once, so the 1 s countdown tick does not re-run the URL regex over the
+    /// whole history (up to 500 lines). Cleared when the room changes; message ids never repeat.
+    private readonly Dictionary<Guid, IReadOnlyList<Segment>> segmentCache = [];
+    private string? segmentRoom;
+    /// How many times a message was split (tests: re-renders must not add to it).
+    internal int SegmentRuns { get; private set; }
+
+    private IReadOnlyList<Segment> SegmentsOf(MeetingRoomState.ChatLine line)
+    {
+        if (segmentRoom != Rooms.Room?.Key) { segmentCache.Clear(); segmentRoom = Rooms.Room?.Key; }
+        if (segmentCache.TryGetValue(line.Id, out var cached)) return cached;
+        SegmentRuns++;
+        return segmentCache[line.Id] = Segments(line.Text);
+    }
 
     private static readonly System.Text.RegularExpressions.Regex UrlRx =
         new(@"https?://[^\s<>""']+", System.Text.RegularExpressions.RegexOptions.CultureInvariant);

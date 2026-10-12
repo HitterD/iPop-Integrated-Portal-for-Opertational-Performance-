@@ -415,6 +415,7 @@
                     </div>
                 }
                 <IPop.Web.Components.Calendar.CalendarRoomJoin Location="@detail.Location" MeetingStatus="@detail.MeetingStatus" />
+                <IPop.Web.Components.Calendar.CalendarRoomPassword MeetingId="@detail.MeetingId" Location="@detail.Location" MeetingStatus="@detail.MeetingStatus" />
                 @if (detail.External is { Source: "idesk-zoom" } && detail.Link is not null)
                 {
                     <div class="cal-detail-row"><i data-lucide="video"></i><a class="cal-btn primary" href="@detail.Link" target="_blank" rel="noopener noreferrer">Join Zoom meeting</a></div>

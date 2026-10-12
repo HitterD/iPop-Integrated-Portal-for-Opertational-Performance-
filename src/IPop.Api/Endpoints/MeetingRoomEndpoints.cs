@@ -56,13 +56,15 @@ public static class MeetingRoomEndpoints
             var invited = await db.MeetingAttendees.AsNoTracking().Where(a => a.MeetingId == meetingId && a.UserId != me).Select(a => a.UserId).ToListAsync(ct);
             if (notifs is not null && invited.Count > 0)
             {
-                var title = await db.Meetings.AsNoTracking().Where(m => m.Id == meetingId).Select(m => m.Title).FirstAsync(ct);
+                var m = await db.Meetings.AsNoTracking().Where(x => x.Id == meetingId)
+                    .Select(x => new { x.Title, x.StartAt, x.Location, x.RoomPassword }).FirstAsync(ct);
+                var (title, start) = (m.Title, m.StartAt);
                 var name = await db.Users.AsNoTracking().Where(u => u.Id == me).Select(u => u.Name).FirstAsync(ct);
-                var start = await db.Meetings.AsNoTracking().Where(m => m.Id == meetingId).Select(m => m.StartAt).FirstAsync(ct);
                 var log = MeetingEndpoints.NotifyLog(http);
-                // Same notification and delegate forwarding as an invite from the meeting form (awaited in sequence: one DbContext).
+                // Same notification (with the room password) and delegate forwarding as an invite from the meeting form
+                // (awaited in sequence: one DbContext).
                 await MeetingEndpoints.PublishBestEffortAsync(notifs, log, "meeting.invited", $"Meeting invite: {title}",
-                    $"{name} invited you to \"{title}\" on {start.ToLocalTime():dd MMM, HH:mm}.", invited, "normal",
+                    MeetingEndpoints.InviteMessage(name, title, start, m.Location, m.RoomPassword), invited, "normal",
                     $"/calls?tab=scheduled&meeting={meetingId}");
                 await CalendarDelegateEndpoints.ForwardInvitesAsync(db, notifs, log, invited, title, start, name, null, ct);
             }

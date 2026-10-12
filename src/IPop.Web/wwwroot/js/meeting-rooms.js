@@ -537,5 +537,23 @@
     document.body.appendChild(a); a.click(); a.remove();
   }
 
-  window.ipopRooms = { join, leave, setMic, setCamera, listCameras, flipCamera, setShare, startPcRecording, stopPcRecording, setRecordingAttr, tileLayout, reveal, download };
+  // Recording player: a chat timestamp jumps the video to that second and keeps it playing.
+  function seek(id, seconds) {
+    const v = document.getElementById(id);
+    const t = Number(seconds);
+    if (!v || !Number.isFinite(t) || t < 0) return false;
+    const max = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : t;
+    v.currentTime = Math.min(t, max);
+    const p = v.play && v.play();
+    if (p && p.catch) p.catch(() => {});
+    return true;
+  }
+
+  // Sheets (password, Use now): focus their first field once rendered.
+  function focus(selector) {
+    const el = document.querySelector(selector);
+    if (el && el.focus) el.focus();
+  }
+
+  window.ipopRooms = { join, leave, setMic, setCamera, listCameras, flipCamera, setShare, startPcRecording, stopPcRecording, setRecordingAttr, tileLayout, reveal, download, seek, focus };
 })();

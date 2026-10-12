@@ -19,7 +19,7 @@
 
 <div class="mrt">
     <div class="mrt-page">
-        <div class="mrt-section-h"><h2>Rooms</h2><p>Walk in any time. Up to 20 people per room, the same rooms as SJA Hall.</p></div>
+        <div class="mrt-section-h"><h2>Rooms</h2><p>Book a room to use it. Invited people join directly; others need the meeting password.</p></div>
 
         @if (roomsError)
         {
@@ -42,18 +42,26 @@
                     var r = room;
                     var count = r.People.Count;
                     var full = count >= r.Capacity;
-                    var canJoin = r.Available && !full && joiningKey is null;
+                    var busy = joiningKey is not null;
+                    var locked = r.Access == MeetingRoomAccess.Locked;
+                    var free = r.Access == MeetingRoomAccess.Free;
                     var cap = Capsule(r);
                     <article class="mrt-room mrt-r-@r.Key @(r.Available ? "" : "mrt-off")" id="mrt-room-@r.Key" aria-label="@r.Name">
                         <svg class="mrt-bean" aria-hidden="true"><use href="#mrt-bean" /></svg>
                         <div class="mrt-room-head"><div><h3>@r.Name</h3><small>@Subtitle(r)</small></div>
-                            @if (cap is { } c) { <span class="mrt-cap @c.Class">@c.Text</span> }
-                        </div>
-                        <div class="mrt-tools">
-                            <button type="button" class="mrt-tool" title="Book @r.Name" aria-label="Book @r.Name" @onclick="() => Book(r)"><i data-lucide="calendar-plus"></i></button>
+                            @if (locked && r.Available) { <span class="mrt-lock"><i data-lucide="lock"></i>Locked</span> }
+                            else if (cap is { } c) { <span class="mrt-cap @c.Class">@c.Text</span> }
                         </div>
                         <div class="mrt-glass">
-                            @if (count == 0)
+                            @if (r.Access == MeetingRoomAccess.Starting && r.Now is { } soon && count == 0)
+                            {
+                                <span class="mrt-soon">Starts @Hm(soon.StartAt)</span>
+                            }
+                            else if (locked || (free && count == 0))
+                            {
+                                <div class="mrt-empty-seat"><i data-lucide="@(locked ? "users" : "armchair")"></i>@(locked ? Inside(count) : "Free now")</div>
+                            }
+                            else if (count == 0)
                             {
                                 <div class="mrt-empty-seat"><i data-lucide="armchair"></i>Nobody here yet</div>
                             }
@@ -73,15 +81,26 @@
                             {
                                 <button type="button" class="mrt-join mrt-full" disabled>Unavailable</button>
                             }
+                            else if (free)
+                            {
+                                <div class="mrt-join-row">
+                                    <button type="button" class="mrt-join" disabled="@busy" @onclick="() => OpenUseNow(r)"><i data-lucide="zap"></i><text>Use now</text></button>
+                                    <button type="button" class="mrt-mini" title="Book for later" aria-label="Book @r.Name for later" @onclick="() => Book(r)"><i data-lucide="calendar-plus"></i></button>
+                                </div>
+                            }
                             else if (full)
                             {
                                 <button type="button" class="mrt-join mrt-full" disabled>Room is full</button>
                             }
+                            else if (locked)
+                            {
+                                <button type="button" class="mrt-join mrt-ghost" disabled="@busy" @onclick="() => OpenPassword(r)"><i data-lucide="key-round"></i><text>Enter with password</text></button>
+                            }
                             else
                             {
-                                <button type="button" class="mrt-join" disabled="@(!canJoin)" @onclick="() => JoinAsync(r.Key)">
+                                <button type="button" class="mrt-join" disabled="@busy" @onclick="() => JoinAsync(r.Key)">
                                     @if (joiningKey == r.Key) { <span class="mrt-spin" aria-hidden="true"></span><text>Joining…</text> }
-                                    else { <i data-lucide="@(r.VideoAllowed ? "video" : "mic")"></i><text>Join</text> }
+                                    else { <i data-lucide="@(r.VideoAllowed ? "video" : "mic")"></i><text>@(r.Access == MeetingRoomAccess.Starting ? "Join early" : "Join")</text> }
                                 </button>
                             }
                         </div>
@@ -90,7 +109,7 @@
             </div>
         }
 
-        <div class="mrt-section-h"><h2>Recordings</h2><p>Server recordings of meetings you were in.</p></div>
+        <div class="mrt-section-h"><h2>Recordings</h2><p>Only people who were in the meeting can see these.</p></div>
         @if (recordingsError)
         {
             <div class="mrt-group mrt-error mrt-recs-error" role="status">
@@ -127,8 +146,8 @@
                         </div>
                         <div class="mrt-rec-t">
                             <b>@x.Title</b>
-                            <span>@WhenLabel(x.StartedAt), recorded by @x.StartedByName</span>
-                            <span class="mrt-room-chip"><i class="mrt-r-@x.RoomKey"></i>@x.RoomName, @x.PeopleCount @(x.PeopleCount == 1 ? "person" : "people")</span>
+                            <span>@WhenLabel(x.StartedAt), recorded by @x.StartedByName@(ready ? " · Full HD" : "")</span>
+                            <span class="mrt-room-chip"><i class="mrt-r-@x.RoomKey"></i>@x.RoomName, @x.PeopleCount @(x.PeopleCount == 1 ? "person" : "people")@ChatLabel(x.ChatCount)</span>
                         </div>
                         <div class="mrt-rec-a">
                             @if (ready)
@@ -145,6 +164,10 @@
                             {
                                 <span class="mrt-processing mrt-failed">Recording failed</span>
                             }
+                            @if (x.CanDelete)
+                            {
+                                <button type="button" class="mrt-round mrt-del" title="Delete" aria-label="Delete @x.Title" @onclick="() => AskDelete(x)"><i data-lucide="trash-2"></i></button>
+                            }
                         </div>
                     </div>
                 }
@@ -154,7 +177,7 @@
         {
             <div class="mrt-group mrt-rec-empty"><i data-lucide="film"></i><span>No recordings yet. Server recordings you attend appear here.</span></div>
         }
-        <p class="mrt-foot">Recordings are deleted automatically after @RetentionDays days.</p>
+        <p class="mrt-foot">@(recordings?.Any(r => r.CanDelete) == true ? "Delete shows for whoever started the recording and the meeting organizer. " : "")Recordings are deleted automatically after @RetentionDays days.</p>
     </div>
 </div>
 
@@ -188,14 +211,141 @@
 
 @if (playing is { } pl && playingSrc is not null)
 {
-    <div class="mrt-scrim" @onclick="ClosePlayer">
-        <div class="mrt-player" role="dialog" aria-modal="true" aria-label="@pl.Title" @onclick:stopPropagation="true">
-            <div class="mrt-player-head">
-                <div><b>@pl.Title</b><small>@pl.RoomName · @WhenLabel(pl.StartedAt)</small></div>
-                <a class="mrt-round mrt-download" href="@(playingSrc + "&download=1")" download title="Download" aria-label="Download @pl.Title"><i data-lucide="arrow-down-to-line"></i></a>
-                <button type="button" class="mrt-round mrt-close" title="Close" aria-label="Close" @onclick="ClosePlayer"><i data-lucide="x"></i></button>
+    <div class="mrt-scrim mrt-scrim-dark" @onclick="ClosePlayer">
+        <div class="mrt-player @(playerChat is { Count: > 0 } ? "mrt-with-chat" : "")" role="dialog" aria-modal="true" aria-label="@pl.Title" @onclick:stopPropagation="true">
+            <div class="mrt-vid"><video id="mrt-player-video" controls autoplay playsinline preload="metadata" src="@playingSrc"></video></div>
+            <div class="mrt-player-bar">
+                <div class="mrt-player-t"><b>@pl.Title</b><small>@pl.RoomName · @WhenLabel(pl.StartedAt)@(pl.DurationSeconds is { } d ? " · " + Duration(d) : "") · Full HD 1080p</small></div>
+                <a class="mrt-pill mrt-download" href="@(playingSrc + "&download=1")" download title="Download" aria-label="Download @pl.Title"><i data-lucide="arrow-down-to-line"></i><span>Download</span></a>
+                @if (pl.CanDelete)
+                {
+                    <button type="button" class="mrt-pill mrt-pill-red mrt-del" title="Delete" aria-label="Delete @pl.Title" @onclick="() => AskDelete(pl)"><i data-lucide="trash-2"></i><span>Delete</span></button>
+                }
+                <button type="button" class="mrt-pill mrt-close" title="Close" aria-label="Close" @onclick="ClosePlayer"><i data-lucide="x"></i><span>Close</span></button>
             </div>
-            <video controls autoplay playsinline preload="metadata" src="@playingSrc"></video>
+            @if (playerChat is { Count: > 0 } lines)
+            {
+                <aside class="mrt-side-chat" aria-label="Chat during the meeting">
+                    <h4>Chat during the meeting</h4>
+                    <div class="mrt-msgs">
+                        @foreach (var line in lines)
+                        {
+                            var l = line;
+                            if (l.Kind == "system")
+                            {
+                                <div class="mrt-sysm" @key="l.Id">@l.Text</div>
+                                continue;
+                            }
+                            <div class="mrt-m" @key="l.Id">
+                                <span class="mrt-mono" style="background:@FaceColor(l.Name)" aria-hidden="true">@IPop.Web.Models.AvatarPhotos.Initials(l.Name)</span>
+                                <div class="mrt-bub">
+                                    <span class="mrt-nm">@if (l.Offset is { } off) { <button type="button" class="mrt-ts" title="Play from here" aria-label="Play from @Offset(off)" @onclick="() => SeekAsync(off)">@Offset(off)</button> }@l.Name</span>
+                                    <p>@foreach (var seg in l.Segments)
+                                       {
+                                           if (seg.Href is { } href) { <a href="@href" target="_blank" rel="noopener noreferrer">@seg.Text</a> }
+                                           else { @seg.Text }
+                                       }</p>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </aside>
+            }
+        </div>
+    </div>
+}
+
+@if (deleting is { } del)
+{
+    <div class="mrt-scrim mrt-scrim-top" @onclick="CancelDelete">
+        <div class="mrt-alert" role="alertdialog" aria-modal="true" aria-labelledby="mrt-del-t" @onclick:stopPropagation="true">
+            <div class="mrt-alert-body">
+                <div class="mrt-sym mrt-sym-red"><i data-lucide="trash-2"></i></div>
+                <h3 id="mrt-del-t">Delete this recording?</h3>
+                <p>“@del.Title” and its chat will be removed for @(del.PeopleCount > 1 ? $"all {del.PeopleCount} people who were" : "everyone who was") in the meeting. This can’t be undone.</p>
+            </div>
+            <div class="mrt-alert-actions">
+                <button type="button" @onclick="CancelDelete">Cancel</button>
+                <button type="button" class="mrt-strong mrt-danger" disabled="@deleteBusy" @onclick="DeleteAsync">Delete for everyone</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (pwRoom is { } pr)
+{
+    <div class="mrt-scrim" @onclick="ClosePassword">
+        <form class="mrt-sheet" role="dialog" aria-modal="true" aria-labelledby="mrt-sheet-t" @onclick:stopPropagation="true" @onsubmit="SubmitPasswordAsync">
+            <div class="mrt-sheet-h"><span class="mrt-sw mrt-r-@pr.Key"></span><div><b id="mrt-sheet-t">@pr.Name is booked</b>@if (pr.Now is { } b) { <small>Booked @Hm(b.StartAt)–@Hm(b.EndAt)</small> }</div></div>
+            <div class="mrt-sheet-b">
+                <label class="mrt-pin-wrap">
+                    <span class="mrt-pin" aria-hidden="true">
+                        @for (var i = 0; i < 6; i++)
+                        {
+                            var filled = i < pin.Length;
+                            <span class="@(filled ? "f" : i == pin.Length ? "c" : "")">@(filled ? pin[i].ToString() : "·")</span>
+                        }
+                    </span>
+                    <input class="mrt-pin-in" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="12" aria-label="6-digit room password"
+                           value="@pin" @oninput="OnPin" />
+                </label>
+                @if (pwError is not null) { <p class="mrt-pin-err" role="alert">@pwError</p> }
+                <p class="mrt-pin-hint">Enter the 6-digit password from the iPop meeting invite.<br />Not invited? Ask the organizer for it.</p>
+                <div class="mrt-actions">
+                    <button type="button" class="mrt-btn mrt-btn-gray" @onclick="ClosePassword">Cancel</button>
+                    <button type="submit" class="mrt-btn mrt-btn-filled mrt-pin-go" disabled="@(pin.Length != 6 || pwBusy)">@(pwBusy ? "Entering…" : "Enter")</button>
+                </div>
+            </div>
+        </form>
+    </div>
+}
+
+@if (useNow is { } un)
+{
+    var options = UseNowOptions(un);
+    <div class="mrt-scrim" @onclick="CloseUseNow">
+        <div class="mrt-sheet" role="dialog" aria-modal="true" aria-labelledby="mrt-sheet-t" @onclick:stopPropagation="true">
+            <div class="mrt-sheet-h"><span class="mrt-sw mrt-r-@un.Key"></span><div><b id="mrt-sheet-t">Use @un.Name now</b><small>@FreeLabel(un), starting @Hm(DateTime.UtcNow)</small></div></div>
+            <div class="mrt-sheet-b">
+                <div class="mrt-field"><span class="mrt-label">How long</span>
+                    @if (offerMinutes is { } offer)
+                    {
+                        <p class="mrt-offer">The next booking starts soon. You can use the room for @offer min.</p>
+                    }
+                    else if (options.Count > 0)
+                    {
+                        <div class="mrt-seg3" role="radiogroup" aria-label="How long">
+                            @foreach (var m in options)
+                            {
+                                var mm = m;
+                                <button type="button" role="radio" aria-checked="@(minutes == mm ? "true" : "false")" class="@(minutes == mm ? "on" : "")" @onclick="() => minutes = mm">@mm min</button>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="mrt-offer">The next booking starts too soon to use the room now.</p>
+                    }
+                </div>
+                <div class="mrt-field"><label class="mrt-label" for="mrt-un-title">Title</label>
+                    <input id="mrt-un-title" class="mrt-input mrt-un-title" maxlength="200" @bind="useTitle" /></div>
+                <div class="mrt-field"><span class="mrt-label">Invite people (optional)</span>
+                    <div class="mrt-chips">
+                        @foreach (var person in invitees)
+                        {
+                            var pp = person;
+                            <span class="mrt-chip"><b style="background:@FaceColor(pp.Name)">@pp.Initials</b>@pp.Name<button type="button" aria-label="Remove @pp.Name" @onclick="() => invitees.Remove(pp)"><i data-lucide="x"></i></button></span>
+                        }
+                        <AppMemberPicker Placeholder="Add a name…" ValueChanged="AddInvitee" />
+                    </div>
+                </div>
+                <p class="mrt-note"><i data-lucide="lock"></i>The room is locked for this booking. Invited people join directly; you get a password to share with anyone else.</p>
+                @if (useError is not null) { <p class="mrt-sheet-err" role="alert">@useError</p> }
+                <div class="mrt-actions">
+                    <button type="button" class="mrt-btn mrt-btn-gray" @onclick="CloseUseNow">Cancel</button>
+                    <button type="button" class="mrt-btn mrt-btn-filled mrt-un-go" disabled="@(useBusy || (offerMinutes is null && options.Count == 0))" @onclick="UseNowAsync">@(useBusy ? "Booking…" : offerMinutes is { } o ? $"Use for {o} min" : "Book and join")</button>
+                </div>
+            </div>
         </div>
     </div>
 }
@@ -232,6 +382,33 @@
     private System.Threading.Timer? poll;
     private bool disposed;
     private Guid? pendingReveal;
+
+    // Enter with password (v2 §1.3)
+    private MeetingRoomDto? pwRoom;
+    private string pin = "";
+    private string? pwError;
+    private bool pwBusy;
+    internal const string WrongPasswordText = "That password isn’t right.";
+    internal const string TooManyText = "Too many tries. Wait a few minutes and try again.";
+    internal const string NoBookingText = "This room isn’t booked. Use it now or book it first.";
+
+    // Use now (v2 §1.2)
+    private MeetingRoomDto? useNow;
+    private int minutes = 60;
+    private int? offerMinutes;
+    private string useTitle = "";
+    private readonly List<MemberSearchRow> invitees = [];
+    private string? useError;
+    private bool useBusy;
+    private static readonly int[] UseNowDurations = [30, 60, 90];
+
+    // Recordings: delete (v2 §2.8) and the player's chat (v2 §2.10)
+    private MeetingRecordingDto? deleting;
+    private bool deleteBusy;
+    private List<PlayerLine>? playerChat;
+    /// One saved chat line with its link runs split once (never on re-render).
+    private sealed record PlayerLine(Guid Id, string Name, string Kind, string Text, int? Offset, IReadOnlyList<MeetingRoomOverlay.Segment> Segments);
+    private sealed record RecordingChatLine(Guid Id, Guid UserId, string Name, string Text, DateTime SentAt, string Kind, int? OffsetSeconds);
 
     private sealed record FullAlert(MeetingRoomDto Room, List<MeetingRoomDto> Alternatives);
     private sealed record Cap(string Text, string Class);
@@ -416,6 +593,13 @@
             switch (error)
             {
                 case null: break;
+                case "password_required":
+                    // Not (or no longer) invited to this booking: the password sheet asks for the 6 digits.
+                    if (rooms?.FirstOrDefault(r => r.Key == key) is { } locked) OpenPassword(locked);
+                    else OpenPassword(Fallback(key));
+                    break;
+                case "no_booking": Toasts.Show(NoBookingText, ToastKind.Info); await LoadRoomsAsync(); break;
+                case "too_many_attempts": Toasts.Show(TooManyText, ToastKind.Warning); break;
                 case "room_full":
                     await LoadRoomsAsync();
                     var room = rooms?.FirstOrDefault(r => r.Key == key) ?? Fallback(key);
@@ -448,11 +632,202 @@
         var url = await TicketUrlAsync(rec.Id);
         if (disposed) return;
         if (url is null) { Toasts.Show("This recording can't be opened right now.", ToastKind.Error); return; }
-        playing = rec; playingSrc = url;
+        playing = rec; playingSrc = url; playerChat = null;
         StateHasChanged();
+        await LoadPlayerChatAsync(rec.Id);
     }
 
-    private void ClosePlayer() { playing = null; playingSrc = null; }
+    /// The chat saved with the recording, by offset. Lines are split into text/link runs once here.
+    private async Task LoadPlayerChatAsync(Guid id)
+    {
+        try
+        {
+            var r = await Auth.GetResultAsync<List<RecordingChatLine>>($"/api/meeting-rooms/recordings/{id}/chat");
+            if (disposed || playing?.Id != id || r.Value is null) return;
+            playerChat = r.Value
+                .Where(l => l.Text is { Length: > 0 } && l.Kind is "text" or "system")
+                .Select(l => new PlayerLine(l.Id, l.Name ?? "", l.Kind, l.Text, l.OffsetSeconds is { } o ? Math.Max(0, o) : null,
+                    l.Kind == "text" ? MeetingRoomOverlay.Segments(l.Text) : []))
+                .ToList();
+            StateHasChanged();
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException) { }
+    }
+
+    private async Task SeekAsync(int seconds)
+    {
+        try { await JS.InvokeVoidAsync("ipopRooms.seek", "mrt-player-video", seconds); }
+        catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException) { }
+    }
+
+    private void ClosePlayer() { playing = null; playingSrc = null; playerChat = null; }
+
+    // ---------------------------------------------------------------- delete a recording
+
+    private void AskDelete(MeetingRecordingDto rec) { if (rec.CanDelete) deleting = rec; }
+    private void CancelDelete() { if (!deleteBusy) deleting = null; }
+
+    private async Task DeleteAsync()
+    {
+        if (deleting is not { } rec || deleteBusy) return;
+        deleteBusy = true;
+        try
+        {
+            using var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/meeting-rooms/recordings/{rec.Id}");
+            if (disposed) return;
+            if (res.IsSuccessStatusCode || res.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                // 404 = already gone (someone else deleted it): the outcome is the same.
+                recordings?.RemoveAll(r => r.Id == rec.Id);
+                if (playing?.Id == rec.Id) { ClosePlayer(); Toasts.Show("This recording was deleted.", ToastKind.Info); }
+            }
+            else if (res.StatusCode == System.Net.HttpStatusCode.Conflict) Toasts.Show("Stop the recording first.", ToastKind.Warning);
+            else if (res.StatusCode == System.Net.HttpStatusCode.Forbidden) Toasts.Show("Only the person who recorded it or the organizer can delete it.", ToastKind.Error);
+            else Toasts.Show("The recording couldn't be deleted. Try again.", ToastKind.Error);
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
+        {
+            Toasts.Show("The recording couldn't be deleted. Try again.", ToastKind.Error);
+        }
+        finally
+        {
+            deleteBusy = false;
+            deleting = null;
+            if (!disposed) StateHasChanged();
+        }
+    }
+
+    // ---------------------------------------------------------------- Enter with password
+
+    private void OpenPassword(MeetingRoomDto room)
+    {
+        pwRoom = room; pin = ""; pwError = null; pwBusy = false;
+        _ = FocusAsync(".mrt-pin-in");
+    }
+
+    private void ClosePassword() { if (!pwBusy) pwRoom = null; }
+
+    /// Digits only, at most 6 (a pasted "123 456" becomes 123456).
+    private void OnPin(ChangeEventArgs e)
+    {
+        var digits = new string((e.Value?.ToString() ?? "").Where(char.IsAsciiDigit).ToArray());
+        pin = digits.Length > 6 ? digits[..6] : digits;
+        pwError = null;
+    }
+
+    private async Task SubmitPasswordAsync()
+    {
+        if (pwRoom is not { } room || pin.Length != 6 || pwBusy) return;
+        if (joiningKey is not null) return;
+        pwBusy = true; pwError = null; joiningKey = room.Key;
+        try
+        {
+            var (error, suggestions) = await Rooms.JoinAsync(room.Key, pin);
+            if (disposed) return;
+            switch (error)
+            {
+                case null: pwRoom = null; break;
+                case "wrong_password" or "password_required": pwError = WrongPasswordText; pin = ""; _ = FocusAsync(".mrt-pin-in"); break;
+                case "too_many_attempts": pwError = TooManyText; break;
+                case "no_booking": pwError = NoBookingText; break;
+                case "room_full":
+                    pwRoom = null;
+                    await LoadRoomsAsync();
+                    var full = rooms?.FirstOrDefault(r => r.Key == room.Key) ?? room;
+                    fullAlert = new(full, suggestions.Select(s => rooms?.FirstOrDefault(r => r.Key == s)).OfType<MeetingRoomDto>().ToList());
+                    break;
+                case "in_call": pwError = "Leave your current call first."; break;
+                case "busy": break;
+                default: pwError = "The meeting server is not reachable right now."; break;
+            }
+        }
+        finally
+        {
+            pwBusy = false; joiningKey = null;
+            if (!disposed) StateHasChanged();
+        }
+    }
+
+    // ---------------------------------------------------------------- Use now
+
+    private void OpenUseNow(MeetingRoomDto room)
+    {
+        useNow = room; offerMinutes = null; useError = null; useBusy = false; invitees.Clear();
+        useTitle = $"{room.Name} meeting";
+        var options = UseNowOptions(room);
+        minutes = options.Contains(60) ? 60 : options.Count > 0 ? options[^1] : 60;
+    }
+
+    private void CloseUseNow() { if (!useBusy) useNow = null; }
+
+    /// 30/60/90 that end before the next booking's lock window (StartAt − 10 min); the server re-checks.
+    private static List<int> UseNowOptions(MeetingRoomDto room)
+    {
+        if (room.Next is not { } next) return [.. UseNowDurations];
+        var free = (ToUtc(next.StartAt).AddMinutes(-10) - DateTime.UtcNow).TotalMinutes;
+        return UseNowDurations.Where(m => m <= free).ToList();
+    }
+
+    private void AddInvitee(MemberSearchRow? row)
+    {
+        if (row is null || invitees.Any(i => i.Nik == row.Nik)) return;
+        invitees.Add(row);
+    }
+
+    private async Task UseNowAsync()
+    {
+        if (useNow is not { } room || useBusy) return;
+        useBusy = true; useError = null;
+        var key = room.Key;
+        try
+        {
+            var body = new { minutes = offerMinutes ?? minutes, title = string.IsNullOrWhiteSpace(useTitle) ? null : useTitle.Trim(), attendeeNiks = invitees.Select(i => i.Nik).ToArray() };
+            using var res = await Auth.SendAsync(HttpMethod.Post, $"/api/meeting-rooms/{key}/use-now", body);
+            if (disposed) return;
+            if (res.IsSuccessStatusCode)
+            {
+                useNow = null; useBusy = false;
+                await LoadRoomsAsync();
+                if (disposed) return;
+                await JoinAsync(key);
+                return;
+            }
+            var (code, max) = await ReadUseNowErrorAsync(res);
+            if (code == "room_booked" && max is >= 15 && max != offerMinutes) offerMinutes = max;
+            else if (code == "room_booked") { offerMinutes = null; useError = "Someone just booked this room. Pick another room or book a later time."; }
+            else if (code == "invalid_minutes") useError = "Choose 30, 60 or 90 minutes.";
+            else useError = "The room couldn't be booked right now. Try again.";
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
+        {
+            useError = "The room couldn't be booked right now. Try again.";
+        }
+        finally
+        {
+            useBusy = false;
+            if (!disposed) StateHasChanged();
+        }
+    }
+
+    private static async Task<(string? Code, int? Max)> ReadUseNowErrorAsync(HttpResponseMessage res)
+    {
+        try
+        {
+            var err = await System.Net.Http.Json.HttpContentJsonExtensions.ReadFromJsonAsync<System.Text.Json.JsonElement>(res.Content);
+            if (err.ValueKind != System.Text.Json.JsonValueKind.Object) return (null, null);
+            var code = err.TryGetProperty("code", out var c) && c.ValueKind == System.Text.Json.JsonValueKind.String ? c.GetString() : null;
+            int? max = err.TryGetProperty("maxMinutes", out var m) && m.ValueKind == System.Text.Json.JsonValueKind.Number && m.TryGetInt32(out var mm) ? mm : null;
+            return (code, max);
+        }
+        catch (Exception e) when (e is System.Text.Json.JsonException or NotSupportedException) { return (null, null); }
+    }
+
+    private async Task FocusAsync(string selector)
+    {
+        await Task.Yield();
+        try { await JS.InvokeVoidAsync("ipopRooms.focus", selector); }
+        catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException) { }
+    }
 
     private async Task DownloadAsync(MeetingRecordingDto rec)
     {
@@ -483,21 +858,34 @@
         return null;
     }
 
+    /// Mockup "Rooms tab" copy. Non-invitees only ever get "Booked" from the API, never the title.
     private static string Subtitle(MeetingRoomDto r)
     {
         if (!r.Available) return "Not available right now";
+        if (r.Access == MeetingRoomAccess.Locked) return "Booked";
         if (r.Now is { } now) return now.Title;
-        if (!r.VideoAllowed) return "Audio and screen share only";
-        return r.People.Count == 0 ? "Free now" : "Walk-in meeting";
+        return FreeLabel(r);
     }
+
+    /// "Free until 14:00" (a booking later today) or "Free today".
+    private static string FreeLabel(MeetingRoomDto r) =>
+        r.Next is { } next && Local(next.StartAt).Date == DateTime.Now.Date ? $"Free until {Hm(next.StartAt)}" : "Free today";
 
     private static Line InfoLine(MeetingRoomDto r)
     {
+        if (r.Access == MeetingRoomAccess.Locked && r.Now is { } booked)
+            return new("clock", $"Booked {Hm(booked.StartAt)}–{Hm(booked.EndAt)}");
         var sharer = r.People.FirstOrDefault(p => p.Sharing);
-        var ends = r.Now is { } n ? $"Ends at {Local(n.EndAt):HH:mm}" : null;
-        if (sharer is not null)
-            return new("monitor-up", $"{FirstName(sharer.Name)} is sharing a screen." + (ends is null ? "" : $" {ends}."));
-        if (ends is not null) return new("clock", ends);
+        if (r.Now is { } n)
+        {
+            if (sharer is not null) return new("monitor-up", $"{FirstName(sharer.Name)} is sharing a screen. Until {Hm(n.EndAt)}.");
+            var org = string.IsNullOrWhiteSpace(n.OrganizerName) ? null : FirstName(n.OrganizerName);
+            var who = n.IsOrganizer ? "You’re the organizer." : org is null ? "You’re in." : "You’re invited.";
+            if (r.Access == MeetingRoomAccess.Starting)
+                return new("user-check", n.IsOrganizer ? "You’re the organizer" : org is null ? "You can join early" : $"You’re invited, organizer {org}");
+            return new("user-check", $"{who} Until {Hm(n.EndAt)}" + (n.IsOrganizer || org is null ? "" : $", organizer {org}"));
+        }
+        if (sharer is not null) return new("monitor-up", $"{FirstName(sharer.Name)} is sharing a screen.");
         if (r.Next is { } next) return new("calendar", NextLabel(next, DateTime.Now));
         return new("calendar", "No bookings today");
     }
@@ -505,10 +893,20 @@
     private static string NextLabel(MeetingRoomBookingDto b, DateTime nowLocal)
     {
         var start = Local(b.StartAt);
-        var by = string.IsNullOrWhiteSpace(b.OrganizerName) ? "" : $", booked by {FirstName(b.OrganizerName)}";
-        if (start.Date == nowLocal.Date) return $"{b.Title} at {start:HH:mm}{by}";
-        if (start.Date == nowLocal.Date.AddDays(1)) return $"{b.Title} tomorrow at {start:HH:mm}";
-        return $"{b.Title} {start.ToString("ddd d MMM", En)} at {start:HH:mm}";
+        if (start.Date == nowLocal.Date) return $"Next: {b.Title} at {start:HH:mm}";
+        if (start.Date == nowLocal.Date.AddDays(1)) return $"Next: {b.Title} tomorrow at {start:HH:mm}";
+        return $"Next: {b.Title} {start.ToString("ddd d MMM", En)} at {start:HH:mm}";
+    }
+
+    private static string Hm(DateTime utc) => Local(utc).ToString("HH:mm", En);
+    private static string Inside(int n) => n == 0 ? "Nobody inside yet" : n == 1 ? "1 person inside" : $"{n} people inside";
+    private static string ChatLabel(int n) => n <= 0 ? "" : n == 1 ? " · 1 chat message" : $" · {n} chat messages";
+
+    /// "00:12", "12:40", "1:02:15": the second of the video a chat line was sent at.
+    internal static string Offset(int seconds)
+    {
+        var t = TimeSpan.FromSeconds(Math.Max(0, seconds));
+        return t.TotalHours >= 1 ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}" : $"{t.Minutes:00}:{t.Seconds:00}";
     }
 
     private static string AltLine(MeetingRoomDto r)

@@ -69,7 +69,9 @@ public sealed class MeetingRoomState : IAsyncDisposable
     /// null = joined; else an error code ("room_full" with suggestions, "in_call", "media_unavailable", "connect_failed", …).
     /// Never throws: HTTP/JSON failures return "media_unavailable"; a media failure after the room was set returns
     /// "connect_failed" and leaves no half-joined room behind, so a retry of the same key really connects.
-    public async Task<(string? Error, IReadOnlyList<string> Suggestions)> JoinAsync(string key)
+    /// <paramref name="password"/>: the booking's 6 digits for someone who is not invited (v2 §1.3); invited people send none.
+    /// Booking errors: "no_booking", "password_required", "wrong_password", "too_many_attempts".
+    public async Task<(string? Error, IReadOnlyList<string> Suggestions)> JoinAsync(string key, string? password = null)
     {
         if (Room?.Key == key) { Minimized = false; Raise(); return (null, []); }
         if (calls.HasLiveCall) return ("in_call", []);
@@ -81,7 +83,8 @@ public sealed class MeetingRoomState : IAsyncDisposable
             MeetingRoomJoinDto? dto;
             try
             {
-                var res = await auth.SendAsync(HttpMethod.Post, $"/api/meeting-rooms/{key}/join");
+                var res = await auth.SendAsync(HttpMethod.Post, $"/api/meeting-rooms/{key}/join",
+                    string.IsNullOrEmpty(password) ? null : new { password });
                 if (!res.IsSuccessStatusCode) return await ReadJoinErrorAsync(res);
                 dto = await res.Content.ReadFromJsonAsync<MeetingRoomJoinDto>();
             }

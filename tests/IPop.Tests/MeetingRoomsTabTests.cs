@@ -22,7 +22,8 @@ public class MeetingRoomsTabTests
 
     private static MeetingRoomDto Room(string key, string name, int people = 0, bool video = true, bool available = true,
         MeetingRoomRecordingState? rec = null, List<MeetingRoomPerson>? list = null, MeetingRoomBookingDto? now = null) =>
-        new(key, name, 20, video, available, list ?? People(people), now, null, rec);
+        // v2: rooms are booking-only; these v1 cases are about joining, so the viewer is invited to the booking.
+        new(key, name, 20, video, available, list ?? People(people), now, null, rec, MeetingRoomAccess.Invited);
 
     private static List<MeetingRoomDto> FiveRooms() =>
     [
