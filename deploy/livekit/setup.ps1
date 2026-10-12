@@ -43,6 +43,7 @@ rtc:
   port_range_start: 50000
   port_range_end: 50050
   node_ip: $NodeIp
+  advertise_internal_ip: true
 turn:
   enabled: true
   udp_port: 3478

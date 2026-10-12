@@ -55,3 +55,9 @@ Set these in `appsettings.Local.json` or as environment variables (replace `:` w
 - Recording never reaches NAS: check Egress logs, spool mount/path parity, API filesystem permissions and NAS service-account access.
 
 Linux server: create `.env` (`LIVEKIT_KEYS` and `RECORDINGS_SPOOL`), `livekit.yaml` and `egress.yaml` manually with the same configuration, then run `docker compose up -d` and open the media ports with the host firewall. Set `MeetingRooms:SpoolDir` to that host's spool path.
+
+## Notes from the first Egress rollout (2026-10-12)
+
+- `rtc.advertise_internal_ip: true` is required: without it Egress (inside the Docker network) only gets the LAN `node_ip` candidate and every server recording aborts.
+- `.env`, `egress.yaml` and the API's `Calls:LiveKit:ApiSecret` must hold the **same** secret. A mismatch shows up as HTTP 401 from `/twirp/...` in the API log.
+- On the Docker host itself, published ports answer on `127.0.0.1` but not on the LAN IP; set `Calls:LiveKit:ServerUrl=http://127.0.0.1:7880` for an API running on that host.
