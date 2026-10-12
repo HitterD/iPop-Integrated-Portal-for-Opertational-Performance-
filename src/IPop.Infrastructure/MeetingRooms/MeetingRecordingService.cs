@@ -44,15 +44,18 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
         try { await db.SaveChangesAsync(ct); }
         catch (DbUpdateException) { return new(null, "already_recording"); }   // unique filtered index lost the race
 
+        // From here the row must end consistent even if the caller goes away (closed tab, aborted request):
+        // the compensating remove and the EgressId save never use the request token, or a stuck
+        // "Recording" row would block the room until the worker gives up on it.
         try { row.EgressId = await egress.StartRoomCompositeAsync(lkRoom, $"{OutDir}/{rel}", ct); }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
         {
             db.MeetingRecordings.Remove(row);
-            await db.SaveChangesAsync(ct);
+            await db.SaveChangesAsync(CancellationToken.None);
             return new(null, "egress_unavailable");
         }
-        await db.SaveChangesAsync(ct);
-        await PublishStateAsync(lkRoom, row, ct);
+        await db.SaveChangesAsync(CancellationToken.None);
+        await PublishStateAsync(lkRoom, row, CancellationToken.None);
         return new(await DtoAsync(row.Id, ct), null);
     }
 

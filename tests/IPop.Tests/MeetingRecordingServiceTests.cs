@@ -18,8 +18,15 @@ public class MeetingRecordingServiceTests
         public List<string> Stopped { get; } = [];
         public Exception? StopThrows { get; set; }
         public Dictionary<string, LiveKitEgressInfo> Infos { get; } = new();
+        /// Runs inside StartRoomCompositeAsync (e.g. the browser aborts the request meanwhile).
+        public Action? OnStart { get; set; }
+        public Exception? StartThrows { get; set; }
         public Task<string> StartRoomCompositeAsync(string room, string filepath, CancellationToken ct)
-        { Started.Add((room, filepath)); return Task.FromResult($"EG_{Started.Count}"); }
+        {
+            OnStart?.Invoke();
+            if (StartThrows is not null) throw StartThrows;
+            Started.Add((room, filepath)); return Task.FromResult($"EG_{Started.Count}");
+        }
         public Task StopAsync(string egressId, CancellationToken ct)
         {
             if (StopThrows is not null) throw StopThrows;
@@ -206,5 +213,39 @@ public class MeetingRecordingServiceTests
         Assert.Null(r.Error);
         Assert.Equal(["EG_1"], eg.Stopped);
         Assert.Equal(MeetingRecordingStatus.Processing, (await t.Verify().MeetingRecordings.SingleAsync()).Status);
+    }
+
+    // ---------------------------------------------------------------- final review fixes (I1)
+
+    [Fact]
+    public async Task Request_aborted_while_egress_fails_still_removes_the_reservation()
+    {
+        using var t = new TestDb(); var a = t.AddUser("A1");
+        var lk = new MeetingRoomServiceTests.FakeRoomAdmin();
+        lk.Rooms["hall-kalosi"] = [new(a.Id.ToString(), "A", [], new Dictionary<string, string>())];
+        using var aborted = new CancellationTokenSource();
+        var eg = new FakeEgress { OnStart = aborted.Cancel, StartThrows = new TaskCanceledException("request aborted") };
+
+        Assert.Equal("egress_unavailable", (await Make(t, lk, eg).StartAsync(a.Id, "kalosi", aborted.Token)).Error);
+
+        Assert.Empty(await t.Verify().MeetingRecordings.ToListAsync());   // no stuck "Recording" row
+        Assert.Null((await Make(t, lk, new FakeEgress()).StartAsync(a.Id, "kalosi", default)).Error);
+    }
+
+    [Fact]
+    public async Task Request_aborted_after_egress_started_still_stores_the_egress_id()
+    {
+        using var t = new TestDb(); var a = t.AddUser("A1");
+        var lk = new MeetingRoomServiceTests.FakeRoomAdmin();
+        lk.Rooms["hall-kalosi"] = [new(a.Id.ToString(), "A", [], new Dictionary<string, string>())];
+        using var aborted = new CancellationTokenSource();
+        var eg = new FakeEgress { OnStart = aborted.Cancel };
+
+        try { await Make(t, lk, eg).StartAsync(a.Id, "kalosi", aborted.Token); }
+        catch (OperationCanceledException) { /* the response may fail; the row must not */ }
+
+        var row = await t.Verify().MeetingRecordings.SingleAsync();
+        Assert.Equal(("EG_1", MeetingRecordingStatus.Recording), (row.EgressId, row.Status));
+        Assert.Contains(lk.MetadataUpdates, m => m.Room == "hall-kalosi" && m.Metadata.Contains(row.Id.ToString()));
     }
 }

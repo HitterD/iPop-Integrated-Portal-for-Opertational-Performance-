@@ -56,6 +56,7 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
         var spool = config["MeetingRooms:SpoolDir"] ?? @"F:\ipop-data\recordings-spool";
         var nasRoot = (config["MeetingRooms:NasFolder"] ?? "/sja/SJA SPJ/ICT/recordings").TrimEnd('/');
         var done = 0;
+        var now = DateTime.UtcNow;
 
         var open = await db.MeetingRecordings.Include(r => r.Viewers)
             .Where(r => r.Status == MeetingRecordingStatus.Recording || r.Status == MeetingRecordingStatus.Processing)
@@ -65,6 +66,19 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
             ct.ThrowIfCancellationRequested();
             try
             {
+                if (string.IsNullOrEmpty(row.EgressId))
+                {
+                    // Start was interrupted between the row insert and storing the Egress id (request aborted,
+                    // API restarted): nothing is recording, but the row holds the room's single recording slot.
+                    if (row.Status == MeetingRecordingStatus.Recording && row.StartedAt < now - StartGrace)
+                    {
+                        row.Status = MeetingRecordingStatus.Failed; row.Error = "start interrupted"; row.EndedAt ??= now;
+                        await db.SaveChangesAsync(ct);
+                        await ClearBannerAsync(rooms, row.RoomKey, ct);
+                        done++;
+                    }
+                    continue;
+                }
                 if (row.Status == MeetingRecordingStatus.Recording)
                 {
                     var participants = await rooms.ListAsync(MeetingRoomKeys.LiveKitRoom(row.RoomKey), ct);
@@ -77,27 +91,37 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
                     }
                     await db.SaveChangesAsync(ct);
                 }
-                if (string.IsNullOrEmpty(row.EgressId)) continue;
+                // Egress finished but the NAS never took the file: stop retrying and tell whoever started it.
+                if (row.Status == MeetingRecordingStatus.Processing && row.EndedAt is { } ended && ended < now - UploadTimeout)
+                {
+                    row.Status = MeetingRecordingStatus.Failed; row.Error = "upload timed out";
+                    await db.SaveChangesAsync(ct);
+                    await NotifyFailedAsync(notify, row, ct);
+                    done++;
+                    continue;
+                }
                 var info = await egress.GetAsync(row.EgressId, ct);
                 if (info is null) continue;
                 // Egress ended on its own (abort, failure, limit) while the room still shows "Recording · started by …":
                 // clear the banner, or everyone keeps seeing it and Stop answers 404.
                 if (row.Status == MeetingRecordingStatus.Recording && info.Status is "EGRESS_FAILED" or "EGRESS_ABORTED" or "EGRESS_COMPLETE" or "EGRESS_LIMIT_REACHED")
-                {
-                    try { await rooms.UpdateRoomMetadataAsync(MeetingRoomKeys.LiveKitRoom(row.RoomKey), "{}", ct); }
-                    catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { /* the room may be gone already */ }
-                }
+                    await ClearBannerAsync(rooms, row.RoomKey, ct);
                 if (info.Status is "EGRESS_FAILED" or "EGRESS_ABORTED")
                 {
-                    row.Status = MeetingRecordingStatus.Failed; row.Error = info.Error; row.EndedAt ??= DateTime.UtcNow;
+                    row.Status = MeetingRecordingStatus.Failed; row.Error = info.Error; row.EndedAt ??= now;
                     await db.SaveChangesAsync(ct);
-                    await notify.PublishInternalAsync("meetings", "meeting.recording.failed", "Recording failed",
-                        $"The server recording of {row.Title} could not be saved.", new NotificationTarget(UserId: row.StartedById),
-                        targetUrl: "/calls?tab=rooms", ct: ct);
+                    await NotifyFailedAsync(notify, row, ct);
                     done++;
                     continue;
                 }
                 if (info.Status is not ("EGRESS_COMPLETE" or "EGRESS_LIMIT_REACHED")) continue;
+                // Egress is done: leave "Recording" now, before the upload, so the room's single recording slot
+                // (unique filtered index) frees up even while the NAS is slow or offline.
+                if (row.Status == MeetingRecordingStatus.Recording)
+                {
+                    row.Status = MeetingRecordingStatus.Processing; row.EndedAt ??= now;
+                    await db.SaveChangesAsync(ct);
+                }
 
                 if (!nas.HasServiceAccount || string.IsNullOrEmpty(row.SpoolPath)) continue;
                 var local = Path.Combine(spool, row.SpoolPath!.Replace('/', Path.DirectorySeparatorChar));
@@ -110,7 +134,7 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
                 row.SizeBytes = info.Size;
                 row.DurationSeconds = info.DurationNs is { } ns ? (int)(ns / 1_000_000_000) : null;
                 row.Status = MeetingRecordingStatus.Ready;
-                row.EndedAt ??= DateTime.UtcNow;
+                row.EndedAt ??= now;
                 await db.SaveChangesAsync(ct);
                 File.Delete(local);
                 await notify.PublishInternalAsync("meetings", "meeting.recording.ready", "Recording ready",
@@ -132,19 +156,41 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
         return done;
     }
 
+    /// A Recording row without an Egress id older than this was never started (the start request died midway).
+    public static readonly TimeSpan StartGrace = TimeSpan.FromMinutes(2);
+    /// A finished recording that has not reached the NAS this long after it ended is given up on.
+    public static readonly TimeSpan UploadTimeout = TimeSpan.FromHours(6);
+
+    private static async Task ClearBannerAsync(ILiveKitRoomAdmin rooms, string roomKey, CancellationToken ct)
+    {
+        try { await rooms.UpdateRoomMetadataAsync(MeetingRoomKeys.LiveKitRoom(roomKey), "{}", ct); }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { /* the room may be gone already */ }
+    }
+
+    private static Task NotifyFailedAsync(INotificationGatewayService notify, MeetingRecording row, CancellationToken ct) =>
+        notify.PublishInternalAsync("meetings", "meeting.recording.failed", "Recording failed",
+            $"The server recording of {row.Title} could not be saved.", new NotificationTarget(UserId: row.StartedById),
+            targetUrl: "/calls?tab=rooms", ct: ct);
+
     public static async Task<int> PurgeAsync(IServiceProvider sp, DateTime nowUtc, CancellationToken ct, ILogger<MeetingRecordingWorker>? logger = null)
     {
         using var scope = sp.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<IPopDbContext>();
         var nas = scope.ServiceProvider.GetRequiredService<IFileAccessService>();
-        if (!nas.HasServiceAccount) return 0;
         var days = await scope.ServiceProvider.GetRequiredService<ISettings>().GetAsync(SettingKeys.MeetingRoomsRetentionDays, 90, ct);
         var cutoff = nowUtc.AddDays(-Math.Max(1, days));
+        // Failed recordings that never reached the NAS have no file to remove: they simply leave the lists.
+        var stale = await db.MeetingRecordings
+            .Where(r => r.NasPath == null && r.Status == MeetingRecordingStatus.Failed && r.StartedAt < cutoff)
+            .ToListAsync(ct);
+        foreach (var r in stale) r.Status = MeetingRecordingStatus.Deleted;
+        if (stale.Count > 0) await db.SaveChangesAsync(ct);
+        var deleted = stale.Count;
+        if (!nas.HasServiceAccount) return deleted;
         var rows = await db.MeetingRecordings
             .Where(r => r.NasPath != null && (r.Status == MeetingRecordingStatus.Deleted
                 || ((r.Status == MeetingRecordingStatus.Ready || r.Status == MeetingRecordingStatus.Failed) && r.StartedAt < cutoff)))
             .ToListAsync(ct);
-        var deleted = 0;
         foreach (var r in rows)
         {
             ct.ThrowIfCancellationRequested();

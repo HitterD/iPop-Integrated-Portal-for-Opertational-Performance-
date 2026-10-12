@@ -19,7 +19,7 @@ public class MeetingRecordingWorkerTests : IDisposable
     private readonly List<string> _dirs = [];
     public void Dispose() { foreach (var dir in _dirs) if (Directory.Exists(dir)) Directory.Delete(dir, true); }
 
-    private sealed class Nas : IFileAccessService
+    internal sealed class Nas : IFileAccessService
     {
         // Only the service-account members are used here; every other member throws (DispatchProxy-free fake).
         public List<string> Uploaded { get; } = [];
@@ -420,5 +420,122 @@ public class MeetingRecordingWorkerTests : IDisposable
         var (sp, _) = Services(t, new MeetingRecordingServiceTests.FakeEgress(), new Nas(), new Gateway()); using var provider = sp;
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => MeetingRecordingWorker.FinishAsync(sp, cancelled.Token));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => MeetingRecordingWorker.PurgeAsync(sp, DateTime.UtcNow, cancelled.Token));
+    }
+
+    // ---------------------------------------------------------------- final review fixes (I1, I2, M5)
+
+    [Fact]
+    public async Task Recording_row_without_egress_id_older_than_two_minutes_fails_as_start_interrupted()
+    {
+        using var t = new TestDb(); var a = t.AddUser("A1");
+        var stuck = Row(t, MeetingRecordingStatus.Recording, a.Id, a.Id);
+        using (var db = t.Verify())
+        {
+            var r = db.MeetingRecordings.Single(x => x.Id == stuck.Id);
+            r.EgressId = ""; r.StartedAt = DateTime.UtcNow.AddMinutes(-3);
+            db.SaveChanges();
+        }
+        var rooms = new MeetingRoomServiceTests.FakeRoomAdmin();
+        var (sp, _) = Services(t, new MeetingRecordingServiceTests.FakeEgress(), new Nas(), new Gateway(), rooms); using var provider = sp;
+
+        Assert.Equal(1, await MeetingRecordingWorker.FinishAsync(sp, default));
+
+        using var after = t.Verify(); var saved = await after.MeetingRecordings.SingleAsync();
+        Assert.Equal((MeetingRecordingStatus.Failed, "start interrupted"), (saved.Status, saved.Error));
+        Assert.NotNull(saved.EndedAt);
+        Assert.Contains(("hall-kalosi", "{}"), rooms.MetadataUpdates);
+    }
+
+    [Fact]
+    public async Task Recording_row_without_egress_id_still_starting_is_left_alone()
+    {
+        using var t = new TestDb(); var a = t.AddUser("A1");
+        var young = Row(t, MeetingRecordingStatus.Recording, a.Id, a.Id);
+        using (var db = t.Verify())
+        {
+            var r = db.MeetingRecordings.Single(x => x.Id == young.Id);
+            r.EgressId = ""; r.StartedAt = DateTime.UtcNow.AddSeconds(-30);
+            db.SaveChanges();
+        }
+        var (sp, _) = Services(t, new MeetingRecordingServiceTests.FakeEgress(), new Nas(), new Gateway()); using var provider = sp;
+        Assert.Equal(0, await MeetingRecordingWorker.FinishAsync(sp, default));
+        using var after = t.Verify();
+        Assert.Equal(MeetingRecordingStatus.Recording, (await after.MeetingRecordings.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task Completed_egress_leaves_recording_before_the_upload_so_the_room_is_free_while_the_nas_is_down()
+    {
+        using var t = new TestDb(); var a = t.AddUser("A1");
+        Row(t, MeetingRecordingStatus.Recording, a.Id, a.Id);
+        var eg = new MeetingRecordingServiceTests.FakeEgress(); eg.Infos["EG_1"] = new("EGRESS_COMPLETE", null, 3, null, null);
+        var nas = new Nas { FailUpload = true };
+        var (sp, spool) = Services(t, eg, nas, new Gateway()); using var provider = sp;
+        var local = Path.Combine(spool, "kalosi", "2026-10-11", "1000-x.mp4"); Directory.CreateDirectory(Path.GetDirectoryName(local)!); await File.WriteAllBytesAsync(local, [1, 2, 3]);
+
+        Assert.Equal(0, await MeetingRecordingWorker.FinishAsync(sp, default));
+
+        using (var db = t.Verify())
+        {
+            var saved = await db.MeetingRecordings.SingleAsync();
+            Assert.Equal(MeetingRecordingStatus.Processing, saved.Status);
+            Assert.NotNull(saved.EndedAt);
+        }
+        // The room can be recorded again right away.
+        var lk = new MeetingRoomServiceTests.FakeRoomAdmin();
+        lk.Rooms["hall-kalosi"] = [new(a.Id.ToString(), "A", [], new Dictionary<string, string>())];
+        using var svcDb = t.Verify();
+        var svc = new MeetingRecordingService(svcDb, lk, new MeetingRecordingServiceTests.FakeEgress(), new DbSettings(svcDb),
+            MeetingRecordingServiceTests.Config());
+        Assert.Null((await svc.StartAsync(a.Id, "kalosi", default)).Error);
+    }
+
+    [Fact]
+    public async Task Processing_row_that_ended_more_than_six_hours_ago_fails_as_upload_timed_out_and_tells_the_starter()
+    {
+        using var t = new TestDb(); var a = t.AddUser("A1"); var b = t.AddUser("B1");
+        var old = Row(t, MeetingRecordingStatus.Processing, a.Id, a.Id, b.Id);
+        var recent = Row(t, MeetingRecordingStatus.Processing, a.Id, a.Id);
+        using (var db = t.Verify())
+        {
+            db.MeetingRecordings.Single(r => r.Id == old.Id).EndedAt = DateTime.UtcNow.AddHours(-7);
+            db.MeetingRecordings.Single(r => r.Id == recent.Id).EndedAt = DateTime.UtcNow.AddHours(-1);
+            db.SaveChanges();
+        }
+        var eg = new MeetingRecordingServiceTests.FakeEgress(); eg.Infos["EG_1"] = new("EGRESS_COMPLETE", null, 3, null, null);
+        var gw = new Gateway(); var (sp, _) = Services(t, eg, new Nas { FailUpload = true }, gw); using var provider = sp;
+
+        Assert.Equal(1, await MeetingRecordingWorker.FinishAsync(sp, default));
+
+        using var after = t.Verify(); var rows = await after.MeetingRecordings.ToDictionaryAsync(r => r.Id);
+        Assert.Equal((MeetingRecordingStatus.Failed, "upload timed out"), (rows[old.Id].Status, rows[old.Id].Error));
+        Assert.Equal(MeetingRecordingStatus.Processing, rows[recent.Id].Status);
+        var sent = Assert.Single(gw.Sent);
+        Assert.Equal(("meeting.recording.failed", (Guid?)a.Id), (sent.EventType, sent.Target.UserId));
+    }
+
+    [Fact]
+    public async Task Purge_retires_failed_rows_without_a_file_once_past_retention()
+    {
+        using var t = new TestDb(); var a = t.AddUser("A1");
+        var oldFailed = Row(t, MeetingRecordingStatus.Failed, a.Id, a.Id);
+        var newFailed = Row(t, MeetingRecordingStatus.Failed, a.Id, a.Id);
+        using (var db = t.Verify())
+        {
+            db.MeetingRecordings.Single(r => r.Id == oldFailed.Id).StartedAt = DateTime.UtcNow.AddDays(-91);
+            db.SaveChanges();
+        }
+        var nas = new Nas(); var (sp, _) = Services(t, new MeetingRecordingServiceTests.FakeEgress(), nas, new Gateway()); using var provider = sp;
+
+        Assert.Equal(1, await MeetingRecordingWorker.PurgeAsync(sp, DateTime.UtcNow, default));
+
+        Assert.Empty(nas.Deleted);   // nothing on the NAS to remove
+        using var after = t.Verify(); var rows = await after.MeetingRecordings.ToDictionaryAsync(r => r.Id);
+        Assert.Equal(MeetingRecordingStatus.Deleted, rows[oldFailed.Id].Status);
+        Assert.Equal(MeetingRecordingStatus.Failed, rows[newFailed.Id].Status);
+        using var svcDb = t.Verify();
+        var svc = new MeetingRecordingService(svcDb, new MeetingRoomServiceTests.FakeRoomAdmin(), new MeetingRecordingServiceTests.FakeEgress(),
+            new DbSettings(svcDb), MeetingRecordingServiceTests.Config());
+        Assert.DoesNotContain(await svc.ListAsync(a.Id, true, default), r => r.Id == oldFailed.Id);
     }
 }
