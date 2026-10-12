@@ -496,7 +496,6 @@ public class MeetingRoomsTabV2Tests
         cut.Find(".mrt-pin-in").Input("123456");
         cut.Find(".mrt-pin-in").Input("1234567");                 // a 7th digit is dropped, in the field too
         Assert.Equal("123456", cut.Find(".mrt-pin-in").GetAttribute("value"));
-        Assert.Equal("6", cut.Find(".mrt-pin-in").GetAttribute("maxlength"));
         cut.Find(".mrt-pin-in").Input("12345");                   // backspace removes the last real digit
         Assert.Equal("12345", cut.Find(".mrt-pin-in").GetAttribute("value"));
         Assert.Equal(["1", "2", "3", "4", "5", "·"], cut.FindAll(".mrt-pin span").Select(s => s.TextContent).ToArray());
@@ -504,6 +503,24 @@ public class MeetingRoomsTabV2Tests
         Assert.Equal("12345", cut.Find(".mrt-pin-in").GetAttribute("value"));
         // The field writes back through JS so the DOM value equals the filtered digits even when Blazor skips the diff.
         Assert.Contains(ctx.JSInterop.Invocations["ipopRooms.setValue"], i => (string?)i.Arguments[1] == "12345");
+    }
+
+    [Theory]
+    [InlineData("123 456")]
+    [InlineData("123-456")]
+    public void Pasting_the_invite_format_gives_six_digits_and_enables_enter(string pasted)
+    {
+        using var ctx = Context(new Api { RoomList = Rooms() });
+        var cut = ctx.Render<MeetingRoomsTab>(Slow);
+        cut.WaitForAssertion(() => Assert.Equal(5, cut.FindAll(".mrt-room").Count));
+        cut.FindAll(".mrt-room")[2].QuerySelector(".mrt-join")!.Click();
+
+        // The browser applies maxlength before oninput: it must leave room for "123 456", or the paste arrives as "123 45".
+        var max = cut.Find(".mrt-pin-in").GetAttribute("maxlength");
+        Assert.True(max is null || int.Parse(max) >= pasted.Length, $"maxlength {max} truncates \"{pasted}\"");
+        cut.Find(".mrt-pin-in").Input(pasted);
+        Assert.Equal("123456", cut.Find(".mrt-pin-in").GetAttribute("value"));
+        Assert.False(cut.Find(".mrt-pin-go").HasAttribute("disabled"));
     }
 
     [Fact]

@@ -286,7 +286,7 @@
                             <span class="@(filled ? "f" : i == pin.Length ? "c" : "")">@(filled ? pin[i].ToString() : "·")</span>
                         }
                     </span>
-                    <input class="mrt-pin-in" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" aria-label="6-digit room password"
+                    <input class="mrt-pin-in" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="12" aria-label="6-digit room password"
                            id="mrt-pin-in" value="@pin" @oninput="OnPin" />
                 </label>
                 @if (pwError is not null) { <p class="mrt-pin-err" role="alert">@pwError</p> }
