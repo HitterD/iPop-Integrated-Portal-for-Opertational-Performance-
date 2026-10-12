@@ -26,6 +26,10 @@
 /* Minimized: keep the <video> elements alive (display:none would pause nothing, but
    visibility keeps layout so tracks stay attached and the PC recorder keeps drawing). */
 .mr-meet.mr-hidden { visibility: hidden; pointer-events: none; }
+/* The room covers the app (1100): its confirms ("Stop server recording?") and toasts must open above it. */
+body:has(.mr-meet:not(.mr-hidden)) .confirm-backdrop { z-index: 1180; }
+body:has(.mr-meet:not(.mr-hidden)) .confirm-center { z-index: 1181; }
+body:has(.mr-meet:not(.mr-hidden)) .toast-host { z-index: 1190; }
 .mr-meet button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
 .mr-meet svg.lucide { width: 18px; height: 18px; stroke-width: 1.8; flex: none; }
 .mr-meet :focus-visible { outline: 3px solid rgba(10,132,255,.55); outline-offset: 2px; border-radius: 10px; }

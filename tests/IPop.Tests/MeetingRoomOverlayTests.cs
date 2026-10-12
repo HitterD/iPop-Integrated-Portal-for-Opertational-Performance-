@@ -395,6 +395,36 @@ public class MeetingRoomOverlayTests
         {"key":"arabika","name":"Arabika","liveKitRoom":"hall-arabika","url":"wss://x","token":"t","videoAllowed":true,"identity":"me"}
         """);
 
+    [Fact]
+    public void Confirm_dialogs_and_toasts_open_above_the_room()
+    {
+        // "Stop server recording" asks through ConfirmHost. The room is a full-screen layer (z-index 1100) above the
+        // app's confirm (91) and toasts (120), so without a lift the dialog opened underneath it: nobody could
+        // click Stop recording, and its error toast was hidden too (found in the NAS end-to-end run).
+        var css = File.ReadAllText(Path.Combine(RepoRoot(), "src/IPop.Web/wwwroot/css/modules/meeting-rooms.css"));
+        int Z(string selector)
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(css, "(?m)^" + System.Text.RegularExpressions.Regex.Escape(selector) + @"\s*\{[^}]*z-index:\s*(\d+)");
+            Assert.True(m.Success, $"no z-index for {selector}");
+            return int.Parse(m.Groups[1].Value);
+        }
+        var room = Z(".mr-meet");
+        Assert.True(Z("body:has(.mr-meet:not(.mr-hidden)) .confirm-backdrop") > room);
+        Assert.True(Z("body:has(.mr-meet:not(.mr-hidden)) .confirm-center") > room);
+        Assert.True(Z("body:has(.mr-meet:not(.mr-hidden)) .toast-host") > room);
+    }
+
+    private static string RepoRoot([System.Runtime.CompilerServices.CallerFilePath] string source = "")
+    {
+        foreach (var start in new[] { AppContext.BaseDirectory, Path.GetDirectoryName(source) ?? "" })
+        {
+            var dir = new DirectoryInfo(start);
+            while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "IPop.slnx"))) dir = dir.Parent;
+            if (dir is not null) return dir.FullName;
+        }
+        throw new DirectoryNotFoundException("IPop.slnx not found");
+    }
+
     private static BunitContext Context(out MeetingRoomState state) => Context(out state, out _);
 
     private static BunitContext Context(out MeetingRoomState state, out CallState calls, HttpMessageHandler? handler = null)
