@@ -40,6 +40,13 @@ test('initials and fallback names never expose Guid identities', () => {
     assert.equal(template.displayName({ identity: '12345678-1234-1234-1234-123456789abc' }), 'Participant');
 });
 
+test('badge date prints the wall-clock time carried in the URL, whatever the recorder timezone', () => {
+    // Egress' Chrome runs in UTC; the API sends local time with its offset (QA 2026-10-12: 19:17 WIB showed as 12:17).
+    assert.equal(template.badgeDate('2026-10-12T19:17:34+07:00'), '12 Oct 2026, 19:17');
+    assert.equal(template.badgeDate('2026-01-05T08:05:00.1234567-03:30'), '5 Jan 2026, 08:05');
+    assert.equal(template.badgeDate('not a date'), '');
+    assert.equal(template.badgeDate(''), '');
+});
 function harness(people = []) {
     const logs = [], timers = [], frames = [], rooms = [], attached = [], detached = [], levels = [];
     class Element {

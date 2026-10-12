@@ -12,7 +12,15 @@
         const columns = share ? 1 : Math.min(5, Math.max(1, Math.ceil(Math.sqrt(tiles.length))));
         return { mode: share ? 'share' : 'grid', share, tiles, columns, rows: Math.max(1, Math.ceil(tiles.length / columns)) };
     }
-    const api = { calculateLayout, displayName, initials };
+    // The recorder (Egress' Chrome) runs in UTC, so never format through Date in its timezone: print the wall-clock
+    // time written in the ISO value itself (the API sends the server's local time with its offset).
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    function badgeDate(value) {
+        const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value || '');
+        if (!m || +m[2] < 1 || +m[2] > 12) return '';
+        return `${+m[3]} ${months[+m[2] - 1]} ${m[1]}, ${m[4]}:${m[5]}`;
+    }
+    const api = { calculateLayout, displayName, initials, badgeDate };
     if (typeof module === 'object' && module.exports) module.exports = api;
     if (!root.document) return;
 
@@ -21,8 +29,7 @@
     const roomName = query.get('room') || 'Meeting room';
     document.getElementById('room-name').textContent = roomName;
     document.getElementById('meeting-title').textContent = query.get('title') || 'Meeting';
-    const date = new Date(query.get('date') || Date.now());
-    document.getElementById('meeting-date').textContent = Number.isNaN(date.getTime()) ? '' : date.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+    document.getElementById('meeting-date').textContent = badgeDate(query.get('date'));
     const colours = { Arabika: '#c47b45', Robusta: '#3f7d5a', Toraja: '#5562b8', Kalosi: '#b0412d', Mandheling: '#8a5a3c' };
     document.getElementById('swatch').style.background = colours[roomName] || '#c47b45';
 

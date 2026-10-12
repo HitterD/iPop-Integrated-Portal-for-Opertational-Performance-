@@ -26,7 +26,9 @@ public sealed class MeetingRecordingService(IPopDbContext db, ILiveKitRoomAdmin 
             new Dictionary<string, string?>
             {
                 ["room"] = room, ["title"] = title,
-                ["date"] = date.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+                // Local wall-clock time with its offset: the recorder runs in UTC and prints what it is given.
+                ["date"] = new DateTimeOffset(DateTime.SpecifyKind(date, DateTimeKind.Utc)).ToLocalTime()
+                    .ToString("yyyy-MM-dd'T'HH:mm:sszzz", System.Globalization.CultureInfo.InvariantCulture),
             });
 
     public async Task<MeetingRecordingResult> StartAsync(Guid userId, string key, CancellationToken ct)

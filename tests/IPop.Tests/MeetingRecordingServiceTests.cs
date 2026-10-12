@@ -102,6 +102,24 @@ public class MeetingRecordingServiceTests
         Assert.False(query.ContainsKey("token"));
     }
 
+    /// Egress' Chrome runs in UTC: the badge must get the meeting's local wall-clock time with its offset, not a UTC
+    /// instant the recorder would print as UTC (QA 2026-10-12: badge read 12:17 for a 19:17 WIB meeting).
+    [Fact]
+    public async Task Template_date_is_server_local_time_with_offset()
+    {
+        using var t = new TestDb(); var a = t.AddUser("A1");
+        var lk = new MeetingRoomServiceTests.FakeRoomAdmin();
+        lk.Rooms["hall-arabika"] = [new(a.Id.ToString(), "A", [], new Dictionary<string, string>())];
+        var eg = new FakeEgress();
+        var before = DateTime.UtcNow;
+        await Make(t, lk, eg).StartAsync(a.Id, "arabika", default);
+        var date = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Assert.Single(eg.TemplateUrls)).Query)["date"].ToString();
+        Assert.Matches(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$", date);
+        var parsed = DateTimeOffset.Parse(date, System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(TimeZoneInfo.Local.GetUtcOffset(before), parsed.Offset);
+        Assert.InRange(parsed.UtcDateTime, before.AddSeconds(-1), DateTime.UtcNow.AddSeconds(1));
+    }
+
     [Fact]
     public async Task Only_one_server_recording_per_room_and_only_from_inside()
     {
