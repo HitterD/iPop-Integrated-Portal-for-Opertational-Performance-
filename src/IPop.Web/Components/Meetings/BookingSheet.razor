@@ -4,8 +4,9 @@
 @namespace IPop.Web.Components.Meetings
 @using IPop.Application.MeetingRooms
 
-<div class="sheet2-scrim" @onclick="CloseAsync">
-    <section class="@($"sheet2 {Accent}")" role="dialog" aria-modal="true" aria-labelledby="bs-title" @onclick:stopPropagation="true" @onkeydown="KeyAsync">
+<div class="@($"sheet2-scrim {(phone ? "bottom" : "")}")" @onclick="CloseAsync">
+    <section class="@($"sheet2 {Accent} {(phone ? "bottom" : "")}")" role="dialog" aria-modal="true" aria-labelledby="bs-title" @onclick:stopPropagation="true" @onkeydown="KeyAsync">
+        @if (phone) { <div class="sh-grab" aria-hidden="true"></div> }
         @if (repeatCheck is { } rc)
         {
             <div class="sh-h">
@@ -127,7 +128,7 @@
                 @if (error is not null) { <p class="bs-err" role="alert">@error</p> }
             </div>
             <div class="sh-f">
-                <button type="button" class="link bs-more" @onclick="MoreOptions">More options…</button><span class="spacer"></span>
+                @if (!phone) { <button type="button" class="link bs-more" @onclick="MoreOptions">More options…</button><span class="spacer"></span> }
                 <button type="button" class="btn gray" @onclick="CloseAsync">Cancel</button>
                 <button type="button" class="btn filled bs-go" disabled="@(!CanBook)" @onclick="BookAsync">
                     @if (busy) { <text>Booking…</text> }

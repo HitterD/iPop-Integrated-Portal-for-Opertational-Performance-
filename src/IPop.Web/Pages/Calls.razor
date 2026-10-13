@@ -186,6 +186,11 @@
         <button type="button" class="m-back" aria-label="Back" @onclick="MobileBack"><i data-lucide="chevron-left"></i></button>
         @if (detailMeeting is { } m)
         {
+            @* Phone (v3 Task 10, mockup "1 · Meeting detail"): the detail is its own screen; Back returns to the list. Hidden on desktop. *@
+            @if (tab == "scheduled")
+            {
+                <div class="sch-mnav"><button type="button" class="sch-back" aria-label="Back to Scheduled" @onclick="MobileBack"><i data-lucide="chevron-left"></i>Scheduled</button></div>
+            }
             var model = MeetingDetailModel.FromMeeting(m, Auth.Me?.UserId);
             if (detailPast is { } past && past.Meeting.Id == m.Id) model = model with { Attended = past.Attended, Recordings = past.Recordings };
             <MeetingDetail Model="model" Now="clockNow" OnJoin="() => JoinMeeting(m)" OnEdit="() => EditMeeting(m)" OnCancel="() => CancelMeeting(m)"
@@ -232,7 +237,8 @@
 </div>
 
 @code {
-    [CascadingParameter] public MainLayout Layout { get; set; } = default!;
+    /// Null only in component tests (no MainLayout cascade).
+    [CascadingParameter] public MainLayout? Layout { get; set; }
     private bool showDeviceTest;
     private CallHistoryPage history = new([], 0, 1, 50);
     // ipop-49: the loader fetched one page of 50 and dropped the rest, while the panel head at
@@ -277,7 +283,7 @@
 
     protected override void OnInitialized()
     {
-        Layout.SetHeader("Calls & Meetings", "Direct calls · meeting rooms · history");
+        Layout?.SetHeader("Calls & Meetings", "Direct calls · meeting rooms · history");
         CallSvc.StateChanged += OnStateChanged;
         CallSvc.CallEnded += OnCallEnded;
         // ipop-32d: ProfileDrawer's Call button deep-links /calls?callee=…; the drawer is
@@ -327,7 +333,7 @@
                     ?? await Auth.GetAsync<MeetingInfo>($"/api/meetings/{open.Id}");
                 if (detailMeeting?.Id == open.Id && fresh is not null) detailMeeting = fresh;
             }
-            Layout.SetSubtitle($"{history.Total} calls · {meetings.Count} upcoming meetings");
+            Layout?.SetSubtitle($"{history.Total} calls · {meetings.Count} upcoming meetings");
             StateHasChanged();
             await JS.InvokeVoidAsync("ipop.icons");
         }
@@ -466,7 +472,7 @@
         // ipop-49: every caller of LoadHistory is a post-call refresh, which legitimately resets
         // to page 1 — a just-ended call belongs at the top. Reset the paging cursor with it.
         historyRows = history.Items.ToList();
-        Layout.SetSubtitle($"{history.Total} calls · {meetings.Count} upcoming meetings");
+        Layout?.SetSubtitle($"{history.Total} calls · {meetings.Count} upcoming meetings");
         if (detailCall is null && detailMeeting is null && historyRows.Count > 0) detailCall = historyRows[0];
         historyPage = 1;
         StateHasChanged();

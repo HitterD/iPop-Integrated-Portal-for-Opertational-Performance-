@@ -44,3 +44,19 @@ test('resize is clamped to the window and the floor', () => {
   assert.deepEqual(clampResize(600, 660, 'l', -60, { ...W, floor: 590 }), { s: 590, e: 660 });
   assert.deepEqual(clampResize(600, 660, 'x', 30, W), { s: 600, e: 660 });       // unknown edge: unchanged
 });
+
+// Phone (v3 Task 10): the track is 960 px inside a sideways scroller; on open the selection is scrolled into view.
+const { revealLeft } = require('../src/IPop.Web/wwwroot/js/room-timeline.js');
+
+test('revealLeft keeps the scroll when the selection is already visible', () => {
+  assert.equal(revealLeft(100, 120, 0, 358, 988), 0);
+  assert.equal(revealLeft(500, 100, 300, 358, 988), 300);
+});
+
+test('revealLeft scrolls so the selection starts 90 px in, clamped to the content', () => {
+  assert.equal(revealLeft(600, 120, 0, 358, 988), 510);       // 13:00 block on a 960 px track
+  assert.equal(revealLeft(900, 80, 0, 358, 988), 630);        // late block: clamped to the end
+  assert.equal(revealLeft(40, 80, 500, 358, 988), 0);         // left of view: back to the start, not below 0
+  assert.equal(revealLeft(400, 80, 0, 358, 300), 0);          // content narrower than the view
+  assert.equal(revealLeft(600, 120, 0, 358, 988, 20), 580);   // custom pad
+});

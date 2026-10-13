@@ -570,20 +570,44 @@ html.callx-resizing, html.callx-resizing * { cursor:nwse-resize !important; }
 .sheet2 .seg2 button.on { background:var(--surface); color:var(--ink); font-weight:650; box-shadow:0 2px 6px rgba(0,0,0,.08); }
 [data-theme="dark"] .sheet2 .seg2 button.on { background:#636366; }
 
-/* phone: bottom sheet, the timeline scrolls sideways (§7) */
-@media (max-width: 640px) {
-  .sheet2-scrim { padding:0; place-items:end stretch; }
-  .sheet2 { width:auto; max-height:calc(100% - 58px); border-radius:28px 28px 0 0; }
-  .sheet2 .sh-h { padding:12px 16px 8px; }
-  .sheet2 .sh-b { padding:2px 16px 14px; }
-  .sheet2 .sh-f { padding:10px 16px 30px; }
-  .sheet2 .sh-f .btn { flex:1; height:46px; }
-  .sheet2 .sh-f .bs-more { display:none; }
-  .sheet2 .tl-scroll { overflow-x:auto; scrollbar-width:none; margin:0 -14px; padding:8px 14px 0; }
-  .sheet2 .tl-track, .sheet2 .tl-hours, .sheet2 .tl-tags { width:960px; }
-  .sheet2 .tl-lg { display:none; }
-  .sheet2 .others { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; }
-  .sheet2 .tl-clash { flex-wrap:wrap; }
+/* Phone (v3 Task 10, mockup "Phone"): BookingSheet adds .bottom when ipop.mobile.isMobile (max 767 px, the app's phone
+   breakpoint) says so: a bottom sheet with a grab handle and safe-area padding; the timeline scrolls sideways on a
+   960 px track (room-timeline.js scrolls the selection into view); Cancel + Book fill the footer. */
+.sheet2-scrim.bottom { padding:0; place-items:end stretch; }
+.sheet2.bottom { width:100%; max-width:none; max-height:calc(100% - 58px); border-radius:28px 28px 0 0; animation:sheet2-up .4s cubic-bezier(.32,.72,0,1); }
+@keyframes sheet2-up { from { transform:translateY(40px); opacity:0; } }
+.sheet2 .sh-grab { width:38px; height:5px; border-radius:3px; background:var(--ink-4); margin:7px auto 0; opacity:.7; flex:none; }
+.sheet2.bottom .sh-h { padding:12px 16px 8px; }
+.sheet2.bottom .sh-h .x { width:40px; height:40px; margin:-5px -5px 0 0; }
+.sheet2.bottom .sh-b { padding:2px 16px 14px; overscroll-behavior:contain; }
+.sheet2.bottom .sh-f { padding:10px 16px calc(14px + var(--m-safe-b, env(safe-area-inset-bottom, 0px))); }
+.sheet2.bottom .sh-f .btn { flex:1; height:46px; }
+.sheet2.bottom .tf { font-size:16px; height:44px; }
+.sheet2.bottom .when .dp-field { min-height:44px; }
+.sheet2.bottom .when .dp-toggle { min-width:40px; }
+.sheet2.bottom .when .bs-start, .sheet2.bottom .when .bs-end { width:116px; }
+.sheet2.bottom .when .fl:first-child { width:100%; }
+.sheet2.bottom .when .bs-date { width:100%; }
+.sheet2.bottom .durt { margin-left:auto; }
+.sheet2.bottom .qcs { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; margin-left:-16px; margin-right:-16px; padding:0 16px; }
+.sheet2.bottom .qcs::-webkit-scrollbar, .sheet2.bottom .others::-webkit-scrollbar, .sheet2.bottom .tl-scroll::-webkit-scrollbar { display:none; }
+.sheet2.bottom .qc { flex:none; height:40px; padding:0 15px; }
+.sheet2.bottom .tl-card { padding:12px 14px 10px; }
+.sheet2.bottom .tl-scroll { overflow-x:auto; overflow-y:hidden; scrollbar-width:none; margin:0 -14px; padding:0 14px; }
+.sheet2.bottom .tl-track, .sheet2.bottom .tl-hours, .sheet2.bottom .tl-tags { width:960px; }
+.sheet2.bottom .tl-lg { display:none; }
+.sheet2.bottom .tl-hint { display:none; }
+.sheet2.bottom .others { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; margin-left:-16px; margin-right:-16px; padding:0 16px; }
+.sheet2.bottom .others > span { white-space:nowrap; flex:none; }
+.sheet2.bottom .rchip { height:40px; }
+.sheet2.bottom .tl-clash { flex-wrap:wrap; }
+.sheet2.bottom .tl-clash .tl-try { height:40px; margin-left:32px; }
+.sheet2.bottom .ir.mid { flex-wrap:wrap; }
+.sheet2.bottom .bs-repeat { min-width:0; flex:1 1 160px; }
+.sheet2.bottom .ip-drop-in { max-height:min(360px, 50dvh); }
+.sheet2.bottom .rp { flex-wrap:wrap; }
+.sheet2.bottom .seg2 { margin-left:36px; }
+.sheet2.bottom .seg2 button { height:36px; }
 }
 
 /* ============================================================
@@ -651,3 +675,36 @@ html.callx-resizing, html.callx-resizing * { cursor:nwse-resize !important; }
 .sch-opt > span > span { display:block; font-size:12.5px; color:var(--ink-3); line-height:1.35; margin-top:1px; }
 .sch-opt > .sch-chev { margin-left:auto; color:var(--ink-4); width:15px; height:15px; }
 @media(max-width:800px) { .calls-v6 .calls-split.sch { grid-template-columns:1fr; } }
+/* Phone (v3 Task 10, mockup "1 · Scheduled list / Meeting detail"): list and detail are separate screens (Calls.razor
+   .m-detail, mobile/calls.css); the detail opens under a "‹ Scheduled" back bar. */
+.sch-mnav { display:none; }
+@media (max-width: 767px) {
+  .calls-v6.m-detail .calls-detail.sch-detail { padding:0 12px 40px; background:transparent; }
+  .calls-v6 .calls-detail.sch-detail > .sch-mnav { display:flex; align-items:center; position:sticky; top:0; z-index:3; margin:0 -12px 6px; padding:4px 6px;
+    background:color-mix(in srgb, var(--bg, var(--surface)) 88%, transparent); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); }
+  .sch-back { display:inline-flex; align-items:center; gap:2px; min-height:44px; padding:0 10px 0 2px; border:0; background:none; border-radius:10px;
+    color:var(--accent); font:inherit; font-size:16px; font-weight:500; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  .sch-back:active { background:var(--fill); }
+  .sch-back .lucide, .sch-back svg { width:24px; height:24px; stroke-width:2.2; }
+  .calls-v6 .calls-list.sch-col { border-radius:0; }
+  .sch-list { padding:0 0 24px; }
+  .sch-ev { grid-template-columns:38px minmax(0,1fr); gap:11px; padding:11px 12px 11px 11px; min-height:64px; }
+  .sch-ev + .sch-ev::before { left:60px; }
+  .sch-ev .mk-kt { width:38px; height:38px; }
+  .sch-past-h { min-height:44px; margin-top:14px; }
+  .sch-more { min-height:44px; }
+  .sch-rec { height:32px; padding:0 10px; }
+  .sch-menu { position:fixed; top:auto; left:8px; right:8px; bottom:calc(8px + var(--m-tabbar-h, 0px) + var(--m-safe-b, env(safe-area-inset-bottom, 0px))); width:auto; z-index:1040; }
+  .sch-menu-scrim { z-index:1039; background:rgba(0,0,0,.2); }
+  .sch-opt { min-height:56px; }
+  .calls-toolbar .calls-tabs button { min-height:40px; }
+  /* detail on its own screen (mockup .pd): one people column, a full-width answer segment, tap-size buttons */
+  .sch-detail .mk-detail .band h2 { font-size:23px; }
+  .sch-detail .mk-detail .acts { padding:12px 4px 10px; }
+  .sch-detail .mk-detail .people { grid-template-columns:1fr; }
+  .sch-detail .mk-detail .ir.reply { flex-wrap:wrap; }
+  .sch-detail .mk-detail .ir.reply .t { flex:1 1 calc(100% - 42px); }
+  .sch-detail .mk-detail .ir.reply .mk-seg { flex:1 1 100%; margin-left:42px; display:flex; }
+  .sch-detail .mk-detail .ir.reply .mk-seg button { flex:1; height:40px; }
+  .sch-detail .mk-detail .rsvp button { height:44px; }
+}

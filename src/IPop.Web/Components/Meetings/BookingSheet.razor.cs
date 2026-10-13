@@ -61,6 +61,9 @@ public partial class BookingSheet : IDisposable
     private string? error;
     private bool busy;
     private bool disposed;
+    /// Phone (v3 Task 10, mockup "Phone"): a bottom sheet with a grab handle, no "More options…". From the app's one
+    /// phone check (ipop.mobile.isMobile, max 767 px) so it agrees with every other phone layout.
+    private bool phone;
 
     // ---------------------------------------------------------------- derived
 
@@ -100,6 +103,12 @@ public partial class BookingSheet : IDisposable
     private bool CanBook => !busy && Clash is null && LimitText is null && end > start;
 
     // ---------------------------------------------------------------- lifecycle
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { phone = await JS.InvokeAsync<bool>("ipop.mobile.isMobile"); }
+        catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException or JSDisconnectedException) { phone = false; }
+    }
 
     protected override async Task OnParametersSetAsync()
     {

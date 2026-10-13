@@ -32,6 +32,23 @@
     return { s, e };
   }
 
+  /// Phone (v3 Task 10): the track is wider than its sideways scroller. The scrollLeft that shows the selection
+  /// [left, left + width) px: unchanged when it is fully visible, else the selection starts `pad` px in, clamped to the content.
+  function revealLeft(left, width, scroll, view, content, pad = 90) {
+    const max = Math.max(0, content - view);
+    if (left >= scroll && left + width <= scroll + view) return Math.min(scroll, max);
+    return Math.min(Math.max(0, left - pad), max);
+  }
+
+  /// Scrolls the track's .tl-scroll so the selected block is in view (no-op when nothing overflows).
+  function reveal(track) {
+    const sc = track && track.closest('.tl-scroll'), sel = track && track.querySelector('[data-sel]');
+    if (!sc || !sel || sc.scrollWidth <= sc.clientWidth) return;
+    const x = sel.getBoundingClientRect().left - track.getBoundingClientRect().left;
+    const pad = parseFloat(getComputedStyle(sc).paddingLeft) || 0;
+    sc.scrollLeft = revealLeft(x + pad, sel.offsetWidth, sc.scrollLeft, sc.clientWidth, sc.scrollWidth);
+  }
+
   const pct = (m, win) => ((m - win.start) / (win.end - win.start) * 100).toFixed(3) + '%';
 
   /// Wires one track. opts: { start, end, floor, sel: [s, e] } in minutes. Returns a handle to update or dispose.
@@ -68,12 +85,19 @@
       drag = null;
       ref.invokeMethodAsync('OnDrag', state.s, state.e, true).catch(() => { });
     }
+    requestAnimationFrame(() => reveal(track));
     track.addEventListener('pointerdown', down);
     track.addEventListener('pointermove', move);
     track.addEventListener('pointerup', up);
     track.addEventListener('pointercancel', up);
     return {
-      update(o) { state.win = { start: o.start, end: o.end, floor: o.floor }; if (!drag) { state.s = o.s; state.e = o.e; } },
+      update(o) {
+        const moved = !drag && (o.s !== state.s || o.e !== state.e || o.start !== state.win.start || o.end !== state.win.end);
+        state.win = { start: o.start, end: o.end, floor: o.floor };
+        if (!drag) { state.s = o.s; state.e = o.e; }
+        // A chip, Try or a new day moved the block from .NET: bring it into view (a drag already follows the finger).
+        if (moved) requestAnimationFrame(() => reveal(track));
+      },
       dispose() {
         track.removeEventListener('pointerdown', down);
         track.removeEventListener('pointermove', move);
@@ -83,7 +107,7 @@
     };
   }
 
-  const api = { toMinutes, snap, clampMove, clampResize, bind };
+  const api = { toMinutes, snap, clampMove, clampResize, revealLeft, reveal, bind };
   if (typeof module !== 'undefined') { module.exports = api; return; }
   window.ipopRoomTimeline = api;
 })();

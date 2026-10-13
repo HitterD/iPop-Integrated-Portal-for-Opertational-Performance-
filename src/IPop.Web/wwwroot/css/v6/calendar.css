@@ -832,7 +832,35 @@ body:has(.cs-sheet) .confirm-center { z-index: 1071; }
 .cal-rcheck-row { display: flex; align-items: center; gap: 10px; justify-content: space-between; padding: 6px 2px; border-top: .5px solid var(--line); }
 .cal-rcheck-row b { display: block; font-size: 13px; color: var(--ink); }
 .cal-rcheck-row small { display: block; font-size: 12px; color: var(--ink-3); }
-@media (max-width: 640px) {
+/* Phone (v3 Task 10, mockup "6 · New event (bottom sheet)"): the drawer is already a bottom sheet in mobile/calendar.css;
+   here the sheet gets the grab handle and rounded top, 2×2 kind tiles, sideways room tiles and timeline (960 px track,
+   room-timeline.js scrolls the selection into view), and a full-height meeting detail. Same 767 px phone breakpoint. */
+@media (max-width: 767px) {
+  .cal-drawer.cal-sheet, .cal-drawer.cal-mdrawer { border-radius: 28px 28px 0 0; padding-top: 12px; }
+  .cal-drawer.cal-sheet::before, .cal-drawer.cal-mdrawer::before { content: ""; position: absolute; top: 7px; left: 50%; width: 38px; height: 5px; margin-left: -19px;
+    border-radius: 3px; background: var(--ink-4); opacity: .7; }
+  .cal-drawer.cal-sheet .cal-drawer-body { overscroll-behavior: contain; }
   .mkp-ktiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .mkp-rtiles { grid-template-columns: repeat(5, 116px); overflow-x: auto; }
+  .mkp-ktile { min-height: 44px; }
+  .mkp-rtiles { display: flex; overflow-x: auto; scrollbar-width: none; margin: 0 -16px 10px; padding: 4px 16px; }
+  .mkp-rtiles::-webkit-scrollbar, .cal-form .mkp .tl-scroll::-webkit-scrollbar { display: none; }
+  .mkp-rtile { flex: none; width: 118px; }
+  .cal-form .mkp .tl-scroll { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; margin: 0 -14px; padding: 0 14px; }
+  .cal-form .mkp .tl-track, .cal-form .mkp .tl-hours, .cal-form .mkp .tl-tags { width: 960px; }
+  .cal-form .mkp .tl-lg, .cal-form .mkp .tl-hint { display: none; }
+  .cal-form .mkp .tl-clash { flex-wrap: wrap; }
+  .cal-form .mkp .tl-clash .tl-try { height: 40px; margin-left: 32px; }
+  .cal-form .mkp-link { min-height: 40px; }
+  .cal-rcheck-row { flex-wrap: wrap; }
+  .cal-rcheck-row .cal-btn { min-height: 40px; }
+  /* meeting detail: full width, people in one column, tap-size header close */
+  .cal-drawer.cal-mdrawer { width: 100%; }
+  .cal-drawer-body.cal-mdetail { padding: 6px 12px calc(16px + var(--m-safe-b, env(safe-area-inset-bottom, 0px))); }
+  .cal-mdetail .mk-detail .xb { width: 40px; height: 40px; }
+  .cal-mdetail .mk-detail .band h2 { font-size: 23px; }
+  .cal-mdetail .mk-detail .acts { padding: 12px 4px 10px; }
+  .cal-mdetail .mk-detail .act { font-size: 10.5px; }
+  .cal-mdetail > .cal-btn { min-height: 44px; }
+  /* busy popover: never wider than the phone */
+  .cal-pop { max-width: calc(100vw - 16px); }
 }
