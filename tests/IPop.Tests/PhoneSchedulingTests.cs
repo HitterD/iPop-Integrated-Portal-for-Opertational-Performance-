@@ -182,6 +182,18 @@ public class PhoneSchedulingTests
         return ctx;
     }
 
+    /// QA Task 11 (390 px): phone inputs are 16 px (no iOS zoom), so the desktop 92 px time field cut "17:00" to "17:…".
+    [Fact]
+    public void Phone_calendar_form_time_fields_are_wide_enough_for_HH_mm_at_16px()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null && !File.Exists(Path.Combine(dir, "IPop.slnx")) && !System.IO.Directory.Exists(Path.Combine(dir, "src", "IPop.Web"))) dir = Path.GetDirectoryName(dir);
+        var css = File.ReadAllText(Path.Combine(dir!, "src/IPop.Web/wwwroot/css/mobile/calendar.css"));
+        var m = System.Text.RegularExpressions.Regex.Match(css, @"\.cal-row-ctl \.dp-time\s*\{[^}]*width:\s*(\d+)px");
+        Assert.True(m.Success, "mobile calendar.css sets no .cal-row-ctl .dp-time width");
+        Assert.True(int.Parse(m.Groups[1].Value) >= 108, $"time field {m.Groups[1].Value}px is too narrow for 16 px HH:mm + clock icon");
+    }
+
     private sealed class CallsApi : HttpMessageHandler
     {
         public List<MeetingInfo> Upcoming { get; set; } = [];

@@ -80,6 +80,9 @@
   .cal-row { flex-wrap: wrap; }
   .cal-row-ctl { flex: 1 1 100%; justify-content: flex-start; padding-left: 27px; }
   .cal-row-ctl .app-select.block { max-width: none; margin-left: 0; }
+  /* 16 px inputs (no iOS zoom) need more room than the desktop 92 px: "17:00" was cut to "17:…". */
+  .cal-row-ctl .dp-time { width: 112px; }
+  .cal-row-ctl .dp-date { width: auto; flex: 1 1 148px; max-width: 180px; }
   .cal-switch-row, label.cal-row { flex-wrap: nowrap; }
   .cal-vis-seg .cal-seg-item { min-height: 36px; }
   .cal-when input[type="time"] { width: 96px; }
