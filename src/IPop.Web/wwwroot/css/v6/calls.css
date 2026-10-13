@@ -718,3 +718,47 @@ html.callx-resizing, html.callx-resizing * { cursor:nwse-resize !important; }
   .sch-detail .mk-detail .ir.reply .mk-seg button { flex:1; height:40px; }
   .sch-detail .mk-detail .rsvp button { height:44px; }
 }
+
+/* ============================================================
+   Phone chrome for Calls & Meetings (v3 gaps, mockup "Phone · Scheduled list"). Rendered once in Calls.razor; desktop
+   hides it and keeps the long tab labels (".calls-tabs button span" styles the count — the label spans opt out).
+   ============================================================ */
+.cl-pnav, .cl-ptitle, .cl-pfab, .cl-seg-short { display:none; }
+.calls-toolbar .calls-tabs button .cl-seg-long { font-size:inherit; color:inherit; }
+
+/* Phone (v3 gaps): large title, full-width segmented Recents / Scheduled / Rooms, icon buttons, floating Schedule.
+   (0,3,0)+ selectors: css/mobile/calls.css loads later with (0,2,0)/(0,3,0) toolbar rules. */
+@media (max-width: 767px) {
+  .calls-v6 { position:relative; }
+  /* The page's own large title replaces the bar title (iOS large-title pattern); logo, search, bell stay. */
+  .main:has(> .calls-v6) .v6-topbar .tb-title h1, body:has(.calls-v6:not(.m-detail)) .v6-topbar .tb-title h1 { visibility:hidden; }
+  .calls-v6 > .cl-pnav { display:flex; align-items:center; gap:4px; position:absolute; top:10px; right:10px; z-index:2; }
+  .calls-v6 > .cl-pnav .cl-sp { display:none; }
+  .calls-v6 > .cl-pnav button { width:40px; height:40px; border:0; border-radius:50%; background:none; display:grid; place-items:center; color:var(--accent); cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  .calls-v6 > .cl-pnav button:active, .calls-v6 > .cl-pnav button[aria-pressed="true"] { background:var(--fill); }
+  .calls-v6 > .cl-pnav .lucide, .calls-v6 > .cl-pnav svg { width:21px; height:21px; }
+  .calls-v6 > .cl-ptitle { display:block; margin:0; padding:12px 140px 8px 18px; font-size:31px; font-weight:800; letter-spacing:-.03em; line-height:1.15; color:var(--ink); }
+  .calls-v6.m-detail > .cl-ptitle, .calls-v6.m-detail > .cl-pnav { display:none; }
+
+  .calls-v6 .calls-toolbar.calls-toolbar { padding:0 16px 12px; gap:10px; }
+  .calls-v6 .calls-toolbar .calls-tabs { flex:1 1 100%; display:flex; gap:0; padding:2px; border-radius:10px; background:var(--fill); overflow:visible; }
+  .calls-v6 .calls-toolbar .calls-tabs button { flex:1 1 0; min-width:0; height:32px; min-height:32px; padding:0 6px; justify-content:center; border-radius:8px; font-size:13px; font-weight:500; color:var(--ink-2); }
+  .calls-v6 .calls-toolbar .calls-tabs button.active { background:var(--surface); color:var(--ink); font-weight:600; box-shadow:0 3px 8px rgba(0,0,0,.08), 0 0 0 .5px rgba(0,0,0,.04); }
+  [data-theme="dark"] .calls-v6 .calls-toolbar .calls-tabs button.active { background:#636366; }
+  .calls-v6 .calls-toolbar .calls-tabs button .lucide, .calls-v6 .calls-toolbar .calls-tabs button svg,
+  .calls-v6 .calls-toolbar .calls-tabs button .cl-seg-long, .calls-v6 .calls-toolbar .calls-tabs button > span:last-child { display:none; }
+  .calls-v6 .calls-toolbar .calls-tabs button .cl-seg-short { display:inline; font-size:inherit; color:inherit; }
+  /* The buttons moved to the icon row and the floating button. */
+  .calls-v6 .calls-toolbar .ghost-btn, .calls-v6 .calls-toolbar .btn-primary, .calls-v6 .calls-toolbar .sch-menu-wrap, .calls-v6 .calls-toolbar .calls-toolbar-spacer { display:none; }
+  .calls-v6:not(.cl-psearch) .calls-toolbar .calls-search { display:none; }
+
+  .calls-v6 > .cl-pfab { display:flex; align-items:center; gap:7px; position:fixed; right:18px; z-index:56;
+    bottom:calc(var(--m-tabbar-h, 56px) + var(--m-safe-b, env(safe-area-inset-bottom, 0px)) + 16px);
+    height:50px; padding:0 20px 0 16px; border:0; border-radius:999px; background:var(--accent); color:#fff;
+    font:inherit; font-weight:650; font-size:15px; cursor:pointer; box-shadow:0 12px 26px -8px color-mix(in srgb, var(--accent) 70%, transparent);
+    -webkit-tap-highlight-color:transparent; }
+  .calls-v6 > .cl-pfab:active { transform:scale(.97); }
+  .calls-v6 > .cl-pfab .lucide, .calls-v6 > .cl-pfab svg { width:19px; height:19px; }
+  /* Lists end above the floating button. */
+  .calls-v6 .sch-list, .calls-v6 .calls-history-scroll { padding-bottom:84px; }
+}

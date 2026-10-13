@@ -16,12 +16,24 @@
 
 <PageTitle>Calls &amp; Meetings — IPop</PageTitle>
 
-<div class="calls-v6 @(mDetail ? "m-detail" : "") @(tab == "rooms" ? "calls-rooms" : "")">
+<div class="calls-v6 @(mDetail ? "m-detail" : "") @(tab == "rooms" ? "calls-rooms" : "") @(phoneSearch ? "cl-psearch" : "")">
+    @* Phone (v3 gaps, mockup "Phone · Scheduled list"): icon row + large title above a segmented control; css/v6/calls.css
+       shows these only at ≤ 767 px (the app's phone breakpoint) and hides the desktop toolbar buttons there. *@
+    <div class="cl-pnav">
+        <span class="cl-sp"></span>
+        @if (tab != "rooms")
+        {
+            <button type="button" aria-label="Search calls" aria-pressed="@(phoneSearch ? "true" : "false")" @onclick="() => phoneSearch = !phoneSearch"><i data-lucide="search"></i></button>
+        }
+        <button type="button" aria-label="Test devices" @onclick="() => showDeviceTest = true"><i data-lucide="headphones"></i></button>
+        <button type="button" aria-label="New call" @onclick="FocusCallPicker"><i data-lucide="phone"></i></button>
+    </div>
+    <h2 class="cl-ptitle">Calls &amp; Meetings</h2>
     <div class="toolbar calls-toolbar">
-        <div class="calls-tabs">
-            <button class="@(tab == "recents" ? "active" : "")" @onclick='() => SetTab("recents")'><i data-lucide="history"></i> Recents <span>@history.Total</span></button>
-            <button class="@(tab == "scheduled" ? "active" : "")" @onclick='() => SetTab("scheduled")'><i data-lucide="calendar-clock"></i> Scheduled <span>@meetings.Count</span></button>
-            <button class="@(tab == "rooms" ? "active" : "")" @onclick='() => SetTab("rooms")'><i data-lucide="door-open"></i> Meeting Rooms <span>5</span></button>
+        <div class="calls-tabs" role="tablist" aria-label="Calls and meetings">
+            <button role="tab" aria-selected="@(tab == "recents" ? "true" : "false")" class="@(tab == "recents" ? "active" : "")" @onclick='() => SetTab("recents")'><i data-lucide="history"></i><span class="cl-seg-long"> Recents </span><span class="cl-seg-short">Recents</span><span>@history.Total</span></button>
+            <button role="tab" aria-selected="@(tab == "scheduled" ? "true" : "false")" class="@(tab == "scheduled" ? "active" : "")" @onclick='() => SetTab("scheduled")'><i data-lucide="calendar-clock"></i><span class="cl-seg-long"> Scheduled </span><span class="cl-seg-short">Scheduled</span><span>@meetings.Count</span></button>
+            <button role="tab" aria-selected="@(tab == "rooms" ? "true" : "false")" class="@(tab == "rooms" ? "active" : "")" @onclick='() => SetTab("rooms")'><i data-lucide="door-open"></i><span class="cl-seg-long"> Meeting Rooms </span><span class="cl-seg-short">Rooms</span><span>5</span></button>
         </div>
         @if (tab == "rooms")
         {
@@ -48,6 +60,14 @@
         }
         <button type="button" class="btn-primary" @onclick="FocusCallPicker"><i data-lucide="phone"></i>New call</button>
     </div>
+    @if (!mDetail)
+    {
+        <button type="button" class="cl-pfab" aria-haspopup="menu" aria-expanded="@(fabMenu ? "true" : "false")" @onclick="() => fabMenu = !fabMenu"><i data-lucide="calendar-plus"></i>Schedule</button>
+        @if (fabMenu)
+        {
+            <ScheduleMenu OnVoice="() => { fabMenu = false; ScheduleVoice(); }" OnRoom="async () => { fabMenu = false; await ScheduleRoomAsync(); }" OnClose="() => fabMenu = false" />
+        }
+    }
 
     @* Schedule → Voice call opens the short voice form; Meeting room opens the booking sheet (v3 §5). *@
     @if (bookingRoom is { } bk)
@@ -704,6 +724,8 @@
     /// Schedule → Voice call: the short voice form (title, date, times, people); "More options…" there opens the full
     /// Calendar form on the voice kind.
     private bool voiceSheet;
+    /// Phone: the floating Schedule button's menu, and the search field revealed by the header's search icon.
+    private bool fabMenu, phoneSearch;
     private void ScheduleVoice()
     {
         scheduleMenu = false;

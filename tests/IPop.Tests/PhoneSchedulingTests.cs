@@ -173,6 +173,54 @@ public class PhoneSchedulingTests
         Assert.Equal("voice", JsonDocument.Parse(api.Posts.Single()).RootElement.GetProperty("kind").GetString());
     }
 
+    /// v3 gaps (mockup "Phone · Scheduled list"): large title, Recents / Scheduled / Rooms segmented control, icon buttons
+    /// for search / test devices / new call, and a floating Schedule button opening the same Voice call / Meeting room menu.
+    /// The phone chrome is rendered once and shown only at ≤ 767 px by CSS (like .m-back), so desktop is unchanged.
+    [Fact]
+    public void Phone_header_has_a_large_title_segmented_tabs_and_a_floating_Schedule_button()
+    {
+        using var ctx = CallsContext(new CallsApi { Upcoming = [Meeting("Weekly ICT", DateTime.UtcNow.AddHours(2))] }, phone: true);
+        var cut = Page(ctx);
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll(".sch-ev")));
+        Assert.Equal("Calls & Meetings", cut.Find(".cl-ptitle").TextContent.Trim());
+        Assert.Equal(["Recents", "Scheduled", "Rooms"], cut.FindAll(".calls-tabs button .cl-seg-short").Select(b => b.TextContent.Trim()).ToArray());
+        Assert.Equal("tablist", cut.Find(".calls-tabs").GetAttribute("role"));
+        Assert.Equal("true", cut.FindAll(".calls-tabs button")[1].GetAttribute("aria-selected"));
+        Assert.Equal(["Search calls", "Test devices", "New call"], cut.FindAll(".cl-pnav button").Select(b => b.GetAttribute("aria-label")).ToArray());
+
+        var fab = cut.Find("button.cl-pfab");
+        Assert.Equal("Schedule", fab.TextContent.Trim());
+        Assert.Equal("menu", fab.GetAttribute("aria-haspopup"));
+        fab.Click();
+        Assert.Equal(2, cut.FindAll(".sch-menu .sch-opt").Count);
+        cut.FindAll(".sch-opt")[0].Click();
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("section.vc-sheet")));
+    }
+
+    [Fact]
+    public void Phone_search_button_reveals_the_search_field()
+    {
+        using var ctx = CallsContext(new CallsApi(), phone: true);
+        var cut = Page(ctx);
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find(".cl-pnav")));
+        Assert.DoesNotContain("cl-psearch", cut.Find(".calls-v6").ClassList);
+        cut.Find(".cl-pnav button[aria-label='Search calls']").Click();
+        Assert.Contains("cl-psearch", cut.Find(".calls-v6").ClassList);
+    }
+
+    [Fact]
+    public void Phone_chrome_is_hidden_on_desktop_and_shown_by_the_phone_media_query()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null && !System.IO.Directory.Exists(Path.Combine(dir, "src", "IPop.Web"))) dir = Path.GetDirectoryName(dir);
+        var css = File.ReadAllText(Path.Combine(dir!, "src/IPop.Web/wwwroot/css/v6/calls.css"));
+        var desktop = css[..css.IndexOf("/* Phone (v3 gaps", StringComparison.Ordinal)];
+        Assert.Matches(@"\.cl-pnav, \.cl-ptitle, \.cl-pfab, \.cl-seg-short \{ display:none; \}", desktop);
+        var phone = css[css.IndexOf("/* Phone (v3 gaps", StringComparison.Ordinal)..];
+        Assert.Contains("@media (max-width: 767px)", phone);
+        foreach (var sel in new[] { ".cl-ptitle", ".cl-pfab", ".calls-tabs", ".cl-pnav" }) Assert.Contains(sel, phone);
+    }
+
     // ---------------------------------------------------------------- fixture
 
     private static BunitContext CallsContext(CallsApi api, bool phone)
