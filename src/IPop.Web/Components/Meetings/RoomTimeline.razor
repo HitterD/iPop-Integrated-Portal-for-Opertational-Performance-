@@ -16,7 +16,13 @@
 }
 <div class="tl-card @Accent">
     <div class="tl-h"><b>@Day.Name @DayLabel</b>
-        <span class="tl-lg" aria-hidden="true"><i class="lg-b"></i>Booked<i class="lg-s grad"></i>Your booking@if (today) {<i class="lg-n"></i><text>Now @Hm(nowM)</text>}</span>
+        <span class="tl-lg" aria-hidden="true">
+            <i class="lg-b"></i>Booked<i class="lg-s grad"></i>Your booking
+            @if (today)
+            {
+                <i class="lg-n"></i><text>Now @Hm(nowM)</text>
+            }
+        </span>
     </div>
     <div class="tl-scroll">
         <div class="tl-tags" aria-hidden="true">
@@ -28,7 +34,7 @@
         <div class="tl-track" @ref="track" role="group" aria-label="@($"{Day.Name} on {DayLabel}")">
             @for (var m = win.Start + 30 - (win.Start % 30); m < win.End; m += 30)
             {
-                <i class="tk @(m % 60 != 0 ? "half" : null)" style="left:@Pct(m)"></i>
+                <i class="tl-tk @(m % 60 != 0 ? "half" : null)" style="left:@Pct(m)"></i>
             }
             @if (today && nowM > win.Start)
             {

@@ -1,0 +1,140 @@
+@* Meeting scheduling v3 §2/§3 (mockup screens 2 "Book Kalosi" Fits/Clash and 3 "Repeat check"): one sheet for Use now
+   and Book. Title, date, start–end, quick chips, the room's day timeline, other free rooms, Repeat, the invite picker,
+   the lock note, "More options…" to the full Calendar form. Primary = "Book and join" when the start is now, else "Book". *@
+@namespace IPop.Web.Components.Meetings
+@using IPop.Application.MeetingRooms
+
+<div class="sheet2-scrim" @onclick="CloseAsync">
+    <section class="@($"sheet2 {Accent}")" role="dialog" aria-modal="true" aria-labelledby="bs-title" @onclick:stopPropagation="true" @onkeydown="KeyAsync">
+        @if (repeatCheck is { } rc)
+        {
+            <div class="sh-h">
+                <span class="sw"><i data-lucide="repeat"></i></span>
+                <span><b id="bs-title">@RepeatLabel · @rc.Total @(rc.Total == 1 ? "time" : "times")</b><small>@TitleOrDefault · @RoomName · @TimeText</small></span>
+                <button type="button" class="x" title="Close" aria-label="Close" @onclick="CloseAsync"><i data-lucide="x"></i></button>
+            </div>
+            <div class="sh-b">
+                @if (rc.Booked > 0)
+                {
+                    <div class="bs-sum">
+                        <i data-lucide="triangle-alert"></i>
+                        <span><b>@rc.Booked of @rc.Total dates are booked</b><span>Choose what to do with each clash. Free dates are booked as they are.</span></span>
+                        <span class="bar" aria-hidden="true">@foreach (var o in rc.Occurrences) {<i class="@(o.Free ? null : "x")"></i>}</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="bs-sum ok"><i data-lucide="circle-check"></i><span><b>All @rc.Total dates are free</b><span>Each date gets its own meeting and password.</span></span></div>
+                }
+                <div class="bs-rp-list">
+                    @foreach (var o in rc.Occurrences)
+                    {
+                        var occ = o;
+                        var choice = Choice(occ.Date);
+                        <div class="@($"rp {(occ.Free ? "" : "clashed")} {(failedDate == occ.Date ? "failed" : "")}")">
+                            @if (occ.Free)
+                            {
+                                <span class="ok"><i data-lucide="check"></i></span>
+                                <span class="dt"><b>@DayText(occ.Date)</b><span>@Hm(occ.StartAt)–@Hm(occ.EndAt)</span></span>
+                                <span class="rs">Free</span>
+                            }
+                            else
+                            {
+                                <span class="wn"><i data-lucide="triangle-alert"></i></span>
+                                <span class="dt"><b>@DayText(occ.Date)</b><span class="w">Booked by “@(occ.BookedBy ?? "Booked")” @Hm(occ.StartAt)–@Hm(occ.EndAt)</span></span>
+                                <span class="seg2" role="radiogroup" aria-label="@($"What to do on {DayText(occ.Date)}")">
+                                    <button type="button" role="radio" aria-checked="@(choice is null ? "true" : "false")" class="@(choice is null ? "on" : null)" @onclick="() => SetChoice(occ.Date, null)">Skip</button>
+                                    @if (occ.FreeRooms.FirstOrDefault() is { } alt)
+                                    {
+                                        <button type="button" role="radio" aria-checked="@(choice == alt ? "true" : "false")" class="@($"{(choice == alt ? "on " : "")}r-{alt}")" @onclick="() => SetChoice(occ.Date, alt)"><i class="sw"></i>Move to @MeetingKinds.RoomName(alt)</button>
+                                    }
+                                </span>
+                            }
+                        </div>
+                    }
+                </div>
+                @if (MovedTo.FirstOrDefault() is { } movedRoom)
+                {
+                    <p class="note-s"><i data-lucide="info"></i><span>Moved dates keep the title, people and agenda. @MeetingKinds.RoomName(movedRoom) is free at @TimeText on @(MovedTo.Count == 1 ? "that date" : "those dates").</span></p>
+                }
+                @if (error is not null) { <p class="bs-err" role="alert">@error</p> }
+            </div>
+            <div class="sh-f">
+                <button type="button" class="btn gray" @onclick="BackFromRepeat"><i data-lucide="chevron-left"></i>Back</button><span class="spacer"></span>
+                <button type="button" class="btn filled bs-go" disabled="@(busy || KeptCount == 0)" @onclick="SaveSeriesAsync">@(busy ? "Booking…" : RepeatButton)</button>
+            </div>
+        }
+        else
+        {
+            <div class="sh-h">
+                <span class="sw"><i data-lucide="video"></i></span>
+                <span><b id="bs-title">Book @RoomName</b><small>@RoomName · up to @Capacity people · Video on</small></span>
+                <button type="button" class="x" title="Close" aria-label="Close" @onclick="CloseAsync"><i data-lucide="x"></i></button>
+            </div>
+            <div class="sh-b">
+                <label class="fl"><span>Title</span><input class="tf bs-title" maxlength="200" placeholder="@DefaultTitle" @bind="title" @bind:event="oninput" /></label>
+                <div class="when">
+                    <div class="fl"><span>Date</span><AppDatePicker TValue="DateTime" Value="date" ValueChanged="SetDateAsync" Min="TodayLocal" Max="TodayLocal.AddDays(RoomBookingRules.MaxDaysAhead)" AriaLabel="Date" Class="bs-date" /></div>
+                    <div class="fl"><span>Start</span><AppTimePicker TValue="TimeOnly" Value="StartLocal" ValueChanged="SetStartTimeAsync" AriaLabel="Start" Class="bs-start" /></div>
+                    <span class="bs-dash">–</span>
+                    <div class="fl"><span>End</span><AppTimePicker TValue="TimeOnly" Value="EndLocal" ValueChanged="SetEndTimeAsync" AriaLabel="End" Class="bs-end" /></div>
+                    <span class="durt">@(Length > TimeSpan.Zero ? MeetingKinds.Duration(Length) : "")</span>
+                </div>
+                <div class="qcs" role="group" aria-label="Quick times">
+                    <button type="button" class="@($"qc now {(IsNowStart ? "on" : "")}")" aria-pressed="@(IsNowStart ? "true" : "false")" @onclick="NowChipAsync">Now</button>
+                    @foreach (var m in new[] { 30, 60, 120 })
+                    {
+                        var mm = m;
+                        var on = (int)Length.TotalMinutes == mm;
+                        <button type="button" class="@($"qc {(on ? "on" : "")}")" aria-pressed="@(on ? "true" : "false")" @onclick="() => LengthChipAsync(mm)">@(mm < 60 ? $"{mm}m" : $"{mm / 60}h")</button>
+                    }
+                    <button type="button" class="@($"qc {(IsUntil17 ? "on" : "")}")" aria-pressed="@(IsUntil17 ? "true" : "false")" @onclick="UntilChipAsync">Until 17:00</button>
+                </div>
+                @if (capHint is not null) { <p class="bs-cap" role="status"><i data-lucide="clock"></i>@capHint</p> }
+
+                @if (day is not null)
+                {
+                    <RoomTimeline Day="day" Start="start" End="end" Accent="@Accent" OnChange="OnTimelineAsync" Now="Now" Zone="Zone" />
+                }
+                else if (dayError)
+                {
+                    <div class="tl-card bs-day-err" role="status"><span>@RoomName's day can't be loaded right now.</span><button type="button" class="link" @onclick="LoadDayAsync">Retry</button></div>
+                }
+                else
+                {
+                    <div class="tl-card bs-day-loading" aria-busy="true"><div class="tl-track"></div></div>
+                }
+                @if (LimitText is { } lt) { <p class="bs-err bs-limit" role="alert">@lt</p> }
+
+                @if (otherFree.Count > 0)
+                {
+                    <div class="others"><span>Other rooms free at this time:</span>
+                        @foreach (var r in otherFree)
+                        {
+                            var rr = r;
+                            <button type="button" class="@($"rchip r-{rr.Key}")" @onclick="() => SwitchRoomAsync(rr.Key)"><i class="sw"></i>@rr.Name<em>· free</em></button>
+                        }
+                    </div>
+                }
+
+                <div class="ig">
+                    <div class="ir mid"><span class="tile t-gray"><i data-lucide="repeat"></i></span><span class="t"><b>Repeat</b></span>
+                        <AppSelect Value="@repeat" ValueChanged="SetRepeat" Options="RepeatOptions" Label="Repeat" CssClass="bs-repeat" /></div>
+                    <div class="ir"><span class="tile t-blue"><i data-lucide="user-plus"></i></span><span class="t"><b>Invite people</b>
+                        <InvitePicker Selected="people" SelectedChanged="v => people = v" From="start" To="end" RoomCapacity="Capacity" RoomName="@RoomName" Zone="Zone" /></span></div>
+                </div>
+                <p class="note-s"><i data-lucide="lock"></i><span>Room locks for this booking; invited people join directly; you get a password for guests.</span></p>
+                @if (error is not null) { <p class="bs-err" role="alert">@error</p> }
+            </div>
+            <div class="sh-f">
+                <button type="button" class="link bs-more" @onclick="MoreOptions">More options…</button><span class="spacer"></span>
+                <button type="button" class="btn gray" @onclick="CloseAsync">Cancel</button>
+                <button type="button" class="btn filled bs-go" disabled="@(!CanBook)" @onclick="BookAsync">
+                    @if (busy) { <text>Booking…</text> }
+                    else if (BooksNow) { <i data-lucide="video"></i><text>Book and join</text> }
+                    else { <text>Book</text> }
+                </button>
+            </div>
+        }
+    </section>
+</div>

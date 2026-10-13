@@ -11,7 +11,6 @@
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 @inject HttpClient Http
-@inject IPop.Web.Services.CalendarLinks CalLinks
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
     <symbol id="mrt-bean" viewBox="0 0 100 100"><path fill="#fff" d="M50 4c22 0 40 20 40 46S72 96 50 96 10 76 10 50 28 4 50 4Zm-6 10c-8 10-6 22 0 34s8 24-2 36c14-2 22-14 18-30-3-12-12-22-10-34 0-2-2-6-6-6Z"/></symbol>
@@ -300,54 +299,9 @@
     </div>
 }
 
-@if (useNow is { } un)
+@if (sheet is { } sh)
 {
-    var options = UseNowOptions(un);
-    <div class="mrt-scrim" @onclick="CloseUseNow">
-        <div class="mrt-sheet" role="dialog" aria-modal="true" aria-labelledby="mrt-sheet-t" @onclick:stopPropagation="true">
-            <div class="mrt-sheet-h"><span class="mrt-sw mrt-r-@un.Key"></span><div><b id="mrt-sheet-t">Use @un.Name now</b><small>@FreeLabel(un), starting @Hm(DateTime.UtcNow)</small></div></div>
-            <div class="mrt-sheet-b">
-                <div class="mrt-field"><span class="mrt-label">How long</span>
-                    @if (offerMinutes is { } offer)
-                    {
-                        <p class="mrt-offer">The next booking starts soon. You can use the room for @offer min.</p>
-                    }
-                    else if (options.Count > 0)
-                    {
-                        <div class="mrt-seg3" role="radiogroup" aria-label="How long">
-                            @foreach (var m in options)
-                            {
-                                var mm = m;
-                                <button type="button" role="radio" aria-checked="@(minutes == mm ? "true" : "false")" class="@(minutes == mm ? "on" : "")" @onclick="() => minutes = mm">@mm min</button>
-                            }
-                        </div>
-                    }
-                    else
-                    {
-                        <p class="mrt-offer">The next booking starts too soon to use the room now.</p>
-                    }
-                </div>
-                <div class="mrt-field"><label class="mrt-label" for="mrt-un-title">Title</label>
-                    <input id="mrt-un-title" class="mrt-input mrt-un-title" maxlength="200" @bind="useTitle" /></div>
-                <div class="mrt-field"><span class="mrt-label">Invite people (optional)</span>
-                    <div class="mrt-chips">
-                        @foreach (var person in invitees)
-                        {
-                            var pp = person;
-                            <span class="mrt-chip"><b style="background:@FaceColor(pp.Name)">@pp.Initials</b>@pp.Name<button type="button" aria-label="Remove @pp.Name" @onclick="() => invitees.Remove(pp)"><i data-lucide="x"></i></button></span>
-                        }
-                        <AppMemberPicker Placeholder="Add a name…" ValueChanged="AddInvitee" />
-                    </div>
-                </div>
-                <p class="mrt-note"><i data-lucide="lock"></i>The room is locked for this booking. Invited people join directly; you get a password to share with anyone else.</p>
-                @if (useError is not null) { <p class="mrt-sheet-err" role="alert">@useError</p> }
-                <div class="mrt-actions">
-                    <button type="button" class="mrt-btn mrt-btn-gray" @onclick="CloseUseNow">Cancel</button>
-                    <button type="button" class="mrt-btn mrt-btn-filled mrt-un-go" disabled="@(useBusy || (offerMinutes is null && options.Count == 0))" @onclick="UseNowAsync">@(useBusy ? "Booking…" : offerMinutes is { } o ? $"Use for {o} min" : "Book and join")</button>
-                </div>
-            </div>
-        </div>
-    </div>
+    <IPop.Web.Components.Meetings.BookingSheet RoomKey="@sh.Key" Mode="@sh.Mode" OnClose="CloseSheet" OnJoin="BookedNowAsync" OnBooked="BookedLaterAsync" />
 }
 
 @code {
@@ -392,15 +346,9 @@
     internal const string TooManyText = "Too many tries. Wait a few minutes and try again.";
     internal const string NoBookingText = "This room isn’t booked. Use it now or book it first.";
 
-    // Use now (v2 §1.2)
-    private MeetingRoomDto? useNow;
-    private int minutes = 60;
-    private int? offerMinutes;
-    private string useTitle = "";
-    private readonly List<MemberSearchRow> invitees = [];
-    private string? useError;
-    private bool useBusy;
-    private static readonly int[] UseNowDurations = [30, 60, 90];
+    // Use now / Book (v3 §2): one booking sheet.
+    private BookingSheetOpen? sheet;
+    private sealed record BookingSheetOpen(string Key, string Mode);
 
     // Recordings: delete (v2 §2.8) and the player's chat (v2 §2.10)
     private MeetingRecordingDto? deleting;
@@ -756,87 +704,32 @@
         }
     }
 
-    // ---------------------------------------------------------------- Use now
+    // ---------------------------------------------------------------- Use now / Book (booking sheet)
 
-    private void OpenUseNow(MeetingRoomDto room)
+    private void OpenUseNow(MeetingRoomDto room) => sheet = new(room.Key, IPop.Web.Components.Meetings.BookingSheet.ModeNow);
+
+    /// Book for later: the sheet opens on the next free slot of today.
+    private void Book(MeetingRoomDto room) => sheet = new(room.Key, IPop.Web.Components.Meetings.BookingSheet.ModeBook);
+
+    private void CloseSheet() => sheet = null;
+
+    /// "Book and join": the room is booked from now; reload the cards (busy meanwhile), then join.
+    private async Task BookedNowAsync(string key)
     {
-        useNow = room; useError = null; useBusy = false; invitees.Clear();
-        useTitle = $"{room.Name} meeting";
-        var options = UseNowOptions(room);
-        minutes = options.Contains(60) ? 60 : options.Count > 0 ? options[^1] : 60;
-        // None of 30/60/90 fit but at least 15 minutes do: offer exactly that (the server accepts 15..cap then).
-        offerMinutes = options.Count == 0 && FreeMinutes(room) is >= 15 and < 30 and var free ? free : null;
+        sheet = null;
+        joiningKey = key;                  // the card can't open Use now again while the rooms reload
+        StateHasChanged();
+        try { await LoadRoomsAsync(); }
+        finally { joiningKey = null; }
+        if (disposed) return;
+        await JoinAsync(key);
     }
 
-    /// Whole minutes until the next booking's lock window (StartAt − 10 min); null = no next booking.
-    private static int? FreeMinutes(MeetingRoomDto room) =>
-        room.Next is { } next ? (int)Math.Floor((ToUtc(next.StartAt).AddMinutes(-10) - DateTime.UtcNow).TotalMinutes) : null;
-
-    private void CloseUseNow() { if (!useBusy) useNow = null; }
-
-    /// 30/60/90 that end before the next booking's lock window (StartAt − 10 min); the server re-checks.
-    private static List<int> UseNowOptions(MeetingRoomDto room)
+    private async Task BookedLaterAsync(string key)
     {
-        if (room.Next is not { } next) return [.. UseNowDurations];
-        var free = (ToUtc(next.StartAt).AddMinutes(-10) - DateTime.UtcNow).TotalMinutes;
-        return UseNowDurations.Where(m => m <= free).ToList();
-    }
-
-    private void AddInvitee(MemberSearchRow? row)
-    {
-        if (row is null || invitees.Any(i => i.Nik == row.Nik)) return;
-        invitees.Add(row);
-    }
-
-    private async Task UseNowAsync()
-    {
-        if (useNow is not { } room || useBusy) return;
-        useBusy = true; useError = null;
-        var key = room.Key;
-        try
-        {
-            var body = new { minutes = offerMinutes ?? minutes, title = string.IsNullOrWhiteSpace(useTitle) ? null : useTitle.Trim(), attendeeNiks = invitees.Select(i => i.Nik).ToArray() };
-            using var res = await Auth.SendAsync(HttpMethod.Post, $"/api/meeting-rooms/{key}/use-now", body);
-            if (disposed) return;
-            if (res.IsSuccessStatusCode)
-            {
-                useNow = null; useBusy = false;
-                joiningKey = key;                  // the card can't open Use now again while the rooms reload
-                StateHasChanged();
-                try { await LoadRoomsAsync(); }
-                finally { joiningKey = null; }
-                if (disposed) return;
-                await JoinAsync(key);
-                return;
-            }
-            var (code, max) = await ReadUseNowErrorAsync(res);
-            if (code == "room_booked" && max is >= 15 && max != offerMinutes) offerMinutes = max;
-            else if (code == "room_booked") { offerMinutes = null; useError = "Someone just booked this room. Pick another room or book a later time."; }
-            else if (code == "invalid_minutes") useError = "Choose 30, 60 or 90 minutes.";
-            else useError = "The room couldn't be booked right now. Try again.";
-        }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
-        {
-            useError = "The room couldn't be booked right now. Try again.";
-        }
-        finally
-        {
-            useBusy = false;
-            if (!disposed) StateHasChanged();
-        }
-    }
-
-    private static async Task<(string? Code, int? Max)> ReadUseNowErrorAsync(HttpResponseMessage res)
-    {
-        try
-        {
-            var err = await System.Net.Http.Json.HttpContentJsonExtensions.ReadFromJsonAsync<System.Text.Json.JsonElement>(res.Content);
-            if (err.ValueKind != System.Text.Json.JsonValueKind.Object) return (null, null);
-            var code = err.TryGetProperty("code", out var c) && c.ValueKind == System.Text.Json.JsonValueKind.String ? c.GetString() : null;
-            int? max = err.TryGetProperty("maxMinutes", out var m) && m.ValueKind == System.Text.Json.JsonValueKind.Number && m.TryGetInt32(out var mm) ? mm : null;
-            return (code, max);
-        }
-        catch (Exception e) when (e is System.Text.Json.JsonException or NotSupportedException) { return (null, null); }
+        sheet = null;
+        await LoadRoomsAsync();
+        if (!disposed) StateHasChanged();
     }
 
     private async Task FocusAsync(string selector)
@@ -853,9 +746,6 @@
         try { await JS.InvokeVoidAsync("ipopRooms.download", url + "&download=1"); }
         catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException) { }
     }
-
-    private void Book(MeetingRoomDto room) =>
-        Nav.NavigateTo(CalLinks.NewMeeting(location: HallBooking.Location(room.Name), from: "From Meeting Rooms"));
 
     // ---------------------------------------------------------------- presentation
 

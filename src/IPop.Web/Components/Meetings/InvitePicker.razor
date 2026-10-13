@@ -123,7 +123,7 @@
                     <span><b>Add @pg.People.Count @(pg.People.Count == 1 ? "person" : "people") from @pg.Group.Name?</b>
                         @if (already > 0) { <span>@already @(already == 1 ? "is" : "are") already invited</span> }</span>
                     <button type="button" class="tb ip-toast-no" @onclick="() => pending = null">Cancel</button>
-                    <button type="button" class="tb p ip-toast-yes" disabled="@(fresh == 0)" @onclick="ConfirmGroupAsync">Add @fresh</button>
+                    <button type="button" class="tb p ip-toast-yes" disabled="@(fresh == 0)" @onclick="ConfirmGroupAsync">Add @pg.People.Count</button>
                 </div>
             }
         </div>

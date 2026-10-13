@@ -145,8 +145,8 @@
 .tl-tags .lucide, .tl-tags svg { width:11px; height:11px; color:var(--ink-3); }
 .tl-track { position:relative; height:58px; border-radius:10px; background:var(--surface); box-shadow:inset 0 0 0 .5px var(--line-2); touch-action:none; user-select:none; }
 [data-theme="dark"] .tl-track { background:#2c2c2e; }
-.tl-track .tk { position:absolute; top:0; bottom:0; width:.5px; background:var(--line-2); }
-.tl-track .tk.half { top:38px; opacity:.9; }
+.tl-track .tl-tk { position:absolute; top:0; bottom:0; width:.5px; background:var(--line-2); }
+.tl-track .tl-tk.half { top:38px; opacity:.9; }
 .tl-past { position:absolute; left:0; top:0; bottom:0; border-radius:10px 0 0 10px; background:rgba(118,118,128,.09); }
 .tl-busy { position:absolute; top:6px; bottom:6px; border-radius:8px; overflow:hidden;
   background:repeating-linear-gradient(135deg, rgba(118,118,128,.22) 0 4px, rgba(118,118,128,.08) 4px 8px); box-shadow:inset 0 0 0 1px rgba(118,118,128,.35); }
@@ -170,7 +170,7 @@
 .tl-clash > .lucide, .tl-clash > svg { color:var(--danger); width:20px; height:20px; flex:none; }
 .tl-clash b { display:block; font-size:13.5px; color:var(--danger); font-weight:650; }
 .tl-clash span span { display:block; font-size:12px; color:var(--ink-3); }
-.tl-try { margin-left:auto; height:30px; padding:0 12px; border:0; border-radius:999px; background:var(--danger); color:#fff; font:inherit; font-size:12.5px; font-weight:600; white-space:nowrap; cursor:pointer; }
+.tl-clash .tl-try, .sheet2 .tl-clash .tl-try { margin-left:auto; height:30px; padding:0 12px; border:0; border-radius:999px; background:var(--danger); color:#fff; font:inherit; font-size:12.5px; font-weight:600; white-space:nowrap; cursor:pointer; }
 
 /* ---------- invite picker (v3 §4, mockup screen 5) ---------- */
 .ip { position:relative; }

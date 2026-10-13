@@ -108,7 +108,7 @@ public class InvitePickerUiTests
 
         cut.WaitForAssertion(() => Assert.Contains("Add 4 people from ICT IPOP?", cut.Find(".ip-toast").TextContent));
         Assert.Contains("1 is already invited", cut.Find(".ip-toast").TextContent);
-        Assert.Equal("Add 3", cut.Find(".ip-toast-yes").TextContent.Trim());
+        Assert.Equal("Add 4", cut.Find(".ip-toast-yes").TextContent.Trim());   // mockup copy: the group size; duplicates are skipped
         Assert.Null(sel);                                // nothing added before confirming
 
         cut.Find(".ip-toast-yes").Click();

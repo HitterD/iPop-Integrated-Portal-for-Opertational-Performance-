@@ -138,8 +138,10 @@ public class MeetingRoomsTabV2Tests
 
     // ---------------------------------------------------------------- Use now
 
+    // v3: Use now and Book open the one booking sheet (BookingSheetTests covers the sheet itself).
+
     [Fact]
-    public void Use_now_offers_30_60_90_by_default_and_books_then_joins()
+    public void Use_now_opens_the_booking_sheet_and_books_then_joins_with_endAt()
     {
         var api = new Api { RoomList = Rooms() };
         api.UseNowAnswers.Enqueue((HttpStatusCode.OK, $$"""{"meetingId":"{{Guid.NewGuid()}}","join":null}"""));
@@ -148,56 +150,39 @@ public class MeetingRoomsTabV2Tests
         cut.WaitForAssertion(() => Assert.Equal(5, cut.FindAll(".mrt-room").Count));
 
         cut.FindAll(".mrt-room")[4].QuerySelector(".mrt-join")!.Click();
-        Assert.Equal("Use Toraja now", cut.Find("#mrt-sheet-t").TextContent);
-        Assert.Equal(["30 min", "60 min", "90 min"], cut.FindAll(".mrt-seg3 button").Select(b => b.TextContent.Trim()).ToArray());
-        Assert.Equal("60 min", cut.Find(".mrt-seg3 button.on").TextContent.Trim());
-        Assert.Equal("Toraja meeting", cut.Find(".mrt-un-title").GetAttribute("value"));
-        Assert.NotNull(cut.Find(".mrt-sheet .member-picker"));                          // the shared people picker
+        cut.WaitForAssertion(() => Assert.Equal("Book and join", cut.Find(".sheet2 .bs-go").TextContent.Trim()));
+        Assert.Equal("Book Toraja", cut.Find("#bs-title").TextContent);
+        Assert.Empty(cut.FindAll(".mrt-seg3"));                                      // the 30/60/90 dialog is gone
+        Assert.NotNull(cut.Find(".sheet2 .ip"));                                      // the invite picker
 
-        cut.FindAll(".mrt-seg3 button")[2].Click();
-        cut.Find(".mrt-un-title").Change("Quick sync");
-        cut.Find(".mrt-un-go").Click();
+        cut.Find(".bs-title").Input("Quick sync");
+        cut.Find(".bs-go").Click();
 
         cut.WaitForAssertion(() => Assert.Equal(["toraja"], api.Joins));
         var body = JsonDocument.Parse(api.UseNowBodies.Single()).RootElement;
-        Assert.Equal(90, body.GetProperty("minutes").GetInt32());
+        Assert.True(body.TryGetProperty("endAt", out _));
+        Assert.False(body.TryGetProperty("minutes", out _));
         Assert.Equal("Quick sync", body.GetProperty("title").GetString());
         Assert.Equal(0, body.GetProperty("attendeeNiks").GetArrayLength());
         Assert.Equal(["toraja"], api.UseNowRooms);
-        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll(".mrt-sheet")));
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll(".sheet2")));
     }
 
     [Fact]
-    public void Use_now_only_offers_durations_that_fit_before_the_next_booking()
-    {
-        var rooms = Rooms();
-        // Next booking in 75 min: its lock window opens in 65 min, so 30 and 60 fit, 90 does not.
-        rooms[4] = Room("toraja", "Toraja", "free", next: Booking("Board", Now.AddMinutes(75), Now.AddMinutes(135)));
-        using var ctx = Context(new Api { RoomList = rooms });
-        var cut = ctx.Render<MeetingRoomsTab>(Slow);
-        cut.WaitForAssertion(() => Assert.Equal(5, cut.FindAll(".mrt-room").Count));
-        cut.FindAll(".mrt-room")[4].QuerySelector(".mrt-join")!.Click();
-        Assert.Equal(["30 min", "60 min"], cut.FindAll(".mrt-seg3 button").Select(b => b.TextContent.Trim()).ToArray());
-        Assert.Equal("60 min", cut.Find(".mrt-seg3 button.on").TextContent.Trim());
-    }
-
-    [Fact]
-    public void Use_now_refused_with_max_minutes_offers_the_shorter_booking()
+    public void Use_now_refused_with_max_minutes_shortens_the_booking_in_the_sheet()
     {
         var api = new Api { RoomList = Rooms() };
         api.UseNowAnswers.Enqueue((HttpStatusCode.Conflict, """{"code":"room_booked","maxMinutes":25}"""));
-        api.UseNowAnswers.Enqueue((HttpStatusCode.OK, $$"""{"meetingId":"{{Guid.NewGuid()}}","join":null}"""));
         using var ctx = Context(api);
         var cut = ctx.Render<MeetingRoomsTab>(Slow);
         cut.WaitForAssertion(() => Assert.Equal(5, cut.FindAll(".mrt-room").Count));
         cut.FindAll(".mrt-room")[4].QuerySelector(".mrt-join")!.Click();
-        cut.Find(".mrt-un-go").Click();
+        cut.WaitForAssertion(() => Assert.False(cut.Find(".bs-go").HasAttribute("disabled")));
+        cut.Find(".bs-go").Click();
 
-        cut.WaitForAssertion(() => Assert.Equal("Use for 25 min", cut.Find(".mrt-un-go").TextContent.Trim()));
+        cut.WaitForAssertion(() => Assert.Contains("The next booking starts soon.", cut.Find(".bs-err").TextContent));
+        Assert.Equal("25 min", cut.Find(".durt").TextContent.Trim());
         Assert.Empty(api.Joins);
-        cut.Find(".mrt-un-go").Click();
-        cut.WaitForAssertion(() => Assert.Equal(["toraja"], api.Joins));
-        Assert.Equal([60, 25], api.UseNowBodies.Select(b => JsonDocument.Parse(b).RootElement.GetProperty("minutes").GetInt32()).ToArray());
     }
 
     [Fact]
@@ -209,9 +194,26 @@ public class MeetingRoomsTabV2Tests
         var cut = ctx.Render<MeetingRoomsTab>(Slow);
         cut.WaitForAssertion(() => Assert.Equal(5, cut.FindAll(".mrt-room").Count));
         cut.FindAll(".mrt-room")[4].QuerySelector(".mrt-join")!.Click();
-        cut.Find(".mrt-un-go").Click();
-        cut.WaitForAssertion(() => Assert.Equal("Someone just booked this room. Pick another room or book a later time.", cut.Find(".mrt-sheet-err").TextContent.Trim()));
+        cut.WaitForAssertion(() => Assert.False(cut.Find(".bs-go").HasAttribute("disabled")));
+        cut.Find(".bs-go").Click();
+        cut.WaitForAssertion(() => Assert.Equal("Someone just booked this room. Pick another room or book a later time.", cut.Find(".bs-err").TextContent.Trim()));
         Assert.Empty(api.Joins);
+    }
+
+    [Fact]
+    public void Book_opens_the_sheet_in_book_mode_and_cancel_closes_it()
+    {
+        var api = new Api { RoomList = Rooms() };
+        using var ctx = Context(api);
+        var cut = ctx.Render<MeetingRoomsTab>(Slow);
+        cut.WaitForAssertion(() => Assert.Equal(5, cut.FindAll(".mrt-room").Count));
+        cut.FindAll(".mrt-room")[0].QuerySelector(".mrt-mini")!.Click();
+        cut.WaitForAssertion(() => Assert.Equal("Book Robusta", cut.Find("#bs-title").TextContent));
+        Assert.Equal("Book", cut.Find(".bs-go").TextContent.Trim());
+        var nav = ctx.Services.GetRequiredService<Bunit.TestDoubles.BunitNavigationManager>();
+        Assert.DoesNotContain("/calendar", nav.Uri);                                  // no longer a link to Calendar
+        cut.FindAll(".sh-f .btn.gray").Single(b => b.TextContent.Trim() == "Cancel").Click();
+        Assert.Empty(cut.FindAll(".sheet2"));
     }
 
     // ---------------------------------------------------------------- recordings
@@ -451,41 +453,6 @@ public class MeetingRoomsTabV2Tests
     // ---------------------------------------------------------------- review fix round 1
 
     [Fact]
-    public void Use_now_with_15_to_29_minutes_left_offers_that_time_locally()
-    {
-        var rooms = Rooms();
-        // Next booking in 35 min: its lock window opens in ~25 min, so none of 30/60/90 fit.
-        rooms[4] = Room("toraja", "Toraja", "free", next: Booking("Board", Now.AddMinutes(35).AddSeconds(30), Now.AddMinutes(95)));
-        var api = new Api { RoomList = rooms };
-        api.UseNowAnswers.Enqueue((HttpStatusCode.OK, $$"""{"meetingId":"{{Guid.NewGuid()}}","join":null}"""));
-        api.JoinAnswers.Enqueue((HttpStatusCode.ServiceUnavailable, """{"code":"media_unavailable"}"""));
-        using var ctx = Context(api);
-        var cut = ctx.Render<MeetingRoomsTab>(Slow);
-        cut.WaitForAssertion(() => Assert.Equal(5, cut.FindAll(".mrt-room").Count));
-        cut.FindAll(".mrt-room")[4].QuerySelector(".mrt-join")!.Click();
-
-        Assert.Empty(cut.FindAll(".mrt-seg3 button"));
-        var go = cut.Find(".mrt-un-go");
-        Assert.Equal("Use for 25 min", go.TextContent.Trim());
-        Assert.False(go.HasAttribute("disabled"));
-        go.Click();
-        cut.WaitForAssertion(() => Assert.Single(api.UseNowBodies));
-        Assert.Equal(25, JsonDocument.Parse(api.UseNowBodies.Single()).RootElement.GetProperty("minutes").GetInt32());
-    }
-
-    [Fact]
-    public void Use_now_with_under_15_minutes_left_cannot_book()
-    {
-        var rooms = Rooms();
-        rooms[4] = Room("toraja", "Toraja", "free", next: Booking("Board", Now.AddMinutes(20), Now.AddMinutes(80)));
-        using var ctx = Context(new Api { RoomList = rooms });
-        var cut = ctx.Render<MeetingRoomsTab>(Slow);
-        cut.WaitForAssertion(() => Assert.Equal(5, cut.FindAll(".mrt-room").Count));
-        cut.FindAll(".mrt-room")[4].QuerySelector(".mrt-join")!.Click();
-        Assert.True(cut.Find(".mrt-un-go").HasAttribute("disabled"));
-    }
-
-    [Fact]
     public void Pin_input_keeps_only_six_digits_in_the_field_and_backspace_follows()
     {
         using var ctx = Context(new Api { RoomList = Rooms() });
@@ -550,9 +517,10 @@ public class MeetingRoomsTabV2Tests
         var cut = ctx.Render<MeetingRoomsTab>(Slow);
         cut.WaitForAssertion(() => Assert.Equal(5, cut.FindAll(".mrt-room").Count));
         cut.FindAll(".mrt-room")[4].QuerySelector(".mrt-join")!.Click();
+        cut.WaitForAssertion(() => Assert.False(cut.Find(".bs-go").HasAttribute("disabled")));
         api.RoomsGate = new TaskCompletionSource();               // the reload after booking is slow
-        cut.Find(".mrt-un-go").Click();
-        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll(".mrt-sheet")));
+        cut.Find(".bs-go").Click();
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll(".sheet2")));
         Assert.True(cut.FindAll(".mrt-room")[4].QuerySelector(".mrt-join")!.HasAttribute("disabled"));
         api.RoomsGate.SetResult();
         cut.WaitForAssertion(() => Assert.Equal(["toraja"], api.Joins));
@@ -613,6 +581,8 @@ public class MeetingRoomsTabV2Tests
         ctx.Services.AddSingleton(new ConfirmService());
         ctx.Services.AddSingleton<PeopleLinks>();
         ctx.Services.AddSingleton<CalendarLinks>();
+        ctx.Services.AddSingleton(new InviteApi(auth));
+        ctx.Services.AddSingleton(new MeetingDraftHandoff());
         ctx.Services.AddScoped<PhotoViewerState>();
         ctx.Services.AddScoped<OverlayStack>();
         return ctx;
@@ -650,6 +620,15 @@ public class MeetingRoomsTabV2Tests
                 return Json(RoomList);
             }
             if (request.Method == HttpMethod.Get && path == "/api/meeting-rooms/recordings") return Json(Recordings);
+            if (request.Method == HttpMethod.Get && path.EndsWith("/availability"))
+            {
+                var name = RoomList.FirstOrDefault(r => r.Key == seg[^2])?.Name ?? seg[^2];
+                var today = DateOnly.FromDateTime(DateTime.Now);
+                var midnight = today.ToDateTime(TimeOnly.MinValue, DateTimeKind.Local).ToUniversalTime();
+                return Json(new RoomDayDto(seg[^2], name, 20, today, midnight, midnight.AddDays(1), []));
+            }
+            if (request.Method == HttpMethod.Get && path == "/api/meeting-rooms/free") return Json(Array.Empty<RoomFreeDto>());
+            if (path == "/api/invite/suggestions") return Json(new InviteSuggestionsDto([], [], [], []));
             if (request.Method == HttpMethod.Get && path.StartsWith("/api/meeting-rooms/recordings/") && path.EndsWith("/chat"))
                 return Raw(HttpStatusCode.OK, Chat.TryGetValue(Guid.Parse(seg[^2]), out var c) ? c : "[]");
             if (request.Method == HttpMethod.Delete && path.StartsWith("/api/meeting-rooms/recordings/"))
