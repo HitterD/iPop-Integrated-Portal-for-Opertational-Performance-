@@ -61,7 +61,6 @@
                                 </span>
                                 @if (moveMenu == occ.Date)
                                 {
-                                    <div class="bs-move-scrim" @onclick="CloseMoveMenu"></div>
                                     <div class="bs-move-menu" role="menu" aria-label="@($"Move {DayText(occ.Date)} to")" @onkeydown="MoveMenuKeyAsync" @onkeydown:stopPropagation="true">
                                         <div class="bs-move-h">Free at @Hm(occ.StartAt)–@Hm(occ.EndAt)</div>
                                         @for (var ri = 0; ri < occ.FreeRooms.Count; ri++)

@@ -60,7 +60,7 @@
         }
         <button type="button" class="btn-primary" @onclick="FocusCallPicker"><i data-lucide="phone"></i>New call</button>
     </div>
-    @if (!mDetail)
+    @if (tab != "rooms" && !mDetail)
     {
         <button type="button" class="cl-pfab" aria-haspopup="menu" aria-expanded="@(fabMenu ? "true" : "false")" @onclick="() => fabMenu = !fabMenu"><i data-lucide="calendar-plus"></i>Schedule</button>
         @if (fabMenu)

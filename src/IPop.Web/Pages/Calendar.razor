@@ -759,7 +759,6 @@
                                 </span>
                                 @if (roomMoveMenu == occ.Date)
                                 {
-                                    <div class="cal-move-scrim" @onclick="() => roomMoveMenu = null"></div>
                                     <div class="cal-move-menu" role="menu" aria-label="@($"Move {occ.Date:ddd d MMM} to")" @onkeydown="RoomMoveKey" @onkeydown:stopPropagation="true">
                                         <div class="cal-move-h">Free at @occ.StartAt.ToLocalTime().ToString("HH:mm")–@occ.EndAt.ToLocalTime().ToString("HH:mm")</div>
                                         @foreach (var room in occ.FreeRooms)

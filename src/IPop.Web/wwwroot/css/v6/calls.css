@@ -566,20 +566,22 @@ html.callx-resizing, html.callx-resizing * { cursor:nwse-resize !important; }
 .sheet2 .seg2 button .sw { width:10px; height:10px; border-radius:3px; background:radial-gradient(120% 120% at 0% 0%, var(--a), var(--b)); }
 .sheet2 .seg2 button.on { background:var(--surface); color:var(--ink); font-weight:650; box-shadow:0 2px 6px rgba(0,0,0,.08); }
 [data-theme="dark"] .sheet2 .seg2 button.on { background:#636366; }
-/* "Move to…" menu (v3 gaps): every room free on a clashing date, with its colour swatch. */
+/* "Move to…" (v3 gaps): every room free on a clashing date, as an in-flow choice row under that date (a popup was
+   clipped by the list's rounded overflow and the sheet's scroller). */
 .sheet2 .seg2 .bs-move .bs-move-cv { width:12px; height:12px; opacity:.6; margin-left:1px; }
-.sheet2 .bs-move-scrim { position:fixed; inset:0; z-index:5; }
-.sheet2 .bs-move-menu { position:absolute; z-index:6; right:12px; top:calc(100% - 4px); min-width:190px; padding:5px; border-radius:13px;
-  background:color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter:blur(24px) saturate(1.8); -webkit-backdrop-filter:blur(24px) saturate(1.8);
-  box-shadow:0 14px 34px -10px rgba(0,0,0,.3), 0 0 0 .5px var(--line-2); animation:sheet2-fade .14s ease; }
-[data-theme="dark"] .sheet2 .bs-move-menu { background:rgba(44,44,46,.94); }
-.sheet2 .bs-move-h { font-size:11.5px; font-weight:600; color:var(--ink-3); padding:5px 9px 4px; }
-.sheet2 .bs-move-opt { width:100%; display:flex; align-items:center; gap:9px; height:36px; padding:0 9px; border-radius:8px; font-size:13.5px; font-weight:550; text-align:left; }
-.sheet2 .bs-move-opt:hover, .sheet2 .bs-move-opt:focus-visible { background:var(--tray); outline:none; }
+.sheet2 .seg2 .bs-move[aria-expanded="true"] .bs-move-cv { transform:rotate(180deg); }
+.sheet2 .rp:has(.bs-move-menu) { flex-wrap:wrap; }
+.sheet2 .bs-move-menu { flex:1 1 100%; display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:2px 0 4px 36px; animation:sheet2-fade .14s ease; }
+.sheet2 .bs-move-h { flex:1 1 100%; font-size:11.5px; font-weight:600; color:var(--ink-3); }
+.sheet2 .bs-move-opt { display:inline-flex; align-items:center; gap:7px; height:30px; padding:0 11px 0 7px; border-radius:999px; font-size:12.5px; font-weight:600;
+  background:var(--surface); box-shadow:inset 0 0 0 1px var(--line-2); }
+[data-theme="dark"] .sheet2 .bs-move-opt { background:transparent; }
+.sheet2 .bs-move-opt:hover { background:var(--tray); }
+.sheet2 .bs-move-opt:focus-visible { outline:none; box-shadow:inset 0 0 0 2px var(--info); }
+.sheet2 .bs-move-opt[aria-checked="true"] { background:var(--ink); color:var(--surface); box-shadow:none; }
 .sheet2 .bs-move-opt .sw { width:16px; height:16px; border-radius:5px; flex:none; background:radial-gradient(120% 120% at 0% 0%, var(--a), var(--b)); }
-.sheet2 .bs-move-opt .bs-move-ok { margin-left:auto; width:15px; height:15px; color:var(--accent); }
-.sheet2.bottom .bs-move-menu { left:48px; right:12px; }
-.sheet2.bottom .bs-move-opt { height:44px; }
+.sheet2 .bs-move-opt .bs-move-ok { width:13px; height:13px; }
+.sheet2.bottom .bs-move-opt { height:40px; }
 
 /* Phone (v3 Task 10, mockup "Phone"): BookingSheet adds .bottom when ipop.mobile.isMobile (max 767 px, the app's phone
    breakpoint) says so: a bottom sheet with a grab handle and safe-area padding; the timeline scrolls sideways on a
@@ -729,15 +731,15 @@ html.callx-resizing, html.callx-resizing * { cursor:nwse-resize !important; }
 /* Phone (v3 gaps): large title, full-width segmented Recents / Scheduled / Rooms, icon buttons, floating Schedule.
    (0,3,0)+ selectors: css/mobile/calls.css loads later with (0,2,0)/(0,3,0) toolbar rules. */
 @media (max-width: 767px) {
-  .calls-v6 { position:relative; }
   /* The page's own large title replaces the bar title (iOS large-title pattern); logo, search, bell stay. */
   .main:has(> .calls-v6) .v6-topbar .tb-title h1, body:has(.calls-v6:not(.m-detail)) .v6-topbar .tb-title h1 { visibility:hidden; }
-  .calls-v6 > .cl-pnav { display:flex; align-items:center; gap:4px; position:absolute; top:10px; right:10px; z-index:2; }
-  .calls-v6 > .cl-pnav .cl-sp { display:none; }
+  /* Mockup .pnav: icon row above the large title, right-aligned. */
+  .calls-v6 > .cl-pnav { display:flex; align-items:center; gap:4px; padding:4px 10px 0; flex:none; }
+  .calls-v6 > .cl-pnav .cl-sp { flex:1; }
   .calls-v6 > .cl-pnav button { width:40px; height:40px; border:0; border-radius:50%; background:none; display:grid; place-items:center; color:var(--accent); cursor:pointer; -webkit-tap-highlight-color:transparent; }
   .calls-v6 > .cl-pnav button:active, .calls-v6 > .cl-pnav button[aria-pressed="true"] { background:var(--fill); }
   .calls-v6 > .cl-pnav .lucide, .calls-v6 > .cl-pnav svg { width:21px; height:21px; }
-  .calls-v6 > .cl-ptitle { display:block; margin:0; padding:12px 140px 8px 18px; font-size:31px; font-weight:800; letter-spacing:-.03em; line-height:1.15; color:var(--ink); }
+  .calls-v6 > .cl-ptitle { display:block; margin:0; padding:0 18px 10px; font-size:31px; font-weight:800; letter-spacing:-.03em; line-height:1.15; color:var(--ink); }
   .calls-v6.m-detail > .cl-ptitle, .calls-v6.m-detail > .cl-pnav { display:none; }
 
   .calls-v6 .calls-toolbar.calls-toolbar { padding:0 16px 12px; gap:10px; }

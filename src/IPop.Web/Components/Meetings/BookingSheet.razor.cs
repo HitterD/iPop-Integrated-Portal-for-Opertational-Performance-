@@ -352,7 +352,6 @@ public partial class BookingSheet : IDisposable
         focusMove = moveMenu is not null;
     }
 
-    private void CloseMoveMenu() => moveMenu = null;
     private void PickMove(DateOnly d, string room) => SetChoice(d, room);
 
     private async Task MoveMenuKeyAsync(KeyboardEventArgs e)
@@ -361,8 +360,8 @@ public partial class BookingSheet : IDisposable
         switch (e.Key)
         {
             case "Escape": moveMenu = null; return;
-            case "ArrowDown": moveFocus = (moveFocus + 1) % Math.Max(1, n); break;
-            case "ArrowUp": moveFocus = (moveFocus - 1 + n) % Math.Max(1, n); break;
+            case "ArrowDown" or "ArrowRight": moveFocus = (moveFocus + 1) % Math.Max(1, n); break;
+            case "ArrowUp" or "ArrowLeft": moveFocus = (moveFocus - 1 + n) % Math.Max(1, n); break;
             case "Home": moveFocus = 0; break;
             case "End": moveFocus = Math.Max(0, n - 1); break;
             default: return;

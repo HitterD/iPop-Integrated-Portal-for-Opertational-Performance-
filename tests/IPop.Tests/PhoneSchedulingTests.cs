@@ -195,6 +195,16 @@ public class PhoneSchedulingTests
         Assert.Equal(2, cut.FindAll(".sch-menu .sch-opt").Count);
         cut.FindAll(".sch-opt")[0].Click();
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("section.vc-sheet")));
+        cut.Find(".vc-cancel").Click();
+
+        cut.FindAll(".calls-tabs button")[0].Click();                      // Recents keeps it
+        Assert.Single(cut.FindAll(".cl-pfab"));
+        // QA: on Rooms the floating button covered a card's Use now; the cards book there themselves.
+        // (MeetingRoomsTab needs services this harness lacks, so the rule is checked in the markup.)
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null && !System.IO.Directory.Exists(Path.Combine(dir, "src", "IPop.Web"))) dir = Path.GetDirectoryName(dir);
+        var razor = File.ReadAllText(Path.Combine(dir!, "src/IPop.Web/Pages/Calls.razor"));
+        Assert.Matches(@"@if \(tab != ""rooms"" && !mDetail\)\s*\{\s*<button type=""button"" class=""cl-pfab""", razor);
     }
 
     [Fact]

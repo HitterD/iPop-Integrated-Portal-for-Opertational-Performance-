@@ -840,14 +840,16 @@ body:has(.cs-sheet) .confirm-center { z-index: 1071; }
 .cal-rcheck .cal-move { display: inline-flex; align-items: center; gap: 5px; }
 .cal-rcheck .cal-move svg.lucide { width: 12px; height: 12px; opacity: .6; }
 .cal-rcheck .mk-sw { width: 12px; height: 12px; border-radius: 4px; flex: none; background: radial-gradient(120% 120% at 0% 0%, var(--a), var(--b)); }
-.cal-move-scrim { position: fixed; inset: 0; z-index: 5; }
-.cal-move-menu { position: absolute; z-index: 6; right: 0; top: calc(100% - 2px); min-width: 180px; padding: 5px; border-radius: 13px; background: var(--surface);
-  box-shadow: 0 14px 34px -10px rgba(0,0,0,.3), 0 0 0 .5px var(--line-2); }
-.cal-move-h { font-size: 11.5px; font-weight: 600; color: var(--ink-3); padding: 5px 9px 4px; }
-.cal-move-opt { width: 100%; display: flex; align-items: center; gap: 9px; height: 36px; padding: 0 9px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 13.5px; font-weight: 550; color: var(--ink); text-align: left; cursor: pointer; }
-.cal-move-opt:hover, .cal-move-opt:focus-visible { background: var(--tray); outline: none; }
+.cal-rcheck-row:has(.cal-move-menu) { flex-wrap: wrap; }
+.cal-move-menu { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 2px; }
+.cal-move-h { flex: 1 1 100%; font-size: 11.5px; font-weight: 600; color: var(--ink-3); }
+.cal-move-opt { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 11px 0 7px; border: 0; border-radius: 999px; background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line-2); font: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink); cursor: pointer; }
+.cal-move-opt:hover { background: var(--tray); }
+.cal-move-opt:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--accent); }
+.cal-move-opt[aria-checked="true"] { background: var(--ink); color: var(--surface); box-shadow: none; }
 .cal-move-opt .mk-sw { width: 16px; height: 16px; border-radius: 5px; }
-.cal-move-opt .cal-move-ok { margin-left: auto; width: 15px; height: 15px; color: var(--accent); }
+.cal-move-opt .cal-move-ok { width: 13px; height: 13px; }
 /* Phone (v3 Task 10, mockup "6 · New event (bottom sheet)"): the drawer is already a bottom sheet in mobile/calendar.css;
    here the sheet gets the grab handle and rounded top, 2×2 kind tiles, sideways room tiles and timeline (960 px track,
    room-timeline.js scrolls the selection into view), and a full-height meeting detail. Same 767 px phone breakpoint. */
