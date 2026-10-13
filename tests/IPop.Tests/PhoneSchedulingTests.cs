@@ -106,6 +106,28 @@ public class PhoneSchedulingTests
         Assert.EndsWith(target, nav.Uri);
     }
 
+    /// QA Task 11: Edit in the Scheduled detail opened the Calendar's read-only detail, so the organizer had to press Edit
+    /// again; it now asks Calendar to open the form (edit=1). Open in Calendar keeps the detail.
+    [Theory]
+    [InlineData(".act.edit", true)]
+    [InlineData(".act.calendar", false)]
+    public void Edit_opens_the_Calendar_form_and_Open_in_Calendar_the_detail(string button, bool edit)
+    {
+        var start = DateTime.UtcNow.AddHours(2);
+        var m = Meeting("Weekly ICT", start);
+        var evId = Guid.NewGuid();
+        var api = new CallsApi { Upcoming = [m], EventRef = (m.Id, evId, start) };
+        using var ctx = CallsContext(api, phone: false);
+        var cut = Page(ctx);
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll(".sch-ev")));
+        cut.Find(".sch-ev").Click();
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find(".mk-detail " + button)));
+        cut.Find(".mk-detail " + button).Click();
+        var nav = ctx.Services.GetRequiredService<NavigationManager>();
+        cut.WaitForAssertion(() => Assert.Contains($"/calendar?event={evId}", nav.Uri));
+        Assert.Equal(edit, nav.Uri.Contains("edit=1"));
+    }
+
     [Fact]
     public void Phone_Back_from_the_browser_closes_the_detail_too()
     {
@@ -163,6 +185,7 @@ public class PhoneSchedulingTests
     private sealed class CallsApi : HttpMessageHandler
     {
         public List<MeetingInfo> Upcoming { get; set; } = [];
+        public (Guid MeetingId, Guid EventId, DateTime Start)? EventRef { get; set; }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
@@ -170,6 +193,9 @@ public class PhoneSchedulingTests
             if (request.Method == HttpMethod.Get && path == "/api/meetings/upcoming")
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                 { Content = new StringContent(JsonSerializer.Serialize(Upcoming, Web), Encoding.UTF8, "application/json") });
+            if (EventRef is { } er && request.Method == HttpMethod.Get && path == $"/api/calendar/meetings/{er.MeetingId}/event")
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                { Content = new StringContent(JsonSerializer.Serialize(new { eventId = er.EventId, startAt = er.Start }, Web), Encoding.UTF8, "application/json") });
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
         }
     }

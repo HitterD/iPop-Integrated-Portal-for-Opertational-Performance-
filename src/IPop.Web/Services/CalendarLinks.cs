@@ -24,8 +24,9 @@ public sealed class CalendarLinks(PeopleLinks people)
     }
 
     /// The event itself on the calendar (reminders, chat cards, Calls list, Dashboard).
-    public static string Event(Guid eventId, DateTime? startUtc = null) =>
-        $"/calendar?event={eventId}" + (startUtc is { } s ? $"&date={s.ToLocalTime():yyyy-MM-dd}" : "");
+    /// <paramref name="edit"/>: open the event's form instead of its detail (Calendar honours it only when the viewer may edit).
+    public static string Event(Guid eventId, DateTime? startUtc = null, bool edit = false) =>
+        $"/calendar?event={eventId}" + (startUtc is { } s ? $"&date={s.ToLocalTime():yyyy-MM-dd}" : "") + (edit ? "&edit=1" : "");
 
     private static string Trim(string s, int max) { s = s.Trim(); return s.Length > max ? s[..max] : s; }
 }

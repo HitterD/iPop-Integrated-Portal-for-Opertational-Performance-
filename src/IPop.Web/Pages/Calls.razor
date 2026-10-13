@@ -734,12 +734,12 @@
     }
     private void BookRoom() => Nav.NavigateTo(CalLinks.NewMeeting(location: IPop.Application.Hall.HallBooking.Prefix, from: "From Meeting Rooms"));
 
-    private Task EditMeeting(MeetingInfo m) => OpenInCalendarAsync(m.Id);
+    private Task EditMeeting(MeetingInfo m) => OpenInCalendarAsync(m.Id, edit: true);
 
-    private async Task OpenInCalendarAsync(Guid meetingId)
+    private async Task OpenInCalendarAsync(Guid meetingId, bool edit = false)
     {
         var r = await Auth.GetAsync<CalEventRef>($"/api/calendar/meetings/{meetingId}/event");
-        Nav.NavigateTo(r is null ? "/calendar" : CalendarLinks.Event(r.EventId, r.StartAt));
+        Nav.NavigateTo(r is null ? "/calendar" : CalendarLinks.Event(r.EventId, r.StartAt, edit));
     }
 
     private sealed record CalEventRef(Guid EventId, DateTime StartAt);

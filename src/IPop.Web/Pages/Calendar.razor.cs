@@ -17,6 +17,8 @@ public partial class Calendar
     [SupplyParameterFromQuery(Name = "event")] public Guid? EventQuery { get; set; }
     [SupplyParameterFromQuery(Name = "manage")] public string? ManageQuery { get; set; }
     [SupplyParameterFromQuery(Name = "invite")] public string? InviteQuery { get; set; }
+    /// With event=: open its form (Calls › Scheduled "Edit"), when the viewer may edit it.
+    [SupplyParameterFromQuery(Name = "edit")] public int? EditQuery { get; set; }
 
     // ── Client-side mirrors of the API records (Web does not reference IPop.Api) ──
     public record FeedItem(string Id, string Source, string Kind, string Title, DateTime StartAt, DateTime EndAt, bool AllDay,
@@ -193,7 +195,11 @@ public partial class Calendar
             var who = await Auth.GetAsync<PersonInfo>($"/api/calendar/person/{Uri.EscapeDataString(inviteNik)}");
             if (who is not null && !who.Self) await MeetWithAsync(who.Nik, who.Name);
         }
-        if (EventQuery is { } eid) await OpenEventAsync(eid);
+        if (EventQuery is { } eid)
+        {
+            await OpenEventAsync(eid);
+            if (EditQuery == 1 && detail is { CanEdit: true }) StartEdit();
+        }
         else await OpenFromComposeQueryAsync();
     }
 
