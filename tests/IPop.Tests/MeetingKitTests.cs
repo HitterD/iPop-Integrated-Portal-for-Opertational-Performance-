@@ -236,6 +236,19 @@ public class MeetingKitTests
         Assert.Empty(cancelled.FindAll(".act.edit"));
     }
 
+    /// QA Task 11: a past meeting (Calls › Past) offered Cancel and Change room; neither means anything once it ended.
+    [Fact]
+    public void Ended_meeting_offers_no_cancel_and_no_room_change()
+    {
+        using var ctx = Context(new Api());
+        var start = DateTime.UtcNow.AddDays(-2);
+        var cut = Detail(ctx, Meeting("room", start, organizer: Me), start.AddHours(3));
+        Assert.Equal("Ended", cut.Find(".band-top .gcap.state").TextContent.Trim());
+        Assert.Empty(cut.FindAll(".act.cancel"));
+        Assert.Empty(cut.FindAll(".ir .change"));
+        Assert.Single(cut.FindAll(".act.edit"));
+    }
+
     [Fact]
     public void Header_has_kind_colour_caption_title_date_and_status()
     {

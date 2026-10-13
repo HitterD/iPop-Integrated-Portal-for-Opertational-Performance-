@@ -99,7 +99,7 @@
             {
                 <button type="button" class="act edit" @onclick="OnEdit"><i><span data-lucide="pencil"></span></i>Edit</button>
             }
-            @if (OnCancel.HasDelegate)
+            @if (OnCancel.HasDelegate && !ended)
             {
                 <button type="button" class="act cancel red" @onclick="OnCancel"><i><span data-lucide="circle-x"></span></i>Cancel</button>
             }
