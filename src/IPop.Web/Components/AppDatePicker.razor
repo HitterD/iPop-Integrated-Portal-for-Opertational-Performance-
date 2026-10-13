@@ -5,7 +5,7 @@
 <DatePickerCore Mode="DatePickerMode.Date" Value="PickerValue.ToCore(Value)" ValueChanged="OnChanged"
                 Nullable="PickerValue.IsNullable<TValue>()" Min="Min" Max="Max" IsDateDisabled="IsDateDisabled"
                 Placeholder="@Placeholder" Disabled="Disabled" AllowClear="AllowClear" Compact="Compact"
-                Id="@Id" AriaLabel="@AriaLabel" Class="@Class" Style="@Style" />
+                Id="@Id" Pill="Pill" TodayDate="TodayDate" AriaLabel="@AriaLabel" Class="@Class" Style="@Style" />
 
 @code {
     [Parameter] public TValue Value { get; set; } = default!;
@@ -18,6 +18,10 @@
     [Parameter] public bool AllowClear { get; set; }
     /// Dense variant for table cells and tight toolbars.
     [Parameter] public bool Compact { get; set; }
+    /// Meeting sheets (v3): a pill button ("Today, 13 Oct ▾" / "13:00") that opens the popover instead of a typed field.
+    [Parameter] public bool Pill { get; set; }
+    /// "Today" for the pill label (tests); default the local date.
+    [Parameter] public DateOnly? TodayDate { get; set; }
     [Parameter] public string? Id { get; set; }
     [Parameter] public string? AriaLabel { get; set; }
     [Parameter] public string? Class { get; set; }

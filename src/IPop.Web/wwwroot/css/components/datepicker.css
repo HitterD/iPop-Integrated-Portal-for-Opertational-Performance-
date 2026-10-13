@@ -298,3 +298,21 @@
 .mail-adv-row .dp { flex: 1; width: auto; }
 .dp .dp-field.overdue input.dp-input { color: var(--danger); }
 .dp .dp-field.soon input.dp-input { color: var(--warn); }
+
+/* ---------- Pill mode (meeting sheets, mockup v3 .pill): a button that opens the popover; no typing ---------- */
+.dp.dp-pillmode { width: auto; }
+.dp .dp-pill {
+  height: 36px; margin: 0; padding: 0 12px; border: 0; border-radius: 10px;
+  background: var(--fill, var(--surface-3)); color: var(--ink);
+  display: inline-flex; align-items: center; gap: 7px;
+  font: inherit; font-size: 14.5px; font-weight: 600; white-space: nowrap; cursor: pointer;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  transition: background var(--dur-fast, .15s) ease, box-shadow var(--dur-fast, .15s) ease;
+}
+.dp .dp-pill:hover:not(:disabled) { background: color-mix(in srgb, var(--fill, var(--surface-3)) 70%, var(--ink) 8%); }
+.dp .dp-pill:focus-visible, .dp-open .dp-pill { outline: 0; box-shadow: 0 0 0 2px var(--info, var(--accent)), 0 0 0 5px color-mix(in srgb, var(--info, var(--accent)) 18%, transparent); }
+.dp .dp-pill:disabled { opacity: .55; cursor: not-allowed; }
+.dp .dp-pill svg { width: 15px; height: 15px; color: var(--ink-3); flex: none; }
+.dp .dp-pill .dp-pill-cv { display: inline-flex; margin-left: 2px; }
+.dp .dp-pill .dp-pill-cv svg { width: 13px; height: 13px; }
+.dp .dp-pill.time { min-width: 70px; justify-content: center; }

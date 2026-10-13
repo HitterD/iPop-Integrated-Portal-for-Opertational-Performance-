@@ -83,6 +83,8 @@
   /* 16 px inputs (no iOS zoom) need more room than the desktop 92 px: "17:00" was cut to "17:…". */
   .cal-row-ctl .dp-time { width: 112px; }
   .cal-row-ctl .dp-date { width: auto; flex: 1 1 148px; max-width: 180px; }
+.cal-row-ctl.cal-pills .dp { width: auto; flex: none; max-width: none; }
+.cal-row-ctl.cal-pills .dp .dp-pill { height: 40px; font-size: 16px; }
   .cal-switch-row, label.cal-row { flex-wrap: nowrap; }
   .cal-vis-seg .cal-seg-item { min-height: 36px; }
   .cal-when input[type="time"] { width: 96px; }

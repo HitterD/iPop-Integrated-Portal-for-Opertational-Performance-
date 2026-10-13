@@ -566,11 +566,11 @@
                     </label>
                     <div class="cal-row">
                         <i data-lucide="clock"></i><span class="cal-row-label">Starts</span>
-                        <div class="cal-row-ctl"><AppDatePicker @bind-Value="form.StartDate" AriaLabel="Start date" Compact="true" />@if (!form.AllDay) { <AppTimePicker @bind-Value="form.StartTime" AriaLabel="Start time" /> }</div>
+                        <div class="cal-row-ctl cal-pills"><AppDatePicker TValue="DateTime" Value="form.StartDate" ValueChanged="SetFormStartDate" Min="FormDateRange.Min" Max="FormDateRange.Max" Pill="true" Compact="true" AriaLabel="Start date" />@if (!form.AllDay) { <AppTimePicker TValue="TimeOnly" Value="form.StartTime" ValueChanged="SetFormStartTime" Pill="true" IsTimeDisabled="FormStartDisabled" AriaLabel="Start time" /> }</div>
                     </div>
                     <div class="cal-row">
                         <i data-lucide="clock-4"></i><span class="cal-row-label">Ends</span>
-                        <div class="cal-row-ctl"><AppDatePicker @bind-Value="form.EndDate" AriaLabel="End date" Compact="true" />@if (!form.AllDay) { <AppTimePicker @bind-Value="form.EndTime" AriaLabel="End time" /> }</div>
+                        <div class="cal-row-ctl cal-pills"><AppDatePicker @bind-Value="form.EndDate" Min="form.StartDate" Pill="true" Compact="true" AriaLabel="End date" />@if (!form.AllDay) { <AppTimePicker TValue="TimeOnly" Value="form.EndTime" ValueChanged="SetFormEndTime" Pill="true" IsTimeDisabled="FormEndDisabled" AriaLabel="End time" /> }</div>
                     </div>
                     <div class="cal-row cal-repeat-row">
                         <i data-lucide="repeat"></i><span class="cal-row-label">Repeat</span>

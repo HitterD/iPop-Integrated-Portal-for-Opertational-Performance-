@@ -75,10 +75,10 @@
             <div class="sh-b">
                 <label class="fl"><span>Title</span><input class="tf bs-title" maxlength="200" placeholder="@DefaultTitle" @bind="title" @bind:event="oninput" /></label>
                 <div class="when">
-                    <div class="fl"><span>Date</span><AppDatePicker TValue="DateTime" Value="date" ValueChanged="SetDateAsync" Min="TodayLocal" Max="TodayLocal.AddDays(RoomBookingRules.MaxDaysAhead)" AriaLabel="Date" Class="bs-date" /></div>
-                    <div class="fl"><span>Start</span><AppTimePicker TValue="TimeOnly" Value="StartLocal" ValueChanged="SetStartTimeAsync" AriaLabel="Start" Class="bs-start" /></div>
+                    <div class="fl"><span>Date</span><AppDatePicker TValue="DateTime" Value="date" ValueChanged="SetDateAsync" Min="TodayLocal" Max="TodayLocal.AddDays(RoomBookingRules.MaxDaysAhead)" Pill="true" TodayDate="DateOnly.FromDateTime(TodayLocal)" AriaLabel="Date" Class="bs-date" /></div>
+                    <div class="fl"><span>Start</span><AppTimePicker TValue="TimeOnly" Value="StartLocal" ValueChanged="SetStartTimeAsync" Pill="true" IsTimeDisabled="StartDisabled" AriaLabel="Start" Class="bs-start" /></div>
                     <span class="bs-dash">–</span>
-                    <div class="fl"><span>End</span><AppTimePicker TValue="TimeOnly" Value="EndLocal" ValueChanged="SetEndTimeAsync" AriaLabel="End" Class="bs-end" /></div>
+                    <div class="fl"><span>End</span><AppTimePicker TValue="TimeOnly" Value="EndLocal" ValueChanged="SetEndTimeAsync" Pill="true" IsTimeDisabled="EndDisabled" AriaLabel="End" Class="bs-end" /></div>
                     <span class="durt">@(Length > TimeSpan.Zero ? MeetingKinds.Duration(Length) : "")</span>
                 </div>
                 <div class="qcs" role="group" aria-label="Quick times">

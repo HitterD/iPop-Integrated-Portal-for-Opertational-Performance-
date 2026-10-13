@@ -77,6 +77,16 @@ public static partial class DatePickerMath
     public static string FormatDate(DateOnly d)
         => $"{WeekdayShort[MondayIndex(d.DayOfWeek)]}, {d.Day:00} {MonthShort[d.Month - 1]} {d.Year}";
 
+    /// Pill label (meeting sheets, mockup v3): "Today, 13 Oct", "Tomorrow, 14 Oct", "Wed 21 Oct", "Fri 8 Jan 2027".
+    public static string FormatPill(DateOnly d, DateOnly today)
+    {
+        var dm = $"{d.Day} {MonthShort[d.Month - 1]}";
+        if (d == today) return "Today, " + dm;
+        if (d == today.AddDays(1)) return "Tomorrow, " + dm;
+        var s = $"{WeekdayShort[MondayIndex(d.DayOfWeek)]} {dm}";
+        return d.Year == today.Year ? s : $"{s} {d.Year}";
+    }
+
     /// "28 Sep 2026" (dense table cells)
     public static string FormatDateCompact(DateOnly d) => $"{d.Day:00} {MonthShort[d.Month - 1]} {d.Year}";
 

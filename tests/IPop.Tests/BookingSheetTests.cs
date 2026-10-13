@@ -296,31 +296,65 @@ public class BookingSheetTests
         Assert.Empty(cut.FindAll(".bs-limit"));
     }
 
+    /// Picks a time from the pill's 15-minute list (v3 gaps: the sheet's times are pills, not typed fields).
     private static void Type(IRenderedComponent<BookingSheet> cut, string field, string value)
     {
-        var input = cut.Find($".{field} input.dp-input");
-        input.Input(value);
-        input.Blur();
+        cut.Find($"button.dp-pill.{field}").Click();
+        cut.FindAll(".dp-topt").Single(b => b.TextContent == value).Click();
     }
 
-    /// QA Task 11: an end before the start (20:00 → 01:00) crosses midnight; it said "at least 15 minutes".
     [Fact]
-    public void End_before_start_says_same_day()
+    public void Date_and_times_are_pills_with_the_v3_limits()
+    {
+        var api = new Api { Days = { ["kalosi"] = MockupDay() } };
+        using var ctx = Context(api);
+        var cut = Render(ctx, BookingSheet.ModeBook, At(13));
+        cut.WaitForAssertion(() => Assert.Equal("Book", Primary(cut)));
+        Assert.Empty(cut.FindAll(".when input"));
+        Assert.Equal("Today, 13 Oct", cut.Find("button.dp-pill.bs-date .dp-pill-t").TextContent);
+        Assert.Equal("13:00", cut.Find("button.dp-pill.bs-start").TextContent.Trim());
+        Assert.Equal("14:00", cut.Find("button.dp-pill.bs-end").TextContent.Trim());
+
+        // Start: nothing before now (09:50) today.
+        cut.Find("button.dp-pill.bs-start").Click();
+        string Dis(string t) => cut.FindAll(".dp-topt").Single(b => b.TextContent == t).GetAttribute("aria-disabled")!;
+        Assert.Equal(("true", "false"), (Dis("09:45"), Dis("10:00")));
+        cut.Find("button.dp-pill.bs-start").Click();
+        // End: after the start, at most 8 h.
+        cut.Find("button.dp-pill.bs-end").Click();
+        Assert.Equal(("true", "false", "false", "true"), (Dis("13:00"), Dis("13:15"), Dis("21:00"), Dis("21:15")));
+        cut.FindAll(".dp-topt").Single(b => b.TextContent == "15:30").Click();
+        Assert.Equal("2 h 30 min", cut.Find(".durt").TextContent.Trim());
+
+        // Date: today .. 60 days ahead.
+        cut.Find("button.dp-pill.bs-date").Click();
+        Assert.Equal("true", cut.Find(".dp-day[data-date='2026-10-12']").GetAttribute("aria-disabled"));
+        cut.Find(".dp-day[data-date='2026-10-20']").Click();
+        cut.WaitForAssertion(() => Assert.Equal("Tue 20 Oct", cut.Find("button.dp-pill.bs-date .dp-pill-t").TextContent));
+    }
+
+    /// QA Task 11: an end before the start (20:00 → 01:00) crossed midnight and said "at least 15 minutes". With the pill
+    /// list such an end can't be picked at all; 00:00 (the end of the day) still can.
+    [Fact]
+    public void End_before_start_cannot_be_picked()
     {
         var api = new Api { Days = { ["kalosi"] = MockupDay() } };
         using var ctx = Context(api);
         var cut = Render(ctx, BookingSheet.ModeBook, At(11));
         cut.WaitForAssertion(() => Assert.Equal("Book", Primary(cut)));
         Type(cut, "bs-start", "18:00");
-        Type(cut, "bs-end", "01:00");
-        cut.WaitForAssertion(() => Assert.Equal(RoomBookingRules.Message(RoomBookingRules.DifferentDay), cut.Find(".bs-limit").TextContent.Trim()));
-        Assert.True(cut.Find(".bs-go").HasAttribute("disabled"));
+        cut.Find("button.dp-pill.bs-end").Click();
+        string Dis(string t) => cut.FindAll(".dp-topt").Single(b => b.TextContent == t).GetAttribute("aria-disabled")!;
+        Assert.Equal(("true", "false"), (Dis("01:00"), Dis("00:00")));
+        cut.FindAll(".dp-topt").Single(b => b.TextContent == "01:00").Click();
+        Assert.Equal("19:00", cut.Find("button.dp-pill.bs-end").TextContent.Trim());
+        Assert.Empty(cut.FindAll(".bs-limit"));
     }
 
-    /// QA Task 11: a time that is already over today (08:00–09:00 at 09:50) said "at least 15 minutes" and asked the
-    /// server for free rooms from now to 09:00 (400).
+    /// QA Task 11: a time already over today (08:00 at 09:50) said "at least 15 minutes" and asked the server for free
+    /// rooms from now to 09:00 (400). Past slots are now disabled; no /free query with to ≤ from is ever sent.
     [Fact]
-    public void A_range_already_over_says_in_the_past_and_asks_no_free_rooms()
+    public void A_start_already_over_cannot_be_picked_and_asks_no_bad_free_rooms()
     {
         var api = new Api { Days = { ["kalosi"] = MockupDay() } };
         using var ctx = Context(api);
@@ -328,8 +362,8 @@ public class BookingSheetTests
         cut.WaitForAssertion(() => Assert.Equal("Book", Primary(cut)));
         lock (api.Gets) api.Gets.Clear();
         Type(cut, "bs-start", "08:00");
-        cut.WaitForAssertion(() => Assert.Equal(RoomBookingRules.Message(RoomBookingRules.InPast), cut.Find(".bs-limit").TextContent.Trim()));
-        Assert.True(cut.Find(".bs-go").HasAttribute("disabled"));
+        Assert.Equal("11:00", cut.Find("button.dp-pill.bs-start").TextContent.Trim());
+        Assert.Empty(cut.FindAll(".bs-limit"));
         lock (api.Gets)
             foreach (var g in api.Gets.Where(g => g.StartsWith("/api/meeting-rooms/free")))
             {

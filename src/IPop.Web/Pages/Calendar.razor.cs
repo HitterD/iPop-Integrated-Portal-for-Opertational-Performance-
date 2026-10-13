@@ -121,6 +121,42 @@ public partial class Calendar
     private DateTime FormEndUtc => form.EndDate.Date.Add(form.EndTime.ToTimeSpan()).ToUniversalTime();
 
     /// The kind picker's room timeline moved the meeting.
+    // ── Date/time pills (v3 gaps, mockup screen 6) ──
+
+    private (DateTime? Min, DateTime? Max) FormDateRange =>
+        IPop.Web.Components.Meetings.CalendarKinds.StartDateRange(form.Id is null, form.Kind, DateTime.Today);
+    private bool FormStartDisabled(TimeOnly t) =>
+        IPop.Web.Components.Meetings.CalendarKinds.StartTimeDisabled(form.Id is null, form.StartDate, t, DateTime.Now);
+    private bool FormEndDisabled(TimeOnly t) =>
+        IPop.Web.Components.Meetings.CalendarKinds.EndTimeDisabled(form.Kind, form.StartDate.Date.Add(form.StartTime.ToTimeSpan()), form.EndDate, t);
+
+    /// Moving the start keeps the length (like Apple Calendar), so the end never lands before it.
+    private void ShiftStart(DateTime newStart)
+    {
+        var oldStart = form.StartDate.Date.Add(form.StartTime.ToTimeSpan());
+        var len = form.EndDate.Date.Add(form.EndTime.ToTimeSpan()) - oldStart;
+        if (form.AllDay) len = form.EndDate.Date - form.StartDate.Date;
+        if (len < TimeSpan.Zero) len = TimeSpan.FromHours(1);
+        var e = newStart + len;
+        form.StartDate = newStart.Date; form.StartTime = TimeOnly.FromDateTime(newStart);
+        if (form.AllDay) form.EndDate = e.Date;
+        else { form.EndDate = e.Date; form.EndTime = TimeOnly.FromDateTime(e); }
+        roomCheck = null;
+    }
+
+    private void SetFormStartDate(DateTime d) => ShiftStart(d.Date.Add(form.StartTime.ToTimeSpan()));
+    private void SetFormStartTime(TimeOnly t) => ShiftStart(form.StartDate.Date.Add(t.ToTimeSpan()));
+
+    private void SetFormEndTime(TimeOnly t)
+    {
+        if (FormEndDisabled(t)) return;
+        // A room booking's 00:00 is the end of its day.
+        if (form.Kind == IPop.Web.Components.Meetings.MeetingKinds.Room && t == TimeOnly.MinValue && form.EndDate.Date == form.StartDate.Date)
+            form.EndDate = form.StartDate.Date.AddDays(1);
+        form.EndTime = t;
+        roomCheck = null;
+    }
+
     private void SetFormTimes((DateTime Start, DateTime End) t)
     {
         var s = t.Start.ToLocalTime(); var e = t.End.ToLocalTime();

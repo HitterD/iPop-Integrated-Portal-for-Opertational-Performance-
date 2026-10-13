@@ -500,11 +500,8 @@ html.callx-resizing, html.callx-resizing * { cursor:nwse-resize !important; }
 .sheet2 .tf::placeholder { color:var(--ink-4); }
 .sheet2 .when { display:flex; align-items:flex-end; gap:8px; flex-wrap:wrap; }
 .sheet2 .when .fl { margin-bottom:10px; }
-.sheet2 .when .dp-field { min-width:0; }
-.sheet2 .when .bs-date { width:170px; }
-.sheet2 .when .bs-start, .sheet2 .when .bs-end { width:96px; }
-.sheet2 .when .bs-dash { padding-bottom:20px; color:var(--ink-3); }
-.sheet2 .durt { padding-bottom:20px; margin-left:4px; font-size:13px; color:var(--ink-3); font-weight:550; font-variant-numeric:tabular-nums; }
+.sheet2 .when .bs-dash { padding-bottom:18px; color:var(--ink-3); }
+.sheet2 .durt { padding-bottom:18px; margin-left:4px; font-size:13px; color:var(--ink-3); font-weight:550; font-variant-numeric:tabular-nums; }
 .sheet2 .qcs { display:flex; gap:6px; flex-wrap:wrap; margin:0 0 14px; }
 .sheet2 .qc { height:30px; padding:0 13px; border-radius:999px; font-size:13px; font-weight:600; color:var(--ink-2); background:var(--surface); box-shadow:inset 0 0 0 1px var(--line-2); white-space:nowrap; }
 [data-theme="dark"] .sheet2 .qc { background:transparent; }
@@ -583,11 +580,10 @@ html.callx-resizing, html.callx-resizing * { cursor:nwse-resize !important; }
 .sheet2.bottom .sh-f { padding:10px 16px calc(14px + var(--m-safe-b, env(safe-area-inset-bottom, 0px))); }
 .sheet2.bottom .sh-f .btn { flex:1; height:46px; }
 .sheet2.bottom .tf { font-size:16px; height:44px; }
-.sheet2.bottom .when .dp-field { min-height:44px; }
-.sheet2.bottom .when .dp-toggle { min-width:40px; }
-.sheet2.bottom .when .bs-start, .sheet2.bottom .when .bs-end { width:116px; }
+.sheet2.bottom .when .dp-pill { height:44px; font-size:16px; }
 .sheet2.bottom .when .fl:first-child { width:100%; }
-.sheet2.bottom .when .bs-date { width:100%; }
+.sheet2.bottom .when .fl:first-child .dp, .sheet2.bottom .when .bs-date { width:100%; }
+.sheet2.bottom .when .bs-date .dp-pill-cv { margin-left:auto; }
 .sheet2.bottom .durt { margin-left:auto; }
 .sheet2.bottom .qcs { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; margin-left:-16px; margin-right:-16px; padding:0 16px; }
 .sheet2.bottom .qcs::-webkit-scrollbar, .sheet2.bottom .others::-webkit-scrollbar, .sheet2.bottom .tl-scroll::-webkit-scrollbar { display:none; }

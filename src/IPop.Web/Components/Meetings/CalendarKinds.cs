@@ -55,6 +55,31 @@ public static class CalendarKinds
         _ => (null, null),
     };
 
+    // ---------------------------------------------------------------- date/time pills (v3 gaps, mockup screen 6)
+
+    /// Dates the Starts pill offers: a new event from today; a new room booking up to 60 days ahead; an edit anything
+    /// (an existing meeting may already have started).
+    public static (DateTime? Min, DateTime? Max) StartDateRange(bool isNew, string kind, DateTime today) =>
+        !isNew ? (null, null)
+        : kind == MeetingKinds.Room ? (today.Date, today.Date.AddDays(IPop.Application.MeetingRooms.RoomBookingRules.MaxDaysAhead))
+        : (today.Date, null);
+
+    /// A new event's start today is not before this minute (local times; the same rule as the booking sheet).
+    public static bool StartTimeDisabled(bool isNew, DateTime startDate, TimeOnly t, DateTime nowLocal) =>
+        isNew && startDate.Date == nowLocal.Date && startDate.Date.Add(t.ToTimeSpan()) < new DateTime(nowLocal.Year, nowLocal.Month, nowLocal.Day, nowLocal.Hour, nowLocal.Minute, 0);
+
+    /// An end slot on <paramref name="endDate"/>: after the start; a room booking also the same day (00:00 = the end of
+    /// it) and at most 8 h long (local times).
+    public static bool EndTimeDisabled(string kind, DateTime startLocal, DateTime endDate, TimeOnly t)
+    {
+        var e = endDate.Date.Add(t.ToTimeSpan());
+        if (kind == MeetingKinds.Room && t == TimeOnly.MinValue && endDate.Date == startLocal.Date) e = endDate.Date.AddDays(1);
+        if (e <= startLocal) return true;
+        if (kind != MeetingKinds.Room) return false;
+        var sameDay = e.Date == startLocal.Date || e == startLocal.Date.AddDays(1);
+        return !sameDay || e - startLocal > TimeSpan.FromMinutes(IPop.Application.MeetingRooms.RoomBookingRules.MaxMinutes);
+    }
+
     /// Meeting items (mine or invited; not someone else's busy block) get the kind colour; others keep their source colour.
     public static string ItemClass(IPop.Web.Pages.Calendar.FeedItem i) =>
         IsKindItem(i) ? "mk-ev " + MeetingKinds.CssClass(i.MeetingKind, i.RoomKey) : "";

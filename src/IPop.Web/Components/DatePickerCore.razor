@@ -9,8 +9,22 @@
 @inject IJSRuntime JS
 @inject OverlayStack Overlays
 
-<div class="dp dp-@ModeName @(Compact ? "dp-compact" : "") @(open ? "dp-open" : "") @(invalid ? "dp-invalid" : "") @(Disabled ? "dp-disabled" : "")"
+<div class="dp dp-@ModeName @(Compact ? "dp-compact" : "") @(Pill ? "dp-pillmode" : "") @(open ? "dp-open" : "") @(invalid ? "dp-invalid" : "") @(Disabled ? "dp-disabled" : "")"
      style="@Style" @ref="root">
+    @if (Pill)
+    {
+        @* Meeting sheets (v3 mockup .pill): a button that opens the month grid / slot list; no typing. *@
+        <button type="button" id="@inputId" class="@($"dp-pill {(Mode == DatePickerMode.Time ? "time" : "")} {Class}")" disabled="@Disabled"
+                aria-haspopup="dialog" aria-expanded="@(open ? "true" : "false")" aria-controls="@popId"
+                aria-label="@(AriaLabel is { Length: > 0 } al ? $"{al}: {PillText}" : null)"
+                @ref="input" @onclick="TogglePill" @onkeydown="OnPillKey" @onkeydown:stopPropagation="open">
+            @if (Mode != DatePickerMode.Time && !Compact) { @CalendarIcon }
+            <span class="dp-pill-t">@PillText</span>
+            @if (Mode != DatePickerMode.Time && !Compact) { <span class="dp-pill-cv">@ChevDown</span> }
+        </button>
+    }
+    else
+    {
     <div class="dp-field @Class">
         <input id="@inputId" class="dp-input" type="text" inputmode="numeric" autocomplete="off" spellcheck="false"
                value="@text" placeholder="@EffectivePlaceholder" disabled="@Disabled"
@@ -24,6 +38,7 @@
             @(Mode == DatePickerMode.Time ? ClockIcon : CalendarIcon)
         </button>
     </div>
+    }
     <div class="dp-layer" @ref="layer">
         @if (open)
         {
@@ -123,6 +138,12 @@
     [Parameter] public bool AllowClear { get; set; }
     [Parameter] public bool Compact { get; set; }
     [Parameter] public string? Id { get; set; }
+    /// A pill button instead of the typed field (meeting sheets, mockup v3).
+    [Parameter] public bool Pill { get; set; }
+    /// "Today" for the pill label; default the local date.
+    [Parameter] public DateOnly? TodayDate { get; set; }
+    /// Time slots that can't be picked.
+    [Parameter] public Func<TimeOnly, bool>? IsTimeDisabled { get; set; }
     [Parameter] public string? AriaLabel { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter] public string? Style { get; set; }
@@ -187,6 +208,7 @@
 
     private bool IsSlotDisabled(TimeOnly t)
     {
+        if (IsTimeDisabled?.Invoke(t) == true) return true;
         if (Mode != DatePickerMode.DateTime) return false;
         var dt = (SelectedDate ?? focusDay).ToDateTime(t);
         return (Min is { } a && dt < DatePickerMath.TruncateToMinute(a)) || (Max is { } b && dt > b);
@@ -283,6 +305,21 @@
     {
         if (open) { await CloseAsync(true); return; }
         await OpenAsync(FocusTarget);
+    }
+
+    private string PillText => Value is not { } pv ? (Placeholder ?? (Mode == DatePickerMode.Time ? "--:--" : "Pick a date"))
+        : Mode == DatePickerMode.Time ? DatePickerMath.FormatTime(TimeOnly.FromDateTime(pv))
+        : DatePickerMath.FormatPill(DateOnly.FromDateTime(pv), TodayDate ?? Today);
+
+    private async Task TogglePill()
+    {
+        if (open) { await CloseAsync(true); return; }
+        await OpenAsync(FocusTarget);
+    }
+
+    private async Task OnPillKey(KeyboardEventArgs e)
+    {
+        if (e.Key is "ArrowDown" or "ArrowUp" && !open) await OpenAsync(FocusTarget);
     }
 
     private string FocusTarget => Mode == DatePickerMode.Time ? "time" : "grid";
@@ -485,6 +522,8 @@
         "<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3.5\" y=\"5\" width=\"17\" height=\"15.5\" rx=\"3\"/><path d=\"M3.5 10h17M8 3v4M16 3v4\"/></svg>");
     private static readonly MarkupString ClockIcon = new(
         "<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"8.5\"/><path d=\"M12 7.5V12l3 2\"/></svg>");
+    private static readonly MarkupString ChevDown = new(
+        "<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6 9l6 6 6-6\"/></svg>");
     private static readonly MarkupString ChevLeft = new(
         "<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M15 6l-6 6 6 6\"/></svg>");
     private static readonly MarkupString ChevRight = new(

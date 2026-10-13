@@ -215,8 +215,20 @@ public partial class BookingSheet : IDisposable
         await RefreshFreeAsync(immediate: true);
     }
 
+    /// Pill slots (v3 limits): a start not before this minute today; an end after the start, at most 8 h later and on the
+    /// same day (00:00 = the end of the day).
+    internal bool StartDisabled(TimeOnly t) => date == TodayLocal && ToUtc(date + t.ToTimeSpan()) < NowMinute;
+
+    internal bool EndDisabled(TimeOnly t)
+    {
+        var e = ToUtc(t == TimeOnly.MinValue ? date.AddDays(1) : date + t.ToTimeSpan());
+        var from = BooksNow ? NowMinute : start;
+        return e <= from || e - from > TimeSpan.FromMinutes(RoomBookingRules.MaxMinutes);
+    }
+
     private async Task SetStartTimeAsync(TimeOnly t)
     {
+        if (StartDisabled(t)) return;
         var len = Length > TimeSpan.Zero ? Length : TimeSpan.FromMinutes(DefaultMinutes);
         var s = ToUtc(date + t.ToTimeSpan());
         await SetTimesAsync(s, s + len);
@@ -224,6 +236,7 @@ public partial class BookingSheet : IDisposable
 
     private async Task SetEndTimeAsync(TimeOnly t)
     {
+        if (EndDisabled(t)) return;
         var e = ToUtc(date + t.ToTimeSpan());
         if (t == TimeOnly.MinValue) e = ToUtc(date.AddDays(1));
         await SetTimesAsync(start, e);

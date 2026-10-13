@@ -421,6 +421,10 @@ body:has(.cal-drawer) .confirm-center { z-index: 911; }
 .cal-row-ctl .dp-date { width: 148px; }
 .cal-row-ctl .dp-time { width: 92px; }
 .cal-row-ctl .dp { --dp-h: 32px; }
+/* v3 gaps (mockup screen 6 .rv .pill): Starts/Ends as pills sized by their text. */
+.cal-row-ctl.cal-pills .dp { width: auto; }
+.cal-row-ctl.cal-pills .dp .dp-pill { height: 32px; padding: 0 11px; font-size: 14px; }
+.cal-row-ctl.cal-pills .dp .dp-pill.time { min-width: 64px; }
 .cal-drawer-body { overflow-x: hidden; }
 .cal-row-ctl .app-select.block .app-select-trigger { min-height: 32px; padding: 5px 10px; background: var(--surface); }
 .cal-form .cal-row input.cal-row-input, .cal-form .cal-row textarea.cal-row-input { flex: 1; border: 0; background: none; padding: 6px 0; border-radius: 0; font-size: 13.5px; }
