@@ -21,7 +21,7 @@ public partial class Calendar
     // ── Client-side mirrors of the API records (Web does not reference IPop.Api) ──
     public record FeedItem(string Id, string Source, string Kind, string Title, DateTime StartAt, DateTime EndAt, bool AllDay,
         string? Url, string? Subtitle, Guid? EventId, Guid? MeetingId, string? Rsvp, bool CanEdit, string? Location, string? Link,
-        string? Visibility = null, string? OwnerNik = null)
+        string? Visibility = null, string? OwnerNik = null, string? MeetingKind = null, string? RoomKey = null)
     {
         /// Timed items are shown in local time; all-day items are calendar dates (stored as UTC midnight).
         public DateTime Start => AllDay ? StartAt.Date : StartAt.ToLocalTime();
@@ -33,7 +33,7 @@ public partial class Calendar
         string OwnerName, bool CanEdit, List<Person> Attendees, string Visibility = "busy",
         string? OwnerNik = null, string? CreatedBy = null, string? SentBy = null, string? UpdatedBy = null, string? DelegateLevel = null,
         string? DelegateForNik = null, string? DelegateForName = null, Guid? SeriesId = null, string? Recurrence = null, string? RecurrenceText = null,
-        ExternalInfo? External = null);
+        ExternalInfo? External = null, string? MeetingKind = null, string? RoomKey = null);
     /// Booked in iDesk (Zoom or an ICT visit): read-only here; Url manages it there. People by name only.
     public record ExternalInfo(string Source, string? Url, List<ExternalPerson> People, bool CanSetPrivacy);
     public record ExternalPerson(string Name, Guid? UserId, bool Booker, bool Me);

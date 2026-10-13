@@ -934,6 +934,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.TimeZone).HasMaxLength(64);
             e.Property(x => x.Agenda).HasMaxLength(4000);
             e.Property(x => x.RoomPassword).HasMaxLength(6);
+            e.Property(x => x.Kind).HasMaxLength(16);
             // Existing rows become Busy only, so no old title turns public on rollout.
             e.Property(x => x.Visibility).HasMaxLength(8).HasDefaultValue(CalendarVisibility.Busy);
             e.HasOne(x => x.Organizer).WithMany().HasForeignKey(x => x.OrganizerId).OnDelete(DeleteBehavior.Restrict);

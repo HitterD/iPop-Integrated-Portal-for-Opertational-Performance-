@@ -182,12 +182,12 @@ public static partial class CalendarEndpoints
         var items = await IPop.Infrastructure.Calendar.CalendarFeedService.BuildAsync(db, userId, from, to,
             new IPop.Application.Calendar.CalendarFeedAccess(access.Projects, access.Mail, access.Chat, access.News, access.Tickets), ct);
         return items.Select(i => new CalendarFeedItem(i.Id, i.Source, i.Kind, i.Title, i.StartAt, i.EndAt, i.AllDay,
-            i.Url, i.Subtitle, i.EventId, i.MeetingId, i.Rsvp, i.CanEdit, i.Location, i.Link, i.Visibility)).ToList();
+            i.Url, i.Subtitle, i.EventId, i.MeetingId, i.Rsvp, i.CanEdit, i.Location, i.Link, i.Visibility, i.MeetingKind, i.RoomKey)).ToList();
     }
 
     // ── Event CRUD ────────────────────────────────────────────────────────────
 
-    public enum SaveResult { Ok, NotFound, Forbidden, InvalidTitle, InvalidRange, NotRoomMember, Cancelled, External, RoomBooked }
+    public enum SaveResult { Ok, NotFound, Forbidden, InvalidTitle, InvalidRange, NotRoomMember, Cancelled, External, RoomBooked, InvalidKind, RoomRequired }
 
     /// The owner of an event mirrored from another system (iDesk), or null for events made in iPop.
     private static Task<Guid?> ExternalOwnerAsync(IPopDbContext db, Guid id, CancellationToken ct) =>
@@ -203,6 +203,8 @@ public static partial class CalendarEndpoints
         SaveResult.Cancelled => Results.Json(new { code = "cancelled", message = "This meeting was cancelled." }, statusCode: 409),
         SaveResult.External => Results.Json(new { code = "external", message = "This was booked in iDesk. Change or cancel it there." }, statusCode: 409),
         SaveResult.RoomBooked => Results.Json(new { code = "room_booked", message = "That meeting room is already booked at this time." }, statusCode: 409),
+        SaveResult.InvalidKind => MeetingEndpoints.KindError(MeetingEndpoints.KindResult.InvalidKind),
+        SaveResult.RoomRequired => MeetingEndpoints.KindError(MeetingEndpoints.KindResult.RoomRequired),
         _ => Results.StatusCode(500),
     };
 
@@ -231,6 +233,8 @@ public static partial class CalendarEndpoints
 
     private static void ApplyDetails(CalendarEvent ev, SaveEventRequest req, string title, DateTime start, DateTime end)
     {
+        // An explicit voice kind owns the place and link ("Online · iPop Meeting", no external link).
+        if (req.Kind == MeetingKind.Voice) req = req with { Location = MeetingKind.OnlineLocation, Link = null };
         var reminder = req.ReminderMinutes is > 0 and <= 10080 ? req.ReminderMinutes : null;
         if (ev.StartAt != start || ev.ReminderMinutes != reminder) ev.ReminderSentAt = null;
         ev.Title = title; ev.StartAt = start; ev.EndAt = end; ev.AllDay = req.AllDay;
@@ -242,6 +246,22 @@ public static partial class CalendarEndpoints
         if (!string.IsNullOrWhiteSpace(req.Type)) ev.Type = req.Type.Trim().ToLowerInvariant() is "rapat" or "kerja" or "pribadi" ? req.Type.Trim().ToLowerInvariant() : ev.Type;
     }
 
+    /// Validates <see cref="SaveEventRequest.Kind"/> against the place (v3 §1); Ok when the request can be saved.
+    private static SaveResult CheckKind(SaveEventRequest req)
+    {
+        var place = IPop.Application.Hall.HallBooking.Normalize(Clean(req.Location, 300));
+        return MeetingEndpoints.ResolveKind(req.Kind, place, Clean(req.Link, 1000), hasAttendees: true).Result switch
+        {
+            MeetingEndpoints.KindResult.InvalidKind => SaveResult.InvalidKind,
+            MeetingEndpoints.KindResult.RoomRequired => SaveResult.RoomRequired,
+            _ => SaveResult.Ok,
+        };
+    }
+
+    /// The kind a new meeting row gets from its (already applied) place.
+    private static string? NewMeetingKind(SaveEventRequest req, string? location, string? link) =>
+        MeetingEndpoints.ResolveKind(req.Kind, location, link, hasAttendees: true).Kind;
+
     /// Creates a personal event, or — with attendees or a chat group — a Meeting (RSVP + reminders)
     /// linked to the organizer's calendar row. Returns the users newly invited.
     /// <paramref name="actedBy"/> = a delegate creating it on <paramref name="userId"/>'s behalf.
@@ -250,9 +270,10 @@ public static partial class CalendarEndpoints
     {
         var (r, title, start, end) = Normalize(req);
         if (r != SaveResult.Ok) return (r, null, []);
+        if (CheckKind(req) is var kr && kr != SaveResult.Ok) return (kr, null, []);
         // SJA Hall meeting rooms ("SJA Hall - Toraja" style locations) are booked once at a time, and a booking is always a meeting
         // (with or without invitees) so the Meeting Rooms card and "Join room" can see it.
-        var hallRoom = IPop.Application.Hall.HallBooking.RoomKey(req.Location) is not null;
+        var hallRoom = req.Kind != MeetingKind.Voice && IPop.Application.Hall.HallBooking.RoomKey(req.Location) is not null;
         if (hallRoom && await IPop.Infrastructure.Hall.HallBookings.ConflictAsync(db, req.Location, start, end, null, ct) is not null)
             return (SaveResult.RoomBooked, null, []);
         var ev = new CalendarEvent
@@ -263,7 +284,8 @@ public static partial class CalendarEndpoints
         ApplyDetails(ev, req, title, start, end);
 
         IReadOnlyList<Guid> invited = [];
-        if (req.RoomId is not null || req.HasAttendees || hallRoom)
+        // An explicit kind makes a meeting too (a voice call or an in-person meeting without invitees yet).
+        if (req.RoomId is not null || req.HasAttendees || hallRoom || req.Kind is not null)
         {
             var (ok, ids) = await ResolveAttendeesAsync(db, userId, req, ct);
             if (!ok) return (SaveResult.NotRoomMember, null, []);
@@ -272,6 +294,7 @@ public static partial class CalendarEndpoints
                 Id = Guid.NewGuid(), Title = title, StartAt = start, EndAt = end, OrganizerId = userId, Status = "aktif",
                 RoomId = req.RoomId, Location = ev.Location, Link = ev.Link, Agenda = ev.Notes,
                 ReminderMinutes = ev.ReminderMinutes, Visibility = ev.Visibility, CreatedAt = DateTime.UtcNow, SentById = actedBy,
+                Kind = NewMeetingKind(req, ev.Location, ev.Link),
             };
             MeetingEndpoints.SyncRoomPassword(meeting);
             db.Meetings.Add(meeting);
@@ -300,6 +323,7 @@ public static partial class CalendarEndpoints
         if (ev.OwnerId != userId) return (SaveResult.Forbidden, null, []);
         var (r, title, start, end) = Normalize(req);
         if (r != SaveResult.Ok) return (r, null, []);
+        if (CheckKind(req) is var kr && kr != SaveResult.Ok) return (kr, null, []);
 
         IReadOnlyList<Guid> invited = [];
         if (ev.MeetingId is { } meetingId)
@@ -315,9 +339,12 @@ public static partial class CalendarEndpoints
                 niks = await db.Users.Where(u => ids.Contains(u.Id)).Select(u => u.Nik).ToListAsync(ct);
                 niks.AddRange(req.AttendeeNiks ?? []);
             }
-            var upd = new MeetingEndpoints.UpdateMeetingRequest(title, start, end, req.Location, req.Link, req.Notes, niks, req.ReminderMinutes ?? 0);
+            // No kind in the form = the place decides (MeetingKind.Infer), as for every other meeting write.
+            var upd = new MeetingEndpoints.UpdateMeetingRequest(title, start, end, req.Location, req.Link, req.Notes, niks, req.ReminderMinutes ?? 0, req.Kind);
             var (res, added, _) = await MeetingEndpoints.ApplyUpdateAsync(db, meetingId, userId, upd, ct);
             if (res == MeetingEndpoints.UpdateResult.RoomBooked) return (SaveResult.RoomBooked, null, []);
+            if (res == MeetingEndpoints.UpdateResult.InvalidKind) return (SaveResult.InvalidKind, null, []);
+            if (res == MeetingEndpoints.UpdateResult.RoomRequired) return (SaveResult.RoomRequired, null, []);
             if (res != MeetingEndpoints.UpdateResult.Applied) return (SaveResult.InvalidRange, null, []);
             invited = added;
             ev = await db.CalendarEvents.FirstAsync(e => e.Id == id, ct);
@@ -327,13 +354,13 @@ public static partial class CalendarEndpoints
         }
         else
         {
-            var hallRoom = IPop.Application.Hall.HallBooking.RoomKey(req.Location) is not null;
+            var hallRoom = req.Kind != MeetingKind.Voice && IPop.Application.Hall.HallBooking.RoomKey(req.Location) is not null;
             if (hallRoom && await IPop.Infrastructure.Hall.HallBookings.ConflictAsync(db, req.Location, start, end, null, ct) is not null)
                 return (SaveResult.RoomBooked, null, []);
             ApplyDetails(ev, req, title, start, end);
             ev.UpdatedById = actedBy;
             // Menambah peserta/grup ke event pribadi menjadikannya rapat.
-            if (req.RoomId is not null || req.HasAttendees || hallRoom)
+            if (req.RoomId is not null || req.HasAttendees || hallRoom || req.Kind is not null)
             {
                 var (ok, ids) = await ResolveAttendeesAsync(db, userId, req, ct);
                 if (!ok) return (SaveResult.NotRoomMember, null, []);
@@ -342,6 +369,7 @@ public static partial class CalendarEndpoints
                     Id = Guid.NewGuid(), Title = title, StartAt = start, EndAt = end, OrganizerId = userId, Status = "aktif",
                     RoomId = req.RoomId, Location = ev.Location, Link = ev.Link, Agenda = ev.Notes,
                     ReminderMinutes = ev.ReminderMinutes, Visibility = ev.Visibility, CreatedAt = DateTime.UtcNow, SentById = actedBy,
+                    Kind = NewMeetingKind(req, ev.Location, ev.Link),
                 };
                 MeetingEndpoints.SyncRoomPassword(meeting);
                 db.Meetings.Add(meeting);
@@ -437,7 +465,7 @@ public static partial class CalendarEndpoints
         var ev = await db.CalendarEvents.AsNoTracking().FirstOrDefaultAsync(e => e.Id == id, ct);
         if (ev is null) return null;
         List<CalendarPersonDto> people = [];
-        string? status = null, roomName = null;
+        string? status = null, roomName = null, meetingKind = null, roomKey = null;
         var visibility = ev.Visibility;
         Guid? sentById = null;
         if (ev.MeetingId is { } mid)
@@ -447,9 +475,15 @@ public static partial class CalendarEndpoints
                 .Select(a => new CalendarPersonDto(a.UserId, a.User.Nik, a.User.Name, a.RsvpStatus,
                     a.RespondedById != null ? db.Users.Where(u => u.Id == a.RespondedById).Select(u => u.Name).FirstOrDefault() : null))
                 .ToListAsync(ct);
-            var meta = await db.Meetings.AsNoTracking().Where(m => m.Id == mid).Select(m => new { m.Status, m.Visibility, m.SentById }).FirstOrDefaultAsync(ct);
+            var meta = await db.Meetings.AsNoTracking().Where(m => m.Id == mid)
+                .Select(m => new { m.Status, m.Visibility, m.SentById, m.Kind, m.Location }).FirstOrDefaultAsync(ct);
             status = meta?.Status;
-            if (meta is not null) { visibility = meta.Visibility; sentById = meta.SentById; }
+            if (meta is not null)
+            {
+                visibility = meta.Visibility; sentById = meta.SentById;
+                meetingKind = MeetingEndpoints.KindOf(meta.Kind, meta.Location, people.Count > 0);
+                roomKey = MeetingEndpoints.RoomKeyOf(meta.Kind, meta.Location, people.Count > 0);
+            }
         }
         // Someone given "See all details" or more by the owner — or by an invitee (the row belongs to the
         // organizer) — opens it; Private only for an "Act on my behalf" assistant. Only the owner's
@@ -479,7 +513,8 @@ public static partial class CalendarEndpoints
             ev.ReminderMinutes, ev.RoomId, roomName, ev.MeetingId, status, NameOf(ev.OwnerId) ?? "", canEdit, people, visibility,
             names.GetValueOrDefault(ev.OwnerId)?.Nik, NameOf(ev.CreatedById), NameOf(sentById), NameOf(ev.UpdatedById), delegateLevel,
             delegateFor is { } df ? names.GetValueOrDefault(df)?.Nik : null, NameOf(delegateFor),
-            ev.SeriesId, ev.Recurrence, CalendarRecurrence.Parse(ev.Recurrence)?.Describe(ev.StartAt.ToLocalTime()), external);
+            ev.SeriesId, ev.Recurrence, CalendarRecurrence.Parse(ev.Recurrence)?.Describe(ev.StartAt.ToLocalTime()), external,
+            meetingKind, roomKey);
     }
 
     private static DateTime AsUtc(DateTime dt) => dt.Kind switch
@@ -500,11 +535,12 @@ public static partial class CalendarEndpoints
     /// Kind = sub-type for icon/colour. Url = where clicking goes (null → open the event drawer).
     public record CalendarFeedItem(string Id, string Source, string Kind, string Title, DateTime StartAt, DateTime EndAt, bool AllDay,
         string? Url, string? Subtitle, Guid? EventId, Guid? MeetingId, string? Rsvp, bool CanEdit, string? Location, string? Link,
-        string? Visibility = null);
+        string? Visibility = null, string? MeetingKind = null, string? RoomKey = null);
+    /// Kind (v3 §1): voice | room | inperson, or null = infer from the place (a personal event stays personal).
     public record SaveEventRequest(string? Title, DateTime StartAt, DateTime EndAt, bool AllDay = false, string? Location = null,
         string? Link = null, string? Notes = null, int? ReminderMinutes = null, IReadOnlyList<Guid>? AttendeeIds = null,
         Guid? RoomId = null, string? Type = null, IReadOnlyList<string>? AttendeeNiks = null, string? Visibility = null,
-        string? OwnerNik = null, string? Recurrence = null)
+        string? OwnerNik = null, string? Recurrence = null, string? Kind = null)
     {
         public bool HasAttendees => AttendeeIds is { Count: > 0 } || AttendeeNiks is { Count: > 0 };
     }
@@ -515,7 +551,7 @@ public static partial class CalendarEndpoints
         string OwnerName, bool CanEdit, IReadOnlyList<CalendarPersonDto> Attendees, string Visibility = CalendarVisibility.Busy,
         string? OwnerNik = null, string? CreatedBy = null, string? SentBy = null, string? UpdatedBy = null, string? DelegateLevel = null,
         string? DelegateForNik = null, string? DelegateForName = null, Guid? SeriesId = null, string? Recurrence = null, string? RecurrenceText = null,
-        ExternalDto? External = null);
+        ExternalDto? External = null, string? MeetingKind = null, string? RoomKey = null);
     /// An entry mirrored from iDesk: where to manage it and who is in it (names; user id when they use iPop).
     /// CanSetPrivacy = the owner may still switch it between Normal and Private.
     public record ExternalDto(string Source, string? Url, IReadOnlyList<ExternalPersonDto> People, bool CanSetPrivacy);

@@ -28,6 +28,8 @@ public static class MeetingEndpoints
                 case CreateResult.InvalidRange: return Results.Json(new { code = "invalid_range", message = "End time must be after start time." }, statusCode: 422);
                 case CreateResult.NotRoomMember: return Results.Json(new { code = "forbidden", message = "Not a member of that group." }, statusCode: 403);
                 case CreateResult.RoomBooked: return Results.Json(new { code = "room_booked", message = "That meeting room is already booked at this time." }, statusCode: 409);
+                case CreateResult.InvalidKind: return KindError(KindResult.InvalidKind);
+                case CreateResult.RoomRequired: return KindError(KindResult.RoomRequired);
             }
             await NotifyMeetingChangedAsync(db, realtime, meetingId!.Value, [], ct);
             var dto = await LoadMeetingDto(meetingId!.Value, userId.Value, db, ct);
@@ -125,7 +127,7 @@ public static class MeetingEndpoints
                 {
                     Id = Guid.NewGuid(), Title = title, StartAt = startAt, EndAt = endAt,
                     OrganizerId = userId.Value, Status = "aktif", RoomId = roomId,
-                    ReminderMinutes = 30, CreatedAt = DateTime.UtcNow,
+                    ReminderMinutes = 30, CreatedAt = DateTime.UtcNow, Kind = MeetingKind.Infer(null, hasAttendees: true),
                 };
                 db.Meetings.Add(meeting);
                 foreach (var uid in memberIds)
@@ -227,6 +229,8 @@ public static class MeetingEndpoints
                 case UpdateResult.InvalidTitle: return Results.Json(new { code = "invalid_title", message = "Meeting title is required." }, statusCode: 422);
                 case UpdateResult.InvalidRange: return Results.Json(new { code = "invalid_range", message = "End time must be after start time." }, statusCode: 422);
                 case UpdateResult.RoomBooked: return Results.Json(new { code = "room_booked", message = "That meeting room is already booked at this time." }, statusCode: 409);
+                case UpdateResult.InvalidKind: return KindError(KindResult.InvalidKind);
+                case UpdateResult.RoomRequired: return KindError(KindResult.RoomRequired);
             }
             await NotifyMeetingChangedAsync(db, realtime, id, before, ct);
             var dto = await LoadMeetingDto(id, userId.Value, db, ct);
@@ -322,7 +326,7 @@ public static class MeetingEndpoints
         var rows = await query.AsNoTracking()
             .Select(m => new
             {
-                m.Id, m.Title, m.StartAt, m.EndAt, m.TimeZone, m.Location, m.Link, m.OrganizerId, m.RoomPassword,
+                m.Id, m.Title, m.StartAt, m.EndAt, m.TimeZone, m.Location, m.Link, m.OrganizerId, m.RoomPassword, m.Kind,
                 OrganizerName = m.Organizer.Name, OrganizerNik = m.Organizer.Nik, m.Status, m.Agenda, m.RoomId, m.ReminderMinutes,
                 Attendees = m.Attendees.OrderBy(a => a.User.Name)
                     .Select(a => new MeetingAttendeeDto(a.UserId, a.User.Name, a.User.Nik, a.Required, a.RsvpStatus, a.Note)).ToList(),
@@ -338,10 +342,44 @@ public static class MeetingEndpoints
             m.Attendees.FirstOrDefault(a => a.UserId == viewerId)?.RsvpStatus ?? "pending",
             m.Agenda, RoomNameFor(m.Id), m.RoomId, m.ReminderMinutes,
             // Room password: organizer and attendees who did not decline only (v2 §1).
-            m.OrganizerId == viewerId || m.Attendees.Any(a => a.UserId == viewerId && a.RsvpStatus != "decline") ? m.RoomPassword : null)).ToList();
+            m.OrganizerId == viewerId || m.Attendees.Any(a => a.UserId == viewerId && a.RsvpStatus != "decline") ? m.RoomPassword : null,
+            KindOf(m.Kind, m.Location, m.Attendees.Count > 0), RoomKeyOf(m.Kind, m.Location, m.Attendees.Count > 0))).ToList();
     }
 
-    public enum CreateResult { Created, InvalidTitle, InvalidRange, NotRoomMember, RoomBooked }
+    /// The kind a DTO reports: the stored one, else the inference rule (rows written before the MeetingKind migration
+    /// reached them, e.g. by an older binary during a rollout).
+    public static string? KindOf(string? kind, string? location, bool hasAttendees) =>
+        MeetingKind.Of(kind, location, hasAttendees);
+
+    /// The hall room key ("kalosi") of a room meeting, else null.
+    public static string? RoomKeyOf(string? kind, string? location, bool hasAttendees) =>
+        KindOf(kind, location, hasAttendees) == MeetingKind.Room ? IPop.Application.Hall.HallBooking.RoomKey(location) : null;
+
+    public enum KindResult { Ok, InvalidKind, RoomRequired }
+
+    /// The one kind rule for every meeting write (v3 §1). <paramref name="kind"/> null = infer from the place.
+    /// voice: an explicit voice kind sets the place to "Online · iPop Meeting" and drops any link; room: the place must
+    /// be an SJA Hall room; a hall-room place is always a room (the location stays the room key, v2 rules are frozen),
+    /// so an in-person kind there becomes room. <paramref name="location"/> must already be cleaned and normalised.
+    public static (KindResult Result, string? Kind, string? Location, string? Link) ResolveKind(string? kind, string? location, string? link,
+        bool hasAttendees)
+    {
+        if (kind is not null && !MeetingKind.IsValid(kind)) return (KindResult.InvalidKind, null, location, link);
+        var hall = IPop.Application.Hall.HallBooking.RoomKey(location) is not null;
+        var k = kind ?? MeetingKind.Infer(location, hasAttendees);
+        if (k == MeetingKind.Voice && kind is not null) return (KindResult.Ok, k, MeetingKind.OnlineLocation, null);
+        if (k == MeetingKind.Room && !hall) return (KindResult.RoomRequired, null, location, link);
+        if (k == MeetingKind.InPerson && hall) k = MeetingKind.Room;
+        return (KindResult.Ok, k, location, link);
+    }
+
+    public static IResult KindError(KindResult r) => r switch
+    {
+        KindResult.InvalidKind => Results.Json(new { code = "invalid_kind", message = "Choose a voice call, a meeting room or in person." }, statusCode: 400),
+        _ => Results.Json(new { code = "room_required", message = "Choose a meeting room." }, statusCode: 400),
+    };
+
+    public enum CreateResult { Created, InvalidTitle, InvalidRange, NotRoomMember, RoomBooked, InvalidKind, RoomRequired }
 
     /// Create a meeting: attendees (ids and/or NIKs, organizer always in and accepted), the
     /// organizer's calendar row and one reminder per attendee when ReminderMinutes > 0
@@ -357,8 +395,14 @@ public static class MeetingEndpoints
         if (req.RoomId is { } roomId
             && !await db.ChatRoomMembers.AnyAsync(m => m.RoomId == roomId && m.UserId == userId && m.LeftAt == null, ct))
             return (CreateResult.NotRoomMember, null, []);
+        // A meeting always has its organizer as an attendee.
+        var (kindResult, kind, location, link) = ResolveKind(req.Kind,
+            string.IsNullOrWhiteSpace(req.Location) ? null : IPop.Application.Hall.HallBooking.Normalize(req.Location.Trim()),
+            string.IsNullOrWhiteSpace(req.Link) ? null : req.Link.Trim(), hasAttendees: true);
+        if (kindResult == KindResult.InvalidKind) return (CreateResult.InvalidKind, null, []);
+        if (kindResult == KindResult.RoomRequired) return (CreateResult.RoomRequired, null, []);
         // SJA Hall meeting rooms ("SJA Hall · Robusta") can only be booked once at a time.
-        if (await IPop.Infrastructure.Hall.HallBookings.ConflictAsync(db, req.Location, AsUtc(req.StartAt), AsUtc(req.EndAt), null, ct) is not null)
+        if (await IPop.Infrastructure.Hall.HallBookings.ConflictAsync(db, location, start, end, null, ct) is not null)
             return (CreateResult.RoomBooked, null, []);
 
         var reminder = req.ReminderMinutes is > 0 and <= 10080 ? req.ReminderMinutes : null;
@@ -367,8 +411,7 @@ public static class MeetingEndpoints
             Id = Guid.NewGuid(), Title = title,
             StartAt = start, EndAt = end,
             TimeZone = req.TimeZone,
-            Location = string.IsNullOrWhiteSpace(req.Location) ? null : IPop.Application.Hall.HallBooking.Normalize(req.Location.Trim()),
-            Link = string.IsNullOrWhiteSpace(req.Link) ? null : req.Link.Trim(),
+            Location = location, Link = link, Kind = kind,
             Agenda = string.IsNullOrWhiteSpace(req.Agenda) ? null : req.Agenda.Trim(),
             OrganizerId = userId, Status = MeetingStatus.Active, RoomId = req.RoomId,
             SourceMailId = req.SourceMailId,
@@ -584,7 +627,7 @@ public static class MeetingEndpoints
 
     public record RoomPasswordDto(string Password);
 
-    public enum UpdateResult { Applied, NotFound, Forbidden, InvalidTitle, InvalidRange, Cancelled, RoomBooked }
+    public enum UpdateResult { Applied, NotFound, Forbidden, InvalidTitle, InvalidRange, Cancelled, RoomBooked, InvalidKind, RoomRequired }
 
     /// Organizer-only edit: fields, attendee list (by NIK; organizer always stays), calendar
     /// row and unsent reminders follow the new time. Returns newly invited + all other attendees.
@@ -600,7 +643,12 @@ public static class MeetingEndpoints
         var title = req.Title?.Trim() ?? "";
         if (title.Length == 0) return (UpdateResult.InvalidTitle, [], []);
         if (req.EndAt <= req.StartAt) return (UpdateResult.InvalidRange, [], []);
-        if (await IPop.Infrastructure.Hall.HallBookings.ConflictAsync(db, req.Location, AsUtc(req.StartAt), AsUtc(req.EndAt), m.Id, ct) is not null)
+        var (kindResult, kind, location, link) = ResolveKind(req.Kind,
+            string.IsNullOrWhiteSpace(req.Location) ? null : IPop.Application.Hall.HallBooking.Normalize(req.Location.Trim()),
+            string.IsNullOrWhiteSpace(req.Link) ? null : req.Link.Trim(), hasAttendees: true);
+        if (kindResult == KindResult.InvalidKind) return (UpdateResult.InvalidKind, [], []);
+        if (kindResult == KindResult.RoomRequired) return (UpdateResult.RoomRequired, [], []);
+        if (await IPop.Infrastructure.Hall.HallBookings.ConflictAsync(db, location, AsUtc(req.StartAt), AsUtc(req.EndAt), m.Id, ct) is not null)
             return (UpdateResult.RoomBooked, [], []);
 
         // Claim the original physical room BEFORE mutable fields are rewritten, even if no client/worker observed it.
@@ -611,9 +659,11 @@ public static class MeetingEndpoints
         m.Title = title;
         m.StartAt = AsUtc(req.StartAt);
         m.EndAt = AsUtc(req.EndAt);
-        m.Location = string.IsNullOrWhiteSpace(req.Location) ? null : IPop.Application.Hall.HallBooking.Normalize(req.Location.Trim());
+        m.Location = location;
+        m.Kind = kind;
+        // Room: a password (kept while it stays a room); any other kind: none (v3 review focus 6).
         SyncRoomPassword(m);
-        m.Link = string.IsNullOrWhiteSpace(req.Link) ? null : req.Link.Trim();
+        m.Link = link;
         m.Agenda = string.IsNullOrWhiteSpace(req.Agenda) ? null : req.Agenda.Trim();
         if (req.ReminderMinutes is not null) m.ReminderMinutes = req.ReminderMinutes > 0 ? req.ReminderMinutes : null;
 
@@ -696,9 +746,10 @@ public static class MeetingEndpoints
 
     public record CreateMeetingRequest(string? Title, DateTime StartAt, DateTime EndAt, string? TimeZone, string? Location, string? Link,
         IReadOnlyList<Guid>? AttendeeIds, IReadOnlyList<Guid>? RequiredIds, int? ReminderMinutes, Guid? RoomId,
-        IReadOnlyList<string>? AttendeeNiks = null, Guid? SourceMailId = null, string? Agenda = null);
+        IReadOnlyList<string>? AttendeeNiks = null, Guid? SourceMailId = null, string? Agenda = null, string? Kind = null);
+    /// Kind null = infer from Location (MeetingKind.Infer).
     public record UpdateMeetingRequest(string? Title, DateTime StartAt, DateTime EndAt, string? Location, string? Link, string? Agenda,
-        IReadOnlyList<string>? AttendeeNiks, int? ReminderMinutes);
+        IReadOnlyList<string>? AttendeeNiks, int? ReminderMinutes, string? Kind = null);
     public record MeetingJoinDto(Guid MeetingId, string Title, string RoomName, string? ExternalLink, string? LiveKitUrl, string? LiveKitToken);
     public record RsvpRequest(string? Response, string? Note, string? OnBehalfOf = null);
     public record CreateCalendarEventRequest(string? Title, DateTime StartAt, DateTime EndAt, string? Type, Guid? RoomId);
@@ -706,6 +757,7 @@ public static class MeetingEndpoints
     public record MeetingDto(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string? TimeZone, string? Location, string? Link,
         Guid OrganizerId, string OrganizerName, string OrganizerNik, string Status, IReadOnlyList<MeetingAttendeeDto> Attendees,
         int AcceptCount, int MaybeCount, int DeclineCount, int PendingCount, string MyResponse,
-        string? Agenda = null, string? RoomName = null, Guid? RoomId = null, int? ReminderMinutes = null, string? RoomPassword = null);
+        string? Agenda = null, string? RoomName = null, Guid? RoomId = null, int? ReminderMinutes = null, string? RoomPassword = null,
+        string? Kind = null, string? RoomKey = null);
     public record CalendarEventDto(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string Type, Guid? MeetingId, Guid? RoomId);
 }

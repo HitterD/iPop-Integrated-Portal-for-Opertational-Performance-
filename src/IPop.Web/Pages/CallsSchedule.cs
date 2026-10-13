@@ -55,6 +55,11 @@ public static class CallsSchedule
         return DurationChoices.Contains(m) ? m : null;
     }
 
+    /// The meeting kind (voice | room | inperson, null = plain event) to colour by: the server's Kind when it sent a
+    /// valid one, else the location fallback (MeetingKind.Infer — online/empty with people = voice, SJA Hall = room).
+    public static string? KindOf(string? kind, string? location, bool hasPeople) =>
+        IPop.Core.Entities.MeetingKind.Of(kind, location, hasPeople);
+
     public static bool IsOnline(string? location) =>
         string.IsNullOrWhiteSpace(location) || location.Trim() == OnlineLocation;
 

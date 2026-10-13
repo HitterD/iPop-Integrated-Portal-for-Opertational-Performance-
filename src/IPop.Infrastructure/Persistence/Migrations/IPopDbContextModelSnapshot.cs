@@ -1948,6 +1948,10 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("EndAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Kind")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<string>("Link")
                         .HasColumnType("text");
 

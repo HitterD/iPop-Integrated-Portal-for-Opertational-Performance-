@@ -13,7 +13,8 @@ public sealed class RoomMeetingCreator(IPopDbContext db) : IRoomBookingWriter
         IReadOnlyList<string> attendeeNiks, CancellationToken ct)
     {
         var (result, id, _) = await MeetingEndpoints.ApplyCreateAsync(db, organizerId,
-            new MeetingEndpoints.CreateMeetingRequest(title, startUtc, endUtc, null, location, null, null, null, null, null, attendeeNiks), ct);
+            new MeetingEndpoints.CreateMeetingRequest(title, startUtc, endUtc, null, location, null, null, null, null, null, attendeeNiks,
+                Kind: IPop.Core.Entities.MeetingKind.Room), ct);
         return result == MeetingEndpoints.CreateResult.Created ? id : null;
     }
 

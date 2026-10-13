@@ -28,10 +28,44 @@ public class Meeting
     /// 6-digit password for people who are not invited to a hall-room booking (Location "SJA Hall · …"); null for
     /// other meetings. Shown only to the organizer and non-declined attendees, never logged.
     public string? RoomPassword { get; set; }
+    /// <see cref="MeetingKind"/>: voice | room | inperson; null = a plain event with no meeting semantics (v3 §1).
+    /// For room meetings the room itself still comes from Location ("SJA Hall · {Name}").
+    public string? Kind { get; set; }
     public DateTime CreatedAt { get; set; }
 
     public User Organizer { get; set; } = default!;
     public ICollection<MeetingAttendee> Attendees { get; set; } = [];
+}
+
+/// The one set of Meeting.Kind values (meeting scheduling v3 §1).
+public static class MeetingKind
+{
+    /// Scheduled LiveKit group call, audio only. No room, no password.
+    public const string Voice = "voice";
+    /// One of the SJA Hall meeting rooms (Location "SJA Hall · {Name}"); v2 booking/password/lock rules.
+    public const string Room = "room";
+    /// A free-text place; no Join.
+    public const string InPerson = "inperson";
+    /// The Location every voice meeting carries.
+    public const string OnlineLocation = "Online · iPop Meeting";
+
+    public static bool IsValid(string? kind) => kind is Voice or Room or InPerson;
+
+    /// The kind to report: the stored one when valid, else <see cref="Infer"/> (rows an older binary wrote during a rollout).
+    public static string? Of(string? stored, string? location, bool hasAttendees) =>
+        IsValid(stored) ? stored : Infer(location, hasAttendees);
+
+    /// The single rule used by the backfill migration, by creates that send no kind, and by the client fallback:
+    /// an "SJA Hall" location is a room, the online location (or no place but people) is voice, any other text is
+    /// in person, and no place and no people is a plain event (null).
+    public static string? Infer(string? location, bool hasAttendees)
+    {
+        var l = location?.Trim();
+        if (string.IsNullOrEmpty(l)) return hasAttendees ? Voice : null;
+        if (l.StartsWith("SJA Hall", StringComparison.OrdinalIgnoreCase)) return Room;
+        if (l == OnlineLocation) return Voice;
+        return InPerson;
+    }
 }
 
 /// The one set of Meeting.Status values. "dibatalkan" was an older spelling of Cancelled;

@@ -36,7 +36,8 @@ public static class CalendarFeedService
                 && (m.OrganizerId == userId || m.Attendees.Any(a => a.UserId == userId && a.RsvpStatus != "decline")))
             .Select(m => new
             {
-                m.Id, m.Title, m.StartAt, m.EndAt, m.Location, m.Link, m.RoomId, m.OrganizerId, m.Visibility,
+                m.Id, m.Title, m.StartAt, m.EndAt, m.Location, m.Link, m.RoomId, m.OrganizerId, m.Visibility, m.Kind,
+                HasAttendees = m.Attendees.Any(),
                 OrganizerName = m.Organizer.Name,
                 Rsvp = m.Attendees.Where(a => a.UserId == userId).Select(a => a.RsvpStatus).FirstOrDefault(),
                 EventId = db.CalendarEvents.Where(e => e.MeetingId == m.Id).OrderBy(e => e.CreatedAt).Select(e => (Guid?)e.Id).FirstOrDefault(),
@@ -48,11 +49,13 @@ public static class CalendarFeedService
         {
             var isRoom = m.RoomId is not null;
             if (isRoom && !access.Chat) continue;
+            var kind = MeetingKind.Of(m.Kind, m.Location, m.HasAttendees);
             items.Add(new CalendarFeedItem(
                 $"meeting:{m.Id}", isRoom ? "chat" : "meetings", "meeting", m.Title, m.StartAt, m.EndAt, m.AllDay,
                 m.EventId is null ? (isRoom ? $"/chat/{m.RoomId}" : $"/calls?tab=scheduled&meeting={m.Id}") : null,
                 isRoom ? m.RoomName : $"Organizer: {m.OrganizerName}",
-                m.EventId, m.Id, m.Rsvp ?? (m.OrganizerId == userId ? "accept" : null), m.OrganizerId == userId, m.Location, m.Link, m.Visibility));
+                m.EventId, m.Id, m.Rsvp ?? (m.OrganizerId == userId ? "accept" : null), m.OrganizerId == userId, m.Location, m.Link, m.Visibility,
+                kind, kind == MeetingKind.Room ? IPop.Application.Hall.HallBooking.RoomKey(m.Location) : null));
         }
 
         // 3) Proyek saya: tugas saya yang belum selesai, milestone, hari libur/off proyek.
