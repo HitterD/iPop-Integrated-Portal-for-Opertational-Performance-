@@ -745,7 +745,7 @@
                             var occ = o;
                             var pick = RoomChoice(occ.Date);
                             <div class="cal-rcheck-row">
-                                <span><b>@occ.Date.ToDateTime(TimeOnly.MinValue).ToString("ddd d MMM")</b><small>Booked by “@(occ.BookedBy ?? "Booked")”</small></span>
+                                <span><b>@occ.Date.ToDateTime(TimeOnly.MinValue).ToString("ddd d MMM")</b><small>@IPop.Web.Components.Meetings.MeetingKinds.BookedByText(occ.BookedBy)</small></span>
                                 <span class="cal-seg sm" role="radiogroup" aria-label="@($"What to do on {occ.Date:ddd d MMM}")">
                                     <button type="button" role="radio" aria-checked="@(pick is null ? "true" : "false")" class="cal-seg-item @(pick is null ? "on" : "")" @onclick="() => SetRoomChoice(occ.Date, null)">Skip</button>
                                     @if (occ.FreeRooms.FirstOrDefault() is { } alt)

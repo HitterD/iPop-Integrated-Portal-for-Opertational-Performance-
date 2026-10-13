@@ -422,4 +422,12 @@ public class MeetingKitTests
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
         }
     }
+
+    /// QA Task 11: a clash whose title the viewer may not see (the server sends "Booked") read "Booked by “Booked”".
+    [Theory]
+    [InlineData("Finance sync", "Booked by “Finance sync”")]
+    [InlineData("Booked", "Already booked")]
+    [InlineData(null, "Already booked")]
+    public void Clash_owner_text_hides_the_placeholder_title(string? bookedBy, string expected) =>
+        Assert.Equal(expected, MeetingKinds.BookedByText(bookedBy));
 }

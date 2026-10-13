@@ -42,7 +42,7 @@
                             else
                             {
                                 <span class="wn"><i data-lucide="triangle-alert"></i></span>
-                                <span class="dt"><b>@DayText(occ.Date)</b><span class="w">Booked by “@(occ.BookedBy ?? "Booked")” @Hm(occ.StartAt)–@Hm(occ.EndAt)</span></span>
+                                <span class="dt"><b>@DayText(occ.Date)</b><span class="w">@MeetingKinds.BookedByText(occ.BookedBy) @Hm(occ.StartAt)–@Hm(occ.EndAt)</span></span>
                                 <span class="seg2" role="radiogroup" aria-label="@($"What to do on {DayText(occ.Date)}")">
                                     <button type="button" role="radio" aria-checked="@(choice is null ? "true" : "false")" class="@(choice is null ? "on" : null)" @onclick="() => SetChoice(occ.Date, null)">Skip</button>
                                     @if (occ.FreeRooms.FirstOrDefault() is { } alt)

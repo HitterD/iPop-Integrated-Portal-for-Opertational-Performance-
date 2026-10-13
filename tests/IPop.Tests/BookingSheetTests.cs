@@ -196,7 +196,8 @@ public class BookingSheetTests
         Assert.Equal("W:2;C:4", preview.GetProperty("recurrence").GetString());
         Assert.Equal("kalosi", preview.GetProperty("roomKey").GetString());
         Assert.Contains("Booked by “Finance sync” 13:00–15:00", cut.FindAll(".rp.clashed")[0].TextContent);
-        Assert.Contains("Booked by “Booked”", cut.FindAll(".rp.clashed")[1].TextContent);
+        Assert.Contains("Already booked 13:00–15:00", cut.FindAll(".rp.clashed")[1].TextContent);   // hidden title: not “Booked by “Booked””
+        Assert.DoesNotContain("“Booked”", cut.Markup);
         Assert.Equal("Skip clashes and book 4", Primary(cut));
 
         // Move date 3 to Toraja; date 5 stays skipped.

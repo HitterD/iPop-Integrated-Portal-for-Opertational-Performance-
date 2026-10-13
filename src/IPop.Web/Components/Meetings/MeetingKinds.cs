@@ -12,6 +12,11 @@ public static class MeetingKinds
 
     public static bool IsKnown(string? kind) => kind is Voice or Room or InPerson;
 
+    /// Who holds a clashing date: "Booked by “title”", or "Already booked" when the title is hidden from the viewer
+    /// (the server sends the placeholder "Booked").
+    public static string BookedByText(string? bookedBy) =>
+        string.IsNullOrWhiteSpace(bookedBy) || bookedBy == "Booked" ? "Already booked" : $"Booked by “{bookedBy}”";
+
     /// Room name for a hall key ("kapal-api" → "Kapal Api"), null for an unknown key.
     public static string? RoomName(string? roomKey) =>
         roomKey is null ? null : HallBooking.Rooms.FirstOrDefault(r => r.Key == roomKey).Name;
