@@ -50,7 +50,7 @@ public class MeetingRecordingDeleteTests : IDisposable
         foreach (var u in new[] { organizer, starter, viewer, outsider, admin }) t.Db.UserRoles.Add(new UserRole { UserId = u.Id, RoleId = role.Id });
         t.Db.SaveChanges();
         await MeetingEndpoints.ApplyCreateAsync(t.Db, organizer.Id,
-            new("Weekly sync", DateTime.UtcNow.AddMinutes(-5), DateTime.UtcNow.AddMinutes(55), null, "SJA Hall · Kalosi", null, null, null, null, null), default);
+            new("Weekly sync", DateTime.UtcNow.AddMinutes(-5), DateTime.UtcNow.AddMinutes(55), null, "SJA Hall · Kalosi", null, null, null, null, null), default, nowUtc: DateTime.UtcNow.AddMinutes(-6));
         var meetingId = await t.Db.Meetings.Select(m => m.Id).SingleAsync();
         var lk = new MeetingRoomServiceTests.FakeRoomAdmin();
         lk.Rooms["hall-kalosi"] = [new(starter.Id.ToString(), "S", [], new Dictionary<string, string>()),

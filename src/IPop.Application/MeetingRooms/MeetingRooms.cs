@@ -43,12 +43,19 @@ public interface IMeetingRoomService
     /// Errors: "unknown_room", "media_unavailable", "no_booking", "password_required", "wrong_password",
     /// "too_many_attempts", "room_full" (Suggestions = keys of rooms with space).
     Task<MeetingRoomJoinResult> JoinAsync(Guid userId, string key, string? password, CancellationToken ct);
-    /// Books a free room from this minute for <paramref name="minutes"/> through the normal meeting create path.
-    /// Minutes: 30, 60 or 90; a shorter value (≥ 15) only when the next booking caps the room.
-    /// Errors: "unknown_room", "invalid_minutes", "room_booked" (MaxMinutes = minutes until the next booking's lock
-    /// window when that is at least 15, else null).
+    /// Books a free room from this minute until <paramref name="endUtc"/> through the normal meeting create path (v3 limits:
+    /// <see cref="RoomBookingRules"/>; never into the next booking's lock window).
+    /// Errors: "unknown_room", a <see cref="RoomBookingRules"/> code ("too_short", "too_long", "different_day", "in_past",
+    /// "too_far"), "room_booked" (MaxMinutes = minutes until the next booking's lock window when that is at least 15, else null).
+    Task<(Guid? MeetingId, string? Error, int? MaxMinutes)> UseNowAsync(Guid userId, string key, DateTime endUtc, string? title,
+        IReadOnlyList<string> attendeeNiks, CancellationToken ct);
+    /// v2 clients: <paramref name="minutes"/> from the start (same rules as the end-time form).
     Task<(Guid? MeetingId, string? Error, int? MaxMinutes)> UseNowAsync(Guid userId, string key, int minutes, string? title,
         IReadOnlyList<string> attendeeNiks, CancellationToken ct);
+    /// The room's bookings on <paramref name="date"/> (the viewer's local day), titles per the privacy rule. Null = unknown room.
+    Task<RoomDayDto?> DayAsync(Guid viewerId, string key, DateOnly date, CancellationToken ct);
+    /// All five rooms, free or not for [from, to). <paramref name="exceptMeetingId"/>: the meeting being edited does not count.
+    Task<IReadOnlyList<RoomFreeDto>> FreeAtAsync(Guid viewerId, DateTime fromUtc, DateTime toUtc, Guid? exceptMeetingId, CancellationToken ct);
     /// Organizer only: the current booking ends 15 minutes later (through the normal meeting update path).
     /// Errors: "unknown_room", "no_booking" (nothing current), "forbidden" (not the organizer), "room_booked" (the new end
     /// would reach the next booking's lock window, StartAt − 10 min), "cancelled", "media_unavailable" (LiveKit not reachable,
@@ -125,4 +132,121 @@ public interface IMeetingChatService
     Task<(IReadOnlyList<MeetingChatMessageDto>? Messages, string? Error)> HistoryAsync(Guid userId, string key, CancellationToken ct);
     /// Lines saved with a recording, by offset. Null when the user may not view the recording (viewers and Admins).
     Task<IReadOnlyList<MeetingChatMessageDto>?> RecordingChatAsync(Guid userId, bool admin, Guid recordingId, CancellationToken ct);
+}
+
+/// One booking on a room's day timeline (v3 §2). <paramref name="Visible"/>: the viewer organizes it or is a non-declined
+/// attendee; otherwise Title is "Booked" and MeetingId is null (same privacy rule as the room cards).
+/// <paramref name="Mine"/>: the viewer organizes it.
+public record RoomBlockDto(Guid? MeetingId, string Title, DateTime StartAt, DateTime EndAt, bool Mine, bool Visible);
+/// A room's bookings on one local day. WindowStart/WindowEnd (UTC) = 07:00–19:00 local, widened to whole hours around any
+/// booking outside it (never beyond the day).
+public record RoomDayDto(string Key, string Name, int Capacity, DateOnly Date, DateTime WindowStart, DateTime WindowEnd,
+    IReadOnlyList<RoomBlockDto> Blocks);
+/// Whether a room is free for a time range. BusyTitle: null when free, else the clashing booking's title for the viewer
+/// ("Booked" when they may not see it).
+public record RoomFreeDto(string Key, string Name, int Capacity, bool Free, string? BusyTitle);
+public record BookingLimits(int MinMinutes, int MaxMinutes, int MaxDaysAhead);
+
+/// v3 booking limits for room meetings (server enforced; the 15-minute snap is UI only).
+public static class RoomBookingRules
+{
+    public const int MinMinutes = 15, MaxMinutes = 8 * 60, MaxDaysAhead = 60;
+    public static readonly BookingLimits Limits = new(MinMinutes, MaxMinutes, MaxDaysAhead);
+    public const string TooShort = "too_short", TooLong = "too_long", DifferentDay = "different_day", InPast = "in_past", TooFar = "too_far";
+    /// Day timeline default window, local time.
+    public static readonly TimeSpan DayFrom = TimeSpan.FromHours(7), DayTo = TimeSpan.FromHours(19);
+
+    /// Null when a room booking [start, end) is allowed at <paramref name="nowUtc"/>, else one of the codes above (checked in
+    /// that order). Same local day: an end at exactly the next local midnight still counts as the same day. Start not in the
+    /// past = not before this minute (Use now starts at the floored minute). <paramref name="allowPastStart"/>: an edit that
+    /// keeps a booking which already started (only the other rules apply).
+    public static string? Validate(DateTime startUtc, DateTime endUtc, DateTime nowUtc, TimeZoneInfo tz, bool allowPastStart = false)
+    {
+        var length = endUtc - startUtc;
+        if (length < TimeSpan.FromMinutes(MinMinutes)) return TooShort;
+        if (length > TimeSpan.FromMinutes(MaxMinutes)) return TooLong;
+        var s = Local(startUtc, tz);
+        var e = Local(endUtc, tz);
+        if (e.Date != s.Date && e != s.Date.AddDays(1)) return DifferentDay;
+        var now = Utc(nowUtc);
+        var minute = new DateTime(now.Ticks - now.Ticks % TimeSpan.TicksPerMinute, DateTimeKind.Utc);
+        if (!allowPastStart && Utc(startUtc) < minute) return InPast;
+        if (DateOnly.FromDateTime(s) > DateOnly.FromDateTime(Local(now, tz)).AddDays(MaxDaysAhead)) return TooFar;
+        return null;
+    }
+
+    /// User-facing text for a Validate code.
+    public static string Message(string? code) => code switch
+    {
+        TooShort => $"A room booking is at least {MinMinutes} minutes.",
+        TooLong => "A room booking is at most 8 hours.",
+        DifferentDay => "A room booking must start and end on the same day.",
+        InPast => "That time has already passed. Pick a time from now on.",
+        TooFar => $"Rooms can be booked up to {MaxDaysAhead} days ahead.",
+        _ => "Choose a valid time for the room.",
+    };
+
+    /// The earliest [s, s + length) at or after <paramref name="from"/> that overlaps none of <paramref name="busy"/> and ends
+    /// by <paramref name="dayEnd"/>; null when there is none (the "Try HH:MM–HH:MM" hint).
+    public static (DateTime S, DateTime E)? NextFree(IReadOnlyList<(DateTime S, DateTime E)> busy, DateTime from, TimeSpan length, DateTime dayEnd)
+    {
+        if (length <= TimeSpan.Zero) return null;
+        var s = from;
+        while (true)
+        {
+            if (s + length > dayEnd) return null;
+            var e = s + length;
+            var clash = busy.Where(b => b.S < e && s < b.E).Select(b => (DateTime?)b.E).Max();
+            if (clash is null) return (s, e);
+            s = clash.Value;
+        }
+    }
+
+    /// The local day [00:00, 24:00) of <paramref name="date"/> in UTC.
+    public static (DateTime Start, DateTime End) DayUtc(DateOnly date, TimeZoneInfo tz) =>
+        (ToUtc(date.ToDateTime(TimeOnly.MinValue), tz), ToUtc(date.AddDays(1).ToDateTime(TimeOnly.MinValue), tz));
+
+    /// The timeline window of a day: 07:00–19:00 local, widened to whole hours to include every block, within the day.
+    public static (DateTime Start, DateTime End) Window(DateOnly date, TimeZoneInfo tz, IEnumerable<(DateTime S, DateTime E)> blocks)
+    {
+        var (dayStart, dayEnd) = DayUtc(date, tz);
+        var from = ToUtc(date.ToDateTime(TimeOnly.MinValue) + DayFrom, tz);
+        var to = ToUtc(date.ToDateTime(TimeOnly.MinValue) + DayTo, tz);
+        foreach (var (bs, be) in blocks)
+        {
+            var s = bs < dayStart ? dayStart : Utc(bs);
+            var e = be > dayEnd ? dayEnd : Utc(be);
+            if (s < from) from = FloorHour(s, tz);
+            if (e > to) to = CeilHour(e, tz);
+        }
+        return (from < dayStart ? dayStart : from, to > dayEnd ? dayEnd : to);
+    }
+
+    /// The user's time zone, falling back to the office zone (Asia/Jakarta, WIB).
+    public static TimeZoneInfo ResolveZone(string? id)
+    {
+        foreach (var candidate in new[] { id, "SE Asia Standard Time", "Asia/Jakarta" })
+        {
+            if (string.IsNullOrWhiteSpace(candidate)) continue;
+            try { return TimeZoneInfo.FindSystemTimeZoneById(candidate); }
+            catch (Exception e) when (e is TimeZoneNotFoundException or InvalidTimeZoneException) { }
+        }
+        return TimeZoneInfo.CreateCustomTimeZone("WIB", TimeSpan.FromHours(7), "WIB", "WIB");
+    }
+
+    public static DateTime Local(DateTime utc, TimeZoneInfo tz) => TimeZoneInfo.ConvertTimeFromUtc(Utc(utc), tz);
+    public static DateTime ToUtc(DateTime local, TimeZoneInfo tz) =>
+        TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), tz);
+    private static DateTime Utc(DateTime t) => t.Kind == DateTimeKind.Utc ? t : DateTime.SpecifyKind(t, DateTimeKind.Utc);
+    private static DateTime FloorHour(DateTime utc, TimeZoneInfo tz)
+    {
+        var l = Local(utc, tz);
+        return ToUtc(new DateTime(l.Year, l.Month, l.Day, l.Hour, 0, 0), tz);
+    }
+    private static DateTime CeilHour(DateTime utc, TimeZoneInfo tz)
+    {
+        var l = Local(utc, tz);
+        var floor = new DateTime(l.Year, l.Month, l.Day, l.Hour, 0, 0);
+        return ToUtc(floor == l ? floor : floor.AddHours(1), tz);
+    }
 }

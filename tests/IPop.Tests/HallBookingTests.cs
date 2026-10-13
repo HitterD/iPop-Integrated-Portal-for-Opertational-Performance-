@@ -58,7 +58,7 @@ public class HallBookingTests
     {
         using var t = new TestDb(); var org = t.AddUser("O1"); var guest = t.AddUser("G1"); var no = t.AddUser("N1"); var other = t.AddUser("X1");
         var start = DateTime.UtcNow.AddMinutes(-10);
-        var (_, id, _) = await MeetingEndpoints.ApplyCreateAsync(t.Db, org.Id, Req(start, 60, "SJA Hall · Kalosi", guest.Id, no.Id), default);
+        var (_, id, _) = await MeetingEndpoints.ApplyCreateAsync(t.Db, org.Id, Req(start, 60, "SJA Hall · Kalosi", guest.Id, no.Id), default, nowUtc: start);
         var db = t.Verify();
         db.MeetingAttendees.Single(x => x.MeetingId == id && x.UserId == no.Id).RsvpStatus = "decline";
         db.SaveChanges();

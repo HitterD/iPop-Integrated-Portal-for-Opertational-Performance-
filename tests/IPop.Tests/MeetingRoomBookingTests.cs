@@ -31,7 +31,7 @@ public class MeetingRoomBookingTests
         params Guid[] attendees)
     {
         var (r, id, _) = await MeetingEndpoints.ApplyCreateAsync(t.Verify(), organizer,
-            new("Weekly sync", start, start.AddMinutes(minutes), null, room, null, attendees, null, 15, null), default);
+            new("Weekly sync", start, start.AddMinutes(minutes), null, room, null, attendees, null, 15, null), default, nowUtc: start);
         Assert.Equal(MeetingEndpoints.CreateResult.Created, r);
         return id!.Value;
     }

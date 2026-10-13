@@ -12,10 +12,10 @@ public static partial class CalendarEndpoints
     /// Creates one event, or a series when <see cref="SaveEventRequest.Recurrence"/> is set. Returns the first
     /// occurrence and who was invited (they get one invite for the series, not one per occurrence).
     public static async Task<(SaveResult, CalendarEvent?, IReadOnlyList<Guid>)> CreateSeriesAsync(IPopDbContext db, Guid userId, SaveEventRequest req,
-        CancellationToken ct, Guid? actedBy = null)
+        CancellationToken ct, Guid? actedBy = null, SaveIssue? issue = null)
     {
         var rule = CalendarRecurrence.Parse(req.Recurrence);
-        if (rule is null) return string.IsNullOrWhiteSpace(req.Recurrence) ? await CreateEventAsync(db, userId, req with { Recurrence = null }, ct, actedBy) : (SaveResult.InvalidRange, null, []);
+        if (rule is null) return string.IsNullOrWhiteSpace(req.Recurrence) ? await CreateEventAsync(db, userId, req with { Recurrence = null }, ct, actedBy, issue) : (SaveResult.InvalidRange, null, []);
 
         var (r, _, start, end) = Normalize(req);
         if (r != SaveResult.Ok) return (r, null, []);
@@ -31,7 +31,8 @@ public static partial class CalendarEndpoints
             foreach (var at in rule.Expand(start, tz))
         {
                 if (!CalendarRecurrence.TryLocalToUtc(TimeZoneInfo.ConvertTimeFromUtc(at, tz) + length, tz, out var finish)) continue;
-                var (res, ev, inv) = await CreateEventAsync(db, userId, req with { StartAt = at, EndAt = finish, Recurrence = null }, ct, actedBy);
+                var (res, ev, inv) = await CreateEventAsync(db, userId, req with { StartAt = at, EndAt = finish, Recurrence = null }, ct, actedBy, issue);
+                if (res != SaveResult.Ok && issue is not null) issue.Date = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(at, tz));
                 if (res != SaveResult.Ok) { await transaction.RollbackAsync(ct); db.ChangeTracker.Clear(); return (res, null, []); }
                 ev!.SeriesId = seriesId;
                 ev.Recurrence = rule.ToString();
@@ -58,7 +59,8 @@ public static partial class CalendarEndpoints
     /// Applies the form to every occurrence in scope, keeping each one's own date but taking the new time of
     /// day, length and details. Returns the occurrence to show and everyone affected (for live refresh).
     public static async Task<(SaveResult, Guid FirstId, IReadOnlyList<Guid> Touched)> UpdateSeriesAsync(IPopDbContext db, Guid id, Guid userId,
-        SaveEventRequest req, string scope, CancellationToken ct, Guid? actedBy = null, Dictionary<Guid, List<Guid>>? invitations = null)
+        SaveEventRequest req, string scope, CancellationToken ct, Guid? actedBy = null, Dictionary<Guid, List<Guid>>? invitations = null,
+        SaveIssue? issue = null)
     {
         var anchor = await db.CalendarEvents.AsNoTracking().FirstOrDefaultAsync(e => e.Id == id, ct);
         if (anchor is null) return (SaveResult.NotFound, id, []);
@@ -83,7 +85,8 @@ public static partial class CalendarEndpoints
                     foreach (var a in await db.MeetingAttendees.AsNoTracking().Where(x => x.MeetingId == before).Select(x => x.UserId).ToListAsync(ct)) touched.Add(a);
                 var local = TimeZoneInfo.ConvertTimeFromUtc(ev.StartAt, tz) + shift;
                 if (!CalendarRecurrence.TryLocalToUtc(local, tz, out var s) || !CalendarRecurrence.TryLocalToUtc(local + length, tz, out var finish)) continue;
-                var (res, saved, invited) = await UpdateEventAsync(db, ev.Id, userId, req with { StartAt = s, EndAt = finish, Recurrence = null }, ct, actedBy);
+                var (res, saved, invited) = await UpdateEventAsync(db, ev.Id, userId, req with { StartAt = s, EndAt = finish, Recurrence = null }, ct, actedBy, issue);
+                if (res is not (SaveResult.Ok or SaveResult.Cancelled) && issue is not null) issue.Date = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(s, tz));
                 if (res is SaveResult.Cancelled) continue;
                 if (res != SaveResult.Ok) { await transaction.RollbackAsync(ct); db.ChangeTracker.Clear(); return (res, id, []); }
                 if (invited.Count > 0) pendingInvites[ev.Id] = invited.ToList();

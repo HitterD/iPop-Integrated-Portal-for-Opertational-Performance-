@@ -33,6 +33,7 @@ public sealed class RoomMeetingCreator(IPopDbContext db) : IRoomBookingWriter
             MeetingEndpoints.UpdateResult.NotFound => "not_found",
             MeetingEndpoints.UpdateResult.Forbidden => "forbidden",
             MeetingEndpoints.UpdateResult.Cancelled => "cancelled",
+            MeetingEndpoints.UpdateResult.InvalidRoomRange => "invalid_range",
             _ => "room_booked",
         };
     }

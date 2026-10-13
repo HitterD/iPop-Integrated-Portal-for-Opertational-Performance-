@@ -24,9 +24,8 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
     private readonly MeetingRoomMedia media = mediaRooms ?? MeetingRoomMedia.Default;
 
     public const string PrivateTitle = "Booked";
-    /// Durations the "Use now" sheet offers; a shorter one only when the next booking caps the room (then ≥ UseNowMinMinutes).
-    public static readonly int[] UseNowDurations = [30, 60, 90];
-    public const int UseNowMinMinutes = 15;
+    /// The shortest booking Use now offers when the next booking caps the room (= RoomBookingRules.MinMinutes).
+    public const int UseNowMinMinutes = RoomBookingRules.MinMinutes;
 
     public async Task<IReadOnlyList<MeetingRoomDto>> ListAsync(Guid viewerId, CancellationToken ct)
     {
@@ -213,14 +212,24 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
         return null;
     }
 
-    public async Task<(Guid? MeetingId, string? Error, int? MaxMinutes)> UseNowAsync(Guid userId, string key, int minutes, string? title,
-        IReadOnlyList<string> attendeeNiks, CancellationToken ct)
+    public Task<(Guid? MeetingId, string? Error, int? MaxMinutes)> UseNowAsync(Guid userId, string key, int minutes, string? title,
+        IReadOnlyList<string> attendeeNiks, CancellationToken ct) => UseNowCoreAsync(userId, key, minutes, null, title, attendeeNiks, ct);
+
+    public Task<(Guid? MeetingId, string? Error, int? MaxMinutes)> UseNowAsync(Guid userId, string key, DateTime endUtc, string? title,
+        IReadOnlyList<string> attendeeNiks, CancellationToken ct) => UseNowCoreAsync(userId, key, null, Utc(endUtc), title, attendeeNiks, ct);
+
+    /// <paramref name="minutes"/> counts from the actual start; <paramref name="endUtc"/> is absolute.
+    private async Task<(Guid? MeetingId, string? Error, int? MaxMinutes)> UseNowCoreAsync(Guid userId, string key, int? minutes, DateTime? endUtc,
+        string? title, IReadOnlyList<string> attendeeNiks, CancellationToken ct)
     {
         var room = await db.HallRooms.AsNoTracking().FirstOrDefaultAsync(r => r.Key == key, ct);
         if (room is null) return (null, "unknown_room", null);
-        if (minutes < UseNowMinMinutes || minutes > UseNowDurations.Max()) return (null, "invalid_minutes", null);
+        var tz = await ZoneOfAsync(userId, ct);
         var now = DateTime.UtcNow;
         var start = new DateTime(now.Ticks - now.Ticks % TimeSpan.TicksPerMinute, DateTimeKind.Utc);
+        // Length rules first, so a bad request is told apart from a booked room.
+        if (RoomBookingRules.Validate(start, minutes is { } m0 ? start.AddMinutes(m0) : endUtc!.Value, now, tz) is { } invalid)
+            return (null, invalid, null);
         // Unreachable LiveKit: rely on the bookings alone.
         var occupied = await ParticipantsAsync(key, ct) is { } inside ? occupancy.Observe(key, inside.Count > 0, DateTime.UtcNow) : RoomOccupancy.Empty;
         var access = await RoomAccess.ForAsync(db, key, userId, now, occupied, ct);
@@ -231,18 +240,68 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
             .Where(m => m.Status != MeetingStatus.Cancelled && m.Location == loc && m.EndAt > start && m.EndAt <= now)
             .MaxAsync(m => (DateTime?)m.EndAt, ct);
         if (justEnded is { } ended && ended > start) start = DateTime.SpecifyKind(ended, DateTimeKind.Utc);
+        var end = minutes is { } m ? start.AddMinutes(m) : endUtc!.Value;
+        if (RoomBookingRules.Validate(start, end, now, tz) is { } shifted) return (null, shifted, null);
 
-        // Never into the next booking's lock window (Review Focus 4).
+        // Never into the next booking's lock window (v2 Review Focus 4, v3 Review focus 2).
         int? cap = access.Next is { } next ? (int)Math.Floor((next.StartAt - RoomAccess.Early - start).TotalMinutes) : null;
         int? offer = cap is >= UseNowMinMinutes ? cap : null;
-        if (cap is { } limit && minutes > limit) return (null, "room_booked", offer);
-        // 30/60/90 only; another value (≥ 15, checked above) only when the next booking caps the room below 90.
-        if (!UseNowDurations.Contains(minutes) && cap is not < 90) return (null, "invalid_minutes", null);
+        if (access.Next is { } nb && end > RoomAccess.WindowStart(nb)) return (null, "room_booked", offer);
         var name = string.IsNullOrWhiteSpace(title) ? $"{room.Name} meeting" : title.Trim();
         if (name.Length > 200) name = name[..200];
-        var id = await bookings.CreateAsync(userId, name, start, start.AddMinutes(minutes), HallBooking.Location(room.Name),
-            attendeeNiks ?? [], ct);
+        var id = await bookings.CreateAsync(userId, name, start, end, HallBooking.Location(room.Name), attendeeNiks ?? [], ct);
         return id is null ? (null, "room_booked", null) : (id, null, null);
+    }
+
+    private async Task<TimeZoneInfo> ZoneOfAsync(Guid userId, CancellationToken ct) =>
+        RoomBookingRules.ResolveZone(await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.TimeZoneId).FirstOrDefaultAsync(ct));
+
+    public async Task<RoomDayDto?> DayAsync(Guid viewerId, string key, DateOnly date, CancellationToken ct)
+    {
+        var room = await db.HallRooms.AsNoTracking().FirstOrDefaultAsync(r => r.Key == key, ct);
+        if (room is null) return null;
+        var tz = await ZoneOfAsync(viewerId, ct);
+        var (dayStart, dayEnd) = RoomBookingRules.DayUtc(date, tz);
+        var loc = HallBooking.Location(room.Name);
+        var rows = await db.Meetings.AsNoTracking()
+            .Where(m => m.Status != MeetingStatus.Cancelled && m.Location == loc && m.StartAt < dayEnd && dayStart < m.EndAt)
+            .OrderBy(m => m.StartAt)
+            .Select(m => new
+            {
+                m.Id, m.Title, m.StartAt, m.EndAt, Mine = m.OrganizerId == viewerId,
+                Invited = m.Attendees.Any(a => a.UserId == viewerId && a.RsvpStatus != "decline"),
+            })
+            .ToListAsync(ct);
+        var blocks = rows.Select(r => Block(r.Id, r.Title, r.StartAt, r.EndAt, r.Mine, r.Mine || r.Invited)).ToList();
+        var (from, to) = RoomBookingRules.Window(date, tz, blocks.Select(b => (b.StartAt, b.EndAt)));
+        return new RoomDayDto(room.Key, room.Name, room.Capacity, date, from, to, blocks);
+    }
+
+    /// v1 privacy rule (same as <see cref="BookingDtoAsync"/>): title and id only for the organizer and non-declined attendees.
+    private static RoomBlockDto Block(Guid id, string title, DateTime start, DateTime end, bool mine, bool visible) =>
+        new(visible ? id : null, visible ? title : PrivateTitle, Utc(start), Utc(end), mine, visible);
+
+    public async Task<IReadOnlyList<RoomFreeDto>> FreeAtAsync(Guid viewerId, DateTime fromUtc, DateTime toUtc, Guid? exceptMeetingId,
+        CancellationToken ct)
+    {
+        var (from, to) = (Utc(fromUtc), Utc(toUtc));
+        var rooms = await db.HallRooms.AsNoTracking().OrderBy(r => r.SortOrder).ToListAsync(ct);
+        var locations = rooms.Select(r => HallBooking.Location(r.Name)).ToList();
+        var busy = await db.Meetings.AsNoTracking()
+            .Where(m => m.Status != MeetingStatus.Cancelled && m.Location != null && locations.Contains(m.Location) && m.Id != exceptMeetingId
+                && m.StartAt < to && from < m.EndAt)
+            .OrderBy(m => m.StartAt)
+            .Select(m => new
+            {
+                m.Location, m.Title,
+                Visible = m.OrganizerId == viewerId || m.Attendees.Any(a => a.UserId == viewerId && a.RsvpStatus != "decline"),
+            })
+            .ToListAsync(ct);
+        return rooms.Select(r =>
+        {
+            var hit = busy.FirstOrDefault(b => b.Location == HallBooking.Location(r.Name));
+            return new RoomFreeDto(r.Key, r.Name, r.Capacity, hit is null, hit is null ? null : hit.Visible ? hit.Title : PrivateTitle);
+        }).ToList();
     }
 
     public async Task<IReadOnlyDictionary<string, bool>> VideoAsync(CancellationToken ct)

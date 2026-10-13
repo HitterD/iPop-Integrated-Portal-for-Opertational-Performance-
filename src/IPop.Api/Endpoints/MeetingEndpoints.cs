@@ -1,3 +1,4 @@
+using IPop.Application.MeetingRooms;
 using IPop.Api.Rbac;
 using IPop.Application.Notifications;
 using IPop.Application.Realtime;
@@ -21,9 +22,11 @@ public static class MeetingEndpoints
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
-            var (result, meetingId, invited) = await ApplyCreateAsync(db, userId.Value, req, ct);
+            var issue = new CalendarEndpoints.SaveIssue();
+            var (result, meetingId, invited) = await ApplyCreateAsync(db, userId.Value, req, ct, issue);
             switch (result)
             {
+                case CreateResult.InvalidRoomRange: return MeetingRoomEndpoints.RangeError(issue.Reason);
                 case CreateResult.InvalidTitle: return Results.Json(new { code = "invalid_title", message = "Meeting title is required (max 200 characters)." }, statusCode: 422);
                 case CreateResult.InvalidRange: return Results.Json(new { code = "invalid_range", message = "End time must be after start time." }, statusCode: 422);
                 case CreateResult.NotRoomMember: return Results.Json(new { code = "forbidden", message = "Not a member of that group." }, statusCode: 403);
@@ -220,9 +223,11 @@ public static class MeetingEndpoints
             if (userId is null) return Results.Unauthorized();
             // Attendees removed by this edit must also drop the meeting from their lists.
             var before = await db.MeetingAttendees.AsNoTracking().Where(a => a.MeetingId == id).Select(a => a.UserId).ToListAsync(ct);
-            var (result, added, others) = await ApplyUpdateAsync(db, id, userId.Value, req, ct);
+            var issue = new CalendarEndpoints.SaveIssue();
+            var (result, added, others) = await ApplyUpdateAsync(db, id, userId.Value, req, ct, issue: issue);
             switch (result)
             {
+                case UpdateResult.InvalidRoomRange: return MeetingRoomEndpoints.RangeError(issue.Reason);
                 case UpdateResult.NotFound: return Results.NotFound();
                 case UpdateResult.Forbidden: return Results.Json(new { code = "forbidden", message = "Only the organizer can edit this meeting." }, statusCode: 403);
                 case UpdateResult.Cancelled: return Results.Json(new { code = "cancelled", message = "This meeting was cancelled." }, statusCode: 409);
@@ -357,6 +362,15 @@ public static class MeetingEndpoints
 
     public enum KindResult { Ok, InvalidKind, RoomRequired }
 
+    /// v3 room booking limits (<see cref="RoomBookingRules.Validate"/>) in <paramref name="userId"/>'s time zone; null = allowed.
+    /// <paramref name="nowUtc"/>: when the booking is made (tests seeding a booking that is already running); default now.
+    public static async Task<string?> RoomRangeAsync(IPopDbContext db, Guid userId, DateTime startUtc, DateTime endUtc, bool allowPastStart,
+        CancellationToken ct, DateTime? nowUtc = null)
+    {
+        var tz = RoomBookingRules.ResolveZone(await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.TimeZoneId).FirstOrDefaultAsync(ct));
+        return RoomBookingRules.Validate(startUtc, endUtc, nowUtc ?? DateTime.UtcNow, tz, allowPastStart);
+    }
+
     /// The one kind rule for every meeting write (v3 §1). <paramref name="kind"/> null = infer from the place.
     /// voice: an explicit voice kind sets the place to "Online · iPop Meeting" and drops any link; room: the place must
     /// be an SJA Hall room; a hall-room place is always a room (the location stays the room key, v2 rules are frozen),
@@ -379,13 +393,16 @@ public static class MeetingEndpoints
         _ => Results.Json(new { code = "room_required", message = "Choose a meeting room." }, statusCode: 400),
     };
 
-    public enum CreateResult { Created, InvalidTitle, InvalidRange, NotRoomMember, RoomBooked, InvalidKind, RoomRequired }
+    /// InvalidRoomRange: a room meeting outside the v3 booking limits (reason in the SaveIssue).
+    public enum CreateResult { Created, InvalidTitle, InvalidRange, NotRoomMember, RoomBooked, InvalidKind, RoomRequired, InvalidRoomRange }
 
     /// Create a meeting: attendees (ids and/or NIKs, organizer always in and accepted), the
     /// organizer's calendar row and one reminder per attendee when ReminderMinutes > 0
     /// (null/0 = no reminder). Returns the invitees to notify (everyone but the organizer).
+    /// Room meetings must meet the v3 booking limits as of <paramref name="nowUtc"/> (default now).
     public static async Task<(CreateResult Result, Guid? MeetingId, IReadOnlyList<Guid> Invited)> ApplyCreateAsync(
-        IPopDbContext db, Guid userId, CreateMeetingRequest req, CancellationToken ct)
+        IPopDbContext db, Guid userId, CreateMeetingRequest req, CancellationToken ct, CalendarEndpoints.SaveIssue? issue = null,
+        DateTime? nowUtc = null)
     {
         var title = req.Title?.Trim() ?? "";
         if (title.Length is 0 or > 200) return (CreateResult.InvalidTitle, null, []);
@@ -401,6 +418,11 @@ public static class MeetingEndpoints
             string.IsNullOrWhiteSpace(req.Link) ? null : req.Link.Trim(), hasAttendees: true);
         if (kindResult == KindResult.InvalidKind) return (CreateResult.InvalidKind, null, []);
         if (kindResult == KindResult.RoomRequired) return (CreateResult.RoomRequired, null, []);
+        if (kind == MeetingKind.Room && await RoomRangeAsync(db, userId, start, end, false, ct, nowUtc) is { } bad)
+        {
+            if (issue is not null) issue.Reason = bad;
+            return (CreateResult.InvalidRoomRange, null, []);
+        }
         // SJA Hall meeting rooms ("SJA Hall · Robusta") can only be booked once at a time.
         if (await IPop.Infrastructure.Hall.HallBookings.ConflictAsync(db, location, start, end, null, ct) is not null)
             return (CreateResult.RoomBooked, null, []);
@@ -627,14 +649,15 @@ public static class MeetingEndpoints
 
     public record RoomPasswordDto(string Password);
 
-    public enum UpdateResult { Applied, NotFound, Forbidden, InvalidTitle, InvalidRange, Cancelled, RoomBooked, InvalidKind, RoomRequired }
+    public enum UpdateResult { Applied, NotFound, Forbidden, InvalidTitle, InvalidRange, Cancelled, RoomBooked, InvalidKind, RoomRequired, InvalidRoomRange }
 
     /// Organizer-only edit: fields, attendee list (by NIK; organizer always stays), calendar
     /// row and unsent reminders follow the new time. Returns newly invited + all other attendees.
     /// <paramref name="keepAnswers"/>: a new time normally sends everyone's RSVP back to pending; a meeting-room
     /// "Extend 15 min" keeps them (and so keeps a decline a decline — declined people stay out of the room).
     public static async Task<(UpdateResult Result, IReadOnlyList<Guid> Added, IReadOnlyList<Guid> Others)> ApplyUpdateAsync(
-        IPopDbContext db, Guid meetingId, Guid userId, UpdateMeetingRequest req, CancellationToken ct, bool keepAnswers = false)
+        IPopDbContext db, Guid meetingId, Guid userId, UpdateMeetingRequest req, CancellationToken ct, bool keepAnswers = false,
+        CalendarEndpoints.SaveIssue? issue = null)
     {
         var m = await db.Meetings.Include(x => x.Attendees).FirstOrDefaultAsync(x => x.Id == meetingId, ct);
         if (m is null) return (UpdateResult.NotFound, [], []);
@@ -648,6 +671,13 @@ public static class MeetingEndpoints
             string.IsNullOrWhiteSpace(req.Link) ? null : req.Link.Trim(), hasAttendees: true);
         if (kindResult == KindResult.InvalidKind) return (UpdateResult.InvalidKind, [], []);
         if (kindResult == KindResult.RoomRequired) return (UpdateResult.RoomRequired, [], []);
+        // A booking that already started may keep its start (title edits, Extend 15 min); a new start must not be in the past.
+        if (kind == MeetingKind.Room
+            && await RoomRangeAsync(db, userId, AsUtc(req.StartAt), AsUtc(req.EndAt), AsUtc(req.StartAt) == m.StartAt, ct) is { } bad)
+        {
+            if (issue is not null) issue.Reason = bad;
+            return (UpdateResult.InvalidRoomRange, [], []);
+        }
         if (await IPop.Infrastructure.Hall.HallBookings.ConflictAsync(db, location, AsUtc(req.StartAt), AsUtc(req.EndAt), m.Id, ct) is not null)
             return (UpdateResult.RoomBooked, [], []);
 

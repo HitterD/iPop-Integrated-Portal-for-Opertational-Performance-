@@ -17,7 +17,8 @@ public static class MeetingRoomEndpoints
     public record VideoRequest(bool Allowed);
     public record RetentionRequest(int Days);
     public record JoinRequest(string? Password);
-    public record UseNowRequest(int Minutes, string? Title, IReadOnlyList<string>? AttendeeNiks);
+    /// v3: EndAt (UTC) wins; Minutes is the v2 form (from the start). One of them is required.
+    public record UseNowRequest(int? Minutes, string? Title, IReadOnlyList<string>? AttendeeNiks, DateTime? EndAt = null);
     public record UseNowResponse(Guid MeetingId, MeetingRoomJoinDto? Join);
     public record ExtendResponse(DateTime EndAt);
     public record ChatRequest(string? Text);
@@ -43,15 +44,12 @@ public static class MeetingRoomEndpoints
             INotificationGatewayService? notifs, IRealtime realtime, CancellationToken ct) =>
         {
             if (await UserIdAsync(http, db, ct) is not { } me) return Results.Unauthorized();
-            var (meetingId, error, max) = await rooms.UseNowAsync(me, key, req.Minutes, req.Title, req.AttendeeNiks ?? [], ct);
-            switch (error)
-            {
-                case "unknown_room": return Results.Json(new { code = error, message = "That room does not exist." }, statusCode: 404);
-                case "invalid_minutes":
-                    return Results.Json(new { code = error, message = "Choose 30, 60 or 90 minutes." }, statusCode: 400);
-                case not null:
-                    return Results.Json(new { code = "room_booked", message = "This room is booked at that time.", maxMinutes = max }, statusCode: 409);
-            }
+            if (req.EndAt is null && req.Minutes is null) return UseNowError(RoomBookingRules.TooShort, null);
+            var (meetingId, error, max) = req.EndAt is { } endAt
+                ? await rooms.UseNowAsync(me, key, endAt.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(endAt, DateTimeKind.Utc) : endAt.ToUniversalTime(),
+                    req.Title, req.AttendeeNiks ?? [], ct)
+                : await rooms.UseNowAsync(me, key, req.Minutes!.Value, req.Title, req.AttendeeNiks ?? [], ct);
+            if (error is not null) return UseNowError(error, max);
             await MeetingEndpoints.NotifyMeetingChangedAsync(db, realtime, meetingId!.Value, [], ct);
             var invited = await db.MeetingAttendees.AsNoTracking().Where(a => a.MeetingId == meetingId && a.UserId != me).Select(a => a.UserId).ToListAsync(ct);
             if (notifs is not null && invited.Count > 0)
@@ -73,6 +71,13 @@ public static class MeetingRoomEndpoints
             return Results.Ok(new UseNowResponse(meetingId.Value, join.Join));
         });
 
+        // v3 booking sheet: one room's day timeline, the rooms free for a time range, and the server limits.
+        g.MapGet("/{key}/availability", (string key, string? date, HttpContext http, IPopDbContext db, IMeetingRoomService rooms,
+            CancellationToken ct) => AvailabilityAsync(key, date, http, db, rooms, ct));
+        g.MapGet("/free", (DateTime? from, DateTime? to, Guid? except, HttpContext http, IPopDbContext db, IMeetingRoomService rooms,
+            CancellationToken ct) => FreeAsync(from, to, except, http, db, rooms, ct));
+        g.MapGet("/limits", () => LimitsResponse());
+
         // "Extend 15 min" (organizer of the current booking): the meeting ends 15 minutes later via the normal update path.
         g.MapPost("/{key}/extend", async (string key, HttpContext http, IPopDbContext db, IMeetingRoomService rooms, IRealtime realtime,
             CancellationToken ct) =>
@@ -85,6 +90,8 @@ public static class MeetingRoomEndpoints
                 case "no_booking": return Results.Json(new { code = error, message = "This room has no booking right now." }, statusCode: 409);
                 case "forbidden": return Results.Json(new { code = error, message = "Only the organizer can extend this booking." }, statusCode: 403);
                 case "cancelled": return Results.Json(new { code = error, message = "This booking was cancelled." }, statusCode: 409);
+                case "invalid_range":
+                    return Results.Json(new { code = error, message = "This booking cannot be extended further (at most 8 hours, same day)." }, statusCode: 409);
                 case "media_unavailable":
                     return Results.Json(new { code = error, message = "The meeting server is not reachable right now." }, statusCode: 503);
                 case not null: return Results.Json(new { code = "room_booked", message = "The room is booked right after this meeting." }, statusCode: 409);
@@ -165,6 +172,57 @@ public static class MeetingRoomEndpoints
 
         return app;
     }
+
+    /// Use now refusals: 404 unknown room; 400 invalid_range (reason = a RoomBookingRules code); 409 room_booked (+ maxMinutes).
+    public static IResult UseNowError(string error, int? maxMinutes) => error switch
+    {
+        "unknown_room" => Results.Json(new { code = error, message = "That room does not exist." }, statusCode: 404),
+        RoomBookingRules.TooShort or RoomBookingRules.TooLong or RoomBookingRules.DifferentDay or RoomBookingRules.InPast or RoomBookingRules.TooFar =>
+            RangeError(error),
+        _ => Results.Json(new { code = "room_booked", message = "This room is booked at that time.", maxMinutes }, statusCode: 409),
+    };
+
+    /// 400 { code:"invalid_range", reason, message } for a RoomBookingRules code (shared by Use now, meetings and Calendar).
+    public static IResult RangeError(string? reason) =>
+        Results.Json(new { code = "invalid_range", reason, message = RoomBookingRules.Message(reason) }, statusCode: 400);
+
+    public static IResult LimitsResponse() => Results.Ok(RoomBookingRules.Limits);
+
+    /// GET /{key}/availability?date=YYYY-MM-DD (the viewer's local day): RoomDayDto. 400 bad/missing date or more than 60 days
+    /// ahead (code too_far); 404 unknown room. Past days are allowed (read only).
+    public static async Task<IResult> AvailabilityAsync(string key, string? date, HttpContext http, IPopDbContext db, IMeetingRoomService rooms,
+        CancellationToken ct)
+    {
+        if (await UserIdAsync(http, db, ct) is not { } me) return Results.Unauthorized();
+        if (!DateOnly.TryParseExact(date, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var day))
+            return Results.Json(new { code = "invalid_date", message = "Use a date like 2026-10-13." }, statusCode: 400);
+        var tz = RoomBookingRules.ResolveZone(await db.Users.AsNoTracking().Where(u => u.Id == me).Select(u => u.TimeZoneId).FirstOrDefaultAsync(ct));
+        if (day > DateOnly.FromDateTime(RoomBookingRules.Local(DateTime.UtcNow, tz)).AddDays(RoomBookingRules.MaxDaysAhead))
+            return Results.Json(new { code = RoomBookingRules.TooFar, message = RoomBookingRules.Message(RoomBookingRules.TooFar) }, statusCode: 400);
+        return await rooms.DayAsync(me, key, day, ct) is { } dto
+            ? Results.Ok(dto)
+            : Results.Json(new { code = "unknown_room", message = "That room does not exist." }, statusCode: 404);
+    }
+
+    /// GET /free?from=&to=&except= : RoomFreeDto[] for all rooms. 400 when from/to are missing, to ≤ from, or longer than a day.
+    public static async Task<IResult> FreeAsync(DateTime? from, DateTime? to, Guid? except, HttpContext http, IPopDbContext db,
+        IMeetingRoomService rooms, CancellationToken ct)
+    {
+        if (await UserIdAsync(http, db, ct) is not { } me) return Results.Unauthorized();
+        if (from is not { } f || to is not { } t) return Results.Json(new { code = "invalid_range", message = "Choose a start and an end." }, statusCode: 400);
+        var (fu, tu) = (AsUtc(f), AsUtc(t));
+        if (tu <= fu || tu - fu > TimeSpan.FromDays(1))
+            return Results.Json(new { code = "invalid_range", message = "End must be after start (at most one day)." }, statusCode: 400);
+        return Results.Ok(await rooms.FreeAtAsync(me, fu, tu, except, ct));
+    }
+
+    private static DateTime AsUtc(DateTime t) => t.Kind switch
+    {
+        DateTimeKind.Utc => t,
+        DateTimeKind.Local => t.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(t, DateTimeKind.Utc),
+    };
 
     public static IResult JoinResponse(MeetingRoomJoinResult r) => r.Error switch
     {

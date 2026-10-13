@@ -215,7 +215,7 @@ public class MeetingRoomServiceTests
     private static async Task<Guid> BookAsync(TestDb t, Guid organizer, string title, DateTime start, int minutes, string room, params Guid[] attendees)
     {
         var (_, id, _) = await IPop.Api.Endpoints.MeetingEndpoints.ApplyCreateAsync(t.Verify(), organizer,
-            new(title, start, start.AddMinutes(minutes), null, room, null, attendees, null, null, null), default);
+            new(title, start, start.AddMinutes(minutes), null, room, null, attendees, null, null, null), default, nowUtc: start);
         return id!.Value;
     }
 

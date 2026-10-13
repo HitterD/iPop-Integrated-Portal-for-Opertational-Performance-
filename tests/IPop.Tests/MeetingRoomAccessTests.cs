@@ -27,7 +27,7 @@ public class MeetingRoomAccessTests
         params Guid[] attendees)
     {
         var (r, id, _) = await MeetingEndpoints.ApplyCreateAsync(t.Verify(), organizer,
-            new("Weekly sync", start, start.AddMinutes(minutes), null, room, null, attendees, null, null, null), default);
+            new("Weekly sync", start, start.AddMinutes(minutes), null, room, null, attendees, null, null, null), default, nowUtc: start);
         Assert.Equal(MeetingEndpoints.CreateResult.Created, r);
         return id!.Value;
     }
@@ -311,21 +311,21 @@ public class MeetingRoomAccessTests
         var r = await svc.UseNowAsync(me.Id, "kalosi", 30, null, [], default);
         Assert.Equal(("room_booked", (int?)null), (r.Error, r.MaxMinutes));
         Assert.Equal("unknown_room", (await svc.UseNowAsync(me.Id, "gayo", 30, null, [], default)).Error);
-        Assert.Equal("invalid_minutes", (await svc.UseNowAsync(me.Id, "robusta", 5, null, [], default)).Error);
-        Assert.Equal("invalid_minutes", (await svc.UseNowAsync(me.Id, "robusta", 600, null, [], default)).Error);
-        // Only 30/60/90 on a room with nothing next.
-        Assert.Equal("invalid_minutes", (await svc.UseNowAsync(me.Id, "robusta", 45, null, [], default)).Error);
-        Assert.Equal("invalid_minutes", (await svc.UseNowAsync(me.Id, "robusta", 120, null, [], default)).Error);
+        // v3 limits (15 min – 8 h) replace the 30/60/90 choice.
+        Assert.Equal("too_short", (await svc.UseNowAsync(me.Id, "robusta", 5, null, [], default)).Error);
+        Assert.Equal("too_long", (await svc.UseNowAsync(me.Id, "robusta", 600, null, [], default)).Error);
     }
 
     [Fact]
-    public async Task Use_now_takes_any_duration_of_at_least_15_only_when_the_next_booking_caps_it()
+    public async Task Use_now_takes_any_duration_of_at_least_15_that_fits_before_the_next_booking()
     {
         using var t = new TestDb(); var me = t.AddUser("U1"); var org = t.AddUser("O1");
-        await BookAsync(t, org.Id, DateTime.UtcNow.AddHours(3), 30);   // far away: 30/60/90 only
+        await BookAsync(t, org.Id, DateTime.UtcNow.AddHours(3), 30);   // far away
         var svc = Make(t);
-        Assert.Equal("invalid_minutes", (await svc.UseNowAsync(me.Id, "kalosi", 45, null, [], default)).Error);
-        Assert.Equal("invalid_minutes", (await svc.UseNowAsync(me.Id, "kalosi", 14, null, [], default)).Error);
+        Assert.Equal("too_short", (await svc.UseNowAsync(me.Id, "kalosi", 14, null, [], default)).Error);
+        // v3: any length from 15 min (no longer only 30/60/90) when it fits before the next booking's lock window.
+        if (IPop.Application.MeetingRooms.RoomBookingRules.Local(DateTime.UtcNow, IPop.Application.MeetingRooms.RoomBookingRules.ResolveZone(null)).Hour < 23)
+            Assert.Null((await svc.UseNowAsync(me.Id, "kalosi", 45, null, [], default)).Error);
         await BookAsync(t, org.Id, DateTime.UtcNow.AddMinutes(50), 30, "SJA Hall · Toraja");   // cap ≈ 39–40
         Assert.Null((await svc.UseNowAsync(me.Id, "toraja", 25, null, [], default)).Error);
     }

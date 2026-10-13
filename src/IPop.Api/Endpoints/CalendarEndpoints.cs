@@ -64,8 +64,9 @@ public static partial class CalendarEndpoints
                 if (rule is null || rule.Expand(req.StartAt.ToUniversalTime(), zone).Count == 0)
                     return Results.Json(new { code = "invalid_recurrence", message = "Choose a valid repeat rule, count (1�100), or an end date on or after the first matching occurrence." }, statusCode: 422);
             }
-            var (result, ev, invited) = await CreateSeriesAsync(db, ownerId, req, ct, actedBy);
-            if (result != SaveResult.Ok) return Error(result);
+            var issue = new SaveIssue();
+            var (result, ev, invited) = await CreateSeriesAsync(db, ownerId, req, ct, actedBy, issue);
+            if (result != SaveResult.Ok) return ErrorFor(result, issue);
             var log = MeetingEndpoints.NotifyLog(http);
             await NotifyChangedAsync(db, realtime, ev!.MeetingId, [ownerId, userId.Value], ct);
             await NotifyInvitedAsync(db, notifs, ev!, ownerId, invited, log, ct, actedBy);
@@ -84,8 +85,9 @@ public static partial class CalendarEndpoints
             {
                 var (sOwner, sActed) = await CalendarDelegateEndpoints.ActorForEventAsync(db, id, userId.Value, ct);
                 var invitations = new Dictionary<Guid, List<Guid>>();
-                var (sr, firstId, touched) = await UpdateSeriesAsync(db, id, sOwner, req, scope, ct, sActed, invitations);
-                if (sr != SaveResult.Ok) return Error(sr);
+                var seriesIssue = new SaveIssue();
+                var (sr, firstId, touched) = await UpdateSeriesAsync(db, id, sOwner, req, scope, ct, sActed, invitations, seriesIssue);
+                if (sr != SaveResult.Ok) return ErrorFor(sr, seriesIssue);
                 await MeetingEndpoints.NotifyCalendarChangedAsync(db, realtime, touched.Append(sOwner).Append(userId.Value), ct);
                 var seriesLog = MeetingEndpoints.NotifyLog(http);
                 var notified = new HashSet<Guid>();
@@ -113,8 +115,9 @@ public static partial class CalendarEndpoints
                 ? await db.MeetingAttendees.AsNoTracking().Where(a => a.MeetingId == bm).Select(a => a.UserId).ToListAsync(ct)
                 : [];
             var (ownerId, actedBy) = await CalendarDelegateEndpoints.ActorForEventAsync(db, id, userId.Value, ct);
-            var (result, ev, invited) = await UpdateEventAsync(db, id, ownerId, req, ct, actedBy);
-            if (result != SaveResult.Ok) return Error(result);
+            var issue = new SaveIssue();
+            var (result, ev, invited) = await UpdateEventAsync(db, id, ownerId, req, ct, actedBy, issue);
+            if (result != SaveResult.Ok) return ErrorFor(result, issue);
             var log = MeetingEndpoints.NotifyLog(http);
             await NotifyChangedAsync(db, realtime, ev!.MeetingId, before.Append(ownerId).Append(userId.Value), ct);
             await NotifyInvitedAsync(db, notifs, ev!, ownerId, invited, log, ct, actedBy);
@@ -187,14 +190,33 @@ public static partial class CalendarEndpoints
 
     // ── Event CRUD ────────────────────────────────────────────────────────────
 
-    public enum SaveResult { Ok, NotFound, Forbidden, InvalidTitle, InvalidRange, NotRoomMember, Cancelled, External, RoomBooked, InvalidKind, RoomRequired }
+    public enum SaveResult { Ok, NotFound, Forbidden, InvalidTitle, InvalidRange, NotRoomMember, Cancelled, External, RoomBooked, InvalidKind, RoomRequired,
+        InvalidRoomRange }
+
+    /// Details of a refused save for the HTTP answer. Reason: the RoomBookingRules code of InvalidRoomRange.
+    /// Date: the local date of the occurrence that failed in a series (room_booked / invalid_range).
+    public sealed class SaveIssue
+    {
+        public string? Reason { get; set; }
+        public DateOnly? Date { get; set; }
+    }
 
     /// The owner of an event mirrored from another system (iDesk), or null for events made in iPop.
     private static Task<Guid?> ExternalOwnerAsync(IPopDbContext db, Guid id, CancellationToken ct) =>
         db.CalendarEvents.AsNoTracking().Where(e => e.Id == id && e.Source != null).Select(e => (Guid?)e.OwnerId).FirstOrDefaultAsync(ct);
 
-    private static IResult Error(SaveResult r) => r switch
+    private static IResult Error(SaveResult r) => ErrorFor(r, null);
+
+    /// The HTTP answer for a refused save; <paramref name="issue"/> adds reason/date where known.
+    public static IResult ErrorFor(SaveResult r, SaveIssue? issue) => r switch
     {
+        SaveResult.InvalidRoomRange when issue?.Date is { } d =>
+            Results.Json(new { code = "invalid_range", reason = issue.Reason, message = IPop.Application.MeetingRooms.RoomBookingRules.Message(issue.Reason),
+                date = d.ToString("yyyy-MM-dd") }, statusCode: 400),
+        SaveResult.InvalidRoomRange => MeetingRoomEndpoints.RangeError(issue?.Reason),
+        SaveResult.RoomBooked when issue?.Date is { } d =>
+            Results.Json(new { code = "room_booked", message = $"That meeting room is already booked on {d:d MMM yyyy}.", date = d.ToString("yyyy-MM-dd") },
+                statusCode: 409),
         SaveResult.NotFound => Results.NotFound(),
         SaveResult.Forbidden => Results.Json(new { code = "forbidden", message = "Only the organizer or their delegate can change this event." }, statusCode: 403),
         SaveResult.NotRoomMember => Results.Json(new { code = "forbidden", message = "You are not a member of that group." }, statusCode: 403),
@@ -266,7 +288,7 @@ public static partial class CalendarEndpoints
     /// linked to the organizer's calendar row. Returns the users newly invited.
     /// <paramref name="actedBy"/> = a delegate creating it on <paramref name="userId"/>'s behalf.
     public static async Task<(SaveResult, CalendarEvent?, IReadOnlyList<Guid>)> CreateEventAsync(IPopDbContext db, Guid userId, SaveEventRequest req, CancellationToken ct,
-        Guid? actedBy = null)
+        Guid? actedBy = null, SaveIssue? issue = null)
     {
         var (r, title, start, end) = Normalize(req);
         if (r != SaveResult.Ok) return (r, null, []);
@@ -274,6 +296,11 @@ public static partial class CalendarEndpoints
         // SJA Hall meeting rooms ("SJA Hall - Toraja" style locations) are booked once at a time, and a booking is always a meeting
         // (with or without invitees) so the Meeting Rooms card and "Join room" can see it.
         var hallRoom = req.Kind != MeetingKind.Voice && IPop.Application.Hall.HallBooking.RoomKey(req.Location) is not null;
+        if (hallRoom && await MeetingEndpoints.RoomRangeAsync(db, userId, start, end, false, ct) is { } bad)
+        {
+            if (issue is not null) issue.Reason = bad;
+            return (SaveResult.InvalidRoomRange, null, []);
+        }
         if (hallRoom && await IPop.Infrastructure.Hall.HallBookings.ConflictAsync(db, req.Location, start, end, null, ct) is not null)
             return (SaveResult.RoomBooked, null, []);
         var ev = new CalendarEvent
@@ -316,7 +343,7 @@ public static partial class CalendarEndpoints
 
     /// <paramref name="actedBy"/> = a delegate editing on <paramref name="userId"/>'s behalf.
     public static async Task<(SaveResult, CalendarEvent?, IReadOnlyList<Guid>)> UpdateEventAsync(IPopDbContext db, Guid id, Guid userId, SaveEventRequest req, CancellationToken ct,
-        Guid? actedBy = null)
+        Guid? actedBy = null, SaveIssue? issue = null)
     {
         var ev = await db.CalendarEvents.FirstOrDefaultAsync(e => e.Id == id, ct);
         if (ev is null) return (SaveResult.NotFound, null, []);
@@ -341,8 +368,9 @@ public static partial class CalendarEndpoints
             }
             // No kind in the form = the place decides (MeetingKind.Infer), as for every other meeting write.
             var upd = new MeetingEndpoints.UpdateMeetingRequest(title, start, end, req.Location, req.Link, req.Notes, niks, req.ReminderMinutes ?? 0, req.Kind);
-            var (res, added, _) = await MeetingEndpoints.ApplyUpdateAsync(db, meetingId, userId, upd, ct);
+            var (res, added, _) = await MeetingEndpoints.ApplyUpdateAsync(db, meetingId, userId, upd, ct, issue: issue);
             if (res == MeetingEndpoints.UpdateResult.RoomBooked) return (SaveResult.RoomBooked, null, []);
+            if (res == MeetingEndpoints.UpdateResult.InvalidRoomRange) return (SaveResult.InvalidRoomRange, null, []);
             if (res == MeetingEndpoints.UpdateResult.InvalidKind) return (SaveResult.InvalidKind, null, []);
             if (res == MeetingEndpoints.UpdateResult.RoomRequired) return (SaveResult.RoomRequired, null, []);
             if (res != MeetingEndpoints.UpdateResult.Applied) return (SaveResult.InvalidRange, null, []);
@@ -355,6 +383,11 @@ public static partial class CalendarEndpoints
         else
         {
             var hallRoom = req.Kind != MeetingKind.Voice && IPop.Application.Hall.HallBooking.RoomKey(req.Location) is not null;
+            if (hallRoom && await MeetingEndpoints.RoomRangeAsync(db, userId, start, end, false, ct) is { } bad)
+            {
+                if (issue is not null) issue.Reason = bad;
+                return (SaveResult.InvalidRoomRange, null, []);
+            }
             if (hallRoom && await IPop.Infrastructure.Hall.HallBookings.ConflictAsync(db, req.Location, start, end, null, ct) is not null)
                 return (SaveResult.RoomBooked, null, []);
             ApplyDetails(ev, req, title, start, end);

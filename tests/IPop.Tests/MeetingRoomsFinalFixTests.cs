@@ -38,7 +38,7 @@ public class MeetingRoomsFinalFixTests : IDisposable
         params Guid[] attendees)
     {
         var (r, id, _) = await MeetingEndpoints.ApplyCreateAsync(t.Verify(), organizer,
-            new("Weekly sync", start, start.AddMinutes(minutes), null, room, null, attendees, null, null, null), default);
+            new("Weekly sync", start, start.AddMinutes(minutes), null, room, null, attendees, null, null, null), default, nowUtc: start);
         Assert.Equal(MeetingEndpoints.CreateResult.Created, r);
         return id!.Value;
     }

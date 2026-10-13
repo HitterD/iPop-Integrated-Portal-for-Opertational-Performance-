@@ -93,7 +93,7 @@ public class MeetingRecordingServiceTests
     {
         using var t = new TestDb(); var a = t.AddUser("A1");
         await IPop.Api.Endpoints.MeetingEndpoints.ApplyCreateAsync(t.Db, a.Id,
-            new("Production review", DateTime.UtcNow.AddMinutes(-5), DateTime.UtcNow.AddMinutes(55), null, "SJA Hall · Arabika", null, null, null, null, null), default);
+            new("Production review", DateTime.UtcNow.AddMinutes(-5), DateTime.UtcNow.AddMinutes(55), null, "SJA Hall · Arabika", null, null, null, null, null), default, nowUtc: DateTime.UtcNow.AddMinutes(-6));
         var lk = new MeetingRoomServiceTests.FakeRoomAdmin();
         lk.Rooms["hall-arabika"] = [new(a.Id.ToString(), "A", [], new Dictionary<string, string>())];
         await Make(t, lk, new FakeEgress()).StartAsync(a.Id, "arabika", default);
@@ -108,7 +108,7 @@ public class MeetingRecordingServiceTests
         using var t = new TestDb(); var a = t.AddUser("A1");
         const string title = "Review & planning #1 / <team> 日本";
         await IPop.Api.Endpoints.MeetingEndpoints.ApplyCreateAsync(t.Db, a.Id,
-            new(title, DateTime.UtcNow.AddMinutes(-5), DateTime.UtcNow.AddMinutes(55), null, "SJA Hall · Arabika", null, null, null, null, null), default);
+            new(title, DateTime.UtcNow.AddMinutes(-5), DateTime.UtcNow.AddMinutes(55), null, "SJA Hall · Arabika", null, null, null, null, null), default, nowUtc: DateTime.UtcNow.AddMinutes(-6));
         var lk = new MeetingRoomServiceTests.FakeRoomAdmin();
         lk.Rooms["hall-arabika"] = [new(a.Id.ToString(), "A", [], new Dictionary<string, string>())];
         var eg = new FakeEgress();

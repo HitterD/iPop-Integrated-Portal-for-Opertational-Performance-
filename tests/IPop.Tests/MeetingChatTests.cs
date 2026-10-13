@@ -31,7 +31,7 @@ public class MeetingChatTests
         var t = new TestDb();
         var org = t.AddUser("ORG"); var inv = t.AddUser("INV"); var guest = t.AddUser("GST"); var outsider = t.AddUser("OUT"); var admin = t.AddAdmin("ADM");
         var (r, id, _) = await MeetingEndpoints.ApplyCreateAsync(t.Verify(), org.Id,
-            new("Weekly sync", DateTime.UtcNow.AddMinutes(-5), DateTime.UtcNow.AddMinutes(55), null, "SJA Hall · Kalosi", null, [inv.Id], null, 15, null), default);
+            new("Weekly sync", DateTime.UtcNow.AddMinutes(-5), DateTime.UtcNow.AddMinutes(55), null, "SJA Hall · Kalosi", null, [inv.Id], null, 15, null), default, nowUtc: DateTime.UtcNow.AddMinutes(-6));
         Assert.Equal(MeetingEndpoints.CreateResult.Created, r);
         using (var db = t.Verify())
         {
