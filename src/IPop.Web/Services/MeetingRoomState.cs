@@ -257,13 +257,29 @@ public sealed class MeetingRoomState : IAsyncDisposable
         if (state == "disconnected" && Room is { } room)
         {
             // Dropped by the network or the server (not our Leave, not a join that never connected): say so.
+            var takeover = !leaving && Booking is { Leaving: false, TakeoverAt: { } at } && AtTakeover(at);
             if (!leaving && Booking is { Leaving: true })
                 toasts?.Show($"The next booking starts now. You were moved out of {room.Name}.", ToastKind.Info);
-            else if (!leaving && was is "connected" or "reconnecting")
+            else if (!takeover && !leaving && was is "connected" or "reconnecting")
                 toasts?.Show($"You were disconnected from {room.Name}.", ToastKind.Warning);
             Clear();
+            // Each booking has its own media session: at the takeover everyone leaves the old one, including people
+            // invited to the next booking too. Those are carried into the successor's session instead of dropped.
+            if (takeover) _ = RejoinSuccessorAsync(room);
         }
         Raise();
+    }
+
+    /// The disconnect came at the next booking's takeover moment (the booking worker ends the old session then).
+    private bool AtTakeover(DateTime takeoverAt) =>
+        Clock() >= takeoverAt - TimeSpan.FromSeconds(15) && Clock() <= takeoverAt + TimeSpan.FromMinutes(2);
+
+    private async Task RejoinSuccessorAsync(MeetingRoomJoinDto previous)
+    {
+        var (error, _) = await JoinAsync(previous.Key);
+        toasts?.Show(error is null
+            ? $"The next booking started in {previous.Name}. You're in it now."
+            : $"The next booking starts now. You were moved out of {previous.Name}.", ToastKind.Info);
     }
 
     [JSInvokable]

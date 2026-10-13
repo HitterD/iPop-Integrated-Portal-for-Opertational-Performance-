@@ -302,6 +302,52 @@ public class MeetingRoomInMeetingTests
     }
 
     [Fact]
+    public async Task Removed_at_takeover_while_invited_to_the_next_booking_rejoins_its_new_session()
+    {
+        // QA 9b: booking-specific media rooms end everyone's session at the takeover, including people invited to both
+        // bookings ("People invited to the next booking can stay"). They must land in the successor's room, not be
+        // dropped with "You were disconnected".
+        var api = new Api();
+        api.Post["/api/meeting-rooms/arabika/join"] = (HttpStatusCode.OK,
+            """{"key":"arabika","name":"Arabika","liveKitRoom":"qa-hall-arabika-b","url":"wss://x","token":"token-b","videoAllowed":true,"identity":"me"}""");
+        using var ctx = Context(out var state, api);
+        ctx.JSInterop.Setup<bool>("ipopRooms.join", _ => true).SetResult(true);
+        var toasts = ctx.Services.GetRequiredService<ToastService>();
+        Enter(state);
+        state.OnRoomMetadata(Booking(Now.AddMinutes(-5), next: Now.AddMinutes(10), leaving: [Budi]));   // takeoverAt = Now
+
+        state.OnRoomState("disconnected");
+
+        await WaitUntil(() => state.Room is not null);
+        Assert.Equal("qa-hall-arabika-b", state.Room!.LiveKitRoom);
+        Assert.Equal("token-b", Assert.Single(ctx.JSInterop.Invocations["ipopRooms.join"]).Arguments[1]);
+        Assert.Contains(toasts.Active, t => t.Message == "The next booking started in Arabika. You're in it now.");
+        Assert.DoesNotContain(toasts.Active, t => t.Message.Contains("disconnected"));
+    }
+
+    [Fact]
+    public async Task Disconnected_outside_a_takeover_does_not_rejoin()
+    {
+        var api = new Api();
+        using var ctx = Context(out var state, api);
+        var toasts = ctx.Services.GetRequiredService<ToastService>();
+        Enter(state);
+        state.OnRoomMetadata(Booking(Now.AddMinutes(20), next: Now.AddMinutes(40), leaving: [Budi]));   // takeover in 30 min
+
+        state.OnRoomState("disconnected");
+        await Task.Delay(100);
+
+        Assert.Null(state.Room);
+        Assert.DoesNotContain(api.Posts, p => p.EndsWith("/join"));
+        Assert.Contains(toasts.Active, t => t.Message == "You were disconnected from Arabika.");
+    }
+
+    private static async Task WaitUntil(Func<bool> done)
+    {
+        for (var i = 0; i < 100 && !done(); i++) await Task.Delay(20);
+    }
+
+    [Fact]
     public void Booking_metadata_survives_garbage_and_keeps_the_recording()
     {
         using var ctx = Context(out var state);
