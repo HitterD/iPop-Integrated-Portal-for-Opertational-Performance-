@@ -1,4 +1,5 @@
 using IPop.Application.Hall;
+using IPop.Application.MeetingRooms;
 
 namespace IPop.Web.Components.Meetings;
 
@@ -78,5 +79,32 @@ public static class MeetingKinds
         _ when minutes % 1440 == 0 => $"{minutes / 1440} days before",
         _ when minutes % 60 == 0 => $"{minutes / 60} h before",
         _ => $"{Duration(TimeSpan.FromMinutes(minutes))} before",
+    };
+
+    // ---------------------------------------------------------------- room day timeline (v3 §2)
+
+    /// The first booking that overlaps [startUtc, endUtc) (same overlap rule as the server's hall conflict check:
+    /// back-to-back is free). Null = it fits.
+    public static RoomBlockDto? Clash(IEnumerable<RoomBlockDto>? blocks, DateTime startUtc, DateTime endUtc) =>
+        (blocks ?? []).Where(b => Utc(b.StartAt) < Utc(endUtc) && Utc(startUtc) < Utc(b.EndAt)).OrderBy(b => b.StartAt).FirstOrDefault();
+
+    /// "Try HH:MM–HH:MM": the next free slot of the same length after the clashing booking (and not before this minute),
+    /// ending by <paramref name="windowEndUtc"/>. Mirrors RoomBookingRules.NextFree. Null = nothing fits that day.
+    public static (DateTime Start, DateTime End)? NextSlot(IEnumerable<RoomBlockDto>? blocks, DateTime startUtc, DateTime endUtc,
+        DateTime windowEndUtc, DateTime nowUtc)
+    {
+        var list = (blocks ?? []).Select(b => (S: Utc(b.StartAt), E: Utc(b.EndAt))).ToList();
+        if (Clash(blocks, startUtc, endUtc) is not { } c) return (Utc(startUtc), Utc(endUtc));
+        var now = Utc(nowUtc);
+        var minute = new DateTime(now.Ticks - now.Ticks % TimeSpan.TicksPerMinute, DateTimeKind.Utc);
+        var from = Utc(c.EndAt) > minute ? Utc(c.EndAt) : minute;
+        return RoomBookingRules.NextFree(list, from, Utc(endUtc) - Utc(startUtc), Utc(windowEndUtc));
+    }
+
+    public static DateTime Utc(DateTime d) => d.Kind switch
+    {
+        DateTimeKind.Utc => d,
+        DateTimeKind.Unspecified => DateTime.SpecifyKind(d, DateTimeKind.Utc),
+        _ => d.ToUniversalTime(),
     };
 }

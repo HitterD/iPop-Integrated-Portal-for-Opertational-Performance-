@@ -1,0 +1,194 @@
+@* Meeting scheduling v3 §2 (mockup screen 2): one room's day as a timeline. Booked blocks (title only when the viewer may
+   see it, else "Booked"), the past shaded, a now line, and the selected block: drag it to move, drag its edges to resize
+   (15-minute steps, 15 min – 8 h, inside the day window, never before now). wwwroot/js/room-timeline.js owns the pointer;
+   every change comes back through OnChange. A clash outlines the block in red and offers the next free slot ("Try"). *@
+@implements IAsyncDisposable
+@using IPop.Application.MeetingRooms
+@inject IJSRuntime JS
+
+@{
+    var win = Win;
+    var span = Math.Max(1, win.End - win.Start);
+    var sel = Sel;
+    var clash = Clash;
+    var today = IsToday;
+    var nowM = NowMinutes;
+}
+<div class="tl-card @Accent">
+    <div class="tl-h"><b>@Day.Name @DayLabel</b>
+        <span class="tl-lg" aria-hidden="true"><i class="lg-b"></i>Booked<i class="lg-s grad"></i>Your booking@if (today) {<i class="lg-n"></i><text>Now @Hm(nowM)</text>}</span>
+    </div>
+    <div class="tl-scroll">
+        <div class="tl-tags" aria-hidden="true">
+            @foreach (var b in Blocks.Where(b => !today || b.E > nowM))
+            {
+                <span class="@(b.S > win.End - span * 0.25 ? "r" : null)" style="left:@Pct(b.S > win.End - span * 0.25 ? Math.Min(b.E, win.End) : Math.Max(b.S, win.Start))"><i data-lucide="lock"></i>@b.Title<em>@Hm(b.S)–@Hm(b.E)</em></span>
+            }
+        </div>
+        <div class="tl-track" @ref="track" role="group" aria-label="@($"{Day.Name} on {DayLabel}")">
+            @for (var m = win.Start + 30 - (win.Start % 30); m < win.End; m += 30)
+            {
+                <i class="tk @(m % 60 != 0 ? "half" : null)" style="left:@Pct(m)"></i>
+            }
+            @if (today && nowM > win.Start)
+            {
+                <div class="tl-past" style="width:@Pct(Math.Min(nowM, win.End))"></div>
+            }
+            @foreach (var b in Blocks)
+            {
+                <div class="tl-busy" style="left:@Pct(Math.Max(b.S, win.Start));width:@Width(Math.Max(b.S, win.Start), Math.Min(b.E, win.End))"
+                     title="@($"{b.Title} {Hm(b.S)}–{Hm(b.E)}")" data-title="@b.Title"></div>
+            }
+            <div class="tl-sel grad @(clash is not null ? "bad" : null)" data-sel tabindex="0" role="slider"
+                 aria-label="@($"Your booking {Hm(sel.S)}–{Hm(sel.E)}")" aria-valuetext="@($"{Hm(sel.S)}–{Hm(sel.E)}")"
+                 aria-valuemin="@win.Start" aria-valuemax="@win.End" aria-valuenow="@sel.S"
+                 title="@($"{Hm(sel.S)}–{Hm(sel.E)}")" style="left:@Pct(sel.S);width:@Width(sel.S, sel.E)" @onkeydown="KeyAsync">
+                <span class="tl-lab">@Label(sel, span)</span><i class="hd l" data-h="l"></i><i class="hd r" data-h="r"></i>
+            </div>
+            @if (today && nowM >= win.Start && nowM <= win.End)
+            {
+                <div class="tl-now" style="left:@Pct(nowM)"></div>
+            }
+        </div>
+        <div class="tl-hours" aria-hidden="true">
+            @for (var h = (win.Start + 59) / 60 * 60; h <= win.End; h += 60)
+            {
+                <span style="left:@Pct(h)">@Hm(h)</span>
+            }
+        </div>
+    </div>
+    <div class="tl-hint">Drag the block to move it, drag its edges to change the time · 15 min – 8 h, same day, up to 60 days ahead</div>
+</div>
+@if (clash is { } c)
+{
+    var next = TrySlot;
+    <div class="tl-clash" role="alert">
+        <i data-lucide="triangle-alert"></i>
+        <span><b>Clashes with @c.Title @Hm(Min(c.StartAt))–@Hm(Min(c.EndAt))</b><span>@Day.Name is booked then. Pick another time or another room.</span></span>
+        @if (next is { } n)
+        {
+            <button type="button" class="tl-try" @onclick="() => OnChange.InvokeAsync((n.Start, n.End))">Try @Hm(Min(n.Start))–@Hm(Min(n.End))</button>
+        }
+    </div>
+}
+
+@code {
+    /// The room's day (GET /api/meeting-rooms/{key}/availability). Window and blocks are UTC.
+    [Parameter, EditorRequired] public RoomDayDto Day { get; set; } = default!;
+    /// The selected booking, UTC.
+    [Parameter] public DateTime Start { get; set; }
+    [Parameter] public DateTime End { get; set; }
+    /// Colour class of the selected block (r-kalosi …).
+    [Parameter] public string? Accent { get; set; }
+    /// The new selection (UTC) while dragging, after a key press, or from Try.
+    [Parameter] public EventCallback<(DateTime Start, DateTime End)> OnChange { get; set; }
+    /// Clock for tests; default now.
+    [Parameter] public DateTime? Now { get; set; }
+    /// Local zone of the day (default the browser's).
+    [Parameter] public TimeZoneInfo? Zone { get; set; }
+
+    private ElementReference track;
+    private DotNetObjectReference<RoomTimeline>? self;
+    private IJSObjectReference? handle;
+    private bool disposed;
+
+    private TimeZoneInfo Tz => Zone ?? TimeZoneInfo.Local;
+    private DateTime NowUtc => MeetingKinds.Utc(Now ?? DateTime.UtcNow);
+    private DateTime Midnight => TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(Day.Date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified), Tz);
+    private DateOnly TodayLocal => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(NowUtc, Tz));
+    private bool IsToday => Day.Date == TodayLocal;
+
+    /// UTC → minutes since the day's local midnight (may run past 1440 for an end at midnight).
+    private int Min(DateTime utc) => (int)Math.Round((MeetingKinds.Utc(utc) - Midnight).TotalMinutes);
+    private DateTime Utc(int minutes) => Midnight.AddMinutes(minutes);
+    private int NowMinutes => (int)Math.Floor((NowUtc - Midnight).TotalMinutes);
+
+    private (int Start, int End) Win => (Min(Day.WindowStart), Min(Day.WindowEnd));
+    private (int S, int E) Sel => (Min(Start), Min(End));
+
+    private sealed record Block(string Title, int S, int E);
+    private IEnumerable<Block> Blocks => Day.Blocks.Select(b => new Block(b.Visible ? b.Title : "Booked", Min(b.StartAt), Min(b.EndAt)));
+
+    internal RoomBlockDto? Clash => MeetingKinds.Clash(Day.Blocks, Start, End);
+    private (DateTime Start, DateTime End)? TrySlot => MeetingKinds.NextSlot(Day.Blocks, Start, End, Day.WindowEnd, NowUtc);
+
+    private string DayLabel => IsToday ? "today" : Day.Date == TodayLocal.AddDays(1) ? "tomorrow"
+        : $"{DatePickerMath.WeekdayLong[DatePickerMath.MondayIndex(Day.Date.DayOfWeek)][..3]} {Day.Date.Day} {DatePickerMath.MonthLong[Day.Date.Month - 1][..3]}";
+
+    private string Pct(int m)
+    {
+        var (s, e) = Win;
+        return Fmt((m - s) * 100.0 / Math.Max(1, e - s)) + "%";
+    }
+
+    private string Width(int s, int e)
+    {
+        var (ws, we) = Win;
+        return Fmt(Math.Max(0, e - s) * 100.0 / Math.Max(1, we - ws)) + "%";
+    }
+
+    private static string Fmt(double v) => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+    private static string Hm(int minutes) { var m = ((minutes % 1440) + 1440) % 1440; return minutes == 1440 ? "24:00" : $"{m / 60:00}:{m % 60:00}"; }
+
+    /// The block's own label like the mockup: the range when it is wide enough, else the start, else nothing
+    /// (sized for the ~580 px desktop track).
+    private static string Label((int S, int E) sel, int span)
+    {
+        var px = (sel.E - sel.S) * 580.0 / span;
+        return px > 78 ? $"{Hm(sel.S)}–{Hm(sel.E)}" : px > 40 ? Hm(sel.S) : "";
+    }
+
+    private object Options()
+    {
+        var (s, e) = Win;
+        int? floor = IsToday ? NowMinutes : null;
+        var sel = Sel;
+        return new { start = s, end = e, floor, s = sel.S, e = sel.E };
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (disposed) return;
+        try
+        {
+            if (firstRender)
+            {
+                self = DotNetObjectReference.Create(this);
+                handle = await JS.InvokeAsync<IJSObjectReference?>("ipopRoomTimeline.bind", track, self, Options());
+            }
+            else if (handle is not null) await handle.InvokeVoidAsync("update", Options());
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+        catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException or JSDisconnectedException) { }
+    }
+
+    /// From room-timeline.js: the snapped selection in minutes of the local day.
+    [JSInvokable]
+    public Task OnDrag(int start, int end, bool done)
+    {
+        var (s, e) = Sel;
+        if (start == s && end == e) return Task.CompletedTask;
+        return InvokeAsync(() => OnChange.InvokeAsync((Utc(start), Utc(end))));
+    }
+
+    /// ←/→ move by 15 min; Shift+←/→ change the end.
+    private async Task KeyAsync(KeyboardEventArgs e)
+    {
+        var dm = e.Key switch { "ArrowLeft" => -15, "ArrowRight" => 15, _ => 0 };
+        if (dm == 0) return;
+        var (ws, we) = Win;
+        var floor = IsToday ? Math.Max(ws, NowMinutes) : ws;
+        var (s, en) = Sel;
+        if (e.ShiftKey) en = Math.Clamp(en + dm, s + 15, Math.Min(we, s + 480));
+        else { var d = en - s; s = Math.Min(Math.Max(s + dm, floor), we - d); en = s + d; }
+        await OnChange.InvokeAsync((Utc(s), Utc(en)));
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+        try { if (handle is not null) { await handle.InvokeVoidAsync("dispose"); await handle.DisposeAsync(); } }
+        catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException or JSDisconnectedException) { }
+        self?.Dispose();
+    }
+}

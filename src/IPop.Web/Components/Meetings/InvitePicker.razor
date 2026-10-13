@@ -1,0 +1,433 @@
+@* Meeting scheduling v3 §4 (mockup screen 5): the one invite picker. Chips of the invited people with a search field;
+   on focus before typing: Suggested / Your department / Chat groups / Departments; typing (≥ 2 characters) searches
+   names and departments. Every person row has a free/busy dot for From–To. A chat group or department is added at once
+   after "Add N people from X?". Above the room size: "21 people — Kalosi fits 20". People travel by an opaque Key
+   (PersonAvatar uses it for the photo); the key is never printed. *@
+@implements IDisposable
+@inject InviteApi Api
+@inject ToastService Toasts
+@inject AuthState Auth
+@inject IJSRuntime JS
+
+@{
+    var sum = Summary;
+    var over = Over;
+}
+<div class="ip @(open ? "open" : null)">
+    <div class="ip-field" @onclick="FocusInputAsync">
+        @foreach (var p in current)
+        {
+            var person = p;
+            var st = StateOf(person.Key);
+            <span class="ip-chip @(st?.State == "busy" ? "busy" : null)">
+                <PersonAvatar Nik="@person.Key" Name="@person.Name" Size="22" Decorative="true" />@person.Name
+                @if (st?.State == "busy") { <i class="bz" title="@BusyText(st)"></i> }
+                <button type="button" class="xx" title="Remove" aria-label="@($"Remove {person.Name}")" @onclick="() => RemoveAsync(person)" @onclick:stopPropagation="true"><i data-lucide="x"></i></button>
+            </span>
+        }
+        <input @ref="input" class="ip-in" type="text" autocomplete="off" spellcheck="false" role="combobox"
+               aria-label="Invite people" aria-expanded="@(open ? "true" : "false")" aria-controls="@ListId" aria-autocomplete="list"
+               aria-activedescendant="@(open && active >= 0 && active < rows.Count ? OptionId(active) : null)"
+               placeholder="@(open || current.Count == 0 ? "Name, department or chat group" : "Add people")"
+               value="@query" @oninput="OnInput" @onfocus="OpenAsync" @onkeydown="KeyAsync" />
+        @if (current.Count > 0) { <span class="ip-cnt">@current.Count invited</span> }
+    </div>
+
+    @if (sum is { } s)
+    {
+        <div class="ip-fb">
+            @if (s.Busy > 0)
+            {
+                <i class="d free"></i>@s.Free<text> free · </text><i class="d busy"></i>@s.Busy<text> busy · </text>
+                <button type="button" class="ip-find" @onclick="() => OnFindTime.InvokeAsync()">Find a time</button>
+            }
+            else
+            {
+                <i class="d free"></i>@s.Free<text> free at this time</text>
+            }
+        </div>
+    }
+
+    @if (over is { } o)
+    {
+        <div class="ip-warn" role="status">
+            <i data-lucide="triangle-alert"></i>
+            <span><b>@o.People people — @(RoomName ?? "The room") fits @o.Capacity</b>
+                <span>Remove @(o.People - o.Capacity == 1 ? "one person" : $"{o.People - o.Capacity} people") to fit the room.</span>
+                <span class="ip-cap"><i></i></span></span>
+        </div>
+    }
+
+    @if (open)
+    {
+        <div class="ip-drop">
+            <div class="ip-drop-in" id="@ListId" role="listbox" aria-label="People and groups">
+                @if (loading && rows.Count == 0)
+                {
+                    <div class="ip-empty">Loading…</div>
+                }
+                else if (rows.Count == 0)
+                {
+                    <div class="ip-empty">@(Searching ? $"No one matches “{query.Trim()}”." : "No suggestions yet. Type a name or department.")</div>
+                }
+                @{ string? section = null; }
+                @for (var i = 0; i < rows.Count; i++)
+                {
+                    var idx = i;
+                    var row = rows[i];
+                    if (row.Section != section)
+                    {
+                        section = row.Section;
+                        <div class="ip-sec" role="presentation">@row.Section@if (row.SectionNote is { } note) {<em> · @note</em>}</div>
+                    }
+                    if (row.Person is { } p)
+                    {
+                        var added = current.Any(c => c.Key == p.Key);
+                        var st = StateOf(p.Key);
+                        <div class="ip-row @(idx == active ? "on" : null)" id="@OptionId(idx)" role="option" aria-selected="@(idx == active ? "true" : "false")"
+                             @onmousedown:preventDefault="true" @onclick="() => ToggleAsync(p)" @onmouseenter="() => active = idx">
+                            <PersonAvatar Nik="@p.Key" Name="@p.Name" Size="34" Decorative="true" />
+                            <span class="n"><b>@Mark(p.Name)</b><span>@Mark(p.Department ?? "")</span></span>
+                            @if (HasRange)
+                            {
+                                <span class="fbs @(st?.State is "free" or "busy" ? st.State : null)">@(st is null ? "" : st.State == "free" ? "Free" : st.State == "busy" ? BusyText(st) : "Unknown")</span>
+                            }
+                            <span class="addb @(added ? "on" : null)" title="@(added ? "Remove" : "Add")"><i data-lucide="@(added ? "check" : "plus")"></i></span>
+                        </div>
+                    }
+                    else if (row.Group is { } g)
+                    {
+                        var done = addedGroups.Contains(g.Id);
+                        <div class="ip-row grp @(idx == active ? "on" : null)" id="@OptionId(idx)" role="option" aria-selected="@(idx == active ? "true" : "false")"
+                             @onmousedown:preventDefault="true" @onclick="() => AskGroupAsync(g)" @onmouseenter="() => active = idx">
+                            <span class="gi" style="background:@GroupColor(g)"><i data-lucide="@(g.Kind == "chat" ? "messages-square" : "building-2")"></i></span>
+                            <span class="n"><b>@Mark(g.Name)</b><span>@g.Members @(g.Members == 1 ? "person" : "people")</span></span>
+                            <span class="addall @(done ? "done" : null)">@(done ? "Added" : "Add all")</span>
+                        </div>
+                    }
+                }
+            </div>
+            <div class="ip-drop-f">
+                @if (HasRange)
+                {
+                    <span>Free/busy for @RangeLabel:</span><span class="fbs free">Free</span><span class="fbs busy">Busy</span><span class="fbs">Unknown</span>
+                }
+                <button type="button" class="ip-done" @onclick="Close">Done</button>
+            </div>
+            @if (pending is { } pg)
+            {
+                var already = pg.People.Count(p => current.Any(c => c.Key == p.Key));
+                var fresh = pg.People.Count - already;
+                <div class="ip-toast" role="alertdialog" aria-label="@($"Add {pg.People.Count} people from {pg.Group.Name}?")">
+                    <span class="gi" style="background:@GroupColor(pg.Group)"><i data-lucide="@(pg.Group.Kind == "chat" ? "messages-square" : "building-2")"></i></span>
+                    <span><b>Add @pg.People.Count @(pg.People.Count == 1 ? "person" : "people") from @pg.Group.Name?</b>
+                        @if (already > 0) { <span>@already @(already == 1 ? "is" : "are") already invited</span> }</span>
+                    <button type="button" class="tb ip-toast-no" @onclick="() => pending = null">Cancel</button>
+                    <button type="button" class="tb p ip-toast-yes" disabled="@(fresh == 0)" @onclick="ConfirmGroupAsync">Add @fresh</button>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// The invited people (two-way: @bind-Selected).
+    [Parameter] public List<InvitePersonDto>? Selected { get; set; }
+    [Parameter] public EventCallback<List<InvitePersonDto>> SelectedChanged { get; set; }
+    /// The meeting time, UTC: every row shows free/busy for it. Null = no free/busy.
+    [Parameter] public DateTime? From { get; set; }
+    [Parameter] public DateTime? To { get; set; }
+    /// Room meetings: warn above this many people (organizer included).
+    [Parameter] public int? RoomCapacity { get; set; }
+    [Parameter] public string? RoomName { get; set; }
+    /// The meeting being edited (its own people are not busy because of it).
+    [Parameter] public Guid? ExceptMeeting { get; set; }
+    /// "Find a time" in the summary.
+    [Parameter] public EventCallback OnFindTime { get; set; }
+    /// Typing delay before a search (tests use zero).
+    [Parameter] public TimeSpan SearchDelay { get; set; } = TimeSpan.FromMilliseconds(200);
+    /// Local zone for "Busy 10:00–11:00" (default the browser's).
+    [Parameter] public TimeZoneInfo? Zone { get; set; }
+
+    private sealed record Row(string Section, string? SectionNote, InvitePersonDto? Person, InviteGroupDto? Group);
+    private sealed record PendingGroup(InviteGroupDto Group, List<InvitePersonDto> People);
+    internal sealed record Counts(int Free, int Busy);
+    internal sealed record RoomLoad(int People, int Capacity);
+
+    private static int seq;
+    private readonly string ListId = $"ip-list-{Interlocked.Increment(ref seq)}";
+    private string OptionId(int i) => $"{ListId}-{i}";
+
+    private ElementReference input;
+    private List<InvitePersonDto> current = [];
+    private List<InvitePersonDto>? lastSelected;
+    private bool open;
+    private bool loading;
+    private string query = "";
+    private List<Row> rows = [];
+    private int active = -1;
+    private InviteSuggestionsDto? suggestions;
+    private CancellationTokenSource? searchCts;
+    private PendingGroup? pending;
+    private readonly HashSet<Guid> addedGroups = [];
+
+    // free/busy for the current range, by key
+    private readonly Dictionary<string, PersonBusyDto> busy = [];
+    private (DateTime?, DateTime?, Guid?) busyRange;
+    private bool disposed;
+
+    private TimeZoneInfo Tz => Zone ?? TimeZoneInfo.Local;
+    private bool HasRange => From is { } f && To is { } t && t > f;
+    private bool Searching => query.Trim().Length >= 2;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!ReferenceEquals(Selected, lastSelected))
+        {
+            lastSelected = Selected;
+            current = Selected is null ? [] : [.. Selected];
+        }
+        var range = (From, To, ExceptMeeting);
+        if (range != busyRange) { busyRange = range; busy.Clear(); }
+        await RefreshBusyAsync();
+    }
+
+    // ---------------------------------------------------------------- open / search
+
+    private async Task OpenAsync()
+    {
+        if (open) return;
+        open = true;
+        if (!Searching) await ShowSuggestionsAsync();
+    }
+
+    private void Close() { open = false; pending = null; active = -1; query = ""; rows = []; }
+
+    private async Task FocusInputAsync()
+    {
+        try { await input.FocusAsync(); }
+        catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException) { }
+        await OpenAsync();
+    }
+
+    private async Task ShowSuggestionsAsync()
+    {
+        if (suggestions is null)
+        {
+            loading = true;
+            suggestions = await Api.SuggestionsAsync();
+            loading = false;
+            if (disposed) return;
+        }
+        if (Searching) return;                 // typed while loading
+        var s = suggestions;
+        var list = new List<Row>();
+        if (s is not null)
+        {
+            list.AddRange(s.Frequent.Select(p => new Row("Suggested", "people you meet often", p, null)));
+            var dept = s.Department.Select(p => p.Department).FirstOrDefault(d => !string.IsNullOrWhiteSpace(d)) ?? Auth.Me?.Department;
+            var label = dept is null ? "Your department" : $"Your department · {dept}";
+            list.AddRange(s.Department.Where(p => s.Frequent.All(f => f.Key != p.Key)).Select(p => new Row(label, null, p, null)));
+            list.AddRange(s.ChatGroups.Select(g => new Row("Chat groups", null, null, g)));
+            list.AddRange(s.Departments.Select(g => new Row("Departments", null, null, g)));
+        }
+        SetRows(list);
+        await RefreshBusyAsync();
+    }
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        query = e.Value?.ToString() ?? "";
+        open = true;
+        pending = null;
+        searchCts?.Cancel();
+        if (!Searching) { await ShowSuggestionsAsync(); return; }
+        var cts = searchCts = new CancellationTokenSource();
+        try
+        {
+            if (SearchDelay > TimeSpan.Zero) await Task.Delay(SearchDelay, cts.Token);
+            loading = true;
+            var q = query.Trim();
+            var r = await Api.SearchAsync(q, cts.Token);
+            if (cts.IsCancellationRequested || disposed) return;
+            loading = false;
+            var list = new List<Row>();
+            if (r is not null)
+            {
+                list.AddRange(r.People.Select(p => new Row("People", $"name or department matches “{q}”", p, null)));
+                list.AddRange(r.Groups.Where(g => g.Kind == "department").Select(g => new Row("Departments", null, null, g)));
+                list.AddRange(r.Groups.Where(g => g.Kind == "chat").Select(g => new Row("Chat groups", null, null, g)));
+            }
+            SetRows(list);
+            StateHasChanged();
+            await RefreshBusyAsync();
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private void SetRows(List<Row> list)
+    {
+        rows = list;
+        active = rows.Count > 0 ? 0 : -1;
+    }
+
+    // ---------------------------------------------------------------- keyboard
+
+    private async Task KeyAsync(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                if (!open) { await OpenAsync(); return; }
+                if (rows.Count > 0) active = (active + 1) % rows.Count;
+                break;
+            case "ArrowUp":
+                if (rows.Count > 0) active = active <= 0 ? rows.Count - 1 : active - 1;
+                break;
+            case "Enter":
+                if (pending is not null) { await ConfirmGroupAsync(); return; }
+                if (open && active >= 0 && active < rows.Count)
+                {
+                    var row = rows[active];
+                    if (row.Person is { } p) await ToggleAsync(p);
+                    else if (row.Group is { } g) await AskGroupAsync(g);
+                }
+                break;
+            case "Escape":
+                if (pending is not null) pending = null;
+                else Close();
+                break;
+            case "Backspace" when query.Length == 0 && current.Count > 0 && !open:
+                await RemoveAsync(current[^1]);
+                break;
+        }
+    }
+
+    // ---------------------------------------------------------------- selection
+
+    private async Task ToggleAsync(InvitePersonDto p)
+    {
+        if (current.RemoveAll(c => c.Key == p.Key) == 0) current.Add(p);
+        await PublishAsync();
+    }
+
+    private async Task RemoveAsync(InvitePersonDto p)
+    {
+        current.RemoveAll(c => c.Key == p.Key);
+        await PublishAsync();
+    }
+
+    private async Task AskGroupAsync(InviteGroupDto g)
+    {
+        var people = await Api.ExpandAsync(g.Kind, g.Id);
+        if (disposed) return;
+        if (people is null) { Toasts.Show($"Couldn't load the people in {g.Name}.", ToastKind.Error); return; }
+        if (people.Count == 0) { Toasts.Show($"{g.Name} has nobody else to invite.", ToastKind.Info); return; }
+        pending = new(g, people);
+        await RefreshBusyAsync();
+    }
+
+    private async Task ConfirmGroupAsync()
+    {
+        if (pending is not { } pg) return;
+        pending = null;
+        foreach (var p in pg.People)
+            if (current.All(c => c.Key != p.Key)) current.Add(p);
+        addedGroups.Add(pg.Group.Id);
+        await PublishAsync();
+    }
+
+    private async Task PublishAsync()
+    {
+        var copy = current.ToList();
+        lastSelected = copy;                       // our own change: don't reset from the echo
+        await SelectedChanged.InvokeAsync(copy);
+        await RefreshBusyAsync();
+    }
+
+    // ---------------------------------------------------------------- free/busy
+
+    private PersonBusyDto? StateOf(string key) => HasRange && busy.TryGetValue(key, out var s) ? s : null;
+
+    /// One batched request for every key on screen (chips, rows, a pending group) not known yet for this range.
+    private async Task RefreshBusyAsync()
+    {
+        if (!HasRange || disposed) return;
+        var keys = current.Select(c => c.Key)
+            .Concat(rows.Select(r => r.Person?.Key).OfType<string>())
+            .Concat(pending?.People.Select(p => p.Key) ?? [])
+            .Distinct().Where(k => !busy.ContainsKey(k)).ToList();
+        if (keys.Count == 0) return;
+        var range = busyRange;
+        var res = await Api.BusyAsync(keys, From!.Value, To!.Value, ExceptMeeting);
+        if (disposed || range != busyRange || res is null) return;
+        foreach (var r in res) busy[r.Key] = r;
+        StateHasChanged();
+    }
+
+    internal Counts? Summary
+    {
+        get
+        {
+            if (!HasRange || current.Count == 0) return null;
+            var known = current.Select(c => StateOf(c.Key)).Where(s => s is not null).ToList();
+            if (known.Count == 0) return null;
+            return new(known.Count(s => s!.State == "free"), known.Count(s => s!.State == "busy"));
+        }
+    }
+
+    /// People in the room = the invited plus the organizer.
+    internal RoomLoad? Over => RoomCapacity is { } cap && current.Count + 1 > cap ? new(current.Count + 1, cap) : null;
+
+    private string BusyText(PersonBusyDto s) =>
+        s.BusyFrom is { } f && s.BusyTo is { } t ? $"Busy {Local(f):HH\\:mm}–{Local(t):HH\\:mm}" : "Busy";
+
+    private DateTime Local(DateTime utc) => TimeZoneInfo.ConvertTimeFromUtc(MeetingKinds.Utc(utc), Tz);
+
+    private string RangeLabel
+    {
+        get
+        {
+            var f = Local(From!.Value);
+            var t = Local(To!.Value);
+            var today = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, Tz).Date;
+            var day = f.Date == today ? "Today" : f.Date == today.AddDays(1) ? "Tomorrow"
+                : $"{DatePickerMath.WeekdayLong[DatePickerMath.MondayIndex(f.DayOfWeek)][..3]} {f.Day} {DatePickerMath.MonthLong[f.Month - 1][..3]}";
+            return $"{day} {MeetingKinds.TimeRange(f, t)}";
+        }
+    }
+
+    private static readonly string[] GroupColors = ["#2b6cb0", "#7a63d6", "#9c4221", "#2c7a7b", "#b83280", "#2e9e5b"];
+    private static string GroupColor(InviteGroupDto g)
+    {
+        if (!string.IsNullOrWhiteSpace(g.Color) && System.Text.RegularExpressions.Regex.IsMatch(g.Color, "^#[0-9a-fA-F]{3,8}$")) return g.Color;
+        var h = 0;
+        foreach (var c in g.Name) h = unchecked(h * 31 + c);
+        return GroupColors[(h & int.MaxValue) % GroupColors.Length];
+    }
+
+    /// The text with the search match highlighted (mockup &lt;mark&gt;).
+    private RenderFragment Mark(string text) => b =>
+    {
+        var q = query.Trim();
+        var i = Searching ? text.IndexOf(q, StringComparison.OrdinalIgnoreCase) : -1;
+        if (i < 0) { b.AddContent(0, text); return; }
+        b.AddContent(0, text[..i]);
+        b.OpenElement(1, "mark");
+        b.AddContent(2, text.Substring(i, q.Length));
+        b.CloseElement();
+        b.AddContent(3, text[(i + q.Length)..]);
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); }
+        catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException or JSDisconnectedException) { }
+    }
+
+    public void Dispose()
+    {
+        disposed = true;
+        searchCts?.Cancel();
+    }
+}
