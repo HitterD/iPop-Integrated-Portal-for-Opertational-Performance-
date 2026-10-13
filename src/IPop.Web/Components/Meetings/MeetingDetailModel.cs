@@ -35,6 +35,9 @@ public sealed record MeetingDetailModel
     /// My answer (accept | maybe | decline | pending), null when I'm not invited.
     public string? MyResponse { get; init; }
     public IReadOnlyList<MeetingDetailPerson> People { get; init; } = [];
+    /// Past meetings: how many were there (null = unknown) and the recordings I may watch.
+    public int? Attended { get; init; }
+    public IReadOnlyList<RecordingChipInfo> Recordings { get; init; } = [];
 
     public string? RoomName => MeetingKinds.RoomName(RoomKey);
 

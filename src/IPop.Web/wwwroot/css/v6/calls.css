@@ -585,3 +585,69 @@ html.callx-resizing, html.callx-resizing * { cursor:nwse-resize !important; }
   .sheet2 .others { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; }
   .sheet2 .tl-clash { flex-wrap:wrap; }
 }
+
+/* ============================================================
+   Meeting scheduling v3 §5 — Calls › Scheduled (mockup screen 1). Prefixed .sch-* / .mk-kt: global .group/.ev/.menu
+   rules elsewhere would bleed in.
+   ============================================================ */
+.calls-v6 .calls-split.sch { grid-template-columns:minmax(380px,440px) minmax(0,1fr); gap:22px; }
+.calls-v6 .calls-list.sch-col { background:transparent; border:0; box-shadow:none; border-radius:0; overflow-y:auto; }
+.calls-v6 .calls-detail.sch-detail { padding:0; background:transparent; border:0; box-shadow:none; border-radius:20px; }
+.calls-v6 .calls-detail.sch-detail > .calls-empty { background:var(--surface); border-radius:20px; box-shadow:0 0 0 .5px var(--line); }
+.calls-v6 .calls-detail.sch-detail > .m-back { display:none; }
+.sch-list { padding:2px 2px 24px; }
+.sch-day-h { display:flex; align-items:baseline; gap:8px; margin:18px 8px 7px; font-size:13px; font-weight:700; color:var(--ink); letter-spacing:-.01em; }
+.sch-list > .sch-day-h:first-child { margin-top:0; }
+.sch-day-h span { color:var(--ink-3); font-weight:500; }
+.sch-group { background:var(--surface); border-radius:16px; overflow:hidden; box-shadow:0 0 0 .5px var(--line); }
+.sch-ev { position:relative; display:grid; grid-template-columns:40px minmax(0,1fr); gap:12px; width:100%; padding:12px 14px 12px 12px; text-align:left;
+  cursor:pointer; transition:background .2s; box-sizing:border-box; }
+.sch-ev + .sch-ev::before { content:""; position:absolute; top:0; left:64px; right:0; height:.5px; background:var(--line); }
+.sch-ev:hover { background:var(--tray); }
+.sch-ev:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.sch-ev.sel { background:color-mix(in srgb, var(--accent) 9%, var(--surface)); }
+.sch-ev.sel::after { content:""; position:absolute; left:0; top:10px; bottom:10px; width:3px; border-radius:0 3px 3px 0; background:var(--accent); }
+.mk-kt { width:40px; height:40px; border-radius:11px; display:grid; place-items:center; color:#fff; flex:none;
+  background:radial-gradient(120% 120% at 0% 0%, var(--a), var(--b)); box-shadow:inset 0 0 0 .5px rgba(255,255,255,.2); }
+.mk-kt .lucide, .mk-kt svg { width:19px; height:19px; }
+.sch-body { min-width:0; display:block; }
+.sch-l1 { display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--ink-3); font-weight:550; }
+.sch-l1 .sch-time { color:var(--ink-2); font-weight:650; font-variant-numeric:tabular-nums; }
+.sch-l1 .cd { margin-left:auto; }
+.sch-title { display:block; font-size:15px; font-weight:650; letter-spacing:-.018em; margin:1px 0 6px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sch-l3 { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.sch-l3 .mk-stack { margin-left:auto; }
+.sch-l3 .mk-org .pav { width:18px !important; height:18px !important; border-radius:50%; }
+.sch-ev.past .mk-kt { filter:saturate(.35); opacity:.8; }
+.sch-ev.past .sch-title { color:var(--ink-2); }
+.sch-past-h { display:flex; align-items:center; gap:8px; width:100%; margin:22px 0 7px; padding:0 8px; border:0; background:none; font:inherit; font-size:13px; font-weight:700; color:var(--ink); cursor:pointer; }
+.sch-past-h span { color:var(--ink-3); font-weight:500; }
+.sch-past-h .lucide, .sch-past-h svg { width:15px; height:15px; color:var(--ink-3); transition:transform .25s var(--ease-out, ease); }
+.sch-past-h.closed .lucide, .sch-past-h.closed svg { transform:rotate(-90deg); }
+.sch-more { display:flex; justify-content:center; width:100%; padding:11px; border:0; background:none; font:inherit; font-size:13.5px; color:var(--info, #0a84ff); font-weight:550; position:relative; cursor:pointer; }
+.sch-more::before { content:""; position:absolute; top:0; left:64px; right:0; height:.5px; background:var(--line); }
+.sch-past-msg { padding:14px 16px; font-size:13px; color:var(--ink-3); }
+.sch-link { border:0; background:none; color:var(--info, #0a84ff); font:inherit; font-weight:550; cursor:pointer; padding:0; }
+.sch-att { font-size:12px; color:var(--ink-3); font-weight:550; display:inline-flex; align-items:center; gap:4px; }
+.sch-att .lucide, .sch-att svg { width:13px; height:13px; }
+.sch-rec { display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 8px; border-radius:999px; background:rgba(255,59,48,.09); color:#d92d20; font-size:11.5px; font-weight:600; text-decoration:none; }
+[data-theme="dark"] .sch-rec { color:#ff6961; background:rgba(255,69,58,.16); }
+.sch-rec .lucide, .sch-rec svg { width:12px; height:12px; }
+.sch-empty { display:flex; flex-direction:column; align-items:center; gap:8px; padding:40px 20px; color:var(--ink-3); background:var(--surface); border-radius:16px; box-shadow:0 0 0 .5px var(--line); }
+/* schedule menu */
+.sch-menu-wrap { position:relative; display:inline-flex; }
+.calls-toolbar .sch-btn.on { background:var(--fill); }
+.calls-toolbar .sch-btn .sch-cv { width:13px; height:13px; opacity:.7; margin-left:2px; }
+.sch-menu-scrim { position:fixed; inset:0; z-index:39; }
+.sch-menu { position:absolute; z-index:40; top:42px; right:0; width:318px; padding:6px; border-radius:16px; background:color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter:blur(30px) saturate(1.8); -webkit-backdrop-filter:blur(30px) saturate(1.8); box-shadow:0 0 0 .5px var(--line), 0 18px 50px -12px rgba(0,0,0,.35);
+  animation:sch-pop .3s cubic-bezier(.2,.9,.3,1.2); outline:none; }
+@keyframes sch-pop { from { transform:scale(.96) translateY(-4px); opacity:0; } }
+.sch-menu h4 { margin:0; font-size:12px; font-weight:600; color:var(--ink-3); padding:6px 10px 4px; }
+.sch-opt { width:100%; display:flex; gap:12px; align-items:center; text-align:left; padding:10px; border:0; border-radius:11px; background:none; font:inherit; color:var(--ink); cursor:pointer; }
+.sch-opt:hover, .sch-opt:focus-visible { background:var(--tray); outline:none; }
+.sch-opt .mk-kt { width:36px; height:36px; border-radius:10px; }
+.sch-opt b { display:block; font-size:14.5px; font-weight:600; letter-spacing:-.015em; }
+.sch-opt > span > span { display:block; font-size:12.5px; color:var(--ink-3); line-height:1.35; margin-top:1px; }
+.sch-opt > .sch-chev { margin-left:auto; color:var(--ink-4); width:15px; height:15px; }
+@media(max-width:800px) { .calls-v6 .calls-split.sch { grid-template-columns:1fr; } }

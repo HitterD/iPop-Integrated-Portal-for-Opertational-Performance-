@@ -1,0 +1,176 @@
+@* Meeting scheduling v3 §5 (mockup screen 1): Calls › Scheduled. Upcoming meetings grouped Today / Tomorrow / This week /
+   Later; each card = kind tile, time range (+ repeat), countdown, title, kind badge, organizer pill or "You organise",
+   avatar stack. Below, the collapsed "Past · 30 days" section (GET /api/meetings/past on first open, "Show N more"
+   pages with before=) with "N attended" and recording chips the viewer may watch. Keys only feed PersonAvatar. *@
+@namespace IPop.Web.Components.Meetings
+@implements IDisposable
+@inject AuthState Auth
+@inject IJSRuntime JS
+
+@{
+    var today = Local(NowUtc).Date;
+    var visible = (Meetings ?? []).Where(Matches).OrderBy(m => m.StartAt).ToList();
+    var groups = visible.GroupBy(m => IPop.Web.Pages.CallsSchedule.Group(Local(m.StartAt), today)).ToList();
+}
+<div class="sch-list">
+    @if (visible.Count == 0)
+    {
+        <div class="sch-empty"><i data-lucide="calendar-clock"></i><p>@((Meetings?.Count ?? 0) == 0 ? "No scheduled meetings yet." : "No matching meetings.")</p></div>
+    }
+    @foreach (var g in groups)
+    {
+        <div class="sch-day-h">@g.Key.Label@if (DaySub(g.Key.Key, today) is { } sub) {<span>@sub</span>}</div>
+        <div class="sch-group">
+            @foreach (var m in g)
+            {
+                @Card(m, null)
+            }
+        </div>
+    }
+
+    <button type="button" class="@($"sch-past-h {(pastOpen ? "" : "closed")}")" aria-expanded="@(pastOpen ? "true" : "false")" @onclick="TogglePastAsync">
+        <i data-lucide="chevron-down"></i>Past<span>· @PastDays days</span>
+    </button>
+    @if (pastOpen)
+    {
+        <div class="sch-group sch-past">
+            @if (pastError)
+            {
+                <div class="sch-past-msg">Past meetings can't be loaded right now. <button type="button" class="sch-link" @onclick="LoadPastAsync">Retry</button></div>
+            }
+            else if (past.Count == 0 && pastLoading)
+            {
+                <div class="sch-past-msg">Loading…</div>
+            }
+            else if (past.Count == 0)
+            {
+                <div class="sch-past-msg">No meetings in the last @PastDays days.</div>
+            }
+            @foreach (var p in past.Where(p => Matches(p.Meeting)))
+            {
+                @Card(p.Meeting, p)
+            }
+            @if (pastHasMore && past.Count > 0)
+            {
+                <button type="button" class="sch-more" disabled="@pastLoading" @onclick="LoadPastAsync">@(pastLoading ? "Loading…" : $"Show {Math.Max(0, pastTotal - past.Count)} more")</button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<MeetingInfo>? Meetings { get; set; }
+    [Parameter] public Guid? Me { get; set; }
+    [Parameter] public Guid? SelectedId { get; set; }
+    [Parameter] public string? Search { get; set; }
+    [Parameter] public EventCallback<MeetingInfo> OnSelect { get; set; }
+    [Parameter] public EventCallback<PastMeetingInfo> OnSelectPast { get; set; }
+    /// UTC clock and zone (tests); the host re-renders on its own tick.
+    [Parameter] public DateTime? Now { get; set; }
+    [Parameter] public TimeZoneInfo? Zone { get; set; }
+
+    private const int PastDays = 30;
+    private readonly List<PastMeetingInfo> past = [];
+    private bool pastOpen, pastLoading, pastError, pastHasMore;
+    private int pastTotal;
+    private bool disposed;
+
+    private DateTime NowUtc => MeetingKinds.Utc(Now ?? DateTime.UtcNow);
+    private TimeZoneInfo Tz => Zone ?? TimeZoneInfo.Local;
+    private DateTime Local(DateTime utc) => TimeZoneInfo.ConvertTimeFromUtc(MeetingKinds.Utc(utc), Tz);
+
+    private bool Matches(MeetingInfo m) => string.IsNullOrWhiteSpace(Search) || m.Title.Contains(Search.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private static string? DaySub(string key, DateTime today) => key switch
+    {
+        "today" => Long(today),
+        "tomorrow" => Long(today.AddDays(1)),
+        _ => null,
+    };
+
+    private static string Long(DateTime d) =>
+        $"{DatePickerMath.WeekdayLong[DatePickerMath.MondayIndex(d.DayOfWeek)]} {d.Day} {DatePickerMath.MonthShort[d.Month - 1]}";
+
+    private static string Short(DateTime d) =>
+        $"{DatePickerMath.WeekdayShort[DatePickerMath.MondayIndex(d.DayOfWeek)]} {d.Day} {DatePickerMath.MonthShort[d.Month - 1]}";
+
+    private RenderFragment Card(MeetingInfo m, PastMeetingInfo? p) => __builder =>
+    {
+        var kind = IPop.Web.Pages.CallsSchedule.KindOf(m.Kind, m.Location, m.Attendees.Count > 0);
+        var roomKey = kind == MeetingKinds.Room ? m.RoomKey ?? IPop.Application.Hall.HallBooking.RoomKey(m.Location) : null;
+        var cls = MeetingKinds.CssClass(kind, roomKey);
+        var mine = Me is not null && m.OrganizerId == Me;
+        var start = Local(m.StartAt); var end = Local(m.EndAt);
+        var people = m.Attendees.Select(a => new MeetingPersonRef(a.Nik, a.Name)).ToList();
+        var selected = SelectedId == m.Id;
+        <div class="@($"sch-ev {(p is null ? "" : "past")} {(selected ? "sel" : "")}")" role="button" tabindex="0" aria-current="@(selected ? "true" : null)"
+             @onclick="() => SelectAsync(m, p)" @onkeydown="e => KeyAsync(e, m, p)">
+            <span class="@($"mk-kt {cls}")" aria-hidden="true"><i data-lucide="@MeetingKinds.Icon(kind)"></i></span>
+            <span class="sch-body">
+                <span class="sch-l1">
+                    <span class="sch-time">@MeetingKinds.TimeRange(start, end)</span>
+                    @if (p is not null) { <span>· @Short(start)</span> }
+                    @if (p is null) { <MeetingCountdown Start="m.StartAt" End="m.EndAt" Now="NowUtc" Zone="Tz" /> }
+                </span>
+                <span class="sch-title">@m.Title</span>
+                <span class="sch-l3">
+                    <KindBadge Kind="@kind" RoomKey="@roomKey" />
+                    @if (p is not null)
+                    {
+                        @if (p.Attended is { } n) { <span class="sch-att"><i data-lucide="users"></i>@n attended</span> }
+                        @foreach (var r in p.Recordings)
+                        {
+                            <a class="sch-rec" href="@($"/calls?tab=rooms&recording={r.Id}")" @onclick:stopPropagation="true"><i data-lucide="play"></i>Recording@(r.DurationSeconds is { } s ? " · " + MeetingKinds.Duration(TimeSpan.FromSeconds(s)) : "")</a>
+                        }
+                    }
+                    else
+                    {
+                        @if (mine) { <span class="mk-org mine">You organise</span> }
+                        else { <span class="mk-org"><PersonAvatar Nik="@m.OrganizerNik" Name="@m.OrganizerName" Size="18" Decorative="true" />@FirstName(m.OrganizerName)</span> }
+                        <AvatarStack People="people" Max="3" Size="22" />
+                    }
+                </span>
+            </span>
+        </div>
+    };
+
+    private static string FirstName(string name) => name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name;
+
+    private Task SelectAsync(MeetingInfo m, PastMeetingInfo? p) => p is null ? OnSelect.InvokeAsync(m) : OnSelectPast.InvokeAsync(p);
+
+    private Task KeyAsync(KeyboardEventArgs e, MeetingInfo m, PastMeetingInfo? p) =>
+        e.Key is "Enter" or " " ? SelectAsync(m, p) : Task.CompletedTask;
+
+    private async Task TogglePastAsync()
+    {
+        pastOpen = !pastOpen;
+        if (pastOpen && past.Count == 0 && !pastLoading) await LoadPastAsync();
+    }
+
+    private async Task LoadPastAsync()
+    {
+        if (pastLoading) return;
+        pastLoading = true; pastError = false;
+        try
+        {
+            var url = $"/api/meetings/past?days={PastDays}";
+            if (past.Count > 0) url += "&before=" + Uri.EscapeDataString(MeetingKinds.Utc(past[^1].Meeting.StartAt).ToString("o", System.Globalization.CultureInfo.InvariantCulture));
+            var page = await Auth.GetAsync<PastMeetingsPageInfo>(url);
+            if (disposed) return;
+            if (page is null) { pastError = past.Count == 0; return; }
+            var seen = past.Select(x => x.Meeting.Id).ToHashSet();
+            past.AddRange(page.Items.Where(x => seen.Add(x.Meeting.Id)));
+            pastTotal = page.Total; pastHasMore = page.HasMore;
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException) { pastError = past.Count == 0; }
+        finally { pastLoading = false; }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); }
+        catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException or JSDisconnectedException) { }
+    }
+
+    public void Dispose() => disposed = true;
+}

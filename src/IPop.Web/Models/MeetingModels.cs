@@ -10,5 +10,14 @@ public record MeetingInfo(Guid Id, string Title, DateTime StartAt, DateTime EndA
     int DeclineCount, int PendingCount, string MyResponse, string? Agenda = null, string? RoomName = null,
     Guid? RoomId = null, int? ReminderMinutes = null, string? RoomPassword = null, string? Kind = null, string? RoomKey = null);
 
+/// A recording of a past meeting the viewer may watch (GET /api/meetings/past).
+public record RecordingChipInfo(Guid Id, DateTime StartedAt, int? DurationSeconds);
+
+/// One past meeting: the meeting, how many were there (see MeetingEndpoints.LoadPastAsync) and its watchable recordings.
+public record PastMeetingInfo(MeetingInfo Meeting, int? Attended, IReadOnlyList<RecordingChipInfo> Recordings);
+
+/// A page of past meetings, newest first; the next page asks with before = the last StartAt.
+public record PastMeetingsPageInfo(IReadOnlyList<PastMeetingInfo> Items, int Total, bool HasMore);
+
 /// A person for avatar stacks: Key = opaque (NIK) for the photo lookup, never printed.
 public record MeetingPersonRef(string Key, string Name);

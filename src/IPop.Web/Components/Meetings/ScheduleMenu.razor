@@ -1,0 +1,39 @@
+@* Meeting scheduling v3 §5 (mockup screen 1 "Schedule menu open"): Schedule → Voice call (the short Calendar form on the
+   voice kind) / Meeting room (the booking sheet). Esc or a click outside closes it. *@
+@namespace IPop.Web.Components.Meetings
+@inject IJSRuntime JS
+
+<div class="sch-menu-scrim" @onclick="OnClose"></div>
+<div class="sch-menu" role="menu" aria-label="Schedule" tabindex="-1" @onkeydown="KeyAsync" @ref="root">
+    <h4>Schedule</h4>
+    <button type="button" class="sch-opt" role="menuitem" @onclick="OnVoice">
+        <span class="mk-kt k-voice" aria-hidden="true"><i data-lucide="headphones"></i></span>
+        <span><b>Voice call</b><span>Audio only, join from anywhere</span></span>
+        <i data-lucide="chevron-right" class="sch-chev"></i>
+    </button>
+    <button type="button" class="sch-opt" role="menuitem" @onclick="OnRoom">
+        <span class="mk-kt r-kalosi" aria-hidden="true"><i data-lucide="video"></i></span>
+        <span><b>Meeting room</b><span>Book one of 5 rooms · video, share, record</span></span>
+        <i data-lucide="chevron-right" class="sch-chev"></i>
+    </button>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnVoice { get; set; }
+    [Parameter] public EventCallback OnRoom { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private ElementReference root;
+
+    private Task KeyAsync(KeyboardEventArgs e) => e.Key == "Escape" ? OnClose.InvokeAsync() : Task.CompletedTask;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("ipop.icons");
+            if (firstRender) await root.FocusAsync();
+        }
+        catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException or JSDisconnectedException) { }
+    }
+}

@@ -6,7 +6,7 @@ public sealed class CalendarLinks(PeopleLinks people)
 {
     /// <param name="from">Shown on the form: "From chat ICT Team", "From mail “Budget review”".</param>
     public string NewMeeting(string? title = null, IEnumerable<string>? niks = null, Guid? roomId = null, DateTime? start = null,
-        int? minutes = null, bool isPrivate = false, string? notes = null, string? from = null, string? location = null)
+        int? minutes = null, bool isPrivate = false, string? notes = null, string? from = null, string? location = null, string? kind = null)
     {
         var q = new List<string> { "new=1" };
         if (!string.IsNullOrWhiteSpace(title)) q.Add("title=" + Uri.EscapeDataString(Trim(title, 200)));
@@ -19,6 +19,7 @@ public sealed class CalendarLinks(PeopleLinks people)
         if (!string.IsNullOrWhiteSpace(notes)) q.Add("notes=" + Uri.EscapeDataString(Trim(notes, 1500)));
         if (!string.IsNullOrWhiteSpace(from)) q.Add("from=" + Uri.EscapeDataString(Trim(from, 80)));
         if (!string.IsNullOrWhiteSpace(location)) q.Add("location=" + Uri.EscapeDataString(Trim(location, 300)));
+        if (kind is "voice" or "room" or "inperson") q.Add("kind=" + kind);
         return "/calendar?" + string.Join('&', q);
     }
 

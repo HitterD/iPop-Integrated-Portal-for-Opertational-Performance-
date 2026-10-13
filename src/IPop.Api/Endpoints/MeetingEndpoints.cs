@@ -190,6 +190,18 @@ public static class MeetingEndpoints
             return Results.Ok(await LoadUpcomingAsync(db, userId.Value, DateTime.UtcNow, ct));
         });
 
+        // GET /api/meetings/past?days=30&before= — ended meetings I organised or attended (not declined), newest first,
+        // 20 per page; attendance count and the recordings I may watch (v3 §5 Past).
+        g.MapGet("/past", async (int? days, DateTime? before, HttpContext http, IPopDbContext db,
+            IPop.Application.MeetingRooms.IMeetingRecordingService recs, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            // Admins are not merged in (same as the recordings list): they audit from Administration.
+            return Results.Ok(await LoadPastAsync(db, userId.Value, DateTime.UtcNow, days ?? PastDefaultDays, before, PastPageSize,
+                id => recs.CanViewAsync(userId.Value, false, id, ct), ct));
+        });
+
         // POST /api/meetings/{id}/cancel — cancel a meeting and notify attendees
         g.MapPost("/{id:guid}/cancel", async (Guid id, HttpContext http, IPopDbContext db,
             INotificationGatewayService? notifs, IRealtime realtime, CancellationToken ct) =>
@@ -325,6 +337,62 @@ public static class MeetingEndpoints
                 && (m.OrganizerId == userId || m.Attendees.Any(a => a.UserId == userId)))
             .OrderBy(m => m.StartAt)
             .Take(50), userId, ct);
+
+    public const int PastDefaultDays = 30, PastMaxDays = 90, PastPageSize = 20;
+
+    /// Past meetings (v3 §5): ended, not cancelled, started within <paramref name="days"/> (1–90) before now, that I
+    /// organised or attend without having declined; newest first, <paramref name="take"/> per page, older than
+    /// <paramref name="before"/> (the last StartAt of the previous page). Room passwords are never returned for them.
+    /// <para><b>Attended</b>: v2 persists no join log, only who was in the room while a server recording ran
+    /// (MeetingRecordingViewers) and who entered with the password (MeetingRoomGuests). So: when the meeting has a
+    /// recording, the distinct recording viewers plus guests; otherwise the organizer, the invitees who said yes and the
+    /// guests. Voice and in-person meetings have no observation at all and use the second rule.</para>
+    /// <para><b>Recordings</b>: Ready recordings of the meeting I was a viewer of, and that <paramref name="canView"/>
+    /// (MeetingRecordingService.CanViewAsync, non-admin) still allows — the same rule as the recordings list.</para>
+    public static async Task<PastMeetingsPage> LoadPastAsync(IPopDbContext db, Guid userId, DateTime nowUtc, int days, DateTime? before,
+        int take, Func<Guid, Task<bool>>? canView, CancellationToken ct)
+    {
+        days = Math.Min(days, PastMaxDays);
+        if (days <= 0) return new([], 0, false);
+        take = Math.Clamp(take, 1, 50);
+        var from = nowUtc.AddDays(-days);
+        var mine = db.Meetings.Where(m => m.EndAt <= nowUtc && m.StartAt >= from && m.Status != MeetingStatus.Cancelled
+            && (m.OrganizerId == userId || m.Attendees.Any(a => a.UserId == userId && a.RsvpStatus != "decline")));
+        var total = await mine.CountAsync(ct);
+        var paged = before is { } b ? mine.Where(m => m.StartAt < b) : mine;
+        var ids = await paged.OrderByDescending(m => m.StartAt).Select(m => m.Id).Take(take + 1).ToListAsync(ct);
+        var hasMore = ids.Count > take;
+        if (hasMore) ids.RemoveAt(take);
+        if (ids.Count == 0) return new([], total, false);
+
+        var dtos = (await ProjectAsync(db.Meetings.Where(m => ids.Contains(m.Id)), userId, ct)).ToDictionary(m => m.Id);
+        var recordings = await db.MeetingRecordings.AsNoTracking()
+            .Where(r => r.MeetingId != null && ids.Contains(r.MeetingId.Value) && r.Status != MeetingRecordingStatus.Deleted)
+            .Select(r => new { r.Id, MeetingId = r.MeetingId!.Value, r.Status, r.StartedAt, r.DurationSeconds,
+                Viewers = r.Viewers.Select(v => v.UserId).ToList() })
+            .ToListAsync(ct);
+        var guests = await db.MeetingRoomGuests.AsNoTracking().Where(g => ids.Contains(g.MeetingId))
+            .Select(g => new { g.MeetingId, g.UserId }).ToListAsync(ct);
+
+        var items = new List<PastMeetingDto>();
+        foreach (var id in ids)
+        {
+            if (!dtos.TryGetValue(id, out var dto)) continue;
+            var recs = recordings.Where(r => r.MeetingId == id).ToList();
+            var seen = guests.Where(g => g.MeetingId == id).Select(g => g.UserId).ToHashSet();
+            if (recs.Count > 0) seen.UnionWith(recs.SelectMany(r => r.Viewers));
+            else
+            {
+                seen.Add(dto.OrganizerId);
+                seen.UnionWith(dto.Attendees.Where(a => a.RsvpStatus == "accept").Select(a => a.UserId));
+            }
+            var chips = new List<RecordingChipDto>();
+            foreach (var r in recs.Where(r => r.Status == MeetingRecordingStatus.Ready && r.Viewers.Contains(userId)).OrderBy(r => r.StartedAt))
+                if (canView is null || await canView(r.Id)) chips.Add(new(r.Id, r.StartedAt, r.DurationSeconds));
+            items.Add(new(dto with { RoomPassword = null }, seen.Count, chips));
+        }
+        return new(items, total, hasMore);
+    }
 
     private static async Task<List<MeetingDto>> ProjectAsync(IQueryable<Meeting> query, Guid viewerId, CancellationToken ct)
     {
@@ -799,4 +867,10 @@ public static class MeetingEndpoints
         string? Agenda = null, string? RoomName = null, Guid? RoomId = null, int? ReminderMinutes = null, string? RoomPassword = null,
         string? Kind = null, string? RoomKey = null);
     public record CalendarEventDto(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string Type, Guid? MeetingId, Guid? RoomId);
+    /// A recording of a past meeting the viewer may watch (Calls › Meeting Rooms ?recording={id} plays it).
+    public record RecordingChipDto(Guid Id, DateTime StartedAt, int? DurationSeconds);
+    /// <paramref name="Attended"/>: see <see cref="LoadPastAsync"/>.
+    public record PastMeetingDto(MeetingDto Meeting, int? Attended, IReadOnlyList<RecordingChipDto> Recordings);
+    /// <paramref name="Total"/>: all past meetings in the window; <paramref name="HasMore"/>: another page exists.
+    public record PastMeetingsPage(IReadOnlyList<PastMeetingDto> Items, int Total, bool HasMore);
 }

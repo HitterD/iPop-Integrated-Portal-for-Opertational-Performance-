@@ -44,7 +44,13 @@
         </div>
         <h2>@m.Title</h2>
         <p>@MeetingKinds.DateLabel(localStart, DateTime.Today) · @MeetingKinds.TimeRange(localStart, localEnd)</p>
-        @if (joinable || (OnRespond.HasDelegate && m.Kind == MeetingKinds.InPerson && !m.OrganizerIsMe && m.MyResponse is not null && !m.Cancelled && !ended))
+        @if (ended && !m.Cancelled && m.Recordings.Count > 0)
+        {
+            <div class="joinbar">
+                <a class="bigjoin watch" href="@($"/calls?tab=rooms&recording={m.Recordings[0].Id}")"><i data-lucide="play" aria-hidden="true"></i>Watch recording</a>
+            </div>
+        }
+        else if (joinable || (OnRespond.HasDelegate && m.Kind == MeetingKinds.InPerson && !m.OrganizerIsMe && m.MyResponse is not null && !m.Cancelled && !ended))
         {
             <div class="joinbar">
                 @if (joinable && !canJoin)
@@ -142,6 +148,20 @@
                     <span class="t"><span>Agenda</span><p>@m.Agenda</p></span>
                 </div>
             }
+            @if (OnRespond.HasDelegate && m.Kind != MeetingKinds.InPerson && !m.OrganizerIsMe && m.MyResponse is not null && !m.Cancelled && !ended)
+            {
+                <div class="ir reply">
+                    <span class="tile t-green"><i data-lucide="circle-check" aria-hidden="true"></i></span>
+                    <span class="t"><b>Your answer</b><span>@IPop.Web.Pages.CallsSchedule.RsvpLabel(m.MyResponse)</span></span>
+                    <span class="mk-seg" role="group" aria-label="Your answer">
+                        @foreach (var (value, label, _) in Answers)
+                        {
+                            var v = value;
+                            <button type="button" class="@(m.MyResponse == v ? "on" : null)" aria-pressed="@(m.MyResponse == v ? "true" : "false")" @onclick="() => OnRespond.InvokeAsync(v)">@label</button>
+                        }
+                    </span>
+                </div>
+            }
             @if (m.ReminderMinutes is { } rem && rem > 0 && !ended)
             {
                 <div class="ir reminder">
@@ -160,7 +180,7 @@
             </div>
         }
 
-        <div class="sub-h"><b>People</b>@m.People.Count invited</div>
+        <div class="sub-h"><b>People</b>@m.People.Count invited@if (ended && m.Attended is not null) {<span class="att">· @m.Attended attended</span>}</div>
         @PeopleGroup("Going", going, "yes", "var(--success)")
         @PeopleGroup("No response", none, "q", "var(--ink-4)")
         @PeopleGroup("Declined", declined, "no", "var(--danger)")

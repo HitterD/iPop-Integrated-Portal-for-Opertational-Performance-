@@ -2,6 +2,7 @@
 @implements IDisposable
 @using IPop.Application.Calls
 @using IPop.Web.Components.Calls
+@using IPop.Web.Components.Meetings
 @inject IJSRuntime JS
 @inject NotificationState Notifs
 @inject AuthState Auth
@@ -37,12 +38,22 @@
         }
         else
         {
-            <button type="button" class="ghost-btn" @onclick="OpenSchedule"><i data-lucide="calendar-plus"></i>Schedule</button>
+            <span class="sch-menu-wrap">
+                <button type="button" class="@($"ghost-btn sch-btn {(scheduleMenu ? "on" : "")}")" aria-haspopup="menu" aria-expanded="@(scheduleMenu ? "true" : "false")" @onclick="() => scheduleMenu = !scheduleMenu"><i data-lucide="calendar-plus"></i>Schedule<i data-lucide="chevron-down" class="sch-cv"></i></button>
+                @if (scheduleMenu)
+                {
+                    <ScheduleMenu OnVoice="ScheduleVoice" OnRoom="ScheduleRoomAsync" OnClose="() => scheduleMenu = false" />
+                }
+            </span>
         }
         <button type="button" class="btn-primary" @onclick="FocusCallPicker"><i data-lucide="phone"></i>New call</button>
     </div>
 
-    @* Scheduling uses the one Calendar meeting form (calendar everywhere); this page lists and joins meetings. *@
+    @* Schedule → Voice call opens the Calendar form on the voice kind; Meeting room opens the booking sheet (v3 §5). *@
+    @if (bookingRoom is { } bk)
+    {
+        <BookingSheet RoomKey="@bk" Mode="@BookingSheet.ModeBook" OnClose="() => bookingRoom = null" OnBooked="BookedAsync" OnJoin="BookedNow" />
+    }
 
     @if (CallSvc.NeedsHttps)
     {
@@ -60,7 +71,9 @@
     }
     else
     {
-    <div class="calls-split"><div class="calls-list">
+    <div class="@($"calls-split {(tab == "scheduled" ? "sch" : "")}")"><div class="@($"calls-list {(tab == "scheduled" ? "sch-col" : "")}")">
+    @if (tab == "recents")
+    {
     <div class="calls-favorites">
         <div class="calls-favorites-head"><strong>FAVORITES</strong><a href="/directory">Manage</a></div>
         @if (favorites.Count == 0) { <span>Star people in Directory to add them here.</span> }
@@ -69,6 +82,7 @@
             <button title="Call @person.Name" @onclick="() => CallAgain(person.Nik)"><PersonAvatar Nik="@person.Nik" Name="@person.Name" Size="44" Class="calls-fav-avatar" Decorative="true" />@person.Name</button>
         }
     </div>
+    }
 
 
     @if (tab == "recents")
@@ -110,65 +124,8 @@
 
     @if (tab == "scheduled")
     {
-        var nowUtc = DateTime.UtcNow;
-        var visibleMeetings = meetings.Where(m => string.IsNullOrWhiteSpace(search) || m.Title.Contains(search, StringComparison.OrdinalIgnoreCase)).ToList();
-        <section class="calls-meetings mtg-list">
-            @foreach (var day in visibleMeetings.GroupBy(m => m.StartAt.ToLocalTime().Date).OrderBy(g => g.Key))
-            {
-                <div class="calls-date">@CallsSchedule.DayLabel(day.Key, DateTime.Today)</div>
-                @foreach (var meeting in day)
-                {
-                    var mt = meeting;
-                    var mine = mt.OrganizerNik == Auth.Me?.Nik;
-                    var canJoin = CallsSchedule.CanJoin(mt.StartAt, mt.EndAt, nowUtc);
-                    var others = mt.Attendees.Where(a => a.Nik != Auth.Me?.Nik).ToList();
-                    <div class="mtg-row @(detailMeeting?.Id == mt.Id ? "selected" : "") @(canJoin ? "live" : "")" role="button" tabindex="0" @onclick="() => OpenMeeting(mt.Id)" @onkeydown="e => SelectMeetingOnKey(e, mt.Id)">
-                        <div class="mtg-time"><strong>@mt.StartAt.ToLocalTime().ToString("HH:mm")</strong><small>@CallsSchedule.DurationLabel(mt.EndAt - mt.StartAt)</small></div>
-                        <div class="mtg-main">
-                            <strong class="mtg-title">@mt.Title</strong>
-                            <div class="mtg-meta">
-                                @if (CallsSchedule.IsOnline(mt.Location)) { <span class="mtg-badge online"><i data-lucide="video"></i>Online</span> }
-                                else { <span class="mtg-place"><i data-lucide="map-pin"></i>@mt.Location</span> }
-                                <span class="mtg-stack" title="@string.Join(", ", mt.Attendees.Select(a => a.Name))">
-                                    @foreach (var a in mt.Attendees.Take(4)) { <PersonAvatar Nik="@a.Nik" Name="@a.Name" Size="22" Class="mtg-av xs" Decorative="true" /> }
-                                    @if (mt.Attendees.Count > 4) { <span class="mtg-av xs more">+@(mt.Attendees.Count - 4)</span> }
-                                </span>
-                                @if (!mine) { <span class="mtg-host">by @mt.OrganizerName</span> }
-                            </div>
-                        </div>
-                        <div class="mtg-side" @onclick:stopPropagation="true">
-                            @if (mine)
-                            {
-                                <span class="mtg-rsvp host">Organizer</span>
-                                <span class="mtg-icon-btns">
-                                    <button type="button" class="mtg-icon" title="Edit" aria-label="Edit @mt.Title" @onclick="() => EditMeeting(mt)"><i data-lucide="pencil"></i></button>
-                                    <button type="button" class="mtg-icon danger" title="Cancel" aria-label="Cancel @mt.Title" @onclick="() => CancelMeeting(mt)"><i data-lucide="calendar-x"></i></button>
-                                </span>
-                            }
-                            else
-                            {
-                                <span class="mtg-rsvp rsvp-@mt.MyResponse">@CallsSchedule.RsvpLabel(mt.MyResponse)</span>
-                                <span class="mtg-rsvp-btns" role="group" aria-label="Respond to invitation">
-                                    @foreach (var r in RsvpChoices)
-                                    {
-                                        var choice = r;
-                                        <button type="button" class="@(mt.MyResponse == choice.Value ? "on " + choice.Value : "")" aria-pressed="@(mt.MyResponse == choice.Value ? "true" : "false")" disabled="@rsvpBusy" title="@choice.Label" @onclick="() => Respond(mt.Id, choice.Value)">@choice.Label</button>
-                                    }
-                                </span>
-                            }
-                            <span class="mtg-join-wrap" title="@(canJoin ? "Join the meeting" : CallsSchedule.JoinTooltip)">
-                                <button type="button" class="mtg-join" disabled="@(!canJoin || mt.RoomName is null)" @onclick="() => JoinMeeting(mt)"><i data-lucide="video"></i>Join</button>
-                            </span>
-                        </div>
-                    </div>
-                }
-            }
-            @if (visibleMeetings.Count == 0)
-            {
-                <div class="calls-empty mtg-empty"><i data-lucide="calendar-clock"></i><p>@(meetings.Count == 0 ? "No scheduled meetings yet." : "No matching meetings.")</p>
-                    <button type="button" class="btn-sm accent" @onclick="OpenSchedule"><i data-lucide="calendar-plus"></i>Schedule a meeting</button></div>
-            }
-        </section>
+        <ScheduledList Meetings="meetings" Me="@Auth.Me?.UserId" SelectedId="@detailMeeting?.Id" Search="@search" Now="clockNow"
+                       OnSelect="m => OpenMeeting(m.Id)" OnSelectPast="OpenPastAsync" />
     }
     @* ---- Call history (grouped by date) ---- *@
     @if (tab == "recents")
@@ -225,45 +182,14 @@
 
     }
     </div>
-    <aside class="calls-detail">
+    <aside class="@($"calls-detail {(tab == "scheduled" ? "sch-detail" : "")}")">
         <button type="button" class="m-back" aria-label="Back" @onclick="MobileBack"><i data-lucide="chevron-left"></i></button>
         @if (detailMeeting is { } m)
         {
-            var cancelled = m.Status == MeetingCancelled;
-            var detailCanJoin = !cancelled && CallsSchedule.CanJoin(m.StartAt, m.EndAt, DateTime.UtcNow);
-            <div class="calls-detail-hero"><span class="tag @(cancelled ? "mtg-tag-cancelled" : "")">@(cancelled ? "Cancelled" : CallsSchedule.DayLabel(m.StartAt.ToLocalTime(), DateTime.Today))</span><h2>@m.Title</h2><p>@m.StartAt.ToLocalTime().ToString("dddd, MMM d, yyyy · HH:mm", System.Globalization.CultureInfo.InvariantCulture) – @m.EndAt.ToLocalTime().ToString("HH:mm")</p></div>
-            <div class="calls-detail-actions">
-                @if (m.EndAt > DateTime.UtcNow && !cancelled)
-                {
-                    <span class="mtg-join-wrap" title="@(detailCanJoin ? "Join the meeting" : CallsSchedule.JoinTooltip)">
-                        <button type="button" class="mtg-join" disabled="@(!detailCanJoin || m.RoomName is null)" @onclick="() => JoinMeeting(m)"><i data-lucide="video"></i>Join</button>
-                    </span>
-                }
-                <button type="button" class="btn-sm surface" @onclick="() => CopyMeetingLink(m)"><i data-lucide="link"></i> Copy link</button>
-                <a class="btn-sm surface" href="@PLinks.Chat(m.OrganizerNik)"><i data-lucide="message-circle"></i> Message host</a>
-                <button class="btn-sm surface" @onclick="() => OpenInCalendarAsync(m.Id)"><i data-lucide="calendar"></i> Open in Calendar</button>
-                @if (m.OrganizerNik == Auth.Me?.Nik && !cancelled)
-                {
-                    <button class="btn-sm surface" @onclick="() => EditMeeting(m)"><i data-lucide="pencil"></i> Edit</button>
-                    <button class="btn-sm surface" style="color:var(--danger)" @onclick="() => CancelMeeting(m)"><i data-lucide="calendar-x"></i> Cancel</button>
-                }
-            </div>
-            @if (m.OrganizerNik != Auth.Me?.Nik && !cancelled)
-            {
-                <div class="calls-rsvp">Your response: <strong class="mtg-rsvp rsvp-@m.MyResponse">@CallsSchedule.RsvpLabel(m.MyResponse)</strong>
-                    <span class="mtg-rsvp-btns" role="group" aria-label="Respond to invitation">
-                        @foreach (var r in RsvpChoices)
-                        {
-                            var choice = r;
-                            <button type="button" class="@(m.MyResponse == choice.Value ? "on " + choice.Value : "")" aria-pressed="@(m.MyResponse == choice.Value ? "true" : "false")" disabled="@rsvpBusy" @onclick="() => Respond(m.Id, choice.Value)">@choice.Label</button>
-                        }
-                    </span>
-                </div>
-            }
-            <div class="calls-detail-block"><strong>MEETING DETAILS</strong><p>Organizer: @m.OrganizerName</p><p>Location: @(CallsSchedule.IsOnline(m.Location) ? CallsSchedule.OnlineLocation : m.Location)</p><p>Agenda: @(m.Agenda ?? "No agenda")</p><p>Reminder: @(m.ReminderMinutes is { } rm ? ReminderLabel(rm) : "No reminder")</p><p>Link: <a href="/meet/@m.RoomName">Open meeting</a></p></div>
-            <div class="calls-detail-block"><strong>ATTENDEES · @m.Attendees.Count</strong>
-                @foreach (var person in m.Attendees) { <p>@person.Name · @CallsSchedule.RsvpLabel(person.RsvpStatus)</p> }
-            </div>
+            var model = MeetingDetailModel.FromMeeting(m, Auth.Me?.UserId);
+            if (detailPast is { } past && past.Meeting.Id == m.Id) model = model with { Attended = past.Attended, Recordings = past.Recordings };
+            <MeetingDetail Model="model" Now="clockNow" OnJoin="() => JoinMeeting(m)" OnEdit="() => EditMeeting(m)" OnCancel="() => CancelMeeting(m)"
+                           OnOpenCalendar="() => OpenInCalendarAsync(m.Id)" OnChangeRoom="() => EditMeeting(m)" OnRespond="v => Respond(m.Id, v)" />
         }
         else if (detailCall is { } h)
         {
@@ -300,7 +226,7 @@
                 <div class="calls-note-unavailable">Private notes are not saved yet.</div>
             </div>
         }
-        else { <div class="calls-empty">Select a call or meeting to see its details.</div> }
+        else { <div class="calls-empty">@(tab == "scheduled" ? "Select a meeting to see its details." : "Select a call or meeting to see its details.")</div> }
     </aside></div>
     }
 </div>
@@ -329,19 +255,15 @@
     private bool showPicker;
     private bool rsvpBusy;
     private System.Threading.Timer? clock;
-    private const string MeetingCancelled = "cancelled"; // MeetingStatus.Cancelled on the server
-    private static readonly (string Value, string Label)[] RsvpChoices = [("accept", "Yes"), ("maybe", "Maybe"), ("decline", "No")];
-    private MeetingDto? detailMeeting;
+    private bool scheduleMenu;
+    private string? bookingRoom;
+    /// The clock the countdowns and the Join window read; ticks every 30 s.
+    private DateTime clockNow = DateTime.UtcNow;
+    private MeetingInfo? detailMeeting;
+    private PastMeetingInfo? detailPast;
     private CallHistoryDto? detailCall;
-    private List<MeetingDto> meetings = [];
+    private List<MeetingInfo> meetings = [];
     private List<DirectoryEmployeeDto> favorites = [];
-
-    private record MeetingAttendeeDto(Guid UserId, string Name, string Nik, bool Required, string RsvpStatus, string? Note);
-    private record MeetingDto(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string? TimeZone,
-        string? Location, string? Link, Guid OrganizerId, string OrganizerName, string OrganizerNik,
-        string Status, List<MeetingAttendeeDto> Attendees, int AcceptCount, int MaybeCount,
-        int DeclineCount, int PendingCount, string MyResponse, string? Agenda, string? RoomName,
-        Guid? RoomId = null, int? ReminderMinutes = null, string? Kind = null, string? RoomKey = null);
 
     /// Same page on the https port run.ps1 -Https opens (7103).
     private string SecureUrl
@@ -363,7 +285,7 @@
         // remount us, so parse per URL change too. PRESELECT only — never auto-ring.
         Nav.LocationChanged += OnLocationChanged;
         // "Join" opens 10 minutes before the start: re-evaluate the window while the page is open.
-        clock = new System.Threading.Timer(_ => InvokeAsync(StateHasChanged), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+        clock = new System.Threading.Timer(_ => InvokeAsync(() => { clockNow = DateTime.UtcNow; StateHasChanged(); }), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
         meetingSub = Auth.On<Guid>(IPop.Application.Realtime.RealtimeEvents.MeetingChanged, OnMeetingChanged);
     }
 
@@ -402,7 +324,7 @@
             if (detailMeeting is { } open && changed.Contains(open.Id))
             {
                 var fresh = meetings.FirstOrDefault(m => m.Id == open.Id)
-                    ?? await Auth.GetAsync<MeetingDto>($"/api/meetings/{open.Id}");
+                    ?? await Auth.GetAsync<MeetingInfo>($"/api/meetings/{open.Id}");
                 if (detailMeeting?.Id == open.Id && fresh is not null) detailMeeting = fresh;
             }
             Layout.SetSubtitle($"{history.Total} calls · {meetings.Count} upcoming meetings");
@@ -608,6 +530,8 @@
     private void SetTab(string selected)
     {
         tab = selected;
+        scheduleMenu = false;
+        detailPast = null;
         // A deep link acts once: coming back to the Rooms tab by hand must not join or open the player again.
         roomJoinKey = null;
         roomRecordingId = null;
@@ -677,8 +601,9 @@
     private async Task SelectMeeting(Guid id)
     {
         detailCall = null;
+        detailPast = null;
         detailMeeting = meetings.FirstOrDefault(m => m.Id == id)
-            ?? await Auth.GetAsync<MeetingDto>($"/api/meetings/{id}");
+            ?? await Auth.GetAsync<MeetingInfo>($"/api/meetings/{id}");
         _ = Notifs.MarkReadByTargetAsync("meeting", id);
     }
 
@@ -695,6 +620,15 @@
             await PostSeenAsync(h.CallId);
         }
         SelectCall(h);
+        await OpenMobileDetail();
+    }
+
+    /// A past meeting: its detail ends with Watch recording / attended from the past list.
+    private async Task OpenPastAsync(PastMeetingInfo p)
+    {
+        detailCall = null;
+        detailMeeting = p.Meeting;
+        detailPast = p;
         await OpenMobileDetail();
     }
 
@@ -726,7 +660,7 @@
 
     private async Task LoadMeetings()
     {
-        meetings = await Auth.GetAsync<List<MeetingDto>>("/api/meetings/upcoming") ?? [];
+        meetings = await Auth.GetAsync<List<MeetingInfo>>("/api/meetings/upcoming") ?? [];
         if (detailMeeting is not null)
             detailMeeting = meetings.FirstOrDefault(m => m.Id == detailMeeting.Id) ?? detailMeeting;
     }
@@ -744,11 +678,47 @@
         favorites = people;
     }
 
-    /// Scheduling and editing open the one Calendar meeting form.
+    /// Editing and the full form open the one Calendar meeting form.
     private void OpenSchedule() => Nav.NavigateTo(CalLinks.NewMeeting(from: "From Calls"));
+
+    /// Schedule → Voice call: the Calendar form on the voice kind (audio-only meeting, Join call for everyone).
+    private void ScheduleVoice()
+    {
+        scheduleMenu = false;
+        Nav.NavigateTo(CalLinks.NewMeeting(from: "From Calls", kind: "voice"));
+    }
+
+    /// Schedule → Meeting room: the booking sheet on the first room free in the next hour (switchable inside the sheet).
+    private async Task ScheduleRoomAsync()
+    {
+        scheduleMenu = false;
+        List<IPop.Application.MeetingRooms.RoomFreeDto>? free = null;
+        try
+        {
+            var from = DateTime.UtcNow; var to = from.AddHours(1);
+            free = await Auth.GetAsync<List<IPop.Application.MeetingRooms.RoomFreeDto>>(
+                $"/api/meeting-rooms/free?from={Uri.EscapeDataString(from.ToString("o"))}&to={Uri.EscapeDataString(to.ToString("o"))}");
+        }
+        catch { /* the sheet shows the default room's day either way */ }
+        bookingRoom = CallsSchedule.DefaultRoom(free);
+    }
+
+    private async Task BookedAsync(string key)
+    {
+        bookingRoom = null;
+        await LoadMeetings();
+        StateHasChanged();
+    }
+
+    /// The sheet books "now" only when its start was moved to now: join in the Meeting Rooms tab.
+    private void BookedNow(string key)
+    {
+        bookingRoom = null;
+        Nav.NavigateTo($"/calls?tab=rooms&join={Uri.EscapeDataString(key)}");
+    }
     private void BookRoom() => Nav.NavigateTo(CalLinks.NewMeeting(location: IPop.Application.Hall.HallBooking.Prefix, from: "From Meeting Rooms"));
 
-    private Task EditMeeting(MeetingDto m) => OpenInCalendarAsync(m.Id);
+    private Task EditMeeting(MeetingInfo m) => OpenInCalendarAsync(m.Id);
 
     private async Task OpenInCalendarAsync(Guid meetingId)
     {
@@ -758,36 +728,22 @@
 
     private sealed record CalEventRef(Guid EventId, DateTime StartAt);
 
-    private static string ReminderLabel(int minutes) =>
-        CallsSchedule.ReminderChoices.FirstOrDefault(c => c.Value == minutes.ToString()).Label ?? $"{minutes} minutes before";
-
-    private void SelectMeetingOnKey(KeyboardEventArgs e, Guid id)
+    private async Task JoinMeeting(MeetingInfo m)
     {
-        if (e.Key is "Enter" or " ") _ = OpenMeeting(id);
-    }
-
-    private async Task JoinMeeting(MeetingDto m)
-    {
+        var kind = CallsSchedule.KindOf(m.Kind, m.Location, m.Attendees.Count > 0);
+        if (kind == MeetingKinds.Room && (m.RoomKey ?? IPop.Application.Hall.HallBooking.RoomKey(m.Location)) is { } key)
+        {
+            // Room meetings are joined in the Meeting Rooms tab (same as CalendarRoomJoin).
+            SetTab("rooms");
+            roomJoinKey = key;
+            return;
+        }
         if (m.RoomName is null) return;
         if (!await CallSvc.JoinMeetingAsync(m.RoomName))
             Toasts.Show(CallSvc.LastError ?? "Couldn't join the meeting.", ToastKind.Error);
     }
 
-    private async Task CopyMeetingLink(MeetingDto m)
-    {
-        var url = $"{Nav.BaseUri}meet/{m.RoomName}";
-        try
-        {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", url);
-            Toasts.Show("Meeting link copied to clipboard.", ToastKind.Success);
-        }
-        catch
-        {
-            Toasts.Show(url, ToastKind.Info);
-        }
-    }
-
-    private async Task CancelMeeting(MeetingDto m)
+    private async Task CancelMeeting(MeetingInfo m)
     {
         if (!await Confirm.AskAsync("Cancel meeting?", $"\"{m.Title}\" will be cancelled and all attendees notified.", "Cancel meeting", true)) return;
         var res = await Auth.SendAsync(HttpMethod.Post, $"/api/meetings/{m.Id}/cancel", new { });
@@ -797,7 +753,7 @@
             await LoadMeetings();
             // The cancelled meeting leaves /upcoming; re-read it so the detail shows its new state.
             detailCall = null;
-            detailMeeting = await Auth.GetAsync<MeetingDto>($"/api/meetings/{m.Id}");
+            detailMeeting = await Auth.GetAsync<MeetingInfo>($"/api/meetings/{m.Id}");
         }
         else
         {
@@ -813,7 +769,12 @@
         {
             var result = await Auth.SendAsync(HttpMethod.Post, $"/api/meetings/{id}/rsvp", new { response });
             if (!result.IsSuccessStatusCode) Toasts.Show("Couldn't save your response.", ToastKind.Error);
-            else await LoadMeetings();
+            else
+            {
+                await LoadMeetings();
+                if (detailMeeting?.Id == id && meetings.All(x => x.Id != id))
+                    detailMeeting = await Auth.GetAsync<MeetingInfo>($"/api/meetings/{id}") ?? detailMeeting;
+            }
         }
         finally { rsvpBusy = false; }
     }

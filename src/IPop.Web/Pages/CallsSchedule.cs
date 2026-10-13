@@ -86,6 +86,23 @@ public static class CallsSchedule
             : new($"{day} {start.Day} {DatePickerMath.MonthShort[start.Month - 1]}", "later");
     }
 
+    /// Scheduled list group (v3 §5): Today (also anything that started earlier and still runs), Tomorrow, This week
+    /// (to Sunday of the Monday-first week), Later. <paramref name="localStart"/> and <paramref name="today"/> are local.
+    public readonly record struct DayGroup(string Key, string Label);
+
+    public static DayGroup Group(DateTime localStart, DateTime today)
+    {
+        var d = localStart.Date; var t = today.Date;
+        if (d <= t) return new("today", "Today");
+        if (d == t.AddDays(1)) return new("tomorrow", "Tomorrow");
+        var weekEnd = t.AddDays(6 - DatePickerMath.MondayIndex(t.DayOfWeek));
+        return d <= weekEnd ? new("week", "This week") : new("later", "Later");
+    }
+
+    /// Schedule → Meeting room opens the booking sheet on the first room free now, else the first room.
+    public static string DefaultRoom(IEnumerable<IPop.Application.MeetingRooms.RoomFreeDto>? rooms) =>
+        rooms?.FirstOrDefault(r => r.Free)?.Key ?? IPop.Application.Hall.HallBooking.Rooms[0].Key;
+
     public static bool IsOnline(string? location) =>
         string.IsNullOrWhiteSpace(location) || location.Trim() == OnlineLocation;
 
