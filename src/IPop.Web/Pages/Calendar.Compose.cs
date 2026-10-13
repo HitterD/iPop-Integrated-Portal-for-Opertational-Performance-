@@ -232,6 +232,11 @@ public partial class Calendar
     private string? RoomChoice(DateOnly d) => roomChoices.TryGetValue(d, out var c) ? c : null;
     private void SetRoomChoice(DateOnly d, string? room) => roomChoices[d] = room;
 
+    /// The open "Move to…" menu of one clashing date (v3 gaps).
+    private DateOnly? roomMoveMenu;
+    private void ToggleRoomMoveMenu(DateOnly d) => roomMoveMenu = roomMoveMenu == d ? null : d;
+    private void RoomMoveKey(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e) { if (e.Key == "Escape") roomMoveMenu = null; }
+
     /// Clashing dates: skipped, or moved to the picked room.
     private List<object> RoomOverrides() => roomCheck?.Occurrences.Where(o => !o.Free)
         .Select(o => RoomChoice(o.Date) is { } r ? (object)new { date = o.Date, skip = false, roomKey = r } : new { date = o.Date, skip = true })

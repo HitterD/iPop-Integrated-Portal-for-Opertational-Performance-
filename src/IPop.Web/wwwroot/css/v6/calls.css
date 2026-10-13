@@ -566,6 +566,20 @@ html.callx-resizing, html.callx-resizing * { cursor:nwse-resize !important; }
 .sheet2 .seg2 button .sw { width:10px; height:10px; border-radius:3px; background:radial-gradient(120% 120% at 0% 0%, var(--a), var(--b)); }
 .sheet2 .seg2 button.on { background:var(--surface); color:var(--ink); font-weight:650; box-shadow:0 2px 6px rgba(0,0,0,.08); }
 [data-theme="dark"] .sheet2 .seg2 button.on { background:#636366; }
+/* "Move to…" menu (v3 gaps): every room free on a clashing date, with its colour swatch. */
+.sheet2 .seg2 .bs-move .bs-move-cv { width:12px; height:12px; opacity:.6; margin-left:1px; }
+.sheet2 .bs-move-scrim { position:fixed; inset:0; z-index:5; }
+.sheet2 .bs-move-menu { position:absolute; z-index:6; right:12px; top:calc(100% - 4px); min-width:190px; padding:5px; border-radius:13px;
+  background:color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter:blur(24px) saturate(1.8); -webkit-backdrop-filter:blur(24px) saturate(1.8);
+  box-shadow:0 14px 34px -10px rgba(0,0,0,.3), 0 0 0 .5px var(--line-2); animation:sheet2-fade .14s ease; }
+[data-theme="dark"] .sheet2 .bs-move-menu { background:rgba(44,44,46,.94); }
+.sheet2 .bs-move-h { font-size:11.5px; font-weight:600; color:var(--ink-3); padding:5px 9px 4px; }
+.sheet2 .bs-move-opt { width:100%; display:flex; align-items:center; gap:9px; height:36px; padding:0 9px; border-radius:8px; font-size:13.5px; font-weight:550; text-align:left; }
+.sheet2 .bs-move-opt:hover, .sheet2 .bs-move-opt:focus-visible { background:var(--tray); outline:none; }
+.sheet2 .bs-move-opt .sw { width:16px; height:16px; border-radius:5px; flex:none; background:radial-gradient(120% 120% at 0% 0%, var(--a), var(--b)); }
+.sheet2 .bs-move-opt .bs-move-ok { margin-left:auto; width:15px; height:15px; color:var(--accent); }
+.sheet2.bottom .bs-move-menu { left:48px; right:12px; }
+.sheet2.bottom .bs-move-opt { height:44px; }
 
 /* Phone (v3 Task 10, mockup "Phone"): BookingSheet adds .bottom when ipop.mobile.isMobile (max 767 px, the app's phone
    breakpoint) says so: a bottom sheet with a grab handle and safe-area padding; the timeline scrolls sideways on a

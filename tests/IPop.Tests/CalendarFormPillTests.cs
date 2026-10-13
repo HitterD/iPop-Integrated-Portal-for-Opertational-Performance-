@@ -75,3 +75,20 @@ public class CalendarFormPillMarkupTests
         Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(razor, @"@if \(!form\.AllDay\) \{ <AppTimePicker").Count);
     }
 }
+
+public class CalendarRepeatMoveMarkupTests
+{
+    [Fact]
+    public void Calendar_repeat_check_offers_every_free_room_not_just_the_first()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null && !Directory.Exists(Path.Combine(dir, "src", "IPop.Web"))) dir = Path.GetDirectoryName(dir);
+        var razor = File.ReadAllText(Path.Combine(dir!, "src/IPop.Web/Pages/Calendar.razor"));
+        var block = razor[razor.IndexOf("cal-rcheck-row", StringComparison.Ordinal)..];
+        block = block[..block.IndexOf("@if (formError", StringComparison.Ordinal)];
+        Assert.DoesNotContain("FreeRooms.FirstOrDefault()", block);
+        Assert.Contains("foreach (var room in occ.FreeRooms)", block);
+        Assert.Contains("role=\"menuitemradio\"", block);
+        Assert.Contains("mk-sw r-", block);
+    }
+}

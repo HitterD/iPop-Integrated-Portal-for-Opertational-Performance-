@@ -45,11 +45,34 @@
                                 <span class="dt"><b>@DayText(occ.Date)</b><span class="w">@MeetingKinds.BookedByText(occ.BookedBy) @Hm(occ.StartAt)–@Hm(occ.EndAt)</span></span>
                                 <span class="seg2" role="radiogroup" aria-label="@($"What to do on {DayText(occ.Date)}")">
                                     <button type="button" role="radio" aria-checked="@(choice is null ? "true" : "false")" class="@(choice is null ? "on" : null)" @onclick="() => SetChoice(occ.Date, null)">Skip</button>
-                                    @if (occ.FreeRooms.FirstOrDefault() is { } alt)
+                                    @if (occ.FreeRooms.Count == 1)
                                     {
+                                        var alt = occ.FreeRooms[0];
                                         <button type="button" role="radio" aria-checked="@(choice == alt ? "true" : "false")" class="@($"{(choice == alt ? "on " : "")}r-{alt}")" @onclick="() => SetChoice(occ.Date, alt)"><i class="sw"></i>Move to @MeetingKinds.RoomName(alt)</button>
                                     }
+                                    else if (occ.FreeRooms.Count > 1)
+                                    {
+                                        @* v3 gaps: every room free on that date, picked from a small menu with the room colours. *@
+                                        <button type="button" role="radio" aria-checked="@(choice is not null ? "true" : "false")" aria-haspopup="menu" aria-expanded="@(moveMenu == occ.Date ? "true" : "false")"
+                                                class="@($"bs-move {(choice is not null ? "on r-" + choice : "")}")" @onclick="() => ToggleMoveMenu(occ.Date)">
+                                            @if (choice is not null) { <i class="sw"></i><text>Move to @MeetingKinds.RoomName(choice)</text> } else { <text>Move to…</text> }<i data-lucide="chevron-down" class="bs-move-cv"></i>
+                                        </button>
+                                    }
                                 </span>
+                                @if (moveMenu == occ.Date)
+                                {
+                                    <div class="bs-move-scrim" @onclick="CloseMoveMenu"></div>
+                                    <div class="bs-move-menu" role="menu" aria-label="@($"Move {DayText(occ.Date)} to")" @onkeydown="MoveMenuKeyAsync" @onkeydown:stopPropagation="true">
+                                        <div class="bs-move-h">Free at @Hm(occ.StartAt)–@Hm(occ.EndAt)</div>
+                                        @for (var ri = 0; ri < occ.FreeRooms.Count; ri++)
+                                        {
+                                            var room = occ.FreeRooms[ri];
+                                            var idx = ri;
+                                            <button type="button" role="menuitemradio" aria-checked="@(choice == room ? "true" : "false")" class="bs-move-opt"
+                                                    @ref="moveRefs[idx]" @onclick="() => PickMove(occ.Date, room)"><i class="@($"sw r-{room}")"></i>@MeetingKinds.RoomName(room)@if (choice == room) {<i data-lucide="check" class="bs-move-ok"></i>}</button>
+                                        }
+                                    </div>
+                                }
                             }
                         </div>
                     }

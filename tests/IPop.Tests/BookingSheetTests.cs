@@ -201,7 +201,8 @@ public class BookingSheetTests
         Assert.Equal("Skip clashes and book 4", Primary(cut));
 
         // Move date 3 to Toraja; date 5 stays skipped.
-        cut.FindAll(".rp.clashed")[0].QuerySelectorAll(".seg2 button")[1].Click();
+        cut.FindAll(".rp.clashed")[0].QuerySelector("button.bs-move")!.Click();
+        cut.FindAll(".bs-move-menu [role=menuitemradio]")[0].Click();
         Assert.Equal("Book 5 · 1 in Toraja", Primary(cut));
         cut.Find(".bs-go").Click();
         cut.WaitForAssertion(() => Assert.Equal(["kalosi"], booked));
@@ -215,6 +216,70 @@ public class BookingSheetTests
         Assert.Equal("toraja", ov[0].GetProperty("roomKey").GetString());
         Assert.Equal(dates[4].ToString("yyyy-MM-dd"), ov[1].GetProperty("date").GetString());
         Assert.True(ov[1].GetProperty("skip").GetBoolean());
+    }
+
+    /// v3 gaps: "Move to" offers every room free on that date (a small menu with colour swatches), not just the first.
+    [Fact]
+    public void Move_to_offers_every_free_room_and_the_button_counts_them()
+    {
+        var api = new Api { Days = { ["kalosi"] = MockupDay() } };
+        var dates = Enumerable.Range(0, 4).Select(i => Day.AddDays(7 * (i + 1))).ToList();
+        api.Preview = JsonSerializer.Serialize(new
+        {
+            total = 4, booked = 2,
+            occurrences = dates.Select((d, i) => new
+            {
+                date = d.ToString("yyyy-MM-dd"), startAt = At(13, days: 7 * (i + 1)), endAt = At(14, days: 7 * (i + 1)),
+                free = i is not (1 or 3), bookedBy = i is 1 or 3 ? "Finance sync" : null,
+                freeRooms = i == 1 ? new[] { "toraja", "robusta", "arabika" } : i == 3 ? new[] { "kapal-api" } : Array.Empty<string>(),
+                reason = i is 1 or 3 ? "booked" : null,
+            }),
+        }, Web);
+        using var ctx = Context(api);
+        var cut = Render(ctx, BookingSheet.ModeBook, At(13));
+        cut.WaitForAssertion(() => Assert.Equal("Book", Primary(cut)));
+        cut.Find(".bs-repeat .app-select-trigger").Click();
+        cut.FindAll(".bs-repeat .app-select-opt")[2].MouseDown();
+        cut.Find(".bs-go").Click();
+        cut.WaitForAssertion(() => Assert.Equal(2, cut.FindAll(".rp.clashed").Count));
+        Assert.Equal("Skip clashes and book 2", Primary(cut));
+
+        // One free room: a plain choice, as before.
+        var single = cut.FindAll(".rp.clashed")[1];
+        Assert.Empty(single.QuerySelectorAll(".bs-move"));
+        Assert.Contains("Move to Kapal Api", single.TextContent);
+
+        // Three free rooms: "Move to…" opens a menu of all three with swatches.
+        var moveBtn = cut.FindAll(".rp.clashed")[0].QuerySelector("button.bs-move")!;
+        Assert.Equal("Move to…", moveBtn.TextContent.Trim());
+        Assert.Equal("menu", moveBtn.GetAttribute("aria-haspopup"));
+        moveBtn.Click();
+        var opts = cut.FindAll(".bs-move-menu [role=menuitemradio]");
+        Assert.Equal(["Toraja", "Robusta", "Arabika"], opts.Select(o => o.TextContent.Trim()).ToArray());
+        Assert.Equal(["r-toraja", "r-robusta", "r-arabika"], opts.Select(o => o.QuerySelector(".sw")!.ClassList.First(c => c.StartsWith("r-"))).ToArray());
+        opts[1].Click();
+        Assert.Empty(cut.FindAll(".bs-move-menu"));
+        Assert.Equal("Move to Robusta", cut.FindAll(".rp.clashed")[0].QuerySelector("button.bs-move")!.TextContent.Trim());
+        Assert.Contains("on", cut.FindAll(".rp.clashed")[0].QuerySelector("button.bs-move")!.ClassList);
+        Assert.Equal("Book 3 · 1 in Robusta", Primary(cut));
+
+        cut.FindAll(".rp.clashed")[1].QuerySelectorAll(".seg2 button")[1].Click();
+        Assert.Equal("Book 4 · 2 moved", Primary(cut));
+
+        // Escape closes the menu without choosing; Skip undoes the move.
+        cut.FindAll(".rp.clashed")[0].QuerySelector("button.bs-move")!.Click();
+        cut.Find(".bs-move-menu").KeyDown("Escape");
+        Assert.Empty(cut.FindAll(".bs-move-menu"));
+        cut.FindAll(".rp.clashed")[0].QuerySelectorAll(".seg2 button")[0].Click();
+        Assert.Equal("Move to…", cut.FindAll(".rp.clashed")[0].QuerySelector("button.bs-move")!.TextContent.Trim());
+        Assert.Equal("Book 3 · 1 in Kapal Api", Primary(cut));
+
+        cut.FindAll(".rp.clashed")[0].QuerySelector("button.bs-move")!.Click();
+        cut.FindAll(".bs-move-menu [role=menuitemradio]")[2].Click();
+        cut.Find(".bs-go").Click();
+        cut.WaitForAssertion(() => Assert.Single(api.EventBodies));
+        var ov = JsonDocument.Parse(api.EventBodies.Single()).RootElement.GetProperty("overrides").EnumerateArray().ToList();
+        Assert.Equal(["arabika", "kapal-api"], ov.Select(o => o.GetProperty("roomKey").GetString()).ToArray());
     }
 
     [Fact]

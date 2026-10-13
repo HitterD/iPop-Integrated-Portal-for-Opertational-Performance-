@@ -747,12 +747,28 @@
                             <div class="cal-rcheck-row">
                                 <span><b>@occ.Date.ToDateTime(TimeOnly.MinValue).ToString("ddd d MMM")</b><small>@IPop.Web.Components.Meetings.MeetingKinds.BookedByText(occ.BookedBy)</small></span>
                                 <span class="cal-seg sm" role="radiogroup" aria-label="@($"What to do on {occ.Date:ddd d MMM}")">
-                                    <button type="button" role="radio" aria-checked="@(pick is null ? "true" : "false")" class="cal-seg-item @(pick is null ? "on" : "")" @onclick="() => SetRoomChoice(occ.Date, null)">Skip</button>
-                                    @if (occ.FreeRooms.FirstOrDefault() is { } alt)
+                                    <button type="button" role="radio" aria-checked="@(pick is null ? "true" : "false")" class="cal-seg-item @(pick is null ? "on" : "")" @onclick="() => { SetRoomChoice(occ.Date, null); roomMoveMenu = null; }">Skip</button>
+                                    @if (occ.FreeRooms.Count > 0)
                                     {
-                                        <button type="button" role="radio" aria-checked="@(pick == alt ? "true" : "false")" class="cal-seg-item @(pick == alt ? "on" : "")" @onclick="() => SetRoomChoice(occ.Date, alt)">Move to @MeetingKinds.RoomName(alt)</button>
+                                        @* v3 gaps: every room free on that date, from a small menu with the room colours. *@
+                                        <button type="button" role="radio" aria-checked="@(pick is not null ? "true" : "false")" aria-haspopup="menu" aria-expanded="@(roomMoveMenu == occ.Date ? "true" : "false")"
+                                                class="cal-seg-item cal-move @(pick is not null ? "on" : "")" @onclick="() => ToggleRoomMoveMenu(occ.Date)">
+                                            @if (pick is not null) { <i class="@($"mk-sw r-{pick}")"></i><text>Move to @MeetingKinds.RoomName(pick)</text> } else { <text>Move to…</text> }<i data-lucide="chevron-down"></i>
+                                        </button>
                                     }
                                 </span>
+                                @if (roomMoveMenu == occ.Date)
+                                {
+                                    <div class="cal-move-scrim" @onclick="() => roomMoveMenu = null"></div>
+                                    <div class="cal-move-menu" role="menu" aria-label="@($"Move {occ.Date:ddd d MMM} to")" @onkeydown="RoomMoveKey" @onkeydown:stopPropagation="true">
+                                        <div class="cal-move-h">Free at @occ.StartAt.ToLocalTime().ToString("HH:mm")–@occ.EndAt.ToLocalTime().ToString("HH:mm")</div>
+                                        @foreach (var room in occ.FreeRooms)
+                                        {
+                                            var rk = room;
+                                            <button type="button" role="menuitemradio" aria-checked="@(pick == rk ? "true" : "false")" class="cal-move-opt" @onclick="() => { SetRoomChoice(occ.Date, rk); roomMoveMenu = null; }"><i class="@($"mk-sw r-{rk}")"></i>@MeetingKinds.RoomName(rk)@if (pick == rk) {<i data-lucide="check" class="cal-move-ok"></i>}</button>
+                                        }
+                                    </div>
+                                }
                             </div>
                         }
                     </div>

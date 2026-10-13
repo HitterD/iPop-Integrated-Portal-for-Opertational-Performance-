@@ -336,7 +336,40 @@ public partial class BookingSheet : IDisposable
     private void SetRepeat(string? v) { repeat = v ?? ""; error = null; }
 
     private string? Choice(DateOnly d) => choices.TryGetValue(d, out var c) ? c : null;
-    private void SetChoice(DateOnly d, string? room) { choices[d] = room; failedDate = null; error = null; }
+    private void SetChoice(DateOnly d, string? room) { choices[d] = room; failedDate = null; error = null; moveMenu = null; }
+
+    // "Move to…" menu (v3 gaps): one open at a time; arrows move, Enter picks, Escape closes.
+    private DateOnly? moveMenu;
+    private readonly ElementReference[] moveRefs = new ElementReference[8];
+    private int moveFocus;
+    private bool focusMove;
+
+    private void ToggleMoveMenu(DateOnly d)
+    {
+        moveMenu = moveMenu == d ? null : d;
+        var occ = repeatCheck?.Occurrences.FirstOrDefault(o => o.Date == d);
+        moveFocus = occ is null || Choice(d) is not { } c ? 0 : Math.Max(0, occ.FreeRooms.ToList().IndexOf(c));
+        focusMove = moveMenu is not null;
+    }
+
+    private void CloseMoveMenu() => moveMenu = null;
+    private void PickMove(DateOnly d, string room) => SetChoice(d, room);
+
+    private async Task MoveMenuKeyAsync(KeyboardEventArgs e)
+    {
+        var n = repeatCheck?.Occurrences.FirstOrDefault(o => o.Date == moveMenu)?.FreeRooms.Count ?? 0;
+        switch (e.Key)
+        {
+            case "Escape": moveMenu = null; return;
+            case "ArrowDown": moveFocus = (moveFocus + 1) % Math.Max(1, n); break;
+            case "ArrowUp": moveFocus = (moveFocus - 1 + n) % Math.Max(1, n); break;
+            case "Home": moveFocus = 0; break;
+            case "End": moveFocus = Math.Max(0, n - 1); break;
+            default: return;
+        }
+        focusMove = true;
+        await Task.CompletedTask;
+    }
 
     private List<string> MovedTo => repeatCheck?.Occurrences.Where(o => !o.Free).Select(o => Choice(o.Date)).OfType<string>().Distinct().ToList() ?? [];
     private int KeptCount => repeatCheck is null ? 0 : repeatCheck.Occurrences.Count(o => o.Free || Choice(o.Date) is not null);
@@ -353,7 +386,7 @@ public partial class BookingSheet : IDisposable
         }
     }
 
-    private void BackFromRepeat() { repeatCheck = null; error = null; failedDate = null; }
+    private void BackFromRepeat() { moveMenu = null; repeatCheck = null; error = null; failedDate = null; }
 
     private string DayText(DateOnly d) =>
         $"{d.ToDateTime(TimeOnly.MinValue).ToString("ddd d MMM", En)}{(d.Year != TodayLocal.Year ? " " + d.Year : "")}";
@@ -490,7 +523,7 @@ public partial class BookingSheet : IDisposable
 
     private async Task KeyAsync(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape") await CloseAsync();
+        if (e.Key == "Escape") { if (moveMenu is not null) { moveMenu = null; return; } await CloseAsync(); }
     }
 
     // ---------------------------------------------------------------- helpers
@@ -531,6 +564,12 @@ public partial class BookingSheet : IDisposable
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (focusMove && moveMenu is not null)
+        {
+            focusMove = false;
+            try { await moveRefs[Math.Clamp(moveFocus, 0, moveRefs.Length - 1)].FocusAsync(); }
+            catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException or JSDisconnectedException) { }
+        }
         try { await JS.InvokeVoidAsync("ipop.icons"); }
         catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException or JSDisconnectedException) { }
     }
