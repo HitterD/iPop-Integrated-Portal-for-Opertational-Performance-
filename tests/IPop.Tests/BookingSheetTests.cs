@@ -295,6 +295,49 @@ public class BookingSheetTests
         Assert.Empty(cut.FindAll(".bs-limit"));
     }
 
+    private static void Type(IRenderedComponent<BookingSheet> cut, string field, string value)
+    {
+        var input = cut.Find($".{field} input.dp-input");
+        input.Input(value);
+        input.Blur();
+    }
+
+    /// QA Task 11: an end before the start (20:00 → 01:00) crosses midnight; it said "at least 15 minutes".
+    [Fact]
+    public void End_before_start_says_same_day()
+    {
+        var api = new Api { Days = { ["kalosi"] = MockupDay() } };
+        using var ctx = Context(api);
+        var cut = Render(ctx, BookingSheet.ModeBook, At(11));
+        cut.WaitForAssertion(() => Assert.Equal("Book", Primary(cut)));
+        Type(cut, "bs-start", "18:00");
+        Type(cut, "bs-end", "01:00");
+        cut.WaitForAssertion(() => Assert.Equal(RoomBookingRules.Message(RoomBookingRules.DifferentDay), cut.Find(".bs-limit").TextContent.Trim()));
+        Assert.True(cut.Find(".bs-go").HasAttribute("disabled"));
+    }
+
+    /// QA Task 11: a time that is already over today (08:00–09:00 at 09:50) said "at least 15 minutes" and asked the
+    /// server for free rooms from now to 09:00 (400).
+    [Fact]
+    public void A_range_already_over_says_in_the_past_and_asks_no_free_rooms()
+    {
+        var api = new Api { Days = { ["kalosi"] = MockupDay() } };
+        using var ctx = Context(api);
+        var cut = Render(ctx, BookingSheet.ModeBook, At(11));
+        cut.WaitForAssertion(() => Assert.Equal("Book", Primary(cut)));
+        lock (api.Gets) api.Gets.Clear();
+        Type(cut, "bs-start", "08:00");
+        cut.WaitForAssertion(() => Assert.Equal(RoomBookingRules.Message(RoomBookingRules.InPast), cut.Find(".bs-limit").TextContent.Trim()));
+        Assert.True(cut.Find(".bs-go").HasAttribute("disabled"));
+        lock (api.Gets)
+            foreach (var g in api.Gets.Where(g => g.StartsWith("/api/meeting-rooms/free")))
+            {
+                var q = System.Web.HttpUtility.ParseQueryString(new Uri("http://x" + g).Query);
+                Assert.True(DateTime.Parse(q["from"]!, null, System.Globalization.DateTimeStyles.RoundtripKind)
+                    < DateTime.Parse(q["to"]!, null, System.Globalization.DateTimeStyles.RoundtripKind), g);
+            }
+    }
+
     [Fact]
     public void No_key_in_markup()
     {

@@ -95,6 +95,10 @@ public partial class BookingSheet : IDisposable
     {
         get
         {
+            // An end before the start is a booking past midnight; a range that is over already is in the past
+            // (not "too short", which is what measuring from now would say).
+            if (end < start) return RoomBookingRules.Message(RoomBookingRules.DifferentDay);
+            if (BooksNow && end <= NowMinute) return RoomBookingRules.Message(RoomBookingRules.InPast);
             var code = RoomBookingRules.Validate(BooksNow ? NowMinute : start, end, NowUtc, Tz);
             return code is null ? null : RoomBookingRules.Message(code);
         }
@@ -265,12 +269,13 @@ public partial class BookingSheet : IDisposable
     private async Task RefreshFreeAsync(bool immediate = false)
     {
         freeCts?.Cancel();
-        if (end <= start) { otherFree = []; return; }
+        var fromUtc = BooksNow ? NowMinute : start;
+        if (end <= fromUtc) { otherFree = []; return; }
         var cts = freeCts = new CancellationTokenSource();
         try
         {
             if (!immediate && RefreshDelay > TimeSpan.Zero) await Task.Delay(RefreshDelay, cts.Token);
-            var from = (BooksNow ? NowMinute : start).ToString("o", En);
+            var from = fromUtc.ToString("o", En);
             var r = await Auth.GetResultAsync<List<RoomFreeDto>>(
                 $"/api/meeting-rooms/free?from={Uri.EscapeDataString(from)}&to={Uri.EscapeDataString(end.ToString("o", En))}", cts.Token);
             if (cts.IsCancellationRequested || disposed) return;
