@@ -139,9 +139,11 @@
 .tl-lg .lg-n { width:2px; height:12px; border-radius:1px; background:var(--danger); }
 .tl-scroll { position:relative; }
 .tl-tags { position:relative; height:17px; }
-.tl-tags span { position:absolute; bottom:2px; font-size:11px; font-weight:600; color:var(--ink-2); white-space:nowrap; display:flex; align-items:center; gap:4px; }
+.tl-tags > span { position:absolute; bottom:2px; font-size:11px; font-weight:600; color:var(--ink-2); white-space:nowrap; display:flex; align-items:center; gap:4px; overflow:hidden; padding-right:6px; box-sizing:border-box; }
+.tl-tags span.tt { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.tl-tags span em { flex:none; }
 .tl-tags span em { font-style:normal; color:var(--ink-3); font-weight:500; font-variant-numeric:tabular-nums; }
-.tl-tags span.r { transform:translateX(-100%); }
+.tl-tags > span.r { transform:translateX(-100%); }
 .tl-tags .lucide, .tl-tags svg { width:11px; height:11px; color:var(--ink-3); }
 .tl-track { position:relative; height:58px; border-radius:10px; background:var(--surface); box-shadow:inset 0 0 0 .5px var(--line-2); touch-action:none; user-select:none; }
 [data-theme="dark"] .tl-track { background:#2c2c2e; }

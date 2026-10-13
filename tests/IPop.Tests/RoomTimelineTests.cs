@@ -58,6 +58,28 @@ public class RoomTimelineTests
         Assert.Contains("Kalosi today", cut.Find(".tl-h b").TextContent);
     }
 
+    /// QA Task 11: tags of bookings close together ran into each other. Each tag is capped at the room up to the next
+    /// booking's start (or its own block, for the right-anchored ones at the end of the day) and ellipsized.
+    [Fact]
+    public void Tags_never_overlap_the_next_booking()
+    {
+        using var ctx = Context();
+        var day = Kalosi(
+            Block("QA v3 Kalosi block", At(10), At(11)),
+            Block("QA v3 Kalosi block2 with a long title", At(11, 15), At(12)),
+            Block("Late", At(17), At(18)));
+        var cut = Render(ctx, day, At(13), At(14));
+        var tags = cut.FindAll(".tl-tags > span");
+        Assert.Equal(3, tags.Count);
+        // 10:00 → 11:15 = 75/720; 11:15 → window end 19:00 would overlap "Late", so 11:15 → 17:00 = 345/720.
+        Assert.Contains("max-width:10.417%", tags[0].GetAttribute("style"));
+        Assert.Contains("max-width:47.917%", tags[1].GetAttribute("style"));
+        // Right-anchored at its end (18:00): its own block, 60/720.
+        Assert.Contains("r", tags[2].ClassList);
+        Assert.Contains("max-width:8.333%", tags[2].GetAttribute("style"));
+        Assert.Equal("QA v3 Kalosi block", tags[0].QuerySelector(".tt")!.TextContent);
+    }
+
     [Fact]
     public void Hidden_titles_show_Booked_and_never_the_title()
     {

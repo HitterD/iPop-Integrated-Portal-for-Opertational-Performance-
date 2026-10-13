@@ -26,9 +26,9 @@
     </div>
     <div class="tl-scroll">
         <div class="tl-tags" aria-hidden="true">
-            @foreach (var b in Blocks.Where(b => !today || b.E > nowM))
+            @foreach (var t in Tags(today ? nowM : null))
             {
-                <span class="@(b.S > win.End - span * 0.25 ? "r" : null)" style="left:@Pct(b.S > win.End - span * 0.25 ? Math.Min(b.E, win.End) : Math.Max(b.S, win.Start))"><i data-lucide="lock"></i>@b.Title<em>@Hm(b.S)–@Hm(b.E)</em></span>
+                <span class="@(t.Right ? "r" : null)" style="left:@Pct(t.At);max-width:@Width(0, t.Room)"><i data-lucide="lock"></i><span class="tt">@t.B.Title</span><em>@Hm(t.B.S)–@Hm(t.B.E)</em></span>
             }
         </div>
         <div class="tl-track" @ref="track" role="group" aria-label="@($"{Day.Name} on {DayLabel}")">
@@ -114,6 +114,34 @@
 
     private sealed record Block(string Title, int S, int E);
     private IEnumerable<Block> Blocks => Day.Blocks.Select(b => new Block(b.Visible ? b.Title : "Booked", Min(b.StartAt), Min(b.EndAt)));
+
+    private sealed record Tag(Block B, bool Right, int At, int Room);
+
+    /// The tags above the track (bookings not over yet). A tag starts at its block and may run until the next booking
+    /// starts (or the window ends); in the last quarter of the window it is anchored at its block's end instead and
+    /// keeps to its block. Longer titles are ellipsized, so tags never overlap.
+    private IEnumerable<Tag> Tags(int? nowM)
+    {
+        var (ws, we) = Win;
+        var span = Math.Max(1, we - ws);
+        var shown = Blocks.Where(b => nowM is null || b.E > nowM).OrderBy(b => b.S).ToList();
+        for (var i = 0; i < shown.Count; i++)
+        {
+            var b = shown[i];
+            var from = Math.Max(b.S, ws);
+            var right = b.S > we - span * 0.25;
+            if (right)
+            {
+                var at = Math.Min(b.E, we);
+                yield return new Tag(b, true, at, Math.Max(0, at - from));
+            }
+            else
+            {
+                var next = shown.Skip(i + 1).Select(x => x.S).Where(x => x > b.S).DefaultIfEmpty(we).First();
+                yield return new Tag(b, false, from, Math.Max(0, Math.Min(next, we) - from));
+            }
+        }
+    }
 
     internal RoomBlockDto? Clash => MeetingKinds.Clash(Day.Blocks, Start, End);
     private (DateTime Start, DateTime End)? TrySlot => MeetingKinds.NextSlot(Day.Blocks, Start, End, Day.WindowEnd, NowUtc);
