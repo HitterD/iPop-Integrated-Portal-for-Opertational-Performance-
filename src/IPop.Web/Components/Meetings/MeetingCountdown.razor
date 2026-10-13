@@ -1,0 +1,19 @@
+@* Meeting scheduling v3 §5: "Starts in 10 min" (.cd.soon, ≤ 15 min), "Live now" (.cd.live), "Tomorrow", weekday or date.
+   Nothing once the meeting has ended. The label rule is CallsSchedule.Countdown (unit-tested). *@
+@{
+    var c = IPop.Web.Pages.CallsSchedule.Countdown(Start, End, Now ?? DateTime.UtcNow, Zone ?? TimeZoneInfo.Local);
+}
+@if (c.State != "ended")
+{
+    <span class="@(c.State is "live" or "soon" ? $"cd {c.State}" : "cd")">@if (c.State == "soon") {<i data-lucide="clock" aria-hidden="true"></i>}@c.Text</span>
+}
+
+@code {
+    /// UTC.
+    [Parameter] public DateTime Start { get; set; }
+    [Parameter] public DateTime End { get; set; }
+    /// UTC "now" (defaults to DateTime.UtcNow; the host re-renders on its own tick).
+    [Parameter] public DateTime? Now { get; set; }
+    /// Defaults to the browser's local zone.
+    [Parameter] public TimeZoneInfo? Zone { get; set; }
+}

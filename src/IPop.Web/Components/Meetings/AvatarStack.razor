@@ -1,0 +1,24 @@
+@* Meeting scheduling v3 §5: up to Max overlapping avatars and "+N" (mockup .stack). People by opaque key; the key is
+   never printed (PersonAvatar uses it only to look up the photo/colour). *@
+@{
+    var shown = (People ?? []).Take(Max).ToList();
+    var more = Math.Max(0, (People?.Count ?? 0) - shown.Count) + Extra;
+}
+@if (shown.Count > 0 || more > 0)
+{
+    <span class="mk-stack" style="--s:@(Size)px" title="@string.Join(", ", (People ?? []).Select(p => p.Name))">
+        @foreach (var p in shown)
+        {
+            <PersonAvatar Nik="@p.Key" Name="@p.Name" Size="Size" Decorative="true" />
+        }
+        @if (more > 0) { <span class="more">+@more</span> }
+    </span>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<MeetingPersonRef>? People { get; set; }
+    [Parameter] public int Max { get; set; } = 4;
+    /// People not in the list (e.g. "+ 9 more" from a count only).
+    [Parameter] public int Extra { get; set; }
+    [Parameter] public int Size { get; set; } = 22;
+}

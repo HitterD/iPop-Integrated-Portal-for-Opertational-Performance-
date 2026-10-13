@@ -60,6 +60,32 @@ public static class CallsSchedule
     public static string? KindOf(string? kind, string? location, bool hasPeople) =>
         IPop.Core.Entities.MeetingKind.Of(kind, location, hasPeople);
 
+    /// Countdown chip text + state: "live" (running), "soon" (starts within 15 min), "later", "ended".
+    public readonly record struct CountdownLabel(string Text, string State);
+
+    public static readonly TimeSpan SoonWindow = TimeSpan.FromMinutes(15);
+
+    /// "Live now"; "Starts in 10 min" (≤ 15 min, minutes rounded up); later today "Starts in 3 h 40 min"; "Tomorrow";
+    /// later this (Monday-first) week the weekday ("Thu"); further out "Mon 19 Oct"; "Ended" once over.
+    public static CountdownLabel Countdown(DateTime startUtc, DateTime endUtc, DateTime nowUtc, TimeZoneInfo zone)
+    {
+        if (nowUtc >= endUtc) return new("Ended", "ended");
+        if (nowUtc >= startUtc) return new("Live now", "live");
+        var left = startUtc - nowUtc;
+        var mins = (int)Math.Ceiling(left.TotalMinutes);
+        if (left <= SoonWindow) return new($"Starts in {mins} min", "soon");
+        var start = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(startUtc, DateTimeKind.Utc), zone).Date;
+        var today = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc), zone).Date;
+        if (start == today)
+            return new(mins < 60 ? $"Starts in {mins} min" : mins % 60 == 0 ? $"Starts in {mins / 60} h" : $"Starts in {mins / 60} h {mins % 60} min", "later");
+        if (start == today.AddDays(1)) return new("Tomorrow", "later");
+        var weekStart = today.AddDays(-DatePickerMath.MondayIndex(today.DayOfWeek));
+        var day = DatePickerMath.WeekdayShort[DatePickerMath.MondayIndex(start.DayOfWeek)];
+        return start < weekStart.AddDays(7)
+            ? new(day, "later")
+            : new($"{day} {start.Day} {DatePickerMath.MonthShort[start.Month - 1]}", "later");
+    }
+
     public static bool IsOnline(string? location) =>
         string.IsNullOrWhiteSpace(location) || location.Trim() == OnlineLocation;
 

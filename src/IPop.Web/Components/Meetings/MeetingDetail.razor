@@ -1,0 +1,222 @@
+@* Meeting scheduling v3 §5 (mockup screens 1 + 4, "detail"): the one meeting detail shared by Calls › Scheduled and
+   Calendar. Coloured header (room gradient / indigo / teal) with caption, status, title, date and the big Join; the
+   action row; icon rows (when, where + Change, organizer, agenda, reminder); the room password box (organizer and
+   invitees only — CalendarRoomPassword asks the API, which enforces it again); people grouped Going / No response /
+   Declined. Never prints a NIK: people keys only feed PersonAvatar and the per-tab chat link token. *@
+@using IPop.Application.Hall
+@inject IJSRuntime JS
+@inject PeopleLinks PLinks
+@inject NavigationManager Nav
+@inject ToastService Toasts
+
+@{
+    var m = Model;
+    var now = Now ?? DateTime.UtcNow;
+    var cls = MeetingKinds.CssClass(m.Kind, m.RoomKey);
+    var ended = now >= m.EndAt;
+    var cd = IPop.Web.Pages.CallsSchedule.Countdown(m.StartAt, m.EndAt, now, TimeZoneInfo.Local);
+    var (stateText, stateCls) = m.Cancelled ? ("Cancelled", "cancelled") : cd.State switch
+    {
+        "live" => ("Live now", "live"),
+        "soon" => (cd.Text, "soon"),
+        "ended" => ("Ended", "ended"),
+        _ => ((string?)null, ""),
+    };
+    var localStart = m.StartAt.ToLocalTime();
+    var localEnd = m.EndAt.ToLocalTime();
+    var canJoin = !m.Cancelled && IPop.Web.Pages.CallsSchedule.CanJoin(m.StartAt, m.EndAt, now);
+    var joinable = !m.Cancelled && !ended && m.JoinHref is not null;
+    var verb = m.Kind == MeetingKinds.Room ? $"Join {m.RoomName}" : "Join call";
+    var going = m.People.Where(p => MeetingDetailModel.Group(p) == "going").ToList();
+    var none = m.People.Where(p => MeetingDetailModel.Group(p) == "none").ToList();
+    var declined = m.People.Where(p => MeetingDetailModel.Group(p) == "declined").ToList();
+}
+<article class="mk-detail" aria-label="@m.Title">
+    <div class="band @cls">
+        <svg class="bean" viewBox="0 0 100 100" aria-hidden="true"><path fill="#fff" d="M50 4c22 0 40 20 40 46S72 96 50 96 10 76 10 50 28 4 50 4Zm-6 10c-8 10-6 22 0 34s8 24-2 36c14-2 22-14 18-30-3-12-12-22-10-34 0-2-2-6-6-6Z"/></svg>
+        <div class="band-top">
+            <span class="gcap"><i data-lucide="@MeetingKinds.Icon(m.Kind)" aria-hidden="true"></i>@MeetingKinds.Caption(m.Kind, m.RoomKey)</span>
+            @if (stateText is not null) { <span class="gcap state @stateCls">@stateText</span> }
+            @if (OnClose.HasDelegate)
+            {
+                <button type="button" class="xb" title="Close" aria-label="Close" @onclick="OnClose"><i data-lucide="x"></i></button>
+            }
+        </div>
+        <h2>@m.Title</h2>
+        <p>@MeetingKinds.DateLabel(localStart, DateTime.Today) · @MeetingKinds.TimeRange(localStart, localEnd)</p>
+        @if (joinable || (OnRespond.HasDelegate && m.Kind == MeetingKinds.InPerson && !m.OrganizerIsMe && m.MyResponse is not null && !m.Cancelled && !ended))
+        {
+            <div class="joinbar">
+                @if (joinable && !canJoin)
+                {
+                    <button type="button" class="bigjoin" disabled>@verb<small>Join opens 10 min before</small></button>
+                }
+                else if (joinable && OnJoin.HasDelegate)
+                {
+                    <button type="button" class="bigjoin" @onclick="OnJoin"><i data-lucide="@MeetingKinds.Icon(m.Kind)" aria-hidden="true"></i>@verb</button>
+                }
+                else if (joinable)
+                {
+                    <a class="bigjoin" href="@m.JoinHref"><i data-lucide="@MeetingKinds.Icon(m.Kind)" aria-hidden="true"></i>@verb</a>
+                }
+                else
+                {
+                    <div class="rsvp" role="group" aria-label="Your answer">
+                        @foreach (var (value, label, icon) in Answers)
+                        {
+                            var v = value;
+                            <button type="button" class="@(m.MyResponse == v ? "on" : null)" aria-pressed="@(m.MyResponse == v ? "true" : "false")"
+                                    @onclick="() => OnRespond.InvokeAsync(v)">@if (icon is not null) {<i data-lucide="@icon" aria-hidden="true"></i>}@label</button>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="acts">
+        @if (m.JoinHref is not null && !m.Cancelled)
+        {
+            <button type="button" class="act copy" @onclick="CopyLinkAsync"><i><span data-lucide="link"></span></i>Copy link</button>
+        }
+        @if (!m.OrganizerIsMe && !string.IsNullOrEmpty(m.OrganizerKey))
+        {
+            <a class="act host" href="@PLinks.Chat(m.OrganizerKey)"><i><span data-lucide="message-circle"></span></i>Message host</a>
+        }
+        @if (OnOpenCalendar.HasDelegate)
+        {
+            <button type="button" class="act calendar" @onclick="OnOpenCalendar"><i><span data-lucide="calendar-check"></span></i>Open in Calendar</button>
+        }
+        @if (m.CanManage && !m.Cancelled)
+        {
+            @if (OnEdit.HasDelegate)
+            {
+                <button type="button" class="act edit" @onclick="OnEdit"><i><span data-lucide="pencil"></span></i>Edit</button>
+            }
+            @if (OnCancel.HasDelegate)
+            {
+                <button type="button" class="act cancel red" @onclick="OnCancel"><i><span data-lucide="circle-x"></span></i>Cancel</button>
+            }
+        }
+    </div>
+
+    <div class="d-body">
+        <div class="ig">
+            <div class="ir when">
+                <span class="tile t-red"><i data-lucide="calendar" aria-hidden="true"></i></span>
+                <span class="t"><b>@MeetingKinds.DateLabel(localStart, DateTime.Today)</b><span class="tnum">@MeetingKinds.TimeRange(localStart, localEnd) · @MeetingKinds.Duration(m.EndAt - m.StartAt)@(m.RepeatText is { Length: > 0 } r ? " · " + r : "")</span></span>
+            </div>
+            @if (m.Kind == MeetingKinds.Room)
+            {
+                <div class="ir where">
+                    <span class="tile @cls"><i data-lucide="video" aria-hidden="true"></i></span>
+                    <span class="t"><b>@(m.RoomName ?? "Meeting room")</b><span>Meeting room · up to @HallLimits.RoomCapacity people · video, share, record</span></span>
+                    @if (m.CanManage && !m.Cancelled && !ended && OnChangeRoom.HasDelegate)
+                    {
+                        <button type="button" class="v blue change" @onclick="OnChangeRoom">Change</button>
+                    }
+                </div>
+            }
+            else if (m.Kind == MeetingKinds.Voice)
+            {
+                <div class="ir where">
+                    <span class="tile k-voice"><i data-lucide="headphones" aria-hidden="true"></i></span>
+                    <span class="t"><b>Voice call</b><span>Audio only · join from anywhere, PC or phone</span></span>
+                </div>
+            }
+            else if (!string.IsNullOrWhiteSpace(m.Location))
+            {
+                <div class="ir where">
+                    <span class="tile k-person"><i data-lucide="map-pin" aria-hidden="true"></i></span>
+                    <span class="t"><b>@m.Location</b><span>In person · no call link</span></span>
+                </div>
+            }
+            <div class="ir organizer">
+                <PersonAvatar Nik="@m.OrganizerKey" Name="@m.OrganizerName" Size="30" Decorative="true" />
+                <span class="t"><b>@m.OrganizerName@(m.OrganizerIsMe ? " (you)" : "")</b><span>Organizer</span></span>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(m.Agenda))
+            {
+                <div class="ir agenda">
+                    <span class="tile t-orange"><i data-lucide="file-text" aria-hidden="true"></i></span>
+                    <span class="t"><span>Agenda</span><p>@m.Agenda</p></span>
+                </div>
+            }
+            @if (m.ReminderMinutes is { } rem && rem > 0 && !ended)
+            {
+                <div class="ir reminder">
+                    <span class="tile t-purple"><i data-lucide="bell" aria-hidden="true"></i></span>
+                    <span class="t"><b>Reminder</b><span>Notification and email</span></span>
+                    <span class="selv">@MeetingKinds.ReminderLabel(rem)</span>
+                </div>
+            }
+        </div>
+
+        @if (m.ShowsPassword)
+        {
+            <div class="mk-pw">
+                <IPop.Web.Components.Calendar.CalendarRoomPassword MeetingId="m.MeetingId" Location="@HallBooking.Location(m.RoomName!)"
+                                                                 MeetingStatus="@(m.Cancelled ? "cancelled" : "scheduled")" />
+            </div>
+        }
+
+        <div class="sub-h"><b>People</b>@m.People.Count invited</div>
+        @PeopleGroup("Going", going, "yes", "var(--success)")
+        @PeopleGroup("No response", none, "q", "var(--ink-4)")
+        @PeopleGroup("Declined", declined, "no", "var(--danger)")
+    </div>
+</article>
+
+@code {
+    [Parameter, EditorRequired] public MeetingDetailModel Model { get; set; } = default!;
+    /// UTC now (defaults to DateTime.UtcNow); the host re-renders on its own clock.
+    [Parameter] public DateTime? Now { get; set; }
+    /// Join handler; without one Join is a link (room → Meeting Rooms tab join, voice → /meet/{room}).
+    [Parameter] public EventCallback OnJoin { get; set; }
+    [Parameter] public EventCallback OnEdit { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+    [Parameter] public EventCallback OnOpenCalendar { get; set; }
+    [Parameter] public EventCallback OnChangeRoom { get; set; }
+    /// Shows the close (×) button in the header.
+    [Parameter] public EventCallback OnClose { get; set; }
+    /// In-person meetings: Going / Maybe / Can't go in the header (accept | maybe | decline).
+    [Parameter] public EventCallback<string> OnRespond { get; set; }
+
+    private static readonly (string Value, string Label, string? Icon)[] Answers =
+        [("accept", "Going", "check"), ("maybe", "Maybe", null), ("decline", "Can't go", null)];
+
+    private RenderFragment PeopleGroup(string label, List<MeetingDetailPerson> people, string state, string color) => __builder =>
+    {
+        if (people.Count == 0) return;
+        <div class="pgh"><i style="background:@color" aria-hidden="true"></i>@label · @people.Count</div>
+        <div class="people">
+            @foreach (var p in people)
+            {
+                <div class="@(state == "no" ? "prow dim" : "prow")">
+                    <PersonAvatar Nik="@p.Key" Name="@p.Name" Size="30" Decorative="true" />
+                    <span class="n"><b>@p.Name@(p.IsMe ? " (you)" : "")</b><span>@PersonNote(p)</span></span>
+                    <span class="st @state" aria-hidden="true"><i data-lucide="@(state switch { "yes" => "check", "no" => "x", _ => "ellipsis" })"></i></span>
+                </div>
+            }
+        </div>
+    };
+
+    private static string PersonNote(MeetingDetailPerson p) =>
+        p.IsOrganizer ? "Organizer" : p.Rsvp == "maybe" ? "Maybe" : !p.Required ? "Optional" : IPop.Web.Pages.CallsSchedule.RsvpLabel(p.Rsvp);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); }
+        catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException or JSDisconnectedException) { }
+    }
+
+    private async Task CopyLinkAsync()
+    {
+        if (Model.JoinHref is not { } href) return;
+        var url = Nav.ToAbsoluteUri(href).ToString();
+        bool ok;
+        try { ok = await JS.InvokeAsync<bool>("ipopLinks.copy", url); }
+        catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException or JSDisconnectedException) { ok = false; }
+        Toasts.Show(ok ? "Meeting link copied." : $"Couldn't copy. The link is {url}", ok ? ToastKind.Success : ToastKind.Warning);
+    }
+}

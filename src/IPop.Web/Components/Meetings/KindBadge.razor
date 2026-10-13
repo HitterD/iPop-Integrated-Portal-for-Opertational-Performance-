@@ -1,0 +1,18 @@
+@* Meeting scheduling v3 §1: the one kind badge (mockup .kb) — room colour + swatch + room name, indigo "Voice call",
+   teal "In person". Nothing for a plain event or an unknown kind. Compact = icon only (label stays in title/aria-label). *@
+@if (MeetingKinds.IsKnown(Kind))
+{
+    var label = MeetingKinds.Label(Kind, RoomKey, RoomName);
+    var cls = MeetingKinds.CssClass(Kind, RoomKey);
+    var hasSwatch = Kind == MeetingKinds.Room && cls != "k-voice";
+    <span class="@($"kb {cls}{(Compact ? " compact" : "")}")" title="@(Compact ? label : null)" aria-label="@(Compact ? label : null)"><i data-lucide="@MeetingKinds.Icon(Kind)" aria-hidden="true"></i>@if (hasSwatch) {<span class="sw" aria-hidden="true"></span>}@if (!Compact) {<text>@label</text>}</span>
+}
+
+@code {
+    /// voice | room | inperson (null/other = render nothing).
+    [Parameter] public string? Kind { get; set; }
+    [Parameter] public string? RoomKey { get; set; }
+    /// Overrides the room name looked up from RoomKey.
+    [Parameter] public string? RoomName { get; set; }
+    [Parameter] public bool Compact { get; set; }
+}
