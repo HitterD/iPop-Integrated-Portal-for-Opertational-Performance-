@@ -352,12 +352,22 @@
 
     /// Same-page navigation (a notification's /calls?tab=rooms&join=... while already on /calls) does not
     /// re-render by itself: re-render once the link has set the tab and the room deep-link values.
+    /// Leaving /calls (e.g. "More options…" to /calendar?new=1…) is not a Calls deep link: its query must not be acted on.
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
-        => _ = InvokeAsync(async () =>
+    {
+        if (!IsCallsPath(e.Location)) return;
+        _ = InvokeAsync(async () =>
         {
             await HandleDeeplinkAsync();
             StateHasChanged();
         });
+    }
+
+    private bool IsCallsPath(string location)
+    {
+        var path = Nav.ToAbsoluteUri(location).AbsolutePath.TrimEnd('/');
+        return path.Equals("/calls", StringComparison.OrdinalIgnoreCase);
+    }
 
     private async Task HandleDeeplinkAsync()
     {

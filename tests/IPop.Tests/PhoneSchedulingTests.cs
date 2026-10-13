@@ -91,6 +91,21 @@ public class PhoneSchedulingTests
         Assert.Single(cut.FindAll(".sch-ev"));
     }
 
+    /// QA Task 11: leaving /calls for the Calendar form ("More options…" in the booking sheet) must not be answered by the
+    /// Calls page's own deep-link handler: it saw "new=1" in the Calendar address and re-navigated to a blank form.
+    [Fact]
+    public void Leaving_Calls_for_a_prefilled_Calendar_form_keeps_that_address()
+    {
+        using var ctx = CallsContext(new CallsApi(), phone: false);
+        var cut = Page(ctx);
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find(".calls-v6")));
+        var nav = ctx.Services.GetRequiredService<NavigationManager>();
+        const string target = "/calendar?new=1&kind=room&room=kalosi&title=Standup";
+        nav.NavigateTo(target);
+        cut.WaitForState(() => true);
+        Assert.EndsWith(target, nav.Uri);
+    }
+
     [Fact]
     public void Phone_Back_from_the_browser_closes_the_detail_too()
     {
