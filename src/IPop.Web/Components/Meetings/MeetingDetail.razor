@@ -83,25 +83,25 @@
     <div class="acts">
         @if (m.JoinHref is not null && !m.Cancelled)
         {
-            <button type="button" class="act copy" @onclick="CopyLinkAsync"><i><span data-lucide="link"></span></i>Copy link</button>
+            <button type="button" class="act copy" @onclick="CopyLinkAsync"><i><i data-lucide="link"></i></i>Copy link</button>
         }
         @if (!m.OrganizerIsMe && !string.IsNullOrEmpty(m.OrganizerKey))
         {
-            <a class="act host" href="@PLinks.Chat(m.OrganizerKey)"><i><span data-lucide="message-circle"></span></i>Message host</a>
+            <a class="act host" href="@PLinks.Chat(m.OrganizerKey)"><i><i data-lucide="message-circle"></i></i>Message host</a>
         }
         @if (OnOpenCalendar.HasDelegate)
         {
-            <button type="button" class="act calendar" @onclick="OnOpenCalendar"><i><span data-lucide="calendar-check"></span></i>Open in Calendar</button>
+            <button type="button" class="act calendar" @onclick="OnOpenCalendar"><i><i data-lucide="calendar-check"></i></i>Open in Calendar</button>
         }
         @if (m.CanManage && !m.Cancelled)
         {
             @if (OnEdit.HasDelegate)
             {
-                <button type="button" class="act edit" @onclick="OnEdit"><i><span data-lucide="pencil"></span></i>Edit</button>
+                <button type="button" class="act edit" @onclick="OnEdit"><i><i data-lucide="pencil"></i></i>Edit</button>
             }
             @if (OnCancel.HasDelegate && !ended)
             {
-                <button type="button" class="act cancel red" @onclick="OnCancel"><i><span data-lucide="circle-x"></span></i>Cancel</button>
+                <button type="button" class="act cancel red" @onclick="OnCancel"><i><i data-lucide="circle-x"></i></i>Cancel</button>
             }
         }
     </div>

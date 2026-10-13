@@ -249,6 +249,20 @@ public class MeetingKitTests
         Assert.Single(cut.FindAll(".act.edit"));
     }
 
+    /// QA Task 11: the action row drew empty circles — its icons were <span data-lucide>, and ipop.icons only renders
+    /// <i data-lucide>.
+    [Fact]
+    public void Action_icons_are_i_elements_that_ipop_icons_renders()
+    {
+        using var ctx = Context(new Api());
+        var start = DateTime.UtcNow.AddDays(1);
+        var cut = Detail(ctx, Meeting("voice", start, organizer: Me), DateTime.UtcNow);
+        var acts = cut.FindAll(".acts .act");
+        Assert.NotEmpty(acts);
+        Assert.All(acts, a => Assert.NotNull(a.QuerySelector("i i[data-lucide]")));
+        Assert.Empty(cut.FindAll("span[data-lucide]"));
+    }
+
     [Fact]
     public void Header_has_kind_colour_caption_title_date_and_status()
     {
