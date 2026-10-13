@@ -180,7 +180,13 @@
             </div>
         }
 
-        <div class="sub-h"><b>People</b>@m.People.Count invited@if (ended && m.Attended is not null) {<span class="att">· @m.Attended attended</span>}</div>
+        <div class="sub-h">
+            <b>People</b><span>@m.People.Count invited</span>
+            @if (ended && m.Attended is not null)
+            {
+                <span class="att">· @m.Attended attended</span>
+            }
+        </div>
         @PeopleGroup("Going", going, "yes", "var(--success)")
         @PeopleGroup("No response", none, "q", "var(--ink-4)")
         @PeopleGroup("Declined", declined, "no", "var(--danger)")

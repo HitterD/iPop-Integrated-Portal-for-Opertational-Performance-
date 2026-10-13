@@ -1,0 +1,163 @@
+@* Meeting scheduling v3 §6 (mockup screen 6 "New event"): the kind tiles Event / Voice call / Meeting room / In person
+   that replace the old Online/Room switch. Meeting room shows the 5 room tiles with Free/Busy for the chosen time
+   (GET /api/meeting-rooms/free) and the chosen room's day timeline (drag changes the form's times); Voice call shows
+   the join note; In person asks for the place. The host owns the values (two-way). *@
+@namespace IPop.Web.Components.Meetings
+@using IPop.Application.Hall
+@using IPop.Application.MeetingRooms
+@implements IDisposable
+@inject AuthState Auth
+@inject IJSRuntime JS
+
+<div class="mkp">
+    <div class="mkp-kh">Kind</div>
+    <div class="mkp-ktiles" role="radiogroup" aria-label="Kind">
+        @foreach (var (value, cls, icon, label, sub) in Tiles)
+        {
+            var v = value;
+            var on = (Kind ?? "") == v;
+            <button type="button" role="radio" aria-checked="@(on ? "true" : "false")" class="@($"mkp-ktile {(on ? "on" : "")}")" @onclick="() => SetKindAsync(v)">
+                <span class="@($"mk-kt {cls}")" aria-hidden="true"><i data-lucide="@icon"></i></span><b>@label</b><span class="mkp-ks">@sub</span>
+            </button>
+        }
+    </div>
+
+    @if (Kind == MeetingKinds.Room)
+    {
+        <div class="mkp-gh">Room · for @WhenText</div>
+        <div class="mkp-rtiles" role="radiogroup" aria-label="Meeting room">
+            @foreach (var (key, name) in HallBooking.Rooms)
+            {
+                var k = key;
+                var f = free.FirstOrDefault(x => x.Key == k);
+                var busyNow = f is { Free: false };
+                var on = RoomKey == k;
+                <button type="button" role="radio" aria-checked="@(on ? "true" : "false")" class="@($"mkp-rtile r-{k} {(busyNow ? "busy" : "")} {(on ? "on" : "")}")"
+                        title="@(busyNow ? $"{name} is booked at this time" : name)" @onclick="() => SetRoomAsync(k)">
+                    <svg class="bean" viewBox="0 0 100 100" aria-hidden="true"><path fill="#fff" d="M50 4c22 0 40 20 40 46S72 96 50 96 10 76 10 50 28 4 50 4Zm-6 10c-8 10-6 22 0 34s8 24-2 36c14-2 22-14 18-30-3-12-12-22-10-34 0-2-2-6-6-6Z"/></svg>
+                    <b>@name</b><small>up to @(f?.Capacity ?? HallLimits.RoomCapacity)</small>
+                    <span class="mkp-fs">@(f is null ? "…" : f.Free ? "Free" : "Busy")</span>
+                </button>
+            }
+        </div>
+        @if (MeetingKinds.RoomName(RoomKey) is null)
+        {
+            <p class="mkp-pick"><i data-lucide="info"></i>Choose a room to see its day.</p>
+        }
+        else if (day is not null)
+        {
+            <RoomTimeline Day="day" Start="Start" End="End" Accent="@MeetingKinds.CssClass(MeetingKinds.Room, RoomKey)" OnChange="OnTimesChanged" Now="Now" Zone="Zone" />
+        }
+        else if (dayError)
+        {
+            <div class="tl-card mkp-day-err"><span>The room's day can't be loaded right now.</span> <button type="button" class="mkp-link" @onclick="LoadDayAsync">Retry</button></div>
+        }
+    }
+    else if (Kind == MeetingKinds.Voice)
+    {
+        <div class="mkp-kinfo k-voice"><span class="mk-kt k-voice" aria-hidden="true"><i data-lucide="headphones"></i></span>
+            <span>Everyone gets a <b>Join call</b> button in the invite and the reminder. Audio only, from PC or phone.</span></div>
+    }
+    else if (Kind == MeetingKinds.InPerson)
+    {
+        <label class="mkp-where"><span>Where</span>
+            <span class="mkp-tf"><i data-lucide="map-pin"></i><input value="@Location" placeholder="Room, floor or address" maxlength="300" aria-label="Where" @onchange="e => LocationChanged.InvokeAsync(e.Value?.ToString())" /></span>
+        </label>
+    }
+</div>
+
+@code {
+    /// "" (Event) | voice | room | inperson.
+    [Parameter] public string? Kind { get; set; }
+    [Parameter] public EventCallback<string> KindChanged { get; set; }
+    [Parameter] public string? RoomKey { get; set; }
+    [Parameter] public EventCallback<string?> RoomKeyChanged { get; set; }
+    [Parameter] public string? Location { get; set; }
+    [Parameter] public EventCallback<string?> LocationChanged { get; set; }
+    /// The form's times (UTC); the timeline's drag reports new ones through OnTimesChanged.
+    [Parameter] public DateTime Start { get; set; }
+    [Parameter] public DateTime End { get; set; }
+    [Parameter] public EventCallback<(DateTime Start, DateTime End)> OnTimesChanged { get; set; }
+    /// The meeting being edited: its own booking doesn't make its room busy.
+    [Parameter] public Guid? ExceptMeeting { get; set; }
+    [Parameter] public DateTime? Now { get; set; }
+    [Parameter] public TimeZoneInfo? Zone { get; set; }
+
+    private static readonly (string Value, string Cls, string Icon, string Label, string Sub)[] Tiles =
+    [
+        ("", "k-event", "calendar", "Event", "Just a time on the calendar"),
+        (MeetingKinds.Voice, "k-voice", "headphones", "Voice call", "Audio only, join from anywhere"),
+        (MeetingKinds.Room, "r-kalosi", "video", "Meeting room", "One of 5 rooms · video, share, record"),
+        (MeetingKinds.InPerson, "k-person", "map-pin", "In person", "A place, no call link"),
+    ];
+
+    private List<RoomFreeDto> free = [];
+    private RoomDayDto? day;
+    private bool dayError;
+    private string freeKey = "", dayKey = "";
+    private CancellationTokenSource? freeCts;
+    private bool disposed;
+
+    private TimeZoneInfo Tz => Zone ?? TimeZoneInfo.Local;
+    private DateTime Local(DateTime utc) => TimeZoneInfo.ConvertTimeFromUtc(MeetingKinds.Utc(utc), Tz);
+    private string WhenText
+    {
+        get
+        {
+            var s = Local(Start); var e = Local(End);
+            return $"{DatePickerMath.WeekdayShort[DatePickerMath.MondayIndex(s.DayOfWeek)]} {s.Day} {DatePickerMath.MonthShort[s.Month - 1]}, {MeetingKinds.TimeRange(s, e)}";
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Kind != MeetingKinds.Room || End <= Start) return;
+        var fk = $"{Start:o}|{End:o}|{ExceptMeeting}";
+        if (fk != freeKey) { freeKey = fk; await LoadFreeAsync(); }
+        var dk = $"{RoomKey}|{Local(Start):yyyy-MM-dd}";
+        if (dk != dayKey) { dayKey = dk; await LoadDayAsync(); }
+    }
+
+    private async Task LoadFreeAsync()
+    {
+        freeCts?.Cancel();
+        var cts = freeCts = new CancellationTokenSource();
+        try
+        {
+            var url = $"/api/meeting-rooms/free?from={Uri.EscapeDataString(MeetingKinds.Utc(Start).ToString("o"))}&to={Uri.EscapeDataString(MeetingKinds.Utc(End).ToString("o"))}"
+                + (ExceptMeeting is { } x ? $"&except={x}" : "");
+            var r = await Auth.GetAsync<List<RoomFreeDto>>(url, cts.Token);
+            if (!cts.IsCancellationRequested && !disposed) free = r ?? [];
+        }
+        catch (Exception e) when (e is OperationCanceledException or HttpRequestException or System.Text.Json.JsonException) { }
+    }
+
+    private async Task LoadDayAsync()
+    {
+        dayError = false;
+        if (MeetingKinds.RoomName(RoomKey) is null) { day = null; return; }
+        try
+        {
+            var r = await Auth.GetResultAsync<RoomDayDto>($"/api/meeting-rooms/{Uri.EscapeDataString(RoomKey!)}/availability?date={Local(Start):yyyy-MM-dd}");
+            if (disposed) return;
+            if (r.Status == GetStatus.Ok && r.Value is not null)
+            {
+                // Editing a booking: its own block is not a clash.
+                day = ExceptMeeting is { } x ? r.Value with { Blocks = r.Value.Blocks.Where(b => b.MeetingId != x).ToList() } : r.Value;
+            }
+            else { day = null; dayError = true; }
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException) { day = null; dayError = true; }
+    }
+
+    private Task SetKindAsync(string v) => KindChanged.InvokeAsync(v);
+    private Task SetRoomAsync(string k) => RoomKeyChanged.InvokeAsync(k);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); }
+        catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException or JSDisconnectedException) { }
+    }
+
+    public void Dispose() { disposed = true; freeCts?.Cancel(); }
+}

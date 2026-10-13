@@ -2,6 +2,7 @@
 // opened prefilled from any module (CalendarLinks builds the address), the Repeat picker, and the scope
 // question when changing or cancelling one meeting of a repeating series.
 using System.Globalization;
+using System.Net.Http.Json;
 using IPop.Web.Services;
 using Microsoft.AspNetCore.Components;
 
@@ -13,7 +14,13 @@ public partial class Calendar
     [SupplyParameterFromQuery(Name = "title")] public string? TitleQuery { get; set; }
     [SupplyParameterFromQuery(Name = "location")] public string? LocationQuery { get; set; }
     [SupplyParameterFromQuery(Name = "people")] public string? PeopleQuery { get; set; }
-    [SupplyParameterFromQuery(Name = "room")] public Guid? RoomQuery { get; set; }
+    /// A chat group id (CalendarLinks.NewMeeting) or a hall room key (booking sheet "More options…": kind=room&amp;room=kalosi).
+    [SupplyParameterFromQuery(Name = "room")] public string? RoomQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "kind")] public string? KindQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "end")] public string? EndQuery { get; set; }
+    [Inject] private MeetingDraftHandoff Handoff { get; set; } = default!;
+
+    private Guid? ChatRoomQuery => Guid.TryParse(RoomQuery, out var g) ? g : null;
     [SupplyParameterFromQuery(Name = "start")] public string? StartQuery { get; set; }
     [SupplyParameterFromQuery(Name = "mins")] public int? MinsQuery { get; set; }
     [SupplyParameterFromQuery(Name = "private")] public int? PrivateQuery { get; set; }
@@ -27,22 +34,37 @@ public partial class Calendar
     private async Task OpenFromComposeQueryAsync()
     {
         if (NewQuery != 1) return;
-        if (ChatSvc.GroupRooms.Count == 0 && RoomQuery is not null) { try { await ChatSvc.LoadRoomsAsync(); } catch { } }
+        if (ChatSvc.GroupRooms.Count == 0 && ChatRoomQuery is not null) { try { await ChatSvc.LoadRoomsAsync(); } catch { } }
         var start = DateTime.TryParse(StartQuery, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var s) ? s.ToLocalTime() : DefaultStart();
         anchor = start.Date;
         OpenCreate(start);
-        if (MinsQuery is > 0 and <= 600)
+        if (DateTime.TryParse(EndQuery, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var eq) && eq.ToLocalTime() > start
+            && eq.ToLocalTime() - start <= TimeSpan.FromHours(24))
+        {
+            var e = eq.ToLocalTime();
+            form.EndDate = e.Date; form.EndTime = TimeOnly.FromDateTime(e);
+        }
+        else if (MinsQuery is > 0 and <= 600)
         {
             var e = start.AddMinutes(MinsQuery.Value);
             form.EndDate = e.Date; form.EndTime = TimeOnly.FromDateTime(e);
         }
+        var (qKind, qRoom) = IPop.Web.Components.Meetings.CalendarKinds.FromQuery(KindQuery, RoomQuery);
+        if (qKind is not null) { form.Kind = qKind; form.RoomKey = qRoom; }
         if (!string.IsNullOrWhiteSpace(TitleQuery)) form.Title = TitleQuery.Trim().Length > 200 ? TitleQuery.Trim()[..200] : TitleQuery.Trim();
-        if (!string.IsNullOrWhiteSpace(LocationQuery)) { form.Online = false; form.Location = LocationQuery.Trim(); }
+        if (!string.IsNullOrWhiteSpace(LocationQuery) && qKind is null)
+        {
+            // Old links: a hall place opens on Meeting room (the bare "SJA Hall · " prefix asks for a room), else In person.
+            var loc = LocationQuery.Trim();
+            if (loc.StartsWith(IPop.Application.Hall.HallBooking.Prefix.Trim(), StringComparison.OrdinalIgnoreCase))
+            { form.Kind = IPop.Web.Components.Meetings.MeetingKinds.Room; form.RoomKey = IPop.Application.Hall.HallBooking.RoomKey(loc); }
+            else { form.Kind = IPop.Web.Components.Meetings.MeetingKinds.InPerson; form.Location = loc; }
+        }
         if (!string.IsNullOrWhiteSpace(NotesQuery)) form.Notes = NotesQuery;
         if (PrivateQuery == 1) form.Visibility = "private";
         var added = 0;
         var wholeGroup = false;
-        if (RoomQuery is { } room && ChatSvc.GroupRooms.Any(r => r.Id == room))
+        if (ChatRoomQuery is { } room && ChatSvc.GroupRooms.Any(r => r.Id == room))
         {
             form.RoomIdText = room.ToString();
             wholeGroup = true;
@@ -53,6 +75,16 @@ public partial class Calendar
             form.People.Add(new MemberSearchRow(nik, name, null, null));
             added++;
         }
+        // People picked in the booking sheet travel in memory, never in the address.
+        foreach (var p in Handoff.Take() ?? [])
+        {
+            if (p.Key == Auth.Me?.Nik || form.People.Any(x => x.Nik == p.Key)) continue;
+            form.People.Add(new MemberSearchRow(p.Key, p.Name, null, p.Department));
+            added++;
+        }
+        SyncInvitees();
+        if (string.IsNullOrWhiteSpace(FromQuery) && qKind == IPop.Web.Components.Meetings.MeetingKinds.Room)
+            prefillSource = added > 0 ? $"From Meeting Rooms · {added} {(added == 1 ? "person" : "people")} added" : "From Meeting Rooms";
         if (!string.IsNullOrWhiteSpace(FromQuery))
             prefillSource = wholeGroup ? $"{FromQuery} · the whole group is invited"
                 : added > 0 ? $"{FromQuery} · {added} {(added == 1 ? "person" : "people")} added" : FromQuery;
@@ -65,6 +97,7 @@ public partial class Calendar
     {
         prefillSource = null;
         form.People.Clear(); form.RoomIdText = ""; form.Notes = null; fat = null;
+        SyncInvitees();
     }
 
     // ── Repeat ──
@@ -177,11 +210,32 @@ public partial class Calendar
         : day.DayOfWeek == first.DayOfWeek && (MonthlyOrdinal == -1
             ? day.AddDays(7).Month != day.Month : (day.Day - 1) / 7 + 1 == MonthlyOrdinal);
 
-    private bool CanJoinDetail => detail is { MeetingId: not null, MeetingStatus: not "cancelled" }
-        && CallsSchedule.IsOnline(detail.Location)
-        && CallsSchedule.CanJoin(detail.StartAt, detail.EndAt, DateTime.UtcNow);
+    // ── Room series check (v3 §3) before saving a new repeating room booking ──
 
-    private string? DetailJoinUrl => detail?.MeetingId is { } id ? $"/meet/meeting-{id:N}" : null;
+    private SeriesCheck? roomCheck;
+    private string roomCheckKey = "";
+    private readonly Dictionary<DateOnly, string?> roomChoices = [];
+
+    /// Client mirror of SeriesPreviewDto (POST /api/calendar/series/preview).
+    public sealed record SeriesCheck(int Total, int Booked, IReadOnlyList<SeriesCheckDate> Occurrences);
+    public sealed record SeriesCheckDate(DateOnly Date, DateTime StartAt, DateTime EndAt, bool Free, string? BookedBy, IReadOnlyList<string> FreeRooms, string? Reason = null);
+
+    private async Task CheckRoomSeriesAsync(DateTime start, DateTime end, string rule)
+    {
+        roomCheck = null; roomChoices.Clear();
+        var res = await Auth.SendAsync(HttpMethod.Post, "/api/calendar/series/preview", new { roomKey = form.RoomKey, startAt = start, endAt = end, recurrence = rule });
+        if (!res.IsSuccessStatusCode) { formError = await ErrorAsync(res); return; }
+        roomCheck = await res.Content.ReadFromJsonAsync<SeriesCheck>();
+        roomCheckKey = $"{form.RoomKey}|{start:o}|{end:o}|{rule}";
+    }
+
+    private string? RoomChoice(DateOnly d) => roomChoices.TryGetValue(d, out var c) ? c : null;
+    private void SetRoomChoice(DateOnly d, string? room) => roomChoices[d] = room;
+
+    /// Clashing dates: skipped, or moved to the picked room.
+    private List<object> RoomOverrides() => roomCheck?.Occurrences.Where(o => !o.Free)
+        .Select(o => RoomChoice(o.Date) is { } r ? (object)new { date = o.Date, skip = false, roomKey = r } : new { date = o.Date, skip = true })
+        .ToList() ?? [];
 
     private static string Ord(int d) => d is 11 or 12 or 13 ? "th" : (d % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" };
     private static string Join(List<string> n) => n.Count <= 1 ? string.Concat(n) : string.Join(", ", n.Take(n.Count - 1)) + " and " + n[^1];

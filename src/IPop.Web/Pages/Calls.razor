@@ -39,7 +39,7 @@
         else
         {
             <span class="sch-menu-wrap">
-                <button type="button" class="@($"ghost-btn sch-btn {(scheduleMenu ? "on" : "")}")" aria-haspopup="menu" aria-expanded="@(scheduleMenu ? "true" : "false")" @onclick="() => scheduleMenu = !scheduleMenu"><i data-lucide="calendar-plus"></i>Schedule<i data-lucide="chevron-down" class="sch-cv"></i></button>
+                <button type="button" class="@($"ghost-btn sch-btn {(scheduleMenu ? "sch-open" : "")}")" aria-haspopup="menu" aria-expanded="@(scheduleMenu ? "true" : "false")" @onclick="() => scheduleMenu = !scheduleMenu"><i data-lucide="calendar-plus"></i>Schedule<i data-lucide="chevron-down" class="sch-cv"></i></button>
                 @if (scheduleMenu)
                 {
                     <ScheduleMenu OnVoice="ScheduleVoice" OnRoom="ScheduleRoomAsync" OnClose="() => scheduleMenu = false" />

@@ -1,0 +1,68 @@
+@* Meeting scheduling v3 §6 (mockup screen 4 "busy popover"): someone else's block on my calendar. Avatar, name,
+   "{Department} · shares free/busy only", the Busy line with the time (or the title they share), Ask to see details,
+   Find another time and Chat (per-tab token link; the key is never printed). Busy-only blocks never show a title. *@
+@namespace IPop.Web.Components.Meetings
+@inject PeopleLinks PLinks
+@inject IJSRuntime JS
+
+@{
+    var i = Item;
+    var priv = i.Visibility == "private";
+    var tentative = i.Kind == "busy-tentative";
+    var titled = !tentative && i.Title is not ("Busy" or "Tentative");
+    var s = i.Start; var e = i.End;
+    var when = i.AllDay ? $"{Long(s)} · all day" : $"{Long(s)} · {MeetingKinds.TimeRange(s, e)}";
+    var share = priv ? "Private event" : titled ? "Shares titles" : "shares free/busy only";
+}
+<div class="cal-pop-backdrop" @onclick="OnClose"></div>
+<div class="cal-pop cal-bp" role="dialog" aria-label="@Name" style="@($"left:min({Px(X)}, calc(100vw - 316px));top:max(8px, min({Px(Y)}, calc(100vh - 260px)))")" @onkeydown="KeyAsync">
+    <div class="cal-bp-h">
+        <PersonAvatar Nik="@i.OwnerNik" Name="@Name" Size="40" Decorative="true" />
+        <span><b>@Name</b><span>@(Department is { Length: > 0 } d ? $"{d} · {share}" : share)</span></span>
+        <button type="button" class="cal-bp-x" title="Close" aria-label="Close" @onclick="OnClose"><i data-lucide="x"></i></button>
+    </div>
+    <div class="@($"cal-bp-bz {(tentative ? "tentative" : "")}")">
+        <i aria-hidden="true"></i>
+        <span><b>@(titled ? i.Title : tentative ? "Tentative" : "Busy")</b><span>@when</span>
+            @if (tentative) { <small>Hasn't replied to this invitation yet</small> }
+            @if (titled && i.Location is { Length: > 0 } loc) { <small>@loc</small> }</span>
+    </div>
+    @if (!titled && !priv && !tentative)
+    {
+        <button type="button" class="cal-bp-ask" disabled="@Asked" @onclick="OnAsk"><i data-lucide="eye"></i>@(Asked ? "Asked" : "Ask to see details")</button>
+    }
+    @if (OnOpenMine.HasDelegate)
+    {
+        <button type="button" class="cal-bp-ask" @onclick="OnOpenMine"><i data-lucide="calendar"></i>You're invited too · Open</button>
+    }
+    <div class="cal-bp-row">
+        <button type="button" class="cal-bp-btn gray cal-bp-find" @onclick="OnFindTime"><i data-lucide="calendar-clock"></i>Find another time</button>
+        <a class="cal-bp-btn tinted cal-bp-chat" href="@PLinks.Chat(i.OwnerNik ?? "")"><i data-lucide="message-circle"></i>Chat</a>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IPop.Web.Pages.Calendar.FeedItem Item { get; set; } = default!;
+    [Parameter] public string Name { get; set; } = "";
+    [Parameter] public string? Department { get; set; }
+    [Parameter] public bool Asked { get; set; }
+    [Parameter] public double X { get; set; }
+    [Parameter] public double Y { get; set; }
+    [Parameter] public EventCallback OnAsk { get; set; }
+    [Parameter] public EventCallback OnFindTime { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    /// The block is a meeting I'm in as well: open my copy.
+    [Parameter] public EventCallback OnOpenMine { get; set; }
+
+    private static string Px(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "px";
+    private static string Long(DateTime d) =>
+        $"{DatePickerMath.WeekdayLong[DatePickerMath.MondayIndex(d.DayOfWeek)]} {d.Day} {DatePickerMath.MonthShort[d.Month - 1]}";
+
+    private Task KeyAsync(KeyboardEventArgs e) => e.Key == "Escape" ? OnClose.InvokeAsync() : Task.CompletedTask;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); }
+        catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException or JSDisconnectedException) { }
+    }
+}

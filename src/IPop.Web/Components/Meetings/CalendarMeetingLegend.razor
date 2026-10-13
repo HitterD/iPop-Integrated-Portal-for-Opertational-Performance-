@@ -1,0 +1,10 @@
+@* Meeting scheduling v3 §6 (mockup screen 4 rail): the "Meetings" legend above the calendar sources. *@
+@namespace IPop.Web.Components.Meetings
+
+<div class="cal-lg">
+    <div class="cal-rail-title cal-lg-t">Meetings</div>
+    <div class="cal-lg-row r-kalosi"><span class="cal-lg-ki" aria-hidden="true"><i data-lucide="video"></i></span><span>Meeting room<small>Colour of the room</small></span>
+        <span class="cal-lg-sws" aria-hidden="true">@foreach (var (key, _) in IPop.Application.Hall.HallBooking.Rooms) {<i class="@($"r-{key}")"></i>}</span></div>
+    <div class="cal-lg-row k-voice"><span class="cal-lg-ki" aria-hidden="true"><i data-lucide="headphones"></i></span><span>Voice call<small>Audio only</small></span></div>
+    <div class="cal-lg-row k-person"><span class="cal-lg-ki" aria-hidden="true"><i data-lucide="map-pin"></i></span><span>In person<small>Place, no call link</small></span></div>
+</div>

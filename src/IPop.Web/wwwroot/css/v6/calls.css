@@ -636,7 +636,7 @@ html.callx-resizing, html.callx-resizing * { cursor:nwse-resize !important; }
 .sch-empty { display:flex; flex-direction:column; align-items:center; gap:8px; padding:40px 20px; color:var(--ink-3); background:var(--surface); border-radius:16px; box-shadow:0 0 0 .5px var(--line); }
 /* schedule menu */
 .sch-menu-wrap { position:relative; display:inline-flex; }
-.calls-toolbar .sch-btn.on { background:var(--fill); }
+.calls-toolbar .sch-btn.sch-open { background:var(--fill); }
 .calls-toolbar .sch-btn .sch-cv { width:13px; height:13px; opacity:.7; margin-left:2px; }
 .sch-menu-scrim { position:fixed; inset:0; z-index:39; }
 .sch-menu { position:absolute; z-index:40; top:42px; right:0; width:318px; padding:6px; border-radius:16px; background:color-mix(in srgb, var(--surface) 92%, transparent);

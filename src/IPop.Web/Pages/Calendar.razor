@@ -1,6 +1,7 @@
 @page "/calendar"
 @page "/calendar/person/{PersonNik}"
 @using IPop.Web.Services
+@using IPop.Web.Components.Meetings
 @implements IDisposable
 @inject AuthState Auth
 @inject NotificationState Notifs
@@ -44,6 +45,7 @@
 
         @if (!PersonMode)
         {
+        <CalendarMeetingLegend />
         <div class="cal-sources">
             <div class="cal-rail-title">Show on my calendar</div>
             @foreach (var s in Sources)
@@ -258,7 +260,7 @@
                             @foreach (var it in AllDayOn(dd, col))
                             {
                                 var item = it;
-                                <button class="cal-chip src-@item.Source kind-@item.Kind @OtherClass(item) @(item.Rsvp == "pending" ? "pending" : "") @JustSaved(item)" title="@Tooltip(item)" @onclick="e => OpenItemAsync(item, e)" @onclick:stopPropagation="true">
+                                <button class="cal-chip src-@item.Source kind-@item.Kind @CalendarKinds.ItemClass(item) @OtherClass(item) @(item.Rsvp == "pending" ? "pending" : "") @JustSaved(item)" title="@Tooltip(item)" @onclick="e => OpenItemAsync(item, e)" @onclick:stopPropagation="true">
                                     <i data-lucide="@IconFor(item)"></i><span>@item.Title</span>
                                 </button>
                             }
@@ -298,11 +300,16 @@
                                         continue;
                                     }
                                     var item = p.Item;
-                                    <button class="cal-event src-@item.Source kind-@item.Kind @OtherClass(item) @(item.Rsvp == "pending" ? "pending" : "") @(item.Rsvp == "decline" ? "declined" : "") @JustSaved(item)"
+                                    <button class="cal-event src-@item.Source kind-@item.Kind @CalendarKinds.ItemClass(item) @(SelectedItem(item) ? "sel" : "") @OtherClass(item) @(item.Rsvp == "pending" ? "pending" : "") @(item.Rsvp == "decline" ? "declined" : "") @JustSaved(item)"
                                             style="top:@Px(p.Top);height:@Px(p.Height);left:calc(@Pct(p.Col, p.Cols) + 2px);width:calc(@Pct(1, p.Cols) - 4px)"
                                             title="@Tooltip(item)" @onclick="e => OpenItemAsync(item, e)" @onclick:stopPropagation="true">
                                         <span class="cal-event-title"><i data-lucide="@IconFor(item)"></i>@item.Title</span>
-                                        @if (p.Height >= 34) { <span class="cal-event-time">@TimeRange(item)@(item.OwnerNik is not null && !SideBySideActive ? $" · {item.Subtitle}" : "")</span> }
+                                        @if (p.Height >= 34 && CalendarKinds.RoomLine(item) is { } roomLine)
+                                        {
+                                            <span class="cal-event-room"><i aria-hidden="true"></i>@roomLine</span>
+                                            @if (p.Height >= 60) { <span class="cal-event-time">@TimeRange(item)</span> }
+                                        }
+                                        else if (p.Height >= 34) { <span class="cal-event-time">@TimeRange(item)@(item.OwnerNik is not null && !SideBySideActive ? $" · {item.Subtitle}" : "")</span> }
                                     </button>
                                 }
                                 @if (dd == DateTime.Today)
@@ -328,7 +335,8 @@
                         @foreach (var it in dayItems.Take(3))
                         {
                             var item = it;
-                            <button class="cal-chip src-@item.Source kind-@item.Kind @OtherClass(item) @(item.Rsvp == "pending" ? "pending" : "") @JustSaved(item)" title="@Tooltip(item)" @onclick="e => OpenItemAsync(item, e)">
+                            <button class="cal-chip src-@item.Source kind-@item.Kind @CalendarKinds.ItemClass(item) @OtherClass(item) @(item.Rsvp == "pending" ? "pending" : "") @JustSaved(item)" title="@Tooltip(item)" @onclick="e => OpenItemAsync(item, e)">
+                                @if (CalendarKinds.ItemIcon(item) is { } mi) { <i data-lucide="@mi"></i> }
                                 @if (!IsAllDayLike(item)) { <span class="cal-chip-time">@item.Start.ToString("HH:mm")</span> }
                                 <span>@item.Title</span>
                             </button>
@@ -360,7 +368,7 @@
                             @foreach (var it in g.Items)
                             {
                                 var item = it;
-                                <button class="cal-agenda-item src-@item.Source kind-@item.Kind @JustSaved(item)" @onclick="() => OpenItemAsync(item)">
+                                <button class="cal-agenda-item src-@item.Source kind-@item.Kind @CalendarKinds.ItemClass(item) @JustSaved(item)" @onclick="() => OpenItemAsync(item)">
                                     <span class="cal-agenda-time">@(IsAllDayLike(item) ? "All day" : TimeRange(item))</span>
                                     <span class="cal-agenda-bar"></span>
                                     <i data-lucide="@IconFor(item)"></i>
@@ -385,7 +393,9 @@
 @if (drawerOpen || drawerClosing)
 {
     <div class="cal-drawer-backdrop @(drawerOpen ? "" : "closing")" @onclick="CloseDrawer"></div>
-    <aside class="cal-drawer @(drawerOpen ? "" : "closing")" role="dialog" aria-modal="true" aria-label="@(editing ? (form.Id is null ? "New event" : "Edit event") : "Event")" @onkeydown="DrawerKey">
+    <aside class="cal-drawer @(drawerOpen ? "" : "closing") @(editing ? "cal-sheet" : "") @(ShowsMeetingDetail ? "cal-mdrawer" : "")" role="dialog" aria-modal="true" aria-label="@(editing ? (form.Id is null ? "New event" : "Edit event") : "Event")" @onkeydown="DrawerKey">
+        @if (!ShowsMeetingDetail)
+        {
         <header class="cal-drawer-head">
             <h3>@(editing ? (form.Id is null ? "New event" : "Edit event") : "Event")</h3>
             @if (!editing && detail is { CanEdit: true })
@@ -395,8 +405,42 @@
             }
             <button class="cal-icon" title="Close" aria-label="Close" @onclick="CloseDrawer"><i data-lucide="x"></i></button>
         </header>
+        }
 
-        @if (!editing && detail is not null)
+        @if (!editing && detail is not null && ShowsMeetingDetail)
+        {
+            var d = detail;
+            <div class="cal-drawer-body cal-mdetail">
+                <MeetingDetail Model="MeetingDetailModel.FromEvent(d, Auth.Me?.UserId)" Now="clockNow" OnClose="CloseDrawer"
+                               OnEdit="StartEdit" OnCancel="DeleteAsync" OnChangeRoom="StartEdit" OnRespond="v => RsvpAsync(v)" />
+                @if (d.SentBy is not null)
+                {
+                    <div class="cal-detail-row behalf"><i data-lucide="user-cog"></i><span>Sent by <b>@d.SentBy</b> on behalf of <b>@d.OwnerName</b></span></div>
+                }
+                else if (d.CreatedBy is not null)
+                {
+                    <div class="cal-detail-row behalf"><i data-lucide="user-cog"></i><span>Created by <b>@d.CreatedBy</b> on behalf of <b>@d.OwnerName</b></span></div>
+                }
+                @if (d.UpdatedBy is not null)
+                {
+                    <div class="cal-detail-row behalf"><i data-lucide="history"></i><span>Last changed by <b>@d.UpdatedBy</b> on behalf of <b>@d.OwnerName</b></span></div>
+                }
+                @if (d.MeetingStatus is not "cancelled" && BehalfRow is { } mbehalf)
+                {
+                    <div class="cal-rsvp behalf">
+                        <span>Reply for @mbehalf.Name</span>
+                        @foreach (var (key, label) in RsvpOptions)
+                        {
+                            var k = key;
+                            <button class="cal-rsvp-btn @(mbehalf.Rsvp == k ? "on" : "")" @onclick="() => RsvpForAsync(k)">@label</button>
+                        }
+                    </div>
+                }
+                @if (d.RoomId is not null) { <a class="cal-btn" href="/chat/@d.RoomId"><i data-lucide="message-circle"></i> Open in Chat · @d.RoomName</a> }
+                else { <a class="cal-btn" href="@($"/calls?tab=scheduled&meeting={d.MeetingId}")"><i data-lucide="external-link"></i> Open in Calls &amp; Meetings</a> }
+            </div>
+        }
+        else if (!editing && detail is not null)
         {
             <div class="cal-drawer-body">
                 @if (detail.External is { } ext)
@@ -407,15 +451,6 @@
                 <div class="cal-detail-row"><i data-lucide="clock"></i><span>@DetailWhen(detail)</span></div>
                 @if (detail.RecurrenceText is { } rt) { <div class="cal-detail-row"><i data-lucide="repeat"></i><span>@rt</span></div> }
                 @if (detail.MeetingStatus is "cancelled") { <div class="cal-detail-row warn"><i data-lucide="ban"></i><span>This meeting was cancelled.</span></div> }
-                @if (detail.MeetingId is not null && CallsSchedule.IsOnline(detail.Location) && detail.MeetingStatus != "cancelled")
-                {
-                    <div class="cal-detail-row"><i data-lucide="video"></i>
-                        @if (CanJoinDetail) { <a class="cal-btn primary" href="@DetailJoinUrl">Join meeting</a> }
-                        else { <span>@(DateTime.UtcNow >= detail.EndAt ? "Meeting has ended" : CallsSchedule.JoinTooltip)</span> }
-                    </div>
-                }
-                <IPop.Web.Components.Calendar.CalendarRoomJoin Location="@detail.Location" MeetingStatus="@detail.MeetingStatus" />
-                <IPop.Web.Components.Calendar.CalendarRoomPassword MeetingId="@detail.MeetingId" Location="@detail.Location" MeetingStatus="@detail.MeetingStatus" />
                 @if (detail.External is { Source: "idesk-zoom" } && detail.Link is not null)
                 {
                     <div class="cal-detail-row"><i data-lucide="video"></i><a class="cal-btn primary" href="@detail.Link" target="_blank" rel="noopener noreferrer">Join Zoom meeting</a></div>
@@ -519,6 +554,9 @@
                         <button type="button" class="cal-icon sm" title="Clear what was filled in" aria-label="Clear what was filled in" @onclick="ClearPrefill"><i data-lucide="x"></i></button></div>
                 }
                 <input class="cal-title-input" placeholder="Event title" @bind="form.Title" @bind:event="oninput" maxlength="200" aria-label="Title" />
+                <MeetingKindPicker Kind="@form.Kind" KindChanged="SetFormKind" RoomKey="@form.RoomKey" RoomKeyChanged="k => { form.RoomKey = k; roomCheck = null; formError = null; }"
+                                   Location="@form.Location" LocationChanged="v => form.Location = v"
+                                   Start="FormStartUtc" End="FormEndUtc" OnTimesChanged="SetFormTimes" ExceptMeeting="form.MeetingId" />
 
                 @* ── When ── *@
                 <div class="cal-group">
@@ -620,19 +658,10 @@
                 {
                     <div class="cal-field">
                         <span>Participants</span>
-                        @if (form.People.Count > 0)
-                        {
-                            <div class="cal-people-chips">
-                                @foreach (var p in form.People)
-                                {
-                                    var person = p;
-                                    <span class="cal-person-chip"><PersonAvatar Nik="@person.Nik" Name="@person.Name" Size="22" Class="cal-person-av" Decorative="true" />@person.Name
-                                        <button title="Remove" aria-label="Remove @person.Name" @onclick="() => RemovePerson(person)"><i data-lucide="x"></i></button></span>
-                                }
-                            </div>
-                        }
-                        <div class="cal-people-add">
-                            <PeoplePicker Placeholder="Invite people by name" ValueChanged="AddPerson" />
+                        <div class="cal-people-add cal-invite-pick">
+                            <InvitePicker Selected="invitees" SelectedChanged="SetInvitees" From="@(form.AllDay ? null : FormStartUtc)" To="@(form.AllDay ? null : FormEndUtc)"
+                                          RoomCapacity="@(form.Kind == MeetingKinds.Room ? IPop.Application.Hall.HallLimits.RoomCapacity : null)" RoomName="@MeetingKinds.RoomName(form.RoomKey)"
+                                          ExceptMeeting="form.MeetingId" OnFindTime="() => LoadFreeBusyAsync()" />
                             <button type="button" class="cal-book" title="Address book" aria-label="Address book" @onclick="OpenAddressBookAsync"><i data-lucide="book-user"></i></button>
                         </div>
                         <small>Inviting people or a group turns this into a meeting with RSVP.</small>
@@ -697,34 +726,37 @@
                 }
                 @* ── Details ── *@
                 <div class="cal-group">
-                    <div class="cal-row">
-                        <i data-lucide="map-pin"></i><span class="cal-row-label">Where</span>
-                        <div class="cal-seg sm" role="radiogroup" aria-label="Meeting location">
-                            <button type="button" role="radio" aria-checked='@(form.Online ? "true" : "false")' class="cal-seg-item @(form.Online ? "on" : "")" @onclick="() => form.Online = true">Online</button>
-                            <button type="button" role="radio" aria-checked='@(!form.Online ? "true" : "false")' class="cal-seg-item @(!form.Online ? "on" : "")" @onclick="() => form.Online = false">Room</button>
-                        </div>
-                    </div>
-                    @if (form.Online && !(form.People.Count > 0 || form.RoomIdText != ""))
+                    @if (form.Kind == CalendarKinds.Event)
                     {
-                        <div class="cal-row cal-online-hint"><i data-lucide="video"></i><span>Invite people or a group to get an iPop Meeting link. Without anyone it stays a normal event.</span></div>
+                        <label class="cal-row"><i data-lucide="map-pin"></i><input class="cal-row-input" placeholder="Location (optional)" aria-label="Location" @bind="form.Location" maxlength="300" /></label>
                     }
-                    else if (form.Online)
+                    @if (form.Kind is "" or MeetingKinds.InPerson)
                     {
-                        <div class="cal-row cal-online-hint"><i data-lucide="video"></i><span>iPop Meeting · a join link is available after inviting people or a group.</span></div>
-                    }
-                    else
-                    {
-                        <label class="cal-row"><i data-lucide="map-pin"></i><input class="cal-row-input" placeholder="Room or location" aria-label="Location" @bind="form.Location" maxlength="300" list="hall-rooms" /></label>
-                        <datalist id="hall-rooms">
-                            @foreach (var room in IPop.Application.Hall.HallBooking.Rooms)
-                            {
-                                <option value="@IPop.Application.Hall.HallBooking.Location(room.Name)"></option>
-                            }
-                        </datalist>
-                        <label class="cal-row"><i data-lucide="video"></i><input class="cal-row-input" placeholder="External meeting link (optional)" aria-label="Meeting link" @bind="form.Link" maxlength="1000" /></label>
+                        <label class="cal-row"><i data-lucide="link"></i><input class="cal-row-input" placeholder="External meeting link (optional)" aria-label="Meeting link" @bind="form.Link" maxlength="1000" /></label>
                     }
                     <label class="cal-row cal-row-top"><i data-lucide="align-left"></i><textarea class="cal-row-input" rows="3" @bind="form.Notes" maxlength="4000" placeholder="Notes, agenda…" aria-label="Notes"></textarea></label>
                 </div>
+                @if (roomCheck is { Booked: > 0 } rcheck)
+                {
+                    <div class="cal-rcheck" role="group" aria-label="Repeat check">
+                        <div class="cal-rcheck-h"><i data-lucide="triangle-alert"></i><span><b>@rcheck.Booked of @rcheck.Total dates are booked</b><span>Skip them or move them to a free room, then Save.</span></span></div>
+                        @foreach (var o in rcheck.Occurrences.Where(o => !o.Free))
+                        {
+                            var occ = o;
+                            var pick = RoomChoice(occ.Date);
+                            <div class="cal-rcheck-row">
+                                <span><b>@occ.Date.ToDateTime(TimeOnly.MinValue).ToString("ddd d MMM")</b><small>Booked by “@(occ.BookedBy ?? "Booked")”</small></span>
+                                <span class="cal-seg sm" role="radiogroup" aria-label="@($"What to do on {occ.Date:ddd d MMM}")">
+                                    <button type="button" role="radio" aria-checked="@(pick is null ? "true" : "false")" class="cal-seg-item @(pick is null ? "on" : "")" @onclick="() => SetRoomChoice(occ.Date, null)">Skip</button>
+                                    @if (occ.FreeRooms.FirstOrDefault() is { } alt)
+                                    {
+                                        <button type="button" role="radio" aria-checked="@(pick == alt ? "true" : "false")" class="cal-seg-item @(pick == alt ? "on" : "")" @onclick="() => SetRoomChoice(occ.Date, alt)">Move to @MeetingKinds.RoomName(alt)</button>
+                                    }
+                                </span>
+                            </div>
+                        }
+                    </div>
+                }
                 @if (formError is not null) { <div class="cal-form-error" role="alert">@formError</div> }
             </div>
             <footer class="cal-drawer-foot">
@@ -742,32 +774,11 @@
 @if (pop is not null)
 {
     var po = pop;
-    <div class="cal-pop-backdrop" @onclick="() => pop = null"></div>
-    <div class="cal-pop oc-@ColorOf(po.OwnerNik)" role="dialog" aria-label="@OtherName(po.OwnerNik)" style="left:min(@Px(popX), calc(100vw - 320px));top:max(8px, min(@Px(popY), calc(100vh - 330px)))">
-        <div class="cal-pop-who"><PersonAvatar Nik="@po.OwnerNik" Name="@OtherName(po.OwnerNik)" Size="28" Class="cal-other-av" Decorative="true" /><b>@OtherName(po.OwnerNik)</b>
-            <button class="cal-icon sm" title="Close" aria-label="Close" @onclick="() => pop = null"><i data-lucide="x"></i></button></div>
-        <div class="cal-pop-title">@po.Title</div>
-        <div class="cal-detail-row"><i data-lucide="clock"></i><span>@(IsAllDayLike(po) ? When(po) + " · all day" : $"{po.Start:ddd d MMM, HH:mm} – {po.End:HH:mm}")</span></div>
-        @if (po.Location is not null) { <div class="cal-detail-row"><i data-lucide="map-pin"></i><span>@po.Location</span></div> }
-        @if (po.Kind == "busy-tentative") { <div class="cal-detail-row"><i data-lucide="help-circle"></i><span>Hasn't replied to this invitation yet</span></div> }
-        else if (po.Visibility != "public" && po.Title is "Busy" && PopMine is null)
-        {
-            <div class="cal-pop-why">
-                <i data-lucide="@(po.Visibility == "private" ? "lock" : "eye-off")"></i>
-                <span>@WhyBusy(po, OtherName(po.OwnerNik))</span>
-                @if (po.Visibility != "private")
-                {
-                    var askNik = po.OwnerNik!;
-                    <button class="cal-link" disabled="@askedFor.Contains(askNik)" @onclick="() => AskForDetailsAsync(askNik, OtherName(askNik))">@(askedFor.Contains(askNik) ? "Asked" : "Ask to see details")</button>
-                }
-            </div>
-        }
-        <div class="cal-pop-actions">
-            @if (PopMine is not null) { <button class="cal-btn" @onclick="OpenPopMineAsync"><i data-lucide="calendar"></i> Open</button> }
-            <button class="cal-btn primary" @onclick="() => MeetWithAsync(po.OwnerNik!, OtherName(po.OwnerNik))"><i data-lucide="calendar-plus"></i> Meet another time</button>
-            <a class="cal-btn" href="@PLinks.Chat(po.OwnerNik!)"><i data-lucide="message-circle"></i> Chat</a>
-        </div>
-    </div>
+    <CalendarBusyPopover Item="po" Name="@OtherName(po.OwnerNik)" Department="@(others.FirstOrDefault(o => o.Nik == po.OwnerNik)?.Department ?? person?.Department)"
+                         Asked="@askedFor.Contains(po.OwnerNik ?? "")" X="popX" Y="popY" OnClose="() => pop = null"
+                         OnAsk="() => AskForDetailsAsync(po.OwnerNik!, OtherName(po.OwnerNik))"
+                         OnFindTime="() => MeetWithAsync(po.OwnerNik!, OtherName(po.OwnerNik), po.Start)"
+                         OnOpenMine="@(PopMine is not null ? EventCallback.Factory.Create(this, OpenPopMineAsync) : default)" />
 }
 
 <CalendarSettingsSheet Open="settingsOpen" OpenChanged="v => settingsOpen = v" Changed="OnSettingsChangedAsync" AllowFor="allowFor" />

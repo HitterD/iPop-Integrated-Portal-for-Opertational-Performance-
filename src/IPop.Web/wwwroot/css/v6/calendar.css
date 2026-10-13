@@ -718,3 +718,121 @@ body:has(.cs-sheet) .confirm-center { z-index: 1071; }
 .cal-ext-hint { margin-top: 12px; padding: 9px 11px; border-radius: 10px; background: var(--fill); color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
 .cal-ext-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 .cal-btn.ghost { border-color: transparent; background: none; }
+
+/* ============================================================
+   Meeting scheduling v3 §6 (mockup screens 4 + 6). Kind colours come from meeting-kit.css (.r-* / .k-* set --a/--b).
+   ============================================================ */
+/* meeting items: room colour / indigo / teal (other sources keep --src) */
+.cal-event.mk-ev, .cal-chip.mk-ev, .cal-agenda-item.mk-ev { --src: var(--b); }
+.cal-event.mk-ev { background: color-mix(in srgb, var(--a) 24%, var(--surface)); box-shadow: inset 3px 0 0 var(--b), 0 0 0 1px var(--surface); }
+.cal-event.mk-ev[class*=" r-"] { background: linear-gradient(135deg, color-mix(in srgb, var(--a) 34%, var(--surface)), color-mix(in srgb, var(--a) 18%, var(--surface))); }
+.cal-event.mk-ev:hover { background: color-mix(in srgb, var(--a) 34%, var(--surface)); }
+:root[data-theme="dark"] .cal-event.mk-ev { background: color-mix(in srgb, var(--a) 30%, var(--surface)); }
+:root[data-theme="dark"] .cal-event.mk-ev .cal-event-title svg.lucide, :root[data-theme="dark"] .cal-chip.mk-ev svg.lucide { color: var(--a); }
+.cal-chip.mk-ev { background: color-mix(in srgb, var(--a) 18%, var(--surface)); }
+.cal-event.mk-ev.pending, .cal-chip.mk-ev.pending { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--a) 16%, var(--surface)) 0 6px, var(--surface) 6px 12px); }
+.cal-event-room { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; color: color-mix(in srgb, var(--b) 85%, var(--ink)); }
+:root[data-theme="dark"] .cal-event-room { color: var(--a); }
+.cal-event-room > i { width: 8px; height: 8px; border-radius: 2px; background: var(--b); }
+.cal-event.sel { box-shadow: inset 3px 0 0 var(--src), 0 0 0 2px var(--surface), 0 0 0 4px var(--src); z-index: 3; }
+
+/* legend */
+.cal-lg { display: grid; gap: 1px; }
+.cal-lg-row { display: flex; align-items: center; gap: 9px; padding: 6px; border-radius: 9px; font-size: 13px; min-height: 32px; color: var(--ink); }
+.cal-lg-row small { display: block; font-size: 11px; color: var(--ink-3); line-height: 1.2; }
+.cal-lg-ki { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; color: #fff; flex: none; background: radial-gradient(120% 120% at 0% 0%, var(--a), var(--b)); }
+.cal-page .cal-lg-ki svg.lucide { width: 13px; height: 13px; }
+.cal-lg-sws { display: flex; gap: 2px; margin-left: auto; }
+.cal-lg-sws i { width: 11px; height: 11px; border-radius: 3px; background: radial-gradient(120% 120% at 0% 0%, var(--a), var(--b)); }
+
+/* busy popover (tidy) */
+.cal-pop.cal-bp { width: 296px; gap: 0; padding: 14px; border: 0; border-radius: 16px; background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(30px) saturate(1.8); -webkit-backdrop-filter: blur(30px) saturate(1.8); box-shadow: 0 0 0 .5px var(--line), 0 18px 50px -12px rgba(0,0,0,.35); }
+.cal-bp-h { display: flex; align-items: center; gap: 11px; }
+.cal-bp-h .pav { flex: none; width: 40px !important; height: 40px !important; border-radius: 50%; }
+.cal-bp-h > span { min-width: 0; flex: 1; }
+.cal-bp-h b { display: block; font-size: 15px; letter-spacing: -.015em; color: var(--ink); }
+.cal-bp-h b + span { display: block; font-size: 12.5px; color: var(--ink-3); }
+.cal-bp-x { align-self: flex-start; width: 24px; height: 24px; border: 0; border-radius: 50%; background: var(--fill); display: grid; place-items: center; color: var(--ink-3); cursor: pointer; flex: none; }
+.cal-pop .cal-bp-x svg.lucide { width: 12px; height: 12px; stroke-width: 2.6; }
+.cal-bp-bz { display: flex; align-items: center; gap: 10px; margin: 12px 0 4px; padding: 10px 12px; border-radius: 12px; background: var(--fill); }
+.cal-bp-bz > i { width: 10px; height: 28px; border-radius: 3px; flex: none; background: repeating-linear-gradient(135deg, #8e8e93 0 3px, transparent 3px 6px); box-shadow: inset 0 0 0 1px #8e8e93; }
+.cal-bp-bz.tentative > i { background: none; box-shadow: none; outline: 1.5px dashed #8e8e93; }
+.cal-bp-bz b { display: block; font-size: 14px; color: var(--ink); }
+.cal-bp-bz span span, .cal-bp-bz small { display: block; font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.cal-bp-ask { display: flex; align-items: center; gap: 6px; border: 0; background: none; padding: 0; font: inherit; font-size: 12.5px; color: var(--info, #0a84ff); font-weight: 550; margin: 8px 2px 4px; cursor: pointer; }
+.cal-bp-ask:disabled { color: var(--ink-3); cursor: default; }
+.cal-bp-row { display: flex; gap: 8px; margin-top: 8px; }
+.cal-bp-btn { flex: 1; height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 0; border-radius: 999px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none; white-space: nowrap; }
+.cal-bp-btn.gray { background: var(--fill); color: var(--ink); }
+.cal-bp-btn.tinted { background: rgba(46,158,91,.12); color: var(--accent-ink, #2e9e5b); }
+
+/* shared meeting detail in the drawer */
+.cal-drawer.cal-mdrawer { width: min(400px, 100vw); background: var(--bg, var(--surface)); }
+.cal-drawer-body.cal-mdetail { padding: 12px; gap: 10px; }
+.cal-mdetail .mk-detail .people { grid-template-columns: 1fr; }
+.cal-mdetail > .cal-btn { justify-self: start; }
+
+/* New event as a centred sheet (mockup screen 6); phones keep the bottom sheet from mobile/calendar.css */
+@media (min-width: 768px) {
+  .cal-drawer.cal-sheet { top: 50%; left: 50%; right: auto; bottom: auto; transform: translate(-50%, -50%); width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 40px);
+    border: 0; border-radius: 22px; box-shadow: 0 0 0 .5px var(--line), 0 30px 80px -20px rgba(0,0,0,.45); animation: cal-sheet-in .22s ease-out; }
+  @keyframes cal-sheet-in { from { transform: translate(-50%, -48%) scale(.98); opacity: 0; } }
+  .cal-drawer.cal-sheet.closing { animation: mi-fade-out .18s ease-in forwards; }
+  .cal-drawer.cal-sheet .cal-drawer-head h3 { font-size: 18px; letter-spacing: -.02em; }
+}
+
+/* kind tiles, room tiles */
+.mkp { display: block; }
+.mkp-kh, .mkp-gh { font-size: 12px; color: var(--ink-3); font-weight: 600; margin: 4px 4px 6px; }
+.mkp-ktiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+.mkp-ktile { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px; border: 0; border-radius: 15px; background: var(--fill);
+  text-align: left; font: inherit; color: var(--ink); cursor: pointer; box-shadow: inset 0 0 0 1px transparent; transition: box-shadow .2s, background .2s; }
+.mkp-ktile:hover { background: color-mix(in srgb, var(--fill) 70%, var(--line)); }
+.mkp-ktile .mk-kt { width: 36px; height: 36px; border-radius: 10px; }
+.mkp .mk-kt svg.lucide { width: 18px !important; height: 18px !important; color: #fff; }
+.mkp-ktile b { font-size: 14px; font-weight: 650; letter-spacing: -.015em; }
+.mkp-ks { font-size: 11.5px; color: var(--ink-3); line-height: 1.35; font-weight: 400; }
+.mkp-ktile.on { background: var(--surface); box-shadow: inset 0 0 0 2px var(--accent), 0 4px 14px -6px rgba(0,0,0,.2); }
+.mkp-ktile.on::after { content: ""; position: absolute; top: 10px; right: 10px; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center/12px no-repeat; }
+.mkp-rtiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+.mkp-rtile { position: relative; height: 94px; border: 0; border-radius: 14px; padding: 9px 10px; color: #fff; text-align: left; overflow: hidden; isolation: isolate; font: inherit; cursor: pointer;
+  background: radial-gradient(120% 120% at 0% 0%, var(--a), var(--b)); transition: transform .2s, box-shadow .2s; display: block; }
+.mkp-rtile .bean { position: absolute; right: -18px; bottom: -24px; width: 74px; height: 74px; opacity: .16; z-index: -1; transform: rotate(-24deg); }
+.mkp-rtile b { display: block; font-size: 14px; letter-spacing: -.015em; }
+.mkp-rtile small { display: block; font-size: 11px; opacity: .8; }
+.mkp-fs { position: absolute; left: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700;
+  background: rgba(255,255,255,.22); backdrop-filter: blur(8px); white-space: nowrap; }
+.mkp-fs::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #30d158; }
+.mkp-rtile.busy { filter: saturate(.35) brightness(.92); }
+.mkp-rtile.busy .mkp-fs { background: rgba(0,0,0,.35); }
+.mkp-rtile.busy .mkp-fs::before { background: #ff453a; }
+.mkp-rtile.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4.5px var(--b); transform: translateY(-1px); }
+.mkp-rtile.on::after { content: ""; position: absolute; top: 8px; right: 8px; width: 18px; height: 18px; border-radius: 50%;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231d1d1f' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center/11px no-repeat; }
+.mkp-kinfo { display: flex; gap: 10px; align-items: center; padding: 11px 12px; border-radius: 13px; margin-bottom: 12px; background: color-mix(in srgb, var(--a) 13%, transparent); font-size: 13px; color: var(--ink-2); }
+.mkp-kinfo .mk-kt { width: 30px; height: 30px; border-radius: 9px; }
+.mkp-pick { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-3); margin: 0 4px 10px; }
+.cal-form .mkp-where { display: grid; gap: 5px; margin-bottom: 12px; }
+.mkp-tf { display: flex; align-items: center; gap: 8px; height: 42px; border-radius: 11px; background: var(--fill); padding: 0 12px; }
+.cal-form .mkp-tf input { border: 0 !important; background: none !important; padding: 0 !important; font-size: 14.5px; font-weight: 500; }
+.cal-form .mkp-tf input:focus { outline: 0; }
+.mkp-link { border: 0; background: none; color: var(--info, #0a84ff); font: inherit; font-weight: 550; cursor: pointer; }
+.cal-form .mkp .tl-card { margin-bottom: 4px; }
+.cal-invite-pick { align-items: flex-start; }
+.cal-invite-pick > .ip { flex: 1; min-width: 0; }
+
+/* repeat check inside the form */
+.cal-rcheck { display: grid; gap: 6px; padding: 12px; border-radius: 14px; background: rgba(255,159,10,.1); box-shadow: inset 0 0 0 1px rgba(255,159,10,.35); }
+.cal-rcheck-h { display: flex; gap: 10px; align-items: center; }
+.cal-rcheck-h svg.lucide { color: #e08600; }
+.cal-rcheck-h b { display: block; font-size: 14px; color: var(--ink); }
+.cal-rcheck-h span span { display: block; font-size: 12.5px; color: var(--ink-3); }
+.cal-rcheck-row { display: flex; align-items: center; gap: 10px; justify-content: space-between; padding: 6px 2px; border-top: .5px solid var(--line); }
+.cal-rcheck-row b { display: block; font-size: 13px; color: var(--ink); }
+.cal-rcheck-row small { display: block; font-size: 12px; color: var(--ink-3); }
+@media (max-width: 640px) {
+  .mkp-ktiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mkp-rtiles { grid-template-columns: repeat(5, 116px); overflow-x: auto; }
+}

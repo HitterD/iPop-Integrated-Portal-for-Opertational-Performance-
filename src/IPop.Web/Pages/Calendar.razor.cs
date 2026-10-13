@@ -100,7 +100,7 @@ public partial class Calendar
         if (PLinks.Nik(ManageQuery) is { } mq && managed.FirstOrDefault(m => m.Nik == mq) is { } mc) managing = mc;
         await LoadAsync();
         // Now line and "Awaiting reply" drift with the clock; refresh every minute.
-        nowTimer = new System.Threading.Timer(_ => InvokeAsync(StateHasChanged), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+        nowTimer = new System.Threading.Timer(_ => InvokeAsync(() => { clockNow = DateTime.UtcNow; StateHasChanged(); }), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
         _ = ChatSvc.GroupRooms.Count == 0 ? ChatSvc.LoadRoomsAsync() : Task.CompletedTask;
         calendarSub = Auth.On(IPop.Application.Realtime.RealtimeEvents.CalendarChanged, OnCalendarChanged);
         // The first address is applied here, once the calendar is loaded; later ones in OnParametersSetAsync.
@@ -114,8 +114,40 @@ public partial class Calendar
 
     private string? lastPersonNik;
 
-    /// Online only means something with someone to meet; a private block stays a plain event.
-    private bool OnlineMeeting => form.Online && (form.People.Count > 0 || form.RoomIdText != "");
+    /// The form's times in UTC (for the kind picker's room free/busy and timeline, and the invite picker's free/busy).
+    private DateTime FormStartUtc => form.StartDate.Date.Add(form.StartTime.ToTimeSpan()).ToUniversalTime();
+    private DateTime FormEndUtc => form.EndDate.Date.Add(form.EndTime.ToTimeSpan()).ToUniversalTime();
+
+    /// The kind picker's room timeline moved the meeting.
+    private void SetFormTimes((DateTime Start, DateTime End) t)
+    {
+        var s = t.Start.ToLocalTime(); var e = t.End.ToLocalTime();
+        form.StartDate = s.Date; form.StartTime = TimeOnly.FromDateTime(s);
+        form.EndDate = e.Date; form.EndTime = TimeOnly.FromDateTime(e);
+        roomCheck = null;
+    }
+
+    /// The InvitePicker's list (kept as one instance so the picker keeps its state); mirrors form.People.
+    private List<InvitePersonDto> invitees = [];
+    private void SyncInvitees() => invitees = form.People.Select(p => new InvitePersonDto(p.Nik, p.Name, p.Department)).ToList();
+
+    private void SetInvitees(List<InvitePersonDto> list)
+    {
+        invitees = list;
+        form.People = list.Select(p => new MemberSearchRow(p.Key, p.Name, null, p.Department)).ToList();
+        fat = null;
+        if (form.People.Count > 0 && !form.AllDay) _ = InvokeAsync(async () => { await LoadFreeBusyAsync(); StateHasChanged(); });
+    }
+
+    private void SetFormKind(string kind)
+    {
+        form.Kind = kind ?? "";
+        formError = null; roomCheck = null;
+        if (form.Kind == IPop.Web.Components.Meetings.MeetingKinds.Room && form.AllDay) form.AllDay = false;
+    }
+
+    /// Clock for the meeting detail's countdown and Join window (the minute timer refreshes it).
+    private DateTime clockNow = DateTime.UtcNow;
 
     private string? lastCalendarAddress;
     private string? mobilePersonAddress;
@@ -514,7 +546,12 @@ public partial class Calendar
 
     private static string SourceLabel(string source) => Sources.FirstOrDefault(s => s.Key == source)?.Label ?? source;
 
-    private static string IconFor(FeedItem i) => i.Kind switch
+    /// Meeting items open the shared meeting detail (v3 §6); iDesk bookings keep their own panel.
+    private bool ShowsMeetingDetail => !editing && detail is { MeetingId: not null, External: null };
+
+    private bool SelectedItem(FeedItem i) => drawerOpen && detail is { } d && i.EventId == d.Id;
+
+    private static string IconFor(FeedItem i) => IPop.Web.Components.Meetings.CalendarKinds.ItemIcon(i) ?? i.Kind switch
     {
         "meeting" => i.Source == "chat" ? "message-circle" : "video",
         "task" => "circle-check",
@@ -659,7 +696,9 @@ public partial class Calendar
         public TimeOnly StartTime { get; set; } = new(9, 0);
         public DateTime EndDate { get; set; } = DateTime.Today;
         public TimeOnly EndTime { get; set; } = new(10, 0);
-        public bool Online { get; set; } = true;
+        /// "" = Event, voice, room, inperson (v3 kind tiles).
+        public string Kind { get; set; } = "";
+        public string? RoomKey { get; set; }
         public string? Location { get; set; }
         public string? Link { get; set; }
         public string? Notes { get; set; }
@@ -687,8 +726,9 @@ public partial class Calendar
             Reminder = allDay ? 0 : 15,
             Visibility = DefaultFormVisibility,
         };
-        fat = null; prefillSource = null;
+        fat = null; prefillSource = null; roomCheck = null;
         ResetRepeat();
+        SyncInvitees();
         if (form.EndDate > form.StartDate && !allDay) { form.EndDate = form.StartDate; form.EndTime = new TimeOnly(23, 59); }
         detail = null; formError = null;
         CancelDrawerExit();
@@ -704,16 +744,19 @@ public partial class Calendar
         {
             Id = detail.Id, MeetingId = detail.MeetingId, Title = detail.Title, AllDay = detail.AllDay,
             StartDate = s.Date, StartTime = TimeOnly.FromDateTime(s), EndDate = e.Date < s.Date ? s.Date : e.Date, EndTime = TimeOnly.FromDateTime(e),
-            Online = CallsSchedule.IsOnline(detail.Location),
-            Location = CallsSchedule.IsOnline(detail.Location) ? null : detail.Location, Link = detail.Link, Notes = detail.Notes, Reminder = detail.ReminderMinutes ?? 0,
+            Location = CallsSchedule.IsOnline(detail.Location) || IPop.Application.Hall.HallBooking.RoomKey(detail.Location) is not null ? null : detail.Location,
+            Link = detail.Link, Notes = detail.Notes, Reminder = detail.ReminderMinutes ?? 0,
             RoomIdText = detail.RoomId?.ToString() ?? "",
             People = detail.Attendees.Where(a => a.Nik != (detail.OwnerNik ?? Auth.Me?.Nik)).Select(a => new MemberSearchRow(a.Nik, a.Name, null, null)).ToList(),
             Visibility = detail.Visibility == "private" ? "private" : "busy",
         };
+        (form.Kind, form.RoomKey) = IPop.Web.Components.Meetings.CalendarKinds.FormKind(detail.MeetingKind, detail.RoomKey, detail.Location,
+            detail.Attendees.Count > 0, isMeeting: detail.MeetingId is not null);
         formError = null;
         editing = true;
-        fat = null; prefillSource = null;
+        fat = null; prefillSource = null; roomCheck = null;
         ResetRepeat(detail.Recurrence);
+        SyncInvitees();
         if (form.People.Count > 0 && !form.AllDay) _ = InvokeAsync(async () => { await LoadFreeBusyAsync(); StateHasChanged(); });
     }
 
@@ -727,6 +770,7 @@ public partial class Calendar
     {
         if (row.Nik == Auth.Me?.Nik || form.People.Any(p => p.Nik == row.Nik)) return;
         form.People.Add(row);
+        SyncInvitees();
         fat = null;
         if (!form.AllDay) _ = InvokeAsync(async () => { await LoadFreeBusyAsync(); StateHasChanged(); });
     }
@@ -734,6 +778,7 @@ public partial class Calendar
     private void RemovePerson(MemberSearchRow row)
     {
         form.People.Remove(row);
+        SyncInvitees();
         fat = null;
         if (form.People.Count > 0 && !form.AllDay) _ = InvokeAsync(async () => { await LoadFreeBusyAsync(); StateHasChanged(); });
     }
@@ -763,11 +808,24 @@ public partial class Calendar
             end = form.EndDate.Date.Add(form.EndTime.ToTimeSpan()).ToUniversalTime();
         }
         if (end <= start) { formError = "End must be after start."; return; }
+        if (IPop.Web.Components.Meetings.CalendarKinds.Validate(form.Kind, form.RoomKey, form.Location) is { } kindError) { formError = kindError; return; }
+        var (place, placeLink, kind) = IPop.Web.Components.Meetings.CalendarKinds.SavePlace(form.Kind, form.RoomKey, form.Location, form.Link);
+        // A new repeating room booking checks every date first (v3 §3): clashes are skipped or moved before saving.
+        List<object>? overrides = null;
+        if (form.Id is null && kind == IPop.Web.Components.Meetings.MeetingKinds.Room && RepeatRule is { } rule)
+        {
+            if (roomCheck is null || roomCheckKey != $"{form.RoomKey}|{start:o}|{end:o}|{rule}")
+            {
+                await CheckRoomSeriesAsync(start, end, rule);
+                if (roomCheck is { Booked: > 0 }) return;    // the form now shows the clashes; Save again books
+            }
+            overrides = RoomOverrides();
+        }
         Guid? roomId = Guid.TryParse(form.RoomIdText, out var rid) ? rid : null;
         var body = new
         {
             title = form.Title, startAt = start, endAt = end, allDay = form.AllDay,
-            location = OnlineMeeting ? CallsSchedule.OnlineLocation : form.Location, link = OnlineMeeting ? null : form.Link, notes = form.Notes,
+            location = place, link = placeLink, notes = form.Notes, kind,
             reminderMinutes = form.Reminder > 0 ? form.Reminder : (int?)null,
             roomId, visibility = form.Visibility,
             // Managing someone's calendar: a new event belongs to them (the API records me as "on behalf").
@@ -776,6 +834,7 @@ public partial class Calendar
             attendeeNiks = roomId is null && (form.MeetingId is not null || form.People.Count > 0) ? form.People.Select(p => p.Nik).ToList() : null,
             // New events only: a series is created once; later edits change it through the scope question.
             recurrence = form.Id is null ? RepeatRule : null,
+            overrides,
         };
         var scope = "this";
         if (form.Id is not null && InSeries)
@@ -795,6 +854,7 @@ public partial class Calendar
                 formError = await ErrorAsync(res);
                 return;
             }
+            roomCheck = null;
             var saved = await res.Content.ReadFromJsonAsync<EventDetail>();
             var repeats = form.Id is null && RepeatRule is not null;
             Toasts.Show(form.Id is null
