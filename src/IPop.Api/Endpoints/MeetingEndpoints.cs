@@ -364,11 +364,16 @@ public static class MeetingEndpoints
 
     /// v3 room booking limits (<see cref="RoomBookingRules.Validate"/>) in <paramref name="userId"/>'s time zone; null = allowed.
     /// <paramref name="nowUtc"/>: when the booking is made (tests seeding a booking that is already running); default now.
-    public static async Task<string?> RoomRangeAsync(IPopDbContext db, Guid userId, DateTime startUtc, DateTime endUtc, bool allowPastStart,
-        CancellationToken ct, DateTime? nowUtc = null)
+    /// <paramref name="seriesFirstUtc"/>: a later date of a series is within 60 days when the series' first date is.
+    public static async Task<string?> RoomRangeAsync(IPopDbContext db, Guid userId, DateTime startUtc, DateTime endUtc, bool keepsStart,
+        CancellationToken ct, DateTime? nowUtc = null, DateTime? seriesFirstUtc = null)
     {
         var tz = RoomBookingRules.ResolveZone(await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.TimeZoneId).FirstOrDefaultAsync(ct));
-        return RoomBookingRules.Validate(startUtc, endUtc, nowUtc ?? DateTime.UtcNow, tz, allowPastStart);
+        var now = nowUtc ?? DateTime.UtcNow;
+        var bad = RoomBookingRules.Validate(startUtc, endUtc, now, tz, keepsStart);
+        if (bad == RoomBookingRules.TooFar && seriesFirstUtc is { } first)
+            bad = RoomBookingRules.Validate(first, first + (endUtc - startUtc), now, tz);
+        return bad;
     }
 
     /// The one kind rule for every meeting write (v3 §1). <paramref name="kind"/> null = infer from the place.
@@ -657,7 +662,7 @@ public static class MeetingEndpoints
     /// "Extend 15 min" keeps them (and so keeps a decline a decline — declined people stay out of the room).
     public static async Task<(UpdateResult Result, IReadOnlyList<Guid> Added, IReadOnlyList<Guid> Others)> ApplyUpdateAsync(
         IPopDbContext db, Guid meetingId, Guid userId, UpdateMeetingRequest req, CancellationToken ct, bool keepAnswers = false,
-        CalendarEndpoints.SaveIssue? issue = null)
+        CalendarEndpoints.SaveIssue? issue = null, DateTime? seriesFirstUtc = null)
     {
         var m = await db.Meetings.Include(x => x.Attendees).FirstOrDefaultAsync(x => x.Id == meetingId, ct);
         if (m is null) return (UpdateResult.NotFound, [], []);
@@ -671,9 +676,13 @@ public static class MeetingEndpoints
             string.IsNullOrWhiteSpace(req.Link) ? null : req.Link.Trim(), hasAttendees: true);
         if (kindResult == KindResult.InvalidKind) return (UpdateResult.InvalidKind, [], []);
         if (kindResult == KindResult.RoomRequired) return (UpdateResult.RoomRequired, [], []);
-        // A booking that already started may keep its start (title edits, Extend 15 min); a new start must not be in the past.
+        // An edit that keeps the start in the same room (title edits, Extend 15 min, a far date of a series) only checks length
+        // and same day;
+        // a new start must not be in the past nor more than 60 days ahead.
         if (kind == MeetingKind.Room
-            && await RoomRangeAsync(db, userId, AsUtc(req.StartAt), AsUtc(req.EndAt), AsUtc(req.StartAt) == m.StartAt, ct) is { } bad)
+            && await RoomRangeAsync(db, userId, AsUtc(req.StartAt), AsUtc(req.EndAt),
+                AsUtc(req.StartAt) == m.StartAt && IPop.Application.Hall.HallBooking.Normalize(m.Location) == location, ct,
+                seriesFirstUtc: seriesFirstUtc) is { } bad)
         {
             if (issue is not null) issue.Reason = bad;
             return (UpdateResult.InvalidRoomRange, [], []);

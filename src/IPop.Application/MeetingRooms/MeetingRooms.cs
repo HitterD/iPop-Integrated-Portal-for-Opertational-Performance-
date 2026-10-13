@@ -158,9 +158,10 @@ public static class RoomBookingRules
 
     /// Null when a room booking [start, end) is allowed at <paramref name="nowUtc"/>, else one of the codes above (checked in
     /// that order). Same local day: an end at exactly the next local midnight still counts as the same day. Start not in the
-    /// past = not before this minute (Use now starts at the floored minute). <paramref name="allowPastStart"/>: an edit that
-    /// keeps a booking which already started (only the other rules apply).
-    public static string? Validate(DateTime startUtc, DateTime endUtc, DateTime nowUtc, TimeZoneInfo tz, bool allowPastStart = false)
+    /// past = not before this minute (Use now starts at the floored minute). <paramref name="keepsStart"/>: an edit that keeps
+    /// the booking's existing start (it may have started already, or lie beyond 60 days in a series): only the length and
+    /// same-day rules apply.
+    public static string? Validate(DateTime startUtc, DateTime endUtc, DateTime nowUtc, TimeZoneInfo tz, bool keepsStart = false)
     {
         var length = endUtc - startUtc;
         if (length < TimeSpan.FromMinutes(MinMinutes)) return TooShort;
@@ -170,7 +171,8 @@ public static class RoomBookingRules
         if (e.Date != s.Date && e != s.Date.AddDays(1)) return DifferentDay;
         var now = Utc(nowUtc);
         var minute = new DateTime(now.Ticks - now.Ticks % TimeSpan.TicksPerMinute, DateTimeKind.Utc);
-        if (!allowPastStart && Utc(startUtc) < minute) return InPast;
+        if (keepsStart) return null;
+        if (Utc(startUtc) < minute) return InPast;
         if (DateOnly.FromDateTime(s) > DateOnly.FromDateTime(Local(now, tz)).AddDays(MaxDaysAhead)) return TooFar;
         return null;
     }

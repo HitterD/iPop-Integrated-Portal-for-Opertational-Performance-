@@ -49,6 +49,10 @@ public static partial class CalendarEndpoints
             return Results.Ok(new { eventId = d.Id, startAt = d.StartAt });
         });
 
+        // POST /api/calendar/series/preview — each date of a repeating room booking: free, or booked by (title or "Booked").
+        g.MapPost("/series/preview", (SeriesPreviewRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+            PreviewAsync(req, http, db, ct));
+
         g.MapPost("/events", async (SaveEventRequest req, HttpContext http, IPopDbContext db,
             INotificationGatewayService? notifs, IRealtime realtime, CancellationToken ct) =>
         {
@@ -190,8 +194,9 @@ public static partial class CalendarEndpoints
 
     // ── Event CRUD ────────────────────────────────────────────────────────────
 
+    /// NothingToSave: a series whose overrides skip every date.
     public enum SaveResult { Ok, NotFound, Forbidden, InvalidTitle, InvalidRange, NotRoomMember, Cancelled, External, RoomBooked, InvalidKind, RoomRequired,
-        InvalidRoomRange }
+        InvalidRoomRange, NothingToSave }
 
     /// Details of a refused save for the HTTP answer. Reason: the RoomBookingRules code of InvalidRoomRange.
     /// Date: the local date of the occurrence that failed in a series (room_booked / invalid_range).
@@ -225,6 +230,7 @@ public static partial class CalendarEndpoints
         SaveResult.Cancelled => Results.Json(new { code = "cancelled", message = "This meeting was cancelled." }, statusCode: 409),
         SaveResult.External => Results.Json(new { code = "external", message = "This was booked in iDesk. Change or cancel it there." }, statusCode: 409),
         SaveResult.RoomBooked => Results.Json(new { code = "room_booked", message = "That meeting room is already booked at this time." }, statusCode: 409),
+        SaveResult.NothingToSave => Results.Json(new { code = "nothing_to_save", message = "Every date is skipped. Keep at least one." }, statusCode: 400),
         SaveResult.InvalidKind => MeetingEndpoints.KindError(MeetingEndpoints.KindResult.InvalidKind),
         SaveResult.RoomRequired => MeetingEndpoints.KindError(MeetingEndpoints.KindResult.RoomRequired),
         _ => Results.StatusCode(500),
@@ -288,7 +294,7 @@ public static partial class CalendarEndpoints
     /// linked to the organizer's calendar row. Returns the users newly invited.
     /// <paramref name="actedBy"/> = a delegate creating it on <paramref name="userId"/>'s behalf.
     public static async Task<(SaveResult, CalendarEvent?, IReadOnlyList<Guid>)> CreateEventAsync(IPopDbContext db, Guid userId, SaveEventRequest req, CancellationToken ct,
-        Guid? actedBy = null, SaveIssue? issue = null)
+        Guid? actedBy = null, SaveIssue? issue = null, DateTime? limitsFrom = null)
     {
         var (r, title, start, end) = Normalize(req);
         if (r != SaveResult.Ok) return (r, null, []);
@@ -296,7 +302,8 @@ public static partial class CalendarEndpoints
         // SJA Hall meeting rooms ("SJA Hall - Toraja" style locations) are booked once at a time, and a booking is always a meeting
         // (with or without invitees) so the Meeting Rooms card and "Join room" can see it.
         var hallRoom = req.Kind != MeetingKind.Voice && IPop.Application.Hall.HallBooking.RoomKey(req.Location) is not null;
-        if (hallRoom && await MeetingEndpoints.RoomRangeAsync(db, userId, start, end, false, ct) is { } bad)
+        // limitsFrom: a later date of a series is checked as if booked on its first date (60 days count from the first date).
+        if (hallRoom && await MeetingEndpoints.RoomRangeAsync(db, userId, start, end, false, ct, seriesFirstUtc: limitsFrom) is { } bad)
         {
             if (issue is not null) issue.Reason = bad;
             return (SaveResult.InvalidRoomRange, null, []);
@@ -343,7 +350,7 @@ public static partial class CalendarEndpoints
 
     /// <paramref name="actedBy"/> = a delegate editing on <paramref name="userId"/>'s behalf.
     public static async Task<(SaveResult, CalendarEvent?, IReadOnlyList<Guid>)> UpdateEventAsync(IPopDbContext db, Guid id, Guid userId, SaveEventRequest req, CancellationToken ct,
-        Guid? actedBy = null, SaveIssue? issue = null)
+        Guid? actedBy = null, SaveIssue? issue = null, DateTime? seriesFirstUtc = null)
     {
         var ev = await db.CalendarEvents.FirstOrDefaultAsync(e => e.Id == id, ct);
         if (ev is null) return (SaveResult.NotFound, null, []);
@@ -368,7 +375,7 @@ public static partial class CalendarEndpoints
             }
             // No kind in the form = the place decides (MeetingKind.Infer), as for every other meeting write.
             var upd = new MeetingEndpoints.UpdateMeetingRequest(title, start, end, req.Location, req.Link, req.Notes, niks, req.ReminderMinutes ?? 0, req.Kind);
-            var (res, added, _) = await MeetingEndpoints.ApplyUpdateAsync(db, meetingId, userId, upd, ct, issue: issue);
+            var (res, added, _) = await MeetingEndpoints.ApplyUpdateAsync(db, meetingId, userId, upd, ct, issue: issue, seriesFirstUtc: seriesFirstUtc);
             if (res == MeetingEndpoints.UpdateResult.RoomBooked) return (SaveResult.RoomBooked, null, []);
             if (res == MeetingEndpoints.UpdateResult.InvalidRoomRange) return (SaveResult.InvalidRoomRange, null, []);
             if (res == MeetingEndpoints.UpdateResult.InvalidKind) return (SaveResult.InvalidKind, null, []);
@@ -383,7 +390,7 @@ public static partial class CalendarEndpoints
         else
         {
             var hallRoom = req.Kind != MeetingKind.Voice && IPop.Application.Hall.HallBooking.RoomKey(req.Location) is not null;
-            if (hallRoom && await MeetingEndpoints.RoomRangeAsync(db, userId, start, end, false, ct) is { } bad)
+            if (hallRoom && await MeetingEndpoints.RoomRangeAsync(db, userId, start, end, false, ct, seriesFirstUtc: seriesFirstUtc) is { } bad)
             {
                 if (issue is not null) issue.Reason = bad;
                 return (SaveResult.InvalidRoomRange, null, []);
@@ -573,10 +580,20 @@ public static partial class CalendarEndpoints
     public record SaveEventRequest(string? Title, DateTime StartAt, DateTime EndAt, bool AllDay = false, string? Location = null,
         string? Link = null, string? Notes = null, int? ReminderMinutes = null, IReadOnlyList<Guid>? AttendeeIds = null,
         Guid? RoomId = null, string? Type = null, IReadOnlyList<string>? AttendeeNiks = null, string? Visibility = null,
-        string? OwnerNik = null, string? Recurrence = null, string? Kind = null)
+        string? OwnerNik = null, string? Recurrence = null, string? Kind = null, IReadOnlyList<OccurrenceOverride>? Overrides = null)
     {
         public bool HasAttendees => AttendeeIds is { Count: > 0 } || AttendeeNiks is { Count: > 0 };
     }
+    /// v3 §3, per date of a new series (the occurrence's local date): Skip = do not create it; RoomKey = book that date in this
+    /// hall room instead (same time, title, people). Dates not in the series are ignored.
+    public record OccurrenceOverride(DateOnly Date, bool Skip, string? RoomKey = null);
+    /// POST /api/calendar/series/preview. ExceptSeriesId: the series being edited does not count as a clash.
+    public record SeriesPreviewRequest(string RoomKey, DateTime StartAt, DateTime EndAt, string Recurrence, Guid? ExceptSeriesId = null);
+    /// One date of a previewed room series. BookedBy: null when free, else the clashing booking's title for the caller or
+    /// "Booked". Reason: null (free) | "booked". FreeRooms: keys of the other rooms free at that time.
+    public record SeriesOccurrenceDto(DateOnly Date, DateTime StartAt, DateTime EndAt, bool Free, string? BookedBy, IReadOnlyList<string> FreeRooms,
+        string? Reason = null);
+    public record SeriesPreviewDto(int Total, int Booked, IReadOnlyList<SeriesOccurrenceDto> Occurrences);
     /// RespondedBy = the delegate who answered on this person's behalf.
     public record CalendarPersonDto(Guid UserId, string Nik, string Name, string Rsvp, string? RespondedBy = null);
     public record CalendarEventDetailDto(Guid Id, string Title, DateTime StartAt, DateTime EndAt, bool AllDay, string? Location,
