@@ -151,6 +151,28 @@ public class PhoneSchedulingTests
         Assert.DoesNotContain("m-detail", cut.Find(".calls-v6").ClassList);
     }
 
+    /// v3 gaps: Schedule → Voice call opens the short voice form on the Calls page instead of leaving for Calendar.
+    [Fact]
+    public void Schedule_Voice_call_opens_the_short_form_and_saving_reloads_Scheduled()
+    {
+        var api = new CallsApi();
+        using var ctx = CallsContext(api, phone: false);
+        var cut = Page(ctx);
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find(".sch-btn")));
+        cut.Find(".sch-btn").Click();
+        cut.FindAll(".sch-opt")[0].Click();
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("section.vc-sheet")));
+        var nav = ctx.Services.GetRequiredService<NavigationManager>();
+        Assert.Contains("/calls", nav.Uri);
+        Assert.Empty(cut.FindAll(".sch-menu"));
+        var before = api.UpcomingGets;
+        cut.Find("input.vc-name").Input("Budget");
+        cut.Find(".vc-go").Click();
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("section.vc-sheet")));
+        Assert.True(api.UpcomingGets > before);
+        Assert.Equal("voice", JsonDocument.Parse(api.Posts.Single()).RootElement.GetProperty("kind").GetString());
+    }
+
     // ---------------------------------------------------------------- fixture
 
     private static BunitContext CallsContext(CallsApi api, bool phone)
@@ -198,10 +220,25 @@ public class PhoneSchedulingTests
     {
         public List<MeetingInfo> Upcoming { get; set; } = [];
         public (Guid MeetingId, Guid EventId, DateTime Start)? EventRef { get; set; }
+        public int UpcomingGets;
+        public List<string> Posts { get; } = [];
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             var path = request.RequestUri!.AbsolutePath;
+            if (request.Method == HttpMethod.Post && path == "/api/calendar/events")
+            {
+                var body = await request.Content!.ReadAsStringAsync(ct);
+                lock (Posts) Posts.Add(body);
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}", Encoding.UTF8, "application/json") };
+            }
+            return await Answer(request);
+        }
+
+        private Task<HttpResponseMessage> Answer(HttpRequestMessage request)
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (request.Method == HttpMethod.Get && path == "/api/meetings/upcoming") Interlocked.Increment(ref UpcomingGets);
             if (request.Method == HttpMethod.Get && path == "/api/meetings/upcoming")
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                 { Content = new StringContent(JsonSerializer.Serialize(Upcoming, Web), Encoding.UTF8, "application/json") });

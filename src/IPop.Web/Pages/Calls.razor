@@ -49,10 +49,14 @@
         <button type="button" class="btn-primary" @onclick="FocusCallPicker"><i data-lucide="phone"></i>New call</button>
     </div>
 
-    @* Schedule → Voice call opens the Calendar form on the voice kind; Meeting room opens the booking sheet (v3 §5). *@
+    @* Schedule → Voice call opens the short voice form; Meeting room opens the booking sheet (v3 §5). *@
     @if (bookingRoom is { } bk)
     {
         <BookingSheet RoomKey="@bk" Mode="@BookingSheet.ModeBook" OnClose="() => bookingRoom = null" OnBooked="BookedAsync" OnJoin="BookedNow" />
+    }
+    @if (voiceSheet)
+    {
+        <VoiceCallSheet OnClose="() => voiceSheet = false" OnSaved="VoiceSavedAsync" />
     }
 
     @if (CallSvc.NeedsHttps)
@@ -697,11 +701,20 @@
     /// Editing and the full form open the one Calendar meeting form.
     private void OpenSchedule() => Nav.NavigateTo(CalLinks.NewMeeting(from: "From Calls"));
 
-    /// Schedule → Voice call: the Calendar form on the voice kind (audio-only meeting, Join call for everyone).
+    /// Schedule → Voice call: the short voice form (title, date, times, people); "More options…" there opens the full
+    /// Calendar form on the voice kind.
+    private bool voiceSheet;
     private void ScheduleVoice()
     {
         scheduleMenu = false;
-        Nav.NavigateTo(CalLinks.NewMeeting(from: "From Calls", kind: "voice"));
+        voiceSheet = true;
+    }
+
+    private async Task VoiceSavedAsync()
+    {
+        voiceSheet = false;
+        await LoadMeetings();
+        StateHasChanged();
     }
 
     /// Schedule → Meeting room: the booking sheet on the first room free in the next hour (switchable inside the sheet).

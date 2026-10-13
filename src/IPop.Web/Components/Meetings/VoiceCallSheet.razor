@@ -1,0 +1,178 @@
+@* Meeting scheduling v3 §5 (spec: "Schedule → Voice call (short form)"): title, date, start–end and participants in the
+   booking sheet's look (voice indigo), saved as a kind=voice meeting; "More options…" opens the full Calendar form with the
+   same values (people in memory, never in the address). *@
+@namespace IPop.Web.Components.Meetings
+@implements IDisposable
+@using System.Globalization
+@using System.Net.Http.Json
+@using System.Text.Json
+@using IPop.Web.Pages
+@inject AuthState Auth
+@inject NavigationManager Nav
+@inject MeetingDraftHandoff Handoff
+@inject ToastService Toasts
+@inject IJSRuntime JS
+
+<div class="@($"sheet2-scrim {(phone ? "bottom" : "")}")" @onclick="CloseAsync">
+    <section class="@($"sheet2 vc-sheet k-voice {(phone ? "bottom" : "")}")" role="dialog" aria-modal="true" aria-labelledby="vc-title" @onclick:stopPropagation="true" @onkeydown="KeyAsync">
+        @if (phone) { <div class="sh-grab" aria-hidden="true"></div> }
+        <div class="sh-h">
+            <span class="sw"><i data-lucide="headphones"></i></span>
+            <span><b id="vc-title">Schedule a voice call</b><small>Audio only · join from anywhere, PC or phone</small></span>
+            <button type="button" class="x" title="Close" aria-label="Close" @onclick="CloseAsync"><i data-lucide="x"></i></button>
+        </div>
+        <div class="sh-b">
+            <label class="fl"><span>Title</span><input class="tf vc-name" maxlength="200" placeholder="What is the call about?" @bind="title" @bind:event="oninput" @ref="titleRef" /></label>
+            <div class="when">
+                <div class="fl"><span>Date</span><AppDatePicker TValue="DateTime" Value="date" ValueChanged="SetDate" Min="TodayLocal" Pill="true" TodayDate="DateOnly.FromDateTime(TodayLocal)" AriaLabel="Date" Class="vc-date" /></div>
+                <div class="fl"><span>Start</span><AppTimePicker TValue="TimeOnly" Value="startTime" ValueChanged="SetStart" Pill="true" IsTimeDisabled="StartDisabled" AriaLabel="Start" Class="vc-start" /></div>
+                <span class="bs-dash">–</span>
+                <div class="fl"><span>End</span><AppTimePicker TValue="TimeOnly" Value="EndTime" ValueChanged="SetEnd" Pill="true" IsTimeDisabled="EndDisabled" AriaLabel="End" Class="vc-end" /></div>
+                <span class="durt">@MeetingKinds.Duration(length)</span>
+            </div>
+            <div class="ig">
+                <div class="ir"><span class="tile t-blue"><i data-lucide="user-plus"></i></span><span class="t"><b>Participants</b>
+                    <InvitePicker Selected="people" SelectedChanged="v => people = v" From="StartUtc" To="EndUtc" Zone="Zone" /></span></div>
+            </div>
+            <p class="note-s"><i data-lucide="headphones"></i><span>Everyone gets a <b>Join call</b> button in the invite and the reminder.</span></p>
+            @if (error is not null) { <p class="bs-err" role="alert">@error</p> }
+        </div>
+        <div class="sh-f">
+            @if (!phone) { <button type="button" class="link vc-more" @onclick="MoreOptions">More options…</button><span class="spacer"></span> }
+            <button type="button" class="btn gray vc-cancel" @onclick="CloseAsync">Cancel</button>
+            <button type="button" class="btn filled vc-go" disabled="@(!CanSave)" @onclick="SaveAsync">@(busy ? "Scheduling…" : "Schedule")</button>
+        </div>
+    </section>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
+    /// Clock and zone for tests.
+    [Parameter] public DateTime? Now { get; set; }
+    [Parameter] public TimeZoneInfo? Zone { get; set; }
+
+    private static readonly CultureInfo En = CultureInfo.InvariantCulture;
+    internal const int DefaultMinutes = 30, ReminderMinutes = 10;
+
+    private string title = "";
+    private DateTime date;              // local date
+    private TimeOnly startTime;
+    private TimeSpan length = TimeSpan.FromMinutes(DefaultMinutes);
+    private List<InvitePersonDto> people = [];
+    private string? error;
+    private bool busy, phone, disposed, focusTitle = true;
+    private ElementReference titleRef;
+
+    private TimeZoneInfo Tz => Zone ?? TimeZoneInfo.Local;
+    private DateTime NowUtc => MeetingKinds.Utc(Now ?? DateTime.UtcNow);
+    private DateTime NowLocal => TimeZoneInfo.ConvertTimeFromUtc(NowUtc, Tz);
+    private DateTime TodayLocal => NowLocal.Date;
+    private DateTime ToUtc(DateTime local) => TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), Tz);
+    private DateTime StartLocal => date + startTime.ToTimeSpan();
+    private DateTime EndLocal => StartLocal + length;
+    private DateTime StartUtc => ToUtc(StartLocal);
+    private DateTime EndUtc => ToUtc(EndLocal);
+    private TimeOnly EndTime => TimeOnly.FromDateTime(EndLocal);
+    private bool CanSave => !busy && !string.IsNullOrWhiteSpace(title) && length > TimeSpan.Zero && !StartDisabled(startTime);
+
+    protected override async Task OnInitializedAsync()
+    {
+        // The next quarter hour, 30 minutes long (the "QA v3 voice" default users expect from Calls).
+        var n = NowLocal;
+        var q = new DateTime(n.Year, n.Month, n.Day, n.Hour, 0, 0).AddMinutes((n.Minute / 15 + 1) * 15);
+        date = q.Date; startTime = TimeOnly.FromDateTime(q);
+        try { phone = await JS.InvokeAsync<bool>("ipop.mobile.isMobile"); }
+        catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException or JSDisconnectedException) { phone = false; }
+    }
+
+    internal bool StartDisabled(TimeOnly t) => date == TodayLocal && date + t.ToTimeSpan() < new DateTime(NowLocal.Year, NowLocal.Month, NowLocal.Day, NowLocal.Hour, NowLocal.Minute, 0);
+
+    /// An end after the start, on the start's day (00:00 = midnight of it).
+    internal bool EndDisabled(TimeOnly t)
+    {
+        var e = t == TimeOnly.MinValue ? date.AddDays(1) : date + t.ToTimeSpan();
+        return e <= StartLocal;
+    }
+
+    private void SetDate(DateTime d) { date = d.Date; error = null; }
+    private void SetStart(TimeOnly t) { if (!StartDisabled(t)) { startTime = t; error = null; } }
+
+    private void SetEnd(TimeOnly t)
+    {
+        if (EndDisabled(t)) return;
+        var e = t == TimeOnly.MinValue ? date.AddDays(1) : date + t.ToTimeSpan();
+        length = e - StartLocal; error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!CanSave) return;
+        busy = true; error = null;
+        try
+        {
+            var body = new
+            {
+                title = title.Trim(), startAt = StartUtc, endAt = EndUtc, allDay = false,
+                location = CallsSchedule.OnlineLocation, kind = MeetingKinds.Voice,
+                attendeeNiks = people.Select(p => p.Key).ToList(), reminderMinutes = ReminderMinutes, visibility = "busy",
+            };
+            HttpResponseMessage? res;
+            try { res = await Auth.SendAsync(HttpMethod.Post, "/api/calendar/events", body); }
+            catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { res = null; }
+            using (res)
+            {
+                if (res is null) { error = "The call couldn't be scheduled right now. Try again."; return; }
+                if (!res.IsSuccessStatusCode) { error = await MessageAsync(res) ?? "The call couldn't be scheduled right now. Try again."; return; }
+            }
+            var when = date == TodayLocal ? "today" : date == TodayLocal.AddDays(1) ? "tomorrow" : "on " + date.ToString("ddd d MMM", En);
+            Toasts.Show($"Voice call scheduled {when}, {StartLocal:HH\\:mm}–{EndLocal:HH\\:mm}.", ToastKind.Success);
+            await OnSaved.InvokeAsync();
+        }
+        finally
+        {
+            busy = false;
+            if (!disposed) StateHasChanged();
+        }
+    }
+
+    private static async Task<string?> MessageAsync(HttpResponseMessage res)
+    {
+        try
+        {
+            var e = await res.Content.ReadFromJsonAsync<JsonElement>();
+            return e.ValueKind == JsonValueKind.Object && e.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString() : null;
+        }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or HttpRequestException) { return null; }
+    }
+
+    /// The full Calendar form on the voice kind, prefilled. People go through MeetingDraftHandoff, never the address.
+    internal void MoreOptions()
+    {
+        Handoff.Set(people);
+        var q = new List<string>
+        {
+            "new=1", "kind=voice",
+            "start=" + Uri.EscapeDataString(StartUtc.ToString("o", En)),
+            "end=" + Uri.EscapeDataString(EndUtc.ToString("o", En)),
+            "from=" + Uri.EscapeDataString("From Calls"),
+        };
+        if (!string.IsNullOrWhiteSpace(title)) q.Add("title=" + Uri.EscapeDataString(title.Trim()));
+        Nav.NavigateTo("/calendar?" + string.Join('&', q));
+    }
+
+    private Task CloseAsync() => busy ? Task.CompletedTask : OnClose.InvokeAsync();
+    private Task KeyAsync(KeyboardEventArgs e) => e.Key == "Escape" ? CloseAsync() : Task.CompletedTask;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("ipop.icons");
+            if (focusTitle && !phone) { focusTitle = false; await titleRef.FocusAsync(); }
+        }
+        catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException or JSDisconnectedException) { }
+    }
+
+    public void Dispose() => disposed = true;
+}
