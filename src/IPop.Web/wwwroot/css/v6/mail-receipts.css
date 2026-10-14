@@ -62,6 +62,9 @@ button.mrr-seen:hover { background: var(--mrr-fill); }
 .mrr-tick .lucide { width: 14px; height: 14px; }
 .mrr-tick.all { color: var(--mrr-green); }
 
+/* Quick reply · Reply · Reply all · Forward: wrap on a phone instead of running past the card edge. */
+.mail-page .thr-acts { flex-wrap: wrap; }
+
 /* the open message's header sits above the body: receipts row in the thread aligns with the name */
 .mail-page .thr-msg > .mrr { margin: 0 14px 6px 50px; }
 /* popovers must escape the card clip of an open thread item */
