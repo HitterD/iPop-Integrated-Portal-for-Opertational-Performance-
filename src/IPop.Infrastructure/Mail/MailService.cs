@@ -480,7 +480,9 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         // Typed people first; group members are summarised by their group chip.
         var visibleRecipients = await visible
             .Where(r => !r.ViaGroup || r.UserId == userId || r.RecipientType == "from")
-            .OrderBy(r => r.RecipientType == "to" ? 0 : r.RecipientType == "cc" ? 1 : r.RecipientType == "bcc" ? 2 : 3)
+            // The reader always makes the cut, so a mass-mail recipient past the first 50 still reads "you and N others".
+            .OrderBy(r => r.UserId == userId && r.RecipientType != "from" ? 0 : 1)
+            .ThenBy(r => r.RecipientType == "to" ? 0 : r.RecipientType == "cc" ? 1 : r.RecipientType == "bcc" ? 2 : 3)
             .ThenBy(r => r.CreatedAt)
             .Take(MailLimits.DetailRecipients + 1)
             .Include(r => r.User)
@@ -511,7 +513,8 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
             recipient.IsStarred, recipient.IsRead, recipient.Folder,
             mail.PdfExportRequestedBy, mail.PdfExportRequestedAt,
             visibleRecipients
-                .OrderBy(r => r.RecipientType == "to" ? 0 : r.RecipientType == "cc" ? 1 : r.RecipientType == "bcc" ? 2 : 3)
+                .OrderBy(r => r.UserId == userId && r.RecipientType != "from" ? 0 : 1)
+                .ThenBy(r => r.RecipientType == "to" ? 0 : r.RecipientType == "cc" ? 1 : r.RecipientType == "bcc" ? 2 : 3)
                 // The author reopening a draft needs every typed recipient back in the composer.
                 .Take(draftState is not null ? int.MaxValue : MailLimits.DetailRecipients)
                 .Select(r => new MailRecipientDto(r.UserId, r.User.Name, r.User.Nik, r.User.Email, r.RecipientType))
