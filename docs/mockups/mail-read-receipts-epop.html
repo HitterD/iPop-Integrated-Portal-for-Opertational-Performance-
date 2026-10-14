@@ -1,0 +1,821 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>iPop · Mail — Read receipts, recipients &amp; EPop archive layout (Apple style)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+/* ============================================================
+   Tokens — same as meeting-scheduling-v3.html
+   ============================================================ */
+:root{
+  --frame:#123528; --frame-2:#1b4635; --frame-ink:#e9f1ec; --frame-ink-2:#9fb9ab; --frame-line:rgba(255,255,255,.09);
+  --content:#f5f5f7; --card:#ffffff; --fill:rgba(118,118,128,.12); --fill-2:rgba(118,118,128,.08);
+  --sep:rgba(60,60,67,.14); --ink:#1d1d1f; --ink-2:#424245; --ink-3:#6e6e73; --ink-4:#aeaeb2;
+  --green:#2e9e5b; --green-soft:rgba(46,158,91,.12); --sel:#F0F9F3; --red:#ff3b30; --blue:#0a84ff; --orange:#ff9f0a;
+  --glass:rgba(255,255,255,.72); --pop:0 24px 60px -18px rgba(0,0,0,.35), 0 0 0 .5px rgba(0,0,0,.08);
+  --ease:cubic-bezier(.32,.72,0,1);
+  --mail-green:#3a7d1f;
+}
+.dark{
+  --frame:#0a1f17; --frame-2:#143326; --content:#000; --card:#1c1c1e; --fill:rgba(118,118,128,.24); --fill-2:rgba(118,118,128,.16);
+  --sep:rgba(84,84,88,.6); --ink:#f5f5f7; --ink-2:#d1d1d6; --ink-3:#98989d; --ink-4:#636366;
+  --green:#30d158; --green-soft:rgba(48,209,88,.14); --sel:rgba(48,209,88,.1); --glass:rgba(44,44,46,.72);
+  --mail-green:#7cc35a;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-font-smoothing:antialiased}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Inter,"Segoe UI",system-ui,sans-serif;font-size:14px;line-height:1.45;letter-spacing:-.011em;color:var(--ink);background:#0b0b0c;overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;text-align:inherit}
+input{font:inherit;color:inherit}
+svg.lucide{width:18px;height:18px;flex:none}
+:focus-visible{outline:3px solid rgba(10,132,255,.55);outline-offset:2px;border-radius:10px}
+.tnum{font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---------- mockup chrome ---------- */
+.mock-top{position:fixed;z-index:300;top:0;left:0;right:0;height:52px;display:flex;align-items:center;gap:8px;padding:0 14px;background:#0b0b0c;border-bottom:.5px solid rgba(255,255,255,.1)}
+.mock-top .lbl{color:#8e8e93;font-size:12px;font-weight:650;white-space:nowrap;margin-right:4px}
+.mock-top .lbl b{color:#f5f5f7}
+.mock-tabs{display:flex;gap:2px;padding:3px;border-radius:12px;background:rgba(255,255,255,.08)}
+.mock-tabs button{color:#d1d1d6;font-size:12.5px;font-weight:600;padding:6px 11px;border-radius:9px;white-space:nowrap}
+.mock-tabs button em{font-style:normal;opacity:.5;margin-right:5px}
+.mock-tabs button.on{background:#fff;color:#1d1d1f}
+.mock-sp{flex:1}
+.mock-tg{display:flex;align-items:center;gap:6px;height:32px;padding:0 11px;border-radius:10px;color:#d1d1d6;font-size:12px;font-weight:600;background:rgba(255,255,255,.08);white-space:nowrap}
+.mock-tg svg{width:14px;height:14px}
+.mock-tg.on{background:#fff;color:#1d1d1f}
+.mock-tg:disabled{opacity:.3;cursor:default}
+.ann{position:fixed;z-index:250;left:10px;bottom:84px;width:236px;padding:12px 13px;border-radius:14px;background:rgba(255,251,230,.97);color:#4d3d0f;font-size:11.5px;line-height:1.48;box-shadow:0 10px 30px rgba(0,0,0,.3)}
+.ann > b{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:12.5px}
+.ann > b button{font-size:11px;font-weight:600;color:#8a6d1c}
+.ann ul{padding-left:15px}
+.ann .foot{margin-top:8px;padding-top:8px;border-top:.5px solid rgba(77,61,15,.18);font-size:11px;color:#6b5718}
+.ann .vars{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;padding-top:8px;border-top:.5px solid rgba(77,61,15,.18)}
+.ann .vars button{height:24px;padding:0 9px;border-radius:999px;background:rgba(77,61,15,.1);font-size:11px;font-weight:650;color:#4d3d0f}
+.ann .vars button.on{background:#4d3d0f;color:#fff8dc}
+.ann.min ul,.ann.min .vars,.ann.min .foot{display:none}
+#root{position:fixed;inset:52px 0 0 0;overflow:hidden}
+
+/* ---------- shell ---------- */
+.shell{display:grid;grid-template-columns:248px 1fr;grid-template-rows:64px minmax(0,1fr);height:100%;background:var(--frame);color:var(--frame-ink)}
+.side{grid-row:1/span 2;display:flex;flex-direction:column;padding:16px 0 14px 14px;min-height:0}
+.brand{display:flex;align-items:center;gap:10px;padding:2px 10px 12px;font-weight:800;font-size:20px;letter-spacing:-.02em}
+.brand i{width:32px;height:32px;border-radius:10px;background:linear-gradient(140deg,#d9a46a,#8a5a3c);display:grid;place-items:center;font-style:normal;font-size:13px;color:#fff}
+.nav{flex:1;overflow:auto;scrollbar-width:none}
+.grp{padding:8px 0 4px}
+.grp + .grp{border-top:1px solid var(--frame-line);margin-right:14px}
+.grp-h{display:flex;align-items:center;gap:8px;padding:2px 10px 6px;font-size:12.5px;font-weight:700;color:#fff}
+.grp-h span{width:20px;height:20px;border-radius:6px;display:grid;place-items:center}
+.grp-h span svg{width:12px;height:12px;color:#fff}
+.item{position:relative;display:flex;align-items:center;gap:12px;height:38px;padding:0 12px;margin:0 14px 1px 0;border-radius:11px;font-size:14.5px;font-weight:550;color:var(--frame-ink);cursor:pointer}
+.item svg{width:19px;height:19px}
+.item:hover{background:var(--frame-2)}
+.item.active{margin-right:0;border-radius:13px 0 0 13px;background:var(--content);color:var(--ink);font-weight:700}
+.item.active::before,.item.active::after{content:"";position:absolute;right:0;width:16px;height:16px;pointer-events:none}
+.item.active::before{top:-16px;border-bottom-right-radius:13px;box-shadow:6px 6px 0 6px var(--content)}
+.item.active::after{bottom:-16px;border-top-right-radius:13px;box-shadow:6px -6px 0 6px var(--content)}
+.g-work svg{color:#6fd3a3}.g-comm svg{color:#8ab6f5}.g-res svg{color:#f2b56b}.g-adm svg{color:#c3b5f5}
+.item.active svg{color:var(--green)!important}
+.item .nb{margin-left:auto;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:#ff453a;color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center}
+.me{display:flex;align-items:center;gap:10px;margin:8px 14px 0 0;padding:8px;border-radius:13px;border:1px solid var(--frame-line)}
+.me .av0{width:36px;height:36px;border-radius:10px;background:linear-gradient(140deg,#d9a46a,#8a5a3c);display:grid;place-items:center;font-weight:700;color:#fff;font-size:13px}
+.me b{display:block;font-size:13.5px}.me small{color:var(--frame-ink-2);font-size:12px}
+.top{display:flex;align-items:center;gap:14px;padding:0 24px 0 18px}
+.top h1{font-size:20px;font-weight:700;letter-spacing:-.022em;color:#fff}
+.top .search{margin-left:auto;width:340px;height:40px;border-radius:12px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.14);display:flex;align-items:center;gap:9px;padding:0 13px;color:#bcd0c5;font-size:14px}
+.top .search kbd{margin-left:auto;font:inherit;font-size:12px;opacity:.7}
+.top .ib{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;color:#dbe7e0}
+.panel{position:relative;background:var(--content);border-radius:18px 0 0 0;overflow:hidden;min-height:0;color:var(--ink)}
+
+/* ---------- mail 3-column ---------- */
+.mail-area{display:grid;grid-template-columns:220px 340px minmax(0,1fr);gap:16px;padding:14px 20px 20px;height:100%}
+.mcard{background:var(--card);border-radius:16px;box-shadow:0 0 0 .5px var(--sep),0 1px 2px rgba(0,0,0,.04);display:flex;flex-direction:column;min-height:0;overflow:hidden;position:relative}
+.compose{margin:14px 14px 8px;height:38px;border-radius:11px;background:var(--green);color:#fff;font-weight:650;font-size:13.5px;display:flex;align-items:center;justify-content:center;gap:7px}
+.compose svg{width:16px;height:16px}
+.fh{padding:10px 18px 4px;font-size:14px;font-weight:600;display:flex;flex-direction:column;gap:1px}
+.fh small{font-size:12px;color:var(--ink-3);font-weight:500}
+.tree{padding:2px 8px;overflow:auto;flex:1}
+.tn{display:flex;align-items:center;gap:10px;width:100%;height:34px;padding:0 10px;border-radius:9px;font-size:13.5px;color:var(--ink)}
+.tn svg{width:16px;height:16px;color:var(--ink-3)}
+.tn .n{margin-left:auto;font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.tn .n.acc{color:var(--green);font-weight:700}
+.tn.on{background:var(--green-soft);font-weight:650}
+.tn.on svg{color:var(--green)}
+.tsite{padding:12px 10px 4px;font-size:11.5px;font-weight:650;color:var(--ink-3)}
+.lbl-dot{width:9px;height:9px;border-radius:50%;margin:0 3px}
+
+.lhead{display:flex;align-items:center;gap:10px;padding:14px 16px;min-height:56px;border-bottom:1px solid var(--sep)}
+.lhead b{font-size:14px}
+.lhead small{color:var(--ink-3);font-size:12px}
+.lhead .sp{flex:1}
+.ibtn{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--ink-2)}
+.ibtn:hover{background:var(--fill)}
+.ibtn svg{width:16px;height:16px}
+.rows{overflow:auto;flex:1}
+.row{padding:10px 14px 10px 13px;border-bottom:1px solid var(--sep);border-left:3px solid transparent;cursor:pointer}
+.row:hover{background:var(--fill-2)}
+.row.unread{border-left-color:var(--green)}
+.row.sel{background:var(--sel);border-left-color:var(--green)}
+.r1{display:flex;align-items:center;gap:6px;min-width:0}
+.r1 .from{flex:1;min-width:0;font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row.unread .from{font-weight:750}
+.r1 .tm{font-size:12px;color:var(--ink-3);white-space:nowrap;display:flex;align-items:center;gap:5px}
+.r1 .tm svg{width:13px;height:13px}
+.r1 .tm .arc{color:var(--ink-3);display:inline-grid;place-items:center}
+.r1 .rr{color:var(--green)}
+.r2{font-size:13px;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.r3{font-size:12.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.row .cnt{font-size:11px;font-weight:650;color:var(--ink-3);background:var(--fill);border-radius:6px;padding:0 5px;margin-left:4px}
+[data-tip]{position:relative}
+[data-tip].tip-on::after{content:attr(data-tip);position:absolute;right:-6px;top:calc(100% + 6px);white-space:nowrap;background:#1d1d1f;color:#fff;font-size:11.5px;font-weight:550;padding:5px 8px;border-radius:7px;z-index:20;box-shadow:0 6px 16px rgba(0,0,0,.25)}
+
+/* ---------- reading pane ---------- */
+.dbar{display:flex;align-items:center;gap:6px;padding:12px 16px;border-bottom:1px solid var(--sep);flex:none}
+.reply{height:32px;padding:0 14px;display:inline-flex;align-items:center;gap:6px;border-radius:9px;background:var(--green);color:#fff;font-size:13px;font-weight:600}
+.reply svg{width:14px;height:14px}
+.ghost{height:32px;padding:0 10px;display:inline-flex;align-items:center;gap:6px;border-radius:9px;font-size:13px;color:var(--ink-2)}
+.ghost:hover{background:var(--fill)}
+.ghost svg{width:14px;height:14px}
+.dbar .sp{flex:1}
+.dscroll{overflow:auto;flex:1;min-height:0;padding:18px 22px 40px}
+.subj{font-size:21px;font-weight:700;letter-spacing:-.022em;line-height:1.25;margin:0 0 14px;max-width:760px}
+.subj .tagx{display:inline-flex;vertical-align:3px;margin-left:8px;height:22px;padding:0 8px;border-radius:7px;align-items:center;gap:5px;font-size:11.5px;font-weight:650;color:var(--ink-3);background:var(--fill)}
+.subj .tagx svg{width:12px;height:12px}
+
+.thr{display:flex;flex-direction:column;gap:8px}
+.tmsg{border-radius:14px;box-shadow:0 0 0 .5px var(--sep);background:var(--card)}
+.tmsg.col{cursor:pointer}
+.tmsg.col:hover{background:var(--fill-2)}
+.th{display:flex;align-items:center;gap:11px;padding:11px 14px}
+.th .who{flex:1;min-width:0}
+.th .nm{font-size:13.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.th .snip{font-size:12.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.th .when{font-size:12px;color:var(--ink-3);white-space:nowrap;display:flex;gap:6px;align-items:center}
+.th .when svg{width:14px;height:14px}
+.th .when .ck{color:var(--green)}
+.th .when .ck.part{color:var(--ink-3)}
+.open-h{padding:16px 18px 6px;display:flex;gap:12px;align-items:flex-start}
+.open-h .who{flex:1;min-width:0}
+.open-h .nm{font-size:15px;font-weight:700;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.open-h .nm small{font-weight:500;color:var(--ink-3);font-size:12.5px}
+.open-h .dt{font-size:12.5px;color:var(--ink-3);white-space:nowrap}
+.av{--s:28px;width:var(--s);height:var(--s);min-width:var(--s);border-radius:calc(var(--s)*.28);display:inline-grid;place-items:center;color:#fff;font-style:normal;font-weight:700;font-size:calc(var(--s)*.38);letter-spacing:0;line-height:1}
+.av.grp{background:var(--fill)!important;color:var(--ink-2)}
+.av.grp svg{width:calc(var(--s)*.55);height:calc(var(--s)*.55)}
+
+/* recipients line */
+.rcp{margin-top:6px;display:flex;flex-direction:column;gap:3px;font-size:12.5px;color:var(--ink-2);position:relative}
+.rl{display:flex;align-items:center;gap:4px;min-width:0;white-space:nowrap}
+.rl > em{font-style:normal;color:var(--ink-3);width:26px;flex:none}
+.rl .names{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.rl .gchip{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 7px 0 5px;border-radius:6px;background:var(--fill);font-weight:550;color:var(--ink-2)}
+.rl .gchip svg{width:12px;height:12px;color:var(--ink-3)}
+.more-b{flex:none;height:22px;padding:0 8px;border-radius:999px;background:var(--green-soft);color:var(--green);font-weight:700;font-size:12px}
+.more-b:hover{filter:brightness(.97)}
+.more-b.on{background:var(--green);color:#fff}
+.rl .bccnote{color:var(--ink-3);font-size:11.5px;margin-left:6px;display:inline-flex;gap:4px;align-items:center}
+.rl .bccnote svg{width:12px;height:12px}
+
+/* receipts row (chat .seen-by feel) */
+.rcpt-wrap{position:relative;padding:4px 18px 10px 58px;display:flex;flex-wrap:wrap;align-items:center;row-gap:4px}
+.seen{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 10px 0 8px;border-radius:999px;font-size:12.5px;font-weight:600;color:var(--ink-2);background:var(--fill-2)}
+button.seen:hover{background:var(--fill)}
+.seen.on{background:var(--green-soft);color:var(--green)}
+.seen .cc{width:16px;height:16px;color:var(--green)}
+.seen .cc.grey{color:var(--ink-3)}
+.seen.muted{background:transparent;color:var(--ink-3);font-weight:500;padding-left:0;cursor:default}
+.seen.muted svg{width:14px;height:14px;color:var(--ink-4)}
+.seen .tn2{font-variant-numeric:tabular-nums}
+.stk{display:inline-flex;align-items:center}
+.stk .av{box-shadow:0 0 0 1.5px var(--card)}
+.stk .av + .av{margin-left:-5px}
+.seen .chev{width:13px;height:13px;opacity:.6}
+.seen-hint{font-size:11.5px;color:var(--ink-3);margin-left:8px}
+
+/* popovers */
+.pop{position:absolute;z-index:40;background:var(--card);border-radius:16px;box-shadow:var(--pop);display:flex;flex-direction:column;overflow:hidden;animation:pin .18s var(--ease)}
+@keyframes pin{from{opacity:0;transform:translateY(-4px)}}
+.dark .pop{background:#2c2c2e;box-shadow:0 30px 70px -20px rgba(0,0,0,.8),0 0 0 .5px rgba(255,255,255,.12)}
+.ph{flex:none;display:flex;align-items:center;gap:8px;padding:14px 14px 10px}
+.ph b{font-size:15px;letter-spacing:-.015em;flex:1}
+.xb{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--fill);color:var(--ink-3)}
+.xb svg{width:13px;height:13px;stroke-width:2.4}
+.seg{flex:none;display:flex;padding:2px;border-radius:10px;background:var(--fill);margin:0 14px 10px}
+.seg button{flex:1;height:30px;border-radius:8px;font-size:13px;font-weight:550;color:var(--ink-2);display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap}
+.seg button svg{width:14px;height:14px}
+.seg button.on{background:var(--card);color:var(--ink);font-weight:650;box-shadow:0 1px 3px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04)}
+.dark .seg button.on{background:#636366}
+.srch{flex:none;margin:0 14px 8px;height:34px;border-radius:10px;background:var(--fill);display:flex;align-items:center;gap:7px;padding:0 10px;color:var(--ink-3)}
+.srch svg{width:15px;height:15px}
+.srch input{flex:1;min-width:0;border:0;background:transparent;outline:none;font-size:13.5px}
+.srch input::placeholder{color:var(--ink-3)}
+.plist{overflow:auto;flex:1;padding:0 6px 10px}
+.psec{padding:10px 10px 4px;font-size:11.5px;font-weight:650;color:var(--ink-3);display:flex;align-items:center;gap:6px}
+.psec svg{width:13px;height:13px}
+.psec .n{margin-left:auto;font-weight:600}
+.pr{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:10px;min-width:0}
+.pr:hover{background:var(--fill-2)}
+.pr .t{flex:1;min-width:0}
+.pr .t b{display:block;font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pr .t span{display:block;font-size:12px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pr .st{font-size:12px;color:var(--ink-3);white-space:nowrap;text-align:right;display:flex;align-items:center;gap:4px}
+.pr .st svg{width:13px;height:13px}
+.pr .st.rd{color:var(--green)}
+.pr .st.rd b{font-weight:600;color:var(--ink-2)}
+.gr{width:100%;text-align:left}
+.gr .meter{width:46px;height:5px;border-radius:3px;background:var(--fill);overflow:hidden;flex:none}
+.gr .meter i{display:block;height:100%;background:var(--green);border-radius:3px}
+.gr .cv{width:15px;height:15px;color:var(--ink-3);transition:transform .2s}
+.gr.open .cv{transform:rotate(90deg)}
+.gkids{margin-left:22px;border-left:1px solid var(--sep);padding-left:4px}
+.pfoot{padding:9px 14px 12px;font-size:11.5px;color:var(--ink-3);border-top:.5px solid var(--sep);display:flex;gap:6px;align-items:flex-start}
+.pfoot svg{width:13px;height:13px;flex:none;margin-top:1px}
+
+/* recipients panel */
+.rpanel{width:540px;max-height:520px}
+.rp-body{overflow:auto;padding:0 10px 12px}
+.rp-sec{padding:8px 6px 6px;font-size:12px;font-weight:700;color:var(--ink-2);display:flex;justify-content:space-between}
+.rp-sec small{font-weight:550;color:var(--ink-3)}
+.ppl{display:grid;grid-template-columns:1fr 1fr;gap:2px 8px}
+.ppl .pr{padding:5px 6px}
+.ppl .tg{font-size:10.5px;font-weight:700;color:var(--ink-3);background:var(--fill);border-radius:5px;padding:1px 5px}
+.site{margin:4px 0 8px;padding:8px 10px 10px;border-radius:12px;background:var(--fill-2)}
+.site h5{font-size:12px;font-weight:650;color:var(--ink-2);display:flex;align-items:center;gap:6px;margin-bottom:7px}
+.site h5 svg{width:13px;height:13px;color:var(--ink-3)}
+.site h5 small{margin-left:auto;font-weight:550;color:var(--ink-3)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.gc{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px 0 4px;border-radius:8px;background:var(--card);box-shadow:0 0 0 .5px var(--sep);font-size:12.5px;font-weight:550;white-space:nowrap}
+.dark .gc{background:#3a3a3c}
+.gc i{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;background:var(--c);color:#fff}
+.gc i svg{width:12px;height:12px}
+.gc small{color:var(--ink-3);font-weight:500;font-size:11.5px}
+
+/* ---------- message body: EPop archive reading column ---------- */
+.bodywrap{position:relative;padding:4px 18px 18px}
+.fmt-tg{position:absolute;top:2px;right:18px;z-index:5;display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 4px 0 10px;border-radius:999px;font-size:12px;font-weight:600;color:var(--ink-3);background:var(--fill-2)}
+.fmt-tg .sw{width:30px;height:18px;border-radius:9px;background:var(--ink-4);position:relative;transition:background .2s}
+.fmt-tg .sw::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3);transition:transform .2s var(--ease)}
+.fmt-tg.on{color:var(--green)}
+.fmt-tg.on .sw{background:var(--green)}
+.fmt-tg.on .sw::after{transform:translateX(12px)}
+.arch-note{max-width:760px;margin:0 auto 12px;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-3)}
+.arch-note svg{width:14px;height:14px}
+.mbody{max-width:760px;margin:0 auto;font-size:15px;line-height:1.6;color:var(--ink);overflow-wrap:anywhere}
+.mbody p{margin:0 0 .85em}
+.mbody .h-green{color:var(--mail-green);font-weight:700;font-size:17px;line-height:1.35;margin:0 0 .7em;letter-spacing:-.01em}
+.mbody .kv{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:2px 12px;margin:0 0 .9em;padding:12px 14px;border-radius:12px;background:var(--fill-2)}
+.mbody .kv dt{color:var(--ink-3)}
+.mbody .kv dd{font-weight:600}
+.mbody .tagline{color:var(--mail-green);font-weight:700}
+.mbody .sig{color:var(--ink-2);font-size:14px}
+.mbody .sig b{color:var(--ink)}
+.poster{position:relative;margin:4px 0 16px;border-radius:12px;overflow:hidden;cursor:zoom-in;aspect-ratio:16/9;width:100%;
+  background:
+    radial-gradient(circle at 78% 62%, #6b3f22 0 13%, transparent 13.5%),
+    radial-gradient(ellipse 15% 4% at 78% 74%, #3b2414 0 90%, transparent 92%),
+    radial-gradient(circle at 78% 58%, rgba(255,240,210,.0) 0 9%, transparent 9.5%),
+    radial-gradient(ellipse 30% 22% at 12% 18%, #8fd16a 0 40%, transparent 41%),
+    radial-gradient(ellipse 22% 16% at 22% 86%, #4c9a35 0 40%, transparent 41%),
+    radial-gradient(ellipse 18% 30% at 92% 12%, #5fae3f 0 40%, transparent 41%),
+    linear-gradient(150deg,#e8f4d8 0%,#cfe8b4 38%,#9fcf7c 70%,#4f8f34 100%)}
+.poster .pt{position:absolute;left:6%;top:14%;width:58%;color:#1f4d12}
+.poster .pt small{display:block;font-size:11px;font-weight:800;letter-spacing:.14em;color:#2e6b1a}
+.poster .pt b{display:block;font-size:24px;line-height:1.08;font-weight:850;letter-spacing:-.02em;margin:6px 0}
+.poster .pt span{display:inline-block;font-size:11.5px;font-weight:700;background:#1f4d12;color:#eaf6dc;border-radius:999px;padding:3px 10px}
+.poster .cup{position:absolute;left:69%;top:44%;width:19%;height:34%;border-radius:6px 6px 40% 40%;background:linear-gradient(180deg,#fff,#efe6d8);box-shadow:inset -6px 0 0 rgba(0,0,0,.05)}
+.poster .cup::before{content:"";position:absolute;left:8%;right:8%;top:6%;height:18%;border-radius:50%;background:#5a3418}
+.poster .cup::after{content:"";position:absolute;right:-22%;top:24%;width:26%;height:36%;border:5px solid #efe6d8;border-left:0;border-radius:0 40% 40% 0}
+.poster .leaf{position:absolute;width:16%;height:8%;border-radius:0 100% 0 100%;background:#3d8a2a;transform:rotate(-28deg)}
+.poster .zoom{position:absolute;right:10px;bottom:10px;display:flex;align-items:center;gap:5px;height:26px;padding:0 9px;border-radius:999px;background:rgba(0,0,0,.55);color:#fff;font-size:11.5px;font-weight:600;backdrop-filter:blur(8px)}
+.poster .zoom svg{width:13px;height:13px}
+.qtg{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:8px;background:var(--fill-2);color:var(--ink-3);font-size:12.5px;font-weight:600;margin-top:4px}
+.qtg svg{width:13px;height:13px}
+.quote{margin-top:10px;padding:2px 0 2px 14px;border-left:2px solid var(--ink-4);color:var(--ink-2);font-size:14px}
+.quote .qh{font-size:12.5px;color:var(--ink-3);margin-bottom:6px}
+
+/* original formatting (raw EPop look) */
+.mbody.orig{max-width:none;margin:0;font-family:Calibri,"Segoe UI",Arial,sans-serif;font-size:13px;line-height:1.25;color:#000;background:#fff;padding:16px;border-radius:10px;box-shadow:inset 0 0 0 1px #ddd}
+.mbody.orig p{margin:0 0 10px}
+.mbody.orig .h-green{font-size:34px;line-height:1.1;color:#3a7d1f;font-family:"Arial Black",Arial,sans-serif;font-weight:900}
+.mbody.orig .kv{background:none;padding:0;display:block}
+.mbody.orig .kv dt,.mbody.orig .kv dd{display:inline;color:#000;font-weight:400}
+.mbody.orig .kv dd::after{content:"";display:block}
+.mbody.orig .tagline{font-size:20px}
+.mbody.orig .poster{width:1100px;max-width:none;border-radius:0;cursor:default}
+.mbody.orig .poster .zoom{display:none}
+.mbody.orig .quote{border-left:6px solid #3a7d1f;padding-left:12px;color:#000;font-size:13px}
+.origwrap{overflow-x:auto;max-width:100%}
+.orig-note{font-size:12px;color:var(--ink-3);margin:0 0 8px;display:flex;align-items:center;gap:6px}
+.orig-note svg{width:13px;height:13px;color:var(--orange)}
+
+/* ---------- phone ---------- */
+.stage{height:100%;display:flex;align-items:center;justify-content:center;background:#e9e9ee;overflow:hidden}
+.dark .stage{background:#111}
+.phones{display:flex;gap:48px;align-items:flex-start}
+.pcap{text-align:center;margin-top:14px;font-size:13px;font-weight:650;color:#3a3a3c}
+.dark .pcap{color:#d1d1d6}
+.phone{width:414px;height:868px;border-radius:60px;background:#000;padding:12px;box-shadow:0 30px 80px rgba(0,0,0,.35),inset 0 0 0 2px #2c2c2e;position:relative}
+.scr{position:relative;width:390px;height:844px;border-radius:48px;overflow:hidden;background:var(--card);color:var(--ink)}
+.isl{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:120px;height:35px;border-radius:20px;background:#000;z-index:60}
+.sbar{position:absolute;top:0;left:0;right:0;height:50px;display:flex;align-items:center;justify-content:space-between;padding:4px 30px 0 34px;font-size:15.5px;font-weight:650;z-index:55}
+.sbar .si{display:flex;gap:6px;align-items:center}
+.sbar .si svg{width:17px;height:17px}
+.hbar{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--ink);opacity:.85;z-index:70}
+.pv{position:absolute;inset:50px 0 0 0;overflow:auto;scrollbar-width:none}
+.pnav{display:flex;align-items:center;gap:6px;padding:6px 12px 4px}
+.pnav .back{display:flex;align-items:center;gap:1px;color:var(--green);font-size:16px;font-weight:500}
+.pnav .back svg{width:22px;height:22px}
+.pnav .sp{flex:1}
+.pnav .pb{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:var(--green)}
+.pnav .pb svg{width:20px;height:20px}
+.scr .subj{font-size:19px;padding:4px 16px 0;margin-bottom:8px}
+.scr .open-h{padding:8px 16px 4px}
+.scr .rcpt-wrap{padding:4px 16px 10px 16px}
+.scr .bodywrap{padding:4px 16px 120px}
+.scr .fmt-tg{position:static;margin:0 0 10px}
+.scr .mbody{font-size:15px}
+.scr .poster .pt b{font-size:17px}
+.scr .rl .names{max-width:210px}
+.ptb{position:absolute;left:0;right:0;bottom:0;height:84px;padding:10px 26px 0;display:flex;justify-content:space-between;background:var(--glass);backdrop-filter:blur(24px) saturate(1.8);-webkit-backdrop-filter:blur(24px) saturate(1.8);border-top:.5px solid var(--sep);z-index:50;color:var(--green)}
+.ptb svg{width:24px;height:24px}
+.pdim{position:absolute;inset:0;background:rgba(0,0,0,.35);z-index:52}
+.bsheet{position:absolute;left:0;right:0;bottom:0;max-height:calc(100% - 92px);border-radius:28px 28px 0 0;z-index:53;background:var(--card);display:flex;flex-direction:column;animation:up .35s var(--ease);box-shadow:0 -10px 40px rgba(0,0,0,.2)}
+.dark .bsheet{background:#1c1c1e}
+@keyframes up{from{transform:translateY(40px);opacity:0}}
+.grab{width:38px;height:5px;border-radius:3px;background:var(--ink-4);margin:7px auto 0;opacity:.7;flex:none}
+.bsheet .plist{padding-bottom:8px}
+.bsheet .pfoot{padding-bottom:28px}
+.bsheet .pr{padding:9px 8px}
+.bsheet .rp-body{padding-bottom:34px}
+.bsheet .ppl{grid-template-columns:1fr}
+.mass-big{padding:14px 18px 34px;text-align:center}
+.mass-big .ring{width:120px;height:120px;border-radius:50%;margin:6px auto 12px;background:conic-gradient(var(--green) 0 41.2%, var(--fill) 41.2% 100%);display:grid;place-items:center}
+.mass-big .ring div{width:96px;height:96px;border-radius:50%;background:var(--card);display:grid;place-items:center;font-size:22px;font-weight:800;letter-spacing:-.02em}
+.dark .bsheet .mass-big .ring div{background:#1c1c1e}
+.mass-big p{font-size:13px;color:var(--ink-3);max-width:290px;margin:0 auto}
+</style>
+</head>
+<body>
+<header class="mock-top" aria-label="Mockup controls">
+  <span class="lbl"><b>iPop Mail</b> · Read receipts</span>
+  <nav class="mock-tabs" id="tabs">
+    <button data-s="sender"><em>1</em>Sender view</button>
+    <button data-s="recipient"><em>2</em>Recipient view</button>
+    <button data-s="mass"><em>3</em>Mass mail</button>
+    <button data-s="old"><em>4</em>Old mail</button>
+  </nav>
+  <span class="mock-sp"></span>
+  <button class="mock-tg" id="sheetTg"></button>
+  <button class="mock-tg" id="rcpTg"></button>
+  <button class="mock-tg" id="fmtTg"></button>
+  <button class="mock-tg" id="phoneTg"></button>
+  <button class="mock-tg" id="themeTg"></button>
+</header>
+<aside class="ann" id="ann"></aside>
+<div id="root"></div>
+
+<script>
+/* ============================================================
+   Icons (inline, lucide-style)
+   ============================================================ */
+const P = {
+  search:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  mail:'<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
+  inbox:'<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+  send:'<path d="M14.5 21.7a.5.5 0 0 0 .9 0L22 3.5a.5.5 0 0 0-.6-.6L3.3 9.5a.5.5 0 0 0 0 .9l7.6 3.1a2 2 0 0 1 1.1 1.1z"/><path d="m21.9 2.1-10.9 10.9"/>',
+  file:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v5h5"/>',
+  clock:'<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  star:'<path d="M11.5 2.3a.5.5 0 0 1 1 0l2.3 4.7a2 2 0 0 0 1.5 1.1l5.2.8a.5.5 0 0 1 .3.9l-3.8 3.7a2 2 0 0 0-.6 1.8l.9 5.2a.5.5 0 0 1-.8.6l-4.6-2.5a2 2 0 0 0-1.9 0l-4.6 2.5a.5.5 0 0 1-.8-.6l.9-5.2a2 2 0 0 0-.6-1.8L1.6 9.8a.5.5 0 0 1 .3-.9l5.2-.8a2 2 0 0 0 1.5-1.1z"/>',
+  archive:'<rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/>',
+  trash:'<path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
+  pen:'<path d="M12 20h9"/><path d="M16.4 3.6a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>',
+  reply:'<path d="m9 17-5-5 5-5"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>',
+  replyall:'<path d="m7 17-5-5 5-5"/><path d="m12 17-5-5 5-5"/><path d="M22 18v-2a4 4 0 0 0-4-4H7"/>',
+  fwd:'<path d="m15 17 5-5-5-5"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/>',
+  more:'<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+  check:'<path d="M20 6 9 17l-5-5"/>',
+  cc:'<path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/>',
+  chevR:'<path d="m9 18 6-6-6-6"/>', chevD:'<path d="m6 9 6 6 6-6"/>', chevL:'<path d="m15 18-6-6 6-6"/>',
+  x:'<path d="M18 6 6 18M6 6l12 12"/>',
+  users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+  building:'<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4M8 6h.01M16 6h.01M12 6h.01M12 10h.01M12 14h.01M16 10h.01M16 14h.01M8 10h.01M8 14h.01"/>',
+  pin:'<path d="M20 10c0 5-5.5 10.2-7.4 11.8a1 1 0 0 1-1.2 0C9.5 20.2 4 15 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
+  info:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+  eyeoff:'<path d="M10.7 5.1A10.7 10.7 0 0 1 22 12a13 13 0 0 1-1.7 2.7M6.6 6.6A13.5 13.5 0 0 0 2 12a10.75 10.75 0 0 0 15.4 5.4M2 2l20 20M14.1 14.1a3 3 0 0 1-4.2-4.2"/>',
+  lock:'<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  globe:'<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20"/>',
+  history:'<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5M12 7v5l4 2"/>',
+  zoom:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3M11 8v6M8 11h6"/>',
+  type:'<path d="M4 7V4h16v3M9 20h6M12 4v16"/>',
+  alert:'<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/>',
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
+  moon:'<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+  smartphone:'<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/>',
+  monitor:'<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>',
+  panel:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15h18"/>',
+  grid:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>',
+  kanban:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 7v7M12 7v4M16 7v9"/>',
+  notebook:'<path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4M2 6h4M2 10h4M2 14h4M2 18h4"/>',
+  buoy:'<circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24M14.83 9.17l4.24-4.24M14.83 14.83l4.24 4.24M9.17 14.83l-4.24 4.24"/><circle cx="12" cy="12" r="4"/>',
+  msg:'<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
+  news:'<path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8M15 18h-5M10 6h8v4h-8V6Z"/>',
+  video:'<path d="m16 13 5.2 3.5a.5.5 0 0 0 .8-.4V7.9a.5.5 0 0 0-.8-.4L16 11"/><rect x="2" y="6" width="14" height="12" rx="2"/>',
+  bell:'<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+  folder:'<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+  calendar:'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  shield:'<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
+  settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+  briefcase:'<path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><rect x="2" y="6" width="20" height="14" rx="2"/>',
+  help:'<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/>',
+  signal:'<path d="M2 20h.01M7 20v-4M12 20v-8M17 20V8M22 4v16"/>',
+  wifi:'<path d="M12 20h.01M2 8.82a15 15 0 0 1 20 0M5 12.86a10 10 0 0 1 14 0M8.5 16.43a5 5 0 0 1 7 0"/>',
+  battery:'<rect x="2" y="7" width="17" height="10" rx="2.5"/><path d="M22 11v2"/><rect x="4" y="9" width="11" height="6" rx="1" fill="currentColor" stroke="none"/>',
+  megaphone:'<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>',
+};
+const ic = (n, cls = '') => `<svg class="lucide ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ''}</svg>`;
+const $ = s => document.querySelector(s);
+
+/* ============================================================
+   People — Title Case names, department · site. Never NIK/position.
+   ============================================================ */
+const COLORS = ['#3f7d5a','#5562b8','#c47b45','#b0412d','#a0457a','#2f7f8f','#6a5acd','#4a7a2c','#c0552f','#8a6d1c','#7b4ea3','#2b6cb0','#9c4221','#b83280','#2c7a7b'];
+const hash = s => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+const ini = n => n.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+const av = (n, s = 28) => n === 'Bagastyo'
+  ? `<i class="av" style="--s:${s}px;background:linear-gradient(140deg,#d9a46a,#8a5a3c)" title="${n}">BG</i>`
+  : `<i class="av" style="--s:${s}px;background:${COLORS[hash(n) % COLORS.length]}" title="${n}">${ini(n)}</i>`;
+const gav = (s = 28) => `<i class="av grp" style="--s:${s}px">${ic('users')}</i>`;
+
+const READ = [
+  ['Sulastri Basrewan','HCBP · SJA Karawang','09:12'],
+  ['Rikki Rinaldo','Production · SJA Karawang','09:14'],
+  ['Dewi Anggraini','Quality Assurance · SJA Karawang','09:20'],
+  ['Hendra Gunawan','Maintenance · SJA Karawang','09:31'],
+  ['Yulia Kartika','Human Capital · SJA Sepanjang','09:47'],
+  ['Agus Priyanto','POM SMG · SJA Semarang','10:02'],
+  ['Rina Wulandari','Human Resources · SJA Sukodono','10:15'],
+  ['Fina Oktaviani','Strategy & Operational Excellence · SJA Sepanjang','10:41'],
+  ['Bagastyo','ICT · SJA Karawang','11:05'],
+];
+const ICT_KIDS = [['Alphin Santoso','10:20',true],['Beny Saputra','10:22',true],['Jason Kristanto','11:30',true],['Yudi Arta','',false],['Kevin Halim','',false],['Siti Rahmawati','',false],['Dimas Prakoso','',false],['Arifin Hidayat','',false],['Budi Darmawan','',false]];
+const NOTYET = [
+  ['Indra Setiawan','Supply Chain · SJA Karawang','Delivered'],
+  ['Maya Putri','Warehouse · SJA Karawang','Delivered'],
+  ['Teguh Santoso','PPIC · SJA Karawang','Delivered'],
+  ['Lestari Handayani','Purchasing · SJA Semarang','Delivered'],
+  ['Wahyu Nugroho','Plant-Utility · SJA Semarang','Delivered'],
+  ['Ratna Sari','Marketing · SJA Sepanjang','Delivered'],
+];
+const SITES = [
+  ['SJA Karawang','#2e9e5b',['Plant','HCBP','ICT','Maintenance','Production','Quality Assurance','Quality Control','Supply Chain','Warehouse','PPIC']],
+  ['SJA Semarang','#3b7fe0',['POM SMG','Plant-1','Plant-2','Plant-Utility','DAFT','QA','QC','Purchasing']],
+  ['SJA Sepanjang','#e08a2e',['Human Capital','Marketing','Operational','Procurement','Research & Development','Strategy & Operational Excellence']],
+  ['SJA Sukodono','#7a63d6',['Plant','Human Resources','QC','Warehouse','Production']],
+];
+const PEOPLE_TO = ['Bagastyo','Sulastri Basrewan','Rikki Rinaldo','Dewi Anggraini','Hendra Gunawan','Yulia Kartika','Agus Priyanto'];
+const PEOPLE_CC = ['Rina Wulandari','Fina Oktaviani','Lestari Handayani'];
+
+/* ============================================================
+   State
+   ============================================================ */
+let screen = location.hash.slice(1) || 'recipient';
+let theme = 'light', phone = false, annMin = false;
+const S = { sheet:false, rcp:false, orig:false, tab:'read', ictOpen:true, quote:false, variant:'group', tip:false };
+const SUBJ = 'RE: SGM SERIES - Webinar Climate Change dan Managemen Energi';
+const SENDER = 'Fildzah Raudina Mujaddidah';
+
+/* ============================================================
+   Receipts row
+   ============================================================ */
+function receipt(ctx) {
+  // ctx: 'desk' | 'phone'
+  if (screen === 'old') return `<span class="seen muted">${ic('history')}Read status not tracked before 14 Oct</span>`;
+  if (screen === 'mass') return `<button class="seen ${S.sheet && ctx === 'phone' ? 'on' : ''}" data-act="sheet" title="Mass mail — names are not shown">
+      ${ic('cc', 'cc')}<span class="tn2">Read by 412 of 1000</span></button><span class="seen-hint">Mass mail · names not shown</span>`;
+  if (screen === 'sender' && S.variant === 'single-read') return `<span class="seen">${ic('cc', 'cc')}Read 09:12</span>`;
+  if (screen === 'sender' && S.variant === 'single-del') return `<span class="seen">${ic('check', 'cc grey')}Delivered</span>`;
+  if (screen === 'sender' && S.variant === 'external') return `<span class="seen muted">${ic('globe')}Read status not available · external address</span>`;
+  const faces = ['Sulastri Basrewan','Rikki Rinaldo','Dewi Anggraini','Hendra Gunawan'];
+  return `<button class="seen ${S.sheet ? 'on' : ''}" data-act="sheet" aria-haspopup="dialog" aria-expanded="${S.sheet}" title="Read receipts">
+    ${ic('cc', 'cc')}<span class="tn2">Read by 12 of 41</span>
+    <span class="stk">${faces.map(n => av(n, 18)).join('')}</span>${ic('chevR', 'chev')}</button>`;
+}
+
+/* ============================================================
+   Read-by sheet (desktop popover or phone bottom sheet)
+   ============================================================ */
+function readList() {
+  if (S.tab === 'read') {
+    const kids = ICT_KIDS.filter(k => k[2]);
+    return `<div class="psec">${ic('users')}People<span class="n">9</span></div>
+      ${READ.map(([n, d, t]) => `<div class="pr">${av(n, 32)}<div class="t"><b>${n === 'Bagastyo' ? 'Bagastyo (you)' : n}</b><span>${d}</span></div>
+        <span class="st rd">${ic('cc')}<b>Read · Wed 14 Oct, ${t}</b></span></div>`).join('')}
+      <div class="psec">${ic('building')}Groups &amp; departments<span class="n">3 of 9 read</span></div>
+      ${groupRow(kids)}`;
+  }
+  return `<div class="psec">${ic('users')}People<span class="n">6</span></div>
+    ${NOTYET.map(([n, d, t]) => `<div class="pr">${av(n, 32)}<div class="t"><b>${n}</b><span>${d}</span></div><span class="st">${ic('check')}${t}</span></div>`).join('')}
+    <div class="psec">${ic('building')}Groups &amp; departments<span class="n">6 of 9 not yet</span></div>
+    ${groupRow(ICT_KIDS.filter(k => !k[2]))}
+    ${['Maintenance · SJA Karawang — 2 of 7 read','Quality Control · SJA Karawang — 1 of 5 read','Plant-1 · SJA Semarang — 0 of 6 read'].map(l =>
+      `<button class="pr gr">${gav(32)}<div class="t"><b>${l.split(' — ')[0]}</b><span>${l.split(' — ')[1]}</span></div>${ic('chevR', 'cv')}</button>`).join('')}`;
+}
+function groupRow(kids) {
+  return `<button class="pr gr ${S.ictOpen ? 'open' : ''}" data-act="ict">${gav(32)}<div class="t"><b>ICT · SJA Karawang</b><span>3 of 9 read</span></div>
+      <span class="meter"><i style="width:33%"></i></span>${ic('chevR', 'cv')}</button>
+    ${S.ictOpen ? `<div class="gkids">${kids.map(([n, t, r]) => `<div class="pr">${av(n, 26)}<div class="t"><b>${n}</b><span>ICT · SJA Karawang</span></div>
+      <span class="st ${r ? 'rd' : ''}">${r ? `${ic('cc')}<b>Read · Wed 14 Oct, ${t}</b>` : `${ic('check')}Delivered`}</span></div>`).join('')}</div>` : ''}`;
+}
+function sheetInner(ctx) {
+  if (screen === 'mass') return `<div class="ph"><b>Read receipts</b><button class="xb" data-act="sheet" aria-label="Close">${ic('x')}</button></div>
+    <div class="mass-big"><div class="ring"><div class="tnum">41%</div></div>
+      <b style="font-size:16px">Read by 412 of 1000</b>
+      <p style="margin-top:6px">Names aren’t shown for mass mail. Only the sender’s mass-mail report lists who opened it.</p></div>`;
+  return `<div class="ph"><b>Read receipts</b><span style="font-size:12.5px;color:var(--ink-3)" class="tnum">12 / 41</span><button class="xb" data-act="sheet" aria-label="Close">${ic('x')}</button></div>
+    <div class="seg" role="tablist">
+      <button class="${S.tab === 'read' ? 'on' : ''}" data-tab="read">${ic('cc')}Read by · 12</button>
+      <button class="${S.tab === 'not' ? 'on' : ''}" data-tab="not">${ic('check')}Not yet · 29</button></div>
+    <label class="srch">${ic('search')}<input placeholder="Search people or departments" aria-label="Search recipients"></label>
+    <div class="plist">${readList()}</div>
+    <div class="pfoot">${ic('eyeoff')}<span>Everyone on this mail sees the same list. Bcc recipients are never shown.</span></div>`;
+}
+
+/* ============================================================
+   Recipients (collapsed line + full panel)
+   ============================================================ */
+function rcpLines(ctx) {
+  if (screen === 'mass') return `<div class="rcp"><div class="rl"><em>To</em><span class="gchip">${ic('megaphone')}All employees · PT Santos Jaya Abadi</span><span style="color:var(--ink-3);margin-left:6px;flex:none">· 1000</span></div></div>`;
+  if (screen === 'sender' && S.variant !== 'group') {
+    const who = S.variant === 'external' ? 'pr.webinar@greenenergy-id.org' : 'Fildzah Raudina Mujaddidah';
+    return `<div class="rcp"><div class="rl"><em>To</em><span class="names">${who}</span></div></div>`;
+  }
+  const first = screen === 'sender' ? 'Fildzah Raudina Mujaddidah' : 'you';
+  return `<div class="rcp">
+    <div class="rl"><em>To</em><span class="names">${first}, Sulastri Basrewan, Rikki Rinaldo,</span>
+      <span class="gchip">${ic('users')}Plant · SJA Karawang</span>
+      <button class="more-b ${S.rcp ? 'on' : ''}" data-act="rcp" aria-expanded="${S.rcp}">+38</button></div>
+    <div class="rl"><em>Cc</em><span class="names">Rina Wulandari, Fina Oktaviani</span><button class="more-b" data-act="rcp">+1</button></div>
+    ${screen === 'sender' ? `<div class="rl"><em>Bcc</em><span class="names">Yudi Arta</span><span class="bccnote">${ic('lock')}Only you can see this</span></div>` : ''}
+  </div>`;
+}
+function rcpPanelInner() {
+  const ppl = (arr, tag) => arr.map(n => `<div class="pr">${av(n, 26)}<div class="t"><b>${n === 'Bagastyo' ? (screen === 'sender' ? 'Fildzah Raudina Mujaddidah' : 'You') : n}</b></div><span class="tg">${tag}</span></div>`).join('');
+  return `<div class="ph"><b>Recipients</b><span style="font-size:12.5px;color:var(--ink-3)">42 · To 39 · Cc 3</span><button class="xb" data-act="rcp" aria-label="Close">${ic('x')}</button></div>
+    <label class="srch">${ic('search')}<input placeholder="Find a person or group" aria-label="Find recipient"></label>
+    <div class="rp-body">
+      <div class="rp-sec">People <small>${PEOPLE_TO.length + PEOPLE_CC.length}</small></div>
+      <div class="ppl">${ppl(PEOPLE_TO, 'To')}${ppl(PEOPLE_CC, 'Cc')}</div>
+      <div class="rp-sec" style="margin-top:6px">Groups &amp; departments <small>29 groups · 4 sites</small></div>
+      ${SITES.map(([s, c, gs]) => `<div class="site"><h5>${ic('pin')}${s}<small>${gs.length}</small></h5>
+        <div class="chips">${gs.map(g => `<span class="gc" style="--c:${c}"><i>${ic('users')}</i>${g}</span>`).join('')}</div></div>`).join('')}
+    </div>`;
+}
+
+/* ============================================================
+   Body (EPop archive layout)
+   ============================================================ */
+function poster() {
+  return `<div class="poster" role="img" aria-label="Webinar poster: Santos Green Movement #03" title="Click to zoom">
+    <span class="leaf" style="left:4%;top:76%"></span><span class="leaf" style="left:52%;top:8%;transform:rotate(18deg)"></span>
+    <div class="pt"><small>WEBINAR SERIES</small><b>Climate Change &amp; Managemen Energi</b><span>SGM #03 · Jumat, 23 Okt 2026</span></div>
+    <div class="cup"></div>
+    <span class="zoom">${ic('zoom')}Click to zoom</span></div>`;
+}
+function webinarBody() {
+  const orig = S.orig;
+  const inner = `
+    <p>Dear All,</p>
+    <p class="h-green">WEBINAR SERIES – SANTOS GREEN MOVEMENT (SGM #03)</p>
+    <p>Dalam rangka meningkatkan pemahaman dan awareness mengenai perubahan iklim, industri kopi, serta pentingnya manajemen energi dalam mendukung operasional yang berkelanjutan, kami mengundang Bapak/Ibu untuk mengikuti <b>Webinar Climate Change dan Managemen Energi</b>.</p>
+    ${poster()}
+    <p><b>Pelaksanaan:</b></p>
+    <dl class="kv"><dt>Hari, Tanggal</dt><dd>: Jumat, 23 Oktober 2026</dd><dt>Jam</dt><dd>: 09:00 – 11:30 WIB</dd><dt>Media</dt><dd>: Zoom Meeting</dd><dt>Meeting ID</dt><dd class="tnum">: 891 2826 8907</dd><dt>Passcode</dt><dd class="tnum">: 316536</dd></dl>
+    <p>Mari bersama-sama memperluas wawasan dan mengambil peran nyata untuk masa depan industri yang lebih hijau. Mohon kehadiran tepat waktu.</p>
+    <p class="tagline">Learn • Connect • Inspire • Act for a Sustainable Future</p>
+    <p class="sig">Best regards,<br><b>Fildzah Raudina Mujaddidah</b><br>Strategy &amp; Operational Excellence · SJA Sepanjang</p>
+    ${orig || S.quote ? `<div class="quote"><div class="qh">From: Fildzah Raudina Mujaddidah · Sent: Mon 12 Oct 2026, 16:40<br>Subject: SGM SERIES - Webinar Climate Change dan Managemen Energi</div>
+      <p>Dear All, berikut kami sampaikan rencana Webinar SGM #03. Detail Zoom akan kami kirimkan menyusul.</p><p>Terima kasih.</p></div>`
+      : `<button class="qtg" data-act="quote">${ic('more')}Show quoted text</button>`}`;
+  return orig
+    ? `<p class="orig-note">${ic('alert')}Original formatting — sizes and widths exactly as sent from EPop</p><div class="origwrap"><div class="mbody orig">${inner}</div></div>`
+    : `<div class="mbody">${inner}</div>`;
+}
+function senderReplyBody() {
+  return `<div class="mbody"><p>Dear Bu Fildzah,</p><p>Terima kasih infonya. Tim ICT SJA Karawang akan join via Zoom; kami siapkan juga ruang Robusta untuk nonton bareng bagi yang di plant.</p>
+    <p class="sig">Salam,<br><b>Bagastyo</b><br>ICT · SJA Karawang</p>
+    ${S.quote ? `<div class="quote"><div class="qh">On Wed 14 Oct 2026, 09:05, Fildzah Raudina Mujaddidah wrote:</div><p>Dalam rangka meningkatkan pemahaman dan awareness mengenai perubahan iklim, industri kopi, serta pentingnya manajemen energi…</p></div>`
+    : `<button class="qtg" data-act="quote">${ic('more')}Show quoted text</button>`}</div>`;
+}
+function fmtToggle() {
+  return `<button class="fmt-tg ${S.orig ? 'on' : ''}" data-act="orig" role="switch" aria-checked="${S.orig}" title="Show the mail exactly as it was sent">${ic('type')}Original formatting<span class="sw"></span></button>`;
+}
+
+/* ============================================================
+   Reading pane content
+   ============================================================ */
+function msgMeta() {
+  if (screen === 'sender') return { from:'Bagastyo', label:'You', date:'Wed 14 Oct 2026, 11:02', body:senderReplyBody(), fmt:false };
+  if (screen === 'mass') return { from:SENDER, label:SENDER, date:'Wed 14 Oct 2026, 09:05', body:webinarBody(), fmt:true };
+  if (screen === 'old') return { from:SENDER, label:SENDER, date:'Mon 12 Oct 2026, 16:52', body:webinarBody(), fmt:true };
+  return { from:SENDER, label:SENDER, date:'Wed 14 Oct 2026, 09:05', body:webinarBody(), fmt:true };
+}
+function collapsedItems() {
+  if (screen === 'mass' || screen === 'old') return '';
+  const ck = (part) => `<span class="ck ${part ? 'part' : ''}" title="${part ? 'Some recipients have read this' : 'Read by everyone'}">${ic('cc')}</span>`;
+  const items = screen === 'sender'
+    ? [[SENDER,'Dear All, WEBINAR SERIES – SANTOS GREEN MOVEMENT (SGM #03) Dalam rangka meningkatkan…','Wed 09:05',true],
+       ['Sulastri Basrewan','Noted Bu, HCBP Karawang ikut. Mohon dibagikan link rekamannya ya.','Wed 10:31',false]]
+    : [[SENDER,'Dear All, berikut kami sampaikan rencana Webinar SGM #03. Detail Zoom akan kami kirimkan…','Mon 16:40',false],
+       ['Sulastri Basrewan','Noted Bu, HCBP Karawang ikut. Mohon dibagikan link rekamannya ya.','Tue 08:15',true]];
+  return items.map(([n, s, t, part]) => `<article class="tmsg col"><div class="th">${av(n, 30)}<div class="who"><div class="nm">${n}</div><div class="snip">${s}</div></div>
+    <span class="when">${ck(part)}${t}</span></div></article>`).join('');
+}
+function openMsg(ctx) {
+  const m = msgMeta();
+  return `<article class="tmsg">
+    <div class="open-h">${av(m.from, 40)}<div class="who"><div class="nm">${m.label}${m.from === SENDER ? '<small>fildzah.raudina@santos.co.id</small>' : ''}</div>${rcpLines(ctx)}</div>
+      ${ctx === 'desk' ? `<span class="dt">${m.date}</span>` : ''}</div>
+    <div class="rcpt-wrap">${receipt(ctx)}
+      ${ctx === 'desk' && S.sheet && screen !== 'old' && (screen !== 'sender' || S.variant === 'group') ? `<div class="pop" id="readPop" role="dialog" aria-label="Read receipts" style="left:58px;top:40px;width:400px;max-height:${screen === 'mass' ? 'none' : '440px'}">${sheetInner('desk')}</div>` : ''}</div>
+    ${ctx === 'desk' && S.rcp && screen !== 'mass' ? `<div class="pop rpanel" id="rcpPop" role="dialog" aria-label="Recipients" style="left:58px;top:92px">${rcpPanelInner()}</div>` : ''}
+    <div class="bodywrap">${m.fmt && ctx === 'desk' ? fmtToggle() : ''}${m.fmt && ctx === 'phone' ? fmtToggle() : ''}
+      ${screen === 'old' ? `<div class="arch-note">${ic('archive')}Imported from EPop · 12 Oct 2026</div>` : ''}
+      ${m.body}</div>
+  </article>`;
+}
+
+/* ============================================================
+   Desktop
+   ============================================================ */
+function shell(inner) {
+  const it = (k, icn, label, extra = '') => `<a class="item ${k === 'mail' ? 'active' : ''}">${ic(icn)}${label}${extra}</a>`;
+  return `<div class="shell">
+    <aside class="side"><div class="brand"><i>iP</i>iPop</div>
+      <nav class="nav">
+        <div class="grp g-work"><div class="grp-h"><span style="background:#2e9e5b">${ic('briefcase')}</span>Workspace</div>
+          ${it('dash','grid','Dashboard')}${it('proj','kanban','Projects')}${it('notes','notebook','Notes')}${it('tix','buoy','Tickets')}</div>
+        <div class="grp g-comm"><div class="grp-h"><span style="background:#3b7fe0">${ic('msg')}</span>Communication</div>
+          ${it('chat','msg','Chat','<span class="nb">3</span>')}${it('mail','mail','Mail')}${it('news','news','News &amp; Memos')}${it('calls','video','Calls &amp; Meetings')}${it('notif','bell','Notifications')}</div>
+        <div class="grp g-res"><div class="grp-h"><span style="background:#e08a2e">${ic('folder')}</span>Resources</div>
+          ${it('files','folder','Files')}${it('cal','calendar','Calendar')}</div>
+        <div class="grp g-adm"><div class="grp-h"><span style="background:#7a63d6">${ic('shield')}</span>Administration</div>
+          ${it('adm','settings','Administration')}</div>
+      </nav>
+      <div class="me"><div class="av0">BG</div><div><b>Bagastyo</b><small>Online</small></div></div>
+    </aside>
+    <header class="top"><h1>Mail</h1><div class="search">${ic('search')}Search iPop<kbd>Ctrl K</kbd></div>
+      <button class="ib">${ic('help')}</button><button class="ib">${ic('bell')}</button></header>
+    <main class="panel">${inner}</main></div>`;
+}
+function folders() {
+  const f = screen === 'sender' ? 'sent' : screen === 'old' ? 'epop' : 'inbox';
+  const n = (k, icn, l, c = '', acc) => `<button class="tn ${f === k ? 'on' : ''}">${ic(icn)}<span>${l}</span>${c ? `<span class="n ${acc ? 'acc' : ''}">${c}</span>` : ''}</button>`;
+  return `<section class="mcard"><button class="compose">${ic('pen')}New mail</button>
+    <div class="fh">Mailboxes <small>bagastyo@santos.co.id</small></div>
+    <div class="tree">${n('inbox','inbox','Inbox','14',true)}${n('sent','send','Sent')}${n('draft','file','Drafts','2')}${n('sch','clock','Scheduled')}${n('star','star','Starred')}${n('arch','archive','Archive')}${n('epop','archive','Arsip EPop','2796')}${n('trash','trash','Trash')}
+      <div class="tsite">Labels</div>
+      <button class="tn"><i class="lbl-dot" style="background:#2e9e5b"></i><span>SGM</span></button>
+      <button class="tn"><i class="lbl-dot" style="background:#0a84ff"></i><span>ICT</span></button></div></section>`;
+}
+function list() {
+  const sel = screen;
+  const arc = (id) => `<span class="arc" data-tip="Imported from EPop" data-tipid="${id}">${ic('archive')}</span>`;
+  let rows;
+  if (screen === 'old') {
+    rows = [
+      [SENDER, SUBJ, 'Dear All, WEBINAR SERIES – SANTOS GREEN MOVEMENT (SGM #03) Dalam rangka meningkatkan…', '12 Oct', true, true, 'a1'],
+      ['Sulastri Basrewan', 'Undangan Town Hall Q3 SJA Karawang', 'Dengan hormat, bersama ini kami mengundang Bapak/Ibu…', '9 Oct', false, false, 'a2'],
+      ['Rikki Rinaldo', 'Laporan produksi mingguan W40', 'Terlampir laporan produksi minggu ke-40 untuk Plant-1 dan Plant-2…', '6 Oct', false, false, 'a3'],
+      ['Hendra Gunawan', 'Jadwal maintenance roaster 2', 'Mohon info, roaster 2 akan berhenti operasi Sabtu 10/10…', '2 Oct', false, false, 'a4'],
+      ['Yulia Kartika', 'Pengumuman libur bersama', 'Sehubungan dengan keputusan manajemen, libur bersama…', '29 Sep', false, false, 'a5'],
+      ['Fina Oktaviani', 'Rekap budget Q4 — mohon review', 'Bapak/Ibu, mohon review rekap budget Q4 per departemen…', '25 Sep', false, false, 'a6'],
+    ].map(([f, s, p, t, on, unread, id]) => `<div class="row ${on ? 'sel' : ''}"><div class="r1"><span class="from">${f}</span><span class="tm">${arc(id)}${t}</span></div>
+      <div class="r2">${s}</div><div class="r3">${p}</div></div>`).join('');
+  } else {
+    const base = screen === 'sender'
+      ? [['To: Fildzah Raudina Mujaddidah +40', SUBJ, 'Dear Bu Fildzah, Terima kasih infonya. Tim ICT SJA Karawang akan join via Zoom…', '11:02', true, 3, 'part'],
+         ['To: Alphin Santoso', 'Re: Switch core Karawang', 'Sudah saya cek, uplink sudah normal sejak pagi.', '10:15', false, 0, 'all'],
+         ['To: ICT · SJA Karawang', 'Jadwal piket helpdesk minggu depan', 'Berikut jadwal piket helpdesk 19–23 Oktober…', 'Tue', false, 0, 'part']]
+      : [[SENDER, screen === 'mass' ? 'SGM SERIES - Webinar Climate Change dan Managemen Energi' : SUBJ, 'Dear All, WEBINAR SERIES – SANTOS GREEN MOVEMENT (SGM #03) Dalam rangka meningkatkan…', '09:05', true, screen === 'mass' ? 0 : 3, ''],
+         ['Jason Kristanto', 'Vendor sync · Cisco Meraki', 'Hi all, agenda for tomorrow: licensing renewal and the Karawang AP refresh…', '08:41', false, 0, ''],
+         ['iDesk', 'Ticket #4821 updated', 'Your ticket "Printer lantai 2 offline" was resolved by Beny Saputra.', '08:02', false, 0, ''],
+         ['Corporate Communication', 'News: Santos Coffee Day 2026', 'Ikuti rangkaian acara Santos Coffee Day di seluruh site SJA…', 'Tue', false, 0, '']];
+    rows = base.map(([f, s, p, t, on, c, rr], i) => `<div class="row ${on ? 'sel' : ''} ${i === 1 && screen !== 'sender' ? 'unread' : ''}"><div class="r1"><span class="from">${f}</span>${c ? `<span class="cnt">${c}</span>` : ''}
+      <span class="tm">${rr ? `<span class="${rr === 'all' ? 'rr' : ''}" title="${rr === 'all' ? 'Read by everyone' : 'Read by some'}">${ic('cc')}</span>` : ''}${t}</span></div>
+      <div class="r2">${s}</div><div class="r3">${p}</div></div>`).join('')
+      + `<div class="row"><div class="r1"><span class="from">Rina Wulandari</span><span class="tm"><span class="arc" data-tip="Imported from EPop" data-tipid="b1">${ic('archive')}</span>9 Oct</span></div><div class="r2">Form cuti tahunan 2026</div><div class="r3">Bapak/Ibu, form cuti tahunan terbaru sudah tersedia…</div></div>`;
+  }
+  const title = screen === 'sender' ? 'Sent' : screen === 'old' ? 'Arsip EPop' : 'Inbox';
+  const meta = screen === 'old' ? '2796 messages' : screen === 'sender' ? '312 messages' : '14 unread';
+  return `<section class="mcard"><div class="lhead"><b>${title}</b><small>${meta}</small><span class="sp"></span><button class="ibtn">${ic('search')}</button><button class="ibtn">${ic('more')}</button></div>
+    <div class="rows">${rows}</div></section>`;
+}
+function reader(ctx) {
+  const subj = screen === 'mass' ? 'SGM SERIES - Webinar Climate Change dan Managemen Energi' : SUBJ;
+  const tag = screen === 'mass' ? `<span class="tagx">${ic('megaphone')}Mass mail</span>` : screen === 'old' ? `<span class="tagx" title="Imported from EPop">${ic('archive')}EPop</span>` : '';
+  return `<h2 class="subj">${subj}${tag}</h2><div class="thr">${collapsedItems()}${openMsg(ctx)}</div>`;
+}
+function desktop() {
+  return shell(`<div class="mail-area">${folders()}${list()}
+    <section class="mcard" id="readerCard"><div class="dbar"><button class="reply">${ic('reply')}Reply</button>
+      <button class="ghost">${ic('replyall')}Reply all</button><button class="ghost">${ic('fwd')}Forward</button><span class="sp"></span>
+      <button class="ibtn">${ic('archive')}</button><button class="ibtn">${ic('trash')}</button><button class="ibtn">${ic('star')}</button><button class="ibtn">${ic('more')}</button></div>
+      <div class="dscroll" id="dscroll">${reader('desk')}</div></section></div>`);
+}
+
+/* ============================================================
+   Phone
+   ============================================================ */
+function phoneScr(withSheet) {
+  const sheet = withSheet
+    ? (screen === 'old'
+        ? `<div class="pdim"></div><div class="bsheet"><span class="grab"></span>${rcpPanelInner()}</div>`
+        : `<div class="pdim"></div><div class="bsheet"><span class="grab"></span>${sheetInner('phone')}</div>`)
+    : '';
+  return `<div class="phone"><div class="scr"><div class="isl"></div>
+    <div class="sbar"><span>9:41</span><span class="si">${ic('signal')}${ic('wifi')}${ic('battery')}</span></div>
+    <div class="pv"><div class="pnav"><button class="back">${ic('chevL')}${screen === 'sender' ? 'Sent' : screen === 'old' ? 'Arsip EPop' : 'Inbox'}</button><span class="sp"></span>
+      <button class="pb">${ic('archive')}</button><button class="pb">${ic('trash')}</button><button class="pb">${ic('more')}</button></div>
+      ${reader('phone')}</div>
+    <nav class="ptb">${ic('reply')}${ic('replyall')}${ic('fwd')}${ic('pen')}</nav>
+    ${sheet}<span class="hbar"></span></div></div>`;
+}
+function phoneView() {
+  const cap2 = screen === 'old' ? 'Recipients · bottom sheet' : screen === 'mass' ? 'Mass mail · count only' : 'Read receipts · bottom sheet';
+  return `<div class="stage"><div class="phones">
+    <div>${phoneScr(false)}<div class="pcap">Reading pane · receipts row</div></div>
+    <div>${phoneScr(true)}<div class="pcap">${cap2}</div></div></div></div>`;
+}
+
+/* ============================================================
+   Annotations
+   ============================================================ */
+const ANN = {
+  sender:['Sender view — you replied to all',['Receipts row under the header: ✓✓ Read by 12 of 41 + avatar stack; click opens the sheet.','Your own Bcc is visible to you only — never to others.','Collapsed thread items show only a small ✓✓ (green = everyone read).','Variants below: single recipient read / delivered, external address.'],
+    [['group','41 recipients'],['single-read','1 · Read'],['single-del','1 · Delivered'],['external','External']]],
+  recipient:['Recipient view — same receipts for everyone',['Receipts are visible to all recipients, not just the sender.','To/Cc collapse to one line each; +38 opens the full list grouped People / Groups by site.','Read sheet: Read by · 12 / Not yet · 29, search, groups expand to members.','EPop body: 760px column, 15/1.6, colours + bold kept, quote collapsed.'],[]],
+  mass:['Mass mail — as a recipient',['Only the count: Read by 412 of 1000. No names, no avatars.','The sheet shows a progress ring and explains why names are hidden.'],[]],
+  old:['Old mail — EPop archive',['Read status not tracked before 14 Oct.','List rows: no “Arsip EPop” badge; small archive icon next to the date (tooltip “Imported from EPop”).','Toggle “Original formatting” to see the raw EPop layout (giant heading, thick green quote bar, full-width image).'],[]],
+};
+
+/* ============================================================
+   Render
+   ============================================================ */
+function tg(id, on, icn, label, dis) { const b = $(id); b.className = 'mock-tg' + (on ? ' on' : ''); b.disabled = !!dis; b.innerHTML = ic(icn) + label; }
+function render() {
+  document.documentElement.className = theme === 'dark' ? 'dark' : '';
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.s === screen));
+  const sheetOk = screen !== 'old' && !(screen === 'sender' && S.variant !== 'group');
+  tg('#sheetTg', S.sheet && sheetOk, 'cc', 'Read sheet', !sheetOk);
+  tg('#rcpTg', S.rcp && screen !== 'mass', 'users', 'Recipients panel', screen === 'mass' || (screen === 'sender' && S.variant !== 'group'));
+  tg('#fmtTg', S.orig, 'type', 'Original formatting', screen === 'sender');
+  tg('#phoneTg', phone, phone ? 'monitor' : 'smartphone', phone ? 'Desktop' : 'Phone (390)');
+  tg('#themeTg', theme === 'dark', theme === 'dark' ? 'sun' : 'moon', theme === 'dark' ? 'Light' : 'Dark');
+  const [t, items, vars] = ANN[screen];
+  $('#ann').className = 'ann' + (annMin ? ' min' : '');
+  $('#ann').innerHTML = `<b>${t}<button id="annTg">${annMin ? 'Show' : 'Hide'}</button></b><ul>${items.map(i => `<li>${i}</li>`).join('')}</ul>
+    ${vars.length ? `<div class="vars">${vars.map(([k, l]) => `<button data-var="${k}" class="${S.variant === k ? 'on' : ''}">${l}</button>`).join('')}</div>` : ''}
+    <div class="foot"><b>Read</b> = opened in the reading pane, tab focused, ≥2 s. Mark as read never counts.</div>`;
+  $('#ann').style.display = phone ? 'none' : '';
+  $('#root').innerHTML = phone ? phoneView() : desktop();
+  if (phone) fitPhones();
+}
+function fitPhones() {
+  const ph = document.querySelector('.phones'); if (!ph) return;
+  ph.style.zoom = 1; const st = ph.parentElement;
+  const z = Math.min(1, (st.clientWidth - 40) / ph.scrollWidth, (st.clientHeight - 40) / ph.scrollHeight);
+  ph.style.zoom = z.toFixed(3);
+}
+window.addEventListener('resize', () => phone && fitPhones());
+
+document.addEventListener('mouseover', e => { const t = e.target.closest('[data-tip]'); document.querySelectorAll('.tip-on').forEach(x => x !== t && x.classList.remove('tip-on')); if (t) t.classList.add('tip-on'); });
+document.addEventListener('click', e => {
+  const t = e.target;
+  const tab = t.closest('#tabs button'); if (tab) { screen = tab.dataset.s; S.quote = false; history.replaceState(null, '', '#' + screen); render(); return; }
+  if (t.closest('#themeTg')) { theme = theme === 'light' ? 'dark' : 'light'; render(); return; }
+  if (t.closest('#phoneTg')) { phone = !phone; render(); return; }
+  if (t.closest('#sheetTg')) { S.sheet = !S.sheet; if (S.sheet) S.rcp = false; render(); return; }
+  if (t.closest('#rcpTg')) { S.rcp = !S.rcp; if (S.rcp) S.sheet = false; render(); return; }
+  if (t.closest('#fmtTg')) { S.orig = !S.orig; render(); return; }
+  if (t.closest('#annTg')) { annMin = !annMin; render(); return; }
+  const v = t.closest('[data-var]'); if (v) { S.variant = v.dataset.var; S.sheet = false; S.rcp = false; render(); return; }
+  const tb = t.closest('[data-tab]'); if (tb) { S.tab = tb.dataset.tab; keepScroll(render); return; }
+  const a = t.closest('[data-act]'); if (a) {
+    const k = a.dataset.act;
+    if (k === 'sheet') { S.sheet = !S.sheet; if (S.sheet) S.rcp = false; }
+    if (k === 'rcp') { S.rcp = !S.rcp; if (S.rcp) S.sheet = false; }
+    if (k === 'orig') S.orig = !S.orig;
+    if (k === 'quote') S.quote = !S.quote;
+    if (k === 'ict') S.ictOpen = !S.ictOpen;
+    keepScroll(render); return;
+  }
+  if ((S.sheet || S.rcp) && !t.closest('.pop') && !phone) { S.sheet = false; S.rcp = false; keepScroll(render); }
+});
+function keepScroll(fn) { const d = $('#dscroll'), y = d ? d.scrollTop : 0; const pl = $('.plist'), py = pl ? pl.scrollTop : 0; fn(); if ($('#dscroll')) $('#dscroll').scrollTop = y; if ($('.plist')) $('.plist').scrollTop = py; }
+window.addEventListener('hashchange', () => { screen = location.hash.slice(1) || 'recipient'; render(); });
+if (!ANN[screen]) screen = 'recipient';
+render();
+</script>
+</body>
+</html>
