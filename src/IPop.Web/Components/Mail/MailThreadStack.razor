@@ -73,14 +73,9 @@
 
                         <MailAttachmentCards Attachments="body.Attachments" />
 
-                        <div class="thr-acts">
-                            <button type="button" class="comp-btn" @onclick="() => OnReply.InvokeAsync(body)">
-                                <i data-lucide="reply"></i> Reply
-                            </button>
-                            <button type="button" class="comp-btn" @onclick="() => OnForward.InvokeAsync(body)">
-                                <i data-lucide="forward"></i> Forward
-                            </button>
-                        </div>
+                        <MailMessageActions Mail="body" MyNik="@MyNik"
+                                            OnQuickReply="OnQuickReply" OnReply="OnReply"
+                                            OnReplyAll="OnReplyAll" OnForward="OnForward" />
                     }
                 </div>
             }
@@ -101,7 +96,11 @@
     /// reused directly rather than re-fetched.
     [Parameter, EditorRequired] public MailDetail Detail { get; set; } = default!;
 
+    /// The reader's NIK (never displayed): decides who a reply to one's own message goes to.
+    [Parameter] public string? MyNik { get; set; }
+    [Parameter] public EventCallback<MailDetail> OnQuickReply { get; set; }
     [Parameter] public EventCallback<MailDetail> OnReply { get; set; }
+    [Parameter] public EventCallback<MailDetail> OnReplyAll { get; set; }
     [Parameter] public EventCallback<MailDetail> OnForward { get; set; }
 
     private const int PageSize = 50;

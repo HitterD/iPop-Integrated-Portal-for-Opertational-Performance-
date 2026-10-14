@@ -1,0 +1,45 @@
+@using IPop.Web.Services
+@*
+    Quick reply / Reply / Reply all / Forward for ONE message. Used under every expanded message
+    of a conversation and under a standalone mail, so each action works on the message it sits
+    under (not on whichever mail was opened from the list).
+*@
+<div class="thr-acts">
+    <button type="button" class="comp-btn" @onclick="() => OnQuickReply.InvokeAsync(Mail)">
+        <i data-lucide="message-square-reply"></i> Quick reply
+    </button>
+    <button type="button" class="comp-btn" @onclick="() => OnReply.InvokeAsync(Mail)">
+        <i data-lucide="reply"></i> Reply
+    </button>
+    @if (ReplyAllReachesMore)
+    {
+        <button type="button" class="comp-btn" @onclick="() => OnReplyAll.InvokeAsync(Mail)">
+            <i data-lucide="reply-all"></i> Reply all
+        </button>
+    }
+    <button type="button" class="comp-btn" @onclick="() => OnForward.InvokeAsync(Mail)">
+        <i data-lucide="forward"></i> Forward
+    </button>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MailDetail Mail { get; set; } = default!;
+    /// The reader's NIK: replying to one's own message addresses its recipients instead.
+    [Parameter] public string? MyNik { get; set; }
+    [Parameter] public EventCallback<MailDetail> OnQuickReply { get; set; }
+    [Parameter] public EventCallback<MailDetail> OnReply { get; set; }
+    [Parameter] public EventCallback<MailDetail> OnReplyAll { get; set; }
+    [Parameter] public EventCallback<MailDetail> OnForward { get; set; }
+
+    /// Reply all only when it is allowed and would reach someone Reply doesn't.
+    private bool ReplyAllReachesMore
+    {
+        get
+        {
+            if (!Mail.CanReplyAll) return false;
+            var one = MailAddressing.ForReply(Mail, MyNik, all: false);
+            var all = MailAddressing.ForReply(Mail, MyNik, all: true);
+            return all.To.Count + all.Cc.Count > one.To.Count + one.Cc.Count;
+        }
+    }
+}

@@ -538,6 +538,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             IsMass = mail.IsMass,
             HideRecipients = draftState?.HideRecipients ?? mail.HideRecipients,
             CanReplyAll = callerIsSender || !(mail.IsMass || mail.HideRecipients),
+            SenderIsActive = mail.Sender.IsActive,
         };
     }
 

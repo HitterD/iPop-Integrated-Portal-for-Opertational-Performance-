@@ -479,7 +479,7 @@
                     <button type="button" class="icon-btn mobile-back-btn" title="Back to messages" aria-label="Back to messages" @onclick="BackToList">
                         <i data-lucide="arrow-left"></i>
                     </button>
-                    <button type="button" class="btn-primary-reply" title="Quick reply (R)" aria-label="Quick reply" @onclick="OpenQuickReply">
+                    <button type="button" class="btn-primary-reply" title="Quick reply (R)" aria-label="Quick reply" @onclick="() => OpenQuickReply()">
                         <i data-lucide="reply"></i>
                         <span>Quick Reply</span>
                     </button>
@@ -604,7 +604,7 @@
                                 }
                                 else
                                 {
-                                    <text>To: <span class="recipients-names">@RecipientsShort</span></text>
+                                    <text>To: <span class="recipients-names">@MailAddressing.ToNames(detail)</span></text>
                                     @if (!string.IsNullOrWhiteSpace(CcShort))
                                     {
                                         <text> · Cc: <span class="recipients-names">@CcShort</span></text>
@@ -636,8 +636,8 @@
                     <div class="inline-reply-box qr-top" id="mail-quick-reply">
                         <div class="rh">
                             <i data-lucide="reply"></i>
-                            <span class="title">Quick reply to @detail.SenderName</span>
-                            <button type="button" class="icon-btn" style="margin-left:auto;width:24px;height:24px" title="Open in composer" aria-label="Open in composer" @onclick="() => ReplyMessage(detail)">
+                            <span class="title">Quick reply to @QuickTarget.SenderName</span>
+                            <button type="button" class="icon-btn" style="margin-left:auto;width:24px;height:24px" title="Open in composer" aria-label="Open in composer" @onclick="() => ReplyMessage(QuickTarget)">
                                 <i data-lucide="maximize-2" style="width:13px;height:13px"></i>
                             </button>
                             <button type="button" class="icon-btn" style="width:24px;height:24px" title="Close" aria-label="Close quick reply" @onclick="CloseQuickReply">
@@ -733,7 +733,10 @@
                     {
                         <MailThreadStack @ref="threadStackRef"
                                          Detail="detail"
+                                         MyNik="@Auth.Me?.Nik"
+                                         OnQuickReply="OpenQuickReplyFor"
                                          OnReply="ReplyMessage"
+                                         OnReplyAll="ReplyAllMessage"
                                          OnForward="ForwardMessage" />
                     }
                     else
@@ -741,6 +744,13 @@
                         <div class="body mail-body-links">@((MarkupString)detail.Body)</div>
 
                         <MailAttachmentCards Attachments="detail.Attachments" />
+
+                        @if (detail.Folder is not ("draft" or "scheduled"))
+                        {
+                            <MailMessageActions Mail="detail" MyNik="@Auth.Me?.Nik"
+                                                OnQuickReply="OpenQuickReplyFor" OnReply="ReplyMessage"
+                                                OnReplyAll="ReplyAllMessage" OnForward="ForwardMessage" />
+                        }
                     }
                 </div>
 
@@ -1417,15 +1427,14 @@
     {
         selectedMail = id;
         moreMenuOpen = false; labelMenuOpen = false;
-        if (replyOpenFor != id) { replyOpen = false; replyOpenFor = null; quickReplyText = ""; }
+        if (replyOpenFor != id) { replyOpen = false; replyOpenFor = null; quickReplyText = ""; quickReplyTarget = null; }
         detail = await MailSvc.GetAsync(id);
         if (id != selectedMail) return;
         _ = Notifs.MarkReadByTargetAsync("mail", id);
 
         if (activeFolder == MailFolder.Draft && detail is not null)
         {
-            composerRef?.OpenDraft(detail);
-            composerOpen = true;
+            WithComposer(c => c.OpenDraft(detail));
             return;
         }
 
@@ -1520,7 +1529,7 @@
     private void BackToList()
     {
         selectedMail = null; detail = null; moreMenuOpen = false; labelMenuOpen = false;
-        replyOpen = false; replyOpenFor = null;
+        replyOpen = false; replyOpenFor = null; quickReplyTarget = null;
         // Phone: drop the reader's history entry (no-op on desktop / when Back already popped it).
         if (!composerOpen) _ = JS.InvokeVoidAsync("ipop.mobile.popDetail").AsTask().ContinueWith(_ => { });
     }
@@ -2028,8 +2037,7 @@
         var res = await MailSvc.CancelScheduleAsync(d.Id);
         if (res?.Success == true)
         {
-            composerRef?.OpenDraft(d);
-            composerOpen = true;
+            WithComposer(c => c.OpenDraft(d));
             BackToList();
             await ReloadAll();
         }
@@ -2178,20 +2186,55 @@
     }
 
     // ── Composer & Quick Reply ──
-    private void OpenComposer(
+    /// The composer lives in MainLayout. If it isn't there (layout failed to render), say so
+    /// instead of silently doing nothing.
+    private bool OpenComposer(
         Guid? inReplyTo = null,
         Guid? threadRoot = null,
         string? initialSubject = null,
         string? initialBody = null,
-        List<MemberSearchRow>? initialTo = null)
+        List<MemberSearchRow>? initialTo = null,
+        List<MemberSearchRow>? initialCc = null)
     {
-        composerRef?.OpenNew(inReplyTo, threadRoot, initialSubject, initialBody, initialTo);
-        composerOpen = true;
+        return WithComposer(c =>
+        {
+            c.OpenNew(inReplyTo, threadRoot, initialSubject, initialBody, initialTo);
+            if (initialCc is { Count: > 0 }) c.SetCcRows(initialCc);
+        });
     }
 
-    private async Task OpenQuickReply()
+    private bool WithComposer(Action<MailComposer> open)
+    {
+        if (composerRef is not { } c)
+        {
+            Toasts.Show("Couldn't open the composer. Reload the page and try again.", ToastKind.Error);
+            return false;
+        }
+        try
+        {
+            open(c);
+            composerOpen = true;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Toasts.Show($"Couldn't open the composer: {ex.Message}", ToastKind.Error);
+            return false;
+        }
+    }
+
+    /// The message Quick reply answers: the one whose "Quick reply" was pressed, else the opened one.
+    private MailDetail? quickReplyTarget;
+    private MailDetail QuickTarget => quickReplyTarget ?? detail!;
+
+    private Task OpenQuickReplyFor(MailDetail d) => OpenQuickReply(d);
+
+    private async Task OpenQuickReply(MailDetail? target = null)
     {
         if (detail is null) return;
+        var t = target ?? detail;
+        if (replyOpen && QuickTarget.Id != t.Id) quickReplyText = "";
+        quickReplyTarget = t;
         replyOpen = true;
         replyOpenFor = detail.Id;
         StateHasChanged();
@@ -2203,46 +2246,29 @@
         quickEmojiOpen = false;
         replyOpen = false;
         replyOpenFor = null;
+        quickReplyTarget = null;
     }
 
-    private void ReplyMessage(MailDetail d)
-    {
-        var to = new List<MemberSearchRow> { new(d.SenderNik, d.SenderName, null, null) };
-        var subj = d.Subject.StartsWith("Re:", StringComparison.OrdinalIgnoreCase) ? d.Subject : $"Re: {d.Subject}";
-        var bodyQuote = $"<p><br/></p>{QuoteOf(d)}";
-        OpenComposer(inReplyTo: d.Id, threadRoot: d.ThreadRootId ?? d.Id, initialSubject: subj, initialBody: bodyQuote, initialTo: to);
-    }
+    private void ReplyMessage(MailDetail d) => OpenReply(d, all: false);
 
     private void ReplyAllMessage(MailDetail d)
     {
         // Mass mail / hidden list: the server would refuse; replying to the sender is what's allowed.
         if (!d.CanReplyAll)
-        {
             Toasts.Show($"This mail went to many people, so replies go to {d.SenderName} only.", ToastKind.Info);
-            ReplyMessage(d);
-            return;
-        }
-        var myNik = Auth.Me?.Nik ?? "";
-        var to = new List<MemberSearchRow> { new(d.SenderNik, d.SenderName, null, null) };
-        foreach (var r in d.Recipients.Where(r => r.RecipientType == "to" && !r.Nik.Equals(myNik, StringComparison.OrdinalIgnoreCase) && !r.Nik.Equals(d.SenderNik, StringComparison.OrdinalIgnoreCase)))
-        {
-            to.Add(new(r.Nik, r.Name, null, null));
-        }
+        OpenReply(d, all: d.CanReplyAll);
+    }
 
-        var cc = d.Recipients
-            .Where(r => r.RecipientType == "cc" && !r.Nik.Equals(myNik, StringComparison.OrdinalIgnoreCase))
-            .Select(r => new MemberSearchRow(r.Nik, r.Name, null, null))
-            .ToList();
-
-        var subj = d.Subject.StartsWith("Re:", StringComparison.OrdinalIgnoreCase) ? d.Subject : $"Re: {d.Subject}";
-        var bodyQuote = $"<p><br/></p>{QuoteOf(d)}";
-        composerRef?.OpenNew(inReplyTo: d.Id, threadRoot: d.ThreadRootId ?? d.Id, initialSubject: subj, initialBody: bodyQuote, initialTo: to);
-        if (composerRef != null && cc.Count > 0)
-        {
-            // set CC rows
-            composerRef.SetCcRows(cc);
-        }
-        composerOpen = true;
+    /// Like Outlook: a reply to my own sent message goes to its recipients; a sender without an
+    /// active account can't be addressed (the composer opens without them and a toast says why).
+    private void OpenReply(MailDetail d, bool all)
+    {
+        var plan = MailAddressing.ForReply(d, Auth.Me?.Nik, all);
+        var opened = OpenComposer(inReplyTo: d.Id, threadRoot: d.ThreadRootId ?? d.Id,
+            initialSubject: MailAddressing.ReplySubject(d.Subject),
+            initialBody: $"<p><br/></p>{QuoteOf(d)}",
+            initialTo: plan.To, initialCc: plan.Cc);
+        if (opened && plan.Notice is not null) Toasts.Show(plan.Notice, ToastKind.Warning);
     }
 
     private async Task ToggleMuteThread(Guid mailId)
@@ -2310,27 +2336,24 @@
     private void ForwardMessage(MailDetail d)
     {
         var subj = d.Subject.StartsWith("Fwd:", StringComparison.OrdinalIgnoreCase) ? d.Subject : $"Fwd: {d.Subject}";
-        var bodyQuote = $"<br/><br/>——— Forwarded from {d.SenderName} ———<br/>{d.Body}";
-        composerRef?.OpenForward(d, subj, bodyQuote);
-        composerOpen = true;
+        var bodyQuote = $"<br/><br/>——— Forwarded from {System.Net.WebUtility.HtmlEncode(d.SenderName)} ———<br/>{d.Body}";
+        WithComposer(c => c.OpenForward(d, subj, bodyQuote));
     }
 
     private async Task SendQuickReply()
     {
-        if (detail is null || string.IsNullOrWhiteSpace(quickReplyText)) return;
+        if (detail is null || string.IsNullOrWhiteSpace(quickReplyText) || quickReplySending) return;
+        var target = QuickTarget;
+        var req = MailAddressing.QuickReply(target, quickReplyText, Auth.Me?.Nik);
+        if (req.To.Count == 0)
+        {
+            Toasts.Show(MailAddressing.ForReply(target, Auth.Me?.Nik, all: false).Notice
+                ?? "There is no one to send this reply to.", ToastKind.Warning);
+            return;
+        }
         quickReplySending = true;
         try
         {
-            var typed = System.Net.WebUtility.HtmlEncode(quickReplyText.Trim()).Replace("\n", "<br/>");
-            var req = new MailSendRequest(
-                Subject: detail.Subject.StartsWith("Re:", StringComparison.OrdinalIgnoreCase) ? detail.Subject : $"Re: {detail.Subject}",
-                Body: $"<p>{typed}</p>{QuoteOf(detail)}",
-                To: [detail.SenderNik],
-                Cc: [],
-                Bcc: [],
-                InReplyToId: detail.Id,
-                ThreadRootId: detail.ThreadRootId ?? detail.Id);
-
             var res = await MailSvc.SendAsync(req);
             if (res?.Success == true)
             {
@@ -2341,6 +2364,15 @@
                 await ReloadAll();
                 if (threadStackRef is not null) await threadStackRef.ReloadAsync(expandLatest: true);
             }
+            else
+            {
+                // The typed text stays in the box so nothing is lost.
+                Toasts.Show(res?.Error ?? "Couldn't send the reply. Try again.", ToastKind.Error);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Toasts.Show("Couldn't send the reply. Check your connection and try again.", ToastKind.Error);
         }
         finally
         {
@@ -2348,19 +2380,7 @@
         }
     }
 
-    private static string QuoteOf(MailDetail d)
-    {
-        var stamp = d.SentAt?.ToLocalTime().ToString("ddd, dd MMM yyyy 'at' HH:mm") ?? "earlier";
-        return $"""
-            <details class="mail-quote">
-              <summary class="mail-quote-toggle" title="Show quoted message">⋯</summary>
-              <div class="mail-quote-inner">
-                <div class="mail-quote-attr">On {stamp}, {System.Net.WebUtility.HtmlEncode(d.SenderName)} wrote:</div>
-                <blockquote>{d.Body}</blockquote>
-              </div>
-            </details>
-            """;
-    }
+    private static string QuoteOf(MailDetail d) => MailAddressing.QuoteOf(d);
 
     private async Task OnComposerSent()
     {
@@ -2446,8 +2466,8 @@
         return parts.Length == 0 && detail.RecipientGroups.Count == 0 ? tail : $"{(parts.Length > 0 ? parts + " " : "")}and {tail}";
     }
 
-    private string RecipientsShort => detail is null ? "" : string.Join(", ", detail.Recipients.Where(r => r.RecipientType is "to" or "cc").Select(r => r.Name));
-    private string? CcShort => detail is null ? null : string.Join(", ", detail.Recipients.Where(r => r.RecipientType == "cc").Select(r => r.Name));
+    // To and Cc are listed separately: the Cc names used to appear in both.
+    private string? CcShort => detail is null ? null : MailAddressing.CcNames(detail);
     private static string FormatTime(DateTime? t)
     {
         if (t is null) return "";

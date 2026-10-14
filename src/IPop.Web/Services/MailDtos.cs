@@ -51,6 +51,8 @@ public record MailDetail(
     public bool IsMass { get; init; }
     public bool HideRecipients { get; init; }
     public bool CanReplyAll { get; init; } = true;
+    /// False when the sender has no active account: replies cannot reach them.
+    public bool SenderIsActive { get; init; } = true;
 }
 
 /// Error is the server's human message; Code is the machine one (confirm_required, …).

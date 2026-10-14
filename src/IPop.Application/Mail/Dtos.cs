@@ -157,6 +157,9 @@ public record MailDetailDto(
     public bool HideRecipients { get; init; }
     /// False for mass mail unless the caller sent it: reply goes to the sender only.
     public bool CanReplyAll { get; init; } = true;
+    /// False when the sender has no active account (left the company, EPop archive sender):
+    /// a reply cannot be delivered to them, so the composer must not address it to them.
+    public bool SenderIsActive { get; init; } = true;
 }
 
 // Delivery/read state of one recipient, for the sender's "terkirim/dibaca" view.
