@@ -12,6 +12,9 @@ namespace IPop.Web.Services;
 ///   • quoted history (EPop "-----Original e/pop-----", Outlook From:/Sent:, gmail_quote, blockquote, thick left
 ///     borders) is moved into the same &lt;details class="mail-quote"&gt; expander iPop replies already use, so there
 ///     is one quote toggle. A body that already carries that expander is left as it is.
+///   • empty vertical gaps (QA 3): runs of &lt;br&gt; keep at most one blank line, runs of empty paragraphs / divs /
+///     tables keep the first, and empty spacers lose their fixed heights. Nothing with content goes: images, hr,
+///     anchors, filled cells and coloured bars stay; &lt;pre&gt; is untouched.
 /// The input is the HtmlSanitizer's serialization (well-formed, quoted attributes, escaped text). Anything
 /// unexpected falls back to the input.
 public static class MailBodyLayout
@@ -35,6 +38,7 @@ public static class MailBodyLayout
             // Quote detection first: it reads the thick left borders that normalisation drops.
             var quoted = !html.Contains("class=\"mail-quote", StringComparison.Ordinal) && CollapseQuote(root);
             var changed = NormaliseStyles(root);
+            changed |= CollapseGaps(root);
             return changed || quoted ? new Result(Serialize(root), true, quoted) : new Result(html, false, false);
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IndexOutOfRangeException or FormatException)
@@ -243,6 +247,135 @@ public static class MailBodyLayout
         if (unit is not ("" or "px" or "pt")) return null;
         var n = double.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture);
         return unit == "pt" ? n * 4 / 3 : n;
+    }
+
+    // ───────────────────────── empty gaps ─────────────────────────
+
+    /// Elements that may sit inside an empty spacer (wrappers and structure only — nothing that shows by itself).
+    private static readonly HashSet<string> BlankOk =
+    [
+        "br", "span", "font", "b", "strong", "i", "em", "u", "s", "strike", "small", "big", "sub", "sup", "o:p",
+        "p", "div", "center", "section", "table", "tbody", "thead", "tfoot", "tr", "td", "th", "colgroup", "col",
+        "h1", "h2", "h3", "h4", "h5", "h6",
+    ];
+    /// Spacer blocks that collapse when several follow each other.
+    private static readonly HashSet<string> GapBlocks = ["p", "div", "center", "section", "table", "h1", "h2", "h3", "h4", "h5", "h6"];
+    private static readonly HashSet<string> Inline = ["span", "font", "b", "strong", "i", "em", "u", "s", "strike", "small", "big", "sub", "sup", "o:p"];
+    /// Block-level elements: a line break right after one (or at the start of one) already starts a new line.
+    private static readonly HashSet<string> BlockLevel =
+    [
+        "p", "div", "center", "section", "article", "header", "footer", "table", "ul", "ol", "li", "blockquote", "pre", "hr",
+        "h1", "h2", "h3", "h4", "h5", "h6", "details", "summary", "td", "th", "body", "#root", "dl", "dd", "dt", "figure",
+    ];
+    private static readonly HashSet<string> Raw = ["pre", "textarea", "xmp", "listing", "plaintext"];
+    private static readonly Regex Visible = new(@"(^|;)\s*(background|background-color|background-image|border|border-top|border-bottom|border-left|border-right|border-width|border-style)\s*:", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex HeightDecl = new(@"^\s*(height|min-height)\s*:", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static bool BlankText(string raw) => Decode(raw).Trim().Trim('​', '﻿', ' ').Trim().Length == 0;
+
+    /// Shows nothing: only whitespace, breaks and plain wrappers; no images, rules, anchors, fields or coloured boxes.
+    private static bool IsBlank(Node n) => n switch
+    {
+        Text t => BlankText(t.Raw),
+        Other => true,
+        El e => BlankOk.Contains(e.Name) && !Painted(e) && e.Kids.All(IsBlank),
+        _ => false,
+    };
+
+    private static bool Painted(El e)
+        => e.Attr("bgcolor") is not null || e.Attr("background") is not null
+        || e.Attr("style") is { } st && Visible.IsMatch(st.Replace("&quot;", "\""))
+        || e.Attr("id") is not null || e.Attr("name") is not null;
+
+    /// A line-break-only node: &lt;br&gt;, whitespace, or an inline wrapper holding only those.
+    private static bool BreakOnly(Node n) => n switch
+    {
+        Text t => BlankText(t.Raw),
+        Other => true,
+        El { Name: "br" } => true,
+        El e => Inline.Contains(e.Name) && !Painted(e) && e.Kids.All(BreakOnly),
+        _ => false,
+    };
+
+    private static int Breaks(Node n) => n switch
+    {
+        El { Name: "br" } => 1,
+        El e => e.Kids.Sum(Breaks),
+        _ => 0,
+    };
+
+    private static bool CollapseGaps(El root)
+    {
+        var changed = false;
+        Visit(root);
+        return changed;
+
+        void Visit(El parent)
+        {
+            if (Raw.Contains(parent.Name)) return;
+            foreach (var k in parent.Kids.ToList()) if (k is El c) Visit(c);
+            if (parent.Name is "td" or "th" or "tr" && !Painted(parent) && parent.Kids.All(IsBlank)) changed |= DropHeights(parent);
+
+            var kids = parent.Kids;
+            var i = 0;
+            while (i < kids.Count)
+            {
+                if (!(kids[i] is El { Name: "br" } || kids[i] is El ge && GapBlocks.Contains(ge.Name) && IsBlank(ge) || BreakOnly(kids[i]) && Breaks(kids[i]) > 0))
+                { i++; continue; }
+                // A gap run: breaks, whitespace, break-only wrappers and empty blocks, side by side.
+                var start = i;
+                var end = i;
+                while (end < kids.Count && (BreakOnly(kids[end]) || kids[end] is El be && GapBlocks.Contains(be.Name) && IsBlank(be))) end++;
+                while (end > start + 1 && kids[end - 1] is Text tail && BlankText(tail.Raw) && Breaks(tail) == 0) end--;
+                var run = kids.GetRange(start, end - start);
+                var firstBlock = run.OfType<El>().FirstOrDefault(e => GapBlocks.Contains(e.Name));
+                List<Node>? keep = null;
+                if (firstBlock is not null)
+                {
+                    // One empty block is one blank line; the rest of the run goes.
+                    changed |= DropHeights(firstBlock);
+                    if (run.Any(n => n != firstBlock && !(n is Text t && t.Raw.Trim().Length == 0)))
+                        keep = [firstBlock];
+                }
+                else
+                {
+                    var prev = start > 0 ? PrevMeaningful(parent, kids[start]) : null;
+                    var atLineStart = prev is null ? BlockLevel.Contains(parent.Name) : prev is El pe && BlockLevel.Contains(pe.Name);
+                    var limit = atLineStart ? 1 : 2;
+                    if (run.Sum(Breaks) > limit)
+                    {
+                        keep = [];
+                        for (var b = 0; b < limit; b++) keep.Add(new El("br"));
+                    }
+                }
+                if (keep is not null)
+                {
+                    kids.RemoveRange(start, run.Count);
+                    foreach (var n in keep) n.Parent = parent;
+                    kids.InsertRange(start, keep);
+                    changed = true;
+                    i = start + keep.Count;
+                }
+                else i = end;
+            }
+        }
+    }
+
+    /// An empty spacer keeps its place but not its fixed height (Outlook's 120 px empty divs / table rows).
+    private static bool DropHeights(El e)
+    {
+        var changed = false;
+        foreach (var el in new[] { e }.Concat(Walk(e).OfType<El>()))
+        {
+            if (el.Attr("height") is not null) { el.SetAttr("height", null); changed = true; }
+            if (el.Attr("style") is { } st)
+            {
+                var parts = st.Split(';').Where(d => d.Trim().Length > 0).ToList();
+                var kept = parts.Where(d => !HeightDecl.IsMatch(d)).ToList();
+                if (kept.Count != parts.Count) { el.SetAttr("style", kept.Count == 0 ? null : string.Join(";", kept)); changed = true; }
+            }
+        }
+        return changed;
     }
 
     // ───────────────────────── quoted history ─────────────────────────
