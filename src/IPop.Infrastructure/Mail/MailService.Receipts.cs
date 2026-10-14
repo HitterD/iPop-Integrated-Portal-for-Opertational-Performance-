@@ -96,7 +96,8 @@ public sealed partial class MailService
 
         var byKey = people.ToDictionary(p => p.UserKey);
         var result = new List<MailReceiptGroupDto>();
-        foreach (var g in picked.Where(g => isSender || g.Field != "bcc"))
+        // Only real groups: EPop imports keep the original address-book entries as kind "epop" with no id.
+        foreach (var g in picked.Where(g => (isSender || g.Field != "bcc") && g.Kind is "shared" or "personal" && g.Id != Guid.Empty))
         {
             // Today's members that are on this mail: a person who joined the group later is not counted.
             var memberIds = g.Kind == "personal"
