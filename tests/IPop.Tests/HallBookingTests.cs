@@ -33,7 +33,7 @@ public class HallBookingTests
     public async Task Overlapping_bookings_of_the_same_room_are_refused_on_create_and_update()
     {
         using var t = new TestDb(); var a = t.AddUser("A1"); var b = t.AddUser("B1");
-        var start = DateTime.UtcNow.AddHours(2);
+        var start = SafeBookingTime.Start;
         var (r1, id1, _) = await MeetingEndpoints.ApplyCreateAsync(t.Db, a.Id, Req(start, 60, "sja hall robusta"), default);
         Assert.Equal(MeetingEndpoints.CreateResult.Created, r1);
         Assert.Equal("SJA Hall · Robusta", t.Verify().Meetings.Single().Location);

@@ -139,7 +139,7 @@ public class MeetingKindTests
     public async Task Upcoming_feed_and_detail_return_kind_and_room_key()
     {
         using var t = new TestDb(); var a = t.AddUser("A1");
-        var start = DateTime.UtcNow.AddHours(2);
+        var start = SafeBookingTime.Start;
         var (_, roomEv, _) = await CreateSeriesAsync(t.Db, a.Id, new SaveEventRequest("Room", start, start.AddHours(1), Location: "SJA Hall · Kalosi", Kind: "room"), default);
         var (_, voiceEv, _) = await CreateSeriesAsync(t.Verify(), a.Id, new SaveEventRequest("Voice", start.AddHours(2), start.AddHours(3), Kind: "voice"), default);
         var (_, plain, _) = await CreateSeriesAsync(t.Verify(), a.Id, new SaveEventRequest("Desk", start.AddHours(4), start.AddHours(5), Location: "Lantai 3"), default);
@@ -182,7 +182,7 @@ public class MeetingKindTests
     public async Task Calendar_edit_room_to_voice_clears_the_password()
     {
         using var t = new TestDb(); var a = t.AddUser("A1");
-        var start = DateTime.UtcNow.AddHours(2);
+        var start = SafeBookingTime.Start;
         var (_, ev, _) = await CreateSeriesAsync(t.Db, a.Id, new SaveEventRequest("Room", start, start.AddHours(1), Location: "SJA Hall · Kalosi"), default);
         Assert.NotNull((await t.Verify().Meetings.SingleAsync()).RoomPassword);
         Assert.Equal(MeetingKind.Room, (await t.Verify().Meetings.SingleAsync()).Kind);

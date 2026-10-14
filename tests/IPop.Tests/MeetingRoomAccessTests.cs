@@ -66,7 +66,7 @@ public class MeetingRoomAccessTests
     public async Task Calendar_bookings_of_a_hall_room_also_get_a_password()
     {
         using var t = new TestDb(); var org = t.AddUser("O1");
-        var start = DateTime.UtcNow.AddHours(2);
+        var start = SafeBookingTime.Start;
         var (r, ev, _) = await CalendarEndpoints.CreateEventAsync(t.Db, org.Id,
             new CalendarEndpoints.SaveEventRequest("Room", start, start.AddHours(1), Location: "SJA Hall · Robusta"), default);
         Assert.Equal(CalendarEndpoints.SaveResult.Ok, r);

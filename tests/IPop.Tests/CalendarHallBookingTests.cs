@@ -13,7 +13,7 @@ public class CalendarHallBookingTests
     public async Task Booking_a_hall_room_without_invitees_is_a_meeting_the_room_card_sees()
     {
         using var t = new TestDb(); var a = t.AddUser("A1");
-        var start = DateTime.UtcNow.AddHours(2);
+        var start = SafeBookingTime.Start;
         var (r, ev, _) = await CreateSeriesAsync(t.Db, a.Id, new SaveEventRequest("Toraja standup", start, start.AddHours(1), Location: "sja hall toraja"), default);
         Assert.Equal(SaveResult.Ok, r);
         Assert.NotNull(ev!.MeetingId);
@@ -26,7 +26,7 @@ public class CalendarHallBookingTests
     public async Task Overlapping_calendar_bookings_of_the_same_room_are_refused_on_create_and_update()
     {
         using var t = new TestDb(); var a = t.AddUser("A1"); var b = t.AddUser("B1");
-        var start = DateTime.UtcNow.AddHours(2);
+        var start = SafeBookingTime.Start;
         Assert.Equal(SaveResult.Ok, (await CreateSeriesAsync(t.Db, a.Id, new SaveEventRequest("First", start, start.AddHours(1), Location: "SJA Hall · Toraja"), default)).Item1);
 
         // Solo and with invitees, single and repeating: all clash.
