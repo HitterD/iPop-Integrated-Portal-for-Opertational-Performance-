@@ -96,7 +96,9 @@ public record FolderCountsDto(
     int StarredTotal,
     int ArchiveTotal,
     int TrashTotal,
-    int ScheduledTotal = 0);
+    int ScheduledTotal = 0,
+    // Starred mail still in the Inbox: the Inbox "Starred" tab (StarredTotal counts every folder).
+    int InboxStarred = 0);
 
 // Search/filter inputs — all optional, AND-ed together.
 public record MailSearchRequest(

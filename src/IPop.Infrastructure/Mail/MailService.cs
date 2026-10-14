@@ -421,7 +421,8 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         return new FolderCountsDto(
             GetUnread("inbox"), Get("inbox"),
             Get("sent"), Get("draft"), rows.Where(r => r.IsStarred).Sum(r => r.Count),
-            Get("archive"), Get("trash"), Get("scheduled"));
+            Get("archive"), Get("trash"), Get("scheduled"),
+            rows.Where(r => r.Folder == "inbox" && r.IsStarred).Sum(r => r.Count));
     }
 
     public async Task<PagedResult<MailSummaryDto>> GetThreadAsync(Guid userId, Guid threadRootId, int page, int pageSize, CancellationToken ct)

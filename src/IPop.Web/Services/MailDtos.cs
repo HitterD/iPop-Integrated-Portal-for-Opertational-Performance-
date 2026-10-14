@@ -17,7 +17,7 @@ public record MailSummary(
 
 public record MailCounts(
     int InboxUnread, int InboxTotal, int SentTotal, int DraftTotal,
-    int StarredTotal, int ArchiveTotal, int TrashTotal, int ScheduledTotal = 0);
+    int StarredTotal, int ArchiveTotal, int TrashTotal, int ScheduledTotal = 0, int InboxStarred = 0);
 
 public record MailRecipient(Guid UserId, string Name, string Nik, string Email, string RecipientType);
 

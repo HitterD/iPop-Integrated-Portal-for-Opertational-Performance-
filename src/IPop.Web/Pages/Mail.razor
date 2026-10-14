@@ -1204,7 +1204,10 @@
         ? (counts?.InboxUnread ?? 0)
         : Items.Count(i => !i.IsRead);
 
-    private int StarredCount => counts?.StarredTotal ?? 0;
+    // The Starred tab filters the open folder: in the Inbox count only starred Inbox mail (the sidebar keeps all).
+    private int StarredCount => activeFolder == MailFolder.Inbox ? (counts?.InboxStarred ?? 0)
+        : activeFolder == MailFolder.Starred ? (counts?.StarredTotal ?? 0)
+        : Items.Count(i => i.IsStarred);
 
     private int NewCount => counts?.InboxUnread ?? 0;
 

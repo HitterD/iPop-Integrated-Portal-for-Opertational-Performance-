@@ -351,6 +351,7 @@ public sealed class PracticeSandbox
             {
                 inboxUnread = Folder("inbox").Count(m => !(bool)m["isRead"]!), inboxTotal = Folder("inbox").Count(), sentTotal = Folder("sent").Count(),
                 draftTotal = 0, starredTotal = Folder("starred").Count(), archiveTotal = Folder("archive").Count(), trashTotal = Folder("trash").Count(), scheduledTotal = 0,
+                inboxStarred = Folder("inbox").Count(m => (bool)m["isStarred"]!),
             };
             if (M(url, @"/api/mail/labels")) return new[] { new { id = G("8", 1), name = "Wi-Fi project", color = "#0d9488", count = 2 } };
             var f = Regex.Match(url, @"/api/mail/folders/(\w+)");
