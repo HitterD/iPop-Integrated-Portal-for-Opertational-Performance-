@@ -1,9 +1,12 @@
 @using IPop.Web.Services
 @inject IPop.Web.Services.MailService MailSvc
 @inject IJSRuntime JS
+@inject IPop.Web.Services.MailReceiptsStore Store
+@inject HttpClient Http
+@implements IDisposable
 
 @* Mass mail in the reading pane. Recipients get a banner explaining why Reply all is off;
-   the sender gets sent/delivered/read counts with a paged read / not-read list (50 a page)
+   the sender gets sent/delivered/read counts (read = really seen, from /receipts) with a read / not-read list (50 a page)
    and the inactive people who were skipped. Nothing here loads every recipient at once. *@
 @if (!IsSender)
 {
@@ -24,64 +27,69 @@
         </div>
     }
 }
-else if (stats is { } s)
+else if (rc is { } r)
 {
-    var unread = Math.Max(0, s.Sent - s.Read);
-    var readPct = s.Sent == 0 ? 0 : s.Read * 100.0 / s.Sent;
+    var unread = Math.Max(0, r.Total - r.Read);
+    var readPct = r.Total == 0 ? 0 : r.Read * 100.0 / r.Total;
+    var list = r.People.Where(p => (p.SeenAt is not null) == showRead)
+        .OrderBy(p => showRead ? p.SeenAt : null).ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    var pages = Math.Max(1, (list.Count + PageSize - 1) / PageSize);
+    var pg = Math.Clamp(page, 1, pages);
     <section class="mm-stats" aria-label="Delivery and read statistics">
         <div class="mm-stats-h">
-            <div><b>@s.Sent.ToString("N0")</b>sent</div>
-            <div><b>@s.Delivered.ToString("N0")</b>delivered</div>
-            <div><b>@s.Read.ToString("N0")</b>read</div>
-            <div><b>@unread.ToString("N0")</b>not yet read</div>
+            <div><b>@N(r.Total)</b>sent</div>
+            <div><b>@N(r.Delivered)</b>delivered</div>
+            <div><b>@N(r.Read)</b>read</div>
+            <div><b>@N(unread)</b>not yet read</div>
         </div>
         <div class="mm-bar" role="img" aria-label="@($"{readPct:0}% read")">
             <i style="width:@(readPct.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture))%"></i>
         </div>
+        @if (!r.Tracked)
+        {
+            <div class="mm-empty">Read status is not tracked for mail sent before @(r.TrackedSince?.ToLocalTime().ToString("d MMM yyyy") ?? "receipts started").</div>
+        }
         <div class="mm-tabs" role="tablist">
-            <button type="button" role="tab" class="@(showRead ? "on" : "")" aria-selected="@(showRead ? "true" : "false")" @onclick="() => SetTab(true)">Read (@s.Read.ToString("N0"))</button>
-            <button type="button" role="tab" class="@(!showRead ? "on" : "")" aria-selected="@(!showRead ? "true" : "false")" @onclick="() => SetTab(false)">Not read (@unread.ToString("N0"))</button>
+            <button type="button" role="tab" class="@(showRead ? "on" : "")" aria-selected="@(showRead ? "true" : "false")" @onclick="() => SetTab(true)">Read (@N(r.Read))</button>
+            <button type="button" role="tab" class="@(!showRead ? "on" : "")" aria-selected="@(!showRead ? "true" : "false")" @onclick="() => SetTab(false)">Not read (@N(unread))</button>
         </div>
         <div class="mm-list" role="list">
-            @if (readers is null)
-            {
-                <div class="mm-empty">Loading…</div>
-            }
-            else if (readers.Items.Count == 0)
+            @if (list.Count == 0)
             {
                 <div class="mm-empty">@(showRead ? "Nobody has read it yet." : "Everyone has read it.")</div>
             }
             else
             {
-                @foreach (var r in readers.Items)
+                @foreach (var p in list.Skip((pg - 1) * PageSize).Take(PageSize))
                 {
                     <div class="mm-row" role="listitem">
-                        <PersonAvatar Nik="@r.Nik" Name="@r.Name" Size="24" Decorative="true" />
-                        <span class="nm">@r.Name</span>
-                        @if (r.ReadAt is { } at) { <small>Read @Stamp(at)</small> }
+                        <PersonAvatar Nik="@p.UserKey" Name="@MailReceiptView.TitleCase(p.Name)" Photo="@PhotoUrl(p.PhotoId)" Size="24" Decorative="true" />
+                        <span class="nm">@MailReceiptView.TitleCase(p.Name)</span>
+                        @if (p.SeenAt is { } at) { <small>Read @Stamp(at)</small> }
+                        else if (!p.Delivered) { <small>Not delivered</small> }
                     </div>
                 }
             }
         </div>
-        @if (readers is { } pg && pg.TotalCount > PageSize)
+        @if (list.Count > PageSize)
         {
-            var from = (pg.Page - 1) * PageSize + 1;
-            var to = Math.Min(pg.TotalCount, pg.Page * PageSize);
+            var from = (pg - 1) * PageSize + 1;
+            var to = Math.Min(list.Count, pg * PageSize);
             <div class="mm-pager">
-                <span>@from.ToString("N0")–@to.ToString("N0") of @pg.TotalCount.ToString("N0")</span>
+                <span>@N(from)–@N(to) of @N(list.Count)</span>
                 <span>
-                    <button type="button" class="mm-link muted" disabled="@(pg.Page <= 1 || busy)" @onclick="() => LoadPageAsync(pg.Page - 1)">‹ Prev</button>
-                    <button type="button" class="mm-link" disabled="@(to >= pg.TotalCount || busy)" @onclick="() => LoadPageAsync(pg.Page + 1)">Next ›</button>
+                    <button type="button" class="mm-link muted" disabled="@(pg <= 1)" @onclick="() => page = pg - 1">‹ Prev</button>
+                    <button type="button" class="mm-link" disabled="@(to >= list.Count)" @onclick="() => page = pg + 1">Next ›</button>
                 </span>
             </div>
         }
     </section>
-    @if (s.Skipped.Count > 0)
+    @if (skipped.Count > 0)
     {
         <div class="mm-skip" role="note">
             <i data-lucide="user-x"></i>
-            <span><b>@s.Skipped.Count @(s.Skipped.Count == 1 ? "person was" : "people were") skipped</b> because their accounts are inactive:
-                @string.Join(", ", s.Skipped.Take(20).Select(x => x.Name))@(s.Skipped.Count > 20 ? $" and {s.Skipped.Count - 20} more" : "").</span>
+            <span><b>@skipped.Count @(skipped.Count == 1 ? "person was" : "people were") skipped</b> because their accounts are inactive:
+                @string.Join(", ", skipped.Take(20).Select(x => x.Name))@(skipped.Count > 20 ? $" and {skipped.Count - 20} more" : "").</span>
         </div>
     }
 }
@@ -90,56 +98,58 @@ else if (stats is { } s)
     private const int PageSize = 50;
 
     [Parameter, EditorRequired] public MailDetail Detail { get; set; } = default!;
-    /// The signed-in user sent this mail (stats are sender-only on the server too).
+    /// The signed-in user sent this mail (names are sender-only on the server too).
     [Parameter] public bool IsSender { get; set; }
 
+    // Counts and names come from /receipts (SeenAt: the message was really seen), never from the recipients'
+    // unread badge (IsRead/ReadAt). /stats is read only for the inactive accounts that were skipped.
     private Guid loadedFor;
-    private MailStats? stats;
-    private MailPaged<MailReader>? readers;
+    private MailReceipts? rc;
+    private IReadOnlyList<SkippedRecipient> skipped = [];
     private bool showRead = true;
-    private bool busy;
+    private int page = 1;
 
-    /// Stats only matter for big mail; ordinary sent mail keeps its per-person receipts.
+    private static string N(int n) => n.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// Stats only matter for big mail; ordinary sent mail has the receipts row under its header.
     private bool WantsStats => IsSender && Detail.IsMass && Detail.SentAt is not null;
+
+    protected override void OnInitialized() => Store.Changed += OnChanged;
 
     protected override async Task OnParametersSetAsync()
     {
-        if (!WantsStats) { stats = null; readers = null; loadedFor = Guid.Empty; return; }
+        if (!WantsStats) { rc = null; skipped = []; loadedFor = Guid.Empty; return; }
         if (loadedFor == Detail.Id) return;
         loadedFor = Detail.Id;
-        stats = null;
-        readers = null;
+        rc = null;
+        skipped = [];
         showRead = true;
+        page = 1;
         var id = Detail.Id;
-        var s = await MailSvc.GetStatsAsync(id);
+        var r = await Store.GetAsync(id);
         if (loadedFor != id) return;
-        stats = s;
+        rc = r;
         // Open on the tab that has people in it.
-        if (s is not null && s.Read == 0) showRead = false;
-        await LoadPageAsync(1);
+        if (r is { Read: 0 }) showRead = false;
+        var s = await MailSvc.GetStatsAsync(id);
+        if (loadedFor == id && s is not null) skipped = s.Skipped;
     }
 
-    private async Task SetTab(bool read)
+    private void OnChanged(Guid id)
+    {
+        if (id != loadedFor || id == Guid.Empty) return;
+        _ = InvokeAsync(async () => { var r = await Store.GetAsync(id); if (id == loadedFor) { rc = r; StateHasChanged(); } });
+    }
+
+    private void SetTab(bool read)
     {
         if (showRead == read) return;
         showRead = read;
-        await LoadPageAsync(1);
+        page = 1;
     }
 
-    private async Task LoadPageAsync(int page)
-    {
-        var id = Detail.Id;
-        var read = showRead;
-        busy = true;
-        readers = page == 1 ? null : readers;
-        try
-        {
-            var res = await MailSvc.GetReadersAsync(id, read, page);
-            if (id != Detail.Id || read != showRead) return;
-            readers = res ?? new MailPaged<MailReader>([], 0, page, PageSize);
-        }
-        finally { busy = false; }
-    }
+    private string? PhotoUrl(string? photoId)
+        => string.IsNullOrEmpty(photoId) ? null : new Uri(Http.BaseAddress ?? new Uri("http://localhost/"), $"/api/photos/{Uri.EscapeDataString(photoId)}").ToString();
 
     private static string Stamp(DateTime t)
     {
@@ -151,4 +161,6 @@ else if (stats is { } s)
     {
         try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
     }
+
+    public void Dispose() => Store.Changed -= OnChanged;
 }

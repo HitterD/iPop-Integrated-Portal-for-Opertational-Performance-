@@ -1,0 +1,268 @@
+@using IPop.Web.Services
+@implements IDisposable
+@inject MailReceiptsStore Store
+@inject IJSRuntime JS
+@inject HttpClient Http
+
+@* Recipients under the sender name (spec 2026-10-14 §4): one line each for To and Cc — "you" first, a few names,
+   group chips, then +N — and a panel "Recipients · 42 · To 39 · Cc 3" with search, People (two columns, To/Cc tag)
+   and Groups & departments by site. Mass mail for recipients keeps the chip + total (no names to list).
+   Names come from the mail (≤ 50) and, for the panel, from the receipts list; NIK is never rendered. *@
+<div class="mrh">
+    @if (Undisclosed)
+    {
+        <div class="mrh-line" data-field="to"><em>To</em><span class="mrh-names">undisclosed recipients</span></div>
+    }
+    else if (MassForMe)
+    {
+        <div class="mrh-line" data-field="to"><em>To</em>
+            @foreach (var g in Detail.RecipientGroups.Where(g => g.Field != "bcc"))
+            {
+                <span class="mrh-chip" title="@($"{g.Name}: {N(g.Count)} people")"><i data-lucide="megaphone"></i>@g.Name</span>
+            }
+            @if (Detail.RecipientGroups.Count(g => g.Field != "bcc") == 0)
+            {
+                <span class="mrh-names">@(TypedOf("to").Any(IsMe) ? "you and " : "")@($"{N(Math.Max(0, Detail.RecipientTotal - 1))} others")</span>
+            }
+            else
+            {
+                <span class="mrh-total">· @N(Detail.RecipientTotal)</span>
+            }
+        </div>
+    }
+    else
+    {
+        @foreach (var line in Lines())
+        {
+            <div class="mrh-line" data-field="@line.Field"><em>@line.Label</em>
+                @if (line.Names.Length > 0) { <span class="mrh-names">@line.Names</span> }
+                @foreach (var g in line.Groups)
+                {
+                    <span class="mrh-chip" title="@($"{g.Name}: {N(g.Count)} people")"><i data-lucide="users"></i>@g.Name</span>
+                }
+                @if (line.More > 0)
+                {
+                    <button type="button" class="mrh-more @(open ? "on" : "")" aria-haspopup="dialog" aria-expanded="@(open ? "true" : "false")"
+                            title="Show all recipients" @onclick="Open">+@N(line.More)</button>
+                }
+                @if (line.Field == "bcc")
+                {
+                    <span class="mrh-bccnote"><i data-lucide="lock"></i>Only you can see this</span>
+                }
+            </div>
+        }
+    }
+
+    @if (open)
+    {
+        if (phone)
+        {
+            <div class="mrr-dim" @onclick="Close"></div>
+            <div class="mrr-sheet mrh-panel" role="dialog" aria-modal="true" aria-label="Recipients" @onkeydown="OnKey">
+                <span class="mrr-grab" aria-hidden="true"></span>
+                @Panel
+            </div>
+        }
+        else
+        {
+            <div class="mrr-catch" @onclick="Close"></div>
+            <div class="mrr-pop mrh-panel" role="dialog" aria-label="Recipients" @onkeydown="OnKey">@Panel</div>
+        }
+    }
+</div>
+
+@code {
+    private static string N(int n) => n.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
+    [Parameter, EditorRequired] public MailDetail Detail { get; set; } = default!;
+    /// The reader's NIK: only compared, never displayed.
+    [Parameter] public string? MyNik { get; set; }
+
+    private const int NamesPerLine = 3;
+    private bool open, phone;
+    private string query = "";
+    private MailReceipts? rc;
+    private Guid shownFor;
+
+    private bool IsSender => Eq(Detail.SenderNik, MyNik);
+    private bool Undisclosed => Detail.HideRecipients && !IsSender;
+    /// A recipient of mass mail sees the chip and the total; there are no names to list.
+    private bool MassForMe => !IsSender && Detail.IsMass && Detail.RecipientTotal > MailLimits.ConfirmAbove;
+
+    private static bool Eq(string? a, string? b) => a is not null && b is not null && a.Equals(b, StringComparison.OrdinalIgnoreCase);
+    private bool IsMe(MailRecipient r) => Eq(r.Nik, MyNik);
+    private IEnumerable<MailRecipient> TypedOf(string field) => Detail.Recipients.Where(r => r.RecipientType == field);
+
+    private sealed record Line(string Field, string Label, string Names, IReadOnlyList<RecipientGroupCount> Groups, int More);
+
+    private List<Line> Lines()
+    {
+        var lines = new List<Line>();
+        var listed = Detail.Recipients.Count(r => r.RecipientType is "to" or "cc" or "bcc");
+        var inGroups = Detail.RecipientGroups.Where(g => g.Field != "bcc" || IsSender).Sum(g => g.Count);
+        // Recipients holds at most 50 names: anything beyond that and the group members goes on the To line.
+        var unlisted = Math.Max(0, Detail.RecipientTotal - listed - inGroups);
+        foreach (var (field, label) in new[] { ("to", "To"), ("cc", "Cc"), ("bcc", "Bcc") })
+        {
+            if (field == "bcc" && !IsSender) continue;
+            var typed = TypedOf(field).OrderByDescending(IsMe).ToList();
+            var groups = Detail.RecipientGroups.Where(g => g.Field == field).ToList();
+            if (typed.Count == 0 && groups.Count == 0 && !(field == "to" && unlisted > 0)) continue;
+            var shown = typed.Take(NamesPerLine).Select(r => IsMe(r) ? "you" : r.Name).ToList();
+            var more = typed.Count - shown.Count + groups.Sum(g => g.Count) + (field == "to" ? unlisted : 0);
+            lines.Add(new Line(field, label, string.Join(", ", shown), groups, more));
+        }
+        return lines;
+    }
+
+    protected override void OnInitialized() => Store.Changed += OnChanged;
+
+    protected override void OnParametersSet()
+    {
+        if (shownFor == Detail.Id) return;
+        shownFor = Detail.Id;
+        open = false; rc = null;
+    }
+
+    private async Task Open()
+    {
+        try { phone = await JS.InvokeAsync<bool>("ipop.mobile.isMobile"); } catch (JSException) { phone = false; } catch (InvalidOperationException) { phone = false; }
+        query = "";
+        open = true;
+        StateHasChanged();
+        var id = Detail.Id;
+        var r = await Store.GetAsync(id);
+        if (id == Detail.Id) rc = r;
+    }
+
+    private void OnChanged(Guid id)
+    {
+        if (!open || id != Detail.Id) return;
+        _ = InvokeAsync(async () => { rc = await Store.GetAsync(id); StateHasChanged(); });
+    }
+
+    private void Close() => open = false;
+    private void OnQuery(ChangeEventArgs e) => query = e.Value?.ToString() ?? "";
+    private void OnKey(KeyboardEventArgs e) { if (e.Key == "Escape") Close(); }
+
+    private sealed record Row(string Key, string Name, string Field, string? Photo, bool Me);
+    private sealed record Chip(string Name, string Full, int Count);
+
+    /// Everyone the reader may see: the receipts list when it has names, otherwise the mail's own (≤ 50) names.
+    private List<Row> People()
+    {
+        if (rc is { NamesVisible: true } r && r.People.Count > 0)
+            return r.People.OrderByDescending(p => p.IsMe).ThenBy(p => FieldOrder(p.Field))
+                .Select(p => new Row(p.UserKey, MailReceiptView.TitleCase(p.Name), p.Field, PhotoUrl(p.PhotoId), p.IsMe)).ToList();
+        return Detail.Recipients.Where(x => x.RecipientType is "to" or "cc" || (x.RecipientType == "bcc" && IsSender))
+            .OrderByDescending(IsMe).ThenBy(x => FieldOrder(x.RecipientType))
+            .Select(x => new Row(x.UserId.ToString("N"), MailReceiptView.TitleCase(x.Name), x.RecipientType, null, IsMe(x))).ToList();
+    }
+
+    private static int FieldOrder(string f) => f == "to" ? 0 : f == "cc" ? 1 : 2;
+
+    /// Groups by site: "ICT · SJA Karawang" → site "SJA Karawang", chip "ICT"; otherwise the members' common site.
+    private List<(string Site, List<Chip> Chips)> Sites()
+    {
+        var chips = new List<(string Site, Chip Chip)>();
+        if (rc is { NamesVisible: true } r && r.Groups.Count > 0)
+        {
+            var byKey = r.People.GroupBy(p => p.UserKey).ToDictionary(g => g.Key, g => g.First());
+            foreach (var g in r.Groups)
+            {
+                var (site, shortName) = SplitSite(g.Name);
+                site ??= g.MemberKeys.Where(byKey.ContainsKey).Select(k => byKey[k].Site).Where(s => !string.IsNullOrWhiteSpace(s))
+                    .GroupBy(s => s!).OrderByDescending(x => x.Count()).Select(x => x.Key).FirstOrDefault();
+                chips.Add((site ?? "Other", new Chip(shortName, g.Name, g.Total)));
+            }
+        }
+        else
+        {
+            foreach (var g in Detail.RecipientGroups.Where(g => g.Field != "bcc" || IsSender))
+            {
+                var (site, shortName) = SplitSite(g.Name);
+                chips.Add((site ?? "Other", new Chip(shortName, g.Name, g.Count)));
+            }
+        }
+        return chips.GroupBy(c => c.Site).OrderBy(g => g.Key == "Other").ThenByDescending(g => g.Count()).ThenBy(g => g.Key)
+            .Select(g => (g.Key, g.Select(c => c.Chip).ToList())).ToList();
+    }
+
+    private static (string? Site, string Short) SplitSite(string name)
+    {
+        var i = name.LastIndexOf(" · ", StringComparison.Ordinal);
+        return i > 0 ? (name[(i + 3)..].Trim(), name[..i].Trim()) : (null, name);
+    }
+
+    private static readonly string[] SiteInk = ["#2e9e5b", "#3b7fe0", "#e08a2e", "#7a63d6", "#c0513a", "#18808a"];
+
+    private string? PhotoUrl(string? photoId)
+        => string.IsNullOrEmpty(photoId) ? null : new Uri(Http.BaseAddress ?? new Uri("http://localhost/"), $"/api/photos/{Uri.EscapeDataString(photoId)}").ToString();
+
+    private RenderFragment Panel => __builder =>
+    {
+        var people = People();
+        var to = people.Count(p => p.Field == "to");
+        var cc = people.Count(p => p.Field == "cc");
+        var bcc = people.Count(p => p.Field == "bcc");
+        var total = rc is { NamesVisible: true } ? people.Count : Math.Max(Detail.RecipientTotal, people.Count);
+        if (rc is not { NamesVisible: true }) to = Math.Max(to, total - cc - bcc);
+        var q = query.Trim();
+        var shownPeople = q.Length == 0 ? people : people.Where(p => p.Name.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+        var sites = Sites()
+            .Select(s => (s.Site, Chips: q.Length == 0 || s.Site.Contains(q, StringComparison.OrdinalIgnoreCase) ? s.Chips
+                : s.Chips.Where(c => c.Full.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList()))
+            .Where(s => s.Chips.Count > 0).ToList();
+        var groupCount = sites.Sum(s => s.Chips.Count);
+
+        <div class="mrr-ph mrh-ph"><b>Recipients</b>
+            <span class="mrr-ratio">@N(total) · To @N(to) · Cc @N(cc)@(bcc > 0 ? $" · Bcc {N(bcc)}" : "")</span>
+            <button type="button" class="mrr-x" aria-label="Close" @onclick="Close"><i data-lucide="x"></i></button></div>
+        <label class="mrr-srch"><i data-lucide="search"></i>
+            <input type="search" placeholder="Find a person or group" aria-label="Find recipient" value="@query" @oninput="OnQuery" /></label>
+        <div class="mrh-body">
+            @if (shownPeople.Count > 0)
+            {
+                <div class="mrh-sec">People <small>@N(shownPeople.Count)</small></div>
+                <div class="mrh-ppl">
+                    @foreach (var p in shownPeople)
+                    {
+                        <div class="mrh-pr">
+                            <PersonAvatar Nik="@p.Key" Name="@p.Name" Photo="@p.Photo" Size="26" Decorative="true" />
+                            <b>@(p.Me ? "You" : p.Name)</b>
+                            <span class="mrh-tg">@(p.Field switch { "cc" => "Cc", "bcc" => "Bcc", _ => "To" })</span>
+                        </div>
+                    }
+                </div>
+            }
+            @if (sites.Count > 0)
+            {
+                <div class="mrh-sec">Groups &amp; departments <small>@groupCount @(groupCount == 1 ? "group" : "groups") · @sites.Count @(sites.Count == 1 ? "site" : "sites")</small></div>
+                @for (var i = 0; i < sites.Count; i++)
+                {
+                    var s = sites[i];
+                    var ink = SiteInk[i % SiteInk.Length];
+                    <div class="mrh-site">
+                        <h5><i data-lucide="map-pin"></i>@s.Site<small>@s.Chips.Count</small></h5>
+                        <div class="mrh-chips">
+                            @foreach (var c in s.Chips)
+                            {
+                                <span class="mrh-gc" style="--c:@ink" title="@($"{c.Full}: {N(c.Count)} on this mail")"><i><i data-lucide="users"></i></i><b>@c.Name</b><small>@N(c.Count)</small></span>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+            @if (shownPeople.Count == 0 && sites.Count == 0)
+            {
+                <div class="mrr-empty">No one matches.</div>
+            }
+        </div>
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch (JSException) { } catch (InvalidOperationException) { }
+    }
+
+    public void Dispose() => Store.Changed -= OnChanged;
+}

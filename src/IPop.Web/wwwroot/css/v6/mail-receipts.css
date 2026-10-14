@@ -1,0 +1,228 @@
+/* Mail read receipts, recipients header, reading layout, EPop list marker (spec 2026-10-14, mockup
+   docs/mockups/mail-read-receipts-epop.html). Prefixes only: mrr- (receipts + popovers/sheets), mrh- (recipients),
+   mrd- (message body), mrl- (list). Global .btn/.tk/.dash/.center/.ra rules bleed into generic class names. */
+
+.mail-page, .mrr-sheet, .mrr-pop {
+  --mrr-fill: rgba(118, 118, 128, .12);
+  --mrr-fill-2: rgba(118, 118, 128, .08);
+  --mrr-sep: rgba(60, 60, 67, .14);
+  --mrr-green: #2e9e5b;
+  --mrr-green-soft: rgba(46, 158, 91, .12);
+  --mrr-card: var(--surface, #fff);
+  --mrr-pop-sh: 0 24px 60px -18px rgba(0, 0, 0, .35), 0 0 0 .5px rgba(0, 0, 0, .08);
+  --mrr-ease: cubic-bezier(.32, .72, 0, 1);
+}
+[data-theme="dark"] .mail-page, [data-theme="dark"] .mrr-sheet, [data-theme="dark"] .mrr-pop {
+  --mrr-fill: rgba(118, 118, 128, .24);
+  --mrr-fill-2: rgba(118, 118, 128, .16);
+  --mrr-sep: rgba(84, 84, 88, .6);
+  --mrr-green: #30d158;
+  --mrr-green-soft: rgba(48, 209, 88, .14);
+  --mrr-card: #2c2c2e;
+  --mrr-pop-sh: 0 30px 70px -20px rgba(0, 0, 0, .8), 0 0 0 .5px rgba(255, 255, 255, .12);
+}
+
+/* ───────── recipients header (collapsed) ───────── */
+.mrh { position: relative; margin-top: 6px; display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--ink-2); }
+.mrh-line { display: flex; align-items: center; gap: 4px; min-width: 0; white-space: nowrap; min-height: 22px; }
+.mrh-line > em { font-style: normal; color: var(--ink-3); width: 26px; flex: none; }
+.mrh-names { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mrh-chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px 0 5px; border-radius: 6px; background: var(--mrr-fill); font-weight: 550; color: var(--ink-2); flex: none; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.mrh-chip .lucide { width: 12px; height: 12px; color: var(--ink-3); flex: none; }
+.mrh-total { color: var(--ink-3); margin-left: 4px; flex: none; }
+button.mrh-more { flex: none; height: 22px; padding: 0 8px; border: 0; border-radius: 999px; background: var(--mrr-green-soft); color: var(--mrr-green); font: inherit; font-weight: 700; font-size: 12px; cursor: pointer; }
+button.mrh-more:hover { filter: brightness(.97); }
+button.mrh-more.on { background: var(--mrr-green); color: #fff; }
+.mrh-bccnote { color: var(--ink-3); font-size: 11.5px; margin-left: 6px; display: inline-flex; gap: 4px; align-items: center; }
+.mrh-bccnote .lucide { width: 12px; height: 12px; }
+
+/* ───────── receipts row ───────── */
+.mrr { position: relative; display: flex; flex-wrap: wrap; align-items: center; row-gap: 4px; margin-top: 8px; }
+.mrr-seen {
+  display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px 0 8px; border: 0; border-radius: 999px;
+  font: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-2); background: var(--mrr-fill-2); white-space: nowrap;
+}
+button.mrr-seen { cursor: pointer; }
+button.mrr-seen:hover { background: var(--mrr-fill); }
+.mrr-seen.on { background: var(--mrr-green-soft); color: var(--mrr-green); }
+.mrr-seen .mrr-cc { width: 16px; height: 16px; color: var(--mrr-green); flex: none; }
+.mrr-seen .mrr-cc.grey { color: var(--ink-3); }
+.mrr-seen.mrr-muted { background: transparent; color: var(--ink-3); font-weight: 500; padding-left: 0; }
+.mrr-seen.mrr-muted .lucide { width: 14px; height: 14px; color: var(--ink-4); }
+.mrr-n { font-variant-numeric: tabular-nums; }
+.mrr-stk { display: inline-flex; align-items: center; }
+.mrr-stk .pav { box-shadow: 0 0 0 1.5px var(--mrr-card); }
+.mrr-stk .pav + .pav { margin-left: -5px; }
+.mrr-chev { width: 13px; height: 13px; opacity: .6; }
+.mrr-hint { font-size: 11.5px; color: var(--ink-3); margin-left: 8px; }
+.mrr-tick { display: inline-grid; place-items: center; color: var(--ink-3); flex: none; }
+.mrr-tick .lucide { width: 14px; height: 14px; }
+.mrr-tick.all { color: var(--mrr-green); }
+
+/* the open message's header sits above the body: receipts row in the thread aligns with the name */
+.mail-page .thr-msg > .mrr { margin: 0 14px 6px 50px; }
+/* popovers must escape the card clip of an open thread item */
+.mail-page .thr-msg.open { overflow: visible; }
+
+/* ───────── popover / bottom sheet ───────── */
+.mrr-catch { position: fixed; inset: 0; z-index: 39; }
+.mrr-pop {
+  position: absolute; left: 0; top: calc(100% + 6px); z-index: 40; width: 400px; max-width: calc(100vw - 32px); max-height: 440px;
+  background: var(--mrr-card); border-radius: 16px; box-shadow: var(--mrr-pop-sh);
+  display: flex; flex-direction: column; overflow: hidden; animation: mrr-pin .18s var(--mrr-ease);
+  color: var(--ink); font-size: 14px; line-height: 1.45; text-align: left; white-space: normal;
+}
+.mrr-pop.mrh-panel { width: 540px; max-height: 520px; }
+@keyframes mrr-pin { from { opacity: 0; transform: translateY(-4px); } }
+.mrr-dim { position: fixed; inset: 0; background: rgba(0, 0, 0, .35); z-index: 1200; }
+.mrr-sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; max-height: calc(100dvh - 92px); z-index: 1201;
+  border-radius: 28px 28px 0 0; background: var(--surface, #fff); color: var(--ink); font-size: 14px; line-height: 1.45;
+  display: flex; flex-direction: column; animation: mrr-up .35s var(--mrr-ease); box-shadow: 0 -10px 40px rgba(0, 0, 0, .2);
+  padding-bottom: env(safe-area-inset-bottom, 0px); white-space: normal;
+}
+[data-theme="dark"] .mrr-sheet { background: #1c1c1e; }
+@keyframes mrr-up { from { transform: translateY(40px); opacity: 0; } }
+.mrr-grab { width: 38px; height: 5px; border-radius: 3px; background: var(--ink-4); margin: 7px auto 0; opacity: .7; flex: none; }
+
+.mrr-ph { flex: none; display: flex; align-items: center; gap: 8px; padding: 14px 14px 10px; }
+.mrr-ph b { font-size: 15px; letter-spacing: -.015em; flex: 1; }
+.mrr-ratio { font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+button.mrr-x { width: 26px; height: 26px; border: 0; border-radius: 50%; display: grid; place-items: center; background: var(--mrr-fill); color: var(--ink-3); cursor: pointer; padding: 0; flex: none; }
+button.mrr-x .lucide { width: 13px; height: 13px; stroke-width: 2.4; }
+.mrr-seg { flex: none; display: flex; padding: 2px; border-radius: 10px; background: var(--mrr-fill); margin: 0 14px 10px; }
+.mrr-seg button {
+  flex: 1; height: 30px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 13px; font-weight: 550; color: var(--ink-2);
+  display: flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; cursor: pointer;
+}
+.mrr-seg button .lucide { width: 14px; height: 14px; }
+.mrr-seg button.on { background: var(--surface, #fff); color: var(--ink); font-weight: 650; box-shadow: 0 1px 3px rgba(0, 0, 0, .12), 0 0 0 .5px rgba(0, 0, 0, .04); }
+[data-theme="dark"] .mrr-seg button.on { background: #636366; }
+.mrr-srch { flex: none; margin: 0 14px 8px; height: 34px; border-radius: 10px; background: var(--mrr-fill); display: flex; align-items: center; gap: 7px; padding: 0 10px; color: var(--ink-3); }
+.mrr-srch .lucide { width: 15px; height: 15px; flex: none; }
+.mrr-srch input { flex: 1; min-width: 0; border: 0; background: transparent; outline: none; font: inherit; font-size: 13.5px; color: var(--ink); padding: 0; box-shadow: none; height: auto; }
+.mrr-srch input::placeholder { color: var(--ink-3); }
+.mrr-srch input::-webkit-search-cancel-button { display: none; }
+.mrr-list { overflow: auto; flex: 1; min-height: 0; padding: 0 6px 10px; }
+.mrr-empty { padding: 18px 12px; text-align: center; font-size: 13px; color: var(--ink-3); }
+.mrr-psec { padding: 10px 10px 4px; font-size: 11.5px; font-weight: 650; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
+.mrr-psec .lucide { width: 13px; height: 13px; }
+.mrr-c { margin-left: auto; font-weight: 600; }
+.mrr-pr { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 10px; min-width: 0; }
+.mrr-pr:hover { background: var(--mrr-fill-2); }
+.mrr-t { flex: 1; min-width: 0; }
+.mrr-t b { display: block; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mrr-t span { display: block; font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mrr-st { font-size: 12px; color: var(--ink-3); white-space: nowrap; text-align: right; display: flex; align-items: center; gap: 4px; }
+.mrr-st .lucide { width: 13px; height: 13px; }
+.mrr-st.rd { color: var(--mrr-green); }
+.mrr-st.rd b { font-weight: 600; color: var(--ink-2); }
+button.mrr-gr { width: 100%; text-align: left; border: 0; background: transparent; font: inherit; color: inherit; cursor: pointer; }
+.mrr-gav { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; background: var(--mrr-fill); color: var(--ink-2); flex: none; }
+.mrr-gav .lucide { width: 17px; height: 17px; }
+.mrr-meter { width: 46px; height: 5px; border-radius: 3px; background: var(--mrr-fill); overflow: hidden; flex: none; }
+.mrr-meter i { display: block; height: 100%; background: var(--mrr-green); border-radius: 3px; }
+.mrr-cv { width: 15px; height: 15px; color: var(--ink-3); transition: transform .2s; flex: none; }
+.mrr-gr.open .mrr-cv { transform: rotate(90deg); }
+.mrr-gkids { margin-left: 22px; border-left: 1px solid var(--mrr-sep); padding-left: 4px; }
+.mrr-foot { flex: none; padding: 9px 14px 12px; font-size: 11.5px; color: var(--ink-3); border-top: .5px solid var(--mrr-sep); display: flex; gap: 6px; align-items: flex-start; }
+.mrr-foot .lucide { width: 13px; height: 13px; flex: none; margin-top: 1px; }
+.mrr-sheet .mrr-pr { padding: 9px 8px; }
+.mrr-sheet .mrr-foot { padding-bottom: 28px; }
+
+.mrr-mass { padding: 14px 18px 34px; text-align: center; }
+.mrr-ring { --p: 0%; width: 120px; height: 120px; border-radius: 50%; margin: 6px auto 12px; background: conic-gradient(var(--mrr-green) 0 var(--p), var(--mrr-fill) var(--p) 100%); display: grid; place-items: center; }
+.mrr-ring > div { width: 96px; height: 96px; border-radius: 50%; background: var(--mrr-card); display: grid; place-items: center; font-size: 22px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.mrr-sheet .mrr-ring > div { background: var(--surface, #fff); }
+[data-theme="dark"] .mrr-sheet .mrr-ring > div { background: #1c1c1e; }
+.mrr-mass > b { font-size: 16px; }
+.mrr-mass p { font-size: 13px; color: var(--ink-3); max-width: 290px; margin: 6px auto 0; }
+
+/* ───────── recipients panel ───────── */
+.mrh-body { overflow: auto; flex: 1; min-height: 0; padding: 0 10px 12px; }
+.mrh-sec { padding: 8px 6px 6px; font-size: 12px; font-weight: 700; color: var(--ink-2); display: flex; justify-content: space-between; }
+.mrh-sec small { font-weight: 550; color: var(--ink-3); font-size: 11.5px; }
+.mrh-ppl { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
+.mrh-pr { display: flex; align-items: center; gap: 10px; padding: 5px 6px; border-radius: 10px; min-width: 0; }
+.mrh-pr:hover { background: var(--mrr-fill-2); }
+.mrh-pr > b { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mrh-tg { font-size: 10.5px; font-weight: 700; color: var(--ink-3); background: var(--mrr-fill); border-radius: 5px; padding: 1px 5px; flex: none; }
+.mrh-site { margin: 4px 0 8px; padding: 8px 10px 10px; border-radius: 12px; background: var(--mrr-fill-2); }
+.mrh-site h5 { margin: 0 0 7px; font-size: 12px; font-weight: 650; color: var(--ink-2); display: flex; align-items: center; gap: 6px; }
+.mrh-site h5 .lucide { width: 13px; height: 13px; color: var(--ink-3); }
+.mrh-site h5 small { margin-left: auto; font-weight: 550; color: var(--ink-3); }
+.mrh-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.mrh-gc { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 4px; border-radius: 8px; background: var(--surface, #fff); box-shadow: 0 0 0 .5px var(--mrr-sep); font-size: 12.5px; white-space: nowrap; }
+[data-theme="dark"] .mrh-gc { background: #3a3a3c; }
+.mrh-gc > i { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; background: var(--c); color: #fff; font-style: normal; }
+.mrh-gc > i .lucide { width: 12px; height: 12px; }
+.mrh-gc b { font-weight: 550; }
+.mrh-gc small { color: var(--ink-3); font-weight: 500; font-size: 11.5px; }
+.mrr-sheet .mrh-ppl { grid-template-columns: 1fr; }
+.mrr-sheet .mrh-body { padding-bottom: 34px; }
+
+/* ───────── message body: reading column ───────── */
+.mrd { position: relative; }
+.mrd-host { margin-bottom: 16px; }
+button.mrd-fmt {
+  float: right; position: relative; z-index: 2; margin: 0 0 8px 12px; display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 4px 0 10px;
+  border: 0; border-radius: 999px; font: inherit; font-size: 12px; font-weight: 600; color: var(--ink-3); background: var(--mrr-fill-2); cursor: pointer; white-space: nowrap;
+}
+button.mrd-fmt .lucide { width: 14px; height: 14px; }
+.mrd-sw { width: 30px; height: 18px; border-radius: 9px; background: var(--ink-4); position: relative; transition: background .2s; }
+.mrd-sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .3); transition: transform .2s var(--mrr-ease); }
+button.mrd-fmt.on { color: var(--mrr-green); }
+button.mrd-fmt.on .mrd-sw { background: var(--mrr-green); }
+button.mrd-fmt.on .mrd-sw::after { transform: translateX(12px); }
+.mrd-arch { max-width: 760px; margin: 0 auto 12px; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); min-height: 28px; }
+.mrd-arch .lucide { width: 14px; height: 14px; }
+
+.mail-page .mrd-body {
+  max-width: 760px; margin: 0 auto; font-size: 15px; line-height: 1.6; color: var(--ink);
+  overflow-wrap: anywhere; word-break: normal; font-family: inherit;
+}
+.mail-page .mrd-body p { margin: 0 0 .85em; }
+.mail-page .mrd-body :where(h1) { font-size: 20px; line-height: 1.3; margin: .4em 0 .6em; }
+.mail-page .mrd-body :where(h2) { font-size: 18px; line-height: 1.35; margin: .4em 0 .6em; }
+.mail-page .mrd-body :where(h3, h4, h5, h6) { font-size: 16px; line-height: 1.4; margin: .4em 0 .5em; }
+.mail-page .mrd-body :where(font[size="5"], font[size="6"], font[size="7"]) { font-size: 17px; }
+.mail-page .mrd-body img { max-width: 100%; height: auto; border-radius: 8px; cursor: zoom-in; }
+.mail-page .mrd-body a img { cursor: pointer; }
+.mail-page .mrd-body table { max-width: 100%; }
+.mail-page .mrd-body :where(pre) { white-space: pre-wrap; }
+/* quoted older mail: thin grey rule, never a thick coloured bar */
+.mail-page .mrd-body blockquote { margin: 0; padding: 2px 0 2px 14px; border-left: 2px solid var(--ink-4); color: var(--ink-2); font-size: 14px; }
+.mail-page .mrd-body .mail-quote-inner { border-left: 2px solid var(--ink-4); padding-left: 14px; color: var(--ink-2); font-size: 14px; }
+.mail-page .mrd-body .mail-quote-inner blockquote { border-left: 0; padding-left: 0; }
+.mail-page .mrd-body .mail-quote-attr { font-size: 12.5px; color: var(--ink-3); }
+/* the existing ⋯ expander, labelled like the mockup's "Show quoted text" */
+.mail-page .mrd-body details.mail-quote summary.mail-quote-toggle {
+  width: auto; height: 28px; padding: 0 10px; gap: 6px; border: 0; border-radius: 8px; background: var(--mrr-fill-2); color: var(--ink-3); font-size: 12.5px; font-weight: 600;
+}
+.mail-page .mrd-body details.mail-quote summary.mail-quote-toggle::after { content: "Show quoted text"; }
+.mail-page .mrd-body details.mail-quote[open] > summary.mail-quote-toggle::after { content: "Hide quoted text"; }
+.mail-page .mrd-body details.mail-quote details.mail-quote summary.mail-quote-toggle::after { content: none; }
+.mail-page .mrd-body details.mail-quote details.mail-quote summary.mail-quote-toggle { width: 28px; height: 18px; padding: 0; }
+
+.mrd-orig-note { font-size: 12px; color: var(--ink-3); margin: 0 0 8px; display: flex; align-items: center; gap: 6px; min-height: 28px; }
+.mrd-orig-note .lucide { width: 13px; height: 13px; color: #ff9f0a; }
+.mrd-origwrap { overflow-x: auto; max-width: 100%; clear: both; }
+.mail-page .mrd-orig {
+  padding: 16px; border-radius: 10px; background: #fff; color: #000; box-shadow: inset 0 0 0 1px #ddd;
+  font-family: Calibri, "Segoe UI", Arial, sans-serif; font-size: 13px; line-height: 1.25; word-break: normal;
+}
+.mail-page .mrd-orig img { max-width: none; height: auto; }
+
+/* ───────── list: EPop archive marker ───────── */
+.mail-page .m-time { display: inline-flex; align-items: center; gap: 5px; }
+.mrl-arc { display: inline-grid; place-items: center; color: var(--ink-3); }
+.mrl-arc .lucide { width: 13px; height: 13px; }
+
+/* ───────── phone ───────── */
+@media (max-width: 767px) {
+  .mrh-line .mrh-names { max-width: 210px; }
+  .mail-page .thr-msg > .mrr { margin-left: 14px; }
+  button.mrd-fmt { float: none; margin: 0 0 10px; }
+  .mail-page .mrd-body { font-size: 15px; }
+  .mrr-pop { display: none; }   /* phones use the sheet; a stale popover never shows */
+}

@@ -36,8 +36,10 @@ else
     [Parameter] public string? Initials { get; set; }
     [Parameter] public string? Title { get; set; }
     [Parameter] public bool Decorative { get; set; }
+    /// A photo URL for people known only by an opaque key (mail receipts: /api/photos/{photoId}); wins over Nik.
+    [Parameter] public string? Photo { get; set; }
 
-    private string? PhotoUrl => AvatarPhotos.Url(Nik);
+    private string? PhotoUrl => Photo ?? AvatarPhotos.Url(Nik);
     private bool CanView => Viewable && PhotoUrl is not null;
     private string Text => Initials ?? AvatarPhotos.Initials(Name);
 

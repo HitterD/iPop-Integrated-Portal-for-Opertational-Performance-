@@ -382,7 +382,13 @@
                                 }
 
                                 <span class="m-from">@Hl(item.SenderName)</span>
-                                <span class="m-time">@FormatTime(item.ReceivedAt)</span>
+                                <span class="m-time">
+                                    @if (MailEpop.IsImported(item.Labels))
+                                    {
+                                        <span class="mrl-arc" title="Imported from EPop" aria-label="Imported from EPop"><i data-lucide="archive"></i></span>
+                                    }
+                                    @FormatTime(item.ReceivedAt)
+                                </span>
 
                                 @* Hover quick actions *@
                                 <div class="mail-row-actions" @onclick:stopPropagation>
@@ -431,7 +437,8 @@
                                 <span class="m-snip">@Hl(item.Snippet)</span>
                                 @if (item.Labels is { Count: > 0 })
                                 {
-                                    @foreach (var lbl in item.Labels.Take(3))
+                                    @* The EPop archive label is the icon by the date, not a chip (spec 2026-10-14 §6). *@
+                                    @foreach (var lbl in MailEpop.RowLabels(item.Labels).Take(3))
                                     {
                                         <span class="label-chip"><span class="label-dot" style="background:@LabelInk(lbl)"></span>@lbl</span>
                                     }
@@ -589,31 +596,13 @@
                                 </span>
                                 <span class="sender-date">@FormatDetailDate(detail.SentAt ?? detail.ScheduledAt)</span>
                             </div>
-                            <div class="sender-to">
-                                @if (IsUndisclosed)
-                                {
-                                    <text>To: <span class="recipients-names">undisclosed recipients</span></text>
-                                }
-                                else if (detail.RecipientGroups.Count > 0 || detail.RecipientTotal > detail.Recipients.Count(r => r.RecipientType != "from"))
-                                {
-                                    <text>To: </text>
-                                    @foreach (var g in detail.RecipientGroups.Where(g => g.Field != "bcc"))
-                                    {
-                                        <span class="mm-grp" title="@($"{g.Name}: {g.Count:N0} people")"><i data-lucide="users"></i>@g.Name</span>
-                                    }
-                                    <span class="recipients-names">@MassRecipientsTail()</span>
-                                }
-                                else
-                                {
-                                    <text>To: <span class="recipients-names">@MailAddressing.ToNames(detail)</span></text>
-                                    @if (!string.IsNullOrWhiteSpace(CcShort))
-                                    {
-                                        <text> · Cc: <span class="recipients-names">@CcShort</span></text>
-                                    }
-                                }
-                                @* The old " · read" here was the viewer's own unread flag, not a receipt. The receipts row
-                                   (spec 2026-10-14 §1, GET /api/mail/{id}/receipts) goes under this header. *@
-                            </div>
+                            @* To / Cc on one line each, +N opens the full list (spec 2026-10-14 §4). *@
+                            <MailRecipientsHeader Detail="detail" MyNik="@Auth.Me?.Nik" />
+                            @if (!hasConversation && detail.Folder is not ("draft" or "scheduled"))
+                            {
+                                @* Read receipts row (spec 2026-10-14 §1); a thread shows it on each open message instead. *@
+                                <MailReceiptsRow MailId="detail.Id" />
+                            }
                             <div class="sender-subject-row">
                                 <h2 class="detail-subject">@detail.Subject</h2>
                                 @if (detail.Importance == "high")
@@ -733,6 +722,7 @@
                         <MailThreadStack @ref="threadStackRef"
                                          Detail="detail"
                                          MyNik="@Auth.Me?.Nik"
+                                         FromEpop="@DetailFromEpop"
                                          OnQuickReply="OpenQuickReplyFor"
                                          OnReply="ReplyMessage"
                                          OnReplyAll="ReplyAllMessage"
@@ -740,7 +730,9 @@
                     }
                     else
                     {
-                        <div class="body mail-body-links" data-mail-seen="@(MailSeen.Applies(detail, Auth.Me?.Nik) ? detail.Id.ToString() : null)">@((MarkupString)detail.Body)</div>
+                        <div class="mrd-host" data-mail-seen="@(MailSeen.Applies(detail, Auth.Me?.Nik) ? detail.Id.ToString() : null)">
+                            <MailBody Mail="detail" FromEpop="@DetailFromEpop" />
+                        </div>
 
                         <MailAttachmentCards Attachments="detail.Attachments" />
 
@@ -2460,27 +2452,13 @@
         _ => 0
     };
 
+    /// The opened mail came from the EPop archive import: it carries the importer's label.
+    private bool DetailFromEpop => detail is not null && serverLabels.Any(l => l.Name.Equals(MailEpop.Label, StringComparison.OrdinalIgnoreCase) && detail.LabelIds.Contains(l.Id));
+
     private bool IsMyMail(MailDetail d) => string.Equals(d.SenderNik, Auth.Me?.Nik, StringComparison.OrdinalIgnoreCase);
     /// Hidden recipient list: everyone but the sender sees "undisclosed recipients".
     private bool IsUndisclosed => detail is { HideRecipients: true } d && !IsMyMail(d);
 
-    /// After the group chips: the typed names (at most 3) and "and N others" for the rest.
-    private string MassRecipientsTail()
-    {
-        if (detail is null) return "";
-        var names = detail.Recipients.Where(r => r.RecipientType is "to" or "cc").Select(r => r.Name).Take(3).ToList();
-        var inGroups = detail.RecipientGroups.Where(g => g.Field != "bcc").Sum(g => g.Count);
-        var others = Math.Max(0, detail.RecipientTotal - inGroups - names.Count);
-        // Recipients can't tell overlap between groups apart; never claim a negative remainder.
-        if (detail.RecipientGroups.Count == 0) others = Math.Max(0, detail.RecipientTotal - names.Count);
-        var parts = string.Join(", ", names);
-        if (others == 0) return parts;
-        var tail = $"{others:N0} {(others == 1 ? "other" : "others")}";
-        return parts.Length == 0 && detail.RecipientGroups.Count == 0 ? tail : $"{(parts.Length > 0 ? parts + " " : "")}and {tail}";
-    }
-
-    // To and Cc are listed separately: the Cc names used to appear in both.
-    private string? CcShort => detail is null ? null : MailAddressing.CcNames(detail);
     private static string FormatTime(DateTime? t)
     {
         if (t is null) return "";

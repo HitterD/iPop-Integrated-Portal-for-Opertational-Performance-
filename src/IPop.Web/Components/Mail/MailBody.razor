@@ -1,0 +1,59 @@
+@using IPop.Web.Services
+@inject MailReadingPrefs Prefs
+
+@* One message body in the reading pane (spec 2026-10-14 §5): a centred ~760 px column at 15 px / 1.6 with the
+   render-time layout of MailBodyLayout (quoted history folded into the mail-quote expander, oversized type tamed).
+   "Original formatting" shows the sanitized body exactly as served, remembered per message for the session.
+   The stored body is never changed. Images: the page's lightbox opens them full size (ipop.mailBindLightbox). *@
+<div class="mrd @(original ? "mrd-is-orig" : "")">
+    @if (layout.OffersOriginal)
+    {
+        <button type="button" class="mrd-fmt @(original ? "on" : "")" role="switch" aria-checked="@(original ? "true" : "false")"
+                title="Show the mail exactly as it was sent" @onclick="ToggleOriginal">
+            <i data-lucide="type"></i>Original formatting<span class="mrd-sw" aria-hidden="true"></span>
+        </button>
+    }
+    @if (FromEpop && Mail.SentAt is { } sent)
+    {
+        <div class="mrd-arch"><i data-lucide="archive"></i>Imported from EPop · @sent.ToLocalTime().ToString("d MMM yyyy")</div>
+    }
+    @if (original)
+    {
+        <p class="mrd-orig-note"><i data-lucide="triangle-alert"></i>Original formatting — sizes and widths exactly as sent</p>
+        <div class="mrd-origwrap"><div class="mrd-orig body mail-body-links">@((MarkupString)Html(Mail.Body))</div></div>
+    }
+    else
+    {
+        <div class="mrd-body body mail-body-links">@((MarkupString)Html(layout.Html))</div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MailDetail Mail { get; set; } = default!;
+    /// Imported from the EPop archive: shows the small "Imported from EPop" note.
+    [Parameter] public bool FromEpop { get; set; }
+
+    private MailBodyLayout.Result layout = new("", false, false);
+    private string? preparedFor;
+    private bool original;
+
+    protected override void OnParametersSet()
+    {
+        var key = $"{Mail.Id}:{Mail.Body.Length}:{Mail.Body.GetHashCode()}";
+        if (key != preparedFor)
+        {
+            preparedFor = key;
+            layout = Mail.IsHtml ? MailBodyLayout.Prepare(Mail.Body) : new MailBodyLayout.Result(Mail.Body, false, false);
+        }
+        original = layout.OffersOriginal && Prefs.ShowsOriginal(Mail.Id);
+    }
+
+    // Plain-text bodies render as before (the page always rendered the served body as markup).
+    private static string Html(string body) => body;
+
+    private void ToggleOriginal()
+    {
+        original = !original;
+        Prefs.SetOriginal(Mail.Id, original);
+    }
+}

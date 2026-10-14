@@ -56,22 +56,30 @@
                 {
                     <span class="thr-badge-current">This message</span>
                 }
+                @if (!isOpen && ShowsReceipts(m))
+                {
+                    <MailReceiptTick MailId="m.Id" />
+                }
                 <time class="thr-time" title="@FullStamp(m.ReceivedAt)">@ShortStamp(m.ReceivedAt)</time>
                 <i data-lucide="@(isOpen ? "chevron-up" : "chevron-down")" class="thr-caret"></i>
             </header>
 
+            @if (isOpen && body is not null && ShowsReceipts(m))
+            {
+                <MailReceiptsRow MailId="m.Id" />
+            }
             @if (isOpen)
             {
                 @* data-mail-seen: js/mail-seen.js records the read receipt once this shown body stayed on screen,
                    tab visible + focused, for 2 s. Only someone else's delivered message, once its body is loaded. *@
-                <div class="thr-body mail-body-links" data-mail-seen="@(body is not null && MailSeen.Applies(body, MyNik) ? m.Id.ToString() : null)">
+                <div class="thr-body" data-mail-seen="@(body is not null && MailSeen.Applies(body, MyNik) ? m.Id.ToString() : null)">
                     @if (body is null)
                     {
                         <div class="thr-loading"><span class="skeleton"></span><span class="skeleton"></span></div>
                     }
                     else
                     {
-                        @((MarkupString)body.Body)
+                        <MailBody Mail="body" FromEpop="@FromEpop" />
 
                         <MailAttachmentCards Attachments="body.Attachments" />
 
@@ -100,6 +108,8 @@
 
     /// The reader's NIK (never displayed): decides who a reply to one's own message goes to.
     [Parameter] public string? MyNik { get; set; }
+    /// The opened mail is from the EPop archive (its thread items are too).
+    [Parameter] public bool FromEpop { get; set; }
     [Parameter] public EventCallback<MailDetail> OnQuickReply { get; set; }
     [Parameter] public EventCallback<MailDetail> OnReply { get; set; }
     [Parameter] public EventCallback<MailDetail> OnReplyAll { get; set; }
@@ -265,6 +275,9 @@
     {
         if (e.Key is "Enter" or " ") await Toggle(id);
     }
+
+    /// Receipts exist for delivered mail only (not drafts / scheduled-not-sent).
+    private bool ShowsReceipts(MailSummary m) => m.ReceivedAt is not null && !(m.Id == Detail.Id && Detail.Folder is "draft" or "scheduled");
 
     private MailSummary SelfAsSummary() => new(
         Detail.Id, Detail.SenderId, Detail.SenderName, Detail.SenderNik,

@@ -53,6 +53,8 @@ public class MailSeenClientTests
         ctx.Services.AddSingleton(auth);
         ctx.Services.AddSingleton(http);
         ctx.Services.AddSingleton(new WebMail.MailService(auth, http));
+        ctx.Services.AddSingleton<IPop.Web.Services.MailReceiptsStore>();
+        ctx.Services.AddSingleton<IPop.Web.Services.MailReadingPrefs>();
         ctx.Services.AddSingleton(new ToastService());
         ctx.Services.AddScoped<PhotoViewerState>();
         return (ctx, api);

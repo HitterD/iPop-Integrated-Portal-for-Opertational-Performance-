@@ -1,0 +1,216 @@
+@using IPop.Web.Services
+@implements IDisposable
+@inject MailReceiptsStore Store
+@inject IJSRuntime JS
+@inject HttpClient Http
+
+@* Read receipts row under a message header (spec 2026-10-14 §1): "✓✓ Read by 12 of 41" + reader faces → popover
+   (desktop) or bottom sheet (phone ≤ 767 px) with Read by / Not yet, search, people and expandable groups.
+   Classes are mrr-* only: global .btn/.ra/.center rules bleed into generic names. *@
+@if (sum.Kind != MailReceiptView.Kind.None)
+{
+    <div class="mrr">
+        @switch (sum.Kind)
+        {
+            case MailReceiptView.Kind.NotTracked:
+                <span class="mrr-seen mrr-muted"><i data-lucide="history"></i>@sum.Text</span>
+                break;
+            case MailReceiptView.Kind.External:
+                <span class="mrr-seen mrr-muted"><i data-lucide="globe"></i>@sum.Text</span>
+                break;
+            case MailReceiptView.Kind.Single:
+                <span class="mrr-seen" title="@(sum.AllRead ? "Read" : "Not read yet")">
+                    <i data-lucide="@(sum.AllRead ? "check-check" : "check")" class="mrr-cc @(sum.AllRead ? "" : "grey")"></i>@sum.Text
+                </span>
+                break;
+            default:
+                <button type="button" class="mrr-seen @(open ? "on" : "")" aria-haspopup="dialog" aria-expanded="@(open ? "true" : "false")"
+                        title="@(sum.Kind == MailReceiptView.Kind.CountsOnly ? "Mass mail — names are not shown" : "Read receipts")" @onclick="Toggle">
+                    <i data-lucide="check-check" class="mrr-cc @(rc!.Read == 0 ? "grey" : "")"></i>
+                    <span class="mrr-n">@sum.Text</span>
+                    @if (sum.Faces.Count > 0)
+                    {
+                        <span class="mrr-stk">
+                            @foreach (var f in sum.Faces)
+                            {
+                                <PersonAvatar Nik="@f.UserKey" Name="@MailReceiptView.TitleCase(f.Name)" Photo="@PhotoUrl(f.PhotoId)" Size="18" Decorative="true" />
+                            }
+                        </span>
+                    }
+                    <i data-lucide="chevron-right" class="mrr-chev"></i>
+                </button>
+                @if (sum.Kind == MailReceiptView.Kind.CountsOnly)
+                {
+                    <span class="mrr-hint">Mass mail · names not shown</span>
+                }
+                break;
+        }
+
+        @if (open && rc is not null)
+        {
+            if (phone)
+            {
+                <div class="mrr-dim" @onclick="Close"></div>
+                <div class="mrr-sheet" role="dialog" aria-modal="true" aria-label="Read receipts" @onkeydown="OnKey">
+                    <span class="mrr-grab" aria-hidden="true"></span>
+                    @Inner
+                </div>
+            }
+            else
+            {
+                <div class="mrr-catch" @onclick="Close"></div>
+                <div class="mrr-pop" role="dialog" aria-label="Read receipts" @onkeydown="OnKey">@Inner</div>
+            }
+        }
+    </div>
+}
+
+@code {
+    private static string N(int n) => n.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
+    [Parameter, EditorRequired] public Guid MailId { get; set; }
+
+    private MailReceipts? rc;
+    private MailReceiptView.Summary sum = MailReceiptView.Summarise(null);
+    private Guid loadedFor;
+    private bool open, phone, readTab = true;
+    private string query = "";
+    private readonly HashSet<string> expanded = [];
+
+    protected override void OnInitialized() => Store.Changed += OnChanged;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedFor == MailId) return;
+        loadedFor = MailId;
+        open = false; rc = null; sum = MailReceiptView.Summarise(null);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var id = MailId;
+        var r = await Store.GetAsync(id);
+        if (id != MailId) return;
+        var first = rc is null;
+        rc = r;
+        sum = MailReceiptView.Summarise(r);
+        // Open on the tab that has people in it.
+        if (first && r is { Read: 0 }) readTab = false;
+    }
+
+    private void OnChanged(Guid id)
+    {
+        if (id != MailId) return;
+        _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+    }
+
+    private async Task Toggle()
+    {
+        if (open) { Close(); return; }
+        try { phone = await JS.InvokeAsync<bool>("ipop.mobile.isMobile"); } catch (JSException) { phone = false; } catch (InvalidOperationException) { phone = false; }
+        open = true;
+        query = "";
+        expanded.Clear();
+        if (rc is { Groups.Count: > 0 }) expanded.Add(rc.Groups[0].Name);
+    }
+
+    private void Close() => open = false;
+    private void OnQuery(ChangeEventArgs e) => query = e.Value?.ToString() ?? "";
+
+    private void OnKey(KeyboardEventArgs e) { if (e.Key == "Escape") Close(); }
+
+    private string? PhotoUrl(string? photoId)
+        => string.IsNullOrEmpty(photoId) ? null : new Uri(Http.BaseAddress ?? new Uri("http://localhost/"), $"/api/photos/{Uri.EscapeDataString(photoId)}").ToString();
+
+    private void ToggleGroup(string name) { if (!expanded.Remove(name)) expanded.Add(name); }
+
+    private RenderFragment Inner => __builder =>
+    {
+        var r = rc!;
+        if (!r.NamesVisible)
+        {
+            var pct = sum.Percent;
+            <div class="mrr-ph"><b>Read receipts</b><button type="button" class="mrr-x" aria-label="Close" @onclick="Close"><i data-lucide="x"></i></button></div>
+            <div class="mrr-mass">
+                <div class="mrr-ring" style="--p:@(pct)%"><div>@(pct)%</div></div>
+                <b>@sum.Text</b>
+                <p>Names aren’t shown for mass mail. Only the sender’s mass-mail report lists who opened it.</p>
+            </div>
+            return;
+        }
+        var notYet = r.Total - r.Read;
+        var lists = MailReceiptView.Lists(r, readTab, query);
+        var searching = !string.IsNullOrWhiteSpace(query);
+        <div class="mrr-ph"><b>Read receipts</b><span class="mrr-ratio">@r.Read / @r.Total</span>
+            <button type="button" class="mrr-x" aria-label="Close" @onclick="Close"><i data-lucide="x"></i></button></div>
+        <div class="mrr-seg" role="tablist">
+            <button type="button" role="tab" class="@(readTab ? "on" : "")" aria-selected="@(readTab ? "true" : "false")" @onclick="() => readTab = true">
+                <i data-lucide="check-check"></i>Read by · @N(r.Read)</button>
+            <button type="button" role="tab" class="@(!readTab ? "on" : "")" aria-selected="@(!readTab ? "true" : "false")" @onclick="() => readTab = false">
+                <i data-lucide="check"></i>Not yet · @N(notYet)</button>
+        </div>
+        <label class="mrr-srch"><i data-lucide="search"></i>
+            <input type="search" placeholder="Search people or departments" aria-label="Search recipients" value="@query" @oninput="OnQuery" /></label>
+        <div class="mrr-list">
+            @if (lists.People.Count == 0 && lists.Groups.Count == 0)
+            {
+                <div class="mrr-empty">@(searching ? "No one matches." : readTab ? "Nobody has read it yet." : "Everyone has read it.")</div>
+            }
+            @if (lists.People.Count > 0)
+            {
+                <div class="mrr-psec"><i data-lucide="users"></i>People<span class="mrr-c">@lists.People.Count</span></div>
+                @foreach (var p in lists.People) { @Person(p, 32) }
+            }
+            @if (lists.Groups.Count > 0)
+            {
+                var gRead = lists.Groups.Sum(g => g.Group.Read);
+                var gTotal = lists.Groups.Sum(g => g.Group.Total);
+                <div class="mrr-psec"><i data-lucide="building-2"></i>Groups &amp; departments
+                    <span class="mrr-c">@(readTab ? $"{gRead} of {gTotal} read" : $"{gTotal - gRead} of {gTotal} not yet")</span></div>
+                @foreach (var g in lists.Groups)
+                {
+                    var isOpen = searching || expanded.Contains(g.Group.Name);
+                    var pct = g.Group.Total == 0 ? 0 : g.Group.Read * 100 / g.Group.Total;
+                    <button type="button" class="mrr-pr mrr-gr @(isOpen ? "open" : "")" aria-expanded="@(isOpen ? "true" : "false")" @onclick="() => ToggleGroup(g.Group.Name)">
+                        <span class="mrr-gav"><i data-lucide="users"></i></span>
+                        <span class="mrr-t"><b>@g.Group.Name</b><span>@g.Caption</span></span>
+                        <span class="mrr-meter" aria-hidden="true"><i style="width:@(pct)%"></i></span>
+                        <i data-lucide="chevron-right" class="mrr-cv"></i>
+                    </button>
+                    @if (isOpen)
+                    {
+                        <div class="mrr-gkids">@foreach (var m in g.Members) { @Person(m, 26) }</div>
+                    }
+                }
+            }
+        </div>
+        <div class="mrr-foot"><i data-lucide="eye-off"></i>
+            <span>@(r.IsSender && r.People.Any(p => p.Field == "bcc")
+                ? "Everyone on this mail sees the same list. Bcc rows are shown to you only."
+                : "Everyone on this mail sees the same list. Bcc recipients are never shown.")</span></div>
+    };
+
+    private RenderFragment Person(MailReceiptPerson p, int size) => __builder =>
+    {
+        <div class="mrr-pr">
+            <PersonAvatar Nik="@p.UserKey" Name="@MailReceiptView.TitleCase(p.Name)" Photo="@PhotoUrl(p.PhotoId)" Size="size" Decorative="true" />
+            <span class="mrr-t"><b>@MailReceiptView.DisplayName(p)</b>
+                @if (MailReceiptView.Place(p) is { Length: > 0 } place) { <span>@place</span> }</span>
+            @if (p.SeenAt is { } at)
+            {
+                <span class="mrr-st rd"><i data-lucide="check-check"></i><b>@MailReceiptView.ReadStamp(at)</b></span>
+            }
+            else
+            {
+                <span class="mrr-st"><i data-lucide="check"></i>@(p.Delivered ? "Delivered" : "Sent")</span>
+            }
+        </div>
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch (JSException) { } catch (InvalidOperationException) { }
+    }
+
+    public void Dispose() => Store.Changed -= OnChanged;
+}

@@ -1,0 +1,35 @@
+@using IPop.Web.Services
+@implements IDisposable
+@inject MailReceiptsStore Store
+
+@* Collapsed thread item (spec 2026-10-14 §1): a small ✓✓ — green when everyone read it, grey when some did —
+   or ✓ when delivered but unread. Nothing for untracked or count-less mail. *@
+@if (tick is not null)
+{
+    <span class="mrr-tick @tick" title="@Title"><i data-lucide="@(tick == "none" ? "check" : "check-check")"></i></span>
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid MailId { get; set; }
+    private string? tick;
+    private Guid loadedFor;
+
+    private string Title => tick switch { "all" => "Read by everyone", "part" => "Some recipients have read this", _ => "Delivered" };
+
+    protected override void OnInitialized() => Store.Changed += OnChanged;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedFor == MailId) return;
+        loadedFor = MailId;
+        tick = MailReceiptView.Tick(await Store.GetAsync(MailId));
+    }
+
+    private void OnChanged(Guid id)
+    {
+        if (id != MailId) return;
+        _ = InvokeAsync(async () => { tick = MailReceiptView.Tick(await Store.GetAsync(id)); StateHasChanged(); });
+    }
+
+    public void Dispose() => Store.Changed -= OnChanged;
+}
