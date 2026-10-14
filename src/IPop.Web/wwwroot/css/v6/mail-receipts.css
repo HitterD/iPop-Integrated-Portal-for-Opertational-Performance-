@@ -27,6 +27,8 @@
 .mrh-line { display: flex; align-items: center; gap: 4px; min-width: 0; white-space: nowrap; min-height: 22px; }
 .mrh-line > em { font-style: normal; color: var(--ink-3); width: 26px; flex: none; }
 .mrh-names { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Many group chips (EPop archive mail has five) must not squeeze "you" down to "y.": chips shrink first. */
+.mrh-line > .mrh-names { min-width: 3.5em; flex: 0 1 auto; }
 .mrh-chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px 0 5px; border-radius: 6px; background: var(--mrr-fill); font-weight: 550; color: var(--ink-2); flex: 0 1 auto; min-width: 0; max-width: 260px; }
 .mrh-chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .mrh-chip .lucide { width: 12px; height: 12px; color: var(--ink-3); flex: none; }
