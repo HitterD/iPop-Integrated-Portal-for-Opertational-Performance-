@@ -74,6 +74,11 @@ button.mrr-seen:hover { background: var(--mrr-fill); }
   color: var(--ink); font-size: 14px; line-height: 1.45; text-align: left; white-space: normal;
 }
 .mrr-pop.mrh-panel { width: 540px; max-height: 520px; }
+/* The reading card is narrower than 540 px at 1440 and clips overflow: anchor the panel to the whole sender block
+   and stretch it across instead of hanging it off the recipients line. */
+.mail-page .detail-sender-block { position: relative; }
+.mail-page .detail-sender-block .mrh { position: static; }
+.mail-page .detail-sender-block .mrr-pop.mrh-panel { left: 12px; right: 12px; width: auto; max-width: 540px; }
 @keyframes mrr-pin { from { opacity: 0; transform: translateY(-4px); } }
 .mrr-dim { position: fixed; inset: 0; background: rgba(0, 0, 0, .35); z-index: 1200; }
 .mrr-sheet {
