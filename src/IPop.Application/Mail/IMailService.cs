@@ -44,6 +44,10 @@ public interface IMailService
 
     // Mass mail: recipient expansion preview, sender stats, paged readers / recipients.
     Task<RecipientPreviewDto> PreviewRecipientsAsync(Guid senderId, ComposeMailRequest req, CancellationToken ct);
+    /// Read receipt from the reading pane (never from mark-read/search/sync). Idempotent.
+    Task<MailSeenResult> RecordSeenAsync(Guid userId, Guid mailId, CancellationToken ct);
+    /// Receipts for the sender and every To/Cc/Bcc recipient; null when the caller is not on the mail.
+    Task<MailReceiptsDto?> GetReceiptsAsync(Guid userId, Guid mailId, CancellationToken ct);
     Task<MailStatsDto?> GetStatsAsync(Guid userId, Guid mailId, CancellationToken ct);
     Task<PagedResult<MailReaderDto>?> GetReadersAsync(Guid userId, Guid mailId, bool read, int page, int pageSize, CancellationToken ct);
     Task<PagedResult<MailRecipientDto>?> GetRecipientsAsync(Guid userId, Guid mailId, int page, int pageSize, CancellationToken ct);

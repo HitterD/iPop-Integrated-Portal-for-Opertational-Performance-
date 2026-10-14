@@ -15,7 +15,7 @@ using MailEntity = IPop.Core.Entities.Mail;
 
 namespace IPop.Infrastructure.Mail;
 
-public sealed class MailService(IPopDbContext db, INotificationGatewayService? notificationGateway = null, IRealtime? realtime = null,
+public sealed partial class MailService(IPopDbContext db, INotificationGatewayService? notificationGateway = null, IRealtime? realtime = null,
     MailNotifySignal? notifySignal = null, ILogger<MailService>? log = null, IAttachmentStore? attachments = null) : IMailService
 {
     private static readonly System.Text.Json.JsonSerializerOptions Json = new(System.Text.Json.JsonSerializerDefaults.Web);

@@ -204,6 +204,31 @@ public static class MailEndpoints
             return Results.Ok(new { ok = true });
         });
 
+        // POST /api/mail/{id}/seen — read receipt from the reading pane (shown, tab visible + focused, 2 s).
+        // Records SeenAt once for the caller's recipient row; the sender's own copy is ignored. Never
+        // touches the unread badge (that stays POST /read). 404 when the caller is not on the mail.
+        g.MapPost("/{id:guid}/seen", async (Guid id,
+            HttpContext http, IMailService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.RecordSeenAsync(userId.Value, id, ct);
+            return r.Found
+                ? Results.Ok(new { recorded = r.Recorded, seenAt = r.SeenAt })
+                : Results.Json(new { code = "mail_not_found", message = "Mail not found." }, statusCode: 404);
+        });
+
+        // GET /api/mail/{id}/receipts — who has seen it: the sender and every To/Cc/Bcc recipient may ask.
+        // Bcc rows only for the sender; mass mail / hidden list = counts only for non-senders.
+        g.MapGet("/{id:guid}/receipts", async (Guid id,
+            HttpContext http, IMailService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.GetReceiptsAsync(userId.Value, id, ct);
+            return r is not null ? Results.Ok(r) : Results.Json(new { code = "mail_not_found", message = "Mail not found." }, statusCode: 404);
+        });
+
         // POST /api/mail/{id}/read — mark read.
         g.MapPost("/{id:guid}/read", async (Guid id,
             HttpContext http, IMailService svc, IPopDbContext db, CancellationToken ct) =>

@@ -24,6 +24,9 @@ public class MailRecipient
     public bool ViaGroup { get; set; }
     public DateTime? DeliveredAt { get; set; }
     public DateTime? ReadAt { get; set; }
+    /// Read receipt (spec 2026-10-14 §3): first time the message was shown in the reading pane, tab visible and
+    /// focused, for 2 s. Separate from IsRead/ReadAt, which are only the personal unread badge.
+    public DateTime? SeenAt { get; set; }
     public DateTime CreatedAt { get; set; }
 
     public Mail Mail { get; set; } = default!;

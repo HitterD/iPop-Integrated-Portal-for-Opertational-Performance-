@@ -169,3 +169,37 @@ public record AttachmentDto(Guid Id, string FileName, long FileSize, string Mime
 
 // Result for bulk ops — reports how many were affected.
 public record BulkResultDto(int Affected, string? Error = null);
+
+/// Mail read receipts (spec 2026-10-14 §1–§3).
+public static class MailReceipts
+{
+    /// AppSettings key: UTC instant receipts started. Mail sent before it reports Tracked = false.
+    public const string TrackedSinceKey = "mail.receipts.trackedSince";
+    /// Users created for EPop archive senders/recipients outside iPop: no receipt can exist for them.
+    public const string ExternalNikPrefix = "EPOP-";
+}
+
+/// Found = the caller is on the mail; Recorded = this call wrote SeenAt (false when already seen,
+/// the sender's own copy, not yet delivered, or sent before tracking started).
+public record MailSeenResult(bool Found, bool Recorded, DateTime? SeenAt);
+
+/// GET /api/mail/{id}/receipts. Total/Read/Delivered count people (Bcc only for the sender; external excluded).
+/// NamesVisible = false (mass mail or hidden list, non-sender): counts only, People and Groups empty.
+public record MailReceiptsDto(
+    Guid MailId, bool Tracked, DateTime? TrackedSince, bool IsSender, bool NamesVisible,
+    int Total, int Read, int Delivered,
+    IReadOnlyList<MailReceiptPersonDto> People,
+    IReadOnlyList<MailReceiptGroupDto> Groups,
+    MailReceiptExternalDto External);
+
+/// UserKey = opaque (user id "N" format), never a NIK. PhotoId → /api/photos/{PhotoId}; null = initials.
+/// Field: "to" | "cc" | "bcc". SeenAt null = not yet (always null when the mail is not tracked).
+public record MailReceiptPersonDto(
+    string UserKey, string Name, string? Department, string? Site, string? PhotoId,
+    string Field, bool ViaGroup, bool IsMe, DateTime? SeenAt, bool Delivered);
+
+/// A group chip the mail went to, with its members' read count. MemberKeys match People[].UserKey.
+public record MailReceiptGroupDto(string Field, string Kind, string Name, int Total, int Read, IReadOnlyList<string> MemberKeys);
+
+/// Recipients with no iPop account (EPop archive addresses). Status is always "not_available".
+public record MailReceiptExternalDto(int Count, string Status);

@@ -14,6 +14,7 @@ public static class RealtimeEvents
     public const string FileOperationFinished = "fileOperationFinished"; // (operationId, status)
     // Refresh signals: payload-less (or a hint), the client re-fetches over REST.
     public const string MailChanged = "mailChanged";                   // () — to affected users: new/read/moved/deleted
+    public const string MailReceiptChanged = "mailReceiptChanged";     // ({ mailId }) — to sender + visible recipients: someone saw it
     public const string NewsChanged = "newsChanged";                   // () — to all: post created/edited/deleted/published
     public const string CalendarChanged = "calendarChanged";           // () — to affected users
     public const string MeetingChanged = "meetingChanged";             // (meetingId) — to organizer + attendees
