@@ -6,16 +6,21 @@
    "Original formatting" shows the sanitized body exactly as served, remembered per message for the session.
    The stored body is never changed. Images: the page's lightbox opens them full size (ipop.mailBindLightbox). *@
 <div class="mrd @(original ? "mrd-is-orig" : "")">
-    @if (layout.OffersOriginal)
+    @if (layout.OffersOriginal || FromEpop)
     {
-        <button type="button" class="mrd-fmt @(original ? "on" : "")" role="switch" aria-checked="@(original ? "true" : "false")"
-                title="Show the mail exactly as it was sent" @onclick="ToggleOriginal">
-            <i data-lucide="type"></i>Original formatting<span class="mrd-sw" aria-hidden="true"></span>
-        </button>
-    }
-    @if (FromEpop && Mail.SentAt is { } sent)
-    {
-        <div class="mrd-arch"><i data-lucide="archive"></i>Imported from EPop · @sent.ToLocalTime().ToString("d MMM yyyy")</div>
+        <div class="mrd-bar">
+            @if (FromEpop && Mail.SentAt is { } sent)
+            {
+                <span class="mrd-arch"><i data-lucide="archive"></i>Imported from EPop · @sent.ToLocalTime().ToString("d MMM yyyy")</span>
+            }
+            @if (layout.OffersOriginal)
+            {
+                <button type="button" class="mrd-fmt @(original ? "on" : "")" role="switch" aria-checked="@(original ? "true" : "false")"
+                        title="Show the mail exactly as it was sent" @onclick="ToggleOriginal">
+                    <i data-lucide="type"></i>Original formatting<span class="mrd-sw" aria-hidden="true"></span>
+                </button>
+            }
+        </div>
     }
     @if (original)
     {

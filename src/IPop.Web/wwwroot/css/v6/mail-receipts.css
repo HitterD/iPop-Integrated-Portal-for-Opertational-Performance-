@@ -27,7 +27,8 @@
 .mrh-line { display: flex; align-items: center; gap: 4px; min-width: 0; white-space: nowrap; min-height: 22px; }
 .mrh-line > em { font-style: normal; color: var(--ink-3); width: 26px; flex: none; }
 .mrh-names { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.mrh-chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px 0 5px; border-radius: 6px; background: var(--mrr-fill); font-weight: 550; color: var(--ink-2); flex: none; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.mrh-chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px 0 5px; border-radius: 6px; background: var(--mrr-fill); font-weight: 550; color: var(--ink-2); flex: 0 1 auto; min-width: 0; max-width: 260px; }
+.mrh-chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .mrh-chip .lucide { width: 12px; height: 12px; color: var(--ink-3); flex: none; }
 .mrh-total { color: var(--ink-3); margin-left: 4px; flex: none; }
 button.mrh-more { flex: none; height: 22px; padding: 0 8px; border: 0; border-radius: 999px; background: var(--mrr-green-soft); color: var(--mrr-green); font: inherit; font-weight: 700; font-size: 12px; cursor: pointer; }
@@ -164,8 +165,9 @@ button.mrr-gr { width: 100%; text-align: left; border: 0; background: transparen
 /* ───────── message body: reading column ───────── */
 .mrd { position: relative; }
 .mrd-host { margin-bottom: 16px; }
+.mrd-bar { max-width: 760px; margin: 0 auto 10px; display: flex; align-items: center; gap: 12px; min-height: 28px; }
 button.mrd-fmt {
-  float: right; position: relative; z-index: 2; margin: 0 0 8px 12px; display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 4px 0 10px;
+  margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 4px 0 10px;
   border: 0; border-radius: 999px; font: inherit; font-size: 12px; font-weight: 600; color: var(--ink-3); background: var(--mrr-fill-2); cursor: pointer; white-space: nowrap;
 }
 button.mrd-fmt .lucide { width: 14px; height: 14px; }
@@ -174,7 +176,7 @@ button.mrd-fmt .lucide { width: 14px; height: 14px; }
 button.mrd-fmt.on { color: var(--mrr-green); }
 button.mrd-fmt.on .mrd-sw { background: var(--mrr-green); }
 button.mrd-fmt.on .mrd-sw::after { transform: translateX(12px); }
-.mrd-arch { max-width: 760px; margin: 0 auto 12px; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); min-height: 28px; }
+.mrd-arch { min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); min-height: 28px; }
 .mrd-arch .lucide { width: 14px; height: 14px; }
 
 .mail-page .mrd-body {
@@ -206,7 +208,7 @@ button.mrd-fmt.on .mrd-sw::after { transform: translateX(12px); }
 
 .mrd-orig-note { font-size: 12px; color: var(--ink-3); margin: 0 0 8px; display: flex; align-items: center; gap: 6px; min-height: 28px; }
 .mrd-orig-note .lucide { width: 13px; height: 13px; color: #ff9f0a; }
-.mrd-origwrap { overflow-x: auto; max-width: 100%; clear: both; }
+.mrd-origwrap { overflow-x: auto; max-width: 100%; }
 .mail-page .mrd-orig {
   padding: 16px; border-radius: 10px; background: #fff; color: #000; box-shadow: inset 0 0 0 1px #ddd;
   font-family: Calibri, "Segoe UI", Arial, sans-serif; font-size: 13px; line-height: 1.25; word-break: normal;
@@ -222,7 +224,7 @@ button.mrd-fmt.on .mrd-sw::after { transform: translateX(12px); }
 @media (max-width: 767px) {
   .mrh-line .mrh-names { max-width: 210px; }
   .mail-page .thr-msg > .mrr { margin-left: 14px; }
-  button.mrd-fmt { float: none; margin: 0 0 10px; }
+  .mrd-bar { flex-wrap: wrap; }
   .mail-page .mrd-body { font-size: 15px; }
   .mrr-pop { display: none; }   /* phones use the sheet; a stale popover never shows */
 }

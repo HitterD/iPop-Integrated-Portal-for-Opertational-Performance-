@@ -18,7 +18,7 @@
         <div class="mrh-line" data-field="to"><em>To</em>
             @foreach (var g in Detail.RecipientGroups.Where(g => g.Field != "bcc"))
             {
-                <span class="mrh-chip" title="@($"{g.Name}: {N(g.Count)} people")"><i data-lucide="megaphone"></i>@g.Name</span>
+                <span class="mrh-chip" title="@($"{g.Name}: {N(g.Count)} people")"><i data-lucide="megaphone"></i><span>@g.Name</span></span>
             }
             @if (Detail.RecipientGroups.Count(g => g.Field != "bcc") == 0)
             {
@@ -38,7 +38,7 @@
                 @if (line.Names.Length > 0) { <span class="mrh-names">@line.Names</span> }
                 @foreach (var g in line.Groups)
                 {
-                    <span class="mrh-chip" title="@($"{g.Name}: {N(g.Count)} people")"><i data-lucide="users"></i>@g.Name</span>
+                    <span class="mrh-chip" title="@($"{g.Name}: {N(g.Count)} people")"><i data-lucide="users"></i><span>@g.Name</span></span>
                 }
                 @if (line.More > 0)
                 {
