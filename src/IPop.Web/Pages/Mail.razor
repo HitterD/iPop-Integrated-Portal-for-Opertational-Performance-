@@ -3,6 +3,7 @@
 @inject IJSRuntime JS
 @inject NotificationState Notifs
 @inject AuthState Auth
+@inject IPop.Web.Services.MailSeen MailSeenReporter
 @using IPop.Web.Components
 @using IPop.Web.Components.Mail
 @using IPop.Web.Services
@@ -610,10 +611,8 @@
                                         <text> · Cc: <span class="recipients-names">@CcShort</span></text>
                                     }
                                 }
-                                @if (detail.IsRead)
-                                {
-                                    <span class="read-marker"> · read</span>
-                                }
+                                @* The old " · read" here was the viewer's own unread flag, not a receipt. The receipts row
+                                   (spec 2026-10-14 §1, GET /api/mail/{id}/receipts) goes under this header. *@
                             </div>
                             <div class="sender-subject-row">
                                 <h2 class="detail-subject">@detail.Subject</h2>
@@ -741,7 +740,7 @@
                     }
                     else
                     {
-                        <div class="body mail-body-links">@((MarkupString)detail.Body)</div>
+                        <div class="body mail-body-links" data-mail-seen="@(MailSeen.Applies(detail, Auth.Me?.Nik) ? detail.Id.ToString() : null)">@((MarkupString)detail.Body)</div>
 
                         <MailAttachmentCards Attachments="detail.Attachments" />
 
@@ -1048,6 +1047,9 @@
             await JS.InvokeVoidAsync("ipop.icons");
             _selfRef = DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("ipop.mailBindShortcuts", _selfRef);
+            // Read receipts: the tracker watches [data-mail-seen] bodies in the reading pane (spec 2026-10-14 §3).
+            _seenRef = DotNetObjectReference.Create(MailSeenReporter);
+            try { await JS.InvokeAsync<bool>("ipopMailSeen.bind", ".mail-page", _seenRef); } catch (JSException) { }
             if (!_navSubscribed)
             {
                 _navSubscribed = true;
@@ -2143,6 +2145,7 @@
     // ── Keyboard shortcuts (bound on document by ipop.mailBindShortcuts; the JS side already
     //    skips typing targets, the open composer and dialogs) ──
     private DotNetObjectReference<Mail>? _selfRef;
+    private DotNetObjectReference<IPop.Web.Services.MailSeen>? _seenRef;
     private bool kbdSheetOpen;
 
     [JSInvokable]
@@ -2518,6 +2521,15 @@
         _ = ResetMobileAsync();
         _ = UnbindShortcutsAsync();
         _ = JS.InvokeVoidAsync("ipop.mailImages.release").AsTask().ContinueWith(_ => { });
+        _ = UnbindSeenAsync();
+    }
+
+    private async Task UnbindSeenAsync()
+    {
+        try { await JS.InvokeVoidAsync("ipopMailSeen.unbind"); }
+        catch (JSDisconnectedException) { }
+        catch (JSException) { }
+        finally { _seenRef?.Dispose(); _seenRef = null; }
     }
 
     private async Task ResetMobileAsync()

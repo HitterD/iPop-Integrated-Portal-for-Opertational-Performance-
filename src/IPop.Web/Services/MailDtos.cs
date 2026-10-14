@@ -102,3 +102,20 @@ public record BatchIds(IReadOnlyList<Guid> MailIds);
 public record BatchMove(IReadOnlyList<Guid> MailIds, string Folder);
 public record FolderReq(string Folder);
 public record MailLabel(Guid Id, string Name, string Color, int Count);
+
+/// GET /api/mail/{id}/receipts (spec 2026-10-14 §1–§3). Mirrors IPop.Application.Mail.MailReceiptsDto.
+public record MailReceipts(
+    Guid MailId, bool Tracked, DateTime? TrackedSince, bool IsSender, bool NamesVisible,
+    int Total, int Read, int Delivered,
+    IReadOnlyList<MailReceiptPerson> People,
+    IReadOnlyList<MailReceiptGroup> Groups,
+    MailReceiptExternal External);
+
+/// UserKey is opaque (never a NIK); PhotoId → /api/photos/{PhotoId}.
+public record MailReceiptPerson(
+    string UserKey, string Name, string? Department, string? Site, string? PhotoId,
+    string Field, bool ViaGroup, bool IsMe, DateTime? SeenAt, bool Delivered);
+
+public record MailReceiptGroup(string Field, string Kind, string Name, int Total, int Read, IReadOnlyList<string> MemberKeys);
+
+public record MailReceiptExternal(int Count, string Status);

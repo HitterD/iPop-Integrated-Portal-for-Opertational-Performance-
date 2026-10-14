@@ -62,7 +62,9 @@
 
             @if (isOpen)
             {
-                <div class="thr-body mail-body-links">
+                @* data-mail-seen: js/mail-seen.js records the read receipt once this shown body stayed on screen,
+                   tab visible + focused, for 2 s. Only someone else's delivered message, once its body is loaded. *@
+                <div class="thr-body mail-body-links" data-mail-seen="@(body is not null && MailSeen.Applies(body, MyNik) ? m.Id.ToString() : null)">
                     @if (body is null)
                     {
                         <div class="thr-loading"><span class="skeleton"></span><span class="skeleton"></span></div>

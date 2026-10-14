@@ -181,6 +181,17 @@ public sealed class MailService(AuthState Auth, HttpClient http)
         return resp.IsSuccessStatusCode;
     }
 
+    /// Read receipts for the sender and any To/Cc/Bcc recipient (null when not on the mail).
+    public Task<MailReceipts?> GetReceiptsAsync(Guid id, CancellationToken ct = default)
+        => Auth.GetAsync<MailReceipts>($"/api/mail/{id}/receipts", ct);
+
+    /// Records the read receipt. Only <see cref="MailSeen"/> calls this, after the visibility rules held.
+    public async Task<bool> PostSeenAsync(Guid id, CancellationToken ct = default)
+    {
+        using var resp = await Auth.SendAsync(HttpMethod.Post, $"/api/mail/{id}/seen", new { }, ct);
+        return resp.IsSuccessStatusCode;
+    }
+
     public async Task<IReadOnlyList<MailDeliveryState>?> GetDeliveryAsync(Guid id, CancellationToken ct = default)
         => await Auth.GetAsync<IReadOnlyList<MailDeliveryState>>($"/api/mail/{id}/delivery", ct);
 
