@@ -8,7 +8,7 @@
    group chips, then +N — and a panel "Recipients · 42 · To 39 · Cc 3" with search, People (two columns, To/Cc tag)
    and Groups & departments by site. Mass mail for recipients keeps the chip + total (no names to list).
    Names come from the mail (≤ 50) and, for the panel, from the receipts list; NIK is never rendered. *@
-<div class="mrh">
+<div class="mrh" @ref="root">
     @if (Undisclosed)
     {
         <div class="mrh-line" data-field="to"><em>To</em><span class="mrh-names">undisclosed recipients</span></div>
@@ -32,23 +32,32 @@
     }
     else
     {
-        @foreach (var line in Lines())
+        @foreach (var line in MailRecipientLine.Lines(Detail, MyNik))
         {
-            <div class="mrh-line" data-field="@line.Field"><em>@line.Label</em>
-                @if (line.Names.Length > 0) { <span class="mrh-names">@line.Names</span> }
-                @foreach (var g in line.Groups)
+            var shown = Shown(line);
+            var more = line.MoreAfter(shown);
+            <div class="mrh-line" data-field="@line.Field" data-shown="@shown"><em>@line.Label</em>
+                @for (var i = 0; i < shown; i++)
                 {
-                    <span class="mrh-chip" title="@($"{g.Name}: {N(g.Count)} people")"><i data-lucide="users"></i><span>@g.Name</span></span>
+                    @Item(line.Items[i], false)
                 }
-                @if (line.More > 0)
+                @if (more > 0)
                 {
                     <button type="button" class="mrh-more @(open ? "on" : "")" aria-haspopup="dialog" aria-expanded="@(open ? "true" : "false")"
-                            title="Show all recipients" @onclick="Open">+@N(line.More)</button>
+                            title="Show all recipients" @onclick="Open">+@N(more)</button>
                 }
                 @if (line.Field == "bcc")
                 {
                     <span class="mrh-bccnote"><i data-lucide="lock"></i>Only you can see this</span>
                 }
+                @* Hidden measuring row: js/mail-fit.js sizes every item here and reports how many whole ones fit. *@
+                <span class="mrh-msr" aria-hidden="true">
+                    @foreach (var it in line.Items)
+                    {
+                        @Item(it, true)
+                    }
+                    <span class="mrh-more" data-more>+@N(line.MoreAfter(1))</span>
+                </span>
             </div>
         }
     }
@@ -77,7 +86,6 @@
     /// The reader's NIK: only compared, never displayed.
     [Parameter] public string? MyNik { get; set; }
 
-    private const int NamesPerLine = 3;
     private bool open, phone;
     private string query = "";
     private MailReceipts? rc;
@@ -92,27 +100,35 @@
     private bool IsMe(MailRecipient r) => Eq(r.Nik, MyNik);
     private IEnumerable<MailRecipient> TypedOf(string field) => Detail.Recipients.Where(r => r.RecipientType == field);
 
-    private sealed record Line(string Field, string Label, string Names, IReadOnlyList<RecipientGroupCount> Groups, int More);
+    /// Whole items shown per line, as measured by js/mail-fit.js; until then the line's default (you, names, 2 chips).
+    private readonly Dictionary<string, int> fitted = [];
+    private ElementReference root;
+    private DotNetObjectReference<MailRecipientsHeader>? selfRef;
 
-    private List<Line> Lines()
+    private int Shown(MailRecipientLine.Line line)
+        => fitted.TryGetValue(line.Field, out var n) ? Math.Clamp(n, Math.Min(1, line.Items.Count), line.Items.Count) : line.Default;
+
+    /// The browser measured the line: show this many whole items, the rest behind +N.
+    [JSInvokable]
+    public Task OnFit(string field, int count)
     {
-        var lines = new List<Line>();
-        var listed = Detail.Recipients.Count(r => r.RecipientType is "to" or "cc" or "bcc");
-        var inGroups = Detail.RecipientGroups.Where(g => g.Field != "bcc" || IsSender).Sum(g => g.Count);
-        // Recipients holds at most 50 names: anything beyond that and the group members goes on the To line.
-        var unlisted = Math.Max(0, Detail.RecipientTotal - listed - inGroups);
-        foreach (var (field, label) in new[] { ("to", "To"), ("cc", "Cc"), ("bcc", "Bcc") })
-        {
-            if (field == "bcc" && !IsSender) continue;
-            var typed = TypedOf(field).OrderByDescending(IsMe).ToList();
-            var groups = Detail.RecipientGroups.Where(g => g.Field == field).ToList();
-            if (typed.Count == 0 && groups.Count == 0 && !(field == "to" && unlisted > 0)) continue;
-            var shown = typed.Take(NamesPerLine).Select(r => IsMe(r) ? "you" : r.Name).ToList();
-            var more = typed.Count - shown.Count + groups.Sum(g => g.Count) + (field == "to" ? unlisted : 0);
-            lines.Add(new Line(field, label, string.Join(", ", shown), groups, more));
-        }
-        return lines;
+        if (fitted.TryGetValue(field, out var was) && was == count) return Task.CompletedTask;
+        fitted[field] = count;
+        StateHasChanged();
+        return Task.CompletedTask;
     }
+
+    private static RenderFragment Item(MailRecipientLine.Item it, bool measure) => __builder =>
+    {
+        if (it.Chip)
+        {
+            <span class="mrh-it mrh-chip" title="@it.Title" data-fit="@(measure ? "" : null)"><i data-lucide="users"></i><span>@it.Text</span></span>
+        }
+        else
+        {
+            <span class="mrh-it mrh-nm" title="@(it.Text == "you" ? null : it.Title)" data-fit="@(measure ? "" : null)">@it.Text</span>
+        }
+    };
 
     protected override void OnInitialized() => Store.Changed += OnChanged;
 
@@ -121,6 +137,7 @@
         if (shownFor == Detail.Id) return;
         shownFor = Detail.Id;
         open = false; rc = null;
+        fitted.Clear();
     }
 
     private async Task Open()
@@ -261,8 +278,30 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        try { await JS.InvokeVoidAsync("ipop.icons"); } catch (JSException) { } catch (InvalidOperationException) { }
+        try
+        {
+            await JS.InvokeVoidAsync("ipop.icons");
+            if (!Undisclosed && !MassForMe)
+            {
+                selfRef ??= DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("ipopMailFit.bind", root, selfRef);
+            }
+        }
+        catch (JSException) { } catch (InvalidOperationException) { } catch (TaskCanceledException) { }
     }
 
-    public void Dispose() => Store.Changed -= OnChanged;
+    public void Dispose()
+    {
+        Store.Changed -= OnChanged;
+        if (selfRef is not null)
+        {
+            _ = UnbindAsync();
+            selfRef.Dispose();
+        }
+    }
+
+    private async Task UnbindAsync()
+    {
+        try { await JS.InvokeVoidAsync("ipopMailFit.unbind", root); } catch (JSException) { } catch (InvalidOperationException) { } catch (TaskCanceledException) { } catch (JSDisconnectedException) { }
+    }
 }

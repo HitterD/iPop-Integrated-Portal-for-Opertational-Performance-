@@ -290,12 +290,13 @@ public class MailReceiptsUiTests
         using var _c = ctx;
         var cut = ctx.Render<MailRecipientsHeader>(p => p.Add(c => c.Detail, d).Add(c => c.MyNik, Me));
         var to = cut.Find(".mrh-line[data-field=to]");
-        Assert.StartsWith("you, Sulastri Basrewan, Rikki Rinaldo", to.QuerySelector(".mrh-names")!.TextContent.Trim());
-        Assert.Contains("Plant · SJA Karawang", to.QuerySelector(".mrh-chip")!.TextContent);
-        Assert.Equal("+12", to.QuerySelector(".mrh-more")!.TextContent.Trim());   // 2 hidden typed + 10 in the group
+        var items = to.QuerySelectorAll(":scope > .mrh-it").Select(e => e.TextContent.Trim()).ToList();
+        Assert.Equal(["you", "Sulastri Basrewan", "Rikki Rinaldo", "Plant · SJA Karawang"], items);
+        // QA 3: +N stands for what is NOT shown — here the 2 names after the chip (the visible chip's 10 are not repeated).
+        Assert.Equal("+2", to.QuerySelector(".mrh-more")!.TextContent.Trim());
         var cc = cut.Find(".mrh-line[data-field=cc]");
-        Assert.Equal("Rina Wulandari", cc.QuerySelector(".mrh-names")!.TextContent.Trim());
-        Assert.Empty(cc.QuerySelectorAll(".mrh-more"));
+        Assert.Equal("Rina Wulandari", cc.QuerySelector(":scope > .mrh-it")!.TextContent.Trim());
+        Assert.Empty(cc.QuerySelectorAll(":scope > .mrh-more"));
         Assert.DoesNotContain(Me, cut.Markup);
     }
 

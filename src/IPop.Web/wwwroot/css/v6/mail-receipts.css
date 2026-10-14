@@ -24,13 +24,21 @@
 
 /* ───────── recipients header (collapsed) ───────── */
 .mrh { position: relative; margin-top: 6px; display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--ink-2); }
-.mrh-line { display: flex; align-items: center; gap: 4px; min-width: 0; white-space: nowrap; min-height: 22px; }
+.mrh-line { display: flex; align-items: center; gap: 4px; min-width: 0; white-space: nowrap; min-height: 22px; position: relative; overflow: hidden; }
 .mrh-line > em { font-style: normal; color: var(--ink-3); width: 26px; flex: none; }
 .mrh-names { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* Many group chips (EPop archive mail has five) must not squeeze "you" down to "y.": chips shrink first. */
 .mrh-line > .mrh-names { min-width: 3.5em; flex: 0 1 auto; }
 .mrh-chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px 0 5px; border-radius: 6px; background: var(--mrr-fill); font-weight: 550; color: var(--ink-2); flex: 0 1 auto; min-width: 0; max-width: 260px; }
 .mrh-chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* QA 3: whole items only — js/mail-fit.js shows as many as fit, the rest go behind +N. A chip is never squeezed
+   to "SJ…"; only a single very long name is cut, past 220 px. */
+.mrh-line > .mrh-it { flex: none; max-width: 220px; }
+.mrh-nm { overflow: hidden; text-overflow: ellipsis; }
+.mrh-nm:has(+ .mrh-it)::after { content: ","; }
+.mrh-msr { position: absolute; left: 0; top: 0; visibility: hidden; pointer-events: none; display: flex; gap: 4px; white-space: nowrap; }
+.mrh-msr > .mrh-it { flex: none; max-width: 220px; }
+.mrh-msr > .mrh-more { flex: none; padding: 0 8px; font-weight: 700; font-size: 12px; }
 .mrh-chip .lucide { width: 12px; height: 12px; color: var(--ink-3); flex: none; }
 .mrh-total { color: var(--ink-3); margin-left: 4px; flex: none; }
 button.mrh-more { flex: none; height: 22px; padding: 0 8px; border: 0; border-radius: 999px; background: var(--mrr-green-soft); color: var(--mrr-green); font: inherit; font-weight: 700; font-size: 12px; cursor: pointer; }
@@ -69,6 +77,11 @@ button.mrr-seen:hover { background: var(--mrr-fill); }
 .mail-page .thr-msg > .mrr { margin: 0 14px 6px 50px; }
 /* popovers must escape the card clip of an open thread item */
 .mail-page .thr-msg.open { overflow: visible; }
+/* QA 3: the open item's "to …" line sits under the name, so group names stay readable; the count never ellipsizes. */
+.mail-page .thr-msg.open .thr-who { flex-direction: column; align-items: stretch; gap: 1px; }
+.mail-page .thr-to { display: flex; min-width: 0; gap: 4px; }
+.mail-page .thr-to-names { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mail-page .thr-to-more { flex: none; font-weight: 650; color: var(--ink-2); }
 
 /* ───────── popover / bottom sheet ───────── */
 .mrr-catch { position: fixed; inset: 0; z-index: 39; }
