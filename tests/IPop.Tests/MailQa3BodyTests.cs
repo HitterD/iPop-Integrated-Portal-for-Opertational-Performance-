@@ -105,4 +105,20 @@ public class MailQa3BodyTests
         Assert.DoesNotContain("<hr><br><br>", r.Html);
     }
 
+
+    // The shell's generic ".body { display:flex; flex-direction:column; gap:14px }" (css/shell/layout.css) made every
+    // loose <br> / <strong> at the root of a mail body its own flex row 14 px apart: 2–3× the blank line.
+    [Fact]
+    public void Mail_body_is_normal_text_flow_not_the_shell_flex_column()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "IPop.slnx"))) root = root.Parent;
+        var css = File.ReadAllText(Path.Combine(root!.FullName, "src/IPop.Web/wwwroot/css/v6/mail-receipts.css"));
+        var rule = Regex.Match(css, @"\.mail-page \.mrd \.mrd-body\.body\s*\{([^}]*)\}").Groups[1].Value;
+        Assert.Matches(@"display:\s*block", rule);
+        Assert.Matches(@"gap:\s*0", rule);
+        Assert.Matches(@"overflow:\s*visible", rule);
+        Assert.Matches(@"padding:\s*0", rule);
+        Assert.DoesNotContain(".mrd-orig.body {", css);   // Original formatting stays exactly as it was
+    }
 }
