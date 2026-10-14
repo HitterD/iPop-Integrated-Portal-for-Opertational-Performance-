@@ -17,7 +17,8 @@ public static class MailRecipientLine
         public int MoreAfter(int shown) => Items.Skip(shown).Sum(i => i.Count) + Unlisted;
     }
 
-    public sealed record Short(string Names, int More);
+    /// Names/More: the first two items and the count of the rest. Narrow/NarrowMore: one item, for a phone row.
+    public sealed record Short(string Names, int More, string Narrow, int NarrowMore);
 
     private const int DefaultNames = 3, DefaultGroups = 2, ThreadItems = 2;
 
@@ -51,17 +52,19 @@ public static class MailRecipientLine
     /// The open thread item's "to …" line: the first two items, then a count that never sits inside the ellipsis.
     public static Short ThreadTo(MailDetail d, string? myNik)
     {
-        if (d.HideRecipients && !Eq(d.SenderNik, myNik)) return new("undisclosed recipients", 0);
+        if (d.HideRecipients && !Eq(d.SenderNik, myNik)) return new("undisclosed recipients", 0, "undisclosed recipients", 0);
         var lines = Lines(d, myNik).Where(l => l.Field != "bcc").ToList();
         var items = lines.SelectMany(l => l.Items).ToList();
         if (items.Count == 0)
         {
             var unlisted = lines.Sum(l => l.Unlisted);
-            return unlisted > 0 ? new($"{unlisted.ToString("N0", CultureInfo.InvariantCulture)} people", 0) : new("—", 0);
+            var label = unlisted > 0 ? $"{unlisted.ToString("N0", CultureInfo.InvariantCulture)} people" : "—";
+            return new(label, 0, label, 0);
         }
         var shown = items.Take(ThreadItems).ToList();
         var more = items.Skip(ThreadItems).Sum(i => i.Count) + lines.Sum(l => l.Unlisted);
-        return new(string.Join(", ", shown.Select(i => i.Text)), more);
+        var unlistedAll = lines.Sum(l => l.Unlisted);
+        return new(string.Join(", ", shown.Select(i => i.Text)), more, items[0].Text, items.Skip(1).Sum(i => i.Count) + unlistedAll);
     }
 
     // Short all-caps words that are acronyms in this company's group and department names.

@@ -140,6 +140,8 @@ public class MailQa3Tests
         var line = MailRecipientLine.ThreadTo(Epop(), Me);
         Assert.Equal("you, SJA Jakarta", line.Names);
         Assert.Equal(4, line.More);
+        Assert.Equal("you", line.Narrow);        // a phone row: one whole item, then the count
+        Assert.Equal(5, line.NarrowMore);
 
         var plain = Detail("S1", R("T1", "Tono", "to"), R("C1", "Cici", "cc"));
         var p = MailRecipientLine.ThreadTo(plain, Me);
@@ -160,6 +162,9 @@ public class MailQa3Tests
         var css = File.ReadAllText(Path.Combine(root, "src/IPop.Web/wwwroot/css/v6/mail-receipts.css"));
         Assert.Matches(@"flex-direction:\s*column", Rule(css, ".mail-page .thr-msg.open .thr-who"));
         Assert.Matches(@"flex:\s*none", Rule(css, ".mail-page .thr-to-more"));
+        Assert.Contains("thr-to-narrow", stack);
+        Assert.Matches(@"text-overflow:\s*ellipsis", Rule(css, ".mail-page .thr-msg.open .thr-name"));   // long sender vs the badge
+        Assert.Matches(@"display:\s*none", Rule(css, ".mail-page .thr-to.thr-to-wide"));
     }
 
     private static string Rule(string css, string selector)

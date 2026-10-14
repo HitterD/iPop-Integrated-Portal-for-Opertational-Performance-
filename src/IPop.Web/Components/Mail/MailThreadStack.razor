@@ -41,8 +41,10 @@
                     @if (isOpen && body is not null)
                     {
                         var to = MailRecipientLine.ThreadTo(body, MyNik);
-                        <span class="thr-to"><span class="thr-to-names">to @to.Names</span>@if (to.More > 0)
+                        <span class="thr-to thr-to-wide"><span class="thr-to-names">to @to.Names</span>@if (to.More > 0)
                         {<span class="thr-to-more">+@to.More.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)</span>}</span>
+                        <span class="thr-to thr-to-narrow"><span class="thr-to-names">to @to.Narrow</span>@if (to.NarrowMore > 0)
+                        {<span class="thr-to-more">+@to.NarrowMore.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)</span>}</span>
                     }
                     else
                     {
