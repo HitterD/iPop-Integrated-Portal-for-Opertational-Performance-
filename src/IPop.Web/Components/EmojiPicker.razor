@@ -197,7 +197,7 @@
         {
             try
             {
-                module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/emoji-picker.js?v=20261003-compose");
+                module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/emoji-picker.js?v=20261014-anchor");
                 if (disposed) return;
                 selfRef = DotNetObjectReference.Create(this);
                 await module.InvokeVoidAsync("attach", root, selfRef, OutsideIgnore);

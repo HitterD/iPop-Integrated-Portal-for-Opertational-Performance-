@@ -322,7 +322,7 @@ public class EmojiPickerTests
     public void Outside_click_helper_attaches_and_closes()
     {
         using var ctx = Context(out _);
-        var module = ctx.JSInterop.SetupModule("./js/emoji-picker.js?v=20261003-compose");
+        var module = ctx.JSInterop.SetupModule("./js/emoji-picker.js?v=20261014-anchor");
         module.Mode = JSRuntimeMode.Loose;
         var closed = 0;
         var cut = ctx.Render<EmojiPicker>(p => p.Add(x => x.OnClose, () => closed++));

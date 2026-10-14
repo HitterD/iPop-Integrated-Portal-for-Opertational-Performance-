@@ -110,13 +110,20 @@
    pins it to the emoji button in viewport coordinates (position:fixed), so neither toolbar
    scroll nor the composer body's overflow:hidden can shift or clip it. */
 .mrte:has(> .mrte-emoji-pop) { z-index: 115; }
+/* Offsets stay auto until emoji-picker.js places it, so if that module never loads the popup keeps
+   its in-flow spot right under the toolbar instead of the window's top-left corner. */
 .mrte > .mrte-emoji-pop {
-  position: fixed; top: 0; left: 0; right: auto; z-index: 125;
+  position: fixed; top: auto; left: auto; right: auto; z-index: 125;
   min-width: 0; padding: 0; overflow: hidden;
   background: var(--surface); backdrop-filter: none; -webkit-backdrop-filter: none;
 }
 .mrte-emoji-pop > .emoji-picker { width: 100%; max-width: calc(100vw - 16px); }
 
+/* Mail quick reply: above the smile button. The row holding the button is Mail's ".ra", which the
+   micro press rule (".ra:active", meant for Directory's row buttons) scaled while the button was
+   held: a transformed ancestor became the containing block of the fixed popup and threw it to the
+   top-left. The row itself must not scale. */
+.inline-reply-box .ra:active { transform: none; }
 /* Mail quick reply: above the smile button. */
 .quick-emoji-pop {
   position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 60;
