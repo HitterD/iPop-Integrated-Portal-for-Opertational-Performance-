@@ -1,3 +1,5 @@
+using Bunit;
+using Microsoft.Extensions.DependencyInjection;
 using System.Text.RegularExpressions;
 using IPop.Web.Services;
 using Xunit;
@@ -115,5 +117,52 @@ public class MailQa2ServiceTests
         var c = await new IPop.Infrastructure.Mail.MailService(t.Verify()).GetFolderCountsAsync(b.Id, default);
         Assert.Equal(2, c.StarredTotal);
         Assert.Equal(1, c.InboxStarred);
+    }
+}
+
+/// Receipts popover tab after a live refresh.
+public class MailQa2ReceiptsRowTests
+{
+    // Seen on the sender side: the row loaded at "Read by 0 of 8", a reader came in live ("Read by 1 of 8"), and the
+    // popover still opened on "Not yet" because the tab was chosen once at first load.
+    [Fact]
+    public void Popover_opens_on_read_by_once_someone_has_read_it()
+    {
+        var id = Guid.NewGuid();
+        var since = new DateTime(2026, 10, 14, 1, 0, 0, DateTimeKind.Utc);
+        var read = false;
+        MailReceipts Rc() => new(id, true, since, true, true, 2, read ? 1 : 0, 2,
+            [new("a", "Ani", "ICT", "SJA", null, "to", false, false, read ? since : null, true),
+             new("b", "Budi", "ICT", "SJA", null, "to", false, false, null, true)], [], new MailReceiptExternal(0, "not_available"));
+        using var ctx = new BunitContext();
+        ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        ctx.JSInterop.Setup<bool>("ipop.mobile.isMobile").SetResult(false);
+        var http = new HttpClient(new Stub(() => Rc())) { BaseAddress = new Uri("http://localhost/") };
+        var auth = new AuthState(http, ctx.JSInterop.JSRuntime);
+        ctx.Services.AddSingleton(auth);
+        ctx.Services.AddSingleton(http);
+        ctx.Services.AddSingleton(new MailService(auth, http));
+        ctx.Services.AddSingleton<MailReceiptsStore>();
+        ctx.Services.AddSingleton(new ToastService());
+        ctx.Services.AddScoped<PhotoViewerState>();
+
+        var cut = ctx.Render<IPop.Web.Components.Mail.MailReceiptsRow>(p => p.Add(c => c.MailId, id));
+        cut.WaitForAssertion(() => Assert.Contains("Read by 0 of 2", cut.Find(".mrr-seen").TextContent));
+        read = true;
+        ctx.Services.GetRequiredService<MailReceiptsStore>().OnHint(id);
+        cut.WaitForAssertion(() => Assert.Contains("Read by 1 of 2", cut.Find(".mrr-seen").TextContent));
+
+        cut.Find(".mrr-seen").Click();
+        cut.WaitForAssertion(() => Assert.Equal("true", cut.FindAll(".mrr-seg button")[0].GetAttribute("aria-selected")));
+    }
+
+    private sealed class Stub(Func<object> body) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+            => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(System.Text.Json.JsonSerializer.Serialize(body(), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)),
+                    System.Text.Encoding.UTF8, "application/json"),
+            });
     }
 }

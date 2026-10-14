@@ -91,11 +91,8 @@
         var id = MailId;
         var r = await Store.GetAsync(id);
         if (id != MailId) return;
-        var first = rc is null;
         rc = r;
         sum = MailReceiptView.Summarise(r);
-        // Open on the tab that has people in it.
-        if (first && r is { Read: 0 }) readTab = false;
     }
 
     private void OnChanged(Guid id)
@@ -110,6 +107,8 @@
         try { phone = await JS.InvokeAsync<bool>("ipop.mobile.isMobile"); } catch (JSException) { phone = false; } catch (InvalidOperationException) { phone = false; }
         open = true;
         query = "";
+        // Open on the tab that has people in it, judged now: readers may have arrived live since the first load.
+        readTab = rc is not { Read: 0 };
         expanded.Clear();
         if (rc is { Groups.Count: > 0 }) expanded.Add(rc.Groups[0].Name);
     }
