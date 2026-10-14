@@ -636,7 +636,7 @@
                     <div class="inline-reply-box qr-top" id="mail-quick-reply">
                         <div class="rh">
                             <i data-lucide="reply"></i>
-                            <span class="title">Quick reply to @QuickTarget.SenderName</span>
+                            <span class="title">Quick reply to @QuickReplyToLabel</span>
                             <button type="button" class="icon-btn" style="margin-left:auto;width:24px;height:24px" title="Open in composer" aria-label="Open in composer" @onclick="() => ReplyMessage(QuickTarget)">
                                 <i data-lucide="maximize-2" style="width:13px;height:13px"></i>
                             </button>
@@ -2228,6 +2228,16 @@
     private MailDetail QuickTarget => quickReplyTarget ?? detail!;
 
     private Task OpenQuickReplyFor(MailDetail d) => OpenQuickReply(d);
+
+    /// Who the quick reply reaches: on my own message that is its recipients, not me.
+    private string QuickReplyToLabel
+    {
+        get
+        {
+            var to = MailAddressing.ForReply(QuickTarget, Auth.Me?.Nik, all: false).To;
+            return to.Count switch { 0 => QuickTarget.SenderName, 1 => to[0].Name, _ => $"{to[0].Name} +{to.Count - 1}" };
+        }
+    }
 
     private async Task OpenQuickReply(MailDetail? target = null)
     {
