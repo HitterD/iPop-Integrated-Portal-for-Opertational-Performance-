@@ -389,6 +389,7 @@
 
 @if (showCred)
 {
+    <OverlayHook OnClose="() => showCred = false" />
     <div class="backdrop on" @onclick="() => showCred = false"></div>
     <div class="drawer on" role="dialog" aria-label="Connect Synology">
         <div class="tray"><div class="core" style="display:flex; flex-direction:column; height:100%">

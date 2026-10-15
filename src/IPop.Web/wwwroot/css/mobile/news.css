@@ -2,7 +2,7 @@
 
 /* Phone-only back bar above the inline reader (News.razor); .m-detail-bar is hidden on desktop by shell.css. */
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   /* ---------- Frame: list screen, then full-screen reader ---------- */
   .news-v6x { height: 100%; min-height: 0; overflow: hidden; }
   .news-v6x .news-cols {
@@ -169,4 +169,11 @@
     flex-wrap: wrap; padding: 10px 12px calc(10px + var(--m-safe-b));
   }
   .news-editor .ed-foot .ghost-btn, .news-editor .ed-foot .btn-primary { min-height: 44px; }
+}
+
+/* News compose on phones: the page itself is the scroller (it overflowed .main-panel with nothing to
+   scroll, so the editor under the keyboard could not be brought into view). */
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .nc-shell { height: auto; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .nc-main { flex: none; }
 }

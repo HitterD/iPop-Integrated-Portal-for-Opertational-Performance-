@@ -15,7 +15,9 @@
         <div class="composer-backdrop" @onclick="Restore"></div>
     }
 
-    <div class="outlook-composer mc-sheet @GetStateClass()" role="dialog" aria-label="@(IsForward ? "Forward message" : "New message")" @onkeydown="OnSheetKey">
+    @* Escape (anywhere, not only with focus inside) goes through OverlayStack; Mail owns the phone Back entry. *@
+    @if (dockState != ComposerDockState.Minimized) { <OverlayHook OnClose="EscapeSheet" History="false" /> }
+    <div class="outlook-composer mc-sheet @GetStateClass()" role="dialog" aria-label="@(IsForward ? "Forward message" : "New message")">
         @* Header: title echo, message options, window buttons *@
         <div class="composer-head" @onclick="OnHeadClick">
             <span class="title">
@@ -635,9 +637,9 @@
         if (dockState == ComposerDockState.Minimized) Restore();
     }
 
-    private void OnSheetKey(KeyboardEventArgs e)
+    private void EscapeSheet()
     {
-        if (e.Key != "Escape" || dockState == ComposerDockState.Minimized) return;
+        if (dockState == ComposerDockState.Minimized) return;
         // Esc first closes whichever menu is open; with none open it tucks the sheet away (nothing is lost).
         if (headPop is not null || sendDropdownOpen || attDropdownOpen)
         {

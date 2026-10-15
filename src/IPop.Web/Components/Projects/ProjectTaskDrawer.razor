@@ -9,6 +9,7 @@
 
 @if (Task is not null)
 {
+    <OverlayHook OnClose="CloseDrawer" />
     <div class="task-drawer-backdrop" @onclick="CloseDrawer"></div>
     <div class="task-drawer v6-task-drawer" data-attach-scope="@(ReadOnly ? null : "")" role="dialog" aria-modal="true" aria-label="Task Detail">
         <div class="task-drawer-inner">
