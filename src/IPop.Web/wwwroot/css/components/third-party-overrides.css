@@ -7,18 +7,21 @@
    Radzen ships:
      body:not(.rz-default-scrollbars)::-webkit-scrollbar { ... --rz-secondary ... }
      body:not(.rz-default-scrollbars) ::-webkit-scrollbar { ... }
-   Size 16px, color #35a0d7 (blue). We want thin neutral scrollbars everywhere.
+   Size 16px, color #35a0d7 (blue). We want thin neutral scrollbars everywhere: 8 px, rounded thumb, transparent
+   track, no arrow buttons (2026-10-15, Mail layout). Chrome ignores ::-webkit-scrollbar on any element that has
+   scrollbar-width / scrollbar-color, and its standard "thin" bar keeps the arrow buttons on Windows, so the standard
+   properties go to Firefox only (@supports -moz-appearance).
 */
 :root {
-  --app-scrollbar-size: 10px;
-  --app-scrollbar-thumb: rgba(63, 63, 58, 0.35);
-  --app-scrollbar-thumb-hover: rgba(63, 63, 58, 0.55);
+  --app-scrollbar-size: 8px;
+  --app-scrollbar-thumb: rgba(60, 60, 67, 0.32);
+  --app-scrollbar-thumb-hover: rgba(60, 60, 67, 0.52);
   --app-scrollbar-track: transparent;
 }
 
 [data-theme="dark"] {
-  --app-scrollbar-thumb: rgba(231, 228, 221, 0.35);
-  --app-scrollbar-thumb-hover: rgba(231, 228, 221, 0.55);
+  --app-scrollbar-thumb: rgba(235, 235, 245, 0.28);
+  --app-scrollbar-thumb-hover: rgba(235, 235, 245, 0.48);
 }
 
 /* Cover Radzen's broad selectors without fighting specificity war.
@@ -59,10 +62,22 @@ body:not(.rz-default-scrollbars) ::-webkit-scrollbar-corner,
   background-color: var(--app-scrollbar-track);
 }
 
-/* Firefox */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
+/* No arrow buttons at either end. */
+body:not(.rz-default-scrollbars)::-webkit-scrollbar-button,
+body:not(.rz-default-scrollbars) ::-webkit-scrollbar-button,
+.rz-scrollbars::-webkit-scrollbar-button,
+.rz-scrollbars ::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* Firefox (only: see above) */
+@supports (-moz-appearance: none) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
+  }
 }
 
 /* === Radzen palette mapping (only the bits we actually use) ===

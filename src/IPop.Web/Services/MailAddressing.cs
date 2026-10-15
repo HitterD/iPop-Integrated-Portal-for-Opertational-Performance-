@@ -56,18 +56,43 @@ public static class MailAddressing
     }
 
     /// Quick reply to exactly this message (not necessarily the one opened from the list).
-    public static MailSendRequest QuickReply(MailDetail d, string text, string? myNik)
+    /// all: Reply all — everyone but me, Cc kept, never the Bcc; mass mail falls back to the sender.
+    public static MailSendRequest QuickReply(MailDetail d, string text, string? myNik, bool all = false, IReadOnlyList<Guid>? attachmentIds = null)
     {
-        var typed = System.Net.WebUtility.HtmlEncode(text.Trim()).Replace("\r\n", "\n").Replace("\n", "<br/>");
-        var plan = ForReply(d, myNik, all: false);
+        var plan = ForReply(d, myNik, all);
         return new MailSendRequest(
             Subject: ReplySubject(d.Subject),
-            Body: $"<p>{typed}</p>{QuoteOf(d)}",
+            Body: $"{TypedHtml(text)}{QuoteOf(d)}",
             To: plan.To.Select(r => r.Nik).ToList(),
-            Cc: [],
+            Cc: plan.Cc.Select(r => r.Nik).ToList(),
             Bcc: [],
+            AttachmentIds: attachmentIds is { Count: > 0 } ? attachmentIds : null,
             InReplyToId: d.Id,
             ThreadRootId: d.ThreadRootId ?? d.Id);
+    }
+
+    /// Plain typed text as one HTML paragraph (line breaks kept).
+    public static string TypedHtml(string text)
+        => $"<p>{System.Net.WebUtility.HtmlEncode(text.Trim()).Replace("\r\n", "\n").Replace("\n", "<br/>")}</p>";
+
+    /// Reply all only when it is allowed and would reach someone Reply doesn't.
+    public static bool ReplyAllReachesMore(MailDetail d, string? myNik)
+    {
+        if (!d.CanReplyAll) return false;
+        var one = ForReply(d, myNik, all: false);
+        var all = ForReply(d, myNik, all: true);
+        return all.To.Count + all.Cc.Count > one.To.Count + one.Cc.Count;
+    }
+
+    /// Who a reply goes to: "Jason Kristanto" or "Jason Kristanto, Kevin Austin Widjaja · Cc Alphin Santoso +3".
+    public static string ReplyToLabel(MailDetail d, string? myNik, bool all)
+    {
+        var plan = ForReply(d, myNik, all);
+        static string Names(List<MemberSearchRow> rows, int max)
+            => string.Join(", ", rows.Take(max).Select(r => MailReceiptView.TitleCase(r.Name))) + (rows.Count > max ? $" +{rows.Count - max}" : "");
+        if (plan.To.Count == 0) return MailReceiptView.TitleCase(d.SenderName);
+        var to = Names(plan.To, 2);
+        return plan.Cc.Count == 0 ? to : $"{to} · Cc {Names(plan.Cc, 1)}";
     }
 
     public static string QuoteOf(MailDetail d)

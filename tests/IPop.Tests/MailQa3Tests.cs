@@ -155,16 +155,17 @@ public class MailQa3Tests
     [Fact]
     public void Open_thread_item_puts_the_to_line_under_the_name_with_the_count_outside_the_ellipsis()
     {
+        // Outlook layout (2026-10-15): the recipients line ("To you, … · Cc … +N") is its own row under the name;
+        // the names ellipsize, the +N button and Details never do.
         var root = Root();
         var stack = File.ReadAllText(Path.Combine(root, "src/IPop.Web/Components/Mail/MailThreadStack.razor"));
-        Assert.Contains("thr-to-more", stack);
-        Assert.Contains("MailRecipientLine.ThreadTo(", stack);
-        var css = File.ReadAllText(Path.Combine(root, "src/IPop.Web/wwwroot/css/v6/mail-receipts.css"));
-        Assert.Matches(@"flex-direction:\s*column", Rule(css, ".mail-page .thr-msg.open .thr-who"));
-        Assert.Matches(@"flex:\s*none", Rule(css, ".mail-page .thr-to-more"));
-        Assert.Contains("thr-to-narrow", stack);
-        Assert.Matches(@"text-overflow:\s*ellipsis", Rule(css, ".mail-page .thr-msg.open .thr-name"));   // long sender vs the badge
-        Assert.Matches(@"display:\s*none", Rule(css, ".mail-page .thr-to.thr-to-wide"));
+        Assert.Contains("MailRecipientLine.Compact(", stack);
+        Assert.Contains("thr-rl", stack);
+        var css = File.ReadAllText(Path.Combine(root, "src/IPop.Web/wwwroot/css/v6/mail-layout.css"));
+        Assert.Matches(@"text-overflow:\s*ellipsis", Rule(css, ".mlx .thr-rcp"));
+        Assert.Matches(@"flex:\s*none", Rule(css, ".mlx .thr-rl .mrh-trig"));
+        Assert.Matches(@"flex:\s*none", Rule(css, ".mlx .thr-dtg"));
+        Assert.Matches(@"text-overflow:\s*ellipsis", Rule(css, ".mlx .thr-name"));
     }
 
     private static string Rule(string css, string selector)

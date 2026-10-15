@@ -67,6 +67,40 @@ public static class MailRecipientLine
         return new(string.Join(", ", shown.Select(i => i.Text)), more, items[0].Text, items.Skip(1).Sum(i => i.Count) + unlistedAll);
     }
 
+    /// One part of the compact recipients line under the sender ("To you, Kevin Austin Widjaja · Cc Alphin Santoso +3").
+    public sealed record Part(string Label, string Names, int More);
+
+    private const int CompactTo = 2, CompactCc = 1;
+
+    /// The reading pane's one-line recipients: To with two items, Cc with one, each followed by a count of the rest.
+    /// Bcc is left to the Details table (sender only). Hidden lists read "undisclosed recipients".
+    public static List<Part> Compact(MailDetail d, string? myNik)
+    {
+        if (d.HideRecipients && !Eq(d.SenderNik, myNik)) return [new("To", "undisclosed recipients", 0)];
+        var parts = new List<Part>();
+        foreach (var line in Lines(d, myNik).Where(l => l.Field != "bcc"))
+        {
+            var n = Math.Min(line.Items.Count, line.Field == "to" ? CompactTo : CompactCc);
+            var names = string.Join(", ", line.Items.Take(n).Select(i => i.Text));
+            var more = line.MoreAfter(n);
+            if (names.Length == 0 && more == 0) continue;
+            if (names.Length == 0) { names = $"{more.ToString("N0", CultureInfo.InvariantCulture)} people"; more = 0; }
+            parts.Add(new(line.Label, names, more));
+        }
+        return parts;
+    }
+
+    /// The sender's address for the hover hint, or null when unknown or when it would show the employee id.
+    public static string? SenderEmail(MailDetail d)
+    {
+        var from = d.Recipients.FirstOrDefault(r => r.RecipientType == "from" && Eq(r.Nik, d.SenderNik));
+        var email = from?.Email?.Trim();
+        if (string.IsNullOrEmpty(email) || !email.Contains('@')) return null;
+        var local = email[..email.IndexOf('@')];
+        if (!string.IsNullOrEmpty(d.SenderNik) && local.Contains(d.SenderNik, StringComparison.OrdinalIgnoreCase)) return null;
+        return email;
+    }
+
     // Short all-caps words that are acronyms in this company's group and department names.
     private static readonly HashSet<string> Acronyms = new(StringComparer.Ordinal)
     {

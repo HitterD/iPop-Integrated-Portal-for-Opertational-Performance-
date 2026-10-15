@@ -166,8 +166,9 @@ public class MailReplyHotfixTests
     }
 
     [Fact]
-    public void Every_opened_message_in_a_thread_offers_reply_reply_all_forward_and_quick_reply()
+    public void Every_opened_message_in_a_thread_offers_reply_reply_all_forward_for_that_message()
     {
+        // Layout v3 (2026-10-15): no button row under a message — ↩ and ⋯ in its header act on exactly that message.
         var root = Mail(Me, "Me", R("T1", "Tono", "to"), R("C1", "Cici", "cc")) with { ThreadCount = 1 };
         var reply = Mail("T1", "Tono", R(Me, "Me", "to"), R("C1", "Cici", "cc")) with { ThreadRootId = root.Id, InReplyToId = root.Id };
         using var ctx = Ctx(url =>
@@ -175,33 +176,41 @@ public class MailReplyHotfixTests
             : url == $"/api/mail/{root.Id}" ? root
             : null);
 
-        MailDetail? quick = null, replied = null, repliedAll = null, forwarded = null;
+        MailDetail? forwarded = null;
+        MailReplyStart? sent = null;
         var cut = ctx.Render<MailThreadStack>(p => p
             .Add(c => c.Detail, reply)
             .Add(c => c.MyNik, Me)
-            .Add(c => c.OnReply, d => replied = d)
-            .Add(c => c.OnReplyAll, d => repliedAll = d)
             .Add(c => c.OnForward, d => forwarded = d)
-            .Add(c => c.OnQuickReply, d => quick = d));
+            .Add(c => c.QuickSend, s => { sent = s; return Task.FromResult(true); }));
 
         cut.WaitForAssertion(() => Assert.Equal(2, cut.FindAll(".thr-msg").Count));
-        // Open the older root (my own sent message).
+        // Open the older root (my own sent message) and its ⋯ menu.
         cut.Find($".thr-msg[data-thr-id=\"{root.Id}\"] .thr-head").Click();
-        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll($".thr-msg[data-thr-id=\"{root.Id}\"] .thr-acts")));
-
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll($".thr-msg[data-thr-id=\"{root.Id}\"] .thr-body .mrd-body")));
         foreach (var id in new[] { reply.Id, root.Id })
         {
-            var labels = cut.FindAll($".thr-msg[data-thr-id=\"{id}\"] .thr-acts button").Select(b => b.TextContent.Trim()).ToList();
-            Assert.Equal(["Quick reply", "Reply", "Reply all", "Forward"], labels);
+            cut.Find($".thr-msg[data-thr-id=\"{id}\"] button[aria-label=\"More actions for this message\"]").Click();
+            var labels = cut.FindAll($".thr-msg[data-thr-id=\"{id}\"] [role=menuitem]").Select(b => b.TextContent.Trim()).ToList();
+            Assert.Equal(["Reply", "Reply all", "Forward"], labels);
         }
 
-        Btn(root.Id, "Quick reply").Click(); Assert.Equal(root.Id, quick?.Id);
-        Btn(root.Id, "Reply").Click(); Assert.Equal(root.Id, replied?.Id);
-        Btn(root.Id, "Reply all").Click(); Assert.Equal(root.Id, repliedAll?.Id);
-        Btn(root.Id, "Forward").Click(); Assert.Equal(root.Id, forwarded?.Id);
+        Item(root.Id, "Forward").Click();
+        Assert.Equal(root.Id, forwarded?.Id);
 
-        AngleSharp.Dom.IElement Btn(Guid id, string label) =>
-            cut.FindAll($".thr-msg[data-thr-id=\"{id}\"] .thr-acts button").Single(b => b.TextContent.Trim() == label);
+        cut.Find($".thr-msg[data-thr-id=\"{root.Id}\"] button[aria-label=\"More actions for this message\"]").Click();
+        Item(root.Id, "Reply all").Click();
+        cut.Find("textarea#mail-quick-reply-text").Input("ok");
+        cut.Find("button.mqr-send").Click();
+        cut.WaitForAssertion(() => Assert.Equal(root.Id, sent?.Target.Id));
+        Assert.True(sent!.All);
+        // My own sent message: Reply all goes to its recipients (To Tono, Cc Cici), never to me.
+        var req = MailAddressing.QuickReply(sent.Target, sent.Text, Me, sent.All);
+        Assert.Equal(["T1"], req.To);
+        Assert.Equal(["C1"], req.Cc);
+
+        AngleSharp.Dom.IElement Item(Guid id, string label) =>
+            cut.FindAll($".thr-msg[data-thr-id=\"{id}\"] [role=menuitem]").Single(b => b.TextContent.Trim() == label);
     }
 
     [Fact]
@@ -209,15 +218,19 @@ public class MailReplyHotfixTests
     {
         var mass = Mail("S1", "Sender", R(Me, "Me", "to")) with { CanReplyAll = false };
         var solo = Mail("S1", "Sender", R(Me, "Me", "to"));
-        using var ctx = Ctx(_ => null);
-        foreach (var d in new[] { mass, solo })
-        {
-            var cut = ctx.Render<MailMessageActions>(p => p.Add(c => c.Mail, d).Add(c => c.MyNik, Me));
-            Assert.DoesNotContain("Reply all", cut.Markup);
-            Assert.Contains("Reply", cut.Markup);
-        }
+        Assert.False(MailAddressing.ReplyAllReachesMore(mass, Me));
+        Assert.False(MailAddressing.ReplyAllReachesMore(solo, Me));
         var group = Mail("S1", "Sender", R(Me, "Me", "to"), R("C1", "Cici", "cc"));
-        Assert.Contains("Reply all", ctx.Render<MailMessageActions>(p => p.Add(c => c.Mail, group).Add(c => c.MyNik, Me)).Markup);
+        Assert.True(MailAddressing.ReplyAllReachesMore(group, Me));
+
+        using var ctx = Ctx(_ => null);
+        var cut = ctx.Render<MailThreadStack>(p => p.Add(c => c.Detail, solo).Add(c => c.MyNik, Me));
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll(".thr-msg")));
+        cut.Find("button[aria-label=\"More actions for this message\"]").Click();
+        var labels = cut.FindAll("[role=menuitem]").Select(b => b.TextContent.Trim()).ToList();
+        Assert.Equal(["Reply", "Forward"], labels);
+        cut.Find("button.mqr-in").Click();
+        Assert.Empty(cut.FindAll("button.mqr-mode"));   // nothing to switch to
     }
 
     // ---- emoji popup CSS: nothing parks it at the window's top-left ----
@@ -231,7 +244,8 @@ public class MailReplyHotfixTests
         var compose = System.Text.RegularExpressions.Regex.Match(css, @"\.mrte > \.mrte-emoji-pop \{([^}]*)\}").Groups[1].Value;
         Assert.DoesNotMatch(@"\btop:\s*0\b", compose);
         Assert.DoesNotMatch(@"\bleft:\s*0\b", compose);
-        // micro.css scales ".ra:active"; Mail's quick-reply row is a ".ra" holding the emoji button.
-        Assert.Matches(@"\.inline-reply-box \.ra:active \{\s*transform:\s*none;", css);
+        // micro.css scales ".ra:active"; the quick reply's emoji row must never be (or sit inside) a scaling ".ra".
+        var stack = File.ReadAllText(Path.Combine(root.FullName, "src/IPop.Web/Components/Mail/MailThreadStack.razor"));
+        Assert.DoesNotMatch(@"class=""(?:[^""]*\s)?ra[\s""]", stack);
     }
 }

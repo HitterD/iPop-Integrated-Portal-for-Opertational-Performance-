@@ -179,7 +179,8 @@ public class MailBodyLayoutTests
         while (root is not null && !File.Exists(Path.Combine(root.FullName, "IPop.slnx"))) root = root.Parent;
         var page = File.ReadAllText(Path.Combine(root!.FullName, "src/IPop.Web/Pages/Mail.razor"));
         var stack = File.ReadAllText(Path.Combine(root.FullName, "src/IPop.Web/Components/Mail/MailThreadStack.razor"));
-        Assert.Contains("<MailBody ", page);
+        // Every message, a single mail included, renders through the thread stack (Outlook layout 2026-10-15).
+        Assert.Contains("<MailThreadStack", page);
         Assert.Contains("<MailBody ", stack);
         Assert.DoesNotContain("@((MarkupString)detail.Body)", page);
         Assert.DoesNotContain("@((MarkupString)body.Body)", stack);

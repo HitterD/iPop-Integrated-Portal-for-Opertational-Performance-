@@ -6,7 +6,7 @@
    "Original formatting" shows the sanitized body exactly as served, remembered per message for the session.
    The stored body is never changed. Images: the page's lightbox opens them full size (ipop.mailBindLightbox). *@
 <div class="mrd @(original ? "mrd-is-orig" : "")">
-    @if (layout.OffersOriginal || FromEpop)
+    @if (Chrome && (layout.OffersOriginal || FromEpop))
     {
         <div class="mrd-bar">
             @if (FromEpop && Mail.SentAt is { } sent)
@@ -37,6 +37,11 @@
     [Parameter, EditorRequired] public MailDetail Mail { get; set; } = default!;
     /// Imported from the EPop archive: shows the small "Imported from EPop" note.
     [Parameter] public bool FromEpop { get; set; }
+    /// The EPop note + "Original formatting" strip above the body. The thread shows both in its own header and ⋯ menu.
+    [Parameter] public bool Chrome { get; set; } = true;
+
+    /// Whether this body differs from its sanitized original (so "Original formatting" means something).
+    public static bool OffersOriginal(MailDetail mail) => mail.IsHtml && MailBodyLayout.Prepare(mail.Body).OffersOriginal;
 
     private MailBodyLayout.Result layout = new("", false, false);
     private string? preparedFor;

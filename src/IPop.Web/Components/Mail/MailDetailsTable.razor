@@ -1,0 +1,92 @@
+@using IPop.Web.Services
+@*
+    "Details ⌄" under a message header (mockup v3): a light From / To / Cc (/ Bcc for the sender) / Date table with
+    name pills; "you" is green; long lists fold behind +N. Names only — NIK is never rendered. Classes are mdt-*.
+*@
+<div class="mdt" role="table" aria-label="Sender and recipients">
+    <div class="mdt-row" data-k="from" role="row">
+        <span class="mdt-k" role="rowheader">From</span>
+        <span class="mdt-v" role="cell">@Pill(Mail.SenderName, Eq(Mail.SenderNik, MyNik), Mail.SenderNik)
+            @if (MailRecipientLine.SenderEmail(Mail) is { } email) { <span class="mdt-em">@email</span> }</span>
+    </div>
+    @if (Mail.HideRecipients && !IsSender)
+    {
+        <div class="mdt-row" data-k="to" role="row"><span class="mdt-k" role="rowheader">To</span><span class="mdt-v" role="cell"><span class="mdt-dim">undisclosed recipients</span></span></div>
+    }
+    else
+    {
+        @foreach (var (field, label) in Fields)
+        {
+            var people = Mail.Recipients.Where(r => r.RecipientType == field).OrderByDescending(IsMe).ToList();
+            var groups = Mail.RecipientGroups.Where(g => g.Field == field).ToList();
+            if (people.Count == 0 && groups.Count == 0) continue;
+            var open = expanded.Contains(field);
+            var total = people.Count + groups.Count;
+            var shown = open ? total : Math.Min(total, Max);
+            <div class="mdt-row" data-k="@field" role="row">
+                <span class="mdt-k" role="rowheader">@label</span>
+                <span class="mdt-v" role="cell">
+                    @for (var i = 0; i < shown; i++)
+                    {
+                        if (i < people.Count) { var p = people[i]; @Pill(p.Name, IsMe(p), p.Nik) }
+                        else { var g = groups[i - people.Count]; <span class="mdt-pill grp" title="@($"{g.Name}: {g.Count:N0} people")"><i data-lucide="users"></i><span>@MailRecipientLine.GroupTitle(g.Name)</span></span> }
+                    }
+                    @if (total > shown)
+                    {
+                        <button type="button" class="mdt-more" title="Show everyone" @onclick="() => expanded.Add(field)">+@(total - shown)</button>
+                    }
+                    @if (field == "to" && Unlisted > 0)
+                    {
+                        <span class="mdt-dim">and @Unlisted.ToString("N0") more</span>
+                    }
+                </span>
+            </div>
+        }
+    }
+    <div class="mdt-row" data-k="date" role="row">
+        <span class="mdt-k" role="rowheader">Date</span>
+        <span class="mdt-v" role="cell"><span class="mdt-date">@(Mail.SentAt?.ToLocalTime().ToString("dddd d MMMM yyyy, HH:mm") ?? (Mail.ScheduledAt is { } s ? $"Scheduled {s.ToLocalTime():d MMM yyyy, HH:mm}" : "Not sent"))</span></span>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MailDetail Mail { get; set; } = default!;
+    /// The reader's NIK: only compared, never displayed.
+    [Parameter] public string? MyNik { get; set; }
+
+    private const int Max = 4;
+    private readonly HashSet<string> expanded = [];
+    private Guid shownFor;
+
+    private bool IsSender => Eq(Mail.SenderNik, MyNik);
+    private IEnumerable<(string, string)> Fields => IsSender ? [("to", "To"), ("cc", "Cc"), ("bcc", "Bcc")] : [("to", "To"), ("cc", "Cc")];
+    private static bool Eq(string? a, string? b) => a is not null && b is not null && a.Equals(b, StringComparison.OrdinalIgnoreCase);
+    private bool IsMe(MailRecipient r) => Eq(r.Nik, MyNik);
+
+    /// People on the mail beyond the (≤ 50) names the detail lists and the group chips.
+    private int Unlisted
+    {
+        get
+        {
+            var listed = Mail.Recipients.Count(r => r.RecipientType is "to" or "cc" or "bcc");
+            var inGroups = Mail.RecipientGroups.Where(g => g.Field != "bcc" || IsSender).Sum(g => g.Count);
+            return Math.Max(0, Mail.RecipientTotal - listed - inGroups);
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (shownFor == Mail.Id) return;
+        shownFor = Mail.Id;
+        expanded.Clear();
+    }
+
+    private RenderFragment Pill(string name, bool me, string? key) => __builder =>
+    {
+        var shown = me ? "you" : MailReceiptView.TitleCase(name);
+        <span class="mdt-pill @(me ? "you" : "")" title="@(me ? null : shown)">
+            <PersonAvatar Nik="@key" Name="@MailReceiptView.TitleCase(name)" Size="16" Decorative="true" />
+            <span>@shown</span>
+        </span>
+    };
+}

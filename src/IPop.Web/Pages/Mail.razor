@@ -17,736 +17,542 @@
 @inject IPop.Web.Services.PeopleLinks PLinks
 @inject IPop.Web.Services.CalendarLinks CalLinks
 @inject IPop.Web.Services.PageCache Cache
+@inject IPop.Web.Services.MailReadingPrefs Prefs
 
 <PageTitle>Mail — IPop</PageTitle>
 
 
-<div class="mail-page @(detail is not null ? "m-detail" : "") @(mFolderSheet ? "m-folders-open" : "")">
-    @* ============ TOOLBAR (Segmented Filter + Ghost Actions) ============ *@
-    <div class="toolbar">
-        <div class="actions" style="margin-left:auto;display:flex;align-items:center;gap:8px">
-            <div class="mail-search-wrap">
-            <div class="v6-search" @onkeydown="OnSearchKey">
-                <i data-lucide="search"></i>
-                <input type="search" placeholder="Search mail or sender" aria-label="Search mail or sender" value="@search" @oninput="OnSearch" />
-                <button type="button" class="v6-search-filter @(advSearchOpen || AdvancedActive ? "on" : "")" title="Advanced filter" aria-label="Advanced filter" aria-expanded="@(advSearchOpen ? "true" : "false")" @onclick="() => advSearchOpen = !advSearchOpen">
-                    <i data-lucide="list-filter"></i>
-                    @if (AdvancedCount > 0) { <span class="v6-search-filter-n">@AdvancedCount</span> }
-                </button>
-            </div>
-            @if (advSearchOpen)
-            {
-                <div class="menu-backdrop" @onclick="() => advSearchOpen = false"></div>
-                <div class="mail-filter-pop" role="dialog" aria-label="Filter mail" @onkeydown="OnFilterKey">
-                    <div class="mfp-head">
-                        <span>Filter</span>
-                        <button type="button" class="mfp-x" aria-label="Close" @onclick="() => advSearchOpen = false"><i data-lucide="x"></i></button>
-                    </div>
-                    <label class="mfp-field">
-                        <span>From</span>
-                        <input type="text" placeholder="Name or employee ID" @bind="advFrom" @bind:event="oninput" />
-                    </label>
-                    <label class="mfp-field">
-                        <span>Contains</span>
-                        <input type="text" placeholder="Subject or words in the message" @bind="advQuery" @bind:event="oninput" />
-                    </label>
-                    <div class="mfp-field">
-                        <span>Date</span>
-                        <div class="mfp-chips">
-                            <button type="button" class="mfp-chip @(DatePreset == "7" ? "on" : "")" @onclick='() => SetDatePreset("7")'>Last 7 days</button>
-                            <button type="button" class="mfp-chip @(DatePreset == "30" ? "on" : "")" @onclick='() => SetDatePreset("30")'>Last 30 days</button>
-                            <button type="button" class="mfp-chip @(DatePreset == "year" ? "on" : "")" @onclick='() => SetDatePreset("year")'>This year</button>
-                        </div>
-                        <div class="mfp-dates">
-                            <AppDatePicker @bind-Value="advDateFrom" AllowClear="true" AriaLabel="From date" />
-                            <span class="mfp-to">to</span>
-                            <AppDatePicker @bind-Value="advDateTo" AllowClear="true" AriaLabel="To date" />
-                        </div>
-                    </div>
-                    <div class="mfp-field">
-                        <span>Show only</span>
-                        <div class="mfp-chips">
-                            <button type="button" class="mfp-chip @(advHasAttachment ? "on" : "")" aria-pressed="@(advHasAttachment ? "true" : "false")" @onclick="() => advHasAttachment = !advHasAttachment">
-                                <i data-lucide="paperclip"></i> Has attachment
-                            </button>
-                        </div>
-                    </div>
-                    @if (DisplayLabels.Count > 0)
-                    {
-                        <div class="mfp-field">
-                            <span>Label</span>
-                            <div class="mfp-chips">
-                                @foreach (var l in DisplayLabels)
-                                {
-                                    var name = l.Name;
-                                    <button type="button" class="mfp-chip @(advLabel == name ? "on" : "")" aria-pressed="@(advLabel == name ? "true" : "false")" @onclick='() => advLabel = advLabel == name ? "" : name'>
-                                        <span class="label-dot" style="background:@l.Color"></span>@name
-                                    </button>
-                                }
-                            </div>
-                        </div>
-                    }
-                    <div class="mfp-foot">
-                        <button type="button" class="mfp-link" disabled="@(!AdvancedActive && string.IsNullOrWhiteSpace(search))" @onclick="ClearFilters">Clear all</button>
-                        <button type="button" class="mfp-apply" @onclick="ApplyFilters">Show results</button>
-                    </div>
-                </div>
-            }
-            </div>
-            <button type="button" class="icon-btn" title="Sync mailbox" aria-label="Sync mailbox" @onclick="ReloadAll">
-                <i data-lucide="refresh-cw"></i>
-            </button>
-            <button type="button" class="btn-dark" @onclick="() => OpenComposer()">
-                <i data-lucide="square-pen"></i>
-                <span>Compose</span>
-            </button>
-        </div>
-    </div>
-
-    @* ============ 3-PANE CARDS LAYOUT ============ *@
-    <div class="mail-area @(selected.Count > 0 ? "has-selection" : "")">
+<div class="mail-page mlx @(detail is not null ? "m-detail" : "") @(mFolderSheet ? "m-folders-open" : "")">
+    @* Outlook-style surface (mockup docs/mockups/mail-layout-outlook.html v3): Mailboxes | list | reading pane joined
+       as one sheet under the topbar, hairline splitters between them (js/mail-layout.js owns widths + the rail). *@
+    <div class="mlx-surf @(selected.Count > 0 ? "has-selection" : "")" data-mlx-surf>
         @if (mFolderSheet)
         {
-            <div class="m-folder-backdrop" @onclick="() => mFolderSheet = false"></div>
+            <div class="mlx-sheetdim" @onclick="() => mFolderSheet = false"></div>
         }
-        @* ============ PANE 1: FOLDERS CARD ============ *@
-        <div class="card mail-card mail-folders">
-            <div class="card-head">
-                <div>
-                    <div class="card-title">Mailboxes</div>
-                    <div class="card-meta">@(Auth.Me?.Email ?? $"{Folders.Length} folders")</div>
+
+        @* ============ PANE 1: MAILBOXES (full + icon rail) ============ *@
+        <section class="mlx-pane mlx-box" aria-label="Mailboxes">
+            <div class="mlx-full">
+                <button type="button" class="mlx-compose" @onclick="() => { mFolderSheet = false; OpenComposer(); }">
+                    <i data-lucide="square-pen"></i><span>New mail</span>
+                </button>
+                <div class="mlx-bxh">
+                    <div class="mlx-bxt"><b>Mailboxes</b><small>@(Auth.Me?.Email ?? "")</small></div>
+                    <button type="button" class="mlx-ib mlx-collapse" data-mlx-act="collapse" title="Collapse mailboxes" aria-label="Collapse mailboxes"><i data-lucide="chevron-left"></i></button>
+                    <button type="button" class="mlx-ib m-sheet-x" title="Close" aria-label="Close mailboxes" @onclick="() => mFolderSheet = false"><i data-lucide="x"></i></button>
+                </div>
+                <div class="mlx-tree">
+                    @foreach (var f in Folders)
+                    {
+                        var folder = f;
+                        var badge = FolderBadge(folder);
+                        <button type="button" class="mlx-tn @(activeFolder == folder && labelFilter is null ? "on" : "")"
+                                aria-current="@(activeFolder == folder && labelFilter is null ? "page" : null)" title="@FolderLabel(folder)"
+                                @onclick="() => SelectFolder(folder)">
+                            <i data-lucide="@(FolderIcon(folder))"></i>
+                            <span class="lbl">@FolderLabel(folder)</span>
+                            @if (badge > 0) { <span class="mlx-n @(folder == MailFolder.Inbox ? "acc" : "")">@badge.ToString("N0")</span> }
+                        </button>
+                    }
+                    <div class="mlx-tsec">Labels
+                        <button type="button" class="mlx-ib" title="New label" aria-label="New label" @onclick='() => OpenSettings("labels")'><i data-lucide="plus"></i></button>
+                    </div>
+                    @if (DisplayLabels.Count == 0)
+                    {
+                        <div class="mlx-empty">No labels</div>
+                    }
+                    @foreach (var l in DisplayLabels)
+                    {
+                        var lbl = l;
+                        var isEpop = MailEpop.IsImported([lbl.Name]);
+                        <button type="button" class="mlx-tn @(labelFilter == lbl.Name ? "on" : "")" title="@lbl.Name" @onclick="() => ToggleLabelFilter(lbl.Name)">
+                            @if (isEpop) { <i data-lucide="archive"></i> } else { <span class="mlx-ldot" style="background:@lbl.Color"></span> }
+                            <span class="lbl">@lbl.Name</span>
+                            @if (lbl.Count > 0) { <span class="mlx-n">@lbl.Count.ToString("N0")</span> }
+                        </button>
+                    }
+                </div>
+                <div class="mlx-foot">
+                    @SettingsMenu
+                    <button type="button" class="mlx-setbtn @(settingsMenuOpen ? "on" : "")" aria-haspopup="menu" aria-expanded="@(settingsMenuOpen ? "true" : "false")" @onclick="() => settingsMenuOpen = !settingsMenuOpen">
+                        <i data-lucide="settings"></i><span>Mail settings</span>
+                    </button>
                 </div>
             </div>
-
-            <div class="tree">
+            <div class="mlx-rail">
+                <button type="button" class="mlx-rb" data-mlx-act="expand" title="Show mailboxes" aria-label="Show mailboxes"><i data-lucide="chevron-right"></i></button>
+                <button type="button" class="mlx-rc" title="New mail" aria-label="New mail" @onclick="() => OpenComposer()"><i data-lucide="square-pen"></i></button>
                 @foreach (var f in Folders)
                 {
                     var folder = f;
                     var badge = FolderBadge(folder);
-                    <button type="button"
-                            class="tree-node @(activeFolder == folder ? "on" : "")"
-                            aria-current="@(activeFolder == folder ? "page" : null)"
-                            title="@FolderLabel(folder)"
-                            aria-label="@FolderLabel(folder)"
-                            @onclick="() => SelectFolder(folder)">
+                    <button type="button" class="mlx-rb @(activeFolder == folder && labelFilter is null ? "on" : "")" title="@RailTitle(folder, badge)" aria-label="@FolderLabel(folder)" @onclick="() => SelectFolder(folder)">
                         <i data-lucide="@(FolderIcon(folder))"></i>
-                        <span class="lbl">@FolderLabel(folder)</span>
-                        @if (badge > 0)
-                        {
-                            <span class="tree-n @(folder == MailFolder.Inbox ? "unread-accent" : "")">@badge</span>
-                        }
+                        @if (badge > 0 && folder is MailFolder.Inbox or MailFolder.Draft) { <span class="mlx-rbd">@(badge > 99 ? "99+" : badge.ToString())</span> }
                     </button>
                 }
-
-                <div class="tree-site" style="margin-top:10px">Labels</div>
-                @if (DisplayLabels.Count == 0)
+                @if (DisplayLabels.Count > 0) { <hr /> }
+                @foreach (var l in DisplayLabels.Where(x => !MailEpop.IsImported([x.Name])).Take(6))
                 {
-                    <div class="empty-labels" style="padding:4px 10px;font-size:11.5px;color:var(--ink-4)">No labels</div>
+                    var lbl = l;
+                    <button type="button" class="mlx-rl @(labelFilter == lbl.Name ? "on" : "")" title="Label · @lbl.Name" aria-label="Label @lbl.Name" @onclick="() => ToggleLabelFilter(lbl.Name)"><span class="mlx-ldot" style="background:@lbl.Color"></span></button>
                 }
-                else
-                {
-                    @foreach (var l in DisplayLabels)
-                    {
-                        var lbl = l;
-                        var isLabelActive = labelFilter == lbl.Name;
-                        <button type="button"
-                                class="tree-node @(isLabelActive ? "on" : "")"
-                                title="@lbl.Name"
-                                aria-label="@lbl.Name"
-                                @onclick="() => ToggleLabelFilter(lbl.Name)">
-                            <span class="label-dot" style="background:@lbl.Color"></span>
-                            <span class="lbl">@lbl.Name</span>
-                            @if (lbl.Count > 0)
-                            {
-                                <span class="tree-n">@lbl.Count</span>
-                            }
-                        </button>
-                    }
-                }
+                <span class="mlx-sp"></span>
+                <span class="mlx-railset">
+                    @SettingsMenu
+                    <button type="button" class="mlx-rb @(settingsMenuOpen ? "on" : "")" title="Mail settings" aria-label="Mail settings" aria-haspopup="menu" @onclick="() => settingsMenuOpen = !settingsMenuOpen"><i data-lucide="settings"></i></button>
+                </span>
             </div>
+        </section>
 
-            <div class="folders-foot">
-                @if (settingsMenuOpen)
-                {
-                    <div class="menu-backdrop" @onclick="() => settingsMenuOpen = false"></div>
-                    <div class="mail-settings-menu" role="menu" aria-label="Mail settings">
-                        <button type="button" class="more-item" role="menuitem" @onclick='() => OpenSettings("signature")'><i data-lucide="pen-line"></i><span>Signature</span></button>
-                        <button type="button" class="more-item" role="menuitem" @onclick='() => OpenSettings("ooo")'><i data-lucide="plane"></i><span>Out of office</span></button>
-                        <button type="button" class="more-item" role="menuitem" @onclick='() => OpenSettings("rules")'><i data-lucide="list-filter"></i><span>Rules &amp; filters</span></button>
-                        <button type="button" class="more-item" role="menuitem" @onclick='() => OpenSettings("labels")'><i data-lucide="tag"></i><span>Labels</span></button>
-                        <button type="button" class="more-item" role="menuitem" @onclick='() => OpenSettings("templates")'><i data-lucide="layout-template"></i><span>Templates</span></button>
-                        <div class="msm-divider" role="separator"></div>
-                        <button type="button" class="more-item danger" role="menuitem" @onclick="EmptyTrashFromMenu"><i data-lucide="trash-2"></i><span>Empty Trash</span></button>
-                    </div>
-                }
-                <button type="button" class="ghost-btn mail-settings-btn @(settingsMenuOpen ? "on" : "")" aria-haspopup="menu" aria-expanded="@(settingsMenuOpen ? "true" : "false")" @onclick="() => settingsMenuOpen = !settingsMenuOpen">
-                    <i data-lucide="settings"></i>
-                    <span class="lbl">Mail settings</span>
-                </button>
-            </div>
-        </div>
-
-        @* ============ PANE 2: MESSAGES LIST CARD ============ *@
-        <div class="card mail-card mail-list-card">
-            <div class="card-head" style="justify-content:space-between">
-                <div class="flex center gap-8">
-                    <span class="cbx @(allSelected ? "on" : "")"
-                          @onclick="ToggleSelectAll"
-                          role="checkbox"
-                          aria-checked="@(allSelected ? "true" : "false")"
-                          tabindex="0"
-                          title="Select all"
-                          aria-label="Select all">
+        @* ============ PANE 2: MESSAGE LIST ============ *@
+        <section class="mlx-pane mlx-list" aria-label="Messages">
+            <div class="mlx-lh">
+                <div class="mlx-tt">
+                    <span class="cbx mlx-all @(allSelected ? "on" : selected.Count > 0 ? "mid" : "")" @onclick="ToggleSelectAll" @onkeydown="OnCheckKey"
+                          role="checkbox" aria-checked="@(allSelected ? "true" : selected.Count > 0 ? "mixed" : "false")" tabindex="0" title="Select all" aria-label="Select all">
                         <i data-lucide="check"></i>
                     </span>
-                    <span class="card-title">@FolderLabel(activeFolder)</span>
-                    @* Phone only: the folder column is hidden, this opens it as a bottom sheet. *@
-                    <button type="button" class="m-folder-btn" aria-haspopup="dialog" aria-expanded="@(mFolderSheet ? "true" : "false")" @onclick="() => mFolderSheet = true">
-                        <i data-lucide="@(FolderIcon(activeFolder))"></i>
-                        <span>@FolderLabel(activeFolder)</span>
-                        @if (FolderBadge(activeFolder) > 0)
-                        {
-                            <span class="tree-n">@FolderBadge(activeFolder)</span>
-                        }
-                        <i data-lucide="chevron-down"></i>
+                    @* Phone: the Mailboxes column is a sheet; this opens it. *@
+                    <button type="button" class="mlx-fbtn" aria-haspopup="dialog" aria-expanded="@(mFolderSheet ? "true" : "false")" @onclick="() => mFolderSheet = true">
+                        <i data-lucide="chevron-left"></i><span>Mailboxes</span>
                     </button>
-                    @if (NewCount > 0)
-                    {
-                        <span class="v6-new-pill">@NewCount new</span>
-                    }
+                    <b class="mlx-title">@ListTitle</b>
+                    <small class="mlx-count">@AllCount.ToString("N0")</small>
+                    @if (NewCount > 0 && activeFolder == MailFolder.Inbox) { <span class="mlx-new">@NewCount new</span> }
                 </div>
-                <div class="flex center gap-6">
-                    @if (activeFolder == MailFolder.Trash && Items.Count > 0)
-                    {
-                        <button type="button" class="btn btn-sm surface" style="color:var(--danger);font-size:11.5px;padding:3px 8px" @onclick="ConfirmEmptyTrash">
-                            <i data-lucide="trash-2" style="width:12px;height:12px"></i> Empty Trash
+                <div class="mlx-search-wrap">
+                    <label class="mlx-search" @onkeydown="OnSearchKey">
+                        <i data-lucide="search"></i>
+                        <input type="search" placeholder="Search mail" aria-label="Search mail" value="@search" @oninput="OnSearch" />
+                        <button type="button" class="mlx-fl @(advSearchOpen || AdvancedActive || tabFilter != "all" ? "on" : "")" title="Filters" aria-label="Filters" aria-expanded="@(advSearchOpen ? "true" : "false")" @onclick="() => advSearchOpen = !advSearchOpen">
+                            <i data-lucide="list-filter"></i>
+                            @if (AdvancedCount + (tabFilter != "all" ? 1 : 0) > 0) { <span class="v6-search-filter-n">@(AdvancedCount + (tabFilter != "all" ? 1 : 0))</span> }
                         </button>
-                    }
-                </div>
-            </div>
-            <div class="tabs mail-list-tabs" role="group" aria-label="Filter messages">
-            <button type="button" class="tab @(tabFilter == "all" ? "active" : "")" @onclick='() => SetTabFilter("all")'>
-                <i data-lucide="inbox"></i>
-                <span>All</span>
-                <span class="n">@AllCount</span>
-            </button>
-            <button type="button" class="tab @(tabFilter == "unread" ? "active" : "")" @onclick='() => SetTabFilter("unread")'>
-                <i data-lucide="mail"></i>
-                <span>Unread</span>
-                <span class="n">@UnreadCount</span>
-            </button>
-            <button type="button" class="tab @(tabFilter == "starred" ? "active" : "")" @onclick='() => SetTabFilter("starred")'>
-                <i data-lucide="star"></i>
-                <span>Starred</span>
-                <span class="n">@StarredCount</span>
-            </button>
-        </div>
-
-            @if (activeFolder == MailFolder.Trash)
-            {
-                <div class="mail-trash-hint" role="note">
-                    <i data-lucide="info"></i>
-                    <span>Deleting a message from Trash removes it forever. Use Restore to move it back to Inbox.</span>
-                </div>
-            }
-
-            @* Filter banner (Active query or label filter) *@
-            @if (AdvancedActive || !string.IsNullOrWhiteSpace(search) || labelFilter is not null)
-            {
-                <div class="mail-search-banner">
-                    <i data-lucide="search" style="width:13px;height:13px;color:var(--accent-ink)"></i>
-                    <span>
-                        Showing @Items.Count of @pageTotal @(pageTotal == 1 ? "result" : "results")
-                        @if (!string.IsNullOrWhiteSpace(search)) { <text> for "@search"</text> }
-                        @if (labelFilter is not null) { <span class="label-chip" style="margin-left:4px"><span class="label-dot" style="background:@LabelInk(labelFilter)"></span>@labelFilter</span> }
-                    </span>
-                    <button type="button" class="btn-sm surface" style="margin-left:auto;padding:2px 10px;font-size:11px" @onclick="ResetAdvancedSearch">
-                        <i data-lucide="rotate-ccw" style="width:11px;height:11px"></i> Reset
-                    </button>
-                </div>
-            }
-
-
-            @* Bulk Selection Bar *@
-            @if (Items.Count > 0 && selected.Count > 0)
-            {
-                <div class="bulk-bar" aria-label="Bulk actions">
-                    <span class="bulk-count">@selected.Count selected</span>
-                    <button type="button" class="comp-btn" title="Export selected as PDF" disabled="@bulkExporting" @onclick="BulkExportPdf"><i data-lucide="file-down"></i></button>
-                    @if (activeFolder == MailFolder.Trash)
+                    </label>
+                    @if (advSearchOpen)
                     {
-                        <button type="button" class="comp-btn" title="Restore to Inbox" @onclick="BulkRestore"><i data-lucide="inbox"></i> Restore</button>
-                        <button type="button" class="comp-btn danger" title="Delete forever (cannot be undone)" @onclick="BulkPermanent"><i data-lucide="trash"></i> Delete forever</button>
-                    }
-                    else
-                    {
-                        @if (activeFolder == MailFolder.Archive)
-                        {
-                            <button type="button" class="comp-btn" title="Move to Inbox" @onclick="() => BulkMove(MailFolder.Inbox)"><i data-lucide="inbox"></i> Move to Inbox</button>
-                        }
-                        else
-                        {
-                            <button type="button" class="comp-btn" title="Archive" aria-label="Archive" @onclick="() => BulkMove(MailFolder.Archive)"><i data-lucide="archive"></i></button>
-                        }
-                        <button type="button" class="comp-btn" title="Move to Trash" aria-label="Move to Trash" @onclick="() => BulkMove(MailFolder.Trash)"><i data-lucide="trash-2"></i></button>
-                        <button type="button" class="comp-btn" title="Star" aria-label="Star" @onclick="BulkStar" @onclick:stopPropagation><i data-lucide="star"></i></button>
-                        <div class="more-menu-wrap mail-label-wrap">
-                            <button type="button" class="comp-btn @(bulkLabelOpen ? "on" : "")" title="Label" aria-label="Label" aria-haspopup="menu"
-                                    aria-expanded="@(bulkLabelOpen ? "true" : "false")" @onclick="() => { bulkLabelOpen = !bulkLabelOpen; labelMenuOpen = false; }">
-                                <i data-lucide="tag"></i> Label
-                            </button>
-                            @if (bulkLabelOpen)
+                        <div class="mlx-catch" @onclick="() => advSearchOpen = false"></div>
+                        <div class="mail-filter-pop" role="dialog" aria-label="Filter mail" @onkeydown="OnFilterKey">
+                            <div class="mfp-head">
+                                <span>Filter</span>
+                                <button type="button" class="mfp-x" aria-label="Close" @onclick="() => advSearchOpen = false"><i data-lucide="x"></i></button>
+                            </div>
+                            <div class="mfp-field">
+                                <span>Show</span>
+                                <div class="mfp-chips">
+                                    <button type="button" class="mfp-chip @(tabFilter == "all" ? "on" : "")" @onclick='() => SetTabFilter("all")'>All <small>@AllCount</small></button>
+                                    <button type="button" class="mfp-chip @(tabFilter == "unread" ? "on" : "")" @onclick='() => SetTabFilter("unread")'>Unread <small>@UnreadCount</small></button>
+                                    <button type="button" class="mfp-chip @(tabFilter == "starred" ? "on" : "")" @onclick='() => SetTabFilter("starred")'>Starred <small>@StarredCount</small></button>
+                                </div>
+                            </div>
+                            <label class="mfp-field">
+                                <span>From</span>
+                                <input type="text" placeholder="Name of the sender" @bind="advFrom" @bind:event="oninput" />
+                            </label>
+                            <label class="mfp-field">
+                                <span>Contains</span>
+                                <input type="text" placeholder="Subject or words in the message" @bind="advQuery" @bind:event="oninput" />
+                            </label>
+                            <div class="mfp-field">
+                                <span>Date</span>
+                                <div class="mfp-chips">
+                                    <button type="button" class="mfp-chip @(DatePreset == "7" ? "on" : "")" @onclick='() => SetDatePreset("7")'>Last 7 days</button>
+                                    <button type="button" class="mfp-chip @(DatePreset == "30" ? "on" : "")" @onclick='() => SetDatePreset("30")'>Last 30 days</button>
+                                    <button type="button" class="mfp-chip @(DatePreset == "year" ? "on" : "")" @onclick='() => SetDatePreset("year")'>This year</button>
+                                </div>
+                                <div class="mfp-dates">
+                                    <AppDatePicker @bind-Value="advDateFrom" AllowClear="true" AriaLabel="From date" />
+                                    <span class="mfp-to">to</span>
+                                    <AppDatePicker @bind-Value="advDateTo" AllowClear="true" AriaLabel="To date" />
+                                </div>
+                            </div>
+                            <div class="mfp-field">
+                                <span>Show only</span>
+                                <div class="mfp-chips">
+                                    <button type="button" class="mfp-chip @(advHasAttachment ? "on" : "")" aria-pressed="@(advHasAttachment ? "true" : "false")" @onclick="() => advHasAttachment = !advHasAttachment">
+                                        <i data-lucide="paperclip"></i> Has attachment
+                                    </button>
+                                </div>
+                            </div>
+                            @if (DisplayLabels.Count > 0)
                             {
-                                <div class="menu-backdrop" @onclick="() => bulkLabelOpen = false"></div>
-                                <div class="more-dropdown mail-label-menu" role="menu" aria-label="Label selected messages" @onclick:stopPropagation>
-                                    <div class="mail-label-menu-title">Label @selected.Count selected</div>
-                                    @if (serverLabels.Count == 0)
-                                    {
-                                        <div class="mail-label-menu-empty">No labels yet.</div>
-                                        <button type="button" class="more-item" role="menuitem" @onclick='() => { bulkLabelOpen = false; OpenSettings("labels"); }'>
-                                            <i data-lucide="plus"></i><span>Create a label…</span>
-                                        </button>
-                                    }
-                                    @foreach (var l in serverLabels)
-                                    {
-                                        var lbl = l;
-                                        var state = BulkLabelState(lbl);
-                                        <button type="button" class="more-item" role="menuitemcheckbox" aria-checked="@(state == true ? "true" : state is null ? "mixed" : "false")"
-                                                disabled="@labelBusy" @onclick="() => BulkToggleLabel(lbl)">
-                                            <i data-lucide="@(state == true ? "square-check" : state is null ? "square-minus" : "square")"></i>
-                                            <span class="label-dot" style="background:@lbl.Color"></span>
-                                            <span>@lbl.Name</span>
-                                        </button>
-                                    }
+                                <div class="mfp-field">
+                                    <span>Label</span>
+                                    <div class="mfp-chips">
+                                        @foreach (var l in DisplayLabels)
+                                        {
+                                            var name = l.Name;
+                                            <button type="button" class="mfp-chip @(advLabel == name ? "on" : "")" aria-pressed="@(advLabel == name ? "true" : "false")" @onclick='() => advLabel = advLabel == name ? "" : name'>
+                                                <span class="label-dot" style="background:@l.Color"></span>@name
+                                            </button>
+                                        }
+                                    </div>
                                 </div>
                             }
+                            <div class="mfp-foot">
+                                <button type="button" class="mfp-link" disabled="@(!AdvancedActive && string.IsNullOrWhiteSpace(search) && tabFilter == "all")" @onclick="ClearFilters">Clear all</button>
+                                <button type="button" class="mfp-apply" @onclick="ApplyFilters">Show results</button>
+                            </div>
                         </div>
                     }
                 </div>
+                <button type="button" class="mlx-ib mlx-refresh" title="Sync mailbox" aria-label="Sync mailbox" @onclick="ReloadAll"><i data-lucide="refresh-cw"></i></button>
+
+                @if (Items.Count > 0 && selected.Count > 0)
+                {
+                    <div class="mlx-lsel" aria-label="Bulk actions">
+                        <b>@selected.Count selected</b>
+                        <button type="button" title="Mark read" @onclick="ToolbarMarkRead"><i data-lucide="mail-open"></i><span>Mark read</span></button>
+                        @if (activeFolder == MailFolder.Trash)
+                        {
+                            <button type="button" title="Restore to Inbox" @onclick="BulkRestore"><i data-lucide="inbox"></i><span>Restore</span></button>
+                            <button type="button" class="danger" title="Delete forever (cannot be undone)" @onclick="BulkPermanent"><i data-lucide="trash"></i><span>Delete forever</span></button>
+                        }
+                        else
+                        {
+                            @if (activeFolder == MailFolder.Archive)
+                            {
+                                <button type="button" title="Move to Inbox" @onclick="() => BulkMove(MailFolder.Inbox)"><i data-lucide="inbox"></i><span>Inbox</span></button>
+                            }
+                            else
+                            {
+                                <button type="button" title="Archive" aria-label="Archive" @onclick="() => BulkMove(MailFolder.Archive)"><i data-lucide="archive"></i><span>Archive</span></button>
+                            }
+                            <button type="button" title="Move to Trash" aria-label="Move to Trash" @onclick="() => BulkMove(MailFolder.Trash)"><i data-lucide="trash-2"></i><span>Delete</span></button>
+                            <button type="button" title="Star" aria-label="Star" @onclick="BulkStar" @onclick:stopPropagation><i data-lucide="star"></i></button>
+                            <span class="mlx-lblwrap">
+                                <button type="button" class="@(bulkLabelOpen ? "on" : "")" title="Label" aria-label="Label" aria-haspopup="menu"
+                                        aria-expanded="@(bulkLabelOpen ? "true" : "false")" @onclick="() => { bulkLabelOpen = !bulkLabelOpen; labelMenuOpen = false; }"><i data-lucide="tag"></i></button>
+                                @if (bulkLabelOpen)
+                                {
+                                    <div class="mlx-catch" @onclick="() => bulkLabelOpen = false"></div>
+                                    <div class="mlx-pop mlx-lpop mlx-bulklpop" role="menu" aria-label="Label selected messages" @onclick:stopPropagation>
+                                        <div class="mlx-mhd">Label @selected.Count selected</div>
+                                        @foreach (var l in serverLabels.Where(x => !MailEpop.IsImported([x.Name])))
+                                        {
+                                            var lbl = l;
+                                            var state = BulkLabelState(lbl);
+                                            <button type="button" class="mlx-lo" role="menuitemcheckbox" aria-checked="@(state == true ? "true" : state is null ? "mixed" : "false")"
+                                                    disabled="@labelBusy" @onclick="() => BulkToggleLabel(lbl)">
+                                                <span class="cbx @(state == true ? "on" : state is null ? "mid" : "")"><i data-lucide="check"></i></span>
+                                                <span class="mlx-ldot" style="background:@lbl.Color"></span><span>@lbl.Name</span>
+                                            </button>
+                                        }
+                                        <button type="button" class="mlx-nl" @onclick='() => { bulkLabelOpen = false; OpenSettings("labels"); }'><i data-lucide="plus"></i>New label…</button>
+                                    </div>
+                                }
+                            </span>
+                            <button type="button" title="Export selected as PDF" aria-label="Export selected as PDF" disabled="@bulkExporting" @onclick="BulkExportPdf"><i data-lucide="file-down"></i></button>
+                        }
+                    </div>
+                }
+            </div>
+
+            @if (activeFolder == MailFolder.Trash)
+            {
+                <div class="mlx-trash" role="note">
+                    <i data-lucide="info"></i>
+                    <span>Deleting a message from Trash removes it forever. Use Restore to move it back to Inbox.</span>
+                    @if (Items.Count > 0)
+                    {
+                        <button type="button" class="mlx-linkbtn" @onclick="ConfirmEmptyTrash">Empty Trash</button>
+                    }
+                </div>
             }
 
-            @* Messages List *@
-            <div class="mail-rows" role="list" aria-label="Mail list">
+            @if (AdvancedActive || !string.IsNullOrWhiteSpace(search) || labelFilter is not null || tabFilter != "all")
+            {
+                <div class="mlx-banner">
+                    <i data-lucide="search"></i>
+                    <span>
+                        Showing @Items.Count of @pageTotal @(pageTotal == 1 ? "result" : "results")
+                        @if (!string.IsNullOrWhiteSpace(search)) { <text> for "@search"</text> }
+                        @if (tabFilter != "all") { <text> · @(tabFilter == "unread" ? "Unread" : "Starred")</text> }
+                        @if (labelFilter is not null) { <span class="mlr-chip k1" style="--c:@LabelColor(labelFilter);margin-left:4px"><i></i><span>@labelFilter</span></span> }
+                    </span>
+                    <button type="button" class="mlx-linkbtn" @onclick="ResetAdvancedSearch"><i data-lucide="rotate-ccw"></i> Reset</button>
+                </div>
+            }
+
+            <div class="mlx-rows @(density == MailListDensity.Comfortable ? "mlx-comfy" : "")" role="list" aria-label="@ListTitle">
                 @if (loading && Items.Count == 0)
                 {
                     <div class="list-skeleton"><span class="skeleton"></span><span class="skeleton"></span><span class="skeleton"></span></div>
                 }
                 else if (Items.Count == 0)
                 {
-                    <div class="empty-state" style="padding:40px 20px;text-align:center;color:var(--ink-3);">
-                        <i data-lucide="@(FolderEmptyIcon(activeFolder))" style="width:36px;height:36px;margin-bottom:10px;opacity:0.5"></i>
-                        <div class="title" style="font-weight:700;font-size:14px;color:var(--ink);">Nothing in @FolderLabel(activeFolder)</div>
-                        <div class="sub" style="font-size:12px;margin-top:4px;">Messages land here. Press C to compose a new message.</div>
+                    <div class="mlx-empty-list">
+                        <i data-lucide="@(FolderEmptyIcon(activeFolder))"></i>
+                        <b>Nothing in @ListTitle</b>
+                        <span>Messages land here. Press C to write a new mail.</span>
                     </div>
                 }
                 else
                 {
+                    string? lastDay = null;
                     @foreach (var it in Items)
                     {
                         var item = it;
-                        var isSel = selected.Contains(item.Id);
-                        <div @key="item.Id" class="mail-row @(item.IsRead ? "" : "unread") @(item.IsPinned ? "pinned" : "") @(selectedMail == item.Id ? "sel" : "") @(returningIds.Contains(item.Id) ? "mi-returning" : "")"
-                             role="listitem" data-mail-row="@item.Id"
-                             aria-selected="@(isSel ? "true" : "false")"
-                             @onclick="() => OpenDetail(item.Id)">
-
-                            @* Line 1: Checkbox, Importance, Pin, Sender, Time, Quick Actions *@
-                            <div class="m-l1">
-                                <span class="cbx @(isSel ? "on" : "")"
-                                      @onclick="() => ToggleSelect(item.Id)"
-                                      @onclick:stopPropagation
-                                      role="checkbox"
-                                      aria-checked="@(isSel ? "true" : "false")"
-                                      tabindex="0"
-                                      title="Select message"
-                                      aria-label="Select message">
-                                    <i data-lucide="check"></i>
-                                </span>
-
-                                @if (item.IsPinned)
-                                {
-                                    <span class="pin-badge" title="Pinned to top"><i data-lucide="pin"></i></span>
-                                }
-                                @if (item.IsMuted)
-                                {
-                                    <span class="mute-badge" title="Thread muted" style="color:var(--ink-3);margin-right:4px"><i data-lucide="bell-off" style="width:12px;height:12px"></i></span>
-                                }
-
-                                @if (item.Importance == "high")
-                                {
-                                    <span class="imp-tag high" title="High Importance"><i data-lucide="alert-circle"></i></span>
-                                }
-                                else if (item.Importance == "low")
-                                {
-                                    <span class="imp-tag low" title="Low Importance"><i data-lucide="arrow-down"></i></span>
-                                }
-
-                                <span class="m-from">@Hl(item.SenderName)</span>
-                                <span class="m-time">
-                                    @if (MailEpop.IsImported(item.Labels))
-                                    {
-                                        <span class="mrl-arc" title="Imported from EPop" aria-label="Imported from EPop"><i data-lucide="archive"></i></span>
-                                    }
-                                    @FormatTime(item.ReceivedAt)
-                                </span>
-
-                                @* Hover quick actions *@
-                                <div class="mail-row-actions" @onclick:stopPropagation>
-                                    @if (activeFolder == MailFolder.Sent)
-                                    {
-                                        <button type="button" title="Recall message" aria-label="Recall message" @onclick="() => ConfirmRecall(item.Id)">
-                                            <i data-lucide="undo-2"></i>
-                                        </button>
-                                    }
-                                    @if (activeFolder == MailFolder.Trash)
-                                    {
-                                        <button type="button" title="Restore to Inbox" aria-label="Restore to Inbox" @onclick="() => QuickRestore(item.Id)">
-                                            <i data-lucide="inbox"></i>
-                                        </button>
-                                    }
-                                    else if (activeFolder == MailFolder.Archive)
-                                    {
-                                        <button type="button" title="Move to Inbox" aria-label="Move to Inbox" @onclick="() => QuickMove(item.Id, MailFolder.Inbox)">
-                                            <i data-lucide="inbox"></i>
-                                        </button>
-                                    }
-                                    <button type="button" class="@(activeFolder == MailFolder.Trash ? "danger" : "")"
-                                            title="@(activeFolder == MailFolder.Trash ? "Delete forever" : "Move to Trash")"
-                                            aria-label="@(activeFolder == MailFolder.Trash ? "Delete forever" : "Move to Trash")" @onclick="() => QuickDelete(item.Id)">
-                                        <i data-lucide="trash-2"></i>
-                                    </button>
-                                    <button type="button" class="@(item.IsPinned ? "active" : "")" title="@(item.IsPinned ? "Unpin" : "Pin")" aria-label="@(item.IsPinned ? "Unpin" : "Pin")" @onclick="() => TogglePin(item.Id)">
-                                        <i data-lucide="pin"></i>
-                                    </button>
-                                    <button type="button" class="@(item.IsStarred ? "active" : "")" title="@(item.IsStarred ? "Unstar" : "Star")" aria-label="@(item.IsStarred ? "Unstar" : "Star")" @onclick="() => ToggleStar(item.Id)">
-                                        <i data-lucide="star"></i>
-                                    </button>
-                                    <button type="button" title="@(item.IsRead ? "Mark unread" : "Mark read")" aria-label="@(item.IsRead ? "Mark unread" : "Mark read")" @onclick="() => QuickToggleRead(item)">
-                                        <i data-lucide="@(item.IsRead ? "mail-x" : "mail-check")"></i>
-                                    </button>
-                                </div>
-                            </div>
-
-                            @* Line 2: Subject *@
-                            <div class="m-l2">
-                                <span class="m-subj">@Hl(item.Subject)</span>
-                            </div>
-
-                            @* Line 3: Snippet & Labels & Attachment clip *@
-                            <div class="m-l3">
-                                <span class="m-snip">@Hl(item.Snippet)</span>
-                                @if (item.Labels is { Count: > 0 })
-                                {
-                                    @* The EPop archive label is the icon by the date, not a chip (spec 2026-10-14 §6). *@
-                                    @foreach (var lbl in MailEpop.RowLabels(item.Labels).Take(3))
-                                    {
-                                        <span class="label-chip"><span class="label-dot" style="background:@LabelInk(lbl)"></span>@lbl</span>
-                                    }
-                                }
-                                @if (item.HasAttachment)
-                                {
-                                    <span class="m-clip" title="Has attachment"><i data-lucide="paperclip"></i></span>
-                                }
-                            </div>
-                        </div>
+                        var day = DayGroup(item.ReceivedAt ?? item.ScheduledAt);
+                        if (day != lastDay)
+                        {
+                            lastDay = day;
+                            <div class="mlx-day" @key="@("day-" + day)">@day</div>
+                        }
+                        <MailListRow @key="item.Id" Item="item" Comfortable="@(density == MailListDensity.Comfortable)"
+                                     Selected="@(selectedMail == item.Id)" Checked="@selected.Contains(item.Id)"
+                                     ExtraClass="@(returningIds.Contains(item.Id) ? "mi-returning" : null)"
+                                     Time="@FormatTime(item.ReceivedAt ?? item.ScheduledAt)" LabelColor="LabelColor" Highlight="Hl"
+                                     OnOpen="OpenDetail" OnCheck="ToggleSelect" Actions="RowActions(item)" />
                     }
                 }
             </div>
 
-            @* Pager replacement: Load more footer *@
-            <div class="list-foot">
-                <span class="foot-count">Showing @Items.Count of @pageTotal messages</span>
+            @* Phone: write a new mail from the list (the Mailboxes column is a sheet there). *@
+            <button type="button" class="mlx-fab" title="New mail" aria-label="New mail" @onclick="() => OpenComposer()"><i data-lucide="square-pen"></i></button>
+            <div class="mlx-lfoot">
+                <span>Showing @Items.Count of @pageTotal.ToString("N0")</span>
                 @if (HasMore)
                 {
-                    <span class="foot-sep">·</span>
-                    <button type="button" class="load-more-btn" @onclick="LoadMore" disabled="@loadingMore">
-                        @(loadingMore ? "Loading…" : "Load more")
-                    </button>
+                    <button type="button" class="mlx-more" @onclick="LoadMore" disabled="@loadingMore">@(loadingMore ? "Loading…" : "Load more")</button>
                 }
+                <span class="mlx-synced">Synced @lastSyncedTime</span>
             </div>
-        </div>
+        </section>
 
-        @* ============ PANE 3: READING CARD ============ *@
-        <div class="card mail-card mail-detail-card">
+        @* ============ PANE 3: READING PANE ============ *@
+        <section class="mlx-pane mlx-read" aria-label="Reading pane">
             @if (detail is null)
             {
-                <div class="empty-state">
+                <div class="mlx-noread">
                     <i data-lucide="mail-open"></i>
-                    <div class="empty-title">Select a message</div>
-                    <div class="empty-sub">Choose an email from the list to read it, reply, or forward.</div>
+                    <b>Select a message</b>
+                    <span>Choose a mail from the list to read it, reply or forward.</span>
                 </div>
             }
             else
             {
-                @* Reading pane action bar *@
-                <div class="m-reader-head">
-                    <button type="button" class="m-back" aria-label="Back" @onclick="MobileBackClick"><i data-lucide="chevron-left"></i></button>
-                    <span class="m-reader-folder">@FolderLabel(activeFolder)</span>
+                var target = ActionTarget;
+                var canReply = detail.Folder is not ("draft" or "scheduled");
+                @* Phone: back + prev/next + archive/delete on top; Reply · Reply all · Forward · More at the bottom. *@
+                <div class="mlx-phead">
+                    <button type="button" class="mlx-back" aria-label="Back to @ListTitle" @onclick="MobileBackClick"><i data-lucide="chevron-left"></i><span>@ListTitle</span></button>
+                    <span class="mlx-sp"></span>
+                    <button type="button" class="mlx-pb" aria-label="Previous message" disabled="@(SelectedIndex <= 0)" @onclick="() => StepDetail(-1)"><i data-lucide="chevron-up"></i></button>
+                    <button type="button" class="mlx-pb" aria-label="Next message" disabled="@(SelectedIndex < 0 || SelectedIndex >= Items.Count - 1)" @onclick="() => StepDetail(1)"><i data-lucide="chevron-down"></i></button>
+                    @if (DetailFolder != "trash")
+                    {
+                        <button type="button" class="mlx-pb" aria-label="Archive" @onclick="() => MoveDetail(MailFolder.Archive)"><i data-lucide="archive"></i></button>
+                    }
+                    <button type="button" class="mlx-pb" aria-label="@(DetailFolder == "trash" ? "Delete forever" : "Delete")" @onclick="() => MoveDetail(MailFolder.Trash)"><i data-lucide="trash-2"></i></button>
                 </div>
-                <div class="card-head detail-actions-bar">
-                    <button type="button" class="icon-btn mobile-back-btn" title="Back to messages" aria-label="Back to messages" @onclick="BackToList">
-                        <i data-lucide="arrow-left"></i>
-                    </button>
-                    <button type="button" class="btn-primary-reply" title="Quick reply (R)" aria-label="Quick reply" @onclick="() => OpenQuickReply()">
-                        <i data-lucide="reply"></i>
-                        <span>Quick Reply</span>
-                    </button>
-                    @* Calendar everywhere: a meeting with everyone on this mail, the subject as the title. *@
-                    <a class="ghost-btn mail-schedule-btn" title="Schedule a meeting with everyone on this mail"
-                       href="@MeetingFromMail(detail)">
-                        <i data-lucide="calendar-plus"></i><span>Schedule meeting</span>
-                    </a>
+
+                <div class="mlx-rbar" role="toolbar" aria-label="Message actions">
+                    @if (canReply)
+                    {
+                        <button type="button" class="mlx-pbtn" title="Reply (R)" @onclick="() => ToolbarReply(false)"><i data-lucide="reply"></i><span class="mlx-lb">Reply</span></button>
+                        <button type="button" class="mlx-pbtn all" title="@(target.CanReplyAll ? "Reply all (A)" : "Reply all is turned off for mass mail")" @onclick="() => ToolbarReply(true)"><i data-lucide="reply-all"></i><span class="mlx-lb">Reply all</span></button>
+                        <button type="button" class="mlx-pbtn fwd" title="Forward (F)" @onclick="() => ForwardMessage(target)"><i data-lucide="forward"></i><span class="mlx-lb">Forward</span></button>
+                        <span class="mlx-vsep"></span>
+                    }
                     @if (DetailFolder == "trash")
                     {
-                        <button type="button" class="ghost-btn" title="Restore to Inbox" @onclick="RestoreDetail">
-                            <i data-lucide="inbox"></i>
-                            <span>Restore</span>
-                        </button>
-                        <button type="button" class="ghost-btn danger" title="Delete forever (cannot be undone)" @onclick="DeleteDetailForever">
-                            <i data-lucide="trash-2"></i>
-                            <span>Delete forever</span>
-                        </button>
+                        <button type="button" class="mlx-qbtn" title="Restore to Inbox" aria-label="Restore to Inbox" @onclick="RestoreDetail"><i data-lucide="inbox"></i></button>
+                        <button type="button" class="mlx-qbtn del" title="Delete forever (cannot be undone)" aria-label="Delete forever" @onclick="DeleteDetailForever"><i data-lucide="trash-2"></i></button>
                     }
                     else
                     {
                         @if (DetailFolder == "archive")
                         {
-                            <button type="button" class="ghost-btn" title="Move to Inbox" @onclick="() => MoveDetail(MailFolder.Inbox)">
-                                <i data-lucide="inbox"></i>
-                                <span>Move to Inbox</span>
-                            </button>
+                            <button type="button" class="mlx-qbtn" title="Move to Inbox" aria-label="Move to Inbox" @onclick="() => MoveDetail(MailFolder.Inbox)"><i data-lucide="inbox"></i></button>
                         }
                         else
                         {
-                            <button type="button" class="icon-btn" title="Archive" aria-label="Archive" @onclick="() => MoveDetail(MailFolder.Archive)">
-                                <i data-lucide="archive"></i>
-                            </button>
+                            <button type="button" class="mlx-qbtn" title="Archive (E)" aria-label="Archive" @onclick="() => MoveDetail(MailFolder.Archive)"><i data-lucide="archive"></i></button>
                         }
-                        <button type="button" class="icon-btn" title="Move to Trash" aria-label="Move to Trash" @onclick="() => MoveDetail(MailFolder.Trash)">
-                            <i data-lucide="trash-2"></i>
-                        </button>
+                        <button type="button" class="mlx-qbtn del" title="Delete (Del)" aria-label="Delete" @onclick="() => MoveDetail(MailFolder.Trash)"><i data-lucide="trash-2"></i></button>
                     }
-                    <button type="button" class="icon-btn @(detail.IsStarred ? "star-active" : "")" title="@(detail.IsStarred ? "Starred" : "Star")" aria-label="@(detail.IsStarred ? "Starred" : "Star")" @onclick="() => ToggleStar(detail.Id)">
-                        <i data-lucide="star"></i>
-                    </button>
-                    @* More options menu (Pin, Mark unread, Move to Junk, Previews) *@
-                    <div class="more-menu-wrap" style="position:relative;margin-left:auto">
-                        <button type="button" class="icon-btn @(moreMenuOpen ? "on" : "")" title="More options" aria-label="More options" @onclick="ToggleMoreMenu">
-                            <i data-lucide="more-horizontal"></i>
-                        </button>
+                    <button type="button" class="mlx-qbtn @(detail.IsStarred ? "star" : "")" title="@(detail.IsStarred ? "Unstar" : "Star")" aria-label="@(detail.IsStarred ? "Unstar" : "Star")" aria-pressed="@(detail.IsStarred ? "true" : "false")" @onclick="() => ToggleStar(detail.Id)"><i data-lucide="star"></i></button>
+                    <span class="mlx-mwrap">
+                        <button type="button" class="mlx-qbtn @(moreMenuOpen ? "on" : "")" title="More" aria-label="More" aria-haspopup="menu" aria-expanded="@(moreMenuOpen ? "true" : "false")" @onclick="ToggleMoreMenu"><i data-lucide="more-horizontal"></i></button>
                         @if (moreMenuOpen)
                         {
-                            <div class="menu-backdrop" @onclick="() => moreMenuOpen = false"></div>
-                            <div class="more-dropdown" role="menu" @onclick:stopPropagation>
-                                <button type="button" class="more-item" role="menuitem" disabled="@(!detail.CanReplyAll)"
-                                        title="@(detail.CanReplyAll ? null : "Reply all is turned off for mass mail")"
-                                        @onclick="() => { moreMenuOpen = false; ReplyAllMessage(detail); }"><i data-lucide="reply-all"></i><span>Reply all</span></button>
-                                <button type="button" class="more-item" role="menuitem" @onclick="() => { moreMenuOpen = false; ForwardMessage(detail); }"><i data-lucide="forward"></i><span>Forward</span></button>
-                                <div class="msm-divider" role="separator"></div>
-                                <button type="button" class="more-item" role="menuitem" @onclick="() => { moreMenuOpen = false; labelMenuOpen = true; }"><i data-lucide="tag"></i><span>Label…</span></button>
-                                <button type="button" class="more-item" role="menuitem" @onclick="async () => { moreMenuOpen = false; await TogglePin(detail.Id); }"><i data-lucide="pin"></i><span>@(detail.IsPinned ? "Unpin" : "Pin")</span></button>
-                                <button type="button" class="more-item" role="menuitem" @onclick="async () => { moreMenuOpen = false; await ToggleMuteThread(detail.Id); }"><i data-lucide="@(detail.IsMuted ? "bell" : "bell-off")"></i><span>@(detail.IsMuted ? "Unmute thread" : "Mute thread")</span></button>
-                                <button type="button" class="more-item" role="menuitem" @onclick="async () => { moreMenuOpen = false; await MarkUnread(detail.Id); }"><i data-lucide="mail-x"></i><span>Mark as unread</span></button>
-                                <div class="msm-divider" role="separator"></div>
-                                <button type="button" class="more-item" role="menuitem" @onclick="async () => { moreMenuOpen = false; await ExportPdf(); }"><i data-lucide="file-down"></i><span>Export PDF</span></button>
-                                <button type="button" class="more-item" role="menuitem" disabled="@printing" @onclick="async () => { moreMenuOpen = false; await PrintDirect(); }"><i data-lucide="printer"></i><span>Print</span></button>
-                                <button type="button" class="more-item" role="menuitem" @onclick="async () => { moreMenuOpen = false; await PreviewPdf(); }"><i data-lucide="file-search"></i><span>Preview PDF</span></button>
-                                <button type="button" class="more-item" role="menuitem" @onclick="() => { moreMenuOpen = false; ToggleHtmlPreview(); }"><i data-lucide="eye"></i><span>Preview as recipient</span></button>
-                            </div>
-                        }
-                        @if (labelMenuOpen)
-                        {
-                            <div class="menu-backdrop" @onclick="() => labelMenuOpen = false"></div>
-                            <div class="more-dropdown mail-label-menu" role="menu" aria-label="Labels" @onclick:stopPropagation>
-                                <div class="mail-label-menu-title">Label this message</div>
-                                @if (serverLabels.Count == 0)
+                            <div class="mlx-catch" @onclick="() => moreMenuOpen = false"></div>
+                            <div class="mlx-pop mlx-menu" role="menu" @onclick:stopPropagation>
+                                <a class="mlx-mi" role="menuitem" href="@MeetingFromMail(detail)" @onclick="() => moreMenuOpen = false"><i data-lucide="calendar-plus"></i><span>Schedule meeting</span></a>
+                                <button type="button" class="mlx-mi" role="menuitem" @onclick="async () => { moreMenuOpen = false; await MarkUnread(detail.Id); }"><i data-lucide="mail"></i><span>Mark unread</span></button>
+                                <button type="button" class="mlx-mi" role="menuitem" @onclick="() => { moreMenuOpen = false; labelMenuOpen = true; }"><i data-lucide="tag"></i><span>Label…</span><kbd>L</kbd></button>
+                                <button type="button" class="mlx-mi" role="menuitem" @onclick="async () => { moreMenuOpen = false; await TogglePin(detail.Id); }"><i data-lucide="pin"></i><span>@(detail.IsPinned ? "Unpin" : "Pin to top")</span></button>
+                                <button type="button" class="mlx-mi" role="menuitem" @onclick="async () => { moreMenuOpen = false; await ToggleMuteThread(detail.Id); }"><i data-lucide="@(detail.IsMuted ? "bell" : "bell-off")"></i><span>@(detail.IsMuted ? "Unmute thread" : "Mute thread")</span></button>
+                                <div class="mlx-msep" role="separator"></div>
+                                <button type="button" class="mlx-mi" role="menuitem" disabled="@printing" @onclick="async () => { moreMenuOpen = false; await PrintDirect(); }"><i data-lucide="printer"></i><span>Print</span></button>
+                                <button type="button" class="mlx-mi" role="menuitem" @onclick="async () => { moreMenuOpen = false; await ExportPdf(); }"><i data-lucide="file-down"></i><span>Export PDF</span></button>
+                                <button type="button" class="mlx-mi" role="menuitem" @onclick="async () => { moreMenuOpen = false; await PreviewPdf(); }"><i data-lucide="file-search"></i><span>Preview PDF</span></button>
+                                <button type="button" class="mlx-mi" role="menuitem" @onclick="() => { moreMenuOpen = false; ToggleHtmlPreview(); }"><i data-lucide="eye"></i><span>Preview as recipient</span></button>
+                                @if (MailBody.OffersOriginal(target))
                                 {
-                                    <div class="mail-label-menu-empty">No labels yet.</div>
-                                    <button type="button" class="more-item" role="menuitem" @onclick='() => { labelMenuOpen = false; OpenSettings("labels"); }'>
-                                        <i data-lucide="plus"></i><span>Create a label…</span>
-                                    </button>
-                                }
-                                @foreach (var l in serverLabels)
-                                {
-                                    var lbl = l;
-                                    var on = detail.LabelIds.Contains(lbl.Id);
-                                    <button type="button" class="more-item" role="menuitemcheckbox" aria-checked="@(on ? "true" : "false")"
-                                            disabled="@labelBusy" @onclick="() => ToggleDetailLabel(lbl)">
-                                        <i data-lucide="@(on ? "square-check" : "square")"></i>
-                                        <span class="label-dot" style="background:@lbl.Color"></span>
-                                        <span>@lbl.Name</span>
+                                    var orig = Prefs.ShowsOriginal(target.Id);
+                                    <div class="mlx-msep" role="separator"></div>
+                                    <button type="button" class="mlx-mi" role="menuitemcheckbox" aria-checked="@(orig ? "true" : "false")" @onclick="() => { Prefs.SetOriginal(target.Id, !orig); moreMenuOpen = false; }">
+                                        <i data-lucide="type"></i><span>Original formatting</span><span class="mlx-sw @(orig ? "on" : "")" aria-hidden="true"></span>
                                     </button>
                                 }
                             </div>
                         }
-                    </div>
+                    </span>
+                    <span class="mlx-sp"></span>
+                    <span class="mlx-navpos">
+                        @if (SelectedIndex >= 0) { <span class="mlx-pos">@((SelectedIndex + 1).ToString("N0")) of @pageTotal.ToString("N0")</span> }
+                        <button type="button" title="Previous (K)" aria-label="Previous message" disabled="@(SelectedIndex <= 0)" @onclick="() => StepDetail(-1)"><i data-lucide="chevron-up"></i></button>
+                        <button type="button" title="Next (J)" aria-label="Next message" disabled="@(SelectedIndex < 0 || SelectedIndex >= Items.Count - 1)" @onclick="() => StepDetail(1)"><i data-lucide="chevron-down"></i></button>
+                    </span>
                 </div>
 
-                @* Sender info block *@
-                <div class="detail-sender-block">
-                    <div class="sender-top">
-                        <div class="av-wrap">
-                            <PersonAvatar Nik="@detail.SenderNik" Name="@detail.SenderName" Size="44" Class="av" Viewable="true" />
-                            <span class="presence @SenderPresence(detail.SenderNik)"></span>
-                        </div>
-                        <div class="sender-details">
-                            <div class="sender-row">
-                                <span class="sender-name">
-                                    @detail.SenderName
-                                </span>
-                                <span class="sender-date">@FormatDetailDate(detail.SentAt ?? detail.ScheduledAt)</span>
-                            </div>
-                            @* To / Cc on one line each, +N opens the full list (spec 2026-10-14 §4). *@
-                            <MailRecipientsHeader Detail="detail" MyNik="@Auth.Me?.Nik" />
-                            @if (!hasConversation && detail.Folder is not ("draft" or "scheduled"))
+                <div class="mlx-rscroll" tabindex="-1">
+                    @* Slim sticky header: fades in once the newest sender row has scrolled under the toolbar (js/mail-layout.js). *@
+                    <button type="button" class="mlx-slim" data-mlx-act="totop" title="Back to top" tabindex="-1">
+                        <PersonAvatar Nik="@target.SenderNik" Name="@MailReceiptView.TitleCase(target.SenderName)" Size="24" Decorative="true" />
+                        <span class="mlx-slim-t"><b>@SubjectText</b><span>@(IsMyMail(target) ? "You" : MailReceiptView.TitleCase(target.SenderName)) · @FormatTime(target.SentAt ?? target.ScheduledAt)</span></span>
+                        <i data-lucide="chevron-up"></i>
+                    </button>
+
+                    <div class="mlx-rhead">
+                        <h2 class="mlx-subj">@SubjectText</h2>
+                        <span class="mlx-schips">
+                            @if (detail.Importance == "high") { <span class="mlx-imp high">High importance</span> }
+                            else if (detail.Importance == "low") { <span class="mlx-imp">Low importance</span> }
+                            @foreach (var l in DetailLabels)
                             {
-                                @* Read receipts row (spec 2026-10-14 §1); a thread shows it on each open message instead. *@
-                                <MailReceiptsRow MailId="detail.Id" />
+                                var lbl = l;
+                                <span class="mlx-lpill" style="--c:@lbl.Color"><i></i>@lbl.Name
+                                    <button type="button" title="Remove label @lbl.Name" aria-label="Remove label @lbl.Name" disabled="@labelBusy" @onclick="() => ToggleDetailLabel(lbl)"><i data-lucide="x"></i></button>
+                                </span>
                             }
-                            <div class="sender-subject-row">
-                                <h2 class="detail-subject">@detail.Subject</h2>
-                                @if (detail.Importance == "high")
+                            <span class="mlx-addl-wrap">
+                                <button type="button" class="mlx-addl @(labelMenuOpen ? "on" : "")" aria-haspopup="dialog" aria-expanded="@(labelMenuOpen ? "true" : "false")" @onclick="ToggleLabelPop"><i data-lucide="plus"></i>Label</button>
+                                @if (labelMenuOpen)
                                 {
-                                    <span class="badge bad" style="font-size:10px;padding:2px 7px">High Importance</span>
-                                }
-                                else if (detail.Importance == "low")
-                                {
-                                    <span class="badge mute" style="font-size:10px;padding:2px 7px">Low Importance</span>
-                                }
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                @* Quick reply: hidden until the user picks Quick Reply; sits above the thread, right under the subject *@
-                @if (replyOpen)
-                {
-                    <div class="inline-reply-box qr-top" id="mail-quick-reply">
-                        <div class="rh">
-                            <i data-lucide="reply"></i>
-                            <span class="title">Quick reply to @QuickReplyToLabel</span>
-                            <button type="button" class="icon-btn" style="margin-left:auto;width:24px;height:24px" title="Open in composer" aria-label="Open in composer" @onclick="() => ReplyMessage(QuickTarget)">
-                                <i data-lucide="maximize-2" style="width:13px;height:13px"></i>
-                            </button>
-                            <button type="button" class="icon-btn" style="width:24px;height:24px" title="Close" aria-label="Close quick reply" @onclick="CloseQuickReply">
-                                <i data-lucide="x" style="width:13px;height:13px"></i>
-                            </button>
-                        </div>
-                        <textarea id="mail-quick-reply-text" rows="3" placeholder="Write a reply…" aria-label="Reply text" @bind="quickReplyText" @bind:event="oninput"></textarea>
-                        <div class="ra">
-                            <div style="position:relative">
-                                <button type="button" class="icon-btn" title="Emoji" aria-label="Emoji" aria-expanded="@(quickEmojiOpen ? "true" : "false")"
-                                        @onmousedown:preventDefault @onclick="ToggleQuickEmoji"><i data-lucide="smile"></i></button>
-                                @if (quickEmojiOpen)
-                                {
-                                    <div class="quick-emoji-pop" @onclick:stopPropagation>
-                                        <EmojiPicker OnPick="InsertQuickEmoji" OnClose="CloseQuickEmoji" OnDismiss="() => quickEmojiOpen = false" />
-                                    </div>
-                                }
-                            </div>
-                            <button type="button" class="btn-primary" @onclick="SendQuickReply" disabled="@(quickReplySending || string.IsNullOrWhiteSpace(quickReplyText))">
-                                <i data-lucide="send"></i>
-                                @(quickReplySending ? "Sending…" : "Send")
-                            </button>
-                        </div>
-                    </div>
-                }
-
-                @* Scheduled Send Alert Banner *@
-                @if (detail.Folder == "scheduled" || (detail.ScheduledAt.HasValue && detail.SentAt == null))
-                {
-                    <div class="scheduled-banner">
-                        <div class="sched-info">
-                            <i data-lucide="calendar-clock"></i>
-                            <span>Scheduled for delivery on <b>@(detail.ScheduledAt?.ToLocalTime().ToString("ddd, dd MMM yyyy HH:mm") ?? "Scheduled")</b></span>
-                        </div>
-                        <div class="sched-actions">
-                            <button type="button" class="sched-btn primary" @onclick="() => SendScheduledNow(detail.Id)">Send now</button>
-                            <span class="resched-wrap">
-                                <button type="button" class="sched-btn" aria-expanded="@(rescheduleOpen ? "true" : "false")" @onclick="OpenReschedule">Reschedule</button>
-                                @if (rescheduleOpen)
-                                {
-                                    <div class="menu-backdrop" @onclick="() => rescheduleOpen = false"></div>
-                                    <div class="resched-pop" role="dialog" aria-label="Reschedule delivery">
-                                        <label class="resched-label" for="resched-at">Deliver on</label>
-                                        <AppDateTimePicker Id="resched-at" @bind-Value="rescheduleAt" AriaLabel="Deliver on" />
-                                        <div class="resched-quick">
-                                            <button type="button" @onclick="() => rescheduleAt = DateTime.Today.AddDays(1).AddHours(8)">Tomorrow 08:00</button>
-                                            <button type="button" @onclick="() => rescheduleAt = NextMonday().AddHours(8)">Monday 08:00</button>
+                                    <div class="mlx-catch" @onclick="CloseLabelPop"></div>
+                                    <div class="mlx-pop mlx-lpop" role="dialog" aria-label="Labels" @onclick:stopPropagation @onkeydown="OnLabelPopKey">
+                                        <label class="mlx-lsrch"><i data-lucide="search"></i>
+                                            <input id="mlx-label-find" placeholder="Find or create a label" aria-label="Find or create a label" value="@labelQuery" @oninput="e => labelQuery = e.Value?.ToString() ?? string.Empty" @onkeydown="OnLabelFindKey" /></label>
+                                        <div class="mlx-ll">
+                                            @foreach (var l in LabelChoices)
+                                            {
+                                                var lbl = l;
+                                                var on = detail.LabelIds.Contains(lbl.Id);
+                                                <button type="button" class="mlx-lo" role="menuitemcheckbox" aria-checked="@(on ? "true" : "false")" disabled="@labelBusy" @onclick="() => ToggleDetailLabel(lbl)">
+                                                    <span class="cbx @(on ? "on" : "")"><i data-lucide="check"></i></span>
+                                                    <span class="mlx-ldot" style="background:@lbl.Color"></span><span class="mlx-lname">@lbl.Name</span>
+                                                    @if (lbl.Count > 0) { <small>@lbl.Count</small> }
+                                                </button>
+                                            }
+                                            @if (LabelChoices.Count == 0 && string.IsNullOrWhiteSpace(labelQuery))
+                                            {
+                                                <div class="mlx-empty">No labels yet.</div>
+                                            }
                                         </div>
-                                        @if (rescheduleAt <= DateTime.Now)
-                                        {
-                                            <div class="resched-err">Choose a time in the future.</div>
-                                        }
-                                        <div class="resched-actions">
-                                            <button type="button" class="sched-btn" @onclick="() => rescheduleOpen = false">Cancel</button>
-                                            <button type="button" class="sched-btn primary" disabled="@(rescheduleAt <= DateTime.Now)" @onclick="() => SaveReschedule(detail.Id)">Save</button>
-                                        </div>
+                                        <button type="button" class="mlx-nl" disabled="@labelBusy" @onclick="CreateLabelFromPop">
+                                            <i data-lucide="plus"></i>@(string.IsNullOrWhiteSpace(labelQuery) ? "New label…" : $"Create “{labelQuery.Trim()}”")
+                                        </button>
                                     </div>
                                 }
                             </span>
-                            <button type="button" class="sched-btn" @onclick="() => CancelScheduleAndEdit(detail)">Cancel &amp; Edit</button>
-                            <button type="button" class="sched-btn" title="Move to Trash" @onclick="() => MoveDetail(MailFolder.Trash)">Delete</button>
-                        </div>
+                            @if (detail.ThreadCount > 1 || threadCountShown > 1) { <span class="mlx-tcount">· @(Math.Max(detail.ThreadCount, threadCountShown)) messages</span> }
+                        </span>
                     </div>
-                }
 
-                @* Meeting RSVP Banner *@
-                @if (meetingForDetail is not null)
-                {
-                    <MeetingRsvpPanel
-                        Meeting="@(new MeetingRsvpPanel.MeetingModel(meetingForDetail.Id, meetingForDetail.Title, meetingForDetail.StartAt, meetingForDetail.EndAt, meetingForDetail.Location, meetingForDetail.Link))"
-                        CurrentResponse="@meetingForDetail.MyResponse"
-                        ShowSummary="@(meetingForDetail.OrganizerNik == Auth.Me?.Nik)"
-                        Attendees="@(meetingForDetail.Attendees.Select(a => new MeetingRsvpPanel.AttendeeModel(a.Name, a.RsvpStatus)).ToList())"
-                        OnRespond="OnRsvpRespond" />
-                }
-
-                @* Detail Scroll Area: Body + Attachments or Conversation Stack *@
-                <div class="detail-scroll-area">
-                    <MailMassPanel Detail="detail" IsSender="@IsMyMail(detail)" />
-                    @* Linked Projects chip row if any *@
-                    @if (detail.LinkedProjects.Count > 0)
+                    @* Scheduled send banner *@
+                    @if (detail.Folder == "scheduled" || (detail.ScheduledAt.HasValue && detail.SentAt == null))
                     {
-                        <div class="linked-projects-row">
-                            <span class="linked-title"><i data-lucide="kanban"></i> Projects:</span>
-                            @foreach (var p in detail.LinkedProjects)
-                            {
-                                <span class="badge info" title="Progress: @p.Progress%">@p.Name</span>
-                            }
+                        <div class="scheduled-banner">
+                            <div class="sched-info">
+                                <i data-lucide="calendar-clock"></i>
+                                <span>Scheduled for delivery on <b>@(detail.ScheduledAt?.ToLocalTime().ToString("ddd, dd MMM yyyy HH:mm") ?? "Scheduled")</b></span>
+                            </div>
+                            <div class="sched-actions">
+                                <button type="button" class="sched-btn primary" @onclick="() => SendScheduledNow(detail.Id)">Send now</button>
+                                <span class="resched-wrap">
+                                    <button type="button" class="sched-btn" aria-expanded="@(rescheduleOpen ? "true" : "false")" @onclick="OpenReschedule">Reschedule</button>
+                                    @if (rescheduleOpen)
+                                    {
+                                        <div class="mlx-catch" @onclick="() => rescheduleOpen = false"></div>
+                                        <div class="resched-pop" role="dialog" aria-label="Reschedule delivery">
+                                            <label class="resched-label" for="resched-at">Deliver on</label>
+                                            <AppDateTimePicker Id="resched-at" @bind-Value="rescheduleAt" AriaLabel="Deliver on" />
+                                            <div class="resched-quick">
+                                                <button type="button" @onclick="() => rescheduleAt = DateTime.Today.AddDays(1).AddHours(8)">Tomorrow 08:00</button>
+                                                <button type="button" @onclick="() => rescheduleAt = NextMonday().AddHours(8)">Monday 08:00</button>
+                                            </div>
+                                            @if (rescheduleAt <= DateTime.Now)
+                                            {
+                                                <div class="resched-err">Choose a time in the future.</div>
+                                            }
+                                            <div class="resched-actions">
+                                                <button type="button" class="sched-btn" @onclick="() => rescheduleOpen = false">Cancel</button>
+                                                <button type="button" class="sched-btn primary" disabled="@(rescheduleAt <= DateTime.Now)" @onclick="() => SaveReschedule(detail.Id)">Save</button>
+                                            </div>
+                                        </div>
+                                    }
+                                </span>
+                                <button type="button" class="sched-btn" @onclick="() => CancelScheduleAndEdit(detail)">Cancel &amp; Edit</button>
+                                <button type="button" class="sched-btn" title="Move to Trash" @onclick="() => MoveDetail(MailFolder.Trash)">Delete</button>
+                            </div>
                         </div>
                     }
 
-                    @if (hasConversation)
+                    @if (meetingForDetail is not null)
                     {
+                        <MeetingRsvpPanel
+                            Meeting="@(new MeetingRsvpPanel.MeetingModel(meetingForDetail.Id, meetingForDetail.Title, meetingForDetail.StartAt, meetingForDetail.EndAt, meetingForDetail.Location, meetingForDetail.Link))"
+                            CurrentResponse="@meetingForDetail.MyResponse"
+                            ShowSummary="@(meetingForDetail.OrganizerNik == Auth.Me?.Nik)"
+                            Attendees="@(meetingForDetail.Attendees.Select(a => new MeetingRsvpPanel.AttendeeModel(a.Name, a.RsvpStatus)).ToList())"
+                            OnRespond="OnRsvpRespond" />
+                    }
+
+                    <div class="mlx-thr">
+                        <MailMassPanel Detail="detail" IsSender="@IsMyMail(detail)" />
+                        @if (detail.LinkedProjects.Count > 0)
+                        {
+                            <div class="linked-projects-row">
+                                <span class="linked-title"><i data-lucide="kanban"></i> Projects:</span>
+                                @foreach (var p in detail.LinkedProjects)
+                                {
+                                    <span class="badge info" title="Progress: @p.Progress%">@p.Name</span>
+                                }
+                            </div>
+                        }
                         <MailThreadStack @ref="threadStackRef"
                                          Detail="detail"
                                          MyNik="@Auth.Me?.Nik"
                                          FromEpop="@DetailFromEpop"
-                                         OnQuickReply="OpenQuickReplyFor"
+                                         CanReply="canReply"
                                          OnReply="ReplyMessage"
                                          OnReplyAll="ReplyAllMessage"
-                                         OnForward="ForwardMessage" />
-                    }
-                    else
-                    {
-                        <div class="mrd-host" data-mail-seen="@(MailSeen.Applies(detail, Auth.Me?.Nik) ? detail.Id.ToString() : null)">
-                            <MailBody Mail="detail" FromEpop="@DetailFromEpop" />
-                        </div>
-
-                        <MailAttachmentCards Attachments="detail.Attachments" />
-
-                        @if (detail.Folder is not ("draft" or "scheduled"))
-                        {
-                            <MailMessageActions Mail="detail" MyNik="@Auth.Me?.Nik"
-                                                OnQuickReply="OpenQuickReplyFor" OnReply="ReplyMessage"
-                                                OnReplyAll="ReplyAllMessage" OnForward="ForwardMessage" />
-                        }
-                    }
+                                         OnForward="ForwardMessage"
+                                         QuickSend="SendQuickReply"
+                                         OnOpenFull="OpenFullReply"
+                                         OnNewest="OnThreadNewest" />
+                    </div>
                 </div>
 
+                @if (canReply)
+                {
+                    <nav class="mlx-pact" aria-label="Reply actions">
+                        <button type="button" class="r" @onclick="() => ToolbarReply(false)"><span class="ti"><i data-lucide="reply"></i></span>Reply</button>
+                        <button type="button" class="a" @onclick="() => ToolbarReply(true)"><span class="ti"><i data-lucide="reply-all"></i></span>Reply all</button>
+                        <button type="button" class="f" @onclick="() => ForwardMessage(target)"><span class="ti"><i data-lucide="forward"></i></span>Forward</button>
+                        <button type="button" class="m" @onclick="ToggleMoreMenu"><span class="ti"><i data-lucide="more-horizontal"></i></span>More</button>
+                    </nav>
+                }
             }
-        </div>
+        </section>
+
+        <div class="mlx-split" data-mlx-split="1" role="separator" aria-orientation="vertical" aria-label="Resize mailboxes" tabindex="0"><span class="mlx-grip"><i></i><i></i><i></i></span><span class="mlx-wbadge"></span></div>
+        <div class="mlx-split" data-mlx-split="2" role="separator" aria-orientation="vertical" aria-label="Resize message list" tabindex="0"><span class="mlx-grip"><i></i><i></i><i></i></span><span class="mlx-wbadge"></span></div>
     </div>
 </div>
 
@@ -912,10 +718,11 @@
     private static readonly (string[] Keys, string What)[] KbdShortcuts =
     [
         (["C"], "New message"),
-        (["R"], "Quick reply"),
+        (["R"], "Reply (quick reply under the newest message)"),
         (["A"], "Reply all"),
         (["F"], "Forward"),
         (["E"], "Archive"),
+        (["L"], "Label…"),
         (["Del"], "Move to Trash (in Trash: delete forever, asks first)"),
         (["J"], "Next message"),
         (["K"], "Previous message"),
@@ -926,35 +733,121 @@
     ];
     private MailThreadStack? threadStackRef;
     private bool composerOpen;
-    private bool quickEmojiOpen;
-
-    private async Task ToggleQuickEmoji()
-    {
-        await JS.InvokeVoidAsync("ipop.emojiSaveCaret", "mail-quick-reply-text");
-        quickEmojiOpen = !quickEmojiOpen;
-    }
-
-    private async Task InsertQuickEmoji(string emoji)
-    {
-        quickReplyText = await JS.InvokeAsync<string>("ipop.emojiInsert", "mail-quick-reply-text", emoji);
-        quickEmojiOpen = false;
-    }
-
-    private async Task CloseQuickEmoji()
-    {
-        quickEmojiOpen = false;
-        await JS.InvokeVoidAsync("ipop.mailFocusReply");
-    }
-
-    private string quickReplyText = "";
-    private bool quickReplySending;
-    private bool replyOpen;
-    private Guid? replyOpenFor;
     private bool moreMenuOpen;
     private bool _navSubscribed;
     private string? _lastHandledQuery;
 
     [CascadingParameter] public MainLayout Layout { get; set; } = default!;
+
+    // ── Outlook layout (mockup mail-layout-outlook.html v3) ──
+
+    /// The newest message of the open conversation (top of the thread): what the toolbar and slim header act on.
+    private MailDetail? threadNewest;
+    private int threadCountShown;
+    private MailDetail ActionTarget => threadNewest is { } n && detail is not null && SameThread(n, detail) ? n : detail!;
+    private static bool SameThread(MailDetail a, MailDetail b) => (a.ThreadRootId ?? a.Id) == (b.ThreadRootId ?? b.Id);
+
+    private Task OnThreadNewest(MailDetail n)
+    {
+        threadNewest = n;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private string RailTitle(MailFolder f, int badge) => badge > 0 ? $"{FolderLabel(f)} · {badge}" : FolderLabel(f);
+
+    private string SubjectText => string.IsNullOrWhiteSpace(detail?.Subject) ? "(no subject)" : detail!.Subject;
+    private string ListTitle => labelFilter ?? FolderLabel(activeFolder);
+    private int SelectedIndex => selectedMail is { } id ? Items.FindIndex(m => m.Id == id) : -1;
+
+    /// Toolbar Reply / Reply all (and R / A): the quick reply under the newest message, in that mode.
+    private async Task ToolbarReply(bool all)
+    {
+        if (detail is null) return;
+        if (threadStackRef is not null) await threadStackRef.OpenQuickReplyAsync(null, all);
+        else if (all) ReplyAllMessage(ActionTarget);
+        else ReplyMessage(ActionTarget);
+    }
+
+    // List density: Compact (2 lines) by default, Comfortable (3 lines) — per user per device.
+    private string density = MailListDensity.Compact;
+    private bool scrollReaderTop;
+
+    private async Task SetDensity(string d)
+    {
+        density = MailListDensity.Parse(d);
+        await Auth.SetUserSettingAsync(MailListDensity.Key, density);
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private void OnCheckKey(KeyboardEventArgs e) { if (e.Key is " " or "Enter") ToggleSelectAll(); }
+
+    /// Label colour by name: the user's own label colours, a stable fallback otherwise.
+    private string LabelColor(string name)
+        => serverLabels.FirstOrDefault(l => l.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Color ?? LabelInk(name);
+
+    /// The open mail's labels as chips (the EPop archive label is the icon, not a chip).
+    private IReadOnlyList<MailLabel> DetailLabels => detail is null ? []
+        : serverLabels.Where(l => detail.LabelIds.Contains(l.Id) && !MailEpop.IsImported([l.Name])).ToList();
+
+    private string labelQuery = "";
+    private IReadOnlyList<MailLabel> LabelChoices => serverLabels
+        .Where(l => !MailEpop.IsImported([l.Name]))
+        .Where(l => string.IsNullOrWhiteSpace(labelQuery) || l.Name.Contains(labelQuery.Trim(), StringComparison.OrdinalIgnoreCase))
+        .ToList();
+
+    private void ToggleLabelPop()
+    {
+        labelMenuOpen = !labelMenuOpen;
+        moreMenuOpen = false;
+        labelQuery = "";
+        if (labelMenuOpen) _ = JS.InvokeVoidAsync("ipop.focusById", "mlx-label-find").AsTask().ContinueWith(_ => { });
+    }
+
+    private void CloseLabelPop() { labelMenuOpen = false; labelQuery = ""; }
+    private void OnLabelPopKey(KeyboardEventArgs e) { if (e.Key == "Escape") CloseLabelPop(); }
+
+    private async Task OnLabelFindKey(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter") return;
+        var exact = serverLabels.FirstOrDefault(l => l.Name.Equals(labelQuery.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (exact is not null) await ToggleDetailLabel(exact);
+        else if (LabelChoices.Count == 1) await ToggleDetailLabel(LabelChoices[0]);
+        else await CreateLabelFromPop();
+    }
+
+    private static readonly string[] NewLabelColors = ["#0a84ff", "#2e9e5b", "#ff9f0a", "#af52de", "#14a3a3", "#ff375f", "#8e8e93"];
+
+    /// "+ Label" → "Create “X”": the label is created and applied to this mail. Empty search opens Manage labels.
+    private async Task CreateLabelFromPop()
+    {
+        var name = labelQuery.Trim();
+        if (name.Length == 0) { CloseLabelPop(); OpenSettings("labels"); return; }
+        if (detail is null || labelBusy) return;
+        labelBusy = true;
+        try
+        {
+            var color = NewLabelColors[serverLabels.Count % NewLabelColors.Length];
+            var created = await MailSvc.CreateLabelAsync(name, color);
+            if (created is null) { Toasts.Show("Could not add the label. The name may already exist.", ToastKind.Error); return; }
+            if (!await MailSvc.SetLabelAsync(detail.Id, created.Id, true)) { Toasts.Show($"Could not apply the label “{name}”.", ToastKind.Error); return; }
+            detail = detail with { LabelIds = [.. detail.LabelIds, created.Id] };
+            labelQuery = "";
+            await AfterLabelsChanged();
+        }
+        finally { labelBusy = false; StateHasChanged(); }
+    }
+
+    /// Day groups in the list: Today · Yesterday · This week · Earlier.
+    private static string DayGroup(DateTime? t)
+    {
+        if (t is null) return "Earlier";
+        var d = t.Value.ToLocalTime().Date;
+        if (d >= DateTime.Today) return "Today";
+        if (d == DateTime.Today.AddDays(-1)) return "Yesterday";
+        if (d > DateTime.Today.AddDays(-7)) return "This week";
+        return "Earlier";
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -1039,6 +932,9 @@
             await JS.InvokeVoidAsync("ipop.icons");
             _selfRef = DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("ipop.mailBindShortcuts", _selfRef);
+            try { await JS.InvokeAsync<bool>("ipopMailLayout.bind", ".mail-page"); } catch (JSException) { }
+            density = MailListDensity.Parse(await Auth.GetUserSettingAsync(MailListDensity.Key));
+            StateHasChanged();
             // Read receipts: the tracker watches [data-mail-seen] bodies in the reading pane (spec 2026-10-14 §3).
             _seenRef = DotNetObjectReference.Create(MailSeenReporter);
             try { await JS.InvokeAsync<bool>("ipopMailSeen.bind", ".mail-page", _seenRef); } catch (JSException) { }
@@ -1050,6 +946,8 @@
             }
         }
         await JS.InvokeVoidAsync("ipop.icons");
+        if (!firstRender) { try { await JS.InvokeVoidAsync("ipopMailLayout.refresh"); } catch (JSException) { } }
+        if (scrollReaderTop) { scrollReaderTop = false; try { await JS.InvokeVoidAsync("ipopMailLayout.scrollReaderTop"); } catch (JSException) { } }
         // Pasted images stored on the NAS need the token: swap them to blob: URLs once rendered.
         if (detail?.Body?.Contains("data-ipop-att", StringComparison.Ordinal) == true)
             await JS.InvokeVoidAsync("ipop.mailImages.hydrate", null, Http.BaseAddress?.ToString() ?? "", Auth.AccessToken);
@@ -1424,7 +1322,7 @@
     {
         selectedMail = id;
         moreMenuOpen = false; labelMenuOpen = false;
-        if (replyOpenFor != id) { replyOpen = false; replyOpenFor = null; quickReplyText = ""; quickReplyTarget = null; }
+        if (selectedMail != id) { threadNewest = null; threadCountShown = 0; labelMenuOpen = false; scrollReaderTop = true; }
         detail = await MailSvc.GetAsync(id);
         if (id != selectedMail) return;
         _ = Notifs.MarkReadByTargetAsync("mail", id);
@@ -1526,7 +1424,7 @@
     private void BackToList()
     {
         selectedMail = null; detail = null; moreMenuOpen = false; labelMenuOpen = false;
-        replyOpen = false; replyOpenFor = null; quickReplyTarget = null;
+        threadNewest = null; threadCountShown = 0;
         // Phone: drop the reader's history entry (no-op on desktop / when Back already popped it).
         if (!composerOpen) _ = JS.InvokeVoidAsync("ipop.mobile.popDetail").AsTask().ContinueWith(_ => { });
     }
@@ -2149,8 +2047,7 @@
         switch (key)
         {
             case "Escape":
-                if (quickEmojiOpen) await CloseQuickEmoji();
-                else if (kbdSheetOpen) kbdSheetOpen = false;
+                if (kbdSheetOpen) kbdSheetOpen = false;
                 else if (rescheduleOpen) rescheduleOpen = false;
                 else if (moreMenuOpen) moreMenuOpen = false;
                 else if (labelMenuOpen) labelMenuOpen = false;
@@ -2160,9 +2057,10 @@
                 break;
             case "?": kbdSheetOpen = !kbdSheetOpen; break;
             case "c": OpenComposer(); break;
-            case "r": if (detail is not null) await OpenQuickReply(); else return; break;
-            case "a": if (detail is not null && detail.CanReplyAll) ReplyAllMessage(detail); else return; break;
-            case "f": if (detail is not null) ForwardMessage(detail); else return; break;
+            case "r": if (detail is not null) await ToolbarReply(false); else return; break;
+            case "a": if (detail is not null) await ToolbarReply(true); else return; break;
+            case "f": if (detail is not null) ForwardMessage(ActionTarget); else return; break;
+            case "l": if (detail is not null) ToggleLabelPop(); else return; break;
             case "e": if (detail is not null) await MoveDetail(MailFolder.Archive); else return; break;
             case "Delete": if (detail is not null) await MoveDetail(MailFolder.Trash); else return; break;
             case "j": await StepDetail(1); break;
@@ -2183,7 +2081,7 @@
         await JS.InvokeVoidAsync("ipop.mailRevealSelected");
     }
 
-    // ── Composer & Quick Reply ──
+    // ── Composer & quick reply ──
     /// The composer lives in MainLayout. If it isn't there (layout failed to render), say so
     /// instead of silently doing nothing.
     private bool OpenComposer(
@@ -2221,41 +2119,6 @@
         }
     }
 
-    /// The message Quick reply answers: the one whose "Quick reply" was pressed, else the opened one.
-    private MailDetail? quickReplyTarget;
-    private MailDetail QuickTarget => quickReplyTarget ?? detail!;
-
-    private Task OpenQuickReplyFor(MailDetail d) => OpenQuickReply(d);
-
-    /// Who the quick reply reaches: on my own message that is its recipients, not me.
-    private string QuickReplyToLabel
-    {
-        get
-        {
-            var to = MailAddressing.ForReply(QuickTarget, Auth.Me?.Nik, all: false).To;
-            return to.Count switch { 0 => QuickTarget.SenderName, 1 => to[0].Name, _ => $"{to[0].Name} +{to.Count - 1}" };
-        }
-    }
-
-    private async Task OpenQuickReply(MailDetail? target = null)
-    {
-        if (detail is null) return;
-        var t = target ?? detail;
-        if (replyOpen && QuickTarget.Id != t.Id) quickReplyText = "";
-        quickReplyTarget = t;
-        replyOpen = true;
-        replyOpenFor = detail.Id;
-        StateHasChanged();
-        await JS.InvokeVoidAsync("ipop.mailFocusReply");
-    }
-
-    private void CloseQuickReply()
-    {
-        quickEmojiOpen = false;
-        replyOpen = false;
-        replyOpenFor = null;
-        quickReplyTarget = null;
-    }
 
     private void ReplyMessage(MailDetail d) => OpenReply(d, all: false);
 
@@ -2348,44 +2211,50 @@
         WithComposer(c => c.OpenForward(d, subj, bodyQuote));
     }
 
-    private async Task SendQuickReply()
+    /// Quick reply from the thread (under the newest message): the typed text to exactly the message it answers.
+    private async Task<bool> SendQuickReply(MailReplyStart r)
     {
-        if (detail is null || string.IsNullOrWhiteSpace(quickReplyText) || quickReplySending) return;
-        var target = QuickTarget;
-        var req = MailAddressing.QuickReply(target, quickReplyText, Auth.Me?.Nik);
+        var req = MailAddressing.QuickReply(r.Target, r.Text, Auth.Me?.Nik, r.All, r.Attachments.Select(a => a.Id).ToList());
         if (req.To.Count == 0)
         {
-            Toasts.Show(MailAddressing.ForReply(target, Auth.Me?.Nik, all: false).Notice
+            Toasts.Show(MailAddressing.ForReply(r.Target, Auth.Me?.Nik, all: false).Notice
                 ?? "There is no one to send this reply to.", ToastKind.Warning);
-            return;
+            return false;
         }
-        quickReplySending = true;
         try
         {
             var res = await MailSvc.SendAsync(req);
             if (res?.Success == true)
             {
-                quickReplyText = "";
-                CloseQuickReply();
                 Toasts.Show("Reply sent.", ToastKind.Success);
                 await ReloadDetail();
                 await ReloadAll();
                 if (threadStackRef is not null) await threadStackRef.ReloadAsync(expandLatest: true);
+                return true;
             }
-            else
-            {
-                // The typed text stays in the box so nothing is lost.
-                Toasts.Show(res?.Error ?? "Couldn't send the reply. Try again.", ToastKind.Error);
-            }
+            // The typed text stays in the box so nothing is lost.
+            Toasts.Show(res?.Error ?? "Couldn't send the reply. Try again.", ToastKind.Error);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Toasts.Show("Couldn't send the reply. Check your connection and try again.", ToastKind.Error);
         }
-        finally
+        return false;
+    }
+
+    /// "Open full editor": the composer opens as Reply / Reply all with what was typed above the quote.
+    private void OpenFullReply(MailReplyStart r)
+    {
+        var plan = MailAddressing.ForReply(r.Target, Auth.Me?.Nik, r.All && r.Target.CanReplyAll);
+        var typed = string.IsNullOrWhiteSpace(r.Text) ? "<p><br/></p>" : MailAddressing.TypedHtml(r.Text);
+        var opened = WithComposer(c =>
         {
-            quickReplySending = false;
-        }
+            c.OpenNew(r.Target.Id, r.Target.ThreadRootId ?? r.Target.Id, MailAddressing.ReplySubject(r.Target.Subject),
+                $"{typed}{QuoteOf(r.Target)}", plan.To);
+            if (plan.Cc.Count > 0) c.SetCcRows(plan.Cc);
+            if (r.Attachments.Count > 0) c.AddAttachments(r.Attachments);
+        });
+        if (opened && plan.Notice is not null) Toasts.Show(plan.Notice, ToastKind.Warning);
     }
 
     private static string QuoteOf(MailDetail d) => MailAddressing.QuoteOf(d);
@@ -2503,6 +2372,7 @@
         _ = UnbindShortcutsAsync();
         _ = JS.InvokeVoidAsync("ipop.mailImages.release").AsTask().ContinueWith(_ => { });
         _ = UnbindSeenAsync();
+        _ = JS.InvokeVoidAsync("ipopMailLayout.unbind").AsTask().ContinueWith(_ => { });
     }
 
     private async Task UnbindSeenAsync()
@@ -2532,4 +2402,57 @@
         catch (ObjectDisposedException) { }
         _selfRef?.Dispose();
     }
+}
+
+@code {
+    /// Hover quick actions on a list row (Recall for Sent, Restore / Move for Trash / Archive, Delete, Pin, Star, Read).
+    private RenderFragment RowActions(MailSummary item) => __builder =>
+    {
+        @if (activeFolder == MailFolder.Sent)
+        {
+            <button type="button" title="Recall message" aria-label="Recall message" @onclick="() => ConfirmRecall(item.Id)"><i data-lucide="undo-2"></i></button>
+        }
+        @if (activeFolder == MailFolder.Trash)
+        {
+            <button type="button" title="Restore to Inbox" aria-label="Restore to Inbox" @onclick="() => QuickRestore(item.Id)"><i data-lucide="inbox"></i></button>
+        }
+        else if (activeFolder == MailFolder.Archive)
+        {
+            <button type="button" title="Move to Inbox" aria-label="Move to Inbox" @onclick="() => QuickMove(item.Id, MailFolder.Inbox)"><i data-lucide="inbox"></i></button>
+        }
+        <button type="button" class="@(activeFolder == MailFolder.Trash ? "danger" : "")" title="@(activeFolder == MailFolder.Trash ? "Delete forever" : "Move to Trash")"
+                aria-label="@(activeFolder == MailFolder.Trash ? "Delete forever" : "Move to Trash")" @onclick="() => QuickDelete(item.Id)"><i data-lucide="trash-2"></i></button>
+        <button type="button" class="@(item.IsPinned ? "active" : "")" title="@(item.IsPinned ? "Unpin" : "Pin")" aria-label="@(item.IsPinned ? "Unpin" : "Pin")" @onclick="() => TogglePin(item.Id)"><i data-lucide="pin"></i></button>
+        <button type="button" class="@(item.IsStarred ? "active" : "")" title="@(item.IsStarred ? "Unstar" : "Star")" aria-label="@(item.IsStarred ? "Unstar" : "Star")" @onclick="() => ToggleStar(item.Id)"><i data-lucide="star"></i></button>
+        <button type="button" title="@(item.IsRead ? "Mark unread" : "Mark read")" aria-label="@(item.IsRead ? "Mark unread" : "Mark read")" @onclick="() => QuickToggleRead(item)"><i data-lucide="@(item.IsRead ? "mail-x" : "mail-check")"></i></button>
+    };
+
+    /// Mail settings popover (Mailboxes footer and the rail): list density, the settings pages, pane reset.
+    private RenderFragment SettingsMenu => __builder =>
+    {
+        if (!settingsMenuOpen) return;
+        <div class="mlx-catch" @onclick="() => settingsMenuOpen = false"></div>
+        <div class="mlx-pop mlx-spop" role="menu" aria-label="Mail settings">
+            <div class="mlx-mhd">List density</div>
+            <div class="mlx-seg" role="radiogroup" aria-label="List density">
+                <button type="button" role="radio" class="@(density == MailListDensity.Compact ? "on" : "")" aria-checked="@(density == MailListDensity.Compact ? "true" : "false")"
+                        @onclick="() => SetDensity(MailListDensity.Compact)"><i data-lucide="rows-2"></i>Compact</button>
+                <button type="button" role="radio" class="@(density == MailListDensity.Comfortable ? "on" : "")" aria-checked="@(density == MailListDensity.Comfortable ? "true" : "false")"
+                        @onclick="() => SetDensity(MailListDensity.Comfortable)"><i data-lucide="rows-3"></i>Comfortable</button>
+            </div>
+            <div class="mlx-dprev">
+                @if (density == MailListDensity.Compact) { <b>2 lines</b><text> · sender + date / subject — preview. More mail on screen.</text> }
+                else { <b>3 lines</b><text> · sender + date / subject / preview. Easier to scan.</text> }
+            </div>
+            <div class="mlx-msep" role="separator"></div>
+            <button type="button" class="mlx-mi" role="menuitem" @onclick='() => OpenSettings("signature")'><i data-lucide="pen-line"></i><span>Signature</span></button>
+            <button type="button" class="mlx-mi" role="menuitem" @onclick='() => OpenSettings("ooo")'><i data-lucide="plane"></i><span>Out of office</span></button>
+            <button type="button" class="mlx-mi" role="menuitem" @onclick='() => OpenSettings("rules")'><i data-lucide="list-filter"></i><span>Rules &amp; filters</span></button>
+            <button type="button" class="mlx-mi" role="menuitem" @onclick='() => OpenSettings("labels")'><i data-lucide="tag"></i><span>Manage labels</span></button>
+            <button type="button" class="mlx-mi" role="menuitem" @onclick='() => OpenSettings("templates")'><i data-lucide="layout-template"></i><span>Templates</span></button>
+            <div class="mlx-msep" role="separator"></div>
+            <button type="button" class="mlx-mi" role="menuitem" data-mlx-act="reset" @onclick="() => settingsMenuOpen = false"><i data-lucide="rotate-ccw"></i><span>Reset pane widths</span></button>
+            <button type="button" class="mlx-mi danger" role="menuitem" @onclick="EmptyTrashFromMenu"><i data-lucide="trash-2"></i><span>Empty Trash</span></button>
+        </div>
+    };
 }

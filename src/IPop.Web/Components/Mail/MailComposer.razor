@@ -554,6 +554,14 @@
         Show();
     }
 
+    /// Files already uploaded elsewhere (the quick reply) ride along into the composer.
+    public void AddAttachments(IEnumerable<MailAttachment> files)
+    {
+        var have = composerAtts.Select(x => x.Id).ToHashSet();
+        composerAtts.AddRange(files.Where(f => have.Add(f.Id)));
+        StateHasChanged();
+    }
+
     public void SetCcRows(List<MemberSearchRow> cc)
     {
         ccRows = cc;

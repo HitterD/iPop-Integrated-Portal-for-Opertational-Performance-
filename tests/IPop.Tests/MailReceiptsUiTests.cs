@@ -372,9 +372,10 @@ public class MailReceiptsUiTests
         Assert.False(MailEpop.IsImported(null));
         Assert.Equal(["SGM"], MailEpop.RowLabels(["Arsip EPop", "SGM"]));
 
-        var page = File.ReadAllText(Path.Combine(Root(), "src/IPop.Web/Pages/Mail.razor"));
-        Assert.Contains("MailEpop.RowLabels(item.Labels)", page);
-        Assert.Contains("Imported from EPop", page);
+        // List rows live in MailListRow since the Outlook layout (2026-10-15).
+        var row = File.ReadAllText(Path.Combine(Root(), "src/IPop.Web/Components/Mail/MailListRow.razor"));
+        Assert.Contains("MailEpop.RowLabels(Item.Labels)", row);
+        Assert.Contains("Imported from EPop", row);
     }
 
     // ───────────── mass panel ─────────────

@@ -174,6 +174,13 @@ public sealed class MailService(AuthState Auth, HttpClient http)
         };
     }
 
+    /// Creates one of the user's labels; null when the server refuses (duplicate name, bad colour).
+    public async Task<MailLabel?> CreateLabelAsync(string name, string color, CancellationToken ct = default)
+    {
+        using var resp = await Auth.SendAsync(HttpMethod.Post, "/api/mail/labels", new { name, color });
+        return resp.IsSuccessStatusCode ? await resp.Content.ReadFromJsonAsync<MailLabel>(cancellationToken: ct) : null;
+    }
+
     /// Applies or removes one of the user's labels on a mail. Returns whether the server accepted it.
     public async Task<bool> SetLabelAsync(Guid mailId, Guid labelId, bool on, CancellationToken ct = default)
     {

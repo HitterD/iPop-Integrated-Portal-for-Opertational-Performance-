@@ -1,79 +1,102 @@
 @using IPop.Web.Services
+@using Microsoft.AspNetCore.Components.Forms
 @inject IPop.Web.Services.MailService MailSvc
 @inject IJSRuntime JS
 @inject IPop.Web.Services.AuthState Auth
+@inject IPop.Web.Services.ToastService Toasts
+@inject IPop.Web.Services.MailReadingPrefs Prefs
 @inject HttpClient Http
 
 @*
-    Conversation stack: every message in the thread, NEWEST first, so the latest reply is at the
-    top and older history sits below it. The server pages newest-first (50 per page); older
-    messages come in with "Load older messages" at the bottom. The opened message stays expanded
-    with the "This message" badge and is scrolled into view when it is not the newest.
+    The reading pane's conversation (mockup docs/mockups/mail-layout-outlook.html v3):
+      • the NEWEST message on top, fully expanded: one sender line (avatar, name, email on hover, date, ↩ ⋯) and one
+        recipients line ("To you, … · Cc … +N · Details ⌄ · ✓✓ Read by X of Y");
+      • directly under it the quick reply: a 40 px "Reply to X…" box that expands inline (emoji, attach, Send,
+        Open full editor, Reply / Reply all switch; Esc collapses);
+      • "Earlier · N messages", then older messages as one-line rows down to the oldest; a click expands one in place.
+    A standalone mail renders through the same path (a stack of one). There is no button row under a message: Reply,
+    Reply all and Forward live in the pane toolbar and in each message's ⋯ menu; ↩ answers that very message.
 
     Two facts drive this component:
-      • The thread ROOT has ThreadRootId == null — only replies carry it. Testing ThreadRootId
-        for null therefore hides the conversation on the very first message. The signal is
-        ThreadCount; the thread key is (ThreadRootId ?? Id). See MailServiceTests
-        Root_message_has_null_ThreadRootId_but_still_reports_its_replies.
-      • MailSummary carries only a Snippet. Full bodies are fetched per message on expand
-        (GET /api/mail/{id}), which reuses the endpoint that already enforces BCC visibility.
+      • The thread ROOT has ThreadRootId == null — only replies carry it. The signal is ThreadCount; the thread key is
+        (ThreadRootId ?? Id). See MailServiceTests Root_message_has_null_ThreadRootId_but_still_reports_its_replies.
+      • MailSummary carries only a Snippet. Full bodies are fetched per message on expand (GET /api/mail/{id}), which
+        reuses the endpoint that already enforces BCC visibility.
 *@
 
 <div class="thr-stack">
-    @foreach (var msg in stack)
+    @for (var idx = 0; idx < stack.Count; idx++)
     {
-        var m = msg;
-        var isCurrent = m.Id == Detail.Id;
-        var isOpen = expanded.Contains(m.Id);
-        var body = isCurrent ? Detail : (bodies.TryGetValue(m.Id, out var b) ? b : null);
+        var m = stack[idx];
+        var isNewest = idx == 0;
+        var isOpen = isNewest || expanded.Contains(m.Id);
+        var body = Body(m.Id);
+        if (idx == 1)
+        {
+            <div class="thr-earlier" role="separator"><span>Earlier · @EarlierCount @(EarlierCount == 1 ? "message" : "messages")</span></div>
+        }
 
-        <article class="thr-msg @(isOpen ? "open" : "collapsed") @(isCurrent ? "current" : "")"
-                 data-thr-id="@m.Id" @key="m.Id"
-                 aria-expanded="@(isOpen ? "true" : "false")">
-
-            <header class="thr-head" role="button" tabindex="0"
-                    @onclick="() => Toggle(m.Id)"
-                    @onkeydown="e => OnHeadKey(e, m.Id)">
-                <PersonAvatar Nik="@m.SenderNik" Name="@m.SenderName" Size="28" Class="thr-avatar" Decorative="true" />
-
-                <div class="thr-who">
-                    <span class="thr-name">@m.SenderName</span>
-                    @if (isOpen && body is not null)
-                    {
-                        var to = MailRecipientLine.ThreadTo(body, MyNik);
-                        <span class="thr-to thr-to-wide"><span class="thr-to-names">to @to.Names</span>@if (to.More > 0)
-                        {<span class="thr-to-more">+@to.More.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)</span>}</span>
-                        <span class="thr-to thr-to-narrow"><span class="thr-to-names">to @to.Narrow</span>@if (to.NarrowMore > 0)
-                        {<span class="thr-to-more">+@to.NarrowMore.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)</span>}</span>
-                    }
-                    else
-                    {
-                        <span class="thr-snip">@m.Snippet</span>
-                    }
-                </div>
-
-                @if (m.HasAttachment)
-                {
-                    <i data-lucide="paperclip" class="thr-clip" title="Has attachment"></i>
-                }
-                @if (isCurrent)
-                {
-                    <span class="thr-badge-current">This message</span>
-                }
-                @if (!isOpen && ShowsReceipts(m))
-                {
-                    <MailReceiptTick MailId="m.Id" />
-                }
-                <time class="thr-time" title="@FullStamp(m.ReceivedAt)">@ShortStamp(m.ReceivedAt)</time>
-                <i data-lucide="@(isOpen ? "chevron-up" : "chevron-down")" class="thr-caret"></i>
-            </header>
-
-            @if (isOpen && body is not null && ShowsReceipts(m))
-            {
-                <MailReceiptsRow MailId="m.Id" />
-            }
+        <article class="thr-msg @(isOpen ? "open" : "collapsed") @(isNewest ? "newest" : "older") @(m.Id == Detail.Id ? "current" : "")"
+                 data-thr-id="@m.Id" @key="m.Id" aria-expanded="@(isOpen ? "true" : "false")">
             @if (isOpen)
             {
+                <div class="thr-sndr thr-head @(isNewest ? "" : "thr-fold")" role="@(isNewest ? null : "button")" tabindex="@(isNewest ? null : "0")"
+                     title="@(isNewest ? null : "Collapse")" @onclick="() => HeadClick(m.Id, isNewest)" @onkeydown="e => OnHeadKey(e, m.Id, isNewest)">
+                    <PersonAvatar Nik="@m.SenderNik" Name="@Title(m.SenderName)" Size="32" Class="thr-av" Viewable="true" />
+                    <div class="thr-who">
+                        <div class="thr-nl">
+                            <span class="thr-name" tabindex="0">@(IsMe(m.SenderNik) ? "You" : Title(m.SenderName))</span>
+                            @if (body is not null && MailRecipientLine.SenderEmail(body) is { } email)
+                            {
+                                <span class="thr-em">@email</span>
+                            }
+                            <span class="thr-sp"></span>
+                            <span class="thr-sr">
+                                @if (FromEpop)
+                                {
+                                    <span class="thr-arc" title="Imported from EPop"><i data-lucide="archive"></i></span>
+                                }
+                                <time class="thr-time" title="@FullStamp(m.ReceivedAt)">@HeadStamp(m.ReceivedAt)</time>
+                                @Acts(m, body)
+                            </span>
+                        </div>
+                        @if (body is not null)
+                        {
+                            <div class="thr-rl" @onclick:stopPropagation>
+                                <span class="thr-rcp">
+                                    @{ var parts = MailRecipientLine.Compact(body, MyNik); }
+                                    @for (var p = 0; p < parts.Count; p++)
+                                    {
+                                        var part = parts[p];
+                                        if (p > 0) { <span class="thr-dot">·</span> }
+                                        <span class="thr-part">@part.Label @part.Names</span>
+                                        if (part.More > 0)
+                                        {
+                                            <MailRecipientsHeader Detail="body" MyNik="@MyNik" MoreCount="part.More" />
+                                        }
+                                    }
+                                </span>
+                                <button type="button" class="thr-dtg" aria-expanded="@(details.Contains(m.Id) ? "true" : "false")"
+                                        title="Show sender and all recipients" @onclick="() => ToggleDetails(m.Id)">
+                                    Details<i data-lucide="chevron-down"></i>
+                                </button>
+                                @if (ShowsReceipts(m))
+                                {
+                                    <span class="thr-dot thr-rdot">·</span>
+                                    <MailReceiptsRow MailId="m.Id" />
+                                }
+                            </div>
+                        }
+                    </div>
+                    @if (menuFor == m.Id && body is not null)
+                    {
+                        @Menu(body)
+                    }
+                </div>
+                @if (body is not null && details.Contains(m.Id))
+                {
+                    <div class="thr-dtl"><MailDetailsTable Mail="body" MyNik="@MyNik" /></div>
+                }
                 @* data-mail-seen: js/mail-seen.js records the read receipt once this shown body stayed on screen,
                    tab visible + focused, for 2 s. Only someone else's delivered message, once its body is loaded. *@
                 <div class="thr-body" data-mail-seen="@(body is not null && MailSeen.Applies(body, MyNik) ? m.Id.ToString() : null)">
@@ -83,17 +106,36 @@
                     }
                     else
                     {
-                        <MailBody Mail="body" FromEpop="@FromEpop" />
-
+                        <MailBody Mail="body" FromEpop="@FromEpop" Chrome="false" />
                         <MailAttachmentCards Attachments="body.Attachments" />
-
-                        <MailMessageActions Mail="body" MyNik="@MyNik"
-                                            OnQuickReply="OnQuickReply" OnReply="OnReply"
-                                            OnReplyAll="OnReplyAll" OnForward="OnForward" />
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="thr-head thr-row" role="button" tabindex="0" title="Show this message"
+                     @onclick="() => Toggle(m.Id)" @onkeydown="e => OnHeadKey(e, m.Id, false)">
+                    <PersonAvatar Nik="@m.SenderNik" Name="@Title(m.SenderName)" Size="26" Class="thr-av" Decorative="true" />
+                    <span class="thr-who"><span class="thr-name">@(IsMe(m.SenderNik) ? "You" : Title(m.SenderName))</span><span class="thr-snip">@m.Snippet</span></span>
+                    <span class="thr-when">
+                        @if (ShowsReceipts(m)) { <MailReceiptTick MailId="m.Id" /> }
+                        @if (m.HasAttachment) { <i data-lucide="paperclip" class="thr-clip" title="Has attachment"></i> }
+                        @if (FromEpop) { <span class="thr-arc" title="Imported from EPop"><i data-lucide="archive"></i></span> }
+                        <time class="thr-time" title="@FullStamp(m.ReceivedAt)">@ShortStamp(m.ReceivedAt)</time>
+                    </span>
+                    @Acts(m, body)
+                    @if (menuFor == m.Id)
+                    {
+                        @Menu(body)
                     }
                 </div>
             }
         </article>
+
+        if (isNewest && CanReply)
+        {
+            @QuickReply
+        }
     }
 
     @if (HasOlder)
@@ -106,18 +148,25 @@
 </div>
 
 @code {
-    /// The message the user opened from the list. Always rendered expanded, and its body is
-    /// reused directly rather than re-fetched.
+    /// The message the user opened from the list. Its body is reused rather than re-fetched.
     [Parameter, EditorRequired] public MailDetail Detail { get; set; } = default!;
 
     /// The reader's NIK (never displayed): decides who a reply to one's own message goes to.
     [Parameter] public string? MyNik { get; set; }
     /// The opened mail is from the EPop archive (its thread items are too).
     [Parameter] public bool FromEpop { get; set; }
-    [Parameter] public EventCallback<MailDetail> OnQuickReply { get; set; }
+    /// Drafts and scheduled mail have nothing to reply to yet.
+    [Parameter] public bool CanReply { get; set; } = true;
+    /// Full composer: Reply / Reply all / Forward for exactly this message.
     [Parameter] public EventCallback<MailDetail> OnReply { get; set; }
     [Parameter] public EventCallback<MailDetail> OnReplyAll { get; set; }
     [Parameter] public EventCallback<MailDetail> OnForward { get; set; }
+    /// Sends a quick reply; true when it went out (the box then clears and collapses).
+    [Parameter] public Func<MailReplyStart, Task<bool>>? QuickSend { get; set; }
+    /// "Open full editor": the composer takes over with the typed text and attachments.
+    [Parameter] public EventCallback<MailReplyStart> OnOpenFull { get; set; }
+    /// The newest message's full detail, once known (the toolbar and the slim header act on it).
+    [Parameter] public EventCallback<MailDetail> OnNewest { get; set; }
 
     private const int PageSize = 50;
     // Safety cap when paging back to reach an old opened message (50 × 20 = 1000 messages).
@@ -125,6 +174,7 @@
 
     private List<MailSummary> stack = [];
     private readonly HashSet<Guid> expanded = [];
+    private readonly HashSet<Guid> details = [];
     private readonly Dictionary<Guid, MailDetail> bodies = [];
     private Guid loadedFor;
     private Guid threadKey;
@@ -132,8 +182,16 @@
     private int totalCount;
     private bool loadingOlder;
     private Guid? scrollTo;
+    private Guid? menuFor;
+    private Guid? reportedNewest;
 
     private bool HasOlder => threadKey != Guid.Empty && stack.Count < totalCount;
+    private int EarlierCount => Math.Max(totalCount, stack.Count) - 1;
+
+    /// The newest message (top of the stack) when its body is loaded, else the opened one.
+    public MailDetail Newest => stack.Count > 0 && Body(stack[0].Id) is { } n ? n : Detail;
+
+    private MailDetail? Body(Guid id) => id == Detail.Id ? Detail : bodies.GetValueOrDefault(id);
 
     protected override async Task OnParametersSetAsync()
     {
@@ -152,57 +210,59 @@
         var openedId = Detail.Id;
         loadedFor = openedId;
         expanded.Clear();
+        details.Clear();
         bodies.Clear();
+        menuFor = null;
+        reportedNewest = null;
+        ResetQuickReply(keepText: false);
         threadKey = Guid.Empty;
         pagesLoaded = 0;
         totalCount = 0;
         scrollTo = null;
+        // Show the opened mail at once; the thread fills in around it.
+        stack = [SelfAsSummary()];
 
         // A message belongs to a conversation if it has replies (ThreadCount > 0) OR if it is
-        // itself a reply (ThreadRootId != null or InReplyToId != null). The root message of a
-        // thread has ThreadRootId == null, while a reply has ThreadCount == 0.
+        // itself a reply (ThreadRootId != null or InReplyToId != null).
         var hasThread = Detail.ThreadCount > 0 || Detail.ThreadRootId is not null || Detail.InReplyToId is not null;
         if (hasThread)
         {
             var key = Detail.ThreadRootId ?? Detail.Id;
             var page = await MailSvc.GetThreadAsync(key, 1, PageSize);
             if (loadedFor != openedId) return;   // a different mail was opened while we waited
-            stack = page?.Items?.ToList() ?? [];
+            var items = page?.Items?.ToList() ?? [];
+            if (items.Count > 0) stack = items;
             threadKey = key;
             pagesLoaded = 1;
             totalCount = page?.TotalCount ?? stack.Count;
 
-            // The opened message may be older than the newest page: page back until it is in
-            // the stack, so it can be shown expanded with its badge.
+            // The opened message may be older than the newest page: page back until it is in the stack.
             while (!expandLatest && stack.Count < totalCount && stack.All(x => x.Id != openedId) && pagesLoaded < MaxAutoPages)
             {
                 if (!await FetchNextPageAsync(openedId)) return;
             }
         }
-        else
-        {
-            stack = [];
-        }
+        totalCount = Math.Max(totalCount, stack.Count);
 
-        // Fall back to a stack of one so a standalone mail renders through the same path.
-        if (stack.Count == 0) stack = [SelfAsSummary()];
-
-        if (expandLatest && stack.Count > 0)
-        {
-            // Newest first: the reply just sent is at the top.
-            var newest = stack[0];
-            expanded.Add(newest.Id);
-            if (newest.Id != Detail.Id) _ = FetchBodyAsync(newest.Id);
-        }
-        else
+        // Newest on top, always open. The opened mail, when older, opens in place and is brought into view.
+        var newest = stack[0];
+        if (Body(newest.Id) is null) _ = FetchBodyAsync(newest.Id);
+        if (!expandLatest && newest.Id != Detail.Id && stack.Any(x => x.Id == Detail.Id))
         {
             expanded.Add(Detail.Id);
-            // Not the newest? Bring it into view inside the reading pane after render.
-            if (stack.Count > 1 && stack[0].Id != Detail.Id) scrollTo = Detail.Id;
+            scrollTo = Detail.Id;
         }
 
-        await JS.InvokeVoidAsync("ipop.icons");
+        await ReportNewestAsync();
+        await Icons();
         StateHasChanged();
+    }
+
+    private async Task ReportNewestAsync()
+    {
+        if (stack.Count == 0 || Body(stack[0].Id) is not { } n || reportedNewest == n.Id) return;
+        reportedNewest = n.Id;
+        await OnNewest.InvokeAsync(n);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -212,10 +272,17 @@
             scrollTo = null;
             await JS.InvokeAsync<bool>("ipop.scrollIntoView", $".thr-msg[data-thr-id=\"{id}\"]");
         }
+        if (focusQuick)
+        {
+            focusQuick = false;
+            try { await JS.InvokeVoidAsync("ipop.mailFocusReply"); } catch (JSException) { }
+        }
         // Pasted images stored on the NAS are fetched with the token (see ipop.mailImages).
         if (HasStoredImages(Detail) || bodies.Values.Any(HasStoredImages))
             await JS.InvokeVoidAsync("ipop.mailImages.hydrate", ".thr-stack", Http.BaseAddress?.ToString() ?? "", Auth.AccessToken);
     }
+
+    private Task Icons() => JS.InvokeVoidAsync("ipop.icons").AsTask();
 
     private static bool HasStoredImages(MailDetail? d) => d?.Body?.Contains("data-ipop-att", StringComparison.Ordinal) == true;
 
@@ -239,46 +306,317 @@
         if (loadingOlder || !HasOlder) return;
         loadingOlder = true;
         StateHasChanged();
-        try
-        {
-            await FetchNextPageAsync(loadedFor);
-        }
-        finally
-        {
-            loadingOlder = false;
-        }
+        try { await FetchNextPageAsync(loadedFor); }
+        finally { loadingOlder = false; }
         StateHasChanged();
-        await JS.InvokeVoidAsync("ipop.icons");
+        await Icons();
     }
 
     private async Task FetchBodyAsync(Guid id)
     {
-        if (bodies.ContainsKey(id)) return;
+        if (Body(id) is not null) return;
+        var forThread = loadedFor;
         var full = await MailSvc.GetAsync(id);
+        if (forThread != loadedFor) return;
         if (full is not null) bodies[id] = full;
+        await ReportNewestAsync();
         StateHasChanged();
-        await JS.InvokeVoidAsync("ipop.icons");
+        await Icons();
     }
 
     private async Task Toggle(Guid id)
     {
-        if (!expanded.Add(id)) expanded.Remove(id);
+        menuFor = null;
+        if (!expanded.Add(id)) { expanded.Remove(id); details.Remove(id); }
         StateHasChanged();
-
-        // Bodies are fetched once, on first expand.
-        if (expanded.Contains(id) && id != Detail.Id && !bodies.ContainsKey(id))
-        {
-            var full = await MailSvc.GetAsync(id);
-            if (full is not null) bodies[id] = full;
-            StateHasChanged();
-        }
-        await JS.InvokeVoidAsync("ipop.icons");
+        if (expanded.Contains(id) && Body(id) is null) await FetchBodyAsync(id);
+        await Icons();
     }
 
-    private async Task OnHeadKey(KeyboardEventArgs e, Guid id)
+    private Task HeadClick(Guid id, bool isNewest) => isNewest ? Task.CompletedTask : Toggle(id);
+
+    private async Task OnHeadKey(KeyboardEventArgs e, Guid id, bool isNewest)
     {
-        if (e.Key is "Enter" or " ") await Toggle(id);
+        if (!isNewest && e.Key is "Enter" or " ") await Toggle(id);
     }
+
+    private void ToggleDetails(Guid id) { if (!details.Add(id)) details.Remove(id); }
+
+    // ───────── per-message ↩ and ⋯ ─────────
+
+    private RenderFragment Acts(MailSummary m, MailDetail? body) => __builder =>
+    {
+        <span class="thr-acts2" @onclick:stopPropagation>
+            @if (CanReply)
+            {
+                <button type="button" class="thr-ib" title="Reply to @(IsMe(m.SenderNik) ? "this message" : Title(m.SenderName))" aria-label="Reply to this message"
+                        @onclick="() => ReplyIcon(m.Id)"><i data-lucide="reply"></i></button>
+            }
+            <button type="button" class="thr-ib @(menuFor == m.Id ? "on" : "")" title="More" aria-label="More actions for this message" aria-haspopup="menu"
+                    aria-expanded="@(menuFor == m.Id ? "true" : "false")" @onclick="() => ToggleMenu(m.Id)"><i data-lucide="more-horizontal"></i></button>
+        </span>
+    };
+
+    private RenderFragment Menu(MailDetail? body) => __builder =>
+    {
+        <div class="thr-catch" @onclick="() => menuFor = null" @onclick:stopPropagation></div>
+        <div class="thr-menu" role="menu" @onclick:stopPropagation @onkeydown="OnMenuKey">
+            @if (body is null)
+            {
+                <div class="thr-mi-wait">Loading…</div>
+            }
+            else
+            {
+                @if (CanReply)
+                {
+                    <button type="button" class="thr-mi" role="menuitem" @onclick="() => MenuQuick(body, false)"><i data-lucide="reply"></i>Reply</button>
+                    @if (MailAddressing.ReplyAllReachesMore(body, MyNik))
+                    {
+                        <button type="button" class="thr-mi" role="menuitem" @onclick="() => MenuQuick(body, true)"><i data-lucide="reply-all"></i>Reply all</button>
+                    }
+                }
+                <button type="button" class="thr-mi" role="menuitem" @onclick="() => MenuForward(body)"><i data-lucide="forward"></i>Forward</button>
+                @if (MailBody.OffersOriginal(body))
+                {
+                    var on = Prefs.ShowsOriginal(body.Id);
+                    <div class="thr-msep" role="separator"></div>
+                    <button type="button" class="thr-mi" role="menuitemcheckbox" aria-checked="@(on ? "true" : "false")" @onclick="() => ToggleOriginal(body)">
+                        <i data-lucide="type"></i>Original formatting<span class="thr-sw @(on ? "on" : "")" aria-hidden="true"></span>
+                    </button>
+                }
+            }
+        </div>
+    };
+
+    private async Task ToggleMenu(Guid id)
+    {
+        menuFor = menuFor == id ? null : id;
+        StateHasChanged();
+        if (menuFor is { } m && Body(m) is null) await FetchBodyAsync(m);
+        await Icons();
+    }
+
+    private void OnMenuKey(KeyboardEventArgs e) { if (e.Key == "Escape") menuFor = null; }
+
+    private void ToggleOriginal(MailDetail body)
+    {
+        Prefs.SetOriginal(body.Id, !Prefs.ShowsOriginal(body.Id));
+        menuFor = null;
+    }
+
+    private async Task MenuForward(MailDetail body)
+    {
+        menuFor = null;
+        await OnForward.InvokeAsync(body);
+    }
+
+    private Task MenuQuick(MailDetail body, bool all)
+    {
+        menuFor = null;
+        return OpenQuickReplyAsync(body, all);
+    }
+
+    private async Task ReplyIcon(Guid id)
+    {
+        menuFor = null;
+        if (Body(id) is null) await FetchBodyAsync(id);
+        if (Body(id) is { } body) await OpenQuickReplyAsync(body, all: false);
+    }
+
+    // ───────── quick reply ─────────
+
+    private bool qrOpen, qrAll, qrSending, qrEmoji, qrUploading, focusQuick;
+    private MailDetail? qrTarget;
+    private string qrText = "";
+    private readonly List<MailAttachment> qrAtts = [];
+    private ElementReference qrFileWrap;
+
+    private MailDetail QrTarget => qrTarget ?? Newest;
+
+    /// Opens the quick reply under the newest message, answering `target` (default: the newest) — from the pane
+    /// toolbar (Reply / Reply all, R / A) or from a message's ↩ / ⋯.
+    public Task OpenQuickReplyAsync(MailDetail? target, bool all)
+    {
+        if (!CanReply) return Task.CompletedTask;
+        var t = target ?? Newest;
+        if (qrOpen && QrTarget.Id != t.Id) qrText = "";
+        qrTarget = t;
+        qrAll = all && MailAddressing.ReplyAllReachesMore(t, MyNik);
+        if (all && !t.CanReplyAll)
+            Toasts.Show($"This mail went to many people, so replies go to {Title(t.SenderName)} only.", ToastKind.Info);
+        qrOpen = true;
+        focusQuick = true;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    /// Whether the quick reply is open with something typed (the page asks before switching mail).
+    public bool QuickReplyOpen => qrOpen;
+
+    private void ResetQuickReply(bool keepText)
+    {
+        qrOpen = false; qrEmoji = false; qrAll = false; qrTarget = null;
+        if (!keepText) { qrText = ""; qrAtts.Clear(); }
+    }
+
+    private void CollapseQuick()
+    {
+        qrOpen = false;
+        qrEmoji = false;
+    }
+
+    private async Task OnQuickKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape" && !qrEmoji) CollapseQuick();
+        else if (e.Key == "Enter" && (e.CtrlKey || e.MetaKey)) await SendQuick();
+    }
+
+    private void ToggleMode() => qrAll = !qrAll;
+
+    private async Task ToggleQuickEmoji()
+    {
+        try { await JS.InvokeVoidAsync("ipop.emojiSaveCaret", "mail-quick-reply-text"); } catch (JSException) { }
+        qrEmoji = !qrEmoji;
+    }
+
+    private async Task InsertQuickEmoji(string emoji)
+    {
+        try { qrText = await JS.InvokeAsync<string>("ipop.emojiInsert", "mail-quick-reply-text", emoji) ?? (qrText + emoji); }
+        catch (JSException) { qrText += emoji; }
+        qrEmoji = false;
+    }
+
+    private async Task CloseQuickEmoji()
+    {
+        qrEmoji = false;
+        try { await JS.InvokeVoidAsync("ipop.mailFocusReply"); } catch (JSException) { }
+    }
+
+    private async Task PickFiles()
+    {
+        try { await JS.InvokeAsync<bool>("ipop.clickFileInput", qrFileWrap); } catch (JSException) { }
+    }
+
+    private async Task OnFiles(InputFileChangeEventArgs e)
+    {
+        const int maxFiles = 5; // server limit per upload
+        if (e.FileCount > maxFiles) Toasts.Show($"Only the first {maxFiles} files were attached.", ToastKind.Warning);
+        var files = e.GetMultipleFiles(maxFiles);
+        if (files.Count == 0) return;
+        qrUploading = true;
+        StateHasChanged();
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            foreach (var file in files)
+            {
+                var part = new StreamContent(file.OpenReadStream(50 * 1024 * 1024));
+                part.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(string.IsNullOrEmpty(file.ContentType) ? "application/octet-stream" : file.ContentType);
+                content.Add(part, "files", file.Name);
+            }
+            var (uploaded, error) = await MailSvc.UploadWithErrorAsync(content);
+            if (uploaded is not null) qrAtts.AddRange(uploaded);
+            else Toasts.Show($"Upload failed: {error ?? "unknown error"}", ToastKind.Error);
+        }
+        catch (Exception ex) { Toasts.Show(ex.Message, ToastKind.Error); }
+        finally { qrUploading = false; }
+        await Icons();
+    }
+
+    private MailReplyStart Start() => new(QrTarget, qrText, qrAll, qrAtts.ToList());
+
+    private async Task SendQuick()
+    {
+        if (qrSending || string.IsNullOrWhiteSpace(qrText) || QuickSend is null) return;
+        qrSending = true;
+        try
+        {
+            if (await QuickSend(Start()))
+                ResetQuickReply(keepText: false);
+        }
+        finally { qrSending = false; }
+        StateHasChanged();
+    }
+
+    private async Task OpenFull()
+    {
+        var s = Start();
+        ResetQuickReply(keepText: false);
+        await OnOpenFull.InvokeAsync(s);
+    }
+
+    private RenderFragment QuickReply => __builder =>
+    {
+        var to = MailAddressing.ReplyToLabel(QrTarget, MyNik, qrAll);
+        <div class="mqr @(qrOpen ? "open" : "")">
+            @if (!qrOpen)
+            {
+                <div class="mqr-c">
+                    <button type="button" class="mqr-in" aria-label="Reply to @to" @onclick="() => OpenQuickReplyAsync(null, false)">
+                        <i data-lucide="reply"></i><span class="mqr-ph">Reply to @MailAddressing.ReplyToLabel(Newest, MyNik, false)…</span>
+                        @if (qrText.Length > 0) { <span class="mqr-draft">Draft</span> }
+                        <kbd class="mqr-k">R</kbd>
+                    </button>
+                </div>
+            }
+            else
+            {
+                var canAll = MailAddressing.ReplyAllReachesMore(QrTarget, MyNik);
+                <div class="mqr-c">
+                    <div class="mqr-e" id="mail-quick-reply" role="group" aria-label="Quick reply" @onkeydown="OnQuickKey">
+                        <div class="mqr-h">
+                            <i data-lucide="@(qrAll ? "reply-all" : "reply")"></i>
+                            <span class="mqr-to">To <b>@to</b></span>
+                            @if (canAll)
+                            {
+                                <button type="button" class="mqr-mode @(qrAll ? "all" : "")" title="Switch Reply / Reply all" @onclick="ToggleMode">
+                                    @(qrAll ? "Reply all" : "Reply")<i data-lucide="chevrons-up-down"></i>
+                                </button>
+                            }
+                            <button type="button" class="mqr-x" title="Close (Esc)" aria-label="Close quick reply" @onclick="CollapseQuick"><i data-lucide="x"></i></button>
+                        </div>
+                        <textarea id="mail-quick-reply-text" rows="3" placeholder="Write a reply…" aria-label="Reply text" spellcheck="true"
+                                  @bind="qrText" @bind:event="oninput"></textarea>
+                        @if (qrAtts.Count > 0 || qrUploading)
+                        {
+                            <div class="mqr-atts">
+                                @foreach (var a in qrAtts.ToList())
+                                {
+                                    <span class="mqr-att" title="@a.FileName"><i data-lucide="paperclip"></i><span>@a.FileName</span>
+                                        <button type="button" aria-label="Remove @a.FileName" @onclick="() => qrAtts.Remove(a)"><i data-lucide="x"></i></button></span>
+                                }
+                                @if (qrUploading) { <span class="mqr-att busy">Uploading…</span> }
+                            </div>
+                        }
+                        <div class="mqr-f">
+                            <div class="mqr-emo">
+                                <button type="button" class="mqr-ib @(qrEmoji ? "on" : "")" title="Emoji" aria-label="Emoji" aria-expanded="@(qrEmoji ? "true" : "false")"
+                                        @onmousedown:preventDefault @onclick="ToggleQuickEmoji"><i data-lucide="smile"></i></button>
+                                @if (qrEmoji)
+                                {
+                                    <div class="quick-emoji-pop" @onclick:stopPropagation>
+                                        <EmojiPicker OnPick="InsertQuickEmoji" OnClose="CloseQuickEmoji" OnDismiss="() => qrEmoji = false" />
+                                    </div>
+                                }
+                            </div>
+                            <button type="button" class="mqr-ib" title="Attach files" aria-label="Attach" disabled="@qrUploading" @onclick="PickFiles"><i data-lucide="paperclip"></i></button>
+                            <span class="mqr-filewrap" @ref="qrFileWrap"><InputFile OnChange="OnFiles" multiple style="display:none" /></span>
+                            <span class="mqr-sp"></span>
+                            <button type="button" class="mqr-open" title="Continue in the full editor" @onclick="OpenFull"><i data-lucide="maximize-2"></i>Open full editor</button>
+                            <button type="button" class="mqr-send" disabled="@(qrSending || qrUploading || string.IsNullOrWhiteSpace(qrText))" @onclick="SendQuick">
+                                <i data-lucide="send"></i>@(qrSending ? "Sending…" : "Send")
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    };
+
+    // ───────── helpers ─────────
+
+    private bool IsMe(string? nik) => nik is not null && MyNik is not null && nik.Equals(MyNik, StringComparison.OrdinalIgnoreCase);
+    private static string Title(string? name) => MailReceiptView.TitleCase(name);
 
     /// Receipts exist for delivered mail only (not drafts / scheduled-not-sent).
     private bool ShowsReceipts(MailSummary m) => m.ReceivedAt is not null && !(m.Id == Detail.Id && Detail.Folder is "draft" or "scheduled");
@@ -296,13 +634,18 @@
         var local = t.Value.ToLocalTime();
         if (local.Date == DateTime.Today) return local.ToString("HH:mm");
         if (local.Date == DateTime.Today.AddDays(-1)) return "Yesterday";
-        return local.ToString("dd MMM");
+        if (local.Date > DateTime.Today.AddDays(-7)) return local.ToString("ddd HH:mm");
+        return local.ToString(local.Year == DateTime.Today.Year ? "d MMM" : "d MMM yyyy");
+    }
+
+    /// The open message's date: "Thu 15 Oct, 13:40".
+    private static string HeadStamp(DateTime? t)
+    {
+        if (t is null) return "";
+        var local = t.Value.ToLocalTime();
+        return local.ToString(local.Year == DateTime.Today.Year ? "ddd d MMM, HH:mm" : "ddd d MMM yyyy, HH:mm");
     }
 
     private static string FullStamp(DateTime? t)
-        => t is null ? "" : t.Value.ToLocalTime().ToString("ddd, dd MMM yyyy HH:mm");
-
-    private static string HumanSize(long b)
-        => b switch { < 1024 => $"{b} B", < 1024 * 1024 => $"{b / 1024.0:0.#} KB", _ => $"{b / 1024.0 / 1024.0:0.#} MB" };
-
+        => t is null ? "" : t.Value.ToLocalTime().ToString("dddd d MMMM yyyy, HH:mm");
 }

@@ -2371,7 +2371,7 @@ window.ipop = {
       let k = null;
       if (key === "Delete" || key === "#") k = "Delete";
       else if (key === "?") k = "?";
-      else if (key.length === 1 && "craefjk".includes(key)) k = key;
+      else if (key.length === 1 && "craefjkl".includes(key.toLowerCase()) && !e.shiftKey) k = key.toLowerCase();
       if (!k) return;
       e.preventDefault();
       dotNet.invokeMethodAsync("OnShortcut", k).catch(() => { });
@@ -2382,7 +2382,7 @@ window.ipop = {
   // Click an image inside a message body to view it full size (Esc / click outside to close).
   mailBindLightbox() {
     if (this._mailLbClick) return;
-    const sel = ".mail-page .detail-scroll-area .body img, .mail-page .detail-scroll-area .thr-body img, .mail-page .mail-html-body img";
+    const sel = ".mail-page .detail-scroll-area .body img, .mail-page .detail-scroll-area .thr-body img, .mail-page .mail-html-body img, .mail-page .mlx-rscroll .thr-body img";
     this._mailLbClick = e => {
       const img = e.target instanceof Element ? e.target.closest("img") : null;
       if (!img || !img.matches(sel) || img.closest("a")) return;
@@ -2426,11 +2426,16 @@ window.ipop = {
     if (this._mailLbFocus && this._mailLbFocus.focus) { try { this._mailLbFocus.focus(); } catch { } }
     this._mailLbFocus = null;
   },
+  // Focus an element by id after Blazor rendered it (popover search fields).
+  focusById(id) {
+    requestAnimationFrame(() => document.getElementById(id)?.focus({ preventScroll: true }));
+  },
   mailFocusReply() {
     requestAnimationFrame(() => {
       const box = document.getElementById("mail-quick-reply");
       if (!box) return;
       box.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      // the reply box sits under the newest message; keep it in the middle of the reading pane when far away
       document.getElementById("mail-quick-reply-text")?.focus({ preventScroll: true });
     });
   },
@@ -2443,7 +2448,7 @@ window.ipop = {
   },
   // J/K moves the selection; keep the highlighted row visible in the list.
   mailRevealSelected() {
-    const el = document.querySelector(".mail-row.sel");
+    const el = document.querySelector(".mlr.sel, .mail-row.sel");
     if (el) el.scrollIntoView({ block: "nearest" });
   },
   // Attachment preview: Esc / arrow keys. Capture phase so the page shortcuts never see them.

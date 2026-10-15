@@ -1,0 +1,83 @@
+@using IPop.Web.Services
+@*
+    One message row in the list (mockup mail-layout-outlook.html v3). Compact = 2 lines: sender · count · meta · time /
+    subject — preview · label chips. Comfortable = 3 lines: sender / subject · chips / preview.
+    Label chips sit right-aligned: the first two, then +N. The first chip's name stays readable when the list is narrow
+    (the text truncates instead); "Arsip EPop" is the archive icon by the time, never a chip. Classes are mlr-* only.
+*@
+<div class="mlr @(Item.IsRead ? "" : "unread") @(Selected ? "sel" : "") @(Checked ? "checked" : "") @(Comfortable ? "mlr-comfy" : "") @(Item.IsPinned ? "pinned" : "") @ExtraClass"
+     role="listitem" data-mail-row="@Item.Id" aria-selected="@(Checked ? "true" : "false")" aria-current="@(Selected ? "true" : null)"
+     @onclick="() => OnOpen.InvokeAsync(Item.Id)">
+    <span class="mlr-lead">
+        <span class="mlr-ud" aria-hidden="true"></span>
+        <span class="cbx mlr-cbx @(Checked ? "on" : "")" role="checkbox" aria-checked="@(Checked ? "true" : "false")" tabindex="0"
+              title="Select message" aria-label="Select message" @onclick="() => OnCheck.InvokeAsync(Item.Id)" @onclick:stopPropagation>
+            <i data-lucide="check"></i>
+        </span>
+    </span>
+    <div class="mlr-main">
+        <div class="mlr-line mlr-l1">
+            @if (Item.IsPinned) { <span class="mlr-pin" title="Pinned to top"><i data-lucide="pin"></i></span> }
+            @if (Item.Importance == "high") { <span class="mlr-imp" title="High importance"><i data-lucide="alert-circle"></i></span> }
+            <span class="mlr-from">@(Highlight is null ? Item.SenderName : Highlight(Item.SenderName))</span>
+            @if (Item.ThreadCount > 1) { <span class="mlr-cnt">@Item.ThreadCount</span> }
+            <span class="mlr-meta">
+                @if (Item.IsMuted) { <span title="Thread muted"><i data-lucide="bell-off"></i></span> }
+                @if (Item.IsStarred) { <span class="mlr-star" title="Starred"><i data-lucide="star"></i></span> }
+                @if (Item.HasAttachment) { <span title="Has attachment"><i data-lucide="paperclip"></i></span> }
+                @if (MailEpop.IsImported(Item.Labels)) { <span class="mlr-arc" title="Imported from EPop" aria-label="Imported from EPop"><i data-lucide="archive"></i></span> }
+                <span class="mlr-time">@Time</span>
+            </span>
+            @if (Actions is not null)
+            {
+                <span class="mlr-acts" @onclick:stopPropagation>@Actions</span>
+            }
+        </div>
+        @if (Comfortable)
+        {
+            <div class="mlr-line mlr-l2"><span class="mlr-tx"><b>@Text(Item.Subject)</b></span>@Chips</div>
+            <div class="mlr-line mlr-l3"><span class="mlr-tx">@Text(Item.Snippet)</span></div>
+        }
+        else
+        {
+            <div class="mlr-line mlr-l2"><span class="mlr-tx"><b>@Text(Item.Subject)</b><span class="mlr-dash">—</span>@Text(Item.Snippet)</span>@Chips</div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MailSummary Item { get; set; } = default!;
+    [Parameter] public bool Comfortable { get; set; }
+    [Parameter] public bool Selected { get; set; }
+    [Parameter] public bool Checked { get; set; }
+    [Parameter] public string? ExtraClass { get; set; }
+    [Parameter] public string Time { get; set; } = "";
+    /// Label name → its colour (the user's label colours from the server).
+    [Parameter] public Func<string, string> LabelColor { get; set; } = _ => "#8e8e93";
+    /// Search highlight for sender / subject / snippet.
+    [Parameter] public Func<string?, RenderFragment>? Highlight { get; set; }
+    [Parameter] public RenderFragment? Actions { get; set; }
+    [Parameter] public EventCallback<Guid> OnOpen { get; set; }
+    [Parameter] public EventCallback<Guid> OnCheck { get; set; }
+
+    private const int MaxChips = 2;
+
+    private RenderFragment Text(string? s) => Highlight is null ? b => b.AddContent(0, s) : Highlight(s);
+
+    private RenderFragment Chips => __builder =>
+    {
+        var labels = MailEpop.RowLabels(Item.Labels).ToList();
+        if (labels.Count == 0) return;
+        <span class="mlr-chips">
+            @for (var i = 0; i < Math.Min(MaxChips, labels.Count); i++)
+            {
+                var l = labels[i];
+                <span class="mlr-chip @(i == 0 ? "k1" : "k2")" style="--c:@LabelColor(l)" title="Label · @l"><i></i><span>@l</span></span>
+            }
+            @if (labels.Count > MaxChips)
+            {
+                <span class="mlr-chip more" title="@string.Join(", ", labels.Skip(MaxChips))">+@(labels.Count - MaxChips)</span>
+            }
+        </span>
+    };
+}

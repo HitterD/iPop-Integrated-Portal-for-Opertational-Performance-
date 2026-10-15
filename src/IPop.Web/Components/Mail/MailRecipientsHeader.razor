@@ -8,6 +8,17 @@
    group chips, then +N — and a panel "Recipients · 42 · To 39 · Cc 3" with search, People (two columns, To/Cc tag)
    and Groups & departments by site. Mass mail for recipients keeps the chip + total (no names to list).
    Names come from the mail (≤ 50) and, for the panel, from the receipts list; NIK is never rendered. *@
+@if (MoreCount is int moreN)
+{
+    @* Compact reading-pane header: only the "+N" of the recipients line, opening the same panel. *@
+    <span class="mrh mrh-trig">
+        <button type="button" class="mrh-more mrh-tmore @(open ? "on" : "")" aria-haspopup="dialog" aria-expanded="@(open ? "true" : "false")"
+                title="Show all recipients" @onclick="Open" @onclick:stopPropagation>+@N(moreN)</button>
+        @PanelHost
+    </span>
+}
+else
+{
 <div class="mrh" @ref="root">
     @if (Undisclosed)
     {
@@ -62,29 +73,35 @@
         }
     }
 
-    @if (open)
-    {
-        if (phone)
-        {
-            <div class="mrr-dim" @onclick="Close"></div>
-            <div class="mrr-sheet mrh-panel" role="dialog" aria-modal="true" aria-label="Recipients" @onkeydown="OnKey">
-                <span class="mrr-grab" aria-hidden="true"></span>
-                @Panel
-            </div>
-        }
-        else
-        {
-            <div class="mrr-catch" @onclick="Close"></div>
-            <div class="mrr-pop mrh-panel" role="dialog" aria-label="Recipients" @onkeydown="OnKey">@Panel</div>
-        }
-    }
+    @PanelHost
 </div>
+}
 
 @code {
     private static string N(int n) => n.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
     [Parameter, EditorRequired] public MailDetail Detail { get; set; } = default!;
     /// The reader's NIK: only compared, never displayed.
     [Parameter] public string? MyNik { get; set; }
+    /// Set: render only a "+N" button (the compact header's count) that opens the recipients panel.
+    [Parameter] public int? MoreCount { get; set; }
+
+    private RenderFragment PanelHost => __builder =>
+    {
+        if (!open) return;
+        if (phone)
+        {
+            <div class="mrr-dim" @onclick="Close" @onclick:stopPropagation></div>
+            <div class="mrr-sheet mrh-panel" role="dialog" aria-modal="true" aria-label="Recipients" @onkeydown="OnKey" @onclick:stopPropagation>
+                <span class="mrr-grab" aria-hidden="true"></span>
+                @Panel
+            </div>
+        }
+        else
+        {
+            <div class="mrr-catch" @onclick="Close" @onclick:stopPropagation></div>
+            <div class="mrr-pop mrh-panel" role="dialog" aria-label="Recipients" @onkeydown="OnKey" @onclick:stopPropagation>@Panel</div>
+        }
+    };
 
     private bool open, phone;
     private string query = "";
@@ -281,7 +298,7 @@
         try
         {
             await JS.InvokeVoidAsync("ipop.icons");
-            if (!Undisclosed && !MassForMe)
+            if (MoreCount is null && !Undisclosed && !MassForMe)
             {
                 selfRef ??= DotNetObjectReference.Create(this);
                 await JS.InvokeVoidAsync("ipopMailFit.bind", root, selfRef);
