@@ -26,7 +26,8 @@
             <a class="m-project" href="/projects?newTask=1"><span class="ic"><i data-lucide="list-plus"></i></span>New task</a>
             <a class="m-meeting" href="/calendar?new=1&amp;from=From%20Dashboard"><span class="ic"><i data-lucide="calendar-plus"></i></span>Schedule</a>
             <a class="m-notes" href="/notes"><span class="ic"><i data-lucide="file-plus-2"></i></span>New note</a>
-            <a class="m-news" href="/news?new=1"><span class="ic"><i data-lucide="megaphone"></i></span>New post</a>
+            @* "New post" only for people who may post (Admin / news.publish / news.approve); others got a no-permission page. *@
+            @if (data?.CanPostNews == true) { <a class="m-news" href="/news?new=1"><span class="ic"><i data-lucide="megaphone"></i></span>New post</a> }
         </nav>
     </div>
 
@@ -304,7 +305,7 @@
     private record DashboardDto(string FirstName, KpisDto Kpis, List<AgendaDto> Agenda, List<AttentionDto> Attention,
         List<TaskDto> MyTasks, List<ProjectDto> Projects, List<ChatDto> Chats, List<NewsDto> News,
         List<PersonDto> Online, int OnlineCount, List<StatusDto> Status,
-        List<NoteDto> Notes, List<TransferDto> Transfers, bool IsAdmin);
+        List<NoteDto> Notes, List<TransferDto> Transfers, bool IsAdmin, bool CanPostNews = false);
     private record KpisDto(int MailUnread, int MailInbox, int ChatUnread, int ChatRooms, int OpenTasks, int OverdueTasks,
         DateTime? NextMeetingAt, string? NextMeetingTitle, Guid? NextMeetingId, int AckPending, int MissedCalls);
     private record AgendaDto(string Kind, Guid Id, string Title, string Sub, DateTime? StartAt, DateTime? EndAt,

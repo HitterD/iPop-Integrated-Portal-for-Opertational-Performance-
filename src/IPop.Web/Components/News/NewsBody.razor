@@ -224,11 +224,16 @@ else
     }
 
     /// `StreamUrl` is relative to the API origin, not the page origin — resolve it explicitly.
-    private string AbsoluteUrl(string url)
+    private string AbsoluteUrl(string url) => ResolveMediaUrl(url, Http.BaseAddress);
+
+    /// Only http(s) URLs count as absolute. On WebAssembly (a Unix-like runtime) `Uri.TryCreate`
+    /// with UriKind.Absolute accepts "/api/…" as a file path and yields "file:///api/…", which the
+    /// browser refuses — every article image failed that way. Anything else is joined to the API base.
+    public static string ResolveMediaUrl(string url, Uri? apiBase)
     {
-        if (Uri.TryCreate(url, UriKind.Absolute, out var abs)) return abs.ToString();
-        var b = Http.BaseAddress;
-        return b is null ? url : new Uri(b, url).ToString();
+        if (Uri.TryCreate(url, UriKind.Absolute, out var abs) && (abs.Scheme == Uri.UriSchemeHttp || abs.Scheme == Uri.UriSchemeHttps))
+            return abs.ToString();
+        return apiBase is null ? url : new Uri(apiBase, url).ToString();
     }
 
     private Task Unavailable(Guid id, string reason)

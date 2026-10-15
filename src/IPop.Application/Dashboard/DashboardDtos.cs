@@ -15,7 +15,9 @@ public record DashboardDto(
     IReadOnlyList<DashboardStatusItem> Status,
     IReadOnlyList<DashboardNoteItem> Notes,
     IReadOnlyList<DashboardTransferItem> Transfers,
-    bool IsAdmin);
+    bool IsAdmin,
+    // Same rule as NewsService.CanManageAsync (Admin, news.publish or news.approve): gates "New post".
+    bool CanPostNews = false);
 
 public record DashboardKpis(
     int MailUnread, int MailInbox,

@@ -106,7 +106,11 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
             .Where(m => m.Status != IPop.Core.Entities.MeetingStatus.Cancelled && (m.OrganizerId == userId || m.Attendees.Any(a => a.UserId == userId && a.RsvpStatus != "decline")));
         var next = await myMeetings.Where(m => m.EndAt >= now).OrderBy(m => m.StartAt)
             .Select(m => new { m.Id, m.Title, m.StartAt }).FirstOrDefaultAsync(ct);
-        var access = await CalendarFeedAccess.ForAsync(permissions ?? new PermissionEvaluator(db), userId, ct);
+        var perms = permissions ?? new PermissionEvaluator(db);
+        var access = await CalendarFeedAccess.ForAsync(perms, userId, ct);
+        var canPostNews = isAdmin
+            || await perms.IsAllowedAsync(userId, "news.publish", null, ct)
+            || await perms.IsAllowedAsync(userId, "news.approve", null, ct);
         var feed = await CalendarFeedService.BuildAsync(db, userId, dayStartUtc, dayEndUtc, access, ct);
         // Month feeds pad date-only queries. Match wall-calendar dates for this daily agenda.
         var agenda = feed.Where(i => i.AllDay
@@ -286,7 +290,8 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
             status,
             notes,
             transfers,
-            isAdmin);
+            isAdmin,
+            canPostNews);
     }
 
     private static string FirstName(string? name) =>

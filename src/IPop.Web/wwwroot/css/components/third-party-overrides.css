@@ -112,6 +112,9 @@ body:not(.rz-default-scrollbars) ::-webkit-scrollbar-button,
   --rz-border-focus: 1px solid var(--accent);
   --rz-input-background-color: var(--surface);
   --rz-text-color: var(--ink);
+  /* Radzen's default.css colours every h1–h6 with this (--rz-base-900, near-black): dark-mode
+     headings in Notes, News and Files were ~1.3:1. Follow the app ink instead. */
+  --rz-text-title-color: var(--ink);
   --rz-text-disabled-color: var(--ink-3);
   --rz-text-tertiary-color: var(--ink-3);
 }

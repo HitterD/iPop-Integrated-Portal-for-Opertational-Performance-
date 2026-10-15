@@ -477,9 +477,7 @@
     public string? AbsoluteUrl(string? url)
     {
         if (string.IsNullOrWhiteSpace(url)) return url;
-        if (Uri.TryCreate(url, UriKind.Absolute, out var abs)) return abs.ToString();
-        var b = Http.BaseAddress;
-        return b is null ? url : new Uri(b, url).ToString();
+        return NewsBody.ResolveMediaUrl(url, Http.BaseAddress);
     }
 
     /// Aborts the upload in flight, if any.
