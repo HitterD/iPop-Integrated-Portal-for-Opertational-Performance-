@@ -233,7 +233,7 @@ body.mlx-resizing, body.mlx-resizing * { cursor: col-resize !important; user-sel
 .mlr:hover .mlr-ud, .mlr:focus-within .mlr-ud, .mlr.checked .mlr-ud, .mlx-surf.has-selection .mlr-ud { display: none; }
 .mlr-ud { width: 8px; height: 8px; border-radius: 50%; background: transparent; margin-top: 5px; }
 .mlr.unread .mlr-ud { background: var(--mlx-blue); }
-@media (hover: none) { .mlr-lead .mlr-cbx { display: inline-grid; } .mlr-ud { display: none; } }
+/* touch: the unread dot stays; selecting starts from a checked row (mockup phone state) */
 .mlr-main { flex: 1; min-width: 0; }
 .mlr-line { display: flex; align-items: center; gap: 6px; min-width: 0; height: 19px; }
 .mlr-l2, .mlr-l3 { margin-top: 1px; }
@@ -627,6 +627,15 @@ button.mdt-more:hover { background: var(--mlx-fill-2); color: var(--ink); }
   .mqr-open { font-size: 0; gap: 0; width: 34px; padding: 0; justify-content: center; }
   .mqr-open .lucide { width: 16px; height: 16px; }
   .mlx .mlx-slim { padding-left: 16px; }
+  /* phone sender line: the name keeps its room; the date shortens and only ⋯ stays (Reply is in the bottom bar) */
+  .mlx .thr-msg.newest .thr-acts2 .thr-ib[aria-label="Reply to this message"] { display: none; }
+  .mlx .thr-nl .thr-name { flex: 1 1 auto; min-width: 4.5em; }
+  .mlx .thr-nl .thr-em { display: none; }
+  .mlx .thr-nl .thr-sr { flex: 0 1 auto; min-width: 0; }
+  .mlx .thr-nl .thr-sr .thr-time { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .mlx .thr-msg.newest .thr-sr .thr-arc { display: none; }   /* EPop shows in the row list and the Details date */
+  .mlx .thr-nl .thr-sp { display: none; }
+  .mlx .thr-sr .thr-time { font-size: 12px; }
   .mlx .mlx-pact {
     display: grid; grid-template-columns: repeat(4, 1fr); flex: none; padding: 7px 8px calc(7px + var(--m-safe-b, 0px));
     background: var(--mlx-glass); backdrop-filter: blur(24px) saturate(1.8); -webkit-backdrop-filter: blur(24px) saturate(1.8); border-top: .5px solid var(--mlx-sep);
