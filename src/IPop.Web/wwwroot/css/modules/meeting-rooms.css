@@ -307,7 +307,7 @@ body:has(.mr-meet:not(.mr-hidden)) .toast-host { z-index: 1190; }
 .mr-emoji-pop { position: absolute; right: 8px; bottom: calc(100% + 8px); z-index: 10; }
 
 /* ---------- small screens ---------- */
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   /* Phone (mockup "Phone"): main speaker, own camera as picture-in-picture, compact dock, chat full screen. */
   .mr-share-btn, .mr-recwrap, .mr-people-btn, .mr-div { display: none !important; }
   .mr-meet:has(> .mr-chat) #mr-stage.mr-stage { right: 10px; }
@@ -702,7 +702,7 @@ body:has(.mr-meet:not(.mr-hidden)) .toast-host { z-index: 1190; }
 @media (max-width: 1100px) {
   .mrt-rooms { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .calls-toolbar-spacer { display: none; }
   .calls-v6 .calls-toolbar .calls-tabs button { padding: 0 10px; gap: 5px; font-size: 13px; }
   .calls-v6 .calls-toolbar .calls-tabs button span { display: none; }

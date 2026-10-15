@@ -92,7 +92,7 @@ window.ipopMicro = (() => {
     if (pending) return; // keep the tab where the press put it until the page arrives
     side.classList.remove('tab-pending');
     // Navy shell (css/shell/friendly.css): the pill is the open-page tab.
-    if (side.classList.contains('nav-tab') && matchMedia('(min-width: 768px)').matches) {
+    if (side.classList.contains('nav-tab') && !(window.ipop && ipop.mobile && ipop.mobile.isMobile())) {
       moveTab(side, glide, active);
       return;
     }
@@ -253,7 +253,7 @@ window.ipopMicro = (() => {
     if (!item || e.button !== 0 || item.classList.contains('active')) return;
     const side = item.closest('.sidebar');
     const glide = side.querySelector('.nav-glide:not(.out)');
-    if (!glide || !matchMedia('(min-width: 768px)').matches) return;
+    if (!glide || !!(window.ipop && ipop.mobile && ipop.mobile.isMobile())) return;
     moveTab(side, glide, item);
     side.querySelectorAll('.nav-item.mi-tab-to').forEach(n => n.classList.remove('mi-tab-to'));
     item.classList.add('mi-tab-to');

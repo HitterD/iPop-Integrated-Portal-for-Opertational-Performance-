@@ -3,7 +3,7 @@
 /* Desktop guards: phone-only chat chrome is rendered in Chat.razor and hidden here. */
 .chat-area .m-hdr-more, .chat-area .m-hdr-menu, .chat-area .m-hdr-backdrop { display: none; }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   /* ---------- Frame: one screen at a time ---------- */
   .main-panel > .chat-area { flex: 1 1 0; height: auto; min-height: 0; }
   .chat-area, .chat-area.with-global-drawer, .chat-area.with-drawer { grid-template-columns: minmax(0, 1fr); }

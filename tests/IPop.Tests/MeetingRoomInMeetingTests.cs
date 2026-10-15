@@ -403,7 +403,7 @@ public class MeetingRoomInMeetingTests
     public void Phone_layout_opens_chat_full_screen_and_keeps_the_compact_dock()
     {
         var css = File.ReadAllText(Path.Combine(RepoRoot(), "src/IPop.Web/wwwroot/css/modules/meeting-rooms.css"));
-        var phone = System.Text.RegularExpressions.Regex.Matches(css, @"@media \(max-width: 767px\) \{(?<body>(?:[^{}]|\{[^{}]*\})*)\}")
+        var phone = System.Text.RegularExpressions.Regex.Matches(css, @"@media \(max-width: 767px\)[^{]*\{(?<body>(?:[^{}]|\{[^{}]*\})*)\}")
             .Select(m => m.Groups["body"].Value).Aggregate("", (a, b) => a + b);
         Assert.Matches(@"\.mr-chat\s*\{[^}]*inset:\s*0", phone);                      // chat full screen
         Assert.Matches(@"\.mr-share-btn,[^{]*\.mr-rec[^{]*\{[^}]*display:\s*none", phone); // Mute, Camera, Flip, Chat, Leave

@@ -249,7 +249,7 @@ button.mrd-fmt.on .mrd-sw::after { transform: translateX(12px); }
 .mrl-arc .lucide { width: 13px; height: 13px; }
 
 /* ───────── phone ───────── */
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   /* a phone row has room for one whole item: "to you +5" rather than "to you, SJA Jak… +4" */
   .mail-page .thr-to.thr-to-wide { display: none; }
   .mail-page .thr-to.thr-to-narrow { display: flex; }

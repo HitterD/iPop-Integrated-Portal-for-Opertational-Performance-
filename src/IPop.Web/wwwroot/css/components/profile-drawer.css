@@ -428,7 +428,7 @@
 .contact-card .inset-copy:hover { background: var(--tray); color: var(--accent); }
 .contact-card .inset-copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .contact-card .inset-copy .lucide { width: 13px; height: 13px; }
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .contact-card .inset-copy { width: 36px; height: 36px; }
 }
 

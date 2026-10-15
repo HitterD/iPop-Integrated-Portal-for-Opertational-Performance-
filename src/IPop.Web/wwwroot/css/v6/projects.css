@@ -513,7 +513,7 @@ button.portfolio-metric:hover, .portfolio-row:hover { background: var(--tray); }
 .project-field-cell > button:not(.project-field-value) { border: 0; background: none; color: var(--ink-3); cursor: pointer; font-size: 11px; }
 .td-field-row { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 10px; align-items: center; padding: 6px 0; }
 .td-field-row label { font-size: 12px; color: var(--ink-2); }
-@media (max-width: 767px) { .portfolio { padding: 18px; } .portfolio-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .portfolio-metric { padding: 12px; } .portfolio-metric strong { font-size: 22px; } .plist-group-heading { min-width: 0; flex-wrap: wrap; } .plist-group-heading .ct { white-space: normal; } }
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) { .portfolio { padding: 18px; } .portfolio-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .portfolio-metric { padding: 12px; } .portfolio-metric strong { font-size: 22px; } .plist-group-heading { min-width: 0; flex-wrap: wrap; } .plist-group-heading .ct { white-space: normal; } }
 
 /* ---- Kanban drag (mockup L328-332): native drag image, source dimmed to .4, lane turns
    #E4F4EA with a dashed green border. No floating ghost, slot gaps, tilt, or bounce. ---- */
@@ -540,7 +540,7 @@ button.portfolio-metric:hover, .portfolio-row:hover { background: var(--tray); }
    scrolling lanes / list canvas / drawer body can't clip them. Desktop geometry comes from JS;
    css/mobile/projects.css turns .kc-menu/.plist-menu/.quick-assign-popover into bottom sheets. */
 .ipop-menu-portal { position: fixed; overscroll-behavior: contain; }
-@media (min-width: 768px) { .ipop-menu-portal { right: auto; bottom: auto; } }
+@media (min-width: 768px) and (min-height: 501px), (min-width: 933px), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) { .ipop-menu-portal { right: auto; bottom: auto; } }
 .ipop-menu-portal.kc-menu, .ipop-menu-portal.plist-menu { max-width: calc(100vw - 16px); }
 .ipop-menu-portal.quick-assign-popover { animation: none; }
 .kc-menu button:focus-visible, .plist-menu > button:focus-visible, .plist-chips button:focus-visible,

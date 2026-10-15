@@ -3,7 +3,7 @@
    ProfileDrawer (.profile-sheet), NasFilePickerDialog, AppSelect/AppMemberPicker/PeoplePicker
    popups, ContextMenu, EmojiPicker, DatePickerCore, AttachmentViewer. */
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   /* iOS zooms into any focused field under 16px. !important because module rules
      (e.g. `.auth-wrap .auth-card .field input`) out-specify a generic selector. */
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
@@ -91,4 +91,25 @@
   .att-viewer .av-acts button, .att-viewer .av-acts a { min-width: 40px; min-height: 40px; }
 
   @keyframes m-sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+}
+
+/* ---------- Touch hit areas (>= 44 px) without changing how the controls look ----------
+   An invisible ::before extends the tap target past the drawn icon; the control becomes the
+   positioning box when it is static. ::after stays free (bell ring, tutorial pulse use it). */
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .v6-topbar .theme-btn, .v6-topbar .bell-btn, .v6-topbar .search-trigger,
+  .mc-book, .mlx .mlx-fl, .mlx .thr-ib, .mlx .mlx-back,
+  .task-card-check, .plist-check, .kc-more, .td-round,
+  .nt-btn { position: relative; }
+  .v6-topbar .theme-btn::before, .v6-topbar .bell-btn::before, .v6-topbar .search-trigger::before,
+  .mc-book::before, .mlx .mlx-fl::before, .mlx .thr-ib::before, .mlx .mlx-back::before,
+  .task-card-check::before, .plist-check::before, .kc-more::before, .td-round::before,
+  .nt-btn::before {
+    content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px);
+    transform: translate(-50%, -50%); border-radius: inherit;
+  }
+  /* Topbar: the drawn icons stay 40 px but sit 2 px apart, so their 44 px areas do not overlap. */
+  .v6-topbar .theme-btn, .v6-topbar .bell-btn { margin: 0 2px; }
+
+  .mlx .mlx-fbtn { min-height: 44px; }
 }

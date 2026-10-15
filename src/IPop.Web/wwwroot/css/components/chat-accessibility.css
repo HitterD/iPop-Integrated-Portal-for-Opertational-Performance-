@@ -15,7 +15,7 @@
 
 /* Keyboard focus on the row (not only hover) reveals its tools; on touch layouts the tools
    stay tap-driven (.m-tools) and focus only draws the ring. */
-@media (min-width: 768px) {
+@media (min-width: 768px) and (min-height: 501px), (min-width: 933px), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) {
   .chat-area .messages > .msg[data-msg-id]:focus-visible > .msg-hover-actions {
     opacity: 1; visibility: visible; transform: translateY(0) scale(1); transition-delay: 0s;
   }

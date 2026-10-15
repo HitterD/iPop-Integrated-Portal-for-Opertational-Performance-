@@ -5,7 +5,7 @@ document.addEventListener('keydown', e => {
 let restoreFocus, listener;
 const madeInert = [];
 export function open(dotnet) {
-    if (!matchMedia('(max-width: 767px)').matches) return;
+    if (!window.ipop?.mobile?.isMobile()) return;
     const sheet = document.getElementById('directory-departments');
     if (!sheet) return;
     restoreFocus = document.activeElement;

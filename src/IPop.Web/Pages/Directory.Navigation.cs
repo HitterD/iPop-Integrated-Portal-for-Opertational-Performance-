@@ -78,7 +78,7 @@ public partial class Directory
     private int GroupLoaded(Employee person) => people.Count(p => p.UnitKey == person.UnitKey);
     private async Task SyncDepartmentSheet()
     {
-        sheetModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/directory-navigation.js");
+        sheetModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/directory-navigation.js?v=20261015-mobfix");
         if (treeOpen == sheetSynced) return;
         _selfRef ??= DotNetObjectReference.Create(this);
         await sheetModule.InvokeVoidAsync(treeOpen ? "open" : "close", _selfRef);

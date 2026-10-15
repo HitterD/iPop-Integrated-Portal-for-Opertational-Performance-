@@ -131,7 +131,7 @@
   box-shadow: var(--shadow-lg); overflow: hidden;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .emoji-picker { --ep-cell: 44px; height: min(380px, 52dvh); }
   .emoji-picker .ep-emoji { font-size: 26px; }
   .emoji-picker .ep-emoji:hover { transform: none; }

@@ -151,7 +151,7 @@
 .chat-area .msg .bubble.has-link-preview:has(.lp-slot:empty) .message-text { padding: 0; }
 .chat-area .msg .bubble.has-link-preview:has(.lp-slot:empty) .bmeta.text { right: 11px; bottom: 7px; }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .chat-area .sticky-pinned-bar.glass { padding: 6px 8px 6px 12px; min-height: 50px; }
   .chat-area .msg .bubble.media-captioned, .chat-area .msg .bubble.has-link-preview { width: 300px; }
   .chat-area .room-more-pop { right: -40px; }

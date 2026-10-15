@@ -229,7 +229,7 @@
 @media (max-width: 900px) {
   .dw-r2, .dw-upnext, .dw-strip, .dw-r3, .dw-r4 { grid-template-columns: minmax(0, 1fr); }
 }
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .dw-in { padding: 16px 14px 90px; gap: 14px; }
   .dw-hero h2 { font-size: 26px; }
   .dw-qa { margin: 4px -14px 0; padding: 2px 14px 6px; width: calc(100% + 28px); flex-wrap: nowrap; overflow-x: auto; gap: 14px; scrollbar-width: none; }

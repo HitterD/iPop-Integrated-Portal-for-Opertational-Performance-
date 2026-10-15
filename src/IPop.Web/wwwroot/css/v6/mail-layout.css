@@ -551,7 +551,7 @@ button.mdt-more:hover { background: var(--mlx-fill-2); color: var(--ink); }
 }
 
 /* ───────── phone (≤ 767 px, ipop.mobile.isMobile): list screen / reading screen, no splitters ───────── */
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .mail-page.mlx { height: 100%; }
   .mlx .mlx-surf { display: flex; flex-direction: column; }
   .mlx .mlx-split { display: none !important; }

@@ -41,7 +41,7 @@
   --frame-label: #9fbfaf;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 768px) and (min-height: 501px), (min-width: 933px), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) {
   .shell, .main { background: var(--frame); }
 
   /* ---------- Content panel ---------- */
@@ -337,7 +337,7 @@
 }
 
 /* Phones: the panel is just a column; the title stays in the compact topbar. */
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .main-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .v6-topbar .tb-tools { display: contents; }
 }

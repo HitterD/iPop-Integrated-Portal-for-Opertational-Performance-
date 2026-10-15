@@ -1,0 +1,31 @@
+@implements IDisposable
+@inject OverlayStack Overlays
+
+@* Render inside an overlay's markup (drawer, sheet, page layer). While it is on screen, Escape and,
+   on phones, the system Back button close it through OverlayStack — top-most overlay first. *@
+
+@code {
+    /// Closes the overlay (same as its ✕ / scrim) — or one inner layer of it (a sub-menu). If the
+    /// overlay is still on screen afterwards, the hook registers again so the next Escape/Back reaches it.
+    [Parameter, EditorRequired] public EventCallback OnClose { get; set; }
+    /// False when the page already owns a phone Back entry for this overlay (ipop.mobile.pushDetail):
+    /// then only Escape is wired here.
+    [Parameter] public bool History { get; set; } = true;
+
+    private IDisposable? reg;
+    private bool disposed;
+
+    protected override void OnInitialized() => Register();
+
+    private void Register() => reg = Overlays.Push(CloseAsync, History);
+
+    private async Task CloseAsync()
+    {
+        reg = null; // the stack already dropped this layer
+        await OnClose.InvokeAsync();
+        await Task.Yield(); // let the owner re-render (and dispose us) before deciding
+        if (!disposed && reg is null) Register();
+    }
+
+    public void Dispose() { disposed = true; reg?.Dispose(); reg = null; }
+}

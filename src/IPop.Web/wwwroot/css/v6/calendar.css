@@ -778,7 +778,7 @@ body:has(.cs-sheet) .confirm-center { z-index: 1071; }
 .cal-mdetail > .cal-btn { justify-self: start; }
 
 /* New event as a centred sheet (mockup screen 6); phones keep the bottom sheet from mobile/calendar.css */
-@media (min-width: 768px) {
+@media (min-width: 768px) and (min-height: 501px), (min-width: 933px), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) {
   .cal-drawer.cal-sheet { top: 50%; left: 50%; right: auto; bottom: auto; transform: translate(-50%, -50%); width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 40px);
     border: 0; border-radius: 22px; box-shadow: 0 0 0 .5px var(--line), 0 30px 80px -20px rgba(0,0,0,.45); animation: cal-sheet-in .22s ease-out; }
   @keyframes cal-sheet-in { from { transform: translate(-50%, -48%) scale(.98); opacity: 0; } }
@@ -853,7 +853,7 @@ body:has(.cs-sheet) .confirm-center { z-index: 1071; }
 /* Phone (v3 Task 10, mockup "6 · New event (bottom sheet)"): the drawer is already a bottom sheet in mobile/calendar.css;
    here the sheet gets the grab handle and rounded top, 2×2 kind tiles, sideways room tiles and timeline (960 px track,
    room-timeline.js scrolls the selection into view), and a full-height meeting detail. Same 767 px phone breakpoint. */
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .cal-drawer.cal-sheet, .cal-drawer.cal-mdrawer { border-radius: 28px 28px 0 0; padding-top: 12px; }
   .cal-drawer.cal-sheet::before, .cal-drawer.cal-mdrawer::before { content: ""; position: absolute; top: 7px; left: 50%; width: 38px; height: 5px; margin-left: -19px;
     border-radius: 3px; background: var(--ink-4); opacity: .7; }

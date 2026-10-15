@@ -4,7 +4,7 @@
    Phone-only menu entries rendered in ProjectHeader / ProjectKanbanBoard; hidden at >= 768px. */
 .proj-more-pop .pm-only, .kc-menu .kc-move-head, .kc-menu .kc-move { display: none; }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   /* ================= Frame: list screen <-> workspace screen ================= */
   .proj-workspace {
     flex: 1 1 auto; min-height: 0; height: auto;
@@ -66,7 +66,7 @@
   .proj-canvas-bar { padding: 8px 12px 0; gap: 8px; flex-direction: column; align-items: stretch; }
   .proj-tabs { width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
   .proj-tabs::-webkit-scrollbar { display: none; }
-  .proj-tabs .proj-tab-btn { flex: none; white-space: nowrap; min-height: 36px; }
+  .proj-tabs .proj-tab-btn { flex: none; white-space: nowrap; min-height: 44px; }
   .proj-bar-right { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; flex-wrap: nowrap; }
   .proj-task-search { flex: 1 1 auto; width: auto; min-width: 0; min-height: 40px; }
   .proj-task-search input { font-size: 16px; min-width: 0; }
@@ -271,7 +271,7 @@
 }
 
 /* Phase 3: time tracking on phones. */
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .v6-topbar .topbar-right .tb-timer .tb-timer-task { display: none; }
   .v6-topbar .topbar-right .tb-timer .tb-timer-open { padding: 0 4px 0 9px; }
   .v6-topbar .topbar-right .tb-timer, .v6-topbar .topbar-right .tb-timer button { height: 36px; }

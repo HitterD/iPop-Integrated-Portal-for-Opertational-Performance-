@@ -87,7 +87,7 @@ body:has(.outlook-composer.minimized) .tut-invite { bottom: 76px; }
 .tut-others a { font-size: 12.5px; display: flex; align-items: center; gap: 6px; padding: 7px 9px; border-radius: 10px; background: var(--tray); color: var(--ink-2); text-decoration: none; }
 .tut-others svg { width: 14px; height: 14px; } .tut-others .d svg { color: var(--accent); }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .tut-pbar { padding: 7px 14px; font-size: 12px; flex-wrap: wrap; gap: 6px 10px; } .tut-pbar .long { display: none; }
   .tut-invite { left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); width: auto; }
   body:has(.outlook-composer.minimized) .tut-invite { bottom: calc(var(--m-tabbar-h, 56px) + env(safe-area-inset-bottom) + 64px); }

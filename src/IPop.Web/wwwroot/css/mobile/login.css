@@ -1,6 +1,6 @@
 /* Mobile (<= 767px) overrides for login. Loaded after every desktop stylesheet. */
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   /* Login / ForceChangePassword / ResetPassword (EmptyLayout, .auth-wrap): fit 360px. */
   .auth-wrap { min-height: 100dvh; padding: 16px 12px calc(16px + env(safe-area-inset-bottom, 0px)); }
   .auth-wrap .auth-card { max-width: 100%; border-radius: 18px; }

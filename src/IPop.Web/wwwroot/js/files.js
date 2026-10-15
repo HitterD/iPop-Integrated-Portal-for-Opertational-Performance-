@@ -112,7 +112,7 @@ export function attach(root, dotnet) {
   root.addEventListener("drop", s.onDrop);
   root.addEventListener("change", s.onPick);
   // Touch layouts open on tap instead of select-then-double-click.
-  return window.matchMedia("(max-width: 767px), (pointer: coarse)").matches;
+  return !!window.ipop?.mobile?.isMobile() || window.matchMedia("(pointer: coarse)").matches;
 }
 
 export function detach() {

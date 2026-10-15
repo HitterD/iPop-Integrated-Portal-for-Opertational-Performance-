@@ -1,5 +1,5 @@
 /* Calls — phone layout (<= 767px). See .scratch/backup-mobile/CONTRACT.md. */
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   /* Page: one scrolling column; list and detail swap (root gets .m-detail when a row is opened). */
   .calls-v6 { height:100%; overflow:hidden; padding:0; gap:0; }
   .calls-v6 .calls-toolbar { flex-wrap:wrap; gap:8px; padding:10px 12px; }

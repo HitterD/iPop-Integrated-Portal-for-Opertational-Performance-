@@ -1,6 +1,6 @@
 /* Mobile (<= 767px) overrides for dashboard. Loaded after every desktop stylesheet. */
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   /* Single column, cards stacked, KPI tiles two per row. */
   .dash { padding: 14px 12px 20px; gap: 12px; min-width: 0; }
   .dash-hero { flex-direction: column; align-items: stretch; gap: 10px; }

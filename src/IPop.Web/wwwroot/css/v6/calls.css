@@ -440,7 +440,7 @@ html.callx-resizing, html.callx-resizing * { cursor:nwse-resize !important; }
   .callx-window[data-free], .callx-pill[data-free] { right:auto; bottom:auto; }
   .callx-pill[data-free] { justify-content:flex-start; }
 }
-@media (max-width:767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .callx-window[data-free], .callx-pill[data-free],
   body.m-hide-tabbar .callx-window[data-free], body.m-hide-tabbar .callx-pill[data-free] { right:auto; bottom:auto; }
   .callx-window[data-sized] .callx-grid { max-height:none; }
@@ -690,7 +690,7 @@ html.callx-resizing, html.callx-resizing * { cursor:nwse-resize !important; }
 /* Phone (v3 Task 10, mockup "1 · Scheduled list / Meeting detail"): list and detail are separate screens (Calls.razor
    .m-detail, mobile/calls.css); the detail opens under a "‹ Scheduled" back bar. */
 .sch-mnav { display:none; }
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .calls-v6.m-detail .calls-detail.sch-detail { padding:0 12px 40px; background:transparent; }
   .calls-v6 .calls-detail.sch-detail > .sch-mnav { display:flex; align-items:center; position:sticky; top:0; z-index:3; margin:0 -12px 6px; padding:4px 6px;
     background:color-mix(in srgb, var(--bg, var(--surface)) 88%, transparent); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); }
@@ -730,7 +730,7 @@ html.callx-resizing, html.callx-resizing * { cursor:nwse-resize !important; }
 
 /* Phone (v3 gaps): large title, full-width segmented Recents / Scheduled / Rooms, icon buttons, floating Schedule.
    (0,3,0)+ selectors: css/mobile/calls.css loads later with (0,2,0)/(0,3,0) toolbar rules. */
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   /* The page's own large title replaces the bar title (iOS large-title pattern); logo, search, bell stay. */
   .main:has(> .calls-v6) .v6-topbar .tb-title h1, body:has(.calls-v6:not(.m-detail)) .v6-topbar .tb-title h1 { visibility:hidden; }
   /* Mockup .pnav: icon row above the large title, right-aligned. */

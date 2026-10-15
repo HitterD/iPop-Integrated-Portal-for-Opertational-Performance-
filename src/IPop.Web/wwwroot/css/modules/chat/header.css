@@ -169,7 +169,7 @@
   height: 16px;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .conv-back {
     display: flex;
   }

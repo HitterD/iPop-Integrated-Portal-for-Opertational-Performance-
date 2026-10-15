@@ -2028,7 +2028,7 @@
 .conv-back, .room-pane-close, .empty-acts .mobile-only { display:none; }
 
 /* Chat mobile responsive */
-@media (max-width: 768px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .chat-area { grid-template-columns:1fr; }
   .room-pane { position:fixed;inset:0;z-index:60;width:100%;transform:translateX(-100%);
     transition:transform 0.28s var(--ease);border-right:none; }

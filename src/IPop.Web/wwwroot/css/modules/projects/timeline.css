@@ -92,5 +92,5 @@
 .gantt-dep-head { position: absolute; width: 0; height: 0; margin: -4px 0 0 -6px; border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-left: 6px solid var(--ink-3); opacity: .7; }
 .gantt-dep-head.blocking { border-left-color: #FF9F0A; opacity: 1; }
 .gantt-task-info .blocked-badge { margin-left: auto; }
-@media (max-width: 767px) { .gantt-rows { min-width: 750px; } .gantt-deps { left: 150px; } }
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) { .gantt-rows { min-width: 750px; } .gantt-deps { left: 150px; } }
 @media (forced-colors: active) { .gantt-deps path { stroke: CanvasText; } }

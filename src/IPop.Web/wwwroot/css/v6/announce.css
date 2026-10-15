@@ -138,7 +138,7 @@
   .adm-an-progress { flex-basis: 120px; }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .an-card { left: 0; right: 0; top: auto; bottom: 0; width: 100%; max-height: 94vh; transform: none; border-radius: 26px 26px 0 0; padding-bottom: env(safe-area-inset-bottom); animation: anSheet .5s var(--an-ease); }
   @keyframes anSheet { from { transform: translateY(100%); } }
   .an-head { padding: 30px 22px 18px; } .an-lede { font-size: 14.5px; }

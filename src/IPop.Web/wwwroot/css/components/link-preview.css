@@ -133,7 +133,7 @@ a.lp-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px;
 .lp-remove svg { width: 15px; height: 15px; }
 [data-theme="dark"] .lp-remove:hover { background: rgba(255, 255, 255, .08); }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .chat-area .msg .lp-slot { width: min(300px, 100%); }
   .lp-slot.lp-compose { margin: 0 10px 6px; }
 }

@@ -163,7 +163,7 @@
 .td-monthday { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); }
 .td-monthday input { width: 56px; height: 26px; padding: 0 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--ink); font: inherit; }
 .td-recur-next { flex-basis: 100%; font-size: 11px; color: var(--ink-3); }
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .td-dep-chip, .td-seg button, .td-weekdays button { min-height: 36px; }
   .td-weekdays button { width: 36px; }
   .td-dep-search, .td-monthday input { font-size: 16px; min-height: 36px; }

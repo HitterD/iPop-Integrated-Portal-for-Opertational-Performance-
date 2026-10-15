@@ -11,7 +11,7 @@
 .shell.collapsed .side-head .brand .txt { display:none; }
 
 .v6-topbar .tb-mark { display:none; }
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .v6-topbar .tb-mark { display:block; width:28px; height:28px; flex:none; margin-right:8px; }
 }
 

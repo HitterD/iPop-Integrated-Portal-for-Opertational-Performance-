@@ -159,7 +159,7 @@ button.td-group-head:hover { background: color-mix(in srgb, var(--fill) 50%, tra
 [data-theme="dark"] .td-group .task-evidence-section, [data-theme="dark"] .td-group-body textarea { background: #2c2c2e; }
 [data-theme="dark"] .td-status-seg .td-status-pill.on { background: #3a3a3c; }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .ph-btn .ph-lbl, .ph-members .ph-lbl { display: none; }
   .ph-btn { padding: 0 11px; }
   .td-group-body.td-properties { grid-template-columns: 1fr; gap: 4px; }

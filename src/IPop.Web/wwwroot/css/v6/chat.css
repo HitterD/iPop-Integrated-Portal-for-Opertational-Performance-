@@ -92,7 +92,7 @@
 .chat-area .composer .composer-left-actions .comp-btn:first-child { border: 1px solid var(--line); }
 
 @media (max-width: 1100px) { .chat-area { grid-template-columns: 290px minmax(0, 1fr); } }
-@media (max-width: 768px) { .chat-area { grid-template-columns: 1fr; } }
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) { .chat-area { grid-template-columns: 1fr; } }
 
 /* ---- New chat panel (WhatsApp Web "New chat"): takes over the conversation-list column ---- */
 /* The list stays mounted (scroll/state survive) but is hidden while the panel is open. */
@@ -240,8 +240,8 @@
 .empty-state.chat-empty .empty-acts button .lucide { width: 14px; height: 14px; color: var(--accent); }
 [data-theme="dark"] .empty-state.chat-empty .empty-acts button { color: var(--ink); border-color: var(--line); }
 [data-theme="dark"] .empty-state.chat-empty > .lucide { color: var(--ink-4); }
-@media (min-width: 769px) { .empty-state.chat-empty .empty-acts .mobile-only { display: none; } }
-@media (max-width: 768px) { .empty-state.chat-empty .empty-acts .mobile-only { display: inline-flex; } }
+@media (min-width: 768px) and (min-height: 501px), (min-width: 933px), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) { .empty-state.chat-empty .empty-acts .mobile-only { display: none; } }
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) { .empty-state.chat-empty .empty-acts .mobile-only { display: inline-flex; } }
 
 /* v6 conversation list, square person avatars and pinned announcement */
 .chat-area .room-section-label { display: flex; align-items: center; justify-content: space-between; font-weight: 600; letter-spacing: .05em; }
@@ -483,7 +483,7 @@
 [data-theme="dark"] .chat-area .cgd-search { background: #2C2C2E; }
 [data-theme="dark"] .chat-area .cgd-card { background: #2C2C2E; }
 @media (max-width: 1180px) { .chat-area.with-global-drawer { grid-template-columns: 300px minmax(0, 1fr) 330px; } }
-@media (max-width: 768px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .shell:has(.chat-area), .shell.collapsed:has(.chat-area) { grid-template-columns: minmax(0, 1fr); }
   .shell:has(.chat-area) .sidebar { position: fixed; transform: translateX(-100%); }
   .shell:has(.chat-area) .sidebar.open { transform: translateX(0); }
@@ -626,7 +626,7 @@
 .chat-area .mention-popup .mi .name { font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-area .mention-popup .mi .role { font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 [data-theme="dark"] .chat-area .composer-wrap .mention-popup { box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); }
-@media (max-width: 768px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .chat-area .composer-wrap .mention-popup { margin: 0 8px 6px; max-height: 40dvh; }
   .chat-area .mention-popup .mi { min-height: 44px; }
 }
@@ -656,8 +656,8 @@
 .empty-state.chat-empty .empty-acts button.ce-primary:hover { filter: brightness(1.06); }
 .empty-state.chat-empty .empty-acts button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 [data-theme="dark"] .empty-state.chat-empty .empty-acts button:not(.ce-primary) { background: color-mix(in srgb, var(--accent) 20%, transparent); }
-@media (min-width: 769px) { .empty-state.chat-empty .empty-acts .mobile-only { display: none; } }
-@media (max-width: 768px) { .empty-state.chat-empty .empty-acts .mobile-only { display: inline-flex; } }
+@media (min-width: 768px) and (min-height: 501px), (min-width: 933px), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) { .empty-state.chat-empty .empty-acts .mobile-only { display: none; } }
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) { .empty-state.chat-empty .empty-acts .mobile-only { display: inline-flex; } }
 
 /* ---- Hapus chat dialog ---- */
 .delete-room { display: flex; flex-direction: column; gap: 10px; min-width: min(420px, 80vw); }
@@ -712,7 +712,7 @@
 .msg .bubble.sticker-only { background: transparent !important; border: none !important; box-shadow: none !important; padding: 2px 0 !important; }
 .msg .bubble.sticker-only::before, .msg .bubble.sticker-only::after { display: none !important; }
 .msg:hover .bubble.sticker-only { filter: none; }
-@media (max-width: 768px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .msg .sticker-msg .sticker-img { width: 128px; height: 128px; }
 }
 

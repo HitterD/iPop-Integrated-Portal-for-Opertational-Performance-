@@ -5,11 +5,13 @@
 .m-tabbar, .m-sheet, .m-sheet-backdrop, .m-detail-bar { display: none; }
 .m-back { display: none; }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   :root {
     --m-tabbar-h: 56px;
     --m-safe-b: env(safe-area-inset-bottom, 0px);
     --m-topbar-h: 52px;
+    /* Notch / status bar in standalone (installed) mode; 0 in a normal browser tab. */
+    --m-safe-t: env(safe-area-inset-top, 0px);
   }
 
   /* ---------- Frame: no sidebar, single column, never wider than the viewport ---------- */
@@ -26,8 +28,8 @@
 
   /* ---------- Compact topbar ---------- */
   .topbar.v6-topbar {
-    height: var(--m-topbar-h); gap: 2px;
-    padding: 0 6px 0 14px;
+    height: calc(var(--m-topbar-h) + var(--m-safe-t)); gap: 2px; box-sizing: border-box;
+    padding: var(--m-safe-t) max(6px, env(safe-area-inset-right, 0px)) 0 max(14px, env(safe-area-inset-left, 0px));
   }
   .v6-topbar .tb-title { flex: 1 1 auto; min-width: 0; }
   .v6-topbar .tb-title h1 { font-size: 17px; letter-spacing: -0.3px; }
@@ -50,25 +52,26 @@
   .v6-topbar .presence-toggle .status-lbl, .v6-topbar .presence-toggle .chev { display: none; }
   .v6-topbar .presence-toggle .sdot { width: 10px; height: 10px; }
   .v6-topbar .status-menu {
-    position: fixed; top: calc(var(--m-topbar-h) + 4px); right: 8px; left: auto;
+    position: fixed; top: calc(var(--m-topbar-h) + var(--m-safe-t) + 4px); right: 8px; left: auto;
     width: min(300px, calc(100vw - 16px));
   }
   /* topbar.css sizes these with !important at (0,1,0); (0,2,0) + !important wins. */
-  .v6-topbar .theme-btn, .v6-topbar .bell-btn { width: 40px !important; height: 40px !important; }
+  .v6-topbar .theme-btn, .v6-topbar .bell-btn,
+  .v6-topbar .topbar-right .theme-btn, .v6-topbar .topbar-right .bell-btn { width: 40px !important; height: 40px !important; }
   .v6-topbar .theme-btn .lucide, .v6-topbar .bell-btn .lucide { width: 19px; height: 19px; }
   .v6-topbar .bell-btn .badge { top: 1px; right: 0; }
 
   /* Bell tray -> full-width sheet under the header, bounded above the tab bar. */
   .v6-topbar .topbar-right .notif-pop {
     position: fixed !important;
-    top: var(--m-topbar-h) !important; left: 0 !important; right: 0 !important;
+    top: calc(var(--m-topbar-h) + var(--m-safe-t)) !important; left: 0 !important; right: 0 !important;
     width: auto !important; max-width: none !important;
   }
   .v6-topbar .topbar-right .apple-notif-pop-card {
     border-radius: 0 0 16px 16px !important; border-left: 0 !important; border-right: 0 !important;
   }
   .v6-topbar .topbar-right .apple-notif-body {
-    max-height: calc(100dvh - var(--m-topbar-h) - var(--m-tabbar-h) - var(--m-safe-b) - 120px) !important;
+    max-height: calc(100dvh - var(--m-topbar-h) - var(--m-safe-t) - var(--m-tabbar-h) - var(--m-safe-b) - 120px) !important;
   }
   .v6-topbar .topbar-right .apple-notif-row { min-height: 56px; }
   .v6-topbar .topbar-right .apple-notif-readall-btn,
@@ -199,5 +202,5 @@
   body.m-hide-tabbar .callx-pill, body.m-hide-tabbar .callx-toast { bottom: calc(var(--m-safe-b) + 10px); }
 
   /* ---------- Toasts / banners: full width under the compact header ---------- */
-  .float-stack { top: calc(var(--m-topbar-h) + 6px); left: 8px; right: 8px; width: auto; max-width: none; }
+  .float-stack { top: calc(var(--m-topbar-h) + var(--m-safe-t) + 6px); left: 8px; right: 8px; width: auto; max-width: none; }
 }

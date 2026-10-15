@@ -408,7 +408,11 @@ a { color: var(--accent-ink); }
 .push-banner button.p { background: var(--accent); border-color: transparent; color: #fff; }
 .push-banner.load-fail { background: var(--warn-soft, color-mix(in srgb, #ff9500 12%, var(--surface))); }
 .push-banner.load-fail > .lucide, .push-banner.load-fail > svg { color: var(--warn, #c93400); }
-@media (max-width: 767px) {
-  .push-banner { padding: 8px 14px; flex-wrap: wrap; gap: 6px 10px; }
-  .push-banner .long { display: none; }
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  /* One compact row (<= 52 px): short title that may ellipsize, two 44 px buttons. */
+  .push-banner { padding: 4px 6px 4px 14px; flex-wrap: nowrap; gap: 8px; min-height: 0; }
+  .push-banner .long, .push-banner .sp { display: none; }
+  .push-banner .pb-t, .push-banner > span:not(.sp) { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .push-banner button { flex: none; height: 44px; padding: 0 12px; font-size: 13px; }
+  .push-banner button:not(.p) { border-color: transparent; background: transparent; }
 }

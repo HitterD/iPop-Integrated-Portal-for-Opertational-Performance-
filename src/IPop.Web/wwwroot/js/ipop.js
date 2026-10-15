@@ -789,7 +789,7 @@ window.ipop = {
     s.margin = "0";
     s.maxHeight = "";
     s.overflowY = "";
-    const sheet = window.matchMedia("(max-width: 767px)").matches
+    const sheet = !!(window.ipop.mobile && window.ipop.mobile.isMobile())
       && pop.matches(".kc-menu, .plist-menu, .quick-assign-popover");
     if (sheet || !trigger || !trigger.isConnected) {
       // Mobile bottom sheet: the stylesheet owns left/right/bottom.

@@ -243,7 +243,7 @@
         {
             <div class="push-banner" role="status">
                 <i data-lucide="bell-ring"></i>
-                <span><b>Turn on Windows notifications</b><span class="long"> — messages, calls, and iPop notifications still appear when the tab is closed</span></span>
+                <span class="pb-t"><b>@PushBannerTitle(isPhone, isWindows)</b><span class="long"> — messages, calls, and iPop notifications still appear when the tab is closed</span></span>
                 <span class="sp"></span>
                 <button type="button" class="p" @onclick="EnableDesktopAlerts">Turn on</button>
                 <button type="button" @onclick="Push.DismissBannerAsync">Later</button>
@@ -352,7 +352,12 @@
 
 @code {
     private bool collapsed, notifOpen, statusMenuOpen, meMenuOpen;
+    // Desktop Windows keeps the original banner wording; phones and other systems get a neutral one.
+    private bool isPhone, isWindows = true, tablet;
     private DotNetObjectReference<MainLayout>? selfRef;
+
+    public static string PushBannerTitle(bool phone, bool windows)
+        => !phone && windows ? "Turn on Windows notifications" : "Turn on notifications";
     private ErrorBoundary? errorBoundary;
 
     private bool IsProjectsPage
@@ -568,7 +573,7 @@
     private void SetCollapsed(bool value)
     {
         collapsed = value;
-        _ = Auth.SetUserSettingAsync("sidebar-collapsed", value ? "1" : "0");
+        if (!tablet) _ = Auth.SetUserSettingAsync("sidebar-collapsed", value ? "1" : "0");
     }
 
     private async Task ToggleNotif()
@@ -712,6 +717,8 @@
         Nav.NavigateTo("/login", forceLoad: true, replace: true);
     }
 
+    private void OnOverlayClosedByBack() => _ = InvokeAsync(StateHasChanged);
+
     [JSInvokable]
     public async Task OnEscape()
     {
@@ -761,6 +768,10 @@
         await Auth.LoadMeAsync();
         // Per-account (keyed by NIK), so it can only be read once Me is known.
         collapsed = await Auth.GetUserSettingAsync("sidebar-collapsed") == "1";
+        // Tablet (768–1024, compact desktop): start as the icon rail so content keeps the width.
+        // The desk choice is untouched; a toggle here only lasts for this tab (see SetCollapsed).
+        try { tablet = await JS.InvokeAsync<bool>("ipop.mobile.isTablet"); } catch { tablet = false; }
+        if (tablet) collapsed = true;
         // Another tab in a call keeps the session: this one shows the yield prompt and the
         // hub connects below all no-op (Auth.IsSuspended) until "Tetap gunakan di sini".
         await SessionLock.StartAsync();
@@ -837,12 +848,17 @@
 
             selfRef = DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("ipop.shortcuts", selfRef);
+            // Phone Back closes the top overlay (OverlayStack); Escape already does on every device.
+            Overlays.AttachBrowser(JS);
+            Overlays.ClosedByBack += OnOverlayClosedByBack;
             IsDark = await JS.InvokeAsync<string>("ipop.theme") == "dark";
             // Label follows the OS (both Ctrl+K and ⌘K always open the palette).
             try
             {
                 var mac = await JS.InvokeAsync<bool>("eval", "/mac|iphone|ipad/i.test(navigator.userAgentData?.platform || navigator.platform || '')");
                 SearchShortcut = mac ? "⌘K" : "Ctrl K";
+                isWindows = await JS.InvokeAsync<bool>("eval", "/win/i.test(navigator.userAgentData?.platform || navigator.platform || '')");
+                isPhone = await JS.InvokeAsync<bool>("ipop.mobile.isMobile");
             }
             catch { }
             StateHasChanged();
@@ -854,6 +870,7 @@
     {
         selfRef?.Dispose();
         moreReg?.Dispose();
+        Overlays.ClosedByBack -= OnOverlayClosedByBack;
         Auth.PresenceChanged -= OnPresenceChanged;
         Auth.ConnectionStateChanged -= OnConnectionStateChanged;
         Auth.SessionEnded -= OnSessionEnded;

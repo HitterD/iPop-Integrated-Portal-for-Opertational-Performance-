@@ -14,7 +14,7 @@
 .nb-m-admin    { --m: #475569; }
 .nb-m-system   { --m: #6b7280; }
 
-@media (min-width: 768px) { .float-stack { width: 372px; } }
+@media (min-width: 768px) and (min-height: 501px), (min-width: 933px), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) { .float-stack { width: 372px; } }
 .apple-banner.nb + .apple-banner.nb { margin-top: 10px; }
 
 .apple-banner.nb {
@@ -151,7 +151,7 @@
 }
 @keyframes nb-timer { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .apple-banner.nb { padding: 12px 12px 13px 12px; }
 }
 
