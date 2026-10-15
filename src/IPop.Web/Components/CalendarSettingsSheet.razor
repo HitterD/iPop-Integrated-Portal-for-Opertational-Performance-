@@ -12,7 +12,8 @@
 @if (Open)
 {
     <div class="cs-scrim" @onclick="CloseAsync"></div>
-    <aside class="cs-sheet" role="dialog" aria-modal="true" aria-label="Calendar settings" @onkeydown="OnKey">
+    <OverlayHook OnClose="EscapeOne" />
+    <aside class="cs-sheet" role="dialog" aria-modal="true" aria-label="Calendar settings">
         <header class="cs-head">
             <h2><i data-lucide="settings"></i> Calendar settings</h2>
             <button type="button" class="cal-icon" title="Close" aria-label="Close" @onclick="CloseAsync"><i data-lucide="x"></i></button>
@@ -422,9 +423,9 @@
         return $"Request failed ({(int)res.StatusCode}).";
     }
 
-    private void OnKey(KeyboardEventArgs e)
+    /// Escape / phone Back: the inner layer first, then the sheet.
+    private void EscapeOne()
     {
-        if (e.Key != "Escape") return;
         if (ladderFor is not null) ladderFor = null;
         else if (adding) adding = false;
         else _ = CloseAsync();

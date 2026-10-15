@@ -1,5 +1,5 @@
 /* Administration — phone layout (<= 767px). See .scratch/backup-mobile/CONTRACT.md. */
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .admin-v6 { padding:10px 12px 16px; overflow-x:hidden; }
 
   /* Section nav: full-width horizontal scroll row. */
@@ -10,9 +10,14 @@
   .admin-v6.adm-shell { display:block; }
   .adm-side { position:static; flex-direction:row; gap:6px; margin:0 0 12px; padding:0; border:0; background:transparent; box-shadow:none; overflow-x:auto; scrollbar-width:none; }
   .adm-side::-webkit-scrollbar { display:none; }
-  .adm-side-group { flex:none; }
+  /* One scrolling chip row: the groups lay their items out in the row too (they stayed a column, so
+     sections 4–7 showed as clipped icons under the first three). */
+  .adm-side { flex-wrap:nowrap; align-items:center; overscroll-behavior-x:contain; scroll-snap-type:x proximity; padding-bottom:2px; }
+  .adm-side-group { flex:none; flex-direction:row; gap:6px; }
+  .adm-side-item { flex:none; white-space:nowrap; scroll-snap-align:start; min-height:44px; }
+  .adm-side-txt b { white-space:nowrap; }
   .adm-side-label, .adm-side-txt small { display:none; }
-  .adm-side-item { height:38px; box-sizing:border-box; padding:0 12px 0 6px; gap:8px; border-radius:19px; background:var(--fill); }
+  .adm-side-item { height:44px; box-sizing:border-box; padding:0 12px 0 6px; gap:8px; border-radius:19px; background:var(--fill); }
   .adm-side-ico { width:26px; height:26px; border-radius:13px; }
   .adm-main-head { display:none; }
   .adm-seg.adm-view-seg { display:flex; width:100%; box-sizing:border-box; }

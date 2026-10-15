@@ -19,7 +19,14 @@
 <PageTitle>Calendar — IPop</PageTitle>
 
 <div class="cal-page">
-    <aside class="cal-rail">
+    @if (railOpen) { <OverlayHook OnClose="() => railOpen = false" /><div class="cal-rail-scrim" @onclick="() => railOpen = false"></div> }
+    <aside class="cal-rail @(railOpen ? "m-open" : "")">
+        @* Phone only (mobile/calendar.css): one row with New event + this; the rest opens as a sheet. *@
+        <div class="cal-m-bar">
+            <button class="cal-create" disabled="@(!CanCreate)" @onclick="() => OpenCreate(DefaultStart())"><i data-lucide="plus"></i> New event</button>
+            <button type="button" class="cal-btn cal-m-more" aria-expanded="@(railOpen ? "true" : "false")" @onclick="() => railOpen = !railOpen"><i data-lucide="layers"></i> Calendars</button>
+        </div>
+        <div class="cal-m-sheet-head"><strong>Calendars</strong><button type="button" class="cal-icon" aria-label="Close calendars" @onclick="() => railOpen = false"><i data-lucide="x"></i></button></div>
         <div class="cal-rail-strip">
         <button class="cal-create" disabled="@(!CanCreate)" title="@(CanCreate ? null : "You can view this calendar but not change it")" @onclick="() => OpenCreate(DefaultStart())"><i data-lucide="plus"></i> New event</button>
 
@@ -392,8 +399,9 @@
 @* ---- Event drawer: view / create / edit ---- *@
 @if (drawerOpen || drawerClosing)
 {
+    @if (drawerOpen) { <OverlayHook OnClose="CloseDrawer" /> }
     <div class="cal-drawer-backdrop @(drawerOpen ? "" : "closing")" @onclick="CloseDrawer"></div>
-    <aside class="cal-drawer @(drawerOpen ? "" : "closing") @(editing ? "cal-sheet" : "") @(ShowsMeetingDetail ? "cal-mdrawer" : "")" role="dialog" aria-modal="true" aria-label="@(editing ? (form.Id is null ? "New event" : "Edit event") : "Event")" @onkeydown="DrawerKey">
+    <aside class="cal-drawer @(drawerOpen ? "" : "closing") @(editing ? "cal-sheet" : "") @(ShowsMeetingDetail ? "cal-mdrawer" : "")" role="dialog" aria-modal="true" aria-label="@(editing ? (form.Id is null ? "New event" : "Edit event") : "Event")">
         @if (!ShowsMeetingDetail)
         {
         <header class="cal-drawer-head">

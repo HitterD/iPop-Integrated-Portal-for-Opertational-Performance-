@@ -293,7 +293,7 @@ public partial class Calendar
         if (PersonMode && mobilePersonAddress != PersonNik)
         {
             mobilePersonAddress = PersonNik;
-            if (await JS.InvokeAsync<bool>("eval", "window.matchMedia('(max-width: 768px)').matches") && view != "day")
+            if (await JS.InvokeAsync<bool>("ipop.mobile.isMobile") && view != "day")
             {
                 // Person calendars start in Day on phones without overwriting my saved preference.
                 view = "day"; scrollPending = true;
@@ -710,11 +710,6 @@ public partial class Calendar
         StateHasChanged();
         await Task.Delay(600);
         if (justSavedId == id) { justSavedId = null; StateHasChanged(); }
-    }
-
-    private void DrawerKey(KeyboardEventArgs e)
-    {
-        if (e.Key == "Escape") CloseDrawer();
     }
 
     private async Task RsvpAsync(string response, string? onBehalfOf = null)

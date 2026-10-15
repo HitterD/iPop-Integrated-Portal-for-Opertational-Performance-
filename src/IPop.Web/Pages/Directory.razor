@@ -330,6 +330,10 @@
                                                         @onclick="() => ToggleFavorite(p.Nik)" @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
                                                     <i data-lucide="star"></i>
                                                 </button>
+                                                @* Phone only: calendar, invite and favourite live in the contact card. *@
+                                                <button type="button" class="ra ra-more" title="More" aria-label="More for @p.Name" @onclick="() => selected = p" @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
+                                                    <i data-lucide="more-horizontal"></i>
+                                                </button>
                                             </div>
                                         </td>
                                     </tr>

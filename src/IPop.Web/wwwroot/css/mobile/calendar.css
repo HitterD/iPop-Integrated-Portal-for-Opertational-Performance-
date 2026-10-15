@@ -1,6 +1,6 @@
 /* Mobile (<= 767px) overrides for calendar. Loaded after every desktop stylesheet. */
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   /* ---------- Frame: page fills .main; the rail becomes one scrolling strip; the view gets the rest ---------- */
   .cal-page {
     display: flex; flex-direction: column; gap: 8px;
@@ -134,7 +134,7 @@
   @keyframes cal-m-sheet-out { to { transform: translateY(100%); } }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .cal-rail { flex-direction: column; align-items: stretch; overflow: visible; }
   .cal-rail-strip { display: flex; align-items: center; gap: 8px; min-width: 0; width: 100%; overflow-x: auto; flex: none; }
   .cal-others { display: grid; width: 100%; min-width: 0; }
@@ -144,4 +144,30 @@
   .cal-others .cal-other { width: 100%; }
   .cal-add-colleagues { height: 40px; }
   .cal-colleague-result .cal-btn { min-height: 40px; }
+}
+
+/* ---------- Phone: the rail is a "New event · Calendars" row; everything else opens as a sheet ----------
+   (legend, sources, My calendar, Add calendar and ⋯ used to stack above the grid and leave it ~108 px). */
+.cal-m-bar, .cal-m-sheet-head, .cal-rail-scrim { display: none; }
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .cal-rail { overflow: visible; }
+  .cal-m-bar { display: flex; gap: 8px; align-items: center; width: 100%; }
+  .cal-m-bar .cal-create { flex: 1 1 auto; height: 44px; justify-content: center; }
+  .cal-m-bar .cal-m-more { flex: none; height: 44px; padding: 0 14px; gap: 6px; }
+  .cal-rail:not(.m-open) > :not(.cal-m-bar) { display: none !important; }
+  .cal-rail.m-open {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 130; max-height: 82dvh; overflow-y: auto; overscroll-behavior: contain;
+    flex-direction: column; align-items: stretch; gap: 12px; padding: 12px 14px calc(14px + var(--m-safe-b));
+    background: var(--surface); border-radius: 18px 18px 0 0; box-shadow: 0 -12px 40px rgba(0, 0, 0, .22);
+    animation: cal-m-sheet .24s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .cal-rail.m-open > .cal-m-bar { display: none; }
+  .cal-rail.m-open .cal-m-sheet-head { display: flex; align-items: center; justify-content: space-between; }
+  .cal-rail.m-open .cal-m-sheet-head strong { font-size: 17px; }
+  .cal-rail.m-open .cal-rail-strip { flex-direction: column; align-items: stretch; overflow: visible; }
+  .cal-rail.m-open .cal-rail-strip > .cal-create { display: none; }
+  .cal-rail.m-open .cal-sources { flex-wrap: wrap; }
+  .cal-rail.m-open .cal-source { min-height: 40px; }
+  .cal-rail.m-open .cal-rail-title { display: block; }
+  .cal-rail-scrim { display: block; position: fixed; inset: 0; z-index: 129; background: rgba(0, 0, 0, .32); }
 }

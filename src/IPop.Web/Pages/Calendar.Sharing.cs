@@ -30,6 +30,8 @@ public partial class Calendar
     private List<OtherCalendar> others = [];
     private List<FeedItem> otherItems = [];
     private bool sideBySide, listMenu;
+    /// Phone: legend, sources and Calendars sit in a sheet behind the "Calendars" button so the grid gets the height.
+    private bool railOpen;
     private string? otherMenu;
     private CancellationTokenSource? peopleCts;
 
