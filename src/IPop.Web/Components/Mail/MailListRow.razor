@@ -19,7 +19,7 @@
         <div class="mlr-line mlr-l1">
             @if (Item.IsPinned) { <span class="mlr-pin" title="Pinned to top"><i data-lucide="pin"></i></span> }
             @if (Item.Importance == "high") { <span class="mlr-imp" title="High importance"><i data-lucide="alert-circle"></i></span> }
-            <span class="mlr-from">@(Highlight is null ? Item.SenderName : Highlight(Item.SenderName))</span>
+            <span class="mlr-from">@Text(MailReceiptView.TitleCase(Item.SenderName))</span>
             @if (Item.ThreadCount > 1) { <span class="mlr-cnt">@Item.ThreadCount</span> }
             <span class="mlr-meta">
                 @if (Item.IsMuted) { <span title="Thread muted"><i data-lucide="bell-off"></i></span> }

@@ -90,7 +90,8 @@ public static class MailAddressing
         var plan = ForReply(d, myNik, all);
         static string Names(List<MemberSearchRow> rows, int max)
             => string.Join(", ", rows.Take(max).Select(r => MailReceiptView.TitleCase(r.Name))) + (rows.Count > max ? $" +{rows.Count - max}" : "");
-        if (plan.To.Count == 0) return MailReceiptView.TitleCase(d.SenderName);
+        if (plan.To.Count == 0)
+            return d.SenderNik.Equals(myNik ?? "", StringComparison.OrdinalIgnoreCase) ? "no one yet (no other recipients)" : MailReceiptView.TitleCase(d.SenderName);
         var to = Names(plan.To, 2);
         return plan.Cc.Count == 0 ? to : $"{to} · Cc {Names(plan.Cc, 1)}";
     }

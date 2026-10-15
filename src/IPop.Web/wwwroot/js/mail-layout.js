@@ -72,7 +72,8 @@
 
   // ───────────────────────── browser ─────────────────────────
   const store = () => window.ipopUserStore;
-  const nik = () => store() && store().user;
+  let boundNik = null;
+  const nik = () => boundNik || (store() && store().user) || null;
   let st = null;   // { root, surf, panes, eff, ro, drag, off: [] }
 
   function apply() {
@@ -195,8 +196,10 @@
     scrollTimers.set(t, setTimeout(() => t.removeAttribute('data-mlx-scrolling'), 900));
   }
 
-  function bind(rootSelector) {
+  /// nik: the signed-in account (Blazor passes it; ipopUserStore.user may not be set yet on the first render).
+  function bind(rootSelector, who) {
     unbind();
+    boundNik = who || null;
     const root = typeof rootSelector === 'string' ? document.querySelector(rootSelector) : rootSelector;
     const surf = root && root.querySelector('[data-mlx-surf]');
     if (!surf) return false;

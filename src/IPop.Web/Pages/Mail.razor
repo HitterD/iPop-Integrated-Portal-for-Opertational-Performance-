@@ -932,7 +932,8 @@
             await JS.InvokeVoidAsync("ipop.icons");
             _selfRef = DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("ipop.mailBindShortcuts", _selfRef);
-            try { await JS.InvokeAsync<bool>("ipopMailLayout.bind", ".mail-page"); } catch (JSException) { }
+            var me = Auth.Me ?? await Auth.LoadMeAsync();
+            try { await JS.InvokeAsync<bool>("ipopMailLayout.bind", ".mail-page", me?.Nik); } catch (JSException) { }
             density = MailListDensity.Parse(await Auth.GetUserSettingAsync(MailListDensity.Key));
             StateHasChanged();
             // Read receipts: the tracker watches [data-mail-seen] bodies in the reading pane (spec 2026-10-14 §3).

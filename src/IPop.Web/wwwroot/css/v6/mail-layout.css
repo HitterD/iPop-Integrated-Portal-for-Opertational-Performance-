@@ -215,6 +215,9 @@ body.mlx-resizing, body.mlx-resizing * { cursor: col-resize !important; user-sel
 .mlx .mlx-empty-list b { font-size: 14px; color: var(--ink); }
 .mlx .mlx-lfoot { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: 11px; color: var(--ink-3); border-top: 1px solid var(--mlx-sep); }
 .mlx .mlx-lfoot .mlx-synced { margin-left: auto; }
+.mlx .mlx-lfoot > * { white-space: nowrap; }
+.mlx .mlx-lfoot > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@container mlist (max-width: 330px) { .mlx .mlx-lfoot .mlx-synced { display: none; } }
 .mlx .mlx-more { border: 0; background: transparent; color: var(--mlx-green); font-size: 11.5px; font-weight: 650; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
 .mlx .mlx-more:hover { background: var(--mlx-fill); }
 .mlx .mlx-fab { display: none; }
@@ -392,9 +395,13 @@ mark.mail-hl { background: #ffe58f; color: inherit; border-radius: 3px; padding:
 .mlx .thr-ib:hover, .mlx .thr-ib.on { color: var(--ink); background: var(--mlx-fill); }
 .mlx .thr-ib .lucide { width: 15px; height: 15px; }
 .mlx .thr-rl { display: flex; align-items: center; gap: 4px; min-width: 0; min-height: 20px; margin-top: 1px; font-size: 12.5px; color: var(--ink-3); }
-.mlx .thr-rcp { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; }
+.mlx .thr-rcp { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; display: flex; align-items: center; }
+/* names truncate; the +N count and the separators never do */
+.mlx .thr-part { min-width: 2.5em; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; }
+.mlx .thr-rcp > .thr-dot { flex: none; }
+
 .mlx .thr-dot { margin: 0 5px; color: var(--ink-4); }
-.mlx .thr-rl .mrh-trig { flex: none; display: inline-flex; margin: 0; position: static; }
+.mlx .thr-rl .mrh-trig { flex: none; display: inline-flex; margin: 0 0 0 4px; position: static; }
 .mlx .thr-rl button.mrh-more.mrh-tmore { height: 20px; padding: 0 6px; font-size: 11.5px; }
 .mlx .thr-dtg { flex: none; display: inline-flex; align-items: center; gap: 1px; height: 20px; padding: 0 4px 0 6px; border: 0; border-radius: 6px; background: transparent; font-size: 12px; font-weight: 600; color: var(--ink-3); margin-left: 2px; cursor: pointer; }
 .mlx .thr-dtg:hover { background: var(--mlx-fill-2); color: var(--ink-2); }

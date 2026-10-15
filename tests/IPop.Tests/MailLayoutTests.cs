@@ -332,6 +332,16 @@ public class MailLayoutTests
         Assert.Empty(mass.Cc);
     }
 
+    [Fact]
+    public void Reply_label_never_names_me_when_my_own_mail_has_nobody_else_on_it()
+    {
+        var mine = Mail(Me, "Bagastyo", DateTime.UtcNow, R(Me, "Bagastyo", "to"));
+        Assert.Equal("no one yet (no other recipients)", MailAddressing.ReplyToLabel(mine, Me, all: false));
+        var theirs = Mail("S1", "JOHANES HALIM", DateTime.UtcNow, R(Me, "Bagastyo", "to"), R("C1", "Cici", "cc"));
+        Assert.Equal("Johanes Halim", MailAddressing.ReplyToLabel(theirs, Me, all: false));
+        Assert.Equal("Johanes Halim · Cc Cici", MailAddressing.ReplyToLabel(theirs, Me, all: true));
+    }
+
     // ───────────── list rows: density + label chips ─────────────
 
     private static MailSummary Row(params string[] labels) => new(Guid.NewGuid(), Guid.NewGuid(), "Human Capital", "HC1",

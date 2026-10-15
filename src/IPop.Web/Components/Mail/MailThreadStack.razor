@@ -244,10 +244,12 @@
         }
         totalCount = Math.Max(totalCount, stack.Count);
 
-        // Newest on top, always open. The opened mail, when older, opens in place and is brought into view.
+        // Newest on top, always open. A conversation opened from the list (its root) reads from the newest; a link to a
+        // specific older reply (notification, search) opens that one in place and brings it into view.
         var newest = stack[0];
         if (Body(newest.Id) is null) _ = FetchBodyAsync(newest.Id);
-        if (!expandLatest && newest.Id != Detail.Id && stack.Any(x => x.Id == Detail.Id))
+        var openedIsRoot = Detail.ThreadRootId is null && Detail.InReplyToId is null;
+        if (!expandLatest && !openedIsRoot && newest.Id != Detail.Id && stack.Any(x => x.Id == Detail.Id))
         {
             expanded.Add(Detail.Id);
             scrollTo = Detail.Id;
