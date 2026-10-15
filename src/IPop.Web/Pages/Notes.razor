@@ -17,20 +17,21 @@
 
 <div class="notes-page @(sideOpen ? "side-open" : "")">
     @* ── Sidebar ──────────────────────────────────────────────────────────── *@
+    @if (sideOpen) { <OverlayHook OnClose="() => sideOpen = false" /><div class="nt-side-scrim" @onclick="() => sideOpen = false"></div> }
     <aside class="nt-side" aria-label="Notes" @ref="sideRef">
         <div class="nt-x-drop" aria-hidden="true"><div><span class="ic"><i data-lucide="file-up"></i></span><b>Drop to import</b><small>Notion export, Markdown or HTML</small></div></div>
         <div class="nt-side-head">
             <h1>Notes</h1>
-            <button type="button" class="nt-icon-btn nt-mobile-only" title="Close" @onclick="() => sideOpen = false"><i data-lucide="x"></i></button>
+            <button type="button" class="nt-icon-btn nt-mobile-only" title="Close" aria-label="Close" @onclick="() => sideOpen = false"><i data-lucide="x"></i></button>
         </div>
         <label class="nt-search">
             <i data-lucide="search" class="sm"></i>
             <input @ref="searchRef" placeholder="Search notes" value="@searchQ" @oninput="OnSearchInput" @onkeydown="OnSearchKey" aria-label="Search notes" />
-            @if (!string.IsNullOrEmpty(searchQ)) { <button type="button" class="nt-icon-btn" style="width:20px;height:20px" title="Clear" @onclick="ClearSearch"><i data-lucide="x" class="sm"></i></button> }
+            @if (!string.IsNullOrEmpty(searchQ)) { <button type="button" class="nt-icon-btn" style="width:20px;height:20px" title="Clear" aria-label="Clear" @onclick="ClearSearch"><i data-lucide="x" class="sm"></i></button> }
         </label>
         <div class="nt-new">
             <button type="button" class="nt-new-main" title="New page (Alt N)" disabled="@creating" @onclick="() => CreateBlank(null)"><i data-lucide="plus" class="sm"></i>New page</button>
-            <button type="button" class="nt-new-more" title="New from a template" aria-haspopup="menu" @onclick="OpenNewMenu"><i data-lucide="chevron-down" class="sm"></i></button>
+            <button type="button" class="nt-new-more" title="New from a template" aria-label="New from a template" aria-haspopup="menu" @onclick="OpenNewMenu"><i data-lucide="chevron-down" class="sm"></i></button>
         </div>
 
         <div class="nt-side-scroll">
@@ -67,7 +68,7 @@
                         <span class="t">Start here</span>
                         <span class="pill @(guide.TodoTotal > 0 && guide.TodoDone == guide.TodoTotal ? "done" : "")">@guide.TodoDone/@guide.TodoTotal</span>
                         <span class="actions">
-                            <span title="More" @onclick="e => OpenRowMenu(guide, e)" @onclick:stopPropagation><i data-lucide="ellipsis"></i></span>
+                            <span role="button" tabindex="-1" title="More" aria-label="Page options" @onclick="e => OpenRowMenu(guide, e)" @onclick:stopPropagation><i data-lucide="ellipsis"></i></span>
                         </span>
                     </div>
                 }
@@ -85,7 +86,7 @@
                                 <span class="emo">@(p.Emoji ?? "📄")</span><span class="t">@DisplayTitle(p.Title)</span>
                                 <span class="meta">@Ago(p.UpdatedAt)</span>
                                 <span class="actions">
-                                    <span title="More" @onclick="e => OpenRowMenu(p, e)" @onclick:stopPropagation><i data-lucide="ellipsis"></i></span>
+                                    <span role="button" tabindex="-1" title="More" aria-label="Page options" @onclick="e => OpenRowMenu(p, e)" @onclick:stopPropagation><i data-lucide="ellipsis"></i></span>
                                 </span>
                             </div>
                         }
@@ -130,7 +131,7 @@
     @* ── Document ─────────────────────────────────────────────────────────── *@
     <main class="nt-doc">
         <div class="nt-doc-top">
-            <button type="button" class="nt-icon-btn nt-mobile-only" title="Notes list" @onclick="() => sideOpen = true"><i data-lucide="panel-left"></i></button>
+            <button type="button" class="nt-icon-btn nt-mobile-only" title="Notes list" aria-label="Notes list" @onclick="() => sideOpen = true"><i data-lucide="panel-left"></i></button>
             @if (view == View.Page && note is not null)
             {
                 <nav class="nt-crumbs" aria-label="Breadcrumb">
@@ -161,13 +162,13 @@
                 {
                     <button type="button" class="nt-btn ghost hide-sm" @onclick="() => pop = Pop.Style"><i data-lucide="palette" class="sm"></i>Style</button>
                 }
-                <button type="button" class="nt-icon-btn @(commentsOpen ? "on" : "")" title="Comments" @onclick="ToggleComments"><i data-lucide="message-square"></i></button>
-                <button type="button" class="nt-icon-btn fav @(note.IsFavorite ? "on" : "")" title="@(note.IsFavorite ? "Remove from favorites" : "Add to favorites")" @onclick="ToggleFavorite"><i data-lucide="star"></i></button>
+                <button type="button" class="nt-icon-btn @(commentsOpen ? "on" : "")" title="Comments" aria-label="Comments" @onclick="ToggleComments"><i data-lucide="message-square"></i></button>
+                <button type="button" class="nt-icon-btn fav @(note.IsFavorite ? "on" : "")" title="@(note.IsFavorite ? "Remove from favorites" : "Add to favorites")" aria-label="@(note.IsFavorite ? "Remove from favorites" : "Add to favorites")" @onclick="ToggleFavorite"><i data-lucide="star"></i></button>
                 @if (IsOwner)
                 {
                     <button type="button" class="nt-btn primary" @onclick="OpenShare"><i data-lucide="share" class="sm"></i>Share</button>
                 }
-                <button type="button" class="nt-icon-btn" title="More" @onclick="() => pop = Pop.More"><i data-lucide="ellipsis"></i></button>
+                <button type="button" class="nt-icon-btn" title="More" aria-label="More" @onclick="() => pop = Pop.More"><i data-lucide="ellipsis"></i></button>
             }
             else
             {
@@ -354,6 +355,7 @@
     </main>
 
     @* ── Comments ─────────────────────────────────────────────────────────── *@
+    @if (commentsOpen && view == View.Page) { <OverlayHook OnClose="() => commentsOpen = false" /> }
     <aside class="nt-comments @(commentsOpen && view == View.Page ? "open" : "")" aria-label="Comments">
         <div class="nt-cp-head">
             <h2>Comments</h2>
@@ -361,7 +363,7 @@
                 <button type="button" class="@(showResolved ? "" : "on")" @onclick="() => showResolved = false">Open</button>
                 <button type="button" class="@(showResolved ? "on" : "")" @onclick="() => showResolved = true">All</button>
             </div>
-            <button type="button" class="nt-icon-btn" title="Close" @onclick="() => commentsOpen = false"><i data-lucide="x"></i></button>
+            <button type="button" class="nt-icon-btn" title="Close" aria-label="Close" @onclick="() => commentsOpen = false"><i data-lucide="x"></i></button>
         </div>
         <div class="nt-cp-body">
             @if (draft is not null)
@@ -392,7 +394,7 @@
                             <span>@t.Quote</span>
                             @if (CanComment)
                             {
-                                <button type="button" title="@(t.ResolvedAt is null ? "Resolve" : "Reopen")" @onclick="() => Resolve(t)" @onclick:stopPropagation>
+                                <button type="button" title="@(t.ResolvedAt is null ? "Resolve" : "Reopen")" aria-label="@(t.ResolvedAt is null ? "Resolve" : "Reopen")" @onclick="() => Resolve(t)" @onclick:stopPropagation>
                                     <i data-lucide="@(t.ResolvedAt is null ? "circle-check" : "rotate-ccw")" class="sm"></i>
                                 </button>
                             }
@@ -413,7 +415,7 @@
                     {
                         <div class="nt-c-reply" @onclick:stopPropagation>
                             <input placeholder="Reply…" value="@(replies.GetValueOrDefault(t.Id) ?? "")" @oninput="e => replies[t.Id] = e.Value?.ToString()" @onkeydown="e => OnReplyKey(e, t)" />
-                            <button type="button" class="nt-icon-btn" title="Send" @onclick="() => Reply(t)"><i data-lucide="arrow-up"></i></button>
+                            <button type="button" class="nt-icon-btn" title="Send" aria-label="Send" @onclick="() => Reply(t)"><i data-lucide="arrow-up"></i></button>
                         </div>
                     }
                 </div>
@@ -425,6 +427,7 @@
 @* ── Popovers ─────────────────────────────────────────────────────────────── *@
 @if (pop != Pop.None && note is not null)
 {
+    <OverlayHook OnClose="ClosePop" />
     <div class="nt-scrim @(pop is Pop.Share or Pop.History ? "dim" : "")" @onclick="ClosePop"></div>
     @switch (pop)
     {
@@ -625,7 +628,7 @@
                     @if (versions is { Count: 0 }) { <div class="nt-cp-empty">No saved versions yet. Versions are created automatically as the page is edited.</div> }
                 </div>
                 <div class="nt-h-list">
-                    <div class="hd"><h3>Version history</h3><button type="button" class="nt-icon-btn" title="Close" @onclick="ClosePop"><i data-lucide="x"></i></button></div>
+                    <div class="hd"><h3>Version history</h3><button type="button" class="nt-icon-btn" title="Close" aria-label="Close" @onclick="ClosePop"><i data-lucide="x"></i></button></div>
                     <div class="items">
                         @if (versions is null) { <div class="nt-loading">Loading…</div> }
                         else
@@ -656,6 +659,7 @@
 @if (menuFor is { } m)
 {
     var edit = m.Access is "owner" or "edit";
+    <OverlayHook OnClose="() => menuFor = null" />
     <div class="nt-scrim" @onclick="CloseRowMenu" @oncontextmenu="CloseRowMenu" @oncontextmenu:preventDefault></div>
     <div class="nt-layer nt-menu-l" role="menu" style="top:@(menuY)px;left:@(menuX)px" @ref="menuRef">
         @if (m.IsGuide)
@@ -697,6 +701,7 @@
 }
 @if (newMenuOpen)
 {
+    <OverlayHook OnClose="() => newMenuOpen = false" />
     <div class="nt-scrim" @onclick="() => newMenuOpen = false"></div>
     <div class="nt-layer nt-menu-l" role="menu" style="top:@(menuY)px;left:@(menuX)px" @ref="menuRef">
         <div class="mh">New page from a template</div>
@@ -712,6 +717,7 @@
 @if (moveFor is { } mv)
 {
     var targets = MoveTargets(mv);
+    <OverlayHook OnClose="() => moveFor = null" />
     <div class="nt-scrim dim" @onclick="() => moveFor = null"></div>
     <div class="nt-layer nt-move" role="dialog" aria-label="Move page">
         <div class="hd">Move “@DisplayTitle(mv.Title)” to…</div>
@@ -739,12 +745,13 @@
 @* ── Import / Export dialogs (Notes.Transfer.cs) ────────────────────────────── *@
 @if (importStep != ImportStep.None)
 {
+    <OverlayHook OnClose="CloseImport" />
     <div class="nt-scrim dim nt-x-scrim" @onclick="CloseImport"></div>
     <div class="nt-layer nt-x-dlg" role="dialog" aria-modal="true" aria-label="Import pages">
         @if (importStep == ImportStep.Pick)
         {
             var s = importSummary;
-            <div class="nt-x-hd"><b>Import pages</b><button type="button" class="nt-icon-btn" title="Close" @onclick="CloseImport"><i data-lucide="x"></i></button></div>
+            <div class="nt-x-hd"><b>Import pages</b><button type="button" class="nt-icon-btn" title="Close" aria-label="Close" @onclick="CloseImport"><i data-lucide="x"></i></button></div>
             <div class="nt-x-bd">
                 @if (s is null)
                 {
@@ -767,7 +774,7 @@
                                 else { <span>@FileSize(s.Size) · @SourceLabel(s.Source) · @s.Pages page@(s.Pages == 1 ? "" : "s") · @s.Attachments attachment@(s.Attachments == 1 ? "" : "s")</span> }
                             </div>
                         </div>
-                        <button type="button" class="nt-icon-btn" title="Choose another file" @onclick="ClearImportFile"><i data-lucide="x"></i></button>
+                        <button type="button" class="nt-icon-btn" title="Choose another file" aria-label="Choose another file" @onclick="ClearImportFile"><i data-lucide="x"></i></button>
                     </div>
                 }
                 <div class="nt-x-field">
@@ -841,7 +848,7 @@
                     <span class="nt-x-alert mi-pop"><i data-lucide="triangle-alert" class="sm"></i></span>
                 }
                 <b>@(r.Stopped ? "Import stopped" : ok ? "Import finished" : "Import finished with problems")</b>
-                <button type="button" class="nt-icon-btn" title="Close" @onclick="CloseImport"><i data-lucide="x"></i></button>
+                <button type="button" class="nt-icon-btn" title="Close" aria-label="Close" @onclick="CloseImport"><i data-lucide="x"></i></button>
             </div>
             <div class="nt-x-bd">
                 <div class="nt-x-stats">
@@ -888,9 +895,10 @@
 }
 @if (exportOpen)
 {
+    <OverlayHook OnClose="CloseExport" />
     <div class="nt-scrim dim nt-x-scrim" @onclick="CloseExport"></div>
     <div class="nt-layer nt-x-dlg" role="dialog" aria-modal="true" aria-label="Export">
-        <div class="nt-x-hd"><b>Export @(exportAll ? "all pages" : $"“{ExportTitle}”")</b><button type="button" class="nt-icon-btn" title="Close" disabled="@exportBusy" @onclick="CloseExport"><i data-lucide="x"></i></button></div>
+        <div class="nt-x-hd"><b>Export @(exportAll ? "all pages" : $"“{ExportTitle}”")</b><button type="button" class="nt-icon-btn" title="Close" aria-label="Close" disabled="@exportBusy" @onclick="CloseExport"><i data-lucide="x"></i></button></div>
         <div class="nt-x-bd">
             <div class="nt-x-fmts @(exportAll ? "two" : "")">
                 <button type="button" class="nt-x-fmt @(exportFormat == "md" ? "on" : "")" disabled="@exportBusy" @onclick="@(() => exportFormat = "md")"><i data-lucide="file-code"></i><b>Markdown</b><span>@(exportAll ? "Best for backup / Notion" : ".md, re-importable into Notion or iPop")</span></button>
@@ -967,10 +975,10 @@
                     <span class="t">@DisplayTitle(p.Title)</span>
                     @if (p.IsShared) { <span class="meta"><i data-lucide="users" class="sm"></i></span> }
                     <span class="actions">
-                        <span title="More" @onclick="e => OpenRowMenu(p, e)" @onclick:stopPropagation><i data-lucide="ellipsis"></i></span>
+                        <span role="button" tabindex="-1" title="More" aria-label="Page options" @onclick="e => OpenRowMenu(p, e)" @onclick:stopPropagation><i data-lucide="ellipsis"></i></span>
                         @if (edit)
                         {
-                            <span title="Add sub-page" @onclick="() => CreateBlank(p.Id)" @onclick:stopPropagation><i data-lucide="plus"></i></span>
+                            <span role="button" tabindex="-1" title="Add sub-page" aria-label="Add sub-page" @onclick="() => CreateBlank(p.Id)" @onclick:stopPropagation><i data-lucide="plus"></i></span>
                         }
                     </span>
                 }
@@ -992,7 +1000,7 @@
             <button type="button" class="nt-sect-t" aria-expanded="@(shut ? "false" : "true")" @onclick="() => ToggleSection(key)">
                 @label<i data-lucide="chevron-down" class="sm @(shut ? "shut" : "")"></i>
             </button>
-            @if (add is not null) { <button type="button" title="New page" @onclick="add"><i data-lucide="plus" class="sm"></i></button> }
+            @if (add is not null) { <button type="button" title="New page" aria-label="New page" @onclick="add"><i data-lucide="plus" class="sm"></i></button> }
         </div>
     };
 

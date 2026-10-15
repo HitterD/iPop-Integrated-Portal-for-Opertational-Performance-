@@ -153,7 +153,10 @@ public partial class Notes
         placeMenu = true;
     }
 
-    private void CloseRowMenu() => menuFor = null;
+    // A long-press opens the menu while the finger is still down; that same touch then ends in a
+    // click on the freshly rendered scrim, which closed the menu at once ("long-press does nothing").
+    private DateTime rowMenuOpenedAt;
+    private void CloseRowMenu() { if ((DateTime.UtcNow - rowMenuOpenedAt).TotalMilliseconds < 600) return; menuFor = null; }
 
     [JSInvokable]
     public void OnRowMenu(string id, int x, int y)
@@ -161,6 +164,7 @@ public partial class Notes
         if (!Guid.TryParse(id, out var g) || sidebar?.Pages.FirstOrDefault(p => p.Id == g) is not { } p) return;
         newMenuOpen = false;
         menuFor = p;
+        rowMenuOpenedAt = DateTime.UtcNow;
         (menuX, menuY) = (x, y);
         placeMenu = true;
         StateHasChanged();

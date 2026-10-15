@@ -557,7 +557,10 @@
   .nt-side { position:absolute; inset:0 auto 0 0; width:min(300px,86vw); z-index:30; transform:translateX(-100%); transition:transform .2s; box-shadow:var(--nt-pop-sh); }
   .notes-page.side-open .nt-side { transform:none; }
   .nt-mobile-only { display:grid !important; }
-  .nt-comments.open { position:absolute; inset:0 0 0 auto; width:min(340px,92vw); z-index:30; }
+  .notes-page { grid-template-rows:minmax(0,1fr); }
+  /* Closed comments must not take a grid row either: overlay only when opened. */
+  .nt-comments { position:absolute; inset:0 0 0 auto; border-left:0; }
+  .nt-comments.open { position:absolute; inset:0 0 0 auto; width:min(340px,92vw); z-index:30; border-left:1px solid var(--line); }
   .nt-page, .nt-home, .nt-trash { padding-left:22px; padding-right:22px; }
   .nt-page-title { font-size:30px; }
   .nt-tpl-grid { grid-template-columns:1fr; }
@@ -814,8 +817,10 @@
 .nt-x-check .v6-cb .lucide { width:12px; height:12px; stroke-width:3; }
 .nt-x-check .muted { color:var(--ink-3); }
 
-/* Dropping an export straight onto the sidebar */
-.nt-side { position:relative; }
+/* Dropping an export straight onto the sidebar. :where() keeps this at zero specificity so the
+   narrow-screen drawer rule (.nt-side { position:absolute }) still wins: as plain .nt-side it put the
+   sidebar back in the grid flow on phones and squashed the page into a 167 px box. */
+:where(.nt-side) { position:relative; }
 .nt-x-drop { position:absolute; inset:6px; z-index:5; display:grid; place-items:center; border-radius:12px; border:2px dashed #0A84FF;
   background:color-mix(in srgb,#0A84FF 10%,var(--surface-2)); text-align:center; opacity:0; pointer-events:none; transition:opacity .18s var(--ease-out); }
 .nt-x-drop .ic { width:46px; height:46px; border-radius:14px; display:grid; place-items:center; background:#0A84FF; color:#fff; margin:0 auto 8px; }
@@ -827,4 +832,28 @@
 @media (prefers-reduced-motion: reduce) {
   .nt-x-dlg, .nt-x-rows li, .nt-x-stats div, .nt-x-grp, .nt-x-file, .nt-imported { animation:none; }
   .nt-x-zone.nt-x-over .ic, .nt-side.nt-x-over > .nt-x-drop .ic, .nt-spin-dot { animation:none; }
+}
+
+.nt-side-scrim { display:none; }
+/* ── Phones (mobile Stage 1 hotfix) ── */
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  /* Sidebar: an overlay drawer above the document, dimming it. */
+  .nt-side { z-index:60; }
+  .nt-side-scrim { display:block; position:absolute; inset:0; z-index:59; background:rgba(0,0,0,.28); }
+  /* Comments: a bottom sheet over the tab bar instead of a side strip. */
+  .nt-comments.open { position:fixed; inset:auto 0 0 0; width:auto; height:min(78dvh, 640px); z-index:120;
+    border:0; border-radius:16px 16px 0 0; box-shadow:0 -12px 40px rgba(0,0,0,.22); padding-bottom:env(safe-area-inset-bottom, 0px); }
+  /* Block gutter (drag + plus) sits left of the text column and lands off-screen: the page ⋯ menus cover it. */
+  .nt-handle { display:none !important; }
+  /* Touch rows: taller, no text-selection callout on long-press, ⋯ always visible with a 40 px target. */
+  .nt-row { height:auto; min-height:40px; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; }
+  .nt-row .actions { display:flex; }
+  .nt-row .meta { display:none; }
+  .nt-row .actions > span { width:40px; height:40px; margin:-5px -6px -5px 0; border-radius:10px; }
+  .nt-row .actions .lucide { width:17px; height:17px; }
+  .nt-menu-l .mi, .nt-menu .mi { height:44px; font-size:15px; }
+  /* 44 px hit areas, same visuals. */
+  .nt-icon-btn, .nt-fmt button { position:relative; }
+  .nt-icon-btn::after, .nt-fmt button::after { content:""; position:absolute; inset:-8px; }
+  .nt-doc-top { gap:10px; }
 }
