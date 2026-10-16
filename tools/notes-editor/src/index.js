@@ -4,6 +4,7 @@
 // raw updates. Clients push every local update through the hub (which stores it and fans it out), and
 // an editor periodically folds the tail into a new state with a compare-and-set on the version.
 import { Editor, Extension } from '@tiptap/core';
+import { exitSuggestion } from '@tiptap/suggestion';
 import StarterKit from '@tiptap/starter-kit';
 import { TaskList } from '@tiptap/extension-list';
 import { TextStyle, Color, BackgroundColor } from '@tiptap/extension-text-style';
@@ -19,7 +20,7 @@ import { Awareness, encodeAwarenessUpdate, applyAwarenessUpdate, removeAwareness
 import * as signalR from '@microsoft/signalr';
 
 import { BlockBackground, Callout, NoteWidget, SubPage, NoteFile, CommentHighlights, commentKey, countTodos, releaseBlobs, esc } from './nodes.js';
-import { SlashMenu, mentionSuggestion, createToolbar, createHandle, createBlockMenu, place } from './menus.js';
+import { SlashMenu, mentionSuggestion, phoneMentionKey, createToolbar, createHandle, createBlockMenu, place } from './menus.js';
 import { NoteImage, NoteGallery, NoteBookmark, NoteEmbed, RichTaskItem, TodoExtras, tableExtensions, taskItemAt, todoInsertPos, createRichUi, closeLightboxes } from './rich.js';
 import { TEMPLATES, GUIDE_COMMENT_TEXT } from './templates.js';
 import { importer, exportPages } from './transfer.js';
@@ -136,6 +137,7 @@ export async function mount(el, opts) {
       } catch { return []; }
     },
     mentioned: p => queueMention(p),
+    mentionSheet: open => call('OnPhoneMention', open),
     avatarColor: nik => palette[[...String(nik)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % palette.length],
     initials: name => String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join(''),
     commentSelection: () => commentSelection(),
@@ -547,6 +549,22 @@ export async function mount(el, opts) {
 
   // ── API for Blazor ───────────────────────────────────────────────────────
   return {
+    closeMobileMention() { if (!closing) exitSuggestion(editor.view, phoneMentionKey); },
+    mobileCommand(command) {
+      if (closing || !canEdit) return;
+      if (command === 'hide') { editor.view.dom.blur(); return; }
+      if (command === 'image') { pickFiles('image/*'); return; }
+      const chain = editor.chain().focus();
+      switch (command) {
+        case 'heading': chain.toggleHeading({ level: 2 }).run(); break;
+        case 'bold': chain.toggleBold().run(); break;
+        case 'italic': chain.toggleItalic().run(); break;
+        case 'bullet': chain.toggleBulletList().run(); break;
+        case 'checklist': chain.toggleTaskList().run(); break;
+        case 'mention': chain.insertContent('@').run(); break;
+        case 'undo': chain.undo().run(); break;
+      }
+    },
     setThreads(threads, focus) {
       if (closing) return;
       const open = (threads || []).filter(t => !t.resolvedAt && t.anchor).map(t => ({ id: t.id, anchor: t.anchor }));

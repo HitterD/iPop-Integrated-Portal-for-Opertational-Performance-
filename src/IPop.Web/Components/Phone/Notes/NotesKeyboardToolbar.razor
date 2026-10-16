@@ -1,0 +1,25 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+<div class="m-notes-kb" role="toolbar" aria-label="Text formatting" @ref="toolbar">
+    @foreach (var item in Commands)
+    {
+        <button type="button" aria-label="@item.Label" data-command="@item.Command" @onclick="() => OnCommand.InvokeAsync(item.Command)"><i data-lucide="@item.Icon"></i></button>
+    }
+</div>
+@code {
+    [Parameter] public EventCallback<string> OnCommand { get; set; }
+    private ElementReference toolbar;
+    private static readonly (string Command, string Label, string Icon)[] Commands = [
+        ("heading", "Heading", "type"), ("bold", "Bold", "bold"), ("italic", "Italic", "italic"),
+        ("bullet", "Bullet list", "list"), ("checklist", "Checklist", "list-checks"),
+        ("mention", "Mention", "at-sign"), ("image", "Image", "image"), ("undo", "Undo", "undo"),
+        ("hide", "Hide keyboard", "keyboard-off")];
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await JS.InvokeVoidAsync("ipop.notesKb.attach", toolbar);
+    }
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("ipop.notesKb.detach", toolbar); } catch (JSDisconnectedException) { }
+    }
+}

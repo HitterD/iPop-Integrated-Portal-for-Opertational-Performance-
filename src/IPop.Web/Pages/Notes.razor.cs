@@ -22,7 +22,7 @@ public partial class Notes
 {
     [Parameter] public Guid? Id { get; set; }
 
-    private const string EditorModule = "./js/notes/notes-editor.js?v=20261011-mention-search";
+    private const string EditorModule = "./js/notes/notes-editor.js?v=20261016-w3a";
 
     private enum View { Home, Page, New, Trash }
     private enum Pop { None, More, Style, Emoji, Share, History }
@@ -74,6 +74,7 @@ public partial class Notes
     protected override async Task OnInitializedAsync()
     {
         selfRef = DotNetObjectReference.Create(this);
+        Phone.Changed += PhoneChanged;
         subs.Add(Auth.On("notesChanged", () => _ = InvokeAsync(async () => { await LoadSidebarAsync(); if (view == View.Trash) await LoadTrashAsync(); StateHasChanged(); })));
         await LoadSidebarAsync();
     }
@@ -113,8 +114,11 @@ public partial class Notes
             hotkeys = await module.InvokeAsync<IJSObjectReference>("hotkeys", selfRef);
             await SidebarFirstRenderAsync();
             await ImportFirstRenderAsync();
+            sidebarPhoneMode = Phone.IsPhone;
             if (note is not null) mountPending = true;
         }
+        await ReconcilePhoneSidebar();
+        await SyncPhoneNotes();
         await JS.InvokeVoidAsync("ipop.icons");
         if (mountPending && module is not null && note is not null && view == View.Page)
         {
@@ -136,6 +140,7 @@ public partial class Notes
         searchCts?.Cancel();
         try
         {
+            await DisposePhoneNotes();
             await UnmountAsync();
             await DestroyPreviewAsync();
             await DisposeSidebarAsync();

@@ -75,7 +75,7 @@ public partial class Notes
     {
         if (await TransferAsync() is not { } t) return;
         importJs = await t.InvokeAsync<IJSObjectReference>("importer");
-        try { await importJs.InvokeVoidAsync("bindDrop", sideRef, new { onlyImportable = true }); } catch (JSException) { }
+        if (!Phone.IsPhone) try { await importJs.InvokeVoidAsync("bindDrop", sideRef, new { onlyImportable = true }); } catch (JSException) { }
     }
 
     private bool countUpResult;

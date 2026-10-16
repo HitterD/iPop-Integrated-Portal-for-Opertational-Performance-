@@ -46,7 +46,7 @@ public partial class Notes
             guideHidden = await JS.InvokeAsync<string?>("ipop.prefGet", GuidePref) == "true";
         }
         catch (JsonException) { }
-        sidebarJs = await module!.InvokeAsync<IJSObjectReference>("sidebar", sideRef, selfRef);
+        if (!Phone.IsPhone) sidebarJs = await module!.InvokeAsync<IJSObjectReference>("sidebar", sideRef, selfRef);
         if (collapsed.Count > 0 || guideHidden) StateHasChanged();
     }
 

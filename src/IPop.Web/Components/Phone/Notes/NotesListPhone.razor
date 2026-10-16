@@ -1,0 +1,73 @@
+@using IPop.Application.Notes
+<PhoneScreen Title="Notes" Class="m-notes-list">
+    <Below>
+        <label class="m-notes-search"><i data-lucide="search"></i><input aria-label="Search notes" placeholder="Search notes" value="@Search" @oninput="OnSearch" /></label>
+        <div class="ph-segmented" role="tablist" aria-label="Notes filter">
+            @foreach (var item in Filters)
+            {
+                <button type="button" role="tab" data-value="@item.Key" aria-selected="@(filter == item.Key ? "true" : "false")" @onclick="() => filter = item.Key">@item.Label</button>
+            }
+        </div>
+    </Below>
+    <ChildContent>
+        @if (!string.IsNullOrWhiteSpace(Search))
+        {
+            <h2 class="m-notes-section">Search results</h2>
+            @if (Hits is null) { <p class="m-notes-empty">Searching…</p> }
+            else if (Hits.Count == 0) { <p class="m-notes-empty">No notes found.</p> }
+            else { foreach (var hit in Hits) { <button type="button" class="m-notes-hit" @onclick="() => OnOpen.InvokeAsync(hit.Id)"><span>@(hit.Emoji ?? "📄")</span><span><b>@Title(hit.Title)</b><small>@hit.Snippet</small></span></button> } }
+        }
+        else if (Sidebar is null) { <p class="m-notes-empty">Loading…</p> }
+        else
+        {
+            @if (filter == "recent")
+            {
+                <h2 class="m-notes-section">Recently opened</h2>
+                <div class="m-notes-recents">
+                    @foreach (var itemPage in Recent)
+                    {
+                        <button type="button" class="m-notes-card" @onclick="() => OnOpen.InvokeAsync(itemPage.Id)"><span>@(itemPage.Emoji ?? "📄")</span><b>@Title(itemPage.Title)</b><small>@itemPage.UpdatedAt.ToLocalTime().ToString("MMM d")</small></button>
+                    }
+                    @if (!Recent.Any()) { <p class="m-notes-empty">Your recently opened pages appear here.</p> }
+                </div>
+            }
+            <h2 class="m-notes-section">@(filter == "favorites" ? "Favorites" : "My pages")</h2>
+            @if (filter == "favorites") { foreach (var itemPage in Sidebar.Pages.Where(p => p.IsFavorite)) { @Row(itemPage, 0, false) } }
+            else
+            {
+                @foreach (var itemPage in Sidebar.Pages.Where(p => p.ParentId is null && p.IsMine).OrderBy(p => p.SortOrder)) { @Row(itemPage, 0, true) }
+                <h2 class="m-notes-section">Shared with me</h2>
+                @foreach (var itemPage in Sidebar.Pages.Where(p => p.ParentId is null && !p.IsMine).OrderBy(p => p.Title)) { @Row(itemPage, 0, true) }
+            }
+            @if (Sidebar.Pages.Count == 0) { <p class="m-notes-empty">Tap New page to create your first page.</p> }
+        }
+        <p class="m-notes-import">Import from Notion, Markdown or HTML? Open on a computer.</p>
+        <Fab Icon="square-pen" Label="New page" OnClick="OnCreate" Visible="@(!Creating)" />
+    </ChildContent>
+</PhoneScreen>
+@code {
+    [Parameter] public NoteSidebarDto? Sidebar { get; set; }
+    [Parameter] public string Search { get; set; } = "";
+    [Parameter] public EventCallback<ChangeEventArgs> OnSearch { get; set; }
+    [Parameter] public IReadOnlyList<NoteSearchHitDto>? Hits { get; set; }
+    [Parameter] public EventCallback<Guid> OnOpen { get; set; }
+    [Parameter] public EventCallback OnCreate { get; set; }
+    [Parameter] public bool Creating { get; set; }
+    private string filter = "recent";
+    private readonly HashSet<Guid> expanded = [];
+    private static readonly (string Key, string Label)[] Filters = [("recent", "Recent"), ("favorites", "Favorites"), ("all", "All")];
+    private IEnumerable<NoteListItemDto> Recent => Sidebar?.Recent.Select(id => Sidebar.Pages.FirstOrDefault(p => p.Id == id)).OfType<NoteListItemDto>().Take(8) ?? [];
+    private static string Title(string title) => string.IsNullOrWhiteSpace(title) ? "Untitled" : title;
+    private void Toggle(Guid id) { if (!expanded.Remove(id)) expanded.Add(id); }
+    private RenderFragment Row(NoteListItemDto itemPage, int depth, bool tree) => @<div>
+        <div class="m-notes-tree-row" style="--depth:@Math.Min(depth, 5)">
+            @if (tree && Sidebar!.Pages.Any(p => p.ParentId == itemPage.Id))
+            {
+                <button type="button" class="m-notes-chevron" aria-label="@($"{(expanded.Contains(itemPage.Id) ? "Collapse" : "Expand")} {Title(itemPage.Title)}")" aria-expanded="@(expanded.Contains(itemPage.Id) ? "true" : "false")" @onclick="() => Toggle(itemPage.Id)"><i data-lucide="@(expanded.Contains(itemPage.Id) ? "chevron-down" : "chevron-right")"></i></button>
+            }
+            else { <span class="m-notes-chevron"></span> }
+            <button type="button" data-page="@itemPage.Id" class="m-notes-page-row" @onclick="() => OnOpen.InvokeAsync(itemPage.Id)"><span>@(itemPage.Emoji ?? "📄")</span><span>@Title(itemPage.Title)</span></button>
+        </div>
+        @if (tree && expanded.Contains(itemPage.Id)) { foreach (var child in Sidebar!.Pages.Where(p => p.ParentId == itemPage.Id).OrderBy(p => p.SortOrder)) { @Row(child, depth + 1, true) } }
+    </div>;
+}

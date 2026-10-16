@@ -1,0 +1,17 @@
+<header class="ph-nav is-collapsed m-notes-nav">
+    <button type="button" class="ph-back" aria-label="Back to Notes" @onclick="OnBack"><i data-lucide="chevron-left"></i><span>Notes</span></button>
+    <span class="ph-nav-sp"></span>
+    <span class="m-notes-save">@Status</span>
+    @if (HasPage)
+    {
+        <button type="button" class="ph-ib" aria-label="Comments" @onclick="OnComments"><i data-lucide="message-square"></i></button>
+        <button type="button" class="ph-ib" aria-label="More" @onclick="OnMore"><i data-lucide="ellipsis"></i></button>
+    }
+</header>
+@code {
+    [Parameter] public string Status { get; set; } = "";
+    [Parameter] public bool HasPage { get; set; }
+    [Parameter] public EventCallback OnBack { get; set; }
+    [Parameter] public EventCallback OnComments { get; set; }
+    [Parameter] public EventCallback OnMore { get; set; }
+}

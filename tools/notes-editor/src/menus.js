@@ -64,8 +64,14 @@ export function slashCommands(host) {
 
 /// A keyboard-driven popup list used by both "/" and "@".
 /// emptyText: a string, or (query) => string for a message that follows what was typed.
-function listPopup(renderItem, emptyText) {
+function listPopup(renderItem, emptyText, host) {
   let pop = null, items = [], sel = 0, command = null, query = '';
+  const phonePosition = () => {
+    if (!pop?.classList.contains('m-notes-mentions')) return;
+    const vv = window.visualViewport;
+    pop.style.bottom = `${Math.max(0, innerHeight - ((vv?.offsetTop || 0) + (vv?.height || innerHeight))) + 48}px`;
+  };
+  const unwatch = () => { window.visualViewport?.removeEventListener('resize', phonePosition); window.visualViewport?.removeEventListener('scroll', phonePosition); };
   const paint = () => {
     let g = '', html = '';
     items.forEach((it, i) => {
@@ -78,6 +84,14 @@ function listPopup(renderItem, emptyText) {
   return {
     onStart(props) {
       pop = $el('nt-pop nt-list');
+      if (host && window.ipop?.mobile?.isMobile()) {
+        pop.classList.add('m-notes-mentions');
+        pop.setAttribute('role', 'dialog');
+        pop.setAttribute('aria-label', 'Mention a person');
+        host.mentionSheet(true);
+        window.visualViewport?.addEventListener('resize', phonePosition);
+        window.visualViewport?.addEventListener('scroll', phonePosition);
+      }
       pop.addEventListener('mousedown', e => {
         e.preventDefault();
         const it = e.target.closest('[data-i]'); if (it) command(items[+it.dataset.i]);
@@ -87,19 +101,24 @@ function listPopup(renderItem, emptyText) {
       this.onUpdate(props);
     },
     onUpdate(props) {
+      if (!pop) return; // a late async search must not revive a dismissed suggestion
       items = props.items; command = props.command; query = props.query ?? ''; sel = Math.min(sel, Math.max(items.length - 1, 0));
       paint();
-      const r = props.clientRect?.(); if (r) place(pop, r);
+      const r = props.clientRect?.();
+      if (pop.classList.contains('m-notes-mentions')) {
+        pop.classList.add('show');
+        phonePosition();
+      } else if (r) place(pop, r);
     },
     onKeyDown({ event }) {
-      if (event.key === 'Escape') { pop?.remove(); pop = null; return true; }
+      if (event.key === 'Escape') { unwatch(); host?.mentionSheet(false); pop?.remove(); pop = null; return true; }
       if (!items.length) return false;
       if (event.key === 'ArrowDown') { sel = (sel + 1) % items.length; paint(); return true; }
       if (event.key === 'ArrowUp') { sel = (sel - 1 + items.length) % items.length; paint(); return true; }
       if (event.key === 'Enter' || event.key === 'Tab') { command(items[sel]); return true; }
       return false;
     },
-    onExit() { pop?.remove(); pop = null; sel = 0; },
+    onExit() { unwatch(); host?.mentionSheet(false); pop?.remove(); pop = null; sel = 0; },
   };
 }
 
@@ -125,8 +144,10 @@ export const SlashMenu = Extension.create({
 });
 
 /// Options for @tiptap/extension-mention.
+export const phoneMentionKey = new PluginKey('noteMention');
 export function mentionSuggestion(host) {
   return {
+    pluginKey: phoneMentionKey,
     char: '@',
     // Full names have spaces: keep the popup open while typing "yudi arta", close after two spaces.
     allowSpaces: true,
@@ -142,13 +163,14 @@ export function mentionSuggestion(host) {
     // Second line: department (never the NIK — office rule). People who can't open the page are
     // marked; picking one asks whether to share the page with them (host.mentioned).
     render: () => listPopup(p => `<span class="nt-av" style="background:${host.avatarColor(p.nik || p.id)}">${esc(host.initials(p.name))}</span><div><div class="nm">${esc(p.name)}</div><div class="ds">${esc(p.department || '')}</div></div>${p.hasAccess === false ? '<span class="nt-noacc">No access</span>' : ''}`,
-      q => (q.trim().length < 2 ? 'Type at least 2 letters of a name' : `No one named “${esc(q.trim())}”`)),
+      q => (q.trim().length < 2 ? 'Type at least 2 letters of a name' : `No one named “${esc(q.trim())}”`), host),
   };
 }
 
 // ── Selection toolbar ───────────────────────────────────────────────────────
 
 export function createToolbar(editor, host) {
+  let disposed = false;
   const bar = $el('nt-pop nt-fmt', `
     <button data-c="bold" title="Bold (Ctrl B)"><b>B</b></button>
     <button data-c="italic" title="Italic (Ctrl I)"><i>I</i></button>
@@ -253,8 +275,8 @@ export function createToolbar(editor, host) {
     bar.style.visibility = '';
   }
   editor.on('selectionUpdate', sync);
-  editor.on('blur', ({ event }) => { if (!bar.contains(event?.relatedTarget) && !colors.contains(event?.relatedTarget) && !linkPop.contains(event?.relatedTarget)) setTimeout(() => { if (!editor.view.hasFocus()) hide(); }, 120); });
-  return { sync, hide, destroy() { document.removeEventListener('mousedown', linkOutside); bar.remove(); colors.remove(); linkPop.remove(); } };
+  editor.on('blur', ({ event }) => { if (!bar.contains(event?.relatedTarget) && !colors.contains(event?.relatedTarget) && !linkPop.contains(event?.relatedTarget)) setTimeout(() => { if (!disposed && !editor.isDestroyed && !editor.view.hasFocus()) hide(); }, 120); });
+  return { sync, hide, destroy() { disposed = true; document.removeEventListener('mousedown', linkOutside); bar.remove(); colors.remove(); linkPop.remove(); } };
 }
 
 // ── Block handle + menu ─────────────────────────────────────────────────────

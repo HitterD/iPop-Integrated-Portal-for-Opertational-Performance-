@@ -1,0 +1,28 @@
+<BottomSheet Open="Open" OpenChanged="OpenChanged" Title="Page actions" Class="m-notes-more" ScaleBack="true">
+    <div class="m-notes-quick">
+        @if (IsOwner) { @Action("share", "share", "Share") }
+        @Action("favorite", "star", IsFavorite ? "Favorited" : "Favorite")
+        @if (CanEdit) { @Action("move", "folder-input", "Move to…") }
+        @Action("comments", "message-square", "Comments")
+    </div>
+    <h3 class="m-notes-section">Export</h3>
+    <div class="m-notes-export">@Action("pdf", "file-text", "PDF") @Action("md", "file-code", "Markdown") @Action("html", "globe", "HTML")</div>
+    @Action("history", "history", "Page history")
+    @Action("copy", "link", "Copy link")
+    @if (CanEdit)
+    {
+        @Action("style", "palette", "Style")
+        @Action("subpage", "file-plus", "Add sub-page")
+        @Action("delete", "trash-2", "Delete")
+    }
+</BottomSheet>
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter] public bool CanEdit { get; set; }
+    [Parameter] public bool IsOwner { get; set; }
+    [Parameter] public bool IsFavorite { get; set; }
+    [Parameter] public EventCallback<string> OnAction { get; set; }
+    private async Task Run(string action) { await OpenChanged.InvokeAsync(false); await OnAction.InvokeAsync(action); }
+    private RenderFragment Action(string key, string icon, string label) => @<button type="button" data-action="@key" class="m-notes-action @(key == "delete" ? "danger" : "")" @onclick="() => Run(key)"><i data-lucide="@icon"></i><span>@label</span></button>;
+}
