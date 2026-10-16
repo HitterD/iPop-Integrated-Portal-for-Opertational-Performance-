@@ -21,6 +21,7 @@
     <ProjectReference Include="..\..\src\IPop.Api\IPop.Api.csproj" />
     <ProjectReference Include="..\..\src\IPop.Infrastructure\IPop.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\IPop.Web\IPop.Web.csproj" />
+    <ProjectReference Include="..\..\src\IPop.WebHost\IPop.WebHost.csproj" />
   </ItemGroup>
 
 </Project>
