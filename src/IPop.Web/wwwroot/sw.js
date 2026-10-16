@@ -1,5 +1,9 @@
-// iPop service worker — Web Push only (Windows toasts). No fetch handler, no offline cache:
-// the app always loads from the network exactly as before.
+// iPop service worker — Web Push (Windows toasts) + app-shell caching for the installed app.
+// Caching rules (Wave 1): HTML network-first (4 s) -> cached shell -> offline.html; fingerprinted
+// _framework files cache-first; ?v= static files stale-while-revalidate; never /api, /hubs, auth,
+// uploads, media, cross-origin or no-store requests (version-check.js keeps seeing every deploy).
+// Kill switch: set wwwroot/sw-kill to {"off":true} AND bump SW_VERSION (so browsers install the changed
+// worker); on activate it sees the switch, drops the ipop-shell-/ipop-fw- caches and unregisters itself.
 // Payload (PushDispatcher.PushPayload): { kind, title, body, url, tag, requireInteraction, callId, actionToken, apiBase }
 //   kind: "notif" | "chat" (grouped per room tag) | "call" (sticky, Answer/Decline) | "close" (dismiss tag) | "test"
 
@@ -55,8 +59,147 @@ self.addEventListener("message", e => e.waitUntil((async () => {
   if (reply && e.ports?.[0]) e.ports[0].postMessage(reply);
 })()));
 
-self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", e => e.waitUntil(self.clients.claim()));
+// ───────────────────────── App-shell cache ─────────────────────────
+// Bump SW_VERSION on every deploy that changes caching; activate deletes older ipop-shell-/ipop-fw- caches.
+const SW_VERSION = "w1-20261016";
+const SHELL = "ipop-shell-" + SW_VERSION;
+const FW = "ipop-fw-" + SW_VERSION;
+let NAV_TIMEOUT_MS = 4000;
+let FW_LIMIT = 400;
+let killed = false;
+
+const NEVER = /^\/(api|hubs|livekit|onlyoffice|meet|download|downloads|uploads|\.well-known)(\/|$)|^\/(sw\.js|sw-kill)$/i;
+// .NET 10 fingerprints: name.<10 lowercase alphanumerics>.ext (dotnet.m4zqvqaj3u.js, IPop.Core.lqpourngtc.wasm);
+// blazor.webassembly.js / dotnet.js have no fingerprint and stay network-first.
+const FINGERPRINTED = /^\/_framework\/.+\.[a-z0-9]{10}\.(js|wasm|dat|json|pdb)$/;
+const VERSIONED = /^\/(css|js|fonts|img|lib|sounds|stickers|images)\//i;
+
+/** "none" | "navigate" | "cache-first" | "network-first" | "swr" — what the fetch handler does. */
+function routeFor(req) {
+  if (killed || req.method !== "GET") return "none";
+  if (req.cache === "no-store" || req.cache === "only-if-cached") return "none";
+  const h = req.headers;
+  if (h && (h.get("range") || h.get("authorization"))) return "none";
+  let url;
+  try { url = new URL(req.url); } catch { return "none"; }
+  if (url.origin !== self.location.origin) return "none";
+  const p = url.pathname;
+  if (NEVER.test(p)) return "none";
+  if (req.mode === "navigate") return "navigate";
+  if (p.startsWith("/_framework/")) return FINGERPRINTED.test(p) ? "cache-first" : "network-first";
+  if (VERSIONED.test(p) && (url.searchParams.has("v") || /^\/img\/brand\//i.test(p))) return "swr";
+  return "none";
+}
+
+const ok = res => res && res.ok && res.status === 200 && res.type !== "opaque";
+
+async function put(cacheName, key, res) {
+  try { const c = await caches.open(cacheName); await c.put(key, res); } catch { /* quota: just skip */ }
+}
+
+async function trim(cacheName, limit) {
+  try {
+    const c = await caches.open(cacheName);
+    const keys = await c.keys();
+    for (const k of keys.slice(0, Math.max(0, keys.length - limit))) await c.delete(k);
+  } catch { }
+}
+
+function withTimeout(promise, ms) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error("timeout")), ms);
+    promise.then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
+  });
+}
+
+const shellKey = () => new URL("index.html", self.registration.scope).href;
+const offlineKey = () => new URL("offline.html", self.registration.scope).href;
+
+async function navigate(req) {
+  // Every route is the same SPA document; fetch it as index.html so one cache entry serves all.
+  try {
+    const res = await withTimeout(fetch(shellKey(), { cache: "no-cache", credentials: "same-origin" }), NAV_TIMEOUT_MS);
+    if (ok(res)) { await put(SHELL, shellKey(), res.clone()); return res; }
+    if (res) return res;
+  } catch { /* offline or slow: fall through to the cached shell */ }
+  const c = await caches.open(SHELL);
+  return (await c.match(shellKey())) || (await c.match(offlineKey()))
+    || new Response("<!doctype html><title>iPop</title><p>You're offline — iPop needs a connection.</p>",
+                    { status: 503, headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+async function cacheFirst(req) {
+  const c = await caches.open(FW);
+  const hit = await c.match(req.url);
+  if (hit) return hit;
+  const res = await fetch(req);
+  if (ok(res)) { await put(FW, req.url, res.clone()); trim(FW, FW_LIMIT); }
+  return res;
+}
+
+async function networkFirst(req) {
+  try {
+    const res = await fetch(req);
+    if (ok(res)) await put(SHELL, req.url, res.clone());
+    return res;
+  } catch (e) {
+    const hit = await (await caches.open(SHELL)).match(req.url);
+    if (hit) return hit;
+    throw e;
+  }
+}
+
+async function staleWhileRevalidate(req, event) {
+  const c = await caches.open(SHELL);
+  const hit = await c.match(req.url);
+  const refresh = fetch(req).then(async res => { if (ok(res)) await put(SHELL, req.url, res.clone()); return res; });
+  if (hit) {
+    const bg = refresh.catch(() => { });
+    if (event && event.waitUntil) event.waitUntil(bg);
+    return hit;
+  }
+  return refresh;
+}
+
+self.addEventListener("fetch", e => {
+  const route = routeFor(e.request);
+  if (route === "none") return;
+  if (route === "navigate") e.respondWith(navigate(e.request));
+  else if (route === "cache-first") e.respondWith(cacheFirst(e.request));
+  else if (route === "network-first") e.respondWith(networkFirst(e.request));
+  else e.respondWith(staleWhileRevalidate(e.request, e));
+});
+
+async function precacheOffline() {
+  try {
+    const res = await fetch(offlineKey(), { cache: "no-cache" });
+    if (ok(res)) await put(SHELL, offlineKey(), res);
+  } catch { }
+}
+
+async function killSwitchOn() {
+  try {
+    const res = await fetch(new URL("sw-kill", self.registration.scope).href, { cache: "no-store" });
+    if (!res.ok) return false;
+    const j = await res.json();
+    return j && j.off === true;
+  } catch { return false; }
+}
+
+async function onActivate() {
+  if (await killSwitchOn()) {
+    killed = true;
+    for (const n of await caches.keys()) if (/^ipop-(shell|fw)-/.test(n)) await caches.delete(n);
+    await self.registration.unregister();
+    return;
+  }
+  for (const n of await caches.keys())
+    if (/^ipop-(shell|fw)-/.test(n) && n !== SHELL && n !== FW) await caches.delete(n);
+  await self.clients.claim();
+}
+
+self.addEventListener("install", e => { self.skipWaiting(); if (e && e.waitUntil) e.waitUntil(precacheOffline()); });
+self.addEventListener("activate", e => e.waitUntil(onActivate()));
 
 self.addEventListener("push", e => e.waitUntil(onPush(e)));
 

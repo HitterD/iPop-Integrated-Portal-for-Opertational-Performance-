@@ -37,9 +37,6 @@
   if (!root || !root.document) return;
 
   const ipop = root.ipop = root.ipop || {};
-  let installEvt = null;
-  root.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; });
-  root.addEventListener('appinstalled', () => { installEvt = null; });
 
   // Keyboard flag for the FAB (and anything else that must step aside).
   if (root.visualViewport) {
@@ -50,13 +47,9 @@
   ipop.phone = {
     platform: () => platform(root.navigator.userAgent),
     standalone: () => !!(root.matchMedia && root.matchMedia('(display-mode: standalone)').matches) || root.navigator.standalone === true,
-    canInstall: () => !!installEvt,
-    async install() {
-      if (!installEvt) return 'unavailable';
-      const e = installEvt; installEvt = null;
-      e.prompt();
-      try { const r = await e.userChoice; return r && r.outcome || 'dismissed'; } catch { return 'dismissed'; }
-    },
+    /** The browser's install prompt is captured once by ipop.js (installState / install). */
+    installState: () => (ipop.installState ? ipop.installState() : 'unsupported'),
+    install: () => (ipop.install ? ipop.install() : Promise.resolve('unsupported')),
     /** Does a URL answer (HEAD)? Used by /app to show the APK button only when the file exists. */
     async exists(url) {
       try { const r = await fetch(url, { method: 'HEAD', cache: 'no-store' }); return r.ok; } catch { return false; }
