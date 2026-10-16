@@ -53,6 +53,7 @@ test('swipe on a row: left reveals the trailing actions, right the leading one',
   assert.equal(K.swipeDecision(90, 360), 'right');
   assert.equal(K.swipeDecision(-30, 360), null, 'under the threshold snaps back');
   assert.equal(K.swipeDecision(0, 0), null);
+  assert.equal(K.swipeDecision(-110, 796), 'left', 'wide landscape rows: the threshold is capped at 96 px');
 });
 
 test('keyboard inset: what the on-screen keyboard covers of the layout viewport', () => {

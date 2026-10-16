@@ -38,10 +38,10 @@
     return ms >= 450 && Math.abs(dx) <= 10 && Math.abs(dy) <= 10;
   }
 
-  /** Row swipe (NF1): past 22 % of the row width (min 64 px) opens that side's actions. */
+  /** Row swipe (NF1): past 22 % of the row width (64–96 px) opens that side's actions. */
   function swipeDecision(dx, width) {
     if (!(width > 0)) return null;
-    const t = Math.max(64, width * 0.22);
+    const t = Math.min(96, Math.max(64, width * 0.22));
     return dx <= -t ? 'left' : dx >= t ? 'right' : null;
   }
 
@@ -225,7 +225,8 @@
           const side = swipeDecision(dx, row.getBoundingClientRect().width);
           row.classList.toggle('sw-left', side === 'left');
           row.classList.toggle('sw-right', side === 'right');
-          if (side) row._swJust = true;
+          // A swipe can end in a synthetic click on the row (mouse/pen emulation): ignore one within 350 ms.
+          if (side) { row._swJust = true; setTimeout(() => { row._swJust = false; }, 350); }
         }
         row = null;
       };
@@ -234,7 +235,7 @@
       // A finished swipe is not a tap on the row.
       container.addEventListener('click', e => {
         const r = e.target.closest('[data-swipe]');
-        if (r && r._swJust) { r._swJust = false; e.stopPropagation(); e.preventDefault(); return; }
+        if (r && r._swJust && !e.target.closest('.sw-acts')) { r._swJust = false; e.stopPropagation(); e.preventDefault(); return; }
         if (!e.target.closest('.sw-acts')) closeAll(null);
       }, true);
     },
