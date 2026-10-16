@@ -120,6 +120,7 @@ public class CallOverlayDragTests
         ctx.Services.AddSingleton(auth);
         ctx.Services.AddSingleton(calls);
         ctx.Services.AddSingleton(http);
+        ctx.Services.AddSingleton(new PhoneState(js));
         ctx.Services.AddSingleton(new ToastService());
         ctx.Services.AddScoped<PhotoViewerState>();
         ctx.Services.AddScoped<OverlayStack>();

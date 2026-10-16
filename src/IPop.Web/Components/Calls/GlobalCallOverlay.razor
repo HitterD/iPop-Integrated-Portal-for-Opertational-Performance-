@@ -4,6 +4,7 @@
 @inject ToastService Toasts
 @inject HttpClient Http
 @inject AuthState Auth
+@inject PhoneState Phone
 
 @* One call UI for the whole app (styles: css/v6/calls.css):
    incoming ring (Accept / Decline / Decline & message), outgoing ring and the in-call
@@ -54,26 +55,29 @@ else if (CallSvc.IsInGroupCall)
     var alone = joined <= 1 && room.EstablishedAt is null;
     @if (isMinimized)
     {
-        <div @ref="dragEl" class="callx-pill" role="region" aria-label="Group call @CallSvc.GroupName">
+        <div @ref="dragEl" class="@PillClass" role="region" aria-label="Group call @CallSvc.GroupName">
             <button type="button" class="callx-pill-open" @onclick="() => isMinimized = false" title="Open call window">
                 @GroupAvatar(room, "sm" + (AnyoneSpeaking ? " speaking" : ""))
                 <span class="callx-pill-text">
-                    <strong>@CallSvc.GroupName</strong>
-                    <small class="callx-state-text @stateClass">Group · @People(joined) · @(alone ? "Calling…" : FormattedElapsed)</small>
+                    <strong>@(CallSvc.GroupName + (Phone.IsPhone ? $" · {People(joined)}" : ""))</strong>
+                    @if (Phone.IsPhone)
+                    {
+                        <small class="callx-state-text @stateClass">@(alone ? "Calling…" : FormattedElapsed) · tap to return</small>
+                    }
+                    else
+                    {
+                        <small class="callx-state-text @stateClass">Group · @People(joined) · @(alone ? "Calling…" : FormattedElapsed)</small>
+                    }
                 </span>
             </button>
-            <button type="button" class="callx-round @(muted ? "on" : "")" @onclick="ToggleMute" aria-pressed="@(muted ? "true" : "false")" title="@(muted ? "Unmute microphone" : "Mute microphone")"><i data-lucide="@(muted ? "mic-off" : "mic")"></i></button>
-            <button type="button" class="callx-round hangup" @onclick="EndCall" title="Leave the call"><i data-lucide="phone-off"></i></button>
+            <button type="button" class="callx-round @(muted ? "on" : "")" @onclick="ToggleMute" aria-pressed="@(muted ? "true" : "false")" title="@(muted ? "Unmute microphone" : "Mute microphone")" aria-label="@(Phone.IsPhone ? (muted ? "Unmute microphone" : "Mute microphone") : null)"><i data-lucide="@(muted ? "mic-off" : "mic")"></i></button>
+            <button type="button" class="callx-round hangup" @onclick="EndCall" title="Leave the call" aria-label="@(Phone.IsPhone ? "End call" : null)"><i data-lucide="phone-off"></i></button>
         </div>
     }
     else
     {
-        <div @ref="dragEl" class="callx-window callx-group-window" role="dialog" aria-label="Group call @CallSvc.GroupName">
-            <span class="callx-resize" aria-hidden="true" title="Drag to resize"></span>
-            <div class="callx-head callx-drag-handle" title="Drag to move">
-                <span class="callx-badge @stateClass"><span class="callx-dot"></span>@stateLabel</span>
-                <button type="button" class="callx-icon" @onclick="() => isMinimized = true" title="Minimize" aria-label="Minimize call window"><i data-lucide="minimize-2"></i></button>
-            </div>
+        <div @ref="dragEl" class="callx-window callx-group-window@(Phone.IsPhone ? " m-call-full" : "")" role="dialog" aria-label="Group call @CallSvc.GroupName">
+            @PhoneHeadOrDesktop(stateLabel, stateClass, CallSvc.GroupName ?? "Group call", $"Group call · {(alone ? "Calling…" : FormattedElapsed)}")
             <div class="callx-body callx-group-body">
                 <div class="callx-group-title callx-drag-handle">
                     @GroupAvatar(room, "sm")
@@ -188,29 +192,25 @@ else if (CallSvc.IsOutgoingRing || CallSvc.IsActiveCall)
 
     @if (isMinimized)
     {
-        <div @ref="dragEl" class="callx-pill" role="region" aria-label="Call with @peerName">
+        <div @ref="dragEl" class="@PillClass" role="region" aria-label="Call with @peerName">
             <button type="button" class="callx-pill-open" @onclick="() => isMinimized = false" title="Open call window">
                 <PersonAvatar Nik="@peerNik" Name="@peerName" Size="34" Class="@($"callx-avatar sm avatar-remote-speaker {(isOutgoing ? "callx-ring" : "")}")" Decorative="true" />
                 <span class="callx-pill-text">
                     <strong>@peerName</strong>
-                    <small class="callx-state-text @stateClass">@(isOutgoing ? "Calling…" : FormattedElapsed)</small>
+                    <small class="callx-state-text @stateClass">@(isOutgoing ? "Calling…" : FormattedElapsed)@(Phone.IsPhone ? " · tap to return" : "")</small>
                 </span>
             </button>
             @if (CallSvc.IsActiveCall)
             {
-                <button type="button" class="callx-round @(muted ? "on" : "")" @onclick="ToggleMute" aria-pressed="@(muted ? "true" : "false")" title="@(muted ? "Unmute microphone" : "Mute microphone")"><i data-lucide="@(muted ? "mic-off" : "mic")"></i></button>
+                <button type="button" class="callx-round @(muted ? "on" : "")" @onclick="ToggleMute" aria-pressed="@(muted ? "true" : "false")" title="@(muted ? "Unmute microphone" : "Mute microphone")" aria-label="@(Phone.IsPhone ? (muted ? "Unmute microphone" : "Mute microphone") : null)"><i data-lucide="@(muted ? "mic-off" : "mic")"></i></button>
             }
-            <button type="button" class="callx-round hangup" @onclick="EndCall" title="@(isOutgoing ? "Cancel" : "End call")"><i data-lucide="phone-off"></i></button>
+            <button type="button" class="callx-round hangup" @onclick="EndCall" title="@(isOutgoing ? "Cancel" : "End call")" aria-label="@(Phone.IsPhone ? (isOutgoing ? "Cancel call" : "End call") : null)"><i data-lucide="phone-off"></i></button>
         </div>
     }
     else
     {
-        <div @ref="dragEl" class="callx-window" role="dialog" aria-label="Voice call with @peerName">
-            <span class="callx-resize" aria-hidden="true" title="Drag to resize"></span>
-            <div class="callx-head callx-drag-handle" title="Drag to move">
-                <span class="callx-badge @stateClass"><span class="callx-dot"></span>@stateLabel</span>
-                <button type="button" class="callx-icon" @onclick="() => isMinimized = true" title="Minimize" aria-label="Minimize call window"><i data-lucide="minimize-2"></i></button>
-            </div>
+        <div @ref="dragEl" class="callx-window@(Phone.IsPhone ? " m-call-full" : "")" role="dialog" aria-label="Voice call with @peerName">
+            @PhoneHeadOrDesktop(stateLabel, stateClass, peerName, isOutgoing ? "Voice call · calling" : $"Voice call · {FormattedElapsed}")
 
             <div class="callx-body">
                 <PersonAvatar Nik="@peerNik" Name="@peerName" Size="96" Class="@($"callx-avatar lg avatar-remote-speaker {(isOutgoing ? "callx-ring" : "")}")" Decorative="true" />
@@ -294,6 +294,29 @@ else if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
     ];
 
     private bool isMinimized;
+
+    private string PillClass => Phone.IsPhone ? "callx-pill m-call-pill" : "callx-pill";
+
+    /// Desktop: the draggable header + resize grip. Phone (C1): ⤡ minimise · name + state · status badge.
+    private RenderFragment PhoneHeadOrDesktop(string stateLabel, string stateClass, string title, string sub) => __builder =>
+    {
+        if (Phone.IsPhone)
+        {
+            <div class="m-call-top">
+                <button type="button" class="callx-icon" @onclick="() => isMinimized = true" aria-label="Minimise call"><i data-lucide="minimize-2"></i></button>
+                <span class="m-call-tt"><b>@title</b><small>@sub</small></span>
+                <span class="callx-badge @stateClass" title="@stateLabel"><span class="callx-dot"></span></span>
+            </div>
+        }
+        else
+        {
+            <span class="callx-resize" aria-hidden="true" title="Drag to resize"></span>
+            <div class="callx-head callx-drag-handle" title="Drag to move">
+                <span class="callx-badge @stateClass"><span class="callx-dot"></span>@stateLabel</span>
+                <button type="button" class="callx-icon" @onclick="() => isMinimized = true" title="Minimize" aria-label="Minimize call window"><i data-lucide="minimize-2"></i></button>
+            </div>
+        }
+    };
     private bool showReplies;
     private bool showDevices;
     private bool showAddPerson;
@@ -315,7 +338,8 @@ else if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
     /// "window" / "pill" when the draggable in-call UI is on screen; null for rings/toasts.
     /// Mirrors the branch order of the markup above.
     private string? DragKind =>
-        CallSvc.IsIncomingRing && CallSvc.IsGroup ? null
+        Phone.IsPhone ? null      // phone (mockup v2 C1/C1b): full screen + top pill, never dragged
+        : CallSvc.IsIncomingRing && CallSvc.IsGroup ? null
         : CallSvc.IsInGroupCall ? (isMinimized ? "pill" : "window")
         : CallSvc.IsIncomingRing ? null
         : CallSvc.IsOutgoingRing || CallSvc.IsActiveCall ? (isMinimized ? "pill" : "window")
@@ -376,7 +400,13 @@ else if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
         };
     }
 
-    protected override void OnInitialized() => CallSvc.StateChanged += OnStateChanged;
+    protected override void OnInitialized()
+    {
+        CallSvc.StateChanged += OnStateChanged;
+        Phone.Changed += OnPhoneChanged;
+    }
+
+    private void OnPhoneChanged() => _ = InvokeAsync(StateHasChanged);
 
     private void OnStateChanged() => _ = InvokeAsync(async () =>
     {
@@ -579,6 +609,7 @@ else if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
     public void Dispose()
     {
         CallSvc.StateChanged -= OnStateChanged;
+        Phone.Changed -= OnPhoneChanged;
         if (attachedDragId is not null)
         {
             attachedDragId = null;

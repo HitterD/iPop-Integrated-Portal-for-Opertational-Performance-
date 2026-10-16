@@ -85,3 +85,72 @@
   .meeting-room-card .dash-link { display:inline-flex; align-items:center; min-height:40px; }
   .meeting-room-card .btn-primary { width:100%; min-height:44px; justify-content:center; }
 }
+
+/* ===================== Wave 2 (mockup v1 e, v2 C1–C3) ===================== */
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  /* Frame e: icon row + segmented control at 44 px (Wave 1 leftovers: 40 / 32). */
+  .calls-v6 > .cl-pnav button { width: 44px; height: 44px; }
+  .calls-v6 > .cl-ptitle { font-size: 34px; font-weight: 700; letter-spacing: -.028em; }
+  .calls-v6 .calls-toolbar .calls-tabs.calls-tabs { height: 44px; padding: 3px; border-radius: 12px; }
+  /* 38 px pills inside a 44 px band: transparent borders lift the hit box to 44. */
+  .calls-v6 .calls-toolbar .calls-tabs.calls-tabs button {
+    height: 44px; min-height: 44px; margin: -3px 0; border: 3px solid transparent; background-clip: padding-box;
+    border-radius: 12px; font-size: 14px; font-weight: 600;
+  }
+  .calls-history-filters button { height: 44px; min-height: 44px; border-top: 5px solid transparent !important; border-bottom: 5px solid transparent !important; background-clip: padding-box; }
+  .calls-history-filters .calls-mark-seen { white-space: nowrap; }
+  .calls-row-actions a, .calls-row-actions button { width: 44px; height: 44px; }
+  .calls-v6 .calls-favorites > button { min-width: 64px; }
+  .mrt-join { min-height: 44px; }
+  .mrt-scrim .mrt-pill, .mrt-sheet button { min-height: 44px; }
+  /* FAB (Schedule) never covers the last row. */
+  .calls-v6 .calls-list { padding-bottom: 76px; }
+
+  /* C1: the in-call window is a full screen (no drag, no resize — GlobalCallOverlay on phones). */
+  .callx-window.m-call-full {
+    position: fixed; inset: 0; left: 0; right: 0; top: 0; bottom: 0; width: auto; height: auto; max-height: none; z-index: 1200;
+    border-radius: 0; border: 0; display: flex; flex-direction: column; overflow: hidden;
+    padding: var(--m-safe-t) 0 calc(14px + var(--m-safe-b)); box-sizing: border-box;
+    background: linear-gradient(180deg, #1d3a2e 0%, #0f1f19 100%); color: #fff; animation: none;
+  }
+  .callx-window.m-call-full .m-call-top { display: flex; align-items: center; gap: 4px; flex: none; min-height: 56px; padding: 4px 8px; }
+  .callx-window.m-call-full .m-call-top .callx-icon {
+    width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, .12); color: #fff;
+  }
+  .callx-window.m-call-full .m-call-tt { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .callx-window.m-call-full .m-call-tt b { font-size: 17px; font-weight: 650; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .callx-window.m-call-full .m-call-tt small { font-size: 13px; color: rgba(255, 255, 255, .7); }
+  .callx-window.m-call-full .m-call-top .callx-badge { width: 44px; justify-content: center; background: transparent; padding: 0; }
+  .callx-window.m-call-full .callx-body { flex: 1; min-height: 0; overflow-y: auto; justify-content: center; color: #fff; }
+  .callx-window.m-call-full .callx-body h2 { color: #fff; font-size: 26px; }
+  .callx-window.m-call-full .callx-timer, .callx-window.m-call-full .callx-meters small { color: rgba(255, 255, 255, .75); }
+  .callx-window.m-call-full .callx-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; max-height: none; padding: 8px 16px; }
+  .callx-window.m-call-full .callx-tile { min-height: 132px; border-radius: 20px; background: rgba(255, 255, 255, .08); color: #fff; }
+  .callx-window.m-call-full .callx-tile.is-speaking { box-shadow: 0 0 0 3px #30d158 inset; }
+  .callx-window.m-call-full .callx-tile.pending { opacity: .7; }
+  .callx-window.m-call-full .callx-tile-state { color: rgba(255, 255, 255, .7); }
+  .callx-window.m-call-full .callx-controls { flex: none; flex-wrap: wrap; justify-content: center; gap: 14px 18px; padding: 12px 16px 0; background: transparent; border: 0; }
+  .callx-window.m-call-full .callx-ctrl { min-width: 72px; min-height: 76px; color: #fff; font-size: 12.5px; }
+  .callx-window.m-call-full .callx-ctrl > span { width: 60px; height: 60px; border-radius: 50%; background: rgba(255, 255, 255, .14); }
+  .callx-window.m-call-full .callx-ctrl.on > span { background: #fff; color: #1d1d1f; }
+  .callx-window.m-call-full .callx-ctrl.hangup > span { background: #ff3b30; color: #fff; }
+  .callx-window.m-call-full .callx-devices { padding: 0 16px; }
+  .callx-window.m-call-full .callx-add { margin: 0 12px; }
+  body:has(.callx-window.m-call-full) .m-tabbar { display: none; }
+
+  /* C1b: the minimised call is a pill under the status bar, on every route. */
+  .callx-pill.m-call-pill {
+    position: fixed; left: 8px; right: 8px; top: calc(var(--m-safe-t) + 6px); bottom: auto; z-index: 1150;
+    display: flex; align-items: center; gap: 4px; min-height: 56px; padding: 6px 6px 6px 8px; border-radius: 18px;
+    background: #123528; color: #fff; box-shadow: 0 12px 30px -8px rgba(0, 0, 0, .45); cursor: default; touch-action: auto;
+  }
+  .callx-pill.m-call-pill .callx-pill-open { flex: 1; min-width: 0; min-height: 44px; color: #fff; }
+  .callx-pill.m-call-pill .callx-pill-text { max-width: none; min-width: 0; }
+  .callx-pill.m-call-pill .callx-pill-text strong { color: #fff; font-size: 14.5px; }
+  .callx-pill.m-call-pill .callx-pill-text small { color: rgba(255, 255, 255, .72); }
+  .callx-pill.m-call-pill .callx-round { width: 44px; height: 44px; flex: none; background: rgba(255, 255, 255, .14); color: #fff; }
+  .callx-pill.m-call-pill .callx-round.on { background: #fff; color: #1d1d1f; }
+  .callx-pill.m-call-pill .callx-round.hangup { background: #ff3b30; }
+  /* Pages make room for the pill so it never covers their nav bar. */
+  body:has(.callx-pill.m-call-pill) .main { padding-top: 64px; }
+}
