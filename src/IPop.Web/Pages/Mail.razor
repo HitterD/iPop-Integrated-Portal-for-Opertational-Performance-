@@ -23,7 +23,7 @@
 <PageTitle>Mail — IPop</PageTitle>
 
 
-<div class="mail-page mlx @(detail is not null ? "m-detail" : "") @(mFolderSheet ? "m-folders-open" : "")">
+<div class="mail-page mlx @(detail is not null ? "m-detail" : "") @(mFolderSheet && !Phone.IsPhone ? "m-folders-open" : "")">
     @* Outlook-style surface (mockup docs/mockups/mail-layout-outlook.html v3): Mailboxes | list | reading pane joined
        as one sheet under the topbar, hairline splitters between them (js/mail-layout.js owns widths + the rail). *@
     <div class="mlx-surf @(selected.Count > 0 ? "has-selection" : "")" data-mlx-surf>

@@ -267,7 +267,7 @@
 /* ===================== Wave 2 (mockup v1 c/d, v2 M1–M2) ===================== */
 @media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   /* Frame c: the large title is in the list; the topbar title steps aside. */
-  .main:has(> .main-panel > .mail-page.mlx:not(.m-detail)) .v6-topbar .tb-title h1 { visibility: hidden; }
+  .main:has(> .main-panel .mail-page.mlx:not(.m-detail)) > .v6-topbar .tb-title h1 { visibility: hidden; }
   .mlx .mlx-fbtn { height: 44px; min-width: 44px; }
   .mlx .mlx-title { font-size: 34px; font-weight: 700; letter-spacing: -.028em; }
   .mlx .mlx-count { color: var(--ph-ink-3); font-size: 15px; }

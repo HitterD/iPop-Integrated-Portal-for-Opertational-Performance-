@@ -18,7 +18,7 @@
   .chat-area.m-detail .conv-pane { display: flex; }
   .chat-area .conv-back, .chat-area .room-pane-close, .empty-state.chat-empty .empty-acts .mobile-only { display: none; }
   /* Open room: no topbar either (tab bar is hidden by ipop.mobile.hideTabbar). */
-  body.m-hide-tabbar .main:has(> .main-panel > .chat-area.m-detail) > .topbar { display: none; }
+  body.m-hide-tabbar .main:has(> .main-panel .chat-area.m-detail) > .topbar { display: none; }
 
   /* ---------- Screen 1: room list ---------- */
   /* The pane itself scrolls, so its flex children keep their natural height. */
@@ -252,7 +252,7 @@
 /* ===================== Wave 2 (mockup v1 a/b, v2 CH1–CH3) ===================== */
 @media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   /* Frame a: large title in the list; the topbar title steps aside (it was cut at 360 px). */
-  .main:has(> .main-panel > .chat-area:not(.m-detail)) .v6-topbar .tb-title h1 { visibility: hidden; }
+  .main:has(> .main-panel .chat-area:not(.m-detail)) > .v6-topbar .tb-title h1 { visibility: hidden; }
   .chat-area .room-pane > .m-chat-lt {
     margin: 0; padding: 2px 6px 10px; font-size: 34px; font-weight: 700; letter-spacing: -.028em; line-height: 1.12; color: var(--ink);
   }

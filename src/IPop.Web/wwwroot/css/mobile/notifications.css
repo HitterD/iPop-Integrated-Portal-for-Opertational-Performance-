@@ -84,7 +84,7 @@
   .notifs-v6.m-nf-phone:not(.m-detail) > .notifs-cols { display: none; }
   .notifs-v6.m-nf-phone.m-detail > .notifs-toolbar { display: none; }
   .notifs-v6.m-nf-phone > .ph-screen { flex: 1; min-height: 0; }
-  .main:has(> .main-panel > .notifs-v6.m-nf-phone:not(.m-detail)) .v6-topbar .tb-title h1 { visibility: hidden; }
+  .main:has(> .main-panel .notifs-v6.m-nf-phone:not(.m-detail)) > .v6-topbar .tb-title h1 { visibility: hidden; }
   .m-nf-sub { margin: -6px 20px 10px; font-size: 15px; color: var(--ph-ink-3); }
   .m-nf-search {
     display: flex; align-items: center; gap: 8px; height: 44px; margin: 0 16px 10px; padding: 0 12px;

@@ -97,7 +97,12 @@
     height: 44px; min-height: 44px; margin: -3px 0; border: 3px solid transparent; background-clip: padding-box;
     border-radius: 12px; font-size: 14px; font-weight: 600;
   }
-  .calls-history-filters button { height: 44px; min-height: 44px; border-top: 5px solid transparent !important; border-bottom: 5px solid transparent !important; background-clip: padding-box; }
+  /* A 34 px pill inside a 44 px hit box: transparent top/bottom borders, the ring drawn as an inset shadow. */
+  .calls-history-filters button {
+    height: 44px; border-width: 5px 0 !important; border-style: solid !important; border-color: transparent !important;
+    background-clip: padding-box; box-shadow: inset 0 0 0 1px var(--line); border-radius: 19px; font-size: 13px;
+  }
+  .calls-history-filters button.active { box-shadow: none; }
   .calls-history-filters .calls-mark-seen { white-space: nowrap; }
   .calls-row-actions a, .calls-row-actions button { width: 44px; height: 44px; }
   .calls-v6 .calls-favorites > button { min-width: 64px; }
@@ -151,6 +156,14 @@
   .callx-pill.m-call-pill .callx-round { width: 44px; height: 44px; flex: none; background: rgba(255, 255, 255, .14); color: #fff; }
   .callx-pill.m-call-pill .callx-round.on { background: #fff; color: #1d1d1f; }
   .callx-pill.m-call-pill .callx-round.hangup { background: #ff3b30; }
+  /* C1b for meeting rooms too: the minimised meeting is the same top pill. */
+  .mr-pill { left: 8px; right: 8px; top: calc(var(--m-safe-t) + 6px); bottom: auto; min-height: 56px; border-radius: 18px; }
+  .mr-pill .mr-pill-t { flex: 1; min-width: 0; }
+  body:has(.mr-pill) .main { padding-top: 64px; }
+  .mr-meet .mr-chat-back { width: 44px; height: 44px; }
+  .mr-ci { width: 44px; height: 44px; }
+  /* Meeting chat composer rides on the keyboard. */
+  .mr-chat .mr-composer { margin-bottom: var(--ph-kb, 0px); }
   /* Pages make room for the pill so it never covers their nav bar. */
   body:has(.callx-pill.m-call-pill) .main { padding-top: 64px; }
 }
