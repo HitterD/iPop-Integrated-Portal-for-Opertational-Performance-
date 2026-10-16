@@ -305,11 +305,11 @@
 
     @* Phone tab bar, More sheet, Edit tabs and the one-time notification card (Components/Phone).
        The bar is hidden from 768 px up by css/mobile/shell.css; the sheets only exist while open. *@
-    <TabBar MoreOpen="moreOpen" OnMore="ToggleMore" OnNavigate="CloseMore" />
-    <MoreSheet Open="moreOpen" OpenChanged="v => { if (!v) CloseMore(); }"
+    <TabBar MoreOpen="more.MoreOpen" OnMore="ToggleMore" OnNavigate="CloseMore" />
+    <MoreSheet Open="more.MoreOpen" OpenChanged="v => { if (!v) CloseMore(); }"
                OnEditTabs="OpenEditTabs" OnSettings="OpenSettingsFromMore" OnSignOut="SignOut"
                OnProfile="() => { CloseMore(); OpenAccount(AccountSheet.Pane.Profile); }" />
-    <EditTabsSheet Open="editTabsOpen" OpenChanged="v => editTabsOpen = v" />
+    <EditTabsSheet Open="more.EditTabsOpen" OpenChanged="more.SetEditTabs" />
     <NotificationCard Visible="NotifCardVisible" Secure="Push.Secure" OnTurnOn="NotifCardTurnOn" OnNotNow="NotifCardNotNow" />
 </div>
 
@@ -364,19 +364,20 @@
         ]),
     ];
 
-    private bool moreOpen, editTabsOpen;
+    // More sheet + Edit tabs on top of it (Back closes Edit tabs → More → page).
+    private readonly MoreFlow more = new();
 
     private void ToggleMore()
     {
-        if (moreOpen) { CloseMore(); return; }
-        moreOpen = true; notifOpen = false; statusMenuOpen = false;
+        more.ToggleMore();
+        if (more.MoreOpen) { notifOpen = false; statusMenuOpen = false; }
     }
 
-    private void CloseMore() => moreOpen = false;
+    private void CloseMore() => more.CloseAll();
 
-    private void OpenEditTabs() { moreOpen = false; editTabsOpen = true; }
+    private void OpenEditTabs() => more.OpenEditTabs();
 
-    private void OpenSettingsFromMore() { moreOpen = false; NotifSettings.Open(); }
+    private void OpenSettingsFromMore() { more.CloseAll(); NotifSettings.Open(); }
 
     private bool NotifCardVisible => NotifCard.Loaded &&
         NotificationCard.ShouldShow(Phone.IsPhone, NotifCard.Answered, Push.ServerEnabled, Push.Secure, Push.Permission, Push.OptedOut);
@@ -714,6 +715,7 @@
         Notifs.NotificationsChanged += OnNotificationsChanged;
         Notifs.PreferencesChanged += OnNotifPreferencesChanged;
         Nav.LocationChanged += OnLocationChanged;
+        more.OnLocationChanged(Nav.Uri);
         Badges.Changed += OnBadgesChanged;
         Auth.MeChanged += OnMeChanged;
         Auth.DirectoryChanged += OnDirectoryChanged;
@@ -776,7 +778,7 @@
     {
         errorBoundary?.Recover();
         loadFailed = false;
-        CloseMore();
+        more.OnLocationChanged(e.Location);
         if (e.Location.Contains("answer=")) _ = InvokeAsync(AnswerFromToastAsync);
         _ = InvokeAsync(StateHasChanged);
     }
