@@ -1,0 +1,86 @@
+@* NF1 screen (mockup v2): Select · large title "Notifications" + unread count · Mark all read · Preferences,
+   search, chips and the list; Select mode turns rows into checkboxes with a Mark as read / Delete bar.
+   Presentational: Notifications.razor owns loading, filters, selection and every action. *@
+<PhoneScreen Title="Notifications" Class="m-nf-screen">
+    <Leading>
+        @if (Selecting)
+        {
+            <button type="button" class="ph-txtb" @onclick="OnSelectAll">@(AllSelected ? "Deselect all" : "Select all")</button>
+        }
+        else
+        {
+            <button type="button" class="ph-txtb" disabled="@(!CanSelect)" @onclick="OnSelect">Select</button>
+        }
+    </Leading>
+    <Trailing>
+        @if (Selecting)
+        {
+            <button type="button" class="ph-txtb b" @onclick="OnDone">Done</button>
+        }
+        else
+        {
+            <button type="button" class="ph-ib" aria-label="Mark all read" disabled="@(UnreadCount == 0)" @onclick="OnMarkAllRead"><i data-lucide="check-check"></i></button>
+            <button type="button" class="ph-ib" aria-label="Preferences" @onclick="OnPrefs"><i data-lucide="sliders-horizontal"></i></button>
+        }
+    </Trailing>
+    <Below>
+        <p class="m-nf-sub">@(UnreadCount > 0 ? $"{UnreadCount} unread" : "All caught up")</p>
+        <label class="m-nf-search"><i data-lucide="search"></i><input type="search" placeholder="Search notifications" aria-label="Search notifications" value="@Search" @oninput="e => SearchChanged.InvokeAsync(e.Value?.ToString() ?? string.Empty)" /></label>
+    </Below>
+    <ChildContent>
+        @if (Selecting)
+        {
+            <div class="m-nf-sel">
+                @foreach (var r in Rows)
+                {
+                    var row = r;
+                    var on = SelectedIds.Contains(row.Id);
+                    <button type="button" class="ph-row" role="checkbox" aria-checked="@(on ? "true" : "false")" @onclick="() => OnToggleSelect.InvokeAsync(row.Id)">
+                        <span class="m-nf-chk @(on ? "on" : "")"><i data-lucide="check"></i></span>
+                        <span class="ph-row-main"><span class="ph-row-title">@row.Title</span><span class="ph-row-sub">@row.Body</span></span>
+                    </button>
+                }
+            </div>
+        }
+        else
+        {
+            <NotificationListPhone Rows="Rows" Chips="Chips" Filter="@Filter" EmptyHint="@EmptyHint"
+                                   OnFilter="OnFilter" OnOpen="OnOpen" OnToggleRead="OnToggleRead" OnSnooze="OnSnooze" OnDelete="OnDelete" />
+        }
+    </ChildContent>
+</PhoneScreen>
+@if (Selecting)
+{
+    <footer class="m-nf-bulk">
+        <button type="button" class="ph-txtb" disabled="@(SelectedIds.Count == 0)" @onclick="OnBulkRead">Mark as read</button>
+        <span>@(SelectedIds.Count == 0 ? "Select items" : $"{SelectedIds.Count} selected")</span>
+        <button type="button" class="ph-txtb m-nf-danger" disabled="@(SelectedIds.Count == 0)" @onclick="OnBulkDelete">Delete</button>
+    </footer>
+}
+
+@code {
+    [Parameter] public int UnreadCount { get; set; }
+    [Parameter] public bool Selecting { get; set; }
+    [Parameter] public bool AllSelected { get; set; }
+    [Parameter] public bool CanSelect { get; set; }
+    [Parameter] public string Search { get; set; } = "";
+    [Parameter] public EventCallback<string> SearchChanged { get; set; }
+    [Parameter] public IReadOnlyList<PhoneNotifRow> Rows { get; set; } = [];
+    [Parameter] public IReadOnlyList<SegmentItem> Chips { get; set; } = [];
+    [Parameter] public string Filter { get; set; } = "all";
+    [Parameter] public string EmptyHint { get; set; } = "";
+    [Parameter] public IReadOnlyCollection<Guid> SelectedIds { get; set; } = [];
+    [Parameter] public EventCallback OnSelect { get; set; }
+    [Parameter] public EventCallback OnSelectAll { get; set; }
+    [Parameter] public EventCallback OnDone { get; set; }
+    [Parameter] public EventCallback OnMarkAllRead { get; set; }
+    [Parameter] public EventCallback OnPrefs { get; set; }
+    [Parameter] public EventCallback<Guid> OnToggleSelect { get; set; }
+    [Parameter] public EventCallback OnBulkRead { get; set; }
+    [Parameter] public EventCallback OnBulkDelete { get; set; }
+    [Parameter] public EventCallback<string> OnFilter { get; set; }
+    [Parameter] public EventCallback<Guid> OnOpen { get; set; }
+    [Parameter] public EventCallback<Guid> OnToggleRead { get; set; }
+    [Parameter] public EventCallback<Guid> OnSnooze { get; set; }
+    [Parameter] public EventCallback<Guid> OnDelete { get; set; }
+}

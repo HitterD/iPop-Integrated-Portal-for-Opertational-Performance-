@@ -1,0 +1,68 @@
+@* NF1 (mockup v2): filter chips, Today / Earlier groups, module-coloured icons, blue unread dot.
+   Swipe left = Mark read / Snooze, swipe right = Delete (ph-kit.js swipeRows); the actions are also
+   real buttons, so they work without swiping (screen readers, keyboards). Tap opens the item. *@
+<div class="m-nf-chips" role="tablist" aria-label="Filter notifications">
+    @foreach (var c in Chips)
+    {
+        var chip = c;
+        var on = chip.Value == Filter;
+        <button type="button" role="tab" class="m-nf-chip @(on ? "on" : "")" aria-selected="@(on ? "true" : "false")" @onclick="() => OnFilter.InvokeAsync(chip.Value)">
+            <span>@chip.Label@if (chip.Count is > 0) {<i>@chip.Count</i>}</span>
+        </button>
+    }
+</div>
+<div class="m-nf-list" @ref="listEl">
+    @if (Rows.Count == 0)
+    {
+        <div class="m-nf-empty"><i data-lucide="bell"></i><span>@EmptyHint</span></div>
+    }
+    @foreach (var g in Rows.GroupBy(r => r.Group))
+    {
+        <div class="ph-sec m-nf-day">@g.Key</div>
+        <div class="ph-group">
+            @foreach (var r in g)
+            {
+                var row = r;
+                <div class="m-nf-sw" data-swipe="" @key="row.Id">
+                    <span class="sw-acts l">
+                        <button type="button" class="sw-del" @onclick="() => OnDelete.InvokeAsync(row.Id)"><i data-lucide="trash-2"></i>Delete</button>
+                    </span>
+                    <span class="sw-acts r">
+                        <button type="button" class="sw-read" @onclick="() => OnToggleRead.InvokeAsync(row.Id)"><i data-lucide="@(row.IsRead ? "mail" : "check")"></i>@(row.IsRead ? "Mark unread" : "Mark read")</button>
+                        <button type="button" class="sw-snz" @onclick="() => OnSnooze.InvokeAsync(row.Id)"><i data-lucide="alarm-clock"></i>Snooze</button>
+                    </span>
+                    <button type="button" class="sw-fg m-nf-row @(row.IsRead ? "" : "is-unread")" @onclick="() => OnOpen.InvokeAsync(row.Id)">
+                        <span class="m-nf-ud" aria-label="@(row.IsRead ? null : "Unread")"></span>
+                        <span class="m-nf-ico k-@row.Kind"><i data-lucide="@row.Icon"></i></span>
+                        <span class="m-nf-m">
+                            <span class="m-nf-l1"><b>@row.Title</b><span class="m-nf-tm">@row.Time</span></span>
+                            <span class="m-nf-b">@row.Body</span>
+                            @if (row.Snoozed is not null) { <span class="m-nf-snz"><i data-lucide="alarm-clock"></i>@row.Snoozed</span> }
+                        </span>
+                    </button>
+                </div>
+            }
+        </div>
+    }
+    <div style="height:24px"></div>
+</div>
+
+@code {
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+    [Parameter] public IReadOnlyList<PhoneNotifRow> Rows { get; set; } = [];
+    [Parameter] public IReadOnlyList<SegmentItem> Chips { get; set; } = [];
+    [Parameter] public string Filter { get; set; } = "all";
+    [Parameter] public string EmptyHint { get; set; } = "New notifications will show up here.";
+    [Parameter] public EventCallback<string> OnFilter { get; set; }
+    [Parameter] public EventCallback<Guid> OnOpen { get; set; }
+    [Parameter] public EventCallback<Guid> OnToggleRead { get; set; }
+    [Parameter] public EventCallback<Guid> OnSnooze { get; set; }
+    [Parameter] public EventCallback<Guid> OnDelete { get; set; }
+
+    private ElementReference listEl;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) { try { await JS.InvokeVoidAsync("ipop.phone.swipeRows", listEl); } catch { /* tests / old cache */ } }
+    }
+}

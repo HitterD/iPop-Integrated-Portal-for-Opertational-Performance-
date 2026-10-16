@@ -1,0 +1,27 @@
+@* Snooze options as a bottom sheet on phones (the desktop detail bar keeps its context menu). *@
+<BottomSheet Open="true" OpenChanged="Changed" Title="Snooze until" Class="m-nf-snzsheet">
+    <div class="ph-group">
+        @foreach (var o in Options)
+        {
+            var opt = o;
+            <button type="button" class="ph-row" @onclick="() => Pick(opt)">
+                <span class="ph-row-lead"><i data-lucide="@opt.Icon"></i></span>
+                <span class="ph-row-main"><span class="ph-row-title">@opt.Label</span></span>
+            </button>
+        }
+    </div>
+    <div style="height:12px"></div>
+</BottomSheet>
+
+@code {
+    [Parameter] public IReadOnlyList<PhoneSnoozeOption> Options { get; set; } = [];
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private Task Changed(bool open) => open ? Task.CompletedTask : OnClose.InvokeAsync();
+
+    private async Task Pick(PhoneSnoozeOption opt)
+    {
+        await OnClose.InvokeAsync();
+        if (opt.Run is not null) await opt.Run();
+    }
+}

@@ -75,3 +75,106 @@
   .content .tray .core:has(.u-table) { overflow-x: auto !important; }
   .content .admin-tabs { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; scrollbar-width: none; }
 }
+
+/* ===================== Wave 2 (mockup v2 NF1 / NF2) ===================== */
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  /* NF1: the phone screen replaces the toolbar, side nav and list column; the detail pane stays. */
+  .notifs-v6.m-nf-phone { display: flex; flex-direction: column; background: var(--ph-bg); }
+  .notifs-v6.m-nf-phone:not(.m-detail) > .notifs-toolbar,
+  .notifs-v6.m-nf-phone:not(.m-detail) > .notifs-cols { display: none; }
+  .notifs-v6.m-nf-phone.m-detail > .notifs-toolbar { display: none; }
+  .notifs-v6.m-nf-phone > .ph-screen { flex: 1; min-height: 0; }
+  .main:has(> .main-panel > .notifs-v6.m-nf-phone:not(.m-detail)) .v6-topbar .tb-title h1 { visibility: hidden; }
+  .m-nf-sub { margin: -6px 20px 10px; font-size: 15px; color: var(--ph-ink-3); }
+  .m-nf-search {
+    display: flex; align-items: center; gap: 8px; height: 44px; margin: 0 16px 10px; padding: 0 12px;
+    border-radius: 12px; background: var(--ph-fill); color: var(--ph-ink-3);
+  }
+  .m-nf-search input { flex: 1; min-width: 0; height: 44px; border: 0; background: none; color: var(--ph-ink); font: inherit; font-size: 16px; outline: none; }
+  .m-nf-search .lucide { width: 18px; height: 18px; }
+  .m-nf-chips { display: flex; gap: 6px; padding: 0 16px 4px; overflow-x: auto; scrollbar-width: none; }
+  .m-nf-chips::-webkit-scrollbar { display: none; }
+  /* 44 px hit box around a 34 px pill (Wave 1 leftover). */
+  .m-nf-chip { flex: none; height: 44px; min-width: 44px; padding: 5px 0; border: 0; background: none; cursor: pointer; font: inherit; }
+  .m-nf-chip > span {
+    display: inline-flex; align-items: center; gap: 5px; height: 34px; padding: 0 14px; border-radius: 17px;
+    background: var(--ph-fill); color: var(--ph-ink); font-size: 15px; font-weight: 600; white-space: nowrap;
+  }
+  .m-nf-chip > span i { font-style: normal; font-size: 13px; color: var(--ph-ink-3); }
+  .m-nf-chip.on > span { background: var(--ph-ink); color: var(--ph-bg); }
+  .m-nf-chip.on > span i { color: inherit; opacity: .75; }
+  .m-nf-day { padding-top: 14px; }
+  .m-nf-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 48px 24px; color: var(--ph-ink-3); text-align: center; }
+  .m-nf-empty .lucide { width: 34px; height: 34px; }
+
+  /* Rows + swipe actions (ph-kit.js swipeRows toggles .sw-left / .sw-right). */
+  .m-nf-sw { position: relative; overflow: hidden; }
+  .m-nf-sw + .m-nf-sw::before { content: ''; position: absolute; top: 0; right: 0; left: 72px; z-index: 2; border-top: .5px solid var(--ph-sep); }
+  .m-nf-sw .sw-acts { position: absolute; top: 0; bottom: 0; display: flex; }
+  .m-nf-sw .sw-acts.l { left: 0; }
+  .m-nf-sw .sw-acts.r { right: 0; }
+  .m-nf-sw .sw-acts button {
+    width: 84px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    border: 0; color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .m-nf-sw .sw-acts .lucide { width: 20px; height: 20px; }
+  .m-nf-sw .sw-read { background: #0a84ff; } .m-nf-sw .sw-snz { background: #5562b8; } .m-nf-sw .sw-del { background: var(--ph-red); }
+  .m-nf-sw .sw-fg { position: relative; z-index: 1; transition: transform .25s var(--ph-ease); }
+  .m-nf-sw.sw-left .sw-fg { transform: translateX(-168px); }
+  .m-nf-sw.sw-right .sw-fg { transform: translateX(84px); }
+  .m-nf-row {
+    display: flex; align-items: flex-start; gap: 10px; width: 100%; min-height: 64px; padding: 11px 16px 11px 8px;
+    border: 0; background: var(--ph-card); color: var(--ph-ink); text-align: left; font: inherit; cursor: pointer; touch-action: pan-y;
+  }
+  .m-nf-row:active { background: var(--ph-fill-2); }
+  .m-nf-ud { flex: none; width: 9px; height: 9px; margin-top: 15px; border-radius: 50%; }
+  .m-nf-row.is-unread .m-nf-ud { background: #0a84ff; }
+  .m-nf-ico { flex: none; width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; color: #fff; background: #8e8e93; }
+  .m-nf-ico .lucide { width: 20px; height: 20px; }
+  .m-nf-ico.k-chat { background: #2e9e5b; } .m-nf-ico.k-mention { background: #0a84ff; } .m-nf-ico.k-mail { background: #0a84ff; }
+  .m-nf-ico.k-task { background: #5562b8; } .m-nf-ico.k-meeting { background: #1f8fa6; } .m-nf-ico.k-news { background: #a0457a; }
+  .m-nf-ico.k-system { background: #6f8290; }
+  .m-nf-m { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .m-nf-l1 { display: flex; align-items: baseline; gap: 8px; }
+  .m-nf-l1 b { flex: 1; min-width: 0; font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .m-nf-row:not(.is-unread) .m-nf-l1 b { font-weight: 500; }
+  .m-nf-tm { flex: none; font-size: 14px; color: var(--ph-ink-3); }
+  .m-nf-b { font-size: 15px; line-height: 1.3; color: var(--ph-ink-3); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .m-nf-snz { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: #5562b8; }
+  .m-nf-snz .lucide { width: 14px; height: 14px; }
+
+  /* Select mode */
+  .m-nf-sel { margin: 0 16px; border-radius: 14px; overflow: hidden; background: var(--ph-card); }
+  .m-nf-chk { flex: none; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--ph-ink-4); display: grid; place-items: center; color: transparent; }
+  .m-nf-chk.on { background: #0a84ff; border-color: #0a84ff; color: #fff; }
+  .m-nf-chk .lucide { width: 15px; height: 15px; }
+  .m-nf-bulk {
+    position: fixed; left: 0; right: 0; bottom: calc(var(--m-tabbar-h) + var(--m-safe-b)); z-index: 40;
+    display: flex; align-items: center; justify-content: space-between; padding: 0 8px; min-height: 52px;
+    background: var(--ph-card); box-shadow: 0 -.5px 0 var(--ph-hair); font-size: 14px; color: var(--ph-ink-3);
+  }
+  .m-nf-bulk .m-nf-danger { color: var(--ph-red); }
+
+  /* Detail + preferences pane targets */
+  .notifs-v6 .notifs-dt-bar .nf-icon { width: 44px; height: 44px; }
+  .notifs-v6.m-nf-phone .notifs-detail:has(.m-nf-prefs) { background: var(--ph-bg); }
+  .notifs-v6.m-nf-phone .notifs-dt-bar { min-height: 52px; }
+
+  /* NF2: grouped list with instant switches */
+  .m-nf-prefs { padding-top: 6px; color: var(--ph-ink); }
+  .m-nf-prefs .ph-row { cursor: default; }
+  .m-nf-prefs .m-nf-more { cursor: pointer; }
+  .m-nf-prefs .ph-ico.m-nf-ico { width: 30px; height: 30px; border-radius: 8px; }
+  .m-nf-prefs .ph-ico.m-nf-ico .lucide { width: 18px; height: 18px; }
+  .ph-sw {
+    position: relative; flex: none; width: 51px; height: 44px; padding: 6px 0; border: 0; background: none; cursor: pointer;
+  }
+  .ph-sw::before { content: ''; position: absolute; left: 0; right: 0; top: 6.5px; height: 31px; border-radius: 16px; background: var(--ph-fill); transition: background .2s; }
+  .ph-sw i { position: absolute; left: 2px; top: 8.5px; width: 27px; height: 27px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0, 0, 0, .2); transition: transform .2s var(--ph-ease); }
+  .ph-sw.on::before { background: #34c759; }
+  .ph-sw.on i { transform: translateX(20px); }
+  .m-nf-snzsheet .ph-row-lead .lucide { width: 20px; height: 20px; color: #5562b8; }
+
+  /* The topbar bell opens /notifications on phones (MainLayout) — keep its popover out of the way. */
+  .v6-topbar .topbar-right .notif-pop { display: none !important; }
+}

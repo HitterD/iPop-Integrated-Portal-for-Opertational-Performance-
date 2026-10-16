@@ -1,0 +1,46 @@
+@* NF2 (mockup v2): one grouped list instead of the General / Quiet hours / Categories tabs. Switches save
+   at once (the page PUTs on every toggle — there is no Save button). Sounds, push health, test toast and
+   time zone stay in the full settings ("More settings"), which already works as a phone sheet. *@
+<div class="m-nf-prefs">
+    @General
+    <div class="ph-sec">Quiet hours</div>
+    <div class="ph-group">
+        <div class="ph-row m-nf-prow">
+            <span class="ph-row-lead"><span class="ph-ico ph-ico-s" style="background:#5856d6"><i data-lucide="moon"></i></span></span>
+            <span class="ph-row-main"><span class="ph-row-title">Do Not Disturb</span><span class="ph-row-sub">@DndSub</span></span>
+            <button type="button" class="ph-sw @(Dnd ? "on" : "")" role="switch" aria-checked="@(Dnd ? "true" : "false")" aria-label="Do Not Disturb" @onclick="OnDnd"><i></i></button>
+        </div>
+    </div>
+    <div class="ph-sec">Categories</div>
+    <div class="ph-group">
+        @foreach (var c in Categories)
+        {
+            var cat = c;
+            <div class="ph-row m-nf-prow">
+                <span class="ph-row-lead"><span class="ph-ico ph-ico-s m-nf-ico k-@cat.Id"><i data-lucide="@cat.Icon"></i></span></span>
+                <span class="ph-row-main"><span class="ph-row-title">@cat.Label</span></span>
+                <button type="button" class="ph-sw @(cat.On ? "on" : "")" role="switch" aria-checked="@(cat.On ? "true" : "false")" aria-label="@cat.Label" @onclick="() => OnCategory.InvokeAsync(cat.Id)"><i></i></button>
+            </div>
+        }
+    </div>
+    <p class="ph-note">Muted categories still collect here, but they don’t show banners or play sounds.</p>
+    <div class="ph-group ph-gap">
+        <button type="button" class="ph-row m-nf-more" @onclick="OnMore">
+            <span class="ph-row-lead"><span class="ph-ico ph-ico-s c-gray"><i data-lucide="settings"></i></span></span>
+            <span class="ph-row-main"><span class="ph-row-title">Sounds, phone alerts &amp; delivery</span><span class="ph-row-sub">Push health, test notification, quiet-hour times</span></span>
+            <i data-lucide="chevron-right" class="ph-row-chev"></i>
+        </button>
+    </div>
+    <div style="height:40px"></div>
+</div>
+
+@code {
+    [Parameter] public bool Dnd { get; set; }
+    [Parameter] public string DndSub { get; set; } = "Silence alerts from 22:00 to 07:00";
+    [Parameter] public IReadOnlyList<PhoneNotifCategory> Categories { get; set; } = [];
+    /// Optional rows above Quiet hours (phone notifications on/off for this device).
+    [Parameter] public RenderFragment? General { get; set; }
+    [Parameter] public EventCallback OnDnd { get; set; }
+    [Parameter] public EventCallback<string> OnCategory { get; set; }
+    [Parameter] public EventCallback OnMore { get; set; }
+}

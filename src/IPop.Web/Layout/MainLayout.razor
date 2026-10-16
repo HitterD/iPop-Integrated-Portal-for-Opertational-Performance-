@@ -536,6 +536,8 @@
 
     private async Task ToggleNotif()
     {
+        // Phone (Wave 2 plan W2.4): no popover; the bell opens the Notification list screen.
+        if (Phone.IsPhone) { notifOpen = false; Nav.NavigateTo("/notifications"); return; }
         notifOpen = !notifOpen;
         if (notifOpen)
         {

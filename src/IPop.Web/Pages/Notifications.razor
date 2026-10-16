@@ -9,10 +9,24 @@
 @inject AuthState Auth
 @inject ToastService Toasts
 @inject NotificationState Notifs
+@inject PhoneState Phone
+@using IPop.Web.Components.Phone.Notifications
 
 <PageTitle>Notification Center — IPop</PageTitle>
 
-<div class="notifs-v6 @(mDetail ? "m-detail" : "")">
+<div class="notifs-v6 @((mDetail ? "m-detail" : "") + (Phone.IsPhone ? " m-nf-phone" : ""))">
+    @if (Phone.IsPhone && !mDetail)
+    {
+        <NotificationsScreenPhone UnreadCount="unreadCount" Selecting="selecting" AllSelected="AllSelected" CanSelect="@(FilteredList.Count > 0)"
+                                  Search="@searchQuery" SearchChanged="PhoneSearch"
+                                  Rows="PhoneRows" Chips="PhoneChips" Filter="@categoryFilter" EmptyHint="@EmptyHint"
+                                  SelectedIds="selectedIds"
+                                  OnSelect="() => selecting = true" OnSelectAll="SelectAllToggle" OnDone="EndSelecting"
+                                  OnMarkAllRead="MarkAllRead" OnPrefs="TogglePrefs" OnToggleSelect="ToggleItemSelection"
+                                  OnBulkRead="BulkMarkRead" OnBulkDelete="BulkDelete"
+                                  OnFilter="SetCategory" OnOpen="PhoneOpen" OnToggleRead="PhoneToggleRead"
+                                  OnSnooze="PhoneSnoozeAsk" OnDelete="PhoneDelete" />
+    }
     <div class="notifs-toolbar">
         <div class="v6-search notifs-search">
             <i data-lucide="search"></i>
@@ -155,6 +169,13 @@
                         <span class="notifs-dt-bar-title">Preferences</span>
                         @if (!mDetail) { <button type="button" class="nf-icon" title="Close" aria-label="Close preferences" @onclick="TogglePrefs"><i data-lucide="x"></i></button> }
                     </header>
+                    @if (Phone.IsPhone)
+                    {
+                        <NotificationPrefsPhone Dnd="quietHoursEnabled" Categories="PhoneCategories"
+                                                OnDnd="ToggleDnd" OnCategory="ToggleMuteCategory" OnMore="NotifSettings.Open" />
+                    }
+                    else
+                    {
                     <div class="notifs-dt-body">
                         <div class="nf-group">
                             <div class="nf-group-row">
@@ -186,6 +207,7 @@
                             </span>
                         </a>
                     </div>
+                    }
                 }
                 else if (selectedItem is not null)
                 {
@@ -252,7 +274,12 @@
     </div>
 </div>
 
-@if (snoozeMenuOpen)
+@if (snoozeMenuOpen && Phone.IsPhone)
+{
+    <SnoozeSheetPhone Options="@(SnoozeItems.Where(i => !i.IsHeader && !i.IsDivider).Select(i => new PhoneSnoozeOption(i.Label, i.Icon, i.OnClick)).ToList())"
+                      OnClose="() => snoozeMenuOpen = false" />
+}
+else if (snoozeMenuOpen)
 {
     <ContextMenu @ref="snoozeMenu" Items="SnoozeItems" OnClosed="() => snoozeMenuOpen = false" />
 }
@@ -266,6 +293,43 @@
     private string categoryFilter = "all";
     private bool selecting;
     private bool snoozeMenuOpen;
+
+    // ── Wave 2 phone list (NF1) / preferences (NF2): same data and actions as the desktop panes ──
+    private static readonly string[] PhoneChipIds = ["all", "unread", "mention", "chat", "mail", "task", "meeting", "news", "system", "snoozed"];
+
+    private IReadOnlyList<IPop.Web.Components.Phone.SegmentItem> PhoneChips => PhoneChipIds
+        .Select(id => CategoryList.First(c => c.Id == id))
+        .Select(c => new IPop.Web.Components.Phone.SegmentItem(c.Id, c.Id == "news" ? "News" : c.Label, c.Id == "unread" ? CountCategoryUnread("unread") : null))
+        .ToList();
+
+    private IReadOnlyList<PhoneNotifRow> PhoneRows => GroupedNotifications
+        .SelectMany(g => g.Select(n => new PhoneNotifRow(n.Id, Classify(n.Type), GetIcon(n.Type), n.Title, n.Body, FormatTime(n.At),
+            g.Key is "Today" ? "Today" : g.Key is "Yesterday" ? "Yesterday" : "Earlier", n.IsRead,
+            IsSnoozed(n) ? $"Until {SnoozeLabel(n.SnoozedUntil!.Value)}" : null)))
+        .ToList();
+
+    private IReadOnlyList<PhoneNotifCategory> PhoneCategories => CategoryList
+        .Where(x => x.Id is not ("all" or "unread" or "snoozed"))
+        .Select(c => new PhoneNotifCategory(c.Id, c.Label, c.Icon, !mutedCategories.Contains(c.Id)))
+        .ToList();
+
+    private NotificationItemDto? Find(Guid id) => items.FirstOrDefault(x => x.Id == id);
+
+    private Task PhoneSearch(string q) { searchQuery = q; return OnSearchChanged(); }
+
+    private void PhoneOpen(Guid id) { if (Find(id) is { } n) SelectNotification(n); }
+
+    private Task PhoneToggleRead(Guid id) => Find(id) is { } n ? ToggleReadStatus(n) : Task.CompletedTask;
+
+    private Task PhoneDelete(Guid id) => Find(id) is { } n ? DeleteItem(n) : Task.CompletedTask;
+
+    /// Swipe → Snooze: the same options as the detail bar's menu, as a bottom sheet.
+    private void PhoneSnoozeAsk(Guid id)
+    {
+        if (Find(id) is not { } n) return;
+        selectedItem = n;
+        snoozeMenuOpen = true;
+    }
     private (double X, double Y)? snoozeMenuAt;
     private ContextMenu? snoozeMenu;
     private string searchQuery = "";
