@@ -18,6 +18,7 @@
 @inject IPop.Web.Services.CalendarLinks CalLinks
 @inject IPop.Web.Services.PageCache Cache
 @inject IPop.Web.Services.MailReadingPrefs Prefs
+@inject IPop.Web.Services.PhoneState Phone
 
 <PageTitle>Mail — IPop</PageTitle>
 
@@ -26,7 +27,15 @@
     @* Outlook-style surface (mockup docs/mockups/mail-layout-outlook.html v3): Mailboxes | list | reading pane joined
        as one sheet under the topbar, hairline splitters between them (js/mail-layout.js owns widths + the rail). *@
     <div class="mlx-surf @(selected.Count > 0 ? "has-selection" : "")" data-mlx-surf>
-        @if (mFolderSheet)
+        @if (mFolderSheet && Phone.IsPhone)
+        {
+            <IPop.Web.Components.Phone.Mail.MailboxesSheet Open="true" OnClose="() => mFolderSheet = false"
+                Boxes="PhoneBoxes" Labels="DisplayLabels" ActiveLabel="@labelFilter"
+                OnBox="PhoneSelectBox" OnLabel="PhoneSelectLabel" OnSettings="PhoneOpenSettings"
+                DensityLabel="@(density == MailListDensity.Compact ? "Comfortable rows" : "Compact rows")" OnDensity="PhoneToggleDensity"
+                OnEmptyTrash="() => { mFolderSheet = false; return EmptyTrashFromMenu(); }" />
+        }
+        else if (mFolderSheet)
         {
             <div class="mlx-sheetdim" @onclick="() => mFolderSheet = false"></div>
         }
@@ -119,7 +128,7 @@
                         <i data-lucide="chevron-left"></i><span>Mailboxes</span>
                     </button>
                     <b class="mlx-title">@ListTitle</b>
-                    <small class="mlx-count">@AllCount.ToString("N0")</small>
+                    <small class="mlx-count">@(Phone.IsPhone && activeFolder == MailFolder.Inbox && labelFilter is null ? $"{FolderBadge(MailFolder.Inbox):N0} unread" : AllCount.ToString("N0"))</small>
                     @if (NewCount > 0 && activeFolder == MailFolder.Inbox) { <span class="mlx-new">@NewCount new</span> }
                 </div>
                 <div class="mlx-search-wrap">
@@ -301,7 +310,7 @@
                             lastDay = day;
                             <div class="mlx-day" @key="@("day-" + day)">@day</div>
                         }
-                        <MailListRow @key="item.Id" Item="item" Comfortable="@(density == MailListDensity.Comfortable)"
+                        <MailListRow @key="item.Id" Item="item" Comfortable="@(Phone.IsPhone || density == MailListDensity.Comfortable)"
                                      Selected="@(selectedMail == item.Id)" Checked="@selected.Contains(item.Id)"
                                      ExtraClass="@(returningIds.Contains(item.Id) ? "mi-returning" : null)"
                                      Time="@FormatTime(item.ReceivedAt ?? item.ScheduledAt)" LabelColor="LabelColor" Highlight="Hl"
@@ -1352,6 +1361,28 @@
 
     // ── Phone layout (<= 767px): folder sheet, reader/composer as full-screen details ──
     private bool mFolderSheet;
+
+    // ── Wave 2 phone Mailboxes sheet (mockup v2 M2): same folders, labels and settings as the column ──
+    private IReadOnlyList<IPop.Web.Components.Phone.Mail.MailboxItem> PhoneBoxes => Folders
+        .Select(f => new IPop.Web.Components.Phone.Mail.MailboxItem(f.ToString().ToLowerInvariant(), FolderLabel(f), FolderIcon(f),
+            FolderBadge(f), f == MailFolder.Inbox, activeFolder == f && labelFilter is null))
+        .ToList();
+
+    private Task PhoneSelectBox(string key)
+    {
+        var f = Folders.First(x => x.ToString().Equals(key, StringComparison.OrdinalIgnoreCase));
+        return SelectFolder(f);
+    }
+
+    private Task PhoneSelectLabel(string name) => ToggleLabelFilter(name);
+
+    private void PhoneOpenSettings(string section)
+    {
+        mFolderSheet = false;
+        OpenSettings(section);
+    }
+
+    private Task PhoneToggleDensity() => SetDensity(density == MailListDensity.Compact ? MailListDensity.Comfortable : MailListDensity.Compact);
 
     /// <summary>Phone Back (popstate): close the composer first, else the reader.</summary>
     [JSInvokable]

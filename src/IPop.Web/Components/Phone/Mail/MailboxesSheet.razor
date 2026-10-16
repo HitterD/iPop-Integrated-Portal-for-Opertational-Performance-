@@ -1,0 +1,81 @@
+@using IPop.Web.Services
+@* M2 (mockup v2): opened from ‹ Mailboxes in the inbox. Standard folders with counts, coloured labels,
+   then Rules & filters and Mail settings. Presentational: Mail.razor owns folders, labels and settings. *@
+<BottomSheet Open="Open" OpenChanged="Changed" Title="Mailboxes" Size="SheetSize.Tall" Class="m-mail-mbx">
+    <Trailing><button type="button" class="ph-txtb b" @onclick="OnClose">Done</button></Trailing>
+    <ChildContent>
+        <ListSection Class="m-mail-box">
+            @foreach (var b in Boxes)
+            {
+                var box = b;
+                <button type="button" class="ph-row @(box.Active ? "on" : "")" aria-current="@(box.Active ? "page" : null)" @onclick="() => OnBox.InvokeAsync(box.Key)">
+                    <span class="ph-row-lead"><span class="ph-ico ph-ico-s m-mail-fi-@box.Key"><i data-lucide="@box.Icon"></i></span></span>
+                    <span class="ph-row-main"><span class="ph-row-title">@box.Label</span></span>
+                    @if (box.Count > 0) { <span class="m-mail-cnt @(box.Accent ? "acc" : "")">@box.Count.ToString("N0")</span> }
+                </button>
+            }
+        </ListSection>
+        <div class="ph-sec m-mail-lbls-h"><span>Labels</span><button type="button" class="ph-ib" aria-label="New label" @onclick='() => OnSettings.InvokeAsync("labels")'><i data-lucide="plus"></i></button></div>
+        <div class="ph-group m-mail-lbls">
+            @if (Labels.Count == 0)
+            {
+                <p class="m-mail-none">No labels yet</p>
+            }
+            @foreach (var l in Labels)
+            {
+                var lbl = l;
+                <button type="button" class="ph-row @(ActiveLabel == lbl.Name ? "on" : "")" @onclick="() => OnLabel.InvokeAsync(lbl.Name)">
+                    <span class="m-mail-lchip" style="--c:@lbl.Color"><i></i>@lbl.Name</span>
+                    <span class="ph-row-main"></span>
+                    @if (lbl.Count > 0) { <span class="ph-row-meta">@lbl.Count.ToString("N0")</span> }
+                </button>
+            }
+        </div>
+        <ListSection Class="m-mail-more">
+            <ListRow Title="Rules & filters" OnClick='() => OnSettings.InvokeAsync("rules")' Chevron="true">
+                <Leading><span class="ph-ico ph-ico-s c-gray"><i data-lucide="list-filter"></i></span></Leading>
+            </ListRow>
+            <ListRow Title="Mail settings" OnClick='() => OnSettings.InvokeAsync("signature")' Chevron="true">
+                <Leading><span class="ph-ico ph-ico-s c-gray"><i data-lucide="settings"></i></span></Leading>
+                <Meta>Signature, labels</Meta>
+            </ListRow>
+        </ListSection>
+        <div class="ph-group ph-gap">
+            @if (OnDensity.HasDelegate)
+            {
+                <ListRow Title="@DensityLabel" OnClick="OnDensity">
+                    <Leading><span class="ph-ico ph-ico-s c-gray"><i data-lucide="rows-3"></i></span></Leading>
+                </ListRow>
+            }
+            <ListRow Title="Out of office" OnClick='() => OnSettings.InvokeAsync("ooo")' Chevron="true">
+                <Leading><span class="ph-ico ph-ico-s c-gray"><i data-lucide="plane"></i></span></Leading>
+            </ListRow>
+            <ListRow Title="Templates" OnClick='() => OnSettings.InvokeAsync("templates")' Chevron="true">
+                <Leading><span class="ph-ico ph-ico-s c-gray"><i data-lucide="layout-template"></i></span></Leading>
+            </ListRow>
+            @if (OnEmptyTrash.HasDelegate)
+            {
+                <ListRow Title="Empty Trash" Class="ph-danger" OnClick="OnEmptyTrash" />
+            }
+        </div>
+        <div style="height:24px"></div>
+    </ChildContent>
+</BottomSheet>
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public IReadOnlyList<MailboxItem> Boxes { get; set; } = [];
+    [Parameter] public IReadOnlyList<MailLabel> Labels { get; set; } = [];
+    [Parameter] public string? ActiveLabel { get; set; }
+    /// "Compact rows" / "Comfortable rows" — the list density switch of the desktop settings menu.
+    [Parameter] public string DensityLabel { get; set; } = "Compact rows";
+    [Parameter] public EventCallback OnDensity { get; set; }
+    [Parameter] public EventCallback OnEmptyTrash { get; set; }
+    [Parameter] public EventCallback<string> OnBox { get; set; }
+    [Parameter] public EventCallback<string> OnLabel { get; set; }
+    /// Mail settings section key ("labels", "rules", "signature", …) — Mail.razor's OpenSettings.
+    [Parameter] public EventCallback<string> OnSettings { get; set; }
+
+    private Task Changed(bool open) => open ? Task.CompletedTask : OnClose.InvokeAsync();
+}

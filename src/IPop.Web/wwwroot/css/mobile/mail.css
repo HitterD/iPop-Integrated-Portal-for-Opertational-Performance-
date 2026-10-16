@@ -263,3 +263,54 @@
   .mail-kbd-sheet, .mail-kbd-backdrop { display: none; }
   .pdf-preview-overlay { inset: 0; border-radius: 0; }
 }
+
+/* ===================== Wave 2 (mockup v1 c/d, v2 M1–M2) ===================== */
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  /* Frame c: the large title is in the list; the topbar title steps aside. */
+  .main:has(> .main-panel > .mail-page.mlx:not(.m-detail)) .v6-topbar .tb-title h1 { visibility: hidden; }
+  .mlx .mlx-fbtn { height: 44px; min-width: 44px; }
+  .mlx .mlx-title { font-size: 34px; font-weight: 700; letter-spacing: -.028em; }
+  .mlx .mlx-count { color: var(--ph-ink-3); font-size: 15px; }
+  /* Search + filter: 44 px field, the filter button fills the field's height (Wave 1 leftover: 24 px). */
+  .mlx .mlx-search { height: 44px; padding-right: 0; }
+  .mlx .mlx-search .mlx-fl { width: 44px; height: 44px; flex: none; border-radius: 10px; }
+  .mlx .mlx-search input { height: 44px; }
+  .mail-filter-pop .mfp-chip { min-height: 44px; }
+  .mail-filter-pop .mfp-x { width: 44px; height: 44px; }
+  /* Rows (frame c): blue unread dot in the lead, 3 lines. */
+  .mlr-lead { width: 18px; }
+  .mlr-ud { width: 9px; height: 9px; }
+  /* The checkbox needs a 44 px hit area when it shows (selection mode). */
+  .mlr-lead .mlr-cbx { position: relative; }
+  .mlr-lead .mlr-cbx::before { content: ''; position: absolute; inset: -12px; }
+  .mlr .mlr-cnt { min-width: 20px; }
+
+  /* Frame d: reading header targets (36 → 44). */
+  .mlx .mlx-phead { height: 52px; }
+  .mlx .mlx-back { height: 44px; min-width: 44px; }
+  .mlx .mlx-pb { width: 44px; height: 44px; }
+  .mlx .mlx-addl { min-height: 44px; }
+  .mlx .thr-ib { width: 44px; height: 44px; }
+  .mlx .thr-dtg { min-height: 44px; }
+  .mlx .pav.pav-view { width: 40px; height: 40px; }
+  .mlx .mqr-in { min-height: 44px; }
+  /* Quick reply / composer bar stays above the on-screen keyboard (--ph-kb from ph-kit.js). */
+  .mlx.m-detail .mlx-read { padding-bottom: var(--ph-kb, 0px); }
+
+  /* M2: Mailboxes sheet. */
+  .m-mail-mbx .ph-sheet-body { padding-top: 4px; }
+  .m-mail-mbx .ph-row.on { background: var(--ph-fill-2); }
+  .m-mail-cnt { flex: none; font-size: 16px; color: var(--ph-ink-3); }
+  .m-mail-cnt.acc { min-width: 24px; height: 22px; padding: 0 7px; border-radius: 11px; background: #0a84ff; color: #fff; font-size: 13px; font-weight: 700; line-height: 22px; text-align: center; box-sizing: border-box; }
+  .m-mail-fi-inbox { background: #0a84ff; } .m-mail-fi-starred { background: #ffb800; } .m-mail-fi-draft { background: #8e8e93; }
+  .m-mail-fi-scheduled { background: #5562b8; } .m-mail-fi-sent { background: #1f8fa6; } .m-mail-fi-archive { background: #8a6d1c; }
+  .m-mail-fi-trash { background: var(--ph-red); }
+  .m-mail-lbls-h { display: flex; align-items: center; justify-content: space-between; padding-right: 20px; }
+  .m-mail-lchip {
+    display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 13px; flex: none;
+    background: color-mix(in srgb, var(--c) 14%, transparent); color: var(--c); font-size: 14px; font-weight: 600;
+  }
+  .m-mail-lchip i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+  .m-mail-none { margin: 0; padding: 14px 16px; color: var(--ph-ink-3); font-size: 15px; }
+  .m-mail-more .ph-row-meta { font-size: 15px; }
+}
