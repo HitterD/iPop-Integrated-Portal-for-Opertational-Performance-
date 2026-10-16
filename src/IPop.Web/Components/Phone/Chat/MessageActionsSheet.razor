@@ -1,0 +1,55 @@
+@* CH3 (mockup v2): long-press on a bubble. Reaction bar on top (+ opens the full emoji picker), the
+   message lifted, then Reply · Forward · Copy · Pin · Save · Delete (own only). Presentational: Chat.razor
+   owns every handler; this sheet only renders and forwards taps. *@
+<BottomSheet Open="Open" OpenChanged="Changed" Label="Message actions" Class="m-chat-acts">
+    <div class="m-chat-rx" role="group" aria-label="React">
+        @foreach (var e in Reactions)
+        {
+            var emo = e;
+            <button type="button" class="m-chat-rxe @(Mine.Contains(emo) ? "on" : "")" aria-label="React @emo" @onclick="() => OnReact.InvokeAsync(emo)">@emo</button>
+        }
+        <button type="button" class="m-chat-rxp" aria-label="More reactions" @onclick="OnMoreReactions"><i data-lucide="plus"></i></button>
+    </div>
+    @if (!string.IsNullOrEmpty(Preview))
+    {
+        <div class="m-chat-lift @(Own ? "out" : "in")">@Preview</div>
+    }
+    <div class="m-chat-amenu" role="menu">
+        <button type="button" role="menuitem" @onclick="OnReply">Reply<i data-lucide="reply"></i></button>
+        @if (CanEdit) { <button type="button" role="menuitem" @onclick="OnEdit">Edit<i data-lucide="pencil"></i></button> }
+        <button type="button" role="menuitem" @onclick="OnForward">Forward<i data-lucide="forward"></i></button>
+        @if (CanCopy) { <button type="button" role="menuitem" @onclick="OnCopy">Copy<i data-lucide="copy"></i></button> }
+        @if (CanPin) { <button type="button" role="menuitem" @onclick="OnPin">@(IsPinned ? "Unpin" : "Pin")<i data-lucide="@(IsPinned ? "pin-off" : "pin")"></i></button> }
+        <button type="button" role="menuitem" @onclick="OnSave">Save<i data-lucide="bookmark"></i></button>
+        @if (OnMore.HasDelegate) { <button type="button" role="menuitem" @onclick="OnMore">More…<i data-lucide="ellipsis"></i></button> }
+        @if (CanDelete) { <button type="button" role="menuitem" class="danger" @onclick="OnDelete">Delete<i data-lucide="trash-2"></i></button> }
+    </div>
+</BottomSheet>
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public string? Preview { get; set; }
+    [Parameter] public bool Own { get; set; }
+    [Parameter] public IReadOnlyList<string> Reactions { get; set; } = [];
+    /// Reactions the current user already gave (highlighted).
+    [Parameter] public IReadOnlyCollection<string> Mine { get; set; } = [];
+    [Parameter] public bool CanEdit { get; set; }
+    [Parameter] public bool CanCopy { get; set; }
+    [Parameter] public bool CanPin { get; set; }
+    [Parameter] public bool IsPinned { get; set; }
+    [Parameter] public bool CanDelete { get; set; }
+    [Parameter] public EventCallback<string> OnReact { get; set; }
+    [Parameter] public EventCallback OnMoreReactions { get; set; }
+    [Parameter] public EventCallback OnReply { get; set; }
+    [Parameter] public EventCallback OnEdit { get; set; }
+    [Parameter] public EventCallback OnForward { get; set; }
+    [Parameter] public EventCallback OnCopy { get; set; }
+    [Parameter] public EventCallback OnPin { get; set; }
+    [Parameter] public EventCallback OnSave { get; set; }
+    /// The full desktop menu (stickers, make event, …) for anything not on this sheet.
+    [Parameter] public EventCallback OnMore { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+
+    private Task Changed(bool open) => open ? Task.CompletedTask : OnClose.InvokeAsync();
+}

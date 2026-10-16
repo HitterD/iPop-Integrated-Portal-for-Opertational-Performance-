@@ -1,0 +1,38 @@
+@* CH2 (mockup v2): the composer's + as a bottom sheet. Tiles call Chat.razor's existing handlers.
+   Deviation (plan W2.1): the web has no gallery API, so there is no "recent photos" strip — Gallery opens
+   the system image picker and Camera the capture; From NAS / Contact / Location have no feature yet. *@
+<BottomSheet Open="Open" OpenChanged="Changed" Label="Attach" Class="m-chat-attach">
+    <div class="m-chat-agrid">
+        <button type="button" @onclick="OnGallery"><span class="ph-ico" style="background:#ff9f0a"><i data-lucide="image"></i></span>Gallery</button>
+        <button type="button" @onclick="OnCamera"><span class="ph-ico" style="background:#2e9e5b"><i data-lucide="camera"></i></span>Camera</button>
+        <button type="button" @onclick="OnDocument"><span class="ph-ico" style="background:#0a84ff"><i data-lucide="file"></i></span>Document</button>
+        <button type="button" @onclick="OnSticker"><span class="ph-ico" style="background:#a0457a"><i data-lucide="sticker"></i></span>Sticker</button>
+        <a href="@EventHref" @onclick="OnClose"><span class="ph-ico" style="background:#1f8fa6"><i data-lucide="calendar-plus"></i></span>Event</a>
+        @if (IsGroup)
+        {
+            <button type="button" @onclick="OnPoll"><span class="ph-ico" style="background:#5562b8"><i data-lucide="bar-chart-2"></i></span>Poll</button>
+            <button type="button" @onclick="OnMention"><span class="ph-ico" style="background:#7657c4"><i data-lucide="at-sign"></i></span>Mention</button>
+        }
+        @if (IsGroup && CanEmergency)
+        {
+            <button type="button" class="danger" @onclick="OnEmergency"><span class="ph-ico" style="background:#c4271c"><i data-lucide="alert-triangle"></i></span>Emergency</button>
+        }
+    </div>
+</BottomSheet>
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public bool IsGroup { get; set; }
+    [Parameter] public bool CanEmergency { get; set; }
+    [Parameter, EditorRequired] public string EventHref { get; set; } = "";
+    [Parameter] public EventCallback OnGallery { get; set; }
+    [Parameter] public EventCallback OnCamera { get; set; }
+    [Parameter] public EventCallback OnDocument { get; set; }
+    [Parameter] public EventCallback OnSticker { get; set; }
+    [Parameter] public EventCallback OnPoll { get; set; }
+    [Parameter] public EventCallback OnMention { get; set; }
+    [Parameter] public EventCallback OnEmergency { get; set; }
+
+    private Task Changed(bool open) => open ? Task.CompletedTask : OnClose.InvokeAsync();
+}

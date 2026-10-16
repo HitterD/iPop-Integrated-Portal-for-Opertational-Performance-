@@ -1,0 +1,123 @@
+@using IPop.Application.Chat
+@* CH1 (mockup v2): tap the conversation header. Hero, Call / Meeting / Search / Mute, rows to pinned,
+   mentions and saved, members with presence + role (tap = profile). Never shows a NIK: members are
+   identified by name only (office rule, memory hide-nik-position-decisions). *@
+<div class="m-chat-info">
+    <div class="m-chat-gh">
+        @Avatar
+        <h2>@Title</h2>
+        <small>@(Subtitle ?? (IsGroup ? $"Group · {Room.Members.Count} members" : ""))</small>
+    </div>
+    <div class="m-chat-acts4">
+        <button type="button" @onclick="OnCall" disabled="@CallDisabled"><i data-lucide="phone"></i>Call</button>
+        <a href="@MeetingHref"><i data-lucide="video"></i>Meeting</a>
+        <button type="button" @onclick="OnSearch"><i data-lucide="search"></i>Search</button>
+        <button type="button" @onclick="OnMute"><i data-lucide="@(Muted ? "bell-off" : "bell")"></i>@(Muted ? "Unmute" : "Mute")</button>
+    </div>
+    <ListSection>
+        <ListRow Title="Pinned messages" Class="m-chat-pinrow" OnClick="OnPinned" Chevron="true">
+            <Leading><span class="ph-ico ph-ico-s" style="background:#ff9f0a"><i data-lucide="pin"></i></span></Leading>
+            <Meta>@(PinnedCount > 0 ? PinnedCount.ToString() : "")</Meta>
+        </ListRow>
+        <ListRow Title="Mentions" Href="/chat/mentions" Chevron="true">
+            <Leading><span class="ph-ico ph-ico-s" style="background:#0a84ff"><i data-lucide="at-sign"></i></span></Leading>
+        </ListRow>
+        <ListRow Title="Saved" Href="/chat/saved" Chevron="true">
+            <Leading><span class="ph-ico ph-ico-s" style="background:#5562b8"><i data-lucide="bookmark"></i></span></Leading>
+        </ListRow>
+        @if (OnMedia.HasDelegate)
+        {
+            <ListRow Title="Media, links & files" OnClick="OnMedia" Chevron="true">
+                <Leading><span class="ph-ico ph-ico-s" style="background:#8a6d1c"><i data-lucide="paperclip"></i></span></Leading>
+            </ListRow>
+        }
+    </ListSection>
+    @Extra
+    @if (IsGroup)
+    {
+        <div class="ph-sec m-chat-memh">
+            <span>Members · @Room.Members.Count</span>
+            @if (OnAddMember.HasDelegate) { <button type="button" class="ph-ib" aria-label="Add member" @onclick="OnAddMember"><i data-lucide="user-plus"></i></button> }
+        </div>
+        <div class="ph-group">
+            @foreach (var m in Room.Members.Take(MaxMembers))
+            {
+                var mem = m;
+                <div class="m-chat-mem">
+                    <button type="button" class="ph-row" @onclick="() => OnProfile.InvokeAsync(mem.Nik)">
+                        <span class="ph-row-lead"><PersonAvatar Nik="@mem.Nik" Name="@mem.Name" Size="40" Status="@(mem.PresenceStatus == "on" ? "on" : null)" Decorative="true" /></span>
+                        <span class="ph-row-main">
+                            <span class="ph-row-title">@IPop.Application.PersonName.Display(mem.Name)</span>
+                            <span class="ph-row-sub">@Presence(mem)</span>
+                        </span>
+                        @if (mem.Role is "owner" or "admin") { <span class="m-chat-role">Admin</span> }
+                    </button>
+                </div>
+            }
+            @if (Room.Members.Count > MaxMembers && OnAllMembers.HasDelegate)
+            {
+                <ListRow Title="See all members" Class="ph-reset" OnClick="OnAllMembers" />
+            }
+        </div>
+        @if (OnSettings.HasDelegate || OnLeave.HasDelegate)
+        {
+            <div class="ph-group ph-gap">
+                @if (OnSettings.HasDelegate)
+                {
+                    <ListRow Title="Group settings" OnClick="OnSettings" Chevron="true">
+                        <Leading><span class="ph-ico ph-ico-s c-gray"><i data-lucide="settings"></i></span></Leading>
+                    </ListRow>
+                }
+                @if (OnLeave.HasDelegate)
+                {
+                    <ListRow Title="Leave group" Class="ph-danger" OnClick="OnLeave">
+                        <Leading><span class="ph-ico ph-ico-s c-red"><i data-lucide="log-out"></i></span></Leading>
+                    </ListRow>
+                }
+            </div>
+        }
+    }
+    <div style="height:32px"></div>
+</div>
+
+@code {
+    private const int MaxMembers = 8;
+    [Parameter, EditorRequired] public ChatRoomDto Room { get; set; } = default!;
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public RenderFragment? Avatar { get; set; }
+    [Parameter] public RenderFragment? Extra { get; set; }
+    [Parameter] public int PinnedCount { get; set; }
+    [Parameter] public bool Muted { get; set; }
+    [Parameter] public bool CallDisabled { get; set; }
+    [Parameter] public string MeetingHref { get; set; } = "/calendar";
+    [Parameter] public EventCallback OnCall { get; set; }
+    [Parameter] public EventCallback OnSearch { get; set; }
+    [Parameter] public EventCallback OnMute { get; set; }
+    [Parameter] public EventCallback OnPinned { get; set; }
+    [Parameter] public EventCallback OnMedia { get; set; }
+    [Parameter] public EventCallback OnAddMember { get; set; }
+    [Parameter] public EventCallback OnAllMembers { get; set; }
+    [Parameter] public EventCallback OnSettings { get; set; }
+    [Parameter] public EventCallback OnLeave { get; set; }
+    [Parameter] public EventCallback<string> OnProfile { get; set; }
+
+    private bool IsGroup => Room.Type == "group";
+
+    private static string Presence(MemberDto m) => m.PresenceStatus switch
+    {
+        "on" => "Online",
+        "busy" => "Busy",
+        "away" => "Away",
+        _ => m.LastSeenAt is { } t ? $"Last seen {Ago(t)}" : "Offline",
+    };
+
+    private static string Ago(DateTime utc)
+    {
+        var d = DateTime.UtcNow - utc;
+        if (d.TotalMinutes < 1) return "just now";
+        if (d.TotalMinutes < 60) return $"{(int)d.TotalMinutes} min ago";
+        if (d.TotalHours < 24) return $"{(int)d.TotalHours} h ago";
+        return utc.ToLocalTime().ToString("d MMM");
+    }
+}

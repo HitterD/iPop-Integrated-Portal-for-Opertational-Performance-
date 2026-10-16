@@ -794,6 +794,7 @@ public partial class Chat
             }
             catch { }
         }
+        await BindPhoneLongPressAsync();
         if (paneReady && messagesRef.Id is { } listId && listId != scrollWatchBoundId)
         {
             selfRef ??= DotNetObjectReference.Create(this);
@@ -953,6 +954,7 @@ public partial class Chat
         LeaveRoomSearch();
         if (isRecordingVoice) MicroVoiceStopped();
         _disposed = true;
+        DisposePhone();
         A11yDispose();
         _ = ChatSvc.SetChatPageMountedAsync(false);
         try { _ = JS.InvokeVoidAsync("ipop.unwatchAttention"); } catch { }
