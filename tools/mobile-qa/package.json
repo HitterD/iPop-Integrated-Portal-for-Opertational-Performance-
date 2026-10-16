@@ -1,0 +1,11 @@
+{
+  "name": "ipop-mobile-qa",
+  "private": true,
+  "type": "module",
+  "description": "Mobile app QA harness (docs/superpowers/plans/2026-10-16-mobile-app.md, shared QA protocol).",
+  "dependencies": {
+    "playwright": "1.64.0",
+    "pixelmatch": "7.1.0",
+    "pngjs": "7.0.0"
+  }
+}

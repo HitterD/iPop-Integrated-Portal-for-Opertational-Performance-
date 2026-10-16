@@ -1,0 +1,6 @@
+{
+  "1": {
+    "phone": ["/dashboard", "/chat", "/mail", "/calendar", "/notes", "#more", "#edit-tabs", "/app"],
+    "diff": ["/dashboard", "/mail", "/chat", "/notes", "/calendar"]
+  }
+}
