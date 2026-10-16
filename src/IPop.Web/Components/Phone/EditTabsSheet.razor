@@ -1,0 +1,114 @@
+@implements IDisposable
+@using IPop.Application.Shell
+@inject TabPrefsState Prefs
+@inject AuthState Auth
+@inject IJSRuntime JS
+
+@* Edit tabs (mockup v1 frame h): live preview of the bar, the pinned four (drag ≡ or ↑/↓ to
+   reorder, − to unpin), every other module with + to pin, Reset to default. Done saves to the account. *@
+<BottomSheet Open="Open" OpenChanged="OpenChanged" Title="Edit tabs" Size="SheetSize.Full" Class="ph-edit-tabs">
+    <Leading><button type="button" class="ph-txtb" @onclick="Cancel">Cancel</button></Leading>
+    <Trailing><button type="button" class="ph-txtb b ph-done" disabled="@(draft.Count != PhoneTabs.Count || saving)" @onclick="Done">Done</button></Trailing>
+    <ChildContent>
+        <div class="ph-sec">Preview</div>
+        <div class="ph-tprev" aria-hidden="true">
+            @foreach (var h in draft)
+            {
+                var m = PhoneTabs.Find(h)!;
+                <div><i data-lucide="@m.Icon"></i>@PhoneTabs.TabLabel(m)</div>
+            }
+            @for (var i = draft.Count; i < PhoneTabs.Count; i++)
+            {
+                <div class="ph-empty"><i data-lucide="circle-dashed"></i>Empty</div>
+            }
+            <div><i data-lucide="ellipsis"></i>More</div>
+        </div>
+        <div class="ph-sec">Pinned · @draft.Count of @PhoneTabs.Count</div>
+        <div class="ph-group ph-sortable" @ref="list">
+            @for (var i = 0; i < draft.Count; i++)
+            {
+                var idx = i;
+                var m = PhoneTabs.Find(draft[i])!;
+                <div class="ph-erow" data-sort="@m.Href">
+                    <button type="button" class="ph-rm" aria-label="@($"Unpin {m.Label}")" @onclick="() => Unpin(m.Href)"><span></span></button>
+                    <span class="ph-ico ph-ico-s @m.Color"><i data-lucide="@m.Icon"></i></span>
+                    <span class="ph-erow-tx">@m.Label</span>
+                    <button type="button" class="ph-mv" aria-label="@($"Move {m.Label} up")" disabled="@(idx == 0)" @onclick="() => Move(idx, idx - 1)"><i data-lucide="chevron-up"></i></button>
+                    <button type="button" class="ph-mv" aria-label="@($"Move {m.Label} down")" disabled="@(idx == draft.Count - 1)" @onclick="() => Move(idx, idx + 1)"><i data-lucide="chevron-down"></i></button>
+                    <span class="ph-grip" role="button" tabindex="-1" aria-label="@($"Reorder {m.Label}")"><i data-lucide="grip-horizontal"></i></span>
+                </div>
+            }
+        </div>
+        <p class="ph-note">Drag ≡ to reorder. More always stays last.</p>
+        <div class="ph-sec">In More</div>
+        <div class="ph-group">
+            @foreach (var m in PhoneTabs.More(draft, Auth.IsAdmin))
+            {
+                <div class="ph-erow">
+                    <button type="button" class="ph-ad" aria-label="@($"Pin {m.Label}")" disabled="@(draft.Count >= PhoneTabs.Count)" @onclick="() => Pin(m.Href)"><span></span></button>
+                    <span class="ph-ico ph-ico-s @m.Color"><i data-lucide="@m.Icon"></i></span>
+                    <span class="ph-erow-tx">@m.Label</span>
+                </div>
+            }
+        </div>
+        @if (draft.Count >= PhoneTabs.Count)
+        {
+            <p class="ph-note">Unpin a tab first to pin another one.</p>
+        }
+        <div class="ph-group ph-gap">
+            <button type="button" class="ph-row ph-reset" @onclick="Reset"><span class="ph-row-main"><span class="ph-row-title">Reset to default</span></span></button>
+        </div>
+    </ChildContent>
+</BottomSheet>
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+
+    private List<string> draft = [];
+    private bool wasOpen, saving, wired;
+    private ElementReference list;
+    private DotNetObjectReference<EditTabsSheet>? self;
+
+    protected override void OnParametersSet()
+    {
+        if (Open && !wasOpen) { draft = Prefs.Tabs.ToList(); wired = false; }
+        wasOpen = Open;
+    }
+
+    private void Unpin(string href) => draft.Remove(href);
+    private void Pin(string href) { if (draft.Count < PhoneTabs.Count && !draft.Contains(href)) draft.Add(href); }
+    private void Reset() => draft = PhoneTabs.Default.ToList();
+
+    private void Move(int from, int to)
+    {
+        if (to < 0 || to >= draft.Count || from == to) return;
+        var h = draft[from];
+        draft.RemoveAt(from);
+        draft.Insert(to, h);
+    }
+
+    /// Drag-and-drop on the ≡ handle (ph-kit.js sortable).
+    [JSInvokable]
+    public Task OnReorder(int from, int to) => InvokeAsync(() => { Move(from, to); StateHasChanged(); });
+
+    private Task Cancel() => OpenChanged.InvokeAsync(false);
+
+    private async Task Done()
+    {
+        saving = true;
+        await Prefs.SaveAsync(draft);
+        saving = false;
+        await OpenChanged.InvokeAsync(false);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!Open || wired) return;
+        wired = true;
+        self ??= DotNetObjectReference.Create(this);
+        try { await JS.InvokeVoidAsync("ipop.phone.sortable", list, self); } catch { /* tests */ }
+    }
+
+    public void Dispose() => self?.Dispose();
+}

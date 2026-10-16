@@ -15,6 +15,9 @@
 @inject IPop.Web.Services.SessionLockState SessionLock
 @inject NotificationSettingsState NotifSettings
 @inject IPop.Web.Services.MailComposerHost ComposerHost
+@inject PhoneState Phone
+@inject TabPrefsState TabPrefs
+@inject NotifCardState NotifCard
 
 <div class="shell @(collapsed ? "collapsed" : "")" id="shell">
     <aside class="sidebar nav-tab">
@@ -239,16 +242,18 @@
                 <button type="button" @onclick="() => loadFailed = false">Dismiss</button>
             </div>
         }
+        <DesktopOnly>
         @if (Push.BannerVisible)
         {
             <div class="push-banner" role="status">
                 <i data-lucide="bell-ring"></i>
-                <span class="pb-t"><b>@PushBannerTitle(isPhone, isWindows)</b><span class="long"> — messages, calls, and iPop notifications still appear when the tab is closed</span></span>
+                <span class="pb-t"><b>@PushBannerTitle(Phone.IsPhone, isWindows)</b><span class="long"> — messages, calls, and iPop notifications still appear when the tab is closed</span></span>
                 <span class="sp"></span>
                 <button type="button" class="p" @onclick="EnableDesktopAlerts">Turn on</button>
                 <button type="button" @onclick="Push.DismissBannerAsync">Later</button>
             </div>
         }
+        </DesktopOnly>
 
         <CascadingValue Value="this">
             <ErrorBoundary @ref="errorBoundary">
@@ -298,62 +303,20 @@
         </div>
     </div>
 
-    @* Phone tab bar + "More" sheet. Rendered once; css/mobile/shell.css hides both above 767px. *@
-    <nav class="m-tabbar" aria-label="Main">
-        @foreach (var item in TabItems)
-        {
-            <NavLink class="m-tab" href="@item.Href" Match="@(item.Href == "/dashboard" ? NavLinkMatch.All : NavLinkMatch.Prefix)" @onclick="CloseMore">
-                <span class="m-tab-ic"><i data-lucide="@item.Icon"></i>
-                    @if (item.BadgeKey is { } key && Badges.Any(key))
-                    {
-                        <span class="m-tab-badge">@(Badges[key] > 99 ? "99+" : Badges[key].ToString())</span>
-                    }
-                </span>
-                <span class="m-tab-lbl">@item.Label</span>
-            </NavLink>
-        }
-        <button type="button" class="m-tab @(moreOpen || IsMoreRoute ? "active" : "")" aria-haspopup="dialog" aria-expanded="@(moreOpen ? "true" : "false")" @onclick="ToggleMore">
-            <span class="m-tab-ic"><i data-lucide="ellipsis"></i>
-                @if (MoreBadgeTotal > 0)
-                {
-                    <span class="m-tab-badge dot"></span>
-                }
-            </span>
-            <span class="m-tab-lbl">More</span>
-        </button>
-    </nav>
-    @if (moreOpen)
-    {
-        <div class="m-sheet-backdrop" @onclick="CloseMore"></div>
-        <div class="m-sheet m-more" role="dialog" aria-modal="true" aria-label="More">
-            <div class="m-sheet-grip"></div>
-            <div class="m-more-user">
-                <div class="avatar">@Initials<span class="sdot @Auth.MyStatus"></span></div>
-                <div class="who"><div class="n">@UserName</div><div class="r">@UserRole@(string.IsNullOrEmpty(UserRole) ? "" : " · ")@StatusLabel</div></div>
-            </div>
-            <div class="m-more-list">
-                @foreach (var item in MoreItems.Where(i => !i.AdminOnly || Auth.IsAdmin))
-                {
-                    <NavLink class="m-more-item" href="@item.Href" Match="NavLinkMatch.Prefix" @onclick="CloseMore">
-                        <span class="m-more-ic"><i data-lucide="@item.Icon"></i></span>
-                        <span class="m-more-lbl">@item.Label</span>
-                        @if (item.BadgeKey is { } key && Badges.Any(key))
-                        {
-                            <span class="nav-count">@(Badges[key] > 99 ? "99+" : Badges[key].ToString())</span>
-                        }
-                        <i data-lucide="chevron-right" class="m-more-chev"></i>
-                    </NavLink>
-                }
-            </div>
-            <button type="button" class="m-more-signout" @onclick="SignOut"><i data-lucide="log-out"></i><span>Sign out</span></button>
-        </div>
-    }
+    @* Phone tab bar, More sheet, Edit tabs and the one-time notification card (Components/Phone).
+       The bar is hidden from 768 px up by css/mobile/shell.css; the sheets only exist while open. *@
+    <TabBar MoreOpen="moreOpen" OnMore="ToggleMore" OnNavigate="CloseMore" />
+    <MoreSheet Open="moreOpen" OpenChanged="v => { if (!v) CloseMore(); }"
+               OnEditTabs="OpenEditTabs" OnSettings="OpenSettingsFromMore" OnSignOut="SignOut"
+               OnProfile="() => { CloseMore(); OpenAccount(AccountSheet.Pane.Profile); }" />
+    <EditTabsSheet Open="editTabsOpen" OpenChanged="v => editTabsOpen = v" />
+    <NotificationCard Visible="NotifCardVisible" Secure="Push.Secure" OnTurnOn="NotifCardTurnOn" OnNotNow="NotifCardNotNow" />
 </div>
 
 @code {
     private bool collapsed, notifOpen, statusMenuOpen, meMenuOpen;
     // Desktop Windows keeps the original banner wording; phones and other systems get a neutral one.
-    private bool isPhone, isWindows = true, tablet;
+    private bool isWindows = true, tablet;
     private DotNetObjectReference<MainLayout>? selfRef;
 
     public static string PushBannerTitle(bool phone, bool windows)
@@ -401,42 +364,36 @@
         ]),
     ];
 
-    /// Phone tab bar (<= 767px): five primary modules (Calendar is used by everyone, every day) plus "More",
-    /// which lists the rest. Both lists are drawn from NavGroups so labels, icons and badge keys stay in sync.
-    private static readonly string[] TabHrefs = ["/dashboard", "/chat", "/mail", "/calendar", "/projects"];
-    private static readonly NavItem[] TabItems =
-        TabHrefs.Select(h => NavGroups.SelectMany(g => g.Items).First(i => i.Href == h)).ToArray();
-    private static readonly NavItem[] MoreItems =
-        NavGroups.SelectMany(g => g.Items).Where(i => !TabHrefs.Contains(i.Href)).ToArray();
-
-    private bool moreOpen;
-    private IDisposable? moreReg;
-
-    private bool IsMoreRoute
-    {
-        get
-        {
-            var path = "/" + Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0];
-            return MoreItems.Any(i => path == i.Href || path.StartsWith(i.Href + "/"));
-        }
-    }
-
-    private int MoreBadgeTotal => MoreItems.Where(i => i.BadgeKey is not null && (!i.AdminOnly || Auth.IsAdmin))
-                                           .Sum(i => Badges[i.BadgeKey!]);
+    private bool moreOpen, editTabsOpen;
 
     private void ToggleMore()
     {
         if (moreOpen) { CloseMore(); return; }
         moreOpen = true; notifOpen = false; statusMenuOpen = false;
-        moreReg = Overlays.Push(() => { CloseMore(); StateHasChanged(); return Task.CompletedTask; });
     }
 
-    private void CloseMore()
+    private void CloseMore() => moreOpen = false;
+
+    private void OpenEditTabs() { moreOpen = false; editTabsOpen = true; }
+
+    private void OpenSettingsFromMore() { moreOpen = false; NotifSettings.Open(); }
+
+    private bool NotifCardVisible => NotifCard.Loaded &&
+        NotificationCard.ShouldShow(Phone.IsPhone, NotifCard.Answered, Push.ServerEnabled, Push.Secure, Push.Permission, Push.OptedOut);
+
+    private async Task NotifCardTurnOn()
     {
-        if (!moreOpen) return;
-        moreOpen = false;
-        moreReg?.Dispose(); moreReg = null;
+        await NotifCard.AnswerAsync("enabled");
+        await EnableDesktopAlerts();
     }
+
+    private async Task NotifCardNotNow()
+    {
+        await NotifCard.AnswerAsync("dismissed");
+        StateHasChanged();
+    }
+
+    private void OnPhoneChanged() => _ = InvokeAsync(StateHasChanged);
 
     private string SearchShortcut { get; set; } = "Ctrl K";
     private string UserName => Auth.Me is null ? "…" : IPop.Application.PersonName.Display(Auth.Me.Name);
@@ -763,9 +720,11 @@
         AvatarPhotos.Changed += OnPhotosChanged;
         Tutorials.Changed += OnTutorialsChanged;
         Push.Changed += OnPushChanged;
+        Phone.Changed += OnPhoneChanged;
         // Me first: roles gate the nav and most of what follows reads it. Everything after it
         // is independent and runs side by side; one slow call used to hold up all the rest.
         await Auth.LoadMeAsync();
+        await Phone.StartAsync();
         // Per-account (keyed by NIK), so it can only be read once Me is known.
         collapsed = await Auth.GetUserSettingAsync("sidebar-collapsed") == "1";
         // Tablet (768–1024, compact desktop): start as the icon rail so content keeps the width.
@@ -786,6 +745,8 @@
             Quietly(async () => { await Notifs.ConnectAsync(); await Notifs.LoadRecentAsync(6); }),
             Quietly(async () => { await CallSvc.ConnectAsync(); await AnswerFromToastAsync(); }),
             Quietly(Push.StartAsync),
+            Quietly(TabPrefs.LoadAsync),
+            Quietly(NotifCard.LoadAsync),
             Quietly(LoadHrisStatusAsync));
     }
 
@@ -858,7 +819,6 @@
                 var mac = await JS.InvokeAsync<bool>("eval", "/mac|iphone|ipad/i.test(navigator.userAgentData?.platform || navigator.platform || '')");
                 SearchShortcut = mac ? "⌘K" : "Ctrl K";
                 isWindows = await JS.InvokeAsync<bool>("eval", "/win/i.test(navigator.userAgentData?.platform || navigator.platform || '')");
-                isPhone = await JS.InvokeAsync<bool>("ipop.mobile.isMobile");
             }
             catch { }
             StateHasChanged();
@@ -869,7 +829,7 @@
     public void Dispose()
     {
         selfRef?.Dispose();
-        moreReg?.Dispose();
+        Phone.Changed -= OnPhoneChanged;
         Overlays.ClosedByBack -= OnOverlayClosedByBack;
         Auth.PresenceChanged -= OnPresenceChanged;
         Auth.ConnectionStateChanged -= OnConnectionStateChanged;

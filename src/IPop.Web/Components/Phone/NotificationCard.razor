@@ -1,0 +1,44 @@
+@* Phone notification prompt (mockup v1 frame o): one friendly card after sign-in instead of the
+   permanent banner. Turn on → the existing push enable flow. Plain-http LAN addresses cannot use
+   notifications at all (secure context only), so the card explains that instead. *@
+@if (Visible)
+{
+    <div class="ph-scrim ph-npc-scrim"></div>
+    <div class="ph-npc" role="dialog" aria-modal="true" aria-labelledby="ph-npc-t">
+        <div class="ph-npc-ill" aria-hidden="true">
+            <div class="ph-mini" style="top:84px;transform:scale(.9);opacity:.7;z-index:1"><span class="ph-ico c-calls"><i data-lucide="phone"></i></span><span class="m"><b>Incoming call</b><span>Calls & Meetings</span></span><small>now</small></div>
+            <div class="ph-mini" style="top:96px;transform:scale(.95);z-index:2"><span class="ph-ico c-mail"><i data-lucide="mail"></i></span><span class="m"><b>New mail</b><span>Addressed to you</span></span><small>2m</small></div>
+            <div class="ph-mini" style="top:110px;z-index:3"><span class="ph-ico c-chat"><i data-lucide="message-circle"></i></span><span class="m"><b>New message</b><span>Oke, nanti saya cek 👍</span></span><small>now</small></div>
+            <div class="ph-npc-bell"><i data-lucide="bell"></i></div>
+        </div>
+        <h2 id="ph-npc-t">Get notified about chats, mail and calls</h2>
+        @if (Secure)
+        {
+            <p>Only new messages, mail addressed to you and incoming calls. Change it anytime in Settings.</p>
+            <button type="button" class="ph-btn" @onclick="OnTurnOn">Turn on</button>
+            <button type="button" class="ph-btn pl" @onclick="OnNotNow">Not now</button>
+        }
+        else
+        {
+            <p>Notifications only work on the secure address. Open iPop via https://ipop.santos.co.id or install the app from /app.</p>
+            <button type="button" class="ph-btn" @onclick="OnNotNow">OK</button>
+        }
+        <OverlayHook OnClose="OnNotNow" />
+    </div>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    /// Secure context (https / localhost): notifications are possible at all.
+    [Parameter] public bool Secure { get; set; }
+    [Parameter] public EventCallback OnTurnOn { get; set; }
+    [Parameter] public EventCallback OnNotNow { get; set; }
+
+    /// Phone only; once per account; only while the browser has not decided (or cannot ask at all).
+    public static bool ShouldShow(bool isPhone, bool answered, bool serverEnabled, bool secure, string permission, bool optedOut)
+    {
+        if (!isPhone || answered || optedOut) return false;
+        if (!secure) return true;
+        return serverEnabled && permission == "default";
+    }
+}

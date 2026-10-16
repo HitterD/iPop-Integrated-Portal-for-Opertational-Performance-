@@ -1,0 +1,69 @@
+@implements IDisposable
+@using IPop.Application.Shell
+@inject TabPrefsState Prefs
+@inject BadgeState Badges
+@inject AuthState Auth
+
+@* More sheet (mockup v1 frame g): profile header, every module that is not pinned as a tile grid
+   (Admin settings only for admins), then Edit tabs / Settings / Sign out. Never shows the NIK. *@
+<BottomSheet Open="Open" OpenChanged="OpenChanged" Label="More" Class="ph-more">
+    <button type="button" class="ph-prof" @onclick="OnProfile">
+        <span class="ph-av" style="@AvatarPhotos.Style(Auth.Me?.Nik)">@Initials</span>
+        <span class="ph-prof-m">
+            <b>@Name</b>
+            <small>@Auth.Me?.Email</small>
+            <span class="ph-pres ph-pres-@Auth.MyStatus"><i></i>@StatusLabel</span>
+        </span>
+        <i data-lucide="chevron-right" class="ph-row-chev"></i>
+    </button>
+    <div class="ph-mgrid">
+        @foreach (var m in PhoneTabs.More(Prefs.Tabs, Auth.IsAdmin))
+        {
+            <a class="ph-mt" href="@m.Href" @onclick="Close">
+                <span class="ph-ico @m.Color"><i data-lucide="@m.Icon"></i></span>@m.Label
+                @if (m.BadgeKey is { } key && Badges.Any(key))
+                {
+                    <span class="ph-bdg">@(Badges[key] > 99 ? "99+" : Badges[key].ToString())</span>
+                }
+                @if (m.AdminOnly) { <span class="ph-adm">ADMIN</span> }
+            </a>
+        }
+    </div>
+    <div class="ph-group">
+        <button type="button" class="ph-row ph-more-edit" @onclick="OnEditTabs">
+            <span class="ph-row-lead"><span class="ph-ico ph-ico-s c-chat"><i data-lucide="layout-panel-top"></i></span></span>
+            <span class="ph-row-main"><span class="ph-row-title">Edit tabs</span></span>
+            <span class="ph-row-meta">@Prefs.Tabs.Count pinned</span>
+            <i data-lucide="chevron-right" class="ph-row-chev"></i>
+        </button>
+        <button type="button" class="ph-row" @onclick="OnSettings">
+            <span class="ph-row-lead"><span class="ph-ico ph-ico-s c-gray"><i data-lucide="settings"></i></span></span>
+            <span class="ph-row-main"><span class="ph-row-title">Settings</span></span>
+            <i data-lucide="chevron-right" class="ph-row-chev"></i>
+        </button>
+        <button type="button" class="ph-row ph-danger" @onclick="OnSignOut">
+            <span class="ph-row-lead"><span class="ph-ico ph-ico-s c-red"><i data-lucide="log-out"></i></span></span>
+            <span class="ph-row-main"><span class="ph-row-title">Sign out</span></span>
+        </button>
+    </div>
+</BottomSheet>
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter] public EventCallback OnEditTabs { get; set; }
+    [Parameter] public EventCallback OnSettings { get; set; }
+    [Parameter] public EventCallback OnSignOut { get; set; }
+    [Parameter] public EventCallback OnProfile { get; set; }
+
+    private string Name => Auth.Me is null ? "…" : IPop.Application.PersonName.Display(Auth.Me.Name);
+    private string Initials => Auth.Me is null ? "·"
+        : string.Concat(Auth.Me.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(w => w[0]).Take(2)).ToUpperInvariant();
+    private string StatusLabel => Auth.MyStatus switch { "on" => "Available", "away" => "Away", "busy" => "Busy", _ => "Offline" };
+
+    private Task Close() => OpenChanged.InvokeAsync(false);
+
+    protected override void OnInitialized() { Prefs.Changed += OnChanged; Badges.Changed += OnChanged; }
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+    public void Dispose() { Prefs.Changed -= OnChanged; Badges.Changed -= OnChanged; }
+}

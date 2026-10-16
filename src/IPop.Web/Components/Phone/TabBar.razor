@@ -1,0 +1,69 @@
+@implements IDisposable
+@using IPop.Application.Shell
+@inject TabPrefsState Prefs
+@inject BadgeState Badges
+@inject AuthState Auth
+@inject NavigationManager Nav
+
+@* Phone tab bar (mockup v1): the user's four pinned modules + More. css/mobile/shell.css hides it
+   from 768 px up, so desktop and tablet never see it. *@
+<nav class="m-tabbar" aria-label="Main">
+    @foreach (var item in Prefs.Pinned)
+    {
+        <NavLink class="m-tab" href="@item.Href" Match="@(item.Href == "/dashboard" ? NavLinkMatch.All : NavLinkMatch.Prefix)" @onclick="OnNavigate">
+            <span class="m-tab-ic"><i data-lucide="@item.Icon"></i>
+                @if (item.BadgeKey is { } key && Badges.Any(key))
+                {
+                    <span class="m-tab-badge">@(Badges[key] > 99 ? "99+" : Badges[key].ToString())</span>
+                }
+            </span>
+            <span class="m-tab-lbl">@PhoneTabs.TabLabel(item)</span>
+        </NavLink>
+    }
+    <button type="button" class="m-tab @(MoreOpen || IsMoreRoute ? "active" : "")" aria-haspopup="dialog" aria-expanded="@(MoreOpen ? "true" : "false")" @onclick="OnMore">
+        <span class="m-tab-ic"><i data-lucide="ellipsis"></i>
+            @if (MoreBadgeTotal(Prefs.Tabs, Badges, Auth.IsAdmin) > 0)
+            {
+                <span class="m-tab-badge dot"></span>
+            }
+        </span>
+        <span class="m-tab-lbl">More</span>
+    </button>
+</nav>
+
+@code {
+    [Parameter] public bool MoreOpen { get; set; }
+    [Parameter] public EventCallback OnMore { get; set; }
+    /// A tab was tapped (MainLayout closes the More sheet).
+    [Parameter] public EventCallback OnNavigate { get; set; }
+
+    /// Unread total of the modules that are only reachable through More (pinned ones show their own badge).
+    public static int MoreBadgeTotal(IReadOnlyList<string> pinned, BadgeState badges, bool isAdmin)
+        => PhoneTabs.More(pinned, isAdmin).Where(m => m.BadgeKey is not null).Sum(m => badges[m.BadgeKey!]);
+
+    private bool IsMoreRoute
+    {
+        get
+        {
+            var path = "/" + Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0];
+            return PhoneTabs.More(Prefs.Tabs, Auth.IsAdmin).Any(i => path == i.Href || path.StartsWith(i.Href + "/"));
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        Prefs.Changed += OnChanged;
+        Badges.Changed += OnChanged;
+        Nav.LocationChanged += OnLocation;
+    }
+
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+    private void OnLocation(object? s, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => OnChanged();
+
+    public void Dispose()
+    {
+        Prefs.Changed -= OnChanged;
+        Badges.Changed -= OnChanged;
+        Nav.LocationChanged -= OnLocation;
+    }
+}
