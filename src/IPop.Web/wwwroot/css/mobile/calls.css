@@ -167,3 +167,65 @@
   /* Pages make room for the pill so it never covers their nav bar. */
   body:has(.callx-pill.m-call-pill) .main { padding-top: 64px; }
 }
+
+/* C2: keep JS-owned video nodes mounted; phone controls and kit sheets sit around them. */
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .mr-meet > .mr-top { display: none; }
+  .m-meet-top { position: absolute; top: var(--m-safe-t); left: 8px; right: 8px; height: 56px; display: flex; align-items: center; gap: 6px; z-index: 5; }
+  .m-meet-top b { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .m-meet-top button { width: 44px; height: 44px; flex: none; color: white; }
+  .m-meet-rec { color: #ff6961; font-weight: 700; font-size: 12px; }
+  .mr-meet #mr-stage.mr-stage { top: calc(var(--m-safe-t) + 64px); bottom: calc(100px + var(--m-safe-b)); }
+  .mr-meet #mr-stage.mr-stage.sharing { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 108px; gap: 12px; }
+  .mr-meet #mr-stage.sharing .mr-strip { display: flex; flex-direction: row; overflow-x: auto; overflow-y: hidden; gap: 8px; padding: 0; height: 108px; }
+  .mr-meet #mr-stage.sharing .mr-strip .mr-tile { flex: 0 0 140px; height: 100%; }
+  .mr-meet #mr-stage.sharing .mr-share { width: 100%; height: 100%; min-height: 0; object-fit: contain; grid-row: 1; grid-column: 1; }
+  .mr-meet #mr-stage.sharing .mr-who-shares { position: absolute; top: 8px; bottom: auto; left: 8px; max-width: calc(100% - 16px); font-size: 12px; }
+  .mr-meet .mr-dock { width: calc(100% - 24px); display: flex; justify-content: space-around; bottom: calc(10px + var(--m-safe-b)); }
+  .mr-meet .mr-dock > .mr-share-btn { display: flex !important; }
+  .mr-meet .mr-dock > .mr-flip { display: none; }
+  .mr-meet .mr-ctl { min-width: 44px; min-height: 64px; }
+  .mr-meet .ph-sheet, .mr-meet .ph-scrim { z-index: 20; }
+  .mr-meet .ph-sheet { z-index: 21; }
+  .mr-meet .m-meet-chat { height: min(70dvh, calc(100dvh - var(--m-safe-t) - 10px - var(--ph-kb, 0px))); bottom: var(--ph-kb, 0px); background: #1c1c1e; color: white; }
+  .m-meet-chat .ph-sheet-body { display: flex; overflow: hidden; }
+  .mr-meet .m-meet-chat .mr-chat { position: static; inset: auto; width: 100%; min-height: 0; flex: 1; padding: 0; border-radius: 0; background: transparent; }
+  .m-meet-chat .mr-chat > h4 { display: none; }
+  .mr-meet .m-meet-chat .mr-composer { margin-bottom: 0; }
+  .mr-meet .mr-send, .mr-meet .mr-emoji-btn { width: 44px; height: 44px; }
+  .m-meet-people .mr-people { position: static; width: auto; border: 0; background: transparent; box-shadow: none; }
+  .m-meet-record { display: flex; gap: 10px; align-items: center; width: 100%; min-height: 44px; padding: 8px 16px; }
+  .mr-meet:has(.m-meet-people) .mr-menu { z-index: 25; bottom: calc(18px + var(--m-safe-b)); }
+  body:has(.mr-meet:not(.mr-hidden)) .m-tabbar { display: none; }
+}
+
+/* C3: one kit sheet owns Back/drag; shared booking form keeps all conflict/repeat logic. */
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .m-call-booking { bottom: var(--ph-kb, 0px); max-height: calc(100dvh - var(--m-safe-t) - 10px - var(--ph-kb, 0px)); }
+  .m-call-booking .sheet2.bottom { position: static; display: flex; flex-direction: column; width: 100%; max-width: none; max-height: none; height: auto; border: 0; border-radius: 0; box-shadow: none; transform: none; padding: 0; background: transparent; }
+  .m-call-booking .sheet2 > .sh-h { display: none; }
+  .m-call-booking .sheet2 > .sh-b { overflow: visible; padding: 12px 16px; display: flex; flex-direction: column; }
+  .m-call-booking .sheet2 > .sh-f { padding: 8px 16px; }
+  .m-call-booking .sheet2:has(.m-call-room-card) > .sh-f { display: none; }
+  .m-call-booking .tl-card { order: -1; margin-bottom: 16px; min-width: 0; }
+  .m-call-booking .tl-scroll { overflow-x: auto; overscroll-behavior-x: contain; }
+  .m-call-booking .tl-scroll > .tl-track, .m-call-booking .tl-scroll > .tl-hours, .m-call-booking .tl-scroll > .tl-tags { min-width: 960px; }
+  .m-call-room-card { margin: 8px 16px; padding: 16px; border-radius: 16px; background: linear-gradient(135deg, var(--a), var(--b)); color: white; }
+  .m-call-room-card b, .m-call-room-card small { display: block; }
+  .m-call-room-card b { font-size: 22px; }
+  .m-call-room-card small { margin-top: 6px; font-size: 13px; }
+  .m-call-days { display: flex; gap: 6px; padding: 0 16px; overflow-x: auto; flex: none; }
+  .m-call-days button { min-width: 72px; min-height: 44px; flex: none; padding: 0 12px; border-radius: 12px; background: var(--fill); }
+  .m-call-days button[aria-pressed="true"] { background: var(--accent); color: white; }
+  .m-call-booking button, .m-call-booking input, .m-call-booking .app-select-trigger { min-height: 44px; }
+  .m-call-booking .when { flex-wrap: wrap; }
+  .m-call-booking .tf { min-width: 0; font-size: 16px; }
+  .m-call-booking .qcs { flex-wrap: wrap; }
+}
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .m-call-booking .ph-txt, .m-call-booking .qc { min-width: 44px; }
+}
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .mr-meet .m-meet-people { background: #1c1c1e; color: #f5f5f7; }
+  .mr-meet .m-meet-people .ph-txt { color: #64d2ff; }
+}

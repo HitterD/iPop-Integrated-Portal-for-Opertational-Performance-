@@ -4,9 +4,45 @@
 @namespace IPop.Web.Components.Meetings
 @using IPop.Application.MeetingRooms
 
-<div class="@($"sheet2-scrim {(phone ? "bottom" : "")}")" @onclick="CloseAsync">
-    <section class="@($"sheet2 {Accent} {(phone ? "bottom" : "")}")" role="dialog" aria-modal="true" aria-labelledby="bs-title" @onclick:stopPropagation="true" @onkeydown="KeyAsync">
-        @if (phone) { <div class="sh-grab" aria-hidden="true"></div> }
+@if (phone)
+{
+    <BottomSheet Open="true" OpenChanged="ClosePhoneSheet" Title="@(repeatCheck is { } rc ? $"{RepeatLabel} · {rc.Total} times" : $"Book {RoomName}")" Size="SheetSize.Tall" Class="m-call-booking">
+        <Leading><button type="button" class="ph-txt" @onclick="CloseAsync">Cancel</button></Leading>
+        <Trailing>
+            @if (repeatCheck is null)
+            {
+                <button type="button" class="ph-txt bs-go" disabled="@(!CanBook)" @onclick="BookAsync">@(busy ? "Booking…" : BooksNow ? "Book and join" : "Book")</button>
+            }
+        </Trailing>
+        <ChildContent>
+            <section class="sheet2 bottom @Accent">
+                @if (repeatCheck is null)
+                {
+                    <div class="m-call-room-card @Accent"><b>@RoomName</b><small>Up to @Capacity people · video + server recording</small></div>
+                    <div class="m-call-days" role="group" aria-label="Booking day">
+                        @for (var i = 0; i < 4; i++)
+                        {
+                            var d = TodayLocal.AddDays(i);
+                            <button type="button" aria-pressed="@(date == d ? "true" : "false")" @onclick="() => SetDateAsync(d)">@(i == 0 ? "Today" : i == 1 ? "Tomorrow" : d.ToString("ddd d", En))</button>
+                        }
+                    </div>
+                }
+                @BookingContent
+            </section>
+        </ChildContent>
+    </BottomSheet>
+}
+else
+{
+    <div class="sheet2-scrim" @onclick="CloseAsync">
+        <section class="sheet2 @Accent" role="dialog" aria-modal="true" aria-labelledby="bs-title" @onclick:stopPropagation="true" @onkeydown="KeyAsync">
+            @BookingContent
+        </section>
+    </div>
+}
+
+@code {
+    private RenderFragment BookingContent => @<text>
         @if (repeatCheck is { } rc)
         {
             <div class="sh-h">
@@ -159,5 +195,5 @@
                 </button>
             </div>
         }
-    </section>
-</div>
+    </text>;
+}

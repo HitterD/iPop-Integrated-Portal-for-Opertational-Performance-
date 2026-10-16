@@ -437,6 +437,7 @@ public class MeetingRoomOverlayTests
         calls = new CallState(auth, http, js);
         var toasts = new ToastService();
         state = new MeetingRoomState(auth, js, calls, toasts);
+        ctx.Services.AddSingleton(new PhoneState(js));
         ctx.Services.AddSingleton(auth);
         ctx.Services.AddSingleton(calls);
         ctx.Services.AddSingleton(state);

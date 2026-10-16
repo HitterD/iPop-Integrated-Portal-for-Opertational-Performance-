@@ -573,6 +573,7 @@ public class MeetingRoomsTabV2Tests
                 new DirectoryEmployeeDto("ME", "Me", null, null, null, null, null, null, "me@x", null, null, "on", UserId: id));
         var calls = new CallState(auth, http, js);
         var toasts = new ToastService();
+        ctx.Services.AddSingleton(new PhoneState(ctx.JSInterop.JSRuntime));
         ctx.Services.AddSingleton(auth);
         ctx.Services.AddSingleton(calls);
         ctx.Services.AddSingleton(new MeetingRoomState(auth, js, calls, toasts));

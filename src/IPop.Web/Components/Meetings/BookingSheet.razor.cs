@@ -15,6 +15,7 @@ namespace IPop.Web.Components.Meetings;
 /// "Until 17:00" and the limits are in <see cref="Zone"/> (default the browser's zone).
 public partial class BookingSheet : IDisposable
 {
+    [Inject] private PhoneState Phone { get; set; } = default!;
     [Inject] private AuthState Auth { get; set; } = default!;
     [Inject] private NavigationManager Nav { get; set; } = default!;
     [Inject] private MeetingDraftHandoff Handoff { get; set; } = default!;
@@ -63,7 +64,7 @@ public partial class BookingSheet : IDisposable
     private bool disposed;
     /// Phone (v3 Task 10, mockup "Phone"): a bottom sheet with a grab handle, no "More options…". From the app's one
     /// phone check (ipop.mobile.isMobile, max 767 px) so it agrees with every other phone layout.
-    private bool phone;
+    private bool phone => Phone.IsPhone;
 
     // ---------------------------------------------------------------- derived
 
@@ -108,11 +109,9 @@ public partial class BookingSheet : IDisposable
 
     // ---------------------------------------------------------------- lifecycle
 
-    protected override async Task OnInitializedAsync()
-    {
-        try { phone = await JS.InvokeAsync<bool>("ipop.mobile.isMobile"); }
-        catch (Exception e) when (e is JSException or InvalidOperationException or TaskCanceledException or JSDisconnectedException) { phone = false; }
-    }
+    protected override void OnInitialized() => Phone.Changed += OnPhoneChanged;
+    private void OnPhoneChanged() => _ = InvokeAsync(StateHasChanged);
+    private Task ClosePhoneSheet(bool _) => CloseAsync();
 
     protected override async Task OnParametersSetAsync()
     {
@@ -575,6 +574,7 @@ public partial class BookingSheet : IDisposable
 
     public void Dispose()
     {
+        Phone.Changed -= OnPhoneChanged;
         disposed = true;
         freeCts?.Cancel();
     }

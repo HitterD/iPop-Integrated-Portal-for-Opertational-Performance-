@@ -4,6 +4,7 @@
    constant, so the JS-set "sharing"/"grid" classes survive re-renders. *@
 @implements IDisposable
 @inject MeetingRoomState Rooms
+@inject PhoneState Phone
 @inject ToastService Toasts
 @inject ConfirmService Confirm
 @inject IJSRuntime JS
@@ -14,6 +15,15 @@
     <div class="mr-meet mr-r-@room.Key @(Rooms.Minimized ? "mr-hidden" : "")" role="dialog" aria-label="Meeting room @room.Name"
          aria-hidden="@(Rooms.Minimized ? "true" : null)">
         <div class="mr-bg" aria-hidden="true"></div>
+        @if (Phone.IsPhone)
+        {
+            <header class="m-meet-top">
+                <button type="button" aria-label="Minimize meeting" @onclick="Minimize"><i data-lucide="chevron-down"></i></button>
+                <b>@room.Name</b>
+                @if (Recording) { <span class="m-meet-rec" role="status">REC</span> }
+                <button type="button" aria-label="Participants" @onclick="TogglePeople"><i data-lucide="users"></i></button>
+            </header>
+        }
         <header class="mr-top">
             <div class="mr-room">
                 <span class="mr-sw" aria-hidden="true"></span>
@@ -74,7 +84,132 @@
 
         @if (Rooms.ChatOpen)
         {
-            <aside class="mr-chat" aria-label="Meeting chat">
+            @if (Phone.IsPhone)
+            {
+                <BottomSheet Open="true" OpenChanged="CloseChatSheet" Title="Meeting chat" Size="SheetSize.Tall" Class="m-meet-chat">
+                    <Trailing><button type="button" class="ph-txt" @onclick="CloseChat">Done</button></Trailing>
+                    <ChildContent>@MeetingChat</ChildContent>
+                </BottomSheet>
+            }
+            else { @MeetingChat }
+        }
+
+        @if (peopleOpen)
+        {
+            @if (Phone.IsPhone)
+            {
+                <BottomSheet Open="true" OpenChanged="ClosePeopleSheet" Title="Participants" Size="SheetSize.Tall" Class="m-meet-people">
+                    <Trailing><button type="button" class="ph-txt" @onclick="TogglePeople">Done</button></Trailing>
+                    <ChildContent>
+                        @MeetingPeople
+                        @if (menuOpen) { @RecordMenu }
+                        <button type="button" class="m-meet-record" @onclick="RecordClick"><i data-lucide="circle-dot"></i>Record</button>
+                        @if (Rooms.CanFlip) { <button type="button" class="m-meet-record" disabled="@(!Rooms.CamOn)" @onclick="FlipAsync">Flip camera</button> }
+                    </ChildContent>
+                </BottomSheet>
+            }
+            else { @MeetingPeople }
+        }
+
+        <nav class="mr-dock mr-controls" aria-label="Meeting controls">
+            <button type="button" class="mr-ctl mr-mic @(Rooms.MicOn ? "" : "muted")" @onclick="Rooms.ToggleMicAsync"
+                    aria-pressed="@(Rooms.MicOn ? "false" : "true")">
+                <span class="mr-ci"><i data-lucide="@(Rooms.MicOn ? "mic" : "mic-off")"></i></span>@(Rooms.MicOn ? "Mute" : "Unmute")
+            </button>
+            <button type="button" class="mr-ctl mr-cam @(Rooms.CamOn ? "on" : "")" disabled="@(!Rooms.VideoAllowed)"
+                    title="@(Rooms.VideoAllowed ? null : "An admin turned video off for this room")" @onclick="Rooms.ToggleCameraAsync"
+                    aria-pressed="@(Rooms.CamOn ? "true" : "false")">
+                <span class="mr-ci"><i data-lucide="@(Rooms.CamOn ? "video" : "video-off")"></i></span>@(Rooms.VideoAllowed ? "Camera" : "Video off")
+            </button>
+            @if (Rooms.CanFlip)
+            {
+                <button type="button" class="mr-ctl mr-flip" disabled="@(!Rooms.CamOn)" title="@(Rooms.CamOn ? "Switch between the front and back camera" : "Turn the camera on to flip it")"
+                        @onclick="FlipAsync">
+                    <span class="mr-ci"><i data-lucide="switch-camera"></i></span>Flip
+                </button>
+            }
+            <button type="button" class="mr-ctl mr-share-btn @(Rooms.Sharing ? "on" : "")" @onclick="() => ShareAsync(false)"
+                    aria-pressed="@(Rooms.Sharing ? "true" : "false")">
+                <span class="mr-ci"><i data-lucide="monitor-up"></i></span>@(Rooms.Sharing ? "Stop share" : "Share")
+            </button>
+            <span class="mr-recwrap">
+                <button type="button" class="mr-ctl mr-rec @(Recording ? "recording" : "")" @onclick="RecordClick"
+                        aria-haspopup="menu" aria-expanded="@(menuOpen ? "true" : "false")">
+                    <span class="mr-ci"><i data-lucide="@(Rooms.RecordingPc ? "square" : "circle-dot")"></i></span>@(Rooms.RecordingPc ? "Stop" : "Record")
+                </button>
+                @if (menuOpen && !Phone.IsPhone)
+                {
+                    @RecordMenu
+                }
+            </span>
+            <span class="mr-div" aria-hidden="true"></span>
+            <button type="button" class="mr-ctl mr-chat-btn @(Rooms.ChatOpen ? "on" : "")" @onclick="ToggleChat"
+                    aria-pressed="@(Rooms.ChatOpen ? "true" : "false")" aria-label="@(Rooms.Unread > 0 ? $"Chat, {Rooms.Unread} unread" : "Chat")">
+                <span class="mr-ci"><i data-lucide="message-circle"></i></span>
+                @if (Rooms.Unread > 0) { <span class="mr-badge" aria-hidden="true">@(Rooms.Unread > 99 ? "99+" : Rooms.Unread.ToString())</span> }
+                Chat
+            </button>
+            <button type="button" class="mr-ctl mr-people-btn @(peopleOpen ? "on" : "")" @onclick="TogglePeople"
+                    aria-pressed="@(peopleOpen ? "true" : "false")">
+                <span class="mr-ci"><i data-lucide="users"></i></span>People
+            </button>
+            <button type="button" class="mr-ctl mr-leave" @onclick="LeaveAsync">
+                <span class="mr-ci"><i data-lucide="phone-off"></i></span>Leave
+            </button>
+        </nav>
+
+        @if (takeoverName is not null)
+        {
+            <div class="mr-scrim">
+                <div class="mr-alert" role="alertdialog" aria-label="@takeoverName is sharing a screen">
+                    <div class="mr-appicon"><i data-lucide="monitor-up"></i></div>
+                    <h3>@takeoverName is sharing a screen</h3>
+                    <p>Only one screen can be shared at a time. If you share, @takeoverName's screen stops and @takeoverName is told you took over.</p>
+                    <div class="mr-row">
+                        <button type="button" @onclick="() => takeoverName = null">Cancel</button>
+                        <button type="button" class="mr-def" @onclick="() => ShareAsync(true)">Share My Screen</button>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+    @if (Rooms.Minimized)
+    {
+        <button type="button" class="mr-pill mr-r-@room.Key" @onclick="Restore" aria-label="Back to @room.Name">
+            <span class="mr-sw" aria-hidden="true"></span>
+            <span class="mr-pill-t"><b>@room.Name</b><small>@PeopleCount(Rooms.People.Count)</small></span>
+            @if (Rooms.RecordingPc || Rooms.RecordingServer is not null || Rooms.People.Any(p => p.RecPc)) { <span class="mr-pill-rec">REC</span> }
+            @if (Rooms.Unread > 0) { <span class="mr-badge mr-pill-badge" aria-label="@Rooms.Unread unread">@(Rooms.Unread > 99 ? "99+" : Rooms.Unread.ToString())</span> }
+            <i data-lucide="maximize-2"></i>
+        </button>
+    }
+}
+
+@code {
+    private RenderFragment RecordMenu => @<div class="mr-menu" role="menu" aria-label="Record this meeting">
+                        <h4>Record this meeting</h4>
+                        <button type="button" class="mr-opt" role="menuitem" @onclick="RecordPcAsync">
+                            <span class="mr-ico mr-ico-pc"><i data-lucide="laptop"></i></span>
+                            <span><b>Record to this PC</b><span>The whole meeting with everyone's voice. Saved to Downloads as a video when you stop.</span></span>
+                        </button>
+                        @if (Rooms.RecordingServer is { } running)
+                        {
+                            <button type="button" class="mr-opt mr-opt-stop" role="menuitem" @onclick="StopServerAsync">
+                                <span class="mr-ico mr-ico-srv"><i data-lucide="square"></i></span>
+                                <span><b>Stop server recording</b><span>Started by @running.By</span></span>
+                            </button>
+                        }
+                        else
+                        {
+                            <button type="button" class="mr-opt" role="menuitem" @onclick="RecordServerAsync">
+                                <span class="mr-ico mr-ico-srv"><i data-lucide="server"></i></span>
+                                <span><b>Record to server</b><span>Saved for @Rooms.RetentionDays @(Rooms.RetentionDays == 1 ? "day" : "days"). Everyone in the room can watch it later in Recordings.</span></span>
+                            </button>
+                        }
+                        <div class="mr-pop-note"><i data-lucide="eye"></i>Everyone here will see that you're recording.</div>
+                    </div>;
+
+    private RenderFragment MeetingChat => @<aside class="mr-chat" aria-label="Meeting chat">
                 <h4>
                     <button type="button" class="mr-chat-back" aria-label="Close chat" @onclick="ToggleChat"><i data-lucide="chevron-left"></i></button>
                     <span class="mr-chat-t">Meeting chat</span>
@@ -122,12 +257,8 @@
                         <div class="mr-emoji-pop"><EmojiPicker OnPick="PickEmoji" OnClose="() => emojiOpen = false" OnDismiss="() => emojiOpen = false" /></div>
                     }
                 </div>
-            </aside>
-        }
-
-        @if (peopleOpen)
-        {
-            <aside class="mr-people" aria-label="People in this room">
+            </aside>;
+    private RenderFragment MeetingPeople => @<aside class="mr-people" aria-label="People in this room">
                 <h4>In this room <span>@Rooms.People.Count of 20</span></h4>
                 @if (Rooms.RoomPassword is { } roomPw)
                 {
@@ -149,105 +280,13 @@
                         </span>
                     </div>
                 }
-            </aside>
-        }
+            </aside>;
 
-        <nav class="mr-dock mr-controls" aria-label="Meeting controls">
-            <button type="button" class="mr-ctl mr-mic @(Rooms.MicOn ? "" : "muted")" @onclick="Rooms.ToggleMicAsync"
-                    aria-pressed="@(Rooms.MicOn ? "false" : "true")">
-                <span class="mr-ci"><i data-lucide="@(Rooms.MicOn ? "mic" : "mic-off")"></i></span>@(Rooms.MicOn ? "Mute" : "Unmute")
-            </button>
-            <button type="button" class="mr-ctl mr-cam @(Rooms.CamOn ? "on" : "")" disabled="@(!Rooms.VideoAllowed)"
-                    title="@(Rooms.VideoAllowed ? null : "An admin turned video off for this room")" @onclick="Rooms.ToggleCameraAsync"
-                    aria-pressed="@(Rooms.CamOn ? "true" : "false")">
-                <span class="mr-ci"><i data-lucide="@(Rooms.CamOn ? "video" : "video-off")"></i></span>@(Rooms.VideoAllowed ? "Camera" : "Video off")
-            </button>
-            @if (Rooms.CanFlip)
-            {
-                <button type="button" class="mr-ctl mr-flip" disabled="@(!Rooms.CamOn)" title="@(Rooms.CamOn ? "Switch between the front and back camera" : "Turn the camera on to flip it")"
-                        @onclick="FlipAsync">
-                    <span class="mr-ci"><i data-lucide="switch-camera"></i></span>Flip
-                </button>
-            }
-            <button type="button" class="mr-ctl mr-share-btn @(Rooms.Sharing ? "on" : "")" @onclick="() => ShareAsync(false)"
-                    aria-pressed="@(Rooms.Sharing ? "true" : "false")">
-                <span class="mr-ci"><i data-lucide="monitor-up"></i></span>@(Rooms.Sharing ? "Stop share" : "Share")
-            </button>
-            <span class="mr-recwrap">
-                <button type="button" class="mr-ctl mr-rec @(Recording ? "recording" : "")" @onclick="RecordClick"
-                        aria-haspopup="menu" aria-expanded="@(menuOpen ? "true" : "false")">
-                    <span class="mr-ci"><i data-lucide="@(Rooms.RecordingPc ? "square" : "circle-dot")"></i></span>@(Rooms.RecordingPc ? "Stop" : "Record")
-                </button>
-                @if (menuOpen)
-                {
-                    <div class="mr-menu" role="menu" aria-label="Record this meeting">
-                        <h4>Record this meeting</h4>
-                        <button type="button" class="mr-opt" role="menuitem" @onclick="RecordPcAsync">
-                            <span class="mr-ico mr-ico-pc"><i data-lucide="laptop"></i></span>
-                            <span><b>Record to this PC</b><span>The whole meeting with everyone's voice. Saved to Downloads as a video when you stop.</span></span>
-                        </button>
-                        @if (Rooms.RecordingServer is { } running)
-                        {
-                            <button type="button" class="mr-opt mr-opt-stop" role="menuitem" @onclick="StopServerAsync">
-                                <span class="mr-ico mr-ico-srv"><i data-lucide="square"></i></span>
-                                <span><b>Stop server recording</b><span>Started by @running.By</span></span>
-                            </button>
-                        }
-                        else
-                        {
-                            <button type="button" class="mr-opt" role="menuitem" @onclick="RecordServerAsync">
-                                <span class="mr-ico mr-ico-srv"><i data-lucide="server"></i></span>
-                                <span><b>Record to server</b><span>Saved for @Rooms.RetentionDays @(Rooms.RetentionDays == 1 ? "day" : "days"). Everyone in the room can watch it later in Recordings.</span></span>
-                            </button>
-                        }
-                        <div class="mr-pop-note"><i data-lucide="eye"></i>Everyone here will see that you're recording.</div>
-                    </div>
-                }
-            </span>
-            <span class="mr-div" aria-hidden="true"></span>
-            <button type="button" class="mr-ctl mr-chat-btn @(Rooms.ChatOpen ? "on" : "")" @onclick="ToggleChat"
-                    aria-pressed="@(Rooms.ChatOpen ? "true" : "false")" aria-label="@(Rooms.Unread > 0 ? $"Chat, {Rooms.Unread} unread" : "Chat")">
-                <span class="mr-ci"><i data-lucide="message-circle"></i></span>
-                @if (Rooms.Unread > 0) { <span class="mr-badge" aria-hidden="true">@(Rooms.Unread > 99 ? "99+" : Rooms.Unread.ToString())</span> }
-                Chat
-            </button>
-            <button type="button" class="mr-ctl mr-people-btn @(peopleOpen ? "on" : "")" @onclick="TogglePeople"
-                    aria-pressed="@(peopleOpen ? "true" : "false")">
-                <span class="mr-ci"><i data-lucide="users"></i></span>People
-            </button>
-            <button type="button" class="mr-ctl mr-leave" @onclick="LeaveAsync">
-                <span class="mr-ci"><i data-lucide="phone-off"></i></span>Leave
-            </button>
-        </nav>
+    private void CloseChat() { Rooms.SetChatOpen(false); emojiOpen = false; }
+    private void CloseChatSheet(bool _) => CloseChat();
+    private void ClosePeopleSheet(bool _) => peopleOpen = false;
+    private void OnPhoneChanged() => _ = InvokeAsync(StateHasChanged);
 
-        @if (takeoverName is not null)
-        {
-            <div class="mr-scrim">
-                <div class="mr-alert" role="alertdialog" aria-label="@takeoverName is sharing a screen">
-                    <div class="mr-appicon"><i data-lucide="monitor-up"></i></div>
-                    <h3>@takeoverName is sharing a screen</h3>
-                    <p>Only one screen can be shared at a time. If you share, @takeoverName's screen stops and @takeoverName is told you took over.</p>
-                    <div class="mr-row">
-                        <button type="button" @onclick="() => takeoverName = null">Cancel</button>
-                        <button type="button" class="mr-def" @onclick="() => ShareAsync(true)">Share My Screen</button>
-                    </div>
-                </div>
-            </div>
-        }
-    </div>
-    @if (Rooms.Minimized)
-    {
-        <button type="button" class="mr-pill mr-r-@room.Key" @onclick="Restore" aria-label="Back to @room.Name">
-            <span class="mr-sw" aria-hidden="true"></span>
-            <span class="mr-pill-t"><b>@room.Name</b><small>@PeopleCount(Rooms.People.Count)</small></span>
-            @if (Rooms.RecordingPc || Rooms.RecordingServer is not null || Rooms.People.Any(p => p.RecPc)) { <span class="mr-pill-rec">REC</span> }
-            @if (Rooms.Unread > 0) { <span class="mr-badge mr-pill-badge" aria-label="@Rooms.Unread unread">@(Rooms.Unread > 99 ? "99+" : Rooms.Unread.ToString())</span> }
-            <i data-lucide="maximize-2"></i>
-        </button>
-    }
-}
-
-@code {
     private sealed record Island(string Icon, string Title, string Text);
 
     /// Chat text as plain-text runs and links. Only absolute http(s) URLs with a host become links (no javascript:,
@@ -456,6 +495,7 @@
 
     protected override void OnInitialized()
     {
+        Phone.Changed += OnPhoneChanged;
         Rooms.Changed += OnChanged;
         Rooms.Notice += OnNotice;
         tick = new(_ => { if (Rooms.Room is not null && !Rooms.Minimized) _ = InvokeAsync(StateHasChanged); }, null, 1000, 1000);
@@ -601,6 +641,7 @@
 
     public void Dispose()
     {
+        Phone.Changed -= OnPhoneChanged;
         Rooms.Changed -= OnChanged;
         Rooms.Notice -= OnNotice;
         CancelIsland();

@@ -460,6 +460,7 @@ public class BookingSheetTests
         ctx.JSInterop.Mode = JSRuntimeMode.Loose;
         var http = new HttpClient(api, disposeHandler: false) { BaseAddress = new Uri("http://localhost/") };
         var auth = new AuthState(http, ctx.JSInterop.JSRuntime);
+        ctx.Services.AddSingleton(new PhoneState(ctx.JSInterop.JSRuntime));
         ctx.Services.AddSingleton(auth);
         ctx.Services.AddSingleton(http);
         ctx.Services.AddSingleton(new ToastService());

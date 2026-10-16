@@ -37,17 +37,20 @@ public class PhoneSchedulingTests
     }
 
     [Fact]
-    public void Booking_sheet_is_a_bottom_sheet_with_a_grab_handle_on_a_phone()
+    public async Task Booking_sheet_uses_the_phone_kit_day_chips_and_Back()
     {
         using var ctx = BookingSheetTests.Context(SheetApi());
-        ctx.JSInterop.Setup<bool>("ipop.mobile.isMobile").SetResult(true);
+        ctx.Services.GetRequiredService<PhoneState>().OnPhoneChanged(true);
         var cut = Sheet(ctx);
-        cut.WaitForAssertion(() => Assert.Contains("bottom", cut.Find("section.sheet2").ClassList));
-        Assert.Contains("bottom", cut.Find(".sheet2-scrim").ClassList);
-        Assert.Single(cut.FindAll("section.sheet2 > .sh-grab"));
-        // The mockup's phone footer has no "More options…": Cancel + Book fill the width.
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll(".ph-sheet-tall.m-call-booking")));
+        Assert.Single(cut.FindAll(".ph-grab"));
+        Assert.Equal("Book Kalosi", cut.Find(".ph-sheet-title").TextContent);
+        Assert.Single(cut.FindAll(".m-call-room-card.r-kalosi"));
+        Assert.Equal(["Today", "Tomorrow"], cut.FindAll(".m-call-days button").Take(2).Select(b => b.TextContent.Trim()).ToArray());
+        Assert.Single(cut.FindAll(".tl-scroll"));
         Assert.Empty(cut.FindAll(".bs-more"));
-        Assert.Equal("Book", cut.Find(".bs-go").TextContent.Trim());
+        Assert.Single(ctx.Services.GetRequiredService<OverlayStack>().Stack);
+        await cut.InvokeAsync(() => ctx.Services.GetRequiredService<OverlayStack>().CloseTopAsync());
     }
 
     [Fact]
