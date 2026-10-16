@@ -3,7 +3,7 @@
     @foreach (var item in Items)
     {
         var on = item.Value == Value;
-        <button type="button" role="tab" class="@(on ? "on" : "")" aria-selected="@(on ? "true" : "false")"
+        <button type="button" role="tab" data-value="@item.Value" class="@(on ? "on" : "")" aria-selected="@(on ? "true" : "false")"
                 @onclick="() => Pick(item.Value)">
             @item.Label@if (item.Count is { } n) {<i class="ph-seg-n">@n</i>}
         </button>

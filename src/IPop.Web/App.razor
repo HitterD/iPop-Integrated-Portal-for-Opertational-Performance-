@@ -14,6 +14,9 @@
     private bool restored;
 
     private static readonly string[] AuthPages = ["", "login", "forgot-password", "reset-password"];
+    /// Open to everyone, signed in or not, and never redirected (the /app install landing).
+    private static readonly string[] PublicPages = ["app"];
+    public static bool IsPublic(string path) => PublicPages.Contains(path.Trim('/').ToLowerInvariant());
 
     private async Task Guard(NavigationContext ctx)
     {
@@ -24,6 +27,7 @@
         }
 
         var path = ctx.Path.Trim('/').ToLowerInvariant();
+        if (IsPublic(path)) return;
         var isAuthPage = AuthPages.Contains(path);
 
         if (!Auth.IsAuthenticated)

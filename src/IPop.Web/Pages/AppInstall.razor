@@ -1,0 +1,131 @@
+@page "/app"
+@layout EmptyLayout
+@inject IJSRuntime JS
+
+@* Install landing (mockup v1 frames p1, p2, p3). Public: works signed out (App.razor PublicPages).
+   Android: APK download first when /download/ipop.apk exists (else "coming soon"), Chrome install steps.
+   iPhone: Safari → Share → Add to Home Screen. Desktop: QR code of this page + both instructions.
+   No network calls besides the HEAD for the APK; the QR is drawn locally (lib/qrcode). *@
+<PageTitle>Install iPop</PageTitle>
+
+<div class="ph-app @(platform == "desktop" ? "is-desktop" : "is-phone")">
+    @if (platform == "desktop")
+    {
+        <div class="ph-app-desk">
+            <div class="ph-app-m">
+                <div class="ph-app-lg"><img src="img/brand/ipop-mark.webp" alt="iPop" width="66" height="66" /></div>
+                <h1>Install iPop on your phone</h1>
+                <p>Scan the code with your phone's camera. It opens this page with the right steps for Android or iPhone.</p>
+                <div class="ph-app-pl">
+                    <span>@Android Android · APK or Chrome</span>
+                    <span>@Apple iPhone · Safari</span>
+                </div>
+                <details class="ph-how"><summary>Android steps</summary>@AndroidSteps</details>
+                <details class="ph-how"><summary>iPhone steps</summary>@IosSteps</details>
+                <p class="ph-hint">Need help? Chat <b>ICT Helpdesk</b> or ext. 1200.</p>
+            </div>
+            <div class="ph-qr">
+                @((MarkupString)qrSvg)
+                <span>Scan to install</span>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="ph-inst">
+            <div class="ph-app-lg"><img src="img/brand/ipop-mark.webp" alt="iPop" width="66" height="66" /></div>
+            <h1>Install iPop</h1>
+            <p class="ph-app-sub">Chat, mail, calls and calendar for Kapal Api Group — as an app on your phone.</p>
+            @if (installState == "installed")
+            {
+                <p class="ph-app-done"><i data-lucide="circle-check"></i>iPop is installed on this device.</p>
+            }
+            <SegmentedControl Items="Oses" Value="@os" ValueChanged="v => os = v" Label="Phone type" Class="ph-app-seg" />
+            @if (os == "and")
+            {
+                <div class="ph-pane">
+                    @if (apk == true)
+                    {
+                        <a class="ph-dl" href="/download/ipop.apk" download="ipop.apk">
+                            @Android<span><b>Download for Android</b><small>APK · installs like any app</small></span>
+                        </a>
+                        <p class="ph-hint">Open the file when it's downloaded and tap <b>Install</b>. If asked, allow Chrome to install apps.</p>
+                        <div class="ph-orl">or install from Chrome</div>
+                    }
+                    else if (apk == false)
+                    {
+                        <div class="ph-soon">@Android<span><b>Android app (APK) — coming soon</b><small>Until then, install iPop from Chrome — it works the same.</small></span></div>
+                    }
+                    @if (installState == "available")
+                    {
+                        <button type="button" class="ph-btn ph-app-install" @onclick="Install">Install iPop now</button>
+                    }
+                    @AndroidSteps
+                </div>
+            }
+            else
+            {
+                <div class="ph-pane">@IosSteps</div>
+            }
+            <p class="ph-hint ph-help">Need help? Chat <b>ICT Helpdesk</b> or ext. 1200.</p>
+            <a class="ph-app-open" href="/dashboard">Open iPop in the browser</a>
+        </div>
+    }
+</div>
+
+@code {
+    public const string AppUrl = "https://ipop.santos.co.id/app";
+
+    private string platform = "android";
+    private string os = "and";
+    private bool? apk;
+    private string installState = "unsupported";
+    private string qrSvg = "";
+
+    private static readonly IReadOnlyList<SegmentItem> Oses = [new("and", "Android"), new("ios", "iPhone")];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try { platform = await JS.InvokeAsync<string>("ipop.phone.platform") ?? "android"; } catch { platform = "android"; }
+        os = platform == "ios" ? "ios" : "and";
+        try { installState = await JS.InvokeAsync<string>("ipop.phone.installState") ?? "unsupported"; } catch { }
+        if (platform == "desktop")
+        {
+            try { qrSvg = await JS.InvokeAsync<string>("ipop.phone.qrSvg", AppUrl) ?? ""; } catch { }
+        }
+        else
+        {
+            try { apk = await JS.InvokeAsync<bool>("ipop.phone.exists", "/download/ipop.apk"); } catch { apk = false; }
+        }
+        StateHasChanged();
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+    }
+
+    private async Task Install()
+    {
+        try { installState = await JS.InvokeAsync<string>("ipop.phone.install"); } catch { }
+    }
+
+    private static readonly RenderFragment Android = @<svg class="ph-i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16.5V11a7 7 0 0 1 14 0v5.5z" fill="currentColor" stroke="none"/><path d="M7.5 5.5 6 3.5M16.5 5.5 18 3.5"/><circle cx="9" cy="11" r="1" fill="#fff" stroke="none"/><circle cx="15" cy="11" r="1" fill="#fff" stroke="none"/></svg>;
+
+    private static readonly RenderFragment Apple = @<svg class="ph-i" viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 12.6c0-2.3 1.9-3.4 2-3.5a4.3 4.3 0 0 0-3.4-1.8c-1.4-.2-2.8.8-3.5.8s-1.9-.8-3.1-.8a4.6 4.6 0 0 0-3.9 2.4c-1.7 2.9-.4 7.2 1.2 9.6.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8s1.9.8 3.1.8c1.3 0 2.1-1.2 2.9-2.3a10 10 0 0 0 1.3-2.7 4.2 4.2 0 0 1-2.7-4.1zM14.2 5.6A4.1 4.1 0 0 0 15.2 2.5a4.3 4.3 0 0 0-2.8 1.4 4 4 0 0 0-1 3 3.5 3.5 0 0 0 2.8-1.3z" fill="currentColor" stroke="none"/></svg>;
+
+    private static readonly RenderFragment AndroidSteps =
+        @<div class="ph-steps">
+            <div class="ph-step"><span class="n">1</span><span class="m">Tap the <b>⋮</b> menu<small>Top right in Chrome</small></span><span class="vis"><svg viewBox="0 0 96 58" width="96" height="58"><rect x="6" y="10" width="84" height="20" rx="10" fill="var(--ph-fill)"/><circle cx="80" cy="15" r="1.6" fill="var(--ph-ink-2)"/><circle cx="80" cy="20" r="1.6" fill="var(--ph-ink-2)"/><circle cx="80" cy="25" r="1.6" fill="var(--ph-ink-2)"/></svg><span class="hl" style="left:70px;top:8px;width:20px;height:24px"></span></span></div>
+            <div class="ph-step"><span class="n">2</span><span class="m">Choose <b>Install app</b><small>or “Add to Home screen”</small></span><span class="vis"><svg viewBox="0 0 96 58" width="96" height="58"><rect x="20" y="4" width="70" height="50" rx="6" fill="var(--ph-card)"/><rect x="28" y="12" width="44" height="5" rx="2.5" fill="var(--ph-ink-4)"/><rect x="28" y="24" width="52" height="7" rx="3" fill="var(--ph-green)"/><rect x="28" y="38" width="36" height="5" rx="2.5" fill="var(--ph-ink-4)"/></svg></span></div>
+            <div class="ph-step"><span class="n">3</span><span class="m">Tap <b>Install</b><small>iPop appears on your home screen</small></span><span class="vis ctr"><span class="ph-mini-ic"><img src="img/brand/ipop-mark.webp" alt="" width="28" height="28" /></span></span></div>
+        </div>;
+
+    private static readonly RenderFragment IosSteps =
+        @<div>
+            <div class="ph-steps">
+                <div class="ph-step"><span class="n">1</span><span class="m">Open this page in <b>Safari</b><small>Other browsers can't add apps</small></span><span class="vis ctr blue"><svg class="ph-i l" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg></span></div>
+                <div class="ph-step"><span class="n">2</span><span class="m">Tap <b>Share</b><small>Square with an arrow, bottom bar</small></span><span class="vis"><svg viewBox="0 0 96 58" width="96" height="58"><rect x="0" y="34" width="96" height="24" fill="var(--ph-card)"/><g fill="none" stroke="#0a84ff" stroke-width="1.8" stroke-linecap="round"><path d="M12 46l-3-3 3-3M27 40l3 3-3 3"/><path d="M48 38v9M45 41l3-3 3 3M44 44h-1v7h10v-7h-1"/><path d="M66 41h8v8h-8zM80 41h6v6"/></g></svg><span class="hl" style="left:39px;top:35px;width:18px;height:20px"></span></span></div>
+                <div class="ph-step"><span class="n">3</span><span class="m">Scroll, tap <b>Add to Home Screen</b></span><span class="vis"><svg viewBox="0 0 96 58" width="96" height="58"><rect x="6" y="6" width="84" height="46" rx="8" fill="var(--ph-card)"/><rect x="14" y="14" width="40" height="5" rx="2.5" fill="var(--ph-ink-4)"/><rect x="14" y="27" width="56" height="6" rx="3" fill="var(--ph-ink-2)"/><rect x="74" y="25" width="10" height="10" rx="2" fill="none" stroke="var(--ph-ink-2)" stroke-width="1.5"/><rect x="14" y="40" width="34" height="5" rx="2.5" fill="var(--ph-ink-4)"/></svg><span class="hl" style="left:10px;top:22px;width:78px;height:16px"></span></span></div>
+                <div class="ph-step"><span class="n">4</span><span class="m">Tap <b>Add</b><small>Then allow notifications inside iPop</small></span><span class="vis"><svg viewBox="0 0 96 58" width="96" height="58"><rect x="0" y="8" width="96" height="16" fill="var(--ph-card)"/><text x="8" y="19" font-size="8" fill="#0a84ff" font-family="system-ui">Cancel</text><text x="88" y="19" font-size="8" font-weight="700" text-anchor="end" fill="#0a84ff" font-family="system-ui">Add</text></svg><span class="hl" style="left:68px;top:9px;width:24px;height:14px"></span></span></div>
+            </div>
+            <p class="ph-hint">iPhone can't install APK files. The Home Screen app opens full screen and gets notifications (iOS 16.4+).</p>
+        </div>;
+}
