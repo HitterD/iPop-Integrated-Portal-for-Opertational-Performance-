@@ -5311,6 +5311,36 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("UserTutorialStates");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.UserUiPref", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Json")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Key")
+                        .IsUnique();
+
+                    b.ToTable("UserUiPrefs");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.WorkCalendarEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -7295,6 +7325,17 @@ namespace IPop.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.UserTutorialState", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.UserUiPref", b =>
                 {
                     b.HasOne("IPop.Core.Entities.User", "User")
                         .WithMany()
