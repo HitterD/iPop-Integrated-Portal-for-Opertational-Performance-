@@ -1,4 +1,5 @@
 @inject IJSRuntime JS
+@inject PhoneState Phone
 @inject IPop.Web.Services.MailService MailSvc
 @inject IPop.Web.Services.ToastService Toasts
 @inject IPop.Web.Services.AuthState Auth
@@ -18,6 +19,14 @@
     @* Escape (anywhere, not only with focus inside) goes through OverlayStack; Mail owns the phone Back entry. *@
     @if (dockState != ComposerDockState.Minimized) { <OverlayHook OnClose="EscapeSheet" History="false" /> }
     <div class="outlook-composer mc-sheet @GetStateClass()" role="dialog" aria-label="@(IsForward ? "Forward message" : "New message")">
+        @if (Phone.IsPhone && dockState != ComposerDockState.Minimized)
+        {
+            <nav class="m-mail-compose-nav" aria-label="Compose">
+                <button type="button" aria-label="Cancel" @onclick="Close">Cancel</button>
+                <b>@(IsForward ? "Forward" : inReplyToId.HasValue ? "Reply" : "New mail")</b>
+                <button type="button" aria-label="Send" disabled="@sending" @onclick="SendNow"><i data-lucide="send"></i></button>
+            </nav>
+        }
         @* Header: title echo, message options, window buttons *@
         <div class="composer-head" @onclick="OnHeadClick">
             <span class="title">
@@ -248,7 +257,25 @@
             }
 
             <MailRteEditor @ref="rteRef" Value="@body" ValueChanged="OnBodyChanged" OnSubmit="SendNow" OnNotice="OnEditorNotice"
-                           Placeholder="Write your message…" />
+                           Placeholder="Write your message…">
+                <LeadingTools>
+                    @if (Phone.IsPhone)
+                    {
+                        <span class="m-mail-tools">
+                            <button type="button" class="mrte-btn" aria-label="Attach file" @onmousedown:preventDefault @onclick="TriggerLocalUpload"><i data-lucide="paperclip"></i></button>
+                            <button type="button" class="mrte-btn" aria-label="From NAS" @onmousedown:preventDefault @onclick="OpenSynologyPicker"><i data-lucide="hard-drive"></i></button>
+                            <button type="button" class="mrte-btn" aria-label="Photo" @onmousedown:preventDefault @onclick="TriggerPhotoUpload"><i data-lucide="image"></i></button>
+                        </span>
+                        <InputFile OnChange="OnLocalFileSelected" class="m-mail-photo-input" style="display:none" accept="image/*" multiple />
+                    }
+                </LeadingTools>
+                <TrailingTools>
+                    @if (Phone.IsPhone)
+                    {
+                        <span class="m-mail-tools"><button type="button" class="mrte-btn" aria-label="Schedule send" @onclick="OpenCustomSchedule"><i data-lucide="clock"></i></button></span>
+                    }
+                </TrailingTools>
+            </MailRteEditor>
         </div>
 
         <div class="composer-foot">
@@ -997,6 +1024,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Phone.Changed += OnPhoneChanged;
         Nav.LocationChanged += OnLocationChanged;
         if (!Auth.IsAuthenticated) return;
         await LoadTemplatesAsync();
@@ -1408,6 +1436,8 @@
         await JS.InvokeVoidAsync("ipop.triggerFileInput", ".outlook-composer .mc-file-input");
     }
 
+    private Task TriggerPhotoUpload() => JS.InvokeVoidAsync("ipop.triggerFileInput", ".outlook-composer .m-mail-photo-input").AsTask();
+
     private void OpenSynologyPicker()
     {
         attDropdownOpen = false;
@@ -1503,8 +1533,11 @@
         return $"{bytes / (1024.0 * 1024.0):F1} MB";
     }
 
+    private void OnPhoneChanged() => _ = InvokeAsync(StateHasChanged);
+
     public void Dispose()
     {
+        Phone.Changed -= OnPhoneChanged;
         Nav.LocationChanged -= OnLocationChanged;
         CancelAutosave();
         previewCts?.Cancel();

@@ -6,6 +6,7 @@
    control here calls ipop.rte.* and the editor reports selection state back through OnState. *@
 <div class="mrte @(focusWithin ? "focus" : "")">
     <div class="mrte-bar" role="toolbar" aria-label="Formatting">
+        @LeadingTools
         <div class="mrte-group">
             <button type="button" class="mrte-btn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled="@(!st.CanUndo)"
                     @onmousedown:preventDefault @onclick='() => Exec("undo")'><i data-lucide="undo-2"></i></button>
@@ -203,6 +204,7 @@
             <button type="button" class="mrte-btn mrte-emoji-btn" title="Emoji" aria-label="Emoji" aria-expanded="@(pop == "emoji" ? "true" : "false")"
                     @onmousedown:preventDefault @onclick="ToggleEmoji"><i data-lucide="smile"></i></button>
         </div>
+        @TrailingTools
     </div>
 
     @if (pop == "emoji")
@@ -223,6 +225,8 @@
 </div>
 
 @code {
+    [Parameter] public RenderFragment? LeadingTools { get; set; }
+    [Parameter] public RenderFragment? TrailingTools { get; set; }
     [Parameter] public string Value { get; set; } = "";
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public string Placeholder { get; set; } = "Write your message here…";

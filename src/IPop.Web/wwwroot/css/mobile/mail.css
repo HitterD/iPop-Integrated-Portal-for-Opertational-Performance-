@@ -314,3 +314,41 @@
   .m-mail-none { margin: 0; padding: 14px 16px; color: var(--ph-ink-3); font-size: 15px; }
   .m-mail-more .ph-row-meta { font-size: 15px; }
 }
+
+/* M1: full compose sheet with its existing editor and send/draft rules. */
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .outlook-composer.mc-sheet:not(.minimized) { height: calc(100dvh - var(--ph-kb, 0px)); padding-top: var(--m-safe-t); box-sizing: border-box; }
+  .m-mail-compose-nav { display: flex; align-items: center; justify-content: space-between; flex: none; min-height: 52px; padding: 0 8px; border-bottom: 1px solid var(--sep); }
+  .m-mail-compose-nav b { font-size: 17px; }
+  .m-mail-compose-nav button { min-width: 60px; min-height: 44px; color: var(--accent); }
+  .mc-sheet:not(.minimized) > .composer-head { padding: 0 8px; min-height: 0; }
+  .mc-sheet:not(.minimized) > .composer-head > .title, .mc-sheet:not(.minimized) > .composer-head > .head-actions { display: none; }
+  .mc-sheet .mc-opts { flex: 1; justify-content: flex-end; }
+  .mc-sheet .mc-opt, .mc-sheet .mc-book, .mc-sheet .cc-bcc-toggles button, .mc-sheet .rcpt-more, .mc-sheet .rcpt-act { min-width: 44px; min-height: 44px; }
+  .mc-sheet .subject-input { min-height: 44px; font-size: 16px; }
+  .mc-sheet .composer-body-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-bottom: 52px; }
+  .mc-sheet .mrte { flex: 1; min-height: 180px; display: flex; flex-direction: column; }
+  .mc-sheet .mrte-host { flex: 1; }
+  .mc-sheet .mrte-bar { position: absolute; left: 0; right: 0; bottom: calc(28px + var(--m-safe-b)); z-index: 5; padding: 4px; min-height: 44px; border-top: 1px solid var(--sep); }
+  .mc-sheet .mrte-btn, .mc-sheet .mrte-bar .app-select-trigger { min-width: 44px; min-height: 44px; }
+  .m-mail-tools { display: flex; flex: none; }
+  .mc-sheet .composer-foot { flex: none; min-height: 28px; padding: 2px 12px calc(2px + var(--m-safe-b)); }
+  .mc-sheet .composer-foot > .split-send, .mc-sheet .composer-foot > .att-split-wrap, .mc-sheet .composer-foot > .comp-btn:not(.danger), .mc-sheet .mc-mass-hint { display: none; }
+  .mc-sheet .composer-foot .danger { min-width: 44px; min-height: 44px; }
+}
+
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  /* The editor is positioned on desktop; anchor its phone toolbar to the sheet, not the body. */
+  .mc-sheet .mrte { position: static; }
+  .mc-sheet .mrte-bar { top: auto; bottom: calc(48px + var(--m-safe-b)); height: 52px; box-sizing: border-box; }
+  .mc-sheet .composer-body-wrap { padding-bottom: 56px; }
+  .mc-sheet .composer-foot { height: calc(48px + var(--m-safe-b)); box-sizing: border-box; }
+  .mc-sheet .recipient-input-wrap input { min-height: 44px; }
+  .mc-sheet .mrte-bar .app-select-opt { min-width: 44px; min-height: 44px; }
+  .mc-sheet .mrte-group:has(.mrte-font) { order: 2; }
+  .mc-sheet .mrte-group:has(button[aria-label="Undo"]) { order: 2; }
+  .mc-sheet .mrte-bar > .m-mail-tools { order: 0; }
+}
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .mc-sheet .composer-body-wrap { position: static; }
+}
