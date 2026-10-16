@@ -151,7 +151,7 @@ public class MeetingKindTests
         Assert.Equal(("room", "kalosi"), (room.Kind, room.RoomKey));
         Assert.Equal(("voice", (string?)null, MeetingKind.OnlineLocation), (voice.Kind, voice.RoomKey, voice.Location));
 
-        var feed = await BuildFeedAsync(t.Verify(), a.Id, DateTime.UtcNow, DateTime.UtcNow.AddDays(1), FeedAccess.All, default);
+        var feed = await BuildFeedAsync(t.Verify(), a.Id, DateTime.UtcNow, start.AddDays(1), FeedAccess.All, default);
         var roomItem = feed.Single(i => i.Title == "Room");
         Assert.Equal(("meeting", "room", "kalosi"), (roomItem.Kind, roomItem.MeetingKind, roomItem.RoomKey));
         Assert.Equal(("voice", (string?)null), (feed.Single(i => i.Title == "Voice").MeetingKind, feed.Single(i => i.Title == "Voice").RoomKey));
