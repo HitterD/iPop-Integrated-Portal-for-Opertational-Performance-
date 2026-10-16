@@ -1,0 +1,49 @@
+@inject IJSRuntime JS
+
+@* One phone screen (mockup v1): nav bar with ‹ back / small title / trailing icons, then a scroll
+   area that starts with the iOS large title. ph-kit.js collapses the title into the nav bar once
+   it scrolls under it (IntersectionObserver, no per-frame scroll work). *@
+<section class="ph-screen @Class">
+    <header class="ph-nav @(LargeTitle ? "" : "is-collapsed")" @ref="nav">
+        @if (OnBack.HasDelegate)
+        {
+            <button type="button" class="ph-back" aria-label="@($"Back to {BackLabel ?? "previous"}")" @onclick="OnBack">
+                <i data-lucide="chevron-left"></i>@if (!string.IsNullOrEmpty(BackLabel)) {<span>@BackLabel</span>}
+            </button>
+        }
+        @Leading
+        <span class="ph-nav-title" aria-hidden="@(LargeTitle ? "true" : "false")">@Title</span>
+        <span class="ph-nav-sp"></span>
+        @Trailing
+    </header>
+    <div class="ph-scroll" @ref="scroll">
+        @if (LargeTitle)
+        {
+            <h1 class="ph-large-title">@Title</h1>
+        }
+        @Below
+        @ChildContent
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public RenderFragment? Leading { get; set; }
+    [Parameter] public RenderFragment? Trailing { get; set; }
+    [Parameter] public RenderFragment? Below { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool LargeTitle { get; set; } = true;
+    [Parameter] public string? BackLabel { get; set; }
+    [Parameter] public EventCallback OnBack { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private ElementReference nav, scroll;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && LargeTitle)
+        {
+            try { await JS.InvokeVoidAsync("ipop.phone.collapse", scroll, nav); } catch { /* prerender / tests */ }
+        }
+    }
+}

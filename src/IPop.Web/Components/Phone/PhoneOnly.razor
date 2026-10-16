@@ -1,0 +1,15 @@
+@implements IDisposable
+@inject PhoneState Phone
+
+@* Renders its content only in the phone layout, so the desktop DOM stays exactly as it was. *@
+@if (Phone.IsPhone)
+{
+    @ChildContent
+}
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    protected override void OnInitialized() => Phone.Changed += OnChanged;
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+    public void Dispose() => Phone.Changed -= OnChanged;
+}

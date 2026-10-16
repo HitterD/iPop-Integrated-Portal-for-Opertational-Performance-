@@ -145,6 +145,12 @@
   ipop.mobile = {
     PHONE_QUERY, DESKTOP_QUERY,
     isMobile: () => mq.matches,
+    /** PhoneState: answers the current value and calls ref.OnPhoneChanged(bool) on every change. */
+    watch(ref) {
+      const on = e => { try { ref.invokeMethodAsync('OnPhoneChanged', e.matches).catch(() => {}); } catch { /* disposed */ } };
+      if (mq.addEventListener) mq.addEventListener('change', on); else if (mq.addListener) mq.addListener(on);
+      return mq.matches;
+    },
     /** Compact desktop (768-1024 px, not a phone): the sidebar starts as the icon rail. */
     isTablet: () => !mq.matches && root.matchMedia(TABLET_QUERY).matches,
     hideTabbar: on => document.body.classList.toggle('m-hide-tabbar', !!on),

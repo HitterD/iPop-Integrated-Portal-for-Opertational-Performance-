@@ -1,0 +1,35 @@
+@* A 56 px+ list row: leading avatar/icon, title + subtitle, meta (time/badge), trailing, optional chevron. *@
+@if (Href is not null)
+{
+    <a class="ph-row @Cls" href="@Href">@Inner</a>
+}
+else
+{
+    <button type="button" class="ph-row @Cls" @onclick="OnClick">@Inner</button>
+}
+
+@code {
+    [Parameter] public RenderFragment? Leading { get; set; }
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public RenderFragment? Meta { get; set; }
+    [Parameter] public RenderFragment? Trailing { get; set; }
+    [Parameter] public string? Href { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
+    [Parameter] public bool Chevron { get; set; }
+    [Parameter] public bool Unread { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private string Cls => $"{(Unread ? "is-unread" : "")} {Class}".Trim();
+
+    private RenderFragment Inner => @<text>
+        @if (Leading is not null) { <span class="ph-row-lead">@Leading</span> }
+        <span class="ph-row-main">
+            <span class="ph-row-title">@Title</span>
+            @if (!string.IsNullOrEmpty(Subtitle)) { <span class="ph-row-sub">@Subtitle</span> }
+        </span>
+        @if (Meta is not null) { <span class="ph-row-meta">@Meta</span> }
+        @Trailing
+        @if (Chevron) { <i data-lucide="chevron-right" class="ph-row-chev"></i> }
+    </text>;
+}

@@ -68,3 +68,43 @@ test('scripts ask ipop.mobile (or use the same query) instead of their own 767/7
   }
   assert.deepEqual(bad, []);
 });
+
+// Wave 1 guard: outside the phone query, css/mobile/*.css may only hide phone-only chrome.
+// Anything else there would move desktop/tablet pixels.
+function topLevelRules(css) {
+  const out = [];
+  css = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  let i = 0;
+  while (i < css.length) {
+    const open = css.indexOf('{', i);
+    if (open < 0) break;
+    const head = css.slice(i, open).trim();
+    let depth = 1, j = open + 1;
+    while (j < css.length && depth) { if (css[j] === '{') depth++; else if (css[j] === '}') depth--; j++; }
+    out.push({ head, body: css.slice(open + 1, j - 1).trim() });
+    i = j;
+  }
+  return out;
+}
+
+test('mobile stylesheets only add display:none guards outside the phone query', () => {
+  const bad = [];
+  for (const f of walk(path.join(WEB, 'css', 'mobile'), '.css')) {
+    for (const r of topLevelRules(fs.readFileSync(f, 'utf8'))) {
+      if (r.head.startsWith('@media')) {
+        const q = r.head.slice(6).trim().replace(/\s+/g, ' ');
+        if (q !== M.PHONE_QUERY) bad.push(path.basename(f) + ': @media ' + q);
+        continue;
+      }
+      const decls = r.body.split(';').map(d => d.trim()).filter(Boolean);
+      if (!(decls.length === 1 && /^display:\s*none$/.test(decls[0]))) bad.push(path.basename(f) + ': ' + r.head + ' { ' + r.body + ' }');
+    }
+  }
+  assert.deepEqual(bad, []);
+});
+
+test('phone-kit.css is linked after the stage-1 mobile layer', () => {
+  const html = fs.readFileSync(path.join(WEB, 'index.html'), 'utf8');
+  const kit = html.indexOf('css/mobile/phone-kit.css');
+  assert.ok(kit > html.indexOf('css/mobile/login.css'), 'phone-kit.css linked after the mobile block');
+});

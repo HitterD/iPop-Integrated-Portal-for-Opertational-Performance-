@@ -1,0 +1,17 @@
+@* Floating primary action (one per page), above the tab bar; hidden while the keyboard is up (body.ph-kb-open). *@
+@if (Visible)
+{
+    <button type="button" class="ph-fab @(Extended ? "is-extended" : "") @Class" aria-label="@Label" @onclick="OnClick">
+        <i data-lucide="@Icon"></i>@if (Extended) {<span>@Label</span>}
+    </button>
+}
+
+@code {
+    [Parameter, EditorRequired] public string Icon { get; set; } = "plus";
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    [Parameter] public EventCallback OnClick { get; set; }
+    [Parameter] public bool Visible { get; set; } = true;
+    /// Pill with the label (mockup default); false = round icon-only button.
+    [Parameter] public bool Extended { get; set; } = true;
+    [Parameter] public string? Class { get; set; }
+}

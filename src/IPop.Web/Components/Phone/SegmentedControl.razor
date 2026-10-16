@@ -1,0 +1,21 @@
+@* iOS segmented control. aria-selected is written as the string "true"/"false" (Blazor drops bool aria-*). *@
+<div class="ph-seg @Class" role="tablist" aria-label="@Label">
+    @foreach (var item in Items)
+    {
+        var on = item.Value == Value;
+        <button type="button" role="tab" class="@(on ? "on" : "")" aria-selected="@(on ? "true" : "false")"
+                @onclick="() => Pick(item.Value)">
+            @item.Label@if (item.Count is { } n) {<i class="ph-seg-n">@n</i>}
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<SegmentItem> Items { get; set; } = [];
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private Task Pick(string v) => v == Value ? Task.CompletedTask : ValueChanged.InvokeAsync(v);
+}

@@ -1,0 +1,13 @@
+@* Inset grouped list (iOS style): small uppercase header, rounded card of rows, optional footer note. *@
+<div class="ph-section @Class">
+    @if (!string.IsNullOrEmpty(Header)) { <div class="ph-sec">@Header</div> }
+    <div class="ph-group">@ChildContent</div>
+    @if (!string.IsNullOrEmpty(Footer)) { <p class="ph-note">@Footer</p> }
+</div>
+
+@code {
+    [Parameter] public string? Header { get; set; }
+    [Parameter] public string? Footer { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+}

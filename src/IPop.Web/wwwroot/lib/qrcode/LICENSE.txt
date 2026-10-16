@@ -1,0 +1,2 @@
+qrcode-generator 2.0.4 (npm), Copyright (c) 2009 Kazuhiko Arase, MIT license.
+https://github.com/kazuhikoarase/qrcode-generator — vendored unmodified (dist/qrcode.js). Used by /app (ph-kit.js qrSvg).

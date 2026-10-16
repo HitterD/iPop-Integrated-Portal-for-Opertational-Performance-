@@ -1,0 +1,58 @@
+@implements IDisposable
+@inject IJSRuntime JS
+
+@* Bottom sheet (mockup v1): scrim + sheet with a decorative grab handle. Scrim tap, drag down on the
+   handle (ph-kit.js), Escape and phone Back (OverlayHook → OverlayStack) all close it. *@
+@if (Open)
+{
+    <div class="ph-scrim" @onclick="Close"></div>
+    <div class="ph-sheet ph-sheet-@Size.ToString().ToLowerInvariant() @(ScaleBack ? "ph-scale-back" : "") @Class"
+         role="dialog" aria-modal="true" aria-label="@(Title ?? Label)" @ref="sheet">
+        <div class="ph-grab" aria-hidden="true" @ref="grab"></div>
+        @if (Title is not null || Leading is not null || Trailing is not null)
+        {
+            <div class="ph-sheet-head">
+                <span class="ph-sheet-lead">@Leading</span>
+                @if (Title is not null) { <h2 class="ph-sheet-title">@Title</h2> }
+                <span class="ph-sheet-trail">@Trailing</span>
+            </div>
+        }
+        <div class="ph-sheet-body">@ChildContent</div>
+        <OverlayHook OnClose="Close" />
+    </div>
+}
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter] public string? Title { get; set; }
+    /// aria-label when the sheet has no visible title.
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public RenderFragment? Leading { get; set; }
+    [Parameter] public RenderFragment? Trailing { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public SheetSize Size { get; set; } = SheetSize.Auto;
+    /// The page behind scales back (frames n / k2).
+    [Parameter] public bool ScaleBack { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private ElementReference sheet, grab;
+    private DotNetObjectReference<BottomSheet>? self;
+    private bool wired;
+
+    private Task Close() => OpenChanged.InvokeAsync(false);
+
+    /// Drag-to-dismiss on the grab handle (ph-kit.js).
+    [JSInvokable] public Task OnDragDismiss() => InvokeAsync(Close);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!Open) { wired = false; return; }
+        if (wired) return;
+        wired = true;
+        self ??= DotNetObjectReference.Create(this);
+        try { await JS.InvokeVoidAsync("ipop.phone.sheet", sheet, grab, self, ScaleBack); } catch { /* tests */ }
+    }
+
+    public void Dispose() => self?.Dispose();
+}
