@@ -160,11 +160,11 @@
     display: flex; align-items: center; gap: 12px; width: 100%; padding: 6px 16px 14px;
     border: 0; background: none; color: var(--ph-ink); text-align: left; font: inherit; cursor: pointer;
   }
-  .ph-av {
+  .ph-prof .ph-av {
     width: 56px; height: 56px; flex: none; border-radius: 17px; display: grid; place-items: center;
     background: linear-gradient(140deg, #3f7d5a, #123528) center / cover no-repeat; color: #fff; font-weight: 700; font-size: 20px;
   }
-  .ph-av[style*="background-image"] { color: transparent; }
+  .ph-prof .ph-av[style*="background-image"] { color: transparent; }
   .ph-prof-m { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .ph-prof-m b { font-size: 19px; font-weight: 700; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ph-prof-m small { font-size: 14px; color: var(--ph-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -244,11 +244,17 @@
   .ph-mini small { align-self: flex-start; font-size: 11px; color: var(--ph-ink-4); }
   .ph-npc h2 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.025em; line-height: 1.2; }
   .ph-npc p { margin: 8px 6px 18px; font-size: 15px; line-height: 1.4; color: var(--ph-ink-3); }
-  .ph-btn {
-    width: 100%; height: 52px; border: 0; border-radius: 16px; background: var(--ph-green); color: var(--ph-on-green);
+  .ph-npc .ph-btn {
+    display: block; text-align: center; width: 100%; height: 52px; border: 0; border-radius: 16px; background: var(--ph-green); color: var(--ph-on-green);
     font: inherit; font-size: 17px; font-weight: 650; cursor: pointer;
   }
-  .ph-btn.pl { height: 48px; margin-top: 4px; background: transparent; color: var(--ph-green); }
+  .ph-npc .ph-btn.pl { height: 48px; margin-top: 4px; background: transparent; color: var(--ph-green); }
+
+  /* ---------- Topbar icon buttons: 44 px tap targets (stage 1 used 40) ---------- */
+  .v6-topbar .search-trigger { width: 44px; height: 44px; }
+  .v6-topbar .topbar-right .status-wrap .presence-toggle { width: 44px; height: 44px; }
+  .v6-topbar .theme-btn, .v6-topbar .bell-btn,
+  .v6-topbar .topbar-right .theme-btn, .v6-topbar .topbar-right .bell-btn { width: 44px !important; height: 44px !important; }
 
   /* ---------- Tab bar: four tabs + More (stage 1 had five + More) ---------- */
   .m-tabbar { grid-template-columns: repeat(5, minmax(0, 1fr)); }
