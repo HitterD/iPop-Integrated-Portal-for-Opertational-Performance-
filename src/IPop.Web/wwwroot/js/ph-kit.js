@@ -33,15 +33,40 @@
     return layoutHeight > 0 && visualHeight < layoutHeight * 0.75;
   }
 
-  if (typeof module === 'object' && module.exports) module.exports = { dismissDecision, collapseState, reorderTarget, platform, keyboardOpen };
+  /** Long-press (Wave 2, CH3): held 450 ms without moving more than 10 px (a move is a scroll). */
+  function longPress(ms, dx, dy) {
+    return ms >= 450 && Math.abs(dx) <= 10 && Math.abs(dy) <= 10;
+  }
+
+  /** Row swipe (NF1): past 22 % of the row width (min 64 px) opens that side's actions. */
+  function swipeDecision(dx, width) {
+    if (!(width > 0)) return null;
+    const t = Math.max(64, width * 0.22);
+    return dx <= -t ? 'left' : dx >= t ? 'right' : null;
+  }
+
+  /** Pixels the on-screen keyboard hides at the bottom of the layout viewport (iOS keeps the
+      layout height; Android with interactive-widget=resizes-content shrinks it, so 0 there). */
+  function keyboardInset(layoutHeight, visualHeight, visualTop) {
+    return Math.max(0, Math.round(layoutHeight - visualHeight - (visualTop || 0)));
+  }
+
+  if (typeof module === 'object' && module.exports) module.exports = { dismissDecision, collapseState, reorderTarget, platform, keyboardOpen, longPress, swipeDecision, keyboardInset };
   if (!root || !root.document) return;
 
   const ipop = root.ipop = root.ipop || {};
 
   // Keyboard flag for the FAB (and anything else that must step aside).
   if (root.visualViewport) {
-    const kb = () => document.body && document.body.classList.toggle('ph-kb-open', keyboardOpen(root.innerHeight, root.visualViewport.height));
+    const kb = () => {
+      if (!document.body) return;
+      const vv = root.visualViewport;
+      document.body.classList.toggle('ph-kb-open', keyboardOpen(root.innerHeight, vv.height));
+      // Phone composers (chat, mail quick reply, meeting chat) sit on the keyboard: --ph-kb lifts them.
+      document.documentElement.style.setProperty('--ph-kb', keyboardInset(root.innerHeight, vv.height, vv.offsetTop) + 'px');
+    };
     root.visualViewport.addEventListener('resize', kb);
+    root.visualViewport.addEventListener('scroll', kb);
   }
 
   ipop.phone = {
@@ -131,6 +156,87 @@
         handle.addEventListener('pointerup', up);
         handle.addEventListener('pointercancel', up);
       });
+    },
+
+    /** Long-press on a child matching `selector` inside `container` → ref[method](key). The key is the
+        element's data-lp attribute. Haptic tick where the browser has one. Text selection still works
+        with a plain tap; the bubble CSS turns off the iOS callout only. */
+    longPress(container, selector, ref, method) {
+      if (!container || container._phLp) return;
+      container._phLp = true;
+      let t = null, x0 = 0, y0 = 0, el = null, fired = false;
+      const cancel = () => { if (t) clearTimeout(t); t = null; el = null; };
+      container.addEventListener('pointerdown', e => {
+        if (e.pointerType === 'mouse') return;
+        el = e.target.closest(selector);
+        if (!el || !container.contains(el)) return;
+        x0 = e.clientX; y0 = e.clientY; fired = false;
+        const target = el;
+        t = setTimeout(() => {
+          t = null; fired = true;
+          try { root.navigator.vibrate && root.navigator.vibrate(10); } catch { }
+          // The finger lifts over the sheet that just opened: the click that follows must not
+          // press whatever is under it (Pin, Delete…). Swallow exactly one click, anywhere.
+          const eat = ev => { ev.stopPropagation(); ev.preventDefault(); done(); };
+          const done = () => { document.removeEventListener('click', eat, true); clearTimeout(tid); fired = false; };
+          const tid = setTimeout(done, 900);
+          document.addEventListener('click', eat, true);
+          ref.invokeMethodAsync(method, target.getAttribute('data-lp') || '').catch(() => {});
+        }, 450);
+      }, { passive: true });
+      container.addEventListener('pointermove', e => {
+        if (t && !longPress(450, e.clientX - x0, e.clientY - y0)) cancel();
+      }, { passive: true });
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach(n => container.addEventListener(n, cancel, { passive: true }));
+      // Touch long-press also raises contextmenu: keep it from opening the desktop menu as well.
+      container.addEventListener('contextmenu', e => {
+        if (e.target.closest(selector) && root.matchMedia('(pointer: coarse)').matches) { e.preventDefault(); e.stopPropagation(); }
+      }, true);
+    },
+
+    /** Horizontal swipe on rows ([data-swipe] inside `container`): the row follows the finger; past
+        the threshold it stays open (.sw-left / .sw-right) to show its actions; a tap elsewhere closes. */
+    swipeRows(container) {
+      if (!container || container._phSw) return;
+      container._phSw = true;
+      let row = null, x0 = 0, y0 = 0, dx = 0, horiz = null;
+      const closeAll = except => container.querySelectorAll('[data-swipe].sw-left,[data-swipe].sw-right').forEach(r => { if (r !== except) r.classList.remove('sw-left', 'sw-right'); });
+      container.addEventListener('pointerdown', e => {
+        if (e.pointerType === 'mouse') return;
+        const r = e.target.closest('[data-swipe]');
+        if (!r || e.target.closest('.sw-acts')) return;
+        closeAll(r);
+        row = r; x0 = e.clientX; y0 = e.clientY; dx = 0; horiz = null;
+      }, { passive: true });
+      container.addEventListener('pointermove', e => {
+        if (!row) return;
+        const mx = e.clientX - x0, my = e.clientY - y0;
+        if (horiz === null && (Math.abs(mx) > 8 || Math.abs(my) > 8)) horiz = Math.abs(mx) > Math.abs(my);
+        if (!horiz) return;
+        dx = mx;
+        const fg = row.querySelector('.sw-fg');
+        if (fg) { fg.style.transition = 'none'; fg.style.transform = `translateX(${dx}px)`; }
+      }, { passive: true });
+      const end = () => {
+        if (!row) return;
+        const fg = row.querySelector('.sw-fg');
+        if (fg) { fg.style.transition = ''; fg.style.transform = ''; }
+        if (horiz) {
+          const side = swipeDecision(dx, row.getBoundingClientRect().width);
+          row.classList.toggle('sw-left', side === 'left');
+          row.classList.toggle('sw-right', side === 'right');
+          if (side) row._swJust = true;
+        }
+        row = null;
+      };
+      container.addEventListener('pointerup', end, { passive: true });
+      container.addEventListener('pointercancel', end, { passive: true });
+      // A finished swipe is not a tap on the row.
+      container.addEventListener('click', e => {
+        const r = e.target.closest('[data-swipe]');
+        if (r && r._swJust) { r._swJust = false; e.stopPropagation(); e.preventDefault(); return; }
+        if (!e.target.closest('.sw-acts')) closeAll(null);
+      }, true);
     },
 
     /** QR code as an SVG path (qrcode-generator, vendored in lib/qrcode). */

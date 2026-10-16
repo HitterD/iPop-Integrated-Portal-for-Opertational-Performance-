@@ -39,3 +39,25 @@ test('keyboard counts as open when the visual viewport lost a quarter of the hei
   assert.equal(K.keyboardOpen(844, 500), true);
   assert.equal(K.keyboardOpen(844, 700), false);
 });
+
+// ---- Wave 2 ----
+test('long-press fires after 450 ms when the finger stayed put', () => {
+  assert.equal(K.longPress(460, 3, 4), true);
+  assert.equal(K.longPress(300, 0, 0), false, 'too short');
+  assert.equal(K.longPress(800, 14, 0), false, 'moved: that was a scroll');
+  assert.equal(K.longPress(800, 0, -12), false);
+});
+
+test('swipe on a row: left reveals the trailing actions, right the leading one', () => {
+  assert.equal(K.swipeDecision(-90, 360), 'left');
+  assert.equal(K.swipeDecision(90, 360), 'right');
+  assert.equal(K.swipeDecision(-30, 360), null, 'under the threshold snaps back');
+  assert.equal(K.swipeDecision(0, 0), null);
+});
+
+test('keyboard inset: what the on-screen keyboard covers of the layout viewport', () => {
+  assert.equal(K.keyboardInset(844, 844, 0), 0);
+  assert.equal(K.keyboardInset(844, 544, 0), 300, 'iOS: layout stays, visual viewport shrinks');
+  assert.equal(K.keyboardInset(544, 544, 0), 0, 'Android resizes-content: nothing to add');
+  assert.equal(K.keyboardInset(844, 860, 0), 0, 'never negative');
+});
