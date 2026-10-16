@@ -23,6 +23,8 @@
 
     function push(entry) {
       if (backing) { queued.push(entry); stack.push(entry); return; }
+      // After a reload, history can still hold this tab's old layer entries: number above them.
+      seq = Math.max(seq, cur());
       entry.seq = ++seq;
       history.pushState({ ipopLayer: entry.seq, ipopDetail: !!entry.detail }, '');
       stack.push(entry);
@@ -57,7 +59,7 @@
       onPopState() {
         if (backing) {
           backing--;
-          if (!backing) for (const e of queued.splice(0)) { e.seq = ++seq; history.pushState({ ipopLayer: e.seq, ipopDetail: !!e.detail }, ''); }
+          if (!backing) for (const e of queued.splice(0)) { seq = Math.max(seq, cur()); e.seq = ++seq; history.pushState({ ipopLayer: e.seq, ipopDetail: !!e.detail }, ''); }
           return;
         }
         const at = cur();

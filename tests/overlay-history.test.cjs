@@ -66,6 +66,21 @@ test('details pushed before an overlay still close after it', async () => {
   assert.deepEqual(closed, ['sheet:OnBack', 'reader:MobileBack']);
 });
 
+test('after a reload on a stale overlay entry, new overlays still close one per Back', async () => {
+  const { history, ov, ref } = setup();
+  ov.open(ref('old'));                       // entry { ipopLayer: 1 } stays in history across the reload
+  const closed = [];
+  const fresh = createOverlayHistory({ history, isPhone: () => true }); // page reloaded: a new instance
+  history.onPop(() => fresh.onPopState());
+  const r = name => ({ invokeMethodAsync: m => { closed.push(name); return Promise.resolve(); } });
+  fresh.open(r('more')); fresh.open(r('edit'));
+  history.back(); await tick();
+  assert.deepEqual(closed, ['edit']);
+  history.back(); await tick();
+  assert.deepEqual(closed, ['edit', 'more']);
+  assert.equal(fresh.count(), 0);
+});
+
 test('desktop: no history entries are added (Escape still closes through the .NET stack)', () => {
   const { history, ov, ref } = setup(false);
   assert.equal(ov.open(ref('drawer')), null);
