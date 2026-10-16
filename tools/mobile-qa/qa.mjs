@@ -19,6 +19,8 @@ const want = k => !only || only.includes(k);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = out(args.out || path.join(HERE, 'out', 'w' + wave));
 const ROUTES = JSON.parse(fs.readFileSync(path.join(HERE, 'routes.json'), 'utf8'))[wave];
+// --extra-diff "/chat/<id>,/mail?x": data-specific routes (an open room in the copy DB) added to the diff.
+if (args['extra-diff']) ROUTES.diff = ROUTES.diff.concat(String(args['extra-diff']).split(','));
 const report = { wave, base: BASE, baseline: BASELINE || null, at: new Date().toISOString(), phone: [], landscape: [], tablet: [], diff: [], checks: {} };
 const save = () => fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(report, null, 2));
 const shot = (p, name) => p.screenshot({ path: path.join(OUT, name + '.png') });
@@ -100,7 +102,7 @@ try {
       const a = await shotsFor(BASELINE), c = await shotsFor(BASE);
       for (const r of ROUTES.diff) {
         const A = PNG.sync.read(a[r]), C = PNG.sync.read(c[r]);
-        const tag = `diff-${w}x${h}-${r.replace(/\//g, '')}`;
+        const tag = `diff-${w}x${h}-${r.replace(/[\/?=&]/g, '').slice(0, 40)}`;
         if (A.width !== C.width || A.height !== C.height) { report.diff.push({ w, h, route: r, sizeMismatch: [A.width, A.height, C.width, C.height] }); continue; }
         const D = new PNG({ width: A.width, height: A.height });
         const n = pixelmatch(A.data, C.data, D.data, A.width, A.height, { threshold: 0.1 });

@@ -1,6 +1,36 @@
 {
   "1": {
-    "phone": ["/dashboard", "/chat", "/mail", "/calendar", "/notes", "#more", "#edit-tabs", "/app"],
-    "diff": ["/dashboard", "/mail", "/chat", "/notes", "/calendar"]
+    "phone": [
+      "/dashboard",
+      "/chat",
+      "/mail",
+      "/calendar",
+      "/notes",
+      "#more",
+      "#edit-tabs",
+      "/app"
+    ],
+    "diff": [
+      "/dashboard",
+      "/mail",
+      "/chat",
+      "/notes",
+      "/calendar"
+    ]
+  },
+  "2": {
+    "phone": [
+      "/chat",
+      "/mail",
+      "/calls",
+      "/notifications"
+    ],
+    "diff": [
+      "/chat",
+      "/mail",
+      "/calls",
+      "/notifications",
+      "/calls?tab=rooms"
+    ]
   }
 }
