@@ -31,3 +31,18 @@ tools/notes-editor/node_modules/
 
 # Local streaming copies of News launch videos (archived on the NAS)
 src/IPop.Api/news-videos/
+
+# Wave 1: generated brand PNGs (tools/brand/make-icons.py) are committed.
+!src/IPop.Web/wwwroot/img/brand/*.png
+# Android TWA: only the manifest, README and splash are tracked. Never commit keys or builds.
+android/twa/**
+!android/twa/twa-manifest.json
+!android/twa/README.md
+!android/twa/splash-512.png
+*.keystore
+*.jks
+*.apk
+*.aab
+keystore*.properties
+tools/mobile-qa/node_modules/
+tools/mobile-qa/out/
