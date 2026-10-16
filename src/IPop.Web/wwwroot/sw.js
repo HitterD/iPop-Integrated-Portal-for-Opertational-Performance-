@@ -61,7 +61,7 @@ self.addEventListener("message", e => e.waitUntil((async () => {
 
 // ───────────────────────── App-shell cache ─────────────────────────
 // Bump SW_VERSION on every deploy that changes caching; activate deletes older ipop-shell-/ipop-fw- caches.
-const SW_VERSION = "w1-20261016";
+const SW_VERSION = "w1-20261016b";
 const SHELL = "ipop-shell-" + SW_VERSION;
 const FW = "ipop-fw-" + SW_VERSION;
 let NAV_TIMEOUT_MS = 4000;
@@ -73,6 +73,8 @@ const NEVER = /^\/(api|hubs|livekit|onlyoffice|meet|download|downloads|uploads|\
 // blazor.webassembly.js / dotnet.js have no fingerprint and stay network-first.
 const FINGERPRINTED = /^\/_framework\/.+\.[a-z0-9]{10}\.(js|wasm|dat|json|pdb)$/;
 const VERSIONED = /^\/(css|js|fonts|img|lib|sounds|stickers|images)\//i;
+// Files the shell needs to boot that carry no ?v=: network-first, the cached copy only when offline.
+const BOOT = /^\/(css|js|lib|_content)\/.+\.(css|js)$|^\/appsettings\.json$/i;
 
 /** "none" | "navigate" | "cache-first" | "network-first" | "swr" — what the fetch handler does. */
 function routeFor(req) {
@@ -88,6 +90,7 @@ function routeFor(req) {
   if (req.mode === "navigate") return "navigate";
   if (p.startsWith("/_framework/")) return FINGERPRINTED.test(p) ? "cache-first" : "network-first";
   if (VERSIONED.test(p) && (url.searchParams.has("v") || /^\/img\/brand\//i.test(p))) return "swr";
+  if (BOOT.test(p)) return "network-first";
   return "none";
 }
 

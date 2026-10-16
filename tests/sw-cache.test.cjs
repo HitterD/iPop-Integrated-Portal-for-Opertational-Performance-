@@ -88,7 +88,14 @@ test('routing table', () => {
     [req('/css/mobile/phone-kit.css?v=20261016-w1'), 'swr'],
     [req('/js/ph-kit.js?v=20261016-w1'), 'swr'],
     [req('/img/brand/icon-192.png'), 'swr'],
-    [req('/css/ipop.css'), 'none'],                                   // no ?v= → leave it alone
+    // Unversioned files the shell needs to boot: always from the network, the cached copy only offline.
+    [req('/css/ipop.css'), 'network-first'],
+    [req('/js/lucide.min.js'), 'network-first'],
+    [req('/appsettings.json'), 'network-first'],
+    [req('/_content/Radzen.Blazor/Radzen.Blazor.js'), 'network-first'],
+    [req('/lib/driver.js/driver.js.iife.js'), 'network-first'],
+    [req('/manifest.webmanifest'), 'none'],
+    [req('/favicon.png'), 'none'],
     [req('/chat', { mode: 'navigate' }), 'navigate'],
     [req('/', { mode: 'navigate' }), 'navigate'],
     [req('https://cdn.tailwindcss.com/'), 'none'],
@@ -167,6 +174,14 @@ test('versioned static assets: stale-while-revalidate keyed by the query', async
   await new Promise(r => setTimeout(r, 5));
   assert.equal(await (await dispatch(sb, req('/js/ph-kit.js?v=a'))).text(), 'v2', 'refreshed in the background');
   assert.equal(await (await dispatch(sb, req('/js/ph-kit.js?v=b'))).text(), 'v2', 'new ?v= is a new key');
+});
+
+test('offline reload: unversioned boot files fall back to the cached copy', async () => {
+  let online = true;
+  const sb = sandbox({ network: url => { if (!online) throw new TypeError('Failed to fetch'); return new Response('cfg'); } });
+  assert.equal(await (await dispatch(sb, req('/appsettings.json'))).text(), 'cfg');
+  online = false;
+  assert.equal(await (await dispatch(sb, req('/appsettings.json'))).text(), 'cfg');
 });
 
 test('failed responses are never cached', async () => {
