@@ -46,3 +46,9 @@ test('kit rules for classes shared with other modules are scoped under a kit con
   }
   assert.deepEqual(bad, []);
 });
+
+test('Edit tabs row controls are at least 44 px wide (tap targets)', () => {
+  const css = fs.readFileSync(path.join(SRC, 'wwwroot', 'css', 'mobile', 'phone-kit.css'), 'utf8');
+  const widths = [...css.matchAll(/(?:^|\n)\s*\.ph-mv\s*\{([^}]*)\}/g)].map(m => (m[1].match(/(?:^|;|\s)width:\s*(\d+)px/) || [])[1]).filter(Boolean).map(Number);
+  for (const w of widths) assert.ok(w >= 44, '.ph-mv width ' + w);
+});

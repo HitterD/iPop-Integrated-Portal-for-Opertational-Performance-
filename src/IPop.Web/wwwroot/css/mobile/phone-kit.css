@@ -206,7 +206,7 @@
     width: 44px; height: 44px; flex: none; display: grid; place-items: center;
     border: 0; background: none; color: var(--ph-ink-4); cursor: pointer;
   }
-  .ph-mv { width: 36px; color: var(--ph-ink-3); }
+  .ph-mv { color: var(--ph-ink-3); }
   .ph-mv:disabled { opacity: .3; }
   .ph-mv .lucide { width: 18px; height: 18px; }
   .ph-grip { touch-action: none; cursor: grab; }
