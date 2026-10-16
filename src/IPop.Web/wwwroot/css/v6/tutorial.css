@@ -89,8 +89,10 @@ body:has(.outlook-composer.minimized) .tut-invite { bottom: 76px; }
 
 @media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .tut-pbar { padding: 7px 14px; font-size: 12px; flex-wrap: wrap; gap: 6px 10px; } .tut-pbar .long { display: none; }
-  .tut-invite { left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); width: auto; }
-  body:has(.outlook-composer.minimized) .tut-invite { bottom: calc(var(--m-tabbar-h, 56px) + env(safe-area-inset-bottom) + 64px); }
+  /* Sits above the phone tab bar (it used to cover the More button); edge-anchored when the bar is hidden. */
+  .tut-invite { left: 12px; right: 12px; bottom: calc(var(--m-tabbar-h, 56px) + var(--m-safe-b, env(safe-area-inset-bottom, 0px)) + 12px); width: auto; }
+  body.m-hide-tabbar .tut-invite { bottom: calc(12px + var(--m-safe-b, env(safe-area-inset-bottom, 0px))); }
+  body:has(.outlook-composer.minimized) .tut-invite { bottom: calc(var(--m-tabbar-h, 56px) + var(--m-safe-b, env(safe-area-inset-bottom, 0px)) + 64px); }
   /* Tour card becomes a bottom sheet so it never covers what it points at. */
   .driver-popover.tut-pop { position: fixed !important; left: 0 !important; right: 0 !important; top: auto !important; bottom: 0 !important; width: auto; max-width: none; border-radius: 22px 22px 0 0; padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
   .driver-popover.tut-pop .driver-popover-arrow { display: none; }
