@@ -18,7 +18,7 @@ public partial class Directory
     private void OnAccountChanged() => _ = InvokeAsync(async () =>
     {
         if (navigationAccount == Auth.Me?.Nik) return;
-        requestGeneration++; favoriteGeneration++; phoneGeneration++;
+        requestGeneration++; favoriteGeneration++; phoneGeneration++; phoneBulkGeneration++;
         phonePeople = []; phoneLoaded = phoneLoading = false; phoneQuery = ""; phoneDepartmentDetail = false;
         people = []; favoritePeople = []; selected = null; selectedNiks.Clear();
         navigation.Expanded.Clear(); navigation.SelectedKey = null; navigation.ShowEmpty = false; navigation.Search = "";
@@ -68,6 +68,7 @@ public partial class Directory
     private async Task SetShowEmpty(ChangeEventArgs e) { navigation.ShowEmpty = e.Value is true; await SaveNavigation(); }
     private async Task SelectOccurrence(DirectoryNavNode node)
     {
+        phoneBulkGeneration++;
         navigation.SelectedKey = node.Key; SyncSelection(); selectedNiks.Clear();
         await CloseTree(); await SaveNavigation(); await Reload(1, replace: true);
     }

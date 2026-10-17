@@ -10,7 +10,7 @@ public partial class Directory
     private string phoneTab = "people", phoneQuery = "", phoneScope = "All";
     private bool phoneOptions, phoneDepartmentDetail, phoneLoading, phoneLoaded, phoneLoadError, phoneSelecting;
     private List<Employee> phonePeople = [];
-    private int phoneGeneration;
+    private int phoneGeneration, phoneBulkGeneration;
     private static readonly IReadOnlyList<IPop.Web.Components.Phone.SegmentItem> phoneTabs = [new("people", "People"), new("departments", "Departments")];
     private IReadOnlyList<Employee> PhonePeople => phonePeople.Where(p =>
         (!favOnly || Favorites.IsFavorite(p.Nik)) &&
@@ -49,20 +49,26 @@ public partial class Directory
         phoneQuery = ""; phoneScope = "All";
         await SelectOccurrence(node); phoneDepartmentDetail = true;
     }
-    private void ClosePhoneDepartment() { phoneDepartmentDetail = false; phoneTab = "departments"; }
+    private void ClosePhoneDepartment() { phoneBulkGeneration++; phoneDepartmentDetail = false; phoneTab = "departments"; }
     private async Task PhoneDepartmentAction(string action)
     {
-        // Fetch the full selected scope, not just the loaded 120-row page.
-        var members = new List<string>();
-        for (var p = 1; ; p++)
-        {
-            var result = await Auth.GetAsync<DirectoryPageDto>($"/api/directory/employees?{SelectionParam}&page={p}&pageSize=5000");
-            if (result is null) { Toasts.Show("Could not load all members.", ToastKind.Error); return; }
-            members.AddRange(result.Items.Select(x => x.Nik));
-            if (members.Count >= result.Total || result.Items.Length == 0) break;
-        }
+        // Freeze the scope and account for the entire paged action. A new action, selection,
+        // account transition or page disposal invalidates any response already in flight.
+        var account = Auth.Me?.Nik;
+        var selectedKey = navigation.SelectedKey;
+        var selectedScope = SelectionParam;
+        var selectedName = selection?.Name;
+        var generation = ++phoneBulkGeneration;
+        bool IsCurrent() => !disposed && account is not null && account == Auth.Me?.Nik
+            && generation == phoneBulkGeneration && selectedKey == navigation.SelectedKey
+            && selectedScope == SelectionParam && phoneDepartmentDetail;
+        var members = await DirectoryMemberFetch.LoadAsync(
+            page => Auth.GetAsync<DirectoryPageDto>($"/api/directory/employees?{selectedScope}&page={page}&pageSize=5000"), IsCurrent);
+        if (!IsCurrent()) return;
+        if (members is null) { Toasts.Show("Could not load all members.", ToastKind.Error); return; }
         if (members.Count == 0) return;
         var tokens = PLinks.Tokens(members);
-        Nav.NavigateTo(action switch { "chat" => $"/chat?new=group&members={tokens}", "mail" => $"/mail?compose=1&to={tokens}", _ => CalLinks.NewMeeting(niks: members, from: $"Meeting with {selection?.Name}") });
+        if (!IsCurrent()) return;
+        Nav.NavigateTo(action switch { "chat" => $"/chat?new=group&members={tokens}", "mail" => $"/mail?compose=1&to={tokens}", _ => CalLinks.NewMeeting(niks: members, from: $"Meeting with {selectedName}") });
     }
 }
