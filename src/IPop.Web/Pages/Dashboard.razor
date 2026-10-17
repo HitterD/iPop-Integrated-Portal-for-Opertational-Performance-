@@ -11,6 +11,33 @@
 
 <PageTitle>Dashboard — IPop</PageTitle>
 
+@inject PhoneState Phone
+@using IPop.Web.Components.Phone.Dashboard
+@if (Phone.IsPhone)
+{
+    <DashboardPhone Name="@(data?.FirstName ?? IPop.Application.PersonName.Display(Auth.Me?.Name) ?? "there")" Greeting="@Greeting" Loading="@(data is null)"
+        MailUnread="@(data?.Kpis.MailUnread ?? 0)" ChatUnread="@(data?.Kpis.ChatUnread ?? 0)" OpenTasks="@(data?.Kpis.OpenTasks ?? 0)" MissedCalls="@(data?.Kpis.MissedCalls ?? 0)"
+        CanPostNews="@(data?.CanPostNews == true)" NextTitle="@(NextMeeting()?.Title ?? data?.Kpis.NextMeetingTitle)" NextWhen="@(NextMeeting() is { } meeting ? StartsIn(meeting) : data?.Kpis.NextMeetingAt is { } when ? Local(when).ToString("ddd d MMM, HH:mm") : null)"
+        NextUrl="@(NextMeeting()?.Url ?? "/calendar")" Agenda="@PhoneAgenda" News="@PhoneNews" Order="phoneOrder" OnOrder="SavePhoneOrder">
+        <AdditionalWidgets>
+            @if (data is not null)
+            {
+                <section class="m-dashboard-widget"><header><h3>Needs your attention</h3><a href="/notifications">See all</a></header>@foreach (var item in data.Attention.Take(5)) { <button type="button" class="m-dashboard-row" @onclick="() => OpenAttention(item)"><span><b>@item.Title</b><small>@item.Sub</small></span><span>@item.Cta</span></button> }</section>
+                <section class="m-dashboard-widget"><header><h3>My tasks</h3><a href="/projects">See all</a></header>@foreach (var task in data.MyTasks) { <div class="m-dashboard-task"><button type="button" aria-label="Complete @task.Title" @onclick="() => CompleteTask(task)"><i data-lucide="circle-check"></i></button><a href="@($"/projects/{task.ProjectId}?task={task.Id}")">@task.Title<small>@task.ProjectName · @DueLabel(task)</small></a></div> }</section>
+                <section class="m-dashboard-widget"><header><h3>Recent messages</h3><a href="/chat">See all</a></header>@foreach (var chat in data.Chats) { <a class="m-dashboard-row" href="/chat/@chat.Id"><span><b>@chat.Name</b><small>@(chat.LastMessage ?? "No messages")</small></span><small>@chat.Unread unread</small></a> }</section>
+                <section class="m-dashboard-widget"><header><h3>Projects</h3><a href="/projects">See all</a></header>@foreach (var project in data.Projects) { <a class="m-dashboard-row" href="/projects/@project.Id"><span><b>@project.Name</b><small>@project.Done of @project.Total done · @project.Status</small></span></a> }</section>
+                <section class="m-dashboard-widget"><header><h3>Notes</h3><a href="/notes">See all</a></header>@foreach (var note in data.Notes) { <a class="m-dashboard-row" href="/notes/@note.Id"><span><b>@note.Title</b><small>@note.EditedBy</small></span></a> }</section>
+                <section class="m-dashboard-widget"><header><h3>Team online</h3><a href="/directory">Directory</a></header>@foreach (var colleague in data.Online) { <a class="m-dashboard-row" href="@PLinks.Profile(colleague.Nik)"><span><b>@colleague.Name</b><small>@colleague.Status</small></span></a> }</section>
+                @if (data.IsAdmin) { @foreach (var status in data.Status) { <div class="m-dashboard-widget m-dashboard-status"><b>@status.Label</b><span>@status.State</span><small>@status.Note</small></div> } }
+                <IPop.Web.Components.Tickets.TicketsWidget />
+                <a class="m-dashboard-row" href="/files"><span><b>Files</b><small>Browse your NAS folders</small></span><i data-lucide="chevron-right"></i></a>
+                @if (data.Transfers.Count > 0) { <section class="m-dashboard-widget"><header><h3>File transfers</h3><a href="/files">Files</a></header>@foreach (var transfer in data.Transfers) { <div class="m-dashboard-row"><span><b>@transfer.Kind · @transfer.Status</b><small>@transfer.CompletedFiles of @transfer.TotalFiles files</small></span></div> }</section> }
+            }
+        </AdditionalWidgets>
+    </DashboardPhone>
+}
+else
+{
 <div class="dw">
 <div class="dw-in">
     @* 1 · Hero *@
@@ -297,7 +324,20 @@
 </div>
 </div>
 
+}
+
 @code {
+    private IReadOnlyList<string> phoneOrder = [];
+    private IReadOnlyList<DashboardPhone.Item> PhoneAgenda => data?.Agenda.Select(a => new DashboardPhone.Item(a.Title, $"{AgendaTime(a)} · {AgendaSub(a)}", a.Url)).ToList() ?? [];
+    private IReadOnlyList<DashboardPhone.Item> PhoneNews => data?.News.Select(n => new DashboardPhone.Item(n.Title, n.Type, $"/news?post={n.Id}")).ToList() ?? [];
+    private void PhoneChanged() => _ = InvokeAsync(StateHasChanged);
+    private async Task LoadPhoneOrder() { phoneOrder = await Auth.GetAsync<string[]>("/api/me/ui-prefs/dash-order") ?? []; }
+    private async Task SavePhoneOrder(IReadOnlyList<string> order)
+    {
+        phoneOrder = order.ToArray();
+        try { using var response = await Auth.SendAsync(HttpMethod.Put, "/api/me/ui-prefs/dash-order", phoneOrder); if (!response.IsSuccessStatusCode) Toasts.Show("Widget order could not be saved.", ToastKind.Error); }
+        catch (HttpRequestException) { Toasts.Show("Widget order could not be saved.", ToastKind.Error); }
+    }
     [CascadingParameter] public MainLayout Layout { get; set; } = default!;
 
     private DashboardDto? data;
@@ -329,7 +369,7 @@
         _ => "Good night",
     };
 
-    protected override void OnInitialized() => Layout.SetHeader("Dashboard", "Overview of your day");
+    protected override void OnInitialized() { Layout.SetHeader("Dashboard", "Overview of your day"); Phone.Changed += PhoneChanged; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -337,7 +377,7 @@
         await Auth.LoadMeAsync();
         // Last-seen dashboard first, then refresh behind it: no skeletons on a repeat visit.
         data ??= Normalize(Cache.Peek<DashboardDto>(CacheKey));
-        await LoadAsync();
+        await Task.WhenAll(LoadAsync(), LoadPhoneOrder());
     }
 
     private const string CacheKey = "dashboard";
@@ -379,6 +419,7 @@
 
     public void Dispose()
     {
+        Phone.Changed -= PhoneChanged;
         Auth.PresenceChanged -= OnPresenceChanged;
         _presenceReload?.Cancel();
     }

@@ -1,6 +1,22 @@
 /* Mobile (<= 767px) overrides for dashboard. Loaded after every desktop stylesheet. */
 
 @media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .m-dashboard-screen { background: var(--fill); }
+  .m-dashboard-edit { min-width: 44px; min-height: 44px; display: grid; place-items: center; color: var(--accent); background: transparent; border: 0; }
+  .m-dashboard-greeting { padding: 0 16px 14px; } .m-dashboard-greeting small { color: var(--ink-3); } .m-dashboard-greeting h2 { font-size: 21px; letter-spacing: -.4px; margin: 6px 0; }
+  .m-dashboard-shortcuts { display: flex; gap: 8px; overflow-x: auto; padding: 0 16px 16px; } .m-dashboard-shortcuts a { flex: none; display: flex; align-items: center; gap: 7px; min-height: 44px; padding: 8px 12px; color: var(--accent); text-decoration: none; border-radius: 12px; background: var(--surface); font-size: 13px; }
+  .m-dashboard-widget { margin: 0 16px 14px; border-radius: 18px; background: var(--surface); overflow: hidden; }
+  .m-dashboard-widget > header { display: flex; align-items: center; justify-content: space-between; padding: 4px 14px; gap: 8px; } .m-dashboard-widget h3 { font-size: 17px; margin: 8px 0; }
+  .m-dashboard-widget > header a { min-width: 44px; min-height: 44px; display: grid; place-items: center; color: var(--accent); text-decoration: none; font-size: 13px; }
+  .m-dashboard-next { padding: 18px; background: #123528; color: white; } .m-dashboard-next small { opacity: .8; text-transform: uppercase; font-size: 11px; letter-spacing: .6px; } .m-dashboard-next h2 { font-size: 24px; letter-spacing: -.5px; margin: 10px 0; } .m-dashboard-next p { opacity: .85; font-size: 14px; } .m-dashboard-next a { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: white; text-decoration: none; }
+  .m-dashboard-next h2 { color: #fff; }
+  .m-dashboard-counters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--sep); }
+  .m-dashboard-counter { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 16px; color: var(--ink); text-decoration: none; background: var(--surface); min-height: 120px; } .m-dashboard-counter strong { grid-column: 1 / -1; font-size: 30px; font-variant-numeric: tabular-nums; font-weight: 650; } .m-dashboard-counter span { grid-column: 1 / -1; font-size: 13px; color: var(--ink-3); } .m-dashboard-counter .lucide { width: 21px; height: 21px; color: var(--ink-3); }
+  .m-dashboard-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 64px; padding: 12px 14px; border: 0; border-top: 1px solid var(--sep); color: var(--ink); text-decoration: none; background: transparent; text-align: left; } .m-dashboard-row > span { min-width: 0; display: grid; gap: 6px; } .m-dashboard-row b { font-size: 15px; font-weight: 550; overflow-wrap: anywhere; } .m-dashboard-row small, .m-dashboard-task small { color: var(--ink-3); font-size: 12px; overflow-wrap: anywhere; } .m-dashboard-row > .lucide { width: 16px; flex: none; color: var(--ink-3); }
+  .m-dashboard-empty { padding: 16px; color: var(--ink-3); font-size: 14px; }
+  .m-dashboard-reorder { display: flex; align-items: center; gap: 4px; padding: 6px 10px; background: var(--fill); } .m-dashboard-reorder b { flex: 1; font-size: 14px; } .m-dashboard-reorder button { min-width: 44px; min-height: 44px; display: grid; place-items: center; border: 0; background: transparent; color: var(--accent); }
+  .m-dashboard-task { display: flex; align-items: center; border-top: 1px solid var(--sep); gap: 6px; padding: 4px 10px; } .m-dashboard-task button { flex: none; min-width: 44px; min-height: 44px; border: 0; background: transparent; color: var(--accent); } .m-dashboard-task a { min-height: 52px; flex: 1; display: grid; align-content: center; gap: 6px; color: var(--ink); text-decoration: none; }
+  .m-dashboard-status { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 16px; } .m-dashboard-status small { color: var(--ink-3); }
   /* Single column, cards stacked, KPI tiles two per row. */
   .dash { padding: 14px 12px 20px; gap: 12px; min-width: 0; }
   .dash-hero { flex-direction: column; align-items: stretch; gap: 10px; }

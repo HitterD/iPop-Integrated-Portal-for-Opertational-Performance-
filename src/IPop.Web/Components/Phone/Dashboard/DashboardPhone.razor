@@ -1,0 +1,71 @@
+<PhoneScreen Title="Dashboard" Class="m-dashboard-screen">
+    <Trailing><button type="button" class="m-dashboard-edit" aria-label="@(editing ? "Done editing widgets" : "Edit widgets")" @onclick="() => editing = !editing"><i data-lucide="@(editing ? "check" : "pencil")"></i></button></Trailing>
+    <ChildContent>
+        <div class="m-dashboard-greeting"><small>@DateTime.Now.ToString("dddd, d MMMM")</small><h2>@Greeting, @Name</h2></div>
+        <nav class="m-dashboard-shortcuts" aria-label="Quick actions">
+            <a href="/chat?new=dm"><i data-lucide="message-circle-plus"></i>New chat</a><a href="/mail?compose=1"><i data-lucide="pen-line"></i>Compose</a><a href="/calendar?new=1"><i data-lucide="calendar-plus"></i>Schedule</a>
+            @if (CanPostNews) { <a href="/news?new=1"><i data-lucide="megaphone"></i>New post</a> }
+        </nav>
+        @foreach (var widget in Widgets)
+        {
+            <section class="m-dashboard-widget" data-widget="@widget">
+                @if (editing)
+                {
+                    <div class="m-dashboard-reorder"><b>@Label(widget)</b><button type="button" aria-label="Move @widget up" disabled="@(Widgets.IndexOf(widget) == 0)" @onclick="() => Move(widget, -1)"><i data-lucide="arrow-up"></i></button><button type="button" aria-label="Move @widget down" disabled="@(Widgets.IndexOf(widget) == Widgets.Count - 1)" @onclick="() => Move(widget, 1)"><i data-lucide="arrow-down"></i></button></div>
+                }
+                @switch (widget)
+                {
+                    case "next":
+                        <div class="m-dashboard-next"><small>Up next</small><h2>@(NextTitle ?? "Your day is clear")</h2><p>@(NextWhen ?? "No upcoming meeting")</p>@if (NextTitle is not null) { <a href="@NextUrl"><i data-lucide="calendar-days"></i>View meeting</a> }<a href="/calendar">Open calendar<i data-lucide="chevron-right"></i></a></div>
+                        break;
+                    case "counters":
+                        <div class="m-dashboard-counters">
+                            @foreach (var counter in Counters)
+                            {
+                                <a class="m-dashboard-counter" href="@counter.Url"><i data-lucide="@counter.Icon"></i><strong>@(Loading ? "—" : counter.Value.ToString())</strong><span>@counter.Label</span></a>
+                            }
+                        </div>
+                        break;
+                    case "agenda":
+                        <header><h3>Today's agenda</h3><a href="/calendar">See all</a></header>
+                        @foreach (var item in Agenda) { <a class="m-dashboard-row" href="@item.Url"><span><b>@item.Title</b><small>@item.Subtitle</small></span><i data-lucide="chevron-right"></i></a> }
+                        @if (Agenda.Count == 0) { <p class="m-dashboard-empty">@(Loading ? "Loading agenda…" : "Nothing scheduled today.")</p> }
+                        break;
+                    case "news":
+                        <header><h3>Latest news</h3><a href="/news">See all</a></header>
+                        @foreach (var item in News) { <a class="m-dashboard-row" href="@item.Url"><span><b>@item.Title</b><small>@item.Subtitle</small></span><i data-lucide="chevron-right"></i></a> }
+                        @if (News.Count == 0) { <p class="m-dashboard-empty">@(Loading ? "Loading news…" : "No news yet.")</p> }
+                        break;
+                }
+            </section>
+        }
+        <div class="m-dashboard-additional">@AdditionalWidgets</div>
+    </ChildContent>
+</PhoneScreen>
+@code {
+    public record Item(string Title, string Subtitle, string Url);
+    private record Counter(string Label, string Icon, string Url, int Value);
+    [Parameter] public string Name { get; set; } = "there";
+    [Parameter] public string Greeting { get; set; } = "Good morning";
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public int MailUnread { get; set; }
+    [Parameter] public int ChatUnread { get; set; }
+    [Parameter] public int OpenTasks { get; set; }
+    [Parameter] public int MissedCalls { get; set; }
+    [Parameter] public bool CanPostNews { get; set; }
+    [Parameter] public string? NextTitle { get; set; }
+    [Parameter] public string? NextWhen { get; set; }
+    [Parameter] public string NextUrl { get; set; } = "/calendar";
+    [Parameter] public IReadOnlyList<Item> Agenda { get; set; } = [];
+    [Parameter] public IReadOnlyList<Item> News { get; set; } = [];
+    [Parameter] public IReadOnlyList<string> Order { get; set; } = [];
+    [Parameter] public EventCallback<IReadOnlyList<string>> OnOrder { get; set; }
+    [Parameter] public RenderFragment? AdditionalWidgets { get; set; }
+    private bool editing;
+    private static readonly string[] Defaults = ["next", "counters", "agenda", "news"];
+    private List<string> Widgets = [..Defaults];
+    private IEnumerable<Counter> Counters => [new("Unread mail", "mail", "/mail", MailUnread), new("Unread chats", "message-circle", "/chat", ChatUnread), new("Open tasks", "circle-check", "/projects", OpenTasks), new("Missed calls", "phone-missed", "/calls", MissedCalls)];
+    protected override void OnParametersSet() => Widgets = Order.Where(Defaults.Contains).Concat(Defaults).Distinct().ToList();
+    private static string Label(string key) => key switch { "next" => "Up next", "counters" => "Counters", "agenda" => "Today's agenda", _ => "Latest news" };
+    private async Task Move(string widget, int delta) { var from = Widgets.IndexOf(widget); var to = from + delta; if (to < 0 || to >= Widgets.Count) return; (Widgets[from], Widgets[to]) = (Widgets[to], Widgets[from]); await OnOrder.InvokeAsync(Widgets.ToArray()); }
+}
