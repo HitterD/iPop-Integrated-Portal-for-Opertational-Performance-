@@ -48,9 +48,20 @@ window.ipop = {
   theme() {
     return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
   },
+  themePreference() {
+    try { return localStorage.getItem("ipop-theme") || "light"; } catch { return "light"; }
+  },
   setTheme(t) {
-    document.documentElement.setAttribute("data-theme", t);
+    if (!["light", "dark", "auto"].includes(t)) t = "light";
+    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+    document.documentElement.setAttribute("data-theme", t === "auto" ? (mq?.matches ? "dark" : "light") : t);
     try { localStorage.setItem("ipop-theme", t); } catch {}
+    if (mq && !this._themeWatching) {
+      this._themeWatching = true;
+      mq.addEventListener("change", () => {
+        if (this.themePreference() === "auto") { this.setTheme("auto"); this.syncThemeIcons(this.theme()); }
+      });
+    }
   },
   toggleTheme() {
     const next = window.ipop.theme() === "dark" ? "light" : "dark";

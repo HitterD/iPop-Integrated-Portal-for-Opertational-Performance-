@@ -377,7 +377,7 @@
 
     private void OpenEditTabs() => more.OpenEditTabs();
 
-    private void OpenSettingsFromMore() { more.CloseAll(); NotifSettings.Open(); }
+    private void OpenSettingsFromMore() { more.CloseAll(); if (Phone.IsPhone) Nav.NavigateTo("/settings"); else NotifSettings.Open(); }
 
     private bool NotifCardVisible => NotifCard.Loaded &&
         NotificationCard.ShouldShow(Phone.IsPhone, NotifCard.Answered, Push.ServerEnabled, Push.Secure, Push.Permission, Push.OptedOut);

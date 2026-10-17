@@ -1,0 +1,57 @@
+@using static IPop.Web.Components.CommandPalette
+@inject NavigationManager Nav
+@inject AuthState Auth
+@inject IJSRuntime JS
+@inject PeopleLinks Links
+
+<div class="m-search" role="dialog" aria-modal="true" aria-label="Search iPop">
+    <OverlayHook OnClose="OnClose" />
+    <header class="m-search-bar"><i data-lucide="search"></i><input @ref="input" aria-label="Search" placeholder="Search iPop" value="@Query" @oninput="e => QueryChanged.InvokeAsync(e.Value?.ToString() ?? string.Empty)" /><button type="button" aria-label="Clear search" @onclick='() => QueryChanged.InvokeAsync("")'><i data-lucide="x"></i></button><button type="button" @onclick="OnClose">Cancel</button></header>
+    @if (Query.Trim().Length >= 2)
+    {
+        <div class="m-search-chips" role="tablist" aria-label="Filter by module"><button type="button" role="tab" aria-selected="@(Filter is null ? "true" : "false")" @onclick="() => OnFilter.InvokeAsync(null)">All</button>@foreach (var m in Modules) { <button type="button" role="tab" aria-selected="@(Filter == m.Key ? "true" : "false")" @onclick="() => OnFilter.InvokeAsync(m.Key)">@m.Label</button> }</div>
+        <div class="m-search-results" aria-live="polite">
+            @foreach (var group in Results.GroupBy(r => r.Module))
+            {
+                <h3>@(Modules.FirstOrDefault(m => m.Key == group.Key)?.Label ?? group.Key)</h3>
+                @foreach (var r in group) { <button type="button" class="m-search-hit" @onclick="() => OnGo.InvokeAsync(r)"><i data-lucide="@r.Icon"></i><span><b>@IPop.Web.Components.Chat.SearchHighlight.Mark(r.Title, Query)</b><small>@IPop.Web.Components.Chat.SearchHighlight.Mark(r.Snippet ?? r.Subtitle ?? "", Query)</small></span></button> }
+            }
+            @ProviderStatus
+            @if (Searching) { <p role="status">Searching…</p> }
+            else if (Results.Count == 0) { <p>No results for “@Query”.</p> }
+        </div>
+    }
+    else
+    {
+        <div class="m-search-results"><h3>Jump to</h3><div class="m-search-jumps">@foreach (var label in new[] { "Directory", "Notes", "Projects", "Files" }) { <button type="button" @onclick="() => Jump(label)">@label</button> }</div>
+        <h3>Recent searches <button type="button" @onclick="OnClearHistory">Clear all</button></h3>
+        @foreach (var h in History) { <div class="m-search-recent"><button type="button" @onclick="() => OnHistory.InvokeAsync(h.Query)"><i data-lucide="history"></i>@h.Query</button><button type="button" aria-label="@($"Remove {h.Query}")" @onclick="() => OnDeleteHistory.InvokeAsync(h.Id)"><i data-lucide="x"></i></button></div> }
+        @if (people.Count > 0) { <h3>Recent contacts</h3>@foreach (var person in people) { <button type="button" class="m-search-hit" @onclick="() => Contact(person)">@person.RecipientName</button> } }
+        </div>
+    }
+</div>
+@code {
+    [Parameter] public string Query { get; set; } = "";
+    [Parameter] public EventCallback<string> QueryChanged { get; set; }
+    [Parameter] public List<SearchModuleInfoDto> Modules { get; set; } = [];
+    [Parameter] public string? Filter { get; set; }
+    [Parameter] public EventCallback<string?> OnFilter { get; set; }
+    [Parameter] public List<SearchHistoryItemDto> History { get; set; } = [];
+    [Parameter] public EventCallback<string> OnHistory { get; set; }
+    [Parameter] public EventCallback<Guid> OnDeleteHistory { get; set; }
+    [Parameter] public EventCallback OnClearHistory { get; set; }
+    [Parameter] public List<SearchHitDto> Results { get; set; } = [];
+    [Parameter] public bool Searching { get; set; }
+    [Parameter] public EventCallback<SearchHitDto> OnGo { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public RenderFragment? ProviderStatus { get; set; }
+    private ElementReference input;
+    private List<IPop.Application.Chat.RoomListDto> people = [];
+    protected override async Task OnInitializedAsync()
+    {
+        try { people = (await Auth.GetAsync<List<IPop.Application.Chat.RoomListDto>>("/api/chat/rooms?tab=direct&page=1&pageSize=8") ?? []).Where(r => r.RecipientNik is not null).ToList(); } catch { }
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender) { if (firstRender) await input.FocusAsync(); await JS.InvokeVoidAsync("ipop.icons"); }
+    private async Task Jump(string label) { await OnClose.InvokeAsync(); Nav.NavigateTo("/" + label.ToLowerInvariant()); }
+    private async Task Contact(IPop.Application.Chat.RoomListDto person) { await OnClose.InvokeAsync(); Nav.NavigateTo(Links.Chat(person.RecipientNik!)); }
+}

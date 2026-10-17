@@ -4,11 +4,60 @@
 @inject ToastService Toasts
 @inject OverlayStack Overlays
 @inject NavigationManager Nav
+@inject PhoneState Phone
 
 @* Account sheet (macOS System Settings style): photo + read-only HR details + email, and a
    pushed "Change password" pane. Opened from the sidebar account menu. *@
 @if (IsOpen)
 {
+    @if (Phone.IsPhone && pane == Pane.Profile)
+    {
+        <BottomSheet Open="true" OpenChanged="_ => Close()" Title="Profile" Size="SheetSize.Full" Class="m-profile">
+            <Leading><button type="button" @onclick="Close">Close</button></Leading>
+            <ChildContent>
+                @if (me is null) { <p role="status">Loading profile…</p> }
+                else
+                {
+                    <section class="m-profile-hero">
+                        <span class="acct-av" style="@(preview is not null ? $"background:url('{preview}') center/cover" : AvatarPhotos.Style(me.Nik))">@Initials</span>
+                        <h2>@me.Name</h2><p>@me.Department</p><p>@me.Site</p>
+                        <input type="file" accept="image/jpeg,image/png,image/webp" @ref="fileInput" @onchange="PickPhoto" disabled="@busyPhoto" hidden />
+                        <button type="button" @onclick="OpenPicker" disabled="@busyPhoto">Change photo</button>
+                        @if (HasPhoto) { <button type="button" @onclick="RemovePhoto" disabled="@busyPhoto">Remove photo</button> }
+                    </section>
+                    @if (photoError is not null) { <p role="alert">@photoError</p> }
+                    <h3>Contact · you can edit</h3>
+                    <div class="m-profile-group">
+                        @if (editingEmail)
+                        {
+                            <form class="m-profile-email" @onsubmit="SaveEmail" @onsubmit:preventDefault>
+                                <label>Email<input type="email" autocomplete="email" @ref="emailInput" @bind="email" @bind:event="oninput" disabled="@busyEmail" aria-label="Email" /></label>
+                                <button type="button" @onclick="CancelEmail" disabled="@busyEmail">Cancel</button><button type="submit" disabled="@(busyEmail || !EmailDirty)">Save</button>
+                            </form>
+                        }
+                        else { <button type="button" aria-label="Edit email" @onclick="EditEmail"><i data-lucide="mail"></i><span>Email<small>@me.Email</small></span><i data-lucide="pencil"></i></button> }
+                        @if (editingExt)
+                        {
+                            <form class="m-profile-extension" @onsubmit="SaveExt" @onsubmit:preventDefault>
+                                <label>Extension<input inputmode="numeric" maxlength="8" @ref="extInput" @bind="ext" @bind:event="oninput" disabled="@busyExt" aria-label="Phone extension" /></label>
+                                <button type="button" @onclick="CancelExt" disabled="@busyExt">Cancel</button><button type="submit" disabled="@(busyExt || !ExtDirty)">Save</button>
+                            </form>
+                        }
+                        else { <button type="button" aria-label="Edit extension" @onclick="EditExt"><i data-lucide="phone"></i><span>Extension<small>@(me.Extension ?? "Not set") · shown in the Directory</small></span><i data-lucide="pencil"></i></button> }
+                    </div>
+                    @if (emailError is not null) { <p role="alert">@emailError</p> }
+                    @if (extError is not null) { <p role="alert">@extError</p> }
+                    <h3>Employee details · from HRIS</h3>
+                    <dl class="m-profile-group"><div><dt>Department</dt><dd>@(me.Department ?? "—")</dd></div><div><dt>Site</dt><dd>@(me.Site ?? "—")</dd></div><div><dt>Reports to</dt><dd>@(me.Manager ?? "—")</dd></div></dl>
+                    <p class="m-profile-note"><i data-lucide="lock"></i>Wrong department or name? Ask Human Capital — iPop updates it from HRIS.</p>
+                    <h3>Security</h3><div class="m-profile-group"><button type="button" @onclick="() => Show(Pane.Password)"><i data-lucide="key-round"></i>Change password<i data-lucide="chevron-right"></i></button></div>
+                }
+            </ChildContent>
+        </BottomSheet>
+    }
+    else
+    {
+    @if (Phone.IsPhone) { <OverlayHook OnClose="Close" /> }
     <div class="acct-backdrop" @onclick="Close">
         <div class="acct-sheet" role="dialog" aria-modal="true" aria-label="Account" @onclick:stopPropagation>
             @if (pane == Pane.Password)
@@ -187,6 +236,7 @@
             }
         </div>
     </div>
+    }
 }
 
 @code {
@@ -199,6 +249,7 @@
 
     private Pane pane;
     private IDisposable? reg;
+    private bool wasOpen;
     private DirectoryEmployeeDto? me;
     private ElementReference fileInput, emailInput, extInput;
     private string ext = "";
@@ -224,9 +275,10 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        if (IsOpen && reg is null)
+        if (IsOpen && !wasOpen)
         {
-            reg = Overlays.Push(Close);
+            wasOpen = true;
+            if (!Phone.IsPhone) reg = Overlays.Push(Close);
             pane = Start;
             ResetForms();
             me = await Auth.LoadMeAsync();
@@ -234,7 +286,7 @@
             try { spellcheck = await JS.InvokeAsync<bool>("ipop.spellcheck"); } catch { }
             try { installState = await JS.InvokeAsync<string>("ipop.installState"); } catch { }
         }
-        else if (!IsOpen && reg is not null) { reg.Dispose(); reg = null; }
+        else if (!IsOpen) { wasOpen = false; reg?.Dispose(); reg = null; }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

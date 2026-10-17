@@ -6,9 +6,28 @@
 @inject CommandPaletteState Palette
 @inject OverlayStack Overlays
 @inject IJSRuntime JS
+@inject PhoneState Phone
+@using IPop.Web.Components.Phone.Search
 
 @if (Palette.IsOpen || closing)
 {
+    @if (Phone.IsPhone)
+    {
+        <GlobalSearchPhone Query="@query" QueryChanged="PhoneInput" Modules="modules" Filter="@filter" OnFilter="SetFilter"
+            History="historyList" OnHistory="SelectHistory" OnDeleteHistory="DeleteHistoryItem" OnClearHistory="ClearAllHistory"
+            Results="@flat" Searching="AnySearching" OnGo="Go" OnClose="Palette.Close">
+            <ProviderStatus>
+                @foreach (var m in VisibleModules)
+                {
+                    var st = states.GetValueOrDefault(m.Key);
+                    @if (st?.Status is "error" or "unavailable" or "forbidden") { <p role="status">@m.Label: @(st.Page?.Message ?? st.Error)<button type="button" @onclick="() => Retry(m.Key)">Retry</button></p> }
+                    @if (st?.Page is { HasMore: true } page) { <button type="button" @onclick="() => SetFilter(m.Key)">See all @(page.Total) in @m.Label</button>@if (filter == m.Key) { <button type="button" disabled="@st.LoadingMore" @onclick="() => LoadMore(m.Key)">Show more</button> } }
+                }
+            </ProviderStatus>
+        </GlobalSearchPhone>
+    }
+    else
+    {
     <div class="cp-backdrop @(closing ? "mi-closing" : "")" @onclick="Palette.Close">
         <div class="cp-card" role="dialog" aria-modal="true" aria-label="Search iPop" @onclick:stopPropagation>
             <div class="cp-input @(AnySearching ? "cp-searching" : "")">
@@ -162,6 +181,7 @@
             }
         </div>
     </div>
+    }
 }
 
 @code {
@@ -209,7 +229,7 @@
     protected override void OnInitialized()
     {
         Palette.Changed += OnPaletteChanged;
-        _reg = Overlays.Push(CloseAsync);
+        if (!Phone.IsPhone) _reg = Overlays.Push(CloseAsync);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -241,6 +261,7 @@
         if (Palette.IsOpen)
         {
             await Task.Yield();
+            if (Phone.IsPhone) return;
             await JS.InvokeVoidAsync("ipop.cpBindInput", inputRef);
             await JS.InvokeVoidAsync("ipop.focus", inputRef);
             await JS.InvokeVoidAsync("ipop.icons");
@@ -330,6 +351,8 @@
         Palette.Close();
         await Task.CompletedTask;
     }
+
+    private void PhoneInput(string value) { query = value; StartSearch(immediate: false); }
 
     private void OnInput(ChangeEventArgs e)
     {

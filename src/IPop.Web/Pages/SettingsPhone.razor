@@ -1,0 +1,65 @@
+@page "/settings"
+@implements IDisposable
+@inject PhoneState Phone
+@inject AuthState Auth
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject NotificationSettingsState Notifications
+
+@if (Phone.IsPhone)
+{
+    <PhoneScreen Title="Settings" BackLabel="More" OnBack="Back" Class="m-settings">
+        <h3>Appearance</h3>
+        <div class="m-settings-appearance" role="group" aria-label="Appearance">
+            @foreach (var value in new[] { "light", "dark", "auto" })
+            {
+                <button type="button" aria-pressed="@(theme == value ? "true" : "false")" @onclick="() => SetTheme(value)"><span class="m-settings-preview @value" aria-hidden="true"></span>@(value == "auto" ? "Automatic" : value == "dark" ? "Dark" : "Light")</button>
+            }
+        </div>
+        <ListSection>
+            <ListRow Title="Notifications & sounds" OnClick="Notifications.Open" Chevron="true" />
+            <ListRow Title="Mail" Subtitle="@density" OnClick="() => mail = true" Chevron="true" />
+            <ListRow Title="Calendar sharing" OnClick="() => sharing = true" Chevron="true" />
+            <ListRow Title="Edit tabs" Subtitle="4 pinned" OnClick="() => tabs = true" Chevron="true" />
+            <div class="m-settings-switch"><span>Spell check</span><button type="button" role="switch" aria-label="Spell check" aria-checked="@(spell ? "true" : "false")" @onclick="ToggleSpell">@(spell ? "On" : "Off")</button></div>
+        </ListSection>
+        <ListSection Header="App">
+            <ListRow Title="Install iPop" Href="/app" Chevron="true" />
+            <ListRow Title="Devices & sessions" OnClick="() => devices = true" Chevron="true" />
+            <ListRow Title="Help & tour" OnClick="() => help = true" Chevron="true" />
+            <div class="m-settings-version">Version <span>@(typeof(SettingsPhone).Assembly.GetName().Version?.ToString() ?? "Unavailable")</span></div>
+        </ListSection>
+        <ListSection><ListRow Title="Sign out" OnClick="SignOut" /></ListSection>
+    </PhoneScreen>
+    <EditTabsSheet Open="tabs" OpenChanged="v => tabs = v" />
+    <CalendarSettingsSheet Open="sharing" OpenChanged="v => sharing = v" />
+    <BottomSheet Open="mail" OpenChanged="v => mail = v" Title="Mail" Class="m-settings-dialog">
+        <ChildContent><h3>Mail density</h3>@foreach (var d in new[] { MailListDensity.Compact, MailListDensity.Comfortable }) { <button type="button" aria-pressed="@(density == d ? "true" : "false")" @onclick="() => SetDensity(d)">@d</button> }</ChildContent>
+    </BottomSheet>
+    <BottomSheet Open="devices" OpenChanged="v => devices = v" Title="Devices & sessions" Class="m-settings-dialog"><ChildContent><p>Link SJA Notifier on your computer. Signing out ends this session.</p><a href="/devices/link">Link a device</a><button type="button" @onclick="SignOut">Sign out this session</button></ChildContent></BottomSheet>
+    <BottomSheet Open="help" OpenChanged="v => help = v" Title="Help & tour" Class="m-settings-dialog"><ChildContent><p>Chat, mail, calls and your calendar are in the tabs. Find every other module under More. Use Edit tabs to pin your favourites.</p><p>For guided page tours, open iPop on a computer.</p><a href="/app">Install instructions</a></ChildContent></BottomSheet>
+}
+@code {
+    private bool tabs, mail, sharing, devices, help, spell;
+    private string theme = "light", density = MailListDensity.Compact;
+    protected override void OnInitialized() => Phone.Changed += Changed;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!Phone.IsPhone) { Nav.NavigateTo("/profile", replace: true); return; }
+        if (firstRender)
+        {
+            await Auth.LoadMeAsync();
+            density = MailListDensity.Parse(await Auth.GetUserSettingAsync(MailListDensity.Key));
+            try { theme = await JS.InvokeAsync<string>("ipop.themePreference") ?? "light"; spell = await JS.InvokeAsync<bool>("ipop.spellcheck"); } catch { }
+            StateHasChanged();
+        }
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+    private void Changed() => _ = InvokeAsync(StateHasChanged);
+    private void Back() => Nav.NavigateTo("/dashboard");
+    private async Task SetTheme(string value) { await JS.InvokeVoidAsync("ipop.setTheme", value); theme = value; }
+    private async Task ToggleSpell() { spell = !spell; await JS.InvokeAsync<bool>("ipop.spellcheck", spell); }
+    private async Task SetDensity(string value) { await Auth.SetUserSettingAsync(MailListDensity.Key, value); density = value; }
+    private async Task SignOut() { await Auth.SignOutAsync(); Nav.NavigateTo("/login", forceLoad: true); }
+    public void Dispose() => Phone.Changed -= Changed;
+}
