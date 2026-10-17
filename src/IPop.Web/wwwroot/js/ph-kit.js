@@ -70,6 +70,19 @@
   }
 
   ipop.phone = {
+    calendarSwipe(element, ref) {
+      let start;
+      element.addEventListener('touchstart', e => { const t = e.touches[0]; start = { x: t.clientX, y: t.clientY }; }, { passive: true });
+      element.addEventListener('touchend', e => {
+        if (!start) return;
+        const t = e.changedTouches[0], dx = t.clientX - start.x, dy = t.clientY - start.y;
+        start = null;
+        if (Math.abs(dx) > 64 && Math.abs(dx) > Math.abs(dy) * 1.5) ref.invokeMethodAsync('SwipeWeek', dx < 0 ? 1 : -1).catch(() => {});
+      }, { passive: true });
+    },
+    directoryJump(letter) {
+      document.getElementById('directory-letter-' + letter)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    },
     platform: () => platform(root.navigator.userAgent),
     standalone: () => !!(root.matchMedia && root.matchMedia('(display-mode: standalone)').matches) || root.navigator.standalone === true,
     /** The browser's install prompt is captured once by ipop.js (installState / install). */
