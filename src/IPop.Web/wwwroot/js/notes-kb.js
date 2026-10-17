@@ -2,21 +2,34 @@
 (function (root) {
   const toolbarOffset = (vv, innerHeight) => Math.min(0, vv.offsetTop + vv.height - innerHeight);
   const shouldShow = (focusInEditor, kbHeight) => !!focusInEditor && kbHeight > 120;
-  const baselineHeight = (previous, width, height) => ({ width, height: !previous || Math.abs(previous.width - width) > 40 ? height : Math.max(previous.height, height) });
+  const baselineHeight = (previous, width, height, rotated = false) => ({ width, height: !previous ? height : Math.abs(previous.width - width) > 40 ? Math.max(height, rotated ? previous.width : 0) : Math.max(previous.height, height) });
   if (typeof module === 'object' && module.exports) module.exports = { toolbarOffset, shouldShow, baselineHeight };
   if (!root) return;
+  // Start observing at script load, before any editor focus or component attachment can shrink
+  // Android's layout viewport. Keep one shared measurement when a toolbar is recreated mid-edit.
+  let viewportBaseline = baselineHeight(null, root.innerWidth, root.innerHeight);
+  let orientation = root.screen?.orientation?.type;
+  const measureViewport = () => {
+    const nextOrientation = root.screen?.orientation?.type;
+    const rotated = !!orientation && !!nextOrientation && orientation !== nextOrientation;
+    const widthChanged = Math.abs(viewportBaseline.width - root.innerWidth) > 40;
+    viewportBaseline = baselineHeight(viewportBaseline, root.innerWidth, root.innerHeight, rotated);
+    // orientationchange may precede resize; consume the new orientation only with its dimensions.
+    if (widthChanged || !orientation) orientation = nextOrientation;
+  };
+  root.addEventListener('resize', measureViewport);
+  root.addEventListener('orientationchange', measureViewport);
   const handles = new WeakMap();
   root.ipop = root.ipop || {};
   root.ipop.notesKb = {
     attach(bar) {
       if (!bar || handles.has(bar)) return;
-      let baseline = baselineHeight(null, root.innerWidth, root.innerHeight);
       const vv = root.visualViewport;
       const update = () => {
         const focused = document.activeElement?.closest('.nt-editor.ProseMirror');
-        baseline = baselineHeight(baseline, root.innerWidth, root.innerHeight);
+        measureViewport();
         const visible = vv || { offsetTop: 0, height: root.innerHeight };
-        const keyboard = baseline.height - visible.height;
+        const keyboard = viewportBaseline.height - visible.height;
         const show = shouldShow(!!focused, keyboard) && root.ipop.mobile.isMobile();
         bar.classList.toggle('is-visible', show);
         bar.style.transform = `translateY(${toolbarOffset(visible, root.innerHeight)}px)`;
