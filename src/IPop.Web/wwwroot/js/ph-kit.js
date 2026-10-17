@@ -69,16 +69,32 @@
     root.visualViewport.addEventListener('scroll', kb);
   }
 
+  const calendarSwipes = new WeakMap();
   ipop.phone = {
     calendarSwipe(element, ref) {
-      let start;
-      element.addEventListener('touchstart', e => { const t = e.touches[0]; start = { x: t.clientX, y: t.clientY }; }, { passive: true });
-      element.addEventListener('touchend', e => {
-        if (!start) return;
+      ipop.phone.calendarSwipeDispose(element);
+      let start, active = true;
+      const onStart = e => { if (!active) return; const t = e.touches[0]; start = { x: t.clientX, y: t.clientY }; };
+      const onEnd = e => {
+        if (!active || !start) return;
         const t = e.changedTouches[0], dx = t.clientX - start.x, dy = t.clientY - start.y;
         start = null;
         if (Math.abs(dx) > 64 && Math.abs(dx) > Math.abs(dy) * 1.5) ref.invokeMethodAsync('SwipeWeek', dx < 0 ? 1 : -1).catch(() => {});
-      }, { passive: true });
+      };
+      const onCancel = () => { start = null; };
+      element.addEventListener('touchstart', onStart, { passive: true });
+      element.addEventListener('touchend', onEnd, { passive: true });
+      element.addEventListener('touchcancel', onCancel, { passive: true });
+      calendarSwipes.set(element, () => {
+        active = false; start = null;
+        element.removeEventListener('touchstart', onStart);
+        element.removeEventListener('touchend', onEnd);
+        element.removeEventListener('touchcancel', onCancel);
+      });
+    },
+    calendarSwipeDispose(element) {
+      calendarSwipes.get(element)?.();
+      calendarSwipes.delete(element);
     },
     directoryJump(letter) {
       document.getElementById('directory-letter-' + letter)?.scrollIntoView({ block: 'start', behavior: 'smooth' });

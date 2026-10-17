@@ -1,6 +1,6 @@
 @using CalendarPage = IPop.Web.Pages.Calendar
 @inject IJSRuntime JS
-@implements IDisposable
+@implements IAsyncDisposable
 <div class="m-calendar-agenda" @ref="root">
     <div class="m-calendar-week-head"><button type="button" aria-label="Previous week" @onclick="() => OnWeek.InvokeAsync(-1)"><i data-lucide="chevron-left"></i></button><b>@Anchor.ToString("MMMM yyyy")</b><button type="button" aria-label="Next week" @onclick="() => OnWeek.InvokeAsync(1)"><i data-lucide="chevron-right"></i></button></div>
     <div class="m-calendar-week" role="tablist" aria-label="Week">
@@ -18,7 +18,7 @@
             @if (!nowShown && Anchor.Date == DateTime.Today && item.Start > DateTime.Now) { nowShown = true; <div class="m-calendar-now"><span>@DateTime.Now.ToString("HH:mm")</span><hr /></div> }
             <button type="button" class="m-calendar-event src-@item.Source @(item.RoomKey is null ? "" : $"r-{item.RoomKey}")" @onclick="() => OnOpen.InvokeAsync(item)">
                 <span class="m-calendar-time">@(item.AllDay ? "All day" : item.Start.ToString("HH:mm"))<small>@(item.AllDay ? "" : item.End.ToString("HH:mm"))</small></span>
-                <span class="m-calendar-event-copy"><b>@item.Title</b>@if (!string.IsNullOrWhiteSpace(item.Subtitle)) { <small>@item.Subtitle</small> }<small>@(item.MeetingKind switch { "room" => "Meeting room", "in-person" => "In person", "voice" => "Voice call", _ => item.Source == "busy" ? "" : item.Kind })</small></span>
+                <span class="m-calendar-event-copy"><b>@item.Title</b>@if (!string.IsNullOrWhiteSpace(item.Subtitle)) { <small>@item.Subtitle</small> }<small>@(item.MeetingKind switch { "room" => "Meeting room", "inperson" => "In person", "voice" => "Voice call", _ => item.Source == "busy" ? "" : item.Kind })</small></span>
                 <i data-lucide="chevron-right"></i>
             </button>
         }
@@ -42,5 +42,10 @@
     protected override void OnParametersSet() => nowShown = false;
     protected override async Task OnAfterRenderAsync(bool firstRender) { if (firstRender) { self = DotNetObjectReference.Create(this); await JS.InvokeVoidAsync("ipop.phone.calendarSwipe", root, self); } }
     [JSInvokable] public Task SwipeWeek(int direction) => OnWeek.InvokeAsync(direction);
-    public void Dispose() => self?.Dispose();
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("ipop.phone.calendarSwipeDispose", root); }
+        catch (JSException) { /* The page may already have disconnected. */ }
+        finally { self?.Dispose(); }
+    }
 }

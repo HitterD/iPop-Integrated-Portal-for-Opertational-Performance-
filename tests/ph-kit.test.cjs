@@ -40,6 +40,25 @@ test('keyboard counts as open when the visual viewport lost a quarter of the hei
   assert.equal(K.keyboardOpen(844, 700), false);
 });
 
+test('calendar swipe listeners detach before a disposed reference can be invoked', () => {
+  const fs = require('node:fs'), vm = require('node:vm');
+  const listeners = new Map();
+  const element = {
+    addEventListener(name, fn) { listeners.set(name, fn); },
+    removeEventListener(name, fn) { if (listeners.get(name) === fn) listeners.delete(name); },
+  };
+  const root = { document: {} };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'src/IPop.Web/wwwroot/js/ph-kit.js'), 'utf8'), { window: root, document: root.document });
+  let calls = 0;
+  root.ipop.phone.calendarSwipe(element, { invokeMethodAsync() { calls++; return Promise.resolve(); } });
+  listeners.get('touchstart')({ touches: [{ clientX: 300, clientY: 0 }] });
+  const pendingEnd = listeners.get('touchend');
+  root.ipop.phone.calendarSwipeDispose(element);
+  pendingEnd({ changedTouches: [{ clientX: 10, clientY: 0 }] });
+  assert.equal(listeners.size, 0);
+  assert.equal(calls, 0, 'an already queued touchend must not invoke a disposed .NET reference');
+});
+
 // ---- Wave 2 ----
 test('long-press fires after 450 ms when the finger stayed put', () => {
   assert.equal(K.longPress(460, 3, 4), true);

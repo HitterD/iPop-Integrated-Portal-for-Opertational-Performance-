@@ -23,6 +23,25 @@ public class PhoneCalendarTests
         Assert.DoesNotContain("NIK", cut.Markup);
     }
     [Fact]
+    public void Persisted_inperson_kind_displays_human_readable_label()
+    {
+        using var ctx = new BunitContext(); ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        var day = DateTime.Today;
+        var item = new CalendarPage.FeedItem("visit", "meetings", "meeting", "Site visit", day.AddHours(10).ToUniversalTime(), day.AddHours(11).ToUniversalTime(), false, null, null, null, null, null, false, null, null, MeetingKind: "inperson");
+        var cut = ctx.Render<WeekStripAgenda>(p => p.Add(x => x.Anchor, day).Add(x => x.Items, new[] { item }));
+        Assert.Contains("In person", cut.Find(".m-calendar-event-copy").TextContent);
+    }
+
+    [Fact]
+    public async Task Agenda_disposal_detaches_native_swipe_listeners()
+    {
+        await using var ctx = new BunitContext(); ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        var cut = ctx.Render<WeekStripAgenda>();
+        await ctx.DisposeComponentsAsync();
+        Assert.Single(ctx.JSInterop.Invocations, x => x.Identifier == "ipop.phone.calendarSwipeDispose");
+    }
+
+    [Fact]
     public void Agenda_dispatches_original_feed_item_and_has_now_line_today()
     {
         using var ctx = new BunitContext(); ctx.JSInterop.Mode = JSRuntimeMode.Loose;
