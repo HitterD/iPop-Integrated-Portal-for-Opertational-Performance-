@@ -1,0 +1,40 @@
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+    .m-tickets-screen .ph-scroll { padding: 0 16px calc(110px + var(--m-safe-b, 0px)); }
+    .m-tickets-sync { color: var(--ink-3); font-size: 12px; }
+    .m-tickets-search { display: flex; align-items: center; gap: 8px; background: var(--fill); border-radius: 12px; padding: 0 12px; margin: 12px 0; }
+    .m-tickets-search input { min-width: 0; width: 100%; min-height: 44px; border: 0; background: transparent; color: var(--ink); }
+    .m-tickets-section { font-size: 13px; color: var(--ink-3); text-transform: uppercase; margin: 24px 4px 8px; }
+    .m-tickets-group { background: var(--surface); border-radius: 16px; overflow: hidden; }
+    .m-tickets-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 16px 12px; border: 0; border-bottom: 1px solid var(--sep); background: transparent; color: var(--ink); }
+    .m-tickets-row > .lucide { width: 16px; flex: none; color: var(--ink-3); }
+    .m-tickets-category { display: grid; place-items: center; flex: none; width: 42px; height: 42px; border-radius: 12px; background: var(--fill); color: var(--accent); }
+    .m-tickets-text { display: grid; gap: 6px; min-width: 0; flex: 1; overflow-wrap: anywhere; }
+    .m-tickets-text b { font-size: 15px; }
+    .m-tickets-text small { color: var(--ink-3); font-size: 12px; }
+    .m-tickets-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 11px; }
+    .m-tickets-text .m-tickets-reply { color: var(--accent); }
+    .m-tickets-notice { padding: 16px 4px; overflow-wrap: anywhere; }
+    .m-tickets-notice button, .m-tickets-notice a, .m-tickets-action { min-height: 44px; }
+    .m-tickets-action { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 16px; border: 0; border-bottom: 1px solid var(--sep); background: transparent; color: var(--ink); text-decoration: none; text-align: left; }
+    .m-tickets-detail .tk-det-h { display: none; }
+    .m-tickets-detail .tk-det-b { padding: 20px 16px 100px; }
+    .m-tickets-detail .tk-det-b h2 { font-size: 25px; line-height: 1.2; overflow-wrap: anywhere; }
+    .m-tickets-detail .tk-grp .r { gap: 12px; }
+    .m-tickets-detail .tk-grp .v { overflow-wrap: anywhere; min-width: 0; }
+    .m-tickets-detail .tk-msg .bub { max-width: 100%; overflow-wrap: anywhere; }
+    .m-tickets-detail button, .m-tickets-detail a { min-height: 44px; }
+    .m-tickets-new .ph-sheet-body { padding: 0; }
+    .m-tickets-new .tk-formwrap { padding: 0 16px 30px; height: auto; overflow: visible; }
+    .m-tickets-new .tk-form-h, .m-tickets-new .tk-form h1, .m-tickets-new .tk-form .lead { display: none; }
+    .m-tickets-new .tk-form { max-width: 100%; padding: 0; }
+    .m-tickets-new .tk-modg { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .m-tickets-new .tk-mod { min-width: 0; min-height: 90px; }
+    .m-tickets-new .tk-mod > span:not(.ic) { display: none; }
+    .m-tickets-new .row2 { display: grid; grid-template-columns: minmax(0, 1fr); }
+    .m-tickets-new .tk-chips, .m-tickets-new .tk-tpls, .m-tickets-new .tk-prio { flex-wrap: wrap; }
+    .m-tickets-new button, .m-tickets-new input, .m-tickets-new .tk-slot { min-height: 44px; }
+    .m-tickets-new input, .m-tickets-new textarea { font-size: 16px; }
+    .m-tickets-new .tk-cal button { min-height: 44px; min-width: 0; }
+    .m-tickets-new .tk-submitbar { flex-wrap: wrap; position: static; }
+    .m-tickets-new .tk-saved { display: inline-flex; }
+}

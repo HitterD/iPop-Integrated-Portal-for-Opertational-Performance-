@@ -1,0 +1,19 @@
+<BottomSheet Open="@Open" OpenChanged="OpenChanged" Title="Ticket actions">
+    <a class="m-tickets-action" data-action="follow-up" href="@FollowUpUrl"><i data-lucide="calendar-plus"></i>Schedule follow-up</a>
+    @if (!Pending && !string.IsNullOrWhiteSpace(Url)) { <a class="m-tickets-action" href="@Url" target="_blank" rel="noopener noreferrer"><i data-lucide="external-link"></i>Open in iDesk</a> }
+    @if (Pending)
+    {
+        <a class="m-tickets-action" href="@($"/tickets/new?from={Id}")"><i data-lucide="pencil"></i>Edit ticket</a>
+        <button type="button" class="m-tickets-action" data-action="discard" @onclick="Discard"><i data-lucide="trash-2"></i>Discard ticket</button>
+    }
+</BottomSheet>
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter] public Guid Id { get; set; }
+    [Parameter] public bool Pending { get; set; }
+    [Parameter] public string? Url { get; set; }
+    [Parameter] public string FollowUpUrl { get; set; } = "";
+    [Parameter] public EventCallback OnDiscard { get; set; }
+    private async Task Discard() { await OpenChanged.InvokeAsync(false); await OnDiscard.InvokeAsync(); }
+}

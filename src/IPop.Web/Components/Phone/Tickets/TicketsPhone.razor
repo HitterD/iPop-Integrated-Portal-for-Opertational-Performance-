@@ -1,0 +1,63 @@
+@using IPop.Application.Tickets
+<PhoneScreen Title="Tickets" Class="m-tickets-screen">
+    <Trailing><button type="button" class="ph-icon-btn" aria-label="Sync with iDesk" disabled="@Syncing" @onclick="OnSync"><i data-lucide="refresh-cw"></i></button></Trailing>
+    <Below>
+        <p class="m-tickets-sync" role="status">@SyncText</p>
+        <label class="m-tickets-search"><i data-lucide="search"></i><input type="search" aria-label="Search tickets" placeholder="Search number or title" value="@Query" @oninput="e => OnSearch.InvokeAsync(e.Value?.ToString() ?? string.Empty)" /></label>
+        <SegmentedControl Items="@FilterItems" Value="@(ShowAll ? "all" : "open")" ValueChanged='v => OnFilter.InvokeAsync(v == "all")' />
+    </Below>
+    <ChildContent>
+        @if (Error is not null)
+        {
+            <div class="m-tickets-notice" role="alert">@Error <button type="button" aria-label="Retry tickets" @onclick="OnSync">Retry</button></div>
+        }
+        @if (NotRegistered)
+        {
+            <div class="m-tickets-notice"><b>Your iDesk account isn't set up yet</b><p>Contact ICT to submit tickets and follow their progress.</p><a href="/chat">Contact ICT</a></div>
+        }
+        @if (Items is null && Error is null)
+        {
+            <p role="status">Loading tickets…</p>
+        }
+        else if (Items is not null)
+        {
+            var visible = Items.Where(x => (ShowAll || TicketStatus.IsOpen(x.Status)) && TicketUi.Matches(x, Query)).ToList();
+            @if (visible.Count == 0) { <p class="m-tickets-notice">@(Query.Length > 0 ? "No matching tickets" : "No tickets yet")</p> }
+            @foreach (var section in new[] { "Needs you", "Open", "Closed" })
+            {
+                var rows = visible.Where(t => Section(t.Status) == section).ToList();
+                if (rows.Count == 0) continue;
+                <h2 class="m-tickets-section">@(section)</h2>
+                <div class="m-tickets-group">
+                    @foreach (var t in rows)
+                    {
+                        <button type="button" class="m-tickets-row" data-ticket="@t.Id" @onclick="() => OnOpen.InvokeAsync(t.Id)">
+                            <span class="m-tickets-category"><i data-lucide="@TicketUi.CategoryIcon(t.Category)"></i></span>
+                            <span class="m-tickets-text"><b>@t.Title</b><small>@TicketUi.Number(t) · @t.ModuleName</small>
+                                <span class="m-tickets-meta"><IPop.Web.Components.Tickets.StatusPill Status="@t.Status" /><span style="color:@TicketUi.PriorityColor(t.Priority)">● @TicketUi.PriorityLabel(t.Priority)</span></span>
+                                @if (t.UnreadMessages > 0) { <small class="m-tickets-reply">New reply</small> }
+                            </span><i data-lucide="chevron-right"></i>
+                        </button>
+                    }
+                </div>
+            }
+        }
+        <Fab Icon="plus" Label="New ticket" OnClick="OnNew" />
+    </ChildContent>
+</PhoneScreen>
+@code {
+    [Parameter] public IReadOnlyList<TicketListItemDto>? Items { get; set; }
+    [Parameter] public bool ShowAll { get; set; }
+    [Parameter] public bool Syncing { get; set; }
+    [Parameter] public bool NotRegistered { get; set; }
+    [Parameter] public string Query { get; set; } = "";
+    [Parameter] public string SyncText { get; set; } = "ICT · sync with iDesk";
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public EventCallback<Guid> OnOpen { get; set; }
+    [Parameter] public EventCallback OnNew { get; set; }
+    [Parameter] public EventCallback OnSync { get; set; }
+    [Parameter] public EventCallback<bool> OnFilter { get; set; }
+    [Parameter] public EventCallback<string> OnSearch { get; set; }
+    private IReadOnlyList<SegmentItem> FilterItems => [new("open", "Open", Items?.Count(x => TicketStatus.IsOpen(x.Status))), new("all", "All", Items?.Count)];
+    private static string Section(string status) => status is TicketStatus.Resolved or TicketStatus.Failed ? "Needs you" : TicketStatus.IsOpen(status) ? "Open" : "Closed";
+}

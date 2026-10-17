@@ -27,6 +27,20 @@ public partial class Tickets
     [Inject] private IJSRuntime JS { get; set; } = default!;
     [Inject] private CalendarLinks CalLinks { get; set; } = default!;
 
+    [Inject] private PhoneState Phone { get; set; } = default!;
+    private bool phoneMore, phoneDetailPushed;
+    private string? phoneListError, phoneDetailError, phoneMessagesError;
+    private DotNetObjectReference<Tickets>? phoneRef;
+    private void PhoneChanged() => _ = InvokeAsync(StateHasChanged);
+    private string FollowUpUrl(TicketDetailDto t) => CalLinks.NewMeeting($"Follow up: {t.Title}", start: DateTime.Today.AddDays(1).AddHours(9), minutes: 30, notes: Nav.ToAbsoluteUri($"/tickets/{t.Id}").ToString(), from: $"From ticket “{t.Title}”");
+    private async Task PhoneBack()
+    {
+        phoneMore = false;
+        if (phoneDetailPushed) { phoneDetailPushed = false; await JS.InvokeVoidAsync("ipop.mobile.popDetail"); }
+        else BackToList();
+    }
+    [JSInvokable] public Task MobileBack() { phoneDetailPushed = false; BackToList(); return Task.CompletedTask; }
+
     internal const string CacheKey = "tickets.list";
     private const string RowsSel = "#tk-rows";
 
@@ -78,6 +92,7 @@ public partial class Tickets
 
     protected override async Task OnInitializedAsync()
     {
+        Phone.Changed += PhoneChanged;
         Layout?.SetHeader("Tickets", "ICT tickets via iDesk");
         sub = Auth.On<TicketChanged>(TicketEvents.Changed, e => _ = InvokeAsync(() => OnLiveChangedAsync(e?.Id)));
         await Auth.LoadMeAsync();
@@ -106,6 +121,11 @@ public partial class Tickets
         if (disposed) return;
         try
         {
+            if (Phone.IsPhone && Id is not null && !phoneDetailPushed)
+            {
+                phoneRef ??= DotNetObjectReference.Create(this);
+                phoneDetailPushed = await JS.InvokeAsync<bool>("ipop.mobile.pushDetail", phoneRef, nameof(MobileBack));
+            }
             await JS.InvokeVoidAsync("ipop.icons");
             if (flipPending) { flipPending = false; await JS.InvokeVoidAsync("ipopTickets.flipPlay", RowsSel); }
             else if (needGlide || glideInstant) { await JS.InvokeVoidAsync("ipopTickets.glide", RowsSel, glideInstant); }
@@ -118,6 +138,8 @@ public partial class Tickets
     public void Dispose()
     {
         disposed = true;
+        Phone.Changed -= PhoneChanged;
+        phoneRef?.Dispose();
         sub?.Dispose();
         liveCts?.Cancel();
     }
@@ -136,6 +158,7 @@ public partial class Tickets
     private async Task SyncAsync(bool userClicked)
     {
         syncing = true;
+        phoneListError = null;
         StateHasChanged();
         var r = await Api.SyncAsync();
         syncing = false;
@@ -150,6 +173,7 @@ public partial class Tickets
             list = list with { Offline = true };
             syncFailedOnce = userClicked;
         }
+        else phoneListError = "Couldn't load tickets. Please retry.";
         if (userClicked && Offline) await Replay("mi-shake", ".tk-sync");
         if (Id is { } id && detail?.Id == id) await LoadDetailAsync(id, live: true);
         StateHasChanged();
@@ -164,7 +188,7 @@ public partial class Tickets
 
     private async Task LoadDetailAsync(Guid id, bool live = false)
     {
-        if (!live) { detailMissing = false; StateHasChanged(); }
+        if (!live) { phoneDetailError = null; detailMissing = false; StateHasChanged(); }
         var r = await Api.GetAsync(id);
         if (Id != id) return; // the user moved on while we waited
         if (r.Value is { } d)
@@ -185,7 +209,7 @@ public partial class Tickets
             if (msgsFor != id || (live && d.UnreadMessages > 0)) _ = InvokeAsync(() => LoadMessagesAsync(id));
         }
         else if (r.Status == TicketCallStatus.NotFound) { detail = null; detailMissing = true; }
-        else if (!live && detail?.Id != id) Toasts.Show("Couldn't load the ticket.", ToastKind.Error);
+        else if (!live && detail?.Id != id) { phoneDetailError = "Couldn't load the ticket."; Toasts.Show(phoneDetailError, ToastKind.Error); }
     }
 
     /// The public chat from iDesk. Opening it clears the reply counter (server side); the "new" marks stay
@@ -196,7 +220,9 @@ public partial class Tickets
         msgsFor = id;
         StateHasChanged();
         var r = await Api.GetMessagesAsync(id);
-        if (msgsFor != id || r.Value is not { } m) return;
+        if (msgsFor != id) return;
+        if (r.Value is not { } m) { phoneMessagesError = "Couldn't load iDesk messages."; StateHasChanged(); return; }
+        phoneMessagesError = null;
         msgsUnread = Math.Max(m.Unread, msgs is null ? 0 : msgsUnread);
         msgs = m;
         if (m.Unread > 0 && list is not null)

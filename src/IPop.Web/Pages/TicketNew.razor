@@ -4,6 +4,39 @@
 
 <PageTitle>New ICT ticket — IPop</PageTitle>
 
+@if (Phone.IsPhone)
+{
+    <BottomSheet Open="true" OpenChanged="ClosePhoneForm" Title="New ticket" Size="SheetSize.Full" Class="m-tickets-new">
+        <Leading><button type="button" class="ph-text-btn" @onclick="() => ClosePhoneForm(false)">Cancel</button></Leading>
+        <Trailing><button type="button" class="ph-text-btn" disabled="@submitting" @onclick="SubmitAsync">@(submitting ? "Sending…" : "Send")</button></Trailing>
+        <ChildContent>@FormContent</ChildContent>
+    </BottomSheet>
+}
+else { @FormContent }
+
+
+@code {
+    private RenderFragment QuickTemplates => @<text>
+            @if (TicketUi.Templates(s.Module) is { Count: > 0 } quick)
+            {
+                <div class="fs-t tk-tpl-h"><i data-lucide="zap"></i>Quick templates</div>
+                <div class="tk-tpls" role="group" aria-label="Quick templates" @key="@("tpl-" + s.Module)">
+                    @for (var i = 0; i < quick.Count; i++)
+                    {
+                        var q = quick[i];
+                        var on = template == q.Label;
+                        <button type="button" class="tk-tpl @(on ? "on" : "") @(popTemplate == q.Label ? "mi-pop-s" : "") @(catStagger ? "mi-rise" : "")"
+                                style="@(catStagger ? $"animation-delay:{i * 30}ms" : "")" aria-pressed="@(on ? "true" : "false")"
+                                title="@q.Subject" @onclick="() => PickTemplate(q)">
+                            @if (on) { <span class="dot" style="background:@TicketUi.PriorityColor(q.Priority)"></span> }
+                            @q.Label
+                        </button>
+                    }
+                </div>
+            }
+
+    </text>;
+    private RenderFragment FormContent => @<text>
 <div class="tk-formwrap" id="tk-form" data-attach-scope>
     <div class="tk-form-h">
         <a class="tk-btn ghost sm" href="/tickets"><i data-lucide="chevron-left"></i>Tickets</a>
@@ -66,23 +99,7 @@
                 }
             </div>
 
-            @if (TicketUi.Templates(s.Module) is { Count: > 0 } quick)
-            {
-                <div class="fs-t tk-tpl-h"><i data-lucide="zap"></i>Quick templates</div>
-                <div class="tk-tpls" role="group" aria-label="Quick templates" @key="@("tpl-" + s.Module)">
-                    @for (var i = 0; i < quick.Count; i++)
-                    {
-                        var q = quick[i];
-                        var on = template == q.Label;
-                        <button type="button" class="tk-tpl @(on ? "on" : "") @(popTemplate == q.Label ? "mi-pop-s" : "") @(catStagger ? "mi-rise" : "")"
-                                style="@(catStagger ? $"animation-delay:{i * 30}ms" : "")" aria-pressed="@(on ? "true" : "false")"
-                                title="@q.Subject" @onclick="() => PickTemplate(q)">
-                            @if (on) { <span class="dot" style="background:@TicketUi.PriorityColor(q.Priority)"></span> }
-                            @q.Label
-                        </button>
-                    }
-                </div>
-            }
+            @if (!Phone.IsPhone) { @QuickTemplates }
 
             <div class="fs-t">What's it about?</div>
             <div class="tk-card @(Err("category"))" data-k="category">
@@ -111,6 +128,8 @@
                     @if (errKey == "category") { <div class="ferr">@errMsg</div> }
                 </div>
             </div>
+
+            @if (Phone.IsPhone) { @QuickTemplates }
 
             <div class="tk-collapse @(IsInstall ? "open" : "")">
                 <div>
@@ -179,7 +198,14 @@
                 </div>
                 <div class="f @(Err("description"))" data-k="description">
                     <label class="l" for="tk-desc">Description <em>*</em></label>
-                    <textarea id="tk-desc" class="inp ta" maxlength="5000" placeholder="What happened, since when, what you've tried" value="@s.Description" @oninput='e => OnText(e, v => s.Description = v, "description")'></textarea>
+                    @if (Phone.IsPhone)
+                    {
+                        <textarea id="tk-desc" class="inp ta" maxlength="5000" placeholder="What happened, since when, what you've tried" @oninput='e => OnText(e, v => s.Description = v, "description")'>@s.Description</textarea>
+                    }
+                    else
+                    {
+                        <textarea id="tk-desc" class="inp ta" maxlength="5000" placeholder="What happened, since when, what you've tried" value="@s.Description" @oninput='e => OnText(e, v => s.Description = v, "description")'></textarea>
+                    }
                     <div class="hint"><span class="hl">@(errKey == "description" ? errMsg : "What happened, since when, what you've tried")</span><span class="cnt @(s.Description.Length > 4500 ? "warn" : "")">@s.Description.Length / 5000</span></div>
                 </div>
                 <div class="f row2">
@@ -284,8 +310,8 @@
         </div>
     }
 </div>
+    </text>;
 
-@code {
     private RenderFragment Slot(string t) => __builder =>
     {
         var on = s.ScheduledTime == t;

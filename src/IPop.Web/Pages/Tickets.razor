@@ -6,6 +6,26 @@
 
 <PageTitle>@(detail is { } dt && dt.Id == Id ? $"{dt.Title} - Tickets" : "Tickets") — IPop</PageTitle>
 
+@if (Phone.IsPhone)
+{
+    @if (Id is null)
+    {
+        <IPop.Web.Components.Phone.Tickets.TicketsPhone Items="@list?.Tickets" ShowAll="@showAll" Query="@q" SyncText="@SyncText" Syncing="@syncing" NotRegistered="@NotRegistered" Error="@phoneListError" OnOpen="Select" OnNew='() => Nav.NavigateTo("/tickets/new")' OnSync="ResyncAsync" OnFilter="SetFilter" OnSearch='value => q = value' />
+    }
+    else
+    {
+        <PhoneScreen Title="@(detail?.TicketNumber ?? "Ticket")" LargeTitle="false" BackLabel="Tickets" OnBack="PhoneBack" Class="m-tickets-detail">
+            <Trailing><button type="button" class="ph-icon-btn" aria-label="Ticket actions" @onclick="() => phoneMore = true"><i data-lucide="ellipsis"></i></button></Trailing>
+            <ChildContent>@DetailContent</ChildContent>
+        </PhoneScreen>
+        @if (detail is { } selected)
+        {
+            <IPop.Web.Components.Phone.Tickets.TicketMoreSheet Open="@phoneMore" OpenChanged="v => phoneMore = v" Id="@selected.Id" Pending="@(selected.Status == TicketStatus.Failed)" Url="@selected.Url" FollowUpUrl="@FollowUpUrl(selected)" OnDiscard="DiscardAsync" />
+        }
+    }
+}
+else
+{
 <div class="tk-page @(Id is not null ? "tk-has-sel" : "")">
     @* ── List ─────────────────────────────────────────────────────────── *@
     <section class="tk-lst" aria-label="My tickets">
@@ -88,6 +108,14 @@
 
     @* ── Detail ───────────────────────────────────────────────────────── *@
     <section class="tk-det" aria-label="Ticket detail" id="tk-det">
+        @DetailContent
+    </section>
+</div>
+
+}
+
+@code {
+    private RenderFragment DetailContent => @<text>
         @if (Id is null || (detailMissing && detail is null))
         {
             <div class="tk-empty">
@@ -109,6 +137,10 @@
                     <div><div class="big"><i data-lucide="mouse-pointer-click"></i></div><h3>Select a ticket</h3></div>
                 }
             </div>
+        }
+        else if (Phone.IsPhone && phoneDetailError is not null)
+        {
+            <div role="alert">@phoneDetailError <button type="button" @onclick="() => LoadDetailAsync(Id!.Value)">Retry</button></div>
         }
         else if (detail is null || detail.Id != Id)
         {
@@ -262,7 +294,11 @@
                         @if (msgsUnread > 0) { <span class="tk-new">@msgsUnread new</span> }
                         <span class="sp"></span><span class="ro">from iDesk · read-only</span></h4>
                     <div class="tk-msgs">
-                        @if (msgs is null)
+                        @if (Phone.IsPhone && phoneMessagesError is not null)
+                        {
+                            <div role="alert">@phoneMessagesError <button type="button" @onclick="() => LoadMessagesAsync(t.Id)">Retry</button></div>
+                        }
+                        else if (msgs is null)
                         {
                             <div class="skel l"></div><div class="skel r"></div>
                         }
@@ -312,5 +348,5 @@
                 </div>
             </div>
         }
-    </section>
-</div>
+    </text>;
+}

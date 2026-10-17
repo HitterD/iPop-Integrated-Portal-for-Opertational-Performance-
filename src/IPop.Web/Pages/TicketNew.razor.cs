@@ -25,6 +25,10 @@ public partial class TicketNew
     [Inject] private IJSRuntime JS { get; set; } = default!;
     [Inject] private ConfirmService Confirm { get; set; } = default!;
 
+    [Inject] private PhoneState Phone { get; set; } = default!;
+    private void PhoneChanged() => _ = InvokeAsync(StateHasChanged);
+    private Task ClosePhoneForm(bool open) { if (!open) Nav.NavigateTo("/tickets"); return Task.CompletedTask; }
+
     private const string DraftKey = "tickets.draft";
     private static readonly CultureInfo En = CultureInfo.GetCultureInfo("en-GB");
 
@@ -89,6 +93,7 @@ public partial class TicketNew
 
     protected override async Task OnInitializedAsync()
     {
+        Phone.Changed += PhoneChanged;
         Layout?.SetHeader("Tickets", "New ICT ticket");
         calMonth = FirstMonth;
         await Auth.LoadMeAsync();
@@ -166,6 +171,7 @@ public partial class TicketNew
     public void Dispose()
     {
         disposed = true;
+        Phone.Changed -= PhoneChanged;
         if (saveCts is not null) { saveCts.Cancel(); SaveNow(); }
     }
 
