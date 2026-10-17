@@ -1,0 +1,47 @@
+@using IPop.Web.Models
+@using IPop.Web.Services
+<div class="m-directory-people">
+    @foreach (var group in People.OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase).GroupBy(p => Letter(p.Name)))
+    {
+        <h2 class="m-directory-letter" id="directory-letter-@group.Key">@group.Key</h2>
+        @foreach (var person in group)
+        {
+            var name = IPop.Application.PersonName.Display(person.Name);
+            <div class="m-directory-row">
+                @if (Selecting) { <button type="button" class="m-directory-icon" role="checkbox" aria-checked="@(Selected.Contains(person.Nik) ? "true" : "false")" aria-label="Select @name" @onclick="() => OnSelect.InvokeAsync(person)"><i data-lucide="@(Selected.Contains(person.Nik) ? "check-square" : "square")"></i></button> }
+                <button type="button" class="m-directory-person" @onclick="() => OnOpen.InvokeAsync(person)">
+                    <span class="m-directory-avatar"><PersonAvatar Nik="@person.Nik" Name="@name" Size="44" Decorative="true" /><span class="m-directory-presence @person.Status"></span></span>
+                    <span class="m-directory-label"><b>@Highlighted(name)</b><small>@Highlighted($"{person.Placement} · {person.Site}")</small></span>
+                </button>
+                <button type="button" class="m-directory-icon" aria-label="Chat with @name" @onclick="() => OnChat.InvokeAsync(person)"><i data-lucide="message-circle"></i></button>
+                <button type="button" class="m-directory-icon" aria-label="Call @name" @onclick="() => OnCall.InvokeAsync(person)"><i data-lucide="phone"></i></button>
+            </div>
+        }
+    }
+    @if (People.Count > 0 && string.IsNullOrWhiteSpace(Query))
+    {
+        <nav class="m-directory-index" aria-label="Alphabet index">
+            @foreach (var letter in People.Select(p => Letter(p.Name)).Distinct().Order())
+            {
+                <a href="#directory-letter-@letter" aria-label="Jump to @letter" @onclick:preventDefault="true" @onclick="() => Jump.InvokeAsync(letter)">@letter</a>
+            }
+        </nav>
+    }
+</div>
+@code {
+    [Parameter] public IReadOnlyList<Employee> People { get; set; } = [];
+    [Parameter] public string? Query { get; set; }
+    [Parameter] public bool Selecting { get; set; }
+    [Parameter] public HashSet<string> Selected { get; set; } = [];
+    [Parameter] public EventCallback<Employee> OnSelect { get; set; }
+    [Parameter] public EventCallback<Employee> OnOpen { get; set; }
+    [Parameter] public EventCallback<Employee> OnChat { get; set; }
+    [Parameter] public EventCallback<Employee> OnCall { get; set; }
+    [Parameter] public EventCallback<string> Jump { get; set; }
+    private static string Letter(string name) => name.Trim() is { Length: > 0 } n && char.IsLetter(n[0]) ? char.ToUpperInvariant(n[0]).ToString() : "#";
+    private RenderFragment Highlighted(string text) => builder => {
+        var at = string.IsNullOrWhiteSpace(Query) ? -1 : text.IndexOf(Query, StringComparison.OrdinalIgnoreCase);
+        if (at < 0) { builder.AddContent(0, text); return; }
+        builder.AddContent(1, text[..at]); builder.OpenElement(2, "mark"); builder.AddContent(3, text.Substring(at, Query!.Length)); builder.CloseElement(); builder.AddContent(4, text[(at + Query.Length)..]);
+    };
+}

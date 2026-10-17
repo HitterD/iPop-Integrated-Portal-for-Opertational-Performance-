@@ -18,7 +18,8 @@ public partial class Directory
     private void OnAccountChanged() => _ = InvokeAsync(async () =>
     {
         if (navigationAccount == Auth.Me?.Nik) return;
-        requestGeneration++; favoriteGeneration++;
+        requestGeneration++; favoriteGeneration++; phoneGeneration++;
+        phonePeople = []; phoneLoaded = phoneLoading = false; phoneQuery = ""; phoneDepartmentDetail = false;
         people = []; favoritePeople = []; selected = null; selectedNiks.Clear();
         navigation.Expanded.Clear(); navigation.SelectedKey = null; navigation.ShowEmpty = false; navigation.Search = "";
         selection = null; favOnly = false; searchQ = null; presenceFilter = ""; selectedSort = "name-asc";

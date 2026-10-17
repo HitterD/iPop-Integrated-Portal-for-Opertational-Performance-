@@ -17,6 +17,29 @@
 
 <PageTitle>@(person?.Name ?? "Profile") — IPop</PageTitle>
 
+@inject PhoneState Phone
+@using IPop.Web.Components.Phone.Directory
+@if (Phone.IsPhone)
+{
+    @if (person is not null)
+    {
+        <PersonPhone Person="@PhonePerson" Favorite="isFav" OnFavorite="ToggleFavorite" OnBack='() => Nav.NavigateTo("/directory")'
+            OnChat="OpenChat" OnCall="OpenCall" OnMail="OpenMail" CalendarUrl="@PLinks.Calendar(person.Nik)" MeetingUrl="@CalLinks.NewMeeting(niks: [person.Nik], from: $"Meeting with {person.Name}")">
+            <Organization>
+                @if (manager is not null) { <button type="button" @onclick="() => OpenPerson(manager.Nik)">View @IPop.Application.PersonName.Display(manager.Name)</button> }
+                <h3 class="m-directory-section">Direct reports · @reports.Count</h3>
+                @foreach (var report in reports) { <button type="button" @onclick="() => OpenPerson(report.Nik)">@IPop.Application.PersonName.Display(report.Name)<i data-lucide="chevron-right"></i></button> }
+                @if (reportsLoading) { <p role="status">Loading…</p> }
+            </Organization>
+        </PersonPhone>
+    }
+    else
+    {
+        <PhoneScreen Title="Profile" BackLabel="Directory" OnBack='() => Nav.NavigateTo("/directory")'><p class="m-directory-note">@(loading ? "Loading profile…" : "Employee not found.")</p></PhoneScreen>
+    }
+}
+else
+{
 <div class="content emp-profile" style="grid-template-columns:1fr;max-width:860px">
     <div class="m-detail-bar emp-m-bar">
         <button type="button" class="m-back" aria-label="Back" @onclick='() => Nav.NavigateTo("/directory")'><i data-lucide="chevron-left"></i></button>
@@ -144,8 +167,11 @@
     }
 
 </div>
+}
 
 @code {
+    private Employee PhonePerson => new(person!.Name, "", person.Nik, person.Extension ?? "", person.Location ?? "", person.Department ?? "", null, person.Site ?? "", null, manager?.Name ?? person.Manager ?? "", person.Email, person.Status, "#123528", person.PhotoPath, manager?.Nik, LastSeenAt: person.LastSeenAt);
+    private void PhoneChanged() => _ = InvokeAsync(StateHasChanged);
     [CascadingParameter] public MainLayout Layout { get; set; } = default!;
     [Parameter] public string Nik { get; set; } = "";
 
@@ -164,6 +190,7 @@
     protected override void OnInitialized()
     {
         Layout.SetHeader("Directory", "Profile");
+        Phone.Changed += PhoneChanged;
         Auth.PresenceChanged += OnPresenceChanged;
     }
 
@@ -246,5 +273,5 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
 
-    public void Dispose() { Auth.PresenceChanged -= OnPresenceChanged; }
+    public void Dispose() { Phone.Changed -= PhoneChanged; Auth.PresenceChanged -= OnPresenceChanged; }
 }

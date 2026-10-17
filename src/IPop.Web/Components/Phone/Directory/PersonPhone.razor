@@ -1,0 +1,49 @@
+@using IPop.Web.Models
+<PhoneScreen Title="@IPop.Application.PersonName.Display(Person.Name)" LargeTitle="false" BackLabel="Directory" OnBack="OnBack" Class="m-directory-detail">
+    <Trailing><button type="button" class="m-directory-icon" aria-label="Favorite" aria-pressed="@(Favorite ? "true" : "false")" @onclick="OnFavorite"><i data-lucide="star"></i></button></Trailing>
+    <ChildContent>
+        <div class="m-directory-hero">
+            <PersonAvatar Nik="@Person.Nik" Name="@Person.Name" Size="96" Viewable="true" />
+            <h1>@IPop.Application.PersonName.Display(Person.Name)</h1><p>@Person.Placement</p><p>@Person.Site</p>
+            <span class="m-directory-status"><span class="m-directory-presence @Person.Status"></span>@Person.StatusLabel</span>
+        </div>
+        <div class="m-directory-actions">
+            <button type="button" @onclick="OnChat"><i data-lucide="message-circle"></i>Chat</button>
+            <button type="button" @onclick="OnCall"><i data-lucide="phone"></i>Call</button>
+            <button type="button" @onclick="OnMail"><i data-lucide="mail"></i>Mail</button>
+            <a href="@CalendarUrl" aria-label="View calendar"><i data-lucide="calendar-days"></i>Calendar</a>
+        </div>
+        <section class="m-directory-group" aria-label="Contact">
+            @if (!string.IsNullOrWhiteSpace(Person.Email) && Person.Email != "—") { <a href="mailto:@Person.Email"><small>Email</small><span>@Person.Email</span></a> }
+            @if (Person.HasExtension) { <div><small>Extension · IP phone</small><span>@Person.Extension</span></div> }
+            @if (!string.IsNullOrWhiteSpace(Person.Location) && Person.Location != "—") { <div><small>Location</small><span>@Person.Location</span></div> }
+        </section>
+        <h2 class="m-directory-section">Organization</h2>
+        <section class="m-directory-group">
+            @if (!string.IsNullOrWhiteSpace(Person.Manager) && Person.Manager != "—")
+            {
+                <div><small>Reports to</small><span>@IPop.Application.PersonName.Display(Person.Manager)</span></div>
+            }
+            else { <p class="m-directory-note">No direct manager listed.</p> }
+            @Organization
+        </section>
+        <h2 class="m-directory-section">Today · free / busy</h2>
+        <section class="m-directory-group">
+            <a href="@CalendarUrl">View calendar<i data-lucide="chevron-right"></i></a>
+            <a href="@MeetingUrl">Find a time together<i data-lucide="calendar-plus"></i></a>
+            <p class="m-directory-note">Event details are visible only when shared with you.</p>
+        </section>
+    </ChildContent>
+</PhoneScreen>
+@code {
+    [Parameter, EditorRequired] public Employee Person { get; set; } = default!;
+    [Parameter] public bool Favorite { get; set; }
+    [Parameter] public string CalendarUrl { get; set; } = "/calendar";
+    [Parameter] public string MeetingUrl { get; set; } = "/calendar?new=1";
+    [Parameter] public EventCallback OnBack { get; set; }
+    [Parameter] public EventCallback OnFavorite { get; set; }
+    [Parameter] public EventCallback OnChat { get; set; }
+    [Parameter] public EventCallback OnCall { get; set; }
+    [Parameter] public EventCallback OnMail { get; set; }
+    [Parameter] public RenderFragment? Organization { get; set; }
+}

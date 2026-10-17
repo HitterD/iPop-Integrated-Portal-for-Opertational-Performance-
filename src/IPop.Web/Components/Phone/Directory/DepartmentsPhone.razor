@@ -1,0 +1,28 @@
+@using IPop.Web.Services
+<div class="m-directory-departments">
+    <div class="m-directory-chips" aria-label="Sites">
+        <button type="button" aria-pressed="@(site is null ? "true" : "false")" @onclick="() => site = null">All sites</button>
+        @foreach (var node in Navigation.Nodes.Where(n => n.Kind == "site"))
+        {
+            <button type="button" aria-pressed="@(site == node.SiteCode ? "true" : "false")" @onclick="() => site = node.SiteCode">@node.Name <small>@node.Count</small></button>
+        }
+    </div>
+    @foreach (var node in Navigation.Visible().Where(n => site is null || n.SiteCode == site))
+    {
+        <div class="m-directory-tree-row" style="--level:@node.Depth">
+            @if (Navigation.HasChildren(node))
+            {
+                <button type="button" class="m-directory-icon" aria-label="@(Navigation.IsOpen(node) ? "Collapse" : "Expand") @node.Name" aria-expanded="@(Navigation.IsOpen(node) ? "true" : "false")" @onclick="() => OnToggle.InvokeAsync(node)"><i data-lucide="@(Navigation.IsOpen(node) ? "chevron-down" : "chevron-right")"></i></button>
+            }
+            else { <span class="m-directory-tree-spacer"></span> }
+            <button type="button" class="m-directory-tree-name" data-node="@node.Key" @onclick="() => OnSelect.InvokeAsync(node)"><span>@node.Name</span><small>@node.Count</small></button>
+        </div>
+    }
+    <p class="m-directory-note">Tap a chevron to open a department; tap the name to see its people. Empty departments are hidden.</p>
+</div>
+@code {
+    [Parameter, EditorRequired] public DirectoryNavigation Navigation { get; set; } = new();
+    [Parameter] public EventCallback<DirectoryNavNode> OnToggle { get; set; }
+    [Parameter] public EventCallback<DirectoryNavNode> OnSelect { get; set; }
+    private string? site;
+}

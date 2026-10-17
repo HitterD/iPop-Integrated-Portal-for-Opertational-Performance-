@@ -11,6 +11,99 @@
 
 <PageTitle>Directory — IPop</PageTitle>
 
+@inject PhoneState Phone
+@using IPop.Web.Components.Phone.Directory
+
+@if (Phone.IsPhone)
+{
+    @if (selected is not null)
+    {
+        <PersonPhone Person="selected" Favorite="Favorites.IsFavorite(selected.Nik)" OnFavorite="() => ToggleFavorite(selected.Nik)"
+            CalendarUrl="@PLinks.Calendar(selected.Nik)" MeetingUrl="@CalLinks.NewMeeting(niks: [selected.Nik], from: $"Meeting with {selected.Name}")"
+            OnBack="() => selected = null" OnChat="() => OpenChatWith(selected.Nik)" OnCall="() => StartCallWith(selected.Nik)" OnMail="() => OpenMailWith(selected.Nik)">
+            <Organization><a href="@PLinks.Profile(selected.Nik)">View organization &amp; direct reports<i data-lucide="chevron-right"></i></a></Organization>
+        </PersonPhone>
+    }
+    <div class="m-directory-list-root" style="@(selected is not null ? "display:none" : "display:contents")">
+        <PhoneScreen Title="@(phoneDepartmentDetail ? selection?.Name ?? "Department" : "Directory")" BackLabel="Departments" OnBack="@(phoneDepartmentDetail ? EventCallback.Factory.Create(this, ClosePhoneDepartment) : default)" Class="m-directory-screen">
+            <Trailing><button type="button" class="m-directory-icon" aria-label="@(phoneSelecting ? "Done selecting" : "Select people")" @onclick="() => phoneSelecting = !phoneSelecting"><i data-lucide="@(phoneSelecting ? "check" : "list-checks")"></i></button><button type="button" class="m-directory-icon" aria-label="Directory options" @onclick="() => phoneOptions = true"><i data-lucide="more-horizontal"></i></button></Trailing>
+            <Below>
+                <div class="m-directory-search"><i data-lucide="search"></i><input type="search" aria-label="Search name, department, site" placeholder="Search name, department, site" value="@phoneQuery" @oninput="PhoneSearch" />@if (phoneQuery.Length > 0) { <button type="button" @onclick="ClearPhoneSearch">Cancel</button> }</div>
+                @if (!phoneDepartmentDetail)
+                {
+                    <SegmentedControl Items="phoneTabs" Value="@phoneTab" ValueChanged="SetPhoneTab" />
+                }
+            </Below>
+            <ChildContent>
+                @if (phoneDepartmentDetail)
+                {
+                    <OverlayHook OnClose="ClosePhoneDepartment" />
+                    <nav class="m-directory-breadcrumb" aria-label="Organization path">@string.Join(" › ", navigation.Path(navigation.Selected).Select(n => n.Name))</nav>
+                    <p class="m-directory-note">@total members · @people.Count(p => p.Status == "on") online in @people.Count loaded</p>
+                    <div class="m-directory-actions">
+                        <button type="button" disabled="@(loading || people.Count == 0)" @onclick='() => PhoneDepartmentAction("chat")'>Chat with all</button>
+                        <button type="button" disabled="@(loading || people.Count == 0)" @onclick='() => PhoneDepartmentAction("mail")'>Email all</button>
+                        <button type="button" disabled="@(loading || people.Count == 0)" @onclick='() => PhoneDepartmentAction("meeting")'>Meeting</button>
+                    </div>
+                    <PeoplePhone People="people" OnOpen="p => selected = p" OnChat="p => OpenChatWith(p.Nik)" OnCall="p => StartCallWith(p.Nik)" Jump="PhoneJump" />
+                    @if (page < TotalPages) { <button type="button" class="m-directory-more" @onclick="() => Reload(page + 1, replace: false)">Load more members</button> }
+                }
+                else if (phoneTab == "departments" && phoneQuery.Length == 0)
+                {
+                    <DepartmentsPhone Navigation="navigation" OnToggle="ToggleNode" OnSelect="OpenPhoneDepartment" />
+                }
+                else
+                {
+                    @if (phoneQuery.Length == 0 && FavoritePeople.Count > 0)
+                    {
+                        <h2 class="m-directory-section">Favorites</h2><div class="m-directory-favorites">@foreach (var favorite in FavoritePeople) { <button type="button" @onclick="() => selected = favorite"><PersonAvatar Nik="@favorite.Nik" Name="@favorite.Name" Size="48" Decorative="true" /><span>@IPop.Application.PersonName.Display(favorite.Name)</span></button> }</div>
+                    }
+                    @if (phoneQuery.Length > 0)
+                    {
+                        <div class="m-directory-chips" aria-label="Search scope">
+                            @foreach (var scope in new[] { "All", "People", "Departments", "Sites" }) { <button type="button" aria-pressed="@(phoneScope == scope ? "true" : "false")" @onclick="() => phoneScope = scope">@scope @PhoneScopeCount(scope)</button> }
+                        </div>
+                    }
+                    @if (phoneLoading) { <p class="m-directory-note" role="status">Loading people…</p> }
+                    else if (phoneLoadError) { <div class="m-directory-note" role="alert">Could not load people. <button type="button" @onclick="LoadPhonePeople">Retry</button></div> }
+                    else
+                    {
+                        @if (phoneScope is "All" or "People")
+                        {
+                            <PeoplePhone People="PhonePeople" Query="phoneQuery" Selecting="phoneSelecting" Selected="selectedNiks" OnSelect="p => TogglePersonSelection(p.Nik)" OnOpen="p => selected = p" OnChat="p => OpenChatWith(p.Nik)" OnCall="p => StartCallWith(p.Nik)" Jump="PhoneJump" />
+                        }
+                        @if (phoneQuery.Length > 0 && phoneScope is "All" or "Departments" or "Sites")
+                        {
+                            @foreach (var node in PhoneNodes) { <button type="button" class="m-directory-result" @onclick="() => OpenPhoneDepartment(node)"><span>@node.Name<small>@string.Join(" › ", navigation.Path(node).SkipLast(1).Select(n => n.Name))</small></span><small>@node.Count people</small></button> }
+                        }
+                        @if (PhoneScopeCount(phoneScope) == 0)
+                        {
+                            <div class="m-directory-empty"><i data-lucide="search"></i><h2>No results for “@phoneQuery”</h2><p>Check the spelling, or search by department or site instead.</p>
+                                @if (DirectorySuggest.Find(phoneQuery, phonePeople.Select(p => p.Name)) is { } suggestion) { <button type="button" @onclick="() => phoneQuery = suggestion">Did you mean @IPop.Application.PersonName.Display(suggestion)?</button> }
+                            </div>
+                        }
+                    }
+                }
+                @if (selectedNiks.Count > 0)
+                {
+                    <div class="m-directory-options"><b>@selectedNiks.Count selected</b><button type="button" @onclick="BulkMessage">Message</button><button type="button" @onclick="BulkCreateGroup">Create group</button><button type="button" @onclick="BulkEmail">Email</button><button type="button" @onclick="BulkFavorite">Favorite</button><button type="button" @onclick="BulkExport">Export selected</button><button type="button" @onclick="() => selectedNiks.Clear()">Clear selection</button></div>
+                }
+                @if (notice is not null) { <p class="m-directory-note" role="status">@notice</p> }
+            </ChildContent>
+        </PhoneScreen>
+        <BottomSheet Open="phoneOptions" OpenChanged="v => phoneOptions = v" Title="Directory options">
+            <div class="m-directory-options">
+                @foreach (var status in new[] { "", "on", "busy", "away", "off" }) { <button type="button" aria-pressed="@(presenceFilter == status ? "true" : "false")" @onclick="() => SetPhonePresence(status)">@(status == "" ? "All statuses" : PresenceFilterLabel(status))</button> }
+                <button type="button" aria-pressed="@(favOnly ? "true" : "false")" @onclick="ToggleFavOnly">Favorites only</button>
+                <button type="button" disabled="@exporting" @onclick="ExportCsv">Export CSV (current desktop filters)</button>
+                <button type="button" @onclick='() => { phoneOptions = false; Nav.NavigateTo("/chat?new=group"); }'>Create group</button>
+                <button type="button" @onclick="CollapseAll">Collapse departments</button>
+            </div>
+        </BottomSheet>
+    </div>
+}
+else
+{
 <div class="toolbar dir-toolbar">
     <div class="apple-segmented">
         <button type="button" class="seg-btn @(presenceFilter == "" ? "active" : "")" @onclick='() => SetPresenceFilter("")'>
@@ -359,6 +452,7 @@
 </div>
 
 <ProfileDrawer Person="selected" OnClose="() => selected = null" />
+}
 
 @code {
     [CascadingParameter] public MainLayout Layout { get; set; } = default!;
@@ -442,7 +536,7 @@
     // rather than round-tripping NIKs through the filter-based export endpoint.
     private async Task BulkExport()
     {
-        var rows = people.Concat(favoritePeople)
+        var rows = people.Concat(favoritePeople).Concat(phonePeople)
             .Where(p => selectedNiks.Contains(p.Nik))
             .DistinctBy(p => p.Nik)
             .ToList();
@@ -493,6 +587,7 @@
         // ipop-25: make the shell search's placeholder explicit here too, so the
         // default in SetHeader stays a fallback rather than Directory-specific copy.
         Layout.SetHeader("Directory", "People");
+        Phone.Changed += PhoneChanged;
         Layout.SearchChanged += OnSearchChanged;
         Auth.PresenceChanged += OnPresenceChanged;
         Auth.DirectoryChanged += OnDirectoryChanged;
@@ -725,10 +820,13 @@
     {
         await LoadStructure();
         await Reload(1, replace: true);
+        if (phoneLoaded) await LoadPhonePeople();
     });
 
     private void OnPresenceChanged(string nik, string status) => _ = InvokeAsync(() =>
     {
+        var phoneIndex = phonePeople.FindIndex(p => p.Nik == nik);
+        if (phoneIndex >= 0) { phonePeople[phoneIndex] = phonePeople[phoneIndex] with { Status = status }; if (selected?.Nik == nik) selected = phonePeople[phoneIndex]; StateHasChanged(); }
         var index = people.FindIndex(p => p.Nik == nik);
         if (index >= 0)
         {
@@ -771,7 +869,8 @@
     {
         await JS.InvokeVoidAsync("ipop.icons");
         await SyncMobileDetailAsync();
-        await SyncDepartmentSheet();
+        if (!Phone.IsPhone) await SyncDepartmentSheet();
+        if (Phone.IsPhone && !phoneLoaded && !phoneLoading) await LoadPhonePeople();
     }
 
     // ── Phone layout (<= 767px): the profile sheet is a full-screen detail; phone Back closes it.
@@ -805,5 +904,5 @@
         StateHasChanged();
     });
 
-    public void Dispose() { disposed = true; requestGeneration++; favoriteGeneration++; _ = JS.InvokeVoidAsync("ipop.mobile.clearDetail").AsTask().ContinueWith(_ => { }); _selfRef?.Dispose(); Nav.LocationChanged -= OnLocationChanged; Layout.SearchChanged -= OnSearchChanged; Auth.PresenceChanged -= OnPresenceChanged; _presenceRefresh?.Cancel(); Auth.DirectoryChanged -= OnDirectoryChanged; Auth.MeChanged -= OnAccountChanged; _ = CleanupSheet(); Auth.ConnectionStateChanged -= OnConnectionStateChanged; Favorites.Changed -= OnFavoritesChanged; }
+    public void Dispose() { Phone.Changed -= PhoneChanged; phoneGeneration++; disposed = true; requestGeneration++; favoriteGeneration++; _ = JS.InvokeVoidAsync("ipop.mobile.clearDetail").AsTask().ContinueWith(_ => { }); _selfRef?.Dispose(); Nav.LocationChanged -= OnLocationChanged; Layout.SearchChanged -= OnSearchChanged; Auth.PresenceChanged -= OnPresenceChanged; _presenceRefresh?.Cancel(); Auth.DirectoryChanged -= OnDirectoryChanged; Auth.MeChanged -= OnAccountChanged; _ = CleanupSheet(); Auth.ConnectionStateChanged -= OnConnectionStateChanged; Favorites.Changed -= OnFavoritesChanged; }
 }
