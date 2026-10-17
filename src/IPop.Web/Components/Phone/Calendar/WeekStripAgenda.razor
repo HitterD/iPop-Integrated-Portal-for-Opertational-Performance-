@@ -1,0 +1,46 @@
+@using CalendarPage = IPop.Web.Pages.Calendar
+@inject IJSRuntime JS
+@implements IDisposable
+<div class="m-calendar-agenda" @ref="root">
+    <div class="m-calendar-week-head"><button type="button" aria-label="Previous week" @onclick="() => OnWeek.InvokeAsync(-1)"><i data-lucide="chevron-left"></i></button><b>@Anchor.ToString("MMMM yyyy")</b><button type="button" aria-label="Next week" @onclick="() => OnWeek.InvokeAsync(1)"><i data-lucide="chevron-right"></i></button></div>
+    <div class="m-calendar-week" role="tablist" aria-label="Week">
+        @foreach (var day in Days)
+        {
+            <button type="button" role="tab" class="m-calendar-day @(day == DateTime.Today ? "today" : "")" data-date="@day.ToString("yyyy-MM-dd")" aria-label="@day.ToString("dddd d MMMM")" aria-selected="@(day == Anchor.Date ? "true" : "false")" @onclick="() => OnDay.InvokeAsync(day)"><small>@day.ToString("ddd")[..1]</small><b>@day.Day</b><span class="m-calendar-day-dot">@(Items.Any(i => OnDate(i, day)) ? "•" : "")</span></button>
+        }
+    </div>
+    <h2 class="m-calendar-date">@(Anchor.Date == DateTime.Today ? "Today" : Anchor.ToString("dddd")) <span>@Anchor.ToString("d MMMM")</span></h2>
+    @if (Loading) { <p class="m-calendar-empty" role="status">Loading calendar…</p> }
+    else
+    {
+        @foreach (var item in DayItems)
+        {
+            @if (!nowShown && Anchor.Date == DateTime.Today && item.Start > DateTime.Now) { nowShown = true; <div class="m-calendar-now"><span>@DateTime.Now.ToString("HH:mm")</span><hr /></div> }
+            <button type="button" class="m-calendar-event src-@item.Source @(item.RoomKey is null ? "" : $"r-{item.RoomKey}")" @onclick="() => OnOpen.InvokeAsync(item)">
+                <span class="m-calendar-time">@(item.AllDay ? "All day" : item.Start.ToString("HH:mm"))<small>@(item.AllDay ? "" : item.End.ToString("HH:mm"))</small></span>
+                <span class="m-calendar-event-copy"><b>@item.Title</b>@if (!string.IsNullOrWhiteSpace(item.Subtitle)) { <small>@item.Subtitle</small> }<small>@(item.MeetingKind switch { "room" => "Meeting room", "in-person" => "In person", "voice" => "Voice call", _ => item.Source == "busy" ? "" : item.Kind })</small></span>
+                <i data-lucide="chevron-right"></i>
+            </button>
+        }
+        @if (!nowShown && Anchor.Date == DateTime.Today) { <div class="m-calendar-now"><span>@DateTime.Now.ToString("HH:mm")</span><hr /></div> }
+        @if (!DayItems.Any()) { <p class="m-calendar-empty">Nothing scheduled. Your day is clear.</p> }
+    }
+</div>
+@code {
+    [Parameter] public DateTime Anchor { get; set; } = DateTime.Today;
+    [Parameter] public IReadOnlyList<CalendarPage.FeedItem> Items { get; set; } = [];
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public EventCallback<DateTime> OnDay { get; set; }
+    [Parameter] public EventCallback<int> OnWeek { get; set; }
+    [Parameter] public EventCallback<CalendarPage.FeedItem> OnOpen { get; set; }
+    private ElementReference root;
+    private bool nowShown;
+    private DotNetObjectReference<WeekStripAgenda>? self;
+    private IEnumerable<DateTime> Days => Enumerable.Range(0, 7).Select(i => Anchor.Date.AddDays(-(((int)Anchor.DayOfWeek + 6) % 7)).AddDays(i));
+    private static bool OnDate(CalendarPage.FeedItem i, DateTime day) => i.Start < day.AddDays(1) && (i.End > day || i.End == i.Start && i.Start.Date == day);
+    private IEnumerable<CalendarPage.FeedItem> DayItems => Items.Where(i => OnDate(i, Anchor.Date)).OrderBy(i => i.AllDay ? 0 : 1).ThenBy(i => i.Start);
+    protected override void OnParametersSet() => nowShown = false;
+    protected override async Task OnAfterRenderAsync(bool firstRender) { if (firstRender) { self = DotNetObjectReference.Create(this); await JS.InvokeVoidAsync("ipop.phone.calendarSwipe", root, self); } }
+    [JSInvokable] public Task SwipeWeek(int direction) => OnWeek.InvokeAsync(direction);
+    public void Dispose() => self?.Dispose();
+}

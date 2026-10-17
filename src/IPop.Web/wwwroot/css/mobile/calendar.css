@@ -1,6 +1,32 @@
 /* Mobile (<= 767px) overrides for calendar. Loaded after every desktop stylesheet. */
 
 @media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .m-calendar-screen { background: var(--fill); }
+  .m-calendar-icon, .m-calendar-week-head button { display: inline-grid; place-items: center; min-width: 44px; min-height: 44px; border: 0; background: transparent; color: var(--accent); }
+  .m-calendar-week-head { display: flex; align-items: center; justify-content: space-between; padding: 0 12px; }
+  .m-calendar-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; padding: 8px 12px; touch-action: pan-y; }
+  .m-calendar-day { display: grid; justify-items: center; align-content: center; gap: 5px; padding: 6px 0; min-width: 44px; min-height: 76px; border: 0; background: transparent; border-radius: 16px; color: var(--ink); }
+  .m-calendar-day small { font-size: 12px; color: var(--ink-3); } .m-calendar-day b { font-size: 20px; } .m-calendar-day-dot { height: 8px; font-size: 15px; line-height: 8px; color: var(--accent); }
+  .m-calendar-day[aria-selected=true] { color: white; background: #123528; } .m-calendar-day[aria-selected=true] small, .m-calendar-day[aria-selected=true] .m-calendar-day-dot { color: white; }
+  .m-calendar-date { font-size: 19px; margin: 18px 16px 10px; } .m-calendar-date span { color: var(--ink-3); font-size: 14px; font-weight: 400; }
+  .m-calendar-event { width: calc(100% - 32px); min-height: 80px; display: flex; align-items: center; gap: 12px; margin: 8px 16px; padding: 12px; border: 0; border-left: 4px solid var(--accent); border-radius: 13px; background: var(--surface); color: var(--ink); text-align: left; }
+  .m-calendar-time { width: 48px; flex: none; font-size: 14px; display: grid; gap: 6px; } .m-calendar-time small { color: var(--ink-3); font-size: 12px; }
+  .m-calendar-event-copy { display: grid; gap: 5px; min-width: 0; flex: 1; } .m-calendar-event-copy b { font-size: 16px; overflow-wrap: anywhere; } .m-calendar-event-copy small { font-size: 12px; color: var(--ink-3); }
+  .m-calendar-event.src-meetings { border-left-color: #358ba8; } .m-calendar-event.src-projects { border-left-color: #bb7b18; } .m-calendar-event.src-busy { border-left-color: var(--ink-3); }
+  .m-calendar-now { display: flex; align-items: center; gap: 8px; margin: 16px; color: #c64242; font-size: 12px; } .m-calendar-now hr { flex: 1; border: 0; border-top: 1px solid currentColor; }
+  .m-calendar-empty, .m-calendar-notice { margin: 16px; padding: 20px; color: var(--ink-3); background: var(--surface); border-radius: 14px; }
+  .m-calendar-options { display: grid; padding: 8px 16px; } .m-calendar-options button, .m-calendar-pending, .m-calendar-grid-back button, .m-calendar-notice button { min-height: 48px; border: 0; border-bottom: 1px solid var(--sep); background: var(--surface); color: var(--accent); text-align: left; padding: 12px; font: inherit; }
+  .m-calendar-pending { width: calc(100% - 32px); margin: 4px 16px; display: grid; gap: 6px; border-radius: 12px; } .m-calendar-pending small { color: var(--ink-3); }
+  .m-calendar-person { display: flex; align-items: center; gap: 10px; margin: 12px 16px; padding: 10px; background: var(--surface); border-radius: 14px; } .m-calendar-person > span { min-width: 0; flex: 1; display: grid; gap: 5px; } .m-calendar-person small { color: var(--ink-3); }
+  .m-calendar-person a, .m-calendar-person button { min-width: 44px; min-height: 44px; display: grid; place-items: center; border: 0; background: transparent; color: var(--accent); }
+  .m-calendar-event-sheet .cal-drawer { position: static; width: 100%; max-width: none; height: auto; max-height: none; min-height: 0; box-shadow: none; border: 0; border-radius: 0; animation: none; transform: none; }
+  .m-calendar-event-sheet .cal-drawer-body { overflow: visible; max-height: none; padding-bottom: 16px; }
+  .m-calendar-event-sheet .cal-drawer-foot { position: sticky; bottom: 0; padding-bottom: max(12px, var(--m-safe-b)); background: var(--surface); }
+  .m-calendar-event-sheet :is(button, input, select, a[role=button]) { min-height: 44px; }
+  .m-calendar-event-sheet .cal-icon { min-width: 44px; }
+  .m-calendar-event-sheet .cal-form { display: flex; flex-direction: column; }
+  .m-calendar-event-sheet .cal-form > .mkp { order: -1; }
+  .m-calendar-event-sheet .cal-drawer-head h3 { visibility: hidden; }
   /* ---------- Frame: page fills .main; the rail becomes one scrolling strip; the view gets the rest ---------- */
   .cal-page {
     display: flex; flex-direction: column; gap: 8px;

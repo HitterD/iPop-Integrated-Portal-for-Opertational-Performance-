@@ -1,0 +1,9 @@
+<BottomSheet Open="Open" OpenChanged="OpenChanged" Title="@Title" Size="SheetSize.Full" ScaleBack="true">
+    <div class="m-calendar-event-sheet">@ChildContent</div>
+</BottomSheet>
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter] public string Title { get; set; } = "New event";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

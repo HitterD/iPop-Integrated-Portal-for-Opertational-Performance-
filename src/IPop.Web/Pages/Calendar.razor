@@ -18,6 +18,39 @@
 
 <PageTitle>Calendar — IPop</PageTitle>
 
+@inject PhoneState Phone
+@using IPop.Web.Components.Phone.Calendar
+@if (Phone.IsPhone && !phoneGrid)
+{
+    <PhoneScreen Title="Calendar" Class="m-calendar-screen">
+        <Trailing><button type="button" class="m-calendar-icon" aria-label="Today" @onclick="GoToday"><i data-lucide="calendar-check"></i></button><button type="button" class="m-calendar-icon" aria-label="Calendar options" @onclick="() => phoneOptions = true"><i data-lucide="more-horizontal"></i></button></Trailing>
+        <ChildContent>
+            @if (PersonMode && person is not null)
+            {
+                <section class="m-calendar-person"><a href="/calendar" aria-label="Back to my calendar"><i data-lucide="chevron-left"></i></a><span><b>@person.Name</b><small>@PersonPronounBusy</small><small>@FreeLine(person)</small></span><button type="button" aria-pressed="@(person.Following ? "true" : "false")" @onclick="FollowPersonAsync">@(person.Following ? "Following" : "Follow")</button></section>
+            }
+            @if (managing is not null) { <p class="m-calendar-notice">Managing @managing.Name's calendar<button type="button" @onclick="() => ManageAsync(null)">My calendar</button></p> }
+            @if (loadError) { <div class="m-calendar-notice" role="alert">Could not load the calendar.<button type="button" @onclick="LoadAsync">Retry</button></div> }
+            <WeekStripAgenda Anchor="anchor" Items="@Visible.Concat(OverlayItems).ToList()" Loading="loadingFeed" OnDay="PhonePickDay" OnWeek="PhoneShiftWeek" OnOpen="item => OpenItemAsync(item)" />
+            @if (UpcomingPending.Count > 0 && !PersonMode) { <h2 class="m-calendar-date">Awaiting your reply</h2>@foreach (var invite in UpcomingPending) { <button type="button" class="m-calendar-pending" @onclick="() => OpenItemAsync(invite)">@invite.Title<small>@When(invite)</small></button> } }
+        </ChildContent>
+    </PhoneScreen>
+    <Fab Icon="plus" Label="New event" Visible="CanCreate" OnClick="() => OpenCreate(DefaultStart())" />
+    <BottomSheet Open="phoneOptions" OpenChanged="v => phoneOptions = v" Title="Calendar options" Size="SheetSize.Tall">
+        <div class="m-calendar-options">
+            <button type="button" @onclick="GoToday">Today</button>
+            @foreach (var (key, label) in Views) { <button type="button" @onclick="() => PhoneView(key)">@label view</button> }
+            <button type="button" @onclick="() => { phoneOptions = false; OpenSettings(); }">Settings, sharing &amp; delegates</button>
+            <button type="button" @onclick="() => { phoneOptions = false; phoneGrid = true; railOpen = true; }">Calendars &amp; all controls</button>
+            <button type="button" @onclick="OpenColleaguesAsync">Add calendar</button>
+            @if (PersonMode && person is not null) { <button type="button" @onclick="() => MeetWithAsync(person.Nik, person.Name)">Find a time together</button> }
+            @if (!PersonMode) { @foreach (var source in Sources) { <button type="button" role="switch" aria-checked="@(!hidden.Contains(source.Key) ? "true" : "false")" @onclick="() => ToggleSourceAsync(source.Key)">@source.Label</button> } }
+        </div>
+    </BottomSheet>
+}
+else
+{
+    @if (Phone.IsPhone) { <div class="m-calendar-grid-back"><button type="button" @onclick="() => phoneGrid = false"><i data-lucide="chevron-left"></i>Week &amp; agenda</button></div> }
 <div class="cal-page">
     @if (railOpen) { <OverlayHook OnClose="() => railOpen = false" /><div class="cal-rail-scrim" @onclick="() => railOpen = false"></div> }
     <aside class="cal-rail @(railOpen ? "m-open" : "")">
@@ -396,11 +429,14 @@
     </section>
 </div>
 
+}
+
 @* ---- Event drawer: view / create / edit ---- *@
 @if (drawerOpen || drawerClosing)
 {
-    @if (drawerOpen) { <OverlayHook OnClose="CloseDrawer" /> }
-    <div class="cal-drawer-backdrop @(drawerOpen ? "" : "closing")" @onclick="CloseDrawer"></div>
+    RenderFragment drawerContent = @<text>
+    @if (drawerOpen && !Phone.IsPhone) { <OverlayHook OnClose="CloseDrawer" /> }
+    @if (!Phone.IsPhone) { <div class="cal-drawer-backdrop @(drawerOpen ? "" : "closing")" @onclick="CloseDrawer"></div> }
     <aside class="cal-drawer @(drawerOpen ? "" : "closing") @(editing ? "cal-sheet" : "") @(ShowsMeetingDetail ? "cal-mdrawer" : "")" role="dialog" aria-modal="true" aria-label="@(editing ? (form.Id is null ? "New event" : "Edit event") : "Event")">
         @if (!ShowsMeetingDetail)
         {
@@ -792,6 +828,12 @@
             <div class="cal-drawer-body"><div class="cal-empty"><i data-lucide="loader-circle" class="cal-spin"></i></div></div>
         }
     </aside>
+    </text>;
+    @if (Phone.IsPhone)
+    {
+        <NewEventSheet Open="drawerOpen" OpenChanged="PhoneDrawerChanged" Title="@(editing ? (form.Id is null ? "New event" : "Edit event") : "Event")">@drawerContent</NewEventSheet>
+    }
+    else { @drawerContent }
 }
 
 @if (pop is not null)

@@ -95,6 +95,7 @@ public partial class Calendar
     protected override async Task OnInitializedAsync()
     {
         Layout.SetHeader("Calendar", "Everything scheduled across iPop");
+        Phone.Changed += PhoneChanged;
         if (DateTime.TryParseExact(DateQuery, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) anchor = d.Date;
         miniMonth = new(anchor.Year, anchor.Month, 1);
         await LoadPrefsAsync();
@@ -290,6 +291,7 @@ public partial class Calendar
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await JS.InvokeVoidAsync("ipop.icons");
+        await SyncPhoneCalendar();
         if (PersonMode && mobilePersonAddress != PersonNik)
         {
             mobilePersonAddress = PersonNik;
@@ -312,6 +314,8 @@ public partial class Calendar
 
     public void Dispose()
     {
+        Phone.Changed -= PhoneChanged;
+        if (phoneChromeHidden) _ = JS.InvokeVoidAsync("ipop.mobile.hideTabbar", false);
         nowTimer?.Dispose();
         loadCts?.Cancel();
         loadCts?.Dispose();
@@ -360,7 +364,9 @@ public partial class Calendar
 
     private static DateTime StartOfWeek(DateTime d) => d.Date.AddDays(-(((int)d.DayOfWeek + 6) % 7));
 
-    private (DateTime From, DateTime To) ViewRange() => view switch
+    private (DateTime From, DateTime To) ViewRange() => Phone.IsPhone && !phoneGrid
+        ? (StartOfWeek(anchor), StartOfWeek(anchor).AddDays(7))
+        : view switch
     {
         "day" => (anchor, anchor.AddDays(1)),
         "week" => (StartOfWeek(anchor), StartOfWeek(anchor).AddDays(7)),
