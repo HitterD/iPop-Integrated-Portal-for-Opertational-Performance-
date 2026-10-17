@@ -1,0 +1,47 @@
+<div class="m-project-properties">
+    <button type="button" data-property="status" disabled="ReadOnly" @onclick='() => property = "status"'><span>Status</span><strong>@Status</strong><i data-lucide="chevron-right"></i></button>
+    <button type="button" data-property="priority" disabled="ReadOnly" @onclick='() => property = "priority"'><span>Priority</span><strong>@(Priority ?? "None")</strong><i data-lucide="chevron-right"></i></button>
+    <button type="button" data-property="due" disabled="ReadOnly" @onclick='() => property = "due"'><span>Due date</span><strong>@(Due?.ToString("dd MMM yyyy") ?? "Not set")</strong><i data-lucide="chevron-right"></i></button>
+    <button type="button" data-property="estimate" disabled="ReadOnly" @onclick='() => property = "estimate"'><span>Estimate</span><strong>@(Estimate is { } hours ? $"{hours} hours" : "Not set")</strong><i data-lucide="chevron-right"></i></button>
+</div>
+<BottomSheet Open="@(property is not null && !ReadOnly)" OpenChanged="value => { if (!value) property = null; }" Title="@SheetTitle">
+    @if (property == "status")
+    {
+        @foreach (var (value, label) in Statuses) { <button type="button" class="m-project-move" data-value="@value" @onclick="() => ChangeStatus(value)">@label</button> }
+    }
+    else if (property == "priority")
+    {
+        @foreach (var value in new[] { "", "low", "medium", "high", "urgent" }) { <button type="button" class="m-project-move" @onclick="() => ChangePriority(value)">@(value == "" ? "None" : value)</button> }
+    }
+    else if (property == "due")
+    {
+        <AppDatePicker TValue="DateTime?" Value="Due" ValueChanged="ChangeDue" AllowClear="true" AriaLabel="Due date" />
+    }
+    else if (property == "estimate")
+    {
+        <label>Estimated hours<input type="number" min="0" step="0.5" aria-label="Estimated hours" value="@Estimate" @onchange="ChangeEstimate" /></label>
+    }
+</BottomSheet>
+@code {
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public string Status { get; set; } = "todo";
+    [Parameter] public string? Priority { get; set; }
+    [Parameter] public DateTime? Due { get; set; }
+    [Parameter] public decimal? Estimate { get; set; }
+    [Parameter] public EventCallback<string> OnStatus { get; set; }
+    [Parameter] public EventCallback<string> OnPriority { get; set; }
+    [Parameter] public EventCallback<DateTime?> OnDue { get; set; }
+    [Parameter] public EventCallback<decimal?> OnEstimate { get; set; }
+    private string? property;
+    private string SheetTitle => property switch { "status" => "Status", "priority" => "Priority", "due" => "Due date", _ => "Estimate" };
+    private static readonly (string Value, string Label)[] Statuses = [("todo", "To do"), ("doing", "In progress"), ("review", "Review"), ("done", "Done")];
+    private async Task ChangeStatus(string value) { property = null; if (!ReadOnly) await OnStatus.InvokeAsync(value); }
+    private async Task ChangePriority(string value) { property = null; if (!ReadOnly) await OnPriority.InvokeAsync(value); }
+    private async Task ChangeDue(DateTime? value) { property = null; if (!ReadOnly) await OnDue.InvokeAsync(value); }
+    private async Task ChangeEstimate(ChangeEventArgs e)
+    {
+        if (ReadOnly) return;
+        if (string.IsNullOrWhiteSpace(e.Value?.ToString())) { property = null; await OnEstimate.InvokeAsync(null); }
+        else if (decimal.TryParse(e.Value?.ToString(), out var value) && value >= 0) { property = null; await OnEstimate.InvokeAsync(value); }
+    }
+}

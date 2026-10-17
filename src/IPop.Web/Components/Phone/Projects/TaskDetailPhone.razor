@@ -1,0 +1,13 @@
+<header class="m-project-task-nav">
+    <button type="button" class="ph-back" aria-label="Back to Board" @onclick="OnBack"><i data-lucide="chevron-left"></i>Board</button>
+    <strong>@Title</strong>
+    <button type="button" class="ph-icon" aria-label="Previous task" disabled="@(!CanPrevious)" @onclick="() => OnStep.InvokeAsync(-1)"><i data-lucide="arrow-up"></i></button>
+    <button type="button" class="ph-icon" aria-label="Next task" disabled="@(!CanNext)" @onclick="() => OnStep.InvokeAsync(1)"><i data-lucide="arrow-down"></i></button>
+</header>
+@code {
+    [Parameter] public string Title { get; set; } = "Task";
+    [Parameter] public bool CanPrevious { get; set; }
+    [Parameter] public bool CanNext { get; set; }
+    [Parameter] public EventCallback OnBack { get; set; }
+    [Parameter] public EventCallback<int> OnStep { get; set; }
+}

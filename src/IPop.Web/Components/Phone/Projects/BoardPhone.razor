@@ -1,0 +1,71 @@
+@using IPop.Application.Projects
+@implements IDisposable
+
+<div class="m-project-board" @ontouchstart="TouchStart" @ontouchend="TouchEnd">
+    <div class="m-project-columns" role="tablist" aria-label="Task status">
+        @foreach (var column in Columns)
+        {
+            <button type="button" role="tab" data-status="@column.Key" aria-selected="@(status == column.Key ? "true" : "false")" @onclick="() => status = column.Key">@column.Label <span>@Tasks.Count(t => t.Status == column.Key)</span></button>
+        }
+    </div>
+    <div role="tabpanel" aria-label="@Columns.First(c => c.Key == status).Label">
+        @foreach (var task in Tasks.Where(t => t.Status == status))
+        {
+            <article class="m-project-task" @key="task.Id">
+                <button type="button" class="m-project-task-open" @onpointerdown="e => StartHold(task, e)" @onpointerup="CancelHold" @onpointercancel="CancelHold" @onpointermove="MoveHold" @onclick="() => Open(task)"><strong>@task.Title</strong>
+                    <span>@task.Priority @if (task.DueDate is { } due) { <span>· @due.ToString("dd MMM")</span> }</span>
+                    @if (task.Assignees.Count > 0) { <span>@string.Join(", ", task.Assignees.Select(a => a.Name))</span> }
+                    @if (task.SubtaskCount > 0) { <span>@task.SubtaskDoneCount / @task.SubtaskCount checklist</span> }
+                </button>
+                @if (!ReadOnly) { <button type="button" class="ph-icon" aria-label="Move task" @onclick="() => moving = task"><i data-lucide="ellipsis"></i></button> }
+            </article>
+        }
+        @if (!Tasks.Any(t => t.Status == status)) { <p class="m-project-empty">No tasks in this column.</p> }
+    </div>
+</div>
+<BottomSheet Open="@(moving is not null)" OpenChanged="value => { if (!value) moving = null; }" Title="Move to">
+    @foreach (var column in Columns)
+    {
+        <button type="button" class="m-project-move" data-move="@column.Key" @onclick="() => Move(column.Key)">@column.Label</button>
+    }
+</BottomSheet>
+
+@code {
+    [Parameter] public IReadOnlyList<ProjectTaskDto> Tasks { get; set; } = [];
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public EventCallback<ProjectTaskDto> OnOpen { get; set; }
+    [Parameter] public EventCallback<(Guid TaskId, string TargetStatus)> OnMove { get; set; }
+    private static readonly (string Key, string Label)[] Columns = [("todo", "To do"), ("doing", "In progress"), ("review", "Review"), ("done", "Done")];
+    private string status = "todo";
+    private ProjectTaskDto? moving;
+    private double touchX, touchY;
+    private CancellationTokenSource? hold;
+    private double holdX, holdY;
+    private bool suppressClick;
+    private async Task StartHold(ProjectTaskDto task, PointerEventArgs e)
+    {
+        CancelHold(); suppressClick = false;
+        if (ReadOnly || e.PointerType == "mouse") return;
+        holdX = e.ClientX; holdY = e.ClientY;
+        hold = new(); var token = hold.Token;
+        try { await Task.Delay(450, token); if (!token.IsCancellationRequested) { moving = task; suppressClick = true; } }
+        catch (OperationCanceledException) { }
+    }
+    private void MoveHold(PointerEventArgs e) { if (Math.Abs(e.ClientX - holdX) > 12 || Math.Abs(e.ClientY - holdY) > 12) CancelHold(); }
+    private void CancelHold() { hold?.Cancel(); hold?.Dispose(); hold = null; }
+    private async Task Open(ProjectTaskDto task) { if (suppressClick) { suppressClick = false; return; } await OnOpen.InvokeAsync(task); }
+    public void Dispose() => CancelHold();
+    private void TouchStart(TouchEventArgs e) { if (e.Touches.Length > 0) { touchX = e.Touches[0].ClientX; touchY = e.Touches[0].ClientY; } }
+    private void TouchEnd(TouchEventArgs e)
+    {
+        if (e.ChangedTouches.Length == 0) return;
+        var dx = e.ChangedTouches[0].ClientX - touchX; var dy = e.ChangedTouches[0].ClientY - touchY;
+        if (Math.Abs(dx) < 60 || Math.Abs(dx) < Math.Abs(dy)) return;
+        status = Columns[Math.Clamp(Array.FindIndex(Columns, c => c.Key == status) + (dx < 0 ? 1 : -1), 0, Columns.Length - 1)].Key;
+    }
+    private async Task Move(string target)
+    {
+        var task = moving; moving = null;
+        if (!ReadOnly && task is not null && task.Status != target) await OnMove.InvokeAsync((task.Id, target));
+    }
+}

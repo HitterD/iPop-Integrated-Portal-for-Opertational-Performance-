@@ -1,0 +1,41 @@
+@using IPop.Application.Projects
+
+<PhoneScreen Title="Projects" Class="m-project-list">
+    <Trailing><button type="button" class="ph-icon" aria-label="New project" @onclick="OnCreate"><i data-lucide="plus"></i></button></Trailing>
+    <Below>
+        <div class="m-project-list-filters">
+            <input type="search" aria-label="Search projects" placeholder="Search projects" value="@Search" @oninput="e => OnSearch.InvokeAsync(e.Value?.ToString() ?? string.Empty)" />
+            <div class="m-project-views"><button type="button" @onclick="() => OnYear.InvokeAsync(null)">All years</button>@foreach (var year in Years) { <button type="button" data-year="@year" aria-pressed="@(Year == year ? "true" : "false")" @onclick="() => OnYear.InvokeAsync(year)">@year</button> }</div>
+        </div>
+    </Below>
+    <ChildContent>
+        @if (!string.IsNullOrEmpty(Error)) { <p role="alert">@Error</p><button type="button" class="m-project-move" @onclick="OnRetry">Retry</button> }
+        @if (Loading) { <p role="status">Loading projects…</p> }
+        else if (Projects.Count == 0) { <p class="m-project-empty">No projects found.</p> }
+        @foreach (var project in Projects)
+        {
+            <button type="button" class="m-project-card" aria-label="@($"Open {project.Name}")" @onclick="() => OnOpen.InvokeAsync(project)">
+                <span class="m-project-card-top"><strong>@project.Name</strong><span>@project.Status</span></span>
+                <span class="m-project-progress" role="progressbar" aria-label="Progress" aria-valuenow="@project.Progress" aria-valuemin="0" aria-valuemax="100"><span style="@($"width:{Math.Clamp(project.Progress, 0, 100)}%")"></span></span>
+                <span>@project.Progress% · @project.TaskCount tasks</span>
+                <span class="m-project-card-top"><span>@project.MemberCount members</span>
+                    @if (project.Deadline is { } due) { <span class="@(due.Date < DateTime.Today ? "is-overdue" : due.Date <= DateTime.Today.AddDays(7) ? "is-soon" : "")">Due @due.ToString("dd MMM")</span> }
+                </span>
+            </button>
+        }
+    </ChildContent>
+</PhoneScreen>
+
+@code {
+    [Parameter] public IReadOnlyList<ProjectListDto> Projects { get; set; } = [];
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public EventCallback OnRetry { get; set; }
+    [Parameter] public string Search { get; set; } = "";
+    [Parameter] public IReadOnlyList<int> Years { get; set; } = [];
+    [Parameter] public int? Year { get; set; }
+    [Parameter] public EventCallback<string> OnSearch { get; set; }
+    [Parameter] public EventCallback<int?> OnYear { get; set; }
+    [Parameter] public EventCallback<ProjectListDto> OnOpen { get; set; }
+    [Parameter] public EventCallback OnCreate { get; set; }
+}

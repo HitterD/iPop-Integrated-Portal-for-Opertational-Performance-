@@ -1,0 +1,20 @@
+<BottomSheet Open="Open" OpenChanged="OpenChanged" Title="New task" Size="SheetSize.Tall" ScaleBack="true">
+    <form class="m-project-new-task" @onsubmit="Submit" @onsubmit:preventDefault="true">
+        <label for="m-project-new-title">Task title</label>
+        <input id="m-project-new-title" aria-label="Task title" placeholder="What needs to be done?" maxlength="500" @bind="title" @bind:event="oninput" disabled="Busy" />
+        <p>Starts in To do. Add people, dates, checklist and files after creating.</p>
+        @if (!string.IsNullOrEmpty(Error)) { <p role="alert">@Error</p> }
+        <button type="submit" class="m-project-move" disabled="@(Busy || string.IsNullOrWhiteSpace(title))">@(Busy ? "Creating…" : "Create task")</button>
+    </form>
+</BottomSheet>
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public EventCallback<string> OnCreate { get; set; }
+    private string title = "";
+    private bool wasOpen;
+    protected override void OnParametersSet() { if (Open && !wasOpen) title = ""; wasOpen = Open; }
+    private Task Submit() => Busy || string.IsNullOrWhiteSpace(title) ? Task.CompletedTask : OnCreate.InvokeAsync(title.Trim());
+}

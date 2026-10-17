@@ -5,6 +5,43 @@
 .proj-more-pop .pm-only, .kc-menu .kc-move-head, .kc-menu .kc-move { display: none; }
 
 @media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .m-project-card { display:flex; flex-direction:column; gap:12px; width:calc(100% - 32px); margin:0 16px 12px; padding:16px; border:1px solid var(--sep); border-radius:18px; background:var(--surface); color:var(--ink); text-align:left; }
+  .m-project-card-top { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .m-project-card strong { font-size:17px; overflow-wrap:anywhere; }
+  .m-project-card span { font-size:13px; }
+  .m-project-progress { height:6px; border-radius:8px; background:var(--fill); overflow:hidden; }
+  .m-project-progress > span { display:block; height:100%; background:var(--accent); }
+  .m-project-card .is-overdue { color:var(--danger, #c13232); }
+  .m-project-card .is-soon { color:var(--warning, #995d00); }
+  .m-project-views, .m-project-columns { display:flex; overflow-x:auto; gap:4px; padding:8px 12px; }
+  .m-project-views button, .m-project-columns button, .m-project-move { min-height:44px; min-width:44px; padding:10px 14px; border:0; border-radius:12px; background:var(--fill); color:var(--ink); font:inherit; }
+  .m-project-columns button { flex:none; }
+  .m-project-columns button[aria-selected="true"], .m-project-views button[aria-pressed="true"] { background:var(--accent); color:white; }
+  .m-project-task { display:flex; align-items:flex-start; margin:10px 16px; border:1px solid var(--sep); background:var(--surface); border-radius:16px; }
+  .m-project-task-open { display:flex; flex:1; min-width:0; flex-direction:column; gap:10px; padding:16px; text-align:left; border:0; background:none; color:var(--ink); font:inherit; overflow-wrap:anywhere; }
+  .m-project-task-open span { font-size:13px; color:var(--ink-3); }
+  .m-project-task .ph-icon { min-width:44px; min-height:44px; }
+  .m-project-move { display:block; width:100%; margin:4px 0; text-align:left; }
+  .m-project-empty { padding:24px 16px; color:var(--ink-3); }
+  .m-project-properties { display:flex; flex-direction:column; border:1px solid var(--sep); border-radius:14px; overflow:hidden; }
+  .m-project-properties button { display:flex; gap:10px; align-items:center; min-height:48px; border:0; border-bottom:1px solid var(--sep); background:var(--surface); color:var(--ink); padding:10px 12px; text-align:left; }
+  .m-project-properties button span { flex:1; }
+  .m-project-properties button strong { font-size:13px; }
+  .m-project-properties button i { width:16px; }
+  .task-drawer:has(.m-project-properties) .td-status-pills { display:none; }
+  .m-project-new-task { display:flex; flex-direction:column; gap:12px; }
+  .m-project-new-task input { min-height:48px; width:100%; box-sizing:border-box; font-size:16px; }
+  .m-project-new-task p { color:var(--ink-3); font-size:14px; }
+  .m-project-task-nav { display:flex; align-items:center; gap:4px; padding:8px 12px; padding-top:calc(8px + var(--m-safe-t)); }
+  .m-project-task-nav strong { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .m-project-task-nav button { min-width:44px; min-height:44px; }
+  .task-drawer:has(.m-project-task-nav) { height:100dvh; }
+  .task-drawer:has(.m-project-task-nav) .task-drawer-inner { border-radius:0; }
+  .task-drawer:has(.m-project-task-nav) .td-pager, .task-drawer:has(.m-project-task-nav) .task-drawer-head > .td-round:last-child { display:none; }
+  .task-drawer:has(.m-project-task-nav) button, .task-drawer:has(.m-project-task-nav) .app-select-trigger { min-height:44px; }
+  .m-project-reports .rep-tiles { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .m-project-reports [data-tile="pace"], .m-project-reports [data-chart="velocity"], .m-project-reports .rep-print { display:none; }
+  .m-project-reports .rep-charts { display:block; }
   /* ================= Frame: list screen <-> workspace screen ================= */
   .proj-workspace {
     flex: 1 1 auto; min-height: 0; height: auto;

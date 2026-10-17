@@ -107,7 +107,12 @@
                 <button type="button" class="rep-btn sm" disabled="@ReadOnly" @onclick="OpenNewSheet"><i data-lucide="flag"></i>New milestone</button>
             }
         </div>
-        @if (!milestonesLoaded)
+        @if (PhoneLayout && milestonesFailed)
+        {
+            <div role="alert">Couldn't load milestones. Check your connection.</div>
+            <button type="button" class="rep-btn" aria-label="Retry milestones" @onclick="LoadMilestonesAsync">Retry</button>
+        }
+        else if (!milestonesLoaded)
         {
             <div class="rep-ms-loading" aria-busy="true"><i></i><i></i><i></i></div>
         }
@@ -410,6 +415,8 @@
 }
 
 @code {
+    [Parameter] public bool PhoneLayout { get; set; }
+    private bool milestonesFailed;
     [Parameter] public bool ReadOnly { get; set; }
     [Parameter] public ProjectDto? Project { get; set; }
     [Parameter] public IReadOnlyList<ProjectTaskDto> AllTasks { get; set; } = [];
@@ -505,6 +512,7 @@
     {
         var pid = Project?.Id;
         milestonesLoaded = false;
+        milestonesFailed = false;
         serverMilestones = [];
         Recompute();
         if (pid is null) { milestonesLoaded = true; return; }
@@ -513,8 +521,9 @@
             var rows = await Auth.GetAsync<List<MilestoneDto>>($"/api/projects/{pid}/milestones?localToday={Today:yyyy-MM-dd}");
             if (pid != Project?.Id) return;
             serverMilestones = rows ?? [];
+            milestonesFailed = rows is null;
         }
-        catch { serverMilestones = []; }
+        catch { serverMilestones = []; milestonesFailed = true; }
         milestonesLoaded = true;
         Recompute();
     }

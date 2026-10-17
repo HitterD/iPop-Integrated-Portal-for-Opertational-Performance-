@@ -14,9 +14,70 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject IPop.Web.Services.PageCache Cache
+@inject PhoneState Phone
+@using IPop.Web.Components.Phone.Projects
 
 <PageTitle>Project Management - iPop</PageTitle>
 
+@if (Phone.IsPhone)
+{
+    @if (!mDetail)
+    {
+        <ProjectListPhone Projects="filteredProjects" Loading="loading" OnOpen="OpenPhoneProject" OnCreate="() => showCreateModal = true" Search="@searchProjectQuery" OnSearch="HandleProjectSearch" Years="availableYears" Year="selectedYear" OnYear="SetYearFilter" Error="@phoneProjectError" OnRetry="ReloadProjects" />
+    }
+    else
+    {
+        <PhoneScreen Title="@(selectedProject?.Name ?? "Project")" BackLabel="Projects" OnBack="CloseMobileDetail" LargeTitle="false" Class="m-project-workspace">
+            <Trailing><button type="button" class="ph-icon" aria-label="Project menu" @onclick="() => phoneMenu = true"><i data-lucide="ellipsis"></i></button></Trailing>
+            <ChildContent>
+                <div class="m-project-views">
+                    <button type="button" aria-pressed="@(tab == 0 ? "true" : "false")" @onclick="() => SwitchTab(0)">Board</button>
+                    <button type="button" aria-pressed="@(tab == 1 ? "true" : "false")" @onclick="() => SwitchTab(1)">List</button>
+                    <button type="button" aria-pressed="@(tab == 5 ? "true" : "false")" @onclick="() => SwitchTab(5)">Reports</button>
+                </div>
+                @if (selectedProject is null || kanban is null)
+                {
+                    <p role="alert">Project data is unavailable.</p><button type="button" class="m-project-move" @onclick="ReloadCurrentView">Retry</button>
+                }
+                else if (tab == 5)
+                {
+                    <div class="m-project-reports"><ProjectReportsPanel PhoneLayout="true" ReadOnly="@(!CanWriteTasks)" Project="selectedProject" AllTasks="AllCurrentTasks" Members="projectMembers" OnViewOverdue="ViewOverdueFromReports" /></div>
+                }
+                else if (tab == 1)
+                {
+                    @foreach (var task in AllCurrentTasks.Where(MatchesTaskFilters))
+                    {
+                        <ListRow Title="@task.Title" Subtitle="@($"{task.Status} · {task.Priority}")" OnClick="() => OpenTaskEditor(task)" Chevron="true" />
+                    }
+                }
+                else
+                {
+                    <BoardPhone Tasks="AllCurrentTasks.Where(MatchesTaskFilters).ToList()" ReadOnly="@(!CanWriteTasks)" OnOpen="OpenTaskEditor" OnMove="HandleTaskMove" />
+                }
+            </ChildContent>
+        </PhoneScreen>
+        @if (CanWriteTasks) { <Fab Icon="plus" Label="New task" OnClick="() => phoneNewTask = true" /> }
+        <NewTaskSheet Open="phoneNewTask" OpenChanged="v => phoneNewTask = v" Busy="phoneCreatingTask" Error="@phoneTaskError" OnCreate="CreatePhoneTask" />
+        <BottomSheet Open="phoneMenu" OpenChanged="v => phoneMenu = v" Title="Project">
+            @if (selectedProject is not null)
+            {
+                <ProjectHeader Project="selectedProject" Members="projectMembers" OnOpenTeamModal="() => showTeamModal = true" OnOpenEditModal="() => showEditModal = true" OnOpenChatRoom="OpenProjectRoom" OnExport="ExportSelected" OnStatusChanged="HandleProjectStatusChange" OnCopyLink="CopyProjectLink" OnDeleteProject="HandleDeleteProject" OnMarkCompleted="HandleMarkProjectCompleted" CanWrite="CanWriteTasks" OnNewTask="() => { phoneMenu = false; phoneNewTask = true; }" />
+            }
+            <label class="m-project-filter"><input type="search" aria-label="Search tasks" placeholder="Search tasks" @bind="taskSearchQuery" @bind:event="oninput" /></label>
+            <label class="m-project-filter"><input type="checkbox" @bind="myTasksOnly" />My tasks</label>
+            <label class="m-project-filter"><input type="checkbox" @bind="overdueOnly" />Overdue only</label>
+            <AppSelect Value="@priorityFilter" ValueChanged="v => priorityFilter = v ?? string.Empty" Options="PriorityFilterOptions" Label="Priority" Block="true" />
+            @if (projectGroups.Count > 1) { <AppSelect Value="@(selectedGroupId?.ToString() ?? "")" ValueChanged="ChangeGroupFilter" Options="GroupFilterOptions" Label="Group" Block="true" /> }
+            <ProjectSavedViewsBar Views="savedViews" ActiveViewId="ActiveSavedViewId" CanSave="FiltersDifferFromDefault" CanManage="CanManageMembers" OnApply="ApplySavedView" OnSave="SaveCurrentView" OnRename="RenameSavedView" OnShare="ToggleShareSavedView" OnDelete="DeleteSavedView" />
+            <button type="button" class="m-project-move" @onclick="() => { phoneMenu = false; showTeamModal = true; }">People</button>
+            <button type="button" class="m-project-move" @onclick="OpenProjectRoom">Project chat</button>
+            @if (CanManageMembers) { <button type="button" class="m-project-move" @onclick="() => { phoneMenu = false; showEditModal = true; }">Project settings</button> }
+            <p>Open on a computer for Table, Timeline, Calendar, Portfolio, Workload and Executive views.</p>
+        </BottomSheet>
+    }
+}
+else
+{
 <div class="proj-workspace @(mDetail ? "m-detail" : "")">
     @* Left Project Navigator Sidebar *@
     <ProjectSidebar
@@ -333,6 +394,7 @@
         }
     </main>
 </div>
+}
 
 @* Modals & Drawers *@
 @if (showEvidenceModal && evidenceTask is not null)
@@ -357,7 +419,7 @@
 
 @if (showTaskEditor && editingTask is not null)
 {
-    <ProjectTaskDrawer @ref="taskDrawer"
+    <ProjectTaskDrawer @ref="taskDrawer" PhoneLayout="Phone.IsPhone"
         ReadOnly="@(!CanWriteTasks)"
         OnAutoSave="HandleAutoSaveTask"
         TakeFocusTitle="focusNewTaskTitle"
@@ -596,6 +658,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Phone.Changed += PhoneChanged;
         try
         {
             var me = await Auth.GetAsync<DirectoryEmployeeDto>("/api/directory/me");
@@ -872,13 +935,15 @@
         await JS.InvokeVoidAsync("ipop.icons");
     }
 
+    private string? phoneProjectError;
     private async Task<List<ProjectListDto>> GetAllProjects()
     {
+        phoneProjectError = null;
         var list = new List<ProjectListDto>();
         for (var page = 1; page <= 100; page++)
         {
             var result = await Auth.GetAsync<PagedResult<ProjectListDto>>($"/api/projects?page={page}&pageSize=100");
-            if (result is null) break;
+            if (result is null) { phoneProjectError = "Couldn't load projects. Check your connection and retry."; break; }
             list.AddRange(result.Items);
             if (list.Count >= result.TotalCount || result.Items.Count == 0) break;
         }
@@ -2367,6 +2432,32 @@
     // `m-detail` only changes layout inside the mobile media query; on desktop it is inert and
     // ipop.mobile.pushDetail is a no-op, so no history entries are added there.
     private bool mDetail;
+    private bool phoneMenu;
+    private bool phoneNewTask;
+    private bool phoneCreatingTask;
+    private string? phoneTaskError;
+    private async Task CreatePhoneTask(string title)
+    {
+        if (!CanWriteTasks || selectedProjectId == Guid.Empty || phoneCreatingTask) return;
+        phoneCreatingTask = true; phoneTaskError = null;
+        try
+        {
+            var req = new CreateTaskRequest(selectedProjectId, null, title, null, "todo", null, null, null, null, null, null);
+            var response = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{selectedProjectId}/tasks", req);
+            if (!response.IsSuccessStatusCode) { phoneTaskError = "Couldn't create the task. Please retry."; return; }
+            var created = await response.Content.ReadFromJsonAsync<ProjectTaskDto>();
+            phoneNewTask = false;
+            await ReloadCurrentView();
+            if (created is not null) await OpenTaskEditor(created);
+        }
+        catch { phoneTaskError = "Couldn't create the task. Check your connection and retry."; }
+        finally { phoneCreatingTask = false; }
+    }
+    private async Task OpenPhoneProject(ProjectListDto project)
+    {
+        await SelectProjectFromList(project);
+        await SwitchTab(0);
+    }
     private DotNetObjectReference<Projects>? _mRef;
 
     private async Task SelectProjectFromList(ProjectListDto p)
@@ -2400,10 +2491,12 @@
         StateHasChanged();
     }
 
+    private void PhoneChanged() => _ = InvokeAsync(StateHasChanged);
     private IDisposable? _projectSub;
     public void Dispose()
     {
         _disposed = true;
+        Phone.Changed -= PhoneChanged;
         try { _ = JS.InvokeVoidAsync("ipop.mobile.clearDetail"); } catch { }
         _mRef?.Dispose();
         _projectSub?.Dispose();

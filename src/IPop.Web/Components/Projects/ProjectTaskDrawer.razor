@@ -1,6 +1,7 @@
 @using IPop.Application.Projects
 @using Microsoft.AspNetCore.Components.Forms
 @inject IJSRuntime JS
+@using IPop.Web.Components.Phone.Projects
 @inject NavigationManager Nav
 @inject IPop.Web.Services.AuthState Auth
 @inject IPop.Web.Services.ConfirmService Confirm
@@ -13,6 +14,10 @@
     <div class="task-drawer-backdrop" @onclick="CloseDrawer"></div>
     <div class="task-drawer v6-task-drawer" data-attach-scope="@(ReadOnly ? null : "")" role="dialog" aria-modal="true" aria-label="Task Detail">
         <div class="task-drawer-inner">
+            @if (PhoneLayout)
+            {
+                <TaskDetailPhone Title="@ProjectName" OnBack="CloseDrawer" CanPrevious="@(NavIndex > 0)" CanNext="@(NavIndex >= 0 && NavIndex < NavTasks.Count - 1)" OnStep="GoRelative" />
+            }
             <div class="task-drawer-head">
                 <span class="td-project-dot" style="background:@(!string.IsNullOrWhiteSpace(ProjectColor) ? ProjectColor : ProjectUiHelpers.GetAvatarBg(ProjectName))"></span>
                 <span class="td-project-name" title="@ProjectName">@ProjectName</span>
@@ -70,6 +75,10 @@
                     @if (ReadOnly) { <div class="td-readonly-note"><i data-lucide="eye"></i>You can view this task. Only project members can change it.</div> }
                     <input disabled="@ReadOnly" @ref="titleRef" class="td-title" aria-label="Task title" @bind="editTitle" @bind:after="SaveSoon" placeholder="What needs to be done?" />
                     @* One click moves the task through the page's move flow (evidence modal + dependency guard). *@
+                    @if (PhoneLayout)
+                    {
+                        <TaskPropertiesPhone ReadOnly="ReadOnly" Status="@Task.Status" Priority="@editPriority" Due="editDue" Estimate="editEstH" OnStatus="ChangeStatus" OnPriority="SetPriority" OnDue="SetDue" OnEstimate="SetPhoneEstimate" />
+                    }
                     <div class="td-status-pills td-status-seg" role="radiogroup" aria-label="Status">
                         @foreach (var (key, label) in StatusOptions)
                         {
@@ -392,6 +401,7 @@
                                          OnPicked="OnNasPicked" />
 
 @code {
+    [Parameter] public bool PhoneLayout { get; set; }
     [Parameter] public bool ReadOnly { get; set; }
     [Parameter] public ProjectTaskDto? Task { get; set; }
     [Parameter] public string ProjectName { get; set; } = "Project";
@@ -1005,6 +1015,7 @@
         return d.AddDays(add == 0 ? 7 : add);
     }
 
+    private void SetPhoneEstimate(decimal? value) { editEstH = value; SaveSoon(); }
     private void SetDue(DateTime? v) { editDue = v; SaveSoon(); }
     private void SetStart(DateTime? v) { editStartDate = v; SaveSoon(); }
     private void SetPriority(string key) { editPriority = key == "" ? null : key; SaveSoon(); }

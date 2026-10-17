@@ -20,9 +20,11 @@ public class ProjectReportsPanelTests
     private sealed class Api(List<MilestoneDto> milestones) : HttpMessageHandler
     {
         public List<string> Calls { get; } = [];
+        public bool FailLoad { get; set; }
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             lock (Calls) Calls.Add($"{request.Method} {request.RequestUri!.AbsolutePath}");
+            if (FailLoad) return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
             if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath.EndsWith("/milestones"))
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(milestones) });
             if (request.Method == HttpMethod.Post && request.RequestUri!.AbsolutePath.EndsWith("/achieve"))
@@ -47,6 +49,19 @@ public class ProjectReportsPanelTests
         ctx.Services.AddSingleton(toasts);
         ctx.Services.AddScoped<OverlayStack>();
         return ctx;
+    }
+
+    [Fact]
+    public void Phone_milestone_failure_shows_retry_not_fictional_empty_state()
+    {
+        var api = new Api([]) { FailLoad = true };
+        using var ctx = NewContext(api, out _);
+        var cut = ctx.Render<ProjectReportsPanel>(p => p.Add(x => x.Project, Project()).Add(x => x.PhoneLayout, true));
+        cut.WaitForAssertion(() => Assert.Contains("Couldn't load milestones", cut.Find("[role='alert']").TextContent));
+        Assert.Empty(cut.FindAll(".rep-ms-card .rep-empty"));
+        api.FailLoad = false;
+        cut.Find("button[aria-label='Retry milestones']").Click();
+        cut.WaitForAssertion(() => Assert.Contains("No milestones yet", cut.Markup));
     }
 
     private static readonly Guid ProjectId = Guid.NewGuid();
