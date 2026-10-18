@@ -6,7 +6,7 @@ public class UserUiPref
 {
     public Guid Id { get; set; }
     public Guid UserId { get; set; }
-    /// Whitelisted key: "tabs", "notif-card", "dash-order".
+    /// Whitelisted key: "tabs", "notif-card", "dash-order", "notifier".
     public required string Key { get; set; }
     public required string Json { get; set; }
     public DateTime UpdatedAt { get; set; }

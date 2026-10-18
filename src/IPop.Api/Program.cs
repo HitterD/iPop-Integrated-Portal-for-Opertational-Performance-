@@ -489,6 +489,7 @@ app.MapHub<IPop.Api.Notes.NotesHub>("/hubs/notes").RequireAuthorization();
 app.MapHub<IPop.Api.Notifications.NotificationHub>("/hubs/notification").RequireAuthorization();
 app.MapMe();
 app.MapUiPrefs();
+app.MapNotifier();
 app.MapProfile();
 app.MapHub<AppHub>("/hubs/app").RequireAuthorization();
 

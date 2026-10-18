@@ -11,10 +11,11 @@ namespace IPop.Api.Endpoints;
 ///   tabs        — the four pinned phone tabs (validated against PhoneTabs; default when unset/invalid)
 ///   notif-card  — "dismissed" once the phone notification card was answered with "Not now"
 ///   dash-order  — dashboard widget order (string array)
+///   notifier    — iPop Notifier desktop settings (IPop.Application.Notifier.NotifierSettings, normalised on save)
 public static class UiPrefsEndpoints
 {
     public const int MaxJsonBytes = 2048;
-    private static readonly string[] Keys = ["tabs", "notif-card", "dash-order"];
+    private static readonly string[] Keys = ["tabs", "notif-card", "dash-order", "notifier"];
 
     public static IEndpointRouteBuilder MapUiPrefs(this IEndpointRouteBuilder app)
     {
@@ -44,6 +45,7 @@ public static class UiPrefsEndpoints
             .Select(p => p.Json).FirstOrDefaultAsync(ct);
         if (key == "tabs")
             return (200, JsonSerializer.Serialize(PhoneTabs.Resolve(ReadStrings(json), isAdmin)));
+        if (key == "notifier") return (200, IPop.Application.Notifier.NotifierSettings.Parse(json).ToJson());
         return json is null ? (204, null) : (200, json);
     }
 
@@ -58,9 +60,12 @@ public static class UiPrefsEndpoints
             "tabs" => PhoneTabs.IsValid(ReadStrings(json), isAdmin),
             "notif-card" => value.ValueKind == JsonValueKind.String && value.GetString() is "dismissed" or "enabled",
             "dash-order" => ReadStrings(json) is { Count: <= 40 } list && list.All(s => s.Length is > 0 and <= 32),
+            "notifier" => value.ValueKind == JsonValueKind.Object,
             _ => false,
         };
         if (!ok) return 400;
+        // Store only the normalised form: unknown fields and out-of-range values never reach the database.
+        if (key == "notifier") json = IPop.Application.Notifier.NotifierSettings.Parse(json).ToJson();
         var row = await db.UserUiPrefs.FirstOrDefaultAsync(p => p.UserId == userId && p.Key == key, ct);
         if (row is null)
         {

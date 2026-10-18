@@ -36,6 +36,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<UserFavoriteContact> UserFavoriteContacts => Set<UserFavoriteContact>();
     public DbSet<UserTutorialState> UserTutorialStates => Set<UserTutorialState>();
     public DbSet<UserUiPref> UserUiPrefs => Set<UserUiPref>();
+    public DbSet<NotifierDevice> NotifierDevices => Set<NotifierDevice>();
 
     // Chat entities
     public DbSet<ChatRoom> ChatRooms => Set<ChatRoom>();
@@ -280,6 +281,19 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasIndex(x => new { x.UserId, x.ModuleKey }).IsUnique();
             e.Property(x => x.ModuleKey).HasMaxLength(32);
             e.Property(x => x.Status).HasMaxLength(16);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NotifierDevice>(e =>
+        {
+            e.HasIndex(x => new { x.UserId, x.DeviceKey }).IsUnique();
+            e.HasIndex(x => x.LastSeenAt);
+            e.Property(x => x.DeviceKey).HasMaxLength(64);
+            e.Property(x => x.MachineName).HasMaxLength(64);
+            e.Property(x => x.WindowsUser).HasMaxLength(128);
+            e.Property(x => x.OsVersion).HasMaxLength(128);
+            e.Property(x => x.AppVersion).HasMaxLength(32);
+            e.Property(x => x.LocalIps).HasMaxLength(256);
+            e.Property(x => x.RemoteIp).HasMaxLength(64);
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<UserUiPref>(e =>
