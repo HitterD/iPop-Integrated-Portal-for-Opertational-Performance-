@@ -11,12 +11,13 @@ namespace IPop.Notifier.Windows;
 public static class WebHost
 {
     public const string Origin = "https://notifier.ipop/";
+    public const string HttpOrigin = "http://notifier.ipop/";
     public static string MediaCache => Path.Combine(SessionStore.Folder, "media-cache");
     private static Task<CoreWebView2Environment>? env;
 
     public static Task<CoreWebView2Environment> EnvironmentAsync() => env ??= CoreWebView2Environment.CreateAsync(null,
         Path.Combine(SessionStore.Folder, "WebView2"),
-        new CoreWebView2EnvironmentOptions("--disable-features=msSmartScreenProtection --renderer-process-limit=3 --auto-select-desktop-capture-source=\"Entire screen\"" + QaDebugPort()));
+        new CoreWebView2EnvironmentOptions("--disable-features=msSmartScreenProtection --renderer-process-limit=3 --auto-select-desktop-capture-source=\"Entire screen\" --unsafely-treat-insecure-origin-as-secure=http://notifier.ipop,http://media.notifier.ipop" + QaDebugPort()));
 
     private static string QaDebugPort()
     {
@@ -58,7 +59,7 @@ public static class WebHost
         // Links never navigate the window: anything that isn't our own page opens in the browser.
         core.NavigationStarting += (_, e) =>
         {
-            if (e.Uri.StartsWith(Origin, StringComparison.OrdinalIgnoreCase)) return;
+            if (e.Uri.StartsWith(Origin, StringComparison.OrdinalIgnoreCase) || e.Uri.StartsWith(HttpOrigin, StringComparison.OrdinalIgnoreCase)) return;
             e.Cancel = true;
             Integration.OpenUrl(e.Uri);
         };
@@ -74,7 +75,10 @@ public static class WebHost
             var type = msg?["type"]?.GetValue<string>();
             if (type is not null) onMessage(type, msg);
         };
-        core.Navigate(Origin + "Ui/" + page);
+        // Remote pages talk to LiveKit: a plain ws:// LiveKit on the LAN is only allowed from an http page (mixed content),
+        // so they load over http on the same virtual host, which the environment flags as a secure context (screen
+        // capture needs one). Only our own virtual hosts get that treatment; nothing from the network.
+        core.Navigate((page.StartsWith("remote-") ? HttpOrigin : Origin) + "Ui/" + page);
     }
 
     public static void Post(WebView2 view, object message)

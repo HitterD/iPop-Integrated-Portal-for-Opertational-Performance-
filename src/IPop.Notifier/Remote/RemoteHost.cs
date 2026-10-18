@@ -87,6 +87,7 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
     /// Messages from the hidden LiveKit page.
     internal void FromPage(string type, JsonNode? m)
     {
+        QaLog("host page: " + type + " " + (m?.ToJsonString() is { } j ? j[..Math.Min(300, j.Length)] : ""));
         switch (type)
         {
             case "failed":
@@ -226,6 +227,13 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
         help?.Close(); help = null;
         frame?.Close(); frame = null;
         ActiveChanged?.Invoke(false);
+    }
+
+    [System.Diagnostics.Conditional("DEBUG")]
+    private static void QaLog(string line)
+    {
+        if (Environment.GetEnvironmentVariable("IPOP_NOTIFIER_QA_DIR") is not { Length: > 0 }) return;
+        try { File.AppendAllText(Path.Combine(SessionStore.Folder, "qa-events.log"), $"{DateTime.Now:HH:mm:ss} {line}{Environment.NewLine}"); } catch { }
     }
 
     private static void Post(Action a)

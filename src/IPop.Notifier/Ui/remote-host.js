@@ -1,12 +1,14 @@
 (function () {
   const R = window.remote, { post } = window.app;
+  window.addEventListener('error', e => post({ type: 'log', text: 'error: ' + (e.message || e) }));
+  window.addEventListener('unhandledrejection', e => post({ type: 'log', text: 'rejection: ' + (e.reason && e.reason.message || e.reason) }));
   let stats = null;
 
   app.on('join', async m => {
     try {
       const s = await (await R.join(m.info, m.quality)) && R.screenPub?.track?.mediaStreamTrack?.getSettings();
       post({ type: 'joined', w: s?.width, h: s?.height, fps: s?.frameRate });
-    } catch (e) { post({ type: 'failed', message: String(e && e.message || e) }); }
+    } catch (e) { post({ type: 'failed', message: String(e && (e.name + ': ' + e.message) || e) }); }
   });
   app.on('quality', async m => { try { await R.publishScreen(m.preset); } catch { } });
   app.on('leave', async () => { await R.leave(); post({ type: 'left' }); });

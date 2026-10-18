@@ -23,6 +23,7 @@ public static partial class ApiBridge
         ("GET", R("^api/notifications/v1/inbox\\?[a-zA-Z0-9=&]*$")),
         ("GET", R("^api/notifications/v1/unread-count$")),
         ("GET", R("^api/notifier/devices(\\?q=[^&]{0,80})?$")),
+        ("GET", R("^api/notifier/me$")),
         ("GET", R($"^api/notifier/remote/sessions/{G}/join$")),
         ("GET", R("^api/notifier/remote/media$")),
         ("GET", R($"^api/notifier/remote/log(\\?(deviceId={G}|scope=mine))?$")),

@@ -216,7 +216,7 @@ public sealed class NotifierApp : ApplicationContext
         var count = unread;
         connected = feed?.Connected ?? connected;
         var status = remoteActive ? "ICT is connected" : !api.IsSignedIn ? "signed out" : !connected ? "connecting…" : s.Popups != "on" ? "popups paused" : count > 0 ? $"{count} unread" : "up to date";
-        var text = "iPop Notifier — " + status;
+        var text = "iPop Notifier" + (AppInfo.Flavour.Length > 0 ? " (" + AppInfo.Flavour + ")" : "") + " — " + status;
         tray.Text = text.Length > 63 ? text[..63] : text;
         var old = tray.Icon;
         tray.Icon = remoteActive ? AppIcon.Remote : AppIcon.Tray(count > 0);
@@ -324,6 +324,7 @@ public sealed class NotifierApp : ApplicationContext
                 break;
             case "inbox": ShowInbox(); break;
             case "settings": ShowSettings(); break;
+            case "devices": ShowDevices(); break;
         }
     }
 
@@ -345,7 +346,7 @@ public sealed class NotifierApp : ApplicationContext
     {
         try
         {
-            var mgr = new UpdateManager(new SimpleWebSource(new Uri(api.Server, "download/notifier/").ToString()));
+            var mgr = new UpdateManager(new SimpleWebSource(AppInfo.UpdateFeed ?? new Uri(api.Server, "download/notifier/").ToString()));
             if (!mgr.IsInstalled)
             {
                 if (manual) Post(() => tray.ShowBalloonTip(3000, "iPop Notifier", "Updates work in the installed app only.", ToolTipIcon.Info));

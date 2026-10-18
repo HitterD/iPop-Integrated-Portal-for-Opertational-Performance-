@@ -14,7 +14,7 @@ public sealed class HelpWindow : BridgedWindow
     private Size full;
 
     public HelpWindow(IPopClient api, RemoteHost host, bool asking)
-        : base("remote-help.html", asking ? new Size(420, 300) : new Size(900, 600), api, noActivate: true, showInTaskbar: !asking)
+        : base("remote-help.html", asking ? new Size(440, 380) : new Size(900, 600), api, noActivate: true, showInTaskbar: !asking)
     {
         this.host = host;
         this.asking = asking;
@@ -44,7 +44,7 @@ public sealed class HelpWindow : BridgedWindow
             var name = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes))[..16] + (mime.StartsWith("video") ? ".mp4" : ".img");
             var path = Path.Combine(dir, name);
             if (!File.Exists(path)) File.WriteAllBytes(path, bytes);
-            return Task.FromResult<string?>("https://media.notifier.ipop/" + name);
+            return Task.FromResult<string?>("http://media.notifier.ipop/" + name);
         }
         catch { return Task.FromResult<string?>(null); }
     }
@@ -110,7 +110,8 @@ public sealed class ViewerWindow : BridgedWindow
 
     private void OnClipboard()
     {
-        if (!clipOn || !ContainsFocus) return; // only what the helper copies while working in this window
+        // Whatever the helper copies on their own PC goes over, so they can paste it into the user's screen.
+        if (!clipOn) return;
         var r = Clip.Read();
         if (r is not { } v) return;
         if (v.FileBytes is not null) Send(new { type = "clipFile", name = v.FileName, mime = "application/octet-stream", data = Convert.ToBase64String(v.FileBytes) });

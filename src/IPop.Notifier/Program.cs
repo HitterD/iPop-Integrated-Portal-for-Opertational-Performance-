@@ -23,7 +23,13 @@ static class Program
 
         // One app per Windows user: a second start (autostart + click, or an ipop-notifier:// link) hands its
         // arguments to the running one and exits.
-        using var single = new SingleInstance("iPopNotifier-" + Environment.UserName);
+        var instance = "iPopNotifier" + AppInfo.Flavour + "-" + Environment.UserName;
+#if DEBUG
+        // QA runs two copies side by side (helper + host): each throwaway profile is its own instance.
+        if (Environment.GetEnvironmentVariable("IPOP_NOTIFIER_QA_DIR") is { Length: > 0 } qaDir)
+            instance += "-" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(qaDir)))[..8];
+#endif
+        using var single = new SingleInstance(instance);
         if (!single.IsFirst)
         {
             single.SendToFirst(args.Length > 0 ? string.Join(' ', args) : "show");

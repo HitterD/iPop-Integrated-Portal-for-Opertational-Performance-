@@ -14,12 +14,13 @@
     <RootNamespace>IPop.Notifier</RootNamespace>
     <ApplicationIcon>Assets\ipop.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Product>iPop Notifier</Product>
     <AssemblyTitle>iPop Notifier</AssemblyTitle>
     <Company>PT Santos Jaya Abadi</Company>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
+    <DefineConstants Condition="'$(Trial)' == 'true'">$(DefineConstants);TRIAL</DefineConstants>
     <!-- Keep the install light: English only, no symbol helper; the per-user install is then ~70 MB on disk
          and the Velopack package compresses to ~35 MB (updates ship as small deltas). -->
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>

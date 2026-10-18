@@ -18,7 +18,7 @@ public sealed class SessionStore
         Environment.GetEnvironmentVariable("IPOP_NOTIFIER_QA_DIR") is { Length: > 0 } qa ? qa :
 #endif
         // Not %LOCALAPPDATA%\iPopNotifier: that is the Velopack install folder, replaced on update and removed on uninstall.
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SantosJayaAbadi", "iPopNotifier");
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SantosJayaAbadi", "iPopNotifier" + AppInfo.Flavour);
     private static string FilePath => Path.Combine(Folder, "session.bin");
     private static string KeyPath => Path.Combine(Folder, "device.key");
 

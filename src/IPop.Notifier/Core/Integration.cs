@@ -8,7 +8,7 @@ namespace IPop.Notifier.Core;
 public static class Integration
 {
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string RunName = "iPop Notifier";
+    private static readonly string RunName = "iPop Notifier" + (AppInfo.Flavour.Length > 0 ? " " + AppInfo.Flavour : "");
 
     private static string ExePath => Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "iPopNotifier.exe");
 
@@ -35,6 +35,7 @@ public static class Integration
     public static void RegisterUrlScheme()
     {
         if (QaRun) return;
+        if (AppInfo.Flavour.Length > 0) return;
         foreach (var scheme in new[] { AppInfo.UrlScheme, AppInfo.FilesScheme })
         {
             try
