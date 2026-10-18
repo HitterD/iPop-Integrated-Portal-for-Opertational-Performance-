@@ -12,7 +12,13 @@ static class Program
         // Velopack first: install/update/uninstall hooks run and exit here (per-user install, no admin).
         VelopackApp.Build()
             .OnAfterInstallFastCallback(_ => { Integration.RegisterUrlScheme(); Integration.SetStartWithWindows(true); })
-            .OnBeforeUninstallFastCallback(_ => { Integration.UnregisterUrlScheme(); Integration.SetStartWithWindows(false); })
+            .OnBeforeUninstallFastCallback(_ =>
+            {
+                Integration.UnregisterUrlScheme();
+                Integration.SetStartWithWindows(false);
+                // Signed-out on uninstall: the encrypted session, settings cache and WebView2 cache go too.
+                try { Directory.Delete(SessionStore.Folder, recursive: true); } catch { }
+            })
             .Run();
 
         // One app per Windows user: a second start (autostart + click, or an ipop-notifier:// link) hands its

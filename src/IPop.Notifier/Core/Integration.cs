@@ -35,22 +35,28 @@ public static class Integration
     public static void RegisterUrlScheme()
     {
         if (QaRun) return;
-        try
+        foreach (var scheme in new[] { AppInfo.UrlScheme, AppInfo.FilesScheme })
         {
-            using var key = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{AppInfo.UrlScheme}");
-            key.SetValue("", "URL:iPop Notifier");
-            key.SetValue("URL Protocol", "");
-            using var icon = key.CreateSubKey("DefaultIcon");
-            icon.SetValue("", $"\"{ExePath}\",0");
-            using var cmd = key.CreateSubKey(@"shell\open\command");
-            cmd.SetValue("", $"\"{ExePath}\" \"%1\"");
+            try
+            {
+                using var key = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{scheme}");
+                key.SetValue("", "URL:iPop Notifier");
+                key.SetValue("URL Protocol", "");
+                using var icon = key.CreateSubKey("DefaultIcon");
+                icon.SetValue("", $"\"{ExePath}\",0");
+                using var cmd = key.CreateSubKey(@"shell\open\command");
+                cmd.SetValue("", $"\"{ExePath}\" \"%1\"");
+            }
+            catch { }
         }
-        catch { }
     }
 
     public static void UnregisterUrlScheme()
     {
-        try { Registry.CurrentUser.DeleteSubKeyTree($@"Software\Classes\{AppInfo.UrlScheme}", false); } catch { }
+        foreach (var scheme in new[] { AppInfo.UrlScheme, AppInfo.FilesScheme })
+        {
+            try { Registry.CurrentUser.DeleteSubKeyTree($@"Software\Classes\{scheme}", false); } catch { }
+        }
     }
 
     /// The five company Synology NAS (same keys as the server's Synology:Servers). Nothing else may be opened.

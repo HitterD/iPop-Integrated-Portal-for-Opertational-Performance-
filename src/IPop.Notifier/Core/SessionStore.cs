@@ -5,7 +5,7 @@ using System.Text.Json;
 namespace IPop.Notifier.Core;
 
 /// The signed-in session on this PC: server, refresh token and a random device key. Encrypted with Windows DPAPI
-/// for the current Windows user only (%LOCALAPPDATA%\iPopNotifier\session.bin), so another account on the same PC,
+/// for the current Windows user only (%LOCALAPPDATA%\SantosJayaAbadi\iPopNotifier\session.bin), so another account on the same PC,
 /// or a copied file, can't use it. The refresh token slides 90 days on every use (iPop AuthWorkflow).
 public sealed class SessionStore
 {
@@ -17,7 +17,8 @@ public sealed class SessionStore
         // QA only (Debug builds): a throwaway profile so a test run never touches the real signed-in session.
         Environment.GetEnvironmentVariable("IPOP_NOTIFIER_QA_DIR") is { Length: > 0 } qa ? qa :
 #endif
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "iPopNotifier");
+        // Not %LOCALAPPDATA%\iPopNotifier: that is the Velopack install folder, replaced on update and removed on uninstall.
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SantosJayaAbadi", "iPopNotifier");
     private static string FilePath => Path.Combine(Folder, "session.bin");
     private static string KeyPath => Path.Combine(Folder, "device.key");
 

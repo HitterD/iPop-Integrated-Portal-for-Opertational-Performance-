@@ -97,3 +97,23 @@ public class AssetLinksTests
         Assert.Equal(HttpStatusCode.NotFound, (await http.GetAsync("/download/ipop.apk")).StatusCode);
     }
 }
+
+/// /download/notifier/{file}: only the Velopack feed and the setup, never another file name or a path.
+public class NotifierDownloadTests
+{
+    [Theory]
+    [InlineData("releases.win.json", true)]
+    [InlineData("RELEASES", true)]
+    [InlineData("iPopNotifier-win-Setup.exe", true)]
+    [InlineData("iPopNotifier-1.0.1-full.nupkg", true)]
+    [InlineData("iPopNotifier-1.0.1-delta.nupkg", true)]
+    [InlineData("appsettings.json", false)]
+    [InlineData("..\appsettings.json", false)]
+    [InlineData("../releases.win.json", false)]
+    [InlineData("iPopNotifier-1.0.1-full.nupkg.bak", false)]
+    [InlineData("other-Setup.exe", false)]
+    [InlineData("iPopNotifier..-win-Setup.exe", false)]
+    [InlineData("", false)]
+    public void Only_feed_and_setup_files(string file, bool allowed) =>
+        Assert.Equal(allowed, IPop.WebHost.HostPipeline.NotifierFileAllowed(file));
+}

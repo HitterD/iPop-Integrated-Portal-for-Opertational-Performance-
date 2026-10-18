@@ -734,6 +734,18 @@ else if (State.IsOpen)
                         </div>
                     }
 
+                    @if (notifierPcs.Count > 0)
+                    {
+                        <div class="push-devices">
+                            <div class="push-device">
+                                <img src="img/brand/ipop-mark.webp" alt="" width="22" height="22" style="border-radius:6px" />
+                                <div class="setting-info">
+                                    <div class="setting-name">iPop Notifier is on: @string.Join(", ", notifierPcs)</div>
+                                    <div class="setting-hint">Notifications show in the iPop Notifier app on @(notifierPcs.Count == 1 ? "that PC" : "those PCs"); browser toasts on Windows pause so nothing comes twice. Your phone still gets them.</div>
+                                </div>
+                            </div>
+                        </div>
+                    }
                     @if (pushDevices.Count > 0)
                     {
                         <div class="push-devices">
@@ -1135,6 +1147,7 @@ else if (State.IsOpen)
     private async Task LoadPush()
     {
         pushDevices = await Auth.GetAsync<List<PushDeviceDto>>("/api/push/devices") ?? [];
+        try { notifierPcs = (await Auth.GetAsync<NotifierMe>("/api/notifier/me"))?.OnlinePcs ?? []; } catch { notifierPcs = []; }
         pushPreview = (await Auth.GetAsync<PushPreferencesDto>("/api/push/preferences"))?.ShowPreview ?? true;
         var query = Push.CurrentDeviceId is { } id ? $"?current={id}" : "";
         pushDiagnostics = await Auth.GetAsync<PushDiagnosticsDto>("/api/push/diagnostics" + query);
@@ -1630,4 +1643,6 @@ else if (State.IsOpen)
             IsRead = isRead;
         }
     }
+    private List<string> notifierPcs = [];
+    private sealed record NotifierMe(bool IctTools, List<string>? OnlinePcs);
 }

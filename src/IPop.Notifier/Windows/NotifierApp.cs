@@ -68,8 +68,11 @@ public sealed class NotifierApp : ApplicationContext
         if (api.IsSignedIn) _ = StartSessionAsync();
         else ShowSignIn();
 
-        foreach (var a in args.Where(a => a.StartsWith(AppInfo.UrlScheme + ":", StringComparison.OrdinalIgnoreCase)))
+        foreach (var a in args.Where(a => a.StartsWith(AppInfo.UrlScheme + ":", StringComparison.OrdinalIgnoreCase)
+            || a.StartsWith(AppInfo.FilesScheme + ":", StringComparison.OrdinalIgnoreCase)))
             HandleCommand(a);
+        // Every start re-registers the link schemes (an update may move the exe).
+        Integration.RegisterUrlScheme();
         _ = UpdateLoopAsync();
     }
 
@@ -242,11 +245,16 @@ public sealed class NotifierApp : ApplicationContext
     {
         line = line.Trim().Trim('"');
         if (line is "show" or "--background" || line.Length == 0) { if (line == "show") ShowInbox(); return; }
-        if (!Uri.TryCreate(line, UriKind.Absolute, out var u) || !u.Scheme.Equals(AppInfo.UrlScheme, StringComparison.OrdinalIgnoreCase)) return;
+        if (!Uri.TryCreate(line, UriKind.Absolute, out var u)) return;
+        var files = u.Scheme.Equals(AppInfo.FilesScheme, StringComparison.OrdinalIgnoreCase);
+        if (!files && !u.Scheme.Equals(AppInfo.UrlScheme, StringComparison.OrdinalIgnoreCase)) return;
         var q = System.Web.HttpUtility.ParseQueryString(u.Query);
-        switch (u.Host.ToLowerInvariant())
+        // ipop://open?server=spj&path=… (iPop Files) is the same request as ipop-notifier://explorer?nas=spj&path=…
+        var host = files && u.Host.Equals("open", StringComparison.OrdinalIgnoreCase) ? "explorer" : files ? "" : u.Host.ToLowerInvariant();
+        switch (host)
         {
             case "explorer":
+                if (files) q["nas"] = q["server"];
                 var unc = Integration.UncPath(q["nas"] ?? "", q["path"] ?? "");
                 if (unc is null || !Integration.OpenInExplorer(unc))
                     tray.ShowBalloonTip(4000, "iPop Notifier", "This link isn't on a company NAS, so it can't open in File Explorer.", ToolTipIcon.Warning);

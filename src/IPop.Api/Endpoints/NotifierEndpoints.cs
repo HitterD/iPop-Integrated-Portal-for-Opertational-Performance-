@@ -38,7 +38,11 @@ public static class NotifierEndpoints
         {
             var userId = await MyId(http, db, ct);
             if (userId is null) return Results.Unauthorized();
-            return Results.Ok(new { ictTools = await IsIctOrAdminAsync(db, userId.Value, http.User.IsInRole("Admin"), ct) });
+            var since = DateTime.UtcNow - NotifierDevice.OnlineWindow;
+            // My own PCs with the app (computer name only): iPop's notification settings explain the browser pause.
+            var pcs = await db.NotifierDevices.AsNoTracking().Where(d => d.UserId == userId && d.LastSeenAt >= since)
+                .OrderBy(d => d.MachineName).Select(d => d.MachineName).ToListAsync(ct);
+            return Results.Ok(new { ictTools = await IsIctOrAdminAsync(db, userId.Value, http.User.IsInRole("Admin"), ct), onlinePcs = pcs });
         });
 
         g.MapGet("/devices", async (string? q, HttpContext http, IPopDbContext db, CancellationToken ct) =>

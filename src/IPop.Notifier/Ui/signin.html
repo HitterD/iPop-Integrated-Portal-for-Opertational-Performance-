@@ -6,12 +6,13 @@
 <link rel="stylesheet" href="app.css">
 <style>
 /* First start (mockup v1 §8 left) */
+html,body{overflow:hidden}
 body{background:radial-gradient(120% 90% at 50% 0%,#1a4a37 0%,#123528 60%,#0d2a1f 100%);color:#fff;display:flex;flex-direction:column}
 body::before{content:"";position:fixed;inset:0;opacity:.05;background:radial-gradient(circle at 20% 30%,#fff 0 1.5px,transparent 2px) 0 0/22px 22px;pointer-events:none}
 .bar{height:36px;display:flex;justify-content:flex-end;padding:2px 2px 0;flex:none}
 .bar .wc{color:rgba(255,255,255,.7)}
 .bar .wc:hover{background:rgba(255,255,255,.12)}
-.box{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:safe center;padding:0 30px 24px;overflow:auto;min-height:0;animation:winIn .5s var(--spring)}
+.box{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:safe center;padding:0 30px 24px;overflow:hidden auto;min-height:0;scrollbar-width:none;animation:winIn .5s var(--spring)}
 .lg{width:76px;height:76px;flex:none;border-radius:24px;background:#fff;display:grid;place-items:center;box-shadow:0 20px 40px -14px rgba(0,0,0,.6);animation:popIn .6s var(--pop) both}
 .lg img{width:54px;height:54px}
 h4{font-size:24px;margin:14px 0 4px}
@@ -29,6 +30,7 @@ input::placeholder{color:rgba(255,255,255,.55)}
 .err.shake{animation:shake .4s}
 @keyframes shake{20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
 small{margin-top:16px;opacity:.6;font-size:12px;text-align:center;max-width:300px;line-height:1.45}
+.box::-webkit-scrollbar{display:none}
 .adv{margin-top:8px;font-size:11.5px;opacity:.5;cursor:pointer;text-decoration:underline}
 #server{display:none}
 .showsrv #server{display:block}

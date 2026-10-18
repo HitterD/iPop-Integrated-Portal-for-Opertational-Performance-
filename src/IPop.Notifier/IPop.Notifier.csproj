@@ -20,6 +20,12 @@
     <Company>PT Santos Jaya Abadi</Company>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
+    <!-- Keep the install light: English only, no symbol helper; the per-user install is then ~70 MB on disk
+         and the Velopack package compresses to ~35 MB (updates ship as small deltas). -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <InvariantGlobalization>false</InvariantGlobalization>
   </PropertyGroup>
 
   <ItemGroup>

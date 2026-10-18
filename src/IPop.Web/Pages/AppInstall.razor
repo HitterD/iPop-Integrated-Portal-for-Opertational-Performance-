@@ -22,6 +22,14 @@
                 </div>
                 <details class="ph-how"><summary>Android steps</summary>@AndroidSteps</details>
                 <details class="ph-how"><summary>iPhone steps</summary>@IosSteps</details>
+                @if (notifierBytes > 0)
+                {
+                    <a class="ph-notifier" href="/download/notifier/iPopNotifier-win-Setup.exe" download>
+                        <img src="img/brand/ipop-mark.webp" alt="" width="40" height="40" />
+                        <span><b>iPop Notifier for Windows</b><small>iPop and iDesk notifications on this PC · no admin needed · @((notifierBytes / 1048576.0).ToString("0", System.Globalization.CultureInfo.InvariantCulture)) MB</small></span>
+                        <i data-lucide="download"></i>
+                    </a>
+                }
                 <p class="ph-hint">Need help? Chat <b>ICT Helpdesk</b> or ext. 1604.</p>
             </div>
             <div class="ph-qr">
@@ -86,7 +94,7 @@
     private string platform = "android";
     private string os = "and";
     private bool? apk;
-    private long apkBytes;
+    private long apkBytes, notifierBytes;
     private bool iosSafari = true, copied;
     /// Matches appVersionName in android/twa/twa-manifest.json (bump both for a new APK).
     public const string ApkVersion = "1.0.0";
@@ -104,6 +112,7 @@
         if (platform == "desktop")
         {
             try { qrSvg = await JS.InvokeAsync<string>("ipop.phone.qrSvg", AppUrl) ?? ""; } catch { }
+            try { notifierBytes = await JS.InvokeAsync<long>("ipop.phone.size", "/download/notifier/iPopNotifier-win-Setup.exe"); } catch { }
         }
         else
         {

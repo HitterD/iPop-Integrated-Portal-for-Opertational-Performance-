@@ -78,6 +78,32 @@ public static class HostPipeline
             return Results.File(Path.GetFullPath(apk), "application/vnd.android.package-archive", "ipop.apk", enableRangeProcessing: true);
         });
 
+        // iPop Notifier (Windows): installer + Velopack update feed (releases.win.json, *.nupkg) from one folder.
+        // Only plain file names from that folder; nothing outside it, no listing.
+        app.MapMethods("/download/notifier/{file}", ["GET", "HEAD"], (string file, HttpContext ctx) =>
+        {
+            var dir = app.Configuration["Notifier:ReleasesPath"] ?? DefaultNotifierReleases;
+            if (string.IsNullOrWhiteSpace(dir) || !NotifierFileAllowed(file)) return Results.NotFound();
+            var full = Path.GetFullPath(Path.Combine(dir, file));
+            if (!full.StartsWith(Path.GetFullPath(dir) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(full))
+                return Results.NotFound();
+            ctx.Response.Headers.CacheControl = "no-cache";
+            var type = file.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ? "application/json"
+                : file.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? "application/vnd.microsoft.portable-executable"
+                : "application/octet-stream";
+            return Results.File(full, type, file.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? file : null, enableRangeProcessing: true);
+        });
+
         app.MapFallbackToFile("index.html");
     }
+
+    public const string DefaultNotifierReleases = "C:/ipop-ops/notifier/releases";
+
+    /// Velopack feed files and the setup: "releases.win.json", "RELEASES", "iPopNotifier-1.0.1-full.nupkg", "iPopNotifier-win-Setup.exe".
+    public static bool NotifierFileAllowed(string file) =>
+        file.Length is > 0 and <= 120
+        && file.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '_')
+        && !file.Contains("..")
+        && (file is "releases.win.json" or "RELEASES" or "assets.win.json"
+            || (file.StartsWith("iPopNotifier", StringComparison.Ordinal) && (file.EndsWith(".nupkg", StringComparison.Ordinal) || file.EndsWith("-Setup.exe", StringComparison.Ordinal))));
 }
