@@ -96,7 +96,8 @@ public static class SsoEndpoints
                 // OpenIddict client permissions). Same lockout/audit path as the iPop login page.
                 var (ok, err, _) = await auth.LoginAsync(new LoginRequest(request.Username ?? "", request.Password ?? "", "oidc:" + request.ClientId),
                     http.Connection.RemoteIpAddress?.ToString(), http.RequestAborted);
-                if (ok is null) return Forbid(Errors.InvalidGrant, err?.Message ?? "Wrong employee ID or password.");
+                // One generic message for the app: no attempt counts or lock timing leave iPop (lockout still applies).
+                if (ok is null) return Forbid(Errors.InvalidGrant, err?.Code == "locked" ? "Too many attempts. Try again later or use Sign in with iPop." : "Wrong employee ID or password.");
                 if (ok.MustChangePassword) return Forbid(Errors.InvalidGrant, "Set a new password in iPop first, then sign in again.");
                 // LoginAsync opened an iPop session for this sign-in; the app gets OIDC tokens only, so close it again.
                 await auth.LogoutAsync(new LogoutRequest(ok.RefreshToken), http.RequestAborted);
