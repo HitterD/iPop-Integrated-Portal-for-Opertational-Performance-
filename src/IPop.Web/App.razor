@@ -18,9 +18,6 @@
     private static readonly string[] PublicPages = ["app"];
     public static bool IsPublic(string path) => PublicPages.Contains(path.Trim('/').ToLowerInvariant());
 
-    /// The query string of the page being opened (NavigationContext.Path has none).
-    private string QueryOf(string _) => new Uri(Nav.Uri).Query;
-
     /// Only same-site paths ("/sso/authorize?…"), never "//host" or "https://…", so a crafted link can't send a
     /// freshly signed-in user to another site.
     public static string? SafeReturn(string? url) =>
@@ -34,14 +31,16 @@
             await Auth.TryRestoreAsync();
         }
 
-        var path = ctx.Path.Trim('/').ToLowerInvariant();
+        // NavigationContext.Path can carry the query string ("login?returnUrl=…"); match on the path alone.
+        var rawPath = ctx.Path.Split('?', 2)[0];
+        var path = rawPath.Trim('/').ToLowerInvariant();
         if (IsPublic(path)) return;
         var isAuthPage = AuthPages.Contains(path);
 
         if (!Auth.IsAuthenticated)
         {
             // "Sign in with iPop" comes back to its page after the login (local paths only, see SafeReturn).
-            if (!isAuthPage) Nav.NavigateTo(path.StartsWith("sso/") ? "/login?returnUrl=" + Uri.EscapeDataString("/" + ctx.Path.TrimStart('/') + QueryOf(ctx.Path)) : "/login", replace: true);
+            if (!isAuthPage) Nav.NavigateTo(path.StartsWith("sso/") ? "/login?returnUrl=" + Uri.EscapeDataString("/" + rawPath.TrimStart('/') + new Uri(Nav.Uri).Query) : "/login", replace: true);
             return;
         }
 
