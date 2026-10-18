@@ -48,6 +48,7 @@
       if (topic === 'clip' && clipOn) post({ type: 'setClipboard', kind: m.kind, text: m.text, data: m.data });
       if (m.t === 'screen') $('#res').textContent = `${m.w}×${m.h} · H.264`;
       if (m.t === 'bye') showEnded('Remote help ended', 'The user ended the session.');
+      if (m.t === 'inStat') inputStat(m);
     };
     R.onFile = async reader => { const b = await R.readAll(reader); post({ type: 'saveFile', name: reader.info.name, data: R.b64(b) }); addFile(reader.info.name, b.length, 'From the user · saved to Downloads', 1); };
     R.onClipFile = async reader => { const b = await R.readAll(reader); post({ type: 'setClipboardFile', name: reader.info.name, data: R.b64(b) }); snack('File copied — paste it here'); };
@@ -58,6 +59,18 @@
     setMode(r.json.mode);
     sendMedia();
     statsLoop();
+  }
+
+  let warned = false;
+  function inputStat(m) {
+    const el = $('#inp');
+    if (m.refused > 0 && m.err) {
+      el.innerHTML = IC('mouse-pointer-ban') + '<b class="bad">blocked</b>';
+      if (!warned) { warned = true; snack(m.err === 5 ? 'Windows on the user\'s PC refused mouse and keyboard — an administrator window or the lock screen is in front.' : 'Mouse and keyboard were refused on the user\'s PC (code ' + m.err + ').'); }
+    } else {
+      el.innerHTML = IC('mouse-pointer-2') + '<b class="ok">' + m.played + '</b>';
+    }
+    el.title = 'Played ' + m.played + ', refused ' + m.refused + (m.fg ? ' · in front: ' + m.fg : '');
   }
 
   function live(text, cls) { $('#liveTxt').textContent = text; $('#live').className = 'live ' + (cls || ''); }

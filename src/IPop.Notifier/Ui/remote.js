@@ -64,14 +64,26 @@
   };
 
   // ── helper: stats (fps + round trip) ────────────────────────────────────
+  // Stats from the subscribed screen track itself (public API; no reliance on LiveKit internals).
+  let lastFrames = null;
   R.stats = async () => {
     const out = { fps: 0, rtt: 0, w: 0, h: 0, codec: '' };
-    const pc = R.room?.engine?.pcManager?.subscriber?.pc || R.room?.engine?.subscriber?.pc;
-    if (!pc) return out;
-    const rep = await pc.getStats();
+    const room = R.room; if (!room) return out;
+    let track = null;
+    room.remoteParticipants.forEach(p => p.trackPublications.forEach(pub => { if (pub.track && pub.kind === 'video') track = pub.track; }));
+    if (!track) return out;
+    const rep = await track.getRTCStatsReport();
+    if (!rep) return out;
     rep.forEach(r => {
-      if (r.type === 'inbound-rtp' && r.kind === 'video') { out.fps = Math.round(r.framesPerSecond || 0); out.w = r.frameWidth || 0; out.h = r.frameHeight || 0; out.codecId = r.codecId; }
-      if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.nominated && r.currentRoundTripTime != null) out.rtt = Math.round(r.currentRoundTripTime * 1000);
+      if (r.type === 'inbound-rtp' && r.kind === 'video') {
+        out.w = r.frameWidth || 0; out.h = r.frameHeight || 0; out.codecId = r.codecId;
+        // framesPerSecond is sometimes missing; derive it from framesDecoded between calls.
+        if (r.framesPerSecond) out.fps = Math.round(r.framesPerSecond);
+        else if (lastFrames && r.timestamp > lastFrames.t) out.fps = Math.round((r.framesDecoded - lastFrames.n) * 1000 / (r.timestamp - lastFrames.t));
+        lastFrames = { n: r.framesDecoded, t: r.timestamp };
+      }
+      if (r.type === 'candidate-pair' && r.nominated && r.currentRoundTripTime != null) out.rtt = Math.round(r.currentRoundTripTime * 1000);
+      if (r.type === 'remote-candidate' && !out.via) out.via = r.candidateType;
     });
     if (out.codecId) { const c = rep.get(out.codecId); out.codec = (c?.mimeType || '').split('/')[1] || ''; }
     return out;

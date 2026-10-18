@@ -325,6 +325,11 @@ public sealed class NotifierApp : ApplicationContext
             case "inbox": ShowInbox(); break;
             case "settings": ShowSettings(); break;
             case "devices": ShowDevices(); break;
+            // ipop-notifier://remote?device=<id>&mode=view — same as Devices → Remote help (the server still checks
+            // the ICT role, and the user still has to allow it).
+            case "remote" when device.IctTools && Guid.TryParse(q["device"], out var dev):
+                _ = StartRemoteAsync(dev, q["mode"] == "view" ? "view" : "control");
+                break;
         }
     }
 

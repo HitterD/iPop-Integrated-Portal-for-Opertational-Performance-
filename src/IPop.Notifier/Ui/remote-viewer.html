@@ -30,7 +30,7 @@ body{display:flex;flex-direction:column;background:#111}
 .seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.14)}
 .main{flex:1;display:flex;min-height:0}
 .stage{flex:1;position:relative;display:grid;place-items:center;overflow:hidden;background:#0b0b0c;outline:none}
-.stage video{max-width:100%;max-height:100%;display:block;cursor:none}
+.stage video{max-width:100%;max-height:100%;display:block;cursor:default}
 .stage.view video{cursor:default}
 .stage .wait{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#cfd8d3;
   background:radial-gradient(120% 90% at 50% 0%,#1a4a37 0%,#123528 60%,#0d2a1f 100%)}
@@ -93,7 +93,7 @@ body{display:flex;flex-direction:column;background:#111}
 <body>
 <div class="ttl" data-drag><span class="ic"><img src="ipop-mark.webp" alt=""></span><b id="pc">Remote help</b><span class="who" id="who"></span>
   <span class="live warn" id="live"><i></i><span id="liveTxt">Connecting</span></span>
-  <span class="stats"><span><i data-lucide="gauge"></i><b id="fps">–</b> fps</span><span><i data-lucide="activity"></i><b id="ping">–</b> ms</span><span id="res"></span></span>
+  <span class="stats"><span><i data-lucide="gauge"></i><b id="fps">–</b> fps</span><span><i data-lucide="activity"></i><b id="ping">–</b> ms</span><span id="res"></span><span id="inp" title="Mouse and keyboard on the user's PC"></span></span>
   <button class="wc" data-min title="Minimize"></button><button class="wc" data-max title="Maximize"></button><button class="wc x" data-close title="End and close"></button></div>
 <div class="tbar">
   <div class="seg" id="mode"><button data-m="control" class="on"><i data-lucide="mouse-pointer-2"></i>Control</button><button data-m="view"><i data-lucide="eye"></i>View only</button></div>

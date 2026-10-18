@@ -29,6 +29,11 @@ public sealed partial class InputInjector
     /// The monitor being shared, in virtual-desktop pixels.
     public Rectangle Monitor { get; set; } = Screen.PrimaryScreen?.Bounds ?? new Rectangle(0, 0, 1920, 1080);
     private readonly HashSet<ushort> down = [];
+    /// Played / refused by Windows since the session started, and the last refusal code (5 = blocked: an admin
+    /// window or the lock screen is in front, which needs the helper service).
+    public int Played { get; private set; }
+    public int Refused { get; private set; }
+    public int LastError { get; private set; }
 
     public void Move(double x, double y) => Send(Mouse(x, y, MOVE));
 
@@ -49,7 +54,7 @@ public sealed partial class InputInjector
         var list = new List<INPUT>();
         if (Math.Abs(dy) > 0.5) list.Add(new INPUT { type = INPUT_MOUSE, u = new() { mi = new MOUSEINPUT { mouseData = (int)Math.Clamp(-dy, -1200, 1200), dwFlags = WHEEL } } });
         if (Math.Abs(dx) > 0.5) list.Add(new INPUT { type = INPUT_MOUSE, u = new() { mi = new MOUSEINPUT { mouseData = (int)Math.Clamp(dx, -1200, 1200), dwFlags = HWHEEL } } });
-        if (list.Count > 0) SendInput((uint)list.Count, [.. list], Marshal.SizeOf<INPUT>());
+        if (list.Count > 0) Count(SendInput((uint)list.Count, [.. list], Marshal.SizeOf<INPUT>()));
     }
 
     /// A key by Windows virtual-key code (layout independent shortcuts: Ctrl+C, Alt+Tab, F5…).
@@ -71,7 +76,7 @@ public sealed partial class InputInjector
             list.Add(new INPUT { type = INPUT_KEYBOARD, u = new() { ki = new KEYBDINPUT { wScan = ch, dwFlags = UNICODE } } });
             list.Add(new INPUT { type = INPUT_KEYBOARD, u = new() { ki = new KEYBDINPUT { wScan = ch, dwFlags = UNICODE | KEYUP } } });
         }
-        if (list.Count > 0) SendInput((uint)list.Count, [.. list], Marshal.SizeOf<INPUT>());
+        if (list.Count > 0) Count(SendInput((uint)list.Count, [.. list], Marshal.SizeOf<INPUT>()));
     }
 
     /// Lets go of every key the helper still holds (connection lost mid-shortcut must not leave Ctrl stuck).
@@ -92,5 +97,12 @@ public sealed partial class InputInjector
         return new INPUT { type = INPUT_MOUSE, u = new() { mi = new MOUSEINPUT { dx = ax, dy = ay, dwFlags = flags | ABSOLUTE | VIRTUALDESK } } };
     }
 
-    private static void Send(INPUT i) => SendInput(1, [i], Marshal.SizeOf<INPUT>());
+    private void Send(INPUT i) => Count(SendInput(1, [i], Marshal.SizeOf<INPUT>()));
+
+    private void Count(uint sent)
+    {
+        if (sent > 0) { Played++; return; }
+        Refused++;
+        LastError = Marshal.GetLastPInvokeError();
+    }
 }

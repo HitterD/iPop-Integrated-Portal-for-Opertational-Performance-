@@ -19,6 +19,8 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
     private string helper = "ICT";
     private readonly List<string> files = [];
     private ClipWatcher? clip;
+    private System.Windows.Forms.Timer? stat;
+    private string lastStat = "";
     public bool Active => sessionId is not null;
     public event Action<bool>? ActiveChanged;
 
@@ -78,6 +80,9 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
         help = new HelpWindow(api, this, asking: false);
         help.Shown += (_, _) => help.Send(new { type = "help", helper, initials, mode });
         help.Show();
+        stat = new System.Windows.Forms.Timer { Interval = 2000 };
+        stat.Tick += (_, _) => SendInputStat();
+        stat.Start();
         page = new HostPage(this);
         page.Ready += () => page.Send(new { type = "join", info = join, quality = "smooth" });
         page.CreateControl();
@@ -139,6 +144,20 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
             case "release": input.ReleaseAll(); break;
             case "combo": Combo(m["k"]?.GetValue<string>()); break;
         }
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern nint GetForegroundWindow();
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(nint h, out uint pid);
+
+    private void SendInputStat()
+    {
+        if (page is null) return;
+        string fg = "";
+        try { GetWindowThreadProcessId(GetForegroundWindow(), out var p); fg = System.Diagnostics.Process.GetProcessById((int)p).ProcessName; } catch { }
+        var key = $"{input.Played}|{input.Refused}|{input.LastError}|{fg}";
+        if (key == lastStat) return;
+        lastStat = key;
+        page.Send(new { type = "send", topic = "ctl", msg = new { t = "inStat", played = input.Played, refused = input.Refused, err = input.LastError, fg, mode } });
     }
 
     private void Combo(string? k)
@@ -224,6 +243,7 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
         var p = page; page = null;
         _ = Task.Delay(1500).ContinueWith(_ => Post(() => p?.Dispose()));
         clip?.Dispose(); clip = null;
+        stat?.Dispose(); stat = null;
         help?.Close(); help = null;
         frame?.Close(); frame = null;
         ActiveChanged?.Invoke(false);
