@@ -177,6 +177,7 @@ public sealed class ViewerWindow : BridgedWindow
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        _ = Log.UploadAsync(Api);
         clip?.Dispose();
         base.OnFormClosed(e);
     }

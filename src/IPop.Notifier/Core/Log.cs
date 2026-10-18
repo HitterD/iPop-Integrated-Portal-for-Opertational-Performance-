@@ -9,6 +9,30 @@ public static class Log
     private static string Dir => Path.Combine(SessionStore.Folder, "logs");
     public static string FilePath => Path.Combine(Dir, "app.log");
 
+    /// Last 64 KB of the log, for "send diagnostics".
+    public static string Tail()
+    {
+        lock (Gate)
+        {
+            try
+            {
+                var text = File.Exists(FilePath) ? File.ReadAllText(FilePath) : "";
+                return text.Length > 60_000 ? text[^60_000..] : text;
+            }
+            catch { return ""; }
+        }
+    }
+
+    public static async Task UploadAsync(IPopClient api)
+    {
+        try
+        {
+            using var content = new StringContent(Tail(), System.Text.Encoding.UTF8, "text/plain");
+            using var _ = await api.SendContentAsync(HttpMethod.Post, "api/notifier/devices/log?machine=" + Uri.EscapeDataString(Environment.MachineName), content);
+        }
+        catch { }
+    }
+
     public static void Info(string area, string text) => Write("INF", area, text);
     public static void Warn(string area, string text) => Write("WRN", area, text);
     public static void Error(string area, string text, Exception? ex = null) =>

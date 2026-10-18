@@ -35,6 +35,20 @@ public static class NotifierEndpoints
             return status == 204 ? Results.NoContent() : Results.BadRequest(new { message = "Invalid device report." });
         });
 
+        g.MapPost("/devices/log", async (HttpContext http, IPopDbContext db, IConfiguration cfg, CancellationToken ct) =>
+        {
+            var userId = await MyId(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            var machine = string.Concat((http.Request.Query["machine"].ToString() is { Length: > 0 } m ? m : "pc").Where(char.IsAsciiLetterOrDigit).Take(40));
+            using var reader = new StreamReader(http.Request.Body);
+            var buf = new char[65536];
+            var n = await reader.ReadBlockAsync(buf, ct);
+            var dir = Path.Combine(cfg["Notifier:LogPath"] ?? Path.Combine(AppContext.BaseDirectory, "notifier-logs"));
+            Directory.CreateDirectory(dir);
+            await File.WriteAllTextAsync(Path.Combine(dir, $"{machine}-{userId:N}.log"), new string(buf, 0, n), ct);
+            return Results.NoContent();
+        });
+
         g.MapGet("/me", async (HttpContext http, IPopDbContext db, IConfiguration cfg, CancellationToken ct) =>
         {
             var userId = await MyId(http, db, ct);

@@ -93,6 +93,7 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
         alive = new System.Windows.Forms.Timer { Interval = 30_000 };
         alive.Tick += async (_, _) => await AliveAsync(id);
         alive.Start();
+        _ = Task.Delay(20_000).ContinueWith(_ => Log.UploadAsync(api));
         page = new HostPage(this);
         page.Ready += () => page.Send(new { type = "join", info = join, quality = "smooth" });
         page.CreateControl();
@@ -294,6 +295,7 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
         help?.Close(); help = null;
         frame?.Close(); frame = null;
         ActiveChanged?.Invoke(false);
+        _ = Task.Delay(2000).ContinueWith(_ => Log.UploadAsync(api));
     }
 
     [System.Diagnostics.Conditional("DEBUG")]
