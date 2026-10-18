@@ -3,7 +3,7 @@
 @inject AuthState Auth
 @inject IJSRuntime JS
 
-@if (Phone.IsPhone && ready && !answered)
+@if (Phone.IsPhone && ready && !answered && !Suspended)
 {
     <BottomSheet Open="true" OpenChanged="_ => Finish()" Size="SheetSize.Full" Class="m-onboarding" Label="Welcome to iPop">
         <ChildContent>
@@ -26,6 +26,8 @@
     </BottomSheet>
 }
 @code {
+    /// Hidden while another sheet (Edit tabs) is on top; the current step is kept.
+    [Parameter] public bool Suspended { get; set; }
     [Parameter] public EventCallback OnEditTabs { get; set; }
     [Parameter] public EventCallback OnNotifications { get; set; }
     [Parameter] public EventCallback OnCompleted { get; set; }

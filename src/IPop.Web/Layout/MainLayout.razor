@@ -310,7 +310,7 @@
                OnEditTabs="OpenEditTabs" OnSettings="OpenSettingsFromMore" OnSignOut="SignOut"
                OnProfile="() => { CloseMore(); OpenAccount(AccountSheet.Pane.Profile); }" />
     <EditTabsSheet Open="more.EditTabsOpen" OpenChanged="more.SetEditTabs" />
-    <Onboarding OnEditTabs="OpenEditTabs" OnNotifications="OpenOnboardingNotifications" OnCompleted="() => onboardingComplete = true" />
+    <Onboarding Suspended="more.EditTabsOpen" OnEditTabs="OpenEditTabs" OnNotifications="OpenOnboardingNotifications" OnCompleted="() => onboardingComplete = true" />
     <NotificationCard Visible="NotifCardVisible" Secure="Push.Secure" OnTurnOn="NotifCardTurnOn" OnNotNow="NotifCardNotNow" />
 </div>
 

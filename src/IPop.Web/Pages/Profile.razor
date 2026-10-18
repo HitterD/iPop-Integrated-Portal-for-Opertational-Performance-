@@ -1,15 +1,28 @@
 @page "/profile"
+@implements IDisposable
 @inject NavigationManager Nav
+@inject PhoneState Phone
 
-@* Old bookmark target. Profile editing is the account sheet (AccountSheet.razor) now, a popup
-   from the sidebar account menu; this route just opens it over the dashboard. *@
+@if (Phone.IsPhone)
+{
+    <AccountSheet IsOpen="true" IsOpenChanged="_ => Nav.NavigateTo(previous)" />
+}
 
 @code {
     [CascadingParameter] public MainLayout? Layout { get; set; }
-
-    protected override void OnInitialized()
+    private string previous = "/dashboard";
+    protected override void OnInitialized() => Phone.Changed += Changed;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        Layout?.OpenAccount(AccountSheet.Pane.Profile);
-        Nav.NavigateTo("/dashboard", replace: true);
+        if (!firstRender) return;
+        if (!Phone.IsInitialized) await Phone.StartAsync();
+        // Preserve the desktop bookmark behaviour only after browser detection answers.
+        if (!Phone.IsPhone)
+        {
+            Layout?.OpenAccount(AccountSheet.Pane.Profile);
+            Nav.NavigateTo("/dashboard", replace: true);
+        }
     }
+    private void Changed() => _ = InvokeAsync(StateHasChanged);
+    public void Dispose() => Phone.Changed -= Changed;
 }

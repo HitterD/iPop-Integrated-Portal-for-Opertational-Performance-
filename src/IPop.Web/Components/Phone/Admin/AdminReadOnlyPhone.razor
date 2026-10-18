@@ -6,6 +6,7 @@
     <PhoneScreen Title="@Title" Class="m-admin-readonly"><p class="m-admin-tag">Admin only</p><a href="/admin">‹ Administration</a><p>Edit on a computer</p>
         @if (loading) { <p role="status">Loading…</p> }
         else if (error) { <p role="alert">Could not load this section.<button type="button" @onclick="Load">Retry</button></p> }
+        else if (unsupported) { <p>Choose a section from Administration.</p> }
         else if (rows.Count == 0) { <p>No entries.</p> }
         else { @foreach (var row in rows) { <article class="m-admin-readonly-card"><b>@row.Title</b><p>@row.Detail</p></article> } }
     </PhoneScreen>
@@ -13,7 +14,7 @@
 @code {
     [Parameter] public string Section { get; set; } = "";
     [Parameter] public string Title { get; set; } = "";
-    private bool loading, error;
+    private bool loading, error, unsupported;
     private int generation;
     private List<(string Title, string Detail)> rows = [];
     protected override Task OnParametersSetAsync() => Load();
@@ -22,6 +23,8 @@
         var gen = ++generation; rows = []; if (!Auth.IsAdmin) return;
         loading = true; error = false;
         var url = Section switch { "organization" => "/api/admin/org", "security" => "/api/admin/audit?page=1&pageSize=30", "hris" => "/api/admin/hris/status", "calendar" => $"/api/calendar/holidays?year={DateTime.Today.Year}", "meeting-rooms" => "/api/meeting-rooms", "announcements" => "/api/admin/news-videos", _ => "" };
+        unsupported = string.IsNullOrEmpty(url);
+        if (unsupported) { loading = false; return; }
         try
         {
             var result = await Auth.GetResultAsync<JsonElement>(url);

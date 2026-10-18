@@ -45,6 +45,7 @@
     protected override void OnInitialized() => Phone.Changed += Changed;
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (!Phone.IsInitialized) await Phone.StartAsync();
         if (!Phone.IsPhone) { Nav.NavigateTo("/profile", replace: true); return; }
         if (firstRender)
         {

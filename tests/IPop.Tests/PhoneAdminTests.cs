@@ -15,6 +15,48 @@ public class PhoneAdminTests
         Assert.Equal(new[] { "People", "Structure", "Security", "Communication", "Integrations" }, cut.FindAll(".ph-sec").Select(x => x.TextContent));
         Assert.Contains("Admin only", cut.Markup); Assert.Equal("/admin/users", cut.Find("a[href='/admin/users']").GetAttribute("href"));
     }
+    private sealed class ReadApi : System.Net.Http.HttpMessageHandler
+    {
+        public List<string> Paths = [];
+        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage r, CancellationToken ct)
+        {
+            Paths.Add(r.RequestUri!.PathAndQuery);
+            return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new System.Net.Http.StringContent("[{\"title\":\"Real holiday\",\"date\":\"2026-10-18\"}]", System.Text.Encoding.UTF8, "application/json") });
+        }
+    }
+    [Theory]
+    [InlineData("organization", "/api/admin/org")]
+    [InlineData("security", "/api/admin/audit?page=1&pageSize=30")]
+    [InlineData("hris", "/api/admin/hris/status")]
+    [InlineData("calendar", "/api/calendar/holidays?year=")]
+    [InlineData("meeting-rooms", "/api/meeting-rooms")]
+    public async Task Readonly_routes_use_existing_endpoints_and_unknown_routes_do_not_fetch(string section, string path)
+    {
+        using var ctx = new BunitContext(); ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        var api = new ReadApi(); var auth = new AuthState(new HttpClient(api) { BaseAddress = new("http://localhost/") }, ctx.JSInterop.JSRuntime);
+        typeof(AuthState).GetProperty("Me")!.SetValue(auth, new DirectoryEmployeeDto("admin", "Admin", null, null, null, null, null, null, "", null, null, "on", ["Admin"]));
+        ctx.Services.AddSingleton(auth);
+        var cut = ctx.Render<AdminReadOnlyPhone>(p => p.Add(x => x.Section, section));
+        cut.WaitForAssertion(() => Assert.Contains(api.Paths, x => x.StartsWith(path)));
+        Assert.Contains("Real holiday", cut.Markup); Assert.Contains("Edit on a computer", cut.Markup);
+        var count = api.Paths.Count;
+        cut.Render(p => p.Add(x => x.Section, "unknown"));
+        Assert.Equal(count, api.Paths.Count);
+        Assert.Contains("Choose a section", cut.Markup);
+        await Task.CompletedTask;
+    }
+    [Fact]
+    public void Cold_admin_root_waits_for_phone_and_shows_grouped_home()
+    {
+        using var ctx = new BunitContext(); ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        ctx.JSInterop.Setup<bool>("ipop.mobile.watch", _ => true).SetResult(true);
+        var api = new ReadApi(); var auth = new AuthState(new HttpClient(api) { BaseAddress = new("http://localhost/") }, ctx.JSInterop.JSRuntime);
+        typeof(AuthState).GetProperty("Me")!.SetValue(auth, new DirectoryEmployeeDto("admin", "Admin", null, null, null, null, null, null, "", null, null, "on", ["Admin"]));
+        ctx.Services.AddSingleton(auth); ctx.Services.AddSingleton(new PhoneState(ctx.JSInterop.JSRuntime));
+        var nav = ctx.Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>(); nav.NavigateTo("/admin");
+        var cut = ctx.Render<IPop.Web.Pages.Admin>();
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll(".m-admin"))); Assert.EndsWith("/admin", nav.Uri);
+    }
     [Fact]
     public async Task User_sheet_is_admin_only_and_dispatches_existing_role_and_access_actions()
     {

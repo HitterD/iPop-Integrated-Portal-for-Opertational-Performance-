@@ -49,7 +49,7 @@
     private List<IPop.Application.Chat.RoomListDto> people = [];
     protected override async Task OnInitializedAsync()
     {
-        try { people = (await Auth.GetAsync<List<IPop.Application.Chat.RoomListDto>>("/api/chat/rooms?tab=direct&page=1&pageSize=8") ?? []).Where(r => r.RecipientNik is not null).ToList(); } catch { }
+        try { people = (await Auth.GetAsync<IPop.Application.Chat.PagedResult<IPop.Application.Chat.RoomListDto>>("/api/chat/rooms?tab=direct&page=1&pageSize=8"))?.Items.Where(r => r.RecipientNik is not null).ToList() ?? []; } catch { }
     }
     protected override async Task OnAfterRenderAsync(bool firstRender) { if (firstRender) await input.FocusAsync(); await JS.InvokeVoidAsync("ipop.icons"); }
     private async Task Jump(string label) { await OnClose.InvokeAsync(); Nav.NavigateTo("/" + label.ToLowerInvariant()); }

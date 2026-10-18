@@ -31,6 +31,17 @@ public class PhoneStateTests
     }
 
     [Fact]
+    public async Task Concurrent_start_waits_for_the_same_browser_detection()
+    {
+        using var ctx = new BunitContext();
+        var pending = ctx.JSInterop.Setup<bool>("ipop.mobile.watch", _ => true);
+        var state = new PhoneState(ctx.JSInterop.JSRuntime);
+        var first = state.StartAsync(); var second = state.StartAsync();
+        Assert.False(second.IsCompleted);
+        pending.SetResult(true); await Task.WhenAll(first, second);
+        Assert.True(state.IsPhone); Assert.Single(ctx.JSInterop.Invocations);
+    }
+    [Fact]
     public void Changed_fires_once_per_transition()
     {
         using var ctx = new BunitContext();

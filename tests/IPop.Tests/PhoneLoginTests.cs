@@ -48,6 +48,15 @@ public class PhoneLoginTests
         Assert.DoesNotContain("PRIVATE-NIK", cut.Markup);
     }
     [Fact]
+    public void Edit_tabs_temporarily_suspends_onboarding_then_resumes_the_same_step()
+    {
+        using var ctx = Ctx(true); var cut = ctx.Render<Onboarding>();
+        cut.Find("button[aria-label='Next']").Click();
+        cut.Render(p => p.Add(x => x.Suspended, true)); Assert.Empty(cut.FindAll(".m-onboarding"));
+        cut.Render(p => p.Add(x => x.Suspended, false)); Assert.Contains("Make it yours", cut.Markup);
+        Assert.DoesNotContain(ctx.JSInterop.Invocations, i => i.Identifier == "ipopUserStore.set" && i.Arguments.Contains("onboarded"));
+    }
+    [Fact]
     public void Onboarding_never_reappears_after_saved_preference()
     {
         using var ctx = Ctx(true); ctx.JSInterop.Setup<string?>("ipopUserStore.get", _ => true).SetResult("1");

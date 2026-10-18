@@ -28,6 +28,7 @@ else if (Phone.IsPhone)
 {
     @if (string.IsNullOrEmpty(Section)) { <AdminHomePhone IsAdmin="Auth.IsAdmin" /> }
     else if (Current?.Slug == "users") { <AdminUserManagement @ref="userRef" /> }
+    else if (Current?.Slug == "announcements") { <PhoneScreen Title="Announcements" Class="m-admin-announcements"><a href="/admin">‹ Administration</a><AdminAnnouncements @ref="announceRef" /></PhoneScreen> }
     else { <AdminReadOnlyPhone Section="@(Current?.Slug ?? "organization")" Title="@(Current?.Label ?? "Administration")" /> }
 }
 else if (Current is not null)
@@ -160,7 +161,7 @@ else if (Current is not null)
         if (next is null)
         {
             Current = null;
-            if (Phone.IsPhone) return;
+            if (Phone.IsPhone || !Phone.IsInitialized) return;
             Nav.NavigateTo("/admin/users", replace: true);
             return;
         }
@@ -190,6 +191,7 @@ else if (Current is not null)
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (!Phone.IsInitialized) { await Phone.StartAsync(); OnParametersSet(); StateHasChanged(); }
         await JS.InvokeVoidAsync("ipop.icons");
     }
 

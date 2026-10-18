@@ -21,12 +21,13 @@ public class PhoneSettingsTests
             return new(HttpStatusCode.OK) { Content = JsonContent.Create(new DirectoryEmployeeDto("PRIVATE-NIK", "Jane Smith", "PRIVATE-POSITION", "ICT", "ict", "Sepanjang", "sja", "Mary", "jane@example.invalid", "1204", null, "on", [])) };
         }
     }
-    private static BunitContext Context(bool phone, Api api)
+    /// <paramref name="phone"/> null = cold start: the browser has not answered ipop.mobile.watch yet.
+    private static BunitContext Context(bool? phone, Api api)
     {
         var ctx = new BunitContext(); ctx.JSInterop.Mode = JSRuntimeMode.Loose;
         var http = new HttpClient(api) { BaseAddress = new("http://localhost/") };
         var auth = new AuthState(http, ctx.JSInterop.JSRuntime); ctx.Services.AddSingleton(auth);
-        var state = new PhoneState(ctx.JSInterop.JSRuntime); state.OnPhoneChanged(phone);
+        var state = new PhoneState(ctx.JSInterop.JSRuntime); if (phone is { } p) state.OnPhoneChanged(p);
         ctx.Services.AddSingleton(state); ctx.Services.AddSingleton(new OverlayStack());
         ctx.Services.AddSingleton(new ToastService()); ctx.Services.AddSingleton(new NotificationSettingsState()); ctx.Services.AddSingleton(new ConfirmService());
         ctx.Services.AddSingleton(new TabPrefsState(auth));
@@ -71,6 +72,27 @@ public class PhoneSettingsTests
         Assert.Contains(ctx.JSInterop.Invocations, i => i.Identifier == "ipop.spellcheck" && i.Arguments.Count == 1);
         cut.FindAll(".ph-row").Single(x => x.TextContent.Contains("Notifications & sounds")).Click();
         Assert.True(ctx.Services.GetRequiredService<NotificationSettingsState>().IsOpen);
+    }
+    [Fact]
+    public void Phone_profile_route_stays_on_profile_and_renders_real_account_editor()
+    {
+        using var ctx = Context(true, new Api());
+        var nav = ctx.Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>(); nav.NavigateTo("/profile");
+        var cut = ctx.Render<Profile>();
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll(".m-profile")));
+        Assert.EndsWith("/profile", nav.Uri);
+    }
+    [Theory]
+    [InlineData("profile")]
+    [InlineData("settings")]
+    public void Cold_phone_deeplink_waits_for_phone_detection_before_desktop_redirect(string route)
+    {
+        using var ctx = Context(null, new Api());
+        ctx.JSInterop.Setup<bool>("ipop.mobile.watch", _ => true).SetResult(true);
+        var nav = ctx.Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>(); nav.NavigateTo("/" + route);
+        if (route == "profile") { var cut = ctx.Render<Profile>(); cut.WaitForAssertion(() => Assert.Single(cut.FindAll(".m-profile"))); }
+        else { var cut = ctx.Render<SettingsPhone>(); cut.WaitForAssertion(() => Assert.Single(cut.FindAll(".m-settings"))); }
+        Assert.EndsWith("/" + route, nav.Uri);
     }
     [Fact]
     public void Desktop_settings_redirects_to_profile_without_phone_markup()

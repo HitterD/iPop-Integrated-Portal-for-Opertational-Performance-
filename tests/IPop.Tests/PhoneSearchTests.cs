@@ -17,6 +17,7 @@ public class PhoneSearchTests
         {
             if (r.Method == HttpMethod.Delete) Deleted.Add(r.RequestUri!.AbsolutePath);
             object payload = r.RequestUri!.AbsolutePath switch {
+                "/api/chat/rooms" => new IPop.Application.Chat.PagedResult<IPop.Application.Chat.RoomListDto>([new(Guid.NewGuid(), "direct", null, "PRIVATE-NIK", "Real Recent Person", null, DateTime.UtcNow, 0, false, false, false, "on", false, false, null)], 1, 1, 8),
                 "/api/search/history" => new[] { new CommandPalette.SearchHistoryItemDto(HistoryId, "Maintenance", DateTime.UtcNow) },
                 "/api/search/modules" => new[] { new CommandPalette.SearchModuleInfoDto("notes", "Notes", "notebook", 1) },
                 "/api/search/modules/notes" => new CommandPalette.SearchPageDto("notes", "ready", [new("n1", "notes", "Maintenance plan", null, "UPS", "/notes?id=n1", "notebook", null, "title")], 1, 1, 5, false),
@@ -34,6 +35,8 @@ public class PhoneSearchTests
         var cut = ctx.Render<CommandPalette>(); cut.InvokeAsync(palette.Open);
         cut.WaitForAssertion(() => Assert.Single(cut.FindAll(".m-search")));
         cut.WaitForAssertion(() => Assert.True(cut.Markup.Contains("Maintenance"), cut.Markup));
+        cut.WaitForAssertion(() => Assert.Contains("Real Recent Person", cut.Markup));
+        Assert.DoesNotContain("PRIVATE-NIK", cut.Find(".m-search").TextContent);
         cut.Find("button[aria-label='Remove Maintenance']").Click();
         cut.WaitForAssertion(() => Assert.Contains("/api/search/history/" + api.HistoryId, api.Deleted));
         cut.Find("input[aria-label='Search']").Input("UPS");

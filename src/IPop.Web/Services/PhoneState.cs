@@ -9,16 +9,17 @@ namespace IPop.Web.Services;
 public sealed class PhoneState(IJSRuntime js) : IDisposable
 {
     private DotNetObjectReference<PhoneState>? _self;
-    private bool _started;
+    private Task? _start;
+    public bool IsInitialized { get; private set; }
 
     public bool IsPhone { get; private set; }
     public event Action? Changed;
 
     /// Reads the query once and subscribes to its changes (ipop.mobile.watch).
-    public async Task StartAsync()
+    public Task StartAsync() => _start ??= DetectAsync();
+
+    private async Task DetectAsync()
     {
-        if (_started) return;
-        _started = true;
         _self = DotNetObjectReference.Create(this);
         bool phone;
         try { phone = await js.InvokeAsync<bool>("ipop.mobile.watch", _self); }
@@ -29,6 +30,7 @@ public sealed class PhoneState(IJSRuntime js) : IDisposable
     [JSInvokable]
     public void OnPhoneChanged(bool isPhone)
     {
+        IsInitialized = true;
         if (IsPhone == isPhone) return;
         IsPhone = isPhone;
         Changed?.Invoke();
