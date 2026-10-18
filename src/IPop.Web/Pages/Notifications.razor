@@ -13,6 +13,7 @@
 @using IPop.Web.Components.Phone.Notifications
 
 <PageTitle>Notification Center — IPop</PageTitle>
+<IPop.Web.Components.Phone.PullRefresh Prefix="/notifications" OnRefresh="ReloadAsync" />
 
 <div class="notifs-v6 @((mDetail ? "m-detail" : "") + (Phone.IsPhone ? " m-nf-phone" : ""))">
     @if (Phone.IsPhone && !mDetail)

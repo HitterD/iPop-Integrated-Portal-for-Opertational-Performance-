@@ -1,0 +1,29 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+@* Pull to refresh (demo f): registers this page's refresh for its route prefix with js/ph-motion.js.
+   The gesture is only live on routes with a registered refresh; the spinner stays while OnRefresh runs.
+   Renders nothing. *@
+
+@code {
+    /// Route prefix the gesture applies to, e.g. "/mail" (and /mail/…); "=/chat" = exactly /chat.
+    [Parameter, EditorRequired] public string Prefix { get; set; } = "";
+    [Parameter, EditorRequired] public Func<Task> OnRefresh { get; set; } = () => Task.CompletedTask;
+
+    private DotNetObjectReference<PullRefresh>? self;
+
+    [JSInvokable] public Task OnPullRefresh() => InvokeAsync(OnRefresh);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        self = DotNetObjectReference.Create(this);
+        try { await JS.InvokeVoidAsync("ipop.motion.registerRefresh", Prefix, self); } catch { /* prerender / tests / old cached js */ }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("ipop.motion.unregisterRefresh", Prefix); } catch { /* circuit gone */ }
+        self?.Dispose();
+    }
+}

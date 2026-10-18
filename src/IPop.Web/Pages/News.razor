@@ -15,6 +15,7 @@
 @inject IPop.Web.Services.CalendarLinks CalLinks
 
 <PageTitle>News & Memos — IPop</PageTitle>
+<IPop.Web.Components.Phone.PullRefresh Prefix="=/news" OnRefresh="() => Reload(1, true)" />
 
 @if (Phone.IsPhone)
 {

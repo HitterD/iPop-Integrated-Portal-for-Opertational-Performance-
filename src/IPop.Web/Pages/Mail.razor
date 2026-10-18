@@ -21,6 +21,7 @@
 @inject IPop.Web.Services.PhoneState Phone
 
 <PageTitle>Mail — IPop</PageTitle>
+<IPop.Web.Components.Phone.PullRefresh Prefix="/mail" OnRefresh="ReloadAll" />
 
 
 <div class="mail-page mlx @(detail is not null ? "m-detail" : "") @(mFolderSheet && !Phone.IsPhone ? "m-folders-open" : "")">

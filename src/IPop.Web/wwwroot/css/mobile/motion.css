@@ -1,0 +1,149 @@
+/* Phone micro-interactions (approved demo: docs/mockups/mobile-micro-interactions.html, a–j).
+   Everything lives inside the phone query, so desktop and tablet never change. Decoration only:
+   js/ph-motion.js adds/removes the classes; no rule here hides content without its opposite. */
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  :root { --ph-pop: cubic-bezier(.34, 1.56, .64, 1); }
+
+  /* (a) press feedback: buttons/tiles shrink a touch, rows light up. JS sets .ph-pressed on pointerdown
+     so it shows even where :active is swallowed by a scroll container. */
+  .ph-fab, .ph-mt, .m-tab, .ph-ib, .ph-txtb, .ph-back, .ph-btn, .ph-seg button, .m-notes-card, .m-project-card,
+  .m-call-room-card, .callx-btn, .callx-ctrl, .send-btn, .mlx-fab, .m-dashboard-widget a, .ph-prof {
+    transition: transform .18s var(--ph-ease), background-color .18s, opacity .18s;
+  }
+  .ph-pressed:is(.ph-fab, .ph-mt, .ph-ib, .ph-txtb, .ph-back, .ph-btn, .ph-seg button, .m-notes-card, .m-project-card,
+    .m-call-room-card, .callx-btn, .callx-ctrl, .send-btn, .mlx-fab, .ph-prof) { transform: scale(.96); }
+  .m-tab.ph-pressed .m-tab-ic { transform: scale(.86); }
+  .m-tab-ic { transition: transform .2s var(--ph-ease); }
+  .ph-pressed:is(.ph-row, .room-item, .m-nf-row, .m-tickets-row, .m-news-row, .m-files-row, .m-directory-row,
+    .m-dashboard-row, .m-notes-page-row, .m-admin-user-row, .calls-history-row, .notif-row, .m-calendar-event) {
+    background-color: var(--ph-fill-2);
+  }
+
+  /* (b) screen transitions: a new route/detail slides in from the right, Back slides from the left. */
+  .ph-enter-fwd { animation: ph-in-fwd .34s var(--ph-ease) both; }
+  .ph-enter-back { animation: ph-in-back .3s var(--ph-ease) both; }
+  @keyframes ph-in-fwd { from { transform: translateX(28%); opacity: .35; } to { transform: none; opacity: 1; } }
+  @keyframes ph-in-back { from { transform: translateX(-18%); opacity: .5; } to { transform: none; opacity: 1; } }
+
+  /* (c) sheets: spring in, scrim fades, drag follows the finger (ph-kit.js), closing slides out. */
+  .ph-sheet { animation: ph-sheet-spring .46s var(--ph-ease) both; }
+  @keyframes ph-sheet-spring { 0% { transform: translateY(100%); } 70% { transform: translateY(-1.2%); } 100% { transform: none; } }
+  .ph-sheet .ph-grab { transition: width .2s var(--ph-ease), background-color .2s; }
+  .ph-sheet .ph-grab:active { width: 52px; }
+
+  /* (d) tab bar: icon bounce on select, badges pop when they appear or change. */
+  .m-tab.ph-bounce .m-tab-ic { animation: ph-bounce .42s var(--ph-pop); }
+  @keyframes ph-bounce { 0% { transform: scale(1); } 40% { transform: scale(1.18) translateY(-2px); } 100% { transform: scale(1); } }
+  .ph-badge-pop { animation: ph-badge-pop .45s var(--ph-pop); }
+  @keyframes ph-badge-pop { from { transform: scale(0); } to { transform: scale(1); } }
+
+  /* (e) FAB collapses to its icon while scrolling down, label back on scroll up. */
+  .ph-fab.is-extended span { display: inline-block; max-width: 160px; overflow: hidden; white-space: nowrap; transition: max-width .3s var(--ph-ease), opacity .2s; }
+  .ph-fab.is-extended { transition: padding .3s var(--ph-ease), transform .18s var(--ph-ease); }
+  .ph-fab.ph-fab-mini { padding: 0 14px; gap: 0; }
+  .ph-fab.ph-fab-mini span { max-width: 0; opacity: 0; }
+
+  /* (f) pull to refresh indicator (inserted by ph-motion.js at the top of the scroller). */
+  .ph-ptr { position: sticky; top: 0; z-index: 4; height: 0; display: grid; place-items: center; overflow: visible; pointer-events: none; }
+  .ph-ptr i {
+    position: absolute; top: calc(var(--ph-ptr-y, 0px) - 34px); width: 26px; height: 26px; border-radius: 50%;
+    border: 2.5px solid var(--ph-fill); border-top-color: var(--ph-green); background: var(--ph-card);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .12); opacity: var(--ph-ptr-p, 0);
+    transform: rotate(calc(var(--ph-ptr-p, 0) * 300deg)) scale(calc(.5 + var(--ph-ptr-p, 0) * .5));
+  }
+  .ph-ptr.is-loading i { top: 12px; opacity: 1; animation: ph-spin .7s linear infinite; }
+  @keyframes ph-spin { to { transform: rotate(360deg); } }
+  .ph-ptr-pull > :not(.ph-ptr) { transform: translateY(var(--ph-ptr-y, 0px)); }
+  .ph-ptr-release > :not(.ph-ptr) { transition: transform .35s var(--ph-ease); }
+
+  /* (g) swipe rows: action icon grows once the swipe passes the threshold (ph-kit.js swipeRows). */
+  [data-swipe] .sw-acts .lucide { transition: transform .2s var(--ph-pop); }
+  [data-swipe].ph-sw-armed .sw-acts .lucide { transform: scale(1.3); }
+
+  /* (h) feedback: toasts slide up from the bottom on phones with a drawn check; sent bubbles pop. */
+  .toast-host { top: auto !important; left: 10px !important; right: 10px !important;
+    bottom: calc(var(--m-tabbar-h, 56px) + var(--m-safe-b, 0px) + 12px) !important; align-items: stretch; }
+  body.m-hide-tabbar .toast-host { bottom: calc(var(--m-safe-b, 0px) + 76px) !important; }
+  .toast-host .toast { max-width: none; width: 100%; animation: ph-toast-in .4s var(--ph-ease) both; }
+  .toast-host .toast.exiting { animation: ph-toast-out .25s ease-in both; }
+  @keyframes ph-toast-in { from { transform: translateY(120%); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes ph-toast-out { to { transform: translateY(120%); opacity: 0; } }
+  .toast.success .toast-icon .lucide path, .toast.success .toast-icon .lucide polyline { stroke-dasharray: 24; stroke-dashoffset: 24; animation: ph-draw .35s .12s ease-out forwards; }
+  @keyframes ph-draw { to { stroke-dashoffset: 0; } }
+  .ph-sent { animation: ph-sent .35s var(--ph-pop); }
+  @keyframes ph-sent { from { transform: scale(.92); } to { transform: scale(1); } }
+
+  /* (i) incoming call — native-style full screen (GlobalCallOverlay .callx-incoming). */
+  .callx-incoming {
+    position: fixed !important; inset: 0 !important; width: auto !important; max-width: none !important; z-index: 1200 !important;
+    display: flex !important; flex-direction: column; align-items: center; margin: 0 !important; border: 0 !important; border-radius: 0 !important;
+    padding: calc(var(--m-safe-t, 0px) + 84px) 24px calc(var(--m-safe-b, 0px) + 44px) !important;
+    color: #fff !important; box-shadow: none !important;
+    background: radial-gradient(120% 70% at 50% 20%, #2f6f53 0%, #123528 55%, #081a13 100%) !important;
+    animation: ph-call-in .5s var(--ph-ease) both !important;
+  }
+  @keyframes ph-call-in { from { transform: translateY(-100%); } to { transform: none; } }
+  .callx-incoming::before {
+    content: 'iPop voice call'; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; opacity: .75; margin-bottom: 10px;
+  }
+  .callx-incoming.callx-group::before { content: 'iPop group call'; }
+  .callx-incoming .callx-incoming-main { flex-direction: column-reverse; align-items: center; gap: 44px; flex: 1; text-align: center; }
+  .callx-incoming .callx-incoming-text { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .callx-incoming .callx-incoming-text strong { font-size: 30px; font-weight: 600; color: #fff; line-height: 1.15; }
+  .callx-incoming .callx-incoming-text span, .callx-incoming .callx-sub { font-size: 16px; color: rgba(255, 255, 255, .8); }
+  .callx-incoming .callx-incoming-text span .lucide { display: none; }
+  .callx-incoming .callx-avatar, .callx-incoming .callx-ring {
+    width: 128px !important; height: 128px !important; border-radius: 36px !important; font-size: 46px !important;
+    position: relative; overflow: visible !important;
+  }
+  .callx-incoming .callx-ring { animation: ph-call-ripple 2s ease-out infinite; }
+  @keyframes ph-call-ripple {
+    0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, .45), 0 0 0 0 rgba(255, 255, 255, .25); }
+    100% { box-shadow: 0 0 0 46px rgba(255, 255, 255, 0), 0 0 0 80px rgba(255, 255, 255, 0); }
+  }
+  .callx-incoming .callx-warn { color: #ffd6a3; text-align: center; }
+  .callx-incoming .callx-incoming-actions {
+    width: 100%; display: grid !important; grid-template-columns: 1fr 1fr 1fr; align-items: end; gap: 8px; margin-top: 24px;
+  }
+  .callx-incoming .callx-incoming-actions.callx-two { grid-template-columns: 1fr 1fr; padding: 0 18px; }
+  .callx-incoming .callx-btn {
+    display: flex !important; flex-direction: column; align-items: center; gap: 10px; height: auto !important;
+    background: none !important; border: 0 !important; color: #fff !important; font-size: 14px; font-weight: 500; padding: 0 !important;
+  }
+  .callx-incoming .callx-btn .lucide {
+    width: 76px !important; height: 76px !important; padding: 24px; box-sizing: border-box; border-radius: 50%;
+    box-shadow: 0 10px 24px -8px rgba(0, 0, 0, .6); stroke-width: 2.2;
+  }
+  .callx-incoming .callx-decline .lucide { background: #ff3b30; }
+  .callx-incoming .callx-accept .lucide { background: #34c759; animation: ph-call-wiggle 1.4s ease-in-out infinite; }
+  .callx-incoming .callx-ghost .lucide { width: 56px !important; height: 56px !important; padding: 16px; background: rgba(255, 255, 255, .16); margin-bottom: 10px; }
+  @keyframes ph-call-wiggle { 0%, 60%, 100% { transform: rotate(0); } 10%, 30%, 50% { transform: rotate(-14deg); } 20%, 40% { transform: rotate(14deg); } }
+  .callx-incoming .callx-replies {
+    width: 100%; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px;
+  }
+  .callx-incoming .callx-replies > button {
+    min-height: 44px; padding: 0 16px; border-radius: 22px; border: 0; background: rgba(255, 255, 255, .16); color: #fff; font: inherit; font-size: 15px;
+  }
+  .callx-incoming .callx-reply-custom { width: 100%; display: flex; gap: 8px; }
+  .callx-incoming .callx-reply-custom input { flex: 1; min-width: 0; min-height: 44px; border-radius: 22px; border: 0; padding: 0 16px; font-size: 16px; }
+  .callx-incoming .callx-reply-custom button { width: 44px; height: 44px; border-radius: 50%; border: 0; background: #34c759; color: #fff; }
+
+  /* (j) per-page motion: content rises in order when a screen opens; checks, likes and progress pop. */
+  .ph-stagger > * { animation: ph-rise .42s var(--ph-ease) both; }
+  .ph-stagger > :nth-child(1) { animation-delay: .02s; } .ph-stagger > :nth-child(2) { animation-delay: .05s; }
+  .ph-stagger > :nth-child(3) { animation-delay: .08s; } .ph-stagger > :nth-child(4) { animation-delay: .11s; }
+  .ph-stagger > :nth-child(5) { animation-delay: .14s; } .ph-stagger > :nth-child(6) { animation-delay: .17s; }
+  .ph-stagger > :nth-child(n+7) { animation-delay: .2s; }
+  @keyframes ph-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .ph-pop { animation: ph-pop .32s var(--ph-pop); }
+  @keyframes ph-pop { 0% { transform: scale(.7); } 100% { transform: scale(1); } }
+  input[type=checkbox]:checked { animation: ph-pop .28s var(--ph-pop); }
+
+  /* Reduced motion (system setting): short fades only; press feedback stays. */
+  @media (prefers-reduced-motion: reduce) {
+    .ph-enter-fwd, .ph-enter-back, .ph-sheet, .ph-stagger > *, .toast-host .toast, .callx-incoming { animation: ph-fade-only .12s ease-out both !important; }
+    .m-tab.ph-bounce .m-tab-ic, .ph-badge-pop, .ph-sent, .ph-pop, .callx-incoming .callx-ring, .callx-incoming .callx-accept .lucide,
+    input[type=checkbox]:checked { animation: none !important; }
+    @keyframes ph-fade-only { from { opacity: 0; } to { opacity: 1; } }
+  }
+}

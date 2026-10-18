@@ -22,6 +22,7 @@
             <ListRow Title="Calendar sharing" OnClick="() => sharing = true" Chevron="true" />
             <ListRow Title="Edit tabs" Subtitle="4 pinned" OnClick="() => tabs = true" Chevron="true" />
             <div class="m-settings-switch"><span>Spell check</span><button type="button" role="switch" aria-label="Spell check" aria-checked="@(spell ? "true" : "false")" @onclick="ToggleSpell">@(spell ? "On" : "Off")</button></div>
+            <div class="m-settings-switch"><span>Vibration</span><button type="button" role="switch" aria-label="Vibration" aria-checked="@(haptics ? "true" : "false")" @onclick="ToggleHaptics">@(haptics ? "On" : "Off")</button></div>
         </ListSection>
         <ListSection Header="App">
             <ListRow Title="Install iPop" Href="/app" Chevron="true" />
@@ -40,7 +41,7 @@
     <BottomSheet Open="help" OpenChanged="v => help = v" Title="Help & tour" Class="m-settings-dialog"><ChildContent><p>Chat, mail, calls and your calendar are in the tabs. Find every other module under More. Use Edit tabs to pin your favourites.</p><p>For guided page tours, open iPop on a computer.</p><a href="/app">Install instructions</a></ChildContent></BottomSheet>
 }
 @code {
-    private bool tabs, mail, sharing, devices, help, spell;
+    private bool tabs, mail, sharing, devices, help, spell, haptics = true;
     private string theme = "light", density = MailListDensity.Compact;
     [CascadingParameter] public IPop.Web.Layout.MainLayout? Layout { get; set; }
     protected override void OnInitialized() { Phone.Changed += Changed; Layout?.SetHeader("Settings"); }
@@ -53,6 +54,7 @@
             await Auth.LoadMeAsync();
             density = MailListDensity.Parse(await Auth.GetUserSettingAsync(MailListDensity.Key));
             try { theme = await JS.InvokeAsync<string>("ipop.themePreference") ?? "light"; spell = await JS.InvokeAsync<bool>("ipop.spellcheck"); } catch { }
+            try { haptics = await JS.InvokeAsync<bool>("ipop.motion.hapticsEnabled"); } catch { }
             StateHasChanged();
         }
         await JS.InvokeVoidAsync("ipop.icons");
@@ -61,6 +63,7 @@
     private void Back() => Nav.NavigateTo("/dashboard");
     private async Task SetTheme(string value) { await JS.InvokeVoidAsync("ipop.setTheme", value); theme = value; }
     private async Task ToggleSpell() { spell = !spell; await JS.InvokeAsync<bool>("ipop.spellcheck", spell); }
+    private async Task ToggleHaptics() { haptics = !haptics; try { await JS.InvokeVoidAsync("ipop.motion.setHaptics", haptics); } catch { } }
     private async Task SetDensity(string value) { await Auth.SetUserSettingAsync(MailListDensity.Key, value); density = value; }
     private async Task SignOut() { await Auth.SignOutAsync(); Nav.NavigateTo("/login", forceLoad: true); }
     public void Dispose() => Phone.Changed -= Changed;

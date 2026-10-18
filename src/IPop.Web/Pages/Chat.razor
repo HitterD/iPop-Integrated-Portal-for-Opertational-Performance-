@@ -25,6 +25,7 @@
 @using IPop.Web.Components.Chat
 
 <PageTitle>Messages — IPop</PageTitle>
+<IPop.Web.Components.Phone.PullRefresh Prefix="=/chat" OnRefresh="ChatSvc.LoadRoomsAsync" />
 <div class="chat-live-status" role="status" aria-live="polite" aria-atomic="true">@A11yLiveText</div>
 
 <div class="chat-area @(mobileRoomsOpen ? "rooms-open" : "") @(ChatSvc.ActiveRoomId is not null && !newChatOpen ? "m-detail" : "") @(drawerOpen ? "with-drawer" : "") @(globalDrawerView is not null ? "with-global-drawer" : "")" @onclick="CloseCtx">

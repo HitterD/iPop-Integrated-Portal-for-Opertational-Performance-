@@ -5,6 +5,7 @@
 @using IPop.Web.Components.Tickets
 
 <PageTitle>@(detail is { } dt && dt.Id == Id ? $"{dt.Title} - Tickets" : "Tickets") — IPop</PageTitle>
+<IPop.Web.Components.Phone.PullRefresh Prefix="=/tickets" OnRefresh="() => SyncAsync(true)" />
 
 @if (Phone.IsPhone)
 {
