@@ -70,7 +70,7 @@
       html += `<div class="it ${i.isRead ? 'read' : ''}" data-i="${idx}" style="--m:${m.c};animation-delay:${Math.min(idx, 12) * 18}ms">${i.isRead ? '' : '<i class="dot"></i>'}
         <span class="ico">${ICON[mod] || ICON.system}</span>
         <span class="m"><b><span class="t">${esc(i.title)}</span>${missed ? '<span class="missed">MISSED</span>' : ''}<small>${esc(timeShort(i.at))}</small></b><span>${esc(i.body)}</span></span>
-        <span class="acts"><button data-a="read" title="${i.isRead ? 'Mark unread' : 'Mark read'}">${i.isRead ? '●' : ICON.check}</button><button data-a="web" title="Open in iPop">↗</button></span></div>`;
+        <span class="acts"><button data-a="read" title="${i.isRead ? 'Mark unread' : 'Mark read'}">${i.isRead ? IC('circle-dot') : ICON.check}</button><button data-a="web" title="Open in iPop">${IC('arrow-up-right')}</button></span></div>`;
     });
     if (items.length < total && filter !== 'tickets') html += '<button class="loadmore" id="more">Show more</button>';
     list.innerHTML = html;

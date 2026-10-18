@@ -31,6 +31,11 @@ public sealed class IPopClient
 
     public bool IsSignedIn => Session is not null;
     public Uri Server => new(Session?.Server ?? AppInfo.DefaultServer);
+    /// Where links open in the browser: the server's public web address (Notifier:WebBase, e.g.
+    /// https://ipop.santos.co.id/) when it gives one, otherwise the address the app signed in to.
+    public Uri? WebBaseOverride { get; set; }
+    public Uri Web => WebBaseOverride ?? Server;
+    public string WebUrl(string? path) => new Uri(Web, (path ?? "/").TrimStart('/')).ToString();
 
     public sealed record LoginResult(bool Ok, string? Error, bool MustChangePassword);
     private sealed record LoginDto(string AccessToken, string RefreshToken, DateTime AccessTokenExpiresAt, bool MustChangePassword);

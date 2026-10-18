@@ -37,7 +37,7 @@ public sealed class NotifierApp : ApplicationContext
         popups = new PopupManager(api, settings, state, device);
         api.SignedOut += () => Post(OnSignedOut);
         popups.CountChanged += UpdateTray;
-        device.Beat += () => Post(() => { devicesItem!.Visible = device.IctTools; UpdateTray(); });
+        device.Beat += () => Post(() => { api.WebBaseOverride = device.WebBase; devicesItem!.Visible = device.IctTools; UpdateTray(); });
         settings.Changed += _ => Post(UpdateTray);
 
         Toasts.Init();
@@ -62,7 +62,7 @@ public sealed class NotifierApp : ApplicationContext
         tray = new NotifyIcon { Icon = AppIcon.Icon, Text = "iPop Notifier", ContextMenuStrip = menu, Visible = true };
         tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ShowInbox(); };
 
-        tick.Tick += (_, _) => popups.Release();
+        tick.Tick += (_, _) => { popups.Release(); PinTray(); };
         tick.Start();
 
         if (api.IsSignedIn) _ = StartSessionAsync();
@@ -124,6 +124,19 @@ public sealed class NotifierApp : ApplicationContext
     {
         var n = await api.GetJsonAsync("api/notifications/v1/unread-count");
         if (n?["unread"] is { } u) { unread = u.GetValue<int>(); Post(UpdateTray); }
+    }
+
+    private int pinTries;
+    /// Windows records the tray icon a moment after it first appears; keep trying for about a minute.
+    private void PinTray()
+    {
+        if (pinTries < 0 || pinTries++ > 12) return;
+        if (TrayPin.PromoteOnce(SessionStore.Folder)) { pinTries = -1; return; }
+        if (!TrayPin.IsWindows11 && pinTries == 2)
+        {
+            tray.ShowBalloonTip(6000, "iPop Notifier is running", "It lives here in the tray. Click ˄ and drag the iPop icon onto the taskbar to keep it visible.", ToolTipIcon.Info);
+            pinTries = -1;
+        }
     }
 
     private void ShowSignIn()
@@ -236,7 +249,7 @@ public sealed class NotifierApp : ApplicationContext
         devices.Show();
     }
 
-    private void OpenIPop(string path) => Integration.OpenUrl(new Uri(api.Server, path.TrimStart('/')).ToString());
+    private void OpenIPop(string path) => Integration.OpenUrl(api.WebUrl(path));
 
     /// From a second start or an ipop-notifier:// link:
     ///   ipop-notifier://explorer?nas=spj&amp;path=/sja/SJA SPJ/ICT/a.xlsx → File Explorer (company NAS only)

@@ -14,7 +14,7 @@
     rows = r.json || [];
     const online = rows.filter(d => d.online).length;
     $('#cnt').textContent = `${rows.length} computer${rows.length === 1 ? '' : 's'} · ${online} online`;
-    $('#devs').innerHTML = rows.map((d, i) => `<div class="dev ${sel === d.id ? 'on' : ''}" data-i="${i}"><span class="pc">🖥<i class="${d.online ? '' : 'off'}"></i></span>
+    $('#devs').innerHTML = rows.map((d, i) => `<div class="dev ${sel === d.id ? 'on' : ''}" data-i="${i}"><span class="pc">${IC('monitor')}<i class="dot ${d.online ? '' : 'off'}"></i></span>
       <span class="m"><b>${esc(d.machineName)}</b><small>${esc(d.userName)} · ${d.online ? esc(firstIp(d)) : 'last seen ' + esc(ago(d.lastSeenAt))}</small></span></div>`).join('') || '<div class="empty">No computers found</div>';
     const cur = rows.find(d => d.id === sel); if (cur) show(cur);
   }
@@ -32,7 +32,7 @@
       <span>Windows</span><span>${esc(d.osVersion || '—')}</span>
       <span>App version</span><span>${esc(d.appVersion || '—')}</span>
       <span>Last active</span><span>${esc(ago(d.lastSeenAt))}</span></div>
-      <div class="acts"><button class="p" disabled title="Coming in phase 3">🖥 Remote help</button><button data-a="copy">📋 Copy IP</button><button data-a="rdp">Open Remote Desktop</button></div>
+      <div class="acts"><button class="p" disabled title="Coming in phase 3">${IC('screen-share')}Remote help</button><button data-a="copy">${IC('copy')}Copy IP</button><button data-a="rdp">${IC('monitor-up')}Open Remote Desktop</button></div>
       <div class="note">Remote help inside iPop Notifier comes in phase 3. Until then, “Open Remote Desktop” starts Windows Remote Desktop to this computer.</div>`;
     $('#detail').querySelector('[data-a=copy]').onclick = () => { post({ type: 'copy', text: firstIp(d) }); app.snack('IP copied'); };
     $('#detail').querySelector('[data-a=rdp]').onclick = () => post({ type: 'rdp', host: firstIp(d) });

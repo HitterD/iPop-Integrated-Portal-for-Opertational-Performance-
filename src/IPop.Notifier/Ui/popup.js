@@ -24,7 +24,7 @@
   function shell() {
     const mod = MOD[N.module] || MOD.system;
     const time = timeShort(N.at);
-    const label = t => STYLE === 'stack' ? t.label.replace(' in iPop ↗', ' ↗').replace(' in iDesk ↗', ' ↗').replace('Open in iPop ↗', 'Open ↗') : t.label;
+    const label = t => STYLE === 'stack' ? t.label.replace('Open in iPop ', 'Open ').replace('Open in iDesk ', 'iDesk ') : t.label;
     const tools = view.tools.map((t, i) => `<button class="${STYLE === 'stack' ? 'btn' : 'tb2'} ${t.cls || ''}" data-t="${i}" ${t.disabled ? 'disabled' : ''}>${label(t)}</button>`);
     const sp = view.tools.findIndex(t => t.right);
     if (sp >= 0) tools.splice(sp, 0, '<span class="sp"></span>');
@@ -61,7 +61,7 @@
 
   function replyBox() {
     const r = view.reply;
-    const rich = r.rich ? `<div class="rt"><button data-cmd="bold" title="Bold">B</button><button data-cmd="italic" title="Italic"><i>I</i></button><button data-cmd="underline" title="Underline"><u>U</u></button><button data-cmd="insertUnorderedList" title="List">•</button>${r.attach ? '<button data-attach title="Attach">📎</button>' : ''}</div>` : '';
+    const rich = r.rich ? `<div class="rt"><button data-cmd="bold" title="Bold">B</button><button data-cmd="italic" title="Italic"><i>I</i></button><button data-cmd="underline" title="Underline"><u>U</u></button><button data-cmd="insertUnorderedList" title="List">•</button>${r.attach ? '<button data-attach title="Attach">' + IC('paperclip') + '</button>' : ''}</div>` : '';
     return `<div class="reply"><div class="rte">${rich}<div class="ed" contenteditable="true" data-ph="${esc(r.placeholder || 'Write a reply…')}"></div><div class="att"></div>
       <div class="err" hidden></div><div class="rf"><small id="replyTo">${esc(r.hint || '')}</small><button class="${STYLE === 'stack' ? 'btn' : 'tb2'}" data-cancel>Cancel</button><button class="${STYLE === 'stack' ? 'btn' : 'tb2'} p" data-send>Send</button></div></div>
       <input type="file" hidden multiple data-file></div>`;
@@ -142,8 +142,8 @@
 
   const openIPop = path => post({ type: 'openIPop', path: path || '/notifications' });
   const markRead = () => api('POST', `api/notifications/v1/notifications/${N.id}/read`);
-  const openTool = (label, path) => ({ label: label + ' ↗', right: true, run: async () => { openIPop(path || N.targetUrl); await markRead(); closeOut('open'); } });
-  const readTool = { label: '✓ Mark read', run: async () => { await markRead(); closeOut('read'); } };
+  const openTool = (label, path) => ({ label: label + ' ' + IC('arrow-up-right'), right: true, run: async () => { openIPop(path || N.targetUrl); await markRead(); closeOut('open'); } });
+  const readTool = { label: IC('check') + 'Mark read', run: async () => { await markRead(); closeOut('read'); } };
   const id = re => (N.targetUrl || '').match(re)?.[1];
 
   // ── per module ────────────────────────────────────────────────────────────
@@ -173,14 +173,14 @@
     view.body = `<iframe data-mail sandbox="allow-same-origin" title="Message"></iframe>`
       + pics.map(a => `<img class="img" data-img data-src="api/mail/attachments/${a.id}/download?inline=true" alt="${esc(a.fileName)}">`).join('')
       + (atts.length ? `<div class="files">${atts.map(a => `<span class="file" title="${esc(a.fileName)}"><span class="fi">${esc(ext(a.fileName))}</span><span>${esc(a.fileName)} · ${fmtSize(a.fileSize)}</span></span>`).join('')}</div>` : '')
-      + `<a class="more-link">Show full message ↗</a>`;
+      + `<a class="more-link">Show full message ${IC('arrow-up-right')}</a>`;
     const canAll = d.canReplyAll && replyPlan(d, true).count > replyPlan(d, false).count;
     view.reply = { rich: true, attach: true, placeholder: 'Write your reply…' };
     view.tools = [
-      { label: '↩ Reply', cls: 'p', reply: true },
-      ...(canAll ? [{ label: '↩↩ Reply all', reply: true, all: true }] : []),
-      { label: '↪ Forward', run: async () => { openIPop(N.targetUrl + '&forward=1'); closeOut('open'); } },
-      { label: '✓ Mark read', right: true, run: async () => { await api('POST', `api/mail/${mid}/read`); await markRead(); closeOut('read'); } },
+      { label: IC('reply') + 'Reply', cls: 'p', reply: true },
+      ...(canAll ? [{ label: IC('reply-all') + 'Reply all', reply: true, all: true }] : []),
+      { label: IC('forward') + 'Forward', run: async () => { openIPop(N.targetUrl + '&forward=1'); closeOut('open'); } },
+      { label: IC('check') + 'Mark read', right: true, run: async () => { await api('POST', `api/mail/${mid}/read`); await markRead(); closeOut('read'); } },
       openTool('Open in iPop'),
     ];
     view.send = async (html, attIds) => {
@@ -244,9 +244,9 @@
       : `<p class="txt sel">${esc(t.description || N.body)}</p>`;
     const url = t.url || m.json?.url;
     view.tools = [
-      { label: '↩ Reply in iDesk', cls: 'p', run: async () => { if (url) post({ type: 'openUrl', url }); else openIPop(N.targetUrl); await markRead(); closeOut('open'); } },
-      { label: '✓ Mark read', run: async () => { await markRead(); closeOut('read'); } },
-      { label: 'Open in iDesk ↗', right: true, run: async () => { if (url) post({ type: 'openUrl', url }); else openIPop(N.targetUrl); await markRead(); closeOut('open'); } },
+      { label: IC('reply') + 'Reply in iDesk', cls: 'p', run: async () => { if (url) post({ type: 'openUrl', url }); else openIPop(N.targetUrl); await markRead(); closeOut('open'); } },
+      { label: IC('check') + 'Mark read', run: async () => { await markRead(); closeOut('read'); } },
+      { label: 'Open in iDesk ' + IC('arrow-up-right'), right: true, run: async () => { if (url) post({ type: 'openUrl', url }); else openIPop(N.targetUrl); await markRead(); closeOut('open'); } },
     ];
   }
 
@@ -278,10 +278,10 @@
     const canJoin = key || link;
     const invited = mt && mt.myResponse !== undefined && mt.myResponse !== 'organizer';
     view.tools = [
-      ...(canJoin ? [{ label: '▶ Join', cls: 'p', run: async () => { if (key) openIPop(`/calls?tab=rooms&join=${key}`); else post({ type: 'openUrl', url: link }); await markRead(); finish('Joining…', 'join'); } }] : []),
-      ...(mt && invited && mt.myResponse !== 'accept' && !canJoin ? [{ label: '✓ Accept', cls: 'p', run: () => rsvp(mt.id, 'accept', 'Accepted') }] : []),
-      { label: 'Snooze 5 min', run: async () => { const r = await api('POST', `api/notifications/v1/notifications/${N.id}/snooze`, { until: new Date(Date.now() + 5 * 60000).toISOString() }); if (r.ok) finish('Snoozed for 5 minutes', 'snooze'); else snack('Couldn\'t snooze. Try again.'); } },
-      ...(mt && invited && mt.myResponse !== 'decline' ? [{ label: 'Decline', cls: 'r', run: () => rsvp(mt.id, 'decline', 'Declined') }] : []),
+      ...(canJoin ? [{ label: IC('video') + 'Join', cls: 'p', run: async () => { if (key) openIPop(`/calls?tab=rooms&join=${key}`); else post({ type: 'openUrl', url: link }); await markRead(); finish('Joining…', 'join'); } }] : []),
+      ...(mt && invited && mt.myResponse !== 'accept' && !canJoin ? [{ label: IC('check') + 'Accept', cls: 'p', run: () => rsvp(mt.id, 'accept', 'Accepted') }] : []),
+      { label: IC('alarm-clock') + 'Snooze 5 min', run: async () => { const r = await api('POST', `api/notifications/v1/notifications/${N.id}/snooze`, { until: new Date(Date.now() + 5 * 60000).toISOString() }); if (r.ok) finish('Snoozed for 5 minutes', 'snooze'); else snack('Couldn\'t snooze. Try again.'); } },
+      ...(mt && invited && mt.myResponse !== 'decline' ? [{ label: IC('x') + 'Decline', cls: 'r', run: () => rsvp(mt.id, 'decline', 'Declined') }] : []),
       openTool('Open', N.targetUrl),
     ];
     view.done = 'Done';
@@ -308,9 +308,9 @@
       if (src) cover = `<img class="img" data-img data-src="${esc(src.replace(/^\//, ''))}" alt="">`;
     }
     view.html = p.bodyFormat === 'html' ? p.body : null;
-    view.body = (view.html ? '<iframe data-mail sandbox="allow-same-origin" title="Post"></iframe>' : `<p class="txt sel">${esc(p.body)}</p>`) + cover + '<a class="more-link">Read in iPop ↗</a>';
+    view.body = (view.html ? '<iframe data-mail sandbox="allow-same-origin" title="Post"></iframe>' : `<p class="txt sel">${esc(p.body)}</p>`) + cover + '<a class="more-link">Read in iPop ' + IC('arrow-up-right') + '</a>';
     view.tools = [
-      ...(p.requiresAcknowledgement && !p.isAcknowledged ? [{ label: '✓ Acknowledge', cls: 'p', run: async () => {
+      ...(p.requiresAcknowledgement && !p.isAcknowledged ? [{ label: IC('badge-check') + 'Acknowledge', cls: 'p', run: async () => {
         const a = await api('POST', `api/news/${pid}/acknowledge?contentVersion=${p.contentVersion ?? 1}`);
         if (a.ok) { await api('POST', `api/notifications/v1/notifications/${N.id}/acknowledge`); finish('Acknowledged', 'ack'); }
         else snack(a.status === 409 ? 'The memo was updated — open it in iPop to read the new version.' : 'Couldn\'t acknowledge. Try again.');
@@ -336,8 +336,8 @@
     };
     view.done = 'Comment added';
     view.tools = [
-      { label: '↩ Reply', cls: 'p', reply: true },
-      ...(t.status !== 'done' ? [{ label: '✓ Mark done', run: async () => {
+      { label: IC('reply') + 'Reply', cls: 'p', reply: true },
+      ...(t.status !== 'done' ? [{ label: IC('circle-check') + 'Mark done', run: async () => {
         const res = await api('POST', `api/projects/tasks/${tid}/move`, { status: 'done' });
         if (res.ok) { await markRead(); finish('Marked done', 'done'); } else snack(res.json?.message || 'Couldn\'t update the task.');
       } }] : []),
@@ -367,12 +367,12 @@
       return res.json?.message || 'Couldn\'t reply. Try again.';
     };
     view.done = 'Reply added';
-    view.tools = [{ label: '↩ Reply', cls: 'p', reply: true }, readTool, openTool('Open in iPop')];
+    view.tools = [{ label: IC('reply') + 'Reply', cls: 'p', reply: true }, readTool, openTool('Open in iPop')];
   }
 
   async function calls() {
     view.tools = [
-      { label: '📞 Call back', cls: 'p', run: async () => { openIPop('/calls?tab=recents'); await markRead(); closeOut('call'); } },
+      { label: IC('phone') + 'Call back', cls: 'p', run: async () => { openIPop('/calls?tab=recents'); await markRead(); closeOut('call'); } },
       readTool, openTool('Open in iPop', '/calls?tab=recents'),
     ];
   }
@@ -411,10 +411,10 @@
     const list = box.querySelector('.att');
     for (const f of [...input.files].slice(0, 5)) {
       if (f.size > 25 * 1024 * 1024) { snack(`${f.name} is too large here — attach it in iPop.`); continue; }
-      const chip = document.createElement('span'); chip.textContent = `⏳ ${f.name}`; list.appendChild(chip); size();
+      const chip = document.createElement('span'); chip.innerHTML = IC('loader-circle', 'spin') + esc(f.name); list.appendChild(chip); size();
       const data = await new Promise(res => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.readAsDataURL(f); });
       const r = await new Promise(res => { const idn = Math.random(); const h = m => { if (m.ref === idn) res(m); }; app.on('uploadResult', h); post({ type: 'upload', ref: idn, name: f.name, mime: f.type || 'application/octet-stream', data }); });
-      if (r.id) { chip.dataset.id = r.id; chip.textContent = `📎 ${f.name}`; }
+      if (r.id) { chip.dataset.id = r.id; chip.innerHTML = IC('paperclip') + esc(f.name); }
       else { chip.remove(); snack(r.error || `Couldn't attach ${f.name}.`); }
     }
     input.value = '';
@@ -474,7 +474,7 @@
     const m = document.createElement('div'); m.className = 'menu';
     m.style.left = Math.min(window.innerWidth - 260, r.left + off.left) + 'px';
     m.style.top = Math.min(window.innerHeight - 160, r.bottom + off.top + 6) + 'px';
-    m.innerHTML = `${unc ? '<button data-k="exp">📁 Open in File Explorer</button>' : ''}${nas.server ? '<button data-k="web">🌐 Open in browser</button>' : ''}${unc ? '<button data-k="copy">📋 Copy network path</button>' : ''}<small>${esc(unc || nas.path)}</small>`;
+    m.innerHTML = `${unc ? '<button data-k="exp">' + IC('folder-open') + 'Open in File Explorer</button>' : ''}${nas.server ? '<button data-k="web">' + IC('globe') + 'Open in browser</button>' : ''}${unc ? '<button data-k="copy">' + IC('copy') + 'Copy network path</button>' : ''}<small>${esc(unc || nas.path)}</small>`;
     document.body.appendChild(m);
     m.onclick = e => {
       const k = e.target.closest('button')?.dataset.k; m.remove();

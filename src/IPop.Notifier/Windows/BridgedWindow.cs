@@ -20,7 +20,7 @@ public class BridgedWindow(string page, Size size, IPopClient api, bool noActiva
                 _ = Reply(ApiBridge.ImageAsync(Api, msg));
                 break;
             case "openIPop":
-                Integration.OpenUrl(new Uri(Api.Server, (msg?["path"]?.GetValue<string>() ?? "/").TrimStart('/')).ToString());
+                Integration.OpenUrl(Api.WebUrl(msg?["path"]?.GetValue<string>()));
                 break;
             case "explorer":
                 var unc = msg?["unc"]?.GetValue<string>() ?? "";

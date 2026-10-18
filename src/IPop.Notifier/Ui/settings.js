@@ -13,8 +13,8 @@
     document.querySelectorAll('.main section').forEach(s => s.classList.toggle('on', s.id === 's-' + a.dataset.s));
   };
 
-  const MODS = [['mail', '✉', 'Mail'], ['tickets', '🎫', 'iDesk tickets'], ['calendar', '📅', 'Calendar & meetings'], ['chat', '💬', 'Chat'],
-    ['projects', '✓', 'Projects'], ['news', '📣', 'News & memos'], ['notes', '📝', 'Notes'], ['calls', '📞', 'Calls'], ['system', '⚙', 'System']];
+  const MODS = [['mail', 'Mail'], ['tickets', 'iDesk tickets'], ['calendar', 'Calendar & meetings'], ['chat', 'Chat'],
+    ['projects', 'Projects'], ['news', 'News & memos'], ['notes', 'Notes'], ['calls', 'Calls'], ['system', 'System']];
   const SOUNDS = [['mail', 'Mail · Envelope'], ['tickets', 'iDesk · Lifeline'], ['meeting', 'Meeting · Doorbell'], ['dm', 'Chat · Bubble'], ['group', 'Group chat · Pebble'],
     ['mention', 'Mention · Spark'], ['project', 'Projects · Tasker'], ['announce', 'News · Herald'], ['notes', 'Notes · Paper'], ['system', 'System · Ping']];
 
@@ -36,10 +36,10 @@
     $('#maxHint').textContent = S.style === 'stack' ? 'Others wait behind “+N more”' : 'Older windows minimise into the taskbar group';
     $('#vol').value = S.volume; $('#sound').classList.toggle('on', S.sound);
     $('#autostart').classList.toggle('on', S.startWithWindows);
-    $('#mods').innerHTML = MODS.map(([k, ic, n]) => `<div class="row"><span class="ic2" style="background:${MOD[k].c}">${ic}</span><span class="t">${n}${k === 'chat' ? '<small>Always a Windows toast</small>' : ''}</span>
+    $('#mods').innerHTML = MODS.map(([k, n]) => `<div class="row"><span class="ic2" style="background:${MOD[k].c}">${ICON[k]}</span><span class="t">${n}${k === 'chat' ? '<small>Always a Windows toast</small>' : ''}</span>
       <div class="pill3" data-mod="${k}"><button data-v="popup" ${k === 'chat' ? 'disabled' : ''}>Popup</button><button data-v="toast">Toast</button><button data-v="off">Off</button></div></div>`).join('');
     document.querySelectorAll('[data-mod]').forEach(p => pill(p, S.modules[p.dataset.mod]));
-    $('#previews').innerHTML = SOUNDS.map(([k, n]) => `<div class="row"><span class="t">${esc(n)}</span><button class="btn" data-snd="${k}">▶ Play</button></div>`).join('');
+    $('#previews').innerHTML = SOUNDS.map(([k, n]) => `<div class="row"><span class="t">${esc(n)}</span><button class="btn" data-snd="${k}">${IC('play')}Play</button></div>`).join('');
     if (acc) {
       $('#who').innerHTML = `Signed in as ${esc(acc.name || '…')}<small>Stays signed in — renews itself; ends after 90 days unused</small>`;
       $('#about').innerHTML = `<span>Version</span><span>${esc(acc.version)}</span><span>Computer</span><span>${esc(acc.computer)}</span><span>Server</span><span>${esc(acc.server)}</span>`;

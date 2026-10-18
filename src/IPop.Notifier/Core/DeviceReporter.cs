@@ -12,6 +12,8 @@ public sealed class DeviceReporter(IPopClient api)
     public bool IPopBusy { get; private set; }
     public bool IctTools { get; private set; }
     public string? DisplayName { get; private set; }
+    /// Public iPop web address from the server ("Notifier:WebBase"); null = same as the server address.
+    public Uri? WebBase { get; private set; }
     public event Action? Beat;
 
     public async Task RunAsync(CancellationToken ct)
@@ -33,7 +35,13 @@ public sealed class DeviceReporter(IPopClient api)
                     if (!meChecked)
                     {
                         var tools = await api.GetJsonAsync("api/notifier/me", ct);
-                        if (tools is not null) { IctTools = tools["ictTools"]?.GetValue<bool>() == true; meChecked = true; }
+                        if (tools is not null)
+                        {
+                            IctTools = tools["ictTools"]?.GetValue<bool>() == true;
+                            if (Uri.TryCreate(tools["webBase"]?.GetValue<string>(), UriKind.Absolute, out var wb) && wb.Scheme is "https" or "http")
+                                WebBase = new Uri(wb.ToString().TrimEnd('/') + "/");
+                            meChecked = true;
+                        }
                     }
                     Beat?.Invoke();
                 }

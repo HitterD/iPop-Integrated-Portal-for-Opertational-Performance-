@@ -14,6 +14,10 @@ public class HtmlWindow : Form
     private bool ready;
     private readonly List<object> pending = [];
 
+    /// Set to a key ("popup", "inbox"…) to let the person resize the window by its edges and keep that size.
+    protected string? SizeKey { get; set; }
+    private const int Grip = 6;
+
     public HtmlWindow(string page, Size size, bool noActivate = false, bool showInTaskbar = true)
     {
         this.page = page;
@@ -31,6 +35,34 @@ public class HtmlWindow : Form
 
     /// Notification windows must not take the keyboard from what the user is typing (mockup v2 behaviour).
     protected override bool ShowWithoutActivation => noActivate;
+
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        // A thin frame around the page is the resize grip (the WebView would swallow the edge otherwise).
+        if (SizeKey is null) return;
+        Padding = new Padding((int)Math.Round(Grip * DeviceDpi / 96.0));
+        MinimumSize = new Size(Width * 7 / 10, Height * 6 / 10);
+    }
+
+    protected override void OnResizeEnd(EventArgs e)
+    {
+        base.OnResizeEnd(e);
+        if (SizeKey is not null) WindowSizes.Remember(SizeKey, this);
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        const int WM_NCHITTEST = 0x84;
+        base.WndProc(ref m);
+        if (m.Msg != WM_NCHITTEST || SizeKey is null || WindowState != FormWindowState.Normal) return;
+        var p = PointToClient(new Point(unchecked((short)(long)m.LParam), unchecked((short)((long)m.LParam >> 16))));
+        var g = (int)Math.Round(Grip * DeviceDpi / 96.0);
+        bool l = p.X < g, r = p.X >= ClientSize.Width - g, t = p.Y < g, b = p.Y >= ClientSize.Height - g;
+        // HTLEFT 10, HTRIGHT 11, HTTOP 12, HTTOPLEFT 13, HTTOPRIGHT 14, HTBOTTOM 15, HTBOTTOMLEFT 16, HTBOTTOMRIGHT 17
+        var hit = t && l ? 13 : t && r ? 14 : b && l ? 16 : b && r ? 17 : l ? 10 : r ? 11 : t ? 12 : b ? 15 : 0;
+        if (hit != 0) m.Result = hit; // the edge hit codes alone give the resize cursor + drag (no visible frame)
+    }
 
     protected override CreateParams CreateParams
     {

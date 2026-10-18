@@ -15,13 +15,14 @@ public sealed class NoticeWindow : BridgedWindow
     public int WantedHeight { get; private set; }
 
     public NoticeWindow(Notice notice, string style, IPopClient api)
-        : base("popup.html", style == "stack" ? new Size(384, 200) : new Size(560, 460), api, noActivate: true, showInTaskbar: style != "stack")
+        : base("popup.html", style == "stack" ? new Size(440, 220) : WindowSizes.Get("popup", new Size(720, 560)), api, noActivate: true, showInTaskbar: style != "stack")
     {
         Notice = notice;
         Style = style;
         WantedHeight = ClientSize.Height;
         Text = notice.Title.Length > 80 ? notice.Title[..80] + "…" : notice.Title;
         if (style == "stack") TopMost = true;
+        else SizeKey = "popup";
     }
 
     private int more;
@@ -49,7 +50,7 @@ public sealed class NoticeWindow : BridgedWindow
         {
             case "size":
                 var h = msg?["height"]?.GetValue<int>() ?? WantedHeight;
-                var max = Style == "stack" ? 520 : 640;
+                var max = Style == "stack" ? 560 : 820;
                 WantedHeight = Math.Clamp(LogicalToDevice(h), LogicalToDevice(120), LogicalToDevice(max));
                 HeightChanged?.Invoke(this);
                 break;

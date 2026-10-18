@@ -51,13 +51,14 @@ body{display:flex;flex-direction:column;border-radius:16px}
 <div class="fly">
   <div class="fh"><img src="ipop-mark.webp" alt=""><div><b>Notifications</b><small id="sub">…</small></div><span class="sp"></span>
     <button class="ib" id="readAll" title="Mark all read"></button>
-    <button class="ib" id="devices" title="Devices (ICT)" hidden>🖥</button>
+    <button class="ib" id="devices" title="Devices (ICT)" hidden><i data-lucide="monitor"></i></button>
     <button class="ib" id="gear" title="Settings"></button>
   </div>
   <div class="seg" id="seg"><button data-f="all" class="on">All</button><button data-f="unread">Unread</button><button data-f="tickets">iDesk</button><button data-f="mail">Mail</button></div>
   <div class="list" id="list"></div>
-  <div class="ff"><span class="mode"><span class="sw" id="sw"></span>Popups</span><span class="off" id="conn" hidden><i></i>Reconnecting…</span><a id="open">Open iPop ↗</a></div>
+  <div class="ff"><span class="mode"><span class="sw" id="sw"></span>Popups</span><span class="off" id="conn" hidden><i></i>Reconnecting…</span><a id="open">Open iPop <i data-lucide="arrow-up-right"></i></a></div>
 </div>
+<script src="lucide.min.js"></script>
 <script src="bridge.js"></script>
 <script src="inbox.js"></script>
 </body>

@@ -9,9 +9,10 @@ public sealed class InboxWindow : BridgedWindow
     private readonly Func<object> context;
     public event Action<string, JsonNode?>? Command;
 
-    public InboxWindow(IPopClient api, Func<object> context) : base("inbox.html", new Size(400, 560), api, showInTaskbar: false)
+    public InboxWindow(IPopClient api, Func<object> context) : base("inbox.html", WindowSizes.Get("inbox", new Size(480, 720)), api, showInTaskbar: false)
     {
         this.context = context;
+        SizeKey = "inbox";
         TopMost = true;
     }
 
@@ -54,11 +55,12 @@ public sealed class SettingsWindow : BridgedWindow
     public event Action? SignOut;
     public event Action? PopupStyleChanged;
 
-    public SettingsWindow(IPopClient api, SettingsService settings, Func<object> account) : base("settings.html", new Size(760, 640), api)
+    public SettingsWindow(IPopClient api, SettingsService settings, Func<object> account) : base("settings.html", WindowSizes.Get("settings", new Size(960, 720)), api)
     {
         this.settings = settings;
         this.account = account;
         Text = "iPop Notifier — Settings";
+        SizeKey = "settings";
         StartPosition = FormStartPosition.CenterScreen;
     }
 
@@ -94,7 +96,7 @@ public sealed class SignInWindow : HtmlWindow
     private readonly IPopClient api;
     public event Action? SignedIn;
 
-    public SignInWindow(IPopClient api) : base("signin.html", new Size(440, 660))
+    public SignInWindow(IPopClient api) : base("signin.html", new Size(480, 700))
     {
         this.api = api;
         Text = "iPop Notifier — Sign in";
@@ -126,7 +128,7 @@ public sealed class SignInWindow : HtmlWindow
 }
 
 /// ICT / Admin only (mockup v2 §3): signed-in PCs with computer name, IP and Windows user. Remote help is phase 3.
-public sealed class DevicesWindow(IPopClient api) : BridgedWindow("devices.html", new Size(900, 600), api)
+public sealed class DevicesWindow(IPopClient api) : BridgedWindow("devices.html", WindowSizes.Get("devices", new Size(1100, 720)), api)
 {
     protected override void HandleMessage(string type, JsonNode? msg)
     {
@@ -146,6 +148,7 @@ public sealed class DevicesWindow(IPopClient api) : BridgedWindow("devices.html"
     protected override void OnHandleCreated(EventArgs e)
     {
         Text = "iPop Notifier — Devices";
+        SizeKey = "devices";
         StartPosition = FormStartPosition.CenterScreen;
         base.OnHandleCreated(e);
     }

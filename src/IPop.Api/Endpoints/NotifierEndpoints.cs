@@ -34,7 +34,7 @@ public static class NotifierEndpoints
             return status == 204 ? Results.NoContent() : Results.BadRequest(new { message = "Invalid device report." });
         });
 
-        g.MapGet("/me", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        g.MapGet("/me", async (HttpContext http, IPopDbContext db, IConfiguration cfg, CancellationToken ct) =>
         {
             var userId = await MyId(http, db, ct);
             if (userId is null) return Results.Unauthorized();
@@ -42,7 +42,9 @@ public static class NotifierEndpoints
             // My own PCs with the app (computer name only): iPop's notification settings explain the browser pause.
             var pcs = await db.NotifierDevices.AsNoTracking().Where(d => d.UserId == userId && d.LastSeenAt >= since)
                 .OrderBy(d => d.MachineName).Select(d => d.MachineName).ToListAsync(ct);
-            return Results.Ok(new { ictTools = await IsIctOrAdminAsync(db, userId.Value, http.User.IsInRole("Admin"), ct), onlinePcs = pcs });
+            // Where "Open in iPop" goes: the public web address (prod: https://ipop.santos.co.id), not the API host.
+            var webBase = cfg["Notifier:WebBase"] ?? cfg["Oidc:WebBase"];
+            return Results.Ok(new { ictTools = await IsIctOrAdminAsync(db, userId.Value, http.User.IsInRole("Admin"), ct), onlinePcs = pcs, webBase });
         });
 
         g.MapGet("/devices", async (string? q, HttpContext http, IPopDbContext db, CancellationToken ct) =>
