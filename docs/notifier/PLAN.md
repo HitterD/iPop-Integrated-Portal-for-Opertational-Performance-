@@ -47,3 +47,24 @@ B6. ICT Devices console (mockup v2 §3) — visible only to Admin role / ICT dep
 ## QA
 Copy-DB stack (see memory recipe) for API; Notifier tested against it on this PC (Windows), Playwright for web parts,
 unit tests for settings/payload/allow-list/OIDC claims. Pilot: ICT group first.
+
+## Status (2026-10-18, branch `notifier`, last commit 23832b6)
+Done and QA'd on the copy DB (API :6391) with the real app on this PC:
+- A1 device API + settings (ui-prefs "notifier"), ICT/Admin Devices list (non-ICT → 403, menu hidden).
+- A2 realtime to the app: gateway sends SignalR when the Notifier is online (no iPop tab needed); chat messages
+  reach the app as `desktopToast`; Windows browser Web Push is skipped for that user while the app is online.
+- A4 OIDC provider (earlier commits) + iDesk doc.
+- A5 Files "Open in File Explorer" (`ipop://open`) answered by the app; NAS links in mail popups get the menu.
+- B1–B6: tray, single instance, sign-in (DPAPI, 90-day), feed + 1-day catch-up, popup style v2 (default, one window
+  per notification, cascade, taskbar badge, oldest minimise) and v1 (stacked cards, +N more, hover expands),
+  per-module actions (mail Reply/Reply all with attachment upload, Forward → iPop, Mark read; meeting Join/Snooze/
+  Decline; memo Acknowledge; task comment / Mark done; note reply; iDesk Reply/Open in iDesk; call back), chat toast
+  with inline reply, Inbox, Settings (style, popups, hold, urgent, position, visible, modules, sounds, autostart,
+  account), ICT Devices console (+ Open Remote Desktop until phase D).
+- Installer: Velopack per-user, no admin (install/uninstall verified), `release.ps1` → C:/ipop-ops/notifier/releases,
+  served at /download/notifier/{file}; /app shows the download on a PC when the setup exists.
+
+Open: "Open in iDesk" silent sign-in from the app (needs iDesk's OIDC client), Admin UI for OIDC clients (config for
+now), hold-during-meeting verified by code/unit only (full-screen not simulated), toast reply (UIA could not reach the
+toast host from this session — send path is the same chat API used by the popup).
+MeetingKindTests (4) fail on the base commit too (unrelated).
