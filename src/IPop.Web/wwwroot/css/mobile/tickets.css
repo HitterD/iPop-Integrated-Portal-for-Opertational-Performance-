@@ -38,3 +38,10 @@
     .m-tickets-new .tk-submitbar { flex-wrap: wrap; position: static; }
     .m-tickets-new .tk-saved { display: inline-flex; }
 }
+
+/* Nav buttons on Tickets pages: same look as the kit .ph-ib/.ph-txtb, owned by this module. */
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .m-tk-ib { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border: 0; border-radius: 12px; background: none; color: var(--ph-green); cursor: pointer; }
+  .m-tk-txtb { height: 44px; min-width: 44px; padding: 0 10px; flex: none; border: 0; background: none; color: var(--ph-green); font: inherit; font-size: 17px; cursor: pointer; }
+  .m-tk-txtb:disabled { color: var(--ph-ink-4); cursor: default; }
+}

@@ -13,7 +13,7 @@
 
 @if (Phone.IsPhone)
 {
-    <PhoneScreen Title="My drafts" BackLabel="News" OnBack='() => Nav.NavigateTo("/news")' Class="m-news-drafts"><Trailing><a class="ph-ib" href="/news/new" aria-label="New post"><i data-lucide="square-pen"></i></a></Trailing><ChildContent>@DraftRows</ChildContent></PhoneScreen>
+    <PhoneScreen Title="My drafts" BackLabel="News" OnBack='() => Nav.NavigateTo("/news")' Class="m-news-drafts"><Trailing><a class="m-news-ib" href="/news/new" aria-label="New post"><i data-lucide="square-pen"></i></a></Trailing><ChildContent>@DraftRows</ChildContent></PhoneScreen>
 }
 else
 {

@@ -7,8 +7,8 @@
 @if (Phone.IsPhone)
 {
     <BottomSheet Open="true" OpenChanged="ClosePhoneForm" Title="New ticket" Size="SheetSize.Full" Class="m-tickets-new">
-        <Leading><button type="button" class="ph-txtb" @onclick="() => ClosePhoneForm(false)">Cancel</button></Leading>
-        <Trailing><button type="button" class="ph-txtb" disabled="@submitting" @onclick="SubmitAsync">@(submitting ? "Sending…" : "Send")</button></Trailing>
+        <Leading><button type="button" class="m-tk-txtb" @onclick="() => ClosePhoneForm(false)">Cancel</button></Leading>
+        <Trailing><button type="button" class="m-tk-txtb" disabled="@submitting" @onclick="SubmitAsync">@(submitting ? "Sending…" : "Send")</button></Trailing>
         <ChildContent><p class="m-tickets-draft-status" role="status">@(saveState == "saving" ? "Saving…" : saveState == "saved" ? "Draft saved" : "Draft autosaves")</p>@FormContent</ChildContent>
     </BottomSheet>
 }
