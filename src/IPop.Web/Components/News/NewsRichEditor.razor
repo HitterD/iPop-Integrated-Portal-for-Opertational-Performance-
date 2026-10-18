@@ -117,9 +117,8 @@
                     }
                     else
                     {
-                        <label class="nce-style nce-pick">
+                        <label class="nce-style nce-pick" for="@(id)-img">
                             <i data-lucide="upload"></i> Upload an image…
-                            <InputFile OnChange="OnImagePicked" accept="@ImageAccept" class="nce-hidden-file" />
                         </label>
                     }
                     @* No remote-image option: the server sanitizer only keeps images that were
@@ -142,9 +141,8 @@
                     }
                     else
                     {
-                        <label class="nce-style nce-pick">
+                        <label class="nce-style nce-pick" for="@(id)-vid">
                             <i data-lucide="upload"></i> Upload a video… (MP4/WebM, max 100 MB)
-                            <InputFile OnChange="OnVideoPicked" accept="@VideoAccept" class="nce-hidden-file" />
                         </label>
                     }
                     <div class="nce-pop-sep"></div>
@@ -173,6 +171,11 @@
     {
         <div class="nce-scrim" @onclick="() => pop = null"></div>
     }
+    @* The toolbar's own pickers live outside the popovers: an InputFile owns the files it picked, so
+       it must still exist when the upload reads them (closing the popover used to remove it first and
+       the read failed with "Cannot read properties of null (reading '_blazorFilesById')"). *@
+    @if (!OnPickImage.HasDelegate) { <InputFile id="@(id + "-img")" OnChange="OnImagePicked" accept="@ImageAccept" class="nce-hidden-file" /> }
+    @if (!OnPickVideo.HasDelegate) { <InputFile id="@(id + "-vid")" OnChange="OnVideoPicked" accept="@VideoAccept" class="nce-hidden-file" /> }
 
     <div class="nce-host" @ref="hostRef"></div>
 
@@ -573,20 +576,18 @@
         await JS.InvokeVoidAsync("ipop.newsEditor.chooseFile", id, "video");
     }
 
-    /// The toolbar's own picker. The file goes through the same `UploadAndInsertAsync` path the
-    /// host would use. The popover closes only after the upload: its InputFile owns the picked
-    /// file, and removing it first ("pop = null" re-renders) makes OpenReadStream fail with
-    /// "Cannot read properties of null (reading '_blazorFilesById')".
+    /// The toolbar's own picker (always rendered, see the markup). The popover closes and the file
+    /// goes through the same `UploadAndInsertAsync` path the host would use.
     private async Task OnImagePicked(InputFileChangeEventArgs e)
     {
-        try { await UploadAndInsertAsync(e.File, "image"); }
-        finally { pop = null; }
+        pop = null;
+        await UploadAndInsertAsync(e.File, "image");
     }
 
     private async Task OnVideoPicked(InputFileChangeEventArgs e)
     {
-        try { await UploadAndInsertAsync(e.File, "video"); }
-        finally { pop = null; }
+        pop = null;
+        await UploadAndInsertAsync(e.File, "video");
     }
 
     /// Uploads one host-picked file through the configured endpoint and inserts it at the caret.
@@ -621,7 +622,11 @@
             {
                 string? reason = null;
                 try { if ((await res.Content.ReadFromJsonAsync<Dictionary<string, string>>())?.TryGetValue("message", out var m) == true) reason = m; } catch { }
-                await Report($"{file.Name}: {reason ?? "the server refused the upload."}", kind, file.Name, "failed", 0, reason);
+                var text = res.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity || reason is "blocked_type"
+                    ? (isVideo ? "this video format isn't supported. Use MP4 or WebM (on iPhone: Settings › Camera › Formats › Most Compatible)."
+                               : "this image format isn't supported. Use JPEG, PNG, GIF or WebP (on iPhone: Settings › Camera › Formats › Most Compatible).")
+                    : reason ?? "the server refused the upload.";
+                await Report($"{file.Name}: {text}", kind, file.Name, "failed", 0, reason);
                 return;
             }
             var dto = await res.Content.ReadFromJsonAsync<MediaResponse>();
