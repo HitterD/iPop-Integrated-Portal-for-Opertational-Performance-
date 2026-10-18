@@ -153,6 +153,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization(o =>
     o.AddPolicy("AdminOnly", p => p.RequireRole("Admin")));
+IPop.Api.Sso.SsoSetup.AddIPopSso(builder.Services, builder.Configuration);
 
 // Dev-only CORS: Blazor WASM dev server runs on 5103, API on 5083 (spec §6 wiring).
 // ponytail: deployment consolidates to single origin — drop this policy then.
@@ -490,6 +491,11 @@ app.MapHub<IPop.Api.Notifications.NotificationHub>("/hubs/notification").Require
 app.MapMe();
 app.MapUiPrefs();
 app.MapNotifier();
+if (IPop.Api.Sso.SsoSetup.Enabled(app.Configuration))
+{
+    IPop.Api.Sso.SsoEndpoints.MapSso(app, app.Configuration["Oidc:WebBase"] ?? "");
+    await IPop.Api.Sso.SsoSetup.SeedClientsAsync(app.Services, app.Configuration, CancellationToken.None);
+}
 app.MapProfile();
 app.MapHub<AppHub>("/hubs/app").RequireAuthorization();
 

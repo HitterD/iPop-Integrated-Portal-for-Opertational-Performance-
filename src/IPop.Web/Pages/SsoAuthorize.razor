@@ -1,0 +1,72 @@
+@page "/sso/authorize"
+@layout EmptyLayout
+@inject AuthState Auth
+@inject NavigationManager Nav
+@inject HttpClient Http
+
+@* "Sign in with iPop" (docs/sso/OIDC-DESIGN.md): an app such as iDesk sent the browser here through
+   /connect/authorize. The guard already made the person sign in to iPop; this asks the API for a one-time grant
+   and continues to the app. Internal apps need no consent screen, so it moves on by itself. *@
+<PageTitle>Continue — iPop</PageTitle>
+
+<div class="auth-wrap">
+    <div class="auth-card tray rise rise-1 sso-card">
+        <div class="core">
+            <AuthBrand />
+            @if (error is not null)
+            {
+                <h2>Can't continue</h2>
+                <p class="sub">@error</p>
+                <a class="btn" href="/dashboard">Open iPop</a>
+            }
+            else
+            {
+                <h2>@(client is null ? "Signing you in…" : $"Continuing to {client}")</h2>
+                <p class="sub">Signed in as <b>@IPop.Application.PersonName.Display(Auth.Me?.Name)</b></p>
+                <div class="sso-spinner" aria-hidden="true"></div>
+                <p class="sso-note">@(client ?? "The app") gets your name, email, department and employee ID — never your password.</p>
+                <button class="btn ghost" type="button" @onclick="SignOutAndSwitch">Not you? Use another account</button>
+            }
+        </div>
+    </div>
+</div>
+
+<style>
+    .sso-card .core { text-align: center; }
+    .sso-spinner { width: 34px; height: 34px; margin: 18px auto; border-radius: 50%; border: 3px solid var(--line, #e5e5ea); border-top-color: var(--accent, #2e9e5b); animation: sso-spin .8s linear infinite; }
+    .sso-note { font-size: 12.5px; color: var(--ink-3, #6e6e73); margin: 4px 0 14px; }
+    .sso-card .btn.ghost { background: transparent; color: var(--accent, #2e9e5b); box-shadow: none; }
+    @@keyframes sso-spin { to { transform: rotate(360deg); } }
+    @@media (prefers-reduced-motion: reduce) { .sso-spinner { animation-duration: 2.4s; } }
+</style>
+
+@code {
+    [SupplyParameterFromQuery(Name = "req")] public string? Req { get; set; }
+    private string? client, error;
+
+    private sealed record Pending(string Client, string ClientId);
+    private sealed record Approved(string ContinueUrl, string Client);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Req) || Req.Length > 64) { error = "This sign-in link is incomplete. Go back to the app and try again."; return; }
+        await Auth.LoadMeAsync();
+        var pending = await Auth.GetAsync<Pending>($"/api/sso/pending/{Uri.EscapeDataString(Req)}");
+        if (pending is null) { error = "This sign-in link has expired. Go back to the app and try again."; return; }
+        client = pending.Client;
+        StateHasChanged();
+        await Task.Delay(400); // long enough to read who is signing in
+        using var res = await Auth.SendAsync(HttpMethod.Post, "/api/sso/approve", new { req = Req });
+        if (!res.IsSuccessStatusCode) { error = "This sign-in link has expired. Go back to the app and try again."; return; }
+        var ok = await System.Net.Http.Json.HttpContentJsonExtensions.ReadFromJsonAsync<Approved>(res.Content);
+        if (ok is null || !ok.ContinueUrl.StartsWith("/connect/authorize?", StringComparison.Ordinal)) { error = "Something went wrong. Try again."; return; }
+        // /connect/* is served by the API: same public origin behind the proxy, or the API base in development.
+        Nav.NavigateTo(new Uri(Http.BaseAddress!, ok.ContinueUrl).ToString(), forceLoad: true);
+    }
+
+    private async Task SignOutAndSwitch()
+    {
+        await Auth.SignOutAsync();
+        Nav.NavigateTo("/login?returnUrl=" + Uri.EscapeDataString("/sso/authorize?req=" + Req), forceLoad: true);
+    }
+}

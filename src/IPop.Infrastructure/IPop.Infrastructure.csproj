@@ -13,6 +13,7 @@
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.10" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.*" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageReference Include="OpenIddict.EntityFrameworkCore" Version="7.7.2" />
     <PackageReference Include="Polly.Core" Version="8.7.0" />
     <PackageReference Include="DevExpress.Document.Processor" Version="26.1.4" />
     <PackageReference Include="DevExpress.Docs.Presentation" Version="26.1.4" />

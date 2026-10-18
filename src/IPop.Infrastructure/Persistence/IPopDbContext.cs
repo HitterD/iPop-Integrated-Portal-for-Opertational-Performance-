@@ -180,6 +180,8 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
 
     protected override void OnModelCreating(ModelBuilder b)
     {
+        // "Sign in with iPop" (OpenIddict): applications, authorizations, scopes, tokens.
+        b.UseOpenIddict();
         b.Entity<HallRoom>(e =>
         {
             e.HasIndex(x => x.Key).IsUnique();

@@ -55,6 +55,7 @@
 </div>
 
 @code {
+    [SupplyParameterFromQuery(Name = "returnUrl")] public string? ReturnUrl { get; set; }
     private string nik = "", password = "";
     private string noteText = "First time? Sign in with the default password 1234, then set your own.";
     private string noteIcon = "info";
@@ -127,7 +128,7 @@
             StateHasChanged();
             await JS.InvokeVoidAsync("ipopAuthMotion.exit", 1300);
             await JS.InvokeVoidAsync("ipopAuthMotion.enterApp");
-            Nav.NavigateTo("/dashboard");
+            Nav.NavigateTo(App.SafeReturn(ReturnUrl) ?? "/dashboard");
         }
         catch
         {
