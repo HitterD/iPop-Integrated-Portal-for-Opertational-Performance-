@@ -17,7 +17,7 @@
                     @if (task.Assignees.Count > 0) { <span>@string.Join(", ", task.Assignees.Select(a => a.Name))</span> }
                     @if (task.SubtaskCount > 0) { <span>@task.SubtaskDoneCount / @task.SubtaskCount checklist</span> }
                 </button>
-                @if (!ReadOnly) { <button type="button" class="ph-icon" aria-label="Move task" @onclick="() => moving = task"><i data-lucide="ellipsis"></i></button> }
+                @if (!ReadOnly) { <button type="button" class="ph-ib" aria-label="Move task" @onclick="() => moving = task"><i data-lucide="ellipsis"></i></button> }
             </article>
         }
         @if (!Tasks.Any(t => t.Status == status)) { <p class="m-project-empty">No tasks in this column.</p> }

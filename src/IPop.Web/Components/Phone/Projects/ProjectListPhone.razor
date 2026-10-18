@@ -1,7 +1,7 @@
 @using IPop.Application.Projects
 
 <PhoneScreen Title="Projects" Class="m-project-list">
-    <Trailing><button type="button" class="ph-icon" aria-label="New project" @onclick="OnCreate"><i data-lucide="plus"></i></button></Trailing>
+    <Trailing><button type="button" class="ph-ib" aria-label="New project" @onclick="OnCreate"><i data-lucide="plus"></i></button></Trailing>
     <Below>
         <div class="m-project-list-filters">
             <input type="search" aria-label="Search projects" placeholder="Search projects" value="@Search" @oninput="e => OnSearch.InvokeAsync(e.Value?.ToString() ?? string.Empty)" />

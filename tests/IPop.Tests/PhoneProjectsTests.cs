@@ -56,6 +56,7 @@ public class PhoneProjectsTests
         var back = false; int? step = null;
         var cut = ctx.Render<TaskDetailPhone>(p => p.Add(x => x.Title, "Planning").Add(x => x.CanPrevious, true)
             .Add(x => x.OnBack, () => back = true).Add(x => x.OnStep, value => step = value));
+        Assert.Contains("ph-ib", cut.Find("button[aria-label='Previous task']").ClassName);
         cut.Find("button[aria-label='Previous task']").Click(); Assert.Equal(-1, step);
         Assert.True(cut.Find("button[aria-label='Next task']").HasAttribute("disabled"));
         cut.Find("button[aria-label='Back to Board']").Click(); Assert.True(back);
