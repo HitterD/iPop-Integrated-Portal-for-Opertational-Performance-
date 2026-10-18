@@ -42,7 +42,8 @@
 @code {
     private bool tabs, mail, sharing, devices, help, spell;
     private string theme = "light", density = MailListDensity.Compact;
-    protected override void OnInitialized() => Phone.Changed += Changed;
+    [CascadingParameter] public IPop.Web.Layout.MainLayout? Layout { get; set; }
+    protected override void OnInitialized() { Phone.Changed += Changed; Layout?.SetHeader("Settings"); }
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!Phone.IsInitialized) await Phone.StartAsync();
