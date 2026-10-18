@@ -43,6 +43,7 @@
             return;
         }
 
-        if (isAuthPage || path == "set-password") Nav.NavigateTo("/directory", replace: true);
+        // Home after sign-in is the Dashboard (fast, an overview of everything); the iPhone Home Screen app opens at "/".
+        if (isAuthPage || path == "set-password") Nav.NavigateTo("/dashboard", replace: true);
     }
 }

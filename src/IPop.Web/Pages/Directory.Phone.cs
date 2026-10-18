@@ -8,7 +8,7 @@ namespace IPop.Web.Pages;
 public partial class Directory
 {
     private string phoneTab = "people", phoneQuery = "", phoneScope = "All";
-    private bool phoneOptions, phoneDepartmentDetail, phoneLoading, phoneLoaded, phoneLoadError, phoneSelecting;
+    private bool phoneOptions, phoneDepartmentDetail, phoneLoading, phoneLoadingMore, phoneLoaded, phoneLoadError, phoneSelecting;
     private List<Employee> phonePeople = [];
     private int phoneGeneration, phoneBulkGeneration;
     private static readonly IReadOnlyList<IPop.Web.Components.Phone.SegmentItem> phoneTabs = [new("people", "People"), new("departments", "Departments")];
@@ -31,18 +31,28 @@ public partial class Directory
         var generation = ++phoneGeneration; var account = Auth.Me?.Nik;
         try
         {
+            // First screenful at once (≈50 KB), then the rest in the background: the full list is ≈2 MB,
+            // slow on mobile data, and "Loading people…" stayed up until all of it arrived.
+            var first = await Auth.GetAsync<DirectoryPageDto>("/api/directory/employees?page=1&pageSize=120&sort=name");
+            if (disposed || generation != phoneGeneration || account != Auth.Me?.Nik) return;
+            if (first is null) { phoneLoadError = true; return; }
+            phonePeople = first.Items.Select(Map).DistinctBy(p => p.Nik).ToList();
+            if (phonePeople.Count >= first.Total || first.Items.Length == 0) return;
+            phoneLoading = false;
+            phoneLoadingMore = true;
+            await InvokeAsync(StateHasChanged);
             var loaded = new List<Employee>();
             for (var p = 1; ; p++)
             {
                 var result = await Auth.GetAsync<DirectoryPageDto>($"/api/directory/employees?page={p}&pageSize=5000&sort=name");
                 if (disposed || generation != phoneGeneration || account != Auth.Me?.Nik) return;
-                if (result is null) { phoneLoadError = true; return; }
+                if (result is null) return; // keep the first page; the next visit retries
                 loaded.AddRange(result.Items.Select(Map));
                 if (loaded.Count >= result.Total || result.Items.Length == 0) break;
             }
             phonePeople = loaded.DistinctBy(p => p.Nik).ToList();
         }
-        finally { if (generation == phoneGeneration) { phoneLoading = false; await InvokeAsync(StateHasChanged); } }
+        finally { if (generation == phoneGeneration) { phoneLoading = false; phoneLoadingMore = false; await InvokeAsync(StateHasChanged); } }
     }
     private async Task OpenPhoneDepartment(DirectoryNavNode node)
     {

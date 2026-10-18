@@ -71,6 +71,7 @@
                         @if (phoneScope is "All" or "People")
                         {
                             <PeoplePhone People="PhonePeople" Query="phoneQuery" Selecting="phoneSelecting" Selected="selectedNiks" OnSelect="p => TogglePersonSelection(p.Nik)" OnOpen="p => selected = p" OnChat="p => OpenChatWith(p.Nik)" OnCall="p => StartCallWith(p.Nik)" Jump="PhoneJump" />
+                            @if (phoneLoadingMore) { <p class="m-directory-note" role="status">Loading everyone else…@(phoneQuery.Length > 0 ? " Results so far are shown." : "")</p> }
                         }
                         @if (phoneQuery.Length > 0 && phoneScope is "All" or "Departments" or "Sites")
                         {

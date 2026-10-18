@@ -289,5 +289,6 @@
     display: block; margin-bottom: 10px; color: rgba(255, 255, 255, .55);
     font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
   }
-  #app > .boot .ph-splash-foot img { height: 48px; width: auto; animation: none; }
+  /* Kapal Api lockup: keep its 330×96 ratio (brand.css sizes every .boot img 64×64) and centre it. */
+  #app > .boot .ph-splash-foot img { display: block; margin: 0 auto; height: 44px; width: auto; max-width: 70vw; object-fit: contain; animation: none; }
 }
