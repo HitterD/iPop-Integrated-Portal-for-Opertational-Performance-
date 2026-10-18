@@ -4,12 +4,14 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject AuthState Auth
+@inject PhoneState Phone
+@implements IDisposable
 
 <PageTitle>Sign in — IPop</PageTitle>
 
-<div class="auth-wrap @(success ? "success" : "")">
+<div class="auth-wrap @(success ? "success" : "") @(Phone.IsPhone ? "m-login" : "")">
     <button class="theme-btn auth-theme-btn" title="Toggle dark / light mode" @onclick="ToggleTheme" @onclick:stopPropagation><i data-lucide="@(IsDark ? "sun" : "moon")"></i></button>
-    <AuthSlides />
+    @if (!Phone.IsPhone) { <AuthSlides /> }
 
     <div class="auth-card tray rise rise-1" @ref="cardRef">
         <div class="core">
@@ -38,6 +40,10 @@
         </div>
     </div>
 
+    @if (Phone.IsPhone)
+    {
+        <a class="m-login-install" href="/app"><img src="img/brand/ipop-mark.webp" alt="" width="44" height="44" /><span><b>Install iPop</b><small>Faster, full screen, with notifications</small></span><span>Install</span></a>
+    }
     @if (success)
     {
         <div class="auth-welcome" aria-live="polite">
@@ -61,6 +67,7 @@
 
     protected override void OnInitialized()
     {
+        Phone.Changed += PhoneChanged;
         if (string.IsNullOrEmpty(Changed)) return;
         isSuccess = true; noteIcon = "check-circle-2";
         noteText = "Password updated. Please sign in again with the new password you just set.";
@@ -68,7 +75,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender) IsDark = await JS.InvokeAsync<string>("ipop.theme") == "dark";
+        if (firstRender) { await Phone.StartAsync(); IsDark = await JS.InvokeAsync<string>("ipop.theme") == "dark"; }
         await JS.InvokeVoidAsync("ipop.icons");
     }
 
@@ -80,6 +87,8 @@
     }
 
     private bool IsDark { get; set; }
+    private void PhoneChanged() => _ = InvokeAsync(StateHasChanged);
+    public void Dispose() => Phone.Changed -= PhoneChanged;
 
     private async Task TryLogin()
     {

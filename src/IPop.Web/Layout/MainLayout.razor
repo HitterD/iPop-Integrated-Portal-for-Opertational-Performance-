@@ -310,6 +310,7 @@
                OnEditTabs="OpenEditTabs" OnSettings="OpenSettingsFromMore" OnSignOut="SignOut"
                OnProfile="() => { CloseMore(); OpenAccount(AccountSheet.Pane.Profile); }" />
     <EditTabsSheet Open="more.EditTabsOpen" OpenChanged="more.SetEditTabs" />
+    <Onboarding OnEditTabs="OpenEditTabs" OnNotifications="OpenOnboardingNotifications" OnCompleted="() => onboardingComplete = true" />
     <NotificationCard Visible="NotifCardVisible" Secure="Push.Secure" OnTurnOn="NotifCardTurnOn" OnNotNow="NotifCardNotNow" />
 </div>
 
@@ -379,7 +380,10 @@
 
     private void OpenSettingsFromMore() { more.CloseAll(); if (Phone.IsPhone) Nav.NavigateTo("/settings"); else NotifSettings.Open(); }
 
-    private bool NotifCardVisible => NotifCard.Loaded &&
+    private bool onboardingComplete;
+    private bool onboardingNotifications;
+    private void OpenOnboardingNotifications() => onboardingNotifications = true;
+    private bool NotifCardVisible => (onboardingComplete || onboardingNotifications) && NotifCard.Loaded &&
         NotificationCard.ShouldShow(Phone.IsPhone, NotifCard.Answered, Push.ServerEnabled, Push.Secure, Push.Permission, Push.OptedOut);
 
     private async Task NotifCardTurnOn()

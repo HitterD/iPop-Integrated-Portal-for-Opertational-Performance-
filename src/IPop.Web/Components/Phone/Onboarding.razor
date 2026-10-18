@@ -1,0 +1,58 @@
+@implements IDisposable
+@inject PhoneState Phone
+@inject AuthState Auth
+@inject IJSRuntime JS
+
+@if (Phone.IsPhone && ready && !answered)
+{
+    <BottomSheet Open="true" OpenChanged="_ => Finish()" Size="SheetSize.Full" Class="m-onboarding" Label="Welcome to iPop">
+        <ChildContent>
+            <header><span>@(step + 1) of 3</span><button type="button" @onclick="Finish">Skip</button></header>
+            <section class="m-onboarding-card" @ontouchstart="TouchStart" @ontouchend="TouchEnd">
+                <div class="m-onboarding-art" aria-hidden="true"><i data-lucide="@(step == 0 ? "messages-square" : step == 1 ? "panels-top-left" : "bell-ring")"></i></div>
+                <h2>@(step == 0 ? "Everything in one app" : step == 1 ? "Make it yours" : "Never miss a call")</h2>
+                <p>@(step == 0 ? "Chat, mail, calls and your calendar — the four tabs at the bottom. Everything else is under More." : step == 1 ? "Pin the modules you use most and pick light or dark." : "Turn on notifications to get chats, mail and calls even when iPop is closed.")</p>
+                @if (step == 1)
+                {
+                    <button type="button" aria-label="Edit tabs" @onclick="OnEditTabs">Edit tabs</button>
+                    <div class="m-onboarding-themes" role="group" aria-label="Appearance">@foreach (var value in new[] { "light", "dark", "auto" }) { <button type="button" aria-pressed="@(theme == value ? "true" : "false")" @onclick="() => Theme(value)">@(value == "auto" ? "Automatic" : value == "dark" ? "Dark" : "Light")</button> }</div>
+                }
+            </section>
+            <footer><div class="m-onboarding-dots" aria-label="@($"Card {step + 1} of 3")">@for (var i = 0; i < 3; i++) { <span class="@(i == step ? "on" : "")"></span> }</div>
+            @if (step < 2) { <button type="button" aria-label="Next" @onclick="Next">Next</button> }
+            else { <button type="button" aria-label="Turn on notifications" @onclick="Notify">Turn on notifications</button> }
+            </footer>
+        </ChildContent>
+    </BottomSheet>
+}
+@code {
+    [Parameter] public EventCallback OnEditTabs { get; set; }
+    [Parameter] public EventCallback OnNotifications { get; set; }
+    [Parameter] public EventCallback OnCompleted { get; set; }
+    private bool ready, answered;
+    private int step;
+    private double startX;
+    private string? account;
+    private string theme = "light";
+    protected override void OnInitialized() { Phone.Changed += Changed; Auth.MeChanged += Changed; Auth.SignedOut += SignedOut; }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!Phone.IsPhone) return;
+        await Auth.LoadMeAsync();
+        if (Auth.Me?.Nik is not { } nik || (ready && account == nik)) return;
+        account = nik; step = 0; answered = await Auth.GetUserSettingAsync("onboarded") == "1";
+        try { theme = await JS.InvokeAsync<string>("ipop.themePreference") ?? "light"; } catch { }
+        ready = true;
+        if (answered) await OnCompleted.InvokeAsync();
+        StateHasChanged();
+    }
+    private void Changed() => _ = InvokeAsync(StateHasChanged);
+    private void SignedOut() { ready = false; answered = false; account = null; Changed(); }
+    private void Next() => step = Math.Min(2, step + 1);
+    private async Task Theme(string value) { await JS.InvokeVoidAsync("ipop.setTheme", value); theme = value; }
+    private void TouchStart(TouchEventArgs e) { if (e.Touches.Length > 0) startX = e.Touches[0].ClientX; }
+    private void TouchEnd(TouchEventArgs e) { if (e.ChangedTouches.Length > 0) { var dx = e.ChangedTouches[0].ClientX - startX; if (dx < -60) Next(); else if (dx > 60) step = Math.Max(0, step - 1); } }
+    private async Task Finish() { answered = true; await Auth.SetUserSettingAsync("onboarded", "1"); await OnCompleted.InvokeAsync(); }
+    private async Task Notify() { await Finish(); await OnNotifications.InvokeAsync(); }
+    public void Dispose() { Phone.Changed -= Changed; Auth.MeChanged -= Changed; Auth.SignedOut -= SignedOut; }
+}
