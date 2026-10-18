@@ -25,13 +25,16 @@ public sealed class Feed(IPopClient api, LocalState state) : IAsyncDisposable
         {
             // Read/acknowledged elsewhere (the state echo of a read) is not a new notification.
             if (d.Status is "read" or "acknowledged") return;
+            QaLog("notificationReceived " + d.EventType + " " + d.TargetUrl);
             Received?.Invoke(Notice.From(d));
         });
-        hub.On<ToastPayload>("desktopToast", t => ChatToast?.Invoke(t));
+        hub.On<ToastPayload>("desktopToast", t => { QaLog("desktopToast " + t.Kind + " " + t.Url); ChatToast?.Invoke(t); });
         hub.Reconnected += async _ => { ConnectionChanged?.Invoke(true); await CatchUpAsync(CancellationToken.None); };
         hub.Reconnecting += _ => { ConnectionChanged?.Invoke(false); return Task.CompletedTask; };
+        var mine = hub;
         hub.Closed += async _ =>
         {
+            if (!ReferenceEquals(hub, mine)) return; // an old connection we replaced
             ConnectionChanged?.Invoke(false);
             // Closed only after the retry policy gives up or the server refuses; try again quietly.
             await Task.Delay(TimeSpan.FromSeconds(30));
@@ -65,7 +68,10 @@ public sealed class Feed(IPopClient api, LocalState state) : IAsyncDisposable
         }
         var page = await InboxAsync("unread", 1, 30, ct);
         if (page is null) return;
-        foreach (var item in page.Items.Where(i => i.At.ToUniversalTime() > state.LastShownAt && !state.Shown.Contains(i.Id)).OrderBy(i => i.At))
+        // Only what arrived while the app was away, and at most a day back (a PC off for a week doesn't flood the
+        // screen; everything stays in the Inbox).
+        var since = state.LastShownAt.Value > DateTime.UtcNow.AddDays(-1) ? state.LastShownAt.Value : DateTime.UtcNow.AddDays(-1);
+        foreach (var item in page.Items.Where(i => i.At.ToUniversalTime() > since && !state.Shown.Contains(i.Id)).OrderBy(i => i.At))
             Received?.Invoke(Notice.From(item));
     }
 
@@ -88,6 +94,14 @@ public sealed class Feed(IPopClient api, LocalState state) : IAsyncDisposable
     }
 
     public ValueTask DisposeAsync() => new(StopAsync());
+
+    /// Debug QA runs only: what arrived, so a test can check the feed (never in Release, never content).
+    [System.Diagnostics.Conditional("DEBUG")]
+    private static void QaLog(string line)
+    {
+        if (Environment.GetEnvironmentVariable("IPOP_NOTIFIER_QA_DIR") is not { Length: > 0 }) return;
+        try { File.AppendAllText(Path.Combine(SessionStore.Folder, "qa-events.log"), $"{DateTime.Now:HH:mm:ss} {line}{Environment.NewLine}"); } catch { }
+    }
 
     private sealed class ForeverRetry : IRetryPolicy
     {

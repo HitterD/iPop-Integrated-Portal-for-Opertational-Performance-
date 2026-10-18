@@ -15,7 +15,17 @@ public static class WebHost
 
     public static Task<CoreWebView2Environment> EnvironmentAsync() => env ??= CoreWebView2Environment.CreateAsync(null,
         Path.Combine(SessionStore.Folder, "WebView2"),
-        new CoreWebView2EnvironmentOptions("--disable-features=msSmartScreenProtection --renderer-process-limit=2"));
+        new CoreWebView2EnvironmentOptions("--disable-features=msSmartScreenProtection --renderer-process-limit=2" + QaDebugPort()));
+
+    private static string QaDebugPort()
+    {
+#if DEBUG
+        // QA only (Debug builds): lets Playwright attach over CDP to drive the windows.
+        if (int.TryParse(Environment.GetEnvironmentVariable("IPOP_NOTIFIER_QA_CDP"), out var port) && port is > 1024 and < 65536)
+            return $" --remote-debugging-port={port}";
+#endif
+        return "";
+    }
 
     public static bool RuntimeMissing()
     {
@@ -31,6 +41,9 @@ public static class WebHost
         core.SetVirtualHostNameToFolderMapping("notifier.ipop", AppInfo.BaseDir, CoreWebView2HostResourceAccessKind.DenyCors);
         var s = core.Settings;
         s.AreDevToolsEnabled = false;
+#if DEBUG
+        if (Environment.GetEnvironmentVariable("IPOP_NOTIFIER_QA_CDP") is { Length: > 0 }) s.AreDevToolsEnabled = true;
+#endif
         s.AreDefaultContextMenusEnabled = false;
         s.IsStatusBarEnabled = false;
         s.IsZoomControlEnabled = false;

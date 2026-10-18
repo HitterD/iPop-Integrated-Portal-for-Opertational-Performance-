@@ -24,7 +24,13 @@ public sealed class NoticeWindow : BridgedWindow
         if (style == "stack") TopMost = true;
     }
 
-    public void SetMore(int count) => Send(new { type = "more", count });
+    private int more;
+    /// v1: "+N more waiting" on the newest card (kept until the page asks, so a fresh card shows it too).
+    public void SetMore(int count)
+    {
+        more = count;
+        Send(new { type = "more", count });
+    }
 
     protected override void OnReady() => Send(new
     {
@@ -34,6 +40,7 @@ public sealed class NoticeWindow : BridgedWindow
         notice = Notice,
         me = Api.Session?.Name,
         nik = Api.Session?.Nik,
+        more,
     });
 
     protected override void HandleMessage(string type, JsonNode? msg)

@@ -12,8 +12,17 @@ public static class Integration
 
     private static string ExePath => Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "iPopNotifier.exe");
 
+    /// Debug QA runs (IPOP_NOTIFIER_QA_DIR) never write to this PC's registry.
+    private static bool QaRun =>
+#if DEBUG
+        Environment.GetEnvironmentVariable("IPOP_NOTIFIER_QA_DIR") is { Length: > 0 };
+#else
+        false;
+#endif
+
     public static void SetStartWithWindows(bool on)
     {
+        if (QaRun) return;
         try
         {
             using var key = Registry.CurrentUser.CreateSubKey(RunKey);
@@ -25,6 +34,7 @@ public static class Integration
 
     public static void RegisterUrlScheme()
     {
+        if (QaRun) return;
         try
         {
             using var key = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{AppInfo.UrlScheme}");

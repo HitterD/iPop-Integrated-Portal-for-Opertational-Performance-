@@ -272,12 +272,20 @@ public sealed class NotificationGatewayService(
             .Where(u => deliveries.Select(d => d.UserId).Contains(u.Id))
             .ToDictionaryAsync(u => u.Id, u => u.PresenceLastSeenAt, ct);
 
+        // The iPop Notifier desktop app listens on the hub even when no iPop tab is open: a PC that reported in
+        // within NotifierDevice.OnlineWindow gets the realtime delivery too.
+        var deliveryUsers = deliveries.Select(d => d.UserId).ToList();
+        var desktopSince = now - IPop.Core.Entities.NotifierDevice.OnlineWindow;
+        var desktopOnline = (await db.NotifierDevices.AsNoTracking()
+            .Where(x => deliveryUsers.Contains(x.UserId) && x.LastSeenAt >= desktopSince)
+            .Select(x => x.UserId).Distinct().ToListAsync(ct)).ToHashSet();
+
         var silenced = new HashSet<Guid>(); // quiet hours / muted type: no Windows toast either
         foreach (var d in deliveries)
         {
             var lastSeen = userPresence.GetValueOrDefault(d.UserId);
             var status = PresenceStatus.ComputeStatus(lastSeen, null, now);
-            d.Channel = status == "on" || status == "away" ? NotificationChannel.SignalR : NotificationChannel.Push;
+            d.Channel = status == "on" || status == "away" || desktopOnline.Contains(d.UserId) ? NotificationChannel.SignalR : NotificationChannel.Push;
             d.Status = NotificationStatus.Delivered;
             d.AttemptCount = 1;
             d.LastAttemptAt = now;

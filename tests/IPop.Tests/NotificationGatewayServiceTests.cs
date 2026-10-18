@@ -389,6 +389,47 @@ public class NotificationGatewayServiceTests
     }
 
     [Fact]
+    public async Task Enqueue_NoTabOpen_ButNotifierOnline_BroadcastsSignalR()
+    {
+        // The iPop Notifier desktop app listens on the hub without an iPop tab (no browser presence).
+        using var t = new TestDb();
+        var c = AddClient(t);
+        var u = t.AddUser("A");
+        u.PresenceLastSeenAt = DateTime.UtcNow.AddHours(-3);
+        t.Db.NotifierDevices.Add(new IPop.Core.Entities.NotifierDevice
+        {
+            Id = Guid.NewGuid(), UserId = u.Id, DeviceKey = "pc-test-0001", MachineName = "LOGISTIC33",
+            FirstSeenAt = DateTime.UtcNow, LastSeenAt = DateTime.UtcNow.AddSeconds(-40),
+        });
+        t.Db.SaveChanges();
+        var rec = new RecordingBroadcaster();
+
+        var result = await Svc(t, broadcaster: rec).EnqueueAsync(c.Id, BulkReq(target: new NotificationTarget(EmployeeNik: u.Nik)), default);
+
+        Assert.True(result.Success);
+        Assert.Equal(NotificationChannel.SignalR, Assert.Single(rec.Broadcasted).Channel);
+    }
+
+    [Fact]
+    public async Task Enqueue_NotifierSeenLongAgo_DoesNotBroadcast()
+    {
+        using var t = new TestDb();
+        var c = AddClient(t);
+        var u = t.AddUser("A");
+        t.Db.NotifierDevices.Add(new IPop.Core.Entities.NotifierDevice
+        {
+            Id = Guid.NewGuid(), UserId = u.Id, DeviceKey = "pc-test-0002", MachineName = "LOGISTIC33",
+            FirstSeenAt = DateTime.UtcNow.AddDays(-2), LastSeenAt = DateTime.UtcNow.AddHours(-1),
+        });
+        t.Db.SaveChanges();
+        var rec = new RecordingBroadcaster();
+
+        await Svc(t, broadcaster: rec).EnqueueAsync(c.Id, BulkReq(target: new NotificationTarget(EmployeeNik: u.Nik)), default);
+
+        Assert.Empty(rec.Broadcasted);
+    }
+
+    [Fact]
     public async Task Enqueue_OfflineUser_DoesNotBroadcast()
     {
         using var t = new TestDb();

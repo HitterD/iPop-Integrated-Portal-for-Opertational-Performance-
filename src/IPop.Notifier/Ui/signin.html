@@ -11,11 +11,11 @@ body::before{content:"";position:fixed;inset:0;opacity:.05;background:radial-gra
 .bar{height:36px;display:flex;justify-content:flex-end;padding:2px 2px 0;flex:none}
 .bar .wc{color:rgba(255,255,255,.7)}
 .bar .wc:hover{background:rgba(255,255,255,.12)}
-.box{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 30px 30px;animation:winIn .5s var(--spring)}
-.lg{width:84px;height:84px;border-radius:24px;background:#fff;display:grid;place-items:center;box-shadow:0 20px 40px -14px rgba(0,0,0,.6);animation:popIn .6s var(--pop) both}
-.lg img{width:60px;height:60px}
-h4{font-size:24px;margin:16px 0 4px}
-p{opacity:.75;font-size:13.5px;margin-bottom:22px;text-align:center;line-height:1.45}
+.box{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:safe center;padding:0 30px 24px;overflow:auto;min-height:0;animation:winIn .5s var(--spring)}
+.lg{width:76px;height:76px;flex:none;border-radius:24px;background:#fff;display:grid;place-items:center;box-shadow:0 20px 40px -14px rgba(0,0,0,.6);animation:popIn .6s var(--pop) both}
+.lg img{width:54px;height:54px}
+h4{font-size:24px;margin:14px 0 4px}
+p{opacity:.75;font-size:13.5px;margin-bottom:18px;text-align:center;line-height:1.45}
 form{width:300px;display:flex;flex-direction:column;gap:10px}
 input{height:44px;border-radius:11px;border:0;background:rgba(255,255,255,.12);color:#fff;padding:0 14px;outline:none;font-size:14px;transition:background .2s,box-shadow .2s}
 input:focus{background:rgba(255,255,255,.18);box-shadow:0 0 0 2px rgba(255,255,255,.35)}

@@ -12,7 +12,12 @@ public sealed class SessionStore
     public sealed record Session(string Server, string RefreshToken, string DeviceKey, string? Nik, string? Name);
 
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("iPop.Notifier.session.v1");
-    public static string Folder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "iPopNotifier");
+    public static string Folder =>
+#if DEBUG
+        // QA only (Debug builds): a throwaway profile so a test run never touches the real signed-in session.
+        Environment.GetEnvironmentVariable("IPOP_NOTIFIER_QA_DIR") is { Length: > 0 } qa ? qa :
+#endif
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "iPopNotifier");
     private static string FilePath => Path.Combine(Folder, "session.bin");
     private static string KeyPath => Path.Combine(Folder, "device.key");
 

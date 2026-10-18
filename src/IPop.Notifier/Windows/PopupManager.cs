@@ -169,22 +169,26 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
         var s = settings.Effective(DateTime.UtcNow);
         var area = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
         var cards = open.Where(w => w.Style == "stack").ToList();
-        if (cards.Count == 0) return;
-        var gap = Scale(cards[0], 10);
-        var edge = Scale(cards[0], 14);
-        var y = s.Position == "top-right" ? area.Top + edge : area.Bottom - edge;
-        foreach (var c in Enumerable.Reverse(cards))
+        if (cards.Count > 0)
         {
-            var h = c.WantedHeight;
-            if (c.Height != h) c.Height = h;
-            var x = area.Right - c.Width - edge;
-            if (s.Position == "top-right") { c.Location = new Point(x, y); y += h + gap; }
-            else { y -= h; c.Location = new Point(x, y); y -= gap; }
+            var gap = Scale(cards[0], 10);
+            var edge = Scale(cards[0], 14);
+            var y = s.Position == "top-right" ? area.Top + edge : area.Bottom - edge;
+            // Cards share the column: each gets at most its share of the screen height (the message scrolls inside).
+            var share = (area.Height - 2 * edge - gap * (cards.Count - 1)) / cards.Count;
+            foreach (var c in Enumerable.Reverse(cards))
+            {
+                var h = Math.Min(c.WantedHeight, Math.Max(Scale(c, 150), share));
+                if (c.Height != h) c.Height = h;
+                var x = area.Right - c.Width - edge;
+                if (s.Position == "top-right") { c.Location = new Point(x, y); y += h + gap; }
+                else { y -= h; c.Location = new Point(x, y); y -= gap; }
+            }
         }
-        foreach (var w in open.Where(w => w.Style != "stack" && w.Height != w.WantedHeight))
+        foreach (var w in open.Where(w => w.Style != "stack" && w.Height != Math.Min(w.WantedHeight, area.Height - Scale(w, 28))))
         {
             var bottom = w.Bottom;
-            w.Height = w.WantedHeight;
+            w.Height = Math.Min(w.WantedHeight, area.Height - Scale(w, 28));
             if (w.Bottom > area.Bottom) w.Top = Math.Max(area.Top, area.Bottom - w.Height);
             else if (s.Position != "top-right") w.Top = Math.Max(area.Top, bottom - w.Height);
         }

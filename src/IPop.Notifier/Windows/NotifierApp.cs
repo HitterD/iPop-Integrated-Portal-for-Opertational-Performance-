@@ -149,6 +149,7 @@ public sealed class NotifierApp : ApplicationContext
     {
         var s = settings.Current;
         var count = unread;
+        connected = feed?.Connected ?? connected;
         var status = !api.IsSignedIn ? "signed out" : !connected ? "connecting…" : s.Popups != "on" ? "popups paused" : count > 0 ? $"{count} unread" : "up to date";
         var text = "iPop Notifier — " + status;
         tray.Text = text.Length > 63 ? text[..63] : text;
@@ -165,7 +166,7 @@ public sealed class NotifierApp : ApplicationContext
         popups = settings.Current.Popups == "on",
         held = state.Held,
         ict = device.IctTools,
-        connected,
+        connected = feed?.Connected ?? connected,
     };
 
     private void ShowInbox()

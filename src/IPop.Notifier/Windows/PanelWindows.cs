@@ -54,7 +54,7 @@ public sealed class SettingsWindow : BridgedWindow
     public event Action? SignOut;
     public event Action? PopupStyleChanged;
 
-    public SettingsWindow(IPopClient api, SettingsService settings, Func<object> account) : base("settings.html", new Size(680, 620), api)
+    public SettingsWindow(IPopClient api, SettingsService settings, Func<object> account) : base("settings.html", new Size(760, 640), api)
     {
         this.settings = settings;
         this.account = account;
@@ -94,7 +94,7 @@ public sealed class SignInWindow : HtmlWindow
     private readonly IPopClient api;
     public event Action? SignedIn;
 
-    public SignInWindow(IPopClient api) : base("signin.html", new Size(440, 600))
+    public SignInWindow(IPopClient api) : base("signin.html", new Size(440, 660))
     {
         this.api = api;
         Text = "iPop Notifier — Sign in";

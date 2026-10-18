@@ -3,10 +3,11 @@
 (function () {
   const { api, image, esc, post, snack } = window.app;
   const G = '([0-9a-fA-F-]{36})';
-  let N, STYLE, ME, NIK, root, view = {};
+  let N, STYLE, ME, NIK, MORE = 0, root, view = {};
 
-  app.on('notice', m => { N = m.notice; STYLE = m.style; ME = m.me; NIK = m.nik; render(); });
-  app.on('more', m => { const r = document.querySelector('.more-row'); if (!r) return; r.classList.toggle('on', m.count > 0); r.querySelector('b').textContent = m.count; });
+  app.on('notice', m => { N = m.notice; STYLE = m.style; ME = m.me; NIK = m.nik; MORE = m.more || 0; render(); });
+  app.on('more', m => { MORE = m.count; showMore(); });
+  function showMore() { const r = document.querySelector('.more-row'); if (!r) return; r.classList.toggle('on', MORE > 0); r.querySelector('b').textContent = MORE; size(); }
   app.ready();
 
   // ── layout ────────────────────────────────────────────────────────────────
@@ -23,7 +24,8 @@
   function shell() {
     const mod = MOD[N.module] || MOD.system;
     const time = timeShort(N.at);
-    const tools = view.tools.map((t, i) => `<button class="${STYLE === 'stack' ? 'btn' : 'tb2'} ${t.cls || ''}" data-t="${i}" ${t.disabled ? 'disabled' : ''}>${t.label}</button>`);
+    const label = t => STYLE === 'stack' ? t.label.replace(' in iPop ↗', ' ↗').replace(' in iDesk ↗', ' ↗').replace('Open in iPop ↗', 'Open ↗') : t.label;
+    const tools = view.tools.map((t, i) => `<button class="${STYLE === 'stack' ? 'btn' : 'tb2'} ${t.cls || ''}" data-t="${i}" ${t.disabled ? 'disabled' : ''}>${label(t)}</button>`);
     const sp = view.tools.findIndex(t => t.right);
     if (sp >= 0) tools.splice(sp, 0, '<span class="sp"></span>');
     const who = view.who ? `<div class="who"><span class="av" style="background:${avatarColor(view.who.name)}" ${view.who.photo ? `data-photo="${esc(view.who.photo)}"` : ''}>${esc(initials(view.who.name))}</span><span class="nm"><b>${esc(view.who.name)}</b><small>${esc(view.who.sub || '')}</small></span>${STYLE === 'stack' ? '' : `<span class="when">${esc(time)}</span>`}</div>` : '';
@@ -53,6 +55,7 @@
     if (wasReplying && view.reply) { box.classList.add('replying'); const ed = box.querySelector('.ed'); if (ed && draft) ed.innerHTML = draft; }
     wire(box);
     hydrate(box);
+    if (STYLE === 'stack') showMore();
     size();
   }
 
@@ -91,6 +94,7 @@
       if (e.key === 'Escape') { e.stopPropagation(); box.classList.remove('replying'); size(); }
     }));
     document.body.dataset.esc = 'on';
+    if (STYLE === 'stack') { box.addEventListener('mouseenter', size); box.addEventListener('mouseleave', size); }
   }
 
   // Images, avatars and the mail iframe are filled in after the HTML is on screen.
@@ -113,8 +117,10 @@
       let h = 0;
       for (const el of box.children) {
         if (getComputedStyle(el).display === 'none' || el.classList.contains('bar')) continue;
-        const scroll = el.classList.contains('body') || el.classList.contains('bd');
-        h += scroll ? Math.min(el.scrollHeight, 2000) : el.offsetHeight;
+        // The scroll area asks for its full content; .bd (v1 card) asks for what its capped message shows.
+        if (el.classList.contains('more-row')) continue;
+        const scroll = el.classList.contains('body');
+        h += scroll ? Math.min(el.scrollHeight, 2000) : el.classList.contains('bd') ? el.scrollHeight : el.offsetHeight;
       }
       post({ type: 'size', height: Math.ceil(h) + 2 });
     });

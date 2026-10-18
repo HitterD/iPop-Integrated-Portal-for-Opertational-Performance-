@@ -8,7 +8,7 @@
 /* Settings window (mockup v1 §7) + popup style choice (v1 stack / v2 windows) */
 body{display:flex;flex-direction:column}
 .wrap{flex:1;display:flex;min-height:0;animation:winIn .4s var(--spring)}
-.side{width:190px;padding:10px 8px;border-right:.5px solid var(--sep);background:var(--glass-2);flex:none}
+.side{width:180px;padding:10px 8px;border-right:.5px solid var(--sep);background:var(--glass-2);flex:none}
 .side .hd{display:flex;align-items:center;gap:8px;padding:4px 8px 14px;font-weight:700}
 .side .hd img{width:24px;height:24px;border-radius:7px;background:#fff;padding:2px}
 .side a{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;font-size:13px;color:var(--ink-2);cursor:pointer;transition:background .15s}
@@ -22,7 +22,8 @@ h3{font-size:20px;margin-bottom:12px}
 .grp2{border-radius:12px;background:var(--card);margin-bottom:14px;overflow:hidden;box-shadow:0 0 0 .5px var(--sep)}
 .row{display:flex;align-items:center;gap:12px;min-height:48px;padding:8px 14px}
 .row+.row{border-top:.5px solid var(--sep)}
-.row .t{flex:1;min-width:0}.row .t small{display:block;color:var(--ink-3);font-size:12px}
+.row{flex-wrap:wrap}
+.row .t{flex:1;min-width:180px}.row .t small{display:block;color:var(--ink-3);font-size:12px}
 .row .ic2{width:26px;height:26px;border-radius:7px}
 .lbl{font-size:11.5px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em;margin:4px 4px 6px}
 input[type=range]{accent-color:var(--green);width:150px}
