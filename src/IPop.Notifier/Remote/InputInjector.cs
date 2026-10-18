@@ -20,6 +20,16 @@ public sealed partial class InputInjector
     private static partial uint SendInput(uint n, [In] INPUT[] inputs, int size);
     [LibraryImport("user32.dll")]
     private static partial ushort MapVirtualKeyW(uint code, uint mapType);
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetCursorPos(int x, int y);
+    [LibraryImport("user32.dll")]
+    private static partial void mouse_event(uint flags, int dx, int dy, int data, nint extra);
+    [LibraryImport("user32.dll")]
+    private static partial void keybd_event(byte vk, byte scan, uint flags, nint extra);
+
+    /// "sendinput" until Windows refuses it once, then "legacy" (SetCursorPos + mouse_event / keybd_event).
+    public string Path { get; private set; } = "sendinput";
 
     private const uint INPUT_MOUSE = 0, INPUT_KEYBOARD = 1;
     private const uint MOVE = 0x0001, LDOWN = 0x0002, LUP = 0x0004, RDOWN = 0x0008, RUP = 0x0010, MDOWN = 0x0020, MUP = 0x0040,
@@ -35,7 +45,14 @@ public sealed partial class InputInjector
     public int Refused { get; private set; }
     public int LastError { get; private set; }
 
-    public void Move(double x, double y) => Send(Mouse(x, y, MOVE));
+    public void Move(double x, double y)
+    {
+        if (Path == "legacy" || !TrySend(Mouse(x, y, MOVE)))
+        {
+            var (px, py) = Pixel(x, y);
+            Count(SetCursorPos(px, py) ? 1u : 0u);
+        }
+    }
 
     public void Button(double x, double y, int button, bool press)
     {
@@ -46,7 +63,12 @@ public sealed partial class InputInjector
             (1, true) => MDOWN, (1, false) => MUP,
             _ => 0u,
         };
-        if (flag != 0) Send(Mouse(x, y, MOVE | flag));
+        if (flag == 0) return;
+        if (Path != "legacy" && TrySend(Mouse(x, y, MOVE | flag))) return;
+        var (px, py) = Pixel(x, y);
+        SetCursorPos(px, py);
+        mouse_event(flag, 0, 0, 0, 0);
+        Count(1);
     }
 
     public void Wheel(double dx, double dy)
@@ -64,7 +86,9 @@ public sealed partial class InputInjector
         if (press) down.Add(vk); else down.Remove(vk);
         var scan = MapVirtualKeyW(vk, 0);
         var flags = (press ? 0 : KEYUP) | (extended ? EXTENDED : 0);
-        Send(new INPUT { type = INPUT_KEYBOARD, u = new() { ki = new KEYBDINPUT { wVk = vk, wScan = scan, dwFlags = flags } } });
+        if (Path != "legacy" && TrySend(new INPUT { type = INPUT_KEYBOARD, u = new() { ki = new KEYBDINPUT { wVk = vk, wScan = scan, dwFlags = flags } } })) return;
+        keybd_event((byte)vk, (byte)scan, flags, 0);
+        Count(1);
     }
 
     /// Typed text that has no plain key on this layout (accents, emoji): sent as Unicode.
@@ -96,6 +120,20 @@ public sealed partial class InputInjector
         var ay = (int)Math.Round((py - vs.Top) * 65535.0 / Math.Max(1, vs.Height - 1));
         return new INPUT { type = INPUT_MOUSE, u = new() { mi = new MOUSEINPUT { dx = ax, dy = ay, dwFlags = flags | ABSOLUTE | VIRTUALDESK } } };
     }
+
+    /// True when Windows took it; the first refusal switches this session to the legacy path.
+    private bool TrySend(INPUT i)
+    {
+        var sent = SendInput(1, [i], Marshal.SizeOf<INPUT>());
+        if (sent > 0) { Count(sent); return true; }
+        Refused++;
+        LastError = Marshal.GetLastPInvokeError();
+        if (Path != "legacy") { Path = "legacy"; IPop.Notifier.Core.Log.Warn("input", $"SendInput refused (err {LastError}); using SetCursorPos/mouse_event"); }
+        return false;
+    }
+
+    private (int X, int Y) Pixel(double x, double y) =>
+        ((int)Math.Round(Monitor.Left + Math.Clamp(x, 0, 1) * (Monitor.Width - 1)), (int)Math.Round(Monitor.Top + Math.Clamp(y, 0, 1) * (Monitor.Height - 1)));
 
     private void Send(INPUT i) => Count(SendInput(1, [i], Marshal.SizeOf<INPUT>()));
 

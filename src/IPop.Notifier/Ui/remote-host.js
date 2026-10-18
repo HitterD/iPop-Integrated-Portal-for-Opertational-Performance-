@@ -12,7 +12,10 @@
   });
   app.on('quality', async m => { try { await R.publishScreen(m.preset); } catch { } });
   app.on('leave', async () => { await R.leave(); post({ type: 'left' }); });
-  app.on('send', m => R.sendReliable(m.msg, m.topic || 'ctl'));
+  app.on('send', m => {
+    if (m.topic === 'clip' && m.msg) return R.sendClip(m.msg.kind, m.msg.text, m.msg.data).catch(e => post({ type: 'log', text: 'clip send ' + e.message }));
+    R.sendReliable(m.msg, m.topic || 'ctl');
+  });
   app.on('sendFile', async m => {
     // A file the user picked (clipboard copy or Send file): bytes arrive from the app as base64.
     const bin = Uint8Array.from(atob(m.data), c => c.charCodeAt(0));
@@ -31,6 +34,11 @@
   };
   R.onFile = receive('file');
   R.onClipFile = receive('clip-file');
+  R.onClipData = async reader => {
+    const bytes = await R.readAll(reader);
+    const isText = (reader.info.mimeType || '').startsWith('text/');
+    post({ type: 'data', topic: 'clip', msg: isText ? { kind: 'text', text: new TextDecoder().decode(bytes) } : { kind: 'image', data: R.b64(bytes) } });
+  };
 
   app.ready();
 })();

@@ -31,6 +31,7 @@
     room.on(LK.RoomEvent.TrackSubscribed, (track, pub, p) => (R.onTrack || (() => { }))(track, p));
     room.registerByteStreamHandler('file', async (reader, from) => (R.onFile || (() => { }))(reader, from));
     room.registerByteStreamHandler('clip-file', async (reader, from) => (R.onClipFile || (() => { }))(reader, from));
+    room.registerByteStreamHandler('clip-data', async (reader, from) => (R.onClipData || (() => { }))(reader, from));
     await room.connect(info.url, info.token, { autoSubscribe: true });
     if (R.role === 'host') await R.publishScreen(quality || 'smooth');
     return room;
@@ -87,6 +88,16 @@
     });
     if (out.codecId) { const c = rep.get(out.codecId); out.codec = (c?.mimeType || '').split('/')[1] || ''; }
     return out;
+  };
+
+  // Clipboard: small text as one message; anything bigger (pictures, long text) as a byte stream (no 64 KB limit).
+  R.sendClip = async (kind, text, b64) => {
+    if (kind === 'text' && text && text.length < 30000) return sendReliable({ t: 'clip', kind: 'text', text }, 'clip');
+    const bytes = kind === 'text' ? ENC.encode(text || '') : Uint8Array.from(atob(b64 || ''), c => c.charCodeAt(0));
+    const w = await R.room.localParticipant.streamBytes({ name: kind === 'text' ? 'clip.txt' : 'clip.png', totalSize: bytes.length,
+      mimeType: kind === 'text' ? 'text/plain' : 'image/png', topic: 'clip-data' });
+    for (let o = 0; o < bytes.length; o += 60000) await w.write(bytes.subarray(o, o + 60000));
+    await w.close();
   };
 
   R.input = obj => sendLossy(obj);

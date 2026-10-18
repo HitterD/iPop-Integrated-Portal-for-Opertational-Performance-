@@ -164,6 +164,35 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
     [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
     private static extern bool GetUserObjectInformationW(nint h, int index, System.Text.StringBuilder buf, int len, out int needed);
 
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")] private static extern uint WTSGetActiveConsoleSessionId();
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern nint GetThreadDesktop(uint threadId);
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+
+    private static string DeskName(nint h)
+    {
+        if (h == 0) return "";
+        var sb = new System.Text.StringBuilder(64);
+        return GetUserObjectInformationW(h, 2, sb, sb.Capacity * 2, out _) ? sb.ToString() : "?";
+    }
+
+    /// Facts that decide whether Windows lets this app play input: integrity level, which session is on the
+    /// console, and whether our thread sits on the input desktop.
+    private static string Environment2()
+    {
+        var il = "?";
+        try
+        {
+            using var id = System.Security.Principal.WindowsIdentity.GetCurrent();
+            il = id.Groups?.FirstOrDefault(g => g.Value.StartsWith("S-1-16-"))?.Value switch
+            {
+                "S-1-16-4096" => "low", "S-1-16-8192" => "medium", "S-1-16-8448" => "medium+", "S-1-16-12288" => "high", "S-1-16-16384" => "system", var v => v ?? "?",
+            };
+        }
+        catch { }
+        var mySession = System.Diagnostics.Process.GetCurrentProcess().SessionId;
+        return $"il={il} session={mySession} console={WTSGetActiveConsoleSessionId()} threadDesk={DeskName(GetThreadDesktop(GetCurrentThreadId()))} fgHwnd={GetForegroundWindow()}";
+    }
+
     /// "Default" while the person's desktop is in front; "Winlogon"/"" when the PC is locked or a UAC prompt is up.
     private static string InputDesktop()
     {
@@ -187,8 +216,8 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
         var key = $"{input.Played}|{input.Refused}|{input.LastError}|{fg}|{desk}";
         if (key == lastStat) return;
         lastStat = key;
-        Log.Info("remote", $"input played={input.Played} refused={input.Refused} err={input.LastError} fg={fg} desk={desk}");
-        page.Send(new { type = "send", topic = "ctl", msg = new { t = "inStat", played = input.Played, refused = input.Refused, err = input.LastError, fg, desk, mode } });
+        Log.Info("remote", $"input played={input.Played} refused={input.Refused} err={input.LastError} path={input.Path} fg={fg} desk={desk} {Environment2()}");
+        page.Send(new { type = "send", topic = "ctl", msg = new { t = "inStat", played = input.Played, refused = input.Refused, err = input.LastError, fg, desk, mode, path = input.Path } });
     }
 
     private void Combo(string? k)

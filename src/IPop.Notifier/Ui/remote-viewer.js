@@ -36,7 +36,7 @@
   }
   app.on('answer', m => answer(m.status));
   app.on('remoteEnded', m => showEnded('Remote help ended', m.endedBy === 'user' ? 'The user ended the session.' : ''));
-  app.on('clipboard', m => { if (clipOn && R.room) R.sendReliable({ t: 'clip', kind: m.kind, text: m.text, data: m.data }, 'clip'); });
+  app.on('clipboard', m => { if (clipOn && R.room) R.sendClip(m.kind, m.text, m.data).catch(e => log('clip send ' + e.message)); });
   app.on('clipFile', async m => {
     if (!clipOn || !R.room) return;
     const bin = Uint8Array.from(atob(m.data), c => c.charCodeAt(0));
@@ -68,6 +68,12 @@
       if (m.t === 'inStat') inputStat(m);
     };
     R.onFile = async reader => { const b = await R.readAll(reader); post({ type: 'saveFile', name: reader.info.name, data: R.b64(b) }); addFile(reader.info.name, b.length, 'From the user · saved to Downloads', 1); };
+    R.onClipData = async reader => {
+      const b = await R.readAll(reader);
+      if (!clipOn) return;
+      if ((reader.info.mimeType || '').startsWith('text/')) post({ type: 'setClipboard', kind: 'text', text: new TextDecoder().decode(b) });
+      else post({ type: 'setClipboard', kind: 'image', data: R.b64(b) });
+    };
     R.onClipFile = async reader => { const b = await R.readAll(reader); post({ type: 'setClipboardFile', name: reader.info.name, data: R.b64(b) }); snack('File copied — paste it here'); };
     R.onReconnecting = on => live(on ? 'Reconnecting' : 'Controlling', on ? 'warn' : '');
     R.onDisconnected = () => { if (!ended) showEnded('Connection lost', 'The user\'s PC went offline or the network dropped.'); };
@@ -85,13 +91,13 @@
     $('#locked').classList.toggle('on', locked);
     if (locked) { $('#inp').innerHTML = IC('lock') + '<b class="mid">locked</b>'; $('#inp').title = 'The user\'s PC is locked or showing a UAC prompt'; return; }
     const el = $('#inp');
-    if (m.refused > 0 && m.err) {
+    if (m.played === 0 && m.refused > 0 && m.err) {
       el.innerHTML = IC('mouse-pointer-ban') + '<b class="bad">blocked</b>';
       if (!warned) { warned = true; snack(m.err === 5 ? 'Windows on the user\'s PC refused mouse and keyboard — an administrator window or the lock screen is in front.' : 'Mouse and keyboard were refused on the user\'s PC (code ' + m.err + ').'); }
     } else {
       el.innerHTML = IC('mouse-pointer-2') + '<b class="ok">' + m.played + '</b>';
     }
-    el.title = 'Played ' + m.played + ', refused ' + m.refused + (m.fg ? ' · in front: ' + m.fg : '');
+    el.title = 'Played ' + m.played + ', refused ' + m.refused + (m.fg ? ' · in front: ' + m.fg : '') + (m.path ? ' · ' + m.path : '');
   }
 
   function live(text, cls) { $('#liveTxt').textContent = text; $('#live').className = 'live ' + (cls || ''); }
