@@ -21,7 +21,7 @@ test('Dashboard renders phone branch using real data and account preference endp
   assert.ok(source.includes('<DashboardPhone'), 'widget screen');
   assert.ok(source.includes('/api/me/ui-prefs/dash-order'), 'server-saved order');
   assert.ok(source.includes('CanPostNews="@(data?.CanPostNews == true)"'), 'publish permission retained');
-  assert.ok(source.includes('@if (data.IsAdmin) { @foreach (var status in data.Status)'), 'system status remains admin only');
+  assert.ok(source.includes('@if (data.IsAdmin && data.Status.Count > 0)'), 'system status remains admin only');
   assert.ok(source.includes('$"/news?post={n.Id}"'), 'phone news uses existing reading route');
 });
 

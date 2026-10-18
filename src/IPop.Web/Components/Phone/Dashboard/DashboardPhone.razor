@@ -1,11 +1,24 @@
-<PhoneScreen Title="Dashboard" Class="m-dashboard-screen">
+@* Phone Dashboard v2 (docs/mockups/mobile-dashboard-v2.html, approved without weather): forest-green hero with
+   the day's summary, round quick actions, Today (next meeting + Join, then the day's timeline), four colour
+   widgets, "Needs you" cards, My tasks, Messages, Projects (progress rings), News, Team online. Edit widgets
+   reorders the sections (saved per user via OnOrder). Data comes from Pages/Dashboard.razor; this only renders. *@
+<PhoneScreen Title="Dashboard" LargeTitle="false" Class="m-dashboard-screen">
     <Trailing><button type="button" class="m-dashboard-edit" aria-label="@(editing ? "Done editing widgets" : "Edit widgets")" @onclick="() => editing = !editing"><i data-lucide="@(editing ? "check" : "pencil")"></i></button></Trailing>
     <ChildContent>
-        <div class="m-dashboard-greeting"><small>@DateTime.Now.ToString("dddd, d MMMM")</small><h2>@Greeting, @Name</h2></div>
+        <section class="m-dash-hero">
+            <small>@DateTime.Now.ToString("dddd, d MMMM")</small>
+            <h2>@Greeting, @Name</h2>
+            <p>@(Loading ? "Getting your day ready…" : SummaryText)</p>
+        </section>
+
         <nav class="m-dashboard-shortcuts" aria-label="Quick actions">
-            <a href="/chat?new=dm"><i data-lucide="message-circle-plus"></i>New chat</a><a href="/mail?compose=1"><i data-lucide="pen-line"></i>Compose</a><a href="/calendar?new=1"><i data-lucide="calendar-plus"></i>Schedule</a>
-            @if (CanPostNews) { <a href="/news?new=1"><i data-lucide="megaphone"></i>New post</a> }
+            <a href="/chat?new=dm"><span class="c-chat"><i data-lucide="message-circle-plus"></i></span>New chat</a>
+            <a href="/mail?compose=1"><span class="c-mail"><i data-lucide="pen-line"></i></span>Compose</a>
+            <a href="/calendar?new=1"><span class="c-cal"><i data-lucide="calendar-plus"></i></span>Schedule</a>
+            @if (CanPostNews) { <a href="/news?new=1"><span class="c-news"><i data-lucide="megaphone"></i></span>New post</a> }
+            else { <a href="/projects?newTask=1"><span class="c-proj"><i data-lucide="list-plus"></i></span>New task</a> }
         </nav>
+
         @foreach (var widget in Widgets)
         {
             <section class="m-dashboard-widget" data-widget="@widget">
@@ -16,25 +29,99 @@
                 @switch (widget)
                 {
                     case "next":
-                        <div class="m-dashboard-next"><small>Up next</small><h2>@(NextTitle ?? "Your day is clear")</h2><p>@(NextWhen ?? "No upcoming meeting")</p>@if (NextTitle is not null) { <a href="@NextUrl"><i data-lucide="calendar-days"></i>View meeting</a> }<a href="/calendar">Open calendar<i data-lucide="chevron-right"></i></a></div>
+                        <header class="m-dash-sec"><h3>Today</h3><a href="/calendar">Calendar</a></header>
+                        <div class="m-dash-card m-dash-today">
+                            @if (NextTitle is not null)
+                            {
+                                <div class="m-dashboard-next">
+                                    <div class="m-dash-when"><b>@(NextTime ?? "—")</b><small>@NextWhen</small></div>
+                                    <div class="m-dash-tt"><b>@NextTitle</b>@if (NextSub is not null) {<small>@NextSub</small>}</div>
+                                    <a class="m-dash-join" href="@NextUrl">@(NextJoinable ? "Join" : "Open")</a>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="m-dashboard-next is-clear"><div class="m-dash-tt"><b>Your day is clear ☀️</b><small>No more meetings today</small></div><a class="m-dash-join" href="/calendar?new=1">Schedule</a></div>
+                            }
+                            @if (Agenda.Count > 0)
+                            {
+                                <div class="m-dash-tl">
+                                    @foreach (var item in Agenda.Take(5))
+                                    {
+                                        <a class="m-dashboard-row m-dash-tl-row @(item.Done ? "is-done" : "")" href="@item.Url"><span class="m-dash-t">@item.Time</span><i class="m-dash-dot k-@item.Kind"></i><span><b>@item.Title</b><small>@item.Subtitle</small></span></a>
+                                    }
+                                </div>
+                            }
+                            else if (Loading) { <p class="m-dashboard-empty">Loading agenda…</p> }
+                        </div>
                         break;
                     case "counters":
                         <div class="m-dashboard-counters">
                             @foreach (var counter in Counters)
                             {
-                                <a class="m-dashboard-counter" href="@counter.Url"><i data-lucide="@counter.Icon"></i><strong>@(Loading ? "—" : counter.Value.ToString())</strong><span>@counter.Label</span></a>
+                                <a class="m-dashboard-counter" href="@counter.Url"><span class="m-dash-ic @counter.Color"><i data-lucide="@counter.Icon"></i></span><strong>@(Loading ? "—" : counter.Value.ToString())</strong><span>@counter.Label</span>@if (counter.Badge is { } badge) {<em>@badge</em>}</a>
                             }
                         </div>
                         break;
-                    case "agenda":
-                        <header><h3>Today's agenda</h3><a href="/calendar">See all</a></header>
-                        @foreach (var item in Agenda) { <a class="m-dashboard-row" href="@item.Url"><span><b>@item.Title</b><small>@item.Subtitle</small></span><i data-lucide="chevron-right"></i></a> }
-                        @if (Agenda.Count == 0) { <p class="m-dashboard-empty">@(Loading ? "Loading agenda…" : "Nothing scheduled today.")</p> }
+                    case "attention":
+                        @if (Attention.Count > 0)
+                        {
+                            <header class="m-dash-sec"><h3>Needs you</h3><a href="/notifications">See all</a></header>
+                            <div class="m-dash-cards">
+                                @foreach (var a in Attention.Take(6))
+                                {
+                                    var item = a;
+                                    <button type="button" class="m-dash-att k-@item.Kind" @onclick="() => OnAttention.InvokeAsync(item.Key)"><span class="m-dash-k">@item.KindLabel</span><b>@item.Title</b><small>@item.Subtitle</small><span class="m-dash-cta">@item.Cta</span></button>
+                                }
+                            </div>
+                        }
+                        break;
+                    case "tasks":
+                        <header class="m-dash-sec"><h3>My tasks</h3><a href="/projects">Projects</a></header>
+                        <div class="m-dash-card">
+                            @foreach (var t in Tasks.Take(5))
+                            {
+                                var task = t;
+                                <div class="m-dashboard-task"><button type="button" class="m-dash-chk" aria-label="Complete @task.Title" @onclick="() => OnCompleteTask.InvokeAsync(task.Key)"></button><a href="@task.Url"><b>@task.Title</b><small>@task.Subtitle</small></a><span class="m-dash-due @(task.Late ? "late" : "")">@task.Due</span></div>
+                            }
+                            @if (Tasks.Count == 0) { <p class="m-dashboard-empty">@(Loading ? "Loading tasks…" : "No open tasks. Nice.")</p> }
+                        </div>
+                        break;
+                    case "messages":
+                        <header class="m-dash-sec"><h3>Messages</h3><a href="/chat">Chat</a></header>
+                        <div class="m-dash-card">
+                            @foreach (var c in Chats.Take(4))
+                            {
+                                <a class="m-dashboard-row m-dash-chat" href="@c.Url"><PersonAvatar Nik="@c.Nik" Name="@c.Title" Size="40" Decorative="true" /><span><b>@c.Title</b><small>@c.Subtitle</small></span>@if (c.Unread > 0) {<em class="m-dash-unr">@(c.Unread > 99 ? "99+" : c.Unread.ToString())</em>}</a>
+                            }
+                            @if (Chats.Count == 0) { <p class="m-dashboard-empty">@(Loading ? "Loading messages…" : "No recent messages.")</p> }
+                        </div>
+                        break;
+                    case "projects":
+                        @if (Projects.Count > 0)
+                        {
+                            <header class="m-dash-sec"><h3>Projects</h3><a href="/projects">See all</a></header>
+                            <div class="m-dash-projs">
+                                @foreach (var p in Projects.Take(4))
+                                {
+                                    <a class="m-dash-pj" href="@p.Url"><span class="m-dash-ring" style="--p:@Math.Clamp(p.Progress, 0, 100)" data-p="@($"{p.Progress}%")"></span><b>@p.Title</b><small>@p.Subtitle</small></a>
+                                }
+                            </div>
+                        }
                         break;
                     case "news":
-                        <header><h3>Latest news</h3><a href="/news">See all</a></header>
-                        @foreach (var item in News) { <a class="m-dashboard-row" href="@item.Url"><span><b>@item.Title</b><small>@item.Subtitle</small></span><i data-lucide="chevron-right"></i></a> }
-                        @if (News.Count == 0) { <p class="m-dashboard-empty">@(Loading ? "Loading news…" : "No news yet.")</p> }
+                        <header class="m-dash-sec"><h3>News</h3><a href="/news">See all</a></header>
+                        <div class="m-dash-card">
+                            @foreach (var item in News.Take(3)) { <a class="m-dashboard-row m-dash-news" href="@item.Url"><span class="m-dash-ic c-news"><i data-lucide="newspaper"></i></span><span><b>@item.Title</b><small>@item.Subtitle</small></span><i data-lucide="chevron-right"></i></a> }
+                            @if (News.Count == 0) { <p class="m-dashboard-empty">@(Loading ? "Loading news…" : "No news yet.")</p> }
+                        </div>
+                        break;
+                    case "team":
+                        @if (Team.Count > 0)
+                        {
+                            <header class="m-dash-sec"><h3>Team online</h3><a href="/directory">Directory</a></header>
+                            <a class="m-dash-card m-dash-team" href="/directory"><span class="m-dash-stack">@foreach (var p in Team.Take(4)) {<PersonAvatar Nik="@p.Nik" Name="@p.Title" Size="36" Decorative="true" />}</span><span><b>@OnlineCount online</b><small>@string.Join(", ", Team.Take(3).Select(t => t.Title.Split(' ')[0]))@(OnlineCount > 3 ? " and others" : "")</small></span></a>
+                        }
                         break;
                 }
             </section>
@@ -44,28 +131,61 @@
 </PhoneScreen>
 @code {
     public record Item(string Title, string Subtitle, string Url);
-    private record Counter(string Label, string Icon, string Url, int Value);
+    public record AgendaItem(string Time, string Title, string Subtitle, string Url, string Kind, bool Done);
+    public record AttentionItem(int Key, string Kind, string KindLabel, string Title, string Subtitle, string Cta);
+    public record TaskItem(int Key, string Title, string Subtitle, string Url, string Due, bool Late);
+    public record ChatItem(string Title, string Subtitle, string Url, string? Nik, int Unread);
+    public record ProjectItem(string Title, string Subtitle, string Url, int Progress);
+    public record PersonItem(string Title, string Nik);
+    private record Counter(string Label, string Icon, string Url, int Value, string Color, string? Badge);
+
     [Parameter] public string Name { get; set; } = "there";
     [Parameter] public string Greeting { get; set; } = "Good morning";
     [Parameter] public bool Loading { get; set; }
+    [Parameter] public string SummaryText { get; set; } = "";
     [Parameter] public int MailUnread { get; set; }
     [Parameter] public int ChatUnread { get; set; }
     [Parameter] public int OpenTasks { get; set; }
+    [Parameter] public int OverdueTasks { get; set; }
     [Parameter] public int MissedCalls { get; set; }
     [Parameter] public bool CanPostNews { get; set; }
     [Parameter] public string? NextTitle { get; set; }
     [Parameter] public string? NextWhen { get; set; }
+    [Parameter] public string? NextTime { get; set; }
+    [Parameter] public string? NextSub { get; set; }
+    [Parameter] public bool NextJoinable { get; set; }
     [Parameter] public string NextUrl { get; set; } = "/calendar";
-    [Parameter] public IReadOnlyList<Item> Agenda { get; set; } = [];
+    [Parameter] public IReadOnlyList<AgendaItem> Agenda { get; set; } = [];
     [Parameter] public IReadOnlyList<Item> News { get; set; } = [];
+    [Parameter] public IReadOnlyList<AttentionItem> Attention { get; set; } = [];
+    [Parameter] public IReadOnlyList<TaskItem> Tasks { get; set; } = [];
+    [Parameter] public IReadOnlyList<ChatItem> Chats { get; set; } = [];
+    [Parameter] public IReadOnlyList<ProjectItem> Projects { get; set; } = [];
+    [Parameter] public IReadOnlyList<PersonItem> Team { get; set; } = [];
+    [Parameter] public int OnlineCount { get; set; }
+    [Parameter] public EventCallback<int> OnAttention { get; set; }
+    [Parameter] public EventCallback<int> OnCompleteTask { get; set; }
     [Parameter] public IReadOnlyList<string> Order { get; set; } = [];
     [Parameter] public EventCallback<IReadOnlyList<string>> OnOrder { get; set; }
+    /// Extras below the widgets (admin status, tickets, files).
     [Parameter] public RenderFragment? AdditionalWidgets { get; set; }
+
     private bool editing;
-    private static readonly string[] Defaults = ["next", "counters", "agenda", "news"];
+    private static readonly string[] Defaults = ["next", "counters", "attention", "tasks", "messages", "projects", "news", "team"];
     private List<string> Widgets = [..Defaults];
-    private IEnumerable<Counter> Counters => [new("Unread mail", "mail", "/mail", MailUnread), new("Unread chats", "message-circle", "/chat", ChatUnread), new("Open tasks", "circle-check", "/projects", OpenTasks), new("Missed calls", "phone-missed", "/calls", MissedCalls)];
+    private IEnumerable<Counter> Counters =>
+    [
+        new("Unread chats", "message-circle", "/chat", ChatUnread, "c-chat", null),
+        new("Unread mail", "mail", "/mail", MailUnread, "c-mail", null),
+        new("Open tasks", "circle-check", "/projects", OpenTasks, "c-proj", OverdueTasks > 0 ? $"{OverdueTasks} late" : null),
+        new(MissedCalls == 1 ? "Missed call" : "Missed calls", "phone-missed", "/calls", MissedCalls, "c-calls", null),
+    ];
+    // Saved orders from v1 (next/counters/agenda/news) keep working: unknown keys drop, new ones append in default order.
     protected override void OnParametersSet() => Widgets = Order.Where(Defaults.Contains).Concat(Defaults).Distinct().ToList();
-    private static string Label(string key) => key switch { "next" => "Up next", "counters" => "Counters", "agenda" => "Today's agenda", _ => "Latest news" };
+    private static string Label(string key) => key switch
+    {
+        "next" => "Today", "counters" => "Counters", "attention" => "Needs you", "tasks" => "My tasks", "messages" => "Messages",
+        "projects" => "Projects", "team" => "Team online", _ => "News",
+    };
     private async Task Move(string widget, int delta) { var from = Widgets.IndexOf(widget); var to = from + delta; if (to < 0 || to >= Widgets.Count) return; (Widgets[from], Widgets[to]) = (Widgets[to], Widgets[from]); await OnOrder.InvokeAsync(Widgets.ToArray()); }
 }

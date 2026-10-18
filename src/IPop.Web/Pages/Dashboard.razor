@@ -16,22 +16,24 @@
 @if (Phone.IsPhone)
 {
     <DashboardPhone Name="@(data?.FirstName ?? IPop.Application.PersonName.Display(Auth.Me?.Name) ?? "there")" Greeting="@Greeting" Loading="@(data is null)"
-        MailUnread="@(data?.Kpis.MailUnread ?? 0)" ChatUnread="@(data?.Kpis.ChatUnread ?? 0)" OpenTasks="@(data?.Kpis.OpenTasks ?? 0)" MissedCalls="@(data?.Kpis.MissedCalls ?? 0)"
-        CanPostNews="@(data?.CanPostNews == true)" NextTitle="@(NextMeeting()?.Title ?? data?.Kpis.NextMeetingTitle)" NextWhen="@(NextMeeting() is { } meeting ? StartsIn(meeting) : data?.Kpis.NextMeetingAt is { } when ? Local(when).ToString("ddd d MMM, HH:mm") : null)"
-        NextUrl="@(NextMeeting()?.Url ?? "/calendar")" Agenda="@PhoneAgenda" News="@PhoneNews" Order="phoneOrder" OnOrder="SavePhoneOrder">
+        SummaryText="@PhoneSummary" MailUnread="@(data?.Kpis.MailUnread ?? 0)" ChatUnread="@(data?.Kpis.ChatUnread ?? 0)" OpenTasks="@(data?.Kpis.OpenTasks ?? 0)"
+        OverdueTasks="@(data?.Kpis.OverdueTasks ?? 0)" MissedCalls="@(data?.Kpis.MissedCalls ?? 0)" CanPostNews="@(data?.CanPostNews == true)"
+        NextTitle="@(NextMeeting()?.Title ?? data?.Kpis.NextMeetingTitle)"
+        NextWhen="@(NextMeeting() is { } meeting ? StartsIn(meeting) : data?.Kpis.NextMeetingAt is { } when ? Local(when).ToString("ddd d MMM") : null)"
+        NextTime="@(NextMeeting()?.StartAt is { } ns ? Local(ns).ToString("HH:mm") : data?.Kpis.NextMeetingAt is { } nw ? Local(nw).ToString("HH:mm") : null)"
+        NextSub="@(NextMeeting() is { } nm ? nm.RoomName ?? nm.Sub : null)" NextJoinable="@(NextMeeting() is { } jm && jm.StartAt is { } js && js <= DateTime.UtcNow.AddMinutes(15))"
+        NextUrl="@(NextMeeting()?.Url ?? "/calendar")" Agenda="@PhoneAgenda" News="@PhoneNews" Attention="@PhoneAttention" Tasks="@PhoneTasks"
+        Chats="@PhoneChats" Projects="@PhoneProjects" Team="@PhoneTeam" OnlineCount="@(data?.OnlineCount ?? 0)"
+        OnAttention="PhoneOpenAttention" OnCompleteTask="PhoneCompleteTask" Order="phoneOrder" OnOrder="SavePhoneOrder">
         <AdditionalWidgets>
             @if (data is not null)
             {
-                <section class="m-dashboard-widget"><header><h3>Needs your attention</h3><a href="/notifications">See all</a></header>@foreach (var item in data.Attention.Take(5)) { <button type="button" class="m-dashboard-row" @onclick="() => OpenAttention(item)"><span><b>@item.Title</b><small>@item.Sub</small></span><span>@item.Cta</span></button> }</section>
-                <section class="m-dashboard-widget"><header><h3>My tasks</h3><a href="/projects">See all</a></header>@foreach (var task in data.MyTasks) { <div class="m-dashboard-task"><button type="button" aria-label="Complete @task.Title" @onclick="() => CompleteTask(task)"><i data-lucide="circle-check"></i></button><a href="@($"/projects/{task.ProjectId}?task={task.Id}")">@task.Title<small>@task.ProjectName · @DueLabel(task)</small></a></div> }</section>
-                <section class="m-dashboard-widget"><header><h3>Recent messages</h3><a href="/chat">See all</a></header>@foreach (var chat in data.Chats) { <a class="m-dashboard-row" href="/chat/@chat.Id"><span><b>@chat.Name</b><small>@(chat.LastMessage ?? "No messages")</small></span><small>@chat.Unread unread</small></a> }</section>
-                <section class="m-dashboard-widget"><header><h3>Projects</h3><a href="/projects">See all</a></header>@foreach (var project in data.Projects) { <a class="m-dashboard-row" href="/projects/@project.Id"><span><b>@project.Name</b><small>@project.Done of @project.Total done · @project.Status</small></span></a> }</section>
-                <section class="m-dashboard-widget"><header><h3>Notes</h3><a href="/notes">See all</a></header>@foreach (var note in data.Notes) { <a class="m-dashboard-row" href="/notes/@note.Id"><span><b>@note.Title</b><small>@note.EditedBy</small></span></a> }</section>
-                <section class="m-dashboard-widget"><header><h3>Team online</h3><a href="/directory">Directory</a></header>@foreach (var colleague in data.Online) { <a class="m-dashboard-row" href="@PLinks.Profile(colleague.Nik)"><span><b>@colleague.Name</b><small>@colleague.Status</small></span></a> }</section>
-                @if (data.IsAdmin) { @foreach (var status in data.Status) { <div class="m-dashboard-widget m-dashboard-status"><b>@status.Label</b><span>@status.State</span><small>@status.Note</small></div> } }
+                @if (data.IsAdmin && data.Status.Count > 0)
+                {
+                    <section class="m-dashboard-widget"><header class="m-dash-sec"><h3>System status</h3></header><div class="m-dash-card">@foreach (var status in data.Status) { <div class="m-dashboard-row m-dashboard-status"><i class="m-dash-dot k-@status.State"></i><span><b>@status.Label</b><small>@status.Note</small></span></div> }</div></section>
+                }
                 <IPop.Web.Components.Tickets.TicketsWidget />
-                <a class="m-dashboard-row" href="/files"><span><b>Files</b><small>Browse your NAS folders</small></span><i data-lucide="chevron-right"></i></a>
-                @if (data.Transfers.Count > 0) { <section class="m-dashboard-widget"><header><h3>File transfers</h3><a href="/files">Files</a></header>@foreach (var transfer in data.Transfers) { <div class="m-dashboard-row"><span><b>@transfer.Kind · @transfer.Status</b><small>@transfer.CompletedFiles of @transfer.TotalFiles files</small></span></div> }</section> }
+                @if (data.Transfers.Count > 0) { <section class="m-dashboard-widget"><header class="m-dash-sec"><h3>File transfers</h3><a href="/files">Files</a></header><div class="m-dash-card">@foreach (var transfer in data.Transfers) { <div class="m-dashboard-row"><span><b>@transfer.Kind · @transfer.Status</b><small>@transfer.CompletedFiles of @transfer.TotalFiles files</small></span></div> }</div></section> }
             }
         </AdditionalWidgets>
     </DashboardPhone>
@@ -328,8 +330,38 @@ else
 
 @code {
     private IReadOnlyList<string> phoneOrder = [];
-    private IReadOnlyList<DashboardPhone.Item> PhoneAgenda => data?.Agenda.Select(a => new DashboardPhone.Item(a.Title, $"{AgendaTime(a)} · {AgendaSub(a)}", a.Url)).ToList() ?? [];
-    private IReadOnlyList<DashboardPhone.Item> PhoneNews => data?.News.Select(n => new DashboardPhone.Item(n.Title, n.Type, $"/news?post={n.Id}")).ToList() ?? [];
+    // Phone v2: the hero meeting is shown big, so the timeline lists the rest of the day.
+    private IReadOnlyList<DashboardPhone.AgendaItem> PhoneAgenda => data?.Agenda.Where(a => a != NextMeeting())
+        .Select(a => new DashboardPhone.AgendaItem(a.Kind == "task" ? "Due" : AgendaTime(a), a.Title, a.Kind == "task" ? a.Sub : AgendaSub(a), a.Url,
+            a.Kind == "task" ? "task" : a.Kind == "meeting" ? "meeting" : "event", a.Ended)).ToList() ?? [];
+    private IReadOnlyList<DashboardPhone.Item> PhoneNews => data?.News.Select(n => new DashboardPhone.Item(n.Title,
+        (n.NeedsAck ? "Needs acknowledgement · " : "") + (n.PublishedAt is { } at ? Local(at).ToString("d MMM") : n.Type), $"/news?post={n.Id}")).ToList() ?? [];
+    private IReadOnlyList<DashboardPhone.AttentionItem> PhoneAttention => data?.Attention.Select((a, i) => new DashboardPhone.AttentionItem(i,
+        a.Kind, a.Kind switch { "ack" => "Memo", "missed-call" => "Missed call", "mention" => "Mention", "note" => "Note", "overdue" => "Overdue", _ => "For you" },
+        a.Title, a.Sub, a.Cta)).ToList() ?? [];
+    private IReadOnlyList<DashboardPhone.TaskItem> PhoneTasks => data?.MyTasks.Select((t, i) => new DashboardPhone.TaskItem(i, t.Title, t.ProjectName,
+        $"/projects/{t.ProjectId}?task={t.Id}", DueLabel(t), t.Overdue || t.DueDate?.Date == DateTime.Today)).ToList() ?? [];
+    private IReadOnlyList<DashboardPhone.ChatItem> PhoneChats => data?.Chats.Select(c => new DashboardPhone.ChatItem(c.Name,
+        c.LastMessage ?? "No messages yet", $"/chat/{c.Id}", c.PeerNik, c.Unread)).ToList() ?? [];
+    private IReadOnlyList<DashboardPhone.ProjectItem> PhoneProjects => data?.Projects.Select(p => new DashboardPhone.ProjectItem(p.Name,
+        $"{p.Done} of {p.Total} done", $"/projects/{p.Id}", p.Progress)).ToList() ?? [];
+    private IReadOnlyList<DashboardPhone.PersonItem> PhoneTeam => data?.Online.Select(p => new DashboardPhone.PersonItem(IPop.Application.PersonName.Display(p.Name) ?? p.Name, p.Nik)).ToList() ?? [];
+    private string PhoneSummary
+    {
+        get
+        {
+            if (data is null) return "";
+            var meetings = data.Agenda.Count(a => a.Kind is "meeting" or "event" && !a.Ended);
+            var due = data.Agenda.Count(a => a.Kind == "task");
+            var parts = new List<string>();
+            if (meetings > 0) parts.Add($"{meetings} {(meetings == 1 ? "meeting" : "meetings")} today");
+            if (due > 0) parts.Add($"{due} {(due == 1 ? "task" : "tasks")} due");
+            if (data.Kpis.ChatUnread > 0) parts.Add($"{data.Kpis.ChatUnread} unread {(data.Kpis.ChatUnread == 1 ? "chat" : "chats")}");
+            return parts.Count == 0 ? "Nothing urgent. Enjoy a calm day." : string.Join(" · ", parts);
+        }
+    }
+    private Task PhoneOpenAttention(int index) => data is { } d && index >= 0 && index < d.Attention.Count ? OpenAttention(d.Attention[index]) : Task.CompletedTask;
+    private Task PhoneCompleteTask(int index) => data is { } d && index >= 0 && index < d.MyTasks.Count ? CompleteTask(d.MyTasks[index]) : Task.CompletedTask;
     private void PhoneChanged() => _ = InvokeAsync(StateHasChanged);
     private async Task LoadPhoneOrder() { phoneOrder = await Auth.GetAsync<string[]>("/api/me/ui-prefs/dash-order") ?? []; }
     private async Task SavePhoneOrder(IReadOnlyList<string> order)
