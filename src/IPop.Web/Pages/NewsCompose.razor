@@ -9,6 +9,7 @@
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 @inject HttpClient Http
+@inject PhoneState Phone
 @inject IPop.Web.Services.PeopleLinks PLinks
 
 <PageTitle>@(IsRevision ? "Edit post" : "New post") — News &amp; Memos — IPop</PageTitle>
@@ -34,7 +35,7 @@
     .nc-conflict-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
 </style>
 
-<div class="nc-shell">
+<div class="@(Phone.IsPhone ? "nc-shell m-news-compose" : "nc-shell")">
     <NavigationLock ConfirmExternalNavigation="@(dirty && !conflict)" OnBeforeInternalNavigation="OnBeforeInternalNavigation" />
 
     <header class="nc-topbar">
@@ -48,6 +49,7 @@
             <span>@StatusText</span>
         </div>
         <div class="nc-top-actions">
+            @if (Phone.IsPhone) { <button type="button" class="nc-btn2" aria-label="Post settings" @onclick="() => phoneSettings = true"><i data-lucide="sliders-horizontal"></i></button> }
             <button type="button" class="nc-btn2" aria-pressed="@(previewOpen ? "true" : "false")" @onclick="TogglePreview">
                 <i data-lucide="@(previewOpen ? "pencil" : "eye")"></i><span class="nc-lbl-sm">@(previewOpen ? "Editing" : "Preview")</span>
             </button>
@@ -63,7 +65,7 @@
         <div class="nc-conflict" role="alert">
             <i data-lucide="alert-circle"></i>
             <div><b>Could not open the composer</b><span>@loadError</span></div>
-            <div class="nc-conflict-actions"><button type="button" class="nc-btn2" @onclick="BackAsync"><i data-lucide="arrow-left"></i>Back to News</button></div>
+            <div class="nc-conflict-actions">@if (Phone.IsPhone) { <button type="button" class="nc-btn2" @onclick="LoadAsync"><i data-lucide="refresh-cw"></i>Retry</button> }<button type="button" class="nc-btn2" @onclick="BackAsync"><i data-lucide="arrow-left"></i>Back to News</button></div>
         </div>
     }
     else if (conflict)
@@ -92,6 +94,15 @@
                     </div>
                 }
 
+                @if (Phone.IsPhone)
+                {
+                    <div class="m-news-compose-categories" role="group" aria-label="Post category">
+                        @foreach (var category in new[] { "news", "memo", "announcement", "condolence" })
+                        {
+                            <button type="button" disabled="@Locked" aria-pressed="@(formType == category ? "true" : "false")" @onclick="() => { formType = category; AfterCategory(); }">@NewsUiHelper.GetCategoryLabel(category)</button>
+                        }
+                    </div>
+                }
                 <label class="sr" for="nc-title">Post title</label>
                 <textarea id="nc-title" class="nc-title" rows="1" maxlength="300" placeholder="Post title"
                           @bind="title" @bind:event="oninput" @bind:after="AfterTitle"
@@ -198,6 +209,92 @@
             </div>
         </div>
 
+        @if (!Phone.IsPhone) { @PostSettings }
+        else
+        {
+            <BottomSheet Open="@phoneSettings" OpenChanged="v => phoneSettings = v" Title="Post settings" Size="SheetSize.Tall" Class="m-news-settings"><ChildContent>@PostSettings</ChildContent></BottomSheet>
+        }
+
+
+        <section class="nc-preview" aria-label="Reader preview">
+            <div class="nc-pv-bar">
+                <div class="t"><i data-lucide="eye"></i>Preview <span class="hint">@(device == NewsPreviewDevice.Mobile ? "Mobile · 390 px" : "Desktop · 980 px")</span></div>
+                <div class="right">
+                    <div class="nc-seg" role="group" aria-label="Preview width">
+                        <button type="button" aria-pressed="@(device == NewsPreviewDevice.Desktop ? "true" : "false")" @onclick="() => device = NewsPreviewDevice.Desktop"><i data-lucide="monitor"></i>Desktop</button>
+                        <button type="button" aria-pressed="@(device == NewsPreviewDevice.Mobile ? "true" : "false")" @onclick="() => device = NewsPreviewDevice.Mobile"><i data-lucide="smartphone"></i>Mobile</button>
+                    </div>
+                    <button type="button" class="nc-btn2" disabled="@PublishBusy" @onclick="TogglePreview"><i data-lucide="pencil"></i>Back to editing</button>
+                </div>
+            </div>
+            <div class="nc-pv-stage">
+                <article class="nc-pv-frame @(device == NewsPreviewDevice.Mobile ? "mobile" : "")">
+                    <div class="nc-pv-screen">
+                        @if (CoverUrl is not null)
+                        {
+                            <img class="nc-pv-hero" src="@CoverUrl" alt="Post cover" />
+                        }
+                        else
+                        {
+                            <div class="nc-pv-hero empty">No cover image</div>
+                        }
+                        <div class="nc-pv-inner">
+                            <span class="nc-pv-cat"><i data-lucide="@NewsUiHelper.GetCategoryIcon(formType)"></i>@NewsUiHelper.GetCategoryLabel(formType)</span>
+                            <h1 class="nc-pv-title">@(string.IsNullOrWhiteSpace(title) ? "Untitled post" : title)</h1>
+                            <div class="nc-pv-by">
+                                <span class="nc-av">@Initials</span>
+                                <span>@AuthorName</span>
+                                @if (pinOn) { <span class="pill">Pinned</span> }
+                            </div>
+                            @if (previewError is not null)
+                            {
+                                <div class="nc-pv-empty" role="alert"><i data-lucide="alert-circle"></i> @previewError</div>
+                            }
+                            else if (previewHtml is not null)
+                            {
+                                <NewsBody Html="@previewHtml" BodyFormat="html" DraftId="@draftId" MediaUrls="@mediaUrls" />
+                            }
+                            else
+                            {
+                                <div class="nc-pv-empty">Loading the sanitized preview…</div>
+                            }
+                            <div class="nc-pv-meta">
+                                <div class="r">
+                                    <i data-lucide="users"></i><b>Audience</b>
+                                    @if (formTargets.Count == 0)
+                                    {
+                                        <span class="pill">All employees</span>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var t in formTargets) { <span class="pill">@TargetLabel(t)</span> }
+                                    }
+                                </div>
+                                <div class="r"><i data-lucide="tag"></i><b>Category</b><span class="pill">@NewsUiHelper.GetCategoryLabel(formType)</span></div>
+                                @if (formRequiresAck)
+                                {
+                                    <div class="r"><i data-lucide="calendar-clock"></i><b>Acknowledge by</b><span class="pill">@(formAckDueAt is { } due ? due.ToString("dd MMM yyyy HH:mm") : "not set")</span></div>
+                                }
+                            </div>
+                            @if (formRequiresAck)
+                            {
+                                <div class="nc-pv-ack">
+                                    <i data-lucide="shield-check"></i>
+                                    <div><b>Acknowledgement requested</b><br /><span>@(formAckDueAt is { } d2 ? $"Acknowledge by {d2:dd MMM yyyy HH:mm}" : "No deadline set")</span></div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </article>
+            </div>
+        </section>
+    </main>
+</div>
+
+@code {
+    private bool phoneSettings;
+    private void PhoneChanged() => _ = InvokeAsync(StateHasChanged);
+    private RenderFragment PostSettings => @<text>
         <aside class="nc-settings-col" aria-label="Post settings">
             <div class="nc-set">
                 <div class="nc-set-head"><i data-lucide="tag"></i>Basics</div>
@@ -322,83 +419,8 @@
                 <button type="button" class="nc-btn2" aria-pressed="@(previewOpen ? "true" : "false")" @onclick="TogglePreview"><i data-lucide="eye"></i>Preview as reader</button>
             </div>
         </aside>
+    </text>;
 
-        <section class="nc-preview" aria-label="Reader preview">
-            <div class="nc-pv-bar">
-                <div class="t"><i data-lucide="eye"></i>Preview <span class="hint">@(device == NewsPreviewDevice.Mobile ? "Mobile · 390 px" : "Desktop · 980 px")</span></div>
-                <div class="right">
-                    <div class="nc-seg" role="group" aria-label="Preview width">
-                        <button type="button" aria-pressed="@(device == NewsPreviewDevice.Desktop ? "true" : "false")" @onclick="() => device = NewsPreviewDevice.Desktop"><i data-lucide="monitor"></i>Desktop</button>
-                        <button type="button" aria-pressed="@(device == NewsPreviewDevice.Mobile ? "true" : "false")" @onclick="() => device = NewsPreviewDevice.Mobile"><i data-lucide="smartphone"></i>Mobile</button>
-                    </div>
-                    <button type="button" class="nc-btn2" disabled="@PublishBusy" @onclick="TogglePreview"><i data-lucide="pencil"></i>Back to editing</button>
-                </div>
-            </div>
-            <div class="nc-pv-stage">
-                <article class="nc-pv-frame @(device == NewsPreviewDevice.Mobile ? "mobile" : "")">
-                    <div class="nc-pv-screen">
-                        @if (CoverUrl is not null)
-                        {
-                            <img class="nc-pv-hero" src="@CoverUrl" alt="Post cover" />
-                        }
-                        else
-                        {
-                            <div class="nc-pv-hero empty">No cover image</div>
-                        }
-                        <div class="nc-pv-inner">
-                            <span class="nc-pv-cat"><i data-lucide="@NewsUiHelper.GetCategoryIcon(formType)"></i>@NewsUiHelper.GetCategoryLabel(formType)</span>
-                            <h1 class="nc-pv-title">@(string.IsNullOrWhiteSpace(title) ? "Untitled post" : title)</h1>
-                            <div class="nc-pv-by">
-                                <span class="nc-av">@Initials</span>
-                                <span>@AuthorName</span>
-                                @if (pinOn) { <span class="pill">Pinned</span> }
-                            </div>
-                            @if (previewError is not null)
-                            {
-                                <div class="nc-pv-empty" role="alert"><i data-lucide="alert-circle"></i> @previewError</div>
-                            }
-                            else if (previewHtml is not null)
-                            {
-                                <NewsBody Html="@previewHtml" BodyFormat="html" DraftId="@draftId" MediaUrls="@mediaUrls" />
-                            }
-                            else
-                            {
-                                <div class="nc-pv-empty">Loading the sanitized preview…</div>
-                            }
-                            <div class="nc-pv-meta">
-                                <div class="r">
-                                    <i data-lucide="users"></i><b>Audience</b>
-                                    @if (formTargets.Count == 0)
-                                    {
-                                        <span class="pill">All employees</span>
-                                    }
-                                    else
-                                    {
-                                        @foreach (var t in formTargets) { <span class="pill">@TargetLabel(t)</span> }
-                                    }
-                                </div>
-                                <div class="r"><i data-lucide="tag"></i><b>Category</b><span class="pill">@NewsUiHelper.GetCategoryLabel(formType)</span></div>
-                                @if (formRequiresAck)
-                                {
-                                    <div class="r"><i data-lucide="calendar-clock"></i><b>Acknowledge by</b><span class="pill">@(formAckDueAt is { } due ? due.ToString("dd MMM yyyy HH:mm") : "not set")</span></div>
-                                }
-                            </div>
-                            @if (formRequiresAck)
-                            {
-                                <div class="nc-pv-ack">
-                                    <i data-lucide="shield-check"></i>
-                                    <div><b>Acknowledgement requested</b><br /><span>@(formAckDueAt is { } d2 ? $"Acknowledge by {d2:dd MMM yyyy HH:mm}" : "No deadline set")</span></div>
-                                </div>
-                            }
-                        </div>
-                    </div>
-                </article>
-            </div>
-        </section>
-    </main>
-</div>
-
-@code {
     /// Set on /news/{Id:guid}/edit: the live post this composer revises.
     [Parameter] public Guid? Id { get; set; }
 
@@ -492,6 +514,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Phone.Changed += PhoneChanged;
         lifetimeCts = new CancellationTokenSource();
         try { await JS.InvokeVoidAsync("ipop.newsEditor.ensureStyle"); } catch { }
         await LoadAsync();
@@ -1479,6 +1502,7 @@
 
     public void Dispose()
     {
+        Phone.Changed -= PhoneChanged;
         if (disposed) return;
         disposed = true;
         try { debounce?.Dispose(); } catch { }

@@ -1,0 +1,86 @@
+@using IPop.Web.Models
+@using IPop.Web.Components.News
+<PhoneScreen Title="News & Memos" LargeTitle="false" BackLabel="News" OnBack="OnBack" Class="@(Calm ? "m-news-article m-news-calm" : "m-news-article")">
+    <Trailing><button type="button" class="ph-ib" aria-label="More actions" @onclick="() => more = true"><i data-lucide="ellipsis"></i></button></Trailing>
+    <ChildContent>
+        @if (!Calm && Detail.CoverMediaId is { } cover && Detail.CoverMode != "none") { <div class="m-news-cover"><NewsCoverThumb PostId="@Detail.Id" MediaId="@cover" /></div> }
+        <article class="m-news-reading">
+            @if (Calm) { <i data-lucide="flower-2" class="m-news-flower"></i><p>In loving memory</p> }
+            else { <p class="m-news-category">@NewsUiHelper.GetCategoryLabel(Detail.Type)</p> }
+            <h1>@Detail.Title</h1>
+            <p class="m-news-byline">@Detail.AuthorName · @NewsUiHelper.FormatDate(Detail.PublishedAt ?? Detail.CreatedAt) · @NewsUiHelper.ReadTime(Detail.Body) min read</p>
+            @if (!Calm && Detail.Video is { } video) { <NewsVideoBlock Video="@video" /> }
+            <div class="m-news-body"><NewsBody Html="@Detail.Body" BodyFormat="@Detail.BodyFormat" PostId="@Detail.Id" AriaLabel="Post content" /></div>
+            @foreach (var file in Detail.Attachments ?? []) { <button type="button" class="m-news-action" @onclick="() => OnDownload.InvokeAsync(file)"><i data-lucide="paperclip"></i>@file.FileName · @NewsUiHelper.FileSize(file.Size)</button> }
+            @if (Error is not null) { <p role="alert">@Error</p> }
+            @if (Detail.Status == "published" && Detail.RequiresAcknowledgement)
+            {
+                @if (Detail.IsAcknowledged) { <p role="status">You've acknowledged this post.</p> }
+                else { <div class="m-news-ack"><p>Please confirm you've read this post.</p><button type="button" data-action="acknowledge" disabled="@AckBusy" @onclick="OnAcknowledge">@(AckBusy ? "Recording…" : "I've read it")</button></div> }
+            }
+            @if (Calm)
+            {
+                @if (!string.IsNullOrEmpty(CondolenceChatUrl)) { <a class="m-news-action" data-action="condolence" href="@CondolenceChatUrl"><i data-lucide="message-circle"></i>Send a private message</a> }
+                else { <button type="button" class="m-news-action" data-action="condolence" @onclick="() => chooseColleague = true"><i data-lucide="message-circle"></i>Send condolences privately</button> }
+            }
+            else if (Detail.Status == "published" && DiscussionError is not null)
+            {
+                <div role="alert">@DiscussionError <button type="button" class="m-news-action" data-action="retry-discussion" @onclick="OnRetryDiscussion">Retry</button></div>
+            }
+            else if (Detail.Status == "published")
+            {
+                <div class="m-news-reactions"><button type="button" aria-label="Like post" aria-pressed="@(Discussion?.IsLiked == true ? "true" : "false")" @onclick="OnLike"><i data-lucide="heart"></i>@(Discussion?.LikeCount ?? 0)</button><span>@(Discussion?.Comments.Count ?? 0) comments</span><button type="button" aria-label="Share post" @onclick="OnCopyLink"><i data-lucide="share"></i></button></div>
+                @foreach (var comment in Discussion?.Comments ?? []) { <p class="m-news-comment"><b>@comment.AuthorName</b><small>@comment.CreatedAt.ToLocalTime().ToString("dd MMM, HH:mm")</small><span>@comment.Body</span></p> }
+                <label class="m-news-comment-input">Add a comment<textarea maxlength="2000" value="@CommentText" @oninput="e => OnCommentText.InvokeAsync(e.Value?.ToString() ?? string.Empty)"></textarea></label>
+                <button type="button" class="m-news-action" disabled="@(string.IsNullOrWhiteSpace(CommentText))" @onclick="OnComment">Post comment</button>
+            }
+        </article>
+    </ChildContent>
+</PhoneScreen>
+<BottomSheet Open="@more" OpenChanged="v => more = v" Title="Post actions">
+    <button type="button" class="m-news-action" @onclick="() => Run(OnMarkUnread)"><i data-lucide="mail"></i>Mark unread</button>
+    <button type="button" class="m-news-action" @onclick="() => Run(OnCopyLink)"><i data-lucide="link"></i>Copy link</button>
+    <button type="button" class="m-news-action" @onclick="() => Run(OnSchedule)"><i data-lucide="calendar-plus"></i>Add to calendar</button>
+    @if (Detail.CanEdit) { <button type="button" class="m-news-action" @onclick="() => Run(OnEdit)"><i data-lucide="pencil"></i>Edit post</button> }
+    @if (Detail.CanPublish) { <button type="button" class="m-news-action" @onclick="() => Run(OnTogglePin)">@(Detail.IsPinned ? "Unpin" : "Pin to top")</button><button type="button" class="m-news-action" @onclick='() => Run(Detail.Status == "published" ? OnUnpublish : OnPublish)'>@(Detail.Status == "published" ? "Unpublish" : "Publish now")</button> }
+    @if (Detail.CanDelete) { <button type="button" class="m-news-action" @onclick="() => Run(OnDelete)">Delete post</button> }
+</BottomSheet>
+<BottomSheet Open="@chooseColleague" OpenChanged="v => chooseColleague = v" Title="Choose your colleague">
+    <p>This post doesn't identify a contact. Choose who should receive your private message.</p>
+    <AppMemberPicker ValueChanged="SelectColleague" />
+</BottomSheet>
+@code {
+    private bool chooseColleague;
+    private async Task SelectColleague(MemberSearchRow? person)
+    {
+        if (person is null) return;
+        chooseColleague = false;
+        await OnCondolencePerson.InvokeAsync(person.Nik);
+    }
+    [Parameter] public EventCallback<string> OnCondolencePerson { get; set; }
+    [Parameter, EditorRequired] public NewsDetailDto Detail { get; set; } = default!;
+    [Parameter] public NewsDiscussionDto? Discussion { get; set; }
+    [Parameter] public string? DiscussionError { get; set; }
+    [Parameter] public EventCallback OnRetryDiscussion { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public string? CondolenceChatUrl { get; set; }
+    [Parameter] public string CommentText { get; set; } = "";
+    [Parameter] public bool AckBusy { get; set; }
+    [Parameter] public EventCallback OnBack { get; set; }
+    [Parameter] public EventCallback OnLike { get; set; }
+    [Parameter] public EventCallback OnCopyLink { get; set; }
+    [Parameter] public EventCallback OnMarkUnread { get; set; }
+    [Parameter] public EventCallback OnSchedule { get; set; }
+    [Parameter] public EventCallback OnEdit { get; set; }
+    [Parameter] public EventCallback OnPublish { get; set; }
+    [Parameter] public EventCallback OnUnpublish { get; set; }
+    [Parameter] public EventCallback OnTogglePin { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+    [Parameter] public EventCallback OnAcknowledge { get; set; }
+    [Parameter] public EventCallback OnComment { get; set; }
+    [Parameter] public EventCallback<string> OnCommentText { get; set; }
+    [Parameter] public EventCallback<NewsAttachmentDto> OnDownload { get; set; }
+    private bool more;
+    private bool Calm => Detail.Type is "condolence" or "duka";
+    private async Task Run(EventCallback callback) { more = false; await callback.InvokeAsync(); }
+}

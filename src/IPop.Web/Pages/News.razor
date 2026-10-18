@@ -7,12 +7,35 @@
 @inject ConfirmService Confirm
 @inject IJSRuntime JS
 @inject NavigationManager Nav
+@inject PhoneState Phone
+@inject PeopleLinks PhonePeople
+@inject HttpClient PhoneHttp
 @inject BadgeState Badges
 @inject IPop.Web.Services.PageCache Cache
 @inject IPop.Web.Services.CalendarLinks CalLinks
 
 <PageTitle>News & Memos — IPop</PageTitle>
 
+@if (Phone.IsPhone)
+{
+    @if (!showDetail)
+    {
+        <IPop.Web.Components.Phone.News.NewsPhone Items="@items" CanManage="@canManage" Loading="@loading" HasMore="@(page < totalPages)" Error="@listError" View="@activeView" Category="@typeFilter" Query="@q" OnOpen="OpenDetail" OnView="SetView" OnCategory="SetCategory" OnSearch="OnSearchInput" OnRetry="() => Reload(1, true)" OnMore="LoadMore" />
+    }
+    else if (detail is not null)
+    {
+        <IPop.Web.Components.Phone.News.NewsArticlePhone Detail="@detail" Discussion="@discussion" Error="@detailError" AckBusy="@ackBusy" CondolenceChatUrl="@PhoneCondolenceUrl" CommentText="@commentText" OnCommentText="v => commentText = v" OnBack="CloseDetail" OnLike="ToggleLike" OnComment="AddComment" OnAcknowledge="Acknowledge" OnCopyLink="CopyLink" OnMarkUnread="MarkUnread" OnSchedule="ScheduleNewsFollowup" OnEdit="OpenEdit" OnTogglePin="TogglePin" OnPublish="Publish" OnUnpublish="Unpublish" OnDelete="DeleteCurrentPost" DiscussionError="@phoneDiscussionError" OnRetryDiscussion="LoadPhoneDiscussion" OnDownload="DownloadPhoneAttachment" OnCondolencePerson="nik => Nav.NavigateTo(PhonePeople.Chat(nik))" />
+    }
+    else
+    {
+        <PhoneScreen Title="News & Memos" LargeTitle="false" BackLabel="News" OnBack="CloseDetail"><ChildContent>
+            @if (detailError is not null) { <div role="alert">@detailError <button type="button" class="m-news-action" @onclick="() => OpenDetail(openDetailId!.Value)">Retry</button></div> }
+            else { <p role="status">Loading article…</p> }
+        </ChildContent></PhoneScreen>
+    }
+}
+else
+{
 <div class="news-v6x nm @(showDetail ? "m-detail" : "") @(IsHome ? "nm-home" : "nm-read")">
     <div class="nm-top">
         <div class="nm-tabs" role="tablist" aria-label="News filters">
@@ -200,6 +223,8 @@
     }
 </div>
 
+}
+
 @if (showCreate || showEdit)
 {
     <NewsEditorDrawer IsEdit="@showEdit"
@@ -214,6 +239,25 @@
 @code {
     [CascadingParameter] public MainLayout Layout { get; set; } = default!;
     [Parameter] public Guid? Id { get; set; }
+
+    private void PhoneChanged() => _ = InvokeAsync(StateHasChanged);
+    // Audience targets are readers, not bereavement contacts. The current DTO has no contact field;
+    // ask explicitly rather than sending condolences to the author or an arbitrary audience member.
+    private string? PhoneCondolenceUrl => null;
+    private string? phoneDiscussionError;
+    private async Task LoadPhoneDiscussion()
+    {
+        if (openDetailId is not { } id) return;
+        var loaded = await Auth.GetAsync<NewsDiscussionDto>($"/api/news/{id}/discussion");
+        if (openDetailId != id) return;
+        discussion = loaded;
+        phoneDiscussionError = loaded is null ? "Couldn't load comments and reactions." : null;
+    }
+    private async Task DownloadPhoneAttachment(NewsAttachmentDto file)
+    {
+        try { await JS.InvokeVoidAsync("ipop.authDownload", new Uri(PhoneHttp.BaseAddress!, $"/api/attachments/{file.Id}").ToString(), Auth.AccessToken, file.FileName); }
+        catch (JSException) { Toasts.Show("Couldn't download this attachment. Please try again.", ToastKind.Error); }
+    }
 
     private bool loading = true;
     private string? listError;
@@ -333,6 +377,7 @@
 
     protected override void OnInitialized()
     {
+        Phone.Changed += PhoneChanged;
         Layout.SetHeader("News & Memos", "Corporate announcements & internal news");
         Layout.SearchChanged += OnLayoutSearch;
         _newsSub = Auth.On(IPop.Application.Realtime.RealtimeEvents.NewsChanged, OnNewsChanged);
@@ -537,6 +582,7 @@
     private async Task OpenDetail(Guid id)
     {
         openDetailId = id;
+        phoneDiscussionError = null;
         detailError = null;
         audits = null;
         discussion = null;
@@ -575,7 +621,10 @@
             audits = a?.ToList() ?? [];
         }
         if (d.Status == "published")
-            discussion = await Auth.GetAsync<NewsDiscussionDto>($"/api/news/{id}/discussion");
+        {
+            if (Phone.IsPhone) await LoadPhoneDiscussion();
+            else discussion = await Auth.GetAsync<NewsDiscussionDto>($"/api/news/{id}/discussion");
+        }
         if (openDetailId != id) return;
         StateHasChanged();
         await JS.InvokeVoidAsync("ipop.icons");
@@ -913,6 +962,7 @@
     }
     public void Dispose()
     {
+        Phone.Changed -= PhoneChanged;
         Layout.SearchChanged -= OnLayoutSearch;
         _newsSub?.Dispose();
         _liveCts?.Cancel();

@@ -6,9 +6,17 @@
 @inject ConfirmService Confirm
 @inject IJSRuntime JS
 @inject NavigationManager Nav
+@inject PhoneState Phone
+@implements IDisposable
 
 <PageTitle>My drafts — News &amp; Memos — IPop</PageTitle>
 
+@if (Phone.IsPhone)
+{
+    <PhoneScreen Title="My drafts" BackLabel="News" OnBack='() => Nav.NavigateTo("/news")' Class="m-news-drafts"><Trailing><a class="ph-ib" href="/news/new" aria-label="New post"><i data-lucide="square-pen"></i></a></Trailing><ChildContent>@DraftRows</ChildContent></PhoneScreen>
+}
+else
+{
 <div class="nc-shell nd-page">
     <header class="nc-topbar">
         <button type="button" class="nc-back" aria-label="Back to News and Memo" @onclick='() => Nav.NavigateTo("/news")'><i data-lucide="arrow-left"></i></button>
@@ -21,6 +29,35 @@
         </div>
     </header>
 
+    @DraftRows
+
+</div>
+
+}
+
+<style>
+    .nd-page { background: var(--window); min-height: 100%; }
+    .nd-body { padding: 22px; max-width: 860px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 12px; }
+    .nd-list { display: flex; flex-direction: column; gap: 12px; }
+    .nd-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 16px; }
+    .nd-main { flex: 1; min-width: 0; }
+    .nd-title { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+    .nd-title .lucide { width: 15px; height: 15px; color: var(--ink-3); }
+    .nd-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; font-size: 12px; color: var(--ink-3); }
+    .nd-meta .pill { background: var(--surface-3); border-radius: var(--r-pill); padding: 3px 9px; font-size: 11.5px; }
+    .nd-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .nd-empty { text-align: center; color: var(--ink-3); padding: 60px 20px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .nd-empty .lucide { width: 30px; height: 30px; color: var(--ink-4); }
+    .nd-empty .t { font-size: 15px; font-weight: 600; color: var(--ink); }
+    .nd-empty .s { font-size: 12.5px; max-width: 420px; }
+    .nd-skel { height: 76px; border-radius: 16px; background: var(--surface-3); animation: nd-pulse 1.2s ease-in-out infinite; }
+    @@keyframes nd-pulse { 50% { opacity: .55; } }
+</style>
+
+@code {
+    private void PhoneChanged() => _ = InvokeAsync(StateHasChanged);
+    public void Dispose() => Phone.Changed -= PhoneChanged;
+    private RenderFragment DraftRows => @<text>
     <div class="nd-body">
         @if (loading)
         {
@@ -88,34 +125,14 @@
             </div>
         }
     </div>
-</div>
+    </text>;
 
-<style>
-    .nd-page { background: var(--window); min-height: 100%; }
-    .nd-body { padding: 22px; max-width: 860px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 12px; }
-    .nd-list { display: flex; flex-direction: column; gap: 12px; }
-    .nd-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 16px; }
-    .nd-main { flex: 1; min-width: 0; }
-    .nd-title { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
-    .nd-title .lucide { width: 15px; height: 15px; color: var(--ink-3); }
-    .nd-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; font-size: 12px; color: var(--ink-3); }
-    .nd-meta .pill { background: var(--surface-3); border-radius: var(--r-pill); padding: 3px 9px; font-size: 11.5px; }
-    .nd-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-    .nd-empty { text-align: center; color: var(--ink-3); padding: 60px 20px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
-    .nd-empty .lucide { width: 30px; height: 30px; color: var(--ink-4); }
-    .nd-empty .t { font-size: 15px; font-weight: 600; color: var(--ink); }
-    .nd-empty .s { font-size: 12.5px; max-width: 420px; }
-    .nd-skel { height: 76px; border-radius: 16px; background: var(--surface-3); animation: nd-pulse 1.2s ease-in-out infinite; }
-    @@keyframes nd-pulse { 50% { opacity: .55; } }
-</style>
-
-@code {
     private List<AppDtos.NewsDraftDto> drafts = [];
     private bool loading = true;
     private bool busy;
     private string? error;
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync() { Phone.Changed += PhoneChanged; await LoadAsync(); }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -129,7 +146,8 @@
         try
         {
             var list = await Auth.GetAsync<AppDtos.NewsDraftListDto>("/api/news/composer/drafts");
-            drafts = list?.Items.ToList() ?? [];
+            if (list is null) error = "The server did not return your drafts. Please retry.";
+            else drafts = list.Items.ToList();
         }
         catch (Exception ex)
         {

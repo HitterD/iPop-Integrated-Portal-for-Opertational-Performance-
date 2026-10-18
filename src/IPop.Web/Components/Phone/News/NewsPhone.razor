@@ -1,0 +1,56 @@
+@using IPop.Web.Models
+@using IPop.Web.Components.News
+<PhoneScreen Title="News & Memos" Class="m-news-screen">
+    <Trailing>@if (CanManage) { <a class="ph-ib" aria-label="Private drafts" href="/news/drafts"><i data-lucide="files"></i></a><a class="ph-ib" aria-label="New post" href="/news/new"><i data-lucide="square-pen"></i></a> }</Trailing>
+    <Below>
+        <label class="m-news-search"><i data-lucide="search"></i><input type="search" aria-label="Search news" placeholder="Search news, memos or authors" value="@Query" @oninput="e => OnSearch.InvokeAsync(e.Value?.ToString() ?? string.Empty)" /></label>
+        <div class="m-news-chips" role="group" aria-label="News filters">
+            @foreach (var (key, label) in Filters) { <button type="button" data-view="@key" aria-pressed="@(View == key && Category.Length == 0 ? "true" : "false")" @onclick="() => OnView.InvokeAsync(key)">@label</button> }
+            @foreach (var cat in new[] { "news", "memo", "announcement", "condolence" }) { <button type="button" aria-pressed="@(Category == cat ? "true" : "false")" @onclick='() => OnCategory.InvokeAsync(Category == cat ? "" : cat)'>@NewsUiHelper.GetCategoryLabel(cat)</button> }
+        </div>
+    </Below>
+    <ChildContent>
+        @if (Error is not null) { <div class="m-news-notice" role="alert">@Error <button type="button" @onclick="OnRetry">Retry</button></div> }
+        @if (Loading && Items is null) { <p role="status">Loading news…</p> }
+        @if (Items is { Count: > 0 })
+        {
+            var hero = Items.FirstOrDefault(x => x.IsPinned) ?? Items[0];
+            <button type="button" class="m-news-hero" @onclick="() => OnOpen.InvokeAsync(hero.Id)">
+                @Thumbnail(hero)
+                <span class="m-news-category">@NewsUiHelper.GetCategoryLabel(hero.Type)@(hero.IsPinned ? " · Pinned" : "")</span>
+                <b>@hero.Title</b><small>@hero.AuthorName · @NewsHome.When(hero)</small>
+            </button>
+            @foreach (var post in Items.Where(x => x.Id != hero.Id))
+            {
+                <button type="button" class="m-news-row" @onclick="() => OnOpen.InvokeAsync(post.Id)">
+                    <span class="m-news-row-text"><small>@NewsUiHelper.GetCategoryLabel(post.Type) · @NewsHome.When(post)</small><b>@if (!post.IsRead) { <span class="m-news-unread" aria-label="Unread"></span> }@post.Title</b><small>@post.AuthorName</small></span>@Thumbnail(post)
+                </button>
+            }
+            @if (HasMore) { <button type="button" class="m-news-action" disabled="@Loading" @onclick="OnMore">@(Loading ? "Loading…" : "Load more")</button> }
+        }
+        else if (!Loading && Error is null) { <p class="m-news-notice">No posts here. Try another filter.</p> }
+    </ChildContent>
+</PhoneScreen>
+@code {
+    [Parameter] public IReadOnlyList<NewsSummaryDto>? Items { get; set; }
+    [Parameter] public bool CanManage { get; set; }
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public bool HasMore { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public string View { get; set; } = "all";
+    [Parameter] public string Category { get; set; } = "";
+    [Parameter] public string Query { get; set; } = "";
+    [Parameter] public EventCallback<Guid> OnOpen { get; set; }
+    [Parameter] public EventCallback<string> OnView { get; set; }
+    [Parameter] public EventCallback<string> OnCategory { get; set; }
+    [Parameter] public EventCallback<string> OnSearch { get; set; }
+    [Parameter] public EventCallback OnRetry { get; set; }
+    [Parameter] public EventCallback OnMore { get; set; }
+    private static readonly (string, string)[] Filters = [("all", "For you"), ("unread", "Unread"), ("ack", "To acknowledge")];
+    private RenderFragment Thumbnail(NewsSummaryDto p) => @<span class="m-news-thumb">
+        @if (p.Type is "condolence" or "duka") { <i data-lucide="flower-2"></i> }
+        else if (p.Video is { } video) { <NewsVideoThumb Video="@video" /> }
+        else if (p.CoverMediaId is { } cover && p.CoverMode != "none") { <NewsCoverThumb PostId="@p.Id" MediaId="@cover" /> }
+        else { <i data-lucide="@NewsHome.Icon(p.Type)"></i> }
+    </span>;
+}
