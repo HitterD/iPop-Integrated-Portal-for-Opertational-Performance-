@@ -144,3 +144,17 @@
   .m-dashboard-additional { padding-top: 6px; }
   .m-dashboard-empty { padding: 14px 16px; }
 }
+
+/* Dashboard v2 polish: undo v1/generic row rules that leak into the new cards. */
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .m-dash-sec h3 { font-weight: 700; color: var(--ph-ink); }
+  .m-dashboard-next small { opacity: 1; text-transform: none; letter-spacing: 0; }
+  .m-dashboard-next a.m-dash-join { justify-content: center; color: var(--ph-on-green); }
+  .m-dash-card .m-dashboard-row > .pav, .m-dash-card .m-dashboard-row > .m-dash-ic { flex: none; display: grid; gap: 0; }
+  .m-dash-card .m-dashboard-row > .pav { width: 40px; height: 40px; }
+  .m-dash-card .m-dashboard-row > .m-dash-ic { width: 32px; height: 32px; }
+  .m-dash-card .m-dashboard-row > span:not(.pav):not(.m-dash-ic) { flex: 1; min-width: 0; display: grid; gap: 2px; }
+  .m-dash-stack > .pav { flex: none; width: 36px; height: 36px; }
+  .m-dashboard-additional > section, .m-dashboard-additional > .m-dashboard-widget { margin: 0; }
+  .m-dashboard-additional .m-dash-card { margin: 0 16px; }
+}
