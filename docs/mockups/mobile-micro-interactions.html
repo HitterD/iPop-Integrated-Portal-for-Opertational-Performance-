@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>iPop mobile · micro-interactions — interactive demo</title>
+<style>
+:root{
+  --frame:#123528; --frame-ink:#e7f2ec; --page:#e8ece9; --page-ink:#1d1d1f; --page-ink-2:#5b6660; --bezel:#1b1d1f;
+  --bg:#f2f2f7; --card:#fff; --fill:rgba(118,118,128,.12); --sep:rgba(60,60,67,.14);
+  --ink:#1d1d1f; --ink-2:#424245; --ink-3:#6e6e73; --green:#2e9e5b; --green-soft:rgba(46,158,91,.12);
+  --red:#ff3b30; --blue:#0a84ff; --orange:#ff9f0a; --glass:rgba(249,249,251,.88);
+  --spring:cubic-bezier(.32,.72,0,1); --pop:cubic-bezier(.34,1.56,.64,1);
+}
+body.dark{
+  --page:#0b0b0c; --page-ink:#f5f5f7; --page-ink-2:#98a39d; --bezel:#2a2c2e;
+  --bg:#000; --card:#1c1c1e; --fill:rgba(118,118,128,.24); --sep:rgba(84,84,88,.55);
+  --ink:#f5f5f7; --ink-2:#d1d1d6; --ink-3:#98989d; --green:#30d158; --green-soft:rgba(48,209,88,.16); --red:#ff453a; --glass:rgba(22,22,24,.88);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Inter,"Segoe UI",system-ui,sans-serif;font-size:15px;line-height:1.4;background:var(--page);color:var(--page-ink)}
+svg.i{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;display:block}
+svg.s{width:20px;height:20px}
+
+.top{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:16px;padding:12px 28px;background:var(--frame);color:var(--frame-ink);flex-wrap:wrap}
+.top h1{font-size:17px;font-weight:700}
+.top h1 span{font-weight:500;opacity:.7}
+.ctl{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.ctl button{height:32px;padding:0 14px;border-radius:999px;font-size:13px;font-weight:600;background:rgba(255,255,255,.1);color:var(--frame-ink)}
+.ctl button.on{background:#fff;color:#123528}
+.wrap{display:grid;grid-template-columns:400px 1fr;gap:40px;max-width:1240px;margin:28px auto;padding:0 28px;align-items:start}
+.notes{font-size:14px;color:var(--page-ink-2)}
+.notes h2{font-size:20px;color:var(--page-ink);margin-bottom:6px}
+.notes ol{margin:14px 0 0 0;list-style:none;display:grid;gap:10px}
+.notes li{background:color-mix(in srgb,var(--card) 80%,transparent);border-radius:14px;padding:12px 14px}
+.notes li b{color:var(--page-ink);display:block;margin-bottom:2px}
+.notes li em{font-style:normal;display:inline-grid;place-items:center;width:22px;height:22px;border-radius:7px;background:var(--frame);color:var(--frame-ink);font-size:12px;margin-right:8px}
+.notes li button{margin-top:8px;height:30px;padding:0 12px;border-radius:999px;background:var(--frame);color:var(--frame-ink);font-size:12px;font-weight:600}
+.log{margin-top:14px;font:12px ui-monospace,Consolas,monospace;color:var(--page-ink-2);min-height:18px}
+
+/* phone */
+.phone{width:390px;height:844px;border-radius:54px;background:var(--bezel);padding:12px;box-shadow:0 30px 60px -20px rgba(0,0,0,.35);position:sticky;top:70px}
+.screen{position:relative;width:100%;height:100%;border-radius:44px;overflow:hidden;background:var(--bg);color:var(--ink);isolation:isolate}
+.status{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 30px;font-size:15px;font-weight:600}
+.views{position:absolute;inset:44px 0 0 0;overflow:hidden}
+.view{position:absolute;inset:0;background:var(--bg);display:flex;flex-direction:column;transition:transform .42s var(--spring),opacity .42s var(--spring)}
+.view.under{transform:translateX(-30%);visibility:hidden;transition:transform .42s var(--spring),visibility 0s .42s}
+.view.off{visibility:hidden;transition:transform .42s var(--spring),visibility 0s .42s}
+.view:not(.off):not(.under){visibility:visible;transition:transform .42s var(--spring),visibility 0s}
+#vDetail{box-shadow:-10px 0 30px -12px rgba(0,0,0,.25)}
+.view.off{transform:translateX(100%)}
+.nav{height:44px;display:flex;align-items:center;padding:0 8px;gap:4px;flex:none}
+.nav .back{display:flex;align-items:center;color:var(--green);font-size:17px;height:44px;padding-right:10px}
+.nav .t{position:absolute;left:0;right:0;text-align:center;font-weight:600;pointer-events:none}
+.scroll{flex:1;overflow-y:auto;overscroll-behavior:contain;padding-bottom:110px;position:relative}
+h1.lt{font-size:34px;font-weight:700;letter-spacing:-.02em;padding:0 20px 8px}
+.seg{display:flex;margin:0 20px 12px;background:var(--fill);border-radius:10px;padding:2px;position:relative}
+.seg button{flex:1;height:32px;border-radius:8px;font-size:14px;position:relative;z-index:1}
+.seg .thumb{position:absolute;top:2px;bottom:2px;left:2px;width:calc((100% - 4px)/3);background:var(--card);border-radius:8px;box-shadow:0 1px 4px #0002;transition:transform .32s var(--spring)}
+
+/* (a) press feedback */
+.press{transition:transform .18s var(--spring),background-color .18s,opacity .18s}
+.press:active,.press.is-pressed{transform:scale(.97)}
+.row.press:active,.row.press.is-pressed{transform:none;background:var(--fill)}
+.tab.press:active .ic,.tab.press.is-pressed .ic{transform:scale(.86)}
+
+/* list rows + (g) swipe */
+.list{margin:0 0 0 0;background:var(--card)}
+.sw{position:relative;overflow:hidden;background:var(--card)}
+.sw .acts{position:absolute;inset:0;display:flex;justify-content:space-between;align-items:stretch}
+.sw .acts span{display:flex;align-items:center;gap:6px;padding:0 22px;color:#fff;font-weight:600;font-size:14px;flex:1}
+.sw .l{background:var(--blue)} .sw .r{background:var(--red);justify-content:flex-end}
+.sw .acts span svg{transition:transform .2s var(--pop)}
+.sw.armed-l .l svg,.sw.armed-r .r svg{transform:scale(1.3)}
+.row{position:relative;display:flex;gap:12px;align-items:center;padding:12px 16px 12px 20px;min-height:72px;background:var(--card);touch-action:pan-y;user-select:none}
+.row::after{content:"";position:absolute;left:76px;right:0;bottom:0;height:.5px;background:var(--sep)}
+.row .av{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;color:#fff;font-weight:700;flex:none}
+.row .m{flex:1;min-width:0}
+.row .m b{display:flex;justify-content:space-between;font-size:16px}
+.row .m b small{font-weight:400;color:var(--ink-3);font-size:13px}
+.row .m span{display:block;color:var(--ink-3);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .dot{width:10px;height:10px;border-radius:50%;background:var(--blue);flex:none;transition:transform .3s var(--pop)}
+.row.read .dot{transform:scale(0)}
+.sw.gone{transition:height .3s var(--spring),opacity .2s;opacity:0}
+
+/* (f) pull to refresh */
+.ptr{position:absolute;left:0;right:0;top:0;height:0;display:grid;place-items:center;pointer-events:none;color:var(--ink-3)}
+.ptr .sp{width:26px;height:26px;border-radius:50%;border:2.5px solid var(--fill);border-top-color:var(--green);transform:rotate(calc(var(--p,0) * 300deg)) scale(calc(.4 + var(--p,0) * .6));opacity:var(--p,0)}
+.ptr.spin .sp{animation:spin .7s linear infinite;opacity:1}
+@keyframes spin{to{transform:rotate(360deg)}}
+.content{transition:transform .35s var(--spring)}
+.content.dragging{transition:none}
+
+/* (h) skeleton shimmer */
+.sk{height:72px;display:flex;gap:12px;align-items:center;padding:0 20px;background:var(--card)}
+.sk i{display:block;border-radius:10px;background:linear-gradient(90deg,var(--fill) 0%,color-mix(in srgb,var(--fill) 40%,transparent) 50%,var(--fill) 100%);background-size:200% 100%;animation:shim 1.2s ease-in-out infinite}
+@keyframes shim{from{background-position:100% 0}to{background-position:-100% 0}}
+
+/* (e) FAB */
+.fab{position:absolute;right:16px;bottom:100px;height:56px;min-width:56px;border-radius:28px;background:var(--green);color:#fff;display:flex;align-items:center;gap:8px;padding:0 18px;font-weight:600;font-size:16px;box-shadow:0 8px 20px -6px rgba(46,158,91,.6);transition:padding .3s var(--spring),transform .2s var(--spring);z-index:5}
+.fab span{max-width:120px;overflow:hidden;white-space:nowrap;transition:max-width .3s var(--spring),opacity .2s}
+.fab.mini{padding:0 16px}
+.fab.mini span{max-width:0;opacity:0}
+
+/* (d) tab bar */
+.tabbar{transition:transform .42s var(--spring);position:absolute;left:0;right:0;bottom:0;height:84px;padding-bottom:26px;display:flex;background:var(--glass);backdrop-filter:blur(20px);border-top:.5px solid var(--sep);z-index:6}
+.tabbar.hidden{transform:translateY(100%)}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;color:var(--ink-3);position:relative}
+.tab .ic{transition:transform .25s var(--pop)}
+.tab.on{color:var(--green)}
+.tab.bounce .ic{animation:bounce .42s var(--pop)}
+@keyframes bounce{0%{transform:scale(1)}40%{transform:scale(1.18) translateY(-2px)}100%{transform:scale(1)}}
+.bdg{position:absolute;top:4px;left:calc(50% + 6px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red);color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center}
+.bdg.pop{animation:bpop .45s var(--pop)}
+@keyframes bpop{0%{transform:scale(0)}100%{transform:scale(1)}}
+
+/* (c) bottom sheet */
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.35);opacity:0;pointer-events:none;transition:opacity .3s;z-index:20}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--card);border-radius:22px 22px 0 0;padding:8px 0 34px;transform:translateY(105%);transition:transform .45s var(--spring);z-index:21;touch-action:none}
+.sheet.on{transform:translateY(0)}
+.sheet.dragging{transition:none}
+.grab{width:38px;height:5px;border-radius:3px;background:var(--fill);margin:0 auto 10px}
+.sheet h3{text-align:center;font-size:17px;margin-bottom:8px}
+.sheet .opt{display:flex;align-items:center;gap:14px;width:100%;min-height:52px;padding:0 20px;font-size:16px}
+
+/* (h) toast + check */
+.toast{position:absolute;left:12px;right:12px;bottom:96px;background:var(--glass);backdrop-filter:blur(20px);border-radius:16px;box-shadow:0 10px 30px -8px rgba(0,0,0,.3);padding:12px 14px;display:flex;align-items:center;gap:10px;transform:translateY(140%);opacity:0;transition:transform .4s var(--spring),opacity .3s;z-index:30}
+.toast.on{transform:translateY(0);opacity:1}
+.toast .tx{flex:1;font-size:14px}
+.toast .undo{color:var(--green);font-weight:700;height:44px;padding:0 6px}
+.chk{width:26px;height:26px;border-radius:50%;background:var(--green);display:grid;place-items:center;color:#fff}
+.chk path{stroke-dasharray:20;stroke-dashoffset:20}
+.toast.on .chk path{animation:draw .35s .12s ease-out forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+
+/* detail */
+.bubble{max-width:75%;margin:6px 16px;padding:9px 13px;border-radius:18px;background:var(--card);font-size:15px}
+.bubble.me{margin-left:auto;background:#dcf3e4;color:#1d1d1f}
+.bubble.me.sending{opacity:.6}
+.bubble.me.sent{animation:sent .35s var(--pop)}
+@keyframes sent{0%{transform:scale(.92)}100%{transform:scale(1)}}
+.composer{position:absolute;left:0;right:0;bottom:0;padding:8px 10px 30px;background:var(--glass);backdrop-filter:blur(20px);display:flex;gap:8px;align-items:center;border-top:.5px solid var(--sep)}
+.composer input{flex:1;height:38px;border-radius:19px;border:.5px solid var(--sep);background:var(--card);color:var(--ink);padding:0 14px;font-size:16px;outline:none}
+.send{width:38px;height:38px;border-radius:50%;background:var(--green);color:#fff;display:grid;place-items:center}
+
+@media (prefers-reduced-motion: reduce){ .view,.sheet,.toast,.content,.fab,.fab span,.seg .thumb{transition-duration:.12s !important} .tab.bounce .ic,.bdg.pop,.bubble.me.sent{animation:none} }
+body.rm .view,body.rm .sheet,body.rm .toast,body.rm .content,body.rm .fab,body.rm .fab span,body.rm .seg .thumb{transition-duration:.12s !important}
+body.rm .view.under{transform:none}
+body.rm .view.off{transform:none;opacity:0}
+body.rm .tab.bounce .ic,body.rm .bdg.pop,body.rm .bubble.me.sent{animation:none}
+
+/* (i) incoming call - native-style full screen */
+.call{position:absolute;inset:0;z-index:40;color:#fff;display:flex;flex-direction:column;align-items:center;padding:96px 28px 54px;
+  background:radial-gradient(120% 70% at 50% 20%,#2f6f53 0%,#123528 55%,#081a13 100%);transform:translateY(-100%);transition:transform .5s var(--spring)}
+.call.on{transform:translateY(0)}
+.call .who{font-size:13px;letter-spacing:.06em;text-transform:uppercase;opacity:.75}
+.call .nm{font-size:32px;font-weight:600;margin-top:8px;text-align:center}
+.call .sub{font-size:16px;opacity:.8;margin-top:6px}
+.call .ring{position:relative;width:132px;height:132px;margin:44px 0 auto}
+.call .ring i{position:absolute;inset:0;border-radius:36px;border:2px solid rgba(255,255,255,.5);animation:ripple 2s ease-out infinite}
+.call .ring i:nth-child(2){animation-delay:.66s}.call .ring i:nth-child(3){animation-delay:1.33s}
+@keyframes ripple{0%{transform:scale(1);opacity:.7}100%{transform:scale(1.8);opacity:0}}
+.call .face{position:absolute;inset:0;border-radius:36px;background:#2e9e5b;display:grid;place-items:center;font-size:48px;font-weight:700;box-shadow:0 12px 40px -10px #0008}
+.call .qa{display:flex;gap:44px;margin-bottom:40px;opacity:.9;font-size:12px}
+.call .qa button{display:flex;flex-direction:column;align-items:center;gap:6px;color:#fff}
+.call .qa span{width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.16);display:grid;place-items:center}
+.call .acts2{display:flex;width:100%;justify-content:space-between;padding:0 18px}
+.call .btn{display:flex;flex-direction:column;align-items:center;gap:10px;font-size:14px;color:#fff}
+.call .btn span{width:76px;height:76px;border-radius:50%;display:grid;place-items:center;box-shadow:0 10px 24px -8px #0009}
+.call .dec span{background:#ff3b30}.call .acc span{background:#34c759;animation:wiggle 1.4s ease-in-out infinite}
+@keyframes wiggle{0%,60%,100%{transform:rotate(0)}10%,30%,50%{transform:rotate(-14deg)}20%,40%{transform:rotate(14deg)}}
+.call .slide{position:relative;width:100%;height:76px;border-radius:38px;background:rgba(255,255,255,.16);display:none;align-items:center;justify-content:center;font-size:17px;overflow:hidden}
+.call .slide em{font-style:normal;background:linear-gradient(90deg,rgba(255,255,255,.45) 0%,#fff 50%,rgba(255,255,255,.45) 100%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:shine 2.2s linear infinite}
+@keyframes shine{from{background-position:100% 0}to{background-position:-100% 0}}
+.call .knob{position:absolute;left:6px;top:6px;width:64px;height:64px;border-radius:50%;background:#34c759;display:grid;place-items:center;touch-action:none;cursor:grab}
+.call.locked .acts2,.call.locked .qa{display:none}.call.locked .slide{display:flex}
+.pill{position:absolute;top:8px;left:50%;transform:translate(-50%,-80px);z-index:39;height:36px;padding:0 14px;border-radius:18px;background:#34c759;color:#fff;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;transition:transform .45s var(--pop)}
+.pill.on{transform:translate(-50%,0)}
+.pill b{display:inline-block;width:8px;height:8px;border-radius:50%;background:#fff;animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.3}}
+/* (j) per-page motion */
+.stagger>*{animation:rise .42s var(--spring) both}
+.stagger>*:nth-child(1){animation-delay:.02s}.stagger>*:nth-child(2){animation-delay:.05s}.stagger>*:nth-child(3){animation-delay:.08s}.stagger>*:nth-child(4){animation-delay:.11s}.stagger>*:nth-child(5){animation-delay:.14s}.stagger>*:nth-child(6){animation-delay:.17s}.stagger>*:nth-child(n+7){animation-delay:.2s}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.chk-box{width:22px;height:22px;border-radius:7px;border:2px solid var(--ink-3);display:grid;place-items:center;transition:background .2s,border-color .2s,transform .25s var(--pop);flex:none}
+.chk-box.on{background:var(--green);border-color:var(--green);transform:scale(1.08)}
+.chk-box svg{opacity:0;transform:scale(.4);transition:all .25s var(--pop)}
+.chk-box.on svg{opacity:1;transform:none}
+.heart{transition:transform .3s var(--pop),color .2s;font-size:20px;color:var(--ink-3)}
+.heart.on{color:#ff3b30;transform:scale(1.25)}
+.prog{height:4px;border-radius:2px;background:var(--fill);overflow:hidden;margin-top:8px}
+.prog i{display:block;height:100%;width:0;background:var(--green);transition:width .25s linear}
+body.rm .call{transition-duration:.12s}body.rm .call .ring i,body.rm .call .acc span,body.rm .stagger>*{animation:none}
+@media (prefers-reduced-motion: reduce){.call .ring i,.call .acc span,.stagger>*{animation:none}}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>iPop mobile <span>· micro-interactions demo (a–j)</span></h1>
+  <div class="ctl">
+    <button id="bDark">Dark</button>
+    <button id="bRm">Reduced motion</button>
+    <button id="bHap" class="on">Vibration on</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="phone"><div class="screen" id="scr">
+    <div class="status"><span>9:41</span><span>●●● 100%</span></div>
+    <div class="views">
+      <!-- list -->
+      <section class="view" id="vList">
+        <div class="nav"><span class="t" id="navT" style="opacity:0">Notifications</span></div>
+        <div class="scroll" id="sc">
+          <div class="ptr" id="ptr"><div class="sp"></div></div>
+          <div class="content" id="content">
+            <h1 class="lt">Notifications</h1>
+            <div class="seg" id="seg"><span class="thumb"></span><button class="press">All</button><button class="press">Unread</button><button class="press">Mentions</button></div>
+            <div class="list" id="list"></div>
+          </div>
+        </div>
+        <button class="fab press" id="fab"><svg class="i" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg><span>New message</span></button>
+      </section>
+      <!-- detail -->
+      <section class="view off" id="vDetail">
+        <div class="nav"><button class="back press" id="back"><svg class="i" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>Notifications</button><span class="t" id="dT">Chat</span></div>
+        <div class="scroll" id="thread" style="padding-bottom:90px">
+          <div class="bubble">Selamat pagi, ini detail dari notifikasi yang dibuka 👋</div>
+          <div class="bubble">Ketik pesan lalu tekan kirim untuk melihat animasi terkirim.</div>
+        </div>
+        <div class="composer"><input id="msg" placeholder="Message" value="Siap, terima kasih!"><button class="send press" id="send"><svg class="i s" viewBox="0 0 24 24"><path d="m5 12 14-7-5 14-2-6Z"/></svg></button></div>
+      </section>
+    </div>
+    <nav class="tabbar" id="tabbar"></nav>
+    <div class="scrim" id="scrim"></div>
+    <div class="sheet" id="sheet">
+      <div class="grab"></div><h3>New</h3>
+      <button class="opt press" data-t="Chat started"><svg class="i" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.5A8 8 0 1 1 21 12Z"/></svg>New chat</button>
+      <button class="opt press" data-t="Draft saved"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>New mail</button>
+      <button class="opt press" data-t="Meeting booked"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></svg>Book a meeting</button>
+    </div>
+
+    <div class="pill" id="pill"><b></b><span id="pillT">Jason - 0:00</span></div>
+    <div class="call" id="call">
+      <div class="who">iPop voice call</div>
+      <div class="nm">Jason Kristanto</div>
+      <div class="sub" id="callSub">Incoming call...</div>
+      <div class="ring"><i></i><i></i><i></i><div class="face">J</div></div>
+      <div class="qa">
+        <button id="cMsg"><span><svg class="i" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.5A8 8 0 1 1 21 12Z"/></svg></span>Message</button>
+        <button id="cLater"><span><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>Remind me</button>
+      </div>
+      <div class="acts2">
+        <button class="btn dec press" id="cDec"><span><svg class="i" viewBox="0 0 24 24" style="transform:rotate(135deg)"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2Z"/></svg></span>Decline</button>
+        <button class="btn acc press" id="cAcc"><span><svg class="i" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2Z"/></svg></span>Accept</button>
+      </div>
+      <div class="slide" id="slide"><div class="knob" id="knob"><svg class="i" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2Z"/></svg></div><em>slide to answer</em></div>
+    </div>
+    <div class="toast" id="toast"><span class="chk"><svg class="i s" viewBox="0 0 24 24" style="width:16px;height:16px;stroke-width:3"><path d="m5 12 5 5 9-10"/></svg></span><span class="tx" id="toastTx">Done</span><button class="undo" id="undo">Undo</button></div>
+  </div></div>
+
+  <div class="notes">
+    <h2>Coba langsung di bingkai HP (mouse = jari)</h2>
+    Semua gerakan di kiri bisa dicoba. Tombol di bawah memutar ulang tiap efek.
+    <ol>
+      <li><b><em>a</em>Respons saat ditekan</b>Tahan tombol/baris/tab: mengecil sedikit atau menyala abu-abu, lalu kembali dengan pegas.<br><button data-demo="a">Putar</button></li>
+      <li><b><em>b</em>Perpindahan halaman</b>Tekan baris → detail meluncur dari kanan; ‹ Back meluncur kembali, list di belakang ikut bergeser.<br><button data-demo="b">Putar</button></li>
+      <li><b><em>c</em>Bottom sheet</b>Tekan tombol hijau → sheet muncul dengan pegas. Tarik pegangan ke bawah untuk menutup, atau tekan area gelap.<br><button data-demo="c">Putar</button></li>
+      <li><b><em>d</em>Tab bar</b>Ikon memantul saat dipilih; badge muncul dengan animasi pop.<br><button data-demo="d">Putar</button></li>
+      <li><b><em>e</em>Tombol bulat (FAB)</b>Scroll list ke bawah → tombol mengecil jadi ikon; scroll ke atas → label kembali.<br><button data-demo="e">Putar</button></li>
+      <li><b><em>f</em>Tarik untuk refresh</b>Di paling atas list, tarik ke bawah lalu lepas → spinner, skeleton shimmer, data baru.<br><button data-demo="f">Putar</button></li>
+      <li><b><em>g</em>Geser baris</b>Geser kanan = tandai dibaca (biru); geser kiri = hapus (merah) + toast Undo. Lewat batas → ikon membesar + getar.<br><button data-demo="g">Putar</button></li>
+      <li><b><em>h</em>Umpan balik</b>Kirim pesan di detail: bubble pudar → pop terkirim; toast dengan centang tergambar.<br><button data-demo="h">Putar</button></li>
+
+      <li><b><em>i</em>Panggilan masuk (seperti native)</b>Layar penuh turun dari atas: inisial/foto dengan gelombang berdenyut, nama besar, tombol Tolak (merah) dan Terima (hijau, bergoyang), plus Message dan Remind me. HP bergetar berpola + nada dering. Versi layar terkunci: "slide to answer". Setelah diterima: pil hijau "Jason - 0:12" di atas, aplikasi tetap bisa dipakai; tekan pil untuk kembali ke panggilan.<br><button data-demo="i">Putar</button> <button data-demo="i2">Versi layar terkunci</button></li>
+      <li><b><em>j</em>Motion di setiap halaman</b>Saat halaman dibuka isi muncul berurutan dari bawah; judul besar menyusut ke bar saat scroll; checklist dicentang dengan pop; like/reaksi membesar; upload menampilkan progress lalu centang. Dipasang di Chat, Mail, Calls, Calendar, Notes, Directory, Projects, Tickets, News, Files, Notifications, Settings, Profile, Admin, Login.<br><button data-demo="j">Putar</button></li>
+    </ol>
+    <div class="log" id="log"></div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+let haptics = true;
+const buzz = ms => { if (haptics && navigator.vibrate) navigator.vibrate(ms); log(`vibrate(${ms})`); };
+const log = t => { const l = $('#log'); l.textContent = t; clearTimeout(log.t); log.t = setTimeout(() => l.textContent = '', 1600); };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// header toggles
+$('#bDark').onclick = e => { document.body.classList.toggle('dark'); e.target.classList.toggle('on'); };
+$('#bRm').onclick = e => { document.body.classList.toggle('rm'); e.target.classList.toggle('on'); };
+$('#bHap').onclick = e => { haptics = !haptics; e.target.classList.toggle('on', haptics); e.target.textContent = haptics ? 'Vibration on' : 'Vibration off'; };
+
+// data
+const colors = ['#2e9e5b','#0a84ff','#ff9f0a','#af52de','#1f8fa6','#e5484d','#8a6d1c'];
+const people = ['Jason Kristanto','HRIS sync','Go Sonny Gozali','Meeting room 2','Kevin Cornelius','iDesk #4821','News & Memos','Andrew Setiawan','Victor Santoso','Project: Software sprint','Billy Emanoel','Files'];
+const msgs = ['Mention: tolong cek dokumen ini','Sync failed, retrying at 03:00','Re: Masukkan lagi… well noted','Booked 10:00–11:00 by you','Shared “Notulen rapat” with you','Status → In progress','New memo: Libur nasional','Reacted 👍 to your message','Commented on your task','Due tomorrow: Evidence upload','Sent you a file','Upload finished: report.pdf'];
+function rows(n, off = 0) {
+  return Array.from({ length: n }, (_, k) => { const i = (k + off) % people.length; return `
+  <div class="sw"><div class="acts"><span class="l"><svg class="i s" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg>Read</span><span class="r">Delete<svg class="i s" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></span></div>
+  <div class="row press"><div class="av" style="background:${colors[i % colors.length]}">${people[i][0]}</div><div class="m"><b>${people[i]}<small>${9 + (i % 8)}:${String(10 + i * 3).slice(-2)}</small></b><span>${msgs[i]}</span></div><span class="dot"></span></div></div>`; }).join('');
+}
+const list = $('#list'); list.innerHTML = rows(12);
+
+// (a) press feedback for touch + mouse (pointer events so it works in the demo frame)
+document.addEventListener('pointerdown', e => { const p = e.target.closest('.press'); if (p) { p.classList.add('is-pressed'); const up = () => { p.classList.remove('is-pressed'); removeEventListener('pointerup', up); removeEventListener('pointercancel', up); }; addEventListener('pointerup', up); addEventListener('pointercancel', up); } });
+
+// segmented thumb
+$('#seg').querySelectorAll('button').forEach((b, i) => b.onclick = () => { $('#seg .thumb').style.transform = `translateX(${i * 100}%)`; buzz(8); });
+
+// (d) tab bar
+const tabs = [['Chat','M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.5A8 8 0 1 1 21 12Z',3],['Mail','M3 7l9 6 9-6M3 5h18v14H3z',0],['Calls','M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2Z',0],['Calendar','M3 5h18v16H3zM16 3v4M8 3v4M3 11h18',0],['More','M5 12h.01M12 12h.01M19 12h.01',5]];
+$('#tabbar').innerHTML = tabs.map(([n, d, b], i) => `<button class="tab press ${i === 4 ? 'on' : ''}" data-i="${i}"><svg class="i ic" viewBox="0 0 24 24"><path d="${d}"/></svg>${n}${b ? `<span class="bdg">${b}</span>` : ''}</button>`).join('');
+$('#tabbar').addEventListener('click', e => { const t = e.target.closest('.tab'); if (!t) return; document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === t)); t.classList.remove('bounce'); void t.offsetWidth; t.classList.add('bounce'); buzz(8); });
+function badgePop() { const b = document.querySelector('.tab .bdg'); b.textContent = +b.textContent + 1; b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); }
+
+// (b) list → detail
+const vList = $('#vList'), vDet = $('#vDetail');
+function openDetail(title) { $('#dT').textContent = title; vDet.classList.remove('off'); vList.classList.add('under'); $('#tabbar').classList.add('hidden'); }
+function closeDetail() { vDet.classList.add('off'); vList.classList.remove('under'); $('#tabbar').classList.remove('hidden'); }
+$('#back').onclick = closeDetail;
+let swipedRecently = false;
+list.addEventListener('click', e => { const r = e.target.closest('.row'); if (!r || swipedRecently) return; r.classList.add('read'); openDetail(r.querySelector('b').firstChild.textContent); });
+
+// (c) sheet with drag-to-close
+const sheet = $('#sheet'), scrim = $('#scrim');
+const openSheet = () => { sheet.classList.add('on'); scrim.classList.add('on'); };
+const closeSheet = () => { sheet.classList.remove('on'); scrim.classList.remove('on'); sheet.style.transform = ''; };
+$('#fab').onclick = openSheet; scrim.onclick = closeSheet;
+sheet.querySelectorAll('.opt').forEach(o => o.onclick = () => { closeSheet(); setTimeout(() => toast(o.dataset.t, false), 250); });
+let sy = null, dy = 0;
+sheet.addEventListener('pointerdown', e => { if (e.target.closest('.opt')) return; sy = e.clientY; dy = 0; sheet.classList.add('dragging'); sheet.setPointerCapture(e.pointerId); });
+sheet.addEventListener('pointermove', e => { if (sy === null) return; dy = Math.max(0, e.clientY - sy); sheet.style.transform = `translateY(${dy}px)`; scrim.style.opacity = String(1 - dy / 400); });
+sheet.addEventListener('pointerup', () => { if (sy === null) return; sheet.classList.remove('dragging'); scrim.style.opacity = ''; sy = null; if (dy > 90) { buzz(10); closeSheet(); } else sheet.style.transform = ''; });
+
+// (e) FAB shrink + nav title
+let lastY = 0; const sc = $('#sc');
+sc.addEventListener('scroll', () => { const y = sc.scrollTop; $('#fab').classList.toggle('mini', y > lastY && y > 40); lastY = y; $('#navT').style.opacity = y > 40 ? 1 : 0; });
+
+// (f) pull to refresh
+const content = $('#content'), ptr = $('#ptr');
+let py = null, pd = 0;
+sc.addEventListener('pointerdown', e => { if (sc.scrollTop > 0 || e.target.closest('.row')) return; py = e.clientY; pd = 0; content.classList.add('dragging'); });
+addEventListener('pointermove', e => { if (py === null) return; pd = Math.max(0, (e.clientY - py) * .5); content.style.transform = `translateY(${pd}px)`; ptr.style.height = pd + 'px'; const p = Math.min(1, pd / 70); ptr.style.setProperty('--p', p); if (p === 1 && !ptr.armed) { ptr.armed = true; buzz(10); } if (p < 1) ptr.armed = false; });
+addEventListener('pointerup', () => { if (py === null) return; py = null; content.classList.remove('dragging'); if (pd >= 70) refresh(); else { content.style.transform = ''; ptr.style.height = '0'; } });
+async function refresh() {
+  content.style.transform = 'translateY(56px)'; ptr.style.height = '56px'; ptr.classList.add('spin');
+  list.innerHTML = Array.from({ length: 5 }, () => '<div class="sk"><i style="width:44px;height:44px"></i><span style="flex:1;display:grid;gap:8px"><i style="height:14px;width:60%"></i><i style="height:12px;width:85%"></i></span></div>').join('');
+  await sleep(1200);
+  ptr.classList.remove('spin'); content.style.transform = ''; ptr.style.height = '0'; ptr.style.setProperty('--p', 0);
+  list.innerHTML = rows(12, Math.floor(Math.random() * 12)); badgePop();
+}
+
+// (g) swipe rows
+let sw = null;
+list.addEventListener('pointerdown', e => { const r = e.target.closest('.row'); if (!r) return; sw = { r, w: r.parentElement, x: e.clientX, y: e.clientY, dx: 0, on: false }; });
+addEventListener('pointermove', e => {
+  if (!sw) return; const dx = e.clientX - sw.x;
+  if (!sw.on && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(e.clientY - sw.y)) { sw.on = true; sw.r.style.transition = 'none'; }
+  if (!sw.on) return; sw.dx = dx; sw.r.style.transform = `translateX(${dx}px)`;
+  const armL = dx > 100, armR = dx < -100;
+  if ((armL && !sw.w.classList.contains('armed-l')) || (armR && !sw.w.classList.contains('armed-r'))) buzz(10);
+  sw.w.classList.toggle('armed-l', armL); sw.w.classList.toggle('armed-r', armR);
+});
+addEventListener('pointerup', () => {
+  if (!sw) return; const s = sw; sw = null; if (!s.on) return;
+  swipedRecently = true; setTimeout(() => swipedRecently = false, 50);
+  s.r.style.transition = 'transform .35s var(--spring)';
+  if (s.dx > 100) { s.r.style.transform = ''; s.r.classList.add('read'); toast('Marked as read', true, () => s.r.classList.remove('read')); }
+  else if (s.dx < -100) {
+    s.r.style.transform = 'translateX(-110%)'; const h = s.w.offsetHeight; s.w.style.height = h + 'px';
+    setTimeout(() => { s.w.classList.add('gone'); s.w.style.height = '0px'; }, 200);
+    toast('Notification deleted', true, () => { s.w.classList.remove('gone'); s.w.style.height = h + 'px'; s.r.style.transform = ''; setTimeout(() => s.w.style.height = '', 320); });
+  } else s.r.style.transform = '';
+  s.w.classList.remove('armed-l', 'armed-r');
+});
+
+// (h) toast with undo + send feedback
+let undoFn = null;
+function toast(text, undo, fn) { const t = $('#toast'); $('#toastTx').textContent = text; $('#undo').style.display = undo ? '' : 'none'; undoFn = fn || null; t.classList.remove('on'); void t.offsetWidth; t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 4000); }
+$('#undo').onclick = () => { if (undoFn) undoFn(); undoFn = null; $('#toast').classList.remove('on'); buzz(8); };
+$('#send').onclick = async () => {
+  const v = $('#msg').value.trim(); if (!v) return;
+  const b = document.createElement('div'); b.className = 'bubble me sending'; b.textContent = v; $('#thread').appendChild(b); $('#msg').value = '';
+  $('#thread').scrollTop = 1e6; await sleep(700); b.classList.remove('sending'); b.classList.add('sent'); buzz(10); toast('Message sent', false);
+};
+
+// demo buttons
+const fake = async (el, ms = 220) => { el.classList.add('is-pressed'); await sleep(ms); el.classList.remove('is-pressed'); };
+document.querySelectorAll('[data-demo]:not([data-demo^=i]):not([data-demo=j])').forEach(b => b.onclick = async () => {
+  closeSheet(); if (b.dataset.demo !== 'h') closeDetail(); await sleep(300);
+  switch (b.dataset.demo) {
+    case 'a': for (const el of [document.querySelector('.row'), $('#fab'), document.querySelectorAll('.tab')[1]]) { await fake(el); await sleep(200); } break;
+    case 'b': await fake(document.querySelector('.row')); document.querySelector('.row').click(); await sleep(1300); closeDetail(); break;
+    case 'c': openSheet(); await sleep(1200); sheet.classList.add('dragging'); for (let y = 0; y <= 140; y += 10) { sheet.style.transform = `translateY(${y}px)`; await sleep(16); } sheet.classList.remove('dragging'); buzz(10); closeSheet(); break;
+    case 'd': document.querySelectorAll('.tab')[0].click(); await sleep(500); badgePop(); await sleep(500); document.querySelectorAll('.tab')[4].click(); break;
+    case 'e': sc.scrollTo({ top: 300, behavior: 'smooth' }); await sleep(900); sc.scrollTo({ top: 0, behavior: 'smooth' }); break;
+    case 'f': sc.scrollTop = 0; content.style.transform = 'translateY(70px)'; ptr.style.height = '70px'; ptr.style.setProperty('--p', 1); await sleep(400); refresh(); break;
+    case 'g': { const r = document.querySelector('.row'), w = r.parentElement; r.style.transition = 'transform .35s var(--spring)'; r.style.transform = 'translateX(130px)'; w.classList.add('armed-l'); await sleep(600); r.style.transform = ''; w.classList.remove('armed-l'); r.classList.add('read'); toast('Marked as read', true, () => r.classList.remove('read')); break; }
+    case 'h': openDetail('Jason Kristanto'); await sleep(600); $('#msg').value = 'Siap, terima kasih!'; $('#send').click(); break;
+  }
+});
+
+// (i) incoming call
+const call = $('#call'); let vib = null, tick = null;
+function ring(locked) {
+  closeSheet(); closeDetail(); call.classList.toggle('locked', !!locked); $('#callSub').textContent = 'Incoming call...'; call.classList.add('on');
+  log('vibrate([400,200,400]) loop + ringtone');
+  if (haptics && navigator.vibrate) { navigator.vibrate([400, 200, 400]); vib = setInterval(() => navigator.vibrate([400, 200, 400]), 1600); }
+}
+function stopRing() { clearInterval(vib); if (navigator.vibrate) navigator.vibrate(0); }
+function hangUp(text) { stopRing(); call.classList.remove('on'); if (text) toast(text, false); }
+function answer() {
+  stopRing(); buzz(15); $('#callSub').textContent = 'Connecting...';
+  setTimeout(() => {
+    call.classList.remove('on'); $('#pill').classList.add('on'); let t = 0; clearInterval(tick);
+    tick = setInterval(() => { t++; $('#pillT').textContent = 'Jason - ' + Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); }, 1000);
+  }, 700);
+}
+$('#cAcc').onclick = answer;
+$('#cDec').onclick = () => hangUp('Call declined');
+$('#cMsg').onclick = () => { hangUp(); openDetail('Jason Kristanto'); $('#msg').value = 'Lagi meeting, nanti saya telpon balik.'; };
+$('#cLater').onclick = () => hangUp('Reminder in 15 min');
+$('#pill').onclick = () => { clearInterval(tick); $('#pill').classList.remove('on'); toast('Call ended', false); };
+const knob = $('#knob'); let kx = null;
+knob.addEventListener('pointerdown', e => { kx = e.clientX; knob.setPointerCapture(e.pointerId); knob.style.transition = 'none'; });
+knob.addEventListener('pointermove', e => { if (kx === null) return; const max = $('#slide').offsetWidth - 76; knob.style.transform = 'translateX(' + Math.max(0, Math.min(max, e.clientX - kx)) + 'px)'; });
+knob.addEventListener('pointerup', e => {
+  if (kx === null) return; const max = $('#slide').offsetWidth - 76; const d = e.clientX - kx; kx = null;
+  knob.style.transition = 'transform .3s var(--spring)';
+  if (d > max * .8) { knob.style.transform = 'translateX(' + max + 'px)'; answer(); setTimeout(() => knob.style.transform = '', 800); } else knob.style.transform = '';
+});
+
+// (j) per-page motion
+async function pageMotion() {
+  closeDetail(); sc.scrollTop = 0; const l = $('#list');
+  l.classList.remove('stagger'); void l.offsetWidth; l.innerHTML = rows(12, 3); l.classList.add('stagger');
+  await sleep(900);
+  const rs = l.querySelectorAll('.row');
+  const box = document.createElement('span'); box.className = 'chk-box'; box.innerHTML = '<svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px;stroke-width:3;color:#fff"><path d="m5 12 5 5 9-10"/></svg>';
+  rs[0].querySelector('.dot').replaceWith(box); await sleep(300); box.classList.add('on'); buzz(8);
+  const h = document.createElement('span'); h.className = 'heart'; h.textContent = '\u2665'; rs[1].querySelector('.dot').replaceWith(h); await sleep(300); h.classList.add('on'); buzz(8);
+  const pr = document.createElement('div'); pr.className = 'prog'; pr.innerHTML = '<i></i>'; rs[2].querySelector('.m').appendChild(pr);
+  for (let q = 0; q <= 100; q += 10) { pr.firstChild.style.width = q + '%'; await sleep(90); }
+  pr.remove(); toast('Upload finished: report.pdf', false);
+}
+document.querySelectorAll('[data-demo=i],[data-demo=i2],[data-demo=j]').forEach(b => b.onclick = () => b.dataset.demo === 'j' ? pageMotion() : ring(b.dataset.demo === 'i2'));
+</script>
+</body>
+</html>
