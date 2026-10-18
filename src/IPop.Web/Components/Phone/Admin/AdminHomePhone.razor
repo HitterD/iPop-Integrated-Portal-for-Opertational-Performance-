@@ -1,0 +1,22 @@
+@if (IsAdmin)
+{
+    <PhoneScreen Title="Administration" Class="m-admin">
+        <p class="m-admin-tag"><i data-lucide="shield-check"></i>Admin only</p>
+        <div class="m-admin-chips">@foreach (var item in Sections) { <a href="/admin/@item.Slug">@item.Label</a> }</div>
+        @foreach (var group in Sections.GroupBy(s => s.Group))
+        {
+            <ListSection Header="@group.Key">@foreach (var item in group) { <ListRow Title="@item.Label" Subtitle="@item.Hint" Href="@($"/admin/{item.Slug}")" Chevron="true"><Leading><i data-lucide="@item.Icon"></i></Leading></ListRow> }</ListSection>
+        }
+    </PhoneScreen>
+}
+@code {
+    [Parameter] public bool IsAdmin { get; set; }
+    private static readonly (string Group, string Slug, string Label, string Hint, string Icon)[] Sections = [
+        ("People", "users", "Users", "Accounts, roles and access", "users"),
+        ("Structure", "organization", "Organization", "Plants, divisions and departments · tree or chart", "network"),
+        ("Security", "security", "Security", "Sessions and audit log", "shield-check"),
+        ("Communication", "meeting-rooms", "Meeting rooms", "Video per room and server recordings", "door-open"),
+        ("Communication", "announcements", "Announcements", "Launch videos that pop up after login", "clapperboard"),
+        ("Communication", "calendar", "Holidays", "National and company holidays", "party-popper"),
+        ("Integrations", "hris", "HRIS sync", "Employee data from HRIS", "refresh-cw") ];
+}

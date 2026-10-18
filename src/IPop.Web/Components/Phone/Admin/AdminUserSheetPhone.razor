@@ -1,0 +1,27 @@
+@if (IsAdmin && User is { } u)
+{
+    <BottomSheet Open="true" OpenChanged="_ => OnClose.InvokeAsync()" Title="User details" Size="SheetSize.Tall" Class="m-admin-user-sheet">
+        <Leading><button type="button" @onclick="OnClose">Close</button></Leading>
+        <ChildContent>
+            <section class="m-admin-user-hero"><h2>@u.Name</h2><p>NIK @u.Nik · @u.Position</p><p>@(u.IsLocked ? "Locked" : u.IsActive ? "Active" : "Inactive")</p></section>
+            <h3>Profile <span class="m-admin-tag">Admin only</span></h3>
+            <dl><div><dt>Email</dt><dd>@u.Email</dd></div><div><dt>Ext.</dt><dd>@(u.Extension ?? "—")</dd></div><div><dt>Site</dt><dd>@(u.Site ?? "—")</dd></div><div><dt>Department</dt><dd>@(u.Division ?? u.Department ?? "Not assigned")</dd></div></dl>
+            <p>Edit on a computer to change profile or department.</p>
+            <h3>Role</h3><div class="m-admin-roles" role="radiogroup" aria-label="Role">@foreach (var role in new[] { "Employee", "HR", "Admin" }) { <button type="button" role="radio" aria-label="@($"Role {role}")" aria-checked="@(u.Roles.Contains(role) ? "true" : "false")" disabled="Busy" @onclick="() => OnRole.InvokeAsync(role)">@role</button> }</div>
+            <p>@(u.Roles.Contains("Admin") ? "Manages people and system settings." : u.Roles.Contains("HR") ? "Publishes news and memos. No admin rights." : "Reads news and memos. No publishing or admin rights.")</p>
+            <h3>Access</h3><button type="button" aria-label="Reset password" disabled="Busy" @onclick="OnReset">Reset password</button><button type="button" aria-label="@(u.IsLocked ? "Unlock account" : "Lock account")" disabled="Busy" @onclick="OnLock">@(u.IsLocked ? "Unlock account" : "Lock account")</button>
+            <h3>Sessions</h3>@if (Sessions is null) { <p>Loading sessions…</p> } else if (Sessions.Count == 0) { <p>Not signed in anywhere.</p> } else { @foreach (var s in Sessions) { <div class="m-admin-session"><span>@IPop.Web.Components.Admin.AdminHumanize.ParseDevice(s.DeviceFingerprint).Label</span><button type="button" disabled="@(Busy || s.IsCurrent)" @onclick="() => OnRevoke.InvokeAsync(s)">@(s.IsCurrent ? "This device" : "Sign out")</button></div> } }
+        </ChildContent>
+    </BottomSheet>
+}
+@code {
+    [Parameter] public bool IsAdmin { get; set; }
+    [Parameter] public AdminUserRowDto? User { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public List<AdminSessionRowDto>? Sessions { get; set; }
+    [Parameter] public EventCallback<string> OnRole { get; set; }
+    [Parameter] public EventCallback OnReset { get; set; }
+    [Parameter] public EventCallback OnLock { get; set; }
+    [Parameter] public EventCallback<AdminSessionRowDto> OnRevoke { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+}

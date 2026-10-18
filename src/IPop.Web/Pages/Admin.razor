@@ -5,6 +5,8 @@
 @inject AuthState Auth
 @inject NavigationManager Nav
 @using IPop.Web.Components.Admin
+@using IPop.Web.Components.Phone.Admin
+@inject PhoneState Phone
 
 <PageTitle>@(Current?.Label ?? "Administration") — IPop</PageTitle>
 
@@ -21,6 +23,12 @@ else if (!Auth.IsAdmin)
             <div class="tree-empty">This page is only available to administrators.</div>
         </div></div>
     </div>
+}
+else if (Phone.IsPhone)
+{
+    @if (string.IsNullOrEmpty(Section)) { <AdminHomePhone IsAdmin="Auth.IsAdmin" /> }
+    else if (Current?.Slug == "users") { <AdminUserManagement @ref="userRef" /> }
+    else { <AdminReadOnlyPhone Section="@(Current?.Slug ?? "organization")" Title="@(Current?.Label ?? "Administration")" /> }
 }
 else if (Current is not null)
 {
@@ -132,8 +140,9 @@ else if (Current is not null)
 
     protected override void OnInitialized()
     {
-        Layout.SetHeader("Administration", "People, structure and system settings");
-        Layout.EscapePressed += OnEscape;
+        Layout?.SetHeader("Administration", "People, structure and system settings");
+        if (Layout is not null) Layout.EscapePressed += OnEscape;
+        Phone.Changed += OnPhoneChanged;
         Auth.DirectoryChanged += OnDirectoryChanged;
     }
 
@@ -151,11 +160,14 @@ else if (Current is not null)
         if (next is null)
         {
             Current = null;
+            if (Phone.IsPhone) return;
             Nav.NavigateTo("/admin/users", replace: true);
             return;
         }
         Current = next;
     }
+
+    private void OnPhoneChanged() => _ = InvokeAsync(StateHasChanged);
 
     private void OnEscape()
     {
@@ -183,7 +195,8 @@ else if (Current is not null)
 
     public void Dispose()
     {
-        Layout.EscapePressed -= OnEscape;
+        if (Layout is not null) Layout.EscapePressed -= OnEscape;
+        Phone.Changed -= OnPhoneChanged;
         Auth.DirectoryChanged -= OnDirectoryChanged;
     }
 }

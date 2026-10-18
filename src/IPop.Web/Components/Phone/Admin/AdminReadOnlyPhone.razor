@@ -1,0 +1,45 @@
+@using System.Text.Json
+@inject AuthState Auth
+
+@if (Auth.IsAdmin)
+{
+    <PhoneScreen Title="@Title" Class="m-admin-readonly"><p class="m-admin-tag">Admin only</p><a href="/admin">‹ Administration</a><p>Edit on a computer</p>
+        @if (loading) { <p role="status">Loading…</p> }
+        else if (error) { <p role="alert">Could not load this section.<button type="button" @onclick="Load">Retry</button></p> }
+        else if (rows.Count == 0) { <p>No entries.</p> }
+        else { @foreach (var row in rows) { <article class="m-admin-readonly-card"><b>@row.Title</b><p>@row.Detail</p></article> } }
+    </PhoneScreen>
+}
+@code {
+    [Parameter] public string Section { get; set; } = "";
+    [Parameter] public string Title { get; set; } = "";
+    private bool loading, error;
+    private int generation;
+    private List<(string Title, string Detail)> rows = [];
+    protected override Task OnParametersSetAsync() => Load();
+    private async Task Load()
+    {
+        var gen = ++generation; rows = []; if (!Auth.IsAdmin) return;
+        loading = true; error = false;
+        var url = Section switch { "organization" => "/api/admin/org", "security" => "/api/admin/audit?page=1&pageSize=30", "hris" => "/api/admin/hris/status", "calendar" => $"/api/calendar/holidays?year={DateTime.Today.Year}", "meeting-rooms" => "/api/meeting-rooms", "announcements" => "/api/admin/news-videos", _ => "" };
+        try
+        {
+            var result = await Auth.GetResultAsync<JsonElement>(url);
+            if (gen != generation) return;
+            error = !result.IsOk;
+            if (result.IsOk) Read(result.Value);
+        }
+        catch { if (gen == generation) error = true; }
+        finally { if (gen == generation) loading = false; }
+    }
+    private void Read(JsonElement value)
+    {
+        if (value.ValueKind == JsonValueKind.Array) { foreach (var item in value.EnumerateArray()) Read(item); return; }
+        if (value.ValueKind != JsonValueKind.Object) return;
+        foreach (var key in new[] { "items", "departments", "sites" }) if (value.TryGetProperty(key, out var array) && array.ValueKind == JsonValueKind.Array) { Read(array); return; }
+        string? Text(string key) => value.TryGetProperty(key, out var v) && v.ValueKind != JsonValueKind.Null ? v.ToString() : null;
+        var title = Text("name") ?? Text("title") ?? Text("action") ?? (Section == "hris" ? "HRIS sync" : Title);
+        var detail = string.Join(" · ", new[] { Text("date"), Text("createdAt"), Text("lastSyncedAt"), Text("employeeCount"), Text("description"), Text("actorName"), Text("entityName") }.Where(x => !string.IsNullOrWhiteSpace(x)));
+        rows.Add((title, detail));
+    }
+}

@@ -5,6 +5,33 @@
 @inject IJSRuntime JS
 @inject ToastService Toasts
 @inject ConfirmService Confirm
+@inject PhoneState Phone
+@using IPop.Web.Components.Phone.Admin
+
+@if (Phone.IsPhone)
+{
+    @if (Auth.IsAdmin)
+    {
+        <PhoneScreen Title="Users" Class="m-admin-users">
+            <p class="m-admin-tag">Admin only</p>
+            <input aria-label="Search name or NIK" placeholder="Search name or NIK" @bind="query" @bind:event="oninput" @bind:after="OnUserSearchInput" />
+            <div class="m-admin-chips">@foreach (var chip in Chips.Where(c => c.Key is "all" or "admin" or "hr" or "locked")) { <button type="button" aria-pressed="@(filter == chip.Key ? "true" : "false")" @onclick="() => SetFilter(chip.Key)">@chip.Label @chip.Count</button> }<button type="button" aria-pressed="@(phoneNoDepartment ? "true" : "false")" @onclick="() => phoneNoDepartment = !phoneNoDepartment">No department · this page</button></div>
+            @if (usersError is not null) { <p role="alert">@usersError<button type="button" @onclick="() => ReloadUsers(1)">Retry</button></p> }
+            @if (userPage is null) { <p role="status">Loading users…</p> }
+            else
+            {
+                @foreach (var u in userPage.Items.Where(u => !phoneNoDepartment || string.IsNullOrEmpty(u.Division ?? u.Department)))
+                {
+                    <button type="button" class="m-admin-user-row" @onclick="() => OpenInspector(u)"><span><b>@u.Name</b><small>NIK @u.Nik · @(u.Division ?? u.Department ?? "Not assigned") · @u.Site</small></span><em>@(u.IsLocked ? "Locked" : PrimaryRole(u.Roles))</em></button>
+                }
+                @if (TotalPages > 1) { <div class="m-admin-pager"><button type="button" disabled="@(userPage.Page <= 1)" @onclick="() => ReloadUsers(userPage.Page - 1)">Previous</button><span>@userPage.Page / @TotalPages</span><button type="button" disabled="@(userPage.Page >= TotalPages)" @onclick="() => ReloadUsers(userPage.Page + 1)">Next</button></div> }
+            }
+        </PhoneScreen>
+        <AdminUserSheetPhone IsAdmin="Auth.IsAdmin" User="sel" Busy="busy" Sessions="sessions" OnClose="CloseDrawer" OnRole="r => SetRole(sel!, r)" OnReset="() => ResetPassword(sel!)" OnLock="() => ToggleLock(sel!)" OnRevoke="s => RevokeSession(sel!, s)" />
+    }
+}
+else
+{
 
 @* Summary line replaces the KPI cards; the counts that matter are the filter chips below. *@
 <p class="adm-summary">
@@ -266,7 +293,10 @@
     </div>
 </div>
 
+}
+
 @code {
+    private bool phoneNoDepartment;
     private string query = "";
     private string filter = "all";
     private string? usersError;
