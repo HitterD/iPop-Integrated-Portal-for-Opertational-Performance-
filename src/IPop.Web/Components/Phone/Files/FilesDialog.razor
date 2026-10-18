@@ -1,0 +1,19 @@
+@if (Phone)
+{
+    <BottomSheet Open="IsOpen" OpenChanged="IsOpenChanged" Title="@Title" Class="m-files-sheet">
+        <ChildContent><div class="m-files-dialog">@if (!string.IsNullOrEmpty(Subtitle)) { <p class="m-files-note">@Subtitle</p> }@ChildContent</div><div class="m-files-dialog-footer">@Footer</div></ChildContent>
+    </BottomSheet>
+}
+else
+{
+    <Modal IsOpen="IsOpen" IsOpenChanged="IsOpenChanged" Title="@Title" Subtitle="@Subtitle"><ChildContent>@ChildContent</ChildContent><Footer>@Footer</Footer></Modal>
+}
+@code {
+    [Parameter] public bool Phone { get; set; }
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+}

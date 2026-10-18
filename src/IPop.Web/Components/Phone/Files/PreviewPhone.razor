@@ -1,0 +1,28 @@
+<section class="m-files-preview" role="dialog" aria-modal="true" aria-label="@Name">
+    <header class="m-files-preview-head">
+        <button type="button" aria-label="Close" @onclick="OnClose"><i data-lucide="x"></i></button>
+        <strong>@Name</strong>
+        <button type="button" aria-label="Share" @onclick="OnShare"><i data-lucide="share"></i></button>
+    </header>
+    <div class="m-files-preview-body">
+        @if (Loading) { <p role="status">Loading preview…</p> }
+        else if (Error is not null) { <div class="m-files-empty"><h2>Can't preview this file</h2><p>@Error</p><button type="button" @onclick="OnDownload">Download</button></div> }
+        else if (OfficeUrl is not null) { <iframe src="@OfficeUrl" title="@Name" allow="clipboard-write; fullscreen"></iframe> }
+        else if (Content is not null) { @Content }
+        else if (Url is not null && Mime?.StartsWith("image/") == true) { <img src="@Url" alt="@Name" /> }
+        else if (Url is not null && Mime == "application/pdf") { <iframe src="@Url" title="@Name"></iframe> }
+        else { <div class="m-files-empty"><p>No preview for this kind of file</p><button type="button" @onclick="OnDownload">Download</button></div> }
+    </div>
+</section>
+@code {
+    [Parameter] public string Name { get; set; } = "";
+    [Parameter] public string? Url { get; set; }
+    [Parameter] public string? Mime { get; set; }
+    [Parameter] public string? OfficeUrl { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public RenderFragment? Content { get; set; }
+    [Parameter] public EventCallback OnShare { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnDownload { get; set; }
+}

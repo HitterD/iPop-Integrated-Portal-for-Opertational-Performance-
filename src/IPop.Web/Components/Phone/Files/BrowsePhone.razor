@@ -1,0 +1,42 @@
+<PhoneScreen Title="@Title" BackLabel="@BackLabel" OnBack="OnBack" Class="m-files-browse">
+    <Trailing><button type="button" class="m-files-button" data-select @onclick="OnSelect">@(Selecting ? "Done" : "Select")</button></Trailing>
+    <Below>
+        <nav class="m-files-breadcrumb" aria-label="Breadcrumb">@BreadcrumbContent @if (BreadcrumbContent is null) { @Breadcrumb }</nav>
+        @Search
+        <div class="m-files-sortbar">
+            <button type="button" class="m-files-button" aria-label="Sort" @onclick="() => sortOpen = true"><i data-lucide="arrow-up-down"></i>@SortLabel</button>
+            <span></span>
+            <div class="m-files-views" role="group" aria-label="View">
+                <button type="button" aria-label="List" aria-pressed="@(!Grid ? "true" : "false")" @onclick="() => OnGrid.InvokeAsync(false)"><i data-lucide="list"></i></button>
+                <button type="button" aria-label="Grid" aria-pressed="@(Grid ? "true" : "false")" @onclick="() => OnGrid.InvokeAsync(true)"><i data-lucide="layout-grid"></i></button>
+            </div>
+        </div>
+    </Below>
+    <ChildContent>@ChildContent</ChildContent>
+</PhoneScreen>
+<BottomSheet Open="sortOpen" OpenChanged="v => sortOpen = v" Title="Sort by" Class="m-files-sheet">
+    @foreach (var option in Sorts)
+    {
+        <button type="button" class="m-files-place" data-sort="@option.Key" @onclick="() => Sort(option.Key)"><span>@option.Label</span>@if (SortKey.StartsWith(option.Key)) { <i data-lucide="check"></i> }</button>
+    }
+</BottomSheet>
+
+@code {
+    private static readonly (string Key, string Label)[] Sorts = [("name", "Name"), ("modified", "Date modified"), ("size", "Size"), ("kind", "Kind")];
+    private bool sortOpen;
+    private string SortLabel => Sorts.FirstOrDefault(x => SortKey.StartsWith(x.Key)).Label ?? "Name";
+    [Parameter] public string Title { get; set; } = "Files";
+    [Parameter] public string BackLabel { get; set; } = "Files";
+    [Parameter] public string Breadcrumb { get; set; } = "";
+    [Parameter] public string SortKey { get; set; } = "name";
+    [Parameter] public bool Grid { get; set; }
+    [Parameter] public bool Selecting { get; set; }
+    [Parameter] public RenderFragment? BreadcrumbContent { get; set; }
+    [Parameter] public RenderFragment? Search { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback OnBack { get; set; }
+    [Parameter] public EventCallback OnSelect { get; set; }
+    [Parameter] public EventCallback<string> OnSort { get; set; }
+    [Parameter] public EventCallback<bool> OnGrid { get; set; }
+    private async Task Sort(string key) { sortOpen = false; await OnSort.InvokeAsync(key); }
+}

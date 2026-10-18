@@ -4,10 +4,17 @@
 @inject AuthState Auth
 @inject IJSRuntime JS
 @inject NavigationManager Nav
+@inject PhoneState Phone
 
 <PageTitle>@(string.IsNullOrWhiteSpace(fileName) ? "Document Editor" : fileName) - iPop Docs</PageTitle>
 
-<div class="editor-page ed">
+<div class="@(Phone.IsPhone ? "m-files-editor" : "editor-page ed")">
+    @if (Phone.IsPhone)
+    {
+        @if (!Embedded) { <header class="m-files-editor-head"><button type="button" @onclick="BackToPhoneFiles"><i data-lucide="chevron-left"></i>Files</button><strong>@fileName</strong><button type="button" @onclick="DownloadFile" disabled="isDownloading" aria-label="Download"><i data-lucide="download"></i></button></header> }
+    }
+    else
+    {
     <header class="ed-bar">
         <button type="button" class="ed-btn icon" title="Back to Files" aria-label="Back to Files" @onclick="CloseEditor"><i data-lucide="chevron-left"></i></button>
         <span class="ed-file">
@@ -22,8 +29,9 @@
         </button>
         <button type="button" class="ed-btn" title="Close and return to Files" @onclick="CloseEditor"><span>Done</span></button>
     </header>
+    }
 
-    <main class="editor-canvas-container">
+    <main class="@(Phone.IsPhone ? "m-files-editor-canvas" : "editor-canvas-container")">
         <div class="editor-overlay-msg @(isConnecting ? "show" : "hide")">
             <div class="ed-msg">
                 <i data-lucide="loader-circle" class="spin ed-spin"></i>
@@ -50,6 +58,9 @@
 
 @code {
     private const string PlaceholderId = "ipop-onlyoffice-root";
+    [SupplyParameterFromQuery(Name = "embedded")] public string? EmbeddedParam { get; set; }
+    private bool Embedded => EmbeddedParam == "1";
+    private void BackToPhoneFiles() => Nav.NavigateTo($"/files?server={Uri.EscapeDataString(ServerParam ?? "")}&path={Uri.EscapeDataString(System.IO.Path.GetDirectoryName(PathParam ?? "/")?.Replace('\\', '/') ?? "/")}");
 
     [SupplyParameterFromQuery(Name = "server")]
     public string? ServerParam { get; set; }
@@ -82,6 +93,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await Phone.StartAsync();
         dotNetRef = DotNetObjectReference.Create(this);
     }
 
@@ -131,7 +143,7 @@
 
             // Sedikit delay agar DOM siap
             await Task.Delay(50);
-            var ok = await JS.InvokeAsync<bool>("ipop.initOnlyOffice", PlaceholderId, serverUrl, configJson, dotNetRef);
+            var ok = await JS.InvokeAsync<bool>("ipop.initOnlyOffice", PlaceholderId, serverUrl, configJson, dotNetRef, Phone.IsPhone);
             if (!ok)
             {
                 // The usual cause behind the proxy: an https page may not load the editor from a plain-http

@@ -1820,7 +1820,8 @@ window.ipop = {
   // ---- ONLYOFFICE Document Editor ------------------------------------------
   _onlyOfficeInstances: {},
 
-  async initOnlyOffice(placeholderId, serverUrl, config, dotNetHelper) {
+  async initOnlyOffice(placeholderId, serverUrl, config, dotNetHelper, isPhone = false) {
+    config = { ...config, type: isPhone ? "mobile" : "desktop" };
     const el = document.getElementById(placeholderId);
     if (!el) return false;
 

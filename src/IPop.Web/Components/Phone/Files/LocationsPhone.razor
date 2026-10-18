@@ -1,0 +1,37 @@
+<PhoneScreen Title="Files" Class="m-files-locations">
+    <Below>@Search</Below>
+    <ChildContent>
+        <h2 class="m-files-section">Favorites</h2>
+        <div class="m-files-group">
+            <button type="button" class="m-files-place" data-place="recent" @onclick='() => OnFavorite.InvokeAsync("recent")'><i data-lucide="clock" class="m-files-recent"></i><span>Recent</span><i data-lucide="chevron-right"></i></button>
+            <button type="button" class="m-files-place" data-place="starred" @onclick='() => OnFavorite.InvokeAsync("starred")'><i data-lucide="star" class="m-files-star"></i><span>Starred</span>@if (StarCount > 0) { <small>@StarCount</small> }<i data-lucide="chevron-right"></i></button>
+        </div>
+        <h2 class="m-files-section">Locations</h2>
+        <div class="m-files-group">
+            @foreach (var site in Sites)
+            {
+                var state = States.GetValueOrDefault(site.Id, "");
+                var connected = state == "on";
+                var text = state switch { "on" => "Connected", "warn" => "Sign in again", "err" => "Unreachable", _ => "Not connected" };
+                <button type="button" class="m-files-place" data-site="@site.Id" @onclick="() => OnSite.InvokeAsync(site.Id)">
+                    <i data-lucide="server" class="m-files-server"></i><span>@site.Name<small><span class="m-files-dot @state"></span>@text · @site.Id.ToUpperInvariant()</small></span>
+                    @if (!connected) { <small class="m-files-connect">Connect</small> } else { <i data-lucide="chevron-right"></i> }
+                </button>
+            }
+        </div>
+        <div class="m-files-group m-files-space">
+            <button type="button" class="m-files-place" @onclick='() => OnFavorite.InvokeAsync("bin")'><i data-lucide="trash-2"></i><span>Recycle Bin</span><i data-lucide="chevron-right"></i></button>
+            <button type="button" class="m-files-place" @onclick="OnSignIn"><i data-lucide="key-round"></i><span>Manage sign-in</span><small>One login, 4 sites</small><i data-lucide="chevron-right"></i></button>
+        </div>
+    </ChildContent>
+</PhoneScreen>
+
+@code {
+    private static readonly (string Id, string Name)[] Sites = [("spj", "SJA Sepanjang"), ("krw", "SJA Karawang"), ("smg", "SJA Semarang"), ("jtb", "Jatibening")];
+    [Parameter] public Dictionary<string, string> States { get; set; } = new();
+    [Parameter] public int StarCount { get; set; }
+    [Parameter] public RenderFragment? Search { get; set; }
+    [Parameter] public EventCallback<string> OnFavorite { get; set; }
+    [Parameter] public EventCallback<string> OnSite { get; set; }
+    [Parameter] public EventCallback OnSignIn { get; set; }
+}

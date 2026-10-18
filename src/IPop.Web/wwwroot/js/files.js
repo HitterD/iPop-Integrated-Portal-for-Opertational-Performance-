@@ -129,8 +129,10 @@ export function detach() {
   s = null;
 }
 
-export function pickFiles() {
-  s?.root.querySelector("[data-fx-upload]")?.click();
+export function pickFiles(source) {
+  const selector = ["camera", "photos", "files"].includes(source)
+    ? `[data-fx-upload][data-picker="${source}"]` : "[data-fx-upload]";
+  s?.root.querySelector(selector)?.click();
 }
 
 export function focusSearch() {

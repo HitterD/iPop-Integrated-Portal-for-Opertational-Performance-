@@ -1,0 +1,27 @@
+<BottomSheet Open="Open" OpenChanged="OpenChanged" Title="@($"Add to {Folder}")" Class="m-files-sheet">
+    <Trailing><button type="button" class="m-files-button" @onclick="() => OpenChanged.InvokeAsync(false)">Done</button></Trailing>
+    <ChildContent>
+        <div class="m-files-upload-tiles">
+            <button type="button" data-pick="camera" @onclick='() => OnPick.InvokeAsync("camera")'><i data-lucide="camera"></i>Camera</button>
+            <button type="button" data-pick="photos" @onclick='() => OnPick.InvokeAsync("photos")'><i data-lucide="image"></i>Photos</button>
+            <button type="button" data-pick="files" @onclick='() => OnPick.InvokeAsync("files")'><i data-lucide="file"></i>Files</button>
+        </div>
+        <input type="file" data-fx-upload data-picker="camera" accept="image/*" capture="environment" hidden />
+        <input type="file" data-fx-upload data-picker="photos" accept="image/*" multiple hidden />
+        <input type="file" data-fx-upload data-picker="files" multiple hidden />
+        <button type="button" class="m-files-place" data-new-folder @onclick="OnFolder"><i data-lucide="folder-plus"></i><span>New folder</span></button>
+        @Progress
+        @if (Uploading) { <button type="button" class="m-files-place m-files-danger" aria-label="Cancel uploads" @onclick="OnCancel"><i data-lucide="x"></i><span>Cancel uploads</span></button> }
+        <p class="m-files-note">Keep Files open until uploads finish.</p>
+    </ChildContent>
+</BottomSheet>
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter] public string Folder { get; set; } = "folder";
+    [Parameter] public bool Uploading { get; set; }
+    [Parameter] public RenderFragment? Progress { get; set; }
+    [Parameter] public EventCallback<string> OnPick { get; set; }
+    [Parameter] public EventCallback OnFolder { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+}

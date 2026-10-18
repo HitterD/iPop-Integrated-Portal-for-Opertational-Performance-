@@ -117,6 +117,7 @@ public partial class Files
         // Already on /files and a new UNC link was clicked: same component, new query.
         if (!_filesReady || QueryTarget() is not { } t || t == _deepLink) return;
         _deepLink = t;
+        if (Phone.IsPhone) { await PushPhoneFolder(); phoneLocations = false; }
         await GoTo(t.Server, t.Path);
         await FileStateService.SaveLastSeenAsync(JS);
     }
@@ -180,6 +181,8 @@ public partial class Files
 
     protected override void OnInitialized()
     {
+        WatchPhone();
+        phoneLocations = QueryTarget() is null;
         Layout.SetHeader("Files", "Files");
         if (QueryTarget() is { } dl)
         {
@@ -257,12 +260,14 @@ public partial class Files
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await JS.InvokeVoidAsync("ipop.icons");
-        if (firstRender && !_disposed)
+        if (!phoneAttached && !_disposed)
         {
+            phoneAttached = true;
             mRef ??= DotNetObjectReference.Create(this);
-            fx = await JS.InvokeAsync<IJSObjectReference>("import", "./js/files.js?v=20261015-mobfix");
+            fx ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/files.js?v=20261017-w5-files");
             if (_disposed) return;
             isMobile = await fx.InvokeAsync<bool>("attach", rootRef, mRef);
+            await RestorePhoneDetail();
         }
         if (ctxAt is { } at && ctxMenu is not null)
         {
@@ -273,6 +278,7 @@ public partial class Files
 
     public void Dispose()
     {
+        UnwatchPhone();
         _disposed = true;
         _filesSub?.Dispose();
         _opFinishedSub?.Dispose();

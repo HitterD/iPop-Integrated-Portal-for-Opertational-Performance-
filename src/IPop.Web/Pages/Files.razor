@@ -11,6 +11,8 @@
 @inject NavigationManager Nav
 @inject FileState FileStateService
 @inject HttpClient Http
+@inject PhoneState Phone
+@using IPop.Web.Components.Phone.Files
 
 <PageTitle>Files - IPop</PageTitle>
 
@@ -21,6 +23,65 @@
     var title = isStarredView ? "Starred" : isRecentView ? "Recent" : isRecycleBin ? "Recycle Bin" : IsRoot ? serverLabel : crumbs.LastOrDefault()?.Name ?? serverLabel;
 }
 
+@if (Phone.IsPhone)
+{
+    <div class="m-files-page" @ref="rootRef">
+        @if (phoneLocations)
+        {
+            <LocationsPhone States="@(Servers.ToDictionary(s => s.Id, s => SiteStatus(s.Id).Css))" StarCount="stars.Count" OnSite="PhoneSite" OnFavorite="PhoneFavorite" OnSignIn="() => { credAllSites = true; showCred = true; }">
+                <Search><button type="button" class="m-files-search" @onclick='async () => { await PushPhoneFolder(); await GoTo(server, "/"); SetSearchScope("all"); }'><i data-lucide="search"></i>Search files</button></Search>
+            </LocationsPhone>
+        }
+        else
+        {
+            <BrowsePhone Title="@title" BackLabel="Files" OnBack="PhoneBack" Grid="gridView" SortKey="@sortBy" OnSort="PhoneSort" OnGrid="SetGridView" Selecting="phoneSelecting" OnSelect="PhoneSelect">
+                <BreadcrumbContent>
+                    <button type="button" @onclick='() => PhoneCrumb("/")'>@serverLabel</button>
+                    @foreach (var crumb in crumbs) { <i data-lucide="chevron-right"></i><button type="button" @onclick="() => PhoneCrumb(crumb.Path)">@crumb.Name</button> }
+                </BreadcrumbContent>
+                <Search><input class="m-files-search" type="search" aria-label="Search files" placeholder="Search files" value="@search" @oninput="OnSearchInput" data-fx-search /></Search>
+                <ChildContent>
+                    @if (selectedPaths.Count > 0)
+                    {
+                        <div class="m-files-selection"><span>@selectedPaths.Count selected</span>
+                            @if (isRecycleBin) { <button type="button" @onclick="RestoreSelected">Put back</button><button type="button" @onclick="DeleteSelectedPermanently">Delete permanently</button> }
+                            else { <button type="button" @onclick="DownloadSelectedZip">Download zip</button><button type="button" @onclick="OpenMoveCopySelected">Move or copy</button><button type="button" @onclick="DeleteSelected">Delete</button> }
+                        </div>
+                    }
+                    @if (needsCredential && !isStarredView && !isRecentView)
+                    { <div class="m-files-empty"><h2>Connect to @serverLabel</h2><p>Sign in with your Synology account. Your existing permissions apply.</p><button type="button" @onclick="() => { credServer = server; showCred = true; }">Connect</button></div> }
+                    else if (loadError is not null)
+                    { <div class="m-files-empty" role="alert"><p>@loadError</p><button type="button" @onclick="ForceRefresh">Try again</button></div> }
+                    else if (loading && rows.Count == 0) { <p class="m-files-empty" role="status">Loading…</p> }
+                    else if (rows.Count == 0) { <p class="m-files-empty">@(searchRunning ? "Searching…" : SearchMode ? "No matches" : isRecentView ? "Nothing opened yet" : isStarredView ? "No starred items yet" : isRecycleBin ? "Recycle Bin is empty" : "This folder is empty")</p> }
+                    <div class="m-files-list @(gridView ? "m-files-grid" : "")">
+                        @foreach (var row in rows)
+                        {
+                            var item = row.Item;
+                            <div class="m-files-row" @key="row.Key">
+                                <button type="button" class="m-files-open" @onclick="() => PhoneOpen(row)" aria-label="@(phoneSelecting ? $"Select {item.Name}" : item.Name)">
+                                    @if (phoneSelecting && CanAct(row)) { <span role="checkbox" aria-checked="@(IsSelected(row) ? "true" : "false")"><i data-lucide="@(IsSelected(row) ? "square-check" : "square")"></i></span> }
+                                    <span class="m-files-icon m-files-kind-@FileKinds.Kind(item.Name, item.IsDir)"><i data-lucide="@FileKinds.Icon(item.Name, item.IsDir)"></i>@if (!item.IsDir) { <small>@FileKinds.Label(item.Name)</small> }</span>
+                                    <span class="m-files-name"><strong>@item.Name</strong><small>@(item.IsDir ? "Folder" : FileKinds.Size(item.Size))@(item.Mtime > 0 ? " · " + FileKinds.When(item.Mtime) : "")@(ShowLocation ? " · " + Where(row) : "")</small></span>
+                                </button>
+                                <button type="button" class="m-files-more" aria-label="@($"Actions for {item.Name}")" @onclick="() => phoneAction = row"><i data-lucide="ellipsis"></i></button>
+                            </div>
+                        }
+                    </div>
+                    @if (searchRunning) { <button type="button" class="m-files-button" @onclick="() => { searchCts?.Cancel(); searchRunning = false; }">Stop search</button> }
+                    @if (activeTransfers.Count > 0) { @foreach (var transfer in activeTransfers.Values) { <p role="status">@(transfer.Kind == "move" ? "Moving" : "Copying") · @transfer.Completed / @transfer.Total</p> } }
+                </ChildContent>
+            </BrowsePhone>
+            @if (inFolder) { <Fab Icon="upload" Label="Upload" OnClick="() => phoneUpload = true" /> }
+            @if (uploads.Count > 0 && !phoneUpload) { <button type="button" class="m-files-upload-status" @onclick="() => phoneUpload = true">Uploads · @UploadPercent%</button> }
+        }
+        <UploadSheet Open="phoneUpload" OpenChanged="v => phoneUpload = v" Folder="@(crumbs.LastOrDefault()?.Name ?? serverLabel)" Uploading="@(uploads.Any(u => u.Ok is null) && !uploadCancelled)" OnPick="PhonePick" OnFolder="() => { phoneUpload = false; OpenNewFolderModal(); }" OnCancel="CancelUpload">
+            <Progress>@foreach (var upload in uploads) { <div class="m-files-progress"><strong>@upload.Name</strong><progress max="@Math.Max(1, upload.Size)" value="@(upload.Ok == true ? upload.Size : upload.Sent)"></progress><small>@(upload.Ok == true ? "Done" : upload.Ok == false ? upload.Error : uploadCancelled ? "Cancelled" : $"{FileKinds.Size(upload.Sent)} of {FileKinds.Size(upload.Size)}")</small></div> }@if (uploads.Count > 0 && (uploadCancelled || uploads.All(u => u.Ok is not null))) { <button type="button" class="m-files-button" @onclick="DismissUploads">Dismiss uploads</button> }</Progress>
+        </UploadSheet>
+    </div>
+}
+else
+{
 <div class="files-page fx @(sideOpen ? "side-open" : "")" @ref="rootRef">
     <div class="fx-window">
         @* ── Sidebar ─────────────────────────────────────────────────────── *@
@@ -387,7 +448,56 @@
     }
 </div>
 
-@if (showCred)
+}
+
+@if (Phone.IsPhone)
+{
+    <BottomSheet Open="@(phoneAction is not null)" OpenChanged="v => { if (!v) phoneAction = null; }" Title="@phoneAction?.Item.Name" Class="m-files-sheet">
+        @if (phoneAction is not null)
+        {
+            @if (!isRecycleBin)
+            {
+                <div class="m-files-quick-actions">
+                    @if (!phoneAction.Item.IsDir && phoneAction.Server == server) { <button type="button" @onclick='() => PhoneAction("download")'><i data-lucide="download"></i>Download</button> }
+                    @if (CanAct(phoneAction)) { <button type="button" @onclick='() => PhoneAction("share")'><i data-lucide="link"></i>Share link</button> }
+                    <button type="button" @onclick='() => PhoneAction("star")'><i data-lucide="star"></i>@(IsStarred(phoneAction) ? "Starred" : "Star")</button>
+                </div>
+                @if (CanAct(phoneAction))
+                {
+                    <button type="button" class="m-files-place" @onclick='() => PhoneAction("move")'><i data-lucide="folder-input"></i><span>Move or copy</span></button>
+                    <button type="button" class="m-files-place" @onclick='() => PhoneAction("rename")'><i data-lucide="pencil"></i><span>Rename</span></button>
+                }
+            }
+            <button type="button" class="m-files-place" @onclick='() => PhoneAction("info")'><i data-lucide="info"></i><span>Info</span></button>
+            @if (isRecycleBin && CanAct(phoneAction))
+            {
+                <button type="button" class="m-files-place" @onclick='() => PhoneAction("restore")'><i data-lucide="undo-2"></i><span>Put back</span></button>
+                <button type="button" class="m-files-place m-files-danger" @onclick='() => PhoneAction("permanent")'><i data-lucide="trash-2"></i><span>Delete permanently</span></button>
+            }
+            else if (!isRecycleBin && CanAct(phoneAction)) { <button type="button" class="m-files-place m-files-danger" @onclick='() => PhoneAction("delete")'><i data-lucide="trash-2"></i><span>Move to Recycle Bin</span></button> }
+        }
+    </BottomSheet>
+    <BottomSheet Open="phoneInfo" OpenChanged="v => phoneInfo = v" Title="Info" Class="m-files-sheet">
+        @if (infoItem is not null) { <dl class="m-files-info"><dt>Name</dt><dd>@infoItem.Name</dd><dt>Kind</dt><dd>@FileKinds.Label(infoItem.Name, infoItem.IsDir)</dd><dt>Size</dt><dd>@FileKinds.Size(infoItem.Size)</dd><dt>Site</dt><dd>@SiteLabel(infoSite ?? server)</dd><dt>Where</dt><dd>@infoItem.Path</dd>@if (infoItem.Mtime > 0) { <dt>Modified</dt><dd>@FileKinds.When(infoItem.Mtime)</dd> }</dl> }
+    </BottomSheet>
+}
+
+@if (showCred && Phone.IsPhone)
+{
+    <BottomSheet Open="showCred" OpenChanged="v => showCred = v" Title="Manage sign-in" Class="m-files-sheet">
+        <div class="m-files-dialog">
+            <p class="m-files-note">One account, tried on every site. Your Synology permissions apply.</p>
+            <label>Sites<select @bind="credAllSites"><option value="true">All sites</option><option value="false">@credServer.ToUpperInvariant()</option></select></label>
+            <label>Synology username<input autocomplete="username" @bind="credUser" /></label>
+            <label>Password<input type="password" autocomplete="current-password" @bind="credPass" /></label>
+            @foreach (var site in Servers) { <p>@SiteLabel(site.Id) · @(SiteStatus(site.Id).Css switch { "on" => "Connected", "warn" => "Sign in again", "err" => "Unreachable", _ => "Not connected" })</p> }
+            @if (credError is not null) { <p role="alert">@credError</p> }
+            <button type="button" class="m-files-button" disabled="credBusy" @onclick="SaveCredential">@(credBusy ? "Connecting…" : credAllSites ? "Connect all sites" : "Save & connect")</button>
+            @if (!credAllSites) { <button type="button" class="m-files-button" disabled="credBusy" @onclick="ClearCredential">Disconnect</button> }
+        </div>
+    </BottomSheet>
+}
+else if (showCred)
 {
     <OverlayHook OnClose="() => showCred = false" />
     <div class="backdrop on" @onclick="() => showCred = false"></div>
@@ -426,7 +536,12 @@
     </div>
 }
 
-@if (showPreview)
+@if (Phone.IsPhone && showPreview && previewItem is not null)
+{
+    <PreviewPhone Name="@previewItem.Name" Url="@previewUrl" Mime="@previewMime" Loading="previewLoading" Error="@previewError" OfficeUrl="@(IsCoAuthorable(previewItem.Name) ? GetEditorUrl(previewItem) + "&embedded=1" : null)" OnClose="ClosePreview" OnDownload="() => Download(previewItem)" OnShare="() => phoneAction = new Row(server, previewItem)">
+    </PreviewPhone>
+}
+else if (showPreview)
 {
     @* Quick Look: one quiet header (icon, name, kind · size, icon actions), the document fills the rest. *@
     <div class="fx-ql-scrim" @onclick="ClosePreview"></div>
@@ -490,7 +605,7 @@
     </div>
 }
 
-<Modal IsOpen="showNewFolderModal" IsOpenChanged="v => showNewFolderModal = v" Title="New folder" Subtitle="@($"In {ShareName(currentPath)}")">
+<FilesDialog Phone="Phone.IsPhone" IsOpen="showNewFolderModal" IsOpenChanged="v => showNewFolderModal = v" Title="New folder" Subtitle="@($"In {ShareName(currentPath)}")">
     <ChildContent>
         <form class="fx-form" @onsubmit="CreateFolder" @onsubmit:preventDefault>
             <input class="fx-input" aria-label="Folder name" placeholder="untitled folder" @bind="newFolderName" @bind:event="oninput" autofocus />
@@ -500,9 +615,9 @@
         <button type="button" class="fx-secondary" @onclick="() => showNewFolderModal = false">Cancel</button>
         <button type="button" class="fx-primary" disabled="@string.IsNullOrWhiteSpace(newFolderName)" @onclick="CreateFolder">Create</button>
     </Footer>
-</Modal>
+</FilesDialog>
 
-<Modal IsOpen="showRenameModal" IsOpenChanged="v => showRenameModal = v" Title="Rename" Subtitle="@renameTargetItem?.Name">
+<FilesDialog Phone="Phone.IsPhone" IsOpen="showRenameModal" IsOpenChanged="v => showRenameModal = v" Title="Rename" Subtitle="@renameTargetItem?.Name">
     <ChildContent>
         <form class="fx-form" @onsubmit="SaveRename" @onsubmit:preventDefault>
             <input class="fx-input" aria-label="New name" @bind="renameTargetName" @bind:event="oninput" autofocus />
@@ -512,9 +627,9 @@
         <button type="button" class="fx-secondary" @onclick="() => showRenameModal = false">Cancel</button>
         <button type="button" class="fx-primary" disabled="@(string.IsNullOrWhiteSpace(renameTargetName) || renameTargetName == renameTargetItem?.Name)" @onclick="SaveRename">Rename</button>
     </Footer>
-</Modal>
+</FilesDialog>
 
-<Modal IsOpen="showMoveCopyModal" IsOpenChanged="v => showMoveCopyModal = v" Title="Move or copy" Subtitle="@(moveCopyPaths.Count == 1 ? moveCopyPaths[0] : $"{moveCopyPaths.Count} items")">
+<FilesDialog Phone="Phone.IsPhone" IsOpen="showMoveCopyModal" IsOpenChanged="v => showMoveCopyModal = v" Title="Move or copy" Subtitle="@(moveCopyPaths.Count == 1 ? moveCopyPaths[0] : $"{moveCopyPaths.Count} items")">
     <ChildContent>
         <div class="fx-form">
             <div class="fx-seg wide" role="group" aria-label="Action">
@@ -543,9 +658,9 @@
         <button type="button" class="fx-secondary" @onclick="() => showMoveCopyModal = false">Cancel</button>
         <button type="button" class="fx-primary" disabled="@string.IsNullOrWhiteSpace(targetDestDir)" @onclick="ExecuteMoveCopy">@(moveCopyMode == "move" ? "Move" : "Copy")</button>
     </Footer>
-</Modal>
+</FilesDialog>
 
-<Modal IsOpen="showShareModal" IsOpenChanged="v => showShareModal = v" Title="Share link" Subtitle="@shareTargetItem?.Name">
+<FilesDialog Phone="Phone.IsPhone" IsOpen="showShareModal" IsOpenChanged="v => showShareModal = v" Title="Share link" Subtitle="@shareTargetItem?.Name">
     <ChildContent>
         <div class="fx-form">
             @if (existingShareLinks.Count > 0)
@@ -570,4 +685,4 @@
         <button type="button" class="fx-secondary" @onclick="() => showShareModal = false">Done</button>
         @if (existingShareLinks.Count == 0) { <button type="button" class="fx-primary" @onclick="CreateShareLink"><i data-lucide="link"></i>Create link</button> }
     </Footer>
-</Modal>
+</FilesDialog>

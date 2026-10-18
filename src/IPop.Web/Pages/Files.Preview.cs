@@ -35,6 +35,12 @@ public partial class Files
             try { await fx.InvokeVoidAsync("zoomPreview", server + ":" + it.Path); } catch (JSException) { }
         mRef ??= DotNetObjectReference.Create(this);
         try { mPreviewPushed = await JS.InvokeAsync<bool>("ipop.mobile.pushDetail", mRef, nameof(CloseMobilePreview)); } catch (JSException) { }
+        // Phone Office previews use the existing permission-checked ONLYOFFICE editor route.
+        if (Phone.IsPhone && IsCoAuthorable(it.Name))
+        {
+            previewLoading = false;
+            return;
+        }
         if (IsSheetPreviewable(it.Name))
         {
             try
@@ -138,6 +144,7 @@ public partial class Files
         previewSheetBytes = null;
         StateHasChanged();
         if (url is not null) await JS.InvokeVoidAsync("ipop.revokePreview");
+        await RestorePhoneDetail();
         await JS.InvokeVoidAsync("ipop.icons");
     }
 
