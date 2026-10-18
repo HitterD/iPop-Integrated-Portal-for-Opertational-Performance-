@@ -15,7 +15,7 @@
    * Closing in-app drops the layer's own entry (history.back) only while that entry is still current.
    * There is at most one "detail": pushDetail on an existing detail just retargets it (old behaviour).
    */
-  function createOverlayHistory({ history, isPhone }) {
+  function createOverlayHistory({ history, isPhone, navigatingSoon = () => false }) {
     let seq = 0, backing = 0;
     const stack = []; // { seq, key, ref, method, detail }
     const queued = [];
@@ -29,13 +29,16 @@
       history.pushState({ ipopLayer: entry.seq, ipopDetail: !!entry.detail }, '');
       stack.push(entry);
     }
-    function remove(entry) {
+    // navigating: the layer closes because a link inside it is opening another page. Do not step back
+    // over its entry then — the browser applies back() after the link's pushState and would undo the
+    // navigation. The stale same-URL entry is harmless: Back from the new page returns to that URL.
+    function remove(entry, navigating) {
       const i = stack.indexOf(entry);
       if (i < 0) return;
       stack.splice(i, 1);
       const q = queued.indexOf(entry);
       if (q >= 0) { queued.splice(q, 1); return; }
-      if (entry.seq && entry.seq === cur()) { backing++; history.back(); }
+      if (!navigating && entry.seq && entry.seq === cur()) { backing++; history.back(); }
     }
     return {
       /** Opens an overlay layer; Back calls ref[method](). Returns its key (null on desktop). */
@@ -46,7 +49,7 @@
         return entry.key;
       },
       /** The overlay closed in-app (button, scrim, Escape): forget it and drop its entry. */
-      close(key) { const e = stack.find(x => x.key === key); if (e) remove(e); },
+      close(key, opts) { const e = stack.find(x => x.key === key); if (e) remove(e, !!(opts && opts.navigating) || navigatingSoon()); },
       pushDetail(ref, method) {
         if (!isPhone()) return false;
         const d = stack.find(x => x.detail);
@@ -95,9 +98,21 @@
 
   const ipop = root.ipop = root.ipop || {};
   const mq = root.matchMedia(PHONE_QUERY);
+  // A tap on an in-app link (More tile, sheet row) is about to navigate: overlays closed by that tap
+  // must not history.back() (see remove()). Flag it from the capture phase, before Blazor's handlers run.
+  let linkTapAt = 0;
+  document.addEventListener('click', e => {
+    const a = e.target && e.target.closest && e.target.closest('a[href]');
+    if (!a || a.target === '_blank' || a.hasAttribute('download') || e.defaultPrevented) return;
+    const href = a.getAttribute('href');
+    if (!href || href.startsWith('#') || /^(mailto|tel|javascript):/i.test(href)) return;
+    try { if (new URL(a.href, root.location.href).origin !== root.location.origin) return; } catch { return; }
+    linkTapAt = Date.now();
+  }, true);
   const layers = createOverlayHistory({
     history: { get state() { return root.history.state; }, pushState: (s, t) => root.history.pushState(s, t, root.location.href), back: () => root.history.back() },
     isPhone: () => mq.matches,
+    navigatingSoon: () => Date.now() - linkTapAt < 800,
   });
   root.addEventListener('popstate', () => layers.onPopState());
 

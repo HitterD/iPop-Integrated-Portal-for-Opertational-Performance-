@@ -103,3 +103,56 @@ test('a visible caret needs no scroll', () => {
 test('a box taller than the band keeps its top visible', () => {
   assert.equal(revealDelta({ top: 300, bottom: 1200 }, 0, 490), 288);
 });
+
+// Real browsers apply history.back() asynchronously: a pushState issued right after back() (a link's
+// navigation) is applied first, then the queued back() traverses away from the new page.
+function asyncBackHistory() {
+  const entries = [{ state: null }]; let idx = 0; const listeners = []; let pendingBacks = 0;
+  const h = {
+    get state() { return entries[idx].state; },
+    get length() { return idx + 1; },
+    pushState(state) { entries.splice(idx + 1); entries.push({ state }); idx++; },
+    back() { pendingBacks++; setImmediate(() => { pendingBacks--; if (idx === 0) return; idx--; listeners.forEach(f => f()); }); },
+    onPop(f) { listeners.push(f); },
+  };
+  return h;
+}
+
+test('a link inside a sheet: close then navigate does not bounce back (More tile)', async () => {
+  // Blazor runs the tile's @onclick (close the sheet) and then the <a href> navigation pushes the page.
+  // The sheet's own history entry must not be removed with history.back() in that case, or the queued
+  // back() lands after the navigation and takes the user back to the previous page.
+  const history = asyncBackHistory(); const closed = [];
+  const ov = createOverlayHistory({ history, isPhone: () => true });
+  history.onPop(() => ov.onPopState());
+  const ref = { invokeMethodAsync: m => { closed.push(m); return Promise.resolve(); } };
+  const a = ov.open(ref);
+  ov.close(a, { navigating: true });     // tile tapped: the sheet closes because a link is navigating
+  history.pushState({ page: '/notes' }); // the link's navigation
+  await tick(); await tick(); await tick();
+  assert.deepEqual(history.state, { page: '/notes' }, 'still on the page the tile opened');
+  assert.deepEqual(closed, []);
+});
+
+test('closing a sheet in-app without navigating still removes its entry', async () => {
+  const history = asyncBackHistory();
+  const ov = createOverlayHistory({ history, isPhone: () => true });
+  history.onPop(() => ov.onPopState());
+  const a = ov.open({ invokeMethodAsync: () => Promise.resolve() });
+  assert.equal(history.length, 2);
+  ov.close(a);
+  await tick(); await tick();
+  assert.equal(history.length, 1);
+});
+
+test('the link-tap signal (navigatingSoon) also keeps a closing sheet from stepping back', async () => {
+  const history = asyncBackHistory(); let navigating = false;
+  const ov = createOverlayHistory({ history, isPhone: () => true, navigatingSoon: () => navigating });
+  history.onPop(() => ov.onPopState());
+  const a = ov.open({ invokeMethodAsync: () => Promise.resolve() });
+  navigating = true;                     // a tap on <a href> inside the sheet was just seen
+  ov.close(a);                           // MoreSheet's @onclick closes it with no extra arguments
+  history.pushState({ page: '/projects' });
+  await tick(); await tick(); await tick();
+  assert.deepEqual(history.state, { page: '/projects' });
+});
