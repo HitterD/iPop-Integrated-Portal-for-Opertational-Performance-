@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>iPop Notifier — mockup v2</title>
+<style>
+:root{
+  --frame:#123528;--frame-ink:#e7f2ec;
+  --desk:linear-gradient(135deg,#1d4e6b 0%,#3a6f8f 40%,#7aa6b8 100%);
+  --glass:rgba(250,250,252,.86);--glass-2:rgba(255,255,255,.7);--card:#fff;--fill:rgba(118,118,128,.12);--sep:rgba(60,60,67,.13);
+  --ink:#1d1d1f;--ink-2:#3c3c43;--ink-3:#6e6e73;--ink-4:#aeaeb2;--green:#2e9e5b;--green-2:#278a4f;--red:#ff3b30;
+  --chat:#2e9e5b;--mail:#0a84ff;--calls:#1f8fa6;--cal:#ff9f0a;--proj:#5562b8;--notes:#d19a2a;--news:#a0457a;--tix:#2563eb;--sys:#6f8290;
+  --shadow:0 30px 70px -20px rgba(0,0,0,.5),0 0 0 .5px rgba(0,0,0,.14);
+  --spring:cubic-bezier(.32,.72,0,1);--pop:cubic-bezier(.34,1.56,.64,1);
+}
+body.dark{
+  --desk:linear-gradient(135deg,#0b1d2a 0%,#13324a 45%,#24506b 100%);
+  --glass:rgba(32,32,34,.84);--glass-2:rgba(44,44,46,.76);--card:#1c1c1e;--fill:rgba(118,118,128,.24);--sep:rgba(84,84,88,.55);
+  --ink:#f5f5f7;--ink-2:#d1d1d6;--ink-3:#98989d;--ink-4:#636366;--green:#30d158;--green-2:#28b84c;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,Inter,system-ui,sans-serif;font-size:14px;color:var(--ink);background:#e8ece9}
+body.dark{background:#0b0b0c}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input,textarea{font:inherit;color:inherit}
+svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex:none}
+svg.s{width:15px;height:15px}
+
+.top{position:sticky;top:0;z-index:200;display:flex;align-items:center;gap:12px;padding:10px 22px;background:var(--frame);color:var(--frame-ink);flex-wrap:wrap}
+.top img{width:26px;height:26px;border-radius:7px;background:#fff;padding:2px}
+.top h1{font-size:16px}.top h1 span{opacity:.7;font-weight:500}
+.top nav{display:flex;gap:4px;margin-left:12px;flex-wrap:wrap}
+.top nav a{color:var(--frame-ink);text-decoration:none;font-size:12.5px;font-weight:600;padding:6px 11px;border-radius:999px;opacity:.85}
+.top nav a:hover{background:rgba(255,255,255,.12);opacity:1}
+.top .r{margin-left:auto;display:flex;gap:6px}
+.top .r button{height:30px;padding:0 13px;border-radius:999px;background:rgba(255,255,255,.12);color:var(--frame-ink);font-size:12.5px;font-weight:600}
+.top .r button.on{background:#fff;color:#123528}
+section.g{max-width:1440px;margin:0 auto;padding:26px 22px 8px;scroll-margin-top:56px}
+section.g>h2{font-size:20px;margin-bottom:4px}
+body.dark section.g>h2{color:#f5f5f7}
+section.g>p{font-size:13.5px;color:#5b6660;margin-bottom:12px;max-width:960px;line-height:1.5}
+body.dark section.g>p{color:#98a39d}
+.ctl{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.ctl button{height:32px;padding:0 14px;border-radius:999px;background:#123528;color:#e7f2ec;font-size:12.5px;font-weight:600}
+
+/* ===== desktop ===== */
+.desk{position:relative;height:760px;border-radius:14px;overflow:hidden;background:var(--desk);box-shadow:0 20px 50px -20px rgba(0,0,0,.4)}
+.desk .wall{position:absolute;inset:0;opacity:.08;background:radial-gradient(circle at 20% 30%,#fff 0 2px,transparent 3px) 0 0/40px 40px}
+.desk .bgapp{position:absolute;left:28px;top:26px;width:560px;height:380px;border-radius:10px;background:rgba(255,255,255,.88);box-shadow:0 20px 40px -20px rgba(0,0,0,.4);overflow:hidden}
+body.dark .desk .bgapp{background:rgba(40,40,42,.9)}
+.desk .bgapp .tb{height:32px;display:flex;align-items:center;padding:0 12px;font-size:12px;color:var(--ink-3);border-bottom:.5px solid var(--sep)}
+.desk .bgapp .ln{height:10px;border-radius:5px;background:var(--fill);margin:14px 18px}
+
+/* taskbar */
+.taskbar{position:absolute;left:0;right:0;bottom:0;height:48px;display:flex;align-items:center;justify-content:center;gap:4px;background:rgba(240,243,246,.8);backdrop-filter:blur(30px);border-top:.5px solid rgba(255,255,255,.4);z-index:60}
+body.dark .taskbar{background:rgba(30,32,36,.85)}
+.tbi{position:relative;width:40px;height:40px;border-radius:7px;display:grid;place-items:center;font-size:18px;transition:background .15s}
+.tbi:hover,.tbi.on{background:rgba(255,255,255,.45)}
+body.dark .tbi:hover,body.dark .tbi.on{background:rgba(255,255,255,.1)}
+.tbi img{width:24px;height:24px;border-radius:6px}
+.tbi .run{position:absolute;bottom:2px;left:50%;width:6px;height:3px;border-radius:2px;background:var(--ink-3);transform:translateX(-50%);transition:width .25s var(--spring)}
+.tbi.on .run{width:16px;background:var(--green)}
+.tbi .bdg{position:absolute;right:1px;top:1px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--red);color:#fff;font-size:10.5px;font-weight:700;display:grid;place-items:center;transition:transform .3s var(--pop)}
+.tray{position:absolute;right:10px;top:0;bottom:0;display:flex;align-items:center;gap:10px;font-size:12px;color:var(--ink-2)}
+.tray .clock{text-align:right;line-height:1.2}
+
+/* taskbar thumbnails (hover the iPop icon) */
+.thumbs{position:absolute;bottom:54px;display:none;gap:8px;padding:10px;max-width:calc(100% - 20px);overflow-x:auto;scrollbar-width:thin;border-radius:12px;background:var(--glass);backdrop-filter:blur(36px) saturate(1.6);box-shadow:var(--shadow);z-index:70;transform-origin:bottom center}
+.thumbs.show{display:flex;animation:thIn .26s var(--spring)}
+@keyframes thIn{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
+.th{flex:none;width:176px;border-radius:9px;padding:6px;cursor:pointer;transition:background .15s,transform .15s var(--spring)}
+.th:hover{background:var(--fill);transform:translateY(-2px)}
+.th .tt{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;margin-bottom:6px;white-space:nowrap;overflow:hidden}
+.th .tt i{width:16px;height:16px;border-radius:4px;background:var(--m);flex:none}
+.th .tt span{overflow:hidden;text-overflow:ellipsis}
+.th .tt b{margin-left:auto;width:20px;height:20px;border-radius:5px;display:grid;place-items:center;color:var(--ink-3);font-weight:400}
+.th .tt b:hover{background:var(--red);color:#fff}
+.th .pv{height:104px;border-radius:6px;overflow:hidden;background:var(--card);box-shadow:0 0 0 .5px var(--sep);position:relative}
+.th .pv .h{height:14px;background:var(--m);opacity:.85}
+.th .pv .l{height:5px;border-radius:3px;background:var(--fill);margin:6px 8px}
+.th .pv img{position:absolute;left:8px;right:8px;bottom:6px;width:calc(100% - 16px);height:46px;object-fit:cover;border-radius:4px}
+
+/* notification windows */
+.nw{position:absolute;width:560px;max-height:600px;border-radius:12px;background:var(--glass);backdrop-filter:blur(40px) saturate(1.7);box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden;
+  animation:winIn .42s var(--spring) both;transition:box-shadow .2s,transform .3s var(--spring),opacity .25s}
+.nw.front{box-shadow:0 34px 80px -18px rgba(0,0,0,.55),0 0 0 1px color-mix(in srgb,var(--m) 55%,transparent)}
+.nw.min{opacity:0;transform:translateY(60px) scale(.6);pointer-events:none}
+.nw.out{animation:winOut .28s cubic-bezier(.4,0,1,1) both}
+@keyframes winIn{0%{opacity:0;transform:translateY(24px) scale(.97)}100%{opacity:1;transform:none}}
+@keyframes winOut{to{opacity:0;transform:translateY(16px) scale(.97)}}
+.nw .ttl{height:40px;flex:none;display:flex;align-items:center;gap:10px;padding:0 6px 0 14px;cursor:move;border-bottom:.5px solid var(--sep)}
+.nw .ttl .ic{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:#fff;background:var(--m)}
+.nw .ttl .ic svg{width:13px;height:13px}
+.nw .ttl b{flex:1;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nw .ttl small{font-size:11.5px;color:var(--ink-3);margin-right:6px}
+.nw .wc{width:40px;height:32px;border-radius:6px;display:grid;place-items:center;color:var(--ink-3)}
+.nw .wc:hover{background:var(--fill)}
+.nw .wc.x:hover{background:#e81123;color:#fff}
+.nw .tools{display:flex;gap:4px;padding:8px 12px;border-bottom:.5px solid var(--sep);flex:none;flex-wrap:wrap}
+.nw .tb2{height:32px;padding:0 11px;border-radius:8px;display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;transition:background .15s,transform .12s var(--spring)}
+.nw .tb2:hover{background:var(--fill)}
+.nw .tb2:active{transform:scale(.96)}
+.nw .tb2.p{background:var(--green);color:#fff}
+.nw .tb2.p:hover{background:var(--green-2)}
+.nw .tb2.r{color:var(--red)}
+.nw .sp{flex:1}
+.nw .hdr{padding:12px 16px 10px;border-bottom:.5px solid var(--sep);flex:none}
+.nw .hdr h3{font-size:17px;letter-spacing:-.01em;margin-bottom:8px}
+.nw .hdr .who{display:flex;align-items:center;gap:10px}
+.nw .hdr .av{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:#fff;font-weight:700;font-size:13px;flex:none}
+.nw .hdr .who b{display:block;font-size:13.5px}
+.nw .hdr .who small{display:block;font-size:12px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:380px}
+.nw .hdr .when{margin-left:auto;font-size:12px;color:var(--ink-3);flex:none}
+.nw .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.nw .chip{font-size:11.5px;font-weight:600;padding:3px 8px;border-radius:999px;background:var(--fill);color:var(--ink-2)}
+.nw .chip.st{background:color-mix(in srgb,var(--m) 15%,transparent);color:var(--m)}
+.nw .body{flex:1;overflow:auto;padding:14px 16px;font-size:14px;line-height:1.55;color:var(--ink-2)}
+.nw .body p+p{margin-top:10px}
+.nw .body .img{display:block;width:100%;max-height:240px;object-fit:cover;border-radius:10px;margin:12px 0 4px;cursor:zoom-in;box-shadow:0 0 0 .5px var(--sep);transition:transform .2s var(--spring)}
+.nw .body .img:hover{transform:scale(1.01)}
+.nw .body .more{display:inline-flex;margin-top:8px;color:var(--green);font-weight:600;font-size:13px}
+.nw .files{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.nw .file{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:10px;background:var(--fill);font-size:12.5px;position:relative;cursor:pointer}
+.nw .file .fi{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;color:#fff;font-size:10px;font-weight:700;flex:none}
+.nw .reply{display:none;border-top:.5px solid var(--sep);padding:10px 12px;flex:none;background:var(--glass-2)}
+.nw.replying .reply{display:block;animation:winIn .3s var(--spring)}
+.nw .rte{border-radius:10px;background:var(--card);box-shadow:0 0 0 .5px var(--sep) inset}
+.nw .rte .rt{display:flex;gap:2px;padding:4px;border-bottom:.5px solid var(--sep)}
+.nw .rte .rt button{width:28px;height:26px;border-radius:6px;font-size:12px;font-weight:700;color:var(--ink-3)}
+.nw .rte .rt button:hover{background:var(--fill)}
+.nw .rte textarea{width:100%;height:70px;border:0;background:none;resize:none;padding:8px 10px;outline:none;font-size:14px}
+.nw .rte .rf{display:flex;align-items:center;gap:6px;padding:6px}
+.nw .rte .rf small{flex:1;color:var(--ink-3);font-size:11.5px}
+.nw .done{display:none;align-items:center;gap:8px;padding:12px 16px;color:var(--green);font-weight:600;border-top:.5px solid var(--sep);flex:none}
+.nw.sent .done{display:flex;animation:winIn .3s var(--spring)}
+.nw.sent .reply{display:none}
+.ck{width:22px;height:22px;border-radius:50%;background:var(--green);display:grid;place-items:center;color:#fff}
+.ck path{stroke-dasharray:20;stroke-dashoffset:20;animation:draw .35s .1s ease-out forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+
+/* Explorer choice menu */
+.menu{position:absolute;z-index:90;min-width:240px;padding:6px;border-radius:12px;background:var(--glass);backdrop-filter:blur(36px) saturate(1.6);box-shadow:var(--shadow);animation:thIn .2s var(--spring)}
+.menu button{width:100%;display:flex;align-items:center;gap:10px;height:36px;padding:0 10px;border-radius:8px;font-size:13px;text-align:left}
+.menu button:hover{background:var(--fill)}
+.menu small{display:block;padding:4px 10px 6px;color:var(--ink-3);font-size:11.5px}
+
+/* Explorer window */
+.explorer{position:absolute;left:120px;top:60px;width:720px;height:420px;border-radius:10px;background:var(--card);box-shadow:var(--shadow);overflow:hidden;animation:winIn .35s var(--spring);z-index:80;display:flex;flex-direction:column}
+.explorer .et{height:38px;display:flex;align-items:center;gap:10px;padding:0 6px 0 12px;background:var(--glass-2);font-size:12.5px}
+.explorer .addr{display:flex;align-items:center;gap:8px;margin:8px 12px;height:32px;padding:0 10px;border-radius:7px;background:var(--fill);font-size:12.5px}
+.explorer .rows{flex:1;padding:4px 12px;font-size:13px}
+.explorer .row{display:flex;align-items:center;gap:10px;height:30px;padding:0 8px;border-radius:5px}
+.explorer .row.sel{background:color-mix(in srgb,#0a84ff 18%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,#0a84ff 45%,transparent)}
+
+/* toast (chat) */
+.toast{position:absolute;right:12px;bottom:58px;width:364px;border-radius:10px;background:var(--glass);backdrop-filter:blur(30px) saturate(1.6);box-shadow:var(--shadow);padding:12px 14px;animation:winIn .42s var(--spring) both;z-index:65}
+.toast .th0{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-3);margin-bottom:8px}
+.toast .th0 img{width:16px;height:16px;border-radius:4px}
+.toast .tb{display:flex;gap:10px}
+.toast .tb .av{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;color:#fff;font-weight:700;flex:none}
+.toast b{display:block;font-size:13.5px}.toast p{font-size:13px;color:var(--ink-2);margin-top:2px}
+.toast .tr{display:flex;gap:6px;margin-top:10px}
+.toast .tr input{flex:1;height:32px;border-radius:7px;border:.5px solid var(--sep);background:var(--card);padding:0 10px;outline:none}
+.toast .tr button{height:32px;padding:0 12px;border-radius:7px;background:var(--fill);font-weight:600;font-size:12.5px}
+
+/* ICT console */
+.console{display:grid;grid-template-columns:320px 1fr;gap:0;border-radius:12px;overflow:hidden;box-shadow:0 20px 50px -20px rgba(0,0,0,.35);background:var(--card);min-height:520px}
+.console .left{border-right:.5px solid var(--sep);background:var(--glass-2);display:flex;flex-direction:column}
+.console .left .h{padding:14px;display:flex;align-items:center;gap:8px;font-weight:700}
+.console .left .h .lock{margin-left:auto;font-size:11px;font-weight:700;color:#fff;background:#6f8290;padding:2px 8px;border-radius:999px}
+.console .srch{margin:0 14px 10px;height:34px;border-radius:9px;background:var(--fill);display:flex;align-items:center;gap:8px;padding:0 10px;color:var(--ink-3);font-size:13px}
+.console .dev{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-top:.5px solid var(--sep)}
+.console .dev:hover,.console .dev.on{background:var(--fill)}
+.console .dev .pc{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:#6f8290;color:#fff;font-size:16px;flex:none;position:relative}
+.console .dev .pc i{position:absolute;right:-2px;bottom:-2px;width:11px;height:11px;border-radius:50%;background:#34c759;box-shadow:0 0 0 2px var(--card)}
+.console .dev .pc i.off{background:var(--ink-4)}
+.console .dev b{display:block;font-size:13.5px}.console .dev small{display:block;font-size:12px;color:var(--ink-3)}
+.console .right{padding:18px 22px}
+.console .right h3{font-size:20px;margin-bottom:2px}
+.console .right .sub{color:var(--ink-3);font-size:13px;margin-bottom:14px}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:8px 12px;font-size:13.5px;margin-bottom:16px}
+.kv span:nth-child(odd){color:var(--ink-3)}
+.console .acts{display:flex;gap:8px;flex-wrap:wrap}
+.console .acts button{height:38px;padding:0 16px;border-radius:10px;background:var(--fill);font-weight:600;font-size:13.5px;display:flex;align-items:center;gap:8px}
+.console .acts button.p{background:var(--green);color:#fff}
+.rmt{margin-top:18px;border-radius:12px;overflow:hidden;position:relative;height:250px;background:linear-gradient(135deg,#0f3b2b,#1d6a4b)}
+.rmt .big{position:absolute;inset:20px 60px;border-radius:16px;background:rgba(255,255,255,.95);display:flex;align-items:center;gap:18px;padding:18px;color:#1d1d1f;box-shadow:0 20px 40px -14px rgba(0,0,0,.5)}
+.rmt .big .vid{width:200px;height:120px;border-radius:12px;background:linear-gradient(135deg,#2e9e5b,#1f8fa6);display:grid;place-items:center;color:#fff;font-size:30px;flex:none}
+.rmt .big b{font-size:18px;display:block}.rmt .big small{color:#6e6e73;font-size:13px;display:block;margin-top:4px}
+.rmt .tag{position:absolute;left:12px;top:10px;font-size:11.5px;color:#fff;opacity:.8}
+
+.notes{max-width:1440px;margin:0 auto;padding:4px 22px 40px;font-size:13.5px;color:#5b6660;line-height:1.5}
+.notes li{margin:5px 0 0 18px}
+body.dark .notes{color:#98a39d}
+@media (prefers-reduced-motion: reduce){.nw,.thumbs,.toast,.menu,.explorer{animation-duration:.01s !important;transition:none !important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <img src="ipop-mark.webp" alt="">
+  <h1>iPop Notifier <span>· mockup v2</span></h1>
+  <nav><a href="#windows">1 Notification windows</a><a href="#explorer">2 Open in File Explorer</a><a href="#console">3 ICT devices &amp; remote (phase 3)</a><a href="index.html#inbox">Inbox · Settings · Sign in (v1)</a></nav>
+  <div class="r"><button id="bDark">Dark</button><button id="bSnd" class="on">Sound on</button></div>
+</header>
+
+<section class="g" id="windows">
+  <h2>1 · One window per notification, grouped on the taskbar (like EPop, modernised)</h2>
+  <p>Every notification opens its own window, slightly cascaded, newest in front. All of them sit under <b>one iPop icon</b> on the taskbar with the count. <b>Hover the iPop icon</b> to see a preview of every window (click one to bring it front, ✕ to close it). Windows never steal the keyboard while you type elsewhere. Close one and it's gone; it stays in the tray Inbox. Images show inside the window. Each window is a light native window (shared engine, no browser per window), so 10+ windows stay light.</p>
+  <div class="ctl">
+    <button data-demo="mail">Mail with poster</button>
+    <button data-demo="idesk">iDesk ticket</button>
+    <button data-demo="meeting">Meeting</button>
+    <button data-demo="memo">Memo</button>
+    <button data-demo="burst">10 notifications</button>
+    <button data-demo="chat">Chat (toast)</button>
+    <button data-demo="clear">Close all</button>
+  </div>
+  <div class="desk" id="desk">
+    <div class="wall"></div>
+    <div class="bgapp"><div class="tb">Microsoft Excel — Budget Q4.xlsx</div><div class="ln" style="width:70%"></div><div class="ln" style="width:85%"></div><div class="ln" style="width:60%"></div><div class="ln" style="width:78%"></div></div>
+    <div id="wins"></div>
+    <div id="toastHost"></div>
+    <div class="thumbs" id="thumbs"></div>
+    <div class="taskbar">
+      <span class="tbi">⊞</span><span class="tbi">🔎</span><span class="tbi">📁<i class="run"></i></span><span class="tbi">🌐<i class="run"></i></span><span class="tbi">📊<i class="run"></i></span>
+      <span class="tbi" id="ipopIcon" title="iPop Notifier"><img src="ipop-mark.webp" alt=""><i class="run"></i><span class="bdg" id="bdg" style="display:none">0</span></span>
+      <div class="tray"><span>ᨀ 🔊 🔋</span><span class="clock">09:41<br>19/10/2026</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="g" id="explorer">
+  <h2>2 · Synology file → open in File Explorer</h2>
+  <p>Click a NAS file link in iPop (Files, Chat, Mail, Notes) or in a notification window → choose <b>Open in browser</b>, <b>Open in File Explorer</b> (Explorer opens the folder with the file selected) or <b>Copy network path</b>. Only the 5 company NAS are allowed. The first time, Windows may ask for the NAS sign-in once (automatic on domain PCs).</p>
+  <div class="ctl"><button id="demoExp">Click the attachment</button></div>
+  <div class="desk" style="height:560px" id="desk2">
+    <div class="wall"></div>
+    <div class="nw front" style="--m:var(--mail);left:40px;top:30px;max-height:470px;animation:none" id="expWin">
+      <div class="ttl"><span class="ic"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span><b>From: Kevin Cornelius — Laporan stok Q3</b><small>09:20</small><span class="wc">—</span><span class="wc x">✕</span></div>
+      <div class="hdr"><h3>Laporan stok Q3</h3><div class="who"><span class="av" style="background:#7c4dd8">KC</span><span><b>Kevin Cornelius</b><small>to you · ICT IPOP</small></span></div></div>
+      <div class="body"><p>Pak, file laporannya sudah saya taruh di NAS Sepanjang ya.</p>
+        <div class="files"><span class="file" id="nasFile"><span class="fi" style="background:#1f7a3f">XLS</span>Stok-Q3-2026.xlsx · NAS SPJ</span></div></div>
+    </div>
+    <div class="taskbar"><span class="tbi">⊞</span><span class="tbi">📁</span><span class="tbi">🌐</span><span class="tbi on"><img src="ipop-mark.webp" alt=""><i class="run"></i></span><div class="tray"><span class="clock">09:41<br>19/10/2026</span></div></div>
+  </div>
+</section>
+
+<section class="g" id="console">
+  <h2>3 · ICT / Admin: devices &amp; remote help (phase 3 — preview only)</h2>
+  <p>Hidden menu, shown only to the Administrator role and the ICT/IT department. Every signed-in PC reports its computer name, IP, Windows user and app version, so ICT can find “LOGISTIC33” and connect from the same app. On the user's PC a large window says ICT is helping (picture/video); ICT can minimise it to work together.</p>
+  <div class="console">
+    <div class="left">
+      <div class="h"><img src="ipop-mark.webp" alt="" style="width:22px;height:22px;border-radius:6px">Devices<span class="lock">ICT only</span></div>
+      <div class="srch">🔎 Search name, NIK, PC, IP…</div>
+      <div class="dev on"><span class="pc">🖥<i></i></span><span><b>LOGISTIC33</b><small>Budi Santoso · 10.12.4.33</small></span></div>
+      <div class="dev"><span class="pc">🖥<i></i></span><span><b>ICT-SPJ-07</b><small>Kevin Cornelius · 192.168.2.57</small></span></div>
+      <div class="dev"><span class="pc">💻<i></i></span><span><b>HCBP-LT-12</b><small>Amelia Yolanda · 192.168.3.112</small></span></div>
+      <div class="dev"><span class="pc">🖥<i class="off"></i></span><span><b>PPIC-SMG-02</b><small>Yudi · last seen 2 h ago</small></span></div>
+    </div>
+    <div class="right">
+      <h3>LOGISTIC33</h3><div class="sub">Online · signed in to iPop Notifier</div>
+      <div class="kv"><span>User</span><span>Budi Santoso (Logistic · SJA Karawang)</span><span>Windows user</span><span>SJA\budi.santoso</span><span>IP address</span><span>10.12.4.33</span><span>Windows</span><span>Windows 11 Pro 24H2</span><span>App version</span><span>1.0.4</span><span>Last active</span><span>just now</span></div>
+      <div class="acts"><button class="p">🖥 Remote help</button><button>💬 Chat</button><button>📞 Call</button><button>🔔 Send notification</button></div>
+      <div class="rmt"><span class="tag">What the user sees during remote help</span>
+        <div class="big"><span class="vid">▶</span><span><b>ICT is helping you</b><small>Kevin from ICT is connected to this PC. Please don't turn it off.</small><small style="margin-top:10px">⏱ 04:12 · <span style="color:#ff3b30;font-weight:600">End session</span></small></span></div></div>
+    </div>
+  </div>
+</section>
+
+<div class="notes">
+  <b>Behaviour</b>
+  <ul>
+    <li>One real window per notification (mail, iDesk, meeting, memo, projects, notes, calls). Chat stays a Windows toast with the iPop logo.</li>
+    <li>New windows cascade 28 px down-left from the last; the newest is in front with a coloured outline. Max ~8 on screen, older ones auto-minimise to the taskbar group — still listed in the hover preview and the Inbox.</li>
+    <li>Windows keep the keyboard where you are typing; they take focus only when clicked.</li>
+    <li>“Hold during meetings” keeps new windows minimised in the group (the badge still counts) until you're back.</li>
+    <li>Images load from iPop/iDesk only, downscaled for the window; “Show full message” opens a larger reader. One shared rendering engine for all windows keeps memory low.</li>
+  </ul>
+</div>
+
+<audio id="aMail" src="mail.mp3" preload="auto"></audio><audio id="aTix" src="tickets.mp3" preload="auto"></audio><audio id="aMeet" src="meeting.mp3" preload="auto"></audio><audio id="aDm" src="dm.mp3" preload="auto"></audio><audio id="aNews" src="announce.mp3" preload="auto"></audio>
+<script>
+const $ = s => document.querySelector(s);
+let sound = true;
+$('#bDark').onclick = e => { document.body.classList.toggle('dark'); e.target.classList.toggle('on'); };
+$('#bSnd').onclick = e => { sound = !sound; e.target.classList.toggle('on', sound); e.target.textContent = sound ? 'Sound on' : 'Sound off'; };
+const play = id => { if (!sound) return; const a = document.getElementById(id); a.currentTime = 0; a.volume = .8; a.play().catch(() => {}); };
+const CK = '<span class="ck"><svg class="i s" viewBox="0 0 24 24" style="stroke-width:3"><path d="m5 12 5 5 9-10"/></svg></span>';
+const IC = {
+  mail: '<svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
+  tix: '<svg class="i" viewBox="0 0 24 24"><path d="M3 9a3 3 0 0 0 0 6v3h18v-3a3 3 0 0 1 0-6V6H3Z"/><path d="M13 6v12"/></svg>',
+  cal: '<svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></svg>',
+  news: '<svg class="i" viewBox="0 0 24 24"><path d="m3 11 18-5v12L3 14v-3z"/></svg>',
+};
+const KINDS = {
+  mail: { m: 'var(--mail)', ic: IC.mail, snd: 'aMail', title: 'From: Vania Michaela — RE: Berbagi Kasih', short: 'From: Vania…', img: true, html: `
+    <div class="tools"><button class="tb2 p" data-reply>↩ Reply</button><button class="tb2" data-reply>↩↩ Reply all</button><button class="tb2">↪ Forward</button><span class="sp"></span><button class="tb2" data-close>✓ Mark read</button><button class="tb2" data-open>Open in iPop ↗</button></div>
+    <div class="hdr"><h3>RE: Berbagi Kasih</h3><div class="who"><span class="av" style="background:#c2442e">VM</span><span><b>Vania Michaela</b><small>to G=DAFT.SJA Karawang; G=DAFT.SJA Semarang; G=ICT.SJA Sepanjang +6</small></span><span class="when">09:52</span></div></div>
+    <div class="body"><p>Dear All,</p><p>Bagi rekan-rekan yang ingin berpartisipasi, kami dengan senang hati masih menerima donasi dalam bentuk dana ataupun barang.</p>
+      <img class="img" src="poster.jpg" alt="Berbagi Kasih poster"><a class="more" href="#">Show full message ↗</a></div>
+    <div class="reply"><div class="rte"><div class="rt"><button>B</button><button><i>I</i></button><button><u>U</u></button><button>•</button><button>📎</button></div><textarea>Terima kasih infonya, saya ikut berpartisipasi.</textarea><div class="rf"><small>Reply all · signature added</small><button class="tb2" data-cancel>Cancel</button><button class="tb2 p" data-send>Send</button></div></div></div>
+    <div class="done">${CK}Reply sent</div>` },
+  idesk: { m: 'var(--tix)', ic: IC.tix, snd: 'aTix', title: 'iDesk #4821 — Printer lantai 2 tidak bisa print', short: 'iDesk #4821', html: `
+    <div class="tools"><button class="tb2 p" data-reply>↩ Reply</button><button class="tb2" data-close>✓ It's fixed</button><span class="sp"></span><button class="tb2" data-open>Open in iDesk ↗</button></div>
+    <div class="hdr"><h3>#4821 · Printer lantai 2 tidak bisa print</h3><div class="who"><span class="av" style="background:#2563eb">AS</span><span><b>Andrew Setiawan · ICT</b><small>replied to your ticket</small></span><span class="when">09:32</span></div>
+      <div class="chips"><span class="chip st">In progress</span><span class="chip">High</span><span class="chip">Hardware · Printer</span></div></div>
+    <div class="body"><p>Toner sudah diganti dan driver diperbarui. Silakan coba print lagi, kalau masih gagal kabari di sini ya.</p></div>
+    <div class="reply"><div class="rte"><textarea>Sudah bisa, terima kasih Mas Andrew!</textarea><div class="rf"><small>Visible to ICT</small><button class="tb2" data-cancel>Cancel</button><button class="tb2 p" data-send>Send</button></div></div></div>
+    <div class="done">${CK}Reply added to #4821</div>` },
+  meeting: { m: 'var(--cal)', ic: IC.cal, snd: 'aMeet', title: 'Weekly ICT sync — starts in 10 min', short: 'Weekly ICT sync', html: `
+    <div class="tools"><button class="tb2 p" data-send>▶ Join</button><button class="tb2" data-close>Snooze 5 min</button><button class="tb2 r" data-close>Decline</button><span class="sp"></span><button class="tb2" data-open>Open ↗</button></div>
+    <div class="hdr"><h3>Weekly ICT sync</h3><div class="chips"><span class="chip st">10:00 – 11:00</span><span class="chip">Meeting room 2</span><span class="chip">6 people</span></div></div>
+    <div class="body"><p>Agenda: progres migrasi email, status tiket minggu ini, rencana pelatihan iPop untuk SJA Karawang.</p></div>
+    <div class="done">${CK}Joining Meeting room 2…</div>` },
+  memo: { m: 'var(--news)', ic: IC.news, snd: 'aNews', title: 'Memo — Sosialisasi Aplikasi iDesk · 22 Oktober', short: 'Memo: Sosialisasi iDesk', html: `
+    <div class="tools"><button class="tb2 p" data-send>✓ Acknowledge</button><span class="sp"></span><button class="tb2" data-open>Open in iPop ↗</button></div>
+    <div class="hdr"><h3>Sosialisasi Aplikasi iDesk — 22 Oktober 2026</h3><div class="who"><span class="av" style="background:#a0457a">RN</span><span><b>Raymundus Nonnatus</b><small>to all division representatives · SJA Semarang</small></span><span class="when">08:15</span></div></div>
+    <div class="body"><p>Yth. Bapak/Ibu Perwakilan Divisi, dalam rangka sosialisasi aplikasi <b>iDesk</b>, mohon mengisi nama perwakilan divisi melalui form berikut.</p><img class="img" src="poster.jpg" alt="poster"></div>
+    <div class="done">${CK}Acknowledged</div>` },
+};
+const wins = $('#wins'); let n = 0; const list = [];
+function badge() { const b = $('#bdg'); const c = list.length; b.style.display = c ? '' : 'none'; b.textContent = c; b.style.transform = 'scale(1.3)'; setTimeout(() => b.style.transform = '', 220); $('#ipopIcon').classList.toggle('on', c > 0); }
+function front(w) { list.forEach(x => { x.el.classList.remove('front'); }); w.el.classList.add('front'); w.el.classList.remove('min'); w.el.style.zIndex = 10 + (++n); }
+function open(kind, silent) {
+  const k = KINDS[kind]; const i = list.length;
+  const el = document.createElement('div'); el.className = 'nw'; el.style.setProperty('--m', k.m);
+  const left = 640 - (i % 8) * 28, top = 20 + (i % 8) * 28; el.style.left = left + 'px'; el.style.top = top + 'px';
+  el.innerHTML = `<div class="ttl"><span class="ic">${k.ic}</span><b>${k.title}</b><small>now</small><span class="wc" data-min>—</span><span class="wc x" data-close>✕</span></div>${k.html}`;
+  wins.appendChild(el); const w = { el, kind, k }; list.push(w); front(w); badge(); if (!silent) play(k.snd);
+  // more than 8 on screen: oldest auto-minimise into the taskbar group
+  const visible = list.filter(x => !x.el.classList.contains('min')); if (visible.length > 8) visible[0].el.classList.add('min');
+  el.addEventListener('mousedown', () => front(w));
+  el.addEventListener('click', e => {
+    const b = e.target.closest('[data-close],[data-min],[data-reply],[data-cancel],[data-send],[data-open]'); if (!b) return;
+    if (b.hasAttribute('data-close')) close(w);
+    else if (b.hasAttribute('data-min')) el.classList.add('min');
+    else if (b.hasAttribute('data-reply')) { el.classList.add('replying'); const t = el.querySelector('textarea'); t && t.focus(); }
+    else if (b.hasAttribute('data-cancel')) el.classList.remove('replying');
+    else if (b.hasAttribute('data-send')) { el.classList.remove('replying'); el.classList.add('sent'); setTimeout(() => close(w), 1400); }
+    else if (b.hasAttribute('data-open')) { b.textContent = 'Opening…'; setTimeout(() => close(w), 700); }
+  });
+}
+function close(w) { w.el.classList.add('out'); w.el.addEventListener('animationend', () => { w.el.remove(); list.splice(list.indexOf(w), 1); badge(); renderThumbs(); }, { once: true }); }
+function renderThumbs() {
+  const t = $('#thumbs'); if (!list.length) { t.classList.remove('show'); return; }
+  t.innerHTML = list.slice().reverse().map((w, idx) => `<div class="th" data-i="${list.length - 1 - idx}" style="--m:${w.k.m}"><div class="tt"><i></i><span>${w.k.short}</span><b data-x>✕</b></div><div class="pv"><div class="h"></div><div class="l" style="width:70%"></div><div class="l" style="width:85%"></div><div class="l" style="width:55%"></div>${w.k.img ? '<img src="poster.jpg" alt="">' : '<div class="l" style="width:75%"></div><div class="l" style="width:60%"></div>'}</div></div>`).join('');
+  const icon = $('#ipopIcon').getBoundingClientRect(), desk = $('#desk').getBoundingClientRect();
+  t.style.left = Math.max(10, Math.min(desk.width - t.offsetWidth - 10, icon.left - desk.left + icon.width / 2 - t.offsetWidth / 2)) + 'px';
+}
+let hideT;
+$('#ipopIcon').addEventListener('mouseenter', () => { clearTimeout(hideT); if (!list.length) return; const t = $('#thumbs'); t.classList.add('show'); renderThumbs(); });
+$('#ipopIcon').addEventListener('mouseleave', () => { hideT = setTimeout(() => $('#thumbs').classList.remove('show'), 350); });
+$('#thumbs').addEventListener('mouseenter', () => clearTimeout(hideT));
+$('#thumbs').addEventListener('mouseleave', () => { hideT = setTimeout(() => $('#thumbs').classList.remove('show'), 300); });
+$('#thumbs').addEventListener('click', e => { const th = e.target.closest('.th'); if (!th) return; const w = list[+th.dataset.i]; if (!w) return; if (e.target.closest('[data-x]')) { close(w); setTimeout(renderThumbs, 320); return; } front(w); $('#thumbs').classList.remove('show'); });
+$('#ipopIcon').addEventListener('click', () => { list.forEach(w => w.el.classList.remove('min')); if (list.length) front(list[list.length - 1]); });
+function chat() {
+  const h = $('#toastHost'); h.innerHTML = `<div class="toast"><div class="th0"><img src="ipop-mark.webp" alt="">iPop · Chat<span style="margin-left:auto;cursor:pointer" onclick="this.closest('.toast').remove()">✕</span></div>
+    <div class="tb"><span class="av" style="background:#4f6b8f">NR</span><span><b>Nevylia Rachmawati</b><p>Pak, link meeting jam 10 yang mana ya?</p></span></div>
+    <div class="tr"><input placeholder="Type a reply…"><button>Send</button></div></div>`;
+  play('aDm'); setTimeout(() => { h.innerHTML = ''; }, 7000);
+}
+document.querySelectorAll('[data-demo]').forEach(b => b.onclick = () => {
+  const d = b.dataset.demo;
+  if (d === 'chat') return chat();
+  if (d === 'clear') { list.slice().forEach(close); return; }
+  if (d === 'burst') { const ks = ['mail', 'idesk', 'meeting', 'memo', 'mail', 'idesk', 'memo', 'mail', 'meeting', 'idesk']; ks.forEach((k, i) => setTimeout(() => open(k, i > 0), i * 220)); return; }
+  open(d);
+});
+// Explorer demo
+$('#demoExp').onclick = () => openMenu();
+$('#nasFile').onclick = () => openMenu();
+function openMenu() {
+  const d2 = $('#desk2'); d2.querySelectorAll('.menu,.explorer').forEach(x => x.remove());
+  const f = $('#nasFile').getBoundingClientRect(), dr = d2.getBoundingClientRect();
+  const m = document.createElement('div'); m.className = 'menu'; m.style.left = (f.left - dr.left) + 'px'; m.style.top = (f.bottom - dr.top + 6) + 'px';
+  m.innerHTML = `<button data-k="exp">📁 Open in File Explorer</button><button data-k="web">🌐 Open in browser</button><button data-k="copy">📋 Copy network path</button><small>\\\\192.168.2.16\\Logistik\\Laporan\\Stok-Q3-2026.xlsx</small>`;
+  d2.appendChild(m);
+  m.onclick = e => { const k = e.target.closest('button')?.dataset.k; m.remove(); if (k === 'exp') explorer(); };
+}
+function explorer() {
+  const d2 = $('#desk2'); const ex = document.createElement('div'); ex.className = 'explorer';
+  ex.innerHTML = `<div class="et">📁 Laporan<span style="margin-left:auto;color:var(--ink-3)">— ▢ ✕</span></div>
+    <div class="addr">🖧 \\\\192.168.2.16 › Logistik › Laporan</div>
+    <div class="rows"><div class="row">📁 Arsip 2025</div><div class="row">📗 Stok-Q2-2026.xlsx</div><div class="row sel">📗 Stok-Q3-2026.xlsx</div><div class="row">📕 SOP Gudang.pdf</div></div>`;
+  d2.appendChild(ex); ex.onclick = () => ex.remove();
+}
+setTimeout(() => open('mail', true), 500);
+</script>
+</body>
+</html>
