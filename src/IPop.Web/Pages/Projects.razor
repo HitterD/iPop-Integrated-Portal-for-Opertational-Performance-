@@ -28,7 +28,7 @@
     else
     {
         <PhoneScreen Title="@(selectedProject?.Name ?? "Project")" BackLabel="Projects" OnBack="CloseMobileDetail" LargeTitle="false" Class="m-project-workspace">
-            <Trailing><button type="button" class="ph-ib" aria-label="Project menu" @onclick="() => phoneMenu = true"><i data-lucide="ellipsis"></i></button></Trailing>
+            <Trailing><button type="button" class="m-project-menu" aria-label="Project menu" @onclick="() => phoneMenu = true"><i data-lucide="ellipsis"></i></button></Trailing>
             <ChildContent>
                 <div class="m-project-views">
                     <button type="button" aria-pressed="@(tab == 0 ? "true" : "false")" @onclick="() => SwitchTab(0)">Board</button>

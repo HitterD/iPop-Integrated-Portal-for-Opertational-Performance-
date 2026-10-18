@@ -32,6 +32,8 @@
   .m-project-new-task { display:flex; flex-direction:column; gap:12px; }
   .m-project-new-task input { min-height:48px; width:100%; box-sizing:border-box; font-size:16px; }
   .m-project-new-task p { color:var(--ink-3); font-size:14px; }
+  .m-project-menu { width:44px; height:44px; display:grid; place-items:center; border:0; border-radius:12px; background:none; color:var(--ink); }
+  .m-project-menu .lucide { width:22px; height:22px; }
   .m-project-task-nav { display:flex; align-items:center; gap:4px; padding:8px 12px; padding-top:calc(8px + var(--m-safe-t)); }
   .m-project-task-nav strong { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .m-project-task-nav button { min-width:44px; min-height:44px; }
