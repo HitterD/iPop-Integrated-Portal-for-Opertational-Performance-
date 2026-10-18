@@ -3,6 +3,7 @@
     .m-notes-home { display: none; }
     .m-notes-list { background: var(--surface); color: var(--ink); }
     .m-notes-list .ph-scroll { padding-bottom: 110px; }
+    .m-notes-list .ph-nav { background: var(--surface); }
     .m-notes-search { margin: 0 20px 16px; min-height: 44px; display: flex; align-items: center; gap: 8px; border-radius: 12px; background: var(--fill); padding: 0 12px; color: var(--ink-3); }
     .m-notes-search input { background: transparent; border: 0; min-height: 44px; min-width: 0; width: 100%; color: var(--ink); font-size: 16px; outline: none; }
     .m-notes-list .ph-segmented { display: flex; margin: 0 20px 20px; background: var(--fill); border-radius: 11px; padding: 3px; }
@@ -14,7 +15,7 @@
     .m-notes-card > span { font-size: 25px; }
     .m-notes-card b { font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
     .m-notes-card small { color: var(--ink-3); font-size: 12px; }
-    .m-notes-tree-row { display: flex; padding-left: calc(8px + var(--depth) * 14px); margin: 0 12px; border-bottom: 1px solid var(--sep); }
+    .m-notes-tree-row { display: flex; padding-left: calc(var(--depth) * 16px); margin: 0 12px 0 4px; border-bottom: 1px solid var(--sep); }
     .m-notes-chevron { min-width: 44px; width: 44px; min-height: 52px; display: grid; place-items: center; color: var(--ink-3); flex-shrink: 0; }
     .m-notes-chevron svg { width: 16px; }
     .m-notes-page-row { display: flex; align-items: center; gap: 10px; min-height: 52px; min-width: 0; flex: 1; text-align: left; font-size: 16px; }
@@ -53,4 +54,8 @@
     .m-notes-comments .nt-c-reply input { min-width: 0; font-size: 16px; }
     .m-notes-comments .ph-text-btn { min-width: 44px; color: var(--accent); }
     .notes-page.m-notes-detail ~ .nt-layer, .nt-layer.nt-move, .nt-layer.nt-share, .nt-layer.nt-history { max-width: calc(100vw - 24px); max-height: calc(var(--m-vh, 100dvh) - var(--m-safe-t, 0px) - 28px); overflow-y: auto; }
+    .nt-fmt.show { max-width: calc(100vw - 16px); overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+    .nt-fmt.show::-webkit-scrollbar { display: none; }
+    .nt-fmt button { flex-shrink: 0; height: 44px; min-width: 44px; padding: 0 10px; font-size: 15px; }
+    .nt-fmt .div { flex-shrink: 0; }
 }

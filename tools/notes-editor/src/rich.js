@@ -478,7 +478,8 @@ const above = (p, rect) => {
   const w = p.offsetWidth, h = p.offsetHeight;
   let top = rect.top - h - 8; if (top < 8) top = Math.min(rect.bottom + 8, innerHeight - h - 8);
   p.style.top = `${top}px`;
-  p.style.left = `${Math.min(Math.max(8, rect.left + rect.width / 2 - w / 2), innerWidth - w - 8)}px`;
+  // Left edge wins when the bar is wider than the screen (phones): it scrolls instead of hiding its start.
+  p.style.left = `${Math.max(8, Math.min(rect.left + rect.width / 2 - w / 2, innerWidth - w - 8))}px`;
   p.style.visibility = '';
 };
 

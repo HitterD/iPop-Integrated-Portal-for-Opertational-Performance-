@@ -156,3 +156,14 @@ test('the link-tap signal (navigatingSoon) also keeps a closing sheet from stepp
   await tick(); await tick(); await tick();
   assert.deepEqual(history.state, { page: '/projects' });
 });
+
+test('in-app back on a detail (Notes ‹ Notes) goes through history and runs the detail callback once', async () => {
+  const { history, ov, closed, ref } = setup();
+  ov.pushDetail(ref('notes'), 'PhoneNotesHistoryBack');
+  assert.equal(ov.backDetail(), true);
+  await tick();
+  assert.deepEqual(closed, ['notes:PhoneNotesHistoryBack']);
+  assert.equal(ov.count(), 0);
+  assert.equal(history.length, 1);
+  assert.equal(ov.backDetail(), false); // nothing pushed: caller navigates itself
+});

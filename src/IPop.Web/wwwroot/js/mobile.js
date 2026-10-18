@@ -58,6 +58,14 @@
         return true;
       },
       popDetail() { const d = stack.find(x => x.detail); if (d) remove(d); },
+      // In-app back that then navigates: let the browser's back run the detail's callback (same path as
+      // the hardware Back). popDetail + NavigateTo races — the async back() lands after the navigation.
+      backDetail() {
+        const d = stack.find(x => x.detail);
+        if (!d || !d.seq || d.seq !== cur() || backing) return false;
+        history.back();
+        return true;
+      },
       clearDetail() { const i = stack.findIndex(x => x.detail); if (i >= 0) stack.splice(i, 1); },
       onPopState() {
         if (backing) {
@@ -175,6 +183,8 @@
     pushDetail: (ref, method) => layers.pushDetail(ref, method),
     /** Close via the in-app back button: drop our history entry without calling back. */
     popDetail: () => layers.popDetail(),
+    /** In-app back that ends in a navigation: history.back() runs the detail callback. False = call it yourself. */
+    backDetail: () => layers.backDetail(),
     /** Forget the entry without navigating (e.g. the page is being disposed). */
     clearDetail: () => layers.clearDetail(),
     /** Overlay opened (OverlayStack): on phones Back closes it via ref.OnBack(). */

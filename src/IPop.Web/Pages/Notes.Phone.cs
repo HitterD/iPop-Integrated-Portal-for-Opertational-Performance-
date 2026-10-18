@@ -48,10 +48,11 @@ public partial class Notes
 
     private async Task PhoneNotesBack()
     {
+        if (phoneDetailPushed && await JS.InvokeAsync<bool>("ipop.mobile.backDetail")) return;
         if (phoneDetailPushed)
         {
             phoneDetailPushed = false;
-            await JS.InvokeVoidAsync("ipop.mobile.popDetail");
+            await JS.InvokeVoidAsync("ipop.mobile.clearDetail");
         }
         await PhoneNotesHistoryBack();
     }
