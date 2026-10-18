@@ -65,6 +65,9 @@
     bottom: calc(var(--m-tabbar-h, 56px) + var(--m-safe-b, 0px) + 12px) !important; align-items: stretch; }
   body.m-hide-tabbar .toast-host { bottom: calc(var(--m-safe-b, 0px) + 76px) !important; }
   .toast-host .toast { max-width: none; width: 100%; animation: ph-toast-in .4s var(--ph-ease) both; }
+  /* The FAB steps up while a toast is showing, so neither covers the other. */
+  .ph-fab, .mlx-fab, .cl-pfab, .m-chat-fab { transition: transform .3s var(--ph-ease), padding .3s var(--ph-ease); }
+  body:has(.toast-host .toast:not(.exiting)) :is(.ph-fab, .mlx-fab, .cl-pfab, .m-chat-fab) { transform: translateY(-72px); }
   .toast-host .toast.exiting { animation: ph-toast-out .25s ease-in both; }
   @keyframes ph-toast-in { from { transform: translateY(120%); opacity: 0; } to { transform: none; opacity: 1; } }
   @keyframes ph-toast-out { to { transform: translateY(120%); opacity: 0; } }
