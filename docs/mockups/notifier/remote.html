@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>iPop Notifier — Remote help mockup</title>
+<style>
+:root{
+  --frame:#123528;--frame-ink:#e7f2ec;
+  --glass:rgba(250,250,252,.9);--glass-2:rgba(255,255,255,.72);--card:#fff;--fill:rgba(118,118,128,.12);--sep:rgba(60,60,67,.13);
+  --ink:#1d1d1f;--ink-2:#3c3c43;--ink-3:#6e6e73;--ink-4:#aeaeb2;--green:#2e9e5b;--green-2:#278a4f;--red:#ff3b30;--amber:#ff9f0a;--blue:#0a84ff;--tix:#2563eb;--sys:#6f8290;
+  --shadow:0 30px 70px -20px rgba(0,0,0,.5),0 0 0 .5px rgba(0,0,0,.14);
+  --spring:cubic-bezier(.32,.72,0,1);--pop:cubic-bezier(.34,1.56,.64,1);
+}
+body.dark{
+  --glass:rgba(32,32,34,.92);--glass-2:rgba(44,44,46,.8);--card:#1c1c1e;--fill:rgba(118,118,128,.24);--sep:rgba(84,84,88,.55);
+  --ink:#f5f5f7;--ink-2:#d1d1d6;--ink-3:#98989d;--ink-4:#636366;--green:#30d158;--green-2:#28b84c;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Segoe UI Variable Text","Segoe UI",-apple-system,system-ui,sans-serif;font-size:15px;color:var(--ink);background:#e8ece9}
+body.dark{background:#0b0b0c}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input{font:inherit;color:inherit}
+svg.lucide{width:18px;height:18px;stroke-width:1.9;flex:none}
+.top{position:sticky;top:0;z-index:200;display:flex;align-items:center;gap:12px;padding:10px 22px;background:var(--frame);color:var(--frame-ink);flex-wrap:wrap}
+.top img{width:26px;height:26px;border-radius:7px;background:#fff;padding:2px}
+.top h1{font-size:16px}.top h1 span{opacity:.7;font-weight:500}
+.top nav{display:flex;gap:4px;margin-left:12px;flex-wrap:wrap}
+.top nav a{color:var(--frame-ink);text-decoration:none;font-size:12.5px;font-weight:600;padding:6px 11px;border-radius:999px;opacity:.85}
+.top nav a:hover{background:rgba(255,255,255,.12);opacity:1}
+.top .r{margin-left:auto;display:flex;gap:6px}
+.top .r button{height:30px;padding:0 13px;border-radius:999px;background:rgba(255,255,255,.12);color:var(--frame-ink);font-size:12.5px;font-weight:600}
+.top .r button.on{background:#fff;color:#123528}
+section.g{max-width:1480px;margin:0 auto;padding:26px 22px 8px;scroll-margin-top:56px}
+section.g>h2{font-size:20px;margin-bottom:4px}
+body.dark section.g>h2{color:#f5f5f7}
+section.g>p{font-size:13.5px;color:#5b6660;margin-bottom:12px;max-width:1000px;line-height:1.5}
+body.dark section.g>p{color:#98a39d}
+.ctl{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.ctl button{height:32px;padding:0 14px;border-radius:999px;background:#123528;color:#e7f2ec;font-size:12.5px;font-weight:600}
+.two{display:grid;grid-template-columns:1.35fr 1fr;gap:18px}
+.lbl{font-size:12px;font-weight:700;color:#5b6660;text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px}
+body.dark .lbl{color:#98a39d}
+
+/* ===== ICT viewer window ===== */
+.viewer{border-radius:12px;overflow:hidden;background:#111;box-shadow:var(--shadow);display:flex;flex-direction:column;height:640px}
+.vt{height:46px;display:flex;align-items:center;gap:10px;padding:0 6px 0 14px;background:var(--glass);color:var(--ink);flex:none}
+.vt img{width:24px;height:24px;border-radius:7px}
+.vt b{font-size:14px}.vt small{color:var(--ink-3);font-size:12.5px}
+.vt .live{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#fff;background:var(--green);padding:3px 9px;border-radius:999px}
+.vt .live i{width:7px;height:7px;border-radius:50%;background:#fff;animation:pulse 1.4s infinite}
+@keyframes pulse{50%{opacity:.35}}
+.vt .stats{display:flex;gap:10px;margin-left:auto;font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.vt .stats span{display:flex;align-items:center;gap:4px}
+.vt .stats .ok{color:var(--green);font-weight:700}
+.wc{width:44px;height:34px;border-radius:6px;display:grid;place-items:center;color:var(--ink-3)}
+.wc:hover{background:var(--fill)}
+.wc.x:hover{background:#e81123;color:#fff}
+.tbar{display:flex;align-items:center;gap:4px;padding:6px 10px;background:var(--glass-2);border-top:.5px solid var(--sep);border-bottom:.5px solid var(--sep);flex:none;flex-wrap:wrap}
+.tb{height:34px;padding:0 9px;white-space:nowrap;border-radius:9px;display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--ink);transition:background .15s,transform .12s var(--spring)}
+.tb:hover{background:var(--fill)}
+.tb:active{transform:scale(.96)}
+.tb.on{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}
+.tb.r{color:#fff;background:var(--red)}
+.tb .sp{width:1px;height:22px;background:var(--sep);margin:0 4px}
+.seg{display:flex;padding:2px;border-radius:9px;background:var(--fill)}
+.seg button{height:30px;padding:0 10px;border-radius:7px;font-size:12.5px;font-weight:600;color:var(--ink-3)}
+.seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.screen{flex:1;position:relative;background:#1d4e6b;overflow:hidden;display:flex}
+.remote-desk{flex:1;position:relative;background:linear-gradient(135deg,#1d4e6b 0%,#3a6f8f 40%,#7aa6b8 100%)}
+.remote-desk .app{position:absolute;left:6%;top:8%;width:58%;height:62%;border-radius:8px;background:#fff;box-shadow:0 20px 40px -20px rgba(0,0,0,.5);overflow:hidden}
+.remote-desk .app .t{height:26px;background:#f1f3f5;display:flex;align-items:center;padding:0 10px;font-size:11px;color:#555}
+.remote-desk .app .row{height:9px;border-radius:5px;background:#e5e7eb;margin:12px 14px}
+.remote-desk .err{position:absolute;left:30%;top:34%;width:300px;border-radius:8px;background:#fff;box-shadow:0 20px 40px -10px rgba(0,0,0,.5);padding:14px;font-size:12px;color:#222}
+.remote-desk .err b{display:flex;align-items:center;gap:6px;color:#c42b1c;margin-bottom:6px}
+.remote-desk .tbar2{position:absolute;left:0;right:0;bottom:0;height:30px;background:rgba(240,243,246,.85);display:flex;align-items:center;justify-content:center;gap:6px}
+.remote-desk .tbar2 i{width:18px;height:18px;border-radius:4px;background:rgba(0,0,0,.18)}
+.cursor{position:absolute;width:18px;height:18px;left:52%;top:46%;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4));transition:left .5s var(--spring),top .5s var(--spring)}
+.media-ghost{position:absolute;right:14px;top:14px;display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:9px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;backdrop-filter:blur(10px)}
+/* side panel (chat/files/media) */
+.side{width:0;overflow:hidden;background:var(--glass);transition:width .35s var(--spring);display:flex;flex-direction:column;color:var(--ink)}
+.side.on{width:320px}
+.side .sh{display:flex;align-items:center;gap:8px;padding:12px 14px;font-weight:700;border-bottom:.5px solid var(--sep)}
+.side .sh small{margin-left:auto;font-weight:500;color:var(--ink-3);font-size:12px}
+.side .tabs{display:flex;margin:10px 12px 6px;padding:2px;border-radius:9px;background:var(--fill)}
+.side .tabs button{flex:1;height:30px;border-radius:7px;font-size:12.5px;font-weight:600;color:var(--ink-3);display:flex;align-items:center;justify-content:center;gap:5px}
+.side .tabs button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.side .body{flex:1;overflow:auto;padding:8px 12px}
+.msg{max-width:84%;padding:8px 11px;border-radius:14px;font-size:13.5px;line-height:1.4;margin:6px 0;animation:in .3s var(--spring)}
+.msg.me{margin-left:auto;background:var(--green);color:#fff;border-bottom-right-radius:5px}
+.msg.them{background:var(--fill);border-bottom-left-radius:5px}
+.note{font-size:11.5px;color:var(--ink-3);text-align:center;margin:8px 0;display:flex;align-items:center;justify-content:center;gap:5px}
+.compose{display:flex;gap:6px;padding:10px 12px;border-top:.5px solid var(--sep)}
+.compose input{flex:1;height:36px;border-radius:10px;border:0;background:var(--fill);padding:0 12px;outline:none}
+.compose button{width:36px;height:36px;border-radius:10px;background:var(--green);color:#fff;display:grid;place-items:center}
+.file{display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;background:var(--fill);margin:8px 0;font-size:13px}
+.file .fi{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:#fff;flex:none}
+.file .m{flex:1;min-width:0}.file .m b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file .m small{color:var(--ink-3);font-size:12px}
+.bar{height:5px;border-radius:3px;background:var(--sep);margin-top:6px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--green);border-radius:3px;transition:width .4s}
+.drop{border:1.5px dashed var(--ink-4);border-radius:12px;padding:18px;text-align:center;color:var(--ink-3);font-size:13px;margin:8px 0;display:flex;flex-direction:column;align-items:center;gap:6px}
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mt{position:relative;aspect-ratio:16/10;border-radius:10px;overflow:hidden;cursor:pointer;box-shadow:0 0 0 .5px var(--sep);transition:transform .15s var(--spring)}
+.mt:hover{transform:translateY(-2px)}
+.mt.on{box-shadow:0 0 0 2.5px var(--green)}
+.mt .k{position:absolute;left:6px;bottom:6px;font-size:10.5px;font-weight:700;color:#fff;background:rgba(0,0,0,.55);padding:2px 6px;border-radius:6px;display:flex;align-items:center;gap:4px}
+.mt .k svg{width:12px;height:12px}
+.mt .def{position:absolute;inset:0;display:grid;place-items:center;background:linear-gradient(135deg,#123528,#2e9e5b);color:#fff}
+.mt .def img{width:40px;height:40px;border-radius:11px;background:#fff;padding:3px}
+.mopts{display:flex;align-items:center;gap:8px;margin:10px 0 2px;font-size:13px}
+.sw{width:44px;height:26px;border-radius:13px;background:var(--fill);position:relative;transition:background .2s;flex:none;cursor:pointer}
+.sw::after{content:"";position:absolute;left:2px;top:2px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .25s var(--spring)}
+.sw.on{background:#34c759}.sw.on::after{transform:translateX(18px)}
+@keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* ===== user's PC ===== */
+.user{position:relative;height:640px;border-radius:12px;overflow:hidden;background:linear-gradient(135deg,#1d4e6b 0%,#3a6f8f 40%,#7aa6b8 100%);box-shadow:var(--shadow)}
+.user .app{position:absolute;left:5%;top:7%;width:62%;height:60%;border-radius:8px;background:#fff;box-shadow:0 20px 40px -20px rgba(0,0,0,.5)}
+.user .app .t{height:26px;background:#f1f3f5;border-radius:8px 8px 0 0}
+.user .app .row{height:9px;border-radius:5px;background:#e5e7eb;margin:12px 14px}
+.user .tb3{position:absolute;left:0;right:0;bottom:0;height:40px;background:rgba(240,243,246,.85);backdrop-filter:blur(20px);display:flex;align-items:center;justify-content:center;gap:6px}
+.user .tb3 .tic{width:28px;height:28px;border-radius:6px;background:rgba(0,0,0,.12)}
+.user .tb3 .ipop{position:absolute;right:12px;display:flex;align-items:center;gap:10px;font-size:11px;color:#333}
+.user .tb3 .ipop img{width:18px;height:18px;border-radius:5px;box-shadow:0 0 0 2px var(--green)}
+.frame{position:absolute;inset:0;border:4px solid var(--green);border-radius:12px;pointer-events:none;opacity:0;transition:opacity .4s}
+.frame.on{opacity:1;animation:framePulse 3s ease-in-out infinite}
+@keyframes framePulse{50%{border-color:color-mix(in srgb,var(--green) 55%,transparent)}}
+.frame .tag{position:absolute;top:0;left:50%;transform:translateX(-50%);background:var(--green);color:#fff;font-size:11.5px;font-weight:700;padding:3px 10px 4px;border-radius:0 0 9px 9px;display:flex;align-items:center;gap:6px}
+.frame .tag svg{width:13px;height:13px}
+/* consent prompt */
+.consent{position:absolute;right:16px;bottom:52px;width:400px;border-radius:16px;background:var(--glass);backdrop-filter:blur(36px) saturate(1.6);box-shadow:var(--shadow);padding:16px;animation:pop .45s var(--spring)}
+@keyframes pop{from{opacity:0;transform:translateY(20px) scale(.97)}to{opacity:1;transform:none}}
+.consent .h{display:flex;align-items:center;gap:12px}
+.consent .av{width:46px;height:46px;border-radius:13px;background:#4f6b8f;color:#fff;font-weight:700;display:grid;place-items:center;flex:none}
+.consent .h b{display:block;font-size:15.5px}.consent .h small{color:var(--ink-3);font-size:12.5px}
+.consent p{font-size:13.5px;color:var(--ink-2);margin:12px 0;line-height:1.45}
+.consent .opts{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;font-size:13px;color:var(--ink-2)}
+.consent .opts span{display:flex;align-items:center;gap:8px}
+.consent .opts svg{width:16px;height:16px;color:var(--green)}
+.consent .acts{display:flex;gap:8px;align-items:center}
+.consent .acts button{height:40px;border-radius:11px;font-weight:700;font-size:14px;flex:1}
+.consent .acts .no{background:var(--fill)}
+.consent .acts .yes{background:var(--green);color:#fff}
+.consent .count{height:4px;border-radius:2px;background:var(--fill);margin-top:12px;overflow:hidden}
+.consent .count i{display:block;height:100%;background:var(--ink-4);width:100%;transition:width 30s linear}
+/* "ICT is helping you" media window */
+.help{position:absolute;left:12%;top:12%;width:76%;height:66%;border-radius:16px;background:#0f2a1f;box-shadow:0 40px 90px -20px rgba(0,0,0,.65);overflow:hidden;display:flex;flex-direction:column;animation:pop .5s var(--spring);transition:transform .45s var(--spring),opacity .35s,left .45s var(--spring),top .45s var(--spring),width .45s var(--spring),height .45s var(--spring)}
+.help.min{left:auto;right:12px;top:auto;bottom:48px;width:300px;height:64px;border-radius:14px}
+.help.min .media,.help.min .foot{display:none}
+.help .ht{height:44px;display:flex;align-items:center;gap:10px;padding:0 6px 0 14px;color:#e7f2ec;background:rgba(255,255,255,.06);flex:none}
+.help .ht img{width:24px;height:24px;border-radius:7px;background:#fff;padding:2px}
+.help .ht b{font-size:14px}.help .ht small{opacity:.7;font-size:12px}
+.help .ht .wc{color:#cfe3d8}.help .ht .wc:hover{background:rgba(255,255,255,.12)}
+.help.min .ht{height:64px}
+.help .media{flex:1;position:relative;overflow:hidden}
+.help .media .slide{position:absolute;inset:0;background-size:cover;background-position:center;transition:opacity .6s}
+.help .media .def{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#e7f2ec;
+  background:radial-gradient(120% 90% at 50% 0%,#1a4a37 0%,#123528 60%,#0d2a1f 100%)}
+.help .media .def::before{content:"";position:absolute;inset:0;opacity:.18;background:url("batik.svg") 0 0/54px 54px repeat}
+.help .media .def .lg{position:relative;width:96px;height:96px;border-radius:28px;background:#fff;display:grid;place-items:center;box-shadow:0 20px 40px -14px rgba(0,0,0,.6);animation:bob 3s ease-in-out infinite}
+.help .media .def .lg img{width:70px;height:70px}
+@keyframes bob{50%{transform:translateY(-8px)}}
+.help .media .def h3{position:relative;font-size:28px}
+.help .media .def p{position:relative;opacity:.8;font-size:15px}
+.help .media .dots{position:relative;display:flex;gap:8px}
+.help .media .dots i{width:9px;height:9px;border-radius:50%;background:#30d158;animation:dot 1.2s infinite}
+.help .media .dots i:nth-child(2){animation-delay:.2s}.help .media .dots i:nth-child(3){animation-delay:.4s}
+@keyframes dot{50%{opacity:.3;transform:scale(.7)}}
+.help .foot{display:flex;align-items:center;gap:12px;padding:12px 16px;color:#e7f2ec;background:rgba(0,0,0,.25);flex:none}
+.help .foot .av{width:36px;height:36px;border-radius:10px;background:#4f6b8f;display:grid;place-items:center;font-weight:700;flex:none}
+.help .foot>span:nth-child(2){min-width:0;flex:1}
+.help .foot b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.help .foot small{display:block;opacity:.75;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.help .foot .t{font-variant-numeric:tabular-nums;opacity:.8;font-size:13px;display:flex;align-items:center;gap:6px}
+.help .foot .end{height:38px;padding:0 16px;white-space:nowrap;flex:none;border-radius:10px;background:#ff3b30;color:#fff;font-weight:700;display:flex;align-items:center;gap:6px}
+.help .foot .chat{flex:none;height:38px;padding:0 14px;border-radius:10px;background:rgba(255,255,255,.12);font-weight:600;display:flex;align-items:center;gap:6px}
+.uchat{position:absolute;right:16px;bottom:52px;width:320px;border-radius:14px;background:var(--glass);box-shadow:var(--shadow);overflow:hidden;animation:pop .35s var(--spring)}
+.uchat .sh{display:flex;align-items:center;gap:8px;padding:10px 12px;font-weight:700;border-bottom:.5px solid var(--sep);font-size:14px}
+.uchat .body{padding:6px 12px;max-height:180px;overflow:auto}
+.ended{position:absolute;right:16px;bottom:52px;width:360px;border-radius:14px;background:var(--glass);box-shadow:var(--shadow);padding:14px;display:flex;gap:12px;align-items:center;animation:pop .4s var(--spring)}
+.ended .ck{width:34px;height:34px;border-radius:50%;background:var(--green);color:#fff;display:grid;place-items:center;flex:none}
+.ended b{display:block}.ended small{color:var(--ink-3);font-size:12.5px}
+
+/* ===== devices + log ===== */
+.console{display:grid;grid-template-columns:330px 1fr;border-radius:12px;overflow:hidden;box-shadow:var(--shadow);background:var(--card);min-height:560px}
+.console .left{border-right:.5px solid var(--sep);background:var(--glass-2)}
+.console .lh{padding:14px;display:flex;align-items:center;gap:8px;font-weight:700}
+.console .lh .lock{margin-left:auto;font-size:11px;font-weight:700;color:#fff;background:#6f8290;padding:2px 8px;border-radius:999px}
+.console .srch{margin:0 14px 10px;height:38px;border-radius:10px;background:var(--fill);display:flex;align-items:center;gap:8px;padding:0 10px;color:var(--ink-3);font-size:13.5px}
+.dev{display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer;border-top:.5px solid var(--sep)}
+.dev:hover,.dev.on{background:var(--fill)}
+.dev .pc{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;background:#6f8290;color:#fff;flex:none;position:relative}
+.dev .pc .d{position:absolute;right:-2px;bottom:-2px;width:12px;height:12px;border-radius:50%;background:#34c759;box-shadow:0 0 0 2px var(--card)}
+.dev .pc .d.off{background:var(--ink-4)}
+.dev b{display:block;font-size:14px}.dev small{display:block;font-size:12.5px;color:var(--ink-3)}
+.dev .ua{margin-left:auto;font-size:10.5px;font-weight:700;color:var(--amber);background:rgba(255,159,10,.15);padding:2px 7px;border-radius:999px}
+.console .right{padding:20px 24px}
+.console h3{font-size:22px}
+.console .sub{color:var(--ink-3);font-size:13.5px;margin:2px 0 14px}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:8px 12px;font-size:14px;margin-bottom:16px}
+.kv span:nth-child(odd){color:var(--ink-3)}
+.acts2{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+.acts2 button{height:42px;padding:0 18px;border-radius:11px;background:var(--fill);font-weight:600;display:flex;align-items:center;gap:8px}
+.acts2 button.p{background:var(--green);color:#fff}
+.urow{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:var(--fill);margin-bottom:16px;font-size:13.5px}
+.urow .t{flex:1}.urow small{display:block;color:var(--ink-3);font-size:12px}
+table.log{width:100%;border-collapse:collapse;font-size:13px}
+table.log th{text-align:left;color:var(--ink-3);font-weight:600;padding:8px;border-bottom:.5px solid var(--sep)}
+table.log td{padding:9px 8px;border-bottom:.5px solid var(--sep)}
+.pill{font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--fill)}
+.notes{max-width:1480px;margin:0 auto;padding:6px 22px 40px;font-size:13.5px;color:#5b6660;line-height:1.55}
+.notes li{margin:5px 0 0 18px}
+body.dark .notes{color:#98a39d}
+@media (prefers-reduced-motion: reduce){*{animation-duration:.01s !important;transition:none !important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <img src="ipop-mark.webp" alt="">
+  <h1>iPop Notifier <span>· Remote help mockup</span></h1>
+  <nav><a href="#session">1 Remote session (ICT ↔ user)</a><a href="#consent">2 Asking the user</a><a href="#media">3 My media</a><a href="#devices">4 Devices &amp; log</a></nav>
+  <div class="r"><button id="bDark">Dark</button></div>
+</header>
+
+<!-- ===================== 1 ===================== -->
+<section class="g" id="session">
+  <h2>1 · Remote session — what ICT sees (left) and what the user sees (right)</h2>
+  <p>ICT works in a full window: the user's screen at up to 60 fps (fps and ping always shown), toolbar with Control / View only, monitor, Smoothest/Best quality, Ctrl+Alt+Del, clipboard sync (text, images, files), send file, chat, media. The user sees a large <b>“ICT is helping you”</b> window with your media — it is <b>not</b> sent back to ICT (the little label on the left says it's there). Minimise it on either side and it minimises on the user's screen. A green frame stays round the user's screen while the session runs.</p>
+  <div class="ctl">
+    <button data-a="min">Minimise media window (from ICT)</button>
+    <button data-a="media2">Switch media: video</button>
+    <button data-a="chat">Chat message</button>
+    <button data-a="file">Send a file</button>
+    <button data-a="view">View only</button>
+    <button data-a="end">End session</button>
+    <button data-a="reset">Reset</button>
+  </div>
+  <div class="two">
+    <div>
+      <div class="lbl">ICT · Bagas (this PC)</div>
+      <div class="viewer">
+        <div class="vt"><img src="ipop-mark.webp" alt=""><span><b>LOGISTIC33</b> <small>· Budi Santoso · 10.12.4.33</small></span><span class="live" id="live"><i></i><span id="liveTxt">Controlling</span></span>
+          <span class="stats"><span><i data-lucide="gauge"></i><b class="ok" id="fps">60</b> fps</span><span><i data-lucide="activity"></i><b id="ping">6</b> ms</span><span>1920×1080 · H.264</span></span>
+          <button class="wc"><i data-lucide="minus"></i></button><button class="wc"><i data-lucide="maximize-2"></i></button><button class="wc x"><i data-lucide="x"></i></button></div>
+        <div class="tbar">
+          <div class="seg" id="mode"><button class="on" data-m="ctl"><i data-lucide="mouse-pointer-2"></i> Control</button><button data-m="view"><i data-lucide="eye"></i> View only</button></div>
+          <span class="sp"></span>
+          <button class="tb"><i data-lucide="monitor"></i>Screen 1 <i data-lucide="chevron-down"></i></button>
+          <div class="seg"><button class="on">Smoothest</button><button>Best quality</button></div>
+          <button class="tb" title="Ctrl+Alt+Del"><i data-lucide="keyboard"></i>C+A+D</button>
+          <button class="tb on" title="Clipboard sync: text, images and files"><i data-lucide="clipboard-copy"></i>Clipboard</button>
+          <span class="sp"></span>
+          <button class="tb" data-p="files"><i data-lucide="file-up"></i>Files</button>
+          <button class="tb" data-p="chat"><i data-lucide="message-circle"></i>Chat</button>
+          <button class="tb on" data-p="media"><i data-lucide="image"></i>Media</button>
+          <button class="tb" data-a="min" title="Minimise the media window on the user's screen"><i data-lucide="panel-bottom-close"></i><span id="minLbl">Minimise</span></button>
+          <span style="flex:1"></span>
+          <button class="tb r" data-a="end"><i data-lucide="phone-off"></i>End</button>
+        </div>
+        <div class="screen">
+          <div class="remote-desk">
+            <div class="app"><div class="t">SAP Logon — Error</div><div class="row" style="width:70%"></div><div class="row" style="width:82%"></div><div class="row" style="width:55%"></div><div class="row" style="width:76%"></div></div>
+            <div class="err"><b><i data-lucide="circle-x"></i>Printer not found</b>Printer \\PRN-LOG-02 is offline. Check the connection and try again.</div>
+            <svg class="cursor" id="cur" viewBox="0 0 24 24"><path d="M4 2l15 9-6.5 1.5L9 19z" fill="#fff" stroke="#111" stroke-width="1.4"/></svg>
+            <div class="tbar2"><i></i><i></i><i></i><i></i></div>
+            <div class="media-ghost" id="ghost"><i data-lucide="eye-off"></i>Your media is showing on Budi's screen (hidden from you)</div>
+          </div>
+          <div class="side on" id="side">
+            <div class="sh"><span id="sideTitle">Media</span><small id="sideNote">Shown only on the user's screen</small></div>
+            <div class="tabs"><button data-p="media" class="on"><i data-lucide="image"></i>Media</button><button data-p="chat"><i data-lucide="message-circle"></i>Chat</button><button data-p="files"><i data-lucide="file-up"></i>Files</button></div>
+            <div class="body" id="sideBody"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="lbl">User · Budi (LOGISTIC33)</div>
+      <div class="user" id="userPc">
+        <div class="app"><div class="t"></div><div class="row" style="width:70%"></div><div class="row" style="width:82%"></div><div class="row" style="width:55%"></div></div>
+        <div class="help" id="help">
+          <div class="ht"><img src="ipop-mark.webp" alt=""><span><b>ICT is helping you</b> <small>· Bagas from ICT</small></span><span style="flex:1"></span><span class="t" style="display:flex;align-items:center;gap:6px;opacity:.8;font-size:13px;font-variant-numeric:tabular-nums;color:#e7f2ec"><i data-lucide="timer"></i><span id="tm">04:12</span></span><button class="wc" data-a="umin"><i data-lucide="minus"></i></button></div>
+          <div class="media" id="media"></div>
+          <div class="foot"><span class="av">BA</span><span><b>Bagas Anggoro · ICT</b><small>is helping on this PC · you can keep working</small></span>
+            <button class="chat" data-a="uchat"><i data-lucide="message-circle"></i>Chat</button>
+            <button class="end" data-a="end"><i data-lucide="phone-off"></i>End session</button></div>
+        </div>
+        <div class="frame on" id="frame"><span class="tag"><i data-lucide="screen-share"></i>ICT is connected · Bagas</span></div>
+        <div id="uPop"></div>
+        <div class="tb3"><span class="tic"></span><span class="tic"></span><span class="tic"></span><span class="ipop"><img src="ipop-mark.webp" alt="">09:41</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 2 ===================== -->
+<section class="g" id="consent">
+  <h2>2 · Asking the user first (30 seconds)</h2>
+  <p>Every session starts with this prompt unless Admin marked the PC <b>unattended</b> (kiosk, server). It stays on top, doesn't take the keyboard, and closes as “declined” after 30 s. A second ICT asking to join gets the same prompt, marked <i>view only</i>.</p>
+  <div class="ctl"><button data-c="ask">Show prompt</button><button data-c="join">Second ICT asks to watch</button></div>
+  <div class="user" style="height:420px" id="consentPc">
+    <div class="app"><div class="t"></div><div class="row" style="width:70%"></div><div class="row" style="width:82%"></div></div>
+    <div id="cHost"></div>
+    <div class="tb3"><span class="tic"></span><span class="tic"></span><span class="ipop"><img src="ipop-mark.webp" alt="">09:40</span></div>
+  </div>
+</section>
+
+<!-- ===================== 3 ===================== -->
+<section class="g" id="media">
+  <h2>3 · My media — each ICT's own pictures and videos</h2>
+  <p>Upload once, pick during any session. Stored on the NAS through iPop (JPG, PNG, GIF, WEBP, MP4, WEBM · up to 200 MB each, 2 GB per person). Videos play muted unless you switch sound on. Nothing picked = the built-in iPop “ICT is helping you” animation.</p>
+  <div class="console" style="grid-template-columns:1fr;min-height:auto">
+    <div style="padding:18px 22px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><h3 style="font-size:20px">My media</h3><small style="color:var(--ink-3)">6 items · 412 MB of 2 GB</small><span style="flex:1"></span>
+        <button class="tb" style="background:var(--green);color:#fff"><i data-lucide="upload"></i>Upload</button></div>
+      <div class="mgrid" style="grid-template-columns:repeat(6,1fr)" id="gallery"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 4 ===================== -->
+<section class="g" id="devices">
+  <h2>4 · Devices — start remote help, unattended PCs, session log</h2>
+  <p>Admin + ICT only (per-person switch in Admin). Admin can mark a PC <b>unattended</b>; ICT can't. Every session is logged (who, PC, start, length, files) and kept a year — Admin sees all, ICT their own, users see who helped their PC in Settings → Account.</p>
+  <div class="console">
+    <div class="left">
+      <div class="lh"><img src="ipop-mark.webp" alt="" style="width:22px;height:22px;border-radius:6px">Devices<span class="lock">ICT only</span></div>
+      <div class="srch"><i data-lucide="search"></i>Search name, PC, IP…</div>
+      <div class="dev on"><span class="pc"><i data-lucide="monitor"></i><i class="d"></i></span><span><b>LOGISTIC33</b><small>Budi Santoso · 10.12.4.33</small></span></div>
+      <div class="dev"><span class="pc"><i data-lucide="monitor"></i><i class="d"></i></span><span><b>KIOSK-LOBBY-01</b><small>Kiosk · 10.10.6.90</small></span><span class="ua">UNATTENDED</span></div>
+      <div class="dev"><span class="pc"><i data-lucide="laptop"></i><i class="d"></i></span><span><b>HCBP-LT-12</b><small>Amelia Yolanda · 192.168.3.112</small></span></div>
+      <div class="dev"><span class="pc"><i data-lucide="monitor"></i><i class="d off"></i></span><span><b>PPIC-SMG-02</b><small>Yudi · last seen 2 h ago</small></span></div>
+    </div>
+    <div class="right">
+      <h3>LOGISTIC33</h3><div class="sub">Online · iPop Notifier 1.1.0 · Remote Helper installed</div>
+      <div class="kv"><span>User</span><span>Budi Santoso (Logistic · SJA Karawang)</span><span>Windows user</span><span>SJA\budi.santoso</span><span>IP address</span><span>10.12.4.33</span><span>Windows</span><span>Windows 11 Pro 24H2 · 2 screens</span></div>
+      <div class="acts2"><button class="p"><i data-lucide="screen-share"></i>Remote help</button><button><i data-lucide="eye"></i>View only</button><button><i data-lucide="message-circle"></i>Chat</button><button><i data-lucide="copy"></i>Copy IP</button></div>
+      <div class="urow"><i data-lucide="shield-check"></i><span class="t"><b>Unattended access</b><small>Connect without asking the user. Admin only; every change is logged.</small></span><span class="sw"></span></div>
+      <div class="lbl" style="margin-top:4px">Session log · LOGISTIC33</div>
+      <table class="log"><tr><th>When</th><th>ICT</th><th>Length</th><th>Mode</th><th>Files</th></tr>
+        <tr><td>Today 09:37</td><td>Bagas Anggoro</td><td>4 min (live)</td><td><span class="pill">Control</span></td><td>driver-prn.zip</td></tr>
+        <tr><td>Thu 14:02</td><td>Kevin Cornelius</td><td>12 min</td><td><span class="pill">Control</span></td><td>—</td></tr>
+        <tr><td>Mon 10:15</td><td>Andrew Setiawan</td><td>3 min</td><td><span class="pill">View only</span></td><td>—</td></tr></table>
+    </div>
+  </div>
+</section>
+
+<div class="notes"><b>Behaviour</b><ul>
+  <li>Office network only (LAN + the four sites). Video H.264 from the graphics card, 60 fps target; native up to 1440p, steps down to 1080p/900p when the line is busy — fps and ping always visible.</li>
+  <li>Clipboard both ways: text, images and files (big files show progress). Chat lives only for the session — never stored.</li>
+  <li>The media window is excluded from screen capture, so ICT never sees it; “Minimise on user” minimises it on the user's PC; the user can minimise it too. End session is always one click for the user.</li>
+  <li>UAC prompts, the lock screen and Ctrl+Alt+Del need the optional iPop Remote Helper service (installed by ICT once). Without it those show black and ICT sees a hint.</li>
+  <li>A second ICT can watch (view only) after the user allows it; control can be handed over.</li>
+</ul></div>
+
+<script src="lucide.min.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const icons = () => lucide.createIcons({ attrs: { 'stroke-width': 1.9 } });
+$('#bDark').onclick = e => { document.body.classList.toggle('dark'); e.target.classList.toggle('on'); };
+// media
+const MEDIA = [
+  { k: 'default', name: 'iPop (default)' },
+  { k: 'img', name: 'Coffee break', src: 'poster.jpg' },
+  { k: 'vid', name: 'Tutorial', grad: 'linear-gradient(135deg,#2563eb,#1f8fa6)' },
+  { k: 'img', name: 'Kapal Api', grad: 'linear-gradient(135deg,#c2442e,#ff9f0a)' },
+  { k: 'img', name: 'Team', grad: 'linear-gradient(135deg,#5562b8,#a0457a)' },
+  { k: 'vid', name: 'Please wait', grad: 'linear-gradient(135deg,#123528,#30d158)' },
+];
+let cur = 0, minimised = false, view = false, panel = 'media', secs = 252;
+function thumb(m, i) {
+  const bg = m.src ? `background:url(${m.src}) center/cover` : m.grad ? `background:${m.grad}` : '';
+  return `<div class="mt ${i === cur ? 'on' : ''}" data-i="${i}" style="${bg}">${m.k === 'default' ? '<div class="def"><img src="ipop-mark.webp" alt=""></div>' : ''}<span class="k">${m.k === 'vid' ? '<i data-lucide="play"></i>' : '<i data-lucide="image"></i>'}${m.name}</span></div>`;
+}
+function renderMedia() {
+  const m = MEDIA[cur], el = $('#media');
+  if (m.k === 'default') el.innerHTML = `<div class="def"><div class="lg"><img src="ipop-mark.webp" alt=""></div><h3>ICT is helping you</h3><p>Bagas is fixing your printer. You can keep watching.</p><div class="dots"><i></i><i></i><i></i></div></div>`;
+  else el.innerHTML = `<div class="slide" style="background:${m.src ? `url(${m.src}) center/cover` : m.grad}"></div>${m.k === 'vid' ? '<div class="def" style="background:transparent"><div class="lg" style="width:74px;height:74px;border-radius:50%;background:rgba(255,255,255,.9)"><i data-lucide="play" style="width:30px;height:30px;color:#123528"></i></div></div>' : ''}`;
+  icons();
+}
+function renderSide() {
+  document.querySelectorAll('.side .tabs button').forEach(b => b.classList.toggle('on', b.dataset.p === panel));
+  const titles = { media: ['Media', "Shown only on the user's screen"], chat: ['Chat', 'Not saved'], files: ['Files', 'Both ways · drop to send'] };
+  $('#sideTitle').textContent = titles[panel][0]; $('#sideNote').textContent = titles[panel][1];
+  const b = $('#sideBody');
+  if (panel === 'media') b.innerHTML = `<div class="mgrid">${MEDIA.map(thumb).join('')}</div><div class="mopts"><span class="sw"></span>Video sound</div><div class="mopts"><span class="sw on"></span>Show media window</div>`;
+  if (panel === 'chat') b.innerHTML = `<div class="note"><i data-lucide="lock"></i>Chat isn't saved — it ends with the session</div><div class="msg them">Pak, printernya error lagi 🙏</div><div class="msg me">Siap, saya cek driver-nya ya.</div>`;
+  if (panel === 'files') b.innerHTML = `<div class="drop"><i data-lucide="upload-cloud"></i>Drop files to send to LOGISTIC33<small>or copy them — clipboard sync carries files too</small></div>
+    <div class="file"><span class="fi" style="background:#2563eb"><i data-lucide="file-archive"></i></span><span class="m"><b>driver-prn.zip</b><small>To Budi · 18.4 MB</small><div class="bar"><i style="width:100%"></i></div></span><i data-lucide="check" style="color:var(--green)"></i></div>
+    <div class="file"><span class="fi" style="background:#6f8290"><i data-lucide="file-text"></i></span><span class="m"><b>error-log.txt</b><small>From Budi · 12 KB</small></span><i data-lucide="download"></i></div>`;
+  icons();
+}
+$('#side').addEventListener('click', e => {
+  const t = e.target.closest('.tabs button'); if (t) { panel = t.dataset.p; renderSide(); return; }
+  const m = e.target.closest('.mt'); if (m) { cur = +m.dataset.i; renderMedia(); renderSide(); }
+  const s = e.target.closest('.sw'); if (s) s.classList.toggle('on');
+});
+document.querySelectorAll('.tbar [data-p]').forEach(b => b.onclick = () => { panel = b.dataset.p; $('#side').classList.add('on'); document.querySelectorAll('.tbar [data-p]').forEach(x => x.classList.toggle('on', x === b)); renderSide(); });
+$('#mode').onclick = e => { const b = e.target.closest('button'); if (!b) return; view = b.dataset.m === 'view'; document.querySelectorAll('#mode button').forEach(x => x.classList.toggle('on', x === b)); $('#liveTxt').textContent = view ? 'Viewing' : 'Controlling'; };
+function setMin(v) { minimised = v; $('#help').classList.toggle('min', v); $('#minLbl').textContent = v ? 'Show' : 'Minimise'; }
+function chatToUser(text) {
+  $('#uPop').innerHTML = `<div class="uchat"><div class="sh"><i data-lucide="message-circle"></i>Bagas · ICT<span style="flex:1"></span><i data-lucide="x"></i></div><div class="body"><div class="msg them">${text}</div></div><div class="compose"><input placeholder="Reply…"><button><i data-lucide="send"></i></button></div></div>`; icons();
+  setTimeout(() => $('#uPop').innerHTML = '', 6000);
+}
+document.addEventListener('click', e => {
+  const a = e.target.closest('[data-a]')?.dataset.a; if (!a) return;
+  if (a === 'min' || a === 'umin') setMin(!minimised);
+  if (a === 'media2') { cur = 2; renderMedia(); panel = 'media'; renderSide(); }
+  if (a === 'chat') { panel = 'chat'; renderSide(); $('#sideBody').insertAdjacentHTML('beforeend', '<div class="msg me">Coba print lagi sekarang ya, Pak.</div>'); chatToUser('Coba print lagi sekarang ya, Pak.'); }
+  if (a === 'uchat') chatToUser('Pak, printernya error lagi 🙏');
+  if (a === 'file') { panel = 'files'; renderSide(); const f = document.createElement('div'); f.className = 'file'; f.innerHTML = '<span class="fi" style="background:#1f7a3f"><i data-lucide="file-spreadsheet"></i></span><span class="m"><b>Stok-Q3.xlsx</b><small>To Budi · 2.1 MB</small><div class="bar"><i style="width:4%"></i></div></span>'; $('#sideBody').appendChild(f); icons(); setTimeout(() => f.querySelector('.bar i').style.width = '100%', 50); }
+  if (a === 'view') $('#mode [data-m=view]').click();
+  if (a === 'end') { $('#help').style.display = 'none'; $('#frame').classList.remove('on'); $('#uPop').innerHTML = `<div class="ended"><span class="ck"><i data-lucide="check"></i></span><span><b>Remote help ended</b><small>Bagas from ICT · 4 min · see it any time in Settings → Account</small></span></div>`; icons(); $('#live').style.background = 'var(--ink-4)'; $('#liveTxt').textContent = 'Ended'; }
+  if (a === 'reset') location.reload();
+});
+// live stats + cursor + timer
+setInterval(() => { $('#fps').textContent = 58 + Math.round(Math.random() * 2); $('#ping').textContent = 4 + Math.round(Math.random() * 4); }, 900);
+setInterval(() => { const c = $('#cur'); c.style.left = (30 + Math.random() * 40) + '%'; c.style.top = (25 + Math.random() * 40) + '%'; }, 1400);
+setInterval(() => { secs++; $('#tm').textContent = String(Math.floor(secs / 60)).padStart(2, '0') + ':' + String(secs % 60).padStart(2, '0'); }, 1000);
+// consent
+function consent(join) {
+  $('#cHost').innerHTML = `<div class="consent"><div class="h"><span class="av">${join ? 'KC' : 'BA'}</span><span><b>${join ? 'Kevin from ICT wants to watch' : 'Bagas from ICT wants to help'}</b><small>${join ? 'Bagas is already helping · view only' : 'Remote help · LOGISTIC33'}</small></span></div>
+    <p>${join ? 'Kevin will see your screen but can\'t click or type.' : 'Bagas will see your screen and can use the mouse and keyboard. You can end it any time.'}</p>
+    <div class="opts">${join ? '<span><i data-lucide="eye"></i>View only</span>' : '<span><i data-lucide="mouse-pointer-2"></i>Mouse and keyboard</span><span><i data-lucide="clipboard-copy"></i>Copy and paste, files</span>'}<span><i data-lucide="shield-check"></i>Logged in iPop · never recorded</span></div>
+    <div class="acts"><button class="no">Decline</button><button class="yes">Allow</button></div><div class="count"><i id="cnt"></i></div></div>`;
+  icons(); requestAnimationFrame(() => requestAnimationFrame(() => { const c = $('#cnt'); if (c) c.style.width = '0%'; }));
+  $('#cHost .no').onclick = () => $('#cHost').innerHTML = '';
+  $('#cHost .yes').onclick = () => { $('#cHost').innerHTML = `<div class="ended"><span class="ck"><i data-lucide="check"></i></span><span><b>Connected</b><small>${join ? 'Kevin is watching (view only)' : 'Bagas is helping you now'}</small></span></div>`; icons(); };
+}
+document.querySelectorAll('[data-c]').forEach(b => b.onclick = () => consent(b.dataset.c === 'join'));
+// gallery
+$('#gallery').innerHTML = MEDIA.map(thumb).join('');
+renderMedia(); renderSide(); consent(false); icons();
+</script>
+</body>
+</html>
