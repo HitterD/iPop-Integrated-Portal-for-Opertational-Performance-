@@ -149,7 +149,7 @@
 
   // (f) pull to refresh: only on routes whose page registered a refresh (ipop.motion.registerRefresh);
   // the spinner stays while that .NET method runs.
-  const PTR_SCROLLERS = '.room-list-scroll, .m-mail-list, .m-nf-scroll, .m-tickets-list, .m-news-scroll, .ph-screen .ph-scroll';
+  const PTR_SCROLLERS = '.room-pane, .mlx-rows, .ph-screen .ph-scroll';
   const refreshers = new Map(); // path prefix -> DotNetObjectReference
   let pull = null;
   doc.addEventListener('touchstart', e => {

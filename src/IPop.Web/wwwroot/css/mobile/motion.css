@@ -151,3 +151,12 @@
     @keyframes ph-fade-only { from { opacity: 0; } to { opacity: 1; } }
   }
 }
+
+/* Phone held sideways: little height, so the title and bars shrink and the list gets the room. */
+@media (max-height: 500px) and (max-width: 932px) and (pointer: coarse) and (orientation: landscape) {
+  :root { --m-topbar-h: 44px; --m-tabbar-h: 48px; }
+  .ph-large-title, .mlx .mlx-title, .chat-area .room-pane > .m-chat-lt { font-size: 24px !important; padding-bottom: 4px !important; }
+  .ph-nav { min-height: 40px; }
+  .m-tab-lbl { display: none; }
+  .ph-fab { bottom: calc(var(--m-safe-b, 0px) + 60px); }
+}
