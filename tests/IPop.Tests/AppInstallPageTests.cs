@@ -17,7 +17,8 @@ public class AppInstallPageTests
         var ctx = new BunitContext();
         ctx.JSInterop.Mode = JSRuntimeMode.Loose;
         ctx.JSInterop.Setup<string>("ipop.phone.platform").SetResult(platform);
-        ctx.JSInterop.Setup<bool>("ipop.phone.exists", _ => true).SetResult(apk);
+        ctx.JSInterop.Setup<long>("ipop.phone.size", _ => true).SetResult(apk ? 2_358_126 : 0);
+        ctx.JSInterop.Setup<bool>("ipop.phone.iosSafari").SetResult(true);
         ctx.JSInterop.Setup<string>("ipop.phone.installState").SetResult("unsupported");
         ctx.JSInterop.Setup<string>("ipop.phone.qrSvg", _ => true).SetResult("<svg class=\"qr\"></svg>");
         ctx.Services.AddSingleton(new OverlayStack());
@@ -33,6 +34,7 @@ public class AppInstallPageTests
         var dl = cut.Find("a.ph-dl");
         Assert.Equal("/download/ipop.apk", dl.GetAttribute("href"));
         Assert.Contains("Download for Android", dl.TextContent);
+        Assert.Contains("2.2 MB", dl.TextContent);
         Assert.Equal("true", cut.Find("[role=tab][data-value=and]").GetAttribute("aria-selected"));
         Assert.Contains("Choose <b>Install app</b>", cut.Markup);
         Assert.Empty(cut.FindAll(".ph-qr"));

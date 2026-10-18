@@ -47,7 +47,7 @@
                     @if (apk == true)
                     {
                         <a class="ph-dl" href="/download/ipop.apk" download="ipop.apk">
-                            @Android<span><b>Download for Android</b><small>APK · version @ApkVersion@(apkBytes > 0 ? $" · {apkBytes / 1048576.0:0.#} MB" : "") · Android 7+</small></span>
+                            @Android<span><b>Download for Android</b><small>APK · version @ApkVersion@(apkBytes > 0 ? " · " + (apkBytes / 1048576.0).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " MB" : "") · Android 7+</small></span>
                         </a>
                         <p class="ph-hint">Open the file when it's downloaded and tap <b>Install</b>. If asked, allow Chrome to install apps.</p>
                         <div class="ph-orl">or install from Chrome</div>
