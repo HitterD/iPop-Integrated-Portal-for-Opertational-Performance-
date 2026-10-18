@@ -9,7 +9,8 @@ public record NotifierDeviceReport(string DeviceKey, string MachineName, string?
     string? AppVersion, IReadOnlyList<string>? LocalIps);
 
 public record NotifierDeviceRow(Guid Id, string MachineName, string? WindowsUser, string? OsVersion, string? AppVersion,
-    string? LocalIps, string? RemoteIp, DateTime LastSeenAt, bool Online, string UserName, string? Department, string? Site);
+    string? LocalIps, string? RemoteIp, DateTime LastSeenAt, bool Online, string UserName, string? Department, string? Site,
+    bool Unattended = false, bool HelperService = false);
 
 /// iPop Notifier desktop app (docs/notifier/PLAN.md):
 ///   POST /api/notifier/devices/register  — the app reports this PC (sign-in and every heartbeat)
@@ -44,7 +45,9 @@ public static class NotifierEndpoints
                 .OrderBy(d => d.MachineName).Select(d => d.MachineName).ToListAsync(ct);
             // Where "Open in iPop" goes: the public web address (prod: https://ipop.santos.co.id), not the API host.
             var webBase = cfg["Notifier:WebBase"] ?? cfg["Oidc:WebBase"];
-            return Results.Ok(new { ictTools = await IsIctOrAdminAsync(db, userId.Value, http.User.IsInRole("Admin"), ct), onlinePcs = pcs, webBase });
+            var ict = await IsIctOrAdminAsync(db, userId.Value, http.User.IsInRole("Admin"), ct);
+            return Results.Ok(new { ictTools = ict, onlinePcs = pcs, webBase, isAdmin = http.User.IsInRole("Admin"),
+                canRemote = ict && await RemoteEndpoints.CanHelpAsync(db, userId.Value, http.User.IsInRole("Admin"), ct) });
         });
 
         g.MapGet("/devices", async (string? q, HttpContext http, IPopDbContext db, CancellationToken ct) =>
@@ -113,7 +116,7 @@ public static class NotifierEndpoints
         return await query.OrderByDescending(d => d.LastSeenAt).Take(500)
             .Select(d => new NotifierDeviceRow(d.Id, d.MachineName, d.WindowsUser, d.OsVersion, d.AppVersion, d.LocalIps, d.RemoteIp,
                 d.LastSeenAt, d.LastSeenAt >= since, d.User.Name, d.User.Department != null ? d.User.Department.Name : null,
-                d.User.Site != null ? d.User.Site.Name : null))
+                d.User.Site != null ? d.User.Site.Name : null, d.Unattended, d.HelperService))
             .ToListAsync(ct);
     }
 

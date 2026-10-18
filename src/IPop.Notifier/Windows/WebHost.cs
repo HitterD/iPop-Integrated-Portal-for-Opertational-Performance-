@@ -11,11 +11,12 @@ namespace IPop.Notifier.Windows;
 public static class WebHost
 {
     public const string Origin = "https://notifier.ipop/";
+    public static string MediaCache => Path.Combine(SessionStore.Folder, "media-cache");
     private static Task<CoreWebView2Environment>? env;
 
     public static Task<CoreWebView2Environment> EnvironmentAsync() => env ??= CoreWebView2Environment.CreateAsync(null,
         Path.Combine(SessionStore.Folder, "WebView2"),
-        new CoreWebView2EnvironmentOptions("--disable-features=msSmartScreenProtection --renderer-process-limit=2" + QaDebugPort()));
+        new CoreWebView2EnvironmentOptions("--disable-features=msSmartScreenProtection --renderer-process-limit=3 --auto-select-desktop-capture-source=\"Entire screen\"" + QaDebugPort()));
 
     private static string QaDebugPort()
     {
@@ -39,6 +40,9 @@ public static class WebHost
         await view.EnsureCoreWebView2Async(await EnvironmentAsync());
         var core = view.CoreWebView2;
         core.SetVirtualHostNameToFolderMapping("notifier.ipop", AppInfo.BaseDir, CoreWebView2HostResourceAccessKind.DenyCors);
+        // Remote-help media (pictures/videos from the helper), cached in the data folder; read-only to pages.
+        Directory.CreateDirectory(MediaCache);
+        core.SetVirtualHostNameToFolderMapping("media.notifier.ipop", MediaCache, CoreWebView2HostResourceAccessKind.DenyCors);
         var s = core.Settings;
         s.AreDevToolsEnabled = false;
 #if DEBUG
@@ -59,6 +63,10 @@ public static class WebHost
             Integration.OpenUrl(e.Uri);
         };
         core.NewWindowRequested += (_, e) => { e.Handled = true; Integration.OpenUrl(e.Uri); };
+        // Remote help: the hidden host page shares the screen without Chrome's picker (the user already said Allow
+        // in our own prompt); every other page is refused.
+        core.PermissionRequested += (_, e) => e.State = page == "remote-host.html" ? CoreWebView2PermissionState.Allow : CoreWebView2PermissionState.Deny;
+        core.ScreenCaptureStarting += (_, e) => { e.Handled = true; e.Cancel = page != "remote-host.html"; };
         core.WebMessageReceived += (_, e) =>
         {
             JsonNode? msg;

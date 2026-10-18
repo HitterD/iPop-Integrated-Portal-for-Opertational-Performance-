@@ -118,6 +118,8 @@ public sealed class SynologyAttachmentStore(
     IPopDbContext db, ISynologyGateway gw, AttachmentOptions opt, AttachmentSession session,
     ILogger<SynologyAttachmentStore>? log = null) : IAttachmentStore
 {
+    public const long RemoteMediaMaxBytes = 200L * 1024 * 1024;
+
     private static readonly HashSet<string> BlockedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".exe", ".dll", ".com", ".scr", ".msi", ".msp", ".bat", ".cmd", ".ps1", ".vbs", ".vbe",
@@ -130,7 +132,9 @@ public sealed class SynologyAttachmentStore(
         if (!AttachmentAreas.All.Contains(area))
             throw new ArgumentException($"Unknown attachment area '{area}'", nameof(area));
 
-        var buffer = await ReadLimitedAsync(content, opt.MaxBytes, ct);
+        // Remote help "My media" holds short videos (200 MB each, see RemoteEndpoints); everything else keeps MaxBytes.
+        var limit = area == AttachmentAreas.Remote ? Math.Max(opt.MaxBytes, RemoteMediaMaxBytes) : opt.MaxBytes;
+        var buffer = await ReadLimitedAsync(content, limit, ct);
         if (buffer.Length == 0) throw new AttachmentRejectedException("empty", "File is empty.");
         var ext = SafeExtension(fileName);
         if (BlockedExtensions.Contains(ext) || LooksExecutable(buffer))

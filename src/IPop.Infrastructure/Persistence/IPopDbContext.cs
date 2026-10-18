@@ -37,6 +37,9 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<UserTutorialState> UserTutorialStates => Set<UserTutorialState>();
     public DbSet<UserUiPref> UserUiPrefs => Set<UserUiPref>();
     public DbSet<NotifierDevice> NotifierDevices => Set<NotifierDevice>();
+    public DbSet<RemoteSession> RemoteSessions => Set<RemoteSession>();
+    public DbSet<RemoteMedia> RemoteMedia => Set<RemoteMedia>();
+    public DbSet<RemoteHelperBlock> RemoteHelperBlocks => Set<RemoteHelperBlock>();
 
     // Chat entities
     public DbSet<ChatRoom> ChatRooms => Set<ChatRoom>();
@@ -297,6 +300,32 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.LocalIps).HasMaxLength(256);
             e.Property(x => x.RemoteIp).HasMaxLength(64);
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<RemoteSession>(e =>
+        {
+            e.HasIndex(x => x.RequestedAt);
+            e.HasIndex(x => new { x.DeviceId, x.RequestedAt });
+            e.HasIndex(x => new { x.HelperId, x.RequestedAt });
+            e.Property(x => x.Room).HasMaxLength(64);
+            e.Property(x => x.Mode).HasMaxLength(16);
+            e.Property(x => x.Status).HasMaxLength(16);
+            e.Property(x => x.EndedBy).HasMaxLength(16);
+            e.Property(x => x.Files).HasMaxLength(4000);
+            e.HasOne(x => x.Helper).WithMany().HasForeignKey(x => x.HelperId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.TargetUser).WithMany().HasForeignKey(x => x.TargetUserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Device).WithMany().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<RemoteHelperBlock>(e =>
+        {
+            e.HasKey(x => x.UserId);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<RemoteMedia>(e =>
+        {
+            e.HasIndex(x => x.OwnerId);
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.ContentType).HasMaxLength(100);
+            e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<UserUiPref>(e =>
         {

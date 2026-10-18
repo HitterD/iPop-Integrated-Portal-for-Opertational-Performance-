@@ -130,8 +130,11 @@ public sealed class SignInWindow : HtmlWindow
 /// ICT / Admin only (mockup v2 §3): signed-in PCs with computer name, IP and Windows user. Remote help is phase 3.
 public sealed class DevicesWindow(IPopClient api) : BridgedWindow("devices.html", WindowSizes.Get("devices", new Size(1100, 720)), api)
 {
+    public event Action<Guid, string>? RemoteRequested;
+
     protected override void HandleMessage(string type, JsonNode? msg)
     {
+        if (type == "remote" && Guid.TryParse(msg?["deviceId"]?.GetValue<string>(), out var dev)) { RemoteRequested?.Invoke(dev, msg?["mode"]?.GetValue<string>() == "view" ? "view" : "control"); return; }
         if (type != "rdp") { base.HandleMessage(type, msg); return; }
         // Windows Remote Desktop to a plain IPv4 address only (the value comes from the device list).
         var host = msg?["host"]?.GetValue<string>() ?? "";

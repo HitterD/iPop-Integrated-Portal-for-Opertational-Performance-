@@ -31,5 +31,7 @@ public static class AttachmentAreas
     public const string Mail = "mail";
     public const string Projects = "projects";
     public const string Notes = "notes";
-    public static readonly IReadOnlySet<string> All = new HashSet<string> { Chat, News, Mail, Projects, Notes };
+    /// iPop Notifier remote help: each ICT's "My media" pictures/videos.
+    public const string Remote = "remote";
+    public static readonly IReadOnlySet<string> All = new HashSet<string> { Chat, News, Mail, Projects, Notes, Remote };
 }

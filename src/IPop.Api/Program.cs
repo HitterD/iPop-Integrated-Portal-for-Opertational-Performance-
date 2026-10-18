@@ -274,6 +274,7 @@ builder.Services.AddScoped<IPop.Application.News.INewsPublicationHooks>(sp =>
 builder.Services.AddSingleton(new IPop.Infrastructure.News.NewsVideoOptions { LocalRoot = Path.Combine(builder.Environment.ContentRootPath, "news-videos") });
 builder.Services.AddScoped<IPop.Application.News.INewsVideoService, IPop.Infrastructure.News.NewsVideoService>();
 builder.Services.AddScoped<IAttachmentAccessPolicy, IPop.Infrastructure.News.NewsAttachmentPolicy>();
+builder.Services.AddScoped<IAttachmentAccessPolicy, IPop.Api.Endpoints.RemoteMediaPolicy>();
 
 // Notes module (Notion-like pages, Yjs co-editing over /hubs/notes)
 builder.Services.AddScoped<IPop.Application.Notes.INoteService, IPop.Infrastructure.Notes.NoteService>();
@@ -492,6 +493,7 @@ app.MapHub<IPop.Api.Notifications.NotificationHub>("/hubs/notification").Require
 app.MapMe();
 app.MapUiPrefs();
 app.MapNotifier();
+app.MapRemote();
 if (IPop.Api.Sso.SsoSetup.Enabled(app.Configuration))
 {
     IPop.Api.Sso.SsoEndpoints.MapSso(app, app.Configuration["Oidc:WebBase"] ?? "");

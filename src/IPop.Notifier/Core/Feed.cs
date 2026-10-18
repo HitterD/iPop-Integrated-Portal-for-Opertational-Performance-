@@ -11,6 +11,8 @@ public sealed class Feed(IPopClient api, LocalState state) : IAsyncDisposable
     private HubConnection? hub;
     public event Action<Notice>? Received;
     public event Action<ToastPayload>? ChatToast;
+    /// Remote help: "remoteRequest" (this PC is asked), "remoteAnswer" (to the helper), "remoteEnded" (either side).
+    public event Action<string, System.Text.Json.Nodes.JsonNode>? Remote;
     public event Action<bool>? ConnectionChanged;
     public bool Connected => hub?.State == HubConnectionState.Connected;
 
@@ -29,6 +31,8 @@ public sealed class Feed(IPopClient api, LocalState state) : IAsyncDisposable
             Received?.Invoke(Notice.From(d));
         });
         hub.On<ToastPayload>("desktopToast", t => { QaLog("desktopToast " + t.Kind + " " + t.Url); ChatToast?.Invoke(t); });
+        foreach (var ev in new[] { "remoteRequest", "remoteAnswer", "remoteEnded" })
+            hub.On<System.Text.Json.JsonElement>(ev, e => { QaLog(ev); if (System.Text.Json.Nodes.JsonNode.Parse(e.GetRawText()) is { } n) Remote?.Invoke(ev, n); });
         hub.Reconnected += async _ => { ConnectionChanged?.Invoke(true); await CatchUpAsync(CancellationToken.None); };
         hub.Reconnecting += _ => { ConnectionChanged?.Invoke(false); return Task.CompletedTask; };
         var mine = hub;

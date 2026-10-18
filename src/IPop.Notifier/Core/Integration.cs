@@ -102,6 +102,9 @@ public static class Integration
         catch { return false; }
     }
 
+    /// Short system sound for "someone asks to remote this PC" (the prompt must not be missed).
+    public static void Chime() { try { System.Media.SystemSounds.Asterisk.Play(); } catch { } }
+
     public static void OpenUrl(string url)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var u) || (u.Scheme != "https" && u.Scheme != "http" && u.Scheme != "mailto")) return;

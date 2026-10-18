@@ -22,6 +22,8 @@ public sealed class NotifierApp : ApplicationContext
     private InboxWindow? inbox;
     private SettingsWindow? settingsWindow;
     private DevicesWindow? devices;
+    private IPop.Notifier.Remote.RemoteHost? remoteHost;
+    private readonly Dictionary<Guid, IPop.Notifier.Remote.ViewerWindow> viewers = [];
     private SignInWindow? signIn;
     private int unread;
     private bool connected;
@@ -94,9 +96,56 @@ public sealed class NotifierApp : ApplicationContext
         feed = new Feed(api, state);
         feed.Received += n => Post(() => { popups.Show(n); _ = RefreshUnreadAsync(); });
         feed.ChatToast += t => Post(() => OnChatToast(t));
+        feed.Remote += (ev, n) => Post(() => OnRemote(ev, n));
         feed.ConnectionChanged += c => Post(() => { connected = c; UpdateTray(); });
         try { await feed.StartAsync(ct); } catch (OperationCanceledException) { }
         await RefreshUnreadAsync();
+    }
+
+    private void OnRemote(string ev, System.Text.Json.Nodes.JsonNode n)
+    {
+        remoteHost ??= NewRemoteHost();
+        Guid.TryParse(n["sessionId"]?.GetValue<string>(), out var id);
+        switch (ev)
+        {
+            case "remoteRequest": remoteHost.OnRequest(n, api.Session?.DeviceKey ?? ""); break;
+            case "remoteAnswer": if (viewers.TryGetValue(id, out var v)) v.Answer(n["status"]?.GetValue<string>() ?? ""); break;
+            case "remoteEnded":
+                if (viewers.TryGetValue(id, out var w)) w.Ended(n["endedBy"]?.GetValue<string>());
+                remoteHost.OnEnded(n);
+                break;
+        }
+    }
+
+    private IPop.Notifier.Remote.RemoteHost NewRemoteHost()
+    {
+        var h = new IPop.Notifier.Remote.RemoteHost(api, (t, b, i) => tray.ShowBalloonTip(5000, t, b, i));
+        // While ICT is connected the tray icon wears the green ring (mockup remote: always-on cue).
+        h.ActiveChanged += on => Post(() => { remoteActive = on; UpdateTray(); });
+        return h;
+    }
+
+    private bool remoteActive;
+
+    /// Devices → Remote help / View only: ask the PC, then open the viewer.
+    private async Task StartRemoteAsync(Guid deviceId, string mode)
+    {
+        try
+        {
+            using var res = await api.SendAsync(HttpMethod.Post, "api/notifier/remote/sessions", new { deviceId, mode });
+            var body = System.Text.Json.Nodes.JsonNode.Parse(await res.Content.ReadAsStringAsync());
+            if (!res.IsSuccessStatusCode) { Post(() => tray.ShowBalloonTip(5000, "Remote help", body?["message"]?.GetValue<string>() ?? "Couldn't start remote help.", ToolTipIcon.Warning)); return; }
+            var id = Guid.Parse(body!["sessionId"]!.GetValue<string>());
+            Post(() =>
+            {
+                var v = new IPop.Notifier.Remote.ViewerWindow(api, id, new { type = "start", sessionId = id, status = body["status"]?.GetValue<string>(),
+                    machine = body["machine"]?.GetValue<string>(), user = body["user"]?.GetValue<string>() });
+                viewers[id] = v;
+                v.FormClosed += (_, _) => viewers.Remove(id);
+                v.Show();
+            });
+        }
+        catch { Post(() => tray.ShowBalloonTip(5000, "Remote help", "Couldn't reach iPop.", ToolTipIcon.Warning)); }
     }
 
     private void OnChatToast(ToastPayload t)
@@ -166,11 +215,11 @@ public sealed class NotifierApp : ApplicationContext
         var s = settings.Current;
         var count = unread;
         connected = feed?.Connected ?? connected;
-        var status = !api.IsSignedIn ? "signed out" : !connected ? "connecting…" : s.Popups != "on" ? "popups paused" : count > 0 ? $"{count} unread" : "up to date";
+        var status = remoteActive ? "ICT is connected" : !api.IsSignedIn ? "signed out" : !connected ? "connecting…" : s.Popups != "on" ? "popups paused" : count > 0 ? $"{count} unread" : "up to date";
         var text = "iPop Notifier — " + status;
         tray.Text = text.Length > 63 ? text[..63] : text;
         var old = tray.Icon;
-        tray.Icon = AppIcon.Tray(count > 0);
+        tray.Icon = remoteActive ? AppIcon.Remote : AppIcon.Tray(count > 0);
         if (old is not null && old != AppIcon.Icon && old != tray.Icon) old.Dispose();
         if (inbox is { IsDisposed: false, Visible: true }) inbox.Refresh();
     }
@@ -246,6 +295,7 @@ public sealed class NotifierApp : ApplicationContext
         if (!device.IctTools) return;
         if (devices is { IsDisposed: false }) { devices.Activate(); return; }
         devices = new DevicesWindow(api);
+        devices.RemoteRequested += (id, mode) => _ = StartRemoteAsync(id, mode);
         devices.Show();
     }
 

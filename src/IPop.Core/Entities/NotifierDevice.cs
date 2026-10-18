@@ -22,6 +22,10 @@ public class NotifierDevice
     /// IPs the PC reports for itself (comma separated) and the address the server saw.
     public string? LocalIps { get; set; }
     public string? RemoteIp { get; set; }
+    /// Admin marked this PC for remote help without the Allow prompt (kiosk, server).
+    public bool Unattended { get; set; }
+    /// The optional admin-installed helper service runs on this PC (UAC, lock screen, Ctrl+Alt+Del).
+    public bool HelperService { get; set; }
     public DateTime FirstSeenAt { get; set; }
     public DateTime LastSeenAt { get; set; }
 

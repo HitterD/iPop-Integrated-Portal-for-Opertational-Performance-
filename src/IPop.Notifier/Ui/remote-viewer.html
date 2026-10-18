@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss: http: https:; media-src 'self' blob: data:; img-src 'self' data: blob:">
+<link rel="stylesheet" href="app.css">
+<style>
+/* ICT viewer (mockup remote.html §1, left). */
+body{display:flex;flex-direction:column;background:#111}
+.ttl{background:var(--glass);color:var(--ink)}
+.ttl .live{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#fff;background:var(--green);padding:3px 10px;border-radius:999px}
+.ttl .live i{width:7px;height:7px;border-radius:50%;background:#fff;animation:pulse 1.4s infinite}
+.ttl .live.warn{background:var(--cal)}.ttl .live.off{background:var(--ink-4)}
+@keyframes pulse{50%{opacity:.35}}
+.ttl .who{font-size:13px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stats{display:flex;gap:12px;margin-left:auto;font-size:12.5px;color:var(--ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.stats span{display:flex;align-items:center;gap:4px}
+.stats svg{width:15px;height:15px}
+.stats b.ok{color:var(--green)}.stats b.mid{color:var(--cal)}.stats b.bad{color:var(--red)}
+.tbar{display:flex;align-items:center;gap:4px;padding:6px 10px;background:var(--glass-2);border-bottom:.5px solid var(--sep);flex:none;flex-wrap:wrap;color:var(--ink)}
+.tb{height:36px;padding:0 11px;border-radius:9px;display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;white-space:nowrap;transition:background .15s,transform .12s var(--spring)}
+.tb:hover{background:var(--fill)}
+.tb:active{transform:scale(.96)}
+.tb.on{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}
+.tb.end{color:#fff;background:var(--red)}
+.tb:disabled{opacity:.45}
+.sp{width:1px;height:22px;background:var(--sep);margin:0 4px}
+.seg{display:flex;padding:2px;border-radius:9px;background:var(--fill)}
+.seg button{height:32px;padding:0 10px;border-radius:7px;font-size:12.5px;font-weight:600;color:var(--ink-3);display:flex;align-items:center;gap:5px}
+.seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.main{flex:1;display:flex;min-height:0}
+.stage{flex:1;position:relative;display:grid;place-items:center;overflow:hidden;background:#0b0b0c;outline:none}
+.stage video{max-width:100%;max-height:100%;display:block;cursor:none}
+.stage.view video{cursor:default}
+.stage .wait{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#cfd8d3;
+  background:radial-gradient(120% 90% at 50% 0%,#1a4a37 0%,#123528 60%,#0d2a1f 100%)}
+.stage .wait::before{content:"";position:absolute;inset:0;opacity:.14;background:url("batik.svg") 0 0/54px 54px repeat}
+.stage .wait > *{position:relative}
+.stage .wait img{width:72px;height:72px;border-radius:20px;background:#fff;padding:6px;animation:bob 3s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(-6px)}}
+.stage .wait b{font-size:20px;color:#fff}
+.stage .wait .dots{display:flex;gap:7px}.stage .wait .dots i{width:8px;height:8px;border-radius:50%;background:#30d158;animation:dot 1.2s infinite}
+.stage .wait .dots i:nth-child(2){animation-delay:.2s}.stage .wait .dots i:nth-child(3){animation-delay:.4s}
+@keyframes dot{50%{opacity:.3;transform:scale(.7)}}
+.ghost{position:absolute;right:14px;top:14px;display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:9px;background:rgba(0,0,0,.6);color:#fff;font-size:12.5px;pointer-events:none}
+.ghost svg{width:15px;height:15px}
+.side{width:0;overflow:hidden;background:var(--glass);transition:width .35s var(--spring);display:flex;flex-direction:column;color:var(--ink);flex:none}
+.side.on{width:340px}
+.side .sh{display:flex;align-items:center;gap:8px;padding:12px 14px;font-weight:700;border-bottom:.5px solid var(--sep);white-space:nowrap}
+.side .sh small{margin-left:auto;font-weight:500;color:var(--ink-3);font-size:12px}
+.tabs{display:flex;margin:10px 12px 6px;padding:2px;border-radius:9px;background:var(--fill)}
+.tabs button{flex:1;height:32px;border-radius:7px;font-size:12.5px;font-weight:600;color:var(--ink-3);display:flex;align-items:center;justify-content:center;gap:5px}
+.tabs button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.side .body{flex:1;overflow:auto;padding:8px 12px}
+.pane{display:none}.pane.on{display:block}
+.mgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mt{position:relative;aspect-ratio:16/10;border-radius:10px;overflow:hidden;cursor:pointer;box-shadow:0 0 0 .5px var(--sep);background:#123528 center/cover;transition:transform .15s var(--spring)}
+.mt:hover{transform:translateY(-2px)}
+.mt.on{box-shadow:0 0 0 2.5px var(--green)}
+.mt .k{position:absolute;left:6px;bottom:6px;right:6px;font-size:11px;font-weight:700;color:#fff;background:rgba(0,0,0,.55);padding:2px 6px;border-radius:6px;display:flex;align-items:center;gap:4px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.mt .k svg{width:12px;height:12px}
+.mt .def{position:absolute;inset:0;display:grid;place-items:center;background:linear-gradient(135deg,#123528,#2e9e5b)}
+.mt .def img{width:40px;height:40px;border-radius:11px;background:#fff;padding:3px}
+.mt.add{display:grid;place-items:center;background:var(--fill);color:var(--ink-3);font-size:12.5px;font-weight:600}
+.mt.add span{display:flex;flex-direction:column;align-items:center;gap:4px}
+.row2{display:flex;align-items:center;gap:8px;margin:12px 0 2px;font-size:13.5px}
+.msg{max-width:86%;padding:8px 11px;border-radius:14px;font-size:13.5px;line-height:1.4;margin:6px 0;word-break:break-word;white-space:pre-wrap;animation:winIn .3s var(--spring)}
+.msg.me{margin-left:auto;background:var(--green);color:#fff;border-bottom-right-radius:5px}
+.msg.them{background:var(--fill);border-bottom-left-radius:5px}
+.note{font-size:12px;color:var(--ink-3);text-align:center;margin:8px 0;display:flex;align-items:center;justify-content:center;gap:5px}
+.note svg{width:14px;height:14px}
+.compose{display:none;gap:6px;padding:10px 12px;border-top:.5px solid var(--sep)}
+.compose.on{display:flex}
+.compose input{flex:1;height:38px;border-radius:10px;border:0;background:var(--fill);padding:0 12px;outline:none}
+.compose button{width:38px;height:38px;border-radius:10px;background:var(--green);color:#fff;display:grid;place-items:center}
+.drop{border:1.5px dashed var(--ink-4);border-radius:12px;padding:18px;text-align:center;color:var(--ink-3);font-size:13px;margin:8px 0;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer}
+.drop.over{border-color:var(--green);background:color-mix(in srgb,var(--green) 8%,transparent)}
+.file{display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;background:var(--fill);margin:8px 0;font-size:13px}
+.file .fi{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:#fff;flex:none;background:var(--tix)}
+.file .m{flex:1;min-width:0}.file .m b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file .m small{color:var(--ink-3);font-size:12px}
+.bar{height:5px;border-radius:3px;background:var(--sep);margin-top:6px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--green);border-radius:3px;width:0;transition:width .2s}
+.menu{position:fixed;z-index:50;min-width:200px;padding:6px;border-radius:12px;background:var(--glass);box-shadow:0 24px 60px -18px rgba(0,0,0,.45),0 0 0 .5px rgba(0,0,0,.14);color:var(--ink)}
+.menu button{width:100%;display:flex;align-items:center;gap:10px;height:38px;padding:0 10px;border-radius:8px;font-size:13.5px;text-align:left}
+.menu button:hover{background:var(--fill)}
+.ended{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:#fff;background:rgba(10,20,15,.82);font-size:15px}
+.ended.on{display:flex}
+.ended b{font-size:20px}
+.ended button{height:38px;padding:0 16px;border-radius:10px;background:#fff;color:#123528;font-weight:700}
+</style>
+</head>
+<body>
+<div class="ttl" data-drag><span class="ic"><img src="ipop-mark.webp" alt=""></span><b id="pc">Remote help</b><span class="who" id="who"></span>
+  <span class="live warn" id="live"><i></i><span id="liveTxt">Connecting</span></span>
+  <span class="stats"><span><i data-lucide="gauge"></i><b id="fps">–</b> fps</span><span><i data-lucide="activity"></i><b id="ping">–</b> ms</span><span id="res"></span></span>
+  <button class="wc" data-min title="Minimize"></button><button class="wc" data-max title="Maximize"></button><button class="wc x" data-close title="End and close"></button></div>
+<div class="tbar">
+  <div class="seg" id="mode"><button data-m="control" class="on"><i data-lucide="mouse-pointer-2"></i>Control</button><button data-m="view"><i data-lucide="eye"></i>View only</button></div>
+  <span class="sp"></span>
+  <div class="seg" id="quality"><button data-q="smooth" class="on">Smoothest</button><button data-q="quality">Best quality</button></div>
+  <button class="tb" id="keys" title="Special keys"><i data-lucide="keyboard"></i>Keys<i data-lucide="chevron-down"></i></button>
+  <button class="tb on" id="clip" title="Clipboard sync: text, images and files"><i data-lucide="clipboard-copy"></i>Clipboard</button>
+  <span class="sp"></span>
+  <button class="tb" data-p="files"><i data-lucide="file-up"></i>Files</button>
+  <button class="tb" data-p="chat"><i data-lucide="message-circle"></i>Chat</button>
+  <button class="tb on" data-p="media"><i data-lucide="image"></i>Media</button>
+  <button class="tb" id="umin" title="Minimise the media window on the user's screen"><i data-lucide="panel-bottom-close"></i><span>Minimise</span></button>
+  <span style="flex:1"></span>
+  <button class="tb end" id="end"><i data-lucide="phone-off"></i>End</button>
+</div>
+<div class="main">
+  <div class="stage" id="stage" tabindex="0">
+    <div class="wait" id="wait"><img src="ipop-mark.webp" alt=""><b id="waitTxt">Waiting for the user to allow…</b><span id="waitSub"></span><div class="dots"><i></i><i></i><i></i></div></div>
+    <div class="ghost" id="ghost" hidden><i data-lucide="eye-off"></i><span>Your media is showing on the user's screen (hidden from you)</span></div>
+    <div class="ended" id="ended"><i data-lucide="circle-check" style="width:42px;height:42px;color:#30d158"></i><b id="endedTxt">Remote help ended</b><span id="endedSub"></span><button data-close>Close</button></div>
+  </div>
+  <div class="side on" id="side">
+    <div class="sh"><span id="sideTitle">Media</span><small id="sideNote">Shown only on the user's screen</small></div>
+    <div class="tabs"><button data-p="media" class="on"><i data-lucide="image"></i>Media</button><button data-p="chat"><i data-lucide="message-circle"></i>Chat</button><button data-p="files"><i data-lucide="file-up"></i>Files</button></div>
+    <div class="body">
+      <div class="pane on" id="p-media"><div class="mgrid" id="mgrid"></div>
+        <div class="row2"><span class="sw" id="sound"></span>Video sound</div>
+        <div class="row2"><span class="sw on" id="showMedia"></span>Show media window</div></div>
+      <div class="pane" id="p-chat"><div class="note"><i data-lucide="lock"></i>Chat isn't saved — it ends with the session</div><div id="msgs"></div></div>
+      <div class="pane" id="p-files"><label class="drop" id="drop"><i data-lucide="upload-cloud"></i><span>Drop files to send</span><small>or copy them — clipboard sync carries files too</small><input type="file" multiple hidden id="pick"></label><div id="flist"></div></div>
+    </div>
+    <div class="compose" id="compose"><input id="chatIn" placeholder="Message…" maxlength="1000"><button id="chatSend"><i data-lucide="send"></i></button></div>
+  </div>
+</div>
+<input type="file" hidden id="mediaPick" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm">
+<script src="lucide.min.js"></script>
+<script src="bridge.js"></script>
+<script src="livekit-client.umd.js"></script>
+<script src="remote.js"></script>
+<script src="remote-viewer.js"></script>
+</body>
+</html>

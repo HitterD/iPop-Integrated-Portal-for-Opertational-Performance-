@@ -149,6 +149,27 @@ public static class AppIcon
         ? new Icon(Path.Combine(AppInfo.AssetsDir, "ipop.ico"))
         : SystemIcons.Application;
 
+    private static Icon? remote;
+    /// Remote help running: the iPop icon with a green ring.
+    public static Icon Remote
+    {
+        get
+        {
+            if (remote is not null) return remote;
+            using var bmp = new Icon(Icon, 32, 32).ToBitmap();
+            using (var g = Graphics.FromImage(bmp))
+            {
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                using var pen = new Pen(Color.FromArgb(48, 209, 88), 4);
+                g.DrawEllipse(pen, 2, 2, 28, 28);
+            }
+            var h = bmp.GetHicon();
+            remote = (Icon)Icon.FromHandle(h).Clone();
+            Native.DestroyIcon(h);
+            return remote;
+        }
+    }
+
     /// Tray icon with a small red dot when there is something unread.
     public static Icon Tray(bool unread)
     {

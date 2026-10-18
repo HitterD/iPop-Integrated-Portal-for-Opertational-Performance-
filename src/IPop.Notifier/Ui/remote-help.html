@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://media.notifier.ipop data: blob:; media-src 'self' https://media.notifier.ipop data: blob:">
+<link rel="stylesheet" href="app.css">
+<style>
+/* User's screen: "ICT is helping you" (mockup remote.html §1, right) and the Allow prompt (§2). The app keeps this
+   window out of screen capture, so the helper never sees it in the stream. */
+html,body{background:#0f2a1f;color:#e7f2ec}
+body{display:flex;flex-direction:column}
+.ttl{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.08);color:#e7f2ec}
+.ttl .ic img{background:#fff;padding:2px}
+.ttl small{color:#cfe3d8;opacity:.8}
+.ttl .t{display:flex;align-items:center;gap:6px;font-size:13px;font-variant-numeric:tabular-nums;opacity:.85}
+.wc{color:#cfe3d8}.wc:hover{background:rgba(255,255,255,.12)}
+.media{flex:1;position:relative;overflow:hidden;min-height:0}
+.media img,.media video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;animation:fade .6s}
+.def{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  background:radial-gradient(120% 90% at 50% 0%,#1a4a37 0%,#123528 60%,#0d2a1f 100%);text-align:center;padding:20px}
+.def::before{content:"";position:absolute;inset:0;opacity:.18;background:url("batik.svg") 0 0/54px 54px repeat}
+.def > *{position:relative}
+.def .lg{width:110px;height:110px;border-radius:30px;background:#fff;display:grid;place-items:center;box-shadow:0 20px 40px -14px rgba(0,0,0,.6);animation:bob 3s ease-in-out infinite}
+.def .lg img{width:80px;height:80px}
+@keyframes bob{50%{transform:translateY(-8px)}}
+.def h1{font-size:32px;letter-spacing:-.01em}
+.def p{opacity:.82;font-size:16px}
+.dots{display:flex;gap:8px}.dots i{width:10px;height:10px;border-radius:50%;background:#30d158;animation:dot 1.2s infinite}
+.dots i:nth-child(2){animation-delay:.2s}.dots i:nth-child(3){animation-delay:.4s}
+@keyframes dot{50%{opacity:.3;transform:scale(.7)}}
+.foot{display:flex;align-items:center;gap:12px;padding:12px 16px;background:rgba(0,0,0,.25);flex:none}
+.foot .av{width:40px;height:40px;border-radius:11px;background:#4f6b8f;display:grid;place-items:center;font-weight:700;flex:none}
+.foot .who{flex:1;min-width:0}.foot b{display:block;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.foot small{display:block;opacity:.75;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.foot button{height:40px;padding:0 16px;border-radius:11px;font-weight:700;display:flex;align-items:center;gap:7px;flex:none;white-space:nowrap}
+.foot .chat{background:rgba(255,255,255,.12)}
+.foot .end{background:#ff3b30;color:#fff}
+.chatbox{position:absolute;right:14px;bottom:14px;width:340px;border-radius:14px;background:var(--glass);color:var(--ink);box-shadow:0 24px 60px -18px rgba(0,0,0,.55);display:none;flex-direction:column;max-height:70%;overflow:hidden;animation:winIn .3s var(--spring)}
+.chatbox.on{display:flex}
+.chatbox .sh{display:flex;align-items:center;gap:8px;padding:10px 12px;font-weight:700;border-bottom:.5px solid var(--sep)}
+.chatbox .sh small{margin-left:auto;color:var(--ink-3);font-weight:500;font-size:12px}
+.chatbox .body{flex:1;overflow:auto;padding:6px 12px}
+.msg{max-width:86%;padding:8px 11px;border-radius:14px;font-size:14px;line-height:1.4;margin:6px 0;word-break:break-word;white-space:pre-wrap}
+.msg.me{margin-left:auto;background:var(--green);color:#fff;border-bottom-right-radius:5px}
+.msg.them{background:var(--fill);border-bottom-left-radius:5px}
+.compose{display:flex;gap:6px;padding:10px 12px;border-top:.5px solid var(--sep)}
+.compose input{flex:1;height:38px;border-radius:10px;border:0;background:var(--fill);padding:0 12px;outline:none}
+.compose button{width:38px;height:38px;border-radius:10px;background:var(--green);color:#fff;display:grid;place-items:center}
+/* minimised: just the title bar */
+body.min .media,body.min .foot{display:none}
+/* consent prompt */
+body.ask{background:var(--glass);color:var(--ink)}
+.ask-box{display:none;padding:18px;flex-direction:column;gap:12px;height:100%}
+body.ask .ask-box{display:flex}
+body.ask .ttl,body.ask .media,body.ask .foot,body.ask .chatbox{display:none}
+.ask-box .h{display:flex;align-items:center;gap:12px}
+.ask-box .av{width:50px;height:50px;border-radius:14px;background:#4f6b8f;color:#fff;font-weight:700;display:grid;place-items:center;flex:none;font-size:17px}
+.ask-box b{display:block;font-size:17px}.ask-box small{color:var(--ink-3);font-size:13px}
+.ask-box p{font-size:14.5px;color:var(--ink-2);line-height:1.45}
+.ask-box .opts{display:flex;flex-direction:column;gap:7px;font-size:14px;color:var(--ink-2)}
+.ask-box .opts span{display:flex;align-items:center;gap:9px}
+.ask-box .opts svg{width:17px;height:17px;color:var(--green)}
+.ask-box .acts{display:flex;gap:10px;margin-top:auto}
+.ask-box .acts button{height:44px;border-radius:12px;font-weight:700;font-size:15px;flex:1}
+.ask-box .no{background:var(--fill)}
+.ask-box .yes{background:var(--green);color:#fff}
+.count{height:4px;border-radius:2px;background:var(--fill);overflow:hidden}
+.count i{display:block;height:100%;background:var(--ink-4);width:100%}
+</style>
+</head>
+<body class="ask">
+<div class="ask-box">
+  <div class="h"><span class="av" id="aAv">IT</span><span><b id="aTitle">ICT wants to help</b><small id="aSub">Remote help</small></span></div>
+  <p id="aText">They will see your screen and can use the mouse and keyboard. You can end it any time.</p>
+  <div class="opts" id="aOpts"></div>
+  <div class="acts"><button class="no" id="no">Decline</button><button class="yes" id="yes">Allow</button></div>
+  <div class="count"><i id="cnt"></i></div>
+</div>
+<div class="ttl" data-drag><span class="ic"><img src="ipop-mark.webp" alt=""></span><b>ICT is helping you <small id="hName"></small></b>
+  <span class="t"><i data-lucide="timer"></i><span id="tm">00:00</span></span><button class="wc" data-min title="Minimise"></button></div>
+<div class="media" id="media"></div>
+<div class="foot"><span class="av" id="fAv">IT</span><span class="who"><b id="fName">ICT</b><small id="fSub">is helping on this PC · you can keep working</small></span>
+  <button class="chat" id="chatBtn"><i data-lucide="message-circle"></i>Chat</button>
+  <button class="end" id="endBtn"><i data-lucide="phone-off"></i>End session</button></div>
+<div class="chatbox" id="chat"><div class="sh"><i data-lucide="message-circle"></i><span id="cName">ICT</span><small>Not saved</small><button class="wc" id="chatX"><i data-lucide="x"></i></button></div>
+  <div class="body" id="msgs"></div><div class="compose"><input id="chatIn" placeholder="Reply…" maxlength="1000"><button id="chatSend"><i data-lucide="send"></i></button></div></div>
+<script src="lucide.min.js"></script>
+<script src="bridge.js"></script>
+<script src="remote-help.js"></script>
+</body>
+</html>
