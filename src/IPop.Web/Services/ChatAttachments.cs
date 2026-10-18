@@ -308,6 +308,9 @@ public class ChatAttachments
         if (ext is ".ods") return AttachmentKind.LegacySheet;
 
         if (mime == "application/pdf") return AttachmentKind.Pdf;
+        // Browsers outside Safari can't draw HEIC/HEIF (iPhone photos) and the server has no decoder for a
+        // thumbnail, so they would render as a broken picture: show them as a file card instead.
+        if (mime is "image/heic" or "image/heif" || ext is ".heic" or ".heif") return AttachmentKind.Other;
         if (mime.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) return AttachmentKind.Image;
         if (mime.StartsWith("video/", StringComparison.OrdinalIgnoreCase)) return AttachmentKind.Video;
         if (mime.StartsWith("audio/", StringComparison.OrdinalIgnoreCase)) return AttachmentKind.Audio;

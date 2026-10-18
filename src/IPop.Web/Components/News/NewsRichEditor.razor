@@ -573,18 +573,20 @@
         await JS.InvokeVoidAsync("ipop.newsEditor.chooseFile", id, "video");
     }
 
-    /// The toolbar's own picker. The popover closes and the file goes through the same
-    /// `UploadAndInsertAsync` path the host would use.
+    /// The toolbar's own picker. The file goes through the same `UploadAndInsertAsync` path the
+    /// host would use. The popover closes only after the upload: its InputFile owns the picked
+    /// file, and removing it first ("pop = null" re-renders) makes OpenReadStream fail with
+    /// "Cannot read properties of null (reading '_blazorFilesById')".
     private async Task OnImagePicked(InputFileChangeEventArgs e)
     {
-        pop = null;
-        await UploadAndInsertAsync(e.File, "image");
+        try { await UploadAndInsertAsync(e.File, "image"); }
+        finally { pop = null; }
     }
 
     private async Task OnVideoPicked(InputFileChangeEventArgs e)
     {
-        pop = null;
-        await UploadAndInsertAsync(e.File, "video");
+        try { await UploadAndInsertAsync(e.File, "video"); }
+        finally { pop = null; }
     }
 
     /// Uploads one host-picked file through the configured endpoint and inserts it at the caret.
