@@ -32,7 +32,7 @@ public sealed class Feed(IPopClient api, LocalState state) : IAsyncDisposable
         });
         hub.On<ToastPayload>("desktopToast", t => { QaLog("desktopToast " + t.Kind + " " + t.Url); ChatToast?.Invoke(t); });
         foreach (var ev in new[] { "remoteRequest", "remoteAnswer", "remoteEnded" })
-            hub.On<System.Text.Json.JsonElement>(ev, e => { QaLog(ev); if (System.Text.Json.Nodes.JsonNode.Parse(e.GetRawText()) is { } n) Remote?.Invoke(ev, n); });
+            hub.On<System.Text.Json.JsonElement>(ev, e => { Log.Info("hub", ev); if (System.Text.Json.Nodes.JsonNode.Parse(e.GetRawText()) is { } n) Remote?.Invoke(ev, n); });
         hub.Reconnected += async _ => { ConnectionChanged?.Invoke(true); await CatchUpAsync(CancellationToken.None); };
         hub.Reconnecting += _ => { ConnectionChanged?.Invoke(false); return Task.CompletedTask; };
         var mine = hub;
@@ -58,6 +58,7 @@ public sealed class Feed(IPopClient api, LocalState state) : IAsyncDisposable
             }
         }
         ConnectionChanged?.Invoke(true);
+        Log.Info("hub", "connected to " + api.Server);
         await CatchUpAsync(ct);
     }
 

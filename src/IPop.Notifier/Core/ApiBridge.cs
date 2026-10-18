@@ -25,6 +25,7 @@ public static partial class ApiBridge
         ("GET", R("^api/notifier/devices(\\?q=[^&]{0,80})?$")),
         ("GET", R("^api/notifier/me$")),
         ("GET", R($"^api/notifier/remote/sessions/{G}/join$")),
+        ("GET", R($"^api/notifier/remote/sessions/{G}$")),
         ("GET", R("^api/notifier/remote/media$")),
         ("GET", R($"^api/notifier/remote/log(\\?(deviceId={G}|scope=mine))?$")),
         ("POST", R("^api/notifier/remote/sessions$")),

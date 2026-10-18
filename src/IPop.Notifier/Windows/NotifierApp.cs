@@ -335,15 +335,20 @@ public sealed class NotifierApp : ApplicationContext
 
     // ── updates ──────────────────────────────────────────────────────────────
 
+    /// Checks the update feed shortly after start and every 10 minutes. A new version is downloaded in the background
+    /// and installed straight away (the app restarts by itself, signed in) unless remote help is running or the
+    /// person is typing a reply in a popup — then it waits for the next check.
     private async Task UpdateLoopAsync()
     {
-        await Task.Delay(TimeSpan.FromMinutes(2));
+        await Task.Delay(TimeSpan.FromSeconds(45));
         while (true)
         {
             await UpdateAsync(manual: false);
-            await Task.Delay(TimeSpan.FromHours(6));
+            await Task.Delay(TimeSpan.FromMinutes(10));
         }
     }
+
+    private bool Busy() => remoteActive || viewers.Count > 0;
 
     /// Velopack feed on the iPop server (/download/notifier/). Downloads quietly and applies on the next start,
     /// or right away when the user asked.
@@ -363,12 +368,17 @@ public sealed class NotifierApp : ApplicationContext
                 if (manual) Post(() => tray.ShowBalloonTip(3000, "iPop Notifier", $"You have the latest version ({AppInfo.Version}).", ToolTipIcon.Info));
                 return;
             }
+            Log.Info("update", $"found {next.TargetFullRelease.Version}, downloading");
             await mgr.DownloadUpdatesAsync(next);
-            if (manual) mgr.ApplyUpdatesAndRestart(next);
-            else mgr.WaitExitThenApplyUpdates(next, silent: true, restart: false);
+            if (!manual && Busy()) { Log.Info("update", "downloaded; waiting until remote help is over"); return; }
+            Log.Info("update", "installing and restarting");
+            Post(() => tray.ShowBalloonTip(3000, "iPop Notifier", $"Updating to {next.TargetFullRelease.Version}… it restarts by itself.", ToolTipIcon.Info));
+            await Task.Delay(1500);
+            mgr.ApplyUpdatesAndRestart(next);
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warn("update", "check failed: " + ex.GetType().Name + " " + ex.Message);
             if (manual) Post(() => tray.ShowBalloonTip(3000, "iPop Notifier", "Couldn't check for updates right now.", ToolTipIcon.Warning));
         }
     }

@@ -4691,6 +4691,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("AliveAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("DeviceId")
                         .HasColumnType("uuid");
 

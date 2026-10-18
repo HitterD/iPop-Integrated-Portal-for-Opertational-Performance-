@@ -22,6 +22,8 @@ public static class RemoteEndpoints
 {
     public static readonly TimeSpan AskTimeout = TimeSpan.FromSeconds(30);
     public static readonly TimeSpan TokenLifetime = TimeSpan.FromHours(4);
+    /// Without a heartbeat from the user's PC for this long, an "active" session is treated as over.
+    public static readonly TimeSpan AliveWindow = TimeSpan.FromSeconds(90);
     public static readonly TimeSpan LogRetention = TimeSpan.FromDays(365);
     public const long MediaQuotaBytes = 2L * 1024 * 1024 * 1024;
     public const long MediaMaxBytes = 200L * 1024 * 1024;
@@ -46,8 +48,9 @@ public static class RemoteEndpoints
 
             var now = DateTime.UtcNow;
             // Someone is already helping this PC: the newcomer joins that room to watch (view only, still asks the user).
+            await CloseStaleAsync(db, device.Id, now, ct);
             var running = await db.RemoteSessions.AsNoTracking()
-                .Where(x => x.DeviceId == device.Id && x.Status == "active" && x.StartedAt > now - TokenLifetime)
+                .Where(x => x.DeviceId == device.Id && x.Status == "active" && (x.AliveAt ?? x.StartedAt) > now - AliveWindow)
                 .OrderByDescending(x => x.StartedAt).Select(x => x.Room).FirstOrDefaultAsync(ct);
             var id = Guid.NewGuid();
             var session = new RemoteSession
@@ -58,6 +61,7 @@ public static class RemoteEndpoints
             };
             session.Status = session.Unattended ? "active" : "asking";
             session.StartedAt = session.Unattended ? now : null;
+            session.AliveAt = session.StartedAt;
             db.RemoteSessions.Add(session);
             await db.SaveChangesAsync(ct);
             await hub.Clients.User(device.UserId.ToString()).SendAsync("remoteRequest", new
@@ -96,6 +100,27 @@ public static class RemoteEndpoints
                 sources: isHost ? ["screen_share"] : []);
             return Results.Ok(new { url = lk.ServerUrl, token, room = s.Room, role = isHost ? "host" : "helper", mode = s.Mode,
                 helper = await db.Users.AsNoTracking().Where(u => u.Id == s.HelperId).Select(u => u.Name).FirstAsync(ct) });
+        });
+
+        // User's PC: "still sharing" every 30 s. 410 = the session is over (ended elsewhere) → the PC stops sharing.
+        g.MapGet("/sessions/{id:guid}", async (Guid id, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var me = await Me(http, db, ct);
+            if (me is null) return Results.Unauthorized();
+            var s = await db.RemoteSessions.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && (x.HelperId == me.Value.Id || x.TargetUserId == me.Value.Id), ct);
+            return s is null ? Results.NotFound() : Results.Ok(new { s.Status, s.EndedBy, s.StartedAt });
+        });
+
+        g.MapPost("/sessions/{id:guid}/alive", async (Guid id, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var me = await Me(http, db, ct);
+            if (me is null) return Results.Unauthorized();
+            var s = await db.RemoteSessions.FirstOrDefaultAsync(x => x.Id == id && x.TargetUserId == me.Value.Id, ct);
+            if (s is null) return Results.NotFound();
+            if (s.Status != "active") return Results.StatusCode(410);
+            s.AliveAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+            return Results.NoContent();
         });
 
         g.MapPost("/sessions/{id:guid}/end", async (Guid id, RemoteEndRequest req, HttpContext http, IPopDbContext db,
@@ -218,12 +243,23 @@ public static class RemoteEndpoints
 
     public static string RoomName(Guid sessionId) => "remote-" + sessionId.ToString("N");
 
+    /// "active" sessions on this PC whose heartbeat stopped are closed (logged as ended by "timeout").
+    public static async Task<int> CloseStaleAsync(IPopDbContext db, Guid deviceId, DateTime now, CancellationToken ct)
+    {
+        var stale = await db.RemoteSessions
+            .Where(x => x.DeviceId == deviceId && x.Status == "active" && (x.AliveAt ?? x.StartedAt) <= now - AliveWindow)
+            .ToListAsync(ct);
+        foreach (var s in stale) { s.Status = "ended"; s.EndedAt = s.AliveAt ?? s.StartedAt ?? now; s.EndedBy = "timeout"; }
+        if (stale.Count > 0) await db.SaveChangesAsync(ct);
+        return stale.Count;
+    }
+
     /// "active" when allowed in time, "declined" otherwise, "expired" after the 30 s prompt. Idempotent once decided.
     public static string Answer(RemoteSession s, bool allow, DateTime now)
     {
         if (s.Status != "asking") return s.Status;
         if (now > s.RequestedAt + AskTimeout + TimeSpan.FromSeconds(5)) { s.Status = "expired"; s.EndedAt = now; s.EndedBy = "timeout"; return s.Status; }
-        if (allow) { s.Status = "active"; s.StartedAt = now; }
+        if (allow) { s.Status = "active"; s.StartedAt = now; s.AliveAt = now; }
         else { s.Status = "declined"; s.EndedAt = now; s.EndedBy = "user"; }
         return s.Status;
     }

@@ -101,11 +101,12 @@ public sealed class ViewerWindow : BridgedWindow
 
     protected override void OnReady()
     {
+        Log.Info("remote", "viewer ready " + SessionId);
         Send(start);
         clip = new ClipWatcher(OnClipboard);
     }
 
-    public void Answer(string status) => Send(new { type = "answer", status });
+    public void Answer(string status) { Log.Info("remote", $"viewer answer {SessionId} {status}"); Send(new { type = "answer", status }); }
     public void Ended(string? by) => Send(new { type = "remoteEnded", endedBy = by });
 
     private void OnClipboard()
@@ -122,6 +123,7 @@ public sealed class ViewerWindow : BridgedWindow
     {
         switch (type)
         {
+            case "log": Log.Info("viewer", msg?["text"]?.GetValue<string>() ?? ""); break;
             case "maximize": WindowState = WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized; break;
             case "setClipboard": Clip.Apply(msg!); break;
             case "setClipboardFile": Clip.SetFile(msg?["name"]?.GetValue<string>() ?? "file", Convert.FromBase64String(msg?["data"]?.GetValue<string>() ?? "")); break;

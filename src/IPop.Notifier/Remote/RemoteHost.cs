@@ -19,7 +19,7 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
     private string helper = "ICT";
     private readonly List<string> files = [];
     private ClipWatcher? clip;
-    private System.Windows.Forms.Timer? stat;
+    private System.Windows.Forms.Timer? stat, alive;
     private string lastStat = "";
     public bool Active => sessionId is not null;
     public event Action<bool>? ActiveChanged;
@@ -27,6 +27,7 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
     /// "remoteRequest" from the hub.
     public void OnRequest(JsonNode m, string deviceKey)
     {
+        Log.Info("remote", $"request {m["sessionId"]} from {m["helper"]} mode={m["mode"]} unattended={m["unattended"]} mine={m["deviceKey"]?.GetValue<string>() == deviceKey}");
         if (m["deviceKey"]?.GetValue<string>() != deviceKey) return; // another PC of the same person
         var id = Guid.Parse(m["sessionId"]!.GetValue<string>());
         helper = m["helper"]?.GetValue<string>() ?? "ICT";
@@ -34,7 +35,11 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
         mode = m["mode"]?.GetValue<string>() ?? "control";
         var joining = m["joining"]?.GetValue<bool>() == true;
         if (m["unattended"]?.GetValue<bool>() == true) { _ = StartAsync(id, initials); return; }
-        if (sessionId is not null && !joining) return; // already in a session: a new request waits for the next one
+        if (sessionId is not null && !joining)
+        {
+            Log.Warn("remote", $"new request while {sessionId} is still marked here — closing the old one");
+            Stop("replaced");
+        }
 
         var ask = new HelpWindow(api, this, asking: true);
         ask.Shown += (_, _) => ask.Send(new { type = "ask", helper, initials, machine = Environment.MachineName, mode, joining, seconds = 30 });
@@ -47,10 +52,11 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
             {
                 using var res = await api.SendAsync(HttpMethod.Post, $"api/notifier/remote/sessions/{id}/answer", new { allow });
                 var status = JsonNode.Parse(await res.Content.ReadAsStringAsync())?["status"]?.GetValue<string>();
+                Log.Info("remote", $"answered allow={allow} → {(int)res.StatusCode} status={status}");
                 if (allow && status == "active" && !joining) await StartAsync(id, initials);
                 else if (allow && status != "active") balloon("Remote help", "The request had already expired.", ToolTipIcon.Info);
             }
-            catch { balloon("Remote help", "Couldn't reach iPop to answer.", ToolTipIcon.Warning); }
+            catch (Exception ex) { Log.Error("remote", "answer failed", ex); balloon("Remote help", "Couldn't reach iPop to answer.", ToolTipIcon.Warning); }
         };
         var timer = new System.Windows.Forms.Timer { Interval = 30_000 };
         timer.Tick += (_, _) => { timer.Dispose(); if (!answered && !ask.IsDisposed) { answered = true; ask.Close(); _ = api.SendAsync(HttpMethod.Post, $"api/notifier/remote/sessions/{id}/answer", new { allow = false }); } };
@@ -68,8 +74,9 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
         input.Monitor = monitor;
         JsonNode? join;
         try { join = await api.GetJsonAsync($"api/notifier/remote/sessions/{id}/join"); }
-        catch { join = null; }
-        if (join is null) { Stop("error"); balloon("Remote help", "Couldn't start remote help.", ToolTipIcon.Warning); return; }
+        catch (Exception ex) { Log.Error("remote", "join failed", ex); join = null; }
+        if (join is null) { Log.Warn("remote", "join returned nothing"); Stop("error"); balloon("Remote help", "Couldn't start remote help.", ToolTipIcon.Warning); return; }
+        Log.Info("remote", $"joining room {join["room"]} url={join["url"]} role={join["role"]} mode={join["mode"]}");
 
         clip = new ClipWatcher(() =>
         {
@@ -83,6 +90,9 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
         stat = new System.Windows.Forms.Timer { Interval = 2000 };
         stat.Tick += (_, _) => SendInputStat();
         stat.Start();
+        alive = new System.Windows.Forms.Timer { Interval = 30_000 };
+        alive.Tick += async (_, _) => await AliveAsync(id);
+        alive.Start();
         page = new HostPage(this);
         page.Ready += () => page.Send(new { type = "join", info = join, quality = "smooth" });
         page.CreateControl();
@@ -92,10 +102,11 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
     /// Messages from the hidden LiveKit page.
     internal void FromPage(string type, JsonNode? m)
     {
-        QaLog("host page: " + type + " " + (m?.ToJsonString() is { } j ? j[..Math.Min(300, j.Length)] : ""));
+        if (type is not ("data" or "file")) Log.Info("remote", "host page: " + type + " " + (m?.ToJsonString() is { } j ? j[..Math.Min(300, j.Length)] : ""));
         switch (type)
         {
             case "failed":
+                Log.Error("remote", "share failed: " + (m?["message"]?.GetValue<string>() ?? ""));
                 balloon("Remote help", "The screen couldn't be shared: " + (m?["message"]?.GetValue<string>() ?? ""), ToolTipIcon.Warning);
                 _ = EndAsync("error");
                 break;
@@ -211,6 +222,21 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
         else page.Send(new { type = "send", topic = "clip", msg = payload });
     }
 
+    private async Task AliveAsync(Guid id)
+    {
+        if (sessionId != id) return;
+        try
+        {
+            using var res = await api.SendAsync(HttpMethod.Post, $"api/notifier/remote/sessions/{id}/alive");
+            if ((int)res.StatusCode is 410 or 404 && sessionId == id)
+            {
+                Log.Info("remote", $"server says {id} is over ({(int)res.StatusCode})");
+                Stop("server");
+            }
+        }
+        catch (Exception ex) { Log.Warn("remote", "heartbeat failed: " + ex.GetType().Name); }
+    }
+
     internal void ChatFromUser(string text) => page?.Send(new { type = "send", topic = "chat", msg = new { text } });
     internal void MediaMinimised(bool min) => help?.SetMinimised(min);
 
@@ -237,6 +263,7 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
 
     private void Stop(string by)
     {
+        Log.Info("remote", $"stop by={by} played={input.Played} refused={input.Refused} lastErr={input.LastError}");
         input.ReleaseAll();
         sessionId = null;
         try { page?.Send(new { type = "leave" }); } catch { }
@@ -244,6 +271,7 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
         _ = Task.Delay(1500).ContinueWith(_ => Post(() => p?.Dispose()));
         clip?.Dispose(); clip = null;
         stat?.Dispose(); stat = null;
+        alive?.Dispose(); alive = null;
         help?.Close(); help = null;
         frame?.Close(); frame = null;
         ActiveChanged?.Invoke(false);

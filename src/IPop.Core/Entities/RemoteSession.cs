@@ -19,6 +19,9 @@ public class RemoteSession
     public DateTime RequestedAt { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime? EndedAt { get; set; }
+    /// The user's PC confirms every 30 s that it is still sharing. A session that stopped confirming (PC crashed,
+    /// app killed, network gone) no longer counts as running, so it can't swallow the next request.
+    public DateTime? AliveAt { get; set; }
     /// "helper" | "user" | "timeout" | "error"
     public string? EndedBy { get; set; }
     /// File names sent either way, newline separated (names only, no content).

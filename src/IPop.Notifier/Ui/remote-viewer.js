@@ -3,6 +3,9 @@
   const R = window.remote, { api, post, esc, snack } = window.app;
   const $ = s => document.querySelector(s);
   const stage = $('#stage');
+  const log = text => post({ type: 'log', text: String(text).slice(0, 400) });
+  window.addEventListener('error', e => log('error: ' + e.message));
+  window.addEventListener('unhandledrejection', e => log('rejection: ' + (e.reason && (e.reason.name + ': ' + e.reason.message) || e.reason)));
   let video = null, sessionId = null, ended = false, media = [], mediaOn = null, clipOn = true, minimised = false, files = [];
   document.body.dataset.esc = 'off';
   $('[data-min]').innerHTML = ICON.min; $('[data-max]').innerHTML = IC('maximize-2'); $('[data-close]').innerHTML = ICON.x;
@@ -17,11 +20,21 @@
     if (m.status === 'active') return join();
     $('#waitTxt').textContent = 'Waiting for ' + m.user.split(' ')[0] + ' to allow…';
     $('#waitSub').textContent = 'They have 30 seconds to answer.';
+    // The answer also arrives over the hub; polling covers the case where it came before this page was ready.
+    for (let i = 0; i < 40 && !joining && !ended; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      const s = await api('GET', `api/notifier/remote/sessions/${sessionId}`);
+      const st = s.ok && s.json.status;
+      if (st === 'active') return join();
+      if (st === 'declined' || st === 'expired' || st === 'ended') return answer(st);
+    }
   });
-  app.on('answer', m => {
-    if (m.status === 'active') join();
-    else showEnded(m.status === 'declined' ? 'The user declined' : 'No answer', m.status === 'declined' ? 'They chose not to share their screen.' : 'The request timed out after 30 seconds.');
-  });
+  function answer(status) {
+    if (status === 'active') return join();
+    if (joining || ended) return;
+    showEnded(status === 'declined' ? 'The user declined' : 'No answer', status === 'declined' ? 'They chose not to share their screen.' : 'The request timed out after 30 seconds.');
+  }
+  app.on('answer', m => answer(m.status));
   app.on('remoteEnded', m => showEnded('Remote help ended', m.endedBy === 'user' ? 'The user ended the session.' : ''));
   app.on('clipboard', m => { if (clipOn && R.room) R.sendReliable({ t: 'clip', kind: m.kind, text: m.text, data: m.data }, 'clip'); });
   app.on('clipFile', async m => {
@@ -31,9 +44,13 @@
     addFile(m.name, m.data.length * 0.75, 'Copied to the user · ready to paste', 1);
   });
 
+  let joining = false;
   async function join() {
+    if (joining) return;
+    joining = true;
     $('#waitTxt').textContent = 'Connecting…'; $('#waitSub').textContent = '';
     const r = await api('GET', `api/notifier/remote/sessions/${sessionId}/join`);
+    log('join ' + r.status + ' ' + (r.json ? r.json.url + ' ' + r.json.room : ''));
     if (!r.ok) return showEnded('Couldn\'t connect', r.json?.message || 'Try again in a moment.');
     R.onTrack = track => {
       if (track.kind !== 'video') return;
@@ -55,7 +72,7 @@
     R.onReconnecting = on => live(on ? 'Reconnecting' : 'Controlling', on ? 'warn' : '');
     R.onDisconnected = () => { if (!ended) showEnded('Connection lost', 'The user\'s PC went offline or the network dropped.'); };
     R.onPeer = (p, joined) => { if (!joined && p.identity.startsWith('host:') && !ended) showEnded('Remote help ended', 'The user\'s PC left the session.'); };
-    try { await R.join(r.json); } catch (e) { return showEnded('Couldn\'t connect', String(e.message || e)); }
+    try { await R.join(r.json); log('connected; peers ' + R.room.remoteParticipants.size); } catch (e) { log('connect failed ' + (e.name + ': ' + e.message)); return showEnded('Couldn\'t connect', String(e.message || e)); }
     setMode(r.json.mode);
     sendMedia();
     statsLoop();
