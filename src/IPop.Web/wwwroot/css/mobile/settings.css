@@ -26,4 +26,9 @@
  .m-search-chips [aria-selected=true]{background:#123528;color:white}.m-search-results{overflow:auto;flex:1;padding-bottom:calc(24px + var(--m-safe-b))}
  .m-search-hit{display:flex;align-items:center;gap:12px;width:100%;padding:14px 20px;text-align:left;border-bottom:1px solid var(--sep)!important}.m-search-hit span{min-width:0}.m-search-hit b,.m-search-hit small{display:block;overflow-wrap:anywhere}.m-search-hit small{color:var(--ink-3);margin-top:5px}
  .m-search-recent{display:flex;align-items:center;padding:0 16px}.m-search-recent button:first-child{flex:1;display:flex;align-items:center;gap:12px;text-align:left}.m-search-jumps{display:flex;padding:0 16px;gap:8px}.m-search h3{display:flex;align-items:center;justify-content:space-between}.m-search h3 button{font-size:14px;text-transform:none}
+ .m-profile-close{border:0;background:none;color:var(--ph-green,var(--accent));font-size:17px;padding:0 6px}
+ .m-profile-photo-actions{display:flex;justify-content:center;gap:4px;margin-top:6px}
+ .m-profile-link{border:0;background:none;color:var(--ph-green,var(--accent));font-size:15px;font-weight:600;padding:0 10px;border-radius:10px}
+ .m-profile-link.danger{color:var(--danger,#d93025)}
+ .m-profile-link:disabled{opacity:.5}
 }

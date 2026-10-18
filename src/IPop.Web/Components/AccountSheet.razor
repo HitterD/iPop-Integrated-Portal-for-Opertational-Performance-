@@ -13,7 +13,7 @@
     @if (Phone.IsPhone && pane == Pane.Profile)
     {
         <BottomSheet Open="true" OpenChanged="_ => Close()" Title="Profile" Size="SheetSize.Full" Class="m-profile">
-            <Leading><button type="button" @onclick="Close">Close</button></Leading>
+            <Leading><button type="button" class="m-profile-close" @onclick="Close">Close</button></Leading>
             <ChildContent>
                 @if (me is null) { <p role="status">Loading profile…</p> }
                 else
@@ -22,8 +22,8 @@
                         <span class="acct-av" style="@(preview is not null ? $"background:url('{preview}') center/cover" : AvatarPhotos.Style(me.Nik))">@Initials</span>
                         <h2>@me.Name</h2><p>@me.Department</p><p>@me.Site</p>
                         <input type="file" accept="image/jpeg,image/png,image/webp" @ref="fileInput" @onchange="PickPhoto" disabled="@busyPhoto" hidden />
-                        <button type="button" @onclick="OpenPicker" disabled="@busyPhoto">Change photo</button>
-                        @if (HasPhoto) { <button type="button" @onclick="RemovePhoto" disabled="@busyPhoto">Remove photo</button> }
+                        <div class="m-profile-photo-actions"><button type="button" class="m-profile-link" @onclick="OpenPicker" disabled="@busyPhoto">Change photo</button>
+                        @if (HasPhoto) { <button type="button" class="m-profile-link danger" @onclick="RemovePhoto" disabled="@busyPhoto">Remove photo</button> }</div>
                     </section>
                     @if (photoError is not null) { <p role="alert">@photoError</p> }
                     <h3>Contact · you can edit</h3>
