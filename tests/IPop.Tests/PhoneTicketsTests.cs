@@ -56,6 +56,19 @@ public class PhoneTicketsTests
         cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll(".tk-mod")));
         Assert.NotNull(cut.Find(".tk-formwrap > .tk-form-h")); Assert.Empty(cut.FindAll(".ph-sheet"));
     }
+    [Fact]
+    public void Detail_back_returns_to_list_and_disposal_clears_its_history_reference()
+    {
+        using var ctx = PageContext(true);
+        ctx.JSInterop.Setup<bool>("ipop.mobile.pushDetail", _ => true).SetResult(true);
+        var nav = ctx.Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        nav.NavigateTo("/tickets/" + Guid.NewGuid());
+        var cut = ctx.Render<IPop.Web.Pages.Tickets>(p => p.Add(x => x.Id, Guid.NewGuid()));
+        cut.Find("button[aria-label='Back to Tickets']").Click();
+        Assert.EndsWith("/tickets", nav.Uri);
+        cut.Instance.Dispose();
+        Assert.Contains(ctx.JSInterop.Invocations, i => i.Identifier == "ipop.mobile.clearDetail");
+    }
     private static BunitContext PageContext(bool phone)
     {
         var ctx = new BunitContext(); ctx.JSInterop.Mode = JSRuntimeMode.Loose;
@@ -64,7 +77,7 @@ public class PhoneTicketsTests
         typeof(AuthState).GetProperty(nameof(AuthState.Me))!.SetValue(auth, new DirectoryEmployeeDto("SECRET-NIK", "Jane Smith", null, null, null, null, null, null, "jane@example.test", null, null, "on"));
         ctx.Services.AddSingleton(auth); ctx.Services.AddSingleton(http);
         ctx.Services.AddSingleton<TicketApi>(); ctx.Services.AddSingleton<PageCache>();
-        ctx.Services.AddSingleton<BadgeState>(); ctx.Services.AddSingleton<CalendarLinks>();
+        ctx.Services.AddSingleton<BadgeState>(); ctx.Services.AddSingleton<PeopleLinks>(); ctx.Services.AddSingleton<CalendarLinks>();
         ctx.Services.AddSingleton<ToastService>(); ctx.Services.AddSingleton<ConfirmService>(); ctx.Services.AddSingleton<OverlayStack>();
         var state = new PhoneState(ctx.JSInterop.JSRuntime); state.OnPhoneChanged(phone); ctx.Services.AddSingleton(state);
         return ctx;

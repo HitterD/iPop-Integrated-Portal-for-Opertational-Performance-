@@ -37,7 +37,7 @@ public partial class Tickets
     {
         phoneMore = false;
         if (phoneDetailPushed) { phoneDetailPushed = false; await JS.InvokeVoidAsync("ipop.mobile.popDetail"); }
-        else BackToList();
+        BackToList();
     }
     [JSInvokable] public Task MobileBack() { phoneDetailPushed = false; BackToList(); return Task.CompletedTask; }
 
@@ -139,6 +139,7 @@ public partial class Tickets
     {
         disposed = true;
         Phone.Changed -= PhoneChanged;
+        if (Phone.IsPhone) _ = JS.InvokeVoidAsync("ipop.mobile.clearDetail").AsTask().ContinueWith(_ => { });
         phoneRef?.Dispose();
         sub?.Dispose();
         liveCts?.Cancel();

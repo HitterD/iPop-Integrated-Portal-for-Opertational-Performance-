@@ -15,7 +15,7 @@
     else
     {
         <PhoneScreen Title="@(detail?.TicketNumber ?? "Ticket")" LargeTitle="false" BackLabel="Tickets" OnBack="PhoneBack" Class="m-tickets-detail">
-            <Trailing><button type="button" class="ph-icon-btn" aria-label="Ticket actions" @onclick="() => phoneMore = true"><i data-lucide="ellipsis"></i></button></Trailing>
+            <Trailing><button type="button" class="ph-ib" aria-label="Ticket actions" @onclick="() => phoneMore = true"><i data-lucide="ellipsis"></i></button></Trailing>
             <ChildContent>@DetailContent</ChildContent>
         </PhoneScreen>
         @if (detail is { } selected)
