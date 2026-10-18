@@ -193,6 +193,24 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
         return $"il={il} session={mySession} console={WTSGetActiveConsoleSessionId()} threadDesk={DeskName(GetThreadDesktop(GetCurrentThreadId()))} fgHwnd={GetForegroundWindow()}";
     }
 
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
+
+    /// Why mouse/keyboard may not reach this PC right now:
+    ///   "ok"        the person's desktop is in front
+    ///   "locked"    lock screen, sign-in, UAC or Ctrl+Alt+Del (a secure desktop)
+    ///   "rdp-idle"  this Windows session is a Remote Desktop session that nobody is looking at (window minimised
+    ///               or disconnected) — Windows stops drawing it and refuses input
+    ///   "rdp"       a Remote Desktop session that is being viewed (works, but frame rate is limited by RDP)
+    ///   "idle"      no window has the focus (screen off / nothing in front)
+    private static string Reason(string desk, string fg)
+    {
+        const int SM_REMOTESESSION = 0x1000;
+        var rdp = GetSystemMetrics(SM_REMOTESESSION) != 0;
+        if (desk != "Default") return "locked";
+        if (GetForegroundWindow() == 0 || fg == "Idle") return rdp ? "rdp-idle" : "idle";
+        return rdp ? "rdp" : "ok";
+    }
+
     /// "Default" while the person's desktop is in front; "Winlogon"/"" when the PC is locked or a UAC prompt is up.
     private static string InputDesktop()
     {
@@ -213,11 +231,12 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
         string fg = "";
         try { GetWindowThreadProcessId(GetForegroundWindow(), out var p); fg = System.Diagnostics.Process.GetProcessById((int)p).ProcessName; } catch { }
         var desk = InputDesktop();
+        var reason = Reason(desk, fg);
         var key = $"{input.Played}|{input.Refused}|{input.LastError}|{fg}|{desk}";
         if (key == lastStat) return;
         lastStat = key;
         Log.Info("remote", $"input played={input.Played} refused={input.Refused} err={input.LastError} path={input.Path} fg={fg} desk={desk} {Environment2()}");
-        page.Send(new { type = "send", topic = "ctl", msg = new { t = "inStat", played = input.Played, refused = input.Refused, err = input.LastError, fg, desk, mode, path = input.Path } });
+        page.Send(new { type = "send", topic = "ctl", msg = new { t = "inStat", played = input.Played, refused = input.Refused, err = input.LastError, fg, desk, mode, path = input.Path, reason } });
     }
 
     private void Combo(string? k)

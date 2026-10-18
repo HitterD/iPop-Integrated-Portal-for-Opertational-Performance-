@@ -87,9 +87,21 @@
   let warned = false;
   function inputStat(m) {
     log(`input played=${m.played} refused=${m.refused} err=${m.err} fg=${m.fg} desk=${m.desk}`);
-    const locked = m.desk !== undefined && m.desk !== 'Default';
-    $('#locked').classList.toggle('on', locked);
-    if (locked) { $('#inp').innerHTML = IC('lock') + '<b class="mid">locked</b>'; $('#inp').title = 'The user\'s PC is locked or showing a UAC prompt'; return; }
+    const REASONS = {
+      locked: ['lock', 'The user\'s PC is locked', 'Windows shows the lock screen, sign-in, a UAC prompt or Ctrl+Alt+Del. Ask the user to unlock it, or use a PC with the iPop Remote Helper installed to sign in from here.'],
+      'rdp-idle': ['monitor-off', 'The PC is being used through Remote Desktop', 'This Windows session is a Remote Desktop session that nobody is viewing, so Windows stops drawing it and refuses mouse and keyboard. Close Remote Desktop and sign in at the PC itself, or install the iPop Remote Helper.'],
+      idle: ['moon', 'Nothing is in front on the user\'s PC', 'The screen may be off or asleep. Ask the user to move the mouse.'],
+    };
+    const r = REASONS[m.reason];
+    $('#locked').classList.toggle('on', !!r);
+    if (r) {
+      $('#lockIc').setAttribute('data-lucide', r[0]); window.icons && window.icons();
+      $('#lockT').textContent = r[1]; $('#lockS').textContent = r[2];
+      $('#inp').innerHTML = IC(r[0]) + '<b class="mid">' + (m.reason === 'locked' ? 'locked' : m.reason === 'idle' ? 'asleep' : 'RDP') + '</b>';
+      $('#inp').title = r[1];
+      return;
+    }
+    if (m.reason === 'rdp') $('#res').title = 'Remote Desktop session: the frame rate is limited by Windows';
     const el = $('#inp');
     if (m.played === 0 && m.refused > 0 && m.err) {
       el.innerHTML = IC('mouse-pointer-ban') + '<b class="bad">blocked</b>';

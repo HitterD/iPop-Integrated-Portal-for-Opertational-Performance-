@@ -125,7 +125,7 @@ body:not(.fs) .fsbar{display:none}
   <div class="stage" id="stage" tabindex="0">
     <div class="wait" id="wait"><img src="ipop-mark.webp" alt=""><b id="waitTxt">Waiting for the user to allow…</b><span id="waitSub"></span><div class="dots"><i></i><i></i><i></i></div></div>
     <div class="ghost" id="ghost" hidden><i data-lucide="eye-off"></i><span>Your media is showing on the user's screen (hidden from you)</span></div>
-    <div class="locked" id="locked"><i data-lucide="lock"></i><b>The user's PC is locked</b><small>Windows shows a lock screen, a UAC prompt or Ctrl+Alt+Del. The picture and control come back as soon as the user unlocks it. Unlocking from here needs the iPop Remote Helper service.</small></div>
+    <div class="locked" id="locked"><i data-lucide="lock" id="lockIc"></i><b id="lockT">The user's PC is locked</b><small id="lockS"></small></div>
     <div class="ended" id="ended"><i data-lucide="circle-check" style="width:42px;height:42px;color:#30d158"></i><b id="endedTxt">Remote help ended</b><span id="endedSub"></span><button data-close>Close</button></div>
   </div>
   <div class="side on" id="side">
