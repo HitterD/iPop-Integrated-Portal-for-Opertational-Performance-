@@ -1,0 +1,97 @@
+// Tray inbox: every notification (iPop + iDesk), synced with Notifications in iPop. Held ones show "MISSED".
+(function () {
+  const { api, esc, post } = window.app;
+  const $ = s => document.querySelector(s);
+  let ctx = { held: [] }, filter = 'all', items = [], page = 1, total = 0, loading = false;
+
+  $('#readAll').innerHTML = ICON.readAll;
+  $('#gear').innerHTML = ICON.gear;
+  $('#gear').onclick = () => post({ type: 'settings' });
+  $('#devices').onclick = () => post({ type: 'devices' });
+  $('#open').onclick = () => post({ type: 'openIPop', path: '/notifications' });
+  $('#sw').onclick = () => { $('#sw').classList.toggle('on'); post({ type: 'popups' }); };
+  $('#readAll').onclick = async () => {
+    const r = await api('POST', 'api/notifications/v1/inbox/read-all');
+    if (r.ok) { items.forEach(i => i.isRead = true); draw(); app.snack('All caught up'); }
+  };
+  $('#seg').onclick = e => {
+    const b = e.target.closest('button'); if (!b) return;
+    document.querySelectorAll('#seg button').forEach(x => x.classList.toggle('on', x === b));
+    filter = b.dataset.f; page = 1; items = []; load();
+  };
+
+  app.on('context', m => {
+    const first = !ctx.name;
+    ctx = m.ctx;
+    $('#sub').textContent = `${ctx.name ? ctx.name.split(' ')[0] + ' · ' : ''}${ctx.unread ? ctx.unread + ' unread' : 'all caught up'}`;
+    $('#seg [data-f=unread]').textContent = ctx.unread ? `Unread ${ctx.unread}` : 'Unread';
+    $('#sw').classList.toggle('on', !!ctx.popups);
+    $('#devices').hidden = !ctx.ict;
+    $('#conn').hidden = !!ctx.connected;
+    if (first || document.visibilityState === 'visible') { page = 1; load(); }
+  });
+  app.ready();
+
+  async function load(more) {
+    if (loading) return; loading = true;
+    if (!more && !items.length) $('#list').innerHTML = skeleton();
+    const status = filter === 'unread' ? '&status=unread' : '';
+    const type = filter === 'mail' ? '&type=mail' : '';
+    const r = await api('GET', `api/notifications/v1/inbox?page=${page}&pageSize=40${status}${type}`);
+    loading = false;
+    if (!r.ok) { if (!items.length) $('#list').innerHTML = '<div class="empty"><b>Can\'t load notifications</b>Check the connection — they\'ll appear when iPop is reachable.</div>'; return; }
+    let rows = r.json.items || [];
+    if (filter === 'tickets') rows = rows.filter(i => (i.targetUrl || '').startsWith('/tickets'));
+    items = more ? items.concat(rows) : rows;
+    total = r.json.totalCount;
+    draw();
+  }
+
+  function moduleOf(i) {
+    const u = i.targetUrl || '';
+    if (u.startsWith('/tickets')) return 'tickets';
+    if (u.startsWith('/calendar') || u.includes('tab=scheduled') || u.includes('join=')) return 'calendar';
+    if (u.startsWith('/calls')) return 'calls';
+    if (u.startsWith('/notes')) return 'notes';
+    return { mail: 'mail', chat: 'chat', news: 'news', project: 'projects' }[i.type] || 'system';
+  }
+
+  function draw() {
+    const list = $('#list');
+    if (!items.length) { list.innerHTML = `<div class="empty"><b>${filter === 'unread' ? 'All caught up' : 'Nothing here yet'}</b>New notifications from iPop and iDesk appear here.</div>`; return; }
+    const today = new Date().toDateString(), yest = new Date(Date.now() - 864e5).toDateString();
+    let last = '', html = '';
+    items.forEach((i, idx) => {
+      const d = new Date(i.at), key = d.toDateString();
+      const g = key === today ? 'Today' : key === yest ? 'Yesterday' : d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'short' });
+      if (g !== last) { html += `<div class="grp">${esc(g)}</div>`; last = g; }
+      const mod = moduleOf(i), m = MOD[mod];
+      const missed = ctx.held && ctx.held.includes(i.id) && !i.isRead;
+      html += `<div class="it ${i.isRead ? 'read' : ''}" data-i="${idx}" style="--m:${m.c};animation-delay:${Math.min(idx, 12) * 18}ms">${i.isRead ? '' : '<i class="dot"></i>'}
+        <span class="ico">${ICON[mod] || ICON.system}</span>
+        <span class="m"><b><span class="t">${esc(i.title)}</span>${missed ? '<span class="missed">MISSED</span>' : ''}<small>${esc(timeShort(i.at))}</small></b><span>${esc(i.body)}</span></span>
+        <span class="acts"><button data-a="read" title="${i.isRead ? 'Mark unread' : 'Mark read'}">${i.isRead ? '●' : ICON.check}</button><button data-a="web" title="Open in iPop">↗</button></span></div>`;
+    });
+    if (items.length < total && filter !== 'tickets') html += '<button class="loadmore" id="more">Show more</button>';
+    list.innerHTML = html;
+    const more = $('#more'); if (more) more.onclick = () => { page++; load(true); };
+  }
+
+  $('#list').addEventListener('click', async e => {
+    const row = e.target.closest('.it'); if (!row) return;
+    const i = items[+row.dataset.i];
+    const a = e.target.closest('[data-a]')?.dataset.a;
+    if (a === 'read') {
+      const r = await api('POST', `api/notifications/v1/notifications/${i.id}/${i.isRead ? 'unread' : 'read'}`);
+      if (r.ok) { i.isRead = !i.isRead; draw(); }
+      return;
+    }
+    if (a === 'web') { post({ type: 'openIPop', path: i.targetUrl || '/notifications' }); return; }
+    // Click: the notification opens again as its own window, with its actions.
+    post({ type: 'openNotice', notice: i });
+  });
+
+  function skeleton() {
+    return Array.from({ length: 6 }, () => '<div class="it" style="cursor:default"><span class="ico skel" style="background:none"></span><span class="m"><span class="skel" style="height:12px;width:60%;margin:4px 0 8px"></span><span class="skel" style="height:10px;width:85%"></span></span></div>').join('');
+  }
+})();

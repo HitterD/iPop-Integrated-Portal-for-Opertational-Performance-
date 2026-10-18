@@ -4,6 +4,7 @@
     <Project Path="src/IPop.Application/IPop.Application.csproj" />
     <Project Path="src/IPop.Core/IPop.Core.csproj" />
     <Project Path="src/IPop.Infrastructure/IPop.Infrastructure.csproj" />
+    <Project Path="src/IPop.Notifier/IPop.Notifier.csproj" />
     <Project Path="src/IPop.Web/IPop.Web.csproj" />
     <Project Path="src/IPop.WebHost/IPop.WebHost.csproj" />
   </Folder>

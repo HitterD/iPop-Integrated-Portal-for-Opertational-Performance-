@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<link rel="stylesheet" href="app.css">
+<style>
+/* Settings window (mockup v1 §7) + popup style choice (v1 stack / v2 windows) */
+body{display:flex;flex-direction:column}
+.wrap{flex:1;display:flex;min-height:0;animation:winIn .4s var(--spring)}
+.side{width:190px;padding:10px 8px;border-right:.5px solid var(--sep);background:var(--glass-2);flex:none}
+.side .hd{display:flex;align-items:center;gap:8px;padding:4px 8px 14px;font-weight:700}
+.side .hd img{width:24px;height:24px;border-radius:7px;background:#fff;padding:2px}
+.side a{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;font-size:13px;color:var(--ink-2);cursor:pointer;transition:background .15s}
+.side a:hover{background:var(--fill)}
+.side a.on{background:var(--fill);color:var(--ink);font-weight:600}
+.ic2{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:#fff;font-size:12px;flex:none}
+.main{flex:1;overflow:auto;padding:18px 22px}
+.main section{display:none;animation:fade .25s}
+.main section.on{display:block}
+h3{font-size:20px;margin-bottom:12px}
+.grp2{border-radius:12px;background:var(--card);margin-bottom:14px;overflow:hidden;box-shadow:0 0 0 .5px var(--sep)}
+.row{display:flex;align-items:center;gap:12px;min-height:48px;padding:8px 14px}
+.row+.row{border-top:.5px solid var(--sep)}
+.row .t{flex:1;min-width:0}.row .t small{display:block;color:var(--ink-3);font-size:12px}
+.row .ic2{width:26px;height:26px;border-radius:7px}
+.lbl{font-size:11.5px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em;margin:4px 4px 6px}
+input[type=range]{accent-color:var(--green);width:150px}
+select{height:28px;border-radius:7px;border:.5px solid var(--sep);background:var(--card);color:var(--ink);padding:0 8px}
+.styles{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px}
+.sty{border-radius:12px;padding:10px;box-shadow:0 0 0 1px var(--sep);cursor:pointer;transition:box-shadow .2s,transform .15s var(--spring);text-align:left}
+.sty:hover{transform:translateY(-1px)}
+.sty.on{box-shadow:0 0 0 2px var(--green)}
+.sty b{display:block;font-size:13px;margin-top:8px}.sty small{display:block;color:var(--ink-3);font-size:11.5px;line-height:1.4}
+.pv{height:96px;border-radius:8px;background:linear-gradient(135deg,#1d4e6b,#7aa6b8);position:relative;overflow:hidden}
+.pv .w{position:absolute;width:56%;height:52%;border-radius:5px;background:rgba(255,255,255,.92);box-shadow:0 6px 14px -6px rgba(0,0,0,.5)}
+.pv .w::before{content:"";display:block;height:8px;background:var(--mail);border-radius:5px 5px 0 0;opacity:.85}
+.pv .c{position:absolute;right:6px;width:44%;height:22px;border-radius:6px;background:rgba(255,255,255,.92);box-shadow:0 4px 10px -4px rgba(0,0,0,.5);border-left:3px solid var(--tix)}
+.pv .tb{position:absolute;left:0;right:0;bottom:0;height:12px;background:rgba(240,243,246,.85)}
+.pv .tb i{position:absolute;left:50%;top:2px;width:8px;height:8px;border-radius:2px;background:#2e9e5b;transform:translateX(-50%)}
+.pv .tb em{position:absolute;left:calc(50% + 2px);top:-2px;width:8px;height:8px;border-radius:50%;background:var(--red)}
+.btn{height:30px;padding:0 12px;border-radius:8px;background:var(--fill);font-weight:600;font-size:12.5px}
+.btn.r{color:var(--red)}
+.saved{position:fixed;right:16px;bottom:14px;font-size:12px;color:var(--ink-3);opacity:0;transition:opacity .3s}
+.saved.on{opacity:1}
+.kv{display:grid;grid-template-columns:130px 1fr;gap:8px 12px;font-size:13px;padding:14px}
+.kv span:nth-child(odd){color:var(--ink-3)}
+</style>
+</head>
+<body>
+<div class="ttl" data-drag><span class="ic"><img src="ipop-mark.webp" alt=""></span><b>iPop Notifier — Settings</b><button class="wc" data-min></button><button class="wc x" data-close></button></div>
+<div class="wrap">
+  <nav class="side" id="nav">
+    <a class="on" data-s="popups"><span class="ic2" style="background:var(--red)">🔔</span>Popups</a>
+    <a data-s="sounds"><span class="ic2" style="background:var(--cal)">🔊</span>Sounds</a>
+    <a data-s="modules"><span class="ic2" style="background:var(--proj)">◧</span>Modules</a>
+    <a data-s="general"><span class="ic2" style="background:var(--sys)">⚙</span>General</a>
+    <a data-s="account"><span class="ic2" style="background:var(--green)">👤</span>Account</a>
+  </nav>
+  <div class="main">
+    <section class="on" id="s-popups">
+      <h3>Popups</h3>
+      <div class="lbl">Popup style</div>
+      <div class="grp2"><div class="styles">
+        <button class="sty" data-style="windows"><div class="pv"><span class="w" style="left:22%;top:12%"></span><span class="w" style="left:30%;top:22%"></span><span class="w" style="left:38%;top:32%"></span><span class="tb"><i></i><em></em></span></div>
+          <b>Windows <span style="font-weight:500;color:var(--ink-3)">· default</span></b><small>One window per notification, grouped under the iPop icon on the taskbar. Hover the icon to see them all.</small></button>
+        <button class="sty" data-style="stack"><div class="pv"><span class="c" style="bottom:56px"></span><span class="c" style="bottom:32px"></span><span class="c" style="bottom:8px;border-left-color:var(--mail)"></span></div>
+          <b>Stacked cards</b><small>Glass cards in the screen corner, the rest wait behind “+N more”.</small></button>
+      </div></div>
+      <div class="grp2">
+        <div class="row"><span class="t">Show popups<small>One window per notification, until you close it</small></span><div class="pill3" id="popups"><button data-v="on">On</button><button data-v="1h">1 hour off</button><button data-v="tomorrow">Until tomorrow</button><button data-v="off">Off</button></div></div>
+        <div class="row"><span class="t">During meetings &amp; presentations<small>Full-screen apps, Windows Focus or iPop status Busy</small></span><div class="pill3" id="meet"><button data-v="hold">Hold</button><button data-v="show">Show</button></div></div>
+        <div class="row"><span class="t">Urgent still shows<small>High priority, meeting starting, mandatory memos</small></span><span class="sw" id="urgent"></span></div>
+        <div class="row"><span class="t">Position</span><div class="pill3" id="pos"><button data-v="bottom-right">Bottom right</button><button data-v="top-right">Top right</button></div></div>
+        <div class="row"><span class="t">Visible at once<small id="maxHint">Others wait behind “+N more”</small></span><select id="max"><option>1</option><option>2</option><option>3</option><option>5</option><option>8</option><option>10</option></select></div>
+      </div>
+    </section>
+    <section id="s-sounds">
+      <h3>Sounds</h3>
+      <div class="grp2">
+        <div class="row"><span class="t">Sounds<small>Same sounds as iPop (Bubble, Envelope, Lifeline…)</small></span><input type="range" id="vol" min="0" max="100"><span class="sw" id="sound"></span></div>
+      </div>
+      <div class="lbl">Preview</div>
+      <div class="grp2" id="previews"></div>
+    </section>
+    <section id="s-modules">
+      <h3>Modules</h3>
+      <div class="grp2" id="mods"></div>
+    </section>
+    <section id="s-general">
+      <h3>General</h3>
+      <div class="grp2">
+        <div class="row"><span class="t">Start with Windows<small>Runs in the tray, no admin needed</small></span><span class="sw" id="autostart"></span></div>
+      </div>
+      <div class="grp2"><div class="kv" id="about"></div></div>
+    </section>
+    <section id="s-account">
+      <h3>Account</h3>
+      <div class="grp2">
+        <div class="row"><span class="t" id="who">Signed in<small>Stays signed in — renews itself; ends after 90 days unused</small></span><button class="btn r" id="signout">Sign out</button></div>
+      </div>
+    </section>
+  </div>
+</div>
+<span class="saved" id="saved">Saved</span>
+<script src="bridge.js"></script>
+<script src="settings.js"></script>
+</body>
+</html>

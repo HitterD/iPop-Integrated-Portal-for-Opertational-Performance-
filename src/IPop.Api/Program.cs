@@ -253,6 +253,7 @@ if (push.IsConfigured)
 else
     builder.Services.AddSingleton<IPop.Infrastructure.Notifications.Push.IWebPushTransport, IPop.Infrastructure.Notifications.Push.DisabledWebPushTransport>();
 builder.Services.AddSingleton<IPop.Infrastructure.Notifications.Push.PushQueue>();
+builder.Services.AddSingleton<IPop.Infrastructure.Notifications.Push.IDesktopToastSink, IPop.Api.Notifications.DesktopToastSink>();
 builder.Services.AddScoped<IPop.Infrastructure.Notifications.Push.PushDispatcher>();
 builder.Services.AddHostedService<IPop.Infrastructure.Notifications.Push.PushWorker>();
 

@@ -7,6 +7,10 @@ namespace IPop.Core.Entities;
 /// </summary>
 public class NotifierDevice
 {
+    /// The app reports every minute; a device seen within this window counts as online (Devices list, and the
+    /// browser's Windows toasts pause for that user so nothing arrives twice).
+    public static readonly TimeSpan OnlineWindow = TimeSpan.FromMinutes(3);
+
     public Guid Id { get; set; }
     public Guid UserId { get; set; }
     /// Random id the app keeps in its local settings (not a secret; identifies "this PC for this user").

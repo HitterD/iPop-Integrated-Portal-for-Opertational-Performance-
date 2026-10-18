@@ -1,0 +1,55 @@
+/* iPop Notifier — shared tokens (docs/mockups/notifier index.html + v2.html). */
+:root{
+  --glass:rgb(250,250,252);--glass-2:rgba(255,255,255,.7);--card:#fff;--fill:rgba(118,118,128,.12);--sep:rgba(60,60,67,.13);
+  --ink:#1d1d1f;--ink-2:#3c3c43;--ink-3:#6e6e73;--ink-4:#aeaeb2;--green:#2e9e5b;--green-2:#278a4f;--red:#ff3b30;
+  --chat:#2e9e5b;--mail:#0a84ff;--calls:#1f8fa6;--cal:#ff9f0a;--proj:#5562b8;--notes:#d19a2a;--news:#a0457a;--tix:#2563eb;--sys:#6f8290;
+  --spring:cubic-bezier(.32,.72,0,1);--pop:cubic-bezier(.34,1.56,.64,1);
+}
+html.dark{
+  --glass:rgb(32,32,34);--glass-2:rgba(44,44,46,.76);--card:#1c1c1e;--fill:rgba(118,118,128,.24);--sep:rgba(84,84,88,.55);
+  --ink:#f5f5f7;--ink-2:#d1d1d6;--ink-3:#98989d;--ink-4:#636366;--green:#30d158;--green-2:#28b84c;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;font-size:14px;color:var(--ink);background:var(--glass);overflow:hidden;
+  -webkit-user-select:none;user-select:none;-webkit-font-smoothing:antialiased}
+input,textarea,[contenteditable]{-webkit-user-select:text;user-select:text}
+.sel{-webkit-user-select:text;user-select:text}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input,textarea,select{font:inherit;color:inherit}
+svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex:none}
+svg.s{width:15px;height:15px}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--fill);border-radius:10px;border:3px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb,var(--ink) 25%,transparent);background-clip:padding-box;border:3px solid transparent}
+
+/* window title bar (drag area) */
+.ttl{height:40px;flex:none;display:flex;align-items:center;gap:10px;padding:0 6px 0 14px;border-bottom:.5px solid var(--sep)}
+.ttl .ic{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:#fff;background:var(--m,var(--green))}
+.ttl .ic svg{width:13px;height:13px}
+.ttl .ic img{width:22px;height:22px;border-radius:6px}
+.ttl b{flex:1;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ttl small{font-size:11.5px;color:var(--ink-3);margin-right:6px;white-space:nowrap}
+.wc{width:40px;height:32px;border-radius:6px;display:grid;place-items:center;color:var(--ink-3);transition:background .15s}
+.wc:hover{background:var(--fill)}
+.wc.x:hover{background:#e81123;color:#fff}
+
+.sw{width:38px;height:22px;border-radius:11px;background:var(--fill);position:relative;transition:background .2s;flex:none;cursor:pointer}
+.sw::after{content:"";position:absolute;left:2px;top:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .25s var(--spring)}
+.sw.on{background:#34c759}.sw.on::after{transform:translateX(16px)}
+.pill3{display:flex;padding:2px;border-radius:8px;background:var(--fill);flex:none}
+.pill3 button{height:26px;padding:0 10px;border-radius:6px;font-size:12px;font-weight:600;color:var(--ink-3);transition:background .15s,color .15s}
+.pill3 button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.pill3 button:disabled{opacity:.4;cursor:default}
+
+.ck{width:22px;height:22px;border-radius:50%;background:var(--green);display:grid;place-items:center;color:#fff;flex:none}
+.ck path{stroke-dasharray:20;stroke-dashoffset:20;animation:draw .35s .1s ease-out forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes winIn{0%{opacity:0;transform:translateY(18px) scale(.97)}100%{opacity:1;transform:none}}
+@keyframes popIn{0%{opacity:0;transform:translateX(40px) scale(.96)}100%{opacity:1;transform:none}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.skel{border-radius:6px;background:linear-gradient(90deg,var(--fill) 0%,color-mix(in srgb,var(--fill) 40%,transparent) 50%,var(--fill) 100%);background-size:200% 100%;animation:sk 1.2s linear infinite}
+@keyframes sk{from{background-position:200% 0}to{background-position:-200% 0}}
+.snack{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);padding:8px 14px;border-radius:999px;background:var(--ink);color:var(--glass);font-size:12.5px;font-weight:600;
+  animation:winIn .3s var(--spring);z-index:99;max-width:90%;text-align:center}
+@media (prefers-reduced-motion: reduce){*{animation-duration:.01s !important;transition:none !important}}

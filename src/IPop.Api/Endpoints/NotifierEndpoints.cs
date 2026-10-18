@@ -19,7 +19,7 @@ public record NotifierDeviceRow(Guid Id, string MachineName, string? WindowsUser
 public static class NotifierEndpoints
 {
     /// A device counts as online when it reported within this window (the app heartbeats every 60 s).
-    public static readonly TimeSpan OnlineWindow = TimeSpan.FromMinutes(3);
+    public static readonly TimeSpan OnlineWindow = NotifierDevice.OnlineWindow;
     private static readonly string[] IctDepartmentCodes = ["ICT", "ICT-1 Support", "ICT-AIS"];
 
     public static IEndpointRouteBuilder MapNotifier(this IEndpointRouteBuilder app)

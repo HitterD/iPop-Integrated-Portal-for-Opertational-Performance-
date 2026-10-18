@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- iPop Notifier: Windows tray app (docs/notifier/PLAN.md, mockups docs/mockups/notifier). Per-user install,
+       no admin rights. UI inside windows is HTML rendered by one shared WebView2 environment. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>iPopNotifier</AssemblyName>
+    <RootNamespace>IPop.Notifier</RootNamespace>
+    <ApplicationIcon>Assets\ipop.ico</ApplicationIcon>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <Version>1.0.0</Version>
+    <Product>iPop Notifier</Product>
+    <Company>PT Santos Jaya Abadi</Company>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.13" />
+    <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
+    <PackageReference Include="Velopack" Version="1.2.161" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Served to WebView2 through a virtual host (https://notifier.ipop/) mapped onto the app folder. -->
+    <Content Include="Ui\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Same settings model as the server (ui-prefs key "notifier"), so both normalise identically. -->
+    <Compile Include="..\IPop.Application\Notifier\NotifierSettings.cs" Link="Core\NotifierSettings.cs" />
+  </ItemGroup>
+
+</Project>

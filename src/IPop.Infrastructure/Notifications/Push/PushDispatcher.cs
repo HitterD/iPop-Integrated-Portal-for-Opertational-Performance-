@@ -32,7 +32,7 @@ public sealed record PushPayload(
 /// user may no longer see (left room, muted, preview off, call already answered). Runs in
 /// <see cref="PushWorker"/>, never on a request.
 public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport, IDataProtectionProvider dataProtection,
-    ILogger<PushDispatcher> log)
+    ILogger<PushDispatcher> log, IDesktopToastSink? desktop = null)
 {
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -111,6 +111,9 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
     /// Creates the per-browser rows. Calls diff against earlier rings so each ring/close is queued once.
     internal async Task ExpandAsync(PushJob job, DateTime now, CancellationToken ct)
     {
+        // iPop Notifier (desktop app): chat messages have no gateway notification, so their toast goes to the app here,
+        // with the same mute/block/quiet-hours audience as the browser toast. Independent of Web Push being configured.
+        var desktopUsers = await DesktopUsersAsync(job, now, ct);
         if (!transport.IsConfigured)
         {
             job.LastError = "push-disabled";
@@ -122,10 +125,37 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
         var audience = await AudienceAsync(job, null, now, ct);
         if (audience is null || audience.Users.Count == 0 || audience.ExpiresAt <= now) return;
         var subs = await db.PushSubscriptions.AsNoTracking().Where(s => audience.Users.Contains(s.UserId))
-            .Select(s => new { s.Id, s.UserId, s.Endpoint }).ToListAsync(ct);
+            .Select(s => new { s.Id, s.UserId, s.Endpoint, s.Label }).ToListAsync(ct);
         foreach (var s in subs)
+        {
+            // The app shows this on the user's Windows PC already; a browser toast there would be the same thing twice.
+            if (desktopUsers.Contains(s.UserId) && IsWindowsBrowser(s.Label)) continue;
             db.PushDeliveries.Add(NewDelivery(job, s.Id, s.UserId, s.Endpoint, audience.Kind, null, audience.ExpiresAt, now));
+        }
     }
+
+    /// Users with the desktop app online. For chat jobs they also get the toast through <see cref="IDesktopToastSink"/>;
+    /// for gateway notifications the app already receives them over the notification hub.
+    private async Task<HashSet<Guid>> DesktopUsersAsync(PushJob job, DateTime now, CancellationToken ct)
+    {
+        if (job.Kind is not ("chat" or "notif")) return [];
+        var audience = await AudienceAsync(job, null, now, ct);
+        if (audience is null || audience.Users.Count == 0 || audience.ExpiresAt <= now) return [];
+        var since = now - NotifierDevice.OnlineWindow;
+        var users = audience.Users;
+        var online = (await db.NotifierDevices.AsNoTracking().Where(d => users.Contains(d.UserId) && d.LastSeenAt >= since)
+            .Select(d => d.UserId).Distinct().ToListAsync(ct)).ToHashSet();
+        if (job.Kind == "chat" && desktop is not null)
+            foreach (var uid in online)
+                if (audience.PayloadFor(uid) is { } payload)
+                {
+                    try { await desktop.SendAsync(uid, payload, ct); }
+                    catch (Exception ex) { log.LogWarning("Desktop toast for job {JobId} failed ({Error}).", job.Id, ex.GetType().Name); }
+                }
+        return online;
+    }
+
+    internal static bool IsWindowsBrowser(string? label) => label is not null && label.EndsWith("· Windows", StringComparison.Ordinal);
 
     private async Task ExpandCallAsync(PushJob job, DateTime now, CancellationToken ct)
     {
