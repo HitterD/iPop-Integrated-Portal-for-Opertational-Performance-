@@ -37,7 +37,7 @@
   "isChromeOSOnly": false,
   "isMetaQuest": false,
   "fullScopeUrl": "https://ipop.santos.co.id/",
-  "minSdkVersion": 21,
+  "minSdkVersion": 24,
   "orientationLock": false,
   "fingerprints": [],
   "additionalTrustedOrigins": [],

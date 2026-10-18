@@ -178,3 +178,27 @@
   /* The topbar bell opens /notifications on phones (MainLayout) — keep its popover out of the way. */
   .v6-topbar .topbar-right .notif-pop { display: none !important; }
 }
+
+/* Notification settings on a phone (mockup v2 NF2): one grouped list in a full sheet, instant save. */
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .m-ns .ph-sheet-body { background: var(--ph-sheet); }
+  .m-ns-body { padding: 4px 0 calc(var(--m-safe-b, 0px) + 16px); }
+  .m-ns .ph-group, .m-ns-sounds .ph-group { margin-top: 6px; }
+  .m-ns-row { min-height: 52px; gap: 12px; }
+  .m-ns-row .ph-row-main { min-width: 0; }
+  .m-ns-row .ph-row-sub { font-size: 13px; }
+  .m-ns-wrap { white-space: normal !important; }
+  .m-ns-row:disabled { opacity: .55; }
+  .m-ns-times { gap: 8px; flex-wrap: wrap; padding-top: 6px; padding-bottom: 6px; }
+  .m-ns-times .m-ns-lbl { color: var(--ph-ink-3); font-size: 15px; }
+  .m-ns-times .dp-input, .m-ns-times input { min-height: 40px; font-size: 16px; }
+  .m-ns-days { justify-content: space-between; gap: 4px; }
+  .m-ns-day { width: 40px; height: 40px; min-width: 40px; border-radius: 50%; border: 0; background: var(--ph-fill); color: var(--ph-ink-2); font: inherit; font-weight: 600; }
+  .m-ns-day.on { background: var(--ph-green); color: var(--ph-on-green); }
+  .m-ns-vol { gap: 10px; color: var(--ph-ink-3); }
+  .m-ns-vol input[type=range] { flex: 1; accent-color: var(--ph-green); min-height: 44px; }
+  .m-ns-vol .lucide { width: 20px; height: 20px; flex: none; }
+  .m-ns-act .ph-row-title { color: var(--ph-green); }
+  .m-ns-check { width: 20px; height: 20px; color: var(--ph-green); flex: none; }
+  .m-ns .ph-sw:disabled { opacity: .5; }
+}

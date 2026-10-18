@@ -108,6 +108,12 @@
     async exists(url) {
       try { const r = await fetch(url, { method: 'HEAD', cache: 'no-store' }); return r.ok; } catch { return false; }
     },
+    /** Size in bytes of a downloadable file (HEAD Content-Length); 0 when missing or unknown. */
+    async size(url) {
+      try { const r = await fetch(url, { method: 'HEAD', cache: 'no-store' }); return r.ok ? Number(r.headers.get('content-length')) || 0 : 0; } catch { return 0; }
+    },
+    /** iPhone in Safari itself (Chrome/Firefox/in-app browsers on iOS can't add to the Home Screen). */
+    iosSafari: () => /iphone|ipad|ipod/i.test(root.navigator.userAgent) && !/crios|fxios|edgios|opios|gsa\/|fban|fbav|instagram|line\//i.test(root.navigator.userAgent),
 
     /** Large-title collapse: one IntersectionObserver per screen, no scroll listeners. */
     collapse(scrollEl, navEl) {

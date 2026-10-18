@@ -47,7 +47,7 @@
                     @if (apk == true)
                     {
                         <a class="ph-dl" href="/download/ipop.apk" download="ipop.apk">
-                            @Android<span><b>Download for Android</b><small>APK · installs like any app</small></span>
+                            @Android<span><b>Download for Android</b><small>APK · version @ApkVersion@(apkBytes > 0 ? $" · {apkBytes / 1048576.0:0.#} MB" : "") · Android 7+</small></span>
                         </a>
                         <p class="ph-hint">Open the file when it's downloaded and tap <b>Install</b>. If asked, allow Chrome to install apps.</p>
                         <div class="ph-orl">or install from Chrome</div>
@@ -65,7 +65,14 @@
             }
             else
             {
-                <div class="ph-pane">@IosSteps</div>
+                <div class="ph-pane">
+                    @if (platform == "ios" && !iosSafari)
+                    {
+                        <div class="ph-soon ph-ios-warn"><svg class="ph-i l" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg><span><b>Open this page in Safari</b><small>Only Safari can add iPop to the Home Screen. Copy the address and paste it in Safari.</small></span></div>
+                        <button type="button" class="ph-btn ph-app-copy" @onclick="CopyLink">@(copied ? "Link copied" : "Copy link")</button>
+                    }
+                    @IosSteps
+                </div>
             }
             <p class="ph-hint ph-help">Need help? Chat <b>ICT Helpdesk</b> or ext. 1604.</p>
             <a class="ph-app-open" href="/dashboard">Open iPop in the browser</a>
@@ -79,6 +86,10 @@
     private string platform = "android";
     private string os = "and";
     private bool? apk;
+    private long apkBytes;
+    private bool iosSafari = true, copied;
+    /// Matches appVersionName in android/twa/twa-manifest.json (bump both for a new APK).
+    public const string ApkVersion = "1.0.0";
     private string installState = "unsupported";
     private string qrSvg = "";
 
@@ -96,10 +107,16 @@
         }
         else
         {
-            try { apk = await JS.InvokeAsync<bool>("ipop.phone.exists", "/download/ipop.apk"); } catch { apk = false; }
+            try { apkBytes = await JS.InvokeAsync<long>("ipop.phone.size", "/download/ipop.apk"); apk = apkBytes > 0; } catch { apk = false; }
+            try { iosSafari = await JS.InvokeAsync<bool>("ipop.phone.iosSafari"); } catch { }
         }
         StateHasChanged();
         try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+    }
+
+    private async Task CopyLink()
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", AppUrl); copied = true; } catch { }
     }
 
     private async Task Install()

@@ -4,13 +4,18 @@
 @inject HttpClient Http
 @inject AuthState Auth
 @inject NotificationState Notifs
-@inject PushState Push
+@inject PushState PushSvc
 @inject NotificationSettingsState State
 @inject OverlayStack Overlays
 @inject ToastService Toasts
+@inject PhoneState Phone
 @implements IDisposable
 
-@if (State.IsOpen)
+@if (State.IsOpen && Phone.IsPhone)
+{
+    <IPop.Web.Components.Phone.Notifications.NotificationSettingsPhone Host="this" />
+}
+else if (State.IsOpen)
 {
 <div class="ns-backdrop" @onclick="Close">
 <div class="notification-settings-page" role="dialog" aria-modal="true" aria-labelledby="ns-title" @onclick:stopPropagation>
@@ -1019,9 +1024,9 @@
     private string activeTab = "general";
     private bool saving;
     private IDisposable? escReg;
-    private NotificationPreferences settings = new();
+    internal NotificationPreferences settings = new();
 
-    private List<(string Value, string Label)> days = [
+    internal List<(string Value, string Label)> days = [
         ("mon", "Mon"),
         ("tue", "Tue"),
         ("wed", "Wed"),
@@ -1031,7 +1036,7 @@
         ("sun", "Sun"),
     ];
 
-    private List<NotificationType> notificationTypes = [
+    internal List<NotificationType> notificationTypes = [
         new("chat", "Chat", "New messages and mentions", "message-circle"),
         new("mail", "Mail", "Incoming emails and deliveries", "mail"),
         new("task", "Tasks", "Assignments and deadlines", "check-square"),
@@ -1043,7 +1048,10 @@
     {
         State.Changed += OnStateChanged;
         Push.Changed += OnPushChanged;
+        Phone.Changed += OnPhoneChanged;
     }
+
+    private void OnPhoneChanged() => _ = InvokeAsync(StateHasChanged);
 
     private void OnStateChanged() => _ = InvokeAsync(async () =>
     {
@@ -1055,7 +1063,8 @@
     /// Fresh values every time it opens, so Cancel really discards unsaved edits.
     private async Task OpenAsync()
     {
-        escReg ??= Overlays.Push(() => { State.Close(); return Task.CompletedTask; });
+        // Phone: the BottomSheet registers its own Back entry; a second one would need two Back presses.
+        if (!Phone.IsPhone) escReg ??= Overlays.Push(() => { State.Close(); return Task.CompletedTask; });
         activeTab = "general";
         settings = new NotificationPreferences();
         historyItems = [];
@@ -1074,7 +1083,7 @@
         if (State.IsOpen) await JS.InvokeVoidAsync("ipop.icons");
     }
 
-    private void Close() => State.Close();
+    internal void Close() => State.Close();
 
     /// Deteksi zona waktu browser dan simpan ke server bila berbeda — jam senyap
     /// dievaluasi backend dalam zona waktu pengguna, bukan server.
@@ -1105,9 +1114,9 @@
     };
 
     // ── Windows toasts (Web Push) ──
-    private bool pushBusy;
-    private bool pushPreview = true;
-    private string? pushTestNote;
+    internal bool pushBusy;
+    internal bool pushPreview = true;
+    internal string? pushTestNote;
     private List<PushDeviceDto> pushDevices = [];
 
     private sealed record PushDeviceDto(Guid Id, string Label, string Endpoint, DateTime CreatedAt, DateTime LastSeenAt);
@@ -1116,7 +1125,7 @@
     private sealed record PushDiagnosticsDto(bool Enabled, List<PushAttemptDto> Recent);
     private sealed record PushAttemptDto(Guid DeliveryId, Guid JobId, string Kind, Guid DeviceId, string Status, int Attempts, DateTime CreatedAt, DateTime? AcceptedAt, string? Code);
 
-    private async Task CheckPushHealth()
+    internal async Task CheckPushHealth()
     {
         pushBusy = true;
         try { await Push.RefreshAsync(); await LoadPush(); }
@@ -1133,7 +1142,7 @@
 
     private void OnPushChanged() => _ = InvokeAsync(async () => { StateHasChanged(); await JS.InvokeVoidAsync("ipop.icons"); });
 
-    private async Task TogglePush(ChangeEventArgs e)
+    internal async Task TogglePush(ChangeEventArgs e)
     {
         pushBusy = true;
         if (e.Value is true) await Push.EnableAsync();
@@ -1143,14 +1152,14 @@
         await JS.InvokeVoidAsync("ipop.icons");
     }
 
-    private async Task TogglePushPreview(ChangeEventArgs e)
+    internal async Task TogglePushPreview(ChangeEventArgs e)
     {
         pushPreview = e.Value is true;
         using var res = await Auth.SendAsync(HttpMethod.Put, "/api/push/preferences", new PushPreferencesDto(pushPreview));
         if (!res.IsSuccessStatusCode) pushPreview = !pushPreview;
     }
 
-    private async Task SendPushTest()
+    internal async Task SendPushTest()
     {
         pushBusy = true;
         using var res = await Auth.SendAsync(HttpMethod.Post, "/api/push/test");
@@ -1172,6 +1181,7 @@
     {
         State.Changed -= OnStateChanged;
         Push.Changed -= OnPushChanged;
+        Phone.Changed -= OnPhoneChanged;
         escReg?.Dispose();
     }
 
@@ -1219,7 +1229,7 @@
         }
     }
 
-    private void ToggleDay(string day)
+    internal void ToggleDay(string day)
     {
         if (settings.QuietDays.Contains(day))
             settings.QuietDays.Remove(day);
@@ -1227,7 +1237,71 @@
             settings.QuietDays.Add(day);
     }
 
-    private void ToggleType(string typeId)
+    // ── Phone (NF2): instant save, sound picker sheet ──
+    internal string? soundSheet;
+    private bool phoneSaving;
+
+    internal string PhonePushBlocked => !Push.ServerEnabled ? "Not enabled on the iPop server yet."
+        : !Push.Secure || Push.Permission == "unsupported" ? "Open iPop via https://ipop.santos.co.id or the installed app."
+        : "Blocked in this browser. Allow notifications for iPop in the browser's site settings.";
+
+    internal string QuietSummary => !settings.QuietHoursEnabled ? "Off"
+        : $"{settings.QuietStart:HH:mm} – {settings.QuietEnd:HH:mm}" + (settings.QuietDays.Count == 7 ? " · every day" : $" · {settings.QuietDays.Count} days");
+
+    internal static string SoundName(string file) => file == "" ? "None" : SoundChoices.FirstOrDefault(c => c.File == file).Name ?? file;
+
+    /// Apply a change and save it at once (the phone list has no Save button).
+    internal async Task PhoneToggle(Action change)
+    {
+        change();
+        StateHasChanged();
+        await PhoneSaveAll();
+    }
+
+    private async Task PhoneSaveAll()
+    {
+        if (phoneSaving) return;
+        phoneSaving = true;
+        try
+        {
+            var dto = new
+            {
+                QuietHoursEnabled = settings.QuietHoursEnabled,
+                QuietStart = settings.QuietStart?.ToString("HH:mm"),
+                QuietEnd = settings.QuietEnd?.ToString("HH:mm"),
+                QuietDays = string.Join(",", settings.QuietDays),
+                AllowImportant = settings.AllowImportant,
+                MutedTypes = string.Join(",", notificationTypes.Where(t => !settings.EnabledTypes.Contains(t.Id)).Select(t => t.Id))
+            };
+            using var res = await Auth.SendAsync(HttpMethod.Put, "/api/notifications/v1/preferences", dto);
+            if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't save. Check your connection and try again.", ToastKind.Error); return; }
+            await SaveLocalPreferences();
+            await SaveSoundPrefs();
+            await Notifs.LoadPreferencesAsync();
+        }
+        catch { Toasts.Show("Couldn't save. Check your connection and try again.", ToastKind.Error); }
+        finally { phoneSaving = false; }
+    }
+
+    internal Task PhoneSaveSounds() => SaveSoundPrefs();
+    internal void SetVolume(ChangeEventArgs e) { if (int.TryParse(e.Value?.ToString(), out var v)) soundVolume = v; }
+    internal PushState Push => PushSvc;
+
+    internal async Task PhonePickSound(string module, string? file)
+    {
+        await PickSound(module, file);
+        await SaveSoundPrefs();
+        soundSheet = null;
+    }
+
+    internal async Task PhoneReset()
+    {
+        ResetToDefault();
+        await PhoneSaveAll();
+        Toasts.Show("Notification settings reset", ToastKind.Success);
+    }
+
+    internal void ToggleType(string typeId)
     {
         if (settings.EnabledTypes.Contains(typeId))
             settings.EnabledTypes.Remove(typeId);
@@ -1452,8 +1526,8 @@
     }
 
     // Per-module sounds (wwwroot/js/sounds.js keeps them in localStorage "notification-sounds").
-    private record SoundModule(string Key, string Name, string Icon, string Color);
-    private static readonly SoundModule[] SoundModules =
+    internal record SoundModule(string Key, string Name, string Icon, string Color);
+    internal static readonly SoundModule[] SoundModules =
     [
         new("dm", "Direct message", "message-circle", "#2e9d6b"),
         new("group", "Group chat", "messages-square", "#14a3a3"),
@@ -1472,10 +1546,10 @@
         ("meeting-urgent", "Doorbell (loud)"), ("project", "Tasker"), ("announce", "Herald"), ("announce-firm", "Herald (firm)"),
         ("notes", "Paper"), ("tickets", "Lifeline"), ("system", "Ping"), ("x-glass", "Crystal"), ("x-drop", "Drop"), ("x-harp", "Harp"),
     ];
-    private int soundVolume = 80;
-    private Dictionary<string, string> soundMap = [];
+    internal int soundVolume = 80;
+    internal Dictionary<string, string> soundMap = [];
 
-    private static List<AppOption> SoundOptions(string module) =>
+    internal static List<AppOption> SoundOptions(string module) =>
         [.. SoundChoices.Select(c => new AppOption(c.File, c.File == module ? $"{c.Name} (default)" : c.Name)), new("", "No sound")];
 
     private async Task PickSound(string module, string? file)
@@ -1517,7 +1591,7 @@
         public bool ShowPreview { get; set; } = true;
     }
 
-    private class NotificationPreferences
+    internal class NotificationPreferences
     {
         public bool EnableNotifications { get; set; } = true;
         public bool PlaySound { get; set; } = true;
@@ -1531,7 +1605,7 @@
         public List<string> EnabledTypes { get; set; } = ["chat", "mail", "task", "call", "system"];
     }
 
-    private record NotificationType(string Id, string Name, string Description, string Icon);
+    internal record NotificationType(string Id, string Name, string Description, string Icon);
     private record NotificationPreferenceDto(bool QuietHoursEnabled, string? QuietStart, string? QuietEnd, string? MutedTypes, string? QuietDays, bool AllowImportant);
     private record InboxResponse(List<InboxItem> Items, int Total, int Unread, int Page, int PageSize);
     private record InboxItem(Guid RequestId, string Type, string Title, string Body, string Source, DateTime DeliveredAt, bool IsRead, string? Priority, string? TargetUrl);

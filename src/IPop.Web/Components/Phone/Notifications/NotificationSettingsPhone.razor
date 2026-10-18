@@ -1,0 +1,140 @@
+@using IPop.Web.Components.Phone
+@* Notification settings on a phone (mockup v2 NF2): one grouped list instead of tabs; every switch saves at
+   once (no Save button); each sound opens its own picker sheet. State and saving live in the host dialog. *@
+    @* Phone (mockup v2 NF2): one grouped list instead of tabs; every switch saves at once, no Save button. *@
+    <BottomSheet Open="true" OpenChanged="_ => Host.Close()" Size="SheetSize.Full" Title="Notifications" Class="m-ns">
+        <Trailing><button type="button" class="ph-txtb b" @onclick="Host.Close">Done</button></Trailing>
+        <ChildContent>
+            <div class="m-ns-body">
+                <div class="ph-group">
+                    @if (!Host.Push.ServerEnabled || !Host.Push.Secure || Host.Push.Permission is "unsupported" or "denied")
+                    {
+                        <div class="ph-row m-ns-row">
+                            <span class="ph-row-lead"><span class="ph-ico ph-ico-s c-red"><i data-lucide="bell-off"></i></span></span>
+                            <span class="ph-row-main"><span class="ph-row-title">Phone notifications</span><span class="ph-row-sub m-ns-wrap">@Host.PhonePushBlocked</span></span>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="ph-row m-ns-row">
+                            <span class="ph-row-lead"><span class="ph-ico ph-ico-s c-red"><i data-lucide="bell"></i></span></span>
+                            <span class="ph-row-main"><span class="ph-row-title">Phone notifications</span><span class="ph-row-sub">@(Host.Push.Subscribed ? "On · this device" : "Off · turn on for alerts with iPop closed")</span></span>
+                            <button type="button" class="ph-sw @(Host.Push.Subscribed ? "on" : "")" role="switch" aria-checked="@(Host.Push.Subscribed ? "true" : "false")" aria-label="Phone notifications" disabled="@Host.pushBusy" @onclick="() => Host.TogglePush(new ChangeEventArgs { Value = !Host.Push.Subscribed })"><i></i></button>
+                        </div>
+                    }
+                    <div class="ph-row m-ns-row">
+                        <span class="ph-row-lead"><span class="ph-ico ph-ico-s" style="background:#5562b8"><i data-lucide="eye"></i></span></span>
+                        <span class="ph-row-main"><span class="ph-row-title">Show message text</span><span class="ph-row-sub">Off = “New message” only</span></span>
+                        <button type="button" class="ph-sw @(Host.pushPreview ? "on" : "")" role="switch" aria-checked="@(Host.pushPreview ? "true" : "false")" aria-label="Show message text" @onclick="() => Host.TogglePushPreview(new ChangeEventArgs { Value = !Host.pushPreview })"><i></i></button>
+                    </div>
+                    <button type="button" class="ph-row m-ns-row" disabled="@(Host.pushBusy || Host.Push.Checking)" @onclick="Host.CheckPushHealth">
+                        <span class="ph-row-lead"><span class="ph-ico ph-ico-s c-gray"><i data-lucide="refresh-cw"></i></span></span>
+                        <span class="ph-row-main"><span class="ph-row-title">Check / repair push</span></span>
+                        <span class="ph-row-meta">@(Host.Push.Checking || Host.pushBusy ? "Checking…" : Host.Push.RepairNeeded ? "Needs repair" : Host.Push.Status)</span>
+                        <i data-lucide="chevron-right" class="ph-row-chev"></i>
+                    </button>
+                </div>
+
+                <div class="ph-sec">Quiet hours</div>
+                <div class="ph-group">
+                    <div class="ph-row m-ns-row">
+                        <span class="ph-row-lead"><span class="ph-ico ph-ico-s" style="background:#5856d6"><i data-lucide="moon"></i></span></span>
+                        <span class="ph-row-main"><span class="ph-row-title">Do Not Disturb</span><span class="ph-row-sub">@Host.QuietSummary</span></span>
+                        <button type="button" class="ph-sw @(Host.settings.QuietHoursEnabled ? "on" : "")" role="switch" aria-checked="@(Host.settings.QuietHoursEnabled ? "true" : "false")" aria-label="Do Not Disturb" @onclick="() => Host.PhoneToggle(() => Host.settings.QuietHoursEnabled = !Host.settings.QuietHoursEnabled)"><i></i></button>
+                    </div>
+                    @if (Host.settings.QuietHoursEnabled)
+                    {
+                        <div class="ph-row m-ns-row m-ns-times">
+                            <span class="m-ns-lbl">From</span>
+                            <AppTimePicker Value="Host.settings.QuietStart" ValueChanged="(TimeOnly? v) => Host.PhoneToggle(() => Host.settings.QuietStart = v)" AriaLabel="Quiet hours start" />
+                            <span class="m-ns-lbl">to</span>
+                            <AppTimePicker Value="Host.settings.QuietEnd" ValueChanged="(TimeOnly? v) => Host.PhoneToggle(() => Host.settings.QuietEnd = v)" AriaLabel="Quiet hours end" />
+                        </div>
+                        <div class="ph-row m-ns-row m-ns-Host.days" role="group" aria-label="Quiet Host.days">
+                            @foreach (var day in Host.days)
+                            {
+                                var d = day;
+                                <button type="button" class="m-ns-day @(Host.settings.QuietDays.Contains(d.Value) ? "on" : "")" aria-label="@d.Label" aria-pressed="@(Host.settings.QuietDays.Contains(d.Value) ? "true" : "false")" @onclick="() => Host.PhoneToggle(() => Host.ToggleDay(d.Value))">@d.Label[..1]</button>
+                            }
+                        </div>
+                        <div class="ph-row m-ns-row">
+                            <span class="ph-row-main"><span class="ph-row-title">Urgent still alerts</span><span class="ph-row-sub">High-priority notifications break through</span></span>
+                            <button type="button" class="ph-sw @(Host.settings.AllowImportant ? "on" : "")" role="switch" aria-checked="@(Host.settings.AllowImportant ? "true" : "false")" aria-label="Urgent still alerts" @onclick="() => Host.PhoneToggle(() => Host.settings.AllowImportant = !Host.settings.AllowImportant)"><i></i></button>
+                        </div>
+                    }
+                </div>
+
+                <div class="ph-sec">Sounds</div>
+                <div class="ph-group">
+                    <div class="ph-row m-ns-row">
+                        <span class="ph-row-lead"><span class="ph-ico ph-ico-s c-cal"><i data-lucide="volume-2"></i></span></span>
+                        <span class="ph-row-main"><span class="ph-row-title">Play sounds</span></span>
+                        <button type="button" class="ph-sw @(Host.settings.PlaySound ? "on" : "")" role="switch" aria-checked="@(Host.settings.PlaySound ? "true" : "false")" aria-label="Play sounds" @onclick="() => Host.PhoneToggle(() => Host.settings.PlaySound = !Host.settings.PlaySound)"><i></i></button>
+                    </div>
+                    @if (Host.settings.PlaySound)
+                    {
+                        <div class="ph-row m-ns-row m-ns-vol">
+                            <i data-lucide="volume-1"></i>
+                            <input type="range" min="0" max="100" step="5" aria-label="Notification volume" value="@Host.soundVolume" @oninput="Host.SetVolume" @onpointerup="Host.PhoneSaveSounds" @ontouchend="Host.PhoneSaveSounds" />
+                            <i data-lucide="volume-2"></i>
+                        </div>
+                        @foreach (var m in NotificationSettingsDialog.SoundModules)
+                        {
+                            var mod = m;
+                            <button type="button" class="ph-row m-ns-row" @onclick="() => Host.soundSheet = mod.Key">
+                                <span class="ph-row-lead"><span class="ph-ico ph-ico-s" style="background:@mod.Color"><i data-lucide="@mod.Icon"></i></span></span>
+                                <span class="ph-row-main"><span class="ph-row-title">@mod.Name</span></span>
+                                <span class="ph-row-meta">@NotificationSettingsDialog.SoundName(Host.soundMap.GetValueOrDefault(mod.Key, mod.Key))</span>
+                                <i data-lucide="chevron-right" class="ph-row-chev"></i>
+                            </button>
+                        }
+                    }
+                </div>
+
+                <div class="ph-sec">Categories</div>
+                <div class="ph-group">
+                    @foreach (var t in Host.notificationTypes)
+                    {
+                        var type = t;
+                        <div class="ph-row m-ns-row">
+                            <span class="ph-row-lead"><span class="ph-ico ph-ico-s c-gray"><i data-lucide="@type.Icon"></i></span></span>
+                            <span class="ph-row-main"><span class="ph-row-title">@type.Name</span><span class="ph-row-sub">@type.Description</span></span>
+                            <button type="button" class="ph-sw @(Host.settings.EnabledTypes.Contains(type.Id) ? "on" : "")" role="switch" aria-checked="@(Host.settings.EnabledTypes.Contains(type.Id) ? "true" : "false")" aria-label="@type.Name" @onclick="() => Host.PhoneToggle(() => Host.ToggleType(type.Id))"><i></i></button>
+                        </div>
+                    }
+                </div>
+                <p class="ph-note">Muted categories still collect in Notifications, without a banner or sound.</p>
+
+                <div class="ph-group ph-gap">
+                    @if (Host.Push.Subscribed)
+                    {
+                        <button type="button" class="ph-row m-ns-row m-ns-act" disabled="@Host.pushBusy" @onclick="Host.SendPushTest"><span class="ph-row-main"><span class="ph-row-title">Send a test notification</span>@if (Host.pushTestNote is not null) {<span class="ph-row-sub m-ns-wrap">@Host.pushTestNote</span>}</span></button>
+                    }
+                    <button type="button" class="ph-row m-ns-row m-ns-act" @onclick="Host.PhoneReset"><span class="ph-row-main"><span class="ph-row-title">Reset to default</span></span></button>
+                </div>
+                <div style="height:32px"></div>
+            </div>
+        </ChildContent>
+    </BottomSheet>
+    @if (Host.soundSheet is { } sk && NotificationSettingsDialog.SoundModules.FirstOrDefault(m => m.Key == sk) is { } smod)
+    {
+        <BottomSheet Open="true" OpenChanged="_ => Host.soundSheet = null" Title="@smod.Name" Size="SheetSize.Tall" Class="m-ns-sounds">
+            <ChildContent>
+                <div class="ph-group">
+                    @foreach (var o in NotificationSettingsDialog.SoundOptions(smod.Key))
+                    {
+                        var opt = o;
+                        var on = Host.soundMap.GetValueOrDefault(smod.Key, smod.Key) == opt.Value;
+                        <button type="button" class="ph-row m-ns-row" aria-pressed="@(on ? "true" : "false")" @onclick="() => Host.PhonePickSound(smod.Key, opt.Value)">
+                            <span class="ph-row-main"><span class="ph-row-title">@opt.Label</span></span>
+                            @if (on) { <i data-lucide="check" class="m-ns-check"></i> }
+                        </button>
+                    }
+                </div>
+            </ChildContent>
+        </BottomSheet>
+    }
+
+@code {
+    [Parameter, EditorRequired] public NotificationSettingsDialog Host { get; set; } = default!;
+}
