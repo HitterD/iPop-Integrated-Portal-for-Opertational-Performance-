@@ -4,7 +4,7 @@
     <Trailing><button type="button" class="ph-ib" aria-label="New project" @onclick="OnCreate"><i data-lucide="plus"></i></button></Trailing>
     <Below>
         <div class="m-project-list-filters">
-            <input type="search" aria-label="Search projects" placeholder="Search projects" value="@Search" @oninput="e => OnSearch.InvokeAsync(e.Value?.ToString() ?? string.Empty)" />
+            <input type="search" class="m-project-search" aria-label="Search projects" placeholder="Search projects" value="@Search" @oninput="e => OnSearch.InvokeAsync(e.Value?.ToString() ?? string.Empty)" />
             <div class="m-project-views"><button type="button" @onclick="() => OnYear.InvokeAsync(null)">All years</button>@foreach (var year in Years) { <button type="button" data-year="@year" aria-pressed="@(Year == year ? "true" : "false")" @onclick="() => OnYear.InvokeAsync(year)">@year</button> }</div>
         </div>
     </Below>

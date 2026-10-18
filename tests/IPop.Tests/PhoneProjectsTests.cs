@@ -92,6 +92,7 @@ public class PhoneProjectsTests
         using var ctx = new BunitContext(); ctx.JSInterop.Mode = JSRuntimeMode.Loose;
         string? query = null; int? year = null;
         var cut = ctx.Render<ProjectListPhone>(p => p.Add(x => x.Years, new[] { 2026 }).Add(x => x.OnSearch, value => query = value).Add(x => x.OnYear, value => year = value));
+        Assert.Contains("m-project-search", cut.Find("input[aria-label='Search projects']").ClassName);
         cut.Find("input[aria-label='Search projects']").Input("Launch"); Assert.Equal("Launch", query);
         cut.Find("button[data-year='2026']").Click(); Assert.Equal(2026, year);
     }

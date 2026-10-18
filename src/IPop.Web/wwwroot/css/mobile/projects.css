@@ -5,6 +5,7 @@
 .proj-more-pop .pm-only, .kc-menu .kc-move-head, .kc-menu .kc-move { display: none; }
 
 @media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .m-project-search { display:block; min-height:44px; width:calc(100% - 32px); box-sizing:border-box; margin:0 16px; padding:10px 12px; border:1px solid var(--sep); border-radius:12px; background:var(--surface); color:var(--ink); font-size:16px; }
   .m-project-card { display:flex; flex-direction:column; gap:12px; width:calc(100% - 32px); margin:0 16px 12px; padding:16px; border:1px solid var(--sep); border-radius:18px; background:var(--surface); color:var(--ink); text-align:left; }
   .m-project-card-top { display:flex; align-items:center; justify-content:space-between; gap:12px; }
   .m-project-card strong { font-size:17px; overflow-wrap:anywhere; }
