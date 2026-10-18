@@ -494,7 +494,8 @@ app.MapNotifier();
 if (IPop.Api.Sso.SsoSetup.Enabled(app.Configuration))
 {
     IPop.Api.Sso.SsoEndpoints.MapSso(app, app.Configuration["Oidc:WebBase"] ?? "");
-    await IPop.Api.Sso.SsoSetup.SeedClientsAsync(app.Services, app.Configuration, CancellationToken.None);
+    try { await IPop.Api.Sso.SsoSetup.SeedClientsAsync(app.Services, app.Configuration, CancellationToken.None); }
+    catch (Exception ex) { app.Logger.LogWarning(ex, "Sign in with iPop: client registration skipped (database not migrated yet?)"); }
 }
 app.MapProfile();
 app.MapHub<AppHub>("/hubs/app").RequireAuthorization();
