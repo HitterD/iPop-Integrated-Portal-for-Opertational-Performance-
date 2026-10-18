@@ -80,6 +80,10 @@
 
   let warned = false;
   function inputStat(m) {
+    log(`input played=${m.played} refused=${m.refused} err=${m.err} fg=${m.fg} desk=${m.desk}`);
+    const locked = m.desk !== undefined && m.desk !== 'Default';
+    $('#locked').classList.toggle('on', locked);
+    if (locked) { $('#inp').innerHTML = IC('lock') + '<b class="mid">locked</b>'; $('#inp').title = 'The user\'s PC is locked or showing a UAC prompt'; return; }
     const el = $('#inp');
     if (m.refused > 0 && m.err) {
       el.innerHTML = IC('mouse-pointer-ban') + '<b class="bad">blocked</b>';
@@ -283,6 +287,14 @@
   $('#sound').onclick = () => { $('#sound').classList.toggle('on'); sendMedia(); };
   $('#showMedia').onclick = () => { $('#showMedia').classList.toggle('on'); sendMedia(); };
   $('#umin').onclick = () => { minimised = !minimised; $('#umin span').textContent = minimised ? 'Show' : 'Minimise'; $('#umin').classList.toggle('on', minimised); sendMedia(); };
+
+  // Full screen: the picture takes the whole monitor; a small bar slides in at the top edge.
+  const setFs = on => { document.body.classList.toggle('fs', on); post({ type: 'fullscreen', on }); setTimeout(() => stage.focus(), 50); };
+  $('#fs').onclick = () => setFs(true);
+  $('#fsExit').onclick = () => setFs(false);
+  $('#fsEnd').onclick = () => end();
+  document.addEventListener('mousemove', e => { if (document.body.classList.contains('fs')) $('#fsbar').classList.toggle('show', e.clientY < 8 || !!e.target.closest('#fsbar')); });
+  document.addEventListener('keydown', e => { if (e.key === 'F11') { e.preventDefault(); setFs(!document.body.classList.contains('fs')); } }, true);
 
   app.ready();
   loadMedia();

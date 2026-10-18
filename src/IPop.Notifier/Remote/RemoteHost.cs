@@ -158,6 +158,23 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern nint GetForegroundWindow();
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)] private static extern nint OpenInputDesktop(uint flags, bool inherit, uint access);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool CloseDesktop(nint h);
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern bool GetUserObjectInformationW(nint h, int index, System.Text.StringBuilder buf, int len, out int needed);
+
+    /// "Default" while the person's desktop is in front; "Winlogon"/"" when the PC is locked or a UAC prompt is up.
+    private static string InputDesktop()
+    {
+        var h = OpenInputDesktop(0, false, 0x0001); // DESKTOP_READOBJECTS
+        if (h == 0) return "";                     // access denied = a secure desktop is in front
+        try
+        {
+            var sb = new System.Text.StringBuilder(64);
+            return GetUserObjectInformationW(h, 2, sb, sb.Capacity * 2, out _) ? sb.ToString() : "";
+        }
+        finally { CloseDesktop(h); }
+    }
     [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(nint h, out uint pid);
 
     private void SendInputStat()
@@ -165,10 +182,12 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
         if (page is null) return;
         string fg = "";
         try { GetWindowThreadProcessId(GetForegroundWindow(), out var p); fg = System.Diagnostics.Process.GetProcessById((int)p).ProcessName; } catch { }
-        var key = $"{input.Played}|{input.Refused}|{input.LastError}|{fg}";
+        var desk = InputDesktop();
+        var key = $"{input.Played}|{input.Refused}|{input.LastError}|{fg}|{desk}";
         if (key == lastStat) return;
         lastStat = key;
-        page.Send(new { type = "send", topic = "ctl", msg = new { t = "inStat", played = input.Played, refused = input.Refused, err = input.LastError, fg, mode } });
+        Log.Info("remote", $"input played={input.Played} refused={input.Refused} err={input.LastError} fg={fg} desk={desk}");
+        page.Send(new { type = "send", topic = "ctl", msg = new { t = "inStat", played = input.Played, refused = input.Refused, err = input.LastError, fg, desk, mode } });
     }
 
     private void Combo(string? k)

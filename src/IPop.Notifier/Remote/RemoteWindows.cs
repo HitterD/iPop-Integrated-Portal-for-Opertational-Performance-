@@ -96,6 +96,7 @@ public sealed class ViewerWindow : BridgedWindow
         SizeKey = "remote";
         Text = "iPop Remote help";
         StartPosition = FormStartPosition.CenterScreen;
+        WindowState = FormWindowState.Maximized;
         KeyPreview = false;
     }
 
@@ -125,6 +126,7 @@ public sealed class ViewerWindow : BridgedWindow
         {
             case "log": Log.Info("viewer", msg?["text"]?.GetValue<string>() ?? ""); break;
             case "maximize": WindowState = WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized; break;
+            case "fullscreen": SetFullScreen(msg?["on"]?.GetValue<bool>() == true); break;
             case "setClipboard": Clip.Apply(msg!); break;
             case "setClipboardFile": Clip.SetFile(msg?["name"]?.GetValue<string>() ?? "file", Convert.FromBase64String(msg?["data"]?.GetValue<string>() ?? "")); break;
             case "clipSync": clipOn = msg?["on"]?.GetValue<bool>() == true; break;
@@ -134,6 +136,26 @@ public sealed class ViewerWindow : BridgedWindow
                 Send(new { type = "mediaUploaded", error = result });
                 break;
             default: base.HandleMessage(type, msg); break;
+        }
+    }
+
+    private Rectangle? normalBounds;
+
+    /// Covers the whole monitor (taskbar included) while on; back to the previous size after.
+    private void SetFullScreen(bool on)
+    {
+        if (on)
+        {
+            normalBounds ??= WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+            WindowState = FormWindowState.Normal;
+            Bounds = Screen.FromControl(this).Bounds;
+            TopMost = true;
+        }
+        else
+        {
+            TopMost = false;
+            if (normalBounds is { } b) Bounds = b;
+            normalBounds = null;
         }
     }
 
