@@ -231,7 +231,36 @@
     el.textContent = (view.replyAll ? 'Reply all' : 'Reply') + (p.notice ? ' · ' + p.notice : ` · to ${p.to.length + p.cc.length} ${p.to.length + p.cc.length === 1 ? 'person' : 'people'}`);
   }
 
+  // A ticket chat reaches me either on my own ticket (/tickets/{id}) or, as the assigned agent, on an iDesk ticket
+  // (/idesk/tickets/{id}, no iPop copy). Both reply into the iDesk chat; "Open in iDesk" always opens the iDesk site.
+  const ticketReply = ref => {
+    view.reply = { rich: false, placeholder: 'Reply in the ticket chat…', hint: 'Sent to the ticket chat in iDesk' };
+    view.send = async text => {
+      const res = await api('POST', `api/tickets/${ref}/reply`, { content: text });
+      if (res.ok) { await markRead(); return null; }
+      return res.json?.message || 'Couldn't send the reply. Open the ticket in iDesk to try again.';
+    };
+    view.done = 'Reply sent';
+  };
+
   async function tickets() {
+    const agentTid = id(new RegExp('^/idesk/tickets/' + G));
+    if (agentTid) {
+      const nl = N.body.indexOf('
+');
+      const head = nl < 0 ? '' : N.body.slice(0, nl);
+      const line = nl < 0 ? N.body : N.body.slice(nl + 1);
+      view.title = head || N.title;
+      view.chips = [{ t: N.title }];
+      view.body = `<p class="txt sel">${esc(line)}</p>`;
+      ticketReply(agentTid);
+      view.tools = [
+        { label: IC('reply') + 'Reply', cls: 'p', reply: true },
+        readTool,
+        { label: 'Open in iDesk ' + IC('arrow-up-right'), right: true, run: async () => { openIPop(N.targetUrl); await markRead(); closeOut('open'); } },
+      ];
+      return true;
+    }
     const tid = id(new RegExp('^/tickets/' + G));
     if (!tid) return false;
     const [r, m] = await Promise.all([api('GET', `api/tickets/${tid}`), api('GET', `api/tickets/${tid}/messages`)]);
@@ -246,8 +275,10 @@
       ? `<div class="msg-list">${msgs.slice(-4).map(x => `<div class="msg-it sel"><b>${esc(x.mine ? 'You' : x.sender)}</b><small>${esc(timeShort(x.createdAt))}</small><p>${esc(x.content)}</p></div>`).join('')}</div>`
       : `<p class="txt sel">${esc(t.description || N.body)}</p>`;
     const url = t.url || m.json?.url;
+    if (N.eventType === 'ticket.message_created' && t.ticketNumber) ticketReply(tid);
     view.tools = [
-      { label: IC('reply') + 'Reply in iDesk', cls: 'p', run: async () => { if (url) post({ type: 'openUrl', url }); else openIPop(N.targetUrl); await markRead(); closeOut('open'); } },
+      view.reply ? { label: IC('reply') + 'Reply', cls: 'p', reply: true }
+        : { label: IC('reply') + 'Reply in iDesk', cls: 'p', run: async () => { if (url) post({ type: 'openUrl', url }); else openIPop(N.targetUrl); await markRead(); closeOut('open'); } },
       { label: IC('check') + 'Mark read', run: async () => { await markRead(); closeOut('read'); } },
       { label: 'Open in iDesk ' + IC('arrow-up-right'), right: true, run: async () => { if (url) post({ type: 'openUrl', url }); else openIPop(N.targetUrl); await markRead(); closeOut('open'); } },
     ];

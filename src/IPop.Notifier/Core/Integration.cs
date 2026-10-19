@@ -106,6 +106,23 @@ public static class Integration
     /// Short system sound for "someone asks to remote this PC" (the prompt must not be missed).
     public static void Chime() { try { System.Media.SystemSounds.Asterisk.Play(); } catch { } }
 
+    /// Opens an iPop notification target in the browser. A ticket chat for the assigned agent
+    /// (/idesk/tickets/{id}) lives only in iDesk: iPop answers the iDesk link (signed in through "Sign in with
+    /// iPop"), so it opens on the iDesk site, never as an iPop page.
+    public static async Task OpenTargetAsync(IPopClient api, string? path)
+    {
+        path = string.IsNullOrEmpty(path) ? "/notifications" : path;
+        const string idesk = "/idesk/tickets/";
+        if (path.StartsWith(idesk) && path.Length >= idesk.Length + 36 && Guid.TryParse(path.AsSpan(idesk.Length, 36), out var id))
+        {
+            var link = (await api.GetJsonAsync($"api/tickets/idesk/{id}/link"))?["url"]?.GetValue<string>();
+            if (link is { Length: > 0 }) { OpenUrl(link); return; }
+            Log.Warn("open", "no iDesk link for " + id);
+            return;
+        }
+        OpenUrl(api.WebUrl(path));
+    }
+
     public static void OpenUrl(string url)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var u) || (u.Scheme != "https" && u.Scheme != "http" && u.Scheme != "mailto")) return;

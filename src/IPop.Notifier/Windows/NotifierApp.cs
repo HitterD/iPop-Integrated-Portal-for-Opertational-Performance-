@@ -313,18 +313,7 @@ public sealed class NotifierApp : ApplicationContext
         devices.Show();
     }
 
-    private void OpenIPop(string path)
-    {
-        // The assigned agent's ticket lives only in iDesk: ask iPop for the signed-in iDesk link and open that.
-        if (path.StartsWith("/idesk/tickets/") && Toasts.TicketRefOf(path) is { } ideskId) { _ = OpenIdeskAsync(ideskId, path); return; }
-        Integration.OpenUrl(api.WebUrl(path));
-    }
-
-    private async Task OpenIdeskAsync(string ideskId, string fallback)
-    {
-        var link = (await api.GetJsonAsync($"api/tickets/idesk/{ideskId}/link"))?["url"]?.GetValue<string>();
-        Post(() => Integration.OpenUrl(link is { Length: > 0 } ? link : api.WebUrl(fallback)));
-    }
+    private void OpenIPop(string path) => _ = Integration.OpenTargetAsync(api, path);
 
     /// From a second start or an ipop-notifier:// link:
     ///   ipop-notifier://explorer?nas=spj&amp;path=/sja/SJA SPJ/ICT/a.xlsx → File Explorer (company NAS only)
