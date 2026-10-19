@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>iPop Notifier — tampilan ramah (mockup)</title>
+<style>
+:root{
+  --desk:linear-gradient(135deg,#dfe9e4 0%,#e9eef3 45%,#f3ece4 100%);
+  --win:#fbfbfd;--card:#ffffff;--sunk:#f4f4f7;--fill:rgba(118,118,128,.10);--line:rgba(60,60,67,.12);--line-2:rgba(60,60,67,.20);
+  --ink:#1d1d1f;--ink-2:#3a3a3f;--ink-3:#6e6e73;--ink-4:#a1a1a6;
+  --shadow:0 1px 1px rgba(0,0,0,.04),0 12px 32px rgba(17,24,39,.12),0 40px 80px rgba(17,24,39,.10);
+  --green:#1f8a4c;--red:#d70015;
+  --fs-title:20px;--fs-body:16px;--fs-btn:15px;--fs-meta:13px;--btn-h:42px;
+  --spring:cubic-bezier(.32,.72,0,1);
+}
+html.dark{
+  --desk:linear-gradient(135deg,#0f1f19 0%,#151a22 50%,#1e1913 100%);
+  --win:#1f1f22;--card:#2a2a2e;--sunk:#18181b;--fill:rgba(118,118,128,.22);--line:rgba(255,255,255,.08);--line-2:rgba(255,255,255,.16);
+  --ink:#f5f5f7;--ink-2:#d6d6db;--ink-3:#a1a1a6;--ink-4:#6e6e73;
+  --shadow:0 1px 1px rgba(0,0,0,.3),0 16px 40px rgba(0,0,0,.45);
+  --green:#30d158;--red:#ff6961;
+}
+html.big{--fs-title:23px;--fs-body:18.5px;--fs-btn:17px;--fs-meta:14.5px;--btn-h:48px}
+/* module palette: solid accent + soft tint (light / dark) */
+.m-mail{--m:#0a6cff;--m-soft:#e8f1ff;--m-ink:#0752c4}
+.m-meet{--m:#e07800;--m-soft:#fff2e2;--m-ink:#a85600}
+.m-idesk{--m:#2563eb;--m-soft:#e9efff;--m-ink:#1d4ed8}
+.m-news{--m:#9b3f78;--m-soft:#f8eaf3;--m-ink:#7d2e60}
+.m-sys{--m:#5b6b78;--m-soft:#eef1f4;--m-ink:#3e4a54}
+.m-chat{--m:#1f8a4c;--m-soft:#e6f5ec;--m-ink:#176a3a}
+html.dark .m-mail{--m-soft:rgba(10,108,255,.16);--m-ink:#7db3ff}
+html.dark .m-meet{--m-soft:rgba(224,120,0,.18);--m-ink:#ffb35c}
+html.dark .m-idesk{--m-soft:rgba(37,99,235,.20);--m-ink:#93b4ff}
+html.dark .m-news{--m-soft:rgba(155,63,120,.22);--m-ink:#f0a6d3}
+html.dark .m-sys{--m-soft:rgba(91,107,120,.25);--m-ink:#c4ced6}
+html.dark .m-chat{--m-soft:rgba(31,138,76,.22);--m-ink:#7ee2a5}
+
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"SF Pro Text","Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;color:var(--ink);background:var(--desk);min-height:100vh;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+svg.lucide{width:18px;height:18px;flex:none;stroke-width:2}
+
+/* page chrome */
+.bar{position:sticky;top:0;z-index:5;display:flex;gap:12px;align-items:center;padding:14px 28px;background:color-mix(in srgb,var(--win) 82%,transparent);backdrop-filter:saturate(1.6) blur(18px);border-bottom:1px solid var(--line)}
+.bar h1{font-size:17px;font-weight:650;letter-spacing:-.01em;flex:1}
+.bar h1 small{display:block;font-size:12.5px;font-weight:500;color:var(--ink-3);margin-top:2px}
+.seg{display:flex;padding:3px;border-radius:10px;background:var(--fill)}
+.seg button{height:32px;padding:0 14px;border-radius:8px;font-size:13.5px;font-weight:600;color:var(--ink-3)}
+.seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(560px,1fr));gap:36px 32px;padding:32px 28px 60px;align-items:start;max-width:1800px;margin:0 auto}
+.cap{font-size:12.5px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:0 4px 10px}
+.cap span{text-transform:none;letter-spacing:0;font-weight:500;color:var(--ink-4)}
+
+/* ── popup window (same width for every kind, height fits content 360–640) ── */
+.pw{width:560px;max-width:100%;min-height:360px;max-height:640px;display:flex;flex-direction:column;border-radius:14px;background:var(--win);box-shadow:var(--shadow);overflow:hidden;border:1px solid var(--line)}
+.head{display:flex;align-items:center;gap:11px;padding:12px 10px 12px 16px;background:var(--m-soft);color:var(--m-ink)}
+.mod{width:30px;height:30px;border-radius:8px;background:var(--m);color:#fff;display:grid;place-items:center;flex:none;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+.mod svg{width:17px;height:17px}
+.mod.img{background:#fff;box-shadow:0 0 0 1px var(--line)}
+.mod.img img{width:24px;height:24px;object-fit:contain}
+.head b{font-size:var(--fs-meta);font-weight:650;letter-spacing:.01em}
+.head .when{font-size:var(--fs-meta);font-weight:500;opacity:.8;margin-left:2px}
+.head .sp{flex:1}
+.wc{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:var(--m-ink);opacity:.75}
+.wc:hover{background:color-mix(in srgb,var(--m) 14%,transparent);opacity:1}
+.pending{display:flex;align-items:center;gap:8px;padding:8px 16px;font-size:var(--fs-meta);color:#8a4b00;background:#fff4e0;border-bottom:1px solid var(--line)}
+html.dark .pending{background:rgba(255,159,10,.14);color:#ffc069}
+.pending b{font-weight:700}
+.body{padding:18px 20px 6px;overflow:auto;flex:1}
+.title{font-size:var(--fs-title);font-weight:700;letter-spacing:-.015em;line-height:1.25;margin-bottom:14px}
+.who{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.av{width:42px;height:42px;border-radius:11px;display:grid;place-items:center;color:#fff;font-weight:700;font-size:15px;flex:none}
+.who .nm{flex:1;min-width:0}
+.who .nm b{display:block;font-size:var(--fs-body);font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who .nm small{font-size:var(--fs-meta);color:var(--ink-3)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.chip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:999px;font-size:var(--fs-meta);font-weight:600;background:var(--sunk);color:var(--ink-2);border:1px solid var(--line)}
+.chip.acc{background:var(--m-soft);color:var(--m-ink);border-color:transparent}
+.chip svg{width:15px;height:15px}
+.msg{background:var(--sunk);border:1px solid var(--line);border-radius:12px;padding:14px 16px;font-size:var(--fs-body);line-height:1.55;color:var(--ink-2)}
+.msg p+p{margin-top:8px}
+.msg .q{margin-top:10px;padding-left:12px;border-left:3px solid var(--line-2);color:var(--ink-3);font-size:calc(var(--fs-body) - 1px)}
+.more{display:inline-flex;align-items:center;gap:6px;margin-top:10px;font-size:var(--fs-meta);font-weight:650;color:var(--m-ink)}
+.poster{margin-top:12px;border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+.poster img{display:block;width:100%;max-height:150px;object-fit:cover}
+
+/* ── buttons: every action looks like a button ── */
+.acts{display:flex;flex-wrap:wrap;gap:10px;padding:14px 20px 18px;border-top:1px solid var(--line);background:var(--win)}
+.btn{height:var(--btn-h);padding:0 18px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;gap:8px;font-size:var(--fs-btn);font-weight:650;
+  background:var(--card);color:var(--ink);border:1px solid var(--line-2);box-shadow:0 1px 2px rgba(0,0,0,.06);transition:transform .12s var(--spring),background .15s,box-shadow .15s}
+.btn:hover{background:var(--sunk)}
+.btn:active{transform:scale(.97)}
+.btn:focus-visible{outline:3px solid color-mix(in srgb,var(--m) 45%,transparent);outline-offset:2px}
+.btn.pri{background:var(--m);color:#fff;border-color:transparent;box-shadow:0 1px 2px rgba(0,0,0,.12),0 6px 14px color-mix(in srgb,var(--m) 30%,transparent)}
+.btn.pri:hover{background:color-mix(in srgb,var(--m) 88%,#000)}
+.btn.soft{background:var(--m-soft);color:var(--m-ink);border-color:transparent}
+.btn.danger{background:#ffeceb;color:var(--red);border-color:transparent}
+html.dark .btn.danger{background:rgba(255,105,97,.16)}
+.acts .sp{flex:1}
+
+/* reply box (inline) */
+.reply{margin:4px 20px 0;border:1px solid var(--line-2);border-radius:12px;background:var(--card);overflow:hidden}
+.reply .lbl{padding:9px 14px 0;font-size:var(--fs-meta);font-weight:600;color:var(--ink-3)}
+.reply textarea{display:block;width:100%;min-height:76px;border:0;outline:0;resize:none;background:transparent;padding:8px 14px 12px;font:inherit;font-size:var(--fs-body);color:var(--ink)}
+
+/* ── Inbox ── */
+.ibx{width:420px;height:640px;display:flex;flex-direction:column;border-radius:14px;background:var(--win);box-shadow:var(--shadow);overflow:hidden;border:1px solid var(--line)}
+.ibx .top{display:flex;align-items:center;gap:12px;padding:16px 14px 12px 18px}
+.ibx .top img{width:40px;height:40px;border-radius:10px}
+.ibx .top h2{font-size:19px;font-weight:700;letter-spacing:-.01em}
+.ibx .top small{display:block;font-size:13px;color:var(--ink-3);margin-top:1px}
+.ibx .top .sp{flex:1}
+.ibtn{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;color:var(--ink-2);background:var(--sunk);border:1px solid var(--line)}
+.strip{display:flex;align-items:center;gap:9px;margin:0 14px 10px;padding:9px 12px;border-radius:10px;font-size:13.5px;font-weight:600}
+.strip.warn{background:#fff4e0;color:#8a4b00}
+.strip.ok{background:#e6f5ec;color:#176a3a}
+html.dark .strip.warn{background:rgba(255,159,10,.14);color:#ffc069}
+html.dark .strip.ok{background:rgba(48,209,88,.14);color:#7ee2a5}
+.strip .dot{width:8px;height:8px;border-radius:50%;background:currentColor;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35}}
+.ibx .tabs{margin:0 14px 8px}
+.ibx .tabs.seg button{flex:1 1 auto;height:36px;font-size:14px;padding:0 10px;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.ibx .tabs .n{min-width:22px;height:20px;padding:0 6px;border-radius:10px;background:#0a6cff;color:#fff;font-size:12px;font-weight:700;display:inline-grid;place-items:center}
+.list{flex:1;overflow:auto;padding:0 8px 8px}
+.day{font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--ink-3);text-transform:uppercase;padding:12px 10px 6px}
+.it{display:flex;gap:12px;align-items:flex-start;padding:11px 10px;border-radius:12px;position:relative}
+.it:hover{background:var(--sunk)}
+.it.unread::before{content:"";position:absolute;left:-2px;top:22px;width:8px;height:8px;border-radius:50%;background:#0a6cff}
+.it .ico{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:var(--m-soft);color:var(--m-ink);flex:none}
+.it .ico img{width:26px;height:26px;object-fit:contain}
+.it .t{flex:1;min-width:0}
+.it .t b{display:block;font-size:15px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.it .t span{display:block;font-size:13.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.it time{font-size:12.5px;color:var(--ink-4);flex:none;padding-top:2px}
+.ibx .foot{display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid var(--line)}
+.sw{width:46px;height:28px;border-radius:14px;background:#34c759;position:relative;flex:none}
+.sw::after{content:"";position:absolute;right:2px;top:2px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.ibx .foot .lab{font-size:14.5px;font-weight:600;flex:1}
+.m-ipop{--m:#1f8a4c;--m-soft:#e6f5ec;--m-ink:#176a3a}
+html.dark .m-ipop{--m-soft:rgba(31,138,76,.22);--m-ink:#7ee2a5}
+
+/* sso page */
+.sso{width:460px;border-radius:20px;background:var(--card);box-shadow:var(--shadow);padding:30px 34px 28px;text-align:center;border:1px solid var(--line)}
+.sso .brand{display:flex;justify-content:center;align-items:center;gap:10px;margin-bottom:18px}
+.sso .brand img{width:52px;height:52px;border-radius:14px}
+.sso h3{font-size:22px;font-weight:700;letter-spacing:-.01em;margin-bottom:6px}
+.sso p{font-size:15px;color:var(--ink-3);line-height:1.5}
+.sso .me{display:inline-flex;align-items:center;gap:10px;margin:16px 0 4px;padding:8px 14px 8px 8px;border-radius:999px;background:var(--sunk);border:1px solid var(--line)}
+.sso .me .av{width:30px;height:30px;border-radius:50%;font-size:12px}
+.sso .me b{font-size:14.5px}
+.sso .spin{width:30px;height:30px;margin:18px auto 14px;border-radius:50%;border:3px solid var(--fill);border-top-color:#1f8a4c;animation:rot .8s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+.sso .note{font-size:13px;color:var(--ink-4);margin-bottom:16px}
+.sso .btn{width:100%}
+.notes{max-width:1800px;margin:0 auto;padding:0 28px 40px;color:var(--ink-3);font-size:14px;line-height:1.6}
+.notes b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="bar">
+  <h1>iPop Notifier — tampilan ramah <small>Mockup untuk persetujuan · ukuran lebar sama untuk semua popup, tinggi mengikuti isi (360–640 px) · tombol aksi di bawah</small></h1>
+  <div class="seg" id="theme"><button data-t="light" class="on">Terang</button><button data-t="dark">Gelap</button></div>
+  <div class="seg" id="size"><button data-s="normal" class="on">Tulisan normal</button><button data-s="big">Tulisan besar</button></div>
+</div>
+
+<div class="grid">
+
+  <!-- 1 · Mail -->
+  <section>
+    <div class="cap">1 · Email masuk <span>— balas langsung di popup</span></div>
+    <div class="pw m-mail">
+      <div class="head"><span class="mod"><i data-lucide="mail"></i></span><b>Email</b><span class="when">· 2 Okt, 08.02</span><span class="sp"></span>
+        <button class="wc" title="Perkecil"><i data-lucide="minus"></i></button><button class="wc" title="Tutup"><i data-lucide="x"></i></button></div>
+      <div class="body">
+        <div class="title">Re: Test Message</div>
+        <div class="who"><span class="av" style="background:#2e9e5b">AA</span><span class="nm"><b>Adrio Andhika Antoninus</b><small>kepada Anda · PT Santos Jaya Abadi</small></span></div>
+        <div class="msg"><p>Bagas,</p><p>Pesan di bawah ini apakah diterima?</p>
+          <div class="q">Pada Kam, 1 Okt 2026 14.53, Adrio Andhika Antoninus menulis: This is a test</div></div>
+        <a class="more"><i data-lucide="arrow-up-right"></i>Lihat pesan lengkap</a>
+      </div>
+      <div class="reply"><div class="lbl">Balas ke Adrio Andhika Antoninus</div><textarea placeholder="Tulis balasan Anda…"></textarea></div>
+      <div class="acts">
+        <button class="btn pri"><i data-lucide="send"></i>Kirim balasan</button>
+        <button class="btn"><i data-lucide="reply-all"></i>Balas semua</button>
+        <button class="btn"><i data-lucide="forward"></i>Teruskan</button>
+        <span class="sp"></span>
+        <button class="btn soft"><i data-lucide="check"></i>Tandai dibaca</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 · Meeting reminder -->
+  <section>
+    <div class="cap">2 · Pengingat rapat <span>— gabung, tunda, atau tolak</span></div>
+    <div class="pw m-meet">
+      <div class="head"><span class="mod"><i data-lucide="video"></i></span><b>Rapat</b><span class="when">· mulai 10 menit lagi</span><span class="sp"></span>
+        <button class="wc"><i data-lucide="minus"></i></button><button class="wc"><i data-lucide="x"></i></button></div>
+      <div class="body">
+        <div class="title">Weekly ICT Sync</div>
+        <div class="who"><span class="av" style="background:#d4a017">RB</span><span class="nm"><b>RM Bagastyo Anggoro Indrastoto</b><small>Penyelenggara</small></span></div>
+        <div class="chips"><span class="chip acc"><i data-lucide="calendar-clock"></i>Jum, 16 Okt · 09.00 – 10.00</span><span class="chip"><i data-lucide="door-open"></i>Ruang Rapat 2</span><span class="chip"><i data-lucide="users"></i>2 orang</span></div>
+        <div class="msg">Rapat "Weekly ICT Sync" dimulai pukul 09.00. Klik <b>Gabung sekarang</b> untuk masuk ke ruang rapat.</div>
+      </div>
+      <div class="acts">
+        <button class="btn pri"><i data-lucide="video"></i>Gabung sekarang</button>
+        <button class="btn"><i data-lucide="alarm-clock"></i>Tunda 5 menit</button>
+        <span class="sp"></span>
+        <button class="btn danger"><i data-lucide="x"></i>Tolak</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 · iDesk ticket chat -->
+  <section>
+    <div class="cap">3 · Chat tiket iDesk <span>— warna &amp; logo iDesk, beda dari iPop</span></div>
+    <div class="pw m-idesk">
+      <div class="head"><span class="mod img"><img src="idesk-mark.png" alt=""></span><b>iDesk</b><span class="when">· 16.35</span><span class="sp"></span>
+        <button class="wc"><i data-lucide="minus"></i></button><button class="wc"><i data-lucide="x"></i></button></div>
+      <div class="body">
+        <div class="title">Email tidak bisa diakses</div>
+        <div class="chips"><span class="chip acc"><i data-lucide="ticket"></i>#051026-SEC-0003</span><span class="chip">Sedang dikerjakan</span><span class="chip">Prioritas sedang</span></div>
+        <div class="who"><span class="av" style="background:#7a5af8">CM</span><span class="nm"><b>Christhin Magdalena</b><small>membalas tiket · 2 pesan baru</small></span></div>
+        <div class="msg">Pak, wifi di ruang meeting lantai 2 masih putus-putus. Bisa dicek hari ini?</div>
+      </div>
+      <div class="reply"><div class="lbl">Balas di chat tiket</div><textarea placeholder="Tulis balasan…"></textarea></div>
+      <div class="acts">
+        <button class="btn pri"><i data-lucide="send"></i>Kirim balasan</button>
+        <button class="btn"><i data-lucide="external-link"></i>Buka di iDesk</button>
+        <span class="sp"></span>
+        <button class="btn soft"><i data-lucide="check"></i>Tandai dibaca</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 · Pending system notice -->
+  <section>
+    <div class="cap">4 · Notifikasi tertunda <span>— masuk saat PC mati, muncul satu per satu</span></div>
+    <div class="pw m-sys">
+      <div class="head"><span class="mod"><i data-lucide="bell"></i></span><b>Pemberitahuan</b><span class="when">· 16.35</span><span class="sp"></span>
+        <button class="wc"><i data-lucide="minus"></i></button><button class="wc"><i data-lucide="x"></i></button></div>
+      <div class="pending"><i data-lucide="history"></i><b>1 dari 4 tertunda</b><span>· masuk saat PC mati · menutup tidak menandai dibaca</span></div>
+      <div class="body">
+        <div class="title">Survei kepuasan ICT</div>
+        <div class="msg">Mohon isi survei singkat tentang layanan ICT bulan ini. Hanya butuh 2 menit.</div>
+      </div>
+      <div class="acts">
+        <button class="btn pri"><i data-lucide="arrow-up-right"></i>Buka di iPop</button>
+        <span class="sp"></span>
+        <button class="btn soft"><i data-lucide="check"></i>Tandai dibaca</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 · News with poster -->
+  <section>
+    <div class="cap">5 · Berita / memo <span>— dengan gambar</span></div>
+    <div class="pw m-news">
+      <div class="head"><span class="mod"><i data-lucide="newspaper"></i></span><b>Berita &amp; Memo</b><span class="when">· 09.10</span><span class="sp"></span>
+        <button class="wc"><i data-lucide="minus"></i></button><button class="wc"><i data-lucide="x"></i></button></div>
+      <div class="body">
+        <div class="title">Jadwal libur akhir tahun 2026</div>
+        <div class="who"><span class="av" style="background:#9b3f78">HR</span><span class="nm"><b>Human Resources</b><small>Memo wajib dibaca</small></span></div>
+        <div class="msg">Kantor libur mulai 24 Desember hingga 1 Januari. Pastikan pekerjaan penting sudah diserahterimakan sebelum 23 Desember.
+          <div class="poster"><img src="poster.jpg" alt=""></div></div>
+      </div>
+      <div class="acts">
+        <button class="btn pri"><i data-lucide="check-check"></i>Saya sudah membaca</button>
+        <button class="btn"><i data-lucide="arrow-up-right"></i>Buka di iPop</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 · Inbox -->
+  <section>
+    <div class="cap">6 · Kotak notifikasi (Inbox) <span>— status koneksi di atas, footer rapi</span></div>
+    <div class="ibx m-ipop">
+      <div class="top"><img src="ipop-mark.webp" alt=""><div><h2>Notifikasi</h2><small>Bagastyo · 35 belum dibaca</small></div><span class="sp"></span>
+        <button class="ibtn" title="Tandai semua dibaca"><i data-lucide="check-check"></i></button><button class="ibtn" title="Pengaturan"><i data-lucide="settings"></i></button></div>
+      <div class="strip warn" id="strip"><span class="dot"></span>Menyambung ulang ke iPop… notifikasi tetap aman</div>
+      <div class="seg tabs"><button>Semua</button><button class="on">Belum dibaca <span class="n">35</span></button><button>iDesk</button><button>Email</button></div>
+      <div class="list">
+        <div class="day">Hari ini</div>
+        <div class="it unread m-sys"><span class="ico"><i data-lucide="bell"></i></span><span class="t"><b>Survei kepuasan ICT</b><span>Mohon isi survei singkat.</span></span><time>16.35</time></div>
+        <div class="it unread m-idesk"><span class="ico"><img src="idesk-mark.png" alt=""></span><span class="t"><b>2 pesan baru · #051026-SEC-0003</b><span>Christhin: Pak, wifi di ruang meeting…</span></span><time>16.30</time></div>
+        <div class="it unread m-news"><span class="ico"><i data-lucide="newspaper"></i></span><span class="t"><b>Jadwal libur akhir tahun</b><span>Human Resources · memo wajib dibaca</span></span><time>09.10</time></div>
+        <div class="day">Jumat, 16 Okt</div>
+        <div class="it unread m-meet"><span class="ico"><i data-lucide="video"></i></span><span class="t"><b>Pengingat rapat: Weekly ICT Sync</b><span>Mulai 09.00 · Ruang Rapat 2</span></span><time>08.00</time></div>
+        <div class="it m-mail"><span class="ico"><i data-lucide="mail"></i></span><span class="t"><b>Re: Test Message</b><span>Adrio Andhika: Pesan di bawah ini apakah…</span></span><time>08.02</time></div>
+      </div>
+      <div class="foot"><span class="sw"></span><span class="lab">Popup aktif</span><button class="btn pri" style="--btn-h:38px;font-size:14px;padding:0 14px"><i data-lucide="arrow-up-right"></i>Buka iPop</button></div>
+    </div>
+  </section>
+
+  <!-- 7 · SSO page -->
+  <section>
+    <div class="cap">7 · Halaman "Masuk dengan iPop" <span>— rata tengah, Bahasa Indonesia</span></div>
+    <div class="sso">
+      <div class="brand"><img src="ipop-mark.webp" alt=""></div>
+      <h3>Melanjutkan ke iDesk…</h3>
+      <div class="me"><span class="av" style="background:#d4a017">RB</span><b>RM Bagastyo Anggoro Indrastoto</b></div>
+      <div class="spin"></div>
+      <p class="note">iDesk hanya menerima nama, email, departemen, dan NIK Anda — tidak pernah password.</p>
+      <button class="btn">Bukan Anda? Gunakan akun lain</button>
+    </div>
+  </section>
+</div>
+
+<div class="notes">
+  <b>Yang berubah:</b> semua aksi berbentuk tombol (tinggi 42 px, sudut membulat, ikon + tulisan) · tombol utama berwarna penuh sesuai modul, tombol lain lembut · tombol di bawah setelah isi pesan ·
+  kepala popup berwarna lembut per modul (Email biru, Rapat oranye, iDesk biru + logo iDesk, Berita ungu, Pemberitahuan abu) · isi pesan di dalam kartu · huruf sedikit lebih besar, dan pilihan "Tulisan besar" di Pengaturan ·
+  Bahasa Indonesia · Inbox: status "Menyambung ulang…" pindah ke strip di atas dan hanya muncul bila terputus &gt; 10 detik, lalu "Tersambung" sebentar dan hilang.
+</div>
+
+<script src="lucide.min.js"></script>
+<script>
+  lucide.createIcons({ attrs: { 'stroke-width': 2 } });
+  const seg = (id, fn) => document.getElementById(id).addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    b.parentElement.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); fn(b);
+  });
+  seg('theme', b => document.documentElement.classList.toggle('dark', b.dataset.t === 'dark'));
+  seg('size', b => document.documentElement.classList.toggle('big', b.dataset.s === 'big'));
+  // Inbox strip demo: reconnecting → connected → hidden
+  const s = document.getElementById('strip');
+  setInterval(() => {
+    if (s.classList.contains('warn')) { s.className = 'strip ok'; s.innerHTML = '<span class="dot" style="animation:none"></span>Tersambung lagi'; }
+    else { s.className = 'strip warn'; s.innerHTML = '<span class="dot"></span>Menyambung ulang ke iPop… notifikasi tetap aman'; }
+  }, 3000);
+</script>
+</body>
+</html>
