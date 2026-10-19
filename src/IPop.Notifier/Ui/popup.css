@@ -120,3 +120,4 @@ body.card{background:var(--glass)}
 .idesk .ttl{background:linear-gradient(0deg,rgba(37,99,235,.08),rgba(37,99,235,.08))}
 .idesk .ttl b{color:#1d4ed8}
 .idesk .pop .src b{color:#2563eb}
+.idesk{--green:#2563eb;--green-2:#1d4ed8}
