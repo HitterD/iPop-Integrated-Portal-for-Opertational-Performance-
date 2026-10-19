@@ -107,7 +107,7 @@ public class HtmlWindow : Form
         {
             case "ready":
                 ready = true;
-                Send(new { type = "theme", dark = Theme.IsDark });
+                Send(new { type = "theme", dark = Theme.IsDark, large = Theme.LargeText });
                 foreach (var m in pending) WebHost.Post(View, m);
                 pending.Clear();
                 OnReady();
@@ -128,6 +128,9 @@ public class HtmlWindow : Form
 
 public static class Theme
 {
+    /// Settings → "Text size: Large": bigger type and buttons in every window (set by the app when settings load/change).
+    public static bool LargeText { get; set; }
+
     public static bool IsDark
     {
         get

@@ -21,21 +21,27 @@
             }
             else
             {
-                <h2>@(client is null ? "Signing you in…" : $"Continuing to {client}")</h2>
-                <p class="sub">Signed in as <b>@IPop.Application.PersonName.Display(Auth.Me?.Name)</b></p>
+                <h2>@(client is null ? "Signing you in…" : $"Continuing to {client}…")</h2>
+                <div class="sso-me"><span class="sso-av">@Initials(Auth.Me?.Name)</span><b>@IPop.Application.PersonName.Display(Auth.Me?.Name)</b></div>
                 <div class="sso-spinner" aria-hidden="true"></div>
                 <p class="sso-note">@(client ?? "The app") gets your name, email, department and employee ID — never your password.</p>
-                <button class="btn ghost" type="button" @onclick="SignOutAndSwitch">Not you? Use another account</button>
+                <button class="btn sso-other" type="button" @onclick="SignOutAndSwitch">Not you? Use another account</button>
             }
         </div>
     </div>
 </div>
 
 <style>
-    .sso-card .core { text-align: center; }
-    .sso-spinner { width: 34px; height: 34px; margin: 18px auto; border-radius: 50%; border: 3px solid var(--line, #e5e5ea); border-top-color: var(--accent, #2e9e5b); animation: sso-spin .8s linear infinite; }
-    .sso-note { font-size: 12.5px; color: var(--ink-3, #6e6e73); margin: 4px 0 14px; }
-    .sso-card .btn.ghost { background: transparent; color: var(--accent, #2e9e5b); box-shadow: none; }
+    /* Everything centred (it was left-aligned under a centred title); "Not you?" is a real secondary button. */
+    .sso-card .core { text-align: center; display: flex; flex-direction: column; align-items: center; }
+    .sso-card h2 { margin-bottom: 4px; }
+    .sso-me { display: inline-flex; align-items: center; gap: 10px; margin: 14px auto 2px; padding: 7px 16px 7px 7px; border-radius: 999px; background: var(--fill, rgba(118,118,128,.1)); border: 1px solid var(--line, #e5e5ea); }
+    .sso-me b { font-size: 14.5px; }
+    .sso-av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: #d4a017; color: #fff; font-size: 12px; font-weight: 700; }
+    .sso-spinner { width: 32px; height: 32px; margin: 18px auto 12px; border-radius: 50%; border: 3px solid var(--line, #e5e5ea); border-top-color: var(--accent, #2e9e5b); animation: sso-spin .8s linear infinite; }
+    .sso-note { font-size: 13px; color: var(--ink-3, #6e6e73); margin: 0 auto 18px; max-width: 34ch; line-height: 1.5; }
+    .sso-card .btn.sso-other { width: 100%; height: 44px; justify-content: center; background: var(--card, #fff); color: var(--ink, #1d1d1f); border: 1px solid var(--line-2, rgba(60,60,67,.2)); box-shadow: 0 1px 2px rgba(0,0,0,.06); font-weight: 650; }
+    .sso-card .btn.sso-other:hover { background: var(--fill, rgba(118,118,128,.1)); }
     @@keyframes sso-spin { to { transform: rotate(360deg); } }
     @@media (prefers-reduced-motion: reduce) { .sso-spinner { animation-duration: 2.4s; } }
 </style>
@@ -63,6 +69,9 @@
         // /connect/* is served by the API: same public origin behind the proxy, or the API base in development.
         Nav.NavigateTo(new Uri(Http.BaseAddress!, ok.ContinueUrl).ToString(), forceLoad: true);
     }
+
+    private static string Initials(string? name) =>
+        string.Concat((name ?? "?").Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(w => char.ToUpperInvariant(w[0])));
 
     private async Task SignOutAndSwitch()
     {

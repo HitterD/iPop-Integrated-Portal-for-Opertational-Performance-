@@ -24,12 +24,30 @@
     const first = !ctx.name;
     ctx = m.ctx;
     $('#sub').textContent = `${ctx.name ? ctx.name.split(' ')[0] + ' · ' : ''}${ctx.unread ? ctx.unread + ' unread' : 'all caught up'}`;
-    $('#seg [data-f=unread]').textContent = ctx.unread ? `Unread ${ctx.unread}` : 'Unread';
+    $('#seg [data-f=unread]').innerHTML = ctx.unread ? `Unread <span class="n">${ctx.unread > 99 ? '99+' : ctx.unread}</span>` : 'Unread';
     $('#sw').classList.toggle('on', !!ctx.popups);
+    $('#swLabel').textContent = ctx.popups ? 'Popups on' : 'Popups paused';
     $('#devices').hidden = !ctx.ict;
-    $('#conn').hidden = !!ctx.connected;
+    connection(!!ctx.connected);
     if (first || document.visibilityState === 'visible') { page = 1; load(); }
   });
+  // Short blips are not worth a warning: the strip shows only after ~10 s offline, then "Connected again" briefly.
+  let offTimer = null, okTimer = null, shownOff = false;
+  function connection(up) {
+    const el = $('#conn'), txt = $('#connText');
+    clearTimeout(okTimer);
+    if (!up) {
+      if (shownOff || offTimer) return;
+      offTimer = setTimeout(() => { offTimer = null; shownOff = true; el.className = 'strip warn on'; txt.textContent = 'Reconnecting to iPop… your notifications are safe'; }, 10000);
+      return;
+    }
+    clearTimeout(offTimer); offTimer = null;
+    if (!shownOff) { el.className = 'strip'; return; }
+    shownOff = false;
+    el.className = 'strip ok on'; txt.textContent = 'Connected again';
+    okTimer = setTimeout(() => { el.className = 'strip'; }, 3000);
+  }
+  app.on('connection', m => connection(!!m.connected));
   app.ready();
 
   async function load(more) {
@@ -68,7 +86,7 @@
       const mod = moduleOf(i), m = MOD[mod];
       const missed = ctx.held && ctx.held.includes(i.id) && !i.isRead;
       html += `<div class="it ${i.isRead ? 'read' : ''}" data-i="${idx}" style="--m:${m.c};animation-delay:${Math.min(idx, 12) * 18}ms">${i.isRead ? '' : '<i class="dot"></i>'}
-        <span class="ico">${ICON[mod] || ICON.system}</span>
+        <span class="ico${mod === 'tickets' ? ' idesk' : ''}">${mod === 'tickets' ? '<img src="idesk-mark.png" alt="iDesk">' : (ICON[mod] || ICON.system)}</span>
         <span class="m"><b><span class="t">${esc(i.title)}</span>${missed ? '<span class="missed">MISSED</span>' : ''}<small>${esc(timeShort(i.at))}</small></b><span>${esc(i.body)}</span></span>
         <span class="acts"><button data-a="read" title="${i.isRead ? 'Mark unread' : 'Mark read'}">${i.isRead ? IC('circle-dot') : ICON.check}</button><button data-a="web" title="Open in iPop">${IC('arrow-up-right')}</button></span></div>`;
     });

@@ -9,26 +9,29 @@
 body{display:flex;flex-direction:column;border-radius:16px}
 .fly{flex:1;display:flex;flex-direction:column;min-height:0;animation:popIn .45s var(--spring)}
 .fh{display:flex;align-items:center;gap:10px;padding:14px 14px 8px}
-.fh img{width:30px;height:30px;border-radius:9px;background:#fff;padding:3px;box-shadow:0 2px 8px -3px rgba(0,0,0,.3)}
-.fh b{font-size:16px}.fh small{display:block;font-size:12px;color:var(--ink-3)}
+.fh img{width:40px;height:40px;border-radius:10px;background:#fff;padding:3px;box-shadow:0 2px 8px -3px rgba(0,0,0,.3)}
+.fh b{font-size:19px;font-weight:700;letter-spacing:-.01em}.fh small{display:block;font-size:13px;color:var(--ink-3)}
 .fh .sp{flex:1}
-.ib{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--ink-3);transition:background .15s}
+.ib{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;color:var(--ink-2);background:var(--sunk);border:1px solid var(--sep);transition:background .15s}
 .ib:hover{background:var(--fill);color:var(--ink)}
 .seg{display:flex;margin:4px 14px 8px;padding:2px;border-radius:9px;background:var(--fill)}
-.seg button{flex:1;height:28px;border-radius:7px;font-size:12.5px;font-weight:600;color:var(--ink-3);transition:background .2s,color .2s}
+.seg button{flex:1 1 auto;height:36px;padding:0 10px;border-radius:8px;font-size:14px;font-weight:600;color:var(--ink-3);white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:background .2s,color .2s}
+.seg .n{min-width:22px;height:20px;padding:0 6px;border-radius:10px;background:#0a6cff;color:#fff;font-size:12px;font-weight:700;display:inline-grid;place-items:center}
 .seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
 .list{flex:1;overflow:auto;padding:0 8px 8px}
-.grp{font-size:11.5px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em;padding:10px 8px 6px}
+.grp{font-size:12px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em;padding:10px 8px 6px}
 .it{display:flex;gap:10px;padding:10px 8px;border-radius:12px;position:relative;cursor:pointer;transition:background .15s,transform .12s var(--spring);animation:fade .25s both}
 .it:hover{background:var(--fill)}
 .it:active{transform:scale(.99)}
-.it .ico{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;color:#fff;background:var(--m);flex:none}
-.it .ico svg{width:16px;height:16px}
+.it .ico{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;color:#fff;background:var(--m);flex:none}
+.it .ico svg{width:18px;height:18px}
+.it .ico.idesk{background:#fff;box-shadow:0 0 0 1px var(--sep)}
+.it .ico.idesk img{width:28px;height:28px;object-fit:contain}
 .it .m{flex:1;min-width:0}
-.it .m b{display:flex;justify-content:space-between;gap:8px;font-size:13.5px;font-weight:600}
+.it .m b{display:flex;justify-content:space-between;gap:8px;font-size:15px;font-weight:650}
 .it .m b span.t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.it .m b small{font-weight:400;color:var(--ink-3);font-size:11.5px;flex:none}
-.it .m>span{display:block;font-size:12.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.it .m b small{font-weight:400;color:var(--ink-4);font-size:12.5px;flex:none}
+.it .m>span{display:block;font-size:13.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
 .it.read .m b{font-weight:500;color:var(--ink-2)}
 .it .dot{position:absolute;left:-1px;top:22px;width:7px;height:7px;border-radius:50%;background:var(--mail)}
 .it .missed{font-size:10.5px;font-weight:700;color:var(--cal);background:rgba(255,159,10,.14);padding:1px 6px;border-radius:999px;margin-left:6px;flex:none}
@@ -39,24 +42,36 @@ body{display:flex;flex-direction:column;border-radius:16px}
 .it .acts button:hover{color:var(--ink)}
 .empty{padding:60px 20px;text-align:center;color:var(--ink-3);font-size:13px}
 .empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:4px}
-.ff{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:.5px solid var(--sep);font-size:12.5px}
-.ff .mode{display:flex;align-items:center;gap:8px;flex:1}
-.ff a{color:var(--green);font-weight:600;text-decoration:none;cursor:pointer}
-.off{font-size:11.5px;color:var(--ink-3);display:flex;align-items:center;gap:6px}
-.off i{width:7px;height:7px;border-radius:50%;background:var(--ink-4)}
+.ff{display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid var(--sep)}
+.ff .mode{display:flex;align-items:center;gap:10px;flex:1;font-size:14.5px;font-weight:600}
+.ff .open{height:38px;padding:0 14px;border-radius:11px;display:inline-flex;align-items:center;gap:7px;font-size:14px;font-weight:650;color:#fff;background:#1f8a4c;
+  box-shadow:0 1px 2px rgba(0,0,0,.12),0 6px 14px rgba(31,138,76,.28);transition:transform .12s var(--spring)}
+.ff .open:active{transform:scale(.97)}
+.ff .open svg{width:17px;height:17px}
+/* connection: a strip at the top, only after ~10 s offline; "Connected again" briefly on recovery */
+.strip{display:none;align-items:center;gap:9px;margin:0 14px 8px;padding:9px 12px;border-radius:10px;font-size:13.5px;font-weight:600}
+.strip.on{display:flex;animation:winIn .25s var(--spring)}
+.strip.warn{background:#fff4e0;color:#8a4b00}
+.strip.ok{background:#e6f5ec;color:#176a3a}
+.dark .strip.warn{background:rgba(255,159,10,.14);color:#ffc069}
+.dark .strip.ok{background:rgba(48,209,88,.14);color:#7ee2a5}
+.strip i{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}
+.strip.warn i{animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35}}
 .loadmore{display:block;margin:8px auto;height:30px;padding:0 14px;border-radius:999px;background:var(--fill);font-size:12.5px;font-weight:600}
 </style>
 </head>
 <body>
 <div class="fly">
   <div class="fh"><img src="ipop-mark.webp" alt=""><div><b>Notifications</b><small id="sub">…</small></div><span class="sp"></span>
-    <button class="ib" id="readAll" title="Mark all read"></button>
+    <button class="ib" id="readAll" title="Mark all as read"></button>
     <button class="ib" id="devices" title="Devices (ICT)" hidden><i data-lucide="monitor"></i></button>
     <button class="ib" id="gear" title="Settings"></button>
   </div>
+  <div class="strip" id="conn"><i></i><span id="connText">Reconnecting to iPop… your notifications are safe</span></div>
   <div class="seg" id="seg"><button data-f="all" class="on">All</button><button data-f="unread">Unread</button><button data-f="tickets">iDesk</button><button data-f="mail">Mail</button></div>
   <div class="list" id="list"></div>
-  <div class="ff"><span class="mode"><span class="sw" id="sw"></span>Popups</span><span class="off" id="conn" hidden><i></i>Reconnecting…</span><a id="open">Open iPop <i data-lucide="arrow-up-right"></i></a></div>
+  <div class="ff"><span class="mode"><span class="sw" id="sw"></span><span id="swLabel">Popups on</span></span><button class="open" id="open"><i data-lucide="arrow-up-right"></i>Open iPop</button></div>
 </div>
 <script src="lucide.min.js"></script>
 <script src="bridge.js"></script>

@@ -13,12 +13,14 @@ public sealed class NoticeWindow : BridgedWindow
     public event Action<NoticeWindow, string>? Done;
     public event Action<NoticeWindow>? HeightChanged;
     public int WantedHeight { get; private set; }
+    /// New key for the friendly layout: widths remembered for the old, wider design don't carry over.
+    private const string SizeKeyV2 = "popup2";
 
     /// Set for a notification from while the PC was off: "2 of 9 pending".
     public (int Index, int Total)? Pending { get; }
 
     public NoticeWindow(Notice notice, string style, IPopClient api, (int Index, int Total)? pending = null)
-        : base("popup.html", style == "stack" ? new Size(440, 220) : WindowSizes.Get("popup", new Size(720, 560)), api, noActivate: true, showInTaskbar: style != "stack")
+        : base("popup.html", style == "stack" ? new Size(440, 220) : new Size(WindowSizes.Get(SizeKeyV2, new Size(600, 520)).Width, 520), api, noActivate: true, showInTaskbar: style != "stack")
     {
         Notice = notice;
         Pending = pending;
@@ -26,7 +28,7 @@ public sealed class NoticeWindow : BridgedWindow
         WantedHeight = ClientSize.Height;
         Text = notice.Title.Length > 80 ? notice.Title[..80] + "…" : notice.Title;
         if (style == "stack") TopMost = true;
-        else SizeKey = "popup";
+        else SizeKey = SizeKeyV2;
     }
 
     private int more;
@@ -55,8 +57,9 @@ public sealed class NoticeWindow : BridgedWindow
         {
             case "size":
                 var h = msg?["height"]?.GetValue<int>() ?? WantedHeight;
-                var max = Style == "stack" ? 560 : 820;
-                WantedHeight = Math.Clamp(LogicalToDevice(h), LogicalToDevice(120), LogicalToDevice(max));
+                // Same width for every kind; the height follows the content (window style: 360–640, friendly mockup).
+                var (min, max) = Style == "stack" ? (120, 560) : (360, 640);
+                WantedHeight = Math.Clamp(LogicalToDevice(h), LogicalToDevice(min), LogicalToDevice(max));
                 HeightChanged?.Invoke(this);
                 break;
             case "done": // acted on (sent, joined, acknowledged…) or "Mark read": closes after its little animation

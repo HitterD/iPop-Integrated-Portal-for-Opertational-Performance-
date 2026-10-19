@@ -36,12 +36,13 @@ public sealed class NotifierApp : ApplicationContext
         ui.CreateControl();
         api = new IPopClient(store);
         settings = new SettingsService(api, state);
+        Theme.LargeText = settings.Current.TextSize == "large";
         device = new DeviceReporter(api);
         popups = new PopupManager(api, settings, state, device);
         api.SignedOut += () => Post(OnSignedOut);
         popups.CountChanged += UpdateTray;
         device.Beat += () => Post(() => { api.WebBaseOverride = device.WebBase; devicesItem!.Visible = device.IctTools; UpdateTray(); });
-        settings.Changed += _ => Post(UpdateTray);
+        settings.Changed += s => Post(() => { Theme.LargeText = s.TextSize == "large"; UpdateTray(); });
 
         Toasts.Init();
         Toasts.Open += path => Post(() => OpenIPop(path));
@@ -105,7 +106,7 @@ public sealed class NotifierApp : ApplicationContext
         feed.TicketChatRead += refs => Post(() => { foreach (var r in refs) Toasts.RemoveTicket(r); _ = RefreshUnreadAsync(); });
         feed.ChatToast += t => Post(() => OnChatToast(t));
         feed.Remote += (ev, n) => Post(() => OnRemote(ev, n));
-        feed.ConnectionChanged += c => Post(() => { connected = c; UpdateTray(); });
+        feed.ConnectionChanged += c => Post(() => { connected = c; UpdateTray(); if (inbox is { IsDisposed: false }) inbox.Connection(c); });
         try { await feed.StartAsync(ct); } catch (OperationCanceledException) { }
         await RefreshUnreadAsync();
     }

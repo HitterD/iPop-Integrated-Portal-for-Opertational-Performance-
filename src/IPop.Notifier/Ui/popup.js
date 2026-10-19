@@ -13,7 +13,7 @@
   // ── layout ────────────────────────────────────────────────────────────────
   function render() {
     const mod = MOD[N.module] || MOD.system;
-    document.body.className = (STYLE === 'stack' ? 'card' : 'win') + (N.module === 'tickets' ? ' idesk' : '');
+    document.body.className = (STYLE === 'stack' ? 'card' : 'win') + ' m-' + (MOD[N.module] ? N.module : 'system') + (N.module === 'tickets' ? ' idesk' : '');
     root = document.getElementById('root');
     root.style.setProperty('--m', mod.c);
     view = { tools: [], chips: [], title: N.title, who: null, body: `<p class="txt sel">${esc(N.body)}</p>`, done: 'Done' };
@@ -26,7 +26,7 @@
 
   // From while the PC was off: which one this is, and that closing keeps it unread.
   const pendingStrip = () => PENDING
-    ? `<div class="pending">${IC('history')}<b>${PENDING.index} of ${PENDING.total} pending</b><span>Arrived while this PC was off · closing keeps it unread</span></div>`
+    ? `<div class="pending">${IC('history')}<b>${PENDING.index} of ${PENDING.total} pending</b><span>· arrived while this PC was off · closing keeps it unread</span></div>`
     : '';
 
   function shell() {
@@ -34,9 +34,11 @@
     const time = timeShort(N.at);
     const label = t => STYLE === 'stack' ? t.label.replace('Open in iPop ', 'Open ').replace('Open in iDesk ', 'iDesk ') : t.label;
     const tools = view.tools.map((t, i) => `<button class="${STYLE === 'stack' ? 'btn' : 'tb2'} ${t.cls || ''}" data-t="${i}" ${t.disabled ? 'disabled' : ''}>${label(t)}</button>`);
+    // Shown in the window style too ("who" sits under the title, time is in the header).
+    
     const sp = view.tools.findIndex(t => t.right);
     if (sp >= 0) tools.splice(sp, 0, '<span class="sp"></span>');
-    const who = view.who ? `<div class="who"><span class="av" style="background:${avatarColor(view.who.name)}" ${view.who.photo ? `data-photo="${esc(view.who.photo)}"` : ''}>${esc(initials(view.who.name))}</span><span class="nm"><b>${esc(view.who.name)}</b><small>${esc(view.who.sub || '')}</small></span>${STYLE === 'stack' ? '' : `<span class="when">${esc(time)}</span>`}</div>` : '';
+    const who = view.who ? `<div class="who"><span class="av" style="background:${avatarColor(view.who.name)}" ${view.who.photo ? `data-photo="${esc(view.who.photo)}"` : ''}>${esc(initials(view.who.name))}</span><span class="nm"><b>${esc(view.who.name)}</b><small>${esc(view.who.sub || '')}</small></span></div>` : '';
     const chips = view.chips.length ? `<div class="chips">${view.chips.map(c => `<span class="chip ${c.st ? 'st' : ''}">${esc(c.t)}</span>`).join('')}</div>` : '';
     const reply = view.reply ? replyBox() : '';
     const done = `<div class="done"><span class="ck">${ICON.check}</span><span id="doneText">${esc(view.done)}</span></div>`;
@@ -53,12 +55,12 @@
         <div class="more-row"><span>+<b>0</b> more waiting</span></div></div>`;
     } else {
       root.innerHTML = `<div class="win">
-        <div class="ttl" data-drag><span class="ic">${modIcon()}</span><b>${esc(N.title)}</b><small>${esc(time)}</small><button class="wc" data-min title="Minimize">${ICON.min}</button><button class="wc x" data-close title="Close">${ICON.x}</button></div>
+        <div class="ttl" data-drag><span class="ic">${modIcon()}</span><b>${esc(/^meeting\./.test(N.eventType || '') ? 'Meeting' : mod.n)}</b><small>· ${esc(time)}</small><span class="sp"></span><button class="wc" data-min title="Minimize">${ICON.min}</button><button class="wc x" data-close title="Close">${ICON.x}</button></div>
         ${pendingStrip()}
+        <div class="body"><h3 class="ptitle sel">${esc(view.title)}</h3>${who}${chips}<div class="mcard sel">${view.body}</div></div>
+        ${reply}
         ${view.tools.length ? `<div class="tools">${tools.join('')}</div>` : ''}
-        <div class="hdr"><h3 class="sel">${esc(view.title)}</h3>${who}${chips}</div>
-        <div class="body">${view.body}</div>
-        ${reply}${done}</div>`;
+        ${done}</div>`;
     }
     const box = root.firstElementChild;
     if (wasReplying && view.reply) { box.classList.add('replying'); const ed = box.querySelector('.ed'); if (ed && draft) ed.innerHTML = draft; }
@@ -72,7 +74,7 @@
     const r = view.reply;
     const rich = r.rich ? `<div class="rt"><button data-cmd="bold" title="Bold">B</button><button data-cmd="italic" title="Italic"><i>I</i></button><button data-cmd="underline" title="Underline"><u>U</u></button><button data-cmd="insertUnorderedList" title="List">•</button>${r.attach ? '<button data-attach title="Attach">' + IC('paperclip') + '</button>' : ''}</div>` : '';
     return `<div class="reply"><div class="rte">${rich}<div class="ed" contenteditable="true" data-ph="${esc(r.placeholder || 'Write a reply…')}"></div><div class="att"></div>
-      <div class="err" hidden></div><div class="rf"><small id="replyTo">${esc(r.hint || '')}</small><button class="${STYLE === 'stack' ? 'btn' : 'tb2'}" data-cancel>Cancel</button><button class="${STYLE === 'stack' ? 'btn' : 'tb2'} p" data-send>Send</button></div></div>
+      <div class="err" hidden></div><div class="rf"><small id="replyTo">${esc(r.hint || '')}</small><button class="${STYLE === 'stack' ? 'btn' : 'tb2'}" data-cancel>Cancel</button><button class="${STYLE === 'stack' ? 'btn' : 'tb2'} p" data-send>${IC('send')}Send</button></div></div>
       <input type="file" hidden multiple data-file></div>`;
   }
 
@@ -151,8 +153,8 @@
 
   const openIPop = path => post({ type: 'openIPop', path: path || '/notifications' });
   const markRead = () => api('POST', `api/notifications/v1/notifications/${N.id}/read`);
-  const openTool = (label, path) => ({ label: label + ' ' + IC('arrow-up-right'), right: true, run: async () => { openIPop(path || N.targetUrl); await markRead(); closeOut('open'); } });
-  const readTool = { label: IC('check') + 'Mark read', run: async () => { await markRead(); closeOut('read'); } };
+  const openTool = (label, path, primary) => ({ label: IC('arrow-up-right') + label, cls: primary ? 'p' : '', run: async () => { openIPop(path || N.targetUrl); await markRead(); closeOut('open'); } });
+  const readTool = { label: IC('check') + 'Mark as read', cls: 'soft', right: true, run: async () => { await markRead(); closeOut('read'); } };
   const id = re => (N.targetUrl || '').match(re)?.[1];
 
   // ── per module ────────────────────────────────────────────────────────────
@@ -160,7 +162,7 @@
     const loaders = { mail, tickets, calendar, news, projects, notes, calls };
     const fn = loaders[N.module];
     if (fn && await fn() !== false) return;
-    view.tools = [readTool, openTool('Open in iPop')];
+    view.tools = [openTool('Open in iPop', null, true), readTool];
   }
 
   async function mail() {
@@ -189,8 +191,8 @@
       { label: IC('reply') + 'Reply', cls: 'p', reply: true },
       ...(canAll ? [{ label: IC('reply-all') + 'Reply all', reply: true, all: true }] : []),
       { label: IC('forward') + 'Forward', run: async () => { openIPop(N.targetUrl + '&forward=1'); closeOut('open'); } },
-      { label: IC('check') + 'Mark read', right: true, run: async () => { await api('POST', `api/mail/${mid}/read`); await markRead(); closeOut('read'); } },
       openTool('Open in iPop'),
+      { label: IC('check') + 'Mark as read', cls: 'soft', right: true, run: async () => { await api('POST', `api/mail/${mid}/read`); await markRead(); closeOut('read'); } },
     ];
     view.send = async (html, attIds) => {
       const plan = replyPlan(d, view.replyAll);
@@ -261,8 +263,8 @@
       ticketReply(agentTid);
       view.tools = [
         { label: IC('reply') + 'Reply', cls: 'p', reply: true },
+        { label: IC('external-link') + 'Open in iDesk', run: async () => { openIPop(N.targetUrl); await markRead(); closeOut('open'); } },
         readTool,
-        { label: 'Open in iDesk ' + IC('arrow-up-right'), right: true, run: async () => { openIPop(N.targetUrl); await markRead(); closeOut('open'); } },
       ];
       return true;
     }
@@ -272,11 +274,12 @@
     const [r, m] = await Promise.all([api('GET', `api/tickets/${tid}`), api('GET', `api/tickets/${tid}/messages?peek=1`)]);
     if (!r.ok) return false;
     const t = r.json;
-    view.title = `${t.ticketNumber ? '#' + t.ticketNumber + ' · ' : ''}${t.title}`;
+    view.title = t.title;
     const msgs = (m.ok && m.json?.messages) || [];
     const last = msgs.filter(x => !x.mine).slice(-1)[0];
     view.who = last ? { name: last.sender, sub: 'replied to your ticket' } : (t.assignee ? { name: t.assignee, sub: 'ICT' } : null);
-    view.chips = [{ t: t.status, st: true }, t.priority && { t: t.priority }, (t.moduleName || t.category) && { t: [t.moduleName, t.category].filter(Boolean).join(' · ') }].filter(Boolean);
+    const human = v => String(v || '').toLowerCase().replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+    view.chips = [{ t: (t.ticketNumber ? '#' + t.ticketNumber : ''), st: true }, { t: human(t.status) }, t.priority && { t: human(t.priority) + ' priority' }].filter(c => c && c.t);
     view.body = msgs.length
       ? `<div class="msg-list">${msgs.slice(-4).map(x => `<div class="msg-it sel"><b>${esc(x.mine ? 'You' : x.sender)}</b><small>${esc(timeShort(x.createdAt))}</small><p>${esc(x.content)}</p></div>`).join('')}</div>`
       : `<p class="txt sel">${esc(t.description || N.body)}</p>`;
@@ -285,8 +288,8 @@
     view.tools = [
       view.reply ? { label: IC('reply') + 'Reply', cls: 'p', reply: true }
         : { label: IC('reply') + 'Reply in iDesk', cls: 'p', run: async () => { if (url) post({ type: 'openUrl', url }); else openIPop(N.targetUrl); await markRead(); closeOut('open'); } },
-      { label: IC('check') + 'Mark read', run: async () => { await markRead(); closeOut('read'); } },
-      { label: 'Open in iDesk ' + IC('arrow-up-right'), right: true, run: async () => { if (url) post({ type: 'openUrl', url }); else openIPop(N.targetUrl); await markRead(); closeOut('open'); } },
+      ...(view.reply ? [{ label: IC('external-link') + 'Open in iDesk', run: async () => { if (url) post({ type: 'openUrl', url }); else openIPop(N.targetUrl); await markRead(); closeOut('open'); } }] : []),
+      readTool,
     ];
   }
 
@@ -318,11 +321,11 @@
     const canJoin = key || link;
     const invited = mt && mt.myResponse !== undefined && mt.myResponse !== 'organizer';
     view.tools = [
-      ...(canJoin ? [{ label: IC('video') + 'Join', cls: 'p', run: async () => { if (key) openIPop(`/calls?tab=rooms&join=${key}`); else post({ type: 'openUrl', url: link }); await markRead(); finish('Joining…', 'join'); } }] : []),
+      ...(canJoin ? [{ label: IC('video') + 'Join now', cls: 'p', run: async () => { if (key) openIPop(`/calls?tab=rooms&join=${key}`); else post({ type: 'openUrl', url: link }); await markRead(); finish('Joining…', 'join'); } }] : []),
       ...(mt && invited && mt.myResponse !== 'accept' && !canJoin ? [{ label: IC('check') + 'Accept', cls: 'p', run: () => rsvp(mt.id, 'accept', 'Accepted') }] : []),
       { label: IC('alarm-clock') + 'Snooze 5 min', run: async () => { const r = await api('POST', `api/notifications/v1/notifications/${N.id}/snooze`, { until: new Date(Date.now() + 5 * 60000).toISOString() }); if (r.ok) finish('Snoozed for 5 minutes', 'snooze'); else snack('Couldn\'t snooze. Try again.'); } },
-      ...(mt && invited && mt.myResponse !== 'decline' ? [{ label: IC('x') + 'Decline', cls: 'r', run: () => rsvp(mt.id, 'decline', 'Declined') }] : []),
-      openTool('Open', N.targetUrl),
+      openTool('Open', N.targetUrl, !canJoin && !(mt && invited && mt.myResponse !== 'accept')),
+      ...(mt && invited && mt.myResponse !== 'decline' ? [{ label: IC('x') + 'Decline', cls: 'r', right: true, run: () => rsvp(mt.id, 'decline', 'Declined') }] : []),
     ];
     view.done = 'Done';
   }
@@ -348,14 +351,15 @@
       if (src) cover = `<img class="img" data-img data-src="${esc(src.replace(/^\//, ''))}" alt="">`;
     }
     view.html = p.bodyFormat === 'html' ? p.body : null;
-    view.body = (view.html ? '<iframe data-mail sandbox="allow-same-origin" title="Post"></iframe>' : `<p class="txt sel">${esc(p.body)}</p>`) + cover + '<a class="more-link">Read in iPop ' + IC('arrow-up-right') + '</a>';
+    view.body = (view.html ? '<iframe data-mail sandbox="allow-same-origin" title="Post"></iframe>' : `<p class="txt sel">${esc(p.body)}</p>`) + cover + '<a class="more-link">' + IC('arrow-up-right') + 'Read in iPop</a>';
     view.tools = [
-      ...(p.requiresAcknowledgement && !p.isAcknowledged ? [{ label: IC('badge-check') + 'Acknowledge', cls: 'p', run: async () => {
+      ...(p.requiresAcknowledgement && !p.isAcknowledged ? [{ label: IC('check-check') + "I've read it", cls: 'p', run: async () => {
         const a = await api('POST', `api/news/${pid}/acknowledge?contentVersion=${p.contentVersion ?? 1}`);
         if (a.ok) { await api('POST', `api/notifications/v1/notifications/${N.id}/acknowledge`); finish('Acknowledged', 'ack'); }
         else snack(a.status === 409 ? 'The memo was updated — open it in iPop to read the new version.' : 'Couldn\'t acknowledge. Try again.');
-      } }] : [readTool]),
-      openTool('Open in iPop'),
+      } }] : []),
+      openTool('Open in iPop', null, !(p.requiresAcknowledgement && !p.isAcknowledged)),
+      ...(p.requiresAcknowledgement && !p.isAcknowledged ? [] : [readTool]),
     ];
   }
 
@@ -377,11 +381,12 @@
     view.done = 'Comment added';
     view.tools = [
       { label: IC('reply') + 'Reply', cls: 'p', reply: true },
-      ...(t.status !== 'done' ? [{ label: IC('circle-check') + 'Mark done', run: async () => {
+      ...(t.status !== 'done' ? [{ label: IC('circle-check') + 'Mark as done', run: async () => {
         const res = await api('POST', `api/projects/tasks/${tid}/move`, { status: 'done' });
         if (res.ok) { await markRead(); finish('Marked done', 'done'); } else snack(res.json?.message || 'Couldn\'t update the task.');
       } }] : []),
       openTool('Open in iPop'),
+      readTool,
     ];
   }
   const statusName = s => ({ todo: 'To do', in_progress: 'In progress', review: 'In review', done: 'Done' }[s] || s || 'Task');
@@ -389,7 +394,7 @@
   async function notes() {
     const pid = id(new RegExp('^/notes/' + G));
     if (!pid) return false;
-    view.tools = [readTool, openTool('Open in iPop')];
+    view.tools = [openTool('Open in iPop', null, true), readTool];
     if (!/comment|mention/.test(N.eventType)) return;
     const r = await api('GET', `api/notes/${pid}/threads`);
     const threads = (r.ok && r.json) || [];
@@ -407,13 +412,13 @@
       return res.json?.message || 'Couldn\'t reply. Try again.';
     };
     view.done = 'Reply added';
-    view.tools = [{ label: IC('reply') + 'Reply', cls: 'p', reply: true }, readTool, openTool('Open in iPop')];
+    view.tools = [{ label: IC('reply') + 'Reply', cls: 'p', reply: true }, openTool('Open in iPop'), readTool];
   }
 
   async function calls() {
     view.tools = [
       { label: IC('phone') + 'Call back', cls: 'p', run: async () => { openIPop('/calls?tab=recents'); await markRead(); closeOut('call'); } },
-      readTool, openTool('Open in iPop', '/calls?tab=recents'),
+      openTool('Open in iPop', '/calls?tab=recents'), readTool,
     ];
   }
 
