@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="id">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>iPop Notifier — tampilan ramah (mockup)</title>
+<title>iPop Notifier — friendly design (mockup)</title>
 <style>
 :root{
   --desk:linear-gradient(135deg,#dfe9e4 0%,#e9eef3 45%,#f3ece4 100%);
@@ -159,157 +159,158 @@ html.dark .m-ipop{--m-soft:rgba(31,138,76,.22);--m-ink:#7ee2a5}
 </head>
 <body>
 <div class="bar">
-  <h1>iPop Notifier — tampilan ramah <small>Mockup untuk persetujuan · ukuran lebar sama untuk semua popup, tinggi mengikuti isi (360–640 px) · tombol aksi di bawah</small></h1>
-  <div class="seg" id="theme"><button data-t="light" class="on">Terang</button><button data-t="dark">Gelap</button></div>
-  <div class="seg" id="size"><button data-s="normal" class="on">Tulisan normal</button><button data-s="big">Tulisan besar</button></div>
+  <h1>iPop Notifier — friendly design <small>Mockup for approval · same width for every popup, height fits the content (360–640 px) · action buttons at the bottom</small></h1>
+  <div class="seg" id="theme"><button data-t="light" class="on">Light</button><button data-t="dark">Dark</button></div>
+  <div class="seg" id="size"><button data-s="normal" class="on">Normal text</button><button data-s="big">Large text</button></div>
 </div>
 
 <div class="grid">
 
   <!-- 1 · Mail -->
   <section>
-    <div class="cap">1 · Email masuk <span>— balas langsung di popup</span></div>
+    <div class="cap">1 · New email <span>— reply right in the popup</span></div>
     <div class="pw m-mail">
-      <div class="head"><span class="mod"><i data-lucide="mail"></i></span><b>Email</b><span class="when">· 2 Okt, 08.02</span><span class="sp"></span>
-        <button class="wc" title="Perkecil"><i data-lucide="minus"></i></button><button class="wc" title="Tutup"><i data-lucide="x"></i></button></div>
+      <div class="head"><span class="mod"><i data-lucide="mail"></i></span><b>Mail</b><span class="when">· 2 Oct, 08:02</span><span class="sp"></span>
+        <button class="wc" title="Minimize"><i data-lucide="minus"></i></button><button class="wc" title="Close"><i data-lucide="x"></i></button></div>
       <div class="body">
         <div class="title">Re: Test Message</div>
-        <div class="who"><span class="av" style="background:#2e9e5b">AA</span><span class="nm"><b>Adrio Andhika Antoninus</b><small>kepada Anda · PT Santos Jaya Abadi</small></span></div>
-        <div class="msg"><p>Bagas,</p><p>Pesan di bawah ini apakah diterima?</p>
-          <div class="q">Pada Kam, 1 Okt 2026 14.53, Adrio Andhika Antoninus menulis: This is a test</div></div>
-        <a class="more"><i data-lucide="arrow-up-right"></i>Lihat pesan lengkap</a>
+        <div class="who"><span class="av" style="background:#2e9e5b">AA</span><span class="nm"><b>Adrio Andhika Antoninus</b><small>to you · PT Santos Jaya Abadi</small></span></div>
+        <div class="msg"><p>Bagas,</p><p>Did you receive the message below?</p>
+          <div class="q">On Thu, 1 Oct 2026 at 14:53, Adrio Andhika Antoninus wrote: This is a test</div></div>
+        <a class="more"><i data-lucide="arrow-up-right"></i>Show full message</a>
       </div>
-      <div class="reply"><div class="lbl">Balas ke Adrio Andhika Antoninus</div><textarea placeholder="Tulis balasan Anda…"></textarea></div>
+      <div class="reply"><div class="lbl">Reply to Adrio Andhika Antoninus</div><textarea placeholder="Type your reply…"></textarea></div>
       <div class="acts">
-        <button class="btn pri"><i data-lucide="send"></i>Kirim balasan</button>
-        <button class="btn"><i data-lucide="reply-all"></i>Balas semua</button>
-        <button class="btn"><i data-lucide="forward"></i>Teruskan</button>
+        <button class="btn pri"><i data-lucide="send"></i>Send reply</button>
+        <button class="btn"><i data-lucide="reply-all"></i>Reply all</button>
+        <button class="btn"><i data-lucide="forward"></i>Forward</button>
         <span class="sp"></span>
-        <button class="btn soft"><i data-lucide="check"></i>Tandai dibaca</button>
+        <button class="btn soft"><i data-lucide="check"></i>Mark as read</button>
       </div>
     </div>
   </section>
 
   <!-- 2 · Meeting reminder -->
   <section>
-    <div class="cap">2 · Pengingat rapat <span>— gabung, tunda, atau tolak</span></div>
+    <div class="cap">2 · Meeting reminder <span>— join, snooze or decline</span></div>
     <div class="pw m-meet">
-      <div class="head"><span class="mod"><i data-lucide="video"></i></span><b>Rapat</b><span class="when">· mulai 10 menit lagi</span><span class="sp"></span>
+      <div class="head"><span class="mod"><i data-lucide="video"></i></span><b>Meeting</b><span class="when">· starts in 10 minutes</span><span class="sp"></span>
         <button class="wc"><i data-lucide="minus"></i></button><button class="wc"><i data-lucide="x"></i></button></div>
       <div class="body">
         <div class="title">Weekly ICT Sync</div>
-        <div class="who"><span class="av" style="background:#d4a017">RB</span><span class="nm"><b>RM Bagastyo Anggoro Indrastoto</b><small>Penyelenggara</small></span></div>
-        <div class="chips"><span class="chip acc"><i data-lucide="calendar-clock"></i>Jum, 16 Okt · 09.00 – 10.00</span><span class="chip"><i data-lucide="door-open"></i>Ruang Rapat 2</span><span class="chip"><i data-lucide="users"></i>2 orang</span></div>
-        <div class="msg">Rapat "Weekly ICT Sync" dimulai pukul 09.00. Klik <b>Gabung sekarang</b> untuk masuk ke ruang rapat.</div>
+        <div class="who"><span class="av" style="background:#d4a017">RB</span><span class="nm"><b>RM Bagastyo Anggoro Indrastoto</b><small>Organizer</small></span></div>
+        <div class="chips"><span class="chip acc"><i data-lucide="calendar-clock"></i>Fri, 16 Oct · 09:00 – 10:00</span><span class="chip"><i data-lucide="door-open"></i>Meeting Room 2</span><span class="chip"><i data-lucide="users"></i>2 people</span></div>
+        <div class="msg">"Weekly ICT Sync" starts at 09:00. Press <b>Join now</b> to enter the meeting room.</div>
       </div>
       <div class="acts">
-        <button class="btn pri"><i data-lucide="video"></i>Gabung sekarang</button>
-        <button class="btn"><i data-lucide="alarm-clock"></i>Tunda 5 menit</button>
+        <button class="btn pri"><i data-lucide="video"></i>Join now</button>
+        <button class="btn"><i data-lucide="alarm-clock"></i>Snooze 5 min</button>
         <span class="sp"></span>
-        <button class="btn danger"><i data-lucide="x"></i>Tolak</button>
+        <button class="btn danger"><i data-lucide="x"></i>Decline</button>
       </div>
     </div>
   </section>
 
   <!-- 3 · iDesk ticket chat -->
   <section>
-    <div class="cap">3 · Chat tiket iDesk <span>— warna &amp; logo iDesk, beda dari iPop</span></div>
+    <div class="cap">3 · iDesk ticket chat <span>— iDesk colour &amp; logo, distinct from iPop</span></div>
     <div class="pw m-idesk">
-      <div class="head"><span class="mod img"><img src="idesk-mark.png" alt=""></span><b>iDesk</b><span class="when">· 16.35</span><span class="sp"></span>
+      <div class="head"><span class="mod img"><img src="idesk-mark.png" alt=""></span><b>iDesk</b><span class="when">· 16:35</span><span class="sp"></span>
         <button class="wc"><i data-lucide="minus"></i></button><button class="wc"><i data-lucide="x"></i></button></div>
       <div class="body">
-        <div class="title">Email tidak bisa diakses</div>
-        <div class="chips"><span class="chip acc"><i data-lucide="ticket"></i>#051026-SEC-0003</span><span class="chip">Sedang dikerjakan</span><span class="chip">Prioritas sedang</span></div>
-        <div class="who"><span class="av" style="background:#7a5af8">CM</span><span class="nm"><b>Christhin Magdalena</b><small>membalas tiket · 2 pesan baru</small></span></div>
-        <div class="msg">Pak, wifi di ruang meeting lantai 2 masih putus-putus. Bisa dicek hari ini?</div>
+        <div class="title">Email can't be accessed</div>
+        <div class="chips"><span class="chip acc"><i data-lucide="ticket"></i>#051026-SEC-0003</span><span class="chip">In progress</span><span class="chip">Medium priority</span></div>
+        <div class="who"><span class="av" style="background:#7a5af8">CM</span><span class="nm"><b>Christhin Magdalena</b><small>replied to the ticket · 2 new messages</small></span></div>
+        <div class="msg">The Wi-Fi in the 2nd-floor meeting room keeps dropping. Could you check it today?</div>
       </div>
-      <div class="reply"><div class="lbl">Balas di chat tiket</div><textarea placeholder="Tulis balasan…"></textarea></div>
+      <div class="reply"><div class="lbl">Reply in the ticket chat</div><textarea placeholder="Type your reply…"></textarea></div>
       <div class="acts">
-        <button class="btn pri"><i data-lucide="send"></i>Kirim balasan</button>
-        <button class="btn"><i data-lucide="external-link"></i>Buka di iDesk</button>
+        <button class="btn pri"><i data-lucide="send"></i>Send reply</button>
+        <button class="btn"><i data-lucide="external-link"></i>Open in iDesk</button>
         <span class="sp"></span>
-        <button class="btn soft"><i data-lucide="check"></i>Tandai dibaca</button>
+        <button class="btn soft"><i data-lucide="check"></i>Mark as read</button>
       </div>
     </div>
   </section>
 
   <!-- 4 · Pending system notice -->
   <section>
-    <div class="cap">4 · Notifikasi tertunda <span>— masuk saat PC mati, muncul satu per satu</span></div>
+    <div class="cap">4 · Pending notification <span>— arrived while the PC was off, shown one by one</span></div>
     <div class="pw m-sys">
-      <div class="head"><span class="mod"><i data-lucide="bell"></i></span><b>Pemberitahuan</b><span class="when">· 16.35</span><span class="sp"></span>
+      <div class="head"><span class="mod"><i data-lucide="bell"></i></span><b>Notice</b><span class="when">· 16:35</span><span class="sp"></span>
         <button class="wc"><i data-lucide="minus"></i></button><button class="wc"><i data-lucide="x"></i></button></div>
-      <div class="pending"><i data-lucide="history"></i><b>1 dari 4 tertunda</b><span>· masuk saat PC mati · menutup tidak menandai dibaca</span></div>
+      <div class="pending"><i data-lucide="history"></i><b>1 of 4 pending</b><span>· arrived while this PC was off · closing keeps it unread</span></div>
       <div class="body">
-        <div class="title">Survei kepuasan ICT</div>
-        <div class="msg">Mohon isi survei singkat tentang layanan ICT bulan ini. Hanya butuh 2 menit.</div>
+        <div class="title">ICT satisfaction survey</div>
+        <div class="msg">Please fill in a short survey about ICT services this month. It takes 2 minutes.</div>
       </div>
       <div class="acts">
-        <button class="btn pri"><i data-lucide="arrow-up-right"></i>Buka di iPop</button>
+        <button class="btn pri"><i data-lucide="arrow-up-right"></i>Open in iPop</button>
         <span class="sp"></span>
-        <button class="btn soft"><i data-lucide="check"></i>Tandai dibaca</button>
+        <button class="btn soft"><i data-lucide="check"></i>Mark as read</button>
       </div>
     </div>
   </section>
 
   <!-- 5 · News with poster -->
   <section>
-    <div class="cap">5 · Berita / memo <span>— dengan gambar</span></div>
+    <div class="cap">5 · News / memo <span>— with a picture</span></div>
     <div class="pw m-news">
-      <div class="head"><span class="mod"><i data-lucide="newspaper"></i></span><b>Berita &amp; Memo</b><span class="when">· 09.10</span><span class="sp"></span>
+      <div class="head"><span class="mod"><i data-lucide="newspaper"></i></span><b>News &amp; Memos</b><span class="when">· 09:10</span><span class="sp"></span>
         <button class="wc"><i data-lucide="minus"></i></button><button class="wc"><i data-lucide="x"></i></button></div>
       <div class="body">
-        <div class="title">Jadwal libur akhir tahun 2026</div>
-        <div class="who"><span class="av" style="background:#9b3f78">HR</span><span class="nm"><b>Human Resources</b><small>Memo wajib dibaca</small></span></div>
-        <div class="msg">Kantor libur mulai 24 Desember hingga 1 Januari. Pastikan pekerjaan penting sudah diserahterimakan sebelum 23 Desember.
+        <div class="title">Year-end holiday schedule 2026</div>
+        <div class="who"><span class="av" style="background:#9b3f78">HR</span><span class="nm"><b>Human Resources</b><small>Must-read memo</small></span></div>
+        <div class="msg">The office is closed from 24 December to 1 January. Please hand over urgent work before 23 December.
           <div class="poster"><img src="poster.jpg" alt=""></div></div>
       </div>
       <div class="acts">
-        <button class="btn pri"><i data-lucide="check-check"></i>Saya sudah membaca</button>
-        <button class="btn"><i data-lucide="arrow-up-right"></i>Buka di iPop</button>
+        <button class="btn pri"><i data-lucide="check-check"></i>I've read it</button>
+        <button class="btn"><i data-lucide="arrow-up-right"></i>Open in iPop</button>
       </div>
     </div>
   </section>
 
   <!-- 6 · Inbox -->
   <section>
-    <div class="cap">6 · Kotak notifikasi (Inbox) <span>— status koneksi di atas, footer rapi</span></div>
+    <div class="cap">6 · Inbox <span>— connection status at the top, tidy footer</span></div>
     <div class="ibx m-ipop">
-      <div class="top"><img src="ipop-mark.webp" alt=""><div><h2>Notifikasi</h2><small>Bagastyo · 35 belum dibaca</small></div><span class="sp"></span>
-        <button class="ibtn" title="Tandai semua dibaca"><i data-lucide="check-check"></i></button><button class="ibtn" title="Pengaturan"><i data-lucide="settings"></i></button></div>
-      <div class="strip warn" id="strip"><span class="dot"></span>Menyambung ulang ke iPop… notifikasi tetap aman</div>
-      <div class="seg tabs"><button>Semua</button><button class="on">Belum dibaca <span class="n">35</span></button><button>iDesk</button><button>Email</button></div>
+      <div class="top"><img src="ipop-mark.webp" alt=""><div><h2>Notifications</h2><small>Bagastyo · 35 unread</small></div><span class="sp"></span>
+        <button class="ibtn" title="Mark all as read"><i data-lucide="check-check"></i></button><button class="ibtn" title="Settings"><i data-lucide="settings"></i></button></div>
+      <div class="strip warn" id="strip"><span class="dot"></span>Reconnecting to iPop… your notifications are safe</div>
+      <div class="seg tabs"><button>All</button><button class="on">Unread <span class="n">35</span></button><button>iDesk</button><button>Mail</button></div>
       <div class="list">
-        <div class="day">Hari ini</div>
-        <div class="it unread m-sys"><span class="ico"><i data-lucide="bell"></i></span><span class="t"><b>Survei kepuasan ICT</b><span>Mohon isi survei singkat.</span></span><time>16.35</time></div>
-        <div class="it unread m-idesk"><span class="ico"><img src="idesk-mark.png" alt=""></span><span class="t"><b>2 pesan baru · #051026-SEC-0003</b><span>Christhin: Pak, wifi di ruang meeting…</span></span><time>16.30</time></div>
-        <div class="it unread m-news"><span class="ico"><i data-lucide="newspaper"></i></span><span class="t"><b>Jadwal libur akhir tahun</b><span>Human Resources · memo wajib dibaca</span></span><time>09.10</time></div>
-        <div class="day">Jumat, 16 Okt</div>
-        <div class="it unread m-meet"><span class="ico"><i data-lucide="video"></i></span><span class="t"><b>Pengingat rapat: Weekly ICT Sync</b><span>Mulai 09.00 · Ruang Rapat 2</span></span><time>08.00</time></div>
-        <div class="it m-mail"><span class="ico"><i data-lucide="mail"></i></span><span class="t"><b>Re: Test Message</b><span>Adrio Andhika: Pesan di bawah ini apakah…</span></span><time>08.02</time></div>
+        <div class="day">Today</div>
+        <div class="it unread m-sys"><span class="ico"><i data-lucide="bell"></i></span><span class="t"><b>ICT satisfaction survey</b><span>Please fill in a short survey.</span></span><time>16:35</time></div>
+        <div class="it unread m-idesk"><span class="ico"><img src="idesk-mark.png" alt=""></span><span class="t"><b>2 new messages · #051026-SEC-0003</b><span>Christhin: The Wi-Fi in the meeting room…</span></span><time>16:30</time></div>
+        <div class="it unread m-news"><span class="ico"><i data-lucide="newspaper"></i></span><span class="t"><b>Year-end holiday schedule</b><span>Human Resources · must-read memo</span></span><time>09:10</time></div>
+        <div class="day">Friday, 16 Oct</div>
+        <div class="it unread m-meet"><span class="ico"><i data-lucide="video"></i></span><span class="t"><b>Pengingat rapat: Weekly ICT Sync</b><span>Mulai 09.00 · Meeting Room 2</span></span><time>08.00</time></div>
+        <div class="it m-mail"><span class="ico"><i data-lucide="mail"></i></span><span class="t"><b>Re: Test Message</b><span>Adrio Andhika: Did you receive the message…</span></span><time>08:02</time></div>
       </div>
-      <div class="foot"><span class="sw"></span><span class="lab">Popup aktif</span><button class="btn pri" style="--btn-h:38px;font-size:14px;padding:0 14px"><i data-lucide="arrow-up-right"></i>Buka iPop</button></div>
+      <div class="foot"><span class="sw"></span><span class="lab">Popups on</span><button class="btn pri" style="--btn-h:38px;font-size:14px;padding:0 14px"><i data-lucide="arrow-up-right"></i>Open iPop</button></div>
     </div>
   </section>
 
   <!-- 7 · SSO page -->
   <section>
-    <div class="cap">7 · Halaman "Masuk dengan iPop" <span>— rata tengah, Bahasa Indonesia</span></div>
+    <div class="cap">7 · "Sign in with iPop" page <span>— centred</span></div>
     <div class="sso">
       <div class="brand"><img src="ipop-mark.webp" alt=""></div>
-      <h3>Melanjutkan ke iDesk…</h3>
+      <h3>Continuing to iDesk…</h3>
       <div class="me"><span class="av" style="background:#d4a017">RB</span><b>RM Bagastyo Anggoro Indrastoto</b></div>
       <div class="spin"></div>
-      <p class="note">iDesk hanya menerima nama, email, departemen, dan NIK Anda — tidak pernah password.</p>
-      <button class="btn">Bukan Anda? Gunakan akun lain</button>
+      <p class="note">iDesk gets your name, email, department and employee ID — never your password.</p>
+      <button class="btn">Not you? Use another account</button>
     </div>
   </section>
 </div>
 
 <div class="notes">
-  <b>Yang berubah:</b> semua aksi berbentuk tombol (tinggi 42 px, sudut membulat, ikon + tulisan) · tombol utama berwarna penuh sesuai modul, tombol lain lembut · tombol di bawah setelah isi pesan ·
-  kepala popup berwarna lembut per modul (Email biru, Rapat oranye, iDesk biru + logo iDesk, Berita ungu, Pemberitahuan abu) · isi pesan di dalam kartu · huruf sedikit lebih besar, dan pilihan "Tulisan besar" di Pengaturan ·
-  Bahasa Indonesia · Inbox: status "Menyambung ulang…" pindah ke strip di atas dan hanya muncul bila terputus &gt; 10 detik, lalu "Tersambung" sebentar dan hilang.
+  <b>What changes:</b> every action is a real button (42 px tall, rounded, icon + label) · the main action is filled in the module colour, the others are soft ·
+  buttons sit at the bottom, after the message · each popup has a soft module-coloured header (Mail blue, Meeting orange, iDesk blue + iDesk logo, News purple, Notice grey) ·
+  the message sits in a card · slightly larger type, plus a "Large text" option in Settings · Inbox: "Reconnecting…" moves to a strip at the top, only after &gt; 10 s offline,
+  then shows "Connected again" briefly and disappears.
 </div>
 
 <script src="lucide.min.js"></script>
@@ -324,8 +325,8 @@ html.dark .m-ipop{--m-soft:rgba(31,138,76,.22);--m-ink:#7ee2a5}
   // Inbox strip demo: reconnecting → connected → hidden
   const s = document.getElementById('strip');
   setInterval(() => {
-    if (s.classList.contains('warn')) { s.className = 'strip ok'; s.innerHTML = '<span class="dot" style="animation:none"></span>Tersambung lagi'; }
-    else { s.className = 'strip warn'; s.innerHTML = '<span class="dot"></span>Menyambung ulang ke iPop… notifikasi tetap aman'; }
+    if (s.classList.contains('warn')) { s.className = 'strip ok'; s.innerHTML = '<span class="dot" style="animation:none"></span>Connected again'; }
+    else { s.className = 'strip warn'; s.innerHTML = '<span class="dot"></span>Reconnecting to iPop… your notifications are safe'; }
   }, 3000);
 </script>
 </body>
