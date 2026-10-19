@@ -13,6 +13,7 @@ public static class Toasts
     public static event Action<string, string>? ChatReply;    // roomId, text
     public static event Action<string, string>? TicketReply;  // ticket ref (my ticket id or iDesk ticket id), text
     public static event Action<string>? Open;                 // iPop path
+    public static event Action<string>? OpenIdesk;            // my ticket's id: open it on the iDesk site
 
     /// Second toast identity for iDesk. Registered per user under HKCU (no admin), activated through the same
     /// COM activator the toolkit registered for the app, so clicks and replies land here.
@@ -30,7 +31,13 @@ public static class Toasts
                 if (action == "reply" && args.TryGetValue("room", out var room)) { ChatReply?.Invoke(room, t.Trim()); return; }
                 if (action == "ticket-reply" && args.TryGetValue("ticket", out var ticket)) { TicketReply?.Invoke(ticket, t.Trim()); return; }
             }
-            if (!string.IsNullOrEmpty(url)) Open?.Invoke(url);
+            if (!string.IsNullOrEmpty(url))
+            {
+                // "Open in iDesk" on the requester's own ticket: the iDesk site, not the iPop Tickets page.
+                if (args.TryGetValue("site", out var site) && site == "idesk" && url.StartsWith("/tickets/") && TicketRefOf(url) is { } mine)
+                    OpenIdesk?.Invoke(mine);
+                else Open?.Invoke(url);
+            }
         };
         RegisterIdesk();
     }
@@ -88,7 +95,7 @@ public static class Toasts
             b.AddInputTextBox("reply", placeHolderContent: "Reply in the ticket chat…")
              .AddButton(new ToastButton().SetContent("Send").AddArgument("action", "ticket-reply").AddArgument("ticket", ticket!)
                  .AddArgument("url", n.TargetUrl ?? "/tickets").SetTextBoxId("reply"))
-             .AddButton(new ToastButton().SetContent("Open in iDesk").AddArgument("url", n.TargetUrl ?? "/tickets"));
+             .AddButton(new ToastButton().SetContent("Open in iDesk").AddArgument("url", n.TargetUrl ?? "/tickets").AddArgument("site", "idesk"));
         }
         // Same tag per ticket: a newer message replaces the toast instead of stacking another.
         var tag = chat ? "t" + Hash(ticket!) : "n" + n.Id.ToString("N")[..16];

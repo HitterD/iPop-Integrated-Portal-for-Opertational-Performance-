@@ -12,7 +12,7 @@ public static partial class ApiBridge
     [
         ("GET", R($"^api/mail/{G}$")),
         ("GET", R($"^api/tickets/{G}$")),
-        ("GET", R($"^api/tickets/{G}/messages$")),
+        ("GET", R($"^api/tickets/{G}/messages(\\?peek=1)?$")),
         ("POST", R($"^api/tickets/{G}/reply$")),
         ("GET", R($"^api/meetings/{G}$")),
         ("GET", R($"^api/calendar/events/{G}$")),

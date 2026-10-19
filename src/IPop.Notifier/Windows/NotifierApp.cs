@@ -44,6 +44,7 @@ public sealed class NotifierApp : ApplicationContext
 
         Toasts.Init();
         Toasts.Open += path => Post(() => OpenIPop(path));
+        Toasts.OpenIdesk += id => _ = OpenMyTicketInIdeskAsync(id);
         Toasts.ChatReply += (room, text) => _ = SendChatAsync(room, text);
         Toasts.TicketReply += (ticket, text) => _ = SendTicketReplyAsync(ticket, text);
 
@@ -314,6 +315,13 @@ public sealed class NotifierApp : ApplicationContext
     }
 
     private void OpenIPop(string path) => _ = Integration.OpenTargetAsync(api, path);
+
+    /// My own ticket on the iDesk site: iPop knows its iDesk link (signed in through "Sign in with iPop").
+    private async Task OpenMyTicketInIdeskAsync(string id)
+    {
+        var url = (await api.GetJsonAsync($"api/tickets/{id}"))?["url"]?.GetValue<string>();
+        Post(() => { if (url is { Length: > 0 }) Integration.OpenUrl(url); else OpenIPop($"/tickets/{id}"); });
+    }
 
     /// From a second start or an ipop-notifier:// link:
     ///   ipop-notifier://explorer?nas=spj&amp;path=/sja/SJA SPJ/ICT/a.xlsx → File Explorer (company NAS only)

@@ -665,6 +665,43 @@ public class TicketTests
         Assert.Empty(await x.T.Verify().Tickets.ToListAsync());   // the agent never gets a mirror of someone else's ticket
     }
 
+    [Theory]
+    [InlineData("New message on 051026-SEC-0003", 1)]
+    [InlineData("2 new messages on 051026-SEC-0003", 2)]
+    [InlineData("17 new messages on X", 17)]
+    [InlineData(null, 1)]
+    public void Running_count_is_read_from_the_previous_summary(string? title, int expected) =>
+        Assert.Equal(expected, TicketService.CountOf(title));
+
+    [Fact]
+    public async Task Agent_count_keeps_climbing_past_two()
+    {
+        var x = Setup(); using var _ = x.T;
+        x.T.AddUser("00000024");
+        var agent = x.T.AddUser("00061058");
+        var remote = Remote(null, "00000024", TicketStatus.InProgress, number: "051026-SEC-0003");
+        var client = x.T.AddNotificationClient("tickets", "hash");
+        // Stand-in for the gateway: store each published summary as an unread delivery, like the real one does.
+        async Task Send(string id)
+        {
+            await x.Svc.ApplyWebhookAsync(Webhook(id, "ticket.message_created", remote, message: MsgWith("hi", "Christhin", true), recipients: ["00061058"]));
+            var sent = x.Gw.Sent[^1];
+            var req = new NotificationRequest
+            {
+                Id = Guid.NewGuid(), ClientId = client.Id, IdempotencyKey = Guid.NewGuid().ToString(), Priority = "normal",
+                EventType = TicketService.ReplyEvent, Title = sent.Title, Body = sent.Message, Status = "delivered", TargetUrl = sent.Url,
+                AcceptedAt = DateTime.UtcNow, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+            };
+            x.T.Db.NotificationRequests.Add(req);
+            x.T.Db.NotificationDeliveries.Add(new NotificationDelivery { Id = Guid.NewGuid(), RequestId = req.Id, UserId = agent.Id, Status = "delivered", DeliveredAt = DateTime.UtcNow, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+            await x.T.Db.SaveChangesAsync();
+        }
+        await Send("a1"); await Send("a2"); await Send("a3"); await Send("a4");
+
+        Assert.Equal(["New message on 051026-SEC-0003", "2 new messages on 051026-SEC-0003", "3 new messages on 051026-SEC-0003",
+            "4 new messages on 051026-SEC-0003"], x.Gw.Sent.Select(s => s.Title));
+    }
+
     [Fact]
     public async Task Requester_preview_names_what_was_attached()
     {
@@ -714,6 +751,10 @@ public class TicketTests
         Assert.Equal(TicketReplyKind.Sent, (await x.Svc.ReplyAsync(u.Id, mine.ToString(), "  Sudah bisa  ")).Kind);
         Assert.Equal(TicketReplyKind.Sent, (await x.Svc.ReplyAsync(agent.Id, remote.TicketId, "Siap")).Kind);
         Assert.Equal([("051026-SEC-0003", "00000024", "Sudah bisa"), (remote.TicketId, "00061058", "Siap")], x.Idesk.Replies);
+
+        Assert.Equal(0, (await x.T.Verify().Tickets.SingleAsync()).UnreadMessages);   // answering = read
+        await x.Svc.ApplyWebhookAsync(Webhook("m2", "ticket.message_created", remote, message: Msg("Coba lagi")));
+        Assert.Equal("New reply on 051026-SEC-0003", x.Gw.Sent[^1].Title);              // fresh count, not "2 new replies"
 
         Assert.Equal(TicketReplyKind.Invalid, (await x.Svc.ReplyAsync(u.Id, mine.ToString(), "   ")).Kind);
         Assert.Equal(TicketReplyKind.NotFound, (await x.Svc.ReplyAsync(u.Id, "051026-SEC-0003", "hi")).Kind);

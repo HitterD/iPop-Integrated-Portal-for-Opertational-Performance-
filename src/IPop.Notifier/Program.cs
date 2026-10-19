@@ -16,6 +16,7 @@ static class Program
             {
                 Integration.UnregisterUrlScheme();
                 Integration.SetStartWithWindows(false);
+                Toasts.UnregisterIdesk();
                 // Signed-out on uninstall: the encrypted session, settings cache and WebView2 cache go too.
                 try { Directory.Delete(SessionStore.Folder, recursive: true); } catch { }
             })

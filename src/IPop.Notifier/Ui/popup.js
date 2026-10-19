@@ -262,7 +262,8 @@
     }
     const tid = id(new RegExp('^/tickets/' + G));
     if (!tid) return false;
-    const [r, m] = await Promise.all([api('GET', `api/tickets/${tid}`), api('GET', `api/tickets/${tid}/messages`)]);
+    // peek: showing the popup isn't reading it; Mark read / Reply / Open do that.
+    const [r, m] = await Promise.all([api('GET', `api/tickets/${tid}`), api('GET', `api/tickets/${tid}/messages?peek=1`)]);
     if (!r.ok) return false;
     const t = r.json;
     view.title = `${t.ticketNumber ? '#' + t.ticketNumber + ' · ' : ''}${t.title}`;

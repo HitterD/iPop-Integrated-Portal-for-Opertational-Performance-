@@ -41,7 +41,7 @@
     loading = false;
     if (!r.ok) { if (!items.length) $('#list').innerHTML = '<div class="empty"><b>Can\'t load notifications</b>Check the connection — they\'ll appear when iPop is reachable.</div>'; return; }
     let rows = r.json.items || [];
-    if (filter === 'tickets') rows = rows.filter(i => (i.targetUrl || '').startsWith('/tickets'));
+    if (filter === 'tickets') rows = rows.filter(i => moduleOf(i) === 'tickets');
     items = more ? items.concat(rows) : rows;
     total = r.json.totalCount;
     draw();
@@ -49,7 +49,7 @@
 
   function moduleOf(i) {
     const u = i.targetUrl || '';
-    if (u.startsWith('/tickets')) return 'tickets';
+    if (u.startsWith('/tickets') || u.startsWith('/idesk/tickets')) return 'tickets';
     if (u.startsWith('/calendar') || u.includes('tab=scheduled') || u.includes('join=')) return 'calendar';
     if (u.startsWith('/calls')) return 'calls';
     if (u.startsWith('/notes')) return 'notes';

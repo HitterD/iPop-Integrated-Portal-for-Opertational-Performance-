@@ -74,19 +74,19 @@ public sealed class TicketService(
 
     /// The ticket's public chat from iDesk, read-only. Opening it clears the unread counter. When iDesk
     /// can't be reached the last preview we received comes back with Offline set.
-    public async Task<TicketMessagesDto?> GetMessagesAsync(Guid userId, Guid id, CancellationToken ct = default)
+    public async Task<TicketMessagesDto?> GetMessagesAsync(Guid userId, Guid id, CancellationToken ct = default, bool peek = false)
     {
         var t = await db.Tickets.FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId && x.RemovedAt == null, ct);
         if (t is null) return null;
         var unread = t.UnreadMessages;
-        if (unread > 0)
+        if (!peek && unread > 0)
         {
             t.UnreadMessages = 0;
             await db.SaveChangesAsync(ct);
             await ChangedAsync(userId, null, null, ct);
         }
         // Reading the chat here also clears its toast / Inbox notifications.
-        if (await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.Nik).FirstOrDefaultAsync(ct) is { } readerNik)
+        if (!peek && await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.Nik).FirstOrDefaultAsync(ct) is { } readerNik)
             await ClearChatNotificationsAsync(userId, readerNik, t.IdeskTicketId, t.Id, ct);
         if (t.TicketNumber is null || IsPending(t.Status)) return new TicketMessagesDto([], unread, HttpIdeskClient.PublicLink(t.Url), false, null);
 
@@ -474,11 +474,14 @@ public sealed class TicketService(
         // ticket, so the notification points at the ticket in iDesk. The requester's own copy is handled below.
         if (evt == "ticket.message_created" && message is not null && recipients is not null)
         {
-            // These lines leave no timeline row (no mirror), so the receipt table catches redeliveries.
-            if (recipients.Any(n => n != it.RequesterNik) && !await FirstReceiptAsync("agent:" + eventId, ct)) return TicketWebhookKind.Duplicate;
-            foreach (var agentNik in recipients.Where(n => n != it.RequesterNik).Distinct())
-                await NotifyAgentReplyAsync(agentNik, it, message, eventId, ct);
-            if (!recipients.Contains(it.RequesterNik ?? "\0")) return TicketWebhookKind.Applied;
+            // These lines leave no timeline row (no mirror), so the receipt table catches redeliveries. A redelivery
+            // skips only the agent part: the requester half below has its own (timeline) dedupe and may still be due.
+            var forRequester = it.RequesterNik is not null && recipients.Contains(it.RequesterNik);
+            var agents = recipients.Where(n => n != it.RequesterNik).Distinct().ToList();
+            if (agents.Count > 0 && await FirstReceiptAsync("agent:" + eventId, ct))
+                foreach (var agentNik in agents) await NotifyAgentReplyAsync(agentNik, it, message, eventId, ct);
+            else if (agents.Count > 0 && !forRequester) return TicketWebhookKind.Duplicate;
+            if (!forRequester) return TicketWebhookKind.Applied;
         }
 
         var row = (it.ExternalRef is null ? null : await db.Tickets.FirstOrDefaultAsync(x => x.ExternalRef == it.ExternalRef, ct))
@@ -797,17 +800,18 @@ public sealed class TicketService(
     {
         var user = await db.Users.AsNoTracking().Where(u => u.Nik == nik && u.IsActive).Select(u => new { u.Id }).FirstOrDefaultAsync(ct);
         if (user is null) return;
-        var url = IdeskTargetPrefix + it.TicketId;
+        var url = IdeskTargetPrefix + NormalizeId(it.TicketId);
         var unread = 1;
         try
         {
-            var stale = await db.NotificationDeliveries
+            var stale = await db.NotificationDeliveries.Include(d => d.Request)
                 .Where(d => d.UserId == user.Id && d.ReadAt == null && d.Request.TargetUrl == url && d.Request.EventType == ReplyEvent)
                 .ToListAsync(ct);
             var now = DateTime.UtcNow;
             foreach (var d in stale) { d.Status = NotificationStatus.Read; d.ReadAt = now; d.UpdatedAt = now; }
             if (stale.Count > 0) await db.SaveChangesAsync(ct);
-            unread += stale.Count;
+            // The unread one is a running summary ("3 new messages…"): carry its count forward.
+            unread += stale.Select(d => CountOf(d.Request.Title)).DefaultIfEmpty(0).Max();
         }
         catch (Exception ex) { _log.LogDebug(ex, "Clearing older agent reply notifications failed (non-fatal)"); }
 
@@ -823,6 +827,13 @@ public sealed class TicketService(
         catch (Exception ex) { _log.LogWarning(ex, "Agent ticket reply notification failed ({EventId})", eventId); }
     }
 
+    /// "3 new messages on …" → 3, "New message on …" → 1.
+    internal static int CountOf(string? title) =>
+        title is not null && int.TryParse(title.Split(' ', 2)[0], out var n) && n > 0 ? n : 1;
+
+    /// iDesk sends lowercase UUIDs today; normalise anyway so links, clean-up and toast tags always match.
+    private static string NormalizeId(string id) => Guid.TryParse(id, out var g) ? g.ToString() : id;
+
     /// The ticket was opened (in iPop or iDesk): its unread chat notifications for that person are read.
     private async Task ClearChatNotificationsAsync(string nik, IdeskTicket it, CancellationToken ct)
     {
@@ -830,20 +841,30 @@ public sealed class TicketService(
         if (user is null) return;
         var mirror = await db.Tickets.AsNoTracking().Where(x => x.IdeskTicketId == it.TicketId && x.UserId == user.Id)
             .Select(x => (Guid?)x.Id).FirstOrDefaultAsync(ct);
+        if (mirror is { } m) await ResetUnreadAsync(m, user.Id, nik, ct);
         await ClearChatNotificationsAsync(user.Id, nik, it.TicketId, mirror, ct);
+    }
+
+    private async Task ResetUnreadAsync(Guid mirrorId, Guid userId, string nik, CancellationToken ct)
+    {
+        var t = await db.Tickets.FirstOrDefaultAsync(x => x.Id == mirrorId, ct);
+        if (t is null || t.UnreadMessages == 0) return;
+        t.UnreadMessages = 0;
+        await db.SaveChangesAsync(ct);
+        await ChangedAsync(userId, nik, mirrorId, ct);
     }
 
     private async Task ClearChatNotificationsAsync(Guid userId, string nik, string? ideskTicketId, Guid? mirrorId, CancellationToken ct)
     {
         var urls = new List<string>();
-        if (ideskTicketId is not null) urls.Add(IdeskTargetPrefix + ideskTicketId);
+        if (ideskTicketId is not null) urls.Add(IdeskTargetPrefix + NormalizeId(ideskTicketId));
         if (mirrorId is { } m) urls.Add($"/tickets/{m}#messages");
         if (urls.Count == 0) return;
         // The Notifier hides the ticket's toast even when nothing was unread any more (e.g. read in another tab).
         if (desktop is not null)
         {
             var refs = new List<string>();
-            if (ideskTicketId is not null) refs.Add(ideskTicketId);
+            if (ideskTicketId is not null) refs.Add(NormalizeId(ideskTicketId));
             if (mirrorId is { } mid) refs.Add(mid.ToString());
             try { await desktop.TicketChatReadAsync(userId, refs, ct); } catch (Exception ex) { _log.LogDebug(ex, "Ticket toast clean-up failed"); }
         }
@@ -886,7 +907,12 @@ public sealed class TicketService(
         if (remote is null) return new(TicketReplyKind.NotFound, null);
 
         var r = await idesk.ReplyAsync(remote, nik, text, ct);
-        if (r.Ok) await ClearChatNotificationsAsync(userId, nik, ideskId, mirrorId, ct);
+        if (r.Ok)
+        {
+            // Answering means the earlier messages were read: the next reply starts a fresh count.
+            if (mirrorId is { } m) await ResetUnreadAsync(m, userId, nik, ct);
+            await ClearChatNotificationsAsync(userId, nik, ideskId, mirrorId, ct);
+        }
         return r.Outcome switch
         {
             IdeskOutcome.Ok => new(TicketReplyKind.Sent, null),
