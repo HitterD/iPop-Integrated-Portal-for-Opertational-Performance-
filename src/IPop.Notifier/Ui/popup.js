@@ -3,9 +3,9 @@
 (function () {
   const { api, image, esc, post, snack } = window.app;
   const G = '([0-9a-fA-F-]{36})';
-  let N, STYLE, ME, NIK, MORE = 0, root, view = {};
+  let N, STYLE, ME, NIK, MORE = 0, PENDING = null, root, view = {};
 
-  app.on('notice', m => { N = m.notice; STYLE = m.style; ME = m.me; NIK = m.nik; MORE = m.more || 0; render(); });
+  app.on('notice', m => { N = m.notice; STYLE = m.style; ME = m.me; NIK = m.nik; MORE = m.more || 0; PENDING = m.pending || null; render(); });
   app.on('more', m => { MORE = m.count; showMore(); });
   function showMore() { const r = document.querySelector('.more-row'); if (!r) return; r.classList.toggle('on', MORE > 0); r.querySelector('b').textContent = MORE; size(); }
   app.ready();
@@ -24,6 +24,11 @@
   // iDesk notifications carry the iDesk mark (and its blue) so they never read as iPop's own.
   const modIcon = () => N.module === 'tickets' ? '<img class="idesk-mark" src="idesk-mark.png" alt="iDesk">' : (ICON[N.module] || ICON.system);
 
+  // From while the PC was off: which one this is, and that closing keeps it unread.
+  const pendingStrip = () => PENDING
+    ? `<div class="pending">${IC('history')}<b>${PENDING.index} of ${PENDING.total} pending</b><span>Arrived while this PC was off · closing keeps it unread</span></div>`
+    : '';
+
   function shell() {
     const mod = MOD[N.module] || MOD.system;
     const time = timeShort(N.at);
@@ -41,7 +46,7 @@
     if (STYLE === 'stack') {
       root.innerHTML = `<div class="pop" data-drag><i class="bar"></i>
         <div class="hd"><span class="ico">${modIcon()}</span><span class="src"><b>${esc(mod.n)}</b><small>${esc(time)}</small></span><button class="x" data-close title="Close">${ICON.x}</button></div>
-        <div class="bd"><div class="ttl2">${esc(view.title)}</div>${view.who ? `<div class="from">${who}</div>` : ''}${chips}<div class="msg sel">${view.body}</div></div>
+        ${pendingStrip()}<div class="bd"><div class="ttl2">${esc(view.title)}</div>${view.who ? `<div class="from">${who}</div>` : ''}${chips}<div class="msg sel">${view.body}</div></div>
         ${reply}
         ${view.tools.length ? `<div class="acts">${tools.join('')}</div>` : ''}
         ${done}
@@ -49,6 +54,7 @@
     } else {
       root.innerHTML = `<div class="win">
         <div class="ttl" data-drag><span class="ic">${modIcon()}</span><b>${esc(N.title)}</b><small>${esc(time)}</small><button class="wc" data-min title="Minimize">${ICON.min}</button><button class="wc x" data-close title="Close">${ICON.x}</button></div>
+        ${pendingStrip()}
         ${view.tools.length ? `<div class="tools">${tools.join('')}</div>` : ''}
         <div class="hdr"><h3 class="sel">${esc(view.title)}</h3>${who}${chips}</div>
         <div class="body">${view.body}</div>

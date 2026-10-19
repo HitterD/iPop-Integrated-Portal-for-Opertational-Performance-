@@ -25,7 +25,8 @@ public sealed class LocalState
     {
         lock (Gate)
         {
-            if (Shown.Count > 400) Shown.RemoveRange(0, Shown.Count - 400);
+            // Big enough for a long leave's backlog: an id that drops out could pop up again.
+            if (Shown.Count > 3000) Shown.RemoveRange(0, Shown.Count - 3000);
             if (Held.Count > 200) Held.RemoveRange(0, Held.Count - 200);
             try
             {

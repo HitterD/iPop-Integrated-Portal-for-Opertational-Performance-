@@ -13,6 +13,11 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
 {
     private readonly List<NoticeWindow> open = [];
     private readonly Queue<Notice> waiting = new();
+    /// Notifications that arrived while the PC was off: shown one at a time, oldest first ("1 of N pending").
+    private readonly Queue<Notice> backlog = new();
+    private NoticeWindow? backlogWindow;
+    private int backlogTotal, backlogShown;
+    public int BacklogCount => backlog.Count + (backlogWindow is null ? 0 : 1);
     private bool restyling;
     public event Action? CountChanged;
     public int OpenCount => open.Count + waiting.Count;
@@ -21,6 +26,64 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
     {
         if (n.Urgent && s.UrgentBreaksThrough) return false;
         return s.DuringMeetings == "hold" && (Native.UserIsBusy() || device.IPopBusy);
+    }
+
+    /// Everything still unread from while the PC was off. Chat/ticket chat collapse to one toast per conversation;
+    /// the rest open one window at a time; the next opens when that one is closed, read or answered.
+    public void ShowBacklog(IReadOnlyList<Notice> items)
+    {
+        var s = settings.Effective(DateTime.UtcNow);
+        var fresh = items.Where(n => !state.Shown.Contains(n.Id) && backlog.All(b => b.Id != n.Id)).ToList();
+        foreach (var group in fresh.Where(IsConversation).GroupBy(n => n.TargetUrl ?? n.Id.ToString()))
+        {
+            var newest = group.MaxBy(n => n.At)!;
+            var count = group.Count();
+            foreach (var n in group) state.Shown.Add(n.Id);
+            if (s.DeliveryFor(newest.Module, newest.EventType) == "off") continue;
+            var title = count > 1 ? $"{count} unread · " + newest.Title : newest.Title;
+            if (s.Popups != "on" || Held(newest, s)) { foreach (var n in group) Hold(n); continue; }
+            Toasts.ShowNotice(newest with { Title = title }, api.Server);
+        }
+        foreach (var n in fresh.Where(n => !IsConversation(n))) backlog.Enqueue(n);
+        backlogTotal = backlogShown + backlog.Count + (backlogWindow is null ? 0 : 1);
+        state.Save();
+        NextBacklog();
+        CountChanged?.Invoke();
+    }
+
+    /// Chat and iDesk ticket chat: one toast per conversation even when many messages piled up.
+    private static bool IsConversation(Notice n) => n.Module == "chat" || (n.Module == "tickets" && n.EventType == "ticket.message_created");
+
+    /// Opens the next pending notification when none is on screen (and the person isn't in a meeting / paused).
+    public void NextBacklog()
+    {
+        if (backlogWindow is { IsDisposed: false } || backlog.Count == 0) return;
+        var s = settings.Effective(DateTime.UtcNow);
+        if (s.Popups != "on" || Held(backlog.Peek(), s)) return;
+        while (backlog.Count > 0)
+        {
+            var n = backlog.Dequeue();
+            if (state.Shown.Contains(n.Id)) continue;
+            state.Shown.Add(n.Id);
+            if (s.DeliveryFor(n.Module, n.EventType) == "off") continue;
+            backlogShown++;
+            var w = Open(n, s, minimized: false, pending: (backlogShown, Math.Max(backlogTotal, backlogShown)));
+            backlogWindow = w;
+            w.FormClosed += (_, _) => { if (backlogWindow == w) backlogWindow = null; NextBacklog(); CountChanged?.Invoke(); };
+            Sounds.Play(Sounds.For(n), s);
+            break;
+        }
+        if (backlog.Count == 0 && backlogWindow is null) { backlogTotal = 0; backlogShown = 0; }
+        state.Save();
+    }
+
+    /// Tray "Skip pending": the queue is dropped from the screen; everything stays unread in the Inbox.
+    public void SkipBacklog()
+    {
+        while (backlog.Count > 0) state.Shown.Add(backlog.Dequeue().Id);
+        backlogTotal = 0; backlogShown = 0;
+        state.Save();
+        CountChanged?.Invoke();
     }
 
     /// Entry point for every notification (live or caught up).
@@ -64,9 +127,9 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
         if (!state.Held.Contains(n.Id)) state.Held.Add(n.Id);
     }
 
-    private void Open(Notice n, NotifierSettings s, bool minimized)
+    private NoticeWindow Open(Notice n, NotifierSettings s, bool minimized, (int Index, int Total)? pending = null)
     {
-        var w = new NoticeWindow(n, s.Style, api);
+        var w = new NoticeWindow(n, s.Style, api, pending);
         w.FormClosed += (_, _) => Closed(w);
         w.HeightChanged += _ => Layout();
         w.Activated += (_, _) => Front(w);
@@ -84,6 +147,7 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
         Badge();
         UpdateMore();
         CountChanged?.Invoke();
+        return w;
     }
 
     private void Front(NoticeWindow w)
@@ -117,6 +181,7 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
         }
         while (waiting.Count > 0 && open.Count(x => x.Style == "stack") < s.MaxVisible)
             Open(waiting.Dequeue(), s with { Style = "stack" }, minimized: false);
+        NextBacklog();
     }
 
     /// Taskbar/tray "show all": restore every window, newest in front.
@@ -129,6 +194,7 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
     public void CloseAll()
     {
         waiting.Clear();
+        backlog.Clear();
         foreach (var w in open.ToList()) w.Close();
     }
 

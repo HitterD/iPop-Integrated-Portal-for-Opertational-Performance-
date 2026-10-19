@@ -121,3 +121,10 @@ body.card{background:var(--glass)}
 .idesk .ttl b{color:#1d4ed8}
 .idesk .pop .src b{color:#2563eb}
 .idesk{--green:#2563eb;--green-2:#1d4ed8}
+
+/* "2 of 9 pending": notifications from while the PC was off, shown one by one */
+.pending{display:flex;align-items:center;gap:8px;padding:7px 16px;font-size:12px;color:var(--ink-3);background:rgba(255,159,10,.10);border-bottom:.5px solid var(--sep);flex:none}
+.pending b{color:#b25000;font-weight:650}
+.pending svg{width:14px;height:14px;color:#b25000}
+.pending span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dark .pending b,.dark .pending svg{color:#ffb340}

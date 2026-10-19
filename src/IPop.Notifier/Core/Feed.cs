@@ -65,7 +65,11 @@ public sealed class Feed(IPopClient api, LocalState state) : IAsyncDisposable
         await CatchUpAsync(ct);
     }
 
-    /// Unread notifications newer than the last one shown, oldest first. The first run only records "now".
+    /// While the PC was off or offline: everything still unread that arrived after the app was last running and that
+    /// this PC never showed, oldest first, any age. The very first run on a PC only records "now" (no history flood;
+    /// it is all in the Inbox). Read elsewhere = not unread any more = not shown.
+    public event Action<IReadOnlyList<Notice>>? Backlog;
+
     public async Task CatchUpAsync(CancellationToken ct)
     {
         if (state.LastShownAt is null)
@@ -74,13 +78,22 @@ public sealed class Feed(IPopClient api, LocalState state) : IAsyncDisposable
             state.Save();
             return;
         }
-        var page = await InboxAsync("unread", 1, 30, ct);
-        if (page is null) return;
-        // Only what arrived while the app was away, and at most a day back (a PC off for a week doesn't flood the
-        // screen; everything stays in the Inbox).
-        var since = state.LastShownAt.Value > DateTime.UtcNow.AddDays(-1) ? state.LastShownAt.Value : DateTime.UtcNow.AddDays(-1);
-        foreach (var item in page.Items.Where(i => i.At.ToUniversalTime() > since && !state.Shown.Contains(i.Id)).OrderBy(i => i.At))
-            Received?.Invoke(Notice.From(item));
+        var since = state.LastShownAt.Value;
+        var items = new List<InboxItem>();
+        // Newest first from the server: page until the items are older than the last one this PC saw.
+        for (var page = 1; page <= 20; page++)
+        {
+            var p = await InboxAsync("unread", page, 100, ct);
+            if (p is null) return;
+            items.AddRange(p.Items);
+            if (p.Items.Count < 100 || p.Items.Min(i => i.At.ToUniversalTime()) <= since) break;
+        }
+        var pending = items.Where(i => i.At.ToUniversalTime() > since && !state.Shown.Contains(i.Id))
+            .OrderBy(i => i.At).Select(i => Notice.From(i)).ToList();
+        if (pending.Count > 0) Backlog?.Invoke(pending);
+        // Caught up to now: the next gap starts here (live ones move it forward too, in PopupManager.Show).
+        var newest = items.Count > 0 ? items.Max(i => i.At.ToUniversalTime()) : since;
+        if (newest > since) { state.LastShownAt = newest; state.Save(); }
     }
 
     public async Task<InboxPage?> InboxAsync(string? status, int page, int size, CancellationToken ct = default)

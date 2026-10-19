@@ -14,10 +14,14 @@ public sealed class NoticeWindow : BridgedWindow
     public event Action<NoticeWindow>? HeightChanged;
     public int WantedHeight { get; private set; }
 
-    public NoticeWindow(Notice notice, string style, IPopClient api)
+    /// Set for a notification from while the PC was off: "2 of 9 pending".
+    public (int Index, int Total)? Pending { get; }
+
+    public NoticeWindow(Notice notice, string style, IPopClient api, (int Index, int Total)? pending = null)
         : base("popup.html", style == "stack" ? new Size(440, 220) : WindowSizes.Get("popup", new Size(720, 560)), api, noActivate: true, showInTaskbar: style != "stack")
     {
         Notice = notice;
+        Pending = pending;
         Style = style;
         WantedHeight = ClientSize.Height;
         Text = notice.Title.Length > 80 ? notice.Title[..80] + "…" : notice.Title;
@@ -42,6 +46,7 @@ public sealed class NoticeWindow : BridgedWindow
         me = Api.Session?.Name,
         nik = Api.Session?.Nik,
         more,
+        pending = Pending is { } p ? new { index = p.Index, total = p.Total } : null,
     });
 
     protected override void HandleMessage(string type, JsonNode? msg)

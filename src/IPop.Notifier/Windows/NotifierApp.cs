@@ -29,6 +29,7 @@ public sealed class NotifierApp : ApplicationContext
     private bool connected;
     private readonly ToolStripMenuItem devicesItem;
     private readonly ToolStripMenuItem popupsItem;
+    private readonly ToolStripMenuItem pendingItem;
 
     public NotifierApp(string[] args)
     {
@@ -52,6 +53,9 @@ public sealed class NotifierApp : ApplicationContext
         menu.Items.Add("Open Inbox", null, (_, _) => ShowInbox());
         menu.Items.Add("Open iPop", null, (_, _) => OpenIPop("/dashboard"));
         menu.Items.Add("Show all windows", null, (_, _) => popups.ShowAll());
+        // Notifications from while the PC was off, shown one by one: count + "skip" (they stay unread in the Inbox).
+        pendingItem = new ToolStripMenuItem("Skip pending notifications (keep unread)", null, (_, _) => popups.SkipBacklog()) { Visible = false };
+        menu.Items.Add(pendingItem);
         popupsItem = new ToolStripMenuItem("Pause popups for 1 hour", null, (_, _) => TogglePause());
         menu.Items.Add(popupsItem);
         menu.Items.Add(new ToolStripSeparator());
@@ -97,6 +101,7 @@ public sealed class NotifierApp : ApplicationContext
         _ = device.RunAsync(ct);
         feed = new Feed(api, state);
         feed.Received += n => Post(() => { popups.Show(n); _ = RefreshUnreadAsync(); });
+        feed.Backlog += items => Post(() => { popups.ShowBacklog(items); _ = RefreshUnreadAsync(); });
         feed.TicketChatRead += refs => Post(() => { foreach (var r in refs) Toasts.RemoveTicket(r); _ = RefreshUnreadAsync(); });
         feed.ChatToast += t => Post(() => OnChatToast(t));
         feed.Remote += (ev, n) => Post(() => OnRemote(ev, n));
@@ -230,7 +235,11 @@ public sealed class NotifierApp : ApplicationContext
         var s = settings.Current;
         var count = unread;
         connected = feed?.Connected ?? connected;
-        var status = remoteActive ? "ICT is connected" : !api.IsSignedIn ? "signed out" : !connected ? "connecting…" : s.Popups != "on" ? "popups paused" : count > 0 ? $"{count} unread" : "up to date";
+        var pending = popups.BacklogCount;
+        pendingItem.Visible = pending > 0;
+        pendingItem.Text = $"Skip {pending} pending notification{(pending == 1 ? "" : "s")} (keep unread)";
+        var status = remoteActive ? "ICT is connected" : !api.IsSignedIn ? "signed out" : !connected ? "connecting…" : s.Popups != "on" ? "popups paused"
+            : pending > 0 ? $"{pending} pending · {count} unread" : count > 0 ? $"{count} unread" : "up to date";
         var text = "iPop Notifier" + (AppInfo.Flavour.Length > 0 ? " (" + AppInfo.Flavour + ")" : "") + " — " + status;
         tray.Text = text.Length > 63 ? text[..63] : text;
         var old = tray.Icon;
