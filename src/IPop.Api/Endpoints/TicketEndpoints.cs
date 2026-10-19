@@ -52,8 +52,9 @@ public static class TicketEndpoints
             }));
 
         // The ticket's public chat from iDesk (read-only); opening it clears the reply counter.
-        g.MapGet("/{id:guid}/messages", (Guid id, bool? peek, HttpContext http, ITicketService svc, CancellationToken ct) =>
-            Run(http, async me => await svc.GetMessagesAsync(me, id, ct, peek == true) is { } m ? Results.Ok(m) : NotFound()));
+        // ?peek=1 (Notifier popup): show the chat without marking it read.
+        g.MapGet("/{id:guid}/messages", (Guid id, string? peek, HttpContext http, ITicketService svc, CancellationToken ct) =>
+            Run(http, async me => await svc.GetMessagesAsync(me, id, ct, peek is "1" or "true") is { } m ? Results.Ok(m) : NotFound()));
 
         // Notifications for the assigned agent point at /idesk/tickets/{id}: the ticket in iDesk, opened through
         // "Sign in with iPop" when that is on. Answers the link; the page or app opens it.
