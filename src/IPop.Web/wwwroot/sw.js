@@ -61,14 +61,14 @@ self.addEventListener("message", e => e.waitUntil((async () => {
 
 // ───────────────────────── App-shell cache ─────────────────────────
 // Bump SW_VERSION on every deploy that changes caching; activate deletes older ipop-shell-/ipop-fw- caches.
-const SW_VERSION = "w2-20261016gaps";
+const SW_VERSION = "w2-20261019sso";
 const SHELL = "ipop-shell-" + SW_VERSION;
 const FW = "ipop-fw-" + SW_VERSION;
 let NAV_TIMEOUT_MS = 4000;
 let FW_LIMIT = 400;
 let killed = false;
 
-const NEVER = /^\/(api|hubs|livekit|onlyoffice|meet|download|downloads|uploads|\.well-known)(\/|$)|^\/(sw\.js|sw-kill)$/i;
+const NEVER = /^\/(api|hubs|livekit|onlyoffice|meet|download|downloads|uploads|\.well-known|connect)(\/|$)|^\/(sw\.js|sw-kill)$/i;
 // .NET 10 fingerprints: name.<10 lowercase alphanumerics>.ext (dotnet.m4zqvqaj3u.js, IPop.Core.lqpourngtc.wasm);
 // blazor.webassembly.js / dotnet.js have no fingerprint and stay network-first.
 const FINGERPRINTED = /^\/_framework\/.+\.[a-z0-9]{10}\.(js|wasm|dat|json|pdb)$/;

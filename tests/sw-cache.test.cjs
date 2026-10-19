@@ -66,6 +66,9 @@ test('routing table', () => {
   const sb = sandbox();
   const cases = [
     [req('/api/me/badges'), 'none'],
+    // "Sign in with iPop": /connect/authorize is the API (OIDC), never the SPA shell.
+    [req('/connect/authorize?client_id=idesk', { mode: 'navigate' }), 'none'],
+    [req('/connect/logout', { mode: 'navigate' }), 'none'],
     [req('/api/auth/refresh', { method: 'POST' }), 'none'],
     [req('/hubs/app?id=1'), 'none'],
     [req('/livekit/rtc'), 'none'],
