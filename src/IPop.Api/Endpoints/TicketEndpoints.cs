@@ -55,6 +55,29 @@ public static class TicketEndpoints
         g.MapGet("/{id:guid}/messages", (Guid id, HttpContext http, ITicketService svc, CancellationToken ct) =>
             Run(http, async me => await svc.GetMessagesAsync(me, id, ct) is { } m ? Results.Ok(m) : NotFound()));
 
+        // Notifications for the assigned agent point at /idesk/tickets/{id}: the ticket in iDesk, opened through
+        // "Sign in with iPop" when that is on. Answers the link; the page or app opens it.
+        g.MapGet("/idesk/{ideskTicketId:guid}/link", (Guid ideskTicketId) =>
+            Results.Ok(new { url = IdeskLinks.Public($"{IdeskOptions.CurrentPublicUrl}/tickets/{ideskTicketId}",
+                IdeskOptions.CurrentPublicUrl, IdeskOptions.CurrentSignInWithIpop) }));
+
+        // A text reply from the iPop Notifier toast: on my ticket (id), or as the assigned agent on an iDesk ticket id.
+        g.MapPost("/{ticketRef}/reply", (string ticketRef, TicketReplyRequest req, HttpContext http, ITicketService svc, CancellationToken ct) =>
+            Run(http, async me =>
+            {
+                var r = await svc.ReplyAsync(me, ticketRef, req.Content ?? "", ct);
+                return r.Kind switch
+                {
+                    TicketReplyKind.Sent => Results.Ok(new { ok = true }),
+                    TicketReplyKind.Invalid => Results.Json(new { code = "invalid", message = r.Message }, statusCode: 400),
+                    TicketReplyKind.NotFound => NotFound(),
+                    TicketReplyKind.NotSent => Results.Json(new { code = "not_sent", message = r.Message }, statusCode: 409),
+                    TicketReplyKind.Rejected => Results.Json(new { code = "rejected", message = r.Message ?? "iDesk didn't accept this reply." }, statusCode: 400),
+                    TicketReplyKind.NotConfigured => NotConfigured(),
+                    _ => Unreachable(r.Message),
+                };
+            }));
+
         g.MapPost("", (CreateTicketRequest req, HttpContext http, ITicketService svc, CancellationToken ct) =>
             Run(http, async me =>
             {
@@ -163,3 +186,5 @@ public static class TicketEndpoints
         return me is null ? Results.Unauthorized() : await body(me.Value);
     }
 }
+
+public sealed record TicketReplyRequest(string? Content);

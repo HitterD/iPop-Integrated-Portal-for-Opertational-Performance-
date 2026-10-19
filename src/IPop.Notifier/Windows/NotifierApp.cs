@@ -45,6 +45,7 @@ public sealed class NotifierApp : ApplicationContext
         Toasts.Init();
         Toasts.Open += path => Post(() => OpenIPop(path));
         Toasts.ChatReply += (room, text) => _ = SendChatAsync(room, text);
+        Toasts.TicketReply += (ticket, text) => _ = SendTicketReplyAsync(ticket, text);
 
         var menu = new ContextMenuStrip { ShowImageMargin = false, Font = new Font("Segoe UI", 9.5f) };
         menu.Items.Add("Open Inbox", null, (_, _) => ShowInbox());
@@ -95,6 +96,7 @@ public sealed class NotifierApp : ApplicationContext
         _ = device.RunAsync(ct);
         feed = new Feed(api, state);
         feed.Received += n => Post(() => { popups.Show(n); _ = RefreshUnreadAsync(); });
+        feed.TicketChatRead += refs => Post(() => { foreach (var r in refs) Toasts.RemoveTicket(r); _ = RefreshUnreadAsync(); });
         feed.ChatToast += t => Post(() => OnChatToast(t));
         feed.Remote += (ev, n) => Post(() => OnRemote(ev, n));
         feed.ConnectionChanged += c => Post(() => { connected = c; UpdateTray(); });
@@ -167,6 +169,18 @@ public sealed class NotifierApp : ApplicationContext
             if (!res.IsSuccessStatusCode) Post(() => tray.ShowBalloonTip(4000, "iPop", "Your reply wasn't sent. Open the chat to try again.", ToolTipIcon.Warning));
         }
         catch { Post(() => tray.ShowBalloonTip(4000, "iPop", "Your reply wasn't sent (no connection).", ToolTipIcon.Warning)); }
+    }
+
+    /// Reply typed in an iDesk toast: posted to the ticket chat in iDesk as me (requester or assigned agent).
+    private async Task SendTicketReplyAsync(string ticket, string text)
+    {
+        try
+        {
+            using var res = await api.SendAsync(HttpMethod.Post, $"api/tickets/{ticket}/reply", new { content = text });
+            if (res.IsSuccessStatusCode) { Post(() => Toasts.RemoveTicket(ticket)); return; }
+            Post(() => tray.ShowBalloonTip(4000, "iDesk", "Your reply wasn't sent. Open the ticket in iDesk to try again.", ToolTipIcon.Warning));
+        }
+        catch { Post(() => tray.ShowBalloonTip(4000, "iDesk", "Your reply wasn't sent (no connection).", ToolTipIcon.Warning)); }
     }
 
     private async Task RefreshUnreadAsync()
@@ -299,7 +313,18 @@ public sealed class NotifierApp : ApplicationContext
         devices.Show();
     }
 
-    private void OpenIPop(string path) => Integration.OpenUrl(api.WebUrl(path));
+    private void OpenIPop(string path)
+    {
+        // The assigned agent's ticket lives only in iDesk: ask iPop for the signed-in iDesk link and open that.
+        if (path.StartsWith("/idesk/tickets/") && Toasts.TicketRefOf(path) is { } ideskId) { _ = OpenIdeskAsync(ideskId, path); return; }
+        Integration.OpenUrl(api.WebUrl(path));
+    }
+
+    private async Task OpenIdeskAsync(string ideskId, string fallback)
+    {
+        var link = (await api.GetJsonAsync($"api/tickets/idesk/{ideskId}/link"))?["url"]?.GetValue<string>();
+        Post(() => Integration.OpenUrl(link is { Length: > 0 } ? link : api.WebUrl(fallback)));
+    }
 
     /// From a second start or an ipop-notifier:// link:
     ///   ipop-notifier://explorer?nas=spj&amp;path=/sja/SJA SPJ/ICT/a.xlsx → File Explorer (company NAS only)

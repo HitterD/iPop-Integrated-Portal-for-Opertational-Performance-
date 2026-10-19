@@ -21,6 +21,9 @@ public enum TicketDiscardKind { Discarded, NotFound, NotPending }
 
 public enum TicketWebhookKind { Applied, Duplicate, UnknownRequester, Invalid }
 
+public enum TicketReplyKind { Sent, Invalid, NotFound, NotSent, Rejected, NotConfigured, Unreachable }
+public sealed record TicketReplyOutcome(TicketReplyKind Kind, string? Message);
+
 public interface ITicketService
 {
     /// Null when iDesk is unreachable or not configured and nothing is cached.
@@ -36,6 +39,8 @@ public interface ITicketService
     Task<TicketCreateOutcome> CreateAsync(Guid userId, CreateTicketRequest req, CancellationToken ct = default);
     Task<TicketRetryOutcome> RetryAsync(Guid userId, Guid id, CancellationToken ct = default);
     Task<TicketDiscardKind> DiscardAsync(Guid userId, Guid id, CancellationToken ct = default);
+    /// A text reply from the iPop Notifier: ticketRef is my ticket's id, or (assigned agent) the iDesk ticket id.
+    Task<TicketReplyOutcome> ReplyAsync(Guid userId, string ticketRef, string content, CancellationToken ct = default);
     /// The body must already be signature-checked.
     Task<TicketWebhookKind> ApplyWebhookAsync(string body, CancellationToken ct = default);
     /// One outbox pass: resend due SENDING tickets, give up on those older than 24 h. Returns tickets touched.

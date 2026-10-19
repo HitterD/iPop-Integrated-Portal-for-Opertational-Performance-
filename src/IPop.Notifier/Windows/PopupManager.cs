@@ -31,7 +31,7 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
         if (state.LastShownAt is null || n.At > state.LastShownAt) state.LastShownAt = n.At;
 
         var s = settings.Effective(DateTime.UtcNow);
-        var delivery = s.DeliveryFor(n.Module);
+        var delivery = s.DeliveryFor(n.Module, n.EventType);
         var popupsOff = s.Popups != "on";
         if (delivery == "off") { state.Save(); return; }
         var held = Held(n, s);

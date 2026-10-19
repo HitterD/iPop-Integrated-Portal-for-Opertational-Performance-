@@ -1,0 +1,40 @@
+@page "/idesk/tickets/{Id:guid}"
+@layout EmptyLayout
+@inject NavigationManager Nav
+@inject HttpClient Http
+
+@* Bell / Inbox target of a ticket chat message for the assigned agent (who has no iPop copy of the ticket):
+   asks the API for the iDesk link (signed in through "Sign in with iPop" when that is on) and goes there. *@
+<PageTitle>Opening iDesk — iPop</PageTitle>
+
+<div class="auth-wrap">
+    <div class="auth-card tray rise rise-1">
+        <div class="core" style="text-align:center">
+            <AuthBrand />
+            <h2>@(failed ? "Can't open iDesk" : "Opening the ticket in iDesk…")</h2>
+            @if (failed)
+            {
+                <p class="sub">iPop couldn't reach iDesk right now.</p>
+                <a class="btn" href="/notifications">Back to notifications</a>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private bool failed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var r = await Http.GetFromJsonAsync<LinkDto>($"api/tickets/idesk/{Id}/link");
+            if (r?.Url is { Length: > 0 } url) { Nav.NavigateTo(url, forceLoad: true); return; }
+        }
+        catch { }
+        failed = true;
+    }
+
+    private sealed record LinkDto(string? Url);
+}

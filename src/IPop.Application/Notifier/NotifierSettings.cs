@@ -26,7 +26,9 @@ public sealed record NotifierSettings
     public int Volume { get; init; } = 80;
     public bool StartWithWindows { get; init; } = true;
 
-    public static readonly string[] ModuleKeys = ["mail", "tickets", "calendar", "chat", "projects", "news", "notes", "calls", "system"];
+    /// "ticketchat" = messages in an iDesk ticket's chat (toast with a reply box by default); "tickets" = the other
+    /// iDesk ticket updates (assigned, status, resolved…).
+    public static readonly string[] ModuleKeys = ["mail", "tickets", "ticketchat", "calendar", "chat", "projects", "news", "notes", "calls", "system"];
     private static readonly string[] Styles = ["windows", "stack"];
     private static readonly string[] PopupModes = ["on", "off", "until"];
     private static readonly string[] MeetingModes = ["hold", "show"];
@@ -38,10 +40,10 @@ public sealed record NotifierSettings
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    /// Effective delivery for a module (defaults: chat → toast, everything else → popup).
+    /// Effective delivery for a module (defaults: chat and iDesk chat → toast, everything else → popup).
     public string DeliveryFor(string module)
     {
-        var fallback = module == "chat" ? "toast" : "popup";
+        var fallback = module is "chat" or "ticketchat" ? "toast" : "popup";
         if (!Modules.TryGetValue(module, out var v) || !Delivery.Contains(v)) return fallback;
         return module == "chat" && v == "popup" ? "toast" : v;
     }
@@ -67,6 +69,10 @@ public sealed record NotifierSettings
     }
 
     public string ToJson() => JsonSerializer.Serialize(Normalized(), Json);
+
+    /// Delivery setting that applies to a notification: an iDesk chat message follows "ticketchat", the rest their module.
+    public string DeliveryFor(string module, string? eventType) =>
+        DeliveryFor(module == "tickets" && eventType == "ticket.message_created" ? "ticketchat" : module);
 
     /// Maps a notification event type ("mail.new", "ticket.message_created", "meeting.reminder"…) to a module key.
     public static string ModuleOf(string? eventType)

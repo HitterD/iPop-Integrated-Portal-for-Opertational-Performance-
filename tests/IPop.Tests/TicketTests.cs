@@ -63,6 +63,14 @@ public class TicketTests
         public Task<IdeskResult<IdeskMessages>> GetMessagesAsync(string ticketNumber, CancellationToken ct = default) =>
             Task.FromResult(MessagesResult);
 
+        public List<(string Ref, string Nik, string Content)> Replies { get; } = [];
+        public IdeskOutcome ReplyOutcome { get; set; } = IdeskOutcome.Ok;
+        public Task<IdeskResult<bool>> ReplyAsync(string ticketRef, string nik, string content, CancellationToken ct = default)
+        {
+            Replies.Add((ticketRef, nik, content));
+            return Task.FromResult(new IdeskResult<bool>(ReplyOutcome, ReplyOutcome == IdeskOutcome.Ok, ReplyOutcome == IdeskOutcome.Ok ? null : "refused"));
+        }
+
         public Dictionary<string, IReadOnlyList<IdeskBooking>> Bookings { get; } = [];
         public Task<IdeskResult<IReadOnlyList<IdeskBooking>>> ListZoomBookingsAsync(string nik, DateOnly from, DateOnly to, CancellationToken ct = default) =>
             Task.FromResult(new IdeskResult<IReadOnlyList<IdeskBooking>>(IdeskOutcome.Ok, Bookings.GetValueOrDefault(nik) ?? []));
@@ -127,10 +135,12 @@ public class TicketTests
         new(module, category, priority, title, "Tidak bisa konek sejak pagi.", criticalReason, "Laptop", null, hardwareType, date, time, attachments);
 
     private static string Webhook(string id, string evt, IdeskTicket t, string? previousStatus = null, object? message = null,
-        object? visit = null) =>
+        object? visit = null, string[]? recipients = null, string? reader = null) =>
         JsonSerializer.Serialize(new
         {
             id, @event = evt, occurredAt = DateTime.UtcNow.ToString("O"), previousStatus, message,
+            recipients = recipients?.Select(n => new { nik = n }).ToArray(),
+            reader = reader is null ? null : new { nik = reader },
             ticket = new
             {
                 ticketId = t.TicketId, ticketNumber = t.TicketNumber, externalRef = t.ExternalRef, origin = t.Origin,
@@ -622,6 +632,93 @@ public class TicketTests
         Assert.True(m!.Offline);
         Assert.Equal("Ini panduannya", m.Last!.Content);
         Assert.Null(await x.Svc.GetMessagesAsync(x.T.AddUser("U2").Id, id));
+    }
+
+    private static object MsgWith(string preview, string sender, bool fromRequester, params (string Name, string Kind)[] files) =>
+        new
+        {
+            id = Guid.NewGuid().ToString(), sender = new { name = sender }, fromRequester, preview, attachmentCount = files.Length,
+            attachments = files.Select(f => new { name = f.Name, kind = f.Kind }).ToArray(), createdAt = DateTime.UtcNow.ToString("O"),
+        };
+
+    [Fact]
+    public async Task Requester_message_notifies_the_assigned_agent_with_an_idesk_link_and_no_mirror()
+    {
+        var x = Setup(); using var _ = x.T;
+        x.T.AddUser("00000024");
+        var agent = x.T.AddUser("00061058");
+        var remote = Remote(null, "00000024", TicketStatus.InProgress, number: "051026-SEC-0003", assignee: "Bagastyo");
+
+        await x.Svc.ApplyWebhookAsync(Webhook("m1", "ticket.message_created", remote,
+            message: MsgWith("Masih belum bisa", "Christhin", true), recipients: ["00061058"]));
+        await x.Svc.ApplyWebhookAsync(Webhook("m2", "ticket.message_created", remote,
+            message: MsgWith("", "Christhin", true, ("layar.png", "image")), recipients: ["00061058"]));
+        Assert.Equal(TicketWebhookKind.Duplicate, await x.Svc.ApplyWebhookAsync(Webhook("m2", "ticket.message_created", remote,
+            message: MsgWith("", "Christhin", true, ("layar.png", "image")), recipients: ["00061058"])));
+
+        Assert.Equal(2, x.Gw.Sent.Count);
+        var last = x.Gw.Sent[^1];
+        Assert.Equal(agent.Id, last.To);
+        Assert.Equal(TicketService.IdeskTargetPrefix + remote.TicketId, last.Url);
+        Assert.Equal("New message on 051026-SEC-0003", x.Gw.Sent[0].Title);
+        Assert.Contains("Christhin: “📎 Foto”", last.Message);
+        Assert.Empty(await x.T.Verify().Tickets.ToListAsync());   // the agent never gets a mirror of someone else's ticket
+    }
+
+    [Fact]
+    public async Task Requester_preview_names_what_was_attached()
+    {
+        var x = Setup(); using var _ = x.T;
+        x.T.AddUser("U1");
+        var remote = Remote(null, "U1", TicketStatus.InProgress);
+        await x.Svc.ApplyWebhookAsync(Webhook("m1", "ticket.message_created", remote,
+            message: MsgWith("Coba ini", "ICT", false, ("panduan.pdf", "file")), recipients: ["U1"]));
+
+        Assert.Equal("📎 panduan.pdf · Coba ini", (await x.T.Verify().Tickets.SingleAsync()).LastMessagePreview);
+    }
+
+    [Fact]
+    public async Task Opening_the_ticket_in_idesk_clears_its_chat_notification()
+    {
+        var x = Setup(); using var _ = x.T;
+        x.T.AddUser("00000024");
+        var agent = x.T.AddUser("00061058");
+        var remote = Remote(null, "00000024", TicketStatus.InProgress);
+        var client = x.T.AddNotificationClient("tickets", "hash");
+        var req = new NotificationRequest
+        {
+            Id = Guid.NewGuid(), ClientId = client.Id, IdempotencyKey = Guid.NewGuid().ToString(), Priority = "normal",
+            EventType = TicketService.ReplyEvent, Title = "New message", Body = "halo", Status = "delivered",
+            TargetUrl = TicketService.IdeskTargetPrefix + remote.TicketId, AcceptedAt = DateTime.UtcNow, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+        };
+        x.T.Db.NotificationRequests.Add(req);
+        x.T.Db.NotificationDeliveries.Add(new NotificationDelivery { Id = Guid.NewGuid(), RequestId = req.Id, UserId = agent.Id, Status = "delivered", DeliveredAt = DateTime.UtcNow, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        await x.T.Db.SaveChangesAsync();
+
+        await x.Svc.ApplyWebhookAsync(Webhook("r1", "ticket.read", remote, reader: "00061058"));
+
+        Assert.NotNull((await x.T.Verify().NotificationDeliveries.SingleAsync(d => d.UserId == agent.Id)).ReadAt);
+        Assert.Contains(x.Rt.Sent, s => s == ("00061058", "notificationsChanged"));
+    }
+
+    [Fact]
+    public async Task Reply_from_the_notifier_goes_to_idesk_as_me()
+    {
+        var x = Setup(); using var _ = x.T;
+        var u = x.T.AddUser("00000024");
+        var agent = x.T.AddUser("00061058");
+        var remote = Remote(null, "00000024", TicketStatus.InProgress, number: "051026-SEC-0003");
+        await x.Svc.ApplyWebhookAsync(Webhook("m1", "ticket.message_created", remote, message: Msg("Sudah saya cek")));
+        var mine = (await x.T.Verify().Tickets.SingleAsync()).Id;
+
+        Assert.Equal(TicketReplyKind.Sent, (await x.Svc.ReplyAsync(u.Id, mine.ToString(), "  Sudah bisa  ")).Kind);
+        Assert.Equal(TicketReplyKind.Sent, (await x.Svc.ReplyAsync(agent.Id, remote.TicketId, "Siap")).Kind);
+        Assert.Equal([("051026-SEC-0003", "00000024", "Sudah bisa"), (remote.TicketId, "00061058", "Siap")], x.Idesk.Replies);
+
+        Assert.Equal(TicketReplyKind.Invalid, (await x.Svc.ReplyAsync(u.Id, mine.ToString(), "   ")).Kind);
+        Assert.Equal(TicketReplyKind.NotFound, (await x.Svc.ReplyAsync(u.Id, "051026-SEC-0003", "hi")).Kind);
+        x.Idesk.ReplyOutcome = IdeskOutcome.Rejected;
+        Assert.Equal(TicketReplyKind.Rejected, (await x.Svc.ReplyAsync(agent.Id, remote.TicketId, "hi")).Kind);
     }
 
     // ── Visits on the calendar ────────────────────────────────────────────

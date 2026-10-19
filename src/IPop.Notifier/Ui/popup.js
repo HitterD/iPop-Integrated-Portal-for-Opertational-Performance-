@@ -13,13 +13,16 @@
   // ── layout ────────────────────────────────────────────────────────────────
   function render() {
     const mod = MOD[N.module] || MOD.system;
-    document.body.className = STYLE === 'stack' ? 'card' : 'win';
+    document.body.className = (STYLE === 'stack' ? 'card' : 'win') + (N.module === 'tickets' ? ' idesk' : '');
     root = document.getElementById('root');
     root.style.setProperty('--m', mod.c);
     view = { tools: [], chips: [], title: N.title, who: null, body: `<p class="txt sel">${esc(N.body)}</p>`, done: 'Done' };
     shell();
     load().catch(() => { }).finally(() => { shell(); });
   }
+
+  // iDesk notifications carry the iDesk mark (and its blue) so they never read as iPop's own.
+  const modIcon = () => N.module === 'tickets' ? '<img class="idesk-mark" src="idesk-mark.png" alt="iDesk">' : (ICON[N.module] || ICON.system);
 
   function shell() {
     const mod = MOD[N.module] || MOD.system;
@@ -37,7 +40,7 @@
 
     if (STYLE === 'stack') {
       root.innerHTML = `<div class="pop" data-drag><i class="bar"></i>
-        <div class="hd"><span class="ico">${ICON[N.module] || ICON.system}</span><span class="src"><b>${esc(mod.n)}</b><small>${esc(time)}</small></span><button class="x" data-close title="Close">${ICON.x}</button></div>
+        <div class="hd"><span class="ico">${modIcon()}</span><span class="src"><b>${esc(mod.n)}</b><small>${esc(time)}</small></span><button class="x" data-close title="Close">${ICON.x}</button></div>
         <div class="bd"><div class="ttl2">${esc(view.title)}</div>${view.who ? `<div class="from">${who}</div>` : ''}${chips}<div class="msg sel">${view.body}</div></div>
         ${reply}
         ${view.tools.length ? `<div class="acts">${tools.join('')}</div>` : ''}
@@ -45,7 +48,7 @@
         <div class="more-row"><span>+<b>0</b> more waiting</span></div></div>`;
     } else {
       root.innerHTML = `<div class="win">
-        <div class="ttl" data-drag><span class="ic">${ICON[N.module] || ICON.system}</span><b>${esc(N.title)}</b><small>${esc(time)}</small><button class="wc" data-min title="Minimize">${ICON.min}</button><button class="wc x" data-close title="Close">${ICON.x}</button></div>
+        <div class="ttl" data-drag><span class="ic">${modIcon()}</span><b>${esc(N.title)}</b><small>${esc(time)}</small><button class="wc" data-min title="Minimize">${ICON.min}</button><button class="wc x" data-close title="Close">${ICON.x}</button></div>
         ${view.tools.length ? `<div class="tools">${tools.join('')}</div>` : ''}
         <div class="hdr"><h3 class="sel">${esc(view.title)}</h3>${who}${chips}</div>
         <div class="body">${view.body}</div>

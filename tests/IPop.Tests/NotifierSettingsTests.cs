@@ -25,6 +25,8 @@ public class NotifierSettingsTests
         Assert.Equal("toast", s.DeliveryFor("chat"));
         Assert.Equal("popup", s.DeliveryFor("mail"));
         Assert.Equal("popup", s.DeliveryFor("tickets"));
+        Assert.Equal("toast", s.DeliveryFor("tickets", "ticket.message_created"));   // iDesk chat: toast with a reply box
+        Assert.Equal("popup", s.DeliveryFor("tickets", "ticket.assigned"));
         Assert.True(s.StartWithWindows);
     }
 

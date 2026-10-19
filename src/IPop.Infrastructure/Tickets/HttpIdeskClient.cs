@@ -195,6 +195,13 @@ public sealed class HttpIdeskClient : IIdeskClient
         }
     }
 
+    public async Task<IdeskResult<bool>> ReplyAsync(string ticketRef, string nik, string content, CancellationToken ct = default)
+    {
+        var body = JsonSerializer.Serialize(new { nik, content });
+        var (outcome, _, msg) = await SendAsync(HttpMethod.Post, "tickets/" + Uri.EscapeDataString(ticketRef) + "/messages", body, ct);
+        return new(outcome, outcome == IdeskOutcome.Ok, msg);
+    }
+
     public async Task<IdeskResult<IReadOnlyList<IdeskBooking>>> ListZoomBookingsAsync(string nik, DateOnly from, DateOnly to, CancellationToken ct = default)
     {
         var path = $"zoom-bookings?nik={Uri.EscapeDataString(nik)}&from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}";

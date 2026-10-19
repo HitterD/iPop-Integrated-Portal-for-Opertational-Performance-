@@ -84,6 +84,9 @@ public interface IIdeskClient
     Task<IdeskResult<IReadOnlyList<IdeskTicket>>> ListByNikAsync(string nik, string state, CancellationToken ct = default);
     /// The public conversation, oldest first; internal notes never included.
     Task<IdeskResult<IdeskMessages>> GetMessagesAsync(string ticketNumber, CancellationToken ct = default);
+    /// Posts a text reply to the ticket's public chat as the person with this NIK (requester side or the
+    /// assigned agent; iDesk enforces it). ticketRef = ticket number or iDesk ticket id.
+    Task<IdeskResult<bool>> ReplyAsync(string ticketRef, string nik, string content, CancellationToken ct = default);
     /// Zoom bookings the user booked or is invited to, dates inclusive in WIB, at most 92 days.
     Task<IdeskResult<IReadOnlyList<IdeskBooking>>> ListZoomBookingsAsync(string nik, DateOnly from, DateOnly to, CancellationToken ct = default);
 }

@@ -113,3 +113,10 @@ body.card{background:var(--glass)}
 .rte .att span{display:inline-flex;align-items:center;gap:5px}
 .more-link{align-items:center;gap:4px}
 .more-link svg.lucide{width:15px;height:15px}
+
+/* iDesk: own mark on white, blue accent bar/title strip, so it never reads as an iPop notification */
+.idesk .ttl .ic,.idesk .pop .ico{background:#fff;box-shadow:0 0 0 .5px var(--sep)}
+.idesk .ttl .ic img.idesk-mark,.idesk .pop .ico img.idesk-mark{width:22px;height:22px;border-radius:0;object-fit:contain}
+.idesk .ttl{background:linear-gradient(0deg,rgba(37,99,235,.08),rgba(37,99,235,.08))}
+.idesk .ttl b{color:#1d4ed8}
+.idesk .pop .src b{color:#2563eb}

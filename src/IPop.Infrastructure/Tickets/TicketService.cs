@@ -23,7 +23,8 @@ public sealed class TicketService(
     INotificationGatewayService notify,
     IRealtime realtime,
     ILogger<TicketService>? logger = null,
-    IdeskCalendarSync? calendar = null) : ITicketService
+    IdeskCalendarSync? calendar = null,
+    IPop.Infrastructure.Notifications.Push.IDesktopToastSink? desktop = null) : ITicketService
 {
     public const string Provider = "idesk";
     public const string OriginIpop = "IPOP";
@@ -84,6 +85,9 @@ public sealed class TicketService(
             await db.SaveChangesAsync(ct);
             await ChangedAsync(userId, null, null, ct);
         }
+        // Reading the chat here also clears its toast / Inbox notifications.
+        if (await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.Nik).FirstOrDefaultAsync(ct) is { } readerNik)
+            await ClearChatNotificationsAsync(userId, readerNik, t.IdeskTicketId, t.Id, ct);
         if (t.TicketNumber is null || IsPending(t.Status)) return new TicketMessagesDto([], unread, HttpIdeskClient.PublicLink(t.Url), false, null);
 
         var r = await idesk.GetMessagesAsync(t.TicketNumber, ct);
@@ -418,6 +422,7 @@ public sealed class TicketService(
     {
         string? eventId, evt; DateTime occurredAt; string? previousStatus; IdeskTicket? it;
         IdeskBooking? booking = null; string? cancelledBooking = null; WebhookMessage? message = null;
+        List<string>? recipients = null; string? reader = null;
         try
         {
             using var doc = JsonDocument.Parse(body);
@@ -436,7 +441,17 @@ public sealed class TicketService(
             if (root.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.Object)
                 message = new WebhookMessage(
                     m.TryGetProperty("sender", out var snd) && snd.ValueKind == JsonValueKind.Object ? Prop(snd, "name") : null,
-                    Prop(m, "preview") ?? "");
+                    Prop(m, "preview") ?? "",
+                    m.TryGetProperty("fromRequester", out var fr) && fr.ValueKind == JsonValueKind.True,
+                    m.TryGetProperty("attachments", out var att) && att.ValueKind == JsonValueKind.Array
+                        ? att.EnumerateArray().Where(a => a.ValueKind == JsonValueKind.Object)
+                            .Select(a => new WebhookAttachment(Prop(a, "name") ?? "", Prop(a, "kind") ?? "file")).ToList()
+                        : []);
+            // Older iDesk builds send no recipients: their chat event always meant "for the requester".
+            recipients = root.TryGetProperty("recipients", out var rc) && rc.ValueKind == JsonValueKind.Array
+                ? rc.EnumerateArray().Where(r => r.ValueKind == JsonValueKind.Object).Select(r => Prop(r, "nik")).OfType<string>().ToList()
+                : null;
+            reader = root.TryGetProperty("reader", out var rd) && rd.ValueKind == JsonValueKind.Object ? Prop(rd, "nik") : null;
         }
         catch (JsonException) { return TicketWebhookKind.Invalid; }
         if (string.IsNullOrEmpty(eventId) || string.IsNullOrEmpty(evt)) return TicketWebhookKind.Invalid;
@@ -447,6 +462,24 @@ public sealed class TicketService(
         if (it is null) return TicketWebhookKind.Invalid;
 
         if (await db.TicketEvents.AnyAsync(e => e.WebhookEventId == eventId, ct)) return TicketWebhookKind.Duplicate;
+
+        // Opened in iDesk: clear that person's chat notifications for the ticket (no timeline line).
+        if (evt == "ticket.read")
+        {
+            if (!await FirstReceiptAsync(eventId, ct)) return TicketWebhookKind.Duplicate;
+            if (reader is not null) await ClearChatNotificationsAsync(reader, it, ct);
+            return TicketWebhookKind.Applied;
+        }
+        // A chat message for someone other than the requester (the assigned agent): they have no mirror of the
+        // ticket, so the notification points at the ticket in iDesk. The requester's own copy is handled below.
+        if (evt == "ticket.message_created" && message is not null && recipients is not null)
+        {
+            // These lines leave no timeline row (no mirror), so the receipt table catches redeliveries.
+            if (recipients.Any(n => n != it.RequesterNik) && !await FirstReceiptAsync("agent:" + eventId, ct)) return TicketWebhookKind.Duplicate;
+            foreach (var agentNik in recipients.Where(n => n != it.RequesterNik).Distinct())
+                await NotifyAgentReplyAsync(agentNik, it, message, eventId, ct);
+            if (!recipients.Contains(it.RequesterNik ?? "\0")) return TicketWebhookKind.Applied;
+        }
 
         var row = (it.ExternalRef is null ? null : await db.Tickets.FirstOrDefaultAsync(x => x.ExternalRef == it.ExternalRef, ct))
                   ?? await db.Tickets.FirstOrDefaultAsync(x => x.IdeskTicketId == it.TicketId, ct);
@@ -479,7 +512,8 @@ public sealed class TicketService(
         if (kind == "message_created" && message is not null)
         {
             row.UnreadMessages++;
-            row.LastMessagePreview = message.Preview.Length > 200 ? message.Preview[..200] : message.Preview;
+            var preview = ChatPreview(message);
+            row.LastMessagePreview = preview.Length > 200 ? preview[..200] : preview;
             row.LastMessageSender = message.Sender is { Length: > 200 } sender ? sender[..200] : message.Sender;
             row.LastMessageAt = occurredAt;
         }
@@ -730,7 +764,138 @@ public sealed class TicketService(
         else s.NotRegistered = true;
     }
 
-    private sealed record WebhookMessage(string? Sender, string Preview);
+    /// Records a processed webhook id that has no timeline line of its own; false when it was seen before.
+    private async Task<bool> FirstReceiptAsync(string eventId, CancellationToken ct)
+    {
+        if (eventId.Length > 100) eventId = eventId[..100];
+        if (await db.IdeskWebhookReceipts.AnyAsync(r => r.EventId == eventId, ct)) return false;
+        db.IdeskWebhookReceipts.Add(new IdeskWebhookReceipt { EventId = eventId, ReceivedAt = DateTime.UtcNow });
+        try { await db.SaveChangesAsync(ct); return true; }
+        catch (DbUpdateException) { db.ChangeTracker.Clear(); return false; }
+    }
+
+    private sealed record WebhookAttachment(string Name, string Kind);
+    private sealed record WebhookMessage(string? Sender, string Preview, bool FromRequester = false, List<WebhookAttachment>? Attachments = null);
+
+    /// The preview shown in notifications: the text, or what was attached ("📎 Foto", "📎 Video", "📎 laporan.pdf").
+    private static string ChatPreview(WebhookMessage m)
+    {
+        var files = m.Attachments ?? [];
+        var hasText = !string.IsNullOrWhiteSpace(m.Preview) && !m.Preview.StartsWith("📎 ", StringComparison.Ordinal);
+        if (files.Count == 0) return m.Preview;
+        var label = files.Count > 1 ? $"📎 {files.Count} lampiran"
+            : files[0].Kind switch { "image" => "📎 Foto", "video" => "📎 Video", _ => "📎 " + files[0].Name };
+        return hasText ? $"{label} · {m.Preview}" : label;
+    }
+
+    /// Prefix of the notification link for a ticket in iDesk (agent side). Its own scheme so the Notifier and the
+    /// read clean-up can recognise it; the web resolves it to the public iDesk link.
+    public const string IdeskTargetPrefix = "/idesk/tickets/";
+
+    /// Chat message for the assigned agent (by NIK): one notification per ticket, replaced like the requester's.
+    private async Task NotifyAgentReplyAsync(string nik, IdeskTicket it, WebhookMessage message, string eventId, CancellationToken ct)
+    {
+        var user = await db.Users.AsNoTracking().Where(u => u.Nik == nik && u.IsActive).Select(u => new { u.Id }).FirstOrDefaultAsync(ct);
+        if (user is null) return;
+        var url = IdeskTargetPrefix + it.TicketId;
+        var unread = 1;
+        try
+        {
+            var stale = await db.NotificationDeliveries
+                .Where(d => d.UserId == user.Id && d.ReadAt == null && d.Request.TargetUrl == url && d.Request.EventType == ReplyEvent)
+                .ToListAsync(ct);
+            var now = DateTime.UtcNow;
+            foreach (var d in stale) { d.Status = NotificationStatus.Read; d.ReadAt = now; d.UpdatedAt = now; }
+            if (stale.Count > 0) await db.SaveChangesAsync(ct);
+            unread += stale.Count;
+        }
+        catch (Exception ex) { _log.LogDebug(ex, "Clearing older agent reply notifications failed (non-fatal)"); }
+
+        var number = it.TicketNumber ?? "a ticket";
+        var title = unread > 1 ? $"{unread} new messages on {number}" : $"New message on {number}";
+        var who = string.IsNullOrWhiteSpace(message.Sender) ? it.RequesterName ?? "Requester" : message.Sender;
+        var body = $"{it.Title}\n{who}: “{ChatPreview(message)}”";
+        try
+        {
+            await notify.PublishInternalAsync(clientSlug: "tickets", eventType: ReplyEvent, title: title,
+                message: body, target: new NotificationTarget(UserId: user.Id), priority: "normal", targetUrl: url, ct: ct);
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Agent ticket reply notification failed ({EventId})", eventId); }
+    }
+
+    /// The ticket was opened (in iPop or iDesk): its unread chat notifications for that person are read.
+    private async Task ClearChatNotificationsAsync(string nik, IdeskTicket it, CancellationToken ct)
+    {
+        var user = await db.Users.AsNoTracking().Where(u => u.Nik == nik).Select(u => new { u.Id }).FirstOrDefaultAsync(ct);
+        if (user is null) return;
+        var mirror = await db.Tickets.AsNoTracking().Where(x => x.IdeskTicketId == it.TicketId && x.UserId == user.Id)
+            .Select(x => (Guid?)x.Id).FirstOrDefaultAsync(ct);
+        await ClearChatNotificationsAsync(user.Id, nik, it.TicketId, mirror, ct);
+    }
+
+    private async Task ClearChatNotificationsAsync(Guid userId, string nik, string? ideskTicketId, Guid? mirrorId, CancellationToken ct)
+    {
+        var urls = new List<string>();
+        if (ideskTicketId is not null) urls.Add(IdeskTargetPrefix + ideskTicketId);
+        if (mirrorId is { } m) urls.Add($"/tickets/{m}#messages");
+        if (urls.Count == 0) return;
+        // The Notifier hides the ticket's toast even when nothing was unread any more (e.g. read in another tab).
+        if (desktop is not null)
+        {
+            var refs = new List<string>();
+            if (ideskTicketId is not null) refs.Add(ideskTicketId);
+            if (mirrorId is { } mid) refs.Add(mid.ToString());
+            try { await desktop.TicketChatReadAsync(userId, refs, ct); } catch (Exception ex) { _log.LogDebug(ex, "Ticket toast clean-up failed"); }
+        }
+        try
+        {
+            var open = await db.NotificationDeliveries
+                .Where(d => d.UserId == userId && d.ReadAt == null && d.Request.EventType == ReplyEvent && urls.Contains(d.Request.TargetUrl!))
+                .ToListAsync(ct);
+            if (open.Count == 0) return;
+            var now = DateTime.UtcNow;
+            foreach (var d in open) { d.Status = NotificationStatus.Read; d.ReadAt = now; d.UpdatedAt = now; }
+            await db.SaveChangesAsync(ct);
+            await realtime.ToUserAsync(nik, IPop.Application.Realtime.RealtimeEvents.NotificationsChanged, ct: ct);
+        }
+        catch (Exception ex) { _log.LogDebug(ex, "Clearing ticket chat notifications failed (non-fatal)"); }
+    }
+
+    /// Text reply typed in the iPop Notifier, posted to iDesk as this user. The requester replies on their own
+    /// ticket (mirror id); the assigned agent on an iDesk ticket id. iDesk enforces who may reply.
+    public async Task<TicketReplyOutcome> ReplyAsync(Guid userId, string ticketRef, string content, CancellationToken ct = default)
+    {
+        var text = (content ?? "").Trim();
+        if (text.Length == 0) return new(TicketReplyKind.Invalid, "Type a message first.");
+        if (text.Length > 4000) return new(TicketReplyKind.Invalid, "That message is too long (4000 characters at most).");
+        var nik = await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.Nik).FirstOrDefaultAsync(ct);
+        if (nik is null) return new(TicketReplyKind.NotFound, null);
+
+        string? remote = null; Guid? mirrorId = null; string? ideskId = null;
+        if (Guid.TryParse(ticketRef, out var mid) && await db.Tickets.AsNoTracking()
+                .Where(x => x.Id == mid && x.UserId == userId && x.RemovedAt == null)
+                .Select(x => new { x.Id, x.TicketNumber, x.IdeskTicketId, x.Status }).FirstOrDefaultAsync(ct) is { } mine)
+        {
+            if (mine.TicketNumber is null || IsPending(mine.Status)) return new(TicketReplyKind.NotSent, "This ticket hasn't reached iDesk yet.");
+            remote = mine.TicketNumber; mirrorId = mine.Id; ideskId = mine.IdeskTicketId;
+        }
+        else if (Guid.TryParse(ticketRef, out _))
+        {
+            remote = ticketRef; ideskId = ticketRef;   // an iDesk ticket id (agent side)
+        }
+        if (remote is null) return new(TicketReplyKind.NotFound, null);
+
+        var r = await idesk.ReplyAsync(remote, nik, text, ct);
+        if (r.Ok) await ClearChatNotificationsAsync(userId, nik, ideskId, mirrorId, ct);
+        return r.Outcome switch
+        {
+            IdeskOutcome.Ok => new(TicketReplyKind.Sent, null),
+            IdeskOutcome.NotFound => new(TicketReplyKind.NotFound, null),
+            IdeskOutcome.Rejected or IdeskOutcome.NotRegistered => new(TicketReplyKind.Rejected, r.Message),
+            IdeskOutcome.NotConfigured => new(TicketReplyKind.NotConfigured, null),
+            _ => new(TicketReplyKind.Unreachable, r.Message),
+        };
+    }
 
     /// "Tue 13 Oct, 09:00" (WIB) of the ticket's visit, for notifications.
     private static string? VisitLabel(Ticket row) =>

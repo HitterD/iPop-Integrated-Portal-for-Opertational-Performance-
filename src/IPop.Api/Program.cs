@@ -291,7 +291,8 @@ builder.Services.AddScoped<IPop.Application.Tickets.ITicketService>(sp => new IP
     sp.GetRequiredService<IPop.Infrastructure.Persistence.IPopDbContext>(), sp.GetRequiredService<IPop.Application.Tickets.IIdeskClient>(),
     sp.GetRequiredService<IPop.Infrastructure.Tickets.TicketModuleCache>(), sp.GetRequiredService<IPop.Application.Notifications.INotificationGatewayService>(),
     sp.GetRequiredService<IPop.Application.Realtime.IRealtime>(), sp.GetRequiredService<ILogger<IPop.Infrastructure.Tickets.TicketService>>(),
-    sp.GetRequiredService<IPop.Infrastructure.Tickets.IdeskCalendarSync>()));
+    sp.GetRequiredService<IPop.Infrastructure.Tickets.IdeskCalendarSync>(),
+    sp.GetService<IPop.Infrastructure.Notifications.Push.IDesktopToastSink>()));
 builder.Services.AddHostedService<IPop.Infrastructure.Tickets.TicketOutboxWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Tickets.TicketReconcileWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Tickets.IdeskCalendarWorker>();

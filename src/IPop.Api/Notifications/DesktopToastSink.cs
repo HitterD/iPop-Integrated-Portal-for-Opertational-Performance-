@@ -8,4 +8,7 @@ public sealed class DesktopToastSink(IHubContext<NotificationHub> hub) : IDeskto
 {
     public Task SendAsync(Guid userId, PushPayload payload, CancellationToken ct) =>
         hub.Clients.User(userId.ToString()).SendAsync("desktopToast", payload, ct);
+
+    public Task TicketChatReadAsync(Guid userId, IReadOnlyList<string> ticketRefs, CancellationToken ct) =>
+        hub.Clients.User(userId.ToString()).SendAsync("ticketChatRead", ticketRefs, ct);
 }
