@@ -31,6 +31,22 @@ public static class SsoSetup
                  .SetTokenEndpointUris("connect/token")
                  .SetUserInfoEndpointUris("connect/userinfo")
                  .SetEndSessionEndpointUris("connect/logout");
+                // Behind the TLS proxy the API sees http: advertise the public (issuer) addresses in discovery,
+                // or apps would be sent to http://… for authorize/token/JWKS.
+                if (!string.IsNullOrWhiteSpace(issuer))
+                {
+                    var b = new Uri(issuer.TrimEnd('/') + "/");
+                    o.SetConfigurationEndpointUris(".well-known/openid-configuration").SetJsonWebKeySetEndpointUris(".well-known/jwks");
+                    o.AddEventHandler<OpenIddict.Server.OpenIddictServerEvents.HandleConfigurationRequestContext>(h => h.UseInlineHandler(ctx =>
+                    {
+                        ctx.AuthorizationEndpoint = new Uri(b, "connect/authorize");
+                        ctx.TokenEndpoint = new Uri(b, "connect/token");
+                        ctx.UserInfoEndpoint = new Uri(b, "connect/userinfo");
+                        ctx.EndSessionEndpoint = new Uri(b, "connect/logout");
+                        ctx.JsonWebKeySetEndpoint = new Uri(b, ".well-known/jwks");
+                        return default;
+                    }).SetOrder(int.MaxValue));
+                }
                 o.AllowAuthorizationCodeFlow().RequireProofKeyForCodeExchange()
                  .AllowRefreshTokenFlow()
                  .AllowPasswordFlow();
