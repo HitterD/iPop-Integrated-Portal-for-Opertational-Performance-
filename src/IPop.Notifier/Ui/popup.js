@@ -238,7 +238,7 @@
     view.send = async text => {
       const res = await api('POST', `api/tickets/${ref}/reply`, { content: text });
       if (res.ok) { await markRead(); return null; }
-      return res.json?.message || 'Couldn't send the reply. Open the ticket in iDesk to try again.';
+      return res.json?.message || "Couldn't send the reply. Open the ticket in iDesk to try again.";
     };
     view.done = 'Reply sent';
   };
@@ -246,8 +246,7 @@
   async function tickets() {
     const agentTid = id(new RegExp('^/idesk/tickets/' + G));
     if (agentTid) {
-      const nl = N.body.indexOf('
-');
+      const nl = N.body.indexOf(String.fromCharCode(10));
       const head = nl < 0 ? '' : N.body.slice(0, nl);
       const line = nl < 0 ? N.body : N.body.slice(nl + 1);
       view.title = head || N.title;
