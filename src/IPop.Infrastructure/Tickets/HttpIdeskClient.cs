@@ -25,6 +25,8 @@ public sealed class IdeskOptions
     public const string DefaultPublicUrl = "https://idesk.santos.co.id";
     /// The address the parsers below use (static so webhook parsing needs no instance); set from config at startup.
     public static string CurrentPublicUrl { get; set; } = DefaultPublicUrl;
+    /// IDesk:SignInWithIpop — iDesk links open through iDesk's "Sign in with iPop" (needs the OIDC client on both sides).
+    public static bool CurrentSignInWithIpop { get; set; }
     public bool IsConfigured => ClientSecret.Length >= MinSecretLength;
 
     public static IdeskOptions Bind(IConfiguration config)
@@ -32,6 +34,7 @@ public sealed class IdeskOptions
         var baseUrl = (config["IDesk:BaseUrl"] ?? "").Trim();
         var publicUrl = (config["IDesk:PublicUrl"] ?? "").Trim();
         CurrentPublicUrl = string.IsNullOrEmpty(publicUrl) ? DefaultPublicUrl : publicUrl.TrimEnd('/');
+        CurrentSignInWithIpop = config.GetValue<bool>("IDesk:SignInWithIpop");
         return new IdeskOptions
         {
             PublicUrl = CurrentPublicUrl,
@@ -341,7 +344,7 @@ public sealed class HttpIdeskClient : IIdeskClient
     }
 
     /// iDesk links as users must open them (public host, see <see cref="IdeskLinks"/>).
-    public static string? PublicLink(string? url) => IdeskLinks.Public(url, IdeskOptions.CurrentPublicUrl);
+    public static string? PublicLink(string? url) => IdeskLinks.Public(url, IdeskOptions.CurrentPublicUrl, IdeskOptions.CurrentSignInWithIpop);
 
     private static string? Str(JsonElement e, string name) =>
         e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;

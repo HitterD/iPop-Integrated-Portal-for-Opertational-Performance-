@@ -765,6 +765,15 @@ public class TicketTests
     public void Idesk_links_move_to_the_public_host(string? input, string? expected) =>
         Assert.Equal(expected, IdeskLinks.Public(input, "https://idesk.santos.co.id"));
 
+    [Theory]
+    [InlineData("http://192.168.2.136:3080/client/tickets/b22a81e7", "https://idesk.santos.co.id/v1/auth/oidc/start?returnTo=%2Fclient%2Ftickets%2Fb22a81e7")]
+    [InlineData("https://idesk.santos.co.id/zoom-calendar?booking=306d5569", "https://idesk.santos.co.id/v1/auth/oidc/start?returnTo=%2Fzoom-calendar%3Fbooking%3D306d5569")]
+    [InlineData("https://idesk.santos.co.id/v1/auth/oidc/start?returnTo=%2Fx", "https://idesk.santos.co.id/v1/auth/oidc/start?returnTo=%2Fx")]
+    [InlineData("http://192.168.2.136:3080/api/v1/auth/oidc/start?returnTo=%2Fx", "https://idesk.santos.co.id/api/v1/auth/oidc/start?returnTo=%2Fx")]
+    [InlineData("/tickets/abc", "/tickets/abc")]
+    public void Idesk_links_open_signed_in_with_ipop_when_enabled(string input, string expected) =>
+        Assert.Equal(expected, IdeskLinks.Public(input, "https://idesk.santos.co.id", signIn: true));
+
     [Fact]
     public async Task Stored_lan_links_never_reach_the_client()
     {

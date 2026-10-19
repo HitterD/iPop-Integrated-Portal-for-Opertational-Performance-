@@ -1,6 +1,9 @@
 # iDesk × iPop — "Sign in with iPop" (integration guide for the iDesk team)
 
-Status: **draft for review** (2026-10-18). iPop side is not built yet; endpoint names below are the planned ones.
+Status (2026-10-19): iPop provider built (branch `notifier`, behind `Oidc:Enabled`); iDesk side built on iDesk branch
+`HitterD/sign-in-with-ipop` — see iDesk `docs/integrations/sign-in-with-ipop.md` for the final behaviour. Matching is by
+**HRIS NIK only**; email never links accounts. iPop sets `IDesk:SignInWithIpop=true` to send "Open in iDesk" links
+through `/v1/auth/oidc/start?returnTo=…`.
 
 ## Goal
 
@@ -26,7 +29,7 @@ hard-coded in iPop, so the next app only needs a new client registration.
 | Password check (for iDesk's own form) | `/connect/token` with `grant_type=password` — **confidential client only**, rate-limited, see §3 |
 
 ICT registers iDesk once and gives the iDesk team: `client_id=idesk`, a `client_secret` (stored in iDesk's env, never in
-git), and the allowed redirect URI(s), e.g. `https://idesk.santos.co.id/api/auth/oidc/callback`.
+git), and the allowed redirect URI(s), e.g. `https://idesk.santos.co.id/api/v1/auth/oidc/callback`.
 
 **Claims in the ID token** (scope `openid profile email`):
 
@@ -52,7 +55,7 @@ NIK is shown to admins only in iDesk's UI, as in iPop (office rule).
 - Never overwrite an existing different `employeeId`; log and refuse instead.
 
 ### 2. "Sign in with iPop" button (frontend + backend)
-- Frontend: button on the login page → `GET /api/auth/oidc/start` (backend).
+- Frontend: button on the login page → `GET /api/v1/auth/oidc/start` (backend).
 - Backend `oidc/start`: create `state` + PKCE `code_verifier`, keep them in a short-lived (5 min) HttpOnly cookie, redirect
   to iPop `/connect/authorize?client_id=idesk&response_type=code&scope=openid%20profile%20email&redirect_uri=…&state=…&code_challenge=…&code_challenge_method=S256`.
 - Backend `oidc/callback`: check `state`, exchange `code` at `/connect/token` (with `client_secret` + `code_verifier`),
@@ -90,7 +93,7 @@ New env vars: `IPOP_OIDC_ISSUER`, `IPOP_OIDC_CLIENT_ID`, `IPOP_OIDC_CLIENT_SECRE
 - Keep iDesk's existing login throttling on this path too (iPop also rate-limits per NIK + IP).
 
 ### 4. Opening iDesk already signed in (from iPop / iPop Notifier)
-- iPop links to `https://idesk…/api/auth/oidc/start?returnTo=/tickets/4821`. Because the user already has an iPop session,
+- iPop links to `https://idesk…/api/v1/auth/oidc/start?returnTo=/tickets/4821`. Because the user already has an iPop session,
   `/connect/authorize` returns immediately (no prompt) → callback → signed in on the ticket page. No custom token needed.
 - The existing `s2s/issue-sso-ticket` + `autologin` routes can stay for the old SJA Notifier until it is switched off,
   then be removed.
