@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>iPop Android native · mockup</title>
+<style>
+:root{
+  --frame:#123528; --frame-ink:#e7f2ec; --page:#e8ece9; --page-ink:#1d1d1f; --page-ink-2:#5b6660; --bezel:#1b1d1f;
+  --bg:#f2f2f7; --card:#fff; --fill:rgba(118,118,128,.12); --sep:rgba(60,60,67,.14);
+  --ink:#1d1d1f; --ink-2:#424245; --ink-3:#6e6e73; --green:#2e9e5b; --red:#ff3b30; --blue:#0a84ff;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,system-ui,sans-serif;font-size:15px;line-height:1.4;background:var(--page);color:var(--page-ink)}
+svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;display:block}
+.top{position:sticky;top:0;z-index:5;padding:14px 28px;background:var(--frame);color:var(--frame-ink)}
+.top h1{font-size:17px;font-weight:700}.top h1 span{font-weight:500;opacity:.7}
+.intro{max-width:1240px;margin:22px auto 0;padding:0 28px;color:var(--page-ink-2);font-size:14px}
+.intro b{color:var(--page-ink)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:34px 28px;max-width:1240px;margin:24px auto 60px;padding:0 28px}
+.cap{margin-top:12px;font-size:13.5px;color:var(--page-ink-2)}
+.cap b{display:block;color:var(--page-ink);font-size:14.5px;margin-bottom:2px}
+.cap b em{font-style:normal;display:inline-grid;place-items:center;width:22px;height:22px;border-radius:7px;background:var(--frame);color:var(--frame-ink);font-size:12px;margin-right:8px}
+.phone{width:330px;height:700px;border-radius:46px;background:var(--bezel);padding:10px;box-shadow:0 26px 50px -20px rgba(0,0,0,.35)}
+.screen{position:relative;width:100%;height:100%;border-radius:37px;overflow:hidden;background:var(--bg);color:var(--ink)}
+.sb{height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-size:13px;font-weight:600}
+.sb.light{color:#fff}
+
+/* 1 · incoming call (full screen, also over the lock screen) */
+.call{position:absolute;inset:0;background:radial-gradient(120% 70% at 50% 20%,#1f5a43 0%,#123528 55%,#0b2219 100%);color:#fff;display:flex;flex-direction:column;align-items:center}
+.call .who{margin-top:70px;text-align:center}
+.call .app{font-size:12.5px;opacity:.75;letter-spacing:.02em;display:flex;align-items:center;gap:6px;justify-content:center}
+.call .app img,.mark{width:16px;height:16px;border-radius:5px;background:#fff;display:inline-block}
+.av{width:116px;height:116px;border-radius:30px;margin:26px auto 18px;display:grid;place-items:center;font-size:42px;font-weight:700;background:linear-gradient(135deg,#e07a5f,#c9573c);position:relative}
+.av::before,.av::after{content:'';position:absolute;inset:-14px;border-radius:40px;border:2px solid rgba(255,255,255,.22);animation:ring 2s ease-out infinite}
+.av::after{animation-delay:1s}
+@keyframes ring{from{transform:scale(.9);opacity:1}to{transform:scale(1.25);opacity:0}}
+.call h2{font-size:28px;font-weight:700}
+.call .sub{opacity:.8;margin-top:4px;font-size:15px}
+.call .quick{position:absolute;bottom:180px;display:flex;gap:56px;font-size:12.5px;opacity:.9}
+.call .quick span{display:flex;flex-direction:column;align-items:center;gap:6px}
+.call .quick i{width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,.14);display:grid;place-items:center}
+.call .btns{position:absolute;bottom:64px;display:flex;gap:96px}
+.call .btns span{display:flex;flex-direction:column;align-items:center;gap:8px;font-size:13px}
+.call .btns i{width:72px;height:72px;border-radius:50%;display:grid;place-items:center}
+.call .btns .no i{background:var(--red)}
+.call .btns .yes i{background:#34c759;animation:wig 1.4s ease-in-out infinite}
+@keyframes wig{0%,60%,100%{transform:rotate(0)}70%{transform:rotate(-14deg)}80%{transform:rotate(12deg)}90%{transform:rotate(-8deg)}}
+
+/* 2 · notification shade */
+.wall{position:absolute;inset:0;background:linear-gradient(160deg,#5763a8,#3b4783 50%,#2a3366)}
+.shade{position:absolute;inset:0;background:rgba(20,22,30,.55);backdrop-filter:blur(18px);padding:44px 12px 0}
+.qs{display:flex;justify-content:space-between;color:#fff;font-size:12px;opacity:.75;padding:0 8px 10px}
+.n{background:rgba(250,250,252,.96);border-radius:22px;padding:12px 14px;margin-bottom:8px;color:var(--ink);box-shadow:0 4px 16px -8px rgba(0,0,0,.4)}
+.n .h{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-3)}
+.n .h .mark{background:var(--green)}
+.n .h b{color:var(--green);font-weight:600}
+.n .row{display:flex;gap:10px;margin-top:8px}
+.n .pa{width:36px;height:36px;border-radius:10px;flex:none;display:grid;place-items:center;color:#fff;font-weight:700;font-size:14px}
+.n .t{font-weight:600;font-size:14px}
+.n .m{font-size:13.5px;color:var(--ink-2)}
+.n .m + .m{margin-top:2px}
+.n .acts{display:flex;gap:18px;margin-top:10px;padding-left:46px;font-size:13px;font-weight:600;color:var(--green)}
+.reply{display:flex;align-items:center;gap:8px;margin:10px 0 0 46px;background:var(--fill);border-radius:18px;padding:6px 6px 6px 12px;font-size:13px;color:var(--ink-3)}
+.reply i{margin-left:auto;width:30px;height:30px;border-radius:50%;background:var(--green);color:#fff;display:grid;place-items:center}
+
+/* 3 · first run */
+.fr{padding:14px 20px 18px;display:flex;flex-direction:column;height:calc(100% - 34px)}
+.fr .logo{width:52px;height:52px;border-radius:15px;background:#fff;box-shadow:0 6px 16px -8px rgba(0,0,0,.3);display:grid;place-items:center;margin:4px 0 12px}
+.fr .logo span{width:40px;height:40px;border-radius:12px;background:conic-gradient(#0f6e5a 0 25%,#2ea38a 0 50%,#ef6a4c 0 75%,#6ccf8f 0)}
+.fr h2{font-size:22px;font-weight:700;letter-spacing:-.01em}
+.fr p.lead{color:var(--ink-3);margin:6px 0 18px}
+.perm{display:flex;gap:10px;align-items:center;background:var(--card);border-radius:14px;padding:9px 12px;margin-bottom:8px}
+.perm .ic{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;color:#fff;flex:none}
+.perm .tx{flex:1}.perm .tx{min-width:0}.perm .tx b{display:block;font-size:13.5px;line-height:1.25}.perm .tx small{color:var(--ink-3);font-size:11.5px;line-height:1.3;display:block}
+.perm .st{flex:none;font-size:12.5px;font-weight:700;color:var(--green)}
+.perm .go{flex:none;height:30px;padding:0 12px;border-radius:999px;background:var(--green);color:#fff;font-size:12.5px;font-weight:600;display:grid;place-items:center}
+.fr .cta{margin-top:auto;height:50px;border-radius:14px;background:var(--green);color:#fff;font-weight:600;display:grid;place-items:center}
+.fr .skip{text-align:center;color:var(--ink-3);font-size:13px;margin-top:10px}
+
+/* 4 · app (WebView) with update prompt */
+.appbar{height:46px;background:var(--frame);color:#fff;display:flex;align-items:center;padding:0 16px;font-weight:600;gap:10px}
+.webv{padding:14px 16px}
+.wl{height:12px;border-radius:6px;background:var(--fill);margin:10px 0}
+.card{background:var(--card);border-radius:16px;padding:14px;margin-bottom:12px}
+.tabbar{position:absolute;left:0;right:0;bottom:0;height:64px;background:rgba(249,249,251,.94);border-top:1px solid var(--sep);display:flex;justify-content:space-around;align-items:center;font-size:10.5px;color:var(--ink-3)}
+.tabbar span{display:flex;flex-direction:column;align-items:center;gap:3px}.tabbar .on{color:var(--green)}
+.scrim{position:absolute;inset:0;z-index:2;background:rgba(0,0,0,.32)}
+.sheet{z-index:3;position:absolute;left:0;right:0;bottom:0;background:var(--card);border-radius:22px 22px 0 0;padding:10px 20px 26px}
+.grab{width:38px;height:5px;border-radius:3px;background:var(--fill);margin:0 auto 14px}
+.sheet h3{font-size:19px}.sheet p{color:var(--ink-3);font-size:13.5px;margin:4px 0 12px}
+.sheet ul{font-size:13.5px;color:var(--ink-2);padding-left:18px;margin-bottom:16px}
+.btn{height:48px;border-radius:14px;background:var(--green);color:#fff;font-weight:600;display:grid;place-items:center}
+.btn.pl{background:none;color:var(--ink-3);height:40px}
+.prog{height:6px;border-radius:3px;background:var(--fill);overflow:hidden;margin:4px 0 12px}.prog i{display:block;height:100%;width:62%;background:var(--green)}
+
+/* 5 · in-call pill */
+.pill{white-space:nowrap;position:absolute;top:40px;left:50%;transform:translateX(-50%);height:34px;padding:0 14px;border-radius:17px;background:#34c759;color:#fff;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;box-shadow:0 6px 18px -8px rgba(52,199,89,.8)}
+.pill .dot{width:8px;height:8px;border-radius:50%;background:#fff;animation:bl 1.2s infinite}@keyframes bl{50%{opacity:.3}}
+
+/* 6 · offline */
+.off{position:absolute;inset:34px 0 0 0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 34px}
+.off .ic{width:64px;height:64px;border-radius:20px;background:var(--fill);display:grid;place-items:center;color:var(--ink-3);margin-bottom:14px}
+.off h3{font-size:19px}.off p{color:var(--ink-3);font-size:13.5px;margin:6px 0 18px}
+.off .btn{width:180px}
+</style>
+</head>
+<body>
+<div class="top"><h1>iPop Android native <span>· mockup (layar yang khas aplikasi native)</span></h1></div>
+<p class="intro">Aplikasi baru ini <b>aplikasi Android asli</b> dengan nama yang sama (iPop) dan dipasang di atas aplikasi lama. <b>Notifikasi dan telepon milik aplikasi iPop sendiri</b>, bukan milik browser. Saat ditekan, yang terbuka aplikasi iPop di pesan atau halaman terkait. Halaman Chat, Mail, Calendar, dan lainnya tetap tampil seperti sekarang, tetapi di dalam aplikasi, bukan di browser. Sertifikat kantor sudah terpasang di dalam aplikasi, jadi tidak ada langkah pasang sertifikat lagi.</p>
+<div class="grid">
+
+  <div>
+    <div class="phone"><div class="screen">
+      <div class="call">
+        <div class="sb light" style="width:100%"><span>09:49</span><span>5G ▮▮▮ 78%</span></div>
+        <div class="who">
+          <div class="app"><span class="mark"></span>iPop · Panggilan suara</div>
+          <div class="av">RB</div>
+          <h2>RM Bagastyo</h2>
+          <div class="sub">ICT · memanggil…</div>
+        </div>
+        <div class="quick"><span><i><svg class="i" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></i>Pesan</span><span><i><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></i>Ingatkan</span></div>
+        <div class="btns">
+          <span class="no"><i><svg class="i" viewBox="0 0 24 24" style="transform:rotate(135deg)"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2Z"/></svg></i>Tolak</span>
+          <span class="yes"><i><svg class="i" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2Z"/></svg></i>Angkat</span>
+        </div>
+      </div>
+    </div></div>
+    <p class="cap"><b><em>1</em>Telepon masuk, layar penuh</b>Muncul walau HP terkunci atau aplikasi tertutup. Nada dering dan getar berulang sampai diangkat, ditolak, atau 45 detik habis. Angkat membuka panggilan di iPop. Tolak langsung menolak tanpa membuka aplikasi. Kalau diangkat di PC, dering di HP berhenti sendiri.</p>
+  </div>
+
+  <div>
+    <div class="phone"><div class="screen">
+      <div class="wall"></div>
+      <div class="shade">
+        <div class="qs"><span>Sel, 20 Okt</span><span>Notifikasi</span></div>
+        <div class="n">
+          <div class="h"><span class="mark"></span><b>iPop</b> · Chat · sekarang</div>
+          <div class="row"><div class="pa" style="background:#e07a5f">RB</div><div><div class="t">RM Bagastyo</div><div class="m">tes notif android samsung</div><div class="m">sudah masuk belum?</div></div></div>
+          <div class="reply">Balas…<i><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg></i></div>
+          <div class="acts"><span>Tandai dibaca</span><span>Buka</span></div>
+        </div>
+        <div class="n">
+          <div class="h"><span class="mark"></span><b>iPop</b> · Mail · 2 mnt</div>
+          <div class="row"><div class="pa" style="background:#0a84ff"><svg class="i" viewBox="0 0 24 24" style="width:18px;height:18px"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></div><div><div class="t">Laporan stok mingguan</div><div class="m">Dari Purchasing · 2 lampiran</div></div></div>
+        </div>
+        <div class="n">
+          <div class="h"><span class="mark"></span><b>iPop</b> · Panggilan · 5 mnt</div>
+          <div class="row"><div class="pa" style="background:#ff3b30"><svg class="i" viewBox="0 0 24 24" style="width:18px;height:18px"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2Z"/></svg></div><div><div class="t">Panggilan tak terjawab</div><div class="m">Jason · ICT</div></div></div>
+          <div class="acts"><span>Telepon balik</span><span>Kirim pesan</span></div>
+        </div>
+      </div>
+    </div></div>
+    <p class="cap"><b><em>2</em>Notifikasi milik aplikasi iPop</b>Ikon dan nama iPop, bukan browser. Chat dikelompokkan per percakapan, bisa dibalas dan ditandai dibaca langsung dari notifikasi. Menekan notifikasi membuka aplikasi iPop tepat di pesan itu. Notifikasi di HP hilang sendiri kalau pesannya sudah dibaca di PC. Setiap jenis (Chat, Mail, Panggilan, Rapat, Tiket, Pengumuman) punya saluran sendiri, jadi suaranya bisa diatur di pengaturan Android.</p>
+  </div>
+
+  <div>
+    <div class="phone"><div class="screen">
+      <div class="sb"><span>09:41</span><span>5G ▮▮▮</span></div>
+      <div class="fr">
+        <div class="logo"><span></span></div>
+        <h2>Supaya tidak ada pesan yang terlewat</h2>
+        <p class="lead">Nyalakan tiga izin ini sekali saja.</p>
+        <div class="perm"><div class="ic" style="background:#ff9f0a"><svg class="i" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg></div><div class="tx"><b>Notifikasi</b><small>Chat, mail, dan panggilan</small></div><span class="st">Aktif ✓</span></div>
+        <div class="perm"><div class="ic" style="background:#34c759"><svg class="i" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2Z"/></svg></div><div class="tx"><b>Panggilan layar penuh</b><small>Telepon tetap muncul saat HP terkunci</small></div><span class="go">Nyalakan</span></div>
+        <div class="perm"><div class="ic" style="background:#5e5ce6"><svg class="i" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg></div><div class="tx"><b>Jangan batasi baterai</b><small>Agar notifikasi tidak telat di Samsung/Xiaomi</small></div><span class="go">Nyalakan</span></div>
+        <div class="perm"><div class="ic" style="background:#8e8e93"><svg class="i" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></svg></div><div class="tx"><b>Mikrofon & kamera</b><small>Ditanya saat pertama kali menelepon</small></div><span class="st" style="color:var(--ink-3)">Nanti</span></div>
+        <div class="cta">Lanjut ke iPop</div>
+        <div class="skip">Bisa diubah kapan saja di Pengaturan</div>
+      </div>
+    </div></div>
+    <p class="cap"><b><em>3</em>Pertama kali dibuka</b>Satu layar, sebelum atau sesudah login. Setiap tombol "Nyalakan" langsung membuka halaman izin yang tepat di Android. Izin yang sudah aktif tercentang. Muncul lagi hanya kalau ada izin penting yang dimatikan.</p>
+  </div>
+
+  <div>
+    <div class="phone"><div class="screen">
+      <div class="sb" style="background:var(--frame);color:#fff"><span>09:52</span><span>5G ▮▮▮</span></div>
+      <div class="appbar"><span class="mark" style="width:22px;height:22px;border-radius:7px"></span>Dashboard</div>
+      <div class="webv"><div class="card"><div class="wl" style="width:40%"></div><div class="wl"></div><div class="wl" style="width:70%"></div></div><div class="card"><div class="wl" style="width:55%"></div><div class="wl"></div></div></div>
+      <div class="tabbar"><span>Chat</span><span>Mail</span><span>Calls</span><span>Calendar</span><span class="on">More</span></div>
+      <div class="scrim"></div>
+      <div class="sheet"><div class="grab"></div>
+        <h3>Versi baru iPop tersedia</h3>
+        <p>Versi 2.1.0 · 3,1 MB · dari ipop.santos.co.id</p>
+        <ul><li>Telepon tetap berdering saat HP terkunci</li><li>Balas chat langsung dari notifikasi</li></ul>
+        <div class="prog"><i></i></div>
+        <div class="btn">Perbarui sekarang</div>
+        <div class="btn pl">Nanti saja</div>
+      </div>
+    </div></div>
+    <p class="cap"><b><em>4</em>Update aplikasi</b>Tampilan halaman ikut update otomatis setiap deploy, tanpa update aplikasi. Bagian native jarang berubah. Kalau ada versi baru, muncul lembar ini, lalu APK terunduh dari server iPop dan Android meminta konfirmasi pasang. Versi lama yang sudah tidak didukung wajib diperbarui (tanpa "Nanti saja").</p>
+  </div>
+
+  <div>
+    <div class="phone"><div class="screen">
+      <div class="sb" style="background:var(--frame);color:#fff"><span>09:53</span><span>5G ▮▮▮</span></div>
+      <div class="appbar">Mail</div>
+      <div class="webv"><div class="card"><div class="wl" style="width:60%"></div><div class="wl"></div></div><div class="card"><div class="wl" style="width:45%"></div><div class="wl"></div></div><div class="card"><div class="wl" style="width:70%"></div><div class="wl"></div></div></div>
+      <div class="pill"><span class="dot"></span>RM Bagastyo · 0:42</div>
+      <div class="tabbar"><span>Chat</span><span class="on">Mail</span><span>Calls</span><span>Calendar</span><span>More</span></div>
+    </div></div>
+    <p class="cap"><b><em>5</em>Saat sedang menelepon</b>Panggilan tetap jalan walau pindah halaman atau aplikasi diminimalkan. Di status bar Android ada notifikasi "Sedang menelepon" dengan tombol Tutup dan Bisukan. Pil hijau membawa kembali ke layar panggilan.</p>
+  </div>
+
+  <div>
+    <div class="phone"><div class="screen">
+      <div class="sb"><span>09:55</span><span>✕</span></div>
+      <div class="off">
+        <div class="ic"><svg class="i" viewBox="0 0 24 24" style="width:30px;height:30px"><path d="M2 2l20 20M8.5 16.5a5 5 0 0 1 7 0M2 8.8a15 15 0 0 1 4.2-2.6M10.7 5.1A15 15 0 0 1 22 8.8M5 12.9a10 10 0 0 1 5.2-2.7M12 20h.01"/></svg></div>
+        <h3>Tidak tersambung ke iPop</h3>
+        <p>Periksa Wi-Fi kantor atau data seluler. iPop akan menyambung lagi otomatis.</p>
+        <div class="btn">Coba lagi</div>
+      </div>
+    </div></div>
+    <p class="cap"><b><em>6</em>Tanpa koneksi</b>Layar milik aplikasi sendiri, bukan halaman error browser. Muncul juga kalau server tidak terjangkau dari luar kantor. Begitu koneksi kembali, halaman terakhir terbuka lagi.</p>
+  </div>
+
+</div>
+</body>
+</html>
