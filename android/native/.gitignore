@@ -13,3 +13,6 @@ qa/
 *.iml
 captures/
 .kotlin/
+
+# App icons are real sources (the repo root ignores *.png for screenshots).
+!app/src/main/res/**/*.png
