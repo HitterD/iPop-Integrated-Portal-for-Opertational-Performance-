@@ -252,6 +252,13 @@ if (push.IsConfigured)
     builder.Services.AddSingleton<IPop.Infrastructure.Notifications.Push.IWebPushTransport, IPop.Infrastructure.Notifications.Push.WebPushTransport>();
 else
     builder.Services.AddSingleton<IPop.Infrastructure.Notifications.Push.IWebPushTransport, IPop.Infrastructure.Notifications.Push.DisabledWebPushTransport>();
+// Native Android app → FCM HTTP v1 (Fcm section: ProjectId, ServiceAccountPath, ApplicationId, ApiKey, SenderId). Missing = off.
+var fcm = IPop.Infrastructure.Notifications.Push.FcmOptions.Bind(builder.Configuration);
+builder.Services.AddSingleton(fcm);
+if (fcm.IsConfigured)
+    builder.Services.AddSingleton<IPop.Infrastructure.Notifications.Push.INativePushTransport, IPop.Infrastructure.Notifications.Push.FcmTransport>();
+else
+    builder.Services.AddSingleton<IPop.Infrastructure.Notifications.Push.INativePushTransport, IPop.Infrastructure.Notifications.Push.DisabledNativePushTransport>();
 builder.Services.AddSingleton<IPop.Infrastructure.Notifications.Push.PushQueue>();
 builder.Services.AddSingleton<IPop.Infrastructure.Notifications.Push.IDesktopToastSink, IPop.Api.Notifications.DesktopToastSink>();
 builder.Services.AddScoped<IPop.Infrastructure.Notifications.Push.PushDispatcher>();

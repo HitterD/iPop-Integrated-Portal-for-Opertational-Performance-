@@ -140,6 +140,9 @@ public partial class CallState : IAsyncDisposable
             .WithAutomaticReconnect()
             .Build();
 
+        _selfRef ??= DotNetObjectReference.Create(this);
+        try { await _js.InvokeVoidAsync("ipopNative.bindCalls", _selfRef); } catch (JSException) { }
+
         _hub.On<CallRoomDto>("callStateChanged", async room =>
         {
             await HandleCallRoomChangedAsync(room);
@@ -347,6 +350,8 @@ public partial class CallState : IAsyncDisposable
             if (_webRtcActiveCallId != room.Id)
             {
                 _webRtcActiveCallId = room.Id;
+                // Native Android app: "Sedang menelepon" notification with hang up / mute (no-op in browsers).
+                try { await _js.InvokeVoidAsync("ipopNative.callStarted", RemotePeer?.Name ?? room.Title ?? "iPop"); } catch (JSException) { }
                 _selfRef ??= DotNetObjectReference.Create(this);
                 WebRtcState = "connecting";
                 await _js.InvokeVoidAsync("ipopAudio.initCall", room.Id, isCaller, _selfRef, _iceServers);
@@ -399,6 +404,7 @@ public partial class CallState : IAsyncDisposable
             {
                 await _js.InvokeVoidAsync("ipopAudio.stopAudioTones");
                 await _js.InvokeVoidAsync("ipopAudio.endCall");
+                await _js.InvokeVoidAsync("ipopNative.callEnded");
             }
             catch (JSException) { }
             LastEndReason = isCaller ? "Call continued on another device" : "Call answered on another device";
@@ -507,6 +513,7 @@ public partial class CallState : IAsyncDisposable
         {
             await _js.InvokeVoidAsync("ipopAudio.endCall");
             if (hadCall) await _js.InvokeVoidAsync("ipopAudio.playEndTone");
+            await _js.InvokeVoidAsync("ipopNative.callEnded");
         }
         catch (JSException) { }
         StateChanged?.Invoke();
@@ -701,6 +708,16 @@ public partial class CallState : IAsyncDisposable
         if (IsGroup) await _js.InvokeVoidAsync("ipopGroupCall.setMuted", newMuted);
         else await _js.InvokeVoidAsync("ipopAudio.setMute", newMuted);
         await SignalAsync(Current.Id, "update", muted: newMuted);
+    }
+
+    /// Native Android app: "Tutup" / "Bisukan" on the ongoing-call notification (js/native-app.js).
+    [JSInvokable]
+    public async Task OnNativeCallAction(string action)
+    {
+        if (Current is null) return;
+        if (action == "hangup") await EndCurrentAsync();
+        else if (action == "mute") await ToggleMuteAudioAsync();
+        StateChanged?.Invoke();
     }
 
     [JSInvokable]

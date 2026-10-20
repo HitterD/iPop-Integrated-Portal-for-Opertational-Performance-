@@ -49,6 +49,62 @@ public static class PushEndpoints
             return Results.Ok(new { id = sub.Id });
         }).RequireAuthorization();
 
+        // ── Native Android app (FCM) ──
+        // Public: the app initialises Firebase with these client values at runtime (no google-services.json in the APK).
+        g.MapGet("/native/config", (FcmOptions f) => Results.Ok(f.IsConfigured
+            ? new NativePushConfigDto(true, f.ProjectId, f.ApplicationId, f.ApiKey, f.SenderId)
+            : new NativePushConfigDto(false, null, null, null, null)));
+
+        // Register (or refresh) this phone's FCM token. Like browsers, a token belongs to whoever signed in last.
+        g.MapPost("/native/devices", async (NativeDeviceRequest req, HttpContext http, IPopDbContext db, FcmOptions f, CancellationToken ct) =>
+        {
+            if (!f.IsConfigured) return Results.Json(new { code = "push_disabled" }, statusCode: 503);
+            if (string.IsNullOrWhiteSpace(req.Token) || req.Token.Length > 900 || req.Token.Any(char.IsWhiteSpace))
+                return Results.BadRequest(new { code = "invalid_token" });
+            var userId = await MyId(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            var endpoint = NativePush.EndpointOf(req.Token);
+            var now = DateTime.UtcNow;
+            var sub = await db.PushSubscriptions.FirstOrDefaultAsync(s => s.Endpoint == endpoint, ct);
+            if (sub is null)
+            {
+                sub = new PushSubscription { Id = Guid.NewGuid(), Endpoint = endpoint, P256dh = "-", Auth = "-", CreatedAt = now };
+                db.PushSubscriptions.Add(sub);
+            }
+            sub.UserId = userId.Value;
+            var model = (req.DeviceName ?? "").Trim();
+            sub.Label = model.Length is > 0 and <= 60 ? $"{NativePush.Label} · {model}" : NativePush.Label;
+            sub.ApiBase = null;
+            sub.LastSeenAt = now;
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { id = sub.Id });
+        }).RequireAuthorization();
+
+        g.MapPost("/native/devices/remove", async (NativeDeviceRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await MyId(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            if (string.IsNullOrWhiteSpace(req.Token)) return Results.NoContent();
+            var endpoint = NativePush.EndpointOf(req.Token);
+            await db.PushSubscriptions.Where(s => s.UserId == userId && s.Endpoint == endpoint).ExecuteDeleteAsync(ct);
+            return Results.NoContent();
+        }).RequireAuthorization();
+
+        // Native app update check: the release script writes AndroidApp:LatestPath (default C:/ipop-ops/android/latest.json)
+        // next to ipop.apk: {"versionCode":2,"versionName":"2.0.0","sizeBytes":0,"url":"/download/ipop.apk","notes":[],"minSupported":2}.
+        app.MapGet("/api/app/android/latest", (IConfiguration cfg) =>
+        {
+            var path = cfg["AndroidApp:LatestPath"] ?? "C:/ipop-ops/android/latest.json";
+            if (!File.Exists(path)) return Results.NotFound();
+            try
+            {
+                var latest = System.Text.Json.JsonSerializer.Deserialize<AndroidLatestDto>(File.ReadAllText(path),
+                    new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+                return latest is { VersionCode: > 0 } ? Results.Ok(latest) : Results.NotFound();
+            }
+            catch (System.Text.Json.JsonException) { return Results.NotFound(); }
+        }).AllowAnonymous();
+
         // Sign-out / turning toasts off in this browser.
         g.MapPost("/subscriptions/remove", async (PushUnsubscribeRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
         {
@@ -78,9 +134,9 @@ public static class PushEndpoints
         }).RequireAuthorization();
 
         // Test toast to every browser of the caller — the "Send test" button in Settings.
-        g.MapPost("/test", async (HttpContext http, IPopDbContext db, PushQueue push, PushOptions o, CancellationToken ct) =>
+        g.MapPost("/test", async (HttpContext http, IPopDbContext db, PushQueue push, PushOptions o, FcmOptions f, CancellationToken ct) =>
         {
-            if (!o.IsConfigured) return Results.Json(new { code = "push_disabled" }, statusCode: 503);
+            if (!o.IsConfigured && !f.IsConfigured) return Results.Json(new { code = "push_disabled" }, statusCode: 503);
             var userId = await MyId(http, db, ct);
             if (userId is null) return Results.Unauthorized();
             // Durable before 202: the returned jobId shows up in /diagnostics as it is delivered.
@@ -145,7 +201,7 @@ public static class PushEndpoints
 
     /// Push services are https endpoints on the public internet (FCM, Mozilla, WNS, Apple).
     internal static bool IsValidEndpoint(string? endpoint) =>
-        !string.IsNullOrWhiteSpace(endpoint) && endpoint.Length <= 1000
+        !string.IsNullOrWhiteSpace(endpoint) && endpoint.Length <= 1000 && !NativePush.IsNative(endpoint)
         && Uri.TryCreate(endpoint, UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttps;
 
     private static string? NormalizeApiBase(string? apiBase) =>
@@ -184,4 +240,7 @@ public static class PushEndpoints
     public sealed record PushPreferencesDto(bool ShowPreview);
     public sealed record PushCallActionRequest(string Token, string Action);
     public sealed record PushTestResultDto(Guid JobId);
+    public sealed record NativePushConfigDto(bool Enabled, string? ProjectId, string? ApplicationId, string? ApiKey, string? SenderId);
+    public sealed record AndroidLatestDto(int VersionCode, string VersionName, long SizeBytes, string Url, string[]? Notes, int MinSupported);
+    public sealed record NativeDeviceRequest(string Token, string? Platform, string? AppVersion, string? DeviceName);
 }

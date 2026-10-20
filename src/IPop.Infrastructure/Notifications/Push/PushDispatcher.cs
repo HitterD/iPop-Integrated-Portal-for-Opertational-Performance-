@@ -32,8 +32,10 @@ public sealed record PushPayload(
 /// user may no longer see (left room, muted, preview off, call already answered). Runs in
 /// <see cref="PushWorker"/>, never on a request.
 public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport, IDataProtectionProvider dataProtection,
-    ILogger<PushDispatcher> log, IDesktopToastSink? desktop = null)
+    ILogger<PushDispatcher> log, IDesktopToastSink? desktop = null, INativePushTransport? native = null)
 {
+    private bool NativeOn => native is { IsConfigured: true };
+    private bool AnyOn => transport.IsConfigured || NativeOn;
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -114,7 +116,7 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
         // iPop Notifier (desktop app): chat messages have no gateway notification, so their toast goes to the app here,
         // with the same mute/block/quiet-hours audience as the browser toast. Independent of Web Push being configured.
         var desktopUsers = await DesktopUsersAsync(job, now, ct);
-        if (!transport.IsConfigured)
+        if (!AnyOn)
         {
             job.LastError = "push-disabled";
             log.LogWarning("Web push is not configured (VAPID); {Kind} job {JobId} produced no Windows toast.", job.Kind, job.Id);
@@ -126,10 +128,15 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
         if (audience is null || audience.Users.Count == 0 || audience.ExpiresAt <= now) return;
         var subs = await db.PushSubscriptions.AsNoTracking().Where(s => audience.Users.Contains(s.UserId))
             .Select(s => new { s.Id, s.UserId, s.Endpoint, s.Label }).ToListAsync(ct);
+        var nativeUsers = subs.Where(s => NativePush.IsNative(s.Endpoint)).Select(s => s.UserId).ToHashSet();
         foreach (var s in subs)
         {
+            if (!Deliverable(s.Endpoint)) continue;
             // The app shows this on the user's Windows PC already; a browser toast there would be the same thing twice.
             if (desktopUsers.Contains(s.UserId) && IsWindowsBrowser(s.Label)) continue;
+            // The native Android app owns this user's phone notifications; the phone browser would duplicate them
+            // and open the browser on tap.
+            if (nativeUsers.Contains(s.UserId) && IsAndroidBrowser(s.Endpoint, s.Label)) continue;
             db.PushDeliveries.Add(NewDelivery(job, s.Id, s.UserId, s.Endpoint, audience.Kind, null, audience.ExpiresAt, now));
         }
     }
@@ -156,6 +163,12 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
     }
 
     internal static bool IsWindowsBrowser(string? label) => label is not null && label.EndsWith("· Windows", StringComparison.Ordinal);
+    /// A browser (Web Push) on an Android phone. The native app's own row is never one, whatever its label says.
+    internal static bool IsAndroidBrowser(string endpoint, string? label) =>
+        !NativePush.IsNative(endpoint) && label is not null && label.EndsWith("· Android", StringComparison.Ordinal);
+
+    /// A device can get this push only if its transport is on (Web Push for browsers, FCM for the native app).
+    private bool Deliverable(string endpoint) => NativePush.IsNative(endpoint) ? NativeOn : transport.IsConfigured;
 
     private async Task ExpandCallAsync(PushJob job, DateTime now, CancellationToken ct)
     {
@@ -187,9 +200,11 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
 
         var users = plan.Select(p => p.UserId).Distinct().ToList();
         var subs = await db.PushSubscriptions.AsNoTracking().Where(s => users.Contains(s.UserId))
-            .Select(s => new { s.Id, s.UserId, s.Endpoint }).ToListAsync(ct);
+            .Select(s => new { s.Id, s.UserId, s.Endpoint, s.Label }).ToListAsync(ct);
+        var nativeUsers = subs.Where(s => NativePush.IsNative(s.Endpoint)).Select(s => s.UserId).ToHashSet();
         foreach (var p in plan)
-        foreach (var s in subs.Where(s => s.UserId == p.UserId))
+        foreach (var s in subs.Where(s => s.UserId == p.UserId && Deliverable(s.Endpoint)
+                     && !(nativeUsers.Contains(s.UserId) && IsAndroidBrowser(s.Endpoint, s.Label))))
             db.PushDeliveries.Add(NewDelivery(job, s.Id, s.UserId, s.Endpoint, p.Kind, p.Key, p.Expires, now));
     }
 
@@ -248,7 +263,11 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
                 };
                 var urgent = job.Kind == "call" || job.Kind == "test" || (audience?.Urgent ?? false);
                 var ttl = row.ExpiresAt - now;
-                var outcome = await transport.SendAsync(sub, JsonSerializer.Serialize(payload, Json), ttl, urgent, TopicOf(payload.Tag), ct);
+                var outcome = NativePush.IsNative(sub.Endpoint)
+                    ? (native is { IsConfigured: true } n
+                        ? await n.SendAsync(sub, payload, ttl, urgent, ct)
+                        : new PushSendOutcome(PushSendResult.Rejected, "native-disabled"))
+                    : await transport.SendAsync(sub, JsonSerializer.Serialize(payload, Json), ttl, urgent, TopicOf(payload.Tag), ct);
                 Apply(row, outcome, now);
                 if (row.Status == Status.Gone) gone.Add(sub.Id);
                 // Final failures used to vanish into debug logs; a toast nobody got must be visible.
@@ -562,6 +581,7 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
     /// Push service family from the endpoint host — diagnostics never expose the endpoint itself.
     public static string ProviderOf(string endpoint)
     {
+        if (NativePush.IsNative(endpoint)) return "fcm-app";
         var host = Uri.TryCreate(endpoint, UriKind.Absolute, out var u) ? u.Host : "";
         return host.EndsWith("googleapis.com") ? "fcm"
             : host.EndsWith("mozilla.com") || host.EndsWith("mozaws.net") ? "mozilla"

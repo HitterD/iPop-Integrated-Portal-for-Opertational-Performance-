@@ -262,6 +262,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
         _accessToken = body.AccessToken;
         MustChangePassword = body.MustChangePassword;
         _keepSignedIn = keepSignedIn;
+        await NativeSessionAsync(body.AccessToken, body.AccessTokenExpiresAt);
         await js.InvokeVoidAsync("localStorage.removeItem", RefreshKey);
         await js.InvokeVoidAsync("sessionStorage.removeItem", RefreshKey);
         await js.InvokeVoidAsync(keepSignedIn ? "localStorage.setItem" : "sessionStorage.setItem", RefreshKey, body.RefreshToken);
@@ -358,6 +359,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
         var body = (await res.Content.ReadFromJsonAsync<RefreshDto>())!;
         _accessToken = body.AccessToken;
         MustChangePassword = body.MustChangePassword;
+        await NativeSessionAsync(body.AccessToken, body.AccessTokenExpiresAt);
         await js.InvokeVoidAsync(_keepSignedIn ? "localStorage.setItem" : "sessionStorage.setItem", RefreshKey, body.RefreshToken);
         return true; // presence is started by TryRestoreAsync, once the refresh gate is released
     }
@@ -506,8 +508,17 @@ public class AuthState(HttpClient http, IJSRuntime js)
         await ClearAsync();
     }
 
+    /// Native Android app (js/native-app.js): hand it the session so it can register for push and
+    /// reply from notifications. A no-op in browsers. Never blocks sign-in.
+    private async Task NativeSessionAsync(string accessToken, DateTime expiresAtUtc)
+    {
+        try { await js.InvokeVoidAsync("ipopNative.session", accessToken, DateTime.SpecifyKind(expiresAtUtc, DateTimeKind.Utc).ToString("O")); }
+        catch { /* old cached script or prerender: the native app retries on its next start */ }
+    }
+
     private async Task ClearAsync()
     {
+        try { await js.InvokeVoidAsync("ipopNative.signedOut"); } catch { }
         // Everything synchronous first: an in-flight request on the old session can end it
         // (SessionEnded → full reload) at any await below, and the page caches and per-user
         // state must already be gone by then.
