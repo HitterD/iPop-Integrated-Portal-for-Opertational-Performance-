@@ -1,10 +1,10 @@
-# iPop native Android app (2.0.0)
+# iPop native Android app (2.0.1)
 
 Native Kotlin shell that replaces the TWA. Kotlin owns notifications, calls, ringtone, CA trust and
 updates; every page is the existing Blazor app in an in-app WebView from `https://ipop.santos.co.id`.
 Visual spec: `docs/mockups/android-native-app.html` (frames 1–6).
 
-Package `id.co.santos.ipop`, versionCode 2, signed with the TWA key, so it installs over the TWA.
+Package `id.co.santos.ipop`, versionCode 3 (2.0.1), signed with the TWA key, so it installs over the TWA.
 The launcher component keeps the TWA's name (`.LauncherActivity`, an alias), so existing home-screen
 icons and the pinned Chat/Mail/Calendar shortcuts keep working.
 
@@ -40,6 +40,8 @@ All on `https://ipop.santos.co.id`.
 | POST | `/api/push/call-action` (on `apiBase` from the push if https, else the host above) | none (signed `actionToken`) | `{"token":actionToken,"action":"decline"}` for Tolak |
 | POST | `/api/chat/rooms/{roomId}/messages` | Bearer (stored session) | notification "Balas": `{"content":text,"idempotencyKey":uuid}` |
 | POST | `/api/chat/rooms/{roomId}/read` | Bearer (stored session) | notification "Tandai dibaca", body `{}` |
+| POST | `/api/push/native/receipt` | none (server-issued `deliveryId` is the capability) | delivery receipt per push: `{"deliveryId","kind","outcome","detail","appVersion","model","sdk"}`; 5 s timeout, queued (max 50) on network failure, 4xx dropped |
+| POST | `/api/push/test` | Bearer (page token) | `window.iPopAndroid.sendTestNotification()` |
 | GET | `/api/app/android/latest` | none | `{"versionCode","versionName","sizeBytes","url","notes":[],"minSupported"}`; 404 = silent; max once per 6 h |
 | GET | `url` from the above (default `/download/ipop.apk`) | none | APK download into app cache, then the package installer |
 
@@ -71,6 +73,7 @@ Exposed only to pages on `https://ipop.santos.co.id` (every method re-checks the
 | `getPermissionState()` | JSON string | `{notifications, fullscreen, battery, mic, camera}` → `granted` \| `denied` \| `default` |
 | `setBadge(n)` | – | no-op (launcher badges follow notifications) |
 | `callStarted(name)` / `callEnded()` | – | "Sedang menelepon" notification with Tutup / Bisukan (mic foreground service when mic is granted, else a plain ongoing notification) |
+| `sendTestNotification()` | – | POST /api/push/test with the page token; toast + `ipop-native` event `{action:'test', status}` |
 | `saveBase64(name, mime, b64)` | – | internal: used by the injected download shim |
 
 Tutup / Bisukan arrive in the page as
@@ -108,6 +111,19 @@ Navigation from a notification: if the page is loaded, native calls `Blazor.navi
   once per process. **Offline:** native screen on main-frame errors or no network; auto-retries when a
   network comes back. **Update:** bottom sheet; no "Nanti saja" when `versionCode < minSupported`.
 
+## Delivery receipts (2.0.1)
+
+Every push is shown first, then reported. Outcomes: `shown` (notify() ok and present in
+getActiveNotifications), `blocked-permission`, `blocked-channel`, `not-active-after-notify`,
+`security-exception`, `call-fullscreen-denied` (34+, heads-up only), `call-activity-started` (sent by the call
+screen), `closed`, `error`. `detail` carries channel id/importance/sound, notification priority/category/
+shortcut, areNotificationsEnabled, POST_NOTIFICATIONS, canUseFullScreenIntent, DND filter,
+battery-optimisation exemption, isBackgroundRestricted, standby bucket, screen interactive, coldStart
+(first push within 10 s of process start) and the FCM priority. Logcat tag `iPopReceipt`.
+
+Channels moved to `*_v2` ids in 2.0.1 (old ids deleted) so settings reach existing installs.
+Chat notifications carry a long-lived conversation shortcut (`conv:{roomId}`) + LocusId.
+
 ## Debug QA (debug builds only, `src/debug`)
 
 ```sh
@@ -121,6 +137,7 @@ $ADB shell am broadcast -a id.co.santos.ipop.debug.PUSH -p id.co.santos.ipop --e
 $ADB shell am broadcast -a id.co.santos.ipop.debug.PUSH -p id.co.santos.ipop --es kind chat \
   --es title "'RM Bagastyo'" --es sender "'RM Bagastyo'" --es body "'tes'" --es tag chat:r1 \
   --es roomId 00000000-0000-0000-0000-0000000000a1 --es url /chat/00000000-0000-0000-0000-0000000000a1
+# any fake push accepts --es deliveryId <32 hex> to exercise the receipt POST
 # check the WebView SSL rule against the live certificate (logcat -s iPop)
 $ADB shell am broadcast -a id.co.santos.ipop.debug.PUSH -p id.co.santos.ipop --es kind ssltest
 # preview the update sheet (optionally forced)

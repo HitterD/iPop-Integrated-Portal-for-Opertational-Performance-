@@ -101,7 +101,10 @@ object Perms {
         if (Build.VERSION.SDK_INT < 30) return false
         return try {
             val am = c.getSystemService(android.app.ActivityManager::class.java)
-            val last = am.getHistoricalProcessExitReasons(c.packageName, 0, 1).firstOrNull() ?: return false
+            // Newest exit of the app's own main process; the WebView renderer (isolated uid, other process
+            // name) also leaves records here and must be ignored.
+            val last = am.getHistoricalProcessExitReasons(c.packageName, 0, 10)
+                .firstOrNull { it.processName == c.packageName } ?: return false
             val p = Ipop.prefs(c)
             if (p.getLong("forcestop_seen", 0) >= last.timestamp) return false
             // Remember every exit we have looked at, so an older force stop is not shown later.
