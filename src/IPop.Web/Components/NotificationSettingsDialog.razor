@@ -728,6 +728,10 @@ else if (State.IsOpen)
                                     <div class="setting-info">
                                         <div class="setting-name">@attempt.Kind · @attempt.Status</div>
                                         <div class="setting-hint">@attempt.Attempts attempt(s) · @attempt.CreatedAt.ToLocalTime().ToString("HH:mm:ss") @attempt.Code</div>
+                                        @if (attempt.DeviceOutcome is { } outcome)
+                                        {
+                                            <div class="setting-hint">HP: @outcome@(attempt.DeviceReportedAt is { } at ? $" · {at.ToLocalTime():HH:mm:ss}" : "")@(attempt.DeviceDetail is { Length: > 0 } dd ? $" · {dd}" : "")</div>
+                                        }
                                     </div>
                                 </div>
                             }
@@ -1135,7 +1139,8 @@ else if (State.IsOpen)
     private sealed record PushPreferencesDto(bool ShowPreview);
     private PushDiagnosticsDto? pushDiagnostics;
     private sealed record PushDiagnosticsDto(bool Enabled, List<PushAttemptDto> Recent);
-    private sealed record PushAttemptDto(Guid DeliveryId, Guid JobId, string Kind, Guid DeviceId, string Status, int Attempts, DateTime CreatedAt, DateTime? AcceptedAt, string? Code);
+    private sealed record PushAttemptDto(Guid DeliveryId, Guid JobId, string Kind, Guid DeviceId, string Status, int Attempts, DateTime CreatedAt, DateTime? AcceptedAt, string? Code,
+        string? DeviceOutcome = null, DateTime? DeviceReportedAt = null, string? DeviceDetail = null);
 
     internal async Task CheckPushHealth()
     {

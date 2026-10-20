@@ -80,6 +80,17 @@ public static class PushEndpoints
             return Results.Ok(new { id = sub.Id });
         }).RequireAuthorization();
 
+        // The native app reports what the phone did with a push (shown, blocked-channel, ...). No auth: the app may be
+        // woken with no session. The deliveryId is the capability: only ids issued to a native device in the last
+        // 24 h are accepted, each once. Values are length-capped and never shown to anyone but that device's owner.
+        g.MapPost("/native/receipt", async (NativeReceiptRequest req, IPopDbContext db, CancellationToken ct) =>
+            await RecordReceiptAsync(db, req, DateTime.UtcNow, ct) switch
+            {
+                ReceiptResult.Bad => Results.BadRequest(),
+                ReceiptResult.Unknown => Results.NotFound(),
+                _ => Results.NoContent(),
+            }).AllowAnonymous().RequireRateLimiting("push-action");
+
         g.MapPost("/native/devices/remove", async (NativeDeviceRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
         {
             var userId = await MyId(http, db, ct);
@@ -204,6 +215,42 @@ public static class PushEndpoints
         !string.IsNullOrWhiteSpace(endpoint) && endpoint.Length <= 1000 && !NativePush.IsNative(endpoint)
         && Uri.TryCreate(endpoint, UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttps;
 
+    internal enum ReceiptResult { Recorded, AlreadyReported, Bad, Unknown }
+
+    /// The phone's own report for one native delivery. Only ids issued to a native device in the last 24 h,
+    /// first report wins (a replay cannot overwrite it).
+    internal static async Task<ReceiptResult> RecordReceiptAsync(IPopDbContext db, NativeReceiptRequest req, DateTime now, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(req.DeliveryId) || !Guid.TryParse(req.DeliveryId, out var id)) return ReceiptResult.Bad;
+        var outcome = Clean(req.Outcome, 40);
+        if (outcome is null) return ReceiptResult.Bad;
+        var since = now.AddHours(-24);
+        var row = await db.PushDeliveries.FirstOrDefaultAsync(d => d.Id == id && d.Provider == "fcm-app" && d.CreatedAt >= since, ct);
+        if (row is null) return ReceiptResult.Unknown;
+        if (row.DeviceReportedAt is not null) return ReceiptResult.AlreadyReported;
+        var detail = string.Join(" ", new[]
+        {
+            Clean(req.AppVersion, 20) is { } v ? $"app={v}" : null,
+            Clean(req.Model, 40) is { } m ? $"model={m}" : null,
+            req.Sdk is > 0 and < 100 ? $"sdk={req.Sdk}" : null,
+            Clean(req.Detail, 400),
+        }.Where(x => x is not null));
+        row.DeviceOutcome = outcome;
+        row.DeviceDetail = detail.Length > 500 ? detail[..500] : detail;
+        row.DeviceReportedAt = now;
+        await db.SaveChangesAsync(ct);
+        return ReceiptResult.Recorded;
+    }
+
+    /// Printable ASCII only, trimmed and capped: device reports go into diagnostics, never into HTML or logs raw.
+    private static string? Clean(string? s, int max)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        var t = new string(s.Trim().Where(ch => ch is >= ' ' and <= '~').ToArray());
+        if (t.Length == 0) return null;
+        return t.Length > max ? t[..max] : t;
+    }
+
     private static string? NormalizeApiBase(string? apiBase) =>
         Uri.TryCreate(apiBase, UriKind.Absolute, out var u) && (u.Scheme == Uri.UriSchemeHttps || u.Scheme == Uri.UriSchemeHttp)
             ? u.GetLeftPart(UriPartial.Authority)
@@ -242,5 +289,6 @@ public static class PushEndpoints
     public sealed record PushTestResultDto(Guid JobId);
     public sealed record NativePushConfigDto(bool Enabled, string? ProjectId, string? ApplicationId, string? ApiKey, string? SenderId);
     public sealed record AndroidLatestDto(int VersionCode, string VersionName, long SizeBytes, string Url, string[]? Notes, int MinSupported);
+    public sealed record NativeReceiptRequest(string? DeliveryId, string? Kind, string? Outcome, string? Detail, string? AppVersion, string? Model, int? Sdk);
     public sealed record NativeDeviceRequest(string Token, string? Platform, string? AppVersion, string? DeviceName);
 }

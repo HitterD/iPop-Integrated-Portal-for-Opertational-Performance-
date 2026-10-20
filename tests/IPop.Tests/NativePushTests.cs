@@ -258,3 +258,69 @@ public class NativePushTests
         }
     }
 }
+
+/// The native app's delivery receipt (POST /api/push/native/receipt).
+public class NativeReceiptTests
+{
+    private static Guid Delivery(TestDb t, string provider, DateTime created)
+    {
+        var u = t.AddUser("R" + Guid.NewGuid().ToString("N")[..6]);
+        var job = new PushJob { Id = Guid.NewGuid(), Kind = "chat", CreatedAt = created, NextAttemptAt = created };
+        var d = new PushDelivery
+        {
+            Id = Guid.NewGuid(), JobId = job.Id, SubscriptionId = Guid.NewGuid(), UserId = u.Id, Kind = "chat", Provider = provider,
+            Status = "accepted", NextAttemptAt = created, ExpiresAt = created.AddHours(12), CreatedAt = created, UpdatedAt = created,
+        };
+        t.Db.PushJobs.Add(job); t.Db.PushDeliveries.Add(d); t.Db.SaveChanges();
+        return d.Id;
+    }
+
+    private static IPop.Api.Endpoints.PushEndpoints.NativeReceiptRequest Req(Guid id, string outcome = "shown", string? detail = "imp=4") =>
+        new(id.ToString("N"), "chat", outcome, detail, "2.0.1", "TC22", 34);
+
+    [Fact]
+    public async Task First_report_is_recorded_and_a_replay_cannot_overwrite_it()
+    {
+        using var t = new TestDb();
+        var now = DateTime.UtcNow;
+        var id = Delivery(t, "fcm-app", now.AddMinutes(-1));
+        Assert.Equal(IPop.Api.Endpoints.PushEndpoints.ReceiptResult.Recorded,
+            await IPop.Api.Endpoints.PushEndpoints.RecordReceiptAsync(t.Verify(), Req(id, "blocked-channel"), now, default));
+        Assert.Equal(IPop.Api.Endpoints.PushEndpoints.ReceiptResult.AlreadyReported,
+            await IPop.Api.Endpoints.PushEndpoints.RecordReceiptAsync(t.Verify(), Req(id, "shown"), now, default));
+        var row = t.Verify().PushDeliveries.Single(d => d.Id == id);
+        Assert.Equal("blocked-channel", row.DeviceOutcome);
+        Assert.Equal("app=2.0.1 model=TC22 sdk=34 imp=4", row.DeviceDetail);
+    }
+
+    [Fact]
+    public async Task Browser_deliveries_old_or_unknown_ids_and_junk_are_refused()
+    {
+        using var t = new TestDb();
+        var now = DateTime.UtcNow;
+        var browser = Delivery(t, "fcm", now);
+        var old = Delivery(t, "fcm-app", now.AddHours(-25));
+        Assert.Equal(IPop.Api.Endpoints.PushEndpoints.ReceiptResult.Unknown, await IPop.Api.Endpoints.PushEndpoints.RecordReceiptAsync(t.Verify(), Req(browser), now, default));
+        Assert.Equal(IPop.Api.Endpoints.PushEndpoints.ReceiptResult.Unknown, await IPop.Api.Endpoints.PushEndpoints.RecordReceiptAsync(t.Verify(), Req(old), now, default));
+        Assert.Equal(IPop.Api.Endpoints.PushEndpoints.ReceiptResult.Unknown, await IPop.Api.Endpoints.PushEndpoints.RecordReceiptAsync(t.Verify(), Req(Guid.NewGuid()), now, default));
+        Assert.Equal(IPop.Api.Endpoints.PushEndpoints.ReceiptResult.Bad,
+            await IPop.Api.Endpoints.PushEndpoints.RecordReceiptAsync(t.Verify(), new("not-a-guid", "chat", "shown", null, null, null, null), now, default));
+        Assert.Equal(IPop.Api.Endpoints.PushEndpoints.ReceiptResult.Bad,
+            await IPop.Api.Endpoints.PushEndpoints.RecordReceiptAsync(t.Verify(), Req(Guid.NewGuid(), "  "), now, default));
+    }
+
+    [Fact]
+    public async Task Device_text_is_printable_ascii_and_capped()
+    {
+        using var t = new TestDb();
+        var now = DateTime.UtcNow;
+        var id = Delivery(t, "fcm-app", now);
+        await IPop.Api.Endpoints.PushEndpoints.RecordReceiptAsync(t.Verify(),
+            new(id.ToString(), "chat", "shown<script>\u0007", new string('x', 900) + "\n", "2.0.1", "TC22\u202e", 34), now, default);
+        var row = t.Verify().PushDeliveries.Single(d => d.Id == id);
+        Assert.Equal("shown<script>", row.DeviceOutcome);
+        Assert.True(row.DeviceDetail!.Length <= 500);
+        Assert.DoesNotContain('\u202e', row.DeviceDetail);
+        Assert.DoesNotContain('\n', row.DeviceDetail);
+    }
+}

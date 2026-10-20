@@ -60,4 +60,10 @@ public class PushDelivery
     public DateTime? AcceptedAt { get; set; }
     /// Sanitized result code (rate-limited, server-error, network, timeout, gone, auth-401, ...).
     public string? Code { get; set; }
+    /// Native app only: what the phone did with it (shown, blocked-channel, call-activity-started, ...).
+    /// Unlike "accepted" (Google took it), this is the device's own report.
+    public string? DeviceOutcome { get; set; }
+    public DateTime? DeviceReportedAt { get; set; }
+    /// Phone state at delivery: channel importance, battery/standby restrictions, DND, cold start. No user content.
+    public string? DeviceDetail { get; set; }
 }

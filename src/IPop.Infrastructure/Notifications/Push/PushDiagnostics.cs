@@ -7,8 +7,9 @@ namespace IPop.Infrastructure.Notifications.Push;
 /// health: ok | retrying | failing | auth-error | unknown (no attempt in the retention window).
 public sealed record PushDeviceHealthDto(Guid Id, string Label, string Provider, bool IsCurrent, DateTime CreatedAt,
     DateTime LastSeenAt, DateTime? LastAcceptedAt, DateTime? LastFailureAt, string? LastFailureCode, string Health, int Pending);
+/// DeviceOutcome/DeviceReportedAt: native app only, what the phone itself reported (shown, blocked-channel, ...).
 public sealed record PushAttemptDto(Guid DeliveryId, Guid JobId, string Kind, Guid DeviceId, string Status, int Attempts,
-    DateTime CreatedAt, DateTime? AcceptedAt, string? Code);
+    DateTime CreatedAt, DateTime? AcceptedAt, string? Code, string? DeviceOutcome = null, DateTime? DeviceReportedAt = null, string? DeviceDetail = null);
 public sealed record PushDiagnosticsDto(bool Enabled, IReadOnlyList<PushDeviceHealthDto> Devices, IReadOnlyList<PushAttemptDto> Recent);
 public sealed record PushAdminDiagnosticsDto(bool Enabled, int Subscriptions, IReadOnlyDictionary<string, int> ByProvider,
     int PendingJobs, int PendingDeliveries, int? OldestPendingSeconds,
@@ -29,7 +30,8 @@ public static class PushDiagnostics
         var subIds = subs.Select(s => s.Id).ToList();
         var mine = db.PushDeliveries.AsNoTracking().Where(d => d.UserId == userId && d.CreatedAt >= since);
         var recent = await mine.OrderByDescending(d => d.CreatedAt).Take(20)
-            .Select(d => new PushAttemptDto(d.Id, d.JobId, d.Kind, d.SubscriptionId, d.Status, d.Attempts, d.CreatedAt, d.AcceptedAt, d.Code))
+            .Select(d => new PushAttemptDto(d.Id, d.JobId, d.Kind, d.SubscriptionId, d.Status, d.Attempts, d.CreatedAt, d.AcceptedAt, d.Code,
+                d.DeviceOutcome, d.DeviceReportedAt, d.DeviceDetail))
             .ToListAsync(ct);
         var perDevice = await mine.Where(d => subIds.Contains(d.SubscriptionId))
             .GroupBy(d => d.SubscriptionId)

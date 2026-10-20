@@ -973,6 +973,8 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Provider).HasMaxLength(16);
             e.Property(x => x.Status).HasMaxLength(16);
             e.Property(x => x.Code).HasMaxLength(32);
+            e.Property(x => x.DeviceOutcome).HasMaxLength(40);
+            e.Property(x => x.DeviceDetail).HasMaxLength(500);
             e.HasOne(x => x.Job).WithMany(j => j.Deliveries).HasForeignKey(x => x.JobId).OnDelete(DeleteBehavior.Cascade);
         });
 
