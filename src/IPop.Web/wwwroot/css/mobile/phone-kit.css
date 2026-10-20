@@ -292,3 +292,9 @@
   /* Kapal Api lockup: keep its 330×96 ratio (brand.css sizes every .boot img 64×64) and centre it. */
   #app > .boot .ph-splash-foot img { display: block; margin: 0 auto; height: 44px; width: auto; max-width: 70vw; object-fit: contain; animation: none; }
 }
+
+/* Notification card: phone still needs the company root CA (service worker refused). */
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .ph-npc .ph-npc-warn { margin-top: -4px; font-size: 13px; color: #b25000; }
+  .ph-npc .ph-npc-warn a { color: inherit; font-weight: 600; text-decoration: underline; }
+}

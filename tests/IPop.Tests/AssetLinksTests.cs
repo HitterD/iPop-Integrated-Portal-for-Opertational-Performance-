@@ -89,6 +89,23 @@ public class AssetLinksTests
     }
 
     [Fact]
+    public async Task Company_root_ca_is_served_for_phones_as_a_ca_certificate()
+    {
+        var root = Directory.CreateTempSubdirectory("ipop-wh-").FullName;
+        var (app, http) = await Host(root);
+        await using var _ = app;
+        var res = await http.GetAsync("/download/sja-root-ca.crt");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        Assert.Equal("application/x-x509-ca-cert", res.Content.Headers.ContentType!.MediaType);
+        var pem = await res.Content.ReadAsStringAsync();
+        Assert.StartsWith("-----BEGIN CERTIFICATE-----", pem);
+        Assert.DoesNotContain("PRIVATE KEY", pem);
+        using var cert = System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPem(pem);
+        Assert.Contains("CN=SJA-ROOT-CA", cert.Subject);
+        Assert.False(cert.HasPrivateKey);
+    }
+
+    [Fact]
     public async Task Missing_apk_file_is_404()
     {
         var root = Directory.CreateTempSubdirectory("ipop-wh-").FullName;

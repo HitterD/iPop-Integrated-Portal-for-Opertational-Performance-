@@ -311,7 +311,7 @@
                OnProfile="() => { CloseMore(); OpenAccount(AccountSheet.Pane.Profile); }" />
     <EditTabsSheet Open="more.EditTabsOpen" OpenChanged="more.SetEditTabs" />
     <Onboarding Suspended="more.EditTabsOpen" OnEditTabs="OpenEditTabs" OnNotifications="OpenOnboardingNotifications" OnCompleted="() => onboardingComplete = true" />
-    <NotificationCard Visible="NotifCardVisible" Secure="Push.Secure" OnTurnOn="NotifCardTurnOn" OnNotNow="NotifCardNotNow" />
+    <NotificationCard Visible="NotifCardVisible" Secure="Push.Secure" NeedsCertificate="@(Push.LastError?.Code == "sw_failed")" OnTurnOn="NotifCardTurnOn" OnNotNow="NotifCardNotNow" />
 </div>
 
 @code {
@@ -390,6 +390,9 @@
     {
         await NotifCard.AnswerAsync("enabled");
         await EnableDesktopAlerts();
+        // Android without the company root CA: the https service worker is refused, so push can
+        // never start. Show the one-time certificate steps instead of failing silently.
+        if (Push.LastError?.Code == "sw_failed") Nav.NavigateTo("/app");
     }
 
     private async Task NotifCardNotNow()

@@ -17,4 +17,8 @@
     <ProjectReference Include="..\IPop.Web\IPop.Web.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Public root CA certificate served at /download/sja-root-ca.crt for phones (no private key). -->
+    <None Include="certs\sja-root-ca.crt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

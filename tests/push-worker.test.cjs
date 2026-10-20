@@ -24,6 +24,9 @@ async function push(d) { let task; events.push({data:{json:()=>d},waitUntil(p){t
   assert.equal(shown.at(-1).options.silent,true);assert.equal(shown.at(-1).options.renotify,false);
   now += 30000;await push({kind:'chat',tag:'chat:a',title:'A'});assert.equal(shown.at(-1).options.silent,false);
   windows=[];await push({kind:'call',tag:'call:a',title:'Call',requireInteraction:true});assert.equal(shown.at(-1).options.renotify,true);assert.equal(shown.at(-1).options.silent,false);
+  // Phones: a call rings like a call (long repeating vibration), a chat buzzes briefly.
+  assert.ok(Array.from(shown.at(-1).options.vibrate||[]).length>=6,'call toast vibrates like a ring');
+  now += 60000;windows=[];notifications=[];await push({kind:'chat',tag:'chat:v',title:'V'});assert.deepEqual(Array.from(shown.at(-1).options.vibrate),[200,100,200]);
   windows=[{focused:true,visibilityState:'visible'}];await push({kind:'test',title:'Test'});assert.equal(shown.at(-1).title,'Test');
   let repaired=false,task;windows=[{postMessage(m){repaired=m.type==='ipop-push-repair';}}];events.pushsubscriptionchange({waitUntil(p){task=p;}});await task;assert.ok(repaired);
   notifications=[];

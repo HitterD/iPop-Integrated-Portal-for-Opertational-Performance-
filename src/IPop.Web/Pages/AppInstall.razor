@@ -52,6 +52,20 @@
             @if (os == "and")
             {
                 <div class="ph-pane">
+                    <div class="ph-cert">
+                        <span class="ph-cert-n">1</span>
+                        <span class="ph-cert-m">
+                            <b>First: install the company certificate</b>
+                            <small>Without it Android blocks iPop's notifications and call alerts. Do this once per phone.</small>
+                            <a class="ph-btn ph-cert-dl" href="/download/sja-root-ca.crt" download="sja-root-ca.crt">Download certificate</a>
+                            <ol>
+                                <li>Open <b>Settings</b> › <b>Security &amp; privacy</b> › <b>More security settings</b> › <b>Encryption &amp; credentials</b>.</li>
+                                <li>Tap <b>Install a certificate</b> › <b>CA certificate</b> › <b>Install anyway</b>.</li>
+                                <li>Choose <b>sja-root-ca.crt</b> from Downloads. Your phone may ask for its screen lock.</li>
+                            </ol>
+                            <small>Samsung: Settings › Security and privacy › More security settings › Install from device storage › CA certificate.</small>
+                        </span>
+                    </div>
                     @if (apk == true)
                     {
                         <a class="ph-dl" href="/download/ipop.apk" download="ipop.apk">

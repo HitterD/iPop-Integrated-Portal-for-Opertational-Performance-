@@ -15,6 +15,10 @@
         @if (Secure)
         {
             <p>Only new messages, mail addressed to you and incoming calls. Change it anytime in Settings.</p>
+            @if (NeedsCertificate)
+            {
+                <p class="ph-npc-warn">This phone first needs the company certificate. <a href="/app">Open the install steps</a>.</p>
+            }
             <button type="button" class="ph-btn" @onclick="OnTurnOn">Turn on</button>
             <button type="button" class="ph-btn pl" @onclick="OnNotNow">Not now</button>
         }
@@ -32,6 +36,8 @@
     /// Secure context (https / localhost): notifications are possible at all.
     [Parameter] public bool Secure { get; set; }
     [Parameter] public EventCallback OnTurnOn { get; set; }
+    /// The service worker could not register (on phones: the company root CA is not trusted yet).
+    [Parameter] public bool NeedsCertificate { get; set; }
     [Parameter] public EventCallback OnNotNow { get; set; }
 
     /// Phone only; once per account; only while the browser has not decided (or cannot ask at all).

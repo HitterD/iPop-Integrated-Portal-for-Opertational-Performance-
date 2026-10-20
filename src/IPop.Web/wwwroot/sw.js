@@ -10,6 +10,7 @@
 const ICON = "img/brand/icon-192.png";
 const PUSH_STATE = "ipop-push-state-v1";
 const CHAT_ALERT_COOLDOWN = 30000;
+const CALL_VIBRATE = [800, 400, 800, 400, 800, 1200, 800, 400, 800, 400, 800];
 
 async function pushState(key, value) {
   const cache = await caches.open(PUSH_STATE);
@@ -61,7 +62,7 @@ self.addEventListener("message", e => e.waitUntil((async () => {
 
 // ───────────────────────── App-shell cache ─────────────────────────
 // Bump SW_VERSION on every deploy that changes caching; activate deletes older ipop-shell-/ipop-fw- caches.
-const SW_VERSION = "w2-20261019sso";
+const SW_VERSION = "w2-20261020push";
 const SHELL = "ipop-shell-" + SW_VERSION;
 const FW = "ipop-fw-" + SW_VERSION;
 let NAV_TIMEOUT_MS = 4000;
@@ -260,6 +261,12 @@ async function onPush(e) {
   if (d.kind === "call") {
     options.actions = [{ action: "jawab", title: "Answer" }, { action: "tolak", title: "Decline" }];
     options.renotify = true;
+    // Phones ignore requireInteraction and play the toast sound once. A long ring-like
+    // vibration makes an incoming call noticeable in a pocket (Android; ignored elsewhere).
+    options.vibrate = CALL_VIBRATE;
+    options.silent = false;
+  } else if (!options.silent) {
+    options.vibrate = [200, 100, 200];
   }
   try {
     await self.registration.showNotification(d.title || "iPop", options);

@@ -78,6 +78,17 @@ public static class HostPipeline
             return Results.File(Path.GetFullPath(apk), "application/vnd.android.package-archive", "ipop.apk", enableRangeProcessing: true);
         });
 
+        // Company root CA (SJA-ROOT-CA, public certificate only). Domain PCs trust it through GPO, but
+        // phones do not: without it Android refuses the https site's service worker, so the app gets
+        // no push notifications at all. /app links here with install steps. Served over http too.
+        app.MapMethods("/download/sja-root-ca.crt", ["GET", "HEAD"], (HttpContext ctx) =>
+        {
+            var crt = Path.Combine(AppContext.BaseDirectory, "certs", "sja-root-ca.crt");
+            if (!File.Exists(crt)) return Results.NotFound();
+            ctx.Response.Headers.CacheControl = "no-cache";
+            return Results.File(crt, "application/x-x509-ca-cert", "sja-root-ca.crt");
+        });
+
         // iPop Notifier (Windows): installer + Velopack update feed (releases.win.json, *.nupkg) from one folder.
         // Only plain file names from that folder; nothing outside it, no listing.
         app.MapMethods("/download/notifier/{file}", ["GET", "HEAD"], (string file, HttpContext ctx) =>

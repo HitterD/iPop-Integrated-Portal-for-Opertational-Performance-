@@ -85,6 +85,39 @@
     function stopLoop() {
         loopGen++;
         stopSources();
+        stopFallback();
+    }
+
+    // Phones suspend the WebAudio context when the app goes to the background and only resume
+    // it after a tap, so a ring that arrives then would be silent. A plain <audio> element is
+    // allowed to play once the page has had any user gesture, so it backs up the call tones.
+    let fallback = null;
+    function stopFallback() {
+        if (!fallback) return;
+        try { fallback.pause(); fallback.removeAttribute('src'); fallback.load(); } catch { }
+        fallback = null;
+    }
+    function playFallback(name, loop) {
+        stopFallback();
+        try {
+            const a = new Audio(`sounds/${name}.mp3`);
+            a.loop = !!loop;
+            a.volume = Math.min(1, Math.max(0, prefs().volume / 100));
+            fallback = a;
+            const p = a.play();
+            if (p && p.catch) p.catch(() => { if (fallback === a) fallback = null; });
+        } catch { fallback = null; }
+    }
+    // Call tones must be heard: use WebAudio when it is running, the <audio> element otherwise.
+    async function loopCallTone(name) {
+        const gen = loopGen;
+        const c = audio();
+        if (c && c.state !== 'running') {
+            try { await Promise.race([c.resume(), new Promise(r => setTimeout(r, 300))]); } catch { }
+        }
+        if (gen !== loopGen) return; // stopped while resuming
+        if (c && c.state === 'running') play(name, { loop: true, gen });
+        else playFallback(name, true);
     }
 
     // Browsers keep audio locked until the first click or key press on the page; unlock early so a
@@ -95,6 +128,9 @@
         removeEventListener('pointerdown', unlock, true);
         removeEventListener('keydown', unlock, true);
     };
+    if (typeof document !== 'undefined' && document.addEventListener) document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && ctx && ctx.state === 'suspended') ctx.resume().catch(() => { });
+    });
     addEventListener('pointerdown', unlock, true);
     addEventListener('keydown', unlock, true);
 
@@ -114,7 +150,7 @@
         /// Settings preview: plays at the volume on the slider, not the saved one.
         preview: (name, volume) => play(name, { volume }),
         /// Repeating call tone (ringtone / ringback); the files carry their own silence gap.
-        loop(name) { stopLoop(); play(name, { loop: true, gen: loopGen }); },
+        loop(name) { stopLoop(); loopCallTone(name); },
         stopLoop,
         getPrefs() {
             const p = prefs();

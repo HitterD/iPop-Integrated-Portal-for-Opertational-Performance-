@@ -526,7 +526,7 @@ public sealed record PushError(string Code, string Message)
         ["insecure"] = "Windows notifications need the secure (https) iPop address.",
         ["permission_denied"] = "Notifications are blocked for iPop in this browser's site settings.",
         ["server_disabled"] = "Push notifications are not configured on the server.",
-        ["sw_failed"] = "The iPop background worker could not be registered.",
+        ["sw_failed"] = "This phone does not trust the company certificate yet, so notifications cannot start. Install it from ipop.santos.co.id/app (Android: step 1), then reopen iPop.",
         ["subscribe_abort"] = "The browser's push service refused the registration (AbortError). Check that background apps and Google services are allowed, then try again.",
         ["subscribe_not_allowed"] = "The browser did not allow push registration.",
         ["subscribe_invalid_state"] = "The background worker was not ready; it will retry.",
