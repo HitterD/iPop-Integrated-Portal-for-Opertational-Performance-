@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">iPop</string>
 
@@ -11,8 +11,8 @@
     <string name="ch_system">Sistem</string>
     <string name="ch_ongoing">Panggilan berlangsung</string>
 
-    <string name="call_sub">iPop · Panggilan suara</string>
-    <string name="call_calling">memanggil…</string>
+    <string name="call_sub">iPop Â· Panggilan suara</string>
+    <string name="call_calling">memanggilâ€¦</string>
     <string name="call_answer">Angkat</string>
     <string name="call_decline">Tolak</string>
     <string name="call_message">Pesan</string>
@@ -21,18 +21,18 @@
     <string name="remind_title">Telepon balik %1$s</string>
     <string name="remind_body">Anda meminta diingatkan 5 menit lalu.</string>
     <string name="ongoing_title">Sedang menelepon</string>
-    <string name="ongoing_body">%1$s · ketuk untuk kembali</string>
+    <string name="ongoing_body">%1$s Â· ketuk untuk kembali</string>
     <string name="ongoing_hangup">Tutup</string>
     <string name="ongoing_mute">Bisukan</string>
 
     <string name="act_reply">Balas</string>
-    <string name="act_reply_hint">Balas…</string>
+    <string name="act_reply_hint">Balasâ€¦</string>
     <string name="act_mark_read">Tandai dibaca</string>
     <string name="me">Saya</string>
     <string name="reply_failed">Gagal terkirim. Buka iPop untuk membalas.</string>
 
     <string name="fr_title">Supaya tidak ada pesan yang terlewat</string>
-    <string name="fr_lead">Nyalakan tiga izin ini sekali saja.</string>
+    <string name="fr_lead">Atur sekali saja, supaya notifikasi dan telepon selalu masuk.</string>
     <string name="fr_notif">Notifikasi</string>
     <string name="fr_notif_sub">Chat, mail, dan panggilan</string>
     <string name="fr_fsi">Panggilan layar penuh</string>
@@ -41,7 +41,7 @@
     <string name="fr_battery_sub">Agar notifikasi tidak telat di Samsung/Xiaomi</string>
     <string name="fr_mic">Mikrofon &amp; kamera</string>
     <string name="fr_mic_sub">Ditanya saat pertama kali menelepon</string>
-    <string name="fr_on">Aktif ✓</string>
+    <string name="fr_on">Aktif âœ“</string>
     <string name="fr_enable">Nyalakan</string>
     <string name="fr_later">Nanti</string>
     <string name="fr_continue">Lanjut ke iPop</string>
@@ -60,10 +60,10 @@
     <string name="test_failed">Gagal mengirim tes (%1$s).</string>
 
     <string name="up_title">Versi baru iPop tersedia</string>
-    <string name="up_meta">Versi %1$s · %2$s · dari ipop.santos.co.id</string>
+    <string name="up_meta">Versi %1$s Â· %2$s Â· dari ipop.santos.co.id</string>
     <string name="up_now">Perbarui sekarang</string>
     <string name="up_later">Nanti saja</string>
-    <string name="up_downloading">Mengunduh… %1$d%%</string>
+    <string name="up_downloading">Mengunduhâ€¦ %1$d%%</string>
     <string name="up_install">Pasang</string>
     <string name="up_failed">Gagal mengunduh. Coba lagi.</string>
     <string name="up_allow">Izinkan pemasangan dari iPop, lalu tekan Pasang.</string>
@@ -73,7 +73,7 @@
     <string name="off_retry">Coba lagi</string>
 
     <string name="choose_file">Pilih file</string>
-    <string name="dl_started">Mengunduh %1$s…</string>
+    <string name="dl_started">Mengunduh %1$sâ€¦</string>
     <string name="dl_saved">Tersimpan di Download: %1$s</string>
     <string name="dl_failed">Gagal mengunduh %1$s</string>
 
