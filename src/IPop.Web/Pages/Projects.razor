@@ -823,12 +823,7 @@ else
                     selectedGroupId = null;
                     selectedProject = proj;
                     _ = Notifs.MarkReadByTargetAsync("project", proj.Id);
-                    await LoadMembers();
-                    await LoadGroups();
-                    await LoadFields();
-                    await LoadKanban();
-                    await LoadTaskList();
-                    await LoadTimeline();
+                    await LoadProjectViewsAsync();
                     StateHasChanged();
                 }
                 else
@@ -1015,12 +1010,7 @@ else
         _ = Notifs.MarkReadByTargetAsync("project", p.Id);
         selectedProject = proj;
 
-        await LoadMembers();
-        await LoadGroups();
-        await LoadFields();
-        await LoadKanban();
-        await LoadTaskList();
-        await LoadTimeline();
+        await LoadProjectViewsAsync();
         if (tab == 3) await LoadWorkloadData();
         await LoadSavedViews();
 
@@ -1046,12 +1036,7 @@ else
     private async Task ReloadCurrentView()
     {
         if (selectedProjectId == Guid.Empty) return;
-        await LoadMembers();
-        await LoadGroups();
-        await LoadFields();
-        await LoadKanban();
-        await LoadTaskList();
-        await LoadTimeline();
+        await LoadProjectViewsAsync();
         if (tab == 3) await LoadWorkloadData();
     }
 
@@ -1080,6 +1065,28 @@ else
     }
 
     private string GroupQuery => selectedGroupId is { } groupId ? $"&groupId={groupId}" : "";
+
+    /// Everything a project screen shows. Two parallel waves instead of eleven requests in a row
+    /// (about 4 s on a phone): members/groups/fields first (the group filter and the field columns
+    /// feed the next wave), then board, list and timeline together. Blazor WASM runs on one thread,
+    /// so the loaders' field assignments never race.
+    private async Task LoadProjectViewsAsync()
+    {
+        // Opening /projects selects the first project from OnInitializedAsync while the route pass can
+        // ask again: join a load already running for the same project instead of fetching everything twice.
+        if (_viewsLoad is { IsCompleted: false } running && _viewsLoadFor == selectedProjectId) { await running; return; }
+        _viewsLoadFor = selectedProjectId;
+        _viewsLoad = LoadProjectViewsCoreAsync();
+        await _viewsLoad;
+    }
+    private Task? _viewsLoad;
+    private Guid _viewsLoadFor;
+
+    private async Task LoadProjectViewsCoreAsync()
+    {
+        await Task.WhenAll(LoadMembers(), LoadGroups(), LoadFields());
+        await Task.WhenAll(LoadKanban(), LoadTaskList(), LoadTimeline());
+    }
 
     private async Task LoadKanban()
     {

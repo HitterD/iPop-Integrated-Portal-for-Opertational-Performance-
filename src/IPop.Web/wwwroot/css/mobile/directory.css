@@ -223,3 +223,29 @@
   .dir-people .tbl tr.dir-unit-row { display: block; padding: 0; }
   .dir-people .tbl tr.dir-unit-row td { display: block; padding: 10px 14px !important; }
 }
+
+/* Phone people list: skeleton rows shaped like a person row while the first page loads, then the
+   first screenful fades in one after another so arriving data reads as motion, not a frozen app. */
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .m-directory-skel { background: var(--surface); }
+  .m-directory-skel-row { display: flex; align-items: center; gap: 10px; min-height: 68px; padding: 4px 16px; border-bottom: 1px solid var(--sep); }
+  /* The shimmer runs a little later on each row, so the list reads as a wave rather than a flat block. */
+  .m-directory-skel-row .skel { animation-delay: calc(var(--i, 0) * 60ms); }
+  .m-directory-skel .m-skel-av { flex: 0 0 44px; height: 44px; border-radius: 12px; }
+  .m-directory-skel .m-skel-lines { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; }
+  .m-directory-skel .m-skel-l1 { height: 12px; width: 58%; border-radius: 6px; }
+  .m-directory-skel .m-skel-l2 { height: 10px; width: 82%; border-radius: 6px; }
+  .m-directory-people > .m-directory-row:nth-child(-n+12) { animation: m-row-in .32s var(--ease-out, ease-out) both; }
+  .m-directory-people > .m-directory-row:nth-child(2) { animation-delay: 30ms; }
+  .m-directory-people > .m-directory-row:nth-child(3) { animation-delay: 60ms; }
+  .m-directory-people > .m-directory-row:nth-child(4) { animation-delay: 90ms; }
+  .m-directory-people > .m-directory-row:nth-child(5) { animation-delay: 120ms; }
+  .m-directory-people > .m-directory-row:nth-child(6) { animation-delay: 150ms; }
+  .m-directory-people > .m-directory-row:nth-child(7) { animation-delay: 180ms; }
+  .m-directory-people > .m-directory-row:nth-child(8) { animation-delay: 210ms; }
+  .m-directory-people > .m-directory-row:nth-child(n+9):nth-child(-n+12) { animation-delay: 240ms; }
+  @keyframes m-row-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .m-directory-skel-row, .m-directory-people > .m-directory-row { animation: none !important; }
+  }
+}

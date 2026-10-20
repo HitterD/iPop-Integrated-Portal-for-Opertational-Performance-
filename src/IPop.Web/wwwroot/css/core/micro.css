@@ -247,3 +247,12 @@ img.mi-revealed { animation: mi-reveal .35s var(--ease-out); }
   .sidebar .nav-glide, .mi-slider > .mi-ind { transition: none !important; }
   .mi-drag-over > .mi-drop-ov .mi-drop-ic { animation: none !important; }
 }
+
+/* ── Page loading: thin top bar while a newly opened page waits on the API (MainLayout) ── */
+.nav-progress { position: fixed; top: env(safe-area-inset-top, 0px); left: 0; right: 0; height: 2.5px; z-index: 10000; pointer-events: none; overflow: hidden; opacity: 0; transition: opacity .25s; }
+.nav-progress::before { content: ''; position: absolute; top: 0; bottom: 0; left: -40%; width: 40%; border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--green, #2e9e5b), transparent); }
+.nav-progress.on { opacity: 1; }
+.nav-progress.on::before { animation: nav-progress-run 1.1s cubic-bezier(.4, 0, .2, 1) infinite; }
+@keyframes nav-progress-run { from { left: -40%; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .nav-progress.on::before { animation: none; left: 0; width: 100%; opacity: .6; } }

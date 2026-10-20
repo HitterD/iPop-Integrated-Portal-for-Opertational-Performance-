@@ -19,6 +19,7 @@
 @inject TabPrefsState TabPrefs
 @inject NotifCardState NotifCard
 
+<div class="nav-progress @(navProgress ? "on" : "")" aria-hidden="true"></div>
 <div class="shell @(collapsed ? "collapsed" : "")" id="shell">
     <aside class="sidebar nav-tab">
         <div class="side-head">
@@ -731,6 +732,7 @@
         AvatarPhotos.Changed += OnPhotosChanged;
         Tutorials.Changed += OnTutorialsChanged;
         Push.Changed += OnPushChanged;
+        Auth.BusyChanged += OnReadsBusyChanged;
         Phone.Changed += OnPhoneChanged;
         // Me first: roles gate the nav and most of what follows reads it. Everything after it
         // is independent and runs side by side; one slow call used to hold up all the rest.
@@ -783,8 +785,42 @@
 
     private void OnBadgesChanged() => _ = InvokeAsync(() => { SyncTitleBadge(); StateHasChanged(); });
 
+    // ── Thin top progress bar while a newly opened page is still loading ──
+    // Only reads that run right after a navigation count (background polls never show it), and
+    // only once they have taken longer than a moment, so instant pages never flash a bar.
+    private bool navProgress;
+    private DateTime navAt = DateTime.MinValue;
+    private CancellationTokenSource? navProgressDelay;
+    private static readonly TimeSpan NavWindow = TimeSpan.FromSeconds(1.5);
+
+    private void OnReadsBusyChanged()
+    {
+        if (Auth.Busy)
+        {
+            if (navProgress || DateTime.UtcNow - navAt > NavWindow) return;
+            navProgressDelay?.Cancel();
+            var cts = navProgressDelay = new CancellationTokenSource();
+            _ = InvokeAsync(async () =>
+            {
+                try { await Task.Delay(150, cts.Token); } catch (OperationCanceledException) { return; }
+                if (!Auth.Busy) return;
+                navProgress = true;
+                StateHasChanged();
+            });
+        }
+        else
+        {
+            navProgressDelay?.Cancel();
+            if (!navProgress) return;
+            navProgress = false;
+            _ = InvokeAsync(StateHasChanged);
+        }
+    }
+
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
+        navAt = DateTime.UtcNow;
+        if (Auth.Busy) OnReadsBusyChanged();
         errorBoundary?.Recover();
         loadFailed = false;
         more.OnLocationChanged(e.Location);
@@ -847,6 +883,8 @@
         Auth.SessionEnded -= OnSessionEnded;
         Auth.RequestFailed -= OnRequestFailed;
         Push.Changed -= OnPushChanged;
+        Auth.BusyChanged -= OnReadsBusyChanged;
+        navProgressDelay?.Cancel();
         Chat.RoomListChanged -= OnChatUnreadChanged;
         Chat.IncomingMessage -= OnChatIncoming;
         Chat.RoomOpened -= OnChatRoomOpened;

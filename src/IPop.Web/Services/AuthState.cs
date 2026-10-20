@@ -392,7 +392,23 @@ public class AuthState(HttpClient http, IJSRuntime js)
     public Task<GetResult<T>> GetResultAsync<T>(string url, CancellationToken ct = default)
         => GetCoreAsync<T>(url, tolerateBadBody: true, ct);
 
+    // ── Reads in flight, for the thin top progress bar (MainLayout) ──
+    private int _readsInFlight;
+    /// True while at least one GET is waiting on the API. Background polls count too; the bar
+    /// only appears when a read takes longer than a moment, so quick ones never flash it.
+    public bool Busy => Volatile.Read(ref _readsInFlight) > 0;
+    public event Action? BusyChanged;
+    private void ReadStarted() { if (Interlocked.Increment(ref _readsInFlight) == 1) BusyChanged?.Invoke(); }
+    private void ReadEnded() { if (Interlocked.Decrement(ref _readsInFlight) == 0) BusyChanged?.Invoke(); }
+
     private async Task<GetResult<T>> GetCoreAsync<T>(string url, bool tolerateBadBody, CancellationToken ct)
+    {
+        ReadStarted();
+        try { return await GetCoreInnerAsync<T>(url, tolerateBadBody, ct); }
+        finally { ReadEnded(); }
+    }
+
+    private async Task<GetResult<T>> GetCoreInnerAsync<T>(string url, bool tolerateBadBody, CancellationToken ct)
     {
         HttpResponseMessage res;
         try

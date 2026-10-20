@@ -25,10 +25,17 @@ public partial class Directory
     private void SetPhoneTab(string tab) { phoneTab = tab; phoneQuery = ""; phoneScope = "All"; }
     private void SetPhonePresence(string status) { presenceFilter = status; phoneOptions = false; }
     private async Task PhoneJump(string letter) => await JS.InvokeVoidAsync("ipop.phone.directoryJump", letter);
+    private const string PhoneCacheKey = "directory-phone-people";
     private async Task LoadPhonePeople()
     {
-        phoneLoading = true; phoneLoadError = false; phoneLoaded = true;
+        phoneLoadError = false; phoneLoaded = true;
         var generation = ++phoneGeneration; var account = Auth.Me?.Nik;
+        // Last list seen this session first (memory only: ~2 MB of people never goes to localStorage),
+        // so moving between tabs is instant; skeleton rows only on the very first visit.
+        if (phonePeople.Count == 0 && Cache.Peek<List<Employee>>(PhoneCacheKey) is { Count: > 0 } cached) phonePeople = cached;
+        phoneLoading = phonePeople.Count == 0;
+        // Paint the cached list (or the skeleton) now, before the first network round-trip.
+        await InvokeAsync(StateHasChanged);
         try
         {
             // First screenful at once (≈50 KB), then the rest in the background: the full list is ≈2 MB,
@@ -36,8 +43,12 @@ public partial class Directory
             var first = await Auth.GetAsync<DirectoryPageDto>("/api/directory/employees?page=1&pageSize=120&sort=name");
             if (disposed || generation != phoneGeneration || account != Auth.Me?.Nik) return;
             if (first is null) { phoneLoadError = true; return; }
-            phonePeople = first.Items.Select(Map).DistinctBy(p => p.Nik).ToList();
-            if (phonePeople.Count >= first.Total || first.Items.Length == 0) return;
+            var firstPage = first.Items.Select(Map).DistinctBy(p => p.Nik).ToList();
+            // Keep a fuller cached list on screen while the rest downloads instead of shrinking it to 120.
+            if (phonePeople.Count <= firstPage.Count) phonePeople = firstPage;
+            // Remember at least this screenful: leaving before the full list arrives must not cost the next visit.
+            if ((Cache.Peek<List<Employee>>(PhoneCacheKey)?.Count ?? 0) < firstPage.Count) Cache.Put(PhoneCacheKey, firstPage);
+            if (firstPage.Count >= first.Total || first.Items.Length == 0) { phonePeople = firstPage; Cache.Put(PhoneCacheKey, phonePeople); return; }
             phoneLoading = false;
             phoneLoadingMore = true;
             await InvokeAsync(StateHasChanged);
@@ -51,6 +62,7 @@ public partial class Directory
                 if (loaded.Count >= result.Total || result.Items.Length == 0) break;
             }
             phonePeople = loaded.DistinctBy(p => p.Nik).ToList();
+            Cache.Put(PhoneCacheKey, phonePeople);
         }
         finally { if (generation == phoneGeneration) { phoneLoading = false; phoneLoadingMore = false; await InvokeAsync(StateHasChanged); } }
     }

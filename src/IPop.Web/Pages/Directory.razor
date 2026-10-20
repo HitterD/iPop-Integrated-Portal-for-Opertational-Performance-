@@ -12,6 +12,7 @@
 <PageTitle>Directory — IPop</PageTitle>
 
 @inject PhoneState Phone
+@inject IPop.Web.Services.PageCache Cache
 @using IPop.Web.Components.Phone.Directory
 
 @if (Phone.IsPhone)
@@ -64,7 +65,15 @@
                             @foreach (var scope in new[] { "All", "People", "Departments", "Sites" }) { <button type="button" aria-pressed="@(phoneScope == scope ? "true" : "false")" @onclick="() => phoneScope = scope">@scope @PhoneScopeCount(scope)</button> }
                         </div>
                     }
-                    @if (phoneLoading) { <p class="m-directory-note" role="status">Loading people…</p> }
+                    @if (phoneLoading)
+                    {
+                        <div class="m-directory-skel" role="status" aria-label="Loading people">
+                            @for (var i = 0; i < 9; i++)
+                            {
+                                <div class="m-directory-skel-row" style="--i:@i"><span class="skel m-skel-av"></span><span class="m-skel-lines"><span class="skel m-skel-l1"></span><span class="skel m-skel-l2"></span></span></div>
+                            }
+                        </div>
+                    }
                     else if (phoneLoadError) { <div class="m-directory-note" role="alert">Could not load people. <button type="button" @onclick="LoadPhonePeople">Retry</button></div> }
                     else
                     {
@@ -690,6 +699,14 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        // Phone: the people list comes from its own (cached) feed, so start it right away instead of
+        // after the structure + desktop page round-trips. Revisits paint the cached list at once.
+        if (Phone.IsPhone && !phoneLoaded && !phoneLoading) _ = InvokeAsync(LoadPhonePeople);
+        // Structure (tree, counts) is cached the same way, so the subtitle and tabs paint at once too.
+        if (Cache.Peek<DirectoryStructureNodeDto>(StructureCacheKey) is { } cachedStructure)
+        {
+            dirStructure = cachedStructure; navigation.Load(cachedStructure); SyncSelection();
+        }
         await LoadStructure();
         await RestoreNavigation();
         _ = LoadFavoritesAsync();
@@ -716,11 +733,13 @@ else
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
         => _ = InvokeAsync(SelectFromQuery);
 
+    private const string StructureCacheKey = "directory-structure";
     private async Task LoadStructure()
     {
-        structureLoading = true;
-        dirStructure = await Auth.GetAsync<DirectoryStructureNodeDto>("/api/directory/structure");
+        structureLoading = dirStructure is null;
+        var fresh = await Auth.GetAsync<DirectoryStructureNodeDto>("/api/directory/structure");
         structureLoading = false;
+        if (fresh is not null) { dirStructure = fresh; Cache.Put(StructureCacheKey, fresh); }
         if (dirStructure is not null) { navigation.Load(dirStructure); SyncSelection(); }
         if (dirStructure is not null) Layout.SetSubtitle($"{allPeopleCount:N0} people · {PresenceCounts.Online:N0} online");
         StateHasChanged();
