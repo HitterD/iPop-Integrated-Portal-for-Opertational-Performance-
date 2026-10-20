@@ -119,7 +119,8 @@
 .mi-tip-host.on { opacity: 1; transform: none; }
 
 /* ── 26. Theme toggle: sun spins out as the moon rises ── */
-.theme-btn.mi-theme { position: relative; }
+/* Not the floating login toggle: it is position:absolute top-right, and relative here dropped it into the page flow. */
+.theme-btn.mi-theme:not(.auth-theme-btn) { position: relative; }
 .theme-btn.mi-theme > svg.lucide { transition: transform .45s var(--ease-spring), opacity .3s; }
 .theme-btn.mi-theme.mi-spin > svg.lucide { animation: mi-theme-swap .45s var(--ease-spring); }
 @keyframes mi-theme-swap { 0% { transform: rotate(-90deg) scale(.4); opacity: 0; } 100% { transform: none; opacity: 1; } }
