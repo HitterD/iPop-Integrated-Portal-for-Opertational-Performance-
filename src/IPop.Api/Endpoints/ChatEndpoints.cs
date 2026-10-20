@@ -595,6 +595,32 @@ public static class ChatEndpoints
         // Mute & Archive
         // ──────────────────────────────────────────────────────────────────────
 
+        // POST /api/chat/rooms/{roomId}/read — "Tandai dibaca" from a native Android notification (no SignalR there).
+        // Same rule as ChatHub.MarkRead on the room's newest message: advances the read position, writes the receipt
+        // when the reader allows it, clears the badge on the reader's other devices and tells the sender.
+        g.MapPost("/rooms/{roomId:guid}/read", async (Guid roomId, HttpContext http, IChatService svc, IChatNotifier notifier,
+            IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var latest = await db.ChatMessages.AsNoTracking()
+                .Where(m => m.RoomId == roomId && m.ThreadParentId == null && !m.IsDeleted)
+                .OrderByDescending(m => m.CreatedAt)
+                .Select(m => new { m.Id })
+                .FirstOrDefaultAsync(ct);
+            if (latest is null) return Results.NoContent();
+            if (!await svc.RecordReadAsync(userId.Value, latest.Id, ct)) return Results.Forbid();
+            await RoomsChangedAsync(http, realtime, ct);
+            var reader = await db.Users.AsNoTracking().Where(u => u.Id == userId.Value)
+                .Select(u => new { u.Name, u.PhotoPath }).FirstOrDefaultAsync(ct);
+            var receipt = await db.ChatReadReceipts.AsNoTracking()
+                .FirstOrDefaultAsync(r => r.MessageId == latest.Id && r.UserId == userId.Value, ct);
+            if (reader is not null)
+                await notifier.NotifySeenUpdateAsync(roomId, latest.Id,
+                    new SeenByDto(userId.Value, reader.Name, reader.PhotoPath, receipt?.DeliveredAt, receipt?.ReadAt), ct);
+            return Results.NoContent();
+        });
+
         // POST /api/chat/rooms/{roomId}/mute — { duration }
         g.MapPost("/rooms/{roomId:guid}/mute", async (Guid roomId, MuteRequest req,
             HttpContext http, IChatService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>

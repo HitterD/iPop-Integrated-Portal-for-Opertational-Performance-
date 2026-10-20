@@ -69,6 +69,7 @@ public static class NativePush
         if (p.ApiBase is { } apiBase) d["apiBase"] = apiBase;
         if (p.DeliveryId is { } deliveryId) d["deliveryId"] = deliveryId;
         if (p.RequireInteraction) d["urgent"] = "1";
+        if (p.Sender is { Length: > 0 } sender) d["sender"] = sender;
         if (PushDispatcher.ChatRoomOf(p.Url) is { } roomId) d["roomId"] = roomId.ToString();
         return d;
     }

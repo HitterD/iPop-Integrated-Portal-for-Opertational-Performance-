@@ -24,7 +24,8 @@ public sealed record PushPayload(
     string? ApiBase = null,
     string? DeliveryId = null,
     string? JobId = null,
-    string? Acct = null);
+    string? Acct = null,
+    string? Sender = null);
 
 /// Web Push from the durable outbox. A <see cref="PushJob"/> is expanded once into one
 /// <see cref="PushDelivery"/> per browser; each delivery is sent and retried on its own, and the
@@ -474,12 +475,13 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
         var token = dataProtection.CreateProtector(CallActionPurpose).ToTimeLimitedDataProtector()
             .Protect($"{room.Id:N}|{row.UserId:N}", CallActionLifetime);
         if (InviteText(room, row.UserId) is { } invite)
-            return new PushPayload("call", invite.Title, invite.Body, "/calls", tag, RequireInteraction: true, CallId: room.Id, ActionToken: token);
+            return new PushPayload("call", invite.Title, invite.Body, "/calls", tag, RequireInteraction: true, CallId: room.Id, ActionToken: token,
+                Sender: room.Participants.FirstOrDefault(p => p.UserId == room.CreatorId)?.Name);
         var caller = room.Participants.FirstOrDefault(p => p.UserId == room.CreatorId)?.Name ?? "Someone";
         var isGroup = room.Kind == CallKind.Group;
         return new PushPayload("call", isGroup ? $"Group call · {room.Title ?? "Group"}" : $"Incoming call · {caller}",
             isGroup ? $"{caller} started a group call" : "iPop voice call", "/calls", tag,
-            RequireInteraction: true, CallId: room.Id, ActionToken: token);
+            RequireInteraction: true, CallId: room.Id, ActionToken: token, Sender: isGroup ? room.Title ?? caller : caller);
     }
 
     private async Task<CallRoomDto?> LoadCallAsync(Guid callId, CancellationToken ct)

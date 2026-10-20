@@ -1,0 +1,79 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+// Release signing: keystore + password live outside the repo. The password is read from a file at
+// build time and never echoed or hardcoded. Override paths with -PipopKeystore= / -PipopKeystoreSecret=.
+def keystoreFile = file(project.findProperty('ipopKeystore') ?: 'C:/ipop-ops/android/ipop-release.keystore')
+def secretFile = file(project.findProperty('ipopKeystoreSecret') ?: 'C:/ipop-ops/android/keystore.secret')
+def hasReleaseKey = keystoreFile.exists() && secretFile.exists()
+
+android {
+    namespace 'id.co.santos.ipop'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'id.co.santos.ipop'
+        minSdk 26
+        targetSdk 35
+        versionCode 2
+        versionName '2.0.0'
+        resourceConfigurations += ['en', 'in']
+    }
+
+    signingConfigs {
+        if (hasReleaseKey) {
+            release {
+                def pw = secretFile.getText('UTF-8').trim()
+                storeFile keystoreFile
+                storePassword pw
+                keyAlias 'ipop'
+                keyPassword pw
+                enableV1Signing true
+                enableV2Signing true
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (hasReleaseKey) signingConfig signingConfigs.release
+        }
+        debug {
+            // Debug keeps the same applicationId so QA exercises the real package; it is debug-signed,
+            // so uninstall the store build first on a phone.
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+    lint {
+        checkReleaseBuilds false
+    }
+    packaging {
+        resources {
+            excludes += ['META-INF/*.version', 'META-INF/*.kotlin_module', 'kotlin/**', 'DebugProbesKt.bin']
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.16.0'
+    implementation 'androidx.core:core-splashscreen:1.0.1'
+    implementation 'androidx.browser:browser:1.8.0'
+    implementation platform('com.google.firebase:firebase-bom:34.4.0')
+    implementation 'com.google.firebase:firebase-messaging'
+}

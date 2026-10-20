@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Native HTTP (HttpURLConnection, DownloadManager runs in another process and does NOT use this)
+     trusts the system CAs plus the bundled SJA root, which signs ipop.santos.co.id.
+     WebView ignores this file for its own TLS: see SjaTrust + onReceivedSslError. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="@raw/sja_root_ca" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

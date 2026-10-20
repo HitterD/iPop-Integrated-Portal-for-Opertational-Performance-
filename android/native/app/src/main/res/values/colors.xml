@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="forest">#123528</color>
+    <color name="forest_light">#1F5A43</color>
+    <color name="forest_dark">#0B2219</color>
+    <color name="accent">#2E9E5B</color>
+    <color name="red">#FF3B30</color>
+    <color name="call_green">#34C759</color>
+    <color name="bg">#F2F2F7</color>
+    <color name="card">#FFFFFF</color>
+    <color name="ink">#1D1D1F</color>
+    <color name="ink2">#424245</color>
+    <color name="ink3">#6E6E73</color>
+    <color name="fill">#1F767680</color>
+</resources>

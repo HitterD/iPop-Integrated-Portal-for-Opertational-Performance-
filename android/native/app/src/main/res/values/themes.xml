@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Framework themes only (no AppCompat/Material Components) to keep the APK small. -->
+    <style name="Theme.IPop" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:colorPrimary">@color/forest</item>
+        <item name="android:colorPrimaryDark">@color/forest</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:windowBackground">@color/forest</item>
+        <item name="android:statusBarColor">@color/forest</item>
+        <item name="android:navigationBarColor">@color/forest</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="Theme.IPop.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/forest</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
+        <item name="postSplashScreenTheme">@style/Theme.IPop</item>
+    </style>
+
+    <style name="Theme.IPop.Light" parent="Theme.IPop">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/bg</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+
+    <style name="Theme.IPop.Call" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/forest</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+
+    <style name="Theme.IPop.Sheet" parent="android:Theme.Material.Light.Dialog.NoActionBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.32</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.InputMethod</item>
+    </style>
+</resources>

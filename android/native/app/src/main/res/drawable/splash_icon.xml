@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12 splash icon: 288dp canvas, the system masks the centre 192dp circle. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:width="288dp" android:height="288dp">
+        <shape android:shape="rectangle"><solid android:color="@android:color/transparent" /></shape>
+    </item>
+    <item android:width="192dp" android:height="192dp" android:gravity="center">
+        <shape android:shape="oval"><solid android:color="#FFFFFFFF" /></shape>
+    </item>
+    <item android:width="168dp" android:height="168dp" android:gravity="center" android:drawable="@mipmap/ic_maskable" />
+</layer-list>

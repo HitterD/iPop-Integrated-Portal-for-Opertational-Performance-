@@ -152,6 +152,7 @@ public class NativePushTests
         Assert.Equal("calls", data["channel"]);
         Assert.Equal(room.Id.ToString(), data["callId"]);
         Assert.False(string.IsNullOrEmpty(data["actionToken"]));
+        Assert.Equal("User C", data["sender"]);
     }
 
     [Fact]
