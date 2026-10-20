@@ -9,13 +9,13 @@ namespace IPop.Tests;
 public class RealtimeTests
 {
     /// Records every send with the target it went to ("all", "group:x", "groups:a,b").
-    private sealed class FakeHub : IHubContext<AppHub>
+    private class FakeHub<THub> : IHubContext<THub> where THub : Hub
     {
         public List<(string Target, string Method, object?[] Args)> Sent { get; } = [];
         public IHubClients Clients => new FakeClients(this);
         public IGroupManager Groups => throw new NotSupportedException();
 
-        private sealed class FakeClients(FakeHub hub) : IHubClients
+        private sealed class FakeClients(FakeHub<THub> hub) : IHubClients
         {
             private IClientProxy P(string target) => new Proxy(hub, target);
             public IClientProxy All => P("all");
@@ -29,18 +29,21 @@ public class RealtimeTests
             public IClientProxy Users(IReadOnlyList<string> userIds) => throw new NotSupportedException();
         }
 
-        private sealed class Proxy(FakeHub hub, string target) : IClientProxy
+        private sealed class Proxy(FakeHub<THub> hub, string target) : IClientProxy
         {
             public Task SendCoreAsync(string method, object?[] args, CancellationToken ct = default)
             { hub.Sent.Add((target, method, args)); return Task.CompletedTask; }
         }
     }
+    private sealed class FakeHub : FakeHub<AppHub>;
+    private sealed class FakeNotifHub : FakeHub<IPop.Api.Notifications.NotificationHub>;
+    private static HubRealtime Rt(FakeHub hub, FakeNotifHub? notif = null) => new(hub, notif ?? new FakeNotifHub());
 
     [Fact]
     public async Task ToUser_TargetsUserGroup()
     {
         var hub = new FakeHub();
-        await new HubRealtime(hub).ToUserAsync("90001", RealtimeEvents.BadgeChanged, new RealtimeArgs("chat", 3));
+        await Rt(hub).ToUserAsync("90001", RealtimeEvents.BadgeChanged, new RealtimeArgs("chat", 3));
 
         var s = Assert.Single(hub.Sent);
         Assert.Equal("group:user:90001", s.Target);
@@ -52,7 +55,7 @@ public class RealtimeTests
     public async Task ToUsers_DedupesIntoOneMultiGroupSend()
     {
         var hub = new FakeHub();
-        await new HubRealtime(hub).ToUsersAsync(["a", "b", "a"], "x");
+        await Rt(hub).ToUsersAsync(["a", "b", "a"], "x");
         Assert.Equal("groups:user:a,user:b", Assert.Single(hub.Sent).Target);
     }
 
@@ -61,7 +64,7 @@ public class RealtimeTests
     {
         var hub = new FakeHub();
         var payload = new { id = 1 };
-        await new HubRealtime(hub).ToGroupAsync("conv:1", "messageCreated", payload);
+        await Rt(hub).ToGroupAsync("conv:1", "messageCreated", payload);
         Assert.Same(payload, Assert.Single(Assert.Single(hub.Sent).Args));
     }
 
@@ -69,7 +72,7 @@ public class RealtimeTests
     public async Task ExistingNotifiers_KeepEventNamesAndArity()
     {
         var hub = new FakeHub();
-        var rt = new HubRealtime(hub);
+        var rt = Rt(hub);
 
         await new DirectoryChangeNotifier(rt).NotifyAsync();
         await new AuditChangeNotifier(rt).NotifyAsync();
@@ -79,5 +82,18 @@ public class RealtimeTests
             [("all", "directoryChanged", 0), ("all", "auditChanged", 0), ("all", "presenceChanged", 2)],
             hub.Sent.Select(s => (s.Target, s.Method, s.Args.Length)).ToList());
         Assert.Equal(["90001", "busy"], hub.Sent[2].Args);
+    }
+
+    /// The iPop Notifier only joins /hubs/notification: the bell refresh must reach it there, other events must not.
+    [Fact]
+    public async Task NotificationsChanged_IsMirroredToTheNotificationHub()
+    {
+        var hub = new FakeHub(); var notif = new FakeNotifHub(); var rt = Rt(hub, notif);
+        await rt.ToUserAsync("90001", RealtimeEvents.NotificationsChanged);
+        await rt.ToUsersAsync(["a", "b"], RealtimeEvents.NotificationsChanged);
+        await rt.ToUserAsync("90001", RealtimeEvents.BadgeChanged, new RealtimeArgs("chat", 3));
+        Assert.Equal(3, hub.Sent.Count);
+        Assert.Equal([("group:user:90001", "notificationsChanged"), ("groups:user:a,user:b", "notificationsChanged")],
+            notif.Sent.Select(s => (s.Target, s.Method)).ToList());
     }
 }

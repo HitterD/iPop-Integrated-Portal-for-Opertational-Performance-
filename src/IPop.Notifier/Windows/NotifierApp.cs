@@ -104,6 +104,7 @@ public sealed class NotifierApp : ApplicationContext
         feed.Received += n => Post(() => { popups.Show(n); _ = RefreshUnreadAsync(); });
         feed.Backlog += items => Post(() => { popups.ShowBacklog(items); _ = RefreshUnreadAsync(); });
         feed.TicketChatRead += refs => Post(() => { foreach (var r in refs) Toasts.RemoveTicket(r); _ = RefreshUnreadAsync(); });
+        feed.ReadElsewhere += () => _ = RefreshUnreadAsync();
         feed.ChatToast += t => Post(() => OnChatToast(t));
         feed.Remote += (ev, n) => Post(() => OnRemote(ev, n));
         feed.ConnectionChanged += c => Post(() => { connected = c; UpdateTray(); if (inbox is { IsDisposed: false }) inbox.Connection(c); });
