@@ -1,39 +1,61 @@
-# Firebase setup for the native iPop Android app
+# Firebase setup for the native iPop Android app (Google Workspace)
 
-The native app gets notifications through Firebase Cloud Messaging (FCM). FCM is free. This setup does not need a billing account or a credit card. One person with a company Google account does it once. It takes about 10 minutes.
+The native app gets notifications through Firebase Cloud Messaging (FCM). FCM is free on the Spark plan: no billing account, no credit card. A Google Workspace administrator does this once, in about 15 minutes.
 
-## 1. Create the project
+Menu names in the Google consoles change from time to time. If a label differs slightly, look for the closest match.
 
-1. Open https://console.firebase.google.com while signed in with the company Google account.
+## Part A. Workspace Admin console (once)
+
+1. Open https://admin.google.com with the Workspace super admin account.
+2. Go to **Apps → Additional Google services → Google Cloud**.
+3. Make sure **Service status** is **ON** for the account that will create the project. Firebase runs on Google Cloud, so the Firebase console fails without this.
+
+## Part B. Create the Firebase project
+
+1. Open https://console.firebase.google.com with the same company account.
 2. Click **Create a project**. Name it `ipop-santos`.
-3. Turn **Google Analytics** off, since it is not needed. Click **Create project**.
+3. If asked for a parent, choose your company **organization**. That keeps the project owned by the company, not by one person.
+4. Turn **Google Analytics** off. Click **Create project**.
+5. Stay on the free **Spark** plan. Never upgrade to Blaze; iPop does not need it.
 
-## 2. Register the Android app
+## Part C. Register the Android app
 
 1. On the project overview, click the **Android** icon.
-2. Enter the package name `id.co.santos.ipop`. Use the nickname `iPop`. Leave the SHA-1 empty.
-3. Click **Register app**.
-4. The next screen offers `google-services.json`. Download it. iPop does not put this file in the APK, but the server needs three values from it (step 4).
-5. Skip the remaining SDK steps and click **Continue to console**.
+2. Package name: `id.co.santos.ipop`. Nickname: `iPop`. Leave SHA-1 empty.
+3. Click **Register app**, then download **google-services.json**.
+4. Skip the SDK steps and click **Continue to console**.
 
-## 3. Download the server key
+## Part D. Allow a service-account key (Workspace organizations only)
 
-1. Click the gear icon, then **Project settings**, then the **Service accounts** tab.
-2. Click **Generate new private key**, then **Generate key**. A JSON file downloads.
-3. Treat this file like a password. Do not email it, do not commit it, and do not put it on the NAS.
+Organizations created after May 2024 block service-account keys by default. The iPop server runs in the office, not on Google Cloud, so it needs one key. Allow it for this one project only:
 
-Also confirm that **Cloud Messaging** shows **Firebase Cloud Messaging API (V1): Enabled**. If it is disabled, click the menu on that row and enable it.
+1. Open https://console.cloud.google.com/iam-admin/iam and pick your **organization** in the project picker.
+2. Click **Grant access**. Principal: your admin email. Role: **Organization Policy Administrator**. Save. (A super admin can grant this to itself.)
+3. Switch the project picker to **ipop-santos**.
+4. Open **IAM & Admin → Organization policies**.
+5. Search **Disable service account key creation**. There may be two entries (`iam.disableServiceAccountKeyCreation` and `iam.managed.disableServiceAccountKeyCreation`). For each one that shows **Enforced**:
+   - **Manage policy → Override parent's policy → Enforcement: Off** (for the managed one: **Not enforced**) → **Set policy**.
+6. Leave the rest of the organization unchanged.
 
-## 4. Hand the files to the iPop server
+If neither entry is enforced, skip this part.
 
-Copy both files to the server PC (10.10.6.13):
+## Part E. Download the server key
+
+1. Back in the Firebase console: gear icon → **Project settings → Service accounts**.
+2. Click **Generate new private key → Generate key**. A JSON file downloads.
+3. Treat it like a password: don't email it, commit it, or put it on the NAS.
+4. Also check **Project settings → Cloud Messaging**: **Firebase Cloud Messaging API (V1)** must say **Enabled**.
+
+## Part F. Hand the files to the iPop server
+
+Copy both files to the server PC (10.10.6.13), for example over the admin share or a USB stick:
 
 | File | Put it at |
 |---|---|
-| Service-account key (step 3) | `C:\ipop-ops\firebase\service-account.json` |
-| `google-services.json` (step 2) | `C:\ipop-ops\firebase\google-services.json` |
+| Service-account key (Part E) | `C:\ipop-ops\firebase\service-account.json` |
+| `google-services.json` (Part C) | `C:\ipop-ops\firebase\google-services.json` |
 
-Then tell the iPop administrator. They add this section to `src\IPop.Api\appsettings.Local.json` on the server and restart the API:
+The iPop administrator then adds this to `src\IPop.Api\appsettings.Local.json` and restarts the API. The deploy does this step:
 
 ```json
 "Fcm": {
@@ -45,13 +67,12 @@ Then tell the iPop administrator. They add this section to `src\IPop.Api\appsett
 }
 ```
 
-The values in angle brackets come from `google-services.json`. `ApplicationId`, `ApiKey` and `SenderId` are public client values, and the app downloads them from `/api/push/native/config`. Only the service-account file is secret.
-
-## 5. Check
+## Part G. Check
 
 - `https://ipop.santos.co.id/api/push/native/config` returns `"enabled": true`.
-- Open the iPop app on a phone and sign in. In Settings, then Notifications, **Send test** shows a notification from **iPop** (not from the browser). Tapping it opens the app.
+- On a phone with the new app, sign in, then Settings → Notifications → **Send test**. The notification shows as **iPop**, and tapping it opens the app.
 
-## Costs and limits
+## Security notes
 
-FCM messaging is free with no quota that iPop can reach. The project stays on the free **Spark** plan. Do not upgrade it to Blaze. Nothing in iPop needs Blaze.
+- Only the service-account file is secret. The values in `google-services.json` are public client identifiers.
+- The key only lets the server send notifications to iPop phones. To revoke it: Google Cloud console → IAM & Admin → Service accounts → the `firebase-adminsdk` account → Keys → delete, then generate a new one.
