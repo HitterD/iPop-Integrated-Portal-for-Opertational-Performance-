@@ -348,7 +348,7 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
         var users = Restrict(ParseIds(job.UserIds), only);
         var tag = $"test:{job.Id:N}";
         return new Audience("test", users,
-            uid => users.Contains(uid) ? new PushPayload("test", "iPop", "Desktop notifications are on ✔", "/notifications/settings", tag) : null,
+            uid => users.Contains(uid) ? new PushPayload("test", "iPop", "Notifications are on ✔", "/notifications/settings", tag) : null,
             true, job.CreatedAt + TimeSpan.FromMinutes(10));
     }
 

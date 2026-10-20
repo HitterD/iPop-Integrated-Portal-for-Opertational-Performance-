@@ -391,12 +391,58 @@ class MainActivity : Activity() {
 
     // ── first run (mockup frame 3) ──
     private fun maybeFirstRun() {
+        // Checked on every cold start (consumes the exit record even when first-run shows instead).
+        val forceStopped = Perms.wasForceStopped(this)
+        if (forceStopped) Log.i(Ipop.TAG, "previous exit was a user force stop")
+        if (forceStopped && !intent.hasExtra("debug_update_sheet")) { showForceStopNotice(); return }
         if (App.firstRunShownThisProcess) return
         val first = !Ipop.prefs(this).getBoolean("first_run_done", false)
         if (first || Perms.needsAttention(this)) {
             App.firstRunShownThisProcess = true
             startActivity(Intent(this, FirstRunActivity::class.java))
         }
+    }
+
+    /** Result of a native action started by the page (sendTestNotification): toast + 'ipop-native' event. */
+    fun nativeResult(action: String, status: Int) {
+        val ok = status in 200..299
+        android.widget.Toast.makeText(this,
+            if (ok) getString(R.string.test_sent) else getString(R.string.test_failed, if (status == 0) "offline" else "HTTP $status"),
+            android.widget.Toast.LENGTH_LONG).show()
+        web.evaluateJavascript(
+            "window.dispatchEvent(new CustomEvent('ipop-native',{detail:{action:${Ipop.jsString(action)},status:$status}}))", null)
+    }
+
+    /** One-time sheet after a Force stop: notifications were blocked while the app was stopped. */
+    private fun showForceStopNotice() {
+        val c = this
+        val d = android.app.Dialog(c, R.style.Theme_IPop_Sheet)
+        val sheet = Ui.vertical(c).apply {
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.WHITE)
+                val r = dp(c, 22).toFloat()
+                cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
+            }
+            setPadding(dp(c, 20), dp(c, 10), dp(c, 20), dp(c, 26))
+        }
+        sheet.addView(View(c).apply { background = Ui.round(getColor(R.color.fill), dp(c, 3).toFloat()) },
+            Ui.lp(dp(c, 38), dp(c, 5)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = dp(c, 14) })
+        val ic = FrameLayout(c).apply { background = Ui.round(0xFFFF9F0A.toInt(), dp(c, 12).toFloat()) }
+        ic.addView(Ui.icon(c, R.drawable.ic_bell, 24), FrameLayout.LayoutParams(dp(c, 24), dp(c, 24), Gravity.CENTER))
+        sheet.addView(ic, Ui.lp(dp(c, 44), dp(c, 44)).apply { bottomMargin = dp(c, 12) })
+        sheet.addView(Ui.text(c, getString(R.string.fs_title), 19f, getColor(R.color.ink), bold = true))
+        sheet.addView(Ui.text(c, getString(R.string.fs_body), 14f, getColor(R.color.ink2)),
+            Ui.lp(Ui.MATCH, Ui.WRAP).apply { topMargin = dp(c, 6); bottomMargin = dp(c, 18) })
+        sheet.addView(Ui.button(c, getString(R.string.fs_ok), getColor(R.color.accent), heightDp = 48).apply {
+            setOnClickListener { d.dismiss() }
+        }, Ui.lp(Ui.MATCH, dp(c, 48)))
+        d.setContentView(sheet)
+        d.window?.apply {
+            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setGravity(Gravity.BOTTOM)
+        }
+        d.show()
     }
 
     // ── lifecycle ──

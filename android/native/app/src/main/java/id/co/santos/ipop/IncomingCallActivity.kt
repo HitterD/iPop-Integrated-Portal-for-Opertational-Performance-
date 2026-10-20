@@ -44,6 +44,7 @@ class IncomingCallActivity : Activity() {
     private val animators = mutableListOf<ValueAnimator>()
     private val timeout = Runnable { finishCall() }
     private var done = false
+    private var reportedTag: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -69,6 +70,17 @@ class IncomingCallActivity : Activity() {
     private fun bind(i: Intent) {
         data = ActionReceiver.extrasOf(i)
         if (i.action == ACTION_ANSWER) { answer(); return }
+        // Receipt: the full-screen call screen really started (once per call).
+        val tag = data["tag"]
+        if (tag != null && tag != reportedTag) {
+            reportedTag = tag
+            val app = applicationContext
+            val d = data
+            Http.bg("receipt-call") {
+                Receipts.report(app, d["deliveryId"], "call", "call-activity-started",
+                    "${Receipts.environment(app, Channels.CALLS)} locked=${getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked}")
+            }
+        }
         done = false
         setContentView(build())
         Ringer.start(this, data["tag"] ?: "call:", TIMEOUT_MS)

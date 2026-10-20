@@ -16,13 +16,16 @@ import javax.net.ssl.HttpsURLConnection
  *     --es kind chat --es title "RM Bagastyo" --es body "tes" --es tag chat:room1 --es roomId 00000000-0000-0000-0000-000000000001
  */
 class DebugPushReceiver : BroadcastReceiver() {
-    private val keys = listOf("kind", "title", "body", "url", "tag", "callId", "actionToken", "apiBase", "roomId", "sender", "channel", "urgent")
+    private val keys = listOf("kind", "title", "body", "url", "tag", "callId", "actionToken", "apiBase", "roomId", "sender", "channel", "urgent", "deliveryId")
 
     override fun onReceive(c: Context, intent: Intent) {
         if (intent.getStringExtra("kind") == "ssltest") { sslSelfTest(c.applicationContext); return }
         val d = keys.mapNotNull { k -> intent.getStringExtra(k)?.let { k to it } }.toMap()
         if (d["kind"].isNullOrBlank()) return
-        Notifier.handle(c.applicationContext, d)
+        // Same path as a real FCM message (show, then receipt), off the main thread like FCM.
+        val app = c.applicationContext
+        val pending = goAsync()
+        Http.bg("debug-push") { try { PushService.deliver(app, d, "debug-broadcast") } finally { pending.finish() } }
     }
 
     /** Feeds the live server certificate through the same check onReceivedSslError uses. */

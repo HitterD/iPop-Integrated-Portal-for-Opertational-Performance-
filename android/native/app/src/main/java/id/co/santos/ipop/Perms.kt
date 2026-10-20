@@ -69,4 +69,44 @@ object Perms {
             try { a.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg)) } catch (_: Exception) { }
         }
     }
+
+    /**
+     * OEM background/battery settings where "sleeping apps" can delay pushes. Samsung: Device care battery
+     * screens (lool on One UI 3+, sm on older) when resolvable; everyone else (Zebra included): app details,
+     * whose Battery entry holds "Unrestricted".
+     */
+    fun openOemBattery(a: Activity) {
+        val pkg = Uri.parse("package:${a.packageName}")
+        val candidates = mutableListOf<Intent>()
+        if (Build.MANUFACTURER.equals("samsung", ignoreCase = true)) {
+            candidates += Intent().setComponent(android.content.ComponentName("com.samsung.android.lool",
+                "com.samsung.android.sm.battery.ui.BatteryActivity"))
+            candidates += Intent().setComponent(android.content.ComponentName("com.samsung.android.lool",
+                "com.samsung.android.sm.ui.battery.BatteryActivity"))
+            candidates += Intent().setComponent(android.content.ComponentName("com.samsung.android.sm",
+                "com.samsung.android.sm.ui.battery.BatteryActivity"))
+        }
+        candidates += Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg)
+        for (i in candidates) {
+            if (i.resolveActivity(a.packageManager) == null && i.component != null) continue
+            try { a.startActivity(i); return } catch (_: Exception) { }
+        }
+    }
+
+    /**
+     * True if the last process death was the user's Force stop (Android 11+), reported once per exit.
+     * Remembers the timestamp of the exit already shown so the notice appears once.
+     */
+    fun wasForceStopped(c: Context): Boolean {
+        if (Build.VERSION.SDK_INT < 30) return false
+        return try {
+            val am = c.getSystemService(android.app.ActivityManager::class.java)
+            val last = am.getHistoricalProcessExitReasons(c.packageName, 0, 1).firstOrNull() ?: return false
+            val p = Ipop.prefs(c)
+            if (p.getLong("forcestop_seen", 0) >= last.timestamp) return false
+            // Remember every exit we have looked at, so an older force stop is not shown later.
+            p.edit().putLong("forcestop_seen", last.timestamp).apply()
+            last.reason == android.app.ApplicationExitInfo.REASON_USER_REQUESTED
+        } catch (_: Exception) { false }
+    }
 }

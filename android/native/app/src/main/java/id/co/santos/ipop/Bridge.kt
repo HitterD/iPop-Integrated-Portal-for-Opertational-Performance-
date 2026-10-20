@@ -54,6 +54,25 @@ class Bridge(private val a: MainActivity) {
         a.runOnUiThread { OngoingCallService.stop(a) }
     }
 
+    /**
+     * Real end-to-end test: POST /api/push/test with the page's bearer token; the server queues a "test"
+     * push to every device of this user, so this phone gets it back through FCM. The HTTP status is shown
+     * as a toast and also dispatched as window 'ipop-native' {action:'test', status}.
+     */
+    @JavascriptInterface fun sendTestNotification() {
+        if (!allowed()) return
+        a.runOnUiThread {
+            a.withPageToken { bearer ->
+                if (bearer == null) { a.nativeResult("test", 401); return@withPageToken }
+                Http.bg("push-test") {
+                    val code = try { Http.request("POST", "${Ipop.BASE}/api/push/test", "{}", bearer).code } catch (_: Exception) { 0 }
+                    android.util.Log.i(Ipop.TAG, "push test -> $code")
+                    a.runOnUiThread { a.nativeResult("test", code) }
+                }
+            }
+        }
+    }
+
     /** Used by the download shim for blob:/data: links (see Downloads.JS_SHIM). */
     @JavascriptInterface fun saveBase64(name: String?, mime: String?, base64: String?) {
         if (!allowed() || base64.isNullOrEmpty()) return

@@ -12,8 +12,10 @@ import java.net.URL
 
 class App : Application() {
     override fun onCreate() {
+        Receipts.processStartElapsed = android.os.SystemClock.elapsedRealtime()
         super.onCreate()
         Channels.ensure(this)
+        Receipts.flushInBackground(this)
         // FirebaseInitProvider is removed from the manifest; a push that wakes the process needs
         // Firebase up before PushService runs, so initialise from the last config we fetched.
         Push.initFromCache(this)

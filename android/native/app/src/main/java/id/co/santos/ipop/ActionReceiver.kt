@@ -21,7 +21,7 @@ class ActionReceiver : BroadcastReceiver() {
         const val CALL_HANGUP = "id.co.santos.ipop.CALL_HANGUP"
         const val CALL_MUTE = "id.co.santos.ipop.CALL_MUTE"
 
-        private val keys = listOf("kind", "title", "body", "url", "tag", "callId", "actionToken", "apiBase", "roomId", "sender", "channel")
+        private val keys = listOf("kind", "title", "body", "url", "tag", "callId", "actionToken", "apiBase", "roomId", "sender", "channel", "deliveryId")
 
         fun extrasOf(i: Intent): Map<String, String> =
             keys.mapNotNull { k -> i.getStringExtra(k)?.let { k to it } }.toMap()

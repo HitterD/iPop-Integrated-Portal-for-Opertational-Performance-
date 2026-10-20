@@ -46,6 +46,18 @@
     <string name="fr_later">Nanti</string>
     <string name="fr_continue">Lanjut ke iPop</string>
     <string name="fr_skip">Bisa diubah kapan saja di Pengaturan</string>
+    <string name="fr_late">Notifikasi mungkin terlambat</string>
+    <string name="fr_late_sub">Izinkan iPop berjalan di latar belakang di pengaturan baterai HP</string>
+    <string name="fr_open">Buka</string>
+    <string name="fr_forcestop_title">Jangan gunakan \'Paksa berhenti\'</string>
+    <string name="fr_forcestop_body">Jangan gunakan \'Paksa berhenti\' (Force stop). Android memblokir semua notifikasi aplikasi yang dipaksa berhenti sampai dibuka lagi. Untuk menutup, cukup geser dari daftar aplikasi terbaru.</string>
+
+    <string name="fs_title">iPop sempat dipaksa berhenti</string>
+    <string name="fs_body">Selama iPop dipaksa berhenti (Force stop), Android memblokir semua notifikasi dan panggilan iPop. Pesan yang masuk saat itu tidak muncul sebagai notifikasi; silakan cek Chat dan Mail.\n\nUntuk menutup iPop, cukup geser dari daftar aplikasi terbaru. Jangan gunakan \'Paksa berhenti\'.</string>
+    <string name="fs_ok">Mengerti</string>
+
+    <string name="test_sent">Notifikasi tes dikirim. Tunggu beberapa detik.</string>
+    <string name="test_failed">Gagal mengirim tes (%1$s).</string>
 
     <string name="up_title">Versi baru iPop tersedia</string>
     <string name="up_meta">Versi %1$s · %2$s · dari ipop.santos.co.id</string>

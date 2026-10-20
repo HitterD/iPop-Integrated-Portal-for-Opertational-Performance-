@@ -56,7 +56,7 @@ public class PushDiagnosticsTests
             Assert.DoesNotContain(new Uri(s.Endpoint).AbsolutePath, json);
         }
         Assert.DoesNotContain("SECRET", json);
-        Assert.DoesNotContain("Desktop notifications are on", json); // no toast content
+        Assert.DoesNotContain("Notifications are on", json); // no toast content
     }
 
     [Fact]

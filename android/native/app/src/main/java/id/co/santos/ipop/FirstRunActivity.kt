@@ -60,6 +60,19 @@ class FirstRunActivity : Activity() {
         mic.status.visibility = View.VISIBLE
         mic.status.text = getString(R.string.fr_later)
         mic.status.setTextColor(getColor(R.color.ink3))
+        val late = row(col, R.drawable.ic_clock, 0xFFFF9F0A.toInt(), R.string.fr_late, R.string.fr_late_sub) { Perms.openOemBattery(this) }
+        late.status.visibility = View.GONE
+        late.button.text = getString(R.string.fr_open)
+
+        // Force stop warning (amber note, mockup style).
+        val warn = Ui.vertical(c).apply {
+            background = Ui.round(0x1FFF9F0A, dp(c, 14).toFloat())
+            setPadding(dp(c, 14), dp(c, 12), dp(c, 14), dp(c, 12))
+        }
+        warn.addView(Ui.text(c, getString(R.string.fr_forcestop_title), 14f, getColor(R.color.ink), bold = true))
+        warn.addView(Ui.text(c, getString(R.string.fr_forcestop_body), 13f, getColor(R.color.ink2)),
+            Ui.lp(Ui.MATCH, Ui.WRAP).apply { topMargin = dp(c, 4) })
+        col.addView(warn, Ui.lp(Ui.MATCH, Ui.WRAP).apply { topMargin = dp(c, 8) })
 
         col.addView(View(c), Ui.lp(1, 0, 1f))
         col.addView(Ui.button(c, getString(R.string.fr_continue), getColor(R.color.accent)).apply {
