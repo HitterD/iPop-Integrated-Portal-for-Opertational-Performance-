@@ -69,7 +69,7 @@
                     @if (apk == true)
                     {
                         <a class="ph-dl" href="/download/ipop.apk" download="ipop.apk">
-                            @Android<span><b>Download for Android</b><small>APK · version @ApkVersion@(apkBytes > 0 ? " · " + (apkBytes / 1048576.0).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " MB" : "") · Android 7+</small></span>
+                            @Android<span><b>Download for Android</b><small>APK · version @ApkVersion@(apkBytes > 0 ? " · " + (apkBytes / 1048576.0).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " MB" : "") · Android 8+</small></span>
                         </a>
                         <p class="ph-hint">Open the file when it's downloaded and tap <b>Install</b>. If asked, allow Chrome to install apps.</p>
                         <div class="ph-orl">or install from Chrome</div>
@@ -110,8 +110,8 @@
     private bool? apk;
     private long apkBytes, notifierBytes;
     private bool iosSafari = true, copied;
-    /// Matches appVersionName in android/twa/twa-manifest.json (bump both for a new APK).
-    public const string ApkVersion = "1.0.0";
+    /// Matches versionName in android/native/app/build.gradle (bump both, and latest.json, for a new APK).
+    public const string ApkVersion = "2.0.0";
     private string installState = "unsupported";
     private string qrSvg = "";
 
