@@ -12,7 +12,7 @@
     if ((m.type === 'apiResult' || m.type === 'imageResult') && waits.has(m.id)) {
       const w = waits.get(m.id); waits.delete(m.id); w(m); return;
     }
-    if (m.type === 'theme') document.documentElement.classList.toggle('dark', !!m.dark);
+    if (m.type === 'theme') { document.documentElement.classList.toggle('dark', !!m.dark); document.documentElement.classList.toggle('large', !!m.large); }
     if (m.type === 'toast') snack(m.text);
     (handlers[m.type] || []).forEach(h => h(m));
   });

@@ -36,6 +36,7 @@
     $('#maxHint').textContent = S.style === 'stack' ? 'Others wait behind “+N more”' : 'Older windows minimise into the taskbar group';
     $('#vol').value = S.volume; $('#sound').classList.toggle('on', S.sound);
     $('#autostart').classList.toggle('on', S.startWithWindows);
+    pill('#textsize', S.textSize || 'normal');
     $('#mods').innerHTML = MODS.map(([k, n]) => `<div class="row"><span class="ic2" style="background:${(MOD[k] || MOD.tickets).c}">${ICON[k] || ICON.tickets}</span><span class="t">${n}${k === 'chat' ? '<small>Always a Windows toast</small>' : k === 'ticketchat' ? '<small>Toast shows as “iDesk” with a reply box</small>' : ''}</span>
       <div class="pill3" data-mod="${k}"><button data-v="popup" ${k === 'chat' ? 'disabled' : ''}>Popup</button><button data-v="toast">Toast</button><button data-v="off">Off</button></div></div>`).join('');
     document.querySelectorAll('[data-mod]').forEach(p => pill(p, S.modules[p.dataset.mod]));
@@ -64,6 +65,7 @@
       }
       if (p.id === 'meet') return save({ duringMeetings: v });
       if (p.id === 'pos') return save({ position: v });
+      if (p.id === 'textsize') { document.documentElement.classList.toggle('large', v === 'large'); return save({ textSize: v }); }
       if (p.dataset.mod) return save({ modules: Object.assign({}, S.modules, { [p.dataset.mod]: v }) });
     }
     const sw = e.target.closest('.sw'); if (sw) {

@@ -28,16 +28,24 @@ public class AppHub(PresenceConnections connections) : Hub
     }
 }
 
-public sealed class HubRealtime(IHubContext<AppHub> hub) : IRealtime
+public sealed class HubRealtime(IHubContext<AppHub> hub, IHubContext<IPop.Api.Notifications.NotificationHub> notif) : IRealtime
 {
+    /// The iPop Notifier listens on /hubs/notification only; the bell refresh goes there too.
+    private Task Mirror(string evt, Func<IHubClients, IClientProxy> target, object? payload, CancellationToken ct) =>
+        evt == RealtimeEvents.NotificationsChanged ? Send(target(notif.Clients), evt, payload, ct) : Task.CompletedTask;
+
     public Task ToAllAsync(string evt, object? payload = null, CancellationToken ct = default) =>
         Send(hub.Clients.All, evt, payload, ct);
 
     public Task ToUserAsync(string nik, string evt, object? payload = null, CancellationToken ct = default) =>
-        Send(hub.Clients.Group(RealtimeEvents.UserGroup(nik)), evt, payload, ct);
+        Task.WhenAll(Send(hub.Clients.Group(RealtimeEvents.UserGroup(nik)), evt, payload, ct),
+            Mirror(evt, c => c.Group(RealtimeEvents.UserGroup(nik)), payload, ct));
 
-    public Task ToUsersAsync(IEnumerable<string> niks, string evt, object? payload = null, CancellationToken ct = default) =>
-        Send(hub.Clients.Groups(niks.Distinct().Select(RealtimeEvents.UserGroup).ToList()), evt, payload, ct);
+    public Task ToUsersAsync(IEnumerable<string> niks, string evt, object? payload = null, CancellationToken ct = default)
+    {
+        var groups = niks.Distinct().Select(RealtimeEvents.UserGroup).ToList();
+        return Task.WhenAll(Send(hub.Clients.Groups(groups), evt, payload, ct), Mirror(evt, c => c.Groups(groups), payload, ct));
+    }
 
     public Task ToGroupAsync(string group, string evt, object? payload = null, CancellationToken ct = default) =>
         Send(hub.Clients.Group(group), evt, payload, ct);

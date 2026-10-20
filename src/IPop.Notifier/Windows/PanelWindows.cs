@@ -25,6 +25,9 @@ public sealed class InboxWindow : BridgedWindow
 
     public new void Refresh() => Send(new { type = "context", ctx = context() });
 
+    /// Connection changes reach an open Inbox straight away (it used to keep "Reconnecting…" until reopened).
+    public void Connection(bool up) => Send(new { type = "connection", connected = up });
+
     protected override void OnReady() => Refresh();
 
     protected override void OnDeactivate(EventArgs e)
