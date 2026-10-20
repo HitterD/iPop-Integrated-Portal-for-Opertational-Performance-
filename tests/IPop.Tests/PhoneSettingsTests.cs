@@ -62,6 +62,22 @@ public class PhoneSettingsTests
         Assert.Single(pc.FindAll(".acct-sheet")); Assert.Empty(pc.FindAll(".m-profile, .ph-sheet"));
     }
     [Fact]
+    public void Desktop_account_offers_the_prod_Notifier_installer_and_phone_does_not()
+    {
+        using var desktop = Context(false, new Api());
+        desktop.JSInterop.Setup<long>("ipop.phone.size", "/download/notifier/iPopNotifier-win-Setup.exe").SetResult(62_000_000);
+        var pc = desktop.Render<AccountSheet>(p => p.Add(x => x.IsOpen, true));
+        pc.WaitForAssertion(() => Assert.Contains("59 MB", pc.Markup));
+        var dl = pc.Find("a.acct-install-btn");
+        Assert.Equal("/download/notifier/iPopNotifier-win-Setup.exe", dl.GetAttribute("href"));
+        Assert.True(dl.HasAttribute("download"));
+        Assert.Contains("iPop Notifier", pc.Markup);
+        using var phone = Context(true, new Api());
+        var ph = phone.Render<AccountSheet>(p => p.Add(x => x.IsOpen, true));
+        ph.WaitForAssertion(() => Assert.Single(ph.FindAll(".m-profile")));
+        Assert.DoesNotContain("iPop Notifier", ph.Markup);
+    }
+    [Fact]
     public void Settings_phone_hub_dispatches_existing_preferences_and_has_no_language_or_fake_version()
     {
         using var ctx = Context(true, new Api()); var cut = ctx.Render<SettingsPhone>();

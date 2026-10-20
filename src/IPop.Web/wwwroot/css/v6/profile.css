@@ -65,6 +65,8 @@
 .acct-ic.key { background:#8e8e93; }
 .acct-ic.spell { background:#ff9f0a; }
 .acct-ic.install { background:#30b158; }
+.acct-ic.notifier { background:#ff3b30; }
+a.acct-install-btn { display:inline-flex; align-items:center; text-decoration:none; }
 .acct-installed { display:inline-flex; align-items:center; justify-content:flex-end; gap:4px; }
 .acct-installed .lucide { width:14px; height:14px; color:#30b158; }
 .acct-install-btn { flex:none; height:28px; padding:0 14px; border:none; border-radius:14px; background:var(--accent); color:#fff;

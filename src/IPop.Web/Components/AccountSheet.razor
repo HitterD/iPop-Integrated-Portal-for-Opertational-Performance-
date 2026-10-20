@@ -225,6 +225,18 @@
                             "insecure" => "Installing needs the secure address (https). Open iPop via https to install it.",
                             _ => "Use the install icon in the address bar, or the browser menu › Apps › Install iPop.",
                         })</p>
+                        @if (!Phone.IsPhone)
+                        {
+                            <div class="acct-group">
+                                <div class="acct-row">
+                                    <span class="acct-ic notifier"><i data-lucide="bell-ring"></i></span>
+                                    <span class="acct-k">iPop Notifier</span>
+                                    <span class="acct-v"></span>
+                                    <a class="acct-install-btn" href="@NotifierSetup" download>Download</a>
+                                </div>
+                            </div>
+                            <p class="acct-note">Windows app for iPop and iDesk notifications, even when the browser is closed. No admin needed@(notifierBytes > 0 ? $" · {(notifierBytes / 1048576.0).ToString("0", System.Globalization.CultureInfo.InvariantCulture)} MB" : "").</p>
+                        }
 
                         <h3 class="acct-h">Employee details</h3>
                         <div class="acct-group">
@@ -285,6 +297,8 @@
             email = me?.Email ?? "";
             try { spellcheck = await JS.InvokeAsync<bool>("ipop.spellcheck"); } catch { }
             try { installState = await JS.InvokeAsync<string>("ipop.installState"); } catch { }
+            if (!Phone.IsPhone && notifierBytes == 0)
+                try { notifierBytes = await JS.InvokeAsync<long>("ipop.phone.size", NotifierSetup); } catch { }
         }
         else if (!IsOpen) { wasOpen = false; reg?.Dispose(); reg = null; }
     }
@@ -305,6 +319,8 @@
 
     private bool spellcheck;
     private string installState = "unsupported";
+    private const string NotifierSetup = "/download/notifier/iPopNotifier-win-Setup.exe";
+    private long notifierBytes;
 
     private async Task InstallAsync()
     {
