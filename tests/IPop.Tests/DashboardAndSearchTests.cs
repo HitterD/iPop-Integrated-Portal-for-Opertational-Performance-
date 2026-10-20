@@ -167,6 +167,12 @@ public class DashboardAndSearchTests
         Assert.Contains(dto.Projects, p => p.Name == "Kopi Line 3" && p.Done == 1 && p.Total == 2);
         Assert.Contains(dto.Online, p => p.Nik == "DASH_BOB" && p.Status == "on");
         Assert.Contains(dto.Status, s => s.Label == "HRIS sync");
+
+        // Presence changes re-read only this list; it must match the full dashboard's card.
+        var online = await new IPop.Infrastructure.Dashboard.DashboardService(t.Verify()).OnlineAsync(me.Id);
+        Assert.Equal(dto.OnlineCount, online.OnlineCount);
+        Assert.Equal(dto.Online.Select(p => p.Nik), online.Online.Select(p => p.Nik));
+        Assert.DoesNotContain(online.Online, p => p.Nik == "DASH_ME");
     }
 
     [Fact]

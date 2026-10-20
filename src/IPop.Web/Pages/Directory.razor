@@ -850,7 +850,8 @@ else
         var cts = _presenceRefresh = new CancellationTokenSource();
         _ = InvokeAsync(async () =>
         {
-            try { await Task.Delay(1000, cts.Token); } catch (OperationCanceledException) { return; }
+            // Every open Directory hears every sign-in at once; spread the re-reads out.
+            try { await Task.Delay(TimeSpan.FromMilliseconds(Random.Shared.Next(2000, 6000)), cts.Token); } catch (OperationCanceledException) { return; }
             var fresh = await Auth.GetAsync<DirectoryStructureNodeDto>("/api/directory/structure");
             if (cts.IsCancellationRequested) return;
             if (fresh is not null)

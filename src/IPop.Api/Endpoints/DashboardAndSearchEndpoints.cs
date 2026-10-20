@@ -18,6 +18,14 @@ public static class DashboardAndSearchEndpoints
             return dto is null ? Results.Unauthorized() : Results.Ok(dto);
         }).RequireAuthorization();
 
+        // GET /api/dashboard/online — only the "Team online" card, for presence-driven refreshes
+        app.MapGet("/api/dashboard/online", async (HttpContext http, IPopDbContext db, IDashboardService dashboard, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            return Results.Ok(await dashboard.OnlineAsync(userId.Value, ct));
+        }).RequireAuthorization();
+
         // GET /api/search?q= — global search across people, projects, tasks, news, mail
         app.MapGet("/api/search", async (string? q, HttpContext http, ISearchService searchSvc, IPopDbContext db, CancellationToken ct) =>
         {

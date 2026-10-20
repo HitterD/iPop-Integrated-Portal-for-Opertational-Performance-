@@ -388,6 +388,7 @@ else
     private record ChatDto(Guid Id, string Type, string Name, string? LastMessage, DateTime? LastMessageAt, int Unread, string? AvatarColor, string? PeerNik = null);
     private record NewsDto(Guid Id, string Type, string Title, DateTime? PublishedAt, bool NeedsAck);
     private record PersonDto(string Nik, string Name, string Status);
+    private record DashboardOnlineDto(List<PersonDto> Online, int OnlineCount);
     private record StatusDto(string Label, string State, string Note);
     private record NoteDto(Guid Id, string Title, string? Emoji, string EditedBy, DateTime UpdatedAt, bool Favorite);
     private record TransferDto(Guid Id, string Kind, string Status, int TotalFiles, int CompletedFiles, int FailedFiles,
@@ -421,7 +422,7 @@ else
     // ── Team online, live ──
     // A listed person changing between on/away/busy is patched in place. Anyone arriving
     // (the push carries no name) or leaving changes the list and the count, so that
-    // re-reads /api/dashboard, debounced so a login burst is one request.
+    // re-reads /api/dashboard/online, debounced so a login burst is one small request.
     private CancellationTokenSource? _presenceReload;
 
     private void OnPresenceChanged(string nik, string status)
@@ -440,11 +441,13 @@ else
         var cts = _presenceReload = new CancellationTokenSource();
         _ = InvokeAsync(async () =>
         {
-            try { await Task.Delay(1000, cts.Token); } catch (OperationCanceledException) { return; }
-            var fresh = await Auth.GetAsync<DashboardDto>("/api/dashboard");
-            if (cts.IsCancellationRequested || fresh is null) return;
-            data = Normalize(fresh);
-            Cache.Put(CacheKey, ForStorage(data!), persist: true);
+            // Every open Dashboard hears every sign-in at the same moment. A random wait spreads
+            // the re-reads out, and only the small online list is fetched, not the whole dashboard.
+            try { await Task.Delay(TimeSpan.FromMilliseconds(Random.Shared.Next(2000, 6000)), cts.Token); } catch (OperationCanceledException) { return; }
+            var fresh = await Auth.GetAsync<DashboardOnlineDto>("/api/dashboard/online");
+            if (cts.IsCancellationRequested || fresh is null || data is null) return;
+            data = data with { Online = fresh.Online, OnlineCount = fresh.OnlineCount };
+            Cache.Put(CacheKey, ForStorage(data), persist: true);
             StateHasChanged();
         });
     }

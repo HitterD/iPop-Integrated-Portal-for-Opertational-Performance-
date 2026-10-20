@@ -59,4 +59,10 @@ public record DashboardStatusItem(string Label, string State, string Note);
 public interface IDashboardService
 {
     Task<DashboardDto?> GetAsync(Guid userId, CancellationToken ct = default);
+
+    /// Just the "Team online" card. Presence changes re-read this, not the whole dashboard:
+    /// every open Dashboard reacts to every sign-in, so a full reload there stalled the API.
+    Task<DashboardOnlineDto> OnlineAsync(Guid userId, CancellationToken ct = default);
 }
+
+public record DashboardOnlineDto(IReadOnlyList<DashboardPersonItem> Online, int OnlineCount);

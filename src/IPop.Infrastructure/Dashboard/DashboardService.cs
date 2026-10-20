@@ -241,16 +241,7 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
             .ToListAsync(ct);
 
         // ── Team online ──
-        var awayCutoff = now - PresenceStatus.OfflineAfter;
-        var present = await db.Users.AsNoTracking()
-            .Where(u => u.IsActive && u.Id != userId && u.PresenceLastSeenAt > awayCutoff)
-            .Select(u => new { u.Nik, u.Name, u.PresenceLastSeenAt, u.PresenceManualStatus, u.PresenceIsIdle })
-            .ToListAsync(ct);
-        var online = present
-            .Select(u => new DashboardPersonItem(u.Nik, u.Name, PresenceStatus.ComputeStatus(u.PresenceLastSeenAt, u.PresenceManualStatus, now, u.PresenceIsIdle)))
-            .Where(p => p.Status != "off")
-            .OrderBy(p => p.Status == "on" ? 0 : p.Status == "busy" ? 1 : 2).ThenBy(p => p.Name)
-            .ToList();
+        var online = await OnlineListAsync(userId, now, ct);
 
         // ── System status ──
         var status = new List<DashboardStatusItem>
@@ -292,6 +283,26 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
             transfers,
             isAdmin,
             canPostNews);
+    }
+
+    public async Task<DashboardOnlineDto> OnlineAsync(Guid userId, CancellationToken ct = default)
+    {
+        var online = await OnlineListAsync(userId, DateTime.UtcNow, ct);
+        return new DashboardOnlineDto(online.Take(10).ToList(), online.Count);
+    }
+
+    private async Task<List<DashboardPersonItem>> OnlineListAsync(Guid userId, DateTime now, CancellationToken ct)
+    {
+        var awayCutoff = now - PresenceStatus.OfflineAfter;
+        var present = await db.Users.AsNoTracking()
+            .Where(u => u.IsActive && u.Id != userId && u.PresenceLastSeenAt > awayCutoff)
+            .Select(u => new { u.Nik, u.Name, u.PresenceLastSeenAt, u.PresenceManualStatus, u.PresenceIsIdle })
+            .ToListAsync(ct);
+        return present
+            .Select(u => new DashboardPersonItem(u.Nik, u.Name, PresenceStatus.ComputeStatus(u.PresenceLastSeenAt, u.PresenceManualStatus, now, u.PresenceIsIdle)))
+            .Where(p => p.Status != "off")
+            .OrderBy(p => p.Status == "on" ? 0 : p.Status == "busy" ? 1 : 2).ThenBy(p => p.Name)
+            .ToList();
     }
 
     private static string FirstName(string? name) =>
