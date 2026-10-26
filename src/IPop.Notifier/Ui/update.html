@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<link rel="stylesheet" href="app.css">
+<style>
+/* "A new version is ready" (1.3.0): same friendly material as the popups — big title, card, real buttons at the bottom. */
+html,body{height:100%}
+body{display:flex;flex-direction:column;--m:var(--green);--m-soft:color-mix(in srgb,var(--green) 14%,var(--glass));--m-ink:var(--green-2)}
+.box{flex:1;min-height:0;overflow:auto;padding:6px 24px 16px;display:flex;flex-direction:column;gap:14px;animation:winIn .45s var(--spring)}
+.hero{display:flex;align-items:center;gap:14px}
+.hero .lg{width:56px;height:56px;border-radius:16px;background:#fff;display:grid;place-items:center;box-shadow:0 10px 24px -12px rgba(0,0,0,.45);flex:none}
+.hero .lg img{width:40px;height:40px}
+h1{font-size:var(--fs-title);line-height:1.25;font-weight:700}
+.sub{color:var(--ink-3);font-size:var(--fs-meta);margin-top:2px}
+.card{background:var(--card);border:1px solid var(--sep);border-radius:14px;padding:12px 16px;font-size:var(--fs-body);line-height:1.45}
+.card b{display:block;font-size:var(--fs-meta);color:var(--ink-3);font-weight:600;margin-bottom:6px}
+.card ul{padding-left:20px;display:flex;flex-direction:column;gap:4px}
+.note{font-size:var(--fs-meta);color:var(--ink-3);line-height:1.45}
+.tools{display:flex;gap:10px;padding:14px 20px 18px;border-top:1px solid var(--sep);flex:none;justify-content:flex-end;background:var(--glass)}
+.tb2{height:var(--btn-h);padding:0 18px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;gap:8px;font-size:var(--fs-btn);font-weight:650;
+  background:var(--card);color:var(--ink);border:1px solid var(--line-2);box-shadow:0 1px 2px rgba(0,0,0,.06);transition:background .15s,transform .12s var(--spring)}
+.tb2:hover{background:var(--sunk)}
+.tb2:active{transform:scale(.97)}
+.tb2.p{background:var(--m);color:#fff;border-color:transparent;box-shadow:0 1px 2px rgba(0,0,0,.12),0 6px 14px color-mix(in srgb,var(--m) 30%,transparent)}
+.tb2.p:hover{background:color-mix(in srgb,var(--m) 88%,#000)}
+.tb2:disabled{opacity:.55;cursor:default}
+.tb2 svg.lucide{width:18px;height:18px}
+</style>
+</head>
+<body>
+<div class="ttl" data-drag><span class="ic"><i data-lucide="download"></i></span><b>iPop Notifier update</b><button class="wc" data-min></button><button class="wc x" data-close></button></div>
+<div class="box" data-drag>
+  <div class="hero">
+    <div class="lg"><img src="ipop-mark.webp" alt=""></div>
+    <div><h1 id="title">iPop Notifier is ready to update</h1><div class="sub" id="sub"></div></div>
+  </div>
+  <div class="card" id="notes" hidden><b>What's new</b><ul id="list"></ul></div>
+  <p class="note" id="note">It restarts in a few seconds and stays signed in. Choose Later and it asks again in 4 hours; after a day it updates by itself while the PC is idle.</p>
+</div>
+<div class="tools">
+  <button class="tb2" id="later">Later</button>
+  <button class="tb2 p" id="now">Update now</button>
+</div>
+<script src="lucide.min.js"></script>
+<script src="bridge.js"></script>
+<script src="update.js"></script>
+</body>
+</html>

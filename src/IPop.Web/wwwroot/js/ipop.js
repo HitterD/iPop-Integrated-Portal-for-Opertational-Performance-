@@ -2513,3 +2513,26 @@ if ("serviceWorker" in navigator) {
 }
 
 document.documentElement.setAttribute("spellcheck", ipop.spellcheck() ? "true" : "false");
+
+// iPop Notifier sign-in from the browser (Services/NotifierLink.cs): the app on this PC registered
+// ipop-notifier://. Navigating to an external scheme hands the link to Windows and the page stays as it is
+// (CSP frame-src would refuse an iframe for it).
+ipop.notifierLink = {
+  supported() {
+    const d = navigator.userAgentData;
+    if (d) return !d.mobile && /windows/i.test(d.platform || "");
+    return /Windows NT/.test(navigator.userAgent) && !/Mobile/.test(navigator.userAgent);
+  },
+  /** One tab at a time, at most once every 3 minutes per browser ("Sign in with browser" in the app: 10 s). */
+  claim(force) {
+    const key = "ipop.notifierLink.at", now = Date.now();
+    const last = Number(localStorage.getItem(key) || 0);
+    if (now - last < (force ? 10000 : 180000)) return false;
+    localStorage.setItem(key, String(now));
+    return true;
+  },
+  open(url) {
+    if (!/^ipop-notifier:\/\/signin\?code=[\w%-]+$/.test(url)) return;
+    window.location.href = url;
+  },
+};

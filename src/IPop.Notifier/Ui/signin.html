@@ -38,6 +38,11 @@ input::placeholder{color:rgba(255,255,255,.55)}
 small{position:relative;margin-top:18px;opacity:.6;font-size:12px;text-align:center;max-width:300px;line-height:1.45}
 .box::-webkit-scrollbar{display:none}
 .adv{margin-top:8px;font-size:11.5px;opacity:.5;cursor:pointer;text-decoration:underline}
+.or{display:flex;align-items:center;gap:10px;font-size:12px;opacity:.6}
+.or::before,.or::after{content:"";flex:1;height:1px;background:rgba(255,255,255,.3)}
+.alt{height:46px;border-radius:12px;background:rgba(255,255,255,.12);color:#fff;font-weight:650;font-size:14.5px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.22);transition:background .2s,transform .15s var(--spring)}
+.alt:hover{background:rgba(255,255,255,.18)}
+.alt:active{transform:scale(.97)}
 #server{display:none}
 .showsrv #server{display:block}
 </style>
@@ -55,8 +60,10 @@ small{position:relative;margin-top:18px;opacity:.6;font-size:12px;text-align:cen
     <label class="chk"><span class="sw on" id="auto"></span>Start with Windows</label>
     <div class="err" id="err"></div>
     <button class="go" id="go">Sign in</button>
+    <div class="or"><span>or</span></div>
+    <button type="button" class="alt" id="browser">Sign in with browser</button>
   </form>
-  <small>You stay signed in. iDesk and other company apps open without asking again.</small>
+  <small id="hint">Signed in to iPop in the browser on this PC? Then this app signs in by itself. You stay signed in.</small>
   <span class="adv" id="adv">Server…</span>
 </div>
 <script src="lucide.min.js"></script>

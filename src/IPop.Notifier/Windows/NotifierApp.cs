@@ -1,7 +1,5 @@
 using System.Text.Json.Nodes;
 using IPop.Notifier.Core;
-using Velopack;
-using Velopack.Sources;
 
 namespace IPop.Notifier.Windows;
 
@@ -63,7 +61,7 @@ public sealed class NotifierApp : ApplicationContext
         devicesItem = new ToolStripMenuItem("Devices (ICT)", null, (_, _) => ShowDevices()) { Visible = false };
         menu.Items.Add(devicesItem);
         menu.Items.Add("Settings", null, (_, _) => ShowSettings());
-        menu.Items.Add("Check for updates", null, (_, _) => _ = UpdateAsync(manual: true));
+        menu.Items.Add("Check for updates", null, (_, _) => _ = CheckNowAsync());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Quit iPop Notifier", null, (_, _) => Quit());
         menu.Opening += (_, _) => popupsItem.Text = settings.Current.Popups == "on" ? "Pause popups for 1 hour" : "Turn popups back on";
@@ -107,6 +105,7 @@ public sealed class NotifierApp : ApplicationContext
         feed.ReadElsewhere += () => _ = RefreshUnreadAsync();
         feed.ChatToast += t => Post(() => OnChatToast(t));
         feed.Remote += (ev, n) => Post(() => OnRemote(ev, n));
+        feed.ReleasePublished += OnReleasePublished;
         feed.ConnectionChanged += c => Post(() => { connected = c; UpdateTray(); if (inbox is { IsDisposed: false }) inbox.Connection(c); });
         try { await feed.StartAsync(ct); } catch (OperationCanceledException) { }
         await RefreshUnreadAsync();
@@ -215,8 +214,68 @@ public sealed class NotifierApp : ApplicationContext
         if (signIn is { IsDisposed: false }) { signIn.Activate(); return; }
         signIn = new SignInWindow(api);
         signIn.SignedIn += () => Post(() => { _ = StartSessionAsync(); tray.ShowBalloonTip(3000, "iPop Notifier", "You're signed in. Notifications will appear here.", ToolTipIcon.Info); });
+        signIn.WithBrowser += () => Post(() => OpenIPop("/dashboard?notifier=signin"));
         signIn.Show();
         signIn.Activate();
+        _ = WaitForBrowserAsync();
+    }
+
+    private CancellationTokenSource? waitingLoop;
+
+    /// While signed out: tell iPop every 30 s that this app is waiting, so iPop open in the browser on this PC sends
+    /// the sign-in link by itself (grilled 2026-10-26).
+    private async Task WaitForBrowserAsync()
+    {
+        waitingLoop?.Cancel();
+        var cts = waitingLoop = new CancellationTokenSource();
+        while (!cts.IsCancellationRequested && !api.IsSignedIn)
+        {
+            await api.SayWaitingAsync(cts.Token);
+            try { await Task.Delay(TimeSpan.FromSeconds(30), cts.Token); } catch (OperationCanceledException) { return; }
+        }
+    }
+
+    /// ipop-notifier://signin?code=… from iPop in the browser.
+    private async Task SignInWithCodeAsync(string code)
+    {
+        var previous = api.Session?.Nik;
+        IPopClient.LinkResult r;
+        try { r = await api.SignInWithCodeAsync(api.Session?.Server ?? AppInfo.DefaultServer, code, CancellationToken.None); }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException) { r = new(false, "Can't reach iPop. Check the network and try again.", null, false); }
+        Post(() =>
+        {
+            if (!r.Ok)
+            {
+                Log.Warn("signin", "browser link refused: " + r.Error);
+                // Already signed in and the link was refused: say so quietly, keep the current account.
+                tray.ShowBalloonTip(5000, "iPop Notifier", r.Error ?? "Couldn't sign in from the browser.", ToolTipIcon.Warning);
+                return;
+            }
+            waitingLoop?.Cancel();
+            if (signIn is { IsDisposed: false }) signIn.Close();
+            if (previous is not null && r.Switched) OnAccountSwitched();
+            _ = StartSessionAsync();
+            Integration.SetStartWithWindows(true);
+            Toasts.ShowSignedIn(r.Name ?? api.Session?.Name ?? "", switched: previous is not null && r.Switched);
+        });
+    }
+
+    /// The browser moved this PC to another account: drop what belonged to the old one.
+    private void OnAccountSwitched()
+    {
+        session.Cancel();
+        _ = feed?.StopAsync();
+        popups.CloseAll();
+        inbox?.Close();
+        inbox = null;
+        settingsWindow?.Close();
+        devices?.Close();
+        unread = 0;
+        state.Shown.Clear();
+        state.Held.Clear();
+        state.LastShownAt = null;
+        state.Save();
+        UpdateTray();
     }
 
     private void OnSignedOut()
@@ -355,6 +414,9 @@ public sealed class NotifierApp : ApplicationContext
                 if (unc is null || !Integration.OpenInExplorer(unc))
                     tray.ShowBalloonTip(4000, "iPop Notifier", "This link isn't on a company NAS, so it can't open in File Explorer.", ToolTipIcon.Warning);
                 break;
+            case "signin" when !files && q["code"] is { Length: > 10 and < 200 } code:
+                _ = SignInWithCodeAsync(code);
+                break;
             case "inbox": ShowInbox(); break;
             case "settings": ShowSettings(); break;
             case "devices": ShowDevices(); break;
@@ -368,52 +430,119 @@ public sealed class NotifierApp : ApplicationContext
 
     // ── updates ──────────────────────────────────────────────────────────────
 
-    /// Checks the update feed shortly after start and every 10 minutes. A new version is downloaded in the background
-    /// and installed straight away (the app restarts by itself, signed in) unless remote help is running or the
-    /// person is typing a reply in a popup — then it waits for the next check.
+    private Updater? updater;
+    private UpdateWindow? updateWindow;
+    private readonly SemaphoreSlim updateKick = new(0, 1);
+
+    /// Checks shortly after start, every 6 hours, and as soon as iPop says a release was published
+    /// ("notifierUpdate" on the hub). A new version downloads in the background; then the person is asked
+    /// (Update now / Later). <see cref="IPop.Application.Notifier.NotifierUpdatePolicy"/> decides when to ask again,
+    /// when to install anyway (after a day, PC idle) and that a mandatory release installs at once.
     private async Task UpdateLoopAsync()
     {
+        updater = new Updater(api);
         await Task.Delay(TimeSpan.FromSeconds(45));
+        var lastCheck = DateTime.MinValue;
         while (true)
         {
-            await UpdateAsync(manual: false);
-            await Task.Delay(TimeSpan.FromMinutes(10));
+            if (DateTime.UtcNow - lastCheck >= TimeSpan.FromHours(6) || kicked)
+            {
+                kicked = false;
+                lastCheck = DateTime.UtcNow;
+                await updater.CheckAsync();
+            }
+            // A call in iPop (browser or phone) counts as busy too: no restart in the middle of it.
+            if (updater.Pending is not null) inCall = await InCallAsync();
+            Post(StepUpdate);
+            // Re-evaluate every minute (Later timer, idle install); a publish signal wakes it at once.
+            await updateKick.WaitAsync(TimeSpan.FromMinutes(1));
         }
     }
 
-    private bool Busy() => remoteActive || viewers.Count > 0;
+    private volatile bool kicked;
 
-    /// Velopack feed on the iPop server (/download/notifier/). Downloads quietly and applies on the next start,
-    /// or right away when the user asked.
-    private async Task UpdateAsync(bool manual)
+    /// iPop published a release: check now (spread over a minute so every PC doesn't download at the same second).
+    private void OnReleasePublished()
     {
-        try
+        _ = Task.Run(async () =>
         {
-            var mgr = new UpdateManager(new SimpleWebSource(AppInfo.UpdateFeed ?? new Uri(api.Server, "download/notifier/").ToString()));
-            if (!mgr.IsInstalled)
-            {
-                if (manual) Post(() => tray.ShowBalloonTip(3000, "iPop Notifier", "Updates work in the installed app only.", ToolTipIcon.Info));
-                return;
-            }
-            var next = await mgr.CheckForUpdatesAsync();
-            if (next is null)
-            {
-                if (manual) Post(() => tray.ShowBalloonTip(3000, "iPop Notifier", $"You have the latest version ({AppInfo.Version}).", ToolTipIcon.Info));
-                return;
-            }
-            Log.Info("update", $"found {next.TargetFullRelease.Version}, downloading");
-            await mgr.DownloadUpdatesAsync(next);
-            if (!manual && Busy()) { Log.Info("update", "downloaded; waiting until remote help is over"); return; }
-            Log.Info("update", "installing and restarting");
-            Post(() => tray.ShowBalloonTip(3000, "iPop Notifier", $"Updating to {next.TargetFullRelease.Version}… it restarts by itself.", ToolTipIcon.Info));
-            await Task.Delay(1500);
-            mgr.ApplyUpdatesAndRestart(next);
+            await Task.Delay(TimeSpan.FromSeconds(Random.Shared.Next(1, 60)));
+            kicked = true;
+            if (updateKick.CurrentCount == 0) try { updateKick.Release(); } catch (SemaphoreFullException) { }
+        });
+    }
+
+    private bool Busy() => remoteActive || viewers.Count > 0 || inCall;
+    private bool inCall;
+
+    private async Task<bool> InCallAsync()
+    {
+        if (!api.IsSignedIn) return false;
+        var n = await api.GetJsonAsync("api/calls/active");
+        return n is System.Text.Json.Nodes.JsonObject o && o.Count > 0;
+    }
+
+    private void StepUpdate()
+    {
+        if (updater?.Pending is not { } ready) return;
+        switch (updater.NextStep(Busy()))
+        {
+            case IPop.Application.Notifier.NotifierUpdatePolicy.Step.Ask:
+                ShowUpdate(ready);
+                break;
+            case IPop.Application.Notifier.NotifierUpdatePolicy.Step.InstallNow:
+                tray.ShowBalloonTip(4000, "iPop Notifier", $"Updating to {ready.Version}… it restarts by itself.", ToolTipIcon.Info);
+                _ = InstallSoonAsync();
+                break;
+            case IPop.Application.Notifier.NotifierUpdatePolicy.Step.InstallQuietly:
+                Log.Info("update", "installing while the PC is idle");
+                _ = InstallSoonAsync();
+                break;
         }
+    }
+
+    private void ShowUpdate(Updater.Ready ready)
+    {
+        if (updateWindow is { IsDisposed: false }) { updateWindow.Activate(); return; }
+        updater!.Asking = true;
+        updater.AskedAt = DateTime.UtcNow;
+        updateWindow = new UpdateWindow(new { version = ready.Version, current = AppInfo.Version, notes = ready.Notes });
+        updateWindow.Now += () => _ = InstallSoonAsync();
+        updateWindow.Later += () => { updater.Asking = false; updater.AskedAt = DateTime.UtcNow; };
+        updateWindow.FormClosed += (_, _) => updater.Asking = false;
+        updateWindow.Show();
+    }
+
+    private bool installing;
+    private async Task InstallSoonAsync()
+    {
+        if (installing || updater is null) return;
+        installing = true;
+        await Task.Delay(1500);
+        try { updater.InstallAndRestart(); }
         catch (Exception ex)
         {
-            Log.Warn("update", "check failed: " + ex.GetType().Name + " " + ex.Message);
-            if (manual) Post(() => tray.ShowBalloonTip(3000, "iPop Notifier", "Couldn't check for updates right now.", ToolTipIcon.Warning));
+            installing = false;
+            Log.Warn("update", "install failed: " + ex.Message);
+            Post(() => tray.ShowBalloonTip(4000, "iPop Notifier", "The update couldn't be installed. It will try again later.", ToolTipIcon.Warning));
         }
+    }
+
+    /// Tray → Check for updates.
+    private async Task CheckNowAsync()
+    {
+        updater ??= new Updater(api);
+        var r = await updater.CheckAsync();
+        Post(() =>
+        {
+            switch (r)
+            {
+                case Updater.Result.NotInstalled: tray.ShowBalloonTip(3000, "iPop Notifier", "Updates work in the installed app only.", ToolTipIcon.Info); break;
+                case Updater.Result.UpToDate: tray.ShowBalloonTip(3000, "iPop Notifier", $"You have the latest version ({AppInfo.Version}).", ToolTipIcon.Info); break;
+                case Updater.Result.Failed: tray.ShowBalloonTip(3000, "iPop Notifier", "Couldn't check for updates right now.", ToolTipIcon.Warning); break;
+                case Updater.Result.Ready when updater.Pending is { } p: updater.AskedAt = null; ShowUpdate(p); break;
+            }
+        });
     }
 
     private void Quit()

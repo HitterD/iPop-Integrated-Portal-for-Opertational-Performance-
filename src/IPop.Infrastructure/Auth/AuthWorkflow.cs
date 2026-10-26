@@ -52,6 +52,18 @@ public class AuthWorkflow(IPopDbContext db, IPasswordHasher hasher, ITokenServic
         user.FailedLoginCount = 0;
         user.LockedUntil = null;
 
+        return (await OpenSessionAsync(user, req.DeviceFingerprint, ip, "auth.login", ct), null, 200);
+    }
+
+    public async Task<LoginResponse?> IssueSessionAsync(Guid userId, string? deviceFingerprint, string? ip, string auditAction, CancellationToken ct)
+    {
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (user is null || !user.IsActive || user.LockedUntil > DateTime.UtcNow) return null;
+        return await OpenSessionAsync(user, deviceFingerprint, ip, auditAction, ct);
+    }
+
+    private async Task<LoginResponse> OpenSessionAsync(User user, string? deviceFingerprint, string? ip, string auditAction, CancellationToken ct)
+    {
         var roles = await db.UserRoles.Where(ur => ur.UserId == user.Id)
             .Select(ur => ur.Role.Name).ToListAsync(ct);
         var family = Guid.NewGuid();
@@ -62,15 +74,15 @@ public class AuthWorkflow(IPopDbContext db, IPasswordHasher hasher, ITokenServic
             UserId = user.Id,
             FamilyId = family,
             RefreshTokenHash = tokens.HashRefreshToken(refresh),
-            DeviceFingerprint = req.DeviceFingerprint,
+            DeviceFingerprint = deviceFingerprint,
             IpAddress = ip,
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.Add(RefreshLifetime),
         });
         await db.SaveChangesAsync(ct);
-        await Audit(user.Nik, "auth.login", "User", user.Nik, ip, ct);
+        await Audit(user.Nik, auditAction, "User", user.Nik, ip, ct);
 
-        return (new LoginResponse(access, refresh, exp, user.MustChangePassword), null, 200);
+        return new LoginResponse(access, refresh, exp, user.MustChangePassword);
     }
 
     public async Task<(AuthError?, int)> ChangePasswordAsync(string nik, ChangePasswordRequest req, string? ip, CancellationToken ct)

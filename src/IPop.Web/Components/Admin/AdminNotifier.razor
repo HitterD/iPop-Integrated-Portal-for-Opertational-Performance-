@@ -1,0 +1,67 @@
+@* iPop Notifier versions (read-only, 1.3.0): what is released, what the pilot group tries, and how many PCs run
+   each version. Publishing happens in the deploy script (publish-notifier.ps1), never here. *@
+@inject AuthState Auth
+@inject IJSRuntime JS
+
+<p class="adm-summary">
+    @if (data is null) { <span class="skel-inline"></span> }
+    else
+    {
+        <span>@(data.All is { } a ? $"Everyone: {a.Version}" : "Nothing released yet")</span>
+        <span>@(data.Pilot is { } p ? $"Pilot (ICT/Admin): {p.Version}" : "No pilot release")</span>
+        <span>@AdminHumanize.Plural(data.Versions.Sum(v => v.Pcs), "PC") seen in the last 14 days</span>
+    }
+</p>
+
+<div class="adm-card">
+    <div class="adm-card-head"><span class="adm-card-title">Releases</span></div>
+    @if (data is not null)
+    {
+        <div class="adm-hol-list">
+            <div class="adm-hol-row">
+                <span class="adm-nf-ic all"><i data-lucide="users"></i></span>
+                <span class="adm-hol-t"><b>Everyone · @(data.All?.Version ?? "—")</b><small>@ReleaseLine(data.All, "Installer and updates for every PC")</small></span>
+            </div>
+            <div class="adm-hol-row">
+                <span class="adm-nf-ic pilot"><i data-lucide="flask-conical"></i></span>
+                <span class="adm-hol-t"><b>Pilot · @(data.Pilot?.Version ?? "none")</b><small>@(data.Pilot is null ? "ICT and Admin get new versions here first" : ReleaseLine(data.Pilot, "ICT and Admin only, until it is released to everyone"))</small></span>
+            </div>
+        </div>
+    }
+</div>
+
+<div class="adm-card">
+    <div class="adm-card-head"><span class="adm-card-title">PCs per version</span></div>
+    @if (data is { Versions.Count: 0 })
+    {
+        <div class="adm-empty">No PC has reported in the last 14 days.</div>
+    }
+    else if (data is not null)
+    {
+        <div class="adm-hol-list">
+            @foreach (var v in data.Versions)
+            {
+                var current = v.Version == data.All?.Version || v.Version == data.Pilot?.Version;
+                <div class="adm-hol-row @(current ? "" : "past")" @key="v.Version">
+                    <span class="adm-hol-date"><small>ver</small><b>@(string.IsNullOrEmpty(v.Version) ? "?" : v.Version)</b></span>
+                    <span class="adm-hol-t"><b>@AdminHumanize.Plural(v.Pcs, "PC")</b><small>@v.Online online now@(current ? "" : " · updates on its next check")</small></span>
+                </div>
+            }
+        </div>
+    }
+</div>
+<small class="adm-hol-hint">New versions are published from the deploy script: pilot first, then everyone. Each PC asks before it restarts (Later = again in 4 hours, by itself after a day when idle).</small>
+
+@code {
+    public sealed record ReleaseDto(string Version, bool Mandatory, DateTime? PublishedAt);
+    public sealed record VersionDto(string Version, int Pcs, int Online);
+    public sealed record ReleasesDto(ReleaseDto? All, ReleaseDto? Pilot, List<VersionDto> Versions);
+
+    private ReleasesDto? data;
+
+    protected override async Task OnInitializedAsync() => data = await Auth.GetAsync<ReleasesDto>("/api/notifier/releases") ?? new(null, null, []);
+    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
+
+    private static string ReleaseLine(ReleaseDto? r, string what) =>
+        r is null ? what : what + (r.PublishedAt is { } at ? $" · published {AdminHumanize.Ago(at)}" : "") + (r.Mandatory ? " · mandatory" : "");
+}

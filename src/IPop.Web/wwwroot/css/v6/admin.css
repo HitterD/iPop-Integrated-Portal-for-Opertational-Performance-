@@ -411,3 +411,9 @@
 .adm-hol-t { flex: 1; min-width: 0; display: grid; }
 .adm-hol-t b { font-size: 13.5px; }
 .adm-hol-t small { color: var(--ink-3); font-size: 12px; }
+
+/* iPop Notifier versions (AdminNotifier) */
+.adm-nf-ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; flex: none; }
+.adm-nf-ic.all { background: var(--accent-soft); color: var(--accent); }
+.adm-nf-ic.pilot { background: color-mix(in srgb, #ff9f0a 16%, transparent); color: #c77700; }
+.adm-nf-ic svg { width: 17px; height: 17px; }

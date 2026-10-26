@@ -42,6 +42,8 @@
     <Content Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />
     <!-- Same settings model as the server (ui-prefs key "notifier"), so both normalise identically. -->
     <Compile Include="..\IPop.Application\Notifier\NotifierSettings.cs" Link="Core\NotifierSettings.cs" />
+    <!-- When a downloaded update is offered / installed (tested in IPop.Tests). -->
+    <Compile Include="..\IPop.Application\Notifier\NotifierUpdatePolicy.cs" Link="Core\NotifierUpdatePolicy.cs" />
   </ItemGroup>
 
 </Project>

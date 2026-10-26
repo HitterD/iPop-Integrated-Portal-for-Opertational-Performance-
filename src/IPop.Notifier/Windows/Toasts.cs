@@ -77,6 +77,18 @@ public static class Toasts
         Show(b, "n" + n.Id.ToString("N")[..16]);
     }
 
+    /// Signed in from the browser (or moved to another account by it): always said out loud.
+    public static void ShowSignedIn(string name, bool switched)
+    {
+        var b = new ToastContentBuilder()
+            .AddArgument("url", "/notifications")
+            .AddAppLogoOverride(Logo, ToastGenericAppLogoCrop.Default)
+            .AddAttributionText("iPop Notifier")
+            .AddText(switched ? $"iPop Notifier is now signed in as {name}" : $"Signed in as {name}", hintMaxLines: 2)
+            .AddText(switched ? "You signed in to iPop with another account on this PC." : "Your iPop and iDesk notifications will appear here.");
+        Show(b, "signin");
+    }
+
     /// iDesk ticket notifications, from the "iDesk" identity. A chat message gets a reply box and "Open in iDesk";
     /// one toast per ticket, replaced by the next message (the title carries the running count).
     public static void ShowTicket(Notice n)

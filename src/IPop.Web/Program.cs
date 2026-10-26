@@ -68,6 +68,7 @@ builder.Services.AddScoped<IPop.Web.Services.InviteApi>();
 builder.Services.AddScoped<IPop.Web.Services.MeetingDraftHandoff>();
 builder.Services.AddScoped<IPop.Web.Services.PhotoViewerState>();
 builder.Services.AddScoped<IPop.Web.Services.SessionLockState>();
+builder.Services.AddScoped<IPop.Web.Services.NotifierLink>();
 // Emoji picker: the Unicode list is a static file under wwwroot (fetched once from the app's own
 // origin, not ApiBase); recents/tone are per account in localStorage.
 builder.Services.AddScoped(_ => new IPop.Web.Services.EmojiCatalog(

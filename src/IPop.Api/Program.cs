@@ -230,6 +230,9 @@ builder.Services.AddScoped<IAttachmentAccessPolicy, IPop.Infrastructure.Mail.Mai
 builder.Services.AddSingleton<IPop.Application.Calls.ILiveKitTokenService, IPop.Infrastructure.Calls.LiveKitTokenService>();
 builder.Services.AddScoped<IPop.Application.Calls.ICallService, IPop.Infrastructure.Calls.CallService>();
 builder.Services.AddSingleton<IPop.Api.Calls.CallConnections>();
+// iPop Notifier: release channels (pilot → all) and the "new version" signal to running apps.
+builder.Services.AddSingleton<IPop.Api.Notifier.NotifierReleases>();
+builder.Services.AddHostedService<IPop.Api.Notifier.NotifierReleaseWatcher>();
 builder.Services.AddHostedService<IPop.Api.Calls.CallRingTimeoutWorker>();
 
 // Projects module
@@ -502,6 +505,7 @@ app.MapMe();
 app.MapUiPrefs();
 app.MapNotifier();
 app.MapRemote();
+IPop.Api.Notifier.NotifierLinkEndpoints.MapNotifierLink(app);
 if (IPop.Api.Sso.SsoSetup.Enabled(app.Configuration))
 {
     IPop.Api.Sso.SsoEndpoints.MapSso(app, app.Configuration["Oidc:WebBase"] ?? "");

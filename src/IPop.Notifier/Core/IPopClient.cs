@@ -61,6 +61,47 @@ public sealed class IPopClient
         return new(true, null, false);
     }
 
+    private sealed record LinkDto(string AccessToken, string RefreshToken, DateTime AccessTokenExpiresAt, bool MustChangePassword, string Nik, string? Name, bool Switched);
+    public sealed record LinkResult(bool Ok, string? Error, string? Name, bool Switched);
+
+    /// ipop-notifier://signin?code=… from the browser: trade the one-time code for this app's own session.
+    /// Signed in as someone else, the server only allows it straight after a sign-in in the browser on this PC.
+    public async Task<LinkResult> SignInWithCodeAsync(string server, string code, CancellationToken ct)
+    {
+        var baseUri = new Uri(server.TrimEnd('/') + "/");
+        using var req = new HttpRequestMessage(HttpMethod.Post, new Uri(baseUri, "api/notifier/link/redeem"))
+        {
+            Content = JsonContent.Create(new { code, deviceKey = store.DeviceKey(), currentNik = Session?.Nik }, options: Json),
+        };
+        req.Headers.TryAddWithoutValidation("X-Notifier-Machine", Environment.MachineName);
+        using var res = await http.SendAsync(req, ct);
+        if (!res.IsSuccessStatusCode)
+        {
+            var err = await SafeRead<ErrorDto>(res, ct);
+            return new(false, err?.Message ?? $"iPop answered {(int)res.StatusCode}.", null, false);
+        }
+        var dto = (await res.Content.ReadFromJsonAsync<LinkDto>(Json, ct))!;
+        if (dto.MustChangePassword) return new(false, "Set a new password in iPop first, then try again.", null, false);
+        var old = Session;
+        access = dto.AccessToken; accessExpires = dto.AccessTokenExpiresAt.ToUniversalTime();
+        Session = new SessionStore.Session(baseUri.ToString(), dto.RefreshToken, store.DeviceKey(), dto.Nik, dto.Name);
+        store.Save(Session);
+        // The previous account's session on this PC is over.
+        if (old is not null && old.RefreshToken != dto.RefreshToken)
+            try { await http.PostAsJsonAsync(new Uri(new Uri(old.Server), "api/auth/logout"), new { refreshToken = old.RefreshToken }, ct); } catch { }
+        return new(true, null, dto.Name, dto.Switched);
+    }
+
+    /// Signed out: "an app is waiting here", so iPop in the browser on this PC knows to send the sign-in link.
+    public async Task SayWaitingAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var _ = await http.PostAsJsonAsync(new Uri(Server, "api/notifier/link/waiting"), new { deviceKey = store.DeviceKey() }, ct);
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { }
+    }
+
     public async Task SignOutAsync()
     {
         var s = Session;

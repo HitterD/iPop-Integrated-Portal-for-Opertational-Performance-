@@ -115,6 +115,7 @@ public static class HostPipeline
         file.Length is > 0 and <= 120
         && file.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '_')
         && !file.Contains("..")
+        // releases.win.pilot.json and release.json are read by the API (per person), never downloaded here.
         && (file is "releases.win.json" or "RELEASES" or "assets.win.json"
             || (file.StartsWith("iPopNotifier", StringComparison.Ordinal) && (file.EndsWith(".nupkg", StringComparison.Ordinal) || file.EndsWith("-Setup.exe", StringComparison.Ordinal))));
 }

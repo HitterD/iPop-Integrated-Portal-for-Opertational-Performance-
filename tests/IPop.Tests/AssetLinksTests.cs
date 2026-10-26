@@ -128,6 +128,9 @@ public class NotifierDownloadTests
     [InlineData("..\appsettings.json", false)]
     [InlineData("../releases.win.json", false)]
     [InlineData("iPopNotifier-1.0.1-full.nupkg.bak", false)]
+    // Per-person channel files go through the API only.
+    [InlineData("releases.win.pilot.json", false)]
+    [InlineData("release.json", false)]
     [InlineData("other-Setup.exe", false)]
     [InlineData("iPopNotifier..-win-Setup.exe", false)]
     [InlineData("", false)]

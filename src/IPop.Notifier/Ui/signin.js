@@ -12,6 +12,10 @@
     const e = $('#err'); e.textContent = m.message || 'Couldn\'t sign in.'; e.classList.remove('shake'); void e.offsetWidth; e.classList.add('shake');
     $('#pw').select();
   });
+  $('#browser').onclick = () => {
+    app.post({ type: 'withBrowser' });
+    $('#hint').textContent = 'iPop opened in your browser. Sign in there if it asks; this window closes by itself.';
+  };
   $('#f').onsubmit = e => {
     e.preventDefault();
     const nik = $('#nik').value.trim(), pw = $('#pw').value;

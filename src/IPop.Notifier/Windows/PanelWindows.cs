@@ -98,8 +98,10 @@ public sealed class SignInWindow : HtmlWindow
 {
     private readonly IPopClient api;
     public event Action? SignedIn;
+    /// "Sign in with browser": iPop opens; if the browser is signed in it sends the link back.
+    public event Action? WithBrowser;
 
-    public SignInWindow(IPopClient api) : base("signin.html", new Size(480, 700))
+    public SignInWindow(IPopClient api) : base("signin.html", new Size(480, 760))
     {
         this.api = api;
         Text = "iPop Notifier — Sign in";
@@ -110,6 +112,7 @@ public sealed class SignInWindow : HtmlWindow
 
     protected override async void HandleMessage(string type, JsonNode? msg)
     {
+        if (type == "withBrowser") { WithBrowser?.Invoke(); return; }
         if (type != "signIn") { base.HandleMessage(type, msg); return; }
         var nik = msg?["nik"]?.GetValue<string>()?.Trim() ?? "";
         var password = msg?["password"]?.GetValue<string>() ?? "";
@@ -127,6 +130,43 @@ public sealed class SignInWindow : HtmlWindow
         {
             Send(new { type = "error", message = "Can't reach iPop. Check the network and try again." });
         }
+    }
+}
+
+/// "iPop Notifier X is ready": Update now / Later (1.3.0). Closing = Later.
+public sealed class UpdateWindow : HtmlWindow
+{
+    private readonly object info;
+    public event Action? Now;
+    public event Action? Later;
+    private bool answered;
+
+    public UpdateWindow(object info) : base("update.html", new Size(520, 440))
+    {
+        this.info = info;
+        Text = "iPop Notifier — Update";
+        StartPosition = FormStartPosition.Manual;
+        TopMost = true;
+        var area = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
+        Location = new Point(area.Right - Width - 16, area.Bottom - Height - 16);
+    }
+
+    protected override void OnReady() => Send(new { type = "update", info });
+
+    protected override void HandleMessage(string type, JsonNode? msg)
+    {
+        switch (type)
+        {
+            case "now": answered = true; Now?.Invoke(); break;
+            case "later": case "close": answered = true; Later?.Invoke(); Close(); break;
+            default: base.HandleMessage(type, msg); break;
+        }
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        if (!answered) Later?.Invoke();
+        base.OnFormClosed(e);
     }
 }
 

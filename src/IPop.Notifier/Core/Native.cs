@@ -30,6 +30,21 @@ internal static partial class Native
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool DestroyIcon(nint hIcon);
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LastInput { public uint Size; public uint Time; }
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetLastInputInfo(ref LastInput info);
+
+    /// Time since the last keyboard or mouse input in this Windows session.
+    public static TimeSpan IdleTime()
+    {
+        var li = new LastInput { Size = (uint)Marshal.SizeOf<LastInput>() };
+        if (!GetLastInputInfo(ref li)) return TimeSpan.Zero;
+        return TimeSpan.FromMilliseconds(unchecked((uint)Environment.TickCount - li.Time));
+    }
+
     public const int WM_NCLBUTTONDOWN = 0xA1, HTCAPTION = 2;
     public const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20, DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWA_SYSTEMBACKDROP_TYPE = 38;
 

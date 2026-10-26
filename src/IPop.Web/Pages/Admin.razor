@@ -103,6 +103,9 @@ else if (Current is not null)
             case "calendar":
                 <AdminHolidays />
                 break;
+            case "notifier":
+                <AdminNotifier />
+                break;
         }
     </section>
 </div>
@@ -123,7 +126,8 @@ else if (Current is not null)
         new("Communication", [new("meeting-rooms", "Meeting rooms", "Video per room and server recordings", "door-open", "green"),
                               new("announcements", "Announcements", "Launch videos that pop up after login", "clapperboard", "orange"),
                               new("calendar", "Holidays", "National and company holidays on everyone's calendar", "party-popper", "red")]),
-        new("Integrations", [new("hris", "HRIS sync", "Employee data from HRIS", "refresh-cw", "violet")]),
+        new("Integrations", [new("hris", "HRIS sync", "Employee data from HRIS", "refresh-cw", "violet"),
+                             new("notifier", "iPop Notifier", "Released versions and PCs per version", "bell-ring", "blue")]),
     ];
 
     private SectionDef? Current;
