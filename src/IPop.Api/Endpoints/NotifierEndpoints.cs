@@ -27,11 +27,12 @@ public static class NotifierEndpoints
     {
         var g = app.MapGroup("/api/notifier").RequireAuthorization();
 
-        g.MapPost("/devices/register", async (NotifierDeviceReport report, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        g.MapPost("/devices/register", async (NotifierDeviceReport report, HttpContext http, IPopDbContext db, IConfiguration cfg, CancellationToken ct) =>
         {
             var userId = await MyId(http, db, ct);
             if (userId is null) return Results.Unauthorized();
-            var status = await RegisterAsync(db, userId.Value, report, http.Connection.RemoteIpAddress?.ToString(), DateTime.UtcNow, ct);
+            // The PC's own address (behind the proxy every PC used to show up as the proxy).
+            var status = await RegisterAsync(db, userId.Value, report, IPop.Api.Notifier.ClientAddress.Of(http, cfg), DateTime.UtcNow, ct);
             return status == 204 ? Results.NoContent() : Results.BadRequest(new { message = "Invalid device report." });
         });
 

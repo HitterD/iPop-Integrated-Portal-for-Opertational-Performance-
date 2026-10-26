@@ -72,7 +72,8 @@ public sealed class Updater(IPopClient api)
     private UpdateManager Manager()
     {
         var fallback = AppInfo.UpdateFeed ?? new Uri(api.Server, "download/notifier/").ToString();
-        IUpdateSource source = api.IsSignedIn && AppInfo.UpdateFeed is null ? new ChannelSource(api, fallback) : new SimpleWebSource(fallback);
+        // Trial builds too: the channel comes from the API they sign in to, the files from their own feed.
+        IUpdateSource source = api.IsSignedIn ? new ChannelSource(api, fallback) : new SimpleWebSource(fallback);
         return new UpdateManager(source);
     }
 
