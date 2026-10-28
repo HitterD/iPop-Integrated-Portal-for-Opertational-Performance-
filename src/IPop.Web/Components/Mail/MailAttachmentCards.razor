@@ -144,11 +144,11 @@
     {
         if (!CanPreview(KindOf(a))) { await Download(a); return; }
         preview = a;
-        previewUrl = null;
+        ReleasePreviewBlob();
         previewFailed = false;
         StateHasChanged();
         var url = await FetchBlob($"/api/mail/attachments/{a.Id}/download?inline=true");
-        if (preview?.Id != a.Id) return;
+        if (preview?.Id != a.Id) { Release(url); return; }
         previewUrl = url;
         previewFailed = url is null;
         selfRef ??= DotNetObjectReference.Create(this);
@@ -171,10 +171,24 @@
         StateHasChanged();
     }
 
+    /// Full-size previews (up to 50 MB each) are freed as soon as they leave the screen; paging
+    /// through them used to keep every copy until the mail closed.
+    private void ReleasePreviewBlob()
+    {
+        Release(previewUrl);
+        previewUrl = null;
+    }
+
+    private void Release(string? url)
+    {
+        if (url is null || !blobs.Remove(url)) return;
+        _ = JS.InvokeVoidAsync("ipop.revokeBlob", url).AsTask().ContinueWith(_ => { });
+    }
+
     private void ClosePreviewCore()
     {
         preview = null;
-        previewUrl = null;
+        ReleasePreviewBlob();
         _ = JS.InvokeVoidAsync("ipop.mailPreviewKeys", null);
     }
 

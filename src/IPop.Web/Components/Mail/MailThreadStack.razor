@@ -530,6 +530,9 @@
     private async Task SendQuick()
     {
         if (qrSending || string.IsNullOrWhiteSpace(qrText) || QuickSend is null) return;
+        // Ctrl+Enter skips the disabled button: the reply would go without the file, which then
+        // attached itself to the next quick reply.
+        if (qrUploading) { Toasts.Show("Wait for the upload to finish, then send.", ToastKind.Warning); return; }
         qrSending = true;
         try
         {

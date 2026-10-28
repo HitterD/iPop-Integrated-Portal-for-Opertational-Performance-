@@ -2344,6 +2344,8 @@
                 $"{typed}{QuoteOf(r.Target)}", plan.To);
             if (plan.Cc.Count > 0) c.SetCcRows(plan.Cc);
             if (r.Attachments.Count > 0) c.AddAttachments(r.Attachments);
+            // What was typed in the quick reply is unsaved work: closing must keep it in Drafts.
+            if (!string.IsNullOrWhiteSpace(r.Text) || r.Attachments.Count > 0) c.MarkDirty();
         });
         if (opened && plan.Notice is not null) Toasts.Show(plan.Notice, ToastKind.Warning);
     }

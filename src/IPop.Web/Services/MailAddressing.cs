@@ -38,6 +38,13 @@ public static class MailAddressing
             foreach (var r in primary) if (seen.Add(r.Nik)) to.Add(Row(r.Nik, r.Name));
             if (all && toPeople.Count > 0)
                 foreach (var r in Of("cc")) if (seen.Add(r.Nik)) cc.Add(Row(r.Nik, r.Name));
+            // The detail lists at most 50 people and summarises group members by their group, so a
+            // reply-all of a big or group mail can't reach everyone: say so instead of silently dropping them.
+            var missing = d.RecipientGroups.Count > 0 || d.RecipientTotal > d.Recipients.Count(r => r.RecipientType != "from");
+            if (all && missing)
+                return new ReplyPlan(to, cc, to.Count == 0
+                    ? "This mail went to groups or many people. Add who should get the reply."
+                    : "This mail went to groups or many people. Only the people listed by name were added — add the rest yourself.");
             return new ReplyPlan(to, cc, to.Count == 0 ? "This mail has no other recipients to reply to." : null);
         }
 

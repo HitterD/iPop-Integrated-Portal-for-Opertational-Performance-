@@ -204,6 +204,25 @@ public class MailAuditFixTests
     }
 
     [Fact]
+    public void Reply_all_on_own_big_mail_warns_about_people_it_cannot_add()
+    {
+        var me = Guid.NewGuid();
+        IPop.Web.Services.MailRecipient R(string nik, string type) => new(Guid.NewGuid(), "User " + nik, nik, nik + "@t.co", type);
+        var d = new IPop.Web.Services.MailDetail(Guid.NewGuid(), me, "Me", "ME", "Hello", "<p>x</p>", true, null,
+            DateTime.UtcNow, null, null, 0, false, true, "sent", null, null,
+            [R("B", "to"), R("C", "cc")], [], []) { RecipientTotal = 120 };
+
+        var all = IPop.Web.Services.MailAddressing.ForReply(d, "ME", all: true);
+        Assert.Single(all.To);
+        Assert.Single(all.Cc);
+        Assert.NotNull(all.Notice);
+
+        // Everyone is listed: no warning.
+        var complete = IPop.Web.Services.MailAddressing.ForReply(d with { RecipientTotal = 2 }, "ME", all: true);
+        Assert.Null(complete.Notice);
+    }
+
+    [Fact]
     public void Plain_text_bodies_are_encoded_on_the_client()
     {
         var html = IPop.Web.Services.MailAddressing.PlainToHtml("<script>x</script>");

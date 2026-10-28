@@ -235,7 +235,7 @@
                             <i data-lucide="@FileIcon(a)"></i>
                             <span class="name">@a.FileName</span>
                             <span class="size">@HumanSize(a.FileSize)</span>
-                            <button type="button" class="del-btn" title="Don't forward this file" aria-label="@($"Remove {a.FileName}")" @onclick="() => forwardAtts.Remove(a)"><i data-lucide="x"></i></button>
+                            <button type="button" class="del-btn" title="Don't forward this file" aria-label="@($"Remove {a.FileName}")" @onclick="() => { forwardAtts.Remove(a); OnContentChanged(); }"><i data-lucide="x"></i></button>
                         </span>
                     }
                     @foreach (var (a, i) in composerAtts.Select((x, idx) => (x, idx)))
@@ -431,7 +431,12 @@
     private bool hideRecipients;
     private List<MailAttachment> composerAtts = [];
 
-    private Guid? editingDraftId;
+    /// The draft id of ONE message, shared by every save of it. A save still in flight when the
+    /// composer switches messages writes its POST result here, so a later save of that same old
+    /// message updates the draft instead of creating a second one.
+    private sealed class DraftSlot { public Guid? Id; }
+    private DraftSlot draftSlot = new();
+    private Guid? editingDraftId { get => draftSlot.Id; set => draftSlot.Id = value; }
     private Guid? inReplyToId;
     private Guid? threadRootId;
     // Forward mode: the original's attachments travel server-side; the user may drop some.
@@ -513,7 +518,7 @@
         session++;
         dirtySince = null;
         _ = ClearUnloadStashAsync();
-        editingDraftId = null;
+        draftSlot = new DraftSlot(); // the old message's in-flight save keeps its own slot
         inReplyToId = null;
         threadRootId = null;
         forwardOfId = null;
@@ -1133,9 +1138,18 @@
     private readonly SemaphoreSlim saveGate = new(1, 1);
     private bool dropBound;
 
+    /// Bumped on every edit. A save only marks the message clean if nothing changed while it was in
+    /// flight: `dirtySince` keeps its first timestamp, so comparing that let a finishing save
+    /// swallow newer edits (and clear the tab-close stash).
+    private int editVersion;
+
+    /// Content put in by code (quick reply → full editor) is unsaved just like typing.
+    public void MarkDirty() => OnContentChanged();
+
     private void OnContentChanged()
     {
         if (!IsOpen || sending) return;
+        editVersion++;
         dirtySince ??= DateTime.UtcNow;
         CancelAutosave();
         autosaveCts = new CancellationTokenSource();
@@ -1181,8 +1195,9 @@
     /// save started just before the composer switches messages still saves the old one.
     private async Task SaveDraftCoreAsync()
     {
-        var since = dirtySince;
-        if (since is null) return;
+        // A save during "Sending…" (Close, navigation) would leave a ghost draft next to the sent mail.
+        if (sending) return;
+        if (dirtySince is null) return;
         if (string.IsNullOrWhiteSpace(subject) && IsBodyEmpty(body) && toRows.Count + ccRows.Count + bccRows.Count + GroupCount == 0 && composerAtts.Count == 0)
         {
             dirtySince = null;
@@ -1190,7 +1205,8 @@
         }
         var req = BuildRequest();
         var sess = session;
-        var id = editingDraftId;
+        var slot = draftSlot;
+        var ver = editVersion;
         draftSaving = true;
         StateHasChanged();
         await saveGate.WaitAsync();
@@ -1198,18 +1214,20 @@
         {
             // The HTTP calls are never cancelled: a POST dropped mid-flight may still have
             // created the draft, and the next save would then create a second one.
-            if (sess == session && editingDraftId is { } current) id = current;
+            // The slot is read after the gate, so a previous save's POST id is already there.
             var ok = false;
-            if (id is { } draftId)
+            if (slot.Id is { } draftId)
                 ok = (await MailSvc.UpdateDraftAsync(draftId, req))?.Success == true;
             else if (await MailSvc.SaveDraftAsync(req) is { Success: true } res)
             {
                 ok = true;
-                if (sess == session) editingDraftId = res.MailId;
+                slot.Id = res.MailId;
             }
             if (ok && sess == session)
             {
-                if (dirtySince == since) { dirtySince = null; await ClearUnloadStashAsync(); }
+                if (editVersion == ver) { dirtySince = null; await ClearUnloadStashAsync(); }
+                // Newer edits: stay dirty (their autosave runs next) and re-stash as a PUT.
+                else _ = StashForUnloadAsync();
                 draftSavedAt = DateTime.Now;
             }
         }
@@ -1301,6 +1319,9 @@
         // The last keystrokes may still be in the editor's debounce: take its current content.
         if (rteRef is not null) body = await rteRef.CurrentHtmlAsync();
         await WaitForSaveAsync();
+        // Nothing is "unsaved" while the send is in flight; restored below if the send fails.
+        var dirtyBeforeSend = dirtySince;
+        dirtySince = null;
         try
         {
             var req = BuildRequest(scheduledAt);
@@ -1376,6 +1397,8 @@
         finally
         {
             sending = false;
+            // Not sent (error, cancelled confirm, …): the message is unsaved again.
+            if (IsOpen && dirtyBeforeSend is not null && dirtySince is null) OnContentChanged();
             StateHasChanged();
         }
     }
@@ -1509,6 +1532,7 @@
         var j = i + delta;
         if (i < 0 || j < 0 || j >= composerAtts.Count) return;
         (composerAtts[i], composerAtts[j]) = (composerAtts[j], composerAtts[i]);
+        OnContentChanged(); // the order is saved with the draft
     }
 
     // Removed from the UI even if the server call fails; the worker cleans up orphans.
