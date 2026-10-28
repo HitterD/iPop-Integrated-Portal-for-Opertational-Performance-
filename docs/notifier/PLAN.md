@@ -68,3 +68,40 @@ Open: "Open in iDesk" silent sign-in from the app (needs iDesk's OIDC client), A
 now), hold-during-meeting verified by code/unit only (full-screen not simulated), toast reply (UIA could not reach the
 toast host from this session — send path is the same chat API used by the popup).
 MeetingKindTests (4) fail on the base commit too (unrelated).
+
+## Release publishing (1.3, 2026-10-26)
+
+- `src/IPop.Notifier/IPop.Notifier.csproj` contains the canonical stable SemVer (`1.3.0`). Both scripts
+  default to it. Optional `-Version 1.3.1` is an intentional build-time override, passed unchanged to
+  **both** `dotnet publish -p:Version=...` and `vpk --packVersion ...`; it does not edit the source.
+  Stable `major.minor.patch` only (no leading zeros, prerelease/build suffixes).
+- `publish-notifier.ps1 -Notes 'Changes' -Releases <folder>` builds a pilot. `-Release -Releases <folder>`
+  promotes that exact pilot without rebuilding; `-Mandatory` is chosen when building, not at promotion.
+  `-All` publishes directly to everyone. `release.ps1` remains the direct-to-all compatibility entry point.
+- **Bootstrap is manual:** 1.2.2 reads only `releases.win.json`, regardless of ICT/Admin membership.
+  Publishing a 1.3 pilot cannot upgrade those clients selectively. Explicitly distribute the held
+  `pilot/1.3.0/iPopNotifier-win-Setup.exe` to pilot PCs and install it there first. Only 1.3+ can use the
+  API-selected pilot feed. The public installer and public feed stay on the previous version until promotion.
+  Held installer access/distribution must be arranged explicitly; this script does not expose a pilot download UI.
+- QA: `release.ps1 -Trial -Releases <new-isolated-folder>` retains `iPopNotifierQA` identity and the Trial
+  build constant. An explicit destination outside production is mandatory. The first empty Trial destination
+  needs `-All` (the compatibility script supplies it); later QA pilot/promote commands also need `-Trial`.
+  Do not mix QA and normal identities in one destination. Do not use an existing shared QA feed for script tests.
+- New versions must exceed every public/pilot feed version, held version directory, and package in the
+  destination. Reusing or downgrading an already published pilot is rejected, including orphaned packages
+  from interrupted publication. Use a fresh version after a partially published attempt; do not overwrite history.
+- Builds run in unique temporary folders. Packages and the version-specific held installer/side files are
+  checked before feed publication. Promotion checks a receipt's version/identity and SHA-256 hashes of the
+  held installer, `RELEASES`, `assets.win.json`, feed, and referenced packages **before** changing public files.
+  Legacy pilots without `pilot/<version>/receipt.json` fail closed; they cannot be safely promoted by guessing
+  which installer belongs to their feed. Publish a newer pilot using this script instead.
+- An exclusive `.publish.lock` serialises cooperating publishers (the empty file intentionally remains).
+  Feeds/installers/manifest use same-directory temporary files and atomic `File.Replace` on Windows/NTFS;
+  `release.json` is replaced last as the notification signal. This is **not** a multi-file transaction or crash
+  rollback: an I/O error/process crash between replacements can leave complete but inconsistent files.
+  Inspect/reconcile that folder before retrying; never reuse a published package version. The public feed is
+  backed up as `releases.win.json.bak` before promotion/direct publication.
+- Dependency-free PS5.1 regression checks: `powershell.exe -NoProfile -File tests/notifier-release.Tests.ps1`.
+  They inject fake dotnet/vpk scripts and write only fresh OS temporary folders. They do not run the installer,
+  exercise real Velopack delta generation/signing, or prove concurrent HTTP-reader/crash behaviour.
+  `-Dotnet` / `-Vpk` are tool-path injection options for these tests, not a production deployment mode.

@@ -14,7 +14,8 @@
     <RootNamespace>IPop.Notifier</RootNamespace>
     <ApplicationIcon>Assets\ipop.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <Version>1.1.0</Version>
+    <!-- Canonical release version. Scripts read this default; -Version overrides both build and packaging. -->
+    <Version>1.3.0</Version>
     <Product>iPop Notifier</Product>
     <AssemblyTitle>iPop Notifier</AssemblyTitle>
     <Company>PT Santos Jaya Abadi</Company>
@@ -44,6 +45,7 @@
     <Compile Include="..\IPop.Application\Notifier\NotifierSettings.cs" Link="Core\NotifierSettings.cs" />
     <!-- When a downloaded update is offered / installed (tested in IPop.Tests). -->
     <Compile Include="..\IPop.Application\Notifier\NotifierUpdatePolicy.cs" Link="Core\NotifierUpdatePolicy.cs" />
+    <Compile Include="..\IPop.Application\Notifier\NotifierUpdateState.cs" Link="Core\NotifierUpdateState.cs" />
   </ItemGroup>
 
 </Project>

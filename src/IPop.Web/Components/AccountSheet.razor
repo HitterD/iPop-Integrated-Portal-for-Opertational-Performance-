@@ -231,7 +231,7 @@
                                 <div class="acct-row">
                                     <span class="acct-ic notifier"><i data-lucide="bell-ring"></i></span>
                                     <span class="acct-k">iPop Notifier</span>
-                                    <span class="acct-v"></span>
+                                    <span class="acct-v">@(notifierVersion is { Version: { } version } ? $"v{version}" : "")</span>
                                     <a class="acct-install-btn" href="@NotifierSetup" download>Download</a>
                                 </div>
                             </div>
@@ -297,8 +297,13 @@
             email = me?.Email ?? "";
             try { spellcheck = await JS.InvokeAsync<bool>("ipop.spellcheck"); } catch { }
             try { installState = await JS.InvokeAsync<string>("ipop.installState"); } catch { }
-            if (!Phone.IsPhone && notifierBytes == 0)
-                try { notifierBytes = await JS.InvokeAsync<long>("ipop.phone.size", NotifierSetup); } catch { }
+            if (!Phone.IsPhone)
+            {
+                // The download is the released installer, not a newer pilot-only version.
+                notifierVersion = await Auth.GetAsync<NotifierInstallerVersion>("/api/notifier/installer-version");
+                if (notifierBytes == 0)
+                    try { notifierBytes = await JS.InvokeAsync<long>("ipop.phone.size", NotifierSetup); } catch { }
+            }
         }
         else if (!IsOpen) { wasOpen = false; reg?.Dispose(); reg = null; }
     }
@@ -321,6 +326,8 @@
     private string installState = "unsupported";
     private const string NotifierSetup = "/download/notifier/iPopNotifier-win-Setup.exe";
     private long notifierBytes;
+    private sealed record NotifierInstallerVersion(string? Version);
+    private NotifierInstallerVersion? notifierVersion;
 
     private async Task InstallAsync()
     {

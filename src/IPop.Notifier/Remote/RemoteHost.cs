@@ -22,6 +22,7 @@ public sealed class RemoteHost(IPopClient api, Action<string, string, ToolTipIco
     private System.Windows.Forms.Timer? stat, alive;
     private string lastStat = "";
     public bool Active => sessionId is not null;
+    public Guid? SessionId => sessionId;
     public event Action<bool>? ActiveChanged;
 
     /// "remoteRequest" from the hub.

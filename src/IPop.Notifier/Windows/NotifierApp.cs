@@ -38,6 +38,13 @@ public sealed class NotifierApp : ApplicationContext
         device = new DeviceReporter(api);
         popups = new PopupManager(api, settings, state, device);
         api.SignedOut += () => Post(OnSignedOut);
+        api.BeforeSessionChanged = TeardownSessionAsync;
+        api.ConfirmAccountSwitch = (nik, name) =>
+        {
+            var result = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            Post(() => result.TrySetResult(MessageBox.Show($"Switch iPop Notifier to {name ?? nik}?\nNotifications and remote sessions for the current account will close.", "Switch account", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes));
+            return result.Task;
+        };
         popups.CountChanged += UpdateTray;
         device.Beat += () => Post(() => { api.WebBaseOverride = device.WebBase; devicesItem!.Visible = device.IctTools; UpdateTray(); });
         settings.Changed += s => Post(() => { Theme.LargeText = s.TextSize == "large"; UpdateTray(); });
@@ -49,6 +56,7 @@ public sealed class NotifierApp : ApplicationContext
         Toasts.TicketReply += (ticket, text) => _ = SendTicketReplyAsync(ticket, text);
 
         var menu = new ContextMenuStrip { ShowImageMargin = false, Font = new Font("Segoe UI", 9.5f) };
+        menu.Items.Add(new ToolStripMenuItem($"iPop Notifier · v{AppInfo.Version}") { Enabled = false });
         menu.Items.Add("Open Inbox", null, (_, _) => ShowInbox());
         menu.Items.Add("Open iPop", null, (_, _) => OpenIPop("/dashboard"));
         menu.Items.Add("Show all windows", null, (_, _) => popups.ShowAll());
@@ -73,7 +81,7 @@ public sealed class NotifierApp : ApplicationContext
         tick.Start();
 
         if (api.IsSignedIn) _ = StartSessionAsync();
-        else ShowSignIn();
+        else { ShowSignIn(); if (args.Contains("--first-run")) OpenBrowserSignIn(); }
 
         foreach (var a in args.Where(a => a.StartsWith(AppInfo.UrlScheme + ":", StringComparison.OrdinalIgnoreCase)
             || a.StartsWith(AppInfo.FilesScheme + ":", StringComparison.OrdinalIgnoreCase)))
@@ -96,15 +104,18 @@ public sealed class NotifierApp : ApplicationContext
         session.Cancel();
         session = new CancellationTokenSource();
         var ct = session.Token;
+        var generation = api.Generation;
+        Toasts.Account = api.Session?.Server + "|" + api.Session?.Nik + "|" + generation;
         await settings.LoadAsync(ct);
+        if (ct.IsCancellationRequested || generation != api.Generation || !api.IsSignedIn) return;
         _ = device.RunAsync(ct);
         feed = new Feed(api, state);
-        feed.Received += n => Post(() => { popups.Show(n); _ = RefreshUnreadAsync(); });
-        feed.Backlog += items => Post(() => { popups.ShowBacklog(items); _ = RefreshUnreadAsync(); });
+        feed.Received += n => Post(() => { if (generation != api.Generation || ct.IsCancellationRequested) return; popups.Show(n); _ = RefreshUnreadAsync(); });
+        feed.Backlog += items => Post(() => { if (generation != api.Generation || ct.IsCancellationRequested) return; popups.ShowBacklog(items); _ = RefreshUnreadAsync(); });
         feed.TicketChatRead += refs => Post(() => { foreach (var r in refs) Toasts.RemoveTicket(r); _ = RefreshUnreadAsync(); });
         feed.ReadElsewhere += () => _ = RefreshUnreadAsync();
-        feed.ChatToast += t => Post(() => OnChatToast(t));
-        feed.Remote += (ev, n) => Post(() => OnRemote(ev, n));
+        feed.ChatToast += t => Post(() => { if (generation == api.Generation && !ct.IsCancellationRequested) OnChatToast(t); });
+        feed.Remote += (ev, n) => Post(() => { if (generation == api.Generation && !ct.IsCancellationRequested) OnRemote(ev, n); });
         feed.ReleasePublished += OnReleasePublished;
         feed.ConnectionChanged += c => Post(() => { connected = c; UpdateTray(); if (inbox is { IsDisposed: false }) inbox.Connection(c); });
         try { await feed.StartAsync(ct); } catch (OperationCanceledException) { }
@@ -214,7 +225,7 @@ public sealed class NotifierApp : ApplicationContext
         if (signIn is { IsDisposed: false }) { signIn.Activate(); return; }
         signIn = new SignInWindow(api);
         signIn.SignedIn += () => Post(() => { _ = StartSessionAsync(); tray.ShowBalloonTip(3000, "iPop Notifier", "You're signed in. Notifications will appear here.", ToolTipIcon.Info); });
-        signIn.WithBrowser += () => Post(() => OpenIPop("/dashboard?notifier=signin"));
+        signIn.WithBrowser += () => Post(OpenBrowserSignIn);
         signIn.Show();
         signIn.Activate();
         _ = WaitForBrowserAsync();
@@ -236,11 +247,13 @@ public sealed class NotifierApp : ApplicationContext
     }
 
     /// ipop-notifier://signin?code=… from iPop in the browser.
-    private async Task SignInWithCodeAsync(string code)
+    private void OpenBrowserSignIn() => OpenIPop("/dashboard?notifier=signin&notifierScheme=" + AppInfo.UrlScheme);
+
+    private async Task SignInWithCodeAsync(string code, string requestId)
     {
         var previous = api.Session?.Nik;
         IPopClient.LinkResult r;
-        try { r = await api.SignInWithCodeAsync(api.Session?.Server ?? AppInfo.DefaultServer, code, CancellationToken.None); }
+        try { r = await api.SignInWithCodeAsync(api.Session?.Server ?? AppInfo.DefaultServer, code, requestId, CancellationToken.None); }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException) { r = new(false, "Can't reach iPop. Check the network and try again.", null, false); }
         Post(() =>
         {
@@ -253,29 +266,55 @@ public sealed class NotifierApp : ApplicationContext
             }
             waitingLoop?.Cancel();
             if (signIn is { IsDisposed: false }) signIn.Close();
-            if (previous is not null && r.Switched) OnAccountSwitched();
             _ = StartSessionAsync();
             Integration.SetStartWithWindows(true);
             Toasts.ShowSignedIn(r.Name ?? api.Session?.Name ?? "", switched: previous is not null && r.Switched);
         });
     }
 
-    /// The browser moved this PC to another account: drop what belonged to the old one.
-    private void OnAccountSwitched()
+    /// Complete teardown before credentials change, even on same-account relinking.
+    private async Task TeardownSessionAsync()
     {
         session.Cancel();
-        _ = feed?.StopAsync();
-        popups.CloseAll();
-        inbox?.Close();
-        inbox = null;
-        settingsWindow?.Close();
-        devices?.Close();
-        unread = 0;
-        state.Shown.Clear();
-        state.Held.Clear();
-        state.LastShownAt = null;
-        state.Save();
-        UpdateTray();
+        waitingLoop?.Cancel();
+        var oldFeed = feed; feed = null;
+        if (oldFeed is not null) await oldFeed.StopAsync();
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Post(async () =>
+        {
+            try
+            {
+                // End using the old captured token; the normal API refresh gate is already held.
+                if (remoteHost is not null)
+                {
+                    var remoteId = remoteHost.SessionId;
+                    await remoteHost.EndAsync("account", notifyServer: false);
+                    if (remoteId is { } id) await api.EndRemoteForTransitionAsync(id);
+                }
+                remoteHost = null;
+                foreach (var pair in viewers.ToList())
+                {
+                    await api.EndRemoteForTransitionAsync(pair.Key);
+                    pair.Value.Close();
+                }
+                viewers.Clear(); remoteActive = false;
+                Toasts.Account = null;
+                Toasts.ClearAll();
+                popups.CloseAll();
+                inbox?.Close(); inbox = null;
+                settingsWindow?.Close(); settingsWindow = null;
+                devices?.Close(); devices = null;
+                devicesItem.Visible = false;
+                device.Reset();
+                unread = 0; connected = false;
+                state.Shown.Clear(); state.Held.Clear(); state.LastShownAt = null; state.SettingsJson = null;
+                state.Save();
+                UpdateTray();
+                done.TrySetResult();
+            }
+            catch (Exception ex) { done.TrySetException(ex); }
+        });
+        await done.Task;
     }
 
     private void OnSignedOut()
@@ -414,8 +453,12 @@ public sealed class NotifierApp : ApplicationContext
                 if (unc is null || !Integration.OpenInExplorer(unc))
                     tray.ShowBalloonTip(4000, "iPop Notifier", "This link isn't on a company NAS, so it can't open in File Explorer.", ToolTipIcon.Warning);
                 break;
-            case "signin" when !files && q["code"] is { Length: > 10 and < 200 } code:
-                _ = SignInWithCodeAsync(code);
+            case "prepare" when !files && q["nonce"] is { Length: 43 } nonce:
+                var callback = api.PrepareBrowserLink(nonce);
+                if (callback is not null) Integration.OpenUrl(callback);
+                break;
+            case "signin" when !files && q["code"] is { Length: 43 } code && q["request"] is { Length: 43 } requestId:
+                _ = SignInWithCodeAsync(code, requestId);
                 break;
             case "inbox": ShowInbox(); break;
             case "settings": ShowSettings(); break;
@@ -440,12 +483,12 @@ public sealed class NotifierApp : ApplicationContext
     /// when to install anyway (after a day, PC idle) and that a mandatory release installs at once.
     private async Task UpdateLoopAsync()
     {
-        updater = new Updater(api);
+        updater ??= new Updater(api);
         await Task.Delay(TimeSpan.FromSeconds(45));
         var lastCheck = DateTime.MinValue;
         while (true)
         {
-            if (DateTime.UtcNow - lastCheck >= TimeSpan.FromHours(6) || kicked)
+            if (DateTime.UtcNow - lastCheck >= TimeSpan.FromHours(6) || kicked || updater.ContextChanged)
             {
                 kicked = false;
                 lastCheck = DateTime.UtcNow;
@@ -472,14 +515,26 @@ public sealed class NotifierApp : ApplicationContext
         });
     }
 
-    private bool Busy() => remoteActive || viewers.Count > 0 || inCall;
-    private bool inCall;
+    private bool RemoteBusy() => remoteActive || viewers.Count > 0;
+    private bool Busy() => RemoteBusy() || inCall != false;
+    private bool? inCall;
 
-    private async Task<bool> InCallAsync()
+    private async Task<bool?> InCallAsync()
     {
         if (!api.IsSignedIn) return false;
-        var n = await api.GetJsonAsync("api/calls/active");
-        return n is System.Text.Json.Nodes.JsonObject o && o.Count > 0;
+        // GetJsonAsync conflates an idle JSON null with HTTP/network errors. Only a successful
+        // idle response is safe; unknown status must never restart a call on another device.
+        try
+        {
+            using var res = await api.SendAsync(HttpMethod.Get, "api/calls/active");
+            var body = await res.Content.ReadAsStringAsync();
+            return IPop.Application.Notifier.NotifierUpdatePolicy.ReadCallStatus((int)res.StatusCode, body);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or InvalidOperationException or System.Text.Json.JsonException)
+        {
+            Log.Warn("update", "call status unavailable: " + ex.Message);
+            return null;
+        }
     }
 
     private void StepUpdate()
@@ -504,29 +559,56 @@ public sealed class NotifierApp : ApplicationContext
     private void ShowUpdate(Updater.Ready ready)
     {
         if (updateWindow is { IsDisposed: false }) { updateWindow.Activate(); return; }
-        updater!.Asking = true;
-        updater.AskedAt = DateTime.UtcNow;
+        try { updater!.MarkAsked(); }
+        catch (Exception ex)
+        {
+            Log.Warn("update", "could not save prompt timing: " + ex.Message);
+            tray.ShowBalloonTip(4000, "iPop Notifier", "Couldn't save the update reminder. Please try again later.", ToolTipIcon.Warning);
+            return;
+        }
+        updater.Asking = true;
         updateWindow = new UpdateWindow(new { version = ready.Version, current = AppInfo.Version, notes = ready.Notes });
-        updateWindow.Now += () => _ = InstallSoonAsync();
-        updateWindow.Later += () => { updater.Asking = false; updater.AskedAt = DateTime.UtcNow; };
+        updateWindow.Now += () => _ = InstallSoonAsync(manual: true);
+        updateWindow.Later += () =>
+        {
+            updater.Asking = false;
+            try { updater.MarkAsked(); }
+            catch (Exception ex) { Log.Warn("update", "could not save Later timing: " + ex.Message); }
+        };
         updateWindow.FormClosed += (_, _) => updater.Asking = false;
         updateWindow.Show();
     }
 
     private bool installing;
-    private async Task InstallSoonAsync()
+    private async Task InstallSoonAsync(bool manual = false)
     {
         if (installing || updater is null) return;
         installing = true;
-        await Task.Delay(1500);
-        try { updater.InstallAndRestart(); }
+        try
+        {
+            await Task.Delay(1500);
+            var result = await updater.InstallAndRestartAsync(InCallAsync, RemoteBusy);
+            // A manual click can arrive while an automatic install attempt is already checking.
+            // Recover any open prompt on a blocked attempt, regardless of who started that attempt.
+            if (result != IPop.Application.Notifier.NotifierUpdatePolicy.InstallResult.Installed
+                && (manual || updateWindow is { IsDisposed: false }))
+                UpdateInstallFeedback(result == IPop.Application.Notifier.NotifierUpdatePolicy.InstallResult.Busy
+                    ? "Finish your call or remote help session, then choose Update now again."
+                    : "Couldn't confirm whether a call is active. Check your connection, then try again.");
+        }
         catch (Exception ex)
         {
-            installing = false;
             Log.Warn("update", "install failed: " + ex.Message);
-            Post(() => tray.ShowBalloonTip(4000, "iPop Notifier", "The update couldn't be installed. It will try again later.", ToolTipIcon.Warning));
+            UpdateInstallFeedback("The update couldn't be installed. Please try again later.");
         }
+        finally { installing = false; }
     }
+
+    private void UpdateInstallFeedback(string message) => Post(() =>
+    {
+        updateWindow?.Send(new { type = "installBlocked", message });
+        tray.ShowBalloonTip(4000, "iPop Notifier", message, ToolTipIcon.Warning);
+    });
 
     /// Tray → Check for updates.
     private async Task CheckNowAsync()
@@ -540,7 +622,7 @@ public sealed class NotifierApp : ApplicationContext
                 case Updater.Result.NotInstalled: tray.ShowBalloonTip(3000, "iPop Notifier", "Updates work in the installed app only.", ToolTipIcon.Info); break;
                 case Updater.Result.UpToDate: tray.ShowBalloonTip(3000, "iPop Notifier", $"You have the latest version ({AppInfo.Version}).", ToolTipIcon.Info); break;
                 case Updater.Result.Failed: tray.ShowBalloonTip(3000, "iPop Notifier", "Couldn't check for updates right now.", ToolTipIcon.Warning); break;
-                case Updater.Result.Ready when updater.Pending is { } p: updater.AskedAt = null; ShowUpdate(p); break;
+                case Updater.Result.Ready when updater.Pending is { } p: ShowUpdate(p); break;
             }
         });
     }

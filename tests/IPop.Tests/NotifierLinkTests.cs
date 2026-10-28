@@ -17,14 +17,18 @@ public class NotifierLinkTests
     {
         var store = new NotifierLinkStore();
         var user = Guid.NewGuid();
-        var code = store.Issue(user, "10.10.6.51", fresh: false, Now);
+        var verifier = new string('v', 43);
+        var request = new string('r', 43);
+        var code = store.Issue(user, NotifierLinkStore.Challenge(verifier), request, Now)!;
         Assert.True(code.Length >= 40);
-        Assert.Equal(user, store.Redeem(code, Now.AddSeconds(30))?.UserId);
-        Assert.Null(store.Redeem(code, Now.AddSeconds(31)));
+        Assert.Null(store.Redeem(code, new string('x', 43), request, Now));
+        Assert.Null(store.Redeem(code, verifier, new string('x', 43), Now));
+        Assert.Equal(user, store.Redeem(code, verifier, request, Now.AddSeconds(30))?.UserId);
+        Assert.Null(store.Redeem(code, verifier, request, Now.AddSeconds(31)));
 
-        var late = store.Issue(user, "10.10.6.51", fresh: false, Now);
-        Assert.Null(store.Redeem(late, Now.AddSeconds(61)));
-        Assert.Null(store.Redeem("made-up-code", Now));
+        var late = store.Issue(user, NotifierLinkStore.Challenge(verifier), request, Now);
+        Assert.Null(store.Redeem(late, verifier, request, Now.AddSeconds(61)));
+        Assert.Null(store.Redeem("made-up-code", verifier, request, Now));
     }
 
     [Fact]
@@ -41,13 +45,15 @@ public class NotifierLinkTests
     }
 
     [Fact]
-    public void Switching_a_signed_in_app_needs_a_fresh_browser_login_from_the_same_address()
+    public void Code_issuance_requires_fixed_size_pkce_and_request_secrets_and_is_bounded()
     {
+        var store = new NotifierLinkStore();
         var user = Guid.NewGuid();
-        Assert.True(NotifierLinkEndpoints.CanSwitch(new(user, "10.10.6.51", Now, Fresh: true), "10.10.6.51"));
-        Assert.False(NotifierLinkEndpoints.CanSwitch(new(user, "10.10.6.51", Now, Fresh: false), "10.10.6.51"));
-        Assert.False(NotifierLinkEndpoints.CanSwitch(new(user, "10.10.6.51", Now, Fresh: true), "10.10.6.77"));
-        Assert.False(NotifierLinkEndpoints.CanSwitch(new(user, null, Now, Fresh: true), null));
+        Assert.Null(store.Issue(user, "", "", Now));
+        var secret = new string('a', 43);
+        for (var i = 0; i < 5000; i++) Assert.NotNull(store.Issue(user, secret, secret, Now));
+        Assert.Null(store.Issue(user, secret, secret, Now));
+        Assert.NotNull(store.Issue(user, secret, secret, Now.AddSeconds(61)));
     }
 
     [Fact]

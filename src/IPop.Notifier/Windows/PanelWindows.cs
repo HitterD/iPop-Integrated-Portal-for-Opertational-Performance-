@@ -157,7 +157,8 @@ public sealed class UpdateWindow : HtmlWindow
     {
         switch (type)
         {
-            case "now": answered = true; Now?.Invoke(); break;
+            // A blocked/failed attempt leaves the window open; closing it afterwards is still Later.
+            case "now": Now?.Invoke(); break;
             case "later": case "close": answered = true; Later?.Invoke(); Close(); break;
             default: base.HandleMessage(type, msg); break;
         }

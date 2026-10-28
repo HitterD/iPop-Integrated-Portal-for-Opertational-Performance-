@@ -24,7 +24,11 @@ public static class AppInfo
 #else
     public const string AppUserModelId = "velopack.iPopNotifier";
 #endif
-    public const string UrlScheme = "ipop-notifier";
+    public static string UrlScheme => Flavour.Length > 0
+#if DEBUG
+        || Environment.GetEnvironmentVariable("IPOP_NOTIFIER_QA_DIR") is { Length: > 0 }
+#endif
+        ? "ipop-notifier-qa" : "ipop-notifier";
     /// iPop Files' existing "Open in File Explorer" link (ipop://open?server=…&amp;path=…), now answered by this app.
     public const string FilesScheme = "ipop";
 

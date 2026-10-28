@@ -35,8 +35,7 @@ public static class Integration
     public static void RegisterUrlScheme()
     {
         if (QaRun) return;
-        if (AppInfo.Flavour.Length > 0) return;
-        foreach (var scheme in new[] { AppInfo.UrlScheme, AppInfo.FilesScheme })
+        foreach (var scheme in AppInfo.Flavour.Length > 0 ? new[] { AppInfo.UrlScheme } : new[] { AppInfo.UrlScheme, AppInfo.FilesScheme })
         {
             try
             {
@@ -54,7 +53,8 @@ public static class Integration
 
     public static void UnregisterUrlScheme()
     {
-        foreach (var scheme in new[] { AppInfo.UrlScheme, AppInfo.FilesScheme })
+        if (QaRun) return;
+        foreach (var scheme in AppInfo.Flavour.Length > 0 ? new[] { AppInfo.UrlScheme } : new[] { AppInfo.UrlScheme, AppInfo.FilesScheme })
         {
             try { Registry.CurrentUser.DeleteSubKeyTree($@"Software\Classes\{scheme}", false); } catch { }
         }

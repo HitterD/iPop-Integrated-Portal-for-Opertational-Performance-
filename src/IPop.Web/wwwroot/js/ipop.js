@@ -2531,8 +2531,38 @@ ipop.notifierLink = {
     localStorage.setItem(key, String(now));
     return true;
   },
-  open(url) {
-    if (!/^ipop-notifier:\/\/signin\?code=[\w%-]+$/.test(url)) return;
-    window.location.href = url;
+  secret() {
+    return btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))
+      .replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+  },
+  valid(value) { return typeof value === "string" && /^[\w-]{43}$/.test(value); },
+  scheme() {
+    return new URL(location.href).searchParams.get("notifierScheme") === "ipop-notifier-qa" ? "ipop-notifier-qa" : "ipop-notifier";
+  },
+  prepare() {
+    const nonce = this.secret();
+    // One outstanding browser proof. Shared storage allows the fixed callback to open in another tab.
+    const scheme = this.scheme();
+    localStorage.setItem("ipop.notifierLink.pending", JSON.stringify({ nonce, scheme, at: Date.now() }));
+    window.location.href = scheme + "://prepare?nonce=" + nonce;
+  },
+  consumeCallback() {
+    const url = new URL(location.href), p = url.searchParams;
+    if (!p.has("notifierNonce") && !p.has("notifierRequest") && !p.has("notifierChallenge")) return null;
+    const nonce = p.get("notifierNonce"), requestId = p.get("notifierRequest"), challenge = p.get("notifierChallenge"), scheme = this.scheme();
+    for (const name of ["notifierNonce", "notifierRequest", "notifierChallenge", "notifierScheme"]) p.delete(name);
+    history.replaceState(history.state, "", url.pathname + url.search + url.hash);
+    let pending;
+    try { pending = JSON.parse(localStorage.getItem("ipop.notifierLink.pending") || "null"); } catch { return null; }
+    if (!pending || pending.nonce !== nonce) return null;
+    // Delete synchronously before minting a code; no two tabs can approve the same browser proof.
+    localStorage.removeItem("ipop.notifierLink.pending");
+    const age = Date.now() - pending.at;
+    if (age < 0 || age > 60000 || pending.scheme !== scheme || !this.valid(nonce) || !this.valid(requestId) || !this.valid(challenge)) return null;
+    return { challenge, requestId, scheme };
+  },
+  complete(scheme, code, requestId) {
+    if (!["ipop-notifier", "ipop-notifier-qa"].includes(scheme) || !this.valid(code) || !this.valid(requestId)) return;
+    window.location.href = scheme + "://signin?code=" + code + "&request=" + requestId;
   },
 };

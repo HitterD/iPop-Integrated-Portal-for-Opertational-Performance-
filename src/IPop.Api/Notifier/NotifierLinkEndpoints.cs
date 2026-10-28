@@ -7,8 +7,8 @@ using Microsoft.EntityFrameworkCore;
 namespace IPop.Api.Notifier;
 
 public record NotifierWaitingRequest(string? DeviceKey);
-public record NotifierRedeemRequest(string? Code, string? DeviceKey, string? CurrentNik);
-public record NotifierLinkRequest(string? Reason);
+public record NotifierRedeemRequest(string? Code, string? DeviceKey, string? Verifier, string? RequestId);
+public record NotifierLinkRequest(string? Challenge, string? RequestId);
 
 /// iPop Notifier sign-in from the browser and its update channel (docs/notifier/PLAN.md, 1.3.0):
 ///   POST /api/notifier/link/waiting   anonymous: a signed-out app says it is waiting on this address
@@ -47,21 +47,17 @@ public static class NotifierLinkEndpoints
             if (!store.Allow("redeem:" + ip, 20, now)) return Results.StatusCode(429);
             var key = (req.DeviceKey ?? "").Trim();
             if (!ValidKey(key)) return Results.BadRequest(new { message = "Invalid request." });
-            var code = store.Redeem(req.Code, now);
+            var code = store.Redeem(req.Code, req.Verifier, req.RequestId, now);
             if (code is null) return Results.BadRequest(new { code = "expired", message = "This sign-in link has expired. Open iPop in the browser again." });
 
             var nik = await db.Users.AsNoTracking().Where(u => u.Id == code.UserId).Select(u => u.Nik).FirstOrDefaultAsync(ct);
             if (nik is null) return Results.BadRequest(new { code = "expired", message = "This sign-in link has expired." });
-            var switching = !string.IsNullOrEmpty(req.CurrentNik) && !string.Equals(req.CurrentNik, nik, StringComparison.Ordinal);
-            if (switching && !CanSwitch(code, ip))
-                return Results.BadRequest(new { code = "switch_refused", message = "Sign in from iPop on this PC to switch accounts." });
-
             var session = await auth.IssueSessionAsync(code.UserId, Fingerprint + Machine(http), ip,
-                switching ? "auth.notifier_switch" : "auth.notifier_link", ct);
+                "auth.notifier_link", ct);
             if (session is null) return Results.BadRequest(new { code = "unavailable", message = "This account can't sign in right now." });
             store.ClearWaiting(key);
             var name = await db.Users.AsNoTracking().Where(u => u.Id == code.UserId).Select(u => u.Name).FirstOrDefaultAsync(ct);
-            return Results.Ok(new { session.AccessToken, session.RefreshToken, session.AccessTokenExpiresAt, session.MustChangePassword, nik, name, switched = switching });
+            return Results.Ok(new { session.AccessToken, session.RefreshToken, session.AccessTokenExpiresAt, session.MustChangePassword, nik, name });
         });
 
         var g = app.MapGroup("/api/notifier").RequireAuthorization();
@@ -82,15 +78,38 @@ public static class NotifierLinkEndpoints
             return Results.Ok(new { link = other, reason = other ? "other" : null });
         });
 
-        g.MapPost("/link/code", async (HttpContext http, IConfiguration cfg, IPopDbContext db, CancellationToken ct) =>
+        g.MapPost("/link/code", async (NotifierLinkRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
         {
             var userId = await MyId(http, db, ct);
             if (userId is null) return Results.Unauthorized();
-            var ip = ClientAddress.Of(http, cfg);
             var now = DateTime.UtcNow;
             if (!store.Allow("code:" + userId, 10, now)) return Results.StatusCode(429);
-            var fresh = await FreshLoginAsync(db, userId.Value, http.User.FindFirstValue(IPop.Infrastructure.Auth.AccessTokenGuard.SessionClaim), now, ct);
-            return Results.Ok(new { code = store.Issue(userId.Value, ip, fresh, now), expiresIn = (int)NotifierLinkStore.CodeLifetime.TotalSeconds });
+            var code = store.Issue(userId.Value, req.Challenge ?? "", req.RequestId ?? "", now);
+            return code is null ? Results.BadRequest() : Results.Ok(new { code, expiresIn = (int)NotifierLinkStore.CodeLifetime.TotalSeconds });
+        });
+
+        // Presence is advisory only. An authenticated account can retire only its own row.
+        g.MapPost("/link/clear", async (NotifierWaitingRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var id = await MyId(http, db, ct);
+            if (id is null || !ValidKey(req.DeviceKey ?? "")) return Results.BadRequest();
+            store.ClearWaiting(req.DeviceKey!);
+            return Results.NoContent();
+        });
+        g.MapPost("/devices/offline", async (NotifierWaitingRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var id = await MyId(http, db, ct);
+            if (id is null || !ValidKey(req.DeviceKey ?? "")) return Results.BadRequest();
+            await db.NotifierDevices.Where(d => d.UserId == id && d.DeviceKey == req.DeviceKey)
+                .ExecuteUpdateAsync(s => s.SetProperty(d => d.LastSeenAt, DateTime.UtcNow - IPop.Core.Entities.NotifierDevice.OnlineWindow - TimeSpan.FromSeconds(1)), ct);
+            store.ClearWaiting(req.DeviceKey!);
+            return Results.NoContent();
+        });
+
+        g.MapGet("/installer-version", (NotifierReleases releases, HttpContext http) =>
+        {
+            http.Response.Headers.CacheControl = "no-cache";
+            return Results.Ok(new { version = releases.Read().All?.Version });
         });
 
         g.MapGet("/update", async (HttpContext http, IPopDbContext db, NotifierReleases releases, CancellationToken ct) =>
@@ -130,10 +149,6 @@ public static class NotifierLinkEndpoints
 
         return app;
     }
-
-    /// An app already signed in as someone else only moves to this account straight after a password sign-in in
-    /// the browser on the same PC: the code was minted within a minute of that login, from the address redeeming it.
-    public static bool CanSwitch(NotifierLinkStore.LinkCode code, string? ip) => code.Fresh && ip is not null && code.Ip == ip;
 
     /// The browser's login (its session family: refreshes rotate rows but keep the family) started within
     /// <see cref="FreshLogin"/>. The first row of a family is the password sign-in itself.

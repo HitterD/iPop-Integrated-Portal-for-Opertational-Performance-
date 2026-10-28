@@ -10,6 +10,12 @@ namespace IPop.Notifier.Windows;
 /// look like iPop's. Clicking opens the page; Reply posts straight to the chat room or the ticket.
 public static class Toasts
 {
+    public static string? Account { get; set; }
+    public static void ClearAll()
+    {
+        try { ToastNotificationManagerCompat.History.Clear(); } catch { }
+        try { ToastNotificationManager.History.Clear(IdeskAumid); } catch { }
+    }
     public static event Action<string, string>? ChatReply;    // roomId, text
     public static event Action<string, string>? TicketReply;  // ticket ref (my ticket id or iDesk ticket id), text
     public static event Action<string>? Open;                 // iPop path
@@ -24,6 +30,7 @@ public static class Toasts
         ToastNotificationManagerCompat.OnActivated += e =>
         {
             var args = ToastArguments.Parse(e.Argument);
+            if (Account is null || !args.TryGetValue("account", out var account) || account != Account) return;
             args.TryGetValue("url", out var url);
             if (args.TryGetValue("action", out var action) && e.UserInput.TryGetValue("reply", out var text)
                 && text is string t && t.Trim().Length > 0)
@@ -126,6 +133,8 @@ public static class Toasts
     {
         try
         {
+            if (Account is null) return;
+            b.AddArgument("account", Account);
             // Sound is played by the app (iPop's own sounds), so the toast itself stays silent.
             b.AddAudio(new ToastAudio { Silent = true });
             tag = tag.Length > 64 ? tag[..64] : tag;

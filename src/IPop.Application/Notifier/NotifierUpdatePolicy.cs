@@ -11,6 +11,37 @@ public static class NotifierUpdatePolicy
     public static readonly TimeSpan IdleBeforeQuietInstall = TimeSpan.FromMinutes(5);
 
     public enum Step { Wait, Ask, InstallNow, InstallQuietly }
+    public enum InstallResult { Installed, Busy, UnknownCallStatus }
+
+    /// The active-call endpoint returns an empty 200 or JSON null when idle. Errors, malformed JSON,
+    /// and unexpected shapes are unknown, not idle.
+    public static bool? ReadCallStatus(int statusCode, string body)
+    {
+        if (statusCode != 200) return null;
+        if (body.Length == 0) return false;
+        try
+        {
+            var value = System.Text.Json.Nodes.JsonNode.Parse(body);
+            return value is null ? false : value is System.Text.Json.Nodes.JsonObject { Count: > 0 } ? true : null;
+        }
+        catch (System.Text.Json.JsonException) { return null; }
+    }
+
+    /// Final safety gate for ALL install paths, including Update now and mandatory updates.
+    /// Probe calls afresh, then check local remote activity after the awaited probe, immediately before apply.
+    public static async Task<InstallResult> TryInstallAsync(Func<Task<bool?>> inCall, Func<bool> remoteBusy, Action apply)
+    {
+        bool? call;
+        try { call = await inCall(); }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or InvalidOperationException)
+        {
+            return InstallResult.UnknownCallStatus;
+        }
+        if (call is null) return InstallResult.UnknownCallStatus;
+        if (call.Value || remoteBusy()) return InstallResult.Busy;
+        apply();
+        return InstallResult.Installed;
+    }
 
     /// <param name="readyAt">When this version finished downloading on this PC.</param>
     /// <param name="askedAt">When the person last saw the update prompt (null = never).</param>

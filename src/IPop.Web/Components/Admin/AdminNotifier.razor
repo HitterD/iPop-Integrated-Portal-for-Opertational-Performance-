@@ -4,7 +4,8 @@
 @inject IJSRuntime JS
 
 <p class="adm-summary">
-    @if (data is null) { <span class="skel-inline"></span> }
+    @if (loadFailed) { <span role="status">Couldn't load Notifier versions. Reopen this section to try again.</span> }
+    else if (data is null) { <span class="skel-inline"></span> }
     else
     {
         <span>@(data.All is { } a ? $"Everyone: {a.Version}" : "Nothing released yet")</span>
@@ -58,8 +59,13 @@
     public sealed record ReleasesDto(ReleaseDto? All, ReleaseDto? Pilot, List<VersionDto> Versions);
 
     private ReleasesDto? data;
+    private bool loadFailed;
 
-    protected override async Task OnInitializedAsync() => data = await Auth.GetAsync<ReleasesDto>("/api/notifier/releases") ?? new(null, null, []);
+    protected override async Task OnInitializedAsync()
+    {
+        data = await Auth.GetAsync<ReleasesDto>("/api/notifier/releases");
+        loadFailed = data is null;
+    }
     protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
 
     private static string ReleaseLine(ReleaseDto? r, string what) =>

@@ -3,9 +3,9 @@ using System.Security.Cryptography;
 
 namespace IPop.Api.Notifier;
 
-/// Web → iPop Notifier sign-in. The browser (already signed in) asks for a one-time code and opens
-/// ipop-notifier://signin?code=…; the app on that PC trades the code for its own session. Codes live 60 seconds,
-/// work once and only ever travel through the local link scheme, so a code can't reach another PC.
+/// Web → Notifier sign-in. A browser-local nonce authorizes the fixed callback; the app keeps a pending
+/// PKCE verifier and trades a single-use challenge-bound code for its own session. Codes expire after 60 seconds.
+/// Possessing a protocol URL alone cannot redeem a session; IP addresses are discovery hints, not authority.
 /// Signed-out apps also say "I'm waiting" every half minute, so the browser only opens the link when there is an
 /// app on the same address to answer it. All in memory: a restart only costs a re-sent link.
 public sealed class NotifierLinkStore
@@ -17,33 +17,54 @@ public sealed class NotifierLinkStore
 
     public static NotifierLinkStore Shared { get; } = new();
 
-    /// Fresh = minted within a minute of a password sign-in in that browser (an account switch needs it).
-    public sealed record LinkCode(Guid UserId, string? Ip, DateTime CreatedAt, bool Fresh);
+    // Codes are bound to an app-held PKCE verifier, never to an IP or a caller's claimed current account.
+    public sealed record LinkCode(Guid UserId, string Challenge, string RequestId, DateTime CreatedAt);
     private sealed record Waiting(string Ip, DateTime SeenAt);
 
     private readonly ConcurrentDictionary<string, LinkCode> codes = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, Waiting> waiting = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, (DateTime Window, int Count)> hits = new(StringComparer.Ordinal);
 
-    public string Issue(Guid userId, string? ip, bool fresh, DateTime now)
+    public static bool ValidSecret(string? value) => value is { Length: 43 } && value.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
+    public static string Challenge(string verifier) => Convert.ToBase64String(SHA256.HashData(System.Text.Encoding.ASCII.GetBytes(verifier)))
+        .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    private readonly object codeGate = new();
+    public string? Issue(Guid userId, string challenge, string requestId, DateTime now)
     {
-        if (codes.Count > MaxEntries) Sweep(now);
-        var code = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-        codes[code] = new LinkCode(userId, ip, now, fresh);
-        return code;
+        if (!ValidSecret(challenge) || !ValidSecret(requestId)) return null;
+        lock (codeGate)
+        {
+            Sweep(now);
+            if (codes.Count >= MaxEntries) return null;
+            var code = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            codes[code] = new LinkCode(userId, challenge, requestId, now);
+            return code;
+        }
     }
 
-    /// Single use: the first exchange removes the code, whether it is still fresh or not.
-    public LinkCode? Redeem(string? code, DateTime now)
+    /// Single use; an exchange must prove ownership of the pending app challenge.
+    public LinkCode? Redeem(string? code, string? verifier, string? requestId, DateTime now)
     {
-        if (string.IsNullOrEmpty(code) || !codes.TryRemove(code, out var c)) return null;
-        return now - c.CreatedAt <= CodeLifetime ? c : null;
+        if (!ValidSecret(code) || !ValidSecret(verifier) || !ValidSecret(requestId)) return null;
+        lock (codeGate)
+        {
+            if (!codes.TryGetValue(code!, out var c)) return null;
+            if (now - c.CreatedAt > CodeLifetime) { codes.TryRemove(code!, out _); return null; }
+            if (c.RequestId != requestId || !CryptographicOperations.FixedTimeEquals(
+                System.Text.Encoding.ASCII.GetBytes(c.Challenge), System.Text.Encoding.ASCII.GetBytes(Challenge(verifier!)))) return null;
+            return codes.TryRemove(code!, out c) ? c : null;
+        }
     }
 
     public void MarkWaiting(string deviceKey, string ip, DateTime now)
     {
-        if (waiting.Count > MaxEntries) Sweep(now);
-        waiting[deviceKey] = new Waiting(ip, now);
+        lock (codeGate)
+        {
+            if (waiting.Count >= MaxEntries) Sweep(now);
+            if (waiting.Count >= MaxEntries && !waiting.ContainsKey(deviceKey)) return;
+            waiting[deviceKey] = new Waiting(ip, now);
+        }
     }
 
     public void ClearWaiting(string deviceKey) => waiting.TryRemove(deviceKey, out _);

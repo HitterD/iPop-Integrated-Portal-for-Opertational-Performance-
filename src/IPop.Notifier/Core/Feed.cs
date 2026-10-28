@@ -9,6 +9,9 @@ namespace IPop.Notifier.Core;
 public sealed class Feed(IPopClient api, LocalState state) : IAsyncDisposable
 {
     private HubConnection? hub;
+    private bool stopped;
+    private readonly long generation = api.Generation;
+    private bool Current => !stopped && generation == api.Generation;
     public event Action<Notice>? Received;
     public event Action<ToastPayload>? ChatToast;
     /// A ticket's chat was read or answered (in iPop, iDesk or here): hide its toast. Refs = ticket ids.
@@ -25,6 +28,8 @@ public sealed class Feed(IPopClient api, LocalState state) : IAsyncDisposable
     public async Task StartAsync(CancellationToken ct)
     {
         await StopAsync();
+        stopped = false;
+        if (generation != api.Generation) return;
         hub = new HubConnectionBuilder()
             .WithUrl(new Uri(api.Server, "hubs/notification"), o => o.AccessTokenProvider = () => api.AccessTokenAsync())
             .WithAutomaticReconnect(new ForeverRetry())
@@ -48,11 +53,11 @@ public sealed class Feed(IPopClient api, LocalState state) : IAsyncDisposable
         var mine = hub;
         hub.Closed += async _ =>
         {
-            if (!ReferenceEquals(hub, mine)) return; // an old connection we replaced
+            if (!Current || !ReferenceEquals(hub, mine)) return; // an old connection we replaced
             ConnectionChanged?.Invoke(false);
             // Closed only after the retry policy gives up or the server refuses; try again quietly.
             await Task.Delay(TimeSpan.FromSeconds(30));
-            if (api.IsSignedIn) { try { await StartAsync(CancellationToken.None); } catch { } }
+            if (Current && api.IsSignedIn) { try { await StartAsync(CancellationToken.None); } catch { } }
         };
 
         for (var attempt = 0; ; attempt++)
@@ -62,7 +67,7 @@ public sealed class Feed(IPopClient api, LocalState state) : IAsyncDisposable
                 await hub.StartAsync(ct);
                 break;
             }
-            catch when (!ct.IsCancellationRequested && api.IsSignedIn)
+            catch when (Current && !ct.IsCancellationRequested && api.IsSignedIn)
             {
                 await Task.Delay(TimeSpan.FromSeconds(Math.Min(60, 5 * (attempt + 1))), ct);
             }
@@ -115,6 +120,7 @@ public sealed class Feed(IPopClient api, LocalState state) : IAsyncDisposable
 
     public async Task StopAsync()
     {
+        stopped = true;
         if (hub is null) return;
         var h = hub;
         hub = null;

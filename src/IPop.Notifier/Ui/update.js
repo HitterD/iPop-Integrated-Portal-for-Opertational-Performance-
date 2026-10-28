@@ -16,6 +16,13 @@
     return String(md || '').split(/\r?\n/).map(l => l.replace(/^\s*[-*]\s+/, '').trim()).filter(Boolean).slice(0, 6);
   }
 
+  app.on('installBlocked', ({ message }) => {
+    $('#now').disabled = false; $('#later').disabled = false;
+    $('#now').textContent = 'Update now';
+    $('#note').textContent = message;
+    $('#now').focus();
+  });
+
   app.on('update', ({ info: m }) => {
     $('#title').textContent = `iPop Notifier ${m.version} is ready`;
     $('#sub').textContent = `You have ${m.current}.`;

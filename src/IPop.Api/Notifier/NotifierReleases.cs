@@ -31,7 +31,7 @@ public sealed class NotifierReleases(IConfiguration cfg)
             var n = JsonNode.Parse(File.ReadAllText(path));
             return new State(Parse(n?["all"]) ?? FromFeed(AllFeed), Parse(n?["pilot"]));
         }
-        catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException)
+        catch (Exception e) when (e is IOException or JsonException or InvalidOperationException or UnauthorizedAccessException)
         {
             return new State(null, null);
         }
@@ -57,9 +57,26 @@ public sealed class NotifierReleases(IConfiguration cfg)
         try
         {
             var path = Path.Combine(Folder, file);
-            return (File.Exists(path) ? File.ReadAllText(path) : null, usePilot ? state.Pilot : state.All);
+            if (!File.Exists(path)) return (null, null);
+            var target = usePilot ? state.Pilot : state.All;
+            var json = File.ReadAllText(path);
+            // Publication swaps files one at a time and commits release.json last. Do not expose a feed's
+            // newer package under the previous version's mandatory flag during that small interval.
+            if (target is not null)
+            {
+                var root = JsonNode.Parse(json);
+                if (root?["Assets"] is not JsonArray assets) return (null, null);
+                var limit = System.Version.Parse(target.Version);
+                for (var i = assets.Count - 1; i >= 0; i--)
+                {
+                    var version = assets[i]?["Version"]?.GetValue<string>();
+                    if (!IsVersion(version) || System.Version.Parse(version!) > limit) assets.RemoveAt(i);
+                }
+                json = root!.ToJsonString();
+            }
+            return (json, target);
         }
-        catch (IOException) { return (null, null); }
+        catch (Exception e) when (e is IOException or JsonException or InvalidOperationException or UnauthorizedAccessException) { return (null, null); }
     }
 
     private static Release? Parse(JsonNode? n)

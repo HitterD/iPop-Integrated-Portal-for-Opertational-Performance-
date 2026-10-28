@@ -15,6 +15,7 @@ public sealed class DeviceReporter(IPopClient api)
     /// Public iPop web address from the server ("Notifier:WebBase"); null = same as the server address.
     public Uri? WebBase { get; private set; }
     public event Action? Beat;
+    public void Reset() { IPopBusy = false; IctTools = false; DisplayName = null; WebBase = null; }
 
     public async Task RunAsync(CancellationToken ct)
     {

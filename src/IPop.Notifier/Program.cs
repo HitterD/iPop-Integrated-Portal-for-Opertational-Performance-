@@ -11,6 +11,9 @@ static class Program
     {
         // Velopack first: install/update/uninstall hooks run and exit here (per-user install, no admin).
         VelopackApp.Build()
+            // Later/mandatory timing and the remote/call safety gate belong to Updater, not startup.
+            .SetAutoApplyOnStartup(false)
+            .OnFirstRun(_ => args = [.. args, "--first-run"])
             .OnAfterInstallFastCallback(_ => { Integration.RegisterUrlScheme(); Integration.SetStartWithWindows(true); })
             .OnBeforeUninstallFastCallback(_ =>
             {
