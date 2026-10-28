@@ -86,6 +86,8 @@ public sealed class MailService(AuthState Auth, HttpClient http)
         => Auth.GetAsync<MailStats>($"/api/mail/{id}/stats", ct);
     public Task<MailPaged<MailReader>?> GetReadersAsync(Guid id, bool read, int page, CancellationToken ct = default)
         => Auth.GetAsync<MailPaged<MailReader>>($"/api/mail/{id}/readers?read={(read ? "true" : "false")}&page={page}&pageSize=50", ct);
+    public Task<ReplyAllInfo?> GetReplyAllAsync(Guid id, CancellationToken ct = default)
+        => Auth.GetAsync<ReplyAllInfo>($"/api/mail/{id}/reply-all", ct);
     public Task<MailPaged<MailRecipient>?> GetRecipientsAsync(Guid id, int page, CancellationToken ct = default)
         => Auth.GetAsync<MailPaged<MailRecipient>>($"/api/mail/{id}/recipients?page={page}&pageSize=50", ct);
 

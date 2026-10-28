@@ -119,7 +119,10 @@ public sealed class MailPdfRenderer(IDevExpressDocumentFactory factory)
             // Muat HTML sebagai dokumen sementara lalu salin isinya, agar format
             // rich-text dari composer ikut ke PDF.
             using var bodyServer = _factory.CreateWordProcessor();
-            bodyServer.LoadDocument(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(m.Body)), DocumentFormat.Html);
+            // Offline only: the importer would otherwise fetch every remote image URL from the
+            // server's network (SSRF). Stored NAS images were already inlined as data: URIs.
+            var html = IPop.Infrastructure.Mail.MailHtml.ForOfflineRender(m.Body);
+            bodyServer.LoadDocument(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(html)), DocumentFormat.Html);
             doc.AppendDocumentContent(bodyServer.Document.Range);
         }
         else

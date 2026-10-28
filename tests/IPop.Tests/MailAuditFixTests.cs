@@ -223,6 +223,84 @@ public class MailAuditFixTests
     }
 
     [Fact]
+    public void Pdf_html_keeps_only_data_images_so_the_server_fetches_nothing()
+    {
+        var png = "data:image/png;base64,iVBORw0KGgo=";
+        var html = IPop.Infrastructure.Mail.MailHtml.ForOfflineRender(
+            $"<p style=\"background:url(http://10.0.0.1/x)\">hi</p><img src=\"http://169.254.169.254/latest\"><img src=\"{png}\"><a href=\"https://ok.example\">link</a>");
+        Assert.DoesNotContain("10.0.0.1", html);
+        Assert.DoesNotContain("169.254.169.254", html);
+        Assert.Contains(png, html);
+        Assert.Contains("https://ok.example", html); // links are text in a PDF, never fetched
+    }
+
+    [Fact]
+    public void Attachment_type_comes_from_the_bytes_not_the_browser()
+    {
+        var html = System.Text.Encoding.ASCII.GetBytes("<html><script>");
+        var png = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0 };
+        Assert.Equal("image/png", IPop.Api.Endpoints.MailEndpoints.ResolveMime("photo.png", png));
+        // An HTML page renamed to .png is not an image.
+        Assert.Equal("application/octet-stream", IPop.Api.Endpoints.MailEndpoints.ResolveMime("photo.png", html));
+        Assert.Equal("application/octet-stream", IPop.Api.Endpoints.MailEndpoints.ResolveMime("evil.svg", html));
+        Assert.False(IPop.Api.Endpoints.MailEndpoints.IsSafeInlineMime("text/html"));
+        Assert.True(IPop.Api.Endpoints.MailEndpoints.IsSafeInlineMime("application/pdf"));
+    }
+
+    [Fact]
+    public async Task Thread_count_ignores_drafts_and_scheduled_replies()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("A");
+        var b = t.AddUser("B");
+        var svc = new MailService(t.Verify());
+        var root = (await svc.SendAsync(a.Id, Mail("Root", b.Nik), default)).MailId!.Value;
+        await new MailService(t.Verify()).SendAsync(b.Id, Mail("Re", a.Nik) with { InReplyToId = root }, default);
+        await new MailService(t.Verify()).SaveDraftAsync(b.Id, Mail("Re draft", a.Nik) with { InReplyToId = root }, default);
+        var sched = await new MailService(t.Verify()).SendAsync(b.Id, Mail("Re later", a.Nik) with { InReplyToId = root, ScheduledAt = DateTime.UtcNow.AddHours(1) }, default);
+        Assert.Equal(1, (await t.Verify().Mails.SingleAsync(m => m.Id == root)).ThreadCount);
+
+        await new MailService(t.Verify()).SendScheduledImmediatelyAsync(b.Id, sched.MailId!.Value, default);
+        Assert.Equal(2, (await t.Verify().Mails.SingleAsync(m => m.Id == root)).ThreadCount);
+    }
+
+    [Fact]
+    public async Task Muting_a_thread_mutes_its_replies_including_new_ones()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("A");
+        var b = t.AddUser("B");
+        var root = (await new MailService(t.Verify()).SendAsync(a.Id, Mail("Root", b.Nik), default)).MailId!.Value;
+        var r1 = (await new MailService(t.Verify()).SendAsync(a.Id, Mail("Re 1", b.Nik) with { InReplyToId = root }, default)).MailId!.Value;
+
+        Assert.True(await new MailService(t.Verify()).ToggleMuteAsync(b.Id, root, default));
+        var r2 = (await new MailService(t.Verify()).SendAsync(a.Id, Mail("Re 2", b.Nik) with { InReplyToId = r1 }, default)).MailId!.Value;
+
+        var rows = await t.Verify().MailRecipients.Where(r => r.UserId == b.Id).ToListAsync();
+        Assert.All(rows, r => Assert.True(r.IsMuted));
+        Assert.Equal(0, (await new MailService(t.Verify()).GetFolderCountsAsync(b.Id, default)).InboxUnread);
+        Assert.Contains(rows, r => r.MailId == r2);
+    }
+
+    [Fact]
+    public async Task Reply_all_list_is_complete_and_keeps_groups_for_the_sender()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("A");
+        var people = Enumerable.Range(0, 60).Select(i => t.AddUser($"P{i:00}")).ToList();
+        var svc = new MailService(t.Verify());
+        var sent = await svc.SendAsync(a.Id, new ComposeMailRequest("Big", "<p>x</p>", people.Select(p => p.Nik).ToList(), [], [],
+            ConfirmedRecipientCount: 60), default);
+        Assert.True(sent.Success, sent.Error);
+
+        var full = await new MailService(t.Verify()).GetReplyAllAsync(a.Id, sent.MailId!.Value, default);
+        Assert.NotNull(full);
+        Assert.Equal(60, full!.People.Count);
+        // Someone else's mass mail: reply-all is not theirs to use.
+        Assert.Null(await new MailService(t.Verify()).GetReplyAllAsync(people[0].Id, sent.MailId!.Value, default));
+    }
+
+    [Fact]
     public void Plain_text_bodies_are_encoded_on_the_client()
     {
         var html = IPop.Web.Services.MailAddressing.PlainToHtml("<script>x</script>");

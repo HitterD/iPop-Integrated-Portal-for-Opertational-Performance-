@@ -4,7 +4,28 @@ namespace IPop.Web.Services;
 /// per-message buttons, the toolbar, the keyboard shortcuts and Quick reply all agree.
 public static class MailAddressing
 {
-    public sealed record ReplyPlan(List<MemberSearchRow> To, List<MemberSearchRow> Cc, string? Notice);
+    public sealed record ReplyPlan(List<MemberSearchRow> To, List<MemberSearchRow> Cc, string? Notice)
+    {
+        public List<MailGroupSummary> ToGroups { get; init; } = [];
+        public List<MailGroupSummary> CcGroups { get; init; } = [];
+    }
+
+    /// Reply all with the complete list from /reply-all: every typed To/Cc person (the detail only
+    /// carries 50) and the groups as chips, so the reply reaches what the original reached.
+    public static ReplyPlan ForReplyAll(MailDetail d, string? myNik, ReplyAllInfo full)
+    {
+        var expanded = d with { Recipients = d.Recipients.Where(r => r.RecipientType == "from").Concat(full.People).ToList() };
+        var basePlan = ForReply(expanded with { RecipientTotal = full.People.Count, RecipientGroups = [] }, myNik, all: true);
+        List<MailGroupSummary> Groups(string field) => full.Groups.Where(g => g.Field == field)
+            .Select(g => new MailGroupSummary(g.Id, g.Kind, g.Name, g.Count)).ToList();
+        var toGroups = Groups("to");
+        var ccGroups = Groups("cc");
+        // My own mail sent only as Cc (or only to Cc groups): those become the To line.
+        if (basePlan.To.Count == 0 && toGroups.Count == 0) { toGroups = ccGroups; ccGroups = []; }
+        // "No other recipients" is wrong when groups fill the To line; other notices (an inactive sender) stay.
+        var notice = basePlan.To.Count == 0 && toGroups.Count > 0 && IsMe(d.SenderNik, myNik) ? null : basePlan.Notice;
+        return new ReplyPlan(basePlan.To, basePlan.Cc, notice) { ToGroups = toGroups, CcGroups = ccGroups };
+    }
 
     public static string ToNames(MailDetail d)
         => string.Join(", ", d.Recipients.Where(r => r.RecipientType == "to").Select(r => r.Name));
@@ -14,6 +35,8 @@ public static class MailAddressing
 
     public static string ReplySubject(string subject)
         => subject.StartsWith("Re:", StringComparison.OrdinalIgnoreCase) ? subject : $"Re: {subject}";
+
+    private static bool IsMe(string nik, string? myNik) => nik.Equals(myNik ?? "", StringComparison.OrdinalIgnoreCase);
 
     /// Like Outlook: replying to a mail I sent answers the people I sent it to, never myself.
     /// A sender without an active account (left, EPop archive) can't receive mail: To stays empty

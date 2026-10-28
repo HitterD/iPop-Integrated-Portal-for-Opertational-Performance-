@@ -70,6 +70,34 @@ public static class MailHtml
     public static string ForDisplay(string? html) =>
         string.IsNullOrEmpty(html) ? "" : Sanitizer.Sanitize(Linkify(Sanitizer.Sanitize(html)));
 
+    /// For server-side rendering (PDF export): the renderer runs on the server and would fetch any
+    /// URL in the body, so an `img src="http://10.0.0.1/admin"` was a server-side request forgery.
+    /// Only self-contained data: URIs survive; every other resource reference is removed. Links
+    /// (`a href`) stay, they are just text in a PDF and are never fetched.
+    public static string ForOfflineRender(string? html)
+    {
+        if (string.IsNullOrEmpty(html)) return "";
+        var doc = new HtmlParser().ParseDocument("<!doctype html><html><body>" + Sanitize(html) + "</body></html>");
+        if (doc.Body is null) return "";
+        foreach (var el in doc.Body.QuerySelectorAll("*").ToList())
+        {
+            foreach (var name in new[] { "src", "srcset", "background", "poster", "data", "lowsrc", "dynsrc" })
+            {
+                var v = el.GetAttribute(name);
+                if (v is not null && !v.TrimStart().StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                    el.RemoveAttribute(name);
+            }
+            if (el.GetAttribute("style") is { } style && style.Contains("url(", StringComparison.OrdinalIgnoreCase))
+                el.SetAttribute("style", CssUrl.Replace(style, "none"));
+            // An image with nothing left to show: drop it instead of a broken-image box.
+            if (el.TagName.Equals("IMG", StringComparison.OrdinalIgnoreCase) && !el.HasAttribute("src")) el.Remove();
+        }
+        return doc.Body.InnerHtml;
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex CssUrl = new(
+        @"url\s*\([^)]*\)", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
     private static readonly HashSet<string> NoLinkifyTags = new(StringComparer.OrdinalIgnoreCase)
         { "A", "CODE", "PRE", "STYLE", "SCRIPT", "TEXTAREA", "BUTTON", "SELECT", "OPTION", "TITLE" };
 

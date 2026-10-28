@@ -2218,19 +2218,42 @@
         // Mass mail / hidden list: the server would refuse; replying to the sender is what's allowed.
         if (!d.CanReplyAll)
             Toasts.Show($"This mail went to many people, so replies go to {d.SenderName} only.", ToastKind.Info);
-        OpenReply(d, all: d.CanReplyAll);
+        _ = OpenReplyAsync(d, all: d.CanReplyAll);
     }
+
+    private void OpenReply(MailDetail d, bool all) => _ = OpenReplyAsync(d, all);
 
     /// Like Outlook: a reply to my own sent message goes to its recipients; a sender without an
     /// active account can't be addressed (the composer opens without them and a toast says why).
-    private void OpenReply(MailDetail d, bool all)
+    private async Task OpenReplyAsync(MailDetail d, bool all)
     {
-        var plan = MailAddressing.ForReply(d, Auth.Me?.Nik, all);
-        var opened = OpenComposer(inReplyTo: d.Id, threadRoot: d.ThreadRootId ?? d.Id,
-            initialSubject: MailAddressing.ReplySubject(d.Subject),
-            initialBody: $"<p><br/></p>{QuoteOf(d)}",
-            initialTo: plan.To, initialCc: plan.Cc);
+        var plan = await PlanReplyAsync(d, all);
+        var opened = WithComposer(c =>
+        {
+            c.OpenNew(d.Id, d.ThreadRootId ?? d.Id, MailAddressing.ReplySubject(d.Subject), $"<p><br/></p>{QuoteOf(d)}", plan.To);
+            if (plan.Cc.Count > 0) c.SetCcRows(plan.Cc);
+            if (plan.ToGroups.Count + plan.CcGroups.Count > 0) c.SetGroups(plan.ToGroups, plan.CcGroups);
+        });
         if (opened && plan.Notice is not null) Toasts.Show(plan.Notice, ToastKind.Warning);
+        StateHasChanged();
+    }
+
+    /// Reply all of a group mail or one with more people than the detail lists (50) fetches the
+    /// complete list, so nobody the original reached is silently dropped. Falls back to the
+    /// detail (with a notice) if that call fails.
+    private async Task<MailAddressing.ReplyPlan> PlanReplyAsync(MailDetail d, bool all)
+    {
+        var listed = d.Recipients.Count(r => r.RecipientType != "from");
+        if (all && d.CanReplyAll && (d.RecipientGroups.Count > 0 || d.RecipientTotal > listed))
+        {
+            try
+            {
+                if (await MailSvc.GetReplyAllAsync(d.Id) is { } full)
+                    return MailAddressing.ForReplyAll(d, Auth.Me?.Nik, full);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException) { }
+        }
+        return MailAddressing.ForReply(d, Auth.Me?.Nik, all);
     }
 
     private async Task ToggleMuteThread(Guid mailId)
@@ -2306,6 +2329,15 @@
     private async Task<bool> SendQuickReply(MailReplyStart r)
     {
         var req = MailAddressing.QuickReply(r.Target, r.Text, Auth.Me?.Nik, r.All, r.Attachments.Select(a => a.Id).ToList());
+        // Reply all of a group / 50+ mail needs the full list and the "Send to N people?" check,
+        // which live in the full editor: open it there with the typed text (nothing is lost).
+        if (r.All && r.Target.CanReplyAll
+            && (r.Target.RecipientGroups.Count > 0 || r.Target.RecipientTotal > r.Target.Recipients.Count(x => x.RecipientType != "from")))
+        {
+            if (!await OpenFullReplyAsync(r)) return false; // the text stays in the quick-reply box
+            Toasts.Show("This reply goes to groups or many people — check the recipients, then send.", ToastKind.Info);
+            return true;
+        }
         if (req.To.Count == 0)
         {
             Toasts.Show(MailAddressing.ForReply(r.Target, Auth.Me?.Nik, all: false).Notice
@@ -2334,20 +2366,24 @@
     }
 
     /// "Open full editor": the composer opens as Reply / Reply all with what was typed above the quote.
-    private void OpenFullReply(MailReplyStart r)
+    private Task OpenFullReply(MailReplyStart r) => OpenFullReplyAsync(r);
+
+    private async Task<bool> OpenFullReplyAsync(MailReplyStart r)
     {
-        var plan = MailAddressing.ForReply(r.Target, Auth.Me?.Nik, r.All && r.Target.CanReplyAll);
+        var plan = await PlanReplyAsync(r.Target, r.All && r.Target.CanReplyAll);
         var typed = string.IsNullOrWhiteSpace(r.Text) ? "<p><br/></p>" : MailAddressing.TypedHtml(r.Text);
         var opened = WithComposer(c =>
         {
             c.OpenNew(r.Target.Id, r.Target.ThreadRootId ?? r.Target.Id, MailAddressing.ReplySubject(r.Target.Subject),
                 $"{typed}{QuoteOf(r.Target)}", plan.To);
             if (plan.Cc.Count > 0) c.SetCcRows(plan.Cc);
+            if (plan.ToGroups.Count + plan.CcGroups.Count > 0) c.SetGroups(plan.ToGroups, plan.CcGroups);
             if (r.Attachments.Count > 0) c.AddAttachments(r.Attachments);
             // What was typed in the quick reply is unsaved work: closing must keep it in Drafts.
             if (!string.IsNullOrWhiteSpace(r.Text) || r.Attachments.Count > 0) c.MarkDirty();
         });
         if (opened && plan.Notice is not null) Toasts.Show(plan.Notice, ToastKind.Warning);
+        return opened;
     }
 
     private static string QuoteOf(MailDetail d) => MailAddressing.QuoteOf(d);

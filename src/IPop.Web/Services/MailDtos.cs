@@ -78,6 +78,7 @@ public record MailStats(int Sent, int Delivered, int Read, IReadOnlyList<Skipped
 public record MailReader(string Name, string Nik, DateTime? ReadAt);
 
 public record MailGroupSummary(Guid Id, string Kind, string Name, int Count);
+public record ReplyAllInfo(IReadOnlyList<MailRecipient> People, IReadOnlyList<RecipientGroupCount> Groups);
 public record MailGroupList(IReadOnlyList<MailGroupSummary> Shared, IReadOnlyList<MailGroupSummary> Personal);
 public record MailGroupMember(string Nik, string Name, string? Department, string? Site, bool IsActive);
 public record MailGroupDetail(Guid Id, string Kind, string Name, int Count, IReadOnlyList<MailGroupMember> Members);

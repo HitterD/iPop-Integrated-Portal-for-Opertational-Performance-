@@ -159,6 +159,16 @@ public static class MailEndpoints
             return result is not null ? Results.Ok(result) : Results.Json(new { code = "mail_not_found", message = "Mail not found." }, statusCode: 404);
         });
 
+        // GET /api/mail/{id}/reply-all — everyone a Reply all addresses (typed people + group chips).
+        g.MapGet("/{id:guid}/reply-all", async (Guid id,
+            HttpContext http, IMailService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var result = await svc.GetReplyAllAsync(userId.Value, id, ct);
+            return result is not null ? Results.Ok(result) : Results.Json(new { code = "mail_not_found", message = "Mail not found." }, statusCode: 404);
+        });
+
         // GET /api/mail/{id}/recipients?page=1 — the full recipient list the caller may see, paged.
         g.MapGet("/{id:guid}/recipients", async (Guid id, int? page, int? pageSize,
             HttpContext http, IMailService svc, IPopDbContext db, CancellationToken ct) =>
@@ -543,7 +553,11 @@ public static class MailEndpoints
             {
                 var safeName = SanitizeFileName(file.FileName);
                 var uniqueName = $"{Guid.NewGuid():N}_{safeName}";
-                var mime = ResolveMime(safeName, file.ContentType);
+                var head = new byte[16];
+                int headLen;
+                await using (var peek = file.OpenReadStream())
+                    headLen = await peek.ReadAtLeastAsync(head, head.Length, throwOnEndOfStream: false, ct);
+                var mime = ResolveMime(safeName, head.AsSpan(0, headLen));
                 var isRaster = IsRasterImageMime(mime);
                 string? thumbnailPath = null;
 
@@ -653,7 +667,7 @@ public static class MailEndpoints
                 if (!combined.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(combined))
                     return Results.NotFound();
                 var stream = File.OpenRead(combined);
-                return Results.File(stream, attachment.MimeType, inline == true ? null : attachment.FileName, enableRangeProcessing: true);
+                return ServeAttachment(http, stream, attachment, inline);
             }
             try
             {
@@ -663,7 +677,7 @@ public static class MailEndpoints
                     && attachment.SynologyServer == fileSvc.ServiceServer
                     ? await fileSvc.DownloadAsServiceAsync(attachment.SynologyPath, ct)
                     : await fileSvc.DownloadAsync(userId.Value, attachment.SynologyServer, attachment.SynologyPath, ct);
-                return Results.File(stream, attachment.MimeType, inline == true ? null : attachment.FileName, enableRangeProcessing: true);
+                return ServeAttachment(http, stream, attachment, inline);
             }
             catch (SynoException ex) when (ex.IsAuthFailure)
             {
@@ -697,7 +711,8 @@ public static class MailEndpoints
                         && attachment.SynologyServer == fileSvc.ServiceServer
                         ? await fileSvc.DownloadAsServiceAsync(attachment.ThumbnailPath!, ct)
                         : await fileSvc.DownloadAsync(userId.Value, attachment.SynologyServer, attachment.ThumbnailPath!, ct);
-                    return Results.File(stream, attachment.MimeType, enableRangeProcessing: true);
+                    HardenFileResponse(http);
+                    return Results.File(stream, IsRasterImageMime(attachment.MimeType) ? attachment.MimeType : "application/octet-stream", enableRangeProcessing: true);
                 }
                 catch (SynoException ex) when (ex.IsAuthFailure)
                 {
@@ -712,7 +727,8 @@ public static class MailEndpoints
             var root = Path.GetFullPath(Path.Combine(env.ContentRootPath, "mail-files"));
             if (!combined.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(combined))
                 return Results.NotFound();
-            return Results.File(File.OpenRead(combined), "image/jpeg");
+            HardenFileResponse(http);
+            return Results.File(File.OpenRead(combined), IsRasterImageMime(attachment.MimeType) ? attachment.MimeType : "application/octet-stream");
         });
 
         // ──────────────────────────────────────────────────────────────────────
@@ -1185,23 +1201,63 @@ public static class MailEndpoints
     private static bool IsRasterImageMime(string? contentType) => contentType?.ToLowerInvariant() is
         "image/jpeg" or "image/png" or "image/gif" or "image/webp" or "image/bmp" or "image/tiff";
 
-    private static string ResolveMime(string name, string? contentType)
+    private static readonly Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider MimeByExt = new();
+
+    /// The type comes from the server, never from the browser's Content-Type header (which the
+    /// uploader controls): by extension, and for the types we show inline the file's own bytes
+    /// must agree. Anything unknown or contradicting its bytes is a plain download.
+    internal static string ResolveMime(string name, ReadOnlySpan<byte> head)
     {
         var ext = Path.GetExtension(name).ToLowerInvariant();
-        return ext switch
+        var mime = ext switch
         {
-            ".jpg" or ".jpeg" => "image/jpeg",
-            ".png" => "image/png",
-            ".gif" => "image/gif",
-            ".webp" => "image/webp",
-            ".pdf" => "application/pdf",
-            ".doc" or ".docx" => "application/msword",
-            ".xls" or ".xlsx" => "application/vnd.ms-excel",
-            ".csv" => "text/csv",
-            ".txt" => "text/plain",
-            ".zip" => "application/zip",
-            _ => !string.IsNullOrWhiteSpace(contentType) ? contentType! : "application/octet-stream"
+            ".doc" => "application/msword",
+            ".xls" => "application/vnd.ms-excel",
+            _ => MimeByExt.TryGetContentType(name, out var m) ? m : "application/octet-stream",
         };
+        if (mime.StartsWith("image/", StringComparison.Ordinal) || mime == "application/pdf")
+        {
+            var sniffed = SniffMime(head);
+            // An "x.png" that is really HTML/SVG/script must not be stored or served as an image.
+            if (sniffed is null || (mime != sniffed && !(mime.StartsWith("image/") && sniffed.StartsWith("image/"))))
+                return mime == "image/svg+xml" ? "application/octet-stream" : (sniffed ?? "application/octet-stream");
+            return sniffed;
+        }
+        return mime;
+    }
+
+    /// Magic numbers of the formats the client previews inline.
+    internal static string? SniffMime(ReadOnlySpan<byte> b)
+    {
+        if (b.Length >= 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF) return "image/jpeg";
+        if (b.Length >= 8 && b[..8].SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A })) return "image/png";
+        if (b.Length >= 6 && b[0] == 'G' && b[1] == 'I' && b[2] == 'F' && b[3] == '8' && (b[4] == '7' || b[4] == '9') && b[5] == 'a') return "image/gif";
+        if (b.Length >= 12 && b[0] == 'R' && b[1] == 'I' && b[2] == 'F' && b[3] == 'F' && b[8] == 'W' && b[9] == 'E' && b[10] == 'B' && b[11] == 'P') return "image/webp";
+        if (b.Length >= 2 && b[0] == 'B' && b[1] == 'M') return "image/bmp";
+        if (b.Length >= 4 && ((b[0] == 'I' && b[1] == 'I' && b[2] == 42 && b[3] == 0) || (b[0] == 'M' && b[1] == 'M' && b[2] == 0 && b[3] == 42))) return "image/tiff";
+        if (b.Length >= 5 && b[0] == '%' && b[1] == 'P' && b[2] == 'D' && b[3] == 'F' && b[4] == '-') return "application/pdf";
+        return null;
+    }
+
+    /// Types the browser may render in place; everything else is always an attachment download.
+    internal static bool IsSafeInlineMime(string? mime) => IsRasterImageMime(mime)
+        || mime is "application/pdf" or "text/plain" or "text/csv";
+
+    /// File responses never run as a page of ours: no sniffing, and a sandbox CSP in case one
+    /// is ever opened directly in a tab.
+    private static void HardenFileResponse(HttpContext http)
+    {
+        http.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        http.Response.Headers["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'";
+    }
+
+    private static IResult ServeAttachment(HttpContext http, Stream stream, MailAttachment a, bool? inline)
+    {
+        HardenFileResponse(http);
+        // inline=true is honoured only for safe types; e.g. text/html always downloads.
+        var asInline = inline == true && IsSafeInlineMime(a.MimeType);
+        var type = asInline ? a.MimeType : (IsSafeInlineMime(a.MimeType) ? a.MimeType : "application/octet-stream");
+        return Results.File(stream, type, asInline ? null : a.FileName, enableRangeProcessing: true);
     }
 
     private static string SanitizeFileName(string? name)

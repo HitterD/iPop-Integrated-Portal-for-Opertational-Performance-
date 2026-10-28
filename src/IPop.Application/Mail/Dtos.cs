@@ -117,6 +117,9 @@ public record MailSearchRequest(
 
 // Full message with resolved recipients for the reading pane.
 public record MailRecipientDto(Guid UserId, string Name, string Nik, string Email, string RecipientType);
+
+/// Reply all, complete: every typed To/Cc person plus the To/Cc groups as chips.
+public record ReplyAllDto(IReadOnlyList<MailRecipientDto> People, IReadOnlyList<RecipientGroupCountDto> Groups);
 public record ProjectLink(Guid ProjectId, string Name, int Progress, string Status);
 
 public record MailDetailDto(

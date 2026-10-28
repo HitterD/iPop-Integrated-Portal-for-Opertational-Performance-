@@ -51,6 +51,7 @@ public interface IMailService
     Task<MailStatsDto?> GetStatsAsync(Guid userId, Guid mailId, CancellationToken ct);
     Task<PagedResult<MailReaderDto>?> GetReadersAsync(Guid userId, Guid mailId, bool read, int page, int pageSize, CancellationToken ct);
     Task<PagedResult<MailRecipientDto>?> GetRecipientsAsync(Guid userId, Guid mailId, int page, int pageSize, CancellationToken ct);
+    Task<ReplyAllDto?> GetReplyAllAsync(Guid userId, Guid mailId, CancellationToken ct);
     /// Drains due "new mail" notification jobs (badges, banners, push); returns how many ran.
     Task<int> ProcessNotifyJobsAsync(CancellationToken ct);
 

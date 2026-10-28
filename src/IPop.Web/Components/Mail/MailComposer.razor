@@ -596,6 +596,16 @@
         StateHasChanged();
     }
 
+    /// Group chips for a Reply all of a mail that went to groups.
+    public void SetGroups(List<MailGroupSummary> to, List<MailGroupSummary> cc)
+    {
+        toGroups = to;
+        ccGroups = cc;
+        if (ccGroups.Count > 0) showCc = true;
+        SchedulePreview();
+        StateHasChanged();
+    }
+
     public void SetCcRows(List<MemberSearchRow> cc)
     {
         ccRows = cc;

@@ -83,7 +83,6 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
             RecipientGroupsJson = x.Groups.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(x.Groups, Json) : null,
             SkippedJson = x.Skipped.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(x.Skipped, Json) : null,
         };
-        if (!isScheduled) await BumpThreadAsync(mail, now, ct);
         db.Mails.Add(mail);
 
         // Sender's own row lives in Scheduled or Sent.
@@ -102,8 +101,11 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         await ApplySenderLabelsAsync(mail.Id, senderId, req.LabelIds, now, ct);
         // Badges/banners/push go through a durable queue written with the inbox rows: the send
         // returns as soon as the mail is in everyone's inbox, and no notification is lost.
+        // After the rows exist: the reply's thread root, plus mute carried over to new rows.
+        if (!isScheduled) await BumpThreadAsync(mail, now, ct);
         if (!isScheduled) QueueNotify(mail.Id, now);
         await db.SaveChangesAsync(ct);
+        if (!isScheduled) await RecountThreadAsync(mail.ThreadRootId, now, ct);
 
         var recipientUsers = recipients.Select(r => r.User).ToList();
         // Fase 3 — aturan label otomatis: untuk tiap penerima non-pengirim, tempel label
@@ -660,6 +662,27 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         return new PagedResult<MailReaderDto>(items, total, page, pageSize);
     }
 
+    /// Everyone a Reply all should address, complete: the typed To/Cc people (not just the first
+    /// 50 the detail carries) and the To/Cc groups as chips (members are never expanded, so a
+    /// reply to a group goes to the group's current members). Bcc never. Null when the caller may
+    /// not reply-all (mass / hidden-list mail of someone else) or isn't a participant.
+    public async Task<ReplyAllDto?> GetReplyAllAsync(Guid userId, Guid mailId, CancellationToken ct)
+    {
+        var mail = await db.Mails.AsNoTracking().FirstOrDefaultAsync(m => m.Id == mailId, ct);
+        if (mail is null || !await db.MailRecipients.AnyAsync(r => r.MailId == mailId && r.UserId == userId && r.Folder != "pending", ct)) return null;
+        var callerIsSender = mail.SenderId == userId;
+        if (!callerIsSender && (mail.IsMass || mail.HideRecipients)) return null;
+        var people = await VisibleRecipients(mail, userId)
+            .Where(r => (r.RecipientType == "to" || r.RecipientType == "cc") && !r.ViaGroup)
+            .OrderBy(r => r.RecipientType == "to" ? 0 : 1).ThenBy(r => r.CreatedAt)
+            .Take(MailLimits.MaxRecipients)
+            .Select(r => new MailRecipientDto(r.UserId, r.User.Name, r.User.Nik, r.User.Email, r.RecipientType))
+            .ToListAsync(ct);
+        var groups = VisibleGroups(mail, callerIsSender)
+            .Where(g => g.Field is "to" or "cc" && g.Id != Guid.Empty).ToList();
+        return new ReplyAllDto(people, groups);
+    }
+
     public async Task<PagedResult<MailRecipientDto>?> GetRecipientsAsync(Guid userId, Guid mailId, int page, int pageSize, CancellationToken ct)
     {
         var mail = await db.Mails.AsNoTracking().FirstOrDefaultAsync(m => m.Id == mailId, ct);
@@ -866,10 +889,18 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         var recipient = await db.MailRecipients.FirstOrDefaultAsync(r => r.UserId == userId && r.MailId == mailId && r.Folder != "pending", ct);
         if (recipient is null) return false;
 
-        recipient.IsMuted = !recipient.IsMuted;
+        var muted = !recipient.IsMuted;
+        // Mute is a conversation setting: every message of the thread in this user's mailbox
+        // follows, so the unread badge and push agree (push already went by the whole thread).
+        var rootId = await db.Mails.Where(m => m.Id == mailId).Select(m => m.ThreadRootId ?? m.Id).FirstAsync(ct);
+        var rows = await db.MailRecipients
+            .Where(r => r.UserId == userId && r.Folder != "pending" && (r.MailId == rootId || r.Mail.ThreadRootId == rootId))
+            .ToListAsync(ct);
+        if (!rows.Contains(recipient)) rows.Add(recipient);
+        foreach (var r in rows) r.IsMuted = muted;
         await db.SaveChangesAsync(ct);
         await SyncUserAsync(userId, ct);
-        return recipient.IsMuted;
+        return muted;
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -1104,6 +1135,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
 
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
+        await RecountThreadAsync(mail.ThreadRootId, now, ct);
         await SyncUserAsync(userId, ct);
         notifySignal?.Notify();
         return new SendMailResult(true, mailId, null);
@@ -1264,6 +1296,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
                 await db.SaveChangesAsync(ct);
                 await tx.CommitAsync(ct);
                 delivered.Add(mail);
+                await AfterDeliveryAsync("thread count", mail.Id, () => RecountThreadAsync(mail.ThreadRootId, now, ct));
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -1421,21 +1454,48 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
 
     /// Reply/forward threading: count + last-activity live on the thread root so the inbox list
     /// shows "n replies" and sorts by conversation recency without a join.
+    /// Resolves the reply's thread root (always through the parent, so replies to replies stay
+    /// in the original conversation) and carries a muted thread over to the new reply's rows.
+    /// The count itself is recomputed after the save by <see cref="RecountThreadAsync"/>.
     private async Task BumpThreadAsync(MailEntity mail, DateTime now, CancellationToken ct)
     {
         if (mail.InReplyToId is null) return;
-        var parent = await db.Mails.FindAsync([mail.InReplyToId.Value], ct);
+        var parent = await db.Mails.AsNoTracking().Where(m => m.Id == mail.InReplyToId.Value)
+            .Select(m => new { m.Id, m.ThreadRootId }).FirstOrDefaultAsync(ct);
         if (parent is null) return;
-
-        // Always telescope through the parent so replies to replies remain in the
-        // original conversation instead of creating a nested, undiscoverable root.
         mail.ThreadRootId = parent.ThreadRootId ?? parent.Id;
-        var root = await db.Mails.FindAsync([mail.ThreadRootId.Value], ct);
-        if (root is not null)
-        {
-            root.ThreadCount = await db.Mails.CountAsync(m => m.ThreadRootId == root.Id, ct) + 1;
-            root.LastThreadAt = now;
-        }
+        await InheritMuteAsync(mail, ct);
+    }
+
+    /// Mute is per thread for the reader: a reply arriving in a conversation they muted starts
+    /// muted, so it no longer raises the unread badge (push already skipped muted threads).
+    private async Task InheritMuteAsync(MailEntity mail, CancellationToken ct)
+    {
+        if (mail.ThreadRootId is not { } rootId) return;
+        var rows = db.ChangeTracker.Entries<MailRecipient>()
+            .Where(e => e.Entity.MailId == mail.Id && e.Entity.RecipientType != "from")
+            .Select(e => e.Entity).ToList();
+        if (rows.Count == 0) rows = mail.Recipients.Where(r => r.RecipientType != "from").ToList();
+        if (rows.Count == 0) return;
+        var userIds = rows.Select(r => r.UserId).Distinct().ToList();
+        var muted = (await db.MailRecipients.AsNoTracking()
+            .Where(r => userIds.Contains(r.UserId) && r.IsMuted && r.MailId != mail.Id
+                && (r.MailId == rootId || r.Mail.ThreadRootId == rootId))
+            .Select(r => r.UserId).Distinct().ToListAsync(ct)).ToHashSet();
+        foreach (var r in rows) if (muted.Contains(r.UserId)) r.IsMuted = true;
+    }
+
+    /// "n replies" on the thread root, recomputed in the database in one statement after the
+    /// reply is saved: counting in memory raced with concurrent sends (two replies in one
+    /// scheduler batch both read the same count) and also counted drafts, scheduled and
+    /// recalled replies — a scheduled reply even twice (+1 on top of its own row).
+    private async Task RecountThreadAsync(Guid? rootId, DateTime now, CancellationToken ct)
+    {
+        if (rootId is not { } id) return;
+        await db.Mails.Where(m => m.Id == id).ExecuteUpdateAsync(u => u
+            // Number of replies (the root itself is not counted), counted after the reply is saved.
+            .SetProperty(m => m.ThreadCount, m => db.Mails.Count(x => x.ThreadRootId == id && x.Status == "sent"))
+            .SetProperty(m => m.LastThreadAt, now), ct);
     }
 
     /// Moves a scheduled mail to <paramref name="status"/> only if it is still scheduled, in one
@@ -1558,6 +1618,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
                 var inboxRow = MakeRecipient(reply.Id, original.SenderId, "to", "inbox", DateTime.UtcNow);
                 inboxRow.DeliveredAt = DateTime.UtcNow;
                 db.MailRecipients.Add(inboxRow);
+                await InheritMuteAsync(reply, ct);
                 // Same durable notification as any other mail: badge, banner and toast for the sender.
                 QueueNotify(reply.Id, DateTime.UtcNow);
                 queued = true;
@@ -1565,6 +1626,8 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
             catch { /* satu penerima gagal tidak menghentikan yang lain */ }
         }
         await db.SaveChangesAsync(ct);
+        // Auto-replies are replies too: they used to be missing from the thread's count.
+        if (queued) await RecountThreadAsync(original.ThreadRootId ?? original.Id, DateTime.UtcNow, ct);
         if (queued) notifySignal?.Notify();
     }
 
