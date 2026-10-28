@@ -24,7 +24,7 @@
             <nav class="m-mail-compose-nav" aria-label="Compose">
                 <button type="button" aria-label="Cancel" @onclick="Close">Cancel</button>
                 <b>@(IsForward ? "Forward" : inReplyToId.HasValue ? "Reply" : "New mail")</b>
-                <button type="button" aria-label="Send" disabled="@sending" @onclick="SendNow"><i data-lucide="send"></i></button>
+                <button type="button" aria-label="Send" disabled="@(sending || uploading)" @onclick="SendNow"><i data-lucide="send"></i></button>
             </nav>
         }
         @* Header: title echo, message options, window buttons *@
@@ -280,7 +280,7 @@
 
         <div class="composer-foot">
             <div class="split-send">
-                <button type="button" class="send-main @(uploading || sending ? "mc-waiting" : "")" @onclick="SendNow" disabled="@sending" title="@(uploading ? "Waiting for the upload to finish" : "Send (Ctrl+Enter)")" aria-busy="@(uploading || sending ? "true" : "false")">
+                <button type="button" class="send-main @(uploading || sending ? "mc-waiting" : "")" @onclick="SendNow" disabled="@(sending || uploading)" title="@(uploading ? "Waiting for the upload to finish" : "Send (Ctrl+Enter)")" aria-busy="@(uploading || sending ? "true" : "false")">
                     <i data-lucide="send"></i>
                     @(sending ? "Sending…" : "Send")
                 </button>
@@ -1277,6 +1277,13 @@
     private async Task DoSendAsync(DateTime? scheduledAt)
     {
         if (sending) return;
+        // Ctrl+Enter bypasses the disabled button: a send now would go out without the file
+        // still uploading (it then landed on a closed composer and was orphaned).
+        if (uploading)
+        {
+            Toasts.Show("Wait for the upload to finish, then send.", ToastKind.Warning);
+            return;
+        }
         if (toRows.Count == 0 && ccRows.Count == 0 && bccRows.Count == 0 && GroupCount == 0)
         {
             Toasts.Show("Please add at least one recipient.", ToastKind.Warning);

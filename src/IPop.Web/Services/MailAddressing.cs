@@ -96,6 +96,11 @@ public static class MailAddressing
         return plan.Cc.Count == 0 ? to : $"{to} · Cc {Names(plan.Cc, 1)}";
     }
 
+    /// A plain-text body as safe markup: every mail sink renders the body as HTML, so plain text
+    /// (older out-of-office replies) must be encoded or an onerror handler in it would run.
+    public static string PlainToHtml(string? text)
+        => "<div style=\"white-space:pre-wrap\">" + System.Net.WebUtility.HtmlEncode(text ?? "") + "</div>";
+
     public static string QuoteOf(MailDetail d)
     {
         var stamp = d.SentAt?.ToLocalTime().ToString("ddd, dd MMM yyyy 'at' HH:mm") ?? "earlier";
@@ -104,7 +109,7 @@ public static class MailAddressing
               <summary class="mail-quote-toggle" title="Show quoted message">⋯</summary>
               <div class="mail-quote-inner">
                 <div class="mail-quote-attr">On {stamp}, {System.Net.WebUtility.HtmlEncode(d.SenderName)} wrote:</div>
-                <blockquote>{d.Body}</blockquote>
+                <blockquote>{(d.IsHtml ? d.Body : PlainToHtml(d.Body))}</blockquote>
               </div>
             </details>
             """;

@@ -33,6 +33,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         var validation = Validate(req);
         if (validation is not null) return validation;
 
+        req = await AuthorizeThreadAsync(senderId, req, ct);
         var x = await ExpandAsync(senderId, req, ct);
         if (x.Invalid.Count > 0)
             return new SendMailResult(false, null, x.Invalid.Any(i => i.StartsWith("group:")) ? "group_not_found" : "recipient_not_found");
@@ -200,6 +201,22 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
             invalid, individuals, entries - map.Count);
     }
 
+    /// Reply threading comes from the server, never the client: InReplyToId must be a mail the
+    /// user actually has (a delivered row), and ThreadRootId is derived from that parent. A
+    /// client-supplied ThreadRootId let anyone slip a mail into a conversation they can't see
+    /// (and a made-up id hit the FK with a 500).
+    private async Task<ComposeMailRequest> AuthorizeThreadAsync(Guid userId, ComposeMailRequest req, CancellationToken ct)
+    {
+        if (req.InReplyToId is not Guid parentId) return req with { ThreadRootId = null };
+        var parent = await db.Mails.AsNoTracking()
+            .Where(m => m.Id == parentId && m.Recipients.Any(r => r.UserId == userId && r.Folder != "pending"))
+            .Select(m => new { m.Id, m.ThreadRootId })
+            .FirstOrDefaultAsync(ct);
+        return parent is null
+            ? req with { InReplyToId = null, ThreadRootId = null }
+            : req with { ThreadRootId = parent.ThreadRootId ?? parent.Id };
+    }
+
     private void QueueNotify(Guid mailId, DateTime now)
         => db.MailNotifyJobs.Add(new MailNotifyJob { Id = Guid.NewGuid(), MailId = mailId, CreatedAt = now, NextAttemptAt = now });
 
@@ -208,6 +225,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         req = Normalize(req);
         var validation = ValidateDraft(req);
         if (validation is not null) return validation;
+        req = await AuthorizeThreadAsync(userId, req, ct);
 
         var inline = await Inline.ExtractAsync(req.Body, userId, ct);
         var now = DateTime.UtcNow;
@@ -243,13 +261,17 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         req = Normalize(req);
         var validation = ValidateDraft(req);
         if (validation is not null) return validation;
+        req = await AuthorizeThreadAsync(userId, req, ct);
 
         var recipient = await db.MailRecipients
             .FirstOrDefaultAsync(r => r.MailId == mailId && r.UserId == userId && r.Folder == "draft", ct);
         if (recipient is null) return new SendMailResult(false, null, "draft_not_found");
 
         var mail = await db.Mails.FindAsync([mailId], ct);
-        if (mail is null) return new SendMailResult(false, null, "draft_not_found");
+        // Only the author's own unsent mail is a draft. The folder alone is not proof: it belongs to
+        // the user's row, and a sent mail edited here would change everyone's copy.
+        if (mail is null || mail.SenderId != userId || mail.Status != "draft")
+            return new SendMailResult(false, null, "draft_not_found");
 
         // Autosave sends the same pasted image again and again: the store step re-uses it by hash.
         var inline = await Inline.ExtractAsync(req.Body, userId, ct);
@@ -290,7 +312,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
             .Include(m => m.Attachments)
             .FirstOrDefaultAsync(m => m.Id == originalMailId, ct);
         if (original is null) return new SendMailResult(false, null, "mail_not_found");
-        if (!await db.MailRecipients.AnyAsync(r => r.MailId == originalMailId && r.UserId == senderId, ct))
+        if (!await db.MailRecipients.AnyAsync(r => r.MailId == originalMailId && r.UserId == senderId && r.Folder != "pending", ct))
             return new SendMailResult(false, null, "forbidden");
 
         // Forward is a NEW thread — the frontend has already prefixed the subject.
@@ -345,14 +367,14 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
             // star/unread/sender filters below are plain comparisons and ARE covered by tests.
             if (!string.IsNullOrWhiteSpace(search.Query))
             {
-                var pattern = EscapeLikePattern(search.Query);
-                // Use LIKE rather than ILIKE so the SQLite test/provider seam and Postgres both
-                // translate the same query. SQLite LIKE is case-insensitive for ASCII by default.
+                // LIKE (not ILIKE) so SQLite tests and Postgres translate the same query. Postgres
+                // LIKE is case-sensitive, so both sides are lower-cased: "rapat" must find "Rapat".
+                var pattern = EscapeLikePattern(search.Query.ToLowerInvariant());
                 query = query.Where(r =>
-                    EF.Functions.Like(r.Mail.Subject, pattern) ||
-                    EF.Functions.Like(r.Mail.Body, pattern) ||
-                    EF.Functions.Like(r.Mail.Sender.Name, pattern) ||
-                    EF.Functions.Like(r.Mail.Sender.Nik, pattern));
+                    EF.Functions.Like(r.Mail.Subject.ToLower(), pattern) ||
+                    EF.Functions.Like(r.Mail.Body.ToLower(), pattern) ||
+                    EF.Functions.Like(r.Mail.Sender.Name.ToLower(), pattern) ||
+                    EF.Functions.Like(r.Mail.Sender.Nik.ToLower(), pattern));
             }
             if (search.StarredOnly == true) query = query.Where(r => r.IsStarred);
             if (search.UnreadOnly == true) query = query.Where(r => !r.IsRead);
@@ -365,10 +387,23 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
                     .Any(a => a.MailId == r.MailId && a.Label.UserId == userId && a.Label.Name == labelName));
             }
             // Rentang tanggal kirim (Surat Lanjutan).
-            if (search.DateFrom is { } from)
-                query = query.Where(r => (r.Mail.SentAt ?? r.Mail.CreatedAt) >= from);
-            if (search.DateTo is { } to)
-                query = query.Where(r => (r.Mail.SentAt ?? r.Mail.CreatedAt) <= to.AddDays(1));
+            // The picker sends calendar days ("2026-10-01", Kind=Unspecified). Npgsql refuses an
+            // Unspecified DateTime against timestamptz (the filter used to 500), and the day must
+            // be the user's own day, not UTC's. Half-open range: [from 00:00, to+1 00:00).
+            if (search.DateFrom is not null || search.DateTo is not null)
+            {
+                var tz = await UserTimeZoneAsync(userId, ct);
+                if (search.DateFrom is { } from)
+                {
+                    var f = LocalDayStartUtc(from, tz);
+                    query = query.Where(r => (r.Mail.SentAt ?? r.Mail.CreatedAt) >= f);
+                }
+                if (search.DateTo is { } to)
+                {
+                    var t = LocalDayStartUtc(to.Date.AddDays(1), tz);
+                    query = query.Where(r => (r.Mail.SentAt ?? r.Mail.CreatedAt) < t);
+                }
+            }
             // Punya lampiran (Surat Lanjutan).
             if (search.HasAttachment == true)
                 query = query.Where(r => r.Mail.HasAttachment);
@@ -380,9 +415,11 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
 
         var items = await query
             .Include(r => r.Mail).ThenInclude(m => m.Sender)
-            .Include(r => r.Mail).ThenInclude(m => m.Attachments)
             .OrderByDescending(r => r.IsPinned)
             .ThenByDescending(r => r.Mail.SentAt ?? r.Mail.CreatedAt)
+            // Tie-breaker: a scheduled batch shares one SentAt, and without a unique key Skip/Take
+            // could repeat or drop a message between "Load more" pages.
+            .ThenByDescending(r => r.MailId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(ct);
@@ -431,7 +468,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         if (pageSize < 1) pageSize = 50;
         if (pageSize > 100) pageSize = 100;
 
-        var involvedMailIds = db.MailRecipients.Where(r => r.UserId == userId).Select(r => r.MailId);
+        var involvedMailIds = db.MailRecipients.Where(r => r.UserId == userId && r.Folder != "pending").Select(r => r.MailId);
 
         // Include the root message itself (ThreadRootId == null when it's the thread root) plus all replies.
         var query = db.Mails
@@ -464,7 +501,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         var recipient = await db.MailRecipients
             .AsNoTracking()
             .Include(r => r.User)
-            .FirstOrDefaultAsync(r => r.MailId == mailId && r.UserId == userId, ct);
+            .FirstOrDefaultAsync(r => r.MailId == mailId && r.UserId == userId && r.Folder != "pending", ct);
         if (recipient is null) return null; // hidden from non-participants (BCC stays private)
 
         // Recipients are NOT included: a mass mail has up to 1000 of them. The reading pane gets
@@ -509,7 +546,9 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
 
         return new MailDetailDto(
             mail.Id, mail.SenderId, mail.Sender.Name, mail.Sender.Nik,
-            mail.Subject, mail.IsHtml ? (draftState is not null || mail.Status == "draft" ? MailHtml.Sanitize(mail.Body) : MailHtml.ForDisplay(mail.Body)) : mail.Body, mail.IsHtml, mail.Signature, mail.SentAt,
+            // Plain-text bodies (older out-of-office replies) go out as encoded HTML: every client
+            // sink (reading pane, reply quote, forward) treats the body as markup.
+            mail.Subject, mail.IsHtml ? (draftState is not null || mail.Status == "draft" ? MailHtml.Sanitize(mail.Body) : MailHtml.ForDisplay(mail.Body)) : PlainToHtml(mail.Body), true, mail.Signature, mail.SentAt,
             mail.InReplyToId, mail.ThreadRootId, mail.ThreadCount,
             recipient.IsStarred, recipient.IsRead, recipient.Folder,
             mail.PdfExportRequestedBy, mail.PdfExportRequestedAt,
@@ -624,7 +663,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
     public async Task<PagedResult<MailRecipientDto>?> GetRecipientsAsync(Guid userId, Guid mailId, int page, int pageSize, CancellationToken ct)
     {
         var mail = await db.Mails.AsNoTracking().FirstOrDefaultAsync(m => m.Id == mailId, ct);
-        if (mail is null || !await db.MailRecipients.AnyAsync(r => r.MailId == mailId && r.UserId == userId, ct)) return null;
+        if (mail is null || !await db.MailRecipients.AnyAsync(r => r.MailId == mailId && r.UserId == userId && r.Folder != "pending", ct)) return null;
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
         var q = VisibleRecipients(mail, userId).Where(r => r.RecipientType != "from");
@@ -735,6 +774,31 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         return new SendMailResult(true, mailId, null);
     }
 
+    /// Where the user's own row ends up when they move it to <paramref name="folder"/>, or null when
+    /// the move is not allowed. Draft/Sent/Scheduled are lifecycle folders, not user targets: letting
+    /// a recipient drop a received mail into "draft" made it an editable draft of somebody else's
+    /// mail. "Inbox" and "Sent" both mean "back to where it belongs" — the author's copy returns to
+    /// Sent, everyone else's to the Inbox (so an undo of "archive" works from either folder).
+    private static string? MoveTarget(MailRecipient row, string? mailStatus, MailFolder folder)
+    {
+        // Rows that are not delivered yet, or still being written, only move via the
+        // draft/schedule actions (Discard, Cancel, Send now, Delete).
+        if (row.Folder is "pending" or "draft" or "scheduled") return null;
+        return folder switch
+        {
+            MailFolder.Archive => "archive",
+            MailFolder.Trash => "trash",
+            MailFolder.Inbox or MailFolder.Sent => RestoreFolder(row, mailStatus),
+            _ => null,
+        };
+    }
+
+    /// Where a row goes back to when it leaves Trash: the author's copy follows the mail's status,
+    /// everyone else's copy returns to the Inbox.
+    private static string RestoreFolder(MailRecipient row, string? mailStatus) => row.RecipientType == "from"
+        ? mailStatus switch { "draft" => "draft", "scheduled" => "scheduled", _ => "sent" }
+        : "inbox";
+
     public async Task<SendMailResult> MoveToFolderAsync(Guid userId, Guid mailId, MailFolder folder, CancellationToken ct)
     {
         var recipient = await FindRecipientAsync(userId, mailId, ct);
@@ -744,7 +808,9 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         if (recipient.Folder == "trash" && FolderToString(folder) != "trash")
             return new SendMailResult(false, null, "mail_trashed");
 
-        var folderStr = FolderToString(folder);
+        var status = await db.Mails.Where(m => m.Id == mailId).Select(m => m.Status).FirstOrDefaultAsync(ct);
+        var folderStr = recipient.Folder == "trash" ? "trash" : MoveTarget(recipient, status, folder);
+        if (folderStr is null) return new SendMailResult(false, null, "invalid_folder");
         if (recipient.Folder == folderStr) return new SendMailResult(true, mailId, null);
         recipient.Folder = folderStr;
         await db.SaveChangesAsync(ct);
@@ -758,6 +824,16 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
     {
         var recipient = await FindRecipientAsync(userId, mailId, ct);
         if (recipient is null) return new SendMailResult(false, null, "mail_not_found");
+
+        // Deleting a scheduled mail must stop it: the scheduler goes by the mail's status, so a
+        // trashed Scheduled row used to be delivered anyway — with Cancel no longer reachable.
+        if (recipient.Folder == "scheduled")
+        {
+            var cancelled = await CancelScheduleAsync(userId, mailId, ct);
+            if (!cancelled.Success) return cancelled;
+            recipient = await FindRecipientAsync(userId, mailId, ct);
+            if (recipient is null) return new SendMailResult(false, null, "mail_not_found");
+        }
 
         if (recipient.Folder == "trash")
         {
@@ -787,7 +863,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
 
     public async Task<bool> ToggleMuteAsync(Guid userId, Guid mailId, CancellationToken ct)
     {
-        var recipient = await db.MailRecipients.FirstOrDefaultAsync(r => r.UserId == userId && r.MailId == mailId, ct);
+        var recipient = await db.MailRecipients.FirstOrDefaultAsync(r => r.UserId == userId && r.MailId == mailId && r.Folder != "pending", ct);
         if (recipient is null) return false;
 
         recipient.IsMuted = !recipient.IsMuted;
@@ -804,22 +880,30 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
     {
         if (mailIds.Count == 0) return new BulkResultDto(0);
         if (folder == MailFolder.Starred) return new BulkResultDto(0, "use_starred_flag");
-        var folderStr = FolderToString(folder);
+        if (folder is not (MailFolder.Inbox or MailFolder.Sent or MailFolder.Archive or MailFolder.Trash))
+            return new BulkResultDto(0, "invalid_folder");
 
         var rows = await db.MailRecipients
+            .Include(r => r.Mail)
             .Where(r => r.UserId == userId && mailIds.Contains(r.MailId) && r.Folder != "trash")
             .ToListAsync(ct);
-        foreach (var r in rows) r.Folder = folderStr;
+        var moved = 0;
+        foreach (var r in rows)
+        {
+            if (MoveTarget(r, r.Mail.Status, folder) is not { } target) continue;
+            r.Folder = target;
+            moved++;
+        }
         await db.SaveChangesAsync(ct);
         await SyncUserAsync(userId, ct);
-        return new BulkResultDto(rows.Count);
+        return new BulkResultDto(moved);
     }
 
     public async Task<BulkResultDto> BulkToggleStarAsync(Guid userId, IReadOnlyList<Guid> mailIds, CancellationToken ct)
     {
         if (mailIds.Count == 0) return new BulkResultDto(0);
         var rows = await db.MailRecipients
-            .Where(r => r.UserId == userId && mailIds.Contains(r.MailId))
+            .Where(r => r.UserId == userId && mailIds.Contains(r.MailId) && r.Folder != "pending")
             .ToListAsync(ct);
         if (rows.Count == 0) return new BulkResultDto(0);
         var unstarred = rows.Where(r => !r.IsStarred).ToList();
@@ -835,8 +919,14 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
     public async Task<BulkResultDto> BulkDeleteAsync(Guid userId, IReadOnlyList<Guid> mailIds, CancellationToken ct)
     {
         if (mailIds.Count == 0) return new BulkResultDto(0);
+        // Scheduled mails are cancelled first (see DeleteAsync) so trashing them stops delivery.
+        var scheduled = await db.MailRecipients
+            .Where(r => r.UserId == userId && mailIds.Contains(r.MailId) && r.Folder == "scheduled")
+            .Select(r => r.MailId).ToListAsync(ct);
+        foreach (var id in scheduled) await CancelScheduleAsync(userId, id, ct);
+
         var rows = await db.MailRecipients
-            .Where(r => r.UserId == userId && mailIds.Contains(r.MailId))
+            .Where(r => r.UserId == userId && mailIds.Contains(r.MailId) && r.Folder != "pending" && r.Folder != "scheduled")
             .ToListAsync(ct);
         if (rows.Count == 0) return new BulkResultDto(0);
 
@@ -853,9 +943,12 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         if (mailIds.Count == 0) return new BulkResultDto(0);
 
         var rows = await db.MailRecipients
+            .Include(r => r.Mail)
             .Where(r => r.UserId == userId && mailIds.Contains(r.MailId) && r.Folder == "trash")
             .ToListAsync(ct);
-        foreach (var row in rows) row.Folder = "inbox";
+        // A restored Sent mail used to land in the author's own Inbox, and a restored draft became
+        // unreachable (Inbox rows can't be edited or discarded as drafts).
+        foreach (var row in rows) row.Folder = RestoreFolder(row, row.Mail.Status);
         await db.SaveChangesAsync(ct);
         await SyncUserAsync(userId, ct);
         return new BulkResultDto(rows.Count);
@@ -866,7 +959,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         if (mailIds.Count == 0) return new BulkResultDto(0);
         var now = DateTime.UtcNow;
         var rows = await db.MailRecipients
-            .Where(r => r.UserId == userId && mailIds.Contains(r.MailId) && !r.IsRead)
+            .Where(r => r.UserId == userId && mailIds.Contains(r.MailId) && !r.IsRead && r.Folder != "pending")
             .ToListAsync(ct);
         foreach (var r in rows) { r.IsRead = true; r.ReadAt = r.ReadAt ?? now; }
         await db.SaveChangesAsync(ct);
@@ -921,6 +1014,9 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
 
         var mail = await db.Mails.Include(m => m.Recipients).FirstOrDefaultAsync(m => m.Id == mailId, ct);
         if (mail is null) return new SendMailResult(false, null, "mail_not_found");
+        // Claim + changes commit together: a failed save must not leave a "draft" whose
+        // recipients still sit in "pending".
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
         // Too late if the scheduler (or Send now in another tab) already took it.
         if (!await ClaimScheduledAsync(mailId, "draft", ct)) return new SendMailResult(false, null, "already_sent");
 
@@ -932,12 +1028,30 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         senderRecipient.Folder = "draft";
 
         var pendingTargets = mail.Recipients.Where(r => r.UserId != userId && r.Folder == "pending").ToList();
+        // Back to an ordinary draft, whose recipients live in DraftState: without this, reopening
+        // it from Drafts showed an empty To line. Group members stay summarised by their group.
+        if (mail.DraftState is null)
+        {
+            var typed = pendingTargets.Where(r => !r.ViaGroup).ToList();
+            var nikById = await db.Users.AsNoTracking()
+                .Where(u => typed.Select(r => r.UserId).Contains(u.Id))
+                .ToDictionaryAsync(u => u.Id, u => u.Nik, ct);
+            List<string> Niks(string type) => typed.Where(r => r.RecipientType == type && nikById.ContainsKey(r.UserId))
+                .Select(r => nikById[r.UserId]).ToList();
+            var groups = VisibleGroups(mail, callerIsSender: true).Select(g => new MailGroupRef(g.Field, g.Kind, g.Id)).ToList();
+            mail.DraftState = System.Text.Json.JsonSerializer.Serialize(new DraftStateJson(
+                Niks("to"), Niks("cc"), Niks("bcc"), null, groups.Count > 0 ? groups : null, mail.HideRecipients));
+        }
+        mail.IsMass = false;
+        mail.RecipientCount = 0;
+        mail.RecipientGroupsJson = null;
         foreach (var p in pendingTargets)
         {
             db.MailRecipients.Remove(p);
         }
 
         await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         await SyncUserAsync(userId, ct);
         return new SendMailResult(true, mailId, null);
     }
@@ -948,15 +1062,15 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
             .FirstOrDefaultAsync(r => r.MailId == mailId && r.UserId == userId && r.Folder == "scheduled", ct);
         if (senderRecipient is null) return new SendMailResult(false, null, "mail_not_found");
 
-        var mail = await db.Mails.FindAsync([mailId], ct);
-        if (mail is null) return new SendMailResult(false, null, "mail_not_found");
-
-        if (mail.Status != "scheduled") return new SendMailResult(false, null, "mail_not_found");
         if (ScheduleError(scheduledAt) is { } bad) return new SendMailResult(false, null, bad);
-        mail.ScheduledAt = ToUtc(scheduledAt);
-        mail.UpdatedAt = DateTime.UtcNow;
-
-        await db.SaveChangesAsync(ct);
+        // One conditional UPDATE: if the scheduler or Send now already took the mail, say so
+        // instead of reporting "rescheduled" for a mail that has gone out.
+        var utc = ToUtc(scheduledAt);
+        var now = DateTime.UtcNow;
+        var changed = await db.Mails
+            .Where(m => m.Id == mailId && m.SenderId == userId && m.Status == "scheduled")
+            .ExecuteUpdateAsync(u => u.SetProperty(m => m.ScheduledAt, utc).SetProperty(m => m.UpdatedAt, now), ct);
+        if (changed == 0) return new SendMailResult(false, null, "already_sent");
         await SyncUserAsync(userId, ct);
         return new SendMailResult(true, mailId, null);
     }
@@ -969,6 +1083,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
 
         var mail = await db.Mails.Include(m => m.Recipients).FirstOrDefaultAsync(m => m.Id == mailId, ct);
         if (mail is null) return new SendMailResult(false, null, "mail_not_found");
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
         if (!await ClaimScheduledAsync(mailId, "sent", ct)) return new SendMailResult(false, null, "already_sent");
 
         var now = DateTime.UtcNow;
@@ -988,6 +1103,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         QueueNotify(mail.Id, now);
 
         await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         await SyncUserAsync(userId, ct);
         notifySignal?.Notify();
         return new SendMailResult(true, mailId, null);
@@ -1105,40 +1221,57 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
     public async Task<int> DeliverDueScheduledMailsAsync(CancellationToken ct)
     {
         var now = DateTime.UtcNow;
-        var dueMails = await db.Mails
+        var dueIds = await db.Mails.AsNoTracking()
             .Where(m => m.Status == "scheduled" && m.ScheduledAt != null && m.ScheduledAt <= now)
-            .Include(m => m.Recipients)
+            .OrderBy(m => m.ScheduledAt)
+            .Select(m => m.Id)
+            .Take(200) // the rest go on the next tick
             .ToListAsync(ct);
 
-        if (dueMails.Count == 0) return 0;
+        if (dueIds.Count == 0) return 0;
 
+        // One mail per transaction. The claim (a conditional UPDATE) used to commit on its own
+        // while the folder moves were saved later in one batch: if that save failed, the mail was
+        // already "sent" but its recipients stayed "pending" forever — never delivered, and no
+        // longer cancellable. Now the claim and the delivery commit or roll back together.
         var delivered = new List<MailEntity>();
-        foreach (var mail in dueMails)
+        foreach (var id in dueIds)
         {
-            // Claim it: a Cancel or Send now that won the race leaves nothing to deliver.
-            if (!await ClaimScheduledAsync(mail.Id, "sent", ct)) { db.Entry(mail).State = EntityState.Detached; continue; }
-            delivered.Add(mail);
-            mail.Status = "sent";
-            mail.SentAt = now;
-            await BumpThreadAsync(mail, now, ct);
-
-            foreach (var r in mail.Recipients)
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            try
             {
-                if (r.RecipientType == "from" && r.Folder == "scheduled")
-                {
-                    r.Folder = "sent";
-                }
-                else if (r.Folder == "pending")
-                {
-                    r.Folder = "inbox";
-                    r.DeliveredAt = now;
-                }
-            }
-            // Scheduled mail used to land silently: no badge, no banner.
-            QueueNotify(mail.Id, now);
-        }
+                // Claim it: a Cancel, Send now or Reschedule that won the race leaves nothing to deliver.
+                if (!await ClaimScheduledAsync(id, "sent", ct, dueBy: now)) { await tx.RollbackAsync(ct); continue; }
+                var mail = await db.Mails.Include(m => m.Recipients).FirstAsync(m => m.Id == id, ct);
+                mail.Status = "sent";
+                mail.SentAt = now;
+                await BumpThreadAsync(mail, now, ct);
 
-        await db.SaveChangesAsync(ct);
+                foreach (var r in mail.Recipients)
+                {
+                    if (r.RecipientType == "from" && r.Folder == "scheduled")
+                    {
+                        r.Folder = "sent";
+                    }
+                    else if (r.Folder == "pending")
+                    {
+                        r.Folder = "inbox";
+                        r.DeliveredAt = now;
+                    }
+                }
+                // Scheduled mail used to land silently: no badge, no banner.
+                QueueNotify(mail.Id, now);
+                await db.SaveChangesAsync(ct);
+                await tx.CommitAsync(ct);
+                delivered.Add(mail);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                await tx.RollbackAsync(CancellationToken.None);
+                db.ChangeTracker.Clear();
+                Log.LogError(ex, "Scheduled mail {MailId} could not be delivered; it stays scheduled and is retried next tick.", id);
+            }
+        }
         // Same follow-ups as an immediate send: recipients' auto-label rules and out-of-office replies.
         foreach (var mail in delivered)
         {
@@ -1178,8 +1311,16 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         }
     }
 
+    private async Task<TimeZoneInfo> UserTimeZoneAsync(Guid userId, CancellationToken ct)
+        => IPop.Application.MeetingRooms.RoomBookingRules.ResolveZone(
+            await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.TimeZoneId).FirstOrDefaultAsync(ct));
+
+    /// Midnight of <paramref name="day"/>'s calendar date in <paramref name="tz"/>, as a UTC instant.
+    internal static DateTime LocalDayStartUtc(DateTime day, TimeZoneInfo tz)
+        => TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(day.Date, DateTimeKind.Unspecified), tz);
+
     private async Task<MailRecipient?> FindRecipientAsync(Guid userId, Guid mailId, CancellationToken ct)
-        => await db.MailRecipients.FirstOrDefaultAsync(r => r.MailId == mailId && r.UserId == userId, ct);
+        => await db.MailRecipients.FirstOrDefaultAsync(r => r.MailId == mailId && r.UserId == userId && r.Folder != "pending", ct);
 
     private async Task<IReadOnlyList<ProjectLink>> ExtractLinkedProjectsAsync(string body, Guid userId, CancellationToken ct)
     {
@@ -1219,6 +1360,9 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         {
             Subject = req.Subject ?? "",
             Body = MailHtml.Sanitize(req.Body),
+            // varchar(16) column, and the list filters only know these three: anything else used
+            // to either 500 on save or silently drop out of the High/Low filters.
+            Importance = req.Importance?.Trim().ToLowerInvariant() is "high" or "low" ? req.Importance.Trim().ToLowerInvariant() : "normal",
             To = req.To ?? [],
             Cc = req.Cc ?? [],
             Bcc = req.Bcc ?? [],
@@ -1240,9 +1384,11 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         var claimed = 0;
         if (ids.Count > 0)
         {
-            var ownDraftMailIds = db.MailRecipients
-                .Where(r => r.UserId == userId && r.Folder == "draft" && r.MailId != mailId)
-                .Select(r => (Guid?)r.MailId);
+            // The user's own drafts by authorship + status, not by folder: a folder is per-user
+            // state and must never decide who may take a file off a mail.
+            var ownDraftMailIds = db.Mails
+                .Where(m => m.SenderId == userId && m.Status == "draft" && m.Id != mailId)
+                .Select(m => (Guid?)m.Id);
             var rows = await db.MailAttachments
                 .Where(a => ids.Contains(a.Id)
                     && ((a.MailId == null && a.UploaderId == userId) || ownDraftMailIds.Contains(a.MailId)))
@@ -1294,8 +1440,11 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
 
     /// Moves a scheduled mail to <paramref name="status"/> only if it is still scheduled, in one
     /// conditional UPDATE: of a Cancel, a Send now and the scheduler racing, exactly one wins.
-    private async Task<bool> ClaimScheduledAsync(Guid mailId, string status, CancellationToken ct) =>
-        await db.Mails.Where(m => m.Id == mailId && m.Status == "scheduled")
+    /// With <paramref name="dueBy"/> (the scheduler), the mail must also still be due: a Reschedule
+    /// saved after the batch was read wins, instead of the mail going out at the old time.
+    private async Task<bool> ClaimScheduledAsync(Guid mailId, string status, CancellationToken ct, DateTime? dueBy = null) =>
+        await db.Mails.Where(m => m.Id == mailId && m.Status == "scheduled"
+                && (dueBy == null || (m.ScheduledAt != null && m.ScheduledAt <= dueBy)))
             .ExecuteUpdateAsync(u => u.SetProperty(m => m.Status, status), ct) == 1;
 
     private async Task AfterDeliveryAsync(string step, Guid mailId, Func<Task> run)
@@ -1354,14 +1503,19 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
     /// OOO dan belum membalas pengirim ini hari ini, buat surat balasan otomatis.
     private async Task SendAutoRepliesAsync(MailEntity original, IReadOnlyList<User> recipientUsers, CancellationToken ct)
     {
-        var today = DateTime.UtcNow.Date;
+        var nowUtc = DateTime.UtcNow;
         var recipientIds = recipientUsers.Where(u => u.Id != original.SenderId).Select(u => u.Id).ToList();
         if (recipientIds.Count == 0) return;
 
-        var settings = await db.MailAutoReplySettings.AsNoTracking()
+        // The settings dialog stores the user's local midnight as a UTC instant (Jakarta 30 Oct →
+        // 29 Oct 17:00Z). Comparing against UTC's calendar date switched OOO off at 07:00 on the
+        // last day and on only at 07:00 on the first: compare instants, with Until inclusive.
+        var settings = (await db.MailAutoReplySettings.AsNoTracking()
             .Where(s => recipientIds.Contains(s.UserId) && s.IsEnabled)
-            .Where(s => (s.FromDate == null || s.FromDate <= today) && (s.UntilDate == null || s.UntilDate >= today))
-            .ToListAsync(ct);
+            .Where(s => s.FromDate == null || s.FromDate <= nowUtc)
+            .ToListAsync(ct))
+            .Where(s => s.UntilDate is null || nowUtc < AsUtc(s.UntilDate.Value).AddDays(1))
+            .ToList();
         if (settings.Count == 0) return;
 
         var queued = false;
@@ -1369,6 +1523,10 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         {
             try
             {
+                // "Once a day" is the OOO user's own day, not UTC's.
+                var tz = IPop.Application.MeetingRooms.RoomBookingRules.ResolveZone(
+                    recipientUsers.FirstOrDefault(u => u.Id == s.UserId)?.TimeZoneId);
+                var today = LocalDayStartUtc(TimeZoneInfo.ConvertTimeFromUtc(nowUtc, tz), tz);
                 // Satu balasan otomatis per (penerima OOO → pengirim asli) per hari.
                 // Dibedakan dari balasan MANUAL lewat marker Signature="auto-reply" —
                 // balasan manual yang kebetulan "Re: ..." tidak memblokir OOO berikutnya.
@@ -1384,8 +1542,10 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
                     Id = Guid.NewGuid(),
                     SenderId = s.UserId,
                     Subject = "Re: " + original.Subject,
-                    Body = s.Message ?? "I'm currently out of the office.",
-                    IsHtml = false,
+                    // Stored as HTML (encoded text, line breaks kept): the message is user input, and
+                    // a plain-text body was rendered as markup by the reading pane (stored XSS).
+                    Body = PlainToHtml(s.Message ?? "I'm currently out of the office."),
+                    IsHtml = true,
                     Signature = "auto-reply",
                     InReplyToId = original.Id,
                     ThreadRootId = original.ThreadRootId ?? original.Id,
@@ -1469,6 +1629,16 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         MailFolder.Trash => "trash",
         MailFolder.Scheduled => "scheduled",
         _ => "inbox",
+    };
+
+    internal static string PlainToHtml(string text)
+        => "<p>" + System.Net.WebUtility.HtmlEncode(text).Replace("\r\n", "\n").Replace("\n", "<br>") + "</p>";
+
+    private static DateTime AsUtc(DateTime d) => d.Kind switch
+    {
+        DateTimeKind.Utc => d,
+        DateTimeKind.Local => d.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(d, DateTimeKind.Utc),
     };
 
     private static string EscapeLikePattern(string query)

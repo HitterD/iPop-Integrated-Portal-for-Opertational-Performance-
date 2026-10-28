@@ -217,7 +217,7 @@
                         <button type="button" title="Mark read" @onclick="ToolbarMarkRead"><i data-lucide="mail-open"></i><span>Mark read</span></button>
                         @if (activeFolder == MailFolder.Trash)
                         {
-                            <button type="button" title="Restore to Inbox" @onclick="BulkRestore"><i data-lucide="inbox"></i><span>Restore</span></button>
+                            <button type="button" title="Restore" @onclick="BulkRestore"><i data-lucide="inbox"></i><span>Restore</span></button>
                             <button type="button" class="danger" title="Delete forever (cannot be undone)" @onclick="BulkPermanent"><i data-lucide="trash"></i><span>Delete forever</span></button>
                         }
                         else
@@ -264,7 +264,7 @@
             {
                 <div class="mlx-trash" role="note">
                     <i data-lucide="info"></i>
-                    <span>Deleting a message from Trash removes it forever. Use Restore to move it back to Inbox.</span>
+                    <span>Deleting a message from Trash removes it forever. Use Restore to move it back.</span>
                     @if (Items.Count > 0)
                     {
                         <button type="button" class="mlx-linkbtn" @onclick="ConfirmEmptyTrash">Empty Trash</button>
@@ -309,7 +309,9 @@
                         if (day != lastDay)
                         {
                             lastDay = day;
-                            <div class="mlx-day" @key="@("day-" + day)">@day</div>
+                            @* Keyed by the group's first row: pinned rows come first, so the same day label
+                               ("Earlier") can appear twice, and duplicate sibling keys crash the page. *@
+                            <div class="mlx-day" @key="@("day-" + item.Id)">@day</div>
                         }
                         <MailListRow @key="item.Id" Item="item" Comfortable="@(Phone.IsPhone || density == MailListDensity.Comfortable)"
                                      Selected="@(selectedMail == item.Id)" Checked="@selected.Contains(item.Id)"
@@ -369,7 +371,7 @@
                     }
                     @if (DetailFolder == "trash")
                     {
-                        <button type="button" class="mlx-qbtn" title="Restore to Inbox" aria-label="Restore to Inbox" @onclick="RestoreDetail"><i data-lucide="inbox"></i></button>
+                        <button type="button" class="mlx-qbtn" title="Restore" aria-label="Restore" @onclick="RestoreDetail"><i data-lucide="inbox"></i></button>
                         <button type="button" class="mlx-qbtn del" title="Delete forever (cannot be undone)" aria-label="Delete forever" @onclick="DeleteDetailForever"><i data-lucide="trash-2"></i></button>
                     }
                     else
@@ -686,7 +688,7 @@
                 else
                 {
                     <div class="mail-html-body mail-body-links">
-                        @((MarkupString)(detail.IsHtml ? detail.Body : $"<pre style=\"white-space:pre-wrap;font-family:inherit\">{detail.Body}</pre>"))
+                        @((MarkupString)(detail.IsHtml ? detail.Body : MailAddressing.PlainToHtml(detail.Body)))
                     </div>
                 }
             </div>
@@ -721,7 +723,8 @@
     private readonly HashSet<Guid> selected = [];
     private Guid? selectedMail;
     private CancellationTokenSource? cts;
-    private string lastSyncedTime = DateTime.Now.ToString("HH:mm");
+    // "—" until a list load actually succeeds: the page used to claim "synced" before any fetch.
+    private string lastSyncedTime = "—";
 
     private MailComposer? composerRef => ComposerHost.Instance;
 
@@ -899,6 +902,7 @@
     private async Task LiveRefreshAsync()
     {
         if (loading || loadingMore) return;
+        var gen = _listGen;
         try
         {
             var folderAtStart = activeFolder;
@@ -921,7 +925,7 @@
                 if (fresh.Count >= total) break;
             }
             // The user switched folder/search (or started a load) while we were fetching.
-            if (folderAtStart != activeFolder || searchAtStart != search || loading || loadingMore) return;
+            if (gen != _listGen || folderAtStart != activeFolder || searchAtStart != search || loading || loadingMore) return;
 
             if (c is not null) counts = c;
             Items = fresh;
@@ -967,7 +971,6 @@
     public async Task ReloadAll()
     {
         counts = await MailSvc.GetCountsAsync();
-        lastSyncedTime = DateTime.Now.ToString("HH:mm");
         UpdateHeader();
         await LoadPage(1);
         await LoadLabelsAsync();
@@ -977,9 +980,11 @@
     {
         var title = FolderLabel(activeFolder);
         Layout.SetHeader(title);
-        var unread = activeFolder == MailFolder.Inbox ? (counts?.InboxUnread ?? 0) : 0;
         var total = AllCount;
-        var sub = $"{unread} unread · {total} {(total == 1 ? "message" : "messages")} · synced {lastSyncedTime}";
+        var msgs = $"{total} {(total == 1 ? "message" : "messages")} · synced {lastSyncedTime}";
+        // Only the Inbox has a real unread count; elsewhere a hard-coded "0 unread" contradicted
+        // the Unread chip, and Sent/Drafts/Scheduled have no "unread" at all.
+        var sub = activeFolder == MailFolder.Inbox ? $"{UnreadCount} unread · {msgs}" : msgs;
         Layout.SetSubtitle(sub);
     }
 
@@ -1246,8 +1251,47 @@
         p == 1 && string.IsNullOrWhiteSpace(search) && tabFilter is not ("unread" or "starred") && labelFilter is null
         && advDateFrom is null && advDateTo is null && !advHasAttachment ? $"mail.{activeFolder}" : null;
 
+    /// Bumped by every list reset (folder, tab, label, search, filters). A response that started
+    /// under an older generation is dropped: checking only folder + search let a slow load for the
+    /// previous tab/label/filter overwrite the new list, and a late "Load more" append old rows.
+    private int _listGen;
+
+    /// Re-reads every page already on screen (1..page). Refreshing with LoadPage(page) after an
+    /// action replaced a list grown by "Load more" with only its last page.
+    private async Task RefreshLoadedAsync()
+    {
+        if (page <= 1) { await LoadPage(1); return; }
+        var gen = _listGen;
+        try
+        {
+            var q = string.IsNullOrWhiteSpace(search) ? null : search;
+            bool? unreadOnly = tabFilter == "unread" ? true : null;
+            bool? starredOnly = tabFilter == "starred" ? true : null;
+            var fresh = new List<MailSummary>();
+            var total = 0;
+            for (var p = 1; p <= page; p++)
+            {
+                var res = await MailSvc.GetFolderAsync(activeFolder, p, pageSize, q, starredOnly, unreadOnly, labelFilter, advDateFrom, advDateTo, advHasAttachment ? true : null);
+                if (res is null || gen != _listGen) return;
+                total = res.TotalCount;
+                var seen = fresh.Select(x => x.Id).ToHashSet();
+                fresh.AddRange((res.Items ?? []).Where(i => seen.Add(i.Id)));
+                if (fresh.Count >= total) break;
+            }
+            Items = fresh;
+            pageTotal = total;
+            selected.IntersectWith(Items.Select(i => i.Id));
+            lastSyncedTime = DateTime.Now.ToString("HH:mm");
+            UpdateHeader();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { Toasts.Show(ex.Message, ToastKind.Error); }
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
     private async Task LoadPage(int p, bool append = false)
     {
+        var gen = append ? _listGen : ++_listGen;
         if (!append) loading = true;
         if (!append && ListCacheKey(p) is { } ck && Cache.Peek<MailPaged<MailSummary>>(ck) is { } cached)
         {
@@ -1264,7 +1308,7 @@
             bool? starredOnly = tabFilter == "starred" ? true : null;
 
             var res = await MailSvc.GetFolderAsync(activeFolder, p, pageSize, q, starredOnly, unreadOnly, labelFilter, advDateFrom, advDateTo, advHasAttachment ? true : null);
-            if (folderAtStart != activeFolder || searchAtStart != search) return;
+            if (gen != _listGen || folderAtStart != activeFolder || searchAtStart != search) return;
             // Unreachable API: keep what is on screen (the shell shows the "couldn't load" bar).
             if (res is null) return;
             if (!append && ListCacheKey(p) is { } key) Cache.Put(key, res);
@@ -1287,6 +1331,8 @@
             else
             {
                 Items = fetched;
+                // Ids no longer listed must not ride along into the next bulk action.
+                selected.IntersectWith(Items.Select(i => i.Id));
             }
 
             lastSyncedTime = DateTime.Now.ToString("HH:mm");
@@ -1295,7 +1341,9 @@
         catch (Exception ex) { Toasts.Show(ex.Message, ToastKind.Error); }
         finally
         {
-            loading = false;
+            // Only the newest load ends the spinner: an older one finishing first used to clear
+            // `loading` while the current one was still running.
+            if (gen == _listGen) loading = false;
             StateHasChanged();
             await JS.InvokeVoidAsync("ipop.icons");
         }
@@ -1331,11 +1379,14 @@
 
     private async Task OpenDetail(Guid id)
     {
+        var changed = selectedMail != id;
         selectedMail = id;
         moreMenuOpen = false; labelMenuOpen = false;
-        if (selectedMail != id) { threadNewest = null; threadCountShown = 0; labelMenuOpen = false; scrollReaderTop = true; }
-        detail = await MailSvc.GetAsync(id);
+        if (changed) { threadNewest = null; threadCountShown = 0; scrollReaderTop = true; }
+        var fetched = await MailSvc.GetAsync(id);
+        // A slower response for a previously clicked mail must not fill the pane.
         if (id != selectedMail) return;
+        detail = fetched;
         _ = Notifs.MarkReadByTargetAsync("mail", id);
 
         if (activeFolder == MailFolder.Draft && detail is not null)
@@ -1350,7 +1401,7 @@
             var c = await MailSvc.GetCountsAsync();
             if (c is not null) counts = c;
             UpdateHeader();
-            await LoadPage(page);
+            await RefreshLoadedAsync();
         }
 
         await LoadMeetingForDetail(id);
@@ -1464,7 +1515,11 @@
 
     private async Task ReloadDetail()
     {
-        if (detail is not null) detail = await MailSvc.GetAsync(detail.Id);
+        if (detail is null) return;
+        var id = detail.Id;
+        var fresh = await MailSvc.GetAsync(id);
+        // Keep the pane if the user moved on meanwhile, or if the refetch failed.
+        if (detail?.Id == id && fresh is not null) detail = fresh;
         StateHasChanged();
     }
 
@@ -1505,7 +1560,7 @@
             }
             counts = await MailSvc.GetCountsAsync();
             UpdateHeader();
-            await LoadPage(page);
+            await RefreshLoadedAsync();
             Toasts.Show("Marked as read.", ToastKind.Success);
         }
         else
@@ -1521,14 +1576,14 @@
     {
         await MailSvc.TogglePinAsync(id);
         await ReloadDetail();
-        await LoadPage(page);
+        await RefreshLoadedAsync();
     });
 
     private Task ToggleStar(Guid id) => RunAction(async () =>
     {
         await MailSvc.ToggleStarAsync(id);
         await ReloadDetail();
-        await LoadPage(page);
+        await RefreshLoadedAsync();
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
     });
@@ -1539,7 +1594,7 @@
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
         BackToList();
-        await LoadPage(page);
+        await RefreshLoadedAsync();
     });
 
     private Task QuickToggleRead(MailSummary item) => RunAction(async () =>
@@ -1548,7 +1603,7 @@
         else await MailSvc.MarkReadAsync(item.Id);
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
-        await LoadPage(page);
+        await RefreshLoadedAsync();
     });
 
     private Task QuickDelete(Guid id) => RunAction(async () =>
@@ -1571,7 +1626,7 @@
         if (selectedMail == id) BackToList();
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
-        await LoadPage(page);
+        await RefreshLoadedAsync();
         undoAfter?.Invoke();
     });
 
@@ -1590,7 +1645,7 @@
             Toasts.Show("Message recalled.", ToastKind.Success);
             counts = await MailSvc.GetCountsAsync();
             UpdateHeader();
-            await LoadPage(page);
+            await RefreshLoadedAsync();
         }
         else
         {
@@ -1611,7 +1666,7 @@
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
         BackToList();
-        await LoadPage(page);
+        await RefreshLoadedAsync();
         ShowMoveUndo(new[] { id }, origin, f);
     });
 
@@ -1622,10 +1677,12 @@
         Toasts.ShowUndo(text, async () =>
         {
             if (!await MailSvc.BulkMoveAsync(ids, origin)) { Toasts.Show("Could not undo.", ToastKind.Error); return; }
+            // The toast outlives the page: after navigating away, don't touch another page's header.
+            if (_disposed) return;
             counts = await MailSvc.GetCountsAsync();
             UpdateHeader();
             foreach (var rid in ids) returningIds.Add(rid);
-            await LoadPage(page);
+            await RefreshLoadedAsync();
             await InvokeAsync(StateHasChanged);
             // #9: the restored rows slide back in (class only lives for the animation).
             await Task.Delay(450);
@@ -1684,8 +1741,8 @@
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
         BackToList();
-        await LoadPage(page);
-        Toasts.Show("Restored to Inbox.", ToastKind.Success);
+        await RefreshLoadedAsync();
+        Toasts.Show("Restored.", ToastKind.Success);
     });
 
     private async Task DeleteDetailForever()
@@ -1699,7 +1756,7 @@
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
         if (selectedMail == id) BackToList();
-        await LoadPage(page);
+        await RefreshLoadedAsync();
         Toasts.Show("Deleted forever.", ToastKind.Success);
     }
 
@@ -1710,8 +1767,8 @@
         if (selectedMail == id) BackToList();
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
-        await LoadPage(page);
-        Toasts.Show("Restored to Inbox.", ToastKind.Success);
+        await RefreshLoadedAsync();
+        Toasts.Show("Restored.", ToastKind.Success);
     });
 
     private Task QuickMove(Guid id, MailFolder f) => RunAction(async () =>
@@ -1722,7 +1779,7 @@
         if (selectedMail == id) BackToList();
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
-        await LoadPage(page);
+        await RefreshLoadedAsync();
         ShowMoveUndo(new[] { id }, activeFolder == MailFolder.Trash || activeFolder == MailFolder.Archive ? activeFolder : MailFolder.Inbox, f);
     });
 
@@ -1781,7 +1838,7 @@
     private async Task AfterLabelsChanged()
     {
         await LoadLabelsAsync();
-        await LoadPage(page);
+        await RefreshLoadedAsync();
     }
 
     private async Task ExportPdf()
@@ -1999,12 +2056,12 @@
         if (selected.Count == 0) return;
         var ids = selected.ToList();
         var origin = activeFolder is MailFolder.Trash or MailFolder.Archive ? activeFolder : MailFolder.Inbox;
-        await MailSvc.BulkMoveAsync(ids, f);
+        if (!await MailSvc.BulkMoveAsync(ids, f)) { Toasts.Show($"Could not move the selected messages to {FolderLabel(f)}.", ToastKind.Error); return; }
         selected.Clear();
         await LeaveRowsAsync(ids);
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
-        await LoadPage(page);
+        await RefreshLoadedAsync();
         ShowMoveUndo(ids, origin, f);
     });
 
@@ -2013,22 +2070,23 @@
         if (selected.Count == 0) return;
         var n = selected.Count;
         var ids = selected.ToList();
-        await MailSvc.BulkRestoreAsync(ids);
+        if (!await MailSvc.BulkRestoreAsync(ids)) { Toasts.Show("Could not restore the selected messages.", ToastKind.Error); return; }
         selected.Clear();
         await LeaveRowsAsync(ids);
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
-        await LoadPage(page);
-        Toasts.Show($"Restored {n} items to Inbox.", ToastKind.Success);
+        await RefreshLoadedAsync();
+        // Sent mail goes back to Sent and drafts to Drafts, so no single folder name fits.
+        Toasts.Show(n == 1 ? "Restored 1 item." : $"Restored {n} items.", ToastKind.Success);
     });
 
     private Task BulkStar() => RunAction(async () =>
     {
         if (selected.Count == 0) return;
-        await MailSvc.BulkStarAsync(selected.ToList());
+        if (!await MailSvc.BulkStarAsync(selected.ToList())) { Toasts.Show("Could not update stars.", ToastKind.Error); return; }
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
-        await LoadPage(page);
+        await RefreshLoadedAsync();
     });
 
     private Task BulkPermanent() => RunAction(async () =>
@@ -2045,7 +2103,7 @@
         if (selectedMail is { } open && ids.Contains(open)) BackToList();
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
-        await LoadPage(page);
+        await RefreshLoadedAsync();
         Toasts.Show("Deleted forever.", ToastKind.Success);
     });
 
@@ -2054,7 +2112,7 @@
         await MailSvc.MarkAllReadAsync(activeFolder);
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
-        await LoadPage(page);
+        await RefreshLoadedAsync();
     }
 
     // ── Search & Keyboard ──
@@ -2186,7 +2244,7 @@
                 detail = detail with { IsMuted = r?.Muted ?? !detail.IsMuted };
             }
             Toasts.Show((r?.Muted ?? false) ? "Thread notifications muted." : "Thread notifications unmuted.", ToastKind.Success);
-            await LoadPage(page);
+            await RefreshLoadedAsync();
         }
     }
 
@@ -2240,7 +2298,7 @@
     private void ForwardMessage(MailDetail d)
     {
         var subj = d.Subject.StartsWith("Fwd:", StringComparison.OrdinalIgnoreCase) ? d.Subject : $"Fwd: {d.Subject}";
-        var bodyQuote = $"<br/><br/>——— Forwarded from {System.Net.WebUtility.HtmlEncode(d.SenderName)} ———<br/>{d.Body}";
+        var bodyQuote = $"<br/><br/>——— Forwarded from {System.Net.WebUtility.HtmlEncode(d.SenderName)} ———<br/>{(d.IsHtml ? d.Body : MailAddressing.PlainToHtml(d.Body))}";
         WithComposer(c => c.OpenForward(d, subj, bodyQuote));
     }
 
@@ -2309,10 +2367,12 @@
         return nik;
     }
 
-    private Task RunAction(Func<Task> f)
+    /// Awaits the action: an async lambda never throws synchronously, so the old `return f()`
+    /// let every network/JSON failure escape to the ErrorBoundary and blank the page.
+    private async Task RunAction(Func<Task> f)
     {
-        try { return f(); }
-        catch (Exception ex) { Toasts.Show(ex.Message, ToastKind.Error); return Task.CompletedTask; }
+        try { await f(); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { Toasts.Show(ex.Message, ToastKind.Error); }
     }
 
     private string FolderLabel(MailFolder f) => f switch
@@ -2388,8 +2448,11 @@
     private static string LabelInk(string name) => LabelPalette[Math.Abs(name.GetHashCode()) % LabelPalette.Length];
     private static string HumanSize(long b) => b switch { < 1024 => $"{b} B", < 1024 * 1024 => $"{b / 1024.0:0.#} KB", _ => $"{b / 1024.0 / 1024.0:0.#} MB" };
 
+    private bool _disposed;
+
     public void Dispose()
     {
+        _disposed = true;
         ComposerHost.OpenChanged -= OnHostComposerOpenChanged;
         ComposerHost.Sent -= OnHostComposerSent;
         ComposerHost.Discarded -= OnHostComposerDiscarded;
@@ -2447,7 +2510,7 @@
         }
         @if (activeFolder == MailFolder.Trash)
         {
-            <button type="button" title="Restore to Inbox" aria-label="Restore to Inbox" @onclick="() => QuickRestore(item.Id)"><i data-lucide="inbox"></i></button>
+            <button type="button" title="Restore" aria-label="Restore" @onclick="() => QuickRestore(item.Id)"><i data-lucide="inbox"></i></button>
         }
         else if (activeFolder == MailFolder.Archive)
         {

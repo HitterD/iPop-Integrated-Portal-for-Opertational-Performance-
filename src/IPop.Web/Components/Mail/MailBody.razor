@@ -53,7 +53,7 @@
         if (key != preparedFor)
         {
             preparedFor = key;
-            layout = Mail.IsHtml ? MailBodyLayout.Prepare(Mail.Body) : new MailBodyLayout.Result(Mail.Body, false, false);
+            layout = Mail.IsHtml ? MailBodyLayout.Prepare(Mail.Body) : new MailBodyLayout.Result(MailAddressing.PlainToHtml(Mail.Body), false, false);
         }
         original = layout.OffersOriginal && Prefs.ShowsOriginal(Mail.Id);
     }

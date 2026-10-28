@@ -355,7 +355,7 @@ public static class MailEndpoints
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
-            var result = await svc.BulkMoveAsync(userId.Value, req.MailIds, ParseFolder(req.Folder), ct);
+            var result = await svc.BulkMoveAsync(userId.Value, req.MailIds ?? [], ParseFolder(req.Folder), ct);
             return Results.Ok(result);
         }).RequirePermission("mail.send");
 
@@ -365,7 +365,7 @@ public static class MailEndpoints
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
-            var result = await svc.BulkToggleStarAsync(userId.Value, req.MailIds, ct);
+            var result = await svc.BulkToggleStarAsync(userId.Value, req.MailIds ?? [], ct);
             return Results.Ok(result);
         });
 
@@ -375,7 +375,7 @@ public static class MailEndpoints
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
-            var result = await svc.BulkDeleteAsync(userId.Value, req.MailIds, ct);
+            var result = await svc.BulkDeleteAsync(userId.Value, req.MailIds ?? [], ct);
             return Results.Ok(result);
         });
 
@@ -385,7 +385,7 @@ public static class MailEndpoints
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
-            var result = await svc.BulkRestoreAsync(userId.Value, req.MailIds, ct);
+            var result = await svc.BulkRestoreAsync(userId.Value, req.MailIds ?? [], ct);
             return Results.Ok(result);
         });
 
@@ -432,6 +432,8 @@ public static class MailEndpoints
             }
             catch (Exception ex)
             {
+                var logger = http.RequestServices.GetService<ILoggerFactory>()?.CreateLogger("MailEndpoints");
+                logger?.LogError(ex, "PDF export failed for mail {MailId}", id);
                 return Results.Json(new { code = "pdf_render_failed", message = "Failed to render mail PDF." }, statusCode: 500);
             }
             return Results.File(bytes, "application/pdf", PdfFileName(models[0].Subject, id));
@@ -669,7 +671,7 @@ public static class MailEndpoints
             }
             catch (SynoException ex)
             {
-                return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502);
+                return SynoUnavailable(http, ex, id);
             }
         });
 
@@ -703,7 +705,7 @@ public static class MailEndpoints
                 }
                 catch (SynoException ex)
                 {
-                    return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502);
+                    return SynoUnavailable(http, ex, id);
                 }
             }
             var combined = Path.GetFullPath(Path.Combine(env.ContentRootPath, attachment.ThumbnailPath!));
@@ -1148,6 +1150,13 @@ public static class MailEndpoints
         _ => result.Error ?? "Couldn't send the mail.",
     };
 
+    private static IResult SynoUnavailable(HttpContext http, SynoException ex, Guid attachmentId)
+    {
+        http.RequestServices.GetService<ILoggerFactory>()?.CreateLogger("MailEndpoints")
+            .LogWarning(ex, "Mail attachment {AttachmentId}: file storage error", attachmentId);
+        return Results.Json(new { code = "synology_error", message = "File storage is unavailable. Try again shortly." }, statusCode: 502);
+    }
+
     private static IResult ResultOrError(SendMailResult result)
         => result.Success
             ? Results.Ok(result)
@@ -1232,7 +1241,7 @@ public static class MailEndpoints
     {
         var rows = await db.Mails.AsNoTracking()
             .Where(m => ids.Contains(m.Id))
-            .Where(m => m.Recipients.Any(r => r.UserId == userId))
+            .Where(m => m.Recipients.Any(r => r.UserId == userId && r.Folder != "pending"))
             .Include(m => m.Sender)
             .Include(m => m.Recipients).ThenInclude(r => r.User)
             .OrderBy(m => m.SentAt ?? m.CreatedAt)
@@ -1247,11 +1256,22 @@ public static class MailEndpoints
             m.IsHtml,
             m.Sender?.Name ?? "Unknown",
             m.Sender?.Nik ?? "",
-            string.Join("; ", m.Recipients.Where(r => r.RecipientType != "from").Select(r => r.User?.Name ?? "Unknown")),
+            string.Join("; ", PdfVisibleRecipients(m, userId).Select(r => r.User?.Name ?? "Unknown")),
             m.Signature,
             m.Importance,
             m.SentAt
         )).ToList();
+    }
+
+    /// The same privacy rules as the reading pane (MailService.VisibleRecipients + group summary):
+    /// the PDF used to print every row, so any recipient could export the BCC list, a hidden
+    /// recipient list or the members of a group.
+    private static IEnumerable<IPop.Core.Entities.MailRecipient> PdfVisibleRecipients(IPop.Core.Entities.Mail m, Guid userId)
+    {
+        var rows = m.Recipients.Where(r => r.RecipientType != "from");
+        if (m.SenderId == userId) return rows;
+        if (m.HideRecipients) return rows.Where(r => r.UserId == userId);
+        return rows.Where(r => r.UserId == userId || (r.RecipientType != "bcc" && !r.ViaGroup));
     }
 
     private static async Task<byte[]?> RenderMailPdf(Guid userId, Guid mailId,
