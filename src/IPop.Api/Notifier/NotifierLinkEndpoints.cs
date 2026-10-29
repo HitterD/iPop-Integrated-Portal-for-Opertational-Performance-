@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.SignalR;
 using System.Security.Claims;
 using IPop.Api.Endpoints;
 using IPop.Application.Auth;
@@ -9,12 +10,25 @@ namespace IPop.Api.Notifier;
 public record NotifierWaitingRequest(string? DeviceKey);
 public record NotifierRedeemRequest(string? Code, string? DeviceKey, string? Verifier, string? RequestId);
 public record NotifierLinkRequest(string? Challenge, string? RequestId);
+public record NotifierIntentRequest(string? DeviceKey, string? Scheme);
+public record NotifierIntentCheck(string? DeviceKey, string? Intent, bool Reserve);
+public record NotifierHandoffRequest(string? DeviceKey, string? Intent, string? Nonce, string? RequestId, string? Challenge);
+public record NotifierClaimRequest(bool Opened);
+public record NotifierTakeRequest(string? Nonce);
+public record NotifierConnectedRequest(string? RequestId);
 
 /// iPop Notifier sign-in from the browser and its update channel (docs/notifier/PLAN.md, 1.3.0):
-///   POST /api/notifier/link/waiting   anonymous: a signed-out app says it is waiting on this address
-///   GET  /api/notifier/link/should    browser: is there an app here to sign in (or one on another account)?
+///   POST /api/notifier/link/waiting   anonymous: a signed-out app says it is waiting on this address (discovery only)
+///   POST /api/notifier/link/intent    anonymous: "Sign in with browser" was clicked; open iPop tabs here hear it (AppHub)
+///   POST /api/notifier/link/intent/check  anonymous: did a tab take it? (reserve = the app opens one tab itself)
+///   POST /api/notifier/link/handoff   anonymous: the app answers prepare?nonce=… with its PKCE request (no 2nd tab)
+///   GET  /api/notifier/link/should    browser: was sign-in asked for here (or did this browser just sign in as someone else)?
+///   POST /api/notifier/link/claim     browser: this tab takes the intent (one tab wins)
+///   POST /api/notifier/link/take      browser: the PKCE request the app posted for this tab's nonce
 ///   POST /api/notifier/link/code      browser: one-time code for ipop-notifier://signin?code=…
 ///   POST /api/notifier/link/redeem    anonymous: the app trades the code for its own session
+///   POST /api/notifier/link/connected app (new session): confirm, so the tab can say "connected"
+///   GET  /api/notifier/link/status    browser: is the app connected for my request?
 ///   GET  /api/notifier/update         app: which version this person should run (+ "mandatory")
 ///   GET  /api/notifier/update/feed    app: the Velopack feed for that channel
 ///   GET  /api/notifier/releases       Admin: published versions and PCs per version
@@ -23,6 +37,8 @@ public static class NotifierLinkEndpoints
     /// A browser login counts as "fresh" for an account switch for this long (switching a signed-in app needs it).
     public static readonly TimeSpan FreshLogin = TimeSpan.FromSeconds(60);
     public const string Fingerprint = "notifier:";
+    /// AppHub event to the open iPop tabs on the address of a "Sign in with browser" click.
+    public const string IntentEvent = "notifierLinkIntent";
 
     public static IEndpointRouteBuilder MapNotifierLink(this IEndpointRouteBuilder app)
     {
@@ -37,6 +53,45 @@ public static class NotifierLinkEndpoints
             if (!store.Allow("wait:" + ip, 30, DateTime.UtcNow)) return Results.StatusCode(429);
             store.MarkWaiting(key, ip, DateTime.UtcNow);
             return Results.NoContent();
+        });
+
+        anon.MapPost("/intent", async (NotifierIntentRequest req, HttpContext http, IConfiguration cfg,
+            IHubContext<IPop.Api.Realtime.AppHub> hub, CancellationToken ct) =>
+        {
+            var ip = ClientAddress.Of(http, cfg);
+            var key = (req.DeviceKey ?? "").Trim();
+            var now = DateTime.UtcNow;
+            if (ip is null || !ValidKey(key)) return Results.BadRequest();
+            if (!store.Allow("intent:" + ip, 10, now)) return Results.StatusCode(429);
+            var intent = store.RegisterIntent(key, ip, req.Scheme ?? "ipop-notifier", now);
+            if (intent is null) return Results.BadRequest();
+            store.MarkWaiting(key, ip, now);
+            var tabs = store.TabsAt(ip);
+            if (tabs.Count > 0)
+                try { await hub.Clients.Clients(tabs).SendAsync(IntentEvent, ct); } catch (Exception e) when (e is not OperationCanceledException) { }
+            return Results.Ok(new { intent = intent.Id, expiresIn = (int)NotifierLinkStore.IntentLifetime.TotalSeconds, tabs = tabs.Count });
+        });
+
+        anon.MapPost("/intent/check", (NotifierIntentCheck req, HttpContext http, IConfiguration cfg) =>
+        {
+            var ip = ClientAddress.Of(http, cfg);
+            var key = (req.DeviceKey ?? "").Trim();
+            if (ip is null || !ValidKey(key)) return Results.BadRequest();
+            if (!store.Allow("check:" + ip, 60, DateTime.UtcNow)) return Results.StatusCode(429);
+            var claimed = store.CheckIntent(key, req.Intent, req.Reserve, DateTime.UtcNow);
+            return claimed is null ? Results.NotFound() : Results.Ok(new { claimed });
+        });
+
+        // The nonce never left this browser except through the protocol link to the app, so only that app can answer
+        // for it, and only the tab holding the nonce can take the answer. Posting authorizes nothing by itself: the
+        // code is still minted by the signed-in tab for the app's PKCE challenge.
+        anon.MapPost("/handoff", (NotifierHandoffRequest req, HttpContext http, IConfiguration cfg) =>
+        {
+            var ip = ClientAddress.Of(http, cfg);
+            var key = (req.DeviceKey ?? "").Trim();
+            if (ip is null || !ValidKey(key)) return Results.BadRequest();
+            if (!store.Allow("handoff:" + ip, 20, DateTime.UtcNow)) return Results.StatusCode(429);
+            return store.PutHandoff(key, req.Intent, req.Nonce, req.RequestId, req.Challenge, DateTime.UtcNow) ? Results.NoContent() : Results.BadRequest();
         });
 
         anon.MapPost("/redeem", async (NotifierRedeemRequest req, HttpContext http, IConfiguration cfg, IAuthWorkflow auth,
@@ -56,26 +111,64 @@ public static class NotifierLinkEndpoints
                 "auth.notifier_link", ct);
             if (session is null) return Results.BadRequest(new { code = "unavailable", message = "This account can't sign in right now." });
             store.ClearWaiting(key);
+            store.ClearIntent(key);
             var name = await db.Users.AsNoTracking().Where(u => u.Id == code.UserId).Select(u => u.Name).FirstOrDefaultAsync(ct);
             return Results.Ok(new { session.AccessToken, session.RefreshToken, session.AccessTokenExpiresAt, session.MustChangePassword, nik, name });
         });
 
         var g = app.MapGroup("/api/notifier").RequireAuthorization();
 
-        // Ask only when it can work: a signed-out app waiting at this address, or an app here signed in as someone
-        // else (the web account changed). An app already on this account needs nothing.
-        g.MapGet("/link/should", async (HttpContext http, IConfiguration cfg, IPopDbContext db, CancellationToken ct) =>
+        // The browser may ask "Open iPop Notifier?" only when someone just asked for it: a "Sign in with browser"
+        // click (or first run) on this address in the last 2 minutes ("intent"), or this browser itself signed in
+        // within the last minute as someone other than the app here ("other": the web account switch, which the app
+        // still confirms locally before it switches). A waiting heartbeat alone never prompts any more (1.4.0).
+        // opened=1: the tab was opened by "Sign in with browser" in a 1.3.0 app (it knows no intent and, signed out,
+        // can't fetch the update). That tab alone may still prompt while an app waits here ("legacy").
+        g.MapGet("/link/should", async (bool? opened, HttpContext http, IConfiguration cfg, IPopDbContext db, CancellationToken ct) =>
         {
             var ip = ClientAddress.Of(http, cfg);
             var userId = await MyId(http, db, ct);
             if (userId is null || ip is null) return Results.Ok(new { link = false, reason = (string?)null });
             var now = DateTime.UtcNow;
-            if (store.AnyWaiting(ip, now)) return Results.Ok(new { link = true, reason = (string?)"waiting" });
-            var since = now - IPop.Core.Entities.NotifierDevice.OnlineWindow;
-            var here = await db.NotifierDevices.AsNoTracking().Where(d => d.RemoteIp == ip && d.LastSeenAt >= since)
-                .Select(d => d.UserId).ToListAsync(ct);
-            var other = here.Count > 0 && !here.Contains(userId.Value);
-            return Results.Ok(new { link = other, reason = other ? "other" : null });
+            var reason = await ShouldReasonAsync(store, db, userId.Value, ip,
+                http.User.FindFirstValue(IPop.Infrastructure.Auth.AccessTokenGuard.SessionClaim), opened == true, now, ct);
+            return Results.Ok(new { link = reason is not null, reason });
+        });
+
+        g.MapPost("/link/claim", async (NotifierClaimRequest req, HttpContext http, IConfiguration cfg, IPopDbContext db, CancellationToken ct) =>
+        {
+            var ip = ClientAddress.Of(http, cfg);
+            var userId = await MyId(http, db, ct);
+            var now = DateTime.UtcNow;
+            if (ip is null || userId is null || !store.Allow("claim:" + ip, 30, now)) return Results.Ok(new { claimed = false, scheme = (string?)null });
+            var intent = store.ClaimIntent(ip, req.Opened, userId.Value, now);
+            return Results.Ok(new { claimed = intent is not null, scheme = intent?.Scheme });
+        });
+
+        g.MapPost("/link/take", async (NotifierTakeRequest req, HttpContext http, IConfiguration cfg, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await MyId(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            if (!store.Allow("take:" + userId, 120, DateTime.UtcNow)) return Results.StatusCode(429);
+            var h = store.TakeHandoff(req.Nonce, userId.Value, ClientAddress.Of(http, cfg), DateTime.UtcNow);
+            return h is null ? Results.NoContent() : Results.Ok(new { requestId = h.RequestId, challenge = h.Challenge });
+        });
+
+        g.MapGet("/link/status", async (string? request, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await MyId(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            var st = store.Status(request, userId.Value, DateTime.UtcNow);
+            return Results.Ok(new { connected = st?.ConnectedAt is not null, name = st?.Name, known = st is not null });
+        });
+
+        // The app, with the session it just redeemed, confirms the request (after any local account-switch prompt).
+        g.MapPost("/link/connected", async (NotifierConnectedRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await MyId(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            var name = await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.Name).FirstOrDefaultAsync(ct);
+            return store.MarkConnected(req.RequestId, userId.Value, name, DateTime.UtcNow) ? Results.NoContent() : Results.NotFound();
         });
 
         g.MapPost("/link/code", async (NotifierLinkRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
@@ -148,6 +241,19 @@ public static class NotifierLinkEndpoints
         }).RequireAuthorization("AdminOnly");
 
         return app;
+    }
+
+    /// Why this browser may show "Open iPop Notifier?" now, or null: never just because an app waits here.
+    public static async Task<string?> ShouldReasonAsync(NotifierLinkStore store, IPopDbContext db, Guid userId, string ip,
+        string? family, bool opened, DateTime now, CancellationToken ct)
+    {
+        if (store.HasFreshIntent(ip, now)) return "intent";
+        if (opened && store.AnyWaiting(ip, now)) return "legacy";
+        if (!await FreshLoginAsync(db, userId, family, now, ct)) return null;
+        var since = now - IPop.Core.Entities.NotifierDevice.OnlineWindow;
+        var here = await db.NotifierDevices.AsNoTracking().Where(d => d.RemoteIp == ip && d.LastSeenAt >= since)
+            .Select(d => d.UserId).ToListAsync(ct);
+        return here.Count > 0 && !here.Contains(userId) ? "other" : null;
     }
 
     /// The browser's login (its session family: refreshes rotate rows but keep the family) started within

@@ -225,7 +225,7 @@ public sealed class NotifierApp : ApplicationContext
         if (signIn is { IsDisposed: false }) { signIn.Activate(); return; }
         signIn = new SignInWindow(api);
         signIn.SignedIn += () => Post(() => { _ = StartSessionAsync(); tray.ShowBalloonTip(3000, "iPop Notifier", "You're signed in. Notifications will appear here.", ToolTipIcon.Info); });
-        signIn.WithBrowser += () => Post(OpenBrowserSignIn);
+        signIn.WithBrowser += again => Post(() => OpenBrowserSignIn(again));
         signIn.Show();
         signIn.Activate();
         _ = WaitForBrowserAsync();
@@ -246,8 +246,78 @@ public sealed class NotifierApp : ApplicationContext
         }
     }
 
-    /// ipop-notifier://signin?code=… from iPop in the browser.
-    private void OpenBrowserSignIn() => OpenIPop("/dashboard?notifier=signin&notifierScheme=" + AppInfo.UrlScheme);
+    // ── "Sign in with browser": one tab, one prompt (1.4.0) ──────────────────────────────────────────────
+    //  click → POST link/intent (open iPop tabs on this PC hear it over AppHub) → poll link/intent/check for ~5 s
+    //  → a tab took it: nothing opens, that tab does the rest | nobody did: reserve it and open exactly ONE tab.
+    //  Clicks while an attempt runs do nothing (first run + a click open one tab, not two); after 20 s the window
+    //  offers "Open browser again", which starts a fresh attempt and opens one tab straight away.
+
+    /// Tabs on this PC have this long to take the click before the app opens one itself.
+    private static readonly TimeSpan TabGrace = TimeSpan.FromSeconds(5);
+    private CancellationTokenSource? browserAttempt;
+    private DateTime browserAttemptAt;
+    /// The intent of the current attempt: answers ipop-notifier://prepare by hand-off to the tab that claimed it.
+    private string? browserIntent;
+
+    private void OpenBrowserSignIn() => OpenBrowserSignIn(again: false);
+
+    private void OpenBrowserSignIn(bool again)
+    {
+        if (api.IsSignedIn) return;
+        if (browserAttempt is { IsCancellationRequested: false } && (!again || DateTime.UtcNow - browserAttemptAt < TimeSpan.FromSeconds(20)))
+        {
+            signIn?.Activate();
+            return;
+        }
+        browserAttempt?.Cancel();
+        var cts = browserAttempt = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        browserAttemptAt = DateTime.UtcNow;
+        _ = BrowserAttemptAsync(again, cts);
+    }
+
+    private void BrowserState(string state) => Post(() => signIn?.Send(new { type = "browserState", state }));
+
+    private async Task BrowserAttemptAsync(bool again, CancellationTokenSource cts)
+    {
+        var ct = cts.Token;
+        BrowserState("asking");
+        var intent = await api.RegisterBrowserIntentAsync(ct);
+        browserIntent = intent;
+        var claimed = false;
+        if (intent is not null && !again)
+        {
+            var until = DateTime.UtcNow + TabGrace;
+            while (!ct.IsCancellationRequested && DateTime.UtcNow < until)
+            {
+                if (await api.CheckBrowserIntentAsync(intent, reserve: false, ct) == true) { claimed = true; break; }
+                try { await Task.Delay(700, ct); } catch (OperationCanceledException) { return; }
+            }
+        }
+        if (ct.IsCancellationRequested) return;
+        // Reserve atomically: a tab that hears about the click after this point no longer takes it.
+        if (!claimed && intent is not null) claimed = await api.CheckBrowserIntentAsync(intent, reserve: true, ct) == true;
+        if (ct.IsCancellationRequested) return;
+        if (claimed) { Log.Info("signin", "browser: an open iPop tab took the sign-in"); BrowserState("tab"); return; }
+        Log.Info("signin", "browser: no iPop tab answered, opening one");
+        Post(() => OpenIPop("/dashboard?notifier=signin&notifierScheme=" + AppInfo.UrlScheme));
+        BrowserState("opened");
+    }
+
+    /// ipop-notifier://prepare?nonce=… from the tab: answer that same tab (no second tab). Without a current
+    /// attempt (the web account-switch path) or when the server can't take the hand-off, fall back to the 1.3.0
+    /// callback tab — still nonce-bound, still confirmed locally before an account switch.
+    private async Task AnswerPrepareAsync(string nonce)
+    {
+        var link = api.PrepareBrowserLink(nonce);
+        if (link is null) return;
+        if (browserIntent is { } intent && browserAttempt is { IsCancellationRequested: false }
+            && await api.HandOffAsync(intent, nonce, link, CancellationToken.None))
+        {
+            BrowserState("approving");
+            return;
+        }
+        Post(() => Integration.OpenUrl(link.CallbackUrl));
+    }
 
     private async Task SignInWithCodeAsync(string code, string requestId)
     {
@@ -265,6 +335,10 @@ public sealed class NotifierApp : ApplicationContext
                 return;
             }
             waitingLoop?.Cancel();
+            browserAttempt?.Cancel();
+            browserIntent = null;
+            // The tab that minted the code learns the app is connected (only this account's tab can read it).
+            _ = api.ConfirmBrowserLinkAsync(requestId);
             if (signIn is { IsDisposed: false }) signIn.Close();
             _ = StartSessionAsync();
             Integration.SetStartWithWindows(true);
@@ -454,8 +528,7 @@ public sealed class NotifierApp : ApplicationContext
                     tray.ShowBalloonTip(4000, "iPop Notifier", "This link isn't on a company NAS, so it can't open in File Explorer.", ToolTipIcon.Warning);
                 break;
             case "prepare" when !files && q["nonce"] is { Length: 43 } nonce:
-                var callback = api.PrepareBrowserLink(nonce);
-                if (callback is not null) Integration.OpenUrl(callback);
+                _ = AnswerPrepareAsync(nonce);
                 break;
             case "signin" when !files && q["code"] is { Length: 43 } code && q["request"] is { Length: 43 } requestId:
                 _ = SignInWithCodeAsync(code, requestId);

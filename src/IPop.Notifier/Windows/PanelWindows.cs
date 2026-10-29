@@ -99,7 +99,8 @@ public sealed class SignInWindow : HtmlWindow
     private readonly IPopClient api;
     public event Action? SignedIn;
     /// "Sign in with browser": iPop opens; if the browser is signed in it sends the link back.
-    public event Action? WithBrowser;
+    /// true = "Open browser again" (after 20 s of waiting): open one tab now.
+    public event Action<bool>? WithBrowser;
 
     public SignInWindow(IPopClient api) : base("signin.html", new Size(480, 760))
     {
@@ -112,7 +113,7 @@ public sealed class SignInWindow : HtmlWindow
 
     protected override async void HandleMessage(string type, JsonNode? msg)
     {
-        if (type == "withBrowser") { WithBrowser?.Invoke(); return; }
+        if (type == "withBrowser") { WithBrowser?.Invoke(msg?["again"]?.GetValue<bool>() == true); return; }
         if (type != "signIn") { base.HandleMessage(type, msg); return; }
         var nik = msg?["nik"]?.GetValue<string>()?.Trim() ?? "";
         var password = msg?["password"]?.GetValue<string>() ?? "";
