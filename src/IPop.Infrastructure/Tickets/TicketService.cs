@@ -459,7 +459,10 @@ public sealed class TicketService(
             var hasActor = root.TryGetProperty("actor", out var ac) && ac.ValueKind is JsonValueKind.Object or JsonValueKind.Null;
             var ticketEl = root.TryGetProperty("ticket", out var te) && te.ValueKind == JsonValueKind.Object ? te : default;
             facts = new TicketWebhookFacts(previousStatus,
-                root.TryGetProperty("previousAssignee", out var pa) ? Person(pa) : null,
+                // iDesk sends previousAssignee as the name and the NIK beside it; an object is accepted too.
+                !root.TryGetProperty("previousAssignee", out var pa) ? null
+                    : pa.ValueKind == JsonValueKind.String ? new TicketWebhookPerson(Prop(root, "previousAssigneeNik"), pa.GetString())
+                    : Person(pa),
                 Prop(root, "closedReason") ?? (ticketEl.ValueKind == JsonValueKind.Object ? Prop(ticketEl, "closedReason") : null),
                 hasActor, hasActor ? Person(ac) : null,
                 Prop(root, "reason"));

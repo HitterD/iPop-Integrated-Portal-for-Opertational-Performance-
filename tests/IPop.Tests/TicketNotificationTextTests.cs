@@ -132,6 +132,21 @@ public partial class TicketTests
     }
 
     [Fact]
+    public async Task Handover_reads_iDesk_string_previous_assignee_with_its_nik()
+    {
+        var x = RigWithPeople(out var u, out var tech); using var db = x.T;
+        // iDesk PR #75 shape: previousAssignee is the name, previousAssigneeNik beside it.
+        var body = Hook("h1", "ticket.assigned", Printer(TicketStatus.InProgress), assigneeNik: Tech,
+            actor: new { nik = "00000001", name = "ICT SUPPORT LEAD" }, previousAssignee: "Agus Salim")
+            .Replace("\"previousAssignee\":", "\"previousAssigneeNik\":\"00010001\",\"previousAssignee\":");
+        await x.Svc.ApplyWebhookAsync(body);
+
+        var forReq = Assert.Single(x.Gw.Sent, s => s.To == u.Id);
+        Assert.Contains("Agus", forReq.Message);
+        Assert.Single(x.Gw.Sent, s => s.To == tech.Id);
+    }
+
+    [Fact]
     public async Task Reopen_by_the_requester_reaches_the_technician_with_the_comment()
     {
         var x = RigWithPeople(out var u, out var tech); using var db = x.T;
