@@ -6,13 +6,15 @@ namespace IPop.Notifier.Windows;
 /// Tray Inbox flyout (mockup v1 §6): sits above the tray, hides when it loses focus.
 public sealed class InboxWindow : BridgedWindow
 {
+    public static readonly Size InboxSize = new(480, 720);
     private readonly Func<object> context;
     public event Action<string, JsonNode?>? Command;
 
-    public InboxWindow(IPopClient api, Func<object> context) : base("inbox.html", WindowSizes.Get("inbox", new Size(480, 720)), api, showInTaskbar: false)
+    public InboxWindow(IPopClient api, Func<object> context) : base("inbox.html", InboxSize, api, showInTaskbar: false)
     {
         this.context = context;
-        SizeKey = "inbox";
+        // Fixed size (logical px, scaled to this screen like the popups); only Maximize changes it.
+        FitStandardSize(InboxSize);
         Maximizable = true;
         TopMost = true;
     }
@@ -58,6 +60,7 @@ public sealed class InboxWindow : BridgedWindow
 /// Settings (mockup v1 §7) — Popups (incl. the v1/v2 style choice), Sounds, Modules, General, Account.
 public sealed class SettingsWindow : BridgedWindow
 {
+    public static readonly Size SettingsSize = new(960, 720);
     private readonly SettingsService settings;
     private readonly Func<object> account;
     public event Action? SignOut;
@@ -66,12 +69,12 @@ public sealed class SettingsWindow : BridgedWindow
     public event Action? CheckUpdates;
     public event Action? UpdateNow;
 
-    public SettingsWindow(IPopClient api, SettingsService settings, Func<object> account) : base("settings.html", WindowSizes.Get("settings", new Size(960, 720)), api)
+    public SettingsWindow(IPopClient api, SettingsService settings, Func<object> account) : base("settings.html", SettingsSize, api)
     {
         this.settings = settings;
         this.account = account;
         Text = "iPop Notifier — Settings";
-        SizeKey = "settings";
+        FitStandardSize(SettingsSize);
         Maximizable = true;
         StartPosition = FormStartPosition.CenterScreen;
     }
@@ -198,10 +201,11 @@ public sealed class UpdateWindow : HtmlWindow
 /// ICT / Admin only (mockup v2 §3): signed-in PCs with computer name, IP and Windows user. Remote help is phase 3.
 public sealed class DevicesWindow : BridgedWindow
 {
-    public DevicesWindow(IPopClient api) : base("devices.html", WindowSizes.Get("devices", new Size(1100, 720)), api)
+    public static readonly Size DevicesSize = new(1100, 720);
+    public DevicesWindow(IPopClient api) : base("devices.html", DevicesSize, api)
     {
         Text = "iPop Notifier — Devices";
-        SizeKey = "devices";
+        FitStandardSize(DevicesSize);
         Maximizable = true; // read by CreateParams when the handle is created, so it must be set here
         StartPosition = FormStartPosition.CenterScreen;
     }

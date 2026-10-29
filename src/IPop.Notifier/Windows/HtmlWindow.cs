@@ -181,6 +181,14 @@ public class HtmlWindow : Form
 
     protected int Scale(int logical) => (int)Math.Round(logical * DeviceDpi / 96.0);
 
+    /// Opens at a fixed logical size scaled to this screen's DPI, never larger than the working area.
+    protected void FitStandardSize(Size logical)
+    {
+        var area = Screen.FromPoint(Cursor.Position).WorkingArea;
+        var gap = Scale(12);
+        ClientSize = new Size(Math.Min(Scale(logical.Width), area.Width - 2 * gap), Math.Min(Scale(logical.Height), area.Height - 2 * gap));
+    }
+
     protected override void Dispose(bool disposing)
     {
         if (disposing) { Theme.Changed -= OnThemeChanged; View.Dispose(); }

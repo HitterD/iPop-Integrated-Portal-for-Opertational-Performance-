@@ -34,12 +34,7 @@ public sealed class NoticeWindow : BridgedWindow
         WantedHeight = ClientSize.Height;
         Text = notice.Title.Length > 80 ? notice.Title[..80] + "…" : notice.Title;
         if (style == "stack") TopMost = true;
-        else
-        {
-            Resizable = true;
-            Maximizable = true;
-            MinLogicalSize = StandardSize;
-        }
+        else Maximizable = true; // fixed 440×560; only Maximize changes the size
     }
 
     private int more;
