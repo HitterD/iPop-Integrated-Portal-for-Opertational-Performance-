@@ -1,64 +1,95 @@
+// Run with: node --test tests/notifier-link.test.cjs
+// iPop Notifier "Sign in with browser" (1.4.3, OAuth loopback): the web no longer has any broadcast/claim helpers
+// (1.4.2 pushed a Connect card to every tab "on the same address", which behind the proxy was everyone), and the
+// Notifier sign-in window keeps one attempt at a time with a paste-code fallback.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
-const all = fs.readFileSync(path.join(__dirname, '../src/IPop.Web/wwwroot/js/ipop.js'), 'utf8');
-const start = all.indexOf('// iPop Notifier "Sign in with browser" (1.4.2');
-const source = all.slice(start, all.indexOf('\n};', all.indexOf('ipop.notifierLink = ', start)) + 3);
 
-function browser(href = 'https://web.example/dashboard') {
-  const session = new Map();
-  const ctx = {
-    ipop: {}, URL, Date, navigator: { userAgent: 'Windows NT 10.0' }, location: { href },
-    sessionStorage: { getItem: k => session.get(k) ?? null, setItem: (k, v) => session.set(k, String(v)), removeItem: k => session.delete(k) },
-    document: { visibilityState: 'visible', hasFocus: () => true },
+const ipop = fs.readFileSync(path.join(__dirname, '../src/IPop.Web/wwwroot/js/ipop.js'), 'utf8');
+const signin = fs.readFileSync(path.join(__dirname, '../src/IPop.Notifier/Ui/signin.js'), 'utf8');
+const signinHtml = fs.readFileSync(path.join(__dirname, '../src/IPop.Notifier/Ui/signin.html'), 'utf8');
+
+test('the web has no Notifier broadcast, claim or protocol-launch helpers any more', () => {
+  assert.doesNotMatch(ipop, /notifierLink/);
+  assert.doesNotMatch(ipop, /ipop-notifier:/);
+  assert.doesNotMatch(ipop, /notifierLinkIntent/);
+});
+
+function el(id) {
+  return {
+    id, hidden: false, disabled: false, textContent: '', value: '', innerHTML: '', offsetWidth: 0,
+    classList: { set: new Set(), add(c) { this.set.add(c); }, remove(c) { this.set.delete(c); }, contains(c) { return this.set.has(c); },
+      toggle(c, on) { if (on === undefined ? !this.set.has(c) : on) this.set.add(c); else this.set.delete(c); } },
+    focus() {}, select() {},
   };
-  ctx.window = { location: ctx.location, close() { ctx.closeCalls = (ctx.closeCalls || 0) + 1; this.closed = ctx.allowClose === true; }, closed: false };
-  ctx.launched = [];
-  // Any assignment of a custom scheme to location.href would be a protocol launch.
-  Object.defineProperty(ctx.window.location, 'assign', { value: u => ctx.launched.push(u) });
-  vm.runInNewContext(source, ctx);
-  return ctx;
 }
 
-test('1.4.2 never launches ipop-notifier:// from the web: the old prepare/complete/callback paths are gone', () => {
-  const b = browser();
-  for (const name of ['prepare', 'complete', 'consumeCallback', 'claim', 'connected', 'forget', 'secret'])
-    assert.equal(b.ipop.notifierLink[name], undefined, name);
-  const code = source.replace(/^\s*\/\/.*$/gm, '').replace(/\/\*\*[^]*?\*\//g, '');
-  assert.doesNotMatch(code, /location\.href\s*=/);
-  assert.doesNotMatch(code, /ipop-notifier/);
-  assert.equal(b.location.href, 'https://web.example/dashboard');
+function window_() {
+  const ids = ['nik', 'pw', 'server', 'auto', 'err', 'go', 'browser', 'again', 'hint', 'adv', 'f', 'pasteLink', 'paste', 'pcode', 'pgo', 'perr'];
+  const els = Object.fromEntries(ids.map(i => [i, el(i)]));
+  els.again.hidden = true; els.pasteLink.hidden = true;
+  els.hint.textContent = 'default hint';
+  const extra = { '[data-min]': el('min'), '[data-close]': el('close') };
+  const body = el('body'); body.dataset = {};
+  const handlers = {}, posted = [], timers = [];
+  const ctx = {
+    document: { querySelector: s => extra[s] || els[s.replace(/^#/, '')], body },
+    ICON: { min: '', x: '' },
+    app: { post: m => posted.push(m), on: (t, f) => { handlers[t] = f; }, ready() {} },
+    setTimeout: (f, ms) => { timers.push({ f, ms }); return timers.length; }, clearTimeout() {},
+  };
+  vm.runInNewContext(signin, ctx);
+  return { els, body, handlers, posted, timers };
+}
+
+test('Sign in with browser posts once; clicks while waiting do nothing; paste link appears', () => {
+  const w = window_();
+  w.els.browser.onclick();
+  w.els.browser.onclick();
+  assert.deepEqual(w.posted.filter(m => m.type === 'withBrowser').length, 1);
+  assert.equal(w.els.browser.disabled, true);
+  assert.equal(w.els.browser.textContent, 'Waiting for browser…');
+  assert.equal(w.els.pasteLink.hidden, false);
+  // "Open browser again" after 20 s.
+  assert.equal(w.timers.at(-1).ms, 20000);
+  w.timers.at(-1).f();
+  assert.equal(w.els.again.hidden, false);
+  w.els.again.onclick();
+  assert.deepEqual({ ...w.posted.at(-1) }, { type: 'withBrowser', again: true, server: '' });
 });
 
-test('only a connect tab the app opened (&opened=1) counts as opened, for ten minutes', () => {
-  assert.equal(browser('https://web.example/notifier/connect?request=x&opened=1').ipop.notifierLink.openedTab(), true);
-  assert.equal(browser('https://web.example/notifier/connect?request=x').ipop.notifierLink.openedTab(), false);
-  assert.equal(browser('https://web.example/dashboard?opened=1').ipop.notifierLink.openedTab(), false);
-  const b = browser();
-  b.sessionStorage.setItem('ipop.notifierLink.opened', Date.now() - 601000);
-  assert.equal(b.ipop.notifierLink.openedTab(), false);
-  b.sessionStorage.setItem('ipop.notifierLink.opened', Date.now());
-  b.ipop.notifierLink.forgetOpened();
-  assert.equal(b.ipop.notifierLink.openedTab(), false);
+test('Paste code from browser sends the typed code; a refusal shows its message and keeps the field', () => {
+  const w = window_();
+  w.els.browser.onclick();
+  w.els.pasteLink.onclick();
+  assert.equal(w.body.classList.contains('pasting'), true);
+  w.els.pcode.value = ' abcd-2345 ';
+  w.els.pgo.onclick();
+  assert.deepEqual({ ...w.posted.at(-1) }, { type: 'pasteCode', code: 'abcd-2345' });
+  assert.equal(w.els.pgo.disabled, true);
+  w.handlers.pasteResult({ ok: false, message: "That code didn't work." });
+  assert.equal(w.els.perr.textContent, "That code didn't work.");
+  assert.equal(w.els.pgo.disabled, false);
+  assert.equal(w.body.classList.contains('pasting'), true);
 });
 
-test('close tries window.close and reports when the browser keeps the tab', () => {
-  const b = browser('https://web.example/notifier/connect?request=x&opened=1');
-  assert.equal(b.ipop.notifierLink.close(), false);
-  assert.equal(b.closeCalls, 1);
-  assert.equal(b.ipop.notifierLink.openedTab(), false);
-  const c = browser(); c.allowClose = true;
-  assert.equal(c.ipop.notifierLink.close(), true);
+test('Decline in the browser returns the window to normal with a note', () => {
+  const w = window_();
+  w.els.browser.onclick();
+  w.handlers.browserState({ state: 'opened' });
+  assert.match(w.els.hint.textContent, /click Authorize/);
+  w.handlers.browserState({ state: 'denied', message: 'Sign-in cancelled in the browser. You can try again or sign in here.' });
+  assert.equal(w.els.browser.disabled, false);
+  assert.equal(w.els.browser.textContent, 'Sign in with browser');
+  assert.equal(w.els.pasteLink.hidden, true);
+  assert.match(w.els.hint.textContent, /cancelled in the browser/);
 });
 
-test('supported only on Windows desktop, visible only when in front', () => {
-  const b = browser();
-  assert.equal(b.ipop.notifierLink.supported(), true);
-  assert.equal(b.ipop.notifierLink.visible(), true);
-  b.document.visibilityState = 'hidden';
-  assert.equal(b.ipop.notifierLink.visible(), false);
-  b.navigator.userAgent = 'Mozilla/5.0 (Linux; Android 14) Mobile';
-  assert.equal(b.ipop.notifierLink.supported(), false);
+test('the sign-in window has the paste field and no Connect-card wording', () => {
+  assert.match(signinHtml, /id="pasteLink"[^>]*>Paste code from browser</);
+  assert.match(signinHtml, /id="pcode"/);
+  assert.doesNotMatch(signin + signinHtml, /click Connect there/);
 });

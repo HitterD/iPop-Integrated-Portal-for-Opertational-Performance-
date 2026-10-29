@@ -22,70 +22,19 @@ public sealed class IPopClient
     public Func<Task>? BeforeSessionChanged { get; set; }
     public Func<string, string?, Task<bool>>? ConfirmAccountSwitch { get; set; }
     public event Action? SignedOut;
-    private readonly Dictionary<string, (string Verifier, DateTime At)> pendingLinks = new();
 
-    private static string Secret() => Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-    public static string PkceChallenge(string verifier) => Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.ASCII.GetBytes(verifier))).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-    /// A connect request may be approved for 2 minutes; the verifier is kept a little longer than that.
-    private static readonly TimeSpan PendingLifetime = TimeSpan.FromMinutes(3);
-
-    /// "Sign in with browser" (1.4.2): a new request id + PKCE verifier kept only in this app. The server and the
-    /// browser see the challenge, never the verifier, so a code minted for it is useless to anyone else.
-    public sealed record BrowserLink(string RequestId, string Challenge);
-    public BrowserLink? BeginBrowserLink()
+    /// "Sign in with browser" (1.4.3, OAuth loopback; flow in NotifierLoopback): the PKCE verifier and state of one
+    /// attempt, kept only in this app. The browser and the server see the challenge, never the verifier, so a code
+    /// minted for it (or its short code) is useless to anyone else.
+    public sealed record BrowserAttempt(string Verifier, string Challenge, string State, DateTime StartedAt);
+    public static BrowserAttempt NewBrowserAttempt()
     {
-        lock (pendingLinks)
-        {
-            foreach (var expired in pendingLinks.Where(p => DateTime.UtcNow - p.Value.At > PendingLifetime).Select(p => p.Key).ToList()) pendingLinks.Remove(expired);
-            if (pendingLinks.Count >= 5) pendingLinks.Remove(pendingLinks.MinBy(p => p.Value.At).Key);
-            var id = Secret(); var verifier = Secret();
-            pendingLinks[id] = (verifier, DateTime.UtcNow);
-            return new(id, PkceChallenge(verifier));
-        }
+        var verifier = NotifierLoopback.NewSecret();
+        return new(verifier, NotifierLoopback.Challenge(verifier), NotifierLoopback.NewSecret(), DateTime.UtcNow);
     }
+    /// The verifier is good for the attempt's 5-minute listener; the server's code lives 2 minutes.
+    public static readonly TimeSpan AttemptLifetime = TimeSpan.FromMinutes(5);
 
-    /// Registers the connect request on the server; open iPop tabs on this PC hear about it at once.
-    /// False = server unreachable or too old.
-    public async Task<bool> RegisterBrowserLinkAsync(BrowserLink link, CancellationToken ct)
-    {
-        try
-        {
-            using var res = await http.PostAsJsonAsync(new Uri(Server, "api/notifier/link/intent"), new
-            {
-                deviceKey = store.DeviceKey(), scheme = AppInfo.UrlScheme, challenge = link.Challenge, requestId = link.RequestId,
-                pcName = Environment.MachineName,
-            }, ct);
-            return res.IsSuccessStatusCode;
-        }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { return false; }
-    }
-
-    /// pending | claimed (an open tab shows the card) | approved (+ code, once) | denied | expired | collected.
-    /// Null = unknown (unreachable, or the server no longer knows the request).
-    public sealed record LinkPoll(string State, string? Code);
-    public async Task<LinkPoll?> PollBrowserLinkAsync(string requestId, bool reserve, CancellationToken ct)
-    {
-        try
-        {
-            using var res = await http.PostAsJsonAsync(new Uri(Server, "api/notifier/link/poll"), new { deviceKey = store.DeviceKey(), requestId, reserve }, ct);
-            if (res.StatusCode == HttpStatusCode.NotFound) return new("expired", null);
-            if (!res.IsSuccessStatusCode) return null;
-            var n = await res.Content.ReadFromJsonAsync<JsonNode>(Json, ct);
-            return n?["state"]?.GetValue<string>() is { } state ? new(state, n["code"]?.GetValue<string>()) : null;
-        }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException) { return null; }
-    }
-
-    /// The person cancelled in the browser, or the attempt ended: its verifier is no longer needed.
-    public void ForgetBrowserLink(string requestId) { lock (pendingLinks) pendingLinks.Remove(requestId); }
-
-    /// Signed in with the redeemed code: tell the tab (only this account's tab can read it) that the app is connected.
-    public async Task ConfirmBrowserLinkAsync(string requestId)
-    {
-        try { using var _ = await SendAsync(HttpMethod.Post, "api/notifier/link/connected", new { requestId }); }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or InvalidOperationException) { }
-    }
-    private static bool ValidSecret(string? s) => s is { Length: 43 } && s.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     public IPopClient(SessionStore store, HttpMessageHandler? handler = null)
@@ -132,45 +81,44 @@ public sealed class IPopClient
         return new(true, null, false);
     }
 
-    private sealed record LinkDto(string AccessToken, string RefreshToken, DateTime AccessTokenExpiresAt, bool MustChangePassword, string Nik, string? Name, bool Switched);
-    public sealed record LinkResult(bool Ok, string? Error, string? Name, bool Switched);
+    private sealed record LinkDto(string AccessToken, string RefreshToken, DateTime AccessTokenExpiresAt, bool MustChangePassword, string Nik, string? Name);
+    /// <paramref name="Code"/>: the server's error code (expired, invalid, burned, busy, outdated) when not Ok.
+    public sealed record LinkResult(bool Ok, string? Error, string? Name, bool Switched, string? Code = null);
 
-    /// The code the browser card approved (collected by polling): trade it for this app's own session. Only a request
-    /// this app started has a verifier; switching from another signed-in account is confirmed locally first.
-    public async Task<LinkResult> SignInWithCodeAsync(string server, string code, string requestId, CancellationToken ct)
+    /// The code the loopback callback brought back (or the short code the person pasted): trade it, with this
+    /// attempt's verifier, for this app's own session. When it is another account than the one this PC's Notifier
+    /// was last signed in as (signed in now, or signed out since), the person confirms locally first.
+    public async Task<LinkResult> RedeemBrowserCodeAsync(string server, BrowserAttempt attempt, string? code, string? shortCode, CancellationToken ct)
     {
-        string verifier;
-        lock (pendingLinks)
-        {
-            if (!pendingLinks.Remove(requestId, out var pending) || DateTime.UtcNow - pending.At > PendingLifetime)
-                return new(false, "This sign-in wasn't started on this PC. Choose Sign in with browser and try again.", null, false);
-            verifier = pending.Verifier;
-        }
+        if (DateTime.UtcNow - attempt.StartedAt > AttemptLifetime)
+            return new(false, "This sign-in took too long. Choose Sign in with browser and try again.", null, false, "expired");
         await refreshLock.WaitAsync(ct);
-        try { return await RedeemCoreAsync(server, code, requestId, verifier, ct); }
+        try { return await RedeemCoreAsync(server, attempt.Verifier, code, shortCode, ct); }
         finally { refreshLock.Release(); }
     }
 
-    private async Task<LinkResult> RedeemCoreAsync(string server, string code, string requestId, string verifier, CancellationToken ct)
+    private async Task<LinkResult> RedeemCoreAsync(string server, string verifier, string? code, string? shortCode, CancellationToken ct)
     {
         var baseUri = new Uri(server.TrimEnd('/') + "/");
         using var req = new HttpRequestMessage(HttpMethod.Post, new Uri(baseUri, "api/notifier/link/redeem"))
         {
-            Content = JsonContent.Create(new { code, deviceKey = store.DeviceKey(), verifier, requestId }, options: Json),
+            Content = JsonContent.Create(new { code, shortCode, deviceKey = store.DeviceKey(), verifier }, options: Json),
         };
         req.Headers.TryAddWithoutValidation("X-Notifier-Machine", Environment.MachineName);
         using var res = await http.SendAsync(req, ct);
         if (!res.IsSuccessStatusCode)
         {
             var err = await SafeRead<ErrorDto>(res, ct);
-            return new(false, err?.Message ?? $"iPop answered {(int)res.StatusCode}.", null, false);
+            return new(false, err?.Message ?? $"iPop answered {(int)res.StatusCode}.", null, false, err?.Code);
         }
         var dto = (await res.Content.ReadFromJsonAsync<LinkDto>(Json, ct))!;
-        var switching = Session is not null && (!string.Equals(Session.Nik, dto.Nik, StringComparison.Ordinal) || Session.Server != baseUri.ToString());
+        var last = Session is { } s ? (s.Nik, s.Server) : store.LastAccount() is { } l ? (l.Nik, l.Server) : default;
+        var switching = last.Nik is not null && (!string.Equals(last.Nik, dto.Nik, StringComparison.Ordinal) || last.Server != baseUri.ToString());
         if (dto.MustChangePassword || (switching && (ConfirmAccountSwitch is null || !await ConfirmAccountSwitch(dto.Nik, dto.Name))))
         {
             await RevokeAsync(new SessionStore.Session(baseUri.ToString(), dto.RefreshToken, store.DeviceKey(), dto.Nik, dto.Name));
-            return new(false, dto.MustChangePassword ? "Set a new password in iPop first, then try again." : "Account switch cancelled.", null, false);
+            return new(false, dto.MustChangePassword ? "Set a new password in iPop first, then try again." : "Account switch cancelled. Nothing changed.", null, false,
+                dto.MustChangePassword ? "must_change" : "switch_cancelled");
         }
         await ReplaceSessionAsync(new SessionStore.Session(baseUri.ToString(), dto.RefreshToken, store.DeviceKey(), dto.Nik, dto.Name), dto.AccessToken, dto.AccessTokenExpiresAt, ct);
         return new(true, null, dto.Name, switching);
@@ -235,7 +183,6 @@ public sealed class IPopClient
         finally
         {
             Session = null; access = null; WebBaseOverride = null; transitioning = false;
-            lock (pendingLinks) pendingLinks.Clear();
             store.Clear();
             if (s is not null) await RevokeAsync(s);
             SignedOut?.Invoke();

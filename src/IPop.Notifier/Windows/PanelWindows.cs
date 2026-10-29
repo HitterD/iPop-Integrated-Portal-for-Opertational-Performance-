@@ -112,9 +112,11 @@ public sealed class SignInWindow : HtmlWindow
 {
     private readonly IPopClient api;
     public event Action? SignedIn;
-    /// "Sign in with browser": a connect card shows in iPop in the browser (an open tab, or one the app opens).
-    /// true = "Open browser again" (after 20 s of waiting): a fresh request, one tab now.
+    /// "Sign in with browser": the default browser opens iPop's "iPop Notifier wants to connect" page (one tab).
+    /// true = "Open browser again" (after 20 s of waiting): a fresh attempt, one new tab.
     public event Action<bool, string?>? WithBrowser;
+    /// "Paste code from browser": the short code that page shows when the browser couldn't reach the app.
+    public event Action<string?>? PastedCode;
 
     public SignInWindow(IPopClient api) : base("signin.html", new Size(480, 760))
     {
@@ -136,6 +138,7 @@ public sealed class SignInWindow : HtmlWindow
     protected override async void HandleMessage(string type, JsonNode? msg)
     {
         if (type == "withBrowser") { WithBrowser?.Invoke(msg?["again"]?.GetValue<bool>() == true, ServerOf(msg)); return; }
+        if (type == "pasteCode") { PastedCode?.Invoke(msg?["code"]?.GetValue<string>()); return; }
         if (type != "signIn") { base.HandleMessage(type, msg); return; }
         var nik = msg?["nik"]?.GetValue<string>()?.Trim() ?? "";
         var password = msg?["password"]?.GetValue<string>() ?? "";

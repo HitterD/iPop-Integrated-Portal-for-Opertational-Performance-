@@ -45,6 +45,16 @@ small{position:relative;margin-top:18px;opacity:.6;font-size:12px;text-align:cen
 .alt:active{transform:scale(.97)}
 #server{display:none}
 .showsrv #server{display:block}
+.paste{display:none;flex-direction:column;gap:8px}
+.pasting .paste{display:flex}
+.paste input{text-transform:uppercase;letter-spacing:.12em;text-align:center;font-weight:650}
+.paste .row{display:flex;gap:8px}
+.paste .row input{flex:1;min-width:0}
+.paste .row button{flex:none;width:96px;height:48px;border-radius:12px;background:#fff;color:#123528;font-weight:700;font-size:14.5px}
+.paste .row button:disabled{opacity:.6}
+.paste .perr{min-height:16px;font-size:12.5px;color:#ffb4ab;text-align:center}
+.link{align-self:center;font-size:12.5px;opacity:.75;text-decoration:underline;cursor:pointer;background:none;color:#fff}
+.link[hidden]{display:none}
 </style>
 </head>
 <body>
@@ -63,8 +73,13 @@ small{position:relative;margin-top:18px;opacity:.6;font-size:12px;text-align:cen
     <div class="or"><span>or</span></div>
     <button type="button" class="alt" id="browser">Sign in with browser</button>
     <button type="button" class="alt" id="again" hidden>Open browser again</button>
+    <button type="button" class="link" id="pasteLink" hidden>Paste code from browser</button>
+    <div class="paste" id="paste">
+      <div class="row"><input id="pcode" placeholder="ABCD-2345" maxlength="12" autocomplete="off" spellcheck="false" aria-label="Code from the browser"><button type="button" id="pgo">Connect</button></div>
+      <div class="perr" id="perr"></div>
+    </div>
   </form>
-  <small id="hint">Signed in to iPop in the browser on this PC? Choose Sign in with browser and click Connect there. You stay signed in.</small>
+  <small id="hint">Signed in to iPop in your browser? Choose Sign in with browser and click Authorize there.</small>
   <span class="adv" id="adv">Server…</span>
 </div>
 <script src="lucide.min.js"></script>

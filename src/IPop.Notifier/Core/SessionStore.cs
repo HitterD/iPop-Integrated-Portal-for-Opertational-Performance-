@@ -21,6 +21,21 @@ public sealed class SessionStore
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SantosJayaAbadi", "iPopNotifier" + AppInfo.Flavour);
     private static string FilePath => Path.Combine(Folder, "session.bin");
     private static string KeyPath => Path.Combine(Folder, "device.key");
+    private static string LastPath => Path.Combine(Folder, "last-account.bin");
+
+    /// Who this PC's Notifier was last signed in as (kept after sign-out, DPAPI like the session): a browser sign-in
+    /// as anyone else asks "Switch iPop Notifier to X?" first, even from the signed-out sign-in window.
+    public sealed record LastSignedIn(string Server, string Nik);
+
+    public LastSignedIn? LastAccount()
+    {
+        try
+        {
+            if (!File.Exists(LastPath)) return null;
+            return JsonSerializer.Deserialize<LastSignedIn>(ProtectedData.Unprotect(File.ReadAllBytes(LastPath), Entropy, DataProtectionScope.CurrentUser));
+        }
+        catch { return null; }
+    }
 
     public Session? Load()
     {
@@ -40,6 +55,8 @@ public sealed class SessionStore
         var tmp = FilePath + ".tmp";
         File.WriteAllBytes(tmp, cipher);
         File.Move(tmp, FilePath, overwrite: true);
+        if (s.Nik is { Length: > 0 } nik)
+            try { File.WriteAllBytes(LastPath, ProtectedData.Protect(JsonSerializer.SerializeToUtf8Bytes(new LastSignedIn(s.Server, nik)), Entropy, DataProtectionScope.CurrentUser)); } catch { }
     }
 
     public void Clear()

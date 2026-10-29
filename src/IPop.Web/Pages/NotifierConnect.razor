@@ -1,70 +1,64 @@
 @page "/notifier/connect"
 @implements IDisposable
+@using IPop.Application.Notifier
 @inject AuthState Auth
 @inject NavigationManager Nav
 @inject IJSRuntime JS
-@inject ToastService Toasts
-@inject IPop.Web.Services.NotifierLink Link
 
-@* iPop Notifier "Sign in with browser" (1.4.2): the app on this PC asked to connect. The person confirms with a real
-   click on Connect; the app collects the one-time code by polling and redeems it with the verifier only it holds.
-   Reached in-app from an open tab (NotifierLink claims the request) or as the one tab the app opens (&opened=1). *@
+@* iPop Notifier "Sign in with browser" (1.4.3, OAuth loopback; flow in NotifierLoopback). Only ever reached as the
+   one tab the app itself opened (?state&challenge&redirect&pc); nothing pushes this card to other tabs. Authorize mints
+   a code bound to the app's PKCE challenge and this account, then the tab goes back to the app on 127.0.0.1. When the
+   browser can't reach the app, "Not connected?" shows a short code to paste into the app (useless without the app's
+   verifier). *@
 <PageTitle>Connect iPop Notifier — iPop</PageTitle>
 
 <div class="nc-wrap">
     <div class="nc-card" role="dialog" aria-labelledby="nc-title" aria-live="polite">
-        @switch (state)
+        @switch (view)
         {
             case View.Loading:
                 <div class="nc-spinner" aria-hidden="true"></div>
                 <p class="nc-sub">Loading…</p>
                 break;
-            case View.Connected:
-                <div class="nc-badge ok"><i data-lucide="check"></i></div>
-                <h2 id="nc-title">Connected</h2>
-                <p class="nc-sub">Signed in as <b>@Display(connectedName ?? Auth.Me?.Name)</b>. Notifications will appear on @(info?.PcName ?? "this PC").</p>
-                @if (closing)
+            case View.Invalid:
+                <div class="nc-badge warn"><i data-lucide="link-2-off"></i></div>
+                <h2 id="nc-title">This link can't be used</h2>
+                <p class="nc-sub">It didn't come from iPop Notifier on this PC. To connect, choose <b>Sign in with browser</b> in iPop Notifier.</p>
+                <div class="nc-actions"><button type="button" class="nc-btn secondary" @onclick="ToIPop">Back to iPop</button></div>
+                break;
+            case View.Sent:
+                <div class="nc-spinner" aria-hidden="true"></div>
+                <h2 id="nc-title">Connecting iPop Notifier…</h2>
+                <p class="nc-sub">Handing over to iPop Notifier on @Pc. This only takes a moment.</p>
+                @if (showCode && shortCode is not null)
                 {
-                    <span class="nc-pill">Closing this tab in 2 s…</span>
+                    <details class="nc-more" open="@codeOpen">
+                        <summary>Not connected?</summary>
+                        <p class="nc-hint">In iPop Notifier, click <b>Paste code from browser</b> and enter this code. It works once, for 2 minutes, and only in the iPop Notifier that opened this page. Never give it to anyone.</p>
+                        <div class="nc-code" aria-label="Code for iPop Notifier">@shortCode</div>
+                        <button type="button" class="nc-btn secondary nc-copy" @onclick="CopyAsync"><i data-lucide="@(copied ? "check" : "copy")"></i>@(copied ? "Copied" : "Copy code")</button>
+                    </details>
                 }
                 break;
-            case View.Waiting:
-                <div class="nc-spinner" aria-hidden="true"></div>
-                <h2 id="nc-title">Connecting…</h2>
-                <p class="nc-sub">iPop Notifier on @(info?.PcName ?? "this PC") is signing in. This only takes a moment.</p>
-                break;
-            case View.Message:
-                <div class="nc-badge @(messageWarn ? "warn" : "")"><i data-lucide="@messageIcon"></i></div>
-                <h2 id="nc-title">@messageTitle</h2>
-                <p class="nc-sub">@messageText</p>
-                <div class="nc-actions">
-                    <button type="button" class="nc-btn secondary" @onclick="Leave">@(opened ? "Close this tab" : "Back to iPop")</button>
-                </div>
+            case View.Declined:
+                <div class="nc-badge"><i data-lucide="x"></i></div>
+                <h2 id="nc-title">Not connected</h2>
+                <p class="nc-sub">iPop Notifier was not connected. You can close this tab.</p>
                 break;
             default:
                 <div class="nc-badge"><i data-lucide="bell-ring"></i></div>
-                <h2 id="nc-title">@(info?.Switching == true ? $"Connect as {Display(Auth.Me?.Name)}?" : "Connect iPop Notifier on this PC?")</h2>
-                <p class="nc-sub">iPop Notifier asked to sign in with your iPop account. Only continue if you just chose <b>Sign in with browser</b> in the app.</p>
+                <h2 id="nc-title">iPop Notifier wants to connect</h2>
+                <p class="nc-sub">iPop Notifier asks to sign in with your iPop account.</p>
                 <dl class="nc-rows">
-                    <div class="nc-row"><dt><i data-lucide="monitor"></i>PC</dt><dd>@info?.PcName</dd></div>
+                    <div class="nc-row"><dt><i data-lucide="monitor"></i>PC</dt><dd>@Pc</dd></div>
                     <div class="nc-row"><dt><i data-lucide="user-round"></i>Account</dt><dd>as @Display(Auth.Me?.Name)</dd></div>
-                    <div class="nc-row"><dt><i data-lucide="clock"></i>Requested</dt><dd>@Ago()</dd></div>
                 </dl>
-                @if (info?.SameAddress == false)
-                {
-                    <p class="nc-note warn"><i data-lucide="triangle-alert"></i>Open this page on the PC where iPop Notifier is waiting.</p>
-                    <div class="nc-actions">
-                        <button type="button" class="nc-btn secondary" @onclick="Leave">@(opened ? "Close this tab" : "Back to iPop")</button>
-                    </div>
-                }
-                else
-                {
-                    @if (error is not null) { <p class="nc-note warn"><i data-lucide="triangle-alert"></i>@error</p> }
-                    <div class="nc-actions">
-                        <button type="button" class="nc-btn primary" @onclick="Connect" disabled="@busy">@(busy ? "Connecting…" : "Connect")</button>
-                        <button type="button" class="nc-btn secondary" @onclick="Cancel" disabled="@busy">Cancel</button>
-                    </div>
-                }
+                <p class="nc-note"><i data-lucide="shield-check"></i><span>Only continue if you just chose <b>Sign in with browser</b> in iPop Notifier on this PC.</span></p>
+                @if (error is not null) { <p class="nc-note warn"><i data-lucide="triangle-alert"></i><span>@error</span></p> }
+                <div class="nc-actions">
+                    <button type="button" class="nc-btn primary" @onclick="AuthorizeAsync" disabled="@busy">@(busy ? "Authorizing…" : "Authorize")</button>
+                    <button type="button" class="nc-btn secondary" @onclick="Decline" disabled="@busy">Decline</button>
+                </div>
                 break;
         }
     </div>
@@ -78,18 +72,17 @@
                animation: nc-in .32s var(--ease-spring, cubic-bezier(.2,.9,.3,1.2)); }
     .nc-card h2 { font-size: 21px; font-weight: 680; letter-spacing: -.01em; margin: 14px 0 6px; line-height: 1.25; }
     .nc-sub { font-size: 14.5px; color: var(--ink-3, #78716c); line-height: 1.5; margin: 0 auto 18px; max-width: 36ch; }
-    .nc-sub b { color: var(--ink, #1c1917); font-weight: 650; }
+    .nc-sub b, .nc-note b, .nc-hint b { color: var(--ink, #1c1917); font-weight: 650; }
     .nc-badge { width: 60px; height: 60px; margin: 0 auto; border-radius: 18px; display: grid; place-items: center;
                 background: var(--accent-soft, #e4f4ea); color: var(--accent-ink, #1c7a44); }
     .nc-badge svg { width: 28px; height: 28px; }
-    .nc-badge.ok { border-radius: 50%; background: var(--success-soft, #f0f9f4); color: var(--success, #2e9d6b); animation: nc-pop .45s var(--ease-spring, ease-out); }
     .nc-badge.warn { background: var(--danger-soft, #fdecea); color: var(--danger, #c0392b); }
-    .nc-rows { margin: 0 0 18px; border-radius: 14px; background: var(--surface-sunken, #f5f5f4); text-align: left; overflow: hidden; }
+    .nc-rows { margin: 0 0 14px; border-radius: 14px; background: var(--surface-sunken, #f5f5f4); text-align: left; overflow: hidden; }
     .nc-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; font-size: 14px; }
     .nc-row + .nc-row { border-top: 1px solid var(--line, #e7e5e4); }
-    .nc-row dt { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-3, #78716c); }
+    .nc-row dt { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-3, #78716c); flex: none; }
     .nc-row dt svg { width: 16px; height: 16px; }
-    .nc-row dd { margin: 0; font-weight: 620; color: var(--ink, #1c1917); text-align: right; overflow-wrap: anywhere; }
+    .nc-row dd { margin: 0; font-weight: 620; color: var(--ink, #1c1917); text-align: right; overflow-wrap: anywhere; min-width: 0; }
     .nc-note { display: flex; align-items: flex-start; gap: 8px; text-align: left; font-size: 13.5px; line-height: 1.45; padding: 10px 12px;
                border-radius: 12px; margin: 0 0 16px; background: var(--surface-sunken, #f5f5f4); color: var(--ink-2, #44403c); }
     .nc-note.warn { background: var(--danger-soft, #fdecea); color: var(--danger, #c0392b); }
@@ -103,66 +96,58 @@
     .nc-btn.secondary { background: var(--surface-sunken, #f5f5f4); color: var(--ink, #1c1917); border: 1px solid var(--line, #e7e5e4); }
     .nc-btn.secondary:hover:not(:disabled) { background: var(--surface-3, #f4f2ef); }
     .nc-btn:focus-visible { outline: 2px solid var(--accent, #2e9e5b); outline-offset: 2px; }
-    .nc-pill { display: inline-block; font-size: 13px; color: var(--ink-3, #78716c); padding: 6px 12px; border-radius: 999px; background: var(--surface-sunken, #f5f5f4); }
+    .nc-more { margin-top: 6px; text-align: left; border-top: 1px solid var(--line, #e7e5e4); padding-top: 14px; }
+    .nc-more summary { cursor: pointer; font-size: 14px; font-weight: 650; color: var(--ink-2, #44403c); text-align: center; list-style: none; }
+    .nc-more summary::-webkit-details-marker { display: none; }
+    .nc-hint { font-size: 13px; line-height: 1.45; color: var(--ink-3, #78716c); margin: 10px 0 12px; }
+    .nc-code { font: 700 28px/1.2 ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing: .14em; text-align: center; padding: 14px 10px;
+               border-radius: 14px; background: var(--surface-sunken, #f5f5f4); color: var(--ink, #1c1917); user-select: all; margin-bottom: 10px; }
+    .nc-copy { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+    .nc-copy svg { width: 16px; height: 16px; }
     .nc-spinner { width: 34px; height: 34px; margin: 6px auto 4px; border-radius: 50%; border: 3px solid var(--line, #e7e5e4); border-top-color: var(--accent, #2e9e5b); animation: nc-spin .8s linear infinite; }
     @@keyframes nc-spin { to { transform: rotate(360deg); } }
     @@keyframes nc-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
-    @@keyframes nc-pop { from { transform: scale(.6); opacity: 0; } }
-    @@media (prefers-reduced-motion: reduce) { .nc-card, .nc-badge.ok { animation: none; } .nc-spinner { animation-duration: 2.4s; } }
+    @@media (prefers-reduced-motion: reduce) { .nc-card { animation: none; } .nc-spinner { animation-duration: 2.4s; } }
 </style>
 
 @code {
     [CascadingParameter] public MainLayout? Layout { get; set; }
-    [SupplyParameterFromQuery(Name = "request")] public string? Request { get; set; }
+    [SupplyParameterFromQuery(Name = "state")] public string? State { get; set; }
+    [SupplyParameterFromQuery(Name = "challenge")] public string? Challenge { get; set; }
+    [SupplyParameterFromQuery(Name = "redirect")] public string? Redirect { get; set; }
+    [SupplyParameterFromQuery(Name = "pc")] public string? PcParam { get; set; }
 
-    public sealed record RequestInfo(string PcName, DateTime CreatedAt, int AgeSeconds, bool SameAddress, bool Expired, string State, bool Switching);
-    private sealed record LinkStatus(bool Connected, string? Name, bool Known);
-    private enum View { Loading, Card, Waiting, Connected, Message }
+    private enum View { Loading, Card, Invalid, Sent, Declined }
+    private sealed record Authorized(string Code, string ShortCode, int ExpiresIn);
+    private sealed record Saved(string ShortCode, DateTime ExpiresAt);
 
-    /// The tab waits this long for the app to confirm after Connect.
-    private static readonly TimeSpan AppAnswer = TimeSpan.FromSeconds(60);
-    private View state = View.Loading;
-    private RequestInfo? info;
-    private DateTime loadedAt;
-    private bool busy, opened, closing, messageWarn;
-    private string? error, connectedName, messageTitle, messageText;
-    private string messageIcon = "info";
+    /// "Not connected?" appears this long after the tab was sent back to the app.
+    public static readonly TimeSpan CodeDelay = TimeSpan.FromSeconds(4);
+    private View view = View.Loading;
+    private bool busy, showCode, codeOpen, copied;
+    private string? error, shortCode;
     private readonly CancellationTokenSource gone = new();
-    private Timer? tick;
+
+    private string Pc => NotifierLoopback.CleanPc(PcParam);
+    private string StoreKey => "ipop.notifierConnect." + State;
+
+    /// The link must be exactly what the app builds: a 43-character state and challenge and a 127.0.0.1 callback.
+    public static bool ValidRequest(string? state, string? challenge, string? redirect) =>
+        NotifierLoopback.IsSecret(state) && NotifierLoopback.IsSecret(challenge) && NotifierLoopback.IsValidRedirect(redirect);
 
     protected override async Task OnInitializedAsync()
     {
         Layout?.SetHeader("iPop Notifier");
-        try { opened = await JS.InvokeAsync<bool>("ipop.notifierLink.openedTab"); } catch { opened = false; }
-        if (Request is not { Length: 43 })
+        if (!ValidRequest(State, Challenge, Redirect)) { view = View.Invalid; return; }
+        // Back from a browser error page (the app wasn't reachable): show the code again instead of a second Authorize.
+        var saved = await ReadSavedAsync();
+        if (saved is not null && saved.ExpiresAt > DateTime.UtcNow)
         {
-            Show("Link incomplete", "This link is incomplete. Click Sign in with browser in iPop Notifier again.", "link-2-off", warn: true);
+            shortCode = saved.ShortCode; view = View.Sent; showCode = codeOpen = true;
             return;
         }
         await Auth.LoadMeAsync();
-        var r = await Auth.GetResultAsync<RequestInfo>("/api/notifier/link/request/" + Uri.EscapeDataString(Request));
-        if (r.IsGone) { ShowExpired(); return; }
-        if (!r.IsOk || r.Value is null)
-        {
-            Show("Couldn't load", "iPop couldn't load this request. Check your connection, then click Sign in with browser in iPop Notifier again.", "wifi-off", warn: true);
-            return;
-        }
-        info = r.Value;
-        loadedAt = DateTime.UtcNow;
-        switch (info.State)
-        {
-            case "expired": ShowExpired(); return;
-            case "denied": Show("Cancelled", "This request was cancelled. Click Sign in with browser in iPop Notifier to try again.", "x"); return;
-            case "used": Show("Already answered", "This request was already answered. Click Sign in with browser in iPop Notifier again.", "info"); return;
-            case "approved": state = View.Waiting; _ = WaitConnectedAsync(); return;
-        }
-        state = View.Card;
-        // "Requested 1 min ago" moves on, and the card turns into "expired" at 2 minutes.
-        tick = new Timer(_ => InvokeAsync(() =>
-        {
-            if (state == View.Card && info is not null && info.AgeSeconds + (DateTime.UtcNow - loadedAt).TotalSeconds > 120 && !busy) ShowExpired();
-            StateHasChanged();
-        }), null, 10_000, 10_000);
+        view = View.Card;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -170,113 +155,69 @@
         try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
     }
 
-    private string Ago()
-    {
-        if (info is null) return "";
-        var s = info.AgeSeconds + (int)(DateTime.UtcNow - loadedAt).TotalSeconds;
-        return s < 45 ? "just now" : s < 90 ? "1 min ago" : $"{Math.Max(2, s / 60)} min ago";
-    }
-
     private static string Display(string? name) => IPop.Application.PersonName.Display(name ?? "");
 
-    private void ShowExpired() =>
-        Show("Request expired", "This request expired. Click Sign in with browser in iPop Notifier again.", "clock", warn: true);
-
-    private void Show(string title, string text, string icon, bool warn = false)
+    private async Task AuthorizeAsync()
     {
-        tick?.Dispose(); tick = null;
-        state = View.Message; messageTitle = title; messageText = text; messageIcon = icon; messageWarn = warn;
-    }
-
-    private async Task Connect()
-    {
-        if (busy || Request is null) return;
+        if (busy) return;
         busy = true; error = null;
         try
         {
-            using var res = await Auth.SendAsync(HttpMethod.Post, "/api/notifier/link/approve", new { request = Request });
-            if (res.IsSuccessStatusCode) { tick?.Dispose(); tick = null; state = View.Waiting; StateHasChanged(); await WaitConnectedAsync(); return; }
-            switch ((int)res.StatusCode)
-            {
-                case 410: case 404: ShowExpired(); break;
-                case 403: error = "Open this page on the PC where iPop Notifier is waiting."; break;
-                case 409: Show("Already answered", "This request was already answered. Click Sign in with browser in iPop Notifier again.", "info"); break;
-                default: error = "Couldn't connect right now. Try again."; break;
-            }
+            using var res = await Auth.SendAsync(HttpMethod.Post, "/api/notifier/link/authorize", new { challenge = Challenge, state = State, redirect = Redirect, pc = Pc });
+            if (res.StatusCode == System.Net.HttpStatusCode.BadRequest) { view = View.Invalid; return; }
+            if (!res.IsSuccessStatusCode) { error = "Couldn't authorize right now. Try again."; return; }
+            var a = await res.Content.ReadFromJsonAsync<Authorized>();
+            if (a is null || a.Code.Length == 0) { error = "Couldn't authorize right now. Try again."; return; }
+            shortCode = a.ShortCode;
+            await SaveAsync(new Saved(a.ShortCode, DateTime.UtcNow.AddSeconds(a.ExpiresIn)));
+            view = View.Sent;
+            StateHasChanged();
+            _ = RevealCodeLaterAsync();
+            Nav.NavigateTo(NotifierLoopback.CallbackUrl(Redirect!, State!, code: a.Code), forceLoad: true);
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { error = "Couldn't reach iPop. Check your connection and try again."; }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            error = "Couldn't reach iPop. Check your connection and try again.";
+        }
         finally { busy = false; }
     }
 
-    private async Task Cancel()
+    private void Decline()
     {
-        if (busy || Request is null) return;
-        busy = true;
-        try { using var _ = await Auth.SendAsync(HttpMethod.Post, "/api/notifier/link/deny", new { request = Request }); }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { }
-        finally { busy = false; }
-        if (opened) { Show("Cancelled", "iPop Notifier was not connected. You can close this tab.", "x"); return; }
-        Toasts.Show("iPop Notifier was not connected", ToastKind.Info);
-        GoBack();
+        if (busy) return;
+        view = View.Declined;
+        Nav.NavigateTo(NotifierLoopback.CallbackUrl(Redirect!, State!, error: "access_denied"), forceLoad: true, replace: true);
     }
 
-    /// The app redeems the code and confirms with its new session (after its own "Switch account?" prompt, if any).
-    private async Task WaitConnectedAsync()
+    private async Task RevealCodeLaterAsync()
     {
-        var until = DateTime.UtcNow + AppAnswer;
+        try { await Task.Delay(CodeDelay, gone.Token); } catch (OperationCanceledException) { return; }
+        await InvokeAsync(() => { showCode = true; StateHasChanged(); });
+    }
+
+    private async Task CopyAsync()
+    {
+        if (shortCode is null) return;
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", shortCode); copied = true; }
+        catch { copied = false; }
+    }
+
+    private async Task SaveAsync(Saved s)
+    {
+        try { await JS.InvokeVoidAsync("sessionStorage.setItem", StoreKey, System.Text.Json.JsonSerializer.Serialize(s)); } catch { }
+    }
+
+    private async Task<Saved?> ReadSavedAsync()
+    {
         try
         {
-            while (DateTime.UtcNow < until && !gone.IsCancellationRequested)
-            {
-                await Task.Delay(1000, gone.Token);
-                var st = await Auth.GetAsync<LinkStatus>("/api/notifier/link/status?request=" + Uri.EscapeDataString(Request!), gone.Token);
-                if (st is not { Connected: true }) continue;
-                connectedName = st.Name;
-                await DoneAsync();
-                return;
-            }
+            var json = await JS.InvokeAsync<string?>("sessionStorage.getItem", StoreKey);
+            return json is { Length: > 0 } ? System.Text.Json.JsonSerializer.Deserialize<Saved>(json) : null;
         }
-        catch (OperationCanceledException) { return; }
-        await InvokeAsync(() =>
-        {
-            Show("Not confirmed", "iPop Notifier didn't confirm the sign-in. Check the app on this PC; if it asked to switch accounts and you chose No, nothing changed.", "circle-help", warn: true);
-            StateHasChanged();
-        });
+        catch { return null; }
     }
 
-    private async Task DoneAsync()
-    {
-        if (!opened)
-        {
-            // A tab the person was already using: back to where they were, with a small toast.
-            Toasts.Show("iPop Notifier connected", ToastKind.Success);
-            GoBack();
-            return;
-        }
-        state = View.Connected; closing = true;
-        await InvokeAsync(StateHasChanged);
-        try { await Task.Delay(2000, gone.Token); } catch (OperationCanceledException) { return; }
-        var closed = false;
-        try { closed = await JS.InvokeAsync<bool>("ipop.notifierLink.close"); } catch { }
-        if (closed) return;
-        // The browser keeps tabs a script didn't open (e.g. after the login redirect): back to iPop instead.
-        await Task.Delay(400);
-        Nav.NavigateTo("/dashboard", replace: true);
-    }
+    private void ToIPop() => Nav.NavigateTo("/dashboard", replace: true);
 
-    private async Task Leave()
-    {
-        if (!opened) { GoBack(); return; }
-        var closed = false;
-        try { closed = await JS.InvokeAsync<bool>("ipop.notifierLink.close"); } catch { }
-        if (!closed) Nav.NavigateTo("/dashboard", replace: true);
-    }
-
-    private void GoBack() => Nav.NavigateTo(Link.TakeBackUrl() ?? "/dashboard", replace: true);
-
-    public void Dispose()
-    {
-        gone.Cancel();
-        tick?.Dispose();
-    }
+    public void Dispose() => gone.Cancel();
 }

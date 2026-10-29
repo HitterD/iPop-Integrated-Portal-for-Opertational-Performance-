@@ -44,7 +44,12 @@ public sealed class NotifierApp : ApplicationContext
         api.ConfirmAccountSwitch = (nik, name) =>
         {
             var result = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            Post(() => result.TrySetResult(MessageBox.Show($"Switch iPop Notifier to {name ?? nik}?\nNotifications and remote sessions for the current account will close.", "Switch account", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes));
+            // Signed in: the current account's notifications and remote sessions end. Signed out: this PC's Notifier was
+            // last signed in as someone else (a browser sign-in must never silently become another person).
+            var text = api.IsSignedIn
+                ? $"Switch iPop Notifier to {name ?? nik}?\nNotifications and remote sessions for the current account will close."
+                : $"Switch iPop Notifier to {name ?? nik}?\nThis PC's iPop Notifier was last signed in with another account.";
+            Post(() => result.TrySetResult(MessageBox.Show(text, "Switch account", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes));
             return result.Task;
         };
         popups.CountChanged += UpdateTray;
@@ -226,126 +231,148 @@ public sealed class NotifierApp : ApplicationContext
     {
         if (signIn is { IsDisposed: false }) { signIn.Activate(); return; }
         signIn = new SignInWindow(api);
-        signIn.SignedIn += () => Post(() => { _ = StartSessionAsync(); tray.ShowBalloonTip(3000, "iPop Notifier", "You're signed in. Notifications will appear here.", ToolTipIcon.Info); });
+        signIn.SignedIn += () => Post(() => { EndBrowserSignIn(); _ = StartSessionAsync(); tray.ShowBalloonTip(3000, "iPop Notifier", "You're signed in. Notifications will appear here.", ToolTipIcon.Info); });
         signIn.WithBrowser += (again, server) => Post(() => { if (!api.IsSignedIn) api.SignInServer = server; OpenBrowserSignIn(again); });
+        signIn.PastedCode += code => Post(() => OnPastedCode(code));
         signIn.Show();
         signIn.Activate();
     }
 
-    // ── "Sign in with browser": a connect card in the browser (1.4.2) ───────────────────────────────────
-    //  click → new request id + PKCE verifier (kept here) → POST link/intent {deviceKey, challenge, requestId, pcName}
-    //  → an open iPop tab on this PC hears it (AppHub), takes it and shows the card itself; nobody within ~5 s: the
-    //  app reserves it and opens exactly ONE tab on /notifier/connect?request=…&opened=1
-    //  → the person clicks Connect → link/poll (every second) returns the code once → redeem with the verifier
-    //  → link/connected, so the card says "Connected". Cancel on the card → poll says "denied".
-    //  No ipop-notifier:// launch from the web at all: browsers silently block one a script starts in a background tab.
-    //  Clicks while an attempt runs do nothing; after 20 s "Open browser again" starts a fresh request + one tab.
+    // ── "Sign in with browser": OAuth loopback (1.4.3; flow in NotifierLoopback) ─────────────────────────
+    //  click → PKCE verifier + state (kept here) → listen on http://127.0.0.1:{random}/callback → open the default
+    //  browser ONCE at /notifier/connect?state&challenge&redirect&pc → the person clicks Authorize (or Decline)
+    //  → the tab comes back to the loopback with code + state → state checked, code redeemed with the verifier
+    //  → the tab gets "iPop Notifier is connected". Fallback: the short code from the page, pasted in this window.
+    //  Clicks while an attempt runs do nothing; after 20 s "Open browser again" starts a fresh attempt + one tab.
+    //  The listener stops after one handled callback or 5 minutes. Nothing is broadcast; no address is compared.
 
-    /// Tabs on this PC have this long to take the click before the app opens one itself.
-    private static readonly TimeSpan TabGrace = TimeSpan.FromSeconds(5);
-    private CancellationTokenSource? browserAttempt;
-    private DateTime browserAttemptAt;
+    private sealed class BrowserSignIn(IPopClient.BrowserAttempt attempt, string server)
+    {
+        public IPopClient.BrowserAttempt Attempt { get; } = attempt;
+        public string Server { get; } = server;
+        public LoopbackCallbackServer? Listener { get; set; }
+        private int finished;
+        /// One way out per attempt: the callback, a pasted code, a timeout, a new attempt or a password sign-in.
+        public bool TryFinish() => Interlocked.Exchange(ref finished, 1) == 0;
+        public bool IsFinished => Volatile.Read(ref finished) == 1;
+        public void Stop() => Listener?.Stop();
+    }
+
+    private BrowserSignIn? browser;
 
     private void OpenBrowserSignIn() => OpenBrowserSignIn(again: false);
 
     private void OpenBrowserSignIn(bool again)
     {
         if (api.IsSignedIn) return;
-        if (browserAttempt is { IsCancellationRequested: false } && (!again || DateTime.UtcNow - browserAttemptAt < TimeSpan.FromSeconds(20)))
+        if (browser is { IsFinished: false } live && (!again || DateTime.UtcNow - live.Attempt.StartedAt < TimeSpan.FromSeconds(20)))
         {
+            BrowserState("opened");
             signIn?.Activate();
             return;
         }
-        browserAttempt?.Cancel();
-        var cts = browserAttempt = new CancellationTokenSource(TimeSpan.FromMinutes(2) + TimeSpan.FromSeconds(10));
-        browserAttemptAt = DateTime.UtcNow;
-        _ = BrowserAttemptAsync(again, cts);
+        EndBrowserSignIn();
+        var b = new BrowserSignIn(IPopClient.NewBrowserAttempt(), api.Server.ToString());
+        try { b.Listener = LoopbackCallbackServer.Start(b.Attempt.State, cb => OnBrowserCallbackAsync(b, cb), IPopClient.AttemptLifetime); }
+        catch (Exception ex)
+        {
+            // No loopback port (security software): the short code from the page still works.
+            Log.Warn("signin", "browser: loopback listener failed: " + ex.Message);
+        }
+        browser = b;
+        // Without a listener the page still shows the short code; its redirect then reaches nothing.
+        var redirect = b.Listener?.RedirectUri ?? "http://127.0.0.1:1024/callback";
+        var url = NotifierLoopback.ConnectUrl(api.Web, b.Attempt.State, b.Attempt.Challenge, redirect, Environment.MachineName);
+        Log.Info("signin", "browser: opened the connect page" + (b.Listener is null ? " (no loopback)" : $" (port {b.Listener.Port})"));
+        Integration.OpenUrl(url);
+        BrowserState("opened");
+        var watch = b.Listener?.Finished ?? Task.Delay(IPopClient.AttemptLifetime);
+        watch.ContinueWith(_ => Post(() =>
+        {
+            if (browser != b || !b.TryFinish()) return;
+            browser = null;
+            Log.Info("signin", "browser: no answer within 5 minutes");
+            BrowserState("expired", "The sign-in timed out. Choose Sign in with browser to try again.");
+        }), TaskScheduler.Default);
+    }
+
+    private void EndBrowserSignIn()
+    {
+        var b = browser;
+        browser = null;
+        if (b is null) return;
+        b.TryFinish();
+        b.Stop();
     }
 
     private void BrowserState(string state, string? message = null) => Post(() => signIn?.Send(new { type = "browserState", state, message }));
 
-    private async Task BrowserAttemptAsync(bool again, CancellationTokenSource cts)
+    /// GET /callback on the loopback with the right state (the listener checks it before this runs).
+    private async Task<LoopbackAnswer> OnBrowserCallbackAsync(BrowserSignIn b, LoopbackCallback cb)
     {
-        var ct = cts.Token;
-        BrowserState("asking");
-        var link = api.BeginBrowserLink();
-        if (link is null || !await api.RegisterBrowserLinkAsync(link, ct))
+        if (cb.Error is not null)
         {
-            if (ct.IsCancellationRequested) return;
-            Log.Warn("signin", "browser: could not register the connect request");
-            BrowserState("failed", "Can't reach iPop. Check the network and try again.");
-            cts.Cancel();
-            return;
+            if (!b.TryFinish()) return new(LoopbackPages.Handled(), true);
+            Post(() => { if (browser == b) browser = null; });
+            Log.Info("signin", "browser: declined in the browser");
+            BrowserState("denied", "Sign-in cancelled in the browser. You can try again or sign in here.");
+            return new(LoopbackPages.Cancelled(), true);
         }
-        var opened = false;
-        var start = DateTime.UtcNow;
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                // "Open browser again" opens its tab at once; a first click gives open tabs ~5 s to take it.
-                var reserve = !opened && (again || DateTime.UtcNow - start >= TabGrace);
-                var poll = await api.PollBrowserLinkAsync(link.RequestId, reserve, ct);
-                if (ct.IsCancellationRequested) return;
-                switch (poll?.State)
-                {
-                    case "approved" when poll.Code is { Length: 43 } code:
-                        Log.Info("signin", "browser: Connect was clicked");
-                        BrowserState("approving");
-                        await SignInWithCodeAsync(code, link.RequestId);
-                        return;
-                    case "denied":
-                        Log.Info("signin", "browser: cancelled in the browser");
-                        api.ForgetBrowserLink(link.RequestId);
-                        BrowserState("denied", "Cancelled in the browser. You can try again or sign in here.");
-                        cts.Cancel();
-                        return;
-                    case "expired" or "collected":
-                        api.ForgetBrowserLink(link.RequestId);
-                        BrowserState("expired", "The request expired. Choose Sign in with browser to try again.");
-                        cts.Cancel();
-                        return;
-                    case "claimed" when !opened:
-                        if (!tabShown) { tabShown = true; Log.Info("signin", "browser: an open iPop tab shows the card"); BrowserState("tab"); }
-                        break;
-                    case "pending" when reserve:
-                        opened = true;
-                        Log.Info("signin", "browser: no iPop tab answered, opening one");
-                        Post(() => OpenIPop("/notifier/connect?request=" + link.RequestId + "&opened=1"));
-                        BrowserState("opened");
-                        break;
-                }
-                try { await Task.Delay(1000, ct); } catch (OperationCanceledException) { return; }
-            }
-        }
-        finally { tabShown = false; }
+        if (cb.Code is not { Length: > 0 } code)
+            return new(LoopbackPages.Error("This sign-in link is incomplete. Choose Sign in with browser in iPop Notifier again."), false);
+        if (!b.TryFinish()) return new(LoopbackPages.Handled(), true);
+        Log.Info("signin", "browser: Authorize was clicked");
+        BrowserState("approving");
+        var r = await RedeemAsync(b, code, null, pasted: false);
+        return new(r.Ok ? LoopbackPages.Success(r.Name ?? api.Session?.Name) : LoopbackPages.Error(r.Error ?? "Couldn't sign in from the browser."), true);
     }
 
-    private bool tabShown;
+    /// "Paste code from browser": the short code shown under "Not connected?" on the page.
+    private async void OnPastedCode(string? typed)
+    {
+        var b = browser;
+        if (b is null || b.IsFinished)
+        {
+            signIn?.Send(new { type = "pasteResult", ok = false, message = "Choose Sign in with browser first, then paste the code from that page." });
+            return;
+        }
+        if (NotifierLoopback.NormalizeShortCode(typed) is null)
+        {
+            signIn?.Send(new { type = "pasteResult", ok = false, message = "The code has 8 letters and digits, like ABCD-2345." });
+            return;
+        }
+        Log.Info("signin", "browser: pasted code");
+        var r = await RedeemAsync(b, null, typed, pasted: true);
+        if (!r.Ok) signIn?.Send(new { type = "pasteResult", ok = false, message = r.Error ?? "That code didn't work." });
+    }
 
-    private async Task SignInWithCodeAsync(string code, string requestId)
+    private async Task<IPopClient.LinkResult> RedeemAsync(BrowserSignIn b, string? code, string? shortCode, bool pasted)
     {
         var previous = api.Session?.Nik;
         IPopClient.LinkResult r;
-        try { r = await api.SignInWithCodeAsync(api.Server.ToString(), code, requestId, CancellationToken.None); }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException) { r = new(false, "Can't reach iPop. Check the network and try again.", null, false); }
+        try { r = await api.RedeemBrowserCodeAsync(b.Server, b.Attempt, code, shortCode, CancellationToken.None); }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException) { r = new(false, "Can't reach iPop. Check the network and try again.", null, false, "network"); }
+        // A mistyped short code can be fixed and pasted again (the server burns it after 5 wrong tries).
+        var retry = pasted && !r.Ok && r.Code is "invalid" or "busy" or "network";
+        if (!retry) b.TryFinish();
         Post(() =>
         {
-            browserAttempt?.Cancel();
+            if (retry) return;
+            if (browser == b) { browser = null; b.Stop(); }
             if (!r.Ok)
             {
-                Log.Warn("signin", "browser link refused: " + r.Error);
+                Log.Warn("signin", "browser sign-in refused: " + (r.Code ?? r.Error));
+                if (api.IsSignedIn) return; // a late answer after this PC already signed in another way
                 if (signIn is { IsDisposed: false }) BrowserState("failed", r.Error ?? "Couldn't sign in from the browser.");
                 else tray.ShowBalloonTip(5000, "iPop Notifier", r.Error ?? "Couldn't sign in from the browser.", ToolTipIcon.Warning);
                 return;
             }
-            // The card that approved it learns the app is connected (only that account can read it).
-            _ = api.ConfirmBrowserLinkAsync(requestId);
             if (signIn is { IsDisposed: false }) signIn.Close();
             _ = StartSessionAsync();
             Integration.SetStartWithWindows(true);
             Toasts.ShowSignedIn(r.Name ?? api.Session?.Name ?? "", switched: previous is not null && r.Switched);
         });
+        return r;
     }
 
     /// Complete teardown before credentials change, even on same-account relinking.
@@ -530,7 +557,7 @@ public sealed class NotifierApp : ApplicationContext
                 if (unc is null || !Integration.OpenInExplorer(unc))
                     tray.ShowBalloonTip(4000, "iPop Notifier", "This link isn't on a company NAS, so it can't open in File Explorer.", ToolTipIcon.Warning);
                 break;
-            // 1.4.2: sign-in no longer comes in through a link (no prepare/signin cases); see BrowserAttemptAsync.
+            // Since 1.4.2 sign-in never comes in through an ipop-notifier:// link; see OpenBrowserSignIn (loopback).
             case "inbox": ShowInbox(); break;
             case "settings": ShowSettings(); break;
             case "devices": ShowDevices(); break;

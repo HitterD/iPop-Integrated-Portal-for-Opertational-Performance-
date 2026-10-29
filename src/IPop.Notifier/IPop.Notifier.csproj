@@ -48,6 +48,8 @@
     <Compile Include="..\IPop.Application\Notifier\NotifierUpdateState.cs" Link="Core\NotifierUpdateState.cs" />
     <!-- Where popups go on screen (no limit since 1.4.2; tested in IPop.Tests). -->
     <Compile Include="..\IPop.Application\Notifier\PopupLayout.cs" Link="Core\PopupLayout.cs" />
+    <!-- Browser sign-in (1.4.3): loopback listener, redirect rules, short codes (tested in IPop.Tests). -->
+    <Compile Include="..\IPop.Application\Notifier\NotifierLoopback.cs" Link="Core\NotifierLoopback.cs" />
   </ItemGroup>
 
 </Project>

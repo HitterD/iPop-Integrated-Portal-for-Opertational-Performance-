@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Bunit;
+using IPop.Application.Notifier;
 using IPop.Web.Pages;
 using IPop.Web.Services;
 using Microsoft.AspNetCore.Components;
@@ -9,130 +10,140 @@ using Xunit;
 
 namespace IPop.Tests;
 
-/// /notifier/connect (1.4.2): the card a person clicks to sign the iPop Notifier on this PC in.
+/// /notifier/connect (1.4.3): "iPop Notifier wants to connect" — Authorize sends the tab back to the app's loopback.
 public class NotifierConnectPageTests
 {
-    private static readonly string Request = new('r', 43);
+    private static readonly string State = NotifierLoopback.NewSecret();
+    private static readonly string Challenge = NotifierLoopback.NewSecret();
+    private const string Redirect = "http://127.0.0.1:53682/callback";
 
-    private sealed class Api(object card, HttpStatusCode approve = HttpStatusCode.NoContent) : HttpMessageHandler
+    private sealed class Api(HttpStatusCode authorize = HttpStatusCode.OK) : HttpMessageHandler
     {
         public List<string> Calls { get; } = [];
-        public bool Connected { get; set; }
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        public string? AuthorizeBody { get; private set; }
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             var path = request.RequestUri!.AbsolutePath;
             Calls.Add(request.Method.Method + " " + path);
             HttpResponseMessage Json(object o) => new(HttpStatusCode.OK) { Content = JsonContent.Create(o) };
-            return Task.FromResult(path switch
+            if (path == "/api/notifier/link/authorize")
+            {
+                AuthorizeBody = await request.Content!.ReadAsStringAsync(ct);
+                return authorize == HttpStatusCode.OK ? Json(new { code = "CODE-" + new string('x', 38), shortCode = "ABCD-2345", expiresIn = 120 }) : new(authorize);
+            }
+            return path switch
             {
                 "/api/directory/me" => Json(new { nik = "0001", name = "BAGASTYO PUTRA", roles = Array.Empty<string>() }),
-                var p when p.StartsWith("/api/notifier/link/request/") => Json(card),
-                "/api/notifier/link/approve" => new HttpResponseMessage(approve),
-                "/api/notifier/link/deny" => new HttpResponseMessage(HttpStatusCode.NoContent),
-                "/api/notifier/link/status" => Json(new { connected = Connected, name = "Bagastyo Putra", known = true }),
                 _ => new HttpResponseMessage(HttpStatusCode.NotFound),
-            });
+            };
         }
     }
 
-    private static object Card(bool same = true, string state = "pending", bool switching = false, int age = 5) =>
-        new { pcName = "SJA-PC", createdAt = DateTime.UtcNow, ageSeconds = age, sameAddress = same, expired = state == "expired", state, switching };
+    private static string Url(string? state = null, string? challenge = null, string? redirect = null, string pc = "SJA-PC") =>
+        "/notifier/connect?state=" + Uri.EscapeDataString(state ?? State) + "&challenge=" + Uri.EscapeDataString(challenge ?? Challenge)
+        + "&redirect=" + Uri.EscapeDataString(redirect ?? Redirect) + "&pc=" + Uri.EscapeDataString(pc);
 
-    private static (BunitContext Ctx, Api Api) Ctx(object card, bool opened = false, HttpStatusCode approve = HttpStatusCode.NoContent)
+    private static (BunitContext Ctx, Api Api, NavigationManager Nav) Ctx(string url, HttpStatusCode authorize = HttpStatusCode.OK)
     {
-        var api = new Api(card, approve);
+        var api = new Api(authorize);
         var ctx = new BunitContext();
         ctx.JSInterop.Mode = JSRuntimeMode.Loose;
-        ctx.JSInterop.Setup<bool>("ipop.notifierLink.openedTab").SetResult(opened);
-        ctx.JSInterop.Setup<bool>("ipop.notifierLink.close").SetResult(false);
         var auth = new AuthState(new HttpClient(api) { BaseAddress = new("http://localhost/") }, ctx.JSInterop.JSRuntime);
         ctx.Services.AddSingleton(auth);
-        ctx.Services.AddSingleton(new ToastService());
-        ctx.Services.AddSingleton(sp => new NotifierLink(auth, sp.GetRequiredService<Microsoft.JSInterop.IJSRuntime>(), sp.GetRequiredService<NavigationManager>()));
-        ctx.Services.GetRequiredService<NavigationManager>().NavigateTo("/notifier/connect?request=" + Request);
-        return (ctx, api);
+        var nav = ctx.Services.GetRequiredService<NavigationManager>();
+        nav.NavigateTo(url);
+        return (ctx, api, nav);
     }
 
     [Fact]
-    public void Shows_the_pc_the_account_and_when_and_connects_only_on_a_click()
+    public void Shows_the_pc_and_the_account_and_does_nothing_until_authorize()
     {
-        var (ctx, api) = Ctx(Card());
+        var (ctx, api, _) = Ctx(Url());
         using var _ = ctx;
         var cut = ctx.Render<NotifierConnect>();
-        cut.WaitForAssertion(() => Assert.Contains("Connect iPop Notifier on this PC?", cut.Markup));
+        cut.WaitForAssertion(() => Assert.Contains("iPop Notifier wants to connect", cut.Markup));
         Assert.Contains("SJA-PC", cut.Markup);
         Assert.Contains("as Bagastyo Putra", cut.Markup);
-        Assert.Contains("just now", cut.Markup);
-        Assert.DoesNotContain(api.Calls, c => c.Contains("approve"));                      // nothing happens by itself
-        cut.Find("button.nc-btn.primary").Click();
-        cut.WaitForAssertion(() => Assert.Contains("POST /api/notifier/link/approve", api.Calls));
-        cut.WaitForAssertion(() => Assert.Contains("Connecting…", cut.Markup));
+        Assert.Contains("Only continue if you just chose", cut.Markup);
+        Assert.Equal("Authorize", cut.Find("button.nc-btn.primary").TextContent);
+        Assert.Equal("Decline", cut.Find("button.nc-btn.secondary").TextContent);
+        Assert.DoesNotContain(api.Calls, c => c.Contains("authorize"));
     }
 
     [Fact]
-    public void An_app_opened_tab_says_connected_and_closes()
+    public void Authorize_mints_the_code_and_sends_the_tab_to_the_loopback_with_code_and_state()
     {
-        var (ctx, api) = Ctx(Card(), opened: true);
-        using var _ = ctx;
-        api.Connected = true;
-        var cut = ctx.Render<NotifierConnect>();
-        cut.WaitForAssertion(() => Assert.Contains("Connect iPop Notifier on this PC?", cut.Markup));
-        cut.Find("button.nc-btn.primary").Click();
-        cut.WaitForAssertion(() => Assert.Contains("Closing this tab in 2 s", cut.Markup), TimeSpan.FromSeconds(5));
-        Assert.Contains("Signed in as", cut.Markup);
-        Assert.Contains("Bagastyo Putra", cut.Markup);
-    }
-
-    [Fact]
-    public void Another_account_on_the_app_asks_connect_as_me()
-    {
-        var (ctx, _) = Ctx(Card(switching: true));
-        using var __ = ctx;
-        var cut = ctx.Render<NotifierConnect>();
-        cut.WaitForAssertion(() => Assert.Contains("Connect as Bagastyo Putra?", cut.Markup));
-    }
-
-    [Fact]
-    public void Another_pc_gets_no_connect_button()
-    {
-        var (ctx, _) = Ctx(Card(same: false));
-        using var __ = ctx;
-        var cut = ctx.Render<NotifierConnect>();
-        cut.WaitForAssertion(() => Assert.Contains("Open this page on the PC where iPop Notifier is waiting", cut.Markup));
-        Assert.Empty(cut.FindAll("button.nc-btn.primary"));
-    }
-
-    [Fact]
-    public void An_expired_request_says_so()
-    {
-        var (ctx, _) = Ctx(Card(state: "expired", age: 150));
-        using var __ = ctx;
-        var cut = ctx.Render<NotifierConnect>();
-        cut.WaitForAssertion(() => Assert.Contains("This request expired. Click Sign in with browser in iPop Notifier again.", cut.Markup));
-        Assert.Empty(cut.FindAll("button.nc-btn.primary"));
-    }
-
-    [Fact]
-    public void Cancel_denies_the_request()
-    {
-        var (ctx, api) = Ctx(Card(), opened: true);
+        var (ctx, api, nav) = Ctx(Url());
         using var _ = ctx;
         var cut = ctx.Render<NotifierConnect>();
-        cut.WaitForAssertion(() => Assert.Contains("Cancel", cut.Markup));
+        cut.WaitForAssertion(() => Assert.Contains("Authorize", cut.Markup));
+        cut.Find("button.nc-btn.primary").Click();
+        cut.WaitForAssertion(() => Assert.StartsWith(Redirect + "?code=", nav.Uri));
+        Assert.Contains("&state=" + State, nav.Uri);
+        Assert.Contains(Challenge, api.AuthorizeBody);
+        Assert.Contains(State, api.AuthorizeBody);
+        Assert.Contains("Connecting iPop Notifier", cut.Markup);
+        // "Not connected?" with the short code comes a few seconds later.
+        Assert.DoesNotContain("ABCD-2345", cut.Markup);
+        cut.WaitForAssertion(() => Assert.Contains("ABCD-2345", cut.Markup), NotifierConnect.CodeDelay + TimeSpan.FromSeconds(3));
+        Assert.Contains("Not connected?", cut.Markup);
+        Assert.Contains("Copy code", cut.Markup);
+    }
+
+    [Fact]
+    public void Decline_sends_access_denied_and_mints_nothing()
+    {
+        var (ctx, api, nav) = Ctx(Url());
+        using var _ = ctx;
+        var cut = ctx.Render<NotifierConnect>();
+        cut.WaitForAssertion(() => Assert.Contains("Decline", cut.Markup));
         cut.Find("button.nc-btn.secondary").Click();
-        cut.WaitForAssertion(() => Assert.Contains("POST /api/notifier/link/deny", api.Calls));
-        cut.WaitForAssertion(() => Assert.Contains("iPop Notifier was not connected", cut.Markup));
-        Assert.DoesNotContain(api.Calls, c => c.Contains("approve"));
+        Assert.Equal(Redirect + "?error=access_denied&state=" + State, nav.Uri);
+        Assert.DoesNotContain(api.Calls, c => c.Contains("authorize"));
+    }
+
+    [Theory]
+    [InlineData("https://evil.example/callback")]
+    [InlineData("http://10.10.6.51:53682/callback")]
+    [InlineData("http://127.0.0.1.evil.com:53682/callback")]
+    [InlineData("http://127.0.0.1/callback")]
+    public void A_redirect_that_is_not_this_pcs_loopback_gets_no_authorize_button(string redirect)
+    {
+        var (ctx, api, _) = Ctx(Url(redirect: redirect));
+        using var _ = ctx;
+        var cut = ctx.Render<NotifierConnect>();
+        cut.WaitForAssertion(() => Assert.Contains("This link can't be used", cut.Markup));
+        Assert.Empty(cut.FindAll("button.nc-btn.primary"));
+        Assert.DoesNotContain(api.Calls, c => c.Contains("authorize"));
     }
 
     [Fact]
-    public void Approve_refused_from_another_address_keeps_the_card_with_a_note()
+    public void A_link_without_the_apps_state_or_challenge_is_refused()
     {
-        var (ctx, _) = Ctx(Card(), approve: HttpStatusCode.Forbidden);
-        using var __ = ctx;
+        foreach (var url in new[] { Url(state: "short"), Url(challenge: ""), "/notifier/connect", "/notifier/connect?request=" + new string('r', 43) })
+        {
+            var (ctx, _, _) = Ctx(url);
+            using var _ = ctx;
+            var cut = ctx.Render<NotifierConnect>();
+            cut.WaitForAssertion(() => Assert.Contains("This link can't be used", cut.Markup));
+        }
+    }
+
+    [Fact]
+    public void The_pc_name_is_plain_text()
+    {
+        var (ctx, _, _) = Ctx(Url(pc: "<img src=x onerror=alert(1)>"));
+        using var _ = ctx;
         var cut = ctx.Render<NotifierConnect>();
-        cut.WaitForAssertion(() => Assert.Contains("Connect iPop Notifier on this PC?", cut.Markup));
-        cut.Find("button.nc-btn.primary").Click();
-        cut.WaitForAssertion(() => Assert.Contains("Open this page on the PC where iPop Notifier is waiting", cut.Markup));
+        cut.WaitForAssertion(() => Assert.Contains("iPop Notifier wants to connect", cut.Markup));
+        Assert.DoesNotContain("<img src=x", cut.Markup);
+        Assert.Contains("&lt;img src=x", cut.Markup);
+    }
+
+    [Fact]
+    public void Login_comes_back_to_the_card_with_its_query()
+    {
+        var back = "/notifier/connect?state=" + State + "&challenge=" + Challenge + "&redirect=" + Uri.EscapeDataString(Redirect) + "&pc=SJA-PC";
+        Assert.Equal(back, IPop.Web.App.SafeReturn(back));
     }
 }

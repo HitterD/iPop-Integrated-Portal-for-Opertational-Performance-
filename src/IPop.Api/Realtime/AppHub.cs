@@ -6,7 +6,7 @@ namespace IPop.Api.Realtime;
 
 /// The single hub (/hubs/app). Every connection joins its user group so IRealtime.ToUserAsync
 /// reaches all of that user's tabs; conversation groups are joined by module hub methods.
-public class AppHub(PresenceConnections connections, IConfiguration cfg) : Hub
+public class AppHub(PresenceConnections connections) : Hub
 {
     public override async Task OnConnectedAsync()
     {
@@ -15,9 +15,6 @@ public class AppHub(PresenceConnections connections, IConfiguration cfg) : Hub
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, RealtimeEvents.UserGroup(nik));
             connections.Connected(nik);
-            // "Sign in with browser" in the iPop Notifier reaches the open tabs on the same address (discovery only).
-            if (Context.GetHttpContext() is { } http)
-                IPop.Api.Notifier.NotifierLinkStore.Shared.TabConnected(Context.ConnectionId, IPop.Api.Notifier.ClientAddress.Of(http, cfg));
         }
         await base.OnConnectedAsync();
     }
@@ -27,7 +24,6 @@ public class AppHub(PresenceConnections connections, IConfiguration cfg) : Hub
     {
         var nik = Context.User?.FindFirst("nik")?.Value;
         if (!string.IsNullOrEmpty(nik)) connections.Disconnected(nik);
-        IPop.Api.Notifier.NotifierLinkStore.Shared.TabDisconnected(Context.ConnectionId);
         await base.OnDisconnectedAsync(exception);
     }
 }

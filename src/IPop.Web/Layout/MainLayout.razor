@@ -18,7 +18,6 @@
 @inject PhoneState Phone
 @inject TabPrefsState TabPrefs
 @inject NotifCardState NotifCard
-@inject IPop.Web.Services.NotifierLink NotifierLink
 
 <div class="nav-progress @(navProgress ? "on" : "")" aria-hidden="true"></div>
 <div class="shell @(collapsed ? "collapsed" : "")" id="shell">
@@ -762,8 +761,6 @@
             Quietly(TabPrefs.LoadAsync),
             Quietly(NotifCard.LoadAsync),
             Quietly(LoadHrisStatusAsync));
-        // iPop Notifier "Sign in with browser" on this PC: one open tab shows the connect card (1.4.2, no protocol launch).
-        NotifierLink.Start();
     }
 
     /// One shell service failing to start must not stop the others, nor take down the layout.
@@ -879,7 +876,6 @@
     public void Dispose()
     {
         selfRef?.Dispose();
-        NotifierLink.Stop();
         Phone.Changed -= OnPhoneChanged;
         Overlays.ClosedByBack -= OnOverlayClosedByBack;
         Auth.PresenceChanged -= OnPresenceChanged;

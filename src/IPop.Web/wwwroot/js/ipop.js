@@ -2513,33 +2513,3 @@ if ("serviceWorker" in navigator) {
 }
 
 document.documentElement.setAttribute("spellcheck", ipop.spellcheck() ? "true" : "false");
-
-// iPop Notifier "Sign in with browser" (1.4.2, Services/NotifierLink.cs + Pages/NotifierConnect.razor): the app's
-// request shows as a "Connect iPop Notifier on this PC?" card; the person clicks Connect. Nothing here launches
-// ipop-notifier:// (browsers silently block a protocol link a script starts without a click, often in a background
-// tab, which is what left 1.4.1 waiting). A tab the app opened itself (/notifier/connect?…&opened=1) remembers that
-// for this tab, also across the login redirect, so it can close itself once the app is connected.
-try {
-  const u = new URL(location.href);
-  if (/\/notifier\/connect\/?$/i.test(u.pathname) && u.searchParams.get("opened") === "1") sessionStorage.setItem("ipop.notifierLink.opened", String(Date.now()));
-} catch { }
-ipop.notifierLink = {
-  supported() {
-    const d = navigator.userAgentData;
-    if (d) return !d.mobile && /windows/i.test(d.platform || "");
-    return /Windows NT/.test(navigator.userAgent) && !/Mobile/.test(navigator.userAgent);
-  },
-  /** This tab was opened by the app for the card (within the last 10 minutes). */
-  openedTab() {
-    const at = Number(sessionStorage.getItem("ipop.notifierLink.opened") || 0);
-    return at > 0 && Date.now() - at < 600000;
-  },
-  visible() { return document.visibilityState === "visible" && (typeof document.hasFocus !== "function" || document.hasFocus()); },
-  forgetOpened() { sessionStorage.removeItem("ipop.notifierLink.opened"); },
-  /** The app opened this tab: try to close it. False = the browser keeps it (then the card goes to the dashboard). */
-  close() {
-    sessionStorage.removeItem("ipop.notifierLink.opened");
-    try { window.close(); } catch { }
-    return !!window.closed;
-  },
-};
