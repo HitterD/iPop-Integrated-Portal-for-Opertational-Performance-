@@ -42,6 +42,12 @@ select{height:28px;border-radius:7px;border:.5px solid var(--sep);background:var
 .pv .tb em{position:absolute;left:calc(50% + 2px);top:-2px;width:8px;height:8px;border-radius:50%;background:var(--red)}
 .btn{height:30px;padding:0 12px;border-radius:8px;background:var(--fill);font-weight:600;font-size:12.5px}
 .btn.r{color:var(--red)}
+#updRow .t{flex:1}
+#updCheck{display:inline-flex;align-items:center;gap:6px;padding:0 14px}
+#updCheck svg{width:14px;height:14px}
+#updCheck:disabled{opacity:.6}
+#updNow{background:var(--accent,#2e9d6b);color:#fff}
+#updNow[hidden],#updCheck[hidden]{display:none}
 .saved{position:fixed;right:16px;bottom:14px;font-size:12px;color:var(--ink-3);opacity:0;transition:opacity .3s}
 .saved.on{opacity:1}
 .kv{display:grid;grid-template-columns:130px 1fr;gap:8px 12px;font-size:13px;padding:14px}
@@ -88,7 +94,6 @@ select{height:28px;border-radius:7px;border:.5px solid var(--sep);background:var
         <div class="row"><span class="t">During meetings &amp; presentations<small>Full-screen apps, Windows Focus or iPop status Busy</small></span><div class="pill3" id="meet"><button data-v="hold">Hold</button><button data-v="show">Show</button></div></div>
         <div class="row"><span class="t">Urgent still shows<small>High priority, meeting starting, mandatory memos</small></span><span class="sw" id="urgent"></span></div>
         <div class="row"><span class="t">Position</span><div class="pill3" id="pos"><button data-v="bottom-right">Bottom right</button><button data-v="top-right">Top right</button></div></div>
-        <div class="row"><span class="t">Visible at once<small id="maxHint">Others wait behind “+N more”</small></span><select id="max"><option>1</option><option>2</option><option>3</option><option>5</option><option>8</option><option>10</option></select></div>
       </div>
     </section>
     <section id="s-sounds">
@@ -116,7 +121,10 @@ select{height:28px;border-radius:7px;border:.5px solid var(--sep);background:var
         <div class="row"><span class="t">Start with Windows<small>Runs in the tray, no admin needed</small></span><span class="sw" id="autostart"></span></div>
       </div>
       <div class="lbl">About</div>
-      <div class="grp2"><div class="kv" id="about"></div></div>
+      <div class="grp2">
+        <div class="row" id="updRow"><span class="t" id="updT">iPop Notifier<small id="updS">Checks by itself every few hours</small></span><button class="btn" id="updNow" hidden>Update now</button><button class="btn" id="updCheck"><i data-lucide="refresh-cw"></i>Check for updates</button></div>
+        <div class="kv" id="about"></div>
+      </div>
     </section>
     <section id="s-account">
       <h3>Account</h3>

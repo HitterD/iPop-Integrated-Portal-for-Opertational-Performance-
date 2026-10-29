@@ -12,13 +12,22 @@
     const e = $('#err'); e.textContent = m.message || 'Couldn\'t sign in.'; e.classList.remove('shake'); void e.offsetWidth; e.classList.add('shake');
     $('#pw').select();
   });
-  // "Sign in with browser" (1.4.0): one attempt at a time. The app re-uses an iPop tab that is already open, or opens
-  // exactly one; clicking again while it waits does nothing. After 20 s "Open browser again" opens one tab.
+  // "Sign in with browser" (1.4.2): one attempt at a time. An iPop tab that is already open shows a "Connect iPop
+  // Notifier on this PC?" card, or the app opens exactly one tab with it; clicking again while it waits does nothing.
+  // After 20 s "Open browser again" opens one tab. Cancel in the browser / expiry / errors end the wait.
   const HINT = {
     asking: 'Looking for iPop in your browser…',
-    tab: 'Switch to iPop in your browser and choose “Open iPop Notifier” if it asks. This window closes by itself.',
-    opened: 'iPop opened in your browser. Sign in there if it asks, then choose “Open iPop Notifier”. This window closes by itself.',
+    tab: 'Switch to iPop in your browser and click Connect. This window closes by itself.',
+    opened: 'iPop opened in your browser. Sign in there if it asks, then click Connect. This window closes by itself.',
     approving: 'Connecting…',
+  };
+  const DEFAULT_HINT = $('#hint').textContent;
+  const idle = note => {
+    const b = $('#browser');
+    clearTimeout(againTimer);
+    b.disabled = false; b.textContent = 'Sign in with browser';
+    $('#again').hidden = true;
+    $('#hint').textContent = note || DEFAULT_HINT;
   };
   let againTimer = 0;
   const waiting = () => {
@@ -40,6 +49,7 @@
   app.on('browserState', m => {
     if (m.state === 'asking') { const b = $('#browser'); if (!b.disabled) waiting(); }
     if (HINT[m.state]) $('#hint').textContent = HINT[m.state];
+    if (m.state === 'denied' || m.state === 'expired' || m.state === 'failed') idle(m.message);
   });
   $('#f').onsubmit = e => {
     e.preventDefault();

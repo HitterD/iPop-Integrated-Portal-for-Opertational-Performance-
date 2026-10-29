@@ -25,6 +25,29 @@
     const el = $('#saved'); el.textContent = m.ok ? 'Saved' : 'Saved on this PC — will sync when iPop is reachable';
     el.classList.add('on'); clearTimeout(saveT); saveT = setTimeout(() => el.classList.remove('on'), 1800);
   });
+  // General › About → Check for updates (1.4.2): the answer shows in the row; "Update now" opens the usual update window.
+  let checking = false;
+  const UPD = {
+    notInstalled: () => 'Updates work in the installed app only',
+    upToDate: () => 'Up to date',
+    ready: r => 'Version ' + r.version + ' is ready',
+    failed: () => 'Couldn’t check right now',
+  };
+  $('#updCheck').onclick = () => {
+    if (checking) return;
+    checking = true;
+    $('#updCheck').disabled = true; $('#updNow').hidden = true;
+    $('#updS').textContent = 'Checking…';
+    post({ type: 'checkUpdates' });
+  };
+  $('#updNow').onclick = () => post({ type: 'updateNow' });
+  app.on('updateResult', m => {
+    checking = false;
+    const r = m.result || { state: 'failed' };
+    $('#updCheck').disabled = false;
+    $('#updS').textContent = (UPD[r.state] || UPD.failed)(r);
+    $('#updNow').hidden = r.state !== 'ready';
+  });
   app.ready();
 
   function draw(acc) {
@@ -32,9 +55,6 @@
     const pop = S.popups === 'on' ? 'on' : S.popups === 'off' ? 'off' : (S.offUntil && new Date(S.offUntil) - Date.now() > 2 * 3600e3 ? 'tomorrow' : '1h');
     pill('#popups', pop); pill('#meet', S.duringMeetings); pill('#pos', S.position);
     $('#urgent').classList.toggle('on', S.urgentBreaksThrough);
-    $('#max').value = String(S.maxVisible);
-    if (![...$('#max').options].some(o => o.value === String(S.maxVisible))) $('#max').add(new Option(S.maxVisible, S.maxVisible, true, true));
-    $('#maxHint').textContent = S.style === 'stack' ? 'Others wait behind “+N more”' : 'Older windows minimise into the taskbar group';
     $('#vol').value = S.volume; $('#sound').classList.toggle('on', S.sound);
     $('#autostart').classList.toggle('on', S.startWithWindows);
     pill('#textsize', S.textSize || 'normal');
@@ -45,6 +65,7 @@
     $('#previews').innerHTML = SOUNDS.map(([k, n]) => `<div class="row"><span class="t">${esc(n)}</span><button class="btn" data-snd="${k}">${IC('play')}Play</button></div>`).join('');
     if (acc) {
       $('#who').innerHTML = `Signed in as ${esc(acc.name || '…')}<small>Stays signed in — renews itself; ends after 90 days unused</small>`;
+      $('#updT').firstChild.textContent = 'iPop Notifier ' + acc.version;
       $('#about').innerHTML = `<span>Version</span><span>${esc(acc.version)}</span><span>Computer</span><span>${esc(acc.computer)}</span><span>Server</span><span>${esc(acc.server)}</span>`;
     }
   }
@@ -80,7 +101,6 @@
     }
     const snd = e.target.closest('[data-snd]'); if (snd) post({ type: 'preview', sound: snd.dataset.snd, volume: +$('#vol').value });
   });
-  $('#max').onchange = () => save({ maxVisible: +$('#max').value });
   $('#vol').onchange = () => { save({ volume: +$('#vol').value }); post({ type: 'preview', sound: 'system', volume: +$('#vol').value }); };
   $('#signout').onclick = () => { if (confirm('Sign out of iPop Notifier on this PC?')) post({ type: 'signOut' }); };
 })();

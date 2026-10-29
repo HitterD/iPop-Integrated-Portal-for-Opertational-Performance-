@@ -762,9 +762,8 @@
             Quietly(TabPrefs.LoadAsync),
             Quietly(NotifCard.LoadAsync),
             Quietly(LoadHrisStatusAsync));
-        // Signed in here: the iPop Notifier on this PC (waiting, or on another account) signs in too.
-        // ?notifier=signin = the app's "Sign in with browser" button: answer it now, not on the next round.
-        NotifierLink.Start(force: Nav.Uri.Contains("notifier=signin", StringComparison.Ordinal));
+        // iPop Notifier "Sign in with browser" on this PC: one open tab shows the connect card (1.4.2, no protocol launch).
+        NotifierLink.Start();
     }
 
     /// One shell service failing to start must not stop the others, nor take down the layout.

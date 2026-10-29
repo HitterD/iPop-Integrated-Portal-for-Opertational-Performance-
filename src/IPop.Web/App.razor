@@ -39,8 +39,9 @@
 
         if (!Auth.IsAuthenticated)
         {
-            // "Sign in with iPop" comes back to its page after the login (local paths only, see SafeReturn).
-            if (!isAuthPage) Nav.NavigateTo(path.StartsWith("sso/") ? "/login?returnUrl=" + Uri.EscapeDataString("/" + rawPath.TrimStart('/') + new Uri(Nav.Uri).Query) : "/login", replace: true);
+            // "Sign in with iPop" and the iPop Notifier connect card come back to their page after the login (local
+            // paths only, see SafeReturn).
+            if (!isAuthPage) Nav.NavigateTo(path.StartsWith("sso/") || path == "notifier/connect" ? "/login?returnUrl=" + Uri.EscapeDataString("/" + rawPath.TrimStart('/') + new Uri(Nav.Uri).Query) : "/login", replace: true);
             return;
         }
 

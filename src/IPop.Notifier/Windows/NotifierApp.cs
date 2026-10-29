@@ -230,36 +230,21 @@ public sealed class NotifierApp : ApplicationContext
         signIn.WithBrowser += again => Post(() => OpenBrowserSignIn(again));
         signIn.Show();
         signIn.Activate();
-        _ = WaitForBrowserAsync();
     }
 
-    private CancellationTokenSource? waitingLoop;
-
-    /// While signed out: tell iPop every 30 s that this app is waiting, so iPop open in the browser on this PC sends
-    /// the sign-in link by itself (grilled 2026-10-26).
-    private async Task WaitForBrowserAsync()
-    {
-        waitingLoop?.Cancel();
-        var cts = waitingLoop = new CancellationTokenSource();
-        while (!cts.IsCancellationRequested && !api.IsSignedIn)
-        {
-            await api.SayWaitingAsync(cts.Token);
-            try { await Task.Delay(TimeSpan.FromSeconds(30), cts.Token); } catch (OperationCanceledException) { return; }
-        }
-    }
-
-    // ── "Sign in with browser": one tab, one prompt (1.4.0) ──────────────────────────────────────────────
-    //  click → POST link/intent (open iPop tabs on this PC hear it over AppHub) → poll link/intent/check for ~5 s
-    //  → a tab took it: nothing opens, that tab does the rest | nobody did: reserve it and open exactly ONE tab.
-    //  Clicks while an attempt runs do nothing (first run + a click open one tab, not two); after 20 s the window
-    //  offers "Open browser again", which starts a fresh attempt and opens one tab straight away.
+    // ── "Sign in with browser": a connect card in the browser (1.4.2) ───────────────────────────────────
+    //  click → new request id + PKCE verifier (kept here) → POST link/intent {deviceKey, challenge, requestId, pcName}
+    //  → an open iPop tab on this PC hears it (AppHub), takes it and shows the card itself; nobody within ~5 s: the
+    //  app reserves it and opens exactly ONE tab on /notifier/connect?request=…&opened=1
+    //  → the person clicks Connect → link/poll (every second) returns the code once → redeem with the verifier
+    //  → link/connected, so the card says "Connected". Cancel on the card → poll says "denied".
+    //  No ipop-notifier:// launch from the web at all: browsers silently block one a script starts in a background tab.
+    //  Clicks while an attempt runs do nothing; after 20 s "Open browser again" starts a fresh request + one tab.
 
     /// Tabs on this PC have this long to take the click before the app opens one itself.
     private static readonly TimeSpan TabGrace = TimeSpan.FromSeconds(5);
     private CancellationTokenSource? browserAttempt;
     private DateTime browserAttemptAt;
-    /// The intent of the current attempt: answers ipop-notifier://prepare by hand-off to the tab that claimed it.
-    private string? browserIntent;
 
     private void OpenBrowserSignIn() => OpenBrowserSignIn(again: false);
 
@@ -272,54 +257,71 @@ public sealed class NotifierApp : ApplicationContext
             return;
         }
         browserAttempt?.Cancel();
-        var cts = browserAttempt = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        var cts = browserAttempt = new CancellationTokenSource(TimeSpan.FromMinutes(2) + TimeSpan.FromSeconds(10));
         browserAttemptAt = DateTime.UtcNow;
         _ = BrowserAttemptAsync(again, cts);
     }
 
-    private void BrowserState(string state) => Post(() => signIn?.Send(new { type = "browserState", state }));
+    private void BrowserState(string state, string? message = null) => Post(() => signIn?.Send(new { type = "browserState", state, message }));
 
     private async Task BrowserAttemptAsync(bool again, CancellationTokenSource cts)
     {
         var ct = cts.Token;
         BrowserState("asking");
-        var intent = await api.RegisterBrowserIntentAsync(ct);
-        browserIntent = intent;
-        var claimed = false;
-        if (intent is not null && !again)
+        var link = api.BeginBrowserLink();
+        if (link is null || !await api.RegisterBrowserLinkAsync(link, ct))
         {
-            var until = DateTime.UtcNow + TabGrace;
-            while (!ct.IsCancellationRequested && DateTime.UtcNow < until)
-            {
-                if (await api.CheckBrowserIntentAsync(intent, reserve: false, ct) == true) { claimed = true; break; }
-                try { await Task.Delay(700, ct); } catch (OperationCanceledException) { return; }
-            }
-        }
-        if (ct.IsCancellationRequested) return;
-        // Reserve atomically: a tab that hears about the click after this point no longer takes it.
-        if (!claimed && intent is not null) claimed = await api.CheckBrowserIntentAsync(intent, reserve: true, ct) == true;
-        if (ct.IsCancellationRequested) return;
-        if (claimed) { Log.Info("signin", "browser: an open iPop tab took the sign-in"); BrowserState("tab"); return; }
-        Log.Info("signin", "browser: no iPop tab answered, opening one");
-        Post(() => OpenIPop("/dashboard?notifier=signin&notifierScheme=" + AppInfo.UrlScheme));
-        BrowserState("opened");
-    }
-
-    /// ipop-notifier://prepare?nonce=… from the tab: answer that same tab (no second tab). Without a current
-    /// attempt (the web account-switch path) or when the server can't take the hand-off, fall back to the 1.3.0
-    /// callback tab — still nonce-bound, still confirmed locally before an account switch.
-    private async Task AnswerPrepareAsync(string nonce)
-    {
-        var link = api.PrepareBrowserLink(nonce);
-        if (link is null) return;
-        if (browserIntent is { } intent && browserAttempt is { IsCancellationRequested: false }
-            && await api.HandOffAsync(intent, nonce, link, CancellationToken.None))
-        {
-            BrowserState("approving");
+            if (ct.IsCancellationRequested) return;
+            Log.Warn("signin", "browser: could not register the connect request");
+            BrowserState("failed", "Can't reach iPop. Check the network and try again.");
+            cts.Cancel();
             return;
         }
-        Post(() => Integration.OpenUrl(link.CallbackUrl));
+        var opened = false;
+        var start = DateTime.UtcNow;
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                // "Open browser again" opens its tab at once; a first click gives open tabs ~5 s to take it.
+                var reserve = !opened && (again || DateTime.UtcNow - start >= TabGrace);
+                var poll = await api.PollBrowserLinkAsync(link.RequestId, reserve, ct);
+                if (ct.IsCancellationRequested) return;
+                switch (poll?.State)
+                {
+                    case "approved" when poll.Code is { Length: 43 } code:
+                        Log.Info("signin", "browser: Connect was clicked");
+                        BrowserState("approving");
+                        await SignInWithCodeAsync(code, link.RequestId);
+                        return;
+                    case "denied":
+                        Log.Info("signin", "browser: cancelled in the browser");
+                        api.ForgetBrowserLink(link.RequestId);
+                        BrowserState("denied", "Cancelled in the browser. You can try again or sign in here.");
+                        cts.Cancel();
+                        return;
+                    case "expired" or "collected":
+                        api.ForgetBrowserLink(link.RequestId);
+                        BrowserState("expired", "The request expired. Choose Sign in with browser to try again.");
+                        cts.Cancel();
+                        return;
+                    case "claimed" when !opened:
+                        if (!tabShown) { tabShown = true; Log.Info("signin", "browser: an open iPop tab shows the card"); BrowserState("tab"); }
+                        break;
+                    case "pending" when reserve:
+                        opened = true;
+                        Log.Info("signin", "browser: no iPop tab answered, opening one");
+                        Post(() => OpenIPop("/notifier/connect?request=" + link.RequestId + "&opened=1"));
+                        BrowserState("opened");
+                        break;
+                }
+                try { await Task.Delay(1000, ct); } catch (OperationCanceledException) { return; }
+            }
+        }
+        finally { tabShown = false; }
     }
+
+    private bool tabShown;
 
     private async Task SignInWithCodeAsync(string code, string requestId)
     {
@@ -329,17 +331,15 @@ public sealed class NotifierApp : ApplicationContext
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException) { r = new(false, "Can't reach iPop. Check the network and try again.", null, false); }
         Post(() =>
         {
+            browserAttempt?.Cancel();
             if (!r.Ok)
             {
                 Log.Warn("signin", "browser link refused: " + r.Error);
-                // Already signed in and the link was refused: say so quietly, keep the current account.
-                tray.ShowBalloonTip(5000, "iPop Notifier", r.Error ?? "Couldn't sign in from the browser.", ToolTipIcon.Warning);
+                if (signIn is { IsDisposed: false }) BrowserState("failed", r.Error ?? "Couldn't sign in from the browser.");
+                else tray.ShowBalloonTip(5000, "iPop Notifier", r.Error ?? "Couldn't sign in from the browser.", ToolTipIcon.Warning);
                 return;
             }
-            waitingLoop?.Cancel();
-            browserAttempt?.Cancel();
-            browserIntent = null;
-            // The tab that minted the code learns the app is connected (only this account's tab can read it).
+            // The card that approved it learns the app is connected (only that account can read it).
             _ = api.ConfirmBrowserLinkAsync(requestId);
             if (signIn is { IsDisposed: false }) signIn.Close();
             _ = StartSessionAsync();
@@ -352,7 +352,6 @@ public sealed class NotifierApp : ApplicationContext
     private async Task TeardownSessionAsync()
     {
         session.Cancel();
-        waitingLoop?.Cancel();
         var oldFeed = feed; feed = null;
         if (oldFeed is not null) await oldFeed.StopAsync();
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -486,6 +485,8 @@ public sealed class NotifierApp : ApplicationContext
             computer = Environment.MachineName,
         });
         settingsWindow.SignOut += () => _ = api.SignOutAsync();
+        settingsWindow.CheckUpdates += () => _ = CheckFromSettingsAsync();
+        settingsWindow.UpdateNow += () => Post(() => { if (updater?.Pending is { } p) ShowUpdate(p); });
         settingsWindow.PopupStyleChanged += () => Post(popups.Restyle);
         settingsWindow.Show();
     }
@@ -529,12 +530,7 @@ public sealed class NotifierApp : ApplicationContext
                 if (unc is null || !Integration.OpenInExplorer(unc))
                     tray.ShowBalloonTip(4000, "iPop Notifier", "This link isn't on a company NAS, so it can't open in File Explorer.", ToolTipIcon.Warning);
                 break;
-            case "prepare" when !files && q["nonce"] is { Length: 43 } nonce:
-                _ = AnswerPrepareAsync(nonce);
-                break;
-            case "signin" when !files && q["code"] is { Length: 43 } code && q["request"] is { Length: 43 } requestId:
-                _ = SignInWithCodeAsync(code, requestId);
-                break;
+            // 1.4.2: sign-in no longer comes in through a link (no prepare/signin cases); see BrowserAttemptAsync.
             case "inbox": ShowInbox(); break;
             case "settings": ShowSettings(); break;
             case "devices": ShowDevices(); break;
@@ -684,6 +680,22 @@ public sealed class NotifierApp : ApplicationContext
         updateWindow?.Send(new { type = "installBlocked", message });
         tray.ShowBalloonTip(4000, "iPop Notifier", message, ToolTipIcon.Warning);
     });
+
+    /// Settings › General › About → Check for updates: the answer shows in the row itself (no balloon).
+    private async Task CheckFromSettingsAsync()
+    {
+        updater ??= new Updater(api);
+        Updater.Result r;
+        try { r = await updater.CheckAsync(); }
+        catch (Exception ex) { Log.Warn("update", "check failed: " + ex.Message); r = Updater.Result.Failed; }
+        Post(() => settingsWindow?.UpdateResult(r switch
+        {
+            Updater.Result.NotInstalled => new { state = "notInstalled", version = (string?)null },
+            Updater.Result.UpToDate => new { state = "upToDate", version = (string?)AppInfo.Version },
+            Updater.Result.Ready when updater.Pending is { } p => new { state = "ready", version = (string?)p.Version },
+            _ => new { state = "failed", version = (string?)null },
+        }));
+    }
 
     /// Tray → Check for updates.
     private async Task CheckNowAsync()

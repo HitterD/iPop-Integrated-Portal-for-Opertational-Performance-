@@ -26,62 +26,58 @@ public sealed class IPopClient
 
     private static string Secret() => Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     public static string PkceChallenge(string verifier) => Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.ASCII.GetBytes(verifier))).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-    /// A PKCE request for the browser's nonce. <see cref="CallbackUrl"/> is the 1.3.0 fallback (a second tab) for when
-    /// the server can't take the hand-off.
-    public sealed record PreparedLink(string RequestId, string Challenge, string CallbackUrl);
-    public PreparedLink? PrepareBrowserLink(string nonce)
+    /// A connect request may be approved for 2 minutes; the verifier is kept a little longer than that.
+    private static readonly TimeSpan PendingLifetime = TimeSpan.FromMinutes(3);
+
+    /// "Sign in with browser" (1.4.2): a new request id + PKCE verifier kept only in this app. The server and the
+    /// browser see the challenge, never the verifier, so a code minted for it is useless to anyone else.
+    public sealed record BrowserLink(string RequestId, string Challenge);
+    public BrowserLink? BeginBrowserLink()
     {
-        if (!ValidSecret(nonce)) return null;
         lock (pendingLinks)
         {
-            foreach (var expired in pendingLinks.Where(p => DateTime.UtcNow - p.Value.At > TimeSpan.FromSeconds(60)).Select(p => p.Key).ToList()) pendingLinks.Remove(expired);
-            if (pendingLinks.Count >= 5) return null;
+            foreach (var expired in pendingLinks.Where(p => DateTime.UtcNow - p.Value.At > PendingLifetime).Select(p => p.Key).ToList()) pendingLinks.Remove(expired);
+            if (pendingLinks.Count >= 5) pendingLinks.Remove(pendingLinks.MinBy(p => p.Value.At).Key);
             var id = Secret(); var verifier = Secret();
             pendingLinks[id] = (verifier, DateTime.UtcNow);
-            var challenge = PkceChallenge(verifier);
-            // The callback origin is configured by the installed app/server, never supplied by the protocol link.
-            return new(id, challenge, WebUrl("/dashboard?notifierNonce=" + nonce + "&notifierRequest=" + id + "&notifierChallenge=" + challenge + "&notifierScheme=" + AppInfo.UrlScheme));
+            return new(id, PkceChallenge(verifier));
         }
     }
 
-    /// Answer ipop-notifier://prepare?nonce=… to the tab that sent it (it takes the request by its nonce), so the
-    /// browser never needs a second tab. False = server too old / unreachable: use <see cref="PreparedLink.CallbackUrl"/>.
-    public async Task<bool> HandOffAsync(string intent, string nonce, PreparedLink link, CancellationToken ct)
+    /// Registers the connect request on the server; open iPop tabs on this PC hear about it at once.
+    /// False = server unreachable or too old.
+    public async Task<bool> RegisterBrowserLinkAsync(BrowserLink link, CancellationToken ct)
     {
         try
         {
-            using var res = await http.PostAsJsonAsync(new Uri(Server, "api/notifier/link/handoff"),
-                new { deviceKey = store.DeviceKey(), intent, nonce, requestId = link.RequestId, challenge = link.Challenge }, ct);
+            using var res = await http.PostAsJsonAsync(new Uri(Server, "api/notifier/link/intent"), new
+            {
+                deviceKey = store.DeviceKey(), scheme = AppInfo.UrlScheme, challenge = link.Challenge, requestId = link.RequestId,
+                pcName = Environment.MachineName,
+            }, ct);
             return res.IsSuccessStatusCode;
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { return false; }
     }
 
-    /// "Sign in with browser": tell iPop tabs open on this PC that sign-in was asked for (the only thing that lets a
-    /// browser show "Open iPop Notifier?"). Null = server unreachable or too old.
-    public async Task<string?> RegisterBrowserIntentAsync(CancellationToken ct)
+    /// pending | claimed (an open tab shows the card) | approved (+ code, once) | denied | expired | collected.
+    /// Null = unknown (unreachable, or the server no longer knows the request).
+    public sealed record LinkPoll(string State, string? Code);
+    public async Task<LinkPoll?> PollBrowserLinkAsync(string requestId, bool reserve, CancellationToken ct)
     {
         try
         {
-            using var res = await http.PostAsJsonAsync(new Uri(Server, "api/notifier/link/intent"), new { deviceKey = store.DeviceKey(), scheme = AppInfo.UrlScheme }, ct);
+            using var res = await http.PostAsJsonAsync(new Uri(Server, "api/notifier/link/poll"), new { deviceKey = store.DeviceKey(), requestId, reserve }, ct);
+            if (res.StatusCode == HttpStatusCode.NotFound) return new("expired", null);
             if (!res.IsSuccessStatusCode) return null;
-            return (await res.Content.ReadFromJsonAsync<JsonNode>(Json, ct))?["intent"]?.GetValue<string>();
+            var n = await res.Content.ReadFromJsonAsync<JsonNode>(Json, ct);
+            return n?["state"]?.GetValue<string>() is { } state ? new(state, n["code"]?.GetValue<string>()) : null;
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException) { return null; }
     }
 
-    /// True = an open iPop tab took the intent. <paramref name="reserve"/>: nobody did, keep it for the tab this app
-    /// is about to open. Null = unknown (expired, unreachable).
-    public async Task<bool?> CheckBrowserIntentAsync(string intent, bool reserve, CancellationToken ct)
-    {
-        try
-        {
-            using var res = await http.PostAsJsonAsync(new Uri(Server, "api/notifier/link/intent/check"), new { deviceKey = store.DeviceKey(), intent, reserve }, ct);
-            if (!res.IsSuccessStatusCode) return null;
-            return (await res.Content.ReadFromJsonAsync<JsonNode>(Json, ct))?["claimed"]?.GetValue<bool>();
-        }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException) { return null; }
-    }
+    /// The person cancelled in the browser, or the attempt ended: its verifier is no longer needed.
+    public void ForgetBrowserLink(string requestId) { lock (pendingLinks) pendingLinks.Remove(requestId); }
 
     /// Signed in with the redeemed code: tell the tab (only this account's tab can read it) that the app is connected.
     public async Task ConfirmBrowserLinkAsync(string requestId)
@@ -137,14 +133,14 @@ public sealed class IPopClient
     private sealed record LinkDto(string AccessToken, string RefreshToken, DateTime AccessTokenExpiresAt, bool MustChangePassword, string Nik, string? Name, bool Switched);
     public sealed record LinkResult(bool Ok, string? Error, string? Name, bool Switched);
 
-    /// ipop-notifier://signin?code=… from the browser: trade the one-time code for this app's own session.
-    /// Signed in as someone else, the server only allows it straight after a sign-in in the browser on this PC.
+    /// The code the browser card approved (collected by polling): trade it for this app's own session. Only a request
+    /// this app started has a verifier; switching from another signed-in account is confirmed locally first.
     public async Task<LinkResult> SignInWithCodeAsync(string server, string code, string requestId, CancellationToken ct)
     {
         string verifier;
         lock (pendingLinks)
         {
-            if (!pendingLinks.Remove(requestId, out var pending) || DateTime.UtcNow - pending.At > TimeSpan.FromSeconds(60))
+            if (!pendingLinks.Remove(requestId, out var pending) || DateTime.UtcNow - pending.At > PendingLifetime)
                 return new(false, "This sign-in wasn't started on this PC. Choose Sign in with browser and try again.", null, false);
             verifier = pending.Verifier;
         }
@@ -176,16 +172,6 @@ public sealed class IPopClient
         }
         await ReplaceSessionAsync(new SessionStore.Session(baseUri.ToString(), dto.RefreshToken, store.DeviceKey(), dto.Nik, dto.Name), dto.AccessToken, dto.AccessTokenExpiresAt, ct);
         return new(true, null, dto.Name, switching);
-    }
-
-    /// Signed out: "an app is waiting here", so iPop in the browser on this PC knows to send the sign-in link.
-    public async Task SayWaitingAsync(CancellationToken ct)
-    {
-        try
-        {
-            using var _ = await http.PostAsJsonAsync(new Uri(Server, "api/notifier/link/waiting"), new { deviceKey = store.DeviceKey() }, ct);
-        }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { }
     }
 
     private async Task RevokeAsync(SessionStore.Session s)
@@ -231,15 +217,6 @@ public sealed class IPopClient
             throw;
         }
         finally { transitioning = false; }
-        // Signed-in state supersedes the anonymous waiting heartbeat, including password sign-in.
-        try
-        {
-            using var req = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(next.Server), "api/notifier/link/clear"));
-            req.Headers.Authorization = new("Bearer", token);
-            req.Content = JsonContent.Create(new { deviceKey = next.DeviceKey });
-            using var _ = await http.SendAsync(req, ct);
-        }
-        catch { }
         if (old is not null) await RevokeAsync(old);
     }
 

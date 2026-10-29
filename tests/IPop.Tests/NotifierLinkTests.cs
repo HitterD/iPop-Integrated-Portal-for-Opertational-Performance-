@@ -7,7 +7,7 @@ using Xunit;
 
 namespace IPop.Tests;
 
-/// Notifier 1.3.0: the browser signs the app on the same PC in with a one-time code (grilled 2026-10-26).
+/// Notifier browser sign-in: a one-time, PKCE-bound code (1.3.0) approved on a connect card in the browser (1.4.2).
 public class NotifierLinkTests
 {
     private static readonly DateTime Now = new(2026, 10, 26, 9, 0, 0, DateTimeKind.Utc);
@@ -32,19 +32,6 @@ public class NotifierLinkTests
     }
 
     [Fact]
-    public void Waiting_apps_count_only_on_their_own_address_and_only_while_they_keep_saying_so()
-    {
-        var store = new NotifierLinkStore();
-        store.MarkWaiting("pc-aaaaaaaa", "10.10.6.51", Now);
-        Assert.True(store.AnyWaiting("10.10.6.51", Now.AddSeconds(60)));
-        Assert.False(store.AnyWaiting("10.10.6.52", Now));
-        Assert.False(store.AnyWaiting("10.10.6.51", Now.AddSeconds(80)));
-        store.MarkWaiting("pc-aaaaaaaa", "10.10.6.51", Now);
-        store.ClearWaiting("pc-aaaaaaaa");
-        Assert.False(store.AnyWaiting("10.10.6.51", Now));
-    }
-
-    [Fact]
     public void Code_issuance_requires_fixed_size_pkce_and_request_secrets_and_is_bounded()
     {
         var store = new NotifierLinkStore();
@@ -54,29 +41,6 @@ public class NotifierLinkTests
         for (var i = 0; i < 5000; i++) Assert.NotNull(store.Issue(user, secret, secret, Now));
         Assert.Null(store.Issue(user, secret, secret, Now));
         Assert.NotNull(store.Issue(user, secret, secret, Now.AddSeconds(61)));
-    }
-
-    [Fact]
-    public async Task Fresh_means_the_browser_login_itself_started_within_a_minute()
-    {
-        using var t = new TestDb();
-        var u = t.AddUser("NL1");
-        var family = Guid.NewGuid();
-        t.Db.AuthSessions.Add(new AuthSession { UserId = u.Id, FamilyId = family, RefreshTokenHash = "h1", DeviceFingerprint = "Edge|Win32", CreatedAt = Now.AddSeconds(-20), ExpiresAt = Now.AddDays(90) });
-        // A later rotation of the same login: still the old start time that counts.
-        var old = Guid.NewGuid();
-        t.Db.AuthSessions.Add(new AuthSession { UserId = u.Id, FamilyId = old, RefreshTokenHash = "h2", DeviceFingerprint = "Edge|Win32", CreatedAt = Now.AddHours(-3), ExpiresAt = Now.AddDays(90) });
-        t.Db.AuthSessions.Add(new AuthSession { UserId = u.Id, FamilyId = old, RefreshTokenHash = "h3", DeviceFingerprint = "Edge|Win32", CreatedAt = Now.AddSeconds(-5), ExpiresAt = Now.AddDays(90) });
-        // The Notifier's own session never counts as a browser login.
-        var app = Guid.NewGuid();
-        t.Db.AuthSessions.Add(new AuthSession { UserId = u.Id, FamilyId = app, RefreshTokenHash = "h4", DeviceFingerprint = "notifier:PC1", CreatedAt = Now.AddSeconds(-5), ExpiresAt = Now.AddDays(90) });
-        await t.Db.SaveChangesAsync();
-
-        Assert.True(await NotifierLinkEndpoints.FreshLoginAsync(t.Db, u.Id, family.ToString(), Now, default));
-        Assert.False(await NotifierLinkEndpoints.FreshLoginAsync(t.Db, u.Id, old.ToString(), Now, default));
-        Assert.False(await NotifierLinkEndpoints.FreshLoginAsync(t.Db, u.Id, app.ToString(), Now, default));
-        Assert.False(await NotifierLinkEndpoints.FreshLoginAsync(t.Db, u.Id, null, Now, default));
-        Assert.False(await NotifierLinkEndpoints.FreshLoginAsync(t.Db, Guid.NewGuid(), family.ToString(), Now, default));
     }
 
     [Fact]
@@ -108,123 +72,146 @@ public class NotifierLinkTests
         Assert.Equal(expected, ClientAddress.Of(http, new ConfigurationBuilder().Build()));
     }
 
-    // ── 1.4.0: one tab, one prompt, only when asked for ─────────────────────────────────────────────────
+    // ── 1.4.2: a connect card in the browser, approved by a click; no protocol launch ─────────────────────
 
     private const string Ip = "10.10.6.51";
     private const string Pc = "pc-aaaaaaaa";
     private static string S(char c) => new(c, 43);
 
-    [Fact]
-    public void A_waiting_app_alone_no_longer_lets_the_browser_prompt_only_a_click_does_for_two_minutes()
+    /// The app's side: a request id + verifier it keeps, the challenge it sends.
+    private static (string Request, string Verifier, NotifierLinkStore.ConnectRequest R) Click(NotifierLinkStore store, DateTime at,
+        string device = Pc, string ip = Ip, char seed = 'a')
     {
-        var store = new NotifierLinkStore();
-        store.MarkWaiting(Pc, Ip, Now);
-        Assert.False(store.HasFreshIntent(Ip, Now));
-
-        var intent = store.RegisterIntent(Pc, Ip, "ipop-notifier", Now)!;
-        Assert.Equal(43, intent.Id.Length);
-        Assert.True(store.HasFreshIntent(Ip, Now.AddSeconds(119)));
-        Assert.False(store.HasFreshIntent("10.10.6.52", Now));
-        Assert.False(store.HasFreshIntent(Ip, Now.AddSeconds(121)));
-        Assert.Null(store.ClaimIntent(Ip, opened: false, Guid.NewGuid(), Now.AddSeconds(121)));
-        Assert.Null(store.RegisterIntent(Pc, Ip, "https", Now));
+        var request = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var verifier = new string(seed, 43);
+        var r = store.Register(device, ip, request, NotifierLinkStore.Challenge(verifier), "SJA-PC", "ipop-notifier", at)!;
+        return (request, verifier, r);
     }
 
     [Fact]
-    public async Task Should_requires_a_fresh_intent_and_keeps_only_the_guarded_account_switch()
-    {
-        using var t = new TestDb();
-        var me = t.AddUser("NL4");
-        var other = t.AddUser("NL5");
-        var store = new NotifierLinkStore();
-        var now = DateTime.UtcNow;
-        store.MarkWaiting(Pc, Ip, now);
-        // The 1.3.0 "any waiting app here → prompt" is gone.
-        Assert.Null(await NotifierLinkEndpoints.ShouldReasonAsync(store, t.Db, me.Id, Ip, null, opened: false, now, default));
-        // A 1.3.0 app's own "Sign in with browser" tab still works while it waits.
-        Assert.Equal("legacy", await NotifierLinkEndpoints.ShouldReasonAsync(store, t.Db, me.Id, Ip, null, opened: true, now, default));
-        store.RegisterIntent(Pc, Ip, "ipop-notifier", now);
-        Assert.Equal("intent", await NotifierLinkEndpoints.ShouldReasonAsync(store, t.Db, me.Id, Ip, null, opened: false, now, default));
-        Assert.Null(await NotifierLinkEndpoints.ShouldReasonAsync(store, t.Db, me.Id, Ip, null, opened: false, now.AddMinutes(3), default));
-
-        // Web account switch: only straight after this browser's own login, and the app confirms locally.
-        t.Db.NotifierDevices.Add(new NotifierDevice { UserId = other.Id, DeviceKey = "pc-bbbbbbbb", MachineName = "PC1", RemoteIp = "10.10.6.60", LastSeenAt = now });
-        var fresh = Guid.NewGuid(); var old = Guid.NewGuid();
-        t.Db.AuthSessions.Add(new AuthSession { UserId = me.Id, FamilyId = fresh, RefreshTokenHash = "f1", DeviceFingerprint = "Edge|Win32", CreatedAt = now.AddSeconds(-10), ExpiresAt = now.AddDays(90) });
-        t.Db.AuthSessions.Add(new AuthSession { UserId = me.Id, FamilyId = old, RefreshTokenHash = "f2", DeviceFingerprint = "Edge|Win32", CreatedAt = now.AddHours(-2), ExpiresAt = now.AddDays(90) });
-        await t.Db.SaveChangesAsync();
-        Assert.Equal("other", await NotifierLinkEndpoints.ShouldReasonAsync(store, t.Db, me.Id, "10.10.6.60", fresh.ToString(), false, now, default));
-        Assert.Null(await NotifierLinkEndpoints.ShouldReasonAsync(store, t.Db, me.Id, "10.10.6.60", old.ToString(), false, now, default));
-        Assert.Null(await NotifierLinkEndpoints.ShouldReasonAsync(store, t.Db, other.Id, "10.10.6.60", fresh.ToString(), false, now, default));
-    }
-
-    [Fact]
-    public void Exactly_one_tab_claims_a_click_and_the_app_sees_it()
+    public void Intent_then_Connect_then_poll_then_redeem_signs_the_app_in_as_the_approving_account()
     {
         var store = new NotifierLinkStore();
         var me = Guid.NewGuid();
-        var intent = store.RegisterIntent(Pc, Ip, "ipop-notifier-qa", Now)!;
-        Assert.False(store.CheckIntent(Pc, intent.Id, reserve: false, Now));
-        Assert.Null(store.ClaimIntent("10.10.6.52", false, me, Now));                 // another PC never
-        var won = store.ClaimIntent(Ip, false, me, Now.AddSeconds(1));
-        Assert.Equal("ipop-notifier-qa", won?.Scheme);
-        Assert.Null(store.ClaimIntent(Ip, false, Guid.NewGuid(), Now.AddSeconds(1)));   // the second tab stands down
-        Assert.True(store.CheckIntent(Pc, intent.Id, reserve: true, Now.AddSeconds(2)));
-        Assert.Null(store.CheckIntent(Pc, S('x'), false, Now));                        // someone else's id
-        Assert.Null(store.CheckIntent("pc-cccccccc", intent.Id, false, Now));
+        var (request, verifier, r) = Click(store, Now);
+        Assert.Equal("SJA-PC", r.PcName);
+        Assert.Equal("pending", store.Poll(Pc, request, reserve: false, Now.AddSeconds(1))!.State);
+        Assert.Equal(request, store.Claim(Ip, Now.AddSeconds(1))?.Id);                      // the open tab shows the card
+        Assert.Equal("claimed", store.Poll(Pc, request, false, Now.AddSeconds(2))!.State);
+        Assert.Equal(NotifierLinkStore.Decision.Ok, store.Approve(request, me, Ip, Now.AddSeconds(10)));
+        var poll = store.Poll(Pc, request, false, Now.AddSeconds(11))!;
+        Assert.Equal("approved", poll.State);
+        Assert.Equal(43, poll.Code!.Length);
+        // The code is handed out once; a second poll only learns it was collected.
+        Assert.Equal(new NotifierLinkStore.PollResult("collected", null), store.Poll(Pc, request, false, Now.AddSeconds(12)));
+        // Only the app's verifier redeems it.
+        Assert.Null(store.Redeem(poll.Code, S('x'), request, Now.AddSeconds(12)));
+        Assert.Equal(me, store.Redeem(poll.Code, verifier, request, Now.AddSeconds(13))?.UserId);
+        Assert.Null(store.Redeem(poll.Code, verifier, request, Now.AddSeconds(14)));        // single use
+        Assert.True(store.MarkConnected(request, me, "Bagastyo", Now.AddSeconds(14)));
+        Assert.Equal("Bagastyo", store.Status(request, me, Now.AddSeconds(15))?.Name);
+        Assert.Null(store.Status(request, Guid.NewGuid(), Now.AddSeconds(15)));           // nobody else reads it
     }
 
     [Fact]
-    public void When_no_tab_answers_the_app_reserves_the_click_for_the_one_tab_it_opens()
+    public void A_request_needs_the_apps_own_secrets_and_a_known_scheme()
     {
         var store = new NotifierLinkStore();
-        var intent = store.RegisterIntent(Pc, Ip, "ipop-notifier", Now)!;
-        Assert.False(store.CheckIntent(Pc, intent.Id, reserve: true, Now.AddSeconds(5)));
-        // A tab that only now hears about it doesn't take it (the app is already opening one) …
-        Assert.Null(store.ClaimIntent(Ip, opened: false, Guid.NewGuid(), Now.AddSeconds(6)));
-        // … the tab the app opened does.
-        Assert.NotNull(store.ClaimIntent(Ip, opened: true, Guid.NewGuid(), Now.AddSeconds(8)));
-        Assert.Null(store.ClaimIntent(Ip, opened: true, Guid.NewGuid(), Now.AddSeconds(9)));
-        // "Open browser again" starts a fresh attempt.
-        var again = store.RegisterIntent(Pc, Ip, "ipop-notifier", Now.AddSeconds(30))!;
-        Assert.NotEqual(intent.Id, again.Id);
-        Assert.Null(store.CheckIntent(Pc, intent.Id, false, Now.AddSeconds(30)));
-        Assert.False(store.CheckIntent(Pc, again.Id, false, Now.AddSeconds(30)));
+        Assert.Null(store.Register(Pc, Ip, "short", S('c'), "PC", "ipop-notifier", Now));
+        Assert.Null(store.Register(Pc, Ip, S('r'), null, "PC", "ipop-notifier", Now));
+        Assert.Null(store.Register(Pc, Ip, S('r'), S('c'), "PC", "https", Now));
+        Assert.NotNull(store.Register(Pc, Ip, S('r'), S('c'), "<b>PC</b>", "ipop-notifier-qa", Now));
+        Assert.Equal("bPCb", store.Find(S('r'))!.PcName);                                  // shown as text, cleaned
+        Assert.Null(store.Register("pc-bbbbbbbb", Ip, S('r'), S('c'), "PC", "ipop-notifier", Now)); // an id is used once
+        Assert.Equal("this PC", NotifierLinkStore.CleanPcName(null));
     }
 
     [Fact]
-    public void The_app_hands_its_pkce_request_only_to_the_tab_that_claimed_its_click()
+    public void A_request_expires_after_two_minutes()
     {
         var store = new NotifierLinkStore();
-        var me = Guid.NewGuid(); var stranger = Guid.NewGuid();
-        var intent = store.RegisterIntent(Pc, Ip, "ipop-notifier", Now)!;
-        var (nonce, request, challenge) = (S('n'), S('r'), S('c'));
-        // Unclaimed (no tab took the click): nothing to hand to.
-        Assert.False(store.PutHandoff(Pc, intent.Id, nonce, request, challenge, Now));
-        store.ClaimIntent(Ip, false, me, Now);
-        Assert.False(store.PutHandoff(Pc, S('x'), nonce, request, challenge, Now));    // not the app's intent
-        Assert.True(store.PutHandoff(Pc, intent.Id, nonce, request, challenge, Now));
-        // One answer per click: a second prepare (another page launching its own nonce) gets nothing.
-        Assert.False(store.PutHandoff(Pc, intent.Id, S('m'), S('q'), challenge, Now));
-
-        Assert.Null(store.TakeHandoff(S('m'), me, Ip, Now));                          // wrong nonce
-        Assert.Null(store.TakeHandoff(nonce, stranger, Ip, Now));                     // other account
-        Assert.Null(store.TakeHandoff(nonce, me, "10.10.6.52", Now));                 // other address
-        var h = store.TakeHandoff(nonce, me, Ip, Now.AddSeconds(2));
-        Assert.Equal(request, h?.RequestId);
-        Assert.Equal(challenge, h?.Challenge);
-        Assert.Null(store.TakeHandoff(nonce, me, Ip, Now.AddSeconds(3)));              // single use
+        var (request, _, _) = Click(store, Now);
+        Assert.Null(store.Claim(Ip, Now.AddSeconds(121)));
+        Assert.Equal(NotifierLinkStore.Decision.Expired, store.Approve(request, Guid.NewGuid(), Ip, Now.AddSeconds(121)));
+        Assert.Equal(NotifierLinkStore.Decision.Expired, store.Deny(request, Ip, Now.AddSeconds(121)));
+        Assert.Equal("expired", store.Poll(Pc, request, false, Now.AddSeconds(121))!.State);
+        // Still remembered for a while (the card says "expired"), then gone.
+        Assert.NotNull(store.Find(request));
+        Click(store, Now.AddMinutes(11), device: "pc-cccccccc");                          // sweeps
+        Assert.Null(store.Find(request));
     }
 
     [Fact]
-    public void A_hand_off_expires_after_a_minute()
+    public void Only_a_browser_on_the_apps_address_can_approve_or_cancel()
     {
         var store = new NotifierLinkStore();
-        var me = Guid.NewGuid();
-        var intent = store.RegisterIntent(Pc, Ip, "ipop-notifier", Now)!;
-        store.ClaimIntent(Ip, false, me, Now);
-        Assert.True(store.PutHandoff(Pc, intent.Id, S('n'), S('r'), S('c'), Now));
-        Assert.Null(store.TakeHandoff(S('n'), me, Ip, Now.AddSeconds(61)));
+        var (request, _, _) = Click(store, Now);
+        Assert.Null(store.Claim("10.10.6.52", Now));                                       // another PC's tabs never claim it
+        Assert.Equal(NotifierLinkStore.Decision.OtherAddress, store.Approve(request, Guid.NewGuid(), "10.10.6.52", Now));
+        Assert.Equal(NotifierLinkStore.Decision.OtherAddress, store.Approve(request, Guid.NewGuid(), null, Now));
+        Assert.Equal(NotifierLinkStore.Decision.OtherAddress, store.Deny(request, "10.10.6.52", Now));
+        Assert.Equal("pending", store.Poll(Pc, request, false, Now)!.State);
+        Assert.Equal(NotifierLinkStore.Decision.NotFound, store.Approve(S('z'), Guid.NewGuid(), Ip, Now));
+    }
+
+    [Fact]
+    public void A_request_is_answered_once()
+    {
+        var store = new NotifierLinkStore();
+        var me = Guid.NewGuid(); var other = Guid.NewGuid();
+        var (request, _, _) = Click(store, Now);
+        Assert.Equal(NotifierLinkStore.Decision.Ok, store.Approve(request, me, Ip, Now));
+        Assert.Equal(NotifierLinkStore.Decision.Used, store.Approve(request, other, Ip, Now));  // a second tab / account
+        Assert.Equal(NotifierLinkStore.Decision.Used, store.Approve(request, me, Ip, Now));
+        Assert.Equal(NotifierLinkStore.Decision.Used, store.Deny(request, Ip, Now));
+        Assert.Equal(me, store.Find(request)!.ApprovedBy);
+    }
+
+    [Fact]
+    public void Cancel_tells_the_app_and_mints_nothing()
+    {
+        var store = new NotifierLinkStore();
+        var (request, _, _) = Click(store, Now);
+        store.Claim(Ip, Now);
+        Assert.Equal(NotifierLinkStore.Decision.Ok, store.Deny(request, Ip, Now.AddSeconds(3)));
+        Assert.Equal(new NotifierLinkStore.PollResult("denied", null), store.Poll(Pc, request, false, Now.AddSeconds(4)));
+        Assert.Equal(NotifierLinkStore.Decision.Used, store.Approve(request, Guid.NewGuid(), Ip, Now.AddSeconds(5)));
+        Assert.Null(store.Status(request, Guid.NewGuid(), Now.AddSeconds(5)));
+    }
+
+    [Fact]
+    public void Only_the_device_that_asked_can_poll_its_request()
+    {
+        var store = new NotifierLinkStore();
+        var (request, _, _) = Click(store, Now);
+        store.Approve(request, Guid.NewGuid(), Ip, Now);
+        Assert.Null(store.Poll("pc-bbbbbbbb", request, false, Now));                       // wrong device key: no code
+        Assert.Null(store.Poll(Pc, S('q'), false, Now));
+        Assert.Null(store.Poll(Pc, "short", false, Now));
+        Assert.Equal("approved", store.Poll(Pc, request, false, Now)!.State);              // still there for the right one
+    }
+
+    [Fact]
+    public void Exactly_one_tab_claims_a_click_and_after_a_reserve_none_does()
+    {
+        var store = new NotifierLinkStore();
+        var (first, _, _) = Click(store, Now);
+        Assert.Equal(first, store.Claim(Ip, Now)?.Id);
+        Assert.Null(store.Claim(Ip, Now));                                                 // the second tab stands down
+        // A new click (Open browser again) is a new request; the device's open one is replaced.
+        var (again, _, _) = Click(store, Now.AddSeconds(25), seed: 'b');
+        Assert.Null(store.Find(first));
+        // No tab took it within ~5 s: the app reserves it and opens one tab on the card itself.
+        Assert.Equal("pending", store.Poll(Pc, again, reserve: true, Now.AddSeconds(30))!.State);
+        Assert.Null(store.Claim(Ip, Now.AddSeconds(31)));
+        // The tab the app opened goes straight to the card and can still approve it.
+        Assert.Equal(NotifierLinkStore.Decision.Ok, store.Approve(again, Guid.NewGuid(), Ip, Now.AddSeconds(40)));
+        // Two PCs behind one address (NAT) each keep their own request.
+        var (mine, _, _) = Click(store, Now.AddSeconds(50), device: "pc-dddddddd");
+        var (theirs, _, _) = Click(store, Now.AddSeconds(51), device: "pc-eeeeeeee");
+        Assert.NotNull(store.Find(mine));
+        Assert.Equal(theirs, store.Claim(Ip, Now.AddSeconds(52))?.Id);                    // newest first
+        Assert.Equal(mine, store.Claim(Ip, Now.AddSeconds(52))?.Id);
     }
 
     [Fact]

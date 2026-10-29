@@ -62,6 +62,9 @@ public sealed class SettingsWindow : BridgedWindow
     private readonly Func<object> account;
     public event Action? SignOut;
     public event Action? PopupStyleChanged;
+    /// General › About: "Check for updates" and, when a version is ready, "Update now".
+    public event Action? CheckUpdates;
+    public event Action? UpdateNow;
 
     public SettingsWindow(IPopClient api, SettingsService settings, Func<object> account) : base("settings.html", WindowSizes.Get("settings", new Size(960, 720)), api)
     {
@@ -74,6 +77,9 @@ public sealed class SettingsWindow : BridgedWindow
     }
 
     protected override void OnReady() => Send(new { type = "settings", settings = settings.Current, account = account() });
+
+    /// The answer of a "Check for updates" click: notInstalled | upToDate | ready (+ version) | failed.
+    public void UpdateResult(object result) { if (!IsDisposed) Send(new { type = "updateResult", result }); }
 
     protected override async void HandleMessage(string type, JsonNode? msg)
     {
@@ -94,6 +100,8 @@ public sealed class SettingsWindow : BridgedWindow
                 SignOut?.Invoke();
                 Close();
                 break;
+            case "checkUpdates": CheckUpdates?.Invoke(); break;
+            case "updateNow": UpdateNow?.Invoke(); break;
             default: base.HandleMessage(type, msg); break;
         }
     }
@@ -104,8 +112,8 @@ public sealed class SignInWindow : HtmlWindow
 {
     private readonly IPopClient api;
     public event Action? SignedIn;
-    /// "Sign in with browser": iPop opens; if the browser is signed in it sends the link back.
-    /// true = "Open browser again" (after 20 s of waiting): open one tab now.
+    /// "Sign in with browser": a connect card shows in iPop in the browser (an open tab, or one the app opens).
+    /// true = "Open browser again" (after 20 s of waiting): a fresh request, one tab now.
     public event Action<bool>? WithBrowser;
 
     public SignInWindow(IPopClient api) : base("signin.html", new Size(480, 760))
