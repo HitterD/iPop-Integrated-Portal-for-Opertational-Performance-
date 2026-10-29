@@ -343,21 +343,46 @@
     view.done = 'Reply sent';
   };
 
+  // Ticket notification body (TicketNotificationText on the server): "Person · Role · Unit\nwhat happened\n#number".
+  // Older notifications ("Ticket title\nWho: “text”", titled "New reply on …") still read: the first line is the title.
+  function ticketText() {
+    const lines = String(N.body || '').split(String.fromCharCode(10)).map(s => s.trim()).filter(Boolean);
+    const number = lines.length > 1 && lines[lines.length - 1].startsWith('#') ? lines.pop() : null;
+    if (!number && /^(\d+ )?new (message|reply|messages|replies) on /i.test(N.title || '') && lines.length > 1)
+      return { title: lines[0], who: null, sentence: lines.slice(1).join(' '), number: null, legacy: N.title };
+    if (lines.length < 2) return { title: N.title, who: null, sentence: lines[0] || '', number };
+    const [name, ...sub] = lines[0].split(' · ');
+    return { title: N.title, who: { name, sub: sub.join(' · ') }, sentence: lines.slice(1).join(' '), number };
+  }
+  // "Rizky: “text” · 3 new messages" → { from: 'Rizky', text: 'text' }
+  const chatOf = s => { const q = /^([^:“]{1,60}): “([\s\S]*)”(?: · \d+ new \w+)?$/.exec(s || ''); return q ? { from: q[1], text: q[2] } : null; };
+  const TK_STEPS = ['Open', 'In progress', 'Resolved', 'Closed'];
+  const tkStep = s => ({ TODO: 0, IN_PROGRESS: 1, WAITING_VENDOR: 1, RESOLVED: 2, CLOSED: 3 })[s];
+  const tkProg = n => n == null ? '' : `<div class="tk-prog">${TK_STEPS.map((s, i) => `<span class="${i < n ? 'd' : i === n ? 'c' : ''}">${s}</span>`).join('')}</div>`;
+  const tkIcon = (type, s) => /^Reopened/.test(s) ? 'rotate-ccw' : ({ 'ticket.resolved': 'circle-check', 'ticket.closed': 'lock', 'ticket.assigned': 'user-round-check',
+    'ticket.visit_changed': 'calendar', 'ticket.send_failed': 'circle-alert', 'ticket.sent': 'send' })[type] || 'circle-dot';
+  const tkEvent = (type, s) => s ? `<div class="tk-ev">${IC(tkIcon(type, s))}<div>${esc(s)}</div></div>` : '';
+  const tkChat = (name, me, at, text) => `<div class="tk-ch ${me ? 'me' : ''}"><span class="av" style="background:${avatarColor(name)}">${esc(initials(name))}</span><div class="sel"><b>${esc(me ? 'You' : (name || 'ICT').split(' ')[0])}${at ? ' · ' + esc(timeShort(at)) : ''}</b>${esc(text)}</div></div>`;
+  const human = v => String(v || '').toLowerCase().replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+  const openIdesk = url => ({ label: IC('arrow-up-right') + 'Open in iDesk', run: async () => { if (url) post({ type: 'openUrl', url }); else openIPop(N.targetUrl); await markRead(); closeOut('open'); } });
+  const readAll = { ...readTool, label: IC('check-check') + 'Mark as read' };
+
   async function tickets() {
+    const x = ticketText();
+    const chat = N.eventType === 'ticket.message_created';
     const agentTid = id(new RegExp('^/idesk/tickets/' + G));
     if (agentTid) {
-      const nl = N.body.indexOf(String.fromCharCode(10));
-      const head = nl < 0 ? '' : N.body.slice(0, nl);
-      const line = nl < 0 ? N.body : N.body.slice(nl + 1);
-      view.title = head || N.title;
-      view.chips = [{ t: N.title }];
-      view.body = `<p class="txt sel">${esc(line)}</p>`;
+      // Technician side: the reporter, what happened, the number. No iPop copy of the ticket to fetch.
+      view.title = x.title;
+      view.who = x.who;
+      view.chips = [x.number && { t: x.number }, x.legacy && { t: x.legacy }].filter(Boolean);
+      const c = chat && chatOf(x.sentence);
+      view.body = `<div class="tk">${c ? tkChat(x.who?.name || c.from, false, N.at, c.text) : tkEvent(N.eventType, x.sentence)}</div>`;
       ticketReply(agentTid);
-      view.tools = [
-        { label: IC('reply') + 'Reply', cls: 'p', reply: true },
-        { label: IC('external-link') + 'Open in iDesk', run: async () => { openIPop(N.targetUrl); await markRead(); closeOut('open'); } },
-        readTool,
-      ];
+      const replyFirst = chat || /^Reopened/.test(x.sentence);
+      const open = { ...openIdesk(null), cls: replyFirst ? '' : 'p' };
+      const reply = { label: IC('reply') + 'Reply', cls: replyFirst ? 'p' : '', reply: true };
+      view.tools = replyFirst ? [reply, open, readAll] : [open, reply, readAll];
       return true;
     }
     const tid = id(new RegExp('^/tickets/' + G));
@@ -368,21 +393,27 @@
     const t = r.json;
     view.title = t.title;
     const msgs = (m.ok && m.json?.messages) || [];
-    const last = msgs.filter(x => !x.mine).slice(-1)[0];
-    view.who = last ? { name: last.sender, sub: 'replied to your ticket' } : (t.assignee ? { name: t.assignee, sub: 'ICT' } : null);
-    const human = v => String(v || '').toLowerCase().replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
-    view.chips = [{ t: (t.ticketNumber ? '#' + t.ticketNumber : ''), st: true }, { t: human(t.status) }, t.priority && { t: human(t.priority) + ' priority' }].filter(c => c && c.t);
-    view.body = msgs.length
-      ? `<div class="msg-list">${msgs.slice(-4).map(x => `<div class="msg-it sel"><b>${esc(x.mine ? 'You' : x.sender)}</b><small>${esc(timeShort(x.createdAt))}</small><p>${esc(x.content)}</p></div>`).join('')}</div>`
-      : `<p class="txt sel">${esc(t.description || N.body)}</p>`;
+    const pic = t.assignee?.name || null;
+    // The PIC (the line the server wrote says "Your PIC · <unit>"); before anyone picks it up, whoever wrote last.
+    const last = msgs.filter(y => !y.mine).slice(-1)[0];
+    view.who = pic ? { name: pic, sub: x.who && x.who.name === pic ? x.who.sub : 'Your PIC · ' + (t.moduleName || 'ICT') }
+      : x.who && x.who.sub !== 'Not assigned yet' ? x.who
+      : last ? { name: last.sender, sub: t.moduleName || 'ICT' } : x.who;
+    view.chips = [t.ticketNumber && { t: '#' + t.ticketNumber }, t.priority && { t: human(t.priority) },
+      t.visit && { t: 'Visit ' + new Date(t.visit.start).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) }].filter(Boolean);
+    const chats = msgs.slice(-3).map(y => tkChat(y.mine ? (ME || 'You') : y.sender, y.mine, y.createdAt, y.content)).join('');
+    const sentence = chat ? '' : x.sentence;
+    view.body = `<div class="tk">${tkProg(tkStep(t.status))}${tkEvent(N.eventType, sentence)}`
+      + (chats ? `<div class="tk-chats">${chats}</div>` : !sentence ? `<p class="txt sel">${esc(t.description || x.sentence)}</p>` : '')
+      + `</div>`;
     const url = t.url || m.json?.url;
-    if (N.eventType === 'ticket.message_created' && t.ticketNumber) ticketReply(tid);
-    view.tools = [
-      view.reply ? { label: IC('reply') + 'Reply', cls: 'p', reply: true }
-        : { label: IC('reply') + 'Reply in iDesk', cls: 'p', run: async () => { if (url) post({ type: 'openUrl', url }); else openIPop(N.targetUrl); await markRead(); closeOut('open'); } },
-      ...(view.reply ? [{ label: IC('external-link') + 'Open in iDesk', run: async () => { if (url) post({ type: 'openUrl', url }); else openIPop(N.targetUrl); await markRead(); closeOut('open'); } }] : []),
-      readTool,
-    ];
+    if (t.ticketNumber) ticketReply(tid);
+    const reply = view.reply ? [{ label: IC('reply') + 'Reply', reply: true }] : [];
+    // No confirm endpoint in the iPop ticket API: confirming happens in iDesk (as on the web Tickets page).
+    const confirm = t.status === 'RESOLVED' && { ...openIdesk(url), label: IC('check') + 'Confirm in iDesk', cls: 'p' };
+    view.tools = confirm ? [confirm, ...reply, { ...openIdesk(url), label: IC('arrow-up-right') + 'Open' }, readAll]
+      : chat && view.reply ? [{ ...reply[0], cls: 'p' }, openIdesk(url), readAll]
+      : [{ ...openIdesk(url), cls: 'p' }, ...reply, readAll];
   }
 
   async function calendar() {

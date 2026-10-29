@@ -29,7 +29,7 @@
                 <div class="nb-title">@item.Title</div>
                 @if (Notifs.CurrentShowPreview && !string.IsNullOrWhiteSpace(item.Body))
                 {
-                    <div class="nb-desc">@item.Body</div>
+                    <div class="nb-desc">@NotificationPreview.Of(item.Body, item.TargetUrl)</div>
                 }
             </div>
             <button type="button" class="apple-banner-close" title="Close" aria-label="Close notification" @onclick="() => Notifs.DismissBanner(b.Id)" @onclick:stopPropagation>

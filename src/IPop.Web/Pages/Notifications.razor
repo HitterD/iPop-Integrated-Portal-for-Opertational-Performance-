@@ -134,7 +134,7 @@
                                             <span class="notifs-row-title">@n.Title</span>
                                             <span class="notifs-row-time">@FormatTime(n.At)</span>
                                         </span>
-                                        <span class="notifs-row-body">@n.Body</span>
+                                        <span class="notifs-row-body">@NotificationPreview.Of(n.Body, n.TargetUrl)</span>
                                         @if (IsSnoozed(n))
                                         {
                                             <span class="notifs-row-snz"><i data-lucide="alarm-clock"></i>Until @SnoozeLabel(n.SnoozedUntil!.Value)</span>
@@ -304,7 +304,7 @@ else if (snoozeMenuOpen)
         .ToList();
 
     private IReadOnlyList<PhoneNotifRow> PhoneRows => GroupedNotifications
-        .SelectMany(g => g.Select(n => new PhoneNotifRow(n.Id, Classify(n.Type), GetIcon(n.Type), n.Title, n.Body, FormatTime(n.At),
+        .SelectMany(g => g.Select(n => new PhoneNotifRow(n.Id, Classify(n.Type), GetIcon(n.Type), n.Title, NotificationPreview.Of(n.Body, n.TargetUrl), FormatTime(n.At),
             g.Key is "Today" ? "Today" : g.Key is "Yesterday" ? "Yesterday" : "Earlier", n.IsRead,
             IsSnoozed(n) ? $"Until {SnoozeLabel(n.SnoozedUntil!.Value)}" : null)))
         .ToList();

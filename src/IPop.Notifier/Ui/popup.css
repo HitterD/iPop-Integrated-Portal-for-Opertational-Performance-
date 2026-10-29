@@ -202,3 +202,18 @@ body.card{background:var(--surface)}
 .dark .m-system{--m:#7C8C99;--m-soft:rgba(124,140,153,.25);--m-ink:#c4ced6}
 
 .txt{white-space:pre-wrap;word-break:break-word}
+
+/* iDesk tickets (mockup aligned.html §5): progress strip, one-sentence event, chat bubbles. */
+.tk{display:flex;flex-direction:column;gap:12px}
+.tk-prog{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.tk-prog span{font-size:11.5px;font-weight:600;color:var(--ink-3);padding-top:8px;border-top:4px solid var(--fill);border-radius:2px}
+.tk-prog span.d{border-color:var(--m);color:var(--ink-2)}
+.tk-prog span.c{border-color:var(--m);color:var(--m-ink)}
+.tk-ev{display:flex;gap:10px;align-items:flex-start;font-size:var(--fs-body);line-height:1.45;color:var(--ink)}
+.tk-ev svg.lucide{width:18px;height:18px;flex:none;color:var(--m);margin-top:2px}
+.tk-chats{display:flex;flex-direction:column;gap:8px}
+.tk-ch{display:flex;gap:10px;align-items:flex-start}
+.tk-ch .av{width:30px;height:30px;font-size:11px;border-radius:8px}
+.tk-ch>div{flex:1;min-width:0;background:var(--card);border:1px solid var(--sep);border-radius:12px;padding:8px 12px;font-size:14.5px;line-height:1.45;color:var(--ink-2);white-space:pre-wrap;word-break:break-word}
+.tk-ch>div b{display:block;font-size:12.5px;color:var(--ink-3);font-weight:600;white-space:normal}
+.tk-ch.me>div{background:var(--m-soft);border-color:transparent}

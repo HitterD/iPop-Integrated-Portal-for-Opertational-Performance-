@@ -41,7 +41,11 @@ public sealed record IdeskTicket(
     DateTime? ResolvedAt,
     DateTime? ClosedAt,
     string? Url,
-    IdeskVisit? Visit = null);
+    IdeskVisit? Visit = null,
+    /// assignee.nik — newer iDesk builds only; lets iPop notify the assigned technician. Never shown.
+    string? AssigneeNik = null,
+    /// When a Resolved ticket closes by itself unless the requester confirms (newer iDesk builds only).
+    DateTime? ResolutionDeadlineAt = null);
 
 /// The ICT visit of a hardware-installation ticket (UTC).
 public sealed record IdeskVisit(DateTime Start, DateTime End, string? HardwareType);

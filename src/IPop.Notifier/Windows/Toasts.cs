@@ -102,13 +102,15 @@ public static class Toasts
     {
         var ticket = TicketRefOf(n.TargetUrl);
         var chat = n.EventType == "ticket.message_created" && ticket is not null;
-        var (head, line) = SplitBody(n.Body);
+        var (person, text, number) = TicketText(n.Body);
+        // Header = who (the PIC, or the reporter on the technician's side); body = what they said / what happened;
+        // attribution = which ticket: "<problem title> · #number". Never a GUID.
         var b = new ToastContentBuilder()
             .AddArgument("url", n.TargetUrl ?? "/tickets")
             .AddAppLogoOverride(IdeskLogo, ToastGenericAppLogoCrop.Default)
-            .AddAttributionText(head is null ? "iDesk" : "iDesk · " + head)
-            .AddText(n.Title, hintMaxLines: 1)
-            .AddText(line.Length > 200 ? line[..200] + "…" : line);
+            .AddAttributionText(number is null ? n.Title : $"{n.Title} · {number}")
+            .AddText(person ?? n.Title, hintMaxLines: 1)
+            .AddText(text.Length > 200 ? text[..200] + "…" : text);
         if (chat)
         {
             b.AddInputTextBox("reply", placeHolderContent: "Reply in the ticket chat…")
@@ -175,11 +177,24 @@ public static class Toasts
         try { Registry.CurrentUser.DeleteSubKeyTree(@"Software\Classes\AppUserModelId\" + IdeskAumid, throwOnMissingSubKey: false); } catch { }
     }
 
-    /// "Ticket title\nWho: “text”" → ("Ticket title", "Who: “text”"); a body without a newline is all text.
-    internal static (string? Head, string Line) SplitBody(string body)
+    /// Ticket notification body "Person · Role · Unit\nsentence\n#number" (TicketNotificationText on the server) →
+    /// ("Person · your PIC", toast text, "#number"). A chat sentence "Rizky: “text”" becomes just the text (the header
+    /// already says who) and its running count ("… · 3 new messages") moves to the header. Older bodies
+    /// ("Ticket title\nWho: “text”") still read: no number, the first line as the header.
+    internal static (string? Person, string Text, string? Number) TicketText(string body)
     {
-        var i = body.IndexOf('\n');
-        return i < 0 ? (null, body) : (body[..i].Trim(), body[(i + 1)..].Trim());
+        var lines = body.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
+        string? number = lines.Count > 1 && lines[^1].StartsWith('#') ? lines[^1] : null;
+        if (number is not null) lines.RemoveAt(lines.Count - 1);
+        if (lines.Count < 2) return (null, lines.FirstOrDefault() ?? "", number);
+        var parts = lines[0].Split(" · ");
+        var person = parts.Length > 1 && parts[1] == "Your PIC" ? parts[0] + " · your PIC" : parts[0];
+        var text = string.Join(" ", lines.Skip(1));
+        var count = System.Text.RegularExpressions.Regex.Match(text, @" · (\d+) new (messages|replies)$");
+        if (count.Success) { text = text[..count.Index]; person += $" · {count.Groups[1].Value} new"; }
+        var quote = System.Text.RegularExpressions.Regex.Match(text, "^[^:“]{1,60}: “(.*)”$", System.Text.RegularExpressions.RegexOptions.Singleline);
+        if (quote.Success) text = quote.Groups[1].Value;
+        return (person, text, number);
     }
 
     /// The ticket a notification is about: my ticket (/tickets/{id}…) or, for the assigned agent, the iDesk ticket
