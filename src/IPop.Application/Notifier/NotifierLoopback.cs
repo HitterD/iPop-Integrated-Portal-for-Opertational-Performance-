@@ -256,7 +256,7 @@ public static class LoopbackPages
             + ".brand{margin-top:22px;font-size:12.5px;color:var(--ink3)}"
             + "</style></head><body><main class=\"card\" role=\"status\">"
             + "<div class=\"badge " + kind + "\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\">" + icon + "</svg></div>"
-            + "<h1>" + (kind == "ok" ? "&#10003; " : "") + WebUtility.HtmlEncode(title) + "</h1><p>" + html + "</p>"
+            + "<h1>" + WebUtility.HtmlEncode(title) + "</h1><p>" + html + "</p>"
             + "<div class=\"brand\">iPop Notifier</div></main>"
             + (close ? "<script>setTimeout(function(){try{window.close()}catch(e){}},1500)</script>" : "")
             + "</body></html>";
