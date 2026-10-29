@@ -290,7 +290,8 @@ public sealed class HttpIdeskClient : IIdeskClient
         var id = Str(t, "ticketId");
         if (string.IsNullOrEmpty(id)) return null;
         var requester = t.TryGetProperty("requester", out var r) && r.ValueKind == JsonValueKind.Object ? r : default;
-        var assignee = t.TryGetProperty("assignee", out var a) && a.ValueKind == JsonValueKind.Object ? Str(a, "name") : null;
+        var assigneeEl = t.TryGetProperty("assignee", out var a) && a.ValueKind == JsonValueKind.Object ? a : default;
+        var assignee = assigneeEl.ValueKind == JsonValueKind.Object ? Str(assigneeEl, "name") : null;
         var created = Date(t, "createdAt") ?? DateTime.UtcNow;
         return new IdeskTicket(
             id,
@@ -311,7 +312,9 @@ public sealed class HttpIdeskClient : IIdeskClient
             Date(t, "resolvedAt"),
             Date(t, "closedAt"),
             PublicLink(Str(t, "url")),
-            ParseVisit(t));
+            ParseVisit(t),
+            assigneeEl.ValueKind == JsonValueKind.Object ? Str(assigneeEl, "nik") : null,
+            Date(t, "resolutionDeadlineAt"));
     }
 
     private static IdeskVisit? ParseVisit(JsonElement t)

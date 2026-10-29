@@ -384,7 +384,7 @@ public sealed class TicketService(
                     AddEvent(row, "sent", null, row.Status, row.AssigneeName, now);
                     await SetRegisteredAsync(row.UserId, ct);
                     await db.SaveChangesAsync(ct);
-                    await NotifyAsync(row, "ticket.sent", "Ticket sent to ICT", ct);
+                    await NotifyAsync(row, "ticket.sent", SentSentence, ct);
                     await ChangedAsync(row.UserId, null, row.Id, ct);
                     break;
                 case IdeskOutcome.NotRegistered:
@@ -412,7 +412,7 @@ public sealed class TicketService(
         row.UpdatedAt = now;
         AddEvent(row, "send_failed", TicketStatus.Sending, TicketStatus.Failed, null, now);
         await db.SaveChangesAsync(ct);
-        await NotifyAsync(row, "ticket.send_failed", "Couldn't send your ticket", ct);
+        await NotifyAsync(row, "ticket.send_failed", "Couldn't send your ticket to ICT. Open it to try again or discard it.", ct);
         await ChangedAsync(row.UserId, null, row.Id, ct);
     }
 
@@ -422,7 +422,7 @@ public sealed class TicketService(
     {
         string? eventId, evt; DateTime occurredAt; string? previousStatus; IdeskTicket? it;
         IdeskBooking? booking = null; string? cancelledBooking = null; WebhookMessage? message = null;
-        List<string>? recipients = null; string? reader = null;
+        List<string>? recipients = null; string? reader = null; TicketWebhookFacts facts;
         try
         {
             using var doc = JsonDocument.Parse(body);
@@ -452,6 +452,17 @@ public sealed class TicketService(
                 ? rc.EnumerateArray().Where(r => r.ValueKind == JsonValueKind.Object).Select(r => Prop(r, "nik")).OfType<string>().ToList()
                 : null;
             reader = root.TryGetProperty("reader", out var rd) && rd.ValueKind == JsonValueKind.Object ? Prop(rd, "nik") : null;
+            // Newer iDesk builds: who made the change (null = the system), why it closed, who had it before, and the
+            // requester's reopen comment. All optional; without them the text falls back to previousStatus.
+            static TicketWebhookPerson? Person(JsonElement p) =>
+                p.ValueKind == JsonValueKind.Object ? new TicketWebhookPerson(Prop(p, "nik"), Prop(p, "name")) : null;
+            var hasActor = root.TryGetProperty("actor", out var ac) && ac.ValueKind is JsonValueKind.Object or JsonValueKind.Null;
+            var ticketEl = root.TryGetProperty("ticket", out var te) && te.ValueKind == JsonValueKind.Object ? te : default;
+            facts = new TicketWebhookFacts(previousStatus,
+                root.TryGetProperty("previousAssignee", out var pa) ? Person(pa) : null,
+                Prop(root, "closedReason") ?? (ticketEl.ValueKind == JsonValueKind.Object ? Prop(ticketEl, "closedReason") : null),
+                hasActor, hasActor ? Person(ac) : null,
+                Prop(root, "reason"));
         }
         catch (JsonException) { return TicketWebhookKind.Invalid; }
         if (string.IsNullOrEmpty(eventId) || string.IsNullOrEmpty(evt)) return TicketWebhookKind.Invalid;
@@ -483,6 +494,13 @@ public sealed class TicketService(
             else if (agents.Count > 0 && !forRequester) return TicketWebhookKind.Duplicate;
             if (!forRequester) return TicketWebhookKind.Applied;
         }
+        var kind = evt.StartsWith("ticket.", StringComparison.Ordinal) ? evt["ticket.".Length..] : evt;
+        // The assigned technician (assignee.nik, newer iDesk only): assigned / reopened / confirmed / visit moved,
+        // never their own change. They have no mirror, so the receipt table dedupes it like the agent chat.
+        if (kind is "assigned" or "status_changed" or "closed" or "visit_changed" && it.AssigneeNik is not null
+            && TicketNotificationText.ForTechnician(kind, it, facts, VisitLabel(it.Visit)) is { } techSentence
+            && await FirstReceiptAsync("tech:" + eventId, ct))
+            await NotifyTechnicianAsync(it, evt, techSentence, ct);
 
         var row = (it.ExternalRef is null ? null : await db.Tickets.FirstOrDefaultAsync(x => x.ExternalRef == it.ExternalRef, ct))
                   ?? await db.Tickets.FirstOrDefaultAsync(x => x.IdeskTicketId == it.TicketId, ct);
@@ -511,7 +529,6 @@ public sealed class TicketService(
         else if (it.UpdatedAt >= row.UpdatedAt) Apply(row, it);   // a late redelivery must not roll the mirror back
         row.RemovedAt = null;
 
-        var kind = evt.StartsWith("ticket.", StringComparison.Ordinal) ? evt["ticket.".Length..] : evt;
         if (kind == "message_created" && message is not null)
         {
             row.UnreadMessages++;
@@ -542,25 +559,17 @@ public sealed class TicketService(
             return TicketWebhookKind.Duplicate;
         }
 
-        if (notifyQueuedLanding) await NotifyAsync(row, "ticket.sent", "Ticket sent to ICT", ct);
+        if (notifyQueuedLanding) await NotifyAsync(row, "ticket.sent", SentSentence, ct);
         if (visitMoved) await CalendarChangedAsync(row.UserId, nik, ct);
         if (kind == "message_created")
         {
-            await NotifyReplyAsync(row, ct);
+            await NotifyReplyAsync(row, it.AssigneeNik, ct);
             await ChangedAsync(row.UserId, nik, row.Id, ct);
             return TicketWebhookKind.Applied;
         }
-        var title = kind switch
-        {
-            "assigned" when it.AssigneeName is { Length: > 0 } a => $"{a} picked up your ticket",
-            "assigned" => "Your ticket was assigned",
-            "resolved" => "Ticket resolved — please confirm",
-            "closed" => "Ticket closed",
-            "status_changed" => $"Ticket status: {HumanizeStatus(it.Status)}",
-            "visit_changed" when VisitLabel(row) is { } v => $"ICT visit moved to {v}",
-            _ => null,   // ticket.created and anything unknown stay silent
-        };
-        if (title is not null) await NotifyAsync(row, evt, title, ct);
+        // ticket.created, anything unknown and the requester's own changes stay silent.
+        var sentence = TicketNotificationText.ForRequester(kind, it, facts, VisitLabel(row));
+        if (sentence is not null) await NotifyAsync(row, evt, sentence, ct, it.AssigneeNik);
         await ChangedAsync(row.UserId, nik, row.Id, ct);
         return TicketWebhookKind.Applied;
     }
@@ -810,18 +819,19 @@ public sealed class TicketService(
             var now = DateTime.UtcNow;
             foreach (var d in stale) { d.Status = NotificationStatus.Read; d.ReadAt = now; d.UpdatedAt = now; }
             if (stale.Count > 0) await db.SaveChangesAsync(ct);
-            // The unread one is a running summary ("3 new messages…"): carry its count forward.
-            unread += stale.Select(d => CountOf(d.Request.Title)).DefaultIfEmpty(0).Max();
+            // The unread one is a running summary ("… · 3 new messages"): carry its count forward.
+            unread += stale.Select(d => Math.Max(CountOf(d.Request.Title), TicketNotificationText.CountOf(d.Request.Body))).DefaultIfEmpty(0).Max();
         }
         catch (Exception ex) { _log.LogDebug(ex, "Clearing older agent reply notifications failed (non-fatal)"); }
 
-        var number = it.TicketNumber ?? "a ticket";
-        var title = unread > 1 ? $"{unread} new messages on {number}" : $"New message on {number}";
         var who = string.IsNullOrWhiteSpace(message.Sender) ? it.RequesterName ?? "Requester" : message.Sender;
-        var body = $"{it.Title}\n{who}: “{ChatPreview(message)}”";
+        // The reporter's line when the reporter wrote; anyone else (another technician) by name only.
+        var person = message.FromRequester || string.IsNullOrWhiteSpace(message.Sender)
+            ? await ReporterLineAsync(it, ct) : TicketNotificationText.Nice(message.Sender);
+        var body = TicketNotificationText.Body(person, TicketNotificationText.ChatSentence(who, ChatPreview(message), unread), it.TicketNumber);
         try
         {
-            await notify.PublishInternalAsync(clientSlug: "tickets", eventType: ReplyEvent, title: title,
+            await notify.PublishInternalAsync(clientSlug: "tickets", eventType: ReplyEvent, title: TicketTitle(it),
                 message: body, target: new NotificationTarget(UserId: user.Id), priority: "normal", targetUrl: url, ct: ct);
         }
         catch (Exception ex) { _log.LogWarning(ex, "Agent ticket reply notification failed ({EventId})", eventId); }
@@ -927,9 +937,50 @@ public sealed class TicketService(
     private static string? VisitLabel(Ticket row) =>
         IdeskCalendarSync.VisitOf(row) is { } v ? (v.Start + TimeSpan.FromHours(7)).ToString("ddd d MMM, HH:mm", CultureInfo.InvariantCulture) : null;
 
+    private static string? VisitLabel(IdeskVisit? v) =>
+        v is null ? null : (v.Start + TimeSpan.FromHours(7)).ToString("ddd d MMM, HH:mm", CultureInfo.InvariantCulture);
+
+    /// Suffix of a technician's status notification link: the same iDesk ticket as their chat notification, but not a
+    /// chat (the Notifier tells them apart by it, and the chat clean-up leaves it alone).
+    public const string IdeskUpdateSuffix = "#update";
+
+    /// "Budi Santoso · Reporter · Logistic, Sepanjang", from the requester's iPop account (iDesk name as fallback).
+    private async Task<string> ReporterLineAsync(IdeskTicket it, CancellationToken ct)
+    {
+        var u = it.RequesterNik is null ? null : await db.Users.AsNoTracking().Where(x => x.Nik == it.RequesterNik)
+            .Select(x => new { x.Name, Dept = x.Department != null ? x.Department.Name : null, Site = x.Site != null ? x.Site.Name : null })
+            .FirstOrDefaultAsync(ct);
+        return TicketNotificationText.ReporterLine(u?.Name ?? it.RequesterName, u?.Dept, u?.Site);
+    }
+
+    private async Task NotifyTechnicianAsync(IdeskTicket it, string evt, string sentence, CancellationToken ct)
+    {
+        var user = await db.Users.AsNoTracking().Where(u => u.Nik == it.AssigneeNik && u.IsActive).Select(u => new { u.Id }).FirstOrDefaultAsync(ct);
+        if (user is null) return;
+        try
+        {
+            await notify.PublishInternalAsync(clientSlug: "tickets", eventType: evt, title: TicketTitle(it),
+                message: TicketNotificationText.Body(await ReporterLineAsync(it, ct), sentence, it.TicketNumber),
+                target: new NotificationTarget(UserId: user.Id), priority: "normal",
+                targetUrl: IdeskTargetPrefix + NormalizeId(it.TicketId) + IdeskUpdateSuffix, ct: ct);
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Technician ticket notification {Event} failed", evt); }
+    }
+
+    /// "Rizky Ardiansyah · Your PIC · ICT Support": the PIC's iPop department when iDesk sent assignee.nik, else the queue.
+    private async Task<string> PicLineAsync(Ticket row, string? assigneeNik, CancellationToken ct)
+    {
+        var dept = assigneeNik is null || row.AssigneeName is null ? null
+            : await db.Users.AsNoTracking().Where(u => u.Nik == assigneeNik).Select(u => u.Department != null ? u.Department.Name : null).FirstOrDefaultAsync(ct);
+        return TicketNotificationText.PicLine(row.AssigneeName, dept ?? row.ModuleName);
+    }
+
+    private static string TicketTitle(IdeskTicket it) =>
+        it.Title is { Length: > 0 } t ? (t.Length > 200 ? t[..200] : t) : "ICT ticket";
+
     /// One notification per ticket: earlier unread reply notifications for this ticket are cleared first,
     /// so the bell keeps only the newest (with the running count) and the toast replaces itself.
-    private async Task NotifyReplyAsync(Ticket row, CancellationToken ct)
+    private async Task NotifyReplyAsync(Ticket row, string? assigneeNik, CancellationToken ct)
     {
         var url = $"/tickets/{row.Id}#messages";
         try
@@ -943,13 +994,15 @@ public sealed class TicketService(
         }
         catch (Exception ex) { _log.LogDebug(ex, "Clearing older reply notifications failed (non-fatal)"); }
 
-        var number = row.TicketNumber ?? row.ExternalRef ?? "your ticket";
-        var title = row.UnreadMessages > 1 ? $"{row.UnreadMessages} new replies on {number}" : $"New reply on {number}";
-        var who = string.IsNullOrWhiteSpace(row.LastMessageSender) ? "ICT" : row.LastMessageSender;
-        var body = $"{row.Title}\n{who}: “{row.LastMessagePreview}”";
+        var who = string.IsNullOrWhiteSpace(row.LastMessageSender) ? null : row.LastMessageSender;
+        // The sender is "Your PIC" when they are the assignee; anyone else from ICT is named with the queue.
+        var pic = who is not null && row.AssigneeName is not null && string.Equals(who.Trim(), row.AssigneeName.Trim(), StringComparison.OrdinalIgnoreCase);
+        var person = who is null || pic ? await PicLineAsync(row, assigneeNik, ct) : $"{TicketNotificationText.Nice(who)} · {row.ModuleName}";
+        var body = TicketNotificationText.Body(person,
+            TicketNotificationText.ChatSentence(who, row.LastMessagePreview ?? "", row.UnreadMessages, "replies"), row.TicketNumber ?? row.ExternalRef);
         try
         {
-            await notify.PublishInternalAsync(clientSlug: "tickets", eventType: ReplyEvent, title: title,
+            await notify.PublishInternalAsync(clientSlug: "tickets", eventType: ReplyEvent, title: row.Title,
                 message: body, target: new NotificationTarget(UserId: row.UserId),
                 priority: "normal", targetUrl: url, ct: ct);
         }
@@ -990,12 +1043,16 @@ public sealed class TicketService(
         catch (Exception ex) { _log.LogDebug(ex, "Calendar realtime hint failed"); }
     }
 
-    private async Task NotifyAsync(Ticket row, string eventType, string title, CancellationToken ct)
+    private const string SentSentence = "Sent to ICT. You'll be told when someone picks it up.";
+
+    /// Requester side: title = the problem, body = "PIC line\nwhat happened\n#number" (TicketNotificationText).
+    private async Task NotifyAsync(Ticket row, string eventType, string sentence, CancellationToken ct, string? assigneeNik = null)
     {
         try
         {
-            await notify.PublishInternalAsync(clientSlug: "tickets", eventType: eventType, title: title,
-                message: row.Title, target: new NotificationTarget(UserId: row.UserId),
+            await notify.PublishInternalAsync(clientSlug: "tickets", eventType: eventType, title: row.Title,
+                message: TicketNotificationText.Body(await PicLineAsync(row, assigneeNik, ct), sentence, row.TicketNumber),
+                target: new NotificationTarget(UserId: row.UserId),
                 priority: "normal", targetUrl: $"/tickets/{row.Id}", ct: ct);
         }
         catch (Exception ex) { _log.LogWarning(ex, "Ticket notification {Event} failed", eventType); }

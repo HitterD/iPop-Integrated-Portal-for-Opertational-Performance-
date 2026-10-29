@@ -209,7 +209,7 @@
                                                         <span class="apple-notif-row-title">@notif.Title</span>
                                                         <span class="apple-notif-row-time">@timeText</span>
                                                     </div>
-                                                    <div class="apple-notif-row-desc">@notif.Body</div>
+                                                    <div class="apple-notif-row-desc">@NotificationPreview.Of(notif.Body, notif.TargetUrl)</div>
                                                 </div>
                                                 @if (!notif.IsRead)
                                                 {

@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>iPop Notifier — aligned popups, maximize, Light/Dark (mockup 2026-10-29)</title>
+<script src="lucide.min.js"></script>
+<style>
+/* Tokens = iPop web v6 layer (src/IPop.Web/wwwroot/css/shell/v6.css) + forest frame (friendly.css). */
+:root{
+  --bg:#F5F5F7;--surface:#FFFFFF;--sunk:#F2F2F5;--fill:rgba(118,118,128,.12);--sep:rgba(60,60,67,.12);--line:rgba(60,60,67,.20);
+  --ink:#1D1D1F;--ink-2:#3C3C43;--ink-3:#6E6E73;--accent:#2E9E5B;--accent-h:#278A4F;--accent-ink:#1C7A44;--accent-soft:#E4F4EA;
+  --danger:#FF3B30;--danger-soft:#FFECEB;--frame:#123528;--frame-2:#1a4535;--frame-ink:#e7f2ec;
+  --shadow:0 0 0 .5px rgba(0,0,0,.10),0 18px 40px -12px rgba(0,0,0,.28);
+  --spring:cubic-bezier(.32,.72,0,1);
+}
+.dark{
+  --bg:#000;--surface:#1C1C1E;--sunk:#161618;--fill:rgba(118,118,128,.24);--sep:rgba(84,84,88,.50);--line:rgba(255,255,255,.14);
+  --ink:#F5F5F7;--ink-2:#D1D1D6;--ink-3:#98989D;--accent:#30D158;--accent-h:#28B84C;--accent-ink:#5EE08A;--accent-soft:rgba(48,209,88,.16);
+  --danger:#FF453A;--danger-soft:rgba(255,69,58,.16);--frame:#0b2219;--frame-2:#133126;--frame-ink:#e3efe8;
+  --shadow:0 0 0 .5px rgba(255,255,255,.10),0 18px 40px -12px rgba(0,0,0,.7);
+}
+/* module colour: icon chip + primary button only */
+.m-system{--m:#5B6B78}.m-calendar{--m:#E07800}.m-mail{--m:#0A6CFF}.m-news{--m:#9B3F78}.m-tickets{--m:#2563EB}.m-projects{--m:#5562B8}
+.dark .m-system{--m:#7C8C99}.dark .m-calendar{--m:#FF9F0A}.dark .m-mail{--m:#0A84FF}.dark .m-news{--m:#C25A9A}.dark .m-tickets{--m:#3B82F6}
+
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"SF Pro Text","Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;background:#d9dde1;color:#1d1d1f;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+svg.lucide{width:18px;height:18px;stroke-width:1.9;flex:none}
+
+/* ---------- page chrome ---------- */
+.top{display:flex;align-items:center;gap:14px;padding:12px 28px;background:var(--frame);color:var(--frame-ink)}
+.top h1{font-size:15px;font-weight:650;flex:1}
+.seg{display:flex;padding:3px;border-radius:10px;background:rgba(255,255,255,.10)}
+.seg button{height:30px;padding:0 14px;border-radius:8px;font-size:13px;font-weight:600;color:var(--frame-ink);opacity:.8}
+.seg button.on{background:#fff;color:#123528;opacity:1}
+.stage{padding:28px;transition:background .3s}
+.stage.dark{background:#1b1f22}
+.stage:not(.dark){background:linear-gradient(135deg,#cfd8de,#e6ebee)}
+h2{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#55606a;margin:6px 4px 14px}
+.stage.dark h2{color:#9aa5ad}
+.note{font-size:13px;color:#55606a;margin:-6px 4px 16px;max-width:900px;line-height:1.5}
+.stage.dark .note{color:#9aa5ad}
+.grid{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:40px;align-items:flex-start}
+.cap{font-size:12px;color:#55606a;margin-top:8px;text-align:center}
+.stage.dark .cap{color:#9aa5ad}
+
+/* ---------- popup window: ONE size for every kind ---------- */
+.pw{width:440px;height:560px;display:flex;flex-direction:column;border-radius:12px;overflow:hidden;background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.ttl{height:48px;flex:none;display:flex;align-items:center;gap:10px;padding:0 6px 0 16px;border-bottom:1px solid var(--sep);background:var(--surface)}
+.chip{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:#fff;background:var(--m);flex:none}
+.chip svg.lucide{width:16px;height:16px}
+.ttl b{font-size:13.5px;font-weight:650}
+.ttl small{font-size:13px;color:var(--ink-3)}
+.ttl .sp{flex:1}
+.wc{width:40px;height:34px;border-radius:8px;display:grid;place-items:center;color:var(--ink-3)}
+.wc svg.lucide{width:16px;height:16px}
+.wc:hover{background:var(--fill);color:var(--ink)}
+.wc.x:hover{background:#e81123;color:#fff}
+.body{flex:1;min-height:0;overflow:auto;padding:20px}
+.body>*+*{margin-top:16px}
+.pt{font-size:20px;font-weight:700;line-height:1.3;letter-spacing:-.01em}
+.who{display:flex;align-items:center;gap:12px}
+.av{width:42px;height:42px;border-radius:11px;display:grid;place-items:center;color:#fff;font-weight:700;font-size:15px;flex:none}
+.who b{display:block;font-size:16px;font-weight:650}
+.who small{display:block;font-size:13px;color:var(--ink-3)}
+.tags{display:flex;gap:8px;flex-wrap:wrap}
+.tag{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:999px;font-size:13px;font-weight:600;background:var(--sunk);color:var(--ink-2);border:1px solid var(--sep)}
+.tag svg.lucide{width:14px;height:14px;color:var(--ink-3)}
+.card{background:var(--sunk);border:1px solid var(--sep);border-radius:12px;padding:14px 16px;font-size:16px;line-height:1.55;color:var(--ink-2)}
+.card p+p{margin-top:10px}
+.more{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:650;color:var(--accent-ink);margin-top:10px}
+.more svg.lucide{width:14px;height:14px}
+.err{display:flex;gap:10px;align-items:flex-start}
+.err svg.lucide{color:var(--danger);margin-top:3px}
+.poster{display:block;width:100%;height:150px;border-radius:10px;background:linear-gradient(135deg,#123528,#2E9E5B 60%,#ffc96b);margin-top:12px}
+
+/* footer: same height on every kind — row 1 primary full width, row 2 ≤3 equal secondaries */
+.ft{flex:none;padding:14px 20px 18px;border-top:1px solid var(--sep);display:grid;gap:10px;background:var(--surface)}
+.r2{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:10px}
+.b{height:40px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;gap:7px;font-size:14.5px;font-weight:650;white-space:nowrap;
+   background:var(--surface);color:var(--ink);border:1px solid var(--line);transition:transform .12s var(--spring),background .15s}
+.b:hover{background:var(--sunk)}.b:active{transform:scale(.97)}
+.b svg.lucide{width:17px;height:17px}
+.b.p{background:var(--m);color:#fff;border-color:transparent}
+.b.p:hover{background:color-mix(in srgb,var(--m) 88%,#000)}
+.b.r{background:var(--danger-soft);color:var(--danger);border-color:transparent}
+
+/* ---------- maximized: comfortable reading for senior staff ---------- */
+.max{width:100%;max-width:1180px;height:760px;border-radius:12px}
+.max .ttl{height:52px}
+.max .body{padding:36px 24px}
+.max .col{max-width:720px;margin:0 auto}
+.max .col>*+*{margin-top:22px}
+.max .pt{font-size:30px;line-height:1.25}
+.max .who b{font-size:19px}.max .who small{font-size:15.5px}
+.max .av{width:52px;height:52px;font-size:18px;border-radius:13px}
+.max .card{font-size:20px;line-height:1.7;padding:24px 28px;background:transparent;border:0;padding:0;color:var(--ink)}
+.max .card p+p{margin-top:18px}
+.max .tag{height:36px;font-size:15px;padding:0 14px}
+.max .ft{padding:16px 24px 20px}
+.max .ft .inner{max-width:720px;margin:0 auto;width:100%;display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:12px}
+.max .b{height:48px;font-size:17px}
+.max .poster{height:300px}
+.att{display:flex;gap:10px;flex-wrap:wrap}
+.file{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;background:var(--sunk);border:1px solid var(--sep);font-size:15.5px}
+.file i{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:#fff;font-style:normal;font-size:11px;font-weight:700;background:#c0392b}
+
+/* ---------- Settings window ---------- */
+.sw{width:960px;height:640px;display:flex;flex-direction:column;border-radius:12px;overflow:hidden;background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.sw .ttl{background:var(--surface)}
+/* logo fix: the mark is cropped to its edges → sit it on a neutral plate with padding, never on a coloured chip, never stretched */
+.logo{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:#fff;box-shadow:0 0 0 1px var(--sep);flex:none}
+.logo img{width:20px;height:20px;object-fit:contain}
+.wrap{flex:1;display:flex;min-height:0}
+.side{width:210px;padding:12px 10px;border-right:1px solid var(--sep);background:var(--bg);flex:none}
+.side a{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;font-size:14px;color:var(--ink-2);cursor:pointer}
+.side a.on{background:var(--accent-soft);color:var(--accent-ink);font-weight:650}
+.side a svg.lucide{width:18px;height:18px}
+.main{flex:1;overflow:auto;padding:22px 26px;background:var(--bg)}
+.main h3{font-size:22px;margin-bottom:16px}
+.lbl{font-size:12px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em;margin:0 4px 8px}
+.grp{border-radius:12px;background:var(--surface);box-shadow:0 0 0 1px var(--sep);margin-bottom:20px;overflow:hidden}
+.row{display:flex;align-items:center;gap:14px;min-height:56px;padding:10px 16px}
+.row+.row{border-top:1px solid var(--sep)}
+.row .t{flex:1}.row .t b{display:block;font-size:15px;font-weight:600}.row .t small{display:block;font-size:13px;color:var(--ink-3)}
+.thm{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;padding:16px}
+.th{border-radius:12px;padding:10px;box-shadow:0 0 0 1px var(--sep);text-align:left;cursor:pointer}
+.th.on{box-shadow:0 0 0 2px var(--accent)}
+.th b{display:flex;align-items:center;gap:6px;font-size:14px;margin-top:10px}
+.th b svg.lucide{width:15px;height:15px}
+.th small{font-size:12.5px;color:var(--ink-3)}
+.thp{height:84px;border-radius:8px;overflow:hidden;display:flex;box-shadow:0 0 0 1px var(--sep)}
+.thp .l,.thp .d{flex:1;padding:10px}
+.thp .l{background:#f5f5f7}.thp .d{background:#1c1c1e}
+.thp i{display:block;height:8px;border-radius:4px;margin-bottom:7px}
+.thp .l i{background:#d6d6db}.thp .d i{background:#3a3a3c}
+.thp i.g{width:50%;background:#2E9E5B!important}
+.pill{display:flex;padding:3px;border-radius:9px;background:var(--fill)}
+.pill button{height:30px;padding:0 14px;border-radius:7px;font-size:13.5px;font-weight:600;color:var(--ink-2)}
+.pill button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.tg{width:46px;height:28px;border-radius:14px;background:var(--accent);position:relative;flex:none}
+.tg::after{content:"";position:absolute;right:2px;top:2px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+
+/* ---------- browser sign-in (one tab, closes itself) ---------- */
+.brw{width:560px;border-radius:12px;overflow:hidden;box-shadow:var(--shadow);background:var(--surface);color:var(--ink)}
+.brw .bar{height:38px;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--sunk);border-bottom:1px solid var(--sep);font-size:12.5px;color:var(--ink-3)}
+.brw .bar span{flex:1;height:24px;border-radius:7px;background:var(--surface);display:flex;align-items:center;padding:0 10px;border:1px solid var(--sep)}
+.brw .pg{height:300px;display:grid;place-items:center;text-align:center;padding:24px;background:var(--bg)}
+.brw .ok{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;margin:0 auto 14px;background:var(--accent-soft);color:var(--accent)}
+.brw .ok svg.lucide{width:30px;height:30px}
+.brw h4{font-size:20px;margin-bottom:6px}.brw p{font-size:14.5px;color:var(--ink-3);line-height:1.5}
+.brw .cd{display:inline-block;margin-top:14px;font-size:13px;color:var(--ink-3);padding:6px 12px;border-radius:999px;background:var(--fill)}
+.flow{display:flex;gap:10px;flex-direction:column;max-width:420px;font-size:14px;line-height:1.5;color:#2b3339}
+.stage.dark .flow{color:#d5dbe0}
+.flow li{margin-left:18px}
+/* iDesk ticket */
+.tn{font-variant-numeric:tabular-nums;color:var(--ink-3)!important}
+.ev{display:flex;gap:10px;align-items:flex-start;font-size:15px;line-height:1.45;color:var(--ink)}
+.ev svg.lucide{color:var(--m);margin-top:2px}
+.prog{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.prog span{font-size:11.5px;font-weight:600;color:var(--ink-3);padding-top:8px;border-top:4px solid var(--fill);border-radius:2px}
+.prog span.d{border-color:var(--m);color:var(--ink-2)}
+.prog span.c{border-color:var(--m);color:var(--m)}
+.chats{display:flex;flex-direction:column;gap:8px}
+.ch{display:flex;gap:10px;align-items:flex-start}
+.ch .av{width:30px;height:30px;font-size:11px;border-radius:8px}
+.ch div{flex:1;background:var(--sunk);border:1px solid var(--sep);border-radius:12px;padding:8px 12px;font-size:14.5px;line-height:1.45;color:var(--ink-2)}
+.ch div b{display:block;font-size:12.5px;color:var(--ink-3);font-weight:600}
+.ch.me div{background:var(--accent-soft);border-color:transparent}
+.toast{width:400px;border-radius:10px;padding:14px 16px;background:#2b2b2b;color:#fff;box-shadow:0 18px 40px -12px rgba(0,0,0,.5);font-size:14px}
+.toast .h{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#cfcfcf;margin-bottom:10px}
+.toast .h img{width:16px;height:16px}
+.toast .c{display:flex;gap:12px}
+.toast .c .av{width:44px;height:44px}
+.toast b{display:block;font-size:14.5px}
+.toast p{color:#d6d6d6;line-height:1.4;margin-top:2px}
+.toast small{display:block;color:#a0a0a0;font-size:12px;margin-top:6px}
+.toast .in{margin-top:12px;height:34px;border-radius:6px;background:#1f1f1f;border:1px solid #444;display:flex;align-items:center;padding:0 10px;color:#8a8a8a;font-size:13px}
+.toast .bs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.toast .bs span{height:32px;border-radius:6px;background:#3a3a3a;display:grid;place-items:center;font-size:13px}
+.oldnew{display:flex;flex-direction:column;gap:6px;font-size:13px;color:#55606a;max-width:400px;line-height:1.5}
+.stage.dark .oldnew{color:#9aa5ad}
+.oldnew s{color:#b04a3a}
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>iPop Notifier: aligned popups · Maximize · Light/Dark</h1>
+  <div class="seg" id="mode"><button data-m="light" class="on">Light</button><button data-m="dark">Dark</button></div>
+</div>
+
+<div class="stage" id="stage">
+
+  <h2>1 · Every popup, same size (440 × 560)</h2>
+  <p class="note">Header is neutral (same as the window), module colour only in the icon chip and the main button. Every window has – □ ✕ (double-click the header also maximizes). Padding 20 px, gaps 16 px. Footer is always: one full-width main button + one row of equal buttons. Only the message area scrolls.</p>
+  <div class="grid" id="popups"></div>
+
+  <h2>2 · Maximized: comfortable reading</h2>
+  <p class="note">Maximize shows the whole message with large text (title 30 px, body 20 px), a centred column of ~70 characters, attachments and images in full. No "Show full message"; everything is already here. □ becomes "Restore".</p>
+  <div class="grid"><div class="pw max m-mail" id="maxed"></div></div>
+
+  <h2>3 · Settings: Appearance + fixed logo</h2>
+  <p class="note">General → Appearance: System (default) / Light / Dark, applies to every open Notifier window immediately. The iPop logo now sits on a white plate with padding (before: stretched onto a green square, corners clipped). Selection and toggles use iPop green.</p>
+  <div class="grid"><div class="sw" id="settings"></div></div>
+
+  <h2>4 · Sign in with browser: one tab, closes itself</h2>
+  <p class="note">The click re-uses an iPop tab that is already open (no new tab every time). After the Notifier is connected the page shows this for 2 seconds and closes itself; if the browser does not allow closing, it returns to where you were.</p>
+  <div class="grid">
+    <div class="brw"><div class="bar"><svg class="lucide"></svg><span>ipop.santos.co.id/notifier/connect</span></div>
+      <div class="pg"><div><div class="ok"><i data-lucide="check"></i></div><h4>iPop Notifier is connected</h4><p>Signed in as Bagastyo. You can keep working;<br>notifications will appear on this PC.</p><span class="cd">Closing this tab in 2 s…</span></div></div></div>
+    <ol class="flow">
+      <li>Click <b>Sign in with browser</b> in the Notifier.</li>
+      <li>If an iPop tab is already open, it is reused; otherwise one tab opens.</li>
+      <li>One “Open iPop Notifier?” prompt (once per browser, tick “Always allow”).</li>
+      <li>Notifier connects → toast “Signed in as …” → tab shows the check and closes.</li>
+      <li>Clicking again while waiting does not open another tab.</li>
+    </ol>
+  </div>
+
+  <h2>5 · iDesk tickets: problem title + people, never a code</h2>
+  <p class="note">Title is always the problem. The person line tells who: on the user's side the PIC/technician, on the technician's side the reporter. What happened is one plain sentence. The ticket number is only a small grey chip; the GUID never appears. Windows toasts (chat) use the same text.</p>
+  <div class="grid" id="tix"></div>
+</div>
+
+<script>
+const P=[
+ {m:'system',ic:'bell',mod:'iPop',time:'02.01',title:'HRIS sync failed',
+  body:`<div class="card err"><i data-lucide="circle-alert"></i><div>Could not reach the HRIS server (10.10.6.51:27080). It did not answer in time. iPop will try again at 03.00.</div></div>`,
+  pri:['Open in iPop','arrow-up-right'],sec:[['Mark as read','check']]},
+ {m:'calendar',ic:'video',mod:'Calendar',time:'12 Oct 10.28',title:'Book A Room',
+  who:['JK','#9b4a8a','JASON KRISTANTO','Organizer'],
+  tags:[['calendar','Mon, 12 Oct · 07.00 – 07.00'],['door-open','Meeting room 3'],['users','13 people']],
+  body:`<div class="card">JASON KRISTANTO invited you to “Book A Room” on 12 Oct, 07:00.</div>`,
+  pri:['Accept','check'],sec:[['Snooze 5 min','alarm-clock'],['Open','arrow-up-right'],['Decline','x','r']]},
+ {m:'mail',ic:'mail',mod:'Mail',time:'7 Oct 08.27',title:'Re: Masukkan lagi…',
+  who:['GS','#c0492f','GO SONNY GOZALI','to IPop Administrator'],
+  body:`<div class="card">well noted…good planning 👍 …semoga berjalan dengan aman dan lancar… 🙏<div class="more"><i data-lucide="maximize-2"></i>Read full message</div></div>`,
+  pri:['Reply','reply'],sec:[['Forward','forward'],['Open','arrow-up-right'],['Read','check']]},
+ {m:'news',ic:'newspaper',mod:'News & memos',time:'5 Oct 15.20',title:'[News] Yang baru di iPop minggu ini',
+  body:`<div class="card">Sejak Jumat malam, 2 Oktober, sampai Senin, 5 Oktober 2026, ada beberapa pembaruan untuk membuat aktivitas kerja di iPop lebih nyaman…<span class="poster"></span><div class="more"><i data-lucide="maximize-2"></i>Read full article</div></div>`,
+  pri:['Open in iPop','arrow-up-right'],sec:[["I've read it",'check']]},
+ {m:'tickets',ic:'life-buoy',mod:'iDesk',time:'Today 09.14',title:'Printer lantai 2 tidak bisa print',
+  who:['RA','#2563eb','RIZKY ARDIANSYAH','Ticket #4821 · ICT Support'],
+  tags:[['circle-dot','In progress'],['flag','High']],
+  body:`<div class="card">Sudah saya cek, driver perlu di-install ulang. Saya ke meja Bapak jam 10.00, mohon PC jangan dimatikan.</div>`,
+  pri:['Reply','reply'],sec:[['Open in iDesk','arrow-up-right'],['Read','check']]},
+];
+const btn=([t,i,c],p)=>`<button class="b ${p?'p':''} ${c||''}"><i data-lucide="${i}"></i>${t}</button>`;
+const ttl=(x,max)=>`<div class="ttl"><span class="chip"><i data-lucide="${x.ic}"></i></span><b>${x.mod}</b><small>· ${x.time}</small><span class="sp"></span>
+ <button class="wc" title="Minimize"><i data-lucide="minus"></i></button><button class="wc" title="${max?'Restore':'Maximize'}"><i data-lucide="${max?'copy':'square'}"></i></button><button class="wc x" title="Close"><i data-lucide="x"></i></button></div>`;
+const who=w=>w?`<div class="who"><span class="av" style="background:${w[1]}">${w[0]}</span><div><b>${w[2]}</b><small>${w[3]}</small></div></div>`:'';
+const tags=t=>t?`<div class="tags">${t.map(([i,s])=>`<span class="tag"><i data-lucide="${i}"></i>${s}</span>`).join('')}</div>`:'';
+document.getElementById('popups').innerHTML=P.map(x=>`<div><div class="pw m-${x.m}">${ttl(x)}
+ <div class="body"><div class="pt">${x.title}</div>${who(x.who)}${tags(x.tags)}${x.body}</div>
+ <div class="ft">${btn(x.pri,1)}<div class="r2">${x.sec.map(s=>btn(s)).join('')}</div></div></div><div class="cap">${x.mod}</div></div>`).join('');
+
+const M=P[2];
+document.getElementById('maxed').innerHTML=`${ttl(M,1)}<div class="body"><div class="col">
+ <div class="pt">Re: Masukkan lagi jadwal maintenance server minggu depan</div>${who(M.who)}
+ <div class="card"><p>Pak Bagas,</p><p>well noted… good planning 👍 Semoga berjalan dengan aman dan lancar 🙏</p>
+ <p>Mohon nanti diinformasikan ke semua kepala departemen satu hari sebelumnya, supaya mereka bisa menyimpan pekerjaan dan tidak ada data yang hilang saat server dimatikan.</p>
+ <p>Terima kasih,<br>Go Sonny Gozali</p></div>
+ <div class="att"><span class="file"><i>PDF</i>Jadwal-maintenance-Nov.pdf</span></div></div></div>
+ <div class="ft"><div class="inner">${btn(M.pri,1)}${M.sec.map(s=>btn(s)).join('')}</div></div>`;
+
+document.getElementById('settings').innerHTML=`<div class="ttl"><span class="logo"><img src="ipop-mark.webp" alt=""></span><b>iPop Notifier: Settings</b><span class="sp"></span>
+ <button class="wc"><i data-lucide="minus"></i></button><button class="wc"><i data-lucide="square"></i></button><button class="wc x"><i data-lucide="x"></i></button></div>
+ <div class="wrap"><nav class="side">
+  <a><i data-lucide="bell"></i>Popups</a><a><i data-lucide="volume-2"></i>Sounds</a><a><i data-lucide="layout-grid"></i>Modules</a>
+  <a class="on"><i data-lucide="settings"></i>General</a><a><i data-lucide="user-round"></i>Account</a></nav>
+ <div class="main"><h3>General</h3>
+  <div class="lbl">Appearance</div>
+  <div class="grp"><div class="thm">
+   <button class="th on" data-t="system"><div class="thp"><div class="l"><i class="g"></i><i></i><i></i></div><div class="d"><i class="g"></i><i></i><i></i></div></div><b><i data-lucide="monitor"></i>System</b><small>Follows Windows · default</small></button>
+   <button class="th" data-t="light"><div class="thp"><div class="l"><i class="g"></i><i></i><i></i></div></div><b><i data-lucide="sun"></i>Light</b><small>Always light</small></button>
+   <button class="th" data-t="dark"><div class="thp"><div class="d"><i class="g"></i><i></i><i></i></div></div><b><i data-lucide="moon"></i>Dark</b><small>Always dark</small></button>
+  </div></div>
+  <div class="grp">
+   <div class="row"><div class="t"><b>Text size</b><small>Bigger text in every popup and window</small></div><div class="pill"><button>Normal</button><button class="on">Large</button></div></div>
+   <div class="row"><div class="t"><b>Start with Windows</b><small>Open iPop Notifier when you sign in to this PC</small></div><span class="tg"></span></div>
+  </div>
+  <div class="lbl">About</div>
+  <div class="grp"><div class="row"><div class="t"><b>iPop Notifier 1.4.0</b><small>Up to date</small></div><button class="b" style="padding:0 16px"><i data-lucide="refresh-cw"></i>Check for updates</button></div></div>
+ </div></div>`;
+
+const stage=document.getElementById('stage');
+function setMode(m){stage.classList.toggle('dark',m==='dark');document.querySelectorAll('#mode button').forEach(b=>b.classList.toggle('on',b.dataset.m===m))}
+document.getElementById('mode').onclick=e=>{const m=e.target.dataset.m;if(m)setMode(m)};
+document.addEventListener('click',e=>{const t=e.target.closest('.th');if(!t)return;document.querySelectorAll('.th').forEach(x=>x.classList.toggle('on',x===t));
+ if(t.dataset.t!=='system')setMode(t.dataset.t)});
+const T={ic:'life-buoy',mod:'iDesk'};
+const prog=n=>`<div class="prog">${['Open','In progress','Resolved','Closed'].map((s,i)=>`<span class="${i<n?'d':i===n?'c':''}">${s}</span>`).join('')}</div>`;
+const pop=(time,body,pri,sec,cap)=>`<div><div class="pw m-tickets">${ttl({...T,time})}<div class="body">${body}</div>
+ <div class="ft">${btn(pri,1)}<div class="r2">${sec.map(s=>btn(s)).join('')}</div></div></div><div class="cap">${cap}</div></div>`;
+document.getElementById('tix').innerHTML=
+ pop('Today 09.14',`<div class="pt">Printer lantai 2 tidak bisa print</div>
+  <div class="who"><span class="av" style="background:#2563eb">RA</span><div><b>Rizky Ardiansyah</b><small>Your PIC · ICT Support</small></div></div>
+  ${prog(2)}
+  <div class="ev"><i data-lucide="circle-check"></i><div>Marked as <b>resolved</b>. Please confirm it works, or reply if it still doesn't. Closes automatically on 31 Oct.</div></div>
+  <div class="chats"><div class="ch"><span class="av" style="background:#2563eb">RA</span><div><b>Rizky · 09.12</b>Driver sudah saya install ulang, silakan dicoba print lagi.</div></div></div>
+  <div class="tags"><span class="tag tn"><i data-lucide="hash"></i>281026-ORD-0012</span><span class="tag"><i data-lucide="flag"></i>High</span></div>`,
+  ['Confirm resolved','check'],[['Reply','reply'],['Open','arrow-up-right'],['Mark as read','check-check']],'User side: resolved, waiting for confirmation')
++pop('Today 09.20',`<div class="pt">Printer lantai 2 tidak bisa print</div>
+  <div class="who"><span class="av" style="background:#2563eb">RA</span><div><b>Rizky Ardiansyah</b><small>Your PIC · ICT Support</small></div></div>
+  ${prog(1)}
+  <div class="chats">
+   <div class="ch me"><span class="av" style="background:#8a5a2b">BS</span><div><b>You · 09.05</b>Sudah restart tapi tetap tidak bisa.</div></div>
+   <div class="ch"><span class="av" style="background:#2563eb">RA</span><div><b>Rizky · 09.20</b>Baik Pak, saya ke meja Bapak jam 10.00. Mohon PC jangan dimatikan.</div></div></div>
+  <div class="tags"><span class="tag tn"><i data-lucide="hash"></i>281026-ORD-0012</span><span class="tag"><i data-lucide="calendar"></i>Visit 10.00</span></div>`,
+  ['Reply','reply'],[['Open','arrow-up-right'],['Mark as read','check-check']],'User side: new chat from the PIC')
++pop('Today 08.47',`<div class="pt">Printer lantai 2 tidak bisa print</div>
+  <div class="who"><span class="av" style="background:#8a5a2b">BS</span><div><b>Budi Santoso</b><small>Reporter · Logistic, Sepanjang</small></div></div>
+  <div class="ev"><i data-lucide="user-round-check"></i><div><b>Assigned to you</b> by ICT Support. SLA: respond by 10.47.</div></div>
+  <div class="card">Printer HP di lantai 2 tidak bisa print sejak pagi, muncul error "offline". Sudah coba restart printer.</div>
+  <div class="tags"><span class="tag tn"><i data-lucide="hash"></i>281026-ORD-0012</span><span class="tag"><i data-lucide="flag"></i>High</span><span class="tag"><i data-lucide="tag"></i>Hardware</span></div>`,
+  ['Open in iDesk','arrow-up-right'],[['Reply','reply'],['Mark as read','check-check']],'Technician side: assigned to you')
++pop('Today 11.02',`<div class="pt">Printer lantai 2 tidak bisa print</div>
+  <div class="who"><span class="av" style="background:#8a5a2b">BS</span><div><b>Budi Santoso</b><small>Reporter · Logistic, Sepanjang</small></div></div>
+  <div class="ev"><i data-lucide="rotate-ccw"></i><div><b>Reopened</b> by Budi: "Masih offline lagi setelah jam 11."</div></div>
+  <div class="tags"><span class="tag tn"><i data-lucide="hash"></i>281026-ORD-0012</span><span class="tag"><i data-lucide="circle-dot"></i>In progress</span></div>`,
+  ['Reply','reply'],[['Open in iDesk','arrow-up-right'],['Mark as read','check-check']],'Technician side: reporter reopened')
++`<div style="display:flex;flex-direction:column;gap:14px">
+  <div class="toast"><div class="h"><img src="ipop-mark.webp" alt="">iDesk</div>
+   <div class="c"><span class="av" style="background:#2563eb">RA</span><div><b>Rizky Ardiansyah · your PIC</b><p>Baik Pak, saya ke meja Bapak jam 10.00. Mohon PC jangan dimatikan.</p><small>Printer lantai 2 tidak bisa print · #281026-ORD-0012</small></div></div>
+   <div class="in">Type a reply…</div><div class="bs"><span>Send</span><span>Open in iDesk</span></div></div>
+  <div class="toast"><div class="h"><img src="ipop-mark.webp" alt="">iDesk</div>
+   <div class="c"><span class="av" style="background:#5b6b78">IT</span><div><b>Closed automatically</b><p>Not confirmed within the confirmation time after Rizky resolved it.</p><small>Printer lantai 2 tidak bisa print · #281026-ORD-0012</small></div></div></div>
+  <div class="oldnew"><span><b>Before (SJA Notifier):</b> <s>[#2cc4bee8-8131-4be1-af45-9364e9fb1f16] Tiket diperbarui · iDesk System: Tiket #281026-ORD-0012: Status changed from RESOLVED to CLOSED…</s></span>
+   <span><b>After:</b> Printer lantai 2 tidak bisa print, closed automatically (not confirmed in time) · PIC Rizky Ardiansyah</span></div>
+ </div>`;
+lucide.createIcons();
+</script>
+</body>
+</html>

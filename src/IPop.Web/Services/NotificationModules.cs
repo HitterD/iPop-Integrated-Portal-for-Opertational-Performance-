@@ -55,3 +55,24 @@ public static class NotificationModules
         };
     }
 }
+
+/// One-line preview of a notification body for lists (bell, banner, inbox rows), which clamp to two lines and
+/// would otherwise run every line together. iDesk ticket bodies are "Person · Role · Unit\nwhat happened\n#number":
+/// the preview leads with what happened, then who ("Marked as resolved… · Rizky Ardiansyah"); the detail view
+/// still shows every line.
+public static class NotificationPreview
+{
+    public static string Of(string? body, string? targetUrl)
+    {
+        if (string.IsNullOrEmpty(body)) return "";
+        var url = targetUrl ?? "";
+        if (!url.StartsWith("/tickets/", StringComparison.Ordinal) && !url.StartsWith("/idesk/tickets/", StringComparison.Ordinal)) return body;
+        var lines = body.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
+        if (lines.Count > 1 && lines[^1].StartsWith('#')) lines.RemoveAt(lines.Count - 1);
+        if (lines.Count < 2) return lines.FirstOrDefault() ?? "";
+        var person = lines[0].Split(" · ")[0];
+        var sentence = string.Join(" ", lines.Skip(1));
+        // A chat line already names the sender ("Rizky: “…”").
+        return sentence.Contains(": “", StringComparison.Ordinal) ? sentence : $"{sentence} · {person}";
+    }
+}

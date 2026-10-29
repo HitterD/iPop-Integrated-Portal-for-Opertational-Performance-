@@ -15,7 +15,7 @@ namespace IPop.Tests;
 
 /// ICT tickets via iDesk (docs/specs/idesk-tickets.md): signing, create outcomes, outbox,
 /// webhook matching/dedupe, sync soft-delete, badge and per-user isolation.
-public class TicketTests
+public partial class TicketTests
 {
     private const string Secret = "s3cr3t-s3cr3t-s3cr3t-s3cr3t-s3cr3t";
 
@@ -355,7 +355,9 @@ public class TicketTests
         var landed = await x.T.Verify().Tickets.SingleAsync();
         Assert.Equal(TicketStatus.Todo, landed.Status);
         Assert.Null(landed.PendingPayload);
-        Assert.Equal("Ticket sent to ICT", Assert.Single(x.Gw.Sent).Title);
+        var sent = Assert.Single(x.Gw.Sent);
+        Assert.Equal("Wifi lantai 2 mati", sent.Title);
+        Assert.Contains("Sent to ICT.", sent.Message);
     }
 
     [Fact]
@@ -383,7 +385,8 @@ public class TicketTests
         Assert.Equal(TicketStatus.Failed, row.Status);
         Assert.Single(x.Idesk.Posted);   // no further attempt after the deadline
         var n = Assert.Single(x.Gw.Sent);
-        Assert.Equal("Couldn't send your ticket", n.Title);
+        Assert.Equal("Wifi lantai 2 mati", n.Title);
+        Assert.Contains("Couldn't send your ticket to ICT.", n.Message);
         Assert.Equal($"/tickets/{id}", n.Url);
         Assert.Equal(u.Id, n.To);
 
@@ -422,8 +425,8 @@ public class TicketTests
         Assert.Equal("IDESK", row.Origin);
         Assert.Equal(remote.TicketId, row.IdeskTicketId);
         var n = Assert.Single(x.Gw.Sent);
-        Assert.Equal("Rizky Aditya picked up your ticket", n.Title);
-        Assert.Equal(remote.Title, n.Message);
+        Assert.Equal(remote.Title, n.Title);
+        Assert.Equal($"Rizky Aditya · Your PIC · it-support\nRizky picked up your ticket and is now your PIC.\n#{remote.TicketNumber}", n.Message);
         Assert.Equal($"/tickets/{row.Id}", n.Url);
         Assert.Contains(x.Rt.Sent, s => s is ("00000024", TicketEvents.Changed));
     }
@@ -438,7 +441,7 @@ public class TicketTests
         Assert.Equal(TicketWebhookKind.Applied, await x.Svc.ApplyWebhookAsync(body));
         Assert.Equal(TicketWebhookKind.Duplicate, await x.Svc.ApplyWebhookAsync(body));
 
-        Assert.Equal("Ticket resolved — please confirm", Assert.Single(x.Gw.Sent).Title);
+        Assert.Contains("Marked as resolved. Please confirm it works", Assert.Single(x.Gw.Sent).Message);
         Assert.Single(await x.T.Verify().TicketEvents.ToListAsync());
     }
 
@@ -466,11 +469,13 @@ public class TicketTests
 
         var progress = remote with { Status = TicketStatus.InProgress, UpdatedAt = DateTime.UtcNow };
         await x.Svc.ApplyWebhookAsync(Webhook("s1", "ticket.status_changed", progress, TicketStatus.Todo));
-        Assert.Equal("Ticket status: In progress", Assert.Single(x.Gw.Sent).Title);
+        Assert.Contains("\nStatus: Open → In progress.\n", Assert.Single(x.Gw.Sent).Message);
 
         var closed = progress with { Status = TicketStatus.Closed, UpdatedAt = DateTime.UtcNow.AddSeconds(1) };
         await x.Svc.ApplyWebhookAsync(Webhook("x1", "ticket.closed", closed, TicketStatus.Resolved));
-        Assert.Equal("Ticket closed", x.Gw.Sent[^1].Title);
+        // An older iDesk (no closedReason / actor) can't tell auto-close from confirm: plain status sentence.
+        Assert.Contains("\nStatus: Resolved → Closed.\n", x.Gw.Sent[^1].Message);
+        Assert.Equal("Wifi lantai 2 mati", x.Gw.Sent[^1].Title);
 
         Assert.Equal(1, await x.T.Verify().Tickets.CountAsync());
         var detail = await x.Svc.GetAsync(u.Id, created.Ticket!.Id);
@@ -586,10 +591,10 @@ public class TicketTests
         Assert.Equal(2, x.Gw.Sent.Count);
         var last = x.Gw.Sent[^1];
         Assert.Equal(TicketService.ReplyEvent, last.Type);
-        Assert.Equal("2 new replies on 041026-INS-0001", last.Title);
-        Assert.Contains("Rizky Aditya: “Mohon restart laptop”", last.Message);
+        Assert.Equal("Wifi lantai 2 mati", last.Title);
+        Assert.Equal("Rizky Aditya · it-support\nRizky: “Mohon restart laptop” · 2 new replies\n#041026-INS-0001", last.Message);
         Assert.Equal($"/tickets/{row.Id}#messages", last.Url);
-        Assert.Equal("New reply on 041026-INS-0001", x.Gw.Sent[0].Title);
+        Assert.Equal("Rizky Aditya · it-support\nRizky: “Sudah saya cek”\n#041026-INS-0001", x.Gw.Sent[0].Message);
     }
 
     [Fact]
@@ -660,7 +665,8 @@ public class TicketTests
         var last = x.Gw.Sent[^1];
         Assert.Equal(agent.Id, last.To);
         Assert.Equal(TicketService.IdeskTargetPrefix + remote.TicketId, last.Url);
-        Assert.Equal("New message on 051026-SEC-0003", x.Gw.Sent[0].Title);
+        Assert.Equal("Wifi lantai 2 mati", x.Gw.Sent[0].Title);
+        Assert.Equal("User 00000024 · Reporter\nChristhin: “Masih belum bisa”\n#051026-SEC-0003", x.Gw.Sent[0].Message);
         Assert.Contains("Christhin: “📎 Foto”", last.Message);
         Assert.Empty(await x.T.Verify().Tickets.ToListAsync());   // the agent never gets a mirror of someone else's ticket
     }
@@ -698,8 +704,8 @@ public class TicketTests
         }
         await Send("a1"); await Send("a2"); await Send("a3"); await Send("a4");
 
-        Assert.Equal(["New message on 051026-SEC-0003", "2 new messages on 051026-SEC-0003", "3 new messages on 051026-SEC-0003",
-            "4 new messages on 051026-SEC-0003"], x.Gw.Sent.Select(s => s.Title));
+        Assert.Equal([1, 2, 3, 4], x.Gw.Sent.Select(s => TicketNotificationText.CountOf(s.Message)));
+        Assert.EndsWith("· 4 new messages\n#051026-SEC-0003", x.Gw.Sent[^1].Message);
     }
 
     [Fact]
@@ -754,7 +760,7 @@ public class TicketTests
 
         Assert.Equal(0, (await x.T.Verify().Tickets.SingleAsync()).UnreadMessages);   // answering = read
         await x.Svc.ApplyWebhookAsync(Webhook("m2", "ticket.message_created", remote, message: Msg("Coba lagi")));
-        Assert.Equal("New reply on 051026-SEC-0003", x.Gw.Sent[^1].Title);              // fresh count, not "2 new replies"
+        Assert.DoesNotContain("new replies", x.Gw.Sent[^1].Message);                  // fresh count, not "2 new replies"
 
         Assert.Equal(TicketReplyKind.Invalid, (await x.Svc.ReplyAsync(u.Id, mine.ToString(), "   ")).Kind);
         Assert.Equal(TicketReplyKind.NotFound, (await x.Svc.ReplyAsync(u.Id, "051026-SEC-0003", "hi")).Kind);
@@ -783,7 +789,7 @@ public class TicketTests
         await x.Svc.ApplyWebhookAsync(Webhook("v2", "ticket.visit_changed", remote with { UpdatedAt = DateTime.UtcNow }, visit: moved));
         ev = await x.T.Verify().CalendarEvents.SingleAsync();
         Assert.Equal(new DateTime(2026, 10, 14, 7, 0, 0, DateTimeKind.Utc), ev.StartAt);
-        Assert.Contains(x.Gw.Sent, n => n.Title == "ICT visit moved to Wed 14 Oct, 14:00");
+        Assert.Contains(x.Gw.Sent, n => n.Message.Contains("\nICT visit moved to Wed 14 Oct, 14:00.\n"));
 
         await x.Svc.ApplyWebhookAsync(Webhook("v3", "ticket.status_changed",
             remote with { Status = TicketStatus.Cancelled, UpdatedAt = DateTime.UtcNow.AddSeconds(1) }, visit: moved));
