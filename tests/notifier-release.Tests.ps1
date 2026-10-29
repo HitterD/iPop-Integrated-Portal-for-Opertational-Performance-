@@ -59,14 +59,14 @@ $global:LASTEXITCODE = 0
   $beforeFeed = Hash (Join-Path $folder 'releases.win.json')
   $beforeSetup = Hash (Join-Path $folder 'iPopNotifier-win-Setup.exe')
   & $publisher -Releases $folder @tools | Out-Null
-  Assert ((ReadJson (Join-Path $folder 'release.json')).pilot.version -eq '1.4.2') 'Default must use project version 1.4.2'
+  Assert ((ReadJson (Join-Path $folder 'release.json')).pilot.version -eq '1.4.3') 'Default must use project version 1.4.3'
   Assert ((Hash (Join-Path $folder 'releases.win.json')) -eq $beforeFeed) 'Pilot changed public feed'
   Assert ((Hash (Join-Path $folder 'iPopNotifier-win-Setup.exe')) -eq $beforeSetup) 'Pilot changed public installer'
   $passed++
-  Reject { & $publisher -Releases $folder -Version 1.4.2 @tools } 'not newer|already published'
+  Reject { & $publisher -Releases $folder -Version 1.4.3 @tools } 'not newer|already published'
   Reject { & $publisher -Releases $folder -Version 1.2.9 @tools } 'not newer'
   Reject { & $publisher -Releases $folder -Version 01.4.1 @tools } 'Version'
-  $heldSetup = Join-Path $folder 'pilot\1.4.2\iPopNotifier-win-Setup.exe'
+  $heldSetup = Join-Path $folder 'pilot\1.4.3\iPopNotifier-win-Setup.exe'
   $heldBytes = [IO.File]::ReadAllBytes($heldSetup)
   Remove-Item -LiteralPath $heldSetup -Confirm:$false
   Reject { & $publisher -Release -Releases $folder } 'Missing.*Setup'
@@ -77,11 +77,11 @@ $global:LASTEXITCODE = 0
   [IO.File]::WriteAllBytes($heldSetup, $heldBytes)
   & $publisher -Release -Releases $folder | Out-Null
   $manifest = ReadJson (Join-Path $folder 'release.json')
-  Assert ($manifest.all.version -eq '1.4.2' -and -not $manifest.pilot) 'Promotion manifest incorrect'
-  Assert ((ReadJson (Join-Path $folder 'releases.win.json')).Assets[-1].Version -eq '1.4.2') 'Promotion feed incorrect'
+  Assert ($manifest.all.version -eq '1.4.3' -and -not $manifest.pilot) 'Promotion manifest incorrect'
+  Assert ((ReadJson (Join-Path $folder 'releases.win.json')).Assets[-1].Version -eq '1.4.3') 'Promotion feed incorrect'
   $passed++
   # An older stale pilot feed must not survive a direct-to-all release.
-  & $publisher -All -Releases $folder -Version 1.4.3 -Mandatory @tools | Out-Null
+  & $publisher -All -Releases $folder -Version 1.4.4 -Mandatory @tools | Out-Null
   Assert ((ReadJson (Join-Path $folder 'release.json')).all.mandatory) 'Mandatory flag lost'
   Assert ((Hash (Join-Path $folder 'releases.win.json')) -eq (Hash (Join-Path $folder 'releases.win.pilot.json'))) 'Stale pilot feed after All'
   $passed++
@@ -105,13 +105,13 @@ $global:LASTEXITCODE = 0
   $qa = Join-Path $root 'qa-new'
   & $legacy -Trial -Releases $qa @tools | Out-Null
   Assert (Test-Path (Join-Path $qa 'iPopNotifierQA-win-Setup.exe')) 'Legacy Trial installer identity broken'
-  Assert ((ReadJson (Join-Path $qa 'release.json')).all.version -eq '1.4.2') 'Legacy default version wrong'
+  Assert ((ReadJson (Join-Path $qa 'release.json')).all.version -eq '1.4.3') 'Legacy default version wrong'
   $passed++
-  & $publisher -Trial -Releases $qa -Version 1.4.3 @tools | Out-Null
+  & $publisher -Trial -Releases $qa -Version 1.4.4 @tools | Out-Null
   & $publisher -Trial -Release -Releases $qa | Out-Null
-  Assert ((ReadJson (Join-Path $qa 'release.json')).all.version -eq '1.4.3') 'Trial pilot promotion failed'
+  Assert ((ReadJson (Join-Path $qa 'release.json')).all.version -eq '1.4.4') 'Trial pilot promotion failed'
   $passed++
-  Reject { & $publisher -Releases $qa -Version 1.4.4 @tools } 'identity|Trial'
+  Reject { & $publisher -Releases $qa -Version 1.4.5 @tools } 'identity|Trial'
   Reject { & $publisher -Releases $folder -Release -All } 'cannot combine'
   # Crash leftovers are immutable history too, even if no manifest references the package.
   'orphan' | Set-Content (Join-Path $failure 'iPopNotifier-1.5.0-full.nupkg')
@@ -119,7 +119,7 @@ $global:LASTEXITCODE = 0
   # Every held side file must be present before touching the public feed.
   $side = Seed 'missing-side'
   & $publisher -Releases $side @tools | Out-Null
-  Remove-Item (Join-Path $side 'pilot\1.4.2\assets.win.json') -Confirm:$false
+  Remove-Item (Join-Path $side 'pilot\1.4.3\assets.win.json') -Confirm:$false
   Reject { & $publisher -Release -Releases $side } 'Missing.*assets.win.json'
   Assert ((Hash (Join-Path $side 'releases.win.json')) -eq $beforeFeed) 'Missing side file modified public feed'
   $locked = Seed 'locked'
@@ -127,16 +127,16 @@ $global:LASTEXITCODE = 0
   try { Reject { & $publisher -Releases $locked @tools } 'publisher|lock|used by another process' } finally { $lock.Dispose() }
   $advance = Seed 'advance'
   & $publisher -Releases $advance @tools | Out-Null
-  & $publisher -Releases $advance -Version 1.4.3 @tools | Out-Null
+  & $publisher -Releases $advance -Version 1.4.4 @tools | Out-Null
   $advanceFeed = ReadJson (Join-Path $advance 'releases.win.pilot.json')
-  Assert (@($advanceFeed.Assets | Where-Object { $_.Version -eq '1.4.2' }).Count -eq 1) 'Second pilot lost prior pilot package history'
+  Assert (@($advanceFeed.Assets | Where-Object { $_.Version -eq '1.4.3' }).Count -eq 1) 'Second pilot lost prior pilot package history'
   & $publisher -Release -Releases $advance | Out-Null
-  Assert ((ReadJson (Join-Path $advance 'release.json')).all.version -eq '1.4.3') 'Latest pilot promotion failed'
+  Assert ((ReadJson (Join-Path $advance 'release.json')).all.version -eq '1.4.4') 'Latest pilot promotion failed'
   $passed++
-  Reject { & $publisher -Releases $advance -Version 1.4.4-beta.1 @tools } 'Version'
+  Reject { & $publisher -Releases $advance -Version 1.4.5-beta.1 @tools } 'Version'
   $packageCheck = Seed 'tampered-package'
   & $publisher -Releases $packageCheck @tools | Out-Null
-  'tampered' | Set-Content (Join-Path $packageCheck 'iPopNotifier-1.4.2-full.nupkg')
+  'tampered' | Set-Content (Join-Path $packageCheck 'iPopNotifier-1.4.3-full.nupkg')
   Reject { & $publisher -Release -Releases $packageCheck } 'package hash changed'
   $tmpFiles = @(Get-ChildItem -LiteralPath $root -Recurse -Filter '*.tmp')
   Assert ($tmpFiles.Count -eq 0) 'Atomic staging files leaked after tests'
