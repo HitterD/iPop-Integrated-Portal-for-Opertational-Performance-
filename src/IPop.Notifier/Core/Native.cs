@@ -67,6 +67,37 @@ internal static partial class Native
         try { DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref v, sizeof(int)); } catch { }
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Rect { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo { public int Size; public Rect Monitor; public Rect Work; public uint Flags; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MinMaxInfo { public Point Reserved, MaxSize, MaxPosition, MinTrackSize, MaxTrackSize; }
+
+    [LibraryImport("user32.dll")]
+    private static partial nint MonitorFromWindow(nint hwnd, uint flags);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetMonitorInfoW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetMonitorInfo(nint monitor, ref MonitorInfo info);
+
+    public const int WM_GETMINMAXINFO = 0x24;
+
+    /// A borderless window maximises over the taskbar unless told otherwise: the maximised size/position become the
+    /// working area of the monitor the window is on (MINMAXINFO positions are relative to that monitor).
+    public static void FitMaximizedToWorkArea(nint hwnd, nint lParam)
+    {
+        var mon = MonitorFromWindow(hwnd, 2); // MONITOR_DEFAULTTONEAREST
+        var mi = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        if (mon == 0 || !GetMonitorInfo(mon, ref mi)) return;
+        var mmi = Marshal.PtrToStructure<MinMaxInfo>(lParam);
+        mmi.MaxPosition = new Point(mi.Work.Left - mi.Monitor.Left, mi.Work.Top - mi.Monitor.Top);
+        mmi.MaxSize = new Point(mi.Work.Right - mi.Work.Left, mi.Work.Bottom - mi.Work.Top);
+        Marshal.StructureToPtr(mmi, lParam, false);
+    }
+
     /// Lets the HTML title bar move a borderless window.
     public static void BeginDrag(nint hwnd)
     {

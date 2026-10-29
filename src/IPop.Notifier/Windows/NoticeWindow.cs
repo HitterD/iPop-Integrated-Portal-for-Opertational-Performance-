@@ -13,22 +13,33 @@ public sealed class NoticeWindow : BridgedWindow
     public event Action<NoticeWindow, string>? Done;
     public event Action<NoticeWindow>? HeightChanged;
     public int WantedHeight { get; private set; }
-    /// New key for the friendly layout: widths remembered for the old, wider design don't carry over.
-    private const string SizeKeyV2 = "popup2";
+
+    /// 1.4.0: every popup window opens at this one size, for every module (docs/mockups/notifier/aligned.html §1).
+    /// Not remembered: a resized or maximised popup doesn't change the next one. Also the smallest it can be resized to.
+    public static readonly Size StandardSize = new(440, 560);
+    /// v1 stacked card: fixed width, height follows the content.
+    public static readonly Size CardSize = new(440, 220);
 
     /// Set for a notification from while the PC was off: "2 of 9 pending".
     public (int Index, int Total)? Pending { get; }
 
     public NoticeWindow(Notice notice, string style, IPopClient api, (int Index, int Total)? pending = null)
-        : base("popup.html", style == "stack" ? new Size(440, 220) : new Size(WindowSizes.Get(SizeKeyV2, new Size(600, 520)).Width, 520), api, noActivate: true, showInTaskbar: style != "stack")
+        : base("popup.html", style == "stack" ? CardSize : StandardSize, api, noActivate: true, showInTaskbar: style != "stack")
     {
         Notice = notice;
         Pending = pending;
         Style = style;
+        // Sizes are logical (96 dpi); the form doesn't auto-scale, so scale to this screen's DPI here.
+        if (style != "stack") ClientSize = new Size(Scale(StandardSize.Width), Scale(StandardSize.Height));
         WantedHeight = ClientSize.Height;
         Text = notice.Title.Length > 80 ? notice.Title[..80] + "…" : notice.Title;
         if (style == "stack") TopMost = true;
-        else SizeKey = SizeKeyV2;
+        else
+        {
+            Resizable = true;
+            Maximizable = true;
+            MinLogicalSize = StandardSize;
+        }
     }
 
     private int more;
@@ -56,10 +67,10 @@ public sealed class NoticeWindow : BridgedWindow
         switch (type)
         {
             case "size":
+                // Window style: one fixed size (only the message area scrolls). Stacked card: height follows the content.
+                if (Style != "stack") break;
                 var h = msg?["height"]?.GetValue<int>() ?? WantedHeight;
-                // Same width for every kind; the height follows the content (window style: 360–640, friendly mockup).
-                var (min, max) = Style == "stack" ? (120, 560) : (360, 640);
-                WantedHeight = Math.Clamp(LogicalToDevice(h), LogicalToDevice(min), LogicalToDevice(max));
+                WantedHeight = Math.Clamp(LogicalToDevice(h), LogicalToDevice(120), LogicalToDevice(560));
                 HeightChanged?.Invoke(this);
                 break;
             case "done": // acted on (sent, joined, acknowledged…) or "Mark read": closes after its little animation
@@ -67,6 +78,11 @@ public sealed class NoticeWindow : BridgedWindow
                 Close();
                 break;
             case "focus":
+                Activate();
+                break;
+            case "readFull": // "Read full message": the comfortable maximised view shows everything inline
+                if (Style == "stack") break;
+                if (WindowState != FormWindowState.Maximized) WindowState = FormWindowState.Maximized;
                 Activate();
                 break;
             case "upload" when msg is not null:

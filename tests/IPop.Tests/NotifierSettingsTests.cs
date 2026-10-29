@@ -51,6 +51,21 @@ public class NotifierSettingsTests
     }
 
     [Fact]
+    public async Task Appearance_defaults_to_system_and_keeps_light_or_dark()
+    {
+        using var t = new TestDb();
+        var u = t.AddUser("NS4");
+        Assert.Equal("system", NotifierSettings.Parse(null).Theme);
+        Assert.Equal("system", NotifierSettings.Parse("""{"theme":"neon"}""").Theme);
+        Assert.Equal(204, await UiPrefsEndpoints.PutAsync(t.Db, u.Id, "notifier", J("""{"theme":"dark","textSize":"large"}"""), false, default));
+        var (_, json) = await UiPrefsEndpoints.GetAsync(t.Verify(), u.Id, "notifier", false, default);
+        var s = NotifierSettings.Parse(json);
+        Assert.Equal("dark", s.Theme);
+        Assert.Equal("large", s.TextSize);
+        Assert.Equal("light", NotifierSettings.Parse("""{"theme":"light"}""").Theme);
+    }
+
+    [Fact]
     public async Task Non_object_body_is_rejected()
     {
         using var t = new TestDb();

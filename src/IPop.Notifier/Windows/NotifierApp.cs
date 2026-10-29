@@ -35,6 +35,8 @@ public sealed class NotifierApp : ApplicationContext
         api = new IPopClient(store);
         settings = new SettingsService(api, state);
         Theme.LargeText = settings.Current.TextSize == "large";
+        Theme.Mode = settings.Current.Theme;
+        Theme.FollowWindows();
         device = new DeviceReporter(api);
         popups = new PopupManager(api, settings, state, device);
         api.SignedOut += () => Post(OnSignedOut);
@@ -47,7 +49,7 @@ public sealed class NotifierApp : ApplicationContext
         };
         popups.CountChanged += UpdateTray;
         device.Beat += () => Post(() => { api.WebBaseOverride = device.WebBase; devicesItem!.Visible = device.IctTools; UpdateTray(); });
-        settings.Changed += s => Post(() => { Theme.LargeText = s.TextSize == "large"; UpdateTray(); });
+        settings.Changed += s => Post(() => { Theme.LargeText = s.TextSize == "large"; Theme.Mode = s.Theme; UpdateTray(); });
 
         Toasts.Init();
         Toasts.Open += path => Post(() => OpenIPop(path));

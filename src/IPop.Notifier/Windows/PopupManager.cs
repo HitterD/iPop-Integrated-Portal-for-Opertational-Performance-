@@ -221,6 +221,8 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
         var area = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
         var gap = Scale(w, 14);
         if (w.Style == "stack") { Layout(); return; }
+        if (w.Height > area.Height - Scale(w, 28)) w.Height = area.Height - Scale(w, 28);
+        if (w.Width > area.Width - Scale(w, 28)) w.Width = area.Width - Scale(w, 28);
         // Cascade: each new window 28 px left/down of the last, wrapping after 8 (as in the mockup).
         var i = open.Count(x => x.Style != "stack") - 1;
         var step = Scale(w, 28) * (i % 8);
@@ -230,6 +232,7 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
     }
 
     /// v1 stack: cards from the corner upwards (or downwards at the top), newest nearest the corner.
+    /// v2 windows: one fixed size, capped to the screen.
     private void Layout()
     {
         var s = settings.Effective(DateTime.UtcNow);
@@ -251,13 +254,23 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
                 else { y -= h; c.Location = new Point(x, y); y -= gap; }
             }
         }
-        foreach (var w in open.Where(w => w.Style != "stack" && w.Height != Math.Min(w.WantedHeight, area.Height - Scale(w, 28))))
-        {
-            var bottom = w.Bottom;
-            w.Height = Math.Min(w.WantedHeight, area.Height - Scale(w, 28));
-            if (w.Bottom > area.Bottom) w.Top = Math.Max(area.Top, area.Bottom - w.Height);
-            else if (s.Position != "top-right") w.Top = Math.Max(area.Top, bottom - w.Height);
-        }
+        // Window style: every popup has the same fixed size; it only shrinks when the screen is shorter than that.
+        foreach (var w in open.Where(w => w.Style != "stack")) FitToScreen(w, area, s);
+    }
+
+    /// Caps a popup window to the working area (a small laptop at 150 % can be shorter than 560 logical px).
+    /// Never touches a maximised/minimised window or one the person resized themselves within the screen.
+    private static void FitToScreen(NoticeWindow w, Rectangle area, NotifierSettings s)
+    {
+        if (w.WindowState != FormWindowState.Normal) return;
+        var maxH = area.Height - Scale(w, 28);
+        var maxW = area.Width - Scale(w, 28);
+        if (w.Height <= maxH && w.Width <= maxW) return;
+        var bottom = w.Bottom;
+        w.Size = new Size(Math.Min(w.Width, maxW), Math.Min(w.Height, maxH));
+        if (w.Bottom > area.Bottom) w.Top = Math.Max(area.Top, area.Bottom - w.Height);
+        else if (s.Position != "top-right") w.Top = Math.Max(area.Top, bottom - w.Height);
+        if (w.Right > area.Right) w.Left = Math.Max(area.Left, area.Right - w.Width);
     }
 
     private void UpdateMore()

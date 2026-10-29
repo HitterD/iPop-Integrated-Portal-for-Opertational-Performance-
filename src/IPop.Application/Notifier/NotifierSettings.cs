@@ -27,6 +27,8 @@ public sealed record NotifierSettings
     public bool StartWithWindows { get; init; } = true;
     /// "normal" | "large": type and button size in every Notifier window (easier to read for some people).
     public string TextSize { get; init; } = "normal";
+    /// "system" (follows Windows light/dark, default) | "light" | "dark": every Notifier window (Settings → General → Appearance, 1.4.0).
+    public string Theme { get; init; } = "system";
 
     /// "ticketchat" = messages in an iDesk ticket's chat (toast with a reply box by default); "tickets" = the other
     /// iDesk ticket updates (assigned, status, resolved…).
@@ -37,6 +39,7 @@ public sealed record NotifierSettings
     private static readonly string[] Positions = ["bottom-right", "top-right"];
     private static readonly string[] Delivery = ["popup", "toast", "off"];
     private static readonly string[] TextSizes = ["normal", "large"];
+    private static readonly string[] Themes = ["system", "light", "dark"];
 
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -62,6 +65,7 @@ public sealed record NotifierSettings
         MaxVisible = Math.Clamp(MaxVisible, 1, 10),
         Volume = Math.Clamp(Volume, 0, 100),
         TextSize = TextSizes.Contains(TextSize) ? TextSize : "normal",
+        Theme = Themes.Contains(Theme) ? Theme : "system",
         Modules = ModuleKeys.ToDictionary(k => k, DeliveryFor, StringComparer.OrdinalIgnoreCase),
     };
 

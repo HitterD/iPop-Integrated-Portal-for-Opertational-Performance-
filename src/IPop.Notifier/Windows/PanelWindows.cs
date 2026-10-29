@@ -13,11 +13,13 @@ public sealed class InboxWindow : BridgedWindow
     {
         this.context = context;
         SizeKey = "inbox";
+        Maximizable = true;
         TopMost = true;
     }
 
     public void PlaceAtTray()
     {
+        if (WindowState == FormWindowState.Maximized) return; // maximised: stays maximised until restored
         var area = Screen.FromPoint(Cursor.Position).WorkingArea;
         var gap = (int)(12 * DeviceDpi / 96.0);
         Location = new Point(area.Right - Width - gap, area.Bottom - Height - gap);
@@ -33,8 +35,11 @@ public sealed class InboxWindow : BridgedWindow
     protected override void OnDeactivate(EventArgs e)
     {
         base.OnDeactivate(e);
-        Hide();
+        // The flyout hides when you click elsewhere; maximised it behaves as a normal window.
+        if (WindowState != FormWindowState.Maximized) Hide();
     }
+
+    protected override void OnWindowStateChanged() => TopMost = !Maximized;
 
     protected override void HandleMessage(string type, JsonNode? msg)
     {
@@ -64,6 +69,7 @@ public sealed class SettingsWindow : BridgedWindow
         this.account = account;
         Text = "iPop Notifier — Settings";
         SizeKey = "settings";
+        Maximizable = true;
         StartPosition = FormStartPosition.CenterScreen;
     }
 
@@ -172,8 +178,16 @@ public sealed class UpdateWindow : HtmlWindow
 }
 
 /// ICT / Admin only (mockup v2 §3): signed-in PCs with computer name, IP and Windows user. Remote help is phase 3.
-public sealed class DevicesWindow(IPopClient api) : BridgedWindow("devices.html", WindowSizes.Get("devices", new Size(1100, 720)), api)
+public sealed class DevicesWindow : BridgedWindow
 {
+    public DevicesWindow(IPopClient api) : base("devices.html", WindowSizes.Get("devices", new Size(1100, 720)), api)
+    {
+        Text = "iPop Notifier — Devices";
+        SizeKey = "devices";
+        Maximizable = true; // read by CreateParams when the handle is created, so it must be set here
+        StartPosition = FormStartPosition.CenterScreen;
+    }
+
     public event Action<Guid, string>? RemoteRequested;
 
     protected override void HandleMessage(string type, JsonNode? msg)
@@ -190,13 +204,5 @@ public sealed class DevicesWindow(IPopClient api) : BridgedWindow("devices.html"
             System.Diagnostics.Process.Start(psi);
         }
         catch { }
-    }
-
-    protected override void OnHandleCreated(EventArgs e)
-    {
-        Text = "iPop Notifier — Devices";
-        SizeKey = "devices";
-        StartPosition = FormStartPosition.CenterScreen;
-        base.OnHandleCreated(e);
     }
 }
