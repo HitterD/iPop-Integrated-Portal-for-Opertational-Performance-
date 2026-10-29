@@ -6,6 +6,7 @@
 
   $('#readAll').innerHTML = ICON.readAll;
   $('#gear').innerHTML = ICON.gear;
+  document.querySelector('[data-max]').innerHTML = ICON.max;
   $('#gear').onclick = () => post({ type: 'settings' });
   $('#devices').onclick = () => post({ type: 'devices' });
   $('#open').onclick = () => post({ type: 'openIPop', path: '/notifications' });

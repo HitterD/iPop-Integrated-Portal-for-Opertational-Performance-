@@ -1,17 +1,26 @@
 /* iPop Notifier — shared tokens (docs/mockups/notifier index.html + v2.html). */
 :root{
-  --glass:rgb(250,250,252);--glass-2:rgba(255,255,255,.7);--card:#fff;--fill:rgba(118,118,128,.12);--sep:rgba(60,60,67,.13);
-  --ink:#1d1d1f;--ink-2:#3c3c43;--ink-3:#6e6e73;--ink-4:#aeaeb2;--green:#2e9e5b;--green-2:#278a4f;--red:#ff3b30;
-  --chat:#2e9e5b;--mail:#0a84ff;--calls:#1f8fa6;--cal:#ff9f0a;--proj:#5562b8;--notes:#d19a2a;--news:#a0457a;--tix:#2563eb;--sys:#6f8290;
+  /* iPop web v6 tokens (IPop.Web/wwwroot/css/shell/v6.css; mockup docs/mockups/notifier/aligned.html, 1.4.0) */
+  --bg:#F5F5F7;--surface:#FFFFFF;--sunk:#F2F2F5;--fill:rgba(118,118,128,.12);--sep:rgba(60,60,67,.12);--line:rgba(60,60,67,.20);
+  --ink:#1D1D1F;--ink-2:#3C3C43;--ink-3:#6E6E73;--ink-4:#AEAEB2;
+  --accent:#2E9E5B;--accent-h:#278A4F;--accent-ink:#1C7A44;--accent-soft:#E4F4EA;
+  --danger:#FF3B30;--danger-soft:#FFECEB;
+  /* module colours: icon chip + primary button only */
+  --chat:#1F8A4C;--mail:#0A6CFF;--calls:#1F8FA6;--cal:#E07800;--proj:#5562B8;--notes:#B07D10;--news:#9B3F78;--tix:#2563EB;--sys:#5B6B78;
   --spring:cubic-bezier(.32,.72,0,1);--pop:cubic-bezier(.34,1.56,.64,1);
   /* friendly type scale (Settings → Text size: Large bumps it) */
-  --fs-title:20px;--fs-body:16px;--fs-btn:15px;--fs-meta:13px;--btn-h:42px;--sunk:#f4f4f7;--line-2:rgba(60,60,67,.20);
+  --fs-title:20px;--fs-body:16px;--fs-btn:14.5px;--fs-meta:13px;--btn-h:40px;
+  /* older names kept as aliases so every page keeps working */
+  --glass:var(--surface);--glass-2:var(--bg);--card:var(--surface);--line-2:var(--line);
+  --green:var(--accent);--green-2:var(--accent-h);--red:var(--danger);
 }
-html.large{--fs-title:23px;--fs-body:18.5px;--fs-btn:17px;--fs-meta:14.5px;--btn-h:48px}
+html.large{--fs-title:23px;--fs-body:18.5px;--fs-btn:16.5px;--fs-meta:14.5px;--btn-h:46px}
 html.dark{
-  --glass:rgb(32,32,34);--glass-2:rgba(44,44,46,.76);--card:#1c1c1e;--fill:rgba(118,118,128,.24);--sep:rgba(84,84,88,.55);
-  --ink:#f5f5f7;--ink-2:#d1d1d6;--ink-3:#98989d;--ink-4:#636366;--green:#30d158;--green-2:#28b84c;
-  --sunk:#18181b;--line-2:rgba(255,255,255,.16);
+  --bg:#000000;--surface:#1C1C1E;--sunk:#161618;--fill:rgba(118,118,128,.24);--sep:rgba(84,84,88,.50);--line:rgba(255,255,255,.14);
+  --ink:#F5F5F7;--ink-2:#D1D1D6;--ink-3:#98989D;--ink-4:#636366;
+  --accent:#30D158;--accent-h:#28B84C;--accent-ink:#5EE08A;--accent-soft:rgba(48,209,88,.16);
+  --danger:#FF453A;--danger-soft:rgba(255,69,58,.16);
+  --chat:#30D158;--mail:#0A84FF;--calls:#40B4CC;--cal:#FF9F0A;--proj:#7C87D6;--notes:#D9A440;--news:#C25A9A;--tix:#3B82F6;--sys:#7C8C99;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
@@ -30,20 +39,24 @@ svg.s{width:15px;height:15px}
 ::-webkit-scrollbar-thumb{background:var(--fill);border-radius:10px;border:3px solid transparent;background-clip:padding-box}
 ::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb,var(--ink) 25%,transparent);background-clip:padding-box;border:3px solid transparent}
 
-/* window title bar (drag area) */
-.ttl{height:46px;flex:none;display:flex;align-items:center;gap:10px;padding:0 6px 0 14px;border-bottom:.5px solid var(--sep)}
-.ttl .ic{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;color:#fff;background:var(--m,var(--green))}
-.ttl .ic svg{width:15px;height:15px}
-.ttl .ic img{width:26px;height:26px;border-radius:7px}
-.ttl b{flex:1;font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ttl small{font-size:11.5px;color:var(--ink-3);margin-right:6px;white-space:nowrap}
-.wc{width:46px;height:36px;border-radius:6px;display:grid;place-items:center;color:var(--ink-3);transition:background .15s}
-.wc:hover{background:var(--fill)}
+/* window title bar (drag area): neutral, same surface as the page, hairline under. Colour only in the 28 px chip. */
+.ttl{height:48px;flex:none;display:flex;align-items:center;gap:10px;padding:0 6px 0 16px;border-bottom:1px solid var(--sep);background:var(--surface);color:var(--ink)}
+.ttl .ic{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:#fff;background:var(--m,var(--accent));flex:none}
+.ttl .ic svg{width:16px;height:16px}
+.ttl b{flex:1;font-size:13.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ttl small{font-size:13px;color:var(--ink-3);margin-right:6px;white-space:nowrap}
+/* iPop mark: always on a white plate with padding, never on a coloured chip, never stretched */
+.logo{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:#fff;box-shadow:0 0 0 1px var(--sep);flex:none}
+.logo img{width:20px;height:20px;object-fit:contain}
+/* – □ ✕: identical in every window */
+.wc{width:40px;height:34px;border-radius:8px;display:grid;place-items:center;color:var(--ink-3);flex:none;transition:background .15s,color .15s}
+.wc svg.lucide{width:16px;height:16px}
+.wc:hover{background:var(--fill);color:var(--ink)}
 .wc.x:hover{background:#e81123;color:#fff}
 
 .sw{width:44px;height:26px;border-radius:13px;background:var(--fill);position:relative;transition:background .2s;flex:none;cursor:pointer}
 .sw::after{content:"";position:absolute;left:2px;top:2px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .25s var(--spring)}
-.sw.on{background:#34c759}.sw.on::after{transform:translateX(18px)}
+.sw.on{background:var(--accent)}.sw.on::after{transform:translateX(18px)}
 .pill3{display:flex;padding:2px;border-radius:8px;background:var(--fill);flex:none}
 .pill3 button{height:32px;padding:0 13px;border-radius:7px;font-size:13px;font-weight:600;color:var(--ink-3);transition:background .15s,color .15s}
 .pill3 button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}

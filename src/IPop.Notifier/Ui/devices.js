@@ -3,7 +3,7 @@
   const { api, esc, post } = window.app;
   const $ = s => document.querySelector(s);
   let rows = [], sel = null, t, me = { isAdmin: false, canRemote: false };
-  $('[data-min]').innerHTML = ICON.min; $('[data-close]').innerHTML = ICON.x;
+  $('[data-min]').innerHTML = ICON.min; $('[data-max]').innerHTML = ICON.max; $('[data-close]').innerHTML = ICON.x;
   $('[data-min]').onclick = () => post({ type: 'minimize' });
   $('[data-close]').onclick = () => post({ type: 'close' });
   $('#q').oninput = () => { clearTimeout(t); t = setTimeout(load, 250); };

@@ -275,7 +275,7 @@
   }
   function drawMedia() {
     const g = $('#mgrid');
-    g.innerHTML = `<div class="mt ${mediaOn === null ? 'on' : ''}" data-id=""><div class="def"><img src="ipop-mark.webp" alt=""></div><span class="k">${IC('sparkles')}iPop (default)</span></div>`
+    g.innerHTML = `<div class="mt ${mediaOn === null ? 'on' : ''}" data-id=""><div class="def"><img src="ipop-mark.png" alt=""></div><span class="k">${IC('sparkles')}iPop (default)</span></div>`
       + media.map(m => `<div class="mt ${mediaOn === m.id ? 'on' : ''}" data-id="${m.id}" data-att="${m.attachmentId}"><span class="k">${IC(m.contentType.startsWith('video') ? 'play' : 'image')}${esc(m.name)}</span></div>`).join('')
       + `<label class="mt add"><span>${IC('upload')}Upload</span></label>`;
     g.querySelectorAll('[data-att]').forEach(async el => {

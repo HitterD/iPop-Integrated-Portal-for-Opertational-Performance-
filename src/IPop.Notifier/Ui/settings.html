@@ -8,37 +8,37 @@
 /* Settings window (mockup v1 §7) + popup style choice (v1 stack / v2 windows) */
 body{display:flex;flex-direction:column}
 .wrap{flex:1;display:flex;min-height:0;animation:winIn .4s var(--spring)}
-.side{width:180px;padding:10px 8px;border-right:.5px solid var(--sep);background:var(--glass-2);flex:none}
-.side .hd{display:flex;align-items:center;gap:8px;padding:4px 8px 14px;font-weight:700}
-.side .hd img{width:24px;height:24px;border-radius:7px;background:#fff;padding:2px}
-.side a{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;font-size:13px;color:var(--ink-2);cursor:pointer;transition:background .15s}
+.side{width:210px;padding:12px 10px;border-right:1px solid var(--sep);background:var(--bg);flex:none;overflow:auto}
+.side a{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;font-size:14px;color:var(--ink-2);cursor:pointer;transition:background .15s}
 .side a:hover{background:var(--fill)}
-.side a.on{background:var(--fill);color:var(--ink);font-weight:600}
+.side a.on{background:var(--accent-soft);color:var(--accent-ink);font-weight:650}
+.side a svg.lucide{width:18px;height:18px}
 .ic2{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:#fff;font-size:12px;flex:none}
-.main{flex:1;overflow:auto;padding:18px 22px}
+.main{flex:1;overflow:auto;padding:22px 26px;background:var(--bg)}
+html.max .main>section{max-width:760px;margin:0 auto}
 .main section{display:none;animation:fade .25s}
 .main section.on{display:block}
-h3{font-size:20px;margin-bottom:12px}
-.grp2{border-radius:12px;background:var(--card);margin-bottom:14px;overflow:hidden;box-shadow:0 0 0 .5px var(--sep)}
-.row{display:flex;align-items:center;gap:12px;min-height:48px;padding:8px 14px}
-.row+.row{border-top:.5px solid var(--sep)}
+h3{font-size:22px;margin-bottom:16px}
+.grp2{border-radius:12px;background:var(--surface);margin-bottom:20px;overflow:hidden;box-shadow:0 0 0 1px var(--sep)}
+.row{display:flex;align-items:center;gap:14px;min-height:56px;padding:10px 16px}
+.row+.row{border-top:1px solid var(--sep)}
 .row{flex-wrap:wrap}
-.row .t{flex:1;min-width:180px}.row .t small{display:block;color:var(--ink-3);font-size:12px}
+.row .t{flex:1;min-width:180px;font-size:15px;font-weight:600}.row .t small{display:block;color:var(--ink-3);font-size:13px;font-weight:400}
 .row .ic2{width:26px;height:26px;border-radius:7px}
-.lbl{font-size:11.5px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em;margin:4px 4px 6px}
-input[type=range]{accent-color:var(--green);width:150px}
+.lbl{font-size:12px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em;margin:0 4px 8px}
+input[type=range]{accent-color:var(--accent);width:150px}
 select{height:28px;border-radius:7px;border:.5px solid var(--sep);background:var(--card);color:var(--ink);padding:0 8px}
 .styles{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px}
 .sty{border-radius:12px;padding:10px;box-shadow:0 0 0 1px var(--sep);cursor:pointer;transition:box-shadow .2s,transform .15s var(--spring);text-align:left}
 .sty:hover{transform:translateY(-1px)}
-.sty.on{box-shadow:0 0 0 2px var(--green)}
+.sty.on{box-shadow:0 0 0 2px var(--accent)}
 .sty b{display:block;font-size:13px;margin-top:8px}.sty small{display:block;color:var(--ink-3);font-size:11.5px;line-height:1.4}
 .pv{height:96px;border-radius:8px;background:linear-gradient(135deg,#1d4e6b,#7aa6b8);position:relative;overflow:hidden}
 .pv .w{position:absolute;width:56%;height:52%;border-radius:5px;background:rgba(255,255,255,.92);box-shadow:0 6px 14px -6px rgba(0,0,0,.5)}
 .pv .w::before{content:"";display:block;height:8px;background:var(--mail);border-radius:5px 5px 0 0;opacity:.85}
 .pv .c{position:absolute;right:6px;width:44%;height:22px;border-radius:6px;background:rgba(255,255,255,.92);box-shadow:0 4px 10px -4px rgba(0,0,0,.5);border-left:3px solid var(--tix)}
 .pv .tb{position:absolute;left:0;right:0;bottom:0;height:12px;background:rgba(240,243,246,.85)}
-.pv .tb i{position:absolute;left:50%;top:2px;width:8px;height:8px;border-radius:2px;background:#2e9e5b;transform:translateX(-50%)}
+.pv .tb i{position:absolute;left:50%;top:2px;width:8px;height:8px;border-radius:2px;background:var(--accent);transform:translateX(-50%)}
 .pv .tb em{position:absolute;left:calc(50% + 2px);top:-2px;width:8px;height:8px;border-radius:50%;background:var(--red)}
 .btn{height:30px;padding:0 12px;border-radius:8px;background:var(--fill);font-weight:600;font-size:12.5px}
 .btn.r{color:var(--red)}
@@ -46,17 +46,32 @@ select{height:28px;border-radius:7px;border:.5px solid var(--sep);background:var
 .saved.on{opacity:1}
 .kv{display:grid;grid-template-columns:130px 1fr;gap:8px 12px;font-size:13px;padding:14px}
 .kv span:nth-child(odd){color:var(--ink-3)}
+/* Appearance: System / Light / Dark (1.4.0, mockup aligned.html section 3) */
+.thm{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;padding:16px}
+.th{border-radius:12px;padding:10px;box-shadow:0 0 0 1px var(--sep);text-align:left;cursor:pointer;transition:box-shadow .2s,transform .15s var(--spring)}
+.th:hover{transform:translateY(-1px)}
+.th.on{box-shadow:0 0 0 2px var(--accent)}
+.th b{display:flex;align-items:center;gap:6px;font-size:14px;margin-top:10px}
+.th b svg.lucide{width:15px;height:15px}
+.th small{display:block;font-size:12.5px;color:var(--ink-3)}
+.thp{height:84px;border-radius:8px;overflow:hidden;display:flex;box-shadow:0 0 0 1px var(--sep)}
+.thp .l,.thp .d{flex:1;padding:10px}
+.thp .l{background:#f5f5f7}.thp .d{background:#1c1c1e}
+.thp i{display:block;height:8px;border-radius:4px;margin-bottom:7px}
+.thp .l i{background:#d6d6db}.thp .d i{background:#3a3a3c}
+.thp .l i.g{width:50%;background:#2E9E5B}
+.thp .d i.g{width:50%;background:#30D158}
 </style>
 </head>
 <body>
-<div class="ttl" data-drag><span class="ic"><img src="ipop-mark.webp" alt=""></span><b>iPop Notifier — Settings</b><button class="wc" data-min></button><button class="wc x" data-close></button></div>
+<div class="ttl" data-drag><span class="logo"><img src="ipop-mark.png" alt=""></span><b>iPop Notifier: Settings</b><button class="wc" data-min title="Minimize"></button><button class="wc" data-max title="Maximize"></button><button class="wc x" data-close title="Close"></button></div>
 <div class="wrap">
   <nav class="side" id="nav">
-    <a class="on" data-s="popups"><span class="ic2" style="background:var(--red)"><i data-lucide="bell"></i></span>Popups</a>
-    <a data-s="sounds"><span class="ic2" style="background:var(--cal)"><i data-lucide="volume-2"></i></span>Sounds</a>
-    <a data-s="modules"><span class="ic2" style="background:var(--proj)"><i data-lucide="layout-grid"></i></span>Modules</a>
-    <a data-s="general"><span class="ic2" style="background:var(--sys)"><i data-lucide="settings"></i></span>General</a>
-    <a data-s="account"><span class="ic2" style="background:var(--green)"><i data-lucide="user-round"></i></span>Account</a>
+    <a class="on" data-s="popups"><i data-lucide="bell"></i>Popups</a>
+    <a data-s="sounds"><i data-lucide="volume-2"></i>Sounds</a>
+    <a data-s="modules"><i data-lucide="layout-grid"></i>Modules</a>
+    <a data-s="general"><i data-lucide="settings"></i>General</a>
+    <a data-s="account"><i data-lucide="user-round"></i>Account</a>
   </nav>
   <div class="main">
     <section class="on" id="s-popups">
@@ -90,10 +105,17 @@ select{height:28px;border-radius:7px;border:.5px solid var(--sep);background:var
     </section>
     <section id="s-general">
       <h3>General</h3>
+      <div class="lbl">Appearance</div>
+      <div class="grp2"><div class="thm" id="theme">
+        <button class="th" data-t="system"><div class="thp"><div class="l"><i class="g"></i><i></i><i></i></div><div class="d"><i class="g"></i><i></i><i></i></div></div><b><i data-lucide="monitor"></i>System</b><small>Follows Windows · default</small></button>
+        <button class="th" data-t="light"><div class="thp"><div class="l"><i class="g"></i><i></i><i></i></div></div><b><i data-lucide="sun"></i>Light</b><small>Always light</small></button>
+        <button class="th" data-t="dark"><div class="thp"><div class="d"><i class="g"></i><i></i><i></i></div></div><b><i data-lucide="moon"></i>Dark</b><small>Always dark</small></button>
+      </div></div>
       <div class="grp2">
         <div class="row"><span class="t">Text size<small>Bigger text and buttons in every Notifier window</small></span><div class="pill3" id="textsize"><button data-v="normal">Normal</button><button data-v="large">Large</button></div></div>
         <div class="row"><span class="t">Start with Windows<small>Runs in the tray, no admin needed</small></span><span class="sw" id="autostart"></span></div>
       </div>
+      <div class="lbl">About</div>
       <div class="grp2"><div class="kv" id="about"></div></div>
     </section>
     <section id="s-account">

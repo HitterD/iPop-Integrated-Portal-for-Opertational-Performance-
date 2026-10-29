@@ -8,9 +8,9 @@
 /* ICT / Admin devices (mockup v2 §3). Remote help is phase 3: shown as "coming", not wired. */
 body{display:flex;flex-direction:column}
 .console{flex:1;display:grid;grid-template-columns:320px 1fr;min-height:0;animation:winIn .4s var(--spring)}
-.left{border-right:.5px solid var(--sep);background:var(--glass-2);display:flex;flex-direction:column;min-height:0}
+.left{border-right:1px solid var(--sep);background:var(--bg);display:flex;flex-direction:column;min-height:0}
 .left .h{padding:14px;display:flex;align-items:center;gap:8px;font-weight:700}
-.left .h img{width:22px;height:22px;border-radius:6px}
+.left .h img{width:28px;height:28px;border-radius:8px;background:#fff;padding:4px;object-fit:contain;box-shadow:0 0 0 1px var(--sep)}
 .lock{margin-left:auto;font-size:11px;font-weight:700;color:#fff;background:#6f8290;padding:2px 8px;border-radius:999px}
 .srch{margin:0 14px 10px;height:40px;border-radius:9px;background:var(--fill);display:flex;align-items:center;gap:8px;padding:0 10px;color:var(--ink-3)}
 .srch input{flex:1;border:0;background:none;outline:none;font-size:14px}
@@ -47,10 +47,10 @@ table.log td{padding:9px 8px;border-bottom:.5px solid var(--sep)}
 </style>
 </head>
 <body>
-<div class="ttl" data-drag><span class="ic"><img src="ipop-mark.webp" alt=""></span><b>Devices</b><button class="wc" data-min></button><button class="wc x" data-close></button></div>
+<div class="ttl" data-drag><span class="logo"><img src="ipop-mark.png" alt=""></span><b>iPop Notifier: Devices</b><button class="wc" data-min title="Minimize"></button><button class="wc" data-max title="Maximize"></button><button class="wc x" data-close title="Close"></button></div>
 <div class="console">
   <div class="left">
-    <div class="h"><img src="ipop-mark.webp" alt="">Devices<span class="lock">ICT only</span></div>
+    <div class="h"><img src="ipop-mark.png" alt="">Devices<span class="lock">ICT only</span></div>
     <label class="srch"><i data-lucide="search"></i><input id="q" placeholder="Search name, NIK, PC, IP…"></label>
     <div class="cnt" id="cnt"></div>
     <div class="devs" id="devs"></div>

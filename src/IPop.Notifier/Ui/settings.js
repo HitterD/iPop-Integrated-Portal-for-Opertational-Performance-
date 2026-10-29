@@ -3,6 +3,7 @@
   const $ = s => document.querySelector(s);
   let S = null, saveT;
   document.querySelector('[data-min]').innerHTML = ICON.min;
+  document.querySelector('[data-max]').innerHTML = ICON.max;
   document.querySelector('[data-close]').innerHTML = ICON.x;
   document.querySelector('[data-min]').onclick = () => post({ type: 'minimize' });
   document.querySelector('[data-close]').onclick = () => post({ type: 'close' });
@@ -37,6 +38,7 @@
     $('#vol').value = S.volume; $('#sound').classList.toggle('on', S.sound);
     $('#autostart').classList.toggle('on', S.startWithWindows);
     pill('#textsize', S.textSize || 'normal');
+    document.querySelectorAll('#theme .th').forEach(b => b.classList.toggle('on', b.dataset.t === (S.theme || 'system')));
     $('#mods').innerHTML = MODS.map(([k, n]) => `<div class="row"><span class="ic2" style="background:${(MOD[k] || MOD.tickets).c}">${ICON[k] || ICON.tickets}</span><span class="t">${n}${k === 'chat' ? '<small>Always a Windows toast</small>' : k === 'ticketchat' ? '<small>Toast shows as “iDesk” with a reply box</small>' : ''}</span>
       <div class="pill3" data-mod="${k}"><button data-v="popup" ${k === 'chat' ? 'disabled' : ''}>Popup</button><button data-v="toast">Toast</button><button data-v="off">Off</button></div></div>`).join('');
     document.querySelectorAll('[data-mod]').forEach(p => pill(p, S.modules[p.dataset.mod]));
@@ -56,6 +58,8 @@
 
   document.addEventListener('click', e => {
     const sty = e.target.closest('.sty'); if (sty) return save({ style: sty.dataset.style });
+    // Appearance: the app applies it to every open Notifier window as soon as it is saved.
+    const th = e.target.closest('#theme .th'); if (th) return save({ theme: th.dataset.t });
     const b = e.target.closest('.pill3 button'); if (b && !b.disabled) {
       const p = b.parentElement, v = b.dataset.v;
       if (p.id === 'popups') {

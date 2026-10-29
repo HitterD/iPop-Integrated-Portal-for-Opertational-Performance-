@@ -34,7 +34,7 @@
   function show(m) {
     const el = $('#media');
     if (m.kind === 'default' || !m.url) {
-      el.innerHTML = `<div class="def"><div class="lg"><img src="ipop-mark.webp" alt=""></div><h1>ICT is helping you</h1><p>${esc(($('#fName').textContent || 'ICT').replace(' · ICT', ''))} is working on this PC. You can keep watching.</p><div class="dots"><i></i><i></i><i></i></div></div>`;
+      el.innerHTML = `<div class="def"><div class="lg"><img src="ipop-mark.png" alt=""></div><h1>ICT is helping you</h1><p>${esc(($('#fName').textContent || 'ICT').replace(' · ICT', ''))} is working on this PC. You can keep watching.</p><div class="dots"><i></i><i></i><i></i></div></div>`;
     } else if (m.kind === 'video') {
       el.innerHTML = `<video src="${m.url}" autoplay loop playsinline ${m.sound ? '' : 'muted'}></video>`;
     } else {

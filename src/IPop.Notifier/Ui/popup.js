@@ -3,10 +3,17 @@
 (function () {
   const { api, image, esc, post, snack } = window.app;
   const G = '([0-9a-fA-F-]{36})';
-  let N, STYLE, ME, NIK, MORE = 0, PENDING = null, root, view = {};
+  let N, STYLE, ME, NIK, MORE = 0, PENDING = null, root, view = {}, drawn = false;
+  // Maximised (1.4.0): comfortable reading, the whole message inline (view.full) instead of "Read full message".
+  const isMax = () => document.documentElement.classList.contains('max');
 
   app.on('notice', m => { N = m.notice; STYLE = m.style; ME = m.me; NIK = m.nik; MORE = m.more || 0; PENDING = m.pending || null; render(); });
   app.on('more', m => { MORE = m.count; showMore(); });
+  // Maximise/restore and Light/Dark re-draw in place (the mail frame takes the new type size / colours).
+  let wasMax = null;
+  app.on('winstate', m => { if (N && root && !!m.max !== wasMax) shell(); });
+  app.on('theme', () => { if (N && root && view.html) shell(); });
+  window.addEventListener('resize', () => fitFooter());
   function showMore() { const r = document.querySelector('.more-row'); if (!r) return; r.classList.toggle('on', MORE > 0); r.querySelector('b').textContent = MORE; size(); }
   app.ready();
 
@@ -15,8 +22,10 @@
     const mod = MOD[N.module] || MOD.system;
     document.body.className = (STYLE === 'stack' ? 'card' : 'win') + ' m-' + (MOD[N.module] ? N.module : 'system') + (N.module === 'tickets' ? ' idesk' : '');
     root = document.getElementById('root');
-    root.style.setProperty('--m', mod.c);
-    view = { tools: [], chips: [], title: N.title, who: null, body: `<p class="txt sel">${esc(N.body)}</p>`, done: 'Done' };
+    root.style.removeProperty('--m'); // module colour comes from body.m-* (popup.css), light and dark
+    // body = normal view; full = maximised view (null: same as body); more = "Read full message" link when cut.
+    view = { tools: [], chips: [], title: N.title, who: null, body: `<p class="txt sel">${esc(N.body)}</p>`, full: null, more: true, done: 'Done' };
+    drawn = false;
     shell();
     load().catch(() => { }).finally(() => { shell(); });
   }
@@ -32,42 +41,114 @@
   function shell() {
     const mod = MOD[N.module] || MOD.system;
     const time = timeShort(N.at);
+    const max = STYLE !== 'stack' && isMax();
+    wasMax = max;
     const label = t => STYLE === 'stack' ? t.label.replace('Open in iPop ', 'Open ').replace('Open in iDesk ', 'iDesk ') : t.label;
-    const tools = view.tools.map((t, i) => `<button class="${STYLE === 'stack' ? 'btn' : 'tb2'} ${t.cls || ''}" data-t="${i}" ${t.disabled ? 'disabled' : ''}>${label(t)}</button>`);
-    // Shown in the window style too ("who" sits under the title, time is in the header).
-    
-    const sp = view.tools.findIndex(t => t.right);
-    if (sp >= 0) tools.splice(sp, 0, '<span class="sp"></span>');
-    const who = view.who ? `<div class="who"><span class="av" style="background:${avatarColor(view.who.name)}" ${view.who.photo ? `data-photo="${esc(view.who.photo)}"` : ''}>${esc(initials(view.who.name))}</span><span class="nm"><b>${esc(view.who.name)}</b><small>${esc(view.who.sub || '')}</small></span></div>` : '';
+    const sub = view.who && (max && view.who.subFull ? view.who.subFull : view.who.sub);
+    const who = view.who ? `<div class="who"><span class="av" style="background:${avatarColor(view.who.name)}" ${view.who.photo ? `data-photo="${esc(view.who.photo)}"` : ''}>${esc(initials(view.who.name))}</span><span class="nm"><b>${esc(view.who.name)}</b><small>${esc(sub || '')}</small></span></div>` : '';
     const chips = view.chips.length ? `<div class="chips">${view.chips.map(c => `<span class="chip ${c.st ? 'st' : ''}">${esc(c.t)}</span>`).join('')}</div>` : '';
     const reply = view.reply ? replyBox() : '';
     const done = `<div class="done"><span class="ck">${ICON.check}</span><span id="doneText">${esc(view.done)}</span></div>`;
     const wasReplying = root.firstElementChild?.classList.contains('replying');
     const draft = root.querySelector('.ed')?.innerHTML;
+    // Normal view: a long message is cut with "Read full message" (maximises). Maximised: everything inline.
+    const more = view.more && !max ? `<a class="more-link" data-full hidden>${IC('maximize-2')}${esc(view.more === true ? 'Read full message' : view.more)}</a>` : '';
+    const body = max && view.full != null ? view.full : view.body;
+    const card = `<div class="mcard sel"><div class="clip">${body}</div>${more}${view.extra || ''}</div>`;
 
     if (STYLE === 'stack') {
+      const tools = view.tools.map((t, i) => `<button class="btn ${t.cls || ''}" data-t="${i}" ${t.disabled ? 'disabled' : ''}>${label(t)}</button>`);
       root.innerHTML = `<div class="pop" data-drag><i class="bar"></i>
         <div class="hd"><span class="ico">${modIcon()}</span><span class="src"><b>${esc(mod.n)}</b><small>${esc(time)}</small></span><button class="x" data-close title="Close">${ICON.x}</button></div>
-        ${pendingStrip()}<div class="bd"><div class="ttl2">${esc(view.title)}</div>${view.who ? `<div class="from">${who}</div>` : ''}${chips}<div class="msg sel">${view.body}</div></div>
+        ${pendingStrip()}<div class="bd"><div class="ttl2">${esc(view.title)}</div>${view.who ? `<div class="from">${who}</div>` : ''}${chips}<div class="msg sel">${view.body}${view.extra || ''}</div></div>
         ${reply}
         ${view.tools.length ? `<div class="acts">${tools.join('')}</div>` : ''}
         ${done}
         <div class="more-row"><span>+<b>0</b> more waiting</span></div></div>`;
     } else {
       root.innerHTML = `<div class="win">
-        <div class="ttl" data-drag><span class="ic">${modIcon()}</span><b>${esc(/^meeting\./.test(N.eventType || '') ? 'Meeting' : mod.n)}</b><small>· ${esc(time)}</small><span class="sp"></span><button class="wc" data-min title="Minimize">${ICON.min}</button><button class="wc x" data-close title="Close">${ICON.x}</button></div>
+        ${header(mod, time)}
         ${pendingStrip()}
-        <div class="body"><h3 class="ptitle sel">${esc(view.title)}</h3>${who}${chips}<div class="mcard sel">${view.body}</div></div>
+        <div class="body"><div class="col"><h3 class="ptitle sel">${esc(view.title)}</h3>${who}${chips}${card}</div></div>
         ${reply}
-        ${view.tools.length ? `<div class="tools">${tools.join('')}</div>` : ''}
+        ${footer(view.tools)}
         ${done}</div>`;
     }
     const box = root.firstElementChild;
+    if (drawn) box.classList.add('again'); // re-draw (loaded, maximised, theme): no second entrance animation
+    drawn = true;
     if (wasReplying && view.reply) { box.classList.add('replying'); const ed = box.querySelector('.ed'); if (ed && draft) ed.innerHTML = draft; }
     wire(box);
     hydrate(box);
     if (STYLE === 'stack') showMore();
     size();
+    fitFooter();
+    clipCheck();
+  }
+
+  // ── shared header + footer (every module; 1.4.0 mockup docs/mockups/notifier/aligned.html §1) ──
+  // Header: neutral, module colour only in the 28 px icon chip. – □ ✕ identical in every window.
+  function header(mod, time) {
+    const name = /^meeting\./.test(N.eventType || '') ? 'Meeting' : mod.n;
+    return `<div class="ttl" data-drag><span class="ic">${modIcon()}</span><b>${esc(name)}</b><small>· ${esc(time)}</small><span class="sp"></span>`
+      + `<button class="wc" data-min title="Minimize">${ICON.min}</button><button class="wc" data-max title="Maximize"></button><button class="wc x" data-close title="Close">${ICON.x}</button></div>`;
+  }
+
+  // Footer: row 1 = the main action, full width, in the module colour; row 2 = up to 3 equal buttons. More than
+  // 4 actions: row 2 keeps 2 and the rest go under "More" (tools marked `more` go there first).
+  // Maximised: one row inside the reading column (main action twice as wide).
+  function footer(tools) {
+    if (!tools.length) return '';
+    const plan = footerPlan(tools);
+    const btn = i => { const t = tools[i]; return `<button class="tb2 ${i === plan.primary ? 'p' : ''} ${t.cls === 'r' ? 'r' : ''}" data-t="${i}" ${t.disabled ? 'disabled' : ''}>${t.label}</button>`; };
+    const moreBtn = plan.menu.length ? `<button class="tb2" data-more>${IC('ellipsis')}More</button>` : '';
+    const row2 = plan.row2.map(btn).join('') + moreBtn;
+    return `<div class="tools"><div class="inner">${plan.primary >= 0 ? btn(plan.primary) : ''}${row2 ? `<div class="r2">${row2}</div>` : ''}</div></div>`;
+  }
+
+  // Which tool is the main button, which sit in row 2 and which go under "More" (tests/notifier-popup-footer.test.cjs).
+  function footerPlan(tools) {
+    if (!tools.length) return { primary: -1, row2: [], menu: [] };
+    let primary = tools.findIndex(t => /(^|\s)p(\s|$)/.test(t.cls || ''));
+    if (primary < 0) primary = 0;
+    const rest = tools.map((_, i) => i).filter(i => i !== primary);
+    if (rest.length <= 3) return { primary, row2: rest, menu: [] };
+    const keep = [...rest.filter(i => !tools[i].more), ...rest.filter(i => tools[i].more)].slice(0, 2);
+    return { primary, row2: rest.filter(i => keep.includes(i)), menu: rest.filter(i => !keep.includes(i)) };
+  }
+  window.__notifierFooterPlan = footerPlan;
+
+  // Row 2 doesn't fit (Large text, long labels): drop the icons, keep the words.
+  function fitFooter() {
+    const r2 = root && root.querySelector('.win .r2'); if (!r2) return;
+    r2.classList.remove('tight');
+    requestAnimationFrame(() => {
+      if ([...r2.children].some(b => b.scrollWidth > b.clientWidth + 1)) r2.classList.add('tight');
+    });
+  }
+
+  // Normal view: a long message is cut (with a fade) and "Read full message" maximises the window.
+  function clipCheck() {
+    requestAnimationFrame(() => {
+      const clip = root && root.querySelector('.win .clip'), link = root && root.querySelector('.win [data-full]');
+      if (!clip || !link) return;
+      const cut = clip.scrollHeight > clip.clientHeight + 4;
+      clip.classList.toggle('cut', cut);
+      link.hidden = !cut;
+    });
+  }
+
+  function moreMenu(btn) {
+    document.querySelectorAll('.menu').forEach(m => m.remove());
+    const plan = footerPlan(view.tools);
+    const m = document.createElement('div'); m.className = 'menu';
+    m.innerHTML = plan.menu.map(i => `<button data-t="${i}">${view.tools[i].label}</button>`).join('');
+    document.body.appendChild(m);
+    const r = btn.getBoundingClientRect();
+    m.style.left = Math.max(10, Math.min(window.innerWidth - m.offsetWidth - 10, r.right - m.offsetWidth)) + 'px';
+    m.style.top = Math.max(10, r.top - m.offsetHeight - 6) + 'px';
+    m.onclick = e => { const b = e.target.closest('[data-t]'); m.remove(); if (b) runTool(root.firstElementChild, +b.dataset.t, btn); };
+    setTimeout(() => document.addEventListener('click', () => m.remove(), { once: true }), 0);
   }
 
   function replyBox() {
@@ -83,20 +164,17 @@
       const b = e.target.closest('button,[data-img],[data-nas],.more-link'); if (!b) return;
       if (b.hasAttribute('data-close')) return closeOut();
       if (b.hasAttribute('data-min')) return post({ type: 'minimize' });
+      if (b.hasAttribute('data-max')) return; // bridge.js toggles maximise
+      if (b.hasAttribute('data-more')) { e.stopPropagation(); return moreMenu(b); }
+      if (b.hasAttribute('data-full')) return post({ type: 'readFull' });
       if (b.hasAttribute('data-cancel')) { box.classList.remove('replying'); return size(); }
       if (b.hasAttribute('data-send')) return send(box, b);
       if (b.hasAttribute('data-cmd')) { e.preventDefault(); document.execCommand(b.dataset.cmd); return; }
       if (b.hasAttribute('data-attach')) return box.querySelector('[data-file]').click();
       if (b.hasAttribute('data-img')) return viewer(b.src);
       if (b.hasAttribute('data-nas')) return nasMenu(b, b.dataset.nas, b.dataset.path);
-      if (b.classList.contains('more-link')) return openIPop(N.targetUrl);
-      if (b.dataset.t != null) {
-        const t = view.tools[+b.dataset.t];
-        if (!t) return;
-        if (t.reply) { view.replyAll = !!t.all; box.classList.add('replying'); updateReplyHint(); size(); setTimeout(() => box.querySelector('.ed')?.focus(), 30); post({ type: 'focus' }); return; }
-        b.disabled = true;
-        try { await t.run(b); } finally { if (document.body.contains(b)) b.disabled = false; }
-      }
+      if (b.classList.contains('more-link')) return post({ type: 'readFull' });
+      if (b.dataset.t != null) return runTool(box, +b.dataset.t, b);
     });
     const file = box.querySelector('[data-file]');
     if (file) file.addEventListener('change', () => attach(box, file));
@@ -106,6 +184,14 @@
     }));
     document.body.dataset.esc = 'on';
     if (STYLE === 'stack') { box.addEventListener('mouseenter', size); box.addEventListener('mouseleave', size); }
+  }
+
+  async function runTool(box, i, b) {
+    const t = view.tools[i];
+    if (!t) return;
+    if (t.reply) { view.replyAll = !!t.all; box.classList.add('replying'); updateReplyHint(); size(); setTimeout(() => box.querySelector('.ed')?.focus(), 30); post({ type: 'focus' }); return; }
+    if (b) b.disabled = true;
+    try { await t.run(b); } finally { if (b && document.body.contains(b)) b.disabled = false; }
   }
 
   // Images, avatars and the mail iframe are filled in after the HTML is on screen.
@@ -118,11 +204,12 @@
       const url = await image(img.dataset.src);
       if (url) { img.src = url; img.onload = size; } else img.remove();
     });
-    const frame = box.querySelector('iframe[data-mail]');
-    if (frame && view.html) mailFrame(frame, view.html);
+    box.querySelectorAll('iframe[data-mail]').forEach(frame => { if (view.html) mailFrame(frame, view.html); });
   }
 
+  // v1 stacked card only: its height follows the content (the window style has one fixed size).
   function size() {
+    if (STYLE !== 'stack') { clipCheck(); return; }
     requestAnimationFrame(() => {
       const box = root.firstElementChild; if (!box) return;
       let h = 0;
@@ -153,8 +240,10 @@
 
   const openIPop = path => post({ type: 'openIPop', path: path || '/notifications' });
   const markRead = () => api('POST', `api/notifications/v1/notifications/${N.id}/read`);
+  // Footer (1.4.0): the tool with cls 'p' is row 1; the others are row 2 (≤3, else "More" — `more: true` goes there
+  // first); cls 'r' = soft red. "Open in iPop" as the main action, "Open" in row 2. Always "Mark as read" in full.
   const openTool = (label, path, primary) => ({ label: IC('arrow-up-right') + label, cls: primary ? 'p' : '', run: async () => { openIPop(path || N.targetUrl); await markRead(); closeOut('open'); } });
-  const readTool = { label: IC('check') + 'Mark as read', cls: 'soft', right: true, run: async () => { await markRead(); closeOut('read'); } };
+  const readTool = { label: IC('check') + 'Mark as read', run: async () => { await markRead(); closeOut('read'); } };
   const id = re => (N.targetUrl || '').match(re)?.[1];
 
   // ── per module ────────────────────────────────────────────────────────────
@@ -175,24 +264,27 @@
     const to = (d.recipients || []).filter(x => x.recipientType === 'to').map(x => x.name);
     const cc = (d.recipients || []).filter(x => x.recipientType === 'cc').map(x => x.name);
     const more = Math.max(0, (d.recipientTotal || 0) - to.length - cc.length);
-    view.who = { name: d.senderName, sub: 'to ' + [...to.slice(0, 3)].join('; ') + (to.length > 3 ? ` +${to.length - 3}` : '') + (cc.length ? ` · cc ${cc.slice(0, 2).join('; ')}${cc.length > 2 ? ` +${cc.length - 2}` : ''}` : '') + (more ? ` +${more}` : '') };
+    view.who = { name: d.senderName, sub: 'to ' + [...to.slice(0, 3)].join('; ') + (to.length > 3 ? ` +${to.length - 3}` : '') + (cc.length ? ` · cc ${cc.slice(0, 2).join('; ')}${cc.length > 2 ? ` +${cc.length - 2}` : ''}` : '') + (more ? ` +${more}` : ''),
+      subFull: 'to ' + to.join('; ') + (cc.length ? ` · cc ${cc.join('; ')}` : '') + (more ? ` +${more} more` : '') };
     if (d.importance === 'high') view.chips.push({ t: 'High importance', st: true });
     view.html = d.isHtml ? d.body : `<p style="white-space:pre-wrap">${esc(d.bodyText || d.body)}</p>`;
     if (d.signature) view.html += `<div style="margin-top:12px;color:#6e6e73">${d.signature}</div>`;
     const atts = (d.attachments || []);
-    const pics = atts.filter(a => (a.mimeType || '').startsWith('image/')).slice(0, 2);
-    view.body = `<iframe data-mail sandbox="allow-same-origin" title="Message"></iframe>`
-      + pics.map(a => `<img class="img" data-img data-src="api/mail/attachments/${a.id}/download?inline=true" alt="${esc(a.fileName)}">`).join('')
-      + (atts.length ? `<div class="files">${atts.map(a => `<span class="file" title="${esc(a.fileName)}"><span class="fi">${esc(ext(a.fileName))}</span><span>${esc(a.fileName)} · ${fmtSize(a.fileSize)}</span></span>`).join('')}</div>` : '')
-      + `<a class="more-link">Show full message ${IC('arrow-up-right')}</a>`;
+    const pics = atts.filter(a => (a.mimeType || '').startsWith('image/'));
+    const pic = a => `<img class="img" data-img data-src="api/mail/attachments/${a.id}/download?inline=true" alt="${esc(a.fileName)}">`;
+    const files = atts.length ? `<div class="files">${atts.map(a => `<span class="file" title="${esc(a.fileName)}"><span class="fi">${esc(ext(a.fileName))}</span><span>${esc(a.fileName)} · ${fmtSize(a.fileSize)}</span></span>`).join('')}</div>` : '';
+    view.body = `<iframe data-mail sandbox="allow-same-origin" title="Message"></iframe>` + pics.slice(0, 2).map(pic).join('');
+    view.full = `<iframe data-mail sandbox="allow-same-origin" title="Message"></iframe>` + pics.map(pic).join('');
+    view.extra = files;
     const canAll = d.canReplyAll && replyPlan(d, true).count > replyPlan(d, false).count;
     view.reply = { rich: true, attach: true, placeholder: 'Write your reply…' };
+    // Reply | Forward · Open · Mark as read (with Reply all: Reply all · Mark as read · More → Forward, Open)
     view.tools = [
       { label: IC('reply') + 'Reply', cls: 'p', reply: true },
       ...(canAll ? [{ label: IC('reply-all') + 'Reply all', reply: true, all: true }] : []),
-      { label: IC('forward') + 'Forward', run: async () => { openIPop(N.targetUrl + '&forward=1'); closeOut('open'); } },
-      openTool('Open in iPop'),
-      { label: IC('check') + 'Mark as read', cls: 'soft', right: true, run: async () => { await api('POST', `api/mail/${mid}/read`); await markRead(); closeOut('read'); } },
+      { label: IC('forward') + 'Forward', more: true, run: async () => { openIPop(N.targetUrl + '&forward=1'); closeOut('open'); } },
+      { ...openTool('Open'), more: true },
+      { label: IC('check') + 'Mark as read', run: async () => { await api('POST', `api/mail/${mid}/read`); await markRead(); closeOut('read'); } },
     ];
     view.send = async (html, attIds) => {
       const plan = replyPlan(d, view.replyAll);
@@ -314,6 +406,8 @@
         src.attendees?.length && { t: `${src.attendees.length} people` }].filter(Boolean);
       const notes = mt?.description || mt?.agenda || ev?.notes;
       view.body = `<p class="txt sel">${esc(notes || N.body)}</p>`;
+      const people = (src.attendees || []).map(a => a.name || a.displayName).filter(Boolean);
+      if (people.length) view.full = view.body + `<div class="people"><b>${people.length} ${people.length === 1 ? 'person' : 'people'}</b><p>${people.map(esc).join(' · ')}</p></div>`;
       view.who = src.ownerName || mt?.organizerName ? { name: src.ownerName || mt.organizerName, sub: 'Organizer' } : null;
     }
     const key = joinKey || mt?.roomKey || ev?.roomKey;
@@ -324,8 +418,8 @@
       ...(canJoin ? [{ label: IC('video') + 'Join now', cls: 'p', run: async () => { if (key) openIPop(`/calls?tab=rooms&join=${key}`); else post({ type: 'openUrl', url: link }); await markRead(); finish('Joining…', 'join'); } }] : []),
       ...(mt && invited && mt.myResponse !== 'accept' && !canJoin ? [{ label: IC('check') + 'Accept', cls: 'p', run: () => rsvp(mt.id, 'accept', 'Accepted') }] : []),
       { label: IC('alarm-clock') + 'Snooze 5 min', run: async () => { const r = await api('POST', `api/notifications/v1/notifications/${N.id}/snooze`, { until: new Date(Date.now() + 5 * 60000).toISOString() }); if (r.ok) finish('Snoozed for 5 minutes', 'snooze'); else snack('Couldn\'t snooze. Try again.'); } },
-      openTool('Open', N.targetUrl, !canJoin && !(mt && invited && mt.myResponse !== 'accept')),
-      ...(mt && invited && mt.myResponse !== 'decline' ? [{ label: IC('x') + 'Decline', cls: 'r', right: true, run: () => rsvp(mt.id, 'decline', 'Declined') }] : []),
+      openTool(!canJoin && !(mt && invited && mt.myResponse !== 'accept') ? 'Open in iPop' : 'Open', N.targetUrl, !canJoin && !(mt && invited && mt.myResponse !== 'accept')),
+      ...(mt && invited && mt.myResponse !== 'decline' ? [{ label: IC('x') + 'Decline', cls: 'r', run: () => rsvp(mt.id, 'decline', 'Declined') }] : []),
     ];
     view.done = 'Done';
   }
@@ -351,14 +445,15 @@
       if (src) cover = `<img class="img" data-img data-src="${esc(src.replace(/^\//, ''))}" alt="">`;
     }
     view.html = p.bodyFormat === 'html' ? p.body : null;
-    view.body = (view.html ? '<iframe data-mail sandbox="allow-same-origin" title="Post"></iframe>' : `<p class="txt sel">${esc(p.body)}</p>`) + cover + '<a class="more-link">' + IC('arrow-up-right') + 'Read in iPop</a>';
+    view.body = (view.html ? '<iframe data-mail sandbox="allow-same-origin" title="Post"></iframe>' : `<p class="txt sel">${esc(p.body)}</p>`) + cover;
+    view.more = 'Read full article';
     view.tools = [
       ...(p.requiresAcknowledgement && !p.isAcknowledged ? [{ label: IC('check-check') + "I've read it", cls: 'p', run: async () => {
         const a = await api('POST', `api/news/${pid}/acknowledge?contentVersion=${p.contentVersion ?? 1}`);
         if (a.ok) { await api('POST', `api/notifications/v1/notifications/${N.id}/acknowledge`); finish('Acknowledged', 'ack'); }
         else snack(a.status === 409 ? 'The memo was updated — open it in iPop to read the new version.' : 'Couldn\'t acknowledge. Try again.');
       } }] : []),
-      openTool('Open in iPop', null, !(p.requiresAcknowledgement && !p.isAcknowledged)),
+      openTool(p.requiresAcknowledgement && !p.isAcknowledged ? 'Open' : 'Open in iPop', null, !(p.requiresAcknowledgement && !p.isAcknowledged)),
       ...(p.requiresAcknowledgement && !p.isAcknowledged ? [] : [readTool]),
     ];
   }
@@ -371,7 +466,9 @@
     const t = r.json.task || r.json;
     view.title = t.title || N.title;
     view.chips = [{ t: statusName(t.status), st: true }, t.dueDate && { t: 'Due ' + new Date(t.dueDate).toLocaleDateString([], { day: 'numeric', month: 'short' }) }, t.priority && { t: t.priority }].filter(Boolean);
-    view.body = `<p class="txt sel">${esc(N.body)}</p>` + (t.description ? `<p class="txt sel" style="margin-top:10px;color:var(--ink-3)">${esc(t.description.slice(0, 600))}</p>` : '');
+    const desc = d => `<p class="txt sel" style="margin-top:10px;color:var(--ink-3)">${esc(d)}</p>`;
+    view.body = `<p class="txt sel">${esc(N.body)}</p>` + (t.description ? desc(t.description.slice(0, 600)) : '');
+    if (t.description && t.description.length > 600) view.full = `<p class="txt sel">${esc(N.body)}</p>` + desc(t.description);
     view.reply = { rich: false, placeholder: 'Write a comment…', hint: 'Comment on the task' };
     view.send = async text => {
       const res = await api('POST', `api/projects/tasks/${tid}/comments`, { content: text });
@@ -385,7 +482,7 @@
         const res = await api('POST', `api/projects/tasks/${tid}/move`, { status: 'done' });
         if (res.ok) { await markRead(); finish('Marked done', 'done'); } else snack(res.json?.message || 'Couldn\'t update the task.');
       } }] : []),
-      openTool('Open in iPop'),
+      openTool('Open'),
       readTool,
     ];
   }
@@ -404,7 +501,9 @@
     if (!th) return;
     const last = th.comments[th.comments.length - 1];
     view.who = { name: last.authorName, sub: th.quote ? `on “${th.quote.slice(0, 60)}”` : 'commented' };
-    view.body = `<div class="msg-list">${th.comments.slice(-3).map(c => `<div class="msg-it sel"><b>${esc(c.authorName)}</b><small>${esc(timeShort(c.createdAt))}</small><p>${esc(c.body)}</p></div>`).join('')}</div>`;
+    const list = cs => `<div class="msg-list">${cs.map(c => `<div class="msg-it sel"><b>${esc(c.authorName)}</b><small>${esc(timeShort(c.createdAt))}</small><p>${esc(c.body)}</p></div>`).join('')}</div>`;
+    view.body = list(th.comments.slice(-3));
+    if (th.comments.length > 3) view.full = list(th.comments);
     view.reply = { rich: false, placeholder: 'Reply to the comment…', hint: 'Reply in the comment thread' };
     view.send = async text => {
       const res = await api('POST', `api/notes/${pid}/threads/${th.id}/replies`, { body: text });
@@ -412,13 +511,13 @@
       return res.json?.message || 'Couldn\'t reply. Try again.';
     };
     view.done = 'Reply added';
-    view.tools = [{ label: IC('reply') + 'Reply', cls: 'p', reply: true }, openTool('Open in iPop'), readTool];
+    view.tools = [{ label: IC('reply') + 'Reply', cls: 'p', reply: true }, openTool('Open'), readTool];
   }
 
   async function calls() {
     view.tools = [
       { label: IC('phone') + 'Call back', cls: 'p', run: async () => { openIPop('/calls?tab=recents'); await markRead(); closeOut('call'); } },
-      openTool('Open in iPop', '/calls?tab=recents'), readTool,
+      openTool('Open', '/calls?tab=recents'), readTool,
     ];
   }
 
@@ -467,10 +566,14 @@
 
   // ── mail HTML: isolated, no scripts, no remote loads; inline images and NAS links handled here ──
   async function mailFrame(frame, html) {
-    const dark = document.documentElement.classList.contains('dark');
+    const dark = document.documentElement.classList.contains('dark'), max = isMax() && STYLE !== 'stack';
+    const cs = getComputedStyle(document.documentElement);
+    const fs = max ? (document.documentElement.classList.contains('large') ? 22 : 20) : (parseFloat(cs.getPropertyValue('--fs-body')) || 16);
+    const ink = max ? (dark ? '#f5f5f7' : '#1d1d1f') : (dark ? '#d1d1d6' : '#3c3c43');
     frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>
-      html,body{margin:0;padding:0;background:transparent;color:${dark ? '#d1d1d6' : '#3c3c43'};font:14px/1.55 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;word-break:break-word;overflow:hidden}
-      img{max-width:100%;height:auto;border-radius:8px;cursor:zoom-in} a{color:${dark ? '#30d158' : '#2e9e5b'}} table{max-width:100%}
+      html,body{margin:0;padding:0;background:transparent;color:${ink};font:${fs}px/${max ? 1.7 : 1.55} "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;word-break:break-word;overflow:hidden}
+      p{margin:0 0 ${max ? 18 : 10}px}
+      img{max-width:100%;height:auto;border-radius:8px;cursor:zoom-in} a{color:${dark ? '#5ee08a' : '#1c7a44'}} table{max-width:100%}
       blockquote{margin:8px 0;padding-left:10px;border-left:3px solid rgba(120,120,128,.35);color:#8e8e93}
       details.mail-quote>summary{cursor:pointer;color:#8e8e93;list-style:none}
       </style></head><body>${html}</body></html>`;

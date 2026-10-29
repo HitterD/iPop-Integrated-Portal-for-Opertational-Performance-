@@ -12,7 +12,12 @@
     if ((m.type === 'apiResult' || m.type === 'imageResult') && waits.has(m.id)) {
       const w = waits.get(m.id); waits.delete(m.id); w(m); return;
     }
-    if (m.type === 'theme') { document.documentElement.classList.toggle('dark', !!m.dark); document.documentElement.classList.toggle('large', !!m.large); }
+    if (m.type === 'theme') {
+      const h = document.documentElement;
+      h.classList.toggle('dark', !!m.dark); h.classList.toggle('large', !!m.large);
+      if (m.mode) h.dataset.theme = m.mode;
+    }
+    if (m.type === 'winstate') winState(m);
     if (m.type === 'toast') snack(m.text);
     (handlers[m.type] || []).forEach(h => h(m));
   });
@@ -39,13 +44,39 @@
   window.app = {
     post, api, image, snack, esc,
     on: (type, h) => (handlers[type] = handlers[type] || []).push(h),
+    syncMax: () => syncMax(),
     ready: () => post({ type: 'ready' }),
   };
-  // Borderless windows: the HTML title bar moves the window (buttons inside it don't).
+  // Maximise (1.4.0): □ in the title bar ([data-max]) becomes Restore when maximised; html.max = maximised.
+  let canMax = null;
+  function winState(m) {
+    if (m.canMax !== undefined) canMax = !!m.canMax;
+    document.documentElement.classList.toggle('max', !!m.max);
+    syncMax();
+  }
+  function syncMax() {
+    const max = document.documentElement.classList.contains('max');
+    document.querySelectorAll('[data-max]').forEach(b => {
+      if (canMax === false) { b.hidden = true; return; }
+      b.title = max ? 'Restore' : 'Maximize';
+      b.setAttribute('aria-label', b.title);
+      if (b.dataset.icon !== String(max)) { b.dataset.icon = String(max); b.innerHTML = window.IC ? IC(max ? 'copy' : 'square') : ''; }
+    });
+  }
+  document.addEventListener('click', e => { if (e.target.closest('[data-max]')) post({ type: 'maximize' }); });
+
+  // Borderless windows: the HTML title bar moves the window (buttons inside it don't). Once Windows runs the move
+  // loop the page never sees the first click's mouseup, so a double-click on the header is detected by timing.
+  let lastDown = { t: 0, x: 0, y: 0 };
   document.addEventListener('mousedown', e => {
     if (e.button !== 0) return;
     const bar = e.target.closest('[data-drag]');
-    if (bar && !e.target.closest('button,input,a,[data-nodrag]')) { e.preventDefault(); post({ type: 'drag' }); }
+    if (!bar || e.target.closest('button,input,a,[data-nodrag]')) return;
+    e.preventDefault();
+    const now = Date.now(), dbl = now - lastDown.t < 500 && Math.abs(e.screenX - lastDown.x) < 6 && Math.abs(e.screenY - lastDown.y) < 6;
+    lastDown = dbl ? { t: 0, x: 0, y: 0 } : { t: now, x: e.screenX, y: e.screenY };
+    if (dbl && document.querySelector('[data-max]:not([hidden])')) post({ type: 'maximize' });
+    else post({ type: 'drag' });
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.dataset.esc !== 'off') post({ type: 'close' }); });
 })();
@@ -54,12 +85,13 @@
 // IC() returns a placeholder; lucide.createIcons() turns it into the SVG (run after every render).
 window.IC = (name, cls) => `<i data-lucide="${name}"${cls ? ` class="${cls}"` : ''}></i>`;
 window.icons = () => { try { window.lucide && window.lucide.createIcons({ attrs: { 'stroke-width': 1.9 } }); } catch { } };
-new MutationObserver(() => { if (document.querySelector('i[data-lucide]')) window.icons(); })
+// Freshly rendered title bars get the right □ / Restore icon too.
+new MutationObserver(() => { if (document.querySelector('[data-max]:not([data-icon])')) app.syncMax(); if (document.querySelector('i[data-lucide]')) window.icons(); })
   .observe(document.documentElement, { childList: true, subtree: true });
 window.ICON = {
   mail: IC('mail'), tickets: IC('life-buoy'), calendar: IC('video'), news: IC('newspaper'), projects: IC('kanban'),
   notes: IC('notebook-pen'), calls: IC('phone'), chat: IC('message-circle'), system: IC('bell'),
-  x: IC('x'), min: IC('minus'), check: IC('check'), gear: IC('settings'), readAll: IC('check-check'),
+  x: IC('x'), min: IC('minus'), max: IC('square'), check: IC('check'), gear: IC('settings'), readAll: IC('check-check'),
 };
 window.MOD = {
   mail: { c: 'var(--mail)', n: 'Mail' }, tickets: { c: 'var(--tix)', n: 'iDesk' }, calendar: { c: 'var(--cal)', n: 'Calendar' },

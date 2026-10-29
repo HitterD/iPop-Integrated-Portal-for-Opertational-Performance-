@@ -9,7 +9,8 @@
 body{display:flex;flex-direction:column;border-radius:16px}
 .fly{flex:1;display:flex;flex-direction:column;min-height:0;animation:popIn .45s var(--spring)}
 .fh{display:flex;align-items:center;gap:10px;padding:14px 14px 8px}
-.fh img{width:40px;height:40px;border-radius:10px;background:#fff;padding:3px;box-shadow:0 2px 8px -3px rgba(0,0,0,.3)}
+.fh img{width:40px;height:40px;border-radius:10px;background:#fff;padding:6px;object-fit:contain;box-shadow:0 0 0 1px var(--sep)}
+html.max .fly>*{width:100%;max-width:760px;margin-left:auto;margin-right:auto}
 .fh b{font-size:19px;font-weight:700;letter-spacing:-.01em}.fh small{display:block;font-size:13px;color:var(--ink-3)}
 .fh .sp{flex:1}
 .ib{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;color:var(--ink-2);background:var(--sunk);border:1px solid var(--sep);transition:background .15s}
@@ -44,8 +45,8 @@ body{display:flex;flex-direction:column;border-radius:16px}
 .empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:4px}
 .ff{display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid var(--sep)}
 .ff .mode{display:flex;align-items:center;gap:10px;flex:1;font-size:14.5px;font-weight:600}
-.ff .open{height:38px;padding:0 14px;border-radius:11px;display:inline-flex;align-items:center;gap:7px;font-size:14px;font-weight:650;color:#fff;background:#1f8a4c;
-  box-shadow:0 1px 2px rgba(0,0,0,.12),0 6px 14px rgba(31,138,76,.28);transition:transform .12s var(--spring)}
+.ff .open{height:38px;padding:0 14px;border-radius:11px;display:inline-flex;align-items:center;gap:7px;font-size:14px;font-weight:650;color:#fff;background:var(--accent);
+  box-shadow:0 1px 2px rgba(0,0,0,.12),0 6px 14px color-mix(in srgb,var(--accent) 28%,transparent);transition:transform .12s var(--spring)}
 .ff .open:active{transform:scale(.97)}
 .ff .open svg{width:17px;height:17px}
 /* connection: a strip at the top, only after ~10 s offline; "Connected again" briefly on recovery */
@@ -63,10 +64,11 @@ body{display:flex;flex-direction:column;border-radius:16px}
 </head>
 <body>
 <div class="fly">
-  <div class="fh"><img src="ipop-mark.webp" alt=""><div><b>Notifications</b><small id="sub">…</small></div><span class="sp"></span>
+  <div class="fh" data-drag><img src="ipop-mark.png" alt=""><div><b>Notifications</b><small id="sub">…</small></div><span class="sp"></span>
     <button class="ib" id="readAll" title="Mark all as read"></button>
     <button class="ib" id="devices" title="Devices (ICT)" hidden><i data-lucide="monitor"></i></button>
     <button class="ib" id="gear" title="Settings"></button>
+    <button class="ib" data-max title="Maximize"></button>
   </div>
   <div class="strip" id="conn"><i></i><span id="connText">Reconnecting to iPop… your notifications are safe</span></div>
   <div class="seg" id="seg"><button data-f="all" class="on">All</button><button data-f="unread">Unread</button><button data-f="tickets">iDesk</button><button data-f="mail">Mail</button></div>
