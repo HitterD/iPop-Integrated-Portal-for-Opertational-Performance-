@@ -40,11 +40,11 @@
   $('#browser').onclick = () => {
     if ($('#browser').disabled) return;
     waiting();
-    app.post({ type: 'withBrowser' });
+    app.post({ type: 'withBrowser', server: $('#server').value.trim() });
   };
   $('#again').onclick = () => {
     waiting();
-    app.post({ type: 'withBrowser', again: true });
+    app.post({ type: 'withBrowser', again: true, server: $('#server').value.trim() });
   };
   app.on('browserState', m => {
     if (m.state === 'asking') { const b = $('#browser'); if (!b.disabled) waiting(); }

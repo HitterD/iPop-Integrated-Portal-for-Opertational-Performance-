@@ -97,7 +97,9 @@ public sealed class IPopClient
     }
 
     public bool IsSignedIn => Session is not null;
-    public Uri Server => new(Session?.Server ?? AppInfo.DefaultServer);
+    public Uri Server => new(Session?.Server ?? SignInServer ?? AppInfo.DefaultServer);
+    /// Signed out: the server typed in the sign-in window ("Server…"), so Sign in with browser goes there too.
+    public string? SignInServer { get; set; }
     /// Where links open in the browser: the server's public web address (Notifier:WebBase, e.g.
     /// https://ipop.santos.co.id/) when it gives one, otherwise the address the app signed in to.
     public Uri? WebBaseOverride { get; set; }

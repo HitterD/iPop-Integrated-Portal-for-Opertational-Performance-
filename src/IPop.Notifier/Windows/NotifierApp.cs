@@ -227,7 +227,7 @@ public sealed class NotifierApp : ApplicationContext
         if (signIn is { IsDisposed: false }) { signIn.Activate(); return; }
         signIn = new SignInWindow(api);
         signIn.SignedIn += () => Post(() => { _ = StartSessionAsync(); tray.ShowBalloonTip(3000, "iPop Notifier", "You're signed in. Notifications will appear here.", ToolTipIcon.Info); });
-        signIn.WithBrowser += again => Post(() => OpenBrowserSignIn(again));
+        signIn.WithBrowser += (again, server) => Post(() => { if (!api.IsSignedIn) api.SignInServer = server; OpenBrowserSignIn(again); });
         signIn.Show();
         signIn.Activate();
     }
@@ -327,7 +327,7 @@ public sealed class NotifierApp : ApplicationContext
     {
         var previous = api.Session?.Nik;
         IPopClient.LinkResult r;
-        try { r = await api.SignInWithCodeAsync(api.Session?.Server ?? AppInfo.DefaultServer, code, requestId, CancellationToken.None); }
+        try { r = await api.SignInWithCodeAsync(api.Server.ToString(), code, requestId, CancellationToken.None); }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException) { r = new(false, "Can't reach iPop. Check the network and try again.", null, false); }
         Post(() =>
         {

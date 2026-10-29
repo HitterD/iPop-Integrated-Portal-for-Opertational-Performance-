@@ -114,7 +114,7 @@ public sealed class SignInWindow : HtmlWindow
     public event Action? SignedIn;
     /// "Sign in with browser": a connect card shows in iPop in the browser (an open tab, or one the app opens).
     /// true = "Open browser again" (after 20 s of waiting): a fresh request, one tab now.
-    public event Action<bool>? WithBrowser;
+    public event Action<bool, string?>? WithBrowser;
 
     public SignInWindow(IPopClient api) : base("signin.html", new Size(480, 760))
     {
@@ -125,15 +125,21 @@ public sealed class SignInWindow : HtmlWindow
 
     protected override void OnReady() => Send(new { type = "init", server = api.Session?.Server ?? AppInfo.DefaultServer, version = AppInfo.Version });
 
+    /// The "Server…" field: an absolute http(s) address, else null (the default server).
+    private static string? ServerOf(JsonNode? msg)
+    {
+        var server = msg?["server"]?.GetValue<string>()?.Trim();
+        if (string.IsNullOrEmpty(server) || !Uri.TryCreate(server, UriKind.Absolute, out var su) || su.Scheme is not ("https" or "http")) return null;
+        return su.GetLeftPart(UriPartial.Path).TrimEnd('/') + "/";
+    }
+
     protected override async void HandleMessage(string type, JsonNode? msg)
     {
-        if (type == "withBrowser") { WithBrowser?.Invoke(msg?["again"]?.GetValue<bool>() == true); return; }
+        if (type == "withBrowser") { WithBrowser?.Invoke(msg?["again"]?.GetValue<bool>() == true, ServerOf(msg)); return; }
         if (type != "signIn") { base.HandleMessage(type, msg); return; }
         var nik = msg?["nik"]?.GetValue<string>()?.Trim() ?? "";
         var password = msg?["password"]?.GetValue<string>() ?? "";
-        var server = msg?["server"]?.GetValue<string>()?.Trim();
-        if (string.IsNullOrEmpty(server) || !Uri.TryCreate(server, UriKind.Absolute, out var su) || su.Scheme is not ("https" or "http"))
-            server = AppInfo.DefaultServer;
+        var server = ServerOf(msg) ?? AppInfo.DefaultServer;
         Integration.SetStartWithWindows(msg?["autostart"]?.GetValue<bool>() != false);
         try
         {

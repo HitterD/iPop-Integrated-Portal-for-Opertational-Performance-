@@ -126,6 +126,14 @@ public static class Integration
     public static void OpenUrl(string url)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var u) || (u.Scheme != "https" && u.Scheme != "http" && u.Scheme != "mailto")) return;
+#if DEBUG
+        // QA runs: hand the URL to the test browser (it opens each line as a new tab) instead of the PC's own browser.
+        if (QaRun && Environment.GetEnvironmentVariable("IPOP_NOTIFIER_QA_OPEN_LOG") is { Length: > 0 } openLog)
+        {
+            try { File.AppendAllText(openLog, u + Environment.NewLine); } catch { }
+            return;
+        }
+#endif
         try { Process.Start(new ProcessStartInfo(u.ToString()) { UseShellExecute = true }); } catch { }
     }
 }
