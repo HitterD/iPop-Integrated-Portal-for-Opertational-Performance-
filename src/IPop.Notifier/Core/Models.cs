@@ -30,7 +30,8 @@ public sealed record Notice(Guid Id, string Module, string EventType, string Tit
     private static string EventTypeOfInbox(InboxItem i)
     {
         var url = i.TargetUrl ?? "";
-        if (url.StartsWith("/idesk/tickets/") || (url.StartsWith("/tickets/") && url.EndsWith("#messages"))) return "ticket.message_created";
+        // "/idesk/tickets/{id}#update" is a technician's status notification (assigned, reopened…), not a chat.
+        if ((url.StartsWith("/idesk/tickets/") && !url.EndsWith("#update")) || (url.StartsWith("/tickets/") && url.EndsWith("#messages"))) return "ticket.message_created";
         return i.Type;
     }
 
