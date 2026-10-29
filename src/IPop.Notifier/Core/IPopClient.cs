@@ -26,7 +26,10 @@ public sealed class IPopClient
 
     private static string Secret() => Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     public static string PkceChallenge(string verifier) => Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.ASCII.GetBytes(verifier))).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-    public string? PrepareBrowserLink(string nonce)
+    /// A PKCE request for the browser's nonce. <see cref="CallbackUrl"/> is the 1.3.0 fallback (a second tab) for when
+    /// the server can't take the hand-off.
+    public sealed record PreparedLink(string RequestId, string Challenge, string CallbackUrl);
+    public PreparedLink? PrepareBrowserLink(string nonce)
     {
         if (!ValidSecret(nonce)) return null;
         lock (pendingLinks)
@@ -35,9 +38,56 @@ public sealed class IPopClient
             if (pendingLinks.Count >= 5) return null;
             var id = Secret(); var verifier = Secret();
             pendingLinks[id] = (verifier, DateTime.UtcNow);
+            var challenge = PkceChallenge(verifier);
             // The callback origin is configured by the installed app/server, never supplied by the protocol link.
-            return WebUrl("/dashboard?notifierNonce=" + nonce + "&notifierRequest=" + id + "&notifierChallenge=" + PkceChallenge(verifier) + "&notifierScheme=" + AppInfo.UrlScheme);
+            return new(id, challenge, WebUrl("/dashboard?notifierNonce=" + nonce + "&notifierRequest=" + id + "&notifierChallenge=" + challenge + "&notifierScheme=" + AppInfo.UrlScheme));
         }
+    }
+
+    /// Answer ipop-notifier://prepare?nonce=… to the tab that sent it (it takes the request by its nonce), so the
+    /// browser never needs a second tab. False = server too old / unreachable: use <see cref="PreparedLink.CallbackUrl"/>.
+    public async Task<bool> HandOffAsync(string intent, string nonce, PreparedLink link, CancellationToken ct)
+    {
+        try
+        {
+            using var res = await http.PostAsJsonAsync(new Uri(Server, "api/notifier/link/handoff"),
+                new { deviceKey = store.DeviceKey(), intent, nonce, requestId = link.RequestId, challenge = link.Challenge }, ct);
+            return res.IsSuccessStatusCode;
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { return false; }
+    }
+
+    /// "Sign in with browser": tell iPop tabs open on this PC that sign-in was asked for (the only thing that lets a
+    /// browser show "Open iPop Notifier?"). Null = server unreachable or too old.
+    public async Task<string?> RegisterBrowserIntentAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var res = await http.PostAsJsonAsync(new Uri(Server, "api/notifier/link/intent"), new { deviceKey = store.DeviceKey(), scheme = AppInfo.UrlScheme }, ct);
+            if (!res.IsSuccessStatusCode) return null;
+            return (await res.Content.ReadFromJsonAsync<JsonNode>(Json, ct))?["intent"]?.GetValue<string>();
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException) { return null; }
+    }
+
+    /// True = an open iPop tab took the intent. <paramref name="reserve"/>: nobody did, keep it for the tab this app
+    /// is about to open. Null = unknown (expired, unreachable).
+    public async Task<bool?> CheckBrowserIntentAsync(string intent, bool reserve, CancellationToken ct)
+    {
+        try
+        {
+            using var res = await http.PostAsJsonAsync(new Uri(Server, "api/notifier/link/intent/check"), new { deviceKey = store.DeviceKey(), intent, reserve }, ct);
+            if (!res.IsSuccessStatusCode) return null;
+            return (await res.Content.ReadFromJsonAsync<JsonNode>(Json, ct))?["claimed"]?.GetValue<bool>();
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException) { return null; }
+    }
+
+    /// Signed in with the redeemed code: tell the tab (only this account's tab can read it) that the app is connected.
+    public async Task ConfirmBrowserLinkAsync(string requestId)
+    {
+        try { using var _ = await SendAsync(HttpMethod.Post, "api/notifier/link/connected", new { requestId }); }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or InvalidOperationException) { }
     }
     private static bool ValidSecret(string? s) => s is { Length: 43 } && s.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);

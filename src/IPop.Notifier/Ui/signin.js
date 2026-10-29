@@ -12,10 +12,35 @@
     const e = $('#err'); e.textContent = m.message || 'Couldn\'t sign in.'; e.classList.remove('shake'); void e.offsetWidth; e.classList.add('shake');
     $('#pw').select();
   });
-  $('#browser').onclick = () => {
-    app.post({ type: 'withBrowser' });
-    $('#hint').textContent = 'iPop opened in your browser. Sign in there if it asks; this window closes by itself.';
+  // "Sign in with browser" (1.4.0): one attempt at a time. The app re-uses an iPop tab that is already open, or opens
+  // exactly one; clicking again while it waits does nothing. After 20 s "Open browser again" opens one tab.
+  const HINT = {
+    asking: 'Looking for iPop in your browser…',
+    tab: 'Switch to iPop in your browser and choose “Open iPop Notifier” if it asks. This window closes by itself.',
+    opened: 'iPop opened in your browser. Sign in there if it asks, then choose “Open iPop Notifier”. This window closes by itself.',
+    approving: 'Connecting…',
   };
+  let againTimer = 0;
+  const waiting = () => {
+    const b = $('#browser');
+    b.disabled = true; b.textContent = 'Waiting for browser…';
+    $('#again').hidden = true;
+    clearTimeout(againTimer);
+    againTimer = setTimeout(() => { $('#again').hidden = false; }, 20000);
+  };
+  $('#browser').onclick = () => {
+    if ($('#browser').disabled) return;
+    waiting();
+    app.post({ type: 'withBrowser' });
+  };
+  $('#again').onclick = () => {
+    waiting();
+    app.post({ type: 'withBrowser', again: true });
+  };
+  app.on('browserState', m => {
+    if (m.state === 'asking') { const b = $('#browser'); if (!b.disabled) waiting(); }
+    if (HINT[m.state]) $('#hint').textContent = HINT[m.state];
+  });
   $('#f').onsubmit = e => {
     e.preventDefault();
     const nik = $('#nik').value.trim(), pw = $('#pw').value;

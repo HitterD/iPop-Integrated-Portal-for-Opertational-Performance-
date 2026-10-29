@@ -2517,6 +2517,11 @@ document.documentElement.setAttribute("spellcheck", ipop.spellcheck() ? "true" :
 // iPop Notifier sign-in from the browser (Services/NotifierLink.cs): the app on this PC registered
 // ipop-notifier://. Navigating to an external scheme hands the link to Windows and the page stays as it is
 // (CSP frame-src would refuse an iframe for it).
+// The app opened this tab for "Sign in with browser" (?notifier=signin): remember it for this tab, also across the
+// login redirect, so the tab can close itself once the app is connected (1.4.0).
+try {
+  if (new URL(location.href).searchParams.get("notifier") === "signin") sessionStorage.setItem("ipop.notifierLink.opened", String(Date.now()));
+} catch { }
 ipop.notifierLink = {
   supported() {
     const d = navigator.userAgentData;
@@ -2539,12 +2544,67 @@ ipop.notifierLink = {
   scheme() {
     return new URL(location.href).searchParams.get("notifierScheme") === "ipop-notifier-qa" ? "ipop-notifier-qa" : "ipop-notifier";
   },
-  prepare() {
+  /** Launches the app's prepare link from this tab (the page stays). Returns the nonce, which never leaves this
+   *  browser except through that link. The scheme comes from the app's own intent, else from the URL. */
+  prepare(scheme) {
     const nonce = this.secret();
-    // One outstanding browser proof. Shared storage allows the fixed callback to open in another tab.
-    const scheme = this.scheme();
+    // One outstanding browser proof. Shared storage allows the 1.3.0 callback to open in another tab.
+    scheme = ["ipop-notifier", "ipop-notifier-qa"].includes(scheme) ? scheme : this.scheme();
     localStorage.setItem("ipop.notifierLink.pending", JSON.stringify({ nonce, scheme, at: Date.now() }));
     window.location.href = scheme + "://prepare?nonce=" + nonce;
+    return nonce;
+  },
+  /** The app handed its request to this tab: the nonce is used up, no callback tab may reuse it. */
+  forget(nonce) {
+    try {
+      const pending = JSON.parse(localStorage.getItem("ipop.notifierLink.pending") || "null");
+      if (pending && pending.nonce === nonce) localStorage.removeItem("ipop.notifierLink.pending");
+    } catch { localStorage.removeItem("ipop.notifierLink.pending"); }
+  },
+  /** This tab was opened by the app (within the last 10 minutes). */
+  openedTab() {
+    const at = Number(sessionStorage.getItem("ipop.notifierLink.opened") || 0);
+    return at > 0 && Date.now() - at < 600000;
+  },
+  visible() { return document.visibilityState === "visible" && (typeof document.hasFocus !== "function" || document.hasFocus()); },
+  forgetOpened() { sessionStorage.removeItem("ipop.notifierLink.opened"); },
+  /** The app is connected. A tab the app opened shows the check for 2 s and closes itself; when the browser will
+   *  not let a script close it, it goes back to the dashboard. */
+  connected(name) {
+    sessionStorage.removeItem("ipop.notifierLink.opened");
+    document.getElementById("ipop-notifier-connected")?.remove();
+    const el = document.createElement("div");
+    el.id = "ipop-notifier-connected";
+    el.setAttribute("role", "status");
+    el.style.cssText = "position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;text-align:center;padding:24px;" +
+      "background:var(--bg,#fafaf9);color:var(--ink,#1c1917);font:inherit";
+    const box = document.createElement("div");
+    const ok = document.createElement("div");
+    ok.style.cssText = "width:58px;height:58px;border-radius:50%;display:grid;place-items:center;margin:0 auto 14px;" +
+      "background:var(--accent-soft,#dcf2e5);color:var(--accent,#2e9d6b)";
+    ok.innerHTML = '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+    const h = document.createElement("h4");
+    h.style.cssText = "font-size:20px;font-weight:650;margin:0 0 6px";
+    h.textContent = "iPop Notifier is connected";
+    const p = document.createElement("p");
+    p.style.cssText = "font-size:14.5px;color:var(--ink-3,#78716c);line-height:1.5;margin:0";
+    p.append((name ? "Signed in as " + name + ". " : "") + "You can keep working;", document.createElement("br"), "notifications will appear on this PC.");
+    const cd = document.createElement("span");
+    cd.style.cssText = "display:inline-block;margin-top:14px;font-size:13px;color:var(--ink-3,#78716c);padding:6px 12px;border-radius:999px;background:var(--surface-sunken,#f5f5f4)";
+    cd.textContent = "Closing this tab in 2 s…";
+    box.append(ok, h, p, cd);
+    el.append(box);
+    document.body.append(el);
+    setTimeout(() => {
+      cd.textContent = "Closing this tab…";
+      try { window.close(); } catch { }
+      // Still here: the browser keeps tabs a script did not open. Back to iPop, the overlay goes.
+      setTimeout(() => {
+        el.remove();
+        const back = "/dashboard";
+        try { Blazor.navigateTo(back, { replaceHistoryEntry: true }); } catch { location.replace(back); }
+      }, 400);
+    }, 2000);
   },
   consumeCallback() {
     const url = new URL(location.href), p = url.searchParams;

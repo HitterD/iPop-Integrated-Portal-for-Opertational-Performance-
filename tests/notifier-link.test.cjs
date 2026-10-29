@@ -36,3 +36,45 @@ test('protocol output allowlist rejects arbitrary URLs and requires request proo
   b.ipop.notifierLink.complete('ipop-notifier', 'c'.repeat(43), ''); assert.equal(b.location.href, original);
   b.ipop.notifierLink.complete('ipop-notifier-qa', 'c'.repeat(43), 'r'.repeat(43)); assert.match(b.location.href, /^ipop-notifier-qa:\/\/signin\?code=/);
 });
+
+// 1.4.0: one tab, prepare from the tab the person is on, close only a tab the app opened.
+function browser2() {
+  const b = browser(), session = new Map();
+  b.sessionStorage = { getItem: k => session.get(k) ?? null, setItem: (k, v) => session.set(k, String(v)), removeItem: k => session.delete(k) };
+  const node = () => ({ style: {}, children: [], append(...c) { this.children.push(...c); }, setAttribute() {}, remove() { this.removed = true; } });
+  b.added = [];
+  b.document = { getElementById: () => null, createElement: node, body: { append: el => b.added.push(el) } };
+  b.timers = []; b.setTimeout = fn => b.timers.push(fn);
+  b.window.close = () => { b.closed = true; };
+  b.Blazor = { navigateTo: url => { b.navigated = url; } };
+  return b;
+}
+test('prepare uses the scheme of the app intent, returns the nonce, and forget drops it', () => {
+  const b = browser2();
+  const nonce = b.ipop.notifierLink.prepare('ipop-notifier-qa');
+  assert.match(b.location.href, /^ipop-notifier-qa:\/\/prepare\?nonce=[\w-]{43}$/);
+  assert.equal(JSON.parse(b.localStorage.getItem('ipop.notifierLink.pending')).nonce, nonce);
+  b.ipop.notifierLink.forget('x'.repeat(43)); assert.ok(b.localStorage.getItem('ipop.notifierLink.pending'));
+  b.ipop.notifierLink.forget(nonce); assert.equal(b.localStorage.getItem('ipop.notifierLink.pending'), null);
+  // a handed-off nonce can no longer approve a callback tab
+  callback(b, nonce); assert.equal(b.ipop.notifierLink.consumeCallback(), null);
+  b.ipop.notifierLink.prepare('https://evil.example'); assert.match(b.location.href, /^ipop-notifier:\/\/prepare/);
+});
+test('only a tab the app opened counts as opened, for ten minutes', () => {
+  const b = browser2();
+  assert.equal(b.ipop.notifierLink.openedTab(), false);
+  b.sessionStorage.setItem('ipop.notifierLink.opened', Date.now()); assert.equal(b.ipop.notifierLink.openedTab(), true);
+  b.sessionStorage.setItem('ipop.notifierLink.opened', Date.now() - 601000); assert.equal(b.ipop.notifierLink.openedTab(), false);
+  b.sessionStorage.setItem('ipop.notifierLink.opened', Date.now()); b.ipop.notifierLink.forgetOpened(); assert.equal(b.ipop.notifierLink.openedTab(), false);
+});
+test('connected shows the check, closes after 2 s, and goes back to the dashboard if the browser keeps the tab', () => {
+  const b = browser2();
+  b.sessionStorage.setItem('ipop.notifierLink.opened', Date.now());
+  b.ipop.notifierLink.connected('Bagastyo');
+  assert.equal(b.added.length, 1);
+  const text = JSON.stringify(b.added[0]);
+  assert.match(text, /iPop Notifier is connected/); assert.match(text, /Signed in as Bagastyo/); assert.match(text, /Closing this tab in 2 s/);
+  assert.equal(b.ipop.notifierLink.openedTab(), false);
+  assert.equal(b.closed, undefined); b.timers.shift()(); assert.equal(b.closed, true);
+  b.timers.shift()(); assert.equal(b.navigated, '/dashboard'); assert.equal(b.added[0].removed, true);
+});
