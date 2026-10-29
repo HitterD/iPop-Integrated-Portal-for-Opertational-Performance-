@@ -18,8 +18,9 @@ public sealed record NotifierSettings
     public bool UrgentBreaksThrough { get; init; } = true;
     /// "bottom-right" | "top-right".
     public string Position { get; init; } = "bottom-right";
-    /// v1: popups visible at once; v2: windows on screen before the oldest minimise into the taskbar group.
-    public int MaxVisible { get; init; } = 3;
+    /// No longer used (1.4.2: no limit; every notification gets its own visible window, the stack shows as many
+    /// cards as fit the screen). Kept so settings saved by older apps still parse; always normalised to 0 = unlimited.
+    public int MaxVisible { get; init; }
     /// Module → "popup" | "toast" | "off". Chat is always "toast" or "off".
     public Dictionary<string, string> Modules { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     public bool Sound { get; init; } = true;
@@ -62,7 +63,7 @@ public sealed record NotifierSettings
         OffUntil = Popups == "until" ? OffUntil : null,
         DuringMeetings = MeetingModes.Contains(DuringMeetings) ? DuringMeetings : "hold",
         Position = Positions.Contains(Position) ? Position : "bottom-right",
-        MaxVisible = Math.Clamp(MaxVisible, 1, 10),
+        MaxVisible = 0,
         Volume = Math.Clamp(Volume, 0, 100),
         TextSize = TextSizes.Contains(TextSize) ? TextSize : "normal",
         Theme = Themes.Contains(Theme) ? Theme : "system",

@@ -46,6 +46,8 @@
     <!-- When a downloaded update is offered / installed (tested in IPop.Tests). -->
     <Compile Include="..\IPop.Application\Notifier\NotifierUpdatePolicy.cs" Link="Core\NotifierUpdatePolicy.cs" />
     <Compile Include="..\IPop.Application\Notifier\NotifierUpdateState.cs" Link="Core\NotifierUpdateState.cs" />
+    <!-- Where popups go on screen (no limit since 1.4.2; tested in IPop.Tests). -->
+    <Compile Include="..\IPop.Application\Notifier\PopupLayout.cs" Link="Core\PopupLayout.cs" />
   </ItemGroup>
 
 </Project>

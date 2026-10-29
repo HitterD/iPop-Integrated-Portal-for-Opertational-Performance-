@@ -3,11 +3,13 @@ using IPop.Notifier.Core;
 namespace IPop.Notifier.Windows;
 
 /// Decides what happens to each notification and lays the windows out.
-///  • "windows" (v2, default): one real window per notification, cascaded 28 px from the screen corner, newest in
-///    front; all share the iPop taskbar button (same AppUserModelID) with a count badge. Beyond MaxVisible the oldest
-///    minimise into the group. While held (meeting/full screen/Focus/Busy) new windows open minimised.
-///  • "stack" (v1): glass cards stacked at the corner; MaxVisible shown, the rest wait behind "+N more" and appear as
-///    cards close. While held they wait in the queue.
+///  • "windows" (v2, default): one real window per notification, no limit (1.4.2: "20 popups = 20 windows"), never
+///    minimised by the app. Cascaded 30 px from the screen corner, newest in front; when the next step would leave the
+///    screen a new cascade column starts further left (then a new row), so every window stays visible and clickable.
+///    All share the iPop taskbar button (same AppUserModelID) with a count badge. While held (meeting/full screen/
+///    Focus/Busy) new windows open minimised and come out afterwards.
+///  • "stack" (v1): glass cards stacked at the corner; as many as fit the screen height are shown, only the ones that
+///    physically don't fit wait behind "+N more" and appear as cards close. While held they wait in the queue.
 /// Nothing is ever dropped: every notification is also in the tray Inbox.
 public sealed class PopupManager(IPopClient api, SettingsService settings, LocalState state, DeviceReporter device)
 {
@@ -112,7 +114,7 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
 
         if (s.Style == "stack")
         {
-            if (held || open.Count(w => w.Style == "stack") >= s.MaxVisible) { waiting.Enqueue(n); UpdateMore(); CountChanged?.Invoke(); return; }
+            if (held || !StackHasRoom()) { waiting.Enqueue(n); UpdateMore(); CountChanged?.Invoke(); return; }
             Open(n, s, minimized: false);
         }
         else
@@ -137,13 +139,6 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
         Place(w, s);
         if (minimized) w.WindowState = FormWindowState.Minimized;
         w.Show();
-        if (s.Style != "stack")
-        {
-            // More than MaxVisible windows on screen: the oldest minimise into the taskbar group.
-            var visible = open.Where(x => x.Style != "stack" && x.WindowState != FormWindowState.Minimized).ToList();
-            foreach (var old in visible.Take(Math.Max(0, visible.Count - Math.Max(s.MaxVisible, 1))))
-                old.WindowState = FormWindowState.Minimized;
-        }
         Badge();
         UpdateMore();
         CountChanged?.Invoke();
@@ -161,7 +156,7 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
         if (restyling) return;
         var s = settings.Effective(DateTime.UtcNow);
         // A card closed: the next waiting one takes its place (v1). Held ones wait for the user to be back.
-        while (waiting.Count > 0 && open.Count(x => x.Style == "stack") < s.MaxVisible && !Held(waiting.Peek(), s))
+        while (waiting.Count > 0 && StackHasRoom() && !Held(waiting.Peek(), s))
             Open(waiting.Dequeue(), s with { Style = "stack" }, minimized: false);
         Layout();
         Badge();
@@ -179,7 +174,7 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
             state.Held.Remove(w.Notice.Id);
             w.WindowState = FormWindowState.Normal;
         }
-        while (waiting.Count > 0 && open.Count(x => x.Style == "stack") < s.MaxVisible)
+        while (waiting.Count > 0 && StackHasRoom())
             Open(waiting.Dequeue(), s with { Style = "stack" }, minimized: false);
         NextBacklog();
     }
@@ -210,7 +205,7 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
         var s = settings.Effective(DateTime.UtcNow);
         foreach (var n in notices)
         {
-            if (s.Style == "stack" && open.Count >= s.MaxVisible) waiting.Enqueue(n);
+            if (s.Style == "stack" && !StackHasRoom()) waiting.Enqueue(n);
             else Open(n, s, minimized: false);
         }
         Layout();
@@ -223,14 +218,20 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
         if (w.Style == "stack") { Layout(); return; }
         if (w.Height > area.Height - Scale(w, 28)) w.Height = area.Height - Scale(w, 28);
         if (w.Width > area.Width - Scale(w, 28)) w.Width = area.Width - Scale(w, 28);
-        // Cascade: each new window 28 px left/down of the last, wrapping after 8 (as in the mockup).
         var i = open.Count(x => x.Style != "stack") - 1;
-        var step = Scale(w, 28) * (i % 8);
-        var x = area.Right - w.Width - gap - step;
-        var y = s.Position == "top-right" ? area.Top + gap + step : area.Bottom - w.Height - gap - Scale(w, 160) + step;
-        w.Location = new Point(Math.Max(area.Left, x), Math.Clamp(y, area.Top, Math.Max(area.Top, area.Bottom - w.Height)));
+        var (px, py) = IPop.Application.Notifier.PopupLayout.CascadeSlot(i, w.Width, w.Height, area.Left, area.Top, area.Width, area.Height, gap, Scale(w, 30), Scale(w, 160), s.Position == "top-right");
+        w.Location = new Point(px, py);
     }
 
+    /// v1 stack: another card fits when every open card can keep its minimum height on the screen.
+    private bool StackHasRoom()
+    {
+        var cards = open.Where(w => w.Style == "stack").ToList();
+        if (cards.Count == 0) return true;
+        var area = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
+        var c = cards[0];
+        return IPop.Application.Notifier.PopupLayout.StackFits(cards.Count + 1, area.Height, Scale(c, 14), Scale(c, 10), Scale(c, 150));
+    }
     /// v1 stack: cards from the corner upwards (or downwards at the top), newest nearest the corner.
     /// v2 windows: one fixed size, capped to the screen.
     private void Layout()

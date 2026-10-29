@@ -44,7 +44,7 @@ public class NotifierSettingsTests
         Assert.Equal("stack", s.Style);
         Assert.Equal("until", s.Popups);
         Assert.NotNull(s.OffUntil);
-        Assert.Equal(10, s.MaxVisible);
+        Assert.Equal(0, s.MaxVisible); // 1.4.2: no popup limit any more, an old saved value is ignored
         Assert.Equal(0, s.Volume);
         Assert.Equal("toast", s.DeliveryFor("chat")); // chat can never be a popup window
         Assert.Equal("toast", s.DeliveryFor("mail"));
