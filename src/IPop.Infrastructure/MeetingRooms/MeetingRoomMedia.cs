@@ -49,8 +49,9 @@ public sealed class MeetingRoomMedia
         var nas = config["MeetingRooms:NasFolder"];
         var spool = CanonicalLocalRoot(config["MeetingRooms:SpoolDir"]);
         var cache = CanonicalLocalRoot(config["MeetingRooms:CacheDir"]);
-        var prodSpool = CanonicalLocalRoot(@"F:\ipop-data\recordings-spool")!;
-        var prodCache = CanonicalLocalRoot(@"F:\ipop-data\recordings-cache")!;
+        // The Windows host's production roots; on Linux they cannot exist, so there is nothing to overlap (null).
+        var prodSpool = CanonicalLocalRoot(@"F:\ipop-data\recordings-spool");
+        var prodCache = CanonicalLocalRoot(@"F:\ipop-data\recordings-cache");
         if (string.IsNullOrWhiteSpace(ns) || media.Namespace == DefaultNamespace
             || string.IsNullOrWhiteSpace(config["MeetingRooms:BookingWorkerEnabled"])
             || RecordingPaths.NasFile(nas, nas?.TrimEnd('/') + "/boundary-check.mp4") is null
@@ -61,8 +62,8 @@ public sealed class MeetingRoomMedia
             throw new InvalidOperationException("Isolated meeting rooms require a non-hall namespace, explicit BookingWorkerEnabled, and distinct explicit NAS, SpoolDir and CacheDir roots outside production roots.");
     }
 
-    private static bool Overlaps(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase)
-        || a.StartsWith(b + "/", StringComparison.OrdinalIgnoreCase) || b.StartsWith(a + "/", StringComparison.OrdinalIgnoreCase);
+    private static bool Overlaps(string a, string? b) => b is not null && (string.Equals(a, b, StringComparison.OrdinalIgnoreCase)
+        || a.StartsWith(b + "/", StringComparison.OrdinalIgnoreCase) || b.StartsWith(a + "/", StringComparison.OrdinalIgnoreCase));
 
     private static string? CanonicalLocalRoot(string? root)
     {

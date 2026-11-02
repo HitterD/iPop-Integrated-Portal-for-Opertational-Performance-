@@ -46,3 +46,4 @@ android/twa/**
 keystore*.properties
 tools/mobile-qa/node_modules/
 tools/mobile-qa/out/
+.scratch/

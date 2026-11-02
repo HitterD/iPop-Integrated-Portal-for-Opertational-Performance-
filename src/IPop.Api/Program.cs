@@ -43,6 +43,13 @@ builder.WebHost.ConfigureKestrel(k => k.AddServerHeader = false);
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
 
 builder.Services.AddOpenApi();
+
+// Container/cluster switches (all default to today's behaviour on the Windows host):
+// Workers:Outbound=false stops everything that reaches people or other systems (mail, push, iDesk, HRIS),
+// for a test cluster running on a copy of the prod database. Workers:OpsHealth=false hands disk/backup
+// alerts to the cluster's own monitoring.
+var outboundWorkers = builder.Configuration.GetValue("Workers:Outbound", true);
+var opsHealthWorker = builder.Configuration.GetValue("Workers:OpsHealth", true);
 builder.Services.AddDbContext<IPopDbContext>(o =>
     o.UseNpgsql(builder.Configuration.GetConnectionString("IPopDb"))
      .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
@@ -89,7 +96,7 @@ builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 builder.Services.AddSingleton<EmailFailureAlerts>();
 builder.Services.AddScoped<IEmailQueue, DbEmailQueue>();
 builder.Services.AddScoped<EmailOutboxProcessor>();
-builder.Services.AddHostedService<EmailOutboxWorker>();
+if (outboundWorkers) builder.Services.AddHostedService<EmailOutboxWorker>();
 // Requests over 1 s land in logs/slow-requests.log (see SlowRequestLog).
 builder.Services.AddSingleton<IPop.Api.Diagnostics.SlowRequestLog>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<IPop.Api.Diagnostics.SlowRequestLog>());
@@ -273,7 +280,7 @@ else
 builder.Services.AddSingleton<IPop.Infrastructure.Notifications.Push.PushQueue>();
 builder.Services.AddSingleton<IPop.Infrastructure.Notifications.Push.IDesktopToastSink, IPop.Api.Notifications.DesktopToastSink>();
 builder.Services.AddScoped<IPop.Infrastructure.Notifications.Push.PushDispatcher>();
-builder.Services.AddHostedService<IPop.Infrastructure.Notifications.Push.PushWorker>();
+if (outboundWorkers) builder.Services.AddHostedService<IPop.Infrastructure.Notifications.Push.PushWorker>();
 
 // News & Memos module (single table with type enum: news/announcement/memo)
 builder.Services.AddScoped<IPop.Application.News.INewsService, IPop.Infrastructure.News.NewsService>();
@@ -311,9 +318,9 @@ builder.Services.AddScoped<IPop.Application.Tickets.ITicketService>(sp => new IP
     sp.GetRequiredService<IPop.Application.Realtime.IRealtime>(), sp.GetRequiredService<ILogger<IPop.Infrastructure.Tickets.TicketService>>(),
     sp.GetRequiredService<IPop.Infrastructure.Tickets.IdeskCalendarSync>(),
     sp.GetService<IPop.Infrastructure.Notifications.Push.IDesktopToastSink>()));
-builder.Services.AddHostedService<IPop.Infrastructure.Tickets.TicketOutboxWorker>();
-builder.Services.AddHostedService<IPop.Infrastructure.Tickets.TicketReconcileWorker>();
-builder.Services.AddHostedService<IPop.Infrastructure.Tickets.IdeskCalendarWorker>();
+if (outboundWorkers) builder.Services.AddHostedService<IPop.Infrastructure.Tickets.TicketOutboxWorker>();
+if (outboundWorkers) builder.Services.AddHostedService<IPop.Infrastructure.Tickets.TicketReconcileWorker>();
+if (outboundWorkers) builder.Services.AddHostedService<IPop.Infrastructure.Tickets.IdeskCalendarWorker>();
 
 builder.Services.AddScoped<IHrisSyncService, HrisSyncService>();
 // Adapter by config (spec §4): Production → HttpHrisGateway (Polly), otherwise JSON file.
@@ -321,13 +328,13 @@ if (builder.Configuration["Hris:Mode"] == "Production")
     builder.Services.AddHttpClient<IHrisGateway, HttpHrisGateway>();
 else
     builder.Services.AddSingleton<IHrisGateway, JsonHrisGateway>();
-builder.Services.AddHostedService<HrisSyncWorker>();
+if (outboundWorkers) builder.Services.AddHostedService<HrisSyncWorker>();
 builder.Services.AddHostedService<MailScheduledDeliveryWorker>();
 builder.Services.AddSingleton<MailNotifySignal>();
 builder.Services.AddHostedService<MailNotifyWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Notifications.NotificationRetentionWorker>();
 // Hourly: nightly DB backup still succeeding, data drives not filling up → alert admins.
-builder.Services.AddHostedService<IPop.Infrastructure.Ops.OpsHealthWorker>();
+if (opsHealthWorker) builder.Services.AddHostedService<IPop.Infrastructure.Ops.OpsHealthWorker>();
 // Every 5 min: files kept on the server while the NAS was down move to the NAS.
 builder.Services.AddHostedService(sp => new IPop.Infrastructure.Files.LocalToNasWorker(
     sp.GetRequiredService<IServiceScopeFactory>(), sp.GetRequiredService<IConfiguration>(),
@@ -409,15 +416,22 @@ app.Use(async (ctx, next) =>
     await next();
 });
 
-if (app.Environment.IsDevelopment())
+// "--migrate-only": the cluster's migration Job (one run per release, before the API pods roll).
+var migrateOnly = args.Contains("--migrate-only");
+if (app.Environment.IsDevelopment() && !migrateOnly) app.MapOpenApi();
+if (app.Environment.IsDevelopment() || migrateOnly)
 {
-    app.MapOpenApi();
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<IPopDbContext>();
     await db.Database.MigrateAsync();
     await DevSeed.EnsureSeededAsync(db, scope.ServiceProvider.GetRequiredService<IPop.Application.Auth.IPasswordHasher>());
     // Reference data: built-in project templates (idempotent, by fixed id).
     await IPop.Infrastructure.Projects.BuiltInProjectTemplates.EnsureSeededAsync(db);
+}
+if (migrateOnly)
+{
+    app.Logger.LogInformation("Database migrated and seeded; exiting (--migrate-only).");
+    return;
 }
 {
     using var scope = app.Services.CreateScope();
@@ -434,7 +448,8 @@ if (app.Environment.IsDevelopment())
 app.UseCors("web-dev");
 // Dev serves http and https side by side (http for LAN browsing, https for calls' microphone);
 // redirecting would push http pages onto the self-signed port and break their CORS preflights.
-if (!app.Environment.IsDevelopment()) app.UseHttpsRedirection();
+// Behind the cluster ingress TLS ends at the reverse proxy, so Https:Redirect=false there.
+if (!app.Environment.IsDevelopment() && app.Configuration.GetValue("Https:Redirect", true)) app.UseHttpsRedirection();
 app.UseAuthentication();
 // A default/reset password must be replaced before anything else is reachable (the client's
 // /set-password redirect alone was bypassable with the token it had already been given).
@@ -524,6 +539,10 @@ if (IPop.Api.Sso.SsoSetup.Enabled(app.Configuration))
     catch (Exception ex) { app.Logger.LogWarning(ex, "Sign in with iPop: client registration skipped (database not migrated yet?)"); }
 }
 app.MapProfile();
+// Liveness/readiness for the cluster: process up and database reachable.
+app.MapGet("/healthz", async (IPopDbContext db, CancellationToken ct) =>
+    await db.Database.CanConnectAsync(ct) ? Results.Ok(new { status = "ok" }) : Results.StatusCode(StatusCodes.Status503ServiceUnavailable))
+    .AllowAnonymous();
 app.MapHub<AppHub>("/hubs/app").RequireAuthorization();
 
 // News video posters were not archived to the NAS before 2026-10; copy any missing ones once the

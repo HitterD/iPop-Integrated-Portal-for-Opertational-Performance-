@@ -598,7 +598,9 @@ public class MeetingRoomsFinalFixTests : IDisposable
     {
         MeetingRoomMedia.ValidateDeployment(Deployment("Production", "hall", "/sja/SJA SPJ/ICT/recordings",
             "F:/ipop-data/recordings-spool", "F:/ipop-data/recordings-cache"));
-        MeetingRoomMedia.ValidateDeployment(Deployment()); // default Isolated with safe explicit roots
+        // Default Isolated with safe explicit roots (absolute on whichever OS runs the tests).
+        var root = OperatingSystem.IsWindows() ? "C:/ipop-qa" : "/srv/ipop-qa";
+        MeetingRoomMedia.ValidateDeployment(Deployment(spool: root + "/spool", cache: root + "/cache"));
     }
 
     [Theory]
