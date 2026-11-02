@@ -72,7 +72,7 @@
         <div class="mail-preview-stage" @onclick:stopPropagation>
             @if (previewUrl is null)
             {
-                <div class="mail-preview-msg">@(previewFailed ? (KindOf(preview) == "video" ? "This video can't be previewed in the browser. Use Download to watch it." : "Preview unavailable. Use Download instead.") : "Loading preview…")</div>
+                <div class="mail-preview-msg">@(previewFailed ? (KindOf(preview) == "video" ? MediaStream.Explain(previewReason) : "Preview unavailable. Use Download instead.") : KindOf(preview) == "video" ? "Preparing video…" : "Loading preview…")</div>
             }
             else if (KindOf(preview) == "image")
             {
@@ -82,7 +82,7 @@
             {
                 @* Streamed with Range requests: plays while it loads; Download stays in the bar above. *@
                 <video class="mail-preview-video" src="@previewUrl" controls autoplay playsinline
-                       @onerror="() => { previewUrl = null; previewFailed = true; }"></video>
+                       @onerror="() => { Media.Forget(previewUrl); previewUrl = null; previewReason = null; previewFailed = true; }"></video>
             }
             else
             {
@@ -101,6 +101,7 @@
     private MailAttachment? preview;
     private string? previewUrl;
     private bool previewFailed;
+    private string? previewReason;
     private DotNetObjectReference<MailAttachmentCards>? selfRef;
 
     public bool IsPreviewOpen => preview is not null;
@@ -154,9 +155,16 @@
         ReleasePreviewBlob();
         previewFailed = false;
         StateHasChanged();
-        var url = KindOf(a) == "video"
-            ? await Media.MailAsync(a.Id)
-            : await FetchBlob($"/api/mail/attachments/{a.Id}/download?inline=true");
+        string? url;
+        previewReason = null;
+        if (KindOf(a) == "video")
+        {
+            // A NAS attachment is copied to the server first: keep "Preparing video…" until it can stream.
+            url = await Media.MailAsync(a.Id);
+            var reason = url is null ? Media.LastError ?? "server" : await Media.WhenReadyAsync(url, () => preview?.Id == a.Id);
+            if (reason is not null) { previewReason = reason; url = null; }
+        }
+        else url = await FetchBlob($"/api/mail/attachments/{a.Id}/download?inline=true");
         if (preview?.Id != a.Id) { Release(url); return; }
         previewUrl = url;
         previewFailed = url is null;

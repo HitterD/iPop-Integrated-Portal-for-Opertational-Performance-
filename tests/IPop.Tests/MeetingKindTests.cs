@@ -47,7 +47,8 @@ public class MeetingKindTests
 
     private static MeetingEndpoints.CreateMeetingRequest Create(string? location, string? kind, string? link = null)
     {
-        var s = DateTime.UtcNow.AddHours(3);
+        // Tomorrow 03:00 UTC (10:00 WIB): a room booking may not cross midnight, so "now + 3 h" failed after 20:00 WIB.
+        var s = DateTime.UtcNow.Date.AddDays(1).AddHours(3);
         return new("Sync", s, s.AddHours(1), null, location, link, null, null, null, null, Kind: kind);
     }
 

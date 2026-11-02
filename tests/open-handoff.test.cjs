@@ -84,7 +84,8 @@ test('active tab answers handoff-ok and navigates; a locked tab ignores it', () 
   const sent = [], nav = [];
   class BC { constructor() { } postMessage(m) { sent.push(m); } }
   const ctx = { BroadcastChannel: BC, crypto: { randomUUID: () => 'tabA' }, setTimeout, setInterval, clearInterval,
-    document: { visibilityState: 'visible', title: 'iPop', addEventListener() { }, removeEventListener() { } },
+    document: { visibilityState: 'visible', title: 'iPop', head: {}, hasFocus: () => false, addEventListener() { }, removeEventListener() { } },
+    MutationObserver: class { observe() { } disconnect() { } }, clearTimeout, addEventListener() { }, removeEventListener() { },
     Blazor: { navigateTo: u => nav.push(u) }, location: { origin: O }, URL };
   ctx.window = ctx; ctx.focus = () => { };
   vm.createContext(ctx);
@@ -101,6 +102,10 @@ test('active tab answers handoff-ok and navigates; a locked tab ignores it', () 
   assert.deepEqual(nav, ['/dashboard']);
   s._onMessage({ type: 'handoff', from: 'new2', url: '/mail' });
   assert.equal(nav.at(-1), '/mail');
+  // The tab that took the page marks its title for the Notifier (keeping the unread count first).
+  ctx.document.title = '(3) Mail — IPop';
+  s._markOn = false; s._mark();
+  assert.equal(ctx.document.title, '(3) ● New in iPop · Mail — IPop');
 });
 
 // ── sw.js: a toast click prefers the installed app window ──
@@ -144,14 +149,22 @@ test('toast click: only a browser tab and no app installed → that tab', async 
   assert.equal(w.opened.length, 0);
 });
 
-test('toast click: app installed but closed → open the app, leave the tab alone', async () => {
+test('toast click: app installed but closed, a tab open → reuse that tab (never one tab per click)', async () => {
   const w = worker();
   await w.msg({ type: 'ipop-app-installed', v: 1, installed: true });
   const tab = client(O + '/mail', false);
   w.setWins([tab]);
   await w.click('/chat/r5');
-  assert.equal(tab.got.length, 0);
-  assert.deepEqual(w.opened, [O + '/chat/r5']);
+  same(tab.got, [{ type: 'ipop-open', url: '/chat/r5' }]);
+  assert.equal(w.opened.length, 0);
+});
+
+test('toast click: app installed, nothing open → open it (the browser routes it to the app)', async () => {
+  const w = worker();
+  await w.msg({ type: 'ipop-app-installed', v: 1, installed: true });
+  w.setWins([]);
+  await w.click('/chat/r6');
+  assert.deepEqual(w.opened, [O + '/chat/r6']);
 });
 
 test('toast click: nothing open → one new window', async () => {

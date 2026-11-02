@@ -43,12 +43,14 @@ public partial class Files
         }
         if (IsVideoPreviewable(it.Name))
         {
-            // Streamed: the player starts at once and seeks with Range; Download stays in the toolbar.
+            // Streamed: the player seeks with Range; Download stays in the toolbar. The NAS file is copied to the
+            // server once first ("Loading preview…" until then); size + mtime make a replaced file fetch again.
             try
             {
-                var url = await Media.FileAsync(server, it.Path);
+                var url = await Media.FileAsync(server, it.Path, it.Size, it.Mtime);
+                var reason = url is null ? Media.LastError ?? "server" : await Media.WhenReadyAsync(url, () => previewItem == it);
                 if (previewItem != it) return;
-                if (url is null) previewError = "This video could not be opened. Use Download instead.";
+                if (reason is not null) previewError = MediaStream.Explain(reason);
                 else { previewUrl = url; previewMime = "video/stream"; }
             }
             finally { previewLoading = false; StateHasChanged(); await JS.InvokeVoidAsync("ipop.icons"); }
@@ -130,6 +132,7 @@ public partial class Files
     /// The browser could not play this video (AVI/WMV/MKV/HEVC…): fall back to the Download card.
     private void OnPreviewMediaError()
     {
+        Media.Forget(previewUrl);
         previewUrl = null;
         previewError = "This video can't be previewed in the browser. Download it to watch.";
     }

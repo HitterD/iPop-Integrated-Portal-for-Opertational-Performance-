@@ -64,7 +64,7 @@ self.addEventListener("message", e => e.waitUntil((async () => {
 
 // ───────────────────────── App-shell cache ─────────────────────────
 // Bump SW_VERSION on every deploy that changes caching; activate deletes older ipop-shell-/ipop-fw- caches.
-const SW_VERSION = "w2-20261102handoff";
+const SW_VERSION = "w2-20261102audit";
 const SHELL = "ipop-shell-" + SW_VERSION;
 const FW = "ipop-fw-" + SW_VERSION;
 let NAV_TIMEOUT_MS = 4000;
@@ -310,13 +310,21 @@ async function onClick(d, action) {
   const modes = await Promise.all(wins.map(displayOf));
   const app = wins.find((_, i) => modes[i] === true);
   const appInstalled = !!app || !!(await pushState("app"))?.installed;
-  const win = app || (appInstalled ? null : wins[0]);
-  if (win) {
-    try { await win.focus(); } catch { }
-    win.postMessage({ type: "ipop-open", url });
+  if (app) {
+    try { await app.focus(); } catch { }
+    app.postMessage({ type: "ipop-open", url });
     return;
   }
-  // Chrome/Edge open an in-scope URL from the worker of an installed app in the app window.
+  // App installed but closed: openWindow opens it in the app window only where the browser routes in-scope links
+  // to the app. Where it doesn't, that would be one new tab per click — so with an iPop tab already open, use it.
+  if (!appInstalled || wins.length) {
+    const tab = wins.find((_, i) => modes[i] === false) || wins[0];
+    if (tab) {
+      try { await tab.focus(); } catch { }
+      tab.postMessage({ type: "ipop-open", url });
+      return;
+    }
+  }
   await self.clients.openWindow(new URL(url, self.registration.scope).href);
 }
 

@@ -120,12 +120,74 @@ public sealed class MediaStreamAndLinksTests
     }
 
     [Fact]
-    public void App_protocol_detection_can_be_forced_for_QA()
+    public void App_launch_command_from_Chrome_registry_fills_the_url_after_single_argument()
     {
-        Environment.SetEnvironmentVariable("IPOP_NOTIFIER_APP_PROTOCOL", "1");
-        try { Assert.True(IPopLinks.AppProtocolRegistered()); }
-        finally { Environment.SetEnvironmentVariable("IPOP_NOTIFIER_APP_PROTOCOL", "0"); }
-        try { Assert.False(IPopLinks.AppProtocolRegistered()); }
+        const string cmd = @"""C:\Users\x\Web Applications\_crx_abc\iPop.exe"" --profile-directory=Default --app-id=abc --single-argument %1";
+        var launch = IPopLinks.ParseCommand(cmd, IPopLinks.AppUrl("/chat/r1"));
+        Assert.NotNull(launch);
+        Assert.Equal(@"C:\Users\x\Web Applications\_crx_abc\iPop.exe", launch.Value.File);
+        Assert.Equal("--profile-directory=Default --app-id=abc --single-argument web+ipop://open?to=%2Fchat%2Fr1", launch.Value.Args);
+        Assert.Equal((@"C:\b.exe", "\"web+ipop://open?to=%2F\""), IPopLinks.ParseCommand(@"C:\b.exe ""%1""", "web+ipop://open?to=%2F"));
+        Assert.Null(IPopLinks.ParseCommand("\"unterminated", "x"));
+    }
+
+    [Fact]
+    public void App_detection_can_be_forced_off_for_QA()
+    {
+        Environment.SetEnvironmentVariable("IPOP_NOTIFIER_APP_PROTOCOL", "0");
+        try { Assert.Null(IPopLinks.AppCommand()); }
         finally { Environment.SetEnvironmentVariable("IPOP_NOTIFIER_APP_PROTOCOL", null); }
     }
+
+    [Theory]
+    [InlineData("(13) Messages — IPop - Google Chrome", true)]
+    [InlineData("(13) Messages - IPop - Google Chrome", true)]
+    [InlineData("Files - IPop", true)]
+    [InlineData("Project Management - iPop", true)]
+    [InlineData("(2) ● New in iPop · Mail — IPop", true)]
+    [InlineData("Sign in — IPop", false)]
+    [InlineData("report.docx - iPop Docs", false)]
+    [InlineData("iPop Notifier", false)]
+    [InlineData("Dashboard — IPop", true)]
+    [InlineData("iPop - (13) Messages — IPop", true)]
+    [InlineData("HitterD/iPop-Integrated-Portal - Google Chrome", false)]
+    [InlineData("iDesk Enterprise Platform", false)]
+    [InlineData("", false)]
+    public void Browser_tab_title_recognises_iPop_pages(string title, bool ipop) => Assert.Equal(ipop, IPopLinks.IsIPopTitle(title));
+
+    [Theory]
+    [InlineData("● New in iPop · Mail — IPop", true)]
+    [InlineData("(4) ● New in iPop · Messages — IPop - Google Chrome", true)]
+    [InlineData("(4) Messages — IPop", false)]
+    public void Only_the_tab_that_took_the_page_is_marked(string title, bool marked) => Assert.Equal(marked, IPopLinks.IsMarkedTitle(title));
+
+    [Fact]
+    public async Task Stream_cache_reports_copying_then_ready_and_remembers_a_NAS_failure_once()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ipop-media-test-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var cache = new MediaFileCache(dir);
+            Assert.IsType<CacheState.Missing>(cache.State("a"));
+            var gate = new TaskCompletionSource();
+            cache.Start("a", async _ => { await gate.Task; return new MemoryStream([1, 2]); });
+            Assert.IsType<CacheState.Copying>(cache.State("a"));
+            gate.SetResult();
+            for (var i = 0; i < 100 && cache.State("a") is not CacheState.Ready; i++) await Task.Delay(20);
+            Assert.IsType<CacheState.Ready>(cache.State("a"));
+
+            cache.Start("b", _ => throw new IPop.Application.Files.SynoException("no creds", authFailure: true));
+            for (var i = 0; i < 100 && cache.State("b") is not CacheState.Failed; i++) await Task.Delay(20);
+            Assert.IsType<CacheState.Failed>(cache.State("b"));
+            cache.Forget("b");
+            Assert.IsType<CacheState.Missing>(cache.State("b"));
+        }
+        finally { try { Directory.Delete(dir, true); } catch (IOException) { } }
+    }
+
+    [Theory]
+    [InlineData("clip.wmv", "video/x-ms-wmv")]
+    [InlineData("old.mpg", "video/mpeg")]
+    [InlineData("a.mp4", "video/mp4")]
+    public void Every_video_kind_Files_offers_has_a_media_type(string name, string mime) => Assert.Equal(mime, MediaStreamEndpoints.MediaMime(name));
 }
