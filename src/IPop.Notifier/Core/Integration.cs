@@ -126,8 +126,8 @@ public static class Integration
     /// An iPop page never becomes one more browser tab per message.
     ///   Installed iPop app → its own launcher with web+ipop://open?to=…: the app window comes to the front and
     ///   navigates (manifest launch_handler focus-existing), never the browser.
-    ///   Browser only → the iPop tab is brought to the front, then /open.html hands it the page and closes itself;
-    ///   the iPop tab is selected again afterwards (closing a tab can leave a neighbour selected).
+    ///   Browser only → /open.html hands the page to the iPop tab that owns the session and closes itself; that tab
+    ///   marks its title and the Notifier selects it and brings its window to the front.
     ///   Nothing open → /open.html simply loads the page.
     public static void OpenIPopPage(IPopClient api, string path)
     {
@@ -142,16 +142,19 @@ public static class Integration
             }
             catch (Exception ex) { Log.Warn("open", "iPop app launch failed: " + ex.Message); }
         }
-        var hadTab = BrowserTabs.FocusIPopTab();
         OpenBrowser(IPopLinks.HandoffUrl(api.Web, target));
-        if (hadTab)
-            _ = Task.Run(async () =>
+        Log.Info("open", "browser: " + target);
+        // The open iPop tab takes the page and marks its title; bring exactly that tab to the front. Off the UI
+        // thread: UI Automation can take a moment on a busy browser. Nothing marked (no iPop tab, or it is locked)
+        // → the handoff page loaded the page in its own tab, which the browser already shows.
+        _ = Task.Run(() =>
+        {
+            for (var waited = 0; waited < 4000; waited += 250)
             {
-                // The handoff tab closes itself within ~0.5 s; then make sure the iPop tab is the one showing.
-                await Task.Delay(900);
-                BrowserTabs.FocusIPopTab();
-            });
-        Log.Info("open", (hadTab ? "iPop tab: " : "browser: ") + target);
+                Thread.Sleep(250);
+                if (BrowserTabs.FocusMarkedTab()) return;
+            }
+        });
     }
 
     private static void OpenBrowser(string url)

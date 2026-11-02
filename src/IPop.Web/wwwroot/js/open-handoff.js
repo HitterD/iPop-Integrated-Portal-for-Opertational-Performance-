@@ -6,7 +6,7 @@
   "use strict";
   var HANDOFF_WAIT_MS = 450;
 
-  var to = window.ipopTargetFromLaunch(location.href) || "/dashboard";
+  var to = (window.ipopTargetFromLaunch && window.ipopTargetFromLaunch(location.href)) || "/dashboard";
   var standalone = matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: window-controls-overlay)").matches;
 
   function loadHere() { location.replace(to); }

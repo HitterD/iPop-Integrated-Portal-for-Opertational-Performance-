@@ -100,8 +100,29 @@ public static class IPopLinks
         return (file, args);
     }
 
-    /// The iPop web app titles every page "… — IPop" (and "(3) … — IPop" with unread). A browser shows the
-    /// active tab's title in its window title as "… — IPop - Google Chrome".
-    public static bool IsIPopTitle(string? title) =>
-        title is { Length: > 0 } && (title.EndsWith("— IPop", StringComparison.Ordinal) || title.Contains("— IPop - ", StringComparison.Ordinal));
+    /// A tab/window title of the iPop app. Pages end with "— IPop" or "- IPop"/"- iPop" (Files, Notes, Projects), with
+    /// an optional "(3) " unread prefix; Chrome puts the active tab in the window title as "… - IPop - Google Chrome"
+    /// (it writes the em dash as a hyphen there). A hidden tab that got a page blinks "● New in iPop". Pages that are
+    /// not the signed-in app (Sign in, the ONLYOFFICE "- iPop Docs" editor, install/connect pages) don't count.
+    public static bool IsIPopTitle(string? title)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return false;
+        if (IsMarkedTitle(title)) return true;
+        var t = Unread.Replace(TitlePart.Replace(title.Trim(), ""), "");
+        if (!AppSuffix.IsMatch(t)) return false;
+        return !NotAppPages.Any(p => t.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public const string Mark = "● New in iPop";
+
+    /// The iPop tab that just took a page from /open.html (session-lock.js puts this first in its title).
+    public static bool IsMarkedTitle(string? title) =>
+        title is not null && Unread.Replace(title.TrimStart(), "").StartsWith(Mark, StringComparison.Ordinal);
+
+    private static readonly System.Text.RegularExpressions.Regex Unread = new(@"^\(\d+\+?\)\s+", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+    private static readonly System.Text.RegularExpressions.Regex TitlePart =
+        new(@"\s+-\s+(Google Chrome|Microsoft​? Edge|Brave)$|\s+-\s+[^-—]+\s+-\s+Microsoft​? Edge$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+    private static readonly System.Text.RegularExpressions.Regex AppSuffix =
+        new(@"\s[—–-]\s*i?Pop$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+    private static readonly string[] NotAppPages = ["Sign in", "Set password", "Install iPop", "Connect iPop Notifier", "Continue", "Opening iDesk"];
 }

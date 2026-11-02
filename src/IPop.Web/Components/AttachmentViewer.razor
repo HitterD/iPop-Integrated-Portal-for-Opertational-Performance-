@@ -42,7 +42,8 @@
                 {
                     <button type="button" title="Print" @onclick="Print"><i data-lucide="printer"></i></button>
                 }
-                @if (blobUrl is not null && kind is AttachmentKind.Pdf or AttachmentKind.Image or AttachmentKind.Video)
+                @* Not for video/audio: their URL is a stream ticket, which must not end up in history or another tab. *@
+                @if (blobUrl is not null && kind is AttachmentKind.Pdf or AttachmentKind.Image)
                 {
                     <button type="button" title="Open in new tab" @onclick="OpenTab"><i data-lucide="external-link"></i></button>
                 }
@@ -60,7 +61,7 @@
         <div class="av-stage @(kind == AttachmentKind.Image ? "image" : "doc")">
             @if (loading)
             {
-                <div class="av-status"><span class="av-spinner"></span><span>Loading @att.FileName…</span></div>
+                <div class="av-status"><span class="av-spinner"></span><span>@(kind is AttachmentKind.Video or AttachmentKind.Audio ? "Preparing" : "Loading") @att.FileName…</span></div>
             }
             else if (error is not null)
             {
@@ -212,10 +213,12 @@
                 case AttachmentKind.Video:
                 case AttachmentKind.Audio:
                     // Streamed (Range requests): plays while it loads instead of after a full download.
-                    var stream = await Media.ChatAsync(id, Att.IsShared(id)) ?? await Att.GetAsync(id, thumb: false);
+                    // A NAS file is copied to the server first: wait ("Preparing…") instead of letting the player fail.
+                    var stream = await Media.ChatAsync(id, Att.IsShared(id));
+                    var reason = stream is null ? Media.LastError ?? "server" : await Media.WhenReadyAsync(stream, () => loadedId == id);
                     if (loadedId != id) return;
-                    blobUrl = stream;
-                    if (blobUrl is null) error = "This file could not be loaded.";
+                    if (reason is null) blobUrl = stream;
+                    else error = MediaStream.Explain(reason, kind == AttachmentKind.Video);
                     break;
 
                 default:
@@ -295,7 +298,12 @@
     private Task Download() => Attachment is null ? Task.CompletedTask : Att.DownloadAsync(Attachment);
 
     /// The browser cannot play this container/codec (AVI, WMV, MKV, HEVC…): show the Download fallback.
-    private void OnMediaError() => error = "This video can't be previewed in the browser. Download it to watch.";
+    private void OnMediaError()
+    {
+        if (Attachment is null) return;
+        Media.Forget(blobUrl);
+        error = MediaStream.Explain(null, ChatAttachments.Kind(Attachment) == AttachmentKind.Video);
+    }
 
     private async Task OpenTab()
     {

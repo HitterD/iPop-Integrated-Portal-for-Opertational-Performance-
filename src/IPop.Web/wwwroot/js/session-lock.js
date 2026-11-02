@@ -11,8 +11,9 @@ window.ipopSession = {
   _claimT: 0,
   _lost: false,
   _waiters: {},
-  _blinkT: 0,
-  _blinkSaved: null,
+  _markOn: false,
+  _markT: 0,
+  _markObs: null,
 
   /// Resolves "active" (this tab owns the session) or "yield" (another tab is in a call).
   start(dotNet) {
@@ -92,32 +93,47 @@ window.ipopSession = {
     }
   },
 
-  /// Go to a page another tab or the service worker asked for. A browser cannot raise a background
-  /// tab from script, so a hidden tab blinks its title until the user looks at it.
+  /// Go to a page another tab or the service worker asked for. A page cannot raise its own background tab, so it
+  /// marks its title "● New in iPop · …": the Notifier looks for that mark to select this exact tab and bring its
+  /// window to the front, and a person sees it on the tab strip. The mark goes when the tab is looked at.
   openHere(url) {
     try { window.focus(); } catch { }
     try { Blazor.navigateTo(url); } catch { location.href = url; }
-    if (document.visibilityState !== "visible") this._blinkTitle();
+    this._mark();
   },
 
-  _blinkTitle() {
-    if (this._blinkT) return;
-    let on = false;
-    const stop = () => {
-      clearInterval(this._blinkT);
-      this._blinkT = 0;
-      if (this._blinkSaved != null) document.title = this._blinkSaved;
-      this._blinkSaved = null;
-      document.removeEventListener("visibilitychange", onVis);
+  MARK: "● New in iPop · ",
+
+  /// Keeps the mark in front of whatever title the page sets (PageTitle after navigating, the unread badge) until
+  /// the tab is visible and focused, or 20 s pass. Prefix-based, so no older title is ever restored over a newer one.
+  _mark() {
+    const unread = /^\(\d+\+?\)\s+/;
+    const apply = () => {
+      const t = document.title;
+      const count = (t.match(unread) || [""])[0];
+      const rest = t.slice(count.length);
+      if (!rest.startsWith(this.MARK)) document.title = count + this.MARK + rest;
     };
-    const onVis = () => { if (document.visibilityState === "visible") stop(); };
-    this._blinkT = setInterval(() => {
-      on = !on;
-      if (on) { this._blinkSaved = document.title; document.title = "● New in iPop"; }
-      else if (this._blinkSaved != null) document.title = this._blinkSaved;
-    }, 1000);
-    document.addEventListener("visibilitychange", onVis);
-    setTimeout(stop, 60000);
+    const clear = () => {
+      if (!this._markOn) return;
+      this._markOn = false;
+      clearTimeout(this._markT);
+      this._markObs?.disconnect();
+      document.removeEventListener("visibilitychange", onSeen);
+      window.removeEventListener("focus", onSeen);
+      document.title = document.title.replace(this.MARK, "");
+    };
+    const onSeen = () => { if (document.visibilityState === "visible" && document.hasFocus()) setTimeout(clear, 1500); };
+    if (this._markOn) { clearTimeout(this._markT); this._markT = setTimeout(clear, 20000); apply(); return; }
+    this._markOn = true;
+    apply();
+    try {
+      this._markObs = new MutationObserver(() => { if (this._markOn) apply(); });
+      this._markObs.observe(document.head, { subtree: true, childList: true, characterData: true });
+    } catch { }
+    document.addEventListener("visibilitychange", onSeen);
+    window.addEventListener("focus", onSeen);
+    this._markT = setTimeout(clear, 20000);
   },
 
   forwardOpen(url) { this._ch?.postMessage({ type: "open", from: this._id, url }); },

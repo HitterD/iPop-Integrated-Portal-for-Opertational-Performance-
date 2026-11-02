@@ -43,8 +43,15 @@ else if (kind == AttachmentKind.Video)
         {
             <div class="att-media-unplayable">
                 <i data-lucide="video-off"></i>
-                <span>This video can't be previewed here.</span>
+                <span>@MediaStream.Explain(mediaReason)</span>
                 <button type="button" @onclick="Download"><i data-lucide="download"></i> Download</button>
+            </div>
+        }
+        else if (preparing)
+        {
+            <div class="att-media-unplayable" role="status">
+                <span class="av-spinner"></span>
+                <span>Preparing video…</span>
             </div>
         }
         else if (blobUrl is null)
@@ -53,8 +60,9 @@ else if (kind == AttachmentKind.Video)
         }
         else
         {
-            @* Streamed with Range requests: only the first bytes load until Play, then it plays while loading. *@
-            <video src="@blobUrl" controls preload="metadata" playsinline @onerror="OnMediaError"></video>
+            @* Streamed with Range requests. preload="none": nothing is fetched (and no NAS copy starts) until Play;
+               after a "preparing" wait the element is told to play straight away. *@
+            <video src="@blobUrl" controls preload="@(mediaRetried ? "auto" : "none")" autoplay="@mediaRetried" playsinline @onerror="OnMediaError"></video>
         }
         <div class="att-media-bar">
             <span class="nm" title="@Attachment.FileName">@Attachment.FileName</span>
@@ -74,7 +82,11 @@ else if (kind == AttachmentKind.Audio)
         </div>
         @if (mediaFailed)
         {
-            <span class="att-media-unplayable audio">This audio can't be played here. Use Download.</span>
+            <span class="att-media-unplayable audio">@MediaStream.Explain(mediaReason, video: false)</span>
+        }
+        else if (preparing)
+        {
+            <span class="att-media-unplayable audio" role="status">Preparing audio…</span>
         }
         else if (blobUrl is null)
         {
@@ -82,7 +94,7 @@ else if (kind == AttachmentKind.Audio)
         }
         else
         {
-            <audio src="@blobUrl" controls preload="metadata" @onerror="OnMediaError"></audio>
+            <audio src="@blobUrl" controls preload="@(mediaRetried ? "auto" : "none")" autoplay="@mediaRetried" @onerror="OnMediaError"></audio>
         }
     </div>
 }
@@ -159,6 +171,9 @@ else
     private string? blobUrl;
     private bool imageFailed;
     private bool mediaFailed;
+    private bool preparing;
+    private bool mediaRetried;
+    private string? mediaReason;
     private bool retrying;
     private Guid loadedFor;
 
@@ -168,6 +183,9 @@ else
         loadedFor = Attachment.Id;
         imageFailed = false;
         mediaFailed = false;
+        preparing = false;
+        mediaRetried = false;
+        mediaReason = null;
         // Already fetched (earlier visit to this room, or the drawer): paint it in this
         // render instead of flashing the skeleton for a round-trip.
         var kind = ChatAttachments.Kind(Attachment);
@@ -190,8 +208,8 @@ else
         // /api/media falls back to the full blob.
         var url = kind == AttachmentKind.Image
             ? await Att.GetAsync(id, thumb: true) ?? await Att.GetAsync(id, thumb: false)
-            : await Media.ChatAsync(id, Att.IsShared(id)) ?? await Att.GetAsync(id, thumb: false);
-        if (url is null && kind != AttachmentKind.Image && loadedFor == id) mediaFailed = true;
+            : await Media.ChatAsync(id, Att.IsShared(id));
+        if (url is null && kind != AttachmentKind.Image && loadedFor == id) { mediaFailed = true; mediaReason = Media.LastError; }
 
         // One silent retry absorbs a transient miss (a token that expired mid-flight, a dropped
         // connection). Anything still failing after this gets the click-to-retry fallback rather
@@ -231,11 +249,31 @@ else
 
     private Task Open() => OnOpen.InvokeAsync(Attachment);
 
-    /// Not a format the browser plays (AVI, WMV, MKV, HEVC…): say so and keep Download.
-    private void OnMediaError()
+    /// The player could not load the stream. A NAS file is still being copied to the server (202), or the ticket is
+    /// stale: wait for it / renew once and try again. Otherwise it is a format the browser can't play (AVI, WMV, MKV,
+    /// HEVC…) or access is gone: say which, and keep Download.
+    private async Task OnMediaError()
     {
-        mediaFailed = true;
+        var id = Attachment.Id;
+        var url = blobUrl;
+        if (mediaRetried || url is null) { mediaFailed = true; iconsDirty = true; return; }
+        mediaRetried = true;
+        preparing = true;
         iconsDirty = true;
+        StateHasChanged();
+        var reason = await Media.WhenReadyAsync(url, () => loadedFor == id);
+        if (reason is "denied")
+        {
+            Media.Forget(url);
+            url = await Media.ChatAsync(id, Att.IsShared(id));
+            reason = url is null ? Media.LastError : await Media.WhenReadyAsync(url, () => loadedFor == id);
+        }
+        if (loadedFor != id) return;
+        preparing = false;
+        if (reason is null && url is not null) blobUrl = url + "&r=1"; // new src so the element loads again
+        else { mediaFailed = true; mediaReason = reason; }
+        iconsDirty = true;
+        StateHasChanged();
     }
 
     private Task OpenIfPreviewable() =>

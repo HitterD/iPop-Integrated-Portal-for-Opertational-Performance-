@@ -33,9 +33,13 @@ public sealed class NoticeWindow : BridgedWindow
         if (style != "stack") ClientSize = new Size(Scale(StandardSize.Width), Scale(StandardSize.Height));
         WantedHeight = ClientSize.Height;
         Text = notice.Title.Length > 80 ? notice.Title[..80] + "…" : notice.Title;
-        if (style == "stack") TopMost = true;
-        else Maximizable = true; // fixed 440×560; only Maximize changes the size
+        // Every popup stays in front of all other apps (user 2026-11-02: never behind another window). It still opens
+        // without taking the keyboard (ShowWithoutActivation). Maximised "read full" is a normal window again.
+        TopMost = true;
+        if (style != "stack") Maximizable = true; // fixed 440×560; only Maximize changes the size
     }
+
+    protected override void OnWindowStateChanged() => TopMost = !Maximized;
 
     private int more;
     /// v1: "+N more waiting" on the newest card (kept until the page asks, so a fresh card shows it too).
