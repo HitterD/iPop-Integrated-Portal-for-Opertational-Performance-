@@ -25,17 +25,7 @@ public sealed class PermissionEvaluator(IPopDbContext db) : IPermissionEvaluator
         if (overrides.Any(x => x.Effect == Core.Entities.PermissionEffect.Deny)) return false;
         if (overrides.Any(x => x.Effect == Core.Entities.PermissionEffect.Allow)) return true;
 
-        var roleIds = await db.UserRoles.AsNoTracking().Where(x => x.UserId == userId)
-            .Select(x => x.RoleId).ToListAsync(ct);
-        if (roleIds.Count == 0)
-        {
-            var defaultRoleId = await db.Roles.AsNoTracking()
-                .Where(r => r.Name == "Employee")
-                .Select(r => (Guid?)r.Id)
-                .FirstOrDefaultAsync(ct);
-            if (defaultRoleId is not null)
-                roleIds.Add(defaultRoleId.Value);
-        }
+        var roleIds = await BaseRoleIdsAsync(userId, ct);
         var visited = new HashSet<Guid>();
         var direct = roleIds.ToHashSet();
         while (roleIds.Count > 0)
@@ -60,14 +50,43 @@ public sealed class PermissionEvaluator(IPopDbContext db) : IPermissionEvaluator
         return false;
     }
 
-    /// Every permission code the user holds globally (role walk + overrides), for the client to
-    /// decide what to show. The server still checks each endpoint with IsAllowedAsync.
+    /// Everyone is an Employee: that role is the baseline under whatever else they hold (an HC or
+    /// HR preset adds to it, it never replaces chat, mail and the rest).
+    private async Task<List<Guid>> BaseRoleIdsAsync(Guid userId, CancellationToken ct)
+    {
+        var roleIds = await db.UserRoles.AsNoTracking().Where(x => x.UserId == userId)
+            .Select(x => x.RoleId).ToListAsync(ct);
+        var employee = await db.Roles.AsNoTracking().Where(r => r.Name == "Employee")
+            .Select(r => (Guid?)r.Id).FirstOrDefaultAsync(ct);
+        if (employee is { } e && !roleIds.Contains(e)) roleIds.Add(e);
+        return roleIds;
+    }
+
+    /// Every permission code the user holds globally, for the client to decide what to show — same
+    /// rules as IsAllowedAsync (global scope only, Admin grants not inherited), in a few queries.
+    /// The server still checks each endpoint with IsAllowedAsync.
     public async Task<IReadOnlyList<string>> AllowedCodesAsync(Guid userId, CancellationToken ct = default)
     {
-        var codes = await db.Permissions.AsNoTracking().Select(p => p.Code).ToListAsync(ct);
-        var allowed = new List<string>();
-        foreach (var code in codes)
-            if (await IsAllowedAsync(userId, code, null, ct)) allowed.Add(code);
-        return allowed;
+        var roleIds = await BaseRoleIdsAsync(userId, ct);
+        var direct = roleIds.ToHashSet();
+        var roles = await db.Roles.AsNoTracking().Select(r => new { r.Id, r.Name, r.ParentRoleId }).ToDictionaryAsync(r => r.Id, ct);
+        var effective = new HashSet<Guid>();
+        var queue = new Queue<Guid>(roleIds);
+        while (queue.Count > 0)
+        {
+            var id = queue.Dequeue();
+            if (!roles.TryGetValue(id, out var role) || !effective.Add(id)) continue;
+            if (role.Name == AdminRoleName && !direct.Contains(id)) { effective.Remove(id); continue; }
+            if (role.ParentRoleId is { } parent) queue.Enqueue(parent);
+        }
+        var granted = (await db.RolePermissions.AsNoTracking()
+            .Where(rp => effective.Contains(rp.RoleId) && rp.DepartmentCode == "")
+            .Select(rp => rp.Permission.Code).ToListAsync(ct)).ToHashSet();
+        var overrides = await db.UserPermissionOverrides.AsNoTracking()
+            .Where(o => o.UserId == userId && o.DepartmentCode == "")
+            .Select(o => new { o.Permission.Code, o.Effect }).ToListAsync(ct);
+        foreach (var o in overrides.Where(o => o.Effect == Core.Entities.PermissionEffect.Allow)) granted.Add(o.Code);
+        foreach (var o in overrides.Where(o => o.Effect == Core.Entities.PermissionEffect.Deny)) granted.Remove(o.Code);
+        return granted.Order().ToList();
     }
 }

@@ -88,4 +88,27 @@ public class RolePresetsTests
         Assert.DoesNotContain("approval.manage", codes);
         Assert.DoesNotContain("directory.manage", codes);
     }
+
+    [Fact]
+    public async Task PresetRole_KeepsEveryoneEmployeeBaseline()
+    {
+        using var t = new TestDb(); SeedPermissions(t);
+        var chat = new Permission { Id = Guid.NewGuid(), Code = "chat.send", Description = "chat.send" };
+        var emp = new Role { Id = Guid.NewGuid(), Name = "Employee" };
+        t.Db.Permissions.Add(chat); t.Db.Roles.Add(emp);
+        t.Db.RolePermissions.Add(new RolePermission { RoleId = emp.Id, PermissionId = chat.Id });
+        t.Db.SaveChanges();
+        await RolePresets.EnsureAsync(t.Db, default);
+        var u = t.AddUser("E1");
+        t.Db.UserRoles.Add(new UserRole { UserId = u.Id, RoleId = t.Db.Roles.Single(r => r.Name == RolePresets.HcApproval).Id });
+        t.Db.SaveChanges();
+
+        var eval = new PermissionEvaluator(t.Verify());
+        Assert.True(await eval.IsAllowedAsync(u.Id, "chat.send", null));
+        Assert.True(await eval.IsAllowedAsync(u.Id, "approval.manage", null));
+        var codes = await eval.AllowedCodesAsync(u.Id, default);
+        Assert.Contains("chat.send", codes);
+        Assert.Contains("approval.read", codes);
+        Assert.DoesNotContain("directory.manage", codes);
+    }
 }
