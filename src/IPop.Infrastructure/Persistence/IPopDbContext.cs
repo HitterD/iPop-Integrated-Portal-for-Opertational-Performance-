@@ -16,6 +16,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<OrgNode> OrgNodes => Set<OrgNode>();
     public DbSet<UserOrgNode> UserOrgNodes => Set<UserOrgNode>();
     public DbSet<OrgPosition> OrgPositions => Set<OrgPosition>();
+    public DbSet<ApproverChain> ApproverChains => Set<ApproverChain>();
     public DbSet<OrgPositionHolder> OrgPositionHolders => Set<OrgPositionHolder>();
     public DbSet<OrgChartPublication> OrgChartPublications => Set<OrgChartPublication>();
     public DbSet<DirGroup> DirGroups => Set<DirGroup>();
@@ -387,6 +388,25 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasKey(x => new { x.UserId, x.OrgNodeId });
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.OrgNode).WithMany(n => n.Members).HasForeignKey(x => x.OrgNodeId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<ApproverChain>(e =>
+        {
+            e.HasKey(x => x.Nik);
+            e.Property(x => x.Nik).HasMaxLength(32);
+            e.Property(x => x.Slot1Nik).HasMaxLength(32); e.HasIndex(x => x.Slot1Nik);
+            e.Property(x => x.Slot2Nik).HasMaxLength(32); e.HasIndex(x => x.Slot2Nik);
+            e.Property(x => x.Slot3Nik).HasMaxLength(32); e.HasIndex(x => x.Slot3Nik);
+            e.Property(x => x.Slot4Nik).HasMaxLength(32); e.HasIndex(x => x.Slot4Nik);
+            e.Property(x => x.Slot5Nik).HasMaxLength(32); e.HasIndex(x => x.Slot5Nik);
+            e.Property(x => x.Slot6Nik).HasMaxLength(32); e.HasIndex(x => x.Slot6Nik);
+            e.Property(x => x.Slot7Nik).HasMaxLength(32); e.HasIndex(x => x.Slot7Nik);
+            e.Property(x => x.Slot8Nik).HasMaxLength(32); e.HasIndex(x => x.Slot8Nik);
+            e.Property(x => x.Slot9Nik).HasMaxLength(32); e.HasIndex(x => x.Slot9Nik);
+            e.Property(x => x.SourceName).HasMaxLength(200);
+            e.Property(x => x.SourceJobTitle).HasMaxLength(200);
+            e.Property(x => x.SourceLevel).HasMaxLength(100);
+            e.Property(x => x.SourceWorkLocation).HasMaxLength(100);
+            e.Property(x => x.UpdatedByNik).HasMaxLength(32);
         });
         b.Entity<OrgPosition>(e =>
         {
