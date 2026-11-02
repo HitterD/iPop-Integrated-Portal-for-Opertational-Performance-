@@ -50,6 +50,7 @@
                     <h3>Employee details · from HRIS</h3>
                     <dl class="m-profile-group"><div><dt>Department</dt><dd>@(me.Department ?? "—")</dd></div><div><dt>Site</dt><dd>@(me.Site ?? "—")</dd></div><div><dt>Reports to</dt><dd>@(me.Manager ?? "—")</dd></div></dl>
                     <p class="m-profile-note"><i data-lucide="lock"></i>Wrong department or name? Ask Human Capital — iPop updates it from HRIS.</p>
+                    <MyApprovers />
                     <h3>Security</h3><div class="m-profile-group"><button type="button" @onclick="() => Show(Pane.Password)"><i data-lucide="key-round"></i>Change password<i data-lucide="chevron-right"></i></button></div>
                 }
             </ChildContent>
@@ -179,6 +180,8 @@
                         @if (emailError is not null) { <p class="acct-err"><i data-lucide="alert-circle"></i>@emailError</p> }
                         @if (extError is not null) { <p class="acct-err"><i data-lucide="alert-circle"></i>@extError</p> }
                         <p class="acct-note">Email is used for notifications and password reset links. Ext. is your IP-phone number, shown in the Directory.</p>
+
+                        <MyApprovers />
 
                         <h3 class="acct-h">Security</h3>
                         <div class="acct-group">

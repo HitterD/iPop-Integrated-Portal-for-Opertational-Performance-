@@ -1,0 +1,35 @@
+@* The signed-in person's approver chain, as HC set it: who approves, in order. Names only. *@
+@using IPop.Web.Services
+@inject AuthState Auth
+
+<h3 class="acct-h">My approvers</h3>
+<div class="acct-group my-apv">
+    @if (steps is null)
+    {
+        <div class="skel" style="height:44px;border-radius:10px" aria-label="Loading approvers"></div>
+    }
+    else if (steps.Count == 0)
+    {
+        <p class="acct-note my-apv-empty">No approvers set yet. Contact HC if this looks wrong.</p>
+    }
+    else
+    {
+        <ol>
+            @foreach (var s in steps)
+            {
+                <li class="@(s.Active ? "" : "left")"><small>@s.Label</small><span>@s.Name</span>@if (!s.Active) { <em>no longer active</em> }</li>
+            }
+        </ol>
+    }
+</div>
+
+@code {
+    private record Step(string Label, string Name, bool Active);
+    private List<Step>? steps;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { steps = await Auth.GetAsync<List<Step>>("/api/approval/me") ?? []; }
+        catch { steps = []; }
+    }
+}

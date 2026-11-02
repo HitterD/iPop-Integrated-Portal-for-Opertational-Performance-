@@ -112,3 +112,12 @@ a.acct-install-btn { display:inline-flex; align-items:center; text-decoration:no
 .acct-err { animation: mi-fade .2s var(--ease-out); }
 /* #19 success check: each password requirement's tick pops as it turns satisfied. */
 .acct-req li.ok > svg.lucide { animation: mi-pop .45s var(--ease-spring); }
+
+/* My approvers (own profile) */
+.my-apv ol { margin:0; padding:6px 0; list-style:none; counter-reset:apv; }
+.my-apv li { counter-increment:apv; display:grid; grid-template-columns:22px 128px 1fr; align-items:baseline; gap:6px; padding:7px 14px; font-size:13px; }
+.my-apv li::before { content:counter(apv); color:var(--ink-3); font-size:12px; }
+.my-apv li small { color:var(--ink-3); font-size:12px; }
+.my-apv li em { grid-column:3; font-style:normal; font-size:11px; color:var(--ink-3); }
+.my-apv li.left span { color:var(--ink-3); text-decoration:line-through; }
+.my-apv-empty { margin:0; padding:10px 14px; }
