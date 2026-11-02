@@ -461,6 +461,7 @@ app.MapAdmin();
 app.MapAudit();
 app.MapRbac();
 app.MapDirectory();
+app.MapApproval();
 app.MapFiles();
 app.MapOnlyOffice();
 app.MapChat();

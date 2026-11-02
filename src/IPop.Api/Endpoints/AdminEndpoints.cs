@@ -1,3 +1,4 @@
+using IPop.Api.Rbac;
 using IPop.Application.Auth;
 using IPop.Application.Realtime;
 using IPop.Core.Entities;
@@ -376,7 +377,8 @@ public static class AdminEndpoints
             return Results.Ok(new { roles = wanted });
         });
 
-        var org = app.MapGroup("/api/admin/org").RequireAuthorization("AdminOnly");
+        // Directory tree editing: Admin or anyone holding directory.manage (the HC presets).
+        var org = app.MapGroup("/api/admin/org").RequireAuthorization().RequirePermission(ApprovalEndpoints.OrgPermission);
         org.AddEndpointFilter(async (context, next) =>
         {
             var result = await next(context);
