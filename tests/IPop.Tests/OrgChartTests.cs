@@ -7,7 +7,8 @@ using Req = IPop.Api.Endpoints.OrgChartEndpoints.PublishChartRequest;
 
 namespace IPop.Tests;
 
-/// Org chart Publish: full replace, shape validation, version conflicts, and Position/ManagerNik written
+/// Org chart Publish: full replace, shape validation, version conflicts, and Position written (ManagerNik
+/// belongs to the approver matrix and is never touched by Publish)
 /// back to users. Same seam as DivisionAdminTests (TestDb + the production helper).
 public class OrgChartTests
 {
@@ -36,8 +37,8 @@ public class OrgChartTests
         Assert.Equal(3, db.OrgPositionHolders.Count());
         var dev = db.Users.Single(u => u.Nik == "200");
         Assert.Equal("Developer", dev.Position);
-        // ICT Manager is vacant, so the manager is the next filled box up.
-        Assert.Equal("100", dev.ManagerNik);
+        // ManagerNik comes from the approver matrix now; Publish leaves it alone.
+        Assert.Null(dev.ManagerNik);
         var top = db.Users.Single(u => u.Nik == "100");
         Assert.Equal("President Director", top.Position);
         Assert.Null(top.ManagerNik);
@@ -60,7 +61,7 @@ public class OrgChartTests
         Assert.Equal(200, (await Publish(t, 1, new P("a", "Director", null, null, null, 1, ["100"]))).Status);
         var u = t.Verify().Users.Single(x => x.Nik == "900");
         Assert.Null(u.Position);
-        Assert.Null(u.ManagerNik);
+        Assert.Equal("1", u.ManagerNik);
     }
 
     [Fact]
@@ -75,7 +76,7 @@ public class OrgChartTests
         Assert.Equal(200, r.Status);
         var db = t.Verify();
         Assert.Equal("Director", db.Users.Single(u => u.Nik == "100").Position);
-        Assert.Equal("100", db.Users.Single(u => u.Nik == "200").ManagerNik);
+        Assert.Null(db.Users.Single(u => u.Nik == "200").ManagerNik);
         Assert.Equal(2, db.OrgPositionHolders.Count(h => h.User.Nik == "100"));
     }
 

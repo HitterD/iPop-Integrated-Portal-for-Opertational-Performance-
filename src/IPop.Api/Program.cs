@@ -195,6 +195,8 @@ builder.Services.Configure<HostOptions>(options =>
 
 // Chat module
 builder.Services.AddScoped<IChatService, ChatService>();
+builder.Services.AddScoped<IPop.Application.Approval.IApprovalService, IPop.Infrastructure.Approval.ApprovalService>();
+builder.Services.AddScoped<IPop.Infrastructure.Approval.ApprovalService>();
 builder.Services.AddScoped<IChatNotifier, ChatNotifier>();
 builder.Services.AddScoped<IStickerService, IPop.Infrastructure.Chat.StickerService>();
 builder.Services.AddScoped<INotificationGateway, NotificationGateway>();

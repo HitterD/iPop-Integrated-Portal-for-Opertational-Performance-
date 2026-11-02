@@ -5,8 +5,9 @@ using Microsoft.EntityFrameworkCore;
 namespace IPop.Api.Endpoints;
 
 /// Admin → Organization → Chart: positions with reporting lines. The browser edits a draft and sends the
-/// whole chart on Publish, which replaces it in one transaction and writes each person's Position and
-/// ManagerNik from it (HRIS values are kept in User.HrisPosition / HrisManagerNik).
+/// whole chart on Publish, which replaces it in one transaction and writes each person's Position from it
+/// (HRIS value kept in User.HrisPosition). ManagerNik is owned by the approver matrix (ApprovalService),
+/// so Publish never writes or clears it.
 public static class OrgChartEndpoints
 {
     internal const int MaxPositions = 5000;
@@ -125,12 +126,6 @@ public static class OrgChartEndpoints
             }
         }
         Walk(null);
-        string? ManagerOf(string nik, PublishPositionDto p)
-        {
-            for (var at = p.ParentId; at is not null; at = byId[at].ParentId)
-                if ((byId[at].People ?? []).FirstOrDefault(n => n != nik) is { } boss) return boss;
-            return null;
-        }
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db.OrgPositionHolders.ExecuteDeleteAsync(ct);
@@ -148,19 +143,15 @@ public static class OrgChartEndpoints
         {
             var p = primary[u.Nik];
             var title = p.Title.Trim();
-            var manager = ManagerOf(u.Nik, p);
-            if (u.Position == title && u.ManagerNik == manager) continue;
+            if (u.Position == title) continue;
             u.Position = title;
-            u.ManagerNik = manager;
             u.UpdatedAt = now;
         }
-        // Not on the chart = no position and no manager. Skipped while the chart is empty, so publishing
-        // nothing never wipes everyone.
+        // Not on the chart = no position. Skipped while the chart is empty, so publishing nothing never
+        // wipes everyone.
         if (primary.Count > 0)
-            await db.Users.Where(u => !db.OrgPositionHolders.Any(h => h.UserId == u.Id)
-                    && (u.Position != null || u.ManagerNik != null))
+            await db.Users.Where(u => !db.OrgPositionHolders.Any(h => h.UserId == u.Id) && u.Position != null)
                 .ExecuteUpdateAsync(s => s.SetProperty(u => u.Position, (string?)null)
-                    .SetProperty(u => u.ManagerNik, (string?)null)
                     .SetProperty(u => u.UpdatedAt, now), ct);
 
         var pub = new OrgChartPublication { PublishedAt = now, PublishedByNik = actorNik, PositionCount = rows.Count };
