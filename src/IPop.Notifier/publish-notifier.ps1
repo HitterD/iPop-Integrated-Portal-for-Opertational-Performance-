@@ -1,5 +1,5 @@
 # Publish a pilot, then promote it: .\publish-notifier.ps1 -Notes 'Changes'; .\publish-notifier.ps1 -Release
-# Default Version is the project's canonical 1.4.4. An explicit -Version overrides BOTH dotnet and vpk.
+# Default Version is the project's canonical 1.4.5. An explicit -Version overrides BOTH dotnet and vpk.
 # -All bypasses the pilot. -Trial requires an explicit isolated -Releases folder, uses iPopNotifierQA,
 # and may initialise an empty QA feed. Never point Trial at the production folder.
 # Bootstrap: 1.2.2 only reads the public feed. Manually distribute the held 1.3 installer to pilot PCs;

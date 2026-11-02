@@ -120,12 +120,39 @@ public static class Integration
             Log.Warn("open", "no iDesk link for " + id);
             return;
         }
-        OpenUrl(api.WebUrl(path));
+        OpenIPopPage(api, path);
     }
+
+    /// An iPop page never becomes one more browser tab per message. Installed iPop app (Chrome/Edge register
+    /// its web+ipop: protocol in HKCU) → the app window is focused and navigates. Otherwise /open.html hands
+    /// the page to the iPop tab that is already open and closes itself (no open tab: it loads the page).
+    public static void OpenIPopPage(IPopClient api, string path)
+    {
+        var target = IPopLinks.Normalize(path);
+        if (IPopLinks.AppProtocolRegistered())
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(IPopLinks.AppUrl(target)) { UseShellExecute = true });
+                return;
+            }
+            catch (Exception ex) { Log.Warn("open", "app protocol failed: " + ex.Message); }
+        }
+        OpenUrl(IPopLinks.HandoffUrl(api.Web, target));
+    }
+
+    /// The signed-in client, so any link to the iPop site (a URL inside a message, a meeting link) also reuses
+    /// the open iPop tab/app instead of opening another tab.
+    public static IPopClient? Api { get; set; }
 
     public static void OpenUrl(string url)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var u) || (u.Scheme != "https" && u.Scheme != "http" && u.Scheme != "mailto")) return;
+        if (Api is { } api && IPopLinks.IsIPopPage(api.Web, u, out var path) && !IPopLinks.IsHandoff(u))
+        {
+            OpenIPopPage(api, path);
+            return;
+        }
 #if DEBUG
         // QA runs: hand the URL to the test browser (it opens each line as a new tab) instead of the PC's own browser.
         if (QaRun && Environment.GetEnvironmentVariable("IPOP_NOTIFIER_QA_OPEN_LOG") is { Length: > 0 } openLog)

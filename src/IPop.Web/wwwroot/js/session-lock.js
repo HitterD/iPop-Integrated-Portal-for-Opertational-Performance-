@@ -11,6 +11,8 @@ window.ipopSession = {
   _claimT: 0,
   _lost: false,
   _waiters: {},
+  _blinkT: 0,
+  _blinkSaved: null,
 
   /// Resolves "active" (this tab owns the session) or "yield" (another tab is in a call).
   start(dotNet) {
@@ -78,10 +80,44 @@ window.ipopSession = {
       case "open":
         // A toast click the service worker delivered to a locked tab.
         if (this._state !== "active" || !m.url) return;
-        try { window.focus(); } catch { }
-        try { Blazor.navigateTo(m.url); } catch { location.href = m.url; }
+        this.openHere(m.url);
+        return;
+      case "handoff":
+        // /open.html in a fresh tab (a Notifier link): the tab that owns the session takes the target,
+        // and the fresh tab closes itself — ten messages must not leave ten iPop tabs behind.
+        if (this._state !== "active" || !m.url || !m.from) return;
+        this._ch.postMessage({ type: "handoff-ok", from: this._id, to: m.from });
+        this.openHere(window.ipopOpenTarget ? ipopOpenTarget(m.url) : m.url);
         return;
     }
+  },
+
+  /// Go to a page another tab or the service worker asked for. A browser cannot raise a background
+  /// tab from script, so a hidden tab blinks its title until the user looks at it.
+  openHere(url) {
+    try { window.focus(); } catch { }
+    try { Blazor.navigateTo(url); } catch { location.href = url; }
+    if (document.visibilityState !== "visible") this._blinkTitle();
+  },
+
+  _blinkTitle() {
+    if (this._blinkT) return;
+    let on = false;
+    const stop = () => {
+      clearInterval(this._blinkT);
+      this._blinkT = 0;
+      if (this._blinkSaved != null) document.title = this._blinkSaved;
+      this._blinkSaved = null;
+      document.removeEventListener("visibilitychange", onVis);
+    };
+    const onVis = () => { if (document.visibilityState === "visible") stop(); };
+    this._blinkT = setInterval(() => {
+      on = !on;
+      if (on) { this._blinkSaved = document.title; document.title = "● New in iPop"; }
+      else if (this._blinkSaved != null) document.title = this._blinkSaved;
+    }, 1000);
+    document.addEventListener("visibilitychange", onVis);
+    setTimeout(stop, 60000);
   },
 
   forwardOpen(url) { this._ch?.postMessage({ type: "open", from: this._id, url }); },

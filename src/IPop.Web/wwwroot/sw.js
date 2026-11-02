@@ -52,6 +52,8 @@ self.addEventListener("message", e => e.waitUntil((async () => {
         for (const n of await self.registration.getNotifications()) n.close();
     }
     reply = { type: "ipop-push-binding", v: 1, schema: 1, gen: valid ? d.gen : null, accepted: valid && (!old || d.gen >= old.gen) };
+  } else if (d.type === "ipop-app-installed") {
+    await pushState("app", { installed: d.installed === true, at: Date.now() });
   } else if (d.type === "ipop-push-repair-done") {
     await pushState("repair", { needed: false });
   } else if (d.type === "ipop-push-hello") {
@@ -62,14 +64,14 @@ self.addEventListener("message", e => e.waitUntil((async () => {
 
 // ───────────────────────── App-shell cache ─────────────────────────
 // Bump SW_VERSION on every deploy that changes caching; activate deletes older ipop-shell-/ipop-fw- caches.
-const SW_VERSION = "w2-20261020push";
+const SW_VERSION = "w2-20261102handoff";
 const SHELL = "ipop-shell-" + SW_VERSION;
 const FW = "ipop-fw-" + SW_VERSION;
 let NAV_TIMEOUT_MS = 4000;
 let FW_LIMIT = 400;
 let killed = false;
 
-const NEVER = /^\/(api|hubs|livekit|onlyoffice|meet|download|downloads|uploads|\.well-known|connect)(\/|$)|^\/(sw\.js|sw-kill)$/i;
+const NEVER = /^\/(api|hubs|livekit|onlyoffice|meet|download|downloads|uploads|\.well-known|connect)(\/|$)|^\/(sw\.js|sw-kill|open\.html)$/i;
 // .NET 10 fingerprints: name.<10 lowercase alphanumerics>.ext (dotnet.m4zqvqaj3u.js, IPop.Core.lqpourngtc.wasm);
 // blazor.webassembly.js / dotnet.js have no fingerprint and stay network-first.
 const FINGERPRINTED = /^\/_framework\/.+\.[a-z0-9]{10}\.(js|wasm|dat|json|pdb)$/;
@@ -301,12 +303,32 @@ async function onClick(d, action) {
 
   // "Jawab" (or a click on the call toast) opens /calls?answer=… — MainLayout accepts it.
   const url = d.kind === "call" && d.callId ? `/calls?answer=${d.callId}` : (d.url || "/");
-  const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-  const win = wins.find(c => new URL(c.url).origin === self.location.origin);
+  const wins = (await self.clients.matchAll({ type: "window", includeUncontrolled: true }))
+    .filter(c => new URL(c.url).origin === self.location.origin && !/^\/open(\.html)?$/.test(new URL(c.url).pathname));
+  // Installed iPop wins over a browser tab: the toast goes to the app window when one is open,
+  // and opens the app (not a tab) when the app is installed but closed.
+  const modes = await Promise.all(wins.map(displayOf));
+  const app = wins.find((_, i) => modes[i] === true);
+  const appInstalled = !!app || !!(await pushState("app"))?.installed;
+  const win = app || (appInstalled ? null : wins[0]);
   if (win) {
     try { await win.focus(); } catch { }
     win.postMessage({ type: "ipop-open", url });
     return;
   }
+  // Chrome/Edge open an in-scope URL from the worker of an installed app in the app window.
   await self.clients.openWindow(new URL(url, self.registration.scope).href);
+}
+
+/** true = installed app window, false = browser tab, null = no answer (page still booting). */
+function displayOf(client) {
+  return new Promise(resolve => {
+    try {
+      const ch = new MessageChannel();
+      const done = v => { clearTimeout(t); ch.port1.close(); resolve(v); };
+      const t = setTimeout(() => done(null), 300);
+      ch.port1.onmessage = e => done(e.data?.standalone === true);
+      client.postMessage({ type: "ipop-display" }, [ch.port2]);
+    } catch { resolve(null); }
+  });
 }

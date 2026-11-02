@@ -33,6 +33,7 @@ public sealed class NotifierApp : ApplicationContext
     {
         ui.CreateControl();
         api = new IPopClient(store);
+        Integration.Api = api;
         settings = new SettingsService(api, state);
         Theme.LargeText = settings.Current.TextSize == "large";
         Theme.Mode = settings.Current.Theme;

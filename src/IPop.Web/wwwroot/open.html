@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#123528" />
+<title>iPop</title>
+<style>
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px;
+         box-sizing: border-box; text-align: center; color: #e7f2ec; font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+         background: radial-gradient(120% 70% at 50% 45%, #1a4a37 0%, #123528 55%, #0d2a1f 100%); }
+  .tile { width: 96px; height: 96px; border-radius: 28px; background: #fff; display: grid; place-items: center; box-shadow: 0 20px 40px -18px rgba(0,0,0,.6); }
+  .tile img { width: 72px; height: 72px; }
+  h1 { margin: 6px 0 0; font-size: 22px; font-weight: 700; letter-spacing: -.02em; color: #fff; }
+  p { margin: 0; max-width: 340px; opacity: .8; }
+  .done { display: none; }
+  body.handed .done { display: contents; }
+  body.handed .wait { display: none; }
+</style>
+</head>
+<body>
+  <div class="tile"><img src="img/brand/icon-192.png" alt="iPop" /></div>
+  <h1 class="wait">Opening iPop…</h1>
+  <h1 class="done">Opened in your iPop tab</h1>
+  <p class="done">You can close this tab.</p>
+  <script src="js/open-target.js?v=20261102-handoff"></script>
+  <script src="js/open-handoff.js?v=20261102-handoff"></script>
+</body>
+</html>

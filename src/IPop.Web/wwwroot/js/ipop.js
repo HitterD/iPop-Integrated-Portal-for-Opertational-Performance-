@@ -2560,12 +2560,41 @@ ipop.install = async () => {
 // The push-only worker also makes iPop installable; register it up front instead of on first push use.
 if (window.isSecureContext && "serviceWorker" in navigator) ipop._serviceWorker?.();
 
-// A toast click in sw.js asks an open iPop window to go to the toast's page.
+ipop.isStandalone = () => matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: window-controls-overlay)").matches;
+
+/** Go to a page asked for from outside (toast click, Notifier link); a locked tab passes it to the active one. */
+ipop.openFromOutside = url => {
+  if (!url) return;
+  if (window.ipopSession?.isLocked()) { ipopSession.forwardOpen(url); return; }
+  if (window.ipopSession?.openHere) { ipopSession.openHere(url); return; }
+  try { Blazor.navigateTo(url); } catch { location.href = url; }
+};
+
+// A toast click in sw.js asks an open iPop window to go to the toast's page. The worker cannot tell
+// the installed app's window from a browser tab, so it asks ("ipop-display") before choosing one.
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.addEventListener("message", e => {
-    if (!e.data || e.data.type !== "ipop-open" || !e.data.url) return;
-    if (window.ipopSession?.isLocked()) { ipopSession.forwardOpen(e.data.url); return; }
-    try { Blazor.navigateTo(e.data.url); } catch { location.href = e.data.url; }
+    const d = e.data;
+    if (!d) return;
+    if (d.type === "ipop-display") { e.ports?.[0]?.postMessage({ standalone: ipop.isStandalone() }); return; }
+    if (d.type === "ipop-open" && d.url) ipop.openFromOutside(d.url);
+  });
+  // The installed app window tells the worker it exists, so a toast click with the app closed opens
+  // the app instead of a browser tab. A browser that offers "Install" again means it was removed.
+  const tellApp = installed => navigator.serviceWorker.ready
+    .then(r => r.active?.postMessage({ type: "ipop-app-installed", v: 1, installed }))
+    .catch(() => { });
+  if (ipop.isStandalone()) tellApp(true);
+  window.addEventListener("beforeinstallprompt", () => tellApp(false));
+  window.addEventListener("appinstalled", () => tellApp(true));
+}
+
+// Installed app (manifest launch_handler "focus-existing"): a web+ipop: link or Notifier click focuses
+// this window and hands the target here instead of opening a second app window.
+if ("launchQueue" in window && ipop.isStandalone()) {
+  window.launchQueue.setConsumer(p => {
+    const to = p?.targetURL && window.ipopTargetFromLaunch ? ipopTargetFromLaunch(p.targetURL) : null;
+    if (to) ipop.openFromOutside(to);
   });
 }
 
