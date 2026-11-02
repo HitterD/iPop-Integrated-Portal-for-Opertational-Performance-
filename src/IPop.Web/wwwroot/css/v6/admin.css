@@ -71,6 +71,18 @@
 .adm-role.admin { background:var(--adm-blue-soft); color:var(--adm-blue); }
 .adm-role.emp { background:var(--fill); color:var(--ink-2); }
 .adm-role.hr { background:var(--accent-soft); color:var(--accent-ink); }
+.adm-role.hc { background:var(--adm-violet-soft); color:var(--adm-violet); }
+/* Role picker: one row per preset with what it allows underneath. */
+.adm-role-list { display:flex; flex-direction:column; }
+.adm-role-option { display:flex; align-items:flex-start; gap:10px; width:100%; padding:10px 12px; border:0; border-bottom:1px solid var(--line-soft); background:transparent; color:var(--ink); font:inherit; text-align:left; cursor:pointer; }
+.adm-role-option:last-child { border-bottom:0; }
+.adm-role-option:hover:not(:disabled) { background:var(--fill); }
+.adm-role-option:disabled { cursor:default; opacity:.6; }
+.adm-role-dot { flex:none; width:16px; height:16px; margin-top:1px; border-radius:50%; border:1.5px solid var(--ink-3); box-sizing:border-box; }
+.adm-role-option.on .adm-role-dot { border:5px solid var(--adm-blue); }
+.adm-role-text { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.adm-role-text b { font-size:13px; font-weight:600; }
+.adm-role-text small { font-size:12px; color:var(--ink-3); line-height:1.35; }
 .adm-status { display:inline-flex; align-items:center; height:22px; padding:0 9px; border-radius:99px; font-size:12px; font-weight:500; }
 .adm-status.active { background:var(--adm-ok-soft); color:var(--adm-ok); }
 .adm-status.locked { background:var(--adm-red-soft); color:var(--adm-red); }

@@ -66,6 +66,9 @@ public static class DevSeed
             ("admin.audit", "View audit records"),
             ("admin.sessions", "Manage active sessions"),
             ("admin.rbac", "Manage roles and permissions"),
+            ("approval.read", "See everyone's approver chain"),
+            ("approval.manage", "Edit, import and export approver chains"),
+            ("directory.manage", "Edit the Directory tree and who sits where"),
         };
         var permissions = await db.Permissions.ToListAsync(ct);
         foreach (var (code, description) in permissionCodes.Where(x => permissions.All(p => p.Code != x.Code)))
@@ -78,21 +81,8 @@ public static class DevSeed
         }
         await db.SaveChangesAsync(ct);
 
-        // HR manages News & Memos alongside Admin: post, edit, publish, pin and delete.
-        // Seeded idempotently so existing databases gain the role without a reset.
-        var hr = await db.Roles.FirstOrDefaultAsync(r => r.Name == "HR", ct);
-        if (hr is null)
-        {
-            hr = new Role { Id = Guid.NewGuid(), Name = "HR" };
-            db.Roles.Add(hr);
-            await db.SaveChangesAsync(ct);
-        }
-        var hrCodes = new[] { "news.read", "news.write", "news.publish" };
-        var hrPermIds = await db.Permissions.Where(p => hrCodes.Contains(p.Code)).Select(p => p.Id).ToListAsync(ct);
-        var hrHas = await db.RolePermissions.Where(rp => rp.RoleId == hr.Id).Select(rp => rp.PermissionId).ToListAsync(ct);
-        foreach (var pid in hrPermIds.Except(hrHas))
-            db.RolePermissions.Add(new RolePermission { RoleId = hr.Id, PermissionId = pid });
-        await db.SaveChangesAsync(ct);
+        // Permission presets: HR (News) and the HC roles for approvers / Directory. Idempotent, add-only.
+        await IPop.Infrastructure.Rbac.RolePresets.EnsureAsync(db, ct);
 
         var cto =await db.Users.FirstOrDefaultAsync(u => u.Nik == "20080115", ct);
         if (cto is not null && !await db.UserRoles.AnyAsync(ur => ur.UserId == cto.Id && ur.RoleId == admin.Id, ct))

@@ -59,4 +59,15 @@ public sealed class PermissionEvaluator(IPopDbContext db) : IPermissionEvaluator
         }
         return false;
     }
+
+    /// Every permission code the user holds globally (role walk + overrides), for the client to
+    /// decide what to show. The server still checks each endpoint with IsAllowedAsync.
+    public async Task<IReadOnlyList<string>> AllowedCodesAsync(Guid userId, CancellationToken ct = default)
+    {
+        var codes = await db.Permissions.AsNoTracking().Select(p => p.Code).ToListAsync(ct);
+        var allowed = new List<string>();
+        foreach (var code in codes)
+            if (await IsAllowedAsync(userId, code, null, ct)) allowed.Add(code);
+        return allowed;
+    }
 }

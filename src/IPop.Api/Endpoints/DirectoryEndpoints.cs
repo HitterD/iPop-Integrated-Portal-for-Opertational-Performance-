@@ -42,6 +42,16 @@ public static class DirectoryEndpoints
                     me.UserRoles.Select(ur => ur.Role.Name).ToArray(), me.PhotoPath, UserId: me.Id));
         }).RequireAuthorization();
 
+        // GET /api/me/permissions — permission codes the signed-in user holds, so the client can show
+        // the right Administration sections. Every endpoint still checks its own permission.
+        app.MapGet("/api/me/permissions", async (IPopDbContext db, HttpContext http,
+            IPop.Application.Rbac.IPermissionEvaluator perms, CancellationToken ct) =>
+        {
+            var nik = http.User.FindFirst("nik")?.Value;
+            var id = await db.Users.AsNoTracking().Where(u => u.Nik == nik).Select(u => (Guid?)u.Id).FirstOrDefaultAsync(ct);
+            return id is null ? Results.Unauthorized() : Results.Ok(await perms.AllowedCodesAsync(id.Value, ct));
+        }).RequireAuthorization();
+
         // ── Kontak favorit — privat per pengguna ──
 
         // GET /api/directory/favorites → daftar NIK favorit milik pengguna

@@ -98,7 +98,7 @@ else
                         <small>@UnitLine(u)</small>
                     </span>
                 </span>
-                <span><span class="adm-role static @RoleClass(role)">@role</span></span>
+                <span><span class="adm-role static @AdminRoles.Css(role)">@AdminRoles.Label(role)</span></span>
                 <span><span class="adm-status @StatusClass(u)">@StatusLabel(u)</span></span>
                 <span class="adm-cell-sub" title="@(u.LastSignInAt is null ? null : AdminHumanize.Local(u.LastSignInAt).ToString("d MMM yyyy HH:mm"))">@AdminHumanize.Ago(u.LastSignInAt)</span>
                 <span class="adm-row-chev"><i data-lucide="chevron-right"></i></span>
@@ -199,14 +199,16 @@ else
 
                     <div class="adm-group-label">Role</div>
                     <div class="adm-list">
-                        <div class="adm-seg adm-role-seg" role="radiogroup" aria-label="Role">
-                            @foreach (var r in PickerRoles.Reverse())
+                        <div class="adm-role-list" role="radiogroup" aria-label="Role">
+                            @foreach (var r in AdminRoles.Picker)
                             {
-                                <button type="button" role="radio" class="@(role == r ? "on" : "")" aria-checked="@(role == r ? "true" : "false")"
-                                        disabled="@busy" @onclick="() => SetRole(sel, r)">@r</button>
+                                <button type="button" role="radio" class="adm-role-option @(role == r ? "on" : "")" aria-checked="@(role == r ? "true" : "false")"
+                                        disabled="@busy" @onclick="() => SetRole(sel, r)">
+                                    <span class="adm-role-dot" aria-hidden="true"></span>
+                                    <span class="adm-role-text"><b>@AdminRoles.Label(r)</b><small>@AdminRoles.Hint(r)</small></span>
+                                </button>
                             }
                         </div>
-                        <p class="adm-list-hint">@RoleHint(role)</p>
                     </div>
 
                     <div class="adm-group-label">Access</div>
@@ -311,25 +313,10 @@ else
     private bool busy;
     private CancellationTokenSource? userSearchCts;
 
-    // Roles the picker owns; any other stored role (e.g. a custom RBAC role) is preserved on change.
-    private static readonly string[] PickerRoles = ["Admin", "HR", "Employee"];
-
     private bool DrawerOpen => sel is not null || form is not null;
 
-    private static string PrimaryRole(IEnumerable<string> roles) =>
-        roles.Contains("Admin") ? "Admin" : roles.Contains("HR") ? "HR" : "Employee";
-
-    private static string RoleClass(string role) => role switch { "Admin" => "admin", "HR" => "hr", _ => "emp" };
-
-    private static string RoleHint(string role) => role switch
-    {
-        "Admin" => "Full access, including Administration.",
-        "HR" => "Can publish, pin and delete News & Memos and track acknowledgements.",
-        _ => "Reads news and memos. No publishing or admin rights."
-    };
-
-    private static string[] WithRole(IEnumerable<string> current, string role) =>
-        current.Where(r => !PickerRoles.Contains(r)).Append(role).Distinct().ToArray();
+    private static string PrimaryRole(IEnumerable<string> roles) => AdminRoles.Primary(roles);
+    private static string RoleHint(string role) => AdminRoles.Hint(role);
 
     // Locked / Inactive only earn a chip when there is something to act on (or they're selected).
     private IEnumerable<(string Key, string Label, int Count)> Chips =>
@@ -470,11 +457,11 @@ else
             : current == "Admin"
                 ? $"{u.Name} loses access to Administration. {RoleHint(role)}"
                 : RoleHint(role);
-        if (!await Confirm.AskAsync($"Make {u.Name} {(role == "Employee" ? "an Employee" : role == "Admin" ? "an Admin" : "HR")}?", body,
+        if (!await Confirm.AskAsync($"Change {u.Name} to {AdminRoles.Label(role)}?", body,
                 "Change role", danger: current == "Admin"))
             return;
         busy = true;
-        var roles = WithRole(u.Roles, role);
+        var roles = AdminRoles.With(u.Roles, role);
         var res = await Auth.SendAsync(HttpMethod.Put, $"/api/admin/users/{Uri.EscapeDataString(u.Nik)}/roles", new { roles });
         busy = false;
         if (!res.IsSuccessStatusCode)

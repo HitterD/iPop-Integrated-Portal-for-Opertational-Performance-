@@ -66,12 +66,25 @@ public class AuthState(HttpClient http, IJSRuntime js)
     /// Roles ride along on /api/directory/me — no extra round-trip just to gate the Admin nav.
     public bool IsAdmin => Me?.Roles.Contains("Admin") == true;
 
+    /// Permission codes the user holds (from /api/me/permissions), loaded with Me. Only decides what
+    /// to show; the API checks every call. Admin can do everything.
+    public IReadOnlySet<string> Permissions { get; private set; } = new HashSet<string>();
+
+    public bool Can(string permissionCode) => IsAdmin || Permissions.Contains(permissionCode);
+
     public async Task<DirectoryEmployeeDto?> LoadMeAsync()
     {
         if (Me is not null) return Me;
         Me = await GetAsync<DirectoryEmployeeDto>("/api/directory/me");
+        await LoadPermissionsAsync();
         await ShareUserAsync();
         return Me;
+    }
+
+    public async Task LoadPermissionsAsync()
+    {
+        try { Permissions = (await GetAsync<string[]>("/api/me/permissions") ?? []).ToHashSet(); }
+        catch { Permissions = new HashSet<string>(); }
     }
 
     /// Scripts that keep their own per-account settings (sounds.js) read the NIK from ipopUserStore.
@@ -529,6 +542,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
         MustChangePassword = false;
         MyStatus = "off";
         Me = null;
+        Permissions = new HashSet<string>();
         IsSuspended = false;
         IPop.Web.Models.AvatarPhotos.Clear();
         lock (_lastGoodLock)
