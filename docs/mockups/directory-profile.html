@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mockup — Directory profile (desktop) v4 · iPop theme</title>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  /* Tokens copied from the live app: ipop.css + v6/dashboard-v2.css (Apple widget look). */
+  :root{
+    --bg:#f7f6f3;--surface:#fff;--surface-2:#f7f7f8;--ink:#1d1d1f;--ink-2:#55555b;--ink-3:#86868b;--ink-4:#c7c7cc;
+    --line:rgba(0,0,0,.07);--accent:#2e7d5b;--danger:#dc2626;--ease:cubic-bezier(.2,.8,.2,1);
+    --dw-fill:rgba(118,118,128,.10);
+    --dw-sh:0 1px 2px rgba(0,0,0,.04),0 8px 24px -12px rgba(0,0,0,.10);
+    --dw-sh-hover:0 2px 4px rgba(0,0,0,.05),0 16px 36px -14px rgba(0,0,0,.18);
+    --forest:#1f4a37;
+  }
+  [data-theme=dark]{--bg:#171614;--surface:#1f1e1c;--surface-2:#262522;--ink:#f2f0ea;--ink-2:#c4c0b6;--ink-3:#8f8b82;--ink-4:#55524c;
+    --line:rgba(255,255,255,.07);--accent:#4ca37e;--dw-fill:rgba(118,118,128,.24);
+    --dw-sh:0 0 0 1px rgba(255,255,255,.05);--dw-sh-hover:0 0 0 1px rgba(255,255,255,.09),0 16px 36px -14px rgba(0,0,0,.6)}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Inter,-apple-system,"Segoe UI",system-ui,sans-serif;color:var(--ink);font-size:13px;-webkit-font-smoothing:antialiased;background:var(--forest)}
+  a{color:inherit;text-decoration:none}
+  .lucide{width:16px;height:16px;stroke-width:2}
+  .m-chat{--m:#16a34a}.m-mail{--m:#2563eb}.m-call{--m:#dc2626}.m-calendar{--m:#e11d48}.m-meeting{--m:#0891b2}
+  .m-team{--m:#0369a1}.m-dir{--m:#2e7d5b}.m-fav{--m:#f59e0b}.m-files{--m:#65a30d}
+
+  /* ---- simplified shell (for context only) ---- */
+  .shell{display:grid;grid-template-columns:272px 1fr;min-height:100vh}
+  .sb{padding:18px 14px;color:#fff}
+  .sb .brand{font-weight:800;font-size:22px;padding:0 10px 16px;display:flex;gap:8px;align-items:center}
+  .sb .sec{font-size:11px;font-weight:700;letter-spacing:.08em;opacity:.7;margin:16px 10px 6px}
+  .sb .it{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:12px;font-weight:600;font-size:15px}
+  .sb .it.on{background:#fff;color:var(--forest)}
+  .sb .it .lucide{width:19px;height:19px}
+  .main{display:flex;flex-direction:column;min-width:0}
+  .tb{height:72px;display:flex;align-items:center;padding:0 22px;color:#fff}
+  .tb h1{margin:0;font-size:22px;font-weight:800;letter-spacing:-.02em}
+  .tb small{display:block;font-size:12.5px;opacity:.8}
+  .tb .search{margin-left:auto;width:480px;height:44px;border-radius:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);display:flex;align-items:center;gap:10px;padding:0 14px;opacity:.9}
+  .bar{position:fixed;bottom:14px;right:16px;z-index:9;display:flex;gap:6px}
+  .bar button{border:none;box-shadow:var(--dw-sh);background:var(--surface);color:var(--ink);border-radius:999px;padding:7px 13px;font:600 12px Inter,sans-serif;cursor:pointer}
+
+  /* ---- page canvas, same as .dw ---- */
+  .dw{flex:1;background:#f5f5f7;border-top-left-radius:22px;overflow:auto}
+  [data-theme=dark] .dw{background:var(--bg)}
+  .dw-in{max-width:1500px;margin:0 auto;padding:20px 24px 40px;display:flex;flex-direction:column;gap:16px}
+
+  .crumb{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--ink-3)}
+  .crumb a{display:inline-flex;align-items:center;gap:3px;color:var(--accent)}
+  .crumb .lucide{width:15px;height:15px}
+
+  /* card = .dw-card */
+  .card{background:var(--surface);border-radius:20px;box-shadow:var(--dw-sh);padding:16px 18px;min-width:0;transition:box-shadow .25s var(--ease)}
+  .card:hover{box-shadow:var(--dw-sh-hover)}
+  .ch{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+  .ch .ic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;color:#fff;background:linear-gradient(145deg,color-mix(in srgb,var(--m) 75%,#fff),var(--m))}
+  .ch .ic .lucide{width:14px;height:14px}
+  .ch h3{margin:0;font-size:15px;font-weight:700;letter-spacing:-.01em}
+  .ch .ct{font-size:12px;color:var(--ink-3);font-weight:500}
+  .ch .more{margin-left:auto;font-size:13px;font-weight:600;color:var(--m);display:inline-flex;align-items:center;gap:2px}
+  .ch .more .lucide{width:14px;height:14px}
+
+  /* ---- hero ---- */
+  .hero{position:relative;overflow:hidden;padding:22px 24px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:22px;align-items:center}
+  .hero::before{content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(70% 120% at 100% 0%,color-mix(in srgb,#16a34a 12%,transparent),transparent 60%),
+               radial-gradient(50% 120% at 0% 100%,color-mix(in srgb,#2563eb 7%,transparent),transparent 60%)}
+  .hero > *{position:relative}
+  .ava{width:104px;height:104px;border-radius:26px;position:relative;cursor:zoom-in;
+    background:url('https://i.pravatar.cc/240?img=13') center/cover,#cfe6da;box-shadow:0 10px 24px -12px rgba(0,0,0,.4)}
+  .ava .pr{position:absolute;right:-4px;bottom:-4px;width:22px;height:22px;border-radius:50%;background:#aeaeb2;border:4px solid var(--surface)}
+  .who h2{margin:0;font-size:28px;font-weight:700;letter-spacing:-.02em;line-height:1.1}
+  .who .org{margin-top:6px;display:flex;align-items:center;gap:6px;color:var(--ink-2);font-size:14px}
+  .who .org .lucide{width:14px;height:14px;color:var(--ink-3)}
+  .pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+  .pill{height:26px;padding:0 10px;border-radius:99px;display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--ink-2);background:var(--dw-fill)}
+  .pill .d{width:7px;height:7px;border-radius:50%;background:#aeaeb2}
+  .pill.tag{color:var(--m);background:color-mix(in srgb,var(--m) 12%,transparent)} .pill.tag .d{background:var(--m)}
+  .pill .lucide{width:13px;height:13px}
+
+  /* actions = Contact-info drawer tiles, coloured per module like dashboard quick actions */
+  .acts{display:flex;gap:10px;align-items:flex-start}
+  .act{width:74px;display:flex;flex-direction:column;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--ink-2);cursor:pointer;background:none;border:none;padding:0;font-family:inherit}
+  .act .ic{width:54px;height:54px;border-radius:16px;display:grid;place-items:center;background:var(--surface);box-shadow:var(--dw-sh);color:var(--m);transition:transform .2s var(--ease),box-shadow .2s,background .2s}
+  .act .ic .lucide{width:21px;height:21px}
+  .act:hover .ic{transform:translateY(-2px);box-shadow:var(--dw-sh-hover)}
+  .act:hover{color:var(--ink)}
+  .act.primary .ic{color:#fff;background:linear-gradient(145deg,color-mix(in srgb,var(--m) 75%,#fff),var(--m));box-shadow:0 8px 18px -8px var(--m)}
+  .act.on .ic .lucide{fill:currentColor}
+  .act:focus-visible .ic{outline:2px solid var(--m);outline-offset:2px}
+
+  /* layout */
+  .grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(340px,1fr);gap:14px;align-items:start}
+  .col{display:flex;flex-direction:column;gap:14px;min-width:0}
+
+  /* grouped inset list (like Contact info drawer) */
+  .group{border-radius:14px;background:var(--surface-2);overflow:hidden}
+  .g-row{display:flex;align-items:center;gap:12px;min-height:46px;padding:0 14px;font-size:13.5px}
+  .g-row + .g-row{box-shadow:0 -1px 0 var(--line)}
+  .g-row .k{color:var(--ink-3);width:84px;flex-shrink:0}
+  .g-row .v{margin-left:auto;font-weight:600;text-align:right;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .g-row a.v{color:var(--accent)} .g-row a.v:hover{text-decoration:underline}
+  .cp{width:28px;height:28px;border-radius:8px;border:none;background:none;color:var(--ink-3);display:grid;place-items:center;cursor:pointer;flex-shrink:0}
+  .cp:hover{background:var(--dw-fill);color:var(--ink)}
+  .cp .lucide{width:14px;height:14px}
+
+  /* list rows = .dw .li */
+  .li{display:flex;align-items:center;gap:12px;padding:9px 6px;margin:0 -6px;border-radius:12px;cursor:pointer;transition:background .15s;min-width:0}
+  .li:hover{background:var(--dw-fill)}
+  .li + .li{box-shadow:0 -1px 0 var(--line)}
+  .li:hover,.li:hover + .li{box-shadow:none}
+  .av{width:34px;height:34px;border-radius:10px;flex-shrink:0;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:700;position:relative;background-size:cover;background-position:center}
+  .av .p{position:absolute;right:-3px;bottom:-3px;width:11px;height:11px;border-radius:50%;border:2px solid var(--surface);background:#aeaeb2}
+  .av .p.on{background:#34c759}.av .p.busy{background:#ff3b30}
+  .tx{min-width:0;flex:1}
+  .tx b{display:block;font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tx span{display:block;font-size:12px;color:var(--ink-3)}
+  .li .chev{color:var(--ink-4);width:16px;height:16px}
+  .li.self{background:color-mix(in srgb,var(--m) 10%,transparent);cursor:default}
+  .li.self b{color:var(--m)}
+  .lbl{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:6px 0 4px}
+  .spine{width:2px;height:10px;margin-left:16px;background:var(--line);border-radius:2px}
+  .reports{display:none}.show-reports .reports{display:block}
+  .demo{font-size:11.5px;color:var(--ink-3);background:none;border:none;padding:0;margin-top:8px;cursor:pointer;text-decoration:underline dotted}
+
+  /* team grid */
+  .team{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));column-gap:16px}
+  .team .li + .li{box-shadow:none}
+
+  /* today */
+  .sum{display:flex;align-items:center;gap:18px;margin-bottom:28px}
+  .stat .k{font-size:12px;color:var(--ink-3);font-weight:500}
+  .stat .v{font-size:20px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .stat .v.busy{color:#dc2626}.stat .v.free{color:#16a34a}
+  .vs{width:1px;height:34px;background:var(--line)}
+  .sum .btns{margin-left:auto;display:flex;gap:8px}
+  .pbtn{height:34px;padding:0 14px 0 5px;border-radius:99px;background:var(--surface);box-shadow:var(--dw-sh);display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;transition:transform .2s var(--ease),box-shadow .2s}
+  .pbtn:hover{transform:translateY(-1px);box-shadow:var(--dw-sh-hover)}
+  .pbtn .ic{width:24px;height:24px;border-radius:99px;display:grid;place-items:center;background:var(--m);color:#fff}
+  .pbtn .ic .lucide{width:13px;height:13px}
+  .tl{position:relative;height:42px;border-radius:12px;background:var(--surface-2)}
+  .tl .g{position:absolute;top:8px;bottom:8px;width:1px;background:var(--line)}
+  .tl .b{position:absolute;top:7px;bottom:7px;border-radius:8px;background:color-mix(in srgb,#dc2626 13%,var(--surface-2));color:#b91c1c;font-size:11px;font-weight:700;display:flex;align-items:center;padding:0 9px;overflow:hidden;white-space:nowrap}
+  .tl .f{position:absolute;top:7px;bottom:7px;border-radius:8px;background:color-mix(in srgb,#16a34a 12%,var(--surface-2));box-shadow:inset 0 0 0 1.5px color-mix(in srgb,#16a34a 55%,transparent);color:#15803d;font-size:11px;font-weight:700;display:flex;align-items:center;padding:0 9px}
+  [data-theme=dark] .tl .b{color:#fca5a5} [data-theme=dark] .tl .f{color:#86efac}
+  .tl .now{position:absolute;top:-4px;bottom:-4px;width:2px;background:#e11d48;border-radius:2px}
+  .tl .now span{position:absolute;top:-20px;left:50%;transform:translateX(-50%);background:#e11d48;color:#fff;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:99px;white-space:nowrap}
+  .ticks{position:relative;height:16px;margin-top:7px;font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+  .ticks span{position:absolute;transform:translateX(-50%)}
+
+  .note{padding:14px 16px;border-radius:14px;background:var(--surface);box-shadow:var(--dw-sh);color:var(--ink-2);font-size:12.5px;line-height:1.6}
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;background:rgba(30,30,32,.92);backdrop-filter:blur(12px);color:#fff;padding:10px 16px;border-radius:14px;font-size:13px;font-weight:500;transition:.2s;display:flex;gap:8px;align-items:center;pointer-events:none}
+  .toast.show{opacity:1;transform:translateX(-50%)}
+
+  .narrow .grid{grid-template-columns:1fr}
+  .narrow .hero{grid-template-columns:auto minmax(0,1fr)}
+  .narrow .acts{grid-column:1/-1;justify-content:space-between}
+</style>
+</head>
+<body>
+<div class="bar">
+  <button onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'':'dark'">Light / Dark</button>
+  <button onclick="document.body.classList.toggle('narrow')">Narrow</button>
+</div>
+
+<div class="shell">
+  <aside class="sb">
+    <div class="brand"><i data-lucide="message-circle-heart"></i>iPop</div>
+    <div class="sec">WORKSPACE</div>
+    <div class="it"><i data-lucide="layout-grid"></i>Dashboard</div>
+    <div class="it on"><i data-lucide="users"></i>Directory</div>
+    <div class="it"><i data-lucide="kanban"></i>Projects</div>
+    <div class="it"><i data-lucide="notebook-pen"></i>Notes</div>
+    <div class="sec">COMMUNICATION</div>
+    <div class="it"><i data-lucide="message-circle"></i>Chat</div>
+    <div class="it"><i data-lucide="mail"></i>Mail</div>
+    <div class="it"><i data-lucide="phone"></i>Calls &amp; Meetings</div>
+  </aside>
+  <div class="main">
+    <div class="tb"><div><h1>Directory</h1><small>Profile</small></div><div class="search"><i data-lucide="search"></i>Search people, chat, notes, mail…</div></div>
+
+    <div class="dw"><div class="dw-in">
+      <div class="crumb"><a href="#"><i data-lucide="chevron-left"></i>Directory</a><span>·</span>ICT<span>›</span>Network &amp; Infrastructure</div>
+
+      <!-- HERO -->
+      <div class="card hero">
+        <div class="ava" title="View photo"><span class="pr"></span></div>
+        <div class="who">
+          <h2>YUDI ARTA TRIRENSILA</h2>
+          <div class="org"><i data-lucide="network"></i>Network &amp; Infrastructure · SJA SEPANJANG</div>
+          <div class="pills">
+            <span class="pill"><span class="d"></span>Offline · last seen today 09:45</span>
+            <span class="pill tag m-call"><span class="d"></span>Busy until 11:30</span>
+            <span class="pill"><i data-lucide="map-pin"></i>SJA-1</span>
+            <span class="pill"><i data-lucide="phone"></i>Ext. 1604</span>
+          </div>
+        </div>
+        <div class="acts">
+          <button class="act primary m-chat"><span class="ic"><i data-lucide="message-circle"></i></span>Message</button>
+          <a class="act m-mail" href="#"><span class="ic"><i data-lucide="mail"></i></span>Mail</a>
+          <a class="act m-call" href="#"><span class="ic"><i data-lucide="phone"></i></span>Call</a>
+          <a class="act m-calendar" href="#"><span class="ic"><i data-lucide="calendar-search"></i></span>Calendar</a>
+          <a class="act m-meeting" href="#"><span class="ic"><i data-lucide="calendar-plus"></i></span>Invite</a>
+          <button class="act m-fav" onclick="this.classList.toggle('on');this.lastChild.textContent=this.classList.contains('on')?'Favorite':'Favorite';toast(this.classList.contains('on')?'Added to favorites':'Removed from favorites')"><span class="ic"><i data-lucide="star"></i></span>Favorite</button>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="col">
+          <!-- TODAY -->
+          <div class="card m-calendar">
+            <div class="ch"><span class="ic"><i data-lucide="calendar-clock"></i></span><h3>Today</h3><span class="ct">Mon, 2 Nov · free/busy only</span><a class="more" href="#">Calendar <i data-lucide="chevron-right"></i></a></div>
+            <div class="sum">
+              <div class="stat"><div class="k">Right now</div><div class="v busy">Busy until 11:30</div></div>
+              <div class="vs"></div>
+              <div class="stat"><div class="k">Next free</div><div class="v free">11:30 – 13:00</div></div>
+              <div class="btns">
+                <a class="pbtn m-calendar" href="#"><span class="ic"><i data-lucide="calendar-search"></i></span>Find a time</a>
+                <a class="pbtn m-meeting" href="#"><span class="ic"><i data-lucide="calendar-plus"></i></span>Invite at 11:30</a>
+              </div>
+            </div>
+            <div class="tl" id="tl"></div>
+            <div class="ticks" id="ticks"></div>
+          </div>
+
+          <!-- SAME UNIT -->
+          <div class="card m-team">
+            <div class="ch"><span class="ic"><i data-lucide="users"></i></span><h3>Same unit</h3><span class="ct">9</span><a class="more" href="#">View all <i data-lucide="chevron-right"></i></a></div>
+            <div class="team">
+              <div class="li"><span class="av" style="background-image:url(https://i.pravatar.cc/96?img=12)"><span class="p on"></span></span><div class="tx"><b>RIZKY PRATAMA</b><span>Online</span></div></div>
+              <div class="li"><span class="av" style="background-image:url(https://i.pravatar.cc/96?img=33)"><span class="p busy"></span></span><div class="tx"><b>DIMAS SAPUTRA</b><span>Busy</span></div></div>
+              <div class="li"><span class="av" style="background:#8a6bb8">AW<span class="p on"></span></span><div class="tx"><b>AGUS WIBOWO</b><span>Online</span></div></div>
+              <div class="li"><span class="av" style="background-image:url(https://i.pravatar.cc/96?img=47)"><span class="p"></span></span><div class="tx"><b>SINTA MAHARANI</b><span>Seen 1h ago</span></div></div>
+              <div class="li"><span class="av" style="background:#8a6b2f">HS<span class="p"></span></span><div class="tx"><b>HENDRA SETIAWAN</b><span>Seen yesterday</span></div></div>
+              <div class="li"><span class="av" style="background-image:url(https://i.pravatar.cc/96?img=59)"><span class="p on"></span></span><div class="tx"><b>BAYU NUGROHO</b><span>Online</span></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col">
+          <!-- CONTACT -->
+          <div class="card m-mail">
+            <div class="ch"><span class="ic"><i data-lucide="contact"></i></span><h3>Contact</h3></div>
+            <div class="group">
+              <div class="g-row"><span class="k">Email</span><a class="v" href="#" title="Write in iPop Mail">yudi.arta@kapalapi.co.id</a><button class="cp" title="Copy" onclick="toast('Email copied')"><i data-lucide="copy"></i></button></div>
+              <div class="g-row"><span class="k">Extension</span><span class="v">1604</span><button class="cp" title="Copy" onclick="toast('Extension copied')"><i data-lucide="copy"></i></button></div>
+              <div class="g-row"><span class="k">Location</span><span class="v">SJA-1</span><span style="width:28px"></span></div>
+            </div>
+          </div>
+
+          <!-- ORGANIZATION -->
+          <div class="card m-dir" id="org">
+            <div class="ch"><span class="ic"><i data-lucide="network"></i></span><h3>Organization</h3><a class="more" href="#">Org chart <i data-lucide="chevron-right"></i></a></div>
+            <div class="lbl">Reports to</div>
+            <div class="li"><span class="av" style="background-image:url(https://i.pravatar.cc/96?img=68)"><span class="p on"></span></span><div class="tx"><b>GO SONNY GOZALI</b><span>Direct manager</span></div><i data-lucide="chevron-right" class="chev"></i></div>
+            <div class="spine"></div>
+            <div class="li self"><span class="av" style="background-image:url(https://i.pravatar.cc/96?img=13)"></span><div class="tx"><b>YUDI ARTA TRIRENSILA</b><span>This profile</span></div></div>
+            <div class="reports">
+              <div class="spine"></div>
+              <div class="lbl">Direct reports · 2</div>
+              <div class="li"><span class="av" style="background:#0369a1">RP<span class="p on"></span></span><div class="tx"><b>RIZKY PRATAMA</b><span>Direct report</span></div><i data-lucide="chevron-right" class="chev"></i></div>
+              <div class="li"><span class="av" style="background:#8a6bb8">AW<span class="p"></span></span><div class="tx"><b>AGUS WIBOWO</b><span>Direct report</span></div><i data-lucide="chevron-right" class="chev"></i></div>
+            </div>
+            <button class="demo" onclick="document.getElementById('org').classList.toggle('show-reports')">mockup: toggle "has direct reports"</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="note"><b>v4 — matched to the current iPop:</b> same canvas, cards, shadows and header style as Dashboard (no borders, coloured icon tile + title + coloured "View all"). Each action wears its module colour (Chat green, Mail blue, Call red, Calendar rose, Meeting cyan) like the Dashboard quick actions, in the same tile shape as the Chat <i>Contact info</i> drawer; Message is filled. Contact uses the drawer's grouped list (label left, value right, copy). Names stay as stored (uppercase), like the rest of the app. Busy/Free colours follow Calendar. Phone layout unchanged.</div>
+    </div></div>
+  </div>
+</div>
+<div class="toast" id="t"><i data-lucide="check" style="width:15px;height:15px"></i><span></span></div>
+<script>
+  const S=8,E=17,pct=h=>((h-S)/(E-S)*100)+'%';
+  const tl=document.getElementById('tl'),tk=document.getElementById('ticks');
+  for(let h=S;h<=E;h++){ if(h>S&&h<E){const g=document.createElement('div');g.className='g';g.style.left=pct(h);tl.appendChild(g)}
+    const s=document.createElement('span');s.textContent=String(h).padStart(2,'0')+':00';s.style.left=pct(h);if(h===S)s.style.transform='none';if(h===E)s.style.transform='translateX(-100%)';tk.appendChild(s)}
+  [[9,10.25,'Busy'],[10.5,11.5,'Busy'],[13,14.5,'Busy'],[15,15.5,'']].forEach(([a,b,l])=>{const d=document.createElement('div');d.className='b';d.style.left=`calc(${pct(a)} + 2px)`;d.style.width=`calc(${(b-a)/(E-S)*100}% - 4px)`;d.textContent=l;tl.appendChild(d)});
+  const f=document.createElement('div');f.className='f';f.style.left=`calc(${pct(11.5)} + 2px)`;f.style.width=`calc(${1.5/(E-S)*100}% - 4px)`;f.textContent='Free';tl.appendChild(f);
+  const n=document.createElement('div');n.className='now';n.style.left=pct(10.2);n.innerHTML='<span>10:12</span>';tl.appendChild(n);
+  lucide.createIcons();
+  function toast(m){const t=document.getElementById('t');t.querySelector('span').textContent=m;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),1600)}
+  const mq=matchMedia('(max-width:1350px)');const nf=()=>document.body.classList.toggle('narrow',mq.matches);mq.addEventListener('change',nf);nf();
+</script>
+</body>
+</html>

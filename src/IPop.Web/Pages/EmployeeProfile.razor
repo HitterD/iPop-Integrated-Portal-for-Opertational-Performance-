@@ -40,132 +40,194 @@
 }
 else
 {
-<div class="content emp-profile" style="grid-template-columns:1fr;max-width:860px">
-    <div class="m-detail-bar emp-m-bar">
-        <button type="button" class="m-back" aria-label="Back" @onclick='() => Nav.NavigateTo("/directory")'><i data-lucide="chevron-left"></i></button>
-        <span class="m-detail-title">Directory</span>
-    </div>
+<div class="dw emp-profile">
+<div class="dw-in ep-in">
+    <nav class="ep-crumb" aria-label="Breadcrumb">
+        <a href="/directory"><i data-lucide="chevron-left"></i>Directory</a>
+        @if (!string.IsNullOrWhiteSpace(person?.Department)) { <span aria-hidden="true">·</span><span>@person.Department</span> }
+        @if (!string.IsNullOrWhiteSpace(unitName) && unitName != person?.Department) { <span aria-hidden="true">›</span><span>@unitName</span> }
+    </nav>
 
     @if (loading)
     {
-        <div class="tray rise rise-1"><div class="core" style="padding:0;overflow:hidden">
-            <div class="tree-empty" style="padding:34px">
-                <i data-lucide="loader-circle" style="width:20px;height:20px;margin-bottom:6px"></i>
-                <div>Loading profile…</div>
-            </div>
-        </div></div>
+        <div class="dw-card ep-hero" aria-busy="true">
+            <span class="ep-sk" style="width:104px;height:104px;border-radius:28px"></span>
+            <div class="ep-who"><span class="ep-sk" style="width:300px;height:28px"></span><span class="ep-sk" style="width:220px;height:14px;margin-top:12px"></span></div>
+            <span class="sr-only" role="status">Loading profile…</span>
+        </div>
     }
     else if (person is null)
     {
-        <div class="tray rise rise-1"><div class="core" style="padding:0;overflow:hidden">
-            <div class="tree-empty" style="padding:34px">
-                <i data-lucide="user-x" style="width:20px;height:20px;margin-bottom:6px"></i>
-                <div>Employee not found.</div>
-                <div style="margin-top:12px"><button class="btn-sm surface" @onclick='() => Nav.NavigateTo("/directory")'><i data-lucide="arrow-left" style="width:13px;height:13px"></i> Back to Directory</button></div>
-            </div>
-        </div></div>
+        <div class="dw-card ep-missing">
+            <i data-lucide="user-x"></i>
+            <b>Employee not found.</b>
+            <a class="ep-pill m-dir" href="/directory"><span class="ic"><i data-lucide="arrow-left"></i></span>Back to Directory</a>
+        </div>
     }
     else
     {
-        @* ---- Kartu identitas ---- *@
-        <div class="tray rise rise-1">
-            <div class="core" style="padding:0;overflow:hidden">
-                <div class="panel-head">
-                    <i data-lucide="id-card"></i> <span>Profile</span>
-                    <span class="meta"><span class="dot @person.Status" style="width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:4px"></span>@StatusLabel(person.Status, person.LastSeenAt)</span>
-                    <span style="margin-left:auto;display:flex;gap:6px">
-                        <button class="btn-sm surface" title="@(isFav ? "Remove from favorites" : "Add to favorites")"
-                                style="@(isFav ? "color:var(--accent-ink);border-color:var(--accent-soft);background:var(--accent-soft)" : "")"
-                                @onclick="ToggleFavorite">
-                            <i data-lucide="star" style="width:13px;height:13px;@(isFav ? "fill:currentColor" : "")"></i> @(isFav ? "Favorite" : "Add to favorites")
-                        </button>
-                    </span>
-                </div>
-                <div class="emp-id" style="display:flex;align-items:flex-start;gap:18px;padding:20px">
-                    <PersonAvatar Nik="@person.Nik" Name="@person.Name" Size="84" Viewable="true" />
-                    <div style="flex:1;min-width:0">
-                        <div style="font-size:19px;font-weight:700;letter-spacing:-0.01em">@person.Name</div>
-                        <div style="font-size:12px;color:var(--ink-3);margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                            <i data-lucide="network" style="width:12px;height:12px"></i>
-                            @(person.Department ?? "—") · @(person.Site ?? "—")
-                        </div>
-                        <div class="p-rows" style="margin-top:14px">
-                            <div class="p-row"><i data-lucide="at-sign"></i><span class="k">Email</span><span class="v">@person.Email</span></div>
-                            @if (!string.IsNullOrWhiteSpace(person.Extension))
-                            {
-                                <div class="p-row"><i data-lucide="phone"></i><span class="k">Extension</span><span class="v mono">@person.Extension</span></div>
-                            }
-                            @if (!string.IsNullOrWhiteSpace(person.Location))
-                            {
-                                <div class="p-row"><i data-lucide="map-pin"></i><span class="k">Location</span><span class="v">@person.Location</span></div>
-                            }
-                        </div>
-                        <div class="emp-acts" style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
-                            <button class="btn-sm accent" @onclick="OpenChat"><i data-lucide="message-circle" style="width:13px;height:13px"></i> Chat</button>
-                            <button class="btn-sm surface" @onclick="OpenMail"><i data-lucide="mail" style="width:13px;height:13px"></i> Mail</button>
-                            <button class="btn-sm surface" @onclick="OpenCall"><i data-lucide="phone" style="width:13px;height:13px"></i> Call</button>
-                            <a class="btn-sm surface" href="@PLinks.Calendar(person.Nik)"><i data-lucide="calendar-search" style="width:13px;height:13px"></i> Calendar</a>
-                            <a class="btn-sm surface" href="@CalLinks.NewMeeting(niks: [person.Nik], from: $"Meeting with {person.Name}")"><i data-lucide="calendar-plus" style="width:13px;height:13px"></i> Invite to meeting</a>
-                        </div>
-                    </div>
+        @* ---- Hero: identity + actions ---- *@
+        <section class="dw-card ep-hero" aria-label="Profile">
+            <PersonAvatar Nik="@person.Nik" Name="@person.Name" Size="104" Status="@person.Status" Viewable="true" Class="ep-ava" />
+            <div class="ep-who">
+                <h2>@person.Name</h2>
+                <div class="ep-org"><i data-lucide="network"></i>@(person.Department ?? "—") · @(person.Site ?? "—")</div>
+                <div class="ep-pills">
+                    <span class="ep-chip ep-presence @person.Status"><span class="d"></span>@StatusLabel(person.Status, person.LastSeenAt)</span>
+                    @if (busyUntil is { } bu) { <span class="ep-chip ep-busy"><span class="d"></span>Busy until @Hm(bu)</span> }
+                    @if (!string.IsNullOrWhiteSpace(person.Location)) { <span class="ep-chip"><i data-lucide="map-pin"></i>@person.Location</span> }
+                    @if (!string.IsNullOrWhiteSpace(person.Extension)) { <span class="ep-chip"><i data-lucide="phone"></i>Ext. @person.Extension</span> }
                 </div>
             </div>
-        </div>
+            <div class="ep-acts">
+                <button type="button" class="ep-act primary m-chat" @onclick="OpenChat"><span class="ic"><i data-lucide="message-circle"></i></span>Message</button>
+                <button type="button" class="ep-act m-mail" @onclick="OpenMail"><span class="ic"><i data-lucide="mail"></i></span>Mail</button>
+                <button type="button" class="ep-act m-call" @onclick="OpenCall"><span class="ic"><i data-lucide="phone"></i></span>Call</button>
+                <a class="ep-act m-calendar" href="@PLinks.Calendar(person.Nik)"><span class="ic"><i data-lucide="calendar-search"></i></span>Calendar</a>
+                <a class="ep-act m-meeting" href="@MeetingUrl(null)"><span class="ic"><i data-lucide="calendar-plus"></i></span>Invite</a>
+                <button type="button" class="ep-act m-fav @(isFav ? "on" : "")" aria-pressed="@(isFav ? "true" : "false")"
+                        title="@(isFav ? "Remove from favorites" : "Add to favorites")" @onclick="ToggleFavorite">
+                    <span class="ic"><i data-lucide="star"></i></span>Favorite
+                </button>
+            </div>
+        </section>
 
-        @* ---- Relasi organisasi ---- *@
-        <div class="tray rise rise-2">
-            <div class="core" style="padding:0;overflow:hidden">
-                <div class="panel-head">
-                    <i data-lucide="network"></i> <span>Organization Hierarchy</span>
-                </div>
-                <div style="padding:14px;display:grid;gap:14px">
-                    @if (manager is not null)
+        <div class="ep-grid">
+            <div class="ep-col">
+                @* ---- Today: free/busy only, never titles ---- *@
+                <section class="dw-card m-calendar" aria-label="Today">
+                    <header class="dw-ch"><span class="ic"><i data-lucide="calendar-clock"></i></span><h3>Today</h3>
+                        <span class="ct">@DateTime.Now.ToString("ddd, d MMM") · free/busy only</span>
+                        <a class="more" href="@PLinks.Calendar(person.Nik)">Calendar <i data-lucide="chevron-right"></i></a></header>
+                    @if (dayLoading)
                     {
-                        <div>
-                            <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-3);margin-bottom:6px">Direct Manager</div>
-                            <div class="notif-row" role="button" @onclick="() => OpenPerson(manager.Nik)">
-                                <PersonAvatar Nik="@manager.Nik" Name="@manager.Name" Size="34" Decorative="true" />
-                                <div class="notif-row-main">
-                                    <div class="notif-row-t">@manager.Name</div>
-                                    <div class="notif-row-s">Direct manager</div>
-                                </div>
-                                <i data-lucide="chevron-right" style="width:14px;height:14px;color:var(--ink-3);flex-shrink:0"></i>
-                            </div>
-                        </div>
+                        <span class="ep-sk" style="display:block;height:42px;margin-top:40px"></span>
                     }
-                    <div>
-                        <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-3);margin-bottom:6px">Direct Reports @(reports.Count > 0 ? $"({reports.Count})" : "")</div>
-                        @if (reportsLoading)
-                        {
-                            <div class="meta" style="font-size:12px;color:var(--ink-3)">Loading…</div>
-                        }
-                        else if (reports.Count == 0)
-                        {
-                            <div class="meta" style="font-size:12px;color:var(--ink-3)">No direct reports.</div>
-                        }
-                        else
-                        {
-                            <div class="notif-list" role="list" aria-label="Direct reports">
-                                @foreach (var r in reports)
+                    else if (dayFailed)
+                    {
+                        <p class="ep-note">Availability could not be loaded.</p>
+                    }
+                    else
+                    {
+                        <div class="ep-sum">
+                            <div class="ep-stat"><span class="k">Right now</span>
+                                <span class="v @(busyUntil is null ? (InHours ? "free" : "") : "busy")">@(busyUntil is { } b2 ? $"Busy until {Hm(b2)}" : InHours ? "Free" : "Outside office hours")</span></div>
+                            @if (nextFree is { } nf)
+                            {
+                                <span class="ep-vs" aria-hidden="true"></span>
+                                <div class="ep-stat"><span class="k">Next free</span><span class="v free">@Hm(nf.Start) – @Hm(nf.End)</span></div>
+                            }
+                            <div class="ep-btns">
+                                <a class="ep-pill m-calendar" href="@PLinks.Calendar(person.Nik)"><span class="ic"><i data-lucide="calendar-search"></i></span>Find a time</a>
+                                @if (nextFree is { } nf2)
                                 {
-                                    var report = r;
-                                    <div class="notif-row" role="listitem" @onclick="() => OpenPerson(report.Nik)">
-                                        <PersonAvatar Nik="@report.Nik" Name="@report.Name" Size="34" Decorative="true" />
-                                        <div class="notif-row-main">
-                                            <div class="notif-row-t">@report.Name</div>
-                                            <div class="notif-row-s">Direct report</div>
-                                        </div>
-                                        <i data-lucide="chevron-right" style="width:14px;height:14px;color:var(--ink-3);flex-shrink:0"></i>
-                                    </div>
+                                    <a class="ep-pill m-meeting" href="@MeetingUrl(nf2.Start)"><span class="ic"><i data-lucide="calendar-plus"></i></span>Invite at @Hm(nf2.Start)</a>
                                 }
                             </div>
+                        </div>
+                        <div class="ep-tl" role="img" aria-label="@TimelineLabel()">
+                            @for (var h = DayStart + 1; h < DayEnd; h++) { <span class="g" style="left:@Pct(h)"></span> }
+                            @foreach (var blk in dayBlocks)
+                            {
+                                <span class="b @(blk.Tentative ? "tent" : "")" style="left:calc(@Pct(H(blk.Start)) + 2px);width:calc(@Span(blk.Start, blk.End) - 4px)">@(H(blk.End) - H(blk.Start) >= 0.75 ? (blk.Tentative ? "Tentative" : "Busy") : "")</span>
+                            }
+                            @if (nextFree is { } nf3)
+                            {
+                                <span class="f" style="left:calc(@Pct(H(nf3.Start)) + 2px);width:calc(@Span(nf3.Start, nf3.End) - 4px)">@(H(nf3.End) - H(nf3.Start) >= 0.75 ? "Free" : "")</span>
+                            }
+                            @if (InHours)
+                            {
+                                <span class="now" style="left:@Pct(H(DateTime.Now))"><span>@DateTime.Now.ToString("HH:mm")</span></span>
+                            }
+                        </div>
+                        <div class="ep-ticks" aria-hidden="true">
+                            @for (var h = DayStart; h <= DayEnd; h++) { <span style="left:@Pct(h)" class="@(h == DayStart ? "first" : h == DayEnd ? "last" : "")">@h.ToString("00"):00</span> }
+                        </div>
+                    }
+                </section>
+
+                @* ---- Same unit ---- *@
+                @if (mates.Count > 0)
+                {
+                    <section class="dw-card m-team" aria-label="Same unit">
+                        <header class="dw-ch"><span class="ic"><i data-lucide="users"></i></span><h3>Same unit</h3><span class="ct">@matesTotal</span></header>
+                        <div class="ep-team">
+                            @foreach (var mate in mates)
+                            {
+                                <a class="li" href="@PLinks.Profile(mate.Nik)">
+                                    <PersonAvatar Nik="@mate.Nik" Name="@mate.Name" Size="34" Status="@mate.Status" Decorative="true" />
+                                    <div class="tx"><b>@mate.Name</b><span>@StatusLabel(mate.Status, mate.LastSeenAt)</span></div>
+                                </a>
+                            }
+                        </div>
+                        @if (matesTotal > mates.Count) { <p class="ep-note">and @(matesTotal - mates.Count) more</p> }
+                    </section>
+                }
+            </div>
+
+            <div class="ep-col">
+                @* ---- Contact ---- *@
+                <section class="dw-card m-mail" aria-label="Contact">
+                    <header class="dw-ch"><span class="ic"><i data-lucide="contact"></i></span><h3>Contact</h3></header>
+                    <div class="ep-group">
+                        <div class="ep-row"><span class="k">Email</span>
+                            <a class="v link" href="@PLinks.Mail(person.Nik)" title="Write in iPop Mail">@person.Email</a>
+                            <button type="button" class="ep-cp" title="Copy email" aria-label="Copy email" @onclick='() => Copy(person.Email, "Email")'><i data-lucide="copy"></i></button></div>
+                        @if (!string.IsNullOrWhiteSpace(person.Extension))
+                        {
+                            <div class="ep-row"><span class="k">Extension</span><span class="v">@person.Extension</span>
+                                <button type="button" class="ep-cp" title="Copy extension" aria-label="Copy extension" @onclick='() => Copy(person.Extension!, "Extension")'><i data-lucide="copy"></i></button></div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(person.Location))
+                        {
+                            <div class="ep-row"><span class="k">Location</span><span class="v">@person.Location</span><span class="ep-cp-sp"></span></div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(person.Site))
+                        {
+                            <div class="ep-row"><span class="k">Site</span><span class="v">@person.Site</span><span class="ep-cp-sp"></span></div>
                         }
                     </div>
-                </div>
+                </section>
+
+                @* ---- Organization ---- *@
+                <section class="dw-card m-dir" aria-label="Organization">
+                    <header class="dw-ch"><span class="ic"><i data-lucide="network"></i></span><h3>Organization</h3></header>
+                    @if (manager is not null)
+                    {
+                        <div class="ep-lbl">Reports to</div>
+                        <a class="li" href="@PLinks.Profile(manager.Nik)">
+                            <PersonAvatar Nik="@manager.Nik" Name="@manager.Name" Size="34" Status="@manager.Status" Decorative="true" />
+                            <div class="tx"><b>@manager.Name</b><span>Direct manager</span></div>
+                            <i data-lucide="chevron-right" class="chev"></i>
+                        </a>
+                        <span class="ep-spine" aria-hidden="true"></span>
+                    }
+                    <div class="li ep-self" aria-current="page">
+                        <PersonAvatar Nik="@person.Nik" Name="@person.Name" Size="34" Decorative="true" />
+                        <div class="tx"><b>@person.Name</b><span>This profile</span></div>
+                    </div>
+                    @if (reportsLoading)
+                    {
+                        <p class="ep-note" role="status">Loading…</p>
+                    }
+                    else if (reports.Count > 0)
+                    {
+                        <span class="ep-spine" aria-hidden="true"></span>
+                        <div class="ep-lbl">Direct reports · @reports.Count</div>
+                        @foreach (var report in reports)
+                        {
+                            <a class="li" href="@PLinks.Profile(report.Nik)">
+                                <PersonAvatar Nik="@report.Nik" Name="@report.Name" Size="34" Status="@report.Status" Decorative="true" />
+                                <div class="tx"><b>@report.Name</b><span>Direct report</span></div>
+                                <i data-lucide="chevron-right" class="chev"></i>
+                            </a>
+                        }
+                    }
+                </section>
             </div>
         </div>
     }
-
+</div>
 </div>
 }
 
@@ -175,17 +237,31 @@ else
     [CascadingParameter] public MainLayout Layout { get; set; } = default!;
     [Parameter] public string Nik { get; set; } = "";
 
-    private record PersonRow(string Nik, string Name, string? Position, string? Department, string? Site,
+    private record PersonRow(string Nik, string Name, string? Position, string? Department, string? DepartmentCode, string? Site,
         string? Manager, string Email, string? Extension, string? Location, string Status, string? PhotoPath,
         DateTime? LastSeenAt = null);
-    private record ReportRow(string Nik, string Name, string? Position);
+    private record ReportRow(string Nik, string Name, string? Position, string Status = "off");
+    private record Mate(string Nik, string Name, string Status, DateTime? LastSeenAt);
+    private record Block(DateTime Start, DateTime End, bool Tentative);
+
+    // Office day shown on the Today strip (local time).
+    private const int DayStart = 8, DayEnd = 17, MaxMates = 12;
 
     private PersonRow? person;
     private ReportRow? manager;
     private List<ReportRow> reports = [];
+    private List<Mate> mates = [];
+    private int matesTotal;
+    private string? unitName;
+    private List<Block> dayBlocks = [];
+    private DateTime? busyUntil;
+    private (DateTime Start, DateTime End)? nextFree;
     private bool loading = true;
     private bool reportsLoading;
+    private bool dayLoading;
+    private bool dayFailed;
     private bool isFav;
+    private int loadVersion;
 
     protected override void OnInitialized()
     {
@@ -194,55 +270,178 @@ else
         Auth.PresenceChanged += OnPresenceChanged;
     }
 
+    private string? loadedNik;
+
     protected override async Task OnParametersSetAsync()
     {
+        // The cascading MainLayout re-sends parameters on every shell render; reload only when
+        // the person actually changes, or the page blanks and re-fetches on each presence tick.
+        if (Nik == loadedNik) return;
+        loadedNik = Nik;
+        var version = ++loadVersion;
         loading = true;
         person = null;
         manager = null;
         reports = [];
+        mates = [];
+        matesTotal = 0;
+        unitName = null;
+        dayBlocks = [];
+        busyUntil = null;
+        nextFree = null;
         try
         {
             var d = PLinks.Nik(Nik) is { } key ? await Auth.GetAsync<DirectoryEmployeeDto>($"/api/chat/users/{Uri.EscapeDataString(key)}") : null;
-            if (d is not null)
+            if (d is not null && version == loadVersion)
             {
-                person = new PersonRow(d.Nik, d.Name, d.Position, d.Department, d.Site, d.Manager, d.Email, d.Extension, d.Location, d.Status, d.PhotoPath, d.LastSeenAt);
+                person = new PersonRow(d.Nik, d.Name, d.Position, d.Department, d.DepartmentCode, d.Site, d.Manager, d.Email, d.Extension, d.Location, d.Status, d.PhotoPath, d.LastSeenAt);
                 await Favorites.EnsureLoadedAsync();
                 isFav = Favorites.IsFavorite(d.Nik);
-                _ = LoadRelationsAsync(d);
+                _ = LoadRelationsAsync(d.Nik, version);
+                if (!Phone.IsPhone)
+                {
+                    _ = LoadDayAsync(d.Nik, version);
+                    _ = LoadMatesAsync(d.Nik, d.DepartmentCode, version);
+                }
             }
         }
         catch { person = null; }
         finally { loading = false; }
     }
 
-    private async Task LoadRelationsAsync(DirectoryEmployeeDto d)
+    private async Task LoadRelationsAsync(string nik, int version)
     {
         // Relasi organisasi dari endpoint khusus (atasan + bawahan dalam satu respons).
         reportsLoading = true;
         try
         {
-            var rel = await Auth.GetAsync<RelationsDto>($"/api/directory/employees/{Uri.EscapeDataString(d.Nik)}/relations");
-            if (rel is not null)
+            var rel = await Auth.GetAsync<RelationsDto>($"/api/directory/employees/{Uri.EscapeDataString(nik)}/relations");
+            if (rel is not null && version == loadVersion)
             {
-                manager = rel.Manager is null ? null : new ReportRow(rel.Manager.Nik, rel.Manager.Name, rel.Manager.Position);
-                reports = rel.Reports.Select(r => new ReportRow(r.Nik, r.Name, r.Position)).ToList();
+                manager = rel.Manager is null ? null : new ReportRow(rel.Manager.Nik, rel.Manager.Name, rel.Manager.Position, rel.Manager.Status ?? "off");
+                reports = rel.Reports.Select(r => new ReportRow(r.Nik, r.Name, r.Position, r.Status ?? "off")).ToList();
             }
         }
         catch { }
         finally
         {
-            reportsLoading = false;
-            StateHasChanged();
+            if (version == loadVersion) reportsLoading = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
+    /// Today's busy blocks from the shared free/busy endpoint (no titles, same rule as Find a time).
+    private async Task LoadDayAsync(string nik, int version)
+    {
+        dayLoading = true;
+        dayFailed = false;
+        try
+        {
+            var from = DateTime.Today.AddHours(DayStart);
+            var to = DateTime.Today.AddHours(DayEnd);
+            var url = $"/api/calendar/freebusy?niks={Uri.EscapeDataString(nik)}&minutes=30" +
+                $"&from={Uri.EscapeDataString(from.ToUniversalTime().ToString("o"))}&to={Uri.EscapeDataString(to.ToUniversalTime().ToString("o"))}";
+            var res = await Auth.GetAsync<FreeBusyDto>(url);
+            if (version != loadVersion) return;
+            var lane = res?.Lanes.FirstOrDefault(l => string.Equals(l.Nik, nik, StringComparison.OrdinalIgnoreCase));
+            if (res is null) { dayFailed = true; return; }
+            dayBlocks = Merge((lane?.Blocks ?? [])
+                .Select(b => new Block(Clamp(b.StartAt.ToLocalTime(), from, to), Clamp(b.EndAt.ToLocalTime(), from, to), b.Tentative))
+                .Where(b => b.End > b.Start));
+            ComputeNow(DateTime.Now, from, to);
+        }
+        catch { if (version == loadVersion) dayFailed = true; }
+        finally
+        {
+            if (version == loadVersion) dayLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private static DateTime Clamp(DateTime t, DateTime lo, DateTime hi) => t < lo ? lo : t > hi ? hi : t;
+
+    /// Overlapping blocks become one; a block is tentative only when everything in it is.
+    private static List<Block> Merge(IEnumerable<Block> blocks)
+    {
+        var list = new List<Block>();
+        foreach (var b in blocks.OrderBy(b => b.Start))
+        {
+            if (list.Count > 0 && b.Start <= list[^1].End)
+            {
+                var last = list[^1];
+                list[^1] = new Block(last.Start, b.End > last.End ? b.End : last.End, last.Tentative && b.Tentative);
+            }
+            else list.Add(b);
+        }
+        return list;
+    }
+
+    private void ComputeNow(DateTime now, DateTime dayFrom, DateTime dayTo)
+    {
+        busyUntil = dayBlocks.FirstOrDefault(b => b.Start <= now && now < b.End)?.End;
+        nextFree = null;
+        var cursor = busyUntil ?? (now > dayFrom ? now : dayFrom);
+        if (cursor >= dayTo) return;
+        // Round up to the next quarter hour so the invite starts on a sensible time.
+        var mins = (int)Math.Ceiling(cursor.TimeOfDay.TotalMinutes / 15.0) * 15;
+        cursor = cursor.Date.AddMinutes(mins);
+        foreach (var b in dayBlocks.Where(b => b.End > cursor))
+        {
+            if (b.Start - cursor >= TimeSpan.FromMinutes(30)) { nextFree = (cursor, b.Start); return; }
+            if (b.End > cursor) cursor = b.End;
+        }
+        if (dayTo - cursor >= TimeSpan.FromMinutes(30)) nextFree = (cursor, dayTo);
+    }
+
+    /// Colleagues in the same unit (Division, else Department), from the normal directory listing.
+    private async Task LoadMatesAsync(string nik, string? departmentCode, int version)
+    {
+        if (string.IsNullOrWhiteSpace(departmentCode)) return;
+        try
+        {
+            var page = await Auth.GetAsync<DirectoryPageDto>($"/api/directory/employees?departmentCode={Uri.EscapeDataString(departmentCode)}&pageSize=1000&sort=name");
+            if (page is null || version != loadVersion) return;
+            var self = page.Items.FirstOrDefault(e => string.Equals(e.Nik, nik, StringComparison.OrdinalIgnoreCase));
+            var key = self?.UnitKey;
+            unitName = self?.UnitName;
+            var same = page.Items
+                .Where(e => !string.Equals(e.Nik, nik, StringComparison.OrdinalIgnoreCase))
+                .Where(e => key is null ? e.DepartmentCode == departmentCode : e.UnitKey == key)
+                .OrderBy(e => e.Status switch { "on" => 0, "busy" => 1, "away" => 2, _ => 3 }).ThenBy(e => e.Name)
+                .ToList();
+            matesTotal = same.Count;
+            mates = same.Take(MaxMates).Select(e => new Mate(e.Nik, e.Name, e.Status, e.LastSeenAt)).ToList();
+        }
+        catch { }
+        finally { await InvokeAsync(StateHasChanged); }
+    }
+
     private sealed record RelationsDto(RelationPerson? Manager, RelationPerson[] Reports);
-    private sealed record RelationPerson(string Nik, string Name, string? Position);
+    private sealed record RelationPerson(string Nik, string Name, string? Position, string? Status);
+    private sealed record FreeBusyBlockDto(DateTime StartAt, DateTime EndAt, bool Tentative);
+    private sealed record FreeBusyLaneDto(string Nik, string Name, List<FreeBusyBlockDto> Blocks);
+    private sealed record FreeBusyDto(List<FreeBusyLaneDto> Lanes);
+
+    // ---- Today strip geometry ----
+    private static bool InHours => DateTime.Now.Hour >= DayStart && DateTime.Now.Hour < DayEnd;
+    private static double H(DateTime t) => t.TimeOfDay.TotalHours;
+    private static string Pct(double hour) => (Math.Clamp((hour - DayStart) / (DayEnd - DayStart), 0, 1) * 100).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "%";
+    private static string Span(DateTime a, DateTime b) => ((H(b) - H(a)) / (DayEnd - DayStart) * 100).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "%";
+    private static string Hm(DateTime t) => t.ToString("HH:mm");
+
+    private string TimelineLabel() => dayBlocks.Count == 0
+        ? "Free all day"
+        : "Busy " + string.Join(", ", dayBlocks.Select(b => $"{Hm(b.Start)}–{Hm(b.End)}"));
+
+    private string MeetingUrl(DateTime? start) => person is null ? "/calendar" :
+        CalLinks.NewMeeting(niks: [person.Nik], start: start, minutes: start is null ? null : 30, from: $"Meeting with {person.Name}");
 
     private void OnPresenceChanged(string nik, string status) => _ = InvokeAsync(() =>
     {
         if (person is not null && string.Equals(person.Nik, nik, StringComparison.OrdinalIgnoreCase))
             person = person with { Status = status, LastSeenAt = status == "off" ? DateTime.UtcNow : person.LastSeenAt };
+        var i = mates.FindIndex(m => string.Equals(m.Nik, nik, StringComparison.OrdinalIgnoreCase));
+        if (i >= 0) mates[i] = mates[i] with { Status = status, LastSeenAt = status == "off" ? DateTime.UtcNow : mates[i].LastSeenAt };
         StateHasChanged();
     });
 
@@ -250,6 +449,17 @@ else
     {
         if (person is null) return;
         isFav = await Favorites.ToggleAsync(person.Nik);
+        Toasts.Show(isFav ? "Added to favorites" : "Removed from favorites", ToastKind.Success);
+    }
+
+    private async Task Copy(string text, string label)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            Toasts.Show($"{label} copied to clipboard", ToastKind.Success);
+        }
+        catch { Toasts.Show("Could not copy to the clipboard.", ToastKind.Error); }
     }
 
     private void OpenChat() { if (person is not null) Nav.NavigateTo(PLinks.Chat(person.Nik)); }
