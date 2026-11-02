@@ -1,0 +1,19 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ipop
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/HitterD/iPop-Integrated-Portal-for-Opertational-Performance-.git
+    targetRevision: main
+    path: deploy/k8s/apps/ipop
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ipop
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true, ServerSideApply=true]

@@ -1,0 +1,16 @@
+# One shared volume for everything the API keeps on disk (uploads waiting for the NAS, news videos,
+# recording spool, Notifier releases, the Android APK). Longhorn keeps 2 copies on different nodes,
+# so the API pod can move to another node and find its files. ReadWriteMany so Web (2 pods) and
+# Egress can read the same folders.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ipop-data
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 30Gi

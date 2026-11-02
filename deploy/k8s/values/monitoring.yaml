@@ -1,0 +1,122 @@
+# Prometheus + Alertmanager + Grafana + node/kube-state exporters. Metrics kept 15 days.
+crds:
+  enabled: true
+fullnameOverride: kps
+# k3s runs these inside its own binary; scraping them separately only produces false alerts.
+kubeControllerManager: { enabled: false }
+kubeScheduler: { enabled: false }
+kubeProxy: { enabled: false }
+kubeEtcd: { enabled: false }
+defaultRules:
+  rules:
+    etcd: false
+    kubeControllerManager: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    kubeProxy: false
+
+prometheus:
+  prometheusSpec:
+    retention: 15d
+    retentionSize: 18GB
+    resources: { requests: { cpu: 200m, memory: 1Gi }, limits: { memory: 2Gi } }
+    # Pick up ServiceMonitors / PodMonitors / rules from every namespace (iPop, CNPG, Traefik).
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: [ReadWriteOnce]
+          resources: { requests: { storage: 20Gi } }
+
+alertmanager:
+  alertmanagerSpec:
+    resources: { requests: { cpu: 10m, memory: 64Mi }, limits: { memory: 128Mi } }
+    # SMTP password: secret alertmanager-smtp (created by bootstrap/secrets.sh, never in git).
+    secrets: [alertmanager-smtp]
+  config:
+    global:
+      resolve_timeout: 5m
+      smtp_smarthost: mail.kapalapi.co.id:465
+      smtp_from: sysadmin.sja@kapalapi.co.id
+      smtp_auth_username: sysadmin.sja@kapalapi.co.id
+      smtp_auth_password_file: /etc/alertmanager/secrets/alertmanager-smtp/password
+      smtp_require_tls: false          # port 465 is implicit TLS
+    route:
+      receiver: ict-email
+      group_by: [alertname, namespace]
+      group_wait: 1m
+      group_interval: 10m
+      repeat_interval: 12h
+      routes:
+        - receiver: "null"
+          matchers: ['alertname =~ "Watchdog|InfoInhibitor"']
+    receivers:
+      - name: "null"
+      - name: ict-email
+        email_configs:
+          - to: bagastyo.indrastoto@kapalapi.co.id
+            send_resolved: true
+            headers:
+              Subject: '[iPop cluster] {{ .Status | toUpper }} {{ .CommonLabels.alertname }}'
+    inhibit_rules:
+      - source_matchers: ['severity = critical']
+        target_matchers: ['severity = warning']
+        equal: [alertname, namespace]
+
+grafana:
+  admin:
+    existingSecret: grafana-admin       # created by bootstrap/secrets.sh
+    userKey: admin-user
+    passwordKey: admin-password
+  defaultDashboardsTimezone: Asia/Jakarta
+  resources: { requests: { cpu: 50m, memory: 192Mi }, limits: { memory: 512Mi } }
+  persistence:
+    enabled: true
+    storageClassName: local-path
+    size: 2Gi
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts: [grafana.192.168.2.113.nip.io]
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      uid: loki
+      url: http://loki-gateway.monitoring.svc
+      access: proxy
+  sidecar:
+    dashboards:
+      enabled: true
+      searchNamespace: ALL
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: community
+          folder: Community
+          type: file
+          options: { path: /var/lib/grafana/dashboards/community }
+  dashboards:
+    community:
+      cloudnative-pg:
+        gnetId: 20417
+        revision: 4
+        datasource: Prometheus
+      traefik:
+        gnetId: 17346
+        revision: 9
+        datasource: Prometheus
+      node-exporter-full:
+        gnetId: 1860
+        revision: 37
+        datasource: Prometheus
+
+kube-state-metrics:
+  resources: { requests: { cpu: 10m, memory: 64Mi }, limits: { memory: 192Mi } }
+prometheus-node-exporter:
+  resources: { requests: { cpu: 10m, memory: 32Mi }, limits: { memory: 64Mi } }
+prometheusOperator:
+  resources: { requests: { cpu: 20m, memory: 96Mi }, limits: { memory: 256Mi } }

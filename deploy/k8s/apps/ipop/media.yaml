@@ -1,0 +1,245 @@
+# LiveKit (group calls + meeting rooms), Egress (recordings) and ONLYOFFICE.
+#
+# LiveKit uses the host network: media flows straight between browsers and the node on
+# TCP 7881 + UDP 50000-50100 + TURN UDP 3478. It runs on a node labelled ipop/media=true
+# (ipop-01 preferred, ipop-02 standby) and advertises that node's own IP (NODE_IP), so after a
+# failover clients simply get the other node's address in their next join token.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: livekit-config
+data:
+  livekit.yaml: |
+    port: 7880
+    bind_addresses: [""]
+    rtc:
+      tcp_port: 7881
+      port_range_start: 50000
+      port_range_end: 50100
+      use_external_ip: false
+    turn:
+      enabled: true
+      udp_port: 3478
+    redis:
+      address: livekit-redis:6379
+    logging:
+      level: info
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: livekit
+  labels: { app.kubernetes.io/name: livekit }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }        # host ports: two copies cannot share a node
+  selector:
+    matchLabels: { app.kubernetes.io/name: livekit }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: livekit }
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions: [{ key: ipop/media, operator: In, values: ["true"] }]
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions: [{ key: ipop/media-primary, operator: In, values: ["true"] }]
+      tolerations:
+        - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 60 }
+        - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 60 }
+      containers:
+        - name: livekit
+          image: livekit/livekit-server:v1.13.11
+          args: ["--config", "/etc/livekit/livekit.yaml"]
+          env:
+            # Advertise the node's own LAN address (where hostNetwork listens).
+            - name: NODE_IP
+              valueFrom: { fieldRef: { fieldPath: status.hostIP } }
+            - name: LIVEKIT_KEYS
+              valueFrom: { secretKeyRef: { name: livekit-keys, key: keys } }
+          volumeMounts:
+            - { name: config, mountPath: /etc/livekit }
+          readinessProbe:
+            httpGet: { path: /, port: 7880 }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "1", memory: 1Gi }
+            limits: { memory: 3Gi }
+      volumes:
+        - name: config
+          configMap: { name: livekit-config }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: livekit
+  labels: { app.kubernetes.io/name: livekit }
+spec:
+  selector: { app.kubernetes.io/name: livekit }
+  ports: [{ port: 7880, targetPort: 7880, name: http }]
+---
+# LiveKit's own Redis (room state shared with Egress). Separate from the SignalR Redis.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: livekit-redis
+  labels: { app.kubernetes.io/name: livekit-redis }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: livekit-redis }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: livekit-redis }
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          args: ["--save", "", "--appendonly", "no"]
+          ports: [{ containerPort: 6379 }]
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 256Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: livekit-redis
+spec:
+  selector: { app.kubernetes.io/name: livekit-redis }
+  ports: [{ port: 6379, targetPort: 6379 }]
+---
+# Egress records meeting rooms (720p30, one at a time) into the shared volume's spool folder;
+# the API's MeetingRecordingWorker then moves the file to the NAS.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: egress-config
+data:
+  egress.yaml: |
+    ws_url: ws://livekit.ipop.svc:7880
+    redis:
+      address: livekit-redis:6379
+    health_port: 8080
+    log_level: info
+    cpu_cost:
+      room_composite_cpu_cost: 2.0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: egress
+  labels: { app.kubernetes.io/name: egress }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app.kubernetes.io/name: egress }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: egress }
+    spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 50
+              preference:
+                matchExpressions: [{ key: ipop/media, operator: NotIn, values: ["true"] }]
+      securityContext:
+        fsGroup: 1654
+      containers:
+        - name: egress
+          image: livekit/egress:v1.15.0
+          env:
+            - { name: EGRESS_CONFIG_FILE, value: /etc/egress/egress.yaml }
+            - name: LIVEKIT_KEYS
+              valueFrom: { secretKeyRef: { name: livekit-keys, key: keys } }
+            # egress reads api_key/api_secret from these when not in the file
+            - name: EGRESS_API_KEY
+              valueFrom: { secretKeyRef: { name: livekit-keys, key: api-key } }
+            - name: EGRESS_API_SECRET
+              valueFrom: { secretKeyRef: { name: livekit-keys, key: api-secret } }
+          securityContext:
+            capabilities: { add: [SYS_ADMIN] }   # Chrome sandbox, as in the old docker-compose
+          volumeMounts:
+            - { name: config, mountPath: /etc/egress }
+            - { name: data, mountPath: /out, subPath: recordings-spool }
+          resources:
+            requests: { cpu: "1", memory: 1Gi }
+            limits: { cpu: "4", memory: 2Gi }
+      volumes:
+        - name: config
+          configMap: { name: egress-config }
+        - name: data
+          persistentVolumeClaim: { claimName: ipop-data }
+---
+# ONLYOFFICE Document Server (same image as today). Data on Longhorn so it can move nodes.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: onlyoffice-data
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: onlyoffice
+  labels: { app.kubernetes.io/name: onlyoffice }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app.kubernetes.io/name: onlyoffice }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: onlyoffice }
+    spec:
+      tolerations:
+        - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 60 }
+        - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 60 }
+      containers:
+        - name: onlyoffice
+          image: onlyoffice/documentserver:9.4.0
+          env:
+            - { name: JWT_ENABLED, value: "false" }
+            - { name: ALLOW_PRIVATE_IP_ADDRESS, value: "true" }
+            - { name: USE_UNAUTHORIZED_STORAGE, value: "true" }
+          ports: [{ containerPort: 80, name: http }]
+          volumeMounts:
+            - { name: data, mountPath: /var/www/onlyoffice/Data, subPath: data }
+            - { name: data, mountPath: /var/lib/onlyoffice, subPath: lib }
+            - { name: data, mountPath: /usr/share/fonts/truetype/custom, subPath: fonts }
+          startupProbe:
+            httpGet: { path: /healthcheck, port: http }
+            periodSeconds: 10
+            failureThreshold: 60
+          livenessProbe:
+            httpGet: { path: /healthcheck, port: http }
+            periodSeconds: 30
+            failureThreshold: 5
+          resources:
+            requests: { cpu: 500m, memory: 2Gi }
+            limits: { memory: 4Gi }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: onlyoffice-data }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: onlyoffice
+  labels: { app.kubernetes.io/name: onlyoffice }
+spec:
+  selector: { app.kubernetes.io/name: onlyoffice }
+  ports: [{ port: 80, targetPort: http, name: http }]

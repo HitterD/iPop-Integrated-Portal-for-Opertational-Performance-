@@ -1,0 +1,60 @@
+name: CI
+
+# Tests on every PR and push to main. deploy.yml builds images only after this passes on main.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+    secrets:
+      DEVEXPRESS_NUGET_FEED:
+        required: true
+      DEVEXPRESS_LICENSE:
+        required: true
+
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  dotnet:
+    name: .NET tests
+    runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Jakarta
+      DOTNET_NOLOGO: "1"
+      # DevExpress reads its license from this variable at build time.
+      DevExpress_License: ${{ secrets.DEVEXPRESS_LICENSE }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Fonts for DevExpress PDF rendering
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libfontconfig1 libfreetype6 fonts-dejavu-core fonts-liberation
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - name: DevExpress package feed
+        env:
+          DX_FEED: ${{ secrets.DEVEXPRESS_NUGET_FEED }}
+        run: |
+          if [ -z "$DX_FEED" ]; then echo "::error::Secret DEVEXPRESS_NUGET_FEED is not set (see docs/deploy/k3s/03-github-secrets.md)"; exit 1; fi
+          dotnet nuget add source "$DX_FEED" -n devexpress
+      - name: Test
+        run: dotnet test tests/IPop.Tests/IPop.Tests.csproj -c Release
+
+  js:
+    name: JavaScript tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Run node tests
+        run: |
+          set -e
+          for f in tests/*.test.cjs tests/*.test.mjs; do echo "== $f"; node "$f"; done

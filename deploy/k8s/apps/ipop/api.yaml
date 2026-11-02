@@ -1,0 +1,81 @@
+# iPop API: ONE replica on purpose. The code keeps presence, calls, SSO flows, Notifier pairing and
+# ONLYOFFICE versions in memory and its ~25 background workers have no leader lock, so two copies
+# would send mail twice and lose calls. Recreate = the old pod stops before the new one starts.
+# High availability comes from Kubernetes moving the pod when a node dies (~1–2 min).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ipop-api
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  labels: { app.kubernetes.io/name: ipop-api }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels: { app.kubernetes.io/name: ipop-api }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: ipop-api }
+    spec:
+      imagePullSecrets: [{ name: ghcr }]
+      terminationGracePeriodSeconds: 30
+      # Leave the media node to LiveKit when possible.
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 50
+              preference:
+                matchExpressions: [{ key: ipop/media, operator: NotIn, values: ["true"] }]
+      tolerations:
+        # Leave a dead node after 60 s instead of the default 5 min.
+        - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 60 }
+        - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 60 }
+      securityContext:
+        fsGroup: 1654
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: api
+          image: ipop-api
+          ports: [{ containerPort: 8080, name: http }]
+          envFrom:
+            - configMapRef: { name: ipop-api-env }
+            - secretRef: { name: ipop-api-secrets }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: firebase, mountPath: /secrets/firebase, readOnly: true }
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests: { cpu: 500m, memory: 1Gi }
+            limits: { memory: 2560Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: ipop-data }
+        - name: firebase
+          secret:
+            secretName: ipop-firebase
+            optional: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ipop-api
+  labels: { app.kubernetes.io/name: ipop-api }
+spec:
+  selector: { app.kubernetes.io/name: ipop-api }
+  ports: [{ port: 80, targetPort: http, name: http }]

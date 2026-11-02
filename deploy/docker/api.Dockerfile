@@ -41,8 +41,9 @@ ENV ASPNETCORE_ENVIRONMENT=Production \
     DOTNET_gcServer=0
 WORKDIR /app
 COPY --from=build /out ./
+COPY --chmod=755 deploy/docker/api-entrypoint.sh /usr/local/bin/ipop-api
 # Upload/cache folders under the content root live on a persistent volume mounted at /data.
 RUN mkdir -p /data && chown $APP_UID /data
 USER $APP_UID
 EXPOSE 8080
-ENTRYPOINT ["dotnet", "IPop.Api.dll", "--contentRoot", "/data"]
+ENTRYPOINT ["/usr/local/bin/ipop-api"]

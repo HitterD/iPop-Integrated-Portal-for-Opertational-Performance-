@@ -1,0 +1,70 @@
+# iPop-specific alerts on top of the stock kube-prometheus rules (node down, disk, pods crash-looping…).
+# Each one is emailed to ICT by Alertmanager. Replaces the disk part of the old OpsHealthWorker.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ipop-alerts
+  namespace: monitoring
+spec:
+  groups:
+    - name: ipop.disk
+      rules:
+        - alert: NodeDiskAlmostFull
+          expr: (node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay"}) < 0.15
+          for: 15m
+          labels: { severity: warning }
+          annotations:
+            summary: "Disk on {{ $labels.instance }} below 15% free"
+            description: "Free space: {{ $value | humanizePercentage }}. Look at Grafana › Node Exporter Full."
+        - alert: NodeDiskCritical
+          expr: (node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay"}) < 0.07
+          for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: "Disk on {{ $labels.instance }} below 7% free"
+    - name: ipop.app
+      rules:
+        - alert: IpopApiDown
+          expr: sum(kube_deployment_status_replicas_available{namespace="ipop",deployment="ipop-api"}) < 1
+          for: 3m
+          labels: { severity: critical }
+          annotations:
+            summary: "iPop API has no running pod"
+            description: "Check Argo CD (app ipop) and Grafana › Explore › Loki {namespace=\"ipop\", app=\"ipop-api\"}."
+        - alert: IpopWebDown
+          expr: sum(kube_deployment_status_replicas_available{namespace="ipop",deployment="ipop-web"}) < 1
+          for: 3m
+          labels: { severity: critical }
+          annotations:
+            summary: "iPop Web has no running pod"
+        - alert: IpopDatabaseNotHealthy
+          expr: sum(cnpg_collector_up{namespace="ipop"}) < 1
+          for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: "iPop PostgreSQL is not reporting"
+        - alert: IpopDatabaseReplicaLagging
+          expr: max(cnpg_pg_replication_lag{namespace="ipop"}) > 300
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "PostgreSQL replica is {{ $value }}s behind the primary"
+        - alert: IpopBackupMissing
+          expr: (time() - max(kube_job_status_completion_time{namespace="ipop",job_name=~"ipop-db-backup-.*"})) > 30*3600
+          for: 30m
+          labels: { severity: critical }
+          annotations:
+            summary: "No successful nightly DB backup to the NAS in 30 hours"
+            description: "kubectl -n ipop get jobs | grep backup ; logs in Grafana › Loki {namespace=\"ipop\", container=\"backup\"}."
+        - alert: IpopBackupFailed
+          expr: sum(kube_job_status_failed{namespace="ipop",job_name=~"ipop-db-backup-.*"}) > 0
+          for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: "Nightly DB backup job failed"
+        - alert: IpopEtcdSnapshotMissing
+          expr: (time() - max(kube_job_status_completion_time{namespace="ipop",job_name=~"etcd-snapshot-copy-.*"})) > 30*3600
+          for: 30m
+          labels: { severity: warning }
+          annotations:
+            summary: "No etcd snapshot copied to the NAS in 30 hours"

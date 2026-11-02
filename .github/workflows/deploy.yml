@@ -1,0 +1,88 @@
+name: Build and deploy
+
+# main → tests → images on GHCR (:sha and :latest) → image tag written into deploy/k8s →
+# Argo CD in the cluster sees the commit and rolls it out. GitHub never connects to the LAN.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "deploy/k8s/apps/ipop/kustomization.yaml"   # the tag bump below must not trigger another build
+      - "docs/**"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  images:
+    name: Build and push images
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: tag
+        run: |
+          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_API=ghcr.io/${OWNER_LOWER}/ipop-api" >> $GITHUB_ENV
+          echo "IMAGE_WEB=ghcr.io/${OWNER_LOWER}/ipop-web" >> $GITHUB_ENV
+          echo "tag=${GITHUB_SHA::12}" >> $GITHUB_OUTPUT
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build & push API
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/api.Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_API }}:${{ steps.tag.outputs.tag }}
+            ${{ env.IMAGE_API }}:latest
+          secrets: |
+            dx_feed=${{ secrets.DEVEXPRESS_NUGET_FEED }}
+            dx_license=${{ secrets.DEVEXPRESS_LICENSE }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+      - name: Build & push Web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/web.Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_WEB }}:${{ steps.tag.outputs.tag }}
+            ${{ env.IMAGE_WEB }}:latest
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  release:
+    name: Point the cluster at the new images
+    needs: images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bump image tags
+        env:
+          TAG: ${{ needs.images.outputs.tag }}
+        run: |
+          sed -i -E "s/(newTag: ).*/\1\"${TAG}\"/" deploy/k8s/apps/ipop/kustomization.yaml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deploy/k8s/apps/ipop/kustomization.yaml
+          git commit -m "deploy: iPop ${TAG}" || exit 0
+          git push

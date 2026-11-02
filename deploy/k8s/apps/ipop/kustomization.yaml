@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ipop
+resources:
+  - namespace.yaml
+  - postgres.yaml
+  - redis.yaml
+  - config.yaml
+  - storage.yaml
+  - migrate-job.yaml
+  - api.yaml
+  - web.yaml
+  - ingress.yaml
+  - media.yaml
+# Image tags: written by .github/workflows/deploy.yml on every merge to main (first 12 chars of the commit).
+# Roll back = Argo CD › ipop › History and rollback, or set both tags to an older commit and push.
+images:
+  - name: ipop-api
+    newName: ghcr.io/hitterd/ipop-api
+    newTag: "initial"
+  - name: ipop-web
+    newName: ghcr.io/hitterd/ipop-web
+    newTag: "initial"

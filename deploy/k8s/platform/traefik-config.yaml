@@ -1,0 +1,38 @@
+# k3s's bundled Traefik, tuned for iPop:
+# - only Zoraxy (192.168.2.2) may set X-Forwarded-* (avoids the duplicate-header ONLYOFFICE error -4 we had on NPM)
+# - client IPs preserved (externalTrafficPolicy Local is not used: the VIP moves between nodes)
+# - metrics for Prometheus, access log to Loki
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    deployment:
+      replicas: 2
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+    ports:
+      web:
+        forwardedHeaders:
+          trustedIPs: ["192.168.2.2/32", "192.168.2.3/32"]
+        transport:
+          respondingTimeouts:
+            readTimeout: 0        # long uploads (mail attachments up to 500 MB)
+            writeTimeout: 0
+            idleTimeout: 3600s    # SignalR / LiveKit websockets
+      websecure:
+        forwardedHeaders:
+          trustedIPs: ["192.168.2.2/32", "192.168.2.3/32"]
+    logs:
+      access:
+        enabled: true
+    metrics:
+      prometheus:
+        serviceMonitor:
+          enabled: true
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits: { memory: 256Mi }

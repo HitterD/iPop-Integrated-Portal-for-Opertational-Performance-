@@ -1,0 +1,88 @@
+# Non-secret settings for the API. Secrets (DB password, JWT key, SMTP, NAS, LiveKit, iDesk, VAPID, OIDC)
+# live in secret ipop-api-secrets, created by bootstrap/secrets.sh and never committed.
+#
+# PHASE: "test" = copy of prod data, nothing goes out (no mail, push, iDesk, HRIS).
+# At cutover set Workers__Outbound to "true" (one-line change, push → Argo applies it).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ipop-api-env
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+data:
+  Workers__Outbound: "false"
+  Workers__OpsHealth: "false"          # disk + backup alerts come from Prometheus/Alertmanager now
+  Https__Redirect: "false"             # TLS ends at Zoraxy
+  ConnectionStrings__Redis: "redis:6379,abortConnect=false"
+  Hris__Mode: "Production"
+  Hris__BaseUrl: "http://10.10.6.51:27080"
+  # Same public address as today; change only if the domain changes.
+  App__PublicWebUrl: "https://ipop.santos.co.id"
+  Notifier__WebBase: "https://ipop.santos.co.id"
+  Oidc__Issuer: "https://ipop.santos.co.id/"
+  Oidc__WebBase: "https://ipop.santos.co.id"
+  Cors__WebOrigins__0: "https://ipop.santos.co.id"
+  Cors__WebOrigins__1: "http://192.168.2.113"
+  # Ingress pods + Zoraxy + old NPM may report the real browser address.
+  Notifier__TrustedProxies__0: "10.42.0.0/16"
+  Notifier__TrustedProxies__1: "192.168.2.2"
+  Notifier__TrustedProxies__2: "192.168.2.3"
+  Notifier__ReleasesPath: "/data/notifier/releases"
+  Notifier__LogPath: "/data/notifier-logs"
+  AndroidApp__LatestPath: "/data/android/latest.json"
+  # ONLYOFFICE runs in the cluster; the browser reaches it through the same host at /onlyoffice.
+  OnlyOffice__ServerUrl: "http://onlyoffice.ipop.svc"
+  OnlyOffice__PublicServerUrl: "https://ipop.santos.co.id/onlyoffice"
+  OnlyOffice__InternalApiUrl: "http://ipop-api.ipop.svc"
+  # LiveKit in the cluster: browsers use the public host (/rtc), the API talks to it directly.
+  Calls__LiveKit__Url: "wss://ipop.santos.co.id"
+  Calls__LiveKit__ServerUrl: "http://livekit.ipop.svc:7880"
+  # 1:1 calls: STUN on LiveKit's port 3478 (ipop-01, or ipop-02 after a failover). TURN relay stays off
+  # as on the old host: it needs a sharedSecret (pentest V-02); inside the LAN STUN is enough.
+  Calls__IceServers__0__urls__0: "stun:192.168.2.88:3478"
+  Calls__IceServers__1__urls__0: "stun:192.168.2.89:3478"
+  Calls__IceServers__2__urls: "stun:stun.l.google.com:19302"
+  MeetingRooms__DeploymentMode: "Production"
+  MeetingRooms__TemplateUrl: "http://ipop-web.ipop.svc/recording/index.html"
+  MeetingRooms__EgressOutDir: "/out"
+  MeetingRooms__SpoolDir: "/data/recordings-spool"
+  MeetingRooms__CacheDir: "/data/recordings-cache"
+  Fcm__ProjectId: "ipop-santos"
+  Fcm__ServiceAccountPath: "/secrets/firebase/service-account.json"
+  Fcm__ApplicationId: "1:866594314599:android:566901a5fb27c2c4b977c2"
+  Fcm__SenderId: "866594314599"
+  Push__Subject: "mailto:it@santos.co.id"
+  Smtp__Host: "mail.kapalapi.co.id"
+  Smtp__Port: "465"
+  Smtp__ImplicitTls: "true"
+  Smtp__User: "sysadmin.sja@kapalapi.co.id"
+  Smtp__From: "sysadmin.sja@kapalapi.co.id"
+  Smtp__FromName: "iPop"
+  Synology__ServiceAccount__Server: "ict"
+  Synology__Servers__spj: "https://192.168.2.16:30001"
+  Synology__Servers__krw: "https://10.12.2.6:30001"
+  Synology__Servers__jtb: "https://10.11.2.6:30001"
+  Synology__Servers__smg: "https://10.14.2.16:30001"
+  Synology__Servers__ict: "https://192.168.2.17:30001"
+  IDesk__BaseUrl: "https://idesk.santos.co.id/api/v1/integrations/ipop/"
+  IDesk__PublicUrl: "https://idesk.santos.co.id"
+  IDesk__ClientId: "ipop"
+  IDesk__SignInWithIpop: "true"
+  Oidc__Enabled: "true"
+  Oidc__AllowHttp: "true"
+  Logging__LogLevel__Default: "Information"
+  Logging__LogLevel__Microsoft.AspNetCore: "Warning"
+  Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command: "Warning"
+  Logging__Console__FormatterName: "simple"
+  TZ: "Asia/Jakarta"
+---
+# Web host: Android asset links + where the Notifier installer / APK are served from.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ipop-web-env
+data:
+  AndroidApp__PackageName: "id.co.santos.ipop"
+  AndroidApp__Sha256CertFingerprints__0: "D1:3E:A8:9E:2C:4A:4B:FC:27:F0:EC:47:DC:89:4C:A3:9A:B0:6E:03:E3:D8:5B:33:BE:2B:8F:90:C6:D5:D1:11"
+  AndroidApp__ApkPath: "/data/android/ipop.apk"
+  Notifier__ReleasesPath: "/data/notifier/releases"

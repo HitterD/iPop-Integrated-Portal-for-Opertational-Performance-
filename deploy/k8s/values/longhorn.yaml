@@ -1,0 +1,23 @@
+# Longhorn: replicated volumes for things that must survive a node (iPop uploads, Redis, ONLYOFFICE data).
+# Postgres does NOT use Longhorn: CloudNativePG replicates itself onto local-path disks.
+persistence:
+  defaultClass: false               # local-path stays the default; pick "longhorn" explicitly
+  defaultClassReplicaCount: 2       # 2 copies across 3 nodes: survives one node, saves disk
+  reclaimPolicy: Retain
+defaultSettings:
+  defaultReplicaCount: 2
+  storageMinimalAvailablePercentage: 15
+  replicaSoftAntiAffinity: false    # never two copies on one node
+  nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
+  defaultDataLocality: best-effort
+longhornUI:
+  replicas: 1
+ingress:
+  enabled: true
+  ingressClassName: traefik
+  host: longhorn.192.168.2.113.nip.io
+csi:
+  attacherReplicaCount: 1
+  provisionerReplicaCount: 1
+  resizerReplicaCount: 1
+  snapshotterReplicaCount: 1

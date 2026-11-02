@@ -1,0 +1,167 @@
+# Nightly backups to the Synology, same folder and rules as the old Windows task:
+#   \\192.168.2.16\sja\SJA SPJ\ICT\backup\ipop-db  ←  ipop-YYYYMMDD-HHmm.dump
+#   verified with pg_restore -l, keep 14 daily + 8 weekly (Sunday), "-manual" files never pruned,
+#   backup-status.json written next to the dumps.
+# TEST PHASE: BACKUP_FOLDER points at ipop-db-k3s-test, so these copies of the test database never mix
+# with (or prune!) the real prod dumps the old Windows task still writes to ipop-db. At cutover, switch
+# it to "SJA SPJ/ICT/backup/ipop-db" and disable the Windows task "iPop DB backup".
+# Plus the k3s etcd snapshot (cluster state) copied to .../ipop-db/etcd, keep 14.
+# Alert "IpopBackupMissing/Failed" (platform/node-alerts.yaml) emails ICT when this stops working.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nas-ipop-backup
+spec:
+  capacity: { storage: 500Gi }
+  accessModes: [ReadWriteMany]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  mountOptions: [dir_mode=0777, file_mode=0666, vers=3.0, noperm]
+  csi:
+    driver: smb.csi.k8s.io
+    volumeHandle: nas-192.168.2.16-sja-ipop-backup
+    volumeAttributes:
+      source: //192.168.2.16/sja
+    nodeStageSecretRef:
+      name: nas-smb                     # username / password of the NAS service account
+      namespace: ipop
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nas-ipop-backup
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: ""
+  volumeName: nas-ipop-backup
+  resources:
+    requests: { storage: 500Gi }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-scripts
+data:
+  db-backup.sh: |
+    #!/bin/sh
+    # Nightly pg_dump of the iPop database to the NAS (port of deploy/backup/backup-ipop-db.ps1).
+    set -eu
+    DIR="/nas/$BACKUP_FOLDER"
+    STAMP=$(TZ=Asia/Jakarta date +%Y%m%d-%H%M)
+    NAME="ipop-$STAMP.dump"
+    STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    status() { # ok error bytes tables
+      printf '{"startedAt":"%s","finishedAt":"%s","file":"%s","ok":%s,"error":%s,"bytes":%s,"tables":%s,"source":"k3s"}\n' \
+        "$STARTED" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$NAME" "$1" "$2" "$3" "$4" > "$DIR/backup-status.json" || true
+    }
+    fail() { echo "BACKUP FAILED: $1" >&2; status false "\"$1\"" 0 0; exit 1; }
+    mkdir -p "$DIR"
+    # Dump from the replica when there is one, so the primary is not slowed down.
+    HOST=ipop-db-ro; pg_isready -h "$HOST" -U ipop -d ipop -t 5 >/dev/null 2>&1 || HOST=ipop-db-rw
+    pg_dump -h "$HOST" -U ipop -d ipop -Fc -f "/tmp/$NAME" || fail "pg_dump failed"
+    TABLES=$(pg_restore -l "/tmp/$NAME" | grep -c 'TABLE DATA' || true)
+    [ "$TABLES" -ge 50 ] || fail "pg_restore could not read the dump ($TABLES tables)"
+    cp "/tmp/$NAME" "$DIR/$NAME.part" && mv "$DIR/$NAME.part" "$DIR/$NAME" || fail "copy to the NAS failed"
+    [ "$(sha256sum < "/tmp/$NAME")" = "$(sha256sum < "$DIR/$NAME")" ] || fail "copy on the NAS does not match the dump"
+    BYTES=$(stat -c %s "$DIR/$NAME")
+    # Retention: newest 14 automatic dumps + newest dump of each of the last 8 Sundays.
+    cd "$DIR"
+    ls -1 ipop-[0-9]*-[0-9]*.dump 2>/dev/null | grep -E '^ipop-[0-9]{8}-[0-9]{4}\.dump$' | sort -r > /tmp/all || true
+    head -n 14 /tmp/all > /tmp/keep
+    for f in $(cat /tmp/all); do
+      d=$(echo "$f" | cut -c6-13)
+      [ "$(date -d "${d}" +%u 2>/dev/null || echo 0)" = "7" ] && echo "$d $f"
+    done | sort -r | awk '!seen[$1]++ {print $2}' | head -n 8 >> /tmp/keep
+    for f in $(cat /tmp/all); do grep -qx "$f" /tmp/keep || rm -f -- "$f"; done
+    status true null "$BYTES" "$TABLES"
+    echo "Backup OK: $NAME ($BYTES bytes, $TABLES tables, from $HOST)"
+  etcd-copy.sh: |
+    #!/bin/sh
+    # Copies the newest k3s etcd snapshots (taken by k3s itself, see bootstrap/k3s-config.yaml) to the NAS.
+    set -eu
+    DIR="/nas/$BACKUP_FOLDER/etcd"
+    mkdir -p "$DIR"
+    n=0
+    for f in $(ls -1t /snapshots/ 2>/dev/null | head -n 2); do cp -f "/snapshots/$f" "$DIR/$NODE_NAME-$f"; n=$((n+1)); done
+    [ "$n" -gt 0 ] || { echo "no etcd snapshots on $NODE_NAME" >&2; exit 1; }
+    ls -1t "$DIR" | tail -n +15 | while read -r old; do rm -f -- "$DIR/$old"; done
+    echo "Copied $n etcd snapshot(s) from $NODE_NAME"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ipop-db-backup
+spec:
+  schedule: "0 1 * * *"               # 01:00 WIB (timeZone below)
+  timeZone: Asia/Jakarta
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: backup
+              image: ghcr.io/cloudnative-pg/postgresql:17
+              command: ["/bin/sh", "/scripts/db-backup.sh"]
+              env:
+                - { name: BACKUP_FOLDER, value: "SJA SPJ/ICT/backup/ipop-db-k3s-test" }
+                - name: PGPASSWORD
+                  valueFrom: { secretKeyRef: { name: ipop-db-app, key: password } }
+              volumeMounts:
+                - { name: nas, mountPath: /nas }
+                - { name: scripts, mountPath: /scripts }
+              resources:
+                requests: { cpu: 100m, memory: 128Mi }
+                limits: { memory: 512Mi }
+          volumes:
+            - name: nas
+              persistentVolumeClaim: { claimName: nas-ipop-backup }
+            - name: scripts
+              configMap: { name: backup-scripts }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: etcd-snapshot-copy
+spec:
+  schedule: "30 1 * * *"              # after k3s's own 00:00/12:00 snapshots
+  timeZone: Asia/Jakarta
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          # Any control-plane node has the snapshots (all three are servers).
+          nodeSelector: { node-role.kubernetes.io/control-plane: "true" }
+          tolerations: [{ operator: Exists }]
+          containers:
+            - name: copy
+              image: busybox:1.37
+              command: ["/bin/sh", "/scripts/etcd-copy.sh"]
+              env:
+                - { name: BACKUP_FOLDER, value: "SJA SPJ/ICT/backup/ipop-db-k3s-test" }
+                - name: NODE_NAME
+                  valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+              volumeMounts:
+                - { name: nas, mountPath: /nas }
+                - { name: scripts, mountPath: /scripts }
+                - { name: snapshots, mountPath: /snapshots, readOnly: true }
+              resources:
+                requests: { cpu: 10m, memory: 16Mi }
+                limits: { memory: 64Mi }
+          volumes:
+            - name: nas
+              persistentVolumeClaim: { claimName: nas-ipop-backup }
+            - name: scripts
+              configMap: { name: backup-scripts }
+            - name: snapshots
+              hostPath: { path: /var/lib/rancher/k3s/server/db/snapshots, type: Directory }

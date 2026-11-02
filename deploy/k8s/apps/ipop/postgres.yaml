@@ -1,0 +1,43 @@
+# PostgreSQL 17 by CloudNativePG: primary + 1 streaming replica on different nodes.
+# If the primary's node dies, CNPG promotes the replica (~30 s) and service ipop-db-rw follows it.
+# Local disks (local-path), not Longhorn: the replica already is the second copy.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: ipop-db
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  instances: 2
+  imageName: ghcr.io/cloudnative-pg/postgresql:17
+  primaryUpdateStrategy: unsupervised
+  enableSuperuserAccess: true          # restore + manual psql; password in secret ipop-db-superuser
+  postgresql:
+    parameters:
+      max_connections: "200"
+      shared_buffers: "1GB"
+      effective_cache_size: "3GB"
+      work_mem: "16MB"
+      maintenance_work_mem: "256MB"
+      timezone: "UTC"
+  bootstrap:
+    initdb:
+      database: ipop
+      owner: ipop
+      secret:
+        name: ipop-db-app              # created by bootstrap/secrets.sh
+  storage:
+    storageClass: local-path
+    size: 40Gi
+  walStorage:
+    storageClass: local-path
+    size: 10Gi
+  resources:
+    requests: { cpu: 500m, memory: 2Gi }
+    limits: { memory: 4Gi }
+  affinity:
+    enablePodAntiAffinity: true
+    podAntiAffinityType: required
+    topologyKey: kubernetes.io/hostname
+  monitoring:
+    enablePodMonitor: true

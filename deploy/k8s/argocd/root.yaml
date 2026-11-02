@@ -1,0 +1,18 @@
+# Applied once by hand (bootstrap/install.sh). Everything else under deploy/k8s/argocd/apps is then
+# managed by Argo CD from GitHub: change the files, push, Argo applies them.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/HitterD/iPop-Integrated-Portal-for-Opertational-Performance-.git
+    targetRevision: main
+    path: deploy/k8s/argocd/apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }

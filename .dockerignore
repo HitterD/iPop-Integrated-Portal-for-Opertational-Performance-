@@ -18,3 +18,4 @@ src/IPop.Api/news-videos
 src/IPop.Api/news-composer-media
 src/IPop.Api/logs
 src/IPop.Notifier
+!deploy/docker/api-entrypoint.sh

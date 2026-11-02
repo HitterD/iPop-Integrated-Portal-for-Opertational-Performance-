@@ -1,0 +1,6 @@
+# SMB mounts for the nightly DB backup (\\192.168.2.16\sja → ICT/backup/ipop-db).
+controller:
+  replicas: 1
+  resources:
+    csiProvisioner: { requests: { cpu: 10m, memory: 20Mi }, limits: { memory: 300Mi } }
+    smb: { requests: { cpu: 10m, memory: 20Mi }, limits: { memory: 200Mi } }
