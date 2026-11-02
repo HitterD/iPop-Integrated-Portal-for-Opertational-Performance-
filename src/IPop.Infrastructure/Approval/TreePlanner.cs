@@ -86,10 +86,8 @@ public sealed class TreePlanner(IPopDbContext db)
                 foreach (var g in Descendants(c.Code)) yield return g;
             }
         }
-        DeptNode FindOrCreateDept(DeptNode parent, string rawName, string? siteCode, bool deep)
+        DeptNode? FindDept(DeptNode parent, string rawName, bool deep)
         {
-            // Accept the existing DB name (via alias) or the workbook's own name, so a unit created from the
-            // workbook is found again on the next import.
             var keys = new HashSet<string> { TreeMapping.Key(rawName) };
             if (TreeMapping.Aliases.GetValueOrDefault(TreeMapping.Squash(rawName)) is { } alias) keys.Add(TreeMapping.Key(alias));
             var hit = Children(parent.Code).OrderBy(c => c.Code, StringComparer.Ordinal).FirstOrDefault(c => keys.Contains(TreeMapping.Key(c.Name)));
@@ -98,7 +96,22 @@ public sealed class TreePlanner(IPopDbContext db)
                 var deepHits = Descendants(parent.Code).Where(c => keys.Contains(TreeMapping.Key(c.Name))).ToList();
                 if (deepHits.Count == 1) hit = deepHits[0];
             }
-            if (hit is not null) return hit;
+            return hit;
+        }
+        DivNode? FindDiv(DeptNode dept, string rawName, string? siteCode)
+        {
+            var keys = new HashSet<string> { TreeMapping.Key(rawName) };
+            if (TreeMapping.Aliases.GetValueOrDefault(TreeMapping.Squash(rawName)) is { } alias) keys.Add(TreeMapping.Key(alias));
+            return divs.Values.Where(d => string.Equals(d.DeptCode, dept.Code, StringComparison.OrdinalIgnoreCase) && keys.Contains(TreeMapping.Key(d.Name))
+                    && (d.SiteCode is null || string.Equals(d.SiteCode, siteCode, StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(d => string.Equals(d.SiteCode, siteCode, StringComparison.OrdinalIgnoreCase) ? 0 : 1).ThenBy(d => d.Code, StringComparer.Ordinal)
+                .FirstOrDefault();
+        }
+        DeptNode FindOrCreateDept(DeptNode parent, string rawName, string? siteCode, bool deep)
+        {
+            // Accept the existing DB name (via alias) or the workbook's own name, so a unit created from the
+            // workbook is found again on the next import.
+            if (FindDept(parent, rawName, deep) is { } found) return found;
             var name = TreeMapping.Title(rawName);
             var node = new DeptNode
             {
@@ -167,13 +180,26 @@ public sealed class TreePlanner(IPopDbContext db)
                 var dash = deptName.LastIndexOf(" - ", StringComparison.Ordinal);
                 if (dash > 0 && TreeMapping.Key(deptName[(dash + 3)..]) == TreeMapping.Key(bagian))
                     deptName = deptName[..dash].Trim();
-                target = FindOrCreateDept(parent, deptName, map.Line is null ? null : siteCode, deep: true);
+                // Reuse first: the parent may already hold this name as a unit (e.g. Human Capital ›
+                // "HC Development" is a Department there) — never create a same-named sibling.
+                var existingUnit = FindDept(parent, deptName, deep: true) is null ? FindDiv(parent, deptName, siteCode) : null;
+                if (existingUnit is not null)
+                {
+                    target = parent;
+                    unit = existingUnit;
+                }
+                else
+                {
+                    target = FindOrCreateDept(parent, deptName, map.Line is null ? null : siteCode, deep: true);
 
-                var bKey = TreeMapping.Key(TreeMapping.Aliases.GetValueOrDefault(TreeMapping.Squash(bagian)) ?? bagian);
-                var placeholder = bKey.Length == 0 || bKey == TreeMapping.Key(deptName) || bKey == TreeMapping.Key(target.Name)
-                    || bKey == TreeMapping.Key(r.Department) || bKey == TreeMapping.Key(r.Division) || bKey == "OPERATION"
-                    || TreeMapping.Squash(bagian).StartsWith("PLANT ", StringComparison.Ordinal);
-                if (!placeholder) unit = FindOrCreateDiv(target, bagian, siteCode);
+                    var bKey = TreeMapping.Key(TreeMapping.Aliases.GetValueOrDefault(TreeMapping.Squash(bagian)) ?? bagian);
+                    var placeholder = bKey.Length == 0 || bKey == TreeMapping.Key(deptName) || bKey == TreeMapping.Key(target.Name)
+                        || bKey == TreeMapping.Key(r.Department) || bKey == TreeMapping.Key(r.Division) || bKey == "OPERATION"
+                        || TreeMapping.Squash(bagian).StartsWith("PLANT ", StringComparison.Ordinal);
+                    // A Bagian that names an existing sub-division (Logistic › Exim) places the person there.
+                    if (!placeholder && FindDept(target, bagian, deep: false) is { } sub) target = sub;
+                    else if (!placeholder) unit = FindOrCreateDiv(target, bagian, siteCode);
+                }
             }
 
             finalDivision[r.Nik] = unit?.Code;

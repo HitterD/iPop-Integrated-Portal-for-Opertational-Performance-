@@ -210,4 +210,42 @@ public class TreePlannerTests
         Assert.Empty(again.Creates);
         Assert.Empty(again.Moves);
     }
+
+    [Fact]
+    public async Task Plan_DepartmentNameMatchingExistingUnit_ReusesItInsteadOfDuplicating()
+    {
+        using var t = Seed(); t.AddUser("E1");
+        var hc = t.Db.Departments.Single(d => d.Code == "HC");
+        var sep = t.Db.Sites.Single(s => s.Code == "SJA 1");
+        t.Db.Divisions.Add(new Division { Id = Guid.NewGuid(), Code = "HC-HD", Name = "HC Development", DepartmentId = hc.Id, SiteId = sep.Id });
+        t.Db.SaveChanges();
+
+        var plan = await Plan(t, Row("E1", "HUMAN CAPITAL", "HC DEVELOPMENT", "TALENT ACQUISITION & ASSESSMENT"));
+
+        Assert.Empty(plan.Creates);
+        var move = Assert.Single(plan.Moves);
+        Assert.Equal("HC", move.DepartmentCode);
+        Assert.Equal("HC-HD", move.DivisionCode);
+    }
+
+    [Fact]
+    public async Task Plan_BagianMatchingChildDepartment_UsesIt()
+    {
+        using var t = Seed(); t.AddUser("E1"); t.AddUser("E2");
+        var ops = t.Db.Departments.Single(d => d.Code == "OPS");
+        var logi = new Department { Id = Guid.NewGuid(), Code = "OPS-LOGI", Name = "Logistic", ParentId = ops.Id };
+        t.Db.Departments.AddRange(logi,
+            new Department { Id = Guid.NewGuid(), Code = "OPS-LOGI-TO", Name = "Transport Operational", ParentId = logi.Id },
+            new Department { Id = Guid.NewGuid(), Code = "OPS-LOGI-EXIM", Name = "Exim", ParentId = logi.Id });
+        t.Db.SaveChanges();
+
+        var plan = await Plan(t,
+            Row("E1", "OPERATION", "LOGISTIC", "TRANSPORT OPERATION"),
+            Row("E2", "OPERATION", "LOGISTIC", "EXIM", "SJA-JAKARTA"));
+
+        Assert.Empty(plan.Creates);
+        Assert.Equal("OPS-LOGI-TO", plan.Moves.Single(m => m.Nik == "E1").DepartmentCode);
+        Assert.Null(plan.Moves.Single(m => m.Nik == "E1").DivisionCode);
+        Assert.Equal("OPS-LOGI-EXIM", plan.Moves.Single(m => m.Nik == "E2").DepartmentCode);
+    }
 }
