@@ -41,7 +41,7 @@
             <b>@selected.Count selected</b>
             <AppSelect Label="Slot" Value="@bulkSlot" ValueChanged="OnBulkSlot" Options="@SlotOptions" CssClass="apv-filter" />
             <div class="apv-bulk-picker"><AppMemberPicker Placeholder="Set to… (type a name)" Value="bulkPerson" ValueChanged="v => bulkPerson = v" /></div>
-            <button type="button" class="btn-sm primary" disabled="@(busy)" @onclick="ApplyBulk">Apply to @selected.Count</button>
+            <button type="button" class="btn-sm adm-primary" disabled="@(busy)" @onclick="ApplyBulk">Apply to @selected.Count</button>
             <button type="button" class="btn-sm" @onclick="() => selected.Clear()">Clear</button>
         </div>
     }
@@ -132,7 +132,7 @@
         <label class="apv-field"><span>With</span><AppMemberPicker Placeholder="New approver (leave empty to remove)" Value="replaceTo" ValueChanged="v => replaceTo = v" /></label>
         <div class="apv-actions">
             <button type="button" class="btn-sm" @onclick="() => replaceOpen = false">Cancel</button>
-            <button type="button" class="btn-sm primary" disabled="@(replaceFrom is null || busy)" @onclick="ApplyReplace">Replace</button>
+            <button type="button" class="btn-sm adm-primary" disabled="@(replaceFrom is null || busy)" @onclick="ApplyReplace">Replace</button>
         </div>
     </div>
 }

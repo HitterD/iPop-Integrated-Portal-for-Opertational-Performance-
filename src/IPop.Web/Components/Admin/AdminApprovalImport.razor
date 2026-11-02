@@ -64,7 +64,7 @@
                     <p class="adm-hris-result bad" role="alert"><i data-lucide="lock"></i>These Directory changes need the Directory permission. Ask an admin to apply this file.</p>
                 }
                 <h4>New units (@p.UnitsToCreate.Count)</h4>
-                <ul class="apv-list">@foreach (var u in p.UnitsToCreate.Take(Limit)) { <li><b>@u.Name</b> <small>@(u.Kind == "department" ? "Division" : "Department") · under @u.ParentCode@(u.SiteCode is null ? "" : $" · {u.SiteCode}")</small></li> }</ul>
+                <ul class="apv-list">@foreach (var u in p.UnitsToCreate.Take(Limit)) { <li><b>@u.Name</b> <small>new @(u.Kind == "department" ? "division" : "department") · @(string.IsNullOrEmpty(u.Path) ? u.ParentCode : u.Path)@(u.SiteCode is null ? "" : $" · {PlantName(u.SiteCode)}")</small></li> }</ul>
                 <h4>People moved (@p.Moves.Count)</h4>
                 <ul class="apv-list">@foreach (var m in p.Moves.Take(Limit)) { <li><b>@m.Name</b> <small>@(m.FromPath ?? "Not placed") → @m.ToPath</small></li> }</ul>
                 @if (p.Moves.Count > Limit) { <p class="adm-list-hint flat">…and @(p.Moves.Count - Limit) more.</p> }
@@ -91,7 +91,7 @@
 
     <div class="apv-actions">
         <button type="button" class="btn-sm" @onclick="Close">Cancel</button>
-        <button type="button" class="btn-sm primary apv-apply" disabled="@(!CanApply)" @onclick="Apply">
+        <button type="button" class="btn-sm adm-primary apv-apply" disabled="@(!CanApply)" @onclick="Apply">
             @(applying ? "Applying…" : preview is { } pp ? $"Apply {pp.Chains.Count} approver changes" + (pp.Moves.Count > 0 ? $" and {pp.Moves.Count} moves" : "") : "Apply")
         </button>
     </div>
@@ -115,6 +115,11 @@
 
     private bool DirectoryBlocked => preview is { } p && !CanDirectory && (p.UnitsToCreate.Count + p.Moves.Count + p.UnitsToDeactivate.Count) > 0;
     private bool CanApply => preview is { HasChanges: true } && !loading && !applying && !DirectoryBlocked;
+
+    private static string PlantName(string code) => code switch
+    {
+        "SJA 1" => "Sepanjang", "SJA-KRW" => "Karawang", "SJA-SKD" => "Sukodono", "SJA-SMG" => "Semarang", "SJA-JKT" => "Jakarta", _ => code,
+    };
 
     private static int WarningCount(ApvPreview p) => p.Warnings.Count + (p.InactiveApprovers.Count > 0 ? 1 : 0)
         + (p.UnknownApprovers.Count > 0 ? 1 : 0) + (p.UnknownEmployees.Count > 0 ? 1 : 0);

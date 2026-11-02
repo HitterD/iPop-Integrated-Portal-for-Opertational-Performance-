@@ -99,6 +99,7 @@ public class TreePlannerTests
         Assert.Equal("SJA-SMG", powder.SiteCode);
         var prod = plan.Creates.Single(c => c.Kind == "department" && c.Name == "Production - R&G");
         Assert.Equal(powder.Code, prod.ParentCode);
+        Assert.Equal("Operational › Powder › Production - R&G", prod.Path);
         var move = Assert.Single(plan.Moves);
         Assert.Equal("SJA-SMG", move.SiteCode);
         Assert.Equal(prod.Code, move.DepartmentCode);

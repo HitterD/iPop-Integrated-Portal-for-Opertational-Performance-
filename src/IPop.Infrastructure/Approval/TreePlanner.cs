@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace IPop.Infrastructure.Approval;
 
-public record UnitCreate(string Kind, string Code, string Name, string? ParentCode, string? SiteCode);
+public record UnitCreate(string Kind, string Code, string Name, string? ParentCode, string? SiteCode, string Path = "");
 public record UserMove(string Nik, string Name, string? FromPath, string ToPath, string? SiteCode, string DepartmentCode, string? DivisionCode);
 public record UnitDeactivate(string Kind, string Code, string Path);
 public record TreePlan(IReadOnlyList<UnitCreate> Creates, IReadOnlyList<UserMove> Moves,
@@ -106,7 +106,7 @@ public sealed class TreePlanner(IPopDbContext db)
                 ParentCode = parent.Code, SiteCode = siteCode, IsNew = true,
             };
             depts[node.Code] = node;
-            creates.Add(new UnitCreate("department", node.Code, node.Name, parent.Code, siteCode));
+            creates.Add(new UnitCreate("department", node.Code, node.Name, parent.Code, siteCode, DeptPath(node.Code)));
             return node;
         }
         DivNode FindOrCreateDiv(DeptNode dept, string rawName, string? siteCode)
@@ -126,7 +126,7 @@ public sealed class TreePlanner(IPopDbContext db)
                 DeptCode = dept.Code, SiteCode = siteCode, IsNew = true,
             };
             divs[node.Code] = node;
-            creates.Add(new UnitCreate("division", node.Code, node.Name, dept.Code, siteCode));
+            creates.Add(new UnitCreate("division", node.Code, node.Name, dept.Code, siteCode, $"{DeptPath(dept.Code)} › {node.Name}"));
             return node;
         }
         string DeptPath(string? code)

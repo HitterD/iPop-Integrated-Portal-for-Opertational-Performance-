@@ -8,7 +8,7 @@ public record ApvPage(List<ApvChain> Items, int TotalCount, int Page, int PageSi
 public record ApvHistory(DateTime At, string? ActorName, string Summary);
 public record ApvCountResult(int Updated);
 
-public record ApvUnitCreate(string Kind, string Code, string Name, string? ParentCode, string? SiteCode);
+public record ApvUnitCreate(string Kind, string Code, string Name, string? ParentCode, string? SiteCode, string? Path);
 public record ApvMove(string Nik, string Name, string? FromPath, string ToPath, string? SiteCode, string DepartmentCode, string? DivisionCode);
 public record ApvDeactivate(string Kind, string Code, string Path);
 public record ApvChange(string Nik, string Name, string Kind, string?[]? Before, string?[] After);
