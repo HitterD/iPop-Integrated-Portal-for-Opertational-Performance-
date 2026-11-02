@@ -255,36 +255,24 @@
 
         try
         {
-            using var content = new MultipartFormDataContent();
-
-            foreach (var (path, item) in selectedPaths)
+            // The API copies each file NAS → mail folder itself: nothing big passes through the
+            // browser. One request per file keeps every call short.
+            var uploaded = new List<MailAttachment>();
+            var errors = new List<string>();
+            foreach (var path in selectedPaths.Keys.ToList())
             {
-                // Download from synology endpoint
-                var downloadUrl = $"/api/files/download?server={server}&path={Uri.EscapeDataString(path)}&inline=false";
-                var res = await Auth.SendAsync(HttpMethod.Get, downloadUrl);
-                if (res.IsSuccessStatusCode)
-                {
-                    var fileBytes = await res.Content.ReadAsByteArrayAsync();
-                    if (fileBytes != null && fileBytes.Length > 0)
-                    {
-                        var byteContent = new ByteArrayContent(fileBytes);
-                        byteContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
-                        content.Add(byteContent, "files", item.Name);
-                    }
-                }
+                var (files, error) = await MailSvc.AttachFromNasAsync(server, [path]);
+                if (files is { Length: > 0 }) uploaded.AddRange(files);
+                else errors.Add(error ?? $"Could not attach {selectedPaths[path].Name}.");
             }
-
-            var (uploaded, error) = await MailSvc.UploadWithErrorAsync(content);
-            if (uploaded != null && uploaded.Length > 0)
+            if (uploaded.Count > 0)
             {
-                await OnFilesSelected.InvokeAsync(uploaded.ToList());
+                await OnFilesSelected.InvokeAsync(uploaded);
                 selectedPaths.Clear();
                 Close();
             }
-            else
-            {
-                Toasts.Show(error is null ? "Could not attach selected files." : $"Could not attach selected files: {error}", ToastKind.Error);
-            }
+            if (errors.Count > 0)
+                Toasts.Show($"Could not attach selected files: {string.Join(" ", errors)}", uploaded.Count > 0 ? ToastKind.Warning : ToastKind.Error);
         }
         catch (Exception ex)
         {

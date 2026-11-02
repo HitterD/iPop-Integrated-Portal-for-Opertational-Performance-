@@ -252,7 +252,7 @@
                             <button type="button" class="del-btn" title="Remove attachment" aria-label="@($"Remove {a.FileName}")" @onclick="() => RemoveAtt(a)"><i data-lucide="x"></i></button>
                         </span>
                     }
-                    @if (uploading) { <span class="composer-att-chip uploading"><i data-lucide="loader"></i> Uploading…</span> }
+                    @if (uploading) { <span class="composer-att-chip uploading"><i data-lucide="loader"></i> Uploading… @uploadPercent</span> }
                 </div>
             }
 
@@ -266,7 +266,7 @@
                             <button type="button" class="mrte-btn" aria-label="From NAS" @onmousedown:preventDefault @onclick="OpenSynologyPicker"><i data-lucide="hard-drive"></i></button>
                             <button type="button" class="mrte-btn" aria-label="Photo" @onmousedown:preventDefault @onclick="TriggerPhotoUpload"><i data-lucide="image"></i></button>
                         </span>
-                        <InputFile OnChange="OnLocalFileSelected" class="m-mail-photo-input" style="display:none" accept="image/*" multiple />
+                        <InputFile OnChange="OnPhotoSelected" class="m-mail-photo-input" style="display:none" accept="image/*" multiple />
                     }
                 </LeadingTools>
                 <TrailingTools>
@@ -1484,37 +1484,43 @@
         showSynologyPicker = true;
     }
 
-    private async Task OnLocalFileSelected(InputFileChangeEventArgs e)
-    {
-        const int maxFiles = 5; // server limit per upload
-        if (e.FileCount > maxFiles) Toasts.Show($"Only the first {maxFiles} files were attached.", ToastKind.Warning);
-        var files = e.GetMultipleFiles(maxFiles);
-        if (files.Count == 0) return;
+    // The browser uploads the picked files itself (MailUploadBridge): up to 500 MB each, with progress.
+    private MailUploadBridge? uploadBridge;
+    private string uploadPercent = "";
 
+    private Task OnLocalFileSelected(InputFileChangeEventArgs e) => UploadPickedAsync(".outlook-composer .mc-file-input");
+    private Task OnPhotoSelected(InputFileChangeEventArgs e) => UploadPickedAsync(".outlook-composer .m-mail-photo-input");
+
+    private async Task UploadPickedAsync(string inputSelector)
+    {
+        if (uploading) { Toasts.Show("Wait for the current upload to finish.", ToastKind.Info); return; }
         uploading = true;
+        uploadPercent = "";
         StateHasChanged();
         try
         {
-            using var content = new MultipartFormDataContent();
-            foreach (var file in files)
+            uploadBridge ??= new MailUploadBridge(Auth, Http, JS);
+            var r = await uploadBridge.UploadInputAsync(inputSelector, (sent, total) =>
             {
-                var streamContent = new StreamContent(file.OpenReadStream(50 * 1024 * 1024));
-                streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(string.IsNullOrEmpty(file.ContentType) ? "application/octet-stream" : file.ContentType);
-                content.Add(streamContent, "files", file.Name);
-            }
-            var (uploaded, error) = await MailSvc.UploadWithErrorAsync(content);
-            if (uploaded != null)
+                var p = MailUploadBridge.Percent(sent, total);
+                if (p == uploadPercent) return;
+                uploadPercent = p;
+                _ = InvokeAsync(StateHasChanged);
+            });
+            if (r.Files.Length > 0)
             {
-                composerAtts.AddRange(uploaded);
-                MarkJustAdded(uploaded);
+                composerAtts.AddRange(r.Files);
+                MarkJustAdded(r.Files);
                 OnContentChanged();
             }
-            else Toasts.Show($"Upload failed: {error ?? "unknown error"}", ToastKind.Error);
+            if (r.Errors.Length > 0)
+                Toasts.Show(string.Join(" ", r.Errors), r.Files.Length > 0 ? ToastKind.Warning : ToastKind.Error);
         }
         catch (Exception ex) { Toasts.Show(ex.Message, ToastKind.Error); }
         finally
         {
             uploading = false;
+            uploadPercent = "";
             StateHasChanged();
         }
     }
@@ -1578,6 +1584,7 @@
 
     public void Dispose()
     {
+        uploadBridge?.Dispose();
         Phone.Changed -= OnPhoneChanged;
         Nav.LocationChanged -= OnLocationChanged;
         CancelAutosave();

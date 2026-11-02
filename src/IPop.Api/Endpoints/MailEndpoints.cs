@@ -77,7 +77,8 @@ public static class MailEndpoints
             await WriteAuditAsync(http, db, "mail.send", result.MailId!.Value.ToString(), ct);
             await AuditMassAsync(http, db, result, ct);
             return Results.Ok(result);
-        }).RequirePermission("mail.send");
+        }).RequirePermission("mail.send")
+          .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MaxComposeRequestBytes));
 
         // POST /api/mail/drafts — save a new draft (auto-save).
         g.MapPost("/drafts", async (ComposeMailRequest req,
@@ -89,7 +90,8 @@ public static class MailEndpoints
             if (!result.Success)
                 return Results.Json(new { code = result.Error, message = result.Error }, statusCode: ErrorStatus(result.Error));
             return Results.Ok(result);
-        }).RequirePermission("mail.send");
+        }).RequirePermission("mail.send")
+          .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MaxComposeRequestBytes));
 
         // PUT /api/mail/drafts/{id} — update an existing draft.
         g.MapPut("/drafts/{id:guid}", async (Guid id, ComposeMailRequest req,
@@ -101,7 +103,8 @@ public static class MailEndpoints
             if (!result.Success)
                 return Results.Json(new { code = result.Error, message = result.Error }, statusCode: ErrorStatus(result.Error));
             return Results.Ok(result);
-        }).RequirePermission("mail.send");
+        }).RequirePermission("mail.send")
+          .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MaxComposeRequestBytes));
 
         // DELETE /api/mail/drafts/{id} — discard a draft.
         g.MapDelete("/drafts/{id:guid}", async (Guid id,
@@ -127,7 +130,8 @@ public static class MailEndpoints
             await WriteAuditAsync(http, db, "mail.forward", id.ToString(), ct);
             await AuditMassAsync(http, db, result, ct);
             return Results.Ok(result);
-        }).RequirePermission("mail.send");
+        }).RequirePermission("mail.send")
+          .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MaxComposeRequestBytes));
 
         // POST /api/mail/recipients/preview — the compose payload expanded server-side: the
         // de-duplicated count and breakdown shown in the "Send to N people?" dialog.
@@ -508,7 +512,8 @@ public static class MailEndpoints
         // Attachments — upload (orphan until linked by a send/draft), download, thumbnail
         // ──────────────────────────────────────────────────────────────────────
 
-        // POST /api/mail/attachments/upload — multipart: file(s)
+        // POST /api/mail/attachments/upload — multipart: file(s). The web client sends one file
+        // per request (with progress); up to MaxUploadFiles in one request still works.
         g.MapPost("/attachments/upload", async (HttpContext http,
             IPopDbContext db, IFileAccessService fileSvc, IWebHostEnvironment env, IConfiguration cfg, CancellationToken ct) =>
         {
@@ -516,12 +521,13 @@ public static class MailEndpoints
             if (userId is null) return Results.Unauthorized();
 
             if (http.Request.ContentLength is > MaxUploadRequestBytes)
-                return Results.Json(new { code = "upload_too_large", message = "The upload is too large. Attach at most 5 files of 50 MB each." }, statusCode: 413);
+                return Results.Json(new { code = "upload_too_large", message = UploadTooLargeMessage }, statusCode: 413);
             if (!http.Request.HasFormContentType)
                 return Results.Json(new { code = "file_required", message = "At least one file is required." }, statusCode: 422);
 
             // The default form limits (and Kestrel's ~28.6 MB body cap) are below the advertised
-            // 5 × 50 MB; the RequestSizeLimit metadata lifts the body cap, this lifts the form's.
+            // limit; the RequestSizeLimit metadata lifts the body cap, this lifts the form's.
+            // The form reader spools files over 64 KB to disk, so big files are never held in memory.
             http.Features.Set<IFormFeature>(new FormFeature(http.Request, new FormOptions
             {
                 MultipartBodyLengthLimit = MaxUploadRequestBytes,
@@ -530,98 +536,74 @@ public static class MailEndpoints
             try { form = await http.Request.ReadFormAsync(ct); }
             catch (Exception ex) when (ex is InvalidDataException or BadHttpRequestException)
             {
-                return Results.Json(new { code = "upload_too_large", message = "The upload is too large. Attach at most 5 files of 50 MB each." }, statusCode: 413);
+                return Results.Json(new { code = "upload_too_large", message = UploadTooLargeMessage }, statusCode: 413);
             }
             var files = form.Files;
             if (files.Count == 0)
                 return Results.Json(new { code = "file_required", message = "At least one file is required." }, statusCode: 422);
-            if (files.Count > 5)
-                return Results.Json(new { code = "too_many_attachments", message = "Maximum 5 files per upload." }, statusCode: 422);
+            if (files.Count > MaxUploadFiles)
+                return Results.Json(new { code = "too_many_attachments", message = $"Maximum {MaxUploadFiles} files per upload." }, statusCode: 422);
 
-            const long maxFileSize = MaxUploadFileBytes;
             foreach (var file in files)
-                if (file.Length > maxFileSize)
-                    return Results.Json(new { code = "file_too_large", message = $"File '{file.FileName}' exceeds the 50MB limit." }, statusCode: 422);
+                if (file.Length > MaxUploadFileBytes)
+                    return Results.Json(new { code = "file_too_large", message = FileTooLargeMessage(file.FileName) }, statusCode: 422);
+
+            if (MailUploadFolder(cfg, userId.Value) is not { } mailPath)
+                return Results.Json(new { code = "invalid_mail_folder", message = "MailFolder must be an absolute shared folder, not /home." }, statusCode: 503);
 
             var attachments = new List<AttachmentDto>();
-            var mailRoot = cfg["Synology:MailFolder"]?.Trim().TrimEnd('/') ?? "/sja/SJA SPJ/ICT/mail";
-            if (!mailRoot.StartsWith('/') || mailRoot == "/home" || mailRoot.StartsWith("/home/", StringComparison.OrdinalIgnoreCase))
-                return Results.Json(new { code = "invalid_mail_folder", message = "MailFolder must be an absolute shared folder, not /home." }, statusCode: 503);
-            var mailPath = $"{mailRoot}/drafts/{userId:N}"; // pending uploads live under the composer; link later
-
             foreach (var file in files)
             {
-                var safeName = SanitizeFileName(file.FileName);
-                var uniqueName = $"{Guid.NewGuid():N}_{safeName}";
-                var head = new byte[16];
-                int headLen;
-                await using (var peek = file.OpenReadStream())
-                    headLen = await peek.ReadAtLeastAsync(head, head.Length, throwOnEndOfStream: false, ct);
-                var mime = ResolveMime(safeName, head.AsSpan(0, headLen));
-                var isRaster = IsRasterImageMime(mime);
-                string? thumbnailPath = null;
-
-                string server = "local";
-                string storedPath = "";
-                var uploadedToSynology = false;
-
-                if (fileSvc.HasServiceAccount && fileSvc.ServiceServer is { } serviceServer)
-                {
-                    try
-                    {
-                        await using var buffered = new MemoryStream();
-                        await using (var src = file.OpenReadStream())
-                            await src.CopyToAsync(buffered, ct);
-                        buffered.Position = 0;
-
-                        await UploadMailAsServiceAsync(fileSvc, mailPath, uniqueName, buffered, ct);
-                        server = serviceServer;
-                        storedPath = $"{mailPath}/{uniqueName}";
-                        thumbnailPath = isRaster ? storedPath : null;
-                        uploadedToSynology = true;
-                    }
-                    catch (Exception ex)
-                    {
-                        var logger = http.RequestServices.GetService<ILoggerFactory>()?.CreateLogger("MailEndpoints");
-                        logger?.LogWarning(ex, "Shared Synology mail upload failed at {Server}:{Path}, falling back to local storage",
-                            serviceServer, $"{mailPath}/{uniqueName}");
-                    }
-                }
-
-                if (!uploadedToSynology)
-                {
-                    var dir = Path.Combine(env.ContentRootPath, "mail-files", userId.Value.ToString("N"));
-                    Directory.CreateDirectory(dir);
-                    var full = Path.Combine(dir, uniqueName);
-                    await using (var fs = File.Create(full))
-                        await using (var src = file.OpenReadStream())
-                            await src.CopyToAsync(fs, ct);
-                    server = "local";
-                    storedPath = Path.Combine("mail-files", userId.Value.ToString("N"), uniqueName).Replace('\\', '/');
-                    if (isRaster) thumbnailPath = storedPath;
-                }
-
-                var attachment = new MailAttachment
-                {
-                    Id = Guid.NewGuid(),
-                    MailId = null, // pending until a send/draft links it
-                    UploaderId = userId.Value,
-                    FileName = safeName,
-                    FileSize = file.Length,
-                    MimeType = mime,
-                    SynologyServer = server,
-                    SynologyPath = storedPath,
-                    ThumbnailPath = thumbnailPath,
-                    CreatedAt = DateTime.UtcNow,
-                };
-                db.MailAttachments.Add(attachment);
-                attachments.Add(new AttachmentDto(attachment.Id, attachment.FileName, attachment.FileSize, attachment.MimeType, attachment.ThumbnailPath));
+                await using var src = file.OpenReadStream();
+                attachments.Add(await StoreMailUploadAsync(http, db, fileSvc, env, userId.Value, mailPath, file.FileName, file.Length, src, ct));
             }
             await db.SaveChangesAsync(ct);
 
             return Results.Ok(attachments);
         }).RequirePermission("mail.send").DisableAntiforgery()
           .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MaxUploadRequestBytes));
+
+        // POST /api/mail/attachments/from-nas — { server, paths[] }: copies files the user can open
+        // on a NAS into the mail folder server-side, so large files never pass through the browser.
+        g.MapPost("/attachments/from-nas", async (NasAttachRequest req, HttpContext http,
+            IPopDbContext db, IFileAccessService fileSvc, IWebHostEnvironment env, IConfiguration cfg, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var paths = (req.Paths ?? []).Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => p.Trim()).Distinct().ToList();
+            if (string.IsNullOrWhiteSpace(req.Server) || paths.Count == 0)
+                return Results.Json(new { code = "file_required", message = "At least one file is required." }, statusCode: 422);
+            if (paths.Count > MaxUploadFiles)
+                return Results.Json(new { code = "too_many_attachments", message = $"Maximum {MaxUploadFiles} files per upload." }, statusCode: 422);
+            if (MailUploadFolder(cfg, userId.Value) is not { } mailPath)
+                return Results.Json(new { code = "invalid_mail_folder", message = "MailFolder must be an absolute shared folder, not /home." }, statusCode: 503);
+
+            var attachments = new List<AttachmentDto>();
+            try
+            {
+                foreach (var path in paths)
+                {
+                    var name = Path.GetFileName(path);
+                    await using var src = await fileSvc.DownloadAsync(userId.Value, req.Server.Trim(), path, ct);
+                    var length = src.Length - src.Position;
+                    if (length > MaxUploadFileBytes)
+                        return Results.Json(new { code = "file_too_large", message = FileTooLargeMessage(name) }, statusCode: 422);
+                    if (length <= 0)
+                        return Results.Json(new { code = "file_empty", message = $"File '{name}' is empty." }, statusCode: 422);
+                    attachments.Add(await StoreMailUploadAsync(http, db, fileSvc, env, userId.Value, mailPath, name, length, src, ct));
+                }
+            }
+            catch (SynoException ex) when (ex.IsAuthFailure)
+            {
+                return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401);
+            }
+            catch (SynoException ex)
+            {
+                return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502);
+            }
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(attachments);
+        }).RequirePermission("mail.send");
 
         // DELETE /api/mail/attachments/{id} — hapus lampiran (hanya orphan/pending milik
         // uploader; lampiran yang sudah terkirim di surat tidak bisa dihapus lewat sini).
@@ -1067,9 +1049,93 @@ public static class MailEndpoints
         return app;
     }
 
-    /// 5 files × 50 MB plus multipart framing.
-    internal const long MaxUploadFileBytes = 50L * 1024 * 1024;
-    internal const long MaxUploadRequestBytes = 5 * MaxUploadFileBytes + 1024 * 1024;
+    /// Up to 5 files of 500 MB each per request, plus multipart framing.
+    internal const int MaxUploadFiles = 5;
+    internal const long MaxUploadFileBytes = 500L * 1024 * 1024;
+    internal const long MaxUploadRequestBytes = MaxUploadFiles * MaxUploadFileBytes + 1024 * 1024;
+    /// Send/draft/forward bodies carry pasted images as data: URIs until the server moves them to the NAS.
+    internal const long MaxComposeRequestBytes = 128L * 1024 * 1024;
+    private const string UploadTooLargeMessage = "The upload is too large. Attach at most 5 files of 500 MB each.";
+    private static string FileTooLargeMessage(string? name) => $"File '{name}' exceeds the 500 MB limit.";
+
+    public record NasAttachRequest(string? Server, IReadOnlyList<string>? Paths);
+
+    /// The shared folder pending uploads go to; null when MailFolder is misconfigured.
+    private static string? MailUploadFolder(IConfiguration cfg, Guid userId)
+    {
+        var mailRoot = cfg["Synology:MailFolder"]?.Trim().TrimEnd('/') ?? "/sja/SJA SPJ/ICT/mail";
+        if (!mailRoot.StartsWith('/') || mailRoot == "/home" || mailRoot.StartsWith("/home/", StringComparison.OrdinalIgnoreCase))
+            return null;
+        return $"{mailRoot}/drafts/{userId:N}"; // pending uploads live under the composer; link later
+    }
+
+    /// Stores one pending upload (NAS via the service account, local disk as fallback) and adds
+    /// its row to the change tracker; the caller saves. <paramref name="src"/> must be seekable
+    /// (form files and NAS downloads are), so a failed NAS upload can fall back from the start.
+    private static async Task<AttachmentDto> StoreMailUploadAsync(HttpContext http, IPopDbContext db, IFileAccessService fileSvc,
+        IWebHostEnvironment env, Guid userId, string mailPath, string? fileName, long length, Stream src, CancellationToken ct)
+    {
+        var safeName = SanitizeFileName(fileName);
+        var uniqueName = $"{Guid.NewGuid():N}_{safeName}";
+        var start = src.Position;
+        var head = new byte[16];
+        var headLen = await src.ReadAtLeastAsync(head, head.Length, throwOnEndOfStream: false, ct);
+        src.Position = start;
+        var mime = ResolveMime(safeName, head.AsSpan(0, headLen));
+        var isRaster = IsRasterImageMime(mime);
+        string? thumbnailPath = null;
+
+        string server = "local";
+        string storedPath = "";
+        var uploadedToSynology = false;
+
+        if (fileSvc.HasServiceAccount && fileSvc.ServiceServer is { } serviceServer)
+        {
+            try
+            {
+                await UploadMailAsServiceAsync(fileSvc, mailPath, uniqueName, src, ct);
+                server = serviceServer;
+                storedPath = $"{mailPath}/{uniqueName}";
+                thumbnailPath = isRaster ? storedPath : null;
+                uploadedToSynology = true;
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                var logger = http.RequestServices.GetService<ILoggerFactory>()?.CreateLogger("MailEndpoints");
+                logger?.LogWarning(ex, "Shared Synology mail upload failed at {Server}:{Path}, falling back to local storage",
+                    serviceServer, $"{mailPath}/{uniqueName}");
+            }
+        }
+
+        if (!uploadedToSynology)
+        {
+            var dir = Path.Combine(env.ContentRootPath, "mail-files", userId.ToString("N"));
+            Directory.CreateDirectory(dir);
+            var full = Path.Combine(dir, uniqueName);
+            src.Position = start;
+            await using (var fs = File.Create(full))
+                await src.CopyToAsync(fs, ct);
+            server = "local";
+            storedPath = Path.Combine("mail-files", userId.ToString("N"), uniqueName).Replace('\\', '/');
+            if (isRaster) thumbnailPath = storedPath;
+        }
+
+        var attachment = new MailAttachment
+        {
+            Id = Guid.NewGuid(),
+            MailId = null, // pending until a send/draft links it
+            UploaderId = userId,
+            FileName = safeName,
+            FileSize = length,
+            MimeType = mime,
+            SynologyServer = server,
+            SynologyPath = storedPath,
+            ThumbnailPath = thumbnailPath,
+            CreatedAt = DateTime.UtcNow,
+        };
+        db.MailAttachments.Add(attachment);
+        return new AttachmentDto(attachment.Id, attachment.FileName, attachment.FileSize, attachment.MimeType, attachment.ThumbnailPath);
+    }
 
     /// A pending (unlinked) upload belongs to its uploader and nobody else.
     internal static bool IsPendingUploadOf(MailAttachment a, Guid userId) =>

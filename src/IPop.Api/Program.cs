@@ -104,7 +104,9 @@ builder.Services.AddScoped<OfficeOptions>(_ => new OfficeOptions
     SofficePath = builder.Configuration["Office:SofficePath"] ?? "soffice",
     TempDirectory = builder.Configuration["Office:TempDirectory"] ?? Path.GetTempPath(),
 });
-builder.Services.AddHttpClient<ISynologyGateway, HttpSynologyGateway>()
+// No client-wide timeout: the gateway gives API calls 100 s and file transfers (500 MB mail
+// attachments) 30 min itself, per request.
+builder.Services.AddHttpClient<ISynologyGateway, HttpSynologyGateway>(c => c.Timeout = Timeout.InfiniteTimeSpan)
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
     {
         ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator

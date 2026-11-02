@@ -49,6 +49,26 @@ public sealed class MailAttachmentUploadTests
         Assert.False(MailEndpoints.IsOwnMailDraftPath($"/foo/drafts/{owner:N}-other/document.pdf", owner));
     }
 
+    [Fact]
+    public void Attachments_allow_500_MB_per_file_and_pictures_10_MB()
+    {
+        Assert.Equal(500L * 1024 * 1024, MailEndpoints.MaxUploadFileBytes);
+        Assert.Equal(MailEndpoints.MaxUploadFileBytes, IPop.Web.Services.MailUploadBridge.MaxFileBytes);
+        Assert.Equal(MailEndpoints.MaxUploadFiles, IPop.Web.Services.MailUploadBridge.MaxFiles);
+        Assert.True(MailEndpoints.MaxUploadRequestBytes >= MailEndpoints.MaxUploadFiles * MailEndpoints.MaxUploadFileBytes);
+        Assert.Equal(10 * 1024 * 1024, IPop.Infrastructure.Mail.MailHtml.MaxImageBytes);
+        // A 10 MB picture as a data: URI must fit the compose request the body travels in.
+        Assert.True(MailEndpoints.MaxComposeRequestBytes > IPop.Infrastructure.Mail.MailHtml.MaxDataImageChars);
+    }
+
+    [Fact]
+    public void Sanitizer_keeps_a_10_MB_picture_and_drops_a_bigger_one()
+    {
+        static string Img(int bytes) => $"<p><img src=\"data:image/png;base64,{Convert.ToBase64String(new byte[bytes])}\"></p>";
+        Assert.Contains("data:image/png", IPop.Infrastructure.Mail.MailHtml.Sanitize(Img(9 * 1024 * 1024)));
+        Assert.DoesNotContain("data:image/png", IPop.Infrastructure.Mail.MailHtml.Sanitize(Img(11 * 1024 * 1024)));
+    }
+
     private sealed class RecordingFileAccessService : IFileAccessService
     {
         public List<UploadRecord> Uploads { get; } = [];

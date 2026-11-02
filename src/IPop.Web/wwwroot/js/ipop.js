@@ -1123,6 +1123,63 @@ window.ipop = {
     });
   },
 
+  // Mail attachments: the files picked/dropped into an <InputFile> go straight from the browser
+  // to /api/mail/attachments/upload, one XHR per file, so a 500 MB file is streamed from disk
+  // instead of being copied through Blazor's memory. `bridge` (MailUploadBridge) hands out the
+  // token (refreshed once on 401) and receives byte progress. Returns { files, errors }.
+  async mailUploadInput(el, url, bridge, maxFiles, maxBytes) {
+    if (typeof el === "string") el = document.querySelector(el);
+    const input = !el ? null : el.tagName === "INPUT" ? el : el.querySelector('input[type="file"]');
+    const all = input && input.files ? Array.from(input.files) : [];
+    const errors = [];
+    const mb = n => Math.round(n / 1048576);
+    let picked = all.filter(f => {
+      if (f.size <= 0) { errors.push(`${f.name} is empty.`); return false; }
+      if (f.size > maxBytes) { errors.push(`${f.name} is larger than ${mb(maxBytes)} MB.`); return false; }
+      return true;
+    });
+    if (picked.length > maxFiles) {
+      errors.push(`Only the first ${maxFiles} files were attached.`);
+      picked = picked.slice(0, maxFiles);
+    }
+    const total = picked.reduce((s, f) => s + f.size, 0);
+    let done = 0, last = 0;
+    const report = (loaded, force) => {
+      const now = performance.now();
+      if (!force && now - last < 150) return;
+      last = now;
+      bridge.invokeMethodAsync("Progress", done + loaded, total).catch(() => { });
+    };
+    const send = (file, token) => new Promise(resolve => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", url);
+      if (token) xhr.setRequestHeader("Authorization", "Bearer " + token);
+      xhr.upload.onprogress = e => report(e.loaded, false);
+      xhr.onload = () => {
+        let body = null;
+        try { body = JSON.parse(xhr.responseText || "null"); } catch { /* not JSON */ }
+        resolve({ status: xhr.status, body });
+      };
+      xhr.onerror = () => resolve({ status: 0, body: null });
+      xhr.onabort = () => resolve({ status: 0, body: null });
+      const form = new FormData();
+      form.append("files", file, file.name);
+      xhr.send(form);
+    });
+    const files = [];
+    for (const f of picked) {
+      let res = await send(f, await bridge.invokeMethodAsync("Token", false));
+      if (res.status === 401) res = await send(f, await bridge.invokeMethodAsync("Token", true));
+      if (res.status >= 200 && res.status < 300 && Array.isArray(res.body)) files.push(...res.body);
+      else if (res.status === 413) errors.push(`${f.name} is too large to upload.`);
+      else errors.push((res.body && res.body.message) || (res.status === 0 ? `${f.name}: network error.` : `${f.name}: upload failed (${res.status}).`));
+      done += f.size;
+      report(0, true);
+    }
+    try { input.value = ""; } catch { /* re-picking the same file must raise change again */ }
+    return { files, errors };
+  },
+
   mailUnbindDropZone(el) {
     if (!el || !el._ipopMailDrop) return;
     const h = el._ipopMailDrop;
@@ -2035,7 +2092,7 @@ window.ipop = {
   // drives the editor through these calls. Selection state flows back via OnState.
   rte: {
     _eds: {},
-    _maxDataImage: 2 * 1024 * 1024 / 3 * 4 + 64, // mirrors MailHtml.MaxDataImageChars
+    _maxDataImage: 10 * 1024 * 1024 / 3 * 4 + 64, // mirrors MailHtml.MaxDataImageChars
     _loading: null,
     load() {
       if (window.Jodit) return Promise.resolve();
@@ -2087,7 +2144,7 @@ window.ipop = {
           const src = img.getAttribute("src") || "";
           if (src.length > this._maxDataImage || !/^data:image\/(png|jpeg|gif|webp);/i.test(src)) { img.remove(); dropped++; }
         });
-        if (dropped) dotNet.invokeMethodAsync("OnNotice", "The image is larger than 2 MB or its format isn't supported, so it wasn't inserted.").catch(() => { });
+        if (dropped) dotNet.invokeMethodAsync("OnNotice", "The image is larger than 10 MB or its format isn't supported, so it wasn't inserted.").catch(() => { });
       };
       // Plain text (Notepad): one paragraph per line, blank lines kept, nothing added in between.
       ed.e.on("beforePaste", ev => {

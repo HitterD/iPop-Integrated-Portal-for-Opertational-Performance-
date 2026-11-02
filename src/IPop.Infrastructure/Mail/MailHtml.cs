@@ -55,8 +55,10 @@ public static class MailHtml
         return s;
     }
 
-    // 2 MB of binary is ~2.8M base64 chars; the prefix is a few dozen more.
-    public const int MaxDataImageChars = 2 * 1024 * 1024 / 3 * 4 + 64;
+    /// Largest picture the composer inserts (MailRteEditor mirrors it).
+    public const int MaxImageBytes = 10 * 1024 * 1024;
+    // 10 MB of binary is ~14M base64 chars; the prefix is a few dozen more.
+    public const int MaxDataImageChars = MaxImageBytes / 3 * 4 + 64;
 
     private static readonly System.Text.RegularExpressions.Regex DataImage = new(
         @"^data:image/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/=\s]+$",

@@ -154,6 +154,15 @@ public sealed class MailService(AuthState Auth, HttpClient http)
         return (null, await ReadErrorAsync(resp, ct));
     }
 
+    /// Attaches files the user can open on a NAS; the API copies them server-side (up to 500 MB each).
+    public async Task<(MailAttachment[]? Files, string? Error)> AttachFromNasAsync(string server, IReadOnlyList<string> paths, CancellationToken ct = default)
+    {
+        using var resp = await Auth.SendAsync(HttpMethod.Post, "/api/mail/attachments/from-nas", new { server, paths }, ct);
+        if (resp.IsSuccessStatusCode)
+            return (await resp.Content.ReadFromJsonAsync<MailAttachment[]>(cancellationToken: ct), null);
+        return (null, await ReadErrorAsync(resp, ct));
+    }
+
     internal static async Task<string> ReadErrorAsync(HttpResponseMessage resp, CancellationToken ct)
     {
         try
@@ -170,7 +179,7 @@ public sealed class MailService(AuthState Auth, HttpClient http)
         catch { /* fall through to the status-based message */ }
         return (int)resp.StatusCode switch
         {
-            413 => "The upload is too large. Attach at most 5 files of 50 MB each.",
+            413 => "The upload is too large. Attach at most 5 files of 500 MB each.",
             401 or 403 => "You don't have permission to attach files.",
             _ => $"Upload failed ({(int)resp.StatusCode}).",
         };

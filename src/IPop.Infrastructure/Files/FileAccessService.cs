@@ -281,11 +281,16 @@ public class FileAccessService(
         => WithServiceSid((srv, sid, c) => gateway.DownloadAsync(srv, sid, path, c), ct);
 
     public Task UploadAsServiceAsync(string dir, string filename, Stream content, CancellationToken ct)
-        => WithServiceSid(async (srv, sid, c) =>
+    {
+        // A session-expired retry must resend from the same place, not from the drained end.
+        var start = content.CanSeek ? content.Position : -1;
+        return WithServiceSid(async (srv, sid, c) =>
         {
+            if (start >= 0) content.Position = start;
             await gateway.UploadAsync(srv, sid, dir, filename, content, c);
             return true;
         }, ct);
+    }
 
     public Task DeleteAsServiceAsync(string path, CancellationToken ct)
         => WithServiceSid(async (srv, sid, c) =>

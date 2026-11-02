@@ -46,7 +46,7 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
     public async Task<string> AuthAsync(string server, string username, string password, CancellationToken ct)
     {
         var url = $"{BaseFor(server)}/webapi/auth.cgi?api=SYNO.API.Auth&version=3&method=login&account={Uri.EscapeDataString(username)}&passwd={Uri.EscapeDataString(password)}&session=FileStation&format=sid";
-        using var res = await http.GetAsync(url, ct);
+        using var res = await GetShortAsync(url, ct);
         res.EnsureSuccessStatusCode();
         var body = await res.Content.ReadFromJsonAsync<AuthResp>(cancellationToken: ct);
         if (body is null) throw new SynoException("Empty auth response");
@@ -60,7 +60,7 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
     public async Task<IReadOnlyList<string>> ListSharesAsync(string server, string sid, CancellationToken ct)
     {
         var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.List&version=2&method=list_share&_sid={Uri.EscapeDataString(sid)}";
-        using var res = await http.GetAsync(url, ct);
+        using var res = await GetShortAsync(url, ct);
         var json = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
             throw new SynoException($"Synology HTTP {(int)res.StatusCode}: {json[..Math.Min(300, json.Length)]}", authFailure: false);
@@ -83,7 +83,7 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
             return shares.Select(p => new SynoItem(p.TrimStart('/'), p, true, 0, 0)).ToList();
         }
         var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.List&version=2&method=list&folder_path={Uri.EscapeDataString(path)}&_sid={Uri.EscapeDataString(sid)}&additional=[\"real_path\",\"size\",\"time\"]";
-        using var res = await http.GetAsync(url, ct);
+        using var res = await GetShortAsync(url, ct);
         var json = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
             throw new SynoException($"Synology HTTP {(int)res.StatusCode}: {json[..Math.Min(300, json.Length)]}", authFailure: false);
@@ -98,9 +98,26 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
         return body?.Data?.Files?.Select(f => new SynoItem(f.Name, f.Path, f.IsDir, f.Additional?.Size ?? 0, f.Additional?.Mtime ?? 0)).ToList() ?? [];
     }
 
+    /// API calls (list, auth, rename, …) keep HttpClient's former 100 s default.
+    internal static readonly TimeSpan ShortTimeout = TimeSpan.FromSeconds(100);
+    /// Uploads and downloads move files of up to 500 MB (mail attachments), also over plant links.
+    internal static readonly TimeSpan TransferTimeout = TimeSpan.FromMinutes(30);
+    /// Downloads up to this size stay in memory; bigger ones are spooled to a temp file.
+    internal const long InMemoryDownloadBytes = 16L * 1024 * 1024;
+
+    private async Task<HttpResponseMessage> GetShortAsync(string url, CancellationToken ct)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(ShortTimeout);
+        return await http.GetAsync(url, cts.Token); // content is buffered before this returns
+    }
+
     public async Task<Stream> DownloadAsync(string server, string sid, string path, CancellationToken ct)
     {
         var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.Download&version=2&method=download&path={Uri.EscapeDataString(path)}&_sid={Uri.EscapeDataString(sid)}&mode=download";
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TransferTimeout);
+        ct = cts.Token;
         var res = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
         var ct2 = res.Content.Headers.ContentType?.MediaType;
         if (ct2 is not null && ct2.Contains("json"))
@@ -115,10 +132,32 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
             }
         }
         if (!res.IsSuccessStatusCode)
+        {
+            res.Dispose();
             throw new SynoException($"Synology HTTP {(int)res.StatusCode}", authFailure: false);
-        var bytes = await res.Content.ReadAsByteArrayAsync(ct);
-        res.Dispose();
-        return new MemoryStream(bytes);
+        }
+        using (res)
+        {
+            var length = res.Content.Headers.ContentLength;
+            if (length is { } n && n <= InMemoryDownloadBytes)
+                return new MemoryStream(await res.Content.ReadAsByteArrayAsync(ct));
+            // Large (or unknown-size) files: a seekable temp file, deleted when the caller disposes it,
+            // so a 500 MB attachment never sits in the API's memory.
+            var spool = new FileStream(Path.GetTempFileName(), FileMode.Open, FileAccess.ReadWrite, FileShare.None,
+                81920, FileOptions.DeleteOnClose | FileOptions.Asynchronous);
+            try
+            {
+                await using (var body = await res.Content.ReadAsStreamAsync(ct))
+                    await body.CopyToAsync(spool, ct);
+                spool.Position = 0;
+                return spool;
+            }
+            catch
+            {
+                await spool.DisposeAsync();
+                throw;
+            }
+        }
     }
 
     public async Task UploadAsync(string server, string sid, string dir, string filename, Stream content, CancellationToken ct)
@@ -126,6 +165,9 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
         var boundary = $"----SynoBoundary{Guid.NewGuid():N}";
         using var form = new SynologyUploadContent(boundary, dir, filename, content);
         var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.Upload&version=2&method=upload&_sid={Uri.EscapeDataString(sid)}";
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TransferTimeout);
+        ct = cts.Token;
         using var res = await http.PostAsync(url, form, ct);
         var json = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
@@ -226,7 +268,7 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
     {
         // Blocking "delete" method: returns once the file is gone, so callers can rely on it.
         var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.Delete&version=2&method=delete&path={Uri.EscapeDataString(path)}&_sid={Uri.EscapeDataString(sid)}";
-        using var res = await http.GetAsync(url, ct);
+        using var res = await GetShortAsync(url, ct);
         var json = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
             throw new SynoException($"Synology HTTP {(int)res.StatusCode}: {json[..Math.Min(300, json.Length)]}", authFailure: false);
@@ -242,7 +284,7 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
     public async Task RenameAsync(string server, string sid, string path, string name, CancellationToken ct)
     {
         var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.Rename&version=2&method=rename&path={Uri.EscapeDataString(path)}&name={Uri.EscapeDataString(name)}&_sid={Uri.EscapeDataString(sid)}";
-        using var res = await http.GetAsync(url, ct);
+        using var res = await GetShortAsync(url, ct);
         var json = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
             throw new SynoException($"Synology HTTP {(int)res.StatusCode}: {json[..Math.Min(300, json.Length)]}", authFailure: false);
@@ -258,7 +300,7 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
     public async Task CreateFolderAsync(string server, string sid, string folderPath, string name, CancellationToken ct)
     {
         var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.CreateFolder&version=2&method=create&folder_path={Uri.EscapeDataString(folderPath)}&name={Uri.EscapeDataString(name)}&_sid={Uri.EscapeDataString(sid)}";
-        using var res = await http.GetAsync(url, ct);
+        using var res = await GetShortAsync(url, ct);
         var json = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
             throw new SynoException($"Synology HTTP {(int)res.StatusCode}: {json[..Math.Min(300, json.Length)]}", authFailure: false);
@@ -275,7 +317,7 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
     {
         var pathList = string.Join(",", paths);
         var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.CopyMove&version=3&method=start&path={Uri.EscapeDataString(pathList)}&dest_folder_path={Uri.EscapeDataString(destDir)}&remove_src={removeSrc.ToString().ToLowerInvariant()}&overwrite={overwrite.ToString().ToLowerInvariant()}&_sid={Uri.EscapeDataString(sid)}";
-        using var res = await http.GetAsync(url, ct);
+        using var res = await GetShortAsync(url, ct);
         var json = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
             throw new SynoException($"Synology HTTP {(int)res.StatusCode}: {json[..Math.Min(300, json.Length)]}", authFailure: false);
@@ -294,7 +336,7 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
         if (!string.IsNullOrWhiteSpace(password)) url += $"&password={Uri.EscapeDataString(password)}";
         if (expiresInDays.HasValue) url += $"&date_expired={DateTime.UtcNow.AddDays(expiresInDays.Value):yyyy-MM-dd}";
 
-        using var res = await http.GetAsync(url, ct);
+        using var res = await GetShortAsync(url, ct);
         var json = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
             throw new SynoException($"Synology HTTP {(int)res.StatusCode}: {json[..Math.Min(300, json.Length)]}", authFailure: false);
@@ -316,7 +358,7 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
     public async Task<IReadOnlyList<SynoShareLink>> ListSharingLinksAsync(string server, string sid, CancellationToken ct)
     {
         var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.Sharing&version=3&method=list&_sid={Uri.EscapeDataString(sid)}";
-        using var res = await http.GetAsync(url, ct);
+        using var res = await GetShortAsync(url, ct);
         var json = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
             return [];
@@ -331,7 +373,7 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
     public async Task DeleteSharingLinkAsync(string server, string sid, string id, CancellationToken ct)
     {
         var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.Sharing&version=3&method=delete&id={Uri.EscapeDataString(id)}&_sid={Uri.EscapeDataString(sid)}";
-        using var res = await http.GetAsync(url, ct);
+        using var res = await GetShortAsync(url, ct);
         var json = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
             throw new SynoException($"Synology HTTP {(int)res.StatusCode}: {json[..Math.Min(300, json.Length)]}", authFailure: false);
@@ -367,7 +409,7 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
     /// <summary>GET a FileStation call and map its error envelope the way the calls above do inline.</summary>
     private async Task<string> GetCheckedAsync(string url, CancellationToken ct)
     {
-        using var res = await http.GetAsync(url, ct);
+        using var res = await GetShortAsync(url, ct);
         var json = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
             throw new SynoException($"Synology HTTP {(int)res.StatusCode}", authFailure: false);
@@ -384,7 +426,7 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
     public async Task<SynoStorageInfo> GetStorageInfoAsync(string server, string sid, CancellationToken ct)
     {
         var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.Info&version=2&method=get&_sid={Uri.EscapeDataString(sid)}";
-        using var res = await http.GetAsync(url, ct);
+        using var res = await GetShortAsync(url, ct);
         var json = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
             throw new SynoException($"Synology HTTP {(int)res.StatusCode}", authFailure: false);

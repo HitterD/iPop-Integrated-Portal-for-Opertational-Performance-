@@ -215,6 +215,33 @@ public class FileAccessTests
         Assert.Contains("sample pdf bytes", capturedBody);
     }
 
+    [Theory]
+    [InlineData(1024, true)]                 // small: kept in memory
+    [InlineData(20 * 1024 * 1024, false)]    // big (mail attachments go to 500 MB): spooled to a temp file
+    public async Task DownloadAsync_SpoolsLargeFilesToDiskAndStaysSeekable(int size, bool inMemory)
+    {
+        var payload = new byte[size];
+        new Random(7).NextBytes(payload);
+        var handler = new DelegateHttpMessageHandler(_ => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent(payload),
+        }));
+        var cfg = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Synology:Servers:spj"] = "https://192.168.2.16:30001"
+        }).Build();
+        var gateway = new HttpSynologyGateway(new HttpClient(handler), cfg);
+
+        await using var stream = await gateway.DownloadAsync("spj", "sid", "/share/big.zip", default);
+
+        Assert.Equal(inMemory, stream is MemoryStream);
+        Assert.True(stream.CanSeek);
+        Assert.Equal(size, stream.Length);
+        using var copy = new MemoryStream();
+        await stream.CopyToAsync(copy);
+        Assert.Equal(payload, copy.ToArray());
+    }
+
     [Fact]
     public async Task WordDocumentService_ConvertToPdf_ProducesValidPdfBytes()
     {

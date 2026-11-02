@@ -6,6 +6,7 @@
 @inject IPop.Web.Services.ToastService Toasts
 @inject IPop.Web.Services.MailReadingPrefs Prefs
 @inject HttpClient Http
+@implements IDisposable
 
 @*
     The reading pane's conversation (mockup docs/mockups/mail-layout-outlook.html v3):
@@ -499,31 +500,36 @@
         try { await JS.InvokeAsync<bool>("ipop.clickFileInput", qrFileWrap); } catch (JSException) { }
     }
 
+    // The browser uploads the picked files itself (MailUploadBridge): up to 500 MB each, with progress.
+    private MailUploadBridge? qrBridge;
+    private string qrPercent = "";
+
     private async Task OnFiles(InputFileChangeEventArgs e)
     {
-        const int maxFiles = 5; // server limit per upload
-        if (e.FileCount > maxFiles) Toasts.Show($"Only the first {maxFiles} files were attached.", ToastKind.Warning);
-        var files = e.GetMultipleFiles(maxFiles);
-        if (files.Count == 0) return;
+        if (qrUploading) return;
         qrUploading = true;
+        qrPercent = "";
         StateHasChanged();
         try
         {
-            using var content = new MultipartFormDataContent();
-            foreach (var file in files)
+            qrBridge ??= new MailUploadBridge(Auth, Http, JS);
+            var r = await qrBridge.UploadInputAsync(qrFileWrap, (sent, total) =>
             {
-                var part = new StreamContent(file.OpenReadStream(50 * 1024 * 1024));
-                part.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(string.IsNullOrEmpty(file.ContentType) ? "application/octet-stream" : file.ContentType);
-                content.Add(part, "files", file.Name);
-            }
-            var (uploaded, error) = await MailSvc.UploadWithErrorAsync(content);
-            if (uploaded is not null) qrAtts.AddRange(uploaded);
-            else Toasts.Show($"Upload failed: {error ?? "unknown error"}", ToastKind.Error);
+                var p = MailUploadBridge.Percent(sent, total);
+                if (p == qrPercent) return;
+                qrPercent = p;
+                _ = InvokeAsync(StateHasChanged);
+            });
+            qrAtts.AddRange(r.Files);
+            if (r.Errors.Length > 0)
+                Toasts.Show(string.Join(" ", r.Errors), r.Files.Length > 0 ? ToastKind.Warning : ToastKind.Error);
         }
         catch (Exception ex) { Toasts.Show(ex.Message, ToastKind.Error); }
-        finally { qrUploading = false; }
+        finally { qrUploading = false; qrPercent = ""; }
         await Icons();
     }
+
+    public void Dispose() => qrBridge?.Dispose();
 
     private MailReplyStart Start() => new(QrTarget, qrText, qrAll, qrAtts.ToList());
 
@@ -590,7 +596,7 @@
                                     <span class="mqr-att" title="@a.FileName"><i data-lucide="paperclip"></i><span>@a.FileName</span>
                                         <button type="button" aria-label="Remove @a.FileName" @onclick="() => qrAtts.Remove(a)"><i data-lucide="x"></i></button></span>
                                 }
-                                @if (qrUploading) { <span class="mqr-att busy">Uploading…</span> }
+                                @if (qrUploading) { <span class="mqr-att busy">Uploading… @qrPercent</span> }
                             </div>
                         }
                         <div class="mqr-f">

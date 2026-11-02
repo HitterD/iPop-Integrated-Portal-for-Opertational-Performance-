@@ -48,9 +48,9 @@ public class MailHtmlTests
         Assert.Equal(expected, MailHtml.Sanitize(input));
 
     [Fact]
-    public void Drops_images_over_two_megabytes()
+    public void Drops_images_over_ten_megabytes()
     {
-        var html = $"<img src=\"{Png(2 * 1024 * 1024 + 4096)}\">";
+        var html = $"<img src=\"{Png(MailHtml.MaxImageBytes + 4096)}\">";
         Assert.Equal("<img>", MailHtml.Sanitize(html));
     }
 

@@ -153,7 +153,7 @@
                 }
             </div>
 
-            <label class="mrte-btn" title="Insert picture (max 2 MB)" aria-label="Insert picture" @onmousedown="SaveCaret">
+            <label class="mrte-btn" title="Insert picture (max 10 MB)" aria-label="Insert picture" @onmousedown="SaveCaret">
                 <i data-lucide="image"></i>
                 <InputFile OnChange="OnImagePicked" accept="image/png,image/jpeg,image/gif,image/webp" class="mrte-hidden-file" />
             </label>
@@ -478,14 +478,14 @@
 
     private async Task SaveCaret() => await JS.InvokeVoidAsync("ipop.rte.saveCaret", id);
 
-    private const long MaxImageBytes = 2 * 1024 * 1024;
+    private const long MaxImageBytes = 10 * 1024 * 1024; // mirrors MailHtml.MaxImageBytes
 
     private async Task OnImagePicked(InputFileChangeEventArgs e)
     {
         var f = e.File;
         if (f.Size > MaxImageBytes)
         {
-            await OnNotice.InvokeAsync("Images can be up to 2 MB. For larger files, add them as an attachment.");
+            await OnNotice.InvokeAsync("Pictures can be up to 10 MB. For larger files, add them as an attachment (up to 500 MB).");
             return;
         }
         using var ms = new MemoryStream();
