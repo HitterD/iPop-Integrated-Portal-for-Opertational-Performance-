@@ -417,3 +417,13 @@
 .adm-nf-ic.all { background: var(--accent-soft); color: var(--accent); }
 .adm-nf-ic.pilot { background: color-mix(in srgb, #ff9f0a 16%, transparent); color: #c77700; }
 .adm-nf-ic svg { width: 17px; height: 17px; }
+
+/* Admin › Email */
+.adm-email-card { padding:4px 16px; margin-bottom:14px; }
+.adm-email-banner { margin:0 0 14px; }
+.adm-email-input { width:260px; flex:none; height:34px; padding:0 10px; border:1px solid var(--line); border-radius:9px; background:var(--surface); color:var(--ink); font:inherit; font-size:13px; }
+.adm-email-input:focus { outline:2px solid var(--adm-green); outline-offset:-1px; }
+.adm-email-input[aria-invalid="true"] { border-color:var(--adm-red); }
+.adm-email-port { width:90px; }
+.adm-email-card .adm-hris-result { margin:0 0 12px; }
+.adm-email-actions { display:flex; justify-content:flex-end; }

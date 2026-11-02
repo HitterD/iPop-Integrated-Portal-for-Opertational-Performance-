@@ -1,0 +1,186 @@
+@* Admin › Email: the mailbox iPop sends from. Saved here, it overrides appsettings and takes
+   effect on the next email — no restart. The password is write-only: blank keeps the current one. *@
+@using System.Net.Http.Json
+@using IPop.Web.Services
+@inject AuthState Auth
+@inject ToastService Toasts
+@inject IJSRuntime JS
+@implements IDisposable
+
+@if (data is null)
+{
+    @if (loadError) { <div class="adm-empty" role="alert">Email settings could not be loaded. <button type="button" class="btn-sm" @onclick="LoadAsync">Retry</button></div> }
+    else { <div class="skel" aria-label="Loading email settings"></div> }
+}
+else
+{
+    <p class="adm-summary">
+        @if (data.Health.LastFailedAt is { } failedAt)
+        {
+            <span class="adm-summary-warn"><i data-lucide="alert-triangle"></i>Sending failed @AdminHumanize.Ago(failedAt).ToLowerInvariant()</span>
+        }
+        <span>@(data.Health.LastSentAt is { } sent ? $"Last email sent {AdminHumanize.Ago(sent).ToLowerInvariant()}" : "No email sent yet")</span>
+        @if (data.Health.Stuck > 0) { <span>@AdminHumanize.Plural(data.Health.Stuck, "email") not delivered this week</span> }
+        <span>@(data.Source == "admin" ? "Settings saved here" : "Using the server config file")</span>
+    </p>
+
+    @if (data.Health.LastError is { } err)
+    {
+        <p class="adm-hris-result bad adm-email-banner" role="alert">
+            <i data-lucide="alert-circle"></i>
+            <span>@(err.Contains("535") || err.Contains("Authentication", StringComparison.OrdinalIgnoreCase)
+                ? "The mail server rejected the password, so password reset emails are not going out. Enter the new mailbox password below, send a test, then save."
+                : $"Last error: {err}")</span>
+        </p>
+    }
+
+    <div class="adm-card adm-email-card">
+        <div class="adm-set-row">
+            <div class="adm-set-txt"><b>Mail server</b><small>e.g. mail.kapalapi.co.id</small></div>
+            <input class="adm-email-input" aria-label="Mail server" aria-invalid="@Invalid("host")" @bind="form.Host" @bind:event="oninput" autocomplete="off" />
+        </div>
+        <div class="adm-set-row">
+            <div class="adm-set-txt"><b>Port and security</b><small>465 uses SSL, 587 uses STARTTLS</small></div>
+            <input class="adm-email-input adm-email-port" type="number" min="1" max="65535" aria-label="Port" aria-invalid="@Invalid("port")" @bind="form.Port" />
+            <AppSelect Label="Security" Value="@form.Security" ValueChanged="OnSecurity" Options="@SecurityOptions" CssClass="adm-set-select" />
+        </div>
+        <div class="adm-set-row">
+            <div class="adm-set-txt"><b>User name</b><small>The mailbox iPop signs in as</small></div>
+            <input class="adm-email-input" aria-label="User name" @bind="form.User" @bind:event="oninput" autocomplete="off" />
+        </div>
+        <div class="adm-set-row">
+            <div class="adm-set-txt"><b>Password</b><small>@(data.HasPassword ? "Leave blank to keep the current password" : "No password saved")</small></div>
+            <input class="adm-email-input" type="password" aria-label="Password" placeholder="@(data.HasPassword ? "••••••••" : "")" @bind="form.Password" @bind:event="oninput" autocomplete="new-password" />
+        </div>
+        <div class="adm-set-row">
+            <div class="adm-set-txt"><b>Sender address</b><small>Shown as "From" on every email</small></div>
+            <input class="adm-email-input" aria-label="Sender address" aria-invalid="@Invalid("from")" @bind="form.From" @bind:event="oninput" autocomplete="off" />
+        </div>
+        <div class="adm-set-row">
+            <div class="adm-set-txt"><b>Sender name</b></div>
+            <input class="adm-email-input" aria-label="Sender name" @bind="form.FromName" @bind:event="oninput" autocomplete="off" />
+        </div>
+        <div class="adm-set-row">
+            <div class="adm-set-txt"><b>Accept self-signed certificate</b><small>Only for an internal mail server</small></div>
+            <button type="button" class="apple-switch @(form.AllowSelfSignedCert ? "on" : "")" role="switch" aria-label="Accept self-signed certificate"
+                    aria-checked="@(form.AllowSelfSignedCert ? "true" : "false")" @onclick="() => form.AllowSelfSignedCert = !form.AllowSelfSignedCert">
+                <span class="apple-switch-knob"></span>
+            </button>
+        </div>
+    </div>
+
+    @if (errorText is not null) { <p class="adm-hris-result bad adm-email-banner" role="alert"><i data-lucide="alert-circle"></i><span>@errorText</span></p> }
+
+    <div class="adm-card adm-email-card">
+        <div class="adm-set-row">
+            <div class="adm-set-txt"><b>Send a test email</b><small>Uses the settings above, even before you save</small></div>
+            <input class="adm-email-input" aria-label="Test recipient" placeholder="Your email" @bind="testTo" @bind:event="oninput" />
+            <button type="button" class="adm-btn ghost" disabled="@busy" @onclick="TestAsync"><i data-lucide="send"></i><span>@(testing ? "Sending…" : "Send test")</span></button>
+        </div>
+        @if (testResult is not null)
+        {
+            <p class="adm-hris-result @(testOk ? "" : "bad")"><i data-lucide="@(testOk ? "check-circle-2" : "alert-circle")"></i><span>@testResult</span></p>
+        }
+    </div>
+
+    <div class="adm-email-actions">
+        <button type="button" class="adm-btn primary" disabled="@busy" @onclick="SaveAsync"><i data-lucide="check"></i><span>@(saving ? "Saving…" : "Save")</span></button>
+    </div>
+}
+
+@code {
+    public sealed record HealthDto(DateTime? LastSentAt, DateTime? LastFailedAt, string? LastError, int Stuck);
+    public sealed record SettingsDto(string? Host, int Port, string Security, bool AllowSelfSignedCert, string? User,
+        bool HasPassword, string From, string FromName, string Source, HealthDto Health);
+    private sealed class Form
+    {
+        public string? Host { get; set; }
+        public int Port { get; set; } = 465;
+        public string Security { get; set; } = "ssl";
+        public bool AllowSelfSignedCert { get; set; }
+        public string? User { get; set; }
+        public string? Password { get; set; }
+        public string? From { get; set; }
+        public string? FromName { get; set; }
+        public object Body => new { Host, Port, Security, AllowSelfSignedCert, User, Password, From, FromName };
+    }
+    private sealed record ErrorDto(string? Code, string? Message, Dictionary<string, string>? Fields);
+    private sealed record TestDto(bool Ok, string? To, string? Message);
+
+    private static readonly List<AppOption> SecurityOptions = [new("ssl", "SSL"), new("starttls", "STARTTLS"), new("none", "None")];
+    private SettingsDto? data;
+    private Form form = new();
+    private string? testTo, testResult, errorText;
+    private bool testOk, testing, saving, loadError;
+    private Dictionary<string, string> fieldErrors = [];
+    private bool busy => testing || saving;
+    private readonly CancellationTokenSource lifetime = new();
+
+    private void OnSecurity(string? v)
+    {
+        form.Security = v ?? "ssl";
+        if (form.Security == "ssl" && form.Port == 587) form.Port = 465;
+        else if (form.Security == "starttls" && form.Port == 465) form.Port = 587;
+    }
+    private string? Invalid(string field) => fieldErrors.ContainsKey(field) ? "true" : null;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
+
+    private async Task LoadAsync()
+    {
+        data = await Auth.GetAsync<SettingsDto>("/api/admin/email", lifetime.Token);
+        loadError = data is null;
+        if (data is null) return;
+        form = new Form
+        {
+            Host = data.Host, Port = data.Port, Security = data.Security, AllowSelfSignedCert = data.AllowSelfSignedCert,
+            User = data.User, From = data.From, FromName = data.FromName,
+        };
+    }
+
+    private async Task<bool> HandleErrorAsync(HttpResponseMessage res)
+    {
+        if (res.IsSuccessStatusCode) { fieldErrors = []; errorText = null; return false; }
+        ErrorDto? err = null;
+        try { err = await res.Content.ReadFromJsonAsync<ErrorDto>(); } catch { }
+        fieldErrors = err?.Fields ?? [];
+        errorText = fieldErrors.Count > 0 ? string.Join(" ", fieldErrors.Values) : err?.Message ?? "Something went wrong. Try again.";
+        return true;
+    }
+
+    private async Task TestAsync()
+    {
+        if (busy) return;
+        testing = true; testResult = null;
+        try
+        {
+            using var res = await Auth.SendAsync(HttpMethod.Post, "/api/admin/email/test", new { Settings = form.Body, To = testTo }, lifetime.Token);
+            if (await HandleErrorAsync(res)) return;
+            var r = await res.Content.ReadFromJsonAsync<TestDto>();
+            testOk = r?.Ok == true;
+            testResult = testOk ? $"Sent to {r!.To}. Check the inbox, then press Save." : r?.Message ?? "The test email could not be sent.";
+        }
+        catch (HttpRequestException) { testOk = false; testResult = "Could not reach the server. Try again."; }
+        catch (OperationCanceledException) { }
+        finally { testing = false; }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (busy) return;
+        saving = true;
+        try
+        {
+            using var res = await Auth.SendAsync(HttpMethod.Put, "/api/admin/email", form.Body, lifetime.Token);
+            if (await HandleErrorAsync(res)) return;
+            Toasts.Show("Email settings saved. New emails use them right away.", ToastKind.Success);
+            await LoadAsync();
+        }
+        catch (HttpRequestException) { Toasts.Show("Could not save. Try again.", ToastKind.Error); }
+        catch (OperationCanceledException) { }
+        finally { saving = false; }
+    }
+
+    public void Dispose() { lifetime.Cancel(); lifetime.Dispose(); }
+}

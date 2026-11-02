@@ -25,7 +25,8 @@ public sealed class DbEmailQueue(IPopDbContext db) : IEmailQueue
 
 /// Drains the outbox. Retries after 1 then 5 minutes; after MaxAttempts the row stays
 /// unsent with LastError so failures are visible.
-public sealed class EmailOutboxProcessor(IPopDbContext db, IEmailSender sender, ILogger<EmailOutboxProcessor> log)
+public sealed class EmailOutboxProcessor(IPopDbContext db, IEmailSender sender, ILogger<EmailOutboxProcessor> log,
+    EmailFailureAlerts? alerts = null)
 {
     internal static TimeSpan Backoff(int attempts) =>
         attempts <= 1 ? TimeSpan.FromMinutes(1) : TimeSpan.FromMinutes(5);
@@ -36,6 +37,7 @@ public sealed class EmailOutboxProcessor(IPopDbContext db, IEmailSender sender, 
             .Where(m => m.SentAt == null && m.Attempts < EmailOutboxMessage.MaxAttempts && m.NextAttemptAt <= now)
             .OrderBy(m => m.CreatedAt).Take(20).ToListAsync(ct);
 
+        Exception? failure = null;
         foreach (var m in due)
         {
             m.Attempts++;
@@ -51,9 +53,11 @@ public sealed class EmailOutboxProcessor(IPopDbContext db, IEmailSender sender, 
                 m.LastError = ex.Message;
                 m.NextAttemptAt = now + Backoff(m.Attempts);
                 log.LogWarning(ex, "Email {Id} attempt {Attempt} failed", m.Id, m.Attempts);
+                failure ??= ex;
             }
         }
         await db.SaveChangesAsync(ct);
+        if (failure is not null && alerts is not null) await alerts.ReportAsync(failure, now, ct);
         return due.Count;
     }
 }

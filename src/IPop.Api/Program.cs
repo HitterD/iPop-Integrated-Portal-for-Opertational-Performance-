@@ -83,8 +83,10 @@ builder.Services.AddScoped<ISettings, DbSettings>();
 
 var smtp = SmtpOptions.Bind(builder.Configuration);
 builder.Services.AddSingleton(smtp);
-if (smtp.IsConfigured) builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
-else builder.Services.AddSingleton<IEmailSender, LogEmailSender>();
+// Admin › Email (DB) overrides the file; the sender re-reads it per send, so no restart.
+builder.Services.AddScoped<SmtpSettingsStore>();
+builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
+builder.Services.AddSingleton<EmailFailureAlerts>();
 builder.Services.AddScoped<IEmailQueue, DbEmailQueue>();
 builder.Services.AddScoped<EmailOutboxProcessor>();
 builder.Services.AddHostedService<EmailOutboxWorker>();
@@ -494,6 +496,7 @@ app.MapPush();
 app.MapPresence();
 app.MapDocumentDemo();
 app.MapSettings();
+app.MapEmailSettings();
 app.MapAttachments();
 app.MapDashboardAndSearch();
 app.MapLinkPreview();

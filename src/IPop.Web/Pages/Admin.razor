@@ -106,6 +106,9 @@ else if (Current is not null)
             case "notifier":
                 <AdminNotifier />
                 break;
+            case "email":
+                <AdminEmail />
+                break;
         }
     </section>
 </div>
@@ -127,7 +130,8 @@ else if (Current is not null)
                               new("announcements", "Announcements", "Launch videos that pop up after login", "clapperboard", "orange"),
                               new("calendar", "Holidays", "National and company holidays on everyone's calendar", "party-popper", "red")]),
         new("Integrations", [new("hris", "HRIS sync", "Employee data from HRIS", "refresh-cw", "violet"),
-                             new("notifier", "iPop Notifier", "Released versions and PCs per version", "bell-ring", "blue")]),
+                             new("notifier", "iPop Notifier", "Released versions and PCs per version", "bell-ring", "blue"),
+                             new("email", "Email", "The mailbox iPop sends password resets from", "mail", "blue")]),
     ];
 
     private SectionDef? Current;
