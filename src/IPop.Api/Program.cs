@@ -500,6 +500,7 @@ app.MapDocumentDemo();
 app.MapSettings();
 app.MapEmailSettings();
 app.MapAttachments();
+app.MapMediaStream();
 app.MapDashboardAndSearch();
 app.MapLinkPreview();
 app.MapHub<ChatHub>("/hubs/chat").RequireAuthorization();

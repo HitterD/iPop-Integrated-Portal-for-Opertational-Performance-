@@ -20,7 +20,9 @@ public partial class Files
     private static string FormatSize(long b) => b < 1024 ? $"{b} B" : b < 1024 * 1024 ? $"{b / 1024:N0} KB" : $"{b / 1024 / 1024:N0} MB";
     private static string FormatMtime(long mtime) => mtime == 0 ? "—" : DateTimeOffset.FromUnixTimeSeconds(mtime).ToLocalTime().ToString("MMM dd");
     private static string GetFileExt(string name) => System.IO.Path.GetExtension(name).ToLowerInvariant();
-    private static bool IsPreviewable(string name) => GetFileExt(name) is ".pdf" or ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" or ".xlsx" or ".xls" or ".csv" or ".docx" or ".doc" or ".pptx" or ".ppt" or ".rtf";
+    private static bool IsPreviewable(string name) => GetFileExt(name) is ".pdf" or ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" or ".xlsx" or ".xls" or ".csv" or ".docx" or ".doc" or ".pptx" or ".ppt" or ".rtf" || IsVideoPreviewable(name);
+    /// Videos stream from /api/media (Range), so Quick Look plays them without downloading first.
+    private static bool IsVideoPreviewable(string name) => MediaStream.IsVideoName(name);
     private static bool IsOfficePreviewable(string name) => GetFileExt(name) is ".docx" or ".doc" or ".rtf" or ".odt" or ".pptx";
     // Sheets renderable by RadzenSpreadsheet (XLSX/CSV). Legacy .xls stays on the SheetJS path.
     private static bool IsSheetPreviewable(string name) => GetFileExt(name) is ".xlsx" or ".csv";
@@ -95,6 +97,11 @@ public partial class Files
         ".ppt" => "application/vnd.ms-powerpoint",
         ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         ".xls" => "application/vnd.ms-excel",
+        ".mp4" or ".m4v" => "video/mp4",
+        ".webm" => "video/webm",
+        ".ogv" => "video/ogg",
+        ".mov" => "video/quicktime",
+        ".avi" or ".mkv" or ".wmv" or ".flv" or ".3gp" or ".mpeg" or ".mpg" => "video/x-unsupported",
         ".csv" => "text/csv",
         _ => "application/octet-stream"
     };

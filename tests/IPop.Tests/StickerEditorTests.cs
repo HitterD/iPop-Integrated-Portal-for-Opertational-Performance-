@@ -103,6 +103,7 @@ public class StickerEditorTests
         ctx.Services.AddSingleton(auth);
         ctx.Services.AddSingleton(new ChatState(auth, http));
         ctx.Services.AddSingleton(new ChatAttachments(auth, http, ctx.JSInterop.JSRuntime));
+        ctx.Services.AddSingleton(sp => new IPop.Web.Services.MediaStream(sp.GetRequiredService<AuthState>(), new HttpClient { BaseAddress = new Uri("http://localhost/") }));
         ctx.Services.AddSingleton(new OverlayStack());
         return ctx;
     }

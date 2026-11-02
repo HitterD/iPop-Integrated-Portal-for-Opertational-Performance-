@@ -25,6 +25,7 @@ public class ChatComponentsRenderTests
         {
             BaseAddress = new Uri("http://localhost/")
         }, ctx.JSInterop.JSRuntime));
+        ctx.Services.AddSingleton(sp => new IPop.Web.Services.MediaStream(sp.GetRequiredService<AuthState>(), new HttpClient { BaseAddress = new Uri("http://localhost/") }));
         ctx.Services.AddSingleton(new ToastService());
         ctx.Services.AddScoped<PhotoViewerState>();
         ctx.Services.AddScoped<IPop.Web.Services.PeopleLinks>();
@@ -51,6 +52,7 @@ public class ChatComponentsRenderTests
         ctx.Services.AddSingleton(auth);
         ctx.Services.AddSingleton(new ChatState(auth, Http()));
         ctx.Services.AddSingleton(new ChatAttachments(auth, Http(), ctx.JSInterop.JSRuntime));
+        ctx.Services.AddSingleton(sp => new IPop.Web.Services.MediaStream(sp.GetRequiredService<AuthState>(), new HttpClient { BaseAddress = new Uri("http://localhost/") }));
         ctx.Services.AddSingleton(new ToastService());
         ctx.Services.AddSingleton(new ConfirmService());
         ctx.Services.AddScoped<IPop.Web.Services.PeopleLinks>();

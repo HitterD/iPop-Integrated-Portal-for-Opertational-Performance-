@@ -12,6 +12,7 @@
 @inject FileState FileStateService
 @inject HttpClient Http
 @inject PhoneState Phone
+@inject MediaStream Media
 @using IPop.Web.Components.Phone.Files
 
 <PageTitle>Files - IPop</PageTitle>
@@ -538,7 +539,7 @@ else if (showCred)
 
 @if (Phone.IsPhone && showPreview && previewItem is not null)
 {
-    <PreviewPhone Name="@previewItem.Name" Url="@previewUrl" Mime="@previewMime" Loading="previewLoading" Error="@previewError" OfficeUrl="@(IsCoAuthorable(previewItem.Name) ? GetEditorUrl(previewItem) + "&embedded=1" : null)" OnClose="ClosePreview" OnDownload="() => Download(previewItem)" OnShare="() => phoneAction = new Row(server, previewItem)">
+    <PreviewPhone Name="@previewItem.Name" Url="@previewUrl" Mime="@previewMime" OnMediaError="OnPreviewMediaError" Loading="previewLoading" Error="@previewError" OfficeUrl="@(IsCoAuthorable(previewItem.Name) ? GetEditorUrl(previewItem) + "&embedded=1" : null)" OnClose="ClosePreview" OnDownload="() => Download(previewItem)" OnShare="() => phoneAction = new Row(server, previewItem)">
     </PreviewPhone>
 }
 else if (showPreview)
@@ -592,6 +593,8 @@ else if (showPreview)
                 { <img class="fx-ql-img" src="@previewUrl" alt="@previewItem?.Name" /> }
                 else if (previewMime == "application/pdf")
                 { <iframe id="preview-frame" class="fx-ql-frame" src="@previewUrl" title="@previewItem?.Name"></iframe> }
+                else if (previewMime == "video/stream")
+                { <video class="fx-ql-video" src="@previewUrl" controls autoplay playsinline @onerror="OnPreviewMediaError"></video> }
                 else
                 {
                     <div class="fx-empty">

@@ -31,7 +31,7 @@ public class ProjectTaskDrawerTests
         var auth = new AuthState(http, ctx.JSInterop.JSRuntime);
         ctx.Services.AddSingleton(auth);
         ctx.Services.AddSingleton(new TimerState(auth));
-        ctx.Services.AddSingleton(http);
+        ctx.Services.AddSingleton(http); ctx.Services.AddSingleton(new IPop.Web.Services.MediaStream(auth, http));
         ctx.Services.AddSingleton<ToastService>();
         ctx.Services.AddScoped<OverlayStack>();
         ctx.Services.AddScoped<IPop.Web.Services.PeopleLinks>();

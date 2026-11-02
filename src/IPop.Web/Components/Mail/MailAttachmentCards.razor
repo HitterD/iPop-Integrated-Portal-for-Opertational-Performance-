@@ -1,6 +1,7 @@
 @inject IJSRuntime JS
 @inject AuthState Auth
 @inject HttpClient Http
+@inject MediaStream Media
 @implements IAsyncDisposable
 @using IPop.Web.Services
 
@@ -71,11 +72,17 @@
         <div class="mail-preview-stage" @onclick:stopPropagation>
             @if (previewUrl is null)
             {
-                <div class="mail-preview-msg">@(previewFailed ? "Preview unavailable. Use Download instead." : "Loading preview…")</div>
+                <div class="mail-preview-msg">@(previewFailed ? (KindOf(preview) == "video" ? "This video can't be previewed in the browser. Use Download to watch it." : "Preview unavailable. Use Download instead.") : "Loading preview…")</div>
             }
             else if (KindOf(preview) == "image")
             {
                 <img src="@previewUrl" alt="@preview.FileName" />
+            }
+            else if (KindOf(preview) == "video")
+            {
+                @* Streamed with Range requests: plays while it loads; Download stays in the bar above. *@
+                <video class="mail-preview-video" src="@previewUrl" controls autoplay playsinline
+                       @onerror="() => { previewUrl = null; previewFailed = true; }"></video>
             }
             else
             {
@@ -147,7 +154,9 @@
         ReleasePreviewBlob();
         previewFailed = false;
         StateHasChanged();
-        var url = await FetchBlob($"/api/mail/attachments/{a.Id}/download?inline=true");
+        var url = KindOf(a) == "video"
+            ? await Media.MailAsync(a.Id)
+            : await FetchBlob($"/api/mail/attachments/{a.Id}/download?inline=true");
         if (preview?.Id != a.Id) { Release(url); return; }
         previewUrl = url;
         previewFailed = url is null;
@@ -220,7 +229,7 @@
         return "file";
     }
 
-    private static bool CanPreview(string kind) => kind is "image" or "pdf" or "text";
+    private static bool CanPreview(string kind) => kind is "image" or "pdf" or "text" or "video";
 
     private static string Icon(string kind) => kind switch
     {

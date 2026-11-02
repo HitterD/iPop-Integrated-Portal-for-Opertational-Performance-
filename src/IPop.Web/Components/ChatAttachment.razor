@@ -1,6 +1,7 @@
 @using IPop.Application.Chat
 @using IPop.Web.Services
 @inject ChatAttachments Att
+@inject MediaStream Media
 @inject IJSRuntime JS
 @implements IDisposable
 
@@ -38,13 +39,22 @@
 else if (kind == AttachmentKind.Video)
 {
     <div class="att-media" @onclick:stopPropagation>
-        @if (blobUrl is null)
+        @if (mediaFailed)
+        {
+            <div class="att-media-unplayable">
+                <i data-lucide="video-off"></i>
+                <span>This video can't be previewed here.</span>
+                <button type="button" @onclick="Download"><i data-lucide="download"></i> Download</button>
+            </div>
+        }
+        else if (blobUrl is null)
         {
             <span class="att-skeleton" aria-label="Loading video"></span>
         }
         else
         {
-            <video src="@blobUrl" controls preload="metadata" playsinline></video>
+            @* Streamed with Range requests: only the first bytes load until Play, then it plays while loading. *@
+            <video src="@blobUrl" controls preload="metadata" playsinline @onerror="OnMediaError"></video>
         }
         <div class="att-media-bar">
             <span class="nm" title="@Attachment.FileName">@Attachment.FileName</span>
@@ -62,13 +72,17 @@ else if (kind == AttachmentKind.Audio)
             <span class="nm" title="@Attachment.FileName">@Attachment.FileName</span>
             <button type="button" title="Download" @onclick="Download"><i data-lucide="download"></i></button>
         </div>
-        @if (blobUrl is null)
+        @if (mediaFailed)
+        {
+            <span class="att-media-unplayable audio">This audio can't be played here. Use Download.</span>
+        }
+        else if (blobUrl is null)
         {
             <span class="att-skeleton audio" aria-label="Loading audio"></span>
         }
         else
         {
-            <audio src="@blobUrl" controls preload="metadata"></audio>
+            <audio src="@blobUrl" controls preload="metadata" @onerror="OnMediaError"></audio>
         }
     </div>
 }
@@ -144,6 +158,7 @@ else
 
     private string? blobUrl;
     private bool imageFailed;
+    private bool mediaFailed;
     private bool retrying;
     private Guid loadedFor;
 
@@ -152,12 +167,13 @@ else
         if (loadedFor == Attachment.Id) return;
         loadedFor = Attachment.Id;
         imageFailed = false;
+        mediaFailed = false;
         // Already fetched (earlier visit to this room, or the drawer): paint it in this
         // render instead of flashing the skeleton for a round-trip.
         var kind = ChatAttachments.Kind(Attachment);
         blobUrl = kind == AttachmentKind.Image
             ? Att.UrlFor(Attachment.Id, thumb: true) ?? Att.UrlFor(Attachment.Id, thumb: false)
-            : kind is AttachmentKind.Video or AttachmentKind.Audio ? Att.UrlFor(Attachment.Id, thumb: false) : null;
+            : null;
         if (blobUrl is not null) return;
         await LoadAsync();
     }
@@ -170,9 +186,12 @@ else
         if (kind is not (AttachmentKind.Image or AttachmentKind.Video or AttachmentKind.Audio)) return;
 
         var id = Attachment.Id;
+        // Video/audio stream from the server (no whole-file download before Play); an older API without
+        // /api/media falls back to the full blob.
         var url = kind == AttachmentKind.Image
             ? await Att.GetAsync(id, thumb: true) ?? await Att.GetAsync(id, thumb: false)
-            : await Att.GetAsync(id, thumb: false);
+            : await Media.ChatAsync(id, Att.IsShared(id)) ?? await Att.GetAsync(id, thumb: false);
+        if (url is null && kind != AttachmentKind.Image && loadedFor == id) mediaFailed = true;
 
         // One silent retry absorbs a transient miss (a token that expired mid-flight, a dropped
         // connection). Anything still failing after this gets the click-to-retry fallback rather
@@ -211,6 +230,13 @@ else
     }
 
     private Task Open() => OnOpen.InvokeAsync(Attachment);
+
+    /// Not a format the browser plays (AVI, WMV, MKV, HEVC…): say so and keep Download.
+    private void OnMediaError()
+    {
+        mediaFailed = true;
+        iconsDirty = true;
+    }
 
     private Task OpenIfPreviewable() =>
         ChatAttachments.CanPreview(Attachment) ? OnOpen.InvokeAsync(Attachment) : Att.DownloadAsync(Attachment);

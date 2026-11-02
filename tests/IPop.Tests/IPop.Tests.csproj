@@ -24,4 +24,9 @@
     <ProjectReference Include="..\..\src\IPop.WebHost\IPop.WebHost.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The Notifier is a WinForms app; its pure link rules are compiled in directly. -->
+    <Compile Include="..\..\src\IPop.Notifier\Core\IPopLinks.cs" Link="Notifier\IPopLinks.cs" />
+  </ItemGroup>
+
 </Project>

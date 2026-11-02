@@ -41,6 +41,19 @@ public partial class Files
             previewLoading = false;
             return;
         }
+        if (IsVideoPreviewable(it.Name))
+        {
+            // Streamed: the player starts at once and seeks with Range; Download stays in the toolbar.
+            try
+            {
+                var url = await Media.FileAsync(server, it.Path);
+                if (previewItem != it) return;
+                if (url is null) previewError = "This video could not be opened. Use Download instead.";
+                else { previewUrl = url; previewMime = "video/stream"; }
+            }
+            finally { previewLoading = false; StateHasChanged(); await JS.InvokeVoidAsync("ipop.icons"); }
+            return;
+        }
         if (IsSheetPreviewable(it.Name))
         {
             try
@@ -114,6 +127,12 @@ public partial class Files
         catch { previewError = "Preview failed."; }
         finally { previewLoading = false; StateHasChanged(); await JS.InvokeVoidAsync("ipop.icons"); }
     }
+    /// The browser could not play this video (AVI/WMV/MKV/HEVC…): fall back to the Download card.
+    private void OnPreviewMediaError()
+    {
+        previewUrl = null;
+        previewError = "This video can't be previewed in the browser. Download it to watch.";
+    }
     private string BuildExplorerUrl(SynoItemDto it) => $"ipop://open?server={Uri.EscapeDataString(server)}&path={Uri.EscapeDataString(it.Path)}";
     private async Task OpenInExplorer()
     {
@@ -143,7 +162,7 @@ public partial class Files
         previewError = null;
         previewSheetBytes = null;
         StateHasChanged();
-        if (url is not null) await JS.InvokeVoidAsync("ipop.revokePreview");
+        if (url is not null && !url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) await JS.InvokeVoidAsync("ipop.revokePreview");
         await RestorePhoneDetail();
         await JS.InvokeVoidAsync("ipop.icons");
     }

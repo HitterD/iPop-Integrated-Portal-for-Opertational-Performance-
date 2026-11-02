@@ -88,6 +88,8 @@ public class ChatAttachments
     /// Marks ids served by /api/attachments/{id}; call before GetAsync / the viewer opens them.
     public void UseSharedStore(IEnumerable<Guid> ids) { foreach (var id in ids) _shared.Add(id); }
 
+    public bool IsShared(Guid id) => _shared.Contains(id);
+
     private string DownloadPath(Guid id, bool inline) => _shared.Contains(id)
         ? $"/api/attachments/{id}"
         : $"/api/chat/attachments/{id}/download{(inline ? "?inline=true" : "")}";

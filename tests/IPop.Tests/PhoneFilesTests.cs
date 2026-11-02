@@ -36,7 +36,7 @@ public class PhoneFilesTests
         var state = new PhoneState(ctx.JSInterop.JSRuntime); state.OnPhoneChanged(phone);
         var http = new HttpClient(new OfflineApi()) { BaseAddress = new Uri("http://localhost/") };
         var auth = new AuthState(http, ctx.JSInterop.JSRuntime);
-        ctx.Services.AddSingleton(state); ctx.Services.AddSingleton(http); ctx.Services.AddSingleton(auth);
+        ctx.Services.AddSingleton(state); ctx.Services.AddSingleton(http); ctx.Services.AddSingleton(auth); ctx.Services.AddSingleton(new IPop.Web.Services.MediaStream(auth, http));
         ctx.Services.AddSingleton(new FileState(auth)); ctx.Services.AddSingleton(new ToastService()); ctx.Services.AddSingleton(new ConfirmService());
         return ctx.Render<OfflineFiles>();
     }

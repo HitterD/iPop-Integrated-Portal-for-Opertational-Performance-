@@ -52,7 +52,7 @@ public class MailLayoutTests
         var http = new HttpClient(new FakeApi(route)) { BaseAddress = new Uri("http://localhost/") };
         var auth = new AuthState(http, ctx.JSInterop.JSRuntime);
         ctx.Services.AddSingleton(auth);
-        ctx.Services.AddSingleton(http);
+        ctx.Services.AddSingleton(http); ctx.Services.AddSingleton(new IPop.Web.Services.MediaStream(auth, http));
         ctx.Services.AddSingleton(new WebMail.MailService(auth, http));
         ctx.Services.AddSingleton<MailReceiptsStore>();
         ctx.Services.AddSingleton<MailReadingPrefs>();

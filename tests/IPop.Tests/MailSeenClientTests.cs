@@ -51,7 +51,7 @@ public class MailSeenClientTests
         var http = new HttpClient(api) { BaseAddress = new Uri("http://localhost/") };
         var auth = new AuthState(http, ctx.JSInterop.JSRuntime);
         ctx.Services.AddSingleton(auth);
-        ctx.Services.AddSingleton(http);
+        ctx.Services.AddSingleton(http); ctx.Services.AddSingleton(new IPop.Web.Services.MediaStream(auth, http));
         ctx.Services.AddSingleton(new WebMail.MailService(auth, http));
         ctx.Services.AddSingleton<IPop.Web.Services.MailReceiptsStore>();
         ctx.Services.AddSingleton<IPop.Web.Services.MailReadingPrefs>();

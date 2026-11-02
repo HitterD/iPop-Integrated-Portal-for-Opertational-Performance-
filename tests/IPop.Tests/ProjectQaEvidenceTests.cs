@@ -33,6 +33,7 @@ public class ProjectQaEvidenceTests
         ctx.Services.AddSingleton<ToastService>();
         ctx.Services.AddSingleton<OverlayStack>();
         ctx.Services.AddSingleton(new ChatAttachments(auth, http, ctx.JSInterop.JSRuntime));
+        ctx.Services.AddSingleton(sp => new IPop.Web.Services.MediaStream(sp.GetRequiredService<AuthState>(), new HttpClient { BaseAddress = new Uri("http://localhost/") }));
         var task = new ProjectTaskDto(Guid.Empty, Guid.NewGuid(), null, "3 selected tasks", "", "todo", "medium", null, null,
             null, null, 0, null, false, null, false, null, Guid.NewGuid(), "Owner", [], 0, 0, DateTime.UtcNow, DateTime.UtcNow);
         var cut = ctx.Render<ProjectStatusEvidenceModal>(p => p.Add(x => x.IsOpen, true).Add(x => x.Task, task).Add(x => x.TargetStatus, "done"));

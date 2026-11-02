@@ -1431,7 +1431,7 @@ public static class ChatEndpoints
     // Attachments are visible once linked to a room the caller belongs to.
     // Pending uploads (MessageId==null) infer the room from the stored path so the
     // composer strip can load its own thumbnail before the message is sent.
-    private static async Task<bool> CanAccessAttachmentAsync(IPopDbContext db, ChatAttachment attachment, Guid userId, CancellationToken ct)
+    internal static async Task<bool> CanAccessAttachmentAsync(IPopDbContext db, ChatAttachment attachment, Guid userId, CancellationToken ct)
     {
         if (attachment.MessageId is not null)
         {
@@ -1488,7 +1488,7 @@ public static class ChatEndpoints
 
     /// Repairs a blank/generic stored MimeType from the filename and persists the fix.
     /// Returns the MIME to use for the response either way.
-    private static async Task<string> EnsureMimeAsync(IPopDbContext db, ChatAttachment attachment, CancellationToken ct)
+    internal static async Task<string> EnsureMimeAsync(IPopDbContext db, ChatAttachment attachment, CancellationToken ct)
     {
         var current = attachment.MimeType;
         var resolved = ResolveMime(attachment.FileName, current);

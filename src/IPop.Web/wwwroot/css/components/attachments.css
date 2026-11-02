@@ -28,6 +28,11 @@
 .att-media-bar .nm { flex: 1; min-width: 0; font-size: 11.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
 .att-media-bar .sz { font-size: 10.5px; color: var(--ink-3); flex-shrink: 0; }
 .att-media-bar button, .att-audio-head button { width: 24px; height: 24px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.att-media-unplayable { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 140px; padding: 16px; text-align: center; font-size: 12.5px; color: var(--ink-2); background: var(--bg); }
+.att-media-unplayable.audio { min-height: 0; padding: 8px 10px; font-size: 11.5px; }
+.att-media-unplayable i { width: 22px; height: 22px; color: var(--ink-3); }
+.att-media-unplayable button { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-weight: 600; cursor: pointer; }
+.att-media-unplayable button i { width: 14px; height: 14px; color: inherit; }
 .att-media-bar button:hover, .att-audio-head button:hover { background: var(--tray); color: var(--ink); }
 .att-media-bar button .lucide, .att-audio-head button .lucide { width: 12px; height: 12px; }
 .att-audio-head { display: flex; align-items: center; gap: 8px; padding: 9px 10px 4px; }

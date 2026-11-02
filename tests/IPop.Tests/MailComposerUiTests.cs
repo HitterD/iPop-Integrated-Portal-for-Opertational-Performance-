@@ -91,17 +91,21 @@ public class MailComposerUiTests
         var http = new HttpClient { BaseAddress = new Uri("http://localhost/") };
         ctx.Services.AddSingleton(new AuthState(http, ctx.JSInterop.JSRuntime));
         ctx.Services.AddSingleton(http);
+        ctx.Services.AddSingleton(sp => new IPop.Web.Services.MediaStream(sp.GetRequiredService<AuthState>(), new HttpClient { BaseAddress = new Uri("http://localhost/") }));
 
         var atts = new List<MailAttachment>
         {
             new(Guid.NewGuid(), "report.pdf", 2048, "application/pdf", null),
             new(Guid.NewGuid(), "sheet.xlsx", 4096, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", null),
+            new(Guid.NewGuid(), "demo.mp4", 40_000_000, "video/mp4", null),
         };
         var cut = ctx.Render<MailAttachmentCards>(p => p.Add(c => c.Attachments, atts));
 
-        Assert.Equal(2, cut.FindAll(".att-card").Count);
-        Assert.Contains("2 attachments", cut.Find(".att-head").TextContent);
-        Assert.Single(cut.FindAll(".att-card.previewable")); // pdf previews, xlsx downloads
+        Assert.Equal(3, cut.FindAll(".att-card").Count);
+        Assert.Contains("3 attachments", cut.Find(".att-head").TextContent);
+        // pdf and video preview (video streams, no download first); xlsx downloads. Every card keeps Download.
+        Assert.Equal(2, cut.FindAll(".att-card.previewable").Count);
+        Assert.Equal(3, cut.FindAll(".att-dl").Count);
         Assert.DoesNotContain("/api/mail/attachments", cut.Markup); // everything goes through authBlob2/authDownload
         Assert.DoesNotContain(ctx.JSInterop.Invocations, i => i.Identifier == "window.open");
     }
@@ -114,6 +118,7 @@ public class MailComposerUiTests
         var http = new HttpClient { BaseAddress = new Uri("http://localhost/") };
         ctx.Services.AddSingleton(new AuthState(http, ctx.JSInterop.JSRuntime));
         ctx.Services.AddSingleton(http);
+        ctx.Services.AddSingleton(sp => new IPop.Web.Services.MediaStream(sp.GetRequiredService<AuthState>(), new HttpClient { BaseAddress = new Uri("http://localhost/") }));
 
         var cut = ctx.Render<MailAttachmentCards>(p => p.Add(c => c.Attachments, new List<MailAttachment>()));
         Assert.Empty(cut.FindAll(".detail-att-section"));

@@ -1,6 +1,7 @@
 @using IPop.Application.Chat
 @using IPop.Web.Services
 @inject ChatAttachments Att
+@inject MediaStream Media
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
@@ -83,14 +84,14 @@
                         break;
 
                     case AttachmentKind.Video:
-                        <video class="av-video" src="@blobUrl" controls autoplay playsinline></video>
+                        <video class="av-video" src="@blobUrl" controls autoplay playsinline @onerror="OnMediaError"></video>
                         break;
 
                     case AttachmentKind.Audio:
                         <div class="av-audio">
                             <span class="ic"><i data-lucide="music"></i></span>
                             <div class="nm">@att.FileName</div>
-                            <audio src="@blobUrl" controls autoplay></audio>
+                            <audio src="@blobUrl" controls autoplay @onerror="OnMediaError"></audio>
                         </div>
                         break;
 
@@ -208,6 +209,15 @@
                     if (textContent is null) error = "This file could not be loaded.";
                     break;
 
+                case AttachmentKind.Video:
+                case AttachmentKind.Audio:
+                    // Streamed (Range requests): plays while it loads instead of after a full download.
+                    var stream = await Media.ChatAsync(id, Att.IsShared(id)) ?? await Att.GetAsync(id, thumb: false);
+                    if (loadedId != id) return;
+                    blobUrl = stream;
+                    if (blobUrl is null) error = "This file could not be loaded.";
+                    break;
+
                 default:
                     var url = await Att.GetAsync(id, thumb: false);
                     if (loadedId != id) return;
@@ -283,6 +293,9 @@
     // ---- Actions ----
 
     private Task Download() => Attachment is null ? Task.CompletedTask : Att.DownloadAsync(Attachment);
+
+    /// The browser cannot play this container/codec (AVI, WMV, MKV, HEVC…): show the Download fallback.
+    private void OnMediaError() => error = "This video can't be previewed in the browser. Download it to watch.";
 
     private async Task OpenTab()
     {
