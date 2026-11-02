@@ -15,7 +15,7 @@
     <ApplicationIcon>Assets\ipop.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <!-- Canonical release version. Scripts read this default; -Version overrides both build and packaging. -->
-    <Version>1.4.5</Version>
+    <Version>1.4.6</Version>
     <Product>iPop Notifier</Product>
     <AssemblyTitle>iPop Notifier</AssemblyTitle>
     <Company>PT Santos Jaya Abadi</Company>

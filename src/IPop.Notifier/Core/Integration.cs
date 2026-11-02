@@ -123,22 +123,47 @@ public static class Integration
         OpenIPopPage(api, path);
     }
 
-    /// An iPop page never becomes one more browser tab per message. Installed iPop app (Chrome/Edge register
-    /// its web+ipop: protocol in HKCU) → the app window is focused and navigates. Otherwise /open.html hands
-    /// the page to the iPop tab that is already open and closes itself (no open tab: it loads the page).
+    /// An iPop page never becomes one more browser tab per message.
+    ///   Installed iPop app → its own launcher with web+ipop://open?to=…: the app window comes to the front and
+    ///   navigates (manifest launch_handler focus-existing), never the browser.
+    ///   Browser only → the iPop tab is brought to the front, then /open.html hands it the page and closes itself;
+    ///   the iPop tab is selected again afterwards (closing a tab can leave a neighbour selected).
+    ///   Nothing open → /open.html simply loads the page.
     public static void OpenIPopPage(IPopClient api, string path)
     {
         var target = IPopLinks.Normalize(path);
-        if (IPopLinks.AppProtocolRegistered())
+        if (IPopLinks.AppCommand() is { } command && IPopLinks.ParseCommand(command, IPopLinks.AppUrl(target)) is { } launch)
         {
             try
             {
-                Process.Start(new ProcessStartInfo(IPopLinks.AppUrl(target)) { UseShellExecute = true });
+                Process.Start(new ProcessStartInfo(launch.File, launch.Args) { UseShellExecute = false });
+                Log.Info("open", "iPop app: " + target);
                 return;
             }
-            catch (Exception ex) { Log.Warn("open", "app protocol failed: " + ex.Message); }
+            catch (Exception ex) { Log.Warn("open", "iPop app launch failed: " + ex.Message); }
         }
-        OpenUrl(IPopLinks.HandoffUrl(api.Web, target));
+        var hadTab = BrowserTabs.FocusIPopTab();
+        OpenBrowser(IPopLinks.HandoffUrl(api.Web, target));
+        if (hadTab)
+            _ = Task.Run(async () =>
+            {
+                // The handoff tab closes itself within ~0.5 s; then make sure the iPop tab is the one showing.
+                await Task.Delay(900);
+                BrowserTabs.FocusIPopTab();
+            });
+        Log.Info("open", (hadTab ? "iPop tab: " : "browser: ") + target);
+    }
+
+    private static void OpenBrowser(string url)
+    {
+#if DEBUG
+        if (QaRun && Environment.GetEnvironmentVariable("IPOP_NOTIFIER_QA_OPEN_LOG") is { Length: > 0 } openLog)
+        {
+            try { File.AppendAllText(openLog, url + Environment.NewLine); } catch { }
+            return;
+        }
+#endif
+        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
     }
 
     /// The signed-in client, so any link to the iPop site (a URL inside a message, a meeting link) also reuses

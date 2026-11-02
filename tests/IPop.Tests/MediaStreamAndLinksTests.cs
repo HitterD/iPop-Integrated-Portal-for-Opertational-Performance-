@@ -120,12 +120,31 @@ public sealed class MediaStreamAndLinksTests
     }
 
     [Fact]
-    public void App_protocol_detection_can_be_forced_for_QA()
+    public void App_launch_command_from_Chrome_registry_fills_the_url_after_single_argument()
     {
-        Environment.SetEnvironmentVariable("IPOP_NOTIFIER_APP_PROTOCOL", "1");
-        try { Assert.True(IPopLinks.AppProtocolRegistered()); }
-        finally { Environment.SetEnvironmentVariable("IPOP_NOTIFIER_APP_PROTOCOL", "0"); }
-        try { Assert.False(IPopLinks.AppProtocolRegistered()); }
+        const string cmd = @"""C:\Users\x\Web Applications\_crx_abc\iPop.exe"" --profile-directory=Default --app-id=abc --single-argument %1";
+        var launch = IPopLinks.ParseCommand(cmd, IPopLinks.AppUrl("/chat/r1"));
+        Assert.NotNull(launch);
+        Assert.Equal(@"C:\Users\x\Web Applications\_crx_abc\iPop.exe", launch.Value.File);
+        Assert.Equal("--profile-directory=Default --app-id=abc --single-argument web+ipop://open?to=%2Fchat%2Fr1", launch.Value.Args);
+        Assert.Equal((@"C:\b.exe", "\"web+ipop://open?to=%2F\""), IPopLinks.ParseCommand(@"C:\b.exe ""%1""", "web+ipop://open?to=%2F"));
+        Assert.Null(IPopLinks.ParseCommand("\"unterminated", "x"));
+    }
+
+    [Fact]
+    public void App_detection_can_be_forced_off_for_QA()
+    {
+        Environment.SetEnvironmentVariable("IPOP_NOTIFIER_APP_PROTOCOL", "0");
+        try { Assert.Null(IPopLinks.AppCommand()); }
         finally { Environment.SetEnvironmentVariable("IPOP_NOTIFIER_APP_PROTOCOL", null); }
     }
+
+    [Theory]
+    [InlineData("(13) Messages — IPop - Google Chrome", true)]
+    [InlineData("Dashboard — IPop", true)]
+    [InlineData("iPop - (13) Messages — IPop", true)]
+    [InlineData("HitterD/iPop-Integrated-Portal - Google Chrome", false)]
+    [InlineData("iDesk Enterprise Platform", false)]
+    [InlineData("", false)]
+    public void Browser_tab_title_recognises_iPop_pages(string title, bool ipop) => Assert.Equal(ipop, IPopLinks.IsIPopTitle(title));
 }
