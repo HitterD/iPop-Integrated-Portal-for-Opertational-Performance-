@@ -1,8 +1,8 @@
 # Non-secret settings for the API. Secrets (DB password, JWT key, SMTP, NAS, LiveKit, iDesk, VAPID, OIDC)
 # live in secret ipop-api-secrets, created by bootstrap/secrets.sh and never committed.
 #
-# PHASE: "test" = copy of prod data, nothing goes out (no mail, push, iDesk, HRIS).
-# At cutover set Workers__Outbound to "true" (one-line change, push → Argo applies it).
+# PHASE: "test" = copy of prod data, nothing goes out (no mail, push, iDesk, HRIS), tested on
+# http://ipop.192.168.2.113.nip.io. Every line marked CUTOVER changes on cutover day (docs/deploy/k3s/07-cutover.md).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -10,7 +10,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-2"
 data:
-  Workers__Outbound: "false"
+  Workers__Outbound: "false"                                                    # CUTOVER: "true"
   Workers__OpsHealth: "false"          # disk + backup alerts come from Prometheus/Alertmanager now
   Https__Redirect: "false"             # TLS ends at Zoraxy
   ConnectionStrings__Redis: "redis:6379,abortConnect=false"
@@ -32,10 +32,10 @@ data:
   AndroidApp__LatestPath: "/data/android/latest.json"
   # ONLYOFFICE runs in the cluster; the browser reaches it through the same host at /onlyoffice.
   OnlyOffice__ServerUrl: "http://onlyoffice.ipop.svc"
-  OnlyOffice__PublicServerUrl: "https://ipop.santos.co.id/onlyoffice"
+  OnlyOffice__PublicServerUrl: "http://ipop.192.168.2.113.nip.io/onlyoffice"     # CUTOVER: https://ipop.santos.co.id/onlyoffice
   OnlyOffice__InternalApiUrl: "http://ipop-api.ipop.svc"
   # LiveKit in the cluster: browsers use the public host (/rtc), the API talks to it directly.
-  Calls__LiveKit__Url: "wss://ipop.santos.co.id"
+  Calls__LiveKit__Url: "ws://ipop.192.168.2.113.nip.io"                         # CUTOVER: wss://ipop.santos.co.id
   Calls__LiveKit__ServerUrl: "http://livekit.ipop.svc:7880"
   # 1:1 calls: STUN on LiveKit's port 3478 (ipop-01, or ipop-02 after a failover). TURN relay stays off
   # as on the old host: it needs a sharedSecret (pentest V-02); inside the LAN STUN is enough.
