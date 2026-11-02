@@ -1,0 +1,96 @@
+/* Admin › Approvers — table, side panel, import dialog. Uses the admin-v6 tokens. */
+.apv { display:flex; flex-direction:column; gap:10px; min-width:0; }
+
+.apv-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.apv-search { display:flex; align-items:center; gap:6px; height:34px; padding:0 10px; min-width:220px; flex:0 1 280px;
+  border:1px solid var(--line-soft); border-radius:10px; background:var(--tray); }
+.apv-search .lucide { width:15px; height:15px; color:var(--ink-3); }
+.apv-search input { flex:1; min-width:0; border:0; outline:0; background:transparent; color:var(--ink); font:inherit; font-size:13px; }
+.apv-filter { min-width:150px; }
+.apv-spacer { flex:1; }
+.apv-toolbar .btn-sm { display:inline-flex; align-items:center; gap:5px; }
+.apv-toolbar .btn-sm .lucide { width:14px; height:14px; }
+
+.apv-chips { display:flex; flex-wrap:wrap; gap:6px; }
+.apv-chip-filter { height:28px; padding:0 12px; border:1px solid var(--line-soft); border-radius:99px; background:transparent;
+  color:var(--ink-2); font:inherit; font-size:12px; cursor:pointer; }
+.apv-chip-filter.on { background:var(--ink); border-color:var(--ink); color:var(--bg, #fff); }
+
+.apv-bulk { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:8px 12px; border-radius:12px;
+  background:var(--adm-blue-soft); color:var(--ink); }
+.apv-bulk-picker { min-width:240px; flex:0 1 300px; }
+
+.apv-count { margin:0; font-size:12px; color:var(--ink-3); }
+.apv-table-wrap { overflow:auto; border:1px solid var(--line-soft); border-radius:12px; background:var(--tray); }
+.apv-table { width:100%; border-collapse:collapse; font-size:13px; }
+.apv-table th { position:sticky; top:0; z-index:1; padding:8px 12px; background:var(--tray); border-bottom:1px solid var(--line-soft);
+  text-align:left; font-size:11px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-3); }
+.apv-table td { padding:9px 12px; border-bottom:1px solid var(--line-soft); vertical-align:top; }
+.apv-table tr:last-child td { border-bottom:0; }
+.apv-table td b { display:block; font-weight:600; }
+.apv-table td small { display:block; font-size:11px; color:var(--ink-3); }
+.apv-row { cursor:pointer; }
+.apv-row:hover td, .apv-row.on td { background:var(--fill); }
+.apv-check { width:32px; }
+.apv-unit { font-size:12px; color:var(--ink-2); }
+.apv-none { font-size:12px; color:var(--adm-orange); }
+.apv-steps { display:flex; flex-wrap:wrap; gap:6px; }
+.apv-chip { display:inline-flex; flex-direction:column; padding:3px 9px; border-radius:8px; background:var(--fill); font-size:12px; line-height:1.3; }
+.apv-chip small { font-size:10px; color:var(--ink-3); }
+.apv-chip.bad { background:var(--adm-red-soft); color:var(--adm-red); }
+.apv-chip.bad small { color:var(--adm-red); }
+.apv-pager { display:flex; align-items:center; justify-content:center; gap:12px; font-size:12px; color:var(--ink-3); }
+
+/* side panel */
+.apv-sub { margin:0 0 6px; font-size:12px; color:var(--ink-3); }
+.apv-save { margin-left:auto; margin-right:8px; font-size:12px; color:var(--ink-3); }
+.apv-save.saved { color:var(--adm-ok); }
+.apv-save.failed { color:var(--adm-red); }
+.apv-issues { display:flex; align-items:center; gap:6px; margin:0 0 6px; padding:8px 10px; border-radius:10px;
+  background:var(--adm-orange-soft); color:var(--adm-orange); font-size:12px; }
+.apv-issues .lucide { width:14px; height:14px; flex:none; }
+.apv-slot { display:grid; grid-template-columns:130px 1fr; align-items:center; gap:10px; min-height:44px; padding:6px 12px;
+  border-bottom:1px solid var(--line-soft); }
+.apv-slot:last-child { border-bottom:0; }
+.apv-slot-label { font-size:12px; color:var(--ink-3); }
+.apv-slot-value { display:flex; align-items:center; gap:6px; min-width:0; }
+.apv-slot-value .member-picker { flex:1; min-width:0; }
+.apv-slot-person { flex:1; min-width:0; font-size:13px; font-weight:600; }
+.apv-slot-person small { display:block; font-size:11px; font-weight:400; }
+.apv-slot-person.bad { color:var(--adm-red); }
+.apv-clear { display:inline-grid; place-items:center; width:26px; height:26px; border:0; border-radius:8px; background:transparent;
+  color:var(--ink-3); cursor:pointer; }
+.apv-clear:hover { background:var(--fill); color:var(--ink); }
+.apv-clear .lucide { width:14px; height:14px; }
+.apv-empty-slot { color:var(--ink-3); }
+.apv-preview ol { margin:0; padding:8px 12px 10px 30px; font-size:13px; }
+.apv-preview li { padding:2px 0; }
+.apv-preview li small { display:inline-block; min-width:118px; color:var(--ink-3); font-size:12px; }
+.apv-history-row { display:flex; flex-direction:column; gap:2px; padding:8px 12px; border-bottom:1px solid var(--line-soft); font-size:12.5px; }
+.apv-history-row:last-child { border-bottom:0; }
+.apv-history-row small { font-size:11px; color:var(--ink-3); }
+
+/* import + replace dialogs */
+.apv-import-dialog { width:min(880px, calc(100vw - 32px)); max-height:calc(100vh - 48px); display:flex; flex-direction:column; }
+.apv-replace-dialog { width:min(480px, calc(100vw - 32px)); padding:18px; }
+.apv-replace-dialog h3 { margin:0 0 6px; font-size:16px; }
+.apv-replace-dialog p, .apv-help { margin:0 0 12px; font-size:12.5px; color:var(--ink-2); }
+.apv-import-dialog > .apv-help, .apv-import-dialog > .apv-upload, .apv-import-dialog > .apv-summary,
+.apv-import-dialog > .apv-tabs, .apv-import-dialog > .adm-hris-result, .apv-import-dialog > .skel { margin-left:18px; margin-right:18px; }
+.apv-import-dialog > .apv-help { margin-top:14px; }
+.apv-field { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; font-size:12px; color:var(--ink-3); }
+.apv-upload { display:flex; flex-wrap:wrap; align-items:center; gap:16px; margin-bottom:10px; }
+.apv-complete { display:flex; align-items:flex-start; gap:8px; font-size:12.5px; cursor:pointer; }
+.apv-complete small { display:block; color:var(--adm-orange); }
+.apv-summary { display:flex; flex-wrap:wrap; gap:14px; margin:4px 0 10px; font-size:12.5px; color:var(--ink-2); }
+.apv-summary .warn { color:var(--adm-orange); }
+.apv-tabs { margin-bottom:8px; align-self:flex-start; }
+.apv-preview-body { flex:1; min-height:120px; overflow:auto; padding:0 18px; }
+.apv-preview-body h4 { margin:12px 0 4px; font-size:12px; font-weight:600; color:var(--ink-2); }
+.apv-table.compact td, .apv-table.compact th { padding:6px 8px; }
+.apv-diff { font-size:12px; color:var(--ink-2); }
+.apv-list { margin:0; padding:0 0 0 18px; font-size:12.5px; }
+.apv-list li { padding:2px 0; }
+.apv-list small { color:var(--ink-3); }
+.apv-actions { display:flex; justify-content:flex-end; gap:8px; padding:12px 18px; border-top:1px solid var(--line-soft); }
+.apv-replace-dialog .apv-actions { padding:12px 0 0; border-top:0; }

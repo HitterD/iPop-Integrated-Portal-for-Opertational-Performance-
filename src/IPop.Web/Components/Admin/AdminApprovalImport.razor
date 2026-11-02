@@ -1,0 +1,201 @@
+@* Import HC's approver workbook: upload → preview what would change (approvers and Directory) →
+   Apply. The server re-reads the same file on Apply, so nothing is written that wasn't previewed. *@
+@using System.Net.Http.Json
+@using IPop.Web.Services
+@inject AuthState Auth
+@inject ToastService Toasts
+@inject IJSRuntime JS
+
+<div class="proj-modal-backdrop" @onclick="Close"></div>
+<div class="proj-modal v6-project-modal adm-modal apv-import-dialog" role="dialog" aria-modal="true" aria-labelledby="apv-import-title">
+    <div class="proj-modal-head">
+        <span class="vpm-tile adm-tile-blue"><i data-lucide="upload"></i></span>
+        <span id="apv-import-title">Import approver workbook</span>
+        <button type="button" class="vpm-close" aria-label="Close" @onclick="Close"><i data-lucide="x"></i></button>
+    </div>
+
+    <p class="apv-help">Use HC's workbook (sheet “4. ALL DATA_SJA”, or the file from Export). Rows marked <b>ex</b> are skipped.</p>
+
+    <div class="apv-upload">
+        <InputFile accept=".xlsx" OnChange="OnFile" aria-label="Choose workbook" />
+        <label class="apv-complete">
+            <input type="checkbox" checked="@complete" @onchange="OnComplete" />
+            <span><b>This file is the complete list</b><small>People not in the file will lose their approvers.</small></span>
+        </label>
+    </div>
+
+    @if (error is not null) { <p class="adm-hris-result bad" role="alert"><i data-lucide="alert-circle"></i>@error</p> }
+    @if (loading) { <div class="skel" aria-label="Reading the workbook"></div> }
+
+    @if (preview is { } p)
+    {
+        <p class="apv-summary">
+            <span><b>@p.New</b> new</span><span><b>@p.Changed</b> changed</span>
+            @if (p.Cleared > 0) { <span class="warn"><b>@p.Cleared</b> cleared</span> }
+            <span><b>@p.Unchanged</b> unchanged</span><span><b>@p.SkippedResigned</b> resigned rows skipped</span>
+        </p>
+
+        <div class="adm-seg apv-tabs" role="tablist" aria-label="Preview">
+            <button type="button" role="tab" class="@(tab == 0 ? "on" : "")" aria-selected="@(tab == 0 ? "true" : "false")" @onclick="() => tab = 0">Approvers (@p.Chains.Count)</button>
+            <button type="button" role="tab" class="@(tab == 1 ? "on" : "")" aria-selected="@(tab == 1 ? "true" : "false")" @onclick="() => tab = 1">Directory (@(p.UnitsToCreate.Count + p.Moves.Count + p.UnitsToDeactivate.Count))</button>
+            <button type="button" role="tab" class="@(tab == 2 ? "on" : "")" aria-selected="@(tab == 2 ? "true" : "false")" @onclick="() => tab = 2">Warnings (@WarningCount(p))</button>
+        </div>
+
+        <div class="apv-preview-body">
+            @if (tab == 0)
+            {
+                @if (p.Chains.Count == 0) { <p class="adm-list-hint flat">No approver changes.</p> }
+                <table class="apv-table compact">
+                    <thead><tr><th>Employee</th><th>Change</th><th>Approvers after import</th></tr></thead>
+                    <tbody>
+                        @foreach (var c in p.Chains.Take(Limit))
+                        {
+                            <tr><td><b>@c.Name</b><small>@c.Nik</small></td><td>@(c.Kind switch { "new" => "New", "cleared" => "Cleared", _ => "Changed" })</td>
+                                <td class="apv-diff">@Diff(c)</td></tr>
+                        }
+                    </tbody>
+                </table>
+                @if (p.Chains.Count > Limit) { <p class="adm-list-hint flat">…and @(p.Chains.Count - Limit) more.</p> }
+            }
+            else if (tab == 1)
+            {
+                @if (!CanDirectory && (p.UnitsToCreate.Count + p.Moves.Count + p.UnitsToDeactivate.Count) > 0)
+                {
+                    <p class="adm-hris-result bad" role="alert"><i data-lucide="lock"></i>These Directory changes need the Directory permission. Ask an admin to apply this file.</p>
+                }
+                <h4>New units (@p.UnitsToCreate.Count)</h4>
+                <ul class="apv-list">@foreach (var u in p.UnitsToCreate.Take(Limit)) { <li><b>@u.Name</b> <small>@(u.Kind == "department" ? "Division" : "Department") · under @u.ParentCode@(u.SiteCode is null ? "" : $" · {u.SiteCode}")</small></li> }</ul>
+                <h4>People moved (@p.Moves.Count)</h4>
+                <ul class="apv-list">@foreach (var m in p.Moves.Take(Limit)) { <li><b>@m.Name</b> <small>@(m.FromPath ?? "Not placed") → @m.ToPath</small></li> }</ul>
+                @if (p.Moves.Count > Limit) { <p class="adm-list-hint flat">…and @(p.Moves.Count - Limit) more.</p> }
+                <h4>Units switched off (@p.UnitsToDeactivate.Count)</h4>
+                <ul class="apv-list">@foreach (var d in p.UnitsToDeactivate) { <li>@d.Path <small>empty after import — hidden, not deleted</small></li> }</ul>
+                @if (p.Unmapped.Count > 0)
+                {
+                    <h4>Not placed</h4>
+                    <ul class="apv-list">@foreach (var u in p.Unmapped) { <li>@u</li> }</ul>
+                }
+            }
+            else
+            {
+                <ul class="apv-list">
+                    @foreach (var w in p.Warnings) { <li>@w</li> }
+                    @if (p.InactiveApprovers.Count > 0) { <li><b>@p.InactiveApprovers.Count approvers have left</b> <small>@string.Join(", ", p.InactiveApprovers.Take(20)) — imported, shown in red to fix</small></li> }
+                    @if (p.UnknownApprovers.Count > 0) { <li><b>@p.UnknownApprovers.Count approvers have no iPop account</b> <small>@string.Join(", ", p.UnknownApprovers.Take(20))</small></li> }
+                    @if (p.UnknownEmployees.Count > 0) { <li><b>@p.UnknownEmployees.Count employees have no iPop account yet</b> <small>their approvers are kept and appear once HRIS adds them</small></li> }
+                </ul>
+                @if (WarningCount(p) == 0) { <p class="adm-list-hint flat">No warnings.</p> }
+            }
+        </div>
+    }
+
+    <div class="apv-actions">
+        <button type="button" class="btn-sm" @onclick="Close">Cancel</button>
+        <button type="button" class="btn-sm primary apv-apply" disabled="@(!CanApply)" @onclick="Apply">
+            @(applying ? "Applying…" : preview is { } pp ? $"Apply {pp.Chains.Count} approver changes" + (pp.Moves.Count > 0 ? $" and {pp.Moves.Count} moves" : "") : "Apply")
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter] public bool CanDirectory { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnApplied { get; set; }
+
+    private const long MaxBytes = 10 * 1024 * 1024;
+    private const int Limit = 200;
+    private byte[]? file;
+    private string fileName = "";
+    private bool complete;
+    private bool loading;
+    private bool applying;
+    private string? error;
+    private ApvPreview? preview;
+    private int tab;
+
+    private bool DirectoryBlocked => preview is { } p && !CanDirectory && (p.UnitsToCreate.Count + p.Moves.Count + p.UnitsToDeactivate.Count) > 0;
+    private bool CanApply => preview is { HasChanges: true } && !loading && !applying && !DirectoryBlocked;
+
+    private static int WarningCount(ApvPreview p) => p.Warnings.Count + (p.InactiveApprovers.Count > 0 ? 1 : 0)
+        + (p.UnknownApprovers.Count > 0 ? 1 : 0) + (p.UnknownEmployees.Count > 0 ? 1 : 0);
+
+    private string Diff(ApvChange c)
+    {
+        var parts = new List<string>();
+        for (var i = 0; i < 9; i++)
+        {
+            var b = c.Before?.ElementAtOrDefault(i); var a = c.After.ElementAtOrDefault(i);
+            if (b != a) parts.Add($"{ApvText.SlotLabels[i]}: {b ?? "—"} → {a ?? "—"}");
+        }
+        return string.Join(" · ", parts);
+    }
+
+    private async Task OnFile(InputFileChangeEventArgs e)
+    {
+        error = null; preview = null; file = null;
+        if (e.File.Size > MaxBytes) { error = "The file is larger than 10 MB."; return; }
+        if (!e.File.Name.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase)) { error = "Only .xlsx files can be imported."; return; }
+        using var ms = new MemoryStream();
+        await e.File.OpenReadStream(MaxBytes).CopyToAsync(ms);
+        file = ms.ToArray(); fileName = e.File.Name;
+        await LoadPreview();
+    }
+
+    private async Task OnComplete(ChangeEventArgs e)
+    {
+        complete = e.Value is true;
+        if (file is not null) await LoadPreview();
+    }
+
+    private MultipartFormDataContent Form(string? token = null)
+    {
+        var form = new MultipartFormDataContent();
+        form.Add(new ByteArrayContent(file!), "file", fileName);
+        form.Add(new StringContent(complete ? "true" : "false"), "complete");
+        if (token is not null) form.Add(new StringContent(token), "token");
+        return form;
+    }
+
+    private async Task LoadPreview()
+    {
+        loading = true; error = null; preview = null;
+        StateHasChanged();
+        try
+        {
+            var res = await Auth.SendMultipartAsync("/api/approval/import/preview", Form());
+            if (!res.IsSuccessStatusCode) error = await Message(res, "The workbook could not be read.");
+            else preview = await res.Content.ReadFromJsonAsync<ApvPreview>();
+        }
+        catch { error = "The workbook could not be read. Try again."; }
+        loading = false;
+    }
+
+    private async Task Apply()
+    {
+        if (preview is null || file is null) return;
+        applying = true;
+        try
+        {
+            var res = await Auth.SendMultipartAsync("/api/approval/import/apply", Form(preview.Token));
+            if (!res.IsSuccessStatusCode) { error = await Message(res, "Import failed. Nothing was changed."); return; }
+            var r = await res.Content.ReadFromJsonAsync<ApvImportResult>();
+            Toasts.Show($"Imported: {r?.ChainsWritten ?? 0} approver chains" + (r?.UsersPlaced > 0 ? $", {r.UsersPlaced} people placed in the Directory" : ""), ToastKind.Success);
+            await OnApplied.InvokeAsync();
+        }
+        catch { error = "Import failed. Nothing was changed."; }
+        finally { applying = false; }
+    }
+
+    private static async Task<string> Message(HttpResponseMessage res, string fallback)
+    {
+        try { return (await res.Content.ReadFromJsonAsync<ErrorBody>())?.Message ?? fallback; } catch { return fallback; }
+    }
+    private record ErrorBody(string? Code, string? Message);
+
+    private async Task Close() => await OnClose.InvokeAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+    }
+}

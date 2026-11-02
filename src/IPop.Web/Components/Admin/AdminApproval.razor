@@ -1,0 +1,296 @@
+@* Admin › Approvers: everyone's approver chain from HC's workbook. approval.read sees the table;
+   approval.manage edits a person in the side panel (autosave), sets one slot for many people,
+   replaces a departed approver everywhere, and imports the workbook. *@
+@using System.Net.Http.Json
+@using IPop.Application.Rbac
+@using IPop.Web.Services
+@inject AuthState Auth
+@inject ToastService Toasts
+@inject ConfirmService Confirm
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="apv">
+    <div class="apv-toolbar">
+        <div class="apv-search">
+            <i data-lucide="search"></i>
+            <input placeholder="Search name or NIK" aria-label="Search people" value="@search" @oninput="OnSearch" />
+        </div>
+        <AppSelect Label="Plant" Value="@site" ValueChanged="OnSite" Options="@SiteOptions" CssClass="apv-filter" />
+        <AppSelect Label="Division" Value="@division" ValueChanged="OnDivision" Options="@DivisionOptions" CssClass="apv-filter" />
+        <span class="apv-spacer"></span>
+        @if (CanManage)
+        {
+            <button type="button" class="btn-sm apv-replace" @onclick="OpenReplace"><i data-lucide="replace"></i> Replace approver…</button>
+            <button type="button" class="btn-sm apv-import" @onclick="() => importOpen = true"><i data-lucide="upload"></i> Import</button>
+        }
+        <button type="button" class="btn-sm apv-export" @onclick="Export"><i data-lucide="download"></i> Export</button>
+    </div>
+
+    <div class="apv-chips" role="tablist" aria-label="Show">
+        @foreach (var (key, label) in ApvText.IssueFilters)
+        {
+            <button type="button" role="tab" class="apv-chip-filter @(issue == key ? "on" : "")" aria-selected="@(issue == key ? "true" : "false")"
+                    @onclick="() => OnIssue(key)">@label</button>
+        }
+    </div>
+
+    @if (selected.Count > 0 && CanManage)
+    {
+        <div class="apv-bulk" role="region" aria-label="Selected people">
+            <b>@selected.Count selected</b>
+            <AppSelect Label="Slot" Value="@bulkSlot" ValueChanged="OnBulkSlot" Options="@SlotOptions" CssClass="apv-filter" />
+            <div class="apv-bulk-picker"><AppMemberPicker Placeholder="Set to… (type a name)" Value="bulkPerson" ValueChanged="v => bulkPerson = v" /></div>
+            <button type="button" class="btn-sm primary" disabled="@(busy)" @onclick="ApplyBulk">Apply to @selected.Count</button>
+            <button type="button" class="btn-sm" @onclick="() => selected.Clear()">Clear</button>
+        </div>
+    }
+
+    @if (chains is null)
+    {
+        @if (loadError) { <div class="adm-empty" role="alert">Approvers could not be loaded. <button type="button" class="btn-sm" @onclick="LoadAsync">Retry</button></div> }
+        else { <div class="skel" aria-label="Loading approvers"></div> }
+    }
+    else if (chains.Items.Count == 0)
+    {
+        <div class="adm-empty">No one matches these filters.</div>
+    }
+    else
+    {
+        <p class="apv-count">@chains.TotalCount.ToString("N0") people</p>
+        <div class="apv-table-wrap">
+            <table class="apv-table">
+                <thead>
+                    <tr>
+                        @if (CanManage)
+                        {
+                            <th class="apv-check"><input type="checkbox" aria-label="Select all on this page" checked="@AllSelected" @onchange="ToggleAll" /></th>
+                        }
+                        <th>Employee</th><th>Unit</th><th>Approvers</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in chains.Items)
+                    {
+                        <tr class="apv-row @(open?.Nik == c.Nik ? "on" : "")" @onclick="() => OpenPanel(c)">
+                            @if (CanManage)
+                            {
+                                <td class="apv-check" @onclick:stopPropagation="true">
+                                    <input type="checkbox" aria-label="@($"Select {c.Name}")" checked="@selected.Contains(c.Nik)" @onchange="() => Toggle(c.Nik)" />
+                                </td>
+                            }
+                            <td><b>@(c.Name ?? c.Nik)</b><small>@c.Nik</small></td>
+                            <td><span class="apv-unit">@Unit(c)</span></td>
+                            <td>
+                                @if (c.Steps.Count == 0)
+                                {
+                                    <span class="apv-none">@(c.Issues.Contains("not_in_matrix") ? "Not in workbook" : "No approvers")</span>
+                                }
+                                <span class="apv-steps">
+                                    @foreach (var s in c.Steps)
+                                    {
+                                        <span class="apv-chip @(s.Active && s.Known ? "" : "bad")" title="@ApvText.ChipTitle(s)">
+                                            <small>@s.Label</small>@(s.Name ?? s.Nik)
+                                        </span>
+                                    }
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (chains.TotalCount > chains.PageSize)
+        {
+            var pages = (chains.TotalCount + chains.PageSize - 1) / chains.PageSize;
+            <div class="apv-pager">
+                <button type="button" class="btn-sm" disabled="@(chains.Page <= 1)" @onclick="() => GoTo(chains.Page - 1)">Previous</button>
+                <span>Page @chains.Page of @pages</span>
+                <button type="button" class="btn-sm" disabled="@(chains.Page >= pages)" @onclick="() => GoTo(chains.Page + 1)">Next</button>
+            </div>
+        }
+    }
+</div>
+
+@if (open is not null)
+{
+    <AdminApprovalPanel Chain="open" CanEdit="CanManage" OnClose="() => open = null" OnSaved="OnPanelSaved" />
+}
+
+@if (importOpen)
+{
+    <AdminApprovalImport CanDirectory="Auth.Can(PermissionCodes.DirectoryManage)" OnClose="() => importOpen = false" OnApplied="OnImported" />
+}
+
+@if (replaceOpen)
+{
+    <div class="proj-modal-backdrop" @onclick="() => replaceOpen = false"></div>
+    <div class="proj-modal v6-project-modal adm-modal apv-replace-dialog" role="dialog" aria-modal="true" aria-labelledby="apv-replace-title">
+        <h3 id="apv-replace-title">Replace an approver everywhere</h3>
+        <p>Use this when someone leaves or moves: every chain that has them gets the new person in the same place.</p>
+        <label class="apv-field"><span>Replace</span><AppMemberPicker Placeholder="Who is leaving (type a name)" Value="replaceFrom" ValueChanged="v => replaceFrom = v" /></label>
+        <label class="apv-field"><span>With</span><AppMemberPicker Placeholder="New approver (leave empty to remove)" Value="replaceTo" ValueChanged="v => replaceTo = v" /></label>
+        <div class="apv-actions">
+            <button type="button" class="btn-sm" @onclick="() => replaceOpen = false">Cancel</button>
+            <button type="button" class="btn-sm primary" disabled="@(replaceFrom is null || busy)" @onclick="ApplyReplace">Replace</button>
+        </div>
+    </div>
+}
+
+@code {
+    private ApvPage? chains;
+    private bool loadError;
+    private bool busy;
+    private string search = "";
+    private string? site;
+    private string? division;
+    private string issue = "";
+    private int pageNo = 1;
+    private ApvChain? open;
+    private readonly HashSet<string> selected = [];
+    private string bulkSlot = "1";
+    private MemberSearchRow? bulkPerson;
+    private bool importOpen;
+    private bool replaceOpen;
+    private MemberSearchRow? replaceFrom;
+    private MemberSearchRow? replaceTo;
+    private CancellationTokenSource? searchCts;
+    private List<AppOption> SiteOptions = [new("", "All plants")];
+    private List<AppOption> DivisionOptions = [new("", "All divisions")];
+
+    private bool CanManage => Auth.Can(PermissionCodes.ApprovalManage);
+    private bool AllSelected => chains is { Items.Count: > 0 } && chains.Items.All(c => selected.Contains(c.Nik));
+    private static readonly List<AppOption> SlotOptions =
+        ApvText.SlotLabels.Select((l, i) => new AppOption((i + 1).ToString(), l)).ToList();
+
+    private static string Unit(ApvChain c) =>
+        string.Join(" › ", new[] { c.Plant, c.Division, c.Department }.Where(x => !string.IsNullOrWhiteSpace(x))) is { Length: > 0 } s ? s : "—";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadFiltersAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadFiltersAsync()
+    {
+        try
+        {
+            var s = await Auth.GetAsync<IPop.Application.Hris.DirectoryStructure>("/api/directory/structure");
+            if (s is null) return;
+            SiteOptions = [new("", "All plants"), .. s.Sites.Select(x => new AppOption(x.Code, x.Name))];
+            DivisionOptions = [new("", "All divisions"), .. s.Sites.SelectMany(x => x.Departments)
+                .GroupBy(d => d.Code).Select(g => g.First()).OrderBy(d => d.Name).Select(d => new AppOption(d.Code, d.Name))];
+        }
+        catch { /* filters are optional */ }
+    }
+
+    private async Task LoadAsync()
+    {
+        loadError = false;
+        try
+        {
+            var q = $"/api/approval/chains?page={pageNo}&pageSize=50"
+                + (search.Trim().Length > 0 ? $"&search={Uri.EscapeDataString(search.Trim())}" : "")
+                + (string.IsNullOrEmpty(site) ? "" : $"&site={Uri.EscapeDataString(site)}")
+                + (string.IsNullOrEmpty(division) ? "" : $"&department={Uri.EscapeDataString(division)}")
+                + (string.IsNullOrEmpty(issue) ? "" : $"&issue={issue}");
+            chains = await Auth.GetAsync<ApvPage>(q) ?? throw new InvalidOperationException();
+        }
+        catch { chains = null; loadError = true; }
+        StateHasChanged();
+    }
+
+    private async Task OnSearch(ChangeEventArgs e)
+    {
+        search = e.Value?.ToString() ?? "";
+        searchCts?.Cancel();
+        var cts = searchCts = new CancellationTokenSource();
+        try { await Task.Delay(300, cts.Token); } catch (TaskCanceledException) { return; }
+        pageNo = 1;
+        await LoadAsync();
+    }
+
+    private async Task OnSite(string? v) { site = v; pageNo = 1; await LoadAsync(); }
+    private async Task OnDivision(string? v) { division = v; pageNo = 1; await LoadAsync(); }
+    private async Task OnIssue(string v) { issue = v; pageNo = 1; await LoadAsync(); }
+    private async Task GoTo(int p) { pageNo = p; await LoadAsync(); }
+
+    private void Toggle(string nik) { if (!selected.Remove(nik)) selected.Add(nik); }
+    private void ToggleAll()
+    {
+        if (chains is null) return;
+        if (AllSelected) foreach (var c in chains.Items) selected.Remove(c.Nik);
+        else foreach (var c in chains.Items) selected.Add(c.Nik);
+    }
+
+    private void OpenPanel(ApvChain c) => open = c;
+
+    private async Task OnPanelSaved(ApvChain updated)
+    {
+        if (chains is not null)
+        {
+            var i = chains.Items.FindIndex(x => x.Nik == updated.Nik);
+            if (i >= 0) chains.Items[i] = updated;
+        }
+        open = updated;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ApplyBulk()
+    {
+        var label = ApvText.SlotLabels[int.Parse(bulkSlot) - 1];
+        var who = bulkPerson?.Name ?? "nobody";
+        if (!await Confirm.AskAsync($"Set {label} for {selected.Count} people?", $"{label} becomes {who} for everyone selected. Other slots stay as they are.", "Apply", danger: false))
+            return;
+        busy = true;
+        var res = await Auth.SendAsync(HttpMethod.Post, "/api/approval/chains/bulk",
+            new { niks = selected.ToArray(), slot = int.Parse(bulkSlot), approverNik = bulkPerson?.Nik });
+        busy = false;
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Could not update the selected people. Try again.", ToastKind.Error); return; }
+        var r = await res.Content.ReadFromJsonAsync<ApvCountResult>();
+        Toasts.Show($"{label} updated for {r?.Updated ?? 0} people", ToastKind.Success);
+        selected.Clear(); bulkPerson = null;
+        await LoadAsync();
+    }
+
+    private void OnBulkSlot(string? v) => bulkSlot = v ?? "1";
+
+    private void OpenReplace() { replaceFrom = null; replaceTo = null; replaceOpen = true; }
+
+    private async Task ApplyReplace()
+    {
+        if (replaceFrom is null) return;
+        busy = true;
+        var res = await Auth.SendAsync(HttpMethod.Post, "/api/approval/replace", new { oldNik = replaceFrom.Nik, newNik = replaceTo?.Nik });
+        busy = false;
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Could not replace the approver. Try again.", ToastKind.Error); return; }
+        var r = await res.Content.ReadFromJsonAsync<ApvCountResult>();
+        Toasts.Show(r?.Updated > 0 ? $"{replaceFrom.Name} replaced in {r.Updated} chains" : $"{replaceFrom.Name} is not in any chain", ToastKind.Success);
+        replaceOpen = false;
+        await LoadAsync();
+    }
+
+    private async Task OnImported()
+    {
+        importOpen = false;
+        await LoadFiltersAsync();
+        await LoadAsync();
+    }
+
+    private async Task Export()
+    {
+        var res = await Auth.SendAsync(HttpMethod.Get, "/api/approval/export");
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Export failed. Try again.", ToastKind.Error); return; }
+        var bytes = await res.Content.ReadAsByteArrayAsync();
+        try { await JS.InvokeVoidAsync("ipop.download", Convert.ToBase64String(bytes), $"approvers-{DateTime.Now:yyyy-MM-dd}.xlsx"); }
+        catch { Toasts.Show("Export is ready but the download could not start.", ToastKind.Error); }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+    }
+
+    public void Dispose() => searchCts?.Cancel();
+}

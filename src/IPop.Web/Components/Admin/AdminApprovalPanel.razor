@@ -1,0 +1,178 @@
+@* One person's approvers: nine labelled slots, each picked by name. Changes save on their own
+   shortly after the last edit; the preview shows the chain the way the employee sees it. *@
+@using System.Net.Http.Json
+@using IPop.Web.Services
+@inject AuthState Auth
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="backdrop on" @onclick="Close"></div>
+<div class="drawer adm-inspector apv-panel on" role="dialog" aria-modal="true" aria-labelledby="apv-panel-title">
+<div class="tray"><div class="core">
+    <div class="drawer-head">
+        <span id="apv-panel-title">@(Chain.Name ?? Chain.Nik)</span>
+        <span class="apv-save @saveState" role="status" aria-live="polite">@SaveText</span>
+        <button class="drawer-close" aria-label="Close" @onclick="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="drawer-body adm-insp">
+    <p class="apv-sub">@Chain.Nik@(string.IsNullOrWhiteSpace(Chain.Division) ? "" : $" · {Chain.Division}")</p>
+
+    @if (Chain.Issues.Count > 0)
+    {
+        <p class="apv-issues" role="note"><i data-lucide="alert-triangle"></i>@string.Join(" · ", Chain.Issues.Select(ApvText.Issue))</p>
+    }
+
+    <div class="adm-group-label">Approvers</div>
+    <div class="adm-list apv-slots">
+        @for (var i = 0; i < 9; i++)
+        {
+            var idx = i;
+            var step = Chain.Steps.FirstOrDefault(s => s.Nik == slots[idx]);
+            <div class="apv-slot" data-slot="@(idx + 1)">
+                <span class="apv-slot-label">@ApvText.SlotLabels[idx]</span>
+                <div class="apv-slot-value">
+                    @if (slots[idx] is { } nik)
+                    {
+                        <span class="apv-slot-person @(step is { Active: false } or { Known: false } ? "bad" : "")"
+                              title="@(step is null ? "" : ApvText.ChipTitle(step))">
+                            @(names.GetValueOrDefault(nik) ?? step?.Name ?? nik)
+                            @if (step is { Known: false }) { <small>No iPop account</small> }
+                            else if (step is { Active: false }) { <small>No longer active</small> }
+                        </span>
+                        @if (CanEdit)
+                        {
+                            <button type="button" class="apv-clear" aria-label="@($"Remove {ApvText.SlotLabels[idx]}")" @onclick="() => SetSlot(idx, null, null)">
+                                <i data-lucide="x"></i>
+                            </button>
+                        }
+                    }
+                    else if (CanEdit)
+                    {
+                        <AppMemberPicker Placeholder="Add (type a name)" Value="null" ValueChanged="r => SetSlot(idx, r?.Nik, r?.Name)" />
+                    }
+                    else
+                    {
+                        <span class="apv-empty-slot">—</span>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="adm-group-label">What @(FirstName) sees</div>
+    <div class="adm-list apv-preview">
+        @{ var shown = Compact(); }
+        @if (shown.Count == 0) { <p class="adm-list-hint flat">No approvers set yet.</p> }
+        <ol>
+            @foreach (var (label, name) in shown) { <li><small>@label</small>@name</li> }
+        </ol>
+    </div>
+
+    <div class="adm-group-label">History</div>
+    <div class="adm-list apv-history">
+        @if (history is null) { <div class="skel" aria-label="Loading history"></div> }
+        else if (history.Count == 0) { <p class="adm-list-hint flat">No changes recorded yet.</p> }
+        else
+        {
+            @foreach (var h in history)
+            {
+                <div class="apv-history-row">
+                    <small>@AdminHumanize.Ago(h.At) · @(h.ActorName ?? "System")</small>
+                    <span>@h.Summary</span>
+                </div>
+            }
+        }
+    </div>
+    </div>
+</div></div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ApvChain Chain { get; set; } = default!;
+    [Parameter] public bool CanEdit { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<ApvChain> OnSaved { get; set; }
+
+    private string?[] slots = new string?[9];
+    private readonly Dictionary<string, string> names = [];
+    private List<ApvHistory>? history;
+    private string loadedFor = "";
+    private string saveState = "";
+    private CancellationTokenSource? saveCts;
+    private const int SaveDelayMs = 600;
+
+    private string SaveText => saveState switch { "saving" => "Saving…", "saved" => "Saved", "failed" => "Not saved — retrying on next change", _ => "" };
+    private string FirstName => (Chain.Name ?? "they").Split(' ')[0] is var f && f.Length > 0 ? char.ToUpper(f[0]) + f[1..].ToLower() : "they";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedFor == Chain.Nik) return;
+        loadedFor = Chain.Nik;
+        slots = Chain.Slots.Length == 9 ? Chain.Slots.ToArray() : new string?[9];
+        names.Clear();
+        foreach (var s in Chain.Steps.Where(s => s.Name is not null)) names[s.Nik] = s.Name!;
+        saveState = "";
+        history = null;
+        try { history = await Auth.GetAsync<List<ApvHistory>>($"/api/approval/chains/{Uri.EscapeDataString(Chain.Nik)}/history") ?? []; }
+        catch { history = []; }
+    }
+
+    private List<(string Label, string Name)> Compact()
+    {
+        var list = new List<(string, string)>();
+        string? last = null;
+        for (var i = 0; i < 9; i++)
+        {
+            if (slots[i] is not { } n || n == last) continue;
+            last = n;
+            list.Add((ApvText.SlotLabels[i], names.GetValueOrDefault(n) ?? n));
+        }
+        return list;
+    }
+
+    private void SetSlot(int idx, string? nik, string? name)
+    {
+        slots[idx] = nik;
+        if (nik is not null && name is not null) names[nik] = name;
+        QueueSave();
+    }
+
+    private void QueueSave()
+    {
+        saveCts?.Cancel();
+        var cts = saveCts = new CancellationTokenSource();
+        saveState = "saving";
+        _ = SaveLaterAsync(cts.Token);
+    }
+
+    private async Task SaveLaterAsync(CancellationToken ct)
+    {
+        try { await Task.Delay(SaveDelayMs, ct); } catch (TaskCanceledException) { return; }
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Put, $"/api/approval/chains/{Uri.EscapeDataString(Chain.Nik)}", new { slots }, ct);
+            if (ct.IsCancellationRequested) return;
+            if (!res.IsSuccessStatusCode) { saveState = "failed"; await InvokeAsync(StateHasChanged); return; }
+            var updated = await res.Content.ReadFromJsonAsync<ApvChain>(cancellationToken: ct);
+            saveState = "saved";
+            if (updated is not null)
+            {
+                loadedFor = updated.Nik;   // keep local slots; refresh history below
+                await OnSaved.InvokeAsync(updated);
+            }
+            history = await Auth.GetAsync<List<ApvHistory>>($"/api/approval/chains/{Uri.EscapeDataString(Chain.Nik)}/history", ct) ?? history;
+        }
+        catch (OperationCanceledException) { return; }
+        catch { saveState = "failed"; }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task Close() => await OnClose.InvokeAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+    }
+
+    public void Dispose() { /* a pending save still completes so nothing typed is lost */ }
+}
