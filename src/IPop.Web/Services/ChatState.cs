@@ -945,7 +945,8 @@ public partial class ChatState : IAsyncDisposable
             if (idx < 0) return false;
             var r = list[idx];
             var preview = RoomPreview.Build(r.Type, message.Type, message.Content, message.IsDeleted, message.SenderName,
-                string.Equals(message.SenderNik, _auth.Me?.Nik, StringComparison.OrdinalIgnoreCase));
+                string.Equals(message.SenderNik, _auth.Me?.Nik, StringComparison.OrdinalIgnoreCase),
+                attachmentMime: message.Attachments.FirstOrDefault()?.MimeType, attachmentCount: message.Attachments.Count);
             var updated = r with
             {
                 LastMessage = preview,
@@ -984,7 +985,8 @@ public partial class ChatState : IAsyncDisposable
             if (idx < 0 || list[idx].LastMessageAt is not { } at
                 || Math.Abs((at - message.CreatedAt).Ticks) >= TimeSpan.TicksPerMillisecond) return false;
             var preview = RoomPreview.Build(list[idx].Type, message.Type, message.Content, message.IsDeleted, message.SenderName,
-                string.Equals(message.SenderNik, _auth.Me?.Nik, StringComparison.OrdinalIgnoreCase));
+                string.Equals(message.SenderNik, _auth.Me?.Nik, StringComparison.OrdinalIgnoreCase),
+                attachmentMime: message.Attachments.FirstOrDefault()?.MimeType, attachmentCount: message.Attachments.Count);
             if (list[idx].LastMessage == preview) return false;
             list[idx] = list[idx] with { LastMessage = preview };
             return true;

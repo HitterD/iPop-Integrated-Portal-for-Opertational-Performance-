@@ -7,7 +7,7 @@
 @inject AuthState Auth
 @inject NavigationManager Nav
 
-<div class="@FullMessageClass" @oncontextmenu="(e) => OnCtx.InvokeAsync((Message.Id, e))" @oncontextmenu:preventDefault>
+<div class="@(Bare ? "msg-inner" : FullMessageClass)" @oncontextmenu="(e) => OnCtx.InvokeAsync((Message.Id, e))" @oncontextmenu:preventDefault>
     @if (!isSent && Message.Type != "system" && Message.Type != "emergency" && ChatSvc.ActiveRoom?.Type == "group")
     {
         <button type="button" class="msg-avatar avatar avatar-btn hover-lift" style="@AvatarPhotos.Style(Message.SenderNik)" @onclick="() => OnProfile.InvokeAsync(Message.SenderNik)">
@@ -178,6 +178,8 @@
     [Parameter] public EventCallback<Guid> OnReplyOpen { get; set; }
     /// Group rooms show a receipt on every own message: "Read by 2 of 5" / "Read by all".
     [Parameter] public bool IsGroup { get; set; }
+    /// When true, renders .msg-inner instead of .msg.{sent|recv} because the parent loop already wraps the row in .msg.
+    [Parameter] public bool Bare { get; set; }
 
     /// Where the time + ticks sit inside the bubble (WhatsApp-style):
     /// "text" — bottom-right on the last line (a hidden copy in the text reserves its room);
@@ -389,11 +391,11 @@
     /// The chat page re-renders on every hub event (typing, presence, other rooms); a bubble
     /// only needs to when something it draws changed. MessageDto is an immutable record that
     /// ChatState swaps on edit/delete/reaction/receipt, so a reference check covers the message.
-    private (MessageDto, bool, bool, bool, bool, ChatRoomDto?, string)? _drawn;
+    private (MessageDto, bool, bool, bool, bool, bool, ChatRoomDto?, string)? _drawn;
 
     protected override bool ShouldRender()
     {
-        var now = (Message, IsPinned, IsGroup, isPending, isFailed, ChatSvc.ActiveRoom, AvatarPhotos.Style(Message.SenderNik));
+        var now = (Message, IsPinned, IsGroup, Bare, isPending, isFailed, ChatSvc.ActiveRoom, AvatarPhotos.Style(Message.SenderNik));
         if (_drawn is { } d && d.Equals(now)) return false;
         _drawn = now;
         return true;

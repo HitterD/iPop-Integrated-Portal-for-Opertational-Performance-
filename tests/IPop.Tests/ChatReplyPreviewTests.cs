@@ -100,6 +100,7 @@ public class ChatReplyPreviewTests
         Assert.True(res.Success);
         Assert.Equal("ooo gitu siap", res.Message!.ReplyPreview?.Content);
     }
+
     [Fact]
     public async Task Reply_quote_shows_mentions_as_names_not_markup()
     {
@@ -127,5 +128,102 @@ public class ChatReplyPreviewTests
 
         Assert.DoesNotContain("(u:", res.Message!.ReplyPreview!.Content);
         Assert.DoesNotContain("@[", res.Message.ReplyPreview.Content);
+    }
+
+    [Fact]
+    public void RoomPreview_and_ReplyQuote_format_attachment_and_voice_placeholders()
+    {
+        Assert.Equal("📷 Photo", RoomPreview.Build("dm", "text", "(attachment)", false, "Budi", false, attachmentMime: "image/png", attachmentCount: 1));
+        Assert.Equal("You: 📷 3 photos", RoomPreview.Build("group", "text", "(attachment)", false, "Budi", true, attachmentMime: "image/jpeg", attachmentCount: 3));
+        Assert.Equal("🎬 Video", RoomPreview.Build("dm", "text", "", false, "Budi", false, attachmentMime: "video/mp4", attachmentCount: 1));
+        Assert.Equal("Budi: 📎 Attachment", RoomPreview.Build("group", "text", "(attachment)", false, "Budi", false, attachmentMime: "application/pdf", attachmentCount: 1));
+        Assert.Equal("🎤 Voice message", RoomPreview.Build("dm", "text", "[voice]", false, "Budi", false, attachmentMime: "audio/webm", attachmentCount: 1));
+
+        Assert.Equal("📷 Photo", ReplyQuote.Text("text", "(attachment)", false, 140, "image/webp", 1));
+        Assert.Equal("🎬 2 videos", ReplyQuote.Text("text", "(attachment)", false, 140, "video/mp4", 2));
+        Assert.Equal("📎 Attachment", ReplyQuote.Text("text", "(attachment)", false, 140, "application/pdf", 1));
+        Assert.Equal("🎤 Voice message", ReplyQuote.Text("text", "[voice]", false, 140, "audio/ogg", 1));
+    }
+
+    [Fact]
+    public async Task New_dm_room_has_null_LastMessageAt_until_first_message()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("A");
+        var b = t.AddUser("B");
+        var svc = new ChatService(t.Verify());
+
+        var createdRoom = await svc.CreateDirectRoomAsync(a.Id, b.Id, default);
+        Assert.NotNull(createdRoom);
+
+        var roomsBefore = await svc.GetRoomsAsync(a.Id, RoomTab.Direct, 1, 20, default);
+        var rowBefore = Assert.Single(roomsBefore.Items);
+        Assert.Null(rowBefore.LastMessage);
+        Assert.Null(rowBefore.LastMessageAt);
+
+        await svc.SendMessageAsync(a.Id, new SendMessageRequest(createdRoom.Id, "halo", Guid.NewGuid(), null, null), default);
+        var roomsAfter = await svc.GetRoomsAsync(a.Id, RoomTab.Direct, 1, 20, default);
+        var rowAfter = Assert.Single(roomsAfter.Items);
+        Assert.Equal("halo", rowAfter.LastMessage);
+        Assert.NotNull(rowAfter.LastMessageAt);
+    }
+
+    [Fact]
+    public async Task Empty_message_without_attachments_is_rejected_while_attachment_only_succeeds()
+    {
+        using var t = new TestDb();
+        var (sender, _, room, original) = Seed(t);
+        var svc = new ChatService(t.Verify());
+
+        var emptyText = await svc.SendMessageAsync(sender, new SendMessageRequest(room, "   ", Guid.NewGuid(), null, null), default);
+        Assert.False(emptyText.Success);
+        Assert.Equal("content_required", emptyText.Error);
+
+        var emptyThread = await svc.SendThreadReplyAsync(sender, original, new SendMessageRequest(room, "", Guid.NewGuid(), null, null), default);
+        Assert.False(emptyThread.Success);
+        Assert.Equal("content_required", emptyThread.Error);
+
+        var attId = Guid.NewGuid();
+        t.Db.ChatAttachments.Add(new ChatAttachment
+        {
+            Id = attId, MessageId = null, FileName = "shot.png",
+            MimeType = "image/png", FileSize = 1024, SynologyServer = "s1", SynologyPath = $"/chat/{room:D}/shot.png", CreatedAt = DateTime.UtcNow
+        });
+        t.Db.SaveChanges();
+
+        var withAtt = await svc.SendMessageAsync(sender, new SendMessageRequest(room, "", Guid.NewGuid(), null, null, [attId]), default);
+        Assert.True(withAtt.Success);
+
+        var rooms = await svc.GetRoomsAsync(sender, RoomTab.Direct, 1, 20, default);
+        Assert.Equal("📷 Photo", Assert.Single(rooms.Items).LastMessage);
+    }
+
+    [Fact]
+    public async Task GetRoomAttachmentsAsync_returns_full_room_attachment_history_respecting_ClearedAt_and_membership()
+    {
+        using var t = new TestDb();
+        var (sender, other, room, _) = Seed(t);
+        var outsider = t.AddUser("OUT");
+        var now = DateTime.UtcNow;
+
+        var m1 = new ChatMessage { Id = Guid.NewGuid(), RoomId = room, SenderId = sender, Type = "text", Content = "(attachment)", IdempotencyKey = Guid.NewGuid(), CreatedAt = now.AddMinutes(-10) };
+        var m2 = new ChatMessage { Id = Guid.NewGuid(), RoomId = room, SenderId = other, Type = "text", Content = "(attachment)", IdempotencyKey = Guid.NewGuid(), CreatedAt = now.AddMinutes(-1) };
+        var a1 = new ChatAttachment { Id = Guid.NewGuid(), MessageId = m1.Id, FileName = "old.pdf", MimeType = "application/pdf", FileSize = 100, SynologyServer = "s1", SynologyPath = "/chat/old.pdf", CreatedAt = m1.CreatedAt };
+        var a2 = new ChatAttachment { Id = Guid.NewGuid(), MessageId = m2.Id, FileName = "new.png", MimeType = "image/png", FileSize = 200, SynologyServer = "s1", SynologyPath = "/chat/new.png", CreatedAt = m2.CreatedAt };
+        t.Db.ChatMessages.AddRange(m1, m2);
+        t.Db.ChatAttachments.AddRange(a1, a2);
+        t.Db.SaveChanges();
+
+        var svc = new ChatService(t.Verify());
+        var all = await svc.GetRoomAttachmentsAsync(room, sender, default);
+        Assert.Equal([a2.Id, a1.Id], all.Select(x => x.Id));
+
+        Assert.Empty(await svc.GetRoomAttachmentsAsync(room, outsider.Id, default));
+
+        t.Db.ChatRoomUserSettings.Add(new ChatRoomUserSettings { UserId = sender, RoomId = room, ClearedAt = now.AddMinutes(-5) });
+        t.Db.SaveChanges();
+
+        var afterClear = await svc.GetRoomAttachmentsAsync(room, sender, default);
+        Assert.Equal([a2.Id], afterClear.Select(x => x.Id));
     }
 }

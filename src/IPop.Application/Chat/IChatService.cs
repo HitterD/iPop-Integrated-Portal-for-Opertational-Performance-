@@ -19,6 +19,8 @@ public interface IChatService
     Task<PagedResult<MessageDto>> GetMessagesAsync(Guid roomId, Guid userId, int page, int pageSize, CancellationToken ct);
     /// Keyset paging for "load older": messages strictly older than `before` (UTC).
     Task<PagedResult<MessageDto>> GetMessagesBeforeAsync(Guid roomId, Guid userId, DateTime before, int pageSize, CancellationToken ct, int beforeSkip = 0);
+    /// All attachments shared in a room that are visible to the caller (respects membership, ClearedAt, and non-deleted messages).
+    Task<IReadOnlyList<AttachmentDto>> GetRoomAttachmentsAsync(Guid roomId, Guid userId, CancellationToken ct, int take = 200);
 
     // Threads
     Task<MessageResultDto> SendThreadReplyAsync(Guid senderId, Guid parentMessageId, SendMessageRequest req, CancellationToken ct);

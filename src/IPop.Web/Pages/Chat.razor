@@ -109,7 +109,7 @@
                                     <span class="room-name">@GetRoomName(room)</span>
                                 </div>
                                 <div class="room-row-sub">
-                                    <span class="room-preview">@(room.LastMessage ?? "")</span>
+                                    <span class="room-preview @(string.IsNullOrEmpty(room.LastMessage) ? "empty-preview" : "")">@(string.IsNullOrEmpty(room.LastMessage) ? "No messages yet" : room.LastMessage)</span>
                                     <button class="room-unarchive-btn" title="Unarchive" @onclick="() => UnarchiveRoom(room.Id)" @onclick:stopPropagation>Unarchive</button>
                                 </div>
                             </div>
@@ -146,7 +146,7 @@
                 @foreach (var room in pinned)
                 {
                     var isActiveP = room.Id == ChatSvc.ActiveRoomId;
-                    <div class="room-item @(isActiveP ? "active" : "") @((isActiveP && ChatSvc.IsOpening ? "busy" : "") + (Phone.IsPhone ? " m-pinned" : ""))" @onclick="() => OpenRoom(room.Id)">
+                    <div class="room-item @(isActiveP ? "active" : "") @(menuRoomId == room.Id ? "menu-open" : "") @((isActiveP && ChatSvc.IsOpening ? "busy" : "") + (Phone.IsPhone ? " m-pinned" : ""))" @onclick="() => OpenRoom(room.Id)">
                         <div class="room-av-wrap">
                             <div class="room-av @(room.Type == "dm" ? "person-av" : "group-av")" style="background:@GetRoomColor(room)">
                                 @if (room.AvatarUrl is not null) { <img class="room-photo" src="@PhotoUrl(room.AvatarUrl)" alt="" style="width:100%;height:100%;border-radius:inherit" /> }
@@ -163,11 +163,11 @@
                                 <span class="room-time">@FormatTime(room.LastMessageAt)</span>
                             </div>
                             <div class="room-row-sub">
-                                <span class="room-preview @(room.HasUnreadMention ? "mention-hl" : "")">
-                                    @(room.LastMessage ?? "")
+                                <span class="room-preview @(room.HasUnreadMention ? "mention-hl" : "") @(string.IsNullOrEmpty(room.LastMessage) ? "empty-preview" : "")">
+                                    @(string.IsNullOrEmpty(room.LastMessage) ? "No messages yet" : room.LastMessage)
                                 </span>
                                 <div class="room-badges" style="position:relative">
-                                    <button type="button" class="icon-btn" style="border:none;background:transparent;padding:0;width:16px;height:16px;color:var(--accent);cursor:pointer" title="Unpin conversation" @onclick="() => TogglePin(room)" @onclick:stopPropagation="true">
+                                    <button type="button" class="icon-btn room-pin-btn" style="border:none;background:transparent;padding:0;width:16px;height:16px;color:var(--accent);cursor:pointer" title="Unpin conversation" @onclick="() => TogglePin(room)" @onclick:stopPropagation="true">
                                         <i data-lucide="arrow-up-to-line" class="room-pin-ic"></i>
                                     </button>
                                     <button type="button" class="icon-btn room-more-btn" style="border:none;background:transparent;padding:0;width:22px;height:22px;color:var(--ink-4);cursor:pointer" title="More" @onclick="() => menuRoomId = (menuRoomId == room.Id ? null : room.Id)" @onclick:stopPropagation="true">
@@ -184,13 +184,13 @@
                                     @if (menuRoomId == room.Id)
                                     {
                                         <div class="app-select-pop on" style="right:0;top:20px;z-index:100;min-width:130px" @onclick:stopPropagation="true">
-                                            <button type="button" class="app-select-opt" @onclick="() => { menuRoomId = null; TogglePin(room); }">
+                                            <button type="button" class="app-select-opt" @onclick="async () => { menuRoomId = null; await TogglePin(room); }">
                                                 <i data-lucide="arrow-down-to-line" style="width:12px;height:12px"></i> Unpin chat
                                             </button>
-                                            <button type="button" class="app-select-opt" @onclick="() => { menuRoomId = null; ToggleMuteRoom(room); }">
+                                            <button type="button" class="app-select-opt" @onclick="async () => { menuRoomId = null; await ToggleMuteRoom(room); }">
                                                 <i data-lucide="bell-off" style="width:12px;height:12px"></i> @(room.IsMuted ? "Unmute" : "Mute")
                                             </button>
-                                            <button type="button" class="app-select-opt" style="color:var(--danger)" @onclick="() => { menuRoomId = null; ArchiveRoomById(room.Id); }">
+                                            <button type="button" class="app-select-opt" style="color:var(--danger)" @onclick="async () => { menuRoomId = null; await ArchiveRoomById(room.Id); }">
                                                 <i data-lucide="archive" style="width:12px;height:12px"></i> Archive
                                             </button>
                                             <button type="button" class="app-select-opt" style="color:var(--danger)" @onclick="async () => { menuRoomId = null; await OpenDeleteRoom(room); }">
@@ -220,7 +220,7 @@
                 @foreach (var room in recent)
                 {
                     var isActiveR = room.Id == ChatSvc.ActiveRoomId;
-                    <div class="room-item @(isActiveR ? "active" : "") @(isActiveR && ChatSvc.IsOpening ? "busy" : "")" @onclick="() => OpenRoom(room.Id)">
+                    <div class="room-item @(isActiveR ? "active" : "") @(menuRoomId == room.Id ? "menu-open" : "") @(isActiveR && ChatSvc.IsOpening ? "busy" : "")" @onclick="() => OpenRoom(room.Id)">
                         <div class="room-av-wrap">
                             <div class="room-av @(room.Type == "dm" ? "person-av" : "group-av")" style="background:@GetRoomColor(room)">
                                 @if (room.AvatarUrl is not null) { <img class="room-photo" src="@PhotoUrl(room.AvatarUrl)" alt="" style="width:100%;height:100%;border-radius:inherit" /> }
@@ -237,8 +237,8 @@
                                 <span class="room-time">@FormatTime(room.LastMessageAt)</span>
                             </div>
                             <div class="room-row-sub">
-                                <span class="room-preview @(room.HasUnreadMention ? "mention-hl" : "")">
-                                    @(room.LastMessage ?? "")
+                                <span class="room-preview @(room.HasUnreadMention ? "mention-hl" : "") @(string.IsNullOrEmpty(room.LastMessage) ? "empty-preview" : "")">
+                                    @(string.IsNullOrEmpty(room.LastMessage) ? "No messages yet" : room.LastMessage)
                                 </span>
                                 <div class="room-badges" style="position:relative">
                                     <button type="button" class="icon-btn room-pin-hover" style="border:none;background:transparent;padding:0;width:16px;height:16px;color:var(--ink-4);cursor:pointer" title="Pin conversation" @onclick="() => TogglePin(room)" @onclick:stopPropagation="true">
@@ -258,13 +258,13 @@
                                     @if (menuRoomId == room.Id)
                                     {
                                         <div class="app-select-pop on" style="right:0;top:20px;z-index:100;min-width:130px" @onclick:stopPropagation="true">
-                                            <button type="button" class="app-select-opt" @onclick="() => { menuRoomId = null; TogglePin(room); }">
+                                            <button type="button" class="app-select-opt" @onclick="async () => { menuRoomId = null; await TogglePin(room); }">
                                                 <i data-lucide="arrow-up-to-line" style="width:12px;height:12px"></i> Pin chat to top
                                             </button>
-                                            <button type="button" class="app-select-opt" @onclick="() => { menuRoomId = null; ToggleMuteRoom(room); }">
+                                            <button type="button" class="app-select-opt" @onclick="async () => { menuRoomId = null; await ToggleMuteRoom(room); }">
                                                 <i data-lucide="bell-off" style="width:12px;height:12px"></i> @(room.IsMuted ? "Unmute" : "Mute")
                                             </button>
-                                            <button type="button" class="app-select-opt" style="color:var(--danger)" @onclick="() => { menuRoomId = null; ArchiveRoomById(room.Id); }">
+                                            <button type="button" class="app-select-opt" style="color:var(--danger)" @onclick="async () => { menuRoomId = null; await ArchiveRoomById(room.Id); }">
                                                 <i data-lucide="archive" style="width:12px;height:12px"></i> Archive
                                             </button>
                                             <button type="button" class="app-select-opt" style="color:var(--danger)" @onclick="async () => { menuRoomId = null; await OpenDeleteRoom(room); }">
@@ -378,7 +378,7 @@
                 else
                 {
                     <button type="button" class="header-avatar-btn" style="background:@GetActiveRoomColor()" title="Group info" aria-label="Group info" @onclick="ToggleDetailPanel">
-                        @if (ChatSvc.ActiveRoom?.AvatarUrl is not null) { <img class="room-photo" src="@PhotoUrl(ChatSvc.ActiveRoom.AvatarUrl)" alt="" style="width:100%;height:100%;border-radius:inherit" /> } else { @GetActiveRoomInitials() }
+                        @if (ChatSvc.ActiveRoom.AvatarUrl is not null) { <img class="room-photo" src="@PhotoUrl(ChatSvc.ActiveRoom.AvatarUrl)" alt="" style="width:100%;height:100%;border-radius:inherit" /> } else { @GetActiveRoomInitials() }
                     </button>
                 }
                 <div class="header-info" role="button" tabindex="0" title="@(ChatSvc.ActiveRoom.Type == "dm" ? "Contact info" : "Group info")" @onclick="ToggleDetailPanel">
@@ -447,7 +447,7 @@
                         <button type="button" role="menuitem" @onclick="() => searchOpen = !searchOpen"><i data-lucide="search"></i> Search messages</button>
                         <button type="button" role="menuitem" @onclick="OpenPinnedSection"><i data-lucide="pin"></i> Pinned messages</button>
                         <button type="button" role="menuitem" @onclick="OpenMediaSection"><i data-lucide="paperclip"></i> Files &amp; media</button>
-                        <button type="button" role="menuitem" @onclick="() => { if (activeRoomList != null) TogglePin(activeRoomList); }"><i data-lucide="arrow-up-to-line"></i> @(isActPinned ? "Unpin conversation" : "Pin conversation")</button>
+                        <button type="button" role="menuitem" @onclick="async () => { if (activeRoomList != null) await TogglePin(activeRoomList); }"><i data-lucide="arrow-up-to-line"></i> @(isActPinned ? "Unpin conversation" : "Pin conversation")</button>
                         @if (ChatSvc.ActiveRoom.Type == "group")
                         {
                             <button type="button" role="menuitem" @onclick="OpenGroupSettings"><i data-lucide="settings"></i> Group settings</button>
@@ -578,7 +578,7 @@
                         {
                             <div class="conv-start-card">
                                 <div class="conv-start-avatar" style="background:@GetActiveRoomColor()">
-                                    @if (ChatSvc.ActiveRoom?.AvatarUrl is not null) { <img class="room-photo" src="@PhotoUrl(ChatSvc.ActiveRoom.AvatarUrl)" alt="" style="width:100%;height:100%;border-radius:inherit" /> } else { @GetActiveRoomInitials() }
+                                    @if (ChatSvc.ActiveRoom.AvatarUrl is not null) { <img class="room-photo" src="@PhotoUrl(ChatSvc.ActiveRoom.AvatarUrl)" alt="" style="width:100%;height:100%;border-radius:inherit" /> } else { @GetActiveRoomInitials() }
                                 </div>
                                 <h3 class="conv-start-title">@GetActiveRoomName()</h3>
                                 <p class="conv-start-sub">
@@ -691,7 +691,7 @@
                                 }
                                 else
                                 {
-                                    <MessageBubble Message="currentMsg"
+                                    <MessageBubble Message="currentMsg" Bare="true"
                                                    IsPinned="@IsMsgPinned(currentMsg.Id)"
                                                    IsGroup="@(ChatSvc.ActiveRoom?.Type == "group" && currentMsg.Type != "system" && !currentMsg.IsDeleted)"
                                                    OnCtx="t => ShowCtx(t.Item1, t.Item2)"
@@ -856,7 +856,7 @@
                         {
                             <div class="reply-bar">
                                 <i data-lucide="reply" class="reply-bar-ic"></i>
-                                <div class="rq"><div class="rq-name">Replying to @IPop.Application.PersonName.Display(replyToMsg.SenderName)</div><div class="rq-text">@IPop.Application.Chat.ReplyQuote.Text(replyToMsg.Type, replyToMsg.Content, replyToMsg.IsDeleted, 100)</div></div>
+                                <div class="rq"><div class="rq-name">Replying to @IPop.Application.PersonName.Display(replyToMsg.SenderName)</div><div class="rq-text">@IPop.Application.Chat.ReplyQuote.Text(replyToMsg.Type, replyToMsg.Content, replyToMsg.IsDeleted, 100, replyToMsg.Attachments.FirstOrDefault()?.MimeType, replyToMsg.Attachments.Count)</div></div>
                                 <button class="close-reply" title="Cancel reply" aria-label="Cancel reply" @onclick="CancelReply"><i data-lucide="x"></i></button>
                             </div>
                         }
@@ -1089,7 +1089,7 @@
                                             @if (memberHistoryOpen)
                                             {
                                                 <div class="member-history-list">
-                                                    <MembershipAuditList RoomId="ChatSvc.ActiveRoom.Id" />
+                                                    <MembershipAuditList RoomId="ChatSvc.ActiveRoom!.Id" />
                                                 </div>
                                             }
                                         </div>
@@ -1128,8 +1128,8 @@
 
                                     <div class="media-list-scroll">
                                         @{
-                                            var allAtts = ChatSvc.ActiveMessages
-                                                .SelectMany(m => m.Attachments)
+                                            var allAtts = AllRoomAttachments
+                                                
                                                 .DistinctBy(a => a.Id)
                                                 .ToList();
                                             var filteredAtts = mediaSubTab switch
@@ -1260,7 +1260,7 @@
                                     {
                                         <div class="panel-hero">
                                             <div class="panel-hero-av @(ChatSvc.ActiveRoom.Type == "group" ? "group-av" : "person-av")" style="background:@GetActiveRoomColor()">
-                                                @if (ChatSvc.ActiveRoom?.AvatarUrl is not null) { <img class="room-photo" src="@PhotoUrl(ChatSvc.ActiveRoom.AvatarUrl)" alt="" style="width:100%;height:100%;border-radius:inherit" /> } else { @GetActiveRoomInitials() }
+                                                @if (ChatSvc.ActiveRoom.AvatarUrl is not null) { <img class="room-photo" src="@PhotoUrl(ChatSvc.ActiveRoom.AvatarUrl)" alt="" style="width:100%;height:100%;border-radius:inherit" /> } else { @GetActiveRoomInitials() }
                                             </div>
                                             <div class="panel-hero-name">@GetActiveRoomName()</div>
                                             @if (ChatSvc.ActiveRoom.Type == "dm" && dmPerson is not null && !string.IsNullOrWhiteSpace(dmPerson.Department) && dmPerson.Department != "—")
@@ -1364,8 +1364,8 @@
 
                                         <!-- Files & Media Section -->
                                         @{
-                                            var recentMedia = ChatSvc.ActiveMessages
-                                                .SelectMany(m => m.Attachments)
+                                            var recentMedia = AllRoomAttachments
+                                                
                                                 .DistinctBy(a => a.Id)
                                                 .Take(6)
                                                 .ToList();

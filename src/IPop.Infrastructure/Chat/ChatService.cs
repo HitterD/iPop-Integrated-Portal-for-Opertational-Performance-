@@ -68,7 +68,10 @@ public sealed partial class ChatService : IChatService
         ReplyPreviewDto? replyPreview = null;
         if (m.ReplyTo is not null)
         {
-            var previewContent = ReplyQuote.Text(m.ReplyTo.Type, m.ReplyTo.Content, m.ReplyTo.IsDeleted);
+            var replyAttMime = m.ReplyTo.Attachments?.FirstOrDefault()?.MimeType;
+            var replyAttCount = m.ReplyTo.Attachments?.Count ?? 0;
+            var previewContent = ReplyQuote.Text(m.ReplyTo.Type, m.ReplyTo.Content, m.ReplyTo.IsDeleted,
+                attachmentMime: replyAttMime, attachmentCount: replyAttCount);
             replyPreview = new ReplyPreviewDto(m.ReplyTo.Sender?.Name ?? "Unknown", previewContent);
         }
 

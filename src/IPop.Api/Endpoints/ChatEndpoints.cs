@@ -136,6 +136,16 @@ public static class ChatEndpoints
             return Results.Ok(result);
         });
 
+        // GET /api/chat/rooms/{roomId}/attachments?take=200 — all room attachments for Files & Media drawer
+        g.MapGet("/rooms/{roomId:guid}/attachments", async (Guid roomId, int? take,
+            HttpContext http, IChatService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var items = await svc.GetRoomAttachmentsAsync(roomId, userId.Value, ct, Math.Clamp(take ?? 200, 1, 500));
+            return Results.Ok(items);
+        });
+
         // POST /api/chat/rooms/{roomId}/messages — send message
         g.MapPost("/rooms/{roomId:guid}/messages", async (Guid roomId, SendMessageBody body,
             HttpContext http, IChatService svc, IChatNotifier notifier, IPopDbContext db, CancellationToken ct) =>

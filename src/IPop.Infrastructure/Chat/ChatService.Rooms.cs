@@ -32,7 +32,7 @@ public sealed partial class ChatService
             Name = null,
             IsActive = true,
             CreatedAt = now,
-            LastMessageAt = now
+            LastMessageAt = default
         };
 
         db.ChatRooms.Add(room);
@@ -235,6 +235,23 @@ public sealed partial class ChatService
         var lastSenderNames = await db.Users.AsNoTracking().Where(u => lastSenderIds.Contains(u.Id))
             .Select(u => new { u.Id, u.Name }).ToDictionaryAsync(u => u.Id, u => u.Name, ct);
 
+        // Batch: attachment MIME & count for attachment/voice-only last messages
+        var attMsgIds = lastMessages
+            .Where(m => !m.IsDeleted && (string.IsNullOrWhiteSpace(m.Content) || m.Content.Trim() == "(attachment)" || m.Content.Trim() == "(voice)"))
+            .Select(m => m.Id)
+            .ToList();
+        var attPreviewByMsg = new Dictionary<Guid, (string? Mime, int Count)>();
+        if (attMsgIds.Count > 0)
+        {
+            var attRows = await db.ChatAttachments.AsNoTracking()
+                .Where(a => a.MessageId != null && attMsgIds.Contains(a.MessageId.Value))
+                .OrderBy(a => a.CreatedAt)
+                .Select(a => new { MessageId = a.MessageId!.Value, a.MimeType })
+                .ToListAsync(ct);
+            foreach (var g in attRows.GroupBy(x => x.MessageId))
+                attPreviewByMsg[g.Key] = (g.First().MimeType, g.Count());
+        }
+
         // Batch: unread count per room
         var withReadIds = rooms.Where(x => x.Settings?.LastReadMessageAt != null).Select(x => x.Room.Id).ToList();
         var withoutReadIds = rooms.Where(x => x.Settings?.LastReadMessageAt == null).Select(x => x.Room.Id).ToList();
@@ -316,9 +333,11 @@ public sealed partial class ChatService
             var s = item.Settings;
 
             lastByRoom.TryGetValue(r.Id, out var lm);
+            attPreviewByMsg.TryGetValue(lm?.Id ?? Guid.Empty, out var attInfo);
             var lastMessagePreview = lm is null ? null
                 : RoomPreview.Build(r.Type, lm.Type, lm.Content, lm.IsDeleted,
-                    lastSenderNames.GetValueOrDefault(lm.SenderId), lm.SenderId == userId);
+                    lastSenderNames.GetValueOrDefault(lm.SenderId), lm.SenderId == userId,
+                    attachmentMime: attInfo.Mime, attachmentCount: attInfo.Count);
             var unreadCount = unreadByRoom[r.Id];
 
             string? dmName = null;
@@ -353,7 +372,7 @@ public sealed partial class ChatService
                 dmNik,
                 dmName,
                 lastMessagePreview,
-                r.LastMessageAt == default ? null : r.LastMessageAt,
+                lm is null || r.LastMessageAt == default ? null : r.LastMessageAt,
                 unreadCount,
                 isMuted,
                 isArchived,

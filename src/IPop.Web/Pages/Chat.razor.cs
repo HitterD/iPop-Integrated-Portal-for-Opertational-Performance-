@@ -119,6 +119,12 @@ public partial class Chat
     private bool groupInfoOpen;
     private bool pinnedPanelOpen;
     private List<IPop.Application.Chat.PinnedMessageDto> pinnedMessages = [];
+    private List<IPop.Application.Chat.AttachmentDto> roomAttachments = [];
+    private IReadOnlyList<IPop.Application.Chat.AttachmentDto> AllRoomAttachments =>
+        ChatSvc.ActiveMessages.AsEnumerable().Reverse().SelectMany(m => m.Attachments)
+            .Concat(roomAttachments)
+            .DistinctBy(a => a.Id)
+            .ToList();
     private string mediaSubTab = "all";
     private string memberFilter = "";
 
@@ -178,6 +184,7 @@ public partial class Chat
         pinnedPanelOpen = (view == DetailPanelView.Pinned);
         if (view == DetailPanelView.Pinned) _ = LoadPinnedMessagesAsync();
         if (view == DetailPanelView.Events) _ = LoadRoomEventsAsync();
+        if (view is DetailPanelView.Main or DetailPanelView.Media) _ = LoadRoomAttachmentsAsync();
         if (view == DetailPanelView.Main && ChatSvc.ActiveRoom?.Type == "dm") _ = EnsureDmPersonLoadedAsync();
         StateHasChanged();
     }
@@ -417,6 +424,19 @@ public partial class Chat
         StateHasChanged();
     }
 
+    private async Task LoadRoomAttachmentsAsync()
+    {
+        if (ChatSvc.ActiveRoomId is not { } roomId) return;
+        try
+        {
+            var items = await Auth.GetAsync<List<IPop.Application.Chat.AttachmentDto>>($"/api/chat/rooms/{roomId}/attachments");
+            if (ChatSvc.ActiveRoomId != roomId) return;
+            roomAttachments = items ?? [];
+            StateHasChanged();
+        }
+        catch { }
+    }
+
     private bool IsActiveRoomMuted =>
         ChatSvc.GroupRooms.Concat(ChatSvc.DirectRooms).FirstOrDefault(r => r.Id == ChatSvc.ActiveRoomId)?.IsMuted == true;
 
@@ -522,8 +542,8 @@ public partial class Chat
 
     private void UpdateSubtitle()
     {
-        var totalUnread = (ChatSvc.DirectRooms?.Sum(r => r.UnreadCount) ?? 0) + (ChatSvc.GroupRooms?.Sum(r => r.UnreadCount) ?? 0);
-        var totalRooms = (ChatSvc.DirectRooms?.Count ?? 0) + (ChatSvc.GroupRooms?.Count ?? 0);
+        var totalUnread = (ChatSvc.DirectRooms is null && ChatSvc.GroupRooms is null) ? 0 : UnreadRoomCount;
+        var totalRooms = (ChatSvc.DirectRooms ?? []).Concat(ChatSvc.GroupRooms ?? []).Select(r => r.Id).Distinct().Count();
         var unreadPart = totalUnread == 0 ? "No unread" : totalUnread == 1 ? "1 unread" : $"{totalUnread} unread";
         var convPart = totalRooms == 1 ? "1 conversation" : $"{totalRooms} conversations";
         var subtitle = $"{unreadPart} · {convPart}";
@@ -1017,6 +1037,8 @@ public partial class Chat
         // Soft: never drag a reader who scrolled up back to the bottom (OnAfterRenderAsync).
         AnnounceIncoming(msg);
         pendingIncoming++;
+        if (msg.Attachments.Count > 0 && msg.RoomId == ChatSvc.ActiveRoomId)
+            _ = LoadRoomAttachmentsAsync();
         _ = InvokeAsync(StateHasChanged);
     }
 

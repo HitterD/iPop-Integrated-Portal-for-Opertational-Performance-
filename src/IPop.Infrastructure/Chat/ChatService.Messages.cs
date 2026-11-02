@@ -16,6 +16,8 @@ public sealed partial class ChatService
     {
         if (req.Content is null)
             return new MessageResultDto(false, null, "content_required");
+        if (string.IsNullOrWhiteSpace(req.Content) && (req.AttachmentIds is null || req.AttachmentIds.Count == 0))
+            return new MessageResultDto(false, null, "content_required");
         if (req.Content.Length > 4000)
             return new MessageResultDto(false, null, "content_too_long");
         if (!ChatLimits.SenderTypes.Contains(req.Type ?? "text"))
@@ -51,6 +53,8 @@ public sealed partial class ChatService
             .Include(m => m.ReadReceipts)
             .Include(m => m.ReplyTo)
                 .ThenInclude(r => r!.Sender)
+            .Include(m => m.ReplyTo)
+                .ThenInclude(r => r!.Attachments)
             .FirstOrDefaultAsync(m => m.RoomId == req.RoomId && m.IdempotencyKey == req.IdempotencyKey, ct);
 
         if (existing is not null)
@@ -66,6 +70,21 @@ public sealed partial class ChatService
                 return new MessageResultDto(false, null, "idempotency_conflict");
             }
         }
+
+        // Resolve pre-uploaded attachments (uploaded via /attachments/upload with MessageId=null)
+        List<ChatAttachment>? orphans = null;
+        if (req.AttachmentIds is { Count: > 0 })
+        {
+            var roomD = req.RoomId.ToString("D"); var roomN = req.RoomId.ToString("N");
+            orphans = await db.ChatAttachments
+                .Where(a => req.AttachmentIds.Contains(a.Id) && a.MessageId == null
+                    // Only files uploaded into this room: an id from another room must not be pulled in.
+                    && (a.SynologyPath.Contains(roomD) || a.SynologyPath.Contains(roomN)))
+                .ToListAsync(ct);
+        }
+
+        if (string.IsNullOrWhiteSpace(req.Content) && (orphans is null || orphans.Count == 0))
+            return new MessageResultDto(false, null, "content_required");
 
         var now = DateTime.UtcNow;
         var message = new ChatMessage
@@ -95,15 +114,8 @@ public sealed partial class ChatService
             });
         }
 
-        // Link pre-uploaded attachments (uploaded via /attachments/upload with MessageId=null)
-        if (req.AttachmentIds is { Count: > 0 })
+        if (orphans is { Count: > 0 })
         {
-            var roomD = req.RoomId.ToString("D"); var roomN = req.RoomId.ToString("N");
-            var orphans = await db.ChatAttachments
-                .Where(a => req.AttachmentIds.Contains(a.Id) && a.MessageId == null
-                    // Only files uploaded into this room: an id from another room must not be pulled in.
-                    && (a.SynologyPath.Contains(roomD) || a.SynologyPath.Contains(roomN)))
-                .ToListAsync(ct);
             foreach (var a in orphans)
                 a.MessageId = message.Id;
         }
@@ -135,6 +147,8 @@ public sealed partial class ChatService
                 .Include(m => m.ReadReceipts)
                 .Include(m => m.ReplyTo)
                     .ThenInclude(r => r!.Sender)
+                .Include(m => m.ReplyTo)
+                    .ThenInclude(r => r!.Attachments)
                 .FirstOrDefaultAsync(m => m.RoomId == req.RoomId && m.IdempotencyKey == req.IdempotencyKey, ct);
 
             if (raceExisting is not null && raceExisting.Content == req.Content)
@@ -155,6 +169,8 @@ public sealed partial class ChatService
             .Include(m => m.ReadReceipts)
             .Include(m => m.ReplyTo)
                 .ThenInclude(r => r!.Sender)
+            .Include(m => m.ReplyTo)
+                .ThenInclude(r => r!.Attachments)
             .FirstAsync(m => m.Id == message.Id, ct);
 
         return new MessageResultDto(true, await MapWithMentionsAsync(saved, senderId, ct), null);
@@ -215,12 +231,44 @@ public sealed partial class ChatService
             .Include(m => m.ReadReceipts)
             .Include(m => m.ReplyTo)
                 .ThenInclude(r => r!.Sender)
+            .Include(m => m.ReplyTo)
+                .ThenInclude(r => r!.Attachments)
             .ToListAsync(ct);
 
         messages.Reverse();
         var dtos = await MapWithMentionsAsync(messages, userId, ct);
 
         return new PagedResult<MessageDto>(dtos, totalCount, page, pageSize);
+    }
+
+    public async Task<IReadOnlyList<AttachmentDto>> GetRoomAttachmentsAsync(Guid roomId, Guid userId, CancellationToken ct, int take = 200)
+    {
+        var isMember = await db.ChatRoomMembers
+            .AsNoTracking()
+            .AnyAsync(m => m.RoomId == roomId && m.UserId == userId && m.LeftAt == null, ct);
+        if (!isMember) return [];
+
+        var settings = await db.ChatRoomUserSettings.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.RoomId == roomId && s.UserId == userId, ct);
+
+        var msgQuery = db.ChatMessages.AsNoTracking()
+            .Where(m => m.RoomId == roomId && !m.IsDeleted);
+        if (settings?.ClearedAt is not null)
+            msgQuery = msgQuery.Where(m => m.CreatedAt > settings.ClearedAt.Value);
+
+        var limit = Math.Clamp(take, 1, 500);
+        return await (
+            from a in db.ChatAttachments.AsNoTracking()
+            join m in msgQuery on a.MessageId equals m.Id
+            orderby m.CreatedAt descending, a.CreatedAt descending
+            select new AttachmentDto(
+                a.Id,
+                a.FileName,
+                a.FileSize,
+                a.MimeType,
+                a.ThumbnailPath != null ? $"/api/chat/attachments/{a.Id}/thumbnail" : null
+            )
+        ).Take(limit).ToListAsync(ct);
     }
 
     public async Task<MessageResultDto> EditMessageAsync(Guid userId, Guid messageId, string newContent, CancellationToken ct)
@@ -545,6 +593,8 @@ public sealed partial class ChatService
             .Include(m => m.ReadReceipts)
             .Include(m => m.ReplyTo)
                 .ThenInclude(r => r!.Sender)
+            .Include(m => m.ReplyTo)
+                .ThenInclude(r => r!.Attachments)
             .ToListAsync(ct);
 
         var dtos = await MapWithMentionsAsync(messages, userId, ct);
@@ -578,6 +628,8 @@ public sealed partial class ChatService
             .Include(m => m.ReadReceipts)
             .Include(m => m.ReplyTo)
                 .ThenInclude(r => r!.Sender)
+            .Include(m => m.ReplyTo)
+                .ThenInclude(r => r!.Attachments)
             .ToListAsync(ct);
 
         var dtos = await MapWithMentionsAsync(messages, userId, ct);
@@ -614,6 +666,8 @@ public sealed partial class ChatService
             .Include(m => m.Mentions)
             .Include(m => m.ReplyTo)
                 .ThenInclude(r => r!.Sender)
+            .Include(m => m.ReplyTo)
+                .ThenInclude(r => r!.Attachments)
             .ToListAsync(ct);
 
         var dtos = await MapWithMentionsAsync(messages, userId, ct);

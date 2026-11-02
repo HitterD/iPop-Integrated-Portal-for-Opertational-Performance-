@@ -8,12 +8,18 @@ public static class ReplyQuote
 {
     public const int MaxLength = 150;
 
-    public static string Text(string type, string content, bool isDeleted, int max = MaxLength)
+    public static string Text(string type, string content, bool isDeleted, int max = MaxLength,
+        string? attachmentMime = null, int attachmentCount = 0)
     {
         if (isDeleted) return "Original message was deleted";
         if (type == "sticker") return "🎨 Sticker";
         if (content.StartsWith("[poll]", StringComparison.Ordinal)) return "📊 Poll";
         if (content.StartsWith("[note]", StringComparison.Ordinal)) return "📄 Note";
+        if (RoomPreview.IsAttachmentPlaceholder(content))
+        {
+            var att = RoomPreview.FormatAttachmentPreview(content, attachmentMime, attachmentCount);
+            if (!string.IsNullOrEmpty(att)) return att;
+        }
         var plain = PlainWithNames(content);
         return plain.Length <= max ? plain : plain[..max] + "...";
     }

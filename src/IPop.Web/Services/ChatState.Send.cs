@@ -235,7 +235,7 @@ public partial class ChatState
         var replyPreview = replyToId is null || roomId != ActiveRoomId
             ? null
             : ActiveMessages.FirstOrDefault(m => m.Id == replyToId) is { } src
-                ? new ReplyPreviewDto(src.SenderName, ReplyQuote.Text(src.Type, src.Content, src.IsDeleted))
+                ? new ReplyPreviewDto(src.SenderName, ReplyQuote.Text(src.Type, src.Content, src.IsDeleted, attachmentMime: src.Attachments.FirstOrDefault()?.MimeType, attachmentCount: src.Attachments.Count))
                 : null;
         var bubble = new MessageDto(
             tempId, roomId, Guid.Empty,

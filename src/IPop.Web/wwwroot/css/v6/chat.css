@@ -247,7 +247,12 @@
 .chat-area .room-section-label { display: flex; align-items: center; justify-content: space-between; font-weight: 600; letter-spacing: .05em; }
 .chat-area .room-new-group { border: 0; background: none; color: var(--accent); font-family: inherit; font-size: 11px; font-weight: 600; cursor: pointer; text-transform: none; letter-spacing: normal; }
 .chat-area .room-av.person-av, .chat-area .room-av.group-av, .chat-area .picker-av { border-radius: 10px; }
-.chat-area .room-item .room-pin-hover { opacity: 1; visibility: visible; }
+.chat-area .room-item .room-preview.empty-preview { font-style: italic; color: var(--ink-4); opacity: 0.78; }
+.chat-area .room-item :is(.room-pin-hover, .room-pin-btn, .room-more-btn) { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 140ms ease, color 140ms ease; }
+.chat-area .room-item:is(:hover, :focus-within, .menu-open) :is(.room-pin-hover, .room-pin-btn, .room-more-btn) { opacity: 1; visibility: visible; pointer-events: auto; }
+@media (hover: none), (pointer: coarse) {
+  .chat-area .room-item :is(.room-pin-hover, .room-pin-btn, .room-more-btn) { opacity: 1; visibility: visible; pointer-events: auto; }
+}
 .chat-area .room-item .room-more-btn { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .chat-area .room-item .room-more-btn .lucide { width: 15px !important; height: 15px !important; }
 .chat-area .room-item .room-more-btn:hover { color: var(--accent) !important; }
@@ -270,7 +275,9 @@
 .chat-area .messages { padding: 16px 24px; gap: 0; }
 .chat-area .messages > .msg { max-width: 74%; margin-top: 8px; }
 .chat-area .messages > .msg.grouped { margin-top: 2px; }
-.chat-area .messages > .msg > .msg { max-width: 100%; width: 100%; margin: 0; }
+.chat-area .messages > .msg > :is(.msg, .msg-inner) { display: flex; gap: var(--space-2); position: relative; max-width: 100%; width: 100%; margin: 0; }
+.chat-area .messages > .msg.sent > .msg-inner { flex-direction: row-reverse; justify-content: flex-start; }
+.chat-area .messages .date-sep { align-self: center; margin: 12px auto 6px; padding: 4px 12px; border-radius: 999px; background: color-mix(in srgb, var(--surface-3, rgba(120,120,128,.12)) 82%, transparent); border: 1px solid color-mix(in srgb, var(--line, rgba(0,0,0,.06)) 70%, transparent); font-size: 11px; font-weight: 600; color: var(--ink-3); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); width: fit-content; }
 .chat-area .messages > .msg.sent > .msg { justify-content: flex-start; }
 .chat-area .msg .msg-avatar { width: 28px; height: 28px; border-radius: 8px; align-self: flex-end; margin-bottom: 0; }
 .chat-area .msg.grouped .msg-avatar { visibility: hidden; }

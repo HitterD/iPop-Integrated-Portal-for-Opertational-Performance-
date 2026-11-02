@@ -89,7 +89,8 @@ public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbCon
         if (!await perms.IsAllowedAsync(userId.Value, "chat.send", null, Context.ConnectionAborted))
             return Fail("forbidden");
 
-        if (request.Content is null) return Fail("content_required");
+        if (request.Content is null || (string.IsNullOrWhiteSpace(request.Content) && (request.AttachmentIds is null || request.AttachmentIds.Count == 0)))
+            return Fail("content_required");
         if (request.Content.Length > 4000) return Fail("payload_too_large");
 
         // Rate limit: 30 messages per 60-second sliding window (Req 30.6)
@@ -327,4 +328,3 @@ public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbCon
         return allowed;
     }
 }
-

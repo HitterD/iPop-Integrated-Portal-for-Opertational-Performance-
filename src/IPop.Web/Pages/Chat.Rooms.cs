@@ -14,7 +14,7 @@ public partial class Chat
     // ---- Room Pane ----
 
     /// Conversations with something unread (the chip counts chats, not messages).
-    private int UnreadRoomCount => ChatSvc.DirectRooms.Concat(ChatSvc.GroupRooms).Count(r => r.UnreadCount > 0);
+    private int UnreadRoomCount => ChatSvc.DirectRooms.Concat(ChatSvc.GroupRooms).GroupBy(r => r.Id).Select(g => g.First()).Count(r => r.UnreadCount > 0 || r.HasUnreadMention);
 
     // ipop-52: search runs server-side (/rooms/search — name OR member name over ALL the
     // user's rooms); its results land in DirectRooms/GroupRooms so the render path is the
@@ -248,6 +248,7 @@ public partial class Chat
         panelHistory.Clear();
         personFromRoom = false;
         profilePerson = null;
+        roomAttachments = [];
         // ipop-37c: thread state belongs to the room it was opened in — reset all of it
         // on room switch so the dedup set doesn't pollute across rooms and no future
         // code reads 'expandedThreadId is not null' as 'a thread is open in THIS room'.
@@ -298,6 +299,7 @@ public partial class Chat
             // Load pins up-front so the sticky pinned bar is populated without
             // waiting for the user to open the Pinned drawer tab first.
             _ = LoadPinnedMessagesAsync();
+            _ = LoadRoomAttachmentsAsync();
             _ = LoadGroupCallAsync(roomId);
             _ = EnsureDmPersonLoadedAsync();
             dmUserBlocked = false;
