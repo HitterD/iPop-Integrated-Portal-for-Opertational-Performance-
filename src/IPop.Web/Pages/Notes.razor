@@ -73,7 +73,7 @@
                     <div class="nt-row guide @(IsActive(guide.Id) ? "active" : "")" role="button" tabindex="0" data-id="@guide.Id"
                          @onclick="() => Open(guide.Id)" @onkeydown="e => OnRowKey(e, guide)">
                         <span class="emo">@(guide.Emoji ?? "👋")</span>
-                        <span class="t">Start here</span>
+                        <span class="t">@DisplayTitle(guide.Title)</span>
                         <span class="pill @(guide.TodoTotal > 0 && guide.TodoDone == guide.TodoTotal ? "done" : "")">@guide.TodoDone/@guide.TodoTotal</span>
                         <span class="actions">
                             <span role="button" tabindex="-1" title="More" aria-label="Page options" @onclick="e => OpenRowMenu(guide, e)" @onclick:stopPropagation><i data-lucide="ellipsis"></i></span>
@@ -177,7 +177,7 @@
                 {
                     <button type="button" class="nt-btn ghost hide-sm" @onclick="() => pop = Pop.Style"><i data-lucide="palette" class="sm"></i>Style</button>
                 }
-                <button type="button" class="nt-icon-btn @(commentsOpen ? "on" : "")" title="Comments" aria-label="Comments" @onclick="ToggleComments"><i data-lucide="message-square"></i></button>
+                <button type="button" class="nt-icon-btn @(commentsOpen ? "on" : "") @(note.OpenThreads > 0 ? "has-badge" : "")" title="Comments" aria-label="Comments" @onclick="ToggleComments"><i data-lucide="message-square"></i>@if (note.OpenThreads > 0) { <span class="nt-badge">@note.OpenThreads</span> }</button>
                 <button type="button" class="nt-icon-btn fav @(note.IsFavorite ? "on" : "")" title="@(note.IsFavorite ? "Remove from favorites" : "Add to favorites")" aria-label="@(note.IsFavorite ? "Remove from favorites" : "Add to favorites")" @onclick="ToggleFavorite"><i data-lucide="star"></i></button>
                 @if (IsOwner)
                 {
@@ -197,7 +197,7 @@
             @if (view == View.Trash)
             {
                 <div class="nt-trash">
-                    <h2>Trash</h2>
+                    <div class="nt-trash-hd"><h2>Trash</h2>@if (trash is { Count: > 0 } && trash.Any(t => t.IsMine)) { <button type="button" class="nt-btn ghost danger" @onclick="EmptyTrashAsync"><i data-lucide="trash-2" class="sm"></i>Empty trash</button> }</div>
                     <div class="sub">Deleted pages can be restored. Their sub-pages come back too.</div>
                     @if (trash is null) { <div class="nt-loading">Loading…</div> }
                     else if (trash.Count == 0) { <div class="nt-side-empty">Trash is empty.</div> }
@@ -357,7 +357,7 @@
                         <button type="button" class="nt-card" @onclick="() => CreateBlank(null)"><span class="emo">➕</span><span class="t">New page</span><span class="m">Alt N</span></button>
                         @if (sidebar is not null)
                         {
-                            @foreach (var p in sidebar.Pages.OrderByDescending(p => p.IsGuide).ThenByDescending(p => p.UpdatedAt).Take(11))
+                            @foreach (var p in sidebar.Pages.OrderByDescending(p => p.IsGuide && !GuideHidden(p)).ThenByDescending(p => p.UpdatedAt).Take(11))
                             {
                                 <button type="button" class="nt-card" @onclick="() => Open(p.Id)">
                                     <span class="emo">@(p.Emoji ?? "📄")</span><span class="t">@DisplayTitle(p.Title)</span>
@@ -677,6 +677,7 @@
         <hr />
         <button type="button" class="mi" @onclick="() => CreateBlank(null)"><span class="nt-mi-emo">📄</span>Blank page</button>
         <button type="button" class="mi nt-mi-import" @onclick="() => OpenImport(null)"><i data-lucide="file-up" class="sm"></i>Import…<span class="ds">Notion, Markdown, HTML</span></button>
+        @if (TutorialRegistry.Get("notes") is { } tour) { <hr /><button type="button" class="mi" @onclick="async () => { newMenuOpen = false; await Tutorials.StartTourAsync(tour); }"><span class="nt-mi-emo">🧭</span>1-minute tour</button> }
     </div>
 }
 @if (moveFor is { } mv)
@@ -981,6 +982,27 @@
                        ValueChanged="v => ChangeShare(s, v)" />
         }
     };
+
+    private RenderFragment CommentMentionMenu(Guid target) => __builder =>
+    {
+        <div class="nt-sugg nt-cmt-sugg">
+            @foreach (var p in cmtMentionHits)
+            {
+                <button type="button" @onclick="() => PickCommentMention(target, p)">
+                    <PersonAvatar Nik="@p.Nik" Name="@p.Name" Size="24" Class="nt-av s24" Decorative="true" />
+                    <span class="nm">@p.Name</span>
+                    @if (p.HasAccess == false) { <span class="nt-noacc">No access</span> }
+                </button>
+            }
+        </div>
+    };
+
+    private Action NoopShare => () =>
+    {
+        if (false)
+        {
+        }
+    };
 }
 
 @code {
@@ -998,7 +1020,8 @@
             {
                 <div class="nt-thread draft">
                     <div class="quoteline"><span>@draft.Quote</span></div>
-                    <textarea @ref="draftRef" placeholder="Write a comment… (@@ to mention)" @bind="draft.Body" @bind:event="oninput" @onkeydown="OnDraftKey"></textarea>
+                    <textarea @ref="draftRef" placeholder="Write a comment… (@@ to mention)" value="@draft.Body" @oninput="OnDraftInput" @onkeydown="OnDraftKey"></textarea>
+                    @if (cmtMentionTarget == Guid.Empty && cmtMentionHits.Count > 0) { @CommentMentionMenu(Guid.Empty) }
                     <div class="acts">
                         <button type="button" class="nt-btn ghost" @onclick="() => draft = null">Cancel</button>
                         <button type="button" class="nt-btn primary" disabled="@(string.IsNullOrWhiteSpace(draft.Body) || busy)" @onclick="PostDraft">Send</button>
@@ -1042,7 +1065,8 @@
                     @if (CanComment && t.ResolvedAt is null)
                     {
                         <div class="nt-c-reply" @onclick:stopPropagation>
-                            <input placeholder="Reply…" value="@(replies.GetValueOrDefault(t.Id) ?? "")" @oninput="e => replies[t.Id] = e.Value?.ToString()" @onkeydown="e => OnReplyKey(e, t)" />
+                            <input placeholder="Reply… (@@ to mention)" value="@(replies.GetValueOrDefault(t.Id) ?? "")" @oninput="e => OnReplyInput(e, t.Id)" @onkeydown="e => OnReplyKey(e, t)" />
+                            @if (cmtMentionTarget == t.Id && cmtMentionHits.Count > 0) { @CommentMentionMenu(t.Id) }
                             <button type="button" class="nt-icon-btn" title="Send" aria-label="Send" @onclick="() => Reply(t)"><i data-lucide="arrow-up"></i></button>
                         </div>
                     }

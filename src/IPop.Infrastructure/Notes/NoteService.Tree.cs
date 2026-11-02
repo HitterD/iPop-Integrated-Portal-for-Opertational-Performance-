@@ -92,11 +92,32 @@ public sealed partial class NoteService
         };
         db.NotePages.Add(copy);
 
+        // Clone attachment links so images/files in the duplicate keep working even if the original is unshared or purged.
+        var srcAttIds = await db.NoteAttachments.AsNoTracking()
+            .Where(a => a.PageId == pageId).Select(a => a.AttachmentId).ToListAsync(ct);
+        var srcAtts = srcAttIds.Count == 0 ? []
+            : await db.Attachments.AsNoTracking().Where(a => srcAttIds.Contains(a.Id) && a.DeletedAt == null).ToListAsync(ct);
+        var remap = new List<(byte[] OldBytes, byte[] NewBytes)>(srcAtts.Count);
+        foreach (var att in srcAtts)
+        {
+            var cloneId = Guid.NewGuid();
+            db.Attachments.Add(new Attachment
+            {
+                Id = cloneId, Area = att.Area, FileName = att.FileName, ContentType = att.ContentType,
+                Size = att.Size, Sha256 = att.Sha256, StoragePath = att.StoragePath,
+                UploaderId = userId, CreatedAt = now,
+            });
+            db.NoteAttachments.Add(new NoteAttachment { AttachmentId = cloneId, PageId = copy.Id });
+            remap.Add((System.Text.Encoding.ASCII.GetBytes(att.Id.ToString("D")),
+                       System.Text.Encoding.ASCII.GetBytes(cloneId.ToString("D"))));
+        }
+        copy.YState = RemapGuids(src.YState, remap);
+
         // Edits not yet folded into the snapshot travel along; Yjs merges them on first open.
         var updates = await db.NoteUpdates.AsNoTracking().Where(u => u.PageId == pageId).OrderBy(u => u.Id)
             .Select(u => u.Data).ToListAsync(ct);
         foreach (var data in updates)
-            db.NoteUpdates.Add(new NoteUpdate { PageId = copy.Id, UserId = userId, Data = data, CreatedAt = now });
+            db.NoteUpdates.Add(new NoteUpdate { PageId = copy.Id, UserId = userId, Data = RemapGuids(data, remap)!, CreatedAt = now });
 
         // Right after the original among placed siblings.
         if (parent == src.ParentId && src.SortOrder > 0 && (parent != null || src.OwnerId == userId))
@@ -108,5 +129,26 @@ public sealed partial class NoteService
         }
         await db.SaveChangesAsync(ct);
         return await GetPageAsync(userId, copy.Id, ct);
+    }
+
+    private static byte[]? RemapGuids(byte[]? data, List<(byte[] OldBytes, byte[] NewBytes)> remap)
+    {
+        if (data is null || data.Length < 36 || remap.Count == 0) return data;
+        byte[]? copy = null;
+        var span = data.AsSpan();
+        foreach (var (oldB, newB) in remap)
+        {
+            var pos = 0;
+            while (pos <= span.Length - 36)
+            {
+                var idx = span[pos..].IndexOf(oldB);
+                if (idx < 0) break;
+                copy ??= (byte[])data.Clone();
+                newB.CopyTo(copy.AsSpan(pos + idx, 36));
+                span = copy.AsSpan();
+                pos += idx + 36;
+            }
+        }
+        return copy ?? data;
     }
 }

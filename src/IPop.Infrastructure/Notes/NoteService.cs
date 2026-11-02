@@ -458,9 +458,17 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         var page = await TrashedTopAsync(userId, pageId, ct);
         if (page is null) return Fail<bool>("not_found");
         var ids = await SubtreeAsync(pageId, q => q, ct);
+        var attIds = await db.NoteAttachments.AsNoTracking()
+            .Where(a => ids.Contains(a.PageId)).Select(a => a.AttachmentId).ToListAsync(ct);
         ids.Reverse();   // children first, so the self-referencing FK never blocks
         foreach (var id in ids)
             await db.NotePages.Where(p => p.Id == id).ExecuteDeleteAsync(ct);
+        if (attIds.Count > 0)
+        {
+            var now = DateTime.UtcNow;
+            await db.Attachments.Where(a => attIds.Contains(a.Id) && a.DeletedAt == null)
+                .ExecuteUpdateAsync(s => s.SetProperty(a => a.DeletedAt, now), ct);
+        }
         return Ok(true);
     }
 }

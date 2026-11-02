@@ -18,6 +18,10 @@ public partial class Notes
     private Guid? focusThread;
     private readonly Dictionary<Guid, string?> replies = [];
     private CommentDraft? draft;
+    private Guid? cmtMentionTarget;
+    private List<NotePersonDto> cmtMentionHits = [];
+    private CancellationTokenSource? cmtMentionCts;
+    private readonly Dictionary<Guid, string> cmtMentions = [];
 
     private sealed class CommentDraft(string quote, string anchor)
     {
@@ -33,6 +37,7 @@ public partial class Notes
         var list = await Auth.GetAsync<List<NoteThreadDto>>($"/api/notes/{id}/threads");
         if (note?.Id != id || list is null) return;
         threads = list;
+        note = note with { OpenThreads = threads.Count(t => t.ResolvedAt is null) };
         await PushThreadsAsync();
         await InvokeAsync(StateHasChanged);
     }
@@ -79,6 +84,60 @@ public partial class Notes
 
     private void ToggleComments() => commentsOpen = !commentsOpen;
 
+    private void OnDraftInput(ChangeEventArgs e)
+    {
+        if (draft is null) return;
+        draft.Body = e.Value?.ToString() ?? "";
+        SearchCommentMentions(Guid.Empty, draft.Body);
+    }
+
+    private void OnReplyInput(ChangeEventArgs e, Guid threadId)
+    {
+        var text = e.Value?.ToString() ?? "";
+        replies[threadId] = text;
+        SearchCommentMentions(threadId, text);
+    }
+
+    private void SearchCommentMentions(Guid target, string? text)
+    {
+        cmtMentionCts?.Cancel();
+        var at = text is null ? -1 : text.LastIndexOf('@');
+        if (note is null || at < 0 || (at > 0 && !char.IsWhiteSpace(text![at - 1]))) { ClearCommentMention(); return; }
+        var q = text![(at + 1)..];
+        if (q.Length is < 2 or > 30 || q.Contains('\n')) { ClearCommentMention(); return; }
+        var cts = cmtMentionCts = new CancellationTokenSource();
+        var pageId = note.Id;
+        _ = Task.Delay(180, cts.Token).ContinueWith(async t =>
+        {
+            if (t.IsCanceled) return;
+            var r = await Auth.GetAsync<List<NotePersonDto>>($"/api/notes/people?q={Uri.EscapeDataString(q)}&pageId={pageId}");
+            if (cts.IsCancellationRequested) return;
+            await InvokeAsync(() => { cmtMentionTarget = target; cmtMentionHits = r ?? []; StateHasChanged(); });
+        }, TaskScheduler.Default);
+    }
+
+    private void PickCommentMention(Guid target, NotePersonDto p)
+    {
+        cmtMentions[p.Id] = p.Name;
+        var cur = target == Guid.Empty ? draft?.Body : replies.GetValueOrDefault(target);
+        if (!string.IsNullOrEmpty(cur))
+        {
+            var at = cur.LastIndexOf('@');
+            var next = (at >= 0 ? cur[..at] : cur) + $"@{p.Name} ";
+            if (target == Guid.Empty && draft is not null) draft.Body = next;
+            else replies[target] = next;
+        }
+        ClearCommentMention();
+    }
+
+    private void ClearCommentMention() { cmtMentionCts?.Cancel(); cmtMentionTarget = null; cmtMentionHits = []; }
+
+    private List<Guid>? ResolveCommentMentions(string body)
+    {
+        var list = cmtMentions.Where(kv => body.Contains("@" + kv.Value, StringComparison.OrdinalIgnoreCase)).Select(kv => kv.Key).ToList();
+        return list.Count > 0 ? list : null;
+    }
+
     private async Task OnDraftKey(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" && (e.CtrlKey || e.MetaKey)) await PostDraft();
@@ -92,13 +151,14 @@ public partial class Notes
         try
         {
             var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notes/{note.Id}/threads",
-                new CreateNoteThreadRequest(draft.Quote, draft.Anchor, draft.Body.Trim(), null));
+                new CreateNoteThreadRequest(draft.Quote, draft.Anchor, draft.Body.Trim(), ResolveCommentMentions(draft.Body)));
             if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't post your comment", ToastKind.Error); return; }
             var t = await res.Content.ReadFromJsonAsync<NoteThreadDto>(Json);
             draft = null;
             if (t is not null)
             {
                 threads = [t, .. threads.Where(x => x.Id != t.Id)];
+                note = note with { OpenThreads = threads.Count(x => x.ResolvedAt is null) };
                 focusThread = t.Id;
                 await PushThreadsAsync();
             }
@@ -117,7 +177,7 @@ public partial class Notes
         var body = replies.GetValueOrDefault(t.Id)?.Trim();
         if (string.IsNullOrEmpty(body)) return;
         replies[t.Id] = null;
-        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notes/{note.Id}/threads/{t.Id}/replies", new NoteReplyRequest(body, null));
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notes/{note.Id}/threads/{t.Id}/replies", new NoteReplyRequest(body, ResolveCommentMentions(body)));
         if (!res.IsSuccessStatusCode) { replies[t.Id] = body; Toasts.Show("Couldn't send your reply", ToastKind.Error); return; }
         var updated = await res.Content.ReadFromJsonAsync<NoteThreadDto>(Json);
         if (updated is not null) threads = threads.Select(x => x.Id == updated.Id ? updated : x).ToList();
@@ -130,6 +190,7 @@ public partial class Notes
         var res = await Auth.SendAsync(HttpMethod.Put, $"/api/notes/{note.Id}/threads/{t.Id}/resolved", new { resolved = resolve });
         if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't update the comment", ToastKind.Error); return; }
         threads = threads.Select(x => x.Id == t.Id ? x with { ResolvedAt = resolve ? DateTime.UtcNow : null } : x).ToList();
+        note = note with { OpenThreads = threads.Count(x => x.ResolvedAt is null) };
         if (resolve && focusThread == t.Id) focusThread = null;
         await PushThreadsAsync();
     }

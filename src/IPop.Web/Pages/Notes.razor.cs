@@ -22,7 +22,7 @@ public partial class Notes
 {
     [Parameter] public Guid? Id { get; set; }
 
-    private const string EditorModule = "./js/notes/notes-editor.js?v=20261016-w3a";
+    private const string EditorModule = "./js/notes/notes-editor.js?v=20261102-notes";
 
     private enum View { Home, Page, New, Trash }
     private enum Pop { None, More, Style, Emoji, Share, History }
@@ -467,6 +467,17 @@ public partial class Notes
         if (!await Confirm.AskAsync("Delete forever?", $"“{DisplayTitle(t.Title)}” and its sub-pages, comments and history will be deleted permanently.", "Delete forever")) return;
         var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/notes/{t.Id}/purge");
         if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't delete", ToastKind.Error); return; }
+        await LoadSidebarAsync();
+        await LoadTrashAsync();
+    }
+
+    private async Task EmptyTrashAsync()
+    {
+        var mine = trash?.Where(t => t.IsMine).ToList() ?? [];
+        if (mine.Count == 0) return;
+        if (!await Confirm.AskAsync("Empty trash?", $"Permanently delete {mine.Count} page{(mine.Count == 1 ? "" : "s")} and all their sub-pages, comments and history?", "Empty trash")) return;
+        foreach (var t in mine) await Auth.SendAsync(HttpMethod.Delete, $"/api/notes/{t.Id}/purge");
+        await LoadSidebarAsync();
         await LoadTrashAsync();
     }
 

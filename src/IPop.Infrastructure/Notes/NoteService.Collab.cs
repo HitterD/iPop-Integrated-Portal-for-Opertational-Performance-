@@ -6,6 +6,8 @@ namespace IPop.Infrastructure.Notes;
 
 public sealed partial class NoteService
 {
+    private const int MaxVersions = 50;
+
     // ── Document sync ────────────────────────────────────────────────────────
 
     public async Task<NoteResult<NoteDocDto>> GetDocAsync(Guid userId, Guid pageId, CancellationToken ct)
@@ -78,6 +80,7 @@ public sealed partial class NoteService
             await db.NoteUpdates.Where(u => u.PageId == pageId && merged.Contains(u.Id)).ExecuteDeleteAsync(ct);
 
         var last = await db.NoteVersions.Where(v => v.PageId == pageId).MaxAsync(v => (DateTime?)v.CreatedAt, ct);
+        var wroteVersion = false;
         if (page.PendingContributors is not null && (last is null || at - last.Value >= VersionEvery))
         {
             db.NoteVersions.Add(new NoteVersion
@@ -86,8 +89,16 @@ public sealed partial class NoteService
                 Contributors = page.PendingContributors, CreatedAt = at,
             });
             page.PendingContributors = null;
+            wroteVersion = true;
         }
         await db.SaveChangesAsync(ct);
+        if (wroteVersion)
+        {
+            var staleIds = await db.NoteVersions.Where(v => v.PageId == pageId)
+                .OrderByDescending(v => v.CreatedAt).Skip(MaxVersions).Select(v => v.Id).ToListAsync(ct);
+            if (staleIds.Count > 0)
+                await db.NoteVersions.Where(v => staleIds.Contains(v.Id)).ExecuteDeleteAsync(ct);
+        }
         return Ok(new NoteSnapshotResultDto(next));
     }
 
@@ -114,7 +125,7 @@ public sealed partial class NoteService
         var access = await GetAccessAsync(userId, pageId, ct);
         if (access == NoteAccess.None) return Fail<IReadOnlyList<NoteVersionDto>>("not_found");
         var rows = await db.NoteVersions.AsNoTracking().Where(v => v.PageId == pageId).OrderByDescending(v => v.CreatedAt)
-            .Take(50).Select(v => new { v.Id, v.CreatedAt, v.Title, v.Contributors }).ToListAsync(ct);
+            .Take(MaxVersions).Select(v => new { v.Id, v.CreatedAt, v.Title, v.Contributors }).ToListAsync(ct);
         var ids = rows.SelectMany(r => ParseIds(r.Contributors)).Distinct().ToList();
         var names = await db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.Name, ct);
         return Ok<IReadOnlyList<NoteVersionDto>>(rows.Select(r => new NoteVersionDto(r.Id, r.CreatedAt, r.Title,
@@ -153,6 +164,10 @@ public sealed partial class NoteService
                 s.RoomId, RoomType = s.Room!.Type, s.Level, PageTitle = s.Page.Title,
             }).ToListAsync(ct);
 
+        var roomIds = rows.Where(r => r.RoomId != null).Select(r => r.RoomId!.Value).Distinct().ToList();
+        var memberCounts = roomIds.Count == 0 ? [] : await db.ChatRoomMembers.AsNoTracking()
+            .Where(m => roomIds.Contains(m.RoomId) && m.LeftAt == null)
+            .GroupBy(m => m.RoomId).ToDictionaryAsync(g => g.Key, g => g.Count(), ct);
         var shares = new List<NoteShareDto>();
         foreach (var r in rows)
         {
@@ -161,7 +176,7 @@ public sealed partial class NoteService
             if (r.RoomId is { } rid)
             {
                 roomName = await RoomLabelAsync(rid, userId, ct);
-                members = await db.ChatRoomMembers.CountAsync(m => m.RoomId == rid && m.LeftAt == null, ct);
+                members = memberCounts.GetValueOrDefault(rid);
             }
             var inherited = r.PageId != pageId;
             shares.Add(new NoteShareDto(r.Id, r.UserId, r.UserId is null ? null : r.UserName, r.UserId is null ? null : r.UserNik,
@@ -237,6 +252,7 @@ public sealed partial class NoteService
     public async Task<IReadOnlyList<Guid>> GetAudienceAsync(Guid pageId, CancellationToken ct)
     {
         var chain = await ChainAsync(pageId, ct);
+        if (chain.Count == 0 || chain.Any(n => n.DeletedAt != null)) return [];
         var ids = chain.Select(n => n.Id).ToList();
         var users = chain.Select(n => n.OwnerId).ToHashSet();
         var shares = await db.NoteShares.AsNoTracking().Where(s => ids.Contains(s.PageId))
@@ -282,7 +298,7 @@ public sealed partial class NoteService
         db.NoteThreads.Add(thread);
         await db.SaveChangesAsync(ct);
         return Ok(new NoteCommentResult(await ThreadQuery(pageId, thread.Id).FirstAsync(ct),
-            await MentionTargetsAsync(userId, pageId, req.Mentions, ct)));
+            await MentionTargetsAsync(userId, pageId, req.Mentions, ct, body)));
     }
 
     public async Task<NoteResult<NoteCommentResult>> ReplyAsync(Guid userId, Guid pageId, Guid threadId, NoteReplyRequest req, CancellationToken ct)
@@ -304,16 +320,44 @@ public sealed partial class NoteService
             .Select(c => c.AuthorId!.Value).Distinct().ToListAsync(ct);
         var notify = participants.Concat(req.Mentions ?? []).Distinct().ToList();
         return Ok(new NoteCommentResult(await ThreadQuery(pageId, threadId).FirstAsync(ct),
-            await MentionTargetsAsync(userId, pageId, notify, ct)));
+            await MentionTargetsAsync(userId, pageId, notify, ct, body)));
     }
 
-    /// Mentioned users who can actually open the page (never the author).
-    private async Task<IReadOnlyList<Guid>> MentionTargetsAsync(Guid userId, Guid pageId, IReadOnlyList<Guid>? mentions, CancellationToken ct)
+    /// Mentioned users who can actually open the page (never the author). Also resolves @Name / @Nik in body.
+    private async Task<IReadOnlyList<Guid>> MentionTargetsAsync(Guid userId, Guid pageId, IReadOnlyList<Guid>? mentions, CancellationToken ct, string? body = null)
     {
-        var result = new List<Guid>();
-        foreach (var id in (mentions ?? []).Distinct().Where(id => id != userId).Take(20))
-            if (await GetAccessAsync(id, pageId, ct) > NoteAccess.None) result.Add(id);
-        return result;
+        var audience = (await GetAudienceAsync(pageId, ct)).ToHashSet();
+        audience.Remove(userId);
+        if (audience.Count == 0) return [];
+        var ids = (mentions ?? []).Where(audience.Contains).ToHashSet();
+        if (!string.IsNullOrEmpty(body) && body.Contains('@'))
+        {
+            var candidates = await db.Users.AsNoTracking()
+                .Where(u => audience.Contains(u.Id) && u.IsActive)
+                .Select(u => new { u.Id, u.Name, u.Nik }).ToListAsync(ct);
+            foreach (var u in candidates)
+            {
+                if (HasMentionToken(body, u.Name) || HasMentionToken(body, u.Nik))
+                    ids.Add(u.Id);
+            }
+        }
+        return ids.Take(20).ToList();
+    }
+
+    private static bool HasMentionToken(string body, string? token)
+    {
+        if (string.IsNullOrWhiteSpace(token)) return false;
+        var needle = "@" + token;
+        var idx = 0;
+        while ((idx = body.IndexOf(needle, idx, StringComparison.OrdinalIgnoreCase)) >= 0)
+        {
+            var beforeOk = idx == 0 || char.IsWhiteSpace(body[idx - 1]) || char.IsPunctuation(body[idx - 1]);
+            var afterIdx = idx + needle.Length;
+            var afterOk = afterIdx >= body.Length || !char.IsLetterOrDigit(body[afterIdx]);
+            if (beforeOk && afterOk) return true;
+            idx = afterIdx;
+        }
+        return false;
     }
 
     public async Task<NoteResult<bool>> SetResolvedAsync(Guid userId, Guid pageId, Guid threadId, bool resolved, CancellationToken ct)
@@ -383,23 +427,19 @@ public sealed partial class NoteService
             .Select(u => new { u.Id, u.Nik, u.Name, Department = u.Department != null ? u.Department.Name : null })
             .ToListAsync(ct);
         // Access flags only for someone who can open the page themselves (no probing of other pages).
-        var flag = userId is { } me && pageId is { } pid && await GetAccessAsync(me, pid, ct) > NoteAccess.None;
+        HashSet<Guid>? audience = userId is { } me && pageId is { } pid
+            && (await GetAudienceAsync(pid, ct)).ToHashSet() is var set && set.Contains(me) ? set : null;
         var result = new List<NotePersonDto>(rows.Count);
         foreach (var u in rows)
-        {
-            bool? has = flag ? await GetAccessAsync(u.Id, pageId!.Value, ct) > NoteAccess.None : null;
-            result.Add(new NotePersonDto(u.Id, u.Nik, u.Name, null, u.Department, has));
-        }
+            result.Add(new NotePersonDto(u.Id, u.Nik, u.Name, null, u.Department, audience?.Contains(u.Id)));
         return result;
     }
 
     public async Task<NoteResult<IReadOnlyList<Guid>>> WhoCanAccessAsync(Guid userId, Guid pageId, IReadOnlyList<Guid> userIds, CancellationToken ct)
     {
-        var access = await GetAccessAsync(userId, pageId, ct);
-        if (access == NoteAccess.None) return Fail<IReadOnlyList<Guid>>(Denied(access));
-        var result = new List<Guid>();
-        foreach (var id in (userIds ?? []).Distinct().Take(100))
-            if (await GetAccessAsync(id, pageId, ct) > NoteAccess.None) result.Add(id);
+        var audience = (await GetAudienceAsync(pageId, ct)).ToHashSet();
+        if (!audience.Contains(userId)) return Fail<IReadOnlyList<Guid>>("not_found");
+        var result = (userIds ?? []).Distinct().Take(100).Where(audience.Contains).ToList();
         return Ok<IReadOnlyList<Guid>>(result);
     }
 

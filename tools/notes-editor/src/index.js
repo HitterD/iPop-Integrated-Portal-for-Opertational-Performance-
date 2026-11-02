@@ -563,6 +563,7 @@ export async function mount(el, opts) {
         case 'checklist': chain.toggleTaskList().run(); break;
         case 'mention': chain.insertContent('@').run(); break;
         case 'undo': chain.undo().run(); break;
+        case 'redo': chain.redo().run(); break;
       }
     },
     setThreads(threads, focus) {

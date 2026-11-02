@@ -35,7 +35,7 @@
             @if (filter == "favorites") { foreach (var itemPage in Sidebar.Pages.Where(p => p.IsFavorite)) { @Row(itemPage, 0, false) } }
             else
             {
-                @foreach (var itemPage in Sidebar.Pages.Where(p => p.ParentId is null && p.IsMine).OrderBy(p => p.SortOrder)) { @Row(itemPage, 0, true) }
+                @foreach (var itemPage in Sidebar.Pages.Where(p => p.ParentId is null && p.IsMine).OrderBy(p => p.SortOrder > 0).ThenByDescending(p => p.SortOrder > 0 ? DateTime.MinValue : p.UpdatedAt).ThenBy(p => p.SortOrder)) { @Row(itemPage, 0, true) }
                 <h2 class="m-notes-section">Shared with me</h2>
                 @foreach (var itemPage in Sidebar.Pages.Where(p => p.ParentId is null && !p.IsMine).OrderBy(p => p.Title)) { @Row(itemPage, 0, true) }
             }
@@ -68,6 +68,6 @@
             else { <span class="m-notes-chevron"></span> }
             <button type="button" data-page="@itemPage.Id" class="m-notes-page-row" @onclick="() => OnOpen.InvokeAsync(itemPage.Id)"><span>@(itemPage.Emoji ?? "📄")</span><span>@Title(itemPage.Title)</span></button>
         </div>
-        @if (tree && expanded.Contains(itemPage.Id)) { foreach (var child in Sidebar!.Pages.Where(p => p.ParentId == itemPage.Id).OrderBy(p => p.SortOrder)) { @Row(child, depth + 1, true) } }
+        @if (tree && expanded.Contains(itemPage.Id)) { foreach (var child in Sidebar!.Pages.Where(p => p.ParentId == itemPage.Id).OrderBy(p => p.SortOrder <= 0).ThenBy(p => p.SortOrder).ThenBy(p => Title(p.Title), StringComparer.CurrentCultureIgnoreCase)) { @Row(child, depth + 1, true) } }
     </div>;
 }

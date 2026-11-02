@@ -12,12 +12,17 @@ public sealed class NotesAttachmentPolicy(IPopDbContext db, INoteService notes) 
 
     public async Task<bool> CanReadAsync(Guid attachmentId, Guid userId, CancellationToken ct)
     {
+        var att = await db.Attachments.AsNoTracking()
+            .Where(a => a.Id == attachmentId && a.DeletedAt == null)
+            .Select(a => new { a.UploaderId }).FirstOrDefaultAsync(ct);
+        if (att is null) return false;
+
         var pageId = await db.NoteAttachments.AsNoTracking()
             .Where(a => a.AttachmentId == attachmentId).Select(a => (Guid?)a.PageId).FirstOrDefaultAsync(ct);
         if (pageId is not null) return await notes.GetAccessAsync(userId, pageId.Value, ct) > NoteAccess.None;
 
-        var uploader = await db.Attachments.AsNoTracking()
-            .Where(a => a.Id == attachmentId).Select(a => a.UploaderId).FirstOrDefaultAsync(ct);
-        return uploader == userId;
+
+
+        return att.UploaderId == userId;
     }
 }

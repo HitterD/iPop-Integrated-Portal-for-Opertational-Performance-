@@ -240,6 +240,7 @@ public class NoteServiceTests
         Assert.Contains("penjualan", (await Svc(t).SearchAsync(a.Id, "PENJUALAN", Ct)).Single().Snippet);
         Assert.Empty(await Svc(t).SearchAsync(b.Id, "kuartal", Ct));
     }
+
     [Fact]
     public async Task Move_reparents_for_owner_and_refuses_cycles_and_non_editable_targets()
     {
@@ -389,5 +390,79 @@ public class NoteServiceTests
         var full = await Svc(t).SearchPeopleAsync("yudi arta", Ct);  // spaces: every word must match
         Assert.Equal("YUDI ARTA TRIRENSILA", Assert.Single(full).Name);
         Assert.Equal("YUDI ARTA TRIRENSILA", Assert.Single(await Svc(t).SearchPeopleAsync("arta yudi", Ct)).Name);
+    }
+
+    [Fact]
+    public async Task Comment_mentions_are_resolved_from_body_even_when_mentions_list_is_null()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("ca"); var b = t.AddUser("cb"); var c = t.AddUser("cc"); var d = t.AddUser("cd");
+        var page = await PageAsync(t, a.Id);
+        await Svc(t).AddShareAsync(a.Id, page, new AddNoteShareRequest(b.Id, null, NoteLevels.Comment), Ct);
+        await Svc(t).AddShareAsync(a.Id, page, new AddNoteShareRequest(c.Id, null, NoteLevels.View), Ct);
+
+        var r = await Svc(t).CreateThreadAsync(b.Id, page, new CreateNoteThreadRequest("q", "{}", "tolong cek @User ca dan @cd", null), Ct);
+        Assert.True(r.Success, r.Error);
+        Assert.Equal([a.Id], r.Data!.NotifyUserIds);
+
+        var reply = await Svc(t).ReplyAsync(a.Id, page, r.Data.Thread.Id, new NoteReplyRequest("halo @cc!", null), Ct);
+        Assert.True(reply.Success, reply.Error);
+        Assert.Equal(new[] { b.Id, c.Id }.OrderBy(x => x), reply.Data!.NotifyUserIds.OrderBy(x => x));
+    }
+
+    [Fact]
+    public async Task Duplicate_clones_attachments_and_purge_soft_deletes_purged_page_attachments()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("da"); var b = t.AddUser("db");
+        var page = await PageAsync(t, a.Id, null, "With Image");
+        await Svc(t).AddShareAsync(a.Id, page, new AddNoteShareRequest(b.Id, null, NoteLevels.Edit), Ct);
+
+        var attId = Guid.NewGuid();
+        t.Db.Attachments.Add(new IPop.Core.Entities.Attachment
+        {
+            Id = attId, Area = "notes", FileName = "pic.png", ContentType = "image/png",
+            Size = 42, Sha256 = "abc", StoragePath = "local:notes/pic.png", UploaderId = a.Id, CreatedAt = DateTime.UtcNow,
+        });
+        await t.Db.SaveChangesAsync();
+        await Svc(t).LinkAttachmentAsync(page, attId, Ct);
+
+        var payload = System.Text.Encoding.ASCII.GetBytes($"prefix:{attId:D}:suffix");
+        await Svc(t).AppendUpdateAsync(a.Id, page, payload, Ct);
+        await Svc(t).SnapshotAsync(a.Id, page, new NoteSnapshotRequest(Convert.ToBase64String(payload), 0, [], "img", 0, 0), Ct);
+
+        var dup = await Svc(t).DuplicateAsync(b.Id, page, Ct);
+        Assert.True(dup.Success, dup.Error);
+        var dupAttId = await t.Verify().NoteAttachments.Where(x => x.PageId == dup.Data!.Id).Select(x => x.AttachmentId).SingleAsync();
+        Assert.NotEqual(attId, dupAttId);
+
+        var dupDoc = (await Svc(t).GetDocAsync(b.Id, dup.Data!.Id, Ct)).Data!;
+        var dupStateText = System.Text.Encoding.ASCII.GetString(Convert.FromBase64String(dupDoc.State!));
+        Assert.Contains(dupAttId.ToString("D"), dupStateText);
+        Assert.DoesNotContain(attId.ToString("D"), dupStateText);
+
+        // Owner purges original page: original attachment is soft-deleted, duplicate attachment remains readable.
+        await Svc(t).TrashAsync(a.Id, page, Ct);
+        Assert.True((await Svc(t).PurgeAsync(a.Id, page, Ct)).Success);
+
+        var policy = new NotesAttachmentPolicy(t.Verify(), Svc(t));
+        Assert.False(await policy.CanReadAsync(attId, a.Id, Ct));
+        Assert.True(await policy.CanReadAsync(dupAttId, b.Id, Ct));
+    }
+
+    [Fact]
+    public async Task Versions_are_pruned_beyond_fifty_snapshots()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("vp");
+        var page = await PageAsync(t, a.Id);
+        var t0 = DateTime.UtcNow;
+        for (var i = 0; i < 55; i++)
+        {
+            await Svc(t).AppendUpdateAsync(a.Id, page, [1], Ct);
+            var r = await Svc(t).SnapshotAsync(a.Id, page, new NoteSnapshotRequest("AQ==", i, [], "", 0, 0), Ct, t0.AddMinutes(i * 11));
+            Assert.True(r.Success, r.Error);
+        }
+        Assert.Equal(50, await t.Verify().NoteVersions.CountAsync(v => v.PageId == page));
     }
 }
