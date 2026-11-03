@@ -75,7 +75,7 @@ Repo dan image iPop **private**, jadi cluster butuh token baca-saja. Buat **dua*
 4. Permissions → Repository → **Contents: Read-only**
 5. Generate → salin token.
 
-**b. Token tarik image (untuk GHCR)**
+**b. Token tarik image (untuk GHCR)** — satu-satunya token yang masih dibutuhkan (Argo CD sudah memakai deploy key baca-saja)
 1. https://github.com/settings/tokens/new (Tokens classic — GHCR belum mendukung fine-grained)
 2. Note: `ipop-k3s-ghcr`, Expiration: 1 year
 3. Centang **hanya `read:packages`**

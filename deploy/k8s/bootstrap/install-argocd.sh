@@ -1,12 +1,11 @@
 #!/bin/bash
 # Install Argo CD and hand the cluster to GitOps. Run once, with kubectl pointing at the cluster:
 #   bash install-argocd.sh
-# Needs: helm, kubectl. The GitHub repo is private, so Argo needs a read-only token (fine-grained PAT,
-# "Contents: read" on this repo only) — prompted below, stored only as a Kubernetes secret.
+# Needs: helm, kubectl, and the private half of the repo's read-only deploy key.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-REPO="https://github.com/HitterD/iPop-Integrated-Portal-for-Opertational-Performance-.git"
+REPO="git@github.com:HitterD/iPop-Integrated-Portal-for-Opertational-Performance-.git"
 
 # Labels used by LiveKit placement: ipop-01 media (preferred), ipop-02 media standby.
 kubectl label node ipop-01 ipop/media=true ipop/media-primary=true --overwrite
@@ -17,12 +16,10 @@ helm repo update argo >/dev/null
 helm upgrade --install argocd argo/argo-cd --version 10.11.6 -n argocd --create-namespace \
   -f values/argocd.yaml --wait --timeout 10m
 
+# Repo access: a read-only GitHub deploy key (repo › Settings › Deploy keys), private half given as $1.
 if ! kubectl -n argocd get secret repo-ipop >/dev/null 2>&1; then
-  read -r -p "GitHub username (owner of the read-only token): " GH_USER
-  read -r -s -p "GitHub read-only token for the iPop repo: " GH_TOKEN; echo
-  kubectl -n argocd create secret generic repo-ipop \
-    --from-literal=type=git --from-literal=url="$REPO" \
-    --from-literal=username="$GH_USER" --from-literal=password="$GH_TOKEN"
+  KEY="${1:?usage: install-argocd.sh <path to the deploy key private file>}"
+  kubectl -n argocd create secret generic repo-ipop     --from-literal=type=git --from-literal=url="$REPO" --from-file=sshPrivateKey="$KEY"
   kubectl -n argocd label secret repo-ipop argocd.argoproj.io/secret-type=repository
 fi
 

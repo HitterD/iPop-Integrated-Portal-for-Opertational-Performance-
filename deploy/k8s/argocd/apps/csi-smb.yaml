@@ -14,7 +14,7 @@ spec:
       helm:
         releaseName: csi-smb
         valueFiles: [$values/deploy/k8s/values/csi-smb.yaml]
-    - repoURL: https://github.com/HitterD/iPop-Integrated-Portal-for-Opertational-Performance-.git
+    - repoURL: git@github.com:HitterD/iPop-Integrated-Portal-for-Opertational-Performance-.git
       targetRevision: main
       ref: values
   destination:
