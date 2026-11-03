@@ -53,8 +53,8 @@ spec:
               preference:
                 matchExpressions: [{ key: ipop/media-primary, operator: In, values: ["true"] }]
       tolerations:
-        - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 60 }
-        - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 60 }
+        - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 20 }
+        - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 20 }
       containers:
         - name: livekit
           image: livekit/livekit-server:v1.13.11
@@ -209,8 +209,8 @@ spec:
       labels: { app.kubernetes.io/name: onlyoffice }
     spec:
       tolerations:
-        - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 60 }
-        - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 60 }
+        - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 20 }
+        - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 20 }
       containers:
         - name: onlyoffice
           image: onlyoffice/documentserver:9.4.0
