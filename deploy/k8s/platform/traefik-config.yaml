@@ -49,6 +49,13 @@ spec:
         port: 443
         forwardedHeaders:
           trustedIPs: ["192.168.2.2/32", "192.168.2.3/32"]
+    # No Service (hostNetwork): publish the node IPs on Ingress objects so Argo CD sees them as healthy.
+    providers:
+      kubernetesIngress:
+        publishedService:
+          enabled: false
+    additionalArguments:
+      - "--providers.kubernetesingress.ingressendpoint.ip=192.168.2.89"
     logs:
       access:
         enabled: true
