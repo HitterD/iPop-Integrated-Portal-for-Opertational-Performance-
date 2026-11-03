@@ -4,9 +4,12 @@ Cukup dua layar: **Grafana** (melihat) dan **Argo CD** (deploy). Email peringata
 
 | Apa | Alamat | Login |
 |---|---|---|
-| Grafana | http://grafana.192.168.2.89.nip.io | `admin` + password dari `secrets.sh` |
-| Argo CD | http://argocd.192.168.2.89.nip.io | `admin` + password dari `install-argocd.sh` |
-| Longhorn (disk) | http://longhorn.192.168.2.89.nip.io | tanpa login — buka hanya dari jaringan ICT |
+| Grafana | https://grafana-ipop.santos.co.id | `admin` + password dari `secrets.sh` |
+| Argo CD | https://argocd-ipop.santos.co.id | `admin` + password dari `install-argocd.sh` |
+| Longhorn (disk) | https://longhorn-ipop.santos.co.id | `admin` + password dari `secrets.sh` |
+
+Ketiganya hanya bisa dibuka dari subnet ICT (10.10.6.0/24) dan server (192.168.2.0/24).
+Cadangan tanpa DNS: `http://grafana.192.168.2.89.nip.io`, `http://argocd.…`, `http://longhorn.…`.
 
 > `nip.io` hanya trik DNS: `grafana.192.168.2.89.nip.io` selalu menunjuk ke 192.168.2.89. Tidak perlu setting DNS.
 > Kalau kantor memblokir nip.io, minta saya ganti ke nama di DNS internal / Zoraxy.
@@ -17,12 +20,19 @@ Cukup dua layar: **Grafana** (melihat) dan **Argo CD** (deploy). Email peringata
 
 1. **Email**: ada email `[iPop cluster] FIRING ...`? Kalau tidak ada, semua normal.
 2. **Argo CD** → semua kartu aplikasi **hijau** (Healthy + Synced).
-3. **Grafana** → Dashboards → **Kubernetes / Compute Resources / Cluster**:
-   CPU & memory tidak menempel di atas (merah > 85% terus-menerus = waktunya minta tambah resource VM).
+3. **Grafana** → Dashboards → folder **iPop** → **iPop – Ringkasan**: baris atas semua hijau.
+   Merah/oranye = arahkan mouse ke ikon ⓘ di judul panel untuk penjelasan.
 
 ## 2. Membaca Grafana
 
-Menu kiri → **Dashboards**. Yang paling berguna:
+Menu kiri → **Dashboards**. Mulai dari folder **iPop**:
+
+| Dashboard | Untuk |
+|---|---|
+| **iPop – Ringkasan** | satu layar: status API/Web/DB/node, backup, trafik, server, log error |
+| **iPop – Log** | cari log: pilih komponen, ketik kata di kotak **Cari** (NIK, nama, "error") |
+
+Dashboard bawaan lain yang berguna:
 
 | Dashboard | Untuk |
 |---|---|

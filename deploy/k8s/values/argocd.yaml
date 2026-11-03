@@ -6,6 +6,12 @@ configs:
     server.insecure: true          # TLS ends at Zoraxy; inside the LAN it is plain http
   cm:
     timeout.reconciliation: 120s
+    # k3s's HelmChartConfig has no status of its own (k3s's helm job applies it): report it healthy.
+    resource.customizations.health.helm.cattle.io_HelmChartConfig: |
+      hs = {}
+      hs.status = "Healthy"
+      hs.message = "Applied by k3s"
+      return hs
 dex: { enabled: false }
 notifications: { enabled: false }
 applicationSet: { replicas: 1 }
