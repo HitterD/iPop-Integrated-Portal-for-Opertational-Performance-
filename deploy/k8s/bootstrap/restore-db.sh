@@ -1,17 +1,22 @@
 #!/bin/bash
 # Load a pg_dump (custom format) into the cluster's iPop database, replacing what is there.
-#   bash restore-db.sh /path/to/ipop.dump
+#   bash restore-db.sh /path/to/ipop.dump               # prod (namespace ipop)
+#   bash restore-db.sh /path/to/ipop.dump ipop-staging  # refresh staging with prod data
 # Used for the test copy and again at cutover. Stops the API first so nothing writes meanwhile.
 set -euo pipefail
-DUMP="${1:?usage: restore-db.sh <file.dump>}"
-NS=ipop
+DUMP="${1:?usage: restore-db.sh <file.dump> [namespace: ipop | ipop-staging]}"
+NS="${2:-ipop}"
 
 PRIMARY=$(kubectl -n $NS get pods -l cnpg.io/cluster=ipop-db,cnpg.io/instanceRole=primary -o jsonpath='{.items[0].metadata.name}')
 echo "Primary: $PRIMARY"
-read -r -p "This REPLACES the cluster's iPop database with $DUMP. Type RESTORE to continue: " ok
+read -r -p "This REPLACES the iPop database in namespace $NS with $DUMP. Type RESTORE to continue: " ok
 [ "$ok" = "RESTORE" ] || exit 1
 
-# The ipop app has no auto-sync (manual release), so Argo CD will not start the API again mid-restore.
+# Staging auto-syncs: pause it, or Argo CD would start the API again mid-restore. (Prod has no auto-sync.)
+if [ "$NS" = ipop-staging ]; then
+  kubectl -n argocd patch application ipop-staging --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
+  trap 'kubectl -n argocd patch application ipop-staging --type merge -p "{\"spec\":{\"syncPolicy\":{\"automated\":{\"prune\":true,\"selfHeal\":true}}}}"' EXIT
+fi
 kubectl -n $NS scale deploy/ipop-api --replicas=0
 kubectl -n $NS wait --for=delete pod -l app.kubernetes.io/name=ipop-api --timeout=120s || true
 
