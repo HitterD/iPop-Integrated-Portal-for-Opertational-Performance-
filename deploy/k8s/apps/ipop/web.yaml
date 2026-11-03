@@ -25,6 +25,10 @@ spec:
                 topologyKey: kubernetes.io/hostname
                 labelSelector:
                   matchLabels: { app.kubernetes.io/name: ipop-web }
+      tolerations:
+        # Drop a dead node's pod quickly so Traefik stops sending half the requests to it (502s).
+        - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 20 }
+        - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 20 }
       containers:
         - name: web
           image: ipop-web
