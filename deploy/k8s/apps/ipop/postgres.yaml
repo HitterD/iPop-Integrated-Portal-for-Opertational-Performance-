@@ -35,6 +35,18 @@ spec:
   resources:
     requests: { cpu: 500m, memory: 2Gi }
     limits: { memory: 4Gi }
+  # Ubuntu 26.04 (AppArmor 5): containerd's default profile denies signals between processes in the
+  # same container (peer label "cri-containerd.apparmor.d//&unconfined"), and PostgreSQL's
+  # postmaster/checkpointer talk by signals ("could not signal for checkpoint: Permission denied").
+  # Only the database pods run unconfined; everything else keeps the default profile.
+  # The rest is CNPG's own default pod security context, kept as is.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 26
+    runAsGroup: 26
+    fsGroup: 26
+    seccompProfile: { type: RuntimeDefault }
+    appArmorProfile: { type: Unconfined }
   affinity:
     enablePodAntiAffinity: true
     podAntiAffinityType: required
