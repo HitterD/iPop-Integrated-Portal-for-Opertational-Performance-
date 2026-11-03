@@ -123,6 +123,12 @@ printf 'mirrors:
   registry.k8s.io:
 ' > /etc/rancher/k3s/registries.yaml
 
+# CoreDNS: k3s ships one replica; when its node died every DNS lookup failed and Longhorn volume moves
+# (so the API) stalled for minutes. Replace the packaged manifest with a 3-replica copy.
+mkdir -p /var/lib/rancher/k3s/server/manifests
+install -m 600 "$(dirname "$0")/coredns-ha.yaml" /var/lib/rancher/k3s/server/manifests/coredns-ha.yaml
+touch /var/lib/rancher/k3s/server/manifests/coredns.yaml.skip
+
 curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" sh -s - server
 
 # kubectl for the administrator account.
