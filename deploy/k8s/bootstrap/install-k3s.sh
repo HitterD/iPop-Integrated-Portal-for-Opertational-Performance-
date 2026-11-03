@@ -84,6 +84,12 @@ else
   echo "server: https://${FIRST}:6443" >> /etc/rancher/k3s/config.yaml
 fi
 
+# kube-vip dies together with k3s and cannot release the VIP, so a node whose k3s was stopped kept
+# answering ARP for it while another node had taken over (measured: 8 min outage). Release it on stop.
+mkdir -p /etc/systemd/system/k3s.service.d
+printf '[Service]\nExecStopPost=-/usr/sbin/ip addr del %s/32 dev %s\n' "$VIP" "$IFACE" \
+  > /etc/systemd/system/k3s.service.d/10-release-vip.conf
+
 curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" sh -s - server
 
 # kubectl for the administrator account.
