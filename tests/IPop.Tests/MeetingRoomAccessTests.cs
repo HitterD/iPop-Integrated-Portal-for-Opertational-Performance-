@@ -36,17 +36,24 @@ public class MeetingRoomAccessTests
         return id!.Value;
     }
 
-    /// A system time zone whose current local hour is 09–14 (no DST jumps), so any test booking stays on one local day.
+    /// A time zone where it is now 09–14 local (whole-hour offsets, no DST), so a "now + N" booking stays on one local day.
+    /// Fixed IANA ids that both Linux (CI) and Windows (.NET ICU) resolve; the system list differs between them.
     private static string MiddayZoneId()
     {
+        string[] zones = ["Pacific/Kiritimati", "Pacific/Tongatapu", "Pacific/Fiji", "Pacific/Noumea", "Australia/Brisbane",
+            "Asia/Tokyo", "Asia/Shanghai", "Asia/Jakarta", "Asia/Dhaka", "Asia/Karachi", "Asia/Dubai", "Europe/Moscow",
+            "Africa/Nairobi", "Africa/Johannesburg", "Africa/Lagos", "Atlantic/Reykjavik", "Atlantic/Cape_Verde",
+            "America/Noronha", "America/Sao_Paulo", "America/Puerto_Rico", "America/Panama", "America/Regina",
+            "America/Phoenix", "Pacific/Pitcairn", "America/Anchorage", "Pacific/Honolulu", "Pacific/Pago_Pago"];
         var now = DateTime.UtcNow;
-        return TimeZoneInfo.GetSystemTimeZones()
-            .Where(z => !z.SupportsDaylightSavingTime)
-            .Select(z => (z.Id, Hour: TimeZoneInfo.ConvertTimeFromUtc(now, z).Hour))
-            .Where(x => x.Hour is >= 9 and <= 14)
-            .OrderBy(x => Math.Abs(x.Hour - 11))
-            .Select(x => x.Id)
-            .First();
+        foreach (var id in zones)
+        {
+            TimeZoneInfo z;
+            try { z = TimeZoneInfo.FindSystemTimeZoneById(id); }
+            catch (Exception e) when (e is TimeZoneNotFoundException or InvalidTimeZoneException) { continue; }
+            if (TimeZoneInfo.ConvertTimeFromUtc(now, z).Hour is >= 9 and <= 14) return id;
+        }
+        throw new InvalidOperationException("No midday time zone found for the room-booking tests.");
     }
 
     private static string PasswordOf(TestDb t, Guid meetingId) => t.Verify().Meetings.Single(m => m.Id == meetingId).RoomPassword!;
