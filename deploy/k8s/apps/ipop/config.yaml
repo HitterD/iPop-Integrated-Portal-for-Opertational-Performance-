@@ -15,6 +15,9 @@ data:
   # KVM nodes (Ubuntu 26.04, kernel 7.0); non-concurrent GC ran 17/17 clean. Also baked into the images.
   DOTNET_gcConcurrent: "0"
   Workers__OpsHealth: "false"          # disk + backup alerts come from Prometheus/Alertmanager now
+  # Same Data Protection application name as the old Windows host (its content root path), so keys
+  # already in the database still decrypt the OIDC signing keys and media tickets. Do not change.
+  DataProtection__ApplicationName: 'C:\Users\IT12\orca\workspaces\ipop-rescue\src\IPop.Api\'
   Https__Redirect: "false"             # TLS ends at Zoraxy
   ConnectionStrings__Redis: "redis:6379,abortConnect=false"
   Hris__Mode: "Production"

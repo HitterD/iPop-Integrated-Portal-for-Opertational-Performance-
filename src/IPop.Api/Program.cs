@@ -53,7 +53,11 @@ var opsHealthWorker = builder.Configuration.GetValue("Workers:OpsHealth", true);
 builder.Services.AddDbContext<IPopDbContext>(o =>
     o.UseNpgsql(builder.Configuration.GetConnectionString("IPopDb"))
      .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
-builder.Services.AddDataProtection().PersistKeysToDbContext<IPopDbContext>();
+// Keys live in the database. Their isolation name defaults to the content root path, which differs between
+// the old Windows host and the container (/data); DataProtection:ApplicationName pins the old one so
+// existing protected data (OIDC signing keys, media tickets) still opens after a move.
+var dataProtection = builder.Services.AddDataProtection().PersistKeysToDbContext<IPopDbContext>();
+if (builder.Configuration["DataProtection:ApplicationName"] is { Length: > 0 } dpName) dataProtection.SetApplicationName(dpName);
 
 builder.Services.AddScoped<IPasswordHasher, Argon2PasswordHasher>();
 builder.Services.AddSingleton<ITokenService, JwtTokenService>();
