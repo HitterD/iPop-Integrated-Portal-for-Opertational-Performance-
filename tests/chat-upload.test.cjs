@@ -12,11 +12,13 @@ const notices = [];
 const wrap = {
   isConnected: true, dataset: {}, classList: { add() {}, remove() {} },
   querySelector() { return input; }, addEventListener(name, callback) { handlers[name] = callback; },
+  // The drop target is the whole conversation pane (wrap.closest('.conv-pane')); none here, so wrap itself.
+  closest() { return null; }, contains() { return false; },
 };
 class DataTransfer {
   constructor() { this.files = []; this.items = { add: file => this.files.push(file) }; }
 }
-const sandbox = { DataTransfer, Event: class { constructor(type) { this.type = type; } } };
+const sandbox = { DataTransfer, Event: class { constructor(type) { this.type = type; } }, window: {} };
 vm.createContext(sandbox);
 vm.runInContext('helpers={' + source.slice(start, end) + '};', sandbox);
 sandbox.helpers.chatBindPaste(wrap, { invokeMethodAsync(method, text) { notices.push([method, text]); return Promise.resolve(); } });
