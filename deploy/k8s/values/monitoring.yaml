@@ -96,6 +96,9 @@ grafana:
     dashboards:
       enabled: true
       searchNamespace: ALL
+      folderAnnotation: grafana_folder     # dashboards/ipop-*.yaml land in folder "iPop"
+      provider:
+        foldersFromFilesStructure: true
   dashboardProviders:
     dashboardproviders.yaml:
       apiVersion: 1

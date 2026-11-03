@@ -1,0 +1,50 @@
+# Metric sources the stock kube-prometheus-stack does not scrape on its own.
+# Traefik (hostNetwork DaemonSet, no Service since ServiceLB is off): scrape the pods directly.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels: { app.kubernetes.io/name: traefik }
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+---
+# Longhorn manager metrics (volume health, capacity, backups).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: longhorn
+  namespace: longhorn-system
+spec:
+  selector:
+    matchLabels: { app: longhorn-manager }
+  namespaceSelector:
+    matchNames: [longhorn-system]
+  endpoints:
+    - port: manager
+      path: /metrics
+      interval: 60s
+---
+# Blackbox-style check without extra software: Prometheus scrapes iPop's /healthz through the
+# in-cluster service, so "is iPop answering" is a plain metric (up{job="ipop-api"}).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ipop-api
+  namespace: ipop
+spec:
+  selector:
+    matchLabels: { app.kubernetes.io/name: ipop-api }
+  endpoints:
+    - port: http
+      path: /healthz
+      interval: 30s
+      scrapeTimeout: 10s
+      metricRelabelings:
+        - action: drop
+          sourceLabels: [__name__]
+          regex: ".+"

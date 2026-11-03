@@ -6,3 +6,5 @@ resources:
   - longhorn-backup-job.yaml
   - dashboard-access.yaml
   - longhorn-nip.yaml
+  - monitors.yaml
+  - ../dashboards
