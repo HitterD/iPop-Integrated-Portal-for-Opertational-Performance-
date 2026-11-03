@@ -29,6 +29,9 @@ spec:
             - secretRef: { name: ipop-api-integrations, optional: true }   # bootstrap/secrets-integrations.sh
           env:
             - { name: Workers__Outbound, value: "false" }
+            # SSO setup reads its keys from the database while the app is being built; on a fresh,
+            # unmigrated database that table does not exist yet. Migrations never need SSO.
+            - { name: Oidc__Enabled, value: "false" }
           resources:
             requests: { cpu: 200m, memory: 256Mi }
             limits: { memory: 1Gi }
