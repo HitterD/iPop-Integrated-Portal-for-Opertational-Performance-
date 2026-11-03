@@ -17,3 +17,15 @@ spec:
   syncPolicy:
     automated: { prune: true, selfHeal: true }
     syncOptions: [CreateNamespace=true, ServerSideApply=true]
+  # CNPG fills in defaults (archive_mode, log_*, monitoring queries…) and the plugin "enabled" flag;
+  # they are not drift. Only hides them from the OutOfSync status; our own values still apply.
+  ignoreDifferences:
+    - group: postgresql.cnpg.io
+      kind: Cluster
+      jqPathExpressions:
+        - .spec.postgresql.parameters
+        - .spec.monitoring
+        - .spec.plugins[].enabled
+        - .spec.bootstrap.initdb.encoding
+        - .spec.bootstrap.initdb.localeCType
+        - .spec.bootstrap.initdb.localeCollate
