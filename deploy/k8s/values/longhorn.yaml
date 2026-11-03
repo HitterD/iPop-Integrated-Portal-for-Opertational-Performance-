@@ -16,11 +16,13 @@ ingress:
   enabled: true
   ingressClassName: traefik
   host: longhorn.192.168.2.89.nip.io
+# 3 of each CSI sidecar (one per node, leader-elected): with 1, a node failure that also took the
+# attacher blocked every volume move for ~5 min (measured).
 csi:
-  attacherReplicaCount: 1
-  provisionerReplicaCount: 1
-  resizerReplicaCount: 1
-  snapshotterReplicaCount: 1
+  attacherReplicaCount: 3
+  provisionerReplicaCount: 3
+  resizerReplicaCount: 2
+  snapshotterReplicaCount: 2
 # Argo CD runs Helm hooks before regular resources; Longhorn's pre-upgrade hook needs its service
 # account first, so it never starts. Argo upgrades are already ordered; skip the hook.
 preUpgradeChecker:
