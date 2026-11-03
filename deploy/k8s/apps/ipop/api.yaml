@@ -38,10 +38,12 @@ spec:
       containers:
         - name: api
           image: ipop-api
+          imagePullPolicy: IfNotPresent
           ports: [{ containerPort: 8080, name: http }]
           envFrom:
             - configMapRef: { name: ipop-api-env }
             - secretRef: { name: ipop-api-secrets }
+            - secretRef: { name: ipop-api-integrations, optional: true }   # bootstrap/secrets-integrations.sh
           volumeMounts:
             - { name: data, mountPath: /data }
             - { name: firebase, mountPath: /secrets/firebase, readOnly: true }

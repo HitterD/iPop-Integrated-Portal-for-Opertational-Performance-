@@ -28,6 +28,7 @@ spec:
       containers:
         - name: web
           image: ipop-web
+          imagePullPolicy: IfNotPresent
           ports: [{ containerPort: 8080, name: http }]
           envFrom:
             - configMapRef: { name: ipop-web-env }

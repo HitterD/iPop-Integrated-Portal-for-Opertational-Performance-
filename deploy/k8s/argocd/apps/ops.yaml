@@ -9,7 +9,7 @@ spec:
   project: default
   source:
     repoURL: git@github.com:HitterD/iPop-Integrated-Portal-for-Opertational-Performance-.git
-    targetRevision: main
+    targetRevision: IT18/deploy-prod-k3s   # TEST PHASE; back to main once CI secrets exist
     path: deploy/k8s/apps/ops
   destination:
     server: https://kubernetes.default.svc

@@ -15,7 +15,7 @@ spec:
         releaseName: csi-smb
         valueFiles: [$values/deploy/k8s/values/csi-smb.yaml]
     - repoURL: git@github.com:HitterD/iPop-Integrated-Portal-for-Opertational-Performance-.git
-      targetRevision: main
+      targetRevision: IT18/deploy-prod-k3s   # TEST PHASE; back to main once CI secrets exist
       ref: values
   destination:
     server: https://kubernetes.default.svc

@@ -21,10 +21,12 @@ spec:
       containers:
         - name: migrate
           image: ipop-api
+          imagePullPolicy: IfNotPresent
           args: ["--migrate-only"]
           envFrom:
             - configMapRef: { name: ipop-api-env }
             - secretRef: { name: ipop-api-secrets }
+            - secretRef: { name: ipop-api-integrations, optional: true }   # bootstrap/secrets-integrations.sh
           env:
             - { name: Workers__Outbound, value: "false" }
           resources:
