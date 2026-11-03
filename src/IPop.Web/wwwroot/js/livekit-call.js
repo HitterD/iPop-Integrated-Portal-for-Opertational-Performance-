@@ -14,6 +14,10 @@
     let reportTimer = null;
     let levelTimer = null;
     let lastReport = '';
+    // Each join() takes a ticket; leave() and every newer join() invalidate older ones. A join that
+    // finishes connecting after it was superseded disconnects its own Room instead of leaving a
+    // second, orphaned connection (double audio) behind.
+    let ticket = 0;
 
     function log(...a) { console.debug('[IPop GroupCall]', ...a); }
 
@@ -99,6 +103,7 @@
     }
 
     async function leave() {
+        ticket++;
         clearTimeout(reportTimer); reportTimer = null;
         clearInterval(levelTimer); levelTimer = null;
         lastReport = '';
@@ -111,6 +116,7 @@
 
     async function join(url, token, dotnetRef, inputDeviceId) {
         await leave();
+        const mine = ++ticket;
         dotnet = dotnetRef;
         const lk = LK();
         if (!lk?.Room) { error('The group media client isn\'t available.'); state('failed'); return false; }
@@ -145,6 +151,10 @@
         state('connecting');
         try {
             await next.connect(target, token, { autoSubscribe: true });
+            if (mine !== ticket) {   // left, or another join started, while this one connected
+                try { await next.disconnect(); } catch { }
+                return false;
+            }
         } catch (e) {
             log('connect failed', target, e);
             try { await next.disconnect(); } catch { }
@@ -157,7 +167,9 @@
         try { await next.startAudio(); } catch { }
 
         try {
-            mic = await lk.createLocalAudioTrack({ echoCancellation: true, noiseSuppression: true, autoGainControl: true, deviceId: inputDeviceId || undefined });
+            const track = await lk.createLocalAudioTrack({ echoCancellation: true, noiseSuppression: true, autoGainControl: true, deviceId: inputDeviceId || undefined });
+            if (mine !== ticket) { try { track.stop(); } catch { } return false; }   // left during the mic prompt
+            mic = track;
             await next.localParticipant.publishTrack(mic, { source: lk.Track.Source.Microphone, dtx: true, red: true });
         } catch (e) {
             log('mic failed', e);

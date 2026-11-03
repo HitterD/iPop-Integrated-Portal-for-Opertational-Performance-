@@ -41,7 +41,8 @@ public sealed class SessionLockState(AuthState auth, ChatState chat, Notificatio
         EndedCallElsewhere = false;
         if (forced && calls.HasLiveCall)
         {
-            try { await calls.EndCurrentAsync(); } catch { /* the other tab starts fresh anyway */ }
+            // Same choice as signing out: a ring is declined, my outgoing ring canceled, a call ended.
+            try { await calls.EndForSignOutAsync(); } catch { /* the other tab starts fresh anyway */ }
             EndedCallElsewhere = true;
         }
         Suspend(SessionLockMode.Locked);

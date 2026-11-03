@@ -110,6 +110,13 @@ public partial class CallState
     /// first, so later updates take the group path and this never runs twice for one call.
     private async Task UpgradeToLiveKitAsync(CallRoomDto room)
     {
+        await _groupGate.WaitAsync();
+        try { await UpgradeToLiveKitCoreAsync(room); }
+        finally { _groupGate.Release(); }
+    }
+
+    private async Task UpgradeToLiveKitCoreAsync(CallRoomDto room)
+    {
         var wasMuted = ActiveMe?.IsMuted == true;
         Current = room;
         _webRtcActiveCallId = null;
@@ -145,6 +152,7 @@ public partial class CallState
             var ok = await _js.InvokeAsync<bool>("ipopGroupCall.join", joined.LiveKitUrl, joined.LiveKitToken, _selfRef, _groupInputDeviceId);
             if (!ok) WebRtcState = "failed";
             else if (wasMuted) await _js.InvokeVoidAsync("ipopGroupCall.setMuted", true);
+            StartHeartbeat(room.Id);
         }
         catch (JSException ex)
         {
@@ -179,6 +187,7 @@ public partial class CallState
             _groupMediaCallId = joined.Id;
             _selfRef ??= DotNetObjectReference.Create(this);
             var ok = await _js.InvokeAsync<bool>("ipopGroupCall.join", joined.LiveKitUrl, joined.LiveKitToken, _selfRef, _groupInputDeviceId);
+            StartHeartbeat(joined.Id);
             if (!ok) WebRtcState = "failed";
             else if (wasMuted)
             {
@@ -290,6 +299,7 @@ public partial class CallState
                 StateChanged?.Invoke();
                 var ok = await _js.InvokeAsync<bool>("ipopGroupCall.join", room.LiveKitUrl, room.LiveKitToken, _selfRef, _groupInputDeviceId);
                 if (!ok) WebRtcState = "failed";
+                StartHeartbeat(room.Id);
             }
             else
             {
@@ -328,6 +338,7 @@ public partial class CallState
         if (IsMeeting) return await LeaveMeetingAsync();
         var room = Current!;
         await LeaveGroupMediaAsync();
+        StopHeartbeat();
         Current = null;
         WebRtcState = null;
         _groupMedia = [];
@@ -345,6 +356,7 @@ public partial class CallState
         catch (Exception ex) when (ex is HttpRequestException or JsonException) { }
         try { await _js.InvokeVoidAsync("ipopAudio.playEndTone"); } catch (JSException) { }
         CallEnded?.Invoke();
+        await PromoteWaitingAsync();
         return null;
     }
 

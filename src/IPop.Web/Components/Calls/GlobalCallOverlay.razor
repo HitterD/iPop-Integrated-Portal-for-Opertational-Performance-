@@ -55,6 +55,7 @@ else if (CallSvc.IsInGroupCall)
     var alone = joined <= 1 && room.EstablishedAt is null;
     @if (isMinimized)
     {
+        @WaitingBanner(floating: true)
         <div @ref="dragEl" class="@PillClass" role="region" aria-label="Group call @CallSvc.GroupName">
             <button type="button" class="callx-pill-open" @onclick="() => isMinimized = false" title="Open call window">
                 @GroupAvatar(room, "sm" + (AnyoneSpeaking ? " speaking" : ""))
@@ -78,6 +79,7 @@ else if (CallSvc.IsInGroupCall)
     {
         <div @ref="dragEl" class="callx-window callx-group-window@(Phone.IsPhone ? " m-call-full" : "")" role="dialog" aria-label="Group call @CallSvc.GroupName">
             @PhoneHeadOrDesktop(stateLabel, stateClass, CallSvc.GroupName ?? "Group call", $"Group call · {(alone ? "Calling…" : FormattedElapsed)}")
+            @WaitingBanner()
             <div class="callx-body callx-group-body">
                 <div class="callx-group-title callx-drag-handle">
                     @GroupAvatar(room, "sm")
@@ -192,6 +194,7 @@ else if (CallSvc.IsOutgoingRing || CallSvc.IsActiveCall)
 
     @if (isMinimized)
     {
+        @WaitingBanner(floating: true)
         <div @ref="dragEl" class="@PillClass" role="region" aria-label="Call with @peerName">
             <button type="button" class="callx-pill-open" @onclick="() => isMinimized = false" title="Open call window">
                 <PersonAvatar Nik="@peerNik" Name="@peerName" Size="34" Class="@($"callx-avatar sm avatar-remote-speaker {(isOutgoing ? "callx-ring" : "")}")" Decorative="true" />
@@ -211,6 +214,7 @@ else if (CallSvc.IsOutgoingRing || CallSvc.IsActiveCall)
     {
         <div @ref="dragEl" class="callx-window@(Phone.IsPhone ? " m-call-full" : "")" role="dialog" aria-label="Voice call with @peerName">
             @PhoneHeadOrDesktop(stateLabel, stateClass, peerName, isOutgoing ? "Voice call · calling" : $"Voice call · {FormattedElapsed}")
+            @WaitingBanner()
 
             <div class="callx-body">
                 <PersonAvatar Nik="@peerNik" Name="@peerName" Size="96" Class="@($"callx-avatar lg avatar-remote-speaker {(isOutgoing ? "callx-ring" : "")}")" Decorative="true" />
@@ -235,6 +239,18 @@ else if (CallSvc.IsOutgoingRing || CallSvc.IsActiveCall)
                 else if (CallSvc.NeedsHttps)
                 {
                     <p class="callx-warn"><i data-lucide="shield-alert"></i> The microphone needs HTTPS — the other person can't hear you.</p>
+                }
+                else if (CallSvc.IsActiveCall && CallSvc.WebRtcState == "connected" && CallSvc.Quality is "poor" or "fair")
+                {
+                    <p class="callx-weak @(CallSvc.Quality)" role="status"><i data-lucide="@(CallSvc.Quality == "poor" ? "wifi-off" : "wifi")"></i> @(CallSvc.Quality == "poor" ? "Weak connection. The other person may sound choppy." : "Connection is a little unstable.")</p>
+                }
+                @if (!string.IsNullOrEmpty(CallSvc.DeviceNotice))
+                {
+                    <p class="callx-note" role="status"><i data-lucide="headphones"></i> @CallSvc.DeviceNotice</p>
+                }
+                @if (CallSvc.IsActiveCall && CallSvc.WebRtcState == "failed")
+                {
+                    <button type="button" class="callx-reconnect" disabled="@busy" @onclick="ReconnectAudio"><i data-lucide="refresh-cw"></i> Reconnect audio</button>
                 }
             </div>
 
@@ -481,6 +497,50 @@ else if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
             var sent = await CallSvc.DeclineWithMessageAsync(text);
             Toasts.Show(sent ? "Call declined, message sent." : "Call declined, but the message couldn't be sent.",
                 sent ? ToastKind.Success : ToastKind.Error);
+        }
+        finally { busy = false; }
+    }
+
+    private async Task ReconnectAudio()
+    {
+        busy = true;
+        try { await CallSvc.ReconnectAudioAsync(); }
+        finally { busy = false; }
+    }
+
+    /// Call waiting: someone rings while I'm in a call. Decline tells them I'm busy; End & answer
+    /// hangs up this call and takes the new one. The current call is never cut by itself.
+    private RenderFragment WaitingBanner(bool floating = false) => __builder =>
+    {
+        if (CallSvc.Waiting is not { } w) return;
+        var caller = w.Participants.FirstOrDefault(p => p.UserId == w.CreatorId);
+        var name = caller?.Name ?? "Someone";
+        <div class="callx-waiting @(floating ? "floating" : "")" role="alertdialog" aria-live="assertive" aria-label="@name is calling">
+            <PersonAvatar Nik="@caller?.Nik" Name="@name" Size="34" Class="callx-avatar sm callx-ring" Decorative="true" />
+            <span class="callx-waiting-text"><strong>@name</strong><small>is calling you</small></span>
+            <button type="button" class="callx-btn callx-decline sm" disabled="@busy" @onclick="DeclineWaiting" title="Decline: @FirstName(name) will see you're on another call"><i data-lucide="phone-off"></i> Decline</button>
+            <button type="button" class="callx-btn callx-accept sm" disabled="@busy" @onclick="EndAndAnswer" title="End this call and answer"><i data-lucide="phone"></i> End &amp; answer</button>
+        </div>
+    };
+
+    private async Task DeclineWaiting()
+    {
+        busy = true;
+        try { await CallSvc.DeclineWaitingAsync(); }
+        finally { busy = false; }
+    }
+
+    private async Task EndAndAnswer()
+    {
+        busy = true;
+        try
+        {
+            var room = await CallSvc.EndAndAnswerWaitingAsync();
+            if (room is null && CallSvc.LastError is { } err) Toasts.Show(err, ToastKind.Error);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Toasts.Show("Couldn't answer the call. Check your connection.", ToastKind.Error);
         }
         finally { busy = false; }
     }
