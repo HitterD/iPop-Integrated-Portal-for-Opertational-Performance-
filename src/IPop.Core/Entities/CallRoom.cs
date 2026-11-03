@@ -36,6 +36,14 @@ public class CallRoom
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
+    /// Optimistic concurrency: bumped on every save by CallService, so two racing transitions
+    /// (accept on two devices, hang-up vs accept, timeout vs accept) never both win.
+    public int Version { get; set; }
+
+    /// Why a closed call ended, when the status alone can't say: "busy" = the callee was on another
+    /// call and turned this one down from the call-waiting banner.
+    public string? EndReason { get; set; }
+
     public ICollection<CallParticipant> Participants { get; set; } = [];
 }
 
@@ -56,6 +64,10 @@ public class CallParticipant
     /// Join time; while "invited" it is the time the ring started (per-invitee ring timeout).
     public DateTime JoinedAt { get; set; }
     public DateTime? LeftAt { get; set; }
+
+    /// Last heartbeat from the tab that holds this participant's media (every ~20 s while live).
+    /// Null = a client that never sent one (older build): the reaper leaves those alone.
+    public DateTime? LastSeenAt { get; set; }
 
     /// Who added this person to a running call ("Add person"); null for the original invitees.
     /// Soft reference (no FK): only used to word the ring ("Beny invited you…").

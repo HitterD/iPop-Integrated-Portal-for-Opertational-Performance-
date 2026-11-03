@@ -70,7 +70,7 @@
 [data-theme="dark"] .ep-act.primary .ic { background: linear-gradient(145deg, color-mix(in srgb, var(--m) 75%, #fff), var(--m)); }
 
 /* Layout */
-.ep-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(340px, 1fr); gap: 14px; align-items: start; }
+.emp-profile .ep-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(340px, 1fr); gap: 14px; align-items: start; }
 .ep-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 
 /* Pill buttons (same as Dashboard quick actions) */
@@ -121,10 +121,10 @@
 
 /* Contact: grouped inset list like the Chat Contact info drawer */
 .ep-group { border-radius: 14px; background: var(--surface-2); overflow: hidden; }
-.ep-row { display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 0 8px 0 14px; font-size: 13.5px; }
-.ep-row + .ep-row { box-shadow: 0 -1px 0 var(--line); }
-.ep-row .k { color: var(--ink-3); width: 84px; flex-shrink: 0; }
-.ep-row .v { margin-left: auto; font-weight: 600; text-align: right; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+.emp-profile .ep-row { display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 0 8px 0 14px; font-size: 13.5px; }
+.emp-profile .ep-row + .ep-row { box-shadow: 0 -1px 0 var(--line); }
+.emp-profile .ep-row .k { color: var(--ink-3); width: 84px; flex-shrink: 0; }
+.emp-profile .ep-row .v { margin-left: auto; font-weight: 600; text-align: right; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
 .dw .ep-row a.v { color: var(--accent); }
 .dw .ep-row a.v:hover { text-decoration: underline; }
 .ep-cp, .ep-cp-sp { width: 28px; height: 28px; flex-shrink: 0; }
@@ -157,5 +157,5 @@
   .ep-acts { grid-column: 1 / -1; justify-content: flex-start; flex-wrap: wrap; }
 }
 @media (max-width: 1100px) {
-  .ep-grid { grid-template-columns: minmax(0, 1fr); }
+  .emp-profile .ep-grid { grid-template-columns: minmax(0, 1fr); }
 }

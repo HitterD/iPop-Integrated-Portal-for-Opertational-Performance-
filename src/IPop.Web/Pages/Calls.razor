@@ -600,18 +600,19 @@
     private static string CallIcon(CallHistoryDto h) => h.Result switch
     {
         "missed" => "phone-missed",
-        "declined" or "canceled" or "no-answer" => "phone-off",
+        "declined" or "canceled" or "no-answer" or "busy" => "phone-off",
         _ => h.Direction.Equals("outgoing", StringComparison.OrdinalIgnoreCase) ? "phone-outgoing" : "phone-incoming",
     };
 
     /// History result as the user reads it; the raw values come from CallService.RecordHistory.
     private static string ResultLabel(CallHistoryDto h) => h.Result switch
     {
-        "completed" => DurationLabel(h),
+        "completed" => h.Quality == "poor" ? $"{DurationLabel(h)} · weak connection" : DurationLabel(h),
         "missed" => "Missed",
         "declined" => "Declined",
         "canceled" => "Canceled",
         "no-answer" => "No answer",
+        "busy" => "On another call",
         _ => h.Result,
     };
 

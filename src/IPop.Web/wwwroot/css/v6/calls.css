@@ -764,3 +764,37 @@ html.callx-resizing, html.callx-resizing * { cursor:nwse-resize !important; }
   /* Lists end above the floating button. */
   .calls-v6 .sch-list, .calls-v6 .calls-history-scroll { padding-bottom:84px; }
 }
+
+/* ── Calls audit 2026-11-03 ──
+   Call waiting: a second call rings inside the current call window (or above the pill), never
+   replacing it. Weak-connection hint, headset notice and "Reconnect audio" after a failure. */
+.callx-waiting {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 8px 12px 0; padding: 10px;
+  border-radius: 12px; background: var(--surface-2, var(--tray)); border: 1px solid var(--line);
+  box-shadow: var(--shadow-md); animation: mi-rise .22s var(--ease-out, ease-out) backwards;
+}
+.callx-waiting.floating { position: fixed; right: 16px; bottom: 84px; z-index: 1201; margin: 0; max-width: min(440px, calc(100vw - 24px)); background: var(--surface); }
+.callx-waiting-text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.callx-waiting-text strong { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.callx-waiting-text small { font-size: 11.5px; color: var(--ink-3); }
+.callx-waiting-text { flex-basis: calc(100% - 44px); }
+.callx-waiting .callx-btn.sm { flex: 1 1 0; }
+.callx-btn.sm { height: 32px; padding: 0 10px; border-radius: 9px; font-size: 12px; flex: none; }
+.callx-btn.sm .lucide { width: 14px; height: 14px; }
+.callx-weak, .callx-note { display: flex; align-items: flex-start; gap: 6px; margin: 0; padding: 8px 10px; border-radius: 10px; font-size: 12px; line-height: 1.4; text-align: left; }
+.callx-weak { background: var(--warn-soft); color: var(--warn-ink); }
+.callx-weak.poor { background: var(--danger-soft); color: var(--danger-ink); }
+.callx-note { background: var(--tray); color: var(--ink-2); }
+.callx-weak .lucide, .callx-note .lucide { width: 14px; height: 14px; flex: none; margin-top: 1px; }
+.callx-reconnect {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; margin-top: 6px;
+  border: 0; border-radius: 10px; background: var(--accent); color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.callx-reconnect .lucide { width: 15px; height: 15px; }
+.callx-reconnect:disabled { opacity: .6; cursor: progress; }
+.callx-reconnect:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .callx-waiting { flex-wrap: wrap; }
+  .callx-waiting .callx-btn.sm { flex: 1 1 40%; height: 40px; }
+  .callx-waiting.floating { left: 8px; right: 8px; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); max-width: none; }
+}

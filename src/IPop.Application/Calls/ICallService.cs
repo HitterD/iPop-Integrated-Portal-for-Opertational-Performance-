@@ -49,5 +49,14 @@ public interface ICallService
     Task<CallResultDto> InviteAsync(Guid inviterId, Guid callId, string nik, CancellationToken ct);
 
     /// The user's last connection dropped: end their active calls and cancel rings they started.
-    Task<IReadOnlyList<CallRoomDto>> EndForUserAsync(Guid userId, CancellationToken ct);
+    /// unlessSeenAfter: skip calls whose media tab beat since then (alive on another API replica).
+    Task<IReadOnlyList<CallRoomDto>> EndForUserAsync(Guid userId, CancellationToken ct, DateTime? unlessSeenAfter = null);
+
+    /// The tab holding my media in this call is alive (every ~20 s), with its measured link quality.
+    /// False when I am not (or no longer) in a live call with that id.
+    Task<bool> HeartbeatAsync(Guid userId, Guid callId, string? quality, CancellationToken ct);
+
+    /// Takes out of live calls everyone whose media tab stopped beating before cutoff; a 1:1 call
+    /// ends, a group call ends when nobody is left. Returns the changed rooms for broadcasting.
+    Task<IReadOnlyList<CallRoomDto>> ReapStaleAsync(DateTime cutoff, CancellationToken ct);
 }

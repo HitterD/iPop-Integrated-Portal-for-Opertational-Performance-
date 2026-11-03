@@ -23,6 +23,9 @@
     let outputDeviceId = null;
 
     const analysers = { local: null, remote: null, test: null };
+    // The MediaStreamSource feeding each analyser: disconnected when replaced (device switch,
+    // a renegotiated remote track) so old graphs don't pile up in the AudioContext.
+    const meterSources = { local: null, remote: null, test: null };
     let meterFrame = null;
     let testStream = null;
 
@@ -115,7 +118,14 @@
             return { ok: true };
         }
         try {
-            localStream = await openMic(inputDeviceId);
+            const gen = generation;
+            const stream = await openMic(inputDeviceId);
+            if (gen !== generation) {
+                // endCall ran while the prompt was open (hung up, or the call ended): release it.
+                stream.getTracks().forEach(t => t.stop());
+                return { ok: false, code: 'ended', message: 'The call ended.' };
+            }
+            localStream = stream;
             return { ok: true };
         } catch (e) {
             const err = micErrorMessage(e);
@@ -149,13 +159,21 @@
 
     // ── Level meters ─────────────────────────────────────────────────────────
 
+    function detachMeter(type) {
+        if (meterSources[type]) { try { meterSources[type].disconnect(); } catch { } }
+        meterSources[type] = null;
+        analysers[type] = null;
+    }
+
     function attachMeter(stream, type) {
         try {
+            detachMeter(type);
             const ctx = getAudioContext();
             const source = ctx.createMediaStreamSource(stream);
             const analyser = ctx.createAnalyser();
             analyser.fftSize = 256;
             source.connect(analyser);
+            meterSources[type] = source;
             analysers[type] = analyser;
             if (!meterFrame) meterFrame = requestAnimationFrame(tickMeters);
         } catch (e) {
@@ -266,7 +284,7 @@
     function stopMicTest() {
         if (testStream) testStream.getTracks().forEach(t => t.stop());
         testStream = null;
-        analysers.test = null;
+        detachMeter('test');
         levels.test = 0;
         document.querySelectorAll('[data-meter="test"]').forEach(el => el.style.setProperty('--level', '0'));
     }
@@ -302,6 +320,9 @@
 
     let initPromise = null;
     let candidateQueue = [];
+    // Bumped by endCall: a microphone prompt still open when the call ends must not leave the
+    // mic on, and an initCall waiting on it must not build a peer connection for a call that is over.
+    let generation = 0;
 
     /// ICE servers from /api/calls/config (STUN + the LAN TURN). Kept for later inits.
     function configure(iceServers) {
@@ -309,6 +330,8 @@
             rtcConfig = { iceServers };
         }
     }
+
+    let autoplayRetryArmed = false;
 
     function ensureRemoteAudio(stream) {
         if (!remoteAudioEl) {
@@ -332,7 +355,12 @@
         if (playPromise !== undefined) {
             playPromise.catch(() => {
                 reportError('The browser blocked the other person\'s audio. Click anywhere on the page to turn on audio.');
-                document.addEventListener('click', () => { if (remoteAudioEl) remoteAudioEl.play().catch(() => { }); }, { once: true });
+                if (autoplayRetryArmed) return;   // one pending retry, however often play() is refused
+                autoplayRetryArmed = true;
+                document.addEventListener('click', () => {
+                    autoplayRetryArmed = false;
+                    if (remoteAudioEl && remoteAudioEl.srcObject) remoteAudioEl.play().catch(() => { });
+                }, { once: true });
             });
         }
     }
@@ -445,6 +473,7 @@
             return { success: false, error: err };
         }
 
+        const gen = generation;
         initPromise = (async () => {
             try {
                 reportState('connecting');
@@ -452,6 +481,7 @@
                 if (ctx && ctx.state === 'suspended') await ctx.resume().catch(() => { });
 
                 const mic = await prepareMic();
+                if (gen !== generation) return { success: false, error: 'ended' };   // hung up meanwhile
                 if (!mic.ok) {
                     // Keep the call alive in listen-only mode; tell the user why they can't be heard.
                     reportError(mic.message + ' (You can still listen.)');
@@ -483,6 +513,7 @@
                 peerConnection.onconnectionstatechange = onConnectionState;
 
                 armConnectTimer();
+                startStats();
                 if (isCaller) await sendOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false });
                 return { success: true };
             } catch (err) {
@@ -493,10 +524,11 @@
             }
         })();
 
+        const mine = initPromise;
         try {
-            return await initPromise;
+            return await mine;
         } finally {
-            initPromise = null;
+            if (initPromise === mine) initPromise = null;
         }
     }
 
@@ -548,24 +580,112 @@
     }
 
     function endCall() {
+        generation++;
         stopAudioTones();
         clearConnectTimer();
         clearRestartTimer();
+        stopStats();
         restartAttempts = 0;
         candidateQueue = [];
         initPromise = null;
         if (localStream) { localStream.getTracks().forEach(track => track.stop()); localStream = null; }
         if (peerConnection) { peerConnection.close(); peerConnection = null; }
         if (remoteAudioEl) { remoteAudioEl.srcObject = null; remoteAudioEl.pause(); }
-        analysers.local = null;
-        analysers.remote = null;
+        detachMeter('local');
+        detachMeter('remote');
         levels.local = 0;
         levels.remote = 0;
         document.querySelectorAll('.avatar-local-speaker, .avatar-remote-speaker').forEach(el => el.classList.remove('speaking'));
         currentCallId = null;
     }
 
+    // ── Link quality (getStats every 5 s) ────────────────────────────────────
+    // Packet loss, jitter and round trip of the received audio give "good" | "fair" | "poor",
+    // reported only on change (OnQualityChanged): the in-call "weak connection" hint + history.
+    let statsTimer = null;
+    let lastStats = null;
+    let lastQuality = null;
+
+    function startStats() {
+        stopStats();
+        statsTimer = setInterval(sampleStats, 5000);
+    }
+
+    function stopStats() {
+        if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }
+        lastStats = null;
+        lastQuality = null;
+    }
+
+    async function sampleStats() {
+        if (!peerConnection || peerConnection.connectionState !== 'connected') return;
+        try {
+            const report = await peerConnection.getStats();
+            let inbound = null, rtt = null;
+            report.forEach(s => {
+                if (s.type === 'inbound-rtp' && s.kind === 'audio') inbound = s;
+                if (s.type === 'candidate-pair' && s.state === 'succeeded' && s.nominated && typeof s.currentRoundTripTime === 'number') rtt = s.currentRoundTripTime;
+            });
+            if (!inbound) return;
+            const prev = lastStats;
+            lastStats = { lost: inbound.packetsLost || 0, recv: inbound.packetsReceived || 0 };
+            if (!prev) return;
+            const lost = Math.max(0, lastStats.lost - prev.lost);
+            const recv = Math.max(0, lastStats.recv - prev.recv);
+            const q = classifyQuality(lost + recv > 0 ? lost / (lost + recv) : 0, inbound.jitter || 0, rtt);
+            if (q !== lastQuality) { lastQuality = q; notify('OnQualityChanged', q); }
+        } catch { }
+    }
+
+    /// Roughly where a voice call stops sounding fine (Opus hides a little loss).
+    function classifyQuality(loss, jitter, rtt) {
+        if (loss > 0.08 || jitter > 0.1 || (rtt !== null && rtt > 0.6)) return 'poor';
+        if (loss > 0.03 || jitter > 0.04 || (rtt !== null && rtt > 0.3)) return 'fair';
+        return 'good';
+    }
+
+    // ── Headset plugged / unplugged mid-call ─────────────────────────────────
+    // The mic in use disappeared (USB headset pulled): fall back to the default microphone
+    // without renegotiating (replaceTrack), and tell the user once.
+    async function onDeviceChange() {
+        if (!peerConnection || !localStream) return;
+        const track = localStream.getAudioTracks()[0];
+        const ended = !track || track.readyState === 'ended';
+        let present = true;
+        if (inputDeviceId) {
+            try {
+                const all = await navigator.mediaDevices.enumerateDevices();
+                present = all.some(d => d.kind === 'audioinput' && d.deviceId === inputDeviceId);
+            } catch { }
+        }
+        if (!ended && present) return;
+        const r = await setInputDevice(present ? inputDeviceId : '');
+        if (r.ok) notify('OnDeviceFallback', present ? 'restarted' : 'unplugged');
+    }
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+        navigator.mediaDevices.addEventListener('devicechange', () => { onDeviceChange().catch(() => { }); });
+    }
+
+    /// "Reconnect audio" after a failure: fresh ICE over the same peer connection, attempts reset.
+    function reconnect() {
+        if (!peerConnection) return false;
+        restartAttempts = 0;
+        if (peerConnection.signalingState === 'have-local-offer') {
+            peerConnection.setLocalDescription({ type: 'rollback' }).catch(() => { });
+        }
+        return restartIce();
+    }
+
+    /// The hub dropped and came back: is the media itself still fine? Then nothing needs renegotiating.
+    function isHealthy(callId) {
+        return !!peerConnection && currentCallId === callId
+            && (peerConnection.connectionState === 'connected' || peerConnection.connectionState === 'connecting');
+    }
+
     window.ipopAudio = {
+        reconnect,
+        isHealthy,
+        classifyQuality,
         checkSupport,
         prepareMic,
         configure,

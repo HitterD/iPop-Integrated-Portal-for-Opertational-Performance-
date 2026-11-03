@@ -30,6 +30,10 @@ public partial class CallState : IAsyncDisposable
     private Guid? _elsewhereCallId;
     private readonly SemaphoreSlim _createGate = new(1, 1);
     private JsonElement? _iceServers;
+    // TURN credentials expire (12 h, CallEndpoints.TurnCredentialLifetime): re-fetch before a call
+    // when the last fetch is older than this, so a tab left open overnight still connects via TURN.
+    private DateTime _configLoadedAt = DateTime.MinValue;
+    private static readonly TimeSpan ConfigMaxAge = TimeSpan.FromHours(6);
 
     public CallState(AuthState auth, HttpClient http, IJSRuntime js)
     {
@@ -52,7 +56,10 @@ public partial class CallState : IAsyncDisposable
         catch (JSException) { }
         try { await _js.InvokeVoidAsync("sessionStorage.removeItem", OwnedCallKey); } catch (JSException) { }
         Current = null;
+        Waiting = null;
         WebRtcState = null;
+        Quality = null;
+        StopHeartbeat();
         _webRtcActiveCallId = null;
         _ownedCallId = null;
         _peerConnection = null;
@@ -104,6 +111,13 @@ public partial class CallState : IAsyncDisposable
         Current is not null && (Current.Status == CallStatus.Ringing || Current.Status == CallStatus.Active);
 
     public string? LastEndReason { get; private set; }
+
+    /// Call waiting: a 1:1 call ringing for me while I'm already in a call (1:1, group or meeting).
+    /// Shown as a banner in the call window; the current call is never replaced or cut.
+    public CallRoomDto? Waiting { get; private set; }
+
+    /// Measured link of the 1:1 call ("good" | "fair" | "poor"), null until known.
+    public string? Quality { get; private set; }
 
     /// Seconds an unanswered ring lasts before the server marks it missed.
     public int RingTimeoutSeconds { get; private set; } = 45;
@@ -168,10 +182,22 @@ public partial class CallState : IAsyncDisposable
                 {
                     // The peer reloaded or reconnected: whatever tab it is now is the peer, and
                     // our old peer connection is dead. Rebuild ours and answer its next offer.
+                    // Both sides came back at once (an API restart): both sent "rejoin" and both
+                    // would wait for an offer. The tab with the lower id offers, the other answers.
                     _peerConnection = signal.From;
                     WebRtcState = "reconnecting";
                     StateChanged?.Invoke();
+                    if (_rejoinSentFor == signal.CallId && string.CompareOrdinal(_tabId, StripTab(signal.From)) < 0)
+                    {
+                        _rejoinSentFor = null;
+                        await _js.InvokeVoidAsync("ipopAudio.endCall");
+                        await _js.InvokeVoidAsync("ipopAudio.initCall", signal.CallId, true, _selfRef, _iceServers);
+                        if (ActiveMe?.IsMuted == true) await _js.InvokeVoidAsync("ipopAudio.setMute", true);
+                        return;
+                    }
+                    _rejoinSentFor = null;
                     await _js.InvokeVoidAsync("ipopAudio.resetPeer", signal.CallId);
+                    if (ActiveMe?.IsMuted == true) await _js.InvokeVoidAsync("ipopAudio.setMute", true);
                     return;
                 }
                 if (signal.From is not null)
@@ -185,7 +211,9 @@ public partial class CallState : IAsyncDisposable
 
         _hub.Reconnecting += ex =>
         {
-            if (IsActiveCall) WebRtcState = "reconnecting";
+            // Only signaling dropped: a 1:1 call's peer-to-peer audio usually keeps flowing, so the
+            // badge follows the media (OnConnectionStateChanged), not the hub.
+            if (IsActiveCall && IsGroup) WebRtcState = "reconnecting";
             StateChanged?.Invoke();
             return Task.CompletedTask;
         };
@@ -221,7 +249,14 @@ public partial class CallState : IAsyncDisposable
     private async Task RefreshAsync(bool rejoin)
     {
         var ringing = await _auth.GetAsync<CallRoomDto?>("/api/calls/ringing");
-        if (ringing is not null)
+        if (ringing is not null && rejoin && Current is null && !IsMeeting
+            && await _auth.GetAsync<CallRoomDto?>("/api/calls/active") is { } mine && mine.Id != ringing.Id)
+        {
+            // Reloaded mid-call while someone else rings: back into my call, the ring waits.
+            await RejoinAsync(mine);
+            await HandleCallRoomChangedAsync(ringing);
+        }
+        else if (ringing is not null)
         {
             await HandleCallRoomChangedAsync(ringing);
         }
@@ -274,6 +309,7 @@ public partial class CallState : IAsyncDisposable
             if (cfg is not null)
             {
                 _iceServers = cfg.IceServers;
+                _configLoadedAt = DateTime.UtcNow;
                 if (cfg.RingTimeoutSeconds > 0) RingTimeoutSeconds = cfg.RingTimeoutSeconds;
                 await _js.InvokeVoidAsync("ipopAudio.configure", cfg.IceServers);
             }
@@ -284,8 +320,45 @@ public partial class CallState : IAsyncDisposable
         }
     }
 
+    /// Fresh ICE servers before media starts when the cached TURN credential is getting old.
+    private async Task EnsureFreshConfigAsync()
+    {
+        if (DateTime.UtcNow - _configLoadedAt < ConfigMaxAge) return;
+        await LoadConfigAsync();
+    }
+
+    private static string? StripTab(string? from) => from is { } f && f.StartsWith("tab:", StringComparison.Ordinal) ? f[4..] : from;
+
+    /// The call I'm in and the ringing one are different: the new one waits (banner), never replaces.
+    private bool IsWaitingCandidate(CallRoomDto room)
+    {
+        if (Current is null || Current.Id == room.Id) return false;
+        if (!(HasLiveCall && (IsActiveCall || IsOutgoingRing || IsInGroupCall || IsMeeting))) return false;
+        var mine = room.Participants.FirstOrDefault(p => p.Nik == _auth.Me?.Nik);
+        return mine?.Status == CallParticipantStatus.Invited;
+    }
+
+    private async Task HandleWaitingAsync(CallRoomDto room)
+    {
+        if (room.Status == CallStatus.Ringing)
+        {
+            var isNew = Waiting?.Id != room.Id;
+            Waiting = room;
+            // A soft beep once, not the full ringtone over the conversation.
+            if (isNew && !_auth.IsBusy) { try { await _js.InvokeVoidAsync("ipopSound.play", "tick"); } catch (JSException) { } }
+        }
+        else if (Waiting?.Id == room.Id) Waiting = null;   // caller gave up, timed out, or answered elsewhere
+        StateChanged?.Invoke();
+    }
+
     private async Task HandleCallRoomChangedAsync(CallRoomDto room)
     {
+        // Call waiting: a 1:1 ring (or its end) while I'm in another call.
+        if (room.Kind == CallKind.User && (Waiting?.Id == room.Id || IsWaitingCandidate(room)))
+        {
+            await HandleWaitingAsync(room);
+            return;
+        }
         // Someone added a person to my 1:1 call: it moved to LiveKit for good (never back to P2P).
         if (room.Kind == CallKind.AdHoc && Current?.Id == room.Id && Current.Kind == CallKind.User)
         {
@@ -302,7 +375,7 @@ public partial class CallState : IAsyncDisposable
             await HandleGroupRoomAsync(room);
             return;
         }
-        // Busy in a group call: a new 1:1 ring is not allowed to replace it.
+        // Busy in a group call or meeting: anything else about another 1:1 call is not for the screen.
         if (IsGroup && HasLiveCall && Current!.Id != room.Id) return;
 
         // A closed room is only news for the call on screen: the hub echo of our own
@@ -336,6 +409,7 @@ public partial class CallState : IAsyncDisposable
             if (isCaller)
             {
                 await _js.InvokeVoidAsync("ipopAudio.playDialTone");
+                StartHeartbeat(room.Id);
             }
             else if (me?.Status == CallParticipantStatus.Invited && !_auth.IsBusy)
             {
@@ -354,11 +428,19 @@ public partial class CallState : IAsyncDisposable
                 try { await _js.InvokeVoidAsync("ipopNative.callStarted", RemotePeer?.Name ?? room.Title ?? "iPop"); } catch (JSException) { }
                 _selfRef ??= DotNetObjectReference.Create(this);
                 WebRtcState = "connecting";
+                Quality = null;
+                await EnsureFreshConfigAsync();
                 await _js.InvokeVoidAsync("ipopAudio.initCall", room.Id, isCaller, _selfRef, _iceServers);
+                StartHeartbeat(room.Id);
             }
         }
         else if (room.Status is CallStatus.Ended or CallStatus.Declined or CallStatus.Missed)
         {
+            if (room.Status == CallStatus.Declined && !isCaller && _decliningCallId != room.Id)
+            {
+                await DismissQuietlyAsync();
+                return;
+            }
             await HandleCallEndedAsync(EndReason(room, isCaller));
             return;
         }
@@ -368,6 +450,8 @@ public partial class CallState : IAsyncDisposable
 
     private string EndReason(CallRoomDto room, bool isCaller) => room.Status switch
     {
+        CallStatus.Declined when room.EndReason == "busy" && isCaller =>
+            $"{FirstNameOf(room.Participants.FirstOrDefault(p => p.UserId != room.CreatorId)?.Name ?? "They")} is on another call",
         CallStatus.Declined => "Call declined",
         CallStatus.Missed when isCaller => room.EndedAt is { } end && end - room.StartedAt >= TimeSpan.FromSeconds(RingTimeoutSeconds - 1)
             ? "No answer" : "Call canceled",
@@ -399,6 +483,7 @@ public partial class CallState : IAsyncDisposable
         {
             Current = null;
             WebRtcState = null;
+            StopHeartbeat();
             _webRtcActiveCallId = null;
             try
             {
@@ -458,6 +543,19 @@ public partial class CallState : IAsyncDisposable
         _ownedCallId = room.Id;
         _elsewhereCallId = null;
         var wasMuted = room.Participants.FirstOrDefault(p => p.Nik == _auth.Me?.Nik)?.IsMuted == true;
+        // Only the hub blipped (same tab, audio still flowing peer to peer): keep the media as it is.
+        try
+        {
+            if (Current?.Id == room.Id && _webRtcActiveCallId == room.Id
+                && await _js.InvokeAsync<bool>("ipopAudio.isHealthy", room.Id))
+            {
+                Current = room;
+                StartHeartbeat(room.Id);
+                StateChanged?.Invoke();
+                return;
+            }
+        }
+        catch (JSException) { }
         Current = room;
         LastError = null;
         LastEndReason = null;
@@ -467,7 +565,9 @@ public partial class CallState : IAsyncDisposable
         {
             await _js.InvokeVoidAsync("ipopAudio.stopAudioTones");
             await _js.InvokeVoidAsync("ipopAudio.endCall");   // a dead peer connection from before the drop
+            await EnsureFreshConfigAsync();
             // Tell the peer first, so it drops its dead connection and waits for our offer.
+            _rejoinSentFor = room.Id;
             if (_hub?.State == HubConnectionState.Connected)
                 await _hub.SendAsync("SendWebRtcSignal", new WebRtcSignalDto(room.Id, "rejoin", "", Tab: _tabId));
             _peerCallId = room.Id;
@@ -477,6 +577,7 @@ public partial class CallState : IAsyncDisposable
             // Whoever comes back makes the offer, whichever side placed the call.
             await _js.InvokeVoidAsync("ipopAudio.initCall", room.Id, true, _selfRef, _iceServers);
             if (wasMuted) await _js.InvokeVoidAsync("ipopAudio.setMute", true);
+            StartHeartbeat(room.Id);
         }
         catch (JSException ex)
         {
@@ -485,6 +586,9 @@ public partial class CallState : IAsyncDisposable
         }
         StateChanged?.Invoke();
     }
+
+    /// Set while my "rejoin" is out: if the peer's "rejoin" crosses it, the lower tab id offers.
+    private Guid? _rejoinSentFor;
 
     private async Task RememberOwnedCallAsync(Guid callId)
     {
@@ -509,6 +613,8 @@ public partial class CallState : IAsyncDisposable
         });
         Current = null;
         WebRtcState = null;
+        Quality = null;
+        StopHeartbeat();
         try
         {
             await _js.InvokeVoidAsync("ipopAudio.endCall");
@@ -518,6 +624,22 @@ public partial class CallState : IAsyncDisposable
         catch (JSException) { }
         StateChanged?.Invoke();
         if (hadCall) CallEnded?.Invoke();
+        await PromoteWaitingAsync();
+    }
+
+    /// The call I was in ended while another one was waiting: it rings normally now.
+    private async Task PromoteWaitingAsync()
+    {
+        if (Waiting is not { } next || Current is not null) return;
+        Waiting = null;
+        try
+        {
+            using var res = await _auth.SendAsync(HttpMethod.Get, $"/api/calls/{next.Id}");
+            if (res.IsSuccessStatusCode && await res.Content.ReadFromJsonAsync<CallRoomDto>() is { Status: CallStatus.Ringing } fresh)
+                await HandleCallRoomChangedAsync(fresh);
+            else StateChanged?.Invoke();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException) { StateChanged?.Invoke(); }
     }
 
     public void DismissEndReason()
@@ -542,28 +664,37 @@ public partial class CallState : IAsyncDisposable
         try
         {
             await RaiseMediaStartingAsync();
+            await EnsureFreshConfigAsync();
             // Pre-call check: ask for the microphone BEFORE ringing anyone, so a blocked mic
             // is explained here instead of producing a silent call on the other side.
             var mic = await _js.InvokeAsync<MicCheck>("ipopAudio.prepareMic", (string?)null);
             if (!mic.Ok && mic.Code != "no-device")
             {
+                await ReleaseMicAsync();
                 LastError = mic.Message;
                 StateChanged?.Invoke();
                 return null;
             }
             LastError = mic.Ok ? null : mic.Message;
 
-            var res = await _auth.SendAsync(HttpMethod.Post, "/api/calls", new { peerNik });
+            using var res = await _auth.SendAsync(HttpMethod.Post, "/api/calls", new { peerNik });
             if (!res.IsSuccessStatusCode)
             {
-                try
+                // Nobody is being rung: the microphone opened by the pre-call check goes off again.
+                await ReleaseMicAsync();
+                if (res.StatusCode == HttpStatusCode.TooManyRequests)
+                    LastError = "Too many calls in a short time. Wait a minute, then try again.";
+                else
                 {
-                    var err = await res.Content.ReadFromJsonAsync<CallApiError>();
-                    LastError = err?.Message ?? $"Server returned {(int)res.StatusCode}";
-                }
-                catch
-                {
-                    LastError = $"Server returned {(int)res.StatusCode}";
+                    try
+                    {
+                        var err = await res.Content.ReadFromJsonAsync<CallApiError>();
+                        LastError = err?.Message ?? $"Server returned {(int)res.StatusCode}";
+                    }
+                    catch
+                    {
+                        LastError = $"Server returned {(int)res.StatusCode}";
+                    }
                 }
                 StateChanged?.Invoke();
                 return null;
@@ -578,7 +709,7 @@ public partial class CallState : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            await _js.InvokeVoidAsync("ipopAudio.endCall");
+            await ReleaseMicAsync();
             LastError = "Couldn't start the call: " + ex.Message;
             StateChanged?.Invoke();
             return null;
@@ -587,6 +718,11 @@ public partial class CallState : IAsyncDisposable
         {
             _createGate.Release();
         }
+    }
+
+    private async Task ReleaseMicAsync()
+    {
+        try { await _js.InvokeVoidAsync("ipopAudio.endCall"); } catch (JSException) { }
     }
 
     public async Task<CallRoomDto?> SignalAsync(Guid callId, string action, bool? muted = null, bool? screen = null)
@@ -599,9 +735,18 @@ public partial class CallState : IAsyncDisposable
             {
                 // The call already closed server-side (timeout, other side hung up): sync to that.
                 if (res.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Conflict or HttpStatusCode.BadRequest
+                    or HttpStatusCode.UnprocessableEntity
                     && Current?.Id == callId && action is "end" or "decline" or "leave")
                 {
                     await HandleCallEndedAsync();
+                    return null;
+                }
+                // Accept lost the race (answered on my other device, or the caller hung up first):
+                // this device stands down quietly with the server's view of the call.
+                if (action == "accept" && Current?.Id == callId
+                    && res.StatusCode is HttpStatusCode.Conflict or HttpStatusCode.UnprocessableEntity)
+                {
+                    await ResyncAfterLostAcceptAsync(callId);
                     return null;
                 }
                 LastError = $"Call action failed ({(int)res.StatusCode}).";
@@ -623,6 +768,24 @@ public partial class CallState : IAsyncDisposable
         }
     }
 
+    /// My accept lost: forget ownership, release media, and show whatever the server says now.
+    private async Task ResyncAfterLostAcceptAsync(Guid callId)
+    {
+        _ownedCallId = null;
+        try { await _js.InvokeVoidAsync("sessionStorage.removeItem", OwnedCallKey); } catch (JSException) { }
+        await ReleaseMicAsync();
+        CallRoomDto? room = null;
+        try
+        {
+            using var get = await _auth.SendAsync(HttpMethod.Get, $"/api/calls/{callId}");
+            if (get.IsSuccessStatusCode) room = await get.Content.ReadFromJsonAsync<CallRoomDto>();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException) { }
+        if (room is null) { await HandleCallEndedAsync(); return; }
+        if (room.Status == CallStatus.Active) await StandDownAsync(room, isCaller: false);
+        else await HandleCallRoomChangedAsync(room);
+    }
+
     public async Task<CallRoomDto?> AcceptCurrentAsync()
     {
         if (Current is null) return null;
@@ -633,12 +796,74 @@ public partial class CallState : IAsyncDisposable
         return await SignalAsync(Current.Id, "accept");
     }
 
+    /// The ring was declined on this tab (vs. on another device of mine, which closes it quietly).
+    private Guid? _decliningCallId;
+
+    private async Task DismissQuietlyAsync()
+    {
+        Current = null;
+        WebRtcState = null;
+        StopHeartbeat();
+        try
+        {
+            await _js.InvokeVoidAsync("ipopAudio.stopAudioTones");
+            await _js.InvokeVoidAsync("ipopNative.callEnded");
+        }
+        catch (JSException) { }
+        StateChanged?.Invoke();
+        CallEnded?.Invoke();
+        await PromoteWaitingAsync();
+    }
+
     public async Task<CallRoomDto?> DeclineCurrentAsync()
     {
         if (Current is null) return null;
         if (IsGroup) return await DeclineGroupAsync();
-        await _js.InvokeVoidAsync("ipopAudio.endCall");
-        return await SignalAsync(Current.Id, "decline");
+        // Only an incoming ring is declined here: the media of any other call is never touched.
+        await _js.InvokeVoidAsync("ipopAudio.stopAudioTones");
+        var id = Current.Id;
+        _decliningCallId = id;
+        var r = await SignalAsync(id, "decline");
+        if (Current?.Id == id && r is null) await HandleCallEndedAsync("Call declined");
+        return r;
+    }
+
+    // ── Call waiting ──
+
+    /// "Decline": the caller hears that I'm on another call; my current call goes on untouched.
+    public async Task DeclineWaitingAsync()
+    {
+        if (Waiting is not { } w) return;
+        Waiting = null;
+        StateChanged?.Invoke();
+        try { using var _ = await _auth.SendAsync(HttpMethod.Post, "/api/calls/signal", new { callId = w.Id, action = "busy" }); }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException) { }
+    }
+
+    /// "End & answer": hang up (or leave) the current call, then answer the waiting one.
+    public async Task<CallRoomDto?> EndAndAnswerWaitingAsync()
+    {
+        if (Waiting is not { } w) return null;
+        Waiting = null;
+        if (Current is not null)
+        {
+            if (IsOutgoingRing) await CancelCurrentAsync();
+            else await EndCurrentAsync();
+        }
+        // The hang-up may already have promoted it; otherwise show it and answer.
+        if (Current?.Id != w.Id)
+        {
+            using var res = await _auth.SendAsync(HttpMethod.Get, $"/api/calls/{w.Id}");
+            var fresh = res.IsSuccessStatusCode ? await res.Content.ReadFromJsonAsync<CallRoomDto>() : null;
+            if (fresh is not { Status: CallStatus.Ringing })
+            {
+                LastEndReason = "The other call already ended";
+                StateChanged?.Invoke();
+                return null;
+            }
+            await HandleCallRoomChangedAsync(fresh);
+        }
+        return Current?.Id == w.Id ? await AcceptCurrentAsync() : null;
     }
 
     /// Decline and send the caller a quick chat reply ("Tolak & kirim pesan").
@@ -707,7 +932,14 @@ public partial class CallState : IAsyncDisposable
         bool newMuted = !(me?.IsMuted ?? false);
         if (IsGroup) await _js.InvokeVoidAsync("ipopGroupCall.setMuted", newMuted);
         else await _js.InvokeVoidAsync("ipopAudio.setMute", newMuted);
-        await SignalAsync(Current.Id, "update", muted: newMuted);
+        if (await SignalAsync(Current.Id, "update", muted: newMuted) is null && Current is not null
+            && ActiveMe?.IsMuted != newMuted)
+        {
+            // The server didn't take it: put the microphone back the way the screen shows it,
+            // so "unmuted" on screen never hides a muted mic (or the reverse).
+            if (IsGroup) await _js.InvokeVoidAsync("ipopGroupCall.setMuted", !newMuted);
+            else await _js.InvokeVoidAsync("ipopAudio.setMute", !newMuted);
+        }
     }
 
     /// Native Android app: "Tutup" / "Bisukan" on the ongoing-call notification (js/native-app.js).
@@ -764,6 +996,95 @@ public partial class CallState : IAsyncDisposable
         StateChanged?.Invoke();
     }
 
+    /// js getStats: "good" | "fair" | "poor" (only on change). Sent with the next heartbeat too.
+    [JSInvokable]
+    public void OnQualityChanged(string quality)
+    {
+        if (Current is null) return;
+        Quality = quality;
+        _pendingQuality = quality is "fair" or "poor" ? quality : _pendingQuality;
+        StateChanged?.Invoke();
+    }
+
+    /// The headset in use was unplugged: the call moved to the default microphone.
+    [JSInvokable]
+    public void OnDeviceFallback(string why)
+    {
+        DeviceNotice = why == "unplugged" ? "Headset unplugged. Using the default microphone." : null;
+        StateChanged?.Invoke();
+    }
+
+    /// One-line notice under the call (device fell back), cleared on the next call.
+    public string? DeviceNotice { get; private set; }
+
+    /// "Reconnect audio" on a failed 1:1 call: a fresh ICE round, or a full rejoin if that can't run.
+    public async Task ReconnectAudioAsync()
+    {
+        if (Current is not { } room || IsGroup) return;
+        LastError = null;
+        WebRtcState = "reconnecting";
+        StateChanged?.Invoke();
+        try
+        {
+            await EnsureFreshConfigAsync();
+            if (await _js.InvokeAsync<bool>("ipopAudio.reconnect")) return;
+        }
+        catch (JSException) { }
+        await RejoinAsync(room);
+    }
+
+    // ── Heartbeat: tells the server this tab still holds the call's media ──
+    private CancellationTokenSource? _beatCts;
+    private Guid? _beatCallId;
+    private string? _pendingQuality;
+    private static readonly TimeSpan BeatEvery = TimeSpan.FromSeconds(20);
+
+    private void StartHeartbeat(Guid callId)
+    {
+        if (_beatCallId == callId && _beatCts is not null) return;
+        StopHeartbeat();
+        _beatCallId = callId;
+        var cts = _beatCts = new CancellationTokenSource();
+        _ = BeatLoopAsync(callId, cts.Token);
+    }
+
+    private void StopHeartbeat()
+    {
+        _beatCts?.Cancel();
+        _beatCts?.Dispose();
+        _beatCts = null;
+        _beatCallId = null;
+        _pendingQuality = null;
+        DeviceNotice = null;
+    }
+
+    private async Task BeatLoopAsync(Guid callId, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                var q = _pendingQuality;
+                using var res = await _auth.SendAsync(HttpMethod.Post, $"/api/calls/{callId}/heartbeat", new { quality = q });
+                if (res.IsSuccessStatusCode && q == _pendingQuality) _pendingQuality = null;
+                // 404: the call is over (or I'm not in it any more) and the hub update was missed.
+                if (res.StatusCode == HttpStatusCode.NotFound && Current?.Id == callId && !IsMeeting)
+                {
+                    using var get = await _auth.SendAsync(HttpMethod.Get, $"/api/calls/{callId}");
+                    var room = get.IsSuccessStatusCode ? await get.Content.ReadFromJsonAsync<CallRoomDto>() : null;
+                    if (room is null || room.Status is not (CallStatus.Ringing or CallStatus.Active))
+                    {
+                        if (room is not null) await HandleCallRoomChangedAsync(room);
+                        else await HandleCallEndedAsync();
+                        return;
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException) { }
+            try { await Task.Delay(BeatEvery, ct); } catch (TaskCanceledException) { return; }
+        }
+    }
+
     public void Clear()
     {
         Current = null;
@@ -777,11 +1098,19 @@ public partial class CallState : IAsyncDisposable
         var hub = _hub;
         _hub = null;
         if (hub is not null) await hub.DisposeAsync();
+        // A ring shown here must stop sounding: this tab no longer hears whether it was answered.
+        if (IsIncomingRing)
+        {
+            try { await _js.InvokeVoidAsync("ipopAudio.stopAudioTones"); } catch (JSException) { }
+            if (!IsGroup) Current = null;
+        }
+        Waiting = null;
         StateChanged?.Invoke();
     }
 
     public async ValueTask DisposeAsync()
     {
+        StopHeartbeat();
         if (_hub is not null) await _hub.DisposeAsync();
         _hub = null;
         _selfRef?.Dispose();

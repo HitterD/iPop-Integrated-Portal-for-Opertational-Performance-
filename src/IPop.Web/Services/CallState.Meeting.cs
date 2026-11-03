@@ -101,6 +101,7 @@ public partial class CallState
         StateChanged?.Invoke();
         try { await _js.InvokeVoidAsync("ipopAudio.playEndTone"); } catch (JSException) { }
         CallEnded?.Invoke();
+        await PromoteWaitingAsync();
         return null;
     }
 

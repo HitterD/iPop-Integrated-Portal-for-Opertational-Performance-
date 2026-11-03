@@ -47,12 +47,16 @@ public class CallHub(ICallService callService, IPopDbContext db, IPermissionEval
 
         if (!await perms.IsAllowedAsync(userId.Value, "calls.use", null, Context.ConnectionAborted)) return;
 
-        var room = await db.CallRooms.AsNoTracking().Include(r => r.Participants)
-            .FirstOrDefaultAsync(r => r.Id == signal.CallId, Context.ConnectionAborted);
-        // Only a live call, and only someone still in it (not left/declined) may signal.
-        if (room is null || room.Status is not (CallStatus.Ringing or CallStatus.Active)) return;
-        static bool InCall(string status) => status is CallParticipantStatus.Accepted or CallParticipantStatus.Invited;
-        if (!room.Participants.Any(p => p.UserId == userId.Value && InCall(p.Status))) return;
+        if (signal.Payload is { Length: > 64_000 }) return;   // an SDP is a few KB; never relay junk
+        // Only a live call, and only someone still in it (not left/declined) may signal. One small
+        // projection (no entity graph) since this runs for every ICE candidate.
+        var live = await db.CallParticipants.AsNoTracking()
+            .Where(p => p.CallId == signal.CallId
+                && (p.Call.Status == CallStatus.Ringing || p.Call.Status == CallStatus.Active)
+                && (p.Status == CallParticipantStatus.Accepted || p.Status == CallParticipantStatus.Invited))
+            .Select(p => p.UserId)
+            .ToListAsync(Context.ConnectionAborted);
+        if (!live.Contains(userId.Value)) return;
 
         // Broadcast to other participants, stamped with the sending tab: the other user may have
         // several tabs/devices, and the receiver must stick to one peer. The tab id survives a
@@ -60,11 +64,8 @@ public class CallHub(ICallService callService, IPopDbContext db, IPermissionEval
         // does not, and is only the fallback for clients that send no tab id.
         var tab = signal.Tab is { Length: > 0 and <= 64 } t ? "tab:" + t : Context.ConnectionId;
         signal = signal with { From = tab, Tab = null };
-        var others = room.Participants.Where(p => p.UserId != userId.Value && InCall(p.Status));
-        foreach (var p in others)
-        {
-            await Clients.Group($"user:{p.UserId}").SendAsync("webrtcSignalReceived", signal, Context.ConnectionAborted);
-        }
+        foreach (var other in live.Where(id => id != userId.Value))
+            await Clients.Group($"user:{other}").SendAsync("webrtcSignalReceived", signal, Context.ConnectionAborted);
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
@@ -74,8 +75,11 @@ public class CallHub(ICallService callService, IPopDbContext db, IPermissionEval
         await base.OnDisconnectedAsync(exception);
     }
 
+    /// Resolved once per connection (OnConnectedAsync), then read from Context.Items: no DB round trip
+    /// (and never a blocking one) per signal or ICE candidate.
     private Guid? GetUserId()
     {
+        if (Context.Items.TryGetValue("userId", out var cached) && cached is Guid known) return known;
         var sub = Context.User?.FindFirst("sub")?.Value
             ?? Context.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (Guid.TryParse(sub, out var id)) return id;

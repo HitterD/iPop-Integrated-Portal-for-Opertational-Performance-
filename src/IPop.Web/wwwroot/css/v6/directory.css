@@ -256,3 +256,29 @@ mark.dir-hl { background: #ffe58f; color: inherit; border-radius: 3px; padding: 
 @keyframes dir-markin { from { background: transparent; } }
 /* #3 star pop: the filled star springs (micro.js adds .mi-pop to the button on toggle) */
 .dir-card .dc-star .lucide, .row-acts .ra.fav .lucide { transition: fill .15s; }
+
+/* ── Compact desktop (≤1536 px: 15" laptops at 125–150 % scaling, 1366×768) ──
+   The name always wins: Department and Ext. leave their columns and become one line under the
+   name (.dir-sub), and the actions column keeps Chat, Call and ⋯. Hovering or focusing a row slides
+   the full action set over the Status cell, so no action is lost. Phones use mobile/directory.css. */
+.dir-people .cell-person .dir-sub { display: none; }
+@media (min-width: 768px) and (min-height: 501px), (min-width: 933px), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) {
+@media (max-width: 1536px) {
+  .dir-people .tbl th:nth-child(3), .dir-people .tbl td:nth-child(3),
+  .dir-people .tbl th:nth-child(4), .dir-people .tbl td:nth-child(4) { display: none; }
+  .dir-people .tbl th:nth-child(2), .dir-people .tbl td:nth-child(2) { width: auto; min-width: 200px; }
+  .dir-people .tbl th:nth-child(5), .dir-people .tbl td:nth-child(5) { width: 104px; }
+  .dir-people .tbl th:nth-child(6), .dir-people .tbl td:nth-child(6) { width: 108px; position: relative; }
+  .dir-people .cell-person .dir-sub { display: block; }
+  .dir-people .cell-person .dir-sub span + span::before { content: " · "; }
+  .dir-people .cell-person .dir-sub-ext { font-variant-numeric: tabular-nums; }
+  .dir-people .row-acts .ra:not(:nth-child(-n+2)):not(.ra-more) { display: none; }
+  .dir-people .row-acts .ra.ra-more { display: flex; color: var(--ink-3); }
+  .dir-people .tbl tbody tr:is(:hover, :focus-within) .row-acts {
+    position: absolute; right: 12px; top: 50%; transform: translateY(-50%); z-index: 1;
+    padding: 2px 2px 2px 8px; border-radius: 9px; background: var(--surface); box-shadow: var(--shadow-md);
+  }
+  .dir-people .tbl tbody tr:is(:hover, :focus-within) .row-acts .ra:not(.ra-more) { display: flex; }
+  .dir-people .tbl tbody tr:is(:hover, :focus-within) .row-acts .ra.ra-more { display: none; }
+}
+}

@@ -67,6 +67,10 @@ builder.Services.AddScoped<IPop.Application.Auth.IPasswordReset, IPop.Infrastruc
 builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    // Placing calls: ten per minute per signed-in user (NIK), so nobody can ring-spam a colleague.
+    o.AddPolicy(IPop.Api.Endpoints.CallEndpoints.CallRateLimitPolicy, http => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+        http.User.FindFirst("nik")?.Value ?? http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) }));
     o.AddPolicy("auth-reset", http => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
         http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 5, Window = TimeSpan.FromMinutes(15) }));
@@ -253,6 +257,7 @@ builder.Services.AddSingleton<IPop.Api.Calls.CallConnections>();
 builder.Services.AddSingleton<IPop.Api.Notifier.NotifierReleases>();
 builder.Services.AddHostedService<IPop.Api.Notifier.NotifierReleaseWatcher>();
 builder.Services.AddHostedService<IPop.Api.Calls.CallRingTimeoutWorker>();
+builder.Services.AddHostedService<IPop.Api.Calls.CallReaperWorker>();
 
 // Projects module
 builder.Services.AddScoped<IPop.Application.Projects.IProjectService, IPop.Infrastructure.Projects.ProjectService>();
