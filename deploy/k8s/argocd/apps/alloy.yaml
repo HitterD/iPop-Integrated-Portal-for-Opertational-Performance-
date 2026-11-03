@@ -15,7 +15,7 @@ spec:
         releaseName: alloy
         valueFiles: [$values/deploy/k8s/values/alloy.yaml]
     - repoURL: git@github.com:HitterD/iPop-Integrated-Portal-for-Opertational-Performance-.git
-      targetRevision: IT18/deploy-prod-k3s   # TEST PHASE; back to main once CI secrets exist
+      targetRevision: main
       ref: values
   destination:
     server: https://kubernetes.default.svc
