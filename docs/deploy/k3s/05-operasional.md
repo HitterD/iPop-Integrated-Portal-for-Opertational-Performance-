@@ -92,14 +92,20 @@ Volume `ipop-data` bisa diperbesar: ubah `storage: 30Gi` di `apps/ipop/storage.y
 
 ## Satu node mati — apa yang terjadi otomatis
 
+Diukur 2026-11-03 dengan mematikan k3s di node yang memegang VIP + PostgreSQL primary sekaligus (kasus terburuk):
+**API iPop tidak tersedia ±90 detik**, lalu pulih sendiri. Halaman web tetap bisa dibuka hampir sepanjang waktu.
+
 | Komponen | Perilaku |
 |---|---|
-| VIP 192.168.2.89 | pindah ke node lain dalam ±3 detik |
-| iPop Web | pod lain tetap melayani, tanpa putus |
-| iPop API | pindah ke node lain dalam ±1–2 menit (user melihat "menyambung ulang") |
-| PostgreSQL | replika dipromosikan jadi primary ±30 detik |
+| VIP 192.168.2.89 | pindah ke node lain dalam beberapa detik |
+| iPop Web | pod lain tetap melayani; pod di node mati dibuang setelah 20 detik |
+| iPop API | dipindah setelah 20 detik + volume Longhorn pindah ±40 detik + start ±10 detik |
+| PostgreSQL | replika dipromosikan jadi primary (±30 detik setelah node dinyatakan mati) |
 | LiveKit | pindah ke ipop-02 (kalau ipop-01 yang mati); panggilan aktif putus, panggilan baru jalan |
 | Longhorn | volume tetap tersedia dari salinan kedua |
 | etcd (cluster) | tetap jalan dengan 2 dari 3 node |
 
 Dua node mati bersamaan = cluster berhenti (etcd butuh mayoritas). Hidupkan salah satunya kembali.
+
+Kalau node mati hanya k3s-nya (VM masih hidup), unit systemd melepas VIP otomatis
+(`/etc/systemd/system/k3s.service.d/10-release-vip.conf`); tanpa itu VIP bisa "nyangkut" dan semua akses putus.
