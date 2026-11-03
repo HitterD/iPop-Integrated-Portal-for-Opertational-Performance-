@@ -55,7 +55,7 @@ spec:
     metrics:
       prometheus:
         serviceMonitor:
-          enabled: true
+          enabled: false      # no Service any more (hostNetwork); platform/monitors.yaml scrapes the pods
     resources:
       requests: { cpu: 50m, memory: 64Mi }
       limits: { memory: 256Mi }

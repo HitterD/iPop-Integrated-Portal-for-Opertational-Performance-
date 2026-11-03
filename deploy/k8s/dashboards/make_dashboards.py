@@ -106,7 +106,7 @@ def overview():
     b.next(4)
 
     b.row("Trafik iPop")
-    svc = 'exported_service=~"ipop-ipop-.*",code!="0"'
+    svc = 'job="kube-system/traefik",service=~"ipop-ipop-.*",code!="0"'
     b.ts("Request per detik (per kode HTTP)",
          [(f'sum by (code) (rate(traefik_service_requests_total{{{svc}}}[2m]))', "{{code}}")], 0, unit="reqps")
     b.ts("Error 5xx (%)",
@@ -114,13 +114,13 @@ def overview():
            f'clamp_min(sum(rate(traefik_service_requests_total{{{svc}}}[5m])), 0.001)', "5xx")],
          12, unit="percent", desc="Normal mendekati 0.")
     b.next(8)
-    api = 'exported_service=~"ipop-ipop-.*",protocol="http"'
+    api = 'job="kube-system/traefik",service=~"ipop-ipop-.*",protocol="http"'
     b.ts("Waktu respon API",
          [(f'histogram_quantile(0.5, sum by (le) (rate(traefik_service_request_duration_seconds_bucket{{{api}}}[5m])))', "p50"),
           (f'histogram_quantile(0.95, sum by (le) (rate(traefik_service_request_duration_seconds_bucket{{{api}}}[5m])))', "p95")],
          0, unit="s", desc="Semua request http ke iPop (tanpa websocket chat realtime).")
     b.ts("Koneksi terbuka (chat/notifikasi realtime)",
-         [('sum(traefik_open_connections{entrypoint="web"})', "koneksi")], 12)
+         [('sum(traefik_open_connections{job="kube-system/traefik",entrypoint="web"})', "koneksi")], 12)
     b.next(8)
 
     b.row("Server (3 node)")
