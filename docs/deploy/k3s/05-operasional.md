@@ -92,20 +92,39 @@ Volume `ipop-data` bisa diperbesar: ubah `storage: 30Gi` di `apps/ipop/storage.y
 
 ## Satu node mati — apa yang terjadi otomatis
 
-Diukur 2026-11-03 dengan mematikan k3s di node yang memegang VIP + PostgreSQL primary sekaligus (kasus terburuk):
-**API iPop tidak tersedia ±90 detik**, lalu pulih sendiri. Halaman web tetap bisa dibuka hampir sepanjang waktu.
+Diukur 2026-11-03 dengan mematikan k3s di satu node:
+
+| Node yang mati | API iPop tidak tersedia | Web |
+|---|---|---|
+| node yang menjalankan API saja | ±40 detik | tetap jalan |
+| node yang memegang VIP + API + volume data (kasus terberat) | ±70 detik | putus ±10 detik |
 
 | Komponen | Perilaku |
 |---|---|
-| VIP 192.168.2.89 | pindah ke node lain dalam beberapa detik |
-| iPop Web | pod lain tetap melayani; pod di node mati dibuang setelah 20 detik |
-| iPop API | dipindah setelah 20 detik + volume Longhorn pindah ±40 detik + start ±10 detik |
-| PostgreSQL | replika dipromosikan jadi primary (±30 detik setelah node dinyatakan mati) |
+| VIP 192.168.2.89 | pindah ke node lain dalam ±10 detik (`vip-guard.timer` melepas VIP dari node yang k3s-nya mati) |
+| iPop Web | pod lain tetap melayani; Traefik mencoba ulang ke pod sehat |
+| iPop API | node dinyatakan mati 20 dtk → pod dipindah 10 dtk → volume ±20–30 dtk → start ±10 dtk |
+| PostgreSQL | replika dipromosikan jadi primary |
+| DNS cluster (CoreDNS) | 1 per node, tetap jalan |
 | LiveKit | pindah ke ipop-02 (kalau ipop-01 yang mati); panggilan aktif putus, panggilan baru jalan |
 | Longhorn | volume tetap tersedia dari salinan kedua |
 | etcd (cluster) | tetap jalan dengan 2 dari 3 node |
 
 Dua node mati bersamaan = cluster berhenti (etcd butuh mayoritas). Hidupkan salah satunya kembali.
 
-Kalau node mati hanya k3s-nya (VM masih hidup), unit systemd melepas VIP otomatis
-(`/etc/systemd/system/k3s.service.d/10-release-vip.conf`); tanpa itu VIP bisa "nyangkut" dan semua akses putus.
+Untuk hitungan detik API harus jalan 2–3 salinan sekaligus — proyek kode terpisah setelah cutover.
+
+## Backup
+
+| Apa | Kapan | Ke mana | Simpan |
+|---|---|---|---|
+| PostgreSQL — setiap transaksi (WAL) | terus-menerus, maks. 60 detik | S3 Garage di Synology 192.168.2.16, bucket `ipop-db-wal` | 14 hari, restore ke **menit mana pun** |
+| PostgreSQL — base backup | 00:30 WIB | sama | 14 hari |
+| pg_dump (cadangan kedua, bisa dibuka manual) | 01:00 WIB | `\192.168.2.16\sja\SJA SPJ\ICTackup\ipop-db` | 14 harian + 8 mingguan |
+| Volume Longhorn (upload iPop, ONLYOFFICE) | 01:15 WIB | S3 bucket `longhorn-backups` | 14 |
+| Snapshot etcd (state cluster) | 00:00 & 12:00, salin 01:30 | `...\ipop-db\etcd` | 14 |
+
+Garage berjalan sebagai container `ipop-backup-s3` di Container Manager Synology (`/volume1/docker/ipop-backup-s3`).
+
+Restore ke waktu tertentu (diuji 2026-11-03, hasil identik): buat Cluster baru dengan
+`bootstrap.recovery.recoveryTarget.targetTime`, lihat contoh di `deploy/k8s/bootstrap/README.md`.
