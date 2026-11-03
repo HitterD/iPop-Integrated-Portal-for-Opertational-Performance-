@@ -180,6 +180,9 @@ public sealed class MediaStreamAndLinksTests
             for (var i = 0; i < 100 && cache.State("b") is not CacheState.Failed; i++) await Task.Delay(20);
             Assert.IsType<CacheState.Failed>(cache.State("b"));
             cache.Forget("b");
+            // The failed copy records its error before its finally drops the running-copy entry, so on a
+            // busy runner "Copying" can show for a few ms after Forget; it must settle to Missing.
+            for (var i = 0; i < 100 && cache.State("b") is CacheState.Copying; i++) await Task.Delay(20);
             Assert.IsType<CacheState.Missing>(cache.State("b"));
         }
         finally { try { Directory.Delete(dir, true); } catch (IOException) { } }
