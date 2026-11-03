@@ -39,7 +39,7 @@ public static class CallEndpoints
             await SyncCallToastAsync(push, db, result.Room, ct);
 
             return Results.Created($"/api/calls/{result.Room.Id}", result.Room);
-        });
+        }).RequireRateLimiting(CallRateLimitPolicy);
 
         // Group call for a chat group: create (rings every other member) or join the live one.
         // The response carries the caller's LiveKit token; media never falls back to P2P.
@@ -111,13 +111,26 @@ public static class CallEndpoints
             if (userId is null) return Results.Unauthorized();
             var result = await svc.SignalAsync(userId.Value, req, ct);
             if (result.Room is null)
-                return Results.Json(new { code = result.ErrorCode, message = result.Error }, statusCode: 422);
+                return Results.Json(new { code = result.ErrorCode, message = result.Error },
+                    statusCode: result.ErrorCode == CallErrors.Conflict ? 409 : 422);
 
             // Ended rooms go out as state too, so each side can say why (declined, missed…).
             // Group calls reach every group member (banners), not only the participants.
             await BroadcastGroupAsync(hub, db, result.Room, ct, push);
 
             return Results.Ok(result.Room);
+        });
+
+        // The tab holding my media is alive (every ~20 s) + its measured link quality. 404 = the call
+        // is over (or I am no longer in it): the tab learns that within one beat.
+        g.MapPost("/{callId:guid}/heartbeat", async (Guid callId, CallHeartbeatRequest? req, HttpContext http,
+            ICallService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            return await svc.HeartbeatAsync(userId.Value, callId, req?.Quality, ct)
+                ? Results.NoContent()
+                : Results.Json(new { code = CallErrors.RoomNotFound, message = "Not in this call." }, statusCode: 404);
         });
 
         // Live room state (active call bar / participant grid).
@@ -179,8 +192,12 @@ public static class CallEndpoints
         return app;
     }
 
+    /// Placing calls: 10 per minute per user (ring spam), see Program.cs.
+    public const string CallRateLimitPolicy = "calls-create";
+
     private static IResult GroupError(CallResultDto result) => result.ErrorCode switch
     {
+        CallErrors.Conflict => Results.Json(new { code = result.ErrorCode, message = result.Error }, statusCode: 409),
         CallErrors.GroupNotFound or CallErrors.RoomNotFound =>
             Results.Json(new { code = result.ErrorCode, message = result.Error }, statusCode: 404),
         CallErrors.NotGroupMember or CallErrors.NotParticipant =>
@@ -266,6 +283,8 @@ public static class CallEndpoints
         if (iceServers.Count == 0) iceServers.Add(new IceServerDto(["stun:stun.l.google.com:19302"], null, null));
         return iceServers;
     }
+
+    public sealed record CallHeartbeatRequest(string? Quality);
 
     internal sealed record IceServerDto(string[] Urls,
         [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? Username,

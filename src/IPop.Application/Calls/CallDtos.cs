@@ -5,7 +5,9 @@ namespace IPop.Application.Calls;
 public record CreateCallRequest(string PeerNik, string? Quality = null);
 
 /// Signaling actions between UI + hub.
-public record CallSignalRequest(Guid CallId, string Action, bool? IsMuted = null, bool? IsScreenSharing = null);
+/// Action "busy" = decline from the call-waiting banner (the caller is told the person is on another call).
+/// Quality: the sender's measured link ("good" | "fair" | "poor"); the room keeps the worst one seen.
+public record CallSignalRequest(Guid CallId, string Action, bool? IsMuted = null, bool? IsScreenSharing = null, string? Quality = null);
 
 /// WebRTC peer-to-peer signaling packet (offer, answer, candidate, rejoin) passed over SignalR.
 /// From identifies the sending tab, stamped by the server so a callee can stick to one peer:
@@ -44,7 +46,9 @@ public record CallRoomDto(
     string? AvatarColor = null,
     string? AvatarUrl = null,
     // LiveKit room name ("call-{id:N}") when a token was minted.
-    string? LiveKitRoom = null);
+    string? LiveKitRoom = null,
+    // Closed calls: "busy" when the callee turned it down from the call-waiting banner.
+    string? EndReason = null);
 
 /// One history row (grouped by date on the UI).
 public record CallHistoryDto(
@@ -59,7 +63,9 @@ public record CallHistoryDto(
     // Group calls: the chat group (PeerName is then the group name and PeerNik is null).
     Guid? ChatRoomId = null,
     // False only for a missed incoming call the user hasn't seen yet (bold + dot on /calls).
-    bool Seen = true);
+    bool Seen = true,
+    // Worst link quality measured during the call ("fair" | "poor"), null when fine or unknown.
+    string? Quality = null);
 
 public record CallHistoryPage(IReadOnlyList<CallHistoryDto> Items, int Total, int Page, int PageSize);
 
@@ -77,6 +83,9 @@ public static class CallErrors
     public const string NotGroupMember = "not_group_member";
     public const string MediaUnavailable = "media_unavailable";
     public const string AlreadyInCall = "already_in_call";
+    /// The call changed at the same moment (answered on another device, hung up): nothing was applied.
+    public const string Conflict = "call_conflict";
+    public const string SelfCall = "self_call";
 }
 
 public static class CallKind

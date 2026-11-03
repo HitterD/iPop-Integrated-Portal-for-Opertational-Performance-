@@ -1247,6 +1247,8 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Kind).HasMaxLength(16);
             e.Property(x => x.Status).HasMaxLength(16);
             e.Property(x => x.Quality).HasMaxLength(8);
+            e.Property(x => x.EndReason).HasMaxLength(16);
+            e.Property(x => x.Version).IsConcurrencyToken();
             e.HasOne(x => x.Creator).WithMany().HasForeignKey(x => x.CreatorId).OnDelete(DeleteBehavior.Restrict);
             // Group calls: one live call per chat group is looked up by (ChatRoomId, Status).
             e.HasIndex(x => new { x.ChatRoomId, x.Status });

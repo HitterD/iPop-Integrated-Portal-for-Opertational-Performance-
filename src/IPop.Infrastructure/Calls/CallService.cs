@@ -23,6 +23,8 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
         var peer = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Nik == req.PeerNik && u.IsActive, ct);
         if (peer is null)
             return Fail(CallErrors.PeerNotFound, "Peer user not found or inactive.");
+        if (peer.Id == callerId)
+            return Fail(CallErrors.SelfCall, "You can't call yourself.");
 
         // Stub token — a real gateway issues a short-lived ephemeral token per invite.
         var now = DateTime.UtcNow;
@@ -74,7 +76,10 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
         switch (req.Action)
         {
             case "accept":
-                if (me.Status != CallParticipantStatus.Invited)
+                // Answered on another of my devices a moment ago: this one must stand down.
+                if (me.Status == CallParticipantStatus.Accepted && room.CreatorId != userId)
+                    return Fail(CallErrors.Conflict, "The call was answered on another device.");
+                if (me.Status != CallParticipantStatus.Invited || room.Status != CallStatus.Ringing)
                     return Fail(CallErrors.InvalidSignal, "Only the invited participant can accept.");
                 me.Status = CallParticipantStatus.Accepted;
                 room.Status = CallStatus.Active;
@@ -82,11 +87,14 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
                 break;
 
             case "decline":
-                if (room.Status != CallStatus.Ringing)
+            case "busy":
+                // "busy": turned down from the call-waiting banner while on another call.
+                if (room.Status != CallStatus.Ringing || me.Status != CallParticipantStatus.Invited)
                     return Fail(CallErrors.InvalidSignal, "You can only decline a ringing call.");
                 me.Status = CallParticipantStatus.Declined;
                 room.Status = CallStatus.Declined;
                 room.EndedAt = now;
+                if (req.Action == "busy") room.EndReason = "busy";
                 RecordHistory(room, now);
                 break;
 
@@ -119,11 +127,94 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
         // Stub toggles only affect the requester's own flags (real mute is the app's job).
         if (req.IsMuted is { } muted) me.IsMuted = muted;
         if (req.IsScreenSharing is { } sharing) me.IsScreenSharing = sharing;
+        room.Quality = WorseQuality(room.Quality, req.Quality);
         room.UpdatedAt = now;
 
-        await db.SaveChangesAsync(ct);
+        if (!await TrySaveAsync(room, ct))
+            return Fail(CallErrors.Conflict, "The call changed at the same moment. Try again.");
         return new CallResultDto(true, null, null, ToRoom(room));
     }
+
+    /// Saves a call transition only if nobody changed the room since it was read (Version is a
+    /// concurrency token): of two racing accepts, or a hang-up and an accept, exactly one wins. It also
+    /// keeps several API replicas' timeout workers from closing one call twice (duplicate history).
+    private async Task<bool> TrySaveAsync(CallRoom room, CancellationToken ct)
+    {
+        room.Version++;
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            db.ChangeTracker.Clear();
+            return false;
+        }
+    }
+
+    /// The room keeps the worst link quality anyone reported (good, then fair, then poor).
+    internal static string? WorseQuality(string? current, string? reported)
+    {
+        static int Rank(string? q) => q switch { "poor" => 3, "fair" => 2, "good" => 1, _ => 0 };
+        var r = NormalizeQuality(reported);
+        return Rank(r) > Rank(current) ? r : current;
+    }
+
+    public async Task<bool> HeartbeatAsync(Guid userId, Guid callId, string? quality, CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        // Plain column updates: a heartbeat never competes with (or bumps) a state transition.
+        var n = await db.CallParticipants
+            .Where(p => p.CallId == callId && p.UserId == userId && p.Status == CallParticipantStatus.Accepted
+                && (p.Call.Status == CallStatus.Ringing || p.Call.Status == CallStatus.Active))
+            .ExecuteUpdateAsync(s => s.SetProperty(p => p.LastSeenAt, now), ct);
+        if (n == 0) return false;
+        var q = NormalizeQuality(quality);
+        if (q == "fair")
+            await db.CallRooms.Where(r => r.Id == callId && (r.Quality == null || r.Quality == "good"))
+                .ExecuteUpdateAsync(s => s.SetProperty(r => r.Quality, q), ct);
+        else if (q == "poor")
+            await db.CallRooms.Where(r => r.Id == callId && (r.Quality == null || r.Quality != "poor"))
+                .ExecuteUpdateAsync(s => s.SetProperty(r => r.Quality, q), ct);
+        return true;
+    }
+
+    public async Task<IReadOnlyList<CallRoomDto>> ReapStaleAsync(DateTime cutoff, CancellationToken ct)
+    {
+        // Someone in a live call whose media tab stopped beating (laptop asleep, tab killed, a pod
+        // restart lost the disconnect timer). Null = an old client that never beats: left alone.
+        var stale = await db.CallParticipants.AsNoTracking()
+            .Where(p => p.Status == CallParticipantStatus.Accepted && p.LastSeenAt != null && p.LastSeenAt < cutoff
+                && p.Call.Status == CallStatus.Active)
+            .Select(p => new { p.CallId, p.UserId })
+            .ToListAsync(ct);
+        var closed = new List<CallRoomDto>();
+        foreach (var s in stale)
+        {
+            var room = await LoadTrackedAsync(s.CallId, ct);
+            if (room is null || room.Status != CallStatus.Active) continue;
+            var me = room.Participants.FirstOrDefault(p => p.UserId == s.UserId && p.Status == CallParticipantStatus.Accepted
+                && p.LastSeenAt < cutoff);
+            if (me is null) continue;
+            var now = DateTime.UtcNow;
+            me.Status = CallParticipantStatus.Left;
+            me.LeftAt = now;
+            room.UpdatedAt = now;
+            if (CallKind.IsLiveKit(room.Kind))
+            {
+                if (!room.Participants.Any(p => p.Status == CallParticipantStatus.Accepted))
+                    EndGroupRoom(room, now, timedOut: false);
+            }
+            else EndRoom(room, now);
+            if (await TrySaveAsync(room, ct)) closed.Add(ToRoom(room));
+        }
+        return closed;
+    }
+
+    private Task<CallRoom?> LoadTrackedAsync(Guid callId, CancellationToken ct) =>
+        db.CallRooms.Include(r => r.ChatRoom).Include(r => r.Participants).ThenInclude(p => p.User)
+            .FirstOrDefaultAsync(r => r.Id == callId, ct);
 
     public async Task<CallRoomDto?> GetRoomAsync(Guid callId, Guid userId, CancellationToken ct)
     {
@@ -181,7 +272,8 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
             .Skip((p - 1) * size).Take(size)
             .Select(h => new CallHistoryDto(
                 h.CallId, h.Direction, h.Result, h.DurationSeconds, h.StartedAt, h.EndedAt, "?", null, null,
-                h.Direction != "incoming" || h.Result != "missed" || h.SeenAt != null))
+                h.Direction != "incoming" || h.Result != "missed" || h.SeenAt != null,
+                h.Result == "completed" && (h.Call.Quality == "fair" || h.Call.Quality == "poor") ? h.Call.Quality : null))
             .ToListAsync(ct);
 
         var callIds = raw.Select(i => i.CallId).Distinct().ToList();
@@ -235,48 +327,57 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
 
     public async Task<IReadOnlyList<CallRoomDto>> ExpireRingingAsync(DateTime cutoff, CancellationToken ct)
     {
-        var rooms = await db.CallRooms.Include(r => r.ChatRoom).Include(r => r.Participants).ThenInclude(p => p.User)
+        var ids = await db.CallRooms.AsNoTracking()
             .Where(r => r.Status == CallStatus.Ringing && r.StartedAt < cutoff)
-            .ToListAsync(ct);
-        if (rooms.Count == 0) return [];
-
-        // A person added to a still-ringing group call gets their full ring before the call gives up.
-        rooms = rooms.Where(r => !CallKind.IsLiveKit(r.Kind) || !r.Participants.Any(p =>
-            p.Status == CallParticipantStatus.Invited && p.InvitedById != null && p.JoinedAt >= cutoff)).ToList();
-        if (rooms.Count == 0) return [];
-
-        var now = DateTime.UtcNow;
-        foreach (var room in rooms)
+            .Select(r => r.Id).ToListAsync(ct);
+        var closed = new List<CallRoomDto>();
+        // One room per save: a room answered (or expired by another replica) meanwhile fails its
+        // concurrency check and is skipped, without undoing the others.
+        foreach (var id in ids)
         {
+            var room = await LoadTrackedAsync(id, ct);
+            if (room is null || room.Status != CallStatus.Ringing) continue;
+            // A person added to a still-ringing group call gets their full ring before the call gives up.
+            if (CallKind.IsLiveKit(room.Kind) && room.Participants.Any(p =>
+                    p.Status == CallParticipantStatus.Invited && p.InvitedById != null && p.JoinedAt >= cutoff))
+                continue;
+            var now = DateTime.UtcNow;
             if (CallKind.IsLiveKit(room.Kind))
             {
                 // Nobody joined the creator within the window: the whole group call is missed.
                 EndGroupRoom(room, now, timedOut: true);
-                continue;
             }
-            room.Status = CallStatus.Missed;
-            room.EndedAt = now;
-            room.UpdatedAt = now;
-            RecordHistory(room, now);
+            else
+            {
+                room.Status = CallStatus.Missed;
+                room.EndedAt = now;
+                room.UpdatedAt = now;
+                RecordHistory(room, now);
+            }
+            if (await TrySaveAsync(room, ct)) closed.Add(ToRoom(room));
         }
-        await db.SaveChangesAsync(ct);
-        return rooms.Select(r => ToRoom(r)).ToList();
+        return closed;
     }
 
-    public async Task<IReadOnlyList<CallRoomDto>> EndForUserAsync(Guid userId, CancellationToken ct)
+    public async Task<IReadOnlyList<CallRoomDto>> EndForUserAsync(Guid userId, CancellationToken ct, DateTime? unlessSeenAfter = null)
     {
         // Every open call the user is live in: active calls, and rings they started.
         // A callee who drops while being rung is left to the timeout (another tab may still answer).
-        var rooms = await db.CallRooms.Include(r => r.ChatRoom).Include(r => r.Participants).ThenInclude(p => p.User)
+        // unlessSeenAfter: this replica lost the user's last connection, but a heartbeat since then
+        // means the call's tab lives on (another replica, or it reconnected): keep that call.
+        var ids = await db.CallRooms.AsNoTracking()
             .Where(r => (r.Status == CallStatus.Active &&
-                            r.Participants.Any(p => p.UserId == userId && p.Status == CallParticipantStatus.Accepted))
-                     || (r.Status == CallStatus.Ringing && r.CreatorId == userId))
-            .ToListAsync(ct);
-        if (rooms.Count == 0) return [];
-
-        var now = DateTime.UtcNow;
-        foreach (var room in rooms)
+                            r.Participants.Any(p => p.UserId == userId && p.Status == CallParticipantStatus.Accepted
+                                && (unlessSeenAfter == null || p.LastSeenAt == null || p.LastSeenAt < unlessSeenAfter)))
+                     || (r.Status == CallStatus.Ringing && r.CreatorId == userId
+                            && (unlessSeenAfter == null || !r.Participants.Any(p => p.UserId == userId && p.LastSeenAt >= unlessSeenAfter))))
+            .Select(r => r.Id).ToListAsync(ct);
+        var closed = new List<CallRoomDto>();
+        foreach (var id in ids)
         {
+            var room = await LoadTrackedAsync(id, ct);
+            if (room is null || room.Status is not (CallStatus.Active or CallStatus.Ringing)) continue;
+            var now = DateTime.UtcNow;
             var me = room.Participants.First(p => p.UserId == userId);
             if (CallKind.IsLiveKit(room.Kind))
             {
@@ -289,14 +390,16 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
                 room.UpdatedAt = now;
                 if (!room.Participants.Any(p => p.Status == CallParticipantStatus.Accepted))
                     EndGroupRoom(room, now, timedOut: false);
-                continue;
             }
-            me.Status = CallParticipantStatus.Left;
-            me.LeftAt = now;
-            EndRoom(room, now);
+            else
+            {
+                me.Status = CallParticipantStatus.Left;
+                me.LeftAt = now;
+                EndRoom(room, now);
+            }
+            if (await TrySaveAsync(room, ct)) closed.Add(ToRoom(room));
         }
-        await db.SaveChangesAsync(ct);
-        return rooms.Select(r => ToRoom(r)).ToList();
+        return closed;
     }
 
     // ── internals ──────────────────────────────────────────────────────────────
@@ -327,6 +430,7 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
         var established = room.EstablishedAt is not null;
         var duration = room.EstablishedAt is { } est ? Math.Max(0, (int)(endedAt - est).TotalSeconds) : 0;
         var declined = room.Status == CallStatus.Declined;
+        var busy = declined && room.EndReason == "busy";
 
         db.CallHistories.Add(new CallHistory
         {
@@ -334,7 +438,7 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
             CallId = room.Id,
             PerformerId = room.CreatorId,
             Direction = "outgoing",
-            Result = established ? "completed" : declined ? "declined" : callerCanceled ? "canceled" : "no-answer",
+            Result = established ? "completed" : busy ? "busy" : declined ? "declined" : callerCanceled ? "canceled" : "no-answer",
             DurationSeconds = duration,
             StartedAt = room.StartedAt,
             EndedAt = endedAt,
@@ -366,7 +470,8 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
         ChatRoomId: r.ChatRoomId,
         Title: r.ChatRoom?.Name,
         AvatarColor: r.ChatRoom?.AvatarColor,
-        AvatarUrl: r.ChatRoom?.AvatarUrl);
+        AvatarUrl: r.ChatRoom?.AvatarUrl,
+        EndReason: r.EndReason);
 
     /// "Call with Jason, Beny, +2" — first names of the other participants, two at most.
     internal static string AdHocLabel(IReadOnlyList<string> names)
@@ -377,7 +482,7 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
         return names.Count > 2 ? $"Call with {shown}, +{names.Count - 2}" : $"Call with {shown}";
     }
 
-    private static string? NormalizeQuality(string? q) => q switch
+    internal static string? NormalizeQuality(string? q) => q switch
     {
         "good" or "fair" or "poor" => q,
         _ => null,

@@ -41,7 +41,7 @@ public class CallConnections
     private readonly Dictionary<Guid, CancellationTokenSource> pending = [];
 
     public CallConnections(IServiceScopeFactory scopes, IHubContext<CallHub> hub, ILogger<CallConnections> log, IConfiguration config)
-        : this(GraceFrom(config), userId => EndCallsAsync(scopes, hub, log, userId)) { }
+        : this(GraceFrom(config), userId => EndCallsAsync(scopes, hub, log, userId, GraceFrom(config))) { }
 
     internal CallConnections(TimeSpan grace, Func<Guid, Task> endCalls)
     {
@@ -97,13 +97,15 @@ public class CallConnections
         await endCalls(userId);
     }
 
-    private static async Task EndCallsAsync(IServiceScopeFactory scopes, IHubContext<CallHub> hub, ILogger log, Guid userId)
+    private static async Task EndCallsAsync(IServiceScopeFactory scopes, IHubContext<CallHub> hub, ILogger log, Guid userId, TimeSpan grace)
     {
         try
         {
             using var scope = scopes.CreateScope();
             var calls = scope.ServiceProvider.GetRequiredService<ICallService>();
-            var ended = await calls.EndForUserAsync(userId, CancellationToken.None);
+            // These counts are per API replica. With several replicas the user's call tab may live on
+            // another one (or have reconnected there): a heartbeat inside the grace proves it, keep that call.
+            var ended = await calls.EndForUserAsync(userId, CancellationToken.None, unlessSeenAfter: DateTime.UtcNow - grace);
             await CallBroadcast.EndedAsync(hub, ended, CancellationToken.None,
                 scope.ServiceProvider.GetRequiredService<IPop.Infrastructure.Persistence.IPopDbContext>(),
                 scope.ServiceProvider.GetService<IPop.Infrastructure.Notifications.Push.PushQueue>());
@@ -115,7 +117,8 @@ public class CallConnections
     }
 }
 
-/// Unanswered rings become "missed" after <see cref="CallService.RingTimeout"/>.
+/// Unanswered rings become "missed" after <see cref="CallService.RingTimeout"/>. Safe on several API
+/// replicas: each room is closed with a concurrency check, so only one replica records and broadcasts it.
 public class CallRingTimeoutWorker(IServiceScopeFactory scopes, IHubContext<CallHub> hub, ILogger<CallRingTimeoutWorker> log)
     : BackgroundService
 {
@@ -139,6 +142,39 @@ public class CallRingTimeoutWorker(IServiceScopeFactory scopes, IHubContext<Call
             catch (Exception ex)
             {
                 log.LogError(ex, "Call ring timeout sweep failed; will retry next interval.");
+            }
+        }
+    }
+}
+
+/// Ends live calls whose media tab stopped sending heartbeats (laptop asleep, tab killed, a phone
+/// still online while the laptop that held the call dropped, an API restart that lost the disconnect
+/// timer). Clients beat every 20 s; nobody heard from for <see cref="StaleAfter"/> is taken out.
+public class CallReaperWorker(IServiceScopeFactory scopes, IHubContext<CallHub> hub, ILogger<CallReaperWorker> log)
+    : BackgroundService
+{
+    public static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan Interval = TimeSpan.FromSeconds(30);
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(Interval, stoppingToken);
+                using var scope = scopes.CreateScope();
+                var calls = scope.ServiceProvider.GetRequiredService<ICallService>();
+                var reaped = await calls.ReapStaleAsync(DateTime.UtcNow - StaleAfter, stoppingToken);
+                if (reaped.Count > 0) log.LogInformation("Ended {Count} call(s) with no live participant tab.", reaped.Count);
+                await CallBroadcast.EndedAsync(hub, reaped, stoppingToken,
+                    scope.ServiceProvider.GetRequiredService<IPop.Infrastructure.Persistence.IPopDbContext>(),
+                    scope.ServiceProvider.GetService<IPop.Infrastructure.Notifications.Push.PushQueue>());
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "Call reaper sweep failed; will retry next interval.");
             }
         }
     }

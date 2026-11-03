@@ -108,7 +108,7 @@ public sealed partial class CallService
             room.EstablishedAt = now;
         }
         room.UpdatedAt = now;
-        await db.SaveChangesAsync(ct);
+        if (!await TrySaveAsync(room, ct)) return Fail(CallErrors.Conflict, "The call changed at the same moment. Try again.");
         return new CallResultDto(true, null, null, ToRoom(room));
     }
 
@@ -169,7 +169,7 @@ public sealed partial class CallService
         // First extra person on a P2P call: move it to LiveKit for good (never back to P2P).
         if (room.Kind == CallKind.User) room.Kind = CallKind.AdHoc;
         room.UpdatedAt = now;
-        await db.SaveChangesAsync(ct);
+        if (!await TrySaveAsync(room, ct)) return Fail(CallErrors.Conflict, "The call changed at the same moment. Try again.");
         return new CallResultDto(true, null, null, ToRoom(room));
     }
 
@@ -221,7 +221,7 @@ public sealed partial class CallService
 
         if (req.IsMuted is { } muted) me.IsMuted = muted;
         room.UpdatedAt = now;
-        await db.SaveChangesAsync(ct);
+        if (!await TrySaveAsync(room, ct)) return Fail(CallErrors.Conflict, "The call changed at the same moment. Try again.");
         return new CallResultDto(true, null, null, ToRoom(room));
     }
 
