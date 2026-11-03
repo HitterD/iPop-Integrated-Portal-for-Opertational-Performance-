@@ -1,6 +1,6 @@
 # k3s's bundled Traefik, tuned for iPop:
 # - only Zoraxy (192.168.2.2) may set X-Forwarded-* (avoids the duplicate-header ONLYOFFICE error -4 we had on NPM)
-# - client IPs preserved (externalTrafficPolicy Local is not used: the VIP moves between nodes)
+# - client IPs preserved: Traefik on every node's own network (no ServiceLB NAT)
 # - metrics for Prometheus, access log to Loki
 apiVersion: helm.cattle.io/v1
 kind: HelmChartConfig
@@ -9,19 +9,35 @@ metadata:
   namespace: kube-system
 spec:
   valuesContent: |-
-    # One Traefik on every node + externalTrafficPolicy Local: the VIP's node answers itself and
-    # Traefik sees the real client address (needed for the ICT-only dashboard rule and for the
-    # client IP in iPop's audit log). With "Cluster" every request arrived from a pod address.
+    # One Traefik on every node, listening on the node's own ports 80/443 (hostNetwork). The VIP lands on a
+    # node, and that node's Traefik sees the real client address — needed for the ICT-only dashboard rule
+    # and the client IP in iPop's audit log. (k3s ServiceLB / klipper always NATs the source address.)
     deployment:
       kind: DaemonSet
+    hostNetwork: true
+    updateStrategy:
+      type: RollingUpdate
+      rollingUpdate: { maxUnavailable: 1, maxSurge: 0 }
     service:
-      spec:
-        externalTrafficPolicy: Local
+      enabled: false
+    securityContext:
+      capabilities: { add: [NET_BIND_SERVICE], drop: [ALL] }
+      runAsNonRoot: false
+      runAsUser: 0
+      readOnlyRootFilesystem: true
+    podSecurityContext:
+      runAsNonRoot: false
+      runAsUser: 0
     podDisruptionBudget:
       enabled: true
-      minAvailable: 1
+      maxUnavailable: 1
     ports:
+      metrics:
+        port: 9101               # node_exporter already owns 9100 on the host network
+      traefik:
+        port: 8081               # keep 8080 free on the nodes
       web:
+        port: 80
         forwardedHeaders:
           trustedIPs: ["192.168.2.2/32", "192.168.2.3/32"]
         transport:
@@ -30,6 +46,7 @@ spec:
             writeTimeout: 0
             idleTimeout: 3600s    # SignalR / LiveKit websockets
       websecure:
+        port: 443
         forwardedHeaders:
           trustedIPs: ["192.168.2.2/32", "192.168.2.3/32"]
     logs:
