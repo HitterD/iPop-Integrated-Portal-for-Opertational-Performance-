@@ -1,6 +1,6 @@
 # Cutover: dari PC lama ke cluster
 
-Prasyarat: uji coba di http://ipop.192.168.2.113.nip.io sudah Anda nyatakan **normal**.
+Prasyarat: uji coba di http://ipop.192.168.2.89.nip.io sudah Anda nyatakan **normal**.
 Jendela waktu: malam/weekend. Perkiraan downtime: ±15–20 menit (DB ±112 MB).
 
 ## H-1

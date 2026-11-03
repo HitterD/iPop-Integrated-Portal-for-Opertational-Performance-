@@ -15,7 +15,7 @@ longhornUI:
 ingress:
   enabled: true
   ingressClassName: traefik
-  host: longhorn.192.168.2.113.nip.io
+  host: longhorn.192.168.2.89.nip.io
 csi:
   attacherReplicaCount: 1
   provisionerReplicaCount: 1

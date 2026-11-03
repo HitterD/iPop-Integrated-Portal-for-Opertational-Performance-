@@ -7,7 +7,7 @@ set -euo pipefail
 
 MODE="${1:?usage: install-k3s.sh first|join}"
 : "${K3S_TOKEN:?set K3S_TOKEN}"
-VIP="192.168.2.113"
+VIP="192.168.2.89"
 FIRST="192.168.2.88"
 K3S_VERSION="v1.36.5+k3s1"          # stable channel; upgrade one node at a time (docs/deploy/k3s/05-operations.md)
 KUBE_VIP_VERSION="v1.3.1"

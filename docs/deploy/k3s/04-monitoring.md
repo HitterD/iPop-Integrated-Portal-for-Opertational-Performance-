@@ -4,11 +4,11 @@ Cukup dua layar: **Grafana** (melihat) dan **Argo CD** (deploy). Email peringata
 
 | Apa | Alamat | Login |
 |---|---|---|
-| Grafana | http://grafana.192.168.2.113.nip.io | `admin` + password dari `secrets.sh` |
-| Argo CD | http://argocd.192.168.2.113.nip.io | `admin` + password dari `install-argocd.sh` |
-| Longhorn (disk) | http://longhorn.192.168.2.113.nip.io | tanpa login — buka hanya dari jaringan ICT |
+| Grafana | http://grafana.192.168.2.89.nip.io | `admin` + password dari `secrets.sh` |
+| Argo CD | http://argocd.192.168.2.89.nip.io | `admin` + password dari `install-argocd.sh` |
+| Longhorn (disk) | http://longhorn.192.168.2.89.nip.io | tanpa login — buka hanya dari jaringan ICT |
 
-> `nip.io` hanya trik DNS: `grafana.192.168.2.113.nip.io` selalu menunjuk ke 192.168.2.113. Tidak perlu setting DNS.
+> `nip.io` hanya trik DNS: `grafana.192.168.2.89.nip.io` selalu menunjuk ke 192.168.2.89. Tidak perlu setting DNS.
 > Kalau kantor memblokir nip.io, minta saya ganti ke nama di DNS internal / Zoraxy.
 
 ---

@@ -27,7 +27,7 @@ sudo K3S_TOKEN=$TOKEN bash ~/ipop/deploy/k8s/bootstrap/install-k3s.sh first
 # ipop-02, lalu ipop-03 (token sama)
 sudo K3S_TOKEN=$TOKEN bash ~/ipop/deploy/k8s/bootstrap/install-k3s.sh join
 ```
-Cek: `kubectl get nodes` → 3 node `Ready`, role `control-plane,etcd`. `ping 192.168.2.113` menjawab.
+Cek: `kubectl get nodes` → 3 node `Ready`, role `control-plane,etcd`. `ping 192.168.2.89` menjawab.
 
 ## 3. Secret (bersama Anda)
 
@@ -43,7 +43,7 @@ bash ~/ipop/deploy/k8s/bootstrap/install-argocd.sh
 Argo CD lalu memasang sendiri, berurutan (sync-wave): CNPG, Longhorn, csi-smb, Argo CD (mengelola
 dirinya sendiri) → monitoring, Loki, Traefik config → Alloy → iPop (Postgres, Redis → migrasi → API, Web, media) → backup.
 
-Cek: http://argocd.192.168.2.113.nip.io → semua aplikasi **Synced / Healthy**.
+Cek: http://argocd.192.168.2.89.nip.io → semua aplikasi **Synced / Healthy**.
 
 ## 5. Data prod (salinan, untuk uji)
 
@@ -73,7 +73,7 @@ kubectl -n ipop cp ./mail-files         ${POD#pod/}:/data/mail-files
 ## 6. Kunci SSH, matikan login password
 
 ```bash
-# dari PC admin: ssh-copy-id administrator@192.168.2.88  (dan .89, .112)
+# dari PC admin: ssh-copy-id administrator@192.168.2.88  (dan .112, .113)
 sudo sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
 sudo sed -i 's/^#\?KbdInteractiveAuthentication.*/KbdInteractiveAuthentication no/' /etc/ssh/sshd_config
 sudo systemctl restart ssh

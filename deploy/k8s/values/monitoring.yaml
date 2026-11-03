@@ -80,7 +80,7 @@ grafana:
   ingress:
     enabled: true
     ingressClassName: traefik
-    hosts: [grafana.192.168.2.113.nip.io]
+    hosts: [grafana.192.168.2.89.nip.io]
   additionalDataSources:
     - name: Loki
       type: loki

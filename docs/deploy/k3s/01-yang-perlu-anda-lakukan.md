@@ -24,8 +24,8 @@ Untuk **tiap** VM (jangan clone dari VM lain — install masing-masing dari ISO)
      | VM | Address | Gateway | DNS |
      |---|---|---|---|
      | ipop-01 | 192.168.2.88/24 | 192.168.2.1 | 192.168.2.14, 192.168.2.15 |
-     | ipop-02 | 192.168.2.89/24 | 192.168.2.1 | 192.168.2.14, 192.168.2.15 |
-     | ipop-03 | 192.168.2.112/24 | 192.168.2.1 | 192.168.2.14, 192.168.2.15 |
+     | ipop-02 | 192.168.2.112/24 | 192.168.2.1 | 192.168.2.14, 192.168.2.15 |
+     | ipop-03 | 192.168.2.113/24 | 192.168.2.1 | 192.168.2.14, 192.168.2.15 |
    - Proxy: kosong. Mirror: default.
    - Storage: **Use an entire disk**, centang **Set up this disk as an LVM group**.
      Di layar ringkasan, ubah `ubuntu-lv` supaya memakai **seluruh** ruang (default Ubuntu hanya 100 GB) → Edit → Size = max.
@@ -36,19 +36,19 @@ Untuk **tiap** VM (jangan clone dari VM lain — install masing-masing dari ISO)
 4. Selesai → Reboot → lepas ISO.
 5. Login, lalu: `sudo apt update && sudo apt full-upgrade -y && sudo reboot`
 
-**Cek:** dari PC Anda, `ssh administrator@192.168.2.88` (dan .89, .112) bisa masuk, dan
+**Cek:** dari PC Anda, `ssh administrator@192.168.2.88` (dan .112, .113) bisa masuk, dan
 `cat /etc/machine-id` di ketiganya **berbeda**.
 
 ➡️ Setelah ketiganya selesai, kabari saya. Saya yang jalankan sisanya (persiapan node, k3s, dll).
 
 ---
 
-## 2. Pastikan IP 192.168.2.113 aman dipakai sebagai VIP
+## 2. Pastikan IP 192.168.2.89 aman dipakai sebagai VIP
 
-Cek di DHCP server/router bahwa **192.168.2.113 tidak ada di range DHCP** dan tidak dipakai perangkat lain.
+Cek di DHCP server/router bahwa **192.168.2.89 tidak ada di range DHCP** dan tidak dipakai perangkat lain.
 Kalau ada di range DHCP, buat reservasi/exclusion untuk IP itu.
 
-**Cek:** `ping 192.168.2.113` dari PC Anda **tidak** menjawab (sebelum cluster dipasang).
+**Cek:** `ping 192.168.2.89` dari PC Anda **tidak** menjawab (sebelum cluster dipasang).
 
 ---
 

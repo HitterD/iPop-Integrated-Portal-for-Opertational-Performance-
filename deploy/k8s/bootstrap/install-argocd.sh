@@ -28,6 +28,6 @@ fi
 
 kubectl apply -f argocd/root.yaml
 echo
-echo "Argo CD: http://argocd.192.168.2.113.nip.io  (user admin)"
+echo "Argo CD: http://argocd.192.168.2.89.nip.io  (user admin)"
 echo "First password:"
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo

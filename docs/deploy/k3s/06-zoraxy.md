@@ -1,6 +1,6 @@
 # Zoraxy (192.168.2.2) — setting saat cutover
 
-Selama uji coba **jangan ubah apa pun** di Zoraxy: uji langsung lewat http://ipop.192.168.2.113.nip.io.
+Selama uji coba **jangan ubah apa pun** di Zoraxy: uji langsung lewat http://ipop.192.168.2.89.nip.io.
 Kerjakan ini hanya pada hari cutover ([07-cutover.md](07-cutover.md)).
 
 Login: http://192.168.2.2:8000
@@ -13,7 +13,7 @@ Login: http://192.168.2.2:8000
 |---|---|
 | Proxy Type | Sub-domain |
 | Matching Keyword / Domain | `ipop.santos.co.id` |
-| Target IP Address or Domain Name with port | `192.168.2.113:80` |
+| Target IP Address or Domain Name with port | `192.168.2.89:80` |
 | Proxy Target require TLS Connection | **tidak dicentang** |
 | Skip TLS Validation | tidak relevan |
 | Require Basic Auth | tidak |
@@ -46,9 +46,9 @@ dari PC user ke node LiveKit:
 
 | Port | Tujuan |
 |---|---|
-| UDP 50000–50100 | 192.168.2.88 dan 192.168.2.89 |
-| TCP 7881 | 192.168.2.88 dan 192.168.2.89 |
-| UDP 3478 (STUN) | 192.168.2.88 dan 192.168.2.89 |
+| UDP 50000–50100 | 192.168.2.88 dan 192.168.2.112 |
+| TCP 7881 | 192.168.2.88 dan 192.168.2.112 |
+| UDP 3478 (STUN) | 192.168.2.88 dan 192.168.2.112 |
 
 Dalam satu LAN tidak ada yang perlu dibuka. Kalau ada firewall antar subnet/site (misalnya Karawang, Jatibening,
 Semarang), minta port di atas dibuka dari subnet-subnet itu ke dua IP tersebut.

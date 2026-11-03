@@ -5,9 +5,9 @@ Prod iPop pindah dari PC Windows ke cluster k3s 3 node. Dokumen ini untuk admin 
 | Node | IP | Isi utama |
 |---|---|---|
 | ipop-01 | 192.168.2.88 | LiveKit (panggilan grup & meeting), Traefik, sebagian aplikasi |
-| ipop-02 | 192.168.2.89 | PostgreSQL (primary/replica), cadangan LiveKit |
-| ipop-03 | 192.168.2.112 | PostgreSQL (replica/primary), Egress, monitoring |
-| **VIP** | **192.168.2.113** | alamat "mengambang" — selalu dipegang node yang hidup |
+| ipop-02 | 192.168.2.112 | PostgreSQL (primary/replica), cadangan LiveKit |
+| ipop-03 | 192.168.2.113 | PostgreSQL (replica/primary), Egress, monitoring |
+| **VIP** | **192.168.2.89** | alamat "mengambang" — selalu dipegang node yang hidup |
 
 Semua alamat dashboard memakai VIP, jadi tetap sama walau satu node mati.
 
@@ -24,7 +24,7 @@ Semua alamat dashboard memakai VIP, jadi tetap sama walau satu node mati.
 ## Gambaran singkat
 
 ```
-Browser ──https──▶ Zoraxy 192.168.2.2 ──http──▶ VIP 192.168.2.113 (Traefik)
+Browser ──https──▶ Zoraxy 192.168.2.2 ──http──▶ VIP 192.168.2.89 (Traefik)
                                                      ├─ /api /hubs /connect ─▶ iPop API (1 pod)
                                                      ├─ /rtc ───────────────▶ LiveKit
                                                      ├─ /onlyoffice ────────▶ ONLYOFFICE

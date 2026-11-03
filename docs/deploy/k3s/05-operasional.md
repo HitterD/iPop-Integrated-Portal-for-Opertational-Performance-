@@ -94,7 +94,7 @@ Volume `ipop-data` bisa diperbesar: ubah `storage: 30Gi` di `apps/ipop/storage.y
 
 | Komponen | Perilaku |
 |---|---|
-| VIP 192.168.2.113 | pindah ke node lain dalam ±3 detik |
+| VIP 192.168.2.89 | pindah ke node lain dalam ±3 detik |
 | iPop Web | pod lain tetap melayani, tanpa putus |
 | iPop API | pindah ke node lain dalam ±1–2 menit (user melihat "menyambung ulang") |
 | PostgreSQL | replika dipromosikan jadi primary ±30 detik |
