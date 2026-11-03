@@ -364,6 +364,24 @@ public class EmojiPickerTests
     }
 
     [Fact]
+    public void No_other_stylesheet_styles_the_picker_class_names_globally()
+    {
+        // The person profile's bare ".ep-grid { display:grid; 1.5fr 1fr }" turned the picker's row list
+        // into two columns: rows stacked side by side and the panel scrolled sideways (2026-11-03).
+        var root = Path.Combine(RepoRoot(), "src/IPop.Web/wwwroot/css");
+        var razor = File.ReadAllText(Path.Combine(RepoRoot(), "src/IPop.Web/Components/EmojiPicker.razor"));
+        var classes = System.Text.RegularExpressions.Regex.Matches(razor, @"\bep-[a-z-]+\b").Select(m => m.Value).ToHashSet();
+        foreach (var file in Directory.EnumerateFiles(root, "*.css", SearchOption.AllDirectories))
+        {
+            if (file.EndsWith("emoji-picker.css", StringComparison.Ordinal)) continue;
+            foreach (var line in File.ReadLines(file).Where(l => !l.TrimStart().StartsWith(":where(", StringComparison.Ordinal)))
+                foreach (var cls in classes)
+                    Assert.False(System.Text.RegularExpressions.Regex.IsMatch(line, @"(^|\}|,)\s*\." + cls + @"\b"),
+                        $"{Path.GetFileName(file)} styles .{cls} without a scope: {line.Trim()}");
+        }
+    }
+
+    [Fact]
     public void Show_newer_emoji_is_an_explicit_persisted_option_with_a_warning()
     {
         using var ctx = Context(out var store);
