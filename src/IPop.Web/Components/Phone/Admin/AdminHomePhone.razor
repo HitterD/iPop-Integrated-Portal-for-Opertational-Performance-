@@ -1,9 +1,10 @@
-@if (IsAdmin)
+@inject IPop.Web.Services.AuthState Auth
+@if (Shown.Count > 0)
 {
     <PhoneScreen Title="Administration" Class="m-admin">
-        <p class="m-admin-tag"><i data-lucide="shield-check"></i>Admin only</p>
-        <div class="m-admin-chips">@foreach (var item in Sections) { <a href="/admin/@item.Slug">@item.Label</a> }</div>
-        @foreach (var group in Sections.GroupBy(s => s.Group))
+        @if (IsAdmin) { <p class="m-admin-tag"><i data-lucide="shield-check"></i>Admin only</p> }
+        <div class="m-admin-chips">@foreach (var item in Shown) { <a href="/admin/@item.Slug">@item.Label</a> }</div>
+        @foreach (var group in Shown.GroupBy(s => s.Group))
         {
             <ListSection Header="@group.Key">@foreach (var item in group) { <ListRow Title="@item.Label" Subtitle="@item.Hint" Href="@($"/admin/{item.Slug}")" Chevron="true"><Leading><i data-lucide="@item.Icon"></i></Leading></ListRow> }</ListSection>
         }
@@ -19,4 +20,18 @@
         ("Communication", "announcements", "Announcements", "Launch videos that pop up after login", "clapperboard"),
         ("Communication", "calendar", "Holidays", "National and company holidays", "party-popper"),
         ("Integrations", "hris", "HRIS sync", "Employee data from HRIS", "refresh-cw") ];
+    private static readonly (string Group, string Slug, string Label, string Hint, string Icon) Approvers =
+        ("Structure", "approval", "Approvers", "Who approves for whom", "git-fork");
+
+    /// Admin sees every section; HC presets see only what their permissions unlock.
+    private IReadOnlyList<(string Group, string Slug, string Label, string Hint, string Icon)> Shown
+    {
+        get
+        {
+            var allowed = IPop.Web.Components.Admin.AdminSections.Visible(IsAdmin, Auth.Can).Select(s => s.Slug).ToHashSet();
+            return Sections.Append(Approvers).Where(s => allowed.Contains(s.Slug))
+                .OrderBy(s => Array.IndexOf(Order, s.Group)).ToList();
+        }
+    }
+    private static readonly string[] Order = ["People", "Structure", "Security", "Communication", "Integrations"];
 }

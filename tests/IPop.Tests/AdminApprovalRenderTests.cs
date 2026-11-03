@@ -130,4 +130,26 @@ public class AdminApprovalRenderTests
         Assert.True(dlg.Find("button.apv-apply").HasAttribute("disabled"));
         Assert.Contains("People not in the file will lose their approvers", dlg.Markup);
     }
+
+    [Fact]
+    public void Nav_HcUserCanOpenAdmin_EmployeeCannot()
+    {
+        var (hcCtx, _) = Setup(["HC – Approval"], ["approval.read", "approval.manage"]);
+        using var _h = hcCtx;
+        Assert.True(hcCtx.Services.GetRequiredService<AuthState>().CanOpenAdmin);
+        var (empCtx, _) = Setup(["Employee"], ["chat.send"]);
+        using var _e = empCtx;
+        Assert.False(empCtx.Services.GetRequiredService<AuthState>().CanOpenAdmin);
+    }
+
+    [Fact]
+    public void PhoneAdminHome_HcSeesOnlyTheirSections()
+    {
+        var (ctx, _) = Setup(["HC – Approval"], ["approval.read", "approval.manage"]);
+        using var _ctx = ctx;
+        var cut = ctx.Render<IPop.Web.Components.Phone.Admin.AdminHomePhone>(p => p.Add(x => x.IsAdmin, false));
+        Assert.NotEmpty(cut.FindAll("a[href='/admin/approval']"));
+        Assert.Empty(cut.FindAll("a[href='/admin/users']"));
+        Assert.DoesNotContain("Admin only", cut.Markup);
+    }
 }

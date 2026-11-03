@@ -72,6 +72,9 @@ public class AuthState(HttpClient http, IJSRuntime js)
 
     public bool Can(string permissionCode) => IsAdmin || Permissions.Contains(permissionCode);
 
+    /// Admin, or anyone whose permissions unlock at least one Administration section (HC presets).
+    public bool CanOpenAdmin => IPop.Web.Components.Admin.AdminSections.Visible(IsAdmin, Can).Count > 0;
+
     public async Task<DirectoryEmployeeDto?> LoadMeAsync()
     {
         if (Me is not null) return Me;

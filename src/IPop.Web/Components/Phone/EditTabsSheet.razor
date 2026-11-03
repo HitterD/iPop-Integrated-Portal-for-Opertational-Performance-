@@ -42,7 +42,7 @@
         <p class="ph-note">Drag ≡ to reorder. More always stays last.</p>
         <div class="ph-sec">In More</div>
         <div class="ph-group">
-            @foreach (var m in PhoneTabs.More(draft, Auth.IsAdmin))
+            @foreach (var m in PhoneTabs.More(draft, Auth.CanOpenAdmin))
             {
                 <div class="ph-erow">
                     <button type="button" class="ph-ad" aria-label="@($"Pin {m.Label}")" disabled="@(draft.Count >= PhoneTabs.Count)" @onclick="() => Pin(m.Href)"><span></span></button>

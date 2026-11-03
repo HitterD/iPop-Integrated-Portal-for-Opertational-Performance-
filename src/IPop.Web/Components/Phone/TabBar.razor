@@ -22,7 +22,7 @@
     }
     <button type="button" class="m-tab @(MoreOpen || IsMoreRoute ? "active" : "")" aria-haspopup="dialog" aria-expanded="@(MoreOpen ? "true" : "false")" @onclick="OnMore">
         <span class="m-tab-ic"><i data-lucide="ellipsis"></i>
-            @if (MoreBadgeTotal(Prefs.Tabs, Badges, Auth.IsAdmin) > 0)
+            @if (MoreBadgeTotal(Prefs.Tabs, Badges, Auth.CanOpenAdmin) > 0)
             {
                 <span class="m-tab-badge dot"></span>
             }
@@ -46,7 +46,7 @@
         get
         {
             var path = "/" + Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0];
-            return PhoneTabs.More(Prefs.Tabs, Auth.IsAdmin).Any(i => path == i.Href || path.StartsWith(i.Href + "/"));
+            return PhoneTabs.More(Prefs.Tabs, Auth.CanOpenAdmin).Any(i => path == i.Href || path.StartsWith(i.Href + "/"));
         }
     }
 

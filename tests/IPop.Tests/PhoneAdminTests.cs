@@ -10,6 +10,7 @@ public class PhoneAdminTests
     public void Admin_home_is_permission_gated_and_grouped()
     {
         using var ctx = new BunitContext(); ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        ctx.Services.AddSingleton(new AuthState(new HttpClient(new ReadApi()) { BaseAddress = new("http://localhost/") }, ctx.JSInterop.JSRuntime));
         var cut = ctx.Render<AdminHomePhone>(); Assert.Empty(cut.FindAll(".m-admin"));
         cut.Render(p => p.Add(x => x.IsAdmin, true));
         Assert.Equal(new[] { "People", "Structure", "Security", "Communication", "Integrations" }, cut.FindAll(".ph-sec").Select(x => x.TextContent));

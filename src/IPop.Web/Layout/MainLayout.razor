@@ -33,7 +33,7 @@
         <nav class="nav-scroll" aria-label="Main">
         @foreach (var group in NavGroups)
         {
-            var items = group.Items.Where(i => !i.AdminOnly || Auth.IsAdmin).ToList();
+            var items = group.Items.Where(i => !i.AdminOnly || Auth.CanOpenAdmin).ToList();
             @if (items.Count > 0)
             {
                 <div class="nav-group nav-g-@group.Key">

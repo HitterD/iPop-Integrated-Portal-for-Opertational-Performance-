@@ -17,7 +17,7 @@
         <i data-lucide="chevron-right" class="ph-row-chev"></i>
     </button>
     <div class="ph-mgrid">
-        @foreach (var m in PhoneTabs.More(Prefs.Tabs, Auth.IsAdmin))
+        @foreach (var m in PhoneTabs.More(Prefs.Tabs, Auth.CanOpenAdmin))
         {
             <a class="ph-mt" href="@m.Href" @onclick="Close">
                 <span class="ph-ico @m.Color"><i data-lucide="@m.Icon"></i></span>@m.Label
