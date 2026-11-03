@@ -48,3 +48,20 @@ spec:
         - action: drop
           sourceLabels: [__name__]
           regex: ".+"
+---
+# Longhorn's own NetworkPolicy only lets Longhorn pods reach the manager; allow Prometheus to scrape it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: longhorn-system
+spec:
+  podSelector:
+    matchLabels: { app: longhorn-manager }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: monitoring }
+      ports:
+        - { port: 9500, protocol: TCP }
