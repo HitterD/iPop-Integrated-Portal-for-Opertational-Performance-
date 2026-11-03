@@ -9,8 +9,14 @@ metadata:
   namespace: kube-system
 spec:
   valuesContent: |-
+    # One Traefik on every node + externalTrafficPolicy Local: the VIP's node answers itself and
+    # Traefik sees the real client address (needed for the ICT-only dashboard rule and for the
+    # client IP in iPop's audit log). With "Cluster" every request arrived from a pod address.
     deployment:
-      replicas: 2
+      kind: DaemonSet
+    service:
+      spec:
+        externalTrafficPolicy: Local
     podDisruptionBudget:
       enabled: true
       minAvailable: 1
