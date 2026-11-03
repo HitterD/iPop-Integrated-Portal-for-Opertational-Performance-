@@ -1,6 +1,6 @@
 # Argo CD manages itself after bootstrap (same chart + values the installer used).
 global:
-  domain: argocd.192.168.2.89.nip.io
+  domain: argocd-ipop.santos.co.id
 configs:
   params:
     server.insecure: true          # TLS ends at Zoraxy; inside the LAN it is plain http
@@ -22,3 +22,6 @@ server:
     ingressClassName: traefik
     annotations:
       traefik.ingress.kubernetes.io/router.middlewares: kube-system-ict-only@kubernetescrd
+    extraHosts:
+      - name: argocd.192.168.2.89.nip.io
+        path: /

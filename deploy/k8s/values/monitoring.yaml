@@ -72,6 +72,9 @@ grafana:
     userKey: admin-user
     passwordKey: admin-password
   defaultDashboardsTimezone: Asia/Jakarta
+  grafana.ini:
+    server:
+      root_url: https://grafana-ipop.santos.co.id
   resources: { requests: { cpu: 50m, memory: 192Mi }, limits: { memory: 512Mi } }
   persistence:
     enabled: true
@@ -80,7 +83,7 @@ grafana:
   ingress:
     enabled: true
     ingressClassName: traefik
-    hosts: [grafana.192.168.2.89.nip.io]
+    hosts: [grafana.192.168.2.89.nip.io, grafana-ipop.santos.co.id]
     annotations:
       traefik.ingress.kubernetes.io/router.middlewares: kube-system-ict-only@kubernetescrd
   additionalDataSources:

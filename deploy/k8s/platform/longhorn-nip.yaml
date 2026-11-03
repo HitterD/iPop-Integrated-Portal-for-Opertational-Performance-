@@ -1,0 +1,17 @@
+# Second hostname for the Longhorn UI (the chart supports one), same protection.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: longhorn-nip
+  namespace: longhorn-system
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: kube-system-ict-only@kubernetescrd,longhorn-system-longhorn-auth@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: longhorn.192.168.2.89.nip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: longhorn-frontend, port: { number: 80 } } }

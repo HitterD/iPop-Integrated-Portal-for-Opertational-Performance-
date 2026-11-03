@@ -5,3 +5,4 @@ resources:
   - node-alerts.yaml
   - longhorn-backup-job.yaml
   - dashboard-access.yaml
+  - longhorn-nip.yaml
