@@ -2,16 +2,28 @@
 
 ## Deploy versi baru
 
-Tidak ada lagi copy file / restart manual.
+Satu perintah, dari repo, setelah `git commit`:
 
-1. Perubahan di-merge ke branch `main` di GitHub.
-2. GitHub Actions (tab **Actions**): **CI** (tes .NET + JS) → **Build and deploy**: build image `ipop-api` & `ipop-web`,
-   push ke GHCR dengan tag = 12 karakter commit, lalu menulis tag itu ke `deploy/k8s/apps/ipop/kustomization.yaml`.
-3. Argo CD melihat commit itu (≤ 2 menit) dan menerapkannya:
-   database & Redis tetap → **job migrasi** → API diganti (± 30–60 detik iPop "menyambung ulang") → Web diganti bergilir (tanpa putus).
-4. Cek di Argo CD › **ipop**: Synced + Healthy.
+```powershell
+.\deploy\ship.ps1            # 1) ke STAGING: push → tes → image → otomatis live di staging
+                              #    → buka http://staging.192.168.2.89.nip.io dan coba
+.\deploy\ship.ps1 -Prod      # 2) ke PRODUKSI: commit yang sama persis yang hijau di staging
+                              #    → tes → image → tanya "yes" → Sync Argo → tunggu Healthy
+.\deploy\ship.ps1 -Status    # apa yang jalan di mana sekarang
+```
 
-Kalau tes gagal, tidak ada image yang dibuat dan prod tidak berubah.
+Aturan yang dijaga skrip (best practice):
+- **Staging dulu, selalu.** `-Prod` menolak kalau commit di staging belum punya build hijau.
+- **Yang naik ke produksi = yang sudah dites di staging** (fast-forward `main` ke `staging`, bukan build dari laptop).
+- **Produksi tidak berubah sendiri.** Argo menandai `ipop` OutOfSync; skrip baru Sync setelah Anda ketik `yes`
+  (atau `-Yes`). Tanpa skrip: Argo CD › **ipop** › **SYNC**.
+- Tes gagal → tidak ada image, tidak ada yang berubah. Skrip menampilkan tes yang gagal.
+- Branch Anda tertinggal dari `main` → skrip berhenti dan bilang `git merge github/main` dulu.
+
+Di balik layar: GitHub Actions **Build and deploy** (tes .NET + JS → image `ipop-api`/`ipop-web` ke GHCR dengan tag
+`<branch>-<12 karakter commit>` → tag ditulis ke `deploy/k8s/apps/ipop[-staging]/kustomization.yaml`) → Argo CD:
+**job migrasi** → API diganti (± 30–60 detik iPop "menyambung ulang") → Web diganti bergilir (tanpa putus).
+
 Kalau migrasi gagal, Argo berhenti dan API lama tetap jalan — lihat log job `ipop-migrate` di Argo CD.
 
 ## Rollback
