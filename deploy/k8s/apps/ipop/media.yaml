@@ -41,6 +41,8 @@ spec:
     spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
+      # Service "livekit" would inject LIVEKIT_PORT=tcp://… which livekit-server reads as its port.
+      enableServiceLinks: false
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -151,6 +153,7 @@ spec:
             - weight: 50
               preference:
                 matchExpressions: [{ key: ipop/media, operator: NotIn, values: ["true"] }]
+      enableServiceLinks: false
       securityContext:
         fsGroup: 1654
       containers:
