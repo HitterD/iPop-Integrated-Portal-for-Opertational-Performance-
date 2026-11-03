@@ -10,6 +10,9 @@ defaultSettings:
   replicaSoftAntiAffinity: false    # never two copies on one node
   nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
   defaultDataLocality: best-effort
+  # ipop-data is ReadWriteMany (shared over NFS by a share-manager pod). Without this, losing the node
+  # that ran the share-manager stalled the API's volume for ~5 min (measured); with it ~20-30 s.
+  rwxVolumeFastFailover: true
 longhornUI:
   replicas: 1
 ingress:
