@@ -1,0 +1,47 @@
+# Continuous backup of PostgreSQL to the S3 bucket "ipop-db-wal" (Garage container on Synology 192.168.2.16):
+# every committed transaction (WAL) is shipped within ~1 minute, plus a full base backup every night.
+# Restore to any moment of the last 14 days (point-in-time recovery): docs/deploy/k3s/05-operasional.md.
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: nas-s3
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+spec:
+  retentionPolicy: "14d"
+  configuration:
+    destinationPath: s3://ipop-db-wal/
+    endpointURL: http://192.168.2.16:3900
+    s3Credentials:
+      accessKeyId: { name: backup-s3, key: ACCESS_KEY_ID }
+      secretAccessKey: { name: backup-s3, key: ACCESS_SECRET_KEY }
+      region: { name: backup-s3-region, key: REGION }
+    wal:
+      compression: gzip
+      maxParallel: 2
+    data:
+      compression: gzip
+      jobs: 2
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: backup-s3-region
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+stringData:
+  REGION: garage
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: ipop-db-nightly
+spec:
+  schedule: "0 30 0 * * *"        # 00:30 every night (seconds field first)
+  backupOwnerReference: self
+  cluster:
+    name: ipop-db
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
+  immediate: true

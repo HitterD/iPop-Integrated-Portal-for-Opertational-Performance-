@@ -27,3 +27,8 @@ csi:
 # account first, so it never starts. Argo upgrades are already ordered; skip the hook.
 preUpgradeChecker:
   jobEnabled: false
+# Volume backups (iPop uploads, ONLYOFFICE data) to the S3 bucket "longhorn-backups" on the Synology.
+defaultBackupStore:
+  backupTarget: s3://longhorn-backups@garage/
+  backupTargetCredentialSecret: backup-s3
+  pollInterval: "300"

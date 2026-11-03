@@ -1,0 +1,13 @@
+# Nightly backup of every Longhorn volume to the NAS (S3), keeping 14. Volumes join through the
+# "default" group, which Longhorn gives to every volume without its own job.
+apiVersion: longhorn.io/v1beta2
+kind: RecurringJob
+metadata:
+  name: nightly-backup
+  namespace: longhorn-system
+spec:
+  task: backup
+  cron: "15 1 * * *"
+  retain: 14
+  concurrency: 1
+  groups: [default]

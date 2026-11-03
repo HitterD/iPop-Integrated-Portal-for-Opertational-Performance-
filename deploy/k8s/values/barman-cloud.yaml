@@ -1,0 +1,4 @@
+# CloudNativePG backup plugin: continuous WAL archiving + base backups to S3 (Garage on the Synology).
+resources:
+  requests: { cpu: 10m, memory: 32Mi }
+  limits: { memory: 128Mi }

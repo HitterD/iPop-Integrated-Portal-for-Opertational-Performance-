@@ -30,6 +30,16 @@ spec:
   buffering:
     maxRequestBodyBytes: 600000000     # mail attachments up to 500 MB + overhead
 ---
+# A Web pod on a node that just died: try the other one instead of returning 502.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: retry
+spec:
+  retry:
+    attempts: 3
+    initialInterval: 100ms
+---
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
@@ -53,4 +63,5 @@ spec:
     - kind: Rule
       match: Host(`ipop.santos.co.id`) || Host(`ipop.192.168.2.89.nip.io`) || Host(`192.168.2.89`)
       priority: 10
+      middlewares: [{ name: retry }]
       services: [{ name: ipop-web, port: 80 }]

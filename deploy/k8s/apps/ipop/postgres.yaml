@@ -20,6 +20,7 @@ spec:
       work_mem: "16MB"
       maintenance_work_mem: "256MB"
       timezone: "UTC"
+      archive_timeout: "60s"
   bootstrap:
     initdb:
       database: ipop
@@ -52,9 +53,16 @@ spec:
     podAntiAffinityType: required
     topologyKey: kubernetes.io/hostname
     # Default is 300 s: the primary's pod would stay "on" a dead node for 5 min before CNPG promotes
-    # the replica. 20 s matches the API; measured failover then is the promotion itself (~20 s).
+    # the replica. 10 s matches the API; measured failover then is the promotion itself (~20 s).
     tolerations:
-      - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 20 }
-      - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 20 }
+      - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 10 }
+      - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 10 }
   monitoring:
     enablePodMonitor: true
+  # Continuous WAL archiving to S3 on the NAS (db-backup.yaml). archive_timeout caps the data a total
+  # loss could cost at ~1 minute even when the database is quiet.
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: nas-s3

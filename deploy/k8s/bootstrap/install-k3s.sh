@@ -25,9 +25,16 @@ tls-san:
 write-kubeconfig-mode: "0600"
 # Built-in Traefik is the ingress (tuned in deploy/k8s/platform/traefik-config.yaml).
 # ServiceLB (klipper) publishes Traefik on every node; kube-vip carries the VIP.
+# Nodes share images with each other (Spegel), so a pod moving after a failure does not depend on a
+# slow or rate-limited Docker Hub pull. Mirrors listed in /etc/rancher/k3s/registries.yaml.
+embedded-registry: true
 etcd-snapshot-schedule-cron: "0 0,12 * * *"
 etcd-snapshot-retention: 10
+# Notice a dead node after 20 s instead of 40 s (kubelets report every 5 s; 4 missed reports).
+kube-controller-manager-arg:
+  - "node-monitor-grace-period=20s"
 kubelet-arg:
+  - "node-status-update-frequency=5s"
   - "system-reserved=cpu=500m,memory=1Gi"
   - "kube-reserved=cpu=250m,memory=512Mi"
   - "eviction-hard=memory.available<500Mi,nodefs.available<10%"
@@ -89,6 +96,13 @@ fi
 mkdir -p /etc/systemd/system/k3s.service.d
 printf '[Service]\nExecStopPost=-/usr/sbin/ip addr del %s/32 dev %s\n' "$VIP" "$IFACE" \
   > /etc/systemd/system/k3s.service.d/10-release-vip.conf
+
+printf 'mirrors:
+  docker.io:
+  ghcr.io:
+  quay.io:
+  registry.k8s.io:
+' > /etc/rancher/k3s/registries.yaml
 
 curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" sh -s - server
 

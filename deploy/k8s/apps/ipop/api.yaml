@@ -29,9 +29,9 @@ spec:
               preference:
                 matchExpressions: [{ key: ipop/media, operator: NotIn, values: ["true"] }]
       tolerations:
-        # Leave a dead node after 20 s instead of the default 5 min.
-        - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 20 }
-        - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 20 }
+        # Leave a dead node after 10 s instead of the default 5 min.
+        - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 10 }
+        - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 10 }
       securityContext:
         fsGroup: 1654
         fsGroupChangePolicy: OnRootMismatch

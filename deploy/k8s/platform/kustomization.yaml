@@ -3,3 +3,4 @@ kind: Kustomization
 resources:
   - traefik-config.yaml
   - node-alerts.yaml
+  - longhorn-backup-job.yaml
