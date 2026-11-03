@@ -486,8 +486,9 @@ public class MeetingRoomsTabV2Tests
         var max = cut.Find(".mrt-pin-in").GetAttribute("maxlength");
         Assert.True(max is null || int.Parse(max) >= pasted.Length, $"maxlength {max} truncates \"{pasted}\"");
         cut.Find(".mrt-pin-in").Input(pasted);
-        Assert.Equal("123456", cut.Find(".mrt-pin-in").GetAttribute("value"));
-        Assert.False(cut.Find(".mrt-pin-go").HasAttribute("disabled"));
+        // Wait for the re-render: on a slow CI runner the first read can still see the empty field.
+        cut.WaitForAssertion(() => Assert.Equal("123456", cut.Find(".mrt-pin-in").GetAttribute("value")));
+        cut.WaitForAssertion(() => Assert.False(cut.Find(".mrt-pin-go").HasAttribute("disabled")));
     }
 
     [Fact]

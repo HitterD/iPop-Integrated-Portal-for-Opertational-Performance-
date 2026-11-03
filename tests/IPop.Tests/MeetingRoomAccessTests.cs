@@ -49,7 +49,8 @@ public class MeetingRoomAccessTests
     public async Task Hall_room_meetings_get_a_random_6_digit_password_and_other_places_do_not()
     {
         using var t = new TestDb(); var org = t.AddUser("O1");
-        var start = DateTime.UtcNow.AddHours(2);
+        // 10:00 WIB tomorrow, not "now + 2 h": late in the evening that crosses midnight and the same-day rule rejects it.
+        var start = DateTime.UtcNow.Date.AddDays(1).AddHours(3);
         var hall = await BookAsync(t, org.Id, start, 30);
         var other = await BookAsync(t, org.Id, start, 30, "Lantai 3");
 

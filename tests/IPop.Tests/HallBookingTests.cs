@@ -81,7 +81,8 @@ public class HallBookingTests
     public async Task Next_booking_is_the_earliest_future_meeting_of_that_room_with_its_organizer()
     {
         using var t = new TestDb(); var org = t.AddUser("O2");
-        var now = DateTime.UtcNow;
+        // 08:00 WIB tomorrow: +1/+2/+5 h stays on one local day (room bookings can't cross midnight), at any hour the suite runs.
+        var now = DateTime.UtcNow.Date.AddDays(1).AddHours(1);
         await MeetingEndpoints.ApplyCreateAsync(t.Db, org.Id, Req(now.AddHours(5), 30, "SJA Hall · Toraja"), default);
         await MeetingEndpoints.ApplyCreateAsync(t.Verify(), org.Id, Req(now.AddHours(2), 30, "SJA Hall · Toraja"), default);
         await MeetingEndpoints.ApplyCreateAsync(t.Verify(), org.Id, Req(now.AddHours(1), 30, "SJA Hall · Robusta"), default);
