@@ -21,3 +21,7 @@ csi:
   provisionerReplicaCount: 1
   resizerReplicaCount: 1
   snapshotterReplicaCount: 1
+# Argo CD runs Helm hooks before regular resources; Longhorn's pre-upgrade hook needs its service
+# account first, so it never starts. Argo upgrades are already ordered; skip the hook.
+preUpgradeChecker:
+  jobEnabled: false
