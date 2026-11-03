@@ -120,7 +120,7 @@ Untuk hitungan detik API harus jalan 2–3 salinan sekaligus — proyek kode ter
 |---|---|---|---|
 | PostgreSQL — setiap transaksi (WAL) | terus-menerus, maks. 60 detik | S3 Garage di Synology 192.168.2.16, bucket `ipop-db-wal` | 14 hari, restore ke **menit mana pun** |
 | PostgreSQL — base backup | 00:30 WIB | sama | 14 hari |
-| pg_dump (cadangan kedua, bisa dibuka manual) | 01:00 WIB | `\192.168.2.16\sja\SJA SPJ\ICT\backup\ipop-db` | 14 harian + 8 mingguan |
+| pg_dump (cadangan kedua, bisa dibuka manual) | 01:00 WIB | `\\192.168.2.16\sja\SJA SPJ\ICT\backup\ipop-db` | 14 harian + 8 mingguan |
 | Volume Longhorn (upload iPop, ONLYOFFICE) | 01:15 WIB | S3 bucket `longhorn-backups` | 14 |
 | Snapshot etcd (state cluster) | 00:00 & 12:00, salin 01:30 | `...\ipop-db\etcd` | 14 |
 
