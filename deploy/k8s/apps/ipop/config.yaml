@@ -11,6 +11,9 @@ metadata:
     argocd.argoproj.io/sync-wave: "-2"
 data:
   Workers__Outbound: "false"                                                    # CUTOVER: "true"
+  # .NET's background GC thread (".NET BGC") crashes with a general protection fault on these
+  # KVM nodes (Ubuntu 26.04, kernel 7.0); non-concurrent GC ran 17/17 clean. Also baked into the images.
+  DOTNET_gcConcurrent: "0"
   Workers__OpsHealth: "false"          # disk + backup alerts come from Prometheus/Alertmanager now
   Https__Redirect: "false"             # TLS ends at Zoraxy
   ConnectionStrings__Redis: "redis:6379,abortConnect=false"
@@ -82,6 +85,7 @@ kind: ConfigMap
 metadata:
   name: ipop-web-env
 data:
+  DOTNET_gcConcurrent: "0"            # see ipop-api-env
   AndroidApp__PackageName: "id.co.santos.ipop"
   AndroidApp__Sha256CertFingerprints__0: "D1:3E:A8:9E:2C:4A:4B:FC:27:F0:EC:47:DC:89:4C:A3:9A:B0:6E:03:E3:D8:5B:33:BE:2B:8F:90:C6:D5:D1:11"
   AndroidApp__ApkPath: "/data/android/ipop.apk"
