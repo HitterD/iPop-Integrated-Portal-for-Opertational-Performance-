@@ -7,7 +7,7 @@ echo "== $(hostname): preparing for k3s"
 
 # 1. Unique identity. Cloned VMs share /etc/machine-id and SSH host keys, which breaks k3s node
 #    identity, Longhorn and SSH host verification. Regenerate if this node still has the clone's id.
-CLONE_ID="418781a045324b1672f0f15288dd5df1"
+CLONE_ID="418781a045324b1672f0f15288dd5df1"   # ipop-01's own id (product_uuid); a node whose product_uuid differs but carries it is a clone
 if [ "$(cat /etc/machine-id)" = "$CLONE_ID" ]; then
   echo "-- cloned machine-id found: regenerating machine-id and SSH host keys"
   rm -f /etc/machine-id /var/lib/dbus/machine-id
