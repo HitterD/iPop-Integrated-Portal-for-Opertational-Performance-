@@ -7,7 +7,7 @@ set -euo pipefail
 
 gen() { head -c 64 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c "${1:-40}"; }
 have() { kubectl -n "$1" get secret "$2" >/dev/null 2>&1; }
-for ns in ipop monitoring; do kubectl create namespace $ns --dry-run=client -o yaml | kubectl apply -f - >/dev/null; done
+for ns in ipop ipop-staging monitoring; do kubectl create namespace $ns --dry-run=client -o yaml | kubectl apply -f - >/dev/null; done
 
 if ! have ipop ipop-db-app; then
   kubectl -n ipop create secret generic ipop-db-app --type=kubernetes.io/basic-auth \
@@ -53,4 +53,16 @@ fi
 if ! have monitoring alertmanager-smtp; then
   kubectl -n monitoring create secret generic alertmanager-smtp --from-literal=password=unset
 fi
+# --- Staging (namespace ipop-staging): its own DB password and JWT key; LiveKit keys and pull secret shared.
+if ! have ipop-staging ipop-db-app; then
+  kubectl -n ipop-staging create secret generic ipop-db-app --type=kubernetes.io/basic-auth     --from-literal=username=ipop --from-literal=password="$(gen 32)"
+fi
+SDB=$(kubectl -n ipop-staging get secret ipop-db-app -o jsonpath='{.data.password}' | base64 -d)
+if ! have ipop-staging ipop-api-secrets; then
+  kubectl -n ipop-staging create secret generic ipop-api-secrets     --from-literal=ConnectionStrings__IPopDb="Host=ipop-db-rw;Port=5432;Database=ipop;Username=ipop;Password=${SDB};Timeout=5"     --from-literal=Jwt__Key="$(gen 64)" --from-literal=Jwt__Issuer=ipop --from-literal=Jwt__Audience=ipop     --from-literal=Calls__LiveKit__ApiKey="$LK_KEY" --from-literal=Calls__LiveKit__ApiSecret="$LK_SECRET"
+fi
+if ! have ipop-staging ghcr; then
+  kubectl -n ipop get secret ghcr -o json | python3 -c "import sys,json;d=json.load(sys.stdin);[d['metadata'].pop(k,None) for k in ('namespace','uid','resourceVersion','creationTimestamp','managedFields','ownerReferences')];print(json.dumps(d))"     | kubectl -n ipop-staging apply -f -
+fi
+
 echo "== generated secrets ready"

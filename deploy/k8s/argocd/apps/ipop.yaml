@@ -14,9 +14,13 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: ipop
+  # PROD: no automatic sync. A merge to main builds the images and writes the new tag; Argo CD then
+  # shows "OutOfSync" with the diff, and an admin clicks SYNC to release it (one click to roll back too).
   syncPolicy:
-    automated: { prune: true, selfHeal: true }
     syncOptions: [CreateNamespace=true, ServerSideApply=true]
+    retry:
+      limit: 3
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }
   # CNPG fills in defaults (archive_mode, log_*, monitoring queries…) and the plugin "enabled" flag;
   # they are not drift. Only hides them from the OutOfSync status; our own values still apply.
   ignoreDifferences:

@@ -1,0 +1,45 @@
+# Same routing as prod, on the staging host. LiveKit and ONLYOFFICE are prod's (namespace ipop),
+# reached through ExternalName services so the routes stay namespace-local.
+apiVersion: v1
+kind: Service
+metadata: { name: livekit }
+spec: { type: ExternalName, externalName: livekit.ipop.svc.cluster.local, ports: [{ port: 7880, name: http }] }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: onlyoffice }
+spec: { type: ExternalName, externalName: onlyoffice.ipop.svc.cluster.local, ports: [{ port: 80, name: http }] }
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata: { name: strip-onlyoffice }
+spec: { stripPrefix: { prefixes: ["/onlyoffice"] } }
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata: { name: onlyoffice-headers }
+spec: { headers: { customRequestHeaders: { X-Forwarded-Prefix: /onlyoffice } } }
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata: { name: ipop-staging }
+spec:
+  entryPoints: [web]
+  routes:
+    - kind: Rule
+      match: Host(`staging.192.168.2.89.nip.io`) && (PathPrefix(`/api`) || PathPrefix(`/hubs`) || PathPrefix(`/connect`) || Path(`/healthz`))
+      priority: 100
+      services: [{ name: ipop-api, port: 80 }]
+    - kind: Rule
+      match: Host(`staging.192.168.2.89.nip.io`) && PathPrefix(`/rtc`)
+      priority: 100
+      services: [{ name: livekit, port: 7880 }]
+    - kind: Rule
+      match: Host(`staging.192.168.2.89.nip.io`) && PathPrefix(`/onlyoffice`)
+      priority: 100
+      middlewares: [{ name: onlyoffice-headers }, { name: strip-onlyoffice }]
+      services: [{ name: onlyoffice, port: 80 }]
+    - kind: Rule
+      match: Host(`staging.192.168.2.89.nip.io`)
+      priority: 10
+      services: [{ name: ipop-web, port: 80 }]

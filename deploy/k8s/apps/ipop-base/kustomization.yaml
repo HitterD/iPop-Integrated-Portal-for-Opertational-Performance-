@@ -1,0 +1,11 @@
+# Shared by prod (../ipop) and staging (../ipop-staging).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - postgres.yaml
+  - redis.yaml
+  - config.yaml
+  - storage.yaml
+  - migrate-job.yaml
+  - api.yaml
+  - web.yaml

@@ -11,9 +11,7 @@ echo "Primary: $PRIMARY"
 read -r -p "This REPLACES the cluster's iPop database with $DUMP. Type RESTORE to continue: " ok
 [ "$ok" = "RESTORE" ] || exit 1
 
-# Pause Argo CD's self-heal for the app, or it would start the API again mid-restore.
-kubectl -n argocd patch application ipop --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
-trap 'kubectl -n argocd patch application ipop --type merge -p "{\"spec\":{\"syncPolicy\":{\"automated\":{\"prune\":true,\"selfHeal\":true}}}}"' EXIT
+# The ipop app has no auto-sync (manual release), so Argo CD will not start the API again mid-restore.
 kubectl -n $NS scale deploy/ipop-api --replicas=0
 kubectl -n $NS wait --for=delete pod -l app.kubernetes.io/name=ipop-api --timeout=120s || true
 

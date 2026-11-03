@@ -1,0 +1,97 @@
+# Staging: the same iPop on the same cluster, in namespace ipop-staging, following the "staging" branch.
+# Own small database (1 instance), Redis, API and Web; shares LiveKit and ONLYOFFICE with prod (namespace
+# ipop). Nothing goes out (no mail, push, iDesk, HRIS). Test at http://staging.192.168.2.89.nip.io
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ipop-staging
+resources:
+  - namespace.yaml
+  - ../ipop-base
+  - ingress.yaml
+patches:
+  - target: { kind: Cluster, name: ipop-db }
+    patch: |-
+      - op: replace
+        path: /spec/instances
+        value: 1
+      - op: replace
+        path: /spec/storage/size
+        value: 10Gi
+      - op: replace
+        path: /spec/walStorage/size
+        value: 4Gi
+      - op: replace
+        path: /spec/resources
+        value: { requests: { cpu: 100m, memory: 512Mi }, limits: { memory: 1Gi } }
+      - op: replace
+        path: /spec/postgresql/parameters/shared_buffers
+        value: 256MB
+      - op: replace
+        path: /spec/postgresql/parameters/effective_cache_size
+        value: 768MB
+      - op: remove
+        path: /spec/plugins
+  - target: { kind: PersistentVolumeClaim, name: ipop-data }
+    patch: |-
+      - op: replace
+        path: /spec/resources/requests/storage
+        value: 5Gi
+  - target: { kind: Deployment, name: ipop-api }
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value: { requests: { cpu: 100m, memory: 512Mi }, limits: { memory: 1536Mi } }
+  - target: { kind: Deployment, name: ipop-web }
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  - target: { kind: ConfigMap, name: ipop-api-env }
+    patch: |-
+      - op: replace
+        path: /data/Workers__Outbound
+        value: "false"
+      - op: replace
+        path: /data/App__PublicWebUrl
+        value: http://staging.192.168.2.89.nip.io
+      - op: replace
+        path: /data/Notifier__WebBase
+        value: http://staging.192.168.2.89.nip.io
+      - op: replace
+        path: /data/Oidc__Enabled
+        value: "false"
+      - op: replace
+        path: /data/Cors__WebOrigins__0
+        value: http://staging.192.168.2.89.nip.io
+      - op: replace
+        path: /data/OnlyOffice__PublicServerUrl
+        value: http://staging.192.168.2.89.nip.io/onlyoffice
+      - op: replace
+        path: /data/OnlyOffice__InternalApiUrl
+        value: http://ipop-api.ipop-staging.svc
+      - op: replace
+        path: /data/Calls__LiveKit__Url
+        value: ws://staging.192.168.2.89.nip.io
+      - op: replace
+        path: /data/MeetingRooms__TemplateUrl
+        value: http://ipop-web.ipop-staging.svc/recording/index.html
+      # Isolated meeting-room media so staging never touches prod rooms or recordings.
+      - op: replace
+        path: /data/MeetingRooms__DeploymentMode
+        value: Isolated
+      - op: add
+        path: /data/MeetingRooms__MediaNamespace
+        value: staging-hall
+      - op: add
+        path: /data/MeetingRooms__BookingWorkerEnabled
+        value: "false"
+      - op: add
+        path: /data/MeetingRooms__NasFolder
+        value: /sja/SJA SPJ/ICT/recordings-staging
+images:
+  - name: ipop-api
+    newName: ghcr.io/hitterd/ipop-api
+    newTag: "k3stest-5994f9929d-dp"
+  - name: ipop-web
+    newName: ghcr.io/hitterd/ipop-web
+    newTag: "k3stest-eeaf55ab6c"

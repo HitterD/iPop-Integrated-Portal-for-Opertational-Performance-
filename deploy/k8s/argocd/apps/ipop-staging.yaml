@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ipop-staging
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:HitterD/iPop-Integrated-Portal-for-Opertational-Performance-.git
+    targetRevision: staging
+    path: deploy/k8s/apps/ipop-staging
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ipop-staging
+  # Staging follows the "staging" branch automatically: push there, it is live in ~2 min.
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true, ServerSideApply=true]
+  # CNPG fills in defaults (archive_mode, log_*, monitoring queries…) and the plugin "enabled" flag;
+  # they are not drift. Only hides them from the OutOfSync status; our own values still apply.
+  ignoreDifferences:
+    - group: postgresql.cnpg.io
+      kind: Cluster
+      jqPathExpressions:
+        - .spec.postgresql.parameters
+        - .spec.monitoring
+        - .spec.plugins[].enabled
+        - .spec.bootstrap.initdb.encoding
+        - .spec.bootstrap.initdb.localeCType
+        - .spec.bootstrap.initdb.localeCollate
