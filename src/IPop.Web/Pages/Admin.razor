@@ -65,11 +65,15 @@ else if (Current is not null)
                 <AdminUserManagement @ref="userRef" />
                 break;
             case "organization":
-                <div class="adm-seg adm-view-seg" role="tablist" aria-label="Organization view">
-                    <button type="button" role="tab" class="@(orgView == 0 ? "on" : "")" aria-selected="@(orgView == 0 ? "true" : "false")" @onclick="() => orgView = 0">Tree</button>
-                    <button type="button" role="tab" class="@(orgView == 1 ? "on" : "")" aria-selected="@(orgView == 1 ? "true" : "false")" @onclick="() => orgView = 1">Chart</button>
-                </div>
-                @if (orgView == 0)
+                @* The org chart publishes everyone's Position, so it stays with Admin. *@
+                @if (Auth.IsAdmin)
+                {
+                    <div class="adm-seg adm-view-seg" role="tablist" aria-label="Organization view">
+                        <button type="button" role="tab" class="@(orgView == 0 ? "on" : "")" aria-selected="@(orgView == 0 ? "true" : "false")" @onclick="() => orgView = 0">Tree</button>
+                        <button type="button" role="tab" class="@(orgView == 1 ? "on" : "")" aria-selected="@(orgView == 1 ? "true" : "false")" @onclick="() => orgView = 1">Chart</button>
+                    </div>
+                }
+                @if (orgView == 0 || !Auth.IsAdmin)
                 {
                     <AdminDirectoryTree @ref="treeRef" />
                 }

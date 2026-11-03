@@ -13,7 +13,7 @@ public static class OrgChartEndpoints
     internal const int MaxPositions = 5000;
     internal const int MaxTitle = 200;
 
-    /// Mounted on the /api/admin/org group, so it is AdminOnly and Publish fires directoryChanged.
+    /// Mounted on the /api/admin/org group (directory.manage); Publish itself stays AdminOnly and fires directoryChanged.
     public static RouteGroupBuilder MapOrgChart(this RouteGroupBuilder org)
     {
         org.MapGet("/chart", async (IPopDbContext db, CancellationToken ct) => Results.Ok(await LoadAsync(db, ct)));
@@ -23,7 +23,7 @@ public static class OrgChartEndpoints
         {
             var (status, error, version) = await PublishAsync(db, req, http.User.FindFirst("nik")?.Value, DateTime.UtcNow, ct);
             return status == 200 ? Results.Ok(new { version }) : Results.Json(error, statusCode: status);
-        });
+        }).RequireAuthorization("AdminOnly");   // rewrites everyone's Position: Admin only, not directory.manage
         return org;
     }
 

@@ -520,7 +520,7 @@ public static class AdminEndpoints
             });
             await db.SaveChangesAsync(ct);
             return Results.Ok(new { unassigned, removed });
-        });
+        }).RequireAuthorization("AdminOnly");   // wipes the whole tree: Admin only, not directory.manage
 
         org.MapPut("/users/{nik}/placement", async (string nik, SetPlacementRequest req,
             IPopDbContext db, HttpContext http, CancellationToken ct) =>
