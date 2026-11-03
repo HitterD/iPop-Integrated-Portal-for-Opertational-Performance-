@@ -16,6 +16,8 @@ ingress:
   enabled: true
   ingressClassName: traefik
   host: longhorn.192.168.2.89.nip.io
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: kube-system-ict-only@kubernetescrd,longhorn-system-longhorn-auth@kubernetescrd
 # 3 of each CSI sidecar (one per node, leader-elected): with 1, a node failure that also took the
 # attacher blocked every volume move for ~5 min (measured).
 csi:

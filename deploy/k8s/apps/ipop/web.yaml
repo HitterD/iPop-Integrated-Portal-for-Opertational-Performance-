@@ -25,6 +25,11 @@ spec:
                 topologyKey: kubernetes.io/hostname
                 labelSelector:
                   matchLabels: { app.kubernetes.io/name: ipop-web }
+      # Ubuntu 26.04 / AppArmor 5: containerd's default profile treats threads of one container as
+      # different peers and denies signals between them. .NET suspends threads for GC with signals,
+      # so the runtime aborted at random (general protection fault in libc abort). Unconfined fixes it.
+      securityContext:
+        appArmorProfile: { type: Unconfined }
       tolerations:
         # Drop a dead node's pod quickly so Traefik stops sending half the requests to it (502s).
         - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 10 }

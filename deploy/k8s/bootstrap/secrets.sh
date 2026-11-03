@@ -38,6 +38,13 @@ if ! have ipop ghcr; then
   kubectl -n ipop create secret docker-registry ghcr --docker-server=ghcr.io --docker-username=unset --docker-password=unset
 fi
 
+# Longhorn UI has no login of its own: basic auth in front (user admin).
+if ! have longhorn-system longhorn-auth; then
+  LP="$(gen 20)"
+  kubectl -n longhorn-system create secret generic longhorn-auth     --from-literal=users="$(htpasswd -nbB admin "$LP" 2>/dev/null || printf 'admin:%s' "$(openssl passwd -apr1 "$LP")")"
+  echo "Longhorn UI: user admin, password $LP  (save it in your password manager)"
+fi
+
 if ! have monitoring grafana-admin; then
   kubectl -n monitoring create secret generic grafana-admin \
     --from-literal=admin-user=admin --from-literal=admin-password="$(gen 20)"

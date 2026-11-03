@@ -20,3 +20,5 @@ server:
   ingress:
     enabled: true
     ingressClassName: traefik
+    annotations:
+      traefik.ingress.kubernetes.io/router.middlewares: kube-system-ict-only@kubernetescrd

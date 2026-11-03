@@ -32,8 +32,12 @@ spec:
         # Leave a dead node after 10 s instead of the default 5 min.
         - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 10 }
         - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 10 }
+      # Ubuntu 26.04 / AppArmor 5: containerd's default profile treats threads of one container as
+      # different peers and denies signals between them. .NET suspends threads for GC with signals,
+      # so the runtime aborted at random (general protection fault in libc abort). Unconfined fixes it.
       securityContext:
         fsGroup: 1654
+        appArmorProfile: { type: Unconfined }
         fsGroupChangePolicy: OnRootMismatch
       containers:
         - name: api

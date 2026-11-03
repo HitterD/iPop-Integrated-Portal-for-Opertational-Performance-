@@ -1,0 +1,24 @@
+# Dashboards (Argo CD, Grafana, Longhorn) only from the ICT subnet and through Zoraxy.
+# Zoraxy forwards the browser's address in X-Forwarded-For; Traefik trusts it from Zoraxy only
+# (traefik-config.yaml), so ipStrategy depth 0 = the real client address.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: ict-only
+  namespace: kube-system
+spec:
+  ipAllowList:
+    sourceRange:
+      - 10.10.6.0/24        # ICT
+      - 192.168.2.0/24      # server VLAN (nodes, Zoraxy, NAS)
+---
+# Longhorn has no login of its own: basic auth in front of it (user/password in secret longhorn-auth,
+# created by bootstrap/secrets.sh). The two middlewares are chained.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: longhorn-auth
+  namespace: longhorn-system
+spec:
+  basicAuth:
+    secret: longhorn-auth

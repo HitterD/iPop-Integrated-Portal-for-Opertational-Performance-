@@ -41,6 +41,8 @@ spec:
     spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
+      securityContext:
+        appArmorProfile: { type: Unconfined }   # AppArmor 5 signal denials, see ipop-api
       # Service "livekit" would inject LIVEKIT_PORT=tcp://… which livekit-server reads as its port.
       enableServiceLinks: false
       affinity:
@@ -156,6 +158,7 @@ spec:
       enableServiceLinks: false
       securityContext:
         fsGroup: 1654
+        appArmorProfile: { type: Unconfined }   # Chrome + AppArmor 5 ptrace/signal denials
       containers:
         - name: egress
           image: livekit/egress:v1.15.0
@@ -208,6 +211,8 @@ spec:
     metadata:
       labels: { app.kubernetes.io/name: onlyoffice }
     spec:
+      securityContext:
+        appArmorProfile: { type: Unconfined }   # AppArmor 5 signal denials, see ipop-api
       tolerations:
         - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 10 }
         - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 10 }

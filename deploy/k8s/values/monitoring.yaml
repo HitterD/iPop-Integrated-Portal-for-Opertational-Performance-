@@ -81,6 +81,8 @@ grafana:
     enabled: true
     ingressClassName: traefik
     hosts: [grafana.192.168.2.89.nip.io]
+    annotations:
+      traefik.ingress.kubernetes.io/router.middlewares: kube-system-ict-only@kubernetescrd
   additionalDataSources:
     - name: Loki
       type: loki
