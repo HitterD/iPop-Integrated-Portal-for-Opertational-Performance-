@@ -26,10 +26,27 @@ public class MeetingRoomAccessTests
     private static async Task<Guid> BookAsync(TestDb t, Guid organizer, DateTime start, int minutes, string room = "SJA Hall · Kalosi",
         params Guid[] attendees)
     {
+        // Room bookings may not cross the organizer's local midnight. These tests book relative to "now" (join
+        // windows), so late in the evening WIB they would hit that rule; give the organizer a zone where it is midday.
+        await t.Verify().Users.Where(u => u.Id == organizer)
+            .ExecuteUpdateAsync(x => x.SetProperty(u => u.TimeZoneId, MiddayZoneId()));
         var (r, id, _) = await MeetingEndpoints.ApplyCreateAsync(t.Verify(), organizer,
             new("Weekly sync", start, start.AddMinutes(minutes), null, room, null, attendees, null, null, null), default, nowUtc: start);
         Assert.Equal(MeetingEndpoints.CreateResult.Created, r);
         return id!.Value;
+    }
+
+    /// A system time zone whose current local hour is 09–14 (no DST jumps), so any test booking stays on one local day.
+    private static string MiddayZoneId()
+    {
+        var now = DateTime.UtcNow;
+        return TimeZoneInfo.GetSystemTimeZones()
+            .Where(z => !z.SupportsDaylightSavingTime)
+            .Select(z => (z.Id, Hour: TimeZoneInfo.ConvertTimeFromUtc(now, z).Hour))
+            .Where(x => x.Hour is >= 9 and <= 14)
+            .OrderBy(x => Math.Abs(x.Hour - 11))
+            .Select(x => x.Id)
+            .First();
     }
 
     private static string PasswordOf(TestDb t, Guid meetingId) => t.Verify().Meetings.Single(m => m.Id == meetingId).RoomPassword!;
