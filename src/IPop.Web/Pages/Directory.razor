@@ -406,6 +406,11 @@ else
                                                 </div>
                                                 <div class="cp-text">
                                                     <div class="n" title="@p.Name">@Highlight(p.Name)</div>
+                                                    @* Compact desktop (≤1536 px) only: Department and Ext. move under the name so it keeps its width. *@
+                                                    @if (p.Department != "—" || p.HasExtension)
+                                                    {
+                                                        <div class="s dir-sub" title="@p.Placement">@if (p.Department != "—") { <span>@p.Placement</span> }@if (p.HasExtension) { <span class="dir-sub-ext">Ext. @p.Extension</span> }</div>
+                                                    }
                                                 </div>
                                             </div>
                                         </td>
