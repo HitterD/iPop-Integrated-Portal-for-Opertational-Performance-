@@ -51,5 +51,10 @@ spec:
     enablePodAntiAffinity: true
     podAntiAffinityType: required
     topologyKey: kubernetes.io/hostname
+    # Default is 300 s: the primary's pod would stay "on" a dead node for 5 min before CNPG promotes
+    # the replica. 20 s matches the API; measured failover then is the promotion itself (~20 s).
+    tolerations:
+      - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 20 }
+      - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 20 }
   monitoring:
     enablePodMonitor: true
