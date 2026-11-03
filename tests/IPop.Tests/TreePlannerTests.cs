@@ -248,4 +248,17 @@ public class TreePlannerTests
         Assert.Null(plan.Moves.Single(m => m.Nik == "E1").DivisionCode);
         Assert.Equal("OPS-LOGI-EXIM", plan.Moves.Single(m => m.Nik == "E2").DepartmentCode);
     }
+
+    [Fact]
+    public async Task Plan_ChainsOnlyFile_ProposesNoDirectoryChanges()
+    {
+        using var t = Seed(); t.AddUser("E1");
+        // An emptied generic unit exists, but this file carries no Division/Department columns.
+        var row = new WorkbookRow(2, "E1", "E1", null, null, null, null, null, null, null, new string?[9]);
+
+        var plan = await Plan(t, row);
+
+        Assert.False(plan.HasChanges);
+        Assert.Empty(plan.Deactivations);
+    }
 }

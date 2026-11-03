@@ -121,4 +121,20 @@ public class ApprovalEndpointsTests
     }
 
     private static ApprovalImport MakeImport(TestDb t) => new(t.Db, new ApprovalService(t.Db, () => Now), new TreePlanner(t.Db));
+
+    [Fact]
+    public async Task Apply_UnreadableFileWithCompleteList_IsRefusedAndClearsNothing()
+    {
+        using var t = new TestDb();
+        t.AddUser("E1");
+        var c = new ApproverChain { Nik = "E1", UpdatedAt = Now }; c.SetSlot(1, "M");
+        t.Db.ApproverChains.Add(c); t.Db.SaveChanges();
+        var bytes = "garbage"u8.ToArray();
+        var parsed = new WorkbookParseResult([], 0, ["Column \"NIK\" was not found in the first row."]);
+
+        var r = await ApprovalEndpoints.ApplyCoreAsync(t.Db, MakeImport(t), parsed, bytes, true, ApprovalEndpoints.TokenOf(bytes, true), "HC1", canDirectory: true, default);
+
+        Assert.Equal(400, r.Status);
+        Assert.Equal("M", t.Verify().ApproverChains.Single().Slot1Nik);
+    }
 }

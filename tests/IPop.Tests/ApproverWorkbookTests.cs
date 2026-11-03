@@ -107,4 +107,29 @@ public class ApproverWorkbookTests
         Assert.Equal(a.WorkLocation, b.WorkLocation);
         Assert.Equal(a.Slots, b.Slots);
     }
+
+    [Fact]
+    public void Parse_FindsResignedColumnInNextMonthsWorkbook()
+    {
+        string[] header = ["PDMR mar 2026", "NIK", "Nama Karyawan"];
+        var res = ApproverWorkbook.Parse([header, ["ex", "00010199", "ANANG"], ["", "00000277", "GIRI"]]);
+        Assert.Equal("00000277", Assert.Single(res.Rows).Nik);
+        Assert.Equal(1, res.SkippedResigned);
+    }
+
+    [Fact]
+    public void Parse_KeepsKnownShortNiksAsTheyAre()
+    {
+        var known = new HashSet<string> { "1241102", "00000277" };
+        var res = ApproverWorkbook.Parse([Header, Row("1241102", "STENLY", a1: "277")], known);
+        var r = Assert.Single(res.Rows);
+        Assert.Equal("1241102", r.Nik);           // an existing iPop NIK wins over padding
+        Assert.Equal("00000277", r.Slots[0]);     // Excel-stripped zeros still padded
+    }
+
+    [Theory]
+    [InlineData("#REF!")]
+    [InlineData("#VALUE!")]
+    public void Parse_TreatsExcelErrorsAsEmpty(string cell) =>
+        Assert.Null(Assert.Single(ApproverWorkbook.Parse([Header, Row("00000277", "GIRI", a1: cell)]).Rows).Slots[0]);
 }

@@ -219,7 +219,9 @@ public sealed class TreePlanner(IPopDbContext db)
         var occupancy = users.Values.Select(u => finalDivision.TryGetValue(u.Nik, out var f)
                 ? f : u.DivisionId is { } dv && divCodeById.TryGetValue(dv, out var dc) ? dc : null)
             .OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var deactivations = divs.Values.Where(d => d.Generic && !d.IsNew && !occupancy.Contains(d.Code))
+        // Only a file that actually places people may switch units off — a chains-only file (no
+        // Division/Department columns) leaves the tree exactly as it is.
+        var deactivations = finalDivision.Count == 0 ? [] : divs.Values.Where(d => d.Generic && !d.IsNew && !occupancy.Contains(d.Code))
             .OrderBy(d => d.Code, StringComparer.Ordinal)
             .Select(d => new UnitDeactivate("division", d.Code, $"{DeptPath(d.DeptCode)} › {d.Name}")).ToList();
 

@@ -17,7 +17,7 @@ public static partial class ApproverWorkbook
 
     private static string Norm(string? h) => Spaces().Replace(h ?? "", " ").Trim().ToLowerInvariant();
 
-    public static WorkbookParseResult Parse(IReadOnlyList<string[]> rows)
+    public static WorkbookParseResult Parse(IReadOnlyList<string[]> rows, ISet<string>? knownNiks = null)
     {
         if (rows.Count == 0) return new([], 0, ["The sheet is empty."]);
         var header = rows[0].Select(Norm).ToArray();
@@ -29,7 +29,8 @@ public static partial class ApproverWorkbook
         if (name < 0) errors.Add("Column \"Nama Karyawan\" was not found in the first row.");
         if (errors.Count > 0) return new([], 0, errors);
 
-        int pdmr = Col("PDMR feb 2026"), division = Col("Division"), department = Col("Department"),
+        // The resigned-flag column is renamed every month ("PDMR feb 2026", "PDMR mar 2026", …).
+        int pdmr = Array.FindIndex(header, h => h.StartsWith("pdmr", StringComparison.Ordinal)), division = Col("Division"), department = Col("Department"),
             divDept = Col("Div / Dept"), bagian = Col("Bagian"), job = Col("Nama Jabatan"),
             level = Col("Level Jabatan"), location = Col("Work Location");
         var slotCols = Enumerable.Repeat(-1, 9).ToArray();
@@ -55,11 +56,11 @@ public static partial class ApproverWorkbook
                 skipped++;
                 continue;
             }
-            var id = WorkbookNik.Normalize(rawNik);
+            var id = WorkbookNik.Normalize(rawNik, knownNiks);
             if (id is null) { errors.Add($"Row {r + 1}: no NIK."); continue; }
             result.Add(new WorkbookRow(r + 1, id, Text(name) ?? id, Text(division), Text(department), Text(divDept),
                 Text(bagian), Text(job), Text(level), Text(location),
-                slotCols.Select(c => WorkbookNik.Normalize(Cell(c))).ToArray()));
+                slotCols.Select(c => WorkbookNik.Normalize(Cell(c), knownNiks)).ToArray()));
         }
         return new(result, skipped, errors);
     }

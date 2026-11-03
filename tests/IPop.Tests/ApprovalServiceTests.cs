@@ -144,4 +144,25 @@ public class ApprovalServiceTests
         c.SetSlots(slots);
         return c;
     }
+
+    [Fact]
+    public async Task SetSlots_KeepsExistingSevenDigitNik()
+    {
+        using var t = new TestDb();
+        t.AddUser("1241102"); t.AddUser("1192120");
+        await Svc(t).SetSlotsAsync("1241102", Slots((1, "1192120")), "ADMIN", default);
+        var c = t.Verify().ApproverChains.Single();
+        Assert.Equal("1241102", c.Nik);
+        Assert.Equal("1192120", c.Slot1Nik);
+        Assert.Equal("1192120", t.Verify().Users.Single(u => u.Nik == "1241102").ManagerNik);
+    }
+
+    [Fact]
+    public async Task History_FindsChainByUnpaddedNik()
+    {
+        using var t = new TestDb();
+        t.AddUser("00000277"); t.AddUser("00000653");
+        await Svc(t).SetSlotsAsync("00000277", Slots((1, "00000653")), "ADMIN", default);
+        Assert.Single(await Svc(t).HistoryAsync("277", default));
+    }
 }

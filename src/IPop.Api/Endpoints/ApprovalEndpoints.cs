@@ -63,11 +63,11 @@ public static class ApprovalEndpoints
             return Results.Ok(new { updated = await svc.ReplaceEverywhereAsync(req.OldNik, req.NewNik, CallerNik(http)!, ct) });
         }).RequirePermission(PermissionCodes.ApprovalManage);
 
-        g.MapPost("/import/preview", async (HttpRequest request, ISpreadsheetService sheets, ApprovalImport import, CancellationToken ct) =>
+        g.MapPost("/import/preview", async (HttpRequest request, ISpreadsheetService sheets, ApprovalImport import, IPopDbContext db, CancellationToken ct) =>
         {
             var (bytes, complete, _, error) = await ReadUploadAsync(request, ct);
             if (error is not null) return error;
-            var parsed = await ParseAsync(sheets, bytes!, ct);
+            var parsed = await ParseAsync(sheets, db, bytes!, ct);
             if (parsed.Rows.Count == 0 && parsed.Errors.Count > 0)
                 return Results.BadRequest(new { code = "invalid_file", message = string.Join(" ", parsed.Errors) });
             var plan = await import.PlanAsync(parsed, complete, TokenOf(bytes!, complete), ct);
@@ -82,7 +82,7 @@ public static class ApprovalEndpoints
             var nik = CallerNik(http)!;
             var userId = await db.Users.AsNoTracking().Where(u => u.Nik == nik).Select(u => u.Id).FirstAsync(ct);
             var canDirectory = await perms.IsAllowedAsync(userId, PermissionCodes.DirectoryManage, null, ct);
-            var parsed = await ParseAsync(sheets, bytes!, ct);
+            var parsed = await ParseAsync(sheets, db, bytes!, ct);
             var r = await ApplyCoreAsync(db, import, parsed, bytes!, complete, token ?? "", nik, canDirectory, ct);
             if (r.Status == 200 && r.Body is ImportResult { UsersPlaced: > 0 } or ImportResult { UnitsCreated: > 0 } or ImportResult { UnitsDeactivated: > 0 })
                 await directory.NotifyAsync(ct);
@@ -117,6 +117,10 @@ public static class ApprovalEndpoints
         var expected = TokenOf(bytes, complete);
         if (!CryptographicOperations.FixedTimeEquals(System.Text.Encoding.ASCII.GetBytes(expected), System.Text.Encoding.ASCII.GetBytes(token)))
             return new(409, "This file changed since the preview. Preview it again before applying.", null);
+        // Same guard as preview: an unreadable file must never be applied — with "complete list"
+        // ticked it would clear everyone's approvers.
+        if (parsed.Rows.Count == 0)
+            return new(400, parsed.Errors.Count > 0 ? string.Join(" ", parsed.Errors) : "The file has no employee rows.", null);
         var plan = await import.PlanAsync(parsed, complete, expected, ct);
         if (plan.Tree.HasChanges && !canDirectory)
             return new(403, "Directory changes need the Directory permission. Ask an admin, or remove the Division/Department columns.", null);
@@ -141,10 +145,11 @@ public static class ApprovalEndpoints
         return (ms.ToArray(), complete, form["token"].ToString(), null);
     }
 
-    private static async Task<WorkbookParseResult> ParseAsync(ISpreadsheetService sheets, byte[] bytes, CancellationToken ct)
+    private static async Task<WorkbookParseResult> ParseAsync(ISpreadsheetService sheets, IPopDbContext db, byte[] bytes, CancellationToken ct)
     {
         using var ms = new MemoryStream(bytes);
-        try { return ApproverWorkbook.Parse(await sheets.ReadSheetDataAsync(ms, ApproverWorkbook.PreferredSheet, ct)); }
+        var known = (await db.Users.AsNoTracking().Select(u => u.Nik).ToListAsync(ct)).ToHashSet();
+        try { return ApproverWorkbook.Parse(await sheets.ReadSheetDataAsync(ms, ApproverWorkbook.PreferredSheet, ct), known); }
         catch (Exception) { return new WorkbookParseResult([], 0, ["The file could not be read as an Excel workbook."]); }
     }
 

@@ -97,7 +97,7 @@ public sealed class ApprovalService(IPopDbContext db, Func<DateTime> now) : IApp
 
     public async Task<ChainView?> GetAsync(string nik, CancellationToken ct)
     {
-        nik = WorkbookNik.Normalize(nik) ?? nik;
+        nik = WorkbookNik.Normalize(nik, await KnownNiksAsync(ct)) ?? nik;
         var chain = await db.ApproverChains.AsNoTracking().FirstOrDefaultAsync(c => c.Nik == nik, ct);
         var l = await LoadLookupsAsync(ct);
         if (chain is null && !l.People.ContainsKey(nik)) return null;
@@ -145,6 +145,7 @@ public sealed class ApprovalService(IPopDbContext db, Func<DateTime> now) : IApp
 
     public async Task<IReadOnlyList<ChainHistoryEntry>> HistoryAsync(string nik, CancellationToken ct)
     {
+        nik = WorkbookNik.Normalize(nik, await KnownNiksAsync(ct)) ?? nik;
         var logs = await db.AuditLogs.AsNoTracking()
             .Where(a => a.Action == AuditAction && a.EntityId == nik)
             .OrderByDescending(a => a.CreatedAt).Take(100).ToListAsync(ct);
@@ -169,13 +170,18 @@ public sealed class ApprovalService(IPopDbContext db, Func<DateTime> now) : IApp
 
     // ---- writes -------------------------------------------------------------------------
 
+    /// Every NIK iPop knows, so a real 7-digit NIK isn't padded into someone else's.
+    private async Task<HashSet<string>> KnownNiksAsync(CancellationToken ct) =>
+        (await db.Users.AsNoTracking().Select(u => u.Nik).ToListAsync(ct)).ToHashSet();
+
     public sealed record ChangeDetail(string?[]? Before, string?[]? After, string? Source);
 
     public async Task<ChainView> SetSlotsAsync(string nik, IReadOnlyList<string?> slots, string actorNik, CancellationToken ct)
     {
         if (slots.Count != ApproverChain.SlotCount) throw new ArgumentException("Exactly 9 slots are required.", nameof(slots));
-        nik = WorkbookNik.Normalize(nik) ?? throw new ArgumentException("NIK is required.", nameof(nik));
-        await WriteAsync([(nik, slots.Select(WorkbookNik.Normalize).ToArray())], actorNik, null, ct);
+        var known = await KnownNiksAsync(ct);
+        nik = WorkbookNik.Normalize(nik, known) ?? throw new ArgumentException("NIK is required.", nameof(nik));
+        await WriteAsync([(nik, slots.Select(x => WorkbookNik.Normalize(x, known)).ToArray())], actorNik, null, ct);
         await db.SaveChangesAsync(ct);
         return (await GetAsync(nik, ct))!;
     }
@@ -183,8 +189,9 @@ public sealed class ApprovalService(IPopDbContext db, Func<DateTime> now) : IApp
     public async Task<int> BulkSetSlotAsync(IReadOnlyList<string> niks, int slot, string? approverNik, string actorNik, CancellationToken ct)
     {
         if (slot is < 1 or > ApproverChain.SlotCount) throw new ArgumentOutOfRangeException(nameof(slot));
-        var approver = WorkbookNik.Normalize(approverNik);
-        var targets = niks.Select(WorkbookNik.Normalize).OfType<string>().Distinct().ToList();
+        var known = await KnownNiksAsync(ct);
+        var approver = WorkbookNik.Normalize(approverNik, known);
+        var targets = niks.Select(x => WorkbookNik.Normalize(x, known)).OfType<string>().Distinct().ToList();
         var existing = await db.ApproverChains.AsNoTracking().Where(c => targets.Contains(c.Nik)).ToDictionaryAsync(c => c.Nik, ct);
         var changes = targets.Select(n =>
         {
@@ -199,8 +206,9 @@ public sealed class ApprovalService(IPopDbContext db, Func<DateTime> now) : IApp
 
     public async Task<int> ReplaceEverywhereAsync(string oldNik, string? newNik, string actorNik, CancellationToken ct)
     {
-        var from = WorkbookNik.Normalize(oldNik) ?? throw new ArgumentException("Old approver is required.", nameof(oldNik));
-        var to = WorkbookNik.Normalize(newNik);
+        var known = await KnownNiksAsync(ct);
+        var from = WorkbookNik.Normalize(oldNik, known) ?? throw new ArgumentException("Old approver is required.", nameof(oldNik));
+        var to = WorkbookNik.Normalize(newNik, known);
         var hits = await db.ApproverChains.AsNoTracking().Where(c =>
             c.Slot1Nik == from || c.Slot2Nik == from || c.Slot3Nik == from || c.Slot4Nik == from || c.Slot5Nik == from
             || c.Slot6Nik == from || c.Slot7Nik == from || c.Slot8Nik == from || c.Slot9Nik == from).ToListAsync(ct);
