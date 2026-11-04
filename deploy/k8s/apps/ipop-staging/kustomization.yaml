@@ -98,7 +98,7 @@ patches:
 images:
   - name: ipop-api
     newName: ghcr.io/hitterd/ipop-api
-    newTag: "k3stest-5994f9929d-dp"
+    newTag: "staging-70f67bc2a0f3"
   - name: ipop-web
     newName: ghcr.io/hitterd/ipop-web
-    newTag: "k3stest-eeaf55ab6c"
+    newTag: "staging-70f67bc2a0f3"
