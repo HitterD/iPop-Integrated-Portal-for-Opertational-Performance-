@@ -95,7 +95,10 @@ jobs:
             ForEach-Object { $_.tagName.Substring($env:PREFIX.Length) } | Where-Object { $_ -match '^\d+\.\d+\.\d+$' } |
             ForEach-Object { [version]$_ } | Sort-Object -Descending | Select-Object -First 1
           if ($existing -and [version]$env:VERSION -le $existing) { throw "Version $env:VERSION is not newer than the last release $existing" }
-          if (gh release view $env:TAG 2>$null) { throw "Release $env:TAG already exists. Use a new version." }
+          gh release view $env:TAG *> $null
+          if ($LASTEXITCODE -eq 0) { throw "Release $env:TAG already exists. Use a new version." }
+          $global:LASTEXITCODE = 0
+          "OK: $env:VERSION (previous $(if ($existing) { $existing } else { 'none' }))"
 
       - uses: actions/setup-dotnet@v4
         with:
