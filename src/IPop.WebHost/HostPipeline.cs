@@ -99,10 +99,13 @@ public static class HostPipeline
             if (!full.StartsWith(Path.GetFullPath(dir) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(full))
                 return Results.NotFound();
             ctx.Response.Headers.CacheControl = "no-cache";
+            var exe = file.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
+            var msi = file.EndsWith(".msi", StringComparison.OrdinalIgnoreCase);
             var type = file.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ? "application/json"
-                : file.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? "application/vnd.microsoft.portable-executable"
+                : exe ? "application/vnd.microsoft.portable-executable"
+                : msi ? "application/x-msi"
                 : "application/octet-stream";
-            return Results.File(full, type, file.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? file : null, enableRangeProcessing: true);
+            return Results.File(full, type, exe || msi ? file : null, enableRangeProcessing: true);
         });
 
         app.MapFallbackToFile("index.html");
@@ -110,12 +113,14 @@ public static class HostPipeline
 
     public const string DefaultNotifierReleases = "C:/ipop-ops/notifier/releases";
 
-    /// Velopack feed files and the setup: "releases.win.json", "RELEASES", "iPopNotifier-1.0.1-full.nupkg", "iPopNotifier-win-Setup.exe".
+    /// Velopack feed files, the setup and the Group Policy msi: "releases.win.json", "RELEASES", "iPopNotifier-1.0.1-full.nupkg",
+    /// "iPopNotifier-win-Setup.exe", "iPopNotifier-win-GPO.msi".
     public static bool NotifierFileAllowed(string file) =>
         file.Length is > 0 and <= 120
         && file.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '_')
         && !file.Contains("..")
         // releases.win.pilot.json and release.json are read by the API (per person), never downloaded here.
         && (file is "releases.win.json" or "RELEASES" or "assets.win.json"
-            || (file.StartsWith("iPopNotifier", StringComparison.Ordinal) && (file.EndsWith(".nupkg", StringComparison.Ordinal) || file.EndsWith("-Setup.exe", StringComparison.Ordinal))));
+            || (file.StartsWith("iPopNotifier", StringComparison.Ordinal) && (file.EndsWith(".nupkg", StringComparison.Ordinal) || file.EndsWith("-Setup.exe", StringComparison.Ordinal)
+                || file.EndsWith("-win-GPO.msi", StringComparison.Ordinal))));
 }

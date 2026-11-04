@@ -1,0 +1,41 @@
+<!-- iPop Notifier for Group Policy (Computer Configuration › Software installation, Assigned). Built by
+     build-gpo-msi.ps1 (WiX 5). Per-machine, silent, no UI:
+       Program Files\iPop Notifier\iPopNotifierDeploy.exe + the normal per-user Setup.exe
+       HKLM Run "iPop Notifier deploy" → each user's next logon installs the Notifier for that user once
+       (after that the app updates itself from the iPop feed; a newer MSI is never needed for updates).
+     Uninstall (GPO removed / PC leaves the OU) removes the Notifier from every profile on the PC.
+     A major upgrade (newer MSI) keeps every user's install: the remove-all step runs only on a real uninstall. -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="$(var.Title) (GPO)" Manufacturer="PT Santos Jaya Abadi" Version="$(var.Version)"
+           UpgradeCode="$(var.UpgradeCode)" Scope="perMachine" Compressed="yes" InstallerVersion="500">
+    <MajorUpgrade DowngradeErrorMessage="A newer $(var.Title) deployment package is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="ARPNOREPAIR" Value="1" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="$(var.Title)">
+        <Component Id="Deploy" Guid="*" Bitness="always64">
+          <File Id="DeployExe" Source="$(var.DeployExe)" Name="iPopNotifierDeploy.exe" KeyPath="yes" />
+          <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Run" Name="$(var.Title) deploy"
+                         Type="string" Value="&quot;[INSTALLFOLDER]iPopNotifierDeploy.exe&quot; --logon" />
+        </Component>
+        <Component Id="Setup" Guid="*" Bitness="always64">
+          <File Id="SetupExe" Source="$(var.SetupExe)" Name="$(var.PackId)-win-Setup.exe" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="Main">
+      <ComponentRef Id="Deploy" />
+      <ComponentRef Id="Setup" />
+    </Feature>
+
+    <!-- Real uninstall only (not the old product's removal during an upgrade): clean every profile, as SYSTEM. -->
+    <CustomAction Id="RemoveAllProfiles" FileRef="DeployExe" ExeCommand="--remove-all"
+                  Execute="deferred" Impersonate="no" Return="ignore" />
+    <InstallExecuteSequence>
+      <Custom Action="RemoveAllProfiles" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>

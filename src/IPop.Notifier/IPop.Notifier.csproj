@@ -38,6 +38,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- QA builds from CI point at the cluster's staging (AppInfo.Meta); empty = the built-in trial defaults. -->
+    <AssemblyMetadata Include="NotifierServer" Value="$(NotifierServer)" Condition="'$(NotifierServer)' != ''" />
+    <AssemblyMetadata Include="NotifierUpdateFeed" Value="$(NotifierUpdateFeed)" Condition="'$(NotifierUpdateFeed)' != ''" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Served to WebView2 through a virtual host (https://notifier.ipop/) mapped onto the app folder. -->
     <Content Include="Ui\**\*" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />

@@ -9,3 +9,4 @@ resources:
   - migrate-job.yaml
   - api.yaml
   - web.yaml
+  - notifier-sync.yaml

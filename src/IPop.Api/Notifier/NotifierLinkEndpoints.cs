@@ -17,7 +17,8 @@ public record NotifierAuthorizeRequest(string? Challenge, string? State, string?
 ///   POST /api/notifier/link/redeem     anonymous: the app trades the code or short code + its verifier for a session
 ///   GET  /api/notifier/update          app: which version this person should run (+ "mandatory")
 ///   GET  /api/notifier/update/feed     app: the Velopack feed for that channel
-///   GET  /api/notifier/releases        Admin: published versions and PCs per version
+///   GET  /api/notifier/releases        Admin: published versions, PCs per version, GitHub sync state, GPO msi
+///   POST /api/notifier/releases/promote Admin: release the pilot to everyone
 /// Older apps (1.3.x-1.4.2) still call the removed hand-off endpoints until they update: those answer 410 Gone with
 /// a message (link/clear answers 204), so their browser sign-in fails cleanly while NIK + password sign-in, the
 /// update check and device registration keep working. No endpoint here compares network addresses: behind the
@@ -124,9 +125,10 @@ public static class NotifierLinkEndpoints
             return feed is null ? Results.NotFound() : Results.Text(feed, "application/json");
         });
 
-        g.MapGet("/releases", async (NotifierReleases releases, IPopDbContext db, CancellationToken ct) =>
+        g.MapGet("/releases", async (NotifierReleases releases, NotifierGithubSync sync, NotifierPublisher publisher, IPopDbContext db, CancellationToken ct) =>
         {
             var state = releases.Read();
+            var status = sync.ReadStatus();
             var since = DateTime.UtcNow - TimeSpan.FromDays(14);
             var versions = await db.NotifierDevices.AsNoTracking().Where(d => d.LastSeenAt >= since)
                 .GroupBy(d => d.AppVersion ?? "")
@@ -137,7 +139,21 @@ public static class NotifierLinkEndpoints
                 all = state.All,
                 pilot = state.Pilot,
                 versions = versions.OrderByDescending(v => NotifierReleases.IsVersion(v.version) ? System.Version.Parse(v.version) : new System.Version(0, 0)).ToList(),
+                sync = status is null ? null : new { status.LastRunAt, status.LastSuccessAt, status.LastError, status.Failures, status.Remote },
+                gpoMsi = File.Exists(Path.Combine(releases.Folder, publisher.GpoMsi)) ? publisher.GpoMsi : null,
             });
+        }).RequireAuthorization("AdminOnly");
+
+        // Admin › Notifier "Release to everyone": the pilot (held + receipt-checked) becomes the public release.
+        g.MapPost("/releases/promote", async (NotifierPublisher publisher, HttpContext http, ILoggerFactory logs, CancellationToken ct) =>
+        {
+            try
+            {
+                var outcome = await publisher.PromoteAsync(DateTime.UtcNow, ct);
+                logs.CreateLogger("IPop.Api.Notifier").LogInformation("Notifier {Version} released to everyone by {Nik}", outcome.Version, http.User.FindFirstValue("nik"));
+                return Results.Ok(new { version = outcome.Version });
+            }
+            catch (NotifierPublisher.PublishException e) { return Results.Conflict(new { code = "publish", message = e.Message }); }
         }).RequireAuthorization("AdminOnly");
 
         return app;

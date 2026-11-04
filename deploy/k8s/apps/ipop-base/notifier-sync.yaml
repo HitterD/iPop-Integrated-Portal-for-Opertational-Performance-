@@ -1,0 +1,55 @@
+# iPop Notifier releases: every 5 minutes the API image (--notifier-sync) looks at the GitHub Releases built by
+# .github/workflows/notifier.yml (tag notifier-v1.2.3, or notifier-qa-v… for staging) and brings a new one into
+# /data/notifier/releases as the PILOT release. ICT releases it to everyone in Admin › Notifier.
+# GitHub token (read-only, Contents: read on the iPop repo): secret ipop-notifier-github, key token
+#   kubectl -n ipop create secret generic ipop-notifier-github --from-literal=token=github_pat_…
+# Status: /data/notifier/releases/sync-status.json (shown in Admin › Notifier); alerts in platform/node-alerts.yaml.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: notifier-sync
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 1200
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels: { app.kubernetes.io/name: notifier-sync }
+        spec:
+          # Same AppArmor fix as the API (Ubuntu 26.04 kills .NET under the default profile).
+          securityContext:
+            fsGroup: 1654
+            appArmorProfile: { type: Unconfined }
+            fsGroupChangePolicy: OnRootMismatch
+          restartPolicy: Never
+          imagePullSecrets: [{ name: ghcr }]
+          containers:
+            - name: sync
+              image: ipop-api
+              imagePullPolicy: IfNotPresent
+              args: ["--notifier-sync"]
+              envFrom:
+                - configMapRef: { name: ipop-api-env }
+                - secretRef: { name: ipop-api-secrets }
+              env:
+                - name: Notifier__Sync__Token
+                  valueFrom: { secretKeyRef: { name: ipop-notifier-github, key: token, optional: true } }
+                # Never migrate/seed or start SSO from this short job.
+                - { name: Oidc__Enabled, value: "false" }
+                - { name: Workers__Outbound, value: "false" }
+              volumeMounts:
+                - { name: data, mountPath: /data }
+              resources:
+                requests: { cpu: 50m, memory: 192Mi }
+                limits: { memory: 768Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+          volumes:
+            - name: data
+              persistentVolumeClaim: { claimName: ipop-data }

@@ -255,6 +255,9 @@ builder.Services.AddScoped<IPop.Application.Calls.ICallService, IPop.Infrastruct
 builder.Services.AddSingleton<IPop.Api.Calls.CallConnections>();
 // iPop Notifier: release channels (pilot → all) and the "new version" signal to running apps.
 builder.Services.AddSingleton<IPop.Api.Notifier.NotifierReleases>();
+builder.Services.AddSingleton<IPop.Api.Notifier.NotifierPublisher>();
+builder.Services.AddHttpClient();
+builder.Services.AddSingleton<IPop.Api.Notifier.NotifierGithubSync>();
 builder.Services.AddHostedService<IPop.Api.Notifier.NotifierReleaseWatcher>();
 builder.Services.AddHostedService<IPop.Api.Calls.CallRingTimeoutWorker>();
 builder.Services.AddHostedService<IPop.Api.Calls.CallReaperWorker>();
@@ -424,6 +427,15 @@ app.Use(async (ctx, next) =>
     ctx.Response.Headers.XContentTypeOptions = "nosniff";
     await next();
 });
+
+// "--notifier-sync": the cluster's CronJob — one GitHub → Notifier feed folder run, then exit (hosted workers
+// only start in app.Run, so none of them run here).
+if (args.Contains("--notifier-sync"))
+{
+    var code = await app.Services.GetRequiredService<IPop.Api.Notifier.NotifierGithubSync>().RunAsync(DateTime.UtcNow, CancellationToken.None);
+    Environment.ExitCode = code;
+    return;
+}
 
 // "--migrate-only": the cluster's migration Job (one run per release, before the API pods roll).
 var migrateOnly = args.Contains("--migrate-only");

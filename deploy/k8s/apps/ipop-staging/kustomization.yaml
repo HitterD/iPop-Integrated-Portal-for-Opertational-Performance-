@@ -85,6 +85,13 @@ patches:
       - op: add
         path: /data/MeetingRooms__BookingWorkerEnabled
         value: "false"
+      # Staging takes the QA Notifier (tag notifier-qa-v…, package iPopNotifierQA), never the real one.
+      - op: add
+        path: /data/Notifier__Sync__TagPrefix
+        value: notifier-qa-v
+      - op: add
+        path: /data/Notifier__PackId
+        value: iPopNotifierQA
       - op: add
         path: /data/MeetingRooms__NasFolder
         value: /sja/SJA SPJ/ICT/recordings-staging

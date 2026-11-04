@@ -1,0 +1,175 @@
+name: Notifier release
+
+# iPop Notifier (Windows tray app) → GitHub Release. The cluster pulls it (CronJob notifier-sync) as the PILOT release;
+# ICT promotes it to everyone in Admin › Notifier. GitHub never connects to the LAN.
+#
+#   git tag notifier-v1.4.8 && git push github notifier-v1.4.8        → prod build (iPopNotifier), prod feed
+#   git tag notifier-qa-v0.9.2 && git push github notifier-qa-v0.9.2  → QA build (iPopNotifierQA) for staging
+#   "[mandatory]" in the tag message → installs right away on every PC once released.
+#   Actions › Notifier release › Run workflow                       → same, with a version you type (tags it for you)
+#
+# Each run builds with the previous release's full package so updates ship as small deltas, and also builds the
+# Group Policy msi (deploy/notifier/gpo). Windows runner minutes count double on GitHub Free: ~6–10 min per release.
+on:
+  push:
+    tags: ["notifier-v*", "notifier-qa-v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (e.g. 1.4.8), newer than the last release"
+        required: true
+      flavour:
+        description: "prod = everyone's Notifier; qa = the staging copy"
+        type: choice
+        options: [prod, qa]
+        default: prod
+      mandatory:
+        description: "Mandatory (installs right away once released to everyone)"
+        type: boolean
+        default: false
+      notes:
+        description: "What's new (shown in the update popup)"
+        required: false
+
+concurrency:
+  group: notifier-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      DOTNET_NOLOGO: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Release details
+        id: meta
+        shell: pwsh
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_FLAVOUR: ${{ inputs.flavour }}
+          INPUT_MANDATORY: ${{ inputs.mandatory }}
+          INPUT_NOTES: ${{ inputs.notes }}
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq 'push') {
+            $tag = $env:GITHUB_REF_NAME
+            if ($tag -match '^notifier-qa-v(.+)$') { $flavour = 'qa'; $version = $Matches[1] }
+            elseif ($tag -match '^notifier-v(.+)$') { $flavour = 'prod'; $version = $Matches[1] }
+            else { throw "Unexpected tag $tag" }
+            # Annotated tag message = release notes; lightweight tags have none.
+            $notes = (git tag -l --format='%(contents)' $tag | Out-String).Trim()
+            $mandatory = $notes -match '\[mandatory\]'
+          } else {
+            $flavour = $env:INPUT_FLAVOUR; $version = $env:INPUT_VERSION.Trim()
+            $notes = $env:INPUT_NOTES; $mandatory = $env:INPUT_MANDATORY -eq 'true'
+            $tag = if ($flavour -eq 'qa') { "notifier-qa-v$version" } else { "notifier-v$version" }
+          }
+          if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') { throw "Version '$version' must be like 1.4.8" }
+          if ($mandatory -and $notes -notmatch '\[mandatory\]') { $notes = ($notes + "`n`n[mandatory]").Trim() }
+          $packId = if ($flavour -eq 'qa') { 'iPopNotifierQA' } else { 'iPopNotifier' }
+          $prefix = if ($flavour -eq 'qa') { 'notifier-qa-v' } else { 'notifier-v' }
+          [IO.File]::WriteAllText("$env:RUNNER_TEMP\notes.md", $notes)
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "flavour=$flavour" >> $env:GITHUB_OUTPUT
+          "packId=$packId" >> $env:GITHUB_OUTPUT
+          "prefix=$prefix" >> $env:GITHUB_OUTPUT
+          "Release $packId $version ($tag), mandatory=$mandatory" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Version must be newer than the last release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREFIX: ${{ steps.meta.outputs.prefix }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          $existing = gh release list --limit 100 --json tagName,isDraft | ConvertFrom-Json |
+            Where-Object { -not $_.isDraft -and $_.tagName.StartsWith($env:PREFIX) -and $_.tagName -ne $env:TAG } |
+            ForEach-Object { $_.tagName.Substring($env:PREFIX.Length) } | Where-Object { $_ -match '^\d+\.\d+\.\d+$' } |
+            ForEach-Object { [version]$_ } | Sort-Object -Descending | Select-Object -First 1
+          if ($existing -and [version]$env:VERSION -le $existing) { throw "Version $env:VERSION is not newer than the last release $existing" }
+          if (gh release view $env:TAG 2>$null) { throw "Release $env:TAG already exists. Use a new version." }
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Tools (vpk, wix)
+        run: |
+          dotnet tool install -g vpk --version 1.2.161
+          dotnet tool install -g wix --version 5.0.2
+
+      - name: Build the app
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          FLAVOUR: ${{ steps.meta.outputs.flavour }}
+        run: |
+          $extra = @()
+          # QA = the cluster's staging and its own feed (not the build PC of the old trial builds).
+          if ($env:FLAVOUR -eq 'qa') { $extra = @('-p:Trial=true', '-p:NotifierServer=http://staging.192.168.2.89.nip.io/', '-p:NotifierUpdateFeed=none') }
+          else { $extra = @('-p:Trial=false') }
+          dotnet publish src/IPop.Notifier/IPop.Notifier.csproj -c Release -r win-x64 --self-contained "-p:Version=$env:VERSION" @extra -o "$env:RUNNER_TEMP\publish"
+          if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
+
+      - name: Previous release (for delta updates)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREFIX: ${{ steps.meta.outputs.prefix }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\out" | Out-Null
+          $prev = gh release list --limit 100 --json tagName,isDraft | ConvertFrom-Json |
+            Where-Object { -not $_.isDraft -and $_.tagName.StartsWith($env:PREFIX) -and $_.tagName -ne $env:TAG } |
+            Sort-Object { [version]($_.tagName.Substring($env:PREFIX.Length)) } -Descending | Select-Object -First 1
+          if (-not $prev) { "No previous release: full package only."; exit 0 }
+          gh release download $prev.tagName --pattern 'releases.win.json' --pattern '*-full.nupkg' --dir "$env:RUNNER_TEMP\out"
+          # Keep only the previous full in the seed feed: vpk builds the delta from it, older entries are not here.
+          $feedPath = "$env:RUNNER_TEMP\out\releases.win.json"
+          $feed = Get-Content $feedPath -Raw | ConvertFrom-Json
+          $feed.Assets = @($feed.Assets | Where-Object { $_.Type -eq 'Full' -and (Test-Path (Join-Path "$env:RUNNER_TEMP\out" $_.FileName)) })
+          [IO.File]::WriteAllText($feedPath, ($feed | ConvertTo-Json -Depth 5 -Compress))
+          "Delta against $($prev.tagName)"
+
+      - name: Package (Velopack + GPO msi)
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          PACKID: ${{ steps.meta.outputs.packId }}
+          FLAVOUR: ${{ steps.meta.outputs.flavour }}
+        run: |
+          $pub = "$env:RUNNER_TEMP\publish"; $out = "$env:RUNNER_TEMP\out"
+          $title = if ($env:FLAVOUR -eq 'qa') { 'iPop Notifier QA' } else { 'iPop Notifier' }
+          vpk pack --packId $env:PACKID --packVersion $env:VERSION --packDir $pub --mainExe iPopNotifier.exe `
+            --packTitle $title --packAuthors 'PT Santos Jaya Abadi' --icon "$pub\Assets\ipop.ico" `
+            --shortcuts StartMenuRoot --releaseNotes "$env:RUNNER_TEMP\notes.md" --noPortable --outputDir $out
+          if ($LASTEXITCODE -ne 0) { throw 'vpk pack failed' }
+          ./deploy/notifier/gpo/build-gpo-msi.ps1 -Setup "$out\$env:PACKID-win-Setup.exe" -Version $env:VERSION -OutDir $out
+          Get-ChildItem $out | Format-Table Name, Length
+
+      - name: Publish the GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          PACKID: ${{ steps.meta.outputs.packId }}
+        run: |
+          $out = "$env:RUNNER_TEMP\out"
+          $feed = Get-Content "$out\releases.win.json" -Raw | ConvertFrom-Json
+          # Only this version's packages: older fulls are already in the cluster's feed folder.
+          $files = @("$out\releases.win.json", "$out\RELEASES", "$out\assets.win.json", "$out\$env:PACKID-win-Setup.exe", "$out\$env:PACKID-win-GPO.msi")
+          $files += $feed.Assets | Where-Object { $_.Version -eq $env:VERSION } | ForEach-Object { Join-Path $out $_.FileName }
+          foreach ($f in $files) { if (-not (Test-Path $f)) { throw "Missing $f" } }
+          $target = if ($env:GITHUB_EVENT_NAME -eq 'push') { @() } else { @('--target', $env:GITHUB_SHA) }
+          gh release create $env:TAG @files --title "iPop Notifier $env:VERSION$(if ($env:PACKID -ne 'iPopNotifier') { ' (QA)' })" `
+            --notes-file "$env:RUNNER_TEMP\notes.md" --latest=false @target
+          if ($LASTEXITCODE -ne 0) { throw 'gh release create failed' }

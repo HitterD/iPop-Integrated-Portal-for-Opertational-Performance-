@@ -429,6 +429,8 @@
 .adm-nf-ic.all { background: var(--accent-soft); color: var(--accent); }
 .adm-nf-ic.pilot { background: color-mix(in srgb, #ff9f0a 16%, transparent); color: #c77700; }
 .adm-nf-ic svg { width: 17px; height: 17px; }
+.adm-nf-ic.sync { background: var(--fill); color: var(--ink-3); }
+.adm-hol-row.warn .adm-nf-ic.sync { background: color-mix(in srgb, var(--adm-red) 14%, transparent); color: var(--adm-red); }
 
 /* Admin › Email */
 .adm-email-card { padding:4px 16px; margin-bottom:14px; }

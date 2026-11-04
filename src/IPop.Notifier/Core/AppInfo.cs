@@ -7,15 +7,21 @@ public static class AppInfo
     /// The production iPop (API and Web on one origin). The sign-in window lets ICT point a test PC elsewhere.
 #if TRIAL
     /// Trial build (release.ps1 -Trial): the QA copy of iPop on the build PC, never production.
-    public const string DefaultServer = "http://10.10.6.13:6391/";
+    /// CI builds the QA flavour for the cluster's staging instead (-p:NotifierServer=…, -p:NotifierUpdateFeed=none):
+    /// that server and its own /download/notifier/ feed.
+    public static readonly string DefaultServer = Meta("NotifierServer") ?? "http://10.10.6.13:6391/";
     public const string Flavour = "QA";
     /// Trial installers and updates come from the build PC, not the iPop server.
-    public const string UpdateFeed = "http://10.10.6.13:6393/";
+    public static readonly string? UpdateFeed = Meta("NotifierUpdateFeed") is { } feed ? (feed == "none" ? null : feed) : "http://10.10.6.13:6393/";
 #else
     public const string DefaultServer = "https://ipop.santos.co.id/";
     public const string Flavour = "";
     public const string? UpdateFeed = null;
 #endif
+
+    private static string? Meta(string key) =>
+        Assembly.GetExecutingAssembly().GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(a => a.Key == key)?.Value is { Length: > 0 } v ? v : null;
     /// Taskbar identity shared by every notification window, so Windows groups them under one iPop icon (mockup v2).
     /// Velopack stamps its Start menu shortcut with "velopack.{packId}"; using the same id makes toasts show
     /// "iPop Notifier" with the shortcut's icon.

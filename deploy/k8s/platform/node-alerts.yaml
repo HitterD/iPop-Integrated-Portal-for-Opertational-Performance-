@@ -24,6 +24,15 @@ spec:
             summary: "Disk on {{ $labels.instance }} below 7% free"
     - name: ipop.app
       rules:
+        # notifier-sync runs every 5 min; no success for 20 min = 3+ failed runs in a row, or a GitHub release
+        # that can't be brought in. Details: Admin › Notifier, or the job's log in Loki {app="notifier-sync"}.
+        - alert: NotifierSyncFailing
+          expr: (time() - max by (namespace) (kube_cronjob_status_last_successful_time{cronjob="notifier-sync"})) > 1200
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "Notifier releases are not syncing from GitHub ({{ $labels.namespace }})"
+            description: "No successful notifier-sync for over 20 minutes. Check secret ipop-notifier-github and the job log."
         - alert: IpopApiDown
           expr: sum(kube_deployment_status_replicas_available{namespace="ipop",deployment="ipop-api"}) < 1
           for: 3m

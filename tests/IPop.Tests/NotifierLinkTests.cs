@@ -246,6 +246,9 @@ public class NotifierLinkEndpointTests
         builder.Services.AddScoped<ITokenService, JwtTokenService>();
         builder.Services.AddScoped<IAuthWorkflow, AuthWorkflow>();
         builder.Services.AddSingleton<NotifierReleases>();
+        builder.Services.AddSingleton<NotifierPublisher>();
+        builder.Services.AddHttpClient();
+        builder.Services.AddSingleton<NotifierGithubSync>();
         builder.Services.AddAuthentication("Test").AddScheme<AuthenticationSchemeOptions, HeaderAuth>("Test", null);
         builder.Services.AddAuthorization(o => o.AddPolicy("AdminOnly", p => p.RequireRole("Admin")));
         var app = builder.Build();
