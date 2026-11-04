@@ -6,13 +6,12 @@ COPY src/IPop.Core/IPop.Core.csproj src/IPop.Core/
 COPY src/IPop.Application/IPop.Application.csproj src/IPop.Application/
 COPY src/IPop.Web/IPop.Web.csproj src/IPop.Web/
 COPY src/IPop.WebHost/IPop.WebHost.csproj src/IPop.WebHost/
-RUN --mount=type=cache,target=/root/.nuget/packages dotnet restore src/IPop.WebHost/IPop.WebHost.csproj
+RUN dotnet restore src/IPop.WebHost/IPop.WebHost.csproj
 COPY src/IPop.Core/ src/IPop.Core/
 COPY src/IPop.Application/ src/IPop.Application/
 COPY src/IPop.Web/ src/IPop.Web/
 COPY src/IPop.WebHost/ src/IPop.WebHost/
-RUN --mount=type=cache,target=/root/.nuget/packages \
-    dotnet publish src/IPop.WebHost/IPop.WebHost.csproj -c Release --no-restore -o /out /p:UseAppHost=false \
+RUN dotnet publish src/IPop.WebHost/IPop.WebHost.csproj -c Release --no-restore -o /out /p:UseAppHost=false \
  && find /out -name '*.pdb' -delete
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0

@@ -14,9 +14,10 @@ COPY src/IPop.Core/IPop.Core.csproj src/IPop.Core/
 COPY src/IPop.Application/IPop.Application.csproj src/IPop.Application/
 COPY src/IPop.Infrastructure/IPop.Infrastructure.csproj src/IPop.Infrastructure/
 COPY src/IPop.Api/IPop.Api.csproj src/IPop.Api/
+# Packages stay in this build-only layer (no cache mount): CI restores this layer from the GitHub cache on a
+# fresh runner whose cache mount is empty, and "--no-restore" below then found no DevExpress packages.
 RUN --mount=type=bind,from=dxpkgs,target=/dxpkgs \
     --mount=type=secret,id=dx_feed,env=DX_FEED \
-    --mount=type=cache,target=/root/.nuget/packages \
     set -e; \
     if [ -n "$(ls -A /dxpkgs 2>/dev/null)" ]; then dotnet nuget add source /dxpkgs -n dx; \
     elif [ -n "$DX_FEED" ]; then dotnet nuget add source "$DX_FEED" -n dx; \
@@ -25,7 +26,6 @@ RUN --mount=type=bind,from=dxpkgs,target=/dxpkgs \
     dotnet nuget remove source dx
 COPY src/ src/
 RUN --mount=type=secret,id=dx_license,env=DevExpress_License \
-    --mount=type=cache,target=/root/.nuget/packages \
     dotnet publish src/IPop.Api/IPop.Api.csproj -c Release --no-restore -o /out /p:UseAppHost=false \
  && find /out/runtimes -mindepth 1 -maxdepth 1 ! -name linux-x64 -exec rm -rf {} + \
  && find /out -name '*.pdb' -delete
