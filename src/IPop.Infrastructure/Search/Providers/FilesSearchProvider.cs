@@ -8,7 +8,8 @@ namespace IPop.Infrastructure.Search.Providers;
 /// shares that credential can list (no content indexing). FileStation search is a task on the NAS: it is
 /// started, polled within a time budget and always stopped afterwards, whether finished, timed out or
 /// cancelled. No credential anywhere = "Connect to search", not "no results".
-public sealed class FilesSearchProvider(IFileAccessService files, IPermissionEvaluator? perms = null, TimeSpan? budget = null) : ISearchModuleProvider
+public sealed class FilesSearchProvider(IFileAccessService files, IPermissionEvaluator? perms = null, TimeSpan? budget = null,
+    Microsoft.Extensions.DependencyInjection.IServiceScopeFactory? scopes = null) : ISearchModuleProvider
 {
     public SearchModuleInfo Info { get; } = new(SearchModules.Files, "Files", "folder", 100);
 
@@ -19,6 +20,58 @@ public sealed class FilesSearchProvider(IFileAccessService files, IPermissionEva
     public Task<bool> CanSearchAsync(Guid userId, CancellationToken ct) => SearchPaging.AllowedAsync(perms, userId, "files.read", ct);
 
     private sealed record Found(string Server, SynoItem Item);
+
+    private enum Outcome { Done, Capped, Slow, Failed }
+    private sealed record ServerResult(string Server, List<Found> Found, Outcome Outcome);
+
+    private static async Task<ServerResult[]> SequentialAsync(List<string> servers, Func<string, Task<ServerResult>> one)
+    {
+        var all = new List<ServerResult>();
+        foreach (var s in servers) all.Add(await one(s));
+        return [.. all];
+    }
+
+    private static async Task<ServerResult> SearchOneAsync(IFileAccessService files, SearchQuery q, string server, int want,
+        DateTime deadline, CancellationToken searchToken, CancellationToken ct)
+    {
+        var found = new List<Found>();
+        if (searchToken.IsCancellationRequested) return new(server, found, Outcome.Slow);
+        string? taskId = null;
+        try
+        {
+            var shares = await files.ListSharesAsync(q.UserId, server, searchToken);
+            if (shares.Count == 0) return new(server, found, Outcome.Done);
+            taskId = await files.SearchStartAsync(q.UserId, server, shares, q.Text.Trim(), searchToken);
+            while (true)
+            {
+                var page = await files.SearchListAsync(q.UserId, server, taskId, 0, want, searchToken);
+                var batch = page.Items.Where(i => !i.Path.Contains("/#recycle", StringComparison.OrdinalIgnoreCase)).ToList();
+                if (page.Finished || batch.Count >= want)
+                {
+                    found.AddRange(batch.Select(i => new Found(server, i)));
+                    return new(server, found, page.Total > batch.Count ? Outcome.Capped : Outcome.Done);
+                }
+                if (DateTime.UtcNow >= deadline)
+                {
+                    found.AddRange(batch.Select(i => new Found(server, i)));
+                    return new(server, found, Outcome.Slow);
+                }
+                await Task.Delay(250, searchToken);
+            }
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return new(server, found, Outcome.Slow); }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception) { return new(server, found, Outcome.Failed); }
+        finally
+        {
+            if (taskId is not null)
+            {
+                // Clean up even when the caller went away: a short, independent stop.
+                using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                try { await files.SearchStopAsync(q.UserId, server, taskId, stopCts.Token); } catch { }
+            }
+        }
+    }
 
     public async Task<SearchPage> SearchAsync(SearchQuery q, CancellationToken ct)
     {
@@ -37,53 +90,25 @@ public sealed class FilesSearchProvider(IFileAccessService files, IPermissionEva
         searchCts.CancelAfter(duration);
         var searchToken = searchCts.Token;
         var want = Math.Min(MaxPerServer, q.Page * q.PageSize);
-        // One NAS after another: the service shares one DbContext for its session cache, so never in parallel.
-        foreach (var server in connected)
+        // Every NAS at the same time, each with its own scope (FileAccessService holds a DbContext, so never one
+        // instance in parallel). One after another, the first slow plant used up the whole budget and the others were
+        // never searched. Without a scope factory (tests) it falls back to one after another.
+        var results = scopes is null
+            ? await SequentialAsync(connected, server => SearchOneAsync(files, q, server, want, deadline, searchToken, ct))
+            : await Task.WhenAll(connected.Select(async server =>
+            {
+                await using var scope = scopes.CreateAsyncScope();
+                var own = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<IFileAccessService>(scope.ServiceProvider);
+                return await SearchOneAsync(own, q, server, want, deadline, searchToken, ct);
+            }));
+        foreach (var r in results)
         {
-            ct.ThrowIfCancellationRequested();
-            if (searchToken.IsCancellationRequested) { slow.AddRange(connected.SkipWhile(x => x != server)); break; }
-            string? taskId = null;
-            try
+            found.AddRange(r.Found);
+            switch (r.Outcome)
             {
-                var shares = await files.ListSharesAsync(q.UserId, server, searchToken);
-                if (shares.Count == 0) continue;
-                taskId = await files.SearchStartAsync(q.UserId, server, shares, q.Text.Trim(), searchToken);
-                while (true)
-                {
-                    var page = await files.SearchListAsync(q.UserId, server, taskId, 0, want, searchToken);
-                    var batch = page.Items.Where(i => !i.Path.Contains("/#recycle", StringComparison.OrdinalIgnoreCase)).ToList();
-                    if (page.Finished || batch.Count >= want)
-                    {
-                        found.AddRange(batch.Select(i => new Found(server, i)));
-                        if (page.Total > batch.Count) capped.Add(server);
-                        break;
-                    }
-                    if (DateTime.UtcNow >= deadline)
-                    {
-                        found.AddRange(batch.Select(i => new Found(server, i)));
-                        slow.Add(server);
-                        break;
-                    }
-                    await Task.Delay(250, searchToken);
-                }
-            }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested) { slow.Add(server); }
-            catch (OperationCanceledException) { throw; }
-            catch (SynoException) { failed.Add(server); }
-            catch (Exception) { failed.Add(server); }
-            finally
-            {
-                if (taskId is not null)
-                {
-                    // Clean up even when the caller went away: a short, independent stop.
-                    using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-                    try { await files.SearchStopAsync(q.UserId, server, taskId, stopCts.Token); } catch { }
-                }
-            }
-            if (DateTime.UtcNow >= deadline && server != connected[^1])
-            {
-                slow.AddRange(connected.SkipWhile(x => x != server).Skip(1));
-                break;
+                case Outcome.Failed: failed.Add(r.Server); break;
+                case Outcome.Slow: slow.Add(r.Server); break;
+                case Outcome.Capped: capped.Add(r.Server); break;
             }
         }
 

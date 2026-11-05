@@ -461,6 +461,7 @@ public class GlobalSearchTests
         public HashSet<string> Failing = [];
         public List<string> Started = [], Stopped = [];
         public bool NeverFinish;
+        public HashSet<string> NeverFinishOn = [];
         public Task<IReadOnlyList<CredentialDto>> ListCredentialsAsync(Guid userId, CancellationToken ct) => Task.FromResult<IReadOnlyList<CredentialDto>>(Credentials);
         public Task<IReadOnlyList<string>> ListSharesAsync(Guid userId, string server, CancellationToken ct)
             => Failing.Contains(server) ? throw new SynoException("down") : Task.FromResult<IReadOnlyList<string>>(["/sja"]);
@@ -470,7 +471,8 @@ public class GlobalSearchTests
         {
             ct.ThrowIfCancellationRequested();
             var items = Results.GetValueOrDefault(server) ?? [];
-            return Task.FromResult(new SynoSearchPage(NeverFinish ? [] : items, items.Count, !NeverFinish));
+            var hang = NeverFinish || NeverFinishOn.Contains(server);
+            return Task.FromResult(new SynoSearchPage(hang ? [] : items, items.Count, !hang));
         }
         public Task SearchStopAsync(Guid userId, string server, string taskId, CancellationToken ct) { Stopped.Add(server); return Task.CompletedTask; }
         public bool HasServiceAccount => false;
@@ -540,6 +542,29 @@ public class GlobalSearchTests
         using var cts = new CancellationTokenSource(50);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => new FilesSearchProvider(cancelled).SearchAsync(Q(Guid.NewGuid(), "x"), cts.Token));
         Assert.Equal(["spj"], cancelled.Stopped);                                // cleaned up with its own short token
+    }
+
+    [Fact]
+    public async Task Files_searches_every_nas_at_once_so_a_slow_one_does_not_hide_the_others()
+    {
+        // One FakeNas behind every scope (it has no DbContext); the provider asks the scope factory per NAS.
+        var nas = new FakeNas
+        {
+            Credentials = [new("spj", true, false, "u"), new("krw", true, false, "u")],
+            Results = { ["krw"] = [new SynoItem("report.pdf", "/plant/report.pdf", false, 10, 1)] },
+            NeverFinishOn = { "spj" },
+        };
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton<IFileAccessService>(services, nas);
+        using var sp = Microsoft.Extensions.DependencyInjection.ServiceCollectionContainerBuilderExtensions.BuildServiceProvider(services);
+        var scopes = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+            .GetRequiredService<Microsoft.Extensions.DependencyInjection.IServiceScopeFactory>(sp);
+
+        var r = await new FilesSearchProvider(nas, budget: TimeSpan.FromMilliseconds(300), scopes: scopes).SearchAsync(Q(Guid.NewGuid(), "report"), Ct);
+
+        Assert.Contains(r.Items, h => h.Title == "report.pdf");   // KRW answered although SPJ hung the whole budget
+        Assert.True(r.Partial);
+        Assert.Contains("spj", nas.Stopped);
     }
 
     [Fact]
