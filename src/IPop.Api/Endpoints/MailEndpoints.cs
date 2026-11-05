@@ -683,7 +683,8 @@ public static class MailEndpoints
 
         // GET /api/mail/attachments/{id}/thumbnail
         g.MapGet("/attachments/{id:guid}/thumbnail", async (Guid id,
-            HttpContext http, IPopDbContext db, IWebHostEnvironment env, IFileAccessService fileSvc, CancellationToken ct) =>
+            HttpContext http, IPopDbContext db, IWebHostEnvironment env, IFileAccessService fileSvc,
+            IPop.Infrastructure.Files.AttachmentFileCache cache, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -695,32 +696,49 @@ public static class MailEndpoints
                 ? await db.MailRecipients.AnyAsync(r => r.MailId == linkedMailId && r.UserId == userId.Value, ct)
                 : IsPendingUploadOf(attachment, userId.Value);
             if (!canAccess) return Results.Forbid();
-            if (attachment.SynologyServer != "local")
+            if (!IsRasterImageMime(attachment.MimeType)) return Results.NotFound();
+
+            // The "thumbnail" of a mail picture used to be the original (a 25 MB photo pulled from the NAS every time
+            // it showed in a list). A 640 px JPEG is now made once and kept in the local cache.
+            try
             {
-                try
+                var thumb = await cache.GetAsync($"mail-thumb-{attachment.Id:N}", async c =>
                 {
-                    var stream = IsSharedMailPath(attachment.ThumbnailPath!) && fileSvc.HasServiceAccount
-                        && attachment.SynologyServer == fileSvc.ServiceServer
-                        ? await fileSvc.DownloadAsServiceAsync(attachment.ThumbnailPath!, ct)
-                        : await fileSvc.DownloadAsync(userId.Value, attachment.SynologyServer, attachment.ThumbnailPath!, ct);
-                    HardenFileResponse(http);
-                    return Results.File(stream, IsRasterImageMime(attachment.MimeType) ? attachment.MimeType : "application/octet-stream", enableRangeProcessing: true);
-                }
-                catch (SynoException ex) when (ex.IsAuthFailure)
-                {
-                    return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401);
-                }
-                catch (SynoException ex)
-                {
-                    return SynoUnavailable(http, ex, id);
-                }
+                    Stream original;
+                    if (attachment.SynologyServer == "local")
+                    {
+                        var combined = Path.GetFullPath(Path.Combine(env.ContentRootPath, attachment.ThumbnailPath!));
+                        var root = Path.GetFullPath(Path.Combine(env.ContentRootPath, "mail-files"));
+                        if (!combined.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(combined))
+                            throw new FileNotFoundException();
+                        original = File.OpenRead(combined);
+                    }
+                    else
+                        original = IsSharedMailPath(attachment.ThumbnailPath!) && fileSvc.HasServiceAccount
+                            && attachment.SynologyServer == fileSvc.ServiceServer
+                            ? await fileSvc.DownloadAsServiceAsync(attachment.ThumbnailPath!, c)
+                            : await fileSvc.DownloadAsync(userId.Value, attachment.SynologyServer, attachment.ThumbnailPath!, c);
+                    await using (original)
+                    {
+                        var seekable = original.CanSeek ? original : await CopyToMemoryAsync(original, c);
+                        if (ChatEndpoints.TryCreateThumbnail(seekable, 640, out var jpg) != ChatEndpoints.ThumbResult.Ok || jpg is null)
+                            throw new InvalidDataException("not a decodable picture");
+                        return new MemoryStream(jpg);
+                    }
+                }, ct);
+                HardenFileResponse(http);
+                return Results.File(File.OpenRead(thumb), "image/jpeg");
             }
-            var combined = Path.GetFullPath(Path.Combine(env.ContentRootPath, attachment.ThumbnailPath!));
-            var root = Path.GetFullPath(Path.Combine(env.ContentRootPath, "mail-files"));
-            if (!combined.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(combined))
-                return Results.NotFound();
-            HardenFileResponse(http);
-            return Results.File(File.OpenRead(combined), IsRasterImageMime(attachment.MimeType) ? attachment.MimeType : "application/octet-stream");
+            catch (FileNotFoundException) { return Results.NotFound(); }
+            catch (InvalidDataException) { return Results.NotFound(); }
+            catch (SynoException ex) when (ex.IsAuthFailure)
+            {
+                return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401);
+            }
+            catch (SynoException ex)
+            {
+                return SynoUnavailable(http, ex, id);
+            }
         });
 
         // ──────────────────────────────────────────────────────────────────────
@@ -1326,6 +1344,14 @@ public static class MailEndpoints
     {
         http.Response.Headers["X-Content-Type-Options"] = "nosniff";
         http.Response.Headers["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'";
+    }
+
+    private static async Task<Stream> CopyToMemoryAsync(Stream s, CancellationToken ct)
+    {
+        var ms = new MemoryStream();
+        await s.CopyToAsync(ms, ct);
+        ms.Position = 0;
+        return ms;
     }
 
     private static IResult ServeAttachment(HttpContext http, Stream stream, MailAttachment a, bool? inline)
