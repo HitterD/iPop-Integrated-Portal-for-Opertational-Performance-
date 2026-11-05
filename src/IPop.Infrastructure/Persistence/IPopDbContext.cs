@@ -250,6 +250,8 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
         b.Entity<User>(e =>
         {
             e.HasIndex(x => x.Nik).IsUnique();
+            // "Who is online": Dashboard's online list and the presence sweep filter on recent heartbeats.
+            e.HasIndex(x => x.PresenceLastSeenAt);
             e.Property(x => x.Email).HasMaxLength(320);
             e.HasOne(x => x.Department).WithMany(d => d.Members).HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.Site).WithMany().HasForeignKey(x => x.SiteId).OnDelete(DeleteBehavior.SetNull);

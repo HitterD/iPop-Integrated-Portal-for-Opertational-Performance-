@@ -5405,6 +5405,8 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("Nik")
                         .IsUnique();
 
+                    b.HasIndex("PresenceLastSeenAt");
+
                     b.HasIndex("SiteId");
 
                     b.ToTable("Users");

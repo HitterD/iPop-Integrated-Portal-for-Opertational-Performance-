@@ -288,17 +288,31 @@
     private IPop.Application.Chat.AttachmentDto? viewerFile;
     private IReadOnlyList<IPop.Application.Chat.AttachmentDto>? viewerSiblings;
 
+    private Guid? loadedActivityFor;
+    private int loadedActivityVersion;
+
     protected override async Task OnParametersSetAsync()
     {
-        if (Project is null) { activity = []; return; }
-        activity = await Auth.GetAsync<List<ActivityRow>>($"/api/projects/{Project.Id}/activity?limit=8") ?? [];
+        if (Project is null) { activity = []; loadedActivityFor = null; return; }
+        // Every parent render passes parameters again (AllTasks is a fresh list each time), so this re-fetched the
+        // activity feed on every render - and every task edit anywhere re-rendered every open Overview. Only reload
+        // when the project or its tasks really changed.
+        var version = TasksVersion();
+        if (loadedActivityFor != Project.Id || loadedActivityVersion != version)
+        {
+            loadedActivityFor = Project.Id;
+            loadedActivityVersion = version;
+            activity = await Auth.GetAsync<List<ActivityRow>>($"/api/projects/{Project.Id}/activity?limit=8") ?? [];
+        }
         await LoadRecentFilesAsync();
     }
+
+    private int TasksVersion() => (int)(AllTasks.Count + AllTasks.Sum(t => t.UpdatedAt.Ticks % 100_003) % 1_000_000_007);
 
     private async Task LoadRecentFilesAsync()
     {
         // Reload when the project changes or its task list was refreshed (a new upload pushes a project change).
-        var version = (int)(AllTasks.Count + AllTasks.Sum(t => t.UpdatedAt.Ticks % 100_003) % 1_000_000_007);
+        var version = TasksVersion();
         if (Project is null || (loadedFilesFor == Project.Id && loadedFilesVersion == version)) return;
         loadedFilesFor = Project.Id;
         loadedFilesVersion = version;
