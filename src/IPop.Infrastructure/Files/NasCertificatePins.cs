@@ -37,7 +37,12 @@ public sealed class NasCertificatePins
     public bool Accept(string host, X509Certificate2? cert, SslPolicyErrors errors)
     {
         if (cert is null) return false;
-        if (_pins.TryGetValue(host, out var pins)) return pins.Contains(PinOf(cert));
+        if (!string.IsNullOrEmpty(host) && _pins.TryGetValue(host, out var pins)) return pins.Contains(PinOf(cert));
+        // The NAS are addressed by IP, and .NET leaves SslStream.TargetHostName empty for an IP (no SNI), so the host
+        // is often unknown here: then the key must be one of the configured NAS keys (any host), or the chain valid.
+        if (string.IsNullOrEmpty(host) && _pins.Count > 0) return _all.Value.Contains(PinOf(cert)) || errors == SslPolicyErrors.None;
         return errors == SslPolicyErrors.None;
     }
+
+    private Lazy<HashSet<string>> _all => new(() => _pins.Values.SelectMany(v => v).ToHashSet());
 }

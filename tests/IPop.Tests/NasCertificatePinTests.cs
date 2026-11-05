@@ -32,6 +32,15 @@ public class NasCertificatePinTests
     }
 
     [Fact]
+    public void Unknown_host_name_ip_targets_accepts_any_configured_nas_key_only()
+    {
+        using var nas = SelfSigned("synology"); using var attacker = SelfSigned("synology");
+        var pins = Pins(("10.12.2.6", NasCertificatePins.PinOf(nas)));
+        Assert.True(pins.Accept("", nas, SslPolicyErrors.RemoteCertificateChainErrors));       // TargetHostName empty for IPs
+        Assert.False(pins.Accept("", attacker, SslPolicyErrors.RemoteCertificateChainErrors));
+    }
+
+    [Fact]
     public void Unpinned_host_needs_a_valid_chain()
     {
         using var c = SelfSigned("other");
