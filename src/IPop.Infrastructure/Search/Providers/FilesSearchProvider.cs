@@ -1,6 +1,7 @@
 using IPop.Application.Files;
 using IPop.Application.Rbac;
 using IPop.Application.Search;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace IPop.Infrastructure.Search.Providers;
 
@@ -9,7 +10,7 @@ namespace IPop.Infrastructure.Search.Providers;
 /// started, polled within a time budget and always stopped afterwards, whether finished, timed out or
 /// cancelled. No credential anywhere = "Connect to search", not "no results".
 public sealed class FilesSearchProvider(IFileAccessService files, IPermissionEvaluator? perms = null, TimeSpan? budget = null,
-    Microsoft.Extensions.DependencyInjection.IServiceScopeFactory? scopes = null) : ISearchModuleProvider
+    IServiceScopeFactory? scopes = null) : ISearchModuleProvider
 {
     public SearchModuleInfo Info { get; } = new(SearchModules.Files, "Files", "folder", 100);
 
@@ -98,7 +99,7 @@ public sealed class FilesSearchProvider(IFileAccessService files, IPermissionEva
             : await Task.WhenAll(connected.Select(async server =>
             {
                 await using var scope = scopes.CreateAsyncScope();
-                var own = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<IFileAccessService>(scope.ServiceProvider);
+                var own = scope.ServiceProvider.GetRequiredService<IFileAccessService>();
                 return await SearchOneAsync(own, q, server, want, deadline, searchToken, ct);
             }));
         foreach (var r in results)

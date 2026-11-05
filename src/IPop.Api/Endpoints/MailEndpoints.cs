@@ -627,7 +627,8 @@ public static class MailEndpoints
 
         // GET /api/mail/attachments/{id}/download?inline=true
         g.MapGet("/attachments/{id:guid}/download", async (Guid id, bool? inline,
-            HttpContext http, IPopDbContext db, IWebHostEnvironment env, IFileAccessService fileSvc, CancellationToken ct) =>
+            HttpContext http, IPopDbContext db, IWebHostEnvironment env, IFileAccessService fileSvc,
+            IPop.Infrastructure.Files.AttachmentFileCache cache, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -655,10 +656,19 @@ public static class MailEndpoints
             {
                 // Legacy uploads remain readable with the uploader's NAS credential; new
                 // uploads use the shared service account after mail-level authorization.
-                var stream = IsSharedMailPath(attachment.SynologyPath) && fileSvc.HasServiceAccount
-                    && attachment.SynologyServer == fileSvc.ServiceServer
-                    ? await fileSvc.DownloadAsServiceAsync(attachment.SynologyPath, ct)
-                    : await fileSvc.DownloadAsync(userId.Value, attachment.SynologyServer, attachment.SynologyPath, ct);
+                var asService = IsSharedMailPath(attachment.SynologyPath) && fileSvc.HasServiceAccount
+                    && attachment.SynologyServer == fileSvc.ServiceServer;
+                Task<Stream> Download(CancellationToken c) => asService
+                    ? fileSvc.DownloadAsServiceAsync(attachment.SynologyPath, c)
+                    : fileSvc.DownloadAsync(userId.Value, attachment.SynologyServer, attachment.SynologyPath, c);
+                // Big files are served from one local copy, so a viewer's range requests do not each pull the whole
+                // file from the NAS again. Access is checked above on every request; the copy is keyed by attachment.
+                if (attachment.FileSize > IPop.Infrastructure.Files.HttpSynologyGateway.InMemoryDownloadBytes)
+                {
+                    var local = await cache.GetAsync($"mail-{attachment.Id:N}", Download, ct);
+                    return ServeAttachment(http, File.OpenRead(local), attachment, inline);
+                }
+                var stream = await Download(ct);
                 return ServeAttachment(http, stream, attachment, inline);
             }
             catch (SynoException ex) when (ex.IsAuthFailure)

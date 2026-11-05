@@ -103,7 +103,7 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
     /// Uploads and downloads move files of up to 500 MB (mail attachments), also over plant links.
     internal static readonly TimeSpan TransferTimeout = TimeSpan.FromMinutes(30);
     /// Downloads up to this size stay in memory; bigger ones are spooled to a temp file.
-    internal const long InMemoryDownloadBytes = 16L * 1024 * 1024;
+    public const long InMemoryDownloadBytes = 16L * 1024 * 1024;
 
     private async Task<HttpResponseMessage> GetShortAsync(string url, CancellationToken ct)
     {

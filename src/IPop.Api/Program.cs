@@ -109,6 +109,7 @@ builder.Services.AddRateLimiter(o =>
 builder.Services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
 builder.Services.AddSingleton<SynologySessionCache>();
 builder.Services.AddScoped<IFileAccessService, FileAccessService>();
+builder.Services.AddSingleton<IPop.Infrastructure.Files.AttachmentFileCache>();
 builder.Services.AddScoped<ISettings, DbSettings>();
 
 var smtp = SmtpOptions.Bind(builder.Configuration);
