@@ -277,7 +277,12 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasIndex(x => x.StartedAt);
             e.Property(x => x.TriggeredBy).HasMaxLength(32);
         });
-        b.Entity<AuditLog>(e => e.HasIndex(x => x.CreatedAt));
+        b.Entity<AuditLog>(e =>
+        {
+            e.HasIndex(x => x.CreatedAt);
+            // Per-record history (approval chain history, org-chart undo): filtered on Action + EntityId.
+            e.HasIndex(x => new { x.Action, x.EntityId });
+        });
         b.Entity<UserFavoriteContact>(e =>
         {
             e.HasIndex(x => new { x.UserId, x.ContactNik }).IsUnique();

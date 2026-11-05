@@ -214,6 +214,8 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CreatedAt");
 
+                    b.HasIndex("Action", "EntityId");
+
                     b.ToTable("AuditLogs");
                 });
 

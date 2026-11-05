@@ -43,7 +43,23 @@ public sealed class ApprovalService(IPopDbContext db, Func<DateTime> now) : IApp
         Dictionary<Guid, (string Code, string Name, Guid? ParentId)> Departments,
         Dictionary<Guid, (string Code, string Name)> Divisions);
 
+    // Users/sites/departments/divisions change through HRIS and Admin, not per keystroke: the Approvals list re-read
+    // all ~5,000 users and every org table on each search keystroke and page. Kept 30 s; approval writes drop it.
+    // Only the real (PostgreSQL) database is cached; test databases (SQLite, one per test) never share a cache.
+    private static (DateTime At, Lookups Value)? _lookups;
+    private static readonly TimeSpan LookupsFor = TimeSpan.FromSeconds(30);
+    internal static void ForgetLookups() => _lookups = null;
+
     private async Task<Lookups> LoadLookupsAsync(CancellationToken ct)
+    {
+        var cacheable = db.Database.IsNpgsql();
+        if (cacheable && _lookups is { } c && DateTime.UtcNow - c.At < LookupsFor) return c.Value;
+        var fresh = await LoadLookupsCoreAsync(ct);
+        if (cacheable) _lookups = (DateTime.UtcNow, fresh);
+        return fresh;
+    }
+
+    private async Task<Lookups> LoadLookupsCoreAsync(CancellationToken ct)
     {
         var people = await db.Users.AsNoTracking()
             .Select(u => new Person(u.Nik, u.Name, u.IsActive, u.SiteId, u.DepartmentId, u.DivisionId))
@@ -183,6 +199,7 @@ public sealed class ApprovalService(IPopDbContext db, Func<DateTime> now) : IApp
         nik = WorkbookNik.Normalize(nik, known) ?? throw new ArgumentException("NIK is required.", nameof(nik));
         await WriteAsync([(nik, slots.Select(x => WorkbookNik.Normalize(x, known)).ToArray())], actorNik, null, ct);
         await db.SaveChangesAsync(ct);
+        ForgetLookups();
         return (await GetAsync(nik, ct))!;
     }
 
@@ -201,6 +218,7 @@ public sealed class ApprovalService(IPopDbContext db, Func<DateTime> now) : IApp
         }).ToList();
         var n2 = await WriteAsync(changes, actorNik, "bulk", ct);
         await db.SaveChangesAsync(ct);
+        ForgetLookups();
         return n2;
     }
 
@@ -215,6 +233,7 @@ public sealed class ApprovalService(IPopDbContext db, Func<DateTime> now) : IApp
         var changes = hits.Select(c => (c.Nik, c.Slots.Select(s => s == from ? to : s).ToArray())).ToList();
         var n = await WriteAsync(changes, actorNik, "replace", ct);
         await db.SaveChangesAsync(ct);
+        ForgetLookups();
         return n;
     }
 

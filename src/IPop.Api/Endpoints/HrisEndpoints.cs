@@ -12,7 +12,14 @@ public static class HrisEndpoints
         app.MapPost("/api/admin/hris/sync", async (IHrisSyncService sync, IDirectoryChangeNotifier directory,
             HttpContext http, CancellationToken ct) =>
         {
-            var result = await sync.RunAsync(http.User.FindFirst("nik")?.Value, ct);
+            if (IPop.Infrastructure.Hris.HrisSyncService.IsRunning)
+                return Results.Json(new { code = "sync_running", message = "An HRIS sync is already running. Try again when it has finished." }, statusCode: 409);
+            HrisSyncResult result;
+            try { result = await sync.RunAsync(http.User.FindFirst("nik")?.Value, ct); }
+            catch (InvalidOperationException e) when (e.Message.Contains("already running"))
+            {
+                return Results.Json(new { code = "sync_running", message = "An HRIS sync is already running. Try again when it has finished." }, statusCode: 409);
+            }
             if (result.Inserted > 0 || result.Updated > 0 || result.Deactivated > 0)
                 await directory.NotifyAsync(ct);
             return Results.Ok(result);

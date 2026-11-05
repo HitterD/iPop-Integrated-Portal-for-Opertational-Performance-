@@ -68,4 +68,15 @@ public class AuditMigrationTests
         Assert.Contains("lower(\"Body\") gin_trgm_ops", sql);
         Assert.Contains("lower(\"Subject\") gin_trgm_ops", sql);
     }
+
+    [Fact]
+    public void Audit_log_action_entity_index_migration_adds_only_that_index()
+    {
+        using var db = Db();
+        var migrations = db.GetService<IMigrationsAssembly>();
+        var entry = Assert.Single(migrations.Migrations.Where(x => x.Key.EndsWith("_AuditLogActionEntityIndex")));
+        var index = Assert.IsType<CreateIndexOperation>(Assert.Single(migrations.CreateMigration(entry.Value, db.Database.ProviderName!).UpOperations));
+        Assert.Equal("AuditLogs", index.Table);
+        Assert.Equal(["Action", "EntityId"], index.Columns);
+    }
 }

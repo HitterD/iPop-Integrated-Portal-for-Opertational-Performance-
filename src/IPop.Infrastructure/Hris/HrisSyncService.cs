@@ -24,7 +24,22 @@ public class HrisSyncService(IPopDbContext db, IHrisGateway gateway,
 
     public Task<HrisSyncResult> RunAsync(CancellationToken ct) => RunAsync(null, ct);
 
+    /// One sync at a time per process: the Admin "Sync now" button and HrisSyncWorker could run together and insert the
+    /// same NIK twice (unique index violation halfway through).
+    private static readonly SemaphoreSlim RunGate = new(1, 1);
+    public static bool IsRunning => RunGate.CurrentCount == 0;
+
     public async Task<HrisSyncResult> RunAsync(string? triggeredBy, CancellationToken ct)
+    {
+        if (!await RunGate.WaitAsync(0, CancellationToken.None))
+            throw new InvalidOperationException("An HRIS sync is already running.");
+        // Never the caller's token: a closed Admin tab used to abort the run mid-way and leave it "running" forever.
+        // Only the host shutting down stops it (the worker passes its stopping token through as triggeredBy == null).
+        try { return await RunLockedAsync(triggeredBy, triggeredBy is null ? ct : CancellationToken.None); }
+        finally { RunGate.Release(); }
+    }
+
+    private async Task<HrisSyncResult> RunLockedAsync(string? triggeredBy, CancellationToken ct)
     {
         var startedAt = DateTime.UtcNow;
         _log.Clear();
@@ -40,7 +55,13 @@ public class HrisSyncService(IPopDbContext db, IHrisGateway gateway,
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Host is stopping
+            // Host is stopping: close the run instead of leaving it "running".
+            run.FinishedAt = DateTime.UtcNow;
+            run.Succeeded = false;
+            run.Error = "Stopped: the server was shutting down.";
+            run.Log = string.Join('
+', _log);
+            try { await db.SaveChangesAsync(CancellationToken.None); } catch { }
             throw;
         }
         catch (Exception ex)

@@ -77,6 +77,7 @@ public sealed class ApprovalImport(IPopDbContext db, ApprovalService approvals, 
                 CreatedAt = DateTime.UtcNow,
             });
             await db.SaveChangesAsync(ct);
+            ApprovalService.ForgetLookups();
             await tx.CommitAsync(ct);
             return result;
         }
