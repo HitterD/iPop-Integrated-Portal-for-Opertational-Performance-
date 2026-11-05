@@ -420,12 +420,6 @@ public sealed partial class ChatService
     public async Task<MessageResultDto> ForwardMessageAsync(Guid userId, Guid messageId, Guid targetRoomId, CancellationToken ct)
     {
         var replayKey = ForwardKey(userId, messageId, targetRoomId, DateTime.UtcNow);
-        var replay = await db.ChatMessages.AsNoTracking()
-            .Include(m => m.Sender).Include(m => m.Attachments).Include(m => m.Reactions).Include(m => m.ReadReceipts)
-            .AsSplitQuery()
-            .FirstOrDefaultAsync(m => m.RoomId == targetRoomId && m.IdempotencyKey == replayKey && m.SenderId == userId, ct);
-        if (replay is not null) return new MessageResultDto(true, MapToMessageDto(replay, userId), null, Replayed: true);
-
         var original = await db.ChatMessages
             .AsNoTracking()
             .Include(m => m.Sender)
@@ -446,6 +440,13 @@ public sealed partial class ChatService
             return new MessageResultDto(false, null, "forbidden");
         if (await IsBlockedInDmAsync(targetRoomId, userId, ct))
             return new MessageResultDto(false, null, "blocked");
+
+        // A stored idempotent response is still private room content: recheck BOTH memberships before returning it.
+        var replay = await db.ChatMessages.AsNoTracking()
+            .Include(m => m.Sender).Include(m => m.Attachments).Include(m => m.Reactions).Include(m => m.ReadReceipts)
+            .AsSplitQuery()
+            .FirstOrDefaultAsync(m => m.RoomId == targetRoomId && m.IdempotencyKey == replayKey && m.SenderId == userId, ct);
+        if (replay is not null) return new MessageResultDto(true, MapToMessageDto(replay, userId), null, Replayed: true);
 
         var now = DateTime.UtcNow;
         // Konten bersih: lepas prefix legacy "[forwarded]" — metadata terusan kini
