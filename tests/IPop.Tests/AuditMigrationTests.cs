@@ -56,4 +56,16 @@ public class AuditMigrationTests
         Assert.Equal(("ChatMessages", "DeletedAt", true), (col.Table, col.Name, col.IsNullable));
         Assert.Single(ops.OfType<SqlOperation>());
     }
+
+    [Fact]
+    public void Search_trigram_migration_indexes_chat_content_and_mail_subject_body()
+    {
+        using var db = Db();
+        var migrations = db.GetService<IMigrationsAssembly>();
+        var entry = Assert.Single(migrations.Migrations.Where(x => x.Key.EndsWith("_SearchTrigramIndexes")));
+        var sql = Assert.IsType<SqlOperation>(Assert.Single(migrations.CreateMigration(entry.Value, db.Database.ProviderName!).UpOperations)).Sql;
+        Assert.Contains("\"ChatMessages\" USING gin (\"Content\" gin_trgm_ops)", sql);
+        Assert.Contains("lower(\"Body\") gin_trgm_ops", sql);
+        Assert.Contains("lower(\"Subject\") gin_trgm_ops", sql);
+    }
 }
