@@ -130,3 +130,96 @@ public class AuthRefreshRaceTests
         Assert.False(auth.IsAuthenticated);
     }
 }
+
+/// An API restart (502/503 from the proxy, or no answer) must not end the session: only a refused token does.
+[Collection(nameof(RefreshRetryDelaysCollection))]
+public class AuthRefreshTransientTests
+{
+    private sealed class FlakyRefreshHandler(params HttpStatusCode?[] answers) : HttpMessageHandler
+    {
+        private int _i;
+        public int RefreshCalls;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Interlocked.Increment(ref RefreshCalls);
+            var a = answers[Math.Min(_i++, answers.Length - 1)];
+            if (a is null) throw new HttpRequestException("connection refused");
+            if (a != HttpStatusCode.OK) return Task.FromResult(new HttpResponseMessage(a.Value));
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new
+                {
+                    accessToken = "access-1", refreshToken = "refresh-1",
+                    accessTokenExpiresAt = DateTime.UtcNow.AddMinutes(15), mustChangePassword = false,
+                }),
+            });
+        }
+    }
+
+    private static (AuthState Auth, BunitContext Ctx) Make(HttpMessageHandler h)
+    {
+        var ctx = new BunitContext();
+        ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        ctx.JSInterop.Setup<string?>("localStorage.getItem", _ => true).SetResult("refresh-0");
+        return (new AuthState(new HttpClient(h) { BaseAddress = new Uri("http://localhost/") }, ctx.JSInterop.JSRuntime), ctx);
+    }
+
+    [Fact]
+    public async Task Proxy_errors_during_a_restart_are_retried_and_the_session_survives()
+    {
+        var saved = AuthState.RefreshRetryDelays;
+        AuthState.RefreshRetryDelays = [TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero];
+        try
+        {
+            var h = new FlakyRefreshHandler(HttpStatusCode.BadGateway, null, HttpStatusCode.ServiceUnavailable, HttpStatusCode.OK);
+            var (auth, ctx) = Make(h);
+            using var _ = ctx;
+            var ended = 0;
+            auth.SessionEnded += () => ended++;
+
+            Assert.True(await auth.TryRestoreAsync());
+            Assert.Equal(4, h.RefreshCalls);
+            Assert.Equal(0, ended);
+            Assert.DoesNotContain(ctx.JSInterop.Invocations, i => i.Identifier == "localStorage.removeItem");
+        }
+        finally { AuthState.RefreshRetryDelays = saved; }
+    }
+
+    [Fact]
+    public async Task Api_still_down_after_the_retries_keeps_the_stored_token()
+    {
+        var saved = AuthState.RefreshRetryDelays;
+        AuthState.RefreshRetryDelays = [TimeSpan.Zero, TimeSpan.Zero];
+        try
+        {
+            var h = new FlakyRefreshHandler(HttpStatusCode.GatewayTimeout);
+            var (auth, ctx) = Make(h);
+            using var _ = ctx;
+            var ended = 0;
+            auth.SessionEnded += () => ended++;
+
+            Assert.False(await auth.TryRestoreAsync());
+            Assert.Equal(3, h.RefreshCalls);
+            Assert.Equal(0, ended);
+            Assert.DoesNotContain(ctx.JSInterop.Invocations, i => i.Identifier == "localStorage.removeItem");
+        }
+        finally { AuthState.RefreshRetryDelays = saved; }
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.BadGateway, true)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, true)]
+    [InlineData(HttpStatusCode.TooManyRequests, true)]
+    [InlineData(HttpStatusCode.InternalServerError, true)]
+    [InlineData(HttpStatusCode.Unauthorized, false)]
+    [InlineData(HttpStatusCode.Forbidden, false)]
+    [InlineData(HttpStatusCode.BadRequest, false)]
+    [InlineData(HttpStatusCode.NotFound, false)]
+    [InlineData(HttpStatusCode.RequestTimeout, true)]
+    public void Only_a_refused_token_is_final(HttpStatusCode code, bool transient) =>
+        Assert.Equal(transient, AuthState.IsTransientRefreshFailure(code));
+}
+
+[CollectionDefinition(nameof(RefreshRetryDelaysCollection), DisableParallelization = true)]
+public class RefreshRetryDelaysCollection;

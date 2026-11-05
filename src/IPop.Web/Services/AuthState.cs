@@ -352,6 +352,14 @@ public class AuthState(HttpClient http, IJSRuntime js)
         return ok;
     }
 
+    /// Waits between refresh attempts while the API is unreachable (about 90 s in total).
+    internal static TimeSpan[] RefreshRetryDelays = [TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4),
+        TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30)];
+
+    /// A refresh answer that says nothing about the token itself: retry it rather than end the session.
+    internal static bool IsTransientRefreshFailure(HttpStatusCode code) =>
+        (int)code >= 500 || code is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests;
+
     private async Task<bool> RefreshCoreAsync()
     {
         var refresh = await js.InvokeAsync<string?>("localStorage.getItem", RefreshKey);
@@ -359,9 +367,23 @@ public class AuthState(HttpClient http, IJSRuntime js)
         if (string.IsNullOrEmpty(refresh)) refresh = await js.InvokeAsync<string?>("sessionStorage.getItem", RefreshKey);
         if (string.IsNullOrEmpty(refresh)) return false;
 
-        HttpResponseMessage res;
-        try { res = await http.PostAsJsonAsync("/api/auth/refresh", new { refreshToken = refresh }); }
-        catch { return false; } // API down — stay signed out rather than crash the router
+        HttpResponseMessage? res = null;
+        // Only the server refusing the token (4xx) ends the session. A 5xx/408/429/timeout or no answer at all is
+        // the API restarting or failing over (40-70 s on the cluster): keep the stored token and retry for about 90 s.
+        // Treating those like a refusal used to delete the refresh token and sign everyone out during each restart.
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                res = await http.PostAsJsonAsync("/api/auth/refresh", new { refreshToken = refresh });
+                if (res.IsSuccessStatusCode || !IsTransientRefreshFailure(res.StatusCode)) break;
+            }
+            catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { res = null; }
+            catch { return false; } // anything else: stay signed out in this tab rather than crash the router
+            if (attempt >= RefreshRetryDelays.Length) return false; // still down: signed out in this tab, token kept
+            await Task.Delay(RefreshRetryDelays[attempt]);
+        }
+        if (res is null) return false;
         if (!res.IsSuccessStatusCode)
         {
             // The server refused the refresh token itself: this session is over and no amount of
