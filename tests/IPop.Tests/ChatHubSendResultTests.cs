@@ -57,7 +57,12 @@ public class ChatHubSendResultTests
 
     public class Notifier : System.Reflection.DispatchProxy
     {
-        protected override object? Invoke(System.Reflection.MethodInfo? m, object?[]? a) => Task.CompletedTask;
+        public int NewMessageCalls;
+        protected override object? Invoke(System.Reflection.MethodInfo? m, object?[]? a)
+        {
+            if (m?.Name == nameof(IChatNotifier.NotifyNewMessageAsync)) NewMessageCalls++;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class Realtime : IRealtime
@@ -116,6 +121,31 @@ public class ChatHubSendResultTests
 
         Assert.Equal(first.MessageId, again.MessageId);
         Assert.Equal(1, t.Verify().ChatMessages.Count(m => m.RoomId == room.Id));
+    }
+
+    [Fact]
+    public async Task Retry_after_commit_without_fanout_rebroadcasts_the_existing_message()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("REPLAY_FANOUT");
+        var room = t.AddRoom();
+        t.AddMember(room.Id, me.Id);
+        var request = new SendMessageRequest(room.Id, "Committed before disconnect", Guid.NewGuid(), null, "text");
+        var committed = await new ChatService(t.Db).SendMessageAsync(me.Id, request, default);
+        Assert.True(committed.Success);
+        var notifier = System.Reflection.DispatchProxy.Create<IChatNotifier, Notifier>();
+        var hub = new ChatHub(new ChatService(t.Db), notifier, t.Db, new Perms(true), new Realtime())
+        {
+            Context = new Ctx(Principal(me.Id, me.Nik)), Clients = new CallerClients([]),
+        };
+
+        var replay = await hub.SendMessage(new SendMessageHubRequest(room.Id, request.Content,
+            request.IdempotencyKey, null, "text"));
+
+        Assert.True(replay.Success);
+        Assert.Equal(committed.Message!.Id, replay.MessageId);
+        Assert.Equal(1, ((Notifier)(object)notifier).NewMessageCalls);
+        Assert.Single(t.Verify().PushJobs.Where(j => j.Kind == "chat" && j.RefId == replay.MessageId));
     }
 
     [Fact]
