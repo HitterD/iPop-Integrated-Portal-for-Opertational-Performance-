@@ -121,6 +121,27 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task Forward_key_reused_for_a_different_source_is_a_conflict()
+    {
+        using var t = new TestDb();
+        var sender = t.AddUser("FORWARD_CONFLICT");
+        var source = t.AddRoom("group", "Source");
+        var target = t.AddRoom("group", "Target");
+        t.AddMember(source.Id, sender.Id);
+        t.AddMember(target.Id, sender.Id);
+        var firstSource = t.AddMessage(source.Id, sender.Id, "First");
+        var secondSource = t.AddMessage(source.Id, sender.Id, "Second");
+        var key = Guid.NewGuid();
+        Assert.True((await new ChatService(t.Verify()).ForwardMessageAsync(sender.Id, firstSource.Id, target.Id, key, default)).Success);
+
+        var conflict = await new ChatService(t.Verify()).ForwardMessageAsync(sender.Id, secondSource.Id, target.Id, key, default);
+
+        Assert.False(conflict.Success);
+        Assert.Equal("idempotency_conflict", conflict.Error);
+        Assert.Single(t.Verify().ChatMessages.Where(m => m.RoomId == target.Id));
+    }
+
+    [Fact]
     public async Task Forward_retried_within_the_minute_is_one_message()
     {
         using var t = new TestDb();
