@@ -940,8 +940,9 @@ public static class MailEndpoints
             if (mail.Status != "sent")
                 return Results.Json(new { code = "not_sent", message = "Only sent mail can be recalled." }, statusCode: 422);
 
-            // Bila SATU penerima saja sudah membaca, recall ditolak (standar Outlook).
-            var anyRead = mail.Recipients.Any(r => r.RecipientType != "from" && r.ReadAt != null);
+            // Once ONE recipient has actually seen it, recall is refused (Outlook rule). SeenAt, not ReadAt: "Mark all
+            // read" without opening must not block a recall, and marking a seen mail unread must not allow one.
+            var anyRead = mail.Recipients.Any(r => r.RecipientType != "from" && r.SeenAt != null);
             if (anyRead)
                 return Results.Json(new { code = "already_read", message = "Mail has already been read by recipient — cannot be recalled." }, statusCode: 422);
 

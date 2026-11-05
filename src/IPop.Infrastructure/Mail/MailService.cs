@@ -563,8 +563,11 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
                 .ToList(),
             mail.Attachments.OrderBy(a => a.SortOrder).ThenBy(a => a.CreatedAt)
                 .Select(a => new AttachmentDto(a.Id, a.FileName, a.FileSize, a.MimeType, a.ThumbnailPath)).ToList(),
+            // "Read" here is the strict SeenAt (opened and seen), never ReadAt: that is the recipient's own unread
+            // flag (Mark all read, bulk read) and is nobody else's business.
             visibleDelivery
-                .Select(r => new DeliveryReadStateDto(r.UserId, r.User.Name, r.User.Nik, r.RecipientType, r.DeliveredAt, r.ReadAt))
+                .Select(r => new DeliveryReadStateDto(r.UserId, r.User.Name, r.User.Nik, r.RecipientType, r.DeliveredAt,
+                    r.UserId == userId ? r.ReadAt : r.SeenAt))
                 .ToList(),
             recipient.IsPinned,
             mail.Importance ?? "normal",
@@ -742,7 +745,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
 
         return mail.Recipients
             .Where(r => r.RecipientType != "from")
-            .Select(r => new DeliveryReadStateDto(r.UserId, r.User.Name, r.User.Nik, r.RecipientType, r.DeliveredAt, r.ReadAt))
+            .Select(r => new DeliveryReadStateDto(r.UserId, r.User.Name, r.User.Nik, r.RecipientType, r.DeliveredAt, r.SeenAt))
             .ToList();
     }
 
