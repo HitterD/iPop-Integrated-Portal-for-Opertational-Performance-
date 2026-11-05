@@ -60,6 +60,45 @@ public class ChatAttachmentGcTests : IDisposable
     }
 
     [Fact]
+    public async Task Deleted_source_keeps_the_forwarded_file_and_thumbnail_until_the_last_reference_expires()
+    {
+        using var t = new TestDb();
+        var user = t.AddUser("GC_FORWARD");
+        var room = t.AddRoom("group", "Forwarded files");
+        t.AddMember(room.Id, user.Id);
+        var now = DateTime.UtcNow;
+        var source = t.AddMessage(room.Id, user.Id, "original");
+        source.IsDeleted = true;
+        source.DeletedAt = now.AddDays(-31);
+        var forwarded = t.AddMessage(room.Id, user.Id, "forward");
+        var originalAttachment = Local(t, source.Id, "shared.jpg", now.AddDays(-40));
+        var forwardedAttachment = Local(t, forwarded.Id, "shared.jpg", now.AddDays(-35));
+        var thumb = "chat-files/room/shared.thumb.jpg";
+        File.WriteAllText(Path.Combine(_root, thumb), "thumbnail");
+        originalAttachment.ThumbnailPath = thumb;
+        forwardedAttachment.ThumbnailPath = thumb;
+        await t.Db.SaveChangesAsync();
+
+        Assert.Equal(1, await ChatAttachmentGcWorker.RunOnceAsync(t.Verify(), null, _root, now, NullLogger.Instance, default));
+
+        Assert.True(File.Exists(Path.Combine(_root, forwardedAttachment.SynologyPath)), "A live forward still references the original file.");
+        Assert.True(File.Exists(Path.Combine(_root, thumb)), "A live forward still references the thumbnail.");
+        using (var remaining = t.Verify())
+        {
+            Assert.False(await remaining.ChatAttachments.AnyAsync(a => a.Id == originalAttachment.Id));
+            Assert.True(await remaining.ChatAttachments.AnyAsync(a => a.Id == forwardedAttachment.Id));
+            var lastMessage = await remaining.ChatMessages.SingleAsync(m => m.Id == forwarded.Id);
+            lastMessage.IsDeleted = true;
+            lastMessage.DeletedAt = now.AddDays(-31);
+            await remaining.SaveChangesAsync();
+        }
+
+        Assert.Equal(1, await ChatAttachmentGcWorker.RunOnceAsync(t.Verify(), null, _root, now, NullLogger.Instance, default));
+        Assert.False(File.Exists(Path.Combine(_root, forwardedAttachment.SynologyPath)));
+        Assert.False(File.Exists(Path.Combine(_root, thumb)));
+    }
+
+    [Fact]
     public async Task Nas_files_without_a_service_account_are_kept_for_a_later_pass()
     {
         using var t = new TestDb();
