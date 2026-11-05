@@ -64,6 +64,26 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task Forward_replay_does_not_bypass_revoked_target_membership()
+    {
+        using var t = new TestDb();
+        var sender = t.AddUser("FORWARD_REVOKED");
+        var source = t.AddRoom("group", "Source");
+        var target = t.AddRoom("group", "Target");
+        t.AddMember(source.Id, sender.Id);
+        var targetMembership = t.AddMember(target.Id, sender.Id);
+        var original = t.AddMessage(source.Id, sender.Id, "Secret");
+        Assert.True((await new ChatService(t.Verify()).ForwardMessageAsync(sender.Id, original.Id, target.Id, default)).Success);
+        targetMembership.LeftAt = DateTime.UtcNow;
+        t.Db.SaveChanges();
+
+        var replay = await new ChatService(t.Verify()).ForwardMessageAsync(sender.Id, original.Id, target.Id, default);
+
+        Assert.False(replay.Success);
+        Assert.Equal("forbidden", replay.Error);
+    }
+
+    [Fact]
     public async Task Forward_retried_within_the_minute_is_one_message()
     {
         using var t = new TestDb();
