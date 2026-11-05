@@ -142,6 +142,9 @@ public class AuthRefreshTransientTests
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
+            // After a successful refresh presence starts and beats; only the refresh calls matter here.
+            if (request.RequestUri!.AbsolutePath != "/api/auth/refresh")
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { status = "on" }) });
             Interlocked.Increment(ref RefreshCalls);
             var a = answers[Math.Min(_i++, answers.Length - 1)];
             if (a is null) throw new HttpRequestException("connection refused");
