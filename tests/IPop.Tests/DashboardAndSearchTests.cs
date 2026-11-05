@@ -298,4 +298,26 @@ public class DashboardAndSearchTests
             return Task.FromResult(allowed);
         }
     }
+
+    [Fact]
+    public async Task Dashboard_chat_unread_counts_only_messages_after_each_rooms_read_mark()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("DU_ME"); var b = t.AddUser("DU_B");
+        var read = t.AddRoom("group", "Read"); var fresh = t.AddRoom("group", "Fresh");
+        foreach (var r in new[] { read, fresh }) { t.AddMember(r.Id, me.Id); t.AddMember(r.Id, b.Id); }
+        var now = DateTime.UtcNow;
+        t.AddMessage(read.Id, b.Id, "old", at: now.AddMinutes(-30));
+        t.AddMessage(read.Id, b.Id, "new", at: now.AddMinutes(-5));
+        t.AddMessage(fresh.Id, b.Id, "a", at: now.AddMinutes(-3));
+        t.AddMessage(fresh.Id, b.Id, "b", at: now.AddMinutes(-2));
+        t.AddMessage(fresh.Id, me.Id, "mine", at: now.AddMinutes(-1));              // own messages never count
+        t.Db.ChatRoomUserSettings.Add(new IPop.Core.Entities.ChatRoomUserSettings
+            { UserId = me.Id, RoomId = read.Id, LastReadMessageAt = now.AddMinutes(-20) });
+        t.Db.SaveChanges();
+
+        var dto = await new IPop.Infrastructure.Dashboard.DashboardService(t.Verify()).GetAsync(me.Id);
+
+        Assert.Equal(3, dto.Kpis.ChatUnread);   // 1 after the read mark + 2 in the never-read room
+    }
 }

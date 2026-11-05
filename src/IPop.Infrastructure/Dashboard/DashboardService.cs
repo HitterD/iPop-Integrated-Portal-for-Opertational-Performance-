@@ -43,15 +43,23 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
         rooms = rooms.Where(r => !(settingsByRoom.TryGetValue(r.Id, out var s) && s.IsArchived)).ToList();
 
         var roomIds = rooms.Select(r => r.Id).ToList();
-        var unreadMsgs = await db.ChatMessages.AsNoTracking()
-            .Where(m => roomIds.Contains(m.RoomId) && m.ThreadParentId == null && m.SenderId != userId && m.Type != "system")
-            .Select(m => new { m.RoomId, m.CreatedAt })
-            .ToListAsync(ct);
+        // Counted in SQL, per room, after each room's own read mark: this used to load every message from others in
+        // all of the user's rooms (the whole chat history) on every Dashboard load and count them in memory.
+        var unreadByRoom = (await (
+                from m in db.ChatMessages.AsNoTracking()
+                where roomIds.Contains(m.RoomId) && m.ThreadParentId == null && m.SenderId != userId && m.Type != "system"
+                join st in db.ChatRoomUserSettings.AsNoTracking().Where(x => x.UserId == userId) on m.RoomId equals st.RoomId into sts
+                from st in sts.DefaultIfEmpty()
+                where st == null || st.LastReadMessageAt == null || m.CreatedAt > st.LastReadMessageAt
+                group m by m.RoomId into g
+                select new { RoomId = g.Key, N = g.Count() })
+            .ToListAsync(ct))
+            .ToDictionary(x => x.RoomId, x => x.N);
         int UnreadIn(Guid roomId)
         {
             settingsByRoom.TryGetValue(roomId, out var s);
             if (s is { IsMuted: true } && (s.MuteExpiresAt is null || s.MuteExpiresAt > now)) return 0;
-            return unreadMsgs.Count(m => m.RoomId == roomId && (s?.LastReadMessageAt is null || m.CreatedAt > s.LastReadMessageAt));
+            return unreadByRoom.GetValueOrDefault(roomId);
         }
         var chatUnread = roomIds.Sum(UnreadIn);
 
