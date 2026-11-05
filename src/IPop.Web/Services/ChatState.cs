@@ -939,6 +939,11 @@ public partial class ChatState : IAsyncDisposable
 
     private void OnThreadReply(MessageDto reply)
     {
+        // Reconnect/replay can offer the same reply again. Deduplicate before changing parent counts or notifying
+        // subscribers, using the same bounded ID window as ordinary message events.
+        if (!_receivedMessageIds.Add(reply.Id)) return;
+        _receivedMessageOrder.Enqueue(reply.Id);
+        if (_receivedMessageOrder.Count > 4096) _receivedMessageIds.Remove(_receivedMessageOrder.Dequeue());
         // Bump parent counter
         var idx = ActiveMessages.FindIndex(m => m.Id == reply.ThreadParentId);
         if (idx >= 0)
