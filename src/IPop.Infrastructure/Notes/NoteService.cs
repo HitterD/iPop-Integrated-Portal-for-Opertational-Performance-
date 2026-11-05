@@ -453,10 +453,23 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         return Ok(true);
     }
 
+    /// Deleting for good is the owner's call only. Whoever trashed a page may restore it, but an editor purging used
+    /// to hard-delete the owner's whole tree (other people's sub-pages, versions and comments) with Edit access alone.
+    /// Sub-pages owned by someone else are not purged with it: they are lifted to the top level and stay in Trash
+    /// for their own owner to decide.
     public async Task<NoteResult<bool>> PurgeAsync(Guid userId, Guid pageId, CancellationToken ct)
     {
         var page = await TrashedTopAsync(userId, pageId, ct);
         if (page is null) return Fail<bool>("not_found");
+        if (page.OwnerId != userId && await AccessOnChainAsync(userId, await ChainAsync(pageId, ct), ct) != NoteAccess.Owner)
+            return Fail<bool>("forbidden");
+        var subtree = await SubtreeAsync(pageId, q => q, ct);
+        var foreignRoots = await db.NotePages.AsNoTracking()
+            .Where(p => subtree.Contains(p.Id) && p.Id != pageId && p.OwnerId != page.OwnerId
+                && p.ParentId != null && db.NotePages.Any(parent => parent.Id == p.ParentId && parent.OwnerId == page.OwnerId))
+            .Select(p => p.Id).ToListAsync(ct);
+        if (foreignRoots.Count > 0)
+            await db.NotePages.Where(p => foreignRoots.Contains(p.Id)).ExecuteUpdateAsync(s => s.SetProperty(p => p.ParentId, (Guid?)null), ct);
         var ids = await SubtreeAsync(pageId, q => q, ct);
         var attIds = await db.NoteAttachments.AsNoTracking()
             .Where(a => ids.Contains(a.PageId)).Select(a => a.AttachmentId).ToListAsync(ct);

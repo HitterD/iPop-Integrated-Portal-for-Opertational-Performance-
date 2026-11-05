@@ -19,6 +19,30 @@ public class NoteServiceTests
     private static NoteService Svc(TestDb t) => new(t.Verify());
 
     [Fact]
+    public async Task An_editor_can_trash_but_never_purge_the_owners_tree_and_others_sub_pages_survive_the_owners_purge()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("NP1"); var b = t.AddUser("NP2");
+        var root = await PageAsync(t, a.Id, title: "Handbook");
+        var aChild = await PageAsync(t, a.Id, root, "Chapter 1");
+        await Svc(t).AddShareAsync(a.Id, root, new AddNoteShareRequest(b.Id, null, NoteLevels.Edit), Ct);
+        var bChild = await PageAsync(t, b.Id, root, "B's own notes");
+
+        Assert.True((await Svc(t).TrashAsync(b.Id, root, Ct)).Success);
+        var refused = await Svc(t).PurgeAsync(b.Id, root, Ct);
+        Assert.False(refused.Success);
+        Assert.Equal("forbidden", refused.Error);
+        Assert.Equal(3, t.Verify().NotePages.Count(p => p.DeletedAt != null));   // all still in Trash
+
+        Assert.True((await Svc(t).PurgeAsync(a.Id, root, Ct)).Success);
+        var left = t.Verify().NotePages.ToList();
+        Assert.DoesNotContain(left, p => p.Id == root || p.Id == aChild);
+        var kept = Assert.Single(left);
+        Assert.Equal((bChild, (Guid?)null), (kept.Id, kept.ParentId));       // B's page lifted out, still in Trash
+        Assert.NotNull(kept.DeletedAt);
+    }
+
+    [Fact]
     public async Task Owner_of_parent_owns_children_and_strangers_see_nothing()
     {
         using var t = new TestDb();
