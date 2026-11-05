@@ -99,6 +99,30 @@ public class ChatAttachmentGcTests : IDisposable
     }
 
     [Fact]
+    public async Task Local_cleanup_never_deletes_a_sibling_directory_with_the_same_prefix()
+    {
+        using var t = new TestDb();
+        var sibling = _root + "-outside";
+        Directory.CreateDirectory(sibling);
+        var outsideFile = Path.Combine(sibling, "must-stay.txt");
+        File.WriteAllText(outsideFile, "not an application attachment");
+        try
+        {
+            t.Db.ChatAttachments.Add(new ChatAttachment
+            {
+                Id = Guid.NewGuid(), FileName = "must-stay.txt", FileSize = 1, MimeType = "text/plain",
+                SynologyServer = "local", SynologyPath = outsideFile, CreatedAt = DateTime.UtcNow.AddDays(-3),
+            });
+            await t.Db.SaveChangesAsync();
+
+            await ChatAttachmentGcWorker.RunOnceAsync(t.Verify(), null, _root, DateTime.UtcNow, NullLogger.Instance, default);
+
+            Assert.True(File.Exists(outsideFile), "A directory prefix is not a directory boundary.");
+        }
+        finally { Directory.Delete(sibling, true); }
+    }
+
+    [Fact]
     public async Task Nas_files_without_a_service_account_are_kept_for_a_later_pass()
     {
         using var t = new TestDb();
