@@ -509,18 +509,67 @@ public static class AdminEndpoints
             CancellationToken ct) =>
         {
             var now = DateTime.UtcNow;
+            // All or nothing, with an undo snapshot: this used to clear every user's department and COMMIT, then
+            // delete the departments; a failure in between left 5,000 people without a department and no way back.
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            var snapshot = new DepartmentPurgeSnapshot(
+                await db.Departments.AsNoTracking().Select(d => new DepartmentRow(d.Id, d.Code, d.Name, d.ParentId, d.SiteId,
+                    d.SortOrder, d.IsActive, d.HeadUserId)).ToListAsync(ct),
+                await db.Users.AsNoTracking().Where(u => u.DepartmentId != null)
+                    .Select(u => new UserDepartmentRow(u.Id, u.DepartmentId!.Value)).ToListAsync(ct));
             var unassigned = await db.Users.Where(u => u.DepartmentId != null)
                 .ExecuteUpdateAsync(s => s.SetProperty(u => u.DepartmentId, (Guid?)null), ct);
+            await db.Departments.ExecuteUpdateAsync(s => s.SetProperty(d => d.ParentId, (Guid?)null), ct);
             var removed = await db.Departments.ExecuteDeleteAsync(ct);
+            var audit = new AuditLog
+            {
+                ActorNik = CallerNik(http), Action = DepartmentPurgeAction, Entity = "Department",
+                EntityId = "*", DetailJson = System.Text.Json.JsonSerializer.Serialize(snapshot), CreatedAt = now
+            };
+            db.AuditLogs.Add(audit);
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+            return Results.Ok(new { unassigned, removed, undoId = audit.Id });
+        }).RequireAuthorization("AdminOnly");   // wipes the whole tree: Admin only, not directory.manage
+
+        // Undo a department purge from its audit snapshot: departments come back with their ids, people with their
+        // department (unless they were placed somewhere since).
+        org.MapPost("/departments/purge/{auditId:guid}/undo", async (Guid auditId, IPopDbContext db, HttpContext http,
+            CancellationToken ct) =>
+        {
+            var audit = await db.AuditLogs.AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Id == auditId && a.Action == DepartmentPurgeAction, ct);
+            if (audit?.DetailJson is null) return Results.NotFound();
+            var snap = System.Text.Json.JsonSerializer.Deserialize<DepartmentPurgeSnapshot>(audit.DetailJson);
+            if (snap?.Departments is null) return Results.Json(new { code = "no_snapshot", message = "This purge has no undo data." }, statusCode: 409);
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            var existing = (await db.Departments.Select(d => d.Id).ToListAsync(ct)).ToHashSet();
+            var codes = (await db.Departments.Select(d => d.Code).ToListAsync(ct)).ToHashSet();
+            var back = snap.Departments.Where(d => !existing.Contains(d.Id) && !codes.Contains(d.Code)).ToList();
+            db.Departments.AddRange(back.Select(d => new Department
+            {
+                Id = d.Id, Code = d.Code, Name = d.Name, SiteId = d.SiteId, SortOrder = d.SortOrder, IsActive = d.IsActive, HeadUserId = d.HeadUserId,
+            }));
+            await db.SaveChangesAsync(ct);
+            var restoredIds = back.Select(d => d.Id).ToHashSet();
+            foreach (var d in back.Where(d => d.ParentId is { } p && (restoredIds.Contains(p) || existing.Contains(p))))
+                await db.Departments.Where(x => x.Id == d.Id).ExecuteUpdateAsync(s => s.SetProperty(x => x.ParentId, d.ParentId), ct);
+            var people = 0;
+            foreach (var g in snap.Users.Where(u => restoredIds.Contains(u.DepartmentId)).GroupBy(u => u.DepartmentId))
+            {
+                var ids = g.Select(u => u.UserId).ToList();
+                people += await db.Users.Where(u => ids.Contains(u.Id) && u.DepartmentId == null)
+                    .ExecuteUpdateAsync(s => s.SetProperty(u => u.DepartmentId, g.Key), ct);
+            }
             db.AuditLogs.Add(new AuditLog
             {
-                ActorNik = CallerNik(http), Action = "admin.org.dept.purge", Entity = "Department",
-                EntityId = "*", DetailJson = $"{{\"unassigned\":{unassigned},\"removed\":{removed}}}",
-                CreatedAt = now
+                ActorNik = CallerNik(http), Action = "admin.org.dept.purge.undo", Entity = "Department", EntityId = auditId.ToString(),
+                DetailJson = $"{{\"departments\":{back.Count},\"people\":{people}}}", CreatedAt = DateTime.UtcNow,
             });
             await db.SaveChangesAsync(ct);
-            return Results.Ok(new { unassigned, removed });
-        }).RequireAuthorization("AdminOnly");   // wipes the whole tree: Admin only, not directory.manage
+            await tx.CommitAsync(ct);
+            return Results.Ok(new { departments = back.Count, people });
+        }).RequireAuthorization("AdminOnly");
 
         org.MapPut("/users/{nik}/placement", async (string nik, SetPlacementRequest req,
             IPopDbContext db, HttpContext http, CancellationToken ct) =>
@@ -1143,6 +1192,11 @@ public static class AdminEndpoints
         string? ParentCode = null, string? HeadNik = null, bool? KeepParent = null,
         string? SiteCode = null, int? SortOrder = null);
     public record UpsertSiteRequest(string Code, string? Name, bool? IsActive);
+    public const string DepartmentPurgeAction = "admin.org.dept.purge";
+    public record DepartmentRow(Guid Id, string Code, string Name, Guid? ParentId, Guid? SiteId, int SortOrder, bool IsActive, Guid? HeadUserId);
+    public record UserDepartmentRow(Guid UserId, Guid DepartmentId);
+    public record DepartmentPurgeSnapshot(List<DepartmentRow> Departments, List<UserDepartmentRow> Users);
+
     public record SetPlacementRequest(string? DepartmentCode, string? SiteCode);
     public record AdminDivisionRow(Guid Id, string Code, string Name, string? DepartmentCode,
         string? DepartmentName, string? SiteCode, string? SiteName, bool IsActive,

@@ -24,6 +24,11 @@ public static class OrgChartEndpoints
             var (status, error, version) = await PublishAsync(db, req, http.User.FindFirst("nik")?.Value, DateTime.UtcNow, ct);
             return status == 200 ? Results.Ok(new { version }) : Results.Json(error, statusCode: status);
         }).RequireAuthorization("AdminOnly");   // rewrites everyone's Position: Admin only, not directory.manage
+        org.MapPost("/chart/publications/{id:int}/undo-positions", async (int id, IPopDbContext db, HttpContext http, CancellationToken ct) =>
+        {
+            var changed = await UndoPositionsAsync(db, id, http.User.FindFirst("nik")?.Value, ct);
+            return changed is null ? Results.NotFound() : Results.Ok(new { changed });
+        }).RequireAuthorization("AdminOnly");
         return org;
     }
 
@@ -128,6 +133,9 @@ public static class OrgChartEndpoints
         Walk(null);
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
+        // Undo data: every user's Position before this publish (it rewrites them all), kept with the audit entry.
+        var before = await db.Users.AsNoTracking().Where(u => u.Position != null)
+            .Select(u => new PositionBefore(u.Id, u.Position!)).ToListAsync(ct);
         await db.OrgPositionHolders.ExecuteDeleteAsync(ct);
         await db.OrgPositions.ExecuteUpdateAsync(s => s.SetProperty(p => p.ParentId, (Guid?)null), ct);
         await db.OrgPositions.ExecuteDeleteAsync(ct);
@@ -157,10 +165,42 @@ public static class OrgChartEndpoints
         var pub = new OrgChartPublication { PublishedAt = now, PublishedByNik = actorNik, PositionCount = rows.Count };
         db.OrgChartPublications.Add(pub);
         await db.SaveChangesAsync(ct);
-        AdminEndpoints.Audit(db, actorNik, "admin.org.chart.publish", pub.Id.ToString(), now, "OrgChart");
+        db.AuditLogs.Add(new AuditLog
+        {
+            ActorNik = actorNik, Action = ChartPublishAction, Entity = "OrgChart", EntityId = pub.Id.ToString(),
+            DetailJson = System.Text.Json.JsonSerializer.Serialize(before), CreatedAt = now,
+        });
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         return (200, null, pub.Id);
+    }
+
+    public const string ChartPublishAction = "admin.org.chart.publish";
+    public record PositionBefore(Guid UserId, string Position);
+
+    /// Puts every user's Position back as it was before publication <paramref name="publicationId"/> (the chart boxes
+    /// themselves stay; publish an older chart for those).
+    public static async Task<int?> UndoPositionsAsync(IPopDbContext db, int publicationId, string? actorNik, CancellationToken ct)
+    {
+        var audit = await db.AuditLogs.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Action == ChartPublishAction && a.EntityId == publicationId.ToString(), ct);
+        if (audit?.DetailJson is not { Length: > 0 } json || !json.StartsWith('[')) return null;
+        var before = System.Text.Json.JsonSerializer.Deserialize<List<PositionBefore>>(json) ?? [];
+        var now = DateTime.UtcNow;
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var map = before.ToDictionary(b => b.UserId, b => b.Position);
+        var users = await db.Users.Where(u => map.Keys.Contains(u.Id) || u.Position != null).ToListAsync(ct);
+        var changed = 0;
+        foreach (var u in users)
+        {
+            var want = map.GetValueOrDefault(u.Id);
+            if (u.Position == want) continue;
+            u.Position = want; u.UpdatedAt = now; changed++;
+        }
+        AdminEndpoints.Audit(db, actorNik, "admin.org.chart.publish.undo", publicationId.ToString(), now, "OrgChart");
+        await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+        return changed;
     }
 
     public record ChartDto(int Version, DateTime? PublishedAt, string? PublishedByNik,

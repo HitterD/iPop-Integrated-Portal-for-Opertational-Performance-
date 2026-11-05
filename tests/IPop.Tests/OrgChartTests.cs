@@ -143,4 +143,24 @@ public class OrgChartTests
         Assert.Equal(["200", "100"], dto.Positions.Single().People);
         Assert.Equal(2, dto.People.Count);
     }
+
+    [Fact]
+    public async Task Publish_keeps_everyones_old_position_and_undo_puts_it_back()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("100"); var b = t.AddUser("200"); var c = t.AddUser("300");
+        a.Position = "Old Director"; b.Position = "Old Analyst"; c.Position = "Old Clerk";
+        t.Db.SaveChanges();
+
+        var r = await Publish(t, 0, new P("a", "President Director", null, null, null, 1, ["100"]));
+        Assert.Equal(200, r.Status);
+        Assert.Null(t.Verify().Users.Single(u => u.Nik == "300").Position);   // off the chart = no position
+
+        var changed = await OrgChartEndpoints.UndoPositionsAsync(t.Db, r.Version, "ADMIN", CancellationToken.None);
+
+        Assert.Equal(3, changed);
+        var db = t.Verify();
+        Assert.Equal(["Old Director", "Old Analyst", "Old Clerk"],
+            new[] { "100", "200", "300" }.Select(n => db.Users.Single(u => u.Nik == n).Position).ToArray());
+    }
 }
