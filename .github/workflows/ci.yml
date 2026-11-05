@@ -19,7 +19,9 @@ on:
         required: true
 
 concurrency:
-  group: ci-${{ github.ref }}-${{ github.event_name }}
+  # A main push starts both standalone CI and deploy.yml's reusable test job. The caller's workflow name
+  # distinguishes them, otherwise cancel-in-progress lets one cancel the other's entire deployment.
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
