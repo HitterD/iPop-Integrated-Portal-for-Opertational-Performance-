@@ -9,6 +9,33 @@ namespace IPop.Tests;
 public class ChatServiceTests
 {
     [Fact]
+    public async Task Sending_a_message_persists_its_push_intent_before_any_realtime_notifier_runs()
+    {
+        using var t = new TestDb();
+        var sender = t.AddUser("OUTBOX_S");
+        var recipient = t.AddUser("OUTBOX_R");
+        var room = t.AddRoom();
+        t.AddMember(room.Id, sender.Id);
+        t.AddMember(room.Id, recipient.Id);
+        var key = Guid.NewGuid();
+        var request = new SendMessageRequest(room.Id, "Must survive a sender disconnect", key, null, "text");
+
+        var sent = await new ChatService(t.Verify()).SendMessageAsync(sender.Id, request, default);
+        Assert.True(sent.Success, sent.Error);
+        using (var committed = t.Verify())
+        {
+            Assert.True(committed.ChatMessages.Any(m => m.Id == sent.Message!.Id));
+            var intent = Assert.Single(committed.PushJobs.Where(j => j.Kind == "chat" && j.RefId == sent.Message!.Id));
+            Assert.Null(intent.ExpandedAt);
+        }
+
+        var replay = await new ChatService(t.Verify()).SendMessageAsync(sender.Id, request, default);
+        Assert.True(replay.Replayed);
+        using var afterReplay = t.Verify();
+        Assert.Single(afterReplay.PushJobs.Where(j => j.Kind == "chat" && j.RefId == sent.Message!.Id));
+    }
+
+    [Fact]
     public async Task Forward_retried_within_the_minute_is_one_message()
     {
         using var t = new TestDb();
