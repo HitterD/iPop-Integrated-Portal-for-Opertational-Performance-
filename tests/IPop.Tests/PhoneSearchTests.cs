@@ -38,8 +38,10 @@ public class PhoneSearchTests
         cut.WaitForAssertion(() => Assert.True(cut.Markup.Contains("Maintenance"), cut.Markup));
         cut.WaitForAssertion(() => Assert.Contains("Real Recent Person", cut.Markup));
         Assert.DoesNotContain("PRIVATE-NIK", cut.Find(".m-search").TextContent);
-        cut.Find("button[aria-label='Remove Maintenance']").Click();
-        cut.WaitForAssertion(() => Assert.Contains("/api/search/history/" + api.HistoryId, api.Deleted));
+        // Deletion waits for the row's exit animation before sending DELETE. Await the event handler itself,
+        // rather than racing the HTTP side effect with bUnit's render-driven assertion waiter.
+        await cut.Find("button[aria-label='Remove Maintenance']").ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
+        Assert.Contains("/api/search/history/" + api.HistoryId, api.Deleted);
         cut.Find("input[aria-label='Search']").Input("UPS");
         cut.WaitForAssertion(() => Assert.Contains("Maintenance plan", cut.Markup));
         await cut.InvokeAsync(() => ctx.Services.GetRequiredService<OverlayStack>().CloseTopAsync());
