@@ -1519,7 +1519,30 @@ public static class ChatEndpoints
     /// Returns false when the source cannot be read or decoded, leaving the row untouched.
     // No userId parameter: both the read of the original and the write of the generated thumbnail
     // go through the service account, so the viewer's identity is irrelevant to this work.
+    /// One backfill per attachment at a time: a room full of old pictures opened by several people used to download
+    /// and decode the same original once per viewer, in parallel.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, SemaphoreSlim> ThumbGates = new();
+
     private static async Task<bool> TryBackfillThumbnailAsync(IPopDbContext db, IFileAccessService fileSvc,
+        IWebHostEnvironment env, ChatAttachment attachment, CancellationToken ct)
+    {
+        var gate = ThumbGates.GetOrAdd(attachment.Id, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct);
+        try
+        {
+            // Someone else made it while we waited.
+            var made = await db.ChatAttachments.AsNoTracking().Where(a => a.Id == attachment.Id).Select(a => a.ThumbnailPath).FirstOrDefaultAsync(ct);
+            if (!string.IsNullOrEmpty(made)) { attachment.ThumbnailPath = made; return true; }
+            return await BackfillThumbnailCoreAsync(db, fileSvc, env, attachment, ct);
+        }
+        finally
+        {
+            gate.Release();
+            ThumbGates.TryRemove(attachment.Id, out _);
+        }
+    }
+
+    private static async Task<bool> BackfillThumbnailCoreAsync(IPopDbContext db, IFileAccessService fileSvc,
         IWebHostEnvironment env, ChatAttachment attachment, CancellationToken ct)
     {
         try
@@ -1537,7 +1560,9 @@ public static class ChatEndpoints
             }
 
             source.Position = 0;
-            var thumbBytes = CreateThumbnail(source, 640);
+            // Same bounded decoder as uploads: header first, refuses huge pictures, scales while decoding.
+            if (TryCreateThumbnail(source, 640, out var made) != ThumbResult.Ok || made is null) return false;
+            var thumbBytes = made;
             var storedName = Path.GetFileNameWithoutExtension(attachment.SynologyPath);
             var thumbName = $"{storedName}.thumb.jpg";
 
@@ -1840,19 +1865,6 @@ public static class ChatEndpoints
         {
             return ThumbResult.Failed;
         }
-    }
-
-    private static byte[] CreateThumbnail(Stream input, int maxWidth)
-    {
-        using var image = Image.Load(input);
-        var ratio = (double)maxWidth / image.Width;
-        if (image.Width <= maxWidth && image.Height <= maxWidth) ratio = 1;
-        var w = (int)Math.Round(image.Width * ratio);
-        var h = (int)Math.Round(image.Height * ratio);
-        if (ratio < 1) image.Mutate(x => x.Resize(w, h));
-        using var ms = new MemoryStream();
-        image.SaveAsJpeg(ms); // JPEG thumb works for all source formats; small + universal
-        return ms.ToArray();
     }
 
     // Request DTOs
