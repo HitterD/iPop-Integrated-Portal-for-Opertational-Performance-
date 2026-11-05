@@ -95,7 +95,28 @@ else {
 
 # ---- 2. push (staging may be replaced: it always mirrors the latest thing under test) ----
 $before = Get-Date
-if ($target -eq 'staging') { Invoke-Git push --force-with-lease $Remote "${source}:refs/heads/staging" | Out-Null }
+if ($target -eq 'staging') {
+    # The branch being shipped carries whatever image tag its base had, so force-pushing it rolled staging BACK to
+    # that old image for the ~20 min until CI wrote the new tag. Keep the tag that is live on staging now: commit it
+    # on top of the shipped commit (CI ignores kustomization-only changes when picking what to build).
+    $kust = 'deploy/k8s/apps/ipop-staging/kustomization.yaml'
+    Invoke-Git fetch $Remote staging | Out-Null
+    $live = (& git.exe show "$Remote/staging:$kust" 2>$null) -join "`n"
+    $mine = (& git.exe show "${source}:$kust" 2>$null) -join "`n"
+    if ($live -and $live -ne $mine) {
+        $tmpIndex = Join-Path $env:TEMP "ship-index-$PID"
+        $env:GIT_INDEX_FILE = $tmpIndex
+        try {
+            Invoke-Git read-tree $source | Out-Null
+            $blob = ($live + "`n") | & git.exe hash-object -w --stdin
+            Invoke-Git update-index --cacheinfo "100644,$($blob.Trim()),$kust" | Out-Null
+            $tree = (Invoke-Git write-tree).Trim()
+        }
+        finally { Remove-Item Env:GIT_INDEX_FILE; Remove-Item $tmpIndex -ErrorAction SilentlyContinue }
+        $source = (& git.exe commit-tree $tree -p $source -m "deploy(staging): keep the live image tag while CI builds").Trim()
+    }
+    Invoke-Git push --force-with-lease $Remote "${source}:refs/heads/staging" | Out-Null
+}
 else { Invoke-Git push $Remote "${source}:refs/heads/main" | Out-Null }
 Say "Pushed. Waiting for GitHub Actions (tests, images)..."
 
