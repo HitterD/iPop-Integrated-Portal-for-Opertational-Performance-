@@ -107,6 +107,27 @@ public class ChatMarkReadTests
     }
 
     [Fact]
+    public async Task Duplicate_thread_reply_events_increment_the_parent_and_notify_subscribers_only_once()
+    {
+        var room = Guid.NewGuid();
+        var (ctx, chat) = await OpenAsync(room);
+        using var _ = ctx;
+        var parent = In(room, "A") with { ThreadReplyCount = 2 };
+        chat.ActiveMessages.Add(parent);
+        var reply = In(room, "B") with { ThreadParentId = parent.Id };
+        var events = 0;
+        chat.ThreadReplyReceived += _ => events++;
+        var handler = typeof(ChatState).GetMethod("OnThreadReply",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+
+        handler.Invoke(chat, [reply]);
+        handler.Invoke(chat, [reply]);
+
+        Assert.Equal(3, chat.ActiveMessages.Single(m => m.Id == parent.Id).ThreadReplyCount);
+        Assert.Equal(1, events);
+    }
+
+    [Fact]
     public async Task Editing_or_deleting_the_last_message_updates_the_room_preview()
     {
         var room = Guid.NewGuid();
