@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       fake_utc:
-        description: "UTC start time for the test clock (HH:MM:SS today); default 03:00:00 = 10:00 WIB"
+        description: "UTC start time for the test clock (HH:MM:SS today); default 05:00:00 = 12:00 WIB"
         required: false
-        default: "03:00:00"
+        default: "05:00:00"
   workflow_call:
     secrets:
       DEVEXPRESS_NUGET_FEED:
@@ -55,10 +55,10 @@ jobs:
         run: dotnet build tests/IPop.Tests/IPop.Tests.csproj -c Release
       # Room bookings follow the same-office-day rule (WIB), and many tests book "now + N minutes". Pushed between
       # ~22:00 and 01:00 WIB those cross midnight and CI went red. The test process starts at a fixed time of day
-      # (10:00 WIB by default) and then runs normally; the build above keeps the real clock.
+      # (12:00 WIB by default, away from the hour edges tests book on) and then runs normally; the build above keeps the real clock.
       - name: Test
         env:
-          FAKE_UTC: ${{ inputs.fake_utc || '03:00:00' }}
+          FAKE_UTC: ${{ inputs.fake_utc || '05:00:00' }}
         run: |
           # Only the test host gets the fake clock (relative offset): preloading it into vstest.console as well broke
           # the console <-> testhost handshake.
@@ -69,6 +69,7 @@ jobs:
             <FAKETIME>$(printf "%+d" "$off")</FAKETIME>
             <FAKETIME_DONT_FAKE_MONOTONIC>1</FAKETIME_DONT_FAKE_MONOTONIC>
             <DONT_FAKE_MONOTONIC>1</DONT_FAKE_MONOTONIC>
+            <NO_FAKE_STAT>1</NO_FAKE_STAT>
           </EnvironmentVariables></RunConfiguration></RunSettings>
           XML
           echo "Test host clock offset: ${off}s (starts at $FAKE_UTC UTC)"
