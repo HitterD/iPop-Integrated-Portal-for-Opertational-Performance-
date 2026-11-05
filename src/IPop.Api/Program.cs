@@ -246,6 +246,7 @@ builder.Services.AddScoped<IChatNotifier, ChatNotifier>();
 builder.Services.AddScoped<IStickerService, IPop.Infrastructure.Chat.StickerService>();
 builder.Services.AddScoped<INotificationGateway, NotificationGateway>();
 builder.Services.AddHostedService<ChatAttachmentGcWorker>();
+builder.Services.AddHostedService<IPop.Infrastructure.Mail.MailAttachmentGcWorker>();
 builder.Services.AddHostedService<ChatMentionNotifyWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Projects.TaskReminderWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Projects.DeletedTaskPurgeWorker>();
