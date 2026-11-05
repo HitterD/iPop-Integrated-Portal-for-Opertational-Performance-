@@ -125,10 +125,21 @@ builder.Services.AddScoped<OfficeOptions>(_ => new OfficeOptions
 });
 // No client-wide timeout: the gateway gives API calls 100 s and file transfers (500 MB mail
 // attachments) 30 min itself, per request.
+// NAS TLS: a pinned public key per host (Synology:CertificatePins), else a normal chain check - never "accept any".
+// ConnectTimeout: an unreachable plant NAS fails in 10 s instead of hanging until the browser gives up.
+var nasPins = new IPop.Infrastructure.Files.NasCertificatePins(builder.Configuration);
+builder.Services.AddSingleton(nasPins);
 builder.Services.AddHttpClient<ISynologyGateway, HttpSynologyGateway>(c => c.Timeout = Timeout.InfiniteTimeSpan)
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
     {
-        ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+        ConnectTimeout = TimeSpan.FromSeconds(10),
+        PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+        SslOptions = new System.Net.Security.SslClientAuthenticationOptions
+        {
+            RemoteCertificateValidationCallback = (sender, cert, _, errors) =>
+                nasPins.Accept(sender is System.Net.Security.SslStream ssl ? ssl.TargetHostName : "", cert as System.Security.Cryptography.X509Certificates.X509Certificate2
+                    ?? (cert is null ? null : new System.Security.Cryptography.X509Certificates.X509Certificate2(cert)), errors),
+        },
     });
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
