@@ -35,6 +35,34 @@ public class ChatServiceTests
         Assert.Single(afterReplay.PushJobs.Where(j => j.Kind == "chat" && j.RefId == sent.Message!.Id));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Forward_and_thread_reply_each_commit_one_durable_push_intent(bool threadReply)
+    {
+        using var t = new TestDb();
+        var sender = t.AddUser("OUTBOX_OTHER_S");
+        var recipient = t.AddUser("OUTBOX_OTHER_R");
+        var source = t.AddRoom("group", "Source");
+        var target = t.AddRoom("group", "Target");
+        foreach (var room in new[] { source, target })
+        {
+            t.AddMember(room.Id, sender.Id);
+            t.AddMember(room.Id, recipient.Id);
+        }
+        var original = t.AddMessage(source.Id, sender.Id, "Original");
+        var request = new SendMessageRequest(source.Id, "Thread reply", Guid.NewGuid(), null, "text");
+        var service = new ChatService(t.Verify());
+
+        var result = threadReply
+            ? await service.SendThreadReplyAsync(sender.Id, original.Id, request, default)
+            : await service.ForwardMessageAsync(sender.Id, original.Id, target.Id, default);
+
+        Assert.True(result.Success, result.Error);
+        using var committed = t.Verify();
+        Assert.Single(committed.PushJobs.Where(j => j.Kind == "chat" && j.RefId == result.Message!.Id));
+    }
+
     [Fact]
     public async Task Forward_retried_within_the_minute_is_one_message()
     {
