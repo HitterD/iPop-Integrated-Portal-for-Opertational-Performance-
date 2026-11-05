@@ -149,8 +149,15 @@ if ($target -eq 'main') {
         $answer = Read-Host 'Sync production now? Users on the cluster get the new version (type yes)'
         if ($answer -ne 'yes') { Say 'Not synced. Do it later in Argo CD (ipop > SYNC) or run: .\deploy\ship.ps1 -Prod -Yes' 'Yellow'; exit 0 }
     }
-    $op = '{"operation":{"initiatedBy":{"username":"ship.ps1"},"sync":{"revision":"main"}}}'
-    Invoke-Kube -n argocd patch application $app --type merge -p $op | Out-Null
+    # Windows PowerShell 5.1 removes embedded quotes from native arguments; --patch-file preserves the JSON.
+    $opFile = Join-Path $env:TEMP "ipop-argo-sync-$PID.json"
+    try {
+        [System.IO.File]::WriteAllText($opFile,
+            '{"operation":{"initiatedBy":{"username":"ship.ps1"},"sync":{"revision":"main"}}}',
+            (New-Object System.Text.UTF8Encoding($false)))
+        Invoke-Kube -n argocd patch application $app --type merge --patch-file $opFile | Out-Null
+    }
+    finally { Remove-Item -LiteralPath $opFile -ErrorAction SilentlyContinue }
 }
 
 # ---- 5. wait until Argo is Synced + Healthy on the new image ----
