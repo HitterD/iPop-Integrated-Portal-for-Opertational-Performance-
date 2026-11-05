@@ -98,14 +98,15 @@ public class MeetingRoomsTabV2Tests
         Assert.True(cut.Find(".mrt-pin-go").HasAttribute("disabled"));
 
         cut.Find(".mrt-pin-in").Input("48a2 917");
-        Assert.Equal("482917", cut.Find(".mrt-pin-in").GetAttribute("value"));
-        Assert.Equal(["4", "8", "2", "9", "1", "7"], cut.FindAll(".mrt-pin span").Select(s => s.TextContent).ToArray());
+        // OnPin awaits JS when it filters the input, so the re-render can land after Input returns (CI flake).
+        cut.WaitForAssertion(() => Assert.Equal("482917", cut.Find(".mrt-pin-in").GetAttribute("value")));
+        cut.WaitForAssertion(() => Assert.Equal(["4", "8", "2", "9", "1", "7"], cut.FindAll(".mrt-pin span").Select(s => s.TextContent).ToArray()));
         cut.Find(".mrt-pin-go").Click();
 
         cut.WaitForAssertion(() => Assert.Equal(message, cut.Find(".mrt-pin-err").TextContent.Trim()));
         Assert.Equal(["kalosi"], api.Joins);
         Assert.Equal("482917", JsonDocument.Parse(api.JoinBodies.Single()).RootElement.GetProperty("password").GetString());
-        Assert.Equal(cleared ? "" : "482917", cut.Find(".mrt-pin-in").GetAttribute("value"));
+        cut.WaitForAssertion(() => Assert.Equal(cleared ? "" : "482917", cut.Find(".mrt-pin-in").GetAttribute("value")));
     }
 
     [Fact]
@@ -462,12 +463,12 @@ public class MeetingRoomsTabV2Tests
 
         cut.Find(".mrt-pin-in").Input("123456");
         cut.Find(".mrt-pin-in").Input("1234567");                 // a 7th digit is dropped, in the field too
-        Assert.Equal("123456", cut.Find(".mrt-pin-in").GetAttribute("value"));
+        cut.WaitForAssertion(() => Assert.Equal("123456", cut.Find(".mrt-pin-in").GetAttribute("value")));
         cut.Find(".mrt-pin-in").Input("12345");                   // backspace removes the last real digit
-        Assert.Equal("12345", cut.Find(".mrt-pin-in").GetAttribute("value"));
-        Assert.Equal(["1", "2", "3", "4", "5", "·"], cut.FindAll(".mrt-pin span").Select(s => s.TextContent).ToArray());
+        cut.WaitForAssertion(() => Assert.Equal("12345", cut.Find(".mrt-pin-in").GetAttribute("value")));
+        cut.WaitForAssertion(() => Assert.Equal(["1", "2", "3", "4", "5", "·"], cut.FindAll(".mrt-pin span").Select(s => s.TextContent).ToArray()));
         cut.Find(".mrt-pin-in").Input("12345a");                  // a letter never reaches the field
-        Assert.Equal("12345", cut.Find(".mrt-pin-in").GetAttribute("value"));
+        cut.WaitForAssertion(() => Assert.Equal("12345", cut.Find(".mrt-pin-in").GetAttribute("value")));
         // The field writes back through JS so the DOM value equals the filtered digits even when Blazor skips the diff.
         Assert.Contains(ctx.JSInterop.Invocations["ipopRooms.setValue"], i => (string?)i.Arguments[1] == "12345");
     }

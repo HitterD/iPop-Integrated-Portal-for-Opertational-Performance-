@@ -29,6 +29,7 @@ public class AuditMigrationTests
         var entry = Assert.Single(migrations.Migrations.Where(x => x.Key.EndsWith("_PushJobKindRefIndex")));
         var op = Assert.Single(migrations.CreateMigration(entry.Value, db.Database.ProviderName!).UpOperations);
         var index = Assert.IsType<CreateIndexOperation>(op);
-        Assert.Equal(("PushJobs", new[] { "Kind", "RefId" }), (index.Table, index.Columns));
+        Assert.Equal("PushJobs", index.Table);
+        Assert.Equal(["Kind", "RefId"], index.Columns);
     }
 }
