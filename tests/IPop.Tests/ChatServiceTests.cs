@@ -9,6 +9,37 @@ namespace IPop.Tests;
 public class ChatServiceTests
 {
     [Fact]
+    public async Task GetMessages_group_read_by_counts_only_active_members_and_reactions_attachments_survive_split_query()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("G1"); var b = t.AddUser("G2"); var c = t.AddUser("G3"); var gone = t.AddUser("G4");
+        var room = t.AddRoom("group", "Team");
+        t.AddMember(room.Id, me.Id); t.AddMember(room.Id, b.Id); t.AddMember(room.Id, c.Id);
+        t.AddMember(room.Id, gone.Id, leftAt: DateTime.UtcNow.AddDays(-1));
+        var mine = t.AddMessage(room.Id, me.Id, "hello all", at: DateTime.UtcNow.AddMinutes(-2));
+        var theirs = t.AddMessage(room.Id, b.Id, "hi", at: DateTime.UtcNow.AddMinutes(-1));
+        t.Db.ChatReadReceipts.AddRange(
+            new IPop.Core.Entities.ChatReadReceipt { MessageId = mine.Id, UserId = b.Id, DeliveredAt = DateTime.UtcNow, ReadAt = DateTime.UtcNow },
+            new IPop.Core.Entities.ChatReadReceipt { MessageId = mine.Id, UserId = gone.Id, DeliveredAt = DateTime.UtcNow, ReadAt = DateTime.UtcNow },
+            new IPop.Core.Entities.ChatReadReceipt { MessageId = mine.Id, UserId = c.Id, DeliveredAt = DateTime.UtcNow });
+        t.Db.ChatReactions.AddRange(
+            new IPop.Core.Entities.ChatReaction { MessageId = theirs.Id, UserId = me.Id, Emoji = "👍", CreatedAt = DateTime.UtcNow },
+            new IPop.Core.Entities.ChatReaction { MessageId = theirs.Id, UserId = c.Id, Emoji = "👍", CreatedAt = DateTime.UtcNow });
+        t.Db.SaveChanges();
+
+        var page = await new ChatService(t.Verify()).GetMessagesAsync(room.Id, me.Id, page: 1, pageSize: 50, default);
+
+        var m = Assert.Single(page.Items, x => x.Content == "hello all");
+        Assert.Equal(1, m.ReadCount);      // b read it; the member who left does not count
+        Assert.Equal(2, m.ReadTotal);      // b and c are the active others
+        Assert.Equal("delivered", m.DeliveryStatus);
+        var h = Assert.Single(page.Items, x => x.Content == "hi");
+        var r = Assert.Single(h.Reactions);
+        Assert.Equal(2, r.Count);
+        Assert.True(r.CurrentUserReacted);
+    }
+
+    [Fact]
     public async Task GetMessages_page1_is_newest()
     {
         using var t = new TestDb();

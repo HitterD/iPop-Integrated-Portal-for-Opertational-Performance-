@@ -224,8 +224,6 @@ public sealed partial class ChatService
             .Skip((page - 1) * pageSize + boundarySkip)
             .Take(pageSize)
             .Include(m => m.Sender)
-            .Include(m => m.Room)
-                .ThenInclude(r => r.Members)
             .Include(m => m.Attachments)
             .Include(m => m.Reactions)
             .Include(m => m.ReadReceipts)
@@ -233,7 +231,15 @@ public sealed partial class ChatService
                 .ThenInclude(r => r!.Sender)
             .Include(m => m.ReplyTo)
                 .ThenInclude(r => r!.Attachments)
+            // One query per collection instead of one JOIN of all of them: the single query returned
+            // messages x attachments x reactions x receipts rows (and used to join every room member into each
+            // message too), growing with the square of the group size.
+            .AsSplitQuery()
             .ToListAsync(ct);
+
+        // The room and its members are the same for the whole page: load them once (group "read by N of M").
+        var room = await db.ChatRooms.AsNoTracking().Include(r => r.Members).FirstOrDefaultAsync(r => r.Id == roomId, ct);
+        foreach (var m in messages) m.Room = room!;
 
         messages.Reverse();
         var dtos = await MapWithMentionsAsync(messages, userId, ct);
