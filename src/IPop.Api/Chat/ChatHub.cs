@@ -185,6 +185,8 @@ public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbCon
 
         // Non-members (e.g. kicked) record nothing and must not ping the sender.
         if (!await chatService.RecordDeliveryAsync(userId.Value, messageId, Context.ConnectionAborted)) return;
+        // Already delivered to this user (another tab or a reconnect confirmed it): the sender knows.
+        if (chatService is IPop.Infrastructure.Chat.ChatService { LastReceiptChanged: false }) return;
 
         // Notify original sender of delivery
         var senderId = await db.ChatMessages.AsNoTracking()
@@ -204,6 +206,7 @@ public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbCon
         if (userId is null) return;
 
         if (!await chatService.RecordReadAsync(userId.Value, messageId, Context.ConnectionAborted)) return;
+        var receiptsChanged = chatService is not IPop.Infrastructure.Chat.ChatService { LastReceiptChanged: false };
 
         // The reader's other tabs clear this room's unread badge (debounced reload client-side).
         if (GetNik() is { } nik)
@@ -216,7 +219,9 @@ public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbCon
             .Select(m => m.RoomId)
             .FirstOrDefaultAsync(Context.ConnectionAborted);
 
-        if (user is not null && roomId != Guid.Empty)
+        // Re-reading what was already read changes no counts: the room is not told again (one MarkRead used to
+        // broadcast seenUpdate to every member, who each then re-fetched read counts).
+        if (receiptsChanged && user is not null && roomId != Guid.Empty)
         {
             var receipt = await db.ChatReadReceipts.AsNoTracking()
                 .FirstOrDefaultAsync(r => r.MessageId == messageId && r.UserId == userId.Value, Context.ConnectionAborted);

@@ -9,6 +9,31 @@ namespace IPop.Tests;
 public class ChatServiceTests
 {
     [Fact]
+    public async Task Repeated_delivery_and_read_report_no_change_so_nobody_is_pinged_again()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("RC1"); var b = t.AddUser("RC2");
+        var room = t.AddRoom("group", "R");
+        t.AddMember(room.Id, a.Id); t.AddMember(room.Id, b.Id);
+        var m = t.AddMessage(room.Id, a.Id, "hi");
+
+        var svc = new ChatService(t.Verify());
+        Assert.True(await svc.RecordDeliveryAsync(b.Id, m.Id, default));
+        Assert.True(svc.LastReceiptChanged);
+        Assert.True(await new ChatService(t.Verify()).RecordDeliveryAsync(b.Id, m.Id, default) is var ok2 && ok2);
+        var again = new ChatService(t.Verify());
+        await again.RecordDeliveryAsync(b.Id, m.Id, default);
+        Assert.False(again.LastReceiptChanged);   // second tab / reconnect
+
+        var read = new ChatService(t.Verify());
+        Assert.True(await read.RecordReadAsync(b.Id, m.Id, default));
+        Assert.True(read.LastReceiptChanged);
+        var reread = new ChatService(t.Verify());
+        Assert.True(await reread.RecordReadAsync(b.Id, m.Id, default));
+        Assert.False(reread.LastReceiptChanged);  // re-reading changes no counts
+    }
+
+    [Fact]
     public async Task GetMessages_group_read_by_counts_only_active_members_and_reactions_attachments_survive_split_query()
     {
         using var t = new TestDb();

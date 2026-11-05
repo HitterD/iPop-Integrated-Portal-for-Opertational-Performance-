@@ -10,8 +10,13 @@ public sealed partial class ChatService
     // Delivery and Read Receipts
     // ──────────────────────────────────────────────────────────────────────────
 
+    /// Whether the last RecordDeliveryAsync / RecordReadAsync changed anything. A repeat (another tab, a reconnect,
+    /// re-reading the same message) changes nothing, and callers then skip the sender ping / room broadcast.
+    public bool LastReceiptChanged { get; private set; }
+
     public async Task<bool> RecordDeliveryAsync(Guid userId, Guid messageId, CancellationToken ct)
     {
+        LastReceiptChanged = false;
         var msgRoomId = await db.ChatMessages.AsNoTracking()
             .Where(m => m.Id == messageId).Select(m => m.RoomId).FirstOrDefaultAsync(ct);
         if (msgRoomId == Guid.Empty) return false;
@@ -34,6 +39,7 @@ public sealed partial class ChatService
             try
             {
                 await db.SaveChangesAsync(ct);
+                LastReceiptChanged = true;
             }
             catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
             {
@@ -43,6 +49,7 @@ public sealed partial class ChatService
         {
             receipt.DeliveredAt = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
+            LastReceiptChanged = true;
         }
         return true;
     }
@@ -51,6 +58,7 @@ public sealed partial class ChatService
 
     private async Task<bool> RecordReadAsync(Guid userId, Guid messageId, CancellationToken ct, bool retried)
     {
+        LastReceiptChanged = false;
         var msg = await db.ChatMessages.AsNoTracking()
             .Where(m => m.Id == messageId)
             .Select(m => new { m.RoomId, m.CreatedAt, m.SenderId })
@@ -125,9 +133,14 @@ public sealed partial class ChatService
         if (readerSettings.LastReadMessageAt is null || msg.CreatedAt > readerSettings.LastReadMessageAt)
             readerSettings.LastReadMessageAt = msg.CreatedAt;
 
+        // Only receipt rows count as a change worth telling the room (LastReadMessageAt is the reader's own business).
+        var receiptsChanged = db.ChangeTracker.Entries<ChatReadReceipt>()
+            .Any(e => e.State is EntityState.Added || (e.State is EntityState.Modified
+                && (e.Property(r => r.ReadAt).IsModified || e.Property(r => r.DeliveredAt).IsModified)));
         try
         {
             await db.SaveChangesAsync(ct);
+            LastReceiptChanged = receiptsChanged;
         }
         catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex) && !retried)
         {
