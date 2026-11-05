@@ -58,18 +58,33 @@ public sealed class ChatAttachmentGcWorker(IServiceScopeFactory scopes, ILogger<
             .OrderBy(a => a.CreatedAt)
             .Take(Batch)
             .ToListAsync(ct);
-        var removed = new List<ChatAttachment>();
+        var removed = 0;
         foreach (var a in due)
         {
-            if (await DeleteFileAsync(a.SynologyServer, a.SynologyPath, files, contentRoot, log, ct)
-                && (a.ThumbnailPath is null || a.ThumbnailPath == a.SynologyPath
-                    || await DeleteFileAsync(a.SynologyServer, a.ThumbnailPath, files, contentRoot, log, ct)))
-                removed.Add(a);
+            // Forwarding copies attachment rows, not files: both original and thumbnail paths can still be in use.
+            // Count every other reference, including pending uploads and deleted messages still within retention.
+            var paths = new[] { a.SynologyPath, a.ThumbnailPath }
+                .Where(p => !string.IsNullOrWhiteSpace(p)).Distinct().ToList();
+            var goneOrShared = true;
+            foreach (var path in paths)
+            {
+                var shared = await db.ChatAttachments.AsNoTracking().AnyAsync(other => other.Id != a.Id
+                    && other.SynologyServer == a.SynologyServer
+                    && (other.SynologyPath == path || other.ThumbnailPath == path), ct);
+                if (shared) continue;
+                if (!await DeleteFileAsync(a.SynologyServer, path!, files, contentRoot, log, ct))
+                {
+                    goneOrShared = false;
+                    break;
+                }
+            }
+            if (!goneOrShared) continue;
+            db.ChatAttachments.Remove(a);
+            // Persist each removal so the last expired reference in this pass can actually collect the file.
+            await db.SaveChangesAsync(ct);
+            removed++;
         }
-        if (removed.Count == 0) return 0;
-        db.ChatAttachments.RemoveRange(removed);
-        await db.SaveChangesAsync(ct);
-        return removed.Count;
+        return removed;
     }
 
     /// True when the file is gone afterwards (deleted now, or already missing).
