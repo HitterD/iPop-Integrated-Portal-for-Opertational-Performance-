@@ -52,8 +52,9 @@ public class NewsComposerMediaTicketTests
         // Mint through the real time-limited protector with a lifetime that is already over.
         var media = Guid.NewGuid();
         var expired = Dp.CreateProtector("IPop.NewsComposer.Media").ToTimeLimitedDataProtector()
-            .Protect($"{media:N}|{Guid.NewGuid():N}|draft|{Guid.NewGuid():N}", TimeSpan.FromMilliseconds(1));
-        Thread.Sleep(30);
+            // Already expired when minted (an absolute time in the past): no sleep, so a fake/cached test clock
+            // cannot make it look fresh.
+            .Protect($"{media:N}|{Guid.NewGuid():N}|draft|{Guid.NewGuid():N}", DateTimeOffset.UtcNow.AddMinutes(-5));
         Assert.Null(NewsComposerMediaEndpoints.ReadTicket(Dp, expired, media));
     }
 }

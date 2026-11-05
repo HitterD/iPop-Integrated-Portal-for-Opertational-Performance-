@@ -202,6 +202,8 @@ public class BookingSheetTests
 
         // Move date 3 to Toraja; date 5 stays skipped.
         cut.FindAll(".rp.clashed")[0].QuerySelector("button.bs-move")!.Click();
+        // The move menu renders after the click's re-render: wait for it (a slow runner read it too early).
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll(".bs-move-menu [role=menuitemradio]")));
         cut.FindAll(".bs-move-menu [role=menuitemradio]")[0].Click();
         Assert.Equal("Book 5 · 1 in Toraja", Primary(cut));
         cut.Find(".bs-go").Click();
