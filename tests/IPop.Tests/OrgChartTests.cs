@@ -156,7 +156,8 @@ public class OrgChartTests
         Assert.Equal(200, r.Status);
         Assert.Null(t.Verify().Users.Single(u => u.Nik == "300").Position);   // off the chart = no position
 
-        var changed = await OrgChartEndpoints.UndoPositionsAsync(t.Db, r.Version, "ADMIN", CancellationToken.None);
+        // A fresh context, like a real request (the publish nulled positions with ExecuteUpdate, past t.Db's tracker).
+        var changed = await OrgChartEndpoints.UndoPositionsAsync(t.Verify(), r.Version, "ADMIN", CancellationToken.None);
 
         Assert.Equal(3, changed);
         var db = t.Verify();
