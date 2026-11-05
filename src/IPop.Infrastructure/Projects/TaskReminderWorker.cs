@@ -16,6 +16,9 @@ namespace IPop.Infrastructure.Projects;
 /// hanya setelah publish berhasil).
 public sealed class TaskReminderWorker(IServiceScopeFactory scopeFactory, ILogger<TaskReminderWorker> log) : BackgroundService
 {
+    /// The largest reminder offset the API accepts (ProjectEndpoints: up to 90 days before the due date).
+    public const int MaxOffsetHours = 24 * 90;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
@@ -42,15 +45,23 @@ public sealed class TaskReminderWorker(IServiceScopeFactory scopeFactory, ILogge
         var db = scope.ServiceProvider.GetRequiredService<IPopDbContext>();
         var gateway = scope.ServiceProvider.GetService<INotificationGatewayService>();
         if (gateway is null) return;
+        await RunOnceAsync(db, gateway, DateTime.UtcNow, log, ct);
+    }
 
-        var now = DateTime.UtcNow;
+    public static async Task RunOnceAsync(IPopDbContext db, INotificationGatewayService gateway, DateTime now, ILogger log, CancellationToken ct)
+    {
         // Reminder yang jatuh tempo: DueDate - OffsetHours <= now, belum terkirim,
         // tugas belum selesai, dan punya DueDate. Perbandingan dievaluasi di memori
         // setelah filter kasar server-side (DateDiffMinute tidak portabel ke SQLite seam).
+        // Coarse server-side window: no reminder is more than MaxOffsetHours before its due date, so a task due later
+        // than now + that can't have a due reminder. Ordered by due date, so the 500 taken are the earliest - the old
+        // unordered Take(500) could fill up with future reminders and leave due ones unsent forever.
+        var horizon = now.AddHours(MaxOffsetHours);
         var candidates = await db.ProjectTaskReminders
             .Where(r => r.SentAt == null)
-            .Join(db.ProjectTasks.Where(t => t.DueDate != null && t.Status != "done"),
+            .Join(db.ProjectTasks.Where(t => t.DueDate != null && t.Status != "done" && t.DueDate <= horizon),
                   r => r.TaskId, t => t.Id, (r, t) => new { r.Id, r.OffsetHours, Task = t })
+            .OrderBy(x => x.Task.DueDate)
             .Take(500)
             .ToListAsync(ct);
 
