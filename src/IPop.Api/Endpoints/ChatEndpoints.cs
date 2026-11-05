@@ -170,8 +170,9 @@ public static class ChatEndpoints
                 return Results.Json(new { code = ErrorCode(result.Error), message = result.Error }, statusCode: statusCode);
             }
 
-            if (result.Message is not null
-                && (!result.Replayed || (notifier is IPop.Api.Chat.ChatNotifier n && await n.FanOutMissingAsync(result.Message.Id))))
+            // A replay may be recovering a disconnect after commit but before realtime fan-out. The client
+            // deduplicates by message ID; push intent persistence is independently idempotent.
+            if (result.Message is not null)
                 await notifier.NotifyNewMessageAsync(roomId, result.Message, CancellationToken.None);
 
             return Results.Ok(result);

@@ -105,11 +105,10 @@ public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbCon
         var ack = new MessageAckDto(result.Message!.Id, result.Message.CreatedAt, request.IdempotencyKey);
         await Clients.Caller.SendAsync("messageAck", ack);
 
-        // Broadcast to room group via IChatNotifier (which routes through IHubContext).
-        // A retry of an already-saved message only needs the ack above: the room has it already - unless the first
-        // attempt broke off between the save and the fan-out (no push intent was written), then deliver it now.
-        if (!result.Replayed || (notifier is ChatNotifier n && await n.FanOutMissingAsync(result.Message.Id)))
-            await notifier.NotifyNewMessageAsync(request.RoomId, result.Message, CancellationToken.None);
+        // Realtime is at-least-once: a durable push intent says nothing about whether the room received its event.
+        // Re-offer replayed messages too; clients deduplicate newMessage by its stable message ID. The notifier
+        // reuses the existing push intent, so this does not create a second durable notification.
+        await notifier.NotifyNewMessageAsync(request.RoomId, result.Message, CancellationToken.None);
 
         return new SendMessageResultDto(true, request.RoomId, request.IdempotencyKey, result.Message.Id, result.Message.CreatedAt);
     }
