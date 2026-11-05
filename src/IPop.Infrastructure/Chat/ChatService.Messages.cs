@@ -417,9 +417,15 @@ public sealed partial class ChatService
         return new Guid(hash.AsSpan(0, 16));
     }
 
-    public async Task<MessageResultDto> ForwardMessageAsync(Guid userId, Guid messageId, Guid targetRoomId, CancellationToken ct)
+    // Compatibility for old clients only. New clients supply one stable key per deliberate forward action.
+    public Task<MessageResultDto> ForwardMessageAsync(Guid userId, Guid messageId, Guid targetRoomId, CancellationToken ct)
+        => ForwardMessageAsync(userId, messageId, targetRoomId, ForwardKey(userId, messageId, targetRoomId, DateTime.UtcNow), ct);
+
+    public async Task<MessageResultDto> ForwardMessageAsync(Guid userId, Guid messageId, Guid targetRoomId,
+        Guid idempotencyKey, CancellationToken ct)
     {
-        var replayKey = ForwardKey(userId, messageId, targetRoomId, DateTime.UtcNow);
+        if (idempotencyKey == Guid.Empty) return new MessageResultDto(false, null, "idempotency_key_required");
+        var replayKey = idempotencyKey;
         var original = await db.ChatMessages
             .AsNoTracking()
             .Include(m => m.Sender)
@@ -467,8 +473,8 @@ public sealed partial class ChatService
             // A forwarded emergency/system row becomes ordinary text: forwarding must not mint a mute-bypassing alert.
             Type = original.Type is { } ot && ChatLimits.SenderTypes.Contains(ot) ? ot : "text",
             Content = cleanContent,
-            // Same message, same target, same person, same minute = the same forward (an HTTP retry posted it twice).
-            IdempotencyKey = ForwardKey(userId, messageId, targetRoomId, now),
+            // Retries reuse the client's operation key, independent of server time or minute boundaries.
+            IdempotencyKey = replayKey,
             ForwardedFromMessageId = originMessageId,
             ForwardedFromSenderName = originSender,
             CreatedAt = now

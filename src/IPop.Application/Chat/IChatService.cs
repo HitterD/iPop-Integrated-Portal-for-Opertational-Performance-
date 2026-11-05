@@ -14,6 +14,7 @@ public interface IChatService
     Task<MessageResultDto> EditMessageAsync(Guid userId, Guid messageId, string newContent, CancellationToken ct);
     Task<MessageResultDto> DeleteMessageAsync(Guid userId, Guid messageId, bool isAdmin, CancellationToken ct);
     Task<MessageResultDto> ForwardMessageAsync(Guid userId, Guid messageId, Guid targetRoomId, CancellationToken ct);
+    Task<MessageResultDto> ForwardMessageAsync(Guid userId, Guid messageId, Guid targetRoomId, Guid idempotencyKey, CancellationToken ct);
     /// Where the "Forwarded" label of <paramref name="messageId"/> leads for <paramref name="userId"/>; null when they can't see that message.
     Task<ForwardOriginDto?> GetForwardOriginAsync(Guid userId, Guid messageId, CancellationToken ct);
     Task<PagedResult<MessageDto>> GetMessagesAsync(Guid roomId, Guid userId, int page, int pageSize, CancellationToken ct);

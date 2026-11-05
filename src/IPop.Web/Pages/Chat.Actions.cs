@@ -127,24 +127,28 @@ public partial class Chat
     private void StartForward(Guid msgId)
     {
         forwardMsgId = msgId;
+        forwardOperationKey = Guid.NewGuid();
         forwardOpen = true;
         ctxMsgId = null;
     }
 
     private async Task ForwardTo(Guid targetRoomId)
     {
-        if (forwardMsgId is null) return;
-        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/chat/rooms/{ChatSvc.ActiveRoomId}/messages/{forwardMsgId}/forward", new { targetRoomId });
-        if (res.IsSuccessStatusCode)
+        if (forwardMsgId is null || forwarding) return;
+        forwarding = true;
+        try
         {
-            Toasts.Show("Message forwarded successfully.", ToastKind.Success);
+            using var res = await Auth.SendAsync(HttpMethod.Post,
+                $"/api/chat/rooms/{ChatSvc.ActiveRoomId}/messages/{forwardMsgId}/forward",
+                new { targetRoomId, idempotencyKey = forwardOperationKey });
+            if (res.IsSuccessStatusCode)
+                Toasts.Show("Message forwarded successfully.", ToastKind.Success);
+            else
+                Toasts.Show("Failed to forward message.", ToastKind.Error);
+            forwardOpen = false;
+            forwardMsgId = null;
         }
-        else
-        {
-            Toasts.Show("Failed to forward message.", ToastKind.Error);
-        }
-        forwardOpen = false;
-        forwardMsgId = null;
+        finally { forwarding = false; }
     }
 
     private async Task OnPollCreated(string pollPayload)

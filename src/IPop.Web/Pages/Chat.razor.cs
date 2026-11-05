@@ -86,6 +86,8 @@ public partial class Chat
     // ---- Forward State (Task 13.4) ----
     private bool forwardOpen;
     private Guid? forwardMsgId;
+    private Guid forwardOperationKey;
+    private bool forwarding;
 
     // ---- Poll & Voice Recording State ----
     private bool pollModalOpen;

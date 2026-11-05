@@ -266,7 +266,9 @@ public static class ChatEndpoints
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
 
-            var result = await svc.ForwardMessageAsync(userId.Value, id, req.TargetRoomId, ct);
+            var result = req.IdempotencyKey is { } operationKey
+                ? await svc.ForwardMessageAsync(userId.Value, id, req.TargetRoomId, operationKey, ct)
+                : await svc.ForwardMessageAsync(userId.Value, id, req.TargetRoomId, ct);
 
             if (!result.Success)
             {
@@ -1873,7 +1875,7 @@ public static class ChatEndpoints
     public record CreateDmRequest(Guid RecipientId);
     public record SendMessageBody(string Content, Guid IdempotencyKey, Guid? ReplyToId, string? Type, Guid? RoomId, IReadOnlyList<Guid>? AttachmentIds = null, bool LinkPreviewOff = false);
     public record EditRequest(string Content);
-    public record ForwardRequest(Guid TargetRoomId);
+    public record ForwardRequest(Guid TargetRoomId, Guid? IdempotencyKey = null);
     public record ReactRequest(string Emoji);
     public record PollVoteRequest(int OptionIndex);
     public record MuteRequest(string Duration);
