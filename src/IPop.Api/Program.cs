@@ -454,6 +454,16 @@ if (migrateOnly)
     catch (Exception ex) { app.Logger.LogWarning(ex, "Group photo import skipped"); }
 }
 
+// Behind NPM/Zoraxy/Traefik every request arrives from the proxy, so per-IP rate limits ("forgot password": 5 per
+// 15 min), audit logs and session IPs saw one address for the whole company. Take the client address from the
+// forwarded headers, but only when the request comes straight from a trusted proxy (Notifier:TrustedProxies).
+app.Use((http, next) =>
+{
+    if (IPop.Api.Notifier.ClientAddress.Of(http, http.RequestServices.GetRequiredService<IConfiguration>()) is { } client
+        && System.Net.IPAddress.TryParse(client, out var ip))
+        http.Connection.RemoteIpAddress = ip;
+    return next(http);
+});
 app.UseCors("web-dev");
 // Dev serves http and https side by side (http for LAN browsing, https for calls' microphone);
 // redirecting would push http pages onto the self-signed port and break their CORS preflights.
