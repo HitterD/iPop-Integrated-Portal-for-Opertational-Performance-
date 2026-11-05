@@ -64,7 +64,7 @@ self.addEventListener("message", e => e.waitUntil((async () => {
 
 // ───────────────────────── App-shell cache ─────────────────────────
 // Bump SW_VERSION on every deploy that changes caching; activate deletes older ipop-shell-/ipop-fw- caches.
-const SW_VERSION = "w2-20261103callaudit";
+const SW_VERSION = "w2-20261105audit";
 const SHELL = "ipop-shell-" + SW_VERSION;
 const FW = "ipop-fw-" + SW_VERSION;
 let NAV_TIMEOUT_MS = 4000;
