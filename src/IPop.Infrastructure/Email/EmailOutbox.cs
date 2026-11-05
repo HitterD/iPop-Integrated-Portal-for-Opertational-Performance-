@@ -40,6 +40,8 @@ public sealed class EmailOutboxProcessor(IPopDbContext db, IEmailSender sender, 
         Exception? failure = null;
         foreach (var m in due)
         {
+            // Stop between mails, never between "sent" and "recorded as sent".
+            if (ct.IsCancellationRequested) break;
             m.Attempts++;
             try
             {
@@ -55,8 +57,10 @@ public sealed class EmailOutboxProcessor(IPopDbContext db, IEmailSender sender, 
                 log.LogWarning(ex, "Email {Id} attempt {Attempt} failed", m.Id, m.Attempts);
                 failure ??= ex;
             }
+            // Saved per mail and not cancellable: the whole batch of 20 used to be saved once at the end, so a pod
+            // stopping mid-batch (rollout) left already-sent mails unmarked and they went out again on restart.
+            await db.SaveChangesAsync(CancellationToken.None);
         }
-        await db.SaveChangesAsync(ct);
         if (failure is not null && alerts is not null) await alerts.ReportAsync(failure, now, ct);
         return due.Count;
     }
