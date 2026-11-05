@@ -22,34 +22,6 @@
     <link rel="preload" id="webassembly" />
     <!-- Inter is self-hosted (see css/core/typography.css @font-face).
          No external Google Fonts request — required for intranet/offline use. -->
-    <!-- Tailwind CSS CDN for utility classes -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        accent: {
-                            50: '#f0f9f4',
-                            100: '#dcf2e5',
-                            200: '#bce5d0',
-                            300: '#8dd1b0',
-                            400: '#56b689',
-                            500: '#2e9d6b',
-                            600: '#228055',
-                            700: '#1d6646',
-                            800: '#1a523a',
-                            900: '#164431',
-                            950: '#0b261c',
-                        }
-                    },
-                    fontFamily: {
-                        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'system-ui', 'sans-serif'],
-                    }
-                }
-            }
-        }
-    </script>
     <!-- Modular CSS order: core -> shell -> Radzen base -> shared components -> modules -> overrides. -->
     <link rel="stylesheet" href="css/core/tokens.css?v=20261002-chatpolish" />
     <link rel="stylesheet" href="css/core/reset.css?v=20261002-sounds" />
@@ -211,6 +183,10 @@
     <script src="js/news-editor.js?v=20261004-micro"></script>
     <script src="js/version-check.js?v=20261002-sounds"></script>
     <script>ipop.restoreTheme();</script>
+    <!-- Tailwind utilities, built at build time (tools/tailwind/build.ps1). Last in <head>, where the Play CDN used to
+         inject its <style>, so the cascade order is unchanged. The CDN compiled CSS in the browser on every DOM change and
+         blocked first paint on an internet request. -->
+    <link rel="stylesheet" href="css/core/tailwind.css?v=20261105-build" />
 </head>
 
 <body>

@@ -10,7 +10,7 @@ public static class HostPipeline
         // other sites, plugins and <base> hijacking. Override with "Security:ContentSecurityPolicy".
         var csp = app.Configuration["Security:ContentSecurityPolicy"] ?? string.Join("; ",
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: https://cdn.tailwindcss.com https://cdn.jsdelivr.net",
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: https://cdn.jsdelivr.net",
             "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
             "font-src 'self' data: https://cdn.jsdelivr.net",
             "img-src 'self' data: blob: https: http:",
