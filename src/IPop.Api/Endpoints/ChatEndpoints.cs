@@ -1447,8 +1447,9 @@ public static class ChatEndpoints
     {
         if (attachment.MessageId is not null)
         {
+            // A deleted message's files are gone for everyone (kept on the NAS 30 days for admins, then purged).
             return await db.ChatMessages.AsNoTracking()
-                .Where(m => m.Id == attachment.MessageId)
+                .Where(m => m.Id == attachment.MessageId && !m.IsDeleted)
                 .Join(db.ChatRoomMembers.AsNoTracking(), m => m.RoomId, rm => rm.RoomId, (m, rm) => rm)
                 .AnyAsync(rm => rm.UserId == userId && rm.LeftAt == null, ct);
         }

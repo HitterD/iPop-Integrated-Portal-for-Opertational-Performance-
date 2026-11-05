@@ -353,6 +353,7 @@ public sealed partial class ChatService
 
         message.IsDeleted = true;
         message.DeletedByType = (isAdmin && message.SenderId != userId) ? "admin" : "self";
+        message.DeletedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync(ct);
 

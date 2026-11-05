@@ -1,3 +1,5 @@
+using IPop.Application.Files;
+using IPop.Core.Entities;
 using IPop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -7,52 +9,91 @@ using Microsoft.Extensions.Logging;
 namespace IPop.Infrastructure.Chat;
 
 /// <summary>
-/// Cleans orphan ChatAttachment rows whose MessageId is null and never got linked
-/// (client uploaded but never sent). Runs hourly, deletes rows older than 24h.
-/// ponytail: also delete Synology files when IFileAccessService supports DeleteAsync.
+/// Hourly clean-up of chat files nobody can reach any more, rows AND the files behind them:
+/// uploads never sent (MessageId null) after 24 h, and files of deleted messages after 30 days (until then they are
+/// hidden from members but still on the NAS, in case a deletion has to be undone or audited).
+/// Files on the NAS go through the service account; local files (dev / pre-NAS) are deleted from disk. A row is only
+/// removed once its file is gone (or was never there), so a NAS outage just postpones the clean-up.
 /// </summary>
 public sealed class ChatAttachmentGcWorker(IServiceScopeFactory scopes, ILogger<ChatAttachmentGcWorker> log) : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(1);
-    private static readonly TimeSpan OrphanAge = TimeSpan.FromHours(24);
+    public static readonly TimeSpan OrphanAge = TimeSpan.FromHours(24);
+    public static readonly TimeSpan DeletedMessageRetention = TimeSpan.FromDays(30);
+    private const int Batch = 200;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
         {
             using var timer = new PeriodicTimer(Interval);
-            // First run shortly after startup so dev DBs clean quickly
             await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken);
             do
             {
                 try
                 {
                     await using var scope = scopes.CreateAsyncScope();
-                    var db = scope.ServiceProvider.GetRequiredService<IPopDbContext>();
-                    var cutoff = DateTime.UtcNow - OrphanAge;
-                    var orphans = await db.ChatAttachments
-                        .Where(a => a.MessageId == null && a.CreatedAt < cutoff)
-                        .ToListAsync(stoppingToken);
-                    if (orphans.Count > 0)
-                    {
-                        db.ChatAttachments.RemoveRange(orphans);
-                        await db.SaveChangesAsync(stoppingToken);
-                        log.LogInformation("ChatAttachment GC: removed {Count} orphans older than {Cutoff}", orphans.Count, cutoff);
-                    }
+                    var removed = await RunOnceAsync(scope.ServiceProvider.GetRequiredService<IPopDbContext>(),
+                        scope.ServiceProvider.GetService<IFileAccessService>(),
+                        scope.ServiceProvider.GetService<Microsoft.Extensions.Hosting.IHostEnvironment>()?.ContentRootPath,
+                        DateTime.UtcNow, log, stoppingToken);
+                    if (removed > 0) log.LogInformation("ChatAttachment GC: removed {Count} unreachable attachments", removed);
                 }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    log.LogError(ex, "ChatAttachment GC failed; will retry next interval");
-                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+                catch (Exception ex) { log.LogError(ex, "ChatAttachment GC failed; will retry next interval"); }
             } while (await timer.WaitForNextTickAsync(stoppingToken));
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+    }
+
+    /// One pass; returns how many attachment rows were removed.
+    public static async Task<int> RunOnceAsync(IPopDbContext db, IFileAccessService? files, string? contentRoot, DateTime now,
+        ILogger log, CancellationToken ct)
+    {
+        var orphanCutoff = now - OrphanAge;
+        var deletedCutoff = now - DeletedMessageRetention;
+        var due = await db.ChatAttachments
+            .Where(a => (a.MessageId == null && a.CreatedAt < orphanCutoff)
+                || (a.MessageId != null && a.Message.IsDeleted && a.Message.DeletedAt != null && a.Message.DeletedAt < deletedCutoff))
+            .OrderBy(a => a.CreatedAt)
+            .Take(Batch)
+            .ToListAsync(ct);
+        var removed = new List<ChatAttachment>();
+        foreach (var a in due)
         {
-            // Graceful shutdown
+            if (await DeleteFileAsync(a.SynologyServer, a.SynologyPath, files, contentRoot, log, ct)
+                && (a.ThumbnailPath is null || a.ThumbnailPath == a.SynologyPath
+                    || await DeleteFileAsync(a.SynologyServer, a.ThumbnailPath, files, contentRoot, log, ct)))
+                removed.Add(a);
+        }
+        if (removed.Count == 0) return 0;
+        db.ChatAttachments.RemoveRange(removed);
+        await db.SaveChangesAsync(ct);
+        return removed.Count;
+    }
+
+    /// True when the file is gone afterwards (deleted now, or already missing).
+    private static async Task<bool> DeleteFileAsync(string server, string path, IFileAccessService? files, string? contentRoot,
+        ILogger log, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return true;
+        if (server == "local")
+        {
+            if (contentRoot is null) return false;
+            var full = Path.GetFullPath(Path.Combine(contentRoot, path));
+            if (!full.StartsWith(Path.GetFullPath(contentRoot), StringComparison.Ordinal)) return true; // never outside the app
+            try { if (File.Exists(full)) File.Delete(full); return true; }
+            catch (IOException e) { log.LogWarning("ChatAttachment GC: could not delete {Path} ({Error})", path, e.Message); return false; }
+            catch (UnauthorizedAccessException e) { log.LogWarning("ChatAttachment GC: could not delete {Path} ({Error})", path, e.Message); return false; }
+        }
+        if (files is null || !files.HasServiceAccount) return false;
+        try { await files.DeleteAsServiceAsync(path, ct); return true; }
+        // FileStation 408 = "no such file or directory": already gone.
+        catch (SynoException e) when (e.Code == 408) { return true; }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            log.LogWarning("ChatAttachment GC: NAS delete of {Path} failed ({Error}); retried next hour", path, e.Message);
+            return false;
         }
     }
 }

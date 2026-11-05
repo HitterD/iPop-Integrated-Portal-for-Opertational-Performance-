@@ -68,8 +68,8 @@ public sealed partial class ChatService : IChatService
         ReplyPreviewDto? replyPreview = null;
         if (m.ReplyTo is not null)
         {
-            var replyAttMime = m.ReplyTo.Attachments?.FirstOrDefault()?.MimeType;
-            var replyAttCount = m.ReplyTo.Attachments?.Count ?? 0;
+            var replyAttMime = m.ReplyTo.IsDeleted ? null : m.ReplyTo.Attachments?.FirstOrDefault()?.MimeType;
+            var replyAttCount = m.ReplyTo.IsDeleted ? 0 : m.ReplyTo.Attachments?.Count ?? 0;
             var previewContent = ReplyQuote.Text(m.ReplyTo.Type, m.ReplyTo.Content, m.ReplyTo.IsDeleted,
                 attachmentMime: replyAttMime, attachmentCount: replyAttCount);
             replyPreview = new ReplyPreviewDto(m.ReplyTo.Sender?.Name ?? "Unknown", previewContent);
@@ -84,7 +84,8 @@ public sealed partial class ChatService : IChatService
             ))
             .ToList() as IReadOnlyList<ReactionGroupDto> ?? [];
 
-        var attachments = m.Attachments?
+        // A deleted message carries no files: ids and thumbnail links would still let members fetch them.
+        var attachments = m.IsDeleted ? [] : m.Attachments?
             .Select(a => new AttachmentDto(
                 a.Id,
                 a.FileName,

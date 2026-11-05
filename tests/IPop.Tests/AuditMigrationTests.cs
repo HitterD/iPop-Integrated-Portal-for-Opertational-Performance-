@@ -32,4 +32,16 @@ public class AuditMigrationTests
         Assert.Equal("PushJobs", index.Table);
         Assert.Equal(["Kind", "RefId"], index.Columns);
     }
+
+    [Fact]
+    public void ChatMessage_deleted_at_migration_adds_the_column_and_backfills()
+    {
+        using var db = Db();
+        var migrations = db.GetService<IMigrationsAssembly>();
+        var entry = Assert.Single(migrations.Migrations.Where(x => x.Key.EndsWith("_ChatMessageDeletedAt")));
+        var ops = migrations.CreateMigration(entry.Value, db.Database.ProviderName!).UpOperations;
+        var col = Assert.Single(ops.OfType<AddColumnOperation>());
+        Assert.Equal(("ChatMessages", "DeletedAt", true), (col.Table, col.Name, col.IsNullable));
+        Assert.Single(ops.OfType<SqlOperation>());
+    }
 }

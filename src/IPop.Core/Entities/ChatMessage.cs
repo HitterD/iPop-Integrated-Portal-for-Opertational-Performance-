@@ -13,7 +13,9 @@ public class ChatMessage
     public int ThreadReplyCount { get; set; }
     public DateTime? LastThreadReplyAt { get; set; }
     public bool IsDeleted { get; set; }
-    public string? DeletedByType { get; set; }         // "self", "admin", null
+    public string? DeletedByType { get; set; }
+    /// When the message was deleted; its files are purged from the NAS 30 days later (ChatAttachmentGcWorker).
+    public DateTime? DeletedAt { get; set; }         // "self", "admin", null
     // Metadata teruskan: pesan hasil forward membawa asal-usulnya (ruang + pengirim
     // asli) sehingga label "Diteruskan" tidak bergantung pada prefix teks.
     public Guid? ForwardedFromMessageId { get; set; }
