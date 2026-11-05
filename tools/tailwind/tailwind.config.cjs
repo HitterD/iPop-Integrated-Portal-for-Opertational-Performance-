@@ -14,6 +14,9 @@ module.exports = {
     '!' + path.join(web, 'bin/**'),
     '!' + path.join(web, 'obj/**'),
   ],
+  // The CDN only generated classes present in the live DOM; scanning source also picks up words like "container"
+  // (no element uses Tailwind's .container), whose 640-1536 px max-width steps the phone-breakpoint rule forbids.
+  corePlugins: { container: false },
   theme: {
     extend: {
       colors: {
