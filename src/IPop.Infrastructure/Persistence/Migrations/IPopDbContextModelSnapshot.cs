@@ -4692,6 +4692,8 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ExpandedAt", "NextAttemptAt");
 
+                    b.HasIndex("Kind", "RefId");
+
                     b.ToTable("PushJobs");
                 });
 

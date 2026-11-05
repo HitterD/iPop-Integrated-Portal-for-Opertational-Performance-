@@ -157,6 +157,10 @@ public sealed partial class ChatService
             return new MessageResultDto(false, null, "idempotency_conflict");
         }
 
+        // The message is committed from here on. The sender dropping the connection must not abort the rest: a
+        // cancelled reload threw before the caller's fan-out, so nobody got the message live or as a toast, and the
+        // client's resend was then a "replay" that skips the fan-out on purpose. Finish without the caller's token.
+        ct = CancellationToken.None;
         if (message.Type == "sticker") await StickerService.RecordUseAsync(db, senderId, message.Content, ct);
 
         // Reload with navigation properties for DTO mapping. ReplyTo must come along, or the

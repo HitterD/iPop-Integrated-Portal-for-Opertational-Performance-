@@ -106,9 +106,10 @@ public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbCon
         await Clients.Caller.SendAsync("messageAck", ack);
 
         // Broadcast to room group via IChatNotifier (which routes through IHubContext).
-        // A retry of an already-saved message only needs the ack above: the room has it already.
-        if (!result.Replayed)
-            await notifier.NotifyNewMessageAsync(request.RoomId, result.Message, Context.ConnectionAborted);
+        // A retry of an already-saved message only needs the ack above: the room has it already - unless the first
+        // attempt broke off between the save and the fan-out (no push intent was written), then deliver it now.
+        if (!result.Replayed || (notifier is ChatNotifier n && await n.FanOutMissingAsync(result.Message.Id)))
+            await notifier.NotifyNewMessageAsync(request.RoomId, result.Message, CancellationToken.None);
 
         return new SendMessageResultDto(true, request.RoomId, request.IdempotencyKey, result.Message.Id, result.Message.CreatedAt);
     }

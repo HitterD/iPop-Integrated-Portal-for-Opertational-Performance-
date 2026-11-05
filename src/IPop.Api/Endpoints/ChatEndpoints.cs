@@ -170,8 +170,9 @@ public static class ChatEndpoints
                 return Results.Json(new { code = ErrorCode(result.Error), message = result.Error }, statusCode: statusCode);
             }
 
-            if (result.Message is not null && !result.Replayed)
-                await notifier.NotifyNewMessageAsync(roomId, result.Message, ct);
+            if (result.Message is not null
+                && (!result.Replayed || (notifier is IPop.Api.Chat.ChatNotifier n && await n.FanOutMissingAsync(result.Message.Id))))
+                await notifier.NotifyNewMessageAsync(roomId, result.Message, CancellationToken.None);
 
             return Results.Ok(result);
         }).RequirePermission("chat.send");

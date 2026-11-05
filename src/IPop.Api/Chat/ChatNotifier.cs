@@ -15,6 +15,11 @@ public sealed class ChatNotifier(IHubContext<ChatHub> hub, IPopDbContext db,
 {
     private static string Group(Guid roomId) => $"chat:{roomId}";
 
+    /// True when the first send of this message never reached its fan-out (the process stopped or the connection
+    /// broke right after the save): no push intent exists for it. A replayed send then delivers it after all.
+    public async Task<bool> FanOutMissingAsync(Guid messageId) =>
+        push is not null && !await db.PushJobs.AnyAsync(j => j.Kind == "chat" && j.RefId == messageId, CancellationToken.None);
+
     public async Task NotifyNewMessageAsync(Guid roomId, MessageDto message, CancellationToken ct)
     {
         // Windows toast for the other members: a durable intent (message reference only), written
@@ -25,7 +30,12 @@ public sealed class ChatNotifier(IHubContext<ChatHub> hub, IPopDbContext db,
         // the tab or dropping the request must not cancel the toast intent or the room fan-out.
         if (push is not null)
         {
-            try { await push.EnqueueAsync(db, "chat", message.Id, CancellationToken.None); }
+            // A replayed send (client retry) calls this again: an intent that already exists means the first fan-out ran.
+            try
+            {
+                if (!await db.PushJobs.AnyAsync(j => j.Kind == "chat" && j.RefId == message.Id, CancellationToken.None))
+                    await push.EnqueueAsync(db, "chat", message.Id, CancellationToken.None);
+            }
             catch (Exception ex)
             {
                 log?.LogError("Chat push intent for message {MessageId} was not saved ({Error}).", message.Id, ex.GetType().Name);

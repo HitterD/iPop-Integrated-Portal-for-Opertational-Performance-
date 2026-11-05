@@ -976,6 +976,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
         {
             e.HasIndex(x => new { x.ExpandedAt, x.NextAttemptAt });
             e.HasIndex(x => x.CreatedAt);
+            e.HasIndex(x => new { x.Kind, x.RefId });   // "does this message already have a push intent" (chat replay)
             e.Property(x => x.Kind).HasMaxLength(16);
             e.Property(x => x.EventType).HasMaxLength(100);
             e.Property(x => x.Priority).HasMaxLength(16);
