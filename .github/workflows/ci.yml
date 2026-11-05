@@ -5,6 +5,12 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      fake_utc:
+        description: "UTC start time for the test clock (HH:MM:SS today); default 03:00:00 = 10:00 WIB"
+        required: false
+        default: "03:00:00"
   workflow_call:
     secrets:
       DEVEXPRESS_NUGET_FEED:
@@ -43,8 +49,21 @@ jobs:
         run: |
           if [ -z "$DX_FEED" ]; then echo "::error::Secret DEVEXPRESS_NUGET_FEED is not set (see docs/deploy/k3s/03-github-secrets.md)"; exit 1; fi
           dotnet nuget add source "$DX_FEED" -n devexpress
+      - name: Fake clock for the tests (libfaketime)
+        run: sudo apt-get install -y -qq faketime
+      - name: Build
+        run: dotnet build tests/IPop.Tests/IPop.Tests.csproj -c Release
+      # Room bookings follow the same-office-day rule (WIB), and many tests book "now + N minutes". Pushed between
+      # ~22:00 and 01:00 WIB those cross midnight and CI went red. The test process starts at a fixed time of day
+      # (10:00 WIB by default) and then runs normally; the build above keeps the real clock.
       - name: Test
-        run: dotnet test tests/IPop.Tests/IPop.Tests.csproj -c Release
+        env:
+          FAKE_UTC: ${{ inputs.fake_utc || '03:00:00' }}
+        run: |
+          export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1
+          export FAKETIME="@$(date -u +%F) $FAKE_UTC" DONT_FAKE_MONOTONIC=1 FAKETIME_DONT_FAKE_MONOTONIC=1
+          echo "Test clock starts at $FAKETIME UTC"
+          dotnet test tests/IPop.Tests/IPop.Tests.csproj -c Release --no-build
 
   js:
     name: JavaScript tests
