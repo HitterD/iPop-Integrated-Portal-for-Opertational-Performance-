@@ -526,7 +526,7 @@ public class MeetingRecordingWorkerTests : IDisposable
     }
 
     [Fact]
-    public async Task Processing_row_that_ended_more_than_six_hours_ago_fails_as_upload_timed_out_and_tells_the_starter()
+    public async Task Processing_row_without_a_file_that_ended_more_than_six_hours_ago_fails_and_tells_the_starter()
     {
         using var t = new TestDb(); var a = t.AddUser("A1"); var b = t.AddUser("B1");
         var old = Row(t, MeetingRecordingStatus.Processing, a.Id, a.Id, b.Id);
@@ -547,6 +547,39 @@ public class MeetingRecordingWorkerTests : IDisposable
         Assert.Equal(MeetingRecordingStatus.Processing, rows[recent.Id].Status);
         var sent = Assert.Single(gw.Sent);
         Assert.Equal(("meeting.recording.failed", (Guid?)a.Id), (sent.EventType, sent.Target.UserId));
+    }
+
+    [Fact]
+    public async Task Recording_still_on_the_server_after_six_hours_is_kept_retried_and_admins_are_told_once()
+    {
+        using var t = new TestDb(); var a = t.AddUser("A1");
+        var row = Row(t, MeetingRecordingStatus.Processing, a.Id, a.Id);
+        using (var db = t.Verify())
+        {
+            db.MeetingRecordings.Single(r => r.Id == row.Id).EndedAt = DateTime.UtcNow.AddHours(-7);
+            db.SaveChanges();
+        }
+        var eg = new MeetingRecordingServiceTests.FakeEgress(); eg.Infos["EG_1"] = new("EGRESS_COMPLETE", null, 3, null, null);
+        var gw = new Gateway(); var nas = new Nas { FailUpload = true };
+        var (sp, spool) = Services(t, eg, nas, gw); using var provider = sp;
+        var local = Path.Combine(spool, "kalosi", "2026-10-11", "1000-x.mp4");
+        Directory.CreateDirectory(Path.GetDirectoryName(local)!); await File.WriteAllBytesAsync(local, [1, 2, 3]);
+
+        await MeetingRecordingWorker.FinishAsync(sp, default);
+        await MeetingRecordingWorker.FinishAsync(sp, default);   // NAS still down
+
+        Assert.True(File.Exists(local));                          // the only copy survives
+        using (var mid = t.Verify())
+            Assert.Equal((MeetingRecordingStatus.Processing, MeetingRecordingWorker.UploadDelayed),
+                ((await mid.MeetingRecordings.SingleAsync()).Status, (await mid.MeetingRecordings.SingleAsync()).Error));
+        var alert = Assert.Single(gw.Sent);
+        Assert.Equal(("meeting.recording.upload_delayed", "Admin"), (alert.EventType, alert.Target.Role));
+
+        nas.FailUpload = false;                                   // NAS back
+        await MeetingRecordingWorker.FinishAsync(sp, default);
+        using var after = t.Verify(); var saved = await after.MeetingRecordings.SingleAsync();
+        Assert.Equal((MeetingRecordingStatus.Ready, (string?)null), (saved.Status, saved.Error));
+        Assert.False(File.Exists(local));
     }
 
     [Fact]
@@ -598,17 +631,15 @@ public class MeetingRecordingWorkerTests : IDisposable
 
     [Theory]
     [InlineData("start interrupted")]
-    [InlineData("upload timed out")]
     [InlineData("egress failed")]
     public async Task Failed_rows_lose_their_local_spool_file(string reason)
     {
         using var t = new TestDb(); var a = t.AddUser("A1");
-        var row = Row(t, reason == "upload timed out" ? MeetingRecordingStatus.Processing : MeetingRecordingStatus.Recording, a.Id, a.Id);
+        var row = Row(t, MeetingRecordingStatus.Recording, a.Id, a.Id);
         using (var db = t.Verify())
         {
             var r = db.MeetingRecordings.Single(x => x.Id == row.Id);
             if (reason == "start interrupted") { r.EgressId = ""; r.StartedAt = DateTime.UtcNow.AddMinutes(-3); }
-            if (reason == "upload timed out") r.EndedAt = DateTime.UtcNow.AddHours(-7);
             db.SaveChanges();
         }
         var eg = new MeetingRecordingServiceTests.FakeEgress();

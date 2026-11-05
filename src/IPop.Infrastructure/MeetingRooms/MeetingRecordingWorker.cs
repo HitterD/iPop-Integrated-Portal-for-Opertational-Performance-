@@ -93,15 +93,29 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
                         info = await egress.GetAsync(row.EgressId, ct);
                     }
                 }
-                // Egress finished but the NAS never took the file: stop retrying and tell whoever started it.
+                // Egress finished but the NAS has not taken the file for 6 h (NAS maintenance, network). The spool file is
+                // the ONLY copy, so it is never given up on: keep it and keep retrying, and tell the admins once.
+                // A row with no file at all (Egress never wrote one) is the only "upload timed out" failure left.
                 if (row.Status == MeetingRecordingStatus.Processing && row.EndedAt is { } ended && ended < now - UploadTimeout)
                 {
-                    row.Status = MeetingRecordingStatus.Failed; row.Error = "upload timed out";
-                    await db.SaveChangesAsync(ct);
-                    DeleteSpool(spool, row);
-                    await NotifyFailedAsync(notify, row, ct);
-                    done++;
-                    continue;
+                    var spoolFile = string.IsNullOrEmpty(row.SpoolPath) ? null : RecordingPaths.LocalFile(spool, row.SpoolPath);
+                    if (spoolFile is null || !File.Exists(spoolFile))
+                    {
+                        row.Status = MeetingRecordingStatus.Failed; row.Error = "upload timed out";
+                        await db.SaveChangesAsync(ct);
+                        await NotifyFailedAsync(notify, row, ct);
+                        done++;
+                        continue;
+                    }
+                    if (row.Error != UploadDelayed)
+                    {
+                        row.Error = UploadDelayed;
+                        await db.SaveChangesAsync(ct);
+                        await notify.PublishInternalAsync("meetings", "meeting.recording.upload_delayed", "Recording not on the NAS yet",
+                            $"The recording of {row.Title} finished {(int)(now - ended).TotalHours} h ago and still could not be copied to the NAS. "
+                            + "It is kept on the server and retried automatically; check the NAS connection.",
+                            new NotificationTarget(Role: "Admin"), targetUrl: "/admin", ct: ct);
+                    }
                 }
                 if (string.IsNullOrEmpty(row.EgressId)) continue;
                 if (row.Status == MeetingRecordingStatus.Recording)
@@ -150,6 +164,8 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
                 var dir = $"{nasRoot}/{Path.GetDirectoryName(row.SpoolPath)!.Replace('\\', '/')}";
                 var file = Path.GetFileName(row.SpoolPath);
                 if (RecordingPaths.NasFile(nasRoot, $"{dir}/{file}") is null) continue;
+                // One upload at a time per pass: a multi-GB file on a slow link must not hold back the other rooms for
+                // the whole 30-minute transfer timeout more than once per pass.
                 await using (var fs = File.OpenRead(local))
                     await nas.UploadAsServiceAsync(dir, file, fs, ct);
                 var nasPath = $"{dir}/{file}";
@@ -162,6 +178,7 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
                     .Where(r => r.Id == row.Id && r.Status == MeetingRecordingStatus.Processing)
                     .ExecuteUpdateAsync(u => u.SetProperty(r => r.NasPath, nasPath).SetProperty(r => r.SizeBytes, size)
                         .SetProperty(r => r.DurationSeconds, duration).SetProperty(r => r.EndedAt, endedAt)
+                        .SetProperty(r => r.Error, (string?)null)
                         .SetProperty(r => r.Status, MeetingRecordingStatus.Ready), ct);
                 db.Entry(row).State = EntityState.Detached;
                 File.Delete(local);
@@ -196,8 +213,10 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
 
     /// A Recording row without an Egress id older than this was never started (the start request died midway).
     public static readonly TimeSpan StartGrace = TimeSpan.FromMinutes(2);
-    /// A finished recording that has not reached the NAS this long after it ended is given up on.
+    /// A finished recording that has not reached the NAS this long after it ended: admins are told (once), and the
+    /// upload keeps being retried. Only a row with no spool file left fails.
     public static readonly TimeSpan UploadTimeout = TimeSpan.FromHours(6);
+    public const string UploadDelayed = "upload delayed";
 
     /// A failed recording's partial file in the spool folder is of no use: remove it (best effort).
     private static void DeleteSpool(string spool, MeetingRecording row)
