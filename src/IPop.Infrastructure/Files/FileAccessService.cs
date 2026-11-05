@@ -221,6 +221,8 @@ public class FileAccessService(
     {
         server = NormalizeServer(server);
         if (_sessions.TryGet(userId, server, out var cached)) return cached;
+        if (_sessions.IsUnreachable(server, DateTime.UtcNow))
+            throw new SynoException($"The file server '{server}' is not reachable right now.");
 
         var gate = _sessions.LockFor(userId, server);
         await gate.WaitAsync(ct);
@@ -247,7 +249,16 @@ public class FileAccessService(
         {
             var sid = await gateway.AuthAsync(server, row.Username, password, ct);
             _sessions.Set(userId, server, sid);
+            _sessions.MarkReachable(server);
             return sid;
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested && ex is HttpRequestException or TaskCanceledException or TimeoutException
+            or System.Net.Sockets.SocketException)
+        {
+            // The NAS did not answer at all (not a refused password): remember it briefly, and report a NAS error
+            // (502) rather than a 500.
+            _sessions.MarkUnreachable(server, DateTime.UtcNow);
+            throw new SynoException($"The file server '{server}' is not reachable right now.");
         }
         catch (SynoException ex) when (ex.IsAuthFailure)
         {

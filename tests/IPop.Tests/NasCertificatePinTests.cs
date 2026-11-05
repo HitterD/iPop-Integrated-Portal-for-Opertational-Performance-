@@ -61,3 +61,21 @@ public class NasCertificatePinTests
         Assert.All(hosts, h => Assert.Contains(h, pinned));
     }
 }
+
+public class SynologySessionCacheTests
+{
+    [Fact]
+    public void An_unreachable_nas_is_skipped_for_30_seconds_then_tried_again()
+    {
+        var cache = new SynologySessionCache();
+        var t0 = new DateTime(2026, 11, 5, 3, 0, 0, DateTimeKind.Utc);
+        Assert.False(cache.IsUnreachable("krw", t0));
+        cache.MarkUnreachable("krw", t0);
+        Assert.True(cache.IsUnreachable("KRW", t0.AddSeconds(10)));
+        Assert.False(cache.IsUnreachable("spj", t0.AddSeconds(10)));
+        Assert.False(cache.IsUnreachable("krw", t0.AddSeconds(31)));
+        cache.MarkUnreachable("krw", t0);
+        cache.MarkReachable("krw");
+        Assert.False(cache.IsUnreachable("krw", t0.AddSeconds(1)));
+    }
+}

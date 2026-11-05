@@ -33,6 +33,16 @@ public sealed class SynologySessionCache
             _sids.TryRemove(k, out _);
     }
 
+    private readonly ConcurrentDictionary<string, DateTime> _unreachableUntil = new(StringComparer.OrdinalIgnoreCase);
+    public static readonly TimeSpan UnreachableFor = TimeSpan.FromSeconds(30);
+
+    /// A NAS that just failed to answer (timeout, connection refused): requests in the next 30 s fail at once
+    /// instead of each waiting for the connect timeout again behind the login lock (a Files page fires three).
+    public void MarkUnreachable(string server, DateTime nowUtc) => _unreachableUntil[server] = nowUtc + UnreachableFor;
+    public void MarkReachable(string server) => _unreachableUntil.TryRemove(server, out _);
+    public bool IsUnreachable(string server, DateTime nowUtc) =>
+        _unreachableUntil.TryGetValue(server, out var until) && until > nowUtc;
+
     /// <summary>One login per (user, server) at a time: the page fires list + storage together.</summary>
     public SemaphoreSlim LockFor(Guid userId, string server) => _locks.GetOrAdd((userId, server), _ => new SemaphoreSlim(1, 1));
 }
