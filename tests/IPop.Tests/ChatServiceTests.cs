@@ -84,6 +84,43 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task Forward_supports_a_stable_client_key_for_retries_and_distinct_deliberate_actions()
+    {
+        // Require the new keyed overload without preventing this RED test from compiling on the old contract.
+        var method = typeof(ChatService).GetMethod(nameof(ChatService.ForwardMessageAsync),
+            [typeof(Guid), typeof(Guid), typeof(Guid), typeof(Guid), typeof(CancellationToken)]);
+        Assert.NotNull(method);
+        using var t = new TestDb();
+        var sender = t.AddUser("FORWARD_KEYS");
+        var source = t.AddRoom("group", "Source");
+        var target = t.AddRoom("group", "Target");
+        t.AddMember(source.Id, sender.Id);
+        t.AddMember(target.Id, sender.Id);
+        var original = t.AddMessage(source.Id, sender.Id, "Forward me");
+        var actionKey = Guid.NewGuid();
+        async Task<MessageResultDto> Forward(Guid key)
+        {
+            var service = new ChatService(t.Verify());
+            return await (Task<MessageResultDto>)method!.Invoke(service,
+                [sender.Id, original.Id, target.Id, key, CancellationToken.None])!;
+        }
+
+        var first = await Forward(actionKey);
+        var retry = await Forward(actionKey);
+        var intentionalSecond = await Forward(Guid.NewGuid());
+
+        Assert.True(first.Success, first.Error);
+        Assert.True(retry.Replayed);
+        Assert.Equal(first.Message!.Id, retry.Message!.Id);
+        Assert.True(intentionalSecond.Success, intentionalSecond.Error);
+        Assert.False(intentionalSecond.Replayed);
+        Assert.NotEqual(first.Message.Id, intentionalSecond.Message!.Id);
+        using var committed = t.Verify();
+        Assert.Equal(2, committed.ChatMessages.Count(m => m.RoomId == target.Id));
+        Assert.Equal(2, committed.PushJobs.Count(j => j.Kind == "chat"));
+    }
+
+    [Fact]
     public async Task Forward_retried_within_the_minute_is_one_message()
     {
         using var t = new TestDb();
