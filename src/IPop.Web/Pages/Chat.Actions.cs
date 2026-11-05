@@ -204,7 +204,7 @@ public partial class Chat
             byteContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/webm");
             form.Add(byteContent, "file", $"voice_{DateTime.UtcNow:yyyyMMdd_HHmmss}.webm");
 
-            var res = await Auth.SendMultipartAsync("/api/chat/attachments/upload", form);
+            var res = await Auth.SendMultipartAsync($"/api/chat/attachments/upload?roomId={ChatSvc.ActiveRoomId.Value}", form);
             if (res.IsSuccessStatusCode)
             {
                 var attachments = await res.Content.ReadFromJsonAsync<List<IPop.Application.Chat.AttachmentDto>>();

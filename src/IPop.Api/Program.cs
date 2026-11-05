@@ -86,6 +86,10 @@ builder.Services.AddRateLimiter(o =>
     o.AddPolicy(IPop.Api.Endpoints.LinkPreviewEndpoints.ImageRateLimitPolicy, http => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
         http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 240, Window = TimeSpan.FromMinutes(1) }));
+    // Chat attachment uploads: 30 requests per signed-in user per minute.
+    o.AddPolicy(IPop.Api.Endpoints.ChatEndpoints.UploadRateLimitPolicy, http => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+        http.User.FindFirst("nik")?.Value ?? http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1) }));
     // iDesk webhook is anonymous (HMAC-signed); iDesk itself sends at most 120/min.
     o.AddPolicy(IPop.Api.Endpoints.TicketEndpoints.WebhookRateLimitPolicy, http => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
         http.Connection.RemoteIpAddress?.ToString() ?? "unknown",

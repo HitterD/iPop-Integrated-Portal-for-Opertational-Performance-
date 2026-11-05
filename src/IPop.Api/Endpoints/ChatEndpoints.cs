@@ -1051,16 +1051,24 @@ public static class ChatEndpoints
             http.Features.Set<Microsoft.AspNetCore.Http.Features.IFormFeature>(new Microsoft.AspNetCore.Http.Features.FormFeature(http.Request,
                 new Microsoft.AspNetCore.Http.Features.FormOptions { MultipartBodyLengthLimit = MaxAttachmentRequestBytes }));
 
+            Task<bool> IsMemberAsync(Guid room) => db.ChatRoomMembers.AsNoTracking()
+                .AnyAsync(m => m.RoomId == room && m.UserId == userId.Value && m.LeftAt == null, ct);
+            IResult NotMember() =>
+                Results.Json(new { code = "room_not_found", message = "Room does not exist or you are not a member." }, statusCode: 404);
+
+            // Current clients name the room in the query too, so a non-member is turned away before up to 250 MB is read.
+            Guid? queryRoom = Guid.TryParse(http.Request.Query["roomId"], out var qr) ? qr : null;
+            if (queryRoom is { } early && !await IsMemberAsync(early)) return NotMember();
+
             var form = await http.Request.ReadFormAsync(ct);
             var roomIdStr = form["roomId"].ToString();
             if (!Guid.TryParse(roomIdStr, out var roomId))
                 return Results.Json(new { code = "room_id_required", message = "roomId is required." }, statusCode: 422);
+            if (queryRoom is { } q && q != roomId)
+                return Results.Json(new { code = "room_id_mismatch", message = "roomId differs between query and form." }, statusCode: 422);
 
-            // Verify user is a member of the room
-            var isMember = await db.ChatRoomMembers.AsNoTracking()
-                .AnyAsync(m => m.RoomId == roomId && m.UserId == userId.Value && m.LeftAt == null, ct);
-            if (!isMember)
-                return Results.Json(new { code = "room_not_found", message = "Room does not exist or you are not a member." }, statusCode: 404);
+            // Older clients send the room only in the form.
+            if (queryRoom is null && !await IsMemberAsync(roomId)) return NotMember();
 
             var files = form.Files;
             if (files.Count == 0)
@@ -1099,22 +1107,22 @@ public static class ChatEndpoints
                 string? thumbName = isRaster ? $"{Path.GetFileNameWithoutExtension(uniqueName)}.thumb.jpg" : null;
                 byte[]? thumbBytes = null;
 
-                // Buffer once so we can reuse for thumb generation + storage
-                await using var buffered = new MemoryStream();
-                await using (var src = file.OpenReadStream())
-                    await src.CopyToAsync(buffered, ct);
-
+                // ASP.NET already spooled the form to a temp file and every OpenReadStream() reads it again, so the file
+                // is no longer copied into a MemoryStream (a 50 MB file used to cost 50+ MB of heap per upload).
                 if (isRaster && thumbName is not null)
                 {
-                    try
+                    await using var probe = file.OpenReadStream();
+                    switch (TryCreateThumbnail(probe, 640, out thumbBytes))
                     {
-                        buffered.Position = 0;
-                        thumbBytes = CreateThumbnail(buffered, 640);
+                        case ThumbResult.TooManyPixels:
+                            return Results.Json(new { code = "image_too_large",
+                                message = $"'{safeName}' is larger than {MaxImageMegapixels} megapixels. Send a smaller picture." }, statusCode: 422);
+                        case ThumbResult.Failed:
+                            http.RequestServices.GetService<ILoggerFactory>()?.CreateLogger("ChatEndpoints")
+                                .LogInformation("No thumbnail for chat image {File} (not decodable); the original is shown instead.", safeName);
+                            break;
                     }
-                    catch { thumbBytes = null; /* ponytail: fallback to full file as thumbnail */ }
-                    buffered.Position = 0;
                 }
-                else buffered.Position = 0;
 
                 string server = "local";
                 string storedPath = "";
@@ -1129,8 +1137,8 @@ public static class ChatEndpoints
                 {
                     try
                     {
-                        buffered.Position = 0;
-                        await fileSvc.UploadAsServiceAsync(chatPath, uniqueName, buffered, ct);
+                        await using (var upload = file.OpenReadStream())
+                            await fileSvc.UploadAsServiceAsync(chatPath, uniqueName, upload, ct);
                         server = fileSvc.ServiceServer!;
                         storedPath = $"{chatPath}/{uniqueName}";
                         uploadedToSynology = true;
@@ -1153,12 +1161,15 @@ public static class ChatEndpoints
                             thumbnailPath = storedPath;
                         }
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
                     {
+                        // No silent fallback to local disk while a NAS is configured: in the cluster that disk is the pod's
+                        // own (other replicas 404, a restart loses the file). Fail visibly; the composer offers Retry.
                         var logger = http.RequestServices.GetService<ILoggerFactory>()?.CreateLogger("ChatEndpoints");
-                        logger?.LogWarning(ex, "Synology service-account upload failed for room {RoomId} to {Server}:{Path}, falling back to local storage: {Error}",
+                        logger?.LogWarning(ex, "Synology service-account upload failed for room {RoomId} to {Server}:{Path}: {Error}",
                             roomId, fileSvc.ServiceServer, $"{chatPath}/{uniqueName}", ex.Message);
-                        uploadedToSynology = false;
+                        return Results.Json(new { code = "storage_unavailable",
+                            message = "The file server is not reachable right now. Try again in a moment." }, statusCode: 503);
                     }
                 }
 
@@ -1174,12 +1185,12 @@ public static class ChatEndpoints
                             safeName, roomId);
                     }
 
-                    buffered.Position = 0;
                     var dir = Path.Combine(env.ContentRootPath, "chat-files", roomId.ToString("N"));
                     Directory.CreateDirectory(dir);
                     var full = Path.Combine(dir, uniqueName);
                     await using (var fs = File.Create(full))
-                        await buffered.CopyToAsync(fs, ct);
+                    await using (var src = file.OpenReadStream())
+                        await src.CopyToAsync(fs, ct);
 
                     server = "local";
                     storedPath = Path.Combine("chat-files", roomId.ToString("N"), uniqueName).Replace('\\', '/');
@@ -1217,7 +1228,7 @@ public static class ChatEndpoints
 
             await db.SaveChangesAsync(ct);
             return Results.Ok(attachments);
-        }).RequirePermission("chat.send").DisableAntiforgery()
+        }).RequirePermission("chat.send").DisableAntiforgery().RequireRateLimiting(UploadRateLimitPolicy)
           .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MaxAttachmentRequestBytes));
 
         // GET /api/chat/attachments/{id}/download?inline=true
@@ -1794,6 +1805,38 @@ public static class ChatEndpoints
     }
 
     // ponytail: real thumbnails only for raster images; fallback is the full file path
+    public const string UploadRateLimitPolicy = "chat-upload";
+    /// Pictures above this are refused: decoding costs about 4 bytes per pixel, and a few-KB "bomb" PNG that declares
+    /// 30k x 30k pixels would ask for gigabytes. 40 MP covers every phone camera.
+    public const int MaxImageMegapixels = 40;
+
+    internal enum ThumbResult { Ok, TooManyPixels, Failed }
+
+    /// Thumbnail of an uploaded picture. Only the header is read first (no pixels decoded) to refuse oversized images,
+    /// and the decoder scales while decoding (TargetSize), so a 12 MP JPEG never becomes a full 48 MB bitmap.
+    internal static ThumbResult TryCreateThumbnail(Stream input, int maxEdge, out byte[]? thumb)
+    {
+        thumb = null;
+        try
+        {
+            var info = Image.Identify(input);
+            if ((long)info.Width * info.Height > MaxImageMegapixels * 1_000_000L) return ThumbResult.TooManyPixels;
+            input.Position = 0;
+            var options = new SixLabors.ImageSharp.Formats.DecoderOptions { TargetSize = new Size(maxEdge, maxEdge) };
+            using var image = Image.Load(options, input);
+            if (image.Width > maxEdge || image.Height > maxEdge)
+                image.Mutate(x => x.Resize(new ResizeOptions { Mode = ResizeMode.Max, Size = new Size(maxEdge, maxEdge) }));
+            using var ms = new MemoryStream();
+            image.SaveAsJpeg(ms);
+            thumb = ms.ToArray();
+            return ThumbResult.Ok;
+        }
+        catch (Exception e) when (e is UnknownImageFormatException or InvalidImageContentException or NotSupportedException)
+        {
+            return ThumbResult.Failed;
+        }
+    }
+
     private static byte[] CreateThumbnail(Stream input, int maxWidth)
     {
         using var image = Image.Load(input);

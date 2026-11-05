@@ -757,7 +757,7 @@ public partial class Chat
                 part.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(ChatAttachments.Mime(file.ContentType, file.Name));
                 content.Add(part, "file", file.Name);
             }
-            using var resp = await Auth.SendMultipartAsync("/api/chat/attachments/upload", content, cts.Token);
+            using var resp = await Auth.SendMultipartAsync($"/api/chat/attachments/upload?roomId={roomId}", content, cts.Token);
             if (ChatSvc.ActiveRoomId != roomId || composerWrapRef.Id != composerId || _disposed) return;
             if (resp.IsSuccessStatusCode)
             {
@@ -837,10 +837,13 @@ public partial class Chat
                     "too_many_attachments" => "You can attach up to 5 files per message.",
                     "room_not_found" => "This conversation is no longer available.",
                     "file_required" => "No files were uploaded. Select the files and try again.",
+                    "image_too_large" => body.TryGetValue("message", out var m) ? m : "That picture is too large. Send a smaller one.",
+                    "storage_unavailable" => "The file server is not reachable right now. Try again in a moment.",
                     _ => "Couldn't upload. Select the files and try again."
                 };
         }
         catch { /* non-JSON proxy response */ }
+        if (resp.StatusCode is System.Net.HttpStatusCode.TooManyRequests) return "Too many uploads at once. Wait a minute, then try again.";
         return resp.StatusCode is System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.Unauthorized
             ? "You don't have permission to upload to this conversation."
             : "Couldn't upload. Check your connection, then select the files and try again.";
