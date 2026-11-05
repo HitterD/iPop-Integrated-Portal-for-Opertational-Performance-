@@ -60,10 +60,15 @@ public sealed partial class NoteService
 
         var at = now ?? DateTime.UtcNow;
         var next = req.BaseVersion + 1;
+        // The snapshot is sent on tab close, so the request can be aborted at any point: never with the caller's token,
+        // and all of it in one transaction - merged updates used to be deleted BEFORE the new state was saved, so an
+        // abort in between lost those edits.
+        ct = CancellationToken.None;
+        await using var tx = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(ct) : null;
         // Compare-and-swap on the version: only one snapshot per base version can win.
         var won = await db.NotePages.Where(p => p.Id == pageId && p.StateVersion == req.BaseVersion)
             .ExecuteUpdateAsync(s => s.SetProperty(p => p.StateVersion, next), ct);
-        if (won == 0) return Fail<NoteSnapshotResultDto>("version_conflict");
+        if (won == 0) { if (tx is not null) await tx.RollbackAsync(ct); return Fail<NoteSnapshotResultDto>("version_conflict"); }
 
         var page = await db.NotePages.FirstAsync(p => p.Id == pageId, ct);
         await db.Entry(page).ReloadAsync(ct);
@@ -76,8 +81,6 @@ public sealed partial class NoteService
         page.TodoTotal = Math.Clamp(req.TodoTotal, 0, 10000);
 
         var merged = req.MergedUpdateIds.Distinct().ToList();
-        if (merged.Count > 0)
-            await db.NoteUpdates.Where(u => u.PageId == pageId && merged.Contains(u.Id)).ExecuteDeleteAsync(ct);
 
         var last = await db.NoteVersions.Where(v => v.PageId == pageId).MaxAsync(v => (DateTime?)v.CreatedAt, ct);
         var wroteVersion = false;
@@ -92,6 +95,10 @@ public sealed partial class NoteService
             wroteVersion = true;
         }
         await db.SaveChangesAsync(ct);
+        // Only once the new state is stored are the updates it contains removed (same transaction).
+        if (merged.Count > 0)
+            await db.NoteUpdates.Where(u => u.PageId == pageId && merged.Contains(u.Id)).ExecuteDeleteAsync(ct);
+        if (tx is not null) await tx.CommitAsync(ct);
         if (wroteVersion)
         {
             var staleIds = await db.NoteVersions.Where(v => v.PageId == pageId)

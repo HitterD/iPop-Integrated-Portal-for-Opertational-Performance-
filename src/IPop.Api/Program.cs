@@ -189,6 +189,7 @@ builder.Services.AddCors(o => o.AddPolicy("web-dev", p => p
 var redisConnection = builder.Configuration.GetConnectionString("Redis")
     ?? throw new InvalidOperationException("ConnectionStrings:Redis is required");
 builder.Services.AddSignalR()
+    .AddHubOptions<IPop.Api.Notes.NotesHub>(o => o.MaximumReceiveMessageSize = 768 * 1024)
     .AddStackExchangeRedis(
         redisConnection,
         options => { options.Configuration.ChannelPrefix = RedisChannel.Literal("ipop-chat"); });
@@ -548,7 +549,9 @@ app.MapDashboardAndSearch();
 app.MapLinkPreview();
 app.MapHub<ChatHub>("/hubs/chat").RequireAuthorization();
 app.MapHub<IPop.Api.Calls.CallHub>("/hubs/calls").RequireAuthorization();
-app.MapHub<IPop.Api.Notes.NotesHub>("/hubs/notes").RequireAuthorization();
+// Notes edits travel as base64 Yjs updates of up to 512 KB (NoteService.MaxUpdateBytes): the 32 KB SignalR default
+// silently dropped every update over ~24 KB (a pasted table), the client retried forever and the edit was lost.
+app.MapHub<IPop.Api.Notes.NotesHub>("/hubs/notes", o => o.ApplicationMaxBufferSize = 768 * 1024).RequireAuthorization();
 app.MapHub<IPop.Api.Notifications.NotificationHub>("/hubs/notification").RequireAuthorization();
 app.MapMe();
 app.MapUiPrefs();
