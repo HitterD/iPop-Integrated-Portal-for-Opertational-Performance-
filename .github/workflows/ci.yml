@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       fake_utc:
-        description: "UTC start time for the test clock (HH:MM:SS today); default 05:00:00 = 12:00 WIB"
+        description: "Force a test-host clock start (UTC HH:MM:SS today, e.g. 16:30:00 = 23:30 WIB); empty = automatic"
         required: false
-        default: "05:00:00"
+        default: ""
   workflow_call:
     secrets:
       DEVEXPRESS_NUGET_FEED:
@@ -58,22 +58,32 @@ jobs:
       # (12:00 WIB by default, away from the hour edges tests book on) and then runs normally; the build above keeps the real clock.
       - name: Test
         env:
-          FAKE_UTC: ${{ inputs.fake_utc || '05:00:00' }}
+          FAKE_UTC: ${{ inputs.fake_utc }}
         run: |
-          # Only the test host gets the fake clock (relative offset): preloading it into vstest.console as well broke
-          # the console <-> testhost handshake.
-          off=$(( $(date -u -d "$(date -u +%F) $FAKE_UTC" +%s) - $(date -u +%s) ))
-          cat > faketime.runsettings <<XML
+          # Daytime runs use the real clock. Only near office midnight (21:00-02:00 WIB), when "now + N minutes" room
+          # bookings would cross into the next day, the test host (not vstest.console: that broke the handshake) gets a
+          # relative clock offset to 12:00 WIB. fake_utc (workflow_dispatch) forces a start time for testing this.
+          hour=$(TZ=Asia/Jakarta date +%-H)
+          if [ -z "$FAKE_UTC" ] && { [ "$hour" -ge 21 ] || [ "$hour" -lt 2 ]; }; then FAKE_UTC=05:00:00; fi
+          settings=()
+          if [ -n "$FAKE_UTC" ]; then
+            off=$(( $(date -u -d "$(date -u +%F) $FAKE_UTC" +%s) - $(date -u +%s) ))
+            cat > faketime.runsettings <<XML
           <RunSettings><RunConfiguration><EnvironmentVariables>
             <LD_PRELOAD>/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1</LD_PRELOAD>
             <FAKETIME>$(printf "%+d" "$off")</FAKETIME>
+            <FAKETIME_NO_CACHE>1</FAKETIME_NO_CACHE>
             <FAKETIME_DONT_FAKE_MONOTONIC>1</FAKETIME_DONT_FAKE_MONOTONIC>
             <DONT_FAKE_MONOTONIC>1</DONT_FAKE_MONOTONIC>
             <NO_FAKE_STAT>1</NO_FAKE_STAT>
           </EnvironmentVariables></RunConfiguration></RunSettings>
           XML
-          echo "Test host clock offset: ${off}s (starts at $FAKE_UTC UTC)"
-          dotnet test tests/IPop.Tests/IPop.Tests.csproj -c Release --no-build --settings faketime.runsettings
+            settings=(--settings faketime.runsettings)
+            echo "Test host clock offset: ${off}s (starts at $FAKE_UTC UTC)"
+          else
+            echo "Real clock (WIB hour $hour)"
+          fi
+          dotnet test tests/IPop.Tests/IPop.Tests.csproj -c Release --no-build "${settings[@]}"
 
   js:
     name: JavaScript tests
