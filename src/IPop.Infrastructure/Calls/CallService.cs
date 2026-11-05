@@ -29,10 +29,11 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
         // Both pressed Call at the same moment ("glare"): the peer is already ringing ME. Instead of a second room -
         // where each side saw the other's call as call waiting and both heard ringback until the 45 s timeout - answer
         // the peer's call: it connects at once for both.
+        var ringingSince = DateTime.UtcNow - RingTimeout;   // computed here: the subtraction is not translatable
         var crossing = await db.CallRooms
             .Where(r => r.Kind == "user" && r.Status == CallStatus.Ringing && r.CreatorId == peer.Id
                 && r.Participants.Any(p => p.UserId == callerId && p.Status == CallParticipantStatus.Invited)
-                && r.StartedAt > DateTime.UtcNow - RingTimeout)
+                && r.StartedAt > ringingSince)
             .OrderByDescending(r => r.StartedAt).Select(r => r.Id).FirstOrDefaultAsync(ct);
         if (crossing != Guid.Empty)
         {
