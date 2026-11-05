@@ -1823,7 +1823,10 @@ public static class ChatEndpoints
             var info = Image.Identify(input);
             if ((long)info.Width * info.Height > MaxImageMegapixels * 1_000_000L) return ThumbResult.TooManyPixels;
             input.Position = 0;
-            var options = new SixLabors.ImageSharp.Formats.DecoderOptions { TargetSize = new Size(maxEdge, maxEdge) };
+            // TargetSize also scales small pictures UP, so it is only set when the picture is larger than the thumbnail.
+            var options = info.Width > maxEdge || info.Height > maxEdge
+                ? new SixLabors.ImageSharp.Formats.DecoderOptions { TargetSize = new Size(maxEdge, maxEdge) }
+                : new SixLabors.ImageSharp.Formats.DecoderOptions();
             using var image = Image.Load(options, input);
             if (image.Width > maxEdge || image.Height > maxEdge)
                 image.Mutate(x => x.Resize(new ResizeOptions { Mode = ResizeMode.Max, Size = new Size(maxEdge, maxEdge) }));
