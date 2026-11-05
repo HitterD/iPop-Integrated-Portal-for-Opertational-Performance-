@@ -142,11 +142,15 @@ public static class NotesEndpoints
             return From(r);
         })).RequirePermission("notes.write");
         g.MapDelete("/{id:guid}/shares/{shareId:guid}", (Guid id, Guid shareId, HttpContext http, INoteService svc, IRealtime rt,
-            CancellationToken ct) => Run(http, async me =>
+            IHubContext<NotesHub> hub, CancellationToken ct) => Run(http, async me =>
         {
             var before = await svc.GetAudienceAsync(id, ct);
             var r = await svc.RemoveShareAsync(me.Id, id, shareId, ct);
-            if (r.Success) await PushAsync(rt, http, before, ct);
+            if (r.Success)
+            {
+                await PushAsync(rt, http, before, ct);
+                await NotesHub.EvictLostAccessAsync(hub, svc, id, ct);   // open tabs of whoever lost access stop receiving it
+            }
             return From(r);
         })).RequirePermission("notes.write");
 

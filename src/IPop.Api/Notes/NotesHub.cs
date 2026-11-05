@@ -11,17 +11,45 @@ public class NotesHub(INoteService notes, IPermissionEvaluator perms) : Hub
 {
     public static string Group(Guid pageId) => $"note:{pageId}";
 
+    /// Who is in each page's group (page -> connection -> user), so losing access can take the connection out of it:
+    /// otherwise an open tab kept receiving the live content after its share was removed. Per process, like groups.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, System.Collections.Concurrent.ConcurrentDictionary<string, Guid>> Members = new();
+
+    /// Removes from the page's live group every connection whose user no longer has access.
+    public static async Task EvictLostAccessAsync(IHubContext<NotesHub> hub, INoteService notes, Guid pageId, CancellationToken ct)
+    {
+        if (!Members.TryGetValue(pageId, out var conns)) return;
+        foreach (var userId in conns.Values.Distinct().ToList())
+        {
+            if (await notes.GetAccessAsync(userId, pageId, ct) != NoteAccess.None) continue;
+            foreach (var (connection, _) in conns.Where(c => c.Value == userId).ToList())
+            {
+                conns.TryRemove(connection, out _);
+                await hub.Groups.RemoveFromGroupAsync(connection, Group(pageId), ct);
+                await hub.Clients.Client(connection).SendAsync("noteAccessLost", pageId, ct);
+            }
+        }
+    }
+
+    public override Task OnDisconnectedAsync(Exception? exception)
+    {
+        foreach (var page in Members.Values) page.TryRemove(Context.ConnectionId, out _);
+        return base.OnDisconnectedAsync(exception);
+    }
+
     public async Task<bool> JoinPage(Guid pageId)
     {
         var userId = GetUserId();
         if (userId is null || !await perms.IsAllowedAsync(userId.Value, "notes.read", null, Context.ConnectionAborted)) return false;
         if (await notes.GetAccessAsync(userId.Value, pageId, Context.ConnectionAborted) == NoteAccess.None) return false;
         await Groups.AddToGroupAsync(Context.ConnectionId, Group(pageId), Context.ConnectionAborted);
+        Members.GetOrAdd(pageId, _ => new())[Context.ConnectionId] = userId.Value;
         return true;
     }
 
     public async Task LeavePage(Guid pageId)
     {
+        if (Members.TryGetValue(pageId, out var conns)) conns.TryRemove(Context.ConnectionId, out _);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, Group(pageId), Context.ConnectionAborted);
         await Clients.OthersInGroup(Group(pageId)).SendAsync("noteLeft", pageId, Context.ConnectionId);
     }
