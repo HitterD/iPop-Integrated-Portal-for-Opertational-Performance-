@@ -17,6 +17,7 @@ public class NotificationRetentionWorker(
     ILogger<NotificationRetentionWorker> logger) : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(24);
+    public const int SessionRetentionDays = 30;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -26,7 +27,7 @@ public class NotificationRetentionWorker(
             using var timer = new PeriodicTimer(Interval);
             while (await timer.WaitForNextTickAsync(stoppingToken))
             {
-                await RunPurgeAsync(stoppingToken);
+                await RunPurgeAsync(stoppingToken);   // never throws: a failed run is logged and retried next day
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -49,10 +50,20 @@ public class NotificationRetentionWorker(
 
             var cutoff = DateTime.UtcNow.AddDays(-90);
 
-            // Delete read or acknowledged deliveries older than cutoff
+            // Delete deliveries older than the cutoff: read/acknowledged/failed ones, and push deliveries that were delivered but
+            // never opened (mostly broadcasts; 107k of 112k rows on prod were these and nothing ever removed them).
             var deletedDeliveries = await db.NotificationDeliveries
-                .Where(d => (d.Status == "read" || d.Status == "acknowledged" || d.Status == "failed")
+                .Where(d => (d.Status == "read" || d.Status == "acknowledged" || d.Status == "failed" || (d.Status == "delivered" && d.Channel == "push"))
                             && (d.DeliveredAt != null ? d.DeliveredAt < cutoff : d.UpdatedAt < cutoff))
+                .ExecuteDeleteAsync(ct);
+
+            // Sign-in sessions: every refresh rotates into a new row and nothing removed the old ones (64,749 rows on
+            // prod, 63,248 revoked), yet the access-token guard queries this table on every request. Rows revoked or
+            // expired more than 30 days ago are no longer needed (Admin "last sign-in" uses the newest row per user).
+            var sessionCutoff = DateTime.UtcNow.AddDays(-SessionRetentionDays);
+            var deletedSessions = await db.AuthSessions
+                .Where(s => (s.RevokedAt != null && s.RevokedAt < sessionCutoff) || s.ExpiresAt < sessionCutoff)
+                .Where(s => db.AuthSessions.Any(n => n.UserId == s.UserId && n.CreatedAt > s.CreatedAt))
                 .ExecuteDeleteAsync(ct);
 
             // Delete orphan requests that have no remaining deliveries and are older than cutoff
@@ -60,13 +71,13 @@ public class NotificationRetentionWorker(
                 .Where(r => r.AcceptedAt < cutoff && !db.NotificationDeliveries.Any(d => d.RequestId == r.Id))
                 .ExecuteDeleteAsync(ct);
 
-            if (deletedDeliveries > 0 || deletedRequests > 0)
+            if (deletedDeliveries > 0 || deletedRequests > 0 || deletedSessions > 0)
             {
-                logger.LogInformation("Notification retention purge completed: {Deliveries} deliveries, {Requests} requests deleted.",
-                    deletedDeliveries, deletedRequests);
+                logger.LogInformation("Retention purge completed: {Deliveries} deliveries, {Requests} requests, {Sessions} sessions deleted.",
+                    deletedDeliveries, deletedRequests, deletedSessions);
             }
 
-            return deletedDeliveries + deletedRequests;
+            return deletedDeliveries + deletedRequests + deletedSessions;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
