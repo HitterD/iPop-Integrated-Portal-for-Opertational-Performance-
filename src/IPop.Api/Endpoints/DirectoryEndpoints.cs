@@ -191,6 +191,12 @@ public static class DirectoryEndpoints
             Results.Ok(await GetStructureCore(db, ct))
         ).RequireAuthorization().RequirePermission("directory.read");
 
+        // Just the online/busy/away totals. Presence changes refresh these, not the whole org tree: every sign-in used
+        // to make every open Directory tab re-read all sites, departments, divisions and per-division counts.
+        app.MapGet("/api/directory/presence-counts", async (IPopDbContext db, CancellationToken ct) =>
+            Results.Ok(await GetPresenceCountsCore(db, ct))
+        ).RequireAuthorization().RequirePermission("directory.read");
+
         // Division search: which divisions contain a name/NIK match, with per-division match
         // counts. Same ILIKE-escaping as /employees and /member-search. Npgsql-only ILike;
         // see SearchDivisionsCore for why this path is untestable on the SQLite TestDb seam.
