@@ -285,7 +285,8 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
         var post = await db.NewsPosts.FirstOrDefaultAsync(x => x.Id == newsId, ct);
         if (post is null) return new NewsResultDto(false, null, "not_found");
         post.IsPinned = true;
-        post.ContentVersion++;
+        // Pinning is not a content change: bumping ContentVersion made a scheduled revision of this post fail with
+        // post_content_conflict and retry silently for hours.
         post.PinnedAt = DateTime.UtcNow;
         post.UpdatedAt = post.PinnedAt.Value;
         db.NewsAudits.Add(new NewsAudit { Id = Guid.NewGuid(), NewsPostId = post.Id, ActorId = actorId, Action = "pinned", CreatedAt = post.UpdatedAt });
@@ -301,7 +302,8 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
         var post = await db.NewsPosts.FirstOrDefaultAsync(x => x.Id == newsId, ct);
         if (post is null) return new NewsResultDto(false, null, "not_found");
         post.IsPinned = false;
-        post.ContentVersion++;
+        // Pinning is not a content change: bumping ContentVersion made a scheduled revision of this post fail with
+        // post_content_conflict and retry silently for hours.
         post.PinnedAt = null;
         post.UpdatedAt = DateTime.UtcNow;
         db.NewsAudits.Add(new NewsAudit { Id = Guid.NewGuid(), NewsPostId = post.Id, ActorId = actorId, Action = "unpinned", CreatedAt = post.UpdatedAt });
@@ -566,11 +568,15 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
                 && !db.NewsComposerDraftAttachments.Any(r => r.AttachmentId == a.Id && r.Draft.State != "discarded" && r.Draft.State != "promoted")
                 && !db.NewsComposerMedia.Any(m => m.AttachmentId == a.Id && m.DeletedAt == null))
             .ForEachAsync(a => a.DeletedAt = now, ct);
+        // Acknowledgements cascade away with the post: keep who confirmed a memo, and when, in the audit entry.
+        var acks = await db.NewsAcknowledgements.AsNoTracking().Where(a => a.NewsPostId == newsId)
+            .Select(a => new { nik = a.User.Nik, name = a.User.Name, at = a.AcknowledgedAt }).ToListAsync(ct);
         db.NewsPosts.Remove(post);
         db.AuditLogs.Add(new AuditLog
         {
             Id = Guid.NewGuid(), Action = "news.delete", Entity = "NewsPost", EntityId = newsId.ToString(),
-            DetailJson = System.Text.Json.JsonSerializer.Serialize(new { actor = actorId, title = post.Title, type = post.Type, status = post.Status }),
+            DetailJson = System.Text.Json.JsonSerializer.Serialize(new { actor = actorId, title = post.Title, type = post.Type, status = post.Status,
+                publishedAt = post.PublishedAt, acknowledgements = acks }),
             CreatedAt = now
         });
         await db.SaveChangesAsync(ct);

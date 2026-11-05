@@ -241,6 +241,27 @@ public class AllTicketsVerificationTests
     }
 
     [Fact]
+    public async Task News_pin_does_not_count_as_a_content_edit_and_delete_keeps_who_acknowledged()
+    {
+        using var t = new TestDb();
+        var author = t.AddHr("NPD_AUTHOR"); var reader = t.AddUser("NPD_READER");
+        var created = await new NewsService(t.Verify()).CreateAsync(author.Id, new CreateNewsRequest(
+            Type: "memo", Title: "Safety memo", Body: "Read me.", RequiresAcknowledgement: true), default);
+        var id = created.News!.Id;
+        await new NewsService(t.Verify()).PublishAsync(author.Id, id, default);
+        var v0 = t.Verify().NewsPosts.Single(p => p.Id == id).ContentVersion;
+
+        await new NewsService(t.Verify()).PinAsync(author.Id, id, default);
+        await new NewsService(t.Verify()).UnpinAsync(author.Id, id, default);
+        Assert.Equal(v0, t.Verify().NewsPosts.Single(p => p.Id == id).ContentVersion);   // a scheduled revision still applies
+
+        await new NewsService(t.Verify()).AcknowledgeAsync(reader.Id, id, default);
+        Assert.True((await new NewsService(t.Verify()).DeleteAsync(author.Id, id, default)).Success);
+        var audit = t.Verify().AuditLogs.Single(a => a.Action == "news.delete" && a.EntityId == id.ToString());
+        Assert.Contains("NPD_READER", audit.DetailJson);
+    }
+
+    [Fact]
     public async Task Ticket04_News_And_Memos_Workflow_Approval_Ack_Discussion()
     {
         using var t = new TestDb();
