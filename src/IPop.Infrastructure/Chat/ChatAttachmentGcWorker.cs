@@ -96,7 +96,9 @@ public sealed class ChatAttachmentGcWorker(IServiceScopeFactory scopes, ILogger<
         {
             if (contentRoot is null) return false;
             var full = Path.GetFullPath(Path.Combine(contentRoot, path));
-            if (!full.StartsWith(Path.GetFullPath(contentRoot), StringComparison.Ordinal)) return true; // never outside the app
+            var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(contentRoot)) + Path.DirectorySeparatorChar;
+            var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            if (!full.StartsWith(root, comparison)) return true; // a sibling with the same prefix is outside the app
             try { if (File.Exists(full)) File.Delete(full); return true; }
             catch (IOException e) { log.LogWarning("ChatAttachment GC: could not delete {Path} ({Error})", path, e.Message); return false; }
             catch (UnauthorizedAccessException e) { log.LogWarning("ChatAttachment GC: could not delete {Path} ({Error})", path, e.Message); return false; }
