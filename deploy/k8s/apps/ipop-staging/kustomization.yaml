@@ -1,4 +1,4 @@
-# Staging: the same iPop on the same cluster, in namespace ipop-staging, following the "staging" branch.
+﻿# Staging: the same iPop on the same cluster, in namespace ipop-staging, following the "staging" branch.
 # Own small database (1 instance), Redis, API and Web; shares LiveKit and ONLYOFFICE with prod (namespace
 # ipop). Nothing goes out (no mail, push, iDesk, HRIS). Test at http://staging.192.168.2.89.nip.io
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -91,7 +91,11 @@ patches:
 images:
   - name: ipop-api
     newName: ghcr.io/hitterd/ipop-api
-    newTag: "k3stest-5994f9929d-dp"
+    newTag: "staging-c985d2469c91"
   - name: ipop-web
     newName: ghcr.io/hitterd/ipop-web
-    newTag: "k3stest-eeaf55ab6c"
+    newTag: "staging-c985d2469c91"
+
+
+
+
