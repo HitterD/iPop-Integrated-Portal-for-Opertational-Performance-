@@ -146,4 +146,24 @@ public class ChatMarkReadTests
         chat.OnSeenUpdate(new SeenUpdateDto(mine.Id, new SeenByDto(Guid.NewGuid(), "B", null, null, DateTime.UtcNow), 1, 2));
         Assert.NotEqual("sent", chat.ActiveMessages.Single().DeliveryStatus);
     }
+
+    [Fact]
+    public async Task A_long_open_room_keeps_a_bounded_history_while_the_reader_is_at_the_bottom()
+    {
+        var room = Guid.NewGuid();
+        var (ctx, chat) = await OpenAsync(room);
+        using var _ = ctx;
+        await chat.SetChatPageMountedAsync(false);
+
+        for (var i = 0; i < ChatState.TrimAbove + 50; i++) chat.OnNewMessage(In(room, "B") with { Content = $"m{i}" });
+
+        Assert.True(chat.ActiveMessages.Count <= ChatState.TrimAbove);
+        Assert.Equal($"m{ChatState.TrimAbove + 49}", chat.ActiveMessages[^1].Content);   // newest always kept
+        Assert.True(chat.HasOlderMessages);                                               // trimmed ones load back
+
+        chat.ReaderAtBottom = false;                                                      // scrolled up: nothing moves
+        var before = chat.ActiveMessages.Count;
+        for (var i = 0; i < 200; i++) chat.OnNewMessage(In(room, "B") with { Content = $"x{i}" });
+        Assert.Equal(before + 200, chat.ActiveMessages.Count);
+    }
 }

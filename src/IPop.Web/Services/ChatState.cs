@@ -124,6 +124,22 @@ public partial class ChatState : IAsyncDisposable
     public event Action? PracticeHeld;
     public int MessagePage { get; private set; } = 1;
     public bool HasOlderMessages { get; private set; }
+
+    /// Set by the chat page from its scroll watcher: the reader is at the newest message.
+    public bool ReaderAtBottom { get; set; } = true;
+    /// While the reader sits at the bottom, the open room keeps at most this many messages: a long-open busy room
+    /// otherwise grew without limit, and every receipt/typing event re-diffed the whole list. Older ones come back
+    /// through the normal "load older" when scrolling up.
+    public const int KeepWhileAtBottom = 300, TrimAbove = 400;
+
+    private void TrimHistoryIfAtBottom()
+    {
+        if (!ReaderAtBottom || ActiveMessages.Count <= TrimAbove) return;
+        // Never drop an unconfirmed send (outbox) - they are always the newest, so trimming from the start is safe.
+        ActiveMessages.RemoveRange(0, ActiveMessages.Count - KeepWhileAtBottom);
+        HasOlderMessages = true;
+        OlderError = ChatLoadError.None;
+    }
     /// True while a room is opening with nothing cached to show yet (drives the skeleton).
     public bool IsLoadingMessages { get; private set; }
     /// False until the first room-list fetch has answered (drives the room-list skeleton).
@@ -461,6 +477,7 @@ public partial class ChatState : IAsyncDisposable
         SnapshotActiveRoom();
         _fresh.Clear();
         ActiveRoomId = roomId;
+        ReaderAtBottom = true;   // a room opens at its newest message
         ResetRoomLoadState();
         var gen = _roomGen;
         RoomOpened?.Invoke(roomId);
@@ -828,6 +845,7 @@ public partial class ChatState : IAsyncDisposable
             else if (ActiveMessages.All(m => m.Id != message.Id))
             {
                 ActiveMessages.Add(message);
+                TrimHistoryIfAtBottom();
                 _fresh.Add(message.Id);
                 MessageReceived?.Invoke(message);
                 if (isSeen) _ = MarkReadAsync(message.Id);

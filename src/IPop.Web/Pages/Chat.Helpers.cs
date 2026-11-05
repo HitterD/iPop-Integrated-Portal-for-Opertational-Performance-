@@ -234,6 +234,7 @@ public partial class Chat
     [JSInvokable]
     public void OnScrollStateChanged(bool awayFromBottom, bool nearBottom)
     {
+        ChatSvc.ReaderAtBottom = nearBottom;
         var count = nearBottom ? 0 : newBelowCount;
         if (awayFromBottom == showJumpToLatest && count == newBelowCount) return;
         showJumpToLatest = awayFromBottom;
