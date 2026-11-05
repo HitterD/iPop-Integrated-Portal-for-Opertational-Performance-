@@ -22,6 +22,19 @@ public class CallAddPersonTests
     }
 
     [Fact]
+    public async Task Two_people_calling_each_other_at_once_get_one_connected_call()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("A"); var b = t.AddUser("B");
+        var first = (await Svc(t).CreateCallAsync(a.Id, new CreateCallRequest("B"), default)).Room!;
+        var second = (await Svc(t).CreateCallAsync(b.Id, new CreateCallRequest("A"), default)).Room!;
+
+        Assert.Equal(first.Id, second.Id);                                   // B answered A's call instead of a 2nd room
+        Assert.Equal(1, t.Verify().CallRooms.Count());
+        Assert.Equal(IPop.Application.Calls.CallStatus.Active, t.Verify().CallRooms.Single().Status);
+    }
+
+    [Fact]
     public async Task Invite_UpgradesOneToOne_ToAdHoc_AndRingsInvitee()
     {
         var (t, a, b, id) = await ActiveOneToOne();

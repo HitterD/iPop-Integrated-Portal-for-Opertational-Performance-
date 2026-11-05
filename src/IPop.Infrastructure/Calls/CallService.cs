@@ -26,6 +26,20 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
         if (peer.Id == callerId)
             return Fail(CallErrors.SelfCall, "You can't call yourself.");
 
+        // Both pressed Call at the same moment ("glare"): the peer is already ringing ME. Instead of a second room -
+        // where each side saw the other's call as call waiting and both heard ringback until the 45 s timeout - answer
+        // the peer's call: it connects at once for both.
+        var crossing = await db.CallRooms
+            .Where(r => r.Kind == "user" && r.Status == CallStatus.Ringing && r.CreatorId == peer.Id
+                && r.Participants.Any(p => p.UserId == callerId && p.Status == CallParticipantStatus.Invited)
+                && r.StartedAt > DateTime.UtcNow - RingTimeout)
+            .OrderByDescending(r => r.StartedAt).Select(r => r.Id).FirstOrDefaultAsync(ct);
+        if (crossing != Guid.Empty)
+        {
+            var answered = await SignalAsync(callerId, new CallSignalRequest(crossing, "accept"), ct);
+            if (answered.Room is not null) return answered;   // fell through only if it ended or was taken meanwhile
+        }
+
         // Stub token — a real gateway issues a short-lived ephemeral token per invite.
         var now = DateTime.UtcNow;
         var room = new CallRoom
