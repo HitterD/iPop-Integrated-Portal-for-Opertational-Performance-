@@ -113,6 +113,7 @@ if ($target -eq 'staging') {
             $tree = (Invoke-Git write-tree).Trim()
         }
         finally { Remove-Item Env:GIT_INDEX_FILE; Remove-Item $tmpIndex -ErrorAction SilentlyContinue }
+        # CI builds (and tags the image with) this commit; its code is identical to the shipped one.
         $source = (& git.exe commit-tree $tree -p $source -m "deploy(staging): keep the live image tag while CI builds").Trim()
     }
     Invoke-Git push --force-with-lease $Remote "${source}:refs/heads/staging" | Out-Null
