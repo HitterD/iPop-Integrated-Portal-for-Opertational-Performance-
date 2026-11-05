@@ -131,6 +131,21 @@ public class CalendarDelegateTests
     }
 
     [Fact]
+    public async Task An_attendees_share_does_not_open_the_organizers_meeting_only_the_organizers_does()
+    {
+        using var t = new TestDb();
+        var boss = t.AddUser("B1"); var guest = t.AddUser("G1"); var colleague = t.AddUser("C1");
+        var ev = await Event(t, boss.Id, "Salary review", Day(2).AddHours(2), attendees: [guest.Id]);
+        // The guest shares their own calendar with a colleague ("See all details").
+        await GrantAsync(t.Db, null, null, guest.Id, "C1", DelegateLevel.View, guest.Id, default);
+
+        Assert.Null(await LoadDetailAsync(t.Db, ev.Id, colleague.Id, default));        // the organizer never shared it
+
+        await GrantAsync(t.Db, null, null, boss.Id, "C1", DelegateLevel.View, boss.Id, default);
+        Assert.NotNull(await LoadDetailAsync(t.Db, ev.Id, colleague.Id, default));     // now the organizer did
+    }
+
+    [Fact]
     public async Task Edit_delegate_creates_and_changes_on_behalf()
     {
         using var t = new TestDb();

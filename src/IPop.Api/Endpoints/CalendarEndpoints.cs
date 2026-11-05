@@ -525,15 +525,18 @@ public static partial class CalendarEndpoints
                 roomKey = MeetingEndpoints.RoomKeyOf(meta.Kind, meta.Location, people.Count > 0);
             }
         }
-        // Someone given "See all details" or more by the owner — or by an invitee (the row belongs to the
-        // organizer) — opens it; Private only for an "Act on my behalf" assistant. Only the owner's
-        // edit/full assistants may change it; an invitee's full assistant answers for them.
+        // The details are the ORGANIZER's to share: someone given "See all details" or more by the event's owner opens
+        // it; Private only for an "Act on my behalf" assistant. An invitee's grant used to count too, so one attendee
+        // sharing their calendar with an 800-person department exposed the organizer's notes, link and attendee list
+        // to all of them. Only an invitee's "Act on my behalf" assistant still opens it, to answer for them.
         string? delegateLevel = null;
         Guid? delegateFor = null;
         if (ev.OwnerId != viewerId)
         {
             var principals = people.Select(p => p.UserId).Append(ev.OwnerId).Where(id => id != viewerId).Distinct().ToList();
-            var levels = await CalendarAccess.LevelsAsync(db, viewerId, principals, ct);
+            var levels = (await CalendarAccess.LevelsAsync(db, viewerId, principals, ct))
+                .Where(l => l.Key == ev.OwnerId || l.Value == DelegateLevel.Full)
+                .ToDictionary(l => l.Key, l => l.Value);
             var allowed = levels.Where(l => CalendarAccess.Shown(visibility, l.Value, invited: false, self: false).Detail).ToList();
             var pick = allowed.Where(l => l.Key == ev.OwnerId).Concat(allowed.OrderByDescending(l => DelegateLevel.Rank(l.Value)))
                 .Select(l => (KeyValuePair<Guid, string>?)l).FirstOrDefault();
