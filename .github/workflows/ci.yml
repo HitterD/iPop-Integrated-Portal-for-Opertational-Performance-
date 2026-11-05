@@ -60,11 +60,12 @@ jobs:
         env:
           FAKE_UTC: ${{ inputs.fake_utc }}
         run: |
-          # Daytime runs use the real clock. Only near office midnight (21:00-02:00 WIB), when "now + N minutes" room
+          # Daytime runs use the real clock. Only near office midnight (18:00-02:00 WIB), when "now + N minutes" room
           # bookings would cross into the next day, the test host (not vstest.console: that broke the handshake) gets a
           # relative clock offset to 12:00 WIB. fake_utc (workflow_dispatch) forces a start time for testing this.
           hour=$(TZ=Asia/Jakarta date +%-H)
-          if [ -z "$FAKE_UTC" ] && { [ "$hour" -ge 21 ] || [ "$hour" -lt 2 ]; }; then FAKE_UTC=05:00:00; fi
+          # Some room tests book "now + up to 4 h": from 18:00 WIB on they can cross office midnight too.
+          if [ -z "$FAKE_UTC" ] && { [ "$hour" -ge 18 ] || [ "$hour" -lt 2 ]; }; then FAKE_UTC=05:00:00; fi
           settings=()
           if [ -n "$FAKE_UTC" ]; then
             off=$(( $(date -u -d "$(date -u +%F) $FAKE_UTC" +%s) - $(date -u +%s) ))
