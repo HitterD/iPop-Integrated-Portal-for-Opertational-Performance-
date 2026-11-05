@@ -556,7 +556,14 @@ public static class MeetingEndpoints
                 db.MeetingReminders.Add(new MeetingReminder { Id = Guid.NewGuid(), MeetingId = meeting.Id, UserId = uid, SendAt = sendAt });
         }
 
-        await db.SaveChangesAsync(ct);
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException e) when (IsRoomOverlap(e))
+        {
+            // Someone booked the same room for an overlapping time between our check and this insert
+            // (two "Use now" at the same moment): the database refused the second one.
+            db.ChangeTracker.Clear();
+            return (CreateResult.RoomBooked, null, []);
+        }
         return (CreateResult.Created, meeting.Id, attendeeIds.Where(id => id != userId).ToList());
     }
 
@@ -820,10 +827,21 @@ public static class MeetingEndpoints
                     db.MeetingReminders.Add(new MeetingReminder { Id = Guid.NewGuid(), MeetingId = m.Id, UserId = uid, SendAt = sendAt });
         }
 
-        await db.SaveChangesAsync(ct);
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException e) when (IsRoomOverlap(e))
+        {
+            db.ChangeTracker.Clear();
+            return (UpdateResult.RoomBooked, [], []);
+        }
         var others = m.Attendees.Select(a => a.UserId).Where(id => id != userId && !added.Contains(id)).ToList();
         return (UpdateResult.Applied, added, others);
     }
+
+    /// The database's exclusion constraint on hall rooms (migration HallRoomNoOverlap) refused an overlapping booking.
+    internal static bool IsRoomOverlap(DbUpdateException e) =>
+        e.InnerException is Npgsql.PostgresException { SqlState: "23P01" } pg && pg.ConstraintName == HallRoomNoOverlapConstraint;
+
+    public const string HallRoomNoOverlapConstraint = "EX_Meetings_HallRoom_NoOverlap";
 
     private static DateTime AsUtc(DateTime dt) => dt.Kind == DateTimeKind.Utc ? dt : DateTime.SpecifyKind(dt, DateTimeKind.Utc);
 

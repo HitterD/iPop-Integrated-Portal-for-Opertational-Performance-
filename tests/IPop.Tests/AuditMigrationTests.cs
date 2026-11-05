@@ -34,6 +34,18 @@ public class AuditMigrationTests
     }
 
     [Fact]
+    public void Hall_room_overlap_migration_adds_the_named_exclusion_constraint()
+    {
+        using var db = Db();
+        var migrations = db.GetService<IMigrationsAssembly>();
+        var entry = Assert.Single(migrations.Migrations.Where(x => x.Key.EndsWith("_HallRoomNoOverlap")));
+        var sql = Assert.IsType<SqlOperation>(Assert.Single(migrations.CreateMigration(entry.Value, db.Database.ProviderName!).UpOperations)).Sql;
+        Assert.Contains(IPop.Api.Endpoints.MeetingEndpoints.HallRoomNoOverlapConstraint, sql);
+        Assert.Contains("EXCLUDE USING gist", sql);
+        Assert.Contains("'[)'", sql);   // back-to-back bookings stay allowed
+    }
+
+    [Fact]
     public void ChatMessage_deleted_at_migration_adds_the_column_and_backfills()
     {
         using var db = Db();
