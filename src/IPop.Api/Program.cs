@@ -58,6 +58,17 @@ builder.Services.AddDbContext<IPopDbContext>(o =>
 // existing protected data (OIDC signing keys, media tickets) still opens after a move.
 var dataProtection = builder.Services.AddDataProtection().PersistKeysToDbContext<IPopDbContext>();
 if (builder.Configuration["DataProtection:ApplicationName"] is { Length: > 0 } dpName) dataProtection.SetApplicationName(dpName);
+// The key ring sits in the same database as what it protects (users' NAS passwords, SMTP password, OIDC signing
+// keys), so a database dump - the nightly backup included - could decrypt all of it. With a certificate configured
+// (a PFX kept OUTSIDE the database: k8s secret / host file) newly created keys are encrypted with it; keys created
+// before stay readable (they protect existing data) until they expire or are rotated. Off when not configured.
+if (builder.Configuration["DataProtection:KeyCertificatePath"] is { Length: > 0 } certPath && File.Exists(certPath))
+{
+    var keyCert = System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadPkcs12FromFile(certPath,
+        builder.Configuration["DataProtection:KeyCertificatePassword"],
+        System.Security.Cryptography.X509Certificates.X509KeyStorageFlags.EphemeralKeySet);
+    dataProtection.ProtectKeysWithCertificate(keyCert).UnprotectKeysWithAnyCertificate(keyCert);
+}
 
 builder.Services.AddScoped<IPasswordHasher, Argon2PasswordHasher>();
 builder.Services.AddSingleton<ITokenService, JwtTokenService>();
