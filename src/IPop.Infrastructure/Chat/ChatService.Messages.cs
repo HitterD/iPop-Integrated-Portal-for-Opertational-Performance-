@@ -304,6 +304,9 @@ public sealed partial class ChatService
 
         if (message.SenderId != userId)
             return new MessageResultDto(false, null, "forbidden");
+        // Someone who left (or was removed from) the room no longer changes what its members read.
+        if (!await db.ChatRoomMembers.AsNoTracking().AnyAsync(m => m.RoomId == message.RoomId && m.UserId == userId && m.LeftAt == null, ct))
+            return new MessageResultDto(false, null, "forbidden");
 
         var now = DateTime.UtcNow;
         if ((now - message.CreatedAt).TotalHours >= 24)
@@ -401,8 +404,23 @@ public sealed partial class ChatService
             : new ForwardOriginDto("none", null, null, null, null);
     }
 
+    internal static Guid ForwardKey(Guid userId, Guid messageId, Guid targetRoomId, DateTime nowUtc)
+    {
+        var minute = nowUtc.Ticks / TimeSpan.TicksPerMinute;
+        var hash = System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes($"fwd|{userId:N}|{messageId:N}|{targetRoomId:N}|{minute}"));
+        return new Guid(hash.AsSpan(0, 16));
+    }
+
     public async Task<MessageResultDto> ForwardMessageAsync(Guid userId, Guid messageId, Guid targetRoomId, CancellationToken ct)
     {
+        var replayKey = ForwardKey(userId, messageId, targetRoomId, DateTime.UtcNow);
+        var replay = await db.ChatMessages.AsNoTracking()
+            .Include(m => m.Sender).Include(m => m.Attachments).Include(m => m.Reactions).Include(m => m.ReadReceipts)
+            .AsSplitQuery()
+            .FirstOrDefaultAsync(m => m.RoomId == targetRoomId && m.IdempotencyKey == replayKey && m.SenderId == userId, ct);
+        if (replay is not null) return new MessageResultDto(true, MapToMessageDto(replay, userId), null, Replayed: true);
+
         var original = await db.ChatMessages
             .AsNoTracking()
             .Include(m => m.Sender)
@@ -443,7 +461,8 @@ public sealed partial class ChatService
             // A forwarded emergency/system row becomes ordinary text: forwarding must not mint a mute-bypassing alert.
             Type = original.Type is { } ot && ChatLimits.SenderTypes.Contains(ot) ? ot : "text",
             Content = cleanContent,
-            IdempotencyKey = Guid.NewGuid(),
+            // Same message, same target, same person, same minute = the same forward (an HTTP retry posted it twice).
+            IdempotencyKey = ForwardKey(userId, messageId, targetRoomId, now),
             ForwardedFromMessageId = originMessageId,
             ForwardedFromSenderName = originSender,
             CreatedAt = now

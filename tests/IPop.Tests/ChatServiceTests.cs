@@ -9,6 +9,40 @@ namespace IPop.Tests;
 public class ChatServiceTests
 {
     [Fact]
+    public async Task Forward_retried_within_the_minute_is_one_message()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("FW1");
+        var src = t.AddRoom("group", "S"); var dst = t.AddRoom("group", "D");
+        t.AddMember(src.Id, a.Id); t.AddMember(dst.Id, a.Id);
+        var m = t.AddMessage(src.Id, a.Id, "pass it on");
+
+        var first = await new ChatService(t.Verify()).ForwardMessageAsync(a.Id, m.Id, dst.Id, default);
+        var retry = await new ChatService(t.Verify()).ForwardMessageAsync(a.Id, m.Id, dst.Id, default);
+
+        Assert.True(first.Success); Assert.False(first.Replayed);
+        Assert.True(retry.Success); Assert.True(retry.Replayed);
+        Assert.Equal(first.Message!.Id, retry.Message!.Id);
+        Assert.Equal(1, t.Verify().ChatMessages.Count(x => x.RoomId == dst.Id));
+    }
+
+    [Fact]
+    public async Task Edit_by_a_sender_who_left_the_room_is_refused()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("ED1"); var b = t.AddUser("ED2");
+        var room = t.AddRoom("group", "R");
+        t.AddMember(room.Id, a.Id, leftAt: DateTime.UtcNow.AddMinutes(-1)); t.AddMember(room.Id, b.Id);
+        var m = t.AddMessage(room.Id, a.Id, "before I left");
+
+        var r = await new ChatService(t.Verify()).EditMessageAsync(a.Id, m.Id, "changed after leaving", default);
+
+        Assert.False(r.Success);
+        Assert.Equal("forbidden", r.Error);
+        Assert.Equal("before I left", t.Verify().ChatMessages.Single(x => x.Id == m.Id).Content);
+    }
+
+    [Fact]
     public async Task Repeated_delivery_and_read_report_no_change_so_nobody_is_pinged_again()
     {
         using var t = new TestDb();
