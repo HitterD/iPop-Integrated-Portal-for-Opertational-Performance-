@@ -28,7 +28,7 @@ public class TaskReminderWorkerTests
         public Task<NotificationDeliveryState?> RetryDeliveryAsync(Guid requestId, Guid userId, CancellationToken ct) => throw new NotImplementedException();
     }
 
-    private static ProjectTask Task(TestDb t, Project p, Guid assignee, string title, DateTime due)
+    private static ProjectTask AddTask(TestDb t, Project p, Guid assignee, string title, DateTime due)
     {
         var task = new ProjectTask
         {
@@ -49,10 +49,10 @@ public class TaskReminderWorkerTests
         var now = DateTime.UtcNow;
         for (var i = 0; i < 600; i++)
         {
-            var far = Task(t, p, u.Id, $"Later {i}", now.AddDays(30 + i % 50));
+            var far = AddTask(t, p, u.Id, $"Later {i}", now.AddDays(30 + i % 50));
             t.Db.ProjectTaskReminders.Add(new ProjectTaskReminder { Id = Guid.NewGuid(), TaskId = far.Id, OffsetHours = 24, CreatedAt = now });
         }
-        var soon = Task(t, p, u.Id, "Submit report", now.AddHours(10));
+        var soon = AddTask(t, p, u.Id, "Submit report", now.AddHours(10));
         var reminder = new ProjectTaskReminder { Id = Guid.NewGuid(), TaskId = soon.Id, OffsetHours = 24, CreatedAt = now };
         t.Db.ProjectTaskReminders.Add(reminder);
         t.Db.SaveChanges();

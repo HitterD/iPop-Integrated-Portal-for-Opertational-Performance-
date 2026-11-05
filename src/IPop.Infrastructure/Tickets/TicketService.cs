@@ -555,9 +555,10 @@ public sealed class TicketService(
             Assignee = kind == "message_created" ? message?.Sender : it.AssigneeName, OccurredAt = occurredAt, WebhookEventId = eventId,
         });
         try { await db.SaveChangesAsync(ct); }
-        catch (DbUpdateException)
+        catch (DbUpdateException e) when (IsUniqueViolation(e))
         {
-            // A concurrent delivery of the same event won the unique index.
+            // A concurrent delivery of the same event won the unique index. Any OTHER database error is thrown on:
+            // it used to be swallowed as a "duplicate", answered 200, and iDesk never retried - the event was lost.
             db.ChangeTracker.Clear();
             return TicketWebhookKind.Duplicate;
         }
@@ -786,7 +787,7 @@ public sealed class TicketService(
         if (await db.IdeskWebhookReceipts.AnyAsync(r => r.EventId == eventId, ct)) return false;
         db.IdeskWebhookReceipts.Add(new IdeskWebhookReceipt { EventId = eventId, ReceivedAt = DateTime.UtcNow });
         try { await db.SaveChangesAsync(ct); return true; }
-        catch (DbUpdateException) { db.ChangeTracker.Clear(); return false; }
+        catch (DbUpdateException e) when (IsUniqueViolation(e)) { db.ChangeTracker.Clear(); return false; }
     }
 
     private sealed record WebhookAttachment(string Name, string Kind);
@@ -1019,22 +1020,33 @@ public sealed class TicketService(
         if (calendar is null) return TicketWebhookKind.Applied;   // accepted, nothing to mirror into
         // Booking events have no ticket timeline to hold their id; the processed-id table dedupes them.
         if (await db.IdeskWebhookReceipts.AnyAsync(r => r.EventId == eventId, ct)) return TicketWebhookKind.Duplicate;
+        // Receipt and booking change commit together: the receipt used to be saved first, so a failed apply made
+        // iDesk's redelivery look like a duplicate and the booking was never mirrored.
+        await using var tx = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(ct) : null;
         db.IdeskWebhookReceipts.Add(new IdeskWebhookReceipt { EventId = eventId, ReceivedAt = DateTime.UtcNow });
         try { await db.SaveChangesAsync(ct); }
-        catch (DbUpdateException) { db.ChangeTracker.Clear(); return TicketWebhookKind.Duplicate; }
+        catch (DbUpdateException e) when (IsUniqueViolation(e)) { db.ChangeTracker.Clear(); return TicketWebhookKind.Duplicate; }
 
+        TicketWebhookKind result;
         switch (evt)
         {
             case "zoom_booking.created" or "zoom_booking.updated" when booking is not null:
                 await calendar.ApplyBookingAsync(booking, evt == "zoom_booking.updated", ct);
-                return TicketWebhookKind.Applied;
+                result = TicketWebhookKind.Applied; break;
             case "zoom_booking.cancelled" when !string.IsNullOrEmpty(bookingId):
                 await calendar.CancelBookingAsync(bookingId, ct);
-                return TicketWebhookKind.Applied;
+                result = TicketWebhookKind.Applied; break;
             default:
+                if (tx is not null) await tx.RollbackAsync(ct);
                 return TicketWebhookKind.Invalid;
         }
+        if (tx is not null) await tx.CommitAsync(ct);
+        return result;
     }
+
+    private static bool IsUniqueViolation(DbUpdateException e) =>
+        e.InnerException is Npgsql.PostgresException { SqlState: "23505" }
+        || (e.InnerException?.Message.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase) ?? false);   // SQLite (tests)
 
     private async Task CalendarChangedAsync(Guid userId, string? nik, CancellationToken ct)
     {
