@@ -59,8 +59,7 @@ public class HrisSyncService(IPopDbContext db, IHrisGateway gateway,
             run.FinishedAt = DateTime.UtcNow;
             run.Succeeded = false;
             run.Error = "Stopped: the server was shutting down.";
-            run.Log = string.Join('
-', _log);
+            run.Log = string.Join('\n', _log);
             try { await db.SaveChangesAsync(CancellationToken.None); } catch { }
             throw;
         }
