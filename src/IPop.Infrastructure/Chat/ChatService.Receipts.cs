@@ -81,7 +81,8 @@ public sealed partial class ChatService
         else if (receipt is not null)
         {
             if (receipt.DeliveredAt is null) receipt.DeliveredAt = now;
-            if (sendReadReceipt)
+            // First read only: re-reading used to move ReadAt forward every time (and broadcast it to the room).
+            if (sendReadReceipt && receipt.ReadAt is null)
                 receipt.ReadAt = now;
         }
         else

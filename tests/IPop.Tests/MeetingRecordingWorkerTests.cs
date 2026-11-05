@@ -64,6 +64,7 @@ public class MeetingRecordingWorkerTests : IDisposable
         {
             foreach (var user in target.UserIds ?? (target.UserId is { } id ? new[] { id } : Array.Empty<Guid>()))
                 Sent.Add((eventType, title, new NotificationTarget(UserId: user), targetUrl));
+            if (target.Role is not null) Sent.Add((eventType, title, target, targetUrl));
             return Task.FromResult(new NotificationEnqueueResult(true, null, null, Guid.NewGuid(), "delivered", 1, DateTime.UtcNow));
         }
 
