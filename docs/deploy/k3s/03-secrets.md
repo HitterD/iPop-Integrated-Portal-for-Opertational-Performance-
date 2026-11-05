@@ -53,3 +53,24 @@ Token GitHub kedaluwarsa (tahunan):
 kubectl -n ipop delete secret ghcr && bash ~/ipop/deploy/k8s/bootstrap/secrets.sh      # hanya membuat yang hilang
 kubectl -n argocd delete secret repo-ipop && bash ~/ipop/deploy/k8s/bootstrap/install-argocd.sh
 ```
+
+## Sertifikat key ring DataProtection (`ipop-dp-cert`, `ipop-dp-cert-env`)
+
+Key ring DataProtection (yang mengenkripsi password NAS pengguna, password SMTP, dan kunci OIDC) disimpan di
+database. Tanpa sertifikat, siapa pun yang memegang dump/backup DB bisa membukanya. Dengan secret ini, kunci baru
+dienkripsi dengan sertifikat yang **tidak** ada di database.
+
+- File: `dp.pfx` + `dp-pfx-password.txt` (dibuat 2026-11-05, berlaku s.d. 2036). Simpan salinannya di tempat yang
+  sama dengan secret k3s lain — tanpa PFX ini kunci baru tidak bisa dibuka lagi.
+- Pasang per namespace:
+
+```bash
+kubectl create secret generic ipop-dp-cert -n <ns> --from-file=dp.pfx=dp.pfx
+kubectl create secret generic ipop-dp-cert-env -n <ns> \
+  --from-file=DataProtection__KeyCertificatePassword=dp-pfx-password.txt
+kubectl rollout restart deploy/ipop-api -n <ns>
+```
+
+- Kunci lama (dibuat sebelum sertifikat dipasang) tetap terbaca sampai kedaluwarsa; kunci baru otomatis terenkripsi.
+- Jangan pernah hapus `ipop-dp-cert` dari namespace yang sudah memakainya: kunci yang dienkripsi dengannya tidak
+  bisa dibuka lagi (semua pengguna harus memasukkan ulang password NAS).

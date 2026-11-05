@@ -48,9 +48,13 @@ spec:
             - configMapRef: { name: ipop-api-env }
             - secretRef: { name: ipop-api-secrets }
             - secretRef: { name: ipop-api-integrations, optional: true }   # bootstrap/secrets-integrations.sh
+            - secretRef: { name: ipop-dp-cert-env, optional: true }         # DataProtection__KeyCertificatePassword
           volumeMounts:
             - { name: data, mountPath: /data }
             - { name: firebase, mountPath: /secrets/firebase, readOnly: true }
+            # Certificate that encrypts the DataProtection key ring (secret ipop-dp-cert: dp.pfx + password).
+            # Optional: without it the key ring stays unencrypted as before (the configured path is then missing).
+            - { name: dp-cert, mountPath: /secrets/dp, readOnly: true }
           startupProbe:
             httpGet: { path: /healthz, port: http }
             periodSeconds: 5
@@ -76,6 +80,11 @@ spec:
           secret:
             secretName: ipop-firebase
             optional: true
+        - name: dp-cert
+          secret:
+            secretName: ipop-dp-cert
+            optional: true
+            items: [{ key: dp.pfx, path: dp.pfx }]
 ---
 apiVersion: v1
 kind: Service

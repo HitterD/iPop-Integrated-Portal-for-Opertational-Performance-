@@ -18,6 +18,7 @@ data:
   # Same Data Protection application name as the old Windows host (its content root path), so keys
   # already in the database still decrypt the OIDC signing keys and media tickets. Do not change.
   DataProtection__ApplicationName: 'C:\Users\IT12\orca\workspaces\ipop-rescue\src\IPop.Api\'
+  DataProtection__KeyCertificatePath: "/secrets/dp/dp.pfx"   # secret ipop-dp-cert (optional)
   Https__Redirect: "false"             # TLS ends at Zoraxy
   ConnectionStrings__Redis: "redis:6379,abortConnect=false"
   Hris__Mode: "Production"
