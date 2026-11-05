@@ -132,6 +132,11 @@ public sealed partial class ChatService
         foreach (var s in archivedSettings)
             s.IsArchived = false;
 
+        // Stage the durable intent before the SAME SaveChanges as the message. A sender disconnect or process
+        // crash after this commit must not leave a message with no push job; the worker's periodic scan discovers
+        // this row even if the realtime notifier never runs. Replays return above and never stage a second job.
+        IPop.Infrastructure.Notifications.Push.PushQueue.Add(db, "chat", message.Id);
+
         try
         {
             await db.SaveChangesAsync(ct);
