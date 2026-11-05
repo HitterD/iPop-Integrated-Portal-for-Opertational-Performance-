@@ -188,6 +188,25 @@ public sealed class MediaStreamAndLinksTests
         finally { try { Directory.Delete(dir, true); } catch (IOException) { } }
     }
 
+    [Fact]
+    public async Task Immediate_copy_failures_do_not_leave_completed_tasks_marked_as_copying()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ipop-media-immediate-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var cache = new MediaFileCache(dir);
+            for (var i = 0; i < 200; i++)
+            {
+                var key = $"immediate-{i}";
+                await Assert.ThrowsAsync<IOException>(() => cache.GetAsync(key,
+                    _ => throw new FileNotFoundException(), CancellationToken.None));
+                cache.Forget(key);
+                Assert.IsType<CacheState.Missing>(cache.State(key));
+            }
+        }
+        finally { try { Directory.Delete(dir, true); } catch (IOException) { } }
+    }
+
     [Theory]
     [InlineData("clip.wmv", "video/x-ms-wmv")]
     [InlineData("old.mpg", "video/mpeg")]
