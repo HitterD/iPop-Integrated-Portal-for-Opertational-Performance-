@@ -877,12 +877,9 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
 
     public async Task<int> EmptyTrashAsync(Guid userId, CancellationToken ct)
     {
-        var trashed = await db.MailRecipients.Where(r => r.UserId == userId && r.Folder == "trash").ToListAsync(ct);
-        var count = trashed.Count;
+        // One DELETE instead of tracking and removing every row.
+        var count = await db.MailRecipients.Where(r => r.UserId == userId && r.Folder == "trash").ExecuteDeleteAsync(ct);
         if (count == 0) return 0;
-
-        db.MailRecipients.RemoveRange(trashed);
-        await db.SaveChangesAsync(ct);
         await SyncUserAsync(userId, ct);
         return count;
     }
@@ -1006,13 +1003,12 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         if (folder == MailFolder.Starred) return new BulkResultDto(0, "use_starred_flag");
         var folderStr = FolderToString(folder);
         var now = DateTime.UtcNow;
-        var rows = await db.MailRecipients
+        // One UPDATE instead of loading and saving every row (an imported 2,760-mail inbox was 2,760 UPDATEs).
+        var count = await db.MailRecipients
             .Where(r => r.UserId == userId && r.Folder == folderStr && !r.IsRead)
-            .ToListAsync(ct);
-        foreach (var r in rows) { r.IsRead = true; r.ReadAt = r.ReadAt ?? now; }
-        await db.SaveChangesAsync(ct);
+            .ExecuteUpdateAsync(u => u.SetProperty(r => r.IsRead, true).SetProperty(r => r.ReadAt, r => r.ReadAt ?? now), ct);
         await SyncUserAsync(userId, ct);
-        return new BulkResultDto(rows.Count);
+        return new BulkResultDto(count);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
