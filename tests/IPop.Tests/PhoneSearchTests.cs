@@ -26,13 +26,14 @@ public class PhoneSearchTests
         }
     }
     [Fact]
-    public void Phone_search_uses_existing_history_and_progressive_provider_and_Back()
+    public async Task Phone_search_uses_existing_history_and_progressive_provider_and_Back()
     {
         using var ctx = new BunitContext(); ctx.JSInterop.Mode = JSRuntimeMode.Loose; var api = new Api();
         ctx.Services.AddSingleton(new AuthState(new HttpClient(api) { BaseAddress = new("http://localhost/") }, ctx.JSInterop.JSRuntime));
         var phone = new PhoneState(ctx.JSInterop.JSRuntime); phone.OnPhoneChanged(true); ctx.Services.AddSingleton(phone);
         var palette = new CommandPaletteState(); ctx.Services.AddSingleton(palette); ctx.Services.AddSingleton(new PeopleLinks()); ctx.Services.AddSingleton(new OverlayStack());
-        var cut = ctx.Render<CommandPalette>(); cut.InvokeAsync(palette.Open);
+        var cut = ctx.Render<CommandPalette>();
+        await cut.InvokeAsync(palette.Open);
         cut.WaitForAssertion(() => Assert.Single(cut.FindAll(".m-search")));
         cut.WaitForAssertion(() => Assert.True(cut.Markup.Contains("Maintenance"), cut.Markup));
         cut.WaitForAssertion(() => Assert.Contains("Real Recent Person", cut.Markup));
@@ -41,7 +42,7 @@ public class PhoneSearchTests
         cut.WaitForAssertion(() => Assert.Contains("/api/search/history/" + api.HistoryId, api.Deleted));
         cut.Find("input[aria-label='Search']").Input("UPS");
         cut.WaitForAssertion(() => Assert.Contains("Maintenance plan", cut.Markup));
-        cut.InvokeAsync(() => ctx.Services.GetRequiredService<OverlayStack>().CloseTopAsync());
+        await cut.InvokeAsync(() => ctx.Services.GetRequiredService<OverlayStack>().CloseTopAsync());
         cut.WaitForAssertion(() => Assert.False(palette.IsOpen));
     }
 }
