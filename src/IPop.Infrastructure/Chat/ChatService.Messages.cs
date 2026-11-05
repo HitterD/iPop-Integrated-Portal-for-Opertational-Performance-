@@ -498,6 +498,8 @@ public sealed partial class ChatService
         if (targetRoom is not null)
             targetRoom.LastMessageAt = now;
 
+        // A forward is also a new message: its notification intent survives a crash before API fan-out.
+        IPop.Infrastructure.Notifications.Push.PushQueue.Add(db, "chat", newMessage.Id);
         await db.SaveChangesAsync(ct);
 
         var saved = await db.ChatMessages
