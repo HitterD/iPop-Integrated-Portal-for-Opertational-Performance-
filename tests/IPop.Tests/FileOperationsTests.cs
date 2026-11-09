@@ -184,6 +184,41 @@ public class FileOperationsTests
         Assert.Contains(realtime.Events, e => e.Event == RealtimeEvents.FileOperationFinished);
     }
 
+    [Fact]
+    public async Task FileOperationWorker_FailsOperationsLeftRunningByAPreviousProcess()
+    {
+        using var t = new TestDb();
+        var user = t.AddUser("USER1");
+        FileOperation Op(string status, DateTime? started) => new()
+        {
+            Id = Guid.NewGuid(), UserId = user.Id, Kind = "move", SourceServer = "spj", DestServer = "smg", DestDir = "/teams",
+            ItemsJson = "[]", Status = status, TotalFiles = 3, CompletedFiles = 1, FailedFiles = 0, BytesTransferred = 0,
+            CreatedAt = DateTime.UtcNow.AddMinutes(-10), StartedAt = started,
+        };
+        var orphan = Op("Running", DateTime.UtcNow.AddMinutes(-9));   // pod killed mid-transfer
+        var queued = Op("Queued", null);
+        var done = Op("Completed", DateTime.UtcNow.AddMinutes(-9));
+        t.Db.FileOperations.AddRange(orphan, queued, done);
+        await t.Db.SaveChangesAsync();
+
+        var services = new ServiceCollection();
+        services.AddScoped(_ => t.Db);
+        services.AddScoped<IRealtime>(_ => new MockRealtime());
+        var sp = services.BuildServiceProvider();
+        var worker = new FileOperationWorker(sp.GetRequiredService<IServiceScopeFactory>(), NullLogger<FileOperationWorker>.Instance);
+
+        var recovered = await worker.RecoverInterruptedAsync(default);
+
+        Assert.Equal(1, recovered);
+        await using var v = t.Verify();
+        var o = await v.FileOperations.SingleAsync(x => x.Id == orphan.Id);
+        Assert.Equal("Failed", o.Status);                // never resumed blindly: a half-done move must not run twice
+        Assert.NotNull(o.FinishedAt);
+        Assert.Contains("interrupted", o.Error);
+        Assert.Equal("Queued", (await v.FileOperations.SingleAsync(x => x.Id == queued.Id)).Status);
+        Assert.Equal("Completed", (await v.FileOperations.SingleAsync(x => x.Id == done.Id)).Status);
+    }
+
     [Theory]
     [InlineData("SPJ", "/home/docs/", "spj:/home/docs")]
     [InlineData("spj", "home", "spj:/home")]
