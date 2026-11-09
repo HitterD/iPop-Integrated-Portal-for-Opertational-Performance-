@@ -270,10 +270,60 @@ public static class DirectoryEndpoints
     {
         var p = Math.Max(1, page ?? 1);
         var size = Math.Clamp(pageSize ?? 120, 1, 5000);
+        // The ordinary alphabetical list is the hot path. Previously it materialized every active
+        // employee (including PasswordHash and unrelated fields) before taking one page.
+        // Keep complex presence/group/filter semantics on the existing path below.
+        if (string.IsNullOrWhiteSpace(q) && string.IsNullOrWhiteSpace(departmentCode)
+            && string.IsNullOrWhiteSpace(siteCode) && string.IsNullOrWhiteSpace(divisionCode)
+            && string.IsNullOrWhiteSpace(presence) && string.IsNullOrWhiteSpace(manager)
+            && favorites != true && grouped != true && !string.Equals(sort, "status", StringComparison.OrdinalIgnoreCase))
+            return await AlphabeticalEmployeePage(db, callerNik, p, size, desc == true, ct);
         var items = await FilteredEmployeesCore(q, departmentCode, siteCode, divisionCode, presence, manager,
             sort, desc, callerNik, db, ct, favorites, grouped);
         return new DirectoryPage(items.Length, p, size,
             items.Skip((int)Math.Min((long)(p - 1) * size, int.MaxValue)).Take(size).ToArray());
+    }
+
+    private static async Task<DirectoryPage> AlphabeticalEmployeePage(IPopDbContext db, string? callerNik,
+        int page, int size, bool descending, CancellationToken ct)
+    {
+        var active = db.Users.AsNoTracking().Where(u => u.IsActive);
+        var total = await active.CountAsync(ct);
+        var ordered = descending ? active.OrderByDescending(u => u.Name).ThenBy(u => u.Id)
+            : active.OrderBy(u => u.Name).ThenBy(u => u.Id);
+        var rows = await ordered.Skip((int)Math.Min((long)(page - 1) * size, int.MaxValue)).Take(size)
+            .Select(u => new
+            {
+                u.Id, u.Nik, u.Name, u.Email, u.Extension, u.Location, u.PhotoPath, u.ManagerNik,
+                u.DepartmentId, u.DivisionId,
+                DepartmentName = u.Department != null ? u.Department.Name : null,
+                DepartmentCode = u.Department != null ? u.Department.Code : null,
+                DivisionName = u.Division != null ? u.Division.Name : null,
+                DivisionDepartmentName = u.Division != null && u.Division.Department != null ? u.Division.Department.Name : null,
+                DivisionDepartmentCode = u.Division != null && u.Division.Department != null ? u.Division.Department.Code : null,
+                SiteName = u.SiteId != null ? (u.Site != null ? u.Site.Name : null)
+                    : (u.Division != null && u.Division.Site != null ? u.Division.Site.Name : null),
+                SiteCode = u.SiteId != null ? (u.Site != null ? u.Site.Code : null)
+                    : (u.Division != null && u.Division.Site != null ? u.Division.Site.Code : null),
+                u.PresenceLastSeenAt, u.PresenceManualStatus, u.PresenceIsIdle, u.PresenceLastBeatAt,
+                // Historically manager names were resolved only within the matching active set.
+                ManagerName = db.Users.Where(m => m.IsActive && m.Nik == u.ManagerNik).Select(m => m.Name).FirstOrDefault(),
+                IsFavorite = callerNik != null && db.UserFavoriteContacts.Any(f => f.User.Nik == callerNik && f.ContactNik == u.Nik)
+            }).ToListAsync(ct);
+        var now = DateTime.UtcNow;
+        var items = rows.Select(u => new DirectoryEmployee(
+            u.Nik, u.Name, null,
+            u.DepartmentName ?? u.DivisionDepartmentName ?? u.DivisionName,
+            u.DepartmentCode ?? u.DivisionDepartmentCode, u.SiteName, u.SiteCode, u.ManagerName,
+            u.Email, u.Extension, u.Location,
+            PresenceStatus.ComputeStatus(u.PresenceLastSeenAt, u.PresenceManualStatus, now, u.PresenceIsIdle),
+            null, u.PhotoPath, u.IsFavorite, u.ManagerNik, u.Id,
+            u.DivisionId != null && (u.DepartmentId != null || u.DivisionDepartmentName != null) ? u.DivisionName : null,
+            PresenceStatus.LastSeen(u.PresenceLastBeatAt, u.PresenceLastSeenAt),
+            u.DivisionId is Guid division ? $"division:{division:D}"
+                : u.DepartmentId is Guid department ? $"department:{department:D}" : null,
+            u.DivisionName ?? u.DepartmentName)).ToArray();
+        return new DirectoryPage(total, page, size, items);
     }
 
     // The complete matching/ordered set is shared by paging and export. Never cap exports here.
