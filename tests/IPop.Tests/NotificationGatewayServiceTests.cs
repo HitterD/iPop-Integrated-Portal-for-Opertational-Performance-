@@ -606,4 +606,30 @@ public class NotificationGatewayServiceTests
         Assert.Equal("signalr", delivery.Channel); // tidak ditahan
         Assert.Single(rec.Broadcasted);
     }
+
+    [Fact]
+    public async Task PublishInternal_with_a_stable_key_returns_the_first_notification_on_retry()
+    {
+        // A worker that publishes, then fails to save its own "done" flag, retries next tick.
+        // With a stable key the retry must not create a second notification (= a second toast).
+        using var t = new TestDb();
+        var u = t.AddUser("IDEM");
+        t.Db.SaveChanges();
+        var rec = new RecordingBroadcaster();
+        var svc = new NotificationGatewayService(t.Verify(), new FakeHasher(), NullLogger<NotificationGatewayService>.Instance, rec);
+
+        var first = await svc.PublishInternalAsync("mail", "mail.new", "New email", "hi",
+            new NotificationTarget(UserId: u.Id), idempotencyKey: "new-abc", ct: default);
+        var retry = await svc.PublishInternalAsync("mail", "mail.new", "New email", "hi",
+            new NotificationTarget(UserId: u.Id), idempotencyKey: "new-abc", ct: default);
+        var other = await svc.PublishInternalAsync("mail", "mail.new", "New email", "hi",
+            new NotificationTarget(UserId: u.Id), ct: default);
+
+        Assert.True(first.Success);
+        Assert.Equal(first.RequestId, retry.RequestId);
+        Assert.NotEqual(first.RequestId, other.RequestId);
+        await using var v = t.Verify();
+        Assert.Equal(2, await v.NotificationRequests.CountAsync());
+        Assert.Equal(2, await v.NotificationDeliveries.CountAsync(d => d.UserId == u.Id));
+    }
 }

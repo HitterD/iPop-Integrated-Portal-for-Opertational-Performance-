@@ -1242,6 +1242,8 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
             title: $"New email from {mail.Sender?.Name ?? "Someone"}",
             message: string.IsNullOrWhiteSpace(preview) ? mail.Subject : $"{mail.Subject} — {preview}",
             target: new NotificationTarget(UserIds: recipientIds),
+            // Stable per mail: a retry after a failed job save returns the existing notification (no second toast).
+            idempotencyKey: $"new-{mail.Id:N}",
             priority: mail.Importance == "high" ? "high" : "normal",
             targetUrl: $"/mail?mailId={mail.Id}",
             ct: ct);

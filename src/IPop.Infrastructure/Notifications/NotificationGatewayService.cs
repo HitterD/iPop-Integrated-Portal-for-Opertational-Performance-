@@ -216,7 +216,7 @@ public sealed class NotificationGatewayService(
         return ToState(delivery);
     }
 
-    public async Task<NotificationEnqueueResult> PublishInternalAsync(
+    public Task<NotificationEnqueueResult> PublishInternalAsync(
         string clientSlug,
         string eventType,
         string title,
@@ -225,6 +225,30 @@ public sealed class NotificationGatewayService(
         string priority = "normal",
         string? targetUrl = null,
         CancellationToken ct = default)
+        => PublishInternalCoreAsync(clientSlug, eventType, title, message, target, null, priority, targetUrl, ct);
+
+    public Task<NotificationEnqueueResult> PublishInternalAsync(
+        string clientSlug,
+        string eventType,
+        string title,
+        string message,
+        NotificationTarget target,
+        string idempotencyKey,
+        string priority = "normal",
+        string? targetUrl = null,
+        CancellationToken ct = default)
+        => PublishInternalCoreAsync(clientSlug, eventType, title, message, target, idempotencyKey, priority, targetUrl, ct);
+
+    private async Task<NotificationEnqueueResult> PublishInternalCoreAsync(
+        string clientSlug,
+        string eventType,
+        string title,
+        string message,
+        NotificationTarget target,
+        string? idempotencyKey,
+        string priority,
+        string? targetUrl,
+        CancellationToken ct)
     {
         var mod = string.IsNullOrWhiteSpace(clientSlug) ? "system" : clientSlug.Trim().ToLowerInvariant();
         var client = await db.NotificationGatewayClients.FirstOrDefaultAsync(c => c.ClientId == mod, ct);
@@ -247,7 +271,7 @@ public sealed class NotificationGatewayService(
         }
 
         var req = new NotificationEnqueueRequest(
-            IdempotencyKey: $"{mod}-{Guid.NewGuid():N}",
+            IdempotencyKey: string.IsNullOrWhiteSpace(idempotencyKey) ? $"{mod}-{Guid.NewGuid():N}" : $"{mod}-{idempotencyKey.Trim()}",
             Priority: priority,
             EventType: eventType,
             Title: title,
