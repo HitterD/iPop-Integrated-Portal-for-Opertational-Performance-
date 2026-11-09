@@ -541,6 +541,8 @@ app.Use(async (http, next) =>
 });
 app.UseAuthorization();
 app.UseRateLimiter();
+// Admission happens before multipart parsing: excess uploads never occupy temp disk/NAS streams.
+app.UseMiddleware<IPop.Api.Diagnostics.UploadAdmissionMiddleware>();
 
 app.MapAuth();
 app.MapDeviceLink();
