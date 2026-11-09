@@ -11,6 +11,10 @@ public class WorkerWatchdogTests
     {
         protected override Task ExecuteAsync(CancellationToken ct) => throw new InvalidOperationException("boom");
     }
+    private sealed class OneOff : BackgroundService
+    {
+        protected override Task ExecuteAsync(CancellationToken ct) => Task.CompletedTask;
+    }
     private sealed class Looping : BackgroundService
     {
         protected override Task ExecuteAsync(CancellationToken ct) => Task.Delay(Timeout.Infinite, ct);
@@ -26,9 +30,9 @@ public class WorkerWatchdogTests
     [Fact]
     public async Task Reports_a_worker_whose_loop_ended()
     {
-        var crashing = new Crashing(); var looping = new Looping();
-        await crashing.StartAsync(default); await looping.StartAsync(default);
-        var watchdog = new WorkerWatchdog([crashing, looping], new Life(), NullLogger<WorkerWatchdog>.Instance);
+        var crashing = new Crashing(); var looping = new Looping(); var oneOff = new OneOff();
+        await crashing.StartAsync(default); await looping.StartAsync(default); await oneOff.StartAsync(default);
+        var watchdog = new WorkerWatchdog([crashing, looping, oneOff], new Life(), NullLogger<WorkerWatchdog>.Instance);
 
         var dead = watchdog.Scan();
 

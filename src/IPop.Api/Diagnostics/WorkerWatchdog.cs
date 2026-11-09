@@ -44,7 +44,9 @@ public sealed class WorkerWatchdog(IServiceProvider services, IHostApplicationLi
 
     internal string[] Scan() => (hosted ??= services.GetServices<IHostedService>().ToArray())
         .OfType<BackgroundService>()
-        .Where(s => !ReferenceEquals(s, this) && s.ExecuteTask is { IsCompleted: true })
-        .Select(s => s.GetType().Name + (s.ExecuteTask!.IsFaulted ? $" ({s.ExecuteTask.Exception?.GetBaseException().GetType().Name})" : ""))
+        // Only a loop that ended with an exception counts: one-off jobs (e.g. NotificationLinkBackfill) finish
+        // normally and are fine; a cancelled task means the app is stopping.
+        .Where(s => !ReferenceEquals(s, this) && s.ExecuteTask is { IsFaulted: true })
+        .Select(s => $"{s.GetType().Name} ({s.ExecuteTask!.Exception?.GetBaseException().GetType().Name})")
         .ToArray();
 }
