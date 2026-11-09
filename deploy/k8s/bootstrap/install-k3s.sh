@@ -113,8 +113,24 @@ AccuracySec=1s
 [Install]
 WantedBy=timers.target
 '   > /etc/systemd/system/vip-guard.timer
+install -m 755 "$(dirname "$0")/iscsi-reap.sh" /usr/local/sbin/iscsi-reap.sh
+printf '[Unit]
+Description=Log out iSCSI sessions to Longhorn targets that no longer exist
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/iscsi-reap.sh
+' > /etc/systemd/system/iscsi-reap.service
+printf '[Unit]
+Description=Reap stale Longhorn iSCSI sessions every minute (else a failed-over volume cannot attach)
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=5s
+[Install]
+WantedBy=timers.target
+' > /etc/systemd/system/iscsi-reap.timer
 systemctl daemon-reload
-systemctl enable --now vip-guard.timer
+systemctl enable --now vip-guard.timer iscsi-reap.timer
 
 printf 'mirrors:
   docker.io:
