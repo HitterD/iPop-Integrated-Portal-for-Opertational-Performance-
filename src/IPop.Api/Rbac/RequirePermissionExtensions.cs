@@ -37,9 +37,17 @@ public static class RequirePermissionExtensions
 
             if (userId is null) return Results.Unauthorized();
 
-            var evaluator = http.RequestServices.GetRequiredService<IPermissionEvaluator>();
-            // ponytail: one evaluator call per request; cache per-request if this ever shows on hot paths
-            var allowed = await evaluator.IsAllowedAsync(userId.Value, permissionCode, null);
+            // Several RequirePermission filters can stack on one endpoint (group + endpoint); the answer is the
+            // same within a request, so it is computed once. Under load each evaluation is 4-6 queries.
+            var key = $"ipop.perm:{userId.Value:N}:{permissionCode}";
+            bool allowed;
+            if (http.Items.TryGetValue(key, out var cached) && cached is bool b) allowed = b;
+            else
+            {
+                var evaluator = http.RequestServices.GetRequiredService<IPermissionEvaluator>();
+                allowed = await evaluator.IsAllowedAsync(userId.Value, permissionCode, null, http.RequestAborted);
+                http.Items[key] = allowed;
+            }
             if (!allowed)
                 return Results.Json(new { code = "forbidden", message = $"Missing permission: {permissionCode}" }, statusCode: 403);
 
