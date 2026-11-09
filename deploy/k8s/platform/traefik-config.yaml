@@ -68,6 +68,9 @@ spec:
       prometheus:
         serviceMonitor:
           enabled: false      # no Service any more (hostNetwork); platform/monitors.yaml scrapes the pods
+    # Each browser holds four SignalR WebSockets. The realistic 1,028-user ramp OOM-killed
+    # the VIP node's Traefik at 256 MiB while API/DB remained healthy (2026-11-09).
+    # Size for the concentrated VIP traffic, not an assumed one-third split over three pods.
     resources:
-      requests: { cpu: 50m, memory: 64Mi }
-      limits: { memory: 256Mi }
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { memory: 1Gi }
