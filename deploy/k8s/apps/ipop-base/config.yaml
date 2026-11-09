@@ -15,6 +15,9 @@ data:
   # KVM nodes (Ubuntu 26.04, kernel 7.0); non-concurrent GC ran 17/17 clean. Also baked into the images.
   DOTNET_gcConcurrent: "0"
   Workers__OpsHealth: "false"          # disk + backup alerts come from Prometheus/Alertmanager now
+  # DB pool: PostgreSQL allows 200; the default pool (100, 5 s wait) ran dry under the 2026-11-09 load test.
+  Database__MaxPoolSize: "150"
+  Database__PoolTimeoutSeconds: "15"
   # Same Data Protection application name as the old Windows host (its content root path), so keys
   # already in the database still decrypt the OIDC signing keys and media tickets. Do not change.
   DataProtection__ApplicationName: 'C:\Users\IT12\orca\workspaces\ipop-rescue\src\IPop.Api\'

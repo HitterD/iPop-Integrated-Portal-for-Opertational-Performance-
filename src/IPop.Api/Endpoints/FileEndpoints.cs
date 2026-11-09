@@ -667,6 +667,8 @@ public static class FileEndpoints
 
     private static async Task<Guid?> UserIdAsync(HttpContext http)
     {
+        // The access token already carries the user id (sub); only tokens without it fall back to the NIK lookup.
+        if (IPop.Api.Auth.CurrentUser.IdFromToken(http.User) is { } fromToken) return fromToken;
         var nik = http.User.FindFirst("nik")?.Value;
         if (string.IsNullOrEmpty(nik)) return null;
         var db = http.RequestServices.GetRequiredService<IPopDbContext>();

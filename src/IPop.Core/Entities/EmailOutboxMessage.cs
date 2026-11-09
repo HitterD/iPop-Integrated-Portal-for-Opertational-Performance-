@@ -4,7 +4,10 @@ namespace IPop.Core.Entities;
 /// leaving LastError visible for failed sends.
 public class EmailOutboxMessage
 {
-    public const int MaxAttempts = 3;
+    /// 1, 2, 4 … capped at 15 min between tries: ~40 min of retries in total. Only password-reset links use the
+    /// outbox and they expire after 30 min, so an SMTP outage of up to half an hour (a rotated password, a mail
+    /// server restart) no longer loses the mail; it used to give up after 3 tries / ~6 minutes.
+    public const int MaxAttempts = 8;
 
     public Guid Id { get; set; }
     public required string ToJson { get; set; }

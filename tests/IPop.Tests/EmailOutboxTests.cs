@@ -64,9 +64,8 @@ public class EmailOutboxTests
 
         Assert.Equal(0, await p.ProcessDueAsync(now));   // backoff: not due yet
 
-        await p.ProcessDueAsync(now.AddHours(1));
-        await p.ProcessDueAsync(now.AddHours(2));
-        Assert.Equal(0, await p.ProcessDueAsync(now.AddHours(3)));   // gave up
+        for (var h = 1; h < EmailOutboxMessage.MaxAttempts; h++) await p.ProcessDueAsync(now.AddHours(h));
+        Assert.Equal(0, await p.ProcessDueAsync(now.AddHours(EmailOutboxMessage.MaxAttempts)));   // gave up
         var final = await t.Verify().EmailOutbox.SingleAsync();
         Assert.Equal(EmailOutboxMessage.MaxAttempts, final.Attempts);
         Assert.Null(final.SentAt);
@@ -110,5 +109,14 @@ public class EmailOutboxTests
         var restart = new FakeSender(fail: false);
         await Processor(t.Verify(), restart).ProcessDueAsync(DateTime.UtcNow.AddSeconds(2));
         Assert.Equal(3, restart.Sent.Count);   // only the three that never went out
+    }
+
+    [Fact]
+    public void Retries_cover_a_half_hour_smtp_outage()
+    {
+        var total = Enumerable.Range(1, EmailOutboxMessage.MaxAttempts - 1)
+            .Aggregate(TimeSpan.Zero, (sum, a) => sum + EmailOutboxProcessor.Backoff(a));
+        Assert.True(total >= TimeSpan.FromMinutes(30), $"retries span only {total}");
+        Assert.Equal(TimeSpan.FromMinutes(15), EmailOutboxProcessor.Backoff(10));
     }
 }

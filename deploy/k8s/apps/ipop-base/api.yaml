@@ -20,7 +20,7 @@ spec:
       labels: { app.kubernetes.io/name: ipop-api }
     spec:
       imagePullSecrets: [{ name: ghcr }]
-      terminationGracePeriodSeconds: 30
+      terminationGracePeriodSeconds: 45   # host ShutdownTimeout is 25 s; leaves room for in-flight sends
       # Leave the media node to LiveKit when possible.
       affinity:
         nodeAffinity:
@@ -63,14 +63,18 @@ spec:
             httpGet: { path: /healthz, port: http }
             periodSeconds: 10
             timeoutSeconds: 5
+          # Liveness has no DB call (a DB failover must not restart the API) but fails when a background
+          # worker died (WorkerWatchdog), so the pod restarts and the worker comes back.
           livenessProbe:
-            httpGet: { path: /healthz, port: http }
+            httpGet: { path: /healthz/live, port: http }
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 6
           resources:
-            requests: { cpu: 500m, memory: 1Gi }
-            limits: { memory: 2560Mi }
+            # 1 replica serves everyone (~1000 users): 4 GiB leaves headroom for SignalR connections and
+            # Argon2 (HashGate caps it at 3 × 64 MB). Nodes have 15 GiB, ~6 GiB in use.
+            requests: { cpu: "1", memory: 1536Mi }
+            limits: { memory: 4Gi }
           securityContext:
             allowPrivilegeEscalation: false
       volumes:
