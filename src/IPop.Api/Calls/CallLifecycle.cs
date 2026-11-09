@@ -36,6 +36,7 @@ public class CallConnections
 
     private readonly TimeSpan grace;
     private readonly Func<Guid, Task> endCalls;
+    private readonly Func<TimeSpan, CancellationToken, Task> delay;
     private readonly object gate = new();
     private readonly Dictionary<Guid, int> open = [];
     private readonly Dictionary<Guid, CancellationTokenSource> pending = [];
@@ -43,10 +44,12 @@ public class CallConnections
     public CallConnections(IServiceScopeFactory scopes, IHubContext<CallHub> hub, ILogger<CallConnections> log, IConfiguration config)
         : this(GraceFrom(config), userId => EndCallsAsync(scopes, hub, log, userId, GraceFrom(config))) { }
 
-    internal CallConnections(TimeSpan grace, Func<Guid, Task> endCalls)
+    internal CallConnections(TimeSpan grace, Func<Guid, Task> endCalls,
+        Func<TimeSpan, CancellationToken, Task>? delay = null)
     {
         this.grace = grace;
         this.endCalls = endCalls;
+        this.delay = delay ?? ((duration, token) => Task.Delay(duration, token));
     }
 
     public TimeSpan Grace => grace;
@@ -85,7 +88,7 @@ public class CallConnections
 
     private async Task EndAfterGraceAsync(Guid userId, CancellationTokenSource cts)
     {
-        try { await Task.Delay(grace, cts.Token); }
+        try { await delay(grace, cts.Token); }
         catch (OperationCanceledException) { return; }
         lock (gate)
         {

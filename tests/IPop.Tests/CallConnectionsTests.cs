@@ -49,18 +49,29 @@ public class CallConnectionsTests
     public async Task A_quick_drop_and_return_then_a_real_drop_still_ends_after_a_full_grace()
     {
         var probe = new Probe();
-        // Generous margins: under a busy full-suite run timers fire late.
-        var c = new CallConnections(TimeSpan.FromMilliseconds(800), probe.End);
+        var timers = new List<(TaskCompletionSource Timer, TaskCompletionSource Observed)>();
+        async Task Delay(TimeSpan _, CancellationToken token)
+        {
+            var timer = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var observed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            timers.Add((timer, observed));
+            // Even an obsolete timer completion must not end the reconnected user's call.
+            await timer.Task;
+            observed.SetResult();
+        }
+        var c = new CallConnections(TimeSpan.FromSeconds(60), probe.End, Delay);
         var u = Guid.NewGuid();
         c.Connected(u);
-        c.Disconnected(u);          // refresh…
-        await Task.Delay(500);
-        c.Connected(u);             // …back
-        c.Disconnected(u);          // then really gone
-        await Task.Delay(500);      // the first timer would have fired here (1000 > 800)
+        c.Disconnected(u);
+        c.Connected(u);
+        c.Disconnected(u);
+        Assert.Equal(2, timers.Count);
+        timers[0].Timer.SetResult();
+        await timers[0].Observed.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Empty(probe.Ended);
-        for (var i = 0; i < 40 && probe.Ended.Count == 0; i++) await Task.Delay(100);
-        Assert.Equal([u], probe.Ended);
+        timers[1].Timer.SetResult();
+        Assert.Equal(u, await probe.FirstEnded.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        lock (probe.Ended) Assert.Equal([u], probe.Ended);
     }
 
     [Fact]
