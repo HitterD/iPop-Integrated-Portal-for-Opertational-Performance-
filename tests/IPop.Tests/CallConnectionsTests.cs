@@ -10,7 +10,13 @@ public class CallConnectionsTests
     private sealed class Probe
     {
         public List<Guid> Ended { get; } = [];
-        public Task End(Guid userId) { lock (Ended) Ended.Add(userId); return Task.CompletedTask; }
+        public TaskCompletionSource<Guid> FirstEnded { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task End(Guid userId)
+        {
+            lock (Ended) Ended.Add(userId);
+            FirstEnded.TrySetResult(userId);
+            return Task.CompletedTask;
+        }
     }
 
     [Fact]
@@ -35,8 +41,8 @@ public class CallConnectionsTests
         var u = Guid.NewGuid();
         c.Connected(u);
         c.Disconnected(u);
-        await Task.Delay(400);
-        Assert.Equal([u], probe.Ended);
+        Assert.Equal(u, await probe.FirstEnded.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        lock (probe.Ended) Assert.Equal([u], probe.Ended);
     }
 
     [Fact]
