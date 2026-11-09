@@ -628,8 +628,8 @@ public class NotificationGatewayServiceTests
         Assert.True(first.Success);
         Assert.Equal(first.RequestId, retry.RequestId);
         Assert.NotEqual(first.RequestId, other.RequestId);
-        await using var v = t.Verify();
-        Assert.Equal(2, await v.NotificationRequests.CountAsync());
-        Assert.Equal(2, await v.NotificationDeliveries.CountAsync(d => d.UserId == u.Id));
+        using var v = t.Verify();
+        Assert.Equal(2, v.NotificationRequests.Count());
+        Assert.Equal(2, v.NotificationDeliveries.Count(d => d.UserId == u.Id));
     }
 }
