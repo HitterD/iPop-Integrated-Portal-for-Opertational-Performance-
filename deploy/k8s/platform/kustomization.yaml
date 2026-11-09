@@ -4,6 +4,7 @@ resources:
   - traefik-config.yaml
   - node-alerts.yaml
   - longhorn-backup-job.yaml
+  - longhorn-backup-target-nas.yaml
   - dashboard-access.yaml
   - longhorn-nip.yaml
   - monitors.yaml

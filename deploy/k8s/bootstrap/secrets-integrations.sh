@@ -43,9 +43,13 @@ if [ -n "$OIDC" ]; then
 fi
 kubectl -n ipop create secret generic ipop-api-integrations "${args[@]}" --dry-run=client -o yaml | kubectl apply -f -
 
-if [ -n "$NAS_PASS" ]; then   # SMB mount for the nightly backup (same service account)
-  kubectl -n ipop create secret generic nas-smb --from-literal=username="$NAS_USER" --from-literal=password="$NAS_PASS" \
-    --dry-run=client -o yaml | kubectl apply -f -
+# Backups over SMB use a dedicated local DSM account (svc-ipop-backup: SMB only, read/write on share "sja"),
+# not the FileStation account - DSM refuses SMB logins for accounts without the SMB application permission.
+read -r -p "NAS backup (SMB) user [svc-ipop-backup]: " BK_USER; BK_USER=${BK_USER:-svc-ipop-backup}
+read -r -s -p "NAS backup (SMB) password (empty = skip): " BK_PASS; echo
+if [ -n "$BK_PASS" ]; then
+  kubectl -n ipop create secret generic nas-smb --from-literal=username="$BK_USER" --from-literal=password="$BK_PASS"     --dry-run=client -o yaml | kubectl apply -f -                       # nightly pg_dump + etcd snapshot copy
+  kubectl -n longhorn-system create secret generic backup-cifs --from-literal=CIFS_USERNAME="$BK_USER"     --from-literal=CIFS_PASSWORD="$BK_PASS" --dry-run=client -o yaml | kubectl apply -f -   # Longhorn target nas-cifs
 fi
 if [ -n "$SMTP" ]; then        # alert emails
   kubectl -n monitoring create secret generic alertmanager-smtp --from-literal=password="$SMTP" \
