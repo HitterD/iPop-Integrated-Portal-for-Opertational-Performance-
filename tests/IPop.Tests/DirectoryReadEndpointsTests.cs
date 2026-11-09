@@ -32,6 +32,40 @@ namespace IPop.Tests;
 ///   principal — the real mechanism, not a ClaimsPrincipal.IsInRole stub.
 public class DirectoryReadEndpointsTests
 {
+    private sealed class UserMaterializationCounter : Microsoft.EntityFrameworkCore.Diagnostics.IMaterializationInterceptor
+    {
+        public int Count;
+        public object InitializedInstance(Microsoft.EntityFrameworkCore.Diagnostics.MaterializationInterceptionData data, object entity)
+        {
+            if (entity is User) Count++;
+            return entity;
+        }
+    }
+
+    [Fact]
+    public async Task Employees_NamePage_DoesNotMaterializeTheEntireDirectory()
+    {
+        using var t = new TestDb();
+        for (var i = 0; i < 80; i++)
+        {
+            var u = t.AddUser($"PAGE{i:000}");
+            u.Name = $"Person {i:000}";
+        }
+        t.Db.SaveChanges();
+        var counter = new UserMaterializationCounter();
+        var options = new DbContextOptionsBuilder<IPopDbContext>()
+            .UseSqlite(t.Db.Database.GetDbConnection()).AddInterceptors(counter).Options;
+        await using var db = new IPopDbContext(options);
+
+        var result = await DirectoryEndpoints.EmployeesCore(null, null, null, null, null, null,
+            "name", false, 2, 5, null, db, default);
+
+        Assert.Equal(80, result.Total);
+        Assert.Equal(new[] { "Person 005", "Person 006", "Person 007", "Person 008", "Person 009" },
+            result.Items.Select(x => x.Name));
+        Assert.True(counter.Count <= 5, $"A five-person page materialized {counter.Count} User entities.");
+    }
+
     private static (Department dept, Site site, Division div) SeedDivision(TestDb t,
         string deptCode = "D1", string siteCode = "S1", string divCode = "DV1",
         bool deptActive = true, bool siteActive = true, bool divActive = true)
