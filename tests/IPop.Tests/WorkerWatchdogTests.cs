@@ -9,7 +9,12 @@ public class WorkerWatchdogTests
 {
     private sealed class Crashing : BackgroundService
     {
-        protected override Task ExecuteAsync(CancellationToken ct) => throw new InvalidOperationException("boom");
+        // Real workers fail after their first await; StartAsync then sees a running task that faults later.
+        protected override async Task ExecuteAsync(CancellationToken ct)
+        {
+            await Task.Yield();
+            throw new InvalidOperationException("boom");
+        }
     }
     private sealed class OneOff : BackgroundService
     {
@@ -33,6 +38,7 @@ public class WorkerWatchdogTests
         var crashing = new Crashing(); var looping = new Looping(); var oneOff = new OneOff();
         await crashing.StartAsync(default); await looping.StartAsync(default); await oneOff.StartAsync(default);
         var watchdog = new WorkerWatchdog([crashing, looping, oneOff], new Life(), NullLogger<WorkerWatchdog>.Instance);
+        try { await crashing.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(5)); } catch (InvalidOperationException) { }
 
         var dead = watchdog.Scan();
 
