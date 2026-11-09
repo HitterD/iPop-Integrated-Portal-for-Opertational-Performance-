@@ -7,8 +7,11 @@ namespace IPop.Infrastructure.Auth;
 
 /// Implements spec §3: local auth, null-hash default-password mechanism,
 /// 5-attempt lockout, refresh rotation, global invalidation on password change.
-public class AuthWorkflow(IPopDbContext db, IPasswordHasher hasher, ITokenService tokens) : IAuthWorkflow
+public class AuthWorkflow(IPopDbContext db, IPasswordHasher hasher, ITokenService tokens, HashGate? hashGate = null) : IAuthWorkflow
 {
+    private readonly HashGate gate = hashGate ?? HashGate.Shared;
+    internal static readonly AuthError Busy = new("busy", "Many people are signing in right now. Please try again in a moment.");
+
     private const string DefaultPassword = "1234";
     private const int MaxFailedAttempts = 5;
     private static readonly TimeSpan LockDuration = TimeSpan.FromMinutes(15);
@@ -28,9 +31,15 @@ public class AuthWorkflow(IPopDbContext db, IPasswordHasher hasher, ITokenServic
             return (null, new AuthError("invalid_credentials", "Incorrect ID or password."), 401);
 
         // Null hash → only the default password is accepted (spec §3.3).
-        var ok = user.PasswordHash is null
-            ? req.Password == DefaultPassword
-            : hasher.Verify(req.Password, user.PasswordHash);
+        bool ok;
+        if (user.PasswordHash is null) ok = req.Password == DefaultPassword;
+        else
+        {
+            var hash = user.PasswordHash;
+            var (ran, verified) = await gate.RunAsync(() => hasher.Verify(req.Password, hash), ct);
+            if (!ran) return (null, Busy, 503);   // not a failed attempt: no lockout count
+            ok = verified;
+        }
 
         if (!ok)
         {
@@ -100,15 +109,27 @@ public class AuthWorkflow(IPopDbContext db, IPasswordHasher hasher, ITokenServic
         {
             var current = req.CurrentPassword ?? "";
             // Argon2 throws on an empty password, so a blank field is rejected before hashing.
-            var ok = current.Length > 0 && (user.PasswordHash is null
-                ? current == DefaultPassword
-                : hasher.Verify(current, user.PasswordHash));
+            var ok = false;
+            if (current.Length > 0)
+            {
+                if (user.PasswordHash is null) ok = current == DefaultPassword;
+                else
+                {
+                    var hash = user.PasswordHash;
+                    var (ran, verified) = await gate.RunAsync(() => hasher.Verify(current, hash), ct);
+                    if (!ran) return (Busy, 503);
+                    ok = verified;
+                }
+            }
             if (!ok)
                 return (new AuthError("policy", "Current password is incorrect.",
                     new() { ["currentPassword"] = ["Current password is incorrect."] }), 400);
         }
 
-        user.PasswordHash = hasher.Hash(req.NewPassword);
+        var newPassword = req.NewPassword;
+        var (hashed, newHash) = await gate.RunAsync(() => hasher.Hash(newPassword), ct);
+        if (!hashed) return (Busy, 503);
+        user.PasswordHash = newHash;
         user.MustChangePassword = false;
 
         // Global session invalidation (spec §3.6).
