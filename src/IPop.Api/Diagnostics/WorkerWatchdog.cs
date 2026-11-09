@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 namespace IPop.Api.Diagnostics;
@@ -9,9 +10,21 @@ namespace IPop.Api.Diagnostics;
 /// that would report it: mail notifications or reminders would just stop). This checks every hosted
 /// BackgroundService once a minute; a worker that ended while the app is running is logged as an error (Loki +
 /// alert) and makes /healthz/live fail, so the liveness probe restarts the pod and the worker comes back.
-public sealed class WorkerWatchdog(IEnumerable<IHostedService> hosted, IHostApplicationLifetime life, ILogger<WorkerWatchdog> log)
+public sealed class WorkerWatchdog(IServiceProvider services, IHostApplicationLifetime life, ILogger<WorkerWatchdog> log)
     : BackgroundService
 {
+    // Resolved on first scan, not in the constructor: this class is itself an IHostedService, so asking for
+    // IEnumerable<IHostedService> while being constructed deadlocked the container (API never started).
+    private IHostedService[]? hosted;
+    internal WorkerWatchdog(IEnumerable<IHostedService> workers, IHostApplicationLifetime life, ILogger<WorkerWatchdog> log)
+        : this(EmptyProvider.Instance, life, log) => hosted = workers.ToArray();
+
+    private sealed class EmptyProvider : IServiceProvider
+    {
+        public static readonly EmptyProvider Instance = new();
+        public object? GetService(Type serviceType) => null;
+    }
+
     private volatile string[] dead = [];
 
     /// Names of workers that ended while the app is still running (empty = all alive).
@@ -29,7 +42,7 @@ public sealed class WorkerWatchdog(IEnumerable<IHostedService> hosted, IHostAppl
         }
     }
 
-    internal string[] Scan() => hosted
+    internal string[] Scan() => (hosted ??= services.GetServices<IHostedService>().ToArray())
         .OfType<BackgroundService>()
         .Where(s => !ReferenceEquals(s, this) && s.ExecuteTask is { IsCompleted: true })
         .Select(s => s.GetType().Name + (s.ExecuteTask!.IsFaulted ? $" ({s.ExecuteTask.Exception?.GetBaseException().GetType().Name})" : ""))
