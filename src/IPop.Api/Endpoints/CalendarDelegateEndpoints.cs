@@ -336,8 +336,6 @@ public static class CalendarDelegateEndpoints
     {
         // The access token already carries the user id (sub); only tokens without it fall back to the NIK lookup.
         if (IPop.Api.Auth.CurrentUser.IdFromToken(http.User) is { } fromToken) return fromToken;
-        // The access token already carries the user id (sub); only tokens without it fall back to the NIK lookup.
-        if (IPop.Api.Auth.CurrentUser.IdFromToken(http.User) is { } fromToken) return fromToken;
         var nik = http.User.FindFirst("nik")?.Value ?? http.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(nik)) return null;
         return await db.Users.Where(u => u.Nik == nik).Select(u => (Guid?)u.Id).FirstOrDefaultAsync(ct);
