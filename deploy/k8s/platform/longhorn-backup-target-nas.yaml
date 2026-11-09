@@ -1,0 +1,15 @@
+# Second Longhorn backup target: the backup share on the Synology over SMB.
+# Why: the S3 target (Garage, plain HTTP on 192.168.2.16:3900) never finished a backup of ipop/ipop-data —
+# the Nutanix network drops plain-HTTP streams carrying Windows executables, and ipop-data holds the
+# Notifier installers. SMB is not inspected (measured 2026-11-09: 1.85 GB backup completed in < 1 min).
+# The ipop-data volume is pointed at this target (spec.backupTargetName: nas-cifs on the Longhorn volume);
+# the other volumes stay on S3. Credentials: secret longhorn-system/backup-cifs (bootstrap/secrets-integrations.sh).
+apiVersion: longhorn.io/v1beta2
+kind: BackupTarget
+metadata:
+  name: nas-cifs
+  namespace: longhorn-system
+spec:
+  backupTargetURL: "cifs://192.168.2.16/sja/SJA SPJ/ICT/backup/longhorn"
+  credentialSecret: backup-cifs
+  pollInterval: 5m0s
