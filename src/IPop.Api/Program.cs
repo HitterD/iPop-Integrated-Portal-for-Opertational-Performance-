@@ -131,6 +131,9 @@ builder.Services.AddScoped<IEmailQueue, DbEmailQueue>();
 builder.Services.AddScoped<EmailOutboxProcessor>();
 if (outboundWorkers) builder.Services.AddHostedService<EmailOutboxWorker>();
 // Requests over 1 s land in logs/slow-requests.log (see SlowRequestLog).
+// Single-replica / per-process upload budget; reservations and legacy uploads share this singleton.
+builder.Services.AddSingleton<IPop.Api.Diagnostics.UploadAdmissionService>(sp =>
+    new(sp.GetRequiredService<IConfiguration>(), TimeProvider.System));
 builder.Services.AddSingleton<IPop.Api.Diagnostics.SlowRequestLog>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<IPop.Api.Diagnostics.SlowRequestLog>());
 // Reuses Synology:ServiceAccount + Synology:{Area}Folder when no "Attachments" section exists;
@@ -216,7 +219,7 @@ var webOrigins = builder.Configuration.GetSection("Cors:WebOrigins").Get<string[
     ?? new[] { "http://localhost:5103", "https://localhost:5103" };
 builder.Services.AddCors(o => o.AddPolicy("web-dev", p => p
     .WithOrigins(webOrigins)
-    .AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
+    .AllowAnyHeader().AllowAnyMethod().AllowCredentials().WithExposedHeaders("Retry-After")));
 
 var redisConnection = builder.Configuration.GetConnectionString("Redis")
     ?? throw new InvalidOperationException("ConnectionStrings:Redis is required");
@@ -567,6 +570,7 @@ app.MapGet("/api/chat-avatars/{name}", async (string name, IWebHostEnvironment e
 }).AllowAnonymous();
 app.MapStickers();
 app.MapCalls();
+app.MapUploadAdmission();
 app.MapMail();
 app.MapMailGroups();
 app.MapMailInlineImages();

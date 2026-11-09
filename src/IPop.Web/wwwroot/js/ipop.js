@@ -1123,10 +1123,63 @@ window.ipop = {
     });
   },
 
+  // Pre-body admission. Backoff reduces contention; it does NOT guarantee FIFO fairness.
+  // Only the bodyless reservation can be retried. Lost responses leave a bounded 30 s lease.
+  async reserveUpload(uploadUrl, bridge, options = {}) {
+    const target = new URL(uploadUrl, document.baseURI);
+    const endpoint = new URL("/api/uploads/reservations", target);
+    endpoint.searchParams.set("route", target.pathname);
+    const now = options.now || (() => Date.now());
+    const sleep = options.sleep || (ms => new Promise(resolve => setTimeout(resolve, ms)));
+    const random = options.random || Math.random;
+    const deadline = now() + Math.min(60000, Math.max(1, options.deadlineMs || 60000));
+    let token = await bridge.invokeMethodAsync("Token", false), refreshed = false;
+    const request = async (method, reservation) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), method === "DELETE" ? 3000 : Math.max(1, Math.min(8000, deadline - now())));
+      try {
+        const response = await fetch(endpoint.href, { method, signal: controller.signal, cache: "no-store",
+          headers: { ...(token ? { Authorization: "Bearer " + token } : {}),
+            ...(reservation ? { "X-Upload-Reservation": reservation } : {}) } });
+        // Read JSON under the same timeout; headers alone do not mean a lease was received.
+        const body = response.ok && method === "POST" ? await response.json() : null;
+        return { response, body };
+      } finally { clearTimeout(timer); }
+    };
+    for (let attempt = 0; attempt < 10 && now() < deadline; attempt++) {
+      let result = null;
+      try { result = await request("POST"); } catch { /* bodyless request only: safe to retry */ }
+      if (result?.response.ok) {
+        if (!result.body || typeof result.body.token !== "string" || !result.body.token) throw new Error("Invalid upload reservation response.");
+        const reservation = result.body.token;
+        let cancelled = false;
+        return { reservation, token, cancel: async () => {
+          if (cancelled) return;
+          cancelled = true;
+          try { await request("DELETE", reservation); } catch { /* unused lease expires server-side */ }
+        } };
+      }
+      if (result?.response.status === 401 && !refreshed) {
+        refreshed = true;
+        token = await bridge.invokeMethodAsync("Token", true);
+        continue;
+      }
+      if (result && result.response.status !== 429) throw new Error(`Upload reservation failed (${result.response.status}).`);
+      const retry = result?.response.headers.get("Retry-After");
+      const seconds = retry == null ? NaN : Number(retry);
+      const retryMs = Number.isFinite(seconds) ? Math.max(0, seconds * 1000)
+        : retry ? Math.max(0, Date.parse(retry) - Date.now()) : 0;
+      const wait = Math.max(Number.isFinite(retryMs) ? retryMs : 0, Math.min(5000, 300 * 2 ** attempt)) + random() * 500;
+      if (attempt === 9 || now() + wait >= deadline) break;
+      await sleep(wait);
+    }
+    throw new Error("Other uploads are still running or the connection is unavailable. Please try again shortly.");
+  },
+
   // Mail attachments: the files picked/dropped into an <InputFile> go straight from the browser
   // to /api/mail/attachments/upload, one XHR per file, so a 500 MB file is streamed from disk
   // instead of being copied through Blazor's memory. `bridge` (MailUploadBridge) hands out the
-  // token (refreshed once on 401) and receives byte progress. Returns { files, errors }.
+  // token (refreshed only during reservation) and receives byte progress. Returns { files, errors }.
   async mailUploadInput(el, url, bridge, maxFiles, maxBytes) {
     if (typeof el === "string") el = document.querySelector(el);
     const input = !el ? null : el.tagName === "INPUT" ? el : el.querySelector('input[type="file"]');
@@ -1150,10 +1203,11 @@ window.ipop = {
       last = now;
       bridge.invokeMethodAsync("Progress", done + loaded, total).catch(() => { });
     };
-    const send = (file, token) => new Promise(resolve => {
+    const send = (file, token, reservation) => new Promise(resolve => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", url);
       if (token) xhr.setRequestHeader("Authorization", "Bearer " + token);
+      xhr.setRequestHeader("X-Upload-Reservation", reservation);
       xhr.upload.onprogress = e => report(e.loaded, false);
       xhr.onload = () => {
         let body = null;
@@ -1168,11 +1222,20 @@ window.ipop = {
     });
     const files = [];
     for (const f of picked) {
-      let res = await send(f, await bridge.invokeMethodAsync("Token", false));
-      if (res.status === 401) res = await send(f, await bridge.invokeMethodAsync("Token", true));
-      if (res.status >= 200 && res.status < 300 && Array.isArray(res.body)) files.push(...res.body);
-      else if (res.status === 413) errors.push(`${f.name} is too large to upload.`);
-      else errors.push((res.body && res.body.message) || (res.status === 0 ? `${f.name}: network error.` : `${f.name}: upload failed (${res.status}).`));
+      let lease;
+      try {
+        lease = await ipop.reserveUpload(url, bridge);
+        // Never retry this POST: a transport failure may hide a successfully stored attachment.
+        const res = await send(f, lease.token, lease.reservation);
+        if (res.status >= 200 && res.status < 300 && Array.isArray(res.body)) files.push(...res.body);
+        else if (res.status === 413) errors.push(`${f.name} is too large to upload.`);
+        else errors.push((res.body && res.body.message) || (res.status === 0 ? `${f.name}: connection lost; upload result is uncertain. It was not automatically retried.` : `${f.name}: upload failed (${res.status}).`));
+      } catch (error) {
+        errors.push(`${f.name}: ${error?.message || "upload failed."}`);
+      } finally {
+        // Cancels unused leases (including XHR setup failures). Active transfers cannot be released here.
+        if (lease) await lease.cancel();
+      }
       done += f.size;
       report(0, true);
     }
