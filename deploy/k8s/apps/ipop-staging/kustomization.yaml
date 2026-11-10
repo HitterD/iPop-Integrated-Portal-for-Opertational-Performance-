@@ -31,6 +31,13 @@ patches:
         value: 768MB
       - op: remove
         path: /spec/plugins
+      # Query cost attribution for load tests (CNPG loads the library when a pg_stat_statements.* key is set).
+      - op: add
+        path: /spec/postgresql/parameters/pg_stat_statements.max
+        value: "2000"
+      - op: add
+        path: /spec/postgresql/parameters/pg_stat_statements.track
+        value: top
   - target: { kind: PersistentVolumeClaim, name: ipop-data }
     patch: |-
       - op: replace
