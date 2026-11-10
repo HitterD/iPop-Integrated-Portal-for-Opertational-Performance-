@@ -1,14 +1,37 @@
-# Same routing as prod, on the staging host. LiveKit and ONLYOFFICE are prod's (namespace ipop),
-# reached through ExternalName services so the routes stay namespace-local.
+# Same routing as prod, on the staging host. LiveKit and ONLYOFFICE are prod's (namespace ipop).
+# ExternalName is NOT usable here: the Traefik CRD provider rejects it ("externalName services not allowed"),
+# which silently dropped the whole IngressRoute - /rtc fell through to the Web catch-all and calls, screen share
+# and server recording could not work on staging. A headless Service plus an explicit EndpointSlice keeps the
+# routes namespace-local without ExternalName.
 apiVersion: v1
 kind: Service
 metadata: { name: livekit }
-spec: { type: ExternalName, externalName: livekit.ipop.svc.cluster.local, ports: [{ port: 7880, name: http }] }
+spec: { ports: [{ port: 7880, name: http }] }
 ---
 apiVersion: v1
 kind: Service
 metadata: { name: onlyoffice }
-spec: { type: ExternalName, externalName: onlyoffice.ipop.svc.cluster.local, ports: [{ port: 80, name: http }] }
+spec: { ports: [{ port: 80, name: http }] }
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: livekit
+  labels: { kubernetes.io/service-name: livekit }
+addressType: IPv4
+ports: [{ port: 7880, name: http, protocol: TCP }]
+endpoints:
+  - addresses: [10.43.18.46]
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: onlyoffice
+  labels: { kubernetes.io/service-name: onlyoffice }
+addressType: IPv4
+ports: [{ port: 80, name: http, protocol: TCP }]
+endpoints:
+  - addresses: [10.43.223.227]
 ---
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
