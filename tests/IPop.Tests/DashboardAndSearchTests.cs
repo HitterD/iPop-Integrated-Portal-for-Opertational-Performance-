@@ -357,11 +357,11 @@ public class DashboardAndSearchTests
         var cache = new IPop.Infrastructure.Dashboard.DashboardSharedCache();
 
         await using (var db = new IPop.Infrastructure.Persistence.IPopDbContext(options))
-            Assert.NotNull(await new IPop.Infrastructure.Dashboard.DashboardService(db, shared: cache).GetAsync(me.Id));
+            Assert.NotNull(await new IPop.Infrastructure.Dashboard.DashboardService(db, permissions: new FeedPermissions(), shared: cache).GetAsync(me.Id));
         var first = counter.Texts.ToList();
         counter.Texts.Clear();
         await using (var db = new IPop.Infrastructure.Persistence.IPopDbContext(options))
-            Assert.NotNull(await new IPop.Infrastructure.Dashboard.DashboardService(db, shared: cache).GetAsync(me.Id));
+            Assert.NotNull(await new IPop.Infrastructure.Dashboard.DashboardService(db, permissions: new FeedPermissions(), shared: cache).GetAsync(me.Id));
 
         // Roles, department and project memberships used to be read twice per Dashboard (once more by the calendar's news part).
         Assert.Single(first, q => q.Contains("\"UserRoles\"") && q.Contains("\"Name\"") && !q.Contains("EXISTS"));
@@ -371,6 +371,7 @@ public class DashboardAndSearchTests
         Assert.Single(first, q => q.Contains("FROM \"MailRecipients\""));
         Assert.Contains(first, q => q.Contains("\"EmailOutbox\""));
         Assert.DoesNotContain(counter.Texts, q => q.Contains("\"EmailOutbox\"") || q.Contains("\"HrisSyncRuns\""));
+        // Permission checks are stubbed here (production caches them); the rest is one read per Dashboard part.
         Assert.True(first.Count <= 30, $"{first.Count} commands");
     }
 
