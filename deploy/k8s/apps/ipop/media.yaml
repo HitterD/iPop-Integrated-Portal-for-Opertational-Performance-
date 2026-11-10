@@ -166,10 +166,11 @@ spec:
             - { name: EGRESS_CONFIG_FILE, value: /etc/egress/egress.yaml }
             - name: LIVEKIT_KEYS
               valueFrom: { secretKeyRef: { name: livekit-keys, key: keys } }
-            # egress reads api_key/api_secret from these when not in the file
-            - name: EGRESS_API_KEY
+            # Egress v1.15 reads LIVEKIT_API_* when api_key/api_secret are absent from its YAML.
+            # EGRESS_API_* is ignored: health stays green but StartEgress rejects every request.
+            - name: LIVEKIT_API_KEY
               valueFrom: { secretKeyRef: { name: livekit-keys, key: api-key } }
-            - name: EGRESS_API_SECRET
+            - name: LIVEKIT_API_SECRET
               valueFrom: { secretKeyRef: { name: livekit-keys, key: api-secret } }
           securityContext:
             capabilities: { add: [SYS_ADMIN] }   # Chrome sandbox, as in the old docker-compose
