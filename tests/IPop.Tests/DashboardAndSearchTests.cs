@@ -365,7 +365,8 @@ public class DashboardAndSearchTests
 
         // Roles, department and project memberships used to be read twice per Dashboard (once more by the calendar's news part).
         Assert.Single(first, q => q.Contains("\"UserRoles\"") && q.Contains("\"Name\"") && !q.Contains("EXISTS"));
-        Assert.Single(first, q => q.Contains("FROM \"ProjectMembers\""));
+        // The standalone membership read; the projects/milestones queries also name the table in subqueries.
+        Assert.Single(first, q => q.TrimStart().StartsWith("SELECT \"p\".\"ProjectId\"") && q.Contains("FROM \"ProjectMembers\" AS \"p\"\nWHERE"));
         Assert.Single(first, q => q.Contains("FROM \"CallHistories\""));
         Assert.DoesNotContain(first, q => q.Contains("ROW_NUMBER") && q.Contains("\"CallParticipants\""));
         Assert.Single(first, q => q.Contains("FROM \"MailRecipients\""));
