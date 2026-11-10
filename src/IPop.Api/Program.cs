@@ -422,6 +422,7 @@ builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.I
 builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.Infrastructure.Search.Providers.FilesSearchProvider>();
 builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.Infrastructure.Search.Providers.CallsSearchProvider>();
 builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.Infrastructure.Search.Providers.NotificationsSearchProvider>();
+builder.Services.AddSingleton<IPop.Infrastructure.Dashboard.DashboardSharedCache>();
 builder.Services.AddScoped<IPop.Application.Dashboard.IDashboardService, IPop.Infrastructure.Dashboard.DashboardService>();
 
 // Link previews: server-side OpenGraph fetch behind an SSRF guard, signed image proxy.

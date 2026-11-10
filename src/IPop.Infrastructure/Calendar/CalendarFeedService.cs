@@ -6,9 +6,15 @@ using Microsoft.EntityFrameworkCore;
 namespace IPop.Infrastructure.Calendar;
 
 /// Shared calendar aggregation, including module and news-target visibility.
+/// Who is reading the news part of the feed. A caller that already loaded these (the Dashboard) passes them in,
+/// so one request does not read the same user, roles, department and memberships twice.
+public sealed record CalendarNewsViewer(string Nik, string? DepartmentCode, IReadOnlyCollection<string> Roles,
+    IReadOnlyCollection<string> ProjectIds, bool CanManageNews);
+
 public static class CalendarFeedService
 {
-    public static async Task<List<CalendarFeedItem>> BuildAsync(IPopDbContext db, Guid userId, DateTime from, DateTime to, CalendarFeedAccess access, CancellationToken ct)
+    public static async Task<List<CalendarFeedItem>> BuildAsync(IPopDbContext db, Guid userId, DateTime from, DateTime to, CalendarFeedAccess access, CancellationToken ct,
+        CalendarNewsViewer? viewer = null)
     {
         var items = new List<CalendarFeedItem>();
         // Tanggal all-day disimpan sebagai tengah malam UTC; beri kelonggaran sehari agar zona waktu lokal tidak memotongnya.
@@ -116,10 +122,9 @@ public static class CalendarFeedService
         //    dan — bagi pengelola berita — jadwal terbit yang akan datang.
         if (access.News)
         {
-            var visible = await VisibleNewsAsync(db, userId, ct);
-            var canManage = await db.UserRoles.AsNoTracking().AnyAsync(ur => ur.UserId == userId && ur.Role.Name == "Admin", ct)
-                || await (from ur in db.UserRoles join rp in db.RolePermissions on ur.RoleId equals rp.RoleId
-                          where ur.UserId == userId && rp.Permission.Code == "news.publish" select rp).AnyAsync(ct);
+            viewer ??= await NewsViewerAsync(db, userId, ct);
+            var visible = VisibleNews(db, viewer);
+            var canManage = viewer.CanManageNews;
             var now = DateTime.UtcNow;
             var posts = await visible
                 .Where(p => p.Status == "published")
@@ -176,15 +181,12 @@ public static class CalendarFeedService
 
     /// Same targeting rules as the News reader feed: untargeted = everyone; otherwise all / user NIK /
     /// department code / role name / project membership.
-    private static async Task<IQueryable<NewsPost>> VisibleNewsAsync(IPopDbContext db, Guid userId, CancellationToken ct)
+    private static IQueryable<NewsPost> VisibleNews(IPopDbContext db, CalendarNewsViewer viewer)
     {
-        var viewer = await db.Users.AsNoTracking().FirstAsync(u => u.Id == userId, ct);
-        var roles = await db.UserRoles.AsNoTracking().Where(ur => ur.UserId == userId).Select(ur => ur.Role.Name).ToListAsync(ct);
-        var deptCode = viewer.DepartmentId is null ? null
-            : await db.Departments.AsNoTracking().Where(d => d.Id == viewer.DepartmentId).Select(d => d.Code).FirstOrDefaultAsync(ct);
-        var projects = (await db.ProjectMembers.AsNoTracking().Where(pm => pm.UserId == userId).Select(pm => pm.ProjectId).ToListAsync(ct))
-            .Select(id => id.ToString("D")).ToList();
         var nik = viewer.Nik;
+        var deptCode = viewer.DepartmentCode;
+        var roles = viewer.Roles.ToList();
+        var projects = viewer.ProjectIds.ToList();
         return db.NewsPosts.AsNoTracking().Where(p =>
             !db.NewsTargets.Any(t => t.NewsPostId == p.Id) ||
             db.NewsTargets.Any(t => t.NewsPostId == p.Id && (
@@ -193,6 +195,30 @@ public static class CalendarFeedService
                 (t.Kind == "department" && deptCode != null && t.Value == deptCode) ||
                 (t.Kind == "role" && roles.Contains(t.Value!)) ||
                 (t.Kind == "project" && projects.Contains(t.Value!)))));
+    }
+
+    /// For a caller that already read the user's NIK, department, roles and project memberships.
+    public static async Task<CalendarNewsViewer> NewsViewerAsync(IPopDbContext db, Guid userId, string nik, string? deptCode,
+        IReadOnlyCollection<string> roles, IReadOnlyCollection<string> projectIds, CancellationToken ct)
+    {
+        var canManage = roles.Contains("Admin") || await CanPublishNewsAsync(db, userId, ct);
+        return new CalendarNewsViewer(nik, deptCode, roles, projectIds, canManage);
+    }
+
+    private static Task<bool> CanPublishNewsAsync(IPopDbContext db, Guid userId, CancellationToken ct) =>
+        (from ur in db.UserRoles join rp in db.RolePermissions on ur.RoleId equals rp.RoleId
+         where ur.UserId == userId && rp.Permission.Code == "news.publish" select rp).AnyAsync(ct);
+
+    private static async Task<CalendarNewsViewer> NewsViewerAsync(IPopDbContext db, Guid userId, CancellationToken ct)
+    {
+        var viewer = await db.Users.AsNoTracking().FirstAsync(u => u.Id == userId, ct);
+        var roles = await db.UserRoles.AsNoTracking().Where(ur => ur.UserId == userId).Select(ur => ur.Role.Name).ToListAsync(ct);
+        var deptCode = viewer.DepartmentId is null ? null
+            : await db.Departments.AsNoTracking().Where(d => d.Id == viewer.DepartmentId).Select(d => d.Code).FirstOrDefaultAsync(ct);
+        var projects = (await db.ProjectMembers.AsNoTracking().Where(pm => pm.UserId == userId).Select(pm => pm.ProjectId).ToListAsync(ct))
+            .Select(id => id.ToString("D")).ToList();
+        var canManage = roles.Contains("Admin") || await CanPublishNewsAsync(db, userId, ct);
+        return new CalendarNewsViewer(viewer.Nik, deptCode, roles, projects, canManage);
     }
 
 }

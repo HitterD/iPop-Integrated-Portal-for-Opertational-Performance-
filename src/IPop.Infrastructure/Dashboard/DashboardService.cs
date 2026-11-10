@@ -12,9 +12,19 @@ namespace IPop.Infrastructure.Dashboard;
 
 /// Aggregates the v6 Dashboard in one call. Every list is capped small — the page is a
 /// summary; each card links through to its module for the full view.
-public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liveKit = null, IPermissionEvaluator? permissions = null) : IDashboardService
+public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liveKit = null, IPermissionEvaluator? permissions = null,
+    DashboardSharedCache? shared = null) : IDashboardService
 {
     public async Task<DashboardDto?> GetAsync(Guid userId, CancellationToken ct = default)
+    {
+        // ~30 small reads on one pooled connection: otherwise each read takes a connection from the pool and gives it
+        // back (a DISCARD ALL round trip per read), which under a login burst means ~30 pool waits per Dashboard.
+        await db.Database.OpenConnectionAsync(ct);
+        try { return await BuildAsync(userId, ct); }
+        finally { await db.Database.CloseConnectionAsync(); }
+    }
+
+    private async Task<DashboardDto?> BuildAsync(Guid userId, CancellationToken ct)
     {
         var me = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct);
         if (me is null) return null;
@@ -26,10 +36,13 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
         var dayEndUtc = TimeZoneInfo.ConvertTimeToUtc(localToday.AddDays(1), tz);
 
         // ── Mail ──
-        var mailUnread = await db.MailRecipients.AsNoTracking()
-            .CountAsync(r => r.UserId == userId && r.Folder == "inbox" && !r.IsRead && !r.IsMuted, ct);
-        var mailInbox = await db.MailRecipients.AsNoTracking()
-            .CountAsync(r => r.UserId == userId && r.Folder == "inbox", ct);
+        var mailCounts = await db.MailRecipients.AsNoTracking()
+            .Where(r => r.UserId == userId && r.Folder == "inbox")
+            .GroupBy(r => 1)
+            .Select(g => new { Inbox = g.Count(), Unread = g.Count(r => !r.IsRead && !r.IsMuted) })
+            .FirstOrDefaultAsync(ct);
+        var mailUnread = mailCounts?.Unread ?? 0;
+        var mailInbox = mailCounts?.Inbox ?? 0;
 
         // ── Chat ── (same unread rule as ChatBadgeProvider)
         var myRooms = db.ChatRoomMembers.AsNoTracking().Where(m => m.UserId == userId && m.LeftAt == null).Select(m => m.RoomId);
@@ -96,11 +109,17 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
             .Select(t => new DashboardTaskItem(t.Id, t.ProjectId, t.Title, t.ProjectName, t.DueDate, IsOverdue(t.DueDate)))
             .ToList();
 
+        // ── Who I am ── read once; projects, news targeting and the calendar's news part all use these.
+        var roles = await db.UserRoles.AsNoTracking().Where(ur => ur.UserId == userId).Select(ur => ur.Role.Name).ToListAsync(ct);
+        var isAdmin = roles.Contains("Admin");
+        var deptCode = me.DepartmentId is null ? null
+            : await db.Departments.AsNoTracking().Where(d => d.Id == me.DepartmentId).Select(d => d.Code).FirstOrDefaultAsync(ct);
+        var memberOfIds = await db.ProjectMembers.AsNoTracking().Where(pm => pm.UserId == userId).Select(pm => pm.ProjectId).ToListAsync(ct);
+        var myProjectIds = memberOfIds.Select(g => g.ToString("D")).ToHashSet();
+
         // ── Projects ──
-        var isAdmin = await db.UserRoles.AsNoTracking().AnyAsync(ur => ur.UserId == userId && ur.Role.Name == "Admin", ct);
-        var memberOf = db.ProjectMembers.AsNoTracking().Where(pm => pm.UserId == userId).Select(pm => pm.ProjectId);
         var projects = await db.Projects.AsNoTracking()
-            .Where(p => p.IsActive && p.Status != "completed" && (isAdmin || p.OwnerId == userId || memberOf.Contains(p.Id)))
+            .Where(p => p.IsActive && p.Status != "completed" && (isAdmin || p.OwnerId == userId || memberOfIds.Contains(p.Id)))
             .OrderByDescending(p => p.UpdatedAt)
             .Take(4)
             .Select(p => new DashboardProjectItem(p.Id, p.Name, p.Status,
@@ -119,7 +138,8 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
         var canPostNews = isAdmin
             || await perms.IsAllowedAsync(userId, "news.publish", null, ct)
             || await perms.IsAllowedAsync(userId, "news.approve", null, ct);
-        var feed = await CalendarFeedService.BuildAsync(db, userId, dayStartUtc, dayEndUtc, access, ct);
+        var newsViewer = access.News ? await CalendarFeedService.NewsViewerAsync(db, userId, me.Nik, deptCode, roles, myProjectIds, ct) : null;
+        var feed = await CalendarFeedService.BuildAsync(db, userId, dayStartUtc, dayEndUtc, access, ct, newsViewer);
         // Month feeds pad date-only queries. Match wall-calendar dates for this daily agenda.
         var agenda = feed.Where(i => i.AllDay
                 ? i.StartAt.Date <= localToday && i.EndAt.Date > localToday
@@ -147,10 +167,6 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
                 Targets = n.Targets.Select(t => new { t.Kind, t.Value }).ToList(),
             })
             .ToListAsync(ct);
-        var deptCode = me.DepartmentId is null ? null
-            : await db.Departments.AsNoTracking().Where(d => d.Id == me.DepartmentId).Select(d => d.Code).FirstOrDefaultAsync(ct);
-        var roles = await db.UserRoles.AsNoTracking().Where(ur => ur.UserId == userId).Select(ur => ur.Role.Name).ToListAsync(ct);
-        var myProjectIds = (await memberOf.ToListAsync(ct)).Select(g => g.ToString()).ToHashSet();
         bool Visible(IEnumerable<(string Kind, string? Value)> targets)
         {
             var list = targets.ToList();
@@ -172,18 +188,27 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
         attention.AddRange(ackPending.Select(n => new DashboardAttentionItem("ack",
             $"Acknowledge “{n.Title}”", "Memo requires your acknowledgement", "Read", $"/news?post={n.Id}")));
 
-        var missed = await db.CallHistories.AsNoTracking()
+        // Two days of my missed calls is a short list: one read gives the count and the newest three. Callers are then
+        // read only for those three calls; the old single query ranked every participant of every call in the table
+        // (ROW_NUMBER over all of CallParticipants) and was the Dashboard's most expensive statement under load.
+        var missedRecent = await db.CallHistories.AsNoTracking()
             .Where(h => h.PerformerId == userId && h.Direction == "incoming" && h.Result == "missed" && h.StartedAt >= now.AddDays(-2))
             .OrderByDescending(h => h.StartedAt)
-            .Take(3)
-            .Select(h => new
-            {
-                h.StartedAt,
-                Caller = h.Call.Participants.Where(p => p.UserId != userId).Select(p => new { p.User.Name, p.User.Nik }).FirstOrDefault(),
-            })
+            .Select(h => new { h.CallId, h.StartedAt })
             .ToListAsync(ct);
-        attention.AddRange(missed.Where(m => m.Caller is not null).Select(m => new DashboardAttentionItem("missed-call",
-            $"Missed call from {m.Caller!.Name}", LocalLabel(m.StartedAt, tz, localToday), "Call back", "/calls", m.Caller.Nik)));
+        var missedCount = missedRecent.Count;
+        var missedTop = missedRecent.Take(3).ToList();
+        var missedCallIds = missedTop.Select(m => m.CallId).Distinct().ToList();
+        var callers = missedCallIds.Count == 0 ? [] : await db.CallParticipants.AsNoTracking()
+            .Where(p => missedCallIds.Contains(p.CallId) && p.UserId != userId)
+            .OrderBy(p => p.Id)
+            .Select(p => new { p.CallId, p.User.Name, p.User.Nik })
+            .ToListAsync(ct);
+        attention.AddRange(missedTop
+            .Select(m => new { m.StartedAt, Caller = callers.FirstOrDefault(c => c.CallId == m.CallId) })
+            .Where(m => m.Caller is not null)
+            .Select(m => new DashboardAttentionItem("missed-call",
+                $"Missed call from {m.Caller!.Name}", LocalLabel(m.StartedAt, tz, localToday), "Call back", "/calls", m.Caller.Nik)));
 
         var mentions = await db.ChatMentions.AsNoTracking()
             .Where(x => x.UserId == userId && x.Message.SenderId != userId && !x.Message.IsDeleted && x.CreatedAt >= now.AddDays(-7))
@@ -211,9 +236,6 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
 
         attention.AddRange(sortedTasks.Where(t => IsOverdue(t.DueDate)).Take(3).Select(t => new DashboardAttentionItem("overdue",
             $"“{t.Title}” is overdue", $"{t.ProjectName} · due {t.DueDate:dd MMM}", "Open", $"/projects/{t.ProjectId}?task={t.Id}")));
-
-        var missedCount = await db.CallHistories.AsNoTracking()
-            .CountAsync(h => h.PerformerId == userId && h.Direction == "incoming" && h.Result == "missed" && h.StartedAt >= now.AddDays(-2), ct);
 
         // ── Notes ── pages I visited lately, topped up with ones I own.
         var visited = await db.NoteVisits.AsNoTracking()
@@ -258,15 +280,14 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
                 ? new("Chat & Calls", "ok", "LiveKit SFU")
                 : new("Chat & Calls", "ok", "Peer-to-peer calls"),
         };
-        var outboxFailing = await db.EmailOutbox.AsNoTracking().CountAsync(o => o.SentAt == null && o.LastError != null, ct);
+        var system = await SystemStatusAsync(ct);
+        var outboxFailing = system.OutboxFailing;
         status.Add(outboxFailing > 0
             ? new("Mail", "warn", $"{outboxFailing} email(s) retrying")
             : new("Mail", "ok", "Operational"));
-        var lastRun = await db.HrisSyncRuns.AsNoTracking().OrderByDescending(r => r.StartedAt)
-            .Select(r => new { r.StartedAt, r.Succeeded }).FirstOrDefaultAsync(ct);
-        status.Add(lastRun is null
+        status.Add(system.HrisStartedAt is not { } hrisAt
             ? new("HRIS sync", "unknown", "No runs yet")
-            : new("HRIS sync", lastRun.Succeeded ? "ok" : "warn", "Last run " + LocalLabel(lastRun.StartedAt, tz, localToday)));
+            : new("HRIS sync", system.HrisSucceeded ? "ok" : "warn", "Last run " + LocalLabel(hrisAt, tz, localToday)));
         var nas = await db.SynologyCredentials.AsNoTracking().Where(c => c.UserId == userId)
             .Select(c => new { c.Server, c.IsInvalid }).ToListAsync(ct);
         status.Add(nas.Count == 0
@@ -291,6 +312,18 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
             transfers,
             isAdmin,
             canPostNews);
+    }
+
+    /// The same for everyone: the mail outbox and the last HRIS run. Shared for a few seconds when a cache is given.
+    private async Task<DashboardSystemSnapshot> SystemStatusAsync(CancellationToken ct)
+    {
+        if (shared?.TryGetSystem(DateTime.UtcNow, out var cached) == true) return cached;
+        var outboxFailing = await db.EmailOutbox.AsNoTracking().CountAsync(o => o.SentAt == null && o.LastError != null, ct);
+        var lastRun = await db.HrisSyncRuns.AsNoTracking().OrderByDescending(r => r.StartedAt)
+            .Select(r => new { r.StartedAt, r.Succeeded }).FirstOrDefaultAsync(ct);
+        var snapshot = new DashboardSystemSnapshot(outboxFailing, lastRun?.StartedAt, lastRun?.Succeeded ?? false);
+        shared?.SetSystem(snapshot, DateTime.UtcNow);
+        return snapshot;
     }
 
     public async Task<DashboardOnlineDto> OnlineAsync(Guid userId, CancellationToken ct = default)
