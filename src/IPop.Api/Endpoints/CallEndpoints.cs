@@ -214,7 +214,7 @@ public static class CallEndpoints
         var name = IPop.Infrastructure.Calls.CallService.LiveKitRoomName(room.Id);
         return room with
         {
-            LiveKitUrl = liveKit.ServerUrl,
+            LiveKitUrl = liveKit.PublicUrl,
             LiveKitToken = liveKit.GenerateToken(name, me.Nik, me.Name, TimeSpan.FromHours(6)),
             LiveKitRoom = name,
         };

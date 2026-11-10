@@ -98,7 +98,7 @@ public static class RemoteEndpoints
             // Only the PC being helped publishes video; the helper sends input/clipboard/files/chat as data.
             var token = lk.GenerateToken(s.Room, (isHost ? "host:" : "helper:") + me.Value.Id, me.Value.Name, TokenLifetime,
                 sources: isHost ? ["screen_share"] : []);
-            return Results.Ok(new { url = lk.ServerUrl, token, room = s.Room, role = isHost ? "host" : "helper", mode = s.Mode,
+            return Results.Ok(new { url = lk.PublicUrl, token, room = s.Room, role = isHost ? "host" : "helper", mode = s.Mode,
                 helper = await db.Users.AsNoTracking().Where(u => u.Id == s.HelperId).Select(u => u.Name).FirstAsync(ct) });
         });
 

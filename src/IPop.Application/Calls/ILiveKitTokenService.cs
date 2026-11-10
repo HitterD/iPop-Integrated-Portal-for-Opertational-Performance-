@@ -6,7 +6,9 @@ public interface ILiveKitTokenService
     /// "screen_share_audio"); null = anything. canUpdateOwnMetadata lets the client set its own attributes.
     string GenerateToken(string roomName, string identity, string name, TimeSpan? ttl = null,
         IReadOnlyList<string>? sources = null, bool canUpdateOwnMetadata = false);
-    /// Browser-facing LiveKit WebSocket URL.
+    /// Browser-facing LiveKit WebSocket URL. Never the in-cluster service name: a browser cannot resolve it.
+    string? PublicUrl { get; }
+    /// Kept for callers that need "the LiveKit URL in use"; may be the in-cluster address.
     string? ServerUrl { get; }
     /// Server-to-server URL override, falling back to the browser URL.
     string? ServerApiUrl { get; }

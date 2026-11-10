@@ -192,7 +192,7 @@ public sealed class MeetingRoomService(IPopDbContext db, ILiveKitRoomAdmin liveK
         var retention = await settings.GetAsync(SettingKeys.MeetingRoomsRetentionDays, 90, ct);
         // Fresh booking info (endAt / nextStartAt) for the room before the client connects; the worker keeps it current.
         await PublishMetadataSafeAsync(key, ct);
-        return new(new MeetingRoomJoinDto(room.Key, room.Name, lkRoom, tokens.ServerUrl!, token, video, me, retention), null, []);
+        return new(new MeetingRoomJoinDto(room.Key, room.Name, lkRoom, tokens.PublicUrl!, token, video, me, retention), null, []);
     }
 
     /// Null = may enter. The password is only looked at for outsiders; the right one admits a guest for this booking.

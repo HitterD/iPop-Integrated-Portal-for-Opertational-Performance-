@@ -319,7 +319,7 @@ public static class MeetingEndpoints
         string? url = null, token = null;
         if (liveKit is { IsConfigured: true })
         {
-            url = liveKit.ServerUrl;
+            url = liveKit.PublicUrl;
             token = liveKit.GenerateToken(room, me.Nik, me.Name, TimeSpan.FromHours(4));
         }
         return (new MeetingJoinDto(m.Id, m.Title, room, m.Link, url, token), null);
