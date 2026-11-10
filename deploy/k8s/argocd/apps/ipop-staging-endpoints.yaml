@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ipop-staging-endpoints
+  namespace: argocd
+  annotations:
+    # After the staging namespace exists.
+    argocd.argoproj.io/sync-wave: "6"
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:HitterD/iPop-Integrated-Portal-for-Opertational-Performance-.git
+    targetRevision: staging
+    path: deploy/k8s/apps/ipop-staging-endpoints
+  destination: { server: https://kubernetes.default.svc, namespace: ipop-staging }
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ServerSideApply=true]

@@ -1,8 +1,8 @@
 # Same routing as prod, on the staging host. LiveKit and ONLYOFFICE are prod's (namespace ipop).
 # ExternalName is NOT usable here: the Traefik CRD provider rejects it ("externalName services not allowed"),
-# which silently dropped the whole IngressRoute - /rtc fell through to the Web catch-all and calls, screen share
-# and server recording could not work on staging. A plain Service plus an explicit Endpoints object keeps the
-# routes namespace-local without ExternalName.
+# which silently dropped the whole IngressRoute - /rtc fell through to the Web catch-all, so calls, screen share
+# and server recording could not work on staging. The Services are plain ClusterIP and their endpoints are
+# EndpointSlice objects owned by the small ipop-staging-endpoints app (EndpointSlice is excluded from this one).
 apiVersion: v1
 kind: Service
 metadata: { name: livekit }
@@ -12,21 +12,6 @@ apiVersion: v1
 kind: Service
 metadata: { name: onlyoffice }
 spec: { ports: [{ port: 80, name: http }] }
----
-# Argo CD excludes discovery.k8s.io/EndpointSlice, so the endpoint is a core Endpoints object instead.
-apiVersion: v1
-kind: Endpoints
-metadata: { name: livekit }
-subsets:
-  - addresses: [{ ip: 10.43.18.46 }]
-    ports: [{ port: 7880, name: http }]
----
-apiVersion: v1
-kind: Endpoints
-metadata: { name: onlyoffice }
-subsets:
-  - addresses: [{ ip: 10.43.223.227 }]
-    ports: [{ port: 80, name: http }]
 ---
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
