@@ -347,6 +347,39 @@ public class DashboardAndSearchTests
     }
 
     [Fact]
+    public async Task Dashboard_missed_call_rows_are_bounded_in_sql_not_materialized_whole()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("MB_ME"); me.TimeZoneId = "UTC";
+        var caller = t.AddUser("MB_CALLER"); caller.Name = "Budi";
+        var now = DateTime.UtcNow;
+        var call = new CallRoom { Id = Guid.NewGuid(), CreatorId = caller.Id, Kind = "voice", Status = "ended",
+            StartedAt = now, CreatedAt = now, UpdatedAt = now };
+        t.Db.CallRooms.Add(call);
+        t.Db.CallParticipants.Add(new CallParticipant { Id = Guid.NewGuid(), CallId = call.Id, UserId = caller.Id, Status = "left", JoinedAt = now });
+        for (var i = 0; i < 120; i++)
+            t.Db.CallHistories.Add(new CallHistory { Id = Guid.NewGuid(), CallId = call.Id, PerformerId = me.Id,
+                Direction = "incoming", Result = "missed", StartedAt = now.AddMinutes(-i), EndedAt = now.AddMinutes(-i) });
+        await t.Db.SaveChangesAsync();
+
+        var counter = new CommandCounter();
+        var options = new DbContextOptionsBuilder<IPop.Infrastructure.Persistence.IPopDbContext>()
+            .UseSqlite(t.Db.Database.GetDbConnection()).AddInterceptors(counter).Options;
+        DashboardDto dto;
+        await using (var db = new IPop.Infrastructure.Persistence.IPopDbContext(options))
+            dto = (await new IPop.Infrastructure.Dashboard.DashboardService(db, permissions: new FeedPermissions()).GetAsync(me.Id))!;
+
+        // The count is still exact and the card still shows the three newest, but the rows must be limited by SQL,
+        // not read into memory and then trimmed: a busy account can accumulate hundreds of missed calls in two days.
+        Assert.Equal(120, dto.Kpis.MissedCalls);
+        Assert.Single(dto.Attention, a => a.Kind == "missed-call");
+        var missedReads = counter.Texts.Where(q => q.Contains("FROM \"CallHistories\"")).ToList();
+        Assert.NotEmpty(missedReads);
+        Assert.All(missedReads, q => Assert.True(q.Contains("COUNT") || q.Contains("LIMIT"),
+            "Unbounded CallHistories read:\n" + q));
+    }
+
+    [Fact]
     public async Task Dashboard_reads_each_shared_fact_once_and_reuses_system_status()
     {
         using var t = new TestDb();
