@@ -1,0 +1,42 @@
+name: Windows deployment package
+on:
+  workflow_dispatch:
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    env:
+      DOTNET_NOLOGO: '1'
+      DevExpress_License: ${{ secrets.DEVEXPRESS_LICENSE }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 1593418dc715c2aa4b81e04b0256aa0cd663e40d
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - name: Package feed
+        env:
+          DX_FEED: ${{ secrets.DEVEXPRESS_NUGET_FEED }}
+        run: dotnet nuget add source "$DX_FEED" -n devexpress
+      - name: Publish API for Windows
+        run: dotnet publish src/IPop.Api/IPop.Api.csproj -c Release -r win-x64 --self-contained false -o package/api
+      - name: Publish Web for Windows
+        run: dotnet publish src/IPop.WebHost/IPop.WebHost.csproj -c Release -r win-x64 --self-contained false -o package/web
+      - name: Exclude environment configuration
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for p in Path('package').rglob('appsettings*.json'):
+              p.unlink()
+          Path('package/SOURCE.txt').write_text('1593418dc715c2aa4b81e04b0256aa0cd663e40d\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-1593418
+          path: package/
+          retention-days: 3
