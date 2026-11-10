@@ -188,16 +188,16 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
         attention.AddRange(ackPending.Select(n => new DashboardAttentionItem("ack",
             $"Acknowledge “{n.Title}”", "Memo requires your acknowledgement", "Read", $"/news?post={n.Id}")));
 
-        // Two days of my missed calls is a short list: one read gives the count and the newest three. Callers are then
-        // read only for those three calls; the old single query ranked every participant of every call in the table
-        // (ROW_NUMBER over all of CallParticipants) and was the Dashboard's most expensive statement under load.
-        var missedRecent = await db.CallHistories.AsNoTracking()
-            .Where(h => h.PerformerId == userId && h.Direction == "incoming" && h.Result == "missed" && h.StartedAt >= now.AddDays(-2))
+        // Two days of my missed calls: the total is counted in SQL and only the newest three rows are read. Loading
+        // every row and counting in memory sized the read by how busy the account was, not by what the card shows.
+        var missedFilter = db.CallHistories.AsNoTracking()
+            .Where(h => h.PerformerId == userId && h.Direction == "incoming" && h.Result == "missed" && h.StartedAt >= now.AddDays(-2));
+        var missedCount = await missedFilter.CountAsync(ct);
+        var missedTop = await missedFilter
             .OrderByDescending(h => h.StartedAt)
+            .Take(3)
             .Select(h => new { h.CallId, h.StartedAt })
             .ToListAsync(ct);
-        var missedCount = missedRecent.Count;
-        var missedTop = missedRecent.Take(3).ToList();
         var missedCallIds = missedTop.Select(m => m.CallId).Distinct().ToList();
         var callers = missedCallIds.Count == 0 ? [] : await db.CallParticipants.AsNoTracking()
             .Where(p => missedCallIds.Contains(p.CallId) && p.UserId != userId)
