@@ -22,7 +22,8 @@ patches:
         value: 4Gi
       - op: replace
         path: /spec/resources
-        value: { requests: { cpu: 100m, memory: 512Mi }, limits: { memory: 1Gi } }
+        # Busy-fixture tests approached 1 GiB; keep test headroom without changing query/pool settings.
+        value: { requests: { cpu: 100m, memory: 1Gi }, limits: { memory: 2Gi } }
       - op: replace
         path: /spec/postgresql/parameters/shared_buffers
         value: 256MB
@@ -98,10 +99,10 @@ patches:
 images:
   - name: ipop-api
     newName: ghcr.io/hitterd/ipop-api
-    newTag: "staging-42974ac829dc"
+    newTag: "staging-e05a22fe9179"
   - name: ipop-web
     newName: ghcr.io/hitterd/ipop-web
-    newTag: "staging-42974ac829dc"
+    newTag: "staging-e05a22fe9179"
 
 
 
