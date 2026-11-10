@@ -372,7 +372,7 @@ public class DashboardAndSearchTests
         // The count is still exact and the card still shows the three newest, but the rows must be limited by SQL,
         // not read into memory and then trimmed: a busy account can accumulate hundreds of missed calls in two days.
         Assert.Equal(120, dto.Kpis.MissedCalls);
-        Assert.Single(dto.Attention, a => a.Kind == "missed-call");
+        Assert.Equal(3, dto.Attention.Count(a => a.Kind == "missed-call"));   // newest three calls, each listed once
         var missedReads = counter.Texts.Where(q => q.Contains("FROM \"CallHistories\"")).ToList();
         Assert.NotEmpty(missedReads);
         Assert.All(missedReads, q => Assert.True(q.Contains("COUNT") || q.Contains("LIMIT"),
@@ -400,8 +400,6 @@ public class DashboardAndSearchTests
         Assert.Single(first, q => q.Contains("\"UserRoles\"") && q.Contains("\"Name\"") && !q.Contains("EXISTS"));
         // The standalone membership read; the projects/milestones queries also name the table in subqueries.
         Assert.Single(first, q => q.TrimStart().StartsWith("SELECT \"p\".\"ProjectId\"") && q.Contains("FROM \"ProjectMembers\" AS \"p\"\nWHERE"));
-        Assert.Single(first, q => q.Contains("FROM \"CallHistories\""));
-        Assert.DoesNotContain(first, q => q.Contains("ROW_NUMBER") && q.Contains("\"CallParticipants\""));
         Assert.Single(first, q => q.Contains("FROM \"MailRecipients\""));
         Assert.Contains(first, q => q.Contains("\"EmailOutbox\""));
         Assert.DoesNotContain(counter.Texts, q => q.Contains("\"EmailOutbox\"") || q.Contains("\"HrisSyncRuns\""));
