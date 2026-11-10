@@ -18,6 +18,8 @@ data:
   # DB pool: PostgreSQL allows 200; the default pool (100, 5 s wait) ran dry under the 2026-11-09 load test.
   Database__MaxPoolSize: "150"
   Database__PoolTimeoutSeconds: "15"
+  # Prepared statements per pooled connection; avoids re-planning hot EF queries (Dashboard runs ~25 per load).
+  Database__MaxAutoPrepare: "100"
   # Same Data Protection application name as the old Windows host (its content root path), so keys
   # already in the database still decrypt the OIDC signing keys and media tickets. Do not change.
   DataProtection__ApplicationName: 'C:\Users\IT12\orca\workspaces\ipop-rescue\src\IPop.Api\'

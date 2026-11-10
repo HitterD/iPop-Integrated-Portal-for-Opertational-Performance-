@@ -58,6 +58,9 @@ builder.Services.AddSingleton<IPop.Infrastructure.Rbac.RbacChangeInterceptor>();
 var ipopDb = new Npgsql.NpgsqlConnectionStringBuilder(builder.Configuration.GetConnectionString("IPopDb"));
 if (builder.Configuration.GetValue<int?>("Database:MaxPoolSize") is { } maxPool) ipopDb.MaxPoolSize = maxPool;
 if (builder.Configuration.GetValue<int?>("Database:PoolTimeoutSeconds") is { } poolWait) ipopDb.Timeout = poolWait;
+// Automatic statement preparation: PostgreSQL otherwise re-plans every EF query on every call. Under the k3s
+// Dashboard staircase (300 users) planning dominated database CPU (e.g. 1.8 ms plan vs 0.1 ms execute per query).
+if (builder.Configuration.GetValue<int?>("Database:MaxAutoPrepare") is { } autoPrepare) ipopDb.MaxAutoPrepare = autoPrepare;
 builder.Services.AddDbContext<IPopDbContext>((sp, o) =>
     o.UseNpgsql(ipopDb.ConnectionString)
      .AddInterceptors(sp.GetRequiredService<IPop.Infrastructure.Rbac.RbacChangeInterceptor>())
