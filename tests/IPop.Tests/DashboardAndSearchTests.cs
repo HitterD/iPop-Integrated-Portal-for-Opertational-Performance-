@@ -365,7 +365,7 @@ public class DashboardAndSearchTests
         var counter = new CommandCounter();
         var options = new DbContextOptionsBuilder<IPop.Infrastructure.Persistence.IPopDbContext>()
             .UseSqlite(t.Db.Database.GetDbConnection()).AddInterceptors(counter).Options;
-        DashboardDto dto;
+        IPop.Application.Dashboard.DashboardDto dto;
         await using (var db = new IPop.Infrastructure.Persistence.IPopDbContext(options))
             dto = (await new IPop.Infrastructure.Dashboard.DashboardService(db, permissions: new FeedPermissions()).GetAsync(me.Id))!;
 
