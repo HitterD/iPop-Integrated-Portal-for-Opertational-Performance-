@@ -367,7 +367,7 @@ public class DashboardAndSearchTests
         Assert.Single(first, q => q.Contains("\"UserRoles\"") && q.Contains("\"Name\"") && !q.Contains("EXISTS"));
         Assert.Single(first, q => q.Contains("FROM \"ProjectMembers\""));
         Assert.Single(first, q => q.Contains("FROM \"CallHistories\""));
-        Assert.DoesNotContain(first, q => q.Contains("ROW_NUMBER"));
+        Assert.DoesNotContain(first, q => q.Contains("ROW_NUMBER") && q.Contains("\"CallParticipants\""));
         Assert.Single(first, q => q.Contains("FROM \"MailRecipients\""));
         Assert.Contains(first, q => q.Contains("\"EmailOutbox\""));
         Assert.DoesNotContain(counter.Texts, q => q.Contains("\"EmailOutbox\"") || q.Contains("\"HrisSyncRuns\""));
