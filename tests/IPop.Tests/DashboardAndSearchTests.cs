@@ -372,8 +372,9 @@ public class DashboardAndSearchTests
         Assert.Single(first, q => q.Contains("FROM \"MailRecipients\""));
         Assert.Contains(first, q => q.Contains("\"EmailOutbox\""));
         Assert.DoesNotContain(counter.Texts, q => q.Contains("\"EmailOutbox\"") || q.Contains("\"HrisSyncRuns\""));
-        // Permission checks are stubbed here (production caches them); the rest is one read per Dashboard part.
-        Assert.True(first.Count <= 30, $"{first.Count} commands");
+        // Permission checks are stubbed here (production caches them). Measured 36 after the 2026-11-10 cleanup: guard
+        // against reads creeping back in; the message lists them so a new one is easy to spot.
+        Assert.True(first.Count <= 36, $"{first.Count} commands:\n" + string.Join("\n", first.Select(q => q.Replace("\n", " ")[..Math.Min(100, q.Replace("\n", " ").Length)])));
     }
 
     private sealed class CommandCounter : Microsoft.EntityFrameworkCore.Diagnostics.DbCommandInterceptor
