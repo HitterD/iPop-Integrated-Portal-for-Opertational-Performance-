@@ -48,4 +48,20 @@ public class MailAttachmentGcTests : IDisposable
         Assert.False(File.Exists(Path.Combine(_root, old.SynologyPath)));
         Assert.True(File.Exists(Path.Combine(_root, orphanShared.SynologyPath)));   // still shown by the sent mail
     }
+
+    [Fact]
+    public async Task Two_replicas_collecting_the_same_orphan_do_not_fail_on_the_second_delete()
+    {
+        using var t = new TestDb();
+        var now = DateTime.UtcNow;
+        var old = Local(t, null, "dupe.pdf", now.AddDays(-8));
+        await t.Db.SaveChangesAsync();
+        var full = Path.Combine(_root, old.SynologyPath);
+
+        // Replica A deletes it. Replica B re-reads the same now-orphaned row and deletes again.
+        File.Delete(full);
+        var removed = await MailAttachmentGcWorker.RunOnceAsync(t.Verify(), null, _root, now, NullLogger.Instance, default);
+
+        Assert.Equal(1, removed);   // the row is still cleaned up; a vanished file is already gone, not an error
+    }
 }
