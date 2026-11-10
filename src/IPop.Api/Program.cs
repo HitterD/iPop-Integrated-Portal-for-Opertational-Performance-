@@ -58,6 +58,9 @@ builder.Services.AddSingleton<IPop.Infrastructure.Rbac.RbacChangeInterceptor>();
 var ipopDb = new Npgsql.NpgsqlConnectionStringBuilder(builder.Configuration.GetConnectionString("IPopDb"));
 if (builder.Configuration.GetValue<int?>("Database:MaxPoolSize") is { } maxPool) ipopDb.MaxPoolSize = maxPool;
 if (builder.Configuration.GetValue<int?>("Database:PoolTimeoutSeconds") is { } poolWait) ipopDb.Timeout = poolWait;
+// Optional automatic statement preparation. Leave disabled unless a bounded load comparison confirms benefit
+// and database memory headroom; a single EXPLAIN planning time does not establish aggregate CPU attribution.
+if (builder.Configuration.GetValue<int?>("Database:MaxAutoPrepare") is { } autoPrepare) ipopDb.MaxAutoPrepare = autoPrepare;
 builder.Services.AddDbContext<IPopDbContext>((sp, o) =>
     o.UseNpgsql(ipopDb.ConnectionString)
      .AddInterceptors(sp.GetRequiredService<IPop.Infrastructure.Rbac.RbacChangeInterceptor>())
@@ -419,6 +422,7 @@ builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.I
 builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.Infrastructure.Search.Providers.FilesSearchProvider>();
 builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.Infrastructure.Search.Providers.CallsSearchProvider>();
 builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.Infrastructure.Search.Providers.NotificationsSearchProvider>();
+builder.Services.AddSingleton<IPop.Infrastructure.Dashboard.DashboardSharedCache>();
 builder.Services.AddScoped<IPop.Application.Dashboard.IDashboardService, IPop.Infrastructure.Dashboard.DashboardService>();
 
 // Link previews: server-side OpenGraph fetch behind an SSRF guard, signed image proxy.

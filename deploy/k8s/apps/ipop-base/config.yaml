@@ -18,6 +18,9 @@ data:
   # DB pool: PostgreSQL allows 200; the default pool (100, 5 s wait) ran dry under the 2026-11-09 load test.
   Database__MaxPoolSize: "150"
   Database__PoolTimeoutSeconds: "15"
+  # Disabled: the 100-statement staging experiment OOM-killed its 1 GiB PostgreSQL pod.
+  # Any nonzero value requires a measured database memory budget and a complete successful comparison.
+  Database__MaxAutoPrepare: "0"
   # Same Data Protection application name as the old Windows host (its content root path), so keys
   # already in the database still decrypt the OIDC signing keys and media tickets. Do not change.
   DataProtection__ApplicationName: 'C:\Users\IT12\orca\workspaces\ipop-rescue\src\IPop.Api\'
