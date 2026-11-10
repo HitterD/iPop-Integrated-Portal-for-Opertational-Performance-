@@ -5,12 +5,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace IPop.Infrastructure.Calendar;
 
-/// Shared calendar aggregation, including module and news-target visibility.
 /// Who is reading the news part of the feed. A caller that already loaded these (the Dashboard) passes them in,
 /// so one request does not read the same user, roles, department and memberships twice.
 public sealed record CalendarNewsViewer(string Nik, string? DepartmentCode, IReadOnlyCollection<string> Roles,
     IReadOnlyCollection<string> ProjectIds, bool CanManageNews);
 
+/// Shared calendar aggregation, including module and news-target visibility.
 public static class CalendarFeedService
 {
     public static async Task<List<CalendarFeedItem>> BuildAsync(IPopDbContext db, Guid userId, DateTime from, DateTime to, CalendarFeedAccess access, CancellationToken ct,
