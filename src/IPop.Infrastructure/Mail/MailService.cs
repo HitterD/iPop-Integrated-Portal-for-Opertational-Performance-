@@ -420,7 +420,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         // (11 s at ten years of mail); the page itself walks my newest rows and stops once it is full.
         var totalCount = string.IsNullOrWhiteSpace(search?.Query)
             ? await query.CountAsync(ct)
-            : await query.OrderByDescending(r => r.CreatedAt).Take(SearchCountCap + 1).CountAsync(ct);
+            : await query.OrderByDescending(r => r.IsPinned).ThenByDescending(r => r.CreatedAt).Take(SearchCountCap + 1).CountAsync(ct);   // index order, so it stops at the cap
 
         var items = await query
             .Include(r => r.Mail).ThenInclude(m => m.Sender)
