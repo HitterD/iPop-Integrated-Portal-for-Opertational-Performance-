@@ -13,19 +13,20 @@ public sealed class ChatBadgeProvider(IPopDbContext db) : IBadgeProvider
 {
     public string Key => "chat";
 
-    public Task<int> CountAsync(Guid userId, CancellationToken ct)
+    public async Task<int> CountAsync(Guid userId, CancellationToken ct)
     {
+        // Rooms that count (member, active, not archived, not muted), then the same capped per-room
+        // count as the room list: summing a whole-history COUNT took 14 s on ten years of chat.
         var now = DateTime.UtcNow;
-        return (from m in db.ChatMessages.AsNoTracking()
-         join mem in db.ChatRoomMembers.Where(x => x.UserId == userId && x.LeftAt == null) on m.RoomId equals mem.RoomId
-         join r in db.ChatRooms.Where(x => x.IsActive) on m.RoomId equals r.Id
-         join s in db.ChatRoomUserSettings.Where(x => x.UserId == userId) on m.RoomId equals s.RoomId into sj
-         from s in sj.DefaultIfEmpty()
-         where m.ThreadParentId == null && m.SenderId != userId && m.Type != "system"
-               && (s == null || !s.IsArchived)
-               && (s == null || !s.IsMuted || (s.MuteExpiresAt != null && s.MuteExpiresAt <= now))
-               && (s == null || s.LastReadMessageAt == null || m.CreatedAt > s.LastReadMessageAt)
-         select m.Id).CountAsync(ct);
+        var roomIds = await (
+            from mem in db.ChatRoomMembers.AsNoTracking().Where(x => x.UserId == userId && x.LeftAt == null)
+            join r in db.ChatRooms.Where(x => x.IsActive) on mem.RoomId equals r.Id
+            join s in db.ChatRoomUserSettings.Where(x => x.UserId == userId) on mem.RoomId equals s.RoomId into sj
+            from s in sj.DefaultIfEmpty()
+            where (s == null || !s.IsArchived)
+                  && (s == null || !s.IsMuted || (s.MuteExpiresAt != null && s.MuteExpiresAt <= now))
+            select mem.RoomId).Distinct().ToListAsync(ct);
+        return (await ChatService.RoomStatsAsync(db, roomIds, userId, ct)).Sum(x => x.Unread);
     }
 }
 

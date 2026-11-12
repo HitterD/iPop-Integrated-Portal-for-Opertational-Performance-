@@ -56,18 +56,9 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
         rooms = rooms.Where(r => !(settingsByRoom.TryGetValue(r.Id, out var s) && s.IsArchived)).ToList();
 
         var roomIds = rooms.Select(r => r.Id).ToList();
-        // Counted in SQL, per room, after each room's own read mark: this used to load every message from others in
-        // all of the user's rooms (the whole chat history) on every Dashboard load and count them in memory.
-        var unreadByRoom = (await (
-                from m in db.ChatMessages.AsNoTracking()
-                where roomIds.Contains(m.RoomId) && m.ThreadParentId == null && m.SenderId != userId && m.Type != "system"
-                join st in db.ChatRoomUserSettings.AsNoTracking().Where(x => x.UserId == userId) on m.RoomId equals st.RoomId into sts
-                from st in sts.DefaultIfEmpty()
-                where st == null || st.LastReadMessageAt == null || m.CreatedAt > st.LastReadMessageAt
-                group m by m.RoomId into g
-                select new { RoomId = g.Key, N = g.Count() })
-            .ToListAsync(ct))
-            .ToDictionary(x => x.RoomId, x => x.N);
+        // Same capped per-room count as the room list and the badge (index walk, stops at 100 per room).
+        var unreadByRoom = (await IPop.Infrastructure.Chat.ChatService.RoomStatsAsync(db, roomIds, userId, ct))
+            .ToDictionary(x => x.RoomId, x => x.Unread);
         int UnreadIn(Guid roomId)
         {
             settingsByRoom.TryGetValue(roomId, out var s);
@@ -78,11 +69,16 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
 
         var topRooms = rooms.Take(4).ToList();
         var topIds = topRooms.Select(r => r.Id).ToList();
-        var lastMsgs = await db.ChatMessages.AsNoTracking()
-            .Where(m => topIds.Contains(m.RoomId) && m.ThreadParentId == null && m.Type != "system")
-            .GroupBy(m => m.RoomId)
-            .Select(g => g.OrderByDescending(m => m.CreatedAt).Select(m => new { m.RoomId, m.Content, m.IsDeleted, m.CreatedAt }).First())
+        // One index probe per card (LIMIT 1), not a sort of each room's whole history.
+        var lastMsgs = await db.ChatRooms.AsNoTracking()
+            .Where(r => topIds.Contains(r.Id))
+            .Select(r => db.ChatMessages
+                .Where(m => m.RoomId == r.Id && m.ThreadParentId == null && m.Type != "system")
+                .OrderByDescending(m => m.CreatedAt)
+                .Select(m => new { m.RoomId, m.Content, m.IsDeleted, m.CreatedAt })
+                .FirstOrDefault())
             .ToListAsync(ct);
+        lastMsgs = lastMsgs.Where(m => m != null).ToList();
         var dmPeers = await db.ChatRoomMembers.AsNoTracking()
             .Where(m => topIds.Contains(m.RoomId) && m.UserId != userId)
             .Select(m => new { m.RoomId, m.User.Name, m.User.Nik })

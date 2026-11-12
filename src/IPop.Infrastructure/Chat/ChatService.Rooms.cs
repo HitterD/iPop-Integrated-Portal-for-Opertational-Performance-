@@ -223,12 +223,13 @@ public sealed partial class ChatService
 
         var roomIds = rooms.Select(x => x.Room.Id).ToList();
 
-        // Batch: latest message per room
-        var lastMessages = await db.ChatMessages.AsNoTracking()
-            .Where(m => roomIds.Contains(m.RoomId) && m.ThreadParentId == null)
-            .GroupBy(m => m.RoomId)
-            .Select(g => g.OrderByDescending(m => m.CreatedAt).First())
-            .ToListAsync(ct);
+        // Latest message and capped unread per room, both walked backwards on (RoomId, CreatedAt).
+        // GroupBy().First() and an uncapped COUNT read the room's whole history: with ten years of chat
+        // (26M rows) the list took 8 s and sorted 600k rows on disk; this reads ~100 index entries per room.
+        var stats = await RoomStatsAsync(roomIds, userId, ct);
+        var lastIds = stats.Where(s => s.LastId != null).Select(s => s.LastId!.Value).ToList();
+        var lastMessages = lastIds.Count == 0 ? []
+            : await db.ChatMessages.AsNoTracking().Where(m => lastIds.Contains(m.Id)).ToListAsync(ct);
 
         var lastByRoom = lastMessages.ToDictionary(m => m.RoomId);
         var lastSenderIds = lastMessages.Select(m => m.SenderId).Distinct().ToList();
@@ -252,32 +253,8 @@ public sealed partial class ChatService
                 attPreviewByMsg[g.Key] = (g.First().MimeType, g.Count());
         }
 
-        // Batch: unread count per room
-        var withReadIds = rooms.Where(x => x.Settings?.LastReadMessageAt != null).Select(x => x.Room.Id).ToList();
-        var withoutReadIds = rooms.Where(x => x.Settings?.LastReadMessageAt == null).Select(x => x.Room.Id).ToList();
-
-        var unreadByRoom = new Dictionary<Guid, int>();
-        if (withoutReadIds.Count > 0)
-        {
-            var counts = await db.ChatMessages.AsNoTracking()
-                .Where(m => withoutReadIds.Contains(m.RoomId) && m.ThreadParentId == null && m.SenderId != userId && m.Type != "system")
-                .GroupBy(m => m.RoomId)
-                .Select(g => new { RoomId = g.Key, Count = g.Count() })
-                .ToDictionaryAsync(x => x.RoomId, x => x.Count, ct);
-            foreach (var id in withoutReadIds) unreadByRoom[id] = counts.TryGetValue(id, out var c) ? c : 0;
-        }
-        if (withReadIds.Count > 0)
-        {
-            var counts = await (
-                from m in db.ChatMessages.AsNoTracking()
-                join s in db.ChatRoomUserSettings.Where(x => x.UserId == userId) on m.RoomId equals s.RoomId
-                where withReadIds.Contains(m.RoomId) && m.ThreadParentId == null && m.SenderId != userId && m.Type != "system"
-                      && s.LastReadMessageAt != null && m.CreatedAt > s.LastReadMessageAt
-                group m by m.RoomId into g
-                select new { RoomId = g.Key, Count = g.Count() }
-            ).ToDictionaryAsync(x => x.RoomId, x => x.Count, ct);
-            foreach (var id in withReadIds) unreadByRoom[id] = counts.TryGetValue(id, out var c) ? c : 0;
-        }
+        var unreadByRoom = roomIds.ToDictionary(id => id, id => 0);
+        foreach (var s in stats) unreadByRoom[s.RoomId] = s.Unread;
 
         // Batch: other member for DM rooms.
         // Projected rather than Include(m => m.User): the room list only needs the partner's

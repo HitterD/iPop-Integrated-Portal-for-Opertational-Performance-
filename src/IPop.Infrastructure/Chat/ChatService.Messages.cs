@@ -221,12 +221,21 @@ public sealed partial class ChatService
         var boundarySkip = before is { } at
             ? Math.Min(Math.Max(0, beforeSkip), await query.CountAsync(m => m.CreatedAt == at, ct))
             : 0;
-        var totalCount = await query.CountAsync(ct) - boundarySkip;
+        var skip = (page - 1) * pageSize + boundarySkip;
 
-        var messages = await query
+        // One row past the page answers "is there older history?". Counting the room's whole history for
+        // that (TotalCount) took seconds on a room with years of messages.
+        var probe = await query
             .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
-            .Skip((page - 1) * pageSize + boundarySkip)
-            .Take(pageSize)
+            .Skip(skip).Take(pageSize + 1)
+            .Select(m => m.Id)
+            .ToListAsync(ct);
+        var pageIds = probe.Take(pageSize).ToList();
+        var totalCount = PageTotal(page, pageSize, probe.Count);
+
+        var messages = await db.ChatMessages.AsNoTracking()
+            .Where(m => pageIds.Contains(m.Id))
+            .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
             .Include(m => m.Sender)
             .Include(m => m.Attachments)
             .Include(m => m.Reactions)
@@ -611,12 +620,19 @@ public sealed partial class ChatService
             .Where(m => m.RoomId == roomId && m.ThreadParentId == null && !m.IsDeleted
                 && EF.Functions.ILike(m.Content, pattern));
 
-        var totalCount = await messagesQuery.CountAsync(ct);
-
-        var messages = await messagesQuery
-            .OrderByDescending(m => m.CreatedAt)
+        // pageSize + 1 ids instead of COUNT(*): a common word matched 90k rows and the count alone took 3 s.
+        var probe = await messagesQuery
+            .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
             .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+            .Take(pageSize + 1)
+            .Select(m => m.Id)
+            .ToListAsync(ct);
+        var pageIds = probe.Take(pageSize).ToList();
+        var totalCount = PageTotal(page, pageSize, probe.Count);
+
+        var messages = await db.ChatMessages.AsNoTracking()
+            .Where(m => pageIds.Contains(m.Id))
+            .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
             .Include(m => m.Sender)
             .Include(m => m.Attachments)
             .Include(m => m.Reactions)
@@ -646,12 +662,19 @@ public sealed partial class ChatService
                 && EF.Functions.ILike(m.Content, pattern)
                 && db.ChatRoomMembers.Any(mm => mm.RoomId == m.RoomId && mm.UserId == userId && mm.LeftAt == null));
 
-        var totalCount = await messagesQuery.CountAsync(ct);
-
-        var messages = await messagesQuery
-            .OrderByDescending(m => m.CreatedAt)
+        // pageSize + 1 ids instead of COUNT(*): a common word matched 90k rows and the count alone took 3 s.
+        var probe = await messagesQuery
+            .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
             .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+            .Take(pageSize + 1)
+            .Select(m => m.Id)
+            .ToListAsync(ct);
+        var pageIds = probe.Take(pageSize).ToList();
+        var totalCount = PageTotal(page, pageSize, probe.Count);
+
+        var messages = await db.ChatMessages.AsNoTracking()
+            .Where(m => pageIds.Contains(m.Id))
+            .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
             .Include(m => m.Sender)
             .Include(m => m.Attachments)
             .Include(m => m.Reactions)
