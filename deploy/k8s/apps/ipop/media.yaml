@@ -140,6 +140,17 @@ data:
     cpu_cost:
       room_composite_cpu_cost: 2.0
 ---
+# Below-default priority for Egress: when a media node dies, the scheduler may evict Egress so
+# LiveKit (which can run only on media nodes) comes back. Calls matter more than recordings.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: ipop-preemptible
+value: -10
+globalDefault: false
+preemptionPolicy: Never
+description: "iPop workloads that may be evicted so critical media pods can schedule."
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -154,6 +165,7 @@ spec:
     metadata:
       labels: { app.kubernetes.io/name: egress }
     spec:
+      priorityClassName: ipop-preemptible
       tolerations:
         # Leave a dead node after 10 s instead of the default 5 min (measured: Redis stayed bound
         # to a dead node for ~5.5 min, taking SignalR realtime down with it).

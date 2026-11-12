@@ -27,3 +27,16 @@ for (const [file, name] of [
     }
   });
 }
+
+// Measured 2026-11-12: with ipop-02 down, LiveKit (media nodes only) stayed Pending for the whole
+// outage because Egress held 1 CPU on the other media node. Egress must be preemptible so calls
+// come back first; it may not preempt anything itself.
+test('LiveKit can evict Egress when only one media node is left', () => {
+  const egress = deployment('deploy/k8s/apps/ipop/media.yaml', 'egress');
+  assert.match(egress, /priorityClassName: ipop-preemptible/);
+  const pc = docs('deploy/k8s/apps/ipop/media.yaml').find((d) => /kind: PriorityClass/.test(d) && /name: ipop-preemptible/.test(d));
+  assert.ok(pc, 'PriorityClass ipop-preemptible missing');
+  assert.match(pc, /value: -\d+/);
+  assert.match(pc, /preemptionPolicy: Never/);
+  assert.match(pc, /globalDefault: false/);
+});
