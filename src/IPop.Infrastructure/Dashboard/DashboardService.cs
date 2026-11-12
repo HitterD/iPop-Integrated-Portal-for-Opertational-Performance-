@@ -70,15 +70,21 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
         var topRooms = rooms.Take(4).ToList();
         var topIds = topRooms.Select(r => r.Id).ToList();
         // One index probe per card (LIMIT 1), not a sort of each room's whole history.
-        var lastMsgs = await db.ChatRooms.AsNoTracking()
-            .Where(r => topIds.Contains(r.Id))
-            .Select(r => db.ChatMessages
-                .Where(m => m.RoomId == r.Id && m.ThreadParentId == null && m.Type != "system")
-                .OrderByDescending(m => m.CreatedAt)
-                .Select(m => new { m.RoomId, m.Content, m.IsDeleted, m.CreatedAt })
-                .FirstOrDefault())
+        // A scalar id per room stays a correlated LIMIT 1 subquery; projecting the whole row made EF emit
+        // ROW_NUMBER over every message (a 26M-row sort, 25 s on ten years of chat).
+        var lastIds = (await db.ChatRooms.AsNoTracking()
+                .Where(r => topIds.Contains(r.Id))
+                .Select(r => db.ChatMessages
+                    .Where(m => m.RoomId == r.Id && m.ThreadParentId == null && m.Type != "system")
+                    .OrderByDescending(m => m.CreatedAt)
+                    .Select(m => (Guid?)m.Id)
+                    .FirstOrDefault())
+                .ToListAsync(ct))
+            .Where(id => id != null).Select(id => id!.Value).ToList();
+        var lastMsgs = await db.ChatMessages.AsNoTracking()
+            .Where(m => lastIds.Contains(m.Id))
+            .Select(m => new { m.RoomId, m.Content, m.IsDeleted, m.CreatedAt })
             .ToListAsync(ct);
-        lastMsgs = lastMsgs.Where(m => m != null).ToList();
         var dmPeers = await db.ChatRoomMembers.AsNoTracking()
             .Where(m => topIds.Contains(m.RoomId) && m.UserId != userId)
             .Select(m => new { m.RoomId, m.User.Name, m.User.Nik })

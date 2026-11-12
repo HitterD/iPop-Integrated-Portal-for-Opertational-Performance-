@@ -656,19 +656,24 @@ public sealed partial class ChatService
 
         // Hanya ruang yang diikuti pengguna (keanggotaan aktif); balasan utas dikecualikan
         // seperti pencarian per-ruang — induk utaslah yang mewakili percakapan.
-        var messagesQuery = db.ChatMessages
-            .AsNoTracking()
-            .Where(m => m.ThreadParentId == null && !m.IsDeleted
-                && EF.Functions.ILike(m.Content, pattern)
-                && db.ChatRoomMembers.Any(mm => mm.RoomId == m.RoomId && mm.UserId == userId && mm.LeftAt == null));
-
-        // pageSize + 1 ids instead of COUNT(*): a common word matched 90k rows and the count alone took 3 s.
-        var probe = await messagesQuery
-            .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize + 1)
-            .Select(m => m.Id)
+        // Newest matches per room first (each room walks its own (RoomId, CreatedAt) index and stops after
+        // `need`), then the overall newest. One ORDER BY over every match took 3 s for a common word.
+        var need = page * pageSize + 1;
+        var myRooms = await db.ChatRoomMembers.AsNoTracking()
+            .Where(mm => mm.UserId == userId && mm.LeftAt == null)
+            .Select(mm => mm.RoomId).Distinct().ToListAsync(ct);
+        var candidates = await db.ChatRooms.AsNoTracking()
+            .Where(r => myRooms.Contains(r.Id))
+            .SelectMany(r => db.ChatMessages
+                .Where(m => m.RoomId == r.Id && m.ThreadParentId == null && !m.IsDeleted && EF.Functions.ILike(m.Content, pattern))
+                .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
+                .Take(need)
+                .Select(m => new { m.Id, m.CreatedAt }))
             .ToListAsync(ct);
+        var probe = candidates
+            .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize + 1)
+            .Select(m => m.Id).ToList();
         var pageIds = probe.Take(pageSize).ToList();
         var totalCount = PageTotal(page, pageSize, probe.Count);
 
