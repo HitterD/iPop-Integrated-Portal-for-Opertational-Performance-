@@ -102,6 +102,11 @@ spec:
     metadata:
       labels: { app.kubernetes.io/name: livekit-redis }
     spec:
+      tolerations:
+        # Leave a dead node after 10 s instead of the default 5 min (measured: Redis stayed bound
+        # to a dead node for ~5.5 min, taking SignalR realtime down with it).
+        - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 10 }
+        - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 10 }
       containers:
         - name: redis
           image: redis:7-alpine
@@ -149,6 +154,11 @@ spec:
     metadata:
       labels: { app.kubernetes.io/name: egress }
     spec:
+      tolerations:
+        # Leave a dead node after 10 s instead of the default 5 min (measured: Redis stayed bound
+        # to a dead node for ~5.5 min, taking SignalR realtime down with it).
+        - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 10 }
+        - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 10 }
       affinity:
         nodeAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
