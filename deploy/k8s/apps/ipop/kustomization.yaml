@@ -12,7 +12,7 @@ resources:
 images:
   - name: ipop-api
     newName: ghcr.io/hitterd/ipop-api
-    newTag: "perf-chat-mail-volume-e7c0a4414b6f"
+    newTag: "perf-chat-mail-volume-76da4f7ca618"
   - name: ipop-web
     newName: ghcr.io/hitterd/ipop-web
-    newTag: "perf-chat-mail-volume-e7c0a4414b6f"
+    newTag: "perf-chat-mail-volume-76da4f7ca618"
