@@ -662,14 +662,21 @@ public sealed partial class ChatService
         var myRooms = await db.ChatRoomMembers.AsNoTracking()
             .Where(mm => mm.UserId == userId && mm.LeftAt == null)
             .Select(mm => mm.RoomId).Distinct().ToListAsync(ct);
-        var candidates = await db.ChatRooms.AsNoTracking()
-            .Where(r => myRooms.Contains(r.Id))
-            .SelectMany(r => db.ChatMessages
-                .Where(m => m.RoomId == r.Id && m.ThreadParentId == null && !m.IsDeleted && EF.Functions.ILike(m.Content, pattern))
-                .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
-                .Take(need)
-                .Select(m => new { m.Id, m.CreatedAt }))
-            .ToListAsync(ct);
+        // Explicit LATERAL: EF turns SelectMany(...Take(n)) into ROW_NUMBER over every match (7 s, 1.3M rows
+        // sorted on disk). ILIKE is Postgres-only anyway; parameters are bound, never concatenated.
+        var candidates = !db.Database.IsNpgsql()
+            ? await db.ChatMessages.AsNoTracking()
+                .Where(m => myRooms.Contains(m.RoomId) && m.ThreadParentId == null && !m.IsDeleted && EF.Functions.ILike(m.Content, pattern))
+                .Select(m => new SearchHit(m.Id, m.CreatedAt)).ToListAsync(ct)
+            : await db.Database.SqlQuery<SearchHit>($"""
+            SELECT x."Id", x."CreatedAt"
+            FROM unnest({myRooms.ToArray()}::uuid[]) AS r(id)
+            CROSS JOIN LATERAL (
+                SELECT c."Id", c."CreatedAt" FROM "ChatMessages" c
+                WHERE c."RoomId" = r.id AND c."ThreadParentId" IS NULL AND NOT c."IsDeleted" AND c."Content" ILIKE {pattern}
+                ORDER BY c."CreatedAt" DESC, c."Id" DESC
+                LIMIT {need}) x
+            """).ToListAsync(ct);
         var probe = candidates
             .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
             .Skip((page - 1) * pageSize).Take(pageSize + 1)

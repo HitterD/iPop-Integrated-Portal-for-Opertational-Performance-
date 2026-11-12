@@ -17,6 +17,8 @@ public sealed partial class ChatService
     internal static int PageTotal(int page, int pageSize, int fetched)
         => (page - 1) * pageSize + Math.Min(fetched, pageSize) + (fetched > pageSize ? 1 : 0);
 
+    public sealed record SearchHit(Guid Id, DateTime CreatedAt);
+
     public sealed record RoomStat(Guid RoomId, Guid? LastId, int Unread);
 
     private Task<List<RoomStat>> RoomStatsAsync(IReadOnlyCollection<Guid> roomIds, Guid userId, CancellationToken ct)

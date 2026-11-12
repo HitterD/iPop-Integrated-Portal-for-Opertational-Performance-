@@ -372,11 +372,14 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
                 // LIKE (not ILIKE) so SQLite tests and Postgres translate the same query. Postgres
                 // LIKE is case-sensitive, so both sides are lower-cased: "rapat" must find "Rapat".
                 var pattern = EscapeLikePattern(search.Query.ToLowerInvariant());
-                query = query.Where(r =>
-                    EF.Functions.Like(r.Mail.Subject.ToLower(), pattern) ||
-                    EF.Functions.Like(r.Mail.Body.ToLower(), pattern) ||
-                    EF.Functions.Like(r.Mail.Sender.Name.ToLower(), pattern) ||
-                    EF.Functions.Like(r.Mail.Sender.Nik.ToLower(), pattern));
+                // Matching mails first (trigram indexes on lower(Subject)/lower(Body)), then my rows among
+                // them. Checking each of my rows' mail took 4 s on ten years of inbox (17k rows probed).
+                var senders = db.Users.Where(u => EF.Functions.Like(u.Name.ToLower(), pattern) || EF.Functions.Like(u.Nik.ToLower(), pattern)).Select(u => u.Id);
+                var matching = db.Mails.Where(m =>
+                    EF.Functions.Like(m.Subject.ToLower(), pattern) ||
+                    EF.Functions.Like(m.Body.ToLower(), pattern) ||
+                    senders.Contains(m.SenderId)).Select(m => m.Id);
+                query = query.Where(r => matching.Contains(r.MailId));
             }
             if (search.StarredOnly == true) query = query.Where(r => r.IsStarred);
             if (search.UnreadOnly == true) query = query.Where(r => !r.IsRead);
