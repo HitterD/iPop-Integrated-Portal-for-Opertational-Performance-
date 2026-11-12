@@ -107,7 +107,9 @@ public class ChatServiceTests
 
         var page = await svc.GetMessagesAsync(room, a, page: 1, pageSize: 50, default);
 
-        Assert.Equal(80, page.TotalCount);
+        // TotalCount says "older history exists" (more than the page), not the room's full size: counting
+        // every message took seconds on a room with years of chat.
+        Assert.True(page.TotalCount > page.Items.Count);
         Assert.Equal(50, page.Items.Count);
         Assert.Equal("m31", page.Items[0].Content);
         Assert.Equal("m80", page.Items[^1].Content);
