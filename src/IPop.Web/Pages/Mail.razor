@@ -277,7 +277,7 @@
                 <div class="mlx-banner">
                     <i data-lucide="search"></i>
                     <span>
-                        Showing @Items.Count of @pageTotal @(pageTotal == 1 ? "result" : "results")
+                        Showing @Items.Count of @(pageTotal > 1000 ? "1,000+" : pageTotal.ToString("N0")) @(pageTotal == 1 ? "result" : "results")
                         @if (!string.IsNullOrWhiteSpace(search)) { <text> for "@search"</text> }
                         @if (tabFilter != "all") { <text> · @(tabFilter == "unread" ? "Unread" : "Starred")</text> }
                         @if (labelFilter is not null) { <span class="mlr-chip k1" style="--c:@LabelColor(labelFilter);margin-left:4px"><i></i><span>@labelFilter</span></span> }

@@ -348,6 +348,9 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
     // Folder queries
     // ──────────────────────────────────────────────────────────────────────────
 
+    /// Mail text search reports "1000+" past this many matches (TotalCount = SearchCountCap + 1).
+    public const int SearchCountCap = 1000;
+
     public async Task<PagedResult<MailSummaryDto>> GetFolderAsync(Guid userId, MailFolder folder, int page, int pageSize, MailSearchRequest? search = null, CancellationToken ct = default)
     {
         if (page < 1) page = 1;
@@ -372,14 +375,11 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
                 // LIKE (not ILIKE) so SQLite tests and Postgres translate the same query. Postgres
                 // LIKE is case-sensitive, so both sides are lower-cased: "rapat" must find "Rapat".
                 var pattern = EscapeLikePattern(search.Query.ToLowerInvariant());
-                // Matching mails first (trigram indexes on lower(Subject)/lower(Body)), then my rows among
-                // them. Checking each of my rows' mail took 4 s on ten years of inbox (17k rows probed).
-                var senders = db.Users.Where(u => EF.Functions.Like(u.Name.ToLower(), pattern) || EF.Functions.Like(u.Nik.ToLower(), pattern)).Select(u => u.Id);
-                var matching = db.Mails.Where(m =>
-                    EF.Functions.Like(m.Subject.ToLower(), pattern) ||
-                    EF.Functions.Like(m.Body.ToLower(), pattern) ||
-                    senders.Contains(m.SenderId)).Select(m => m.Id);
-                query = query.Where(r => matching.Contains(r.MailId));
+                query = query.Where(r =>
+                    EF.Functions.Like(r.Mail.Subject.ToLower(), pattern) ||
+                    EF.Functions.Like(r.Mail.Body.ToLower(), pattern) ||
+                    EF.Functions.Like(r.Mail.Sender.Name.ToLower(), pattern) ||
+                    EF.Functions.Like(r.Mail.Sender.Nik.ToLower(), pattern));
             }
             if (search.StarredOnly == true) query = query.Where(r => r.IsStarred);
             if (search.UnreadOnly == true) query = query.Where(r => !r.IsRead);
@@ -416,7 +416,11 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
                 query = query.Where(r => r.Mail.Importance == search.Importance.ToLowerInvariant().Trim());
         }
 
-        var totalCount = await query.CountAsync(ct);
+        // A text search counts at most SearchCountCap matches: the full count joined every mail I ever got
+        // (11 s at ten years of mail); the page itself walks my newest rows and stops once it is full.
+        var totalCount = string.IsNullOrWhiteSpace(search?.Query)
+            ? await query.CountAsync(ct)
+            : await query.OrderByDescending(r => r.CreatedAt).Take(SearchCountCap + 1).CountAsync(ct);
 
         var items = await query
             .Include(r => r.Mail).ThenInclude(m => m.Sender)

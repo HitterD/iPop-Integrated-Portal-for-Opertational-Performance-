@@ -137,11 +137,10 @@ public class SearchService(IPopDbContext db, IEnumerable<ISearchModuleProvider>?
         }
 
         // 4. Mail
-        // Matching subjects first (trigram index on lower(Subject)), then my rows: walking all my rows and
-        // probing each mail took 1.2 s for a word I never received (17k rows at ten years of mail).
-        var matching = db.Mails.Where(m => m.Subject.ToLower().Contains(q)).Select(m => m.Id);
+        // Newest of my rows first, stopping at four hits: a common subject word matches a third of all mail,
+        // so starting from the matches (1.7M rows) is the slow side.
         var mails = await db.MailRecipients.AsNoTracking()
-            .Where(r => r.UserId == userId && r.Folder != "trash" && matching.Contains(r.MailId))
+            .Where(r => r.UserId == userId && r.Folder != "trash" && r.Mail.Subject.ToLower().Contains(q))
             .OrderByDescending(r => r.CreatedAt)
             .Take(4)
             .Select(r => new { r.MailId, r.Mail.Subject, r.Mail.Sender.Name, r.Mail.SentAt })
