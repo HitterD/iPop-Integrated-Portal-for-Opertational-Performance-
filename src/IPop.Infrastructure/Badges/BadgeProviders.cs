@@ -26,7 +26,7 @@ public sealed class ChatBadgeProvider(IPopDbContext db) : IBadgeProvider
             where (s == null || !s.IsArchived)
                   && (s == null || !s.IsMuted || (s.MuteExpiresAt != null && s.MuteExpiresAt <= now))
             select mem.RoomId).Distinct().ToListAsync(ct);
-        return (await ChatService.RoomStatsAsync(db, roomIds, userId, ct)).Sum(x => x.Unread);
+        return (await IPop.Infrastructure.Chat.ChatService.RoomStatsAsync(db, roomIds, userId, ct)).Sum(x => x.Unread);
     }
 }
 
