@@ -7,6 +7,8 @@ using IPop.Infrastructure.Mail;
 using IPop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
+using ChatPage = IPop.Application.Chat.PagedResult<IPop.Application.Chat.MessageDto>;
+using MailPage = IPop.Application.Mail.PagedResult<IPop.Application.Mail.MailSummaryDto>;
 
 namespace IPop.Tests;
 
@@ -89,7 +91,7 @@ public class ChatVolumeQueryTests
         var counter = new SqlLog();
         var options = new DbContextOptionsBuilder<IPopDbContext>().UseSqlite(t.Db.Database.GetDbConnection()).AddInterceptors(counter).Options;
 
-        PagedResult<MessageDto> page;
+        ChatPage page;
         await using (var db = new IPopDbContext(options))
             page = await new ChatService(db).GetMessagesAsync(room.Id, me.Id, 1, 50, default);
 
@@ -119,7 +121,7 @@ public class ChatVolumeQueryTests
         var counter = new SqlLog();
         var options = new DbContextOptionsBuilder<IPopDbContext>().UseSqlite(t.Db.Database.GetDbConnection()).AddInterceptors(counter).Options;
 
-        PagedResult<MessageDto> page;
+        ChatPage page;
         await using (var db = new IPopDbContext(options))
             page = await new ChatService(db).SearchMessagesAsync(me.Id, room.Id, "laporan", 1, 20, default);
 
@@ -139,7 +141,7 @@ public class ChatVolumeQueryTests
         var counter = new SqlLog();
         var options = new DbContextOptionsBuilder<IPopDbContext>().UseSqlite(t.Db.Database.GetDbConnection()).AddInterceptors(counter).Options;
 
-        PagedResult<MailSummaryDto> inbox;
+        MailPage inbox;
         await using (var db = new IPopDbContext(options))
             inbox = await new MailService(db).GetFolderAsync(me.Id, MailFolder.Inbox, 1, 20, null, default);
 
