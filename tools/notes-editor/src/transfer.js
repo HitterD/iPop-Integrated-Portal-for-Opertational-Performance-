@@ -28,6 +28,19 @@ const NOTION_ID = /\s+([0-9a-f]{32})$/i;
 const stripId = s => s.replace(NOTION_ID, '').trim();
 const fnv = s => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0'); };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+/// Only these URL forms may reach an exported document. A note is authored by anyone with edit access and the export
+/// opens as a page of its own (iPop's origin for the print preview): javascript:/vbscript:/data:text/html must never survive.
+/// Control characters and whitespace are stripped first because browsers ignore them inside a scheme ("java	script:").
+export function safeUrl(u) {
+  const raw = String(u ?? '').trim();
+  if (!raw) return '';
+  const probe = raw.replace(/[\u0000-\u0020\u007f-\u009f]/g, '').toLowerCase();
+  const scheme = /^([a-z][a-z0-9+.-]*):/.exec(probe)?.[1];
+  if (!scheme) return raw;                                   // relative path, #anchor, //host handled by the browser
+  if (scheme === 'http' || scheme === 'https' || scheme === 'mailto' || scheme === 'tel') return raw;
+  if (scheme === 'data' && /^data:image\/(png|jpe?g|gif|webp|bmp);base64,/.test(probe)) return raw;
+  return '';
+}
 const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp', pdf: 'application/pdf' };
 const isImagePath = p => /^(png|jpe?g|gif|webp|bmp|svg)$/.test(extOf(p));
 
@@ -595,7 +608,7 @@ function inlineHtml(nodes, ctx) {
       else if (m.type === 'strike') t = `<s>${t}</s>`;
       else if (m.type === 'underline') t = `<u>${t}</u>`;
       else if (m.type === 'code') t = `<code>${t}</code>`;
-      else if (m.type === 'link') t = `<a href="${esc(mdHref(m.attrs?.href, ctx))}">${t}</a>`;
+      else if (m.type === 'link') t = `<a href="${esc(safeUrl(mdHref(m.attrs?.href, ctx)))}">${t}</a>`;
       else if (m.type === 'textStyle') {
         const c = colorKey(m.attrs?.color), b = colorKey(m.attrs?.backgroundColor);
         const st = [c && TEXT_HEX[c] ? `color:${TEXT_HEX[c]}` : '', b && BG_HEX[b] ? `background:${BG_HEX[b]}` : ''].filter(Boolean).join(';');
@@ -631,13 +644,13 @@ export function docToHtml(json, ctx) {
       case 'tableCell': return `<td>${(n.content || []).map(p => inlineHtml(p.content, ctx)).join('<br>')}</td>`;
       case 'noteImage': {
         const f = ctx.file(n.attrs?.id), w = Math.min(100, Math.max(15, +n.attrs?.width || 100));
-        const src = f ? (f.dataUrl || relPath(ctx.dir, f.path)) : '';
+        const src = f ? safeUrl(f.dataUrl || relPath(ctx.dir, f.path)) : '';
         return `<figure style="text-align:${n.attrs?.align || 'center'}">${src ? `<img src="${esc(src)}" alt="${esc(n.attrs?.caption || n.attrs?.name || '')}" style="width:${w}%">` : `<div class="missing">${esc(n.attrs?.name || 'image')}</div>`}${n.attrs?.caption ? `<figcaption>${esc(n.attrs.caption)}</figcaption>` : ''}</figure>`;
       }
       case 'noteGallery': { let items = []; try { items = JSON.parse(n.attrs?.items || '[]'); } catch { /* ignore */ } return `<div class="gallery">${items.map(i => block({ type: 'noteImage', attrs: i })).join('')}</div>`; }
-      case 'noteFile': { const f = ctx.file(n.attrs?.id); const href = f ? (f.dataUrl || relPath(ctx.dir, f.path)) : ''; return `<p class="file">📎 ${href ? `<a href="${esc(href)}">${esc(n.attrs?.name || 'file')}</a>` : esc(n.attrs?.name || 'file')}</p>`; }
-      case 'noteBookmark': return `<a class="bookmark" href="${esc(n.attrs?.url || '')}"><b>${esc(n.attrs?.title || n.attrs?.url || '')}</b>${n.attrs?.desc ? `<span>${esc(n.attrs.desc)}</span>` : ''}<small>${esc(n.attrs?.url || '')}</small></a>`;
-      case 'noteEmbed': return `<p><a href="${esc(n.attrs?.url || '')}">${esc(n.attrs?.url || '')}</a></p>`;
+      case 'noteFile': { const f = ctx.file(n.attrs?.id); const href = f ? safeUrl(f.dataUrl || relPath(ctx.dir, f.path)) : ''; return `<p class="file">📎 ${href ? `<a href="${esc(href)}">${esc(n.attrs?.name || 'file')}</a>` : esc(n.attrs?.name || 'file')}</p>`; }
+      case 'noteBookmark': { const u = safeUrl(n.attrs?.url); return `<a class="bookmark"${u ? ` href="${esc(u)}"` : ''}><b>${esc(n.attrs?.title || n.attrs?.url || '')}</b>${n.attrs?.desc ? `<span>${esc(n.attrs.desc)}</span>` : ''}<small>${esc(n.attrs?.url || '')}</small></a>`; }
+      case 'noteEmbed': { const u = safeUrl(n.attrs?.url); return `<p>${u ? `<a href="${esc(u)}">${esc(n.attrs?.url || '')}</a>` : esc(n.attrs?.url || '')}</p>`; }
       case 'subPage': { const p = ctx.link(n.attrs?.id); const t = `${esc(n.attrs?.emoji || '📄')} ${esc(ctx.title?.(n.attrs?.id) || n.attrs?.title || 'Untitled')}`; return p ? `<p class="subpage"><a href="${esc(relPath(ctx.dir, p))}">${t}</a></p>` : `<p class="subpage">${t}</p>`; }
       case 'noteWidget': return '';
       default: return kids();
