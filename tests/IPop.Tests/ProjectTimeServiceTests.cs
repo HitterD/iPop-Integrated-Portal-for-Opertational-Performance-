@@ -238,4 +238,34 @@ public sealed class ProjectTimeServiceTests
         Assert.Equal("task_not_found", (await c.Time.GetTaskTimeAsync(c.Owner, a, default)).Error);
         Assert.True(del.Success);
     }
+
+    [Fact]
+    public async Task Deleting_a_task_stops_a_timer_running_on_it_and_keeps_the_time_worked()
+    {
+        using var c = await SetupAsync();
+        var a = await TaskAsync(c, "A");
+        var b = await TaskAsync(c, "B");
+        Assert.True((await c.Time.StartAsync(c.Owner, a, default, T0)).Success);
+
+        Assert.True((await c.Projects.DeleteTaskAsync(c.Owner, a, default)).Success);
+
+        // Nothing may keep running against a task nobody can see any more: it would show a phantom timer and block others.
+        Assert.Null(await c.Time.GetRunningAsync(c.Owner, default));
+        Assert.Equal(0, await c.T.Verify().TaskTimeEntries.IgnoreQueryFilters().CountAsync(e => e.EndedAt == null));
+        // A new timer starts cleanly instead of colliding with the orphaned one.
+        Assert.True((await c.Time.StartAsync(c.Owner, b, default, T0.AddHours(2))).Success);
+    }
+
+    [Fact]
+    public async Task Restoring_a_deleted_task_brings_its_closed_time_back_but_never_a_running_timer()
+    {
+        using var c = await SetupAsync();
+        var a = await TaskAsync(c, "A");
+        Assert.True((await c.Time.StartAsync(c.Owner, a, default, DateTime.UtcNow.AddHours(-3))).Success);
+        var del = await c.Projects.DeleteTaskAsync(c.Owner, a, default);
+        Assert.True((await c.Projects.RestoreTasksAsync(c.Owner, c.ProjectId, del.BatchId!.Value, default)).Success);
+
+        Assert.Null(await c.Time.GetRunningAsync(c.Owner, default));
+        Assert.True(await c.T.Verify().TaskTimeEntries.AnyAsync(e => e.TaskId == a && e.EndedAt != null));
+    }
 }
