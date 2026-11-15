@@ -44,11 +44,9 @@ public class EndpointTableTests
         var endpoints = ((IEndpointRouteBuilder)app).DataSources.SelectMany(d =>
         {
             try { return d.Endpoints; }
-            catch (Exception e) { failures.Add(e.Message.Split('\n')[0]); return []; }
+            catch (Exception e) { failures.Add(e.Message); return []; }
         }).ToList();
-        Assert.True(failures.Count == 0, string.Join("
----
-", failures.Distinct().Take(6)));
+        Assert.True(failures.Count == 0, string.Join("\n---\n", failures.Distinct().Take(6)));
         Assert.True(endpoints.Count > 200, $"endpoint table looks too small ({endpoints.Count})");
     }
 }
