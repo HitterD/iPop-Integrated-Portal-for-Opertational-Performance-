@@ -6,6 +6,7 @@
 @inject IPop.Web.Services.AuthState Auth
 @inject IPop.Web.Services.ConfirmService Confirm
 @inject IPop.Web.Services.CalendarLinks CalLinks
+@inject IPop.Web.Services.ToastService Toasts
 @implements IAsyncDisposable
 
 @if (Task is not null)
@@ -642,17 +643,30 @@
         var x => x
     };
 
-    private async void SubmitComment((string Text, Guid? ParentId) input)
+    /// SendAsync does not throw for an HTTP error: the old try/catch never ran, so a comment the server refused (403 after the
+    /// person left the project, 404, 500) looked saved. Check the status and say so.
+    private async Task<bool> SaveOkAsync(Func<Task<HttpResponseMessage>> send, string failure)
+    {
+        try
+        {
+            using var res = await send();
+            if (res.IsSuccessStatusCode) return true;
+            Toasts.Show(res.StatusCode == System.Net.HttpStatusCode.Forbidden
+                ? "You no longer have permission to do that on this task."
+                : failure, ToastKind.Error);
+        }
+        catch (Exception) { Toasts.Show(failure, ToastKind.Error); }
+        return false;
+    }
+
+    private async Task SubmitComment((string Text, Guid? ParentId) input)
     {
         if (ReadOnly) return;
         if (Task is null) return;
-        try
-        {
-            await Auth.SendAsync(HttpMethod.Post, $"/api/projects/tasks/{Task.Id}/comments", new { content = input.Text, parentCommentId = input.ParentId });
-            await LoadDiscussionAsync();
-            await InvokeAsync(StateHasChanged);
-        }
-        catch { /* biarkan UI apa adanya bila gagal */ }
+        if (!await SaveOkAsync(() => Auth.SendAsync(HttpMethod.Post, $"/api/projects/tasks/{Task.Id}/comments",
+                new { content = input.Text, parentCommentId = input.ParentId }), "The comment could not be saved. Please try again.")) return;
+        await LoadDiscussionAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     // ---- Lampiran berkas (frontend wave — kontrak /api/projects/tasks/{id}/attachments) ----
@@ -719,24 +733,22 @@
         (1, "1 hour before"),
     ];
 
-    private async void OnNasPicked(List<IPop.Web.Components.NasFilePickerDialog.NasFileRef> refs)
+    private async Task OnNasPicked(List<IPop.Web.Components.NasFilePickerDialog.NasFileRef> refs)
     {
         if (ReadOnly) return;
         if (Task is null) return;
+        var failed = 0;
         foreach (var r in refs)
         {
-            try
-            {
-                await Auth.SendAsync(HttpMethod.Post, $"/api/projects/tasks/{Task.Id}/attachments",
-                    new { fileName = r.Name, size = r.Size, server = r.Server, path = r.Path });
-            }
-            catch { /* endpoint gagal — lanjutkan berkas lain */ }
+            if (!await SaveOkAsync(() => Auth.SendAsync(HttpMethod.Post, $"/api/projects/tasks/{Task.Id}/attachments",
+                    new { fileName = r.Name, size = r.Size, server = r.Server, path = r.Path }), "")) failed++;
         }
+        if (failed > 0) Toasts.Show(failed == refs.Count ? "The files could not be attached." : $"{failed} of {refs.Count} files could not be attached.", ToastKind.Error);
         await LoadDiscussionAsync();
         await InvokeAsync(StateHasChanged);
     }
 
-    private async void DownloadAttachment(TaskAttachments.TaskAttachmentItem att)
+    private async Task DownloadAttachment(TaskAttachments.TaskAttachmentItem att)
     {
         if (Task is null || att.DownloadPath is null) return;
         var sep = att.DownloadPath.IndexOf(':');
@@ -751,22 +763,20 @@
                 var bytes = await res.Content.ReadAsByteArrayAsync();
                 await JS.InvokeVoidAsync("ipop.download", Convert.ToBase64String(bytes), att.Name);
             }
+            else Toasts.Show("The file could not be downloaded.", ToastKind.Error);
         }
-        catch { }
+        catch (Exception) { Toasts.Show("The file could not be downloaded.", ToastKind.Error); }
     }
 
-    private async void DeleteAttachment(TaskAttachments.TaskAttachmentItem att)
+    private async Task DeleteAttachment(TaskAttachments.TaskAttachmentItem att)
     {
         if (ReadOnly) return;
         if (Task is null) return;
-        try
-        {
-            await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/tasks/{Task.Id}/attachments/{att.Id}");
-            attachmentItems.RemoveAll(a => a.Id == att.Id);
-            await LoadDiscussionAsync();
-            await InvokeAsync(StateHasChanged);
-        }
-        catch { }
+        if (!await SaveOkAsync(() => Auth.SendAsync(HttpMethod.Delete, $"/api/projects/tasks/{Task.Id}/attachments/{att.Id}"),
+                "The attachment could not be removed.")) return;
+        attachmentItems.RemoveAll(a => a.Id == att.Id);
+        await LoadDiscussionAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     private TaskEvidenceData evidence = new();
