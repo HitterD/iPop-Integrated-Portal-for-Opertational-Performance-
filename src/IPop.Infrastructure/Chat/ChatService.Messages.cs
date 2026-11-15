@@ -452,7 +452,14 @@ public sealed partial class ChatService
             .Include(m => m.Sender).Include(m => m.Attachments).Include(m => m.Reactions).Include(m => m.ReadReceipts)
             .AsSplitQuery()
             .FirstOrDefaultAsync(m => m.RoomId == targetRoomId && m.IdempotencyKey == replayKey && m.SenderId == userId, ct);
-        if (replay is not null) return new MessageResultDto(true, MapToMessageDto(replay, userId), null, Replayed: true);
+        if (replay is not null)
+        {
+            // The key names ONE operation: reusing it for another source message is a client bug, not a retry.
+            var requestedOrigin = original.ForwardedFromMessageId ?? original.Id;
+            if (replay.ForwardedFromMessageId != requestedOrigin)
+                return new MessageResultDto(false, null, "idempotency_conflict");
+            return new MessageResultDto(true, MapToMessageDto(replay, userId), null, Replayed: true);
+        }
 
         var now = DateTime.UtcNow;
         // Konten bersih: lepas prefix legacy "[forwarded]" — metadata terusan kini
