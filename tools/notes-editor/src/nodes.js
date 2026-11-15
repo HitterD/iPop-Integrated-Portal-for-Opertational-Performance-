@@ -71,6 +71,73 @@ export const Callout = Node.create({
 });
 
 /// Non-editable tutorial helpers: progress ring, accent swatches, permission table.
+/// A heading briefly highlighted after a click in the table of contents. ProseMirror re-creates DOM elements it owns, so a
+/// class added by hand would vanish; this is a decoration instead, driven by a transaction meta and cleared by a timer.
+export const flashKey = new PluginKey('headingFlash');
+export const HeadingFlash = Extension.create({
+  name: 'headingFlash',
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      key: flashKey,
+      state: {
+        init: () => null,
+        apply(tr, v) {
+          const m = tr.getMeta(flashKey);
+          if (m !== undefined) return m;
+          if (!v || !tr.docChanged) return v;
+          // Typing before the heading moves it; keep the highlight on the same node (start sticks right, end left).
+          const from = tr.mapping.map(v.from, 1), to = tr.mapping.map(v.to, -1);
+          return to > from && tr.doc.nodeAt(from)?.type.name === 'heading' ? { from, to } : null;
+        },
+      },
+      props: { decorations(state) { const v = flashKey.getState(state); return v ? DecorationSet.create(state.doc, [Decoration.node(v.from, v.to, { class: 'nt-flash' })]) : null; } },
+    })];
+  },
+});
+
+/// Table of contents: a live list of the page's headings. The block stores nothing but its own existence; the list is
+/// rebuilt from the headings whenever the document changes, and clicking a line scrolls to that heading.
+export const NoteToc = Node.create({
+  name: 'noteToc',
+  group: 'block',
+  atom: true,
+  selectable: true,
+  draggable: true,
+  parseHTML() { return [{ tag: 'div[data-toc]' }]; },
+  renderHTML() { return ['div', { 'data-toc': '' }]; },
+  addNodeView() {
+    return ({ editor }) => {
+      const dom = el('nav', 'nt-toc');
+      dom.contentEditable = 'false';
+      dom.setAttribute('aria-label', 'Table of contents');
+      const paint = () => {
+        const items = [];
+        editor.state.doc.descendants((n, pos) => {
+          if (n.type.name === 'heading') { const text = n.textContent.trim(); if (text) items.push({ level: n.attrs.level, text, pos }); return false; }
+          return true;
+        });
+        dom.innerHTML = `<div class="tt"><span>CONTENTS</span></div>` + (items.length
+          ? items.map(i => `<a data-pos="${i.pos}" class="l${i.level}" tabindex="0" role="link">${esc(i.text)}</a>`).join('')
+          : '<div class="empty">Add headings and they will appear here.</div>');
+      };
+      const go = a => {
+        const pos = Number(a.dataset.pos);
+        const node = editor.state.doc.nodeAt(pos);
+        if (!node || node.type.name !== 'heading') return;
+        editor.view.dispatch(editor.state.tr.setMeta(flashKey, { from: pos, to: pos + node.nodeSize }).setMeta('addToHistory', false));
+        const target = editor.view.nodeDOM(pos);
+        if (target instanceof HTMLElement) target.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+        setTimeout(() => { try { if (editor.view && !editor.isDestroyed) editor.view.dispatch(editor.state.tr.setMeta(flashKey, null).setMeta('addToHistory', false)); } catch { /* editor closed */ } }, 1100);
+      };
+      dom.addEventListener('click', e => { const a = e.target.closest('a[data-pos]'); if (a) { e.preventDefault(); go(a); } });
+      dom.addEventListener('keydown', e => { if (e.key === 'Enter') { const a = e.target.closest('a[data-pos]'); if (a) go(a); } });
+      paint();
+      editor.on('update', paint);
+      return { dom, ignoreMutation: () => true, stopEvent: () => true, destroy: () => editor.off('update', paint) };
+    };
+  },
+});
+
 export const NoteWidget = Node.create({
   name: 'noteWidget',
   group: 'block',

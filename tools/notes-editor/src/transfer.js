@@ -589,7 +589,7 @@ export function docToMarkdown(json, ctx) {
       case 'noteBookmark': return `[${(n.attrs?.title || n.attrs?.url || '').replace(/[[\]]/g, '')}](${n.attrs?.url || ''})`;
       case 'noteEmbed': return `[${n.attrs?.url || ''}](${n.attrs?.url || ''})`;
       case 'subPage': { const p = ctx.link(n.attrs?.id); const t = `${n.attrs?.emoji ? n.attrs.emoji + ' ' : ''}${ctx.title?.(n.attrs?.id) || n.attrs?.title || 'Untitled'}`; return p ? `[${t}](${relPath(ctx.dir, p)})` : t; }
-      case 'noteWidget': return null;
+      case 'noteWidget': case 'noteToc': return null;
       default: return kids();
     }
   };
@@ -652,7 +652,7 @@ export function docToHtml(json, ctx) {
       case 'noteBookmark': { const u = safeUrl(n.attrs?.url); return `<a class="bookmark"${u ? ` href="${esc(u)}"` : ''}><b>${esc(n.attrs?.title || n.attrs?.url || '')}</b>${n.attrs?.desc ? `<span>${esc(n.attrs.desc)}</span>` : ''}<small>${esc(n.attrs?.url || '')}</small></a>`; }
       case 'noteEmbed': { const u = safeUrl(n.attrs?.url); return `<p>${u ? `<a href="${esc(u)}">${esc(n.attrs?.url || '')}</a>` : esc(n.attrs?.url || '')}</p>`; }
       case 'subPage': { const p = ctx.link(n.attrs?.id); const t = `${esc(n.attrs?.emoji || '📄')} ${esc(ctx.title?.(n.attrs?.id) || n.attrs?.title || 'Untitled')}`; return p ? `<p class="subpage"><a href="${esc(relPath(ctx.dir, p))}">${t}</a></p>` : `<p class="subpage">${t}</p>`; }
-      case 'noteWidget': return '';
+      case 'noteWidget': case 'noteToc': return '';
       default: return kids();
     }
   };

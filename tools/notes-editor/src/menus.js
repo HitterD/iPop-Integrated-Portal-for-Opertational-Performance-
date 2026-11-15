@@ -50,6 +50,7 @@ export function slashCommands(host) {
       const p = await host.createSubPage();
       if (p) editor.chain().focus().insertContent({ type: 'subPage', attrs: { id: p.id, title: p.title, emoji: p.emoji || '📄' } }).run();
     }],
+    ['Basic blocks', 'Table of contents', 'A live list of the headings on this page', '☰', '', setBlock(c => c.insertContent({ type: 'noteToc' }))],
     ['Media', 'Image', 'Upload or paste — stored on NAS', '🖼', '', ({ editor, range }) => { editor.chain().focus().deleteRange(range).run(); host.pickFiles('image/*'); }],
     ['Media', 'File', 'Attach any file', '📎', '', ({ editor, range }) => { editor.chain().focus().deleteRange(range).run(); host.pickFiles(''); }],
     ['Media', 'Code', 'Capture a code snippet', '</>', '```', setBlock(byKey('code'))],

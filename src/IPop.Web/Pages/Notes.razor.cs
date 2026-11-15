@@ -22,10 +22,10 @@ public partial class Notes
 {
     [Parameter] public Guid? Id { get; set; }
 
-    private const string EditorModule = "./js/notes/notes-editor.js?v=20261116-cover";
+    private const string EditorModule = "./js/notes/notes-editor.js?v=20261116-tidy3";
 
     private enum View { Home, Page, New, Trash }
-    private enum Pop { None, More, Style, Emoji, Share, History }
+    private enum Pop { None, More, Style, Emoji, Share, History, Tidy }
 
     private View view = View.Home;
     private Pop pop = Pop.None;
@@ -131,6 +131,7 @@ public partial class Notes
         await SidebarAfterRenderAsync();
         await ImportAfterRenderAsync();
         await CoverAfterRenderAsync();
+        await TidyAfterRenderAsync();
     }
 
     public async ValueTask DisposeAsync()

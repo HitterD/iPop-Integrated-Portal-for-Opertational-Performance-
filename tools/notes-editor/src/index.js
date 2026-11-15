@@ -4,6 +4,7 @@
 // raw updates. Clients push every local update through the hub (which stores it and fans it out), and
 // an editor periodically folds the tail into a new state with a compare-and-set on the version.
 import { createCovers } from './covers.js';
+import { analyze as tidyAnalyze, apply as tidyApply } from './tidy.js';
 import { refusedReason, mentionContexts, savePending, takePending, clearPending } from './sync.js';
 import { Editor, Extension } from '@tiptap/core';
 import { exitSuggestion } from '@tiptap/suggestion';
@@ -21,7 +22,7 @@ import * as Y from 'yjs';
 import { Awareness, encodeAwarenessUpdate, applyAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness';
 import * as signalR from '@microsoft/signalr';
 
-import { BlockBackground, Callout, NoteWidget, SubPage, NoteFile, CommentHighlights, commentKey, countTodos, releaseBlobs, esc } from './nodes.js';
+import { BlockBackground, Callout, NoteWidget, NoteToc, HeadingFlash, SubPage, NoteFile, CommentHighlights, commentKey, countTodos, releaseBlobs, esc } from './nodes.js';
 import { SlashMenu, mentionSuggestion, phoneMentionKey, createToolbar, createHandle, createBlockMenu, place } from './menus.js';
 import { NoteImage, NoteGallery, NoteBookmark, NoteEmbed, RichTaskItem, TodoExtras, tableExtensions, taskItemAt, todoInsertPos, createRichUi, closeLightboxes } from './rich.js';
 import { TEMPLATES, GUIDE_COMMENT_TEXT } from './templates.js';
@@ -51,6 +52,7 @@ function baseExtensions(host, { collab = true, rich = {} } = {}) {
     Details.configure({ persist: true, HTMLAttributes: { class: 'nt-toggle' } }), DetailsSummary, DetailsContent,
     BlockBackground, Callout,
     NoteWidget.configure({ host: () => host }),
+    NoteToc, HeadingFlash,
     SubPage.configure({ host: () => host }),
     NoteImage.configure({ host: () => host }),
     NoteFile.configure({ host: () => host }),
@@ -615,6 +617,17 @@ export async function mount(el, opts) {
       editor.commands.focus('end');
       return true;
     },
+    /// Tidy up: suggestions for the current page. `title` is the page title (an empty one gets a "give it a title" suggestion).
+    tidySuggestions(title) { return closing ? [] : tidyAnalyze(editor.getJSON(), { title }); },
+    /// Applies the named rules in order as ONE editor step (a single Ctrl Z undoes the lot). Returns { applied, title? }.
+    tidyApply(rules, title) {
+      if (closing || !canEdit) return { applied: 0 };
+      let d = editor.getJSON(), newTitle = null, applied = 0;
+      for (const r of rules) { const out = tidyApply(d, r, { title: newTitle ?? title }); d = out.doc; if (out.title) newTitle = out.title; applied++; }
+      if (rules.some(r => r !== 'title')) editor.chain().setContent(d, { emitUpdate: true }).run();
+      return { applied, title: newTitle };
+    },
+    undo() { if (!closing && canEdit) editor.chain().focus().undo().run(); },
     isEmpty() { return !closing && editor.isEmpty; },
     focus() { if (!closing) editor.commands.focus('start'); },
     restore(state) {

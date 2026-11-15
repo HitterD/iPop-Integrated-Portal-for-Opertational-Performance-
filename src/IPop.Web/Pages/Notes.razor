@@ -176,6 +176,12 @@
                 }
                 @if (CanEdit)
                 {
+                    <button type="button" class="nt-btn tidy hide-sm" title="Check this page for things to tidy" @onclick="OpenTidyAsync"><i data-lucide="sparkles" class="sm"></i><span>Tidy up</span>
+                        @if (tidyCount > 0)
+                        {
+                            <span class="nt-tidy-n">@tidyCount</span>
+                        }
+                    </button>
                     <button type="button" class="nt-btn ghost hide-sm" @onclick="() => pop = Pop.Style"><i data-lucide="palette" class="sm"></i>Style</button>
                 }
                 <button type="button" class="nt-icon-btn @(commentsOpen ? "on" : "") @(note.OpenThreads > 0 ? "has-badge" : "")" title="Comments" aria-label="Comments" @onclick="ToggleComments"><i data-lucide="message-square"></i>@if (note.OpenThreads > 0) { <span class="nt-badge">@note.OpenThreads</span> }</button>
@@ -441,6 +447,31 @@
                 }
                 <hr />
                 <div class="mh" style="font-weight:400">Created @ShortDate(note.CreatedAt) · @note.OwnerName</div>
+            </div>
+            break;
+
+        case Pop.Tidy:
+            <div class="nt-layer nt-tidy" style="top:52px;right:14px">
+                <h4>SUGGESTIONS@(tidySuggestions.Count > 0 ? $" · {tidySuggestions.Count} left" : "")</h4>
+                @if (tidySuggestions.Count == 0)
+                {
+                    <div class="nt-tidy-ok"><b>✨</b>This page looks tidy.</div>
+                }
+                else
+                {
+                    <div class="nt-tidy-hint">Nothing changes until you press Apply. Undo puts it back.</div>
+                    @foreach (var s in tidySuggestions)
+                    {
+                        var rule = s.Rule;
+                        <div class="nt-tidy-row">
+                            <div class="tx"><b>@s.Label</b><span>@s.Detail</span></div>
+                            <button type="button" class="nt-btn" @onclick="() => ApplyTidyAsync([rule])">Apply</button>
+                        </div>
+                    }
+                    <div class="nt-cover-foot">
+                        <button type="button" class="nt-btn primary" style="flex:1;justify-content:center" @onclick="() => ApplyTidyAsync(tidySuggestions.Select(x => x.Rule).ToList())">Apply all</button>
+                    </div>
+                }
             </div>
             break;
 
