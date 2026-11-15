@@ -384,6 +384,24 @@ public class AuthState(HttpClient http, IJSRuntime js)
             await Task.Delay(RefreshRetryDelays[attempt]);
         }
         if (res is null) return false;
+        if (res.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            // Another tab of this browser shares the stored token but not this gate. If it rotated the token while
+            // ours was in flight, ours is merely stale: adopt the newer one once instead of ending a live session.
+            var storage = _keepSignedIn ? "localStorage.getItem" : "sessionStorage.getItem";
+            var current = await js.InvokeAsync<string?>(storage, RefreshKey);
+            if (current == refresh)
+            {
+                // The winning tab may not have stored its new token yet: look once more before giving up.
+                await Task.Delay(TimeSpan.FromMilliseconds(300));
+                current = await js.InvokeAsync<string?>(storage, RefreshKey);
+            }
+            if (!string.IsNullOrEmpty(current) && current != refresh)
+            {
+                try { res = await http.PostAsJsonAsync("/api/auth/refresh", new { refreshToken = current }); }
+                catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { return false; }
+            }
+        }
         if (!res.IsSuccessStatusCode)
         {
             // The server refused the refresh token itself: this session is over and no amount of
