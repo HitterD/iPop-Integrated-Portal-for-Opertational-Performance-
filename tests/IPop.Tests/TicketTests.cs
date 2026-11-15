@@ -79,10 +79,13 @@ public partial class TicketTests
     private sealed class RecordingGateway : INotificationGatewayService
     {
         public List<(string Type, string Title, string Message, Guid? To, string? Url)> Sent { get; } = [];
+        /// The next N publishes throw, like a gateway that is restarting.
+        public int FailNext;
 
         public Task<NotificationEnqueueResult> PublishInternalAsync(string clientSlug, string eventType, string title, string message,
             NotificationTarget target, string priority = "normal", string? targetUrl = null, CancellationToken ct = default)
         {
+            if (FailNext > 0) { FailNext--; throw new InvalidOperationException("notification gateway is down"); }
             Assert.Contains(clientSlug, new[] { "tickets", "meetings" });   // Zoom invitations go out as meetings
             Sent.Add((eventType, title, message, target.UserId, targetUrl));
             return Task.FromResult(new NotificationEnqueueResult(true, null, null, Guid.NewGuid(), "delivered", 1, DateTime.UtcNow));
@@ -669,6 +672,32 @@ public partial class TicketTests
         Assert.Equal("User 00000024 · Reporter\nChristhin: “Masih belum bisa”\n#051026-SEC-0003", x.Gw.Sent[0].Message);
         Assert.Contains("Christhin: “📎 Foto”", last.Message);
         Assert.Empty(await x.T.Verify().Tickets.ToListAsync());   // the agent never gets a mirror of someone else's ticket
+    }
+
+    [Fact]
+    public async Task A_failed_agent_notification_is_retried_on_redelivery_instead_of_being_lost_as_a_duplicate()
+    {
+        var x = Setup(); using var _ = x.T;
+        x.T.AddUser("00000024");
+        var agent = x.T.AddUser("00061058");
+        var remote = Remote(null, "00000024", TicketStatus.InProgress, number: "051026-SEC-0004", assignee: "Bagastyo");
+        string Body() => Webhook("lost1", "ticket.message_created", remote,
+            message: MsgWith("Tolong cepat", "Christhin", true), recipients: ["00061058"]);
+
+        // The gateway is down when iDesk delivers. The answer must tell iDesk to try again (an error), never "OK".
+        x.Gw.FailNext = 1;
+        var first = await Record.ExceptionAsync(() => x.Svc.ApplyWebhookAsync(Body()));
+        Assert.NotNull(first);
+        Assert.Empty(x.Gw.Sent);
+
+        // iDesk redelivers the same event id: it must be processed, not swallowed as a duplicate of the failed attempt.
+        Assert.Equal(TicketWebhookKind.Applied, await x.Svc.ApplyWebhookAsync(Body()));
+        var one = Assert.Single(x.Gw.Sent);
+        Assert.Equal(agent.Id, one.To);
+
+        // And a third delivery after success is a real duplicate: still exactly one notification.
+        Assert.Equal(TicketWebhookKind.Duplicate, await x.Svc.ApplyWebhookAsync(Body()));
+        Assert.Single(x.Gw.Sent);
     }
 
     [Theory]
