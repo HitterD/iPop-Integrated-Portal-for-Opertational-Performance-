@@ -1,3 +1,4 @@
+using IPop.Application.Attachments;
 using IPop.Application.Notes;
 using IPop.Core.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -94,6 +95,7 @@ public sealed partial class NoteService
             page.PendingContributors = null;
             wroteVersion = true;
         }
+        await LinkReferencedAttachmentsAsync(pageId, state, ct);
         await db.SaveChangesAsync(ct);
         // Only once the new state is stored are the updates it contains removed (same transaction).
         if (merged.Count > 0)
@@ -403,6 +405,24 @@ public sealed partial class NoteService
     {
         var access = await GetAccessAsync(userId, pageId, ct);
         return access >= NoteAccess.Edit ? Ok(true) : Fail<bool>(Denied(access));
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex GuidText = new(
+        "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// An image or file pasted from another page keeps its attachment id inside this page's content, but only the page it
+    /// was uploaded to is linked. Link every notes attachment the saved content mentions, so people who can open THIS page
+    /// can load it even when they cannot open the original (or the original is purged).
+    private async Task LinkReferencedAttachmentsAsync(Guid pageId, byte[] state, CancellationToken ct)
+    {
+        var ids = GuidText.Matches(System.Text.Encoding.Latin1.GetString(state)).Select(m => Guid.Parse(m.Value)).Distinct().Take(500).ToList();
+        if (ids.Count == 0) return;
+        var known = await db.Attachments.AsNoTracking()
+            .Where(a => ids.Contains(a.Id) && a.Area == AttachmentAreas.Notes && a.DeletedAt == null).Select(a => a.Id).ToListAsync(ct);
+        if (known.Count == 0) return;
+        var linked = await db.NoteAttachments.AsNoTracking().Where(a => a.PageId == pageId && known.Contains(a.AttachmentId))
+            .Select(a => a.AttachmentId).ToListAsync(ct);
+        foreach (var id in known.Except(linked)) db.NoteAttachments.Add(new NoteAttachment { AttachmentId = id, PageId = pageId });
     }
 
     public async Task LinkAttachmentAsync(Guid pageId, Guid attachmentId, CancellationToken ct)

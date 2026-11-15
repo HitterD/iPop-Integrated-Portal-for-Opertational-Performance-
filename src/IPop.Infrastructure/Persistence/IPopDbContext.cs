@@ -1376,7 +1376,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
         });
         b.Entity<NoteAttachment>(e =>
         {
-            e.HasKey(x => x.AttachmentId);
+            e.HasKey(x => new { x.AttachmentId, x.PageId }); // one file can belong to several pages (pasted across pages)
             e.HasIndex(x => x.PageId);
             e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.PageId).OnDelete(DeleteBehavior.Cascade);
         });

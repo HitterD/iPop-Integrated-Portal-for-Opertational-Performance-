@@ -17,11 +17,12 @@ public sealed class NotesAttachmentPolicy(IPopDbContext db, INoteService notes) 
             .Select(a => new { a.UploaderId }).FirstOrDefaultAsync(ct);
         if (att is null) return false;
 
-        var pageId = await db.NoteAttachments.AsNoTracking()
-            .Where(a => a.AttachmentId == attachmentId).Select(a => (Guid?)a.PageId).FirstOrDefaultAsync(ct);
-        if (pageId is not null) return await notes.GetAccessAsync(userId, pageId.Value, ct) > NoteAccess.None;
-
-
+        // Linked to several pages (the same image pasted into a second page): any page the user can open is enough.
+        var pageIds = await db.NoteAttachments.AsNoTracking()
+            .Where(a => a.AttachmentId == attachmentId).Select(a => a.PageId).ToListAsync(ct);
+        foreach (var pageId in pageIds)
+            if (await notes.GetAccessAsync(userId, pageId, ct) > NoteAccess.None) return true;
+        if (pageIds.Count > 0 && att.UploaderId != userId) return false;
 
         return att.UploaderId == userId;
     }

@@ -435,6 +435,39 @@ public class NoteServiceTests
     }
 
     [Fact]
+    public async Task Image_pasted_into_another_page_is_readable_by_that_pages_people()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("pa"); var b = t.AddUser("pb");
+        var src = await PageAsync(t, a.Id, null, "Original");   // private to a
+        var dst = await PageAsync(t, a.Id, null, "Copy target");
+        await Svc(t).AddShareAsync(a.Id, dst, new AddNoteShareRequest(b.Id, null, NoteLevels.View), Ct);
+
+        var attId = Guid.NewGuid();
+        t.Db.Attachments.Add(new IPop.Core.Entities.Attachment
+        {
+            Id = attId, Area = "notes", FileName = "pic.png", ContentType = "image/png",
+            Size = 42, Sha256 = "abc", StoragePath = "local:notes/pic.png", UploaderId = a.Id, CreatedAt = DateTime.UtcNow,
+        });
+        await t.Db.SaveChangesAsync();
+        await Svc(t).LinkAttachmentAsync(src, attId, Ct);
+
+        var policy = new NotesAttachmentPolicy(t.Verify(), Svc(t));
+        Assert.False(await policy.CanReadAsync(attId, b.Id, Ct), "b cannot open the original page");
+
+        // The pasted content on the target page mentions the attachment id; saving it links the file to that page too.
+        var payload = System.Text.Encoding.ASCII.GetBytes($"x{attId:D}y");
+        var snap = await Svc(t).SnapshotAsync(a.Id, dst, new NoteSnapshotRequest(Convert.ToBase64String(payload), 0, [], "img", 0, 0), Ct);
+        Assert.True(snap.Success, snap.Error);
+
+        Assert.True(await new NotesAttachmentPolicy(t.Verify(), Svc(t)).CanReadAsync(attId, b.Id, Ct));
+        // Saving again must not duplicate the link or fail on the composite key.
+        var again = await Svc(t).SnapshotAsync(a.Id, dst, new NoteSnapshotRequest(Convert.ToBase64String(payload), 1, [], "img", 0, 0), Ct);
+        Assert.True(again.Success, again.Error);
+        Assert.Equal(2, await t.Verify().NoteAttachments.CountAsync(x => x.AttachmentId == attId));
+    }
+
+    [Fact]
     public async Task Duplicate_clones_attachments_and_purge_soft_deletes_purged_page_attachments()
     {
         using var t = new TestDb();
