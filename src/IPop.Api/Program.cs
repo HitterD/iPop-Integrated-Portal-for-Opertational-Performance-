@@ -85,11 +85,15 @@ if (builder.Configuration["DataProtection:KeyCertificatePath"] is { Length: > 0 
 builder.Services.AddScoped<IPasswordHasher, Argon2PasswordHasher>();
 builder.Services.AddSingleton<ITokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthWorkflow, AuthWorkflow>();
-// Per-address sign-in throttle (30 failures / 15 min, any accounts). OFF by default: behind the proxy every user shares
-// one remote address, so enabling it before the real client-IP chain is verified would lock out the whole office.
-if (builder.Configuration.GetValue("Auth:LoginThrottle:Enabled", false))
-    builder.Services.AddSingleton(new IPop.Infrastructure.Auth.LoginThrottle(
-        builder.Configuration.GetValue("Auth:LoginThrottle:FailuresPerWindow", 30), TimeSpan.FromMinutes(15)));
+// Per-address sign-in throttle (30 failures / 15 min, any accounts). ALWAYS registered so the login endpoint can bind
+// it (an unregistered optional class parameter made ASP.NET fail to infer the parameter and crash-looped staging); it is
+// a no-op unless Auth:LoginThrottle:Enabled is true: behind the proxy every user shares one remote address until the
+// client-IP chain is verified, so enabling it blindly would lock out the whole office.
+builder.Services.AddSingleton(new IPop.Infrastructure.Auth.LoginThrottle(
+    builder.Configuration.GetValue("Auth:LoginThrottle:Enabled", false)
+        ? builder.Configuration.GetValue("Auth:LoginThrottle:FailuresPerWindow", 30)
+        : int.MaxValue,
+    TimeSpan.FromMinutes(15)));
 builder.Services.AddScoped<IPop.Application.Auth.IPasswordReset, IPop.Infrastructure.Auth.PasswordResetService>();
 // Forgot/reset password are anonymous: 5 requests per IP per 15 minutes.
 builder.Services.AddRateLimiter(o =>
