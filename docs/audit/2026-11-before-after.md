@@ -5,7 +5,7 @@ GREEN = same test on the fix). Nothing here is a production measurement. The bat
 
 | Area | Before (RED evidence) | After (GREEN evidence) | Commit |
 |---|---|---|---|
-| Chat attachment GC | forwarded file deleted with its source | file kept until last reference ages out | 3310 tests |
+| Chat attachment GC | forwarded file deleted with its source | file kept until last reference ages out | CI 3310/3310 |
 | Chat send / forward / thread | message could commit with no durable push intent | intent saved in the same SaveChanges | 3313 / 3315 |
 | Chat replay | retry after a crash never re-broadcast | replay re-offers realtime; thread events deduplicated client side | 3316 |
 | Chat forward | replay returned content after membership was revoked; key derived from the minute | authorization first; explicit client key; conflict on a different source; concurrent retry returns the winner | 3318 to 3321 |
@@ -21,7 +21,7 @@ GREEN = same test on the fix). Nothing here is a production measurement. The bat
 | News video | 2 failed: 6 h ticket was the whole permission | each stream/poster re-checks the viewer | 3339 |
 | Tickets webhook | 1 failed: failed send consumed the receipt, notification lost | receipt released on failure; iDesk redelivers | 3340 |
 
-Test count: 3300 at the start of this phase to 3340 now, all green on the last run.
+Test count: 3,309 passed on the first CI run of this phase's chain (Task 1) to 3,340 on the last run; every count in the table is the Passed/Total line of the cited CI run. The last run is fully green.
 
 ## Not measured, not done (do not read this report as completion)
 - No cold/warm p50/p95, no load test, no payload-bytes measurement of the Mail change on real PostgreSQL.
