@@ -3,6 +3,7 @@
 // Sync model (see docs/notes spec): the server stores a compacted Yjs state (+ version) and a tail of
 // raw updates. Clients push every local update through the hub (which stores it and fans it out), and
 // an editor periodically folds the tail into a new state with a compare-and-set on the version.
+import { createCovers } from './covers.js';
 import { refusedReason, mentionContexts, savePending, takePending, clearPending } from './sync.js';
 import { Editor, Extension } from '@tiptap/core';
 import { exitSuggestion } from '@tiptap/suggestion';
@@ -676,6 +677,9 @@ export function transfer(opts) {
     countUp: sel => document.querySelectorAll(sel).forEach(e => window.ipopMicro?.countUp(e, +e.dataset.countUp, 600)),
   };
 }
+
+/// Photo cover of the open page (covers.js). opts: { apiBase, dotnet } — dotnet provides GetToken(), OnCoverProgress, OnCoverDragged.
+export function covers(opts) { return createCovers(opts); }
 
 export function copyText(text) { return navigator.clipboard?.writeText(text).then(() => true, () => false) ?? false; }
 export { sidebar, place, openTab, focusSelect } from './sidebar.js';

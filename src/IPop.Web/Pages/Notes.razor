@@ -273,24 +273,44 @@
                 else
                 {
                     <section class="nt-pageview @FontClass @(note.SmallText ? "small" : "")" style="--pc:@AccentHex(note.Accent)">
-                        @if (note.Cover is not null)
+                        @if (HasCover || coverUploading)
                         {
-                            <div class="nt-cover" style="--cover:@CoverCss(note.Cover)">
-                                @if (CanEdit)
+                            <div class="nt-cover @(HasPhotoCover ? "photo" : "") @(coverRepositioning ? "repo" : "") @(coverUploading ? "loading" : "")" style="@CoverStyle" @ref="coverRef">
+                                @if (coverRepositioning)
+                                {
+                                    <div class="nt-cover-hint"><i data-lucide="move-vertical" class="sm"></i>Drag the image to reposition</div>
+                                }
+                                @if (coverUploading)
+                                {
+                                    <div class="nt-cover-upl" role="status" aria-live="polite">
+                                        <div class="bar"><i style="width:@(coverProgress)%"></i></div>
+                                        <span>@(coverProgress < 100 ? $"Uploading… {coverProgress}%" : "Resizing…")</span>
+                                    </div>
+                                }
+                                @if (CanEdit && !coverUploading)
                                 {
                                     <div class="nt-cover-actions">
-                                        <button type="button" @onclick="() => pop = Pop.Style"><i data-lucide="image" class="sm"></i>Change cover</button>
-                                        <button type="button" @onclick='() => PatchAsync(new UpdateNoteMetaRequest(null, null, "", null, null, null, null))'>Remove</button>
+                                        @if (coverRepositioning)
+                                        {
+                                            <button type="button" class="pri" @onclick="SaveRepositionAsync">Save position</button>
+                                            <button type="button" @onclick="CancelRepositionAsync">Cancel</button>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" @onclick="() => pop = Pop.Style"><i data-lucide="image" class="sm"></i>Change cover</button>
+                                            @if (HasPhotoCover) { <button type="button" @onclick="StartRepositionAsync">Reposition</button> }
+                                            <button type="button" @onclick="RemoveCoverAsync">Remove</button>
+                                        }
                                     </div>
                                 }
                             </div>
                         }
-                        <div class="nt-page @(note.FullWidth ? "wide" : "") @(note.Cover is null ? "no-cover" : "")">
+                        <div class="nt-page @(note.FullWidth ? "wide" : "") @(HasCover || coverUploading ? "" : "no-cover")">
                             <div class="nt-page-icon" title="@(CanEdit ? "Change icon" : "")" style="@(CanEdit ? "" : "cursor:default")" @onclick="() => { if (CanEdit) pop = Pop.Emoji; }">@(note.Emoji ?? "📄")</div>
-                            @if (CanEdit && note.Cover is null)
+                            @if (CanEdit && !HasCover && !coverUploading)
                             {
                                 <div class="nt-add-row">
-                                    <button type="button" @onclick='() => PatchAsync(new UpdateNoteMetaRequest(null, null, "ocean", null, null, null, null))'><i data-lucide="image" class="sm"></i>Add cover</button>
+                                    <button type="button" @onclick="() => { pop = Pop.Style; coverTab = CoverTab.Upload; }"><i data-lucide="image" class="sm"></i>Add cover</button>
                                     <button type="button" @onclick="ToggleComments"><i data-lucide="message-square" class="sm"></i>Comment</button>
                                 </div>
                             }
@@ -428,13 +448,55 @@
             <div class="nt-layer nt-style" style="top:52px;right:14px">
                 <section>
                     <h4>COVER</h4>
-                    <div class="nt-covers">
-                        <button type="button" class="none @(note.Cover is null ? "on" : "")" @onclick='() => PatchAsync(new UpdateNoteMetaRequest(null, null, "", null, null, null, null))'>None</button>
-                        @foreach (var c in Covers)
-                        {
-                            <button type="button" class="@(note.Cover == c ? "on" : "")" style="--cv:var(--cv-@c)" title="@c" @onclick="() => PatchAsync(new UpdateNoteMetaRequest(null, null, c, null, null, null, null))"></button>
-                        }
+                    <div class="nt-tabs" role="tablist">
+                        <button type="button" role="tab" aria-selected="@(coverTab == CoverTab.Colours)" class="@(coverTab == CoverTab.Colours ? "on" : "")" @onclick="() => SetCoverTab(CoverTab.Colours)">Colours</button>
+                        <button type="button" role="tab" aria-selected="@(coverTab == CoverTab.Upload)" class="@(coverTab == CoverTab.Upload ? "on" : "")" @onclick="() => SetCoverTab(CoverTab.Upload)">Upload</button>
+                        <button type="button" role="tab" aria-selected="@(coverTab == CoverTab.ThisPage)" class="@(coverTab == CoverTab.ThisPage ? "on" : "")" @onclick="() => SetCoverTab(CoverTab.ThisPage)">This page</button>
+                        <button type="button" role="tab" disabled title="Coming later">Gallery <small>later</small></button>
                     </div>
+                    @if (coverTab == CoverTab.Colours)
+                    {
+                        <div class="nt-covers">
+                            <button type="button" class="none @(!HasCover ? "on" : "")" @onclick="RemoveCoverAsync">None</button>
+                            @foreach (var c in Covers)
+                            {
+                                var key = c;
+                                <button type="button" class="@(!HasPhotoCover && note.Cover == key ? "on" : "")" style="--cv:var(--cv-@key)" title="@key" @onclick="() => PickGradient(key)"></button>
+                            }
+                        </div>
+                    }
+                    else if (coverTab == CoverTab.Upload)
+                    {
+                        <div class="nt-drop">
+                            <b>Choose a picture for the top of this page</b>
+                            <span>JPG, PNG or WebP · up to 10 MB</span>
+                            <button type="button" class="nt-btn" @onclick="ChooseCoverFile" disabled="@coverUploading"><i data-lucide="image-up" class="sm"></i>Choose image…</button>
+                        </div>
+                        @if (coverError is not null) { <div class="nt-cover-err" role="alert">@coverError</div> }
+                    }
+                    else
+                    {
+                        @if (pageImages is null) { <div class="nt-side-empty">Loading…</div> }
+                        else if (pageImages.Count == 0) { <div class="nt-side-empty">No images in this page yet. Add one with <b>/image</b>, then pick it here.</div> }
+                        else
+                        {
+                            <div class="nt-thumbs" @ref="coverThumbsRef">
+                                @foreach (var im in pageImages)
+                                {
+                                    var imgId = im.Id;
+                                    <button type="button" data-img="@imgId" title="@im.FileName" aria-label="Use @im.FileName as the cover" class="@(note.CoverImageId == imgId ? "on" : "")" @onclick="() => PickCoverImage(imgId)"></button>
+                                }
+                            </div>
+                        }
+                    }
+                    @if (HasCover)
+                    {
+                        <div class="nt-cover-foot">
+                            @if (HasPhotoCover) { <button type="button" class="nt-btn" @onclick="StartRepositionAsync">Reposition</button> }
+                            <span style="flex:1"></span>
+                            <button type="button" class="nt-btn danger" @onclick="RemoveCoverAsync">Remove cover</button>
+                        </div>
+                    }
                 </section>
                 <section>
                     <h4>ACCENT COLOR</h4>

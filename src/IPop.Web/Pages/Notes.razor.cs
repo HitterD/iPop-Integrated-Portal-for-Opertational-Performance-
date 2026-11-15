@@ -22,7 +22,7 @@ public partial class Notes
 {
     [Parameter] public Guid? Id { get; set; }
 
-    private const string EditorModule = "./js/notes/notes-editor.js?v=20261116-perf";
+    private const string EditorModule = "./js/notes/notes-editor.js?v=20261116-cover";
 
     private enum View { Home, Page, New, Trash }
     private enum Pop { None, More, Style, Emoji, Share, History }
@@ -130,6 +130,7 @@ public partial class Notes
         if (focusSearch) { focusSearch = false; await searchRef.FocusAsync(); }
         await SidebarAfterRenderAsync();
         await ImportAfterRenderAsync();
+        await CoverAfterRenderAsync();
     }
 
     public async ValueTask DisposeAsync()
@@ -145,6 +146,7 @@ public partial class Notes
             await DestroyPreviewAsync();
             await DisposeSidebarAsync();
             await DisposeTransferAsync();
+            await DisposeCoverAsync();
             if (hotkeys is not null) { await hotkeys.InvokeVoidAsync("dispose"); await hotkeys.DisposeAsync(); }
             if (module is not null) await module.DisposeAsync();
         }

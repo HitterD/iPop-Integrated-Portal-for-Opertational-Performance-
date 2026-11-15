@@ -865,3 +865,34 @@
   .nt-icon-btn::after, .nt-fmt button::after { content:""; position:absolute; inset:-8px; }
   .nt-doc-top { gap:10px; }
 }
+
+/* ── Photo cover (uploaded image) ───────────────────────────────────────── */
+.nt-cover.photo { background-image:var(--img); background-size:cover; background-position:center var(--y,50%); background-repeat:no-repeat; }
+.nt-cover.photo::after { background:linear-gradient(180deg,transparent 55%,rgba(0,0,0,.10)); }
+.nt-cover.repo { cursor:grab; box-shadow:inset 0 0 0 2px var(--blue,#0A84FF); touch-action:none; user-select:none; }
+.nt-cover.repo:active { cursor:grabbing; }
+.nt-cover.repo .nt-cover-actions, .nt-cover.loading .nt-cover-actions { opacity:1; }
+.nt-cover-hint { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:1; display:flex; gap:6px; align-items:center; padding:6px 14px; border-radius:99px; background:rgba(0,0,0,.55); color:#fff; font-size:12.5px; pointer-events:none; backdrop-filter:blur(8px); }
+.nt-cover-actions button.pri { background:#1D1D1F !important; color:#fff !important; }
+.nt-cover-upl { position:absolute; inset:0; z-index:2; display:grid; place-content:center; justify-items:center; gap:8px; background:rgba(0,0,0,.38); color:#fff; font-size:12.5px; }
+.nt-cover-upl .bar { width:min(260px,60vw); height:6px; border-radius:6px; background:rgba(255,255,255,.3); overflow:hidden; }
+.nt-cover-upl .bar i { display:block; height:100%; background:#fff; transition:width .12s linear; }
+@media (prefers-reduced-motion:reduce) { .nt-cover-upl .bar i { transition:none; } }
+
+.nt-tabs { display:flex; gap:2px; padding:2px; margin:0 0 12px; border-radius:9px; background:var(--fill); }
+.nt-tabs button { flex:1; padding:4px 4px; border-radius:7px; font-size:12px; color:var(--ink-2); white-space:nowrap; }
+.nt-tabs button.on { background:var(--surface); color:var(--ink); font-weight:500; box-shadow:0 1px 2px rgba(0,0,0,.08),0 0 0 .5px var(--line); }
+.nt-tabs button[disabled] { color:var(--ink-4); cursor:default; }
+.nt-tabs button small { font-size:9.5px; color:var(--ink-4); }
+.nt-drop { border:1.5px dashed var(--line-2,var(--line)); border-radius:12px; padding:16px 12px; text-align:center; background:var(--fill); display:grid; gap:4px; justify-items:center; }
+.nt-drop b { font-size:13px; color:var(--ink); }
+.nt-drop span { font-size:12px; color:var(--ink-3); }
+.nt-drop .nt-btn { margin-top:8px; }
+.nt-cover-err { margin-top:10px; padding:8px 10px; border-radius:9px; background:color-mix(in srgb,var(--danger,#FF3B30) 12%,transparent); color:var(--danger,#FF3B30); font-size:12px; }
+.nt-thumbs { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; max-height:190px; overflow-y:auto; }
+.nt-thumbs button { height:58px; border-radius:8px; background:var(--fill) center/cover no-repeat; box-shadow:inset 0 0 0 .5px var(--line); }
+.nt-thumbs button:hover { outline:2px solid var(--blue,#0A84FF); outline-offset:1px; }
+.nt-thumbs button.on { box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--ink); }
+.nt-thumbs button.broken { background-image:none; }
+.nt-cover-foot { display:flex; gap:6px; align-items:center; margin-top:12px; padding-top:12px; border-top:1px solid var(--line); }
+.nt-cover-foot .nt-btn.danger { color:var(--danger,#FF3B30); }
