@@ -37,4 +37,15 @@ public class ClientAddressTests
     {
         Assert.Equal("192.168.5.20", ClientAddress.Of(Request("192.168.2.2", "192.168.5.20"), Proxies("192.168.2.2")));
     }
+
+    [Fact]
+    public void Auth_endpoints_record_the_browser_address_not_the_proxy_behind_NPM()
+    {
+        // Production: every request reaches the API from NPM, so the raw peer is the same for the whole office.
+        var cfg = Proxies("192.168.2.3");
+        Assert.Equal("10.10.6.51", IPop.Api.Endpoints.AuthEndpoints.ClientIp(Request("192.168.2.3", "10.10.6.51"), cfg));
+        Assert.Equal("10.10.6.77", IPop.Api.Endpoints.AuthEndpoints.ClientIp(Request("192.168.2.3", "10.10.6.77"), cfg));
+        // A direct caller cannot spoof the header: only a trusted proxy's forwarded address is believed.
+        Assert.Equal("203.0.113.9", IPop.Api.Endpoints.AuthEndpoints.ClientIp(Request("203.0.113.9", "10.10.6.51"), cfg));
+    }
 }
