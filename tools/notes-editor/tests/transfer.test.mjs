@@ -184,3 +184,35 @@ test('Yjs state round-trips back to the same document', () => {
   const back = T.stateToDoc({ state: s.state, updates: [] });
   assert.equal(find(back, 'text').map(t => t.text).join(''), 'hit');
 });
+
+// An exported HTML file or the print-preview PDF window is opened as a document on iPop's own origin (or from disk):
+// a note author must not be able to plant a script that runs when somebody else opens the export.
+const hostile = (marks, extra = []) => ({ type: 'doc', content: [
+  { type: 'paragraph', content: [{ type: 'text', text: 'click me', marks }] }, ...extra] });
+const plainCtx = { dir: '', link: () => null, file: () => null, origin: 'https://ipop.santos.co.id', title: () => null };
+
+test('export HTML never carries a javascript:/vbscript:/data:text/html link', () => {
+  for (const href of ['javascript:alert(document.cookie)', ' JaVaScRiPt:alert(1)', 'vbscript:msgbox(1)', 'data:text/html;base64,PHNjcmlwdD4=', 'java\tscript:alert(1)']) {
+    const html = T.docToHtml(hostile([{ type: 'link', attrs: { href } }]), plainCtx);
+    assert.doesNotMatch(html, /href="\s*(java|vb)\s*script|href="\s*data:text\/html/i, `unsafe href kept for ${JSON.stringify(href)}: ${html}`);
+  }
+  const ok = T.docToHtml(hostile([{ type: 'link', attrs: { href: 'https://example.com/a?b=1' } }]), plainCtx);
+  assert.match(ok, /href="https:\/\/example\.com\/a\?b=1"/);
+  const rel = T.docToHtml(hostile([{ type: 'link', attrs: { href: 'mailto:a@b.c' } }]), plainCtx);
+  assert.match(rel, /href="mailto:a@b\.c"/);
+});
+
+test('export HTML drops unsafe bookmark and embed urls', () => {
+  const doc = { type: 'doc', content: [
+    { type: 'noteBookmark', attrs: { url: 'javascript:alert(1)', title: 'x', desc: '' } },
+    { type: 'noteEmbed', attrs: { url: 'data:text/html,<script>alert(1)</script>' } }] };
+  const html = T.docToHtml(doc, plainCtx);
+  assert.doesNotMatch(html, /href="\s*(javascript|data:text\/html)/i, html);
+  assert.doesNotMatch(html, /<script/i);
+});
+
+test('export HTML keeps text-only and escaped content intact', () => {
+  const html = T.docToHtml(hostile([], [{ type: 'codeBlock', content: [{ type: 'text', text: '<script>alert(1)</script>' }] }]), plainCtx);
+  assert.doesNotMatch(html, /<script>/i);
+  assert.match(html, /&lt;script&gt;/);
+});
