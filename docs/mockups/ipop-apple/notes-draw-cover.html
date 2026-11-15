@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iPop — Notes: image cover, drawing, whiteboard, tidy (mockup)</title>
+<style>
+:root{
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",system-ui,sans-serif;
+  --bg:#F5F5F7;--surface:#fff;--surface-2:#F5F5F7;--line:rgba(0,0,0,.08);--line-2:rgba(0,0,0,.14);
+  --ink:#1D1D1F;--ink-2:#424245;--ink-3:#86868B;--accent:#34A853;--accent-soft:rgba(52,168,83,.12);
+  --blue:#0A84FF;--blue-soft:rgba(10,132,255,.1);--orange:#FF9500;--orange-soft:rgba(255,149,0,.14);
+  --yellow:#FFD60A;--yellow-soft:rgba(255,204,0,.2);--red:#FF3B30;--red-soft:rgba(255,59,48,.1);
+  --purple:#AF52DE;--pink:#FF2D55;--teal:#0F9D9A;--teal-soft:rgba(48,176,199,.16);
+  --pop:0 12px 40px rgba(0,0,0,.14),0 0 0 .5px rgba(0,0,0,.08);
+  --board:#FBFBF9;--grid:rgba(0,0,0,.07);
+}
+[data-theme=dark]{
+  --bg:#000;--surface:#1C1C1E;--surface-2:#2C2C2E;--line:rgba(255,255,255,.1);--line-2:rgba(255,255,255,.18);
+  --ink:#F5F5F7;--ink-2:#D1D1D6;--ink-3:#8E8E93;--blue-soft:rgba(64,156,255,.16);--yellow-soft:rgba(255,214,10,.16);
+  --teal:#5AC8D8;--teal-soft:rgba(90,200,216,.16);--red-soft:rgba(255,69,58,.16);--orange-soft:rgba(255,149,0,.18);
+  --pop:0 12px 40px rgba(0,0,0,.6),0 0 0 .5px rgba(255,255,255,.12);
+  --board:#161618;--grid:rgba(255,255,255,.07);
+}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.5 var(--font);background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+header.top{position:sticky;top:0;z-index:30;display:flex;gap:6px;align-items:center;padding:10px 24px;background:color-mix(in srgb,var(--surface) 88%,transparent);backdrop-filter:blur(20px);border-bottom:1px solid var(--line);flex-wrap:wrap}
+header.top h1{font-size:15px;margin:0 auto 0 0}
+header.top a{color:var(--ink-2);text-decoration:none;font-size:13px;padding:5px 10px;border-radius:8px}
+header.top a:hover{background:var(--surface-2)}
+header.top button{font:inherit;font-size:13px;border:1px solid var(--line-2);background:var(--surface);color:var(--ink);border-radius:8px;padding:5px 10px;cursor:pointer}
+main{max-width:1240px;margin:0 auto;padding:24px}
+section{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:24px;margin:0 0 44px;scroll-margin-top:70px}
+@media(max-width:980px){section{grid-template-columns:1fr}}
+h2.sec{grid-column:1/-1;margin:0;font-size:20px;letter-spacing:-.01em}
+h2.sec small{font-weight:400;color:var(--ink-3);font-size:13px;margin-left:8px}
+.notes{background:var(--surface);border-radius:14px;padding:18px 20px;box-shadow:0 0 0 .5px var(--line);font-size:13px;color:var(--ink-2);align-self:start;position:sticky;top:70px}
+.notes h3{margin:0 0 8px;font-size:13px;color:var(--ink)}
+.notes ul{margin:6px 0 0;padding-left:18px}.notes li{margin:3px 0}
+.notes .q{margin-top:10px;padding:8px 10px;border-radius:9px;background:var(--yellow-soft);color:var(--ink)}
+.small{font-size:12px;color:var(--ink-3)}
+.frame{background:var(--surface);border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.06),0 0 0 .5px var(--line);overflow:hidden;position:relative}
+.cap{font-size:12px;color:var(--ink-3);margin:8px 2px 0}
+
+/* generic bits */
+.btn{display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:12.5px;border:0;background:var(--surface-2);color:var(--ink);border-radius:8px;padding:5px 10px;cursor:pointer;box-shadow:0 0 0 .5px var(--line)}
+.btn.pri{background:var(--accent);color:#fff;box-shadow:none}
+.btn.ghost{background:transparent;box-shadow:none;color:var(--ink-2)}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:2px 9px;border-radius:99px;background:var(--surface-2);color:var(--ink-2);box-shadow:0 0 0 .5px var(--line)}
+.pop{background:var(--surface);border-radius:12px;box-shadow:var(--pop);padding:14px;font-size:13px}
+.pop h4{margin:0 0 8px;font-size:11px;font-weight:600;color:var(--ink-3);letter-spacing:.04em;text-transform:uppercase}
+.tabs{display:flex;gap:2px;background:var(--surface-2);border-radius:9px;padding:2px;margin-bottom:12px}
+.tabs span{flex:1;text-align:center;padding:4px 6px;border-radius:7px;font-size:12.5px;color:var(--ink-2)}
+.tabs span.on{background:var(--surface);color:var(--ink);font-weight:500;box-shadow:0 0 0 .5px var(--line)}
+
+/* page chrome */
+.hdr{display:flex;align-items:center;gap:8px;padding:9px 18px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-3)}
+.hdr .sp{margin-left:auto;display:flex;gap:6px;align-items:center}
+.av{width:22px;height:22px;border-radius:7px;display:inline-grid;place-items:center;font-size:10px;color:#fff;font-weight:600}
+.page{padding:0 0 28px}
+.cover{height:190px;position:relative;background:linear-gradient(135deg,#7bb4a1,#2f6f5e 55%,#c9a46a);overflow:hidden}
+.cover.photo{background:
+  radial-gradient(120px 60px at 78% 70%,rgba(255,255,255,.35),transparent 70%),
+  linear-gradient(180deg,#9fd0e8 0%,#cfe6f1 42%,#e9d9b6 43%,#d3b27a 62%,#6c8f4a 63%,#3e6330 100%)}
+.cover .acts{position:absolute;right:14px;bottom:12px;display:flex;gap:6px;opacity:0;transition:.15s}
+.cover:hover .acts,.cover.edit .acts{opacity:1}
+.cover .acts .btn{background:color-mix(in srgb,var(--surface) 88%,transparent);backdrop-filter:blur(10px)}
+.cover.edit{cursor:ns-resize;outline:2px solid var(--blue);outline-offset:-2px}
+.cover .hint{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.55);color:#fff;font-size:12.5px;padding:5px 12px;border-radius:99px;display:flex;gap:6px;align-items:center}
+.body{max-width:720px;margin:0 auto;padding:0 28px;position:relative}
+.icon{font-size:56px;line-height:1;margin-top:-30px;position:relative}
+.title{font-size:36px;font-weight:700;letter-spacing:-.02em;margin:10px 0 6px}
+.meta{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.body p{margin:8px 0;color:var(--ink)}
+.body h3{font-size:20px;margin:18px 0 6px}
+.body ul{padding-left:20px;margin:6px 0}
+
+/* cover picker */
+.swatches{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.sw{height:34px;border-radius:8px;box-shadow:0 0 0 .5px var(--line)}
+.sw.on{outline:2px solid var(--ink);outline-offset:1px}
+.drop{border:1.5px dashed var(--line-2);border-radius:12px;padding:20px 12px;text-align:center;color:var(--ink-2);background:var(--surface-2)}
+.drop b{display:block;color:var(--ink);margin-bottom:2px}
+.thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.thumbs i{height:52px;border-radius:8px;display:block;box-shadow:0 0 0 .5px var(--line)}
+.pp{position:absolute;z-index:5}
+
+/* tidy panel */
+.tidy{width:330px;position:absolute;right:16px;top:52px;z-index:6}
+.sug{display:flex;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+.sug:first-of-type{border-top:0}
+.sug .ic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;font-size:13px;flex:none}
+.sug .tx{flex:1;min-width:0}
+.sug .tx b{display:block;font-weight:600;font-size:13px}
+.sug .tx span{color:var(--ink-3);font-size:12px}
+.sug .ac{display:flex;gap:4px;align-items:flex-start}
+.toc{border-left:2px solid var(--line-2);padding:4px 0 4px 14px;margin:10px 0;font-size:13px}
+.toc div{padding:2px 0;color:var(--ink-2)}
+.toc div.h3{padding-left:14px;color:var(--ink-3)}
+.toc div.on{color:var(--accent);font-weight:600}
+.blank{background:var(--yellow-soft);height:10px;border-radius:3px;margin:3px 0;position:relative}
+.blank::after{content:"2 empty lines";position:absolute;right:6px;top:-8px;font-size:10px;color:var(--orange);background:var(--surface);padding:0 4px;border-radius:4px}
+
+/* draw block */
+.drawblk{border-radius:12px;background:var(--board);box-shadow:0 0 0 .5px var(--line-2);margin:12px 0;position:relative;overflow:hidden}
+.drawblk .tb{position:absolute;left:50%;transform:translateX(-50%);top:10px;display:flex;gap:2px;background:var(--surface);border-radius:11px;padding:4px;box-shadow:var(--pop);z-index:2}
+.tb i{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font-style:normal;font-size:14px;color:var(--ink-2)}
+.tb i.on{background:var(--accent-soft);color:var(--accent)}
+.tb u{width:1px;background:var(--line);margin:4px 3px}
+.tb em{width:16px;height:16px;border-radius:50%;margin:7px 4px;display:block}
+.drawblk .top{position:absolute;right:10px;top:10px;display:flex;gap:6px;z-index:2}
+.drawblk .grip{position:absolute;left:0;right:0;bottom:0;height:12px;cursor:ns-resize;display:grid;place-items:center}
+.drawblk .grip::after{content:"";width:36px;height:4px;border-radius:4px;background:var(--line-2)}
+.drawblk svg{display:block;width:100%}
+.live{position:absolute;font-size:11px;color:#fff;padding:1px 7px;border-radius:6px 6px 6px 0}
+.sketch{font-family:"Segoe Print","Bradley Hand","Comic Sans MS",cursive}
+
+/* whiteboard */
+.wb{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:560px}
+@media(max-width:760px){.wb{grid-template-columns:1fr}.wb .side{display:none}}
+.side{background:var(--surface-2);border-right:1px solid var(--line);padding:12px 8px;display:flex;flex-direction:column;gap:2px;font-size:13px}
+.side .lbl{font-size:11px;font-weight:600;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em;padding:10px 8px 4px}
+.side .row{display:flex;gap:8px;align-items:center;padding:4px 8px;border-radius:7px;color:var(--ink-2)}
+.side .row.on{background:var(--surface);color:var(--ink);font-weight:500;box-shadow:0 0 0 .5px var(--line)}
+.side .newbtn{background:var(--accent);color:#fff;padding:6px 8px;border-radius:8px;display:flex;justify-content:space-between;margin-bottom:6px;font-weight:500}
+.board{position:relative;background-color:var(--board);background-image:radial-gradient(var(--grid) 1px,transparent 1px);background-size:22px 22px;min-height:560px;overflow:hidden}
+.board .dock{position:absolute;left:14px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:2px;background:var(--surface);padding:4px;border-radius:12px;box-shadow:var(--pop);z-index:3}
+.board .dock i{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font-style:normal;color:var(--ink-2);font-size:15px}
+.board .dock i.on{background:var(--accent-soft);color:var(--accent)}
+.board .zoom{position:absolute;right:14px;bottom:14px;background:var(--surface);border-radius:10px;box-shadow:var(--pop);display:flex;gap:2px;padding:3px;font-size:12px;color:var(--ink-2);z-index:3}
+.board .zoom span{padding:3px 9px}
+.board .mini{position:absolute;left:14px;bottom:14px;width:130px;height:84px;border-radius:10px;background:var(--surface);box-shadow:var(--pop);z-index:3;overflow:hidden}
+.board .mini::after{content:"";position:absolute;left:30px;top:20px;width:60px;height:40px;border:1.5px solid var(--blue);border-radius:4px;background:var(--blue-soft)}
+.sticky{position:absolute;width:150px;min-height:110px;padding:12px;border-radius:4px 4px 14px 4px;font-size:13px;box-shadow:0 6px 14px rgba(0,0,0,.14);transform:rotate(-1.2deg);color:#2a2a2a}
+.frameb{position:absolute;border:1.5px dashed var(--line-2);border-radius:14px}
+.frameb b{position:absolute;left:12px;top:-11px;background:var(--board);padding:0 6px;font-size:12px;color:var(--ink-3)}
+.node{position:absolute;padding:8px 14px;border-radius:10px;background:var(--surface);box-shadow:0 0 0 1.5px var(--ink-2);font-size:13px}
+.cur{position:absolute;z-index:4;font-size:11px;color:#fff;padding:1px 7px;border-radius:0 8px 8px 8px}
+.pagelink{position:absolute;display:flex;gap:8px;align-items:center;background:var(--surface);border-radius:10px;padding:8px 12px;box-shadow:var(--pop);font-size:13px}
+.tpl{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px}
+.tpl div{background:var(--surface-2);border-radius:10px;padding:10px 6px;text-align:center;font-size:12px;box-shadow:0 0 0 .5px var(--line)}
+.tpl div i{display:block;font-style:normal;font-size:20px;margin-bottom:3px}
+
+/* slash + misc */
+.slash{width:290px;padding:6px}
+.slash .g{font-size:10.5px;font-weight:600;color:var(--ink-3);padding:6px 8px 2px;text-transform:uppercase;letter-spacing:.05em}
+.slash .it{display:flex;gap:10px;align-items:center;padding:5px 8px;border-radius:8px}
+.slash .it.on{background:var(--accent-soft)}
+.slash .it i{width:26px;height:26px;border-radius:7px;background:var(--surface-2);display:grid;place-items:center;font-style:normal;font-size:13px;box-shadow:0 0 0 .5px var(--line)}
+.slash .it small{color:var(--ink-3);margin-left:auto;font-size:11px}
+.cols{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin:10px 0}
+.cols>div{border-radius:10px;padding:10px 12px;box-shadow:0 0 0 .5px var(--line);font-size:13px}
+.code{background:var(--surface-2);border-radius:10px;padding:10px 12px;font:12.5px/1.55 ui-monospace,Menlo,Consolas,monospace;position:relative}
+.code .lang{position:absolute;right:8px;top:6px;font:11px var(--font);color:var(--ink-3);background:var(--surface);padding:1px 8px;border-radius:6px;box-shadow:0 0 0 .5px var(--line)}
+.k{color:#AF52DE}.s{color:#0F9D9A}.c{color:#86868B}.f{color:#0A84FF}
+.lockbar{display:flex;gap:8px;align-items:center;padding:8px 14px;background:var(--orange-soft);color:var(--ink);font-size:13px}
+.ver{display:flex;gap:10px;padding:8px 10px;border-radius:9px;align-items:flex-start}
+.ver.on{background:var(--accent-soft)}
+.ver small{color:var(--ink-3);display:block}
+.diff-add{background:rgba(52,199,89,.22);border-radius:3px;padding:0 2px}
+.diff-del{background:rgba(255,59,48,.18);border-radius:3px;padding:0 2px;text-decoration:line-through}
+.cmt{display:flex;gap:8px;padding:8px 0;border-top:1px solid var(--line);font-size:13px}
+.react{display:inline-flex;gap:4px;font-size:12px;padding:1px 8px;border-radius:99px;background:var(--blue-soft);color:var(--blue)}
+.phone{width:300px;border-radius:30px;background:var(--surface);box-shadow:0 0 0 7px #1d1d1f,0 20px 50px rgba(0,0,0,.25);overflow:hidden;margin:0 auto}
+.phone .bar{padding:12px 16px 8px;font-weight:600;display:flex;justify-content:space-between;font-size:14px}
+.phone .cv{height:120px}
+.phone .tbm{display:flex;gap:2px;justify-content:center;background:var(--surface-2);padding:6px;border-top:1px solid var(--line)}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Notes — image cover, drawing, whiteboard, tidy (mockup)</h1>
+  <a href="#cover">1 Cover</a><a href="#tidy">2 Tidy up</a><a href="#draw">3 Draw block</a><a href="#wb">4 Whiteboard</a><a href="#ed">5 Editor</a><a href="#pg">6 Page tools</a><a href="#ph">7 Phone</a>
+  <button onclick="var r=document.documentElement;r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'">☾ / ☀ Theme</button>
+</header>
+<main>
+
+<!-- ───────────────────────── 1 COVER ───────────────────────── -->
+<section id="cover">
+  <h2 class="sec">1 · Image cover <small>Style popover → Cover</small></h2>
+  <div>
+    <div class="frame" style="height:470px">
+      <div class="hdr"><span>📁 Notes › Migrasi Sticky Note WIN7 ke WIN10</span><span class="sp"><span class="chip">Saved</span><button class="btn">Share</button></span></div>
+      <div class="page">
+        <div class="cover photo edit"><div class="hint">↕ Drag to reposition</div><div class="acts"><button class="btn pri">Save position</button><button class="btn">Cancel</button></div></div>
+        <div class="body" style="margin:0 0 0 28px"><div class="icon">☕</div><div class="title" style="font-size:30px">Migrasi Sticky Note<br>WIN7 ke WIN10</div>
+          <div class="meta"><span class="chip">👤 YUDI ARTA</span><span class="chip">🕒 Edited today</span></div></div>
+      </div>
+      <div class="pop pp" style="right:16px;top:56px;width:300px">
+        <div class="tabs"><span>Gallery</span><span class="on">Upload</span><span>This page</span></div>
+        <div class="drop"><b>Drop an image here, or choose a file</b>JPG, PNG or WebP · up to 10 MB<br><button class="btn" style="margin-top:8px">Choose image…</button></div>
+        <h4 style="margin-top:14px">Colours</h4>
+        <div class="swatches">
+          <div class="sw" style="background:var(--surface-2)"></div><div class="sw" style="background:linear-gradient(135deg,#5ac8fa,#0a60ff)"></div><div class="sw" style="background:linear-gradient(135deg,#ffb347,#ff5e3a)"></div><div class="sw" style="background:linear-gradient(135deg,#d8b4fe,#7c5cff)"></div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:12px"><button class="btn">Reposition</button><button class="btn">Change</button><button class="btn ghost" style="color:var(--red)">Remove</button></div>
+      </div>
+    </div>
+    <div class="cap">Light. Cover in reposition mode: drag vertically, Save position stores it. “This page” lists images already in the page.</div>
+  </div>
+  <aside class="notes"><h3>What changes</h3>
+    <ul><li>Upload an image (stored on NAS, resized to ~2000 px wide), or reuse one from the page.</li><li>Reposition by dragging; Change / Remove; only people with <b>Can edit</b>.</li><li>Gradients stay as presets.</li><li>Notion import: a photo cover becomes a real cover.</li><li>Chat card and exports show the image too.</li></ul>
+    <div class="q">Built-in photo gallery is a later step (tab shown greyed out until then).</div></aside>
+</section>
+
+<!-- ───────────────────────── 2 TIDY ───────────────────────── -->
+<section id="tidy">
+  <h2 class="sec">2 · Tidy up page + Table of contents</h2>
+  <div>
+    <div class="frame" style="min-height:520px">
+      <div class="hdr"><span>📁 Notes › Weekly report</span><span class="sp"><button class="btn" style="background:var(--accent-soft);color:var(--accent)">✨ Tidy up · 5</button><button class="btn">Share</button></span></div>
+      <div class="page"><div class="body" style="padding-top:26px">
+        <div class="title" style="font-size:30px">Untitled</div>
+        <div class="toc"><div class="on">Summary</div><div>Progress</div><div class="h3">Blockers</div><div class="h3">Next week</div></div>
+        <h3>Summary</h3><p>All servers migrated. Sticky Note rollout is 80% complete.</p>
+        <div class="blank"></div>
+        <h3 style="font-size:15px">Blockers</h3><p>Two PCs still on WIN7 — https://intra.sja.co.id/it/wiki/win7-list</p>
+        <ul><li>Finish WIN10 image</li></ul><ul><li>Order 2 SSD</li></ul>
+      </div></div>
+      <div class="pop tidy">
+        <h4>Suggestions · nothing changes until you accept</h4>
+        <div class="sug"><div class="ic" style="background:var(--yellow-soft)">T</div><div class="tx"><b>Give the page a title</b><span>“Weekly report — Summary”</span></div><div class="ac"><button class="btn pri">Apply</button></div></div>
+        <div class="sug"><div class="ic" style="background:var(--orange-soft)">¶</div><div class="tx"><b>Remove 2 extra blank lines</b><span>After “Summary”</span></div><div class="ac"><button class="btn">Apply</button></div></div>
+        <div class="sug"><div class="ic" style="background:var(--blue-soft)">H</div><div class="tx"><b>Heading jumps from H3 to H5</b><span>“Blockers” → H3</span></div><div class="ac"><button class="btn">Apply</button></div></div>
+        <div class="sug"><div class="ic" style="background:var(--teal-soft)">⋮</div><div class="tx"><b>Merge 2 split bullet lists</b><span>Under “Blockers”</span></div><div class="ac"><button class="btn">Apply</button></div></div>
+        <div class="sug"><div class="ic" style="background:var(--accent-soft)">🔗</div><div class="tx"><b>Turn a bare link into a bookmark</b><span>intra.sja.co.id/it/wiki/…</span></div><div class="ac"><button class="btn">Apply</button></div></div>
+        <div style="display:flex;gap:6px;margin-top:8px"><button class="btn pri" style="flex:1;justify-content:center">Apply all</button><button class="btn ghost">Dismiss</button></div>
+      </div>
+    </div>
+    <div class="cap">Rule-based (no AI, nothing leaves the server). One Undo reverts any applied suggestion. The Table of contents block follows headings and highlights where you are.</div>
+  </div>
+  <aside class="notes"><h3>Rules</h3><ul><li>Untitled page → title from the first heading/line.</li><li>Blank-line runs, heading level jumps, split lists, bare links.</li><li>Insert with <code>/toc</code>; click an entry to jump.</li></ul></aside>
+</section>
+
+<!-- ───────────────────────── 3 DRAW BLOCK ───────────────────────── -->
+<section id="draw">
+  <h2 class="sec">3 · Draw block <small>type /draw — real-time, hand-drawn look</small></h2>
+  <div>
+    <div class="frame"><div class="hdr"><span>📁 Notes › Network layout idea</span><span class="sp"><span class="av" style="background:#34A853">BA</span><span class="av" style="background:#FF9500">YA</span></span></div>
+    <div class="page"><div class="body" style="padding-top:20px">
+      <div class="title" style="font-size:28px">Network layout idea</div>
+      <p>Sketch for the Karawang office switch room:</p>
+      <div class="drawblk" style="height:300px">
+        <div class="tb"><i>↖</i><i class="on">✎</i><i>▭</i><i>◯</i><i>→</i><i>T</i><i>⌫</i><u></u><em style="background:#1d1d1f"></em><em style="background:#0A84FF"></em><em style="background:#FF3B30"></em><em style="background:#34A853"></em><u></u><i>↶</i><i>↷</i></div>
+        <div class="top"><button class="btn">⤢ Full screen</button><button class="btn">⬇ PNG</button></div>
+        <svg viewBox="0 0 700 300" height="300" style="position:absolute;inset:0">
+          <g fill="none" stroke="var(--ink)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M120 110 q2 -34 40 -36 l92 -2 q36 2 38 36 q-1 34 -38 36 l-92 2 q-40 -2 -40 -36z"/>
+            <path d="M440 90 l130 -3 q4 0 4 4 l-2 64 q0 4 -4 4 l-128 3 q-4 0 -4 -4z" stroke="#0A84FF"/>
+            <path d="M300 112 C340 108 380 124 436 118" stroke="#FF3B30"/><path d="M424 108 l14 10 l-16 8" stroke="#FF3B30"/>
+            <path d="M150 232 q50 -26 104 -4 t112 -2" stroke="#34A853"/>
+          </g>
+          <g class="sketch" fill="var(--ink)" font-size="17"><text x="148" y="115">Core switch</text><text x="470" y="125" fill="#0A84FF">Access SW</text><text x="318" y="100" fill="#FF3B30" font-size="14">10G uplink</text><text x="160" y="262" fill="#34A853">spare fibre →</text></g>
+        </svg>
+        <div class="cur" style="left:520px;top:200px;background:#FF9500">Yudi ✎</div>
+        <svg viewBox="0 0 700 300" height="300" style="position:absolute;inset:0;pointer-events:none"><path d="M520 196 q30 -20 70 6 t60 -8" fill="none" stroke="#FF9500" stroke-width="2.4" stroke-linecap="round"/></svg>
+        <div class="grip"></div>
+      </div>
+      <p class="small">Drag the bottom edge to resize. Co-editors’ strokes appear live; Can-view users see it read-only and can zoom or download.</p>
+    </div></div></div>
+    <div class="cap">Excalidraw-based, themed to iPop (light/dark follow the app), English UI.</div>
+  </div>
+  <aside class="notes"><h3>Behaviour</h3><ul><li>Pen, highlighter, eraser, line, arrow, shapes, text, colours, undo/redo.</li><li>Strokes are stored with the page (Yjs): version history and real-time work as for text.</li><li>Export as PNG; Markdown/HTML/PDF export embeds the PNG.</li><li>The drawing library loads only when a page has a drawing.</li></ul></aside>
+</section>
+
+<!-- ───────────────────────── 4 WHITEBOARD ───────────────────────── -->
+<section id="wb">
+  <h2 class="sec">4 · Whiteboard page <small>New page ▾ → Whiteboard</small></h2>
+  <div>
+    <div class="frame"><div class="wb">
+      <div class="side"><div class="newbtn"><span>＋ New page</span><span>▾</span></div>
+        <div class="lbl">My pages</div><div class="row">📄 Weekly report</div><div class="row on">🧩 Sprint retro</div><div class="row">📄 Network layout idea</div><div class="lbl">Shared with me</div><div class="row">🧩 Karawang floor plan</div>
+        <div class="pop" style="margin-top:10px;padding:8px"><h4>New page</h4><div class="row">📄 Blank page</div><div class="row" style="background:var(--accent-soft)">🧩 Whiteboard</div><div class="row">📋 From template…</div></div></div>
+      <div class="board">
+        <div class="dock"><i>↖</i><i class="on">✎</i><i>▭</i><i>→</i><i>T</i><i>🗒</i><i>🖼</i><i>▣</i><i>📄</i></div>
+        <div class="frameb" style="left:90px;top:40px;width:300px;height:300px"><b>Went well</b></div>
+        <div class="frameb" style="left:410px;top:40px;width:300px;height:300px"><b>To improve</b></div>
+        <div class="sticky" style="left:112px;top:78px;background:#FFE27A">Migration finished a week early</div>
+        <div class="sticky" style="left:236px;top:150px;background:#9BE3A8;transform:rotate(1.4deg)">Users liked the new tray app</div>
+        <div class="sticky" style="left:440px;top:84px;background:#FFB3C7">Two WIN7 PCs left</div>
+        <div class="sticky" style="left:560px;top:176px;background:#A9D8FF;transform:rotate(1deg)">Need spare SSDs</div>
+        <div class="node" style="left:150px;top:388px">Backlog</div><div class="node" style="left:330px;top:388px">Doing</div><div class="node" style="left:490px;top:388px">Done</div>
+        <svg style="position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none"><g fill="none" stroke="var(--ink-2)" stroke-width="1.8"><path d="M222 405 H326"/><path d="M320 399 l8 6 l-8 6"/><path d="M392 405 H486"/><path d="M480 399 l8 6 l-8 6"/></g></svg>
+        <div class="pagelink" style="left:190px;top:450px">📄 <b>Weekly report</b><span class="small">Notes page</span></div>
+        <div class="cur" style="left:640px;top:128px;background:#FF9500">Yudi</div>
+        <div class="mini"></div><div class="zoom"><span>−</span><span>100%</span><span>＋</span><span>⤢ Fit</span></div>
+      </div></div></div>
+    <div class="cap">Infinite canvas. Same sharing, favourites, trash, sub-pages and search as any page. Connector arrows stick to shapes and follow when you move them.</div>
+  </div>
+  <aside class="notes"><h3>Tools</h3><ul><li>Pen, shapes, arrows (sticky connectors), text, images.</li><li>Sticky notes in 6 colours, frames to group.</li><li>Link a card to another Notes page.</li></ul>
+    <h3 style="margin-top:12px">Starter templates</h3>
+    <div class="tpl"><div><i>💡</i>Brainstorm</div><div><i>🔀</i>Flowchart</div><div><i>🔁</i>Retro</div></div>
+    <div class="q">Projects task cards on the board: later.</div></aside>
+</section>
+
+<!-- ───────────────────────── 5 EDITOR ───────────────────────── -->
+<section id="ed">
+  <h2 class="sec">5 · Editor additions <small>links, columns, code, dates</small></h2>
+  <div>
+    <div class="frame"><div class="page"><div class="body" style="padding-top:22px">
+      <p>See <span class="chip" style="background:var(--blue-soft);color:var(--blue)">📄 Network layout idea</span> and review on <span class="chip" style="background:var(--orange-soft)">📅 Fri, 20 Nov · 🔔</span></p>
+      <div class="cols"><div style="background:var(--accent-soft)"><b>Before</b><br>WIN7, local sticky notes</div><div><b>After</b><br>WIN10, Notes in iPop</div><div style="background:var(--yellow-soft)"><b>Risk</b><br>Old PCs without TPM</div></div>
+      <div class="code"><span class="lang">PowerShell ▾</span><span class="k">Get-ChildItem</span> <span class="s">"C:\Sticky"</span> | <span class="f">Copy-Item</span> <span class="s">\\nas\notes</span> <span class="c"># copy old notes</span></div>
+      <div style="display:flex;gap:10px;align-items:center;margin:14px 0"><div class="slash pop"><div class="g">Basic</div><div class="it on"><i>@</i>Link to page<small>@page · [[</small></div><div class="it"><i>▥</i>Columns<small>/col</small></div><div class="it"><i>☰</i>Table of contents<small>/toc</small></div><div class="it"><i>✎</i>Drawing<small>/draw</small></div><div class="it"><i>📅</i>Date &amp; reminder<small>/date</small></div></div>
+      <div class="pop" style="width:230px"><h4>Linked from (2)</h4><div style="padding:3px 0">📄 Weekly report</div><div style="padding:3px 0">🧩 Sprint retro</div><div class="small" style="margin-top:6px">Backlinks only list pages you can open.</div></div></div>
+    </div></div></div>
+    <div class="cap">Also: Find &amp; replace (Ctrl F / Ctrl H), word count + reading time in the footer, “Turn into” callout/toggle, toggle headings, <code>:smile:</code> emoji, “Copy link to block”, per-file upload progress with cancel.</div>
+  </div>
+  <aside class="notes"><h3>Included</h3><ul><li>Page links + backlinks</li><li>2–3 columns (drag a block to the side)</li><li>Code with language + highlight</li><li>Date chip + reminder</li><li>Slash aliases (<code>/todo</code>, <code>/check</code>, <code>/h1</code>)</li></ul></aside>
+</section>
+
+<!-- ───────────────────────── 6 PAGE TOOLS ───────────────────────── -->
+<section id="pg">
+  <h2 class="sec">6 · Page tools <small>lock, versions, comments, views</small></h2>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div class="frame"><div class="lockbar">🔒 <b>This page is locked</b> — unlock to edit <button class="btn" style="margin-left:auto">Unlock</button></div>
+      <div class="pop" style="box-shadow:none;border-radius:0"><h4>Version history</h4>
+        <div class="ver on"><span>●</span><div><b>Current version</b><small>Now · auto-saving</small></div></div>
+        <div class="ver"><span>🏷</span><div><b>Before migration</b><small>Named · Yudi · 12 Nov</small></div></div>
+        <div class="ver"><span>○</span><div><b>Today 10:40</b><small>Bagas, Yudi</small></div></div>
+        <p style="margin:10px 0 4px;font-size:12.5px">Changes vs <b>Before migration</b>:<br><span class="diff-del">80% done</span> <span class="diff-add">All servers migrated</span></p>
+        <div style="display:flex;gap:6px"><button class="btn">Save version…</button><button class="btn pri">Restore</button></div></div></div>
+    <div class="frame"><div class="pop" style="box-shadow:none;border-radius:0"><h4>Comments · Page</h4>
+        <div class="cmt"><span class="av" style="background:#34A853">BA</span><div style="flex:1"><b>Bagas</b> <span class="small">2 min</span><br>Can we add the SSD order? <span class="react">👍 2</span> <span class="small">· Edit · Delete</span></div></div>
+        <div class="cmt"><span class="av" style="background:#FF9500">YA</span><div style="flex:1"><b>Yudi</b><br>@Bagas yes, added below.</div></div>
+        <input placeholder="Comment on this page… (@ to mention)" style="width:100%;margin-top:6px;padding:7px 10px;border-radius:9px;border:1px solid var(--line-2);background:var(--surface-2);color:var(--ink);font:inherit"></div>
+      <div class="pop" style="box-shadow:none;border-radius:0;border-top:1px solid var(--line)"><h4>Views (owner / editors)</h4><div style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip">BA · today</span><span class="chip">YA · today</span><span class="chip">RS · 14 Nov</span></div>
+        <p class="small" style="margin:8px 0 0">Trash empties itself after 30 days, including NAS files.</p></div></div>
+  </div>
+  <aside class="notes"><h3>Included</h3><ul><li>Page lock (owner/editors).</li><li>Versions: current shown, named versions never pruned, diff.</li><li>Comments: edit/delete own, reactions, page-level.</li><li>Views list, trash auto-purge, to-do reminders (D-1 and due day), gallery &gt;4 with reorder, save as template.</li></ul></aside>
+</section>
+
+<!-- ───────────────────────── 7 PHONE ───────────────────────── -->
+<section id="ph">
+  <h2 class="sec">7 · Phone <small>draw with a finger, cover</small></h2>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <div class="phone"><div class="bar"><span>‹ Notes</span><span>Saved</span></div><div class="cover photo cv"></div>
+      <div style="padding:0 16px 14px"><div class="icon" style="font-size:40px;margin-top:-22px">☕</div><div class="title" style="font-size:22px">Migrasi Sticky Note</div>
+        <div class="drawblk" style="height:150px;margin:8px 0"><svg viewBox="0 0 270 150" height="150"><g fill="none" stroke="var(--ink)" stroke-width="2.2" stroke-linecap="round"><path d="M30 60 q20 -30 60 -10 t70 6"/><path d="M60 110 q40 -30 90 -4"/></g></svg></div></div>
+      <div class="tbm"><span class="chip">✎</span><span class="chip">⌫</span><span class="chip">●</span><span class="chip">↶</span><span class="chip">Done</span></div></div>
+    <div class="phone"><div class="bar"><span>✕</span><span>Cover</span><span style="color:var(--accent)">Save</span></div><div class="cover photo cv" style="height:150px"><div class="hint" style="font-size:11px">↕ Drag to reposition</div></div>
+      <div style="padding:14px 16px 20px"><div class="drop"><b>Upload from phone</b>Camera or photos · up to 10 MB</div><h4 style="margin:14px 0 6px;font-size:11px;color:var(--ink-3);text-transform:uppercase">Colours</h4><div class="swatches"><div class="sw" style="background:linear-gradient(135deg,#5ac8fa,#0a60ff)"></div><div class="sw" style="background:linear-gradient(135deg,#ffb347,#ff5e3a)"></div><div class="sw" style="background:linear-gradient(135deg,#d8b4fe,#7c5cff)"></div><div class="sw" style="background:var(--surface-2)"></div></div></div></div>
+  </div>
+  <aside class="notes"><h3>Phone</h3><ul><li>Finger drawing with a simple bar: pen, eraser, colour, undo.</li><li>Cover upload from camera/gallery and reposition by dragging.</li></ul></aside>
+</section>
+
+</main>
+</body>
+</html>
