@@ -16,57 +16,57 @@ public class CallConnectionsTests
     [Fact]
     public async Task Reconnecting_inside_the_grace_keeps_the_call()
     {
-        var probe = new Probe();
-        var c = new CallConnections(TimeSpan.FromMilliseconds(200), probe.End);
+        var probe = new Probe(); var clock = new ManualClock();
+        var c = new CallConnections(TimeSpan.FromSeconds(60), probe.End, clock);
         var u = Guid.NewGuid();
         c.Connected(u);
         c.Disconnected(u);
-        await Task.Delay(50);
+        await clock.AdvanceAsync(TimeSpan.FromSeconds(10));
         c.Connected(u);
-        await Task.Delay(400);
+        await clock.AdvanceAsync(TimeSpan.FromSeconds(120));
         Assert.Empty(probe.Ended);
     }
 
     [Fact]
     public async Task Staying_away_past_the_grace_ends_the_call_once()
     {
-        var probe = new Probe();
-        var c = new CallConnections(TimeSpan.FromMilliseconds(100), probe.End);
+        var probe = new Probe(); var clock = new ManualClock();
+        var c = new CallConnections(TimeSpan.FromSeconds(60), probe.End, clock);
         var u = Guid.NewGuid();
         c.Connected(u);
         c.Disconnected(u);
-        await Task.Delay(400);
+        await clock.AdvanceAsync(TimeSpan.FromSeconds(61));
+        await clock.AdvanceAsync(TimeSpan.FromSeconds(600));
         Assert.Equal([u], probe.Ended);
     }
 
     [Fact]
     public async Task A_quick_drop_and_return_then_a_real_drop_still_ends_after_a_full_grace()
     {
-        var probe = new Probe();
-        // Generous margins: under a busy full-suite run timers fire late.
-        var c = new CallConnections(TimeSpan.FromMilliseconds(800), probe.End);
+        var probe = new Probe(); var clock = new ManualClock();
+        var c = new CallConnections(TimeSpan.FromSeconds(60), probe.End, clock);
         var u = Guid.NewGuid();
         c.Connected(u);
-        c.Disconnected(u);          // refresh…
-        await Task.Delay(500);
-        c.Connected(u);             // …back
-        c.Disconnected(u);          // then really gone
-        await Task.Delay(500);      // the first timer would have fired here (1000 > 800)
+        c.Disconnected(u);
+        await clock.AdvanceAsync(TimeSpan.FromSeconds(40));
+        c.Connected(u);
+        c.Disconnected(u);
+        await clock.AdvanceAsync(TimeSpan.FromSeconds(40));   // the first timer's 60 s has passed
         Assert.Empty(probe.Ended);
-        for (var i = 0; i < 40 && probe.Ended.Count == 0; i++) await Task.Delay(100);
+        await clock.AdvanceAsync(TimeSpan.FromSeconds(21));
         Assert.Equal([u], probe.Ended);
     }
 
     [Fact]
     public async Task Another_open_tab_keeps_the_call()
     {
-        var probe = new Probe();
-        var c = new CallConnections(TimeSpan.FromMilliseconds(100), probe.End);
+        var probe = new Probe(); var clock = new ManualClock();
+        var c = new CallConnections(TimeSpan.FromSeconds(60), probe.End, clock);
         var u = Guid.NewGuid();
         c.Connected(u);
         c.Connected(u);
         c.Disconnected(u);
-        await Task.Delay(300);
+        await clock.AdvanceAsync(TimeSpan.FromSeconds(300));
         Assert.Empty(probe.Ended);
     }
 
