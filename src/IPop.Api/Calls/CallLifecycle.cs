@@ -43,10 +43,13 @@ public class CallConnections
     public CallConnections(IServiceScopeFactory scopes, IHubContext<CallHub> hub, ILogger<CallConnections> log, IConfiguration config)
         : this(GraceFrom(config), userId => EndCallsAsync(scopes, hub, log, userId, GraceFrom(config))) { }
 
-    internal CallConnections(TimeSpan grace, Func<Guid, Task> endCalls)
+    private readonly TimeProvider time;
+
+    internal CallConnections(TimeSpan grace, Func<Guid, Task> endCalls, TimeProvider? time = null)
     {
         this.grace = grace;
         this.endCalls = endCalls;
+        this.time = time ?? TimeProvider.System;
     }
 
     public TimeSpan Grace => grace;
@@ -85,7 +88,7 @@ public class CallConnections
 
     private async Task EndAfterGraceAsync(Guid userId, CancellationTokenSource cts)
     {
-        try { await Task.Delay(grace, cts.Token); }
+        try { await Task.Delay(grace, time, cts.Token); }
         catch (OperationCanceledException) { return; }
         lock (gate)
         {
