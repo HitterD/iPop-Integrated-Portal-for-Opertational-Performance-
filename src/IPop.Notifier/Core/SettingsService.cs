@@ -26,15 +26,8 @@ public sealed class SettingsService(IPopClient api, LocalState state)
         Apply(next);
         try
         {
-            var token = await api.AccessTokenAsync(ct);
-            if (token is null) return false;
-            using var req = new HttpRequestMessage(HttpMethod.Put, new Uri(api.Server, "api/me/ui-prefs/notifier"))
-            {
-                Content = new StringContent(next.ToJson(), Encoding.UTF8, "application/json"),
-            };
-            req.Headers.Authorization = new("Bearer", token);
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
-            using var res = await http.SendAsync(req, ct);
+            // Through the shared client: renews an expired token once and retries, same timeout and connection reuse.
+            using var res = await api.SendAsync(HttpMethod.Put, "api/me/ui-prefs/notifier", System.Text.Json.Nodes.JsonNode.Parse(next.ToJson()), ct);
             return res.IsSuccessStatusCode;
         }
         catch { return false; }

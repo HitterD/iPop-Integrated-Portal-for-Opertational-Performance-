@@ -214,6 +214,7 @@ public sealed class IPopClient
             if (res.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden or HttpStatusCode.BadRequest)
             {
                 // Signing out closes the hub, which may be the caller: schedule it, never run it inline.
+                Log.Warn("auth", $"the server rejected this session (HTTP {(int)res.StatusCode}); signing out");
                 auth.EndSessionLater(SignOutAsync);
                 return null;
             }

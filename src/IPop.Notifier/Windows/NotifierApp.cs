@@ -25,6 +25,9 @@ public sealed class NotifierApp : ApplicationContext
     private SignInWindow? signIn;
     private int unread;
     private bool connected;
+    private DateTime? lastConnectedAt;
+    private bool manualSignOut;
+    private readonly ToolStripMenuItem reconnectItem;
     private readonly ToolStripMenuItem devicesItem;
     private readonly ToolStripMenuItem popupsItem;
     private readonly ToolStripMenuItem pendingItem;
@@ -73,6 +76,8 @@ public sealed class NotifierApp : ApplicationContext
         menu.Items.Add(pendingItem);
         popupsItem = new ToolStripMenuItem("Pause popups for 1 hour", null, (_, _) => TogglePause());
         menu.Items.Add(popupsItem);
+        reconnectItem = new ToolStripMenuItem("Reconnect now", null, (_, _) => _ = ReconnectNowAsync()) { Visible = false };
+        menu.Items.Add(reconnectItem);
         menu.Items.Add(new ToolStripSeparator());
         devicesItem = new ToolStripMenuItem("Devices (ICT)", null, (_, _) => ShowDevices()) { Visible = false };
         menu.Items.Add(devicesItem);
@@ -125,7 +130,12 @@ public sealed class NotifierApp : ApplicationContext
         feed.ChatToast += t => Post(() => { if (generation == api.Generation && !ct.IsCancellationRequested) OnChatToast(t); });
         feed.Remote += (ev, n) => Post(() => { if (generation == api.Generation && !ct.IsCancellationRequested) OnRemote(ev, n); });
         feed.ReleasePublished += OnReleasePublished;
-        feed.ConnectionChanged += c => Post(() => { connected = c; UpdateTray(); if (inbox is { IsDisposed: false }) inbox.Connection(c); });
+        feed.ConnectionChanged += c => Post(() =>
+        {
+            if (generation != api.Generation || ct.IsCancellationRequested) return;
+            if (c) lastConnectedAt = DateTime.Now;
+            connected = c; UpdateTray(); if (inbox is { IsDisposed: false }) inbox.Connection(c);
+        });
         try { await feed.StartAsync(ct); } catch (OperationCanceledException) { }
         await RefreshUnreadAsync();
     }
@@ -420,6 +430,17 @@ public sealed class NotifierApp : ApplicationContext
         await done.Task;
     }
 
+    /// Tray > Reconnect now: drop the live connection and start it again (the retry timer can wait up to a minute).
+    private async Task ReconnectNowAsync()
+    {
+        if (!api.IsSignedIn) return;
+        var old = feed;
+        feed = null;
+        try { if (old is not null) await old.StopAsync(); } catch { }
+        Log.Info("hub", "reconnect requested from the tray");
+        await StartSessionAsync();
+    }
+
     private void OnSignedOut()
     {
         session.Cancel();
@@ -427,7 +448,12 @@ public sealed class NotifierApp : ApplicationContext
         popups.CloseAll();
         inbox?.Hide();
         unread = 0;
+        lastConnectedAt = null;
         UpdateTray();
+        // The server ended this session (password changed, 90 days unused): say so. A sign-out the person chose in
+        // Settings needs no explanation.
+        if (!manualSignOut) tray.ShowBalloonTip(6000, "iPop Notifier", "Your iPop session ended. Sign in again to keep getting notifications.", ToolTipIcon.Warning);
+        manualSignOut = false;
         ShowSignIn();
     }
 
@@ -441,7 +467,9 @@ public sealed class NotifierApp : ApplicationContext
         var pending = popups.BacklogCount;
         pendingItem.Visible = pending > 0;
         pendingItem.Text = $"Skip {pending} pending notification{(pending == 1 ? "" : "s")} (keep unread)";
-        var status = remoteActive ? "ICT is connected" : !api.IsSignedIn ? "signed out" : !connected ? "connecting…" : s.Popups != "on" ? "popups paused"
+        var offline = lastConnectedAt is { } at ? $"reconnecting · last {at:HH:mm}" : "connecting…";
+        reconnectItem.Visible = api.IsSignedIn && !connected;
+        var status = remoteActive ? "ICT is connected" : !api.IsSignedIn ? "signed out" : !connected ? offline : s.Popups != "on" ? "popups paused"
             : pending > 0 ? $"{pending} pending · {count} unread" : count > 0 ? $"{count} unread" : "up to date";
         var text = "iPop Notifier" + (AppInfo.Flavour.Length > 0 ? " (" + AppInfo.Flavour + ")" : "") + " — " + status;
         tray.Text = text.Length > 63 ? text[..63] : text;
@@ -488,8 +516,8 @@ public sealed class NotifierApp : ApplicationContext
                 if (n is null) return;
                 state.Shown.Remove(n.Id);
                 state.Held.Remove(n.Id);
-                var notice = Notice.From(n);
-                popups.Show(notice with { Priority = "high" });
+                // The person asked for this one: it opens as a window whatever Busy/meeting/pause/"Toast" say.
+                popups.OpenFromInbox(Notice.From(n));
                 break;
         }
     }
@@ -512,7 +540,7 @@ public sealed class NotifierApp : ApplicationContext
             version = AppInfo.Version,
             computer = Environment.MachineName,
         });
-        settingsWindow.SignOut += () => _ = api.SignOutAsync();
+        settingsWindow.SignOut += () => { manualSignOut = true; _ = api.SignOutAsync(); };
         settingsWindow.CheckUpdates += () => _ = CheckFromSettingsAsync();
         settingsWindow.UpdateNow += () => Post(() => { if (updater?.Pending is { } p) ShowUpdate(p); });
         settingsWindow.PopupStyleChanged += () => Post(popups.Restyle);
@@ -584,18 +612,42 @@ public sealed class NotifierApp : ApplicationContext
     {
         updater ??= new Updater(api);
         await Task.Delay(TimeSpan.FromSeconds(45));
-        var lastCheck = DateTime.MinValue;
+        var nextCheck = DateTime.MinValue;
+        var failures = 0;
+        string? failedFor = null;
         while (true)
         {
-            if (DateTime.UtcNow - lastCheck >= TimeSpan.FromHours(6) || kicked || updater.ContextChanged)
+            // One bad minute (an unexpected error anywhere below) never ends the loop: 1.4.7 would stop checking for
+            // updates until the app was restarted.
+            try
             {
-                kicked = false;
-                lastCheck = DateTime.UtcNow;
-                await updater.CheckAsync();
+                // A failed check backs off (1, 5, 15, 60 min); a release announcement or a different account/server
+                // than the one that failed checks at once.
+                var changed = updater.ContextChanged && updater.ContextKey != failedFor;
+                if (DateTime.UtcNow >= nextCheck || kicked || changed)
+                {
+                    kicked = false;
+                    var r = await updater.CheckAsync();
+                    if (r == Updater.Result.Failed)
+                    {
+                        failures++;
+                        failedFor = updater.ContextKey;
+                        nextCheck = DateTime.UtcNow + IPop.Application.Notifier.NotifierUpdatePolicy.RetryDelay(failures);
+                    }
+                    else
+                    {
+                        failures = 0; failedFor = null;
+                        nextCheck = DateTime.UtcNow + TimeSpan.FromHours(6);
+                    }
+                }
+                // A call in iPop (browser or phone) counts as busy too: no restart in the middle of it.
+                if (updater.Pending is not null) inCall = await InCallAsync();
+                Post(StepUpdate);
             }
-            // A call in iPop (browser or phone) counts as busy too: no restart in the middle of it.
-            if (updater.Pending is not null) inCall = await InCallAsync();
-            Post(StepUpdate);
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Log.Warn("update", "update loop: " + ex.GetType().Name + " " + ex.Message);
+            }
             // Re-evaluate every minute (Later timer, idle install); a publish signal wakes it at once.
             await updateKick.WaitAsync(TimeSpan.FromMinutes(1));
         }

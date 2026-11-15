@@ -48,12 +48,13 @@ public sealed class Feed(IPopClient api, LocalState state) : IAsyncDisposable
         hub.On<System.Text.Json.JsonElement>("notifierUpdate", _ => { Log.Info("hub", "notifierUpdate"); ReleasePublished?.Invoke(); });
         foreach (var ev in new[] { "remoteRequest", "remoteAnswer", "remoteEnded" })
             hub.On<System.Text.Json.JsonElement>(ev, e => { Log.Info("hub", ev); if (System.Text.Json.Nodes.JsonNode.Parse(e.GetRawText()) is { } n) Remote?.Invoke(ev, n); });
-        hub.Reconnected += async _ => { ConnectionChanged?.Invoke(true); await CatchUpAsync(CancellationToken.None); };
-        hub.Reconnecting += _ => { ConnectionChanged?.Invoke(false); return Task.CompletedTask; };
+        hub.Reconnected += async _ => { Log.Info("hub", "reconnected"); ConnectionChanged?.Invoke(true); await CatchUpAsync(CancellationToken.None); };
+        hub.Reconnecting += ex => { Log.Warn("hub", "connection lost" + (ex is null ? "" : ": " + ex.GetType().Name) + "; retrying"); ConnectionChanged?.Invoke(false); return Task.CompletedTask; };
         var mine = hub;
         hub.Closed += async _ =>
         {
             if (!Current || !ReferenceEquals(hub, mine)) return; // an old connection we replaced
+            Log.Warn("hub", "connection closed; trying again in 30 s");
             ConnectionChanged?.Invoke(false);
             // Closed only after the retry policy gives up or the server refuses; try again quietly.
             await Task.Delay(TimeSpan.FromSeconds(30));

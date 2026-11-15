@@ -46,4 +46,13 @@ public class NotifierUpdatePolicyTests
     [InlineData(true)]
     public void Remote_help_or_a_call_always_waits(bool mandatory)
         => Assert.Equal(Step.Wait, NotifierUpdatePolicy.Next(Ready.AddDays(3), Ready, null, mandatory, false, busy: true, Idle));
+
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(2, 5)]
+    [InlineData(3, 15)]
+    [InlineData(4, 60)]
+    [InlineData(40, 60)]
+    public void A_failed_check_backs_off_one_five_fifteen_then_sixty_minutes(int failures, int minutes)
+        => Assert.Equal(TimeSpan.FromMinutes(minutes), NotifierUpdatePolicy.RetryDelay(failures));
 }

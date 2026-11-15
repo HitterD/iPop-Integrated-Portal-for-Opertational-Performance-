@@ -21,6 +21,10 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
     private int backlogTotal, backlogShown;
     public int BacklogCount => backlog.Count + (backlogWindow is null ? 0 : 1);
     private bool restyling;
+    /// The screen the person is working on when the first popup of a group opens; every popup of that group stays on it
+    /// (1.4.7 always used the primary monitor).
+    private Rectangle? area;
+    private Rectangle Area() => area ?? Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
     public event Action? CountChanged;
     public int OpenCount => open.Count + waiting.Count;
 
@@ -155,6 +159,16 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
         if (dueAgain.Count == 0) snoozeTimer?.Stop();
     }
 
+    /// Inbox > click a notification: opens as its own window, always (also for held, "Toast" and "Off" modules), without
+    /// a sound and without changing what counts as shown or missed.
+    public void OpenFromInbox(Notice n)
+    {
+        var s = settings.Effective(DateTime.UtcNow);
+        state.Held.Remove(n.Id);
+        Open(n, s with { Style = "windows" }, minimized: false);
+        state.Save();
+    }
+
     private void Hold(Notice n)
     {
         if (!state.Held.Contains(n.Id)) state.Held.Add(n.Id);
@@ -162,6 +176,11 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
 
     private NoticeWindow Open(Notice n, NotifierSettings s, bool minimized, (int Index, int Total)? pending = null)
     {
+        if (open.Count == 0)
+        {
+            try { area = Screen.FromPoint(Cursor.Position).WorkingArea; }
+            catch { area = null; }
+        }
         var w = new NoticeWindow(n, s.Style, api, pending);
         w.FormClosed += (_, _) => Closed(w);
         w.Done += (_, action) => { if (action == "snooze") SnoozeAgain(n); };
@@ -246,7 +265,7 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
 
     private void Place(NoticeWindow w, NotifierSettings s)
     {
-        var area = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
+        var area = Area();
         var gap = Scale(w, 14);
         if (w.Style == "stack") { Layout(); return; }
         if (w.Height > area.Height - Scale(w, 28)) w.Height = area.Height - Scale(w, 28);
@@ -261,7 +280,7 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
     {
         var cards = open.Where(w => w.Style == "stack").ToList();
         if (cards.Count == 0) return true;
-        var area = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
+        var area = Area();
         var c = cards[0];
         return IPop.Application.Notifier.PopupLayout.StackFits(cards.Count + 1, area.Height, Scale(c, 14), Scale(c, 10), Scale(c, 150));
     }
@@ -270,7 +289,7 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
     private void Layout()
     {
         var s = settings.Effective(DateTime.UtcNow);
-        var area = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
+        var area = Area();
         var cards = open.Where(w => w.Style == "stack").ToList();
         if (cards.Count > 0)
         {

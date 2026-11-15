@@ -10,6 +10,17 @@ public static class NotifierUpdatePolicy
     public static readonly TimeSpan InstallAnywayAfter = TimeSpan.FromHours(24);
     public static readonly TimeSpan IdleBeforeQuietInstall = TimeSpan.FromMinutes(5);
 
+    /// After a failed check the next try waits longer each time (1, 5, 15, then 60 minutes), so an unreachable
+    /// server isn't asked once a minute all day (the 1.4.7 log showed 40+ tries an hour). A new sign-in or a
+    /// release announcement still checks at once.
+    public static TimeSpan RetryDelay(int failures) => failures switch
+    {
+        <= 1 => TimeSpan.FromMinutes(1),
+        2 => TimeSpan.FromMinutes(5),
+        3 => TimeSpan.FromMinutes(15),
+        _ => TimeSpan.FromMinutes(60),
+    };
+
     public enum Step { Wait, Ask, InstallNow, InstallQuietly }
     public enum InstallResult { Installed, Busy, UnknownCallStatus }
 
