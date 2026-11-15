@@ -13,7 +13,8 @@ public sealed class IPopClient
 {
     private readonly SessionStore store;
     private readonly HttpClient http;
-    private readonly SemaphoreSlim refreshLock = new(1, 1);
+    /// Refresh vs. sign-in/sign-out/switch: see <see cref="NotifierAuthGate"/> (1.4.8: no more hang when a session ends).
+    private readonly NotifierAuthGate auth = new();
     private string? access;
     private DateTime accessExpires;
 
@@ -61,9 +62,7 @@ public sealed class IPopClient
 
     public async Task<LoginResult> SignInAsync(string server, string nik, string password, CancellationToken ct)
     {
-        await refreshLock.WaitAsync(ct);
-        try { return await SignInCoreAsync(server, nik, password, ct); }
-        finally { refreshLock.Release(); }
+        return await SignInCoreAsync(server, nik, password, ct);
     }
 
     private async Task<LoginResult> SignInCoreAsync(string server, string nik, string password, CancellationToken ct)
@@ -92,9 +91,7 @@ public sealed class IPopClient
     {
         if (DateTime.UtcNow - attempt.StartedAt > AttemptLifetime)
             return new(false, "This sign-in took too long. Choose Sign in with browser and try again.", null, false, "expired");
-        await refreshLock.WaitAsync(ct);
-        try { return await RedeemCoreAsync(server, attempt.Verifier, code, shortCode, ct); }
-        finally { refreshLock.Release(); }
+        return await RedeemCoreAsync(server, attempt.Verifier, code, shortCode, ct);
     }
 
     private async Task<LinkResult> RedeemCoreAsync(string server, string verifier, string? code, string? shortCode, CancellationToken ct)
@@ -129,11 +126,9 @@ public sealed class IPopClient
         try { using var _ = await http.PostAsJsonAsync(new Uri(new Uri(s.Server), "api/auth/logout"), new { refreshToken = s.RefreshToken }); } catch { }
     }
 
-    // Called under the auth gate. Teardown runs with the OLD token so remote sessions can be ended correctly.
-    private bool transitioning;
+    // Called inside a transition. Teardown runs with the OLD token so remote sessions can be ended correctly.
     private async Task RetireAsync()
     {
-        transitioning = true;
         Generation++;
         if (BeforeSessionChanged is not null) await BeforeSessionChanged();
         if (Session is { } old && access is not null)
@@ -149,14 +144,18 @@ public sealed class IPopClient
         }
     }
 
+    /// The new session replaces the old one inside a transition: the network calls before it (login, redeem, the
+    /// "Switch account?" question) run outside, so the current session keeps working while the person decides.
     private async Task ReplaceSessionAsync(SessionStore.Session next, string token, DateTime expires, CancellationToken ct)
     {
+        using var _ = await auth.EnterTransitionAsync(ct);
         var old = Session;
         try
         {
             await RetireAsync();
             store.Save(next);
             Session = next; access = token; accessExpires = expires.ToUniversalTime(); WebBaseOverride = null;
+            auth.SessionStarted();
         }
         catch
         {
@@ -166,23 +165,18 @@ public sealed class IPopClient
             SignedOut?.Invoke();
             throw;
         }
-        finally { transitioning = false; }
         if (old is not null) await RevokeAsync(old);
     }
 
     public async Task SignOutAsync()
     {
-        await refreshLock.WaitAsync();
-        try { await SignOutCoreAsync(); }
-        finally { refreshLock.Release(); }
-    }
-    private async Task SignOutCoreAsync()
-    {
+        using var _ = await auth.EnterTransitionAsync();
         var s = Session;
+        if (s is null) return; // already signed out (a late rejected refresh after a manual sign-out)
         try { await RetireAsync(); }
         finally
         {
-            Session = null; access = null; WebBaseOverride = null; transitioning = false;
+            Session = null; access = null; WebBaseOverride = null;
             store.Clear();
             if (s is not null) await RevokeAsync(s);
             SignedOut?.Invoke();
@@ -206,10 +200,11 @@ public sealed class IPopClient
     /// A valid access token (renews when it expires within a minute). Null = signed out.
     public async Task<string?> AccessTokenAsync(CancellationToken ct = default)
     {
-        if (Session is null || transitioning) return null;
+        if (Session is null || auth.Transitioning || auth.Ending) return null;
         if (access is not null && accessExpires > DateTime.UtcNow.AddMinutes(1)) return access;
-        await refreshLock.WaitAsync(ct);
-        try
+        // Never waits for a sign-in/sign-out/switch: the hub asks for a token while that transition closes it.
+        using var entered = await auth.EnterRefreshAsync(ct);
+        if (entered is null) return null;
         {
             if (access is not null && accessExpires > DateTime.UtcNow.AddMinutes(1)) return access;
             if (Session is null) return null;
@@ -218,7 +213,8 @@ public sealed class IPopClient
             catch (HttpRequestException) { return access; } // offline: keep the old token, retry later
             if (res.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden or HttpStatusCode.BadRequest)
             {
-                await SignOutCoreAsync();
+                // Signing out closes the hub, which may be the caller: schedule it, never run it inline.
+                auth.EndSessionLater(SignOutAsync);
                 return null;
             }
             if (!res.IsSuccessStatusCode) return access;
@@ -228,7 +224,6 @@ public sealed class IPopClient
             store.Save(Session);
             return access;
         }
-        finally { refreshLock.Release(); }
     }
 
     public async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, object? body = null, CancellationToken ct = default)
