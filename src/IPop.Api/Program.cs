@@ -50,8 +50,20 @@ builder.Services.AddOpenApi();
 // alerts to the cluster's own monitoring.
 var outboundWorkers = builder.Configuration.GetValue("Workers:Outbound", true);
 var opsHealthWorker = builder.Configuration.GetValue("Workers:OpsHealth", true);
-builder.Services.AddDbContext<IPopDbContext>(o =>
-    o.UseNpgsql(builder.Configuration.GetConnectionString("IPopDb"))
+builder.Services.AddSingleton<IPop.Infrastructure.Rbac.PermissionCache>();
+builder.Services.AddSingleton<IPop.Infrastructure.Rbac.RbacChangeInterceptor>();
+// Pool size / wait can be raised per environment without editing the secret that holds the connection string
+// (cluster: Database__MaxPoolSize=150, Database__PoolTimeoutSeconds=15 — PostgreSQL there allows 200). The k3s load
+// test exhausted the default pool (100, 5 s wait) and every request failed at once instead of queueing briefly.
+var ipopDb = new Npgsql.NpgsqlConnectionStringBuilder(builder.Configuration.GetConnectionString("IPopDb"));
+if (builder.Configuration.GetValue<int?>("Database:MaxPoolSize") is { } maxPool) ipopDb.MaxPoolSize = maxPool;
+if (builder.Configuration.GetValue<int?>("Database:PoolTimeoutSeconds") is { } poolWait) ipopDb.Timeout = poolWait;
+// Optional automatic statement preparation. Leave disabled unless a bounded load comparison confirms benefit
+// and database memory headroom; a single EXPLAIN planning time does not establish aggregate CPU attribution.
+if (builder.Configuration.GetValue<int?>("Database:MaxAutoPrepare") is { } autoPrepare) ipopDb.MaxAutoPrepare = autoPrepare;
+builder.Services.AddDbContext<IPopDbContext>((sp, o) =>
+    o.UseNpgsql(ipopDb.ConnectionString)
+     .AddInterceptors(sp.GetRequiredService<IPop.Infrastructure.Rbac.RbacChangeInterceptor>())
      .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 // Keys live in the database. Their isolation name defaults to the content root path, which differs between
 // the old Windows host and the container (/data); DataProtection:ApplicationName pins the old one so
@@ -111,7 +123,7 @@ builder.Services.AddRateLimiter(o =>
         http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1) }));
 });
-builder.Services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
+builder.Services.AddScoped<IPermissionEvaluator>(sp => new PermissionEvaluator(sp.GetRequiredService<IPopDbContext>(), sp.GetRequiredService<IPop.Infrastructure.Rbac.PermissionCache>()));
 builder.Services.AddSingleton<SynologySessionCache>();
 builder.Services.AddScoped<IFileAccessService, FileAccessService>();
 builder.Services.AddSingleton<IPop.Infrastructure.Files.AttachmentFileCache>();
@@ -127,6 +139,9 @@ builder.Services.AddScoped<IEmailQueue, DbEmailQueue>();
 builder.Services.AddScoped<EmailOutboxProcessor>();
 if (outboundWorkers) builder.Services.AddHostedService<EmailOutboxWorker>();
 // Requests over 1 s land in logs/slow-requests.log (see SlowRequestLog).
+// Single-replica / per-process upload budget; reservations and legacy uploads share this singleton.
+builder.Services.AddSingleton<IPop.Api.Diagnostics.UploadAdmissionService>(sp =>
+    new(sp.GetRequiredService<IConfiguration>(), TimeProvider.System));
 builder.Services.AddSingleton<IPop.Api.Diagnostics.SlowRequestLog>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<IPop.Api.Diagnostics.SlowRequestLog>());
 // Reuses Synology:ServiceAccount + Synology:{Area}Folder when no "Attachments" section exists;
@@ -212,7 +227,7 @@ var webOrigins = builder.Configuration.GetSection("Cors:WebOrigins").Get<string[
     ?? new[] { "http://localhost:5103", "https://localhost:5103" };
 builder.Services.AddCors(o => o.AddPolicy("web-dev", p => p
     .WithOrigins(webOrigins)
-    .AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
+    .AllowAnyHeader().AllowAnyMethod().AllowCredentials().WithExposedHeaders("Retry-After")));
 
 var redisConnection = builder.Configuration.GetConnectionString("Redis")
     ?? throw new InvalidOperationException("ConnectionStrings:Redis is required");
@@ -239,7 +254,12 @@ builder.Services.AddHostedService<PresenceSweepWorker>();
 builder.Services.Configure<HostOptions>(options =>
 {
     options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore;
+    // k8s sends SIGTERM and waits terminationGracePeriodSeconds (45 s); leave room after the host's own stop.
+    options.ShutdownTimeout = TimeSpan.FromSeconds(25);
 });
+// ...but a worker that dies must not go unnoticed: logged + /healthz/workers fails -> liveness restarts the pod.
+builder.Services.AddSingleton<IPop.Api.Diagnostics.WorkerWatchdog>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<IPop.Api.Diagnostics.WorkerWatchdog>());
 
 // Chat module
 builder.Services.AddScoped<IChatService, ChatService>();
@@ -407,6 +427,7 @@ builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.I
 builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.Infrastructure.Search.Providers.FilesSearchProvider>();
 builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.Infrastructure.Search.Providers.CallsSearchProvider>();
 builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.Infrastructure.Search.Providers.NotificationsSearchProvider>();
+builder.Services.AddSingleton<IPop.Infrastructure.Dashboard.DashboardSharedCache>();
 builder.Services.AddScoped<IPop.Application.Dashboard.IDashboardService, IPop.Infrastructure.Dashboard.DashboardService>();
 
 // Link previews: server-side OpenGraph fetch behind an SSRF guard, signed image proxy.
@@ -476,6 +497,17 @@ if (migrateOnly)
     app.Logger.LogInformation("Database migrated and seeded; exiting (--migrate-only).");
     return;
 }
+// The startup steps below need the database. During a node failover the API can start before PostgreSQL is
+// reachable again; the first query then threw and the process exited (crash loop, measured on staging). Wait
+// for the database (up to ~2 min) instead.
+for (var attempt = 1; ; attempt++)
+{
+    using var scope = app.Services.CreateScope();
+    try { if (await scope.ServiceProvider.GetRequiredService<IPopDbContext>().Database.CanConnectAsync()) break; }
+    catch (Exception ex) when (attempt < 24) { app.Logger.LogWarning("Database not reachable yet ({Error}); retry {Attempt}/24.", ex.GetBaseException().Message, attempt); }
+    if (attempt >= 24) break;   // let the next step throw a real error
+    await Task.Delay(TimeSpan.FromSeconds(5));
+}
 {
     using var scope = app.Services.CreateScope();
     await IPop.Infrastructure.MeetingRooms.RoomPasswordBackfill.RunAsync(
@@ -521,6 +553,8 @@ app.Use(async (http, next) =>
 });
 app.UseAuthorization();
 app.UseRateLimiter();
+// Admission happens before multipart parsing: excess uploads never occupy temp disk/NAS streams.
+app.UseMiddleware<IPop.Api.Diagnostics.UploadAdmissionMiddleware>();
 
 app.MapAuth();
 app.MapDeviceLink();
@@ -545,6 +579,7 @@ app.MapGet("/api/chat-avatars/{name}", async (string name, IWebHostEnvironment e
 }).AllowAnonymous();
 app.MapStickers();
 app.MapCalls();
+app.MapUploadAdmission();
 app.MapMail();
 app.MapMailGroups();
 app.MapMailInlineImages();
@@ -597,6 +632,11 @@ app.MapProfile();
 // Liveness/readiness for the cluster: process up and database reachable.
 app.MapGet("/healthz", async (IPopDbContext db, CancellationToken ct) =>
     await db.Database.CanConnectAsync(ct) ? Results.Ok(new { status = "ok" }) : Results.StatusCode(StatusCodes.Status503ServiceUnavailable))
+    .AllowAnonymous();
+// Liveness: the process is up and every background worker still runs. No database call — a database outage must
+// not make Kubernetes restart a healthy API (that is what readiness on /healthz is for).
+app.MapGet("/healthz/live", (IPop.Api.Diagnostics.WorkerWatchdog watchdog) =>
+    watchdog.Dead.Count == 0 ? Results.Ok(new { status = "ok" }) : Results.Json(new { status = "worker_stopped", workers = watchdog.Dead }, statusCode: 503))
     .AllowAnonymous();
 app.MapHub<AppHub>("/hubs/app").RequireAuthorization();
 

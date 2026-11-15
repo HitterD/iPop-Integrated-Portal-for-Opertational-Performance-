@@ -55,4 +55,22 @@ public interface INotificationGatewayService
         string priority = "normal",
         string? targetUrl = null,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Same as <see cref="PublishInternalAsync(string,string,string,string,NotificationTarget,string,string?,CancellationToken)"/>
+    /// with a caller-chosen idempotency key (scoped to the module). A worker that retries after a crash or a failed
+    /// save passes a key derived from its own row (e.g. "mail-new-{mailId}") so the retry returns the notification
+    /// it already created instead of sending the same toast again.
+    /// </summary>
+    Task<NotificationEnqueueResult> PublishInternalAsync(
+        string clientSlug,
+        string eventType,
+        string title,
+        string message,
+        NotificationTarget target,
+        string idempotencyKey,
+        string priority = "normal",
+        string? targetUrl = null,
+        CancellationToken ct = default)
+        => PublishInternalAsync(clientSlug, eventType, title, message, target, priority, targetUrl, ct);
 }

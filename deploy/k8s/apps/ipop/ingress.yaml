@@ -65,3 +65,34 @@ spec:
       priority: 10
       middlewares: [{ name: retry }]
       services: [{ name: ipop-web, port: 80 }]
+---
+# Same routes over HTTPS. The Nutanix network between the VMs and the rest of the LAN silently drops
+# plain-HTTP TCP streams that carry a Windows executable (e.g. the Notifier installer, an .exe mail
+# attachment): the transfer stalls after ~128 KB and retransmits forever. TLS hides the payload, so the
+# reverse proxy (Zoraxy) must use this https upstream. Measured 2026-11-09, see docs/deploy/k3s.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ipop-tls
+spec:
+  entryPoints: [websecure]
+  tls: {}                  # Traefik default certificate; Zoraxy talks to it with "skip TLS verify"
+  routes:
+    - kind: Rule
+      match: (Host(`ipop.santos.co.id`) || Host(`ipop.192.168.2.89.nip.io`) || Host(`192.168.2.89`)) && (PathPrefix(`/api`) || PathPrefix(`/hubs`) || PathPrefix(`/connect`) || Path(`/.well-known/openid-configuration`) || Path(`/.well-known/jwks`) || Path(`/healthz`))
+      priority: 100
+      services: [{ name: ipop-api, port: 80 }]
+    - kind: Rule
+      match: (Host(`ipop.santos.co.id`) || Host(`ipop.192.168.2.89.nip.io`) || Host(`192.168.2.89`)) && PathPrefix(`/rtc`)
+      priority: 100
+      services: [{ name: livekit, port: 7880 }]
+    - kind: Rule
+      match: (Host(`ipop.santos.co.id`) || Host(`ipop.192.168.2.89.nip.io`) || Host(`192.168.2.89`)) && PathPrefix(`/onlyoffice`)
+      priority: 100
+      middlewares: [{ name: onlyoffice-headers }, { name: strip-onlyoffice }]
+      services: [{ name: onlyoffice, port: 80 }]
+    - kind: Rule
+      match: Host(`ipop.santos.co.id`) || Host(`ipop.192.168.2.89.nip.io`) || Host(`192.168.2.89`)
+      priority: 10
+      middlewares: [{ name: retry }]
+      services: [{ name: ipop-web, port: 80 }]

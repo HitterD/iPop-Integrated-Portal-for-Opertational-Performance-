@@ -13,9 +13,9 @@ Login: http://192.168.2.2:8000
 |---|---|
 | Proxy Type | Sub-domain |
 | Matching Keyword / Domain | `ipop.santos.co.id` |
-| Target IP Address or Domain Name with port | `192.168.2.89:80` |
-| Proxy Target require TLS Connection | **tidak dicentang** |
-| Skip TLS Validation | tidak relevan |
+| Target IP Address or Domain Name with port | `192.168.2.89:443` |
+| Proxy Target require TLS Connection | **dicentang** |
+| Skip TLS Validation | **dicentang** (Traefik memakai sertifikat bawaan) |
 | Require Basic Auth | tidak |
 
 Lalu buka rule itu → **Edit**:
@@ -23,6 +23,12 @@ Lalu buka rule itu → **Edit**:
 - **Custom Headers**: **jangan tambah** `X-Forwarded-Proto`/`X-Forwarded-For` — Zoraxy sudah mengirimnya, dan duplikat
   membuat ONLYOFFICE error -4 (masalah lama di NPM). Traefik di cluster hanya mempercayai header dari 192.168.2.2.
 - Max upload: kalau ada opsi batas ukuran body, set ≥ 600 MB (lampiran mail sampai 500 MB).
+
+> **Wajib upstream HTTPS (ditemukan 2026-11-09).** Jaringan Nutanix antara VM cluster dan LAN lain diam-diam
+> memutus koneksi **HTTP biasa** yang membawa file program Windows (`.exe`, `.msi`, juga di dalam `.zip` tanpa
+> kompresi): transfer berhenti di ~128 KB lalu menggantung. Contoh: installer Notifier 67 MB dari cluster berhenti
+> di 12 MB. Lewat HTTPS (atau SMB) tidak terjadi. Karena itu Zoraxy → cluster **harus** `192.168.2.89:443` + TLS.
+> Lalu lintas antar-pod di dalam cluster tidak terdampak.
 
 ## 2. Sertifikat + paksa HTTPS
 

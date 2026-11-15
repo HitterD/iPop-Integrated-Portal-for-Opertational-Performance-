@@ -1,0 +1,23 @@
+# Staging reaches prod's LiveKit and ONLYOFFICE by fixed endpoints. Kept in its own Argo application because the
+# main staging app excludes EndpointSlice (and ExternalName Services are rejected by the Traefik CRD provider).
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: livekit
+  namespace: ipop-staging
+  labels: { kubernetes.io/service-name: livekit }
+addressType: IPv4
+ports: [{ name: http, port: 7880, protocol: TCP }]
+endpoints:
+  - addresses: [10.43.18.46]
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: onlyoffice
+  namespace: ipop-staging
+  labels: { kubernetes.io/service-name: onlyoffice }
+addressType: IPv4
+ports: [{ name: http, port: 80, protocol: TCP }]
+endpoints:
+  - addresses: [10.43.223.227]

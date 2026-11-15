@@ -10,9 +10,12 @@ public class LiveKitTokenService(IConfiguration config) : ILiveKitTokenService
 {
     private string? ApiKey => config["Calls:LiveKit:ApiKey"] ?? config["LiveKit:ApiKey"];
     private string? ApiSecret => config["Calls:LiveKit:ApiSecret"] ?? config["LiveKit:ApiSecret"];
-    public string? ServerUrl => NullIfBlank(config["Calls:LiveKit:Url"] ?? config["LiveKit:Url"]);
-    public string? ServerApiUrl => NullIfBlank(config["Calls:LiveKit:ServerUrl"]) ?? ServerUrl;
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(ApiKey) && !string.IsNullOrWhiteSpace(ApiSecret) && ServerUrl is not null;
+    /// Browser-facing address (Calls:LiveKit:Url). This is the only URL that may be sent to a browser:
+    /// Calls:LiveKit:ServerUrl is the in-cluster service name and does not resolve outside the cluster.
+    public string? PublicUrl => NullIfBlank(config["Calls:LiveKit:Url"] ?? config["LiveKit:Url"]);
+    public string? ServerUrl => PublicUrl;
+    public string? ServerApiUrl => NullIfBlank(config["Calls:LiveKit:ServerUrl"]) ?? PublicUrl;
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(ApiKey) && !string.IsNullOrWhiteSpace(ApiSecret) && PublicUrl is not null;
 
     public string GenerateToken(string roomName, string identity, string name, TimeSpan? ttl = null,
         IReadOnlyList<string>? sources = null, bool canUpdateOwnMetadata = false)

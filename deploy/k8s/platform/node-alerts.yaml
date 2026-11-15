@@ -62,6 +62,31 @@ spec:
           labels: { severity: critical }
           annotations:
             summary: "Nightly DB backup job failed"
+        # Found 2026-11-09: ipop/ipop-data never completed a Longhorn backup for 6 days and nobody was told.
+        - alert: IpopVolumeBackupMissing
+          expr: (time() - max by (volume) (longhorn_volume_last_backup_at)) > 30*3600
+          for: 30m
+          labels: { severity: critical }
+          annotations:
+            summary: "Longhorn volume {{ $labels.volume }} has no backup in 30 hours"
+            description: "kubectl -n longhorn-system get backups.longhorn.io | grep {{ $labels.volume }} ; ipop-data goes to target nas-cifs (SMB), others to S3."
+        # robustness: 1 healthy, 2 degraded, 3 faulted, 0 unknown (detached). A detached ipop-data = API cannot start.
+        - alert: IpopVolumeNotHealthy
+          expr: max by (volume) (longhorn_volume_robustness) != 1
+          for: 10m
+          labels: { severity: critical }
+          annotations:
+            summary: "Longhorn volume {{ $labels.volume }} is not healthy (robustness {{ $value }})"
+            description: "Stuck attach after a node failover = stale iSCSI sessions; check iscsi-reap.timer on the nodes (journalctl -t iscsi-reap)."
+        - alert: IpopApiErrors
+          expr: |
+            sum(rate(traefik_service_requests_total{service=~"ipop-ipop-.*",code=~"5.."}[5m]))
+              / clamp_min(sum(rate(traefik_service_requests_total{service=~"ipop-ipop-.*"}[5m])), 1) > 0.05
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "More than 5% of iPop requests fail with 5xx"
+            description: "Load test 2026-11-09: login bursts exhausted memory + DB pool. Grafana › Loki {namespace=\"ipop\", app=\"ipop-api\"} |= \"fail:\""
         - alert: IpopEtcdSnapshotMissing
           expr: (time() - max(kube_job_status_completion_time{namespace="ipop",job_name=~"etcd-snapshot-copy-.*"})) > 30*3600
           for: 30m

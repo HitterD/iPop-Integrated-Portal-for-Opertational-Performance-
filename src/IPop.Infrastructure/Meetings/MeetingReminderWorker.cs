@@ -53,6 +53,7 @@ public sealed class MeetingReminderWorker(IServiceScopeFactory scopeFactory, ILo
                 title: $"Reminder: {e.Title}",
                 message: $"\"{e.Title}\" starts at {e.StartAt.ToLocalTime():dd MMM yyyy HH:mm}.",
                 target: new NotificationTarget(UserId: e.OwnerId),
+                idempotencyKey: $"event-reminder-{e.Id:N}-{e.StartAt.Ticks}",
                 priority: "normal",
                 targetUrl: $"/calendar?event={e.Id}&date={e.StartAt.ToLocalTime():yyyy-MM-dd}",
                 ct: ct);
@@ -112,6 +113,9 @@ public sealed class MeetingReminderWorker(IServiceScopeFactory scopeFactory, ILo
                     + (IPop.Application.Hall.HallBooking.RoomKey(row.Meeting.Location) is not null && !string.IsNullOrEmpty(row.Meeting.RoomPassword)
                         ? $" Room password: {IPop.Application.Hall.RoomPasswords.Format(row.Meeting.RoomPassword)}" : ""),
                 target: new NotificationTarget(UserId: row.UserId),
+                // Stable per reminder row: SentAt is saved once per batch, so a batch that fails half-way used to
+                // publish the already-sent reminders again every minute until the meeting started.
+                idempotencyKey: $"reminder-{row.Id:N}",
                 priority: "high",
                 // Open the meeting itself on the person's calendar (their own row when they have one).
                 targetUrl: IPop.Application.Hall.HallBooking.RoomKey(row.Meeting.Location) is { } roomKey

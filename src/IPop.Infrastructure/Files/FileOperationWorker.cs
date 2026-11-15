@@ -21,6 +21,11 @@ public class FileOperationWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        try { await RecoverInterruptedAsync(stoppingToken); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Recovering interrupted file operations failed.");
+        }
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -41,6 +46,39 @@ public class FileOperationWorker(
                 await Task.Delay(Interval, stoppingToken);
             }
         }
+    }
+
+    /// One API replica runs this worker, so anything still "Running" at startup was left by a process that died
+    /// (pod killed, node lost, DB failover mid-save). Such operations used to spin forever on the user's dashboard.
+    /// They are failed, not resumed: a half-finished move may already have deleted some sources.
+    public async Task<int> RecoverInterruptedAsync(CancellationToken ct)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<IPopDbContext>();
+        var notifs = scope.ServiceProvider.GetService<INotificationGatewayService>();
+        var orphans = await db.FileOperations.Where(o => o.Status == "Running").ToListAsync(ct);
+        if (orphans.Count == 0) return 0;
+        var now = DateTime.UtcNow;
+        foreach (var o in orphans)
+        {
+            o.Status = "Failed";
+            o.FinishedAt = now;
+            o.Error = $"Transfer interrupted by a server restart after {o.CompletedFiles} of {o.TotalFiles} file(s). Check the destination and start it again.";
+        }
+        await db.SaveChangesAsync(CancellationToken.None);
+        logger.LogWarning("Marked {Count} interrupted file operation(s) as failed.", orphans.Count);
+        if (notifs is not null)
+            foreach (var o in orphans)
+            {
+                try
+                {
+                    await notifs.PublishInternalAsync("files", "files.transfer", "Transfer interrupted",
+                        $"{o.CompletedFiles} of {o.TotalFiles} file(s) were transferred before the server restarted.",
+                        new NotificationTarget(UserId: o.UserId), "high", "/files", CancellationToken.None);
+                }
+                catch (Exception ex) { logger.LogWarning(ex, "Notifying about interrupted op {Id} failed.", o.Id); }
+            }
+        return orphans.Count;
     }
 
     public async Task<bool> ProcessNextOperationAsync(CancellationToken ct)
@@ -148,7 +186,7 @@ public class FileOperationWorker(
             op.CompletedFiles = completed;
             op.FailedFiles = failed;
             op.BytesTransferred = totalBytes;
-            await db.SaveChangesAsync(ct);
+            await db.SaveChangesAsync(CancellationToken.None);
 
             if (!string.IsNullOrEmpty(op.User?.Nik))
             {
@@ -159,7 +197,14 @@ public class FileOperationWorker(
 
         op.FinishedAt = DateTime.UtcNow;
         op.Status = failed > 0 ? (completed > 0 ? "CompletedWithErrors" : "Failed") : "Completed";
-        await db.SaveChangesAsync(ct);
+        if (ct.IsCancellationRequested && completed + failed < items.Count)
+        {
+            // Shutdown stopped the loop early: record it honestly instead of "Completed" with files missing.
+            op.Status = "Failed";
+            op.Error = $"Transfer interrupted by a server restart after {completed} of {items.Count} file(s). Check the destination and start it again.";
+        }
+        // Not cancellable: a cancelled save here used to leave the operation "Running" forever.
+        await db.SaveChangesAsync(CancellationToken.None);
 
         // Every open view of the destination (and of the source folders, for a move) reloads.
         if (completed > 0)

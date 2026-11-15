@@ -30,6 +30,8 @@ public static class PortfolioEndpoints
 
     private static async Task<Guid?> UserIdAsync(HttpContext http, IPopDbContext db, CancellationToken ct)
     {
+        // The access token already carries the user id (sub); only tokens without it fall back to the NIK lookup.
+        if (IPop.Api.Auth.CurrentUser.IdFromToken(http.User) is { } fromToken) return fromToken;
         var nik = http.User.FindFirst("nik")?.Value;
         if (string.IsNullOrWhiteSpace(nik)) return null;
         return await db.Users.AsNoTracking().Where(u => u.Nik == nik && u.IsActive)

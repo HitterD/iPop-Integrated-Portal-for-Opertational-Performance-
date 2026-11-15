@@ -214,7 +214,7 @@ public static class CallEndpoints
         var name = IPop.Infrastructure.Calls.CallService.LiveKitRoomName(room.Id);
         return room with
         {
-            LiveKitUrl = liveKit.ServerUrl,
+            LiveKitUrl = liveKit.PublicUrl,
             LiveKitToken = liveKit.GenerateToken(name, me.Nik, me.Name, TimeSpan.FromHours(6)),
             LiveKitRoom = name,
         };
@@ -303,6 +303,8 @@ public static class CallEndpoints
 
     private static async Task<Guid?> GetUserIdAsync(HttpContext http, IPopDbContext db, CancellationToken ct)
     {
+        // The access token already carries the user id (sub); only tokens without it fall back to the NIK lookup.
+        if (IPop.Api.Auth.CurrentUser.IdFromToken(http.User) is { } fromToken) return fromToken;
         var nik = http.User.FindFirst("nik")?.Value;
         if (string.IsNullOrEmpty(nik)) return null;
         return await db.Users.AsNoTracking().Where(u => u.Nik == nik).Select(u => (Guid?)u.Id).FirstOrDefaultAsync(ct);

@@ -320,4 +320,111 @@ public class DashboardAndSearchTests
 
         Assert.Equal(3, dto.Kpis.ChatUnread);   // 1 after the read mark + 2 in the never-read room
     }
+    [Fact]
+    public async Task Dashboard_missed_calls_show_count_and_newest_three_callers()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("MC_ME"); me.TimeZoneId = "UTC";
+        var now = DateTime.UtcNow;
+        for (var i = 0; i < 4; i++)
+        {
+            var caller = t.AddUser($"MC_C{i}"); caller.Name = $"Caller {i}";
+            var call = new CallRoom { Id = Guid.NewGuid(), CreatorId = caller.Id, Kind = "voice", Status = "ended",
+                StartedAt = now.AddMinutes(-10 * (i + 1)), CreatedAt = now, UpdatedAt = now };
+            t.Db.CallRooms.Add(call);
+            t.Db.CallParticipants.Add(new CallParticipant { Id = Guid.NewGuid(), CallId = call.Id, UserId = caller.Id, Status = "left", JoinedAt = now });
+            t.Db.CallParticipants.Add(new CallParticipant { Id = Guid.NewGuid(), CallId = call.Id, UserId = me.Id, Status = "missed", JoinedAt = now });
+            t.Db.CallHistories.Add(new CallHistory { Id = Guid.NewGuid(), CallId = call.Id, PerformerId = me.Id, Direction = "incoming",
+                Result = "missed", StartedAt = call.StartedAt, EndedAt = call.StartedAt });
+        }
+        await t.Db.SaveChangesAsync();
+
+        var dto = (await new IPop.Infrastructure.Dashboard.DashboardService(t.Verify()).GetAsync(me.Id))!;
+
+        Assert.Equal(4, dto.Kpis.MissedCalls);
+        Assert.Equal(["Missed call from Caller 0", "Missed call from Caller 1", "Missed call from Caller 2"],
+            dto.Attention.Where(a => a.Kind == "missed-call").Select(a => a.Title));
+    }
+
+    [Fact]
+    public async Task Dashboard_missed_call_rows_are_bounded_in_sql_not_materialized_whole()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("MB_ME"); me.TimeZoneId = "UTC";
+        var caller = t.AddUser("MB_CALLER"); caller.Name = "Budi";
+        var now = DateTime.UtcNow;
+        var call = new CallRoom { Id = Guid.NewGuid(), CreatorId = caller.Id, Kind = "voice", Status = "ended",
+            StartedAt = now, CreatedAt = now, UpdatedAt = now };
+        t.Db.CallRooms.Add(call);
+        t.Db.CallParticipants.Add(new CallParticipant { Id = Guid.NewGuid(), CallId = call.Id, UserId = caller.Id, Status = "left", JoinedAt = now });
+        for (var i = 0; i < 120; i++)
+            t.Db.CallHistories.Add(new CallHistory { Id = Guid.NewGuid(), CallId = call.Id, PerformerId = me.Id,
+                Direction = "incoming", Result = "missed", StartedAt = now.AddMinutes(-i), EndedAt = now.AddMinutes(-i) });
+        await t.Db.SaveChangesAsync();
+
+        var counter = new CommandCounter();
+        var options = new DbContextOptionsBuilder<IPop.Infrastructure.Persistence.IPopDbContext>()
+            .UseSqlite(t.Db.Database.GetDbConnection()).AddInterceptors(counter).Options;
+        IPop.Application.Dashboard.DashboardDto dto;
+        await using (var db = new IPop.Infrastructure.Persistence.IPopDbContext(options))
+            dto = (await new IPop.Infrastructure.Dashboard.DashboardService(db, permissions: new FeedPermissions()).GetAsync(me.Id))!;
+
+        // The count is still exact and the card still shows the three newest, but the rows must be limited by SQL,
+        // not read into memory and then trimmed: a busy account can accumulate hundreds of missed calls in two days.
+        Assert.Equal(120, dto.Kpis.MissedCalls);
+        Assert.Equal(3, dto.Attention.Count(a => a.Kind == "missed-call"));   // newest three calls, each listed once
+        var missedReads = counter.Texts.Where(q => q.Contains("FROM \"CallHistories\"")).ToList();
+        Assert.NotEmpty(missedReads);
+        Assert.All(missedReads, q => Assert.True(q.Contains("COUNT") || q.Contains("LIMIT"),
+            "Unbounded CallHistories read:\n" + q));
+    }
+
+    [Fact]
+    public async Task Dashboard_reads_each_shared_fact_once_and_reuses_system_status()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("QC_ME");
+        var counter = new CommandCounter();
+        var options = new DbContextOptionsBuilder<IPop.Infrastructure.Persistence.IPopDbContext>()
+            .UseSqlite(t.Db.Database.GetDbConnection()).AddInterceptors(counter).Options;
+        var cache = new IPop.Infrastructure.Dashboard.DashboardSharedCache();
+
+        await using (var db = new IPop.Infrastructure.Persistence.IPopDbContext(options))
+            Assert.NotNull(await new IPop.Infrastructure.Dashboard.DashboardService(db, permissions: new FeedPermissions(), shared: cache).GetAsync(me.Id));
+        var first = counter.Texts.ToList();
+        counter.Texts.Clear();
+        await using (var db = new IPop.Infrastructure.Persistence.IPopDbContext(options))
+            Assert.NotNull(await new IPop.Infrastructure.Dashboard.DashboardService(db, permissions: new FeedPermissions(), shared: cache).GetAsync(me.Id));
+
+        // Roles, department and project memberships used to be read twice per Dashboard (once more by the calendar's news part).
+        Assert.Single(first, q => q.Contains("\"UserRoles\"") && q.Contains("\"Name\"") && !q.Contains("EXISTS"));
+        // The standalone membership read; the projects/milestones queries also name the table in subqueries.
+        Assert.Single(first, q => q.TrimStart().StartsWith("SELECT \"p\".\"ProjectId\"") && q.Contains("FROM \"ProjectMembers\" AS \"p\"\nWHERE"));
+        Assert.Single(first, q => q.Contains("FROM \"MailRecipients\""));
+        Assert.Contains(first, q => q.Contains("\"EmailOutbox\""));
+        Assert.DoesNotContain(counter.Texts, q => q.Contains("\"EmailOutbox\"") || q.Contains("\"HrisSyncRuns\""));
+        // Permission checks are stubbed here (production caches them). Measured 37 after missed calls moved to
+        // COUNT + LIMIT (one extra statement, but no longer sized by the account's history). The message lists
+        // every read so a new one is easy to spot.
+        Assert.True(first.Count <= 37, $"{first.Count} commands:\n" + string.Join("\n", first.Select(q => q.Replace("\n", " ")[..Math.Min(100, q.Replace("\n", " ").Length)])));
+    }
+
+    private sealed class CommandCounter : Microsoft.EntityFrameworkCore.Diagnostics.DbCommandInterceptor
+    {
+        public List<string> Texts { get; } = [];
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader>> ReaderExecutingAsync(
+            System.Data.Common.DbCommand command, Microsoft.EntityFrameworkCore.Diagnostics.CommandEventData eventData,
+            Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            Texts.Add(command.CommandText);
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+        }
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<object>> ScalarExecutingAsync(
+            System.Data.Common.DbCommand command, Microsoft.EntityFrameworkCore.Diagnostics.CommandEventData eventData,
+            Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<object> result, CancellationToken cancellationToken = default)
+        {
+            Texts.Add(command.CommandText);
+            return base.ScalarExecutingAsync(command, eventData, result, cancellationToken);
+        }
+    }
 }

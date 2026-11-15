@@ -278,7 +278,8 @@ public abstract record CacheState
 /// removed after a day and the folder is kept under a size cap (oldest access first).
 public sealed class MediaFileCache(string dir, long maxBytes = 30L * 1024 * 1024 * 1024)
 {
-    private readonly ConcurrentDictionary<string, Lazy<Task>> _copies = new();
+    private readonly ConcurrentDictionary<string, Task> _copies = new();
+    private readonly object _copyGate = new();
     private readonly ConcurrentDictionary<string, IResult> _failures = new();
     private DateTime _lastSweep = DateTime.MinValue;
     private static readonly TimeSpan CopyTimeout = TimeSpan.FromMinutes(30);
@@ -304,9 +305,17 @@ public sealed class MediaFileCache(string dir, long maxBytes = 30L * 1024 * 1024
     /// Starts the copy unless one is running. Errors are remembered once so the next player poll can show them.
     public void Start(string key, Func<CancellationToken, Task<Stream>> fetch)
     {
-        // GetOrAdd may evaluate several factories concurrently. Store a lazy task first, then start only the
-        // winning entry: an immediate failure must not remove itself before it has even been inserted.
-        var copy = _copies.GetOrAdd(key, k => new Lazy<Task>(() => Task.Run(async () =>
+        // GetOrAdd factories may run more than once. Register a completion task before
+        // starting I/O so concurrent callers join one copy, including synchronous completions.
+        TaskCompletionSource completion;
+        lock (_copyGate)
+        {
+            if (File.Exists(PathFor(key)) || _copies.ContainsKey(key)) return;
+            completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _copies[key] = completion.Task;
+        }
+        var k = key;
+        _ = Task.Run(async () =>
         {
             var path = PathFor(k);
             var tmp = path + "." + Guid.NewGuid().ToString("N") + ".part";
@@ -329,16 +338,22 @@ public sealed class MediaFileCache(string dir, long maxBytes = 30L * 1024 * 1024
                     _ => Results.Json(new { code = "synology_error", message = "The file could not be read from the NAS." }, statusCode: 502),
                 };
             }
-            finally { _copies.TryRemove(k, out _); }
-        }), LazyThreadSafetyMode.ExecutionAndPublication));
-        _ = copy.Value;
+            finally
+            {
+                lock (_copyGate)
+                {
+                    completion.TrySetResult();
+                    _copies.TryRemove(k, out _);
+                }
+            }
+        });
     }
 
     /// For tests and callers that need the file now: starts (or joins) the copy and waits for it.
     public async Task<string?> GetAsync(string key, Func<CancellationToken, Task<Stream>> fetch, CancellationToken ct)
     {
         Start(key, fetch);
-        if (_copies.TryGetValue(key, out var running)) await running.Value.WaitAsync(ct);
+        if (_copies.TryGetValue(key, out var running)) await running.WaitAsync(ct);
         return State(key) switch
         {
             CacheState.Ready r => r.Path,

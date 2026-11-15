@@ -1199,6 +1199,8 @@ public static class MailEndpoints
 
     private static async Task<Guid?> GetUserIdAsync(HttpContext http, IPopDbContext db)
     {
+        // The access token already carries the user id (sub); only tokens without it fall back to the NIK lookup.
+        if (IPop.Api.Auth.CurrentUser.IdFromToken(http.User) is { } fromToken) return fromToken;
         var nik = http.User.FindFirst("nik")?.Value;
         if (string.IsNullOrEmpty(nik)) return null;
         var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Nik == nik);

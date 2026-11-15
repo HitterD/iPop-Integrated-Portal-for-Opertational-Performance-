@@ -91,7 +91,8 @@ public class MeetingRoomServiceTests
     internal sealed class FakeTokens : ILiveKitTokenService
     {
         public bool IsConfigured { get; set; } = true;
-        public string? ServerUrl => "wss://lk.test";
+        public string? PublicUrl => "wss://lk.test";
+        public string? ServerUrl => PublicUrl;
         public string? ServerApiUrl => ServerUrl;
         public string? LastSources;
         public string GenerateToken(string roomName, string identity, string name, TimeSpan? ttl = null, IReadOnlyList<string>? sources = null, bool canUpdateOwnMetadata = false)

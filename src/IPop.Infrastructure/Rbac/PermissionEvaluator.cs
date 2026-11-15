@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace IPop.Infrastructure.Rbac;
 
-public sealed class PermissionEvaluator(IPopDbContext db) : IPermissionEvaluator
+public sealed class PermissionEvaluator(IPopDbContext db, PermissionCache? cache = null) : IPermissionEvaluator
 {
     /// Only direct members get Admin's grants. A role that names Admin as its parent (the
     /// pentest V-01 escalation: Employee → Admin handed every user news.publish, chat.admin…)
@@ -13,6 +13,16 @@ public sealed class PermissionEvaluator(IPopDbContext db) : IPermissionEvaluator
 
     public async Task<bool> IsAllowedAsync(Guid userId, string permissionCode,
         string? departmentCode, CancellationToken ct = default)
+    {
+        if (cache is null) return await EvaluateAsync(userId, permissionCode, departmentCode, ct);
+        var now = DateTime.UtcNow;
+        if (cache.TryGet(userId, permissionCode, departmentCode, now, out var hit)) return hit;
+        var allowed = await EvaluateAsync(userId, permissionCode, departmentCode, ct);
+        cache.Set(userId, permissionCode, departmentCode, allowed, now);
+        return allowed;
+    }
+
+    private async Task<bool> EvaluateAsync(Guid userId, string permissionCode, string? departmentCode, CancellationToken ct)
     {
         var permission = await db.Permissions.AsNoTracking()
             .SingleOrDefaultAsync(p => p.Code == permissionCode, ct);

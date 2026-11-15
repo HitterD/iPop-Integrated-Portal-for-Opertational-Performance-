@@ -156,8 +156,10 @@ spec:
                 - { name: scripts, mountPath: /scripts }
                 - { name: snapshots, mountPath: /snapshots, readOnly: true }
               resources:
-                requests: { cpu: 10m, memory: 16Mi }
-                limits: { memory: 64Mi }
+                # Two 70 MB etcd snapshots are copied through an SMB mount; 64 MiB OOM-killed the job every
+                # night for two days (backups were silently not reaching the NAS).
+                requests: { cpu: 10m, memory: 64Mi }
+                limits: { memory: 256Mi }
           volumes:
             - name: nas
               persistentVolumeClaim: { claimName: nas-ipop-backup }

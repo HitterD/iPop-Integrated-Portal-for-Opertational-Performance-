@@ -23,13 +23,13 @@ public sealed class DbEmailQueue(IPopDbContext db) : IEmailQueue
     }
 }
 
-/// Drains the outbox. Retries after 1 then 5 minutes; after MaxAttempts the row stays
+/// Drains the outbox. Retries after 1, 2, 4, 8, 15… minutes; after MaxAttempts the row stays
 /// unsent with LastError so failures are visible.
 public sealed class EmailOutboxProcessor(IPopDbContext db, IEmailSender sender, ILogger<EmailOutboxProcessor> log,
     EmailFailureAlerts? alerts = null)
 {
     internal static TimeSpan Backoff(int attempts) =>
-        attempts <= 1 ? TimeSpan.FromMinutes(1) : TimeSpan.FromMinutes(5);
+        TimeSpan.FromMinutes(Math.Min(15, Math.Pow(2, Math.Max(0, attempts - 1))));
 
     public async Task<int> ProcessDueAsync(DateTime now, CancellationToken ct = default)
     {
