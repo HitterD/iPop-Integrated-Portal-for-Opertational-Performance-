@@ -3,7 +3,7 @@
 // Sync model (see docs/notes spec): the server stores a compacted Yjs state (+ version) and a tail of
 // raw updates. Clients push every local update through the hub (which stores it and fans it out), and
 // an editor periodically folds the tail into a new state with a compare-and-set on the version.
-import { refusedReason } from './sync.js';
+import { refusedReason, mentionContexts } from './sync.js';
 import { Editor, Extension } from '@tiptap/core';
 import { exitSuggestion } from '@tiptap/suggestion';
 import StarterKit from '@tiptap/starter-kit';
@@ -426,17 +426,13 @@ export async function mount(el, opts) {
   const mentionQueue = new Map();
   const sendMentions = debounce(async () => {
     if (!mentionQueue.size) return;
-    const present = new Set();
-    editor.state.doc.descendants(n => {
-      if (n.type.name === 'mention' && n.attrs.id) present.add(n.attrs.id);
-      else if (n.type.name === 'taskItem' && n.attrs.assigneeId) present.add(n.attrs.assigneeId);
-    });
+    // The notification quotes the paragraph the mention sits in (not wherever the cursor happens to be by now).
     // Typed then deleted (or undone) before the batch went out: nobody to notify.
-    const ids = [...mentionQueue.keys()].filter(id => present.has(id)); mentionQueue.clear();
-    if (!ids.length) return;
-    const $from = editor.state.selection.$from;
-    const context = $from.parent.textContent.slice(0, 200);
-    await api(`/api/notes/${pageId}/mentions`, { method: 'POST', json: { userIds: ids, context } }).catch(() => {});
+    const contexts = mentionContexts(editor.state.doc, new Set(mentionQueue.keys()));
+    mentionQueue.clear();
+    for (const [context, ids] of contexts) {
+      await api(`/api/notes/${pageId}/mentions`, { method: 'POST', json: { userIds: ids, context } }).catch(() => {});
+    }
   }, 4000);
   function queueMention(p) {
     if (!canEdit) return;
