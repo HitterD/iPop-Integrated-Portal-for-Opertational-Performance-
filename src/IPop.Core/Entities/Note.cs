@@ -15,6 +15,8 @@ public class NotePage
     public required string Title { get; set; }
     public string? Emoji { get; set; }
     public string? Cover { get; set; }
+    /// "page" (a document) or "board" (a whiteboard: one endless canvas, no document text). Fixed when the page is created.
+    public string Kind { get; set; } = "page";
     /// Photo cover: a notes attachment linked to this page. When set it wins over <see cref="Cover"/> (a gradient key).
     public Guid? CoverImageId { get; set; }
     /// Vertical focus of the photo inside the cover band, 0 (top) .. 100 (bottom).

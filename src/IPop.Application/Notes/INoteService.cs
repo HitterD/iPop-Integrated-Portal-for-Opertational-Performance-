@@ -29,6 +29,7 @@ public static class NoteLevels
 /// Palette keys shared with the client (css/v6/notes.css and the editor bundle).
 public static class NoteStyle
 {
+    public static readonly IReadOnlySet<string> Kinds = new HashSet<string> { "page", "board" };
     public static readonly IReadOnlySet<string> Covers = new HashSet<string>
         { "ocean", "sunset", "lavender", "rose", "teal", "green", "sand", "graphite", "mesh", "aurora", "night" };
     public static readonly IReadOnlySet<string> Accents = new HashSet<string>
@@ -52,7 +53,7 @@ public record NoteResult<T>(T? Data, string? Error)
 /// (a sub-page shared on its own shows as a root).
 public record NoteListItemDto(Guid Id, Guid? ParentId, string Title, string? Emoji, string Access,
     bool IsMine, bool IsShared, bool IsFavorite, bool IsGuide, int TodoDone, int TodoTotal,
-    DateTime UpdatedAt, string OwnerName, int SortOrder = 0);
+    DateTime UpdatedAt, string OwnerName, int SortOrder = 0, string Kind = "page");
 
 public record NoteSidebarDto(IReadOnlyList<NoteListItemDto> Pages, IReadOnlyList<Guid> Recent, int TrashCount = 0);
 
@@ -64,11 +65,11 @@ public record NotePageDto(Guid Id, Guid? ParentId, string Title, string? Emoji, 
     int TodoDone, int TodoTotal, int OpenThreads, IReadOnlyList<NoteCrumbDto> Breadcrumb,
     IReadOnlyList<NoteCrumbDto> Children, IReadOnlyList<NoteRoomShareDto> Rooms,
     /// "notion" | "markdown" | "html" for pages created by Import (shown as a small badge), else null.
-    string? ImportSource = null, Guid? CoverImageId = null, int CoverPosY = 50);
+    string? ImportSource = null, Guid? CoverImageId = null, int CoverPosY = 50, string Kind = "page");
 
 public record NoteRoomShareDto(Guid RoomId, string Name, string Level);
 
-public record CreateNoteRequest(Guid? ParentId, string? Title, string? Emoji, string? Template, string? Accent, string? Cover);
+public record CreateNoteRequest(Guid? ParentId, string? Title, string? Emoji, string? Template, string? Accent, string? Cover, string? Kind = null);
 
 /// Cover: "" removes any cover; a gradient key picks that gradient (and drops a photo). CoverImageId picks a photo that is
 /// already linked to this page; CoverPosY (0-100) only moves the photo.

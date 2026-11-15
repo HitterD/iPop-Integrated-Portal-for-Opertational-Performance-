@@ -4,6 +4,7 @@
 // raw updates. Clients push every local update through the hub (which stores it and fans it out), and
 // an editor periodically folds the tail into a new state with a compare-and-set on the version.
 import { createCovers } from './covers.js';
+import { NoteDraw, mountScene, newDrawId } from './draw-block.js';
 import { analyze as tidyAnalyze, apply as tidyApply } from './tidy.js';
 import { refusedReason, mentionContexts, savePending, takePending, clearPending } from './sync.js';
 import { Editor, Extension } from '@tiptap/core';
@@ -53,6 +54,7 @@ function baseExtensions(host, { collab = true, rich = {} } = {}) {
     BlockBackground, Callout,
     NoteWidget.configure({ host: () => host }),
     NoteToc, HeadingFlash,
+    NoteDraw.configure({ host: () => host }),
     SubPage.configure({ host: () => host }),
     NoteImage.configure({ host: () => host }),
     NoteFile.configure({ host: () => host }),
@@ -76,6 +78,7 @@ export function preview(el, state, opts = {}) {
   const json = yXmlFragmentToProsemirrorJSON(doc.getXmlFragment(FIELD));
   const apiBase = (opts.apiBase || '').replace(/\/$/, '');
   const host = {
+    drawDoc: () => doc,
     fetch: async path => {
       if (!opts.dotnet) throw new Error('preview');
       const t = await opts.dotnet.invokeMethodAsync('GetToken');
@@ -119,6 +122,9 @@ export async function mount(el, opts) {
   // ── Host services used by nodes and menus ────────────────────────────────
   const palette = ['#0A84FF', '#5856D6', '#AF52DE', '#FF2D55', '#FF9500', '#34C759', '#30B0C7', '#A2845E'];
   const host = {
+    drawDoc: () => ydoc,
+    openLink: url => { if (/^https?:\/\//i.test(url || '')) window.open(url, '_blank', 'noopener,noreferrer'); },
+    drawFullscreen: id => openDrawFullscreen(id),
     fetch: path => api(path),
     accent: () => accent,
     setAccent: k => { accent = k; call('SetAccent', k); accentListeners.forEach(f => f()); },
@@ -151,6 +157,8 @@ export async function mount(el, opts) {
   // ── Yjs doc + awareness ──────────────────────────────────────────────────
   const ydoc = new Y.Doc();
   const awareness = new Awareness(ydoc);
+  // QA hook: with localStorage['ipop.qa'] set, the live document can be inspected from the console (never set for real users).
+  try { if (localStorage.getItem('ipop.qa') === '1') window.__ipopQa = { ydoc }; } catch { /* storage blocked */ }
   const peers = new Map(); // SignalR connection id -> awareness client ids
   let version = 0;
   const unmerged = new Set(); // server update ids already applied here but not folded into the state
@@ -286,6 +294,26 @@ export async function mount(el, opts) {
       else if (r.status === 409) await refetch(); // someone else compacted first; take theirs and retry later
     } catch { /* retried on the next edit */ }
     snapping = false;
+  }
+
+  // ── Full-screen drawing ────────────────────────────────────────────────
+  // The same scene (same Y.Map) mounted a second time over the page: edits made here show up in the inline block live.
+  let fsClose = null;
+  async function openDrawFullscreen(id) {
+    if (fsClose || closing || !id) return;
+    const layer = document.createElement('div');
+    layer.className = 'nt-draw-fs'; layer.setAttribute('role', 'dialog'); layer.setAttribute('aria-modal', 'true'); layer.setAttribute('aria-label', 'Drawing');
+    const stage = document.createElement('div'); stage.className = 'nt-draw-fs-stage';
+    const close = document.createElement('button'); close.type = 'button'; close.className = 'nt-draw-fs-close'; close.textContent = 'Close';
+    layer.append(stage, close); document.body.appendChild(layer);
+    let inst = null;
+    const finish = () => { if (!fsClose) return; fsClose = null; document.removeEventListener('keydown', onKey, true); inst?.destroy(); layer.remove(); };
+    const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); finish(); } };
+    fsClose = finish;
+    close.addEventListener('click', finish);
+    document.addEventListener('keydown', onKey, true);
+    try { inst = await mountScene(stage, { ydoc, id, readOnly: !canEdit, mode: 'board' }); if (!fsClose) inst.destroy(); }
+    catch { host.toast('Couldn’t load the drawing tools. Check your connection.'); finish(); }
   }
 
   // ── Editor ───────────────────────────────────────────────────────────────
@@ -647,6 +675,7 @@ export async function mount(el, opts) {
       removeAwarenessStates(awareness, [ydoc.clientID], 'local');
       await hub.invoke('LeavePage', pageId).catch(() => {});
       await hub.stop().catch(() => {});
+      fsClose?.();
       closeLightboxes(host);
       window.removeEventListener('focus', host.accessChanged);
       window.removeEventListener('beforeunload', onBeforeUnload);

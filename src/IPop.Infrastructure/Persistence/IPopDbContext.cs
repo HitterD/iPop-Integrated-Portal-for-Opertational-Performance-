@@ -1313,6 +1313,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Emoji).HasMaxLength(16);
             e.Property(x => x.Cover).HasMaxLength(16);
             e.Property(x => x.CoverPosY).HasDefaultValue(50);
+            e.Property(x => x.Kind).HasMaxLength(8).HasDefaultValue("page");
             e.Property(x => x.Accent).HasMaxLength(16);
             e.Property(x => x.Font).HasMaxLength(8);
             e.Property(x => x.SeedTemplate).HasMaxLength(16);

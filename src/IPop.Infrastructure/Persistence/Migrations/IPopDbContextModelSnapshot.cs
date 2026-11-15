@@ -3082,6 +3082,13 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsGuide")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasDefaultValue("page");
+
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uuid");
 

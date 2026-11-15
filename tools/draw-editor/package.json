@@ -1,0 +1,21 @@
+{
+  "name": "ipop-draw-editor",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Excalidraw bundle for iPop Notes drawings and whiteboards. Output: src/IPop.Web/wwwroot/js/notes/draw/",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@excalidraw/excalidraw": "0.18.1",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "yjs": "^13.6.33"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "happy-dom": "^20.14.5"
+  }
+}

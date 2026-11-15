@@ -84,7 +84,7 @@ public sealed partial class NoteService
         var copy = new NotePage
         {
             Id = Guid.NewGuid(), OwnerId = userId, ParentId = parent,
-            Title = Clean("Copy of " + title, 200)!, Emoji = src.Emoji, Cover = src.Cover, CoverPosY = src.CoverPosY, Accent = src.Accent,
+            Title = Clean("Copy of " + title, 200)!, Emoji = src.Emoji, Kind = src.Kind, Cover = src.Cover, CoverPosY = src.CoverPosY, Accent = src.Accent,
             Font = src.Font, FullWidth = src.FullWidth, SmallText = src.SmallText, SeedTemplate = src.SeedTemplate,
             YState = src.YState, Excerpt = src.Excerpt, PlainText = src.PlainText,
             TodoDone = src.TodoDone, TodoTotal = src.TodoTotal,

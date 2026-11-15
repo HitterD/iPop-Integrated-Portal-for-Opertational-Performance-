@@ -107,6 +107,30 @@ jobs:
           "$RUNNER_TEMP/upload-browser/node_modules/.bin/playwright" install --with-deps chromium
           NODE_PATH="$RUNNER_TEMP/upload-browser/node_modules" node tests/mail-upload-admission.browser.cjs
 
+  draw-editor:
+    name: Drawing bundle tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install and test the drawing sources
+        working-directory: tools/draw-editor
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+      # Same rule as the Notes editor: the committed bundle is what browsers run, so it must match its sources.
+      - name: Committed drawing bundle matches the sources
+        working-directory: tools/draw-editor
+        run: |
+          npm run build
+          if [ -n "$(git status --porcelain -- ../../src/IPop.Web/wwwroot/js/notes/draw)" ]; then
+            echo "::error::src/IPop.Web/wwwroot/js/notes/draw is stale: run 'npm run build' in tools/draw-editor and commit it."
+            git status --short -- ../../src/IPop.Web/wwwroot/js/notes/draw | head -20
+            exit 1
+          fi
+
   notes-editor:
     name: Notes editor tests
     runs-on: ubuntu-24.04

@@ -1,3 +1,4 @@
+import { newDrawId } from './draw-block.js';
 import { Extension } from '@tiptap/core';
 import Suggestion from '@tiptap/suggestion';
 import { PluginKey } from '@tiptap/pm/state';
@@ -51,6 +52,7 @@ export function slashCommands(host) {
       if (p) editor.chain().focus().insertContent({ type: 'subPage', attrs: { id: p.id, title: p.title, emoji: p.emoji || '📄' } }).run();
     }],
     ['Basic blocks', 'Table of contents', 'A live list of the headings on this page', '☰', '', setBlock(c => c.insertContent({ type: 'noteToc' }))],
+    ['Media', 'Drawing', 'Sketch by hand, together in real time', '✏️', '', setBlock(c => c.insertContent({ type: 'noteDraw', attrs: { id: newDrawId(), height: 320 } }))],
     ['Media', 'Image', 'Upload or paste — stored on NAS', '🖼', '', ({ editor, range }) => { editor.chain().focus().deleteRange(range).run(); host.pickFiles('image/*'); }],
     ['Media', 'File', 'Attach any file', '📎', '', ({ editor, range }) => { editor.chain().focus().deleteRange(range).run(); host.pickFiles(''); }],
     ['Media', 'Code', 'Capture a code snippet', '</>', '```', setBlock(byKey('code'))],

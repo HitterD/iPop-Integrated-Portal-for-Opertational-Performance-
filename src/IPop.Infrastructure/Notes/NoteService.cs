@@ -158,7 +158,7 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         var visible = await VisibleAsync(userId, ct);
         var ids = visible.Keys.ToList();
         var rows = await db.NotePages.AsNoTracking().Where(p => ids.Contains(p.Id))
-            .Select(p => new { p.Id, p.Title, p.Emoji, p.IsGuide, p.TodoDone, p.TodoTotal, p.UpdatedAt, p.SortOrder, OwnerName = p.Owner.Name })
+            .Select(p => new { p.Id, p.Title, p.Emoji, p.IsGuide, p.TodoDone, p.TodoTotal, p.UpdatedAt, p.SortOrder, p.Kind, OwnerName = p.Owner.Name })
             .ToListAsync(ct);
         var favs = (await db.NoteFavorites.AsNoTracking().Where(f => f.UserId == userId).Select(f => f.PageId).ToListAsync(ct)).ToHashSet();
         var sharedIds = (await db.NoteShares.AsNoTracking().Where(s => ids.Contains(s.PageId)).Select(s => s.PageId).Distinct().ToListAsync(ct)).ToHashSet();
@@ -175,7 +175,7 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
             var v = visible[r.Id];
             return new NoteListItemDto(r.Id, v.ParentId, r.Title, r.Emoji, NoteLevels.Name(v.Access),
                 v.OwnerId == userId, IsShared(r.Id), favs.Contains(r.Id), r.IsGuide && v.OwnerId == userId,
-                r.TodoDone, r.TodoTotal, r.UpdatedAt, r.OwnerName, r.SortOrder);
+                r.TodoDone, r.TodoTotal, r.UpdatedAt, r.OwnerName, r.SortOrder, r.Kind);
         }).OrderBy(p => p.Title, StringComparer.CurrentCultureIgnoreCase).ToList();
 
         var recent = await db.NoteVisits.AsNoTracking().Where(v => v.UserId == userId && ids.Contains(v.PageId))
@@ -266,7 +266,7 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         var rows = await TrashQuery(userId)
             .OrderByDescending(p => p.DeletedAt)
             .Select(p => new NoteListItemDto(p.Id, null, p.Title, p.Emoji, "owner", p.OwnerId == userId, false, false,
-                p.IsGuide, p.TodoDone, p.TodoTotal, p.DeletedAt!.Value, p.Owner.Name))
+                p.IsGuide, p.TodoDone, p.TodoTotal, p.DeletedAt!.Value, p.Owner.Name, 0, p.Kind))
             .ToListAsync(ct);
         return rows;
     }
@@ -298,7 +298,7 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         var p = await db.NotePages.AsNoTracking().Where(x => x.Id == pageId).Select(x => new
         {
             x.Id, x.ParentId, x.Title, x.Emoji, x.Cover, x.Accent, x.Font, x.FullWidth, x.SmallText, x.IsGuide,
-            x.CreatedAt, x.UpdatedAt, x.UpdatedById, x.TodoDone, x.TodoTotal, x.ImportSource, x.CoverImageId, x.CoverPosY,
+            x.CreatedAt, x.UpdatedAt, x.UpdatedById, x.TodoDone, x.TodoTotal, x.ImportSource, x.CoverImageId, x.CoverPosY, x.Kind,
             OwnerName = x.Owner.Name, OwnerNik = x.Owner.Nik,
         }).FirstAsync(ct);
 
@@ -331,7 +331,7 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
 
         return new NotePageDto(p.Id, p.ParentId, p.Title, p.Emoji, p.Cover, p.Accent, p.Font, p.FullWidth, p.SmallText,
             p.IsGuide, NoteLevels.Name(access), fav, isShared, p.OwnerName, p.OwnerNik, p.CreatedAt, p.UpdatedAt, updatedBy,
-            p.TodoDone, p.TodoTotal, open, crumbs, children, rooms, p.ImportSource, p.CoverImageId, p.CoverPosY);
+            p.TodoDone, p.TodoTotal, open, crumbs, children, rooms, p.ImportSource, p.CoverImageId, p.CoverPosY, p.Kind);
     }
 
     /// Group name, or for a DM the other person's name as seen by <paramref name="viewerId"/>.
@@ -354,7 +354,10 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
             var access = await GetAccessAsync(userId, parentId, ct);
             if (access < NoteAccess.Edit) return Fail<NotePageDto>(Denied(access));
         }
-        if (req.Template is { } t && (!NoteStyle.Templates.Contains(t) || t == "guide")) return Fail<NotePageDto>("invalid_template");
+        if (req.Kind is { } kd && !NoteStyle.Kinds.Contains(kd)) return Fail<NotePageDto>("invalid_style");
+        var kind = req.Kind ?? "page";
+        // A whiteboard has no document text, so a text template makes no sense for it.
+        if (req.Template is { } t && (kind == "board" || !NoteStyle.Templates.Contains(t) || t == "guide")) return Fail<NotePageDto>("invalid_template");
         if (req.Accent is { } a) { if (!NoteStyle.Accents.Contains(a)) return Fail<NotePageDto>("invalid_style"); accent = a; }
         if (req.Cover is { } c) { if (!NoteStyle.Covers.Contains(c)) return Fail<NotePageDto>("invalid_style"); cover = c; }
 
@@ -362,7 +365,7 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         var page = new NotePage
         {
             Id = Guid.NewGuid(), OwnerId = userId, ParentId = req.ParentId,
-            Title = Clean(req.Title, 200) ?? "", Emoji = Clean(req.Emoji, 16),
+            Title = Clean(req.Title, 200) ?? "", Emoji = Clean(req.Emoji, 16) ?? (kind == "board" ? "🧩" : null), Kind = kind,
             Cover = cover, Accent = accent, Font = font, SeedTemplate = req.Template,
             CreatedAt = now, UpdatedAt = now, UpdatedById = userId,
         };
