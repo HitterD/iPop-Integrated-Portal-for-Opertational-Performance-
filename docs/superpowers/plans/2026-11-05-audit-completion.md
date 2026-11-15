@@ -35,16 +35,16 @@ Statuses start OPEN/PARTIAL, never DONE without linked evidence. This ledger sup
 |---|---|---|
 | Chat GC | Shared-file reference safety, bounded safe paths, retry semantics | OPEN |
 | Chat delivery | Transactional message + durable notification intent; crash/replay proof | PARTIAL |
-| Chat forward | Client-generated stable idempotency key and concurrent retry handling | PARTIAL |
+| Chat forward | Client-generated stable idempotency key and concurrent retry handling | DONE in CI: authz-before-replay 8a57dff (3318/3318), key 9174c6b (3319), conflict a7271b2 (3320), race b156754 (3321 GREEN 43662027984); staging runtime proof pending |
 | Chat receipt | Batch actual new receipts, bounded broadcasts, load measurements | PARTIAL |
 | Chat rendering | True windowing/virtualization; older/reply/forward jump and scroll parity | PARTIAL |
 | Chat thumbnails | Correct keyed locking, no redundant full buffering, bounded cache | PARTIAL |
-| Auth | Two-tab refresh, hub refresh after expiry, permanent-vs-transient outcomes | OPEN |
+| Auth | Two-tab refresh, hub refresh after expiry, permanent-vs-transient outcomes | PARTIAL: two-tab RED 43666417283 (1 fail) -> 94eb9c4 GREEN 43666861498 (3323/3323); hub token RED 43667292128 (build) -> 8d8332d GREEN 43667585020 (3325/3325); transient-vs-permanent already covered by AuthRefreshTransientTests; browser two-tab proof on staging pending |
 | Shell | Login throttling, profile single-flight, compression/bundles, photo invalidation, heartbeat | OPEN |
 | Files | Restart recovery/atomic claims, picker route, event privacy, overwrite confirmation | OPEN |
 | Mail | Body preview projection, upload timings, abandoned drafts/inline media, tab-close draft durability | OPEN |
 | Mail cache | Size enforcement, shared/user access semantics, stream disposal and cleanup races | PARTIAL |
-| Calls | True simultaneous crossing-call race, client media and failed-recording recovery | PARTIAL |
+| Calls | True simultaneous crossing-call race, client media and failed-recording recovery | PARTIAL: CallConnections grace now deterministic (131f4a2/bc3a7db, CI 43665002940 3322/3322); crossing-call race + media + recording OPEN |
 | Notes | PDF export injection repro/fix, ancestor/room revocation, update compaction and snapshot projections | OPEN |
 | Projects | Include projections/split queries, deleted-task timer stop, time-entry retention, due-reminder starvation | PARTIAL |
 | News | Revoked-video access, feed SQL, scheduled revision after pin runtime test | PARTIAL |
