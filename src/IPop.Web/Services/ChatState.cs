@@ -260,7 +260,7 @@ public partial class ChatState : IAsyncDisposable
         var hubUrl = new Uri(baseUrl, "hubs/chat");
 
         _hub = new HubConnectionBuilder()
-            .WithUrl(hubUrl, o => o.AccessTokenProvider = () => Task.FromResult(_auth.AccessToken))
+            .WithUrl(hubUrl, o => o.AccessTokenProvider = _auth.HubAccessTokenAsync)
             .WithAutomaticReconnect([TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30)])
             .Build();
 

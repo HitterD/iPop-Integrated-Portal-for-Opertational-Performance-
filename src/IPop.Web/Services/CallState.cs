@@ -150,7 +150,7 @@ public partial class CallState : IAsyncDisposable
         if (_hub is not null || !_auth.IsAuthenticated || _auth.IsSuspended) return;
         var hubUrl = new Uri(new Uri(_http.BaseAddress!, "/"), "hubs/calls");
         _hub = new HubConnectionBuilder()
-            .WithUrl(hubUrl, o => o.AccessTokenProvider = () => Task.FromResult(_auth.AccessToken))
+            .WithUrl(hubUrl, o => o.AccessTokenProvider = _auth.HubAccessTokenAsync)
             .WithAutomaticReconnect()
             .Build();
 

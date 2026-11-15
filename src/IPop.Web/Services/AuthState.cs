@@ -15,6 +15,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
 {
     private const string RefreshKey = "ipop.refresh";
     private string? _accessToken;
+    private DateTime _accessExpiresAt = DateTime.MinValue;
     private bool _keepSignedIn = true;
     private HubConnection? _presence;
     private Timer? _heartbeat;
@@ -33,6 +34,15 @@ public class AuthState(HttpClient http, IJSRuntime js)
 
     /// The current access token for Hub connections (ChatState, etc.). Null when signed out.
     public string? AccessToken => _accessToken;
+
+    /// What the SignalR hubs present on every (re)connect. After sleep or a long outage the cached token is dead and the
+    /// negotiate would fail until an unrelated request refreshed it, so renew first when under a minute of life remains.
+    public async Task<string?> HubAccessTokenAsync()
+    {
+        if (_accessToken is not null && _accessExpiresAt - DateTime.UtcNow < TimeSpan.FromMinutes(1))
+            await TryRestoreAsync();
+        return _accessToken;
+    }
     public string MyStatus { get; internal set; } = "off";
     /// When a timed Busy ends (UTC); null = until turned off, or not Busy.
     public DateTime? BusyUntil { get; private set; }
@@ -172,7 +182,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
         if (!IsAuthenticated || IsSuspended || _presence is not null) return;
         var hubUrl = new Uri(new Uri(http.BaseAddress!, "/"), "hubs/app");
         _presence = new HubConnectionBuilder()
-            .WithUrl(hubUrl, o => o.AccessTokenProvider = () => Task.FromResult(_accessToken))
+            .WithUrl(hubUrl, o => o.AccessTokenProvider = HubAccessTokenAsync)
             .WithAutomaticReconnect()
             .Build();
         _presence.On<string, string>(RealtimeEvents.PresenceChanged, (nik, status) =>
@@ -276,6 +286,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
         }
         var body = (await res.Content.ReadFromJsonAsync<LoginDto>())!;
         _accessToken = body.AccessToken;
+        _accessExpiresAt = body.AccessTokenExpiresAt.ToUniversalTime();
         MustChangePassword = body.MustChangePassword;
         _keepSignedIn = keepSignedIn;
         await NativeSessionAsync(body.AccessToken, body.AccessTokenExpiresAt);
@@ -414,6 +425,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
         }
         var body = (await res.Content.ReadFromJsonAsync<RefreshDto>())!;
         _accessToken = body.AccessToken;
+        _accessExpiresAt = body.AccessTokenExpiresAt.ToUniversalTime();
         MustChangePassword = body.MustChangePassword;
         await NativeSessionAsync(body.AccessToken, body.AccessTokenExpiresAt);
         await js.InvokeVoidAsync(_keepSignedIn ? "localStorage.setItem" : "sessionStorage.setItem", RefreshKey, body.RefreshToken);
