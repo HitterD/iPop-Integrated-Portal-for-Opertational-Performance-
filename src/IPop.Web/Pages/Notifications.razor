@@ -634,19 +634,27 @@ else if (snoozeMenuOpen)
 
     private async Task ToggleDnd()
     {
+        var before = quietHoursEnabled;
         quietHoursEnabled = !quietHoursEnabled;
         try
         {
-            await Auth.SendAsync(HttpMethod.Put, "/api/notifications/v1/preferences", new
+            using var res = await Auth.SendAsync(HttpMethod.Put, "/api/notifications/v1/preferences", new
             {
                 quietHoursEnabled,
                 quietStart = "22:00",
                 quietEnd = "07:00",
                 mutedTypes = string.Join(',', mutedCategories)
             });
+            if (!res.IsSuccessStatusCode) throw new HttpRequestException("preferences refused");
             Toasts.ShowDetailed("DND Updated", quietHoursEnabled ? "Do Not Disturb enabled (22:00–07:00)" : "Do Not Disturb disabled", ToastKind.Success, "moon");
         }
-        catch { }
+        catch (Exception)
+        {
+            // The switch must not claim Do Not Disturb is on when the server never stored it.
+            quietHoursEnabled = before;
+            Toasts.Show("Do Not Disturb could not be changed. Please try again.", ToastKind.Error);
+            StateHasChanged();
+        }
     }
 
     private async Task ToggleMuteCategory(string type)

@@ -681,14 +681,16 @@
     {
         if (ReadOnly) return;
         if (Task is null || reminderSaving) return;
+        var wasOn = reminderOffsets.Contains(hours);
         if (!reminderOffsets.Remove(hours)) reminderOffsets.Add(hours);
         reminderSaving = true;
         try
         {
-            await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{Task.Id}/reminders",
-                new { offsetHours = reminderOffsets.OrderByDescending(x => x).ToArray() });
+            var saved = await SaveOkAsync(() => Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{Task.Id}/reminders",
+                new { offsetHours = reminderOffsets.OrderByDescending(x => x).ToArray() }), "The reminder could not be saved.");
+            // The chip must show what the server holds: put the old state back when the save was refused.
+            if (!saved) { if (wasOn) reminderOffsets.Add(hours); else reminderOffsets.Remove(hours); }
         }
-        catch { }
         finally { reminderSaving = false; }
     }
 

@@ -4,6 +4,7 @@
 @inject AuthState Auth
 @inject ChatState ChatSvc
 @inject NavigationManager Nav
+@inject ToastService Toasts
 @using IPop.Application.Chat
 
 <PageTitle>Saved messages — IPop</PageTitle>
@@ -223,10 +224,11 @@
     {
         try
         {
-            await Auth.SendAsync(HttpMethod.Delete, $"/api/chat/saved/{messageId}");
+            using var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/chat/saved/{messageId}");
+            if (!res.IsSuccessStatusCode) Toasts.Show("The message could not be removed from Saved.", ToastKind.Error);
             await RefreshAsync();
         }
-        catch { }
+        catch (Exception) { Toasts.Show("The message could not be removed from Saved.", ToastKind.Error); }
     }
 
     private void OpenInChat(Guid roomId, Guid messageId)
