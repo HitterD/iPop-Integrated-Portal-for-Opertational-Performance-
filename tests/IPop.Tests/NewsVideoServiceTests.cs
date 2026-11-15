@@ -146,4 +146,44 @@ public class NewsVideoServiceTests : IDisposable
         Assert.False(await db.NewsPosts.AnyAsync(p => p.Id == v.NewsPostId));
         Assert.False(File.Exists(path));
     }
+
+    // A signed ticket proves who asked and for which video, valid for hours. It must never outlive the person's right to
+    // see the post: unpublishing the post or removing the person from its audience ends access at once.
+    [Fact]
+    public async Task A_ticket_stops_working_when_the_post_is_unpublished()
+    {
+        using var t = new TestDb();
+        var admin = t.AddAdmin("ADM");
+        var reader = t.AddUser("R1");
+        var v = (await Svc(t).UploadAsync(admin.Id, Upload("Launch"), default)).Video!;
+        var dp = new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider();
+        var ticket = IPop.Api.Endpoints.NewsVideoEndpoints.IssueTicket(dp, v.Id, reader.Id);
+
+        Assert.Equal(reader.Id, await IPop.Api.Endpoints.NewsVideoEndpoints.AuthorizeAsync(Svc(t), dp, ticket, v.Id, default));
+
+        Assert.True((await new NewsService(t.Verify()).UnpublishAsync(admin.Id, v.NewsPostId, default)).Success);
+
+        Assert.Null(await IPop.Api.Endpoints.NewsVideoEndpoints.AuthorizeAsync(Svc(t), dp, ticket, v.Id, default));
+    }
+
+    [Fact]
+    public async Task A_ticket_stops_working_for_someone_outside_the_audience_and_cannot_be_used_for_another_video()
+    {
+        using var t = new TestDb();
+        var admin = t.AddAdmin("ADM");
+        var inside = t.AddUser("IN");
+        var outside = t.AddUser("OUT");
+        var v = (await Svc(t).UploadAsync(admin.Id, Upload("Targeted", [new NewsTargetInput("user", inside.Nik)]), default)).Video!;
+        var other = (await Svc(t).UploadAsync(admin.Id, Upload("Other", [new NewsTargetInput("user", inside.Nik)]), default)).Video!;
+        var dp = new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider();
+
+        // A ticket minted for someone who was removed from the audience (or never in it) opens nothing.
+        var stale = IPop.Api.Endpoints.NewsVideoEndpoints.IssueTicket(dp, v.Id, outside.Id);
+        Assert.Null(await IPop.Api.Endpoints.NewsVideoEndpoints.AuthorizeAsync(Svc(t), dp, stale, v.Id, default));
+
+        var ok = IPop.Api.Endpoints.NewsVideoEndpoints.IssueTicket(dp, v.Id, inside.Id);
+        Assert.Equal(inside.Id, await IPop.Api.Endpoints.NewsVideoEndpoints.AuthorizeAsync(Svc(t), dp, ok, v.Id, default));
+        Assert.Null(await IPop.Api.Endpoints.NewsVideoEndpoints.AuthorizeAsync(Svc(t), dp, ok, other.Id, default));
+        Assert.Null(await IPop.Api.Endpoints.NewsVideoEndpoints.AuthorizeAsync(Svc(t), dp, "garbage", v.Id, default));
+    }
 }
