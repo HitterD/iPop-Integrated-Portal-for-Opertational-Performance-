@@ -100,3 +100,17 @@ jobs:
         run: |
           set -e
           for f in tests/*.test.cjs tests/*.test.mjs; do echo "== $f"; node "$f"; done
+
+  notes-editor:
+    name: Notes editor tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install and test the Notes editor bundle sources
+        working-directory: tools/notes-editor
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
