@@ -58,4 +58,13 @@
     .nt-fmt.show::-webkit-scrollbar { display: none; }
     .nt-fmt button { flex-shrink: 0; height: 44px; min-width: 44px; padding: 0 10px; font-size: 15px; }
     .nt-fmt .div { flex-shrink: 0; }
+    /* Photo cover on a phone: finger-sized tabs and buttons, a shorter band, and the picker never wider than the screen. */
+    .m-notes-detail .nt-cover, .nt-cover { height: 150px; }
+    .nt-style { width: min(340px, calc(100vw - 24px)); }
+    .nt-tabs button, .nt-drop .nt-btn, .nt-cover-foot .nt-btn { min-height: 44px; }
+    .nt-thumbs { grid-template-columns: repeat(2, 1fr); }
+    .nt-thumbs button { height: 84px; }
+    .nt-cover-actions { opacity: 1; }
+    .nt-cover-actions button { height: 36px; padding: 0 12px !important; }
+    .nt-cover.repo { touch-action: none; }
 }
