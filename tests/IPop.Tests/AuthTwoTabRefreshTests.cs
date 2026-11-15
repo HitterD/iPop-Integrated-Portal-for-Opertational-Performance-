@@ -100,3 +100,59 @@ public class AuthTwoTabRefreshTests
         finally { AuthState.RefreshRetryDelays = saved; }
     }
 }
+
+/// SignalR calls its token provider on every (re)connect. After a laptop sleep the cached access token is long dead,
+/// and handing it over made each reconnect fail at negotiate until some unrelated request happened to refresh.
+[Collection(nameof(RefreshRetryDelaysCollection))]
+public class AuthHubTokenTests
+{
+    private sealed class CountingHandler(TimeSpan firstLifetime) : HttpMessageHandler
+    {
+        public int Refreshes;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            if (request.RequestUri!.AbsolutePath != "/api/auth/refresh")
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { status = "on" }) });
+            var n = Interlocked.Increment(ref Refreshes);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new
+                {
+                    accessToken = $"access-{n}", refreshToken = $"refresh-{n}",
+                    accessTokenExpiresAt = DateTime.UtcNow + (n == 1 ? firstLifetime : TimeSpan.FromMinutes(15)),
+                    mustChangePassword = false,
+                }),
+            });
+        }
+    }
+
+    [Fact]
+    public async Task Hub_token_provider_refreshes_a_token_that_is_expired_or_about_to_expire()
+    {
+        using var ctx = new Bunit.BunitContext();
+        ctx.JSInterop.Mode = Bunit.JSRuntimeMode.Loose;
+        ctx.JSInterop.Setup<string?>("localStorage.getItem", _ => true).SetResult("refresh-0");
+        var handler = new CountingHandler(TimeSpan.FromMinutes(-5));   // the first token is already dead
+        var auth = new AuthState(new HttpClient(handler) { BaseAddress = new Uri("http://localhost/") }, ctx.JSInterop.JSRuntime);
+        Assert.True(await auth.TryRestoreAsync());
+
+        var token = await auth.HubAccessTokenAsync();
+
+        Assert.Equal("access-2", token);
+        Assert.Equal(2, handler.Refreshes);
+    }
+
+    [Fact]
+    public async Task Hub_token_provider_reuses_a_healthy_token_without_a_network_call()
+    {
+        using var ctx = new Bunit.BunitContext();
+        ctx.JSInterop.Mode = Bunit.JSRuntimeMode.Loose;
+        ctx.JSInterop.Setup<string?>("localStorage.getItem", _ => true).SetResult("refresh-0");
+        var handler = new CountingHandler(TimeSpan.FromMinutes(15));
+        var auth = new AuthState(new HttpClient(handler) { BaseAddress = new Uri("http://localhost/") }, ctx.JSInterop.JSRuntime);
+        Assert.True(await auth.TryRestoreAsync());
+
+        Assert.Equal("access-1", await auth.HubAccessTokenAsync());
+        Assert.Equal(1, handler.Refreshes);
+    }
+}
