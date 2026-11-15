@@ -108,6 +108,13 @@ public partial class Notes
         coverUploading = uploading;
         coverError = error;
         if (uploading) { coverProgress = 0; pop = Pop.None; }
+        else if (error is not null)
+        {
+            // The picker closed when the upload started: bring it back on the Upload tab with the reason, and toast it too
+            // so the failure is never silent.
+            pop = Pop.Style; coverTab = CoverTab.Upload;
+            Toasts.Show(error, ToastKind.Warning);
+        }
         StateHasChanged();
     }
 
