@@ -3,7 +3,7 @@
 // Sync model (see docs/notes spec): the server stores a compacted Yjs state (+ version) and a tail of
 // raw updates. Clients push every local update through the hub (which stores it and fans it out), and
 // an editor periodically folds the tail into a new state with a compare-and-set on the version.
-import { refusedReason, mentionContexts } from './sync.js';
+import { refusedReason, mentionContexts, savePending, takePending, clearPending } from './sync.js';
 import { Editor, Extension } from '@tiptap/core';
 import { exitSuggestion } from '@tiptap/suggestion';
 import StarterKit from '@tiptap/starter-kit';
@@ -234,6 +234,11 @@ export async function mount(el, opts) {
     status('locked');
     call('OnRefused', reason, queue.length > 0);
   }
+  const unsent = () => queue.length ? (queue.length === 1 ? queue[0] : Y.mergeUpdates(queue)) : null;
+  const parkUnsent = () => { const u = unsent(); if (u) savePending(localStorage, pageId, b64(u)); };
+  // Closing the tab with edits the server has not confirmed: park them, and ask the browser to warn first.
+  const onBeforeUnload = e => { if (queue.length || pushing) { parkUnsent(); e.preventDefault(); e.returnValue = ''; } };
+  window.addEventListener('beforeunload', onBeforeUnload);
   async function flush() {
     if (pushing || !queue.length || destroyed || refused) return;
     if (hub.state !== signalR.HubConnectionState.Connected) { status('offline'); return; }
@@ -250,13 +255,14 @@ export async function mount(el, opts) {
       const reason = refusedReason(err);
       if (reason) { pushing = false; queue = [merged, ...queue]; stopEditing(reason); return; }
       queue = [merged, ...queue];
+      parkUnsent();
       status('offline');
       pushing = false;
       setTimeout(flush, 3000);
       return;
     }
     pushing = false;
-    if (queue.length) flush(); else status('saved');
+    if (queue.length) flush(); else { clearPending(localStorage, pageId); status('saved'); }
   }
 
   // ── Snapshots (fold the update tail into the stored state) ──────────────
@@ -561,6 +567,10 @@ export async function mount(el, opts) {
 
   // ── API for Blazor ───────────────────────────────────────────────────────
   if (refused) editor.setEditable(false); else if (lostEarly) stopEditing('not_found');
+  if (canEdit && !refused) {
+    const parked = takePending(localStorage, pageId);
+    if (parked) { try { Y.applyUpdate(ydoc, unb64(parked)); host.toast('Restored edits that were not saved last time'); } catch { /* corrupt entry: dropped */ } }
+  }
 
   return {
     closeMobileMention() { if (!closing) exitSuggestion(editor.view, phoneMentionKey); },
@@ -625,6 +635,7 @@ export async function mount(el, opts) {
       await hub.stop().catch(() => {});
       closeLightboxes(host);
       window.removeEventListener('focus', host.accessChanged);
+      window.removeEventListener('beforeunload', onBeforeUnload);
       document.querySelectorAll('.nt-share-ask').forEach(e => e.remove());
       toolbar.destroy(); blockMenu.destroy(); rich?.destroy();
       editor.destroy(); awareness.destroy(); ydoc.destroy();

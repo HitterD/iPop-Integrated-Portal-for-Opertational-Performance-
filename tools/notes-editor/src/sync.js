@@ -25,3 +25,16 @@ export function mentionContexts(doc, wanted) {
   });
   return byContext;
 }
+
+/// Edits that were typed but never reached the server (offline, tab closed) are parked in localStorage and replayed the
+/// next time the page opens. Yjs updates are idempotent, so replaying one the server already has is harmless.
+const pendingKey = pageId => `ipop.notes.pending.${pageId}`;
+export function savePending(store, pageId, b64Update) {
+  try { store.setItem(pendingKey(pageId), b64Update); return true; } catch { return false; }
+}
+export function takePending(store, pageId) {
+  try { const v = store.getItem(pendingKey(pageId)); if (v) store.removeItem(pendingKey(pageId)); return v || null; } catch { return null; }
+}
+export function clearPending(store, pageId) {
+  try { store.removeItem(pendingKey(pageId)); } catch { /* storage unavailable */ }
+}

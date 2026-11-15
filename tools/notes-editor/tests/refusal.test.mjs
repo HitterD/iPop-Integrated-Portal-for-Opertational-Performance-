@@ -36,3 +36,25 @@ test('a mention is reported with its own paragraph, not the cursor paragraph', (
   assert.equal(r.size, 2);
   assert.ok([...r.keys()].some(k => k.startsWith('Hi ')));
 });
+
+import { savePending, takePending, clearPending } from '../src/sync.js';
+
+const memStore = () => { const m = new Map(); return { setItem: (k, v) => m.set(k, v), getItem: k => m.get(k) ?? null, removeItem: k => m.delete(k) }; };
+
+test('parked edits are returned once, then gone', () => {
+  const st = memStore();
+  assert.equal(takePending(st, 'p1'), null);
+  assert.equal(savePending(st, 'p1', 'QUJD'), true);
+  assert.equal(takePending(st, 'p2'), null);          // other page untouched
+  assert.equal(takePending(st, 'p1'), 'QUJD');
+  assert.equal(takePending(st, 'p1'), null);
+  savePending(st, 'p1', 'x'); clearPending(st, 'p1');
+  assert.equal(takePending(st, 'p1'), null);
+});
+
+test('unavailable storage never throws', () => {
+  const broken = { setItem() { throw new Error('quota'); }, getItem() { throw new Error('denied'); }, removeItem() { throw new Error('denied'); } };
+  assert.equal(savePending(broken, 'p', 'x'), false);
+  assert.equal(takePending(broken, 'p'), null);
+  clearPending(broken, 'p');
+});

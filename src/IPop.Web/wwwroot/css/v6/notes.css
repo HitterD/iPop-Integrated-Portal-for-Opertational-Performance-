@@ -416,6 +416,9 @@
 .nt-scrim.dim { background:rgba(0,0,0,.18); }
 [data-theme="dark"] .nt-scrim.dim { background:rgba(0,0,0,.5); }
 .nt-layer { position:fixed; z-index:1060; background:var(--surface); border-radius:12px; box-shadow:var(--nt-pop-sh); color:var(--ink); font:13px/1.45 var(--nt-font); animation:nt-pop .14s ease-out; }
+/* Positioned with fixed offsets from Blazor: never taller/wider than the window, so on a short or narrow screen the content scrolls inside the popover instead of being cut off. */
+.nt-layer { max-width:calc(100vw - 16px); max-height:calc(100dvh - 64px); overflow-y:auto; overscroll-behavior:contain; }
+.nt-layer.nt-emoji { max-height:calc(100dvh - 24px); }
 @keyframes nt-pop { from { opacity:0; transform:translateY(-4px) scale(.98); } }
 
 .nt-menu-l { width:230px; padding:5px; }
