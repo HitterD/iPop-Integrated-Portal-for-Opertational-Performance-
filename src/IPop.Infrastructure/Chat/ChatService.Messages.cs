@@ -514,7 +514,23 @@ public sealed partial class ChatService
 
         // A forward is also a new message: its notification intent survives a crash before API fan-out.
         IPop.Infrastructure.Notifications.Push.PushQueue.Add(db, "chat", newMessage.Id);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+        {
+            // A concurrent request with the same operation key committed first: return its message, add nothing.
+            db.ChangeTracker.Clear();
+            var winner = await db.ChatMessages.AsNoTracking()
+                .Include(m => m.Sender).Include(m => m.Attachments).Include(m => m.Reactions).Include(m => m.ReadReceipts)
+                .AsSplitQuery()
+                .FirstOrDefaultAsync(m => m.RoomId == targetRoomId && m.IdempotencyKey == replayKey && m.SenderId == userId, ct);
+            if (winner is null) throw;
+            if (winner.ForwardedFromMessageId != originMessageId)
+                return new MessageResultDto(false, null, "idempotency_conflict");
+            return new MessageResultDto(true, MapToMessageDto(winner, userId), null, Replayed: true);
+        }
 
         var saved = await db.ChatMessages
             .AsNoTracking()
