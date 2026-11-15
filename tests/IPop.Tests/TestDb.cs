@@ -29,6 +29,7 @@ public sealed class TestDb : IDisposable
     /// read after one must use a fresh context or it sees stale tracked state.
     /// Production gets this for free via one scoped context per request.
     public IPopDbContext Verify() => new(_options);
+    public DbContextOptions<IPopDbContext> Options => _options;
 
     public User AddUser(string nik, bool active = true, string? passwordHash = null, bool mustChange = true)
     {

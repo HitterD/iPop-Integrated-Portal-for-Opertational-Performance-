@@ -2,6 +2,8 @@ using IPop.Api.Endpoints;
 using IPop.Application.Chat;
 using IPop.Core.Entities;
 using IPop.Infrastructure.Chat;
+using IPop.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Xunit;
 
 namespace IPop.Tests;
@@ -139,6 +141,43 @@ public class ChatServiceTests
         Assert.False(conflict.Success);
         Assert.Equal("idempotency_conflict", conflict.Error);
         Assert.Single(t.Verify().ChatMessages.Where(m => m.RoomId == target.Id));
+    }
+
+    private sealed class RaceOnceDb(DbContextOptions<IPopDbContext> options, Func<Task> competitor) : IPopDbContext(options)
+    {
+        private bool _raced;
+        public override async Task<int> SaveChangesAsync(CancellationToken ct = default)
+        {
+            if (!_raced) { _raced = true; await competitor(); }
+            return await base.SaveChangesAsync(ct);
+        }
+    }
+
+    [Fact]
+    public async Task Concurrent_forward_with_the_same_key_returns_the_winner_instead_of_failing()
+    {
+        using var t = new TestDb();
+        var sender = t.AddUser("FORWARD_RACE");
+        var source = t.AddRoom("group", "Source");
+        var target = t.AddRoom("group", "Target");
+        t.AddMember(source.Id, sender.Id);
+        t.AddMember(target.Id, sender.Id);
+        var original = t.AddMessage(source.Id, sender.Id, "Race me");
+        var key = Guid.NewGuid();
+        MessageResultDto? winner = null;
+        var options = t.Options;
+        using var losing = new RaceOnceDb(options, async () =>
+            winner = await new ChatService(t.Verify()).ForwardMessageAsync(sender.Id, original.Id, target.Id, key, default));
+
+        var loser = await new ChatService(losing).ForwardMessageAsync(sender.Id, original.Id, target.Id, key, default);
+
+        Assert.True(winner!.Success, winner.Error);
+        Assert.True(loser.Success, loser.Error);
+        Assert.True(loser.Replayed);
+        Assert.Equal(winner.Message!.Id, loser.Message!.Id);
+        using var committed = t.Verify();
+        Assert.Single(committed.ChatMessages.Where(m => m.RoomId == target.Id));
+        Assert.Single(committed.PushJobs.Where(j => j.Kind == "chat"));
     }
 
     [Fact]
