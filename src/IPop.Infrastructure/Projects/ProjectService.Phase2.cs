@@ -255,6 +255,22 @@ public sealed partial class ProjectService
             t.DeleteBatchId = batchId;
             t.UpdatedAt = now;
         }
+        // A timer left running on a task nobody can see any more would show a phantom timer and block that user's next
+        // start. Close it exactly like Stop does (capped at 10 h, under a minute is a misclick and is dropped); the time
+        // worked stays on the task and comes back with a restore.
+        foreach (var running in await db.TaskTimeEntries.IgnoreQueryFilters()
+                     .Where(e => ids.Contains(e.TaskId) && e.EndedAt == null).ToListAsync(ct))
+        {
+            var minutes = (int)Math.Round((now - running.StartedAt).TotalMinutes, MidpointRounding.AwayFromZero);
+            if (minutes < 1) { db.TaskTimeEntries.Remove(running); continue; }
+            if (minutes >= ProjectTimeService.MaxTimerMinutes)
+            {
+                running.Minutes = ProjectTimeService.MaxTimerMinutes;
+                running.EndedAt = running.StartedAt.AddMinutes(ProjectTimeService.MaxTimerMinutes);
+                running.AutoStopped = true;
+            }
+            else { running.Minutes = minutes; running.EndedAt = now; }
+        }
         return ids;
     }
 
