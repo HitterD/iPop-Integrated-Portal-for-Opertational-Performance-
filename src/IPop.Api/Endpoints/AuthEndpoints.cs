@@ -8,9 +8,15 @@ public static class AuthEndpoints
     {
         var g = app.MapGroup("/api/auth");
 
-        g.MapPost("/login", async (LoginRequest req, IAuthWorkflow wf, HttpContext http, CancellationToken ct) =>
+        g.MapPost("/login", async (LoginRequest req, IAuthWorkflow wf, IPop.Infrastructure.Auth.LoginThrottle? throttle,
+            HttpContext http, CancellationToken ct) =>
         {
-            var (ok, err, status) = await wf.LoginAsync(req, Ip(http), ct);
+            var ip = Ip(http);
+            if (throttle?.IsBlocked(ip) == true)
+                return Results.Json(new AuthError("throttled", "Too many failed sign-ins from this computer. Try again in 15 minutes."), statusCode: 429);
+            var (ok, err, status) = await wf.LoginAsync(req, ip, ct);
+            if (status == 200) throttle?.RecordSuccess(ip);
+            else if (status is 401 or 423) throttle?.RecordFailure(ip);
             return status == 200 ? Results.Ok(ok) : Results.Json(err, statusCode: status);
         });
 
