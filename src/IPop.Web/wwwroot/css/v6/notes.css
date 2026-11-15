@@ -186,16 +186,24 @@
 .nt-page-icon { font-size:62px; line-height:1; margin-top:-40px; position:relative; width:80px; height:80px; display:grid; place-items:center; border-radius:16px; cursor:pointer; }
 .nt-page.no-cover .nt-page-icon { margin-top:0; }
 .nt-page-icon:hover { background:var(--fill); }
-.nt-add-row { display:flex; gap:4px; margin:0 0 4px -6px; }
+/* Page actions (Add cover / Style / Comment) stay out of the way until the page is hovered or focused. */
+.nt-add-row { display:flex; gap:2px; margin:0 0 4px -6px; height:28px; opacity:0; transition:opacity .15s; }
+.nt-pageview:hover .nt-add-row, .nt-add-row:focus-within, .nt-add-row:has(button:focus-visible) { opacity:1; }
+@media (hover:none) { .nt-add-row { opacity:1; } }
+.nt-add-row.has-cover { margin-top:6px; }
 .nt-add-row button { height:26px; padding:0 8px !important; border-radius:7px; color:var(--ink-3) !important; display:flex; align-items:center; gap:5px; font-size:12.5px; }
 .nt-add-row button:hover { background:var(--fill) !important; color:var(--ink-2) !important; }
 .nt-page-title { font:700 38px/1.15 var(--display); letter-spacing:-.025em; margin:14px 0 8px; outline:0; border:0; background:none; width:100%; padding:0; resize:none; overflow:hidden; color:var(--ink); }
 .nt-page-title::placeholder { color:var(--ink-4); }
 .nt-page-title[readonly] { cursor:default; }
-.nt-page-props { display:flex; gap:6px; color:var(--ink-3); font-size:12.5px; margin-bottom:24px; flex-wrap:wrap; }
-.nt-prop { display:inline-flex; align-items:center; gap:5px; height:24px; padding:0 8px; border-radius:7px; background:var(--fill); }
+/* One quiet line of text instead of a row of grey pills. */
+.nt-page-props { display:flex; gap:2px 0; color:var(--ink-3); font-size:12.5px; margin-bottom:22px; flex-wrap:wrap; align-items:center; }
+.nt-prop { display:inline-flex; align-items:center; gap:5px; height:22px; padding:0; background:none; }
+.nt-prop + .nt-prop::before { content:"·"; margin:0 9px; color:var(--ink-4); }
+.nt-prop.fav { color:var(--nt-yellow,#FFCC00); }
+.nt-prop.fav .lucide { fill:currentColor; }
 .nt-prop .lucide { width:13px; height:13px; }
-.nt-prop.acc { background:var(--pc-soft); color:var(--pc-ink); font-weight:500; }
+.nt-prop.acc { color:var(--pc-ink); font-weight:500; }
 .nt-pageview.f-serif .nt-editor, .nt-pageview.f-serif .nt-page-title { font-family:var(--serif); }
 .nt-pageview.f-serif .nt-page-title { letter-spacing:-.01em; }
 .nt-pageview.f-mono .nt-editor, .nt-pageview.f-mono .nt-page-title { font-family:var(--mono); letter-spacing:-.02em; }
@@ -710,7 +718,7 @@
 /* ── Import / Export (approved mockup docs/mockups/ipop-apple/notes-import-export.html) ── */
 .nt-mi-import { color:var(--accent) !important; }
 .nt-mi-import .ds { white-space:nowrap; }
-.nt-imported { background:color-mix(in srgb,#0A84FF 12%,transparent) !important; color:#0A64D6; animation:mi-pop-in .26s var(--ease-out) backwards; }
+.nt-imported { background:none !important; color:var(--ink-3); animation:mi-pop-in .26s var(--ease-out) backwards; }
 [data-theme="dark"] .nt-imported { color:#64B5FF; }
 
 .nt-x-dlg { top:12vh; left:50%; transform:translateX(-50%); width:min(520px,calc(100vw - 24px)); max-height:76vh; display:flex; flex-direction:column; border-radius:16px; overflow:hidden;

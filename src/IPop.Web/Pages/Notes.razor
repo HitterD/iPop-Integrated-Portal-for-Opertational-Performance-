@@ -182,10 +182,8 @@
                             <span class="nt-tidy-n">@tidyCount</span>
                         }
                     </button>
-                    <button type="button" class="nt-btn ghost hide-sm" @onclick="() => pop = Pop.Style"><i data-lucide="palette" class="sm"></i>Style</button>
                 }
                 <button type="button" class="nt-icon-btn @(commentsOpen ? "on" : "") @(note.OpenThreads > 0 ? "has-badge" : "")" title="Comments" aria-label="Comments" @onclick="ToggleComments"><i data-lucide="message-square"></i>@if (note.OpenThreads > 0) { <span class="nt-badge">@note.OpenThreads</span> }</button>
-                <button type="button" class="nt-icon-btn fav @(note.IsFavorite ? "on" : "")" title="@(note.IsFavorite ? "Remove from favorites" : "Add to favorites")" aria-label="@(note.IsFavorite ? "Remove from favorites" : "Add to favorites")" @onclick="ToggleFavorite"><i data-lucide="star"></i></button>
                 @if (IsOwner)
                 {
                     <button type="button" class="nt-btn primary" @onclick="OpenShare"><i data-lucide="share" class="sm"></i>Share</button>
@@ -313,10 +311,14 @@
                         }
                         <div class="nt-page @(note.FullWidth ? "wide" : "") @(HasCover || coverUploading ? "" : "no-cover")">
                             <div class="nt-page-icon" title="@(CanEdit ? "Change icon" : "")" style="@(CanEdit ? "" : "cursor:default")" @onclick="() => { if (CanEdit) pop = Pop.Emoji; }">@(note.Emoji ?? "📄")</div>
-                            @if (CanEdit && !HasCover && !coverUploading)
+                            @if (CanEdit)
                             {
-                                <div class="nt-add-row">
-                                    <button type="button" @onclick="() => { pop = Pop.Style; coverTab = CoverTab.Upload; }"><i data-lucide="image" class="sm"></i>Add cover</button>
+                                <div class="nt-add-row @(HasCover || coverUploading ? "has-cover" : "")">
+                                    @if (!HasCover && !coverUploading)
+                                    {
+                                        <button type="button" @onclick="() => { pop = Pop.Style; coverTab = CoverTab.Upload; }"><i data-lucide="image" class="sm"></i>Add cover</button>
+                                    }
+                                    <button type="button" @onclick="() => pop = Pop.Style"><i data-lucide="palette" class="sm"></i>Style</button>
                                     <button type="button" @onclick="ToggleComments"><i data-lucide="message-square" class="sm"></i>Comment</button>
                                 </div>
                             }
@@ -339,6 +341,10 @@
                                 else
                                 {
                                     <span class="nt-prop"><i data-lucide="lock"></i>Private</span>
+                                }
+                                @if (note.IsFavorite)
+                                {
+                                    <span class="nt-prop fav" title="In your favorites"><i data-lucide="star"></i>Favorite</span>
                                 }
                                 @if (note.TodoTotal > 0)
                                 {
@@ -430,6 +436,7 @@
                     <button type="button" class="mi" @onclick="() => pop = Pop.Style"><i data-lucide="palette" class="sm"></i>Style</button>
                     <button type="button" class="mi" @onclick="() => CreateBlank(note.Id)"><i data-lucide="file-plus" class="sm"></i>Add sub-page</button>
                 }
+                <button type="button" class="mi" @onclick="() => { pop = Pop.None; _ = ToggleFavorite(); }"><i data-lucide="star" class="sm"></i>@(note.IsFavorite ? "Remove from favorites" : "Add to favorites")</button>
                 <button type="button" class="mi" @onclick="OpenHistory"><i data-lucide="history" class="sm"></i>Version history</button>
                 <button type="button" class="mi" @onclick="CopyLink"><i data-lucide="link" class="sm"></i>Copy link</button>
                 <a class="mi" href="@CalLinks.NewMeeting(DisplayTitle(note.Title), notes: Nav.ToAbsoluteUri($"/notes/{note.Id}").ToString(), from: $"From note “{DisplayTitle(note.Title)}”")"><i data-lucide="calendar-plus" class="sm"></i>Schedule follow-up</a>
