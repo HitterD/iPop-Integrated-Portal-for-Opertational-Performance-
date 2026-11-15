@@ -27,16 +27,22 @@ public class MailListProjectionTests
     private static IPopDbContext Spy(TestDb t, Capture cap) =>
         new(new DbContextOptionsBuilder<IPopDbContext>(t.Options).AddInterceptors(cap).Options);
 
-    /// Every use of the Body column must sit inside a bounded substring, never as a bare selected column.
+    /// What reaches the client is the OUTERMOST select list. EF wraps a paged query in a subquery that names every column
+    /// (so the inner list always mentions Body), but a subquery's unused columns are never sent: only the outer list counts.
+    /// There the body may appear only inside a bounded substring, never as a bare column.
     private static void AssertBodyOnlyBounded(IEnumerable<string> statements)
     {
-        foreach (var sql in statements.Where(s => s.Contains("\"Mails\"")))
-            foreach (Match m in Regex.Matches(sql, "\"Body\""))
+        foreach (var sql in statements.Where(s => s.Contains("\"Mails\"") && s.Contains("\"Body\"")))
+        {
+            var from = sql.IndexOf("\nFROM", StringComparison.Ordinal);
+            var outer = from < 0 ? sql : sql[..from];
+            foreach (Match m in Regex.Matches(outer, @"""[A-Za-z0-9]+""\.""Body"""))
             {
-                var before = sql[Math.Max(0, m.Index - 40)..m.Index];
-                Assert.True(Regex.IsMatch(before, "(substr|substring)\\s*\\(", RegexOptions.IgnoreCase),
-                    $"the full Body column is read unbounded:\n{sql}");
+                var before = outer[Math.Max(0, m.Index - 12)..m.Index];
+                Assert.True(Regex.IsMatch(before, @"(substr|substring)\s*\($", RegexOptions.IgnoreCase),
+                    "the full Body column is selected unbounded:\n" + sql);
             }
+        }
     }
 
     private static async Task<(TestDb T, Guid Reader, Guid MailId)> SeedAsync(string body)
