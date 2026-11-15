@@ -342,8 +342,12 @@ public sealed class MediaFileCache(string dir, long maxBytes = 30L * 1024 * 1024
             {
                 lock (_copyGate)
                 {
-                    completion.TrySetResult();
+                    // Drop the entry BEFORE waking waiters: they continue on another thread and read State() at once, and
+                    // an entry that is still listed would report "Copying" for a copy that has already ended (failed
+                    // or finished). The outcome (_failures / the file) was recorded above, so a waiter that no longer
+                    // finds the entry sees Failed or Ready.
                     _copies.TryRemove(k, out _);
+                    completion.TrySetResult();
                 }
             }
         });
