@@ -264,4 +264,39 @@ public class ProjectTaskDrawerTests
         cut.FindAll("button.td-quick").First(b => b.TextContent == "Today").Click();
         Assert.Contains("1 of 3", cut.Find(".td-starter").TextContent);
     }
+
+    // SendAsync never throws for an HTTP error status, so the drawer's `catch { }` blocks never ran: a comment or attachment
+    // the server refused (403 after being removed from the project, 404, 500) looked saved, the text field emptied and
+    // nothing said otherwise. A refused save must say so.
+    private sealed class RefusingApi(HttpStatusCode status) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+            Task.FromResult(new HttpResponseMessage(request.Method == HttpMethod.Get ? HttpStatusCode.NotFound : status));
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Forbidden)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    public async Task A_comment_the_server_refuses_shows_an_error_toast(HttpStatusCode status)
+    {
+        using var ctx = new BunitContext();
+        ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        var http = new HttpClient(new RefusingApi(status)) { BaseAddress = new Uri("http://localhost/") };
+        var auth = new AuthState(http, ctx.JSInterop.JSRuntime);
+        ctx.Services.AddSingleton(auth);
+        ctx.Services.AddSingleton(new TimerState(auth));
+        ctx.Services.AddSingleton(http); ctx.Services.AddSingleton(new IPop.Web.Services.MediaStream(auth, http));
+        var toasts = new ToastService();
+        ctx.Services.AddSingleton(toasts);
+        ctx.Services.AddScoped<OverlayStack>();
+        ctx.Services.AddScoped<IPop.Web.Services.PeopleLinks>();
+        ctx.Services.AddScoped<IPop.Web.Services.CalendarLinks>();
+        ctx.Services.AddSingleton(new IPop.Web.Services.ChatAttachments(auth, http, ctx.JSInterop.JSRuntime));
+        ctx.Services.AddSingleton(new ConfirmService());
+        var cut = ctx.Render<ProjectTaskDrawer>(p => p.Add(c => c.Task, MakeTask("Wire rack")));
+
+        cut.Find(".task-discussion textarea").Change("Please check the rack");
+        cut.Find(".task-discussion button.accent").Click();
+        cut.WaitForAssertion(() => Assert.Contains(toasts.Active, t => t.Kind == ToastKind.Error), TimeSpan.FromSeconds(3));
+    }
 }
