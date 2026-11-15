@@ -206,6 +206,16 @@ export function countTodos(doc) {
 
 /// Comment highlights: threads are anchored by Yjs relative positions, so they follow edits made by
 /// anyone. `resolve(anchor)` maps an anchor to current absolute positions (or null if the text is gone).
+export function buildCommentDecorations(state, { threads, focus }, opts) {
+  const decos = [];
+  for (const t of threads) {
+    const r = opts.resolve?.(t.anchor, state);
+    if (!r || r.from >= r.to) continue;
+    decos.push(Decoration.inline(r.from, r.to, { class: `nt-cmt${t.id === focus ? ' focus' : ''}`, 'data-thread': t.id }));
+  }
+  return DecorationSet.create(state.doc, decos);
+}
+
 export const commentKey = new PluginKey('noteComments');
 export const CommentHighlights = Extension.create({
   name: 'commentHighlights',
@@ -214,21 +224,19 @@ export const CommentHighlights = Extension.create({
     const opts = this.options;
     return [new Plugin({
       key: commentKey,
+      // Anchors are resolved against the Yjs document, so highlights are rebuilt when the document or the thread list /
+      // focus changes, and reused for selection-only transactions (moving the cursor used to re-resolve every anchor).
       state: {
-        init: () => ({ threads: [], focus: null }),
-        apply(tr, v) { return tr.getMeta(commentKey) ?? v; },
+        init: () => ({ threads: [], focus: null, set: DecorationSet.empty }),
+        apply(tr, v, _old, state) {
+          const meta = tr.getMeta(commentKey);
+          if (!meta && !tr.docChanged) return v;
+          const next = meta ? { threads: meta.threads, focus: meta.focus } : v;
+          return { ...next, set: buildCommentDecorations(state, next, opts) };
+        },
       },
       props: {
-        decorations(state) {
-          const { threads, focus } = commentKey.getState(state);
-          const decos = [];
-          for (const t of threads) {
-            const r = opts.resolve?.(t.anchor, state);
-            if (!r || r.from >= r.to) continue;
-            decos.push(Decoration.inline(r.from, r.to, { class: `nt-cmt${t.id === focus ? ' focus' : ''}`, 'data-thread': t.id }));
-          }
-          return DecorationSet.create(state.doc, decos);
-        },
+        decorations(state) { return commentKey.getState(state)?.set; },
         handleClick(view, pos, event) {
           const t = event.target.closest?.('[data-thread]');
           if (t) opts.onClick?.(t.dataset.thread);

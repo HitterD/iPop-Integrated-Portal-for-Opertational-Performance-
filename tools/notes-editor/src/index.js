@@ -598,7 +598,7 @@ export async function mount(el, opts) {
     focusThread(id) {
       if (closing) return;
       const st = commentKey.getState(editor.state);
-      editor.view.dispatch(editor.state.tr.setMeta(commentKey, { ...st, focus: id }));
+      editor.view.dispatch(editor.state.tr.setMeta(commentKey, { threads: st.threads, focus: id }));
       const t = st.threads.find(x => x.id === id);
       const r = t && resolveAnchor(t.anchor, editor.state);
       if (r) editor.view.domAtPos(r.from)?.node?.parentElement?.scrollIntoView({ block: 'center', behavior: 'smooth' });

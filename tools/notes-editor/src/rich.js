@@ -412,63 +412,87 @@ export const TodoExtras = Extension.create({
       appendTransaction(transactions, oldState, state) {
         if (!transactions.some(t => t.docChanged) || transactions.some(t => t.getMeta('todoDates'))) return null;
         const tr = state.tr;
-        state.doc.descendants((n, pos) => {
-          if (n.type.name !== 'taskItem') return;
+        // Only the ranges these transactions touched (a keystroke touches one paragraph, not the whole page).
+        let ranges = [];
+        for (const t of transactions) {
+          ranges = ranges.map(([a, b]) => [t.mapping.map(a, -1), t.mapping.map(b, 1)]);
+          t.mapping.maps.forEach(m => m.forEach((_o, _oe, from, to) => ranges.push([from, to])));
+        }
+        const seen = new Set();
+        const visit = (n, pos) => {
+          if (n.type.name !== 'taskItem' || seen.has(pos)) return;
+          seen.add(pos);
           let oldPos = pos;
           for (let i = transactions.length - 1; i >= 0; i--) oldPos = transactions[i].mapping.invert().map(oldPos);
           const old = oldState.doc.nodeAt(Math.min(oldPos, oldState.doc.content.size));
           if (old?.type.name !== 'taskItem' || old.attrs.checked === n.attrs.checked) return;
           tr.setNodeMarkup(pos, undefined, { ...n.attrs, completedOn: n.attrs.checked ? isoToday() : null });
-        });
+        };
+        for (const [a, b] of ranges) state.doc.nodesBetween(Math.max(0, a), Math.min(state.doc.content.size, b), visit);
         return tr.docChanged ? tr.setMeta('todoDates', true).setMeta('addToHistory', false) : null;
+      },
+      // The decorations only depend on the document and on whether the editor is editable, so they are rebuilt then
+      // (not on every cursor move or selection change) and just mapped through other transactions.
+      state: {
+        init: (_c, state) => ({ editable: editor.isEditable, set: buildTodoDecorations(state, editor, opts) }),
+        apply(tr, value, _old, state) {
+          if (!tr.docChanged && value.editable === editor.isEditable) return { editable: value.editable, set: value.set.map(tr.mapping, tr.doc) };
+          return { editable: editor.isEditable, set: buildTodoDecorations(state, editor, opts) };
+        },
       },
       props: {
         decorations(state) {
-          const editable = editor.isEditable, decos = [], today = isoToday();
-          state.doc.descendants((node, pos, parent) => {
-            const t = node.type.name;
-            if (t === 'taskList' && parent?.type.name !== 'taskItem') {
-              let done = 0, total = 0;
-              node.descendants(n => { if (n.type.name === 'taskItem') { total++; if (n.attrs.checked) done++; } });
-              if (total >= 3) decos.push(Decoration.widget(pos, () => {
-                const d = el('div', 'nt-tprog', `<span class="bar"><i style="width:${Math.round(done / total * 100)}%"></i></span><span>${done === total ? '✓ All done' : `${done} of ${total} done`}</span>`);
-                d.contentEditable = 'false';
-                return d;
-              }, { side: -1, key: `tp-${done}-${total}`, ignoreSelection: true }));
-            }
-            if (t !== 'taskItem' || node.firstChild?.type.name !== 'paragraph') return;
-            const { assigneeId, assigneeName, due, checked, completedOn } = node.attrs;
-            if (!assigneeId && !due && !completedOn && !editable) return;
-            const at = pos + 1 + node.firstChild.nodeSize - 1;
-            decos.push(Decoration.widget(at, (view, getPos) => {
-              const d = el('span', 'nt-tmeta');
-              d.contentEditable = 'false';
-              if (assigneeId) d.append(el('button', 'chip who', `@${esc(assigneeName || 'Someone')}`));
-              if (due) {
-                const c = el('button', `chip due${!checked && due < today ? ' late' : ''}${due === today ? ' today' : ''}`, `📅 ${esc(due === today ? 'Today' : fmtDue(due))}`);
-                c.title = !checked && due < today ? 'Overdue' : 'Due date';
-                d.append(c);
-              }
-              if (checked && completedOn) d.append(el('span', 'chip done', `✓ Done ${esc(fmtDue(completedOn))}`));
-              if (editable) { const m = el('button', 'more', '⋯'); m.title = 'Photo, file, sub-item, assignee, due date'; m.setAttribute('aria-label', 'To-do options'); d.append(m); }
-              d.querySelectorAll('button').forEach(b => { b.type = 'button'; b.tabIndex = -1; });
-              d.addEventListener('mousedown', e => e.preventDefault());
-              d.addEventListener('click', e => {
-                const b = e.target.closest('button'); if (!b || !editable) return;
-                const it = taskItemAt(view.state.doc, getPos());
-                if (!it) return;
-                if (b.classList.contains('more')) opts.onMenu?.(it.pos, b);
-                else opts.onChip?.(it.pos, b, b.classList.contains('who') ? 'who' : 'due');
-              });
-              return d;
-            }, { side: 1, key: `tm-${assigneeId}-${assigneeName}-${due}-${checked}-${completedOn}-${editable}-${due && due < today}`, ignoreSelection: true, stopEvent: () => true }));
-          });
-          return DecorationSet.create(state.doc, decos);
+          const v = todoKey.getState(state);
+          // setEditable() does not dispatch a transaction, so apply() never sees it: rebuild here when the cache is stale.
+          return v && v.editable === editor.isEditable ? v.set : buildTodoDecorations(state, editor, opts);
         },
       },
     })];
   },
 });
+
+function buildTodoDecorations(state, editor, opts) {
+  const editable = editor.isEditable, decos = [], today = isoToday();
+  state.doc.descendants((node, pos, parent) => {
+    const t = node.type.name;
+    if (t === 'taskList' && parent?.type.name !== 'taskItem') {
+      let done = 0, total = 0;
+      node.descendants(n => { if (n.type.name === 'taskItem') { total++; if (n.attrs.checked) done++; } });
+      if (total >= 3) decos.push(Decoration.widget(pos, () => {
+        const d = el('div', 'nt-tprog', `<span class="bar"><i style="width:${Math.round(done / total * 100)}%"></i></span><span>${done === total ? '✓ All done' : `${done} of ${total} done`}</span>`);
+        d.contentEditable = 'false';
+        return d;
+      }, { side: -1, key: `tp-${done}-${total}`, ignoreSelection: true }));
+    }
+    if (t !== 'taskItem' || node.firstChild?.type.name !== 'paragraph') return;
+    const { assigneeId, assigneeName, due, checked, completedOn } = node.attrs;
+    if (!assigneeId && !due && !completedOn && !editable) return;
+    const at = pos + 1 + node.firstChild.nodeSize - 1;
+    decos.push(Decoration.widget(at, (view, getPos) => {
+      const d = el('span', 'nt-tmeta');
+      d.contentEditable = 'false';
+      if (assigneeId) d.append(el('button', 'chip who', `@${esc(assigneeName || 'Someone')}`));
+      if (due) {
+        const c = el('button', `chip due${!checked && due < today ? ' late' : ''}${due === today ? ' today' : ''}`, `📅 ${esc(due === today ? 'Today' : fmtDue(due))}`);
+        c.title = !checked && due < today ? 'Overdue' : 'Due date';
+        d.append(c);
+      }
+      if (checked && completedOn) d.append(el('span', 'chip done', `✓ Done ${esc(fmtDue(completedOn))}`));
+      if (editable) { const m = el('button', 'more', '⋯'); m.title = 'Photo, file, sub-item, assignee, due date'; m.setAttribute('aria-label', 'To-do options'); d.append(m); }
+      d.querySelectorAll('button').forEach(b => { b.type = 'button'; b.tabIndex = -1; });
+      d.addEventListener('mousedown', e => e.preventDefault());
+      d.addEventListener('click', e => {
+        const b = e.target.closest('button'); if (!b || !editable) return;
+        const it = taskItemAt(view.state.doc, getPos());
+        if (!it) return;
+        if (b.classList.contains('more')) opts.onMenu?.(it.pos, b);
+        else opts.onChip?.(it.pos, b, b.classList.contains('who') ? 'who' : 'due');
+      });
+      return d;
+    }, { side: 1, key: `tm-${assigneeId}-${assigneeName}-${due}-${checked}-${completedOn}-${editable}-${due && due < today}`, ignoreSelection: true, stopEvent: () => true }));
+  });
+  return DecorationSet.create(state.doc, decos);
+}
 
 // ── Floating UI: image bar, table bar + size picker, to-do menus, paste menu ─
 
