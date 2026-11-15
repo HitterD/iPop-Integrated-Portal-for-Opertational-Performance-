@@ -480,8 +480,10 @@ public sealed class TicketService(
         // Opened in iDesk: clear that person's chat notifications for the ticket (no timeline line).
         if (evt == "ticket.read")
         {
-            if (!await FirstReceiptAsync(eventId, ct)) return TicketWebhookKind.Duplicate;
-            if (reader is not null) await ClearChatNotificationsAsync(reader, it, ct);
+            if (!await ClaimAndRunAsync(eventId, async () =>
+                {
+                    if (reader is not null) await ClearChatNotificationsAsync(reader, it, ct);
+                }, ct)) return TicketWebhookKind.Duplicate;
             return TicketWebhookKind.Applied;
         }
         // A chat message for someone other than the requester (the assigned agent): they have no mirror of the
@@ -492,8 +494,10 @@ public sealed class TicketService(
             // skips only the agent part: the requester half below has its own (timeline) dedupe and may still be due.
             var forRequester = it.RequesterNik is not null && recipients.Contains(it.RequesterNik);
             var agents = recipients.Where(n => n != it.RequesterNik).Distinct().ToList();
-            if (agents.Count > 0 && await FirstReceiptAsync("agent:" + eventId, ct))
-                foreach (var agentNik in agents) await NotifyAgentReplyAsync(agentNik, it, message, eventId, ct);
+            if (agents.Count > 0 && await ClaimAndRunAsync("agent:" + eventId, async () =>
+                {
+                    foreach (var agentNik in agents) await NotifyAgentReplyAsync(agentNik, it, message, eventId, ct);
+                }, ct)) { /* delivered */ }
             else if (agents.Count > 0 && !forRequester) return TicketWebhookKind.Duplicate;
             if (!forRequester) return TicketWebhookKind.Applied;
         }
@@ -501,9 +505,8 @@ public sealed class TicketService(
         // The assigned technician (assignee.nik, newer iDesk only): assigned / reopened / confirmed / visit moved,
         // never their own change. They have no mirror, so the receipt table dedupes it like the agent chat.
         if (kind is "assigned" or "status_changed" or "closed" or "visit_changed" && it.AssigneeNik is not null
-            && TicketNotificationText.ForTechnician(kind, it, facts, VisitLabel(it.Visit)) is { } techSentence
-            && await FirstReceiptAsync("tech:" + eventId, ct))
-            await NotifyTechnicianAsync(it, evt, techSentence, ct);
+            && TicketNotificationText.ForTechnician(kind, it, facts, VisitLabel(it.Visit)) is { } techSentence)
+            await ClaimAndRunAsync("tech:" + eventId, () => NotifyTechnicianAsync(it, evt, techSentence, ct), ct);
 
         var row = (it.ExternalRef is null ? null : await db.Tickets.FirstOrDefaultAsync(x => x.ExternalRef == it.ExternalRef, ct))
                   ?? await db.Tickets.FirstOrDefaultAsync(x => x.IdeskTicketId == it.TicketId, ct);
@@ -780,6 +783,32 @@ public sealed class TicketService(
         else s.NotRegistered = true;
     }
 
+    /// Claims a webhook id, runs the side effect (a notification), and gives the claim back if it failed: a receipt that
+    /// outlives a failed send turns iDesk's retry into a "duplicate" and the notification is lost for good. Returns false
+    /// only when the id was already processed. On failure the exception goes on, so the endpoint answers an error and
+    /// iDesk redelivers.
+    private async Task<bool> ClaimAndRunAsync(string eventId, Func<Task> effect, CancellationToken ct)
+    {
+        if (!await FirstReceiptAsync(eventId, ct)) return false;
+        try { await effect(); return true; }
+        catch
+        {
+            await ReleaseReceiptAsync(eventId);
+            throw;
+        }
+    }
+
+    private async Task ReleaseReceiptAsync(string eventId)
+    {
+        if (eventId.Length > 100) eventId = eventId[..100];
+        try
+        {
+            db.ChangeTracker.Clear();
+            await db.IdeskWebhookReceipts.Where(r => r.EventId == eventId).ExecuteDeleteAsync(CancellationToken.None);
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Could not release webhook receipt {EventId}; a retry may be treated as a duplicate", eventId); }
+    }
+
     /// Records a processed webhook id that has no timeline line of its own; false when it was seen before.
     private async Task<bool> FirstReceiptAsync(string eventId, CancellationToken ct)
     {
@@ -838,7 +867,11 @@ public sealed class TicketService(
             await notify.PublishInternalAsync(clientSlug: "tickets", eventType: ReplyEvent, title: TicketTitle(it),
                 message: body, target: new NotificationTarget(UserId: user.Id), priority: "normal", targetUrl: url, ct: ct);
         }
-        catch (Exception ex) { _log.LogWarning(ex, "Agent ticket reply notification failed ({EventId})", eventId); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _log.LogWarning(ex, "Agent ticket reply notification failed ({EventId}); iDesk will redeliver", eventId);
+            throw;
+        }
     }
 
     /// "3 new messages on …" → 3, "New message on …" → 1.
@@ -968,7 +1001,11 @@ public sealed class TicketService(
                 target: new NotificationTarget(UserId: user.Id), priority: "normal",
                 targetUrl: IdeskTargetPrefix + NormalizeId(it.TicketId) + IdeskUpdateSuffix, ct: ct);
         }
-        catch (Exception ex) { _log.LogWarning(ex, "Technician ticket notification {Event} failed", evt); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _log.LogWarning(ex, "Technician ticket notification {Event} failed; iDesk will redeliver", evt);
+            throw;
+        }
     }
 
     /// "Rizky Ardiansyah · Your PIC · ICT Support": the PIC's iPop department when iDesk sent assignee.nik, else the queue.
