@@ -124,6 +124,37 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
         if (!held) Sounds.Play(Sounds.For(n), s);
     }
 
+    /// "Snooze 5 min" (meeting reminders): the server only hides it from the Inbox for that time; nothing pushes it
+    /// again, so the app brings the same reminder back itself (before 1.4.8 a snoozed reminder never came back).
+    public static readonly TimeSpan SnoozeFor = TimeSpan.FromMinutes(5);
+    private readonly HashSet<Guid> snoozed = [];
+    private System.Windows.Forms.Timer? snoozeTimer;
+    private readonly List<(Notice Notice, DateTime Due)> dueAgain = [];
+
+    private void SnoozeAgain(Notice n)
+    {
+        if (!snoozed.Add(n.Id)) return;
+        dueAgain.Add((n, DateTime.UtcNow + SnoozeFor));
+        snoozeTimer ??= new System.Windows.Forms.Timer { Interval = 15_000 };
+        snoozeTimer.Tick -= OnSnoozeTick;
+        snoozeTimer.Tick += OnSnoozeTick;
+        snoozeTimer.Start();
+    }
+
+    private void OnSnoozeTick(object? sender, EventArgs e)
+    {
+        var now = DateTime.UtcNow;
+        foreach (var due in dueAgain.Where(d => d.Due <= now).ToList())
+        {
+            dueAgain.Remove(due);
+            snoozed.Remove(due.Notice.Id);
+            state.Shown.Remove(due.Notice.Id);
+            state.Held.Remove(due.Notice.Id);
+            Show(due.Notice with { Priority = "high" });
+        }
+        if (dueAgain.Count == 0) snoozeTimer?.Stop();
+    }
+
     private void Hold(Notice n)
     {
         if (!state.Held.Contains(n.Id)) state.Held.Add(n.Id);
@@ -133,6 +164,7 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
     {
         var w = new NoticeWindow(n, s.Style, api, pending);
         w.FormClosed += (_, _) => Closed(w);
+        w.Done += (_, action) => { if (action == "snooze") SnoozeAgain(n); };
         w.HeightChanged += _ => Layout();
         w.Activated += (_, _) => Front(w);
         open.Add(w);
@@ -188,6 +220,7 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
 
     public void CloseAll()
     {
+        dueAgain.Clear(); snoozed.Clear(); snoozeTimer?.Stop();
         waiting.Clear();
         backlog.Clear();
         foreach (var w in open.ToList()) w.Close();
