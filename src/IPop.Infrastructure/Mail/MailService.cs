@@ -415,8 +415,9 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
 
         var totalCount = await query.CountAsync(ct);
 
+        // A row shows a 120-character snippet, so only a bounded prefix of the body is read (never the whole HTML,
+        // which can be megabytes) and only the columns the summary uses; nothing here is tracked or written back.
         var items = await query
-            .Include(r => r.Mail).ThenInclude(m => m.Sender)
             .OrderByDescending(r => r.IsPinned)
             .ThenByDescending(r => r.Mail.SentAt ?? r.Mail.CreatedAt)
             // Tie-breaker: a scheduled batch shares one SentAt, and without a unique key Skip/Take
@@ -424,6 +425,13 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
             .ThenByDescending(r => r.MailId)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
+            .Select(r => new
+            {
+                r.MailId, r.IsStarred, r.IsRead, r.IsPinned, r.IsMuted,
+                Row = new MailRow(r.Mail.Id, r.Mail.SenderId, r.Mail.Sender.Name, r.Mail.Sender.Nik, r.Mail.Subject,
+                    r.Mail.Body.Substring(0, SnippetSourceChars), r.Mail.SentAt, r.Mail.CreatedAt, r.Mail.HasAttachment,
+                    r.Mail.ThreadCount, r.Mail.ThreadRootId, r.Mail.InReplyToId, r.Mail.Importance, r.Mail.ScheduledAt),
+            })
             .ToListAsync(ct);
 
         // Label per surat pada halaman ini (satu query untuk seluruh halaman).
@@ -437,7 +445,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
                 .GroupBy(x => x.MailId)
                 .ToDictionary(g => g.Key, g => g.Select(x => x.Name).ToList());
 
-        var dtos = items.Select(r => ToSummary(r) with
+        var dtos = items.Select(r => ToSummaryFromRow(r.Row, r.IsStarred, r.IsRead, r.IsPinned, r.IsMuted) with
         {
             Labels = labelByMail.TryGetValue(r.MailId, out var lbls) ? lbls : null
         }).ToList();
@@ -480,17 +488,18 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         var totalCount = await query.CountAsync(ct);
 
         var mails = await query
-            .Include(m => m.Sender)
-            .Include(m => m.Attachments)
             // Newest first so page 1 holds the latest messages; Id breaks CreatedAt ties so
             // paging is stable (no message skipped or repeated across pages).
             .OrderByDescending(m => m.CreatedAt)
             .ThenByDescending(m => m.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
+            .Select(m => new MailRow(m.Id, m.SenderId, m.Sender.Name, m.Sender.Nik, m.Subject,
+                m.Body.Substring(0, SnippetSourceChars), m.SentAt, m.CreatedAt, m.HasAttachment,
+                m.ThreadCount, m.ThreadRootId, m.InReplyToId, m.Importance, m.ScheduledAt))
             .ToListAsync(ct);
 
-        var dtos = mails.Select(m => ToSummaryFromMail(m)).ToList();
+        var dtos = mails.Select(m => ToSummaryFromRow(m)).ToList();
         return new PagedResult<MailSummaryDto>(dtos, totalCount, page, pageSize);
     }
 
@@ -1630,12 +1639,20 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         if (queued) notifySignal?.Notify();
     }
 
-    private static MailSummaryDto ToSummary(MailRecipient r)
-        => ToSummaryFromMail(r.Mail, r.IsStarred, r.IsRead, r.IsPinned, r.IsMuted);
+    /// The body is read through Substring(0, N): enough source markup for a 120-character snippet, never megabytes per row.
+    private const int SnippetSourceChars = 4000;
 
-    private static MailSummaryDto ToSummaryFromMail(MailEntity m, bool starred = false, bool read = false, bool pinned = false, bool muted = false) => new(
-        m.Id, m.SenderId, m.Sender?.Name ?? "Unknown", m.Sender?.Nik ?? "Unknown",
-        m.Subject, Truncate(MailHtml.ToPlainText(m.Body), 120), m.SentAt ?? m.CreatedAt, read, starred,
+    private sealed record MailRow(Guid Id, Guid SenderId, string SenderName, string SenderNik, string Subject, string BodyHead,
+        DateTime? SentAt, DateTime CreatedAt, bool HasAttachment, int ThreadCount, Guid? ThreadRootId, Guid? InReplyToId,
+        string? Importance, DateTime? ScheduledAt);
+
+    /// A cut can land inside a tag ("<p cla"): drop that dangling fragment so it never shows up as snippet text.
+    private static string SnippetOf(string bodyHead)
+        => Truncate(MailHtml.ToPlainText(System.Text.RegularExpressions.Regex.Replace(bodyHead, "<[^>]*$", "")), 120);
+
+    private static MailSummaryDto ToSummaryFromRow(MailRow m, bool starred = false, bool read = false, bool pinned = false, bool muted = false) => new(
+        m.Id, m.SenderId, m.SenderName ?? "Unknown", m.SenderNik ?? "Unknown",
+        m.Subject, SnippetOf(m.BodyHead), m.SentAt ?? m.CreatedAt, read, starred,
         m.HasAttachment, m.ThreadCount, m.ThreadRootId is not null || m.InReplyToId is not null,
         m.ThreadRootId, pinned, m.Importance ?? "normal", m.ScheduledAt, muted);
 
