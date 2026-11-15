@@ -137,7 +137,7 @@ public static class NewsVideoEndpoints
 
         media.MapGet("/{id:guid}/stream", async (Guid id, string? t, bool? download, INewsVideoService svc, IDataProtectionProvider dp, CancellationToken ct) =>
         {
-            if (ReadTicket(dp, t, id) is not { } userId) return Results.Unauthorized();
+            if (await AuthorizeAsync(svc, dp, t, id, ct) is not { } userId) return Results.Unauthorized();
             var f = await svc.OpenFileAsync(id, poster: false, ct);
             if (f is null) return Results.NotFound();
             if (download == true)
@@ -150,7 +150,7 @@ public static class NewsVideoEndpoints
 
         media.MapGet("/{id:guid}/poster", async (Guid id, string? t, INewsVideoService svc, IDataProtectionProvider dp, HttpContext http, CancellationToken ct) =>
         {
-            if (ReadTicket(dp, t, id) is null) return Results.Unauthorized();
+            if (await AuthorizeAsync(svc, dp, t, id, ct) is null) return Results.Unauthorized();
             var f = await svc.OpenFileAsync(id, poster: true, ct);
             if (f is null) return Results.NotFound();
             http.Response.Headers.CacheControl = "private, max-age=3600";
@@ -162,10 +162,22 @@ public static class NewsVideoEndpoints
 
     private static NewsVideoView View(NewsVideoDto v, Guid userId, IDataProtectionProvider dp)
     {
-        var t = Uri.EscapeDataString(Protector(dp).Protect($"{v.Id:N}|{userId:N}", TicketLifetime));
+        var t = Uri.EscapeDataString(IssueTicket(dp, v.Id, userId));
         var basePath = $"/api/news/videos/{v.Id}";
         return new NewsVideoView(v, $"{basePath}/stream?t={t}", v.HasPoster ? $"{basePath}/poster?t={t}" : null,
             $"{basePath}/stream?t={t}&download=true");
+    }
+
+    internal static string IssueTicket(IDataProtectionProvider dp, Guid videoId, Guid userId) =>
+        Protector(dp).Protect($"{videoId:N}|{userId:N}", TicketLifetime);
+
+    /// The ticket only proves WHO asked and for WHICH video; it lives for hours, so it is never the permission itself.
+    /// Every stream/poster request re-checks that this person can still see the post (published, scheduled, targeted),
+    /// so unpublishing the post or removing the person from its audience ends access at once, not at ticket expiry.
+    internal static async Task<Guid?> AuthorizeAsync(INewsVideoService svc, IDataProtectionProvider dp, string? ticket, Guid videoId, CancellationToken ct)
+    {
+        if (ReadTicket(dp, ticket, videoId) is not { } userId) return null;
+        return await svc.GetAsync(videoId, userId, ct) is null ? null : userId;
     }
 
     private static Guid? ReadTicket(IDataProtectionProvider dp, string? ticket, Guid videoId)
