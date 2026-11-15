@@ -119,8 +119,16 @@ jobs:
         working-directory: tools/notes-editor
         run: |
           npm run build
+          mkdir -p "$RUNNER_TEMP/bundle" && cp ../../src/IPop.Web/wwwroot/js/notes/notes-editor.js "$RUNNER_TEMP/bundle/"
           if ! git diff --quiet -- ../../src/IPop.Web/wwwroot/js/notes/notes-editor.js; then
             echo "::error::src/IPop.Web/wwwroot/js/notes/notes-editor.js is stale: run 'npm run build' in tools/notes-editor and commit it."
             git diff --stat -- ../../src/IPop.Web/wwwroot/js/notes/notes-editor.js
             exit 1
           fi
+      - name: Upload the freshly built bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notes-editor-bundle
+          path: ${{ runner.temp }}/bundle/notes-editor.js
+          if-no-files-found: ignore
