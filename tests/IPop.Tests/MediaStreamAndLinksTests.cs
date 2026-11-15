@@ -195,7 +195,7 @@ public sealed class MediaStreamAndLinksTests
         try
         {
             var cache = new MediaFileCache(dir);
-            for (var i = 0; i < 200; i++)
+            for (var i = 0; i < 2000; i++)
             {
                 var key = $"immediate-{i}";
                 await Assert.ThrowsAsync<IOException>(() => cache.GetAsync(key,
