@@ -21,8 +21,24 @@ const box = (id, x, y, text, { w = 190, h = 70, shape = 'rectangle', color = '#f
 // An arrow names the two shapes it joins; `link` below turns that into real coordinates between their centres.
 const arrow = (from, to, label) => ({ __link: [from, to], label });
 
-// Turns a list of shapes + { __link } placeholders into skeletons whose arrows run centre-to-centre between the shapes.
-function link(items) {
+// Where the straight line from a shape's centre towards (tx, ty) leaves the shape's outline, pushed out by `gap` px, so an
+// arrow starts and ends ON the edge instead of running through the text inside the shape.
+export function edgePoint(shape, tx, ty, gap = 8) {
+  const w = shape.width ?? 0, h = shape.height ?? 0;
+  const cx = shape.x + w / 2, cy = shape.y + h / 2;
+  const dx = tx - cx, dy = ty - cy;
+  const len = Math.hypot(dx, dy) || 1;
+  const hw = w / 2 || 1, hh = h / 2 || 1;
+  let t;                                            // how far along (dx, dy) the outline is, as a fraction of the vector
+  if (shape.type === 'ellipse') t = 1 / Math.hypot(dx / hw, dy / hh);
+  else if (shape.type === 'diamond') t = 1 / (Math.abs(dx) / hw + Math.abs(dy) / hh);
+  else t = Math.min(hw / (Math.abs(dx) || 1e-9), hh / (Math.abs(dy) || 1e-9));
+  const reach = t * len + gap;                      // distance from the centre to the point just outside the outline
+  return { x: cx + (dx / len) * reach, y: cy + (dy / len) * reach };
+}
+
+// Turns a list of shapes + { __link } placeholders into skeletons whose arrows run edge to edge between the shapes.
+export function link(items) {
   const by = new Map(items.filter(i => i.id).map(i => [i.id, i]));
   const centre = i => ({ x: i.x + (i.width ?? 0) / 2, y: i.y + (i.height ?? 0) / 2 });
   return items.map(i => {
@@ -30,7 +46,8 @@ function link(items) {
     const [a, b] = i.__link.map(id => by.get(id));
     if (!a || !b) throw new Error(`template arrow refers to a missing shape: ${i.__link.join(' -> ')}`);
     const ca = centre(a), cb = centre(b);
-    return { type: 'arrow', x: ca.x, y: ca.y, width: cb.x - ca.x, height: cb.y - ca.y, start: { id: a.id }, end: { id: b.id }, roughness: 1,
+    const from = edgePoint(a, cb.x, cb.y), to = edgePoint(b, ca.x, ca.y);
+    return { type: 'arrow', x: from.x, y: from.y, width: to.x - from.x, height: to.y - from.y, start: { id: a.id }, end: { id: b.id }, roughness: 1,
       ...(i.label ? { label: { text: i.label, fontSize: 14, fontFamily: 5 } } : {}) };
   });
 }
@@ -73,5 +90,5 @@ export const BOARD_TEMPLATES = {
   },
 };
 
-export { link, inFrames };
+export { inFrames };
 export const TEMPLATE_NAMES = { retro: 'Retro', flow: 'Flowchart', brainstorm: 'Brainstorm' };

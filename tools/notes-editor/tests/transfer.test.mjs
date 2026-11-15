@@ -14,13 +14,14 @@ const { Details, DetailsSummary, DetailsContent } = await import('@tiptap/extens
 const { default: Mention } = await import('@tiptap/extension-mention');
 const { RichTaskItem, tableExtensions, NoteImage, NoteGallery, NoteBookmark, NoteEmbed } = await import('../src/rich.js');
 const { BlockBackground, Callout, NoteWidget, SubPage, NoteFile } = await import('../src/nodes.js');
+const { NoteDraw } = await import('../src/draw-block.js');
 const T = await import('../src/transfer.js');
 
 const extensions = [
   StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
   TaskList, RichTaskItem.configure({ nested: true }), ...tableExtensions(),
   TextStyle, Color, BackgroundColor, Details, DetailsSummary, DetailsContent,
-  BlockBackground, Callout, NoteWidget, SubPage, NoteFile, NoteImage, NoteGallery, NoteBookmark, NoteEmbed, Mention,
+  BlockBackground, Callout, NoteWidget, SubPage, NoteFile, NoteImage, NoteGallery, NoteBookmark, NoteEmbed, Mention, NoteDraw,
 ];
 const schema = getSchema(extensions);
 
@@ -237,4 +238,45 @@ test('a gradient cover still maps to a preset and adds no cover asset', () => {
   const plan = T.planImport('Export.zip', zip({ 'Install e5f02d5e594a463b91180a4ad8ee3cec.html': SAMPLE }));
   const out = convert(plan, plan.pages[0]);
   assert.equal(out.coverRef, null);
+});
+
+// ── drawings in exports ───────────────────────────────────────────────────────
+import * as Y from 'yjs';
+import { prosemirrorJSONToYDoc } from '@tiptap/y-tiptap';
+
+const stateWithDrawing = (json, scenes) => {
+  const y = prosemirrorJSONToYDoc(schema, json, 'default');
+  for (const [id, els] of Object.entries(scenes)) { const m = y.getMap(`draw:${id}`); els.forEach(e => m.set(e.id, e)); }
+  const state = Buffer.from(Y.encodeStateAsUpdate(y)).toString('base64');
+  y.destroy();
+  return { state, updates: [] };
+};
+const el = (id, extra = {}) => ({ id, type: 'rectangle', version: 1, versionNonce: 1, isDeleted: false, x: 0, y: 0, ...extra });
+
+test('stored drawings are read back with the page: live elements only, per scene', () => {
+  const json = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hi' }] }, { type: 'noteDraw', attrs: { id: 'd1', height: 320 } }] };
+  const parts = T.stateToParts(stateWithDrawing(json, { d1: [el('a'), el('b'), el('gone', { isDeleted: true })], other: [el('c')] }));
+  assert.deepEqual([...parts.scenes.keys()].sort(), ['d1', 'other']);
+  assert.deepEqual(parts.scenes.get('d1').map(e => e.id).sort(), ['a', 'b']);
+  assert.equal(find(parts.json, 'noteDraw').length, 1);
+  assert.deepEqual(T.drawIds(parts.json), ['d1']);
+});
+
+test('an empty or fully erased scene is not exported as a drawing', () => {
+  const json = { type: 'doc', content: [{ type: 'noteDraw', attrs: { id: 'd1' } }] };
+  const parts = T.stateToParts(stateWithDrawing(json, { d1: [el('x', { isDeleted: true })] }));
+  assert.equal(parts.scenes.has('d1'), false);
+});
+
+test('Markdown and HTML show a drawing as an image next to the page, and degrade to a placeholder without one', () => {
+  const json = { type: 'doc', content: [{ type: 'noteDraw', attrs: { id: 'd1' } }] };
+  const ctx = { dir: 'Page', link: () => null, file: () => null, origin: 'http://x', draw: id => id === 'd1' ? { path: 'Page/attachments/drawing-d1.png' } : null };
+  assert.match(T.docToMarkdown(json, ctx), /!\[Drawing\]\(attachments\/drawing-d1\.png\)/);
+  assert.match(T.docToHtml(json, ctx), /<img src="attachments\/drawing-d1\.png" alt="Drawing"/);
+  const none = { ...ctx, draw: () => null };
+  assert.match(T.docToMarkdown(json, none), /\[drawing\]/);
+  assert.match(T.docToHtml(json, none), /empty drawing/);
+  // PDF path inlines the PNG
+  const pdf = { ...ctx, draw: () => ({ dataUrl: 'data:image/png;base64,AAAA' }) };
+  assert.match(T.docToHtml(json, pdf), /src="data:image\/png;base64,AAAA"/);
 });

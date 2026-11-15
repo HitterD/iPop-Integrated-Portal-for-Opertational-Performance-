@@ -13,6 +13,7 @@ import { marked } from 'marked';
 import * as Y from 'yjs';
 import { prosemirrorJSONToYDoc, yXmlFragmentToProsemirrorJSON } from '@tiptap/y-tiptap';
 import { COLORS } from './nodes.js';
+import { loadDrawBundle } from './draw-block.js';
 
 export const LIMITS = { bytes: 100 * 1024 * 1024, pages: 300 };
 const FIELD = 'default';
@@ -488,13 +489,32 @@ export function docToState(json, extensions) {
   return { state, plainText: node.textBetween(0, node.content.size, '\n', leaf => leaf.type.name === 'mention' ? `@${leaf.attrs.label ?? ''}` : ''), todoDone: done, todoTotal: total };
 }
 
-export function stateToDoc(doc) {
+/// The page body and every drawing scene stored with it: { json, scenes: Map(sceneId -> live Excalidraw elements) }.
+/// A scene is a Y.Map named "draw:<id>" (see draw-block.js); the whiteboard page uses the id "board".
+export function stateToParts(doc) {
   const y = new Y.Doc();
   if (doc.state) Y.applyUpdate(y, unb64(doc.state));
   for (const u of doc.updates || []) Y.applyUpdate(y, unb64(u.data));
   const json = yXmlFragmentToProsemirrorJSON(y.getXmlFragment(FIELD));
+  const scenes = new Map();
+  for (const name of y.share.keys()) {
+    if (!name.startsWith('draw:')) continue;
+    const els = [];
+    y.getMap(name).forEach(v => { if (v && typeof v === 'object' && typeof v.id === 'string' && typeof v.type === 'string' && !v.isDeleted) els.push(v); });
+    if (els.length) scenes.set(name.slice(5), els);
+  }
   y.destroy();
-  return json;
+  return { json, scenes };
+}
+
+export function stateToDoc(doc) { return stateToParts(doc).json; }
+
+/// Drawing ids a page refers to (the /draw blocks), in reading order.
+export function drawIds(json) {
+  const ids = [];
+  const walk = n => { if (n.type === 'noteDraw' && n.attrs?.id) ids.push(n.attrs.id); (n.content || []).forEach(walk); };
+  walk(json);
+  return ids;
 }
 
 // ── Export ───────────────────────────────────────────────────────────────────
@@ -581,6 +601,7 @@ export function docToMarkdown(json, ctx) {
         const line = r => `| ${Array.from({ length: w }, (_, i) => r[i] ?? ' ').join(' | ')} |`;
         return [line(rows[0]), `|${' --- |'.repeat(w)}`, ...rows.slice(1).map(line)].join('\n');
       }
+      case 'noteDraw': { const f = ctx.draw?.(n.attrs?.id); return f ? `![Drawing](${f.dataUrl || relPath(ctx.dir, f.path)})` : '_[drawing]_'; }
       case 'noteImage': { const f = ctx.file(n.attrs?.id); return f ? `![${(n.attrs?.caption || n.attrs?.name || '').replace(/[[\]]/g, '')}](${f.dataUrl || relPath(ctx.dir, f.path)})` : `_[image: ${n.attrs?.name || ''}]_`; }
       case 'noteGallery': { let items = []; try { items = JSON.parse(n.attrs?.items || '[]'); } catch { /* ignore */ } return items.map(i => block({ type: 'noteImage', attrs: i })).join('\n\n'); }
       case 'noteFile': { const f = ctx.file(n.attrs?.id); return f ? `[${n.attrs?.name || 'file'}](${f.dataUrl || relPath(ctx.dir, f.path)})` : `_[file: ${n.attrs?.name || ''}]_`; }
@@ -640,6 +661,10 @@ export function docToHtml(json, ctx) {
       case 'tableRow': return `<tr>${kids()}</tr>`;
       case 'tableHeader': return `<th>${(n.content || []).map(p => inlineHtml(p.content, ctx)).join('<br>')}</th>`;
       case 'tableCell': return `<td>${(n.content || []).map(p => inlineHtml(p.content, ctx)).join('<br>')}</td>`;
+      case 'noteDraw': {
+        const f = ctx.draw?.(n.attrs?.id); const src = f ? safeUrl(f.dataUrl || relPath(ctx.dir, f.path)) : '';
+        return `<figure style="text-align:center">${src ? `<img src="${esc(src)}" alt="Drawing" style="max-width:100%">` : '<div class="missing">[empty drawing]</div>'}</figure>`;
+      }
       case 'noteImage': {
         const f = ctx.file(n.attrs?.id), w = Math.min(100, Math.max(15, +n.attrs?.width || 100));
         const src = f ? safeUrl(f.dataUrl || relPath(ctx.dir, f.path)) : '';
@@ -897,10 +922,17 @@ export async function exportPages(api, net, opts) {
 
   // Content first (so the attachment total is known), then files.
   const docs = new Map();
+  const scenes = new Map();      // pageId -> Map(sceneId -> elements)
   let done = 0;
   for (const p of chosen) {
     const r = await api(`/api/notes/${p.id}/doc`);
-    docs.set(p.id, r.ok ? stateToDoc(await r.json()) : { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: "This page couldn't be exported." }] }] });
+    if (r.ok) {
+      const parts = stateToParts(await r.json());
+      let json = parts.json;
+      // A whiteboard page has no text: its board becomes the page content (one image).
+      if (parts.scenes.has('board') && !drawIds(json).includes('board')) json = { ...json, content: [{ type: 'noteDraw', attrs: { id: 'board', height: 520 } }, ...(json.content || [])] };
+      docs.set(p.id, json); scenes.set(p.id, parts.scenes);
+    } else docs.set(p.id, { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: "This page couldn't be exported." }] }] });
     call('OnExportProgress', ++done, chosen.length, 0, 0);
   }
   const wanted = opts.includeFiles || opts.format === 'pdf' ? chosen.flatMap(p => attachmentIds(docs.get(p.id)).map(a => ({ ...a, page: p.id }))) : [];
@@ -935,9 +967,34 @@ export async function exportPages(api, net, opts) {
     call('OnExportProgress', chosen.length, chosen.length, ++filesDone, wanted.length);
   }
 
+  // Drawings: each scene a page shows is rendered to a PNG (light theme, so it prints and reads anywhere) and stored next to
+  // the page like any image. A scene that fails to render is exported as "[empty drawing]" instead of failing the export.
+  const drawFiles = new Map();   // `${pageId}:${sceneId}` -> { path | dataUrl }
+  const wantedScenes = chosen.flatMap(p => drawIds(docs.get(p.id)).map(sid => [p.id, sid])).filter(([pid, sid]) => scenes.get(pid)?.has(sid));
+  if (wantedScenes.length) {
+    let render = null;
+    try { render = (await loadDrawBundle()).renderPng; } catch { /* drawing tools unavailable: exported without drawings */ }
+    for (const [pid, sid] of wantedScenes) {
+      const key = `${pid}:${sid}`;
+      if (!render || drawFiles.has(key)) continue;
+      try {
+        const blob = await render(scenes.get(pid).get(sid), { scale: 2 });
+        if (!blob) continue;
+        if (opts.format === 'pdf') drawFiles.set(key, { dataUrl: await blobToDataUrl(blob) });
+        else {
+          const folder = `${layout.get(pid).folder}/attachments`;
+          let n = `drawing-${sid === 'board' ? 'whiteboard' : sid.slice(0, 8)}.png`, k = 2;
+          while (zip[`${folder}/${n}`]) n = n.replace(/(\.png)?$/, m => `-${k++}${m}`);
+          zip[`${folder}/${n}`] = new Uint8Array(await blob.arrayBuffer());
+          drawFiles.set(key, { path: `${folder}/${n}` });
+        }
+      } catch { /* exported without this drawing */ }
+    }
+  }
+
   const origin = location.origin;
   const titleOf = id => all.find(p => p.id === id)?.title;
-  const ctxFor = id => ({ dir: layout.get(id).dir, link: pid => layout.get(pid)?.file ?? null, file: aid => files.get(aid) ?? null, origin, title: titleOf });
+  const ctxFor = id => ({ dir: layout.get(id).dir, link: pid => layout.get(pid)?.file ?? null, file: aid => files.get(aid) ?? null, draw: sid => drawFiles.get(`${id}:${sid}`) ?? null, origin, title: titleOf });
   const stamp = new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
 
   if (opts.format === 'pdf') {

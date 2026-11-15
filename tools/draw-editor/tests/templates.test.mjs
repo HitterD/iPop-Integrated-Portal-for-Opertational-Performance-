@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BOARD_TEMPLATES, TEMPLATE_NAMES, link, inFrames } from '../src/templates.js';
+import { BOARD_TEMPLATES, TEMPLATE_NAMES, link, inFrames, edgePoint } from '../src/templates.js';
 
 const kinds = els => els.reduce((o, e) => (o[e.type] = (o[e.type] || 0) + 1, o), {});
 
@@ -16,18 +16,36 @@ test('every template builds, has a name, and has no arrow pointing at a missing 
   assert.deepEqual(Object.keys(BOARD_TEMPLATES).sort(), Object.keys(TEMPLATE_NAMES).sort());
 });
 
-test('arrows run centre to centre between the shapes they join', () => {
-  const [a, b, arrow] = link([
-    { type: 'rectangle', id: 'a', x: 0, y: 0, width: 100, height: 40 },
-    { type: 'rectangle', id: 'b', x: 300, y: 100, width: 100, height: 40 },
-    { __link: ['a', 'b'], label: 'next' },
-  ]);
+test('arrows start and end on the outline of the shapes they join, never inside them', () => {
+  const A = { type: 'rectangle', id: 'a', x: 0, y: 0, width: 100, height: 40 };
+  const B = { type: 'rectangle', id: 'b', x: 300, y: 0, width: 100, height: 40 };
+  const [, , arrow] = link([A, B, { __link: ['a', 'b'], label: 'next' }]);
   assert.equal(arrow.type, 'arrow');
-  assert.deepEqual([arrow.x, arrow.y], [50, 20]);
-  assert.deepEqual([arrow.width, arrow.height], [300, 100]);
+  assert.ok(arrow.x > 100 && arrow.x < 120, `starts just right of A: ${arrow.x}`);
+  assert.ok(arrow.x + arrow.width < 300 && arrow.x + arrow.width > 280, `ends just left of B: ${arrow.x + arrow.width}`);
   assert.equal(arrow.label.text, 'next');
   assert.deepEqual([arrow.start.id, arrow.end.id], ['a', 'b']);
-  assert.equal(a.id, 'a'); assert.equal(b.id, 'b');
+});
+
+test('the outline point is right for rectangles, ellipses and diamonds, in every direction', () => {
+  const near = (v, w, msg) => assert.ok(Math.abs(v - w) < 0.01, `${msg}: ${v} vs ${w}`);
+  const rect = { type: 'rectangle', x: 0, y: 0, width: 100, height: 60 };
+  near(edgePoint(rect, 500, 30, 0).x, 100, 'rect right');
+  near(edgePoint(rect, -500, 30, 0).x, 0, 'rect left');
+  near(edgePoint(rect, 50, 500, 0).y, 60, 'rect bottom');
+  near(edgePoint(rect, 50, -500, 0).y, 0, 'rect top');
+  const ell = { type: 'ellipse', x: 0, y: 0, width: 200, height: 100 };
+  near(edgePoint(ell, 900, 50, 0).x, 200, 'ellipse right');
+  near(edgePoint(ell, 100, 900, 0).y, 100, 'ellipse bottom');
+  const dia = { type: 'diamond', x: 0, y: 0, width: 200, height: 100 };
+  near(edgePoint(dia, 900, 50, 0).x, 200, 'diamond right tip');
+  const diag = edgePoint(dia, 100 + 100, 50 + 50, 0);                 // along the 1:2 diagonal the edge is at |dx|/100 + |dy|/50 = 1
+  near(Math.abs(diag.x - 100) / 100 + Math.abs(diag.y - 50) / 50, 1, 'diamond edge');
+  // gap pushes the point outwards along the same line
+  near(edgePoint(rect, 500, 30, 10).x, 110, 'rect right with gap');
+  // a shape is never asked for a point towards its own centre (zero vector): it must not produce NaN
+  const self = edgePoint(rect, 50, 30, 0);
+  assert.ok(Number.isFinite(self.x) && Number.isFinite(self.y));
 });
 
 test('an arrow to a shape that does not exist is a build error, not a silent half-board', () => {
