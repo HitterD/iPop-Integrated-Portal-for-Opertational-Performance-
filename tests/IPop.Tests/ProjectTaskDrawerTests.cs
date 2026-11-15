@@ -318,7 +318,7 @@ public class ProjectTaskDrawerTests
         ctx.Services.AddSingleton(new IPop.Web.Services.ChatAttachments(auth, http, ctx.JSInterop.JSRuntime));
         ctx.Services.AddSingleton(new ConfirmService());
         var cut = ctx.Render<ProjectTaskDrawer>(p => p.Add(c => c.Task, MakeTask("Wire rack", due: DateTime.UtcNow.AddDays(10))));
-        cut.Find(".td-group-head, button.td-group-toggle, .td-group button").Click();   // open "More options"
+        cut.FindAll("button.td-group-head").First(b => b.TextContent.Contains("More options")).Click();
 
         var chip = cut.FindAll(".td-reminders button").First(b => b.TextContent.Contains("1 week before"));
         Assert.DoesNotContain("on", chip.ClassList);
