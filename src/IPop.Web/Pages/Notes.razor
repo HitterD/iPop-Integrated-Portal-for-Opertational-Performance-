@@ -141,7 +141,7 @@
     <main class="nt-doc">
         @if (Phone.IsPhone)
         {
-            <NotesEditorNav HasPage="@(note is not null)" Status='@(saveState == "saving" ? "Saving…" : saveState == "offline" ? "Offline" : CanEdit ? "Saved" : "View only")' OnBack="PhoneNotesBack" OnComments="ToggleComments" OnMore="() => phoneMoreOpen = true" />
+            <NotesEditorNav HasPage="@(note is not null)" Status='@(saveState == "saving" ? "Saving…" : saveState == "offline" ? "Offline" : saveState == "locked" ? "Can't save" : CanEdit ? "Saved" : "View only")' OnBack="PhoneNotesBack" OnComments="ToggleComments" OnMore="() => phoneMoreOpen = true" />
         }
         else
         {
@@ -156,8 +156,9 @@
                     }
                     <a class="cur">@(note.Emoji ?? "📄") @DisplayTitle(note.Title)</a>
                 </nav>
-                <span class="nt-saved hide-sm @(saveState == "offline" ? "offline" : "")">
-                    @if (saveState == "saving") { <i data-lucide="loader"></i><span>Saving…</span> }
+                <span class="nt-saved hide-sm @(saveState is "offline" or "locked" ? "offline" : "")">
+                    @if (saveState == "locked") { <i data-lucide="lock"></i><span>Changes can't be saved here</span> }
+                    else if (saveState == "saving") { <i data-lucide="loader"></i><span>Saving…</span> }
                     else if (saveState == "offline") { <i data-lucide="wifi-off"></i><span>Offline — changes will save when you reconnect</span> }
                     else if (!CanEdit) { <i data-lucide="eye"></i><span>@(note.Access == "comment" ? "Can comment" : "View only")</span> }
                     else { <i data-lucide="check"></i><span>Saved</span> }

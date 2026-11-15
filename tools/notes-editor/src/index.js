@@ -3,6 +3,7 @@
 // Sync model (see docs/notes spec): the server stores a compacted Yjs state (+ version) and a tail of
 // raw updates. Clients push every local update through the hub (which stores it and fans it out), and
 // an editor periodically folds the tail into a new state with a compare-and-set on the version.
+import { refusedReason } from './sync.js';
 import { Editor, Extension } from '@tiptap/core';
 import { exitSuggestion } from '@tiptap/suggestion';
 import StarterKit from '@tiptap/starter-kit';
@@ -183,7 +184,9 @@ export async function mount(el, opts) {
     if (ids) removeAwarenessStates(awareness, [...ids], 'remote');
     peers.delete(connectionId);
   });
-  hub.onreconnecting(() => status('offline'));
+  let lostEarly = false; // access lost while the page was still loading (stopEditing isn't ready yet)
+  hub.on('noteAccessLost', pid => { if (pid !== pageId) return; if (loaded) stopEditing('not_found'); else lostEarly = true; });
+  hub.onreconnecting(() => { if (loaded) status('offline'); });
   hub.onreconnected(async () => { await join(); await refetch(); flush(); sendAwareness([ydoc.clientID]); });
 
   async function join() {
@@ -214,15 +217,25 @@ export async function mount(el, opts) {
   let queue = [];      // local updates not yet stored by the server
   let pushing = false;
   let saveState = 'saved';
-  const status = s => { if (s !== saveState) { saveState = s; call('OnStatus', s); } };
+  const status = s => { if (s !== saveState && (saveState !== 'locked' || s === 'locked')) { saveState = s; call('OnStatus', s); } };
   ydoc.on('update', (update, origin) => {
     if (origin === 'remote' || !canEdit) return;
     queue.push(update);
     status('saving');
     flush();
   });
+  // The server refused for good (access removed, page gone, update too large): stop pushing and make the editor
+  // read-only. Unsent edits stay in `queue` only so the user can still copy them out of the page.
+  let refused = null;
+  function stopEditing(reason) {
+    if (refused || destroyed) return;
+    refused = reason;
+    try { if (editor && !closing) editor.setEditable(false); } catch { /* editor already gone */ }
+    status('locked');
+    call('OnRefused', reason, queue.length > 0);
+  }
   async function flush() {
-    if (pushing || !queue.length || destroyed) return;
+    if (pushing || !queue.length || destroyed || refused) return;
     if (hub.state !== signalR.HubConnectionState.Connected) { status('offline'); return; }
     pushing = true;
     const batch = queue; queue = [];
@@ -233,7 +246,9 @@ export async function mount(el, opts) {
       unmerged.add(id);
       scheduleSnapshot();
       if (unmerged.size >= SNAPSHOT_AFTER_UPDATES) snapshot();
-    } catch {
+    } catch (err) {
+      const reason = refusedReason(err);
+      if (reason) { pushing = false; queue = [merged, ...queue]; stopEditing(reason); return; }
       queue = [merged, ...queue];
       status('offline');
       pushing = false;
@@ -248,7 +263,7 @@ export async function mount(el, opts) {
   let snapping = false;
   const scheduleSnapshot = debounce(() => snapshot(), SNAPSHOT_IDLE_MS);
   async function snapshot() {
-    if (!canEdit || snapping || !unmerged.size || destroyed) return;
+    if (!canEdit || snapping || !unmerged.size || destroyed || refused) return;
     snapping = true;
     const ids = [...unmerged];
     const { done, total } = countTodos(editor.state.doc);
@@ -258,6 +273,7 @@ export async function mount(el, opts) {
         plainText: editor.getText({ blockSeparator: '\n' }), todoDone: done, todoTotal: total,
       } });
       if (r.ok) { version = (await r.json()).version; ids.forEach(i => unmerged.delete(i)); }
+      else if (r.status === 403 || r.status === 404) stopEditing(r.status === 404 ? 'not_found' : 'forbidden');
       else if (r.status === 409) await refetch(); // someone else compacted first; take theirs and retry later
     } catch { /* retried on the next edit */ }
     snapping = false;
@@ -548,6 +564,8 @@ export async function mount(el, opts) {
   }
 
   // ── API for Blazor ───────────────────────────────────────────────────────
+  if (refused) editor.setEditable(false); else if (lostEarly) stopEditing('not_found');
+
   return {
     closeMobileMention() { if (!closing) exitSuggestion(editor.view, phoneMentionKey); },
     mobileCommand(command) {

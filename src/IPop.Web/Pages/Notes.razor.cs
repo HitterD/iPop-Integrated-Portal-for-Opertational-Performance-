@@ -22,7 +22,7 @@ public partial class Notes
 {
     [Parameter] public Guid? Id { get; set; }
 
-    private const string EditorModule = "./js/notes/notes-editor.js?v=20261102-notes";
+    private const string EditorModule = "./js/notes/notes-editor.js?v=20261115-refuse";
 
     private enum View { Home, Page, New, Trash }
     private enum Pop { None, More, Style, Emoji, Share, History }
@@ -315,6 +315,21 @@ public partial class Notes
 
     [JSInvokable] public void OnOpenPage(string id) { if (Guid.TryParse(id, out var g)) Open(g); }
     [JSInvokable] public void OnToast(string msg) => Toasts.Show(msg, ToastKind.Info);
+
+    /// The server refused this page's edits for good (share removed, page deleted, or an update it will never accept).
+    /// The editor is already read-only; say why, and whether recent typing was lost, instead of a silent endless "Offline".
+    [JSInvokable]
+    public void OnRefused(string reason, bool unsaved)
+    {
+        var why = reason switch
+        {
+            "not_found" => "You no longer have access to this page",
+            "invalid_update" => "That change is too large to save — try pasting it in smaller parts",
+            _ => "You no longer have edit access to this page",
+        };
+        Toasts.Show(unsaved ? $"{why}. Your last changes were not saved — copy them before leaving." : why + ".", ToastKind.Error);
+        StateHasChanged();
+    }
 
     [JSInvokable]
     public void OnHotkey(string key)

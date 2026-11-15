@@ -11,6 +11,9 @@ public class NotesHub(INoteService notes, IPermissionEvaluator perms) : Hub
 {
     public static string Group(Guid pageId) => $"note:{pageId}";
 
+    /// Marker in a PushUpdate HubException: the server will never store this update, so the client must not retry it.
+    public const string RefusedPrefix = "note_refused:";
+
     /// Who is in each page's group (page -> connection -> user), so losing access can take the connection out of it:
     /// otherwise an open tab kept receiving the live content after its share was removed. Per process, like groups.
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, System.Collections.Concurrent.ConcurrentDictionary<string, Guid>> Members = new();
@@ -64,12 +67,15 @@ public class NotesHub(INoteService notes, IPermissionEvaluator perms) : Hub
     public async Task<long?> PushUpdate(Guid pageId, string data)
     {
         var userId = GetUserId();
-        if (userId is null || !await perms.IsAllowedAsync(userId.Value, "notes.write", null, Context.ConnectionAborted)) return null;
+        // A refusal is final (no access, or an update the server will never take): it throws a HubException naming the
+        // reason, so the editor stops instead of retrying every 3 s forever behind an "Offline" badge.
+        if (userId is null || !await perms.IsAllowedAsync(userId.Value, "notes.write", null, Context.ConnectionAborted))
+            throw new HubException(RefusedPrefix + "forbidden");
         byte[] bytes;
         try { bytes = Convert.FromBase64String(data); }
-        catch (FormatException) { return null; }
+        catch (FormatException) { throw new HubException(RefusedPrefix + "invalid_update"); }
         var r = await notes.AppendUpdateAsync(userId.Value, pageId, bytes, Context.ConnectionAborted);
-        if (!r.Success) return null;
+        if (!r.Success) throw new HubException(RefusedPrefix + (r.Error ?? "forbidden"));
         await Clients.OthersInGroup(Group(pageId)).SendAsync("noteUpdate", new { pageId, id = r.Data, data });
         return r.Data;
     }
