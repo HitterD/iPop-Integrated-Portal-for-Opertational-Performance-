@@ -216,3 +216,25 @@ test('export HTML keeps text-only and escaped content intact', () => {
   assert.doesNotMatch(html, /<script>/i);
   assert.match(html, /&lt;script&gt;/);
 });
+
+test('a photo cover from the zip becomes the page cover, not an image block at the top of the page', () => {
+  const html = notionPage('With photo', '<p>Body text</p>', '<img class="page-cover-image" src="Cover/beach.jpg"/>');
+  const plan = T.planImport('Export.zip', zip({
+    'With photo e5f02d5e594a463b91180a4ad8ee3cec.html': html,
+    'Cover/beach.jpg': new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0]),
+  }));
+  const [p] = plan.pages;
+  assert.equal(p.cover, null);
+  assert.ok(p.coverImage, 'the photo is found in the zip');
+  const out = convert(plan, p);
+  assert.ok(out.coverRef && out.coverRef.startsWith('asset:'), 'the page asks for its cover to be uploaded');
+  assert.equal(find(out.json, 'noteImage').length, 0, 'nothing is pasted into the body');
+  assert.equal(out.assets.find(a => a.ref === out.coverRef).cover, true);
+  assert.equal(find(out.json, 'paragraph').length > 0, true);
+});
+
+test('a gradient cover still maps to a preset and adds no cover asset', () => {
+  const plan = T.planImport('Export.zip', zip({ 'Install e5f02d5e594a463b91180a4ad8ee3cec.html': SAMPLE }));
+  const out = convert(plan, plan.pages[0]);
+  assert.equal(out.coverRef, null);
+});

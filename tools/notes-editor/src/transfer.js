@@ -431,12 +431,10 @@ export function pageToDoc(page, ctx) {
   $$('input').forEach(e => e.remove());
 
   let json = generateJSON(root.innerHTML, ctx.extensions);
-  if (page.coverImage) {
-    const ref = asset({ path: page.coverImage, name: baseName(page.coverImage), image: true });
-    json = { ...json, content: [{ type: 'noteImage', attrs: { id: ref, name: baseName(page.coverImage), size: 0, width: 100, align: 'center', caption: '' } }, ...(json.content || [])] };
-  }
+  // A photo cover is no longer pasted into the page: it is uploaded like any image and then set as the page's cover.
+  const coverRef = page.coverImage ? asset({ path: page.coverImage, name: baseName(page.coverImage), image: true, cover: true }) : null;
   if (!json.content?.length) json = { type: 'doc', content: [{ type: 'paragraph' }] };
-  return { json, assets, notes };
+  return { json, assets, notes, coverRef };
 }
 
 function textBetween(a, b) {
@@ -787,7 +785,7 @@ export function importer({ api, net, extensions }) {
       result.rootId = ids.get(plan.pages[0].key);
       const gradients = plan.pages.filter(p => p.cover).length, photos = plan.pages.filter(p => p.coverImage).length;
       if (gradients) result.covers.push(`${gradients} Notion cover${gradients > 1 ? 's' : ''} → nearest iPop cover`);
-      if (photos) result.covers.push(`${photos} photo cover${photos > 1 ? 's' : ''} → image at the top of the page`);
+      if (photos) result.covers.push(`${photos} photo cover${photos > 1 ? 's' : ''} → page cover`);
       progress(true);
 
       for (let i = 0; i < plan.pages.length; i++) {
@@ -797,7 +795,7 @@ export function importer({ api, net, extensions }) {
         try {
           await yieldUi();
           const childrenOf = key => plan.pages.filter(c => c.parentKey === key).map(c => ({ id: ids.get(c.key), title: c.title, emoji: c.emoji }));
-          const { json, assets, notes } = pageToDoc(p, { files: plan.files, extensions, pageOf: path => pageOfPath.get(path) ?? null, childrenOf });
+          const { json, assets, notes, coverRef } = pageToDoc(p, { files: plan.files, extensions, pageOf: path => pageOfPath.get(path) ?? null, childrenOf });
           for (const [label, n] of notes) { const c = converted.get(label) || { count: 0, pages: [] }; c.count += n; if (!c.pages.includes(p.title)) c.pages.push(p.title); converted.set(label, c); }
           const uploaded = new Map();
           let k = 0;
@@ -821,6 +819,10 @@ export function importer({ api, net, extensions }) {
             } catch {
               result.failed.push({ title: p.title, reason: `${a.name} couldn't be uploaded. The rest of the page was imported without it.` });
             }
+          }
+          if (coverRef && uploaded.has(coverRef)) {
+            const cv = await api(`/api/notes/${id}`, { method: 'PATCH', json: { coverImageId: uploaded.get(coverRef).id } }).catch(() => null);
+            if (!cv?.ok) result.failed.push({ title: p.title, reason: 'The cover photo was uploaded but could not be set as the cover. It is attached to the page.' });
           }
           const s = docToState(fillAssets(json, uploaded), extensions);
           const w = await api(`/api/notes/${id}/snapshot`, { method: 'POST', json: { ...s, baseVersion: 0, mergedUpdateIds: [] } });
