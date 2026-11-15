@@ -68,20 +68,29 @@ public static class NotesEndpoints
         g.MapPut("/{id:guid}/favorite", (Guid id, FavoriteRequest req, HttpContext http, INoteService svc, CancellationToken ct) =>
             Run(http, async me => From(await svc.SetFavoriteAsync(me.Id, id, req.Favorite, ct))));
 
-        g.MapDelete("/{id:guid}", (Guid id, HttpContext http, INoteService svc, IRealtime rt, CancellationToken ct) => Run(http, async me =>
+        g.MapDelete("/{id:guid}", (Guid id, HttpContext http, INoteService svc, IRealtime rt, IHubContext<NotesHub> hub,
+            CancellationToken ct) => Run(http, async me =>
         {
             var audience = await svc.GetAudienceAsync(id, ct);
             var r = await svc.TrashAsync(me.Id, id, ct);
-            if (r.Success) await PushAsync(rt, http, audience, ct);
+            if (r.Success)
+            {
+                await PushAsync(rt, http, audience, ct);
+                await NotesHub.EvictLostAccessAsync(hub, svc, id, ct);   // a trashed page (and its sub-pages) is no longer live content
+            }
             return From(r);
         })).RequirePermission("notes.write");
         g.MapPost("/{id:guid}/move", (Guid id, MoveNoteRequest req, HttpContext http, INoteService svc, IRealtime rt,
-            CancellationToken ct) => Run(http, async me =>
+            IHubContext<NotesHub> hub, CancellationToken ct) => Run(http, async me =>
         {
             // Old and new audiences both need the refresh: some lose the page, others gain it.
             var before = await svc.GetAudienceAsync(id, ct);
             var r = await svc.MoveAsync(me.Id, id, req, ct);
-            if (r.Success) await PushAsync(rt, http, before.Union(await svc.GetAudienceAsync(id, ct)).ToList(), ct);
+            if (r.Success)
+            {
+                await PushAsync(rt, http, before.Union(await svc.GetAudienceAsync(id, ct)).ToList(), ct);
+                await NotesHub.EvictLostAccessAsync(hub, svc, id, ct);   // moving out from under a shared parent drops its inherited viewers
+            }
             return From(r);
         })).RequirePermission("notes.write");
         g.MapPost("/import", (ImportNotesRequest req, HttpContext http, INoteService svc, IRealtime rt, CancellationToken ct) => Run(http, async me =>

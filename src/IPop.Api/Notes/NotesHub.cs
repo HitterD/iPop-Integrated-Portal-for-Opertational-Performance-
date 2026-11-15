@@ -15,19 +15,25 @@ public class NotesHub(INoteService notes, IPermissionEvaluator perms) : Hub
     /// otherwise an open tab kept receiving the live content after its share was removed. Per process, like groups.
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, System.Collections.Concurrent.ConcurrentDictionary<string, Guid>> Members = new();
 
-    /// Removes from the page's live group every connection whose user no longer has access.
+    /// Removes from its live group every connection whose user no longer has access. Access is inherited down the tree, so
+    /// revoking a share on a parent, moving a page or trashing a parent changes the access to pages BENEATH it as well:
+    /// every page that currently has live connections is re-checked, not only the one the request named. (<paramref name="pageId"/>
+    /// is kept for callers and logging; the set of pages with open connections is small and the check is per user and page.)
     public static async Task EvictLostAccessAsync(IHubContext<NotesHub> hub, INoteService notes, Guid pageId, CancellationToken ct)
     {
-        if (!Members.TryGetValue(pageId, out var conns)) return;
-        foreach (var userId in conns.Values.Distinct().ToList())
+        foreach (var (page, conns) in Members.ToList())
         {
-            if (await notes.GetAccessAsync(userId, pageId, ct) != NoteAccess.None) continue;
-            foreach (var (connection, _) in conns.Where(c => c.Value == userId).ToList())
+            foreach (var userId in conns.Values.Distinct().ToList())
             {
-                conns.TryRemove(connection, out _);
-                await hub.Groups.RemoveFromGroupAsync(connection, Group(pageId), ct);
-                await hub.Clients.Client(connection).SendAsync("noteAccessLost", pageId, ct);
+                if (await notes.GetAccessAsync(userId, page, ct) != NoteAccess.None) continue;
+                foreach (var (connection, _) in conns.Where(c => c.Value == userId).ToList())
+                {
+                    conns.TryRemove(connection, out _);
+                    await hub.Groups.RemoveFromGroupAsync(connection, Group(page), ct);
+                    await hub.Clients.Client(connection).SendAsync("noteAccessLost", page, ct);
+                }
             }
+            if (conns.IsEmpty) Members.TryRemove(page, out _);
         }
     }
 

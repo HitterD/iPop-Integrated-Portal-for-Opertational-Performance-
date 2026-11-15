@@ -117,4 +117,21 @@ public class NotesHubRevocationTests
         Assert.Contains(calls.Calls, c => c.StartsWith("RemoveFromGroupAsync:conn-below,") && c.Contains(NotesHub.Group(child)));
         Assert.DoesNotContain(calls.Calls, c => c.Contains("conn-unrelated"));   // still shared on a page outside the trashed tree
     }
+
+    [Fact]
+    public async Task Control_removing_a_share_from_the_open_page_itself_evicts_that_connection()
+    {
+        using var t = new TestDb();
+        var owner = t.AddUser("NR5"); var guest = t.AddUser("NR6");
+        var page = await PageAsync(t, owner.Id, null, "Direct");
+        await Svc(t).AddShareAsync(owner.Id, page, new AddNoteShareRequest(guest.Id, null, NoteLevels.View), Ct);
+        await JoinAsync(t, guest.Id, page, "conn-direct");
+
+        var share = t.Verify().NoteShares.Single(s => s.PageId == page);
+        Assert.True((await Svc(t).RemoveShareAsync(owner.Id, page, share.Id, Ct)).Success);
+        var (hub, calls) = HubContext();
+        await NotesHub.EvictLostAccessAsync(hub, Svc(t), page, Ct);
+
+        Assert.Contains(calls.Calls, c => c.StartsWith("RemoveFromGroupAsync:conn-direct,") && c.Contains(NotesHub.Group(page)));
+    }
 }
