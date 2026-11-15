@@ -7,7 +7,29 @@ namespace IPop.Infrastructure.Notes;
 
 public sealed partial class NoteService
 {
-    private const int MaxVersions = 50;
+    private const int MaxVersions = 200; // list cap only; StaleVersions bounds what is stored
+
+    public readonly record struct VersionStamp(Guid Id, DateTime CreatedAt);
+
+    /// Which versions to drop: everything from the last 7 days stays, then one per day (the newest of that day) up to
+    /// 90 days, then one per ISO week. Applied on every new version, so history stays dense where people look and the table
+    /// stops growing without bound (each version stores the full document state).
+    public static IEnumerable<Guid> StaleVersions(IReadOnlyCollection<VersionStamp> versions, DateTime now)
+    {
+        var keep = new HashSet<Guid>();
+        var buckets = new HashSet<string>();
+        foreach (var v in versions.OrderByDescending(v => v.CreatedAt))
+        {
+            var age = now - v.CreatedAt;
+            if (age <= TimeSpan.FromDays(7)) { keep.Add(v.Id); continue; }
+            var d = v.CreatedAt.Date;
+            var bucket = age <= TimeSpan.FromDays(90)
+                ? "d" + d.ToString("yyyyMMdd")
+                : "w" + System.Globalization.ISOWeek.GetYear(d) + "-" + System.Globalization.ISOWeek.GetWeekOfYear(d);
+            if (buckets.Add(bucket)) keep.Add(v.Id);
+        }
+        return versions.Where(v => !keep.Contains(v.Id)).Select(v => v.Id);
+    }
 
     // ── Document sync ────────────────────────────────────────────────────────
 
@@ -103,8 +125,9 @@ public sealed partial class NoteService
         if (tx is not null) await tx.CommitAsync(ct);
         if (wroteVersion)
         {
-            var staleIds = await db.NoteVersions.Where(v => v.PageId == pageId)
-                .OrderByDescending(v => v.CreatedAt).Skip(MaxVersions).Select(v => v.Id).ToListAsync(ct);
+            var all = await db.NoteVersions.AsNoTracking().Where(v => v.PageId == pageId)
+                .Select(v => new VersionStamp(v.Id, v.CreatedAt)).ToListAsync(ct);
+            var staleIds = StaleVersions(all, at).ToList();
             if (staleIds.Count > 0)
                 await db.NoteVersions.Where(v => staleIds.Contains(v.Id)).ExecuteDeleteAsync(ct);
         }

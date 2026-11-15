@@ -508,18 +508,45 @@ public class NoteServiceTests
     }
 
     [Fact]
-    public async Task Versions_are_pruned_beyond_fifty_snapshots()
+    public async Task Old_versions_are_thinned_when_a_new_one_is_saved()
     {
         using var t = new TestDb();
         var a = t.AddUser("vp");
         var page = await PageAsync(t, a.Id);
-        var t0 = DateTime.UtcNow;
-        for (var i = 0; i < 55; i++)
+        var now = DateTime.UtcNow;
+        // Six versions on one day 30 days ago (11 min apart), then a fresh snapshot "now".
+        var oldDay = now.AddDays(-30).Date.AddHours(9);
+        for (var i = 0; i < 6; i++)
         {
             await Svc(t).AppendUpdateAsync(a.Id, page, [1], Ct);
-            var r = await Svc(t).SnapshotAsync(a.Id, page, new NoteSnapshotRequest("AQ==", i, [], "", 0, 0), Ct, t0.AddMinutes(i * 11));
+            var r = await Svc(t).SnapshotAsync(a.Id, page, new NoteSnapshotRequest("AQ==", i, [], "", 0, 0), Ct, oldDay.AddMinutes(i * 11));
             Assert.True(r.Success, r.Error);
         }
-        Assert.Equal(50, await t.Verify().NoteVersions.CountAsync(v => v.PageId == page));
+        // Each save pruned as it went (the earlier ones were "recent" relative to the next save), so the old day is still dense
+        // until a save happens much later.
+        await Svc(t).AppendUpdateAsync(a.Id, page, [1], Ct);
+        var last = await Svc(t).SnapshotAsync(a.Id, page, new NoteSnapshotRequest("AQ==", 6, [], "", 0, 0), Ct, now);
+        Assert.True(last.Success, last.Error);
+
+        // 6 old versions collapse to the newest of that day, plus the new one.
+        Assert.Equal(2, await t.Verify().NoteVersions.CountAsync(v => v.PageId == page));
+    }
+
+    [Fact]
+    public void Version_pruning_keeps_week_dense_then_daily_then_weekly()
+    {
+        var now = new DateTime(2026, 11, 15, 12, 0, 0, DateTimeKind.Utc);
+        var v = (int hoursAgo) => new NoteService.VersionStamp(Guid.NewGuid(), now.AddHours(-hoursAgo));
+        // last 7 days: all kept
+        var recent = new[] { v(1), v(5), v(30), v(100) };
+        // 20 days ago: two on the same day, only the newest stays
+        var d20a = v(20 * 24); var d20b = v(20 * 24 + 3);
+        // 200 days ago: two in the same week, only the newest stays
+        var w1 = v(200 * 24); var w2 = v(200 * 24 + 26);
+        var all = recent.Concat(new[] { d20a, d20b, w1, w2 }).ToList();
+
+        var stale = NoteService.StaleVersions(all, now).ToHashSet();
+        Assert.Equal(new HashSet<Guid> { d20b.Id, w2.Id }, stale);
+        Assert.Empty(NoteService.StaleVersions(recent, now));
     }
 }

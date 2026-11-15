@@ -187,9 +187,10 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
     {
         var q = query.Trim().ToLower();
         if (q.Length == 0) return [];
+        var like = LikeContains(q);
         var ids = (await VisibleAsync(userId, ct)).Keys.ToList();
         var rows = await db.NotePages.AsNoTracking()
-            .Where(p => ids.Contains(p.Id) && (p.Title.ToLower().Contains(q) || (p.PlainText != null && p.PlainText.ToLower().Contains(q))))
+            .Where(p => ids.Contains(p.Id) && (EF.Functions.Like(p.Title.ToLower(), like) || (p.PlainText != null && EF.Functions.Like(p.PlainText.ToLower(), like))))
             .OrderByDescending(p => p.UpdatedAt).Take(30)
             .Select(p => new { p.Id, p.Title, p.Emoji, p.PlainText }).ToListAsync(ct);
         return rows.Select(r => new NoteSearchHitDto(r.Id, r.Title, r.Emoji, Snippet(r.PlainText, q))).ToList();
@@ -211,8 +212,10 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         var live = db.NotePages.AsNoTracking().Where(p => ids.Contains(p.Id));
         // Three ranked tiers, each newest first; the page is cut across them in order.
         var exact = live.Where(p => p.Title.ToLower() == q);
-        var title = live.Where(p => p.Title.ToLower() != q && p.Title.ToLower().Contains(q));
-        var body = live.Where(p => !p.Title.ToLower().Contains(q) && p.PlainText != null && p.PlainText.ToLower().Contains(q));
+        // LIKE on lower(column) (not strpos) so the trigram indexes on lower("Title") / lower("PlainText") can be used.
+        var like = LikeContains(q);
+        var title = live.Where(p => p.Title.ToLower() != q && EF.Functions.Like(p.Title.ToLower(), like));
+        var body = live.Where(p => !EF.Functions.Like(p.Title.ToLower(), like) && p.PlainText != null && EF.Functions.Like(p.PlainText.ToLower(), like));
         var tiers = new[] { exact, title, body };
         var skip = (page - 1) * pageSize;
         var take = pageSize;
@@ -239,6 +242,9 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         var truncated = await live.AnyAsync(p => p.PlainText != null && p.PlainText.Length == PlainTextLimit, ct);
         return new NoteSearchPageDto(rows, total, truncated);
     }
+
+    private static string LikeContains(string lowered)
+        => $"%{lowered.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_")}%";
 
     private static string? Snippet(string? text, string q)
     {
