@@ -299,4 +299,33 @@ public class ProjectTaskDrawerTests
         cut.Find(".task-discussion button.accent").Click();
         cut.WaitForAssertion(() => Assert.Contains(toasts.Active, t => t.Kind == ToastKind.Error), TimeSpan.FromSeconds(3));
     }
+
+    [Fact]
+    public async Task A_reminder_the_server_refuses_is_not_left_switched_on()
+    {
+        using var ctx = new BunitContext();
+        ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        var http = new HttpClient(new RefusingApi(HttpStatusCode.InternalServerError)) { BaseAddress = new Uri("http://localhost/") };
+        var auth = new AuthState(http, ctx.JSInterop.JSRuntime);
+        ctx.Services.AddSingleton(auth);
+        ctx.Services.AddSingleton(new TimerState(auth));
+        ctx.Services.AddSingleton(http); ctx.Services.AddSingleton(new IPop.Web.Services.MediaStream(auth, http));
+        var toasts = new ToastService();
+        ctx.Services.AddSingleton(toasts);
+        ctx.Services.AddScoped<OverlayStack>();
+        ctx.Services.AddScoped<IPop.Web.Services.PeopleLinks>();
+        ctx.Services.AddScoped<IPop.Web.Services.CalendarLinks>();
+        ctx.Services.AddSingleton(new IPop.Web.Services.ChatAttachments(auth, http, ctx.JSInterop.JSRuntime));
+        ctx.Services.AddSingleton(new ConfirmService());
+        var cut = ctx.Render<ProjectTaskDrawer>(p => p.Add(c => c.Task, MakeTask("Wire rack", due: DateTime.UtcNow.AddDays(10))));
+        cut.Find(".td-group-head, button.td-group-toggle, .td-group button").Click();   // open "More options"
+
+        var chip = cut.FindAll(".td-reminders button").First(b => b.TextContent.Contains("1 week before"));
+        Assert.DoesNotContain("on", chip.ClassList);
+        chip.Click();
+        cut.WaitForAssertion(() => Assert.Contains(toasts.Active, t => t.Kind == ToastKind.Error), TimeSpan.FromSeconds(3));
+
+        var after = cut.FindAll(".td-reminders button").First(b => b.TextContent.Contains("1 week before"));
+        Assert.DoesNotContain("on", after.ClassList);
+    }
 }
