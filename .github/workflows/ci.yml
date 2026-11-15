@@ -114,3 +114,13 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm test
+      # The committed bundle is what browsers actually run. A source fix that was never rebuilt is not a fix.
+      - name: Committed bundle matches the sources
+        working-directory: tools/notes-editor
+        run: |
+          npm run build
+          if ! git diff --quiet -- ../../src/IPop.Web/wwwroot/js/notes/notes-editor.js; then
+            echo "::error::src/IPop.Web/wwwroot/js/notes/notes-editor.js is stale: run 'npm run build' in tools/notes-editor and commit it."
+            git diff --stat -- ../../src/IPop.Web/wwwroot/js/notes/notes-editor.js
+            exit 1
+          fi
