@@ -261,6 +261,53 @@ public static class NotesEndpoints
             }
         }).DisableAntiforgery().RequirePermission("notes.write");
 
+        // ── Photo cover ──────────────────────────────────────────────────────
+        // Images already in this page, for "pick from this page" in the cover picker.
+        g.MapGet("/{id:guid}/images", (Guid id, HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.GetPageImagesAsync(me.Id, id, ct))));
+
+        // Upload a new cover photo: validated by content, shrunk, stored on the NAS like any note image, then set as the cover.
+        g.MapPost("/{id:guid}/cover", async Task<IResult> (Guid id, IFormFile file, HttpContext http, INoteService svc, IAttachmentStore store,
+            IRealtime rt, IHubContext<NotesHub> hub, CancellationToken ct) =>
+        {
+            var me = await MeAsync(http);
+            if (me is null) return Results.Unauthorized();
+            var can = await svc.CanUploadAsync(me.Id, id, ct);
+            if (!can.Success) return Error(can.Error!);
+            await using var input = file.OpenReadStream();
+            await using var buffered = new MemoryStream();
+            await input.CopyToAsync(buffered, ct);
+            buffered.Position = 0;
+            var prepared = NoteCoverImage.Prepare(buffered, buffered.Length, out var problem);
+            if (prepared is null)
+                return Results.Json(new { code = problem, message = problem switch
+                {
+                    "too_large" => "Covers can be up to 10 MB.",
+                    "unsupported_format" => "Use a JPG, PNG or WebP image.",
+                    _ => "That file isn't a usable image.",
+                } }, statusCode: problem == "too_large" ? 413 : 422);
+            try
+            {
+                var baseName = Path.GetFileNameWithoutExtension(file.FileName);
+                await using var body = new MemoryStream(prepared.Bytes);
+                var stored = await store.PutAsync(AttachmentAreas.Notes, (string.IsNullOrWhiteSpace(baseName) ? "cover" : baseName) + prepared.Extension,
+                    prepared.ContentType, body, me.Id, ct);
+                await svc.LinkAttachmentAsync(id, stored.Id, ct);
+                var set = await svc.SetCoverImageAsync(me.Id, id, stored.Id, ct);
+                if (!set.Success) return Error(set.Error!);
+                await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteMeta", set.Data, ct);
+                return Results.Ok(set.Data);
+            }
+            catch (AttachmentRejectedException ex)
+            {
+                return Results.Json(new { code = ex.Code, message = ex.Message }, statusCode: 422);
+            }
+            catch (IPop.Application.Files.SynoException ex)
+            {
+                return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502);
+            }
+        }).DisableAntiforgery().RequirePermission("notes.write");
+
         return app;
     }
 

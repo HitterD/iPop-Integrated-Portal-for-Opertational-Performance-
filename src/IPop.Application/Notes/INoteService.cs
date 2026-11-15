@@ -64,14 +64,16 @@ public record NotePageDto(Guid Id, Guid? ParentId, string Title, string? Emoji, 
     int TodoDone, int TodoTotal, int OpenThreads, IReadOnlyList<NoteCrumbDto> Breadcrumb,
     IReadOnlyList<NoteCrumbDto> Children, IReadOnlyList<NoteRoomShareDto> Rooms,
     /// "notion" | "markdown" | "html" for pages created by Import (shown as a small badge), else null.
-    string? ImportSource = null);
+    string? ImportSource = null, Guid? CoverImageId = null, int CoverPosY = 50);
 
 public record NoteRoomShareDto(Guid RoomId, string Name, string Level);
 
 public record CreateNoteRequest(Guid? ParentId, string? Title, string? Emoji, string? Template, string? Accent, string? Cover);
 
+/// Cover: "" removes any cover; a gradient key picks that gradient (and drops a photo). CoverImageId picks a photo that is
+/// already linked to this page; CoverPosY (0-100) only moves the photo.
 public record UpdateNoteMetaRequest(string? Title, string? Emoji, string? Cover, string? Accent, string? Font,
-    bool? FullWidth, bool? SmallText);
+    bool? FullWidth, bool? SmallText, Guid? CoverImageId = null, int? CoverPosY = null);
 
 /// Put a page under ParentId (null = top level) just before BeforeId (null = at the end). Confirm is required
 /// when re-parenting changes who inherits access to the page (the first try fails with "confirm_audience").
@@ -135,7 +137,10 @@ public record NoteSearchRowDto(Guid Id, string Title, string? Emoji, string? Sni
 public record NoteSearchPageDto(IReadOnlyList<NoteSearchRowDto> Items, int Total, bool Truncated);
 
 /// Chat card payload, stored as "[note]" + json in ChatMessage.Content.
-public record NoteCardDto(Guid Id, string Title, string? Emoji, string? Cover, string Accent, string Level, string? Excerpt);
+public record NoteImageDto(Guid Id, string FileName, long Size);
+
+public record NoteCardDto(Guid Id, string Title, string? Emoji, string? Cover, string Accent, string Level, string? Excerpt,
+    Guid? CoverImageId = null, int CoverPosY = 50);
 
 /// A person in the Notes pickers. Nik is the photo/colour key only and is never shown (office rule,
 /// same as the other DTOs); Department is the second line. HasAccess is set when the search is made
@@ -199,6 +204,10 @@ public interface INoteService
 
     Task<NoteResult<bool>> CanUploadAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task LinkAttachmentAsync(Guid pageId, Guid attachmentId, CancellationToken ct);
+    /// Makes an already-uploaded, page-linked image the page's cover (Can edit). Image-only; replaces a gradient.
+    Task<NoteResult<NotePageDto>> SetCoverImageAsync(Guid userId, Guid pageId, Guid attachmentId, CancellationToken ct);
+    /// Images attached to this page (newest first), for "pick from this page".
+    Task<NoteResult<IReadOnlyList<NoteImageDto>>> GetPageImagesAsync(Guid userId, Guid pageId, CancellationToken ct);
 
     /// People picker for sharing and @mentions (active users by name or email). With a page, each row
     /// says whether that person can open it.

@@ -277,8 +277,8 @@ public sealed partial class NoteService
         var access = await GetAccessAsync(userId, pageId, ct);
         if (access == NoteAccess.None) return Fail<NoteCardDto>("not_found");
         var p = await db.NotePages.AsNoTracking().Where(x => x.Id == pageId)
-            .Select(x => new { x.Title, x.Emoji, x.Cover, x.Accent, x.Excerpt }).FirstAsync(ct);
-        return Ok(new NoteCardDto(pageId, p.Title, p.Emoji, p.Cover, p.Accent, level, p.Excerpt));
+            .Select(x => new { x.Title, x.Emoji, x.Cover, x.Accent, x.Excerpt, x.CoverImageId, x.CoverPosY }).FirstAsync(ct);
+        return Ok(new NoteCardDto(pageId, p.Title, p.Emoji, p.Cover, p.Accent, level, p.Excerpt, p.CoverImageId, p.CoverPosY));
     }
 
     public async Task<IReadOnlyList<Guid>> GetAudienceAsync(Guid pageId, CancellationToken ct)
@@ -446,6 +446,27 @@ public sealed partial class NoteService
         var linked = await db.NoteAttachments.AsNoTracking().Where(a => a.PageId == pageId && known.Contains(a.AttachmentId))
             .Select(a => a.AttachmentId).ToListAsync(ct);
         foreach (var id in known.Except(linked)) db.NoteAttachments.Add(new NoteAttachment { AttachmentId = id, PageId = pageId });
+    }
+
+    private async Task<bool> IsPageImageAsync(Guid pageId, Guid attachmentId, CancellationToken ct) =>
+        await (from na in db.NoteAttachments.AsNoTracking()
+               join a in db.Attachments.AsNoTracking() on na.AttachmentId equals a.Id
+               where na.PageId == pageId && na.AttachmentId == attachmentId && a.DeletedAt == null && a.ContentType.StartsWith("image/")
+               select a.Id).AnyAsync(ct);
+
+    public async Task<NoteResult<NotePageDto>> SetCoverImageAsync(Guid userId, Guid pageId, Guid attachmentId, CancellationToken ct) =>
+        await UpdateMetaAsync(userId, pageId, new UpdateNoteMetaRequest(null, null, null, null, null, null, null, attachmentId), ct);
+
+    public async Task<NoteResult<IReadOnlyList<NoteImageDto>>> GetPageImagesAsync(Guid userId, Guid pageId, CancellationToken ct)
+    {
+        var access = await GetAccessAsync(userId, pageId, ct);
+        if (access == NoteAccess.None) return Fail<IReadOnlyList<NoteImageDto>>("not_found");
+        var rows = await (from na in db.NoteAttachments.AsNoTracking()
+                          join a in db.Attachments.AsNoTracking() on na.AttachmentId equals a.Id
+                          where na.PageId == pageId && a.DeletedAt == null && a.ContentType.StartsWith("image/")
+                          orderby a.CreatedAt descending
+                          select new NoteImageDto(a.Id, a.FileName, a.Size)).Take(60).ToListAsync(ct);
+        return Ok<IReadOnlyList<NoteImageDto>>(rows);
     }
 
     public async Task LinkAttachmentAsync(Guid pageId, Guid attachmentId, CancellationToken ct)

@@ -298,7 +298,7 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         var p = await db.NotePages.AsNoTracking().Where(x => x.Id == pageId).Select(x => new
         {
             x.Id, x.ParentId, x.Title, x.Emoji, x.Cover, x.Accent, x.Font, x.FullWidth, x.SmallText, x.IsGuide,
-            x.CreatedAt, x.UpdatedAt, x.UpdatedById, x.TodoDone, x.TodoTotal, x.ImportSource,
+            x.CreatedAt, x.UpdatedAt, x.UpdatedById, x.TodoDone, x.TodoTotal, x.ImportSource, x.CoverImageId, x.CoverPosY,
             OwnerName = x.Owner.Name, OwnerNik = x.Owner.Nik,
         }).FirstAsync(ct);
 
@@ -331,7 +331,7 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
 
         return new NotePageDto(p.Id, p.ParentId, p.Title, p.Emoji, p.Cover, p.Accent, p.Font, p.FullWidth, p.SmallText,
             p.IsGuide, NoteLevels.Name(access), fav, isShared, p.OwnerName, p.OwnerNik, p.CreatedAt, p.UpdatedAt, updatedBy,
-            p.TodoDone, p.TodoTotal, open, crumbs, children, rooms, p.ImportSource);
+            p.TodoDone, p.TodoTotal, open, crumbs, children, rooms, p.ImportSource, p.CoverImageId, p.CoverPosY);
     }
 
     /// Group name, or for a DM the other person's name as seen by <paramref name="viewerId"/>.
@@ -388,7 +388,19 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
 
         if (req.Title is not null) page.Title = Clean(req.Title, 200) ?? "";
         if (req.Emoji is not null) page.Emoji = Clean(req.Emoji, 16);
-        if (req.Cover is not null) page.Cover = req.Cover == "" ? null : req.Cover;
+        if (req.Cover is not null)
+        {
+            // Any explicit cover choice (a gradient, or "" = none) replaces a photo.
+            page.Cover = req.Cover == "" ? null : req.Cover;
+            page.CoverImageId = null;
+            page.CoverPosY = 50;
+        }
+        if (req.CoverImageId is { } imgId)
+        {
+            if (!await IsPageImageAsync(pageId, imgId, ct)) return Fail<NotePageDto>("invalid_style");
+            page.CoverImageId = imgId; page.Cover = null; page.CoverPosY = 50;
+        }
+        if (req.CoverPosY is { } posY) page.CoverPosY = Math.Clamp(posY, 0, 100);
         if (req.Accent is not null) page.Accent = req.Accent;
         if (req.Font is not null) page.Font = req.Font;
         if (req.FullWidth is { } w) page.FullWidth = w;

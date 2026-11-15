@@ -84,7 +84,7 @@ public sealed partial class NoteService
         var copy = new NotePage
         {
             Id = Guid.NewGuid(), OwnerId = userId, ParentId = parent,
-            Title = Clean("Copy of " + title, 200)!, Emoji = src.Emoji, Cover = src.Cover, Accent = src.Accent,
+            Title = Clean("Copy of " + title, 200)!, Emoji = src.Emoji, Cover = src.Cover, CoverPosY = src.CoverPosY, Accent = src.Accent,
             Font = src.Font, FullWidth = src.FullWidth, SmallText = src.SmallText, SeedTemplate = src.SeedTemplate,
             YState = src.YState, Excerpt = src.Excerpt, PlainText = src.PlainText,
             TodoDone = src.TodoDone, TodoTotal = src.TodoTotal,
@@ -112,6 +112,12 @@ public sealed partial class NoteService
                        System.Text.Encoding.ASCII.GetBytes(cloneId.ToString("D"))));
         }
         copy.YState = RemapGuids(src.YState, remap);
+        // The photo cover is one of the cloned attachments: point the copy at its clone.
+        if (src.CoverImageId is { } coverImg)
+        {
+            var idx = srcAtts.FindIndex(a => a.Id == coverImg);
+            if (idx >= 0 && Guid.TryParse(System.Text.Encoding.ASCII.GetString(remap[idx].NewBytes), out var newCover)) copy.CoverImageId = newCover;
+        }
 
         // Edits not yet folded into the snapshot travel along; Yjs merges them on first open.
         var updates = await db.NoteUpdates.AsNoTracking().Where(u => u.PageId == pageId).OrderBy(u => u.Id)
