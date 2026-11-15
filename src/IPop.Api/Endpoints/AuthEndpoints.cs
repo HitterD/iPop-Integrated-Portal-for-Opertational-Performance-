@@ -59,7 +59,9 @@ public static class AuthEndpoints
         return app;
     }
 
-    private static string? Ip(HttpContext http) => http.Connection.RemoteIpAddress?.ToString();
+    /// The browser's address for audit rows and throttling: behind NPM the raw peer is the proxy for the whole office.
+    internal static string? ClientIp(HttpContext http, IConfiguration cfg) => IPop.Api.Notifier.ClientAddress.Of(http, cfg);
+    private static string? Ip(HttpContext http) => ClientIp(http, http.RequestServices.GetRequiredService<IConfiguration>());
 
     internal static string ResetUrlBase(HttpContext http, IConfiguration cfg)
     {
