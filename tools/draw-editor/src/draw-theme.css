@@ -1,5 +1,6 @@
 /* Excalidraw dressed as part of iPop Notes: iPop colours, rounded controls, none of Excalidraw's own links or branding. */
 .nt-draw .excalidraw,
+.nt-board .excalidraw,
 .nt-draw-fs .excalidraw {
   --color-primary: var(--accent, #34A853);
   --color-primary-darker: color-mix(in srgb, var(--accent, #34A853) 85%, black);
@@ -38,3 +39,11 @@
 .nt-draw.ro .excalidraw .App-toolbar,
 .nt-draw.ro .excalidraw .layer-ui__wrapper__top-right,
 .nt-draw.ro .excalidraw .App-bottom-bar { display: none !important; }
+
+/* Whiteboard page: the canvas sits on the page's dotted background, tools are always visible. */
+.nt-board .excalidraw .welcome-screen-center,
+.nt-board .excalidraw .help-icon,
+.nt-board .excalidraw .library-button,
+.nt-board .excalidraw a[href*="excalidraw.com"],
+.nt-board .excalidraw a[href*="github.com"] { display: none !important; }
+.nt-board .excalidraw .excalidraw-container { background: transparent; }

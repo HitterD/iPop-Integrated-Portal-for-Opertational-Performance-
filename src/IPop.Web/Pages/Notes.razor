@@ -91,7 +91,7 @@
                         {
                             <div class="nt-row @(IsActive(p!.Id) ? "active" : "") @(menuFor?.Id == p.Id ? "menu-on" : "")" role="button" tabindex="0" data-id="@p.Id"
                                  @onclick="() => Open(p.Id)" @onkeydown="e => OnRowKey(e, p)">
-                                <span class="emo">@(p.Emoji ?? "📄")</span><span class="t">@DisplayTitle(p.Title)</span>
+                                <span class="emo">@(p.Emoji ?? "📄")</span><span class="t">@DisplayTitle(p.Title)</span>@if (p.Kind == "board") {<span class="nt-kind">Board</span>}
                                 <span class="meta">@Ago(p.UpdatedAt)</span>
                                 <span class="actions">
                                     <span role="button" tabindex="-1" title="More" aria-label="Page options" @onclick="e => OpenRowMenu(p, e)" @onclick:stopPropagation><i data-lucide="ellipsis"></i></span>
@@ -355,7 +355,20 @@
                                     <span class="nt-prop nt-imported" title="Imported @ShortDate(note.CreatedAt)"><i data-lucide="file-up"></i>Imported from @SourceLabel(src)</span>
                                 }
                             </div>
-                            <div @ref="editorRef" @key="note.Id"></div>
+                            @if (note.Kind == "board")
+                            {
+                                <div class="nt-board-bar" role="toolbar" aria-label="Whiteboard templates">
+                                    <span class="lbl">Start from</span>
+                                    @foreach (var (key, label) in BoardTemplates)
+                                    {
+                                        var k = key;
+                                        <button type="button" class="nt-btn" disabled="@(!CanEdit)" @onclick="() => ApplyBoardTemplateAsync(k)">@label</button>
+                                    }
+                                </div>
+                                <div class="nt-board" @ref="boardRef" @key="@($"board-{note.Id}")"></div>
+                            }
+                            @* A whiteboard has no document text, but the text editor still carries the page's sync, so it stays mounted (hidden). *@
+                            <div @ref="editorRef" @key="note.Id" class="@(note.Kind == "board" ? "nt-editor-hidden" : "")"></div>
                             @if (showTemplates)
                             {
                                 <div class="nt-tpl-hint">OR START FROM A TEMPLATE</div>
@@ -393,7 +406,7 @@
                             @foreach (var p in sidebar.Pages.OrderByDescending(p => p.IsGuide && !GuideHidden(p)).ThenByDescending(p => p.UpdatedAt).Take(11))
                             {
                                 <button type="button" class="nt-card" @onclick="() => Open(p.Id)">
-                                    <span class="emo">@(p.Emoji ?? "📄")</span><span class="t">@DisplayTitle(p.Title)</span>
+                                    <span class="emo">@(p.Emoji ?? "📄")</span><span class="t">@DisplayTitle(p.Title)</span>@if (p.Kind == "board") {<span class="nt-kind">Board</span>}
                                     <span class="m">@(p.IsMine ? "" : p.OwnerName + " · ")@Ago(p.UpdatedAt)</span>
                                 </button>
                             }
@@ -435,6 +448,7 @@
                 {
                     <button type="button" class="mi" @onclick="() => pop = Pop.Style"><i data-lucide="palette" class="sm"></i>Style</button>
                     <button type="button" class="mi" @onclick="() => CreateBlank(note.Id)"><i data-lucide="file-plus" class="sm"></i>Add sub-page</button>
+                    <button type="button" class="mi" @onclick='() => CreateBlank(note.Id, "board")'><i data-lucide="layout-dashboard" class="sm"></i>Add whiteboard</button>
                 }
                 <button type="button" class="mi" @onclick="() => { pop = Pop.None; _ = ToggleFavorite(); }"><i data-lucide="star" class="sm"></i>@(note.IsFavorite ? "Remove from favorites" : "Add to favorites")</button>
                 <button type="button" class="mi" @onclick="OpenHistory"><i data-lucide="history" class="sm"></i>Version history</button>
@@ -777,6 +791,7 @@
         }
         <hr />
         <button type="button" class="mi" @onclick="() => CreateBlank(null)"><span class="nt-mi-emo">📄</span>Blank page</button>
+        <button type="button" class="mi" @onclick='() => CreateBlank(null, "board")'><span class="nt-mi-emo">🧩</span>Whiteboard<span class="ds">Sticky notes, shapes, drawing</span></button>
         <button type="button" class="mi nt-mi-import" @onclick="() => OpenImport(null)"><i data-lucide="file-up" class="sm"></i>Import…<span class="ds">Notion, Markdown, HTML</span></button>
         @if (TutorialRegistry.Get("notes") is { } tour) { <hr /><button type="button" class="mi" @onclick="async () => { newMenuOpen = false; await Tutorials.StartTourAsync(tour); }"><span class="nt-mi-emo">🧭</span>1-minute tour</button> }
     </div>
@@ -1039,7 +1054,7 @@
                 }
                 else
                 {
-                    <span class="t">@DisplayTitle(p.Title)</span>
+                    <span class="t">@DisplayTitle(p.Title)</span>@if (p.Kind == "board") {<span class="nt-kind">Board</span>}
                     @if (p.IsShared) { <span class="meta"><i data-lucide="users" class="sm"></i></span> }
                     <span class="actions">
                         <span role="button" tabindex="-1" title="More" aria-label="Page options" @onclick="e => OpenRowMenu(p, e)" @onclick:stopPropagation><i data-lucide="ellipsis"></i></span>

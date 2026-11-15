@@ -108,13 +108,17 @@ public partial class Notes
     // ── Create ───────────────────────────────────────────────────────────────
 
     /// One click: a blank page (under <paramref name="parent"/>), opened with the title focused.
-    private async Task CreateBlank(Guid? parent)
+    private Task CreateBlank(Guid? parent) => CreateBlank(parent, "page");
+
+    /// kind: "page" (a document) or "board" (a whiteboard). A new board is titled "Whiteboard" so it never shows up as Untitled.
+    private async Task CreateBlank(Guid? parent, string kind)
     {
         if (creating) return;
         creating = true; newMenuOpen = false; menuFor = null; pop = Pop.None;
         try
         {
-            var res = await Auth.SendAsync(HttpMethod.Post, "/api/notes", new CreateNoteRequest(parent, "", null, null, null, null));
+            var res = await Auth.SendAsync(HttpMethod.Post, "/api/notes",
+                new CreateNoteRequest(parent, kind == "board" ? "Whiteboard" : "", null, null, null, null, kind));
             if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't create the page", ToastKind.Error); return; }
             var created = await res.Content.ReadFromJsonAsync<NotePageDto>(Json);
             if (created is null) return;

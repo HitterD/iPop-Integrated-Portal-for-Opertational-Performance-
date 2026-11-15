@@ -357,6 +357,14 @@ export async function mount(el, opts) {
     },
   });
 
+  // A whiteboard page: the same document and sync, but the page body is one endless canvas (scene "draw:board") instead of text.
+  let board = null;
+  if (opts.kind === 'board' && opts.boardEl) {
+    mountScene(opts.boardEl, { ydoc, id: 'board', readOnly: !canEdit, mode: 'board', onLinkOpen: url => host.openLink(url) })
+      .then(inst => { if (closing) inst.destroy(); else board = inst; })
+      .catch(() => host.toast('Couldn’t load the whiteboard tools. Check your connection and reload the page.'));
+  }
+
   const toolbar = createToolbar(editor, host);
   rich = canEdit ? createRichUi(editor, host) : null;
   const blockMenu = createBlockMenu(editor, host, () => handlePos >= 0 ? handlePos : null);
@@ -656,6 +664,10 @@ export async function mount(el, opts) {
       return { applied, title: newTitle };
     },
     undo() { if (!closing && canEdit) editor.chain().focus().undo().run(); },
+    /// Whiteboard: add a starter layout (placed beside whatever is already there). Returns how many elements were added.
+    boardTemplate(name) { return board && canEdit ? board.applyTemplate(name, { keep: true }) : 0; },
+    async boardPng(dark) { return board ? await board.png({ dark }) : null; },
+    boardCount() { return board ? board.count() : 0; },
     isEmpty() { return !closing && editor.isEmpty; },
     focus() { if (!closing) editor.commands.focus('start'); },
     restore(state) {
@@ -676,6 +688,7 @@ export async function mount(el, opts) {
       await hub.invoke('LeavePage', pageId).catch(() => {});
       await hub.stop().catch(() => {});
       fsClose?.();
+      board?.destroy(); board = null;
       closeLightboxes(host);
       window.removeEventListener('focus', host.accessChanged);
       window.removeEventListener('beforeunload', onBeforeUnload);

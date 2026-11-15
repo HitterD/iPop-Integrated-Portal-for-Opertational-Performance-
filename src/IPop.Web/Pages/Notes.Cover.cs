@@ -11,6 +11,15 @@ public partial class Notes
 {
     private enum CoverTab { Colours, Upload, ThisPage }
 
+    private static readonly (string Key, string Label)[] BoardTemplates = [("retro", "Retro"), ("flow", "Flowchart"), ("brainstorm", "Brainstorm")];
+
+    private async Task ApplyBoardTemplateAsync(string key)
+    {
+        if (editor is null || !CanEdit) return;
+        var n = await editor.InvokeAsync<int>("boardTemplate", key);
+        if (n == 0) Toasts.Show("The whiteboard is still loading. Try again in a moment.", ToastKind.Info);
+    }
+
     private IJSObjectReference? coverJs;
     private ElementReference coverRef;
     private CoverTab coverTab = CoverTab.Colours;

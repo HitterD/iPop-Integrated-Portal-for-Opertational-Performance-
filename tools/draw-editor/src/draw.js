@@ -5,8 +5,9 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { Excalidraw, exportToBlob, exportToSvg, convertToExcalidrawElements } from '@excalidraw/excalidraw';
 import { pushElements, readElements, reassert, visible, isElement, compact } from './scene.js';
+import { BOARD_TEMPLATES, TEMPLATE_NAMES } from './templates.js';
 
-export { convertToExcalidrawElements };
+export { convertToExcalidrawElements, TEMPLATE_NAMES };
 
 /// opts: {
 ///   ymap: Y.Map, doc: Y.Doc,                 shared scene
@@ -78,7 +79,7 @@ export function mountDraw(el, opts) {
   };
 
   const App = React.createElement(Excalidraw, {
-    excalidrawAPI: a => { api = a; opts.onReady?.(a); },
+    excalidrawAPI: a => { api = a; opts.onReady?.(a); try { if (localStorage.getItem('ipop.qa') === '1') (window.__ipopQa ||= {}).draw = a; } catch { /* storage blocked */ } },
     initialData: { elements: initial(), appState: { viewBackgroundColor: 'transparent', currentItemFontFamily: 5, currentItemRoughness: 1 }, scrollToContent: true },
     onChange: handleChange,
     onPointerUp: () => flushNow(),
@@ -87,13 +88,33 @@ export function mountDraw(el, opts) {
     langCode: 'en',
     UIOptions: ui,
     autoFocus: false,
-    detectScroll: false,
+    // The canvas sits inside a scrolling page: Excalidraw must re-measure its position when that page scrolls, or every click
+    // and stroke lands at the wrong place after scrolling.
+    detectScroll: true,
     handleKeyboardGlobally: false,
     onLinkOpen: (element, event) => { if (opts.onLinkOpen) { event.preventDefault(); opts.onLinkOpen(element.link); } },
   });
   root.render(App);
 
   return {
+    /// Replaces/extends the board with a starter layout. Returns the number of elements added. Existing content is kept when
+    /// `keep` is true (the template is placed to the right of it), so applying a template never destroys somebody's work.
+    applyTemplate(name, { keep = true } = {}) {
+      const make = BOARD_TEMPLATES[name];
+      if (!make || !api || readOnly) return 0;
+      const fresh = convertToExcalidrawElements(make(), { regenerateIds: true });
+      const existing = api.getSceneElementsIncludingDeleted();
+      let dx = 0;
+      if (keep) {
+        const live = existing.filter(e => !e.isDeleted);
+        if (live.length) dx = Math.max(...live.map(e => e.x + (e.width || 0))) + 80;
+      }
+      const moved = fresh.map(e => ({ ...e, x: e.x + dx }));
+      const next = keep ? [...existing, ...moved] : [...existing.map(e => ({ ...e, isDeleted: true })), ...moved];
+      api.updateScene({ elements: next });
+      api.scrollToContent(moved, { fitToViewport: true, viewportZoomFactor: 0.85 });
+      return moved.length;
+    },
     setReadOnly(v) { readOnly = !!v; api?.updateScene({ appState: { viewModeEnabled: readOnly } }); },
     setTheme(t) { theme = t; root.render(React.cloneElement(App, { theme: t, viewModeEnabled: readOnly })); },
     api: () => api,

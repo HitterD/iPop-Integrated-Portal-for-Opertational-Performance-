@@ -22,7 +22,7 @@ public partial class Notes
 {
     [Parameter] public Guid? Id { get; set; }
 
-    private const string EditorModule = "./js/notes/notes-editor.js?v=20261116-draw4";
+    private const string EditorModule = "./js/notes/notes-editor.js?v=20261116-board4";
 
     private enum View { Home, Page, New, Trash }
     private enum Pop { None, More, Style, Emoji, Share, History, Tidy }
@@ -50,7 +50,7 @@ public partial class Notes
     private string newTitle = "";
     private string newAccent = "blue";
 
-    private ElementReference editorRef, scrollRef, searchRef, newTitleRef, draftRef, previewRef;
+    private ElementReference boardRef, editorRef, scrollRef, searchRef, newTitleRef, draftRef, previewRef;
     private IJSObjectReference? module, editor, hotkeys, previewer;
     [CascadingParameter] public IPop.Web.Layout.MainLayout? Layout { get; set; }
     private DotNetObjectReference<Notes>? selfRef;
@@ -219,6 +219,8 @@ public partial class Notes
             accent = p.Accent,
             pages = (sidebar?.Pages ?? []).Select(x => new { id = x.Id, title = DisplayTitle(x.Title), emoji = x.Emoji ?? "📄" }),
             dotnet = selfRef,
+            kind = p.Kind,
+            boardEl = p.Kind == "board" ? boardRef : (object?)null,
         };
         try
         {
@@ -258,7 +260,7 @@ public partial class Notes
     private async Task RefreshEmptyAsync()
     {
         if (editor is null) return;
-        showTemplates = CanEdit && await editor.InvokeAsync<bool>("isEmpty");
+        showTemplates = CanEdit && note?.Kind != "board" && await editor.InvokeAsync<bool>("isEmpty");
     }
 
     private async Task ApplyTemplate(string key)
