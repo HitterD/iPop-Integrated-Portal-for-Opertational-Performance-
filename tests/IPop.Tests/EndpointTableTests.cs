@@ -46,7 +46,9 @@ public class EndpointTableTests
             try { return d.Endpoints; }
             catch (Exception e) { failures.Add(e.Message.Split('\n')[0]); return []; }
         }).ToList();
-        Assert.Empty(failures);
+        Assert.True(failures.Count == 0, string.Join("
+---
+", failures.Distinct().Take(6)));
         Assert.True(endpoints.Count > 200, $"endpoint table looks too small ({endpoints.Count})");
     }
 }
