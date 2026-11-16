@@ -108,7 +108,7 @@ jobs:
           NODE_PATH="$RUNNER_TEMP/upload-browser/node_modules" node tests/mail-upload-admission.browser.cjs
 
   draw-editor:
-    name: Drawing bundle tests
+    name: Drawing bundle tests (whiteboard canvas + old Excalidraw)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -125,11 +125,13 @@ jobs:
         working-directory: tools/draw-editor
         run: |
           npm run build
-          if [ -n "$(git status --porcelain -- ../../src/IPop.Web/wwwroot/js/notes/draw)" ]; then
-            echo "::error::src/IPop.Web/wwwroot/js/notes/draw is stale: run 'npm run build' in tools/draw-editor and commit it."
-            git status --short -- ../../src/IPop.Web/wwwroot/js/notes/draw | head -20
-            exit 1
-          fi
+          for d in draw canvas; do
+            if [ -n "$(git status --porcelain -- ../../src/IPop.Web/wwwroot/js/notes/$d)" ]; then
+              echo "::error::src/IPop.Web/wwwroot/js/notes/$d is stale: run 'npm run build' in tools/draw-editor and commit it."
+              git status --short -- ../../src/IPop.Web/wwwroot/js/notes/$d | head -20
+              exit 1
+            fi
+          done
 
   notes-editor:
     name: Notes editor tests
