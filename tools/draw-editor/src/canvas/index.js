@@ -35,6 +35,11 @@ export function sceneFor(doc, id, { readOnly = false, Y } = {}) {
 }
 
 /// opts as in mountCanvas plus { ymap?, doc, id? }. When `id` is given the scene is resolved (and converted) here.
+/// Whether opening this drawing with edit rights would convert an old Excalidraw scene (the page saves a named version first).
+export function needsConversion(doc, id) {
+  return !(doc.share.has(`wb:${id}`) && doc.getMap(`wb:${id}`).size > 0) && doc.share.has(`draw:${id}`) && doc.getMap(`draw:${id}`).size > 0;
+}
+
 export function mountDraw(el, opts) {
   let { ymap } = opts;
   if (opts.id != null || !ymap) ymap = sceneFor(opts.doc, opts.id, { readOnly: opts.readOnly, Y: opts.Y }).ymap;
@@ -45,10 +50,15 @@ export function mountDraw(el, opts) {
 const pickElements = list => (list || []).filter(isElement);
 
 /// PNG of stored elements without any UI (exports). Accepts canvas elements, or an Excalidraw list which is converted first.
-export async function renderPng(elements, { scale = 2, dark = false } = {}) {
+export async function renderPng(elements, { scale = 2, dark = false, loadFile } = {}) {
   const els = toCanvasElements(elements);
   if (!els.length) return null;
-  return toPng(els, { scale, theme: dark ? 'dark' : 'light' });
+  // pictures on the board are embedded as data URLs (an SVG rasterised from a data URL cannot load blob: URLs)
+  const files = new Map();
+  if (loadFile) for (const e of els) if (e.type === 'image' && e.fileId && !files.has(e.fileId)) {
+    try { const b = await (await fetch(await loadFile(e.fileId))).blob(); files.set(e.fileId, await new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(b); })); } catch { /* drawn as a placeholder */ }
+  }
+  return toPng(els, { scale, theme: dark ? 'dark' : 'light', files });
 }
 export async function renderSvg(elements, { dark = false } = {}) {
   const els = toCanvasElements(elements);

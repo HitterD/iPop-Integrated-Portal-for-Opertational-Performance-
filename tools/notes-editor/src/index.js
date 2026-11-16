@@ -29,7 +29,7 @@ import * as Y from 'yjs';
 import { Awareness, encodeAwarenessUpdate, applyAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness';
 import * as signalR from '@microsoft/signalr';
 
-import { BlockBackground, Callout, NoteWidget, NoteToc, HeadingFlash, SubPage, NoteFile, CommentHighlights, commentKey, countTodos, todoDueItems, releaseBlobs, esc, flashKey } from './nodes.js';
+import { BlockBackground, Callout, NoteWidget, NoteToc, HeadingFlash, SubPage, NoteFile, CommentHighlights, commentKey, countTodos, todoDueItems, releaseBlobs, esc, flashKey, loadBlob } from './nodes.js';
 import { SlashMenu, mentionSuggestion, phoneMentionKey, createToolbar, createHandle, createBlockMenu, place } from './menus.js';
 import { NoteImage, NoteGallery, NoteBookmark, NoteEmbed, RichTaskItem, TodoExtras, tableExtensions, taskItemAt, todoInsertPos, createRichUi, closeLightboxes } from './rich.js';
 import { TEMPLATES, GUIDE_COMMENT_TEXT } from './templates.js';
@@ -149,9 +149,45 @@ export async function mount(el, opts) {
   let pages = new Map((opts.pages || []).map(p => [p.id, p]));
 
   // ── Host services used by nodes and menus ────────────────────────────────
+  let beforeConvertDone = null;
   const palette = ['#0A84FF', '#5856D6', '#AF52DE', '#FF2D55', '#FF9500', '#34C759', '#30B0C7', '#A2845E'];
   const host = {
     drawDoc: () => ydoc,
+    // Whiteboard library (My library + team library), stored on the server for the signed-in person.
+    drawLibrary: {
+      async list() { const r = await api('/api/notes/library'); if (!r.ok) throw new Error(String(r.status)); return r.json(); },
+      async save(item) {
+        const r = await api('/api/notes/library', { method: 'POST', json: item });
+        if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.code || String(r.status)); }
+        return r.json();
+      },
+      async update(id, patch) { const r = await api(`/api/notes/library/${id}`, { method: 'PATCH', json: patch }); if (!r.ok) throw new Error(String(r.status)); return r.json(); },
+      async remove(id) { const r = await api(`/api/notes/library/${id}`, { method: 'DELETE' }); if (!r.ok) throw new Error(String(r.status)); },
+    },
+    // Before an old drawing becomes the new canvas, the page as it is now is kept as a named version (once per page).
+    beforeCanvasConvert: async () => {
+      if (beforeConvertDone) return beforeConvertDone;
+      beforeConvertDone = (async () => {
+        await flush(); scheduleSnapshot.cancel(); await snapshot();
+        await api(`/api/notes/${pageId}/versions`, { method: 'POST', json: { name: 'Before the new canvas' } });
+      })();
+      return beforeConvertDone;
+    },
+    // Pictures and files on a whiteboard: uploaded into the page like any Notes upload (NAS, page access).
+    drawFiles: {
+      async upload(file) {
+        if (!canEdit) throw new Error('You can only view this page');
+        const form = new FormData(); form.append('file', file, file.name);
+        const r = await uploadXhr(`${apiBase}/api/notes/${pageId}/uploads`, form, await token());
+        if (!r.ok) throw new Error(r.json?.message || `Couldn't upload ${file.name}`);
+        return r.json;
+      },
+      load: id => loadBlob(host, id),
+      async open(id, name) {
+        try { const url = await loadBlob(host, id); const a = document.createElement('a'); a.href = url; a.download = name || 'file'; a.click(); }
+        catch { host.toast("Couldn't open the file"); }
+      },
+    },
     allPages: () => [...pages.values()],
     currentPageId: () => pageId,
     pagesKnown: () => pages.size > 0,
@@ -345,7 +381,7 @@ export async function mount(el, opts) {
     fsClose = finish;
     close.addEventListener('click', finish);
     document.addEventListener('keydown', onKey, true);
-    try { inst = await mountScene(stage, { ydoc, id, readOnly: !canEdit, mode: 'board', toast: m => host.toast(m) }); if (!fsClose) inst.destroy(); }
+    try { inst = await mountScene(stage, { ydoc, id, readOnly: !canEdit, mode: 'board', toast: m => host.toast(m), library: host.drawLibrary, files: host.drawFiles, beforeConvert: host.beforeCanvasConvert }); if (!fsClose) inst.destroy(); }
     catch { host.toast('Couldn’t load the drawing tools. Check your connection.'); finish(); }
   }
 
@@ -411,7 +447,7 @@ export async function mount(el, opts) {
       return !!fsHome;
     };
     boardFsExit = () => onBoardFs(false);
-    mountScene(boardEl, { ydoc, id: 'board', readOnly: !canEdit, mode: 'board', onLinkOpen: url => host.openLink(url), toast: m => host.toast(m), onFullscreen: onBoardFs })
+    mountScene(boardEl, { ydoc, id: 'board', readOnly: !canEdit, mode: 'board', onLinkOpen: url => host.openLink(url), toast: m => host.toast(m), onFullscreen: onBoardFs, library: host.drawLibrary, files: host.drawFiles, beforeConvert: host.beforeCanvasConvert })
       .then(inst => { if (closing) inst.destroy(); else board = inst; })
       .catch(() => host.toast('Couldn’t load the whiteboard tools. Check your connection and reload the page.'));
   }

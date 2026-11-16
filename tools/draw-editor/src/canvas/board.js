@@ -42,6 +42,10 @@ const ICONS = {
   keys: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
   more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
 };
+ICONS.book = '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>';
+ICONS.bookplus = '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M12 7v6M9 10h6"/>';
+ICONS.image = '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>';
+ICONS.file = '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>';
 const icon = (name, cls = 'wb-i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
 
 const INK = ['#1D1D1F', '#FF3B30', '#FF9500', '#34A853', '#0A84FF', '#AF52DE'];
@@ -49,7 +53,7 @@ const FILLS = [null, '#FFF3A3', '#C9F2C7', '#CFE6FF', '#FFD3E1', '#E6DAFF', '#F2
 const SIZES = [['S', 14], ['M', 18], ['L', 26], ['XL', 40]];
 
 // Letter shortcuts like ClickUp; digits keep the old Excalidraw meaning (grill Q18).
-const KEYS = { v: 'select', h: 'hand', p: 'pen', m: 'highlighter', e: 'eraser', s: 'sticky', t: 'text', r: 'rect', o: 'ellipse', d: 'diamond', a: 'connector', l: 'connector', f: 'frame' };
+const KEYS = { i: 'image', v: 'select', h: 'hand', p: 'pen', m: 'highlighter', e: 'eraser', s: 'sticky', t: 'text', r: 'rect', o: 'ellipse', d: 'diamond', a: 'connector', l: 'connector', f: 'frame' };
 const DIGITS = { 0: 'eraser', 1: 'select', 2: 'rect', 3: 'diamond', 4: 'ellipse', 5: 'connector', 6: 'connector', 7: 'pen', 8: 'text', 9: 'select' };
 const SHAPE_LABEL = { rect: 'Rectangle', ellipse: 'Circle', diamond: 'Diamond', triangle: 'Triangle', star: 'Star', cloud: 'Cloud', arrowShape: 'Block arrow', cylinder: 'Cylinder', bubble: 'Speech bubble' };
 const MAX_ELEMENTS = 20000;
@@ -86,7 +90,8 @@ export function mountCanvas(container, opts) {
   const topLeft = el('div', 'wb-corner wb-tl'), topRight = el('div', 'wb-corner wb-tr');
   const gallery = el('div', 'wb-panel wb-gallery'); gallery.hidden = true;
   const emptyGallery = el('div', 'wb-emptygal'); emptyGallery.hidden = true;
-  root.append(toolbar, props, zoomBar, shapeMenu, keysPanel, neat, toastEl, topLeft, topRight, gallery, emptyGallery);
+  const libPanel = el('div', 'wb-panel wb-lib'); libPanel.hidden = true; libPanel.setAttribute('role', 'dialog'); libPanel.setAttribute('aria-label', 'Library');
+  root.append(toolbar, props, zoomBar, shapeMenu, keysPanel, neat, toastEl, topLeft, topRight, gallery, emptyGallery, libPanel);
   container.append(root);
 
   // ── State ────────────────────────────────────────────────────────────────
@@ -145,6 +150,7 @@ export function mountCanvas(container, opts) {
     let prev = null;
     for (const e of ordered) {
       seen.add(e.id);
+      if ((e.type === 'image' || e.type === 'file') && e.fileId && e.type === 'image') ensureFile(e.fileId);
       // a connector must redraw when either shape it is attached to moves
       const deps = e.type === 'connector' ? `${get(e.from?.id)?.version ?? ''}:${get(e.from?.id)?.x ?? ''},${get(e.from?.id)?.y ?? ''}|${get(e.to?.id)?.version ?? ''}:${get(e.to?.id)?.x ?? ''},${get(e.to?.id)?.y ?? ''},${get(e.to?.id)?.w ?? ''}` : '';
       // a stroke being drawn keeps its version while points are added, so the point count is part of the key
@@ -217,12 +223,12 @@ export function mountCanvas(container, opts) {
   const TOOLS = [
     ['select', 'Select', 'V'], ['hand', 'Hand', 'H'], '|',
     ['pen', 'Pen', 'P'], ['highlighter', 'Highlighter', 'M'], ['eraser', 'Eraser', 'E'], '|',
-    ['sticky', 'Sticky note', 'S'], ['text', 'Text', 'T'], ['shape', 'Shapes', 'R'], ['connector', 'Connector', 'A'], '|', ['frame', 'Frame', 'F'],
+    ['sticky', 'Sticky note', 'S'], ['text', 'Text', 'T'], ['shape', 'Shapes', 'R'], ['connector', 'Connector', 'A'], '|', ['frame', 'Frame', 'F'], ['image', 'Picture or file', 'I'],
   ];
   function paintToolbar() {
     if (readOnly) { toolbar.hidden = true; return; }
     toolbar.hidden = false;
-    toolbar.innerHTML = TOOLS.filter(t => !(compact && (t[0] === 'frame' || t[0] === 'highlighter'))).map(t => {
+    toolbar.innerHTML = TOOLS.filter(t => !(compact && (t[0] === 'frame' || t[0] === 'highlighter')) && !(t[0] === 'image' && !opts.upload)).map(t => {
       if (t === '|') return '<span class="wb-sep"></span>';
       const [k, label, key] = t;
       const on = k === tool || (k === 'shape' && SHAPES.includes(tool));
@@ -236,6 +242,7 @@ export function mountCanvas(container, opts) {
     if (b.dataset.act === 'fullscreen') { opts.onFullscreen?.(); return; }
     const k = b.dataset.tool;
     if (k === 'shape') { toggleShapeMenu(b); return; }
+    if (k === 'image') { pickFiles(); return; }
     if (k === 'sticky' && tool === 'sticky') stickyColor = STICKY_COLORS[(STICKY_COLORS.indexOf(stickyColor) + 1) % STICKY_COLORS.length];
     setTool(k);
   });
@@ -264,7 +271,8 @@ export function mountCanvas(container, opts) {
   let fullscreen = false;
   function paintCorners() {
     const canTemplates = !readOnly && mode === 'board';
-    topLeft.innerHTML = canTemplates ? `<button type="button" class="wb-chip" data-c="tpl" aria-haspopup="dialog">${icon('grid')}<span>Templates</span></button>` : '';
+    topLeft.innerHTML = canTemplates ? `<button type="button" class="wb-chip" data-c="tpl" aria-haspopup="dialog">${icon('grid')}<span>Templates</span></button>`
+      + (opts.library ? `<button type="button" class="wb-chip" data-c="lib" aria-haspopup="dialog">${icon('book')}<span>Library</span></button>` : '') : '';
     topLeft.hidden = !canTemplates;
     const fs = mode === 'board' && opts.onFullscreen;
     topRight.innerHTML = fs ? `<button type="button" class="wb-chip" data-c="fs" title="Full screen (Shift F)" aria-pressed="${fullscreen}"><svg class="wb-i" viewBox="0 0 24 24" aria-hidden="true">${fullscreen ? '<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/>' : '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>'}</svg><span>${fullscreen ? 'Exit full screen' : 'Full screen'}</span></button>` : '';
@@ -280,8 +288,9 @@ export function mountCanvas(container, opts) {
     paintCorners();
     requestAnimationFrame(() => { fit(); root.focus({ preventScroll: true }); });
   }
-  for (const c of [topLeft, topRight, gallery, emptyGallery]) c.addEventListener('pointerdown', e => e.stopPropagation());
+  for (const c of [topLeft, topRight, gallery, emptyGallery, libPanel]) c.addEventListener('pointerdown', e => e.stopPropagation());
   topLeft.addEventListener('click', e => {
+    if (e.target.closest('[data-c="lib"]')) { toggleLibrary(); return; }
     if (!e.target.closest('[data-c="tpl"]')) return;
     if (!gallery.hidden) { gallery.hidden = true; return; }
     gallery.innerHTML = `<div class="wb-ph"><b>Start from a template</b><button type="button" data-close aria-label="Close">✕</button></div><p class="wb-note">Added beside what is already on the board, never over it.</p><div class="wb-tgrid">${galleryHtml()}</div>`;
@@ -303,6 +312,171 @@ export function mountCanvas(container, opts) {
     emptyGallery.hidden = !show;
     root.classList.toggle('wb-empty', isEmpty && !show);
   }
+
+  // ── Pictures and files ───────────────────────────────────────────────────
+  // A picture or file is uploaded through the page (stored on the NAS with the page's access); the board keeps only its id.
+  const files = new Map();     // fileId -> object URL, for drawing
+  opts.files = files;
+  const loading = new Set();
+  function ensureFile(id) {
+    if (!id || files.has(id) || loading.has(id) || !opts.loadFile) return;
+    loading.add(id);
+    opts.loadFile(id).then(url => { files.set(id, url); cache.clear(); world.innerHTML = ''; render(); }, () => {}).finally(() => loading.delete(id));
+  }
+  const IMAGE_TYPES = /^image\/(png|jpe?g|webp|gif)$/i;
+  const MAX_UPLOAD = 10 * 1024 * 1024;
+  function pickFiles() {
+    if (readOnly || !opts.upload) return;
+    const input = document.createElement('input');
+    input.type = 'file'; input.multiple = true;
+    input.onchange = () => { const r = rect(); dropFiles([...input.files], toWorld(r.width / 2, r.height / 2)); };
+    input.click();
+  }
+  async function dropFiles(list, at) {
+    if (readOnly || !opts.upload || !list.length) return;
+    let x = at.x, placed = 0;
+    for (const f of list) {
+      if (f.size > MAX_UPLOAD && IMAGE_TYPES.test(f.type)) { toast(`${f.name} is larger than 10 MB`); continue; }
+      const imgCount = live().filter(e => e.type === 'image').length;
+      if (IMAGE_TYPES.test(f.type) && imgCount >= 200) { toast('This board already has 200 pictures'); break; }
+      try {
+        toast(`Uploading ${f.name}…`);
+        const up = await opts.upload(f);
+        if (IMAGE_TYPES.test(f.type)) {
+          const size = await imageSize(f).catch(() => ({ w: 400, h: 300 }));
+          const scale = Math.min(1, 480 / size.w, 360 / size.h);
+          const w = Math.max(40, size.w * scale), h = Math.max(40, size.h * scale);
+          files.set(up.id, URL.createObjectURL(f));
+          add([create('image', { x: x - w / 2, y: at.y - h / 2, w, h, fileId: up.id, name: f.name })], { select: list.length === 1 });
+          x += w + 24;
+        } else {
+          add([create('file', { x: x - 120, y: at.y - 32, w: 240, h: 64, fileId: up.id, name: f.name, size: f.size })], { select: list.length === 1 });
+          x += 264;
+        }
+        placed++;
+      } catch (err) { toast(err?.message || `Couldn’t upload ${f.name}`); }
+    }
+    if (placed) toast(placed === 1 ? 'Added to the board' : `Added ${placed} files`);
+  }
+  function imageSize(file) {
+    return new Promise((ok, fail) => { const img = new Image(), u = URL.createObjectURL(file); img.onload = () => { ok({ w: img.naturalWidth, h: img.naturalHeight }); URL.revokeObjectURL(u); }; img.onerror = () => { URL.revokeObjectURL(u); fail(new Error('not an image')); }; img.src = u; });
+  }
+  root.addEventListener('dragover', e => { if (!readOnly && opts.upload && [...(e.dataTransfer?.types || [])].includes('Files')) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; root.classList.add('wb-dropping'); } });
+  root.addEventListener('dragleave', e => { if (e.target === root) root.classList.remove('wb-dropping'); });
+  root.addEventListener('drop', e => {
+    root.classList.remove('wb-dropping');
+    if (readOnly || !opts.upload || !e.dataTransfer?.files?.length) return;
+    e.preventDefault(); e.stopPropagation();
+    const { sx, sy } = local(e);
+    dropFiles([...e.dataTransfer.files], toWorld(sx, sy));
+  });
+  root.addEventListener('paste', e => {
+    if (readOnly || editing) return;
+    const fl = [...(e.clipboardData?.files || [])];
+    if (fl.length && opts.upload) { e.preventDefault(); const r = rect(); dropFiles(fl, toWorld(r.width / 2, r.height / 2)); return; }
+    const text = e.clipboardData?.getData('text/plain');
+    if (text && /^\{"ipopBoard":1/.test(text)) { try { clipboard = JSON.parse(text).elements; e.preventDefault(); pasteClip(); } catch { /* not ours */ } }
+  });
+
+  // ── Library (My library + team library, saved on the server) ────────────
+  let libItems = null, libTab = 'mine', libBusy = false;
+  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  /// Elements moved so the group starts at 0,0; connectors keep only links to shapes that come along.
+  function packForLibrary(els) {
+    const ids = new Set(els.map(e => e.id));
+    const extra = live().filter(c => c.type === 'connector' && !ids.has(c.id) && ids.has(c.from?.id) && ids.has(c.to?.id));
+    const all2 = [...els, ...extra].filter(e => e.type !== 'image');
+    const b = unionBounds(all2, get) || { x: 0, y: 0 };
+    return all2.map(e => {
+      const c = structuredClone(e);
+      delete c.locked; delete c.frameId;
+      if (c.type === 'connector') {
+        const end = x => (x?.id && ids.has(x.id) ? { id: x.id } : { x: (x?.x ?? 0) - b.x, y: (x?.y ?? 0) - b.y });
+        return { ...c, from: end(c.from), to: end(c.to) };
+      }
+      return { ...c, x: c.x - b.x, y: c.y - b.y };
+    });
+  }
+  async function saveToLibrary(els) {
+    if (!opts.library || !els.length) return;
+    const packed = packForLibrary(els);
+    if (!packed.length) { toast('Pictures cannot go in the library'); return; }
+    const first = packed.find(e => e.text || e.name);
+    const name = (first?.text || first?.name || '').split('\n')[0].slice(0, 60) || (packed.length === 1 ? (SHAPE_LABEL[packed[0].type] || packed[0].type) : `${packed.length} items`);
+    try {
+      await opts.library.save({ name, json: JSON.stringify(packed) });
+      libItems = null;
+      toast(`Added to your library as "${name}"`);
+      if (!libPanel.hidden) paintLibrary();
+    } catch (err) { toast(err?.message === 'library_full' ? 'Your library is full (200 items). Remove some first.' : 'Couldn’t save to the library'); }
+  }
+  async function loadLibrary(force = false) {
+    if (!opts.library) return [];
+    if (libItems && !force) return libItems;
+    libItems = await opts.library.list().catch(() => null);
+    return libItems || [];
+  }
+  function libThumb(item) {
+    let els; try { els = JSON.parse(item.json); } catch { return ''; }
+    const o = toSvg(els.filter(isElement), { theme, background: false, padding: 8 });
+    if (!o) return '';
+    o.svg.setAttribute('width', '100%'); o.svg.setAttribute('height', '100%'); o.svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    return new XMLSerializer().serializeToString(o.svg);
+  }
+  async function paintLibrary() {
+    libPanel.innerHTML = `<div class="wb-ph"><b>Library</b><button type="button" data-close aria-label="Close">✕</button></div><div class="wb-note">Loading…</div>`;
+    const items = await loadLibrary();
+    if (libPanel.hidden) return;
+    const shown = items.filter(i => (libTab === 'mine' ? i.mine : i.shared && !i.mine));
+    libPanel.innerHTML = `<div class="wb-ph"><b>Library</b><button type="button" data-close aria-label="Close">✕</button></div>
+      <div class="wb-seg" role="tablist"><button type="button" role="tab" data-tab="mine" aria-selected="${libTab === 'mine'}" class="${libTab === 'mine' ? 'on' : ''}">My library</button><button type="button" role="tab" data-tab="team" aria-selected="${libTab === 'team'}" class="${libTab === 'team' ? 'on' : ''}">Team library</button></div>
+      ${shown.length ? `<div class="wb-libgrid">${shown.map(i => `<div class="wb-libitem" data-id="${i.id}">
+          <button type="button" class="wb-libuse" data-use="${i.id}" title="Put it on the board"><span class="wb-libthumb">${libThumb(i)}</span><span class="wb-libname">${esc(i.name)}</span><small>${i.mine ? (i.shared ? 'Shared with the team' : 'Only you') : esc(i.ownerName)}</small></button>
+          ${i.mine ? `<span class="wb-libacts"><button type="button" data-share="${i.id}" title="${i.shared ? 'Stop sharing' : 'Share with the team'}">${i.shared ? 'Unshare' : 'Share'}</button><button type="button" data-del="${i.id}" title="Remove" aria-label="Remove ${esc(i.name)}">✕</button></span>` : ''}
+        </div>`).join('')}</div>`
+        : `<p class="wb-note">${libTab === 'mine' ? 'Select things on the board and press <b>Add to my library</b> in their menu to keep them for later.' : 'Nothing shared yet. Share an item from your library and everyone can use it.'}</p>`}`;
+  }
+  function toggleLibrary() {
+    if (!libPanel.hidden) { libPanel.hidden = true; return; }
+    gallery.hidden = true;
+    libPanel.hidden = false;
+    paintLibrary();
+  }
+  libPanel.addEventListener('click', async e => {
+    if (e.target.closest('[data-close]')) { libPanel.hidden = true; return; }
+    const tab = e.target.closest('[data-tab]');
+    if (tab) { libTab = tab.dataset.tab; paintLibrary(); return; }
+    const items = libItems || [];
+    const use = e.target.closest('[data-use]');
+    if (use) {
+      const item = items.find(i => i.id === use.dataset.use); if (!item || readOnly) return;
+      let els; try { els = JSON.parse(item.json).filter(isElement); } catch { return; }
+      const r = rect(), c = toWorld(r.width / 2, r.height / 2);
+      const b = unionBounds(els, id => els.find(x => x.id === id)) || { w: 0, h: 0 };
+      const map = new Map(els.map(x => [x.id, create(x.type).id]));
+      const out = els.map(x => {
+        const copy = { ...structuredClone(x), id: map.get(x.id), version: 1 };
+        if (x.type === 'connector') { const end = y => (y?.id && map.has(y.id) ? { id: map.get(y.id) } : { x: (y?.x ?? 0) + c.x - b.w / 2, y: (y?.y ?? 0) + c.y - b.h / 2 }); return { ...copy, from: end(x.from), to: end(x.to) }; }
+        return { ...copy, x: x.x + c.x - b.w / 2, y: x.y + c.y - b.h / 2 };
+      });
+      add(out);
+      return;
+    }
+    const share = e.target.closest('[data-share]');
+    if (share && !libBusy) {
+      const item = items.find(i => i.id === share.dataset.share); if (!item) return;
+      libBusy = true;
+      try { await opts.library.update(item.id, { shared: !item.shared }); libItems = null; toast(item.shared ? 'Only you can see it now' : 'Shared with the team library'); paintLibrary(); }
+      catch { toast('Couldn’t change it'); } finally { libBusy = false; }
+      return;
+    }
+    const del = e.target.closest('[data-del]');
+    if (del && !libBusy) {
+      libBusy = true;
+      try { await opts.library.remove(del.dataset.del); libItems = null; paintLibrary(); }
+      catch { toast('Couldn’t remove it'); } finally { libBusy = false; }
+    }
+  });
 
   // ── Zoom ─────────────────────────────────────────────────────────────────
   // The tool bar is centred and the zoom bar sits bottom right: when the board is too narrow for both on one line, the zoom bar
@@ -357,6 +531,7 @@ export function mountCanvas(container, opts) {
     if (els.some(e => e.type === 'path' || e.type === 'connector' || anyShape)) parts.push(`<button type="button" data-width title="Line weight">≡</button>`);
     if (els.some(e => e.type === 'text' || e.type === 'sticky' || anyShape)) parts.push(['ipop', 'hand', 'mono'].map(f => `<button type="button" data-font="${f}" title="${f === 'ipop' ? 'iPop font' : f === 'hand' ? 'Handwriting' : 'Monospace'}" style="font-family:${FONT_STACK[f].replace(/"/g, "'")}">Aa</button>`).join('') + SIZES.map(([n, s]) => `<button type="button" data-size="${s}" title="Text size ${n}">${n}</button>`).join(''));
     const locked = els.every(e => e.locked);
+    if (opts.library) parts.push(`<button type="button" data-act="lib" title="Add to my library">${icon('bookplus')}</button>`);
     parts.push(`<button type="button" data-act="front" title="Bring to front (Ctrl ])">${icon('front')}</button><button type="button" data-act="back" title="Send to back (Ctrl [)">${icon('back')}</button><button type="button" data-act="dup" title="Duplicate (Ctrl D)">${icon('copy')}</button><button type="button" data-act="lock" title="${locked ? 'Unlock' : 'Lock'}">${icon(locked ? 'unlock' : 'lock')}</button><button type="button" data-act="del" title="Delete (Del)" class="wb-danger">${icon('trash')}</button>`);
     props.innerHTML = parts.join('<span class="wb-sep"></span>');
     props.hidden = false;
@@ -396,6 +571,7 @@ export function mountCanvas(container, opts) {
     else if (b.dataset.act === 'dup') duplicate(els);
     else if (b.dataset.act === 'lock') { const lock = !els.every(x => x.locked); upd(() => ({ locked: lock })); toast(lock ? 'Locked: it can no longer be moved by accident' : 'Unlocked'); }
     else if (b.dataset.act === 'del') remove(els);
+    else if (b.dataset.act === 'lib') { saveToLibrary(els); return; }
     commitStop();
     paintProps();
   });
@@ -781,6 +957,7 @@ export function mountCanvas(container, opts) {
       ta.addEventListener('blur', done); ta.addEventListener('keydown', ev => { ev.stopPropagation(); if (ev.key === 'Enter' || ev.key === 'Escape') ta.blur(); });
       return;
     }
+    if (hit?.type === 'file' && hit.fileId && opts.openFile) { opts.openFile(hit.fileId, hit.name); return; }
     if (hit && (hit.type === 'sticky' || hit.type === 'text' || SHAPES.includes(hit.type))) { sel = new Set([hit.id]); editText(hit); return; }
     if (hit?.type === 'connector') {
       const label = el('input', 'wb-edit'); label.value = hit.label || ''; label.placeholder = 'Label'; label.setAttribute('aria-label', 'Connector label');
@@ -842,14 +1019,14 @@ export function mountCanvas(container, opts) {
     if (e.shiftKey && e.code === 'Digit1') { e.preventDefault(); fit(); return; }
     if (e.shiftKey && k === 'f' && !mod && mode === 'board' && opts.onFullscreen) { e.preventDefault(); toggleFullscreen(); return; }
     if (e.key === '?') { toggleKeys(); return; }
-    if (e.key === 'Escape') { if (!keysPanel.hidden) { keysPanel.hidden = true; return; } if (!gallery.hidden) { gallery.hidden = true; return; } if (fullscreen) { toggleFullscreen(); return; } sel.clear(); setTool('select'); paintProps(); render(); return; }
+    if (e.key === 'Escape') { if (!keysPanel.hidden) { keysPanel.hidden = true; return; } if (!gallery.hidden) { gallery.hidden = true; return; } if (!libPanel.hidden) { libPanel.hidden = true; return; } if (fullscreen) { toggleFullscreen(); return; } sel.clear(); setTool('select'); paintProps(); render(); return; }
     if (readOnly) return;
     const chosen = [...sel].map(get).filter(Boolean);
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); remove(chosen.filter(x => !x.locked)); paintProps(); return; }
     if (mod && k === 'd') { e.preventDefault(); duplicate(chosen); return; }
     if (mod && k === 'c') { if (chosen.length) { e.preventDefault(); copySel(chosen); } return; }
     if (mod && k === 'x') { if (chosen.length) { e.preventDefault(); copySel(chosen); remove(chosen.filter(x => !x.locked)); } return; }
-    if (mod && k === 'v') { if (clipboard) { e.preventDefault(); pasteClip(); } return; }
+    if (mod && k === 'v') return;   // handled by the paste event (files, pictures and copied board items)
     if (mod && e.key === ']') { e.preventDefault(); reorder(chosen, 'front'); commitStop(); return; }
     if (mod && e.key === '[') { e.preventDefault(); reorder(chosen, 'back'); commitStop(); return; }
     if (e.key === 'Enter' && chosen.length === 1 && (chosen[0].type === 'sticky' || chosen[0].type === 'text' || SHAPES.includes(chosen[0].type))) { e.preventDefault(); editText(chosen[0]); return; }
@@ -862,6 +1039,7 @@ export function mountCanvas(container, opts) {
     if (k === 's' && tool === 'sticky') { stickyColor = STICKY_COLORS[(STICKY_COLORS.indexOf(stickyColor) + 1) % STICKY_COLORS.length]; setTool('sticky'); return; }
     // R picks the rectangle; pressing it again while a shape tool is on walks through the other shapes (shown in the bar).
     if (k === 'r') { lastShape = SHAPES.includes(tool) ? SHAPES[(SHAPES.indexOf(tool) + 1) % SHAPES.length] : 'rect'; setTool(lastShape); return; }
+    if (k === 'i') { if (opts.upload) pickFiles(); return; }
     if (KEYS[k]) { if (SHAPES.includes(KEYS[k])) lastShape = KEYS[k]; setTool(KEYS[k]); return; }
     if (/^[0-9]$/.test(k)) setTool(DIGITS[k]);
   });
@@ -913,6 +1091,14 @@ export function mountCanvas(container, opts) {
   ro.observe(root);
   render();
 
+  /// Pictures as data URLs (a PNG made from an SVG cannot read blob: URLs).
+  async function dataUrls() {
+    const out = new Map();
+    for (const [id, url] of files) {
+      try { const b = await (await fetch(url)).blob(); out.set(id, await new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(b); })); } catch { /* left out */ }
+    }
+    return out;
+  }
   const api = {
     root,
     /// Adds a starter layout beside what is already on the board. Returns how many things were added.
@@ -930,12 +1116,12 @@ export function mountCanvas(container, opts) {
     fit: () => fit(),
     focus: () => root.focus({ preventScroll: true }),
     /// PNG of the whole board (light background unless dark is asked for).
-    png: ({ scale = 2, dark = false } = {}) => toPng(live(), { scale, theme: dark ? 'dark' : 'light', files: opts.files }),
+    png: async ({ scale = 2, dark = false } = {}) => toPng(live(), { scale, theme: dark ? 'dark' : 'light', files: await dataUrls() }),
     svg: ({ dark = false } = {}) => { const o = toSvg(live(), { theme: dark ? 'dark' : 'light', files: opts.files }); return o ? new XMLSerializer().serializeToString(o.svg) : null; },
     count,
     flush,
     setFullscreen(v) { fullscreen = !!v; paintCorners(); requestAnimationFrame(() => fit()); },
-    destroy() { document.removeEventListener('keydown', fsKeys, true); stopEdit(); flush(); destroyed = true; ymap.unobserve(onY); undo.destroy(); ro.disconnect(); cancelAnimationFrame(raf); root.remove(); },
+    destroy() { for (const u of files.values()) { try { URL.revokeObjectURL(u); } catch { /* not ours */ } } document.removeEventListener('keydown', fsKeys, true); stopEdit(); flush(); destroyed = true; ymap.unobserve(onY); undo.destroy(); ro.disconnect(); cancelAnimationFrame(raf); root.remove(); },
   };
   return api;
 }

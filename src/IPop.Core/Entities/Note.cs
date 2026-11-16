@@ -167,6 +167,20 @@ public class NoteTemplate
 }
 
 /// Who opened a page and when they last did. Only the owner and editors see this list. One row per person per page.
+/// A group of whiteboard elements someone saved to reuse ("My library"). `Shared` puts it in the team library, which every
+/// iPop user sees in the board's Library panel; only the owner can rename or remove it. `Json` is the elements, already
+/// moved to start at 0,0 (at most 256 KB).
+public class NoteLibraryItem
+{
+    public Guid Id { get; set; }
+    public Guid OwnerId { get; set; }
+    public required string Name { get; set; }
+    public required string Json { get; set; }
+    public int Count { get; set; }
+    public bool Shared { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
 public class NoteView
 {
     public Guid PageId { get; set; }

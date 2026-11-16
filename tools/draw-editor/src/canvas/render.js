@@ -200,6 +200,19 @@ export function drawElement(g, el, get, opts = {}) {
       }
       break;
     }
+    case 'file': {
+      svgEl('rect', { x: el.x, y: el.y, width: el.w, height: el.h, rx: 10, fill: pal.shapeFill, stroke: pal.frameLine }, node);
+      const ext = (String(el.name || '').match(/\.([a-z0-9]{1,5})$/i)?.[1] || 'FILE').toUpperCase();
+      svgEl('rect', { x: el.x + 12, y: el.y + 12, width: 34, height: el.h - 24, rx: 6, fill: ext === 'PDF' ? 'rgba(255,59,48,.14)' : /XLSX?|CSV/.test(ext) ? 'rgba(52,168,83,.16)' : /DOCX?/.test(ext) ? 'rgba(10,132,255,.14)' : 'rgba(118,118,128,.16)' }, node);
+      const tx = svgEl('text', { x: el.x + 29, y: el.y + el.h / 2 + 4, 'text-anchor': 'middle', 'font-size': 9.5, 'font-weight': 700, 'font-family': FONT_STACK.ipop, fill: ext === 'PDF' ? '#C9372C' : pal.ink2 }, node);
+      tx.textContent = ext.slice(0, 4);
+      const nm = svgEl('text', { x: el.x + 56, y: el.y + el.h / 2 - 2, 'font-size': 13, 'font-weight': 600, 'font-family': FONT_STACK.ipop, fill: pal.ink }, node);
+      const name = String(el.name || 'File');
+      nm.textContent = name.length > 26 ? name.slice(0, 24) + '…' : name;
+      const sz = svgEl('text', { x: el.x + 56, y: el.y + el.h / 2 + 15, 'font-size': 11, 'font-family': FONT_STACK.ipop, fill: pal.ink3 }, node);
+      sz.textContent = `${el.size ? (el.size < 1048576 ? `${Math.max(1, Math.round(el.size / 1024))} KB` : `${(el.size / 1048576).toFixed(1)} MB`) : ''} · Double-click to open`;
+      break;
+    }
     case 'image': {
       const url = opts.files?.get(el.fileId);
       if (url) svgEl('image', { href: url, x: el.x, y: el.y, width: el.w, height: el.h, preserveAspectRatio: 'xMidYMid slice' }, node);

@@ -1002,7 +1002,7 @@ export async function exportPages(api, net, opts) {
       const key = `${pid}:${sid}`;
       if (!render || drawFiles.has(key)) continue;
       try {
-        const blob = await render(scenes.get(pid).get(sid), { scale: 2 });
+        const blob = await render(scenes.get(pid).get(sid), { scale: 2, loadFile: async fid => { const r = await api(`/api/attachments/${fid}`); if (!r.ok) throw new Error(String(r.status)); return URL.createObjectURL(await r.blob()); } });
         if (!blob) continue;
         if (opts.format === 'pdf') drawFiles.set(key, { dataUrl: await blobToDataUrl(blob) });
         else {

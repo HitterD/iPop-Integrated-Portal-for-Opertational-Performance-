@@ -120,6 +120,10 @@ public record NoteTemplateDto(Guid Id, string Name, string? Emoji, string Accent
 public record SaveTemplateRequest(string? Name);
 public record NewFromTemplateRequest(Guid? ParentId, string? Title);
 
+public record NoteLibraryItemDto(Guid Id, string Name, string Json, int Count, bool Shared, bool Mine, string OwnerName, DateTime CreatedAt);
+public record SaveLibraryItemRequest(string? Name, string Json, bool Shared = false);
+public record UpdateLibraryItemRequest(string? Name, bool? Shared);
+
 public record NoteViewerDto(Guid UserId, string Name, string? Nik, DateTime LastViewedAt, int Count);
 
 
@@ -218,6 +222,12 @@ public interface INoteService
     Task<IReadOnlyList<NoteTemplateDto>> GetTemplatesAsync(Guid userId, CancellationToken ct);
     Task<NoteResult<NotePageDto>> CreateFromTemplateAsync(Guid userId, Guid templateId, NewFromTemplateRequest req, CancellationToken ct);
     Task<NoteResult<bool>> DeleteTemplateAsync(Guid userId, Guid templateId, CancellationToken ct);
+
+    /// The caller's own library items plus everything shared to the team library, newest first.
+    Task<IReadOnlyList<NoteLibraryItemDto>> GetLibraryAsync(Guid userId, CancellationToken ct);
+    Task<NoteResult<NoteLibraryItemDto>> SaveLibraryItemAsync(Guid userId, SaveLibraryItemRequest req, CancellationToken ct);
+    Task<NoteResult<NoteLibraryItemDto>> UpdateLibraryItemAsync(Guid userId, Guid itemId, UpdateLibraryItemRequest req, CancellationToken ct);
+    Task<NoteResult<bool>> DeleteLibraryItemAsync(Guid userId, Guid itemId, CancellationToken ct);
 
     /// Owner and editors only: who opened the page, newest first.
     Task<NoteResult<IReadOnlyList<NoteViewerDto>>> GetViewersAsync(Guid userId, Guid pageId, CancellationToken ct);

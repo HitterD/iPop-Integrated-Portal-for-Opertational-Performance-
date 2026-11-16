@@ -150,6 +150,16 @@ public static class NotesEndpoints
         g.MapGet("/{id:guid}/viewers", (Guid id, HttpContext http, INoteService svc, CancellationToken ct) =>
             Run(http, async me => From(await svc.GetViewersAsync(me.Id, id, ct))));
 
+        // ── Whiteboard library ───────────────────────────────────────────────
+        g.MapGet("/library", (HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => Results.Ok(await svc.GetLibraryAsync(me.Id, ct))));
+        g.MapPost("/library", (SaveLibraryItemRequest req, HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.SaveLibraryItemAsync(me.Id, req, ct)))).RequirePermission("notes.write");
+        g.MapPatch("/library/{itemId:guid}", (Guid itemId, UpdateLibraryItemRequest req, HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.UpdateLibraryItemAsync(me.Id, itemId, req, ct)))).RequirePermission("notes.write");
+        g.MapDelete("/library/{itemId:guid}", (Guid itemId, HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.DeleteLibraryItemAsync(me.Id, itemId, ct)))).RequirePermission("notes.write");
+
         // ── Personal templates ───────────────────────────────────────────────
         g.MapGet("/templates", (HttpContext http, INoteService svc, CancellationToken ct) =>
             Run(http, async me => Results.Ok(await svc.GetTemplatesAsync(me.Id, ct))));

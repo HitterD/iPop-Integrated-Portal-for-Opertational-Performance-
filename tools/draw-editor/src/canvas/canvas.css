@@ -111,3 +111,21 @@ input.wb-edit { background: var(--wb-surface); padding: 0 8px; outline-width: 2p
 .wb-emptygal .wb-tgrid { text-align: left; }
 .wb-emptygal .wb-note { margin: 12px 0 0; }
 .wb-emptygal button { border: 0; font: inherit; cursor: pointer; color: inherit; }
+
+/* Library panel */
+.wb-lib { top: 56px; left: 12px; transform: none; width: min(360px, calc(100% - 24px)); max-height: calc(100% - 140px); }
+.wb-seg { display: flex; background: var(--wb-fill); border-radius: 9px; padding: 2px; margin-bottom: 10px; }
+.wb-seg button { flex: 1; height: 28px; border-radius: 7px !important; font-size: 12.5px; color: var(--wb-ink2); }
+.wb-seg button.on { background: var(--wb-surface) !important; color: var(--wb-ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.wb-libgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.wb-libitem { position: relative; border-radius: 10px; background: var(--wb-fill); overflow: hidden; }
+.wb-libuse { display: flex !important; flex-direction: column; align-items: stretch !important; width: 100%; padding: 6px !important; text-align: left; gap: 2px; place-items: initial !important; }
+.wb-libthumb { display: block; height: 72px; border-radius: 6px; background: var(--wb-board); overflow: hidden; }
+.wb-libname { font-size: 12px; font-weight: 600; color: var(--wb-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wb-libitem small { font-size: 10.5px; color: var(--wb-ink3); }
+.wb-libacts { position: absolute; top: 8px; right: 8px; display: flex; gap: 3px; opacity: 0; transition: opacity .15s; }
+.wb-libitem:hover .wb-libacts, .wb-libitem:focus-within .wb-libacts { opacity: 1; }
+.wb-libacts button { height: 22px !important; padding: 0 6px !important; border-radius: 6px !important; font-size: 11px !important; background: var(--wb-surface) !important; box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+@media (hover: none) { .wb-libacts { opacity: 1; } }
+
+.wb.wb-dropping { box-shadow: inset 0 0 0 3px var(--wb-accent); }
