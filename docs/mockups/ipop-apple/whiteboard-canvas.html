@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Whiteboard Canvas</title>
+<style>
+:root{
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",system-ui,sans-serif;
+  --display:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter","Segoe UI",system-ui,sans-serif;
+  --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+  --hand:"Segoe Print","Bradley Hand","Chalkboard SE","Comic Sans MS",cursive;
+  --bg:#F2F2F4;--surface:#fff;--surface-2:#F5F5F7;--fill:rgba(118,118,128,.12);--fill-2:rgba(118,118,128,.2);
+  --line:rgba(0,0,0,.08);--line-2:rgba(0,0,0,.15);
+  --ink:#1D1D1F;--ink-2:#424245;--ink-3:#86868B;--ink-4:#AEAEB2;
+  --accent:#34A853;--accent-ink:#1E8E3E;--accent-soft:rgba(52,168,83,.12);
+  --blue:#0A84FF;--blue-soft:rgba(10,132,255,.12);--orange:#FF9500;--orange-soft:rgba(255,149,0,.14);
+  --yellow-soft:rgba(255,204,0,.22);--red:#FF3B30;--red-soft:rgba(255,59,48,.1);--purple:#AF52DE;--teal:#30B0C7;
+  --pop:0 12px 40px rgba(0,0,0,.14),0 0 0 .5px rgba(0,0,0,.08);
+  --card:0 1px 3px rgba(0,0,0,.06),0 0 0 .5px rgba(0,0,0,.08);
+  --board:#FBFBFA;--grid:rgba(0,0,0,.10);
+  --shell:#1F3B2C;--shell-ink:#E8F1EA;
+  --st-yellow:#FFF3A3;--st-green:#C9F2C7;--st-blue:#CFE6FF;--st-pink:#FFD3E1;--st-purple:#E6DAFF;--st-orange:#FFDDB8;
+  --sel:#0A84FF;
+}
+:root[data-theme=dark]{
+  --bg:#000;--surface:#1C1C1E;--surface-2:#242426;--fill:rgba(118,118,128,.24);--fill-2:rgba(118,118,128,.36);
+  --line:rgba(255,255,255,.1);--line-2:rgba(255,255,255,.2);
+  --ink:#F5F5F7;--ink-2:#D1D1D6;--ink-3:#8E8E93;--ink-4:#636366;
+  --accent:#30D158;--accent-ink:#30D158;--accent-soft:rgba(48,209,88,.16);
+  --blue:#409CFF;--blue-soft:rgba(64,156,255,.18);--orange-soft:rgba(255,159,10,.18);--yellow-soft:rgba(255,214,10,.18);--red-soft:rgba(255,69,58,.18);
+  --pop:0 12px 40px rgba(0,0,0,.6),0 0 0 .5px rgba(255,255,255,.12);
+  --card:0 0 0 .5px rgba(255,255,255,.12);
+  --board:#141416;--grid:rgba(255,255,255,.09);
+  --shell:#13261C;
+  --st-yellow:#5A5220;--st-green:#244A2A;--st-blue:#1F3B5A;--st-pink:#5A2638;--st-purple:#3A2D5A;--st-orange:#5A3A1C;
+  --sel:#409CFF;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font:14px/1.5 var(--font);background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer}
+input,textarea,select{font:inherit;color:inherit}
+kbd{font:11px var(--mono);padding:1px 5px;border-radius:5px;background:var(--fill);box-shadow:inset 0 -1px 0 var(--line-2)}
+svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+svg.i.sm{width:15px;height:15px}
+
+/* ── doc chrome ── */
+.topbar{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--surface) 86%,transparent);backdrop-filter:saturate(1.6) blur(20px);border-bottom:1px solid var(--line)}
+.topbar .in{max-width:1320px;margin:0 auto;padding:10px 24px;display:flex;align-items:center;gap:14px}
+.topbar h1{font:600 15px var(--display);margin:0;white-space:nowrap}
+.topbar nav{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0}
+.topbar nav a{color:var(--ink-2);text-decoration:none;font-size:13px;padding:5px 10px;border-radius:8px;white-space:nowrap}
+.topbar nav a:hover{background:var(--fill)}
+.topbar nav a.on{background:var(--accent-soft);color:var(--accent-ink);font-weight:500}
+.seg{display:inline-flex;background:var(--fill);border-radius:9px;padding:2px;flex:none}
+.seg button{border:0;background:none;padding:4px 10px;border-radius:7px;font-size:12.5px;color:var(--ink-2)}
+.seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08),0 0 0 .5px var(--line)}
+main{max-width:1320px;margin:0 auto;padding:28px 24px 80px}
+.intro{display:grid;grid-template-columns:1.2fr 1fr;gap:20px;margin-bottom:40px}
+@media(max-width:900px){.intro{grid-template-columns:1fr}}
+.hero{background:var(--surface);border-radius:18px;padding:24px 26px;box-shadow:var(--card)}
+.hero h2{font:700 28px/1.15 var(--display);letter-spacing:-.02em;margin:0 0 8px}
+.hero p{margin:0;color:var(--ink-2)}
+.pk{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media(max-width:560px){.pk{grid-template-columns:1fr}}
+.pk div{background:var(--surface);border-radius:14px;padding:14px;box-shadow:var(--card);font-size:13px;color:var(--ink-2)}
+.pk b{display:block;color:var(--ink);font-size:14px;margin:4px 0 2px}
+.tag{display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;letter-spacing:.02em}
+.t1{background:var(--accent-soft);color:var(--accent-ink)}.t2{background:var(--blue-soft);color:var(--blue)}.t3{background:var(--orange-soft);color:#C46A00}
+:root[data-theme=dark] .t3{color:#FFB340}
+section.s{margin:0 0 56px;scroll-margin-top:64px}
+.sh{display:flex;align-items:baseline;gap:10px;margin:0 0 14px;flex-wrap:wrap}
+.sh h2{font:700 22px/1.2 var(--display);letter-spacing:-.015em;margin:0}
+.sh .num{font:600 13px var(--display);color:var(--ink-3)}
+.sh p{flex-basis:100%;margin:2px 0 0;color:var(--ink-2);font-size:13.5px;max-width:800px}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start}
+@media(max-width:1060px){.grid{grid-template-columns:1fr}}
+.side-notes{position:sticky;top:72px;display:flex;flex-direction:column;gap:12px}
+@media(max-width:1060px){.side-notes{position:static}}
+.card{background:var(--surface);border-radius:14px;padding:16px 18px;box-shadow:var(--card);font-size:13px;color:var(--ink-2)}
+.card h3{margin:0 0 8px;font:600 13px var(--display);color:var(--ink)}
+.card ul{margin:0;padding-left:18px}.card li{margin:3px 0}
+.card.q{background:var(--yellow-soft);box-shadow:none;color:var(--ink)}
+.fb{display:flex;flex-direction:column;gap:8px}
+.fb label{display:flex;gap:8px;align-items:center;font-weight:500;color:var(--ink);cursor:pointer}
+.fb input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent)}
+.fb textarea{width:100%;min-height:54px;resize:vertical;border:1px solid var(--line-2);border-radius:9px;padding:7px 9px;background:var(--surface-2);font-size:12.5px}
+.cap{font-size:12px;color:var(--ink-3);margin:8px 2px 0}
+.btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border:0;border-radius:8px;background:var(--fill);color:var(--ink);font-size:12.5px;font-weight:500;white-space:nowrap;flex:none}
+.btn:hover{background:var(--fill-2)}
+.btn.pri{background:var(--accent);color:#fff}
+.btn.sm{height:26px;padding:0 9px;font-size:12px}
+.btn.ghost{background:none;color:var(--ink-2)}.btn.ghost:hover{background:var(--fill)}
+.av{width:24px;height:24px;border-radius:7px;display:inline-grid;place-items:center;font-size:10px;color:#fff;font-weight:600;flex:none;box-shadow:0 0 0 2px var(--surface)}
+.avs{display:flex}.avs .av+.av{margin-left:-3px}
+
+/* ── app frame ── */
+.app{background:var(--surface);border-radius:16px;box-shadow:var(--card);overflow:hidden;position:relative}
+.shellbar{height:42px;background:var(--shell);display:flex;align-items:center;gap:10px;padding:0 14px;color:var(--shell-ink);font-size:13px}
+.shellbar .dot{width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,.25)}
+.shellbar .srch{margin:0 auto;width:min(360px,50%);height:26px;border-radius:99px;background:rgba(255,255,255,.12);display:flex;align-items:center;gap:8px;padding:0 12px;color:rgba(255,255,255,.7);font-size:12px}
+.notes{display:grid;grid-template-columns:210px minmax(0,1fr);height:640px}
+@media(max-width:760px){.notes{grid-template-columns:1fr;height:560px}.notes .nside{display:none}}
+.nside{background:var(--surface-2);border-right:1px solid var(--line);padding:12px 8px;display:flex;flex-direction:column;gap:1px;font-size:13px;overflow:hidden}
+.nside h4{font:600 18px var(--display);margin:2px 8px 10px}
+.nside .lbl{font-size:11px;font-weight:600;color:var(--ink-3);padding:10px 8px 4px}
+.nside .r{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:7px;color:var(--ink-2);white-space:nowrap;overflow:hidden}
+.nside .r.on{background:var(--surface);color:var(--ink);font-weight:500;box-shadow:0 0 0 .5px var(--line)}
+.nside .r .kind{margin-left:auto;font-size:10.5px;color:var(--ink-3);background:var(--fill);border-radius:5px;padding:0 5px}
+.nhdr{height:46px;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--line);font-size:13px;min-width:0;background:var(--surface)}
+.nhdr .ttl{display:flex;align-items:center;gap:6px;font-weight:600;min-width:0;overflow:hidden;white-space:nowrap;flex:1}
+.nhdr .ttl input{border:0;background:none;font-weight:600;font-size:13.5px;min-width:60px;width:180px;padding:3px 6px;border-radius:6px}
+.nhdr .ttl input:hover,.nhdr .ttl input:focus{background:var(--fill);outline:none}
+.saved{display:inline-flex;align-items:center;gap:5px;color:var(--ink-3);font-size:12px;white-space:nowrap}
+.saved::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent)}
+@media(max-width:600px){.saved,.nhdr .hidephone{display:none}}
+
+/* ── board ── */
+.boardcol{display:flex;flex-direction:column;min-width:0;min-height:0}
+.board{position:relative;flex:1;min-height:0;overflow:hidden;background:var(--board);touch-action:none;user-select:none;-webkit-user-select:none}
+.board svg.cv{position:absolute;inset:0;width:100%;height:100%;display:block}
+.board .dots{position:absolute;inset:0;pointer-events:none;background-image:radial-gradient(var(--grid) 1.1px,transparent 1.3px)}
+.board.t-hand{cursor:grab}.board.t-hand.panning{cursor:grabbing}
+.board.t-pen,.board.t-hl,.board.t-rect,.board.t-ellipse,.board.t-diamond,.board.t-arrow,.board.t-frame,.board.t-sticky,.board.t-text,.board.t-comment,.board.t-laser{cursor:crosshair}
+.board.t-eraser{cursor:cell}
+/* floating UI on the board */
+.tb{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:2px;padding:5px;border-radius:14px;background:var(--surface);box-shadow:var(--pop);z-index:6;max-width:calc(100% - 20px);overflow-x:auto;scrollbar-width:none}
+.tb button{width:36px;height:36px;border:0;background:none;border-radius:10px;display:grid;place-items:center;color:var(--ink-2);position:relative;flex:none}
+.tb button:hover{background:var(--fill)}
+.tb button.on{background:var(--accent);color:#fff}
+.tb button .k{position:absolute;right:3px;bottom:1px;font:600 8.5px var(--mono);opacity:.55}
+.tb button.on .k{opacity:.8}
+.tb hr{width:1px;height:22px;border:0;background:var(--line-2);margin:0 4px;flex:none}
+.tb .stk{width:22px;height:22px;border-radius:4px;background:var(--st-yellow);box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
+.tl{position:absolute;left:12px;top:12px;display:flex;gap:6px;z-index:6}
+.tr{position:absolute;right:12px;top:12px;display:flex;gap:6px;z-index:6;align-items:center}
+.glass{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:10px;border:0;background:var(--surface);box-shadow:var(--card);font-size:12.5px;font-weight:500;color:var(--ink)}
+.glass:hover{background:var(--surface-2)}
+.glass.on{background:var(--accent);color:#fff}
+.glass.icon{width:32px;padding:0;justify-content:center}
+.zoom{position:absolute;right:12px;bottom:68px;display:flex;align-items:center;gap:0;border-radius:10px;background:var(--surface);box-shadow:var(--card);z-index:6;overflow:hidden}
+.zoom button{border:0;background:none;height:32px;min-width:32px;padding:0 8px;font-size:13px}
+.zoom button:hover{background:var(--fill)}
+.zoom span{font-size:12px;min-width:44px;text-align:center;color:var(--ink-2)}
+.mini{position:absolute;right:12px;bottom:112px;width:150px;height:96px;border-radius:10px;background:var(--surface);box-shadow:var(--card);z-index:6;overflow:hidden}
+.mini svg{width:100%;height:100%}
+@media(max-width:700px){.mini{display:none}}
+@media(max-width:640px){.board .glass .lb,#fsBtn span{display:none}.board .glass{width:32px;padding:0;justify-content:center}.zoom{display:none}#liveAvs{display:none}}
+.board .tb{bottom:14px}
+@media(max-height:520px){.mini{display:none}}
+.props{position:absolute;z-index:7;display:flex;align-items:center;gap:2px;padding:4px;border-radius:12px;background:var(--surface);box-shadow:var(--pop);transform:translate(-50%,-100%);white-space:nowrap}
+.props[hidden]{display:none}
+.props button{border:0;background:none;height:30px;min-width:30px;border-radius:8px;display:grid;place-items:center;padding:0 7px;font-size:12px;color:var(--ink-2)}
+.props button:hover{background:var(--fill)}
+.props .sw{width:18px;height:18px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}
+.props hr{width:1px;height:20px;border:0;background:var(--line-2);margin:0 3px}
+.props button.task{background:var(--blue-soft);color:var(--blue);font-weight:600;padding:0 9px;display:inline-flex;gap:5px;align-items:center}
+.chip{position:absolute;z-index:7;display:flex;align-items:center;gap:6px;padding:5px 6px 5px 10px;border-radius:10px;background:var(--surface);box-shadow:var(--pop);font-size:12.5px;transform:translate(-50%,8px)}
+.chip[hidden]{display:none}
+.toast{position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:9;padding:8px 12px;border-radius:10px;background:#1D1D1F;color:#fff;font-size:12.5px;box-shadow:var(--pop);opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1}
+.panel{position:absolute;z-index:8;background:var(--surface);border-radius:14px;box-shadow:var(--pop);padding:12px;font-size:13px}
+.panel[hidden]{display:none}
+.panel h5{margin:0 0 8px;font:600 12px var(--display);color:var(--ink-3);letter-spacing:.03em}
+.panel .row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px}
+.panel .row:hover{background:var(--fill)}
+.panel .row small{margin-left:auto;color:var(--ink-3)}
+.cursor{position:absolute;z-index:5;pointer-events:none;transition:left .35s linear,top .35s linear}
+.cursor span{display:inline-block;font-size:11px;color:#fff;padding:1px 7px;border-radius:0 8px 8px 8px;margin:-2px 0 0 12px;white-space:nowrap;font-weight:500}
+.edit-text{position:absolute;z-index:8;border:0;outline:2px solid var(--sel);border-radius:4px;resize:none;background:transparent;padding:10px;font:500 14px/1.35 var(--font);color:#1D1D1F;overflow:hidden}
+:root[data-theme=dark] .edit-text{color:#F5F5F7}
+
+/* full screen: the demo board covers the window */
+.app.fs{position:fixed;inset:0;z-index:100;border-radius:0}
+.app.fs .shellbar,.app.fs .nside{display:none}
+.app.fs .notes{grid-template-columns:1fr;height:100vh}
+body.fsmode{overflow:hidden}
+
+/* before/after layout */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:860px){.ba{grid-template-columns:1fr}}
+.mini-app{background:var(--surface);border-radius:14px;box-shadow:var(--card);overflow:hidden;height:300px;display:flex;flex-direction:column;position:relative}
+.mini-app .h{height:28px;background:var(--shell);flex:none}
+.mini-app .pg{flex:1;display:grid;grid-template-columns:70px 1fr;min-height:0}
+.mini-app .sb{background:var(--surface-2);border-right:1px solid var(--line)}
+.mini-app .body{display:flex;flex-direction:column;min-height:0;position:relative}
+.ph{background:var(--fill);border-radius:6px}
+.lbl-over{position:absolute;top:8px;left:8px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;z-index:2}
+.cut{position:absolute;left:0;right:0;bottom:0;height:34px;background:linear-gradient(transparent,rgba(255,59,48,.18));border-top:2px dashed var(--red);display:grid;place-items:center;font-size:11px;color:var(--red);font-weight:600}
+
+/* gallery */
+.gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.gal .tp{background:var(--surface);border-radius:12px;box-shadow:var(--card);overflow:hidden;cursor:pointer;border:0;padding:0;text-align:left}
+.gal .tp:hover{box-shadow:0 0 0 2px var(--accent)}
+.gal .tp svg{display:block;width:100%;height:92px;background:var(--board)}
+.gal .tp b{display:block;font-size:12.5px;padding:7px 10px 0}
+.gal .tp small{display:block;font-size:11px;color:var(--ink-3);padding:0 10px 9px}
+.gal .tp.mine{outline:1px dashed var(--line-2)}
+
+/* integration cards */
+.flow{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:860px){.flow{grid-template-columns:1fr}}
+.dlg{background:var(--surface);border-radius:14px;box-shadow:var(--pop);padding:16px;font-size:13px}
+.dlg h4{margin:0 0 4px;font:600 15px var(--display)}
+.dlg .f{display:flex;flex-direction:column;gap:4px;margin:10px 0}
+.dlg .f label{font-size:12px;color:var(--ink-3);font-weight:500}
+.dlg .f .in{border:1px solid var(--line-2);border-radius:9px;padding:7px 10px;background:var(--surface-2);display:flex;align-items:center;gap:8px}
+.dlg .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+
+/* phone */
+.phones{display:flex;gap:24px;flex-wrap:wrap;justify-content:center}
+.phone{width:280px;height:560px;border-radius:38px;background:#111;padding:10px;box-shadow:0 18px 50px rgba(0,0,0,.25)}
+.phone .scr{width:100%;height:100%;border-radius:30px;overflow:hidden;background:var(--board);position:relative;display:flex;flex-direction:column}
+.phone .pb{height:44px;display:flex;align-items:center;gap:8px;padding:0 14px;background:var(--surface);border-bottom:1px solid var(--line);font-size:13px;font-weight:600;flex:none;margin-top:22px}
+.phone .ptb{position:absolute;left:10px;right:10px;bottom:16px;height:56px;border-radius:18px;background:var(--surface);box-shadow:var(--pop);display:flex;align-items:center;justify-content:space-around;padding:0 6px}
+.phone .ptb button{width:40px;height:40px;border:0;border-radius:12px;background:none;display:grid;place-items:center;color:var(--ink-2)}
+.phone .ptb button.on{background:var(--accent);color:#fff}
+
+/* summary */
+.copybox{white-space:pre-wrap;font:12px/1.5 var(--mono);background:var(--surface-2);border-radius:10px;padding:12px;max-height:280px;overflow:auto;border:1px solid var(--line)}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-pointer" viewBox="0 0 24 24"><path d="m4 4 7 17 2.5-7.5L21 11z"/></symbol>
+  <symbol id="i-hand" viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.4 3.6a2 2 0 0 1 2.9 2.9L7 18.8l-4 1 1-4z"/></symbol>
+  <symbol id="i-hl" viewBox="0 0 24 24"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></symbol>
+  <symbol id="i-eraser" viewBox="0 0 24 24"><path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4l10-10a1 1 0 0 1 1.4 0l5.6 5.6a1 1 0 0 1 0 1.4L13 21"/><path d="M22 21H7M5 11l9 9"/></symbol>
+  <symbol id="i-sq" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/></symbol>
+  <symbol id="i-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/></symbol>
+  <symbol id="i-diamond" viewBox="0 0 24 24"><path d="M12 2 22 12 12 22 2 12z"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 19 19 5M9 5h10v10"/></symbol>
+  <symbol id="i-type" viewBox="0 0 24 24"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></symbol>
+  <symbol id="i-frame" viewBox="0 0 24 24"><path d="M22 6H2M22 18H2M6 2v20M18 2v20"/></symbol>
+  <symbol id="i-msg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></symbol>
+  <symbol id="i-laser" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></symbol>
+  <symbol id="i-max" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></symbol>
+  <symbol id="i-min" viewBox="0 0 24 24"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="m6 4 14 8-14 8z"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="m16 6-4-4-4 4M12 2v13"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></symbol>
+  <symbol id="i-redo" viewBox="0 0 24 24"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 15-6.7L21 13"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+  <symbol id="i-vote" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3" fill="currentColor"/></symbol>
+  <symbol id="i-timer" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></symbol>
+  <symbol id="i-task" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 12 3 3 5-6"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.9 5.8L20 10l-6.1 1.2L12 17l-1.9-5.8L4 10l6.1-1.2z"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-chevl" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-dl" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 2 10 5-10 5L2 7z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></symbol>
+  <symbol id="i-smile" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></symbol>
+</svg>
+
+<div class="topbar"><div class="in">
+  <h1>🧩 Whiteboard: own canvas</h1>
+  <nav id="nav"></nav>
+  <div class="seg" id="theme"><button data-t="light" class="on">Light</button><button data-t="dark">Dark</button></div>
+</div></div>
+
+<main>
+  <div class="intro">
+    <div class="hero">
+      <h2>A whiteboard that can replace ClickUp</h2>
+      <p>iPop draws the board itself now (no Excalidraw). Clean shapes like ClickUp, only the pen looks hand-drawn. The board fills the page and goes full screen. Everything here is a real element of the board, stored with the page, so it syncs live and shows up in Version history.</p>
+      <p style="margin-top:10px;color:var(--ink-3);font-size:13px">Try it: the board in <b>section 1</b> works. Pick a tool, draw, drag, double-click a sticky to write in it. Tick <b>Looks good</b> or write what to change under each section, then press <b>Copy all feedback</b> at the bottom.</p>
+    </div>
+    <div class="pk">
+      <div><span class="tag t1">Package 1</span><b>New canvas</b>Clean shapes, pen, text, connectors, full-screen layout, old boards converted, My library.</div>
+      <div><span class="tag t2">Package 2</span><b>ClickUp tools</b>Sticky notes, images, live cursors and Follow, laser, highlighter, frames and Present, templates, timer.</div>
+      <div><span class="tag t3">Package 3</span><b>Work together</b>Notes and task cards, sticky to task, comments on the board, voting, mind map, minimap.</div>
+    </div>
+  </div>
+
+  <!-- 0 ─────────────────────────────────────────────────────────── -->
+  <section class="s" id="s0" data-name="Layout: the board fills the page">
+    <div class="sh"><span class="num">0</span><h2>The board fills the page</h2><span class="tag t1">Package 1</span>
+      <p>Today the board sits under the page icon, title and "Start from", so its bottom is cut off. On a Whiteboard page the board now takes the whole content area. The icon and title move to a slim bar on top; templates move into a gallery. <b>Full screen</b> also hides the iPop sidebar, the Notes list and the top bar. Esc leaves it.</p></div>
+    <div class="grid">
+      <div class="ba">
+        <div class="mini-app">
+          <span class="lbl-over" style="background:var(--red-soft);color:var(--red)">Today</span>
+          <div class="h"></div>
+          <div class="pg"><div class="sb"></div>
+            <div class="body" style="padding:22px 18px 0">
+              <div class="ph" style="width:34px;height:34px;border-radius:9px"></div>
+              <div class="ph" style="width:60%;height:18px;margin:12px 0 6px"></div>
+              <div class="ph" style="width:40%;height:8px;margin-bottom:12px"></div>
+              <div style="display:flex;gap:6px;margin-bottom:10px"><div class="ph" style="width:44px;height:16px"></div><div class="ph" style="width:60px;height:16px"></div><div class="ph" style="width:64px;height:16px"></div></div>
+              <div style="flex:1;border-radius:10px 10px 0 0;background:var(--board);box-shadow:0 0 0 1px var(--line);background-image:radial-gradient(var(--grid) 1px,transparent 1.2px);background-size:12px 12px"></div>
+              <div class="cut">Bottom of the board cut off</div>
+            </div>
+          </div>
+        </div>
+        <div class="mini-app">
+          <span class="lbl-over" style="background:var(--accent-soft);color:var(--accent-ink)">New</span>
+          <div class="h"></div>
+          <div class="pg"><div class="sb"></div>
+            <div class="body">
+              <div style="height:26px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px;padding:0 8px;font-size:11px;font-weight:600">🧩 Sprint retro<span style="margin-left:auto;display:flex;gap:4px"><span class="ph" style="width:36px;height:14px"></span><span class="ph" style="width:14px;height:14px"></span></span></div>
+              <div style="flex:1;background:var(--board);background-image:radial-gradient(var(--grid) 1px,transparent 1.2px);background-size:12px 12px;position:relative">
+                <div style="position:absolute;left:24%;top:22%;width:46px;height:40px;background:var(--st-yellow);border-radius:3px;box-shadow:0 2px 4px rgba(0,0,0,.1)"></div>
+                <div style="position:absolute;left:42%;top:30%;width:46px;height:40px;background:var(--st-blue);border-radius:3px;box-shadow:0 2px 4px rgba(0,0,0,.1)"></div>
+                <div style="position:absolute;left:60%;top:20%;width:46px;height:40px;background:var(--st-pink);border-radius:3px;box-shadow:0 2px 4px rgba(0,0,0,.1)"></div>
+                <div style="position:absolute;left:50%;bottom:8px;transform:translateX(-50%);width:150px;height:22px;border-radius:8px;background:var(--surface);box-shadow:var(--card)"></div>
+                <div style="position:absolute;right:8px;top:8px;display:flex;gap:4px"><span style="padding:2px 6px;border-radius:6px;background:var(--surface);box-shadow:var(--card);font-size:9px;font-weight:600">⤢ Full screen</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="side-notes">
+        <div class="card"><h3>What moves where</h3><ul><li>Icon + title: slim bar on top, still editable</li><li>"Start from": template gallery (toolbar button, and in the middle of an empty board)</li><li>Cover: not shown on whiteboards</li><li>Full screen: top-right on the board and <kbd>Shift F</kbd></li></ul></div>
+        <div class="card">On a phone the board is always full screen. A <code>/draw</code> block inside a page has "Open full screen" with the same tools.</div>
+        <div class="card fb"><label><input type="checkbox" data-ok> Looks good</label><textarea placeholder="Anything to change here?"></textarea></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 1 ─────────────────────────────────────────────────────────── -->
+  <section class="s" id="s1" data-name="The canvas and its tools (try it)">
+    <div class="sh"><span class="num">1</span><h2>The canvas and its tools</h2><span class="tag t1">Package 1</span><span class="tag t2">Package 2</span>
+      <p>This board works. Tools along the bottom like ClickUp, letter shortcuts (<kbd>V</kbd> select, <kbd>H</kbd> hand, <kbd>P</kbd> pen, <kbd>M</kbd> highlighter, <kbd>E</kbd> eraser, <kbd>S</kbd> sticky, <kbd>T</kbd> text, <kbd>R</kbd> rectangle, <kbd>O</kbd> circle, <kbd>A</kbd> connector, <kbd>F</kbd> frame, <kbd>C</kbd> comment, <kbd>L</kbd> laser). Select something to see its quick menu. Drag a sticky: the arrows stay attached. Draw a rough circle with the pen: iPop offers to make it neat. Press <kbd>?</kbd> for every shortcut.</p></div>
+    <div class="grid">
+      <div>
+        <div class="app" id="demoApp">
+          <div class="shellbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="srch">Search people, chat, notes…</div></div>
+          <div class="notes">
+            <div class="nside"><h4>Notes</h4><div class="lbl">MY PAGES</div><div class="r">📄 Weekly report</div><div class="r on">🧩 Sprint retro <span class="kind">Board</span></div><div class="r">✏️ Network layout</div><div class="r">📄 Meeting notes</div></div>
+            <div class="boardcol">
+              <div class="nhdr">
+                <div class="ttl"><span style="font-size:16px">🧩</span><input value="Sprint retro" aria-label="Board title"></div>
+                <span class="saved">Saved</span>
+                <div class="avs hidephone"><span class="av" style="background:#34A853">BA</span><span class="av" style="background:#5856D6">RS</span><span class="av" style="background:#FF9500">YA</span></div>
+                <button class="btn sm hidephone" id="presentBtn"><svg class="i sm"><use href="#i-play"/></svg>Present</button>
+                <button class="btn sm pri"><svg class="i sm"><use href="#i-share"/></svg>Share</button>
+                <button class="btn sm ghost" style="width:30px;padding:0;justify-content:center"><svg class="i sm"><use href="#i-more"/></svg></button>
+              </div>
+              <div class="board t-select" id="board" tabindex="0" aria-label="Whiteboard">
+                <div class="dots" id="dots"></div>
+                <svg class="cv" id="cv"><defs>
+                  <marker id="mk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="context-stroke"/></marker>
+                </defs><g id="world"></g><g id="overlay"></g></svg>
+                <div class="tl">
+                  <button class="glass" id="tplBtn" title="Templates"><svg class="i sm"><use href="#i-grid"/></svg><span class="lb">Templates</span></button>
+                  <button class="glass" id="libBtn" title="Library"><svg class="i sm"><use href="#i-book"/></svg><span class="lb">Library</span></button>
+                </div>
+                <div class="tr">
+                  <div class="avs" id="liveAvs" title="Who is on this board"><span class="av" style="background:#5856D6" data-follow="Rina">RS</span><span class="av" style="background:#FF9500" data-follow="Yudi">YA</span></div>
+                  <button class="glass icon" id="voteBtn" title="Start voting"><svg class="i sm"><use href="#i-vote"/></svg></button>
+                  <button class="glass icon" id="timerBtn" title="Timer"><svg class="i sm"><use href="#i-timer"/></svg></button>
+                  <button class="glass" id="fsBtn" title="Full screen (Shift F)"><svg class="i sm"><use href="#i-max"/></svg><span>Full screen</span></button>
+                </div>
+                <div class="tb" id="tb" role="toolbar" aria-label="Tools"></div>
+                <div class="zoom"><button id="zOut" aria-label="Zoom out">−</button><span id="zPct">100%</span><button id="zIn" aria-label="Zoom in">+</button><button id="zFit" title="Fit to screen">Fit</button><button id="undo" aria-label="Undo"><svg class="i sm"><use href="#i-undo"/></svg></button><button id="redo" aria-label="Redo"><svg class="i sm"><use href="#i-redo"/></svg></button></div>
+                <div class="mini" id="mini" title="Minimap"><svg id="miniSvg"></svg></div>
+                <div class="props" id="props" hidden></div>
+                <div class="chip" id="neat" hidden>✨ Make it a neat <b id="neatKind">circle</b>? <button class="btn sm pri" id="neatYes">Yes</button><button class="btn sm ghost" id="neatNo">No</button></div>
+                <div class="toast" id="toast"></div>
+                <div class="panel" id="tplPanel" hidden style="left:12px;top:52px;width:340px"></div>
+                <div class="panel" id="libPanel" hidden style="left:12px;top:52px;width:260px"></div>
+                <div class="panel" id="keysPanel" hidden style="left:50%;top:50%;transform:translate(-50%,-50%);width:min(420px,90%)"></div>
+                <div class="panel" id="timerPanel" hidden style="right:12px;top:52px;width:220px"></div>
+                <div class="panel" id="votePanel" hidden style="right:12px;top:52px;width:250px"></div>
+                <div class="panel" id="presPanel" hidden style="left:50%;bottom:70px;transform:translateX(-50%);padding:6px;display:flex;align-items:center;gap:6px"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="cap">Shapes snap to a light grid and show blue guide lines when they line up with another shape. Mouse wheel scrolls, Ctrl + wheel zooms, space + drag moves the board.</p>
+      </div>
+      <div class="side-notes">
+        <div class="card"><h3>In the toolbar</h3><ul><li>Select, Hand, Pen, Highlighter, Eraser</li><li>Sticky note (6 colours)</li><li>Text, shapes (rectangle, rounded, circle, diamond, triangle, star, cloud, block arrow, cylinder, speech bubble)</li><li>Connector: straight, elbow or curved, sticks to the side of a shape</li><li>Frame, Image or file, Comment, Laser</li></ul></div>
+        <div class="card"><h3>Quick menu on a selection</h3>Colour, fill, line, font (iPop, Handwriting, Mono), size, layer, lock, duplicate, delete. Stickies also get <b>Make task</b>.</div>
+        <div class="card"><h3>Old boards</h3>Converted automatically. Shapes become neat, pen strokes stay exactly as drawn, old text keeps its handwriting font. Each board first gets a named version "Before the new canvas".</div>
+        <div class="card fb"><label><input type="checkbox" data-ok> Looks good</label><textarea placeholder="Anything to change here?"></textarea></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 ─────────────────────────────────────────────────────────── -->
+  <section class="s" id="s2" data-name="Live together: cursors, Follow, laser">
+    <div class="sh"><span class="num">2</span><h2>Working at the same time</h2><span class="tag t2">Package 2</span>
+      <p>Everyone on the board sees each other's cursor with their name. What someone is holding gets their colour. Click a face top-right to <b>Follow</b>: your screen moves with theirs until you move yourself. The <b>laser</b> (<kbd>L</kbd>) leaves a short red trail everyone sees, for pointing during a meeting. In section 1, Rina is moving around: click her face to follow her.</p></div>
+    <div class="grid">
+      <div class="flow">
+        <div class="dlg">
+          <h4>Follow</h4>
+          <p style="margin:0;color:var(--ink-2)">A thin coloured edge shows you are following someone. Moving the board yourself, or pressing Esc, stops it.</p>
+          <div style="margin-top:12px;height:120px;border-radius:12px;background:var(--board);box-shadow:inset 0 0 0 3px #5856D6;position:relative;overflow:hidden;background-image:radial-gradient(var(--grid) 1px,transparent 1.2px);background-size:14px 14px">
+            <div style="position:absolute;left:50%;top:8px;transform:translateX(-50%);font-size:11.5px;background:#5856D6;color:#fff;border-radius:99px;padding:2px 10px;font-weight:500">Following Rina S. · <u>Stop</u></div>
+            <div style="position:absolute;left:30%;top:52%;width:60px;height:42px;background:var(--st-green);border-radius:3px"></div>
+            <div style="position:absolute;left:52%;top:46%"><svg width="16" height="16" viewBox="0 0 24 24"><path d="m4 4 7 17 2.5-7.5L21 11z" fill="#5856D6" stroke="#fff" stroke-width="1.5"/></svg></div>
+          </div>
+        </div>
+        <div class="dlg">
+          <h4>Laser pointer</h4>
+          <p style="margin:0;color:var(--ink-2)">Nothing is drawn on the board: the trail fades after a second. Works for Can comment too, so people in a meeting can point.</p>
+          <svg viewBox="0 0 300 120" style="width:100%;height:120px;margin-top:12px;border-radius:12px;background:var(--board)">
+            <path d="M30 90 C 80 20, 140 110, 190 50 S 260 40, 270 70" fill="none" stroke="#FF3B30" stroke-width="5" stroke-linecap="round" opacity=".18"/>
+            <path d="M140 80 C 160 70, 175 60, 190 50 S 260 40, 270 70" fill="none" stroke="#FF3B30" stroke-width="4" stroke-linecap="round" opacity=".55"/>
+            <circle cx="270" cy="70" r="6" fill="#FF3B30"/><circle cx="270" cy="70" r="12" fill="#FF3B30" opacity=".2"/>
+          </svg>
+        </div>
+      </div>
+      <div class="side-notes">
+        <div class="card"><h3>Also</h3><ul><li>A "who is here" row top-right</li><li>When someone presents, others get "Rina is presenting. Follow?" They are never pulled along without asking</li><li>Offline edits merge when the connection is back, like today</li></ul></div>
+        <div class="card fb"><label><input type="checkbox" data-ok> Looks good</label><textarea placeholder="Anything to change here?"></textarea></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 ─────────────────────────────────────────────────────────── -->
+  <section class="s" id="s3" data-name="Templates gallery and My library">
+    <div class="sh"><span class="num">3</span><h2>Templates and library</h2><span class="tag t2">Package 2</span><span class="tag t1">Package 1</span>
+      <p>Templates open as a picture gallery (toolbar button, and in the middle of an empty board). Eleven starters plus your own boards saved with "Save as template". <b>My library</b> keeps shapes and groups you reuse, saved on the server, so it follows you to any PC. The old Excalidraw library in your browser is brought over the first time.</p></div>
+    <div class="grid">
+      <div>
+        <div class="gal" id="gal"></div>
+      </div>
+      <div class="side-notes">
+        <div class="card"><h3>Templates</h3>Retro, Flowchart, Brainstorm (today) + Mind map, Kanban, SWOT, Timeline, User journey, Fishbone, Meeting agenda, Org chart. A template is added beside what is already on the board, never over it.</div>
+        <div class="card"><h3>Library</h3><b>My library</b> is only yours. <b>Team library</b> is shared with everyone who can open the board.</div>
+        <div class="card fb"><label><input type="checkbox" data-ok> Looks good</label><textarea placeholder="Anything to change here?"></textarea></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 ─────────────────────────────────────────────────────────── -->
+  <section class="s" id="s4" data-name="Frames, Present and timer">
+    <div class="sh"><span class="num">4</span><h2>Frames, Present and the timer</h2><span class="tag t2">Package 2</span>
+      <p>A <b>frame</b> (<kbd>F</kbd>) names an area: "Went well", "Ideas", "Next steps". The frame list jumps to one. <b>Present</b> shows one frame at a time, full screen, like slides (arrow keys to move). The <b>timer</b> is a countdown everyone sees, for a 5-minute brainstorm. Try Present and the timer on the board in section 1.</p></div>
+    <div class="grid">
+      <div class="flow">
+        <div class="dlg">
+          <h4>Frame list</h4>
+          <div class="panel" style="position:static;box-shadow:none;padding:0">
+            <div class="row">▣ 1 · Went well <small>6 stickies</small></div>
+            <div class="row">▣ 2 · To improve <small>4 stickies</small></div>
+            <div class="row">▣ 3 · Action items <small>3 tasks</small></div>
+          </div>
+          <p class="cap">Drag in the list to change the slide order. Frames can be exported on their own.</p>
+        </div>
+        <div class="dlg">
+          <h4>Presenting</h4>
+          <div style="height:130px;border-radius:12px;background:#111;position:relative;overflow:hidden;color:#fff">
+            <div style="position:absolute;inset:14px 14px 40px;border-radius:8px;background:#FBFBFA;color:#1D1D1F;padding:10px;font-weight:600;font-size:12px">Went well<div style="display:flex;gap:6px;margin-top:8px"><span style="width:44px;height:34px;background:#FFF3A3;border-radius:3px"></span><span style="width:44px;height:34px;background:#C9F2C7;border-radius:3px"></span><span style="width:44px;height:34px;background:#CFE6FF;border-radius:3px"></span></div></div>
+            <div style="position:absolute;left:0;right:0;bottom:8px;display:flex;justify-content:center;gap:10px;font-size:11.5px;align-items:center"><span>‹</span><span>1 / 3</span><span>›</span><span style="opacity:.6">·</span><span>⏱ 04:12</span><span style="opacity:.6">·</span><span>3 following</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="side-notes">
+        <div class="card">During a call in <b>Calls &amp; Meetings</b>, Present has "Present in this meeting room" so everyone in the room follows at once.</div>
+        <div class="card fb"><label><input type="checkbox" data-ok> Looks good</label><textarea placeholder="Anything to change here?"></textarea></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 ─────────────────────────────────────────────────────────── -->
+  <section class="s" id="s5" data-name="Notes and task cards, sticky to task">
+    <div class="sh"><span class="num">5</span><h2>Notes pages and Projects tasks on the board</h2><span class="tag t3">Package 3</span>
+      <p>Drop a <b>Notes page</b> or a <b>Projects task</b> on the board as a card. Task cards stay live: status, person and due date update by themselves. Select stickies and press <b>Make task</b>: the text becomes the title, an @name the person, a date chip the due date. The sticky turns into the task card. Someone who cannot open the task sees only "Private task 🔒".</p></div>
+    <div class="grid">
+      <div class="flow">
+        <div class="dlg">
+          <h4>Make 3 tasks</h4>
+          <p style="margin:0;color:var(--ink-2)">From the 3 selected stickies.</p>
+          <div class="f"><label>Project</label><div class="in">📦 Network upgrade 2026 <span style="margin-left:auto;color:var(--ink-3)">▾</span></div><span class="cap" style="margin:0">Only projects you can add tasks to. The last one is remembered.</span></div>
+          <div class="f"><label>Tasks</label>
+            <div class="in" style="flex-direction:column;align-items:stretch;gap:6px">
+              <div style="display:flex;gap:8px;align-items:center"><span style="width:10px;height:10px;border-radius:3px;background:#FFE36B"></span>Order 4 new switches<span style="margin-left:auto;font-size:12px;color:var(--ink-3)">@Yudi · 25 Nov</span></div>
+              <div style="display:flex;gap:8px;align-items:center"><span style="width:10px;height:10px;border-radius:3px;background:#8FD38B"></span>Label the cables<span style="margin-left:auto;font-size:12px;color:var(--ink-3)">@Rina</span></div>
+              <div style="display:flex;gap:8px;align-items:center"><span style="width:10px;height:10px;border-radius:3px;background:#8EC5FF"></span>Update the floor plan<span style="margin-left:auto;font-size:12px;color:var(--ink-3)">no one yet</span></div>
+            </div></div>
+          <div class="acts"><button class="btn">Cancel</button><button class="btn pri">Create 3 tasks</button></div>
+        </div>
+        <div class="dlg" style="background:var(--board)">
+          <h4>On the board</h4>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
+            <div style="background:var(--surface);border-radius:10px;box-shadow:var(--card);padding:10px 12px;border-left:4px solid var(--blue)">
+              <div style="font-size:11px;color:var(--ink-3);display:flex;gap:6px;align-items:center"><svg class="i sm"><use href="#i-task"/></svg>Network upgrade 2026</div>
+              <div style="font-weight:600;margin:2px 0 6px">Order 4 new switches</div>
+              <div style="display:flex;gap:8px;align-items:center;font-size:12px"><span class="tag" style="background:var(--orange-soft);color:#C46A00">In progress</span><span class="av" style="background:#FF9500;width:20px;height:20px">YA</span><span style="color:var(--ink-3)">📅 25 Nov</span></div>
+            </div>
+            <div style="background:var(--surface);border-radius:10px;box-shadow:var(--card);padding:10px 12px;border-left:4px solid var(--accent)">
+              <div style="font-size:11px;color:var(--ink-3)">📄 Notes page</div>
+              <div style="font-weight:600">📊 Weekly report</div>
+              <div style="font-size:12px;color:var(--ink-3)">All servers are migrated…</div>
+            </div>
+            <div style="background:var(--surface);border-radius:10px;box-shadow:var(--card);padding:10px 12px;border-left:4px solid var(--ink-4);color:var(--ink-3)">
+              <svg class="i sm" style="vertical-align:-3px"><use href="#i-lock"/></svg> Private task
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="side-notes">
+        <div class="card"><h3>Who sees what</h3>A card shows only what the viewer may open, same rule as page links. Clicking a task card opens it in Projects.</div>
+        <div class="card fb"><label><input type="checkbox" data-ok> Looks good</label><textarea placeholder="Anything to change here?"></textarea></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 ─────────────────────────────────────────────────────────── -->
+  <section class="s" id="s6" data-name="Comments, voting, mind map">
+    <div class="sh"><span class="num">6</span><h2>Comments, voting and mind maps</h2><span class="tag t3">Package 3</span>
+      <p><b>Comments</b> (<kbd>C</kbd>) pin to a spot or a shape and use the same threads as Notes: @mention, reactions, resolve. <b>Voting</b>: anyone who can edit starts a round; everyone gets 3 votes (you choose), votes stay hidden until it ends, then the stickies can be sorted by votes. <b>Mind map</b>: select a box, <kbd>Tab</kbd> adds a branch, <kbd>Enter</kbd> a sibling. Try voting on the board in section 1.</p></div>
+    <div class="grid">
+      <div class="flow">
+        <div class="dlg">
+          <h4>Comment on the board</h4>
+          <div style="position:relative;height:150px;border-radius:12px;background:var(--board);margin-top:8px">
+            <div style="position:absolute;left:18px;top:24px;width:96px;height:76px;background:var(--st-yellow);border-radius:3px;padding:8px;font-size:11.5px;color:#1D1D1F">Faster VPN at Karawang</div>
+            <div style="position:absolute;left:100px;top:14px;width:24px;height:24px;border-radius:12px 12px 12px 2px;background:#5856D6;color:#fff;font-size:10px;font-weight:600;display:grid;place-items:center">RS</div>
+            <div style="position:absolute;left:132px;top:12px;right:10px;background:var(--surface);border-radius:10px;box-shadow:var(--pop);padding:8px 10px;font-size:12px">
+              <b>Rina S.</b> <span style="color:var(--ink-3)">2m</span><div>@Yudi can you check the line speed first?</div>
+              <div style="margin-top:6px;display:flex;gap:6px"><span class="tag" style="background:var(--fill)">👍 2</span><span style="color:var(--ink-3)">Reply · Resolve</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="dlg">
+          <h4>Mind map</h4>
+          <svg viewBox="0 0 300 150" style="width:100%;height:150px;margin-top:8px;border-radius:12px;background:var(--board)">
+            <g fill="none" stroke="var(--ink-4)" stroke-width="1.6"><path d="M150 75 C 110 75, 110 35, 70 35"/><path d="M150 75 C 110 75, 110 115, 70 115"/><path d="M150 75 C 190 75, 190 35, 230 35"/><path d="M150 75 C 190 75, 190 115, 230 115"/></g>
+            <rect x="105" y="58" width="90" height="34" rx="17" fill="var(--accent)"/><text x="150" y="80" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">Office move</text>
+            <g font-size="11" text-anchor="middle" fill="var(--ink)"><rect x="25" y="22" width="90" height="26" rx="8" fill="var(--st-blue)"/><text x="70" y="39">Network</text><rect x="25" y="102" width="90" height="26" rx="8" fill="var(--st-pink)"/><text x="70" y="119">Furniture</text><rect x="185" y="22" width="90" height="26" rx="8" fill="var(--st-green)"/><text x="230" y="39">Phones</text><rect x="185" y="102" width="90" height="26" rx="8" fill="var(--st-purple)" stroke="var(--sel)" stroke-width="2"/><text x="230" y="119">Printers</text></g>
+            <text x="230" y="146" text-anchor="middle" fill="var(--ink-3)" font-size="9.5">Tab = branch · Enter = sibling</text>
+          </svg>
+        </div>
+      </div>
+      <div class="side-notes">
+        <div class="card"><h3>Can comment</h3>Can comment, vote, react and follow a presentation. Adding or changing things on the board needs Can edit. Can view: look, zoom, export.</div>
+        <div class="card"><h3>Stamps</h3>Emoji stamps (👍 ❤️ ⭐ ✅ ❓ 🔥) can be dropped on anything for quick reactions.</div>
+        <div class="card fb"><label><input type="checkbox" data-ok> Looks good</label><textarea placeholder="Anything to change here?"></textarea></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7 ─────────────────────────────────────────────────────────── -->
+  <section class="s" id="s7" data-name="Images, files, export">
+    <div class="sh"><span class="num">7</span><h2>Images, files and export</h2><span class="tag t2">Package 2</span>
+      <p>Drag, paste or upload pictures (JPG, PNG, WebP, GIF up to 10 MB, shrunk to 2000 px). They are stored on the NAS with the page's access. Other files (PDF, Excel…) become a small card that downloads. <b>Export</b> the whole board, one frame or the selection as PNG, SVG or PDF, or <b>Copy as image</b> to paste in Chat or Mail.</p></div>
+    <div class="grid">
+      <div class="flow">
+        <div class="dlg">
+          <h4>Export</h4>
+          <div class="f"><label>What</label><div class="seg" style="width:max-content"><button class="on">Whole board</button><button>Frame…</button><button>Selection</button></div></div>
+          <div class="f"><label>Format</label><div class="seg" style="width:max-content"><button class="on">PNG</button><button>SVG</button><button>PDF</button></div></div>
+          <div class="f"><label>Background</label><div class="seg" style="width:max-content"><button class="on">White</button><button>Dark</button><button>None</button></div></div>
+          <div class="acts"><button class="btn"><svg class="i sm"><use href="#i-copy"/></svg>Copy as image</button><button class="btn pri"><svg class="i sm"><use href="#i-dl"/></svg>Download</button></div>
+        </div>
+        <div class="dlg" style="background:var(--board)">
+          <h4>On the board</h4>
+          <div style="display:flex;gap:12px;align-items:flex-start;margin-top:8px;flex-wrap:wrap">
+            <div style="width:150px;height:100px;border-radius:6px;background:linear-gradient(135deg,#9ADBFF,#0A84FF 60%,#3A3AC8);box-shadow:var(--card)"></div>
+            <div style="background:var(--surface);border-radius:10px;box-shadow:var(--card);padding:10px 12px;display:flex;gap:10px;align-items:center;min-width:170px"><span style="width:30px;height:36px;border-radius:5px;background:var(--red-soft);color:var(--red);display:grid;place-items:center;font-size:10px;font-weight:700">PDF</span><div><b style="font-size:12.5px">Quotation.pdf</b><div style="font-size:11.5px;color:var(--ink-3)">1.2 MB · Download</div></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="side-notes">
+        <div class="card"><h3>Limits</h3>About 20,000 things and 200 pictures per board. A gentle note appears when a board gets close.</div>
+        <div class="card fb"><label><input type="checkbox" data-ok> Looks good</label><textarea placeholder="Anything to change here?"></textarea></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8 ─────────────────────────────────────────────────────────── -->
+  <section class="s" id="s8" data-name="Phone, and the /draw block">
+    <div class="sh"><span class="num">8</span><h2>On a phone, and inside a page</h2><span class="tag t1">Package 1</span>
+      <p>On a phone the board is always full screen with a short toolbar at the bottom: pen, sticky, picture, comment, vote, and "More". Two fingers move and zoom. A <code>/draw</code> block inside a normal page uses the same canvas with a smaller toolbar, and "Open full screen" gives every tool.</p></div>
+    <div class="grid">
+      <div class="phones">
+        <div class="phone"><div class="scr">
+          <div class="pb"><svg class="i sm"><use href="#i-chevl"/></svg>🧩 Sprint retro<span style="margin-left:auto;display:flex;gap:4px"><span class="av" style="background:#5856D6;width:20px;height:20px">RS</span></span></div>
+          <div style="flex:1;position:relative;background-image:radial-gradient(var(--grid) 1px,transparent 1.2px);background-size:16px 16px">
+            <div style="position:absolute;left:24px;top:40px;width:90px;height:76px;background:var(--st-yellow);border-radius:3px;padding:8px;font-size:11px;color:#1D1D1F;box-shadow:0 2px 6px rgba(0,0,0,.12)">Faster VPN</div>
+            <div style="position:absolute;left:130px;top:70px;width:90px;height:76px;background:var(--st-green);border-radius:3px;padding:8px;font-size:11px;color:#1D1D1F;box-shadow:0 2px 6px rgba(0,0,0,.12)">New printer for HR</div>
+            <svg style="position:absolute;left:30px;top:190px" width="200" height="90"><path d="M10 60 C 40 10, 80 80, 120 30 S 180 40, 190 70" fill="none" stroke="#FF3B30" stroke-width="4" stroke-linecap="round"/></svg>
+          </div>
+          <div class="ptb"><button><svg class="i"><use href="#i-pointer"/></svg></button><button class="on"><svg class="i"><use href="#i-pen"/></svg></button><button><span class="stk" style="width:20px;height:20px;border-radius:4px;background:var(--st-yellow);display:block"></span></button><button><svg class="i"><use href="#i-image"/></svg></button><button><svg class="i"><use href="#i-msg"/></svg></button><button><svg class="i"><use href="#i-more"/></svg></button></div>
+        </div></div>
+        <div style="flex:1;min-width:280px;max-width:520px">
+          <div class="dlg">
+            <h4>/draw block in a page</h4>
+            <p style="margin:0 0 8px;color:var(--ink-2);font-size:13px">The meeting notes keep a sketch in the middle of the text.</p>
+            <div style="border-radius:12px;box-shadow:0 0 0 1px var(--line);overflow:hidden">
+              <div style="height:150px;background:var(--board);position:relative;background-image:radial-gradient(var(--grid) 1px,transparent 1.2px);background-size:14px 14px">
+                <svg viewBox="0 0 400 150" style="position:absolute;inset:0;width:100%;height:100%"><rect x="40" y="40" width="110" height="60" rx="10" fill="none" stroke="var(--ink)" stroke-width="1.8"/><text x="95" y="75" text-anchor="middle" fill="var(--ink)" font-size="12">Router</text><rect x="250" y="40" width="110" height="60" rx="10" fill="none" stroke="var(--ink)" stroke-width="1.8"/><text x="305" y="75" text-anchor="middle" fill="var(--ink)" font-size="12">Firewall</text><path d="M150 70 H 246" stroke="var(--ink)" stroke-width="1.8" marker-end="url(#mk)"/></svg>
+                <div style="position:absolute;right:8px;top:8px" class="glass"><svg class="i sm"><use href="#i-max"/></svg>Open full screen</div>
+                <div style="position:absolute;left:50%;bottom:8px;transform:translateX(-50%);display:flex;gap:2px;padding:3px;border-radius:10px;background:var(--surface);box-shadow:var(--card)"><span class="btn sm ghost">↖</span><span class="btn sm ghost">✎</span><span class="btn sm ghost">▭</span><span class="btn sm ghost">→</span><span class="btn sm ghost">T</span><span class="btn sm ghost">▢</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="side-notes">
+        <div class="card">Pencil and pen tablets draw with pressure. A finger on a phone draws; two fingers move the board.</div>
+        <div class="card fb"><label><input type="checkbox" data-ok> Looks good</label><textarea placeholder="Anything to change here?"></textarea></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="s" id="sum" data-name="">
+    <div class="sh"><span class="num">✓</span><h2>Your feedback</h2><p>Press the button, then paste the text in the chat.</p></div>
+    <div class="card"><div style="display:flex;gap:8px;margin-bottom:10px"><button class="btn pri" id="copyFb"><svg class="i sm"><use href="#i-copy"/></svg>Copy all feedback</button><span class="cap" id="copyMsg" style="margin:auto 0"></span></div><div class="copybox" id="fbOut"></div></div>
+  </section>
+</main>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+const NS = 'http://www.w3.org/2000/svg';
+const mk = (tag, attrs = {}, parent) => { const e = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) if (v != null) e.setAttribute(k, v); parent?.appendChild(e); return e; };
+
+/* theme */
+const setTheme = t => { document.documentElement.dataset.theme = t; $$('#theme button').forEach(b => b.classList.toggle('on', b.dataset.t === t)); store.set('wbc.theme', t); render(); };
+$$('#theme button').forEach(b => b.onclick = () => setTheme(b.dataset.t));
+
+/* nav */
+const sections = $$('section.s');
+$('#nav').innerHTML = sections.filter(s => s.dataset.name).map(s => `<a href="#${s.id}">${s.querySelector('.num').textContent}. ${s.querySelector('h2').textContent}</a>`).join('');
+const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) $$('#nav a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + e.target.id)); }), { rootMargin: '-40% 0px -55% 0px' });
+sections.forEach(s => io.observe(s));
+
+/* ── board model ─────────────────────────────────────────────────── */
+const STICKY = ['yellow', 'green', 'blue', 'pink', 'purple', 'orange'];
+const STROKES = ['#1D1D1F', '#FF3B30', '#34A853', '#0A84FF', '#FF9500', '#AF52DE'];
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const ink = () => document.documentElement.dataset.theme === 'dark' ? '#F5F5F7' : '#1D1D1F';
+let uid = 100;
+let els = [
+  { id: 'f1', type: 'frame', x: 40, y: 40, w: 560, h: 300, name: 'Went well' },
+  { id: 'f2', type: 'frame', x: 640, y: 40, w: 420, h: 300, name: 'To improve' },
+  { id: 's1', type: 'sticky', x: 70, y: 90, w: 150, h: 130, color: 'yellow', text: 'New laptops arrived on time', votes: 0 },
+  { id: 's2', type: 'sticky', x: 240, y: 90, w: 150, h: 130, color: 'green', text: 'VPN works at Karawang now', votes: 0 },
+  { id: 's3', type: 'sticky', x: 410, y: 90, w: 150, h: 130, color: 'blue', text: 'Helpdesk replies faster', votes: 0 },
+  { id: 's4', type: 'sticky', x: 670, y: 90, w: 150, h: 130, color: 'pink', text: 'Printer in HR still jams @Yudi', votes: 0 },
+  { id: 's5', type: 'sticky', x: 860, y: 90, w: 150, h: 130, color: 'orange', text: 'Label the cables before 25 Nov', votes: 0 },
+  { id: 'r1', type: 'rect', x: 120, y: 420, w: 170, h: 70, text: 'Request', stroke: null, fill: 'none' },
+  { id: 'r2', type: 'diamond', x: 380, y: 405, w: 150, h: 100, text: 'Approved?', stroke: null, fill: 'none' },
+  { id: 'r3', type: 'rect', x: 620, y: 420, w: 170, h: 70, text: 'Order', stroke: null, fill: 'none' },
+  { id: 'a1', type: 'arrow', from: 'r1', to: 'r2', curve: 'straight' },
+  { id: 'a2', type: 'arrow', from: 'r2', to: 'r3', curve: 'elbow', label: 'Yes' },
+  { id: 't1', type: 'text', x: 860, y: 430, text: 'Flow for new\nequipment', font: 'hand', size: 20 },
+];
+let view = { x: 0, y: 0, z: 0.72 };
+let tool = 'select', stickyColor = 'yellow', penColor = STROKES[0];
+let sel = new Set();
+let undoStack = [], redoStack = [];
+const snapshot = () => JSON.stringify(els);
+const commit = () => { undoStack.push(snapshot()); if (undoStack.length > 80) undoStack.shift(); redoStack = []; };
+const byId = id => els.find(e => e.id === id);
+
+const board = $('#board'), cv = $('#cv'), world = $('#world'), overlay = $('#overlay');
+const toScreen = (x, y) => ({ x: x * view.z + view.x, y: y * view.z + view.y });
+const toWorld = (sx, sy) => ({ x: (sx - view.x) / view.z, y: (sy - view.y) / view.z });
+const pointer = e => { const r = board.getBoundingClientRect(); return { sx: e.clientX - r.left, sy: e.clientY - r.top }; };
+
+function bounds(e) {
+  if (e.type === 'arrow') { const a = byId(e.from), b = byId(e.to); if (!a || !b) return { x: 0, y: 0, w: 0, h: 0 }; const pa = center(a), pb = center(b); return { x: Math.min(pa.x, pb.x), y: Math.min(pa.y, pb.y), w: Math.abs(pa.x - pb.x), h: Math.abs(pa.y - pb.y) }; }
+  if (e.type === 'path') { const xs = e.pts.map(p => p[0]), ys = e.pts.map(p => p[1]); const x = Math.min(...xs), y = Math.min(...ys); return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y }; }
+  if (e.type === 'text') { const lines = e.text.split('\n'); return { x: e.x, y: e.y, w: Math.max(...lines.map(l => l.length)) * e.size * .55 + 8, h: lines.length * e.size * 1.3 }; }
+  if (e.type === 'comment') return { x: e.x, y: e.y - 26, w: 26, h: 26 };
+  return { x: e.x, y: e.y, w: e.w, h: e.h };
+}
+const center = e => { const b = bounds(e); return { x: b.x + b.w / 2, y: b.y + b.h / 2 }; };
+/** Point on the edge of a box towards another point (so arrows touch the side, not the middle). */
+function edgePoint(e, toward) {
+  const b = bounds(e), c = center(e), dx = toward.x - c.x, dy = toward.y - c.y;
+  if (!dx && !dy) return c;
+  if (e.type === 'ellipse') { const a = b.w / 2, bb = b.h / 2, t = 1 / Math.sqrt((dx * dx) / (a * a) + (dy * dy) / (bb * bb)); return { x: c.x + dx * t, y: c.y + dy * t }; }
+  if (e.type === 'diamond') { const t = 1 / (Math.abs(dx) / (b.w / 2) + Math.abs(dy) / (b.h / 2)); return { x: c.x + dx * t, y: c.y + dy * t }; }
+  const sx = (b.w / 2) / Math.abs(dx || 1e-9), sy = (b.h / 2) / Math.abs(dy || 1e-9), t = Math.min(sx, sy);
+  return { x: c.x + dx * t, y: c.y + dy * t };
+}
+/** Smooth a freehand stroke into an SVG path (quadratic midpoints, like perfect-freehand's centre line). */
+function smoothPath(pts) {
+  if (pts.length < 2) return `M${pts[0][0]} ${pts[0][1]}l.1 0`;
+  let d = `M${pts[0][0]} ${pts[0][1]}`;
+  for (let i = 1; i < pts.length - 1; i++) { const mx = (pts[i][0] + pts[i + 1][0]) / 2, my = (pts[i][1] + pts[i + 1][1]) / 2; d += ` Q${pts[i][0]} ${pts[i][1]} ${mx} ${my}`; }
+  const l = pts.at(-1); return d + ` L${l[0]} ${l[1]}`;
+}
+function wrapText(text, maxChars) {
+  const out = []; for (const para of String(text).split('\n')) { let line = ''; for (const w of para.split(' ')) { if ((line + ' ' + w).trim().length > maxChars && line) { out.push(line); line = w; } else line = (line + ' ' + w).trim(); } out.push(line); } return out;
+}
+
+function render() {
+  world.innerHTML = ''; overlay.innerHTML = '';
+  world.setAttribute('transform', `translate(${view.x} ${view.y}) scale(${view.z})`);
+  const g = 24 * view.z; $('#dots').style.backgroundSize = `${g}px ${g}px`; $('#dots').style.backgroundPosition = `${view.x}px ${view.y}px`;
+  const order = ['frame', 'rect', 'ellipse', 'diamond', 'arrow', 'path', 'sticky', 'text', 'comment'];
+  const sorted = [...els].sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
+  for (const e of sorted) drawEl(e);
+  drawSelection();
+  $('#zPct').textContent = Math.round(view.z * 100) + '%';
+  drawMini();
+}
+function drawEl(e) {
+  const g = mk('g', { 'data-id': e.id }, world);
+  const stroke = e.stroke || ink();
+  if (e.type === 'frame') {
+    mk('rect', { x: e.x, y: e.y, width: e.w, height: e.h, rx: 14, fill: document.documentElement.dataset.theme === 'dark' ? 'rgba(255,255,255,.03)' : 'rgba(0,0,0,.025)', stroke: css('--line-2'), 'stroke-width': 1.2 / view.z }, g);
+    const t = mk('text', { x: e.x + 4, y: e.y - 10, fill: css('--ink-3'), 'font-size': 14, 'font-weight': 600 }, g); t.textContent = '▣ ' + e.name;
+  } else if (e.type === 'rect' || e.type === 'ellipse' || e.type === 'diamond') {
+    const fill = e.fill === 'none' ? (document.documentElement.dataset.theme === 'dark' ? '#1C1C1E' : '#fff') : e.fill;
+    if (e.type === 'rect') mk('rect', { x: e.x, y: e.y, width: e.w, height: e.h, rx: 12, fill, stroke, 'stroke-width': 2 }, g);
+    if (e.type === 'ellipse') mk('ellipse', { cx: e.x + e.w / 2, cy: e.y + e.h / 2, rx: e.w / 2, ry: e.h / 2, fill, stroke, 'stroke-width': 2 }, g);
+    if (e.type === 'diamond') mk('path', { d: `M${e.x + e.w / 2} ${e.y} L${e.x + e.w} ${e.y + e.h / 2} L${e.x + e.w / 2} ${e.y + e.h} L${e.x} ${e.y + e.h / 2}Z`, fill, stroke, 'stroke-width': 2, 'stroke-linejoin': 'round' }, g);
+    if (e.text) { const t = mk('text', { x: e.x + e.w / 2, y: e.y + e.h / 2 + 5, 'text-anchor': 'middle', fill: ink(), 'font-size': 15, 'font-weight': 500 }, g); t.textContent = e.text; }
+  } else if (e.type === 'sticky') {
+    mk('rect', { x: e.x + 2, y: e.y + 4, width: e.w, height: e.h, rx: 4, fill: 'rgba(0,0,0,.10)', filter: 'blur(3px)' }, g);
+    mk('rect', { x: e.x, y: e.y, width: e.w, height: e.h, rx: 4, fill: css('--st-' + e.color) }, g);
+    const lines = wrapText(e.text, 17).slice(0, 6);
+    lines.forEach((l, i) => { const t = mk('text', { x: e.x + 12, y: e.y + 26 + i * 19, fill: document.documentElement.dataset.theme === 'dark' ? '#F5F5F7' : '#1D1D1F', 'font-size': 15.5, 'font-weight': 500 }, g); t.textContent = l; });
+    if (voting.on || voting.done) {
+      const n = voting.done ? e.votes : (voting.mine[e.id] || 0);
+      if (n) { mk('circle', { cx: e.x + e.w - 16, cy: e.y + e.h - 16, r: 12, fill: '#0A84FF' }, g); const t = mk('text', { x: e.x + e.w - 16, y: e.y + e.h - 12, 'text-anchor': 'middle', fill: '#fff', 'font-size': 12, 'font-weight': 700 }, g); t.textContent = n; }
+    }
+  } else if (e.type === 'text') {
+    e.text.split('\n').forEach((l, i) => { const t = mk('text', { x: e.x, y: e.y + e.size + i * e.size * 1.3, fill: e.stroke || ink(), 'font-size': e.size, 'font-family': e.font === 'hand' ? css('--hand') : e.font === 'mono' ? css('--mono') : css('--font') }, g); t.textContent = l; });
+  } else if (e.type === 'path') {
+    mk('path', { d: smoothPath(e.pts), fill: 'none', stroke: e.stroke, 'stroke-width': e.hl ? 18 : e.width || 3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: e.hl ? .35 : 1 }, g);
+  } else if (e.type === 'arrow') {
+    const a = byId(e.from), b = byId(e.to); if (!a || !b) return;
+    const pa = edgePoint(a, center(b)), pb = edgePoint(b, center(a));
+    let d;
+    if (e.curve === 'elbow') { const mx = (pa.x + pb.x) / 2; d = `M${pa.x} ${pa.y} H${mx} V${pb.y} H${pb.x}`; }
+    else if (e.curve === 'curved') { const mx = (pa.x + pb.x) / 2; d = `M${pa.x} ${pa.y} C${mx} ${pa.y} ${mx} ${pb.y} ${pb.x} ${pb.y}`; }
+    else d = `M${pa.x} ${pa.y} L${pb.x} ${pb.y}`;
+    mk('path', { d, fill: 'none', stroke: css('--ink-3'), 'stroke-width': 2, 'marker-end': 'url(#mk)', 'stroke-linejoin': 'round' }, g);
+    if (e.label) { const lx = (pa.x + pb.x) / 2, ly = (pa.y + pb.y) / 2; mk('rect', { x: lx - 18, y: ly - 12, width: 36, height: 22, rx: 6, fill: css('--board') }, g); const t = mk('text', { x: lx, y: ly + 4, 'text-anchor': 'middle', fill: css('--ink-2'), 'font-size': 12 }, g); t.textContent = e.label; }
+  } else if (e.type === 'comment') {
+    mk('path', { d: `M${e.x} ${e.y} l0 -26 a13 13 0 0 1 13 -13 h0 a13 13 0 0 1 13 13 a13 13 0 0 1 -13 13 z`, fill: '#5856D6' }, g);
+    const t = mk('text', { x: e.x + 13, y: e.y - 22, 'text-anchor': 'middle', fill: '#fff', 'font-size': 10, 'font-weight': 700 }, g); t.textContent = e.who;
+  }
+}
+function drawSelection() {
+  const props = $('#props');
+  if (!sel.size) { props.hidden = true; return; }
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  for (const id of sel) { const e = byId(id); if (!e) continue; const b = bounds(e); x1 = Math.min(x1, b.x); y1 = Math.min(y1, b.y); x2 = Math.max(x2, b.x + b.w); y2 = Math.max(y2, b.y + b.h); }
+  if (!isFinite(x1)) { props.hidden = true; return; }
+  const a = toScreen(x1, y1), b = toScreen(x2, y2);
+  mk('rect', { x: a.x - 4, y: a.y - 4, width: b.x - a.x + 8, height: b.y - a.y + 8, fill: 'none', stroke: css('--sel'), 'stroke-width': 1.5, rx: 4 }, overlay);
+  for (const [hx, hy] of [[a.x - 4, a.y - 4], [b.x + 4, a.y - 4], [a.x - 4, b.y + 4], [b.x + 4, b.y + 4]]) mk('rect', { x: hx - 4, y: hy - 4, width: 8, height: 8, rx: 2, fill: '#fff', stroke: css('--sel'), 'stroke-width': 1.5 }, overlay);
+  if (dragging) { props.hidden = true; return; }
+  const items = [...sel].map(byId).filter(Boolean);
+  const allSticky = items.every(e => e.type === 'sticky');
+  let html = '';
+  if (allSticky) html += STICKY.map(c => `<button data-sc="${c}" title="${c}"><span class="sw" style="background:var(--st-${c})"></span></button>`).join('') + '<hr>';
+  else html += STROKES.slice(0, 5).map(c => `<button data-stroke="${c}" title="Colour"><span class="sw" style="background:${c}"></span></button>`).join('') + '<hr>';
+  if (items.some(e => e.type === 'arrow')) html += '<button data-curve="straight" title="Straight">／</button><button data-curve="elbow" title="Elbow">⌐</button><button data-curve="curved" title="Curved">∿</button><hr>';
+  if (items.some(e => e.type === 'text')) html += '<button data-font="ipop" title="iPop font">Aa</button><button data-font="hand" title="Handwriting" style="font-family:var(--hand)">Aa</button><button data-font="mono" title="Monospace" style="font-family:var(--mono)">Aa</button><hr>';
+  html += '<button data-act="dup" title="Duplicate (Ctrl D)"><svg class="i sm"><use href="#i-copy"/></svg></button><button data-act="front" title="Bring to front"><svg class="i sm"><use href="#i-layers"/></svg></button><button data-act="lock" title="Lock"><svg class="i sm"><use href="#i-lock"/></svg></button><button data-act="del" title="Delete (Del)"><svg class="i sm"><use href="#i-trash"/></svg></button>';
+  if (allSticky) html += `<hr><button class="task" data-act="task"><svg class="i sm"><use href="#i-task"/></svg>Make ${items.length > 1 ? items.length + ' tasks' : 'task'}</button>`;
+  props.innerHTML = html;
+  props.hidden = false;
+  const r = board.getBoundingClientRect();
+  const half = props.offsetWidth / 2 + 8;
+  props.style.left = Math.min(Math.max((a.x + b.x) / 2, half), r.width - half) + 'px';
+  props.style.top = Math.max(a.y - 14, 56) + 'px';
+}
+$('#props').addEventListener('pointerdown', e => e.stopPropagation());
+$('#props').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const items = [...sel].map(byId).filter(Boolean);
+  commit();
+  if (b.dataset.sc) items.forEach(i => i.color = b.dataset.sc);
+  if (b.dataset.stroke) items.forEach(i => { if (i.type === 'path' || i.type === 'text' || ['rect', 'ellipse', 'diamond'].includes(i.type)) i.stroke = b.dataset.stroke; });
+  if (b.dataset.curve) items.forEach(i => { if (i.type === 'arrow') i.curve = b.dataset.curve; });
+  if (b.dataset.font) items.forEach(i => { if (i.type === 'text') i.font = b.dataset.font; });
+  const act = b.dataset.act;
+  if (act === 'del') { els = els.filter(x => !sel.has(x.id) && !(x.type === 'arrow' && (sel.has(x.from) || sel.has(x.to)))); sel.clear(); }
+  if (act === 'dup') { const copies = items.filter(i => i.type !== 'arrow').map(i => ({ ...structuredClone(i), id: 'e' + uid++, x: (i.x ?? 0) + 30, y: (i.y ?? 0) + 30, pts: i.pts?.map(p => [p[0] + 30, p[1] + 30]) })); els.push(...copies); sel = new Set(copies.map(c => c.id)); }
+  if (act === 'front') { const moved = els.filter(x => sel.has(x.id)); els = els.filter(x => !sel.has(x.id)).concat(moved); }
+  if (act === 'lock') toast('Locked: it can no longer be moved by accident');
+  if (act === 'task') { toast(`Opens "Make ${items.length > 1 ? items.length + ' tasks' : 'task'}" (see section 5)`); document.getElementById('s5').scrollIntoView({ behavior: 'smooth' }); }
+  render();
+});
+
+/* toolbar */
+const TOOLS = [
+  ['select', 'i-pointer', 'Select', 'V'], ['hand', 'i-hand', 'Hand', 'H'], '|',
+  ['pen', 'i-pen', 'Pen', 'P'], ['hl', 'i-hl', 'Highlighter', 'M'], ['eraser', 'i-eraser', 'Eraser', 'E'], '|',
+  ['sticky', null, 'Sticky note', 'S'], ['text', 'i-type', 'Text', 'T'], ['rect', 'i-sq', 'Rectangle', 'R'], ['ellipse', 'i-circle', 'Circle', 'O'], ['diamond', 'i-diamond', 'Diamond', 'D'], ['arrow', 'i-arrow', 'Connector', 'A'], '|',
+  ['frame', 'i-frame', 'Frame', 'F'], ['image', 'i-image', 'Image or file', 'I'], ['comment', 'i-msg', 'Comment', 'C'], ['laser', 'i-laser', 'Laser', 'L'],
+];
+$('#tb').innerHTML = TOOLS.map(t => t === '|' ? '<hr>' : `<button data-tool="${t[0]}" title="${t[2]} (${t[3]})" aria-label="${t[2]}">${t[1] ? `<svg class="i"><use href="#${t[1]}"/></svg>` : '<span class="stk"></span>'}<span class="k">${t[3]}</span></button>`).join('');
+function setTool(t) {
+  if (t === 'image') { toast('Opens the file picker. Pictures can also be pasted or dropped on the board'); return; }
+  tool = t; $$('#tb button').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
+  board.className = 'board t-' + t;
+  if (t !== 'select') { sel.clear(); render(); }
+  if (t === 'sticky') { const i = STICKY.indexOf(stickyColor); toast('Click the board to add a ' + stickyColor + ' sticky. Press S again for the next colour'); }
+}
+$('#tb').addEventListener('click', e => { const b = e.target.closest('[data-tool]'); if (!b) return; if (b.dataset.tool === 'sticky' && tool === 'sticky') { stickyColor = STICKY[(STICKY.indexOf(stickyColor) + 1) % STICKY.length]; $('#tb .stk').style.background = `var(--st-${stickyColor})`; } setTool(b.dataset.tool); });
+setTool('select');
+
+/* pointer interactions */
+let dragging = null, drawing = null, panning = null, creating = null, spaceDown = false, laserTrail = [], lastErase = 0;
+const hitTest = (wx, wy) => {
+  const order = ['comment', 'text', 'sticky', 'path', 'arrow', 'diamond', 'ellipse', 'rect', 'frame'];
+  const cands = els.filter(e => { const b = bounds(e); const pad = e.type === 'path' || e.type === 'arrow' ? 8 : 0; return wx >= b.x - pad && wx <= b.x + b.w + pad && wy >= b.y - pad && wy <= b.y + b.h + pad; });
+  cands.sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
+  // a frame only by its title area or an empty spot inside it
+  return cands.find(c => c.type !== 'frame') || cands[0];
+};
+board.addEventListener('pointerdown', e => {
+  if (e.target.closest('.tb,.tl,.tr,.zoom,.mini,.props,.chip,.panel')) return;
+  if (!voting.on) hidePanels();
+  board.focus({ preventScroll: true });
+  const { sx, sy } = pointer(e), w = toWorld(sx, sy);
+  board.setPointerCapture(e.pointerId);
+  hideNeat();
+  stopFollow();
+  if (tool === 'hand' || spaceDown || e.button === 1) { panning = { sx, sy, vx: view.x, vy: view.y }; board.classList.add('panning'); return; }
+  if (tool === 'pen' || tool === 'hl') { drawing = { id: 'e' + uid++, type: 'path', pts: [[w.x, w.y]], stroke: tool === 'hl' ? '#FFCC00' : penColor, width: 3, hl: tool === 'hl' }; commit(); els.push(drawing); render(); return; }
+  if (tool === 'laser') { laserTrail = [[w.x, w.y, Date.now()]]; drawing = { laser: true }; return; }
+  if (tool === 'eraser') { commit(); eraseAt(w); drawing = { erase: true }; return; }
+  if (tool === 'sticky') { commit(); const s = { id: 'e' + uid++, type: 'sticky', x: w.x - 75, y: w.y - 65, w: 150, h: 130, color: stickyColor, text: '', votes: 0 }; els.push(s); sel = new Set([s.id]); setTool('select'); render(); editText(s); return; }
+  if (tool === 'text') { commit(); const t = { id: 'e' + uid++, type: 'text', x: w.x, y: w.y - 10, text: 'Text', font: 'ipop', size: 18 }; els.push(t); sel = new Set([t.id]); setTool('select'); render(); editText(t); return; }
+  if (tool === 'comment') { commit(); els.push({ id: 'e' + uid++, type: 'comment', x: w.x, y: w.y, who: 'BA' }); setTool('select'); render(); toast('Comment pinned here. The thread opens in the comments panel'); return; }
+  if (['rect', 'ellipse', 'diamond', 'frame'].includes(tool)) { commit(); creating = { id: 'e' + uid++, type: tool, x: w.x, y: w.y, w: 1, h: 1, ox: w.x, oy: w.y, text: '', fill: 'none', name: 'Frame ' + (els.filter(x => x.type === 'frame').length + 1) }; els.push(creating); render(); return; }
+  if (tool === 'arrow') { const hit = hitTest(w.x, w.y); if (hit && hit.type !== 'arrow' && hit.type !== 'frame') { creating = { arrowFrom: hit.id }; toast('Now release over another shape'); } return; }
+  // select
+  const hit = hitTest(w.x, w.y);
+  if (hit && !(hit.type === 'frame' && w.y > hit.y + 30 && hitInsideFrameContent(hit, w))) {
+    if (!sel.has(hit.id)) sel = e.shiftKey ? new Set([...sel, hit.id]) : new Set([hit.id]);
+    commit();
+    const moving = new Set(sel);
+    // moving a frame moves what is inside it
+    for (const id of sel) { const f = byId(id); if (f?.type === 'frame') els.forEach(x => { if (x.type !== 'frame' && x.type !== 'arrow') { const b = bounds(x); if (b.x >= f.x && b.y >= f.y && b.x + b.w <= f.x + f.w && b.y + b.h <= f.y + f.h) moving.add(x.id); } }); }
+    dragging = { start: w, orig: [...moving].map(id => { const x = byId(id); return { id, x: x.x, y: x.y, pts: x.pts?.map(p => [...p]) }; }) };
+  } else {
+    sel.clear(); creating = { marquee: true, ox: w.x, oy: w.y, x: w.x, y: w.y };
+  }
+  render();
+});
+const hitInsideFrameContent = (f, w) => true;
+board.addEventListener('pointermove', e => {
+  const { sx, sy } = pointer(e), w = toWorld(sx, sy);
+  if (panning) { view.x = panning.vx + sx - panning.sx; view.y = panning.vy + sy - panning.sy; render(); return; }
+  if (drawing?.laser) { laserTrail.push([w.x, w.y, Date.now()]); drawLaser(); return; }
+  if (drawing?.erase) { eraseAt(w); return; }
+  if (drawing) { drawing.pts.push([w.x, w.y]); render(); return; }
+  if (creating?.marquee) {
+    creating.x = w.x; creating.y = w.y; render();
+    const a = toScreen(Math.min(creating.ox, w.x), Math.min(creating.oy, w.y)), b = toScreen(Math.max(creating.ox, w.x), Math.max(creating.oy, w.y));
+    mk('rect', { x: a.x, y: a.y, width: b.x - a.x, height: b.y - a.y, fill: 'rgba(10,132,255,.08)', stroke: css('--sel'), 'stroke-dasharray': '4 3' }, overlay);
+    return;
+  }
+  if (creating?.arrowFrom) {
+    render(); const from = byId(creating.arrowFrom), p = edgePoint(from, w), a = toScreen(p.x, p.y);
+    mk('path', { d: `M${a.x} ${a.y} L${sx} ${sy}`, stroke: css('--sel'), 'stroke-width': 2, 'marker-end': 'url(#mk)', fill: 'none' }, overlay); return;
+  }
+  if (creating) { creating.x = Math.min(creating.ox, w.x); creating.y = Math.min(creating.oy, w.y); creating.w = Math.abs(w.x - creating.ox); creating.h = Math.abs(w.y - creating.oy); render(); return; }
+  if (dragging) {
+    let dx = w.x - dragging.start.x, dy = w.y - dragging.start.y;
+    // snap to a 12 px grid unless Alt is held
+    if (!e.altKey) { const first = dragging.orig[0]; if (first.x != null) { dx = Math.round((first.x + dx) / 12) * 12 - first.x; dy = Math.round((first.y + dy) / 12) * 12 - first.y; } }
+    for (const o of dragging.orig) { const x = byId(o.id); if (o.pts) x.pts = o.pts.map(p => [p[0] + dx, p[1] + dy]); else { x.x = o.x + dx; x.y = o.y + dy; } }
+    dragging.moved = true; render(); drawGuides(); return;
+  }
+});
+board.addEventListener('pointerup', e => {
+  const { sx, sy } = pointer(e), w = toWorld(sx, sy);
+  if (panning) { panning = null; board.classList.remove('panning'); return; }
+  if (drawing?.laser) { drawing = null; fadeLaser(); return; }
+  if (drawing?.erase) { drawing = null; return; }
+  if (drawing) { const d = drawing; drawing = null; if (!d.hl) offerNeat(d); render(); return; }
+  if (creating?.marquee) {
+    const x1 = Math.min(creating.ox, w.x), y1 = Math.min(creating.oy, w.y), x2 = Math.max(creating.ox, w.x), y2 = Math.max(creating.oy, w.y);
+    if (x2 - x1 > 4) sel = new Set(els.filter(el => { const b = bounds(el); return el.type !== 'frame' && b.x >= x1 && b.y >= y1 && b.x + b.w <= x2 && b.y + b.h <= y2; }).map(el => el.id));
+    creating = null; render(); return;
+  }
+  if (creating?.arrowFrom) { const hit = hitTest(w.x, w.y); if (hit && hit.id !== creating.arrowFrom && hit.type !== 'arrow' && hit.type !== 'frame') { commit(); els.push({ id: 'e' + uid++, type: 'arrow', from: creating.arrowFrom, to: hit.id, curve: 'straight' }); toast('Connected. Drag either shape: the arrow follows'); } creating = null; setTool('select'); render(); return; }
+  if (creating) { if (creating.w < 8) { creating.w = creating.type === 'frame' ? 360 : 150; creating.h = creating.type === 'frame' ? 240 : 80; } if (creating.type !== 'frame') creating.text = ''; sel = new Set([creating.id]); creating = null; setTool('select'); render(); return; }
+  if (dragging) { if (!dragging.moved) undoStack.pop(); dragging = null; render(); }
+});
+board.addEventListener('dblclick', e => {
+  const { sx, sy } = pointer(e), w = toWorld(sx, sy), hit = hitTest(w.x, w.y);
+  if (hit && ['sticky', 'text', 'rect', 'ellipse', 'diamond'].includes(hit.type)) { editText(hit); return; }
+  if (!hit || hit.type === 'frame') { commit(); const t = { id: 'e' + uid++, type: 'text', x: w.x, y: w.y - 10, text: 'Text', font: 'ipop', size: 18 }; els.push(t); sel = new Set([t.id]); render(); editText(t); }
+});
+board.addEventListener('wheel', e => {
+  e.preventDefault();
+  const { sx, sy } = pointer(e);
+  if (e.ctrlKey || e.metaKey) { const w = toWorld(sx, sy); view.z = Math.min(3, Math.max(.15, view.z * Math.exp(-e.deltaY * .0015))); view.x = sx - w.x * view.z; view.y = sy - w.y * view.z; }
+  else { view.x -= e.deltaX; view.y -= e.deltaY; }
+  stopFollow(); render();
+}, { passive: false });
+
+function drawGuides() {
+  // blue guide line when the dragged item's centre lines up with another item's centre
+  const moving = new Set(dragging.orig.map(o => o.id));
+  for (const id of moving) {
+    const m = byId(id); if (!m || m.type === 'path') continue; const c = center(m);
+    for (const o of els) { if (moving.has(o.id) || o.type === 'arrow' || o.type === 'frame') continue; const oc = center(o);
+      if (Math.abs(oc.x - c.x) < 3) { const a = toScreen(c.x, Math.min(c.y, oc.y) - 20), b = toScreen(c.x, Math.max(c.y, oc.y) + 20); mk('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: '#FF2D55', 'stroke-width': 1, 'stroke-dasharray': '3 3' }, overlay); }
+      if (Math.abs(oc.y - c.y) < 3) { const a = toScreen(Math.min(c.x, oc.x) - 20, c.y), b = toScreen(Math.max(c.x, oc.x) + 20, c.y); mk('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: '#FF2D55', 'stroke-width': 1, 'stroke-dasharray': '3 3' }, overlay); }
+    }
+    break;
+  }
+}
+function eraseAt(w) {
+  const victim = els.find(e => e.type === 'path' && e.pts.some(p => Math.hypot(p[0] - w.x, p[1] - w.y) < 12 / view.z));
+  if (victim) { els = els.filter(e => e !== victim); render(); }
+}
+function drawLaser() {
+  render();
+  const now = Date.now(); laserTrail = laserTrail.filter(p => now - p[2] < 900);
+  if (laserTrail.length < 2) return;
+  const pts = laserTrail.map(p => { const s = toScreen(p[0], p[1]); return [s.x, s.y]; });
+  mk('path', { d: smoothPath(pts), fill: 'none', stroke: '#FF3B30', 'stroke-width': 5, 'stroke-linecap': 'round', opacity: .55 }, overlay);
+  const l = pts.at(-1); mk('circle', { cx: l[0], cy: l[1], r: 6, fill: '#FF3B30' }, overlay);
+}
+function fadeLaser() { const t = setInterval(() => { drawLaser(); if (laserTrail.length < 2) { clearInterval(t); render(); } }, 60); }
+
+/* "make it neat": a closed pen stroke that is roughly round or boxy becomes a clean shape */
+let neatFor = null;
+function offerNeat(d) {
+  if (d.pts.length < 12) return;
+  const b = bounds(d), first = d.pts[0], last = d.pts.at(-1);
+  const closed = Math.hypot(first[0] - last[0], first[1] - last[1]) < Math.max(b.w, b.h) * .25;
+  if (!closed || b.w < 30 || b.h < 30) return;
+  const c = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+  const radial = d.pts.map(p => Math.hypot((p[0] - c.x) / (b.w / 2), (p[1] - c.y) / (b.h / 2)));
+  const avg = radial.reduce((s, v) => s + v, 0) / radial.length;
+  const kind = avg > .85 && avg < 1.1 && Math.max(...radial) < 1.25 ? 'ellipse' : 'rect';
+  neatFor = { id: d.id, kind };
+  $('#neatKind').textContent = kind === 'ellipse' ? 'circle' : 'box';
+  const s = toScreen(c.x, b.y + b.h); const chip = $('#neat'); chip.style.left = s.x + 'px'; chip.style.top = s.y + 'px'; chip.hidden = false;
+}
+function hideNeat() { $('#neat').hidden = true; neatFor = null; }
+$('#neatYes').onclick = () => { const d = byId(neatFor?.id); if (d) { commit(); const b = bounds(d); els = els.filter(x => x !== d); const s = { id: 'e' + uid++, type: neatFor.kind, x: b.x, y: b.y, w: b.w, h: b.h, text: '', fill: 'none', stroke: d.stroke === '#1D1D1F' ? null : d.stroke }; els.push(s); sel = new Set([s.id]); } hideNeat(); render(); };
+$('#neatNo').onclick = hideNeat;
+
+/* text editing in place */
+function editText(el) {
+  const b = bounds(el), a = toScreen(b.x, b.y), z = view.z;
+  const ta = document.createElement('textarea'); ta.className = 'edit-text';
+  ta.value = el.text === 'Text' ? '' : el.text;
+  Object.assign(ta.style, { left: a.x + 'px', top: a.y + 'px', width: Math.max(b.w * z, 160) + 'px', height: Math.max(b.h * z, 40) + 'px', fontSize: (el.type === 'text' ? el.size : 14.5) * z + 'px' });
+  if (el.type === 'sticky') ta.style.background = css('--st-' + el.color);
+  board.appendChild(ta); ta.focus();
+  const done = () => { const v = ta.value.trim(); ta.remove(); if (!v && (el.type === 'text' || el.type === 'sticky' && !el.text)) { if (el.type === 'text') els = els.filter(x => x !== el); else el.text = ''; } else el.text = v; render(); };
+  ta.addEventListener('blur', done); ta.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) ta.blur(); });
+}
+
+/* zoom + undo */
+const zoomBy = f => { const r = board.getBoundingClientRect(), cx = r.width / 2, cy = r.height / 2, w = toWorld(cx, cy); view.z = Math.min(3, Math.max(.15, view.z * f)); view.x = cx - w.x * view.z; view.y = cy - w.y * view.z; render(); };
+$('#zIn').onclick = () => zoomBy(1.2); $('#zOut').onclick = () => zoomBy(1 / 1.2);
+function fit(list = els) { const r = board.getBoundingClientRect(); if (!list.length || r.width < 200 || r.height < 200) return; let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity; for (const e of list) { const b = bounds(e); x1 = Math.min(x1, b.x); y1 = Math.min(y1, b.y - 24); x2 = Math.max(x2, b.x + b.w); y2 = Math.max(y2, b.y + b.h); } view.z = Math.max(.35, Math.min(1.4, (r.width - 80) / (x2 - x1), (r.height - 150) / (y2 - y1))); view.x = (r.width - (x2 - x1) * view.z) / 2 - x1 * view.z; view.y = (r.height - 70 - (y2 - y1) * view.z) / 2 - y1 * view.z + 10; render(); }
+$('#zFit').onclick = () => fit();
+const undo = () => { if (!undoStack.length) return; redoStack.push(snapshot()); els = JSON.parse(undoStack.pop()); sel.clear(); render(); };
+const redo = () => { if (!redoStack.length) return; undoStack.push(snapshot()); els = JSON.parse(redoStack.pop()); sel.clear(); render(); };
+$('#undo').onclick = undo; $('#redo').onclick = redo;
+
+/* minimap */
+function drawMini() {
+  const svg = $('#miniSvg'); svg.innerHTML = '';
+  if (!els.length) return;
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity; for (const e of els) { const b = bounds(e); x1 = Math.min(x1, b.x); y1 = Math.min(y1, b.y); x2 = Math.max(x2, b.x + b.w); y2 = Math.max(y2, b.y + b.h); }
+  const pad = 60; svg.setAttribute('viewBox', `${x1 - pad} ${y1 - pad} ${x2 - x1 + pad * 2} ${y2 - y1 + pad * 2}`);
+  for (const e of els) { if (e.type === 'arrow') continue; const b = bounds(e); mk('rect', { x: b.x, y: b.y, width: Math.max(b.w, 6), height: Math.max(b.h, 6), rx: 6, fill: e.type === 'sticky' ? css('--st-' + e.color) : e.type === 'frame' ? 'none' : css('--fill-2'), stroke: e.type === 'frame' ? css('--line-2') : 'none', 'stroke-width': 4 }, svg); }
+  const r = board.getBoundingClientRect(), a = toWorld(0, 0), b = toWorld(r.width, r.height);
+  mk('rect', { x: a.x, y: a.y, width: b.x - a.x, height: b.y - a.y, fill: 'rgba(10,132,255,.08)', stroke: css('--sel'), 'stroke-width': 6, rx: 8 }, svg);
+}
+$('#mini').addEventListener('pointerdown', e => { const r = $('#mini').getBoundingClientRect(), vb = $('#miniSvg').viewBox.baseVal, br = board.getBoundingClientRect(); const wx = vb.x + (e.clientX - r.left) / r.width * vb.width, wy = vb.y + (e.clientY - r.top) / r.height * vb.height; view.x = br.width / 2 - wx * view.z; view.y = br.height / 2 - wy * view.z; render(); });
+
+/* keyboard */
+const KEYS = { v: 'select', h: 'hand', p: 'pen', m: 'hl', e: 'eraser', s: 'sticky', t: 'text', r: 'rect', o: 'ellipse', d: 'diamond', a: 'arrow', f: 'frame', i: 'image', c: 'comment', l: 'laser' };
+const DIGITS = ['hand', 'select', 'rect', 'diamond', 'ellipse', 'arrow', 'pen', 'text', 'image', 'eraser'];
+board.addEventListener('keydown', e => {
+  if (e.target.tagName === 'TEXTAREA') return;
+  if (e.key === ' ') { spaceDown = true; e.preventDefault(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); sel = new Set(els.filter(x => x.type !== 'frame').map(x => x.id)); render(); return; }
+  if (e.shiftKey && e.key.toLowerCase() === 'f') { e.preventDefault(); toggleFs(); return; }
+  if (e.key === 'Delete' || e.key === 'Backspace') { if (sel.size) { commit(); els = els.filter(x => !sel.has(x.id) && !(x.type === 'arrow' && (sel.has(x.from) || sel.has(x.to)))); sel.clear(); render(); } return; }
+  if (e.key === 'Escape') { if ($('#demoApp').classList.contains('fs')) toggleFs(false); sel.clear(); hidePanels(); setTool('select'); stopFollow(); return; }
+  if (e.key === '?') { togglePanel('keysPanel'); return; }
+  if (presenting && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { stepPresent(e.key === 'ArrowRight' ? 1 : -1); return; }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (KEYS[k]) { if (k === 's' && tool === 'sticky') { stickyColor = STICKY[(STICKY.indexOf(stickyColor) + 1) % STICKY.length]; $('#tb .stk').style.background = `var(--st-${stickyColor})`; } setTool(KEYS[k]); return; }
+  if (/^[0-9]$/.test(k)) setTool(DIGITS[+k]);
+});
+board.addEventListener('keyup', e => { if (e.key === ' ') spaceDown = false; });
+
+/* panels */
+const hidePanels = () => $$('#board .panel').forEach(p => { if ((p.id !== 'presPanel' || !presenting) && !(p.id === 'votePanel' && voting.on)) p.hidden = true; });
+function togglePanel(id) { const p = $('#' + id), was = !p.hidden; hidePanels(); p.hidden = was; }
+const TEMPLATES = [
+  ['Retro', 'Went well, improve, action', 'retro'], ['Flowchart', 'Steps and decisions', 'flow'], ['Brainstorm', 'Ideas around a topic', 'brain'],
+  ['Mind map', 'Branch out from one idea', 'mind'], ['Kanban', 'To do, doing, done', 'kanban'], ['SWOT', 'Strengths to threats', 'swot'],
+  ['Timeline', 'Roadmap by month', 'time'], ['User journey', 'Steps a user takes', 'journey'], ['Fishbone', 'Find the root cause', 'fish'],
+  ['Meeting agenda', 'Topics, time, owners', 'agenda'], ['Org chart', 'Who reports to whom', 'org'], ['Network diagram', 'Your saved template', 'mine'],
+];
+function tplThumb(k) {
+  const s = 'stroke="var(--ink-4)" stroke-width="2" fill="none"';
+  const st = c => `fill="var(--st-${c})"`;
+  const T = {
+    retro: `<rect x="10" y="10" width="54" height="72" rx="6" ${s}/><rect x="70" y="10" width="54" height="72" rx="6" ${s}/><rect x="130" y="10" width="54" height="72" rx="6" ${s}/><rect x="18" y="22" width="20" height="16" ${st('green')}/><rect x="78" y="22" width="20" height="16" ${st('pink')}/><rect x="138" y="22" width="20" height="16" ${st('blue')}/><rect x="40" y="42" width="20" height="16" ${st('green')}/>`,
+    flow: `<rect x="14" y="36" width="44" height="22" rx="6" ${s}/><path d="M98 26 120 47 98 68 76 47z" ${s}/><rect x="140" y="36" width="44" height="22" rx="6" ${s}/><path d="M58 47h16M122 47h16" ${s}/>`,
+    brain: `<circle cx="97" cy="47" r="18" fill="var(--accent-soft)"/><rect x="20" y="14" width="26" height="20" ${st('yellow')}/><rect x="150" y="14" width="26" height="20" ${st('pink')}/><rect x="24" y="60" width="26" height="20" ${st('blue')}/><rect x="146" y="60" width="26" height="20" ${st('green')}/>`,
+    mind: `<path d="M97 47C70 47 70 22 44 22M97 47C70 47 70 72 44 72M97 47C124 47 124 22 150 22M97 47C124 47 124 72 150 72" ${s}/><rect x="72" y="38" width="50" height="18" rx="9" fill="var(--accent)"/><rect x="18" y="14" width="40" height="14" rx="5" ${st('blue')}/><rect x="18" y="64" width="40" height="14" rx="5" ${st('pink')}/><rect x="136" y="14" width="40" height="14" rx="5" ${st('green')}/><rect x="136" y="64" width="40" height="14" rx="5" ${st('purple')}/>`,
+    kanban: `<rect x="10" y="10" width="54" height="74" rx="6" fill="var(--fill)"/><rect x="70" y="10" width="54" height="74" rx="6" fill="var(--fill)"/><rect x="130" y="10" width="54" height="74" rx="6" fill="var(--fill)"/><rect x="16" y="22" width="42" height="14" rx="3" fill="var(--surface)"/><rect x="16" y="40" width="42" height="14" rx="3" fill="var(--surface)"/><rect x="76" y="22" width="42" height="14" rx="3" fill="var(--surface)"/><rect x="136" y="22" width="42" height="14" rx="3" fill="var(--surface)"/>`,
+    swot: `<rect x="40" y="8" width="56" height="38" ${st('green')}/><rect x="100" y="8" width="56" height="38" ${st('pink')}/><rect x="40" y="50" width="56" height="38" ${st('blue')}/><rect x="100" y="50" width="56" height="38" ${st('orange')}/>`,
+    time: `<path d="M14 50h170" ${s}/><circle cx="34" cy="50" r="5" fill="var(--accent)"/><circle cx="80" cy="50" r="5" fill="var(--accent)"/><circle cx="126" cy="50" r="5" fill="var(--accent)"/><circle cx="170" cy="50" r="5" fill="var(--accent)"/><rect x="20" y="18" width="30" height="18" ${st('yellow')}/><rect x="110" y="62" width="30" height="18" ${st('blue')}/>`,
+    journey: `<path d="M14 66 C50 20 80 80 110 34 S170 30 184 52" ${s}/><circle cx="30" cy="48" r="7" ${st('green')}/><circle cx="96" cy="52" r="7" ${st('pink')}/><circle cx="160" cy="36" r="7" ${st('blue')}/>`,
+    fish: `<path d="M20 47h150M170 47l14-12v24z" ${s}/><path d="M50 47l20-28M90 47l20-28M130 47l20-28M50 47l20 28M90 47l20 28M130 47l20 28" ${s}/>`,
+    agenda: `<rect x="20" y="12" width="154" height="16" rx="4" fill="var(--fill)"/><rect x="20" y="34" width="154" height="16" rx="4" fill="var(--fill)"/><rect x="20" y="56" width="154" height="16" rx="4" fill="var(--fill)"/><circle cx="30" cy="20" r="4" fill="var(--accent)"/><circle cx="30" cy="42" r="4" fill="var(--orange)"/><circle cx="30" cy="64" r="4" fill="var(--blue)"/>`,
+    org: `<rect x="80" y="8" width="38" height="18" rx="5" fill="var(--accent)"/><path d="M99 26v12M40 38h118M40 38v8M99 38v8M158 38v8" ${s}/><rect x="22" y="46" width="38" height="18" rx="5" ${st('blue')}/><rect x="80" y="46" width="38" height="18" rx="5" ${st('blue')}/><rect x="140" y="46" width="38" height="18" rx="5" ${st('blue')}/>`,
+    mine: `<rect x="20" y="30" width="40" height="30" rx="6" ${s}/><rect x="138" y="30" width="40" height="30" rx="6" ${s}/><circle cx="99" cy="45" r="14" ${s}/><path d="M60 45h24M114 45h24" ${s}/>`,
+  };
+  return `<svg viewBox="0 0 194 94">${T[k]}</svg>`;
+}
+const galHtml = TEMPLATES.map(([n, d, k]) => `<button class="tp ${k === 'mine' ? 'mine' : ''}" data-tpl="${k}">${tplThumb(k)}<b>${n}</b><small>${d}</small></button>`).join('');
+$('#gal').innerHTML = galHtml;
+$('#tplPanel').innerHTML = `<h5>START FROM A TEMPLATE</h5><div class="gal" style="grid-template-columns:repeat(2,1fr);max-height:340px;overflow:auto">${galHtml}</div>`;
+$('#tplBtn').onclick = () => togglePanel('tplPanel');
+$$('[data-tpl]').forEach(b => b.addEventListener('click', () => { addTemplate(b.dataset.tpl); hidePanels(); if (!b.closest('#board')) document.getElementById('s1').scrollIntoView({ behavior: 'smooth' }); }));
+function addTemplate(k) {
+  commit();
+  let maxX = Math.max(...els.map(e => { const b = bounds(e); return b.x + b.w; })), x0 = maxX + 120, y0 = 60;
+  const add = e => { e.id = 'e' + uid++; els.push(e); return e; };
+  if (k === 'kanban') { ['To do', 'Doing', 'Done'].forEach((n, i) => add({ type: 'frame', x: x0 + i * 230, y: y0, w: 210, h: 360, name: n })); add({ type: 'sticky', x: x0 + 20, y: y0 + 30, w: 170, h: 90, color: 'yellow', text: 'Write the brief', votes: 0 }); add({ type: 'sticky', x: x0 + 250, y: y0 + 30, w: 170, h: 90, color: 'blue', text: 'Order switches', votes: 0 }); }
+  else if (k === 'mind') { const c = add({ type: 'ellipse', x: x0 + 180, y: y0 + 150, w: 170, h: 70, text: 'Main idea', fill: 'none' }); [[0, 40, 'Network'], [0, 260, 'People'], [380, 40, 'Budget'], [380, 260, 'Timeline']].forEach(([dx, dy, t]) => { const n = add({ type: 'rect', x: x0 + dx, y: y0 + dy, w: 150, h: 56, text: t, fill: 'none' }); add({ type: 'arrow', from: c.id, to: n.id, curve: 'curved' }); }); }
+  else if (k === 'swot') { [['Strengths', 'green'], ['Weaknesses', 'pink'], ['Opportunities', 'blue'], ['Threats', 'orange']].forEach(([n, c], i) => { add({ type: 'frame', x: x0 + (i % 2) * 300, y: y0 + Math.floor(i / 2) * 230, w: 280, h: 210, name: n }); add({ type: 'sticky', x: x0 + (i % 2) * 300 + 20, y: y0 + Math.floor(i / 2) * 230 + 30, w: 140, h: 100, color: c, text: '', votes: 0 }); }); }
+  else { const f = add({ type: 'frame', x: x0, y: y0, w: 520, h: 300, name: TEMPLATES.find(t => t[2] === k)[0] }); ['yellow', 'green', 'blue'].forEach((c, i) => add({ type: 'sticky', x: x0 + 30 + i * 165, y: y0 + 40, w: 150, h: 120, color: c, text: '', votes: 0 })); }
+  render(); fit(); toast('Template added beside what was already there');
+}
+$('#libPanel').innerHTML = `<h5>MY LIBRARY</h5><div class="row">▭ Server rack <small>3 shapes</small></div><div class="row">⇄ Approval flow <small>7 shapes</small></div><div class="row">🏷 Status labels <small>4</small></div><h5 style="margin-top:10px">TEAM LIBRARY</h5><div class="row">🏢 Office floor plan <small>by Rina</small></div><p class="cap">Drag an item onto the board. Select shapes and press "Add to library" to save them. Saved on the server, so it follows you to any PC.</p>`;
+$('#libBtn').onclick = () => togglePanel('libPanel');
+$('#keysPanel').innerHTML = `<h5>KEYBOARD SHORTCUTS</h5><div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;font-size:12.5px">${[['V', 'Select'], ['H', 'Hand'], ['P', 'Pen'], ['M', 'Highlighter'], ['E', 'Eraser'], ['S', 'Sticky (again: next colour)'], ['T', 'Text'], ['R', 'Rectangle'], ['O', 'Circle'], ['D', 'Diamond'], ['A', 'Connector'], ['F', 'Frame'], ['I', 'Image or file'], ['C', 'Comment'], ['L', 'Laser'], ['1–9', 'Old Excalidraw keys'], ['Shift F', 'Full screen'], ['Ctrl Z / Y', 'Undo / Redo'], ['Ctrl D', 'Duplicate'], ['Space + drag', 'Move the board'], ['Ctrl + wheel', 'Zoom'], ['Tab / Enter', 'Mind map branch / sibling']].map(([k, d]) => `<div><kbd>${k}</kbd> ${d}</div>`).join('')}</div><p class="cap">Press <kbd>?</kbd> or Esc to close.</p>`;
+
+/* timer */
+let timer = null;
+$('#timerPanel').innerHTML = `<h5>TIMER · EVERYONE SEES IT</h5><div style="display:flex;gap:6px;flex-wrap:wrap">${[1, 3, 5, 10].map(m => `<button class="btn sm" data-min="${m}">${m} min</button>`).join('')}</div><p class="cap">A soft sound plays for everyone at 0.</p>`;
+$('#timerBtn').onclick = () => togglePanel('timerPanel');
+$('#timerPanel').addEventListener('click', e => {
+  const b = e.target.closest('[data-min]'); if (!b) return; hidePanels();
+  let left = +b.dataset.min * 60; clearInterval(timer);
+  const btn = $('#timerBtn'); btn.classList.add('on'); btn.classList.remove('icon');
+  const tick = () => { btn.innerHTML = `<svg class="i sm"><use href="#i-timer"/></svg>${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}`; if (left-- <= 0) { clearInterval(timer); btn.classList.remove('on'); btn.classList.add('icon'); btn.innerHTML = '<svg class="i sm"><use href="#i-timer"/></svg>'; toast('Time is up'); } };
+  tick(); timer = setInterval(tick, 1000);
+});
+
+/* voting */
+const voting = { on: false, done: false, left: 3, mine: {} };
+function paintVotePanel() {
+  const p = $('#votePanel');
+  if (!voting.on && !voting.done) p.innerHTML = `<h5>VOTING</h5><div class="f" style="display:flex;align-items:center;gap:8px;margin:4px 0 10px">Votes each <div class="seg"><button data-v="1">1</button><button data-v="3" class="on">3</button><button data-v="5">5</button></div></div><label style="display:flex;gap:6px;align-items:center;font-size:12.5px;margin-bottom:10px"><input type="checkbox" checked> Hide votes until it ends</label><button class="btn pri sm" id="voteStart" style="width:100%;justify-content:center">Start voting</button>`;
+  else if (voting.on) p.innerHTML = `<h5>VOTING IS ON</h5><p style="margin:0 0 8px">Click stickies to vote. You have <b>${voting.left}</b> left. Click again to take one back.</p><button class="btn sm" id="voteEnd" style="width:100%;justify-content:center">End and show results</button>`;
+  else p.innerHTML = `<h5>RESULTS</h5>${els.filter(e => e.type === 'sticky' && e.votes).sort((a, b) => b.votes - a.votes).map(e => `<div class="row">${e.votes} · ${e.text.slice(0, 26) || 'Sticky'}</div>`).join('') || '<p class="cap">No votes.</p>'}<button class="btn sm" id="voteClear" style="width:100%;justify-content:center;margin-top:8px">Clear results</button>`;
+}
+$('#voteBtn').onclick = () => { paintVotePanel(); togglePanel('votePanel'); };
+$('#votePanel').addEventListener('click', e => {
+  const v = e.target.closest('[data-v]'); if (v) { $$('#votePanel [data-v]').forEach(b => b.classList.toggle('on', b === v)); voting.left = +v.dataset.v; return; }
+  if (e.target.id === 'voteStart') { voting.on = true; voting.done = false; voting.mine = {}; $('#voteBtn').classList.add('on'); paintVotePanel(); toast('Voting started for everyone on the board'); render(); }
+  if (e.target.id === 'voteEnd') { voting.on = false; voting.done = true; const others = { s2: 3, s4: 2, s1: 1 }; els.forEach(x => { if (x.type === 'sticky') x.votes = (voting.mine[x.id] || 0) + (others[x.id] || 0); }); $('#voteBtn').classList.remove('on'); paintVotePanel(); render(); }
+  if (e.target.id === 'voteClear') { voting.done = false; els.forEach(x => x.votes = 0); hidePanels(); render(); }
+});
+board.addEventListener('click', e => {
+  if (!voting.on || tool !== 'select') return;
+  const { sx, sy } = pointer(e), w = toWorld(sx, sy), hit = hitTest(w.x, w.y);
+  if (hit?.type !== 'sticky') return;
+  if (voting.mine[hit.id] && (e.altKey || voting.left === 0)) { voting.mine[hit.id]--; voting.left++; }
+  else if (voting.left > 0) { voting.mine[hit.id] = (voting.mine[hit.id] || 0) + 1; voting.left--; }
+  sel.clear(); paintVotePanel(); render();
+});
+
+/* present */
+let presenting = false, slide = 0;
+const frames = () => els.filter(e => e.type === 'frame');
+function stepPresent(d) { const fs = frames(); slide = Math.max(0, Math.min(fs.length - 1, slide + d)); fit([fs[slide]]); paintPres(); }
+function paintPres() { const fs = frames(); $('#presPanel').innerHTML = `<button class="btn sm ghost" id="pPrev">‹</button><span style="font-size:12.5px;font-weight:500;padding:0 6px">${slide + 1} / ${fs.length} · ${fs[slide]?.name}</span><button class="btn sm ghost" id="pNext">›</button><button class="btn sm" id="pStop">Stop</button>`; }
+$('#presentBtn').onclick = () => { if (!frames().length) { toast('Add a frame (F) first: each frame is a slide'); return; } presenting = true; slide = 0; toggleFs(true); stepPresent(0); $('#presPanel').hidden = false; toast('Others see: "Bagas is presenting. Follow?"'); };
+$('#presPanel').addEventListener('click', e => { if (e.target.id === 'pPrev') stepPresent(-1); if (e.target.id === 'pNext') stepPresent(1); if (e.target.id === 'pStop') { presenting = false; $('#presPanel').hidden = true; toggleFs(false); fit(); } });
+
+/* full screen */
+function toggleFs(force) {
+  const app = $('#demoApp'), on = force ?? !app.classList.contains('fs');
+  app.classList.toggle('fs', on); document.body.classList.toggle('fsmode', on);
+  $('#fsBtn').innerHTML = on ? '<svg class="i sm"><use href="#i-min"/></svg><span>Exit full screen</span>' : '<svg class="i sm"><use href="#i-max"/></svg><span>Full screen</span>';
+  requestAnimationFrame(() => render());
+  board.focus({ preventScroll: true });
+}
+$('#fsBtn').onclick = () => toggleFs();
+
+/* live cursors + follow */
+const people = { Rina: { color: '#5856D6', x: 300, y: 200, el: null }, Yudi: { color: '#FF9500', x: 760, y: 470, el: null } };
+for (const [n, p] of Object.entries(people)) { p.el = document.createElement('div'); p.el.className = 'cursor'; p.el.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24"><path d="m4 4 7 17 2.5-7.5L21 11z" fill="${p.color}" stroke="#fff" stroke-width="1.5"/></svg><span style="background:${p.color}">${n}</span>`; board.appendChild(p.el); }
+let following = null;
+function moveCursors() {
+  for (const [n, p] of Object.entries(people)) {
+    p.x += (Math.random() - .5) * 160; p.y += (Math.random() - .5) * 110;
+    p.x = Math.max(60, Math.min(1050, p.x)); p.y = Math.max(60, Math.min(520, p.y));
+    const s = toScreen(p.x, p.y); p.el.style.left = s.x + 'px'; p.el.style.top = s.y + 'px';
+  }
+  if (following) { const p = people[following], r = board.getBoundingClientRect(); view.x = r.width / 2 - p.x * view.z; view.y = r.height / 2 - p.y * view.z; render(); placeCursorsNow(); }
+}
+function placeCursorsNow() { for (const p of Object.values(people)) { const s = toScreen(p.x, p.y); p.el.style.transition = 'none'; p.el.style.left = s.x + 'px'; p.el.style.top = s.y + 'px'; requestAnimationFrame(() => p.el.style.transition = ''); } }
+setInterval(moveCursors, 1400);
+$$('#liveAvs [data-follow]').forEach(a => a.onclick = () => { following = a.dataset.follow; board.style.boxShadow = `inset 0 0 0 3px ${people[following].color}`; toast(`Following ${following}. Move the board yourself or press Esc to stop`); });
+function stopFollow() { if (!following) return; following = null; board.style.boxShadow = ''; }
+
+/* toast */
+let toastT; function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600); }
+
+/* start */
+setTheme(store.get('wbc.theme') || 'light');
+new ResizeObserver(() => render()).observe(board);
+let fitted = false;
+new ResizeObserver(() => { const r = board.getBoundingClientRect(); if (!fitted && r.width > 300 && r.height > 300) { fitted = true; fit(); } }).observe(board);
+
+/* feedback */
+for (const s of sections) {
+  const cb = $('[data-ok]', s), ta = $('.fb textarea', s); if (!cb) continue;
+  const key = 'wbc.fb.' + s.id; try { const v = JSON.parse(store.get(key) || '{}'); cb.checked = !!v.ok; ta.value = v.note || ''; } catch {}
+  const save = () => { store.set(key, JSON.stringify({ ok: cb.checked, note: ta.value })); paintFb(); };
+  cb.onchange = save; ta.oninput = save;
+}
+function paintFb() {
+  const lines = sections.map(s => { const cb = $('[data-ok]', s), ta = $('.fb textarea', s); if (!cb) return ''; const n = ta.value.trim(); return `${cb.checked ? '✅' : n ? '✏️' : '⬜'} ${s.dataset.name}${n ? '\n   → ' + n.replace(/\n/g, '\n     ') : ''}`; }).filter(Boolean);
+  $('#fbOut').textContent = 'Whiteboard mockup feedback\n' + lines.join('\n');
+}
+paintFb();
+$('#copyFb').onclick = async () => { try { await navigator.clipboard.writeText($('#fbOut').textContent); $('#copyMsg').textContent = 'Copied. Paste it in the chat.'; } catch { $('#copyMsg').textContent = 'Select the text below and copy it.'; } };
+</script>
+</body>
+</html>
