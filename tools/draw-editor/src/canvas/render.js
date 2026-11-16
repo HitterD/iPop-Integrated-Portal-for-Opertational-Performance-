@@ -1,7 +1,9 @@
 // Drawing elements as SVG. The same code draws the live board, the minimap thumbnail and exports, so what is exported is
 // exactly what is on screen. Clean ClickUp-like shapes; only the pen looks hand-drawn (perfect-freehand).
 import { getStroke } from 'perfect-freehand';
-import { connectorEnds, connectorPath, connectorMid, drawOrder, wrapLines, bounds } from './model.js';
+import { connectorEnds, connectorPath, connectorMid, connectorPoints, drawOrder, wrapLines, bounds, SHAPE_TYPES } from './model.js';
+import { stencilPath, stencilTextBox, lanesOf, STENCIL } from './stencils.js';
+import { pathWithJumps, pointAlong } from './flow.js';
 import { parse as parseRich, hasFormatting, wrapRuns } from './richtext.js';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -239,15 +241,20 @@ export function drawElement(g, el, get, opts = {}) {
       if (!a || !b) break;
       const color = inkFor(el.stroke, { ...pal, ink: pal.connector }) || pal.connector;
       const route = el.route || 'straight';
+      const pts = route === 'elbow' || route === 'smart' || el.waypoints?.length ? connectorPoints(el, get, route === 'smart' ? (opts.obstaclesFor?.(el) || []) : []) : null;
+      const head = (k, start) => ({ arrow: start ? 'url(#wb-head-start)' : 'url(#wb-head)', open: start ? 'url(#wb-open-s)' : 'url(#wb-open)', filled: start ? 'url(#wb-fill-s)' : 'url(#wb-fill)', diamond: start ? 'url(#wb-dia-s)' : 'url(#wb-dia)', dot: 'url(#wb-dot)', crow: start ? 'url(#wb-crow-s)' : 'url(#wb-crow)', one: start ? 'url(#wb-one-s)' : 'url(#wb-one)' }[k] || null);
+      const d = pts ? pathWithJumps(pts, el.jumps === false ? [] : (opts.jumpsFor?.(el) || []), { round: 6 }) : connectorPath(a, b, route);
+      if (pts) opts.onRouted?.(el.id, pts);
       svgEl('path', {
-        d: connectorPath(a, b, route), fill: 'none', stroke: color, 'stroke-width': el.strokeWidth || 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+        d, fill: 'none', stroke: color, 'stroke-width': el.strokeWidth || 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
         'stroke-dasharray': el.dashed ? '6 5' : null,
-        'marker-end': (el.endHead ?? 'arrow') === 'arrow' ? 'url(#wb-head)' : (el.endHead === 'dot' ? 'url(#wb-dot)' : null),
-        'marker-start': el.startHead === 'arrow' ? 'url(#wb-head-start)' : (el.startHead === 'dot' ? 'url(#wb-dot)' : null),
+        'marker-end': head(el.endHead ?? 'arrow', false),
+        'marker-start': head(el.startHead || 'none', true),
         style: `color:${color}`,
       }, node);
       if (el.label) {
-        const m = connectorMid(a, b, route), w = measure(el.label, 13) + 14;
+        const m0 = pts ? pointAlong(pts, el.labelAt ?? 0.5) : connectorMid(a, b, route);
+        const m = m0, w = measure(el.label, 13) + 14;
         svgEl('rect', { x: m.x - w / 2, y: m.y - 11, width: w, height: 22, rx: 6, fill: pal.board }, node);
         const t = svgEl('text', { x: m.x, y: m.y + 4.5, 'text-anchor': 'middle', 'font-size': 13, 'font-family': FONT_STACK.ipop, fill: pal.ink2 }, node);
         t.textContent = el.label;
@@ -344,11 +351,14 @@ export function drawElement(g, el, get, opts = {}) {
       }
       break;
     }
+    case 'swimlane': drawSwimlane(node, el, pal, opts); break;
     default: {
       // shapes
       const stroke = inkFor(el.stroke, pal), fill = el.fill === 'none' ? 'none' : (el.fill || pal.shapeFill), sw = el.strokeWidth || 2;
-      const common = { fill, stroke, 'stroke-width': sw, 'stroke-linejoin': 'round' };
-      if (el.type === 'rect') svgEl('rect', { x: el.x, y: el.y, width: el.w, height: el.h, rx: el.rounded === false ? 2 : Math.min(12, el.w / 4, el.h / 4), ...common }, node);
+      const common = { fill, stroke, 'stroke-width': sw, 'stroke-linejoin': 'round', 'stroke-dasharray': el.dashed ? `${sw * 3} ${sw * 2.5}` : null, filter: el.shadow ? 'url(#wb-shadow)' : null };
+      const st = stencilPath(el.type, el.x, el.y, el.w, el.h);
+      if (st) { drawStencil(node, el, st, common, pal, opts); break; }
+      if (el.type === 'rect') svgEl('rect', { x: el.x, y: el.y, width: el.w, height: el.h, rx: el.rounded === false ? 0 : Math.min(12, el.w / 4, el.h / 4), ...common }, node);
       else if (el.type === 'ellipse') svgEl('ellipse', { cx: el.x + el.w / 2, cy: el.y + el.h / 2, rx: el.w / 2, ry: el.h / 2, ...common }, node);
       else svgEl('path', { d: shapePath(el.type, el.x, el.y, el.w, el.h), ...common }, node);
       if (el.text && !editing) {
@@ -371,6 +381,73 @@ export function drawElement(g, el, get, opts = {}) {
   return node;
 }
 
+/// A diagram stencil (flowchart, BPMN, ERD, network, timeline, value stream, group box).
+function drawStencil(node, el, st, common, pal, opts) {
+  const sharp = el.rounded === false;
+  const fill = st.fill && !el.fill ? st.fill : common.fill;
+  for (const b of st.behind || []) svgEl('path', { d: b, ...common, fill }, node);
+  if (st.rx && !sharp && /^M[\d.-]+ [\d.-]+H[\d.-]+V[\d.-]+H[\d.-]+Z$/.test(st.d)) svgEl('rect', { x: el.x, y: el.y, width: el.w, height: el.h, rx: st.rx, ...common, fill }, node);
+  else svgEl('path', { d: st.d, ...common, fill, 'stroke-width': st.strokeWidth || common['stroke-width'], 'stroke-dasharray': st.dashed && !el.dashed ? '8 6' : common['stroke-dasharray'] }, node);
+  if (st.extra) svgEl('path', { d: st.extra, fill: 'none', stroke: common.stroke, 'stroke-width': st.extraWidth || Math.max(1.2, (el.strokeWidth || 2) * 0.8), 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, node);
+  // ERD tables: name in the header, fields one per line
+  if (el.type === 'erTable' && !opts.editingId?.includes?.(el.id) && opts.editingId !== el.id) {
+    const [name, ...fields] = String(el.text || 'Table').split('\n');
+    const t = svgEl('text', { x: el.x + el.w / 2, y: el.y + Math.min(32, el.h * 0.3) / 2 + 5, 'text-anchor': 'middle', 'font-size': 14, 'font-weight': 650, 'font-family': FONT_STACK[el.font || 'ipop'], fill: inkFor(el.textColor, pal) }, node);
+    t.textContent = name;
+    fields.slice(0, Math.floor((el.h - 40) / 20)).forEach((f, i) => { const ft = svgEl('text', { x: el.x + 12, y: el.y + Math.min(32, el.h * 0.3) + 20 + i * 20, 'font-size': 12.5, 'font-family': FONT_STACK.mono, fill: inkFor(el.textColor, pal) }, node); ft.textContent = f; });
+  } else if (el.type === 'groupBox') {
+    const t = svgEl('text', { x: el.x + 12, y: el.y + 22, 'font-size': 14, 'font-weight': 650, 'font-family': FONT_STACK.ipop, fill: pal.ink2 }, node);
+    t.textContent = el.title || el.text || 'Group';
+  } else if (el.text && opts.editingId !== el.id) {
+    const box = stencilTextBox(el.type, el.x, el.y, el.w, el.h);
+    const size = el.size || (box.below ? 13 : 15);
+    // data fields under the title (Visio shape data), only when there is room
+    const data = (el.data || []).filter(d => d && d.value);
+    const color = inkFor(el.textColor, pal);
+    if (data.length && !box.below) {
+      const lines = data.map(d => (d.name ? `${d.name}: ${d.value}` : d.value)).slice(0, 3);
+      const titleBox = { ...box, h: Math.max(18, box.h - lines.length * 15) };
+      const lt = layoutText(el.text, titleBox, { size, font: el.font || 'ipop', weight: 600 });
+      drawTextLines(node, lt.lines, titleBox, { ...lt, font: el.font || 'ipop', color, weight: 600, align: ALIGN[el.align || 'center'] || 'middle' });
+      lines.forEach((l, i) => { const t = svgEl('text', { x: box.x + box.w / 2, y: titleBox.y + titleBox.h + 12 + i * 15, 'text-anchor': 'middle', 'font-size': 11.5, 'font-family': FONT_STACK.ipop, fill: pal.ink3 }, node); t.textContent = l.length > 34 ? l.slice(0, 33) + '…' : l; });
+    } else if (hasFormatting(el.text) || (el.align && el.align !== 'center')) drawRichText(node, el.text, box, { size, font: el.font || 'ipop', weight: 500, color, align: ALIGN[el.align || 'center'] });
+    else {
+      const lt = layoutText(el.text, box, { size, font: el.font || 'ipop', weight: 500 });
+      drawTextLines(node, lt.lines, box, { ...lt, font: el.font || 'ipop', color, weight: 500, valign: box.below ? 'top' : 'middle' });
+    }
+  }
+  // a status in the shape data colours a strip on the left
+  const status = (el.data || []).find(d => /status/i.test(d.name || ''))?.value;
+  if (status && !STENCIL[el.type]?.cat?.match(/Network|Timeline/)) {
+    const c = /done|selesai|complete|ok/i.test(status) ? '#34C759' : /block|late|stuck|terlambat/i.test(status) ? '#FF3B30' : /progress|doing|proses/i.test(status) ? '#FF9500' : '#8E8E93';
+    svgEl('rect', { x: el.x + 1, y: el.y + 8, width: 4, height: Math.max(8, el.h - 16), rx: 2, fill: c }, node);
+  }
+  const step = opts.steps?.get?.(el.id);
+  if (step) {
+    svgEl('circle', { cx: el.x, cy: el.y, r: 11, fill: '#0A84FF', stroke: pal.board, 'stroke-width': 2 }, node);
+    const t = svgEl('text', { x: el.x, y: el.y + 4, 'text-anchor': 'middle', 'font-size': 11.5, 'font-weight': 700, 'font-family': FONT_STACK.ipop, fill: '#fff' }, node);
+    t.textContent = String(step);
+  }
+}
+
+/// A swimlane: lanes with a header strip each; shapes inside are separate elements drawn above it.
+function drawSwimlane(node, el, pal, opts) {
+  const lanes = lanesOf(el);
+  const laneFill = i => (i % 2 ? pal.board : (pal === PALETTE.dark ? 'rgba(255,255,255,.035)' : 'rgba(10,60,120,.035)'));
+  const headFill = pal === PALETTE.dark ? 'rgba(255,255,255,.07)' : 'rgba(10,60,120,.07)';
+  lanes.forEach((l, i) => {
+    svgEl('rect', { x: l.box.x, y: l.box.y, width: l.box.w, height: l.box.h, fill: laneFill(i) }, node);
+    svgEl('rect', { x: l.header.x, y: l.header.y, width: l.header.w, height: l.header.h, fill: headFill, 'data-lane': l.id }, node);
+    const t = svgEl('text', l.vertical
+      ? { x: l.header.x + l.header.w / 2, y: l.header.y + l.header.h / 2 + 5, 'text-anchor': 'middle', 'font-size': 14, 'font-weight': 650, 'font-family': FONT_STACK.ipop, fill: pal.ink2 }
+      : { x: l.header.x + 14, y: l.header.y + l.header.h / 2 + 5, 'font-size': 14, 'font-weight': 650, 'font-family': FONT_STACK.ipop, fill: pal.ink2 }, node);
+    t.textContent = l.name || `Lane ${i + 1}`;
+    if (i) svgEl('path', { d: l.vertical ? `M${l.box.x} ${l.box.y}V${l.box.y + l.box.h}` : `M${l.box.x} ${l.box.y}H${l.box.x + l.box.w}`, stroke: pal.frameLine, 'stroke-width': 1.2 }, node);
+  });
+  svgEl('rect', { x: el.x, y: el.y, width: el.w, height: el.h, rx: 6, fill: 'none', stroke: pal.frameLine, 'stroke-width': 1.4 }, node);
+  if (el.title) { const t = svgEl('text', { x: el.x + 2, y: el.y - 10, 'font-size': 14, 'font-weight': 650, 'font-family': FONT_STACK.ipop, fill: pal.ink3 }, node); t.textContent = el.title; }
+}
+
 /// Shared <defs>: arrow heads that take the connector's colour, a soft shadow for stickies.
 export function defs(svg) {
   const d = svgEl('defs', {}, svg);
@@ -379,6 +456,17 @@ export function defs(svg) {
     svgEl('path', { d: 'M1 1L9 5L1 9', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, m);
   };
   head('wb-head', 'auto'); head('wb-head-start', 'auto-start-reverse');
+  // draw.io / Visio heads: open, filled, diamond, crow's foot (many), one
+  const mark = (id, orient, w, hgt, ref, draw) => { const m = svgEl('marker', { id, viewBox: `0 0 ${w} ${hgt}`, refX: ref, refY: hgt / 2, markerWidth: w * 0.75, markerHeight: hgt * 0.75, orient, markerUnits: 'strokeWidth' }, d); draw(m); };
+  for (const [suffix, orient] of [['', 'auto'], ['-s', 'auto-start-reverse']]) {
+    mark(`wb-open${suffix}`, orient, 10, 10, 9, m => svgEl('path', { d: 'M1 1L9 5L1 9', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.3, 'stroke-linejoin': 'round' }, m));
+    mark(`wb-fill${suffix}`, orient, 10, 10, 9, m => svgEl('path', { d: 'M1 1L9 5L1 9Z', fill: 'currentColor' }, m));
+    mark(`wb-dia${suffix}`, orient, 14, 10, 13, m => svgEl('path', { d: 'M1 5L7 1L13 5L7 9Z', fill: 'var(--wb-board, #fff)', stroke: 'currentColor', 'stroke-width': 1.2 }, m));
+    mark(`wb-crow${suffix}`, orient, 12, 12, 11, m => svgEl('path', { d: 'M11 6L1 1M11 6L1 11M11 6H1M5 1V11', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.2 }, m));
+    mark(`wb-one${suffix}`, orient, 12, 12, 11, m => svgEl('path', { d: 'M11 6H1M5 1V11M8 1V11', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.2 }, m));
+  }
+  const sh = svgEl('filter', { id: 'wb-shadow', x: '-20%', y: '-20%', width: '150%', height: '160%' }, d);
+  svgEl('feDropShadow', { dx: 0, dy: 3, stdDeviation: 3, 'flood-opacity': 0.18 }, sh);
   const dot = svgEl('marker', { id: 'wb-dot', viewBox: '0 0 10 10', refX: 5, refY: 5, markerWidth: 5, markerHeight: 5, markerUnits: 'strokeWidth' }, d);
   svgEl('circle', { cx: 5, cy: 5, r: 4, fill: 'currentColor' }, dot);
   const f = svgEl('filter', { id: 'wb-soft', x: '-20%', y: '-20%', width: '140%', height: '140%' }, d);

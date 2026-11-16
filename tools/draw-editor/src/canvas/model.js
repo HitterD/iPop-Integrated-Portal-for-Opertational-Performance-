@@ -15,7 +15,12 @@
 // Common: id, type, version, versionNonce, isDeleted, z (fractional order string), locked, frameId, rot.
 
 export const SHAPES = ['rect', 'ellipse', 'diamond', 'triangle', 'star', 'cloud', 'arrowShape', 'cylinder', 'bubble'];
-export const BOXED = new Set([...SHAPES, 'sticky', 'text', 'frame', 'image', 'file', 'stamp', 'taskCard', 'noteCard', 'link', 'sticker']);
+import { STENCIL_TYPES } from './stencils.js';
+import { portPoint, facingSide, elbowRoute, waypointRoute } from './flow.js';
+/// Every box-like shape: the basic 9 plus the diagram stencils (round 3). Code that treats "a shape" alike uses this.
+export const SHAPE_TYPES = new Set([...SHAPES, ...STENCIL_TYPES]);
+export const isShape = el => !!el && SHAPE_TYPES.has(el.type);
+export const BOXED = new Set([...SHAPE_TYPES, 'sticky', 'text', 'frame', 'image', 'file', 'stamp', 'taskCard', 'noteCard', 'link', 'sticker']);
 export const STICKY_COLORS = ['yellow', 'green', 'blue', 'pink', 'purple', 'orange'];
 export const FONTS = ['ipop', 'hand', 'mono'];
 
@@ -63,8 +68,10 @@ export function zBetween(a, b) {
 }
 export const byZ = (p, q) => (p.z < q.z ? -1 : p.z > q.z ? 1 : p.id < q.id ? -1 : p.id > q.id ? 1 : 0);
 /// Frames always sit underneath; everything else follows its z key.
+const UNDER = new Set(['frame', 'swimlane', 'groupBox']);
+export const isContainer = el => !!el && UNDER.has(el.type);
 export function drawOrder(els) {
-  return [...els].sort((p, q) => (p.type === 'frame') !== (q.type === 'frame') ? (p.type === 'frame' ? -1 : 1) : byZ(p, q));
+  return [...els].sort((p, q) => UNDER.has(p.type) !== UNDER.has(q.type) ? (UNDER.has(p.type) ? -1 : 1) : byZ(p, q));
 }
 export const topZ = els => els.reduce((m, e) => (e.z > m ? e.z : m), '');
 export const bottomZ = els => els.reduce((m, e) => (!m || e.z < m ? e.z : m), '');
@@ -81,6 +88,8 @@ export function bounds(el, get = () => null) {
     return { x: el.x + x1 - pad, y: el.y + y1 - pad, w: x2 - x1 + pad * 2, h: y2 - y1 + pad * 2 };
   }
   if (el.type === 'connector') {
+    const pts = (el.route === 'elbow' || el.route === 'smart' || el.waypoints?.length) ? connectorPoints(el, get) : null;
+    if (pts) { const xs = pts.map(p => p.x), ys = pts.map(p => p.y); return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }; }
     const [a, b] = connectorEnds(el, get);
     if (!a || !b) return { x: 0, y: 0, w: 0, h: 0 };
     return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) };
@@ -118,9 +127,31 @@ export function connectorEnds(c, get) {
   const free = (end, t) => t ? centre(t, get) : (Number.isFinite(end?.x) ? { x: end.x, y: end.y } : null);
   const ca = free(c.from, ta), cb = free(c.to, tb);
   if (!ca || !cb) return [null, null];
-  const a = ta ? edgePoint(ta, cb.x, cb.y, 6) : ca;
-  const b = tb ? edgePoint(tb, ca.x, ca.y, 6) : cb;
+  // An end fixed to a side (draw.io ports) stays on that side wherever the shapes move; elbow/smart lines always use sides.
+  const sideRoute = c.route === 'elbow' || c.route === 'smart';
+  const port = (t, end, other) => {
+    const side = end.side || (sideRoute && SHAPE_TYPES.has(t.type) ? facingSide(bounds(t, get), other) : null);
+    return side ? { ...portPoint(bounds(t, get), side), side } : null;
+  };
+  const a = ta ? (port(ta, c.from, cb) || edgePoint(ta, cb.x, cb.y, 6)) : ca;
+  const b = tb ? (port(tb, c.to, ca) || edgePoint(tb, ca.x, ca.y, 6)) : cb;
   return [a, b];
+}
+
+/// The points a connector passes through (start, bends, end): straight = 2 points, elbow/smart = orthogonal corners
+/// (smart goes around shapes in the way), waypoints placed by hand win over the automatic route. Curved returns 2 points
+/// (its path is a curve between them).
+export function connectorPoints(c, get, obstacles = []) {
+  const [a, b] = connectorEnds(c, get);
+  if (!a || !b) return null;
+  const route = c.route || 'straight';
+  if (route === 'straight' || route === 'curved') return [a, b];
+  if (Array.isArray(c.waypoints) && c.waypoints.length) return waypointRoute(a, b, c.waypoints);
+  const sa = a.side || (Math.abs(b.x - a.x) >= Math.abs(b.y - a.y) ? (b.x > a.x ? 'r' : 'l') : (b.y > a.y ? 'b' : 't'));
+  const sb = b.side || (Math.abs(b.x - a.x) >= Math.abs(b.y - a.y) ? (a.x > b.x ? 'r' : 'l') : (a.y > b.y ? 'b' : 't'));
+  // the two shapes it joins always count, so an elbow never runs back through them
+  const own = [c.from?.id, c.to?.id].map(id => (id ? get(id) : null)).filter(t => t && !t.isDeleted).map(t => bounds(t, get));
+  return elbowRoute(a, sa, b, sb, route === 'smart' ? [...obstacles, ...own] : own, 22);
 }
 
 /// SVG path data for a connector between a and b: straight, elbow (two right angles) or curved.
@@ -167,6 +198,11 @@ export function hits(el, px, py, get, tol = 6) {
     const [a, b] = connectorEnds(el, get);
     if (!a || !b) return false;
     if ((el.route || 'straight') === 'straight') return distToSegment(px, py, a.x, a.y, b.x, b.y) <= tol + 2;
+    if (el.route === 'smart' || el.route === 'elbow' || el.waypoints?.length) {
+      const pts = connectorPoints(el, get);
+      if (pts) for (let i = 1; i < pts.length; i++) if (distToSegment(px, py, pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y) <= tol + 2) return true;
+      return false;
+    }
     const bb = bounds(el, get);
     // elbow / curved: close to the bend lines is good enough for picking
     const mx = (a.x + b.x) / 2;
@@ -175,6 +211,14 @@ export function hits(el, px, py, get, tol = 6) {
         || distToSegment(px, py, a.x, a.y, a.x, (a.y + b.y) / 2) <= tol + 2 || distToSegment(px, py, a.x, (a.y + b.y) / 2, b.x, (a.y + b.y) / 2) <= tol + 2 || distToSegment(px, py, b.x, (a.y + b.y) / 2, b.x, b.y) <= tol + 2);
   }
   const b = bounds(el, get);
+  if (el.type === 'swimlane' || el.type === 'groupBox') {
+    // picked by the border or a lane header, so clicks inside reach the shapes in the lanes
+    const onEdge = px >= b.x - tol && px <= b.x + b.w + tol && py >= b.y - tol && py <= b.y + b.h + tol
+      && (px <= b.x + tol || px >= b.x + b.w - tol || py <= b.y + tol || py >= b.y + b.h - tol);
+    const inHead = el.type === 'groupBox' ? (px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + 32)
+      : (el.orient === 'vertical' ? (px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + Math.min(50, b.h * 0.2)) : (px >= b.x && px <= b.x + Math.min(120, b.w * 0.25) && py >= b.y && py <= b.y + b.h));
+    return onEdge || inHead;
+  }
   if (el.type === 'frame') {
     // a frame is picked by its title strip or its border, so clicks inside it reach what is in it (or start a selection box)
     const inTitle = px >= b.x && px <= b.x + Math.max(120, Math.min(b.w, 260)) && py >= b.y - 26 && py <= b.y;
@@ -182,11 +226,11 @@ export function hits(el, px, py, get, tol = 6) {
       && (px <= b.x + tol || px >= b.x + b.w - tol || py <= b.y + tol || py >= b.y + b.h - tol);
     return inTitle || onEdge;
   }
-  if (el.type === 'ellipse') {
+  if (el.type === 'ellipse' || el.type === 'bpmnStart' || el.type === 'bpmnEnd' || el.type === 'bpmnTimer' || el.type === 'bpmnMessage') {
     const rx = b.w / 2 + tol, ry = b.h / 2 + tol, cx = b.x + b.w / 2, cy = b.y + b.h / 2;
     return ((px - cx) / rx) ** 2 + ((py - cy) / ry) ** 2 <= 1;
   }
-  if (el.type === 'diamond') {
+  if (el.type === 'diamond' || el.type === 'decision' || el.type === 'bpmnGateway' || el.type === 'bpmnParallel') {
     const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
     return Math.abs(px - cx) / (b.w / 2 + tol) + Math.abs(py - cy) / (b.h / 2 + tol) <= 1;
   }
@@ -214,7 +258,7 @@ export function frameOf(el, els, get) {
   const b = bounds(el, get);
   let best = null;
   for (const f of els) {
-    if (f.type !== 'frame' || f.isDeleted || f.id === el.id) continue;
+    if (!UNDER.has(f.type) || f.isDeleted || f.id === el.id || (UNDER.has(el.type) && f.type !== 'frame')) continue;
     if (b.x >= f.x && b.y >= f.y && b.x + b.w <= f.x + f.w && b.y + b.h <= f.y + f.h && (!best || f.w * f.h < best.w * best.h)) best = f;
   }
   return best;
@@ -226,7 +270,7 @@ export function frameOf(el, els, get) {
 export function moved(el, dx, dy) {
   if (el.type === 'connector') {
     const shift = end => (end && !end.id && Number.isFinite(end.x) ? { ...end, x: end.x + dx, y: end.y + dy } : end);
-    return bump(el, { from: shift(el.from), to: shift(el.to) });
+    return bump(el, { from: shift(el.from), to: shift(el.to), ...(el.waypoints?.length ? { waypoints: el.waypoints.map(p => ({ x: p.x + dx, y: p.y + dy })) } : {}) });
   }
   return bump(el, { x: el.x + dx, y: el.y + dy });
 }

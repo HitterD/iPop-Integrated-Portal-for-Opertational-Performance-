@@ -308,3 +308,75 @@ input.wb-edit { background: var(--wb-surface); padding: 0 8px; outline-width: 2p
 .wb-block .wb-penpop .wb-prev { display: none; }
 .wb-block .wb-ptypes button { padding: 5px 2px 4px; }
 .wb-block .wb-colourpop:not(.wb-sheet) { max-height: calc(100% - 64px); }
+
+/* ── Round 3: flowcharts (draw.io + Visio) ── */
+.wb-shapepanel { left: max(12px, env(safe-area-inset-left, 0px)); top: 56px; transform: none; width: 268px; max-height: calc(100% - 140px); }
+.wb-sbody { overflow: auto; min-height: 0; flex: 1 1 auto; margin: 0 -2px; padding: 0 2px; }
+.wb-scat .wb-mh { display: flex; justify-content: space-between; padding: 8px 2px 4px; }
+.wb-sgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.wb-sgrid button { aspect-ratio: 1; width: auto !important; height: auto !important; background: var(--wb-fill) !important; border-radius: 9px !important; padding: 6px !important; }
+.wb-sgrid button:hover { background: color-mix(in srgb, #0A84FF 14%, transparent) !important; }
+.wb-sgrid svg, .wb-minipick svg { width: 100%; height: 100%; overflow: visible; }
+.wb-sic { fill: var(--wb-surface); stroke: var(--wb-ink); stroke-width: 4; stroke-linejoin: round; }
+.wb-sicx { fill: none; stroke: var(--wb-ink); stroke-width: 3; stroke-linecap: round; }
+.wb-shapetip { position: absolute; z-index: 9; width: 220px; padding: 8px 10px; border-radius: 10px; background: #1D1D1F; color: #fff; font-size: 12px; line-height: 1.4; pointer-events: none; box-shadow: var(--wb-pop); }
+.wb-shapetip b { display: block; margin-bottom: 2px; }
+.wb-arrows { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.wb-arrow { position: absolute; width: 26px; height: 26px; margin: -13px 0 0 -13px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #0A84FF; cursor: pointer; pointer-events: auto; opacity: .8; display: grid; place-items: center; transition: transform .1s, opacity .1s; }
+.wb-arrow:hover { opacity: 1; transform: scale(1.2); background: color-mix(in srgb, #0A84FF 12%, transparent); }
+.wb-arrow svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.wb-minipick { width: auto; display: grid; grid-template-columns: repeat(4, 38px); gap: 3px; padding: 6px; z-index: 7; }
+.wb-minipick button { width: 38px !important; height: 38px !important; padding: 5px !important; background: var(--wb-fill) !important; }
+.wb-hint { position: absolute; z-index: 5; display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 10px; border-radius: 12px; background: var(--wb-surface); box-shadow: var(--wb-pop); font-size: 12.5px; color: var(--wb-ink2); white-space: nowrap; max-width: calc(100% - 16px); overflow-x: auto; }
+.wb-hint button { border: 0; background: color-mix(in srgb, #0A84FF 13%, transparent); color: #0A84FF; border-radius: 8px; padding: 4px 9px; font: 600 12px/1.2 inherit; font-family: inherit; cursor: pointer; flex: none; }
+.wb-hint .wb-x { background: none; color: var(--wb-ink3); padding: 4px 6px; }
+.wb-guide, .wb-check { left: auto; right: max(12px, env(safe-area-inset-right, 0px)); top: 56px; transform: none; width: 290px; max-height: calc(100% - 140px); }
+.wb-steps { list-style: none; margin: 4px 0 6px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.wb-steps li { display: grid; grid-template-columns: 26px 1fr auto; gap: 8px; align-items: center; padding: 7px 8px; border-radius: 10px; background: var(--wb-fill); font-size: 13px; color: var(--wb-ink); }
+.wb-steps li.done { opacity: .6; }
+.wb-steps li.cur { background: color-mix(in srgb, #0A84FF 12%, transparent); box-shadow: inset 0 0 0 1.5px #0A84FF; }
+.wb-steps small { display: block; color: var(--wb-ink3); font-size: 11.5px; }
+.wb-num { width: 22px; height: 22px; border-radius: 50%; background: var(--wb-surface); display: grid; place-items: center; font-size: 11.5px; font-weight: 700; }
+.wb-steps li.done .wb-num { background: var(--wb-accent); color: #fff; }
+.wb-steps li button { height: auto !important; border-radius: 8px !important; padding: 4px 10px !important; background: #0A84FF !important; color: #fff !important; font-weight: 600; font-size: 12px; }
+.wb-steps li button:disabled { background: var(--wb-fill2) !important; color: var(--wb-ink2) !important; }
+.wb-gstate { margin-top: 2px; }
+.wb-issue { display: flex; gap: 8px; align-items: flex-start; padding: 8px; border-radius: 10px; background: var(--wb-fill); margin-bottom: 6px; font-size: 12.5px; color: var(--wb-ink); }
+.wb-issue.warn { background: color-mix(in srgb, #FF9500 15%, transparent); }
+.wb-issue.bad { background: color-mix(in srgb, #FF3B30 13%, transparent); }
+.wb-issue.ok { background: color-mix(in srgb, #34C759 15%, transparent); }
+.wb-issue button { margin-left: auto; flex: none; height: auto !important; padding: 2px 9px !important; border-radius: 7px !important; background: var(--wb-surface) !important; font-weight: 600; font-size: 11.5px; }
+.wb-chip .wb-badge { min-width: 16px; height: 16px; padding: 0 5px; border-radius: 99px; background: #FF3B30; color: #fff; font-size: 10.5px; line-height: 16px; text-align: center; }
+.wb-chip.on .wb-badge { background: #fff; color: #FF3B30; }
+.wb-importp { width: min(440px, calc(100% - 24px)); }
+.wb-code { width: 100%; min-height: 150px; border-radius: 10px; border: 1px solid var(--wb-line); background: var(--wb-fill); color: var(--wb-ink); padding: 10px; font: 12.5px/1.5 ui-monospace, Menlo, Consolas, monospace; resize: vertical; margin-bottom: 8px; box-sizing: border-box; }
+.wb-dataed { width: min(340px, calc(100% - 24px)); }
+.wb-drows { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.wb-drow { display: grid; grid-template-columns: 110px 1fr; gap: 6px; }
+.wb-drow input { min-width: 0; height: 30px; border-radius: 8px; border: 1px solid var(--wb-line); background: var(--wb-fill); color: var(--wb-ink); padding: 0 8px; font: inherit; font-size: 12.5px; }
+.wb-headsmenu { width: auto; flex-direction: column; align-items: stretch; padding: 6px; }
+.wb-hrow { display: flex; gap: 2px; }
+.wb-hrow button { width: 32px !important; height: 30px !important; font-size: 14px; }
+.wb-thememenu { width: auto; flex-direction: column; align-items: stretch; padding: 6px; }
+.wb-themes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.wb-themes button { width: auto !important; height: auto !important; padding: 6px 8px !important; display: flex !important; flex-direction: column; gap: 4px; font-size: 11.5px; background: var(--wb-fill) !important; }
+.wb-themes i { display: flex; gap: 3px; }
+.wb-themes i span { width: 18px; height: 13px; border-radius: 3px; border: 1.5px solid; display: block; }
+.wb-tcats { flex-wrap: wrap; margin: 2px 0 6px; }
+.wb-tag { display: inline-block; margin-top: 3px; font-style: normal; font-size: 10.5px; font-weight: 600; color: #0A84FF; background: color-mix(in srgb, #0A84FF 12%, transparent); padding: 1px 6px; border-radius: 99px; }
+.wb .wb-seg-h { cursor: move; }
+.wb .wb-h.wb-seg { cursor: move; }
+.wb-reroute { text-decoration: underline; }
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .wb-shapepanel, .wb-guide, .wb-check, .wb-importp, .wb-dataed { left: 0 !important; right: 0 !important; top: auto !important; bottom: 0 !important; width: auto !important; max-height: 72%; border-radius: 18px 18px 0 0; transform: none !important; padding-bottom: max(16px, env(safe-area-inset-bottom, 0px)); }
+  .wb-shapetip { display: none; }
+  .wb-sgrid { grid-template-columns: repeat(6, 1fr); }
+}
+
+.wb-props { flex-wrap: nowrap; max-width: calc(100% - 16px); overflow-x: auto; scrollbar-width: none; }
+.wb-props::-webkit-scrollbar { display: none; }
+.wb-propsmore { width: 230px; flex-direction: column; align-items: stretch; padding: 6px; z-index: 7; }
+.wb-propsmore button { width: auto !important; height: 32px !important; justify-content: start !important; display: flex !important; gap: 10px; padding: 0 8px !important; font-size: 13px; place-items: initial !important; align-items: center; }
+.wb-propsmore button.on { background: color-mix(in srgb, var(--wb-accent) 14%, transparent); }
+.wb-propsmore .wb-mrow { display: flex; gap: 2px; padding: 2px 0 6px; margin-bottom: 4px; border-bottom: 1px solid var(--wb-line); }
+.wb-propsmore .wb-mrow button { width: 30px !important; padding: 0 !important; justify-content: center !important; font-weight: 600; }

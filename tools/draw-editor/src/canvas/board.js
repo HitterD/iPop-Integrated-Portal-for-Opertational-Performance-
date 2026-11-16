@@ -8,7 +8,11 @@ import {
   create, bump, isElement, zBetween, topZ, bottomZ, bounds, unionBounds, hitTest, insideBox, frameOf, moved, resizeBox,
   snap, guides, recognise, centre, SHAPES, STICKY_COLORS,
   cutStroke, strokePieces, alignBoxes, distributeBoxes, tidyRow, expandGroups, recogniseLine, findOnBoard,
+  SHAPE_TYPES, isShape, isContainer, connectorPoints,
 } from './model.js';
+import { STENCIL, STENCILS, STENCIL_CATS, FLOW_TYPES, stencilPath, lanesOf, laneAt } from './stencils.js';
+import { checkFlow, stepNumbers, nextHints, placeNext, layoutFlow, hasFlowchart, facingSide, nearestSide, portPoint, fractionAt } from './flow.js';
+import { fromMermaid, drawioModel, fromDrawioModel } from './importers.js';
 import { svgEl, defs, drawElement, PALETTE, toPng, toSvg, measure, FONT_STACK, layoutText, pngToPdf } from './render.js';
 import { CANVAS_TEMPLATES, TEMPLATE_INFO } from './templates.js';
 import { toggleMark, toggleBullets, makeLink } from './richtext.js';
@@ -65,6 +69,10 @@ ICONS.pencil = '<path d="M15 4l5 5L9 20H4v-5z"/><path d="m4 15 5 5"/>';
 ICONS.emoji = '<circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01"/>';
 ICONS.link = '<path d="M10 14a4 4 0 0 0 6 .5l3-3a4 4 0 0 0-5.7-5.7l-1.5 1.5"/><path d="M14 10a4 4 0 0 0-6-.5l-3 3a4 4 0 0 0 5.7 5.7l1.5-1.5"/>';
 ICONS.linkcard = '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 11h18"/><path d="M7 15h6"/>';
+ICONS.bulb = '<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/>';
+ICONS.tidy = '<rect x="8" y="2" width="8" height="5" rx="1"/><rect x="8" y="10" width="8" height="5" rx="1"/><rect x="8" y="18" width="8" height="4" rx="1"/><path d="M12 7v3M12 15v3"/>';
+ICONS.check = '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>';
+ICONS.import = '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/>';
 ICONS.search = '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>';
 ICONS.newtab = '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>';
 ICONS.group = '<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/><path d="M3 15v6h6M21 9V3h-6" stroke-dasharray="2 2"/>';
@@ -78,6 +86,8 @@ ICONS.alignvc = '<path d="M3 12h18M7 6v12M15 8v8"/>';
 ICONS.alignbottom = '<path d="M3 20h18M7 6v10M15 10v6"/>';
 ICONS.distx = '<rect x="3" y="8" width="4" height="8"/><rect x="10" y="8" width="4" height="8"/><rect x="17" y="8" width="4" height="8"/>';
 ICONS.disty = '<rect x="8" y="3" width="8" height="4"/><rect x="8" y="10" width="8" height="4"/><rect x="8" y="17" width="8" height="4"/>';
+const HEAD_GLYPH = { none: '', arrow: '➤', open: '›', filled: '▶', diamond: '◇', dot: '●', crow: '⋔', one: '‖' };
+const HEADS = [['none', 'None'], ['arrow', 'Arrow'], ['open', 'Open'], ['filled', 'Filled'], ['diamond', 'Diamond'], ['dot', 'Dot'], ['crow', 'Many (crow\'s foot)'], ['one', 'One']];
 const icon = (name, cls = 'wb-i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
 
 const SIZES = [['S', 14], ['M', 18], ['L', 26], ['XL', 40]];
@@ -119,7 +129,9 @@ const isHex = c => /^#[0-9a-f]{6}$/i.test(c || '');
 // Letter shortcuts like ClickUp; digits keep the old Excalidraw meaning (grill Q18).
 const KEYS = { n: 'card', c: 'comment', i: 'image', v: 'select', l: 'laser', h: 'hand', p: 'pen', m: 'highlighter', e: 'eraser', s: 'sticky', t: 'text', r: 'rect', o: 'ellipse', d: 'diamond', a: 'connector', f: 'frame' };
 const DIGITS = { 0: 'eraser', 1: 'select', 2: 'rect', 3: 'diamond', 4: 'ellipse', 5: 'connector', 6: 'connector', 7: 'pen', 8: 'text', 9: 'select' };
-const SHAPE_LABEL = { rect: 'Rectangle', ellipse: 'Circle', diamond: 'Diamond', triangle: 'Triangle', star: 'Star', cloud: 'Cloud', arrowShape: 'Block arrow', cylinder: 'Cylinder', bubble: 'Speech bubble' };
+const SHAPE_LABEL = { rect: 'Rectangle', ellipse: 'Circle', diamond: 'Diamond', triangle: 'Triangle', star: 'Star', cloud: 'Cloud', arrowShape: 'Block arrow', cylinder: 'Cylinder', bubble: 'Speech bubble', ...Object.fromEntries(STENCILS.map(s => [s[0], s[1]])) };
+const BASIC_TIPS = { rect: 'A plain box.', ellipse: 'A circle or oval.', diamond: 'A diamond.', triangle: 'A triangle.', star: 'A star.', cloud: 'A cloud.', arrowShape: 'A big arrow.', cylinder: 'A cylinder.', bubble: 'A speech bubble.' };
+const ICON_SHAPES = ['rect', 'ellipse', 'diamond', 'triangle', 'star', 'cloud', 'arrowShape', 'cylinder', 'bubble'];
 const MAX_ELEMENTS = 20000;
 
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
@@ -212,6 +224,11 @@ export function mountCanvas(container, opts) {
   let invitedFor = null, followingPresenter = null;
   // panels and live-collaboration elements: all created up front (several are touched by the first paint)
   const framesPanel = el('div', 'wb-panel wb-frames'); framesPanel.hidden = true;
+  const shapePanel = el('div', 'wb-panel wb-shapepanel'); shapePanel.hidden = true; shapePanel.setAttribute('role', 'dialog'); shapePanel.setAttribute('aria-label', 'Shapes');
+  const guidePanel = el('div', 'wb-panel wb-guide'); guidePanel.hidden = true; guidePanel.setAttribute('role', 'dialog'); guidePanel.setAttribute('aria-label', 'Make a flowchart');
+  const checkPanel = el('div', 'wb-panel wb-check'); checkPanel.hidden = true; checkPanel.setAttribute('role', 'dialog'); checkPanel.setAttribute('aria-label', 'Check this flowchart');
+  let flowOn = false;
+  const HINTS_KEY = 'ipop.wb.hints';
   const timerPanel = el('div', 'wb-panel wb-timer'); timerPanel.hidden = true;
   const presBar = el('div', 'wb-presbar'); presBar.hidden = true;
   const invite = el('div', 'wb-invite'); invite.hidden = true;
@@ -226,13 +243,24 @@ export function mountCanvas(container, opts) {
   let afterPaint = () => {};   // set by the live section below (cursors, Follow)
   let raf = 0;
   function render() { if (!raf && !destroyed) raf = requestAnimationFrame(() => { raf = 0; paint(); }); }
+  // Flowchart extras worked out once per paint: step numbers, which lines cross (for jumps), shapes a smart line avoids.
+  let steps = new Map(), routed = new Map();
+  const shapeBoxes = () => live().filter(x => isShape(x) && !isContainer(x)).map(x => ({ id: x.id, ...bounds(x, get) }));
   function paint() {
     world.setAttribute('transform', `translate(${view.x} ${view.y}) scale(${view.z})`);
+    const allEls = live();
+    flowOn = hasFlowchart(allEls);
+    steps = flowOn && prefs.steps !== false ? stepNumbers(allEls) : new Map();
+    const boxes = flowOn || allEls.some(x => x.type === 'connector' && x.route === 'smart') ? shapeBoxes() : [];
     const g = 24 * view.z;
     root.style.backgroundSize = `${g}px ${g}px`;
     root.style.backgroundPosition = `${view.x}px ${view.y}px`;
-    const els = live();
-    const ordered = [...els].sort((p, q) => (p.type === 'frame') !== (q.type === 'frame') ? (p.type === 'frame' ? -1 : 1) : (p.z < q.z ? -1 : p.z > q.z ? 1 : p.id < q.id ? -1 : 1));
+    const els = allEls;
+    const UNDER = x => x.type === 'frame' || isContainer(x);
+    const ordered = [...els].sort((p, q) => UNDER(p) !== UNDER(q) ? (UNDER(p) ? -1 : 1) : (p.z < q.z ? -1 : p.z > q.z ? 1 : p.id < q.id ? -1 : 1));
+    // a line redraws when any shape moves (its route may now go around it or jump over another line)
+    const routeKey = boxes.length ? boxes.map(b => `${Math.round(b.x)},${Math.round(b.y)},${Math.round(b.w)},${Math.round(b.h)}`).join('|').length + ':' + boxes.reduce((s, b) => s + b.x * 3 + b.y * 7 + b.w + b.h, 0).toFixed(0) : '';
+    routed = new Map();
     const seen = new Set();
     let prev = null;
     for (const e of ordered) {
@@ -243,11 +271,14 @@ export function mountCanvas(container, opts) {
       // a connector must redraw when either shape it is attached to moves
       const deps = e.type === 'connector' ? `${get(e.from?.id)?.version ?? ''}:${get(e.from?.id)?.x ?? ''},${get(e.from?.id)?.y ?? ''}|${get(e.to?.id)?.version ?? ''}:${get(e.to?.id)?.x ?? ''},${get(e.to?.id)?.y ?? ''},${get(e.to?.id)?.w ?? ''}` : '';
       // a stroke being drawn keeps its version while points are added, so the point count is part of the key
-      const key = `${e.version}:${e.versionNonce}:${theme}:${editing?.id === e.id}:${deps}:${e.x},${e.y},${e.w},${e.h}:${e.points?.length ?? ''}`;
+      const key = `${e.version}:${e.versionNonce}:${theme}:${editing?.id === e.id}:${deps}:${e.x},${e.y},${e.w},${e.h}:${e.points?.length ?? ''}:${steps.get(e.id) ?? ''}:${e.type === 'connector' ? routeKey : ''}`;
       let c = cache.get(e.id);
       if (!c || c.key !== key) {
         const tmp = svgEl('g');
-        const node = drawElement(tmp, e, get, { theme, editingId: editing?.id, files: opts.files, cardInfo: opts.cardInfo });
+        const node = drawElement(tmp, e, get, { theme, editingId: editing?.id, files: opts.files, cardInfo: opts.cardInfo, steps,
+          obstaclesFor: c => boxes.filter(b => b.id !== c.from?.id && b.id !== c.to?.id),
+          jumpsFor: c => [...routed.entries()].filter(([id]) => id < c.id).map(([, p]) => p),
+          onRouted: (id, pts) => routed.set(id, pts) });
         if (c) c.node.replaceWith(node); else (prev ? prev.after(node) : world.prepend(node));
         c = { key, node }; cache.set(e.id, c);
       }
@@ -261,6 +292,7 @@ export function mountCanvas(container, opts) {
     paintZoom();
     paintEmpty(!els.length);
     afterPaint();
+    paintFlowUi();
   }
 
   function paintOverlay() {
@@ -283,6 +315,14 @@ export function mountCanvas(container, opts) {
         if (one?.type === 'connector' && !readOnly) {
           const ends = connectorEndsScreen(one);
           if (ends) for (const [k, pt] of ends) svgEl('circle', { cx: pt.x, cy: pt.y, r: 6, fill: '#fff', stroke: p.sel, 'stroke-width': 1.5, 'data-end': k, class: 'wb-h' }, overlay);
+          // bends you can drag (elbow / smart lines): one handle in the middle of each inner segment
+          const pts = (one.route === 'elbow' || one.route === 'smart' || one.waypoints?.length) ? connectorPoints(one, get) : null;
+          if (pts && pts.length > 2) for (let i = 1; i < pts.length; i++) {
+            const a = toScreen(pts[i - 1].x, pts[i - 1].y), b = toScreen(pts[i].x, pts[i].y);
+            if (Math.hypot(b.x - a.x, b.y - a.y) < 26) continue;
+            svgEl('rect', { x: (a.x + b.x) / 2 - 5, y: (a.y + b.y) / 2 - 5, width: 10, height: 10, rx: 5, fill: '#fff', stroke: p.sel, 'stroke-width': 1.5, 'data-seg': i, class: 'wb-h wb-seg' }, overlay);
+          }
+          if (one.waypoints?.length) { const c = toScreen((pts?.[0]?.x ?? 0), (pts?.[0]?.y ?? 0)); svgEl('text', { x: c.x + 10, y: c.y - 10, 'font-size': 11, fill: p.ink3, class: 'wb-reroute', 'data-reroute': '1', style: 'cursor:pointer' }, overlay).textContent = 'Reset route'; }
         }
         if (els.some(e => e.locked)) { const t = svgEl('text', { x: a.x, y: a.y - 10, 'font-size': 11, fill: p.ink3 }, overlay); t.textContent = '🔒 Locked'; }
       }
@@ -297,7 +337,12 @@ export function mountCanvas(container, opts) {
     }
     if (interaction?.connectHover) {
       const t = get(interaction.connectHover);
-      if (t) { const b = bounds(t, get), a = toScreen(b.x, b.y), z = toScreen(b.x + b.w, b.y + b.h); svgEl('rect', { x: a.x - 3, y: a.y - 3, width: z.x - a.x + 6, height: z.y - a.y + 6, fill: 'none', stroke: p.sel, 'stroke-width': 2, rx: 6, opacity: 0.6 }, overlay); }
+      if (t) {
+        const b = bounds(t, get), a = toScreen(b.x, b.y), z = toScreen(b.x + b.w, b.y + b.h);
+        svgEl('rect', { x: a.x - 3, y: a.y - 3, width: z.x - a.x + 6, height: z.y - a.y + 6, fill: 'none', stroke: p.sel, 'stroke-width': 2, rx: 6, opacity: 0.6 }, overlay);
+        // the four ports; the one the line will use is filled
+        if (isShape(t)) for (const s of ['t', 'r', 'b', 'l']) { const q = portPoint(b, s), sp = toScreen(q.x, q.y); svgEl('circle', { cx: sp.x, cy: sp.y, r: s === interaction.connectSide ? 6 : 4, fill: s === interaction.connectSide ? p.sel : '#fff', stroke: p.sel, 'stroke-width': 1.5 }, overlay); }
+      }
     }
     positionProps();
     afterFind?.();
@@ -404,6 +449,8 @@ export function mountCanvas(container, opts) {
     const els = [...sel].map(get).filter(x => x && !x.locked);
     const out = els.map(x => { const c = fn(x); return c ? bump(x, c) : null; }).filter(Boolean);
     if (out.length) { write(out, { now: true }); commitStop(); }
+    const s = out.find(x => FLOW_TYPES.has(x.type)); if (s) lastShapeStyle = Object.fromEntries(['stroke', 'fill', 'textColor', 'strokeWidth', 'dashed', 'shadow', 'rounded', 'font'].filter(k => s[k] !== undefined).map(k => [k, s[k]]));
+    const l = out.find(x => x.type === 'connector'); if (l) lastLineStyle = { stroke: l.stroke ?? null };
   }
   function togglePenPop(kind, anchor) {
     if (!penPop.hidden && popKind === kind) { penPop.hidden = true; colourPop.hidden = true; return; }
@@ -488,7 +535,7 @@ export function mountCanvas(container, opts) {
   function openColours(forWhat, anchor) {
     colourFor = forWhat;
     const els = [...sel].map(get).filter(Boolean);
-    const hasFill = forWhat === 'sel' && els.some(x => SHAPES.includes(x.type));
+    const hasFill = forWhat === 'sel' && els.some(x => isShape(x));
     if (!hasFill) colourTab = 'stroke';
     colourPop.hidden = false;
     paintColours(hasFill);
@@ -513,7 +560,7 @@ export function mountCanvas(container, opts) {
   function currentColour() {
     if (colourFor === 'pen') return prefs.color[prefs.ptype];
     const els = [...sel].map(get).filter(Boolean);
-    const s = colourTab === 'fill' ? els.find(x => SHAPES.includes(x.type)) : els[0];
+    const s = colourTab === 'fill' ? els.find(x => isShape(x)) : els[0];
     if (!s) return 'auto';
     if (colourTab === 'fill') return s.fill === 'none' ? 'none' : (s.fill || 'auto');
     return s.stroke || 'auto';
@@ -542,8 +589,8 @@ export function mountCanvas(container, opts) {
       paintToolbar(); if (!penPop.hidden) paintPenPop();
     } else {
       savePrefs(prefs);
-      if (colourTab === 'fill') applyToSelection(x => SHAPES.includes(x.type) ? { fill: c === 'auto' ? null : c } : null);
-      else applyToSelection(x => x.type === 'sticky' || x.type === 'frame' || x.type === 'image' || x.type === 'sticker' ? null : { stroke: isHex(c) ? c : null, ...(SHAPES.includes(x.type) ? { textColor: isHex(c) ? c : null } : {}) });
+      if (colourTab === 'fill') applyToSelection(x => isShape(x) ? { fill: c === 'auto' ? null : c } : null);
+      else applyToSelection(x => x.type === 'sticky' || x.type === 'frame' || x.type === 'image' || x.type === 'sticker' ? null : { stroke: isHex(c) ? c : null, ...(isShape(x) ? { textColor: isHex(c) ? c : null } : {}) });
       paintProps();
     }
     if (!colourPop.hidden) paintColours();
@@ -611,16 +658,28 @@ export function mountCanvas(container, opts) {
 
   // ── Corners: templates and full screen ──────────────────────────────────
   const TPL_EMOJI = { retro: '🔁', flowchart: '🔀', brainstorm: '💡', mindmap: '🧠', kanban: '🗂️', swot: '🧭', timeline: '🗓️', journey: '🚶', fishbone: '🐟', agenda: '📋', orgchart: '🏢' };
-  const galleryHtml = () => TEMPLATE_INFO.map(([k, n, d]) => `<button type="button" class="wb-tpl" data-tpl="${k}"><span class="wb-tpl-e" aria-hidden="true">${TPL_EMOJI[k] || '▦'}</span><span><b>${n}</b><small>${d}</small></span></button>`).join('');
+  Object.assign(TPL_EMOJI, { basicflow: '🟢', approval: '✅', swimflow: '🏊', sop: '🔢', bpmn: '⚙️', erd: '🗄️', network: '🖧', valuestream: '🏭', projecttimeline: '📆' });
+  let galleryCat = 'All';
+  const TPL_CATS = ['All', 'Brainstorm', 'Flowchart & process', 'Technical', 'Planning'];
+  const galleryHtml = (cat = galleryCat) => TEMPLATE_INFO.filter(t => cat === 'All' || t[3] === cat).map(([k, n, d, , guided]) => `<button type="button" class="wb-tpl" data-tpl="${k}"><span class="wb-tpl-e" aria-hidden="true">${TPL_EMOJI[k] || '▦'}</span><span><b>${n}</b><small>${d}</small>${guided ? '<em class="wb-tag">Guided</em>' : ''}</span></button>`).join('');
+  const galleryTabs = () => `<div class="wb-seg wb-tcats" role="tablist">${TPL_CATS.map(c => `<button type="button" role="tab" data-tcat="${c}" class="${c === galleryCat ? 'on' : ''}" aria-selected="${c === galleryCat}">${c}</button>`).join('')}</div>`;
+  function openGallery(cat) {
+    if (cat) galleryCat = cat;
+    gallery.innerHTML = `<div class="wb-ph"><b>Start from a template</b><button type="button" data-close aria-label="Close">✕</button></div>${galleryTabs()}<p class="wb-note">Added beside what is already on the board, never over it.</p><div class="wb-tgrid">${galleryHtml()}</div>`;
+    gallery.hidden = false;
+  }
   let fullscreen = false;
   function paintCorners() {
     const canTemplates = !readOnly && mode === 'board';
-    topLeft.innerHTML = canTemplates ? `<button type="button" class="wb-chip" data-c="tpl" aria-haspopup="dialog">${icon('grid')}<span>Templates</span></button>`
+    topLeft.innerHTML = canTemplates ? `<button type="button" class="wb-chip ${!shapePanel.hidden ? 'on' : ''}" data-c="shapes" aria-haspopup="dialog">${icon('shapes')}<span>Shapes</span></button><button type="button" class="wb-chip" data-c="tpl" aria-haspopup="dialog">${icon('grid')}<span>Templates</span></button>`
       + (opts.library ? `<button type="button" class="wb-chip" data-c="lib" aria-haspopup="dialog">${icon('book')}<span>Library</span></button>` : '') : '';
     topLeft.hidden = !canTemplates;
     const fs = mode === 'board' && opts.onFullscreen;
     const lockChip = opts.boardLock?.canChange?.() ? `<button type="button" class="wb-chip ${opts.boardLock.isLocked() ? 'on' : ''}" data-c="lockboard" title="${opts.boardLock.isLocked() ? 'Unlock the board so people can edit it' : 'Lock the board: everyone can still view, comment and vote'}" aria-pressed="${opts.boardLock.isLocked()}">${icon(opts.boardLock.isLocked() ? 'lock' : 'unlock')}<span>${opts.boardLock.isLocked() ? 'Locked' : 'Lock'}</span></button>` : '';
-    const extras = mode === 'board' ? `<button type="button" class="wb-chip" data-c="find" title="Find on board (Ctrl F)" aria-label="Find on board">${icon('search')}</button>` + lockChip
+    const flowChips = mode === 'board' && !readOnly ? `<button type="button" class="wb-chip ${!guidePanel.hidden ? 'on' : ''}" data-c="guide" title="Step-by-step help to make a flowchart">${icon('bulb')}<span>Guide</span></button>`
+      + (flowOn ? `<button type="button" class="wb-chip" data-c="tidy" title="Tidy up flow (top to bottom; Shift: left to right)">${icon('tidy')}<span>Tidy up</span></button><button type="button" class="wb-chip ${!checkPanel.hidden ? 'on' : ''}" data-c="check" title="Check this flowchart">${icon('check')}<span>Check</span><span class="wb-badge" hidden>0</span></button>` : '')
+      + `<button type="button" class="wb-chip" data-c="import" title="Import a draw.io file or Mermaid text">${icon('import')}</button>` : '';
+    const extras = mode === 'board' ? flowChips + `<button type="button" class="wb-chip" data-c="find" title="Find on board (Ctrl F)" aria-label="Find on board">${icon('search')}</button>` + lockChip
       + (opts.onPopOut ? `<button type="button" class="wb-chip" data-c="popout" title="Open in a new tab" aria-label="Open in a new tab">${icon('newtab')}</button>` : '')
       + `<button type="button" class="wb-chip" data-c="frames" title="Frames" aria-haspopup="dialog">${icon('frames')}<span>Frames</span></button>`
       + `<button type="button" class="wb-chip" data-c="present" title="Present frame by frame">${icon('play')}<span>Present</span></button>`
@@ -646,10 +705,10 @@ export function mountCanvas(container, opts) {
   for (const c of [topLeft, topRight, gallery, emptyGallery, libPanel]) c.addEventListener('pointerdown', e => e.stopPropagation());
   topLeft.addEventListener('click', e => {
     if (e.target.closest('[data-c="lib"]')) { toggleLibrary(); return; }
+    if (e.target.closest('[data-c="shapes"]')) { toggleShapePanel(); paintCorners(); return; }
     if (!e.target.closest('[data-c="tpl"]')) return;
     if (!gallery.hidden) { gallery.hidden = true; return; }
-    gallery.innerHTML = `<div class="wb-ph"><b>Start from a template</b><button type="button" data-close aria-label="Close">✕</button></div><p class="wb-note">Added beside what is already on the board, never over it.</p><div class="wb-tgrid">${galleryHtml()}</div>`;
-    gallery.hidden = false;
+    openGallery();
   });
   topRight.addEventListener('click', e => {
     if (e.target.closest('[data-c="fs"]')) toggleFullscreen();
@@ -659,21 +718,28 @@ export function mountCanvas(container, opts) {
     else if (e.target.closest('[data-c="vote"]')) toggleVotePanel();
     else if (e.target.closest('[data-c="export"]')) toggleExport();
     else if (e.target.closest('[data-c="find"]')) openFind();
+    else if (e.target.closest('[data-c="guide"]')) { const show = guidePanel.hidden; for (const p of [checkPanel, framesPanel, timerPanel, votePanel, exportPanel]) p.hidden = true; guidePanel.hidden = !show; if (show) { try { localStorage.removeItem(HINTS_KEY); } catch { /* blocked */ } } paintGuide(); paintCorners(); }
+    else if (e.target.closest('[data-c="check"]')) { const show = checkPanel.hidden; for (const p of [guidePanel, framesPanel, timerPanel, votePanel, exportPanel]) p.hidden = true; checkPanel.hidden = !show; paintCheck(); paintCorners(); }
+    else if (e.target.closest('[data-c="tidy"]')) tidyFlow(e.shiftKey ? 'LR' : 'TB');
+    else if (e.target.closest('[data-c="import"]')) toggleImport();
     else if (e.target.closest('[data-c="popout"]')) opts.onPopOut?.();
     else if (e.target.closest('[data-c="lockboard"]')) opts.boardLock?.toggle?.();
   });
   const pickTemplate = e => {
     if (e.target.closest('[data-close]')) { gallery.hidden = true; return; }
+    const tc = e.target.closest('[data-tcat]');
+    if (tc) { galleryCat = tc.dataset.tcat; if (gallery.contains(tc)) openGallery(); else emptyGallery.innerHTML = emptyHtml(); return; }
     const b = e.target.closest('[data-tpl]'); if (!b) return;
     gallery.hidden = true;
     const n = api.applyTemplate(b.dataset.tpl);
-    if (n) toast('Template added. Change anything on it.');
+    if (n) toast(TEMPLATE_INFO.find(t => t[0] === b.dataset.tpl)?.[4] ? 'Template added. Click a shape for hints on what comes next; double-click to change its text.' : 'Template added. Change anything on it.');
   };
   gallery.addEventListener('click', pickTemplate);
   emptyGallery.addEventListener('click', pickTemplate);
+  const emptyHtml = () => `<b>Start with a blank board, or pick a template</b>${galleryTabs()}<div class="wb-tgrid">${galleryHtml()}</div><p class="wb-note">Making a flowchart? Press <b>Guide</b> at the top for step-by-step help. Or pick a tool below and start drawing.</p>`;
   function paintEmpty(isEmpty) {
     const show = isEmpty && !readOnly && mode === 'board' && !interaction;
-    if (show && emptyGallery.hidden) emptyGallery.innerHTML = `<b>Start with a blank board, or pick a template</b><div class="wb-tgrid">${galleryHtml()}</div><p class="wb-note">Or pick a tool below and start drawing.</p>`;
+    if (show && emptyGallery.hidden) emptyGallery.innerHTML = emptyHtml();
     emptyGallery.hidden = !show;
     root.classList.toggle('wb-empty', isEmpty && !show);
   }
@@ -1562,36 +1628,62 @@ export function mountCanvas(container, opts) {
   // ── Selection quick menu ─────────────────────────────────────────────────
   function paintProps() {
     const els = [...sel].map(get).filter(Boolean);
-    widthMenu.hidden = true; arrangeMenu.hidden = true;
+    widthMenu.hidden = true; arrangeMenu.hidden = true; headsMenu.hidden = true; themeMenu.hidden = true; propsMore.hidden = true;
     if (!els.length || readOnly || interaction || editing) { props.hidden = true; if (colourFor === 'sel') colourPop.hidden = true; return; }
     const types = new Set(els.map(e => e.type));
     const only = t => types.size === 1 && types.has(t);
-    const anyShape = els.some(e => SHAPES.includes(e.type));
+    const anyShape = els.some(e => isShape(e));
     const parts = [];
     if (only('sticky')) parts.push(STICKY_COLORS.map(c => `<button type="button" data-sticky="${c}" title="${c[0].toUpperCase() + c.slice(1)}" aria-label="${c} sticky"><span class="wb-sw" style="background:${pal().sticky[c]}"></span></button>`).join(''));
     else if (els.some(e => !['frame', 'image', 'sticker', 'file', 'taskCard', 'noteCard', 'link'].includes(e.type))) {
       const first = els.find(e => !['frame', 'image', 'sticker', 'sticky'].includes(e.type));
       parts.push(`<button type="button" data-colour="stroke" title="${anyShape ? 'Line colour' : 'Colour'}" aria-label="${anyShape ? 'Line colour' : 'Colour'}"><span class="wb-sw wb-ring2" style="--c:${colourCss(first?.stroke)}"></span></button>`);
-      if (anyShape) { const f = els.find(e => SHAPES.includes(e.type)).fill; parts.push(`<button type="button" data-colour="fill" title="Fill colour" aria-label="Fill colour"><span class="wb-sw ${f === 'none' ? 'wb-fillsw' : ''}" style="background:${f === 'none' ? 'transparent' : (f || pal().shapeFill)}"></span></button>`); }
+      if (anyShape) { const f = els.find(e => isShape(e)).fill; parts.push(`<button type="button" data-colour="fill" title="Fill colour" aria-label="Fill colour"><span class="wb-sw ${f === 'none' ? 'wb-fillsw' : ''}" style="background:${f === 'none' ? 'transparent' : (f || pal().shapeFill)}"></span></button>`); }
     }
-    if (els.some(e => e.type === 'connector')) parts.push(['straight', 'elbow', 'curved'].map(r => `<button type="button" data-route="${r}" title="${r[0].toUpperCase() + r.slice(1)}">${r === 'straight' ? '／' : r === 'elbow' ? '⌐' : '∿'}</button>`).join('') + `<button type="button" data-heads title="Arrow ends">⇄</button><button type="button" data-dash title="Dashed">┄</button>`);
+    if (els.some(e => e.type === 'connector')) {
+      const c0 = els.find(e => e.type === 'connector');
+      parts.push([['straight', 'Straight', '／'], ['elbow', 'Elbow', '⌐'], ['smart', 'Elbow that goes around shapes', '⌗'], ['curved', 'Curved', '∿']].map(([r, t, g]) => `<button type="button" data-route="${r}" title="${t}" class="${(c0.route || 'straight') === r ? 'on' : ''}">${g}</button>`).join('')
+        + `<button type="button" data-heads title="Arrow ends" class="wb-txtbtn"><span>${HEAD_GLYPH[c0.startHead || 'none']}─${HEAD_GLYPH[c0.endHead ?? 'arrow']}</span></button><button type="button" data-dash title="Dashed" class="${c0.dashed ? 'on' : ''}">┄</button>`);
+    }
+    const more = [];   // less used: go into ⋯ More
+    if (anyShape && els.some(x => x.type !== 'connector')) {
+      const s0 = els.find(x => isShape(x));
+      more.push(`<button type="button" data-style="dash" class="${s0?.dashed ? 'on' : ''}">┅<span>Dashed outline</span></button><button type="button" data-style="shadow" class="${s0?.shadow ? 'on' : ''}">▣<span>Shadow</span></button><button type="button" data-style="round">${s0?.rounded === false ? '▢' : '◻'}<span>${s0?.rounded === false ? 'Rounded corners' : 'Sharp corners'}</span></button>`);
+    }
+    if (els.length === 1 && isShape(els[0]) && !isContainer(els[0])) parts.push(`<button type="button" data-act="data" title="Shape data: PIC, duration, status" class="${els[0].data?.length ? 'on' : ''}">ⓘ</button>`);
+    if (els.length === 1 && els[0].type === 'swimlane') parts.push(`<button type="button" data-act="laneadd" class="wb-txtbtn" title="Add a lane">+ Lane</button><button type="button" data-act="laneflip" class="wb-txtbtn" title="Turn the lanes">${els[0].orient === 'vertical' ? '⇅ Rows' : '⇄ Columns'}</button>`);
     if (els.some(e => e.type === 'path' || e.type === 'connector' || anyShape)) {
       const p = els.find(e => e.type === 'path'), cur = p ? Math.round((p.width || 3) * view.z) : (els.find(e => e.strokeWidth)?.strokeWidth || 2);
       parts.push(`<button type="button" data-width title="Line weight · ${cur} px" aria-label="Line weight"><span class="wb-wline" style="height:${Math.max(1.5, Math.min(8, cur / (p ? 2 : 1)))}px"></span></button>`);
     }
-    if (els.some(e => e.type === 'text' || e.type === 'sticky' || anyShape)) parts.push(['ipop', 'hand', 'mono'].map(f => `<button type="button" data-font="${f}" title="${f === 'ipop' ? 'iPop font' : f === 'hand' ? 'Handwriting' : 'Monospace'}" style="font-family:${FONT_STACK[f].replace(/"/g, "'")}">Aa</button>`).join('') + SIZES.map(([n, s]) => `<button type="button" data-size="${s}" title="Text size ${n}">${n}</button>`).join(''));
+    const textLike = els.some(e => e.type === 'text' || e.type === 'sticky' || anyShape);
+    const fontRow = ['ipop', 'hand', 'mono'].map(f => `<button type="button" data-font="${f}" title="${f === 'ipop' ? 'iPop font' : f === 'hand' ? 'Handwriting' : 'Monospace'}" style="font-family:${FONT_STACK[f].replace(/"/g, "'")}">Aa</button>`).join('') + SIZES.map(([n, s]) => `<button type="button" data-size="${s}" title="Text size ${n}">${n}</button>`).join('');
+    // plain text and stickies keep font and size in the bar; diagram shapes have them under More
+    const diagram = els.some(x => isShape(x));
+    if (textLike && !diagram) parts.push(fontRow);
+    else if (textLike) more.unshift(`<div class="wb-mrow">${fontRow}</div>`);
     const locked = els.every(e => e.locked);
     if (opts.tasks?.create && els.every(x => x.type === 'sticky')) parts.push(`<button type="button" data-act="task" class="wb-taskbtn" title="Turn into Projects tasks">${icon('task')}<span>Make ${els.length > 1 ? els.length + ' tasks' : 'task'}</span></button>`);
-    if (els.length === 1 && (SHAPES.includes(els[0].type) || els[0].type === 'sticky')) parts.push(`<button type="button" data-act="branch" title="Add a branch (Tab)">${icon('mind')}</button>`);
+    if (els.length === 1 && (isShape(els[0]) || els[0].type === 'sticky')) (diagram ? more : parts).push(diagram ? `<button type="button" data-act="branch">${icon('mind')}<span>Add a branch (Tab)</span></button>` : `<button type="button" data-act="branch" title="Add a branch (Tab)">${icon('mind')}</button>`);
     const grouped = els.length > 1 && els.every(x => x.groupId && x.groupId === els[0].groupId);
+    if (els.some(x => FLOW_TYPES.has(x.type))) parts.push(`<button type="button" data-act="theme" title="Diagram theme: colours and font for the whole flowchart" class="wb-txtbtn">🎨<span>Theme</span></button>`);
     if (els.length > 1) parts.push(`<button type="button" data-act="${grouped ? 'ungroup' : 'group'}" title="${grouped ? 'Ungroup (Ctrl Shift G)' : 'Group (Ctrl G)'}" class="wb-txtbtn">${icon(grouped ? 'ungroup' : 'group')}<span>${grouped ? 'Ungroup' : 'Group'}</span></button><button type="button" data-act="arrange" title="Align and space evenly" class="wb-txtbtn">${icon('arrange')}<span>Arrange</span></button>`);
     if (els.length === 1 && els[0].type !== 'connector') parts.push(`<button type="button" data-act="link" title="${els[0].link ? 'Change or remove the link' : 'Link to a web page or a Notes page (Ctrl K)'}" class="${els[0].link ? 'on' : ''}">${icon('link')}</button>`);
-    if (opts.library) parts.push(`<button type="button" data-act="lib" title="Add to my library">${icon('bookplus')}</button>`);
-    parts.push(`<button type="button" data-act="front" title="Bring to front (Ctrl ])">${icon('front')}</button><button type="button" data-act="back" title="Send to back (Ctrl [)">${icon('back')}</button><button type="button" data-act="dup" title="Duplicate (Ctrl D)">${icon('copy')}</button><button type="button" data-act="lock" title="${locked ? 'Unlock' : 'Lock'}">${icon(locked ? 'unlock' : 'lock')}</button><button type="button" data-act="del" title="Delete (Del)" class="wb-danger">${icon('trash')}</button>`);
+    if (els.length === 1) more.push(`<button type="button" data-act="copystyle">🖌<span>Copy style (Ctrl Shift C)</span></button>${styleClip ? '<button type="button" data-act="pastestyle">📋<span>Paste style (Ctrl Shift V)</span></button>' : ''}`);
+    if (opts.library) more.push(`<button type="button" data-act="lib">${icon('bookplus')}<span>Add to my library</span></button>`);
+    more.push(`<button type="button" data-act="front">${icon('front')}<span>Bring to front (Ctrl ])</span></button><button type="button" data-act="back">${icon('back')}<span>Send to back (Ctrl [)</span></button><button type="button" data-act="lock">${icon(locked ? 'unlock' : 'lock')}<span>${locked ? 'Unlock' : 'Lock'}</span></button>`);
+    parts.push(`<button type="button" data-act="dup" title="Duplicate (Ctrl D)">${icon('copy')}</button><button type="button" data-act="propsmore" title="More" aria-label="More" aria-haspopup="menu">${icon('more')}</button><button type="button" data-act="del" title="Delete (Del)" class="wb-danger">${icon('trash')}</button>`);
+    propsMore.innerHTML = more.join('');
+    propsMore.hidden = true;
     props.innerHTML = parts.join('<span class="wb-sep"></span>');
     props.hidden = false;
     positionProps();
   }
+  // the selection bar's ⋯ More menu: the same buttons, handled by the bar's own click handler
+  const propsMore = el('div', 'wb-menu wb-propsmore'); propsMore.hidden = true; propsMore.setAttribute('role', 'menu');
+  root.append(propsMore);
+  propsMore.addEventListener('pointerdown', e => e.stopPropagation());
+  propsMore.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; propsMore.hidden = true; props.dispatchEvent(new CustomEvent('wb-act', { detail: b })); });
   const widthMenu = el('div', 'wb-menu wb-widthmenu'); widthMenu.hidden = true;
   root.append(widthMenu);
   widthMenu.addEventListener('pointerdown', e => e.stopPropagation());
@@ -1609,7 +1701,7 @@ export function mountCanvas(container, opts) {
   widthMenu.addEventListener('click', e => {
     const b = e.target.closest('[data-w]'); if (!b) return;
     const v = +b.dataset.w; widthMenu.hidden = true;
-    applyToSelection(x => x.type === 'path' ? { width: +(v / view.z).toFixed(2) } : (x.type === 'connector' || SHAPES.includes(x.type)) ? { strokeWidth: v } : null);
+    applyToSelection(x => x.type === 'path' ? { width: +(v / view.z).toFixed(2) } : (x.type === 'connector' || isShape(x)) ? { strokeWidth: v } : null);
     paintProps();
   });
   // ── Group, align, distribute ─────────────────────────────────────────────
@@ -1712,6 +1804,468 @@ export function mountCanvas(container, opts) {
     if (/^https?:\/\//i.test(link)) { if (opts.onLinkOpen) opts.onLinkOpen(link); else window.open(link, '_blank', 'noopener,noreferrer'); }
   }
 
+  // ── Arrow ends menu ──────────────────────────────────────────────────────
+  const headsMenu = el('div', 'wb-menu wb-headsmenu'); headsMenu.hidden = true;
+  root.append(headsMenu);
+  headsMenu.addEventListener('pointerdown', e => e.stopPropagation());
+  function toggleHeads(anchor) {
+    if (!headsMenu.hidden) { headsMenu.hidden = true; return; }
+    const c = [...sel].map(get).find(x => x?.type === 'connector'); if (!c) return;
+    const row = (end, cur) => `<div class="wb-mh">${end === 'startHead' ? 'Start' : 'End'}</div><div class="wb-hrow">${HEADS.map(([k, t]) => `<button type="button" data-hk="${end}" data-hv="${k}" title="${t}" class="${cur === k ? 'on' : ''}">${HEAD_GLYPH[k] || '—'}</button>`).join('')}</div>`;
+    headsMenu.innerHTML = row('startHead', c.startHead || 'none') + row('endHead', c.endHead ?? 'arrow');
+    headsMenu.hidden = false;
+    const r = anchor.getBoundingClientRect(), rr = rect();
+    headsMenu.style.left = `${Math.max(8, Math.min(r.left - rr.left - 20, rr.width - headsMenu.offsetWidth - 8))}px`;
+    headsMenu.style.top = `${r.bottom - rr.top + 6}px`;
+  }
+  headsMenu.addEventListener('click', e => {
+    const b = e.target.closest('[data-hk]'); if (!b) return;
+    applyToSelection(x => x.type === 'connector' ? { [b.dataset.hk]: b.dataset.hv } : null);
+    headsMenu.hidden = true; paintProps();
+  });
+
+  // ── Diagram themes (Visio): one click restyles the flowchart ─────────────
+  const DIAGRAM_THEMES = [
+    ['classic', 'Classic', { fill: undefined, stroke: undefined, textColor: undefined, font: undefined, decision: undefined, end: undefined }],
+    ['blue', 'Blue', { fill: '#DCEBFF', stroke: '#0A84FF', decision: '#FFE9C7', end: '#D6F5DD' }],
+    ['green', 'iPop green', { fill: '#DDF3E4', stroke: '#1E8E3E', decision: '#FFF3C4', end: '#E8F0FF' }],
+    ['warm', 'Warm', { fill: '#FFE9D6', stroke: '#C2410C', decision: '#FFF3C4', end: '#FDE2E2' }],
+    ['sketch', 'Sketch', { fill: '#FFF8DC', stroke: '#5C4A1E', font: 'hand', decision: '#FFE9C7', end: '#E3F2E6' }],
+    ['mono', 'Mono', { fill: 'none', stroke: '#1D1D1F', font: 'mono', decision: 'none', end: 'none' }],
+  ];
+  const themeMenu = el('div', 'wb-menu wb-thememenu'); themeMenu.hidden = true;
+  root.append(themeMenu);
+  themeMenu.addEventListener('pointerdown', e => e.stopPropagation());
+  function toggleThemes(anchor) {
+    if (!themeMenu.hidden) { themeMenu.hidden = true; return; }
+    themeMenu.innerHTML = `<div class="wb-mh">Theme for the whole flowchart</div><div class="wb-themes">${DIAGRAM_THEMES.map(([k, n, t]) => `<button type="button" data-theme="${k}"><i><span style="background:${t.fill && t.fill !== 'none' ? t.fill : 'var(--wb-surface)'};border-color:${t.stroke || 'var(--wb-ink)'}"></span><span style="background:${t.decision && t.decision !== 'none' ? t.decision : 'var(--wb-surface)'};border-color:${t.stroke || 'var(--wb-ink)'}"></span></i>${n}</button>`).join('')}</div>`;
+    themeMenu.hidden = false;
+    const r = anchor.getBoundingClientRect(), rr = rect();
+    themeMenu.style.left = `${Math.max(8, Math.min(r.left - rr.left - 40, rr.width - themeMenu.offsetWidth - 8))}px`;
+    const top = r.bottom - rr.top + 6;
+    themeMenu.style.top = `${top + themeMenu.offsetHeight > rr.height - 8 ? Math.max(8, r.top - rr.top - themeMenu.offsetHeight - 6) : top}px`;
+  }
+  themeMenu.addEventListener('click', e => {
+    const b = e.target.closest('[data-theme]'); if (!b || readOnly) return;
+    const t = DIAGRAM_THEMES.find(x => x[0] === b.dataset.theme)[2];
+    // the flowchart the selection belongs to: everything connected to it
+    const start = [...sel].map(get).filter(Boolean);
+    const ids = new Set(start.map(x => x.id)), q = [...ids];
+    const lines = live().filter(x => x.type === 'connector');
+    while (q.length) { const id = q.shift(); for (const c of lines) { const o = c.from?.id === id ? c.to?.id : c.to?.id === id ? c.from?.id : null; if (o && !ids.has(o)) { ids.add(o); q.push(o); } } }
+    const out = [];
+    for (const x of live()) {
+      if (!ids.has(x.id) && !(x.type === 'connector' && ids.has(x.from?.id))) continue;
+      if (x.locked) continue;
+      if (x.type === 'connector') { out.push(bump(x, { stroke: t.stroke })); continue; }
+      if (!isShape(x) || isContainer(x)) continue;
+      const fill = x.type === 'decision' || x.type === 'bpmnGateway' ? t.decision : x.type === 'terminator' ? t.end : t.fill;
+      out.push(bump(x, { fill, stroke: t.stroke, font: t.font, textColor: undefined }));
+    }
+    if (out.length) { write(out, { now: true }); commitStop(); }
+    themeMenu.hidden = true; paintProps();
+    toast('Theme applied. Ctrl Z undoes it.');
+  });
+
+  // ── Copy / paste style ───────────────────────────────────────────────────
+  let styleClip = null;
+  const STYLE_KEYS = ['stroke', 'fill', 'textColor', 'strokeWidth', 'dashed', 'shadow', 'rounded', 'font', 'size', 'align', 'opacity', 'route', 'startHead', 'endHead'];
+  function copyStyle(x) { if (!x) return; styleClip = Object.fromEntries(STYLE_KEYS.filter(k => k in x).map(k => [k, x[k]])); styleClip._line = x.type === 'connector'; toast('Style copied. Select other shapes and press Ctrl Shift V.'); paintProps(); }
+  function pasteStyle() {
+    if (!styleClip) return;
+    const lineKeys = new Set(['stroke', 'strokeWidth', 'dashed', 'route', 'startHead', 'endHead', 'opacity']);
+    applyToSelection(x => {
+      const isLine = x.type === 'connector';
+      const keys = STYLE_KEYS.filter(k => k in styleClip && (isLine ? lineKeys.has(k) : !['route', 'startHead', 'endHead'].includes(k)));
+      return keys.length ? Object.fromEntries(keys.map(k => [k, styleClip[k]])) : null;
+    });
+    paintProps();
+  }
+  // the last shape style is used for the next shape (draw.io behaviour)
+  let lastShapeStyle = null;
+
+  // ── Shape data (Visio): PIC, duration, status, or any field ─────────────
+  const dataEd = el('div', 'wb-panel wb-dataed'); dataEd.hidden = true; dataEd.setAttribute('role', 'dialog'); dataEd.setAttribute('aria-label', 'Shape data');
+  root.append(dataEd);
+  dataEd.addEventListener('pointerdown', e => e.stopPropagation());
+  let dataFor = null;
+  function openDataEditor(target, anchor) {
+    dataFor = target.id;
+    const rows = (target.data?.length ? target.data : [{ name: 'PIC', value: '' }, { name: 'Duration', value: '' }, { name: 'Status', value: '' }]);
+    dataEd.innerHTML = `<div class="wb-ph"><b>Shape data</b><button type="button" data-close aria-label="Close">✕</button></div>
+      <p class="wb-note">Shown under the title. A status of Done, In progress or Late colours the left edge.</p>
+      <div class="wb-drows">${rows.map((r, i) => `<div class="wb-drow"><input data-dn="${i}" value="${esc(r.name)}" placeholder="Field" aria-label="Field name"><input data-dv="${i}" value="${esc(r.value)}" placeholder="Value" aria-label="Value"></div>`).join('')}</div>
+      <div class="wb-row2"><button type="button" class="wb-wide" data-addrow>+ Field</button><button type="button" class="wb-wide wb-pri" data-savedata>Save</button></div>`;
+    dataEd.hidden = false;
+    if (anchor && !isPhone()) { const r = anchor.getBoundingClientRect(), rr = rect(); dataEd.style.transform = 'none'; dataEd.style.left = `${Math.max(8, Math.min(r.left - rr.left - 60, rr.width - dataEd.offsetWidth - 8))}px`; const top = r.bottom - rr.top + 8; dataEd.style.top = `${top + dataEd.offsetHeight > rr.height - 8 ? Math.max(8, r.top - rr.top - dataEd.offsetHeight - 8) : top}px`; }
+    else { dataEd.style.transform = ''; dataEd.style.left = ''; dataEd.style.top = ''; }
+    dataEd.querySelector('input')?.focus();
+  }
+  dataEd.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Escape') dataEd.hidden = true; if (e.key === 'Enter') dataEd.querySelector('[data-savedata]').click(); });
+  dataEd.addEventListener('click', e => {
+    if (e.target.closest('[data-close]')) { dataEd.hidden = true; return; }
+    if (e.target.closest('[data-addrow]')) { const box = dataEd.querySelector('.wb-drows'); const i = box.children.length; box.insertAdjacentHTML('beforeend', `<div class="wb-drow"><input data-dn="${i}" placeholder="Field" aria-label="Field name"><input data-dv="${i}" placeholder="Value" aria-label="Value"></div>`); box.lastElementChild.querySelector('input').focus(); return; }
+    if (e.target.closest('[data-savedata]')) {
+      const rows = [...dataEd.querySelectorAll('.wb-drow')].map(r => ({ name: r.children[0].value.trim().slice(0, 30), value: r.children[1].value.trim().slice(0, 80) })).filter(r => r.value);
+      const t = get(dataFor); dataEd.hidden = true;
+      if (t && !t.locked && !readOnly) { write([bump(t, { data: rows.length ? rows : undefined })], { now: true }); commitStop(); paintProps(); }
+    }
+  });
+
+  // ── Shapes panel: every stencil, searchable, with what each shape means ──
+  const shapeTip = el('div', 'wb-shapetip'); shapeTip.hidden = true;
+  root.append(shapePanel, shapeTip);
+  shapePanel.addEventListener('pointerdown', e => e.stopPropagation());
+  const PANEL_CATS = [['Basic', ICON_SHAPES.map(t => [t, SHAPE_LABEL[t], BASIC_TIPS[t]])], ...STENCIL_CATS.map(c => [c, STENCILS.filter(s => s[2] === c).map(s => [s[0], s[1], s[5]])])];
+  const ORDER = ['Flowchart', 'Basic', 'Containers', 'BPMN', 'ERD', 'Network', 'Timeline', 'Value stream'];
+  function shapeIcon(type) {
+    const st = stencilPath(type, 6, 10, 88, 60);
+    if (st) return `<svg viewBox="0 0 100 80" aria-hidden="true">${(st.behind || []).map(b => `<path d="${b}" class="wb-sic"/>`).join('')}${st.rx && /^M[\d.-]+ [\d.-]+H/.test(st.d) && !st.extra?.includes('A') ? `<rect x="6" y="10" width="88" height="60" rx="${Math.min(st.rx, 10)}" class="wb-sic"/>` : `<path d="${st.d}" class="wb-sic" ${st.fill ? `style="fill:${st.fill}"` : ''}/>`}${st.extra ? `<path d="${st.extra}" class="wb-sicx"/>` : ''}</svg>`;
+    return `<svg viewBox="0 0 24 24" class="wb-i" aria-hidden="true">${ICONS[type] || ''}</svg>`;
+  }
+  function toggleShapePanel() {
+    if (!shapePanel.hidden) { shapePanel.hidden = true; shapeTip.hidden = true; return; }
+    for (const p of [framesPanel, timerPanel, libPanel, gallery, votePanel, exportPanel, cardPicker, emojiPop, guidePanel, checkPanel, importPanel]) p.hidden = true;
+    shapePanel.hidden = false;
+    paintShapePanel('');
+  }
+  function paintShapePanel(q) {
+    const s = q.trim().toLowerCase();
+    const cats = ORDER.map(name => PANEL_CATS.find(c => c[0] === name)).filter(Boolean);
+    const body = cats.map(([cat, list]) => {
+      const shown = list.filter(([t, label, tip]) => !s || label.toLowerCase().includes(s) || (tip || '').toLowerCase().includes(s) || cat.toLowerCase().includes(s));
+      return shown.length ? `<div class="wb-scat"><div class="wb-mh">${cat}<span>${shown.length}</span></div><div class="wb-sgrid">${shown.map(([t, label]) => `<button type="button" data-st="${t}" aria-label="${esc(label)}" draggable="false">${shapeIcon(t)}</button>`).join('')}</div></div>` : '';
+    }).join('');
+    shapePanel.innerHTML = `<div class="wb-ph"><b>Shapes</b><button type="button" data-close aria-label="Close">✕</button></div>
+      <input class="wb-search" type="search" placeholder="Search shapes (decision, database, router…)" value="${esc(q)}" aria-label="Search shapes">
+      <div class="wb-sbody">${body || '<p class="wb-note">No shape found.</p>'}</div>
+      <p class="wb-note">Click to add. With a shape selected, the new one is added after it and connected.</p>`;
+    const input = shapePanel.querySelector('.wb-search');
+    input.addEventListener('input', () => { const v = input.value; paintShapePanel(v); const i2 = shapePanel.querySelector('.wb-search'); i2.focus(); i2.setSelectionRange(v.length, v.length); });
+    input.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Escape') shapePanel.hidden = true; if (e.key === 'Enter') shapePanel.querySelector('[data-st]')?.click(); });
+  }
+  shapePanel.addEventListener('pointerover', e => {
+    const b = e.target.closest('[data-st]');
+    if (!b) { shapeTip.hidden = true; return; }
+    const t = b.dataset.st, label = SHAPE_LABEL[t], tip = STENCIL[t]?.tip || BASIC_TIPS[t] || '';
+    shapeTip.innerHTML = `<b>${esc(label)}</b>${esc(tip)}`; shapeTip.hidden = false;
+    const r = b.getBoundingClientRect(), rr = rect(), pr = shapePanel.getBoundingClientRect();
+    const right = pr.right - rr.left + 8;
+    shapeTip.style.left = `${right + 220 > rr.width ? Math.max(8, pr.left - rr.left - 228) : right}px`; shapeTip.style.top = `${r.top - rr.top}px`;
+  });
+  shapePanel.addEventListener('pointerleave', () => { shapeTip.hidden = true; });
+  shapePanel.addEventListener('click', e => {
+    if (e.target.closest('[data-close]')) { shapePanel.hidden = true; shapeTip.hidden = true; return; }
+    const b = e.target.closest('[data-st]'); if (!b || readOnly) return;
+    const t = b.dataset.st, from = sel.size === 1 ? get([...sel][0]) : null;
+    if (from && isShape(from) && !isContainer(from) && t !== 'swimlane' && t !== 'groupBox') { addAfter(from, 'b', t); return; }
+    const r = rect(), c = toWorld(r.width / 2, r.height / 2);
+    placeShape(t, c);
+  });
+  /// A new shape of type t centred at c (with its default size and the last style used).
+  function makeShape(t, box, text) {
+    const d = STENCIL[t] || { w: 180, h: 80 };
+    const base = { x: box.x, y: box.y, w: box.w ?? d.w, h: box.h ?? d.h, text: text ?? '', stroke: inkNow() };
+    if (t === 'swimlane') return create(t, { ...base, text: '', lanes: [{ id: 'l1', name: 'Lane 1', size: 1 }, { id: 'l2', name: 'Lane 2', size: 1 }, { id: 'l3', name: 'Lane 3', size: 1 }] });
+    if (t === 'groupBox') return create(t, { ...base, title: 'Group', fill: 'none' });
+    if (t === 'erTable') return create(t, { ...base, text: text ?? 'Customer\nid  int  PK\nname  text\nphone  text' });
+    if (t === 'vsProcess') return create(t, { ...base, text: text ?? 'Assembly', data: [{ name: 'C/T', value: '45 s' }, { name: 'People', value: '2' }] });
+    return create(t, { ...base, ...(lastShapeStyle && FLOW_TYPES.has(t) ? lastShapeStyle : {}) });
+  }
+  function placeShape(t, c) {
+    const d = STENCIL[t] || { w: 180, h: 80 };
+    const s = makeShape(t, { x: c.x - d.w / 2, y: c.y - d.h / 2 });
+    const [placed] = add([s]) || [];
+    if (placed && !isContainer(placed) && !/^net|milestone|vsInventory|vsTruck/.test(t)) editSoon2(placed);
+    return placed;
+  }
+  /// Add a shape after `from` in direction dir, connected (the blue arrows, hints and guide all use this).
+  function addAfter(from, dir, t, { text, label, select = true, edit = true } = {}) {
+    if (readOnly || !from) return null;
+    const d = STENCIL[t] || { w: from.w, h: from.h };
+    const box = placeNext(bounds(from, get), dir, { w: d.w, h: d.h }, live());
+    const node = makeShape(t, box, text);
+    // sides are left to the route (it faces the other shape), so lines stay clean when shapes move or get tidied
+    const line = create('connector', { from: { id: from.id }, to: { id: node.id }, route: 'elbow', endHead: 'arrow', startHead: 'none', stroke: lastLineStyle?.stroke ?? null, label: label || undefined });
+    add([node, line], { select: false });
+    if (select) { sel = new Set([node.id]); paintProps(); }
+    if (edit && !text && !isContainer(node)) editSoon2(node);
+    render();
+    return node;
+  }
+  let lastLineStyle = null;
+
+  // ── Blue arrows (draw.io): hover a shape, click an arrow to add the next one, hold to pick a shape ──
+  const arrowsLayer = el('div', 'wb-arrows');
+  const miniPick = el('div', 'wb-menu wb-minipick'); miniPick.hidden = true;
+  root.append(arrowsLayer, miniPick);
+  miniPick.addEventListener('pointerdown', e => e.stopPropagation());
+  let arrowFor = null, arrowHold = 0, arrowDrag = null;
+  const MINI = ['process', 'decision', 'terminator', 'data', 'document', 'subprocess', 'database', 'delay'];
+  function paintArrows() {
+    if (arrowDrag) return;            // never swap the buttons under a pressed pointer
+    arrowsLayer.innerHTML = '';
+    const t = arrowFor && get(arrowFor);
+    if (!t || readOnly || tool !== 'select' || interaction || editing || !isShape(t) || isContainer(t) || t.locked) return;
+    const b = bounds(t, get), a = toScreen(b.x, b.y), z = toScreen(b.x + b.w, b.y + b.h), off = 20;
+    const spots = [['t', (a.x + z.x) / 2, a.y - off, -90], ['r', z.x + off, (a.y + z.y) / 2, 0], ['b', (a.x + z.x) / 2, z.y + off, 90], ['l', a.x - off, (a.y + z.y) / 2, 180]];
+    arrowsLayer.innerHTML = spots.map(([d, x, y, rot]) => `<button type="button" class="wb-arrow" data-dir="${d}" style="left:${x}px;top:${y}px" title="Click: add the next shape here. Drag: draw a line. Hold: pick a shape." aria-label="Add a shape ${({ t: 'above', r: 'to the right', b: 'below', l: 'to the left' })[d]}"><svg viewBox="0 0 24 24" style="transform:rotate(${rot}deg)"><path d="M4 12h12M12 6l6 6-6 6"/></svg></button>`).join('');
+  }
+  root.addEventListener('pointermove', e => {
+    if (interaction || e.pointerType === 'touch') return;
+    if (e.target.closest('.wb-arrows,.wb-minipick')) return;
+    const { sx, sy } = local(e), w = toWorld(sx, sy);
+    const hit = hitTest(live().filter(x => isShape(x) && !isContainer(x)), w.x, w.y, get, 4 / view.z);
+    if (hit) { if (hit.id !== arrowFor) { arrowFor = hit.id; paintArrows(); } return; }
+    // keep the arrows while the pointer is near the shape (on its way to an arrow)
+    const t = arrowFor && get(arrowFor);
+    if (t) { const b = bounds(t, get); const near = 40 / view.z; if (w.x < b.x - near || w.x > b.x + b.w + near || w.y < b.y - near || w.y > b.y + b.h + near) { arrowFor = null; paintArrows(); } }
+  });
+  root.addEventListener('pointerleave', () => { arrowFor = null; paintArrows(); });
+  arrowsLayer.addEventListener('pointerdown', e => {
+    const b = e.target.closest('.wb-arrow'); if (!b) return;
+    e.stopPropagation(); e.preventDefault();
+    const from = get(arrowFor); if (!from) return;
+    arrowDrag = { dir: b.dataset.dir, from, x: e.clientX, y: e.clientY, moved: false, id: e.pointerId, btn: b, t: Date.now() };
+    clearTimeout(arrowHold);
+    arrowHold = setTimeout(() => { if (arrowDrag && !arrowDrag.moved) { openMini(b, arrowDrag.dir, from); arrowDrag = null; } }, 450);
+    try { b.setPointerCapture(e.pointerId); } catch { /* fine */ }
+  });
+  arrowsLayer.addEventListener('pointermove', e => {
+    if (!arrowDrag) return;
+    if (Math.hypot(e.clientX - arrowDrag.x, e.clientY - arrowDrag.y) > 6 && !arrowDrag.moved) {
+      // drag from an arrow = draw a line from that side
+      arrowDrag.moved = true; clearTimeout(arrowHold);
+      const from = arrowDrag.from, dir = arrowDrag.dir;
+      const c = create('connector', { from: { id: from.id, side: dir }, to: toWorld(local(e).sx, local(e).sy), route: 'elbow', endHead: 'arrow', startHead: 'none', stroke: inkNow() });
+      c.z = zBetween(topZ(all()) || null, null);
+      interaction = { kind: 'connect', el: c };
+      draft.set(c.id, c); arrowsLayer.innerHTML = '';
+      try { root.setPointerCapture(e.pointerId); } catch { /* fine */ }
+      pointers.set(e.pointerId, local(e));
+    }
+  });
+  const dropArrow = () => { arrowDrag = null; clearTimeout(arrowHold); };
+  arrowsLayer.addEventListener('pointercancel', dropArrow);
+  arrowsLayer.addEventListener('lostpointercapture', e => { if (arrowDrag && !arrowDrag.moved && e.pointerId === arrowDrag.id) setTimeout(() => { if (arrowDrag && Date.now() - arrowDrag.t > 50) dropArrow(); }, 0); });
+  arrowsLayer.addEventListener('pointerup', e => {
+    const d = arrowDrag; arrowDrag = null; clearTimeout(arrowHold);
+    // a click counts only on the same arrow, the same pointer, and quickly (a hold opens the shape picker instead)
+    if (!d || d.moved || e.pointerId !== d.id || e.target.closest('.wb-arrow') !== d.btn || Date.now() - d.t > 600) return;
+    e.stopPropagation();
+    const from = d.from;
+    const t = from.type === 'terminator' ? 'process' : (STENCIL[from.type] || SHAPE_TYPES.has(from.type) ? from.type : 'process');
+    const next = addAfter(from, d.dir, t, { edit: true });
+    if (next) { arrowFor = next.id; requestAnimationFrame(paintArrows); }
+  });
+  function openMini(anchor, dir, from) {
+    miniPick.innerHTML = MINI.map(t => `<button type="button" data-mt="${t}" title="${SHAPE_LABEL[t]}" aria-label="${SHAPE_LABEL[t]}">${shapeIcon(t)}</button>`).join('');
+    miniPick.dataset.dir = dir; miniPick.dataset.from = from.id;
+    miniPick.hidden = false;
+    const r = anchor.getBoundingClientRect(), rr = rect();
+    miniPick.style.left = `${Math.max(8, Math.min(r.right - rr.left + 6, rr.width - miniPick.offsetWidth - 8))}px`;
+    miniPick.style.top = `${Math.max(8, Math.min(r.top - rr.top - 20, rr.height - miniPick.offsetHeight - 8))}px`;
+  }
+  miniPick.addEventListener('click', e => {
+    const b = e.target.closest('[data-mt]'); if (!b) return;
+    miniPick.hidden = true;
+    const from = get(miniPick.dataset.from); if (!from) return;
+    addAfter(from, miniPick.dataset.dir, b.dataset.mt, { text: b.dataset.mt === 'terminator' ? 'End' : undefined });
+  });
+
+  // ── Flowchart guide, in-place hints, Check ───────────────────────────────
+  const hintBar = el('div', 'wb-hint'); hintBar.hidden = true;
+  root.append(guidePanel, checkPanel, hintBar);
+  for (const p of [guidePanel, checkPanel, hintBar]) p.addEventListener('pointerdown', e => e.stopPropagation());
+  const GUIDE = [
+    ['start', 'Start', 'An oval where the flow begins'],
+    ['step', 'First step', 'A box for something someone does'],
+    ['choice', 'A choice?', 'A diamond asks a yes / no question'],
+    ['end', 'End', 'An oval where the flow stops'],
+  ];
+  function guideState() {
+    const els = live();
+    return {
+      start: els.some(x => x.type === 'terminator' && !/\b(end|finish|stop|done)\b/i.test(x.text || '')),
+      step: els.some(x => x.type === 'process' || x.type === 'subprocess'),
+      choice: els.some(x => x.type === 'decision'),
+      end: els.some(x => x.type === 'terminator' && /\b(end|finish|stop|done)\b/i.test(x.text || '')),
+    };
+  }
+  function paintGuide() {
+    if (guidePanel.hidden) return;
+    const st = guideState(), cur = GUIDE.findIndex(([k]) => !st[k]);
+    guidePanel.innerHTML = `<div class="wb-ph"><b>Make a flowchart</b><button type="button" data-close aria-label="Close">✕</button></div>
+      <p class="wb-note">Four steps. Each <b>Add</b> puts the shape in the right place and connects it.</p>
+      <ol class="wb-steps">${GUIDE.map(([k, t, s], i) => `<li class="${st[k] ? 'done' : i === cur ? 'cur' : ''}"><span class="wb-num">${st[k] ? '✓' : i + 1}</span><span>${t}<small>${s}</small></span><button type="button" data-g="${k}" ${st[k] ? 'disabled' : ''}>${st[k] ? 'Done' : 'Add'}</button></li>`).join('')}</ol>
+      <p class="wb-note wb-gstate">${cur < 0 ? 'All four are there. Press <b>Check</b> to see if anything is missing.' : `Step ${cur + 1} of ${GUIDE.length}`}</p>
+      <div class="wb-row2"><button type="button" class="wb-wide" data-g="tpl">Start from a template</button></div>`;
+  }
+  function lastInFlow() {
+    const els = live(), order = [];
+    const g = { nodes: els.filter(x => isShape(x) && !isContainer(x)) };
+    const outs = id => els.filter(c => c.type === 'connector' && c.from?.id === id).map(c => c.to?.id);
+    // walk from a Start; take the deepest shape that is not an End
+    const startEl = g.nodes.find(x => x.type === 'terminator' && !/\b(end|finish|stop|done)\b/i.test(x.text || ''));
+    const seen = new Set(), q = startEl ? [startEl.id] : [];
+    while (q.length) { const id = q.shift(); if (seen.has(id)) continue; seen.add(id); const x = get(id); if (x) order.push(x); for (const n of outs(id)) q.push(n); }
+    return [...order].reverse().find(x => !/\b(end|finish|stop|done)\b/i.test(x.text || '') || x.type !== 'terminator') || order.at(-1) || null;
+  }
+  guidePanel.addEventListener('click', e => {
+    if (e.target.closest('[data-close]')) { guidePanel.hidden = true; paintCorners(); return; }
+    const b = e.target.closest('[data-g]'); if (!b || b.disabled || readOnly) return;
+    const k = b.dataset.g;
+    if (k === 'tpl') { guidePanel.hidden = true; openGallery('Flowchart & process'); return; }
+    if (k === 'start') {
+      const r = rect(), c = toWorld(r.width / 2, Math.min(r.height * 0.25, 140));
+      const s = makeShape('terminator', { x: c.x - 80, y: c.y - 28 }, 'Start');
+      add([s]); sel = new Set([s.id]); paintProps(); paintGuide(); return;
+    }
+    const last = lastInFlow();
+    if (!last) { toast('Add the Start first'); return; }
+    if (k === 'step') addAfter(last, 'b', 'process', { text: 'Receive request', edit: false });
+    else if (k === 'choice') { addAfter(last, 'b', 'decision', { text: 'Approved?', edit: false }); toast('Now give the diamond a Yes and a No branch'); }
+    else if (k === 'end') {
+      const dec = live().find(x => x.type === 'decision' && !live().some(c => c.type === 'connector' && c.from?.id === x.id && /^yes$/i.test(c.label || '')));
+      addAfter(dec || last, 'b', 'terminator', { text: 'End', label: dec ? 'Yes' : undefined, edit: false });
+    }
+    paintGuide();
+  });
+  const hintsOn = () => { try { return localStorage.getItem(HINTS_KEY) !== 'off'; } catch { return true; } };
+  function paintHint() {
+    hintBar.hidden = true;
+    if (readOnly || interaction || editing || sel.size !== 1 || !hintsOn()) return;
+    const t = get([...sel][0]); if (!t) return;
+    const hs = nextHints(t, live()); if (!hs.length) return;
+    hintBar.innerHTML = `<span class="wb-bulb" aria-hidden="true">💡</span>${hs.map((h, i) => h.kind === 'info' ? `<span>${esc(h.label)}</span>` : `<button type="button" data-hi="${i}">${esc(h.label)}</button>`).join('')}<button type="button" class="wb-x" data-hoff title="Don't show hints again" aria-label="Don't show hints again">✕</button>`;
+    hintBar._hints = hs;
+    hintBar.hidden = false;
+    const b = bounds(t, get), a = toScreen(b.x + b.w / 2, b.y + b.h), top = toScreen(0, b.y).y, r = rect(), h = hintBar.offsetHeight;
+    let y = a.y + 14;
+    if (y + h > r.height - 70) y = top - h - 14;
+    // never on top of the selection bar: go to the far side of it
+    if (!props.hidden) {
+      const pt = props.offsetTop, pb = pt + props.offsetHeight;
+      if (y < pb + 6 && y + h > pt - 6) y = pt > top - 4 ? pb + 8 : pt - h - 8;
+      if (y + h > r.height - 64) y = pt - h - 8;
+    }
+    hintBar.style.left = `${Math.max(8, Math.min(a.x - hintBar.offsetWidth / 2, r.width - hintBar.offsetWidth - 8))}px`;
+    hintBar.style.top = `${Math.max(8, y)}px`;
+  }
+  hintBar.addEventListener('click', e => {
+    if (e.target.closest('[data-hoff]')) { try { localStorage.setItem(HINTS_KEY, 'off'); } catch { /* blocked */ } hintBar.hidden = true; toast('Hints are off. Turn them on again under Guide.'); return; }
+    const b = e.target.closest('[data-hi]'); if (!b) return;
+    const h = hintBar._hints[+b.dataset.hi], t = get([...sel][0]); if (!h || !t) return;
+    addAfter(t, h.dir || 'b', h.type, { text: h.text || (h.branch ? (h.branch === 'Yes' ? '' : '') : undefined) || undefined, label: h.branch });
+  });
+  function paintCheck() {
+    if (checkPanel.hidden) return;
+    const issues = checkFlow(live());
+    checkPanel.innerHTML = `<div class="wb-ph"><b>Check this flowchart</b><button type="button" data-close aria-label="Close">✕</button></div>
+      ${issues.length ? issues.map((it, i) => `<div class="wb-issue ${it.level}"><span aria-hidden="true">${it.level === 'bad' ? '⛔' : '⚠️'}</span><span>${esc(it.text)}</span>${it.fix ? `<button type="button" data-fix="${i}">Fix</button>` : it.ids.length ? `<button type="button" data-show="${i}">Show</button>` : ''}</div>`).join('')
+        : '<div class="wb-issue ok"><span aria-hidden="true">✅</span><span>Looks good: a Start, an End, and every decision has its ways out.</span></div>'}`;
+    checkPanel._issues = issues;
+  }
+  checkPanel.addEventListener('click', e => {
+    if (e.target.closest('[data-close]')) { checkPanel.hidden = true; paintCorners(); return; }
+    const issues = checkPanel._issues || [];
+    const show = e.target.closest('[data-show]'), fix = e.target.closest('[data-fix]');
+    const it = issues[+(show || fix)?.dataset[show ? 'show' : 'fix']];
+    if (!it) return;
+    if (show || (fix && it.fix === 'branches') || (fix && it.fix === 'next')) {
+      if (it.ids[0]) { sel = new Set([it.ids[0]]); const b = bounds(get(it.ids[0]), get), r = rect(); view.x = r.width / 2 - (b.x + b.w / 2) * view.z; view.y = r.height / 2 - (b.y + b.h / 2) * view.z; render(); paintProps(); }
+      return;
+    }
+    if (readOnly) return;
+    if (it.fix === 'start') {
+      const g = live().filter(x => FLOW_TYPES.has(x.type)).sort((p, q) => p.y - q.y || p.x - q.x)[0];
+      if (!g) return;
+      const s = makeShape('terminator', { x: g.x + g.w / 2 - 80, y: g.y - 130 }, 'Start');
+      add([s, create('connector', { from: { id: s.id }, to: { id: g.id }, route: 'elbow', endHead: 'arrow', startHead: 'none' })], { select: false });
+    } else if (it.fix === 'end') {
+      const last = lastInFlow() || live().filter(x => FLOW_TYPES.has(x.type)).sort((p, q) => q.y - p.y)[0];
+      if (last) addAfter(last, 'b', 'terminator', { text: 'End', edit: false });
+    }
+    paintCheck();
+  });
+  /// Called after every paint: keeps the flowchart helpers in step with the board.
+  let flowWas = false;
+  function paintFlowUi() {
+    if (flowOn !== flowWas) { flowWas = flowOn; paintCorners(); }
+    paintHint(); paintGuide(); paintCheck(); paintArrows();
+    const n = flowOn ? checkFlow(live()).length : 0;
+    const badge = topRight.querySelector('[data-c="check"] .wb-badge');
+    if (badge) { badge.textContent = String(n); badge.hidden = !n; }
+  }
+
+  // ── Tidy up flow ─────────────────────────────────────────────────────────
+  function tidyFlow(dir = 'TB') {
+    if (readOnly) return;
+    const chosen = [...sel].map(get).filter(Boolean);
+    const scope = chosen.length > 1 ? live().filter(x => sel.has(x.id) || (x.type === 'connector' && sel.has(x.from?.id) && sel.has(x.to?.id))) : live();
+    const shapes = scope.filter(x => isShape(x) && !isContainer(x) && !x.locked);
+    if (shapes.length < 2) { toast('Select a flow (or nothing for the whole board) first'); return; }
+    const b = unionBounds(shapes, get);
+    const pos = layoutFlow(scope, { dir, origin: { x: b.x, y: b.y } });
+    const stale = scope.filter(x => x.type === 'connector' && (x.waypoints?.length || x.from?.side || x.to?.side));
+    if (!pos.size && !stale.length) { toast('Already tidy'); return; }
+    if (pos.size) write([...pos.entries()].map(([id, p]) => { const x = get(id); return x ? bump(x, { x: p.x, y: p.y }) : null; }).filter(Boolean), { now: true });
+    // automatic routes again: bends and fixed sides placed by hand no longer fit the new places
+    const strip = end => (end?.id ? { id: end.id } : end);
+    write(scope.filter(x => x.type === 'connector' && (x.waypoints?.length || x.from?.side || x.to?.side)).map(x => bump(x, { waypoints: undefined, from: strip(x.from), to: strip(x.to) })), { now: true });
+    commitStop();
+    toast(dir === 'TB' ? 'Flow tidied top to bottom. Ctrl Z undoes it.' : 'Flow tidied left to right. Ctrl Z undoes it.');
+  }
+
+  // ── Import: draw.io file or Mermaid text ─────────────────────────────────
+  const importPanel = el('div', 'wb-panel wb-importp'); importPanel.hidden = true; importPanel.setAttribute('role', 'dialog'); importPanel.setAttribute('aria-label', 'Import a diagram');
+  root.append(importPanel);
+  importPanel.addEventListener('pointerdown', e => e.stopPropagation());
+  const MERMAID_SAMPLE = 'flowchart TD\n  A([Start]) --> B[Receive request]\n  B --> C{Complete?}\n  C -->|Yes| D[Process order]\n  C -->|No| E[Ask for details]\n  E --> B\n  D --> F([End])';
+  function toggleImport() {
+    if (!importPanel.hidden) { importPanel.hidden = true; return; }
+    for (const p of [framesPanel, timerPanel, libPanel, gallery, votePanel, exportPanel, shapePanel]) p.hidden = true;
+    importPanel.innerHTML = `<div class="wb-ph"><b>Import a diagram</b><button type="button" data-close aria-label="Close">✕</button></div>
+      <div class="wb-row2"><button type="button" class="wb-wide" data-drawio>Choose a draw.io file (.drawio, .xml)</button></div>
+      <p class="wb-note">Or type or paste Mermaid text. The diagram is added beside what is on the board, as shapes you can edit.</p>
+      <textarea class="wb-code" spellcheck="false" aria-label="Mermaid text">${esc(MERMAID_SAMPLE)}</textarea>
+      <div class="wb-row2"><button type="button" class="wb-wide wb-pri" data-mermaid>Make diagram</button></div>`;
+    importPanel.hidden = false;
+    importPanel.querySelector('textarea').addEventListener('keydown', e => e.stopPropagation());
+  }
+  function placeImported(els) {
+    if (!els.length) return;
+    const b = unionBounds(live(), get), ib = unionBounds(els, id => els.find(x => x.id === id));
+    const dx = (b ? b.x + b.w + 160 : 0) - (ib?.x ?? 0), dy = (b ? b.y : 0) - (ib?.y ?? 0);
+    const placed = add(els.map(x => (x.type === 'connector' ? x : { ...x, x: x.x + dx, y: x.y + dy })), { select: false }) || [];
+    fit(placed, { max: 1 });
+    toast(`Added ${placed.filter(x => x.type !== 'connector').length} shapes. Double-click any text to change it.`);
+  }
+  importPanel.addEventListener('click', async e => {
+    if (e.target.closest('[data-close]')) { importPanel.hidden = true; return; }
+    if (readOnly) return;
+    if (e.target.closest('[data-mermaid]')) {
+      const r = fromMermaid(importPanel.querySelector('textarea').value);
+      if (r.error) { toast(r.error); return; }
+      importPanel.hidden = true; placeImported(r.elements); return;
+    }
+    if (e.target.closest('[data-drawio]')) {
+      const input = document.createElement('input'); input.type = 'file'; input.accept = '.drawio,.xml,.dio,application/xml,text/xml';
+      input.onchange = async () => {
+        const f = input.files?.[0]; if (!f) return;
+        if (f.size > 5 * 1024 * 1024) { toast('That file is larger than 5 MB'); return; }
+        try {
+          const inflate = async bytes => { const ds = new DecompressionStream('deflate-raw'); const s = new Blob([bytes]).stream().pipeThrough(ds); return await new Response(s).text(); };
+          const model = await drawioModel(await f.text(), inflate);
+          const r = fromDrawioModel(model);
+          if (r.error) { toast(r.error); return; }
+          importPanel.hidden = true; placeImported(r.elements);
+        } catch (err) { toast(err?.message || 'Could not read that file'); }
+      };
+      input.click();
+    }
+  });
+
   function positionProps() {
     if (props.hidden) return;
     const b = unionBounds([...sel].map(get).filter(Boolean), get);
@@ -1725,20 +2279,39 @@ export function mountCanvas(container, opts) {
     props.style.top = `${y}px`;
   }
   props.addEventListener('pointerdown', e => e.stopPropagation());
-  props.addEventListener('click', e => {
-    const b = e.target.closest('button'); if (!b) return;
+  const onPropsAct = b => {
+    if (b.dataset.act === 'propsmore') {
+      if (!propsMore.hidden) { propsMore.hidden = true; return; }
+      propsMore.hidden = false;
+      const r = b.getBoundingClientRect(), rr = rect();
+      propsMore.style.left = `${Math.max(8, Math.min(r.left - rr.left - propsMore.offsetWidth + r.width, rr.width - propsMore.offsetWidth - 8))}px`;
+      const top = r.bottom - rr.top + 6;
+      propsMore.style.top = `${top + propsMore.offsetHeight > rr.height - 8 ? Math.max(8, r.top - rr.top - propsMore.offsetHeight - 6) : top}px`;
+      return;
+    }
+    props.dispatchEvent(new CustomEvent('wb-act', { detail: b }));
+  };
+  props.addEventListener('click', e => { const b = e.target.closest('button'); if (b) onPropsAct(b); });
+  props.addEventListener('wb-act', e => {
+    const b = e.detail; if (!b) return;
     const els = [...sel].map(get).filter(Boolean).filter(x => !x.locked || b.dataset.act === 'lock');
     const upd = fn => write(els.map(x => { const c = fn(x); return c ? bump(x, c) : null; }).filter(Boolean), { now: true });
     if (b.dataset.sticky) upd(x => x.type === 'sticky' ? { color: b.dataset.sticky } : null);
     else if (b.dataset.colour) { colourTab = b.dataset.colour; if (!colourPop.hidden && colourFor === 'sel') { colourPop.hidden = true; return; } openColours('sel', b); return; }
     else if (b.dataset.route) upd(x => x.type === 'connector' ? { route: b.dataset.route } : null);
-    else if ('heads' in b.dataset) upd(x => { if (x.type !== 'connector') return null; const s = x.startHead === 'arrow', en = (x.endHead ?? 'arrow') === 'arrow'; const next = en && !s ? [true, true] : en && s ? [false, false] : [false, true]; return { startHead: next[0] ? 'arrow' : 'none', endHead: next[1] ? 'arrow' : 'none' }; });
+    else if ('heads' in b.dataset) { toggleHeads(b); return; }
     else if ('dash' in b.dataset) upd(x => x.type === 'connector' ? { dashed: !x.dashed } : null);
+    else if (b.dataset.style === 'dash') { const on = !els.find(x => isShape(x))?.dashed; upd(x => isShape(x) ? { dashed: on || undefined } : null); }
+    else if (b.dataset.style === 'shadow') { const on = !els.find(x => isShape(x))?.shadow; upd(x => isShape(x) ? { shadow: on || undefined } : null); }
+    else if (b.dataset.style === 'round') { const sharp = els.find(x => isShape(x))?.rounded !== false; upd(x => isShape(x) ? { rounded: sharp ? false : undefined } : null); }
+    else if (b.dataset.act === 'data') { openDataEditor(els[0], b); return; }
+    else if (b.dataset.act === 'laneadd') { const s = els[0], lanes = [...(s.lanes || [{ id: 'l1', name: 'Lane 1', size: 1 }])]; const n = lanes.length + 1; lanes.push({ id: `l${Date.now().toString(36)}`, name: `Lane ${n}`, size: 1 }); const grow = s.orient === 'vertical' ? { w: s.w + s.w / (n - 1) } : { h: s.h + s.h / (n - 1) }; upd(x => x.id === s.id ? { lanes, ...grow } : null); }
+    else if (b.dataset.act === 'laneflip') upd(x => x.type === 'swimlane' ? { orient: x.orient === 'vertical' ? undefined : 'vertical', w: x.h * 2, h: x.w / 2 } : null);
     else if ('width' in b.dataset) { toggleWidthMenu(b, els); return; }
-    else if (b.dataset.font) upd(x => (x.type === 'text' || x.type === 'sticky' || SHAPES.includes(x.type)) ? { font: b.dataset.font } : null);
+    else if (b.dataset.font) upd(x => (x.type === 'text' || x.type === 'sticky' || isShape(x)) ? { font: b.dataset.font } : null);
     else if (b.dataset.size) upd(x => {
       if (x.type === 'text') { const s = +b.dataset.size, lines = String(x.text).split('\n'); return { size: s, w: Math.max(...lines.map(l => measure(l, s, x.font || 'ipop'))) + 4, h: lines.length * s * 1.3 }; }
-      return (x.type === 'sticky' || SHAPES.includes(x.type)) ? { size: +b.dataset.size } : null;
+      return (x.type === 'sticky' || isShape(x)) ? { size: +b.dataset.size } : null;
     });
     else if (b.dataset.act === 'front') reorder(els, 'front');
     else if (b.dataset.act === 'back') reorder(els, 'back');
@@ -1749,6 +2322,9 @@ export function mountCanvas(container, opts) {
     else if (b.dataset.act === 'task') { makeTasks(els); return; }
     else if (b.dataset.act === 'branch') { mindAdd(els[0], 'child'); return; }
     else if (b.dataset.act === 'group') { groupSel(true); return; }
+    else if (b.dataset.act === 'copystyle') { copyStyle(els[0]); return; }
+    else if (b.dataset.act === 'theme') { toggleThemes(b); return; }
+    else if (b.dataset.act === 'pastestyle') { pasteStyle(); return; }
     else if (b.dataset.act === 'ungroup') { groupSel(false); return; }
     else if (b.dataset.act === 'arrange') { toggleArrange(b); return; }
     else if (b.dataset.act === 'link') { openLinkEditor(els[0], b); return; }
@@ -1971,7 +2547,8 @@ export function mountCanvas(container, opts) {
   root.addEventListener('contextmenu', e => { if (e.target.closest('.wb-svg')) e.preventDefault(); });
 
   function onDown(e) {
-    if (e.target.closest('.wb-tools,.wb-props,.wb-zoom,.wb-menu,.wb-panel,.wb-neat,.wb-edit,.wb-penpop,.wb-colourpop')) return;
+    if (!e.target.closest('.wb-arrows')) { arrowDrag = null; clearTimeout(arrowHold); }
+    if (e.target.closest('.wb-tools,.wb-props,.wb-zoom,.wb-menu,.wb-panel,.wb-neat,.wb-edit,.wb-penpop,.wb-colourpop,.wb-arrows,.wb-hint')) return;
     if (editing) stopEdit();
     shapeMenu.hidden = true; penPop.hidden = true; colourPop.hidden = true;
     // Inside a page the board sits in a draggable block: without this the browser starts a native drag (or a text selection)
@@ -1995,6 +2572,25 @@ export function mountCanvas(container, opts) {
     const h = e.target.closest?.('[data-handle]')?.dataset.handle, endKey = e.target.closest?.('[data-end]')?.dataset.end;
     if (h && !readOnly) { startResize(h, w, e.shiftKey); return; }
     if (endKey && !readOnly) { const c = get([...sel][0]); interaction = { kind: 'end', id: c.id, key: endKey }; return; }
+    const segIdx = e.target.closest?.('[data-seg]')?.dataset.seg;
+    if (segIdx && !readOnly) { const c = get([...sel][0]); interaction = { kind: 'seg', id: c.id, index: +segIdx, pts: connectorPoints(c, get) }; return; }
+    if (e.target.closest?.('[data-reroute]') && !readOnly) { const c = get([...sel][0]); write([bump(c, { waypoints: undefined })], { now: true }); commitStop(); return; }
+    if (!readOnly && sel.size === 1) {
+      const c = get([...sel][0]);
+      // dragging a line's label slides it along the line
+      if (c?.type === 'connector' && c.label) { const pts = connectorPoints(c, get) || null; const at = pts ? (c.labelAt ?? 0.5) : null; if (pts) { const lp = (() => { let total = 0; const L = []; for (let i = 1; i < pts.length; i++) { const l = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y); L.push(l); total += l; } let want = total * at; for (let i = 1; i < pts.length; i++) { if (want <= L[i - 1] || i === pts.length - 1) { const k = L[i - 1] ? want / L[i - 1] : 0; return { x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * k, y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * k }; } want -= L[i - 1]; } return pts[0]; })(); if (Math.hypot(lp.x - w.x, lp.y - w.y) * view.z < 16) { interaction = { kind: 'label', id: c.id }; return; } } }
+    }
+    // a lane divider in a swimlane: drag to resize the lanes on both sides
+    if (!readOnly) {
+      for (const sw of live().filter(x => x.type === 'swimlane' && !x.locked)) {
+        const ls = lanesOf(sw);
+        for (let i = 0; i < ls.length - 1; i++) {
+          const v = ls[i].vertical, edge = v ? ls[i].box.x + ls[i].box.w : ls[i].box.y + ls[i].box.h;
+          const inside = v ? (w.y >= sw.y && w.y <= sw.y + sw.h) : (w.x >= sw.x && w.x <= sw.x + sw.w);
+          if (inside && Math.abs((v ? w.x : w.y) - edge) * view.z < 5) { interaction = { kind: 'lane', id: sw.id, index: i, orig: sw }; return; }
+        }
+      }
+    }
 
     stopFollow();
     if (tool === 'laser' && e.button === 0) { interaction = { kind: 'laser' }; laserAt(w); return; }
@@ -2123,19 +2719,53 @@ export function mountCanvas(container, opts) {
         break;
       }
       case 'connect': {
-        const hit = hitTest(live().filter(x => x.id !== it.el.id), w.x, w.y, get, tolerance());
+        const hit = hitTest(live().filter(x => x.id !== it.el.id && !isContainer(x)), w.x, w.y, get, tolerance());
         const target = hit && hit.type !== 'connector' && hit.type !== 'path' && hit.id !== it.el.from?.id ? hit : null;
         it.connectHover = target?.id; interaction.connectHover = target?.id;
-        it.el = { ...it.el, to: target ? { id: target.id } : { x: w.x, y: w.y } };
+        // near a side of a shape: the end sticks to that side (draw.io port)
+        let side = null;
+        if (target && isShape(target)) { const b = bounds(target, get), s = nearestSide(b, w), q = portPoint(b, s); if (Math.hypot(q.x - w.x, q.y - w.y) * view.z < 22) side = s; }
+        interaction.connectSide = side;
+        it.el = { ...it.el, to: target ? { id: target.id, ...(side ? { side } : {}) } : { x: w.x, y: w.y } };
         draft.set(it.el.id, it.el); render();
         break;
       }
       case 'end': {
         const c = get(it.id);
-        const hit = hitTest(live().filter(x => x.id !== c.id), w.x, w.y, get, tolerance());
+        const hit = hitTest(live().filter(x => x.id !== c.id && !isContainer(x)), w.x, w.y, get, tolerance());
         const target = hit && hit.type !== 'connector' && hit.type !== 'path' ? hit : null;
         interaction.connectHover = target?.id;
-        write([bump(c, { [it.key]: target ? { id: target.id } : { x: w.x, y: w.y } })]);
+        let side = null;
+        if (target && isShape(target)) { const b = bounds(target, get), s = nearestSide(b, w), q = portPoint(b, s); if (Math.hypot(q.x - w.x, q.y - w.y) * view.z < 22) side = s; }
+        interaction.connectSide = side;
+        write([bump(c, { [it.key]: target ? { id: target.id, ...(side ? { side } : {}) } : { x: w.x, y: w.y }, waypoints: undefined })]);
+        break;
+      }
+      case 'seg': {
+        // dragging a bend: the segment moves sideways; the route becomes waypoints the person owns
+        const c = get(it.id), pts = it.pts.map(q => ({ ...q }));
+        const i = it.index, a = pts[i - 1], b = pts[i];
+        const horiz = Math.abs(a.y - b.y) < 0.5;
+        if (horiz) { a.y = b.y = w.y; } else { a.x = b.x = w.x; }
+        write([bump(c, { waypoints: pts.slice(1, -1).map(q => ({ x: Math.round(q.x), y: Math.round(q.y) })), route: c.route === 'straight' ? 'elbow' : c.route })]);
+        break;
+      }
+      case 'label': {
+        const c = get(it.id), pts = connectorPoints(c, get);
+        if (pts) write([bump(c, { labelAt: +fractionAt(pts, w).toFixed(3) })]);
+        break;
+      }
+      case 'lane': {
+        const sw = get(it.id); if (!sw) break;
+        const lanes = (sw.lanes || []).map(l => ({ ...l }));
+        const ls = lanesOf(it.orig), vertical = it.orig.orient === 'vertical';
+        const pos = vertical ? w.x : w.y, i = it.index;
+        const start = vertical ? ls[i].box.x : ls[i].box.y, end = vertical ? ls[i + 1].box.x + ls[i + 1].box.w : ls[i + 1].box.y + ls[i + 1].box.h;
+        const along = vertical ? it.orig.w : it.orig.h, total = lanes.reduce((s, l) => s + (l.size || 1), 0);
+        const p = Math.max(start + 40, Math.min(end - 40, pos));
+        const both = (lanes[i].size || 1) + (lanes[i + 1].size || 1);
+        lanes[i].size = +((p - start) / along * total).toFixed(4); lanes[i + 1].size = +(both - lanes[i].size).toFixed(4);
+        write([bump(sw, { lanes })]);
         break;
       }
       case 'marquee': {
@@ -2216,7 +2846,7 @@ export function mountCanvas(container, opts) {
         setTool('select');
         break;
       }
-      case 'end': commitStop(); break;
+      case 'end': case 'seg': case 'label': case 'lane': commitStop(); break;
       case 'marquee': {
         const m = it.marquee;
         if (m.w * view.z > 4 || m.h * view.z > 4) sel = expandGroups(new Set(insideBox(live(), m, get).map(x => x.id)), live());
@@ -2269,6 +2899,27 @@ export function mountCanvas(container, opts) {
     if (readOnly || e.target.closest('.wb-tools,.wb-props,.wb-zoom,.wb-menu,.wb-panel,.wb-neat,.wb-edit,.wb-penpop,.wb-colourpop')) return;
     const { sx, sy } = local(e), w = toWorld(sx, sy);
     const hit = hitTest(live(), w.x, w.y, get, tolerance());
+    if (hit?.type === 'swimlane') {
+      const i = laneAt(hit, w.x, w.y), lane = lanesOf(hit)[i];
+      if (lane) {
+        const ta = el('input', 'wb-edit wb-frame-name'); ta.value = lane.name || ''; ta.setAttribute('aria-label', 'Lane name');
+        const a = toScreen(lane.header.x + 6, lane.header.y + (lane.vertical ? 8 : lane.header.h / 2 - 12));
+        Object.assign(ta.style, { left: `${a.x}px`, top: `${a.y}px`, width: '180px', height: '24px', fontSize: '14px', fontWeight: '600' });
+        root.append(ta); ta.focus(); ta.select();
+        const done = () => { const v = ta.value.trim(); ta.remove(); if (v && v !== lane.name) { const cur = get(hit.id); write([bump(cur, { lanes: (cur.lanes || []).map(l => (l.id === lane.id ? { ...l, name: v.slice(0, 60) } : l)) })], { now: true }); commitStop(); } };
+        ta.addEventListener('blur', done); ta.addEventListener('keydown', ev => { ev.stopPropagation(); if (ev.key === 'Enter' || ev.key === 'Escape') ta.blur(); });
+        return;
+      }
+    }
+    if (hit?.type === 'groupBox') {
+      const ta = el('input', 'wb-edit wb-frame-name'); ta.value = hit.title || ''; ta.setAttribute('aria-label', 'Group title');
+      const a = toScreen(hit.x + 8, hit.y + 6);
+      Object.assign(ta.style, { left: `${a.x}px`, top: `${a.y}px`, width: '220px', height: '24px', fontSize: '14px', fontWeight: '600' });
+      root.append(ta); ta.focus(); ta.select();
+      const done = () => { const v = ta.value.trim(); ta.remove(); write([bump(get(hit.id), { title: v.slice(0, 80) || undefined })], { now: true }); commitStop(); };
+      ta.addEventListener('blur', done); ta.addEventListener('keydown', ev => { ev.stopPropagation(); if (ev.key === 'Enter' || ev.key === 'Escape') ta.blur(); });
+      return;
+    }
     if (hit?.type === 'frame') {
       const name = hit.name || 'Frame';
       const ta = el('input', 'wb-edit wb-frame-name'); ta.value = name; ta.setAttribute('aria-label', 'Frame name');
@@ -2282,9 +2933,9 @@ export function mountCanvas(container, opts) {
     if (hit?.type === 'file' && hit.fileId && opts.openFile) { opts.openFile(hit.fileId, hit.name); return; }
     if (hit?.type === 'taskCard' && hit.taskId && opts.tasks?.open) { opts.tasks.open(hit.taskId); return; }
     if (hit?.type === 'noteCard' && hit.pageId && opts.pages?.open) { opts.pages.open(hit.pageId); return; }
-    if (hit?.groupId && !pickInside && !(hit.type === 'sticky' || hit.type === 'text' || SHAPES.includes(hit.type))) { pickInside = true; sel = new Set([hit.id]); paintProps(); render(); return; }
+    if (hit?.groupId && !pickInside && !(hit.type === 'sticky' || hit.type === 'text' || isShape(hit))) { pickInside = true; sel = new Set([hit.id]); paintProps(); render(); return; }
     if (hit?.type === 'link' && hit.url) { openLink(hit.url); return; }
-    if (hit && (hit.type === 'sticky' || hit.type === 'text' || SHAPES.includes(hit.type))) { pickInside = !!hit.groupId; sel = new Set([hit.id]); editText(hit); return; }
+    if (hit && (hit.type === 'sticky' || hit.type === 'text' || isShape(hit))) { pickInside = !!hit.groupId; sel = new Set([hit.id]); editText(hit); return; }
     if (hit?.type === 'connector') {
       const label = el('input', 'wb-edit'); label.value = hit.label || ''; label.placeholder = 'Label'; label.setAttribute('aria-label', 'Connector label');
       Object.assign(label.style, { left: `${sx - 70}px`, top: `${sy - 14}px`, width: '140px', height: '28px', textAlign: 'center' });
@@ -2435,6 +3086,9 @@ export function mountCanvas(container, opts) {
     const chosen = [...sel].map(get).filter(Boolean);
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); remove(chosen.filter(x => !x.locked)); paintProps(); return; }
     if (mod && k === 'd') { e.preventDefault(); duplicate(chosen); return; }
+    if (mod && e.shiftKey && k === 'c') { e.preventDefault(); if (chosen.length === 1) copyStyle(chosen[0]); return; }
+    if (mod && e.shiftKey && k === 'v') { e.preventDefault(); pasteStyle(); return; }
+    if (e.altKey && e.shiftKey && k === 't') { e.preventDefault(); tidyFlow('TB'); return; }
     if (mod && k === 'g') { e.preventDefault(); groupSel(!e.shiftKey); return; }
     if (mod && k === 'k' && chosen.length === 1 && chosen[0].type !== 'connector') { e.preventDefault(); openLinkEditor(chosen[0]); return; }
     if (mod && k === 'c') { if (chosen.length) { e.preventDefault(); copySel(chosen); } return; }
@@ -2442,9 +3096,9 @@ export function mountCanvas(container, opts) {
     if (mod && k === 'v') return;   // handled by the paste event (files, pictures and copied board items)
     if (mod && e.key === ']') { e.preventDefault(); reorder(chosen, 'front'); commitStop(); return; }
     if (mod && e.key === '[') { e.preventDefault(); reorder(chosen, 'back'); commitStop(); return; }
-    if (e.key === 'Tab' && chosen.length === 1 && (SHAPES.includes(chosen[0].type) || chosen[0].type === 'sticky')) { e.preventDefault(); mindAdd(chosen[0], 'child'); return; }
-    if (e.key === 'Enter' && e.shiftKey && chosen.length === 1 && (SHAPES.includes(chosen[0].type) || chosen[0].type === 'sticky')) { e.preventDefault(); mindAdd(chosen[0], 'sibling'); return; }
-    if (e.key === 'Enter' && chosen.length === 1 && (chosen[0].type === 'sticky' || chosen[0].type === 'text' || SHAPES.includes(chosen[0].type))) { e.preventDefault(); editText(chosen[0]); return; }
+    if (e.key === 'Tab' && chosen.length === 1 && (isShape(chosen[0]) || chosen[0].type === 'sticky')) { e.preventDefault(); mindAdd(chosen[0], 'child'); return; }
+    if (e.key === 'Enter' && e.shiftKey && chosen.length === 1 && (isShape(chosen[0]) || chosen[0].type === 'sticky')) { e.preventDefault(); mindAdd(chosen[0], 'sibling'); return; }
+    if (e.key === 'Enter' && chosen.length === 1 && (chosen[0].type === 'sticky' || chosen[0].type === 'text' || isShape(chosen[0]))) { e.preventDefault(); editText(chosen[0]); return; }
     if (e.key.startsWith('Arrow') && chosen.length) {
       e.preventDefault();
       const step = e.shiftKey ? 24 : 1, dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0, dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
@@ -2494,7 +3148,7 @@ export function mountCanvas(container, opts) {
   function toggleKeys() {
     if (!keysPanel.hidden) { keysPanel.hidden = true; return; }
     const rows = [['V', 'Select'], ['H', 'Hand (or hold Space)'], ['P', 'Pen (click it again: pen, marker, pencil, size, colour)'], ['M', 'Highlighter'], ['E', 'Eraser (click it again: whole or part)'], ['[ / ]', 'Smaller / bigger pen or eraser'], ['S', 'Sticky note (again: next colour)'], ['T', 'Text'], ['R', 'Shape (again: next shape)'], ['O', 'Circle'], ['D', 'Diamond'], ['A', 'Connector'], ['F', 'Frame'], ['Shift F', 'Full screen'], ['L', 'Laser pointer'], ['K', 'Emoji and stickers'], ['U', 'Web link card (or paste an address)'], ['→ / ←', 'Next / previous slide while presenting'],
-      ['1–9, 0', 'The old drawing keys'], ['Enter', 'Edit the selected text'], ['Ctrl D', 'Duplicate'], ['Ctrl G', 'Group (Shift: ungroup)'], ['Ctrl K', 'Link the selected thing'], ['Ctrl C / V', 'Copy / paste'], ['Ctrl Z / Y', 'Undo / redo'], ['Ctrl F', 'Find on board'], ['Ctrl ] / [', 'Front / back'], ['Arrows', 'Nudge (Shift: 24 px)'], ['Ctrl + wheel', 'Zoom'], ['Shift 1', 'Fit everything'], ['Alt while dragging', 'No snapping']];
+      ['1–9, 0', 'The old drawing keys'], ['Enter', 'Edit the selected text'], ['Ctrl D', 'Duplicate'], ['Ctrl G', 'Group (Shift: ungroup)'], ['Ctrl Shift C / V', 'Copy / paste style'], ['Alt Shift T', 'Tidy up flow'], ['Hover a shape', 'Blue arrows add the next shape'], ['Ctrl K', 'Link the selected thing'], ['Ctrl C / V', 'Copy / paste'], ['Ctrl Z / Y', 'Undo / redo'], ['Ctrl F', 'Find on board'], ['Ctrl ] / [', 'Front / back'], ['Arrows', 'Nudge (Shift: 24 px)'], ['Ctrl + wheel', 'Zoom'], ['Shift 1', 'Fit everything'], ['Alt while dragging', 'No snapping']];
     keysPanel.innerHTML = `<div class="wb-ph"><b>Keyboard shortcuts</b><button type="button" data-close aria-label="Close">✕</button></div><div class="wb-kgrid">${rows.map(([k, d]) => `<div><kbd>${k}</kbd><span>${d}</span></div>`).join('')}</div>`;
     keysPanel.hidden = false;
   }
@@ -2542,6 +3196,7 @@ export function mountCanvas(container, opts) {
     refreshCorners() { paintCorners(); },
     setTheme(t) { theme = t; cache.clear(); world.innerHTML = ''; root.classList.toggle('wb-dark', t === 'dark'); paintToolbar(); render(); },
     fit: () => fit(),
+    tidyFlow: dir => tidyFlow(dir),
     focus: () => root.focus({ preventScroll: true }),
     /// PNG of the whole board (light background unless dark is asked for).
     png: async ({ scale = 2, dark = false } = {}) => toPng(live(), { scale, theme: dark ? 'dark' : 'light', files: await dataUrls(), cardInfo: opts.cardInfo }),
@@ -2554,7 +3209,7 @@ export function mountCanvas(container, opts) {
     addPageCard(page) { if (readOnly) return; const r = rect(); addPageCard(page, toWorld(r.width / 2, r.height / 2)); },
     addTaskCards(tasks) { if (readOnly || !tasks?.length) return; const r = rect(); const c = toWorld(r.width / 2, r.height / 2); addTaskCards(tasks, { x: c.x - 130, y: c.y - 52 }); },
     setFullscreen(v) { fullscreen = !!v; paintCorners(); requestAnimationFrame(() => fit()); },
-    destroy() { document.removeEventListener('keydown', popKeys, true); clearTimeout(paintEmoji.t); unFocus?.(); unThreads?.(); vmap?.unobserve(onVote); clearInterval(liveTick); clearInterval(timerTick); clearTimeout(cursorTimer); clearTimeout(viewTimer); clearTimeout(laserFade); clearTimeout(showNeatToast.t); clearHold(); clearTimeout(flushTimer); aw?.off('change', onAw); if (aw) { const st = aw.getLocalState(); if (st?.wb?.board === boardKey) aw.setLocalStateField('wb', null); } for (const u of files.values()) { try { URL.revokeObjectURL(u); } catch { /* not ours */ } } document.removeEventListener('keydown', fsKeys, true); stopEdit(); flush(); destroyed = true; ymap.unobserve(onY); undo.destroy(); ro.disconnect(); cancelAnimationFrame(raf); root.remove(); },
+    destroy() { clearTimeout(arrowHold); document.removeEventListener('keydown', popKeys, true); clearTimeout(paintEmoji.t); unFocus?.(); unThreads?.(); vmap?.unobserve(onVote); clearInterval(liveTick); clearInterval(timerTick); clearTimeout(cursorTimer); clearTimeout(viewTimer); clearTimeout(laserFade); clearTimeout(showNeatToast.t); clearHold(); clearTimeout(flushTimer); aw?.off('change', onAw); if (aw) { const st = aw.getLocalState(); if (st?.wb?.board === boardKey) aw.setLocalStateField('wb', null); } for (const u of files.values()) { try { URL.revokeObjectURL(u); } catch { /* not ours */ } } document.removeEventListener('keydown', fsKeys, true); stopEdit(); flush(); destroyed = true; ymap.unobserve(onY); undo.destroy(); ro.disconnect(); cancelAnimationFrame(raf); root.remove(); },
   };
   return api;
 }
