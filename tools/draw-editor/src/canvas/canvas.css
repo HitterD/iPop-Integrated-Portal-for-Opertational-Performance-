@@ -301,3 +301,10 @@ input.wb-edit { background: var(--wb-surface); padding: 0 8px; outline-width: 2p
 .wb-fmtlink { display: flex; gap: 4px; width: 100%; padding: 4px 2px 2px; }
 .wb-fmtlink input { flex: 1; min-width: 0; height: 30px; border-radius: 8px; border: 1px solid var(--wb-line); background: var(--wb-fill); color: var(--wb-ink); padding: 0 8px; font: inherit; font-size: 12.5px; }
 .wb-fmtbar .wb-fmtlink button { width: auto; padding: 0 10px; background: var(--wb-accent); color: #fff; font-size: 12px; }
+/* A /draw block is short: the pen options go two columns wide and drop the preview so they fit without scrolling. */
+.wb-block .wb-penpop:not(.wb-sheet) { width: min(520px, calc(100% - 16px)); max-height: calc(100% - 64px); display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; padding: 10px 12px; }
+.wb-block .wb-penpop:not(.wb-sheet) .wb-pb + .wb-pb { margin-top: 0; padding-top: 0; border-top: 0; }
+.wb-block .wb-penpop:not(.wb-sheet) .wb-pb:nth-child(n+3) { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--wb-line); }
+.wb-block .wb-penpop .wb-prev { display: none; }
+.wb-block .wb-ptypes button { padding: 5px 2px 4px; }
+.wb-block .wb-colourpop:not(.wb-sheet) { max-height: calc(100% - 64px); }
