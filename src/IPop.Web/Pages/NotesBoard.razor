@@ -1,0 +1,167 @@
+@page "/notes/{Id:guid}/board"
+@layout EmptyLayout
+@implements IAsyncDisposable
+@using IPop.Application.Notes
+@inject AuthState Auth
+@inject ToastService Toasts
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject HttpClient Http
+
+@* "Open in new tab": the board of a Notes page on its own, full screen, without the iPop sidebar and top bar.
+   Same document and live sync as the Notes tab (one Yjs doc per page over /hubs/notes), so drawing in either tab shows
+   in the other. ?d=<drawing id> opens a /draw block of a normal page instead of the whiteboard page's board. *@
+<PageTitle>@(note is null ? "Whiteboard" : $"{(string.IsNullOrWhiteSpace(note.Title) ? "Untitled" : note.Title)} - Whiteboard") - IPop</PageTitle>
+
+<div class="notes-page nt-popout">
+    <header class="nt-popout-bar">
+        <a class="nt-popout-back" href="/notes/@Id" title="Back to the page in Notes"><i data-lucide="chevron-left"></i><span>Back to page</span></a>
+        @if (note is not null)
+        {
+            <span class="nt-popout-title"><span class="emo">@(note.Emoji ?? "🧩")</span>@(string.IsNullOrWhiteSpace(note.Title) ? "Untitled" : note.Title)</span>
+            <span class="nt-popout-sync @(saveState is "offline" or "locked" ? "off" : "")">@StatusText</span>
+        }
+    </header>
+    @if (error is not null)
+    {
+        <div class="nt-error">
+            <div class="emo">@(error == "not_found" ? "🔍" : "🔒")</div>
+            <b>@(error == "not_found" ? "Board not found" : "You don't have access to this board")</b>
+            <span>@(error == "not_found" ? "It may have been deleted or moved to Trash." : "Ask the owner to share the page with you.")</span>
+            <a class="nt-btn" href="/notes">Back to Notes</a>
+        </div>
+    }
+    else if (note is null)
+    {
+        <div class="nt-loading">Loading board…</div>
+    }
+    <div class="nt-popout-board" @ref="boardRef"></div>
+    <div class="nt-editor-hidden" @ref="editorRef"></div>
+</div>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [SupplyParameterFromQuery(Name = "d")] public string? DrawingId { get; set; }
+
+    private const string EditorModule = Notes.EditorModulePath;
+    private NotePageDto? note;
+    private string? error;
+    private string saveState = "saved";
+    private ElementReference boardRef, editorRef;
+    private IJSObjectReference? module, editor;
+    private DotNetObjectReference<NotesBoard>? selfRef;
+    private bool mounted, disposed;
+
+    private string StatusText => saveState switch
+    {
+        "saving" => "Saving…",
+        "offline" => "Offline — changes will save when you reconnect",
+        "locked" => "Changes can't be saved here",
+        _ => note?.Access is "owner" or "edit" && note.LockedAt is null ? "Live with your Notes tab" : note?.Access == "comment" ? "Can comment" : "View only",
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        selfRef = DotNetObjectReference.Create(this);
+        var res = await Auth.SendAsync(HttpMethod.Get, $"/api/notes/{Id}");
+        if (res.StatusCode == System.Net.HttpStatusCode.NotFound) { error = "not_found"; return; }
+        if (!res.IsSuccessStatusCode) { error = "forbidden"; return; }
+        note = await res.Content.ReadFromJsonAsync<NotePageDto>(new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        if (note is null) error = "not_found";
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (disposed) return;
+        await JS.InvokeVoidAsync("ipop.icons");
+        if (mounted || note is null) return;
+        mounted = true;
+        try
+        {
+            module ??= await JS.InvokeAsync<IJSObjectReference>("import", EditorModule);
+            var me = Auth.Me;
+            editor = await module.InvokeAsync<IJSObjectReference>("mount", editorRef, new
+            {
+                apiBase = Http.BaseAddress?.ToString() ?? "",
+                pageId = note.Id,
+                access = note.Access,
+                user = new { name = me?.Name ?? "Me", nik = me?.Nik ?? "", color = AvatarPalette.For(me?.Nik) },
+                accent = note.Accent,
+                pages = Array.Empty<object>(),
+                dotnet = selfRef,
+                kind = "board",
+                locked = note.LockedAt is not null,
+                boardEl = boardRef,
+                boardOnly = true,
+                drawingId = note.Kind == "board" ? null : DrawingId,
+            });
+        }
+        catch (JSException ex)
+        {
+            error = ex.Message.Contains("forbidden") ? "forbidden" : null;
+            if (error is null) Toasts.Show("Couldn't open the board. Try reloading the page.", ToastKind.Error);
+            StateHasChanged();
+        }
+    }
+
+    // ── Callbacks the editor makes (the subset a board needs) ────────────────
+    [JSInvokable]
+    public async Task<string?> GetToken()
+    {
+        await Auth.TryRestoreAsync();
+        return Auth.AccessToken;
+    }
+    [JSInvokable] public void OnStatus(string s) { saveState = s; StateHasChanged(); }
+    [JSInvokable] public void OnPresence(object _) { }
+    [JSInvokable] public void OnProgress(int done, int total) { }
+    [JSInvokable] public void OnToast(string msg) => Toasts.Show(msg, ToastKind.Info);
+    [JSInvokable] public void OnThreadsChanged() { }
+    [JSInvokable] public void OnThreadClick(string id) => Nav.NavigateTo($"/notes/{Id}");
+    [JSInvokable] public void OnComment(string quote, string anchor) => Toasts.Show("Comments open in the Notes tab. Use Back to page to write one.", ToastKind.Info);
+    [JSInvokable] public void OnOpenPage(string id) { if (Guid.TryParse(id, out var g)) Nav.NavigateTo($"/notes/{g}"); }
+    [JSInvokable]
+    public async Task OnOpenTask(string id)
+    {
+        if (!Guid.TryParse(id, out var taskId)) return;
+        var t = await Auth.GetAsync<TaskRef>($"/api/projects/tasks/{taskId}");
+        if (t is null) { Toasts.Show("You can't open this task", ToastKind.Info); return; }
+        Nav.NavigateTo($"/projects/{t.ProjectId}?task={taskId}");
+    }
+    private record TaskRef(Guid Id, Guid ProjectId);
+    [JSInvokable]
+    public void OnRefused(string reason, bool unsaved)
+    {
+        Toasts.Show(unsaved ? "You can no longer edit this board. Your last changes were not saved." : "You can no longer edit this board.", ToastKind.Error);
+    }
+    [JSInvokable]
+    public void OnMeta(NotePageDto m)
+    {
+        if (note?.Id != m.Id) return;
+        note = m with { Access = note.Access };
+        _ = editor?.InvokeVoidAsync("setLocked", m.LockedAt is not null);
+        StateHasChanged();
+    }
+    [JSInvokable]
+    public async Task OnBoardLockToggle()
+    {
+        if (note is null || note.Access is not ("owner" or "edit")) return;
+        var lockIt = note.LockedAt is null;
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/notes/{note.Id}/lock", new { locked = lockIt });
+        if (!res.IsSuccessStatusCode) { Toasts.Show(lockIt ? "Couldn't lock the board" : "Couldn't unlock the board", ToastKind.Error); return; }
+        note = note with { LockedAt = lockIt ? DateTime.UtcNow : null };
+        if (editor is not null) await editor.InvokeVoidAsync("setLocked", lockIt);
+        Toasts.Show(lockIt ? "Board locked. Everyone can still view, comment and vote." : "Board unlocked.", ToastKind.Success);
+        StateHasChanged();
+    }
+    [JSInvokable] public Task SetAccent(string k) => Task.CompletedTask;
+    [JSInvokable] public Task<object?> CreateSubPage() => Task.FromResult<object?>(null);
+    [JSInvokable] public void OnPhoneMention(object _) { }
+
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+        try { if (editor is not null) { await editor.InvokeVoidAsync("destroy"); await editor.DisposeAsync(); } } catch (JSDisconnectedException) { } catch (JSException) { }
+        try { if (module is not null) await module.DisposeAsync(); } catch (JSDisconnectedException) { }
+        selfRef?.Dispose();
+    }
+}

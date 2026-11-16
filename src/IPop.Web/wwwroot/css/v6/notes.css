@@ -1119,3 +1119,18 @@ html.nt-board-fs-open, html.nt-board-fs-open body { overflow: hidden; }
 .nt-taskdlg-acts button { height: 34px; padding: 0 14px; border-radius: 9px; border: 0; background: var(--fill, rgba(118,118,128,.12)); color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
 .nt-taskdlg-acts .pri { background: var(--accent, #34A853); color: #fff; }
 .nt-taskdlg-acts button:disabled { opacity: .6; }
+
+/* "Open in new tab": the board alone, full screen (Pages/NotesBoard.razor) */
+.notes-page.nt-popout { display:flex; flex-direction:column; height:100dvh; grid-template-columns:none; }
+.nt-popout-bar { display:flex; align-items:center; gap:12px; padding:8px max(14px, env(safe-area-inset-right, 0px)) 8px max(14px, env(safe-area-inset-left, 0px)); border-bottom:1px solid var(--line); background:var(--surface); min-height:46px; }
+.nt-popout-back { display:inline-flex; align-items:center; gap:4px; color:var(--ink-2); text-decoration:none; font-weight:500; padding:4px 8px 4px 4px; border-radius:8px; }
+.nt-popout-back:hover { background:var(--fill); }
+.nt-popout-back i, .nt-popout-back svg { width:18px; height:18px; }
+.nt-popout-title { font:600 15px var(--display); display:flex; align-items:center; gap:8px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nt-popout-title .emo { font-size:18px; }
+.nt-popout-sync { margin-left:auto; display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--accent-ink, #1E8E3E); white-space:nowrap; }
+.nt-popout-sync::before { content:""; width:7px; height:7px; border-radius:50%; background:currentColor; }
+.nt-popout-sync.off { color:var(--ink-3); }
+.nt-popout-board { flex:1 1 auto; min-height:0; position:relative; background:var(--nt-board,#FAFAF7); }
+[data-theme="dark"] .nt-popout-board { --nt-board:#161618; }
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) { .nt-popout-sync { display:none; } .nt-popout-back span { display:none; } }

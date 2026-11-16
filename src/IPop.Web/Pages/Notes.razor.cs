@@ -22,7 +22,8 @@ public partial class Notes
 {
     [Parameter] public Guid? Id { get; set; }
 
-    private const string EditorModule = "./js/notes/notes-editor.js?v=20261116-canvas7";
+    internal const string EditorModulePath = "./js/notes/notes-editor.js?v=20261116-hd1";
+    private const string EditorModule = EditorModulePath;
 
     private enum View { Home, Page, New, Trash }
     private enum Pop { None, More, Style, Emoji, Share, History, Tidy, Template }
@@ -338,6 +339,9 @@ public partial class Notes
     }
     private record TaskRef(Guid Id, Guid ProjectId);
     [JSInvokable] public void OnToast(string msg) => Toasts.Show(msg, ToastKind.Info);
+
+    /// The Lock button on a whiteboard page is the page lock (people keep viewing, commenting and voting).
+    [JSInvokable] public Task OnBoardLockToggle() => ToggleLockAsync();
 
     /// The server refused this page's edits for good (share removed, page deleted, or an update it will never accept).
     /// The editor is already read-only; say why, and whether recent typing was lost, instead of a silent endless "Offline".

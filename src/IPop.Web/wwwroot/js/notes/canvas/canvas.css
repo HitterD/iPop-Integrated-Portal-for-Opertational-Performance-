@@ -260,3 +260,44 @@ input.wb-edit { background: var(--wb-surface); padding: 0 8px; outline-width: 2p
 .wb-wline { display: block; width: 18px; border-radius: 3px; background: currentColor; }
 .wb-widthmenu { width: auto; flex-direction: column; }
 .wb-widthmenu button { width: 44px; height: 30px; }
+
+/* ── Round 2: arrange, link, text format, find, emoji, link cards ── */
+.wb-props .wb-txtbtn { display: inline-flex; gap: 5px; align-items: center; padding: 0 8px; }
+.wb-props button.on { background: color-mix(in srgb, var(--wb-accent) 16%, transparent); color: var(--wb-ink); }
+.wb-arrange { width: 220px; flex-direction: column; align-items: stretch; padding: 6px; }
+.wb-mh { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--wb-ink3); padding: 4px 6px; }
+.wb-ig { display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; }
+.wb-arrange .wb-ig button { width: auto; height: 32px; }
+.wb-arrange button:disabled { opacity: .35; cursor: default; }
+.wb-arrange .wb-mi { width: auto; height: 32px; justify-content: start; padding: 0 8px; font-size: 13px; display: flex; margin-top: 4px; }
+.wb-linked { width: min(360px, calc(100% - 24px)); }
+.wb-fmtbar { position: absolute; z-index: 6; display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 12px; background: var(--wb-surface); box-shadow: var(--wb-pop); }
+.wb-fmtbar button { border: 0; background: none; color: var(--wb-ink2); width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; font: 600 14px/1 inherit; cursor: pointer; }
+.wb-fmtbar button:hover { background: var(--wb-fill); }
+.wb-fmtbar button.on { background: color-mix(in srgb, var(--wb-accent) 16%, transparent); color: var(--wb-ink); }
+.wb-findbar { position: absolute; z-index: 6; right: 12px; top: 56px; display: flex; align-items: center; gap: 4px; padding: 5px 6px 5px 10px; border-radius: 12px; background: var(--wb-surface); box-shadow: var(--wb-pop); color: var(--wb-ink2); max-width: calc(100% - 24px); }
+.wb-findbar input { border: 0; background: none; outline: none; width: 170px; min-width: 0; font: inherit; font-size: 13px; color: var(--wb-ink); }
+.wb-findn { font-size: 12px; color: var(--wb-ink3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wb-findbar button { border: 0; background: none; color: var(--wb-ink2); width: 26px; height: 26px; border-radius: 7px; cursor: pointer; }
+.wb-findbar button:hover { background: var(--wb-fill); }
+.wb-findmark { fill: rgba(255,204,0,.14); stroke: rgba(255,170,0,.8); stroke-width: 1.5; }
+.wb-findmark.cur { fill: rgba(255,149,0,.16); stroke: #FF9500; stroke-width: 2.5; }
+.wb-emojipop { width: min(340px, calc(100% - 16px)); max-height: min(440px, calc(100% - 80px)); top: auto; }
+.wb-emhead { display: flex; gap: 6px; margin: 8px 0 6px; }
+.wb-emhead .wb-search { margin: 0; flex: 1; min-width: 0; }
+.wb-tone { height: 32px; border-radius: 9px; border: 1px solid var(--wb-line); background: var(--wb-surface); color: var(--wb-ink); }
+.wb-emcats { display: flex; gap: 2px; margin-bottom: 6px; }
+.wb-emcats button { flex: 1; height: 30px !important; font-size: 16px; filter: grayscale(.7); }
+.wb-emcats button.on { filter: none; background: var(--wb-fill2) !important; }
+.wb-emgrid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; overflow: auto; }
+.wb-emgrid button { height: 34px !important; font-size: 22px; line-height: 1; }
+.wb-stgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; overflow: auto; }
+.wb-stgrid button { aspect-ratio: 1; height: auto !important; padding: 4px; border-radius: 10px; }
+.wb-stgrid img { width: 100%; height: 100%; object-fit: contain; }
+.wb-emojipop .wb-ph5 { margin: 6px 0 4px; }
+.wb-chip:not(:has(span)) { width: 32px; padding: 0; justify-content: center; }
+.wb-tr { max-width: calc(100% - 230px); }
+.wb-fmtbar { flex-wrap: wrap; max-width: min(360px, calc(100% - 16px)); }
+.wb-fmtlink { display: flex; gap: 4px; width: 100%; padding: 4px 2px 2px; }
+.wb-fmtlink input { flex: 1; min-width: 0; height: 30px; border-radius: 8px; border: 1px solid var(--wb-line); background: var(--wb-fill); color: var(--wb-ink); padding: 0 8px; font: inherit; font-size: 12.5px; }
+.wb-fmtbar .wb-fmtlink button { width: auto; padding: 0 10px; background: var(--wb-accent); color: #fff; font-size: 12px; }

@@ -91,6 +91,8 @@ export function toggleBullets(value, start, end) {
   const lines = value.slice(a, b).split('\n');
   const on = !lines.every(l => /^\s*[-•]\s+/.test(l));
   const next = lines.map(l => on ? (/^\s*[-•]\s+/.test(l) ? l : `- ${l}`) : l.replace(/^\s*[-•]\s+/, '')).join('\n');
+  // one line with no selection: the caret goes after the text so typing carries on in the bullet
+  if (lines.length === 1 && start === end) return { value: value.slice(0, a) + next + value.slice(b), start: a + next.length, end: a + next.length };
   return { value: value.slice(0, a) + next + value.slice(b), start: a, end: a + next.length };
 }
 

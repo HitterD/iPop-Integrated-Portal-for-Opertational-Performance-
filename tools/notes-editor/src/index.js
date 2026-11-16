@@ -7,7 +7,9 @@ import { createCovers } from './covers.js';
 import { restoreScenes } from './restore-scenes.js';
 import { PageLink, pageLinkIds } from './page-link.js';
 import { listPopup } from './menus.js';
-import { NoteDraw, mountScene, newDrawId, setAllReadOnly } from './draw-block.js';
+import { NoteDraw, mountScene, newDrawId, setAllReadOnly, refreshBoards } from './draw-block.js';
+// Built-in stickers (wwwroot/stickers/fluent, the same set Chat uses).
+const FLUENT_STICKERS = ['thumbs-up', 'red-heart', 'face-with-tears-of-joy', 'party-popper', 'fire', 'hundred-points', 'clapping-hands', 'folded-hands', 'raising-hands', 'ok-hand', 'flexed-biceps', 'victory-hand', 'waving-hand', 'thumbs-down', 'check-mark-button', 'light-bulb', 'rocket', 'trophy', 'sparkles', 'star-struck', 'eyes', 'thinking-face', 'smiling-face-with-heart-eyes', 'smiling-face-with-sunglasses', 'beaming-face-with-smiling-eyes', 'winking-face', 'hugging-face', 'partying-face', 'nerd-face', 'saluting-face', 'exploding-head', 'astonished-face', 'face-screaming-in-fear', 'loudly-crying-face', 'pleading-face', 'grimacing-face', 'face-with-rolling-eyes', 'face-with-steam-from-nose', 'pouting-face', 'hot-face', 'cold-face', 'sleeping-face', 'zany-face', 'upside-down-face', 'face-with-hand-over-mouth', 'face-blowing-a-kiss', 'smiling-face-with-hearts', 'rolling-on-the-floor-laughing', 'skull', 'ghost', 'hot-beverage', 'birthday-cake'];
 import { analyze as tidyAnalyze, apply as tidyApply } from './tidy.js';
 import { parseSticky } from './sticky-task.js';
 import { refusedReason, mentionContexts, savePending, takePending, clearPending } from './sync.js';
@@ -157,6 +159,8 @@ export async function mount(el, opts) {
   const drawThreadListeners = new Set();
   const drawFocusListeners = new Set();
   const projectNames = new Map();
+  let emojiData = null;
+  const stickerUrls = new Map();
   const palette = ['#0A84FF', '#5856D6', '#AF52DE', '#FF2D55', '#FF9500', '#34C759', '#30B0C7', '#A2845E'];
   const host = {
     drawDoc: () => ydoc,
@@ -233,6 +237,48 @@ export async function mount(el, opts) {
         catch { host.toast("Couldn't open the file"); }
       },
     },
+    // Emoji list shared with Chat (same file, cached by the browser), loaded once for the board's emoji picker.
+    drawEmojiData: () => (emojiData ||= fetch('/data/emoji/emoji-18.0.json').then(r => (r.ok ? r.json() : null)).catch(() => null)),
+    // Stickers: the built-in set (static files) and the team's own (through the API, with the token).
+    drawStickers: {
+      async list() {
+        const own = [];
+        try {
+          const r = await api('/api/chat/stickers');
+          if (r.ok) { const j = await r.json(); for (const s of [...(j.mine || []), ...(j.official || [])]) own.push({ key: `custom:${s.id}`, name: 'Sticker' }); }
+        } catch { /* only the built-in ones */ }
+        const seen = new Set();
+        const custom = own.filter(s => (seen.has(s.key) ? false : seen.add(s.key)));
+        for (const s of custom) s.url = await host.drawStickers.url(s.key).catch(() => '');
+        return [...custom.filter(s => s.url), ...FLUENT_STICKERS.map(n => ({ key: `fluent:${n}`, name: n.replace(/-/g, ' '), url: `/stickers/fluent/${n}.webp` }))];
+      },
+      async url(key) {
+        if (key.startsWith('fluent:')) return `/stickers/fluent/${key.slice(7).replace(/[^a-z0-9-]/g, '')}.webp`;
+        if (key.startsWith('custom:')) {
+          if (stickerUrls.has(key)) return stickerUrls.get(key);
+          const p = (async () => { const r = await fetch(`${apiBase}/api/chat/stickers/${key.slice(7)}/image`); if (!r.ok) throw new Error(String(r.status)); return URL.createObjectURL(await r.blob()); })();
+          stickerUrls.set(key, p); p.catch(() => stickerUrls.delete(key));
+          return p;
+        }
+        return '';
+      },
+    },
+    // Web link cards: the same preview service as Chat (title, site, picture). Internal iPop links come back without a fetch.
+    drawLinkPreview: async url => {
+      const r = await api(`/api/link-preview?url=${encodeURIComponent(url)}`);
+      if (r.status !== 200) return null;
+      const p = await r.json();
+      return { title: p.title || p.internal?.title || null, site: p.siteName || (p.kind === 'internal' ? 'iPop' : null), image: p.image || null };
+    },
+    drawPreviewImage: async path => { const r = await fetch(apiBase + path); if (!r.ok) throw new Error(String(r.status)); const b = await r.blob(); return await new Promise(ok => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.readAsDataURL(b); }); },
+    // The whiteboard page is the board: locking it is the page lock (owner and editors; everyone keeps view/comment/vote).
+    drawBoardLock: {
+      canChange: () => canEditAccess && opts.kind === 'board',
+      isLocked: () => pageLocked,
+      toggle: () => call('OnBoardLockToggle'),
+    },
+    isPoppedOut: () => !!opts.boardOnly,
+    drawPopOut: id => { const u = `${location.origin}/notes/${pageId}/board${id && id !== 'board' ? `?d=${encodeURIComponent(id)}` : ''}`; window.open(u, '_blank', 'noopener'); },
     allPages: () => [...pages.values()],
     currentPageId: () => pageId,
     pagesKnown: () => pages.size > 0,
@@ -475,7 +521,7 @@ export async function mount(el, opts) {
     fsClose = finish;
     close.addEventListener('click', finish);
     document.addEventListener('keydown', onKey, true);
-    try { inst = await mountScene(stage, { ydoc, id, readOnly: !canEdit, mode: 'board', toast: m => host.toast(m), library: host.drawLibrary, files: host.drawFiles, beforeConvert: host.beforeCanvasConvert, awareness, comments: host.drawComments, tasks: host.drawTasks, pages: host.drawPages, taskSearch: host.drawTaskSearch }); if (!fsClose) inst.destroy(); }
+    try { inst = await mountScene(stage, { ydoc, id, readOnly: !canEdit, mode: 'board', toast: m => host.toast(m), library: host.drawLibrary, files: host.drawFiles, beforeConvert: host.beforeCanvasConvert, awareness, comments: host.drawComments, tasks: host.drawTasks, pages: host.drawPages, taskSearch: host.drawTaskSearch, extras: host, popOutId: id }); if (!fsClose) inst.destroy(); }
     catch { host.toast('Couldn’t load the drawing tools. Check your connection.'); finish(); }
   }
 
@@ -525,6 +571,8 @@ export async function mount(el, opts) {
   let board = null, boardFsExit = null;
   if (opts.kind === 'board' && opts.boardEl) {
     const boardEl = opts.boardEl;
+    // In a pop-out tab (/notes/{id}/board) the board is the whole page; ?d= opens a drawing block of a normal page.
+    const sceneId = opts.boardOnly && opts.drawingId ? opts.drawingId : 'board';
     let fsHome = null;
     const onBoardFs = on => {
       if (on && !fsHome) {
@@ -541,7 +589,7 @@ export async function mount(el, opts) {
       return !!fsHome;
     };
     boardFsExit = () => onBoardFs(false);
-    mountScene(boardEl, { ydoc, id: 'board', readOnly: !canEdit, mode: 'board', onLinkOpen: url => host.openLink(url), toast: m => host.toast(m), onFullscreen: onBoardFs, library: host.drawLibrary, files: host.drawFiles, beforeConvert: host.beforeCanvasConvert, awareness, comments: host.drawComments, tasks: host.drawTasks, pages: host.drawPages, taskSearch: host.drawTaskSearch, title: () => titleNow() })
+    mountScene(boardEl, { ydoc, id: sceneId, readOnly: !canEdit, mode: 'board', onLinkOpen: url => host.openLink(url), toast: m => host.toast(m), onFullscreen: opts.boardOnly ? null : onBoardFs, library: host.drawLibrary, files: host.drawFiles, beforeConvert: host.beforeCanvasConvert, awareness, comments: host.drawComments, tasks: host.drawTasks, pages: host.drawPages, taskSearch: host.drawTaskSearch, extras: host, popOutId: sceneId, title: () => titleNow() })
       .then(inst => { if (closing) inst.destroy(); else board = inst; })
       .catch(() => host.toast('Couldn’t load the whiteboard tools. Check your connection and reload the page.'));
   }
@@ -885,6 +933,7 @@ export async function mount(el, opts) {
       canEdit = canEditAccess && !pageLocked;
       try { editor.setEditable(canEdit); } catch { /* editor already gone */ }
       setAllReadOnly(!canEdit);
+      refreshBoards();
     },
     /// Shares changed (dialog or a share from a mention): re-check who the tags can reach.
     sharesChanged() { host.accessChanged?.(); },
