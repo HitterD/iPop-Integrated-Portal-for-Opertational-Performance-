@@ -551,6 +551,7 @@ function inlineMd(nodes, ctx) {
   return (nodes || []).map(n => {
     if (n.type === 'hardBreak') return '<br>';
     if (n.type === 'mention') return `@${n.attrs?.label ?? ''}`;
+    if (n.type === 'dateChip') return n.attrs?.date || '';
     if (n.type === 'pageLink') {
       const title = (ctx.title?.(n.attrs?.id) || n.attrs?.title || 'Untitled').replace(/[[\]]/g, '');
       const p = ctx.link(n.attrs?.id);
@@ -596,7 +597,8 @@ export function docToMarkdown(json, ctx) {
       case 'details': {
         const sum = n.content?.find(c => c.type === 'detailsSummary');
         const body = n.content?.find(c => c.type === 'detailsContent');
-        return `<details>\n<summary>${esc((sum?.content || []).map(t => t.text || '').join(''))}</summary>\n\n${body ? (body.content || []).map(block).join('\n\n') : ''}\n\n</details>`;
+        const lv = sum?.attrs?.level, st = esc((sum?.content || []).map(t => t.text || '').join(''));
+        return `<details>\n<summary>${lv ? `<h${lv}>${st}</h${lv}>` : st}</summary>\n\n${body ? (body.content || []).map(block).join('\n\n') : ''}\n\n</details>`;
       }
       case 'callout': return `<aside>\n${n.attrs?.emoji || '💡'} ${kids()}\n</aside>`;
       case 'table': {
@@ -613,6 +615,7 @@ export function docToMarkdown(json, ctx) {
       case 'noteBookmark': return `[${(n.attrs?.title || n.attrs?.url || '').replace(/[[\]]/g, '')}](${n.attrs?.url || ''})`;
       case 'noteEmbed': return `[${n.attrs?.url || ''}](${n.attrs?.url || ''})`;
       case 'subPage': { const p = ctx.link(n.attrs?.id); const t = `${n.attrs?.emoji ? n.attrs.emoji + ' ' : ''}${ctx.title?.(n.attrs?.id) || n.attrs?.title || 'Untitled'}`; return p ? `[${t}](${relPath(ctx.dir, p)})` : t; }
+      case 'columns': return (n.content || []).map(col => (col.content || []).map(block).filter(Boolean).join('\n\n')).join('\n\n---\n\n');
       case 'noteWidget': case 'noteToc': return null;
       default: return kids();
     }
@@ -624,6 +627,7 @@ function inlineHtml(nodes, ctx) {
   return (nodes || []).map(n => {
     if (n.type === 'hardBreak') return '<br>';
     if (n.type === 'mention') return `<span class="mention">@${esc(n.attrs?.label ?? '')}</span>`;
+    if (n.type === 'dateChip') return `<time datetime="${esc(n.attrs?.date || '')}">${esc(n.attrs?.date || '')}</time>`;
     if (n.type === 'pageLink') {
       const title = esc(ctx.title?.(n.attrs?.id) || n.attrs?.title || 'Untitled');
       const p = ctx.link(n.attrs?.id);
@@ -664,7 +668,7 @@ export function docToHtml(json, ctx) {
       case 'codeBlock': return `<pre${bg(n)}><code>${esc((n.content || []).map(t => t.text).join(''))}</code></pre>`;
       case 'horizontalRule': return '<hr>';
       case 'details': return `<details open${bg(n)}>${kids()}</details>`;
-      case 'detailsSummary': return `<summary>${inlineHtml(n.content, ctx)}</summary>`;
+      case 'detailsSummary': { const lv = n.attrs?.level; return `<summary>${lv ? `<h${lv} style="display:inline;margin:0">${inlineHtml(n.content, ctx)}</h${lv}>` : inlineHtml(n.content, ctx)}</summary>`; }
       case 'detailsContent': return `<div class="toggle-body">${kids()}</div>`;
       case 'callout': return `<div class="callout" style="background:${BG_HEX[n.attrs?.color] || BG_HEX.yellow}"><span class="ce">${esc(n.attrs?.emoji || '💡')}</span><div>${kids()}</div></div>`;
       case 'table': return `<table>${kids()}</table>`;
@@ -685,6 +689,8 @@ export function docToHtml(json, ctx) {
       case 'noteBookmark': { const u = safeUrl(n.attrs?.url); return `<a class="bookmark"${u ? ` href="${esc(u)}"` : ''}><b>${esc(n.attrs?.title || n.attrs?.url || '')}</b>${n.attrs?.desc ? `<span>${esc(n.attrs.desc)}</span>` : ''}<small>${esc(n.attrs?.url || '')}</small></a>`; }
       case 'noteEmbed': { const u = safeUrl(n.attrs?.url); return `<p>${u ? `<a href="${esc(u)}">${esc(n.attrs?.url || '')}</a>` : esc(n.attrs?.url || '')}</p>`; }
       case 'subPage': { const p = ctx.link(n.attrs?.id); const t = `${esc(n.attrs?.emoji || '📄')} ${esc(ctx.title?.(n.attrs?.id) || n.attrs?.title || 'Untitled')}`; return p ? `<p class="subpage"><a href="${esc(relPath(ctx.dir, p))}">${t}</a></p>` : `<p class="subpage">${t}</p>`; }
+      case 'columns': return `<div class="cols">${kids()}</div>`;
+      case 'column': return `<div class="col">${kids()}</div>`;
       case 'noteWidget': case 'noteToc': return '';
       default: return kids();
     }
@@ -697,6 +703,7 @@ h1.title{font-size:34px;line-height:1.2;margin:0 0 4px}.emoji{font-size:44px;lin
 h1{font-size:26px}h2{font-size:21px}h3{font-size:18px}h1,h2,h3{margin:1.3em 0 .3em}p{margin:.25em 0}
 a{color:#0a64d6}code{background:#f2f2f4;border-radius:4px;padding:1px 4px;font-size:.9em}pre{background:#f5f5f7;border-radius:8px;padding:12px 14px;overflow:auto}
 pre code{background:none;padding:0}blockquote{border-left:3px solid #d2d2d7;margin:.5em 0;padding:0 0 0 14px;color:#424245}
+.cols{display:flex;gap:20px;margin:.6em 0}.cols .col{flex:1 1 0;min-width:0}time{background:#e8f1ff;border-radius:999px;padding:0 8px}
 .callout{display:flex;gap:10px;border-radius:10px;padding:12px 14px;margin:.6em 0}.callout .ce{font-size:18px}
 ul.todo{list-style:none;padding-left:4px}ul.todo li{display:flex;gap:8px}ul.todo .box{flex:none;width:16px;height:16px;margin-top:4px;border:1.5px solid #c7c7cc;border-radius:4px;font-size:11px;line-height:14px;text-align:center;color:#fff}
 ul.todo li.done>.box{background:#34a853;border-color:#34a853}ul.todo li.done>div>p:first-child{text-decoration:line-through;color:#86868b}

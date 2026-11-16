@@ -15,6 +15,7 @@
   "dependencies": {
     "@microsoft/signalr": "^10.0.11",
     "@tiptap/core": "^3.31.3",
+    "@tiptap/extension-code-block-lowlight": "^3.31.3",
     "@tiptap/extension-collaboration": "^3.31.3",
     "@tiptap/extension-collaboration-caret": "^3.31.3",
     "@tiptap/extension-details": "^3.31.3",
@@ -29,6 +30,7 @@
     "@tiptap/starter-kit": "^3.31.3",
     "@tiptap/suggestion": "^3.31.3",
     "fflate": "^0.8.3",
+    "lowlight": "^3.3.0",
     "marked": "^18.0.14",
     "y-protocols": "^1.0.7",
     "yjs": "^13.6.33"

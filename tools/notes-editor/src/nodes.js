@@ -27,6 +27,7 @@ export const BlockBackground = Extension.create({
   },
 });
 
+export const CALLOUT_EMOJI = ['💡', '⚠️', '⛔', '✅', '✨', '📌', '👥', '🎯', '📖', '🙋', '👋', '📅', '🔥', '❗', '❓', '📝', '🚀', '🔒', '💬', '🛠️', '📣', '🎉', '🧪', '🏁'];
 export const Callout = Node.create({
   name: 'callout',
   group: 'block',
@@ -50,17 +51,34 @@ export const Callout = Node.create({
       const emo = el('button', 'nt-callout-emo', esc(node.attrs.emoji));
       emo.type = 'button'; emo.contentEditable = 'false'; emo.title = 'Change icon';
       const body = el('div', 'nt-callout-body');
-      const cycle = ['💡', '⚠️', '⛔', '✅', '✨', '📌', '👥', '🎯', '📖', '🙋', '👋', '📅'];
+      let picker = null;
+      const closePicker = () => { picker?.remove(); picker = null; document.removeEventListener('mousedown', outside, true); };
+      const outside = ev => { if (picker && !picker.contains(ev.target) && ev.target !== emo) closePicker(); };
       emo.addEventListener('mousedown', e => {
         e.preventDefault();
         if (!editor.isEditable) return;
-        const cur = cycle.indexOf(node.attrs.emoji);
-        const pos = getPos();
-        editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, emoji: cycle[(cur + 1) % cycle.length] }));
+        if (picker) return closePicker();
+        picker = el('div', 'nt-pop nt-emopick');
+        picker.setAttribute('role', 'listbox');
+        picker.innerHTML = CALLOUT_EMOJI.map(x => `<button type="button" role="option" data-e="${esc(x)}" aria-label="Icon ${esc(x)}">${esc(x)}</button>`).join('');
+        picker.addEventListener('mousedown', ev => {
+          ev.preventDefault();
+          const b = ev.target.closest('[data-e]'); if (!b) return;
+          const pos = getPos();
+          if (pos != null) editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, emoji: b.dataset.e }));
+          closePicker();
+        });
+        document.body.appendChild(picker);
+        const r = emo.getBoundingClientRect();
+        picker.style.position = 'fixed';
+        picker.style.left = `${Math.min(r.left, innerWidth - 260)}px`;
+        picker.style.top = `${Math.min(r.bottom + 6, innerHeight - 190)}px`;
+        document.addEventListener('mousedown', outside, true);
       });
       dom.append(emo, body);
       return {
         dom, contentDOM: body,
+        destroy: closePicker,
         update(n) {
           if (n.type.name !== 'callout') return false;
           node = n; dom.className = `nt-callout c-${n.attrs.color}`; emo.textContent = n.attrs.emoji; return true;

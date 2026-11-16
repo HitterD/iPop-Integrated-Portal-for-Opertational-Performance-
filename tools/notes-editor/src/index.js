@@ -15,7 +15,10 @@ import { exitSuggestion } from '@tiptap/suggestion';
 import StarterKit from '@tiptap/starter-kit';
 import { TaskList } from '@tiptap/extension-list';
 import { TextStyle, Color, BackgroundColor } from '@tiptap/extension-text-style';
-import { Details, DetailsSummary, DetailsContent } from '@tiptap/extension-details';
+import { Details, DetailsContent } from '@tiptap/extension-details';
+import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight';
+import { common, createLowlight } from 'lowlight';
+import { FindReplace, createFindBar, Columns, Column, DateChip, EmojiShortcodes, ToggleSummary, wordStats, BlockId, findBlock, ensureBlockId, uploadXhr, createUploadTray } from './extras.js';
 import { Placeholder } from '@tiptap/extensions';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCaret from '@tiptap/extension-collaboration-caret';
@@ -26,13 +29,14 @@ import * as Y from 'yjs';
 import { Awareness, encodeAwarenessUpdate, applyAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness';
 import * as signalR from '@microsoft/signalr';
 
-import { BlockBackground, Callout, NoteWidget, NoteToc, HeadingFlash, SubPage, NoteFile, CommentHighlights, commentKey, countTodos, todoDueItems, releaseBlobs, esc } from './nodes.js';
+import { BlockBackground, Callout, NoteWidget, NoteToc, HeadingFlash, SubPage, NoteFile, CommentHighlights, commentKey, countTodos, todoDueItems, releaseBlobs, esc, flashKey } from './nodes.js';
 import { SlashMenu, mentionSuggestion, phoneMentionKey, createToolbar, createHandle, createBlockMenu, place } from './menus.js';
 import { NoteImage, NoteGallery, NoteBookmark, NoteEmbed, RichTaskItem, TodoExtras, tableExtensions, taskItemAt, todoInsertPos, createRichUi, closeLightboxes } from './rich.js';
 import { TEMPLATES, GUIDE_COMMENT_TEXT } from './templates.js';
 import { importer, exportPages } from './transfer.js';
 
 const FIELD = 'default';
+const lowlight = createLowlight(common);
 const SNAPSHOT_AFTER_UPDATES = 40;
 const SNAPSHOT_IDLE_MS = 4000;
 
@@ -45,6 +49,7 @@ function baseExtensions(host, { collab = true, rich = {} } = {}) {
   return [
     StarterKit.configure({
       heading: { levels: [1, 2, 3] },
+      codeBlock: false,
       undoRedo: collab ? false : undefined,
       link: { openOnClick: true, autolink: true, HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' } },
       trailingNode: {},
@@ -53,7 +58,9 @@ function baseExtensions(host, { collab = true, rich = {} } = {}) {
     TodoExtras.configure(rich),
     ...tableExtensions(),
     TextStyle, Color, BackgroundColor,
-    Details.configure({ persist: true, HTMLAttributes: { class: 'nt-toggle' } }), DetailsSummary, DetailsContent,
+    Details.configure({ persist: true, HTMLAttributes: { class: 'nt-toggle' } }), ToggleSummary, DetailsContent,
+    CodeBlockLowlight.configure({ lowlight, defaultLanguage: null, HTMLAttributes: { class: 'nt-code' } }),
+    Columns, Column, DateChip, EmojiShortcodes, BlockId,
     BlockBackground, Callout,
     NoteWidget.configure({ host: () => host }),
     NoteToc, HeadingFlash,
@@ -351,6 +358,7 @@ export async function mount(el, opts) {
         placeholder: ({ node }) => node.type.name === 'heading' ? `Heading ${node.attrs.level}` : node.type.name === 'detailsSummary' ? 'Toggle' : "Type '/' for commands…",
       }),
       SlashMenu.configure({ host }),
+      FindReplace,
       CommentHighlights.configure({ resolve: resolveAnchor, onClick: id => call('OnThreadClick', id) }),
       Keys,
       ...(canEdit ? [DragHandle.configure({
@@ -380,6 +388,48 @@ export async function mount(el, opts) {
   }
 
   const toolbar = createToolbar(editor, host);
+  // Find & replace (Ctrl+F while the page has focus) and the word-count pill.
+  host.copyBlockLink = pos => {
+    const bid = ensureBlockId(editor, pos);
+    if (!bid) return false;
+    const url = `${location.origin}/notes/${pageId}?b=${bid}`;
+    copyText(url).then(ok => host.toast(ok ? 'Link to this block copied' : url));
+    return true;
+  };
+  // Opened from a block link (?b=<id>): wait for the page to arrive, then scroll to the block and flash it.
+  const wantBlock = new URLSearchParams(location.search).get('b');
+  if (wantBlock) {
+    let tries = 0;
+    const seek = () => {
+      if (closing || editor.isDestroyed) return;
+      const pos = findBlock(editor.state.doc, wantBlock);
+      if (pos >= 0) {
+        const node = editor.state.doc.nodeAt(pos);
+        editor.view.dispatch(editor.state.tr.setMeta(flashKey, { from: pos, to: pos + node.nodeSize }).setMeta('addToHistory', false));
+        const dom = editor.view.nodeDOM(pos);
+        (dom?.nodeType === 1 ? dom : dom?.parentElement)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        setTimeout(() => { try { if (!editor.isDestroyed) editor.view.dispatch(editor.state.tr.setMeta(flashKey, null).setMeta('addToHistory', false)); } catch { /* closed */ } }, 1800);
+      } else if (++tries < 25) setTimeout(seek, 300);
+    };
+    seek();
+  }
+  const findBar = createFindBar(editor, host);
+  el.before(findBar.dom);
+  const stats = document.createElement('div');
+  stats.className = 'nt-stats'; stats.setAttribute('aria-live', 'off');
+  el.after(stats);
+  const paintStats = debounce(() => {
+    if (closing) return;
+    const w = wordStats(editor.state.doc);
+    stats.textContent = w.words ? `${w.words.toLocaleString()} word${w.words === 1 ? '' : 's'} · ${w.chars.toLocaleString()} characters · ${w.minutes} min read` : '';
+  }, 400);
+  editor.on('update', paintStats); paintStats();
+  const onFindKey = e => {
+    if (closing || !(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'f' || e.shiftKey || e.altKey) return;
+    if (!el.contains(document.activeElement) && !findBar.dom.contains(document.activeElement)) return;   // Ctrl+F elsewhere stays the browser's
+    e.preventDefault(); findBar.open();
+  };
+  document.addEventListener('keydown', onFindKey, true);
   rich = canEdit ? createRichUi(editor, host) : null;
   const blockMenu = createBlockMenu(editor, host, () => handlePos >= 0 ? handlePos : null);
   handleEl.querySelector('.grip').addEventListener('click', e => { e.preventDefault(); blockMenu.open(e.currentTarget); });
@@ -567,6 +617,8 @@ export async function mount(el, opts) {
   window.addEventListener('focus', host.accessChanged);
 
   // ── Uploads ──────────────────────────────────────────────────────────────
+  const upTray = createUploadTray();
+  const upAborts = new Set();
   function pickFiles(accept, pos) {
     if (closing || !canEdit) return;
     const y = ySyncPluginKey.getState(editor.state);
@@ -598,10 +650,13 @@ export async function mount(el, opts) {
       host.toast(list.length > 1 ? `Uploading ${list.length} files…` : `Uploading ${list[0].name}…`);
       for (const f of list) {
         const form = new FormData(); form.append('file', f, f.name);
+        const ctl = new AbortController(); upAborts.add(ctl);
+        const row = upTray.add(f.name, () => ctl.abort());
         try {
-          const r = await api(`/api/notes/${pageId}/uploads`, { method: 'POST', body: form });
-          if (!r.ok) { const e = await r.json().catch(() => ({})); host.toast(e.message || `Couldn't upload ${f.name}`); failed++; continue; }
-          const u = await r.json();
+          const r = await uploadXhr(`${apiBase}/api/notes/${pageId}/uploads`, form, await token(), { onProgress: row.progress, signal: ctl.signal });
+          if (!r.ok) { row.fail(r.json?.message || 'Failed'); host.toast(r.json?.message || `Couldn't upload ${f.name}`); failed++; continue; }
+          row.done();
+          const u = r.json;
           const node = { type: u.contentType?.startsWith('image/') ? 'noteImage' : 'noteFile', attrs: { id: u.id, name: u.fileName, size: u.size } };
           if (closing) return;
           const at = Math.min(toAbs(rel) ?? editor.state.doc.content.size, editor.state.doc.content.size);
@@ -610,7 +665,10 @@ export async function mount(el, opts) {
           rel = toRel(Math.min(at + (editor.state.doc.content.size - before), editor.state.doc.content.size));
           if (node.type === 'noteImage') images.push(u.id);
           done++;
-        } catch { host.toast(`Couldn't upload ${f.name}`); failed++; }
+        } catch (err) {
+          if (err?.name === 'AbortError') { row.done(); host.toast(`Cancelled ${f.name}`); } else { row.fail('Failed'); host.toast(`Couldn't upload ${f.name}`); }
+          failed++;
+        } finally { upAborts.delete(ctl); }
       }
       if (images.length >= 3 && !closing) rich?.offerGallery(images);
       if (list.length > 1 && !closing) host.toast(failed ? `Uploaded ${done} of ${list.length} files` : `Uploaded ${done} files`);
@@ -719,6 +777,8 @@ export async function mount(el, opts) {
       window.removeEventListener('beforeunload', onBeforeUnload);
       document.querySelectorAll('.nt-share-ask').forEach(e => e.remove());
       toolbar.destroy(); blockMenu.destroy(); rich?.destroy();
+      for (const c of upAborts) c.abort(); upTray.destroy();
+      findBar.destroy(); stats.remove(); paintStats.cancel(); document.removeEventListener('keydown', onFindKey, true);
       editor.destroy(); awareness.destroy(); ydoc.destroy();
       releaseBlobs();
     },

@@ -3,6 +3,7 @@ import { Extension } from '@tiptap/core';
 import Suggestion from '@tiptap/suggestion';
 import { PluginKey } from '@tiptap/pm/state';
 import { COLORS, cap, esc } from './nodes.js';
+import { columnsJson, toggleJson, isoDay } from './extras.js';
 
 const $el = (cls, html = '') => { const e = document.createElement('div'); e.className = cls; e.innerHTML = html; return e; };
 
@@ -30,7 +31,34 @@ export const TURN_INTO = [
   { key: 'number', name: 'Numbered list', box: '1.', run: c => c.toggleOrderedList() },
   { key: 'quote', name: 'Quote', box: '❝', run: c => c.toggleBlockquote() },
   { key: 'code', name: 'Code', box: '</>', run: c => c.toggleCodeBlock() },
+  { key: 'callout', name: 'Callout', box: '💡', run: c => c.wrapIn('callout', { emoji: '💡', color: 'yellow' }) },
+  { key: 'toggle', name: 'Toggle', box: '▸', run: c => c.setDetails() },
 ];
+
+/// Words people type after "/" that should find a command even though they are not in its name.
+export const SLASH_ALIASES = {
+  'Heading 1': 'h1 title big', 'Heading 2': 'h2 subtitle', 'Heading 3': 'h3',
+  'To-do list': 'todo task checkbox checklist', 'Bulleted list': 'bullet ul list', 'Numbered list': 'number ol ordered list',
+  Toggle: 'collapse expand details accordion', Quote: 'blockquote cite', Callout: 'info note tip warning alert box',
+  Divider: 'hr line separator rule', Code: 'snippet pre programming', Table: 'grid spreadsheet', Image: 'picture photo img',
+  File: 'attachment upload document', Drawing: 'draw sketch whiteboard paint', Date: 'day calendar today time',
+  'Link to page': 'page link backlink wiki', '2 columns': 'column layout split', '3 columns': 'column layout split',
+  'Table of contents': 'toc contents outline', 'Embed video': 'youtube video mp4', Bookmark: 'link card url',
+};
+/// Slash menu search: matches the name, a word in the name, or an alias. Names that start with the query come first.
+export function filterSlash(cmds, query) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return cmds;
+  const rank = c => {
+    const n = c.name.toLowerCase(), a = (SLASH_ALIASES[c.name] || '').toLowerCase();
+    if (n.startsWith(q)) return 0;
+    if (n.split(/\s+/).some(w => w.startsWith(q))) return 1;
+    if (n.includes(q)) return 2;
+    if (a.split(/\s+/).some(w => w.startsWith(q))) return 3;
+    return 9;
+  };
+  return cmds.map((c, i) => ({ c, i, r: rank(c) })).filter(x => x.r < 9).sort((x, y) => x.r - y.r || x.i - y.i).map(x => x.c);
+}
 
 export function slashCommands(host) {
   const byKey = k => TURN_INTO.find(t => t.key === k).run;
@@ -43,6 +71,11 @@ export function slashCommands(host) {
     ['Basic blocks', 'Bulleted list', 'Simple bulleted list', '•', '-', setBlock(byKey('bullet'))],
     ['Basic blocks', 'Numbered list', 'List with numbering', '1.', '1.', setBlock(byKey('number'))],
     ['Basic blocks', 'Toggle', 'Hide content inside', '▸', '', setBlock(c => c.setDetails())],
+    ['Basic blocks', 'Toggle heading 1', 'A big heading that opens and closes', '▸H1', '', setBlock(c => c.insertContent(toggleJson(1)))],
+    ['Basic blocks', 'Toggle heading 2', 'A medium heading that opens and closes', '▸H2', '', setBlock(c => c.insertContent(toggleJson(2)))],
+    ['Basic blocks', 'Toggle heading 3', 'A small heading that opens and closes', '▸H3', '', setBlock(c => c.insertContent(toggleJson(3)))],
+    ['Basic blocks', '2 columns', 'Put blocks side by side', '▥', '', setBlock(c => c.insertContent(columnsJson(2)))],
+    ['Basic blocks', '3 columns', 'Three blocks side by side', '▥', '', setBlock(c => c.insertContent(columnsJson(3)))],
     ['Basic blocks', 'Quote', 'Capture a quote', '❝', '>', setBlock(byKey('quote'))],
     ['Basic blocks', 'Callout', 'Make writing stand out', '💡', '', setBlock(c => c.insertContent({ type: 'callout', attrs: { emoji: '💡', color: 'yellow' }, content: [{ type: 'paragraph' }] }))],
     ['Basic blocks', 'Divider', 'Visually divide blocks', '—', '---', setBlock(c => c.setHorizontalRule())],
@@ -61,8 +94,8 @@ export function slashCommands(host) {
     ['Media', 'Bookmark', 'Link card with title and picture', '🔖', '', ({ editor, range }) => { editor.chain().focus().deleteRange(range).run(); host.askLink?.('bookmark'); }],
     ['Media', 'Embed video', 'YouTube or .mp4 link, plays in the page', '▶', '', ({ editor, range }) => { editor.chain().focus().deleteRange(range).run(); host.askLink?.('embed'); }],
     ['Inline', 'Mention person', 'Notify someone', '@', '@', ({ editor, range }) => editor.chain().focus().deleteRange(range).insertContent('@').run()],
-    ['Inline', 'Date', 'Insert today\'s date', '📅', '', ({ editor, range }) => editor.chain().focus().deleteRange(range)
-      .insertContent(new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) + ' ').run()],
+    ['Inline', 'Date', 'A date chip you can change, today by default', '📅', '', ({ editor, range }) => editor.chain().focus().deleteRange(range)
+      .insertContent([{ type: 'dateChip', attrs: { date: isoDay(new Date()) } }, { type: 'text', text: ' ' }]).run()],
   ].map(([group, name, desc, box, kbd, run]) => ({ group, name, desc, box, kbd, run }));
 }
 
@@ -140,7 +173,7 @@ export const SlashMenu = Extension.create({
         const $from = state.doc.resolve(range.from);
         return $from.parent.type.name !== 'codeBlock';
       },
-      items: ({ query }) => cmds.filter(c => c.name.toLowerCase().includes(query.toLowerCase())),
+      items: ({ query }) => filterSlash(cmds, query),
       command: ({ editor, range, props }) => props.run({ editor, range }),
       render: () => listPopup(c => `<span class="bx">${esc(c.box)}</span><div><div class="nm">${esc(c.name)}</div><div class="ds">${esc(c.desc)}</div></div>${c.kbd ? `<kbd>${esc(c.kbd)}</kbd>` : ''}`, 'No results'),
     })];
@@ -310,6 +343,7 @@ export function createBlockMenu(editor, host, getTarget) {
       + COLORS.map(c => `<span class="sq ${cur === c ? 'on' : ''}" data-bg="${c}" title="${cap(c)}" style="background:var(--nb-${c})"></span>`).join('')
       + `</div><hr>`
       + (host.canComment() ? '<div class="mi" data-act="comment"><span class="sw">💬</span>Comment<span class="ds">Ctrl ⇧ M</span></div>' : '')
+      + '<div class="mi" data-act="link"><span class="sw">🔗</span>Copy link to block</div>'
       + '<div class="mi" data-act="dup"><span class="sw">⧉</span>Duplicate</div>'
       + '<div class="mi danger" data-act="del"><span class="sw">🗑</span>Delete<span class="ds">Del</span></div>';
     host.lockHandle(true);
@@ -327,6 +361,8 @@ export function createBlockMenu(editor, host, getTarget) {
     } else if (bg) {
       const attrs = node.type.name === 'callout' ? { ...node.attrs, color: bg.dataset.bg || 'gray' } : { ...node.attrs, bg: bg.dataset.bg || null };
       if ('bg' in node.attrs || node.type.name === 'callout') editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, attrs));
+    } else if (act?.dataset.act === 'link') {
+      if (!host.copyBlockLink?.(pos)) host.toast('This kind of block cannot be linked to');
     } else if (act?.dataset.act === 'dup') {
       editor.chain().focus().insertContentAt(pos + node.nodeSize, node.toJSON()).run();
     } else if (act?.dataset.act === 'del') {
