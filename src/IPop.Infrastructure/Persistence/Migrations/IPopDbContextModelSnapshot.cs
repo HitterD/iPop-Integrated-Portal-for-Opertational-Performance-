@@ -2993,6 +2993,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("EditedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("ThreadId")
                         .HasColumnType("uuid");
 
@@ -3003,6 +3006,28 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("ThreadId", "CreatedAt");
 
                     b.ToTable("NoteComments");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NoteCommentReaction", b =>
+                {
+                    b.Property<Guid>("CommentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Emoji")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("CommentId", "UserId", "Emoji");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("NoteCommentReactions");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.NoteFavorite", b =>
@@ -6964,6 +6989,23 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Thread");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.NoteCommentReaction", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.NoteComment", "Comment")
+                        .WithMany("Reactions")
+                        .HasForeignKey("CommentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Comment");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.NoteFavorite", b =>
                 {
                     b.HasOne("IPop.Core.Entities.NotePage", null)
@@ -8068,6 +8110,11 @@ namespace IPop.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("IPop.Core.Entities.NewsVideo", b =>
                 {
                     b.Navigation("Views");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NoteComment", b =>
+                {
+                    b.Navigation("Reactions");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.NoteThread", b =>

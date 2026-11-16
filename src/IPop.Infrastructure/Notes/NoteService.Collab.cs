@@ -301,17 +301,33 @@ public sealed partial class NoteService
 
     // ── Comments ─────────────────────────────────────────────────────────────
 
-    private IQueryable<NoteThreadDto> ThreadQuery(Guid pageId, Guid? threadId = null) =>
-        db.NoteThreads.AsNoTracking().Where(t => t.PageId == pageId && (threadId == null || t.Id == threadId)).OrderBy(t => t.CreatedAt)
-            .Select(t => new NoteThreadDto(t.Id, t.Quote, t.Anchor, t.CreatedAt, t.ResolvedAt,
-                t.Comments.OrderBy(c => c.CreatedAt).Select(c => new NoteCommentDto(c.Id, c.AuthorId,
-                    c.Author == null ? "iPop Guide" : c.Author.Name, c.Author == null ? null : c.Author.Nik, c.Body, c.CreatedAt)).ToList()));
+    /// Threads of a page as <paramref name="viewer"/> sees them: reactions carry "mine", and CanEdit says whether the viewer
+    /// wrote the comment (only your own comments can be edited; deleting also needs the page owner, see DeleteCommentAsync).
+    private async Task<List<NoteThreadDto>> ThreadsForAsync(Guid pageId, Guid viewer, Guid? threadId, CancellationToken ct)
+    {
+        var rows = await db.NoteThreads.AsNoTracking().Where(t => t.PageId == pageId && (threadId == null || t.Id == threadId)).OrderBy(t => t.CreatedAt)
+            .Select(t => new
+            {
+                t.Id, t.Quote, t.Anchor, t.CreatedAt, t.ResolvedAt,
+                Comments = t.Comments.OrderBy(c => c.CreatedAt).Select(c => new
+                {
+                    c.Id, c.AuthorId, Name = c.Author == null ? "iPop Guide" : c.Author.Name, Nik = c.Author == null ? null : c.Author.Nik,
+                    c.Body, c.CreatedAt, c.EditedAt,
+                    Reactions = c.Reactions.Select(r => new { r.Emoji, r.UserId, r.CreatedAt }).ToList(),
+                }).ToList(),
+            }).ToListAsync(ct);
+        return rows.Select(t => new NoteThreadDto(t.Id, t.Quote, t.Anchor, t.CreatedAt, t.ResolvedAt,
+            t.Comments.Select(c => new NoteCommentDto(c.Id, c.AuthorId, c.Name, c.Nik, c.Body, c.CreatedAt, c.EditedAt,
+                c.Reactions.GroupBy(r => r.Emoji).OrderBy(g => g.Min(r => r.CreatedAt))
+                    .Select(g => new NoteReactionDto(g.Key, g.Count(), g.Any(r => r.UserId == viewer))).ToList(),
+                c.AuthorId == viewer)).ToList())).ToList();
+    }
 
     public async Task<NoteResult<IReadOnlyList<NoteThreadDto>>> GetThreadsAsync(Guid userId, Guid pageId, CancellationToken ct)
     {
         var access = await GetAccessAsync(userId, pageId, ct);
         if (access == NoteAccess.None) return Fail<IReadOnlyList<NoteThreadDto>>("not_found");
-        return Ok<IReadOnlyList<NoteThreadDto>>(await ThreadQuery(pageId).ToListAsync(ct));
+        return Ok<IReadOnlyList<NoteThreadDto>>(await ThreadsForAsync(pageId, userId, null, ct));
     }
 
     public async Task<NoteResult<NoteCommentResult>> CreateThreadAsync(Guid userId, Guid pageId, CreateNoteThreadRequest req, CancellationToken ct)
@@ -331,7 +347,7 @@ public sealed partial class NoteService
         thread.Comments.Add(new NoteComment { Id = Guid.NewGuid(), ThreadId = thread.Id, AuthorId = userId, Body = body, CreatedAt = now });
         db.NoteThreads.Add(thread);
         await db.SaveChangesAsync(ct);
-        return Ok(new NoteCommentResult(await ThreadQuery(pageId, thread.Id).FirstAsync(ct),
+        return Ok(new NoteCommentResult((await ThreadsForAsync(pageId, userId, thread.Id, ct)).First(),
             await MentionTargetsAsync(userId, pageId, req.Mentions, ct, body)));
     }
 
@@ -353,8 +369,57 @@ public sealed partial class NoteService
         var participants = await db.NoteComments.Where(c => c.ThreadId == threadId && c.AuthorId != null)
             .Select(c => c.AuthorId!.Value).Distinct().ToListAsync(ct);
         var notify = participants.Concat(req.Mentions ?? []).Distinct().ToList();
-        return Ok(new NoteCommentResult(await ThreadQuery(pageId, threadId).FirstAsync(ct),
+        return Ok(new NoteCommentResult((await ThreadsForAsync(pageId, userId, threadId, ct)).First(),
             await MentionTargetsAsync(userId, pageId, notify, ct, body)));
+    }
+
+    public static readonly IReadOnlySet<string> ReactionEmojis = new HashSet<string> { "👍", "❤️", "🎉", "😂", "🙏", "👀" };
+
+    private async Task<(NoteComment? Comment, NoteAccess Access, bool IsOwner)> CommentContextAsync(Guid userId, Guid pageId, Guid commentId, CancellationToken ct)
+    {
+        var access = await GetAccessAsync(userId, pageId, ct);
+        if (access < NoteAccess.Comment) return (null, access, false);
+        var c = await db.NoteComments.Include(x => x.Thread).FirstOrDefaultAsync(x => x.Id == commentId && x.Thread.PageId == pageId, ct);
+        return (c, access, access == NoteAccess.Owner);
+    }
+
+    public async Task<NoteResult<NoteThreadDto>> EditCommentAsync(Guid userId, Guid pageId, Guid commentId, string body, CancellationToken ct)
+    {
+        var (c, access, _) = await CommentContextAsync(userId, pageId, commentId, ct);
+        if (c is null) return Fail<NoteThreadDto>(Denied(access));
+        if (c.AuthorId != userId) return Fail<NoteThreadDto>("forbidden");     // the guide comment has no author, so nobody edits it
+        var clean = Clean(body, 2000);
+        if (clean is null) return Fail<NoteThreadDto>("empty");
+        if (clean != c.Body) { c.Body = clean; c.EditedAt = DateTime.UtcNow; await db.SaveChangesAsync(ct); }
+        return Ok((await ThreadsForAsync(pageId, userId, c.ThreadId, ct)).First());
+    }
+
+    public async Task<NoteResult<NoteThreadDto?>> DeleteCommentAsync(Guid userId, Guid pageId, Guid commentId, CancellationToken ct)
+    {
+        var (c, access, isOwner) = await CommentContextAsync(userId, pageId, commentId, ct);
+        if (c is null) return Fail<NoteThreadDto?>(Denied(access));
+        if (c.AuthorId != userId && !isOwner) return Fail<NoteThreadDto?>("forbidden");
+        var threadId = c.ThreadId;
+        db.NoteComments.Remove(c);
+        await db.SaveChangesAsync(ct);
+        if (!await db.NoteComments.AnyAsync(x => x.ThreadId == threadId, ct))
+        {
+            await db.NoteThreads.Where(t => t.Id == threadId).ExecuteDeleteAsync(ct);
+            return Ok<NoteThreadDto?>(null);                                   // the whole thread is gone
+        }
+        return Ok<NoteThreadDto?>((await ThreadsForAsync(pageId, userId, threadId, ct)).First());
+    }
+
+    public async Task<NoteResult<NoteThreadDto>> ToggleReactionAsync(Guid userId, Guid pageId, Guid commentId, string emoji, CancellationToken ct)
+    {
+        var (c, access, _) = await CommentContextAsync(userId, pageId, commentId, ct);
+        if (c is null) return Fail<NoteThreadDto>(Denied(access));
+        if (!ReactionEmojis.Contains(emoji)) return Fail<NoteThreadDto>("invalid_style");
+        var row = await db.NoteCommentReactions.FirstOrDefaultAsync(r => r.CommentId == commentId && r.UserId == userId && r.Emoji == emoji, ct);
+        if (row is null) db.NoteCommentReactions.Add(new NoteCommentReaction { CommentId = commentId, UserId = userId, Emoji = emoji, CreatedAt = DateTime.UtcNow });
+        else db.NoteCommentReactions.Remove(row);
+        await db.SaveChangesAsync(ct);
+        return Ok((await ThreadsForAsync(pageId, userId, c.ThreadId, ct)).First());
     }
 
     /// Mentioned users who can actually open the page (never the author). Also resolves @Name / @Nik in body.

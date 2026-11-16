@@ -91,7 +91,7 @@
                         {
                             <div class="nt-row @(IsActive(p!.Id) ? "active" : "") @(menuFor?.Id == p.Id ? "menu-on" : "")" role="button" tabindex="0" data-id="@p.Id"
                                  @onclick="() => Open(p.Id)" @onkeydown="e => OnRowKey(e, p)">
-                                <span class="emo">@(p.Emoji ?? "📄")</span><span class="t">@DisplayTitle(p.Title)</span>@if (p.Kind == "board") {<span class="nt-kind">Board</span>}
+                                <span class="emo">@(p.Emoji ?? "📄")</span><span class="t">@DisplayTitle(p.Title)</span><span class="nt-kind" hidden="@(p.Kind != "board")">Board</span>
                                 <span class="meta">@Ago(p.UpdatedAt)</span>
                                 <span class="actions">
                                     <span role="button" tabindex="-1" title="More" aria-label="Page options" @onclick="e => OpenRowMenu(p, e)" @onclick:stopPropagation><i data-lucide="ellipsis"></i></span>
@@ -323,7 +323,7 @@
                                         <button type="button" @onclick="() => { pop = Pop.Style; coverTab = CoverTab.Upload; }"><i data-lucide="image" class="sm"></i>Add cover</button>
                                     }
                                     <button type="button" @onclick="() => pop = Pop.Style"><i data-lucide="palette" class="sm"></i>Style</button>
-                                    <button type="button" @onclick="ToggleComments"><i data-lucide="message-square" class="sm"></i>Comment</button>
+                                    <button type="button" @onclick="StartPageComment"><i data-lucide="message-square" class="sm"></i>Comment</button>
                                 </div>
                             }
                             <input class="nt-page-title" placeholder="Untitled" value="@titleDraft" readonly="@(!CanEdit)" @ref="titleRef"
@@ -410,7 +410,7 @@
                             @foreach (var p in sidebar.Pages.OrderByDescending(p => p.IsGuide && !GuideHidden(p)).ThenByDescending(p => p.UpdatedAt).Take(11))
                             {
                                 <button type="button" class="nt-card" @onclick="() => Open(p.Id)">
-                                    <span class="emo">@(p.Emoji ?? "📄")</span><span class="t">@DisplayTitle(p.Title)</span>@if (p.Kind == "board") {<span class="nt-kind">Board</span>}
+                                    <span class="emo">@(p.Emoji ?? "📄")</span><span class="t">@DisplayTitle(p.Title)</span><span class="nt-kind" hidden="@(p.Kind != "board")">Board</span>
                                     <span class="m">@(p.IsMine ? "" : p.OwnerName + " · ")@Ago(p.UpdatedAt)</span>
                                 </button>
                             }
@@ -1062,7 +1062,7 @@
                 }
                 else
                 {
-                    <span class="t">@DisplayTitle(p.Title)</span>@if (p.Kind == "board") {<span class="nt-kind">Board</span>}
+                    <span class="t">@DisplayTitle(p.Title)</span><span class="nt-kind" hidden="@(p.Kind != "board")">Board</span>
                     @if (p.IsShared) { <span class="meta"><i data-lucide="users" class="sm"></i></span> }
                     <span class="actions">
                         <span role="button" tabindex="-1" title="More" aria-label="Page options" @onclick="e => OpenRowMenu(p, e)" @onclick:stopPropagation><i data-lucide="ellipsis"></i></span>
@@ -1143,7 +1143,7 @@
             @if (draft is not null)
             {
                 <div class="nt-thread draft">
-                    <div class="quoteline"><span>@draft.Quote</span></div>
+                    @if (!draft.IsPageLevel) { <div class="quoteline"><span>@draft.Quote</span></div> } else { <div class="nt-pagecm">Comment on this page</div> }
                     <textarea @ref="draftRef" placeholder="Write a comment… (@@ to mention)" value="@draft.Body" @oninput="OnDraftInput" @onkeydown="OnDraftKey"></textarea>
                     @if (cmtMentionTarget == Guid.Empty && cmtMentionHits.Count > 0) { @CommentMentionMenu(Guid.Empty) }
                     <div class="acts">
@@ -1163,6 +1163,16 @@
             @foreach (var t in shown)
             {
                 <div class="nt-thread @(t.Id == focusThread ? "focus" : "") @(t.ResolvedAt is null ? "" : "resolved")" @onclick="() => FocusThread(t.Id)">
+                    @if (string.IsNullOrEmpty(t.Quote) && t.Anchor is null)
+                    {
+                        <div class="nt-pagecm">
+                            <span>On this page</span>
+                            @if (CanComment)
+                            {
+                                <button type="button" title="@(t.ResolvedAt is null ? "Resolve" : "Reopen")" aria-label="@(t.ResolvedAt is null ? "Resolve" : "Reopen")" @onclick="() => Resolve(t)" @onclick:stopPropagation><i data-lucide="@(t.ResolvedAt is null ? "circle-check" : "rotate-ccw")" class="sm"></i></button>
+                            }
+                        </div>
+                    }
                     @if (!string.IsNullOrEmpty(t.Quote))
                     {
                         <div class="quoteline">
@@ -1181,8 +1191,35 @@
                             @if (c.AuthorNik is null) { <span class="nt-av s24 bot">iP</span> }
                             else { <PersonAvatar Nik="@c.AuthorNik" Name="@c.AuthorName" Size="24" Class="nt-av s24" Decorative="true" /> }
                             <div style="min-width:0">
-                                <div class="who">@c.AuthorName<span class="when">@Ago(c.CreatedAt)</span></div>
-                                <div class="txt">@c.Body</div>
+                                <div class="who">@c.AuthorName<span class="when">@Ago(c.CreatedAt)@(c.EditedAt is not null ? " · edited" : "")</span></div>
+                                @if (editingComment == c.Id)
+                                {
+                                    <div class="nt-cedit" @onclick:stopPropagation>
+                                        <textarea value="@editText" @oninput="e => editText = e.Value?.ToString() ?? string.Empty" @onkeydown="e => OnEditKeyAsync(e, t, c)"></textarea>
+                                        <div class="acts"><button type="button" class="nt-btn ghost" @onclick="CancelEdit">Cancel</button><button type="button" class="nt-btn primary" disabled="@string.IsNullOrWhiteSpace(editText)" @onclick="() => SaveEditAsync(t, c)">Save</button></div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="txt">@c.Body</div>
+                                    <div class="nt-creacts" @onclick:stopPropagation>
+                                        @foreach (var r in c.Reactions ?? [])
+                                        {
+                                            var em = r.Emoji;
+                                            <button type="button" class="nt-react @(r.Mine ? "mine" : "")" disabled="@(!CanComment)" title="@(r.Mine ? "Remove your reaction" : "React")" @onclick="() => ReactAsync(t, c, em)">@r.Emoji <span>@r.Count</span></button>
+                                        }
+                                        @if (CanComment)
+                                        {
+                                            <button type="button" class="nt-react add" title="Add a reaction" aria-label="Add a reaction" @onclick="() => reactionPickerFor = reactionPickerFor == c.Id ? null : c.Id">☺ +</button>
+                                            @if (reactionPickerFor == c.Id)
+                                            {
+                                                <span class="nt-reactpick">@foreach (var em in ReactionChoices) { var e2 = em; <button type="button" @onclick="() => ReactAsync(t, c, e2)">@em</button> }</span>
+                                            }
+                                            @if (c.CanEdit) { <button type="button" class="nt-clink" @onclick="() => BeginEdit(c)">Edit</button> }
+                                            @if (c.CanEdit || IsOwner) { <button type="button" class="nt-clink" @onclick="() => DeleteCommentAsync(t, c)">Delete</button> }
+                                        }
+                                    </div>
+                                }
                             </div>
                         </div>
                     }

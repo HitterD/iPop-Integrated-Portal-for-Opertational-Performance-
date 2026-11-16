@@ -20,6 +20,8 @@ public static class NotesEndpoints
 
     public record FavoriteRequest(bool Favorite);
     public record LockRequest(bool Locked);
+    public record EditCommentRequest(string Body);
+    public record ReactionRequest(string Emoji);
     public record ResolveRequest(bool Resolved);
     public record ShareLevelRequest(string Level);
     public record GuideThreadRequest(string Quote, string Anchor);
@@ -228,6 +230,29 @@ public static class NotesEndpoints
             if (r.Success) await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteThreads", id, ct);
             return From(r);
         }));
+        // Edit / delete / react: every change pushes "noteThreads" so open pages refresh their comment panel.
+        g.MapPut("/{id:guid}/comments/{commentId:guid}", (Guid id, Guid commentId, EditCommentRequest req, HttpContext http,
+            INoteService svc, IHubContext<NotesHub> hub, CancellationToken ct) => Run(http, async me =>
+        {
+            var r = await svc.EditCommentAsync(me.Id, id, commentId, req.Body, ct);
+            if (r.Success) await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteThreads", id, ct);
+            return From(r);
+        })).RequirePermission("notes.write");
+        g.MapDelete("/{id:guid}/comments/{commentId:guid}", (Guid id, Guid commentId, HttpContext http,
+            INoteService svc, IHubContext<NotesHub> hub, CancellationToken ct) => Run(http, async me =>
+        {
+            var r = await svc.DeleteCommentAsync(me.Id, id, commentId, ct);
+            if (!r.Success) return Error(r.Error!);
+            await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteThreads", id, ct);
+            return Results.Ok(new { threadRemoved = r.Data is null, thread = r.Data });
+        })).RequirePermission("notes.write");
+        g.MapPut("/{id:guid}/comments/{commentId:guid}/reactions", (Guid id, Guid commentId, ReactionRequest req, HttpContext http,
+            INoteService svc, IHubContext<NotesHub> hub, CancellationToken ct) => Run(http, async me =>
+        {
+            var r = await svc.ToggleReactionAsync(me.Id, id, commentId, req.Emoji, ct);
+            if (r.Success) await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteThreads", id, ct);
+            return From(r);
+        })).RequirePermission("notes.write");
         // An @mention typed into the page body notifies the people who can open it.
         g.MapPost("/{id:guid}/mentions", (Guid id, DocMentionRequest req, HttpContext http, INoteService svc,
             INotificationGatewayService notify, CancellationToken ct) => Run(http, async me =>

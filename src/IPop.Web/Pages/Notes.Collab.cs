@@ -23,10 +23,12 @@ public partial class Notes
     private CancellationTokenSource? cmtMentionCts;
     private readonly Dictionary<Guid, string> cmtMentions = [];
 
-    private sealed class CommentDraft(string quote, string anchor)
+    private sealed class CommentDraft(string? quote, string? anchor)
     {
-        public string Quote { get; } = quote;
-        public string Anchor { get; } = anchor;
+        /// Both null = a comment on the page as a whole (no selected text).
+        public string? Quote { get; } = quote;
+        public string? Anchor { get; } = anchor;
+        public bool IsPageLevel => Anchor is null;
         public string Body { get; set; } = "";
     }
 
@@ -179,6 +181,61 @@ public partial class Notes
         replies[t.Id] = null;
         var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notes/{note.Id}/threads/{t.Id}/replies", new NoteReplyRequest(body, ResolveCommentMentions(body)));
         if (!res.IsSuccessStatusCode) { replies[t.Id] = body; Toasts.Show("Couldn't send your reply", ToastKind.Error); return; }
+        var updated = await res.Content.ReadFromJsonAsync<NoteThreadDto>(Json);
+        if (updated is not null) threads = threads.Select(x => x.Id == updated.Id ? updated : x).ToList();
+    }
+
+    // ── Edit / delete / react ────────────────────────────────────────────────
+
+    private Guid? editingComment;
+    private string editText = "";
+    private Guid? reactionPickerFor;
+    private static readonly string[] ReactionChoices = ["👍", "❤️", "🎉", "😂", "🙏", "👀"];
+
+    /// A comment on the whole page: opens the comment panel with an empty draft that has no anchor.
+    private void StartPageComment()
+    {
+        if (!CanComment) return;
+        commentsOpen = true;
+        draft = new CommentDraft(null, null);
+        focusDraft = true;
+    }
+
+    private async Task OnEditKeyAsync(KeyboardEventArgs e, NoteThreadDto t, NoteCommentDto c)
+    {
+        if (e.Key == "Escape") CancelEdit();
+        else if (e.Key == "Enter" && !e.ShiftKey) await SaveEditAsync(t, c);
+    }
+
+    private void BeginEdit(NoteCommentDto c) { editingComment = c.Id; editText = c.Body; reactionPickerFor = null; }
+    private void CancelEdit() { editingComment = null; editText = ""; }
+
+    private async Task SaveEditAsync(NoteThreadDto t, NoteCommentDto c)
+    {
+        if (note is null || string.IsNullOrWhiteSpace(editText)) return;
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/notes/{note.Id}/comments/{c.Id}", new { body = editText.Trim() });
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't save your edit", ToastKind.Error); return; }
+        var updated = await res.Content.ReadFromJsonAsync<NoteThreadDto>(Json);
+        if (updated is not null) threads = threads.Select(x => x.Id == updated.Id ? updated : x).ToList();
+        CancelEdit();
+    }
+
+    private async Task DeleteCommentAsync(NoteThreadDto t, NoteCommentDto c)
+    {
+        if (note is null) return;
+        var detail = t.Comments.Count == 1 ? "It is the only comment in this thread, so the thread goes with it." : "This can't be undone.";
+        if (!await Confirm.AskAsync("Delete this comment?", detail, "Delete")) return;
+        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/notes/{note.Id}/comments/{c.Id}");
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't delete the comment", ToastKind.Error); return; }
+        await LoadThreadsAsync();
+    }
+
+    private async Task ReactAsync(NoteThreadDto t, NoteCommentDto c, string emoji)
+    {
+        if (note is null || !CanComment) return;
+        reactionPickerFor = null;
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/notes/{note.Id}/comments/{c.Id}/reactions", new { emoji });
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't add your reaction", ToastKind.Error); return; }
         var updated = await res.Content.ReadFromJsonAsync<NoteThreadDto>(Json);
         if (updated is not null) threads = threads.Select(x => x.Id == updated.Id ? updated : x).ToList();
     }

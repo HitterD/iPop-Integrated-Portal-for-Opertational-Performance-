@@ -138,9 +138,23 @@ public class NoteComment
     public Guid? AuthorId { get; set; }
     public required string Body { get; set; }
     public DateTime CreatedAt { get; set; }
+    /// Set when the author edits the comment (shown as "edited").
+    public DateTime? EditedAt { get; set; }
 
     public NoteThread Thread { get; set; } = default!;
     public User? Author { get; set; }
+    public List<NoteCommentReaction> Reactions { get; set; } = [];
+}
+
+/// One emoji by one person on one comment. A person has at most one row per emoji per comment (toggle).
+public class NoteCommentReaction
+{
+    public Guid CommentId { get; set; }
+    public Guid UserId { get; set; }
+    public required string Emoji { get; set; }
+    public DateTime CreatedAt { get; set; }
+
+    public NoteComment Comment { get; set; } = default!;
 }
 
 /// Links an attachment (area "notes") to the page it was uploaded into.

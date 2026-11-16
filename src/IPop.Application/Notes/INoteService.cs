@@ -117,7 +117,11 @@ public record NoteSharesDto(Guid OwnerId, string OwnerName, string OwnerNik, str
 
 public record AddNoteShareRequest(Guid? UserId, Guid? RoomId, string Level);
 
-public record NoteCommentDto(Guid Id, Guid? AuthorId, string AuthorName, string? AuthorNik, string Body, DateTime CreatedAt);
+/// Reactions are grouped by emoji: how many people used it, and whether the viewer is one of them.
+public record NoteReactionDto(string Emoji, int Count, bool Mine);
+
+public record NoteCommentDto(Guid Id, Guid? AuthorId, string AuthorName, string? AuthorNik, string Body, DateTime CreatedAt,
+    DateTime? EditedAt = null, IReadOnlyList<NoteReactionDto>? Reactions = null, bool CanEdit = false);
 
 public record NoteThreadDto(Guid Id, string? Quote, string? Anchor, DateTime CreatedAt, DateTime? ResolvedAt,
     IReadOnlyList<NoteCommentDto> Comments);
@@ -202,6 +206,12 @@ public interface INoteService
     Task<NoteResult<IReadOnlyList<NoteThreadDto>>> GetThreadsAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task<NoteResult<NoteCommentResult>> CreateThreadAsync(Guid userId, Guid pageId, CreateNoteThreadRequest req, CancellationToken ct);
     Task<NoteResult<NoteCommentResult>> ReplyAsync(Guid userId, Guid pageId, Guid threadId, NoteReplyRequest req, CancellationToken ct);
+    /// Edit your own comment (not the built-in guide comment). Marks it edited.
+    Task<NoteResult<NoteThreadDto>> EditCommentAsync(Guid userId, Guid pageId, Guid commentId, string body, CancellationToken ct);
+    /// Delete a comment: its author, or the page owner. Deleting the last comment of a thread removes the thread.
+    Task<NoteResult<NoteThreadDto?>> DeleteCommentAsync(Guid userId, Guid pageId, Guid commentId, CancellationToken ct);
+    /// Toggle one emoji of the caller on a comment (anyone who can comment).
+    Task<NoteResult<NoteThreadDto>> ToggleReactionAsync(Guid userId, Guid pageId, Guid commentId, string emoji, CancellationToken ct);
     Task<NoteResult<bool>> SetResolvedAsync(Guid userId, Guid pageId, Guid threadId, bool resolved, CancellationToken ct);
     /// The tutorial's example thread, posted by "iPop Guide" once the guide template is in place.
     Task<NoteResult<bool>> AddGuideThreadAsync(Guid userId, Guid pageId, string quote, string anchor, CancellationToken ct);
