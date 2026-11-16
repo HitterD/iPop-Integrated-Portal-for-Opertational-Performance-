@@ -1,7 +1,7 @@
 import { newDrawId } from './draw-block.js';
 import { Extension } from '@tiptap/core';
 import Suggestion from '@tiptap/suggestion';
-import { PluginKey } from '@tiptap/pm/state';
+import { PluginKey, TextSelection } from '@tiptap/pm/state';
 import { COLORS, cap, esc } from './nodes.js';
 import { columnsJson, toggleJson, isoDay } from './extras.js';
 
@@ -21,6 +21,20 @@ export function place(pop, rect, { align = 'left', gap = 6 } = {}) {
 // ── Block types (shared by the slash menu and "Turn into") ──────────────────
 
 const setBlock = (fn) => ({ editor, range }) => { const c = editor.chain().focus(); if (range) c.deleteRange(range); fn(c).run(); };
+/// Replaces the typed "/command" with a block (columns, toggle heading) and puts the cursor at the start of it, so typing goes
+/// into the first column / the toggle title. Finds the block it just inserted instead of counting positions.
+export function insertAt(editor, range, json) {
+  const at = range.from;
+  editor.chain().focus().deleteRange(range).insertContentAt(at, json).command(({ tr, dispatch }) => {
+    // The block now starts at the nearest block boundary at or before `at` (the emptied paragraph is replaced, or the block
+    // lands after it): look for the first node of this type from there.
+    let start = -1;
+    tr.doc.nodesBetween(Math.max(0, at - 2), Math.min(tr.doc.content.size, at + 2), (n, pos) => { if (start < 0 && n.type.name === json.type) start = pos; return start < 0; });
+    if (start >= 0 && dispatch) tr.setSelection(TextSelection.near(tr.doc.resolve(start + 1), 1));
+    return true;
+  }).run();
+}
+
 export const TURN_INTO = [
   { key: 'text', name: 'Text', box: 'T', run: c => c.setParagraph() },
   { key: 'h1', name: 'Heading 1', box: 'H1', run: c => c.setHeading({ level: 1 }) },
@@ -71,11 +85,11 @@ export function slashCommands(host) {
     ['Basic blocks', 'Bulleted list', 'Simple bulleted list', '•', '-', setBlock(byKey('bullet'))],
     ['Basic blocks', 'Numbered list', 'List with numbering', '1.', '1.', setBlock(byKey('number'))],
     ['Basic blocks', 'Toggle', 'Hide content inside', '▸', '', setBlock(c => c.setDetails())],
-    ['Basic blocks', 'Toggle heading 1', 'A big heading that opens and closes', '▸H1', '', setBlock(c => c.insertContent(toggleJson(1)))],
-    ['Basic blocks', 'Toggle heading 2', 'A medium heading that opens and closes', '▸H2', '', setBlock(c => c.insertContent(toggleJson(2)))],
-    ['Basic blocks', 'Toggle heading 3', 'A small heading that opens and closes', '▸H3', '', setBlock(c => c.insertContent(toggleJson(3)))],
-    ['Basic blocks', '2 columns', 'Put blocks side by side', '▥', '', setBlock(c => c.insertContent(columnsJson(2)))],
-    ['Basic blocks', '3 columns', 'Three blocks side by side', '▥', '', setBlock(c => c.insertContent(columnsJson(3)))],
+    ['Basic blocks', 'Toggle heading 1', 'A big heading that opens and closes', '▸H1', '', ({ editor, range }) => insertAt(editor, range, toggleJson(1))],
+    ['Basic blocks', 'Toggle heading 2', 'A medium heading that opens and closes', '▸H2', '', ({ editor, range }) => insertAt(editor, range, toggleJson(2))],
+    ['Basic blocks', 'Toggle heading 3', 'A small heading that opens and closes', '▸H3', '', ({ editor, range }) => insertAt(editor, range, toggleJson(3))],
+    ['Basic blocks', '2 columns', 'Put blocks side by side', '▥', '', ({ editor, range }) => insertAt(editor, range, columnsJson(2))],
+    ['Basic blocks', '3 columns', 'Three blocks side by side', '▥', '', ({ editor, range }) => insertAt(editor, range, columnsJson(3))],
     ['Basic blocks', 'Quote', 'Capture a quote', '❝', '>', setBlock(byKey('quote'))],
     ['Basic blocks', 'Callout', 'Make writing stand out', '💡', '', setBlock(c => c.insertContent({ type: 'callout', attrs: { emoji: '💡', color: 'yellow' }, content: [{ type: 'paragraph' }] }))],
     ['Basic blocks', 'Divider', 'Visually divide blocks', '—', '---', setBlock(c => c.setHorizontalRule())],
