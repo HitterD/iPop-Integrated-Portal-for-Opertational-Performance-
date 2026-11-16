@@ -257,6 +257,28 @@ export function mountCanvas(container, opts) {
     ['pen', 'Pen', 'P'], ['highlighter', 'Highlighter', 'M'], ['eraser', 'Eraser', 'E'], '|',
     ['sticky', 'Sticky note', 'S'], ['text', 'Text', 'T'], ['shape', 'Shapes', 'R'], ['connector', 'Connector', 'A'], '|', ['frame', 'Frame', 'F'], ['image', 'Picture or file', 'I'], ['comment', 'Comment', 'C'], ['stamp', 'Stamp', 'K'], ['card', 'Add a Notes page or Projects task', 'N'], ['laser', 'Laser pointer', 'L'],
   ];
+  // phone = a narrow screen (same breakpoint as the rest of the app: under 768 px)
+  const isPhone = () => { try { return window.matchMedia('(max-width: 767px)').matches; } catch { return false; } };
+  let moreOpen = false;
+  const moreMenu = el('div', 'wb-menu wb-moremenu'); moreMenu.hidden = true;
+  root.append(moreMenu);
+  moreMenu.addEventListener('pointerdown', e => e.stopPropagation());
+  function paintMore() {
+    const items = [['shape', 'Shapes'], ['connector', 'Connector'], ['text', 'Text'], ['highlighter', 'Highlighter'], ['eraser', 'Eraser'], ['laser', 'Laser'], ...(compact ? [] : [['frame', 'Frame'], ['stamp', 'Stamp'], ['card', 'Add card']])]
+      .filter(([k]) => !(k === 'stamp' && compact) && !(k === 'card' && !opts.pages && !opts.taskSearch));
+    moreMenu.innerHTML = items.map(([k, label]) => `<button type="button" data-more="${k}" class="wb-moreitem"><span class="wb-moreic">${k === 'shape' ? icon(lastShape) : icon(k)}</span>${label}</button>`).join('')
+      + (opts.voteMap ? '<button type="button" data-more="vote" class="wb-moreitem"><span class="wb-moreic">' + icon('vote') + '</span>Vote</button>' : '');
+  }
+  moreMenu.addEventListener('click', e => {
+    const b = e.target.closest('[data-more]'); if (!b) return;
+    moreOpen = false; moreMenu.hidden = true; paintToolbar();
+    const k = b.dataset.more;
+    if (k === 'vote') { toggleVotePanel(); return; }
+    if (k === 'shape') { setTool(lastShape); return; }
+    if (k === 'stamp') { toggleStampMenu(toolbar); return; }
+    if (k === 'card') { toggleCardPicker(); return; }
+    setTool(k);
+  });
   function paintToolbar() {
     if (readOnly) {
       // viewers still get the hand and the laser pointer (pointing during a meeting)
@@ -265,19 +287,24 @@ export function mountCanvas(container, opts) {
       return;
     }
     toolbar.hidden = false;
-    toolbar.innerHTML = TOOLS.filter(t => !(compact && (t[0] === 'frame' || t[0] === 'highlighter')) && !(t[0] === 'image' && !opts.upload) && !(t[0] === 'comment' && !opts.comments) && !(compact && t[0] === 'stamp') && !(t[0] === 'card' && !opts.pages && !opts.taskSearch)).map(t => {
+    // On a phone the bar keeps what a finger needs: select, hand, pen, sticky, picture, comment, and a "More" that opens the rest.
+    const phone = isPhone();
+    const PHONE_KEEP = new Set(['select', 'hand', 'pen', 'sticky', 'image', 'comment']);
+    toolbar.innerHTML = TOOLS.filter(t => t === '|' ? !phone : (!phone || PHONE_KEEP.has(t[0])))
+      .filter(t => !(compact && (t[0] === 'frame' || t[0] === 'highlighter')) && !(t[0] === 'image' && !opts.upload) && !(t[0] === 'comment' && !opts.comments) && !(compact && t[0] === 'stamp') && !(t[0] === 'card' && !opts.pages && !opts.taskSearch)).map(t => {
       if (t === '|') return '<span class="wb-sep"></span>';
       const [k, label, key] = t;
       const on = k === tool || (k === 'shape' && SHAPES.includes(tool));
       const ic = k === 'sticky' ? `<span class="wb-stk" style="background:${pal().sticky[stickyColor]}"></span>` : k === 'shape' ? icon(lastShape) : icon(k);
       return `<button type="button" data-tool="${k}" class="${on ? 'on' : ''}" title="${label} (${key})" aria-label="${label}" aria-pressed="${on}">${ic}<span class="wb-k">${key}</span></button>`;
-    }).join('') + (compact && opts.onFullscreen ? `<span class="wb-sep"></span><button type="button" data-act="fullscreen" title="Open full screen" aria-label="Open full screen"><svg class="wb-i" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>` : '');
+    }).join('') + (phone ? `<button type="button" data-tool="more" class="${moreOpen ? 'on' : ''}" title="More tools" aria-label="More tools" aria-expanded="${moreOpen}">${icon('more')}</button>` : '') + (compact && opts.onFullscreen ? `<span class="wb-sep"></span><button type="button" data-act="fullscreen" title="Open full screen" aria-label="Open full screen"><svg class="wb-i" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>` : '');
   }
   toolbar.addEventListener('pointerdown', e => e.stopPropagation());
   toolbar.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.act === 'fullscreen') { opts.onFullscreen?.(); return; }
     const k = b.dataset.tool;
+    if (k === 'more') { moreOpen = !moreOpen; if (moreOpen) paintMore(); moreMenu.hidden = !moreOpen; paintToolbar(); return; }
     if (k === 'shape') { toggleShapeMenu(b); return; }
     if (k === 'image') { pickFiles(); return; }
     if (k === 'stamp') { toggleStampMenu(b); return; }
@@ -1735,7 +1762,9 @@ export function mountCanvas(container, opts) {
   paintCorners();
   root.dataset.tool = 'select';
   let fitted = false;
+  let wasPhone = isPhone();
   const ro = new ResizeObserver(() => {
+    if (isPhone() !== wasPhone) { wasPhone = isPhone(); paintToolbar(); }
     const r = rect();
     if (!fitted && r.width > 60 && r.height > 60) { fitted = true; fit(); }
     else render();
