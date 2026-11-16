@@ -9,7 +9,7 @@ public sealed partial class NoteService
 {
     private const int MaxVersions = 200; // list cap only; StaleVersions bounds what is stored
 
-    public readonly record struct VersionStamp(Guid Id, DateTime CreatedAt);
+    public readonly record struct VersionStamp(Guid Id, DateTime CreatedAt, bool Named = false);
 
     /// Which versions to drop: everything from the last 7 days stays, then one per day (the newest of that day) up to
     /// 90 days, then one per ISO week. Applied on every new version, so history stays dense where people look and the table
@@ -21,6 +21,7 @@ public sealed partial class NoteService
         foreach (var v in versions.OrderByDescending(v => v.CreatedAt))
         {
             var age = now - v.CreatedAt;
+            if (v.Named) { keep.Add(v.Id); continue; }   // a version someone named is never thinned out
             if (age <= TimeSpan.FromDays(7)) { keep.Add(v.Id); continue; }
             var d = v.CreatedAt.Date;
             var bucket = age <= TimeSpan.FromDays(90)
@@ -130,7 +131,7 @@ public sealed partial class NoteService
         if (wroteVersion)
         {
             var all = await db.NoteVersions.AsNoTracking().Where(v => v.PageId == pageId)
-                .Select(v => new VersionStamp(v.Id, v.CreatedAt)).ToListAsync(ct);
+                .Select(v => new VersionStamp(v.Id, v.CreatedAt, v.Name != null)).ToListAsync(ct);
             var staleIds = StaleVersions(all, at).ToList();
             if (staleIds.Count > 0)
                 await db.NoteVersions.Where(v => staleIds.Contains(v.Id)).ExecuteDeleteAsync(ct);
@@ -211,11 +212,11 @@ public sealed partial class NoteService
         var access = await GetAccessAsync(userId, pageId, ct);
         if (access == NoteAccess.None) return Fail<IReadOnlyList<NoteVersionDto>>("not_found");
         var rows = await db.NoteVersions.AsNoTracking().Where(v => v.PageId == pageId).OrderByDescending(v => v.CreatedAt)
-            .Take(MaxVersions).Select(v => new { v.Id, v.CreatedAt, v.Title, v.Contributors }).ToListAsync(ct);
+            .Take(MaxVersions).Select(v => new { v.Id, v.CreatedAt, v.Title, v.Contributors, v.Name }).ToListAsync(ct);
         var ids = rows.SelectMany(r => ParseIds(r.Contributors)).Distinct().ToList();
         var names = await db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.Name, ct);
         return Ok<IReadOnlyList<NoteVersionDto>>(rows.Select(r => new NoteVersionDto(r.Id, r.CreatedAt, r.Title,
-            ParseIds(r.Contributors).Where(names.ContainsKey).Select(id => names[id]).ToList())).ToList());
+            ParseIds(r.Contributors).Where(names.ContainsKey).Select(id => names[id]).ToList(), r.Name)).ToList());
     }
 
     private static IEnumerable<Guid> ParseIds(string? list) =>

@@ -134,6 +134,8 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<NoteCommentReaction> NoteCommentReactions => Set<NoteCommentReaction>();
     public DbSet<NoteTodoDue> NoteTodoDues => Set<NoteTodoDue>();
     public DbSet<NoteLink> NoteLinks => Set<NoteLink>();
+    public DbSet<NoteTemplate> NoteTemplates => Set<NoteTemplate>();
+    public DbSet<NoteView> NoteViews => Set<NoteView>();
     public DbSet<NoteAttachment> NoteAttachments => Set<NoteAttachment>();
 
     // News & Memos entities (single table with type enum: news/announcement/memo)
@@ -1362,6 +1364,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
         b.Entity<NoteVersion>(e =>
         {
             e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.Name).HasMaxLength(100);
             e.Property(x => x.Contributors).HasMaxLength(2000);
             e.HasIndex(x => new { x.PageId, x.CreatedAt });
             e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.PageId).OnDelete(DeleteBehavior.Cascade);
@@ -1379,6 +1382,23 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Body).HasMaxLength(2000);
             e.HasIndex(x => new { x.ThreadId, x.CreatedAt });
             e.HasOne(x => x.Author).WithMany().HasForeignKey(x => x.AuthorId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NoteTemplate>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.Property(x => x.Emoji).HasMaxLength(16);
+            e.Property(x => x.Accent).HasMaxLength(16);
+            e.Property(x => x.Kind).HasMaxLength(16);
+            e.Property(x => x.Excerpt).HasMaxLength(300);
+            e.HasIndex(x => new { x.OwnerId, x.CreatedAt });
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NoteView>(e =>
+        {
+            e.HasKey(x => new { x.PageId, x.UserId });
+            e.HasIndex(x => new { x.PageId, x.LastViewedAt });
+            e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.PageId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<NoteLink>(e =>
         {

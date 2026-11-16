@@ -105,6 +105,10 @@ public class NoteVisit
 public class NoteVersion
 {
     public Guid Id { get; set; }
+    /// A name someone gave this version ("Before the audit"). A named version is never thinned out by the cleanup.
+    public string? Name { get; set; }
+    public Guid? NamedById { get; set; }
+    /// A name someone gave this version ("Before the audit"). A named version is never thinned out by the cleanup.
     public Guid PageId { get; set; }
     public required byte[] State { get; set; }
     public required string Title { get; set; }
@@ -144,6 +148,31 @@ public class NoteComment
     public NoteThread Thread { get; set; } = default!;
     public User? Author { get; set; }
     public List<NoteCommentReaction> Reactions { get; set; } = [];
+}
+
+/// A page the owner saved as their own template: the content of the page at that moment, ready to start new pages from.
+/// Private to the owner. The attachments referenced inside are cloned when a page is started from it.
+public class NoteTemplate
+{
+    public Guid Id { get; set; }
+    public Guid OwnerId { get; set; }
+    public required string Name { get; set; }
+    public string? Emoji { get; set; }
+    public string Accent { get; set; } = "blue";
+    public string Kind { get; set; } = "page";
+    public required byte[] State { get; set; }
+    public string? Excerpt { get; set; }
+    public Guid? SourcePageId { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+/// Who opened a page and when they last did. Only the owner and editors see this list. One row per person per page.
+public class NoteView
+{
+    public Guid PageId { get; set; }
+    public Guid UserId { get; set; }
+    public DateTime LastViewedAt { get; set; }
+    public int Count { get; set; }
 }
 
 /// "This page links to that page", as last seen in the saved content (inline page links and sub-page blocks are not

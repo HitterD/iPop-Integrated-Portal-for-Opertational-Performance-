@@ -111,7 +111,17 @@ public record FindImportedRequest(IReadOnlyList<string> Keys);
 /// A live page of the caller's that came from the same source page as something being imported now.
 public record PreviousImportDto(string ImportKey, Guid Id, string Title, DateTime ImportedAt);
 
-public record NoteVersionDto(Guid Id, DateTime CreatedAt, string Title, IReadOnlyList<string> Contributors);
+public record NoteVersionDto(Guid Id, DateTime CreatedAt, string Title, IReadOnlyList<string> Contributors,
+    string? Name = null, bool IsCurrent = false);
+
+public record NameVersionRequest(string? Name);
+
+public record NoteTemplateDto(Guid Id, string Name, string? Emoji, string Accent, string Kind, string? Excerpt, DateTime CreatedAt);
+public record SaveTemplateRequest(string? Name);
+public record NewFromTemplateRequest(Guid? ParentId, string? Title);
+
+public record NoteViewerDto(Guid UserId, string Name, string? Nik, DateTime LastViewedAt, int Count);
+
 
 public record NoteShareDto(Guid Id, Guid? UserId, string? UserName, string? UserNik, string? UserPosition,
     Guid? RoomId, string? RoomName, string? RoomType, int RoomMembers, string Level,
@@ -199,6 +209,18 @@ public interface INoteService
 
     Task<NoteResult<IReadOnlyList<NoteVersionDto>>> GetVersionsAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task<NoteResult<string>> GetVersionStateAsync(Guid userId, Guid pageId, Guid versionId, CancellationToken ct);
+    /// Gives a version a name (or clears it with an empty name). Needs edit access. Named versions are kept forever.
+    Task<NoteResult<NoteVersionDto>> NameVersionAsync(Guid userId, Guid pageId, Guid versionId, string? name, CancellationToken ct);
+    /// Saves the page's current content as a named version right now (the "Name this version" on the live page).
+    Task<NoteResult<NoteVersionDto>> SaveNamedVersionAsync(Guid userId, Guid pageId, string? name, CancellationToken ct);
+
+    Task<NoteResult<NoteTemplateDto>> SaveTemplateAsync(Guid userId, Guid pageId, string? name, CancellationToken ct);
+    Task<IReadOnlyList<NoteTemplateDto>> GetTemplatesAsync(Guid userId, CancellationToken ct);
+    Task<NoteResult<NotePageDto>> CreateFromTemplateAsync(Guid userId, Guid templateId, NewFromTemplateRequest req, CancellationToken ct);
+    Task<NoteResult<bool>> DeleteTemplateAsync(Guid userId, Guid templateId, CancellationToken ct);
+
+    /// Owner and editors only: who opened the page, newest first.
+    Task<NoteResult<IReadOnlyList<NoteViewerDto>>> GetViewersAsync(Guid userId, Guid pageId, CancellationToken ct);
 
     Task<NoteResult<NoteSharesDto>> GetSharesAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task<NoteResult<NoteShareDto>> AddShareAsync(Guid userId, Guid pageId, AddNoteShareRequest req, CancellationToken ct);

@@ -143,6 +143,28 @@ public static class NotesEndpoints
         g.MapGet("/{id:guid}/versions/{versionId:guid}", (Guid id, Guid versionId, HttpContext http, INoteService svc, CancellationToken ct) =>
             Run(http, async me => From(await svc.GetVersionStateAsync(me.Id, id, versionId, ct), s => new { state = s })));
 
+        g.MapPut("/{id:guid}/versions/{versionId:guid}/name", (Guid id, Guid versionId, NameVersionRequest req, HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.NameVersionAsync(me.Id, id, versionId, req.Name, ct)))).RequirePermission("notes.write");
+        g.MapPost("/{id:guid}/versions", (Guid id, NameVersionRequest req, HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.SaveNamedVersionAsync(me.Id, id, req.Name, ct)))).RequirePermission("notes.write");
+        g.MapGet("/{id:guid}/viewers", (Guid id, HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.GetViewersAsync(me.Id, id, ct))));
+
+        // ── Personal templates ───────────────────────────────────────────────
+        g.MapGet("/templates", (HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => Results.Ok(await svc.GetTemplatesAsync(me.Id, ct))));
+        g.MapPost("/{id:guid}/save-template", (Guid id, SaveTemplateRequest req, HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.SaveTemplateAsync(me.Id, id, req.Name, ct)))).RequirePermission("notes.write");
+        g.MapPost("/templates/{templateId:guid}/use", (Guid templateId, NewFromTemplateRequest req, HttpContext http, INoteService svc, IRealtime rt, CancellationToken ct) =>
+            Run(http, async me =>
+            {
+                var r = await svc.CreateFromTemplateAsync(me.Id, templateId, req, ct);
+                if (r.Success) await PushAsync(rt, http, [me.Id], ct);
+                return From(r);
+            })).RequirePermission("notes.write");
+        g.MapDelete("/templates/{templateId:guid}", (Guid templateId, HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.DeleteTemplateAsync(me.Id, templateId, ct)))).RequirePermission("notes.write");
+
         // ── Sharing ──────────────────────────────────────────────────────────
         g.MapGet("/{id:guid}/shares", (Guid id, HttpContext http, INoteService svc, CancellationToken ct) =>
             Run(http, async me => From(await svc.GetSharesAsync(me.Id, id, ct))));

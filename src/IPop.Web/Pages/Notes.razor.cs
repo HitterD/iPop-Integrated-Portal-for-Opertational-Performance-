@@ -22,10 +22,10 @@ public partial class Notes
 {
     [Parameter] public Guid? Id { get; set; }
 
-    private const string EditorModule = "./js/notes/notes-editor.js?v=20261116-links";
+    private const string EditorModule = "./js/notes/notes-editor.js?v=20261116-pagetools";
 
     private enum View { Home, Page, New, Trash }
-    private enum Pop { None, More, Style, Emoji, Share, History, Tidy }
+    private enum Pop { None, More, Style, Emoji, Share, History, Tidy, Template }
 
     private View view = View.Home;
     private Pop pop = Pop.None;
@@ -80,6 +80,7 @@ public partial class Notes
         Phone.Changed += PhoneChanged;
         subs.Add(Auth.On("notesChanged", () => _ = InvokeAsync(async () => { await LoadSidebarAsync(); if (view == View.Trash) await LoadTrashAsync(); StateHasChanged(); })));
         await LoadSidebarAsync();
+        _ = LoadMyTemplatesAsync();
     }
 
     private Guid? lastId;
@@ -201,6 +202,7 @@ public partial class Notes
         mountPending = true;
         _ = LoadThreadsAsync();
         _ = LoadBacklinksAsync();
+        _ = LoadViewersAsync();
     }
 
     private void ExpandTo(NotePageDto p)

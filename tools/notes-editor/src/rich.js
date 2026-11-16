@@ -181,6 +181,17 @@ export function galleryItems(node) {
   try { return (JSON.parse(node.attrs.items || '[]') || []).filter(x => x && typeof x.id === 'string'); } catch { return []; }
 }
 
+/// New order of a gallery's items after moving the item at `from` to `to` (both clamped). Returns the same array when nothing moves.
+export function moveGalleryItem(items, from, to) {
+  if (!Array.isArray(items) || from < 0 || from >= items.length) return items;
+  const dest = Math.max(0, Math.min(items.length - 1, to));
+  if (dest === from) return items;
+  const next = items.slice();
+  const [it] = next.splice(from, 1);
+  next.splice(dest, 0, it);
+  return next;
+}
+
 /// A grid of images stored as one block. Items are a JSON string attribute (plain values sync safely in Yjs).
 export const NoteGallery = Node.create({
   name: 'noteGallery',
@@ -192,24 +203,44 @@ export const NoteGallery = Node.create({
   renderHTML({ node }) { return ['div', { 'data-gallery': '', 'data-items': node.attrs.items }]; },
   addOptions() { return { host: null }; },
   addNodeView() {
-    return ({ node, editor }) => {
+    return ({ node, editor, getPos }) => {
       const host = this.options.host?.() ?? {};
       const dom = el('div', 'nt-gal');
       dom.contentEditable = 'false';
-      let generation = 0;
+      let generation = 0, arranging = false;
       const paint = n => {
         const current = ++generation;
-        const items = galleryItems(n), shown = items.slice(0, 4), more = items.length - shown.length;
-        dom.className = `nt-gal n${Math.min(items.length, 4)}`;
-        dom.innerHTML = shown.map((it, k) => `<button type="button" class="t${k === 3 && more > 0 ? ' more' : ''}" data-k="${k}" ${k === 3 && more > 0 ? `data-more="+${more}"` : ''} title="${esc(it.name)}"><span class="nt-img-wait"></span></button>`).join('');
+        const items = galleryItems(n), shown = items;
+        const edit = editor.isEditable;
+        dom.className = `nt-gal n${items.length > 4 ? 'x' : Math.min(items.length, 4)}${edit && arranging ? ' arranging' : ''}`;
+        dom.innerHTML = shown.map((it, k) => `<div class="t" data-k="${k}" role="button" tabindex="0" title="${esc(it.name)}"><span class="nt-img-wait"></span>`
+          + (edit && arranging ? `<span class="gbar"><button type="button" data-mv="-1" aria-label="Move earlier"${k === 0 ? ' disabled' : ''}>←</button><button type="button" data-mv="1" aria-label="Move later"${k === items.length - 1 ? ' disabled' : ''}>→</button><button type="button" data-rm="1" aria-label="Remove from gallery">✕</button></span>` : '') + '</div>').join('')
+          + (edit ? `<button type="button" class="garr" data-arr="1" aria-pressed="${arranging}">${arranging ? 'Done' : 'Arrange'}</button>` : '');
         shown.forEach((it, k) => loadBlob(host, it.id).then(u => {
           const b = dom.querySelector(`[data-k="${k}"]`); if (!b || current !== generation) return;
-          const img = document.createElement('img'); img.src = u; img.alt = it.name || ''; img.draggable = false; b.replaceChildren(img);
+          const img = document.createElement('img'); img.src = u; img.alt = it.name || ''; img.draggable = false; b.querySelector('.nt-img-wait')?.replaceWith(img);
         }, () => {}));
       };
       paint(node);
       dom.addEventListener('click', e => {
+        if (e.target.closest('[data-arr]')) { arranging = !arranging; paint(node); return; }
         const t = e.target.closest('[data-k]'); if (!t) return;
+        const mv = e.target.closest('[data-mv]'), rm = e.target.closest('[data-rm]');
+        if (mv || rm) {
+          e.preventDefault(); e.stopPropagation();
+          const items = galleryItems(node), k = +t.dataset.k;
+          const next = rm ? items.filter((_, i) => i !== k) : moveGalleryItem(items, k, k + +mv.dataset.mv);
+          const pos = getPos();
+          if (pos == null || next === items) return;
+          const tr = editor.state.tr;
+          // An emptied gallery disappears, a single image turns back into a plain image block.
+          if (next.length === 0) tr.delete(pos, pos + node.nodeSize);
+          else if (next.length === 1) tr.replaceWith(pos, pos + node.nodeSize, editor.schema.nodes.noteImage.create({ ...next[0], size: next[0].size || 0 }));
+          else tr.setNodeMarkup(pos, undefined, { ...node.attrs, items: JSON.stringify(next) });
+          editor.view.dispatch(tr);
+          return;
+        }
+        if (arranging) return;
         const all = pageImages(editor.state.doc), first = galleryItems(node)[+t.dataset.k];
         openLightbox(host, all, all.findIndex(x => x.id === first?.id));
       });

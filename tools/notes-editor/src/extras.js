@@ -348,3 +348,62 @@ export function createUploadTray() {
     destroy() { dom.remove(); },
   };
 }
+
+// ── Version diff ────────────────────────────────────────────────────────────
+
+/// The text of a document as one string per block (paragraph, heading, list item, table cell row...). Empty blocks are skipped.
+export function blockTexts(doc) {
+  const out = [];
+  const walk = (n, task = null) => {
+    if (n.type === 'noteDraw') { out.push('[drawing]'); return; }
+    if (n.type === 'noteImage') { out.push(`[image${n.attrs?.caption ? ': ' + n.attrs.caption : ''}]`); return; }
+    if (n.type === 'noteFile') { out.push(`[file: ${n.attrs?.name || ''}]`); return; }
+    if (n.type === 'noteBookmark') { out.push(`[link: ${n.attrs?.title || n.attrs?.url || ''}]`); return; }
+    const inlineKids = (n.content || []).some(c => c.type === 'text' || c.type === 'mention' || c.type === 'pageLink' || c.type === 'dateChip' || c.type === 'hardBreak');
+    if (inlineKids) {
+      const t = (n.content || []).map(c => c.type === 'text' ? c.text : c.type === 'mention' ? `@${c.attrs?.label || ''}` : c.type === 'pageLink' ? (c.attrs?.title || 'page') : c.type === 'dateChip' ? (c.attrs?.date || '') : c.type === 'hardBreak' ? ' ' : '').join('').trim();
+      if (t) out.push(task === null ? t : `${task ? '[x]' : '[ ]'} ${t}`);
+      return;
+    }
+    // A to-do's text sits in its first paragraph: hand it the checked state (nested content below that is plain).
+    if (n.type === 'taskItem') { (n.content || []).forEach((c, i) => walk(c, i === 0 ? !!n.attrs?.checked : null)); return; }
+    (n.content || []).forEach(c => walk(c));
+  };
+  (doc?.content || []).forEach(n => walk(n));
+  return out;
+}
+
+/// Line diff by longest common subsequence: [{ kind: 'same' | 'add' | 'del', text }]. Pages are small (a few hundred blocks),
+/// and above 2000 lines on a side the diff falls back to "everything changed" rather than freezing the tab.
+export function diffLines(before, after) {
+  if (before.length > 2000 || after.length > 2000) {
+    return [...before.map(text => ({ kind: 'del', text })), ...after.map(text => ({ kind: 'add', text }))];
+  }
+  const n = before.length, m = after.length;
+  const lcs = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) lcs[i][j] = before[i] === after[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+  const out = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (before[i] === after[j]) { out.push({ kind: 'same', text: before[i] }); i++; j++; }
+    else if (lcs[i + 1][j] >= lcs[i][j + 1]) out.push({ kind: 'del', text: before[i++] });
+    else out.push({ kind: 'add', text: after[j++] });
+  }
+  while (i < n) out.push({ kind: 'del', text: before[i++] });
+  while (j < m) out.push({ kind: 'add', text: after[j++] });
+  return out;
+}
+
+/// Long unchanged stretches are folded to "… N unchanged blocks …" so the changes stand out. Keeps `context` lines around a change.
+export function foldSame(lines, context = 1) {
+  const keep = lines.map(l => l.kind !== 'same');
+  const near = keep.map((_, i) => { for (let d = -context; d <= context; d++) if (keep[i + d]) return true; return false; });
+  const out = [];
+  let skipped = 0;
+  lines.forEach((l, i) => {
+    if (near[i]) { if (skipped) { out.push({ kind: 'fold', text: `${skipped} unchanged block${skipped === 1 ? '' : 's'}` }); skipped = 0; } out.push(l); }
+    else skipped++;
+  });
+  if (skipped) out.push({ kind: 'fold', text: `${skipped} unchanged block${skipped === 1 ? '' : 's'}` });
+  return out;
+}

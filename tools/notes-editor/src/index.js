@@ -18,7 +18,7 @@ import { TextStyle, Color, BackgroundColor } from '@tiptap/extension-text-style'
 import { Details, DetailsContent } from '@tiptap/extension-details';
 import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
-import { FindReplace, createFindBar, Columns, Column, DateChip, EmojiShortcodes, ToggleSummary, wordStats, BlockId, findBlock, ensureBlockId, uploadXhr, createUploadTray } from './extras.js';
+import { FindReplace, createFindBar, Columns, Column, DateChip, EmojiShortcodes, ToggleSummary, wordStats, BlockId, findBlock, ensureBlockId, uploadXhr, createUploadTray, blockTexts, diffLines, foldSame } from './extras.js';
 import { Placeholder } from '@tiptap/extensions';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCaret from '@tiptap/extension-collaboration-caret';
@@ -83,6 +83,17 @@ function baseExtensions(host, { collab = true, rich = {} } = {}) {
 
 /// Renders a stored version read-only (history dialog). opts: { apiBase, dotnet } so images and files
 /// in the old version can still be fetched with the user's token.
+/// Text of a stored state (base64 Yjs) as one string per block. Used for "what changed" between two versions.
+function stateBlocks(state) {
+  const tmp = new Y.Doc();
+  try { Y.applyUpdate(tmp, unb64(state)); return blockTexts(yXmlFragmentToProsemirrorJSON(tmp.getXmlFragment(FIELD))); }
+  finally { tmp.destroy(); }
+}
+/// Compare two stored states: lines for the history panel ({ kind, text } with unchanged stretches folded).
+export function diffVersions(beforeState, afterState) {
+  return foldSame(diffLines(stateBlocks(beforeState), stateBlocks(afterState)));
+}
+
 export function preview(el, state, opts = {}) {
   const doc = new Y.Doc();
   Y.applyUpdate(doc, unb64(state));
@@ -749,6 +760,8 @@ export async function mount(el, opts) {
     async boardPng(dark) { return board ? await board.png({ dark }) : null; },
     boardCount() { return board ? board.count() : 0; },
     isEmpty() { return !closing && editor.isEmpty; },
+    /// The page as it is right now, as a base64 Yjs state (for comparing with a saved version).
+    currentState() { return b64(Y.encodeStateAsUpdate(ydoc)); },
     focus() { if (!closing) editor.commands.focus('start'); },
     restore(state) {
       if (closing || !canEdit) return;

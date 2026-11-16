@@ -1039,3 +1039,43 @@
 .nt-uptray i b { display: block; height: 100%; width: 0; background: var(--accent, #0A84FF); transition: width .15s; }
 .nt-uptray .up.bad .pc { color: #FF3B30; opacity: 1; }
 @media (max-width: 640px) { .nt-uptray { bottom: 76px; } }
+
+/* Version names + diff, save-as-template, my templates, who opened the page. */
+.nt-vbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0 10px; }
+.nt-vname { padding: 2px 10px; border-radius: 999px; background: rgba(255,149,0,.16); color: #B25E00; font-size: 13px; font-weight: 600; }
+.nt-vname-form { display: flex; gap: 6px; align-items: center; margin: 0 0 10px; }
+.nt-vname-form.tight { margin: 4px 0 0; }
+.nt-vname-form.col { flex-direction: column; align-items: stretch; margin: 0; padding: 4px 6px 6px; }
+.nt-vname-form.col .acts { display: flex; justify-content: flex-end; gap: 6px; }
+.nt-vname-form input { flex: 1 1 auto; min-width: 0; padding: 6px 9px; border-radius: 8px; border: 1px solid rgba(0,0,0,.14); background: transparent; color: inherit; font: inherit; }
+.nt-vnow { padding: 8px 10px 10px; border-bottom: 1px solid rgba(0,0,0,.08); }
+.nt-vnow .d { font-weight: 600; font-size: 13px; }
+.nt-tplsave { width: 300px; }
+.nt-tplsave .ds { font-size: 12px; opacity: .6; }
+.nt-mytpl { display: flex; align-items: center; }
+.nt-mytpl .mi { flex: 1 1 auto; min-width: 0; }
+.nt-mytpl .nt-icon-btn { opacity: 0; }
+.nt-mytpl:hover .nt-icon-btn, .nt-mytpl:focus-within .nt-icon-btn { opacity: .8; }
+.nt-diff { border: 1px solid rgba(0,0,0,.1); border-radius: 12px; overflow: hidden; margin-bottom: 14px; font-size: 14px; }
+.nt-diff .sum { display: flex; gap: 14px; padding: 8px 12px; background: rgba(118,118,128,.1); font-weight: 600; font-size: 13px; }
+.nt-diff .sum .add { color: #1F8F4E; } .nt-diff .sum .del { color: #C9372C; }
+.nt-diff .ln { display: flex; gap: 8px; padding: 3px 12px; line-height: 1.5; }
+.nt-diff .ln .mk { width: 12px; flex: 0 0 12px; opacity: .7; }
+.nt-diff .ln.add { background: rgba(52,199,89,.14); }
+.nt-diff .ln.del { background: rgba(255,59,48,.12); text-decoration: line-through; text-decoration-color: rgba(255,59,48,.5); }
+.nt-diff .ln.fold { opacity: .5; font-size: 12px; justify-content: center; }
+.nt-viewers { padding: 10px 12px; border-bottom: 1px solid rgba(0,0,0,.08); }
+.nt-viewers h5 { margin: 0 0 6px; font-size: 11px; letter-spacing: .03em; opacity: .6; }
+.nt-viewers .vr { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; font-size: 13px; }
+.nt-viewers .vr small { opacity: .6; white-space: nowrap; }
+
+/* Gallery: every image shows; five or more flow into an even grid; Arrange moves or removes images. */
+.nt-editor .nt-gal.nx { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); grid-auto-rows: 150px; }
+.nt-editor .nt-gal { position: relative; }
+.nt-editor .nt-gal .garr { position: absolute; top: 8px; right: 8px; z-index: 2; border: 0; padding: 4px 10px; border-radius: 999px; background: rgba(0,0,0,.55); color: #fff; font: inherit; font-size: 12px; cursor: pointer; opacity: 0; transition: opacity .15s; }
+.nt-editor .nt-gal:hover .garr, .nt-editor .nt-gal:focus-within .garr, .nt-editor .nt-gal.arranging .garr { opacity: 1; }
+.nt-editor .nt-gal.arranging .t { cursor: default; outline: 2px dashed rgba(255,255,255,.7); outline-offset: -4px; }
+.nt-editor .nt-gal .gbar { position: absolute; left: 6px; right: 6px; bottom: 6px; display: flex; gap: 4px; justify-content: center; z-index: 2; }
+.nt-editor .nt-gal .gbar button { border: 0; border-radius: 8px; padding: 3px 9px; background: rgba(0,0,0,.6); color: #fff; font: inherit; cursor: pointer; }
+.nt-editor .nt-gal .gbar button:disabled { opacity: .35; cursor: default; }
+.nt-editor .nt-gal .gbar button[data-rm] { background: rgba(255,59,48,.85); }

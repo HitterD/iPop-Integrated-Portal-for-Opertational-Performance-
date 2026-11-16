@@ -3231,6 +3231,55 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("NoteShares");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.NoteTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Accent")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Emoji")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Excerpt")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("SourcePageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("State")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId", "CreatedAt");
+
+                    b.ToTable("NoteTemplates");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.NoteThread", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3344,6 +3393,13 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Name")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid?>("NamedById")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("PageId")
                         .HasColumnType("uuid");
 
@@ -3361,6 +3417,29 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("PageId", "CreatedAt");
 
                     b.ToTable("NoteVersions");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NoteView", b =>
+                {
+                    b.Property<Guid>("PageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("LastViewedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("PageId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("PageId", "LastViewedAt");
+
+                    b.ToTable("NoteViews");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.NoteVisit", b =>
@@ -7135,6 +7214,15 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.NoteTemplate", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.NoteThread", b =>
                 {
                     b.HasOne("IPop.Core.Entities.NotePage", null)
@@ -7167,6 +7255,21 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasOne("IPop.Core.Entities.NotePage", null)
                         .WithMany()
                         .HasForeignKey("PageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NoteView", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.NotePage", null)
+                        .WithMany()
+                        .HasForeignKey("PageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

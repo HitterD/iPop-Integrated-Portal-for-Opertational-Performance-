@@ -290,6 +290,7 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
             db.ChangeTracker.Clear();
         }
 
+        await RecordViewAsync(userId, pageId, ct);
         return Ok(await BuildPageAsync(userId, pageId, chain, access, ct));
     }
 
