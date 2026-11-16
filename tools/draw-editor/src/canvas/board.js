@@ -258,7 +258,8 @@ export function mountCanvas(container, opts) {
     ['sticky', 'Sticky note', 'S'], ['text', 'Text', 'T'], ['shape', 'Shapes', 'R'], ['connector', 'Connector', 'A'], '|', ['frame', 'Frame', 'F'], ['image', 'Picture or file', 'I'], ['comment', 'Comment', 'C'], ['stamp', 'Stamp', 'K'], ['card', 'Add a Notes page or Projects task', 'N'], ['laser', 'Laser pointer', 'L'],
   ];
   // phone = a narrow screen (same breakpoint as the rest of the app: under 768 px)
-  const isPhone = () => { try { return window.matchMedia('(max-width: 767px)').matches; } catch { return false; } };
+  // one phone breakpoint for the whole app: ask ipop.mobile (same query as the CSS)
+  const isPhone = () => { try { return !!window.ipop?.mobile?.isMobile?.(); } catch { return false; } };
   let moreOpen = false;
   const moreMenu = el('div', 'wb-menu wb-moremenu'); moreMenu.hidden = true;
   root.append(moreMenu);
