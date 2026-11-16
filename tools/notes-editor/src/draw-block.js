@@ -4,10 +4,37 @@
 // part of version history, and merged after being offline.
 import { Node } from '@tiptap/core';
 import { el } from './nodes.js';
+import * as Y from 'yjs';
 
-let bundle = null;
+let bundle = null, canvasBundle = null;
+
+/// Which drawing engine to use: iPop's own canvas (default since the whiteboard rework, 2026-11), or the older Excalidraw
+/// bundle as a way back. `localStorage['ipop.canvas'] = 'old'` switches one browser back; the server never needs to know.
+export function useOwnCanvas() {
+  try { return localStorage.getItem('ipop.canvas') !== 'old'; } catch { return true; }
+}
+
+/// Loads iPop's own canvas bundle (wwwroot/js/notes/canvas/, ~45 KB gzip) once.
+export function loadCanvasBundle() {
+  if (canvasBundle) return canvasBundle;
+  const base = new URL('./canvas/', import.meta.url);
+  if (!document.querySelector('link[data-ipop-canvas-css]')) {
+    const l = document.createElement('link');
+    l.rel = 'stylesheet'; l.href = new URL('canvas.css', base).href; l.dataset.ipopCanvasCss = '1';
+    document.head.appendChild(l);
+  }
+  canvasBundle = import(/* @vite-ignore */ new URL('canvas.js', base).href).catch(e => { canvasBundle = null; throw e; });
+  return canvasBundle;
+}
+
 /// Loads the drawing bundle once. Resolves the module, or rejects with a readable error.
 export function loadDrawBundle() {
+  if (useOwnCanvas()) return loadCanvasBundle();
+  return loadExcalidrawBundle();
+}
+
+/// The older Excalidraw bundle (kept so a browser can be switched back, and for nothing else).
+export function loadExcalidrawBundle() {
   if (bundle) return bundle;
   const base = new URL('./draw/', import.meta.url);
   window.EXCALIDRAW_ASSET_PATH = base.href;
@@ -32,10 +59,13 @@ const live = new Set();
 const lockListeners = new Set();   // inline blocks re-read the editor's editable state when the page lock changes
 export function setAllReadOnly(readOnly) { live.forEach(i => i.setReadOnly(readOnly)); lockListeners.forEach(f => f(readOnly)); }
 
-export async function mountScene(container, { ydoc, id, readOnly, mode = 'block', onLinkOpen }) {
+export async function mountScene(container, { ydoc, id, readOnly, mode = 'block', onLinkOpen, onFullscreen, toast }) {
   const mod = await loadDrawBundle();
-  const ymap = ydoc.getMap(sceneName(id));
-  const inst = mod.mountDraw(container, { ymap, doc: ydoc, readOnly, theme: isDark() ? 'dark' : 'light', mode, onLinkOpen });
+  const own = mod.ENGINE === 'canvas';
+  // The own canvas resolves (and on first edit converts) its "wb:<id>" scene itself; Excalidraw reads "draw:<id>".
+  const inst = own
+    ? mod.mountDraw(container, { Y, doc: ydoc, id, readOnly, theme: isDark() ? 'dark' : 'light', mode, onLinkOpen, onFullscreen, toast })
+    : mod.mountDraw(container, { ymap: ydoc.getMap(sceneName(id)), doc: ydoc, readOnly, theme: isDark() ? 'dark' : 'light', mode, onLinkOpen });
   const mo = new MutationObserver(() => inst.setTheme(isDark() ? 'dark' : 'light'));
   mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   const handle = { ...inst, destroy() { live.delete(handle); mo.disconnect(); inst.destroy(); } };
@@ -66,6 +96,9 @@ export const NoteDraw = Node.create({
       dom.contentEditable = 'false';
       dom.style.height = `${node.attrs.height}px`;
       const stage = el('div', 'nt-draw-stage');
+      // The block can be dragged to move it in the page, but never from inside the canvas (that is drawing).
+      stage.draggable = false;
+      stage.addEventListener('dragstart', e => { e.preventDefault(); e.stopPropagation(); });
       dom.append(stage);
       let inst = null, gone = false, current = node;
       const status = el('div', 'nt-draw-wait', 'Loading drawing…');
@@ -81,6 +114,7 @@ export const NoteDraw = Node.create({
           catch { host.toast?.('Couldn’t make the PNG. Try again.'); }
         }, 'Download as PNG'),
       );
+      if (useOwnCanvas()) bar.classList.add('nt-draw-top-own');
       dom.append(bar);
 
       if (editable) {
@@ -109,7 +143,7 @@ export const NoteDraw = Node.create({
         const ydoc = host.drawDoc?.();
         if (!ydoc || !current.attrs.id) { status.textContent = 'This drawing can’t be shown here.'; return; }
         try {
-          inst = await mountScene(stage, { ydoc, id: current.attrs.id, readOnly: !editable, onLinkOpen: url => host.openLink?.(url) });
+          inst = await mountScene(stage, { ydoc, id: current.attrs.id, readOnly: !editable, onLinkOpen: url => host.openLink?.(url), onFullscreen: () => host.drawFullscreen?.(current.attrs.id), toast: m => host.toast?.(m) });
           if (gone) { inst.destroy(); inst = null; return; }
           status.remove();
           dom.classList.toggle('ro', !editable);

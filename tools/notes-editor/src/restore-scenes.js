@@ -11,7 +11,8 @@ const nonce = () => Math.floor(Math.random() * 2 ** 31);
 /// Returns how many elements were written. `live` and `old` are Y.Docs.
 export function restoreScenes(live, old) {
   let written = 0;
-  const names = new Set([...live.share.keys(), ...old.share.keys()].filter(k => k.startsWith('draw:')));
+  // "draw:<id>" = Excalidraw scenes, "wb:<id>" = iPop canvas scenes; both use the same version / versionNonce rule.
+  const names = new Set([...live.share.keys(), ...old.share.keys()].filter(k => k.startsWith('draw:') || k.startsWith('wb:')));
   for (const name of names) {
     const liveMap = live.getMap(name), oldMap = old.getMap(name);
     const keys = new Set([...liveMap.keys(), ...oldMap.keys()]);

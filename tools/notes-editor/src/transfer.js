@@ -497,11 +497,18 @@ export function stateToParts(doc) {
   for (const u of doc.updates || []) Y.applyUpdate(y, unb64(u.data));
   const json = yXmlFragmentToProsemirrorJSON(y.getXmlFragment(FIELD));
   const scenes = new Map();
+  // A drawing converted to iPop's own canvas lives in "wb:<id>"; one never opened since then is still only in "draw:<id>"
+  // (the export renderer converts those on the fly). The canvas scene wins when both exist.
+  const read = name => { const els = []; y.getMap(name).forEach(v => { if (v && typeof v === 'object' && typeof v.id === 'string' && typeof v.type === 'string' && !v.isDeleted) els.push(v); }); return els; };
   for (const name of y.share.keys()) {
     if (!name.startsWith('draw:')) continue;
-    const els = [];
-    y.getMap(name).forEach(v => { if (v && typeof v === 'object' && typeof v.id === 'string' && typeof v.type === 'string' && !v.isDeleted) els.push(v); });
+    const els = read(name);
     if (els.length) scenes.set(name.slice(5), els);
+  }
+  for (const name of y.share.keys()) {
+    if (!name.startsWith('wb:')) continue;
+    const els = read(name);
+    if (els.length) scenes.set(name.slice(3), els);
   }
   y.destroy();
   return { json, scenes };

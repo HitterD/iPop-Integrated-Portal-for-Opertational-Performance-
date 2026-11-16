@@ -1079,3 +1079,28 @@
 .nt-editor .nt-gal .gbar button { border: 0; border-radius: 8px; padding: 3px 9px; background: rgba(0,0,0,.6); color: #fff; font: inherit; cursor: pointer; }
 .nt-editor .nt-gal .gbar button:disabled { opacity: .35; cursor: default; }
 .nt-editor .nt-gal .gbar button[data-rm] { background: rgba(255,59,48,.85); }
+
+/* Whiteboard page (own canvas): a slim title bar and a board that fills the rest of the page. */
+.nt-pageview.is-board { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.nt-doc-scroll:has(.nt-pageview.is-board) { overflow: hidden; display: flex; flex-direction: column; }
+.nt-pageview.is-board .nt-lockbar { margin: 8px 14px 0; }
+.nt-boardhead { display: flex; align-items: center; gap: 8px; padding: 8px 14px; min-height: 48px; flex: none; }
+.nt-boardhead-icon { width: 34px; height: 34px; border: 0; border-radius: 9px; background: none; font-size: 22px; line-height: 1; cursor: pointer; flex: none; }
+.nt-boardhead-icon:hover:not(:disabled) { background: var(--fill); }
+.nt-boardhead-icon:disabled { cursor: default; }
+.nt-boardhead-title { flex: 1 1 auto; min-width: 60px; border: 0; background: none; color: var(--ink); font: 650 19px/1.2 var(--display, inherit); letter-spacing: -.01em; padding: 4px 6px; border-radius: 8px; outline: none; }
+.nt-boardhead-title:hover:not([readonly]), .nt-boardhead-title:focus { background: var(--fill); }
+.nt-boardhead-meta { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+@media (max-width: 640px) { .nt-boardhead-meta { display: none; } }
+.nt-pageview.is-board .nt-board { flex: 1 1 auto; height: auto; min-height: 320px; margin: 0 14px 14px; border-radius: 14px; }
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .nt-pageview.is-board .nt-board { margin: 0; border-radius: 0; box-shadow: none; }
+  .nt-boardhead { padding: 6px 10px; min-height: 42px; }
+}
+/* Full screen: the board element is moved to <body> and covers the window (iPop sidebar, Notes list and top bar hidden). */
+.nt-board.nt-board-fs { position: fixed; inset: 0; z-index: 1000; margin: 0; border-radius: 0; height: 100dvh; box-shadow: none; }
+html.nt-board-fs-open, html.nt-board-fs-open body { overflow: hidden; }
+/* own canvas in a /draw block: Full screen lives in the tool bar; PNG moves to the top-right corner, clear of the tools */
+.nt-draw-top.nt-draw-top-own { top: 8px; bottom: auto; right: 8px; }
+.nt-draw-top.nt-draw-top-own .nt-draw-btn:first-child { display: none; }
+.nt-draw .wb { border-radius: inherit; }

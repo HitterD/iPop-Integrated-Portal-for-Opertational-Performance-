@@ -276,11 +276,24 @@
                 }
                 else
                 {
-                    <section class="nt-pageview @FontClass @(note.SmallText ? "small" : "")" style="--pc:@AccentHex(note.Accent)">
+                    <section class="nt-pageview @FontClass @(note.SmallText ? "small" : "") @(note.Kind == "board" ? "is-board" : "")" style="--pc:@AccentHex(note.Accent)">
                         @if (IsLocked)
                         {
                             <div class="nt-lockbar" role="status"><i data-lucide="lock" class="sm"></i><span>This page is locked@(note.LockedByName is { } lbn ? $" by {FirstName(lbn)}" : ""). Nobody can edit it until it is unlocked.</span>@if (HasEditAccess) {<button type="button" class="nt-btn" @onclick="ToggleLockAsync">Unlock</button>}</div>
                         }
+                        @if (note.Kind == "board")
+                        {
+                            @* A whiteboard fills the page: icon + title in one slim bar, then the board. Templates and full screen are on the board. *@
+                            <div class="nt-boardhead">
+                                <button type="button" class="nt-boardhead-icon" title="@(CanEdit ? "Change icon" : "")" disabled="@(!CanEdit)" @onclick="() => { if (CanEdit) pop = Pop.Emoji; }">@(note.Emoji ?? "🧩")</button>
+                                <input class="nt-boardhead-title" placeholder="Untitled" value="@titleDraft" readonly="@(!CanEdit)" @ref="titleRef"
+                                       @oninput="OnTitleInput" @onkeydown="OnTitleKey" @onblur="FlushTitle" aria-label="Title" />
+                                <span class="nt-boardhead-meta">Edited @Ago(note.UpdatedAt)@(note.UpdatedByName is { } bub ? $" by {FirstName(bub)}" : "")</span>
+                            </div>
+                            <div class="nt-board" @ref="boardRef" @key="@($"board-{note.Id}")"></div>
+                        }
+                        else
+                        {
                         @if (HasCover || coverUploading)
                         {
                             <div class="nt-cover @(HasPhotoCover ? "photo" : "") @(coverRepositioning ? "repo" : "") @(coverUploading ? "loading" : "")" style="@CoverStyle" @ref="coverRef">
@@ -359,20 +372,7 @@
                                     <span class="nt-prop nt-imported" title="Imported @ShortDate(note.CreatedAt)"><i data-lucide="file-up"></i>Imported from @SourceLabel(src)</span>
                                 }
                             </div>
-                            @if (note.Kind == "board")
-                            {
-                                <div class="nt-board-bar" role="toolbar" aria-label="Whiteboard templates">
-                                    <span class="lbl">Start from</span>
-                                    @foreach (var (key, label) in BoardTemplates)
-                                    {
-                                        var k = key;
-                                        <button type="button" class="nt-btn" disabled="@(!CanEdit)" @onclick="() => ApplyBoardTemplateAsync(k)">@label</button>
-                                    }
-                                </div>
-                                <div class="nt-board" @ref="boardRef" @key="@($"board-{note.Id}")"></div>
-                            }
-                            @* A whiteboard has no document text, but the text editor still carries the page's sync, so it stays mounted (hidden). *@
-                            <div @ref="editorRef" @key="note.Id" class="@(note.Kind == "board" ? "nt-editor-hidden" : "")"></div>
+                            @EditorHost
                             @if (showTemplates)
                             {
                                 <div class="nt-tpl-hint">OR START FROM A TEMPLATE</div>
@@ -409,6 +409,12 @@
                                 }
                             }
                         </div>
+                        }
+                        @if (note.Kind == "board")
+                        {
+                            @* A whiteboard has no document text, but the text editor still carries the page's sync, so it stays mounted (hidden). *@
+                            <div class="nt-editor-hidden">@EditorHost</div>
+                        }
                     </section>
                 }
             }
@@ -1209,6 +1215,8 @@
 }
 
 @code {
+    private RenderFragment EditorHost => @<div @ref="editorRef" @key="note!.Id"></div>;
+
     private RenderFragment CommentsBody => @<text>
         <div class="nt-cp-head">
             <h2>Comments</h2>

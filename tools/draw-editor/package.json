@@ -2,14 +2,16 @@
   "name": "ipop-draw-editor",
   "private": true,
   "version": "1.0.0",
-  "description": "Excalidraw bundle for iPop Notes drawings and whiteboards. Output: src/IPop.Web/wwwroot/js/notes/draw/",
+  "description": "iPop Notes drawings and whiteboards: iPop's own canvas (src/canvas -> wwwroot/js/notes/canvas/) and the older Excalidraw bundle (-> wwwroot/js/notes/draw/), kept until every board is converted.",
   "type": "module",
   "scripts": {
-    "build": "node build.mjs",
-    "test": "node --test tests/*.test.mjs"
+    "build": "node build.mjs && node build-canvas.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "build:canvas": "node build-canvas.mjs"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "0.18.1",
+    "perfect-freehand": "1.2.2",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "yjs": "^13.6.33"

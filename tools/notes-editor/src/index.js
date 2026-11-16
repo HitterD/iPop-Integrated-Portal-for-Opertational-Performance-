@@ -111,7 +111,8 @@ export function preview(el, state, opts = {}) {
     toast: () => {},
   };
   // A whiteboard version has no text, only its board: show it as a read-only drawing so the history is not an empty page.
-  const hasBoard = doc.share.has('draw:board') && doc.getMap('draw:board').size > 0 && !JSON.stringify(json).includes('"noteDraw"');
+  const hasScene = n => doc.share.has(n) && doc.getMap(n).size > 0;
+  const hasBoard = (hasScene('draw:board') || hasScene('wb:board')) && !JSON.stringify(json).includes('"noteDraw"');
   const content = hasBoard ? { ...json, content: [{ type: 'noteDraw', attrs: { id: 'board', height: 420 } }, ...(json.content || [])] } : json;
   const ed = new Editor({ element: el, editable: false, extensions: baseExtensions(host, { collab: false }), content,
     editorProps: { attributes: { class: 'nt-editor' } } });
@@ -344,7 +345,7 @@ export async function mount(el, opts) {
     fsClose = finish;
     close.addEventListener('click', finish);
     document.addEventListener('keydown', onKey, true);
-    try { inst = await mountScene(stage, { ydoc, id, readOnly: !canEdit, mode: 'board' }); if (!fsClose) inst.destroy(); }
+    try { inst = await mountScene(stage, { ydoc, id, readOnly: !canEdit, mode: 'board', toast: m => host.toast(m) }); if (!fsClose) inst.destroy(); }
     catch { host.toast('Couldn’t load the drawing tools. Check your connection.'); finish(); }
   }
 
@@ -391,9 +392,26 @@ export async function mount(el, opts) {
   });
 
   // A whiteboard page: the same document and sync, but the page body is one endless canvas (scene "draw:board") instead of text.
-  let board = null;
+  let board = null, boardFsExit = null;
   if (opts.kind === 'board' && opts.boardEl) {
-    mountScene(opts.boardEl, { ydoc, id: 'board', readOnly: !canEdit, mode: 'board', onLinkOpen: url => host.openLink(url) })
+    const boardEl = opts.boardEl;
+    let fsHome = null;
+    const onBoardFs = on => {
+      if (on && !fsHome) {
+        fsHome = { parent: boardEl.parentNode, next: boardEl.nextSibling };
+        document.body.appendChild(boardEl);
+        boardEl.classList.add('nt-board-fs');
+        document.documentElement.classList.add('nt-board-fs-open');
+      } else if (!on && fsHome) {
+        boardEl.classList.remove('nt-board-fs');
+        document.documentElement.classList.remove('nt-board-fs-open');
+        if (fsHome.parent?.isConnected) fsHome.parent.insertBefore(boardEl, fsHome.next?.parentNode === fsHome.parent ? fsHome.next : null); else boardEl.remove();
+        fsHome = null;
+      }
+      return !!fsHome;
+    };
+    boardFsExit = () => onBoardFs(false);
+    mountScene(boardEl, { ydoc, id: 'board', readOnly: !canEdit, mode: 'board', onLinkOpen: url => host.openLink(url), toast: m => host.toast(m), onFullscreen: onBoardFs })
       .then(inst => { if (closing) inst.destroy(); else board = inst; })
       .catch(() => host.toast('Couldn’t load the whiteboard tools. Check your connection and reload the page.'));
   }
@@ -791,6 +809,7 @@ export async function mount(el, opts) {
       document.querySelectorAll('.nt-share-ask').forEach(e => e.remove());
       toolbar.destroy(); blockMenu.destroy(); rich?.destroy();
       for (const c of upAborts) c.abort(); upTray.destroy();
+      boardFsExit?.();
       findBar.destroy(); stats.remove(); paintStats.cancel(); document.removeEventListener('keydown', onFindKey, true);
       editor.destroy(); awareness.destroy(); ydoc.destroy();
       releaseBlobs();
