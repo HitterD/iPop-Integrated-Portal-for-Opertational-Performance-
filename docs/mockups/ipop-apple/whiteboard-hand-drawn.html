@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Whiteboard Hand Drawn</title>
+<style>
+:root{
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",system-ui,sans-serif;
+  --display:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter","Segoe UI",system-ui,sans-serif;
+  --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+  --hand:"Segoe Print","Bradley Hand","Chalkboard SE","Comic Sans MS",cursive;
+  --bg:#F2F2F4;--surface:#fff;--surface-2:#F5F5F7;--fill:rgba(118,118,128,.12);--fill-2:rgba(118,118,128,.2);
+  --line:rgba(0,0,0,.08);--line-2:rgba(0,0,0,.15);
+  --ink:#1D1D1F;--ink-2:#424245;--ink-3:#86868B;--ink-4:#AEAEB2;
+  --accent:#34A853;--accent-ink:#1E8E3E;--accent-soft:rgba(52,168,83,.12);
+  --blue:#0A84FF;--blue-soft:rgba(10,132,255,.12);--red:#FF3B30;--orange-soft:rgba(255,149,0,.14);
+  --pop:0 12px 40px rgba(0,0,0,.14),0 0 0 .5px rgba(0,0,0,.08);
+  --card:0 1px 3px rgba(0,0,0,.06),0 0 0 .5px rgba(0,0,0,.08);
+  --board:#FBFBFA;--grid:rgba(0,0,0,.10);--shell:#1F3B2C;--shell-ink:#E8F1EA;
+  --st-yellow:#FFF3A3;--st-blue:#CFE6FF;--st-green:#C9F2C7;--st-pink:#FFD3E1;
+  --sel:#0A84FF;
+}
+:root[data-theme=dark]{
+  --bg:#000;--surface:#1C1C1E;--surface-2:#242426;--fill:rgba(118,118,128,.24);--fill-2:rgba(118,118,128,.36);
+  --line:rgba(255,255,255,.1);--line-2:rgba(255,255,255,.2);
+  --ink:#F5F5F7;--ink-2:#D1D1D6;--ink-3:#8E8E93;--ink-4:#636366;
+  --accent:#30D158;--accent-ink:#30D158;--accent-soft:rgba(48,209,88,.16);
+  --blue:#409CFF;--blue-soft:rgba(64,156,255,.18);--orange-soft:rgba(255,159,10,.18);
+  --pop:0 12px 40px rgba(0,0,0,.6),0 0 0 .5px rgba(255,255,255,.12);
+  --card:0 0 0 .5px rgba(255,255,255,.12);
+  --board:#141416;--grid:rgba(255,255,255,.09);--shell:#13261C;
+  --st-yellow:#5A5220;--st-blue:#1F3B5A;--st-green:#244A2A;--st-pink:#5A2638;
+  --sel:#409CFF;
+}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.5 var(--font);background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer}
+input,textarea{font:inherit;color:inherit}
+kbd{font:11px var(--mono);padding:1px 5px;border-radius:5px;background:var(--fill);box-shadow:inset 0 -1px 0 var(--line-2)}
+svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+svg.i.sm{width:15px;height:15px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+/* doc chrome */
+.topbar{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--surface) 86%,transparent);backdrop-filter:saturate(1.6) blur(20px);border-bottom:1px solid var(--line)}
+.topbar .in{max-width:1240px;margin:0 auto;padding:10px 24px;display:flex;align-items:center;gap:14px}
+.topbar h1{font:600 15px var(--display);margin:0;white-space:nowrap}
+.topbar nav{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0}
+.topbar nav a{color:var(--ink-2);text-decoration:none;font-size:13px;padding:5px 10px;border-radius:8px;white-space:nowrap}
+.topbar nav a:hover{background:var(--fill)}
+.seg{display:inline-flex;background:var(--fill);border-radius:9px;padding:2px;flex:none}
+.seg button{border:0;background:none;padding:4px 10px;border-radius:7px;font-size:12.5px;color:var(--ink-2)}
+.seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08),0 0 0 .5px var(--line)}
+main{max-width:1240px;margin:0 auto;padding:28px 24px 80px}
+.lead{max-width:760px;margin-bottom:22px}
+.lead h2{font:700 26px/1.2 var(--display);margin:0 0 8px;letter-spacing:-.01em}
+.lead p{margin:0;color:var(--ink-2)}
+section{margin-top:44px}
+section > h3{font:600 18px var(--display);margin:0 0 4px}
+section > p.sub{margin:0 0 14px;color:var(--ink-3);font-size:13.5px;max-width:760px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.card{background:var(--surface);border-radius:16px;box-shadow:var(--card);padding:16px;min-width:0}
+.card h4{margin:0 0 4px;font:600 14px var(--display)}
+.card p.why{margin:0 0 12px;color:var(--ink-3);font-size:12.5px}
+.stage{position:relative;background:var(--board);background-image:radial-gradient(var(--grid) 1.1px,transparent 1.3px);background-size:22px 22px;border-radius:12px;min-height:220px;overflow:hidden;box-shadow:inset 0 0 0 1px var(--line)}
+
+/* live board */
+.live{position:relative;height:620px;border-radius:18px;overflow:hidden;box-shadow:var(--card);background:var(--board);background-image:radial-gradient(var(--grid) 1.1px,transparent 1.3px);background-size:22px 22px;touch-action:none;user-select:none}
+.live > canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.float{position:absolute;display:flex;align-items:center;gap:2px;padding:4px;border-radius:12px;background:var(--surface);box-shadow:var(--pop);z-index:5}
+.float button{border:0;background:none;color:var(--ink-2);border-radius:9px;display:inline-grid;place-items:center;height:32px;min-width:32px;padding:0 6px;font-size:12.5px;font-weight:600}
+.float button:hover{background:var(--fill)}
+.float button.on{background:var(--accent);color:#fff}
+.sep{width:1px;height:22px;background:var(--line-2);margin:0 3px;flex:none}
+.tools{left:50%;bottom:14px;transform:translateX(-50%)}
+.tools button{width:38px;height:38px;position:relative}
+.tools .dot{position:absolute;right:5px;bottom:5px;width:9px;height:9px;border-radius:50%;box-shadow:0 0 0 1.5px var(--surface)}
+.tl{left:12px;top:12px;padding:4px 10px;font-size:13px;font-weight:600;gap:8px}
+.tl .crumb{color:var(--ink-3);font-weight:500}
+.tr{right:12px;top:12px}
+.zoom{left:12px;bottom:14px}
+.hint{position:absolute;left:50%;top:14px;transform:translateX(-50%);font-size:12px;color:var(--ink-3);background:color-mix(in srgb,var(--surface) 80%,transparent);padding:4px 10px;border-radius:99px;z-index:4;pointer-events:none;white-space:nowrap}
+
+/* popovers */
+.pop{position:absolute;z-index:8;background:var(--surface);border-radius:14px;box-shadow:var(--pop);padding:12px;width:292px}
+.pop[hidden]{display:none}
+.pop h5{margin:0 0 8px;font:600 11px var(--font);text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3)}
+.pop .row{display:flex;align-items:center;gap:6px}
+.pop .block + .block{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.ptypes{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.ptypes button{border:0;background:var(--fill);border-radius:10px;padding:8px 2px 6px;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;color:var(--ink-2)}
+.ptypes button.on{background:var(--accent-soft);color:var(--accent-ink);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.sizes{display:flex;gap:4px}
+.sizes button{flex:1;border:0;background:var(--fill);border-radius:9px;height:34px;display:grid;place-items:center}
+.sizes button.on{background:var(--accent-soft);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.sizes i{display:block;border-radius:50%;background:var(--ink)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.rlabel{display:flex;justify-content:space-between;font-size:12px;color:var(--ink-2);margin:8px 0 2px}
+.rlabel b{font-variant-numeric:tabular-nums;font-weight:600}
+.preview{height:40px;border-radius:9px;background:var(--board);box-shadow:inset 0 0 0 1px var(--line);margin-top:8px;display:block;width:100%}
+.swatches{display:grid;grid-template-columns:repeat(8,1fr);gap:6px}
+.sw{border:0;width:100%;aspect-ratio:1;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12);padding:0;position:relative}
+.sw.on::after{content:"";position:absolute;inset:-4px;border-radius:50%;box-shadow:0 0 0 2px var(--accent)}
+.sw.auto{background:conic-gradient(var(--ink) 0 50%,var(--surface) 0 100%)!important}
+.sw.none{background:linear-gradient(135deg,transparent 45%,var(--red) 45% 55%,transparent 55%),var(--surface)!important}
+.recent{display:flex;gap:6px;min-height:22px;align-items:center}
+.recent .sw{width:22px;flex:none}
+.recent .empty{font-size:12px;color:var(--ink-4)}
+.tabs{display:flex;background:var(--fill);border-radius:9px;padding:2px;margin-bottom:10px}
+.tabs button{flex:1;border:0;background:none;padding:4px 0;border-radius:7px;font-size:12.5px;color:var(--ink-2)}
+.tabs button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.custom{display:flex;gap:8px;align-items:center;margin-top:10px}
+.custom input[type=color]{width:34px;height:34px;border:0;padding:0;background:none;border-radius:8px;cursor:pointer}
+.custom input[type=text]{flex:1;min-width:0;height:32px;border-radius:8px;border:1px solid var(--line-2);background:var(--surface-2);padding:0 8px;font:12.5px var(--mono);text-transform:uppercase}
+.modes{display:flex;flex-direction:column;gap:4px}
+.modes button{border:0;background:var(--fill);border-radius:9px;padding:8px 10px;text-align:left;display:flex;gap:10px;align-items:center;font-size:13px}
+.modes button.on{background:var(--accent-soft);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.modes small{display:block;color:var(--ink-3);font-size:11.5px}
+.toast{position:absolute;left:50%;bottom:70px;transform:translateX(-50%);background:var(--ink);color:var(--surface);border-radius:12px;padding:8px 8px 8px 14px;display:flex;gap:10px;align-items:center;font-size:13px;z-index:9;box-shadow:var(--pop)}
+.toast[hidden]{display:none}
+.toast button{border:0;background:color-mix(in srgb,var(--surface) 18%,transparent);color:inherit;border-radius:8px;padding:4px 10px;font-weight:600}
+.holdring{position:absolute;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;border:2px solid var(--accent);pointer-events:none;z-index:6;animation:ring .5s linear forwards}
+@keyframes ring{from{transform:scale(1.6);opacity:0}to{transform:scale(1);opacity:1}}
+
+/* static pieces */
+.selbox{position:absolute;border:1.5px solid var(--sel);border-radius:4px}
+.sticky{position:absolute;padding:10px 12px;border-radius:4px;box-shadow:0 2px 6px rgba(0,0,0,.08);font-size:13px;color:#1D1D1F}
+[data-theme=dark] .sticky{color:#F5F5F7}
+.menu{position:absolute;background:var(--surface);border-radius:12px;box-shadow:var(--pop);padding:6px;min-width:200px;z-index:6}
+.menu .mi{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:8px;font-size:13px}
+.menu .mi:hover,.menu .mi.hl{background:var(--fill)}
+.menu .mi kbd{margin-left:auto}
+.menu .mh{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);padding:4px 8px}
+.menu .ig{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;padding:2px}
+.menu .ig span{display:grid;place-items:center;height:32px;border-radius:8px}
+.menu .ig span:hover{background:var(--fill)}
+.textbox{position:absolute;border:1.5px solid var(--sel);border-radius:4px;padding:8px 10px;font-size:15px;line-height:1.45;background:color-mix(in srgb,var(--board) 70%,transparent)}
+.linkcard{position:absolute;width:280px;background:var(--surface);border-radius:12px;box-shadow:var(--card);overflow:hidden}
+.linkcard .img{height:96px;background:linear-gradient(135deg,#34A853,#0A84FF)}
+.linkcard .b{padding:10px 12px}
+.linkcard .b b{display:block;font-size:13.5px}
+.linkcard .b span{font-size:12px;color:var(--ink-3)}
+.linkbadge{position:absolute;right:-8px;top:-8px;width:22px;height:22px;border-radius:50%;background:var(--blue);color:#fff;display:grid;place-items:center;box-shadow:0 0 0 2px var(--board)}
+.findbar{position:absolute;right:12px;top:12px;display:flex;align-items:center;gap:6px;background:var(--surface);border-radius:12px;box-shadow:var(--pop);padding:5px 6px 5px 10px;z-index:6}
+.findbar input{border:0;background:none;outline:none;width:150px;font-size:13px}
+.findbar .n{font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.findbar button{border:0;background:none;border-radius:7px;width:26px;height:26px;display:grid;place-items:center;color:var(--ink-2)}
+.findbar button:hover{background:var(--fill)}
+mark.hit{background:rgba(255,204,0,.55);color:inherit;border-radius:3px;padding:0 1px}
+mark.hit.cur{background:#FF9500;color:#fff}
+.lockbar{position:absolute;left:50%;top:12px;transform:translateX(-50%);display:flex;gap:8px;align-items:center;background:var(--surface);border-radius:99px;box-shadow:var(--pop);padding:6px 8px 6px 14px;font-size:13px;z-index:6;white-space:nowrap}
+.lockbar button{border:0;background:var(--fill);border-radius:99px;padding:3px 10px;font-size:12.5px;font-weight:600}
+.browser{border-radius:14px;overflow:hidden;box-shadow:var(--pop);background:var(--surface)}
+.browser .chrome{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--surface-2);border-bottom:1px solid var(--line)}
+.browser .dots{display:flex;gap:6px}.browser .dots i{width:11px;height:11px;border-radius:50%;background:var(--fill-2)}
+.browser .url{flex:1;min-width:0;background:var(--surface);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.synced{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:var(--accent-ink)}
+.synced::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.phone{width:300px;height:600px;border-radius:38px;padding:10px;background:#1D1D1F;box-shadow:var(--pop);margin:0 auto}
+.phone .scr{position:relative;height:100%;border-radius:30px;overflow:hidden;background:var(--board);background-image:radial-gradient(var(--grid) 1.1px,transparent 1.3px);background-size:20px 20px}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:18px 18px 0 0;box-shadow:var(--pop);padding:8px 14px 18px}
+.sheet .grab{width:36px;height:5px;border-radius:3px;background:var(--fill-2);margin:2px auto 10px}
+.rule{display:grid;grid-template-columns:150px 1fr;gap:6px 14px;font-size:13px}
+.rule dt{color:var(--ink-3)}
+.rule dd{margin:0}
+.fb{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start}
+.fb textarea{width:100%;min-height:90px;border-radius:12px;border:1px solid var(--line-2);background:var(--surface);padding:10px;resize:vertical}
+.btn{border:0;border-radius:10px;padding:8px 14px;font-weight:600;background:var(--accent);color:#fff}
+.btn.ghost{background:var(--fill);color:var(--ink)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:12px;padding:3px 9px;border-radius:99px;background:var(--fill);color:var(--ink-2)}
+@media (max-width: 900px){.grid2,.grid3{grid-template-columns:1fr}.live{height:560px}}
+@media (prefers-reduced-motion: reduce){.holdring{animation:none}}
+</style>
+</head>
+<body>
+<header class="topbar"><div class="in">
+  <h1>Whiteboard · hand drawn</h1>
+  <nav>
+    <a href="#live">Coba gambar</a><a href="#colour">Warna</a><a href="#eraser">Penghapus</a><a href="#select">Pilih &amp; susun</a><a href="#text">Teks &amp; link</a><a href="#find">Cari &amp; kunci</a><a href="#popout">Tab baru</a><a href="#phone">Ponsel</a><a href="#feedback">Masukan</a>
+  </nav>
+  <div class="seg" role="group" aria-label="Theme"><button type="button" data-th="light" class="on">Terang</button><button type="button" data-th="dark">Gelap</button></div>
+</div></header>
+
+<main>
+  <div class="lead">
+    <h2>Menggambar tangan yang lebih lengkap</h2>
+    <p>Mockup untuk putaran kedua whiteboard: pilihan warna, ukuran brush, empat jenis pena, penghapus, bentuk rapi saat pena ditahan, buka di tab baru, dan fitur ClickUp yang belum ada. Papan di bawah bisa langsung dicoba dengan mouse, jari, atau stylus. Tulisan di aplikasinya tetap bahasa Inggris seperti modul lain.</p>
+  </div>
+
+  <!-- ───────── live board ───────── -->
+  <section id="live" style="margin-top:0">
+    <h3>Coba gambar</h3>
+    <p class="sub">Klik tombol pena sekali untuk memilih, sekali lagi untuk membuka pengaturannya. Tahan pena di akhir goresan untuk menjadikannya bentuk rapi. <kbd>[</kbd> <kbd>]</kbd> mengecilkan dan membesarkan ukuran, <kbd>Ctrl Z</kbd> membatalkan.</p>
+    <div class="live" id="board">
+      <canvas id="cv"></canvas>
+      <div class="hint" id="hint">Gambar di mana saja · tahan di akhir goresan untuk bentuk rapi</div>
+      <div class="float tl"><span class="crumb">Product launch ›</span> Brainstorm</div>
+      <div class="float tr">
+        <button type="button" title="Find on board (Ctrl F)" aria-label="Find on board"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
+        <button type="button" title="Lock board" aria-label="Lock board"><svg class="i" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></button>
+        <button type="button" title="Open in new tab" aria-label="Open in new tab"><svg class="i" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></button>
+        <button type="button" title="Full screen (Shift F)" aria-label="Full screen"><svg class="i" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+      </div>
+      <div class="float zoom"><button type="button" aria-label="Undo" id="undo" title="Undo (Ctrl Z)"><svg class="i" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button><button type="button" aria-label="Redo" id="redo" title="Redo (Ctrl Shift Z)"><svg class="i" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button><span class="sep"></span><button type="button" id="clear" title="Clear my drawing">Clear</button></div>
+
+      <div class="float tools" id="tools">
+        <button type="button" data-tool="select" title="Select (V)" aria-label="Select"><svg class="i" viewBox="0 0 24 24"><path d="M5 3l14 8-6 2-2 6z"/></svg></button>
+        <button type="button" data-tool="hand" title="Hand (H)" aria-label="Hand"><svg class="i" viewBox="0 0 24 24"><path d="M8 13V5a1.5 1.5 0 0 1 3 0v6M11 11V4a1.5 1.5 0 0 1 3 0v7M14 11V6a1.5 1.5 0 0 1 3 0v8a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-3l-2.4-4a1.5 1.5 0 0 1 2.5-1.6L8 14"/></svg></button>
+        <span class="sep"></span>
+        <button type="button" data-tool="pen" class="on" title="Pen (P) · click again for options" aria-label="Pen"><span id="penIcon"></span><span class="dot" id="penDot"></span></button>
+        <button type="button" data-tool="eraser" title="Eraser (E) · click again for options" aria-label="Eraser"><svg class="i" viewBox="0 0 24 24"><path d="m7 21-4-4L14 6l6 6-9 9z"/><path d="M7 21h13"/></svg></button>
+        <span class="sep"></span>
+        <button type="button" data-tool="sticky" title="Sticky note (S)" aria-label="Sticky note"><svg class="i" viewBox="0 0 24 24"><path d="M4 4h16v10l-6 6H4z"/><path d="M14 20v-6h6"/></svg></button>
+        <button type="button" data-tool="text" title="Text (T)" aria-label="Text"><svg class="i" viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg></button>
+        <button type="button" data-tool="shape" title="Shape (R)" aria-label="Shape"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="10" height="10" rx="1.5"/><circle cx="16" cy="16" r="5"/></svg></button>
+        <button type="button" data-tool="connector" title="Connector (A)" aria-label="Connector"><svg class="i" viewBox="0 0 24 24"><path d="M5 19 19 5M13 5h6v6"/></svg></button>
+        <button type="button" data-tool="emoji" title="Emoji and stickers (K)" aria-label="Emoji and stickers"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01"/></svg></button>
+        <button type="button" data-tool="link" title="Link card (L)" aria-label="Link card"><svg class="i" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 6 .5l3-3a4 4 0 0 0-5.7-5.7l-1.5 1.5"/><path d="M14 10a4 4 0 0 0-6-.5l-3 3a4 4 0 0 0 5.7 5.7l1.5-1.5"/></svg></button>
+        <button type="button" data-tool="more" title="More" aria-label="More"><svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg></button>
+      </div>
+
+      <!-- pen popover -->
+      <div class="pop" id="penPop" style="left:calc(50% - 250px);bottom:68px" role="dialog" aria-label="Pen options" hidden>
+        <div class="block">
+          <h5>Pen</h5>
+          <div class="ptypes" id="ptypes"></div>
+        </div>
+        <div class="block">
+          <h5>Size</h5>
+          <div class="sizes" id="sizes"></div>
+          <div class="rlabel"><span>Custom</span><b id="sizeVal">4 px</b></div>
+          <input type="range" min="1" max="40" id="sizeRange" aria-label="Brush size">
+          <canvas class="preview" id="preview" height="40"></canvas>
+        </div>
+        <div class="block">
+          <div class="row" style="justify-content:space-between"><h5 style="margin:0">Colour</h5><button type="button" class="btn ghost" style="padding:2px 8px;font-size:12px" id="openColour">More colours</button></div>
+          <div class="swatches" id="penSwatches" style="margin-top:8px"></div>
+        </div>
+        <div class="block">
+          <div class="rlabel" style="margin-top:0"><span>Smoothing</span><b id="smoothVal">Medium</b></div>
+          <input type="range" min="0" max="100" value="50" id="smooth" aria-label="Smoothing">
+          <label class="row" style="font-size:12.5px;color:var(--ink-2);margin-top:6px"><input type="checkbox" id="snapOn" checked> Hold at the end to make a neat shape</label>
+        </div>
+      </div>
+
+      <!-- colour popover -->
+      <div class="pop" id="colourPop" style="left:calc(50% + 50px);bottom:68px" role="dialog" aria-label="Colour" hidden>
+        <div class="tabs" role="tablist"><button type="button" data-ct="stroke" class="on">Line</button><button type="button" data-ct="fill">Fill</button></div>
+        <h5>Colours</h5>
+        <div class="swatches" id="allSwatches"></div>
+        <h5 style="margin-top:12px">Recent</h5>
+        <div class="recent" id="recent"></div>
+        <h5 style="margin-top:12px">Custom</h5>
+        <div class="custom"><input type="color" id="picker" aria-label="Pick any colour"><input type="text" id="hex" maxlength="7" aria-label="Hex code" spellcheck="false"></div>
+        <div class="rlabel"><span>Opacity</span><b id="opVal">100%</b></div>
+        <input type="range" min="10" max="100" value="100" id="opacity" aria-label="Opacity">
+      </div>
+
+      <!-- eraser popover -->
+      <div class="pop" id="erPop" style="left:calc(50% - 200px);bottom:68px;width:260px" role="dialog" aria-label="Eraser options" hidden>
+        <h5>Eraser</h5>
+        <div class="modes" id="erModes">
+          <button type="button" data-em="whole" class="on"><svg class="i" viewBox="0 0 24 24"><path d="M4 16c4-8 8 4 16-6"/><path d="M3 21 21 3" stroke-dasharray="2 3"/></svg><span>Whole stroke<small>Touch a line to remove all of it</small></span></button>
+          <button type="button" data-em="part"><svg class="i" viewBox="0 0 24 24"><path d="M4 16c2-4 4-3 5-1M15 12c2-2 3-2 5-2"/><circle cx="12" cy="13.5" r="2.5"/></svg><span>Part of a stroke<small>Rub out only where you pass</small></span></button>
+        </div>
+        <div class="block" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
+          <h5>Size</h5>
+          <div class="sizes" id="erSizes"></div>
+        </div>
+      </div>
+
+      <div class="toast" id="toast" hidden><span id="toastText"></span><button type="button" id="toastUndo">Undo</button></div>
+    </div>
+    <dl class="rule" style="margin-top:14px">
+      <dt>Pen</dt><dd>Garis halus yang menebal-menipis mengikuti tekanan stylus (dengan mouse, mengikuti kecepatan).</dd>
+      <dt>Marker</dt><dd>Garis tebal dengan ketebalan rata, cocok untuk menulis dan melingkari.</dd>
+      <dt>Highlighter</dt><dd>Transparan, warna di bawahnya tetap terbaca. Ukuran bawaan lebih besar.</dd>
+      <dt>Pencil</dt><dd>Tipis dengan tekstur pensil, untuk sketsa kasar.</dd>
+      <dt>Ukuran</dt><dd>Diingat per jenis pena dan penghapus. Kalau ada garis yang dipilih, ukuran dan warna langsung berlaku ke garis itu.</dd>
+    </dl>
+  </section>
+
+  <!-- ───────── colour ───────── -->
+  <section id="colour">
+    <h3>Warna</h3>
+    <p class="sub">16 warna siap pakai, warna terakhir yang Anda pakai, dan warna bebas. Warna pertama otomatis hitam di tema terang dan putih di tema gelap, jadi tulisan tetap terbaca di kedua tema. Shape punya warna garis dan warna isi sendiri-sendiri.</p>
+    <div class="grid3">
+      <div class="card">
+        <h4>Pada garis yang dipilih</h4>
+        <p class="why">Bilah di atas pilihan menampilkan lingkaran warna saat ini; klik untuk membuka panel warna.</p>
+        <div class="stage" style="min-height:200px">
+          <svg viewBox="0 0 300 200" style="position:absolute;inset:0;width:100%;height:100%"><path d="M40 140c30-60 70-80 110-40s70 10 100-30" fill="none" stroke="#0A84FF" stroke-width="5" stroke-linecap="round"/></svg>
+          <div class="selbox" style="left:30px;top:62px;width:236px;height:92px"></div>
+          <div class="float" style="left:40px;top:14px">
+            <button type="button" aria-label="Colour"><span style="width:16px;height:16px;border-radius:50%;background:#0A84FF;box-shadow:0 0 0 2px var(--surface),0 0 0 3px var(--line-2)"></span></button>
+            <button type="button" aria-label="Size"><span style="width:18px;height:5px;border-radius:3px;background:var(--ink)"></span></button>
+            <span class="sep"></span>
+            <button type="button" aria-label="Link"><svg class="i sm" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 6 .5l3-3a4 4 0 0 0-5.7-5.7l-1.5 1.5"/><path d="M14 10a4 4 0 0 0-6-.5l-3 3a4 4 0 0 0 5.7 5.7l1.5-1.5"/></svg></button>
+            <button type="button" aria-label="More">⋯</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h4>Shape: garis dan isi</h4>
+        <p class="why">Tab Line dan Fill di panel yang sama. Fill punya pilihan "No fill".</p>
+        <div class="stage" style="min-height:200px">
+          <div style="position:absolute;left:70px;top:70px;width:150px;height:90px;border-radius:10px;border:3px solid #AF52DE;background:#DCC1F2;display:grid;place-items:center;font-size:13px;color:#1D1D1F">Launch plan</div>
+          <div class="selbox" style="left:64px;top:64px;width:162px;height:102px"></div>
+          <div class="float" style="left:60px;top:14px">
+            <button type="button" aria-label="Line colour" title="Line"><span style="width:16px;height:16px;border-radius:50%;border:3px solid #AF52DE"></span></button>
+            <button type="button" aria-label="Fill colour" title="Fill"><span style="width:16px;height:16px;border-radius:50%;background:#DCC1F2;box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)"></span></button>
+            <span class="sep"></span>
+            <button type="button">Aa</button><button type="button" aria-label="More">⋯</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h4>Sticky tetap 6 warna lembut</h4>
+        <p class="why">Sticky sengaja tidak memakai warna bebas supaya papan tetap rapi dan teks hitam selalu terbaca.</p>
+        <div class="stage" style="min-height:200px">
+          <div class="sticky" style="left:60px;top:70px;width:120px;height:100px;background:var(--st-yellow)">Call vendor about the venue</div>
+          <div class="float" style="left:40px;top:14px;gap:4px">
+            <span class="sw" style="width:20px;background:var(--st-yellow);box-shadow:0 0 0 2px var(--accent)"></span><span class="sw" style="width:20px;background:var(--st-green)"></span><span class="sw" style="width:20px;background:var(--st-blue)"></span><span class="sw" style="width:20px;background:var(--st-pink)"></span><span class="sw" style="width:20px;background:#E6DAFF"></span><span class="sw" style="width:20px;background:#FFDDB8"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────── eraser + shape snap ───────── -->
+  <section id="eraser">
+    <h3>Penghapus dan bentuk rapi</h3>
+    <p class="sub">Penghapus bawaan menghapus satu goresan utuh, yang aman saat banyak orang menggambar bersama. Mode "Part of a stroke" hanya menghapus bagian yang dilewati. Bentuk rapi hanya terjadi saat pena ditahan di akhir goresan, dan selalu bisa dibatalkan.</p>
+    <div class="grid2">
+      <div class="card">
+        <h4>Tahan pena → bentuk rapi</h4>
+        <p class="why">Lingkaran, oval, kotak, segitiga, dan garis lurus dikenali. Kalau tidak dikenali, goresan dibiarkan apa adanya.</p>
+        <div class="stage" style="min-height:220px">
+          <svg viewBox="0 0 420 220" style="position:absolute;inset:0;width:100%;height:100%">
+            <path d="M70 110c0-38 30-62 62-60 34 2 58 28 56 60-2 34-30 56-62 54-30-2-54-24-56-50" fill="none" stroke="var(--ink-4)" stroke-width="3" stroke-linecap="round" stroke-dasharray="1 6"/>
+            <text x="128" y="190" text-anchor="middle" font-size="12" fill="var(--ink-3)">sebelum</text>
+            <path d="M200 110h30" stroke="var(--ink-3)" stroke-width="2" marker-end="url(#ah)"/>
+            <defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="var(--ink-3)"/></marker></defs>
+            <ellipse cx="310" cy="108" rx="60" ry="56" fill="none" stroke="var(--ink)" stroke-width="3"/>
+            <text x="310" y="190" text-anchor="middle" font-size="12" fill="var(--ink-3)">sesudah</text>
+          </svg>
+          <div class="toast" style="bottom:12px">Became a circle <button type="button">Undo</button></div>
+        </div>
+      </div>
+      <div class="card">
+        <h4>Penghapus: dua mode</h4>
+        <p class="why">Ukuran penghapus terlihat sebagai lingkaran di bawah kursor, jadi Anda tahu apa yang akan terhapus.</p>
+        <div class="stage" style="min-height:220px">
+          <svg viewBox="0 0 420 220" style="position:absolute;inset:0;width:100%;height:100%">
+            <path d="M40 70c40-30 80 30 120 0s80 30 120 0" fill="none" stroke="var(--ink-4)" stroke-width="4" stroke-linecap="round" opacity=".35"/>
+            <text x="60" y="40" font-size="12" fill="var(--ink-3)">Whole stroke: seluruh garis memudar lalu hilang</text>
+            <circle cx="200" cy="72" r="14" fill="none" stroke="var(--ink-3)" stroke-dasharray="3 3"/>
+            <path d="M40 160c40-30 80 30 108 6" fill="none" stroke="#FF3B30" stroke-width="4" stroke-linecap="round"/>
+            <path d="M178 150c30-20 70 30 102 10" fill="none" stroke="#FF3B30" stroke-width="4" stroke-linecap="round"/>
+            <circle cx="163" cy="158" r="13" fill="none" stroke="var(--ink-3)" stroke-dasharray="3 3"/>
+            <text x="60" y="205" font-size="12" fill="var(--ink-3)">Part of a stroke: hanya bagian yang dilewati</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────── select ───────── -->
+  <section id="select">
+    <h3>Pilih dan susun</h3>
+    <p class="sub">Saat beberapa benda dipilih: group, rata, bagi jarak sama, dan link muncul di bilah yang sama. <kbd>Ctrl G</kbd> group, <kbd>Ctrl Shift G</kbd> ungroup. Klik satu kali pada group memilih seluruh group, klik dua kali memilih isinya.</p>
+    <div class="grid2">
+      <div class="card">
+        <h4>Beberapa benda dipilih</h4>
+        <p class="why">Menu Arrange berisi rata kiri, tengah, kanan, atas, tengah, bawah, serta bagi jarak mendatar dan menurun.</p>
+        <div class="stage" style="min-height:300px">
+          <div class="sticky" style="left:40px;top:150px;width:96px;height:80px;background:var(--st-yellow)">Venue</div>
+          <div class="sticky" style="left:160px;top:130px;width:96px;height:80px;background:var(--st-blue)">Budget</div>
+          <div class="sticky" style="left:290px;top:160px;width:96px;height:80px;background:var(--st-green)">Guests</div>
+          <div class="selbox" style="left:32px;top:122px;width:362px;height:126px;border-style:dashed"></div>
+          <div class="float" style="left:40px;top:14px">
+            <button type="button" title="Group (Ctrl G)"><svg class="i sm" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/><path d="M3 15v6h6M21 9V3h-6" stroke-dasharray="2 2"/></svg>&nbsp;Group</button>
+            <button type="button" class="on" title="Arrange">Arrange ▾</button>
+            <button type="button" title="Link"><svg class="i sm" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 6 .5l3-3a4 4 0 0 0-5.7-5.7l-1.5 1.5"/><path d="M14 10a4 4 0 0 0-6-.5l-3 3a4 4 0 0 0 5.7 5.7l1.5-1.5"/></svg></button>
+            <button type="button" title="Lock"><svg class="i sm" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></button>
+            <button type="button">⋯</button>
+          </div>
+          <div class="menu" style="left:120px;top:58px">
+            <div class="mh">Align</div>
+            <div class="ig">
+              <span title="Align left"><svg class="i sm" viewBox="0 0 24 24"><path d="M4 3v18M8 7h10M8 15h6"/></svg></span>
+              <span title="Align centre"><svg class="i sm" viewBox="0 0 24 24"><path d="M12 3v18M6 7h12M8 15h8"/></svg></span>
+              <span title="Align right"><svg class="i sm" viewBox="0 0 24 24"><path d="M20 3v18M6 7h10M10 15h6"/></svg></span>
+              <span title="Align top"><svg class="i sm" viewBox="0 0 24 24"><path d="M3 4h18M7 8v10M15 8v6"/></svg></span>
+              <span title="Align middle"><svg class="i sm" viewBox="0 0 24 24"><path d="M3 12h18M7 6v12M15 8v8"/></svg></span>
+              <span title="Align bottom"><svg class="i sm" viewBox="0 0 24 24"><path d="M3 20h18M7 6v10M15 10v6"/></svg></span>
+              <span title="Distribute across"><svg class="i sm" viewBox="0 0 24 24"><rect x="3" y="8" width="4" height="8"/><rect x="10" y="8" width="4" height="8"/><rect x="17" y="8" width="4" height="8"/></svg></span>
+              <span title="Distribute down"><svg class="i sm" viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="4"/><rect x="8" y="10" width="8" height="4"/><rect x="8" y="17" width="8" height="4"/></svg></span>
+            </div>
+            <div class="mi hl">Tidy up into a row <kbd>Alt A</kbd></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h4>Link pada benda apa pun</h4>
+        <p class="why">Tempel URL atau cari halaman Notes. Benda yang punya link mendapat lencana kecil; klik lencananya untuk membuka.</p>
+        <div class="stage" style="min-height:300px">
+          <div style="position:absolute;left:60px;top:150px;width:150px;height:84px;border-radius:10px;border:2.5px solid var(--ink);background:var(--surface);display:grid;place-items:center;font-size:13px">Rundown v2<span class="linkbadge"><svg class="i sm" style="width:12px;height:12px" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 6 .5l3-3a4 4 0 0 0-5.7-5.7l-1.5 1.5"/><path d="M14 10a4 4 0 0 0-6-.5l-3 3a4 4 0 0 0 5.7 5.7l1.5-1.5"/></svg></span></div>
+          <div class="menu" style="left:150px;top:20px;width:250px;padding:8px">
+            <input style="width:100%;height:32px;border-radius:8px;border:1px solid var(--line-2);background:var(--surface-2);padding:0 8px;font-size:13px" value="rundown" aria-label="Link to">
+            <div class="mh" style="margin-top:6px">Notes pages</div>
+            <div class="mi hl">📄 Event rundown v2</div>
+            <div class="mi">📄 Rundown checklist</div>
+            <div class="mh">Or paste a web address</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────── text + link cards + emoji ───────── -->
+  <section id="text">
+    <h3>Teks, kartu link, emoji</h3>
+    <p class="sub">Teks di papan, sticky, dan shape bisa diberi format seperti di Notes. Tempel alamat web di papan untuk mendapat kartu dengan judul dan gambar, memakai pratinjau link yang sama dengan Chat.</p>
+    <div class="grid3">
+      <div class="card">
+        <h4>Format teks</h4>
+        <p class="why">Muncul saat mengetik. <kbd>Ctrl B</kbd>, <kbd>Ctrl I</kbd>, <kbd>Ctrl K</kbd> untuk link.</p>
+        <div class="stage" style="min-height:230px">
+          <div class="float" style="left:16px;top:16px;flex-wrap:wrap;max-width:calc(100% - 32px)">
+            <button type="button" class="on" style="font-weight:800">B</button><button type="button" style="font-style:italic">I</button><button type="button" style="text-decoration:line-through">S</button>
+            <span class="sep"></span>
+            <button type="button" aria-label="List"><svg class="i sm" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg></button>
+            <button type="button" aria-label="Link"><svg class="i sm" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 6 .5l3-3a4 4 0 0 0-5.7-5.7l-1.5 1.5"/><path d="M14 10a4 4 0 0 0-6-.5l-3 3a4 4 0 0 0 5.7 5.7l1.5-1.5"/></svg></button>
+            <button type="button" aria-label="Align">≡</button>
+            <span class="sep"></span>
+            <button type="button">16 ▾</button>
+          </div>
+          <div class="textbox" style="left:30px;top:92px;width:200px"><b>Day 1</b><br>• Open venue 07:00<br>• <i>Sound check</i> 09:30</div>
+        </div>
+      </div>
+      <div class="card">
+        <h4>Kartu link web</h4>
+        <p class="why">Klik membuka di tab baru. Kalau situs tidak memberi pratinjau, kartu cukup menampilkan judul dan alamat.</p>
+        <div class="stage" style="min-height:230px">
+          <div class="linkcard" style="left:20px;top:28px;max-width:calc(100% - 40px)">
+            <div class="img"></div>
+            <div class="b"><b>Venue booking · Grand Ballroom</b><span>hotel-example.co.id</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h4>Emoji dan stiker</h4>
+        <p class="why">Satu pemilih untuk emoji (dengan pencarian dan warna kulit, sama seperti Chat) dan stiker tim. Benda yang ditaruh bisa diperbesar dan diputar.</p>
+        <div class="stage" style="min-height:230px">
+          <div class="menu" style="left:16px;top:16px;width:230px">
+            <div class="tabs" style="margin:0 0 6px"><button type="button" class="on">Emoji</button><button type="button">Stickers</button></div>
+            <input style="width:100%;height:30px;border-radius:8px;border:1px solid var(--line-2);background:var(--surface-2);padding:0 8px;font-size:12.5px" placeholder="Search emoji" aria-label="Search emoji">
+            <div class="ig" style="grid-template-columns:repeat(6,1fr);font-size:20px;margin-top:6px"><span>👍</span><span>🎉</span><span>🔥</span><span>✅</span><span>❓</span><span>💡</span><span>⭐</span><span>❤️</span><span>🚀</span><span>👀</span><span>⚠️</span><span>📌</span></div>
+          </div>
+          <div style="position:absolute;right:26px;bottom:24px;font-size:54px;transform:rotate(-8deg)">🎉</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────── find + lock ───────── -->
+  <section id="find">
+    <h3>Cari dan kunci papan</h3>
+    <p class="sub"><kbd>Ctrl F</kbd> di papan mencari teks di sticky, shape, teks, dan kartu, lalu melompat ke tiap hasil. Pemilik papan bisa mengunci seluruh papan: semua orang tetap bisa melihat, berkomentar, dan voting, tapi tidak bisa mengubah isi.</p>
+    <div class="grid2">
+      <div class="card">
+        <h4>Cari di papan</h4>
+        <p class="why"><kbd>Enter</kbd> ke hasil berikutnya, <kbd>Shift Enter</kbd> ke sebelumnya. Papan bergeser ke hasil yang sedang aktif.</p>
+        <div class="stage" style="min-height:240px">
+          <div class="findbar"><svg class="i sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input value="budget" aria-label="Find on board"><span class="n">2 of 3</span><button type="button" aria-label="Previous">↑</button><button type="button" aria-label="Next">↓</button><button type="button" aria-label="Close">✕</button></div>
+          <div class="sticky" style="left:30px;top:80px;width:120px;height:90px;background:var(--st-yellow)">Total <mark class="hit">budget</mark> 120 jt</div>
+          <div class="sticky" style="left:170px;top:110px;width:130px;height:90px;background:var(--st-blue);box-shadow:0 0 0 3px #FF9500">Ask finance for <mark class="hit cur">budget</mark> sign-off</div>
+          <div class="sticky" style="left:320px;top:80px;width:100px;height:90px;background:var(--st-green)"><mark class="hit">Budget</mark> per guest</div>
+        </div>
+      </div>
+      <div class="card">
+        <h4>Papan dikunci</h4>
+        <p class="why">Hanya pemilik yang bisa membuka kunci. Toolbar menyisakan alat yang tetap boleh: pilih, geser, komentar, voting, laser.</p>
+        <div class="stage" style="min-height:240px">
+          <div class="lockbar"><svg class="i sm" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Locked by the owner · view and comment only <button type="button">Unlock</button></div>
+          <div class="sticky" style="left:60px;top:90px;width:120px;height:90px;background:var(--st-pink)">Final agenda</div>
+          <div class="sticky" style="left:220px;top:100px;width:120px;height:90px;background:var(--st-yellow)">Seating plan</div>
+          <div class="float" style="left:50%;bottom:12px;transform:translateX(-50%)">
+            <button type="button" class="on" aria-label="Select"><svg class="i sm" viewBox="0 0 24 24"><path d="M5 3l14 8-6 2-2 6z"/></svg></button>
+            <button type="button" aria-label="Hand">✋</button><button type="button" aria-label="Comment">💬</button><button type="button" aria-label="Vote">●</button><button type="button" aria-label="Laser">✦</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────── pop-out ───────── -->
+  <section id="popout">
+    <h3>Buka di tab baru</h3>
+    <p class="sub">Tombol <b>Open in new tab</b> ada di pojok kanan atas, baik di blok gambar di dalam halaman maupun di halaman Whiteboard. Papan terbuka di alamatnya sendiri, layar penuh tanpa sidebar dan topbar iPop. Gambar di tab mana pun langsung muncul di tab lainnya. Bisa dipindah ke monitor kedua.</p>
+    <div class="browser">
+      <div class="chrome"><span class="dots"><i></i><i></i><i></i></span><span class="url">ipop.santos.co.id/board/4e7b…a174c6</span></div>
+      <div style="position:relative;height:340px;background:var(--board);background-image:radial-gradient(var(--grid) 1.1px,transparent 1.3px);background-size:22px 22px">
+        <div class="float tl" style="gap:10px"><button type="button" style="height:28px">← Back to page</button><span>Brainstorm</span><span class="synced">Synced with your Notes tab</span></div>
+        <div class="float tr"><button type="button">Share</button><button type="button" aria-label="Full screen"><svg class="i sm" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button></div>
+        <div class="sticky" style="left:18%;top:110px;width:140px;height:100px;background:var(--st-yellow)">Theme ideas</div>
+        <div class="sticky" style="left:42%;top:130px;width:140px;height:100px;background:var(--st-green)">Speakers</div>
+        <svg viewBox="0 0 300 120" style="position:absolute;left:64%;top:100px;width:240px"><path d="M10 80c40-70 80 40 120-20s60-40 120 10" fill="none" stroke="#FF3B30" stroke-width="4" stroke-linecap="round"/></svg>
+        <div class="float tools" style="bottom:12px"><button type="button" class="on">✎</button><button type="button">⌫</button><button type="button">▢</button><button type="button">T</button><button type="button">⋯</button></div>
+      </div>
+    </div>
+    <p class="sub" style="margin-top:10px">Kalau Anda tidak punya akses ke halaman itu, tab baru menampilkan pesan "You don't have access to this board", sama seperti halaman Notes.</p>
+  </section>
+
+  <!-- ───────── phone ───────── -->
+  <section id="phone">
+    <h3>Di ponsel</h3>
+    <p class="sub">Pengaturan pena muncul sebagai lembar dari bawah dengan isi yang sama: jenis pena, ukuran, warna, kehalusan. Geser lembar ke bawah untuk menutup.</p>
+    <div class="phone"><div class="scr">
+      <svg viewBox="0 0 280 300" style="position:absolute;left:0;top:30px;width:100%"><path d="M30 120c30-50 60 30 100-10s60-30 110 20" fill="none" stroke="#34C759" stroke-width="6" stroke-linecap="round"/></svg>
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="ptypes" style="margin-bottom:10px">
+          <button type="button" class="on">✒️<span>Pen</span></button><button type="button">🖍️<span>Marker</span></button><button type="button">🖊️<span>Highlight</span></button><button type="button">✏️<span>Pencil</span></button>
+        </div>
+        <div class="sizes" style="margin-bottom:10px"><button type="button"><i style="width:4px;height:4px"></i></button><button type="button" class="on"><i style="width:7px;height:7px"></i></button><button type="button"><i style="width:11px;height:11px"></i></button><button type="button"><i style="width:16px;height:16px"></i></button></div>
+        <div class="swatches" style="grid-template-columns:repeat(8,1fr)">
+          <span class="sw auto"></span><span class="sw" style="background:#FF3B30"></span><span class="sw" style="background:#FF9500"></span><span class="sw" style="background:#FFCC00"></span><span class="sw on" style="background:#34C759"></span><span class="sw" style="background:#30B0C7"></span><span class="sw" style="background:#0A84FF"></span><span class="sw" style="background:#AF52DE"></span>
+        </div>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- ───────── also ───────── -->
+  <section>
+    <h3>Juga ikut dikerjakan</h3>
+    <p class="sub">Tidak terlihat di mockup, tapi masuk pekerjaan ini.</p>
+    <div class="chips">
+      <span class="chip">Pratinjau ukuran penghapus di bawah kursor</span><span class="chip">Telapak tangan diabaikan saat memakai stylus</span><span class="chip">Garis tetap mulus saat diperbesar</span><span class="chip">Uji dua orang menggambar bersamaan</span><span class="chip">Uji terang/gelap, desktop/ponsel, blok/halaman</span><span class="chip">Pintasan <kbd>[</kbd> <kbd>]</kbd> untuk ukuran</span><span class="chip">Klik pena aktif sekali lagi membuka pengaturannya</span>
+    </div>
+  </section>
+
+  <section id="feedback">
+    <h3>Masukan</h3>
+    <p class="sub">Tulis apa yang ingin diubah, lalu salin dan kirim ke saya.</p>
+    <div class="fb"><textarea id="fbText" aria-label="Masukan" placeholder="Contoh: ukuran XL kurang besar, warna pink terlalu terang…"></textarea><button type="button" class="btn" id="fbCopy">Salin</button></div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+  const store = { get(k, d) { try { const v = localStorage.getItem('wbmock.' + k); return v ? JSON.parse(v) : d; } catch { return d; } }, set(k, v) { try { localStorage.setItem('wbmock.' + k, JSON.stringify(v)); } catch {} } };
+
+  // theme
+  $$('[data-th]').forEach(b => b.onclick = () => { document.documentElement.dataset.theme = b.dataset.th; $$('[data-th]').forEach(x => x.classList.toggle('on', x === b)); redraw(); drawPreview(); });
+
+  // ── palette ──
+  const BRIGHT = ['auto', '#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#30B0C7', '#0A84FF', '#AF52DE'];
+  const SOFT = ['#8E8E93', '#FFB3AE', '#FFD29A', '#FFE88A', '#A8E6B4', '#A6E3EC', '#A9CFFF', '#DCC1F2'];
+  const ALL = [...BRIGHT, ...SOFT];
+  const inkNow = () => getComputedStyle(document.documentElement).getPropertyValue('--ink').trim();
+  const real = c => c === 'auto' ? inkNow() : c;
+
+  const TYPES = {
+    pen:        { label: 'Pen', sizes: [2, 4, 8, 14], icon: '<svg class="i" viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l3 3"/></svg>' },
+    marker:     { label: 'Marker', sizes: [4, 8, 14, 24], icon: '<svg class="i" viewBox="0 0 24 24"><path d="M9 15l-4 5h5l2-2"/><path d="M9 15l7-11 4 3-7 11z"/></svg>' },
+    highlighter:{ label: 'Highlight', sizes: [10, 16, 24, 36], icon: '<svg class="i" viewBox="0 0 24 24"><path d="M4 20h7"/><path d="M8 16l-1-3 9-9 4 4-9 9z"/></svg>' },
+    pencil:     { label: 'Pencil', sizes: [1, 2, 4, 7], icon: '<svg class="i" viewBox="0 0 24 24"><path d="M15 4l5 5L9 20H4v-5z"/><path d="M4 15l5 5"/></svg>' },
+  };
+  const state = {
+    tool: 'pen', ptype: store.get('ptype', 'pen'),
+    size: store.get('size', { pen: 4, marker: 8, highlighter: 16, pencil: 2, eraser: 16 }),
+    color: store.get('color', { pen: 'auto', marker: '#FF3B30', highlighter: '#FFCC00', pencil: 'auto' }),
+    fill: null, opacity: 100, smooth: 50, ctab: 'stroke',
+    recent: store.get('recent', []), erMode: 'whole',
+  };
+
+  // ── board ──
+  const board = $('#board'), cv = $('#cv'), ctx = cv.getContext('2d');
+  let strokes = [], redoStack = [], cur = null, dpr = 1;
+  function size() { dpr = window.devicePixelRatio || 1; const r = board.getBoundingClientRect(); cv.width = r.width * dpr; cv.height = r.height * dpr; redraw(); }
+  new ResizeObserver(size).observe(board);
+
+  function drawStroke(c, s) {
+    const col = real(s.color);
+    c.save();
+    c.globalAlpha = (s.opacity ?? 100) / 100;
+    if (s.kind === 'shape') {
+      c.lineWidth = Math.max(2, s.size); c.strokeStyle = col; c.lineJoin = 'round'; c.lineCap = 'round';
+      c.beginPath();
+      if (s.shape === 'ellipse') c.ellipse(s.x + s.w / 2, s.y + s.h / 2, Math.abs(s.w / 2), Math.abs(s.h / 2), 0, 0, Math.PI * 2);
+      else if (s.shape === 'rect') { const r = Math.min(10, Math.abs(s.w) / 6, Math.abs(s.h) / 6); c.roundRect(s.x, s.y, s.w, s.h, r); }
+      else if (s.shape === 'triangle') { c.moveTo(s.pts[0][0], s.pts[0][1]); c.lineTo(s.pts[1][0], s.pts[1][1]); c.lineTo(s.pts[2][0], s.pts[2][1]); c.closePath(); }
+      else { c.moveTo(s.x1, s.y1); c.lineTo(s.x2, s.y2); }
+      if (s.fill && s.shape !== 'line') { c.fillStyle = real(s.fill); c.fill(); }
+      c.stroke(); c.restore(); return;
+    }
+    const p = s.pts; if (!p.length) { c.restore(); return; }
+    c.lineCap = 'round'; c.lineJoin = 'round'; c.strokeStyle = col;
+    if (s.type === 'highlighter') { c.globalAlpha *= .38; if (document.documentElement.dataset.theme !== 'dark') c.globalCompositeOperation = 'multiply'; c.lineCap = 'butt'; }
+    const passes = s.type === 'pencil' ? [[0, 0, .9], [.5, -.4, .35], [-.4, .5, .3]] : [[0, 0, 1]];
+    for (const [ox, oy, a] of passes) {
+      c.save(); c.globalAlpha *= a;
+      if (p.length === 1) { c.beginPath(); c.arc(p[0][0] + ox, p[0][1] + oy, s.size / 2, 0, Math.PI * 2); c.fillStyle = col; c.fill(); c.restore(); continue; }
+      for (let i = 1; i < p.length; i++) {
+        const a0 = p[i - 1], a1 = p[i];
+        const w = s.type === 'pen' ? s.size * (0.45 + 1.1 * ((a0[2] + a1[2]) / 2)) : s.type === 'pencil' ? s.size * (0.8 + 0.4 * a1[2]) : s.size;
+        c.lineWidth = Math.max(.6, w);
+        c.beginPath();
+        const m0 = i > 1 ? [(p[i - 2][0] + a0[0]) / 2, (p[i - 2][1] + a0[1]) / 2] : a0;
+        const m1 = [(a0[0] + a1[0]) / 2, (a0[1] + a1[1]) / 2];
+        c.moveTo(m0[0] + ox, m0[1] + oy); c.quadraticCurveTo(a0[0] + ox, a0[1] + oy, m1[0] + ox, m1[1] + oy);
+        if (i === p.length - 1) c.lineTo(a1[0] + ox, a1[1] + oy);
+        c.stroke();
+      }
+      c.restore();
+    }
+    c.restore();
+  }
+  function redraw() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height);
+    for (const s of strokes) drawStroke(ctx, s);
+    if (cur) drawStroke(ctx, cur);
+    if (eraserAt && state.tool === 'eraser') { ctx.save(); ctx.strokeStyle = inkNow(); ctx.globalAlpha = .45; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(eraserAt[0], eraserAt[1], state.size.eraser / 2, 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
+  }
+  // a few sample strokes so the board isn't empty
+  function seed() {
+    const wave = (x, y, n, amp, col, type, sz) => ({ kind: 'stroke', type, color: col, size: sz, opacity: 100, pts: Array.from({ length: n }, (_, i) => [x + i * 6, y + Math.sin(i / 5) * amp, .5 + .4 * Math.sin(i / 7)]) });
+    strokes = [wave(60, 120, 40, 14, 'auto', 'pen', 4), wave(60, 180, 30, 8, '#0A84FF', 'marker', 8), wave(60, 230, 34, 4, '#FFCC00', 'highlighter', 18)];
+  }
+  seed();
+
+  // ── pointer drawing ──
+  let holdTimer = null, lastMove = 0, eraserAt = null, pointerDown = false;
+  const pos = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  board.addEventListener('pointerdown', e => {
+    if (e.target !== cv) return;
+    closePops();
+    if (e.pointerType === 'touch' && penSeen) return;          // palm rejection once a stylus was used
+    if (e.pointerType === 'pen') penSeen = true;
+    cv.setPointerCapture(e.pointerId); pointerDown = true; $('#hint').hidden = true;
+    const [x, y] = pos(e);
+    if (state.tool === 'eraser') { eraseAt(x, y, true); return; }
+    if (state.tool !== 'pen') return;
+    const t = state.ptype;
+    cur = { kind: 'stroke', type: t, color: state.color[t], size: state.size[t], opacity: state.opacity, pts: [[x, y, e.pointerType === 'pen' ? e.pressure || .5 : .5]], pressure: e.pointerType === 'pen', last: [x, y], raw: [[x, y, .5]], t: performance.now() };
+    armHold(x, y); redraw();
+  });
+  let penSeen = false, eraseBatch = null;
+  board.addEventListener('pointermove', e => {
+    const [x, y] = pos(e);
+    if (state.tool === 'eraser') { eraserAt = [x, y]; if (pointerDown) eraseAt(x, y, false); redraw(); return; }
+    if (!cur) return;
+    const evs = e.getCoalescedEvents?.() || []; const list = evs.length ? evs : [e];
+    for (const ev of list) {
+      const [rx, ry] = pos(ev);
+      cur.raw.push([rx, ry, .5]);
+      const k = 1 - (state.smooth / 100) * (cur.pressure ? .55 : .85);  // stylus handwriting gets lighter smoothing
+      const lx = cur.last[0] + (rx - cur.last[0]) * k, ly = cur.last[1] + (ry - cur.last[1]) * k;
+      const now = performance.now(), d = Math.hypot(lx - cur.last[0], ly - cur.last[1]);
+      if (d < .6) continue;
+      const pr = cur.pressure ? (ev.pressure || .5) : Math.max(.15, Math.min(1, 1 - (d / Math.max(1, now - cur.t)) / 3));
+      cur.pts.push([lx, ly, pr]); cur.last = [lx, ly]; cur.t = now;
+      if (d > 3) armHold(lx, ly);
+    }
+    redraw();
+  });
+  board.addEventListener('pointerleave', () => { eraserAt = null; redraw(); });
+  const end = () => {
+    pointerDown = false; clearTimeout(holdTimer); $$('.holdring').forEach(n => n.remove());
+    if (eraseBatch) { if (eraseBatch.changed) { redoStack = []; history.push(eraseBatch.before); } eraseBatch = null; }
+    if (!cur) return;
+    commit(cur); cur = null; redraw();
+  };
+  board.addEventListener('pointerup', end); board.addEventListener('pointercancel', end);
+
+  const history = [];
+  function commit(s) { history.push(strokes.slice()); strokes.push(stripRuntime(s)); redoStack = []; }
+  const stripRuntime = s => { const { last, t, pressure, raw, ...rest } = s; return rest; };
+  function undo() { if (!history.length) return; redoStack.push(strokes); strokes = history.pop(); redraw(); }
+  function redo() { if (!redoStack.length) return; history.push(strokes); strokes = redoStack.pop(); redraw(); }
+  $('#undo').onclick = undo; $('#redo').onclick = redo;
+  $('#clear').onclick = () => { history.push(strokes); strokes = []; redraw(); };
+
+  // ── hold to make a neat shape ──
+  function armHold(x, y) {
+    clearTimeout(holdTimer); $$('.holdring').forEach(n => n.remove());
+    if (!$('#snapOn').checked || !cur || cur.pts.length < 8) return;
+    holdTimer = setTimeout(() => {
+      if (!cur) return;
+      const ring = document.createElement('div'); ring.className = 'holdring'; ring.style.left = x + 'px'; ring.style.top = y + 'px'; board.append(ring);
+      holdTimer = setTimeout(() => { ring.remove(); snap(); }, 380);
+    }, 220);
+  }
+  function snap() {
+    if (!cur) return;
+    const shape = recognise(cur.raw);
+    if (!shape) return;
+    const raw = stripRuntime(cur);
+    history.push(strokes.slice());
+    const neat = { kind: 'shape', color: cur.color, size: Math.max(2, cur.size), opacity: cur.opacity, fill: state.fill, ...shape };
+    strokes.push(neat); redoStack = []; cur = null; redraw();
+    const names = { ellipse: shape.circle ? 'a circle' : 'an oval', rect: shape.square ? 'a square' : 'a rectangle', triangle: 'a triangle', line: 'a straight line' };
+    toast(`Became ${names[shape.shape]}`, () => { strokes[strokes.indexOf(neat)] = raw; redraw(); });
+  }
+  function recognise(p) {
+    const xs = p.map(q => q[0]), ys = p.map(q => q[1]);
+    const x = Math.min(...xs), y = Math.min(...ys), w = Math.max(...xs) - x, h = Math.max(...ys) - y, big = Math.max(w, h);
+    if (big < 18) return null;
+    const [sx, sy] = p[0], [ex, ey] = p[p.length - 1];
+    const closed = Math.hypot(ex - sx, ey - sy) < big * 0.3;
+    if (!closed) {
+      const L = Math.hypot(ex - sx, ey - sy) || 1;
+      const dev = Math.max(...p.map(([px, py]) => Math.abs((ey - sy) * px - (ex - sx) * py + ex * sy - ey * sx) / L));
+      return dev < L * 0.05 ? { shape: 'line', x1: sx, y1: sy, x2: ex, y2: ey } : null;
+    }
+    const cx = x + w / 2, cy = y + h / 2, rx = w / 2 || 1, ry = h / 2 || 1;
+    const eErr = p.reduce((a, [px, py]) => a + Math.abs(Math.hypot((px - cx) / rx, (py - cy) / ry) - 1), 0) / p.length;
+    const rErr = p.reduce((a, [px, py]) => a + Math.min(px - x, x + w - px, py - y, y + h - py), 0) / p.length / big;
+    // triangle: three corners = the points farthest from each other
+    const corners = cornersOf(p), tri = corners && triErr(p, corners) / big;
+    const best = [['ellipse', eErr * .9], ['rect', rErr * 4.2], ['triangle', tri == null ? 9 : tri * 4.6]].sort((a, b) => a[1] - b[1])[0];
+    if (best[1] > .32) return null;
+    if (best[0] === 'ellipse') { const circle = Math.abs(w - h) < big * .18; const s = circle ? (w + h) / 2 : 0; return circle ? { shape: 'ellipse', circle, x: cx - s / 2, y: cy - s / 2, w: s, h: s } : { shape: 'ellipse', x, y, w, h }; }
+    if (best[0] === 'rect') { const square = Math.abs(w - h) < big * .12; return square ? { shape: 'rect', square, x, y, w: (w + h) / 2, h: (w + h) / 2 } : { shape: 'rect', x, y, w, h }; }
+    return { shape: 'triangle', pts: corners };
+  }
+  function cornersOf(p) {
+    let a = p[0], b = p[0], d = 0;
+    for (const q of p) for (const r of p) { const dd = Math.hypot(q[0] - r[0], q[1] - r[1]); if (dd > d) { d = dd; a = q; b = r; } }
+    let c = null, best = 0;
+    for (const q of p) { const area = Math.abs((b[0] - a[0]) * (q[1] - a[1]) - (q[0] - a[0]) * (b[1] - a[1])); if (area > best) { best = area; c = q; } }
+    return c && best > d * d * .15 ? [a, b, c] : null;
+  }
+  function triErr(p, [a, b, c]) {
+    const seg = (q, u, v) => { const dx = v[0] - u[0], dy = v[1] - u[1], t = Math.max(0, Math.min(1, ((q[0] - u[0]) * dx + (q[1] - u[1]) * dy) / (dx * dx + dy * dy))); return Math.hypot(q[0] - u[0] - t * dx, q[1] - u[1] - t * dy); };
+    return p.reduce((s, q) => s + Math.min(seg(q, a, b), seg(q, b, c), seg(q, c, a)), 0) / p.length;
+  }
+
+  // ── eraser ──
+  function eraseAt(x, y, start) {
+    if (start) eraseBatch = { before: strokes.slice(), changed: false };
+    const r = state.size.eraser / 2;
+    const near = (q, s) => Math.hypot(q[0] - x, q[1] - y) < r + s.size / 2;
+    if (state.erMode === 'whole') {
+      const keep = strokes.filter(s => !(s.kind === 'stroke' ? s.pts.some(q => near(q, s)) : hitsShape(s, x, y, r)));
+      if (keep.length !== strokes.length) { strokes = keep; eraseBatch && (eraseBatch.changed = true); }
+    } else {
+      const out = [];
+      for (const s of strokes) {
+        if (s.kind !== 'stroke') { if (!hitsShape(s, x, y, r)) out.push(s); else eraseBatch && (eraseBatch.changed = true); continue; }
+        let run = [], cut = false;
+        for (const q of s.pts) { if (near(q, s)) { cut = true; if (run.length > 1) out.push({ ...s, pts: run }); run = []; } else run.push(q); }
+        if (run.length > 1 || (!cut && run.length)) out.push(cut ? { ...s, pts: run } : s);
+        if (cut) eraseBatch && (eraseBatch.changed = true);
+      }
+      strokes = out;
+    }
+  }
+  function hitsShape(s, x, y, r) {
+    if (s.shape === 'line') { const dx = s.x2 - s.x1, dy = s.y2 - s.y1, t = Math.max(0, Math.min(1, ((x - s.x1) * dx + (y - s.y1) * dy) / (dx * dx + dy * dy || 1))); return Math.hypot(x - s.x1 - t * dx, y - s.y1 - t * dy) < r + s.size; }
+    const bx = s.pts ? Math.min(...s.pts.map(q => q[0])) : s.x, by = s.pts ? Math.min(...s.pts.map(q => q[1])) : s.y;
+    const bw = s.pts ? Math.max(...s.pts.map(q => q[0])) - bx : s.w, bh = s.pts ? Math.max(...s.pts.map(q => q[1])) - by : s.h;
+    return x > bx - r && x < bx + bw + r && y > by - r && y < by + bh + r;
+  }
+
+  // ── toolbar + popovers ──
+  const pops = { pen: $('#penPop'), colour: $('#colourPop'), eraser: $('#erPop') };
+  function closePops(except) { for (const [k, p] of Object.entries(pops)) if (k !== except) p.hidden = true; }
+  $('#tools').addEventListener('click', e => {
+    const b = e.target.closest('[data-tool]'); if (!b) return;
+    const t = b.dataset.tool;
+    if (!['pen', 'eraser', 'select', 'hand'].includes(t)) { toast(`${b.getAttribute('aria-label')}: shown further down this page`); return; }
+    if (state.tool === t && (t === 'pen' || t === 'eraser')) { const p = t === 'pen' ? pops.pen : pops.eraser; const show = p.hidden; closePops(); p.hidden = !show; return; }
+    state.tool = t; closePops();
+    $$('#tools [data-tool]').forEach(x => x.classList.toggle('on', x.dataset.tool === t));
+    board.style.cursor = t === 'pen' ? 'crosshair' : t === 'eraser' ? 'none' : t === 'hand' ? 'grab' : 'default';
+    eraserAt = null; redraw();
+  });
+  document.addEventListener('pointerdown', e => { if (!e.target.closest('.pop') && !e.target.closest('#tools') && !board.contains(e.target)) closePops(); });
+
+  function paintTypes() {
+    $('#ptypes').innerHTML = Object.entries(TYPES).map(([k, v]) => `<button type="button" data-pt="${k}" class="${state.ptype === k ? 'on' : ''}" aria-pressed="${state.ptype === k}">${v.icon}<span>${v.label}</span></button>`).join('');
+    $('#penIcon').innerHTML = TYPES[state.ptype].icon;
+    $('#penDot').style.background = real(state.color[state.ptype]);
+  }
+  $('#ptypes').addEventListener('click', e => { const b = e.target.closest('[data-pt]'); if (!b) return; state.ptype = b.dataset.pt; store.set('ptype', state.ptype); paintAll(); });
+  function paintSizes() {
+    const t = state.ptype, s = state.size[t], presets = TYPES[t].sizes;
+    $('#sizes').innerHTML = presets.map((v, i) => `<button type="button" data-sz="${v}" class="${s === v ? 'on' : ''}" title="${['Small', 'Medium', 'Large', 'Extra large'][i]} · ${v} px" aria-label="${['Small', 'Medium', 'Large', 'Extra large'][i]}"><i style="width:${Math.min(22, 3 + v * .7)}px;height:${Math.min(22, 3 + v * .7)}px"></i></button>`).join('');
+    $('#sizeRange').value = s; $('#sizeVal').textContent = `${s} px`;
+    $('#erSizes').innerHTML = [8, 16, 32, 56].map((v, i) => `<button type="button" data-esz="${v}" class="${state.size.eraser === v ? 'on' : ''}" aria-label="${['Small', 'Medium', 'Large', 'Extra large'][i]} eraser"><i style="width:${4 + i * 5}px;height:${4 + i * 5}px;background:none;box-shadow:inset 0 0 0 1.5px var(--ink)"></i></button>`).join('');
+  }
+  const setSize = v => { state.size[state.ptype] = Math.max(1, Math.min(40, Math.round(v))); store.set('size', state.size); paintSizes(); drawPreview(); };
+  $('#sizes').addEventListener('click', e => { const b = e.target.closest('[data-sz]'); if (b) setSize(+b.dataset.sz); });
+  $('#sizeRange').addEventListener('input', e => setSize(+e.target.value));
+  $('#erSizes').addEventListener('click', e => { const b = e.target.closest('[data-esz]'); if (!b) return; state.size.eraser = +b.dataset.esz; store.set('size', state.size); paintSizes(); });
+  $('#erModes').addEventListener('click', e => { const b = e.target.closest('[data-em]'); if (!b) return; state.erMode = b.dataset.em; $$('#erModes [data-em]').forEach(x => x.classList.toggle('on', x === b)); });
+
+  function swatchHtml(list, selected) { return list.map(c => `<button type="button" class="sw ${c === 'auto' ? 'auto' : ''} ${c === 'none' ? 'none' : ''} ${selected === c ? 'on' : ''}" data-c="${c}" style="background:${c}" title="${c === 'auto' ? 'Black or white (follows the theme)' : c === 'none' ? 'No fill' : c}" aria-label="${c === 'auto' ? 'Automatic black or white' : c === 'none' ? 'No fill' : 'Colour ' + c}"></button>`).join(''); }
+  function paintColours() {
+    const sel = state.ctab === 'fill' ? (state.fill || 'none') : state.color[state.ptype];
+    $('#penSwatches').innerHTML = swatchHtml(BRIGHT, state.color[state.ptype]);
+    $('#allSwatches').innerHTML = swatchHtml(state.ctab === 'fill' ? ['none', ...ALL.slice(1)] : ALL, sel);
+    $('#recent').innerHTML = state.recent.length ? swatchHtml(state.recent, sel) : '<span class="empty">Colours you pick show up here</span>';
+    const hex = /^#/.test(sel) ? sel : (sel === 'auto' ? toHex(inkNow()) : '#FFFFFF');
+    $('#picker').value = hex.length === 7 ? hex : '#000000'; $('#hex').value = hex.toUpperCase();
+    $('#opVal').textContent = state.opacity + '%'; $('#opacity').value = state.opacity;
+  }
+  const toHex = c => c.startsWith('#') ? c : '#000000';
+  function pick(c) {
+    if (state.ctab === 'fill') state.fill = c === 'none' ? null : c;
+    else { state.color[state.ptype] = c; store.set('color', state.color); }
+    if (c !== 'auto' && c !== 'none') { state.recent = [c, ...state.recent.filter(x => x !== c)].slice(0, 8); store.set('recent', state.recent); }
+    paintAll();
+  }
+  for (const id of ['#penSwatches', '#allSwatches', '#recent']) $(id).addEventListener('click', e => { const b = e.target.closest('[data-c]'); if (b) pick(b.dataset.c); });
+  $('#picker').addEventListener('change', e => pick(e.target.value.toUpperCase()));
+  $('#hex').addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { let v = e.target.value.trim(); if (!v.startsWith('#')) v = '#' + v; if (/^#[0-9a-f]{6}$/i.test(v)) pick(v.toUpperCase()); else e.target.select(); } });
+  $('#opacity').addEventListener('input', e => { state.opacity = +e.target.value; $('#opVal').textContent = state.opacity + '%'; drawPreview(); });
+  $$('[data-ct]').forEach(b => b.onclick = () => { state.ctab = b.dataset.ct; $$('[data-ct]').forEach(x => x.classList.toggle('on', x === b)); paintColours(); });
+  $('#openColour').onclick = () => { pops.colour.hidden = false; paintColours(); };
+  $('#smooth').addEventListener('input', e => { state.smooth = +e.target.value; $('#smoothVal').textContent = state.smooth < 15 ? 'Off' : state.smooth < 40 ? 'Light' : state.smooth < 70 ? 'Medium' : 'Strong'; });
+
+  function drawPreview() {
+    const c = $('#preview'), r = c.getBoundingClientRect(); if (!r.width) return;
+    c.width = r.width * dpr; c.height = 40 * dpr; const x = c.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const t = state.ptype, pts = Array.from({ length: 50 }, (_, i) => [14 + i * (r.width - 28) / 49, 20 + Math.sin(i / 6) * 8, .3 + .6 * Math.sin(i / 16)]);
+    drawStroke(x, { kind: 'stroke', type: t, color: state.color[t], size: state.size[t], opacity: state.opacity, pts });
+  }
+  function paintAll() { paintTypes(); paintSizes(); paintColours(); drawPreview(); }
+  paintAll(); requestAnimationFrame(drawPreview);
+
+  // keys
+  document.addEventListener('keydown', e => {
+    if (e.target.closest('input,textarea')) return;
+    const k = e.key.toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+    if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); redo(); return; }
+    if (e.key === 'Escape') { closePops(); return; }
+    if (e.key === '[') setSize(state.size[state.ptype] - (state.size[state.ptype] > 10 ? 2 : 1));
+    if (e.key === ']') setSize(state.size[state.ptype] + (state.size[state.ptype] >= 10 ? 2 : 1));
+    if (k === 'p') $('#tools [data-tool="pen"]').click();
+    if (k === 'e') $('#tools [data-tool="eraser"]').click();
+    if (k === 'v') $('#tools [data-tool="select"]').click();
+  });
+
+  // toast
+  let toastT = null;
+  function toast(text, onUndo) {
+    $('#toastText').textContent = text; $('#toastUndo').hidden = !onUndo; $('#toast').hidden = false;
+    $('#toastUndo').onclick = () => { onUndo?.(); $('#toast').hidden = true; };
+    clearTimeout(toastT); toastT = setTimeout(() => $('#toast').hidden = true, onUndo ? 5000 : 2400);
+  }
+
+  // feedback copy
+  $('#fbCopy').onclick = async () => {
+    const t = $('#fbText');
+    try { await navigator.clipboard.writeText(t.value); $('#fbCopy').textContent = 'Tersalin'; } catch { t.select(); $('#fbCopy').textContent = 'Tekan Ctrl C'; }
+    setTimeout(() => $('#fbCopy').textContent = 'Salin', 2000);
+  };
+})();
+</script>
+</body>
+</html>
