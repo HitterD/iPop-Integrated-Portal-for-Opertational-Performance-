@@ -3089,6 +3089,12 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(8)")
                         .HasDefaultValue("page");
 
+                    b.Property<DateTime?>("LockedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("LockedById")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uuid");
 
@@ -3136,6 +3142,8 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasColumnType("bytea");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("LockedById");
 
                     b.HasIndex("ParentId");
 
@@ -6973,6 +6981,11 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("IPop.Core.Entities.NotePage", b =>
                 {
+                    b.HasOne("IPop.Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("LockedById")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("IPop.Core.Entities.User", "Owner")
                         .WithMany()
                         .HasForeignKey("OwnerId")

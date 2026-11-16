@@ -17,6 +17,9 @@ public class NotePage
     public string? Cover { get; set; }
     /// "page" (a document) or "board" (a whiteboard: one endless canvas, no document text). Fixed when the page is created.
     public string Kind { get; set; } = "page";
+    /// Locked pages reject every edit (text, drawings, style, title) until someone with edit access unlocks them.
+    public DateTime? LockedAt { get; set; }
+    public Guid? LockedById { get; set; }
     /// Photo cover: a notes attachment linked to this page. When set it wins over <see cref="Cover"/> (a gradient key).
     public Guid? CoverImageId { get; set; }
     /// Vertical focus of the photo inside the cover band, 0 (top) .. 100 (bottom).

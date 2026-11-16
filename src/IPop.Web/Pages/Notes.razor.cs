@@ -22,7 +22,7 @@ public partial class Notes
 {
     [Parameter] public Guid? Id { get; set; }
 
-    private const string EditorModule = "./js/notes/notes-editor.js?v=20261116-hist2";
+    private const string EditorModule = "./js/notes/notes-editor.js?v=20261116-lock2";
 
     private enum View { Home, Page, New, Trash }
     private enum Pop { None, More, Style, Emoji, Share, History, Tidy }
@@ -61,7 +61,10 @@ public partial class Notes
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    private bool CanEdit => note?.Access is "owner" or "edit";
+    private bool HasEditAccess => note?.Access is "owner" or "edit";
+    private bool IsLocked => note?.LockedAt is not null;
+    /// Editing needs edit access AND an unlocked page; unlocking itself only needs edit access (HasEditAccess).
+    private bool CanEdit => HasEditAccess && !IsLocked;
     private bool CanComment => CanEdit || note?.Access == "comment";
     private bool IsOwner => note?.Access == "owner";
     private Guid? GuideId => sidebar?.Pages.FirstOrDefault(p => p.IsGuide && p.IsMine)?.Id;
@@ -220,6 +223,7 @@ public partial class Notes
             pages = (sidebar?.Pages ?? []).Select(x => new { id = x.Id, title = DisplayTitle(x.Title), emoji = x.Emoji ?? "📄" }),
             dotnet = selfRef,
             kind = p.Kind,
+            locked = p.LockedAt is not null,
             boardEl = p.Kind == "board" ? boardRef : (object?)null,
         };
         try
@@ -330,6 +334,7 @@ public partial class Notes
         {
             "not_found" => "You no longer have access to this page",
             "invalid_update" => "That change is too large to save — try pasting it in smaller parts",
+            "locked" => "This page was locked, so your last change wasn't saved",
             _ => "You no longer have edit access to this page",
         };
         Toasts.Show(unsaved ? $"{why}. Your last changes were not saved — copy them before leaving." : why + ".", ToastKind.Error);
@@ -369,6 +374,7 @@ public partial class Notes
         note = m with { Access = note.Access, IsFavorite = note.IsFavorite };
         if (titleCts is null) titleDraft = m.Title;
         _ = editor?.InvokeVoidAsync("setAccent", m.Accent);
+        _ = editor?.InvokeVoidAsync("setLocked", m.LockedAt is not null);
         StateHasChanged();
     }
 

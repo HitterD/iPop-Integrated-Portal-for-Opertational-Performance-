@@ -19,6 +19,7 @@ public static class NotesEndpoints
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     public record FavoriteRequest(bool Favorite);
+    public record LockRequest(bool Locked);
     public record ResolveRequest(bool Resolved);
     public record ShareLevelRequest(string Level);
     public record GuideThreadRequest(string Quote, string Anchor);
@@ -45,6 +46,15 @@ public static class NotesEndpoints
 
         g.MapGet("/{id:guid}", (Guid id, HttpContext http, INoteService svc, CancellationToken ct) =>
             Run(http, async me => From(await svc.GetPageAsync(me.Id, id, ct))));
+
+        // Lock / unlock: needs edit access. Everyone with the page open learns about it through the usual meta push.
+        g.MapPut("/{id:guid}/lock", (Guid id, LockRequest req, HttpContext http, INoteService svc, IHubContext<NotesHub> hub,
+            CancellationToken ct) => Run(http, async me =>
+        {
+            var r = await svc.SetLockedAsync(me.Id, id, req.Locked, ct);
+            if (r.Success) await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteMeta", r.Data, ct);
+            return From(r);
+        })).RequirePermission("notes.write");
 
         g.MapPost("", (CreateNoteRequest req, HttpContext http, INoteService svc, IRealtime rt, CancellationToken ct) => Run(http, async me =>
         {
@@ -335,6 +345,7 @@ public static class NotesEndpoints
         "forbidden" or "not_room_member" => 403,
         "version_conflict" or "confirm_audience" => 409,
         "invalid_import" => 400,
+        "locked" => 423,
         _ => 422,
     });
 

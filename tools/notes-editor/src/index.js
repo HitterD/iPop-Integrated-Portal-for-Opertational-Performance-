@@ -5,7 +5,7 @@
 // an editor periodically folds the tail into a new state with a compare-and-set on the version.
 import { createCovers } from './covers.js';
 import { restoreScenes } from './restore-scenes.js';
-import { NoteDraw, mountScene, newDrawId } from './draw-block.js';
+import { NoteDraw, mountScene, newDrawId, setAllReadOnly } from './draw-block.js';
 import { analyze as tidyAnalyze, apply as tidyApply } from './tidy.js';
 import { refusedReason, mentionContexts, savePending, takePending, clearPending } from './sync.js';
 import { Editor, Extension } from '@tiptap/core';
@@ -107,7 +107,10 @@ export async function mount(el, opts) {
   const call = (m, ...a) => net.invokeMethodAsync(m, ...a).catch(() => {});
   const apiBase = (opts.apiBase || '').replace(/\/$/, '');
   const pageId = opts.pageId;
-  const canEdit = opts.access === 'edit' || opts.access === 'owner';
+  const canEditAccess = opts.access === 'edit' || opts.access === 'owner';
+  let pageLocked = !!opts.locked;
+  // Locked pages are read-only for everyone until unlocked; the drawing blocks read `canEdit` through host.canDraw().
+  let canEdit = canEditAccess && !pageLocked;
   const canComment = canEdit || opts.access === 'comment';
   const token = () => net.invokeMethodAsync('GetToken');
   const api = async (path, init = {}) => {
@@ -647,6 +650,14 @@ export async function mount(el, opts) {
       if (r) editor.view.domAtPos(r.from)?.node?.parentElement?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     },
     setAccent(k) { accent = k; accentListeners.forEach(f => f()); },
+    /// Page locked / unlocked (own action or someone else's): the text becomes read-only or editable again in place.
+    setLocked(on) {
+      if (closing) return;
+      pageLocked = !!on;
+      canEdit = canEditAccess && !pageLocked;
+      try { editor.setEditable(canEdit); } catch { /* editor already gone */ }
+      setAllReadOnly(!canEdit);
+    },
     /// Shares changed (dialog or a share from a mention): re-check who the tags can reach.
     sharesChanged() { host.accessChanged?.(); },
     setPages(list) { pages = new Map((list || []).map(p => [p.id, p])); if (!closing) editor.view.dispatch(editor.state.tr.setMeta('pagesChanged', true)); },

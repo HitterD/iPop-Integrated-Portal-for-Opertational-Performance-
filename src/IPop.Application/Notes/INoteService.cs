@@ -65,7 +65,8 @@ public record NotePageDto(Guid Id, Guid? ParentId, string Title, string? Emoji, 
     int TodoDone, int TodoTotal, int OpenThreads, IReadOnlyList<NoteCrumbDto> Breadcrumb,
     IReadOnlyList<NoteCrumbDto> Children, IReadOnlyList<NoteRoomShareDto> Rooms,
     /// "notion" | "markdown" | "html" for pages created by Import (shown as a small badge), else null.
-    string? ImportSource = null, Guid? CoverImageId = null, int CoverPosY = 50, string Kind = "page");
+    string? ImportSource = null, Guid? CoverImageId = null, int CoverPosY = 50, string Kind = "page",
+    DateTime? LockedAt = null, string? LockedByName = null);
 
 public record NoteRoomShareDto(Guid RoomId, string Name, string Level);
 
@@ -166,6 +167,8 @@ public interface INoteService
     Task<NoteResult<NotePageDto>> GetPageAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task<NoteResult<NotePageDto>> CreateAsync(Guid userId, CreateNoteRequest req, CancellationToken ct);
     Task<NoteResult<NotePageDto>> UpdateMetaAsync(Guid userId, Guid pageId, UpdateNoteMetaRequest req, CancellationToken ct);
+    /// Lock or unlock a page. Needs edit access; a locked page refuses every change until it is unlocked.
+    Task<NoteResult<NotePageDto>> SetLockedAsync(Guid userId, Guid pageId, bool locked, CancellationToken ct);
     Task<NoteResult<bool>> SetFavoriteAsync(Guid userId, Guid pageId, bool favorite, CancellationToken ct);
     /// Re-parent (owner only, target must be editable) and/or reorder among siblings (edit on the parent).
     Task<NoteResult<bool>> MoveAsync(Guid userId, Guid pageId, MoveNoteRequest req, CancellationToken ct);

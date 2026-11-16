@@ -1,3 +1,5 @@
+using System.Net.Http.Json;
+using System.Text.Json;
 using IPop.Application.Notes;
 using IPop.Web.Services;
 using Microsoft.AspNetCore.Components;
@@ -10,6 +12,20 @@ namespace IPop.Web.Pages;
 public partial class Notes
 {
     private enum CoverTab { Colours, Upload, ThisPage }
+
+    private async Task ToggleLockAsync()
+    {
+        if (note is null || !HasEditAccess) return;
+        pop = Pop.None;
+        var lockIt = !IsLocked;
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/notes/{note.Id}/lock", new { locked = lockIt });
+        if (!res.IsSuccessStatusCode) { Toasts.Show(lockIt ? "Couldn't lock the page" : "Couldn't unlock the page", ToastKind.Error); return; }
+        var fresh = await res.Content.ReadFromJsonAsync<NotePageDto>(Json);
+        if (fresh is null || note?.Id != fresh.Id) return;
+        note = fresh with { IsFavorite = note.IsFavorite };
+        if (editor is not null) await editor.InvokeVoidAsync("setLocked", IsLocked);
+        Toasts.Show(IsLocked ? "Page locked. Nobody can edit it until it is unlocked." : "Page unlocked.", ToastKind.Success);
+    }
 
     private static readonly (string Key, string Label)[] BoardTemplates = [("retro", "Retro"), ("flow", "Flowchart"), ("brainstorm", "Brainstorm")];
 

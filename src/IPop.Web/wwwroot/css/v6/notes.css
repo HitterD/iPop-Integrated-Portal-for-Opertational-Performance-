@@ -962,3 +962,8 @@
 .nt-page:has(.nt-board) { max-width:none; padding-left:32px; padding-right:32px; }
 @media (max-width:767px) { .nt-board { height:calc(100dvh - 300px); min-height:360px; } .nt-page:has(.nt-board) { padding-left:12px; padding-right:12px; } }
 .nt-row .nt-kind { margin-left:6px; font-size:10.5px; color:var(--ink-3); background:var(--fill); border-radius:5px; padding:0 5px; flex:none; }
+
+/* ── Page lock ──────────────────────────────────────────────────────────── */
+.nt-lockbar { display:flex; align-items:center; gap:10px; padding:9px 18px; background:color-mix(in srgb,var(--nt-orange,#FF9500) 16%,transparent); color:var(--ink); font-size:13px; }
+.nt-lockbar span { flex:1; min-width:0; }
+.nt-lockbar .nt-btn { height:28px; flex:none; }

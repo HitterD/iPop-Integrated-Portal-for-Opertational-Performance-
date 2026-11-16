@@ -50,6 +50,7 @@ public sealed partial class NoteService
         if (update.Length == 0 || update.Length > MaxUpdateBytes) return Fail<long>("invalid_update");
         var access = await GetAccessAsync(userId, pageId, ct);
         if (access < NoteAccess.Edit) return Fail<long>(Denied(access));
+        if (await db.NotePages.AsNoTracking().AnyAsync(p => p.Id == pageId && p.LockedAt != null, ct)) return Fail<long>("locked");
 
         var row = new NoteUpdate { PageId = pageId, UserId = userId, Data = update, CreatedAt = DateTime.UtcNow };
         db.NoteUpdates.Add(row);
@@ -76,6 +77,7 @@ public sealed partial class NoteService
     {
         var access = await GetAccessAsync(userId, pageId, ct);
         if (access < NoteAccess.Edit) return Fail<NoteSnapshotResultDto>(Denied(access));
+        if (await db.NotePages.AsNoTracking().AnyAsync(p => p.Id == pageId && p.LockedAt != null, ct)) return Fail<NoteSnapshotResultDto>("locked");
         byte[] state;
         try { state = Convert.FromBase64String(req.State); }
         catch (FormatException) { return Fail<NoteSnapshotResultDto>("invalid_update"); }

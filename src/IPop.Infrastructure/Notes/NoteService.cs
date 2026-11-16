@@ -298,7 +298,7 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         var p = await db.NotePages.AsNoTracking().Where(x => x.Id == pageId).Select(x => new
         {
             x.Id, x.ParentId, x.Title, x.Emoji, x.Cover, x.Accent, x.Font, x.FullWidth, x.SmallText, x.IsGuide,
-            x.CreatedAt, x.UpdatedAt, x.UpdatedById, x.TodoDone, x.TodoTotal, x.ImportSource, x.CoverImageId, x.CoverPosY, x.Kind,
+            x.CreatedAt, x.UpdatedAt, x.UpdatedById, x.TodoDone, x.TodoTotal, x.ImportSource, x.CoverImageId, x.CoverPosY, x.Kind, x.LockedAt, x.LockedById,
             OwnerName = x.Owner.Name, OwnerNik = x.Owner.Nik,
         }).FirstAsync(ct);
 
@@ -325,13 +325,14 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
                 NoteLevels.Name(g.Select(x => NoteLevels.ToAccess(x.Level)).Max())));
         var isShared = rooms.Count > 0 || await db.NoteShares.AnyAsync(s => chainIds.Contains(s.PageId), ct);
 
+        var lockedBy = p.LockedById is { } lb ? await db.Users.AsNoTracking().Where(u => u.Id == lb).Select(u => u.Name).FirstOrDefaultAsync(ct) : null;
         var updatedBy = p.UpdatedById is { } ub ? await db.Users.AsNoTracking().Where(u => u.Id == ub).Select(u => u.Name).FirstOrDefaultAsync(ct) : null;
         var fav = await db.NoteFavorites.AnyAsync(f => f.UserId == userId && f.PageId == pageId, ct);
         var open = await db.NoteThreads.CountAsync(t => t.PageId == pageId && t.ResolvedAt == null, ct);
 
         return new NotePageDto(p.Id, p.ParentId, p.Title, p.Emoji, p.Cover, p.Accent, p.Font, p.FullWidth, p.SmallText,
             p.IsGuide, NoteLevels.Name(access), fav, isShared, p.OwnerName, p.OwnerNik, p.CreatedAt, p.UpdatedAt, updatedBy,
-            p.TodoDone, p.TodoTotal, open, crumbs, children, rooms, p.ImportSource, p.CoverImageId, p.CoverPosY, p.Kind);
+            p.TodoDone, p.TodoTotal, open, crumbs, children, rooms, p.ImportSource, p.CoverImageId, p.CoverPosY, p.Kind, p.LockedAt, lockedBy);
     }
 
     /// Group name, or for a DM the other person's name as seen by <paramref name="viewerId"/>.
@@ -385,6 +386,8 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
     {
         var (page, access) = await LoadAsync(userId, pageId, NoteAccess.Edit, ct);
         if (page is null) return Fail<NotePageDto>(Denied(access));
+        // Unlocking goes through SetLockedAsync; every other change waits until the page is unlocked.
+        if (page.LockedAt is not null) return Fail<NotePageDto>("locked");
         if (req.Cover is { } c && c != "" && !NoteStyle.Covers.Contains(c)) return Fail<NotePageDto>("invalid_style");
         if (req.Accent is { } a && !NoteStyle.Accents.Contains(a)) return Fail<NotePageDto>("invalid_style");
         if (req.Font is { } f && !NoteStyle.Fonts.Contains(f)) return Fail<NotePageDto>("invalid_style");
@@ -411,6 +414,21 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         page.UpdatedAt = DateTime.UtcNow;
         page.UpdatedById = userId;
         await db.SaveChangesAsync(ct);
+        return Ok(await BuildPageAsync(userId, pageId, await ChainAsync(pageId, ct), access, ct));
+    }
+
+    public async Task<NoteResult<NotePageDto>> SetLockedAsync(Guid userId, Guid pageId, bool locked, CancellationToken ct)
+    {
+        var (page, access) = await LoadAsync(userId, pageId, NoteAccess.Edit, ct);
+        if (page is null) return Fail<NotePageDto>(Denied(access));
+        if (locked != (page.LockedAt is not null))
+        {
+            page.LockedAt = locked ? DateTime.UtcNow : null;
+            page.LockedById = locked ? userId : null;
+            page.UpdatedAt = DateTime.UtcNow;
+            page.UpdatedById = userId;
+            await db.SaveChangesAsync(ct);
+        }
         return Ok(await BuildPageAsync(userId, pageId, await ChainAsync(pageId, ct), access, ct));
     }
 

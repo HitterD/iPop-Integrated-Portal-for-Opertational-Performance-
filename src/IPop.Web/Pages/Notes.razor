@@ -277,6 +277,10 @@
                 else
                 {
                     <section class="nt-pageview @FontClass @(note.SmallText ? "small" : "")" style="--pc:@AccentHex(note.Accent)">
+                        @if (IsLocked)
+                        {
+                            <div class="nt-lockbar" role="status"><i data-lucide="lock" class="sm"></i><span>This page is locked@(note.LockedByName is { } lbn ? $" by {FirstName(lbn)}" : ""). Nobody can edit it until it is unlocked.</span>@if (HasEditAccess) {<button type="button" class="nt-btn" @onclick="ToggleLockAsync">Unlock</button>}</div>
+                        }
                         @if (HasCover || coverUploading)
                         {
                             <div class="nt-cover @(HasPhotoCover ? "photo" : "") @(coverRepositioning ? "repo" : "") @(coverUploading ? "loading" : "")" style="@CoverStyle" @ref="coverRef">
@@ -449,6 +453,10 @@
                     <button type="button" class="mi" @onclick="() => pop = Pop.Style"><i data-lucide="palette" class="sm"></i>Style</button>
                     <button type="button" class="mi" @onclick="() => CreateBlank(note.Id)"><i data-lucide="file-plus" class="sm"></i>Add sub-page</button>
                     <button type="button" class="mi" @onclick='() => CreateBlank(note.Id, "board")'><i data-lucide="layout-dashboard" class="sm"></i>Add whiteboard</button>
+                }
+                @if (HasEditAccess)
+                {
+                    <button type="button" class="mi" @onclick="ToggleLockAsync"><i data-lucide="@(IsLocked ? "lock-open" : "lock")" class="sm"></i>@(IsLocked ? "Unlock page" : "Lock page")</button>
                 }
                 <button type="button" class="mi" @onclick="() => { pop = Pop.None; _ = ToggleFavorite(); }"><i data-lucide="star" class="sm"></i>@(note.IsFavorite ? "Remove from favorites" : "Add to favorites")</button>
                 <button type="button" class="mi" @onclick="OpenHistory"><i data-lucide="history" class="sm"></i>Version history</button>

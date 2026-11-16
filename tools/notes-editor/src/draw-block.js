@@ -27,13 +27,20 @@ const isDark = () => document.documentElement.dataset.theme === 'dark' || docume
 export const newDrawId = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
 
 /// Mounts a drawing into `container`. Returns { destroy, png, setReadOnly }.
+/// Every drawing currently on screen, so a page lock can switch all of them to read-only at once.
+const live = new Set();
+const lockListeners = new Set();   // inline blocks re-read the editor's editable state when the page lock changes
+export function setAllReadOnly(readOnly) { live.forEach(i => i.setReadOnly(readOnly)); lockListeners.forEach(f => f(readOnly)); }
+
 export async function mountScene(container, { ydoc, id, readOnly, mode = 'block', onLinkOpen }) {
   const mod = await loadDrawBundle();
   const ymap = ydoc.getMap(sceneName(id));
   const inst = mod.mountDraw(container, { ymap, doc: ydoc, readOnly, theme: isDark() ? 'dark' : 'light', mode, onLinkOpen });
   const mo = new MutationObserver(() => inst.setTheme(isDark() ? 'dark' : 'light'));
   mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-  return { ...inst, destroy() { mo.disconnect(); inst.destroy(); } };
+  const handle = { ...inst, destroy() { live.delete(handle); mo.disconnect(); inst.destroy(); } };
+  live.add(handle);
+  return handle;
 }
 
 export const NoteDraw = Node.create({
@@ -93,6 +100,11 @@ export const NoteDraw = Node.create({
         dom.append(grip);
       }
 
+      // The block follows the page lock: no toolbar and no resize grip while locked.
+      const syncLock = () => { const ro = !editor.isEditable; dom.classList.toggle('ro', ro); const g = dom.querySelector('.nt-draw-grip'); if (g) g.style.display = ro ? 'none' : ''; };
+      lockListeners.add(syncLock);
+      syncLock();
+
       const start = async () => {
         const ydoc = host.drawDoc?.();
         if (!ydoc || !current.attrs.id) { status.textContent = 'This drawing can’t be shown here.'; return; }
@@ -114,7 +126,7 @@ export const NoteDraw = Node.create({
         update(n) { if (n.type.name !== 'noteDraw') return false; current = n; dom.style.height = `${n.attrs.height}px`; return true; },
         ignoreMutation: () => true,
         stopEvent: () => true,
-        destroy() { gone = true; io.disconnect(); inst?.destroy(); inst = null; },
+        destroy() { gone = true; lockListeners.delete(syncLock); io.disconnect(); inst?.destroy(); inst = null; },
       };
     };
   },
