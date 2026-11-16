@@ -4,6 +4,7 @@
 // raw updates. Clients push every local update through the hub (which stores it and fans it out), and
 // an editor periodically folds the tail into a new state with a compare-and-set on the version.
 import { createCovers } from './covers.js';
+import { restoreScenes } from './restore-scenes.js';
 import { NoteDraw, mountScene, newDrawId } from './draw-block.js';
 import { analyze as tidyAnalyze, apply as tidyApply } from './tidy.js';
 import { refusedReason, mentionContexts, savePending, takePending, clearPending } from './sync.js';
@@ -88,7 +89,10 @@ export function preview(el, state, opts = {}) {
     pageInfo: () => null,
     toast: () => {},
   };
-  const ed = new Editor({ element: el, editable: false, extensions: baseExtensions(host, { collab: false }), content: json,
+  // A whiteboard version has no text, only its board: show it as a read-only drawing so the history is not an empty page.
+  const hasBoard = doc.share.has('draw:board') && doc.getMap('draw:board').size > 0 && !JSON.stringify(json).includes('"noteDraw"');
+  const content = hasBoard ? { ...json, content: [{ type: 'noteDraw', attrs: { id: 'board', height: 420 } }, ...(json.content || [])] } : json;
+  const ed = new Editor({ element: el, editable: false, extensions: baseExtensions(host, { collab: false }), content,
     editorProps: { attributes: { class: 'nt-editor' } } });
   return { destroy: () => { closeLightboxes(host); ed.destroy(); doc.destroy(); } };
 }
@@ -674,7 +678,10 @@ export async function mount(el, opts) {
       if (closing || !canEdit) return;
       const tmp = new Y.Doc();
       Y.applyUpdate(tmp, unb64(state));
-      editor.commands.setContent(yXmlFragmentToProsemirrorJSON(tmp.getXmlFragment(FIELD)));
+      ydoc.transact(() => {
+        editor.commands.setContent(yXmlFragmentToProsemirrorJSON(tmp.getXmlFragment(FIELD)));
+        restoreScenes(ydoc, tmp);
+      });
       tmp.destroy();
     },
     async flushNow() { await flush(); scheduleSnapshot.cancel(); await snapshot(); },
