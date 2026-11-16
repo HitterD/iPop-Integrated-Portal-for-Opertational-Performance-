@@ -206,7 +206,7 @@ input.wb-edit { background: var(--wb-surface); padding: 0 8px; outline-width: 2p
 .wb-moreitem { display: flex !important; flex-direction: column; align-items: center; gap: 3px; width: calc(25% - 4px) !important; height: 62px !important; font-size: 11px; color: var(--wb-ink2) !important; border-radius: 10px !important; place-items: initial !important; justify-content: center; }
 .wb-moreitem:hover { background: var(--wb-fill) !important; }
 .wb-moreic { display: grid; place-items: center; }
-@media (min-width: 768px) { .wb-moremenu { display: none !important; } }
+@media (min-width: 768px) { .wb:not(.wb-tight) .wb-moremenu { display: none !important; } }
 
 /* ── Round 2: pen options, colours, eraser, hold-to-neat ── */
 .wb-pendot { position: absolute; right: 4px; bottom: 4px; width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--wb-surface); }
@@ -428,3 +428,10 @@ input.wb-edit { background: var(--wb-surface); padding: 0 8px; outline-width: 2p
 .wb-r4 { min-width: 0; overflow-x: hidden; }
 .wb-r4 > * { min-width: 0; max-width: 100%; }
 .wb-r4 .wb-row2 .wb-wide { min-width: 0; flex: 1 1 0; }
+/* a narrow board on a big screen: the "More" tools open as a small pop above the bar, not a full-width sheet */
+@media (min-width: 768px) {
+  .wb.wb-tight .wb-moremenu { left: 50%; right: auto; transform: translateX(-50%); width: min(360px, calc(100% - 16px)); display: flex !important; }
+  .wb.wb-tight .wb-moreitem { width: calc(33.33% - 4px) !important; white-space: nowrap; }
+  .wb.wb-tight .wb-moremenu[hidden] { display: none !important; }
+  .wb-block.wb-tight .wb-moremenu { bottom: 52px; }
+}

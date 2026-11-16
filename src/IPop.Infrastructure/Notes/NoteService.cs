@@ -380,7 +380,18 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
     {
         if (s is null) return null;
         s = s.Trim();
-        return s.Length == 0 ? null : s.Length <= max ? s : s[..max];
+        if (s.Length == 0) return null;
+        if (s.Length <= max) return s;
+        // cut between whole characters: halving an emoji (a surrogate pair or a ZWJ sequence) stores a broken "?"
+        var info = new System.Globalization.StringInfo(s);
+        var cut = new System.Text.StringBuilder();
+        for (var i = 0; i < info.LengthInTextElements; i++)
+        {
+            var el = info.SubstringByTextElements(i, 1);
+            if (cut.Length + el.Length > max) break;
+            cut.Append(el);
+        }
+        return cut.Length == 0 ? null : cut.ToString();
     }
 
     public async Task<NoteResult<NotePageDto>> UpdateMetaAsync(Guid userId, Guid pageId, UpdateNoteMetaRequest req, CancellationToken ct)

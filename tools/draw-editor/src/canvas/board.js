@@ -269,7 +269,8 @@ export function mountCanvas(container, opts) {
     flowOn = hasFlowchart(allEls);
     steps = flowOn && prefs.steps !== false ? stepNumbers(allEls) : new Map();
     const boxes = flowOn || allEls.some(x => x.type === 'connector' && x.route === 'smart') ? shapeBoxes() : [];
-    const g = 24 * view.z;
+    // the dot grid doubles its step when zoomed out, so it never turns into grey noise
+    let g = 24 * view.z; while (g < 12) g *= 2;
     root.style.backgroundSize = `${g}px ${g}px`;
     root.style.backgroundPosition = `${view.x}px ${view.y}px`;
     const els = allEls;
@@ -385,6 +386,7 @@ export function mountCanvas(container, opts) {
   // one phone breakpoint for the whole app: ask ipop.mobile (same query as the CSS)
   const isPhone = () => { try { return !!window.ipop?.mobile?.isMobile?.(); } catch { return false; } };
   let moreOpen = false;
+  let tight = false;   // the board is narrower than the full tool bar
   const moreMenu = el('div', 'wb-menu wb-moremenu'); moreMenu.hidden = true;
   root.append(moreMenu);
   moreMenu.addEventListener('pointerdown', e => e.stopPropagation());
@@ -414,7 +416,8 @@ export function mountCanvas(container, opts) {
     }
     toolbar.hidden = false;
     // On a phone the bar keeps what a finger needs: select, hand, pen, sticky, picture, comment, and a "More" that opens the rest.
-    const phone = isPhone();
+    // A board too narrow for every tool (a /draw block beside the sidebar on a small laptop) does the same, so no tool is cut off.
+    const phone = isPhone() || tight;
     const PHONE_KEEP = new Set(['select', 'hand', 'pen', 'sticky', 'image', 'comment']);
     toolbar.innerHTML = TOOLS.filter(t => t === '|' ? !phone : (!phone || PHONE_KEEP.has(t[0])))
       .filter(t => !(compact && (t[0] === 'frame' || t[0] === 'highlighter')) && !(t[0] === 'image' && !opts.upload) && !(t[0] === 'comment' && !opts.comments) && !(compact && (t[0] === 'emoji' || t[0] === 'linkcard')) && !(t[0] === 'linkcard' && !opts.linkPreview) && !(t[0] === 'card' && !opts.pages && !opts.taskSearch)).map(t => {
@@ -975,7 +978,7 @@ export function mountCanvas(container, opts) {
     root.style.setProperty('--wb-follow', o.user.color || '#5856D6');
     root.classList.add('wb-following');
     world.setAttribute('transform', `translate(${view.x} ${view.y}) scale(${view.z})`);
-    root.style.backgroundSize = `${24 * view.z}px ${24 * view.z}px`;
+    { let g2 = 24 * view.z; while (g2 < 12) g2 *= 2; root.style.backgroundSize = `${g2}px ${g2}px`; }
     root.style.backgroundPosition = `${view.x}px ${view.y}px`;
     paintOverlay(); paintZoom();
   }
@@ -3628,8 +3631,12 @@ export function mountCanvas(container, opts) {
   root.dataset.tool = 'select';
   let fitted = false;
   let wasPhone = isPhone();
+  let wasTight = tight;
   const ro = new ResizeObserver(() => {
     if (isPhone() !== wasPhone) { wasPhone = isPhone(); paintToolbar(); }
+    // all tools need about 40 px each; under that the bar switches to the short set + More
+    tight = root.clientWidth > 0 && root.clientWidth < (mode === 'block' ? 640 : 560);
+    if (tight !== wasTight) { wasTight = tight; root.classList.toggle('wb-tight', tight); moreOpen = false; moreMenu.hidden = true; paintToolbar(); }
     const r = rect();
     if (!fitted && r.width > 60 && r.height > 60) { fitted = true; fit(); }
     else render();
