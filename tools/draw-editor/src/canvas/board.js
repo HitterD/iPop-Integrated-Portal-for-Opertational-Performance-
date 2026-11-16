@@ -7,6 +7,7 @@
 import {
   create, bump, isElement, zBetween, topZ, bottomZ, bounds, unionBounds, hitTest, insideBox, frameOf, moved, resizeBox,
   snap, guides, recognise, centre, SHAPES, STICKY_COLORS,
+  cutStroke, strokePieces, alignBoxes, distributeBoxes, tidyRow, expandGroups, recogniseLine, findOnBoard,
 } from './model.js';
 import { svgEl, defs, drawElement, PALETTE, toPng, toSvg, measure, FONT_STACK, layoutText, pngToPdf } from './render.js';
 import { CANVAS_TEMPLATES, TEMPLATE_INFO } from './templates.js';
@@ -58,11 +59,60 @@ ICONS.download = '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="
 ICONS.stamp = '<circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/>';
 ICONS.mind = '<circle cx="12" cy="12" r="3"/><circle cx="4" cy="5" r="2"/><circle cx="20" cy="5" r="2"/><circle cx="4" cy="19" r="2"/><circle cx="20" cy="19" r="2"/><path d="M6 6l4 4M18 6l-4 4M6 18l4-4M18 18l-4-4"/>';
 ICONS.card = '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h10M7 13h6"/>';
+ICONS.marker = '<path d="m9 15-4 5h5l2-2"/><path d="m9 15 7-11 4 3-7 11z"/>';
+ICONS.pencil = '<path d="M15 4l5 5L9 20H4v-5z"/><path d="m4 15 5 5"/>';
+ICONS.emoji = '<circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01"/>';
+ICONS.link = '<path d="M10 14a4 4 0 0 0 6 .5l3-3a4 4 0 0 0-5.7-5.7l-1.5 1.5"/><path d="M14 10a4 4 0 0 0-6-.5l-3 3a4 4 0 0 0 5.7 5.7l1.5-1.5"/>';
+ICONS.search = '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>';
+ICONS.newtab = '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>';
+ICONS.group = '<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/><path d="M3 15v6h6M21 9V3h-6" stroke-dasharray="2 2"/>';
+ICONS.ungroup = '<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/>';
+ICONS.arrange = '<path d="M4 3v18M8 7h12M8 15h7"/>';
+ICONS.alignleft = '<path d="M4 3v18M8 7h10M8 15h6"/>';
+ICONS.alignhc = '<path d="M12 3v18M6 7h12M8 15h8"/>';
+ICONS.alignright = '<path d="M20 3v18M6 7h10M10 15h6"/>';
+ICONS.aligntop = '<path d="M3 4h18M7 8v10M15 8v6"/>';
+ICONS.alignvc = '<path d="M3 12h18M7 6v12M15 8v8"/>';
+ICONS.alignbottom = '<path d="M3 20h18M7 6v10M15 10v6"/>';
+ICONS.distx = '<rect x="3" y="8" width="4" height="8"/><rect x="10" y="8" width="4" height="8"/><rect x="17" y="8" width="4" height="8"/>';
+ICONS.disty = '<rect x="8" y="3" width="8" height="4"/><rect x="8" y="10" width="8" height="4"/><rect x="8" y="17" width="8" height="4"/>';
 const icon = (name, cls = 'wb-i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
 
-const INK = ['#1D1D1F', '#FF3B30', '#FF9500', '#34A853', '#0A84FF', '#AF52DE'];
-const FILLS = [null, '#FFF3A3', '#C9F2C7', '#CFE6FF', '#FFD3E1', '#E6DAFF', '#F2F2F4'];
 const SIZES = [['S', 14], ['M', 18], ['L', 26], ['XL', 40]];
+// Colours (grill round 2): 8 bright + 8 soft; "auto" = black on a light board, white on a dark one.
+const BRIGHT = ['auto', '#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#30B0C7', '#0A84FF', '#AF52DE'];
+const SOFT = ['#8E8E93', '#FFB3AE', '#FFD29A', '#FFE88A', '#A8E6B4', '#A6E3EC', '#A9CFFF', '#DCC1F2'];
+const ALL_COLOURS = [...BRIGHT, ...SOFT];
+// Pen types: sizes are the S/M/L/XL presets in screen px at 100 %; the slider goes 1–40.
+const PEN_TYPES = {
+  pen: { label: 'Pen', sizes: [2, 4, 8, 14], size: 4, color: 'auto' },
+  marker: { label: 'Marker', sizes: [4, 8, 14, 24], size: 8, color: '#FF3B30' },
+  highlighter: { label: 'Highlight', sizes: [10, 16, 24, 36], size: 16, color: '#FFCC00' },
+  pencil: { label: 'Pencil', sizes: [1, 2, 4, 7], size: 2, color: 'auto' },
+};
+const ERASER_SIZES = [8, 16, 32, 56];
+const SIZE_NAMES = ['Small', 'Medium', 'Large', 'Extra large'];
+const PREFS_KEY = 'ipop.wb.prefs';
+/// Per person, per browser: the last pen, sizes, colours. Never shared, so a broken entry only resets the defaults.
+function loadPrefs() {
+  const base = { ptype: 'pen', size: { eraser: 16 }, color: {}, smooth: 50, erMode: 'whole', snap: true, recent: [], opacity: 100 };
+  for (const [k, v] of Object.entries(PEN_TYPES)) { base.size[k] = v.size; base.color[k] = v.color; }
+  try {
+    const s = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null');
+    if (s && typeof s === 'object') {
+      if (PEN_TYPES[s.ptype]) base.ptype = s.ptype;
+      for (const k of Object.keys(base.size)) if (Number.isFinite(s.size?.[k])) base.size[k] = Math.max(1, Math.min(k === 'eraser' ? 80 : 40, s.size[k]));
+      for (const k of Object.keys(PEN_TYPES)) if (typeof s.color?.[k] === 'string' && /^(auto|#[0-9a-f]{6})$/i.test(s.color[k])) base.color[k] = s.color[k];
+      if (Number.isFinite(s.smooth)) base.smooth = Math.max(0, Math.min(100, s.smooth));
+      if (s.erMode === 'part') base.erMode = 'part';
+      if (s.snap === false) base.snap = false;
+      if (Array.isArray(s.recent)) base.recent = s.recent.filter(c => /^#[0-9a-f]{6}$/i.test(c)).slice(0, 8);
+    }
+  } catch { /* private window or bad entry: defaults */ }
+  return base;
+}
+function savePrefs(p) { try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* blocked */ } }
+const isHex = c => /^#[0-9a-f]{6}$/i.test(c || '');
 
 // Letter shortcuts like ClickUp; digits keep the old Excalidraw meaning (grill Q18).
 const KEYS = { n: 'card', c: 'comment', k: 'stamp', i: 'image', v: 'select', l: 'laser', h: 'hand', p: 'pen', m: 'highlighter', e: 'eraser', s: 'sticky', t: 'text', r: 'rect', o: 'ellipse', d: 'diamond', a: 'connector', f: 'frame' };
@@ -108,7 +158,11 @@ export function mountCanvas(container, opts) {
 
   // ── State ────────────────────────────────────────────────────────────────
   let view = { x: 40, y: 40, z: 1 };
-  let tool = 'select', lastShape = 'rect', stickyColor = 'yellow', penColor = null, penWidth = 3;
+  let tool = 'select', lastShape = 'rect', stickyColor = 'yellow';
+  const prefs = loadPrefs();
+  // colour new text, shapes and connectors take: the pen's colour (null = follows the theme, like before)
+  const inkNow = () => { const c = prefs.color[prefs.ptype]; return isHex(c) ? c : null; };
+  const penKind = () => (tool === 'highlighter' ? 'highlighter' : prefs.ptype);
   let sel = new Set();
   const draft = new Map();       // id -> element being changed under the pointer (not yet written)
   let flushTimer = null;
@@ -254,7 +308,7 @@ export function mountCanvas(container, opts) {
   const compact = mode === 'block';
   const TOOLS = [
     ['select', 'Select', 'V'], ['hand', 'Hand', 'H'], '|',
-    ['pen', 'Pen', 'P'], ['highlighter', 'Highlighter', 'M'], ['eraser', 'Eraser', 'E'], '|',
+    ['pen', 'Pen (click again for options)', 'P'], ['eraser', 'Eraser (click again for options)', 'E'], '|',
     ['sticky', 'Sticky note', 'S'], ['text', 'Text', 'T'], ['shape', 'Shapes', 'R'], ['connector', 'Connector', 'A'], '|', ['frame', 'Frame', 'F'], ['image', 'Picture or file', 'I'], ['comment', 'Comment', 'C'], ['stamp', 'Stamp', 'K'], ['card', 'Add a Notes page or Projects task', 'N'], ['laser', 'Laser pointer', 'L'],
   ];
   // phone = a narrow screen (same breakpoint as the rest of the app: under 768 px)
@@ -265,7 +319,7 @@ export function mountCanvas(container, opts) {
   root.append(moreMenu);
   moreMenu.addEventListener('pointerdown', e => e.stopPropagation());
   function paintMore() {
-    const items = [['shape', 'Shapes'], ['connector', 'Connector'], ['text', 'Text'], ['highlighter', 'Highlighter'], ['eraser', 'Eraser'], ['laser', 'Laser'], ...(compact ? [] : [['frame', 'Frame'], ['stamp', 'Stamp'], ['card', 'Add card']])]
+    const items = [['shape', 'Shapes'], ['connector', 'Connector'], ['text', 'Text'], ['eraser', 'Eraser'], ['laser', 'Laser'], ...(compact ? [] : [['frame', 'Frame'], ['stamp', 'Stamp'], ['card', 'Add card']])]
       .filter(([k]) => !(k === 'stamp' && compact) && !(k === 'card' && !opts.pages && !opts.taskSearch));
     moreMenu.innerHTML = items.map(([k, label]) => `<button type="button" data-more="${k}" class="wb-moreitem"><span class="wb-moreic">${k === 'shape' ? icon(lastShape) : icon(k)}</span>${label}</button>`).join('')
       + (opts.voteMap ? '<button type="button" data-more="vote" class="wb-moreitem"><span class="wb-moreic">' + icon('vote') + '</span>Vote</button>' : '');
@@ -295,8 +349,12 @@ export function mountCanvas(container, opts) {
       .filter(t => !(compact && (t[0] === 'frame' || t[0] === 'highlighter')) && !(t[0] === 'image' && !opts.upload) && !(t[0] === 'comment' && !opts.comments) && !(compact && t[0] === 'stamp') && !(t[0] === 'card' && !opts.pages && !opts.taskSearch)).map(t => {
       if (t === '|') return '<span class="wb-sep"></span>';
       const [k, label, key] = t;
-      const on = k === tool || (k === 'shape' && SHAPES.includes(tool));
-      const ic = k === 'sticky' ? `<span class="wb-stk" style="background:${pal().sticky[stickyColor]}"></span>` : k === 'shape' ? icon(lastShape) : icon(k);
+      const on = k === tool || (k === 'shape' && SHAPES.includes(tool)) || (k === 'pen' && tool === 'highlighter');
+      const pk = k === 'pen' ? (tool === 'highlighter' ? 'highlighter' : prefs.ptype) : null;
+      const ic = k === 'sticky' ? `<span class="wb-stk" style="background:${pal().sticky[stickyColor]}"></span>`
+        : k === 'shape' ? icon(lastShape)
+        : pk ? `${icon(pk === 'pen' ? 'pen' : pk)}<span class="wb-pendot" style="background:${colourCss(prefs.color[pk])}"></span>`
+        : icon(k);
       return `<button type="button" data-tool="${k}" class="${on ? 'on' : ''}" title="${label} (${key})" aria-label="${label}" aria-pressed="${on}">${ic}<span class="wb-k">${key}</span></button>`;
     }).join('') + (phone ? `<button type="button" data-tool="more" class="${moreOpen ? 'on' : ''}" title="More tools" aria-label="More tools" aria-expanded="${moreOpen}">${icon('more')}</button>` : '') + (compact && opts.onFullscreen ? `<span class="wb-sep"></span><button type="button" data-act="fullscreen" title="Open full screen" aria-label="Open full screen"><svg class="wb-i" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>` : '');
   }
@@ -311,8 +369,205 @@ export function mountCanvas(container, opts) {
     if (k === 'stamp') { toggleStampMenu(b); return; }
     if (k === 'card') { toggleCardPicker(); return; }
     if (k === 'sticky' && tool === 'sticky') stickyColor = STICKY_COLORS[(STICKY_COLORS.indexOf(stickyColor) + 1) % STICKY_COLORS.length];
+    // a second click on the active pen or eraser opens its options (ClickUp-like)
+    if ((k === 'pen' && (tool === 'pen' || tool === 'highlighter')) || (k === 'eraser' && tool === 'eraser')) { togglePenPop(k === 'eraser' ? 'eraser' : 'pen', b); return; }
+    if (k === 'pen') { setTool(prefs.ptype === 'highlighter' ? 'highlighter' : 'pen'); return; }
     setTool(k);
   });
+  // ── Pen and eraser options (popover beside the button; a bottom sheet on a phone) ─────
+  const penPop = el('div', 'wb-penpop'); penPop.hidden = true; penPop.setAttribute('role', 'dialog');
+  const colourPop = el('div', 'wb-colourpop'); colourPop.hidden = true; colourPop.setAttribute('role', 'dialog'); colourPop.setAttribute('aria-label', 'Colour');
+  const eraserRing = el('div', 'wb-eraserring'); eraserRing.hidden = true;
+  root.append(penPop, colourPop, eraserRing);
+  let penSeen = false;               // a stylus touched this board: resting hands (touch) stop drawing
+  let popKind = 'pen';               // pen | eraser
+  const colourCss = c => (isHex(c) ? c : pal().ink);
+  const swatchBtn = (c, on, extra = '') => `<button type="button" class="wb-swb ${c === 'auto' ? 'wb-auto' : c === 'none' ? 'wb-none' : ''} ${on ? 'on' : ''}" data-c="${c}" ${extra} title="${c === 'auto' ? 'Black or white (follows the theme)' : c === 'none' ? 'No fill' : c}" aria-label="${c === 'auto' ? 'Automatic black or white' : c === 'none' ? 'No fill' : `Colour ${c}`}" aria-pressed="${on}" style="${isHex(c) ? `background:${c}` : ''}"></button>`;
+  function setSize(key, v) {
+    prefs.size[key] = Math.max(1, Math.min(key === 'eraser' ? 80 : 40, Math.round(v)));
+    savePrefs(prefs);
+    // with strokes selected, the size applies to them too (ClickUp behaviour)
+    if (key !== 'eraser') applyToSelection(x => x.type === 'path' ? { width: +(prefs.size[key] / view.z).toFixed(2) } : null);
+    if (!penPop.hidden) paintPenPop();
+    paintEraserRing();
+  }
+  function applyToSelection(fn) {
+    if (readOnly || !sel.size) return;
+    const els = [...sel].map(get).filter(x => x && !x.locked);
+    const out = els.map(x => { const c = fn(x); return c ? bump(x, c) : null; }).filter(Boolean);
+    if (out.length) { write(out, { now: true }); commitStop(); }
+  }
+  function togglePenPop(kind, anchor) {
+    if (!penPop.hidden && popKind === kind) { penPop.hidden = true; colourPop.hidden = true; return; }
+    popKind = kind; colourPop.hidden = true;
+    penPop.hidden = false;
+    paintPenPop();
+    placePop(penPop, anchor || toolbar.querySelector(`[data-tool="${kind}"]`));
+  }
+  function placePop(pop, anchor) {
+    pop.classList.toggle('wb-sheet', isPhone());
+    if (isPhone()) { pop.style.left = ''; pop.style.bottom = ''; return; }
+    const r = anchor?.getBoundingClientRect(), rr = rect();
+    if (!r) return;
+    const w = pop.offsetWidth;
+    pop.style.left = `${Math.max(8, Math.min(r.left - rr.left + r.width / 2 - w / 2, rr.width - w - 8))}px`;
+    pop.style.bottom = `${Math.max(8, rr.bottom - r.top + 10)}px`;
+  }
+  function paintPenPop() {
+    if (popKind === 'eraser') {
+      penPop.setAttribute('aria-label', 'Eraser options');
+      penPop.innerHTML = `<div class="wb-pb"><div class="wb-ph5">Eraser</div><div class="wb-modes">
+          <button type="button" data-em="whole" class="${prefs.erMode === 'whole' ? 'on' : ''}" aria-pressed="${prefs.erMode === 'whole'}"><span><b>Whole stroke</b><small>Touch a line to remove all of it</small></span></button>
+          <button type="button" data-em="part" class="${prefs.erMode === 'part' ? 'on' : ''}" aria-pressed="${prefs.erMode === 'part'}"><span><b>Part of a stroke</b><small>Rub out only where you pass</small></span></button>
+        </div></div>
+        <div class="wb-pb"><div class="wb-ph5">Size</div><div class="wb-sizes">${ERASER_SIZES.map((v, i) => `<button type="button" data-esz="${v}" class="${prefs.size.eraser === v ? 'on' : ''}" title="${SIZE_NAMES[i]} · ${v} px" aria-label="${SIZE_NAMES[i]} eraser"><i class="wb-ring" style="width:${5 + i * 5}px;height:${5 + i * 5}px"></i></button>`).join('')}</div></div>`;
+      return;
+    }
+    const t = prefs.ptype, def = PEN_TYPES[t], s = prefs.size[t];
+    penPop.setAttribute('aria-label', 'Pen options');
+    penPop.innerHTML = `<div class="wb-pb"><div class="wb-ph5">Pen</div><div class="wb-ptypes">${Object.entries(PEN_TYPES).map(([k, v]) => `<button type="button" data-pt="${k}" class="${t === k ? 'on' : ''}" aria-pressed="${t === k}">${icon(k === 'pen' ? 'pen' : k)}<span>${v.label}</span></button>`).join('')}</div></div>
+      <div class="wb-pb"><div class="wb-ph5">Size</div><div class="wb-sizes">${def.sizes.map((v, i) => `<button type="button" data-sz="${v}" class="${s === v ? 'on' : ''}" title="${SIZE_NAMES[i]} · ${v} px" aria-label="${SIZE_NAMES[i]}"><i class="wb-dotsz" style="width:${Math.min(22, 3 + v * 0.7)}px;height:${Math.min(22, 3 + v * 0.7)}px"></i></button>`).join('')}</div>
+        <label class="wb-rl"><span>Custom</span><b>${s} px</b></label><input type="range" min="1" max="40" value="${s}" data-range="size" aria-label="Pen size">
+        <canvas class="wb-prev" height="40" aria-hidden="true"></canvas></div>
+      <div class="wb-pb"><div class="wb-rowsb"><div class="wb-ph5">Colour</div><button type="button" class="wb-morec" data-act="colours">More colours</button></div>
+        <div class="wb-swatches">${BRIGHT.map(c => swatchBtn(c, prefs.color[t] === c)).join('')}</div></div>
+      <div class="wb-pb"><label class="wb-rl"><span>Smoothing</span><b>${smoothLabel()}</b></label><input type="range" min="0" max="100" value="${prefs.smooth}" data-range="smooth" aria-label="Smoothing">
+        <label class="wb-chk"><input type="checkbox" data-snap ${prefs.snap ? 'checked' : ''}> Hold at the end to make a neat shape</label></div>`;
+    requestAnimationFrame(drawPreview);
+  }
+  const smoothLabel = () => prefs.smooth < 15 ? 'Off' : prefs.smooth < 40 ? 'Light' : prefs.smooth < 70 ? 'Medium' : 'Strong';
+  function drawPreview() {
+    const c = penPop.querySelector('.wb-prev'); if (!c) return;
+    const r = c.getBoundingClientRect(); if (!r.width) return;
+    const dpr = window.devicePixelRatio || 1; c.width = r.width * dpr; c.height = 40 * dpr;
+    const x = c.getContext('2d'); if (!x) return; x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const t = prefs.ptype, size = prefs.size[t];
+    x.strokeStyle = colourCss(prefs.color[t]); x.lineCap = t === 'highlighter' ? 'butt' : 'round'; x.lineJoin = 'round';
+    x.globalAlpha = (t === 'highlighter' ? 0.4 : t === 'pencil' ? 0.85 : 1) * prefs.opacity / 100;
+    const n = 40;
+    for (let i = 1; i < n; i++) {
+      const p0 = [12 + (i - 1) * (r.width - 24) / (n - 1), 20 + Math.sin((i - 1) / 6) * 8], p1 = [12 + i * (r.width - 24) / (n - 1), 20 + Math.sin(i / 6) * 8];
+      x.lineWidth = t === 'pen' ? size * (0.55 + 0.6 * Math.sin(i / n * Math.PI)) : size;
+      x.beginPath(); x.moveTo(p0[0], p0[1]); x.lineTo(p1[0], p1[1]); x.stroke();
+    }
+  }
+  penPop.addEventListener('pointerdown', e => e.stopPropagation());
+  penPop.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.pt) {
+      prefs.ptype = b.dataset.pt; savePrefs(prefs);
+      tool = b.dataset.pt === 'highlighter' ? 'highlighter' : 'pen'; root.dataset.tool = tool;
+      paintToolbar(); paintPenPop(); return;
+    }
+    if (b.dataset.sz) { setSize(prefs.ptype, +b.dataset.sz); return; }
+    if (b.dataset.esz) { setSize('eraser', +b.dataset.esz); return; }
+    if (b.dataset.em) { prefs.erMode = b.dataset.em; savePrefs(prefs); paintPenPop(); return; }
+    if (b.dataset.c) { pickColour(b.dataset.c, 'pen'); return; }
+    if (b.dataset.act === 'colours') { openColours('pen', b); }
+  });
+  penPop.addEventListener('input', e => {
+    const r = e.target.closest('[data-range]'); if (!r) return;
+    if (r.dataset.range === 'size') { prefs.size[prefs.ptype] = +r.value; savePrefs(prefs); penPop.querySelector('.wb-rl b').textContent = `${r.value} px`; drawPreview(); penPop.querySelectorAll('[data-sz]').forEach(x => x.classList.toggle('on', +x.dataset.sz === +r.value)); }
+    if (r.dataset.range === 'smooth') { prefs.smooth = +r.value; savePrefs(prefs); r.previousElementSibling.querySelector('b').textContent = smoothLabel(); }
+  });
+  penPop.addEventListener('change', e => {
+    if (e.target.matches('[data-range="size"]')) setSize(prefs.ptype, +e.target.value);
+    if (e.target.matches('[data-snap]')) { prefs.snap = e.target.checked; savePrefs(prefs); }
+  });
+
+  // ── Colour panel: 16 colours, recent ones, any colour (wheel + hex) and opacity; Line and Fill for shapes ──
+  let colourFor = 'pen', colourTab = 'stroke';
+  function openColours(forWhat, anchor) {
+    colourFor = forWhat;
+    const els = [...sel].map(get).filter(Boolean);
+    const hasFill = forWhat === 'sel' && els.some(x => SHAPES.includes(x.type));
+    if (!hasFill) colourTab = 'stroke';
+    colourPop.hidden = false;
+    paintColours(hasFill);
+    if (forWhat === 'pen' && !isPhone()) {
+      const pr = penPop.getBoundingClientRect(), rr = rect();
+      const left = pr.right - rr.left + 10;
+      colourPop.classList.remove('wb-sheet');
+      colourPop.style.left = `${left + colourPop.offsetWidth > rr.width - 8 ? Math.max(8, pr.left - rr.left - colourPop.offsetWidth - 10) : left}px`;
+      colourPop.style.top = ''; colourPop.style.bottom = penPop.style.bottom;
+    } else if (forWhat === 'sel' && !isPhone()) {
+      colourPop.classList.remove('wb-sheet');
+      const r = anchor.getBoundingClientRect(), rr = rect();
+      colourPop.style.bottom = '';
+      const top = r.bottom - rr.top + 8;
+      colourPop.style.top = `${top + colourPop.offsetHeight > rr.height - 8 ? Math.max(8, r.top - rr.top - colourPop.offsetHeight - 8) : top}px`;
+      colourPop.style.left = `${Math.max(8, Math.min(r.left - rr.left - 20, rr.width - colourPop.offsetWidth - 8))}px`;
+    } else colourPop.classList.add('wb-sheet');
+  }
+  function currentColour() {
+    if (colourFor === 'pen') return prefs.color[prefs.ptype];
+    const els = [...sel].map(get).filter(Boolean);
+    const s = colourTab === 'fill' ? els.find(x => SHAPES.includes(x.type)) : els[0];
+    if (!s) return 'auto';
+    if (colourTab === 'fill') return s.fill === 'none' ? 'none' : (s.fill || 'auto');
+    return s.stroke || 'auto';
+  }
+  function currentOpacity() {
+    if (colourFor === 'pen') return prefs.opacity;
+    const s = [...sel].map(get).find(Boolean);
+    return Math.round((s?.opacity ?? 1) * 100);
+  }
+  function paintColours(hasFill = colourPop.querySelector('[data-ct]') != null) {
+    const cur = currentColour();
+    const list = colourTab === 'fill' ? ['none', ...ALL_COLOURS.slice(1)] : ALL_COLOURS;
+    const hex = isHex(cur) ? cur.toUpperCase() : '#000000';
+    colourPop.innerHTML = `${hasFill ? `<div class="wb-seg wb-ctabs" role="tablist"><button type="button" role="tab" data-ct="stroke" class="${colourTab === 'stroke' ? 'on' : ''}" aria-selected="${colourTab === 'stroke'}">Line</button><button type="button" role="tab" data-ct="fill" class="${colourTab === 'fill' ? 'on' : ''}" aria-selected="${colourTab === 'fill'}">Fill</button></div>` : ''}
+      <div class="wb-ph5">Colours</div><div class="wb-swatches">${list.map(c => swatchBtn(c, cur === c)).join('')}</div>
+      <div class="wb-ph5">Recent</div><div class="wb-recent">${prefs.recent.length ? prefs.recent.map(c => swatchBtn(c, cur === c)).join('') : '<span class="wb-note">Colours you pick show up here</span>'}</div>
+      <div class="wb-ph5">Custom</div><div class="wb-custom"><input type="color" value="${hex}" data-picker aria-label="Pick any colour"><input type="text" value="${hex}" maxlength="7" spellcheck="false" data-hex aria-label="Hex code"></div>
+      <label class="wb-rl"><span>Opacity</span><b>${currentOpacity()}%</b></label><input type="range" min="10" max="100" value="${currentOpacity()}" data-range="opacity" aria-label="Opacity">`;
+  }
+  function pickColour(c, forWhat = colourFor) {
+    if (isHex(c)) { prefs.recent = [c.toUpperCase(), ...prefs.recent.filter(x => x.toUpperCase() !== c.toUpperCase())].slice(0, 8); }
+    if (forWhat === 'pen') {
+      prefs.color[prefs.ptype] = c === 'none' ? 'auto' : c;
+      savePrefs(prefs);
+      applyToSelection(x => x.type === 'path' ? { stroke: isHex(c) ? c : null } : null);
+      paintToolbar(); if (!penPop.hidden) paintPenPop();
+    } else {
+      savePrefs(prefs);
+      if (colourTab === 'fill') applyToSelection(x => SHAPES.includes(x.type) ? { fill: c === 'auto' ? null : c } : null);
+      else applyToSelection(x => x.type === 'sticky' || x.type === 'frame' || x.type === 'image' || x.type === 'sticker' ? null : { stroke: isHex(c) ? c : null, ...(SHAPES.includes(x.type) ? { textColor: isHex(c) ? c : null } : {}) });
+      paintProps();
+    }
+    if (!colourPop.hidden) paintColours();
+  }
+  colourPop.addEventListener('pointerdown', e => e.stopPropagation());
+  colourPop.addEventListener('click', e => {
+    const t = e.target.closest('[data-ct]'); if (t) { colourTab = t.dataset.ct; paintColours(true); return; }
+    const b = e.target.closest('[data-c]'); if (b) pickColour(b.dataset.c);
+  });
+  colourPop.addEventListener('change', e => {
+    if (e.target.matches('[data-picker]')) pickColour(e.target.value.toUpperCase());
+    if (e.target.matches('[data-range="opacity"]')) {
+      const v = +e.target.value;
+      if (colourFor === 'pen') { prefs.opacity = v; savePrefs(prefs); }
+      else applyToSelection(() => ({ opacity: v >= 100 ? undefined : v / 100 }));
+    }
+  });
+  colourPop.addEventListener('input', e => { if (e.target.matches('[data-range="opacity"]')) e.target.previousElementSibling.querySelector('b').textContent = `${e.target.value}%`; });
+  colourPop.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Escape') { colourPop.hidden = true; root.focus({ preventScroll: true }); return; }
+    if (e.key === 'Enter' && e.target.matches('[data-hex]')) { let v = e.target.value.trim(); if (!v.startsWith('#')) v = `#${v}`; if (isHex(v)) pickColour(v.toUpperCase()); else e.target.select(); }
+  });
+  penPop.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); penPop.hidden = true; colourPop.hidden = true; root.focus({ preventScroll: true }); } });
+
+  // the eraser shows its size under the pointer, so you know what it will remove
+  function paintEraserRing(sx, sy) {
+    if (tool !== 'eraser') { eraserRing.hidden = true; return; }
+    const d = prefs.size.eraser;
+    eraserRing.style.width = eraserRing.style.height = `${d}px`;
+    if (sx != null) { eraserRing.style.left = `${sx - d / 2}px`; eraserRing.style.top = `${sy - d / 2}px`; eraserRing.hidden = false; }
+  }
+  root.addEventListener('pointermove', e => { if (tool === 'eraser' && e.pointerType !== 'touch') { const { sx, sy } = local(e); paintEraserRing(sx, sy); } });
+  root.addEventListener('pointerleave', () => { eraserRing.hidden = true; });
+
   function toggleShapeMenu(anchor) {
     if (!shapeMenu.hidden) { shapeMenu.hidden = true; return; }
     shapeMenu.innerHTML = SHAPES.map(s => `<button type="button" data-shape="${s}" class="${s === lastShape ? 'on' : ''}" title="${SHAPE_LABEL[s]}" aria-label="${SHAPE_LABEL[s]}">${icon(s)}</button>`).join('');
@@ -325,10 +580,15 @@ export function mountCanvas(container, opts) {
   shapeMenu.addEventListener('click', e => { const b = e.target.closest('[data-shape]'); if (!b) return; lastShape = b.dataset.shape; shapeMenu.hidden = true; setTool(lastShape); });
 
   function setTool(t) {
+    if (t === 'pen' && prefs.ptype === 'highlighter') t = 'highlighter';
+    if (t === 'highlighter') { prefs.ptype = 'highlighter'; savePrefs(prefs); }
+    else if (t === 'pen' && prefs.ptype === 'highlighter') { prefs.ptype = 'pen'; savePrefs(prefs); }
     tool = t;
     if (t !== 'select') { sel.clear(); }
     root.dataset.tool = SHAPES.includes(t) ? 'shape' : t;
     shapeMenu.hidden = true;
+    if (t !== 'pen' && t !== 'highlighter' && t !== 'eraser') penPop.hidden = true;
+    eraserRing.hidden = t !== 'eraser';
     paintToolbar(); render();
   }
 
@@ -1176,16 +1436,23 @@ export function mountCanvas(container, opts) {
   // ── Selection quick menu ─────────────────────────────────────────────────
   function paintProps() {
     const els = [...sel].map(get).filter(Boolean);
-    if (!els.length || readOnly || interaction || editing) { props.hidden = true; return; }
+    widthMenu.hidden = true;
+    if (!els.length || readOnly || interaction || editing) { props.hidden = true; if (colourFor === 'sel') colourPop.hidden = true; return; }
     const types = new Set(els.map(e => e.type));
     const only = t => types.size === 1 && types.has(t);
     const anyShape = els.some(e => SHAPES.includes(e.type));
     const parts = [];
     if (only('sticky')) parts.push(STICKY_COLORS.map(c => `<button type="button" data-sticky="${c}" title="${c[0].toUpperCase() + c.slice(1)}" aria-label="${c} sticky"><span class="wb-sw" style="background:${pal().sticky[c]}"></span></button>`).join(''));
-    else if (els.some(e => e.type !== 'frame' && e.type !== 'image')) parts.push(INK.map(c => `<button type="button" data-ink="${c}" title="Colour" aria-label="Colour ${c}"><span class="wb-sw" style="background:${c}"></span></button>`).join(''));
-    if (anyShape) parts.push(`<button type="button" data-menu="fill" title="Fill" aria-label="Fill"><span class="wb-sw wb-fillsw" style="background:${els.find(e => SHAPES.includes(e.type)).fill || 'transparent'}"></span></button>`);
+    else if (els.some(e => !['frame', 'image', 'sticker', 'file', 'taskCard', 'noteCard', 'link'].includes(e.type))) {
+      const first = els.find(e => !['frame', 'image', 'sticker', 'sticky'].includes(e.type));
+      parts.push(`<button type="button" data-colour="stroke" title="${anyShape ? 'Line colour' : 'Colour'}" aria-label="${anyShape ? 'Line colour' : 'Colour'}"><span class="wb-sw wb-ring2" style="--c:${colourCss(first?.stroke)}"></span></button>`);
+      if (anyShape) { const f = els.find(e => SHAPES.includes(e.type)).fill; parts.push(`<button type="button" data-colour="fill" title="Fill colour" aria-label="Fill colour"><span class="wb-sw ${f === 'none' ? 'wb-fillsw' : ''}" style="background:${f === 'none' ? 'transparent' : (f || pal().shapeFill)}"></span></button>`); }
+    }
     if (els.some(e => e.type === 'connector')) parts.push(['straight', 'elbow', 'curved'].map(r => `<button type="button" data-route="${r}" title="${r[0].toUpperCase() + r.slice(1)}">${r === 'straight' ? '／' : r === 'elbow' ? '⌐' : '∿'}</button>`).join('') + `<button type="button" data-heads title="Arrow ends">⇄</button><button type="button" data-dash title="Dashed">┄</button>`);
-    if (els.some(e => e.type === 'path' || e.type === 'connector' || anyShape)) parts.push(`<button type="button" data-width title="Line weight">≡</button>`);
+    if (els.some(e => e.type === 'path' || e.type === 'connector' || anyShape)) {
+      const p = els.find(e => e.type === 'path'), cur = p ? Math.round((p.width || 3) * view.z) : (els.find(e => e.strokeWidth)?.strokeWidth || 2);
+      parts.push(`<button type="button" data-width title="Line weight · ${cur} px" aria-label="Line weight"><span class="wb-wline" style="height:${Math.max(1.5, Math.min(8, cur / (p ? 2 : 1)))}px"></span></button>`);
+    }
     if (els.some(e => e.type === 'text' || e.type === 'sticky' || anyShape)) parts.push(['ipop', 'hand', 'mono'].map(f => `<button type="button" data-font="${f}" title="${f === 'ipop' ? 'iPop font' : f === 'hand' ? 'Handwriting' : 'Monospace'}" style="font-family:${FONT_STACK[f].replace(/"/g, "'")}">Aa</button>`).join('') + SIZES.map(([n, s]) => `<button type="button" data-size="${s}" title="Text size ${n}">${n}</button>`).join(''));
     const locked = els.every(e => e.locked);
     if (opts.tasks?.create && els.every(x => x.type === 'sticky')) parts.push(`<button type="button" data-act="task" class="wb-taskbtn" title="Turn into Projects tasks">${icon('task')}<span>Make ${els.length > 1 ? els.length + ' tasks' : 'task'}</span></button>`);
@@ -1196,6 +1463,26 @@ export function mountCanvas(container, opts) {
     props.hidden = false;
     positionProps();
   }
+  const widthMenu = el('div', 'wb-menu wb-widthmenu'); widthMenu.hidden = true;
+  root.append(widthMenu);
+  widthMenu.addEventListener('pointerdown', e => e.stopPropagation());
+  function toggleWidthMenu(anchor, els) {
+    if (!widthMenu.hidden) { widthMenu.hidden = true; return; }
+    const strokes = els.some(x => x.type === 'path');
+    const opts2 = strokes ? [2, 4, 8, 14, 24] : [1, 2, 4, 6, 8];
+    widthMenu.innerHTML = opts2.map(v => `<button type="button" data-w="${v}" title="${v} px" aria-label="${v} px"><span class="wb-wline" style="height:${Math.max(1, Math.min(10, v / (strokes ? 2.2 : 1)))}px"></span></button>`).join('');
+    widthMenu.dataset.kind = strokes ? 'path' : 'shape';
+    widthMenu.hidden = false;
+    const r = anchor.getBoundingClientRect(), rr = rect();
+    widthMenu.style.left = `${Math.max(8, Math.min(r.left - rr.left - 8, rr.width - widthMenu.offsetWidth - 8))}px`;
+    widthMenu.style.top = `${r.bottom - rr.top + 6}px`;
+  }
+  widthMenu.addEventListener('click', e => {
+    const b = e.target.closest('[data-w]'); if (!b) return;
+    const v = +b.dataset.w; widthMenu.hidden = true;
+    applyToSelection(x => x.type === 'path' ? { width: +(v / view.z).toFixed(2) } : (x.type === 'connector' || SHAPES.includes(x.type)) ? { strokeWidth: v } : null);
+    paintProps();
+  });
   function positionProps() {
     if (props.hidden) return;
     const b = unionBounds([...sel].map(get).filter(Boolean), get);
@@ -1214,12 +1501,11 @@ export function mountCanvas(container, opts) {
     const els = [...sel].map(get).filter(Boolean).filter(x => !x.locked || b.dataset.act === 'lock');
     const upd = fn => write(els.map(x => { const c = fn(x); return c ? bump(x, c) : null; }).filter(Boolean), { now: true });
     if (b.dataset.sticky) upd(x => x.type === 'sticky' ? { color: b.dataset.sticky } : null);
-    else if (b.dataset.ink) { upd(x => x.type === 'sticky' || x.type === 'frame' || x.type === 'image' ? null : { stroke: b.dataset.ink, ...(SHAPES.includes(x.type) ? { textColor: b.dataset.ink } : {}) }); penColor = b.dataset.ink; }
-    else if (b.dataset.menu === 'fill') { const cur = els.find(x => SHAPES.includes(x.type))?.fill ?? null; const next = FILLS[(FILLS.indexOf(cur) + 1) % FILLS.length]; upd(x => SHAPES.includes(x.type) ? { fill: next } : null); }
+    else if (b.dataset.colour) { colourTab = b.dataset.colour; if (!colourPop.hidden && colourFor === 'sel') { colourPop.hidden = true; return; } openColours('sel', b); return; }
     else if (b.dataset.route) upd(x => x.type === 'connector' ? { route: b.dataset.route } : null);
     else if ('heads' in b.dataset) upd(x => { if (x.type !== 'connector') return null; const s = x.startHead === 'arrow', en = (x.endHead ?? 'arrow') === 'arrow'; const next = en && !s ? [true, true] : en && s ? [false, false] : [false, true]; return { startHead: next[0] ? 'arrow' : 'none', endHead: next[1] ? 'arrow' : 'none' }; });
     else if ('dash' in b.dataset) upd(x => x.type === 'connector' ? { dashed: !x.dashed } : null);
-    else if ('width' in b.dataset) upd(x => x.type === 'path' ? { width: (x.width || 3) >= 8 ? 2 : (x.width || 3) * 2 } : (x.type === 'connector' || SHAPES.includes(x.type)) ? { strokeWidth: (x.strokeWidth || 2) >= 6 ? 1 : (x.strokeWidth || 2) + 2 } : null);
+    else if ('width' in b.dataset) { toggleWidthMenu(b, els); return; }
     else if (b.dataset.font) upd(x => (x.type === 'text' || x.type === 'sticky' || SHAPES.includes(x.type)) ? { font: b.dataset.font } : null);
     else if (b.dataset.size) upd(x => {
       if (x.type === 'text') { const s = +b.dataset.size, lines = String(x.text).split('\n'); return { size: s, w: Math.max(...lines.map(l => measure(l, s, x.font || 'ipop'))) + 4, h: lines.length * s * 1.3 }; }
@@ -1366,9 +1652,9 @@ export function mountCanvas(container, opts) {
   root.addEventListener('contextmenu', e => { if (e.target.closest('.wb-svg')) e.preventDefault(); });
 
   function onDown(e) {
-    if (e.target.closest('.wb-tools,.wb-props,.wb-zoom,.wb-menu,.wb-panel,.wb-neat,.wb-edit')) return;
+    if (e.target.closest('.wb-tools,.wb-props,.wb-zoom,.wb-menu,.wb-panel,.wb-neat,.wb-edit,.wb-penpop,.wb-colourpop')) return;
     if (editing) stopEdit();
-    shapeMenu.hidden = true; neat.hidden = true;
+    shapeMenu.hidden = true; penPop.hidden = true; colourPop.hidden = true;
     // Inside a page the board sits in a draggable block: without this the browser starts a native drag (or a text selection)
     // on the first move and cancels the pointer, which cut every pen stroke off after a few pixels.
     e.preventDefault();
@@ -1407,20 +1693,29 @@ export function mountCanvas(container, opts) {
     if (e.button === 2) return;
     if (readOnly) return;
     if (tool === 'pen' || tool === 'highlighter') {
-      const hl = tool === 'highlighter';
+      // palm rejection: once a stylus has been used on this board, a resting hand (touch) does not draw
+      if (touch && penSeen) { interaction = { kind: 'pan', sx, sy, view: { ...view } }; return; }
+      if (e.pointerType === 'pen') penSeen = true;
+      const kind = penKind();
       const pressure = e.pointerType === 'pen' ? e.pressure || 0.5 : 0.5;
-      const p = create('path', { x: w.x, y: w.y, points: [[0, 0, pressure]], stroke: hl ? '#FFCC00' : penColor, width: hl ? 18 : penWidth, highlight: hl || undefined, simulate: e.pointerType !== 'pen' || undefined });
+      const c = prefs.color[kind];
+      const p = create('path', { x: w.x, y: w.y, points: [[0, 0, pressure]], stroke: isHex(c) ? c : null, width: +(prefs.size[kind] / view.z).toFixed(2), tool: kind,
+        highlight: kind === 'highlighter' || undefined, simulate: e.pointerType !== 'pen' || undefined, opacity: prefs.opacity < 100 ? prefs.opacity / 100 : undefined });
       p.z = zBetween(topZ(all()) || null, null);
-      interaction = { kind: 'draw', el: p, pen: e.pointerType === 'pen' };
+      interaction = { kind: 'draw', el: p, pen: e.pointerType === 'pen', raw: [[w.x, w.y]], last: { x: w.x, y: w.y } };
       draft.set(p.id, p); render();
+      armHold(sx, sy);
       return;
     }
-    if (tool === 'eraser') { interaction = { kind: 'erase', erased: new Set() }; eraseAt(w); return; }
+    if (tool === 'eraser') {
+      if (touch && penSeen) { interaction = { kind: 'pan', sx, sy, view: { ...view } }; return; }
+      interaction = { kind: 'erase', erased: new Set() }; eraseAt(w); return;
+    }
     if (tool === 'stamp') { add([create('stamp', { x: w.x - 18, y: w.y - 18, w: 36, h: 36, emoji: stampEmoji })], { select: false }); return; }
     if (tool === 'sticky') { const s = create('sticky', { x: w.x - 100, y: w.y - 80, w: 200, h: 160, color: stickyColor, text: '' }); const [placed] = add([s]) || []; setTool('select'); if (placed) editSoon(placed); return; }
-    if (tool === 'text') { const t = create('text', { x: w.x, y: w.y - 13, w: 40, h: 26, text: '', size: 20, font: 'ipop', stroke: penColor }); const [placed] = add([t]) || []; setTool('select'); if (placed) editSoon(placed); return; }
+    if (tool === 'text') { const t = create('text', { x: w.x, y: w.y - 13, w: 40, h: 26, text: '', size: 20, font: 'ipop', stroke: inkNow() }); const [placed] = add([t]) || []; setTool('select'); if (placed) editSoon(placed); return; }
     if (SHAPES.includes(tool) || tool === 'frame') {
-      const s = create(tool, tool === 'frame' ? { x: w.x, y: w.y, w: 1, h: 1, name: `Frame ${live().filter(x => x.type === 'frame').length + 1}`, order: live().filter(x => x.type === 'frame').length } : { x: w.x, y: w.y, w: 1, h: 1, text: '', stroke: penColor });
+      const s = create(tool, tool === 'frame' ? { x: w.x, y: w.y, w: 1, h: 1, name: `Frame ${live().filter(x => x.type === 'frame').length + 1}`, order: live().filter(x => x.type === 'frame').length } : { x: w.x, y: w.y, w: 1, h: 1, text: '', stroke: inkNow() });
       s.z = zBetween(topZ(all()) || null, null);
       interaction = { kind: 'create', el: s, ox: w.x, oy: w.y };
       draft.set(s.id, s); render();
@@ -1429,7 +1724,7 @@ export function mountCanvas(container, opts) {
     if (tool === 'connector') {
       const hit = hitTest(live(), w.x, w.y, get, tolerance());
       const from = hit && hit.type !== 'connector' && hit.type !== 'path' ? { id: hit.id } : { x: w.x, y: w.y };
-      const c = create('connector', { from, to: { x: w.x, y: w.y }, route: 'straight', endHead: 'arrow', startHead: 'none', stroke: penColor });
+      const c = create('connector', { from, to: { x: w.x, y: w.y }, route: 'straight', endHead: 'arrow', startHead: 'none', stroke: inkNow() });
       c.z = zBetween(topZ(all()) || null, null);
       interaction = { kind: 'connect', el: c };
       draft.set(c.id, c); render();
@@ -1471,16 +1766,26 @@ export function mountCanvas(container, opts) {
     switch (it.kind) {
       case 'pan': view.x = it.view.x + sx - it.sx; view.y = it.view.y + sy - it.sy; render(); break;
       case 'draw': {
+        if (it.snapped) break;            // became a neat shape while held: the rest of this press draws nothing
         // Coalesced events give smooth lines at high pointer rates; some browsers (and synthetic events) return none.
         const co = e.getCoalescedEvents?.() || [];
         const evs = co.length ? co : [e];
         const pts = it.el.points.slice();
+        // Smoothing (stabiliser): each point moves part of the way towards the pointer. A stylus gets a lighter touch so
+        // handwriting keeps its shape; the raw points are kept for "hold to make it neat".
+        const k = 1 - (prefs.smooth / 100) * (it.pen ? 0.5 : 0.8);
+        let moved2 = 0;
         for (const ev of evs) {
           const l = local(ev), p = toWorld(l.sx, l.sy);
-          pts.push([+(p.x - it.el.x).toFixed(2), +(p.y - it.el.y).toFixed(2), it.pen ? ev.pressure || 0.5 : 0.5]);
+          it.raw.push([p.x, p.y]);
+          const nx = it.last.x + (p.x - it.last.x) * k, ny = it.last.y + (p.y - it.last.y) * k;
+          moved2 += Math.hypot(nx - it.last.x, ny - it.last.y) * view.z;
+          it.last = { x: nx, y: ny };
+          pts.push([+(nx - it.el.x).toFixed(2), +(ny - it.el.y).toFixed(2), it.pen ? ev.pressure || 0.5 : 0.5]);
         }
         it.el = { ...it.el, points: pts };
         draft.set(it.el.id, it.el); render();
+        if (moved2 > 2) armHold(sx, sy);
         break;
       }
       case 'erase': eraseAt(w); break;
@@ -1556,10 +1861,14 @@ export function mountCanvas(container, opts) {
     const { sx, sy } = local(e), w = toWorld(sx, sy);
     switch (it.kind) {
       case 'draw': {
+        clearHold();
         draft.delete(it.el.id);
+        if (it.snapped) break;                       // already replaced by a neat shape while held
+        // the end of a smoothed stroke catches up with the pointer, so the line ends where the pen lifted
+        const endPt = it.raw.at(-1);
+        if (endPt && it.el.points.length > 1) it.el = { ...it.el, points: [...it.el.points, [+(endPt[0] - it.el.x).toFixed(2), +(endPt[1] - it.el.y).toFixed(2), it.el.points.at(-1)[2]]] };
         if (it.el.points.length === 1) it.el.points.push([0.1, 0.1, it.el.points[0][2]]);
-        const [placed] = add([it.el], { select: false }) || [];
-        if (placed && !placed.highlight) offerNeat(placed);
+        add([it.el], { select: false });
         break;
       }
       case 'erase': commitStop(); break;
@@ -1593,6 +1902,7 @@ export function mountCanvas(container, opts) {
   }
 
   function cancelInteraction() {
+    clearHold();
     const it = interaction; interaction = null;
     if (!it) return;
     if (it.el) draft.delete(it.el.id);
@@ -1609,7 +1919,19 @@ export function mountCanvas(container, opts) {
   }
 
   function eraseAt(w) {
-    const r = 10 / view.z;
+    const r = prefs.size.eraser / 2 / view.z;
+    if (prefs.erMode === 'part') {
+      // rub out only where the eraser passes: a stroke is split into the pieces that stay
+      const out = [];
+      for (const x of live()) {
+        if (x.type !== 'path' || x.locked) continue;
+        const runs = cutStroke(x, w.x, w.y, r);
+        if (runs.length === 1 && runs[0] === x.points) continue;
+        out.push(bump(x, { isDeleted: true }), ...strokePieces(x, runs).map(p => ({ ...p, z: x.z })));
+      }
+      if (out.length) write(out);
+      return;
+    }
     const victims = live().filter(x => (x.type === 'path' || x.type === 'connector') && !x.locked && !interaction?.erased?.has(x.id) && hitTest([x], w.x, w.y, get, r));
     if (!victims.length) return;
     victims.forEach(v => interaction?.erased?.add(v.id));
@@ -1617,7 +1939,7 @@ export function mountCanvas(container, opts) {
   }
 
   function onDouble(e) {
-    if (readOnly || e.target.closest('.wb-tools,.wb-props,.wb-zoom,.wb-menu,.wb-panel,.wb-neat,.wb-edit')) return;
+    if (readOnly || e.target.closest('.wb-tools,.wb-props,.wb-zoom,.wb-menu,.wb-panel,.wb-neat,.wb-edit,.wb-penpop,.wb-colourpop')) return;
     const { sx, sy } = local(e), w = toWorld(sx, sy);
     const hit = hitTest(live(), w.x, w.y, get, tolerance());
     if (hit?.type === 'frame') {
@@ -1642,7 +1964,7 @@ export function mountCanvas(container, opts) {
       label.addEventListener('blur', done); label.addEventListener('keydown', ev => { ev.stopPropagation(); if (ev.key === 'Enter' || ev.key === 'Escape') label.blur(); });
       return;
     }
-    if (!hit) { const t = create('text', { x: w.x, y: w.y - 13, w: 40, h: 26, text: '', size: 20, font: 'ipop', stroke: penColor }); const [placed] = add([t]) || []; if (placed) editText(placed); }
+    if (!hit) { const t = create('text', { x: w.x, y: w.y - 13, w: 40, h: 26, text: '', size: 20, font: 'ipop', stroke: inkNow() }); const [placed] = add([t]) || []; if (placed) editText(placed); }
   }
 
   function onWheel(e) {
@@ -1654,30 +1976,58 @@ export function mountCanvas(container, opts) {
     if (editing) editing.place();
   }
 
-  // ── "Make it neat" ───────────────────────────────────────────────────────
-  let neatFor = null;
-  function offerNeat(p) {
-    const pts = p.points.map(q => [q[0] + p.x, q[1] + p.y]);
-    const shape = recognise(pts);
-    if (!shape) return;
-    neatFor = { id: p.id, shape };
-    neat.innerHTML = `<span>Make it a neat ${shape.type === 'ellipse' ? 'circle' : shape.type === 'rect' ? 'box' : 'triangle'}?</span><button type="button" data-n="yes" class="wb-pri">Yes</button><button type="button" data-n="no">No</button>`;
-    const s = toScreen(shape.x + shape.w / 2, shape.y + shape.h), r = rect();
+  // ── Hold to make it neat ─────────────────────────────────────────────────
+  // Keep the pen still for a moment at the end of a stroke: a ring fills, then a rough circle, box, triangle or line becomes
+  // a clean one (grill Q10). Never automatic; the toast offers Undo, which brings the hand-drawn stroke back.
+  let holdTimer = 0, holdRing = null, neatUndo = null;
+  function clearHold() { clearTimeout(holdTimer); holdTimer = 0; holdRing?.remove(); holdRing = null; }
+  function armHold(sx, sy) {
+    clearHold();
+    const it = interaction;
+    if (!prefs.snap || it?.kind !== 'draw' || it.snapped || it.el.tool === 'highlighter' || it.raw.length < 8) return;
+    holdTimer = setTimeout(() => {
+      if (interaction !== it) return;
+      holdRing = el('div', 'wb-holdring'); holdRing.style.left = `${sx}px`; holdRing.style.top = `${sy}px`; root.append(holdRing);
+      holdTimer = setTimeout(() => { clearHold(); if (interaction === it) snapStroke(it); }, 380);
+    }, 260);
+  }
+  function snapStroke(it) {
+    if (it.snapped) return;
+    const shape = recognise(it.raw);
+    const line = shape ? null : recogniseLine(it.raw);
+    if (!shape && !line) return;
+    it.snapped = true;
+    draft.delete(it.el.id);
+    const stroke = it.el.stroke;
+    let made;
+    if (shape) {
+      const square = Math.abs(shape.w - shape.h) < Math.max(shape.w, shape.h) * 0.15;
+      const s = square ? (shape.w + shape.h) / 2 : 0;
+      const box = square ? { x: shape.x + shape.w / 2 - s / 2, y: shape.y + shape.h / 2 - s / 2, w: s, h: s } : { x: shape.x, y: shape.y, w: shape.w, h: shape.h };
+      made = create(shape.type, { ...box, text: '', stroke, fill: 'none', strokeWidth: Math.max(1, Math.round(it.el.width * 0.6 * 10) / 10) });
+      const names = { ellipse: square ? 'a circle' : 'an oval', rect: square ? 'a square' : 'a rectangle', triangle: 'a triangle' };
+      showNeatToast(`Became ${names[shape.type]}`, it.el, made);
+    } else {
+      made = create('connector', { from: { x: line.x1, y: line.y1 }, to: { x: line.x2, y: line.y2 }, route: 'straight', endHead: 'none', startHead: 'none', stroke, strokeWidth: Math.max(1, Math.round(it.el.width * 0.6 * 10) / 10) });
+      showNeatToast('Became a straight line', it.el, made);
+    }
+    add([made], { select: false });
+  }
+  function showNeatToast(text, raw, made) {
+    neatUndo = { raw, made };
+    neat.innerHTML = `<span>${text}</span><button type="button" data-n="undo">Undo</button>`;
     neat.hidden = false;
-    neat.style.left = `${Math.max(8, Math.min(s.x - neat.offsetWidth / 2, r.width - neat.offsetWidth - 8))}px`;
-    neat.style.top = `${Math.min(s.y + 10, r.height - 110)}px`;
-    clearTimeout(offerNeat.t); offerNeat.t = setTimeout(() => { neat.hidden = true; }, 6000);
+    neat.style.left = `calc(50% - ${neat.offsetWidth / 2}px)`; neat.style.top = '';
+    clearTimeout(showNeatToast.t); showNeatToast.t = setTimeout(() => { neat.hidden = true; neatUndo = null; }, 5000);
   }
   neat.addEventListener('pointerdown', e => e.stopPropagation());
   neat.addEventListener('click', e => {
-    const b = e.target.closest('[data-n]'); if (!b) return;
+    if (!e.target.closest('[data-n="undo"]') || !neatUndo) return;
     neat.hidden = true;
-    if (b.dataset.n !== 'yes' || !neatFor) return;
-    const p = get(neatFor.id); if (!p) return;
-    const { type, x, y, w, h } = neatFor.shape;
-    write([bump(p, { isDeleted: true })], { now: true });
-    add([create(type, { x, y, w, h, text: '', stroke: p.stroke })]);
-    neatFor = null;
+    const { raw, made } = neatUndo; neatUndo = null;
+    const cur = get(made.id);
+    if (cur) write([bump(cur, { isDeleted: true })], { now: true });
+    add([{ ...raw, id: create('path').id, version: 1 }], { select: false });
   });
 
   // ── Keyboard ─────────────────────────────────────────────────────────────
@@ -1697,6 +2047,7 @@ export function mountCanvas(container, opts) {
     if (e.key === '?') { toggleKeys(); return; }
     if (presenting && (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ')) { e.preventDefault(); goSlide(presenting.index + 1); return; }
     if (presenting && (e.key === 'ArrowLeft' || e.key === 'PageUp')) { e.preventDefault(); goSlide(presenting.index - 1); return; }
+    if (e.key === 'Escape' && (!penPop.hidden || !colourPop.hidden)) { penPop.hidden = true; colourPop.hidden = true; return; }
     if (e.key === 'Escape') { if (presenting) { stopPresent(); return; } if (following != null) { followingPresenter = null; stopFollow(); return; } if (!keysPanel.hidden) { keysPanel.hidden = true; return; } if (!gallery.hidden) { gallery.hidden = true; return; } if (!libPanel.hidden) { libPanel.hidden = true; return; } if (fullscreen) { toggleFullscreen(); return; } sel.clear(); setTool('select'); paintProps(); render(); return; }
     if (readOnly) { if (k === 'h' || k === 'l') setTool(k === 'h' ? 'hand' : 'laser'); else if (k === 'c' && opts.comments?.canComment?.()) setTool('comment'); return; }
     const chosen = [...sel].map(get).filter(Boolean);
@@ -1716,11 +2067,17 @@ export function mountCanvas(container, opts) {
       write(chosen.filter(x => !x.locked).map(x => moved(x, dx, dy))); commitStop(); return;
     }
     if (mod || e.altKey) return;
+    if ((e.key === '[' || e.key === ']') && (tool === 'pen' || tool === 'highlighter' || tool === 'eraser')) {
+      const key = tool === 'eraser' ? 'eraser' : penKind(), v = prefs.size[key], step = v >= 10 ? 2 : 1;
+      setSize(key, v + (e.key === ']' ? step : -step)); toast(`${key === 'eraser' ? 'Eraser' : PEN_TYPES[key].label} size ${prefs.size[key]} px`); return;
+    }
     if (k === 's' && tool === 'sticky') { stickyColor = STICKY_COLORS[(STICKY_COLORS.indexOf(stickyColor) + 1) % STICKY_COLORS.length]; setTool('sticky'); return; }
     // R picks the rectangle; pressing it again while a shape tool is on walks through the other shapes (shown in the bar).
     if (k === 'r') { lastShape = SHAPES.includes(tool) ? SHAPES[(SHAPES.indexOf(tool) + 1) % SHAPES.length] : 'rect'; setTool(lastShape); return; }
     if (k === 'i') { if (opts.upload) pickFiles(); return; }
     if (k === 'n') { toggleCardPicker(); return; }
+    if (k === 'm') { prefs.ptype = 'highlighter'; savePrefs(prefs); setTool('highlighter'); return; }
+    if (k === 'p') { if (prefs.ptype === 'highlighter') { prefs.ptype = 'pen'; savePrefs(prefs); } setTool('pen'); return; }
     if (KEYS[k]) { if (SHAPES.includes(KEYS[k])) lastShape = KEYS[k]; setTool(KEYS[k]); return; }
     if (/^[0-9]$/.test(k)) setTool(DIGITS[k]);
   });
@@ -1750,7 +2107,7 @@ export function mountCanvas(container, opts) {
 
   function toggleKeys() {
     if (!keysPanel.hidden) { keysPanel.hidden = true; return; }
-    const rows = [['V', 'Select'], ['H', 'Hand (or hold Space)'], ['P', 'Pen'], ['M', 'Highlighter'], ['E', 'Eraser'], ['S', 'Sticky note (again: next colour)'], ['T', 'Text'], ['R', 'Shape (again: next shape)'], ['O', 'Circle'], ['D', 'Diamond'], ['A', 'Connector'], ['F', 'Frame'], ['Shift F', 'Full screen'], ['L', 'Laser pointer'], ['→ / ←', 'Next / previous slide while presenting'],
+    const rows = [['V', 'Select'], ['H', 'Hand (or hold Space)'], ['P', 'Pen (click it again: pen, marker, pencil, size, colour)'], ['M', 'Highlighter'], ['E', 'Eraser (click it again: whole or part)'], ['[ / ]', 'Smaller / bigger pen or eraser'], ['S', 'Sticky note (again: next colour)'], ['T', 'Text'], ['R', 'Shape (again: next shape)'], ['O', 'Circle'], ['D', 'Diamond'], ['A', 'Connector'], ['F', 'Frame'], ['Shift F', 'Full screen'], ['L', 'Laser pointer'], ['→ / ←', 'Next / previous slide while presenting'],
       ['1–9, 0', 'The old drawing keys'], ['Enter', 'Edit the selected text'], ['Ctrl D', 'Duplicate'], ['Ctrl C / V', 'Copy / paste'], ['Ctrl Z / Y', 'Undo / redo'], ['Ctrl ] / [', 'Front / back'], ['Arrows', 'Nudge (Shift: 24 px)'], ['Ctrl + wheel', 'Zoom'], ['Shift 1', 'Fit everything'], ['Alt while dragging', 'No snapping']];
     keysPanel.innerHTML = `<div class="wb-ph"><b>Keyboard shortcuts</b><button type="button" data-close aria-label="Close">✕</button></div><div class="wb-kgrid">${rows.map(([k, d]) => `<div><kbd>${k}</kbd><span>${d}</span></div>`).join('')}</div>`;
     keysPanel.hidden = false;
@@ -1809,7 +2166,7 @@ export function mountCanvas(container, opts) {
     addPageCard(page) { if (readOnly) return; const r = rect(); addPageCard(page, toWorld(r.width / 2, r.height / 2)); },
     addTaskCards(tasks) { if (readOnly || !tasks?.length) return; const r = rect(); const c = toWorld(r.width / 2, r.height / 2); addTaskCards(tasks, { x: c.x - 130, y: c.y - 52 }); },
     setFullscreen(v) { fullscreen = !!v; paintCorners(); requestAnimationFrame(() => fit()); },
-    destroy() { unFocus?.(); unThreads?.(); vmap?.unobserve(onVote); clearInterval(liveTick); clearInterval(timerTick); clearTimeout(cursorTimer); clearTimeout(viewTimer); clearTimeout(laserFade); clearTimeout(offerNeat.t); clearTimeout(flushTimer); aw?.off('change', onAw); if (aw) { const st = aw.getLocalState(); if (st?.wb?.board === boardKey) aw.setLocalStateField('wb', null); } for (const u of files.values()) { try { URL.revokeObjectURL(u); } catch { /* not ours */ } } document.removeEventListener('keydown', fsKeys, true); stopEdit(); flush(); destroyed = true; ymap.unobserve(onY); undo.destroy(); ro.disconnect(); cancelAnimationFrame(raf); root.remove(); },
+    destroy() { unFocus?.(); unThreads?.(); vmap?.unobserve(onVote); clearInterval(liveTick); clearInterval(timerTick); clearTimeout(cursorTimer); clearTimeout(viewTimer); clearTimeout(laserFade); clearTimeout(showNeatToast.t); clearHold(); clearTimeout(flushTimer); aw?.off('change', onAw); if (aw) { const st = aw.getLocalState(); if (st?.wb?.board === boardKey) aw.setLocalStateField('wb', null); } for (const u of files.values()) { try { URL.revokeObjectURL(u); } catch { /* not ours */ } } document.removeEventListener('keydown', fsKeys, true); stopEdit(); flush(); destroyed = true; ymap.unobserve(onY); undo.destroy(); ro.disconnect(); cancelAnimationFrame(raf); root.remove(); },
   };
   return api;
 }

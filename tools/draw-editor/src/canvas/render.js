@@ -2,6 +2,7 @@
 // exactly what is on screen. Clean ClickUp-like shapes; only the pen looks hand-drawn (perfect-freehand).
 import { getStroke } from 'perfect-freehand';
 import { connectorEnds, connectorPath, connectorMid, drawOrder, wrapLines, bounds } from './model.js';
+import { parse as parseRich, hasFormatting, wrapRuns } from './richtext.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 export const svgEl = (tag, attrs = {}, parent) => {
@@ -28,7 +29,7 @@ export const PALETTE = {
 };
 /// Ink chosen as "default" (null) follows the theme; near-black ink on a dark board is shown light so old drawings stay readable.
 export function inkFor(color, pal) {
-  if (!color) return pal.ink;
+  if (!color || color === 'auto') return pal.ink;
   if (pal === PALETTE.dark && /^#(1d1d1f|1e1e1e|000000|000|212121|2a2a2a)$/i.test(color)) return pal.ink;
   return color;
 }
@@ -51,9 +52,16 @@ export function measure(text, size, font = 'ipop', weight = 400) {
 }
 
 /// SVG path outline of a pen stroke (filled, not stroked) from points [[dx,dy,pressure]].
-export function strokeOutline(points, size = 3, { simulatePressure = false } = {}) {
+export function strokeOutline(points, size = 3, { simulatePressure = false, kind = 'legacy' } = {}) {
   if (!points?.length) return '';
-  const outline = getStroke(points.map(p => [p[0], p[1], p[2] ?? 0.5]), { size: size * 1.6, thinning: 0.5, smoothing: 0.5, streamline: 0.45, simulatePressure });
+  // legacy = strokes drawn before pen types existed (their width was multiplied by 1.6); the rest use the width as drawn
+  const o = {
+    legacy: { size: size * 1.6, thinning: 0.5 },
+    pen: { size: size * 1.25, thinning: 0.55 },
+    marker: { size, thinning: 0, start: { cap: true }, end: { cap: true } },
+    pencil: { size: size * 1.1, thinning: 0.25 },
+  }[kind] || { size: size * 1.6, thinning: 0.5 };
+  const outline = getStroke(points.map(p => [p[0], p[1], p[2] ?? 0.5]), { smoothing: 0.5, streamline: 0.45, simulatePressure: kind === 'marker' ? false : simulatePressure, ...o });
   if (!outline.length) return '';
   let d = `M${outline[0][0].toFixed(2)} ${outline[0][1].toFixed(2)}`;
   for (let i = 1; i < outline.length; i++) {
@@ -134,6 +142,37 @@ function drawTextLines(g, lines, box, { size, lh, font, color, align = 'middle',
   return t;
 }
 
+/// Formatted text (bold/italic/strike/links/bullets) in a box: wraps, shrinks to fit when `fit` is on, draws links
+/// underlined in the link colour. Plain text keeps the faster layoutText path.
+function drawRichText(g, text, box, { size = 16, font = 'ipop', weight = 400, color, align = 'middle', valign = 'middle', fit = true, link = '#0A84FF' }) {
+  const lines = parseRich(text);
+  const fam = FONT_STACK[font] || FONT_STACK.ipop;
+  let s = size, wrapped, lh;
+  for (;;) {
+    wrapped = wrapRuns(lines, box.w, (t, r) => measure(t, s, font, r.b ? 700 : weight), s * 1.1);
+    lh = s * 1.3;
+    if (!fit || wrapped.length * lh <= box.h || s <= 10) break;
+    s -= 1;
+  }
+  const indent = s * 1.1;
+  const total = wrapped.length * lh, top = valign === 'top' ? box.y : box.y + (box.h - total) / 2;
+  wrapped.forEach((l, i) => {
+    const y = top + i * lh + s * 0.98;
+    const pad = l.bullet ? indent : 0;
+    const w = l.runs.reduce((a, r) => a + measure(r.text, s, font, r.b ? 700 : weight), 0);
+    const x0 = align === 'start' ? box.x + pad : align === 'end' ? box.x + box.w - w : box.x + pad + (box.w - pad - w) / 2;
+    if (l.bullet && l.first) { const b = svgEl('text', { x: x0 - indent * 0.75, y, 'font-size': s, 'font-family': fam, fill: color }, g); b.textContent = '•'; }
+    const t = svgEl('text', { x: x0, y, 'font-size': s, 'font-family': fam, 'font-weight': weight, fill: color, 'xml:space': 'preserve' }, g);
+    for (const r of l.runs) {
+      const deco = [r.s ? 'line-through' : '', r.href ? 'underline' : ''].filter(Boolean).join(' ');
+      const sp = svgEl('tspan', { 'font-weight': r.b ? 700 : null, 'font-style': r.i ? 'italic' : null, 'text-decoration': deco || null, fill: r.href ? link : null, 'data-href': r.href || null }, t);
+      sp.textContent = r.text;
+    }
+    if (!l.runs.length) t.textContent = '\u200b';
+  });
+}
+const ALIGN = { left: 'start', center: 'middle', right: 'end' };
+
 /// Draws one element into the group `g`. `get(id)` resolves connector ends. `opts`: { theme, files: Map(fileId -> url), editingId }.
 export function drawElement(g, el, get, opts = {}) {
   const pal = PALETTE[opts.theme] || PALETTE.light;
@@ -152,14 +191,22 @@ export function drawElement(g, el, get, opts = {}) {
       svgEl('rect', { x: el.x, y: el.y, width: el.w, height: el.h, rx: 4, fill }, node);
       if (el.text && !editing) {
         const box = textBox(el);
-        const lt = layoutText(el.text, box, { size: el.size || 16, font: el.font || 'ipop', weight: 500 });
-        drawTextLines(node, lt.lines, box, { ...lt, font: el.font || 'ipop', color: pal.stickyInk, align: 'start', valign: 'top', weight: 500 });
+        if (hasFormatting(el.text) || (el.align && el.align !== 'left')) drawRichText(node, el.text, box, { size: el.size || 16, font: el.font || 'ipop', weight: 500, color: pal.stickyInk, align: ALIGN[el.align || 'left'], valign: 'top' });
+        else {
+          const lt = layoutText(el.text, box, { size: el.size || 16, font: el.font || 'ipop', weight: 500 });
+          drawTextLines(node, lt.lines, box, { ...lt, font: el.font || 'ipop', color: pal.stickyInk, align: 'start', valign: 'top', weight: 500 });
+        }
       }
       break;
     }
     case 'text': {
       if (editing) break;
       const font = el.font || 'ipop', size = el.size || 20;
+      if (hasFormatting(el.text) || (el.align && el.align !== 'left')) {
+        const n = String(el.text ?? '').split('\n').length;
+        drawRichText(node, el.text, { x: el.x, y: el.y, w: Math.max(el.w, 20), h: Math.max(el.h, n * size * 1.3) }, { size, font, color: inkFor(el.stroke, pal), align: ALIGN[el.align || 'left'], valign: 'top', fit: false });
+        break;
+      }
       const lines = String(el.text ?? '').split('\n');
       drawTextLines(node, lines, { x: el.x, y: el.y, w: el.w, h: lines.length * size * 1.3 }, { size, lh: size * 1.3, font, color: inkFor(el.stroke, pal), align: 'start', valign: 'top' });
       break;
@@ -167,16 +214,23 @@ export function drawElement(g, el, get, opts = {}) {
     case 'path': {
       const color = inkFor(el.stroke, pal);
       const tg = svgEl('g', { transform: `translate(${el.x} ${el.y})` }, node);
-      if (el.highlight) {
+      if (el.highlight || el.tool === 'highlighter') {
         let d = '';
         el.points.forEach((p, i) => { d += `${i ? 'L' : 'M'}${p[0]} ${p[1]}`; });
-        svgEl('path', { d, fill: 'none', stroke: color, 'stroke-width': el.width || 18, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: 0.35 }, tg);
+        // multiply keeps the writing underneath readable on a light board; a dark board uses plain transparency
+        svgEl('path', { d, fill: 'none', stroke: color, 'stroke-width': el.width || 18, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: 0.38, style: opts.theme === 'dark' ? null : 'mix-blend-mode:multiply' }, tg);
+      } else if (el.tool === 'pencil') {
+        // a pencil: a thin core plus two faint offset passes, for a grainy graphite look
+        const d = strokeOutline(el.points, el.width || 2, { simulatePressure: !!el.simulate, kind: 'pencil' });
+        const k = Math.max(1, el.width || 2) / 2;
+        svgEl('path', { d, fill: color, opacity: 0.85 }, tg);
+        for (const [ox, oy, a] of [[0.45, -0.35, 0.3], [-0.35, 0.45, 0.25]]) svgEl('path', { d, fill: color, opacity: a, transform: `translate(${(ox * k).toFixed(2)} ${(oy * k).toFixed(2)})` }, tg);
       } else if (el.straight) {
         let d = '';
         el.points.forEach((p, i) => { d += `${i ? 'L' : 'M'}${p[0]} ${p[1]}`; });
         svgEl('path', { d, fill: 'none', stroke: color, 'stroke-width': el.width || 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, tg);
       } else {
-        svgEl('path', { d: strokeOutline(el.points, el.width || 3, { simulatePressure: !!el.simulate }), fill: color }, tg);
+        svgEl('path', { d: strokeOutline(el.points, el.width || 3, { simulatePressure: !!el.simulate, kind: el.tool === 'pen' || el.tool === 'marker' ? el.tool : 'legacy' }), fill: color }, tg);
       }
       break;
     }
@@ -253,6 +307,33 @@ export function drawElement(g, el, get, opts = {}) {
       sz.textContent = `${el.size ? (el.size < 1048576 ? `${Math.max(1, Math.round(el.size / 1024))} KB` : `${(el.size / 1048576).toFixed(1)} MB`) : ''} · Double-click to open`;
       break;
     }
+    case 'link': {
+      // a web address with its preview (title, site, picture); the picture is optional
+      const img = el.image ? opts.files?.get(`lp:${el.image}`) : null;
+      svgEl('rect', { x: el.x, y: el.y, width: el.w, height: el.h, rx: 12, fill: pal.shapeFill, stroke: pal.frameLine }, node);
+      const ih = img ? Math.min(el.h * 0.55, el.w * 0.52) : 0;
+      if (img) {
+        const cid = `wbc-${el.id}`;
+        const cp = svgEl('clipPath', { id: cid }, node);
+        svgEl('rect', { x: el.x, y: el.y, width: el.w, height: ih + 12, rx: 12 }, cp);
+        svgEl('image', { href: img, x: el.x, y: el.y, width: el.w, height: ih, preserveAspectRatio: 'xMidYMid slice', 'clip-path': `url(#${cid})` }, node);
+      }
+      const tx = el.x + 14, top = el.y + ih + 12, iw = el.w - 28;
+      const title = String(el.title || el.url || 'Link');
+      const all = wrapLines(title, iw, t => measure(t, 14, 'ipop', 650));
+      all.slice(0, 2).forEach((l, i) => { const t = svgEl('text', { x: tx, y: top + 16 + i * 18, 'font-size': 14, 'font-weight': 650, 'font-family': FONT_STACK.ipop, fill: pal.ink }, node); t.textContent = i === 1 && all.length > 2 ? l.replace(/.$/, '…') : l; });
+      let site = String(el.site || '');
+      if (!site) { try { site = new URL(el.url).hostname.replace(/^www\./, ''); } catch { site = ''; } }
+      const st = svgEl('text', { x: tx, y: Math.min(el.y + el.h - 12, top + 16 + Math.min(2, all.length) * 18 + 4), 'font-size': 12, 'font-family': FONT_STACK.ipop, fill: pal.ink3 }, node);
+      st.textContent = site.length > 40 ? site.slice(0, 39) + '…' : site;
+      break;
+    }
+    case 'sticker': {
+      const url = opts.files?.get(`st:${el.stickerId}`);
+      if (url) svgEl('image', { href: url, x: el.x, y: el.y, width: el.w, height: el.h, preserveAspectRatio: 'xMidYMid meet' }, node);
+      else svgEl('rect', { x: el.x, y: el.y, width: el.w, height: el.h, rx: 10, fill: pal.frameFill }, node);
+      break;
+    }
     case 'image': {
       const url = opts.files?.get(el.fileId);
       if (url) svgEl('image', { href: url, x: el.x, y: el.y, width: el.w, height: el.h, preserveAspectRatio: 'xMidYMid slice' }, node);
@@ -265,15 +346,18 @@ export function drawElement(g, el, get, opts = {}) {
     }
     default: {
       // shapes
-      const stroke = inkFor(el.stroke, pal), fill = el.fill || pal.shapeFill, sw = el.strokeWidth || 2;
+      const stroke = inkFor(el.stroke, pal), fill = el.fill === 'none' ? 'none' : (el.fill || pal.shapeFill), sw = el.strokeWidth || 2;
       const common = { fill, stroke, 'stroke-width': sw, 'stroke-linejoin': 'round' };
       if (el.type === 'rect') svgEl('rect', { x: el.x, y: el.y, width: el.w, height: el.h, rx: el.rounded === false ? 2 : Math.min(12, el.w / 4, el.h / 4), ...common }, node);
       else if (el.type === 'ellipse') svgEl('ellipse', { cx: el.x + el.w / 2, cy: el.y + el.h / 2, rx: el.w / 2, ry: el.h / 2, ...common }, node);
       else svgEl('path', { d: shapePath(el.type, el.x, el.y, el.w, el.h), ...common }, node);
       if (el.text && !editing) {
         const box = textBox(el);
-        const lt = layoutText(el.text, box, { size: el.size || 16, font: el.font || 'ipop', weight: 500 });
-        drawTextLines(node, lt.lines, box, { ...lt, font: el.font || 'ipop', color: inkFor(el.textColor, pal), weight: 500 });
+        if (hasFormatting(el.text) || (el.align && el.align !== 'center')) drawRichText(node, el.text, box, { size: el.size || 16, font: el.font || 'ipop', weight: 500, color: inkFor(el.textColor, pal), align: ALIGN[el.align || 'center'] });
+        else {
+          const lt = layoutText(el.text, box, { size: el.size || 16, font: el.font || 'ipop', weight: 500 });
+          drawTextLines(node, lt.lines, box, { ...lt, font: el.font || 'ipop', color: inkFor(el.textColor, pal), weight: 500 });
+        }
       }
     }
   }

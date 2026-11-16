@@ -15,7 +15,7 @@
 // Common: id, type, version, versionNonce, isDeleted, z (fractional order string), locked, frameId, rot.
 
 export const SHAPES = ['rect', 'ellipse', 'diamond', 'triangle', 'star', 'cloud', 'arrowShape', 'cylinder', 'bubble'];
-export const BOXED = new Set([...SHAPES, 'sticky', 'text', 'frame', 'image', 'file', 'stamp', 'taskCard', 'noteCard']);
+export const BOXED = new Set([...SHAPES, 'sticky', 'text', 'frame', 'image', 'file', 'stamp', 'taskCard', 'noteCard', 'link', 'sticker']);
 export const STICKY_COLORS = ['yellow', 'green', 'blue', 'pink', 'purple', 'orange'];
 export const FONTS = ['ipop', 'hand', 'mono'];
 
@@ -347,4 +347,117 @@ export function wrapLines(text, maxWidth, measure) {
     out.push(line.trimEnd());
   }
   return out;
+}
+
+// ── Round 2: eraser, arranging, groups, search ─────────────────────────────
+
+/// Partial erase: the parts of a pen stroke that stay after rubbing out a circle at (cx, cy) with radius r (board units).
+/// Returns an array of point lists in the stroke's own coordinates (empty = nothing left, [points] = untouched).
+export function cutStroke(el, cx, cy, r) {
+  const pts = el.points || [];
+  const hitR = r + (el.width || 3) / 2;
+  const inside = p => Math.hypot(el.x + p[0] - cx, el.y + p[1] - cy) <= hitR;
+  if (!pts.some(inside)) return [pts];
+  const out = [];
+  let run = [];
+  for (const p of pts) {
+    if (inside(p)) { if (run.length > 1) out.push(run); run = []; }
+    else run.push(p);
+  }
+  if (run.length > 1) out.push(run);
+  return out;
+}
+
+/// Pieces of a stroke as new path elements that keep its look (colour, width, pen). The first keeps the id is NOT
+/// reused: every piece is new, the original is deleted (so undo brings the whole stroke back in one step).
+export function strokePieces(el, runs) {
+  return runs.map(run => {
+    const ox = run[0][0], oy = run[0][1];
+    const { id: _id, version: _v, versionNonce: _n, points: _p, ...rest } = el;
+    return create('path', { ...rest, x: el.x + ox, y: el.y + oy, points: run.map(p => [+(p[0] - ox).toFixed(2), +(p[1] - oy).toFixed(2), p[2]]) });
+  });
+}
+
+/// Align a set of boxes. how: left | hcenter | right | top | vcenter | bottom. Returns [{ id, dx, dy }].
+export function alignBoxes(items, how) {
+  if (items.length < 2) return [];
+  const x1 = Math.min(...items.map(i => i.b.x)), x2 = Math.max(...items.map(i => i.b.x + i.b.w));
+  const y1 = Math.min(...items.map(i => i.b.y)), y2 = Math.max(...items.map(i => i.b.y + i.b.h));
+  return items.map(({ id, b }) => {
+    let dx = 0, dy = 0;
+    if (how === 'left') dx = x1 - b.x;
+    else if (how === 'right') dx = x2 - (b.x + b.w);
+    else if (how === 'hcenter') dx = (x1 + x2) / 2 - (b.x + b.w / 2);
+    else if (how === 'top') dy = y1 - b.y;
+    else if (how === 'bottom') dy = y2 - (b.y + b.h);
+    else if (how === 'vcenter') dy = (y1 + y2) / 2 - (b.y + b.h / 2);
+    return { id, dx, dy };
+  }).filter(m => m.dx || m.dy);
+}
+
+/// Equal gaps between boxes along an axis ('x' across, 'y' down). The two outer boxes stay where they are.
+export function distributeBoxes(items, axis = 'x') {
+  if (items.length < 3) return [];
+  const pos = axis === 'x' ? 'x' : 'y', size = axis === 'x' ? 'w' : 'h';
+  const sorted = [...items].sort((a, b) => a.b[pos] - b.b[pos]);
+  const start = sorted[0].b[pos], end = sorted.at(-1).b[pos] + sorted.at(-1).b[size];
+  const total = sorted.reduce((s, i) => s + i.b[size], 0);
+  const gap = (end - start - total) / (sorted.length - 1);
+  let at = start;
+  const out = [];
+  for (const i of sorted) {
+    const d = at - i.b[pos];
+    if (Math.abs(d) > 0.01) out.push({ id: i.id, dx: axis === 'x' ? d : 0, dy: axis === 'y' ? d : 0 });
+    at += i.b[size] + gap;
+  }
+  return out;
+}
+
+/// Put boxes in one tidy row (same top, 24 apart), in their current left-to-right order.
+export function tidyRow(items, gap = 24) {
+  if (items.length < 2) return [];
+  const sorted = [...items].sort((a, b) => a.b.x - b.b.x || a.b.y - b.b.y);
+  const top = Math.min(...items.map(i => i.b.y));
+  let x = sorted[0].b.x;
+  const out = [];
+  for (const i of sorted) { const dx = x - i.b.x, dy = top - i.b.y; if (dx || dy) out.push({ id: i.id, dx, dy }); x += i.b.w + gap; }
+  return out;
+}
+
+/// Everything that belongs with `ids` through groups: picking one member of a group picks the whole group.
+export function expandGroups(ids, els) {
+  const groups = new Set(els.filter(e => ids.has(e.id) && e.groupId).map(e => e.groupId));
+  if (!groups.size) return ids;
+  const out = new Set(ids);
+  for (const e of els) if (e.groupId && groups.has(e.groupId) && !e.isDeleted) out.add(e.id);
+  return out;
+}
+
+/// A straight line from a pen stroke that is nearly straight (for "hold to make it neat"). Points are [x, y] in board units.
+export function recogniseLine(points) {
+  if (!points || points.length < 4) return null;
+  const [sx, sy] = points[0], [ex, ey] = points.at(-1);
+  const L = Math.hypot(ex - sx, ey - sy);
+  if (L < 24) return null;
+  let len = 0;
+  for (let i = 1; i < points.length; i++) len += Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]);
+  if (len > L * 1.15) return null;
+  const dev = Math.max(...points.map(([px, py]) => Math.abs((ey - sy) * px - (ex - sx) * py + ex * sy - ey * sx) / L));
+  return dev <= Math.max(4, L * 0.06) ? { x1: sx, y1: sy, x2: ex, y2: ey } : null;
+}
+
+/// Text an element shows (for Find on board): sticky/shape/text text, frame and file names, card and link titles.
+export function searchText(el) {
+  const parts = [el.text, el.name, el.title, el.label, el.url, el.site];
+  return parts.filter(v => typeof v === 'string' && v).join(' ').replace(/\*\*|~~|\]\([^)]*\)|\[/g, '');
+}
+
+/// Elements whose text contains the query (case-insensitive), in reading order (top to bottom, then left to right).
+export function findOnBoard(els, q, get = () => null) {
+  const s = String(q || '').trim().toLowerCase();
+  if (!s) return [];
+  return els.filter(e => !e.isDeleted && searchText(e).toLowerCase().includes(s))
+    .map(e => ({ e, b: bounds(e, get) }))
+    .sort((a, b) => Math.abs(a.b.y - b.b.y) > 20 ? a.b.y - b.b.y : a.b.x - b.b.x)
+    .map(x => x.e);
 }
