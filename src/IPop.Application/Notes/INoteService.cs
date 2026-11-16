@@ -212,6 +212,11 @@ public interface INoteService
     Task<NoteResult<NoteThreadDto?>> DeleteCommentAsync(Guid userId, Guid pageId, Guid commentId, CancellationToken ct);
     /// Toggle one emoji of the caller on a comment (anyone who can comment).
     Task<NoteResult<NoteThreadDto>> ToggleReactionAsync(Guid userId, Guid pageId, Guid commentId, string emoji, CancellationToken ct);
+    /// System clean-up (no user involved): permanently removes every page that has been in Trash for longer than
+    /// <paramref name="retention"/>, with its sub-pages, versions and comments, and returns the ids of the files that were
+    /// attached to them so the caller can delete those from storage. Pages in Trash that belong to a still-live parent chain
+    /// are handled like a manual purge (other people's sub-pages are lifted to the top level, never destroyed).
+    Task<IReadOnlyList<Guid>> PurgeExpiredTrashAsync(TimeSpan retention, int maxPages, CancellationToken ct);
     Task<NoteResult<bool>> SetResolvedAsync(Guid userId, Guid pageId, Guid threadId, bool resolved, CancellationToken ct);
     /// The tutorial's example thread, posted by "iPop Guide" once the guide template is in place.
     Task<NoteResult<bool>> AddGuideThreadAsync(Guid userId, Guid pageId, string quote, string anchor, CancellationToken ct);

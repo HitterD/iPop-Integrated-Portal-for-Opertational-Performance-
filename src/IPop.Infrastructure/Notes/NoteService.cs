@@ -502,6 +502,29 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         if (page is null) return Fail<bool>("not_found");
         if (page.OwnerId != userId && await AccessOnChainAsync(userId, await ChainAsync(pageId, ct), ct) != NoteAccess.Owner)
             return Fail<bool>("forbidden");
+        await PurgeTreeAsync(pageId, page.OwnerId, ct);
+        return Ok(true);
+    }
+
+    public async Task<IReadOnlyList<Guid>> PurgeExpiredTrashAsync(TimeSpan retention, int maxPages, CancellationToken ct)
+    {
+        var cutoff = DateTime.UtcNow - retention;
+        // The top of each expired trashed subtree: a trashed page whose parent is not trashed in the same moment.
+        var tops = await db.NotePages.AsNoTracking()
+            .Where(p => p.DeletedAt != null && p.DeletedAt < cutoff
+                && (p.ParentId == null || p.Parent!.DeletedAt == null || p.Parent.DeletedAt != p.DeletedAt))
+            .OrderBy(p => p.DeletedAt).Take(maxPages)
+            .Select(p => new { p.Id, p.OwnerId }).ToListAsync(ct);
+        var files = new List<Guid>();
+        foreach (var top in tops)
+            files.AddRange(await PurgeTreeAsync(top.Id, top.OwnerId, ct));
+        return files;
+    }
+
+    /// Removes a trashed page and everything below it. Returns the ids of the attachments that were linked to it.
+    private async Task<List<Guid>> PurgeTreeAsync(Guid pageId, Guid ownerId, CancellationToken ct)
+    {
+        var page = new { OwnerId = ownerId };
         var subtree = await SubtreeAsync(pageId, q => q, ct);
         var foreignRoots = await db.NotePages.AsNoTracking()
             .Where(p => subtree.Contains(p.Id) && p.Id != pageId && p.OwnerId != page.OwnerId
@@ -521,6 +544,6 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
             await db.Attachments.Where(a => attIds.Contains(a.Id) && a.DeletedAt == null)
                 .ExecuteUpdateAsync(s => s.SetProperty(a => a.DeletedAt, now), ct);
         }
-        return Ok(true);
+        return attIds;
     }
 }
