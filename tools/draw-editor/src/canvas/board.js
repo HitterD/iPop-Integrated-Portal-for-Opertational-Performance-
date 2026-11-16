@@ -669,28 +669,95 @@ export function mountCanvas(container, opts) {
     gallery.hidden = false;
   }
   let fullscreen = false;
+  // The corner buttons are rebuilt only when what they show changes. Rebuilding them on every cursor move or timer tick
+  // (others' awareness fires many times a second) replaced a button between press and release, so clicks were lost and
+  // people had to click several times.
+  let cornerHtml = { l: null, r: null };
+  const setHtml = (node, key, html) => { if (cornerHtml[key] === html) return false; cornerHtml[key] = html; node.innerHTML = html; return true; };
+  // the timer chip's label ticks every half second: update its text in place
+  function paintTimerChip() {
+    const b = topRight.querySelector('[data-c="timer"] span');
+    if (b) b.textContent = timerEnds ? timerLabel() : 'Timer';
+    topRight.querySelector('[data-c="timer"]')?.classList.toggle('on', !!timerEnds);
+  }
   function paintCorners() {
     const canTemplates = !readOnly && mode === 'board';
-    topLeft.innerHTML = canTemplates ? `<button type="button" class="wb-chip ${!shapePanel.hidden ? 'on' : ''}" data-c="shapes" aria-haspopup="dialog">${icon('shapes')}<span>Shapes</span></button><button type="button" class="wb-chip" data-c="tpl" aria-haspopup="dialog">${icon('grid')}<span>Templates</span></button>`
-      + (opts.library ? `<button type="button" class="wb-chip" data-c="lib" aria-haspopup="dialog">${icon('book')}<span>Library</span></button>` : '') : '';
+    setHtml(topLeft, 'l', canTemplates ? `<button type="button" class="wb-chip ${!shapePanel.hidden ? 'on' : ''}" data-c="shapes" aria-haspopup="dialog">${icon('shapes')}<span>Shapes</span></button><button type="button" class="wb-chip" data-c="tpl" aria-haspopup="dialog">${icon('grid')}<span>Templates</span></button>` : '');
     topLeft.hidden = !canTemplates;
     const fs = mode === 'board' && opts.onFullscreen;
     const lockChip = opts.boardLock?.canChange?.() ? `<button type="button" class="wb-chip ${opts.boardLock.isLocked() ? 'on' : ''}" data-c="lockboard" title="${opts.boardLock.isLocked() ? 'Unlock the board so people can edit it' : 'Lock the board: everyone can still view, comment and vote'}" aria-pressed="${opts.boardLock.isLocked()}">${icon(opts.boardLock.isLocked() ? 'lock' : 'unlock')}<span>${opts.boardLock.isLocked() ? 'Locked' : 'Lock'}</span></button>` : '';
     const flowChips = mode === 'board' && !readOnly ? `<button type="button" class="wb-chip ${!guidePanel.hidden ? 'on' : ''}" data-c="guide" title="Step-by-step help to make a flowchart">${icon('bulb')}<span>Guide</span></button>`
       + (flowOn ? `<button type="button" class="wb-chip" data-c="tidy" title="Tidy up flow (top to bottom; Shift: left to right)">${icon('tidy')}<span>Tidy up</span></button><button type="button" class="wb-chip ${!checkPanel.hidden ? 'on' : ''}" data-c="check" title="Check this flowchart">${icon('check')}<span>Check</span><span class="wb-badge" hidden>0</span></button>` : '')
       + `<button type="button" class="wb-chip" data-c="import" title="Import a draw.io file or Mermaid text">${icon('import')}</button>` : '';
-    const extras = mode === 'board' ? flowChips + `<button type="button" class="wb-chip" data-c="find" title="Find on board (Ctrl F)" aria-label="Find on board">${icon('search')}</button>` + lockChip
-      + (opts.onPopOut ? `<button type="button" class="wb-chip" data-c="popout" title="Open in a new tab" aria-label="Open in a new tab">${icon('newtab')}</button>` : '')
-      + `<button type="button" class="wb-chip" data-c="frames" title="Frames" aria-haspopup="dialog">${icon('frames')}<span>Frames</span></button>`
-      + `<button type="button" class="wb-chip" data-c="present" title="Present frame by frame">${icon('play')}<span>Present</span></button>`
-      + (aw ? `<button type="button" class="wb-chip ${timerEnds ? 'on' : ''}" data-c="timer" title="Timer everyone sees">${icon('timer')}<span>${timerEnds ? timerLabel() : 'Timer'}</span></button>` : '')
-      + (vmap ? `<button type="button" class="wb-chip ${votingOn() ? 'on' : ''}" data-c="vote" title="Dot voting">${icon('vote')}<span>${votingOn() ? `Voting · ${Math.max(0, (round()?.per || 0) - myVotes().length)} left` : 'Vote'}</span></button>` : '')
-      + `<button type="button" class="wb-chip" data-c="export" title="Export or copy">${icon('download')}<span>Export</span></button>` : '';
-    people.remove();
-    topRight.innerHTML = extras + (fs ? `<button type="button" class="wb-chip" data-c="fs" title="Full screen (Shift F)" aria-pressed="${fullscreen}"><svg class="wb-i" viewBox="0 0 24 24" aria-hidden="true">${fullscreen ? '<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/>' : '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>'}</svg><span>${fullscreen ? 'Exit full screen' : 'Full screen'}</span></button>` : '');
-    topRight.hidden = !fs && !extras && people.hidden;
-    topRight.prepend(people);
+    void flowChips; void lockChip;
+    // Chips that stay in view: what people use all the time, or what shows a live state (a running timer, a vote, a lock).
+    const live = [];
+    if (mode === 'board' && !readOnly && flowOn) live.push(`<button type="button" class="wb-chip ${!checkPanel.hidden ? 'on' : ''}" data-c="check" title="Check this flowchart">${icon('check')}<span>Check</span><span class="wb-badge" hidden>0</span></button>`);
+    // the countdown text is filled in afterwards (paintTimerChip), so the ticking label never rebuilds the buttons
+    if (mode === 'board' && timerEnds && aw) live.push(`<button type="button" class="wb-chip on" data-c="timer" title="Timer everyone sees">${icon('timer')}<span></span></button>`);
+    if (mode === 'board' && vmap && votingOn()) live.push(`<button type="button" class="wb-chip on" data-c="vote" title="Dot voting">${icon('vote')}<span>Voting · ${Math.max(0, (round()?.per || 0) - myVotes().length)} left</span></button>`);
+    if (mode === 'board' && opts.boardLock?.isLocked?.()) live.push(`<button type="button" class="wb-chip on" data-c="lockboard" title="Unlock the board so people can edit it">${icon('lock')}<span>Locked</span></button>`);
+    if (mode === 'board') live.push(`<button type="button" class="wb-chip" data-c="present" title="Present frame by frame">${icon('play')}<span>Present</span></button>`);
+    if (fs) live.push(`<button type="button" class="wb-chip" data-c="fs" title="${fullscreen ? 'Exit full screen (Esc)' : 'Full screen (Shift F)'}" aria-label="${fullscreen ? 'Exit full screen' : 'Full screen'}" aria-pressed="${fullscreen}"><svg class="wb-i" viewBox="0 0 24 24" aria-hidden="true">${fullscreen ? '<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/>' : '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>'}</svg></button>`);
+    if (mode === 'board') live.push(`<button type="button" class="wb-chip ${!boardMenu.hidden ? 'on' : ''}" data-c="menu" title="More: guide, tidy up, find, frames, timer, vote, export…" aria-label="More board tools" aria-haspopup="menu">${icon('more')}</button>`);
+    const changed = setHtml(topRight, 'r', live.join(''));
+    if (changed || !people.isConnected) topRight.prepend(people);
+    paintTimerChip();
+    topRight.hidden = !live.length && people.hidden;
+    if (!boardMenu.hidden) paintBoardMenu();
   }
+
+  // ── The board menu (⋯): every board tool, searchable, grouped ───────────
+  const boardMenu = el('div', 'wb-panel wb-boardmenu'); boardMenu.hidden = true; boardMenu.setAttribute('role', 'menu'); boardMenu.setAttribute('aria-label', 'Board tools');
+  root.append(boardMenu);
+  boardMenu.addEventListener('pointerdown', e => e.stopPropagation());
+  let boardMenuQ = '';
+  function boardTools() {
+    const t = [];
+    const add2 = (group, c, label, ic, hint = '', on = false) => t.push({ group, c, label, ic, hint, on });
+    if (!readOnly) {
+      add2('Diagram', 'guide', 'Guide: make a flowchart step by step', 'bulb', '', !guidePanel.hidden);
+      if (flowOn) add2('Diagram', 'tidy', 'Tidy up flow', 'tidy', 'Alt Shift T');
+      if (flowOn) add2('Diagram', 'check', 'Check this flowchart', 'check', '', !checkPanel.hidden);
+      add2('Diagram', 'import', 'Import draw.io or Mermaid', 'import');
+      if (opts.library) add2('Diagram', 'lib', 'Library', 'book');
+    }
+    add2('Board', 'find', 'Find on board', 'search', 'Ctrl F');
+    add2('Board', 'frames', 'Frames', 'frames');
+    if (opts.onPopOut) add2('Board', 'popout', 'Open in a new tab', 'newtab');
+    if (opts.boardLock?.canChange?.()) add2('Board', 'lockboard', opts.boardLock.isLocked() ? 'Unlock the board' : 'Lock the board (view, comment and vote only)', opts.boardLock.isLocked() ? 'unlock' : 'lock', '', opts.boardLock.isLocked());
+    if (aw) add2('Meeting', 'timer', timerEnds ? `Timer · ${timerLabel()}` : 'Timer everyone sees', 'timer', '', !!timerEnds);
+    if (vmap) add2('Meeting', 'vote', votingOn() ? 'Voting is on' : 'Dot voting', 'vote', '', votingOn());
+    add2('Meeting', 'present', 'Present frame by frame', 'play');
+    add2('Share', 'export', 'Export or copy as picture', 'download');
+    return t;
+  }
+  function paintBoardMenu() {
+    const q = boardMenuQ.trim().toLowerCase();
+    const items = boardTools().filter(x => !q || x.label.toLowerCase().includes(q) || x.group.toLowerCase().includes(q));
+    const groups = [...new Set(items.map(x => x.group))];
+    boardMenu.innerHTML = `<input class="wb-search" type="search" placeholder="Search board tools" value="${esc(boardMenuQ)}" aria-label="Search board tools">`
+      + (groups.map(g => `<div class="wb-mh">${g}</div>${items.filter(x => x.group === g).map(x => `<button type="button" role="menuitem" data-c="${x.c}" class="wb-mitem ${x.on ? 'on' : ''}">${icon(x.ic)}<span>${esc(x.label)}</span>${x.hint ? `<kbd>${x.hint}</kbd>` : ''}</button>`).join('')}`).join('') || '<p class="wb-note">Nothing found.</p>');
+    const input = boardMenu.querySelector('.wb-search');
+    input.addEventListener('input', () => { boardMenuQ = input.value; paintBoardMenu(); const i2 = boardMenu.querySelector('.wb-search'); i2.focus(); i2.setSelectionRange(i2.value.length, i2.value.length); });
+    input.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Escape') { boardMenu.hidden = true; paintCorners(); } if (e.key === 'Enter') boardMenu.querySelector('[data-c]')?.click(); });
+  }
+  function toggleBoardMenu() {
+    if (!boardMenu.hidden) { boardMenu.hidden = true; paintCorners(); return; }
+    boardMenuQ = '';
+    boardMenu.hidden = false;
+    paintBoardMenu();
+    paintCorners();
+    boardMenu.querySelector('.wb-search')?.focus({ preventScroll: true });
+  }
+  // a pick in the menu runs the same action as the chip of the same name
+  boardMenu.addEventListener('click', e => {
+    const b = e.target.closest('[data-c]'); if (!b) return;
+    boardMenu.hidden = true;
+    const fake = document.createElement('button'); fake.dataset.c = b.dataset.c;
+    runCorner(fake, e);
+    paintCorners();
+  });
   // While full screen, Esc must work wherever focus is (moving the board element to <body> drops its focus).
   const fsKeys = e => { if (e.key === 'Escape' && presenting) { e.preventDefault(); e.stopPropagation(); stopPresent(); return; }
     if (e.key === 'Escape' && fullscreen && !editing && keysPanel.hidden && gallery.hidden) { e.preventDefault(); e.stopPropagation(); toggleFullscreen(); } };
@@ -710,7 +777,14 @@ export function mountCanvas(container, opts) {
     if (!gallery.hidden) { gallery.hidden = true; return; }
     openGallery();
   });
-  topRight.addEventListener('click', e => {
+  topRight.addEventListener('click', e => { const b = e.target.closest('[data-c]'); if (b) runCorner(b, e); });
+  function runCorner(b, e) {
+    const c = b.dataset.c;
+    const is = k => c === k;
+    const target = { closest: sel2 => (sel2 === `[data-c="${c}"]` ? b : null) };
+    if (is('menu')) { toggleBoardMenu(); return; }
+    if (is('lib')) { toggleLibrary(); return; }
+    e = { target, shiftKey: e?.shiftKey };
     if (e.target.closest('[data-c="fs"]')) toggleFullscreen();
     else if (e.target.closest('[data-c="frames"]')) toggleFrames();
     else if (e.target.closest('[data-c="present"]')) startPresent();
@@ -724,7 +798,7 @@ export function mountCanvas(container, opts) {
     else if (e.target.closest('[data-c="import"]')) toggleImport();
     else if (e.target.closest('[data-c="popout"]')) opts.onPopOut?.();
     else if (e.target.closest('[data-c="lockboard"]')) opts.boardLock?.toggle?.();
-  });
+  }
   const pickTemplate = e => {
     if (e.target.closest('[data-close]')) { gallery.hidden = true; return; }
     const tc = e.target.closest('[data-tcat]');
@@ -834,11 +908,13 @@ export function mountCanvas(container, opts) {
   function paintPeople(list) {
     if (!aw) { people.hidden = true; return; }
     people.hidden = !list.length;
-    people.innerHTML = list.slice(0, 6).map(o => {
+    // rebuilt only when the faces change (this runs on every cursor move of everyone on the board)
+    const html = list.slice(0, 6).map(o => {
       const name = String(o.user.name || 'Someone');
       const ini = name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
       return `<button type="button" class="wb-face ${following === o.id ? 'on' : ''}" data-follow="${o.id}" style="background:${o.user.color || '#5856D6'}" title="${following === o.id ? 'Stop following' : 'Follow'} ${name.replace(/"/g, '')}" aria-label="${following === o.id ? 'Stop following' : 'Follow'} ${name.replace(/"/g, '')}">${ini}</button>`;
     }).join('') + (list.length > 6 ? `<span class="wb-face more">+${list.length - 6}</span>` : '');
+    if (people._html !== html) { people._html = html; people.innerHTML = html; }
   }
   function followStep(list) {
     const o = list.find(x => x.id === following);
@@ -987,8 +1063,9 @@ export function mountCanvas(container, opts) {
     if (timerEnds && !timerTick) timerTick = setInterval(() => {
       if (destroyed) return;
       if (timerEnds && now() >= timerEnds && !timerBeeped) { timerBeeped = 1; toast('Time is up'); }
-      if (timerEnds && now() > timerEnds + 3000) { timerEnds = 0; clearInterval(timerTick); timerTick = 0; }
-      paintCorners();
+      if (timerEnds && now() > timerEnds + 3000) { timerEnds = 0; clearInterval(timerTick); timerTick = 0; paintCorners(); return; }
+      paintTimerChip();
+      if (!boardMenu.hidden) paintBoardMenu();
     }, 500);
     paintCorners();
   }
@@ -2558,6 +2635,7 @@ export function mountCanvas(container, opts) {
     if (e.target.closest('.wb-tools,.wb-props,.wb-zoom,.wb-menu,.wb-panel,.wb-neat,.wb-edit,.wb-penpop,.wb-colourpop,.wb-arrows,.wb-hint')) return;
     if (editing) stopEdit();
     shapeMenu.hidden = true; penPop.hidden = true; colourPop.hidden = true;
+    if (!boardMenu.hidden) { boardMenu.hidden = true; paintCorners(); }
     // Inside a page the board sits in a draggable block: without this the browser starts a native drag (or a text selection)
     // on the first move and cancels the pointer, which cut every pen stroke off after a few pixels.
     e.preventDefault();
@@ -3088,6 +3166,7 @@ export function mountCanvas(container, opts) {
     if (presenting && (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ')) { e.preventDefault(); goSlide(presenting.index + 1); return; }
     if (presenting && (e.key === 'ArrowLeft' || e.key === 'PageUp')) { e.preventDefault(); goSlide(presenting.index - 1); return; }
     if (e.key === 'Escape' && (!penPop.hidden || !colourPop.hidden)) { penPop.hidden = true; colourPop.hidden = true; return; }
+    if (e.key === 'Escape' && !boardMenu.hidden) { boardMenu.hidden = true; paintCorners(); return; }
     if (e.key === 'Escape') { if (presenting) { stopPresent(); return; } if (following != null) { followingPresenter = null; stopFollow(); return; } if (!keysPanel.hidden) { keysPanel.hidden = true; return; } if (!gallery.hidden) { gallery.hidden = true; return; } if (!libPanel.hidden) { libPanel.hidden = true; return; } if (fullscreen) { toggleFullscreen(); return; } sel.clear(); setTool('select'); paintProps(); render(); return; }
     if (readOnly) { if (k === 'h' || k === 'l' || k === 'v') setTool(k === 'h' ? 'hand' : k === 'v' ? 'select' : 'laser'); else if (k === 'c' && opts.comments?.canComment?.()) setTool('comment'); return; }
     const chosen = [...sel].map(get).filter(Boolean);

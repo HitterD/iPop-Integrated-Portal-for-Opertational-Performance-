@@ -380,3 +380,19 @@ input.wb-edit { background: var(--wb-surface); padding: 0 8px; outline-width: 2p
 .wb-propsmore button.on { background: color-mix(in srgb, var(--wb-accent) 14%, transparent); }
 .wb-propsmore .wb-mrow { display: flex; gap: 2px; padding: 2px 0 6px; margin-bottom: 4px; border-bottom: 1px solid var(--wb-line); }
 .wb-propsmore .wb-mrow button { width: 30px !important; padding: 0 !important; justify-content: center !important; font-weight: 600; }
+
+/* Board menu (⋯) and tidy corners: the right row never runs into the left one */
+.wb-tr { max-width: calc(100% - 300px); flex-wrap: nowrap; }
+.wb-boardmenu { left: auto; right: max(12px, env(safe-area-inset-right, 0px)); top: 56px; transform: none; width: 300px; max-height: calc(100% - 140px); padding: 8px; gap: 2px; }
+.wb-boardmenu .wb-search { margin-bottom: 4px; }
+.wb-boardmenu .wb-mh { padding: 8px 6px 2px; }
+.wb-mitem { display: flex !important; align-items: center; gap: 10px; width: 100% !important; height: 34px !important; padding: 0 8px !important; justify-content: start !important; place-items: initial !important; font-size: 13px; color: var(--wb-ink) !important; text-align: left; }
+.wb-mitem .wb-i { width: 17px; height: 17px; color: var(--wb-ink2); }
+.wb-mitem span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-mitem kbd { font: 10.5px ui-monospace, Menlo, Consolas, monospace; padding: 1px 5px; border-radius: 5px; background: var(--wb-fill); color: var(--wb-ink3); }
+.wb-mitem.on { background: color-mix(in srgb, var(--wb-accent) 14%, transparent) !important; }
+.wb-chip[data-c="menu"], .wb-chip[data-c="fs"] { width: 32px; padding: 0; justify-content: center; }
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .wb-tr { max-width: calc(100% - 110px); }
+  .wb-boardmenu { left: 0 !important; right: 0 !important; top: auto !important; bottom: 0 !important; width: auto !important; max-height: 72%; border-radius: 18px 18px 0 0; padding-bottom: max(16px, env(safe-area-inset-bottom, 0px)); }
+}
