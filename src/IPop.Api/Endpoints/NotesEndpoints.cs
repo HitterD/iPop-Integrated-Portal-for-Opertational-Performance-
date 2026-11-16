@@ -49,6 +49,9 @@ public static class NotesEndpoints
         g.MapGet("/{id:guid}", (Guid id, HttpContext http, INoteService svc, CancellationToken ct) =>
             Run(http, async me => From(await svc.GetPageAsync(me.Id, id, ct))));
 
+        g.MapGet("/{id:guid}/backlinks", (Guid id, HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.GetBacklinksAsync(me.Id, id, ct))));
+
         // Lock / unlock: needs edit access. Everyone with the page open learns about it through the usual meta push.
         g.MapPut("/{id:guid}/lock", (Guid id, LockRequest req, HttpContext http, INoteService svc, IHubContext<NotesHub> hub,
             CancellationToken ct) => Run(http, async me =>

@@ -15,6 +15,18 @@ public partial class Notes
     // ── Comments ─────────────────────────────────────────────────────────────
 
     private List<NoteThreadDto> threads = [];
+    private List<NoteBacklinkDto> backlinks = [];
+
+    private async Task LoadBacklinksAsync()
+    {
+        if (note is null) return;
+        var id = note.Id;
+        backlinks = [];
+        var list = await Auth.GetAsync<List<NoteBacklinkDto>>($"/api/notes/{id}/backlinks");
+        if (note?.Id != id || list is null) return;
+        backlinks = list;
+        await InvokeAsync(StateHasChanged);
+    }
     private Guid? focusThread;
     private readonly Dictionary<Guid, string?> replies = [];
     private CommentDraft? draft;

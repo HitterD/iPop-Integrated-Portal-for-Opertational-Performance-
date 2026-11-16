@@ -3048,6 +3048,21 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("NoteFavorites");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.NoteLink", b =>
+                {
+                    b.Property<Guid>("FromPageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ToPageId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("FromPageId", "ToPageId");
+
+                    b.HasIndex("ToPageId");
+
+                    b.ToTable("NoteLinks");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.NotePage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -7053,6 +7068,21 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasOne("IPop.Core.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NoteLink", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.NotePage", null)
+                        .WithMany()
+                        .HasForeignKey("FromPageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.NotePage", null)
+                        .WithMany()
+                        .HasForeignKey("ToPageId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

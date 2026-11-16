@@ -984,3 +984,12 @@
 .nt-clink { font-size:12px; color:var(--ink-3); }
 .nt-clink:hover { color:var(--ink); }
 .nt-row .nt-kind[hidden] { display:none; }
+
+/* Inline link to another page ([[ picker) and the "Linked from" list under a page. */
+.nt-pagelink { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; margin: 0 1px; border-radius: 6px; background: var(--nt-chip, rgba(0,0,0,.05)); border-bottom: 1px solid currentColor; cursor: pointer; font-weight: 500; line-height: 1.5; }
+.nt-pagelink:hover, .nt-pagelink:focus-visible { background: rgba(0,0,0,.09); outline: none; }
+.nt-pagelink.gone { opacity: .55; text-decoration: line-through; cursor: default; border-bottom-style: dashed; }
+.nt-backlinks { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.nt-backlink { display: inline-flex; align-items: center; gap: 6px; max-width: 280px; padding: 6px 10px; border-radius: 10px; border: 1px solid rgba(0,0,0,.1); background: transparent; color: inherit; cursor: pointer; font: inherit; }
+.nt-backlink:hover { background: rgba(0,0,0,.05); }
+.nt-backlink .bt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

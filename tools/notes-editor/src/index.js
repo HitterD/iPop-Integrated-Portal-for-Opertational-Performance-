@@ -5,6 +5,8 @@
 // an editor periodically folds the tail into a new state with a compare-and-set on the version.
 import { createCovers } from './covers.js';
 import { restoreScenes } from './restore-scenes.js';
+import { PageLink, pageLinkIds } from './page-link.js';
+import { listPopup } from './menus.js';
 import { NoteDraw, mountScene, newDrawId, setAllReadOnly } from './draw-block.js';
 import { analyze as tidyAnalyze, apply as tidyApply } from './tidy.js';
 import { refusedReason, mentionContexts, savePending, takePending, clearPending } from './sync.js';
@@ -55,6 +57,7 @@ function baseExtensions(host, { collab = true, rich = {} } = {}) {
     BlockBackground, Callout,
     NoteWidget.configure({ host: () => host }),
     NoteToc, HeadingFlash,
+    PageLink.configure({ host: () => host }),
     NoteDraw.configure({ host: () => host }),
     SubPage.configure({ host: () => host }),
     NoteImage.configure({ host: () => host }),
@@ -130,6 +133,10 @@ export async function mount(el, opts) {
   const palette = ['#0A84FF', '#5856D6', '#AF52DE', '#FF2D55', '#FF9500', '#34C759', '#30B0C7', '#A2845E'];
   const host = {
     drawDoc: () => ydoc,
+    allPages: () => [...pages.values()],
+    currentPageId: () => pageId,
+    pagesKnown: () => pages.size > 0,
+    listPopup: (render, empty) => listPopup(render, empty, host),
     openLink: url => { if (/^https?:\/\//i.test(url || '')) window.open(url, '_blank', 'noopener,noreferrer'); },
     drawFullscreen: id => openDrawFullscreen(id),
     fetch: path => api(path),
@@ -294,7 +301,7 @@ export async function mount(el, opts) {
     try {
       const r = await api(`/api/notes/${pageId}/snapshot`, { method: 'POST', json: {
         state: b64(Y.encodeStateAsUpdate(ydoc)), baseVersion: version, mergedUpdateIds: ids,
-        plainText: editor.getText({ blockSeparator: '\n' }), todoDone: done, todoTotal: total, todoDue: todoDueItems(editor.state.doc),
+        plainText: editor.getText({ blockSeparator: '\n' }), todoDone: done, todoTotal: total, todoDue: todoDueItems(editor.state.doc), linksTo: pageLinkIds(editor.state.doc),
       } });
       if (r.ok) { version = (await r.json()).version; ids.forEach(i => unmerged.delete(i)); }
       else if (r.status === 403 || r.status === 404) stopEditing(r.status === 404 ? 'not_found' : 'forbidden');

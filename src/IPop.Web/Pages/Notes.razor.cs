@@ -22,7 +22,7 @@ public partial class Notes
 {
     [Parameter] public Guid? Id { get; set; }
 
-    private const string EditorModule = "./js/notes/notes-editor.js?v=20261116-remind";
+    private const string EditorModule = "./js/notes/notes-editor.js?v=20261116-links";
 
     private enum View { Home, Page, New, Trash }
     private enum Pop { None, More, Style, Emoji, Share, History, Tidy }
@@ -200,6 +200,7 @@ public partial class Notes
         ExpandTo(note);
         mountPending = true;
         _ = LoadThreadsAsync();
+        _ = LoadBacklinksAsync();
     }
 
     private void ExpandTo(NotePageDto p)

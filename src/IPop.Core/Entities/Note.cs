@@ -146,6 +146,14 @@ public class NoteComment
     public List<NoteCommentReaction> Reactions { get; set; } = [];
 }
 
+/// "This page links to that page", as last seen in the saved content (inline page links and sub-page blocks are not
+/// included: only explicit page links). Rebuilt from every snapshot; it powers the "Linked from" list on the target.
+public class NoteLink
+{
+    public Guid FromPageId { get; set; }
+    public Guid ToPageId { get; set; }
+}
+
 /// A to-do with a due date, as last seen in the page's saved content. Rebuilt from every snapshot (the server does not
 /// read the Yjs document itself), and used by <c>NotesReminderWorker</c> to remind the assignee the day before and on the
 /// day. Reminders that were already sent stay sent when the same item is saved again.

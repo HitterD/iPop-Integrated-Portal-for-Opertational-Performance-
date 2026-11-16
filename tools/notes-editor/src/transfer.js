@@ -551,6 +551,11 @@ function inlineMd(nodes, ctx) {
   return (nodes || []).map(n => {
     if (n.type === 'hardBreak') return '<br>';
     if (n.type === 'mention') return `@${n.attrs?.label ?? ''}`;
+    if (n.type === 'pageLink') {
+      const title = (ctx.title?.(n.attrs?.id) || n.attrs?.title || 'Untitled').replace(/[[\]]/g, '');
+      const p = ctx.link(n.attrs?.id);
+      return p ? `[${title}](${relPath(ctx.dir, p)})` : title;
+    }
     if (n.type !== 'text') return '';
     let t = n.text.replace(/([\\`*_[\]<>])/g, '\\$1');
     const marks = n.marks || [];
@@ -619,6 +624,11 @@ function inlineHtml(nodes, ctx) {
   return (nodes || []).map(n => {
     if (n.type === 'hardBreak') return '<br>';
     if (n.type === 'mention') return `<span class="mention">@${esc(n.attrs?.label ?? '')}</span>`;
+    if (n.type === 'pageLink') {
+      const title = esc(ctx.title?.(n.attrs?.id) || n.attrs?.title || 'Untitled');
+      const p = ctx.link(n.attrs?.id);
+      return p ? `<a class="pagelink" href="${esc(safeUrl(relPath(ctx.dir, p)))}">${title}</a>` : title;
+    }
     if (n.type !== 'text') return '';
     let t = esc(n.text);
     for (const m of n.marks || []) {

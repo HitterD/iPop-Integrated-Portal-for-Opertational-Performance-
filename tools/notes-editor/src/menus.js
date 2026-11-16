@@ -53,6 +53,7 @@ export function slashCommands(host) {
     }],
     ['Basic blocks', 'Table of contents', 'A live list of the headings on this page', '☰', '', setBlock(c => c.insertContent({ type: 'noteToc' }))],
     ['Media', 'Drawing', 'Sketch by hand, together in real time', '✏️', '', setBlock(c => c.insertContent({ type: 'noteDraw', attrs: { id: newDrawId(), height: 320 } }))],
+    ['Basic blocks', 'Link to page', 'Mention another page, type [[ too', '↗', '[[', ({ editor, range }) => editor.chain().focus().deleteRange(range).insertContent('[[').run()],
     ['Media', 'Image', 'Upload or paste — stored on NAS', '🖼', '', ({ editor, range }) => { editor.chain().focus().deleteRange(range).run(); host.pickFiles('image/*'); }],
     ['Media', 'File', 'Attach any file', '📎', '', ({ editor, range }) => { editor.chain().focus().deleteRange(range).run(); host.pickFiles(''); }],
     ['Media', 'Code', 'Capture a code snippet', '</>', '```', setBlock(byKey('code'))],
@@ -67,7 +68,7 @@ export function slashCommands(host) {
 
 /// A keyboard-driven popup list used by both "/" and "@".
 /// emptyText: a string, or (query) => string for a message that follows what was typed.
-function listPopup(renderItem, emptyText, host) {
+export function listPopup(renderItem, emptyText, host) {
   let pop = null, items = [], sel = 0, command = null, query = '';
   const phonePosition = () => {
     if (!pop?.classList.contains('m-notes-mentions')) return;

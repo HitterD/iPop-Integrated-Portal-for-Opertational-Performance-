@@ -86,10 +86,13 @@ public record NoteUpdateDto(long Id, string Data);
 /// Everything a client needs to build the document: compacted state + updates not yet folded in.
 public record NoteDocDto(string? State, long Version, IReadOnlyList<NoteUpdateDto> Updates);
 
+/// A page that links to the current page. Only pages the viewer can open are ever listed.
+public record NoteBacklinkDto(Guid Id, string Title, string? Emoji, string? Excerpt);
+
 public record NoteTodoDueDto(string Key, Guid? AssigneeId, string Due, string Text, bool Done);
 
 public record NoteSnapshotRequest(string State, long BaseVersion, IReadOnlyList<long> MergedUpdateIds,
-    string? PlainText, int TodoDone, int TodoTotal, IReadOnlyList<NoteTodoDueDto>? TodoDue = null);
+    string? PlainText, int TodoDone, int TodoTotal, IReadOnlyList<NoteTodoDueDto>? TodoDue = null, IReadOnlyList<Guid>? LinksTo = null);
 
 public record NoteSnapshotResultDto(long Version);
 
@@ -219,6 +222,8 @@ public interface INoteService
     /// attached to them so the caller can delete those from storage. Pages in Trash that belong to a still-live parent chain
     /// are handled like a manual purge (other people's sub-pages are lifted to the top level, never destroyed).
     Task<IReadOnlyList<Guid>> PurgeExpiredTrashAsync(TimeSpan retention, int maxPages, CancellationToken ct);
+    /// Pages that link to this one and that the viewer can open (newest edit first, at most 30).
+    Task<NoteResult<IReadOnlyList<NoteBacklinkDto>>> GetBacklinksAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task<NoteResult<bool>> SetResolvedAsync(Guid userId, Guid pageId, Guid threadId, bool resolved, CancellationToken ct);
     /// The tutorial's example thread, posted by "iPop Guide" once the guide template is in place.
     Task<NoteResult<bool>> AddGuideThreadAsync(Guid userId, Guid pageId, string quote, string anchor, CancellationToken ct);

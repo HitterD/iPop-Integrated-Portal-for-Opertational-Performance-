@@ -121,6 +121,7 @@ public sealed partial class NoteService
         }
         await LinkReferencedAttachmentsAsync(pageId, state, ct);
         if (req.TodoDue is not null) await SyncTodoDueAsync(pageId, req.TodoDue, ct);
+        if (req.LinksTo is not null) await SyncLinksAsync(pageId, req.LinksTo, ct);
         await db.SaveChangesAsync(ct);
         // Only once the new state is stored are the updates it contains removed (same transaction).
         if (merged.Count > 0)
@@ -135,6 +136,31 @@ public sealed partial class NoteService
                 await db.NoteVersions.Where(v => staleIds.Contains(v.Id)).ExecuteDeleteAsync(ct);
         }
         return Ok(new NoteSnapshotResultDto(next));
+    }
+
+    /// Replaces the page's outgoing page links with what the saved content holds. Only links to real, live pages are kept,
+    /// never to itself; the list is capped so one page cannot flood the table.
+    private async Task SyncLinksAsync(Guid pageId, IReadOnlyList<Guid> links, CancellationToken ct)
+    {
+        var wanted = links.Where(l => l != pageId).Distinct().Take(100).ToList();
+        var real = wanted.Count == 0 ? [] : await db.NotePages.AsNoTracking().Where(p => wanted.Contains(p.Id) && p.DeletedAt == null).Select(p => p.Id).ToListAsync(ct);
+        var existing = await db.NoteLinks.Where(l => l.FromPageId == pageId).ToListAsync(ct);
+        foreach (var row in existing.Where(r => !real.Contains(r.ToPageId))) db.NoteLinks.Remove(row);
+        foreach (var to in real.Where(r => existing.All(e => e.ToPageId != r))) db.NoteLinks.Add(new NoteLink { FromPageId = pageId, ToPageId = to });
+    }
+
+    public async Task<NoteResult<IReadOnlyList<NoteBacklinkDto>>> GetBacklinksAsync(Guid userId, Guid pageId, CancellationToken ct)
+    {
+        if (await GetAccessAsync(userId, pageId, ct) == NoteAccess.None) return Fail<IReadOnlyList<NoteBacklinkDto>>("not_found");
+        var from = await db.NoteLinks.AsNoTracking().Where(l => l.ToPageId == pageId).Select(l => l.FromPageId).ToListAsync(ct);
+        if (from.Count == 0) return Ok<IReadOnlyList<NoteBacklinkDto>>([]);
+        // Only pages the viewer can open: a link from a private page must never reveal that page's title.
+        var visible = await VisibleAsync(userId, ct);
+        var ids = from.Where(visible.ContainsKey).ToList();
+        var rows = await db.NotePages.AsNoTracking().Where(p => ids.Contains(p.Id) && p.DeletedAt == null)
+            .OrderByDescending(p => p.UpdatedAt).Take(30)
+            .Select(p => new NoteBacklinkDto(p.Id, p.Title, p.Emoji, p.Excerpt)).ToListAsync(ct);
+        return Ok<IReadOnlyList<NoteBacklinkDto>>(rows);
     }
 
     /// Replaces the page's due-dated to-dos with what the saved content now holds. An item that is still there keeps its

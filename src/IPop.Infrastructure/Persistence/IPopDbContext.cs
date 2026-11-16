@@ -133,6 +133,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<NoteComment> NoteComments => Set<NoteComment>();
     public DbSet<NoteCommentReaction> NoteCommentReactions => Set<NoteCommentReaction>();
     public DbSet<NoteTodoDue> NoteTodoDues => Set<NoteTodoDue>();
+    public DbSet<NoteLink> NoteLinks => Set<NoteLink>();
     public DbSet<NoteAttachment> NoteAttachments => Set<NoteAttachment>();
 
     // News & Memos entities (single table with type enum: news/announcement/memo)
@@ -1378,6 +1379,13 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Body).HasMaxLength(2000);
             e.HasIndex(x => new { x.ThreadId, x.CreatedAt });
             e.HasOne(x => x.Author).WithMany().HasForeignKey(x => x.AuthorId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NoteLink>(e =>
+        {
+            e.HasKey(x => new { x.FromPageId, x.ToPageId });
+            e.HasIndex(x => x.ToPageId);
+            e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.FromPageId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.ToPageId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<NoteTodoDue>(e =>
         {

@@ -386,6 +386,20 @@
                                     }
                                 </div>
                             }
+                            @if (backlinks.Count > 0)
+                            {
+                                <div class="nt-tpl-hint">LINKED FROM</div>
+                                <div class="nt-backlinks">
+                                    @foreach (var b in backlinks)
+                                    {
+                                        var bid = b.Id;
+                                        <button type="button" class="nt-backlink" @onclick="() => Open(bid)">
+                                            <span class="emo">@(b.Emoji ?? "📄")</span>
+                                            <span class="bt">@(string.IsNullOrWhiteSpace(b.Title) ? "Untitled" : b.Title)</span>
+                                        </button>
+                                    }
+                                </div>
+                            }
                             @if (note.Children.Count > 0)
                             {
                                 <div class="nt-tpl-hint">SUB-PAGES</div>
