@@ -146,6 +146,22 @@ public class NoteComment
     public List<NoteCommentReaction> Reactions { get; set; } = [];
 }
 
+/// A to-do with a due date, as last seen in the page's saved content. Rebuilt from every snapshot (the server does not
+/// read the Yjs document itself), and used by <c>NotesReminderWorker</c> to remind the assignee the day before and on the
+/// day. Reminders that were already sent stay sent when the same item is saved again.
+public class NoteTodoDue
+{
+    public Guid PageId { get; set; }
+    /// Stable key of the item inside the page (client-generated from its assignee, due date and text).
+    public required string ItemKey { get; set; }
+    public Guid? AssigneeId { get; set; }
+    public DateOnly Due { get; set; }
+    public required string Text { get; set; }
+    public bool Done { get; set; }
+    public DateTime? DayBeforeSentAt { get; set; }
+    public DateTime? DaySentAt { get; set; }
+}
+
 /// One emoji by one person on one comment. A person has at most one row per emoji per comment (toggle).
 public class NoteCommentReaction
 {

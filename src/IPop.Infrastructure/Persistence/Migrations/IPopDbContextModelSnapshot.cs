@@ -3252,6 +3252,42 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("NoteThreads");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.NoteTodoDue", b =>
+                {
+                    b.Property<Guid>("PageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ItemKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid?>("AssigneeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DayBeforeSentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DaySentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("Done")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateOnly>("Due")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("PageId", "ItemKey");
+
+                    b.HasIndex("Due");
+
+                    b.ToTable("NoteTodoDues");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.NoteUpdate", b =>
                 {
                     b.Property<long>("Id")
@@ -7070,6 +7106,15 @@ namespace IPop.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.NoteThread", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.NotePage", null)
+                        .WithMany()
+                        .HasForeignKey("PageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NoteTodoDue", b =>
                 {
                     b.HasOne("IPop.Core.Entities.NotePage", null)
                         .WithMany()

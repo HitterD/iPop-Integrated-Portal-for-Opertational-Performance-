@@ -86,8 +86,10 @@ public record NoteUpdateDto(long Id, string Data);
 /// Everything a client needs to build the document: compacted state + updates not yet folded in.
 public record NoteDocDto(string? State, long Version, IReadOnlyList<NoteUpdateDto> Updates);
 
+public record NoteTodoDueDto(string Key, Guid? AssigneeId, string Due, string Text, bool Done);
+
 public record NoteSnapshotRequest(string State, long BaseVersion, IReadOnlyList<long> MergedUpdateIds,
-    string? PlainText, int TodoDone, int TodoTotal);
+    string? PlainText, int TodoDone, int TodoTotal, IReadOnlyList<NoteTodoDueDto>? TodoDue = null);
 
 public record NoteSnapshotResultDto(long Version);
 

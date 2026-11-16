@@ -120,6 +120,7 @@ public sealed partial class NoteService
             wroteVersion = true;
         }
         await LinkReferencedAttachmentsAsync(pageId, state, ct);
+        if (req.TodoDue is not null) await SyncTodoDueAsync(pageId, req.TodoDue, ct);
         await db.SaveChangesAsync(ct);
         // Only once the new state is stored are the updates it contains removed (same transaction).
         if (merged.Count > 0)
@@ -134,6 +135,31 @@ public sealed partial class NoteService
                 await db.NoteVersions.Where(v => staleIds.Contains(v.Id)).ExecuteDeleteAsync(ct);
         }
         return Ok(new NoteSnapshotResultDto(next));
+    }
+
+    /// Replaces the page's due-dated to-dos with what the saved content now holds. An item that is still there keeps its
+    /// "reminder already sent" marks (so saving the page never re-sends a reminder); an item whose due date or person
+    /// changed starts over.
+    private async Task SyncTodoDueAsync(Guid pageId, IReadOnlyList<NoteTodoDueDto> items, CancellationToken ct)
+    {
+        var existing = await db.NoteTodoDues.Where(x => x.PageId == pageId).ToListAsync(ct);
+        var wanted = new Dictionary<string, NoteTodoDueDto>();
+        foreach (var i in items.Take(200))
+            if (!string.IsNullOrWhiteSpace(i.Key) && i.Key.Length <= 64 && DateOnly.TryParseExact(i.Due, "yyyy-MM-dd", out _)) wanted[i.Key] = i;
+        foreach (var row in existing.Where(r => !wanted.ContainsKey(r.ItemKey))) db.NoteTodoDues.Remove(row);
+        foreach (var (key, i) in wanted)
+        {
+            var due = DateOnly.ParseExact(i.Due, "yyyy-MM-dd");
+            var text = Clean(i.Text, 200) ?? "";
+            var row = existing.FirstOrDefault(r => r.ItemKey == key);
+            if (row is null)
+            {
+                db.NoteTodoDues.Add(new NoteTodoDue { PageId = pageId, ItemKey = key, AssigneeId = i.AssigneeId, Due = due, Text = text, Done = i.Done });
+                continue;
+            }
+            if (row.Due != due || row.AssigneeId != i.AssigneeId) { row.DayBeforeSentAt = null; row.DaySentAt = null; }
+            row.AssigneeId = i.AssigneeId; row.Due = due; row.Text = text; row.Done = i.Done;
+        }
     }
 
     public async Task<NoteResult<string?>> ClaimSeedAsync(Guid userId, Guid pageId, CancellationToken ct)

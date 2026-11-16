@@ -271,6 +271,23 @@ export function countTodos(doc) {
   return { done, total };
 }
 
+/// To-dos that have a person AND a due date, for the server's reminders: [{ key, assigneeId, due, text, done }].
+/// The key identifies an item across saves (so a reminder that was already sent is not sent again): it is built from the
+/// person, the due date and the item's own text, and made unique when two items would collide.
+export function todoDueItems(doc) {
+  const items = [], seen = new Map();
+  doc.descendants(n => {
+    if (n.type.name !== 'taskItem' || !n.attrs.assigneeId || !n.attrs.due) return;
+    const text = (n.firstChild?.textContent ?? '').trim().slice(0, 200);
+    let raw = `${n.attrs.assigneeId}|${n.attrs.due}|${text}`;
+    let h = 5381; for (let i = 0; i < raw.length; i++) h = ((h << 5) + h + raw.charCodeAt(i)) >>> 0;
+    const base = `t${h.toString(36)}`;
+    const k = (seen.get(base) ?? 0) + 1; seen.set(base, k);
+    items.push({ key: k === 1 ? base : `${base}-${k}`, assigneeId: n.attrs.assigneeId, due: n.attrs.due, text, done: !!n.attrs.checked });
+  });
+  return items.slice(0, 200);
+}
+
 /// Comment highlights: threads are anchored by Yjs relative positions, so they follow edits made by
 /// anyone. `resolve(anchor)` maps an anchor to current absolute positions (or null if the text is gone).
 export function buildCommentDecorations(state, { threads, focus }, opts) {

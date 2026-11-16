@@ -24,7 +24,7 @@ import * as Y from 'yjs';
 import { Awareness, encodeAwarenessUpdate, applyAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness';
 import * as signalR from '@microsoft/signalr';
 
-import { BlockBackground, Callout, NoteWidget, NoteToc, HeadingFlash, SubPage, NoteFile, CommentHighlights, commentKey, countTodos, releaseBlobs, esc } from './nodes.js';
+import { BlockBackground, Callout, NoteWidget, NoteToc, HeadingFlash, SubPage, NoteFile, CommentHighlights, commentKey, countTodos, todoDueItems, releaseBlobs, esc } from './nodes.js';
 import { SlashMenu, mentionSuggestion, phoneMentionKey, createToolbar, createHandle, createBlockMenu, place } from './menus.js';
 import { NoteImage, NoteGallery, NoteBookmark, NoteEmbed, RichTaskItem, TodoExtras, tableExtensions, taskItemAt, todoInsertPos, createRichUi, closeLightboxes } from './rich.js';
 import { TEMPLATES, GUIDE_COMMENT_TEXT } from './templates.js';
@@ -294,7 +294,7 @@ export async function mount(el, opts) {
     try {
       const r = await api(`/api/notes/${pageId}/snapshot`, { method: 'POST', json: {
         state: b64(Y.encodeStateAsUpdate(ydoc)), baseVersion: version, mergedUpdateIds: ids,
-        plainText: editor.getText({ blockSeparator: '\n' }), todoDone: done, todoTotal: total,
+        plainText: editor.getText({ blockSeparator: '\n' }), todoDone: done, todoTotal: total, todoDue: todoDueItems(editor.state.doc),
       } });
       if (r.ok) { version = (await r.json()).version; ids.forEach(i => unmerged.delete(i)); }
       else if (r.status === 403 || r.status === 404) stopEditing(r.status === 404 ? 'not_found' : 'forbidden');
