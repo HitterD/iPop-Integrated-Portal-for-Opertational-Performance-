@@ -939,8 +939,15 @@
 .ProseMirror-selectednode.nt-draw, .nt-draw.ProseMirror-selectednode { outline:2px solid var(--pc,#0A84FF); outline-offset:2px; }
 .nt-draw-fs { position:fixed; inset:0; z-index:2000; background:var(--surface); }
 .nt-draw-fs-stage { position:absolute; inset:0; }
-.nt-draw-fs-close { position:absolute; right:16px; top:12px; z-index:3; height:32px; padding:0 14px; border-radius:9px; background:var(--surface); color:var(--ink); font-size:13px; font-weight:500; box-shadow:0 0 0 .5px var(--line),0 4px 14px rgba(0,0,0,.14); }
-@media (max-width:767px) { .nt-draw-btn { height:36px; padding:0 12px; } .nt-draw-fs-close { height:40px; } }
+.nt-draw-fs-close { position:absolute; right:16px; top:12px; z-index:2147483000; height:32px; padding:0 14px; border-radius:9px; background:var(--surface); color:var(--ink); font-size:13px; font-weight:500; box-shadow:0 0 0 .5px var(--line),0 4px 14px rgba(0,0,0,.14); }
+@media (max-width:767px) {
+  .nt-draw-btn { height:36px; padding:0 12px; }
+  /* Excalidraw's toolbar spans the top of a phone: the Close button sits bottom-right, above its zoom/undo bar. */
+  .nt-draw-fs-close { height:44px; padding:0 18px; top:auto; bottom:calc(76px + env(safe-area-inset-bottom,0px)); right:16px; }
+  /* Excalidraw's undo/redo bar sits at the bottom on phones: the block's own buttons move to the top-left corner instead. */
+  .nt-draw-top { right:auto; left:10px; bottom:auto; top:10px; }
+  .nt-draw .excalidraw .App-toolbar-container, .nt-draw .excalidraw .App-menu_top { margin-top:48px; }
+}
 
 /* ── Whiteboard page ────────────────────────────────────────────────────── */
 .nt-editor-hidden { display:none; }
