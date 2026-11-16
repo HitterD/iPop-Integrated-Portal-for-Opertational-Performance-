@@ -68,5 +68,5 @@ if (existsSync(join(here, 'src', 'draw-theme.css'))) copyFileSync(join(here, 'sr
 
 const files = readdirSync(out, { recursive: true }).filter(f => /\.(js|css|woff2)$/.test(String(f)));
 const total = files.reduce((s, f) => s + readFileSync(join(out, String(f))).length, 0);
-writeFileSync(join(out, 'manifest.json'), JSON.stringify({ built: new Date().toISOString().slice(0, 10), entry: 'draw.js', files: files.length }, null, 2));
+writeFileSync(join(out, 'manifest.json'), JSON.stringify({ entry: 'draw.js', files: files.length }, null, 2));
 console.log(`draw bundle: ${files.length} files, ${(total / 1048576).toFixed(2)} MB -> ${out}`);

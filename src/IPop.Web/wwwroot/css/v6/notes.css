@@ -940,7 +940,7 @@
 .nt-draw-fs { position:fixed; inset:0; z-index:2000; background:var(--surface); }
 .nt-draw-fs-stage { position:absolute; inset:0; }
 .nt-draw-fs-close { position:absolute; right:16px; top:12px; z-index:2147483000; height:32px; padding:0 14px; border-radius:9px; background:var(--surface); color:var(--ink); font-size:13px; font-weight:500; box-shadow:0 0 0 .5px var(--line),0 4px 14px rgba(0,0,0,.14); }
-@media (max-width:767px) {
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .nt-draw-btn { height:36px; padding:0 12px; }
   /* Excalidraw's toolbar spans the top of a phone: the Close button sits bottom-right, above its zoom/undo bar. */
   .nt-draw-fs-close { height:44px; padding:0 18px; top:auto; bottom:calc(76px + env(safe-area-inset-bottom,0px)); right:16px; }
@@ -960,7 +960,7 @@
 .nt-board .excalidraw { --nt-board-bg:transparent; }
 /* A whiteboard is wide: let it use the full width of the page area regardless of the "Full width" setting. */
 .nt-page:has(.nt-board) { max-width:none; padding-left:32px; padding-right:32px; }
-@media (max-width:767px) { .nt-board { height:calc(100dvh - 300px); min-height:360px; } .nt-page:has(.nt-board) { padding-left:12px; padding-right:12px; } }
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) { .nt-board { height:calc(100dvh - 300px); min-height:360px; } .nt-page:has(.nt-board) { padding-left:12px; padding-right:12px; } }
 .nt-row .nt-kind { margin-left:6px; font-size:10.5px; color:var(--ink-3); background:var(--fill); border-radius:5px; padding:0 5px; flex:none; }
 
 /* ── Page lock ──────────────────────────────────────────────────────────── */
