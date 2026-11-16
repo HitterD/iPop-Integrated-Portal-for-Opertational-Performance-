@@ -153,6 +153,7 @@ export async function mount(el, opts) {
   const palette = ['#0A84FF', '#5856D6', '#AF52DE', '#FF2D55', '#FF9500', '#34C759', '#30B0C7', '#A2845E'];
   const host = {
     drawDoc: () => ydoc,
+    drawAwareness: () => awareness,
     // Whiteboard library (My library + team library), stored on the server for the signed-in person.
     drawLibrary: {
       async list() { const r = await api('/api/notes/library'); if (!r.ok) throw new Error(String(r.status)); return r.json(); },
@@ -381,7 +382,7 @@ export async function mount(el, opts) {
     fsClose = finish;
     close.addEventListener('click', finish);
     document.addEventListener('keydown', onKey, true);
-    try { inst = await mountScene(stage, { ydoc, id, readOnly: !canEdit, mode: 'board', toast: m => host.toast(m), library: host.drawLibrary, files: host.drawFiles, beforeConvert: host.beforeCanvasConvert }); if (!fsClose) inst.destroy(); }
+    try { inst = await mountScene(stage, { ydoc, id, readOnly: !canEdit, mode: 'board', toast: m => host.toast(m), library: host.drawLibrary, files: host.drawFiles, beforeConvert: host.beforeCanvasConvert, awareness }); if (!fsClose) inst.destroy(); }
     catch { host.toast('Couldn’t load the drawing tools. Check your connection.'); finish(); }
   }
 
@@ -447,7 +448,7 @@ export async function mount(el, opts) {
       return !!fsHome;
     };
     boardFsExit = () => onBoardFs(false);
-    mountScene(boardEl, { ydoc, id: 'board', readOnly: !canEdit, mode: 'board', onLinkOpen: url => host.openLink(url), toast: m => host.toast(m), onFullscreen: onBoardFs, library: host.drawLibrary, files: host.drawFiles, beforeConvert: host.beforeCanvasConvert })
+    mountScene(boardEl, { ydoc, id: 'board', readOnly: !canEdit, mode: 'board', onLinkOpen: url => host.openLink(url), toast: m => host.toast(m), onFullscreen: onBoardFs, library: host.drawLibrary, files: host.drawFiles, beforeConvert: host.beforeCanvasConvert, awareness })
       .then(inst => { if (closing) inst.destroy(); else board = inst; })
       .catch(() => host.toast('Couldn’t load the whiteboard tools. Check your connection and reload the page.'));
   }

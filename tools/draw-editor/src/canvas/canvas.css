@@ -129,3 +129,42 @@ input.wb-edit { background: var(--wb-surface); padding: 0 8px; outline-width: 2p
 @media (hover: none) { .wb-libacts { opacity: 1; } }
 
 .wb.wb-dropping { box-shadow: inset 0 0 0 3px var(--wb-accent); }
+
+/* Working together */
+.wb .wb-live { pointer-events: none; }
+.wb-cursor { transition: transform .12s linear; }
+@media (prefers-reduced-motion: reduce) { .wb-cursor { transition: none; } }
+.wb-people { display: flex; align-items: center; margin-right: 4px; }
+.wb-block .wb-people { position: absolute; right: 64px; top: 8px; z-index: 3; }
+.wb-face { width: 28px; height: 28px; border-radius: 8px; border: 2px solid var(--wb-surface) !important; color: #fff; font: 700 10.5px/1 inherit; font-family: inherit; display: grid; place-items: center; cursor: pointer; margin-left: -4px; }
+.wb-face:first-child { margin-left: 0; }
+.wb-face.on { outline: 2px solid var(--wb-ink); outline-offset: 1px; }
+.wb-face.more { background: var(--wb-fill2); color: var(--wb-ink2); cursor: default; }
+.wb.wb-following { box-shadow: inset 0 0 0 3px var(--wb-follow, #5856D6); }
+.wb-followbar { position: absolute; z-index: 4; left: 50%; top: 12px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 12px; border-radius: 999px; background: var(--fc, #5856D6); color: #fff; font-size: 12.5px; font-weight: 600; }
+.wb-followbar button { border: 0; border-radius: 999px; padding: 3px 10px; background: rgba(255,255,255,.25); color: #fff; font: inherit; cursor: pointer; }
+.wb[data-tool="laser"] { cursor: crosshair; }
+
+/* Frames, Present, timer, invitation */
+.wb-tr { flex-wrap: wrap; justify-content: flex-end; max-width: calc(100% - 260px); }
+.wb-chip.on { background: var(--wb-accent); color: #fff; font-variant-numeric: tabular-nums; }
+.wb-frames, .wb-timer { top: 56px; right: 12px; left: auto; transform: none; width: min(320px, calc(100% - 24px)); max-height: calc(100% - 140px); }
+.wb-flist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.wb-flist li { display: flex; align-items: center; gap: 4px; }
+.wb-fgo { flex: 1; display: flex !important; align-items: center; gap: 8px; justify-content: flex-start !important; text-align: left; padding: 7px 8px !important; border-radius: 8px !important; font-size: 13px; color: var(--wb-ink) !important; }
+.wb-fnum { width: 20px; height: 20px; border-radius: 6px; background: var(--wb-fill); display: grid; place-items: center; font-size: 11px; font-weight: 700; flex: none; }
+.wb-fmv button { width: 26px; height: 26px; }
+.wb-fmv button:disabled { opacity: .3; }
+.wb-tbtns { display: flex; flex-wrap: wrap; gap: 6px; }
+.wb-tbtns button, .wb-tstop { height: 30px; padding: 0 12px !important; border-radius: 8px !important; background: var(--wb-fill) !important; font-weight: 600; font-size: 12.5px; }
+.wb-tstop { margin-top: 10px; color: #FF3B30 !important; }
+.wb-presbar { position: absolute; z-index: 5; left: 50%; bottom: max(16px, env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: flex; align-items: center; gap: 6px; padding: 5px; border-radius: 14px; background: #1D1D1F; color: #fff; box-shadow: var(--wb-pop); font-size: 13px; font-weight: 500; }
+.wb-presbar span { padding: 0 8px; white-space: nowrap; max-width: 50vw; overflow: hidden; text-overflow: ellipsis; }
+.wb-presbar button { border: 0; background: rgba(255,255,255,.12); color: #fff; height: 32px; min-width: 32px; border-radius: 9px; font: inherit; font-size: 16px; cursor: pointer; }
+.wb-presbar button:disabled { opacity: .3; cursor: default; }
+.wb-presbar .wb-stop { font-size: 13px; padding: 0 12px; background: #FF3B30; }
+.wb.wb-presenting .wb-tools, .wb.wb-presenting .wb-zoom, .wb.wb-presenting .wb-tl, .wb.wb-presenting .wb-tr, .wb.wb-presenting .wb-props { display: none !important; }
+.wb-invite { position: absolute; z-index: 5; left: 50%; top: 56px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 14px; border-radius: 12px; background: var(--wb-surface); box-shadow: var(--wb-pop); font-size: 13px; white-space: nowrap; }
+.wb-invite button { border: 0; border-radius: 8px; height: 28px; padding: 0 12px; background: var(--wb-fill); color: var(--wb-ink); font: inherit; font-weight: 600; cursor: pointer; }
+.wb-invite .wb-pri { background: var(--wb-accent); color: #fff; }
+@media (max-width: 640px) { .wb-tr { max-width: calc(100% - 60px); } }

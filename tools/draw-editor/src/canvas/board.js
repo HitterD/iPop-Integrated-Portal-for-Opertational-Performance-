@@ -46,6 +46,10 @@ ICONS.book = '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5
 ICONS.bookplus = '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M12 7v6M9 10h6"/>';
 ICONS.image = '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>';
 ICONS.file = '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>';
+ICONS.laser = '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>';
+ICONS.play = '<path d="m6 4 14 8-14 8z"/>';
+ICONS.timer = '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/>';
+ICONS.frames = '<rect x="3" y="4" width="7" height="7" rx="1"/><rect x="14" y="4" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 17h7"/>';
 const icon = (name, cls = 'wb-i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
 
 const INK = ['#1D1D1F', '#FF3B30', '#FF9500', '#34A853', '#0A84FF', '#AF52DE'];
@@ -53,7 +57,7 @@ const FILLS = [null, '#FFF3A3', '#C9F2C7', '#CFE6FF', '#FFD3E1', '#E6DAFF', '#F2
 const SIZES = [['S', 14], ['M', 18], ['L', 26], ['XL', 40]];
 
 // Letter shortcuts like ClickUp; digits keep the old Excalidraw meaning (grill Q18).
-const KEYS = { i: 'image', v: 'select', h: 'hand', p: 'pen', m: 'highlighter', e: 'eraser', s: 'sticky', t: 'text', r: 'rect', o: 'ellipse', d: 'diamond', a: 'connector', l: 'connector', f: 'frame' };
+const KEYS = { i: 'image', v: 'select', l: 'laser', h: 'hand', p: 'pen', m: 'highlighter', e: 'eraser', s: 'sticky', t: 'text', r: 'rect', o: 'ellipse', d: 'diamond', a: 'connector', f: 'frame' };
 const DIGITS = { 0: 'eraser', 1: 'select', 2: 'rect', 3: 'diamond', 4: 'ellipse', 5: 'connector', 6: 'connector', 7: 'pen', 8: 'text', 9: 'select' };
 const SHAPE_LABEL = { rect: 'Rectangle', ellipse: 'Circle', diamond: 'Diamond', triangle: 'Triangle', star: 'Star', cloud: 'Cloud', arrowShape: 'Block arrow', cylinder: 'Cylinder', bubble: 'Speech bubble' };
 const MAX_ELEMENTS = 20000;
@@ -137,6 +141,24 @@ export function mountCanvas(container, opts) {
   const local = e => { const r = rect(); return { sx: e.clientX - r.left, sy: e.clientY - r.top }; };
 
   // ── Rendering ────────────────────────────────────────────────────────────
+  const aw = opts.awareness || null;          // the page's Yjs awareness (cursors, Follow, Present, timer)
+  let timerEnds = 0, timerTick = 0, timerBeeped = 0;
+  let interaction = null;                     // what the pointer is doing right now
+  const pointers = new Map();
+  let invitedFor = null, followingPresenter = null;
+  // panels and live-collaboration elements: all created up front (several are touched by the first paint)
+  const framesPanel = el('div', 'wb-panel wb-frames'); framesPanel.hidden = true;
+  const timerPanel = el('div', 'wb-panel wb-timer'); timerPanel.hidden = true;
+  const presBar = el('div', 'wb-presbar'); presBar.hidden = true;
+  const invite = el('div', 'wb-invite'); invite.hidden = true;
+  const people = el('div', 'wb-people');
+  const followBar = el('div', 'wb-followbar'); followBar.hidden = true;
+  root.append(framesPanel, timerPanel, presBar, invite, followBar);
+  // the faces sit at the start of the top-right row, so they never cover a button
+  let following = null;                        // awareness client id being followed
+  let lastCursor = null, laserTrail = [], laserFade = 0;
+  let presenting = null;                       // { index } while I present
+  let afterPaint = () => {};   // set by the live section below (cursors, Follow)
   let raf = 0;
   function render() { if (!raf && !destroyed) raf = requestAnimationFrame(() => { raf = 0; paint(); }); }
   function paint() {
@@ -171,6 +193,7 @@ export function mountCanvas(container, opts) {
     paintOverlay();
     paintZoom();
     paintEmpty(!els.length);
+    afterPaint();
   }
 
   function paintOverlay() {
@@ -223,10 +246,15 @@ export function mountCanvas(container, opts) {
   const TOOLS = [
     ['select', 'Select', 'V'], ['hand', 'Hand', 'H'], '|',
     ['pen', 'Pen', 'P'], ['highlighter', 'Highlighter', 'M'], ['eraser', 'Eraser', 'E'], '|',
-    ['sticky', 'Sticky note', 'S'], ['text', 'Text', 'T'], ['shape', 'Shapes', 'R'], ['connector', 'Connector', 'A'], '|', ['frame', 'Frame', 'F'], ['image', 'Picture or file', 'I'],
+    ['sticky', 'Sticky note', 'S'], ['text', 'Text', 'T'], ['shape', 'Shapes', 'R'], ['connector', 'Connector', 'A'], '|', ['frame', 'Frame', 'F'], ['image', 'Picture or file', 'I'], ['laser', 'Laser pointer', 'L'],
   ];
   function paintToolbar() {
-    if (readOnly) { toolbar.hidden = true; return; }
+    if (readOnly) {
+      // viewers still get the hand and the laser pointer (pointing during a meeting)
+      toolbar.hidden = false;
+      toolbar.innerHTML = [['hand', 'Hand', 'H'], ['laser', 'Laser pointer', 'L']].map(([k, label, key]) => `<button type="button" data-tool="${k}" class="${tool === k ? 'on' : ''}" title="${label} (${key})" aria-label="${label}" aria-pressed="${tool === k}">${icon(k)}<span class="wb-k">${key}</span></button>`).join('');
+      return;
+    }
     toolbar.hidden = false;
     toolbar.innerHTML = TOOLS.filter(t => !(compact && (t[0] === 'frame' || t[0] === 'highlighter')) && !(t[0] === 'image' && !opts.upload)).map(t => {
       if (t === '|') return '<span class="wb-sep"></span>';
@@ -275,11 +303,17 @@ export function mountCanvas(container, opts) {
       + (opts.library ? `<button type="button" class="wb-chip" data-c="lib" aria-haspopup="dialog">${icon('book')}<span>Library</span></button>` : '') : '';
     topLeft.hidden = !canTemplates;
     const fs = mode === 'board' && opts.onFullscreen;
-    topRight.innerHTML = fs ? `<button type="button" class="wb-chip" data-c="fs" title="Full screen (Shift F)" aria-pressed="${fullscreen}"><svg class="wb-i" viewBox="0 0 24 24" aria-hidden="true">${fullscreen ? '<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/>' : '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>'}</svg><span>${fullscreen ? 'Exit full screen' : 'Full screen'}</span></button>` : '';
-    topRight.hidden = !fs;
+    const extras = mode === 'board' ? `<button type="button" class="wb-chip" data-c="frames" title="Frames" aria-haspopup="dialog">${icon('frames')}<span>Frames</span></button>`
+      + `<button type="button" class="wb-chip" data-c="present" title="Present frame by frame">${icon('play')}<span>Present</span></button>`
+      + (aw ? `<button type="button" class="wb-chip ${timerEnds ? 'on' : ''}" data-c="timer" title="Timer everyone sees">${icon('timer')}<span>${timerEnds ? timerLabel() : 'Timer'}</span></button>` : '') : '';
+    people.remove();
+    topRight.innerHTML = extras + (fs ? `<button type="button" class="wb-chip" data-c="fs" title="Full screen (Shift F)" aria-pressed="${fullscreen}"><svg class="wb-i" viewBox="0 0 24 24" aria-hidden="true">${fullscreen ? '<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/>' : '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>'}</svg><span>${fullscreen ? 'Exit full screen' : 'Full screen'}</span></button>` : '');
+    topRight.hidden = !fs && !extras && people.hidden;
+    topRight.prepend(people);
   }
   // While full screen, Esc must work wherever focus is (moving the board element to <body> drops its focus).
-  const fsKeys = e => { if (e.key === 'Escape' && fullscreen && !editing && keysPanel.hidden && gallery.hidden) { e.preventDefault(); e.stopPropagation(); toggleFullscreen(); } };
+  const fsKeys = e => { if (e.key === 'Escape' && presenting) { e.preventDefault(); e.stopPropagation(); stopPresent(); return; }
+    if (e.key === 'Escape' && fullscreen && !editing && keysPanel.hidden && gallery.hidden) { e.preventDefault(); e.stopPropagation(); toggleFullscreen(); } };
   async function toggleFullscreen() {
     if (!opts.onFullscreen) return;
     const r = await opts.onFullscreen(!fullscreen);
@@ -296,7 +330,12 @@ export function mountCanvas(container, opts) {
     gallery.innerHTML = `<div class="wb-ph"><b>Start from a template</b><button type="button" data-close aria-label="Close">✕</button></div><p class="wb-note">Added beside what is already on the board, never over it.</p><div class="wb-tgrid">${galleryHtml()}</div>`;
     gallery.hidden = false;
   });
-  topRight.addEventListener('click', e => { if (e.target.closest('[data-c="fs"]')) toggleFullscreen(); });
+  topRight.addEventListener('click', e => {
+    if (e.target.closest('[data-c="fs"]')) toggleFullscreen();
+    else if (e.target.closest('[data-c="frames"]')) toggleFrames();
+    else if (e.target.closest('[data-c="present"]')) startPresent();
+    else if (e.target.closest('[data-c="timer"]')) toggleTimerPanel();
+  });
   const pickTemplate = e => {
     if (e.target.closest('[data-close]')) { gallery.hidden = true; return; }
     const b = e.target.closest('[data-tpl]'); if (!b) return;
@@ -311,6 +350,254 @@ export function mountCanvas(container, opts) {
     if (show && emptyGallery.hidden) emptyGallery.innerHTML = `<b>Start with a blank board, or pick a template</b><div class="wb-tgrid">${galleryHtml()}</div><p class="wb-note">Or pick a tool below and start drawing.</p>`;
     emptyGallery.hidden = !show;
     root.classList.toggle('wb-empty', isEmpty && !show);
+  }
+
+  // ── Working together: cursors, what others hold, Follow, laser ──────────
+  // Shared through the page's Yjs awareness (field "wb"): { board, x, y, sel, laser:[[x,y,t]...], view:{x,y,z,w,h} }.
+  // Nothing of this is stored; it disappears when someone leaves.
+  const boardKey = opts.boardKey || 'board';
+  const now = () => Date.now();
+  function setMine(patch) {
+    if (!aw) return;
+    const cur = aw.getLocalState()?.wb || {};
+    aw.setLocalStateField('wb', { ...cur, board: boardKey, ...patch });
+  }
+  let cursorTimer = 0;
+  root.addEventListener('pointermove', e => {
+    if (!aw) return;
+    const { sx, sy } = local(e);
+    lastCursor = toWorld(sx, sy);
+    if (!cursorTimer) cursorTimer = setTimeout(() => { cursorTimer = 0; setMine({ x: Math.round(lastCursor.x), y: Math.round(lastCursor.y) }); }, 50);
+  });
+  root.addEventListener('pointerleave', () => { if (aw) setMine({ x: null, y: null }); });
+  let viewTimer = 0;
+  function shareView() {
+    if (!aw || viewTimer) return;
+    viewTimer = setTimeout(() => { viewTimer = 0; const r = rect(); setMine({ view: { x: Math.round(view.x), y: Math.round(view.y), z: +view.z.toFixed(3), w: Math.round(r.width), h: Math.round(r.height) } }); }, 120);
+  }
+  function laserAt(w) {
+    laserTrail.push([Math.round(w.x), Math.round(w.y), now()]);
+    laserTrail = laserTrail.filter(p => now() - p[2] < 1200).slice(-40);
+    setMine({ laser: laserTrail });
+    paintLive();
+    clearTimeout(laserFade); laserFade = setTimeout(function fade() { laserTrail = laserTrail.filter(p => now() - p[2] < 1200); setMine({ laser: laserTrail }); paintLive(); if (laserTrail.length) laserFade = setTimeout(fade, 120); }, 120);
+  }
+  // One face per person: the same person in two tabs (or a tab that just reloaded) is shown once, using the newest state.
+  const others = () => {
+    const byPerson = new Map();
+    aw?.getStates().forEach((st, id) => {
+      if (id === aw.clientID || st?.wb?.board !== boardKey || !st.user) return;
+      const key = st.user.nik || st.user.name || String(id);
+      if (key === (aw.getLocalState()?.user?.nik ?? null)) return;   // my own other tab
+      const prev = byPerson.get(key);
+      if (!prev || id > prev.id) byPerson.set(key, { id, user: st.user, wb: st.wb });
+    });
+    return [...byPerson.values()];
+  };
+  const liveLayer = svgEl('g', { class: 'wb-live' }, svg);
+  function paintLive() {
+    liveLayer.innerHTML = '';
+    const list = others();
+    for (const o of list) {
+      const color = o.user.color || '#5856D6';
+      // what they hold
+      for (const id of o.wb.sel || []) {
+        const e = get(id); if (!e || e.isDeleted) continue;
+        const b = bounds(e, get), a = toScreen(b.x, b.y), z = toScreen(b.x + b.w, b.y + b.h);
+        svgEl('rect', { x: a.x - 5, y: a.y - 5, width: z.x - a.x + 10, height: z.y - a.y + 10, rx: 5, fill: 'none', stroke: color, 'stroke-width': 2, 'stroke-dasharray': '5 3' }, liveLayer);
+      }
+      // laser trail
+      const trail = (o.wb.laser || []).filter(p => now() - p[2] < 1500);
+      if (trail.length > 1) {
+        let d = '';
+        trail.forEach((p, i) => { const q = toScreen(p[0], p[1]); d += `${i ? 'L' : 'M'}${q.x.toFixed(1)} ${q.y.toFixed(1)}`; });
+        svgEl('path', { d, fill: 'none', stroke: '#FF3B30', 'stroke-width': 5, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: 0.55 }, liveLayer);
+        const l = toScreen(trail.at(-1)[0], trail.at(-1)[1]);
+        svgEl('circle', { cx: l.x, cy: l.y, r: 6, fill: '#FF3B30' }, liveLayer);
+      }
+      // cursor + name
+      if (Number.isFinite(o.wb.x) && Number.isFinite(o.wb.y)) {
+        const c = toScreen(o.wb.x, o.wb.y);
+        const g = svgEl('g', { transform: `translate(${c.x.toFixed(1)} ${c.y.toFixed(1)})`, class: 'wb-cursor' }, liveLayer);
+        svgEl('path', { d: 'M0 0L5.5 15 7.7 8.6 14.5 6.6Z', fill: color, stroke: '#fff', 'stroke-width': 1.3, 'stroke-linejoin': 'round' }, g);
+        const name = String(o.user.name || 'Someone').split(' ')[0];
+        const w = measure(name, 11, 'ipop', 600) + 14;
+        svgEl('rect', { x: 12, y: 14, width: w, height: 18, rx: 6, fill: color }, g);
+        const t = svgEl('text', { x: 19, y: 26.5, 'font-size': 11, 'font-weight': 600, fill: '#fff', 'font-family': FONT_STACK.ipop }, g);
+        t.textContent = name;
+      }
+    }
+    // my own laser
+    if (laserTrail.length > 1) {
+      let d = '';
+      laserTrail.forEach((p, i) => { const q = toScreen(p[0], p[1]); d += `${i ? 'L' : 'M'}${q.x.toFixed(1)} ${q.y.toFixed(1)}`; });
+      svgEl('path', { d, fill: 'none', stroke: '#FF3B30', 'stroke-width': 5, 'stroke-linecap': 'round', opacity: 0.55 }, liveLayer);
+    }
+    paintPeople(list);
+    checkPresenters(list);
+    syncTimer(list);
+    if (followingPresenter != null && following !== followingPresenter) following = followingPresenter;
+    if (following != null) followStep(list);
+  }
+  function paintPeople(list) {
+    if (!aw) { people.hidden = true; return; }
+    people.hidden = !list.length;
+    people.innerHTML = list.slice(0, 6).map(o => {
+      const name = String(o.user.name || 'Someone');
+      const ini = name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+      return `<button type="button" class="wb-face ${following === o.id ? 'on' : ''}" data-follow="${o.id}" style="background:${o.user.color || '#5856D6'}" title="${following === o.id ? 'Stop following' : 'Follow'} ${name.replace(/"/g, '')}" aria-label="${following === o.id ? 'Stop following' : 'Follow'} ${name.replace(/"/g, '')}">${ini}</button>`;
+    }).join('') + (list.length > 6 ? `<span class="wb-face more">+${list.length - 6}</span>` : '');
+  }
+  function followStep(list) {
+    const o = list.find(x => x.id === following);
+    if (!o) { stopFollow(); return; }
+    const v = o.wb.view; if (!v) return;
+    const r = rect();
+    // show the same middle of the board at the same zoom (the other screen may be a different size)
+    const cx = (v.w / 2 - v.x) / v.z, cy = (v.h / 2 - v.y) / v.z;
+    view = { z: v.z, x: r.width / 2 - cx * v.z, y: r.height / 2 - cy * v.z };
+    followBar.style.setProperty('--fc', o.user.color || '#5856D6');
+    followBar.innerHTML = `<span>Following ${String(o.user.name || 'someone').split(' ')[0]}</span><button type="button" data-unfollow>Stop</button>`;
+    followBar.hidden = false;
+    root.style.setProperty('--wb-follow', o.user.color || '#5856D6');
+    root.classList.add('wb-following');
+    world.setAttribute('transform', `translate(${view.x} ${view.y}) scale(${view.z})`);
+    root.style.backgroundSize = `${24 * view.z}px ${24 * view.z}px`;
+    root.style.backgroundPosition = `${view.x}px ${view.y}px`;
+    paintOverlay(); paintZoom();
+  }
+  function stopFollow() {
+    if (following == null) return;
+    following = null; followingPresenter = null; followBar.hidden = true; root.classList.remove('wb-following');
+    paintPeople(others());
+  }
+  people.addEventListener('pointerdown', e => e.stopPropagation());
+  followBar.addEventListener('pointerdown', e => e.stopPropagation());
+  people.addEventListener('click', e => {
+    const b = e.target.closest('[data-follow]'); if (!b) return;
+    const id = +b.dataset.follow;
+    if (following === id) stopFollow(); else { following = id; paintLive(); toast('Following. Move the board yourself or press Esc to stop.'); }
+  });
+  followBar.addEventListener('click', e => { if (e.target.closest('[data-unfollow]')) stopFollow(); });
+  const onAw = () => { if (!destroyed) paintLive(); };
+  aw?.on('change', onAw);
+  if (aw) setMine({ x: null, y: null, sel: [], laser: [] });
+  // the laser trail fades on everyone's screen even without new messages
+  afterPaint = () => {
+    paintLive();
+    shareView();
+    if (aw) { const s2 = [...sel].sort().join(','); if (s2 !== afterPaint.lastSel) { afterPaint.lastSel = s2; setMine({ sel: [...sel].slice(0, 50) }); } }
+  };
+  const liveTick = setInterval(() => { if (!destroyed && others().some(o => o.wb.laser?.length)) paintLive(); }, 150);
+
+  // ── Frames list, Present and the timer ───────────────────────────────────
+  for (const c of [framesPanel, timerPanel, presBar, invite]) c.addEventListener('pointerdown', e => e.stopPropagation());
+  const framesInOrder = () => live().filter(e => e.type === 'frame').sort((a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) || a.y - b.y || a.x - b.x);
+  function showFrame(f, { animate = true } = {}) {
+    if (!f) return;
+    const r = rect();
+    const z = Math.min(4, (r.width - 80) / Math.max(f.w, 1), (r.height - 120) / Math.max(f.h + 30, 1));
+    view = { z, x: (r.width - f.w * z) / 2 - f.x * z, y: (r.height - f.h * z) / 2 - f.y * z + 10 };
+    render();
+  }
+  function toggleFrames() {
+    if (!framesPanel.hidden) { framesPanel.hidden = true; return; }
+    gallery.hidden = true; libPanel.hidden = true; timerPanel.hidden = true;
+    paintFrames(); framesPanel.hidden = false;
+  }
+  function paintFrames() {
+    const fs = framesInOrder();
+    framesPanel.innerHTML = `<div class="wb-ph"><b>Frames</b><button type="button" data-close aria-label="Close">✕</button></div>`
+      + (fs.length ? `<p class="wb-note">Click to go there. ${readOnly ? '' : 'Use the arrows to change the order of the slides.'}</p><ol class="wb-flist">${fs.map((f, i) => `<li><button type="button" class="wb-fgo" data-go="${f.id}"><span class="wb-fnum">${i + 1}</span>${esc(f.name || 'Frame')}</button>${readOnly ? '' : `<span class="wb-fmv"><button type="button" data-up="${f.id}" aria-label="Earlier" ${i ? '' : 'disabled'}>↑</button><button type="button" data-down="${f.id}" aria-label="Later" ${i < fs.length - 1 ? '' : 'disabled'}>↓</button></span>`}</li>`).join('')}</ol>`
+        : `<p class="wb-note">No frames yet. Press <b>F</b> and drag over an area to make one. Each frame is a slide when you present.</p>`);
+  }
+  framesPanel.addEventListener('click', e => {
+    if (e.target.closest('[data-close]')) { framesPanel.hidden = true; return; }
+    const go = e.target.closest('[data-go]'); if (go) { showFrame(get(go.dataset.go)); return; }
+    const up = e.target.closest('[data-up]'), down = e.target.closest('[data-down]');
+    if ((up || down) && !readOnly) {
+      const fs = framesInOrder(), id = (up || down).dataset.up || (up || down).dataset.down, i = fs.findIndex(f => f.id === id), j = up ? i - 1 : i + 1;
+      if (i < 0 || j < 0 || j >= fs.length) return;
+      [fs[i], fs[j]] = [fs[j], fs[i]];
+      write(fs.map((f, k) => (f.order === k ? null : bump(f, { order: k }))).filter(Boolean), { now: true }); commitStop();
+      paintFrames();
+    }
+  });
+  // Present: one frame at a time, full screen; others are invited (never pulled along).
+  function startPresent() {
+    const fs = framesInOrder();
+    if (!fs.length) { toast('Add a frame first (press F and drag). Each frame is a slide.'); return; }
+    framesPanel.hidden = true;
+    presenting = { index: 0 };
+    if (!fullscreen && opts.onFullscreen) toggleFullscreen();
+    root.classList.add('wb-presenting');
+    goSlide(0);
+  }
+  function goSlide(i) {
+    const fs = framesInOrder();
+    if (!presenting || !fs.length) return;
+    presenting.index = Math.max(0, Math.min(fs.length - 1, i));
+    const f = fs[presenting.index];
+    requestAnimationFrame(() => showFrame(f));
+    setMine({ present: { frame: f.id, at: now() } });
+    presBar.innerHTML = `<button type="button" data-p="prev" aria-label="Previous slide" ${presenting.index ? '' : 'disabled'}>‹</button><span>${presenting.index + 1} / ${fs.length} · ${esc(f.name || 'Frame')}</span><button type="button" data-p="next" aria-label="Next slide" ${presenting.index < fs.length - 1 ? '' : 'disabled'}>›</button><button type="button" data-p="stop" class="wb-stop">Stop</button>`;
+    presBar.hidden = false;
+  }
+  function stopPresent() {
+    if (!presenting) return;
+    presenting = null; presBar.hidden = true; root.classList.remove('wb-presenting');
+    setMine({ present: null });
+    if (fullscreen) toggleFullscreen();
+  }
+  presBar.addEventListener('click', e => {
+    const b = e.target.closest('[data-p]'); if (!b) return;
+    if (b.dataset.p === 'prev') goSlide(presenting.index - 1);
+    else if (b.dataset.p === 'next') goSlide(presenting.index + 1);
+    else stopPresent();
+  });
+  // someone else presenting: one quiet invitation; following them = Follow + their slide
+  function checkPresenters(list) {
+    const p = list.find(o => o.wb.present?.frame);
+    if (!p) { invite.hidden = true; invitedFor = null; if (followingPresenter != null) { followingPresenter = null; stopFollow(); } return; }
+    if (followingPresenter === p.id) { const f = get(p.wb.present.frame); if (f && p.wb.present.frame !== checkPresenters.last) { checkPresenters.last = p.wb.present.frame; showFrame(f); } return; }
+    if (invitedFor === p.id || presenting) return;
+    invitedFor = p.id;
+    invite.innerHTML = `<span><b>${esc(String(p.user.name || 'Someone').split(' ')[0])}</b> is presenting.</span><button type="button" data-i="follow" class="wb-pri">Follow</button><button type="button" data-i="no">Not now</button>`;
+    invite.hidden = false;
+  }
+  invite.addEventListener('click', e => {
+    const b = e.target.closest('[data-i]'); if (!b) return;
+    invite.hidden = true;
+    if (b.dataset.i === 'follow') { followingPresenter = invitedFor; checkPresenters.last = null; paintLive(); }
+  });
+  // Timer: a countdown everyone on the board sees (it lives in the starter's awareness; ends for all at the same moment).
+  const timerLabel = () => { const left = Math.max(0, Math.ceil((timerEnds - now()) / 1000)); return `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}`; };
+  function toggleTimerPanel() {
+    if (!timerPanel.hidden) { timerPanel.hidden = true; return; }
+    framesPanel.hidden = true; gallery.hidden = true; libPanel.hidden = true;
+    timerPanel.innerHTML = `<div class="wb-ph"><b>Timer</b><button type="button" data-close aria-label="Close">✕</button></div><p class="wb-note">Everyone on this board sees it count down.</p><div class="wb-tbtns">${[1, 3, 5, 10, 15].map(m => `<button type="button" data-min="${m}">${m} min</button>`).join('')}</div>${timerEnds ? '<button type="button" data-min="0" class="wb-tstop">Stop the timer</button>' : ''}`;
+    timerPanel.hidden = false;
+  }
+  timerPanel.addEventListener('click', e => {
+    if (e.target.closest('[data-close]')) { timerPanel.hidden = true; return; }
+    const b = e.target.closest('[data-min]'); if (!b) return;
+    const m = +b.dataset.min;
+    setMine({ timer: m ? { ends: now() + m * 60000 } : null });
+    timerPanel.hidden = true;
+    syncTimer(others());
+  });
+  function syncTimer(list) {
+    // the latest running timer wins (mine or someone else's)
+    const all3 = [...list.map(o => o.wb.timer?.ends || 0), aw?.getLocalState()?.wb?.timer?.ends || 0].filter(t => t > now() - 3000);
+    const ends = all3.length ? Math.max(...all3) : 0;
+    if (ends !== timerEnds) { timerEnds = ends; timerBeeped = 0; }
+    if (timerEnds && !timerTick) timerTick = setInterval(() => {
+      if (destroyed) return;
+      if (timerEnds && now() >= timerEnds && !timerBeeped) { timerBeeped = 1; toast('Time is up'); }
+      if (timerEnds && now() > timerEnds + 3000) { timerEnds = 0; clearInterval(timerTick); timerTick = 0; }
+      paintCorners();
+    }, 500);
+    paintCorners();
   }
 
   // ── Pictures and files ───────────────────────────────────────────────────
@@ -692,8 +979,6 @@ export function mountCanvas(container, opts) {
   }
 
   // ── Pointer input ────────────────────────────────────────────────────────
-  let interaction = null;
-  const pointers = new Map();
   let pinch = null, spaceDown = false;
 
   const tolerance = () => 6 / view.z;
@@ -732,6 +1017,8 @@ export function mountCanvas(container, opts) {
     if (h && !readOnly) { startResize(h, w, e.shiftKey); return; }
     if (endKey && !readOnly) { const c = get([...sel][0]); interaction = { kind: 'end', id: c.id, key: endKey }; return; }
 
+    stopFollow();
+    if (tool === 'laser' && e.button === 0) { interaction = { kind: 'laser' }; laserAt(w); return; }
     if (tool === 'hand' || spaceDown || e.button === 1 || (readOnly && tool !== 'laser')) { interaction = { kind: 'pan', sx, sy, view: { ...view } }; root.classList.add('wb-panning'); return; }
     if (e.button === 2) return;
     if (readOnly) return;
@@ -748,7 +1035,7 @@ export function mountCanvas(container, opts) {
     if (tool === 'sticky') { const s = create('sticky', { x: w.x - 100, y: w.y - 80, w: 200, h: 160, color: stickyColor, text: '' }); const [placed] = add([s]) || []; setTool('select'); if (placed) editSoon(placed); return; }
     if (tool === 'text') { const t = create('text', { x: w.x, y: w.y - 13, w: 40, h: 26, text: '', size: 20, font: 'ipop', stroke: penColor }); const [placed] = add([t]) || []; setTool('select'); if (placed) editSoon(placed); return; }
     if (SHAPES.includes(tool) || tool === 'frame') {
-      const s = create(tool, tool === 'frame' ? { x: w.x, y: w.y, w: 1, h: 1, name: `Frame ${live().filter(x => x.type === 'frame').length + 1}` } : { x: w.x, y: w.y, w: 1, h: 1, text: '', stroke: penColor });
+      const s = create(tool, tool === 'frame' ? { x: w.x, y: w.y, w: 1, h: 1, name: `Frame ${live().filter(x => x.type === 'frame').length + 1}`, order: live().filter(x => x.type === 'frame').length } : { x: w.x, y: w.y, w: 1, h: 1, text: '', stroke: penColor });
       s.z = zBetween(topZ(all()) || null, null);
       interaction = { kind: 'create', el: s, ox: w.x, oy: w.y };
       draft.set(s.id, s); render();
@@ -812,6 +1099,7 @@ export function mountCanvas(container, opts) {
         break;
       }
       case 'erase': eraseAt(w); break;
+      case 'laser': laserAt(w); break;
       case 'create': {
         let x = Math.min(it.ox, w.x), y = Math.min(it.oy, w.y), ww = Math.abs(w.x - it.ox), hh = Math.abs(w.y - it.oy);
         if (e.shiftKey) { const s = Math.max(ww, hh); ww = hh = s; if (w.x < it.ox) x = it.ox - s; if (w.y < it.oy) y = it.oy - s; }
@@ -972,6 +1260,7 @@ export function mountCanvas(container, opts) {
 
   function onWheel(e) {
     e.preventDefault();
+    stopFollow();
     const { sx, sy } = local(e);
     if (e.ctrlKey || e.metaKey) zoomAt(Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.0018)), sx, sy);
     else { view.x -= e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX; view.y -= e.shiftKey && !e.deltaX ? 0 : e.deltaY; render(); }
@@ -1019,8 +1308,10 @@ export function mountCanvas(container, opts) {
     if (e.shiftKey && e.code === 'Digit1') { e.preventDefault(); fit(); return; }
     if (e.shiftKey && k === 'f' && !mod && mode === 'board' && opts.onFullscreen) { e.preventDefault(); toggleFullscreen(); return; }
     if (e.key === '?') { toggleKeys(); return; }
-    if (e.key === 'Escape') { if (!keysPanel.hidden) { keysPanel.hidden = true; return; } if (!gallery.hidden) { gallery.hidden = true; return; } if (!libPanel.hidden) { libPanel.hidden = true; return; } if (fullscreen) { toggleFullscreen(); return; } sel.clear(); setTool('select'); paintProps(); render(); return; }
-    if (readOnly) return;
+    if (presenting && (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ')) { e.preventDefault(); goSlide(presenting.index + 1); return; }
+    if (presenting && (e.key === 'ArrowLeft' || e.key === 'PageUp')) { e.preventDefault(); goSlide(presenting.index - 1); return; }
+    if (e.key === 'Escape') { if (presenting) { stopPresent(); return; } if (following != null) { followingPresenter = null; stopFollow(); return; } if (!keysPanel.hidden) { keysPanel.hidden = true; return; } if (!gallery.hidden) { gallery.hidden = true; return; } if (!libPanel.hidden) { libPanel.hidden = true; return; } if (fullscreen) { toggleFullscreen(); return; } sel.clear(); setTool('select'); paintProps(); render(); return; }
+    if (readOnly) { if (k === 'h' || k === 'l') setTool(k === 'h' ? 'hand' : 'laser'); return; }
     const chosen = [...sel].map(get).filter(Boolean);
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); remove(chosen.filter(x => !x.locked)); paintProps(); return; }
     if (mod && k === 'd') { e.preventDefault(); duplicate(chosen); return; }
@@ -1069,7 +1360,7 @@ export function mountCanvas(container, opts) {
 
   function toggleKeys() {
     if (!keysPanel.hidden) { keysPanel.hidden = true; return; }
-    const rows = [['V', 'Select'], ['H', 'Hand (or hold Space)'], ['P', 'Pen'], ['M', 'Highlighter'], ['E', 'Eraser'], ['S', 'Sticky note (again: next colour)'], ['T', 'Text'], ['R', 'Shape (again: next shape)'], ['O', 'Circle'], ['D', 'Diamond'], ['A', 'Connector'], ['F', 'Frame'], ['Shift F', 'Full screen'],
+    const rows = [['V', 'Select'], ['H', 'Hand (or hold Space)'], ['P', 'Pen'], ['M', 'Highlighter'], ['E', 'Eraser'], ['S', 'Sticky note (again: next colour)'], ['T', 'Text'], ['R', 'Shape (again: next shape)'], ['O', 'Circle'], ['D', 'Diamond'], ['A', 'Connector'], ['F', 'Frame'], ['Shift F', 'Full screen'], ['L', 'Laser pointer'], ['→ / ←', 'Next / previous slide while presenting'],
       ['1–9, 0', 'The old drawing keys'], ['Enter', 'Edit the selected text'], ['Ctrl D', 'Duplicate'], ['Ctrl C / V', 'Copy / paste'], ['Ctrl Z / Y', 'Undo / redo'], ['Ctrl ] / [', 'Front / back'], ['Arrows', 'Nudge (Shift: 24 px)'], ['Ctrl + wheel', 'Zoom'], ['Shift 1', 'Fit everything'], ['Alt while dragging', 'No snapping']];
     keysPanel.innerHTML = `<div class="wb-ph"><b>Keyboard shortcuts</b><button type="button" data-close aria-label="Close">✕</button></div><div class="wb-kgrid">${rows.map(([k, d]) => `<div><kbd>${k}</kbd><span>${d}</span></div>`).join('')}</div>`;
     keysPanel.hidden = false;
@@ -1121,7 +1412,7 @@ export function mountCanvas(container, opts) {
     count,
     flush,
     setFullscreen(v) { fullscreen = !!v; paintCorners(); requestAnimationFrame(() => fit()); },
-    destroy() { for (const u of files.values()) { try { URL.revokeObjectURL(u); } catch { /* not ours */ } } document.removeEventListener('keydown', fsKeys, true); stopEdit(); flush(); destroyed = true; ymap.unobserve(onY); undo.destroy(); ro.disconnect(); cancelAnimationFrame(raf); root.remove(); },
+    destroy() { clearInterval(liveTick); clearInterval(timerTick); clearTimeout(cursorTimer); clearTimeout(viewTimer); clearTimeout(laserFade); clearTimeout(offerNeat.t); clearTimeout(flushTimer); aw?.off('change', onAw); if (aw) { const st = aw.getLocalState(); if (st?.wb?.board === boardKey) aw.setLocalStateField('wb', null); } for (const u of files.values()) { try { URL.revokeObjectURL(u); } catch { /* not ours */ } } document.removeEventListener('keydown', fsKeys, true); stopEdit(); flush(); destroyed = true; ymap.unobserve(onY); undo.destroy(); ro.disconnect(); cancelAnimationFrame(raf); root.remove(); },
   };
   return api;
 }
