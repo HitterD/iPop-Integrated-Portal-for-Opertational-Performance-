@@ -42,6 +42,46 @@ export const STENCILS = [
   ['netCloud', 'Internet / Cloud', 'Network', 150, 90, 'The internet or a cloud service.'],
   ['netAP', 'Wi-Fi access point', 'Network', 90, 70, 'A wireless access point.'],
   ['netPhone', 'Phone', 'Network', 60, 90, 'A phone or handheld scanner.'],
+  ['netCoreSwitch', 'Core switch', 'Network', 160, 56, 'The main switch in the server room. Everything else connects to it.'],
+  ['netAccessSwitch', 'Access switch', 'Network', 150, 40, 'A floor or room switch where PCs, phones and cameras plug in.'],
+  ['netLB', 'Load balancer', 'Network', 110, 76, 'Shares traffic between several servers.'],
+  ['netNVR', 'NVR (CCTV recorder)', 'Network', 130, 50, 'Records the CCTV cameras.'],
+  ['netCamera', 'IP camera', 'Network', 100, 70, 'A CCTV camera on the network.'],
+  ['netVoip', 'VoIP phone', 'Network', 80, 80, 'A desk phone on the network (extension).'],
+  ['netUPS', 'UPS', 'Network', 70, 96, 'Battery backup power.'],
+  ['netPatch', 'Patch panel', 'Network', 160, 34, 'Where the building cables end in the rack.'],
+  ['netISP', 'ISP modem', 'Network', 110, 70, 'The internet provider\'s modem or ONT.'],
+  ['netVPN', 'VPN', 'Network', 80, 86, 'A secure tunnel to another site.'],
+  ['netAttendance', 'Attendance machine', 'Network', 74, 90, 'Fingerprint or face attendance machine.'],
+  ['netSAP', 'SAP server', 'Network', 84, 100, 'The SAP system.'],
+  ['netNAS', 'Synology NAS', 'Network', 90, 90, 'File storage (NAS).'],
+  ['netCluster', 'Cluster', 'Network', 120, 100, 'Several servers working as one (k3s, a cluster).'],
+  ['rack', 'Rack 19"', 'Network', 240, 420, 'A 19 inch rack with numbered U slots. Drop devices into it; they snap to the slots.'],
+  // UML
+  ['umlClass', 'Class', 'UML', 200, 150, 'A class: name on the first line, then fields, then a line with -- and the methods.'],
+  ['umlInterface', 'Interface', 'UML', 200, 110, 'An interface: name first, then the methods.'],
+  ['umlActor', 'Actor', 'UML', 60, 100, 'A person or system that uses the system.'],
+  ['umlUseCase', 'Use case', 'UML', 180, 80, 'Something the actor wants to do: "Approve PR".'],
+  ['umlLifeline', 'Lifeline', 'UML', 140, 360, 'A participant in a sequence diagram. Draw messages between lifelines with lines.'],
+  ['umlState', 'State', 'UML', 170, 70, 'A state something is in: Draft, Waiting, Approved.'],
+  ['umlStartNode', 'Initial node', 'UML', 36, 36, 'Where an activity or state diagram starts.'],
+  ['umlEndNode', 'Final node', 'UML', 40, 40, 'Where an activity or state diagram ends.'],
+  ['umlActivity', 'Action', 'UML', 180, 64, 'One action in an activity diagram.'],
+  ['umlNote', 'Note', 'UML', 170, 90, 'A note or comment on the diagram.'],
+  ['umlPackage', 'Package', 'UML', 260, 180, 'A group of classes or parts.'],
+  // Org chart
+  ['orgCard', 'Person', 'Org chart', 220, 76, 'A person: name and department. "Org chart from Directory" in the ⋯ menu adds a whole team.'],
+  // Floor plan
+  ['fpWall', 'Wall', 'Floor plan', 300, 12, 'A wall. Stretch it to length.'],
+  ['fpDoor', 'Door', 'Floor plan', 80, 80, 'A door with its swing.'],
+  ['fpWindow', 'Window', 'Floor plan', 120, 14, 'A window in a wall.'],
+  ['fpDesk', 'Desk', 'Floor plan', 140, 80, 'A desk (meja). Put the person or PC name on it.'],
+  ['fpChair', 'Chair', 'Floor plan', 50, 50, 'A chair (kursi).'],
+  ['fpMeeting', 'Meeting table', 'Floor plan', 220, 120, 'A meeting table with chairs.'],
+  ['fpShelf', 'Shelf / cabinet', 'Floor plan', 160, 50, 'A shelf, cabinet or rack (lemari).'],
+  ['fpRoom', 'Room', 'Floor plan', 400, 300, 'A room (ruangan). Name it; shapes inside move with it.'],
+  ['fpStairs', 'Stairs', 'Floor plan', 100, 160, 'Stairs (tangga).'],
+  ['fpPlant', 'Plant', 'Floor plan', 50, 50, 'A plant.'],
   // Timeline
   ['milestone', 'Milestone', 'Timeline', 44, 44, 'An important date on a timeline.'],
   ['phase', 'Phase bar', 'Timeline', 260, 40, 'A period of work: from one date to another.'],
@@ -53,11 +93,31 @@ export const STENCILS = [
   // Containers
   ['swimlane', 'Swimlane', 'Containers', 900, 420, 'Rows for departments or people. Shapes inside move with their lane.'],
   ['groupBox', 'Group box', 'Containers', 400, 260, 'A box with a title around related shapes.'],
+  ['listBox', 'List', 'Containers', 240, 260, 'A list: shapes dropped in are stacked in order, like a checklist.'],
+  ['callout', 'Callout', 'Containers', 160, 60, 'A note that points at a shape and moves with it. Select a shape first, then add the callout.'],
 ];
 
 export const STENCIL_TYPES = STENCILS.map(s => s[0]);
 export const STENCIL = Object.fromEntries(STENCILS.map(([type, label, cat, w, h, tip]) => [type, { type, label, cat, w, h, tip }]));
-export const STENCIL_CATS = ['Flowchart', 'Containers', 'BPMN', 'ERD', 'Network', 'Timeline', 'Value stream'];
+export const STENCIL_CATS = ['Flowchart', 'Containers', 'BPMN', 'UML', 'ERD', 'Network', 'Org chart', 'Floor plan', 'Timeline', 'Value stream'];
+/// Network devices (they get Hostname / IP / MAC / Location / Serial fields and can sit in a rack).
+export const isNetDevice = el => /^net/.test(el?.type || '') && el.type !== 'netCloud';
+export const NET_FIELDS = ['Hostname', 'IP', 'MAC', 'Location', 'Serial'];
+/// Height in U of a device in a rack: its "U" field, else a usual size for the kind of device.
+export function rackUnits(el) {
+  const n = parseInt((el?.data || []).find(d => /^u$/i.test(d.name || ''))?.value, 10);
+  if (n > 0 && n <= 48) return n;
+  return { netServer: 2, netNAS: 2, netNVR: 2, netUPS: 3, netSAP: 2, netCluster: 4 }[el?.type] || 1;
+}
+/// The slots of a rack: U count (from its "U" field or 24), slot height and the slot box for a U number (1 = bottom).
+export function rackSlots(rack) {
+  const units = Math.max(4, Math.min(48, parseInt((rack.data || []).find(d => /^u$/i.test(d.name || ''))?.value, 10) || 24));
+  const pad = 10, side = 26, uh = (rack.h - pad * 2) / units;
+  const slot = (u, size = 1) => ({ x: rack.x + side, y: rack.y + pad + (units - u - size + 1) * uh, w: rack.w - side * 2, h: uh * size });
+  /// the lowest U of a device whose top-left is at y (snapped), or 0 when outside
+  const uAt = (y, size = 1) => { const k = Math.round((y - rack.y - pad) / uh); const u = units - k - size + 1; return u >= 1 && u + size - 1 <= units ? u : 0; };
+  return { units, uh, pad, side, slot, uAt };
+}
 /// Shapes that make something a flowchart (the guide, hints, step numbers and Check only show up when one is on the board).
 export const FLOW_TYPES = new Set(['terminator', 'process', 'decision', 'data', 'document', 'subprocess', 'manualInput', 'preparation', 'delay', 'database', 'offPage', 'display', 'storage', 'manualOp', 'multiDoc', 'bpmnTask', 'bpmnGateway', 'bpmnParallel', 'bpmnStart', 'bpmnEnd']);
 /// Shapes that get a step number (things someone does).
@@ -125,6 +185,55 @@ export function stencilPath(type, x, y, w, h) {
     case 'vsSupplier': return { d: `M${r(x, y + h * 0.3)}L${r(x + w / 3, y)}V${f(y + h * 0.3)}L${r(x + 2 * w / 3, y)}V${f(y + h * 0.3)}L${r(x + w, y)}V${f(y + h)}H${f(x)}Z` };
     case 'swimlane': return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, rx: 6, container: true };
     case 'groupBox': return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, rx: 10, container: true, dashed: true };
+    case 'listBox': return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, rx: 10, container: true, extra: `M${r(x, y + 36)}H${f(x + w)}` };
+    case 'callout': return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, rx: 6, fill: '#FFF3C4' };
+    // more network devices
+    case 'netCoreSwitch': return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, rx: 6, extra: Array.from({ length: 4 }, (_, i) => `M${r(x + w * 0.1 + i * w * 0.17, cy - 6)}h${f(w * 0.11)}v12h${f(-w * 0.11)}Z`).join('') + `M${r(x + w * 0.85, y + h * 0.25)}V${f(y + h * 0.75)}`, extraWidth: 2.2, icon: true };
+    case 'netAccessSwitch': return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, rx: 4, extra: Array.from({ length: 8 }, (_, i) => `M${r(x + w * 0.07 + i * w * 0.11, cy - 4)}h${f(w * 0.07)}v8h${f(-w * 0.07)}Z`).join(''), icon: true };
+    case 'netLB': return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, rx: 10, extra: `M${r(x + w * 0.2, cy)}H${f(x + w * 0.8)}M${r(x + w * 0.62, cy - h * 0.18)}L${r(x + w * 0.8, cy)}L${r(x + w * 0.62, cy + h * 0.18)}M${r(x + w * 0.2, cy)}L${r(x + w * 0.45, y + h * 0.25)}M${r(x + w * 0.2, cy)}L${r(x + w * 0.45, y + h * 0.75)}`, icon: true };
+    case 'netNVR': return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, rx: 5, extra: `M${r(x + w * 0.12 + 7, cy)}a7 7 0 1 0 -14 0a7 7 0 1 0 14 0M${r(x + w * 0.3, cy)}H${f(x + w * 0.88)}`, icon: true };
+    case 'netCamera': return { d: `M${r(x, y + h * 0.15)}H${f(x + w * 0.62)}L${r(x + w * 0.82, y + h * 0.35)}L${r(x + w * 0.62, y + h * 0.55)}H${f(x)}Z`, extra: `M${r(x + w * 0.4, y + h * 0.55)}V${f(y + h * 0.88)}M${r(x + w * 0.22, y + h * 0.95)}H${f(x + w * 0.58)}`, icon: true };
+    case 'netVoip': return { d: `M${r(x + w * 0.1, y)}H${f(x + w * 0.9)}V${f(y + h)}H${f(x + w * 0.1)}Z`, rx: 8, extra: `M${r(x + w * 0.24, y + h * 0.12)}H${f(x + w * 0.76)}V${f(y + h * 0.36)}H${f(x + w * 0.24)}Z` + [0, 1, 2].map(c => [0, 1].map(rw => `M${r(x + w * (0.28 + c * 0.2), y + h * (0.55 + rw * 0.16))}h${f(w * 0.08)}`).join('')).join(''), icon: true };
+    case 'netUPS': return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, rx: 6, extra: `M${r(cx + w * 0.06, y + h * 0.2)}L${r(cx - w * 0.14, y + h * 0.5)}H${f(cx + w * 0.12)}L${r(cx - w * 0.08, y + h * 0.8)}`, extraWidth: 2.4, icon: true };
+    case 'netPatch': return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, rx: 3, extra: Array.from({ length: 12 }, (_, i) => `M${r(x + w * 0.05 + i * w * 0.078, cy - 3)}h${f(w * 0.045)}v6h${f(-w * 0.045)}Z`).join(''), icon: true };
+    case 'netISP': return { d: `M${r(x, y + h * 0.42)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, rx: 6, extra: `M${r(x + w * 0.3, y + h * 0.42)}L${r(x + w * 0.2, y)}M${r(x + w * 0.7, y + h * 0.42)}L${r(x + w * 0.8, y)}M${r(x + w * 0.15, y + h * 0.72)}h4M${r(x + w * 0.28, y + h * 0.72)}h4`, icon: true };
+    case 'netVPN': return { d: `M${r(x, y + h * 0.42)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, rx: 6, extra: `M${r(x + w * 0.22, y + h * 0.42)}V${f(y + h * 0.28)}A${r(w * 0.28, w * 0.28)} 0 0 1 ${r(x + w * 0.78, y + h * 0.28)}V${f(y + h * 0.42)}M${r(cx, y + h * 0.62)}V${f(y + h * 0.8)}`, extraWidth: 2.2, icon: true };
+    case 'netAttendance': return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, rx: 9, extra: `M${r(x + w * 0.2, y + h * 0.1)}H${f(x + w * 0.8)}V${f(y + h * 0.36)}H${f(x + w * 0.2)}ZM${r(cx - w * 0.16, y + h * 0.82)}C${r(cx - w * 0.16, y + h * 0.5, cx + w * 0.16, y + h * 0.5, cx + w * 0.16, y + h * 0.82)}M${r(cx - w * 0.06, y + h * 0.82)}C${r(cx - w * 0.06, y + h * 0.64, cx + w * 0.06, y + h * 0.64, cx + w * 0.06, y + h * 0.82)}`, icon: true };
+    case 'netSAP': return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, rx: 6, extra: [1, 2].map(i => `M${r(x + 8, y + i * h / 4)}H${f(x + w - 8)}`).join(''), icon: true, badge: 'SAP' };
+    case 'netNAS': return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, rx: 10, extra: `M${r(x + w * 0.18 + 4, y + h * 0.22)}a4 4 0 1 0 -8 0a4 4 0 1 0 8 0M${r(x + w * 0.15, y + h * 0.5)}H${f(x + w * 0.85)}M${r(x + w * 0.15, y + h * 0.7)}H${f(x + w * 0.85)}`, icon: true };
+    case 'netCluster': {
+      const k = Math.min(w, h) * 0.16, c1 = [x + w * 0.28, y + h * 0.3], c2 = [x + w * 0.72, y + h * 0.3], c3 = [cx, y + h * 0.75];
+      const circ = ([px, py]) => `M${r(px - k, py)}A${r(k, k)} 0 1 1 ${r(px + k, py)}A${r(k, k)} 0 1 1 ${r(px - k, py)}Z`;
+      return { d: circ(c1) + circ(c2) + circ(c3), extra: `M${r(c1[0] + k, c1[1])}H${f(c2[0] - k)}M${r(c1[0] + k * 0.5, c1[1] + k * 0.9)}L${r(c3[0] - k * 0.5, c3[1] - k * 0.9)}M${r(c2[0] - k * 0.5, c2[1] + k * 0.9)}L${r(c3[0] + k * 0.5, c3[1] - k * 0.9)}`, icon: true };
+    }
+    case 'rack': return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, rx: 6, container: true, rack: true };
+    // UML
+    case 'umlClass': case 'umlInterface': { const head = Math.min(type === 'umlInterface' ? 44 : 32, h * 0.3); return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, rx: 3, extra: `M${r(x, y + head)}H${f(x + w)}`, head, uml: true }; }
+    case 'umlActor': { const hr = Math.min(w * 0.22, h * 0.12); return { d: `M${r(cx - hr, y + hr)}A${r(hr, hr)} 0 1 1 ${r(cx + hr, y + hr)}A${r(hr, hr)} 0 1 1 ${r(cx - hr, y + hr)}Z`, extra: `M${r(cx, y + hr * 2)}V${f(y + h * 0.62)}M${r(x + w * 0.1, y + h * 0.36)}H${f(x + w * 0.9)}M${r(cx, y + h * 0.62)}L${r(x + w * 0.15, y + h)}M${r(cx, y + h * 0.62)}L${r(x + w * 0.85, y + h)}`, extraWidth: 2 }; }
+    case 'umlUseCase': return { d: `M${r(x, cy)}A${r(w / 2, h / 2)} 0 1 1 ${r(x + w, cy)}A${r(w / 2, h / 2)} 0 1 1 ${r(x, cy)}Z` };
+    case 'umlLifeline': { const hh = Math.min(48, h * 0.2); return { d: `M${r(x, y)}H${f(x + w)}V${f(y + hh)}H${f(x)}Z`, rx: 4, extra: `M${r(cx, y + hh)}V${f(y + h)}`, extraDash: true, head: hh }; }
+    case 'umlState': case 'umlActivity': return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, rx: Math.min(type === 'umlState' ? 22 : 16, h / 2) };
+    case 'umlStartNode': return { d: `M${r(x, cy)}A${r(w / 2, h / 2)} 0 1 1 ${r(x + w, cy)}A${r(w / 2, h / 2)} 0 1 1 ${r(x, cy)}Z`, solid: true };
+    case 'umlEndNode': { const k = 0.3; return { d: `M${r(x, cy)}A${r(w / 2, h / 2)} 0 1 1 ${r(x + w, cy)}A${r(w / 2, h / 2)} 0 1 1 ${r(x, cy)}Z`, dot: `M${r(cx - w * k, cy)}A${r(w * k, h * k)} 0 1 1 ${r(cx + w * k, cy)}A${r(w * k, h * k)} 0 1 1 ${r(cx - w * k, cy)}Z` }; }
+    case 'umlNote': { const k = Math.min(18, w * 0.15, h * 0.25); return { d: `M${r(x, y)}H${f(x + w - k)}L${r(x + w, y + k)}V${f(y + h)}H${f(x)}Z`, fill: '#FFF8DC', extra: `M${r(x + w - k, y)}V${f(y + k)}H${f(x + w)}` }; }
+    case 'umlPackage': { const tw = Math.min(w * 0.4, 110), th = 24; return { d: `M${r(x, y)}H${f(x + tw)}V${f(y + th)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, extra: `M${r(x, y + th)}H${f(x + tw)}`, container: true }; }
+    // org chart: a card with a photo square on the left
+    case 'orgCard': return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, rx: 12, org: true };
+    // floor plan
+    case 'fpWall': return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, solid: true };
+    case 'fpDoor': return { d: `M${r(x, y + h)}V${f(y)}A${r(w, h)} 0 0 1 ${r(x + w, y + h)}Z`, extra: `M${r(x, y)}V${f(y + h)}`, extraWidth: 3, dashed: true };
+    case 'fpWindow': return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, fill: '#DCEBFF', extra: `M${r(x, cy)}H${f(x + w)}` };
+    case 'fpDesk': return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h * 0.78)}H${f(x)}Z`, rx: 3, extra: `M${r(cx - w * 0.14, y + h * 0.86)}h${f(w * 0.28)}v${f(h * 0.14)}h${f(-w * 0.28)}Z` };
+    case 'fpChair': return { d: `M${r(x, y + h * 0.18)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, rx: Math.min(10, w / 4), extra: `M${r(x + w * 0.08, y + h * 0.06)}H${f(x + w * 0.92)}`, extraWidth: 3 };
+    case 'fpMeeting': {
+      const tx = x + w * 0.14, ty = y + h * 0.2, tw = w * 0.72, th = h * 0.6, ch = Math.min(14, h * 0.12);
+      const seats = [0.25, 0.5, 0.75].flatMap(fx => [`M${r(x + w * fx - ch, y)}h${f(ch * 2)}v${f(ch)}h${f(-ch * 2)}Z`, `M${r(x + w * fx - ch, y + h - ch)}h${f(ch * 2)}v${f(ch)}h${f(-ch * 2)}Z`]).join('');
+      return { d: `M${r(tx + th / 2, ty)}H${f(tx + tw - th / 2)}A${r(th / 2, th / 2)} 0 0 1 ${r(tx + tw - th / 2, ty + th)}H${f(tx + th / 2)}A${r(th / 2, th / 2)} 0 0 1 ${r(tx + th / 2, ty)}Z`, extra: seats };
+    }
+    case 'fpShelf': return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, extra: `M${r(x, y)}L${r(x + w, y + h)}M${r(x + w, y)}L${r(x, y + h)}` };
+    case 'fpRoom': return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, container: true, strokeWidth: 6 };
+    case 'fpStairs': return { d: `M${r(x, y)}H${f(x + w)}V${f(y + h)}H${f(x)}Z`, extra: Array.from({ length: 7 }, (_, i) => `M${r(x, y + (i + 1) * h / 8)}H${f(x + w)}`).join('') + `M${r(cx, y + h * 0.9)}V${f(y + h * 0.1)}M${r(cx - 6, y + h * 0.1 + 8)}L${r(cx, y + h * 0.1)}L${r(cx + 6, y + h * 0.1 + 8)}` };
+    case 'fpPlant': { const k = Math.min(w, h) / 2; return { d: `M${r(cx - k, cy)}A${r(k, k)} 0 1 1 ${r(cx + k, cy)}A${r(k, k)} 0 1 1 ${r(cx - k, cy)}Z`, fill: '#D6F5DD', extra: `M${r(cx, cy - k * 0.7)}V${f(cy + k * 0.7)}M${r(cx - k * 0.7, cy)}H${f(cx + k * 0.7)}M${r(cx - k * 0.5, cy - k * 0.5)}L${r(cx + k * 0.5, cy + k * 0.5)}M${r(cx + k * 0.5, cy - k * 0.5)}L${r(cx - k * 0.5, cy + k * 0.5)}` }; }
     default: return null;
   }
 }
@@ -140,9 +249,21 @@ export function stencilTextBox(type, x, y, w, h) {
     case 'database': return { x: x + 8, y: y + h * 0.22, w: w - 16, h: h * 0.7 };
     case 'offPage': return { x: x + 4, y: y + 4, w: w - 8, h: h * 0.58 };
     case 'manualInput': return { x: x + 8, y: y + h * 0.28, w: w - 16, h: h * 0.68 };
-    case 'erTable': case 'vsProcess': return { x: x + 10, y: y + 4, w: w - 20, h: h - 8 };
+    case 'erTable': case 'vsProcess': case 'umlClass': case 'umlInterface': return { x: x + 10, y: y + 4, w: w - 20, h: h - 8 };
+    case 'umlActor': case 'umlStartNode': case 'umlEndNode': case 'fpDoor': case 'fpChair': case 'fpPlant': case 'fpWall': case 'fpWindow': case 'fpShelf': case 'fpStairs':
+      return { x: x - 40, y: y + h + 4, w: w + 80, h: 40, below: true };
+    case 'umlLifeline': return { x: x + 6, y: y + 2, w: w - 12, h: Math.min(48, h * 0.2) - 4 };
+    case 'umlNote': return { x: x + 10, y: y + 8, w: w - 30, h: h - 14 };
+    case 'umlPackage': case 'fpRoom': case 'listBox': return { x: x + 10, y: y + 4, w: w - 20, h: 26, title: true };
+    case 'rack': return { x, y: y - 30, w, h: 26, title: true };
+    case 'orgCard': return { x: x + h - 2, y: y + 8, w: Math.max(10, w - h - 8), h: h - 16 };
+    case 'fpDesk': return { x: x + 6, y: y + 4, w: w - 12, h: h * 0.78 - 8 };
+    case 'fpMeeting': return { x: x + w * 0.2, y: y + h * 0.24, w: w * 0.6, h: h * 0.52 };
+    case 'callout': return { x: x + 8, y: y + 4, w: w - 16, h: h - 8 };
     case 'bpmnStart': case 'bpmnEnd': case 'bpmnTimer': case 'bpmnMessage': case 'bpmnGateway': case 'bpmnParallel': case 'milestone':
       return { x: x - 40, y: y + h + 4, w: w + 80, h: 40, below: true };
+    case 'netCoreSwitch': case 'netAccessSwitch': case 'netLB': case 'netNVR': case 'netCamera': case 'netVoip': case 'netUPS': case 'netPatch':
+    case 'netISP': case 'netVPN': case 'netAttendance': case 'netSAP': case 'netNAS': case 'netCluster':
     case 'vsInventory': case 'vsTruck': case 'netPC': case 'netLaptop': case 'netServer': case 'netSwitch': case 'netRouter': case 'netFirewall': case 'netPrinter': case 'netAP': case 'netPhone':
       return { x: x - 40, y: y + h + 4, w: w + 80, h: 40, below: true };
     case 'netCloud': return { x: x + w * 0.2, y: y + h * 0.35, w: w * 0.6, h: h * 0.45 };

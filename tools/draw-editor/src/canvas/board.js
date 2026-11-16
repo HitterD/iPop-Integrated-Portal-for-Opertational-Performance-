@@ -10,7 +10,8 @@ import {
   cutStroke, strokePieces, alignBoxes, distributeBoxes, tidyRow, expandGroups, recogniseLine, findOnBoard,
   SHAPE_TYPES, isShape, isContainer, connectorPoints,
 } from './model.js';
-import { STENCIL, STENCILS, STENCIL_CATS, FLOW_TYPES, stencilPath, lanesOf, laneAt } from './stencils.js';
+import { STENCIL, STENCILS, STENCIL_CATS, FLOW_TYPES, stencilPath, lanesOf, laneAt, isNetDevice, NET_FIELDS, rackSlots, rackUnits } from './stencils.js';
+import { graphicsFor, layoutTree, layoutRadial, layoutOrganic, layoutNetwork, findDevice, rackDrop, rackContents, stackList, reportRows, toCsv, toXlsx, toPptx, pptxNative, diffScenes, diffSummary, orgChart, tasksFromShapes } from './diagram.js';
 import { checkFlow, stepNumbers, nextHints, placeNext, layoutFlow, hasFlowchart, facingSide, nearestSide, portPoint, fractionAt } from './flow.js';
 import { fromMermaid, drawioModel, fromDrawioModel } from './importers.js';
 import { svgEl, defs, drawElement, PALETTE, toPng, toSvg, measure, FONT_STACK, layoutText, pngToPdf } from './render.js';
@@ -48,7 +49,15 @@ const ICONS = {
   keys: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
   more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
 };
-ICONS.book = '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>';
+ICONS.org = '<rect x="9" y="2" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 7v4M6 16v-3h12v3"/>';
+ICONS.layout = '<circle cx="12" cy="12" r="2.5"/><circle cx="4.5" cy="5" r="1.8"/><circle cx="19.5" cy="5" r="1.8"/><circle cx="4.5" cy="19" r="1.8"/><circle cx="19.5" cy="19" r="1.8"/><path d="m6 6.4 4.2 3.8M18 6.4l-4.2 3.8M6 17.6l4.2-3.8M18 17.6l-4.2-3.8"/>';
+ICONS.table = '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16"/>';
+ICONS.slides = '<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M12 17v4M8 21h8"/>';
+ICONS.history = '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>';
+ICONS.chart = '<path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/>';
+ICONS.ip = '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4M7 8v4M10 12V8h2.5a1.5 1.5 0 0 1 0 3H10"/>';
+ICONS.chat = '<path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12z"/>';
+ICONS.book ='<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>';
 ICONS.bookplus = '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M12 7v6M9 10h6"/>';
 ICONS.image = '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>';
 ICONS.file = '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>';
@@ -125,6 +134,7 @@ function loadPrefs() {
 }
 function savePrefs(p) { try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* blocked */ } }
 const isHex = c => /^#[0-9a-f]{6}$/i.test(c || '');
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // Letter shortcuts like ClickUp; digits keep the old Excalidraw meaning (grill Q18).
 const KEYS = { n: 'card', c: 'comment', i: 'image', v: 'select', l: 'laser', h: 'hand', p: 'pen', m: 'highlighter', e: 'eraser', s: 'sticky', t: 'text', r: 'rect', o: 'ellipse', d: 'diamond', a: 'connector', f: 'frame' };
@@ -182,6 +192,12 @@ export function mountCanvas(container, opts) {
   let flushTimer = null;
   let editing = null;            // { id, ta }
   const cache = new Map();       // id -> { key, node }
+  // round 4 state, declared early: awareness events can paint the corners before the panels below exist
+  let sinceLast = null, r4Kind = null, r4State = {}, versionView = null;
+  const photoSeen = new Set();
+  // Data graphics rules are stored once per board (Y.Map "wbmeta:<board>"), so everyone sees the same colours.
+  const meta = doc?.getMap ? doc.getMap(`wbmeta:${opts.boardKey || 'board'}`) : null;
+  const rulesNow = () => { const r = meta?.get('graphics'); return r && typeof r === 'object' ? r : { show: 'off', lateDays: 3 }; };
 
   const stored = id => { const v = ymap.get(id); return isElement(v) ? v : undefined; };
   const get = id => draft.get(id) ?? stored(id);
@@ -248,6 +264,7 @@ export function mountCanvas(container, opts) {
   const shapeBoxes = () => live().filter(x => isShape(x) && !isContainer(x)).map(x => ({ id: x.id, ...bounds(x, get) }));
   function paint() {
     world.setAttribute('transform', `translate(${view.x} ${view.y}) scale(${view.z})`);
+    if (versionView) diffLayer.setAttribute('transform', `translate(${view.x} ${view.y}) scale(${view.z})`);
     const allEls = live();
     flowOn = hasFlowchart(allEls);
     steps = flowOn && prefs.steps !== false ? stepNumbers(allEls) : new Map();
@@ -256,6 +273,7 @@ export function mountCanvas(container, opts) {
     root.style.backgroundSize = `${g}px ${g}px`;
     root.style.backgroundPosition = `${view.x}px ${view.y}px`;
     const els = allEls;
+    const rulesKey = JSON.stringify(rulesNow());
     const UNDER = x => x.type === 'frame' || isContainer(x);
     const ordered = [...els].sort((p, q) => UNDER(p) !== UNDER(q) ? (UNDER(p) ? -1 : 1) : (p.z < q.z ? -1 : p.z > q.z ? 1 : p.id < q.id ? -1 : 1));
     // a line redraws when any shape moves (its route may now go around it or jump over another line)
@@ -268,14 +286,16 @@ export function mountCanvas(container, opts) {
       if ((e.type === 'image' || e.type === 'file') && e.fileId && e.type === 'image') ensureFile(e.fileId);
       if (e.type === 'link') ensurePreview(e);
       if (e.type === 'sticker') ensureSticker(e.stickerId);
+      if (e.type === 'orgCard' && e.photo) ensurePhoto(e.photo);
       // a connector must redraw when either shape it is attached to moves
       const deps = e.type === 'connector' ? `${get(e.from?.id)?.version ?? ''}:${get(e.from?.id)?.x ?? ''},${get(e.from?.id)?.y ?? ''}|${get(e.to?.id)?.version ?? ''}:${get(e.to?.id)?.x ?? ''},${get(e.to?.id)?.y ?? ''},${get(e.to?.id)?.w ?? ''}` : '';
       // a stroke being drawn keeps its version while points are added, so the point count is part of the key
-      const key = `${e.version}:${e.versionNonce}:${theme}:${editing?.id === e.id}:${deps}:${e.x},${e.y},${e.w},${e.h}:${e.points?.length ?? ''}:${steps.get(e.id) ?? ''}:${e.type === 'connector' ? routeKey : ''}`;
+      const key = `${e.version}:${e.versionNonce}:${theme}:${editing?.id === e.id}:${deps}:${rulesKey}:${e.type === 'callout' && e.attach ? JSON.stringify(bounds(get(e.attach) || e, get)) : ''}:${e.x},${e.y},${e.w},${e.h}:${e.points?.length ?? ''}:${steps.get(e.id) ?? ''}:${e.type === 'connector' ? routeKey : ''}`;
       let c = cache.get(e.id);
       if (!c || c.key !== key) {
         const tmp = svgEl('g');
-        const node = drawElement(tmp, e, get, { theme, editingId: editing?.id, files: opts.files, cardInfo: opts.cardInfo, steps,
+        const node = drawElement(tmp, e, get, { theme, editingId: editing?.id, files: opts.files, cardInfo: opts.cardInfo, steps, getEl: get,
+          graphics: x => graphicsFor(x, rulesNow()),
           obstaclesFor: c => boxes.filter(b => b.id !== c.from?.id && b.id !== c.to?.id),
           jumpsFor: c => [...routed.entries()].filter(([id]) => id < c.id).map(([, p]) => p),
           onRouted: (id, pts) => routed.set(id, pts) });
@@ -616,6 +636,8 @@ export function mountCanvas(container, opts) {
   });
   // Esc closes the options wherever focus is (a button inside them, the page, the board)
   const popKeys = e => {
+    // a round-4 side panel closes on Esc wherever focus is (also from inside its own select boxes)
+    if (e.key === 'Escape' && penPop.hidden && colourPop.hidden && !r4.hidden && (r4.contains(e.target) || e.target === document.body || root.contains(e.target))) { e.stopPropagation(); r4.hidden = true; clearVersionView(); root.focus({ preventScroll: true }); return; }
     if (e.key !== 'Escape' || (penPop.hidden && colourPop.hidden)) return;
     if (e.target?.closest?.('.wb-colourpop') && !colourPop.hidden && !penPop.hidden) { e.stopPropagation(); colourPop.hidden = true; return; }
     e.stopPropagation(); e.preventDefault(); penPop.hidden = true; colourPop.hidden = true; root.focus({ preventScroll: true });
@@ -697,6 +719,7 @@ export function mountCanvas(container, opts) {
     if (mode === 'board' && timerEnds && aw) live.push(`<button type="button" class="wb-chip on" data-c="timer" title="Timer everyone sees">${icon('timer')}<span></span></button>`);
     if (mode === 'board' && vmap && votingOn()) live.push(`<button type="button" class="wb-chip on" data-c="vote" title="Dot voting">${icon('vote')}<span>Voting · ${Math.max(0, (round()?.per || 0) - myVotes().length)} left</span></button>`);
     if (mode === 'board' && opts.boardLock?.isLocked?.()) live.push(`<button type="button" class="wb-chip on" data-c="lockboard" title="Unlock the board so people can edit it">${icon('lock')}<span>Locked</span></button>`);
+    if (mode === 'board' && sinceLast) live.push(`<button type="button" class="wb-chip on wb-chg" data-c="changes" title="Since you last opened: ${esc(sinceLast.text)}">${icon('history')}<span>${sinceLast.added.length + sinceLast.changed.length + sinceLast.removed.length} changes</span></button>`);
     if (mode === 'board') live.push(`<button type="button" class="wb-chip" data-c="present" title="Present frame by frame">${icon('play')}<span>Present</span></button>`);
     if (fs) live.push(`<button type="button" class="wb-chip" data-c="fs" title="${fullscreen ? 'Exit full screen (Esc)' : 'Full screen (Shift F)'}" aria-label="${fullscreen ? 'Exit full screen' : 'Full screen'}" aria-pressed="${fullscreen}"><svg class="wb-i" viewBox="0 0 24 24" aria-hidden="true">${fullscreen ? '<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/>' : '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>'}</svg></button>`);
     if (mode === 'board') live.push(`<button type="button" class="wb-chip ${!boardMenu.hidden ? 'on' : ''}" data-c="menu" title="More: guide, tidy up, find, frames, timer, vote, export…" aria-label="More board tools" aria-haspopup="menu">${icon('more')}</button>`);
@@ -721,6 +744,11 @@ export function mountCanvas(container, opts) {
       if (flowOn) add2('Diagram', 'check', 'Check this flowchart', 'check', '', !checkPanel.hidden);
       add2('Diagram', 'import', 'Import draw.io or Mermaid', 'import');
       if (opts.library) add2('Diagram', 'lib', 'Library', 'book');
+      add2('Diagram', 'relayout', 'Re-layout: hierarchy, radial, organic', 'layout');
+      add2('Diagram', 'graphics', 'Data graphics: bars, icons, colour rules', 'chart');
+      if (opts.people) add2('Diagram', 'org', 'Org chart from Directory', 'org');
+      if (opts.tasks?.createMany) add2('Diagram', 'tasks', 'Make Projects tasks from steps', 'task');
+      add2('Network', 'ipfind', 'Find a device by IP or name', 'ip');
     }
     add2('Board', 'find', 'Find on board', 'search', 'Ctrl F');
     add2('Board', 'frames', 'Frames', 'frames');
@@ -729,7 +757,12 @@ export function mountCanvas(container, opts) {
     if (aw) add2('Meeting', 'timer', timerEnds ? `Timer · ${timerLabel()}` : 'Timer everyone sees', 'timer', '', !!timerEnds);
     if (vmap) add2('Meeting', 'vote', votingOn() ? 'Voting is on' : 'Dot voting', 'vote', '', votingOn());
     add2('Meeting', 'present', 'Present frame by frame', 'play');
+    add2('Board', 'comments', 'Comments on this board', 'comment');
+    if (opts.history) add2('Board', 'history', 'Version history', 'history');
     add2('Share', 'export', 'Export or copy as picture', 'download');
+    add2('Share', 'report', 'Report to Excel or CSV', 'table');
+    add2('Share', 'pptx', 'Export to PowerPoint (frame = slide)', 'slides');
+    if (opts.shareToChat) add2('Share', 'chat', 'Send to Chat', 'chat');
     return t;
   }
   function paintBoardMenu() {
@@ -745,6 +778,7 @@ export function mountCanvas(container, opts) {
   function toggleBoardMenu() {
     if (!boardMenu.hidden) { boardMenu.hidden = true; paintCorners(); return; }
     boardMenuQ = '';
+    if (!r4.hidden) { r4.hidden = true; clearVersionView(); }
     boardMenu.hidden = false;
     paintBoardMenu();
     paintCorners();
@@ -798,6 +832,17 @@ export function mountCanvas(container, opts) {
     else if (e.target.closest('[data-c="import"]')) toggleImport();
     else if (e.target.closest('[data-c="popout"]')) opts.onPopOut?.();
     else if (e.target.closest('[data-c="lockboard"]')) opts.boardLock?.toggle?.();
+    else if (is('relayout')) togglePanelR4('relayout');
+    else if (is('graphics')) togglePanelR4('graphics');
+    else if (is('org')) togglePanelR4('org');
+    else if (is('tasks')) togglePanelR4('tasks');
+    else if (is('ipfind')) togglePanelR4('ipfind');
+    else if (is('comments')) togglePanelR4('comments');
+    else if (is('history')) togglePanelR4('history');
+    else if (is('report')) togglePanelR4('report');
+    else if (is('pptx')) exportPptx();
+    else if (is('chat')) opts.shareToChat?.();
+    else if (is('changes')) togglePanelR4('changes');
   }
   const pickTemplate = e => {
     if (e.target.closest('[data-close]')) { gallery.hidden = true; return; }
@@ -1190,7 +1235,7 @@ export function mountCanvas(container, opts) {
   }
   const onVote = () => { if (!destroyed) { paintVotes(); paintVotePanel(); paintCorners(); } };
   vmap?.observe(onVote);
-  const unThreads = opts.comments?.subscribe?.(list => { threads = (list || []).map(t => ({ id: t.id, anchor: t.anchor, resolvedAt: t.resolvedAt, count: t.count || 1 })); paintPins(); });
+  const unThreads = opts.comments?.subscribe?.(list => { threads = (list || []).map(t => ({ id: t.id, anchor: t.anchor, resolvedAt: t.resolvedAt, count: t.count || 1, text: t.text || '', author: t.author || '' })); paintPins(); if (r4Kind === 'comments') paintPanelR4(); });
 
   // ── Emoji and stickers ───────────────────────────────────────────────────
   // One picker: the full emoji list (search + skin tones, same data as Chat) and the team's stickers. Picking one puts it in the
@@ -1566,7 +1611,6 @@ export function mountCanvas(container, opts) {
 
   // ── Library (My library + team library, saved on the server) ────────────
   let libItems = null, libTab = 'mine', libBusy = false;
-  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   /// Elements moved so the group starts at 0,0; connectors keep only links to shapes that come along.
   function packForLibrary(els) {
     const ids = new Set(els.map(e => e.id));
@@ -1728,6 +1772,9 @@ export function mountCanvas(container, opts) {
       more.push(`<button type="button" data-style="dash" class="${s0?.dashed ? 'on' : ''}">┅<span>Dashed outline</span></button><button type="button" data-style="shadow" class="${s0?.shadow ? 'on' : ''}">▣<span>Shadow</span></button><button type="button" data-style="round">${s0?.rounded === false ? '▢' : '◻'}<span>${s0?.rounded === false ? 'Rounded corners' : 'Sharp corners'}</span></button>`);
     }
     if (els.length === 1 && isShape(els[0]) && !isContainer(els[0])) parts.push(`<button type="button" data-act="data" title="Shape data: PIC, duration, status" class="${els[0].data?.length ? 'on' : ''}">ⓘ</button>`);
+    if (els.length === 1 && els[0].type === 'rack') { const rc = rackContents(els[0], live()); parts.push(`<button type="button" data-act="data" class="wb-txtbtn" title="Rack size and location">${rc.units} U · ${rc.free} free</button>`); }
+    if (els.length === 1 && els[0].type === 'listBox') parts.push(`<button type="button" data-act="restack" class="wb-txtbtn" title="Stack the items again">≡ Tidy list</button>`);
+    if (els.length === 1 && (isShape(els[0]) && !isContainer(els[0]) && els[0].type !== 'callout')) more.push(`<button type="button" data-act="callout">💬<span>Add a callout that follows it</span></button>`);
     if (els.length === 1 && els[0].type === 'swimlane') parts.push(`<button type="button" data-act="laneadd" class="wb-txtbtn" title="Add a lane">+ Lane</button><button type="button" data-act="laneflip" class="wb-txtbtn" title="Turn the lanes">${els[0].orient === 'vertical' ? '⇅ Rows' : '⇄ Columns'}</button>`);
     if (els.some(e => e.type === 'path' || e.type === 'connector' || anyShape)) {
       const p = els.find(e => e.type === 'path'), cur = p ? Math.round((p.width || 3) * view.z) : (els.find(e => e.strokeWidth)?.strokeWidth || 2);
@@ -1968,7 +2015,7 @@ export function mountCanvas(container, opts) {
   let dataFor = null;
   function openDataEditor(target, anchor) {
     dataFor = target.id;
-    const rows = (target.data?.length ? target.data : [{ name: 'PIC', value: '' }, { name: 'Duration', value: '' }, { name: 'Status', value: '' }]);
+    const rows = (target.data?.length ? target.data : isNetDevice(target) ? [...NET_FIELDS, 'VLAN'].map(name => ({ name, value: '' })) : target.type === 'rack' ? [{ name: 'U', value: '24' }, { name: 'Location', value: '' }] : [{ name: 'PIC', value: '' }, { name: 'Duration', value: '' }, { name: 'Status', value: '' }]);
     dataEd.innerHTML = `<div class="wb-ph"><b>Shape data</b><button type="button" data-close aria-label="Close">✕</button></div>
       <p class="wb-note">Shown under the title. A status of Done, In progress or Late colours the left edge.</p>
       <div class="wb-drows">${rows.map((r, i) => `<div class="wb-drow"><input data-dn="${i}" value="${esc(r.name)}" placeholder="Field" aria-label="Field name"><input data-dv="${i}" value="${esc(r.value)}" placeholder="Value" aria-label="Value"></div>`).join('')}</div>
@@ -1994,10 +2041,10 @@ export function mountCanvas(container, opts) {
   root.append(shapePanel, shapeTip);
   shapePanel.addEventListener('pointerdown', e => e.stopPropagation());
   const PANEL_CATS = [['Basic', ICON_SHAPES.map(t => [t, SHAPE_LABEL[t], BASIC_TIPS[t]])], ...STENCIL_CATS.map(c => [c, STENCILS.filter(s => s[2] === c).map(s => [s[0], s[1], s[5]])])];
-  const ORDER = ['Flowchart', 'Basic', 'Containers', 'BPMN', 'ERD', 'Network', 'Timeline', 'Value stream'];
+  const ORDER = ['Flowchart', 'Basic', 'Containers', 'BPMN', 'UML', 'ERD', 'Network', 'Org chart', 'Floor plan', 'Timeline', 'Value stream'];
   function shapeIcon(type) {
     const st = stencilPath(type, 6, 10, 88, 60);
-    if (st) return `<svg viewBox="0 0 100 80" aria-hidden="true">${(st.behind || []).map(b => `<path d="${b}" class="wb-sic"/>`).join('')}${st.rx && /^M[\d.-]+ [\d.-]+H/.test(st.d) && !st.extra?.includes('A') ? `<rect x="6" y="10" width="88" height="60" rx="${Math.min(st.rx, 10)}" class="wb-sic"/>` : `<path d="${st.d}" class="wb-sic" ${st.fill ? `style="fill:${st.fill}"` : ''}/>`}${st.extra ? `<path d="${st.extra}" class="wb-sicx"/>` : ''}</svg>`;
+    if (st) return `<svg viewBox="0 0 100 80" aria-hidden="true">${(st.behind || []).map(b => `<path d="${b}" class="wb-sic"/>`).join('')}${st.rx && /^M[\d.-]+ [\d.-]+H/.test(st.d) && !st.extra?.includes('A') ? `<rect x="6" y="10" width="88" height="60" rx="${Math.min(st.rx, 10)}" class="wb-sic"/>` : `<path d="${st.d}" class="wb-sic" ${st.fill ? `style="fill:${st.fill}"` : ''}/>`}${st.extra ? `<path d="${st.extra}" class="wb-sicx"/>` : ''}${st.dot ? `<path d="${st.dot}" style="fill:currentColor;stroke:none"/>` : ''}${st.solid ? `<path d="${st.d}" style="fill:currentColor"/>` : ''}</svg>`;
     return `<svg viewBox="0 0 24 24" class="wb-i" aria-hidden="true">${ICONS[type] || ''}</svg>`;
   }
   function toggleShapePanel() {
@@ -2035,9 +2082,20 @@ export function mountCanvas(container, opts) {
     if (e.target.closest('[data-close]')) { shapePanel.hidden = true; shapeTip.hidden = true; return; }
     const b = e.target.closest('[data-st]'); if (!b || readOnly) return;
     const t = b.dataset.st, from = sel.size === 1 ? get([...sel][0]) : null;
-    if (from && isShape(from) && !isContainer(from) && t !== 'swimlane' && t !== 'groupBox') { addAfter(from, 'b', t); return; }
+    // a callout points at the selected shape and follows it
+    if (t === 'callout') {
+      const r0 = rect(), c0 = from ? { x: from.x + from.w + 110, y: from.y - 40 } : toWorld(r0.width / 2, r0.height / 2);
+      const s = makeShape('callout', { x: c0.x - 80, y: c0.y - 30 }, '');
+      const [placed] = add([from && from.type !== 'connector' ? { ...s, attach: from.id } : s]) || [];
+      if (placed) editSoon2(placed);
+      if (!from) toast('Tip: select a shape first and the callout points at it.');
+      return;
+    }
+    // a device clicked while a rack is selected goes into the rack's lowest free slot
+    if (from?.type === 'rack' && isNetDevice({ type: t })) { addToRack(from, t); return; }
+    if (from && isShape(from) && !isContainer(from) && !isContainer({ type: t })) { addAfter(from, 'b', t); return; }
     const r = rect(); let c = toWorld(r.width / 2, r.height / 2);
-    if (t === 'swimlane' || t === 'groupBox') {
+    if (isContainer({ type: t })) {
       const all2 = live().filter(x => !x.isDeleted), ub = unionBounds(all2, get), d = STENCIL[t];
       if (ub) c = { x: ub.x + ub.w + 120 + d.w / 2, y: ub.y + d.h / 2 };
       const placed = placeShape(t, c);
@@ -2054,6 +2112,13 @@ export function mountCanvas(container, opts) {
     if (t === 'groupBox') return create(t, { ...base, title: 'Group', fill: 'none' });
     if (t === 'erTable') return create(t, { ...base, text: text ?? 'Customer\nid  int  PK\nname  text\nphone  text' });
     if (t === 'vsProcess') return create(t, { ...base, text: text ?? 'Assembly', data: [{ name: 'C/T', value: '45 s' }, { name: 'People', value: '2' }] });
+    if (t === 'rack') return create(t, { ...base, title: 'Rack A', fill: 'none', data: [{ name: 'U', value: '24' }, { name: 'Location', value: '' }] });
+    if (t === 'listBox' || t === 'fpRoom' || t === 'umlPackage') return create(t, { ...base, title: { listBox: 'Checklist', fpRoom: 'Room', umlPackage: 'Package' }[t], fill: 'none' });
+    if (t === 'umlClass') return create(t, { ...base, text: text ?? 'Order\n- id: int\n- date: Date\n--\n+ approve()' });
+    if (t === 'umlInterface') return create(t, { ...base, text: text ?? 'Approvable\n+ approve()\n+ reject()' });
+    if (t === 'umlLifeline') return create(t, { ...base, text: text ?? 'Purchasing' });
+    if (t === 'orgCard') return create(t, { ...base, text: text ?? 'Name\nDepartment' });
+    if (isNetDevice({ type: t })) return create(t, { ...base, data: NET_FIELDS.map(name => ({ name, value: '' })) });
     return create(t, { ...base, ...(lastShapeStyle && FLOW_TYPES.has(t) ? lastShapeStyle : {}) });
   }
   function placeShape(t, c) {
@@ -2412,9 +2477,318 @@ export function mountCanvas(container, opts) {
     else if (b.dataset.act === 'ungroup') { groupSel(false); return; }
     else if (b.dataset.act === 'arrange') { toggleArrange(b); return; }
     else if (b.dataset.act === 'link') { openLinkEditor(els[0], b); return; }
+    else if (b.dataset.act === 'restack') { restack(els[0]); }
+    else if (b.dataset.act === 'callout') { const f = els[0]; const c0 = makeShape('callout', { x: f.x + f.w + 30, y: f.y - 70 }, ''); const [placed] = add([{ ...c0, attach: f.id }]) || []; if (placed) editSoon2(placed); return; }
     commitStop();
     paintProps();
   });
+
+  // ══ Round 4: Visio, network and ClickUp extras ════════════════════════════
+  const CARRIES = new Set(['listBox', 'rack', 'fpRoom', 'umlPackage']);
+  const insideOf = (x, f) => { const b = bounds(x, get); const cx = b.x + b.w / 2, cy = b.y + b.h / 2; return cx >= f.x && cx <= f.x + f.w && cy >= f.y && cy <= f.y + f.h; };
+  const onMeta = () => { if (!destroyed) { cache.clear(); render(); paintPanelR4(); } };
+  meta?.observe(onMeta);
+
+  /// After a move: devices dropped in a rack snap to its slots; shapes dropped in a list are stacked.
+  function afterMove(movedEls) {
+    if (readOnly) return;
+    const all2 = live(), out = [];
+    for (const m of movedEls) {
+      if (isNetDevice(m)) {
+        const d = rackDrop(m, all2);
+        if (d) out.push(bump(m, { x: Math.round(d.box.x), y: d.box.y, w: Math.round(d.box.w), h: d.box.h, rackU: d.u }));
+        else if (m.rackU) { const s0 = STENCIL[m.type]; out.push(bump(m, { rackU: undefined, w: s0?.w || m.w, h: s0?.h || m.h })); }
+      }
+    }
+    if (out.length) write(out, { now: true });
+    const lists = new Set();
+    for (const m of movedEls) for (const l of live().filter(x => x.type === 'listBox')) if (m.id === l.id || insideOf(m, l)) lists.add(l.id);
+    for (const id of lists) restack(get(id));
+  }
+  function restack(list) {
+    if (!list || list.locked) return;
+    const { pos, height } = stackList(list, live());
+    const out = [...pos].map(([id, p]) => { const x = get(id); return x && (x.x !== p.x || x.y !== p.y || x.w !== p.w) ? bump(x, p) : null; }).filter(Boolean);
+    if (height !== list.h) out.push(bump(list, { h: height }));
+    if (out.length) write(out, { now: true });
+  }
+  function addToRack(rack, t) {
+    const c = rackContents(rack, live());
+    const taken = new Set(); for (const r of c.rows) for (let k = 0; k < r.size; k++) taken.add(r.u + k);
+    const proto = makeShape(t, { x: 0, y: 0 });
+    const size = Math.max(1, Math.min(c.units, rackUnits(proto)));
+    let u = 0; for (let k = 1; k + size - 1 <= c.units; k++) { let ok = true; for (let j = 0; j < size; j++) if (taken.has(k + j)) ok = false; if (ok) { u = k; break; } }
+    if (!u) { toast(`This rack is full (${c.units} U)`); return; }
+    const s = rackSlots(rack).slot(u, size);
+    const [placed] = add([{ ...proto, x: Math.round(s.x), y: s.y, w: Math.round(s.w), h: s.h, rackU: u }]) || [];
+    if (placed) { toast(`Added at U${u}${size > 1 ? `–${u + size - 1}` : ''}. ${c.free - size} U free.`); editSoon2(placed); }
+  }
+
+  // ── Round 4 panels (one at a time, on the right) ─────────────────────────
+  const r4 = el('div', 'wb-panel wb-r4'); r4.hidden = true; r4.setAttribute('role', 'dialog');
+  root.append(r4);
+  r4.addEventListener('pointerdown', e => e.stopPropagation());
+  r4.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Escape') { r4.hidden = true; root.focus({ preventScroll: true }); } });
+
+  function togglePanelR4(kind) {
+    if (!r4.hidden && r4Kind === kind) { r4.hidden = true; return; }
+    for (const p of [framesPanel, timerPanel, libPanel, gallery, votePanel, exportPanel, cardPicker, guidePanel, checkPanel, importPanel, shapePanel]) p.hidden = true;
+    r4Kind = kind; r4State = {}; r4.hidden = false; r4.setAttribute('aria-label', kind);
+    if (kind === 'history') loadHistory();
+    if (kind === 'org') r4State = { q: '', res: [] };
+    paintPanelR4();
+    r4.querySelector('input[type="search"], input:not([type]), select')?.focus({ preventScroll: true });
+  }
+  const head4 = t => `<div class="wb-ph"><b>${t}</b><button type="button" data-close aria-label="Close">✕</button></div>`;
+  function paintPanelR4() {
+    if (r4.hidden) return;
+    const k = r4Kind;
+    if (k === 'relayout') {
+      r4.innerHTML = head4('Re-layout') + `<p class="wb-note">Moves the shapes${sel.size > 1 ? ' you selected' : ' on the board'} into a new arrangement. Ctrl Z undoes it.</p>
+        <div class="wb-lay">${[['tree', 'Hierarchy', 'Parents above their children, like an org chart.'], ['radial', 'Radial', 'The main idea in the middle, the rest around it.'], ['organic', 'Organic', 'Related shapes pulled together, the rest spread out.'], ['flowTB', 'Flow top to bottom', 'Steps in order, top to bottom.'], ['flowLR', 'Flow left to right', 'Steps in order, left to right.'], ['network', 'Network', 'Internet → firewall → core → access → devices.']].map(([v, n, d]) => `<button type="button" data-lay="${v}"><b>${n}</b><span>${d}</span></button>`).join('')}</div>`;
+    } else if (k === 'graphics') {
+      const r = rulesNow();
+      r4.innerHTML = head4('Data graphics') + `<p class="wb-note">Shows the shape data as a picture on every shape that has it: Status, Progress (%) and Duration. The rule is the same for everyone on this board.</p>
+        <label class="wb-row">Show <select data-gshow ${readOnly ? 'disabled' : ''}>${[['off', 'Nothing (plain shapes)'], ['bar', 'Progress bar'], ['icon', 'Status icon'], ['color', 'Fill colour']].map(([v, n]) => `<option value="${v}" ${r.show === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+        <label class="wb-row">Late after <select data-glate ${readOnly ? 'disabled' : ''}>${[1, 2, 3, 5, 7, 10, 14].map(n => `<option ${+r.lateDays === n ? 'selected' : ''}>${n}</option>`).join('')}</select> days</label>
+        <div class="wb-legend"><span><i style="background:#34C759"></i>Done</span><span><i style="background:#FF9500"></i>In progress</span><span><i style="background:#FF3B30"></i>Late</span><span><i style="background:#8E8E93"></i>Not started</span></div>`;
+    } else if (k === 'ipfind') {
+      const q = r4State.q || '', hits = findDevice(live(), q);
+      r4.innerHTML = head4('Find a device') + `<input class="wb-search" data-ipq value="${esc(q)}" placeholder="IP, hostname or name (10.10.6.16)" aria-label="IP, hostname or name">
+        <div class="wb-cardlist">${q ? (hits.length ? hits.slice(0, 30).map(h => `<button type="button" data-goto="${h.id}"><b>${esc(String(h.text || SHAPE_LABEL[h.type] || '').split('\n')[0] || SHAPE_LABEL[h.type])}</b><span class="wb-mono">${esc((h.data || []).find(d => /^ip$/i.test(d.name))?.value || '')}</span></button>`).join('') : '<p class="wb-note">No device has that IP or name.</p>') : `<p class="wb-note">${live().filter(isNetDevice).length} network devices on this board. Fill in IP and hostname with ⓘ Shape data.</p>`}</div>`;
+      const inp = r4.querySelector('[data-ipq]');
+      inp.addEventListener('input', () => { r4State.q = inp.value; paintPanelR4(); const i2 = r4.querySelector('[data-ipq]'); i2.focus(); i2.setSelectionRange(i2.value.length, i2.value.length); });
+      inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') r4.querySelector('[data-goto]')?.click(); });
+    } else if (k === 'report') {
+      const types = r4State.types || 'all';
+      const rep = reportRows(live(), { types: types === 'all' ? undefined : new Set(STENCILS.filter(s => s[2] === types).map(s => s[0])) });
+      const cats = [...new Set(live().map(e => STENCIL[e.type]?.cat).filter(Boolean))];
+      r4.innerHTML = head4('Report') + `<label class="wb-row">Shapes <select data-rtype><option value="all">All</option>${cats.map(c => `<option ${types === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+        <div class="wb-rtable"><table><thead><tr>${rep.head.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rep.rows.slice(0, 60).map(r => `<tr>${r.map(v => `<td>${esc(v)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${rep.head.length}">No shapes yet.</td></tr>`}</tbody></table></div>
+        <p class="wb-note">${rep.rows.length} shapes${rep.rows.length > 60 ? ' (first 60 shown; the file has all)' : ''}.</p>
+        <div class="wb-row2"><button type="button" class="wb-wide" data-rcsv>CSV</button><button type="button" class="wb-wide wb-pri" data-rxlsx>Download Excel</button></div>`;
+      r4State.rep = rep;
+    } else if (k === 'comments') {
+      const list = threads.filter(t => !t.resolvedAt).map(t => ({ t, a: anchorOf(t) })).filter(x => x.a);
+      r4.innerHTML = head4(`Comments on this board · ${list.length}`) + (list.length ? `<div class="wb-cardlist">${list.map(({ t, a }) => { const on = a.el ? get(a.el) : null; return `<button type="button" data-thread2="${t.id}"><b>${esc(on ? String(on.text || on.title || on.label || (on.type === 'connector' ? 'Line' : SHAPE_LABEL[on.type]) || 'Shape').split('\n')[0].slice(0, 40) : 'On the board')}</b><span>${esc(t.text || '…')}</span><small>${esc(t.author || '')}${t.count > 1 ? ` · ${t.count - 1} ${t.count === 2 ? 'reply' : 'replies'}` : ''}</small></button>`; }).join('')}</div>` : '<p class="wb-note">No open comments. Press C (Comment) and click a shape to ask something about it.</p>');
+    } else if (k === 'org') {
+      r4.innerHTML = head4('Org chart from Directory') + `<p class="wb-note">Pick a person; their manager line and their team are added as cards with photos. Positions and NIK are not shown.</p>
+        <input class="wb-search" data-orgq value="${esc(r4State.q || '')}" placeholder="Search a name" aria-label="Search a name">
+        <div class="wb-cardlist">${(r4State.res || []).map((p, i) => `<button type="button" data-orgpick="${i}"><b>${esc(p.name)}</b><span>${esc(p.dept || '')}</span></button>`).join('') || (r4State.q?.length > 1 ? '<p class="wb-note">No one found.</p>' : '')}</div>
+        ${r4State.busy ? '<p class="wb-note">Adding the team…</p>' : ''}`;
+      const inp = r4.querySelector('[data-orgq]');
+      inp.addEventListener('input', () => {
+        r4State.q = inp.value; clearTimeout(r4State.t);
+        r4State.t = setTimeout(async () => { if ((r4State.q || '').trim().length < 2) { r4State.res = []; paintPanelR4(); return; } try { r4State.res = await opts.people.search(r4State.q.trim()); } catch { r4State.res = []; } paintPanelR4(); const i2 = r4.querySelector('[data-orgq]'); i2?.focus(); i2?.setSelectionRange(i2.value.length, i2.value.length); }, 220);
+      });
+    } else if (k === 'tasks') {
+      // the selected steps, or every flowchart step on the board when nothing is selected
+      const picked = [...sel].map(get).filter(x => x && isShape(x) && !isContainer(x));
+      const chosen = picked.length ? picked : live().filter(x => FLOW_TYPES.has(x.type) && !/^(decision|bpmnGateway|bpmnParallel)$/.test(x.type));
+      const list = tasksFromShapes(live(), chosen, { chain: r4State.chain !== false });
+      r4.innerHTML = head4('Make Projects tasks') + (list.length ? `<p class="wb-note">One task per step, in flow order. PIC comes from the shape data and is matched with the project's members; durations make due dates one after another (working days).</p>
+        <div class="wb-cardlist">${list.map((t, i) => `<label class="wb-chk"><input type="checkbox" data-tk="${i}" checked><b>${i + 1}. ${esc(t.title)}</b><span>${esc([t.pic && `PIC ${t.pic}`, t.due].filter(Boolean).join(' · '))}</span></label>`).join('')}</div>
+        <label class="wb-row"><input type="checkbox" data-chain ${r4State.chain !== false ? 'checked' : ''}> Chain due dates</label>
+        <div class="wb-row2"><button type="button" class="wb-wide wb-pri" data-mktasks>Create ${list.length} task${list.length > 1 ? 's' : ''}…</button></div>` : '<p class="wb-note">There are no steps on this board yet. Add Process shapes (or select the ones you want), then press this again.</p>');
+      r4State.list = list;
+    } else if (k === 'history') {
+      const v = r4State.versions;
+      r4.innerHTML = head4('Version history') + (!v ? '<p class="wb-note">Loading…</p>' : !v.length ? '<p class="wb-note">No saved versions yet. A version is kept every few minutes while people edit.</p>'
+        : `<input type="range" class="wb-vslide" min="0" max="${v.length}" value="${r4State.at ?? v.length}" aria-label="Version">
+          <p class="wb-vlabel"><b>${esc(r4State.at == null || r4State.at === v.length ? 'Now' : fmtWhen(v[v.length - 1 - r4State.at]))}</b>${r4State.at != null && r4State.at < v.length && v[v.length - 1 - r4State.at].who ? ` · ${esc(v[v.length - 1 - r4State.at].who)}` : ''}</p>
+          ${r4State.diff ? `<div class="wb-legend"><span><i style="background:#34C759"></i>Added since (${r4State.diff.added.length})</span><span><i style="background:#FF9500"></i>Changed (${r4State.diff.changed.length})</span><span><i style="background:#FF3B30"></i>Removed (${r4State.diff.removed.length})</span></div>` : '<p class="wb-note">Slide back to see what the board looked like and what changed since.</p>'}
+          ${r4State.at != null && r4State.at < v.length && opts.history?.restore && !readOnly ? '<div class="wb-row2"><button type="button" class="wb-wide" data-vrestore>Restore this version…</button></div>' : ''}`);
+      const sl = r4.querySelector('.wb-vslide');
+      sl?.addEventListener('input', () => { r4State.at = +sl.value; showVersion(); });
+    } else if (k === 'changes') {
+      const c = r4State.changes || sinceLast;
+      r4.innerHTML = head4('Since you last opened') + (c ? `<p>${esc(c.who ? `${c.who} ` : '')}${esc(c.text)}</p><div class="wb-row2"><button type="button" class="wb-wide wb-pri" data-showchg>Show me on the board</button><button type="button" class="wb-wide" data-close>Dismiss</button></div>` : '<p class="wb-note">Nothing changed since you last opened this board.</p>');
+    }
+  }
+  const fmtWhen = v => { try { return new Date(v.at).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return String(v.at); } };
+  r4.addEventListener('change', e => {
+    const t = e.target;
+    if (t.matches('[data-gshow],[data-glate]') && meta && !readOnly) {
+      const r = { ...rulesNow() };
+      if (t.matches('[data-gshow]')) r.show = t.value; else r.lateDays = +t.value;
+      doc.transact(() => meta.set('graphics', r), ORIGIN);
+      if (r.show !== 'off' && !live().some(x => x.data?.some(d => /status|progress|duration/i.test(d.name || '')))) toast('Add Status, Progress or Duration with ⓘ Shape data to see it on the shapes.');
+    }
+    if (t.matches('[data-rtype]')) { r4State.types = t.value; paintPanelR4(); }
+    if (t.matches('[data-chain]')) { r4State.chain = t.checked; paintPanelR4(); }
+  });
+  r4.addEventListener('click', async e => {
+    if (e.target.closest('[data-close]')) { if (r4Kind === 'changes') { sinceLast = null; paintCorners(); } r4.hidden = true; clearVersionView(); return; }
+    const lay = e.target.closest('[data-lay]'); if (lay) { r4.hidden = true; relayout(lay.dataset.lay); return; }
+    const go = e.target.closest('[data-goto]'); if (go) { focusOn(go.dataset.goto); return; }
+    const th = e.target.closest('[data-thread2]'); if (th) { const t = threads.find(x => x.id === th.dataset.thread2), a = t && anchorOf(t); if (a) { const p = pinPos(a), r = rect(); view.x = r.width / 2 - p.x * view.z; view.y = r.height / 2 - p.y * view.z; if (a.el) { sel = new Set([a.el]); paintProps(); } render(); } opts.comments?.open?.(th.dataset.thread2); return; }
+    if (e.target.closest('[data-rcsv]')) { download(new Blob([toCsv(r4State.rep)], { type: 'text/csv;charset=utf-8' }), 'csv'); return; }
+    if (e.target.closest('[data-rxlsx]')) { download(new Blob([toXlsx(r4State.rep, 'Report')], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'xlsx'); return; }
+    const op = e.target.closest('[data-orgpick]'); if (op) { addOrgChart(r4State.res[+op.dataset.orgpick]); return; }
+    if (e.target.closest('[data-mktasks]')) {
+      const keep = [...r4.querySelectorAll('[data-tk]')].filter(x => x.checked).map(x => r4State.list[+x.dataset.tk]);
+      if (!keep.length) return;
+      const res = await opts.tasks.createMany(keep).catch(() => null);
+      if (!res?.length) return;
+      // each step gets a task card beside it, joined by a dashed line
+      const out = [];
+      for (const { stepId, task } of res) {
+        const s = get(stepId); if (!s) continue;
+        taskCache.set(task.id, task);
+        // beside the step, moved down until it overlaps nothing (other cards, callouts, shapes)
+        const others = [...live(), ...out];
+        const free = placeNext(s, 'r', { w: 240, h: 104 }, others.map(o => (o.type === 'callout' || o.type === 'taskCard' ? { ...o, type: 'process' } : o)), 60);
+        const card = create('taskCard', { x: free.x, y: free.y, w: 240, h: 104, taskId: task.id, title: task.title });
+        out.push(card, create('connector', { from: { id: s.id }, to: { id: card.id }, dashed: true, endHead: 'none' }));
+      }
+      add(out, { select: false });
+      r4.hidden = true;
+      toast(res.length === 1 ? 'Task created in Projects' : `${res.length} tasks created in Projects`);
+      return;
+    }
+    if (e.target.closest('[data-vrestore]')) { const v = r4State.versions[r4State.versions.length - 1 - r4State.at]; if (v) { r4.hidden = true; clearVersionView(); opts.history.restore(v.id); } return; }
+    if (e.target.closest('[data-showchg]')) { const c = r4State.changes || sinceLast; r4.hidden = true; sinceLast = null; paintCorners(); if (c) { const ids = [...c.added, ...c.changed].map(x => x.id).filter(id => get(id)); sel = new Set(ids); if (ids.length) fit(ids.map(get), { max: 1 }); paintProps(); render(); } return; }
+  });
+  function download(blob, ext) {
+    const name = `${(opts.title?.() || 'whiteboard').replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'whiteboard'}${ext === 'csv' || ext === 'xlsx' ? ' report' : ''}.${ext}`;
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+  function focusOn(id) {
+    const t = get(id); if (!t) return;
+    sel = new Set([id]);
+    const b = bounds(t, get), r = rect();
+    view.z = Math.max(view.z, 0.8);
+    view.x = r.width / 2 - (b.x + b.w / 2) * view.z; view.y = r.height / 2 - (b.y + b.h / 2) * view.z;
+    paintProps(); render();
+  }
+  function relayout(kind) {
+    if (readOnly) return;
+    if (kind === 'flowTB' || kind === 'flowLR') { tidyFlow(kind === 'flowLR' ? 'LR' : 'TB'); return; }
+    const chosen = [...sel].map(get).filter(Boolean);
+    // the network layout only moves network devices unless shapes are selected
+    const netIds = kind === 'network' && chosen.length < 2 ? new Set(live().filter(x => isNetDevice(x) || x.type === 'netCloud').map(x => x.id)) : null;
+    const scope = chosen.length > 1 ? live().filter(x => sel.has(x.id) || (x.type === 'connector' && sel.has(x.from?.id) && sel.has(x.to?.id)))
+      : netIds ? live().filter(x => netIds.has(x.id) || (x.type === 'connector' && netIds.has(x.from?.id) && netIds.has(x.to?.id))) : live();
+    const shapes = scope.filter(x => (isShape(x) || x.type === 'sticky' || x.type === 'taskCard' || x.type === 'noteCard') && !isContainer(x) && !x.locked);
+    if (shapes.length < 2) { toast('Join shapes with lines first; the lines tell the layout who belongs to whom.'); return; }
+    if (!scope.some(x => x.type === 'connector' && x.from?.id && x.to?.id)) { toast('Join the shapes with lines first; the layout follows the lines.'); return; }
+    const b = unionBounds(shapes, get), ids = new Set(shapes.map(s => s.id));
+    const pos = kind === 'tree' ? layoutTree(scope, { ids, origin: { x: b.x, y: b.y } }) : kind === 'radial' ? layoutRadial(scope, { ids }) : kind === 'network' ? layoutNetwork(scope, { ids, origin: { x: b.x, y: b.y } }) : layoutOrganic(scope, { ids });
+    if (!pos.size) { toast('Already in that layout'); return; }
+    write([...pos].map(([id, p]) => { const x = get(id); return x && !x.locked ? bump(x, { x: p.x, y: p.y }) : null; }).filter(Boolean), { now: true });
+    const strip = end => (end?.id ? { id: end.id } : end);
+    write(scope.filter(x => x.type === 'connector' && (x.waypoints?.length || x.from?.side || x.to?.side)).map(x => bump(x, { waypoints: undefined, from: strip(x.from), to: strip(x.to), route: kind === 'tree' || kind === 'network' ? 'elbow' : x.route })), { now: true });
+    commitStop();
+    fit(shapes.map(s => get(s.id)), { max: 1 });
+    toast('Re-arranged. Ctrl Z undoes it.');
+  }
+  async function addOrgChart(person) {
+    if (!person || readOnly || !opts.people?.team) return;
+    r4State.busy = true; paintPanelR4();
+    let people = [];
+    try { people = await opts.people.team(person); } catch { /* none */ }
+    r4State.busy = false;
+    if (!people.length) { toast('Could not read this team from Directory'); paintPanelR4(); return; }
+    const ub = unionBounds(live(), get);
+    const at = ub ? { x: Math.round(ub.x + ub.w + 160), y: Math.round(ub.y) } : toWorld(rect().width / 2, 120);
+    const els = orgChart(people, create, at);
+    for (const p of people) if (p.photo) ensurePhoto(p.photo);
+    const placed = add(els, { select: false }) || [];
+    r4.hidden = true;
+    fit(placed.filter(x => x.type === 'orgCard'), { max: 1 });
+    toast(`Added ${people.length} people. Double-click a card to change it.`);
+  }
+  // person photos for org cards (loaded once, as data URLs so exports include them)
+  function ensurePhoto(key) {
+    if (!key || photoSeen.has(key) || !opts.people?.photo) return;
+    photoSeen.add(key);
+    Promise.resolve(opts.people.photo(key)).then(async url => { if (!url) return; const b = await (await fetch(url)).blob(); const d = await new Promise(ok => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.readAsDataURL(b); }); files.set(`ph:${key}`, d); cache.clear(); render(); }).catch(() => {});
+  }
+
+  // ── PowerPoint export: each frame is a slide (in Present order); no frames = one slide of the whole board ──
+  async function exportPptx() {
+    const frames = framesInOrder();
+    const all2 = live();
+    const groups = frames.length ? frames.map(f => ({ title: f.name || 'Frame', box: { x: f.x, y: f.y, w: f.w, h: f.h }, els: all2.filter(x => x.id !== f.id && x.type !== 'frame' && frameOf(x, all2, get)?.id === f.id) }))
+      : [{ title: opts.title?.() || 'Whiteboard', box: unionBounds(all2, get), els: all2.filter(x => x.type !== 'frame') }];
+    if (!groups[0]?.box) { toast('Nothing to export'); return; }
+    toast('Making the PowerPoint…');
+    const files = await dataUrls();
+    const slides = [];
+    for (const g of groups) {
+      const ids = new Set(g.els.map(x => x.id));
+      const native = g.els.filter(x => pptxNative(x) && (x.type !== 'connector' || (ids.has(x.from?.id) && ids.has(x.to?.id))));
+      const nset = new Set(native.map(x => x.id));
+      const rest = g.els.filter(x => !nset.has(x.id) && x.type !== 'connector');
+      let picture = null;
+      if (rest.length) {
+        const png = await toPng(rest, { scale: 2, theme: 'light', files, background: false, cardInfo: opts.cardInfo }).catch(() => null);
+        const rb = unionBounds(rest, get);
+        if (png && rb) picture = { bytes: new Uint8Array(await png.arrayBuffer()), box: { x: rb.x - 32, y: rb.y - 32, w: rb.w + 64, h: rb.h + 64 } };
+      }
+      slides.push({ title: g.title, box: g.box, els: native, picture });
+    }
+    download(new Blob([toPptx(slides, { title: opts.title?.() || 'Whiteboard' })], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }), 'pptx');
+  }
+
+  // ── Version history with a visual diff ─────────────────────────────────────
+  // opts.history: { list() -> [{ id, at, who }], scene(id) -> elements of this board in that version, restore(id) }
+  const diffLayer = svgEl('g', { class: 'wb-difflayer' }, svg);
+
+  async function loadHistory() {
+    try { r4State.versions = (await opts.history.list()) || []; } catch { r4State.versions = []; }
+    r4State.at = r4State.versions.length; paintPanelR4();
+  }
+  async function showVersion() {
+    const v = r4State.versions; const i = r4State.at;
+    if (i == null || i >= v.length) { clearVersionView(); r4State.diff = null; paintPanelR4(); return; }
+    const ver = v[v.length - 1 - i];
+    let old = ver._scene;
+    if (!old) { try { old = ver._scene = await opts.history.scene(ver.id); } catch { old = []; } }
+    if (r4State.at !== i) return;
+    const d = diffScenes(old || [], live());
+    r4State.diff = d;
+    versionView = { old: old || [], diff: d };
+    paintPanelR4(); paintDiff();
+    const sl = r4.querySelector('.wb-vslide'); sl?.focus();
+  }
+  function clearVersionView() { versionView = null; diffLayer.innerHTML = ''; root.classList.remove('wb-vview'); }
+  function paintDiff() {
+    diffLayer.innerHTML = '';
+    if (!versionView) { root.classList.remove('wb-vview'); return; }
+    root.classList.add('wb-vview');
+    diffLayer.setAttribute('transform', `translate(${view.x} ${view.y}) scale(${view.z})`);
+    // the old picture faint underneath; removed things drawn red, added green, changed orange
+    const oldMap = new Map(versionView.old.map(e => [e.id, e]));
+    const ghost = svgEl('g', { opacity: 0.35 }, diffLayer);
+    for (const e of versionView.old) if (!e.isDeleted) drawElement(ghost, e, id => oldMap.get(id), { theme, files: opts.files, cardInfo: opts.cardInfo });
+    // lines are not boxed (a box around a long line covers half the board); their count is in the panel
+    const mark = (e, get2, cls) => { if (e.type === 'connector') return; const b = bounds(e, get2); svgEl('rect', { x: b.x - 6, y: b.y - 6, width: b.w + 12, height: b.h + 12, rx: 8, class: cls, 'vector-effect': 'non-scaling-stroke' }, diffLayer); };
+    for (const e of versionView.diff.removed) mark(e, id => oldMap.get(id), 'wb-diffr');
+    for (const e of versionView.diff.added) mark(e, get, 'wb-diffa');
+    for (const e of versionView.diff.changed) mark(e, get, 'wb-diffm');
+  }
+
+  // ── "What changed since I last opened" ───────────────────────────────────────
+  // The last scene I saw is kept per person in this browser (ids + a signature); on open the difference is shown once.
+  const SEEN_KEY = `ipop.wb.seen:${opts.seenKey || boardKey}`;
+  const sceneSig = () => live().map(e => ({ id: e.id, type: e.type, x: Math.round(e.x || 0), y: Math.round(e.y || 0), w: Math.round(e.w || 0), h: Math.round(e.h || 0), text: e.text, title: e.title, name: e.name, label: e.label, fill: e.fill, stroke: e.stroke, data: e.data, from: e.from, to: e.to }));
+  function checkSinceLast() {
+    if (mode !== 'board' || !opts.seenKey) return;
+    let before = null;
+    try { before = JSON.parse(localStorage.getItem(SEEN_KEY) || 'null'); } catch { /* none */ }
+    const nowSig = sceneSig();
+    if (before?.els) {
+      const d = diffScenes(before.els, nowSig);
+      const text = diffSummary(d);
+      if (text) { sinceLast = { ...d, text: `${text[0].toUpperCase()}${text.slice(1)}.` }; paintCorners(); }
+    }
+    saveSeen();
+  }
+  function saveSeen() { try { localStorage.setItem(SEEN_KEY, JSON.stringify({ at: Date.now(), els: sceneSig() })); } catch { /* full or blocked */ } }
+  const seenTimer = setInterval(() => { if (!destroyed && document.visibilityState === 'visible') saveSeen(); }, 30000);
+  setTimeout(() => { if (!destroyed) checkSinceLast(); }, 1500);
 
   // ── Editing operations ───────────────────────────────────────────────────
   function add(els, { select = true } = {}) {
@@ -2747,6 +3121,10 @@ export function mountCanvas(container, opts) {
       // moving a frame carries what sits inside it
       const ids = new Set(movers.map(m => m.id));
       for (const f of movers.filter(m => m.type === 'frame')) for (const x of live()) if (!ids.has(x.id) && !x.locked && frameOf(x, live(), get)?.id === f.id) { ids.add(x.id); }
+      // lists, racks, rooms and packages carry what sits inside them too (round 4)
+      for (const f of movers.filter(m => CARRIES.has(m.type))) for (const x of live()) if (!ids.has(x.id) && !x.locked && x.id !== f.id && x.type !== 'connector' && x.type !== 'frame' && insideOf(x, f)) ids.add(x.id);
+      // a callout goes wherever its shape goes
+      for (const x of live()) if (x.type === 'callout' && x.attach && ids.has(x.attach) && !ids.has(x.id) && !x.locked) ids.add(x.id);
       const orig = [...ids].map(id => get(id));
       interaction = { kind: 'move', start: w, orig, moved: false, others: live().filter(x => !ids.has(x.id) && x.type !== 'connector' && x.type !== 'path').slice(0, 400).map(x => bounds(x, get)) };
       props.hidden = true; render();
@@ -2937,7 +3315,8 @@ export function mountCanvas(container, opts) {
         if (m.w * view.z > 4 || m.h * view.z > 4) sel = expandGroups(new Set(insideBox(live(), m, get).map(x => x.id)), live());
         break;
       }
-      case 'move': case 'resize': commitStop(); break;
+      case 'move': if (it.moved) afterMove(it.orig.map(o => get(o.id)).filter(Boolean)); commitStop(); break;
+      case 'resize': commitStop(); break;
     }
     render(); paintProps();
   }
@@ -2996,9 +3375,9 @@ export function mountCanvas(container, opts) {
         return;
       }
     }
-    if (hit?.type === 'groupBox') {
+    if (hit && ['groupBox', 'listBox', 'rack', 'fpRoom', 'umlPackage'].includes(hit.type) && (hit.type !== 'rack' || w.y <= hit.y + 10)) {
       const ta = el('input', 'wb-edit wb-frame-name'); ta.value = hit.title || ''; ta.setAttribute('aria-label', 'Group title');
-      const a = toScreen(hit.x + 8, hit.y + 6);
+      const a = toScreen(hit.x + 8, hit.type === 'rack' ? hit.y - 28 : hit.y + 6);
       Object.assign(ta.style, { left: `${a.x}px`, top: `${a.y}px`, width: '220px', height: '24px', fontSize: '14px', fontWeight: '600' });
       root.append(ta); ta.focus(); ta.select();
       const done = () => { const v = ta.value.trim(); ta.remove(); write([bump(get(hit.id), { title: v.slice(0, 80) || undefined })], { now: true }); commitStop(); };
@@ -3160,6 +3539,7 @@ export function mountCanvas(container, opts) {
     if (mod && k === '0') { e.preventDefault(); zoomAt(1 / view.z); return; }
     if (e.shiftKey && k === '!') { fit(); return; }
     if (e.shiftKey && e.code === 'Digit1') { e.preventDefault(); fit(); return; }
+    if (e.shiftKey && e.code === 'Digit2' && sel.size) { e.preventDefault(); fit([...sel].map(get).filter(Boolean), { max: 2 }); return; }
     if (e.shiftKey && k === 'f' && !mod && mode === 'board' && opts.onFullscreen) { e.preventDefault(); toggleFullscreen(); return; }
     if (e.key === '?') { toggleKeys(); return; }
     if (mod && k === 'f') { e.preventDefault(); openFind(); return; }
@@ -3167,6 +3547,7 @@ export function mountCanvas(container, opts) {
     if (presenting && (e.key === 'ArrowLeft' || e.key === 'PageUp')) { e.preventDefault(); goSlide(presenting.index - 1); return; }
     if (e.key === 'Escape' && (!penPop.hidden || !colourPop.hidden)) { penPop.hidden = true; colourPop.hidden = true; return; }
     if (e.key === 'Escape' && !boardMenu.hidden) { boardMenu.hidden = true; paintCorners(); return; }
+    if (e.key === 'Escape' && !r4.hidden) { r4.hidden = true; clearVersionView(); return; }
     if (e.key === 'Escape') { if (presenting) { stopPresent(); return; } if (following != null) { followingPresenter = null; stopFollow(); return; } if (!keysPanel.hidden) { keysPanel.hidden = true; return; } if (!gallery.hidden) { gallery.hidden = true; return; } if (!libPanel.hidden) { libPanel.hidden = true; return; } if (fullscreen) { toggleFullscreen(); return; } sel.clear(); setTool('select'); paintProps(); render(); return; }
     if (readOnly) { if (k === 'h' || k === 'l' || k === 'v') setTool(k === 'h' ? 'hand' : k === 'v' ? 'select' : 'laser'); else if (k === 'c' && opts.comments?.canComment?.()) setTool('comment'); return; }
     const chosen = [...sel].map(get).filter(Boolean);
@@ -3295,7 +3676,7 @@ export function mountCanvas(container, opts) {
     addPageCard(page) { if (readOnly) return; const r = rect(); addPageCard(page, toWorld(r.width / 2, r.height / 2)); },
     addTaskCards(tasks) { if (readOnly || !tasks?.length) return; const r = rect(); const c = toWorld(r.width / 2, r.height / 2); addTaskCards(tasks, { x: c.x - 130, y: c.y - 52 }); },
     setFullscreen(v) { fullscreen = !!v; paintCorners(); requestAnimationFrame(() => fit()); },
-    destroy() { clearTimeout(arrowHold); document.removeEventListener('keydown', popKeys, true); clearTimeout(paintEmoji.t); unFocus?.(); unThreads?.(); vmap?.unobserve(onVote); clearInterval(liveTick); clearInterval(timerTick); clearTimeout(cursorTimer); clearTimeout(viewTimer); clearTimeout(laserFade); clearTimeout(showNeatToast.t); clearHold(); clearTimeout(flushTimer); aw?.off('change', onAw); if (aw) { const st = aw.getLocalState(); if (st?.wb?.board === boardKey) aw.setLocalStateField('wb', null); } for (const u of files.values()) { try { URL.revokeObjectURL(u); } catch { /* not ours */ } } document.removeEventListener('keydown', fsKeys, true); stopEdit(); flush(); destroyed = true; ymap.unobserve(onY); undo.destroy(); ro.disconnect(); cancelAnimationFrame(raf); root.remove(); },
+    destroy() { clearInterval(seenTimer); try { saveSeen(); } catch { /* gone */ } meta?.unobserve(onMeta); clearTimeout(r4State.t); clearTimeout(arrowHold); document.removeEventListener('keydown', popKeys, true); clearTimeout(paintEmoji.t); unFocus?.(); unThreads?.(); vmap?.unobserve(onVote); clearInterval(liveTick); clearInterval(timerTick); clearTimeout(cursorTimer); clearTimeout(viewTimer); clearTimeout(laserFade); clearTimeout(showNeatToast.t); clearHold(); clearTimeout(flushTimer); aw?.off('change', onAw); if (aw) { const st = aw.getLocalState(); if (st?.wb?.board === boardKey) aw.setLocalStateField('wb', null); } for (const u of files.values()) { try { URL.revokeObjectURL(u); } catch { /* not ours */ } } document.removeEventListener('keydown', fsKeys, true); stopEdit(); flush(); destroyed = true; ymap.unobserve(onY); undo.destroy(); ro.disconnect(); cancelAnimationFrame(raf); root.remove(); },
   };
   return api;
 }

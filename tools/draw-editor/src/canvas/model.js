@@ -68,7 +68,7 @@ export function zBetween(a, b) {
 }
 export const byZ = (p, q) => (p.z < q.z ? -1 : p.z > q.z ? 1 : p.id < q.id ? -1 : p.id > q.id ? 1 : 0);
 /// Frames always sit underneath; everything else follows its z key.
-const UNDER = new Set(['frame', 'swimlane', 'groupBox']);
+const UNDER = new Set(['frame', 'swimlane', 'groupBox', 'listBox', 'rack', 'fpRoom', 'umlPackage']);
 export const isContainer = el => !!el && UNDER.has(el.type);
 export function drawOrder(els) {
   return [...els].sort((p, q) => UNDER.has(p.type) !== UNDER.has(q.type) ? (UNDER.has(p.type) ? -1 : 1) : byZ(p, q));
@@ -211,6 +211,14 @@ export function hits(el, px, py, get, tol = 6) {
         || distToSegment(px, py, a.x, a.y, a.x, (a.y + b.y) / 2) <= tol + 2 || distToSegment(px, py, a.x, (a.y + b.y) / 2, b.x, (a.y + b.y) / 2) <= tol + 2 || distToSegment(px, py, b.x, (a.y + b.y) / 2, b.x, b.y) <= tol + 2);
   }
   const b = bounds(el, get);
+  if (el.type === 'listBox' || el.type === 'rack' || el.type === 'fpRoom' || el.type === 'umlPackage') {
+    // like a group box: picked by its border or title strip (the rack also by its side rails), so what is inside stays clickable
+    const onEdge = px >= b.x - tol && px <= b.x + b.w + tol && py >= b.y - tol && py <= b.y + b.h + tol
+      && (px <= b.x + tol || px >= b.x + b.w - tol || py <= b.y + tol || py >= b.y + b.h - tol);
+    const inHead = el.type === 'rack' ? (px >= b.x && px <= b.x + b.w && py >= b.y - 30 && py <= b.y + b.h && (py <= b.y + 10 || px <= b.x + 26 || px >= b.x + b.w - 26))
+      : (px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + (el.type === 'umlPackage' ? 24 : 36));
+    return onEdge || inHead;
+  }
   if (el.type === 'swimlane' || el.type === 'groupBox') {
     // picked by the border or a lane header, so clicks inside reach the shapes in the lanes
     const onEdge = px >= b.x - tol && px <= b.x + b.w + tol && py >= b.y - tol && py <= b.y + b.h + tol
@@ -492,7 +500,7 @@ export function recogniseLine(points) {
 
 /// Text an element shows (for Find on board): sticky/shape/text text, frame and file names, card and link titles.
 export function searchText(el) {
-  const parts = [el.text, el.name, el.title, el.label, el.url, el.site];
+  const parts = [el.text, el.name, el.title, el.label, el.url, el.site, ...(Array.isArray(el.data) ? el.data.map(d => d?.value) : [])];
   return parts.filter(v => typeof v === 'string' && v).join(' ').replace(/\*\*|~~|\]\([^)]*\)|\[/g, '');
 }
 

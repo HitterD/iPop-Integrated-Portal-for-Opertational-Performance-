@@ -2,7 +2,8 @@
 // routing with fixed sides and waypoints, and line jumps. Pure (no DOM), so it is tested without a browser.
 import { FLOW_TYPES, STEP_TYPES, DECISION_TYPES, isTerminator, isEnd, STENCIL } from './stencils.js';
 
-const isNode = e => e && !e.isDeleted && e.type !== 'connector' && e.type !== 'path' && e.type !== 'frame' && e.type !== 'swimlane' && e.type !== 'groupBox';
+const CONTAINERS = new Set(['frame', 'swimlane', 'groupBox', 'listBox', 'rack', 'fpRoom', 'umlPackage', 'callout']);
+const isNode = e => e && !e.isDeleted && e.type !== 'connector' && e.type !== 'path' && !CONTAINERS.has(e.type);
 export const hasFlowchart = els => els.some(e => !e.isDeleted && FLOW_TYPES.has(e.type));
 
 /// The graph of shapes joined by connectors (only connectors attached at both ends count).

@@ -2,7 +2,7 @@
 // exactly what is on screen. Clean ClickUp-like shapes; only the pen looks hand-drawn (perfect-freehand).
 import { getStroke } from 'perfect-freehand';
 import { connectorEnds, connectorPath, connectorMid, connectorPoints, drawOrder, wrapLines, bounds, SHAPE_TYPES } from './model.js';
-import { stencilPath, stencilTextBox, lanesOf, STENCIL } from './stencils.js';
+import { stencilPath, stencilTextBox, lanesOf, rackSlots, STENCIL } from './stencils.js';
 import { pathWithJumps, pointAlong } from './flow.js';
 import { parse as parseRich, hasFormatting, wrapRuns } from './richtext.js';
 
@@ -239,7 +239,9 @@ export function drawElement(g, el, get, opts = {}) {
     case 'connector': {
       const [a, b] = connectorEnds(el, get);
       if (!a || !b) break;
-      const color = inkFor(el.stroke, { ...pal, ink: pal.connector }) || pal.connector;
+      // a line labelled "VLAN 30" takes that VLAN's colour unless someone picked a colour
+      const vl = !el.stroke && /\bvlan\s*(\d+)/i.exec(el.label || '');
+      const color = vl ? vlanColor(vl[1]) : inkFor(el.stroke, { ...pal, ink: pal.connector }) || pal.connector;
       const route = el.route || 'straight';
       const pts = route === 'elbow' || route === 'smart' || el.waypoints?.length ? connectorPoints(el, get, route === 'smart' ? (opts.obstaclesFor?.(el) || []) : []) : null;
       const head = (k, start) => ({ arrow: start ? 'url(#wb-head-start)' : 'url(#wb-head)', open: start ? 'url(#wb-open-s)' : 'url(#wb-open)', filled: start ? 'url(#wb-fill-s)' : 'url(#wb-fill)', diamond: start ? 'url(#wb-dia-s)' : 'url(#wb-dia)', dot: 'url(#wb-dot)', crow: start ? 'url(#wb-crow-s)' : 'url(#wb-crow)', one: start ? 'url(#wb-one-s)' : 'url(#wb-one)' }[k] || null);
@@ -394,11 +396,50 @@ export { inkOnFill };
 /// A diagram stencil (flowchart, BPMN, ERD, network, timeline, value stream, group box).
 function drawStencil(node, el, st, common, pal, opts) {
   const sharp = el.rounded === false;
-  const fill = st.fill && !el.fill ? st.fill : common.fill;
+  // data graphics: a colour rule may tint the fill
+  const ruleFill = opts.graphics?.(el)?.fill;
+  const fill = st.solid ? (el.fill && el.fill !== 'none' ? el.fill : common.stroke) : ruleFill || (st.fill && !el.fill ? st.fill : common.fill);
+  // a callout points at the shape it belongs to
+  if (el.type === 'callout' && el.attach) {
+    const t = opts.getEl?.(el.attach);
+    if (t && !t.isDeleted) {
+      const tb = { x: t.x, y: t.y, w: t.w || 0, h: t.h || 0 };
+      const cx = el.x + el.w / 2, cy = el.y + el.h / 2;
+      const px = Math.max(tb.x, Math.min(cx, tb.x + tb.w)), py = Math.max(tb.y, Math.min(cy, tb.y + tb.h));
+      const sx = Math.max(el.x, Math.min(px, el.x + el.w)), sy = Math.max(el.y, Math.min(py, el.y + el.h));
+      svgEl('path', { d: `M${sx} ${sy}L${px} ${py}`, stroke: '#FF9500', 'stroke-width': 1.6, fill: 'none' }, node);
+      svgEl('circle', { cx: px, cy: py, r: 3.5, fill: '#FF9500' }, node);
+    }
+  }
   for (const b of st.behind || []) svgEl('path', { d: b, ...common, fill }, node);
-  if (st.rx && !sharp && /^M[\d.-]+ [\d.-]+H[\d.-]+V[\d.-]+H[\d.-]+Z$/.test(st.d)) svgEl('rect', { x: el.x, y: el.y, width: el.w, height: el.h, rx: st.rx, ...common, fill }, node);
+  if (el.rackU) svgEl('rect', { x: el.x, y: el.y, width: el.w, height: el.h, rx: 3, ...common, fill, 'stroke-width': 1.5 }, node);
+  else if (st.rx && !sharp && /^M[\d.-]+ [\d.-]+H[\d.-]+V[\d.-]+H[\d.-]+Z$/.test(st.d)) svgEl('rect', { x: el.x, y: el.y, width: el.w, height: el.h, rx: st.rx, ...common, fill, 'stroke-width': st.strokeWidth || common['stroke-width'] }, node);
   else svgEl('path', { d: st.d, ...common, fill, 'stroke-width': st.strokeWidth || common['stroke-width'], 'stroke-dasharray': st.dashed && !el.dashed ? '8 6' : common['stroke-dasharray'] }, node);
-  if (st.extra) svgEl('path', { d: st.extra, fill: 'none', stroke: common.stroke, 'stroke-width': st.extraWidth || Math.max(1.2, (el.strokeWidth || 2) * 0.8), 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, node);
+  // a device in a rack is drawn as its front panel: a status light and ports on the left, the name on the right
+  if (el.rackU) {
+    const k = Math.min(el.h * 0.5, 8);
+    svgEl('circle', { cx: el.x + 10, cy: el.y + el.h / 2, r: Math.max(2, k / 2.2), fill: '#34C759' }, node);
+    const ports = Math.max(0, Math.min(8, Math.floor((el.w * 0.36 - 16) / 9)));
+    for (let i = 0; i < ports; i++) svgEl('rect', { x: el.x + 20 + i * 9, y: el.y + el.h / 2 - k / 2, width: 6, height: k, rx: 1, fill: 'none', stroke: common.stroke, 'stroke-width': 1 }, node);
+  } else if (st.extra) svgEl('path', { d: st.extra, fill: 'none', stroke: common.stroke, 'stroke-width': st.extraWidth || Math.max(1.2, (el.strokeWidth || 2) * 0.8), 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-dasharray': st.extraDash ? '6 5' : null }, node);
+  if (st.dot) svgEl('path', { d: st.dot, fill: common.stroke }, node);
+  if (st.badge && !el.rackU) { const t = svgEl('text', { x: el.x + el.w / 2, y: el.y + el.h * 0.84, 'text-anchor': 'middle', 'font-size': Math.max(9, Math.min(16, el.w * 0.2)), 'font-weight': 800, 'font-family': FONT_STACK.ipop, fill: '#0A84FF' }, node); t.textContent = st.badge; }
+  if (st.rack) drawRackSlots(node, el, pal);
+  if (st.org) drawOrgAvatar(node, el, pal, opts);
+  // VLAN colour on a network device: a small tag under the icon
+  const vlan = (el.data || []).find(d => /^vlan$/i.test(d.name || ''))?.value;
+  if (vlan && /^net/.test(el.type)) { const c = vlanColor(vlan); svgEl('rect', { x: el.x + el.w - 8, y: el.y - 4, width: 14, height: 14, rx: 4, fill: c, stroke: pal.board, 'stroke-width': 2 }, node); }
+  // data graphics: progress bar and status icon
+  const gr = opts.graphics?.(el);
+  if (gr?.bar != null) {
+    svgEl('rect', { x: el.x + 10, y: el.y + el.h - 10, width: el.w - 20, height: 5, rx: 2.5, fill: pal === PALETTE.dark ? 'rgba(255,255,255,.14)' : 'rgba(0,0,0,.08)' }, node);
+    svgEl('rect', { x: el.x + 10, y: el.y + el.h - 10, width: Math.max(0, (el.w - 20) * Math.min(1, gr.bar)), height: 5, rx: 2.5, fill: gr.color }, node);
+  }
+  if (gr?.icon) {
+    svgEl('circle', { cx: el.x + el.w - 2, cy: el.y + 2, r: 10, fill: gr.color, stroke: pal.board, 'stroke-width': 2 }, node);
+    const t = svgEl('text', { x: el.x + el.w - 2, y: el.y + 6, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 800, 'font-family': FONT_STACK.ipop, fill: '#fff' }, node);
+    t.textContent = gr.icon;
+  }
   // ERD tables: name in the header, fields one per line
   if (el.type === 'erTable' && !opts.editingId?.includes?.(el.id) && opts.editingId !== el.id) {
     const [name, ...fields] = String(el.text || 'Table').split('\n');
@@ -406,12 +447,37 @@ function drawStencil(node, el, st, common, pal, opts) {
     const t = svgEl('text', { x: el.x + el.w / 2, y: el.y + Math.min(32, el.h * 0.3) / 2 + 5, 'text-anchor': 'middle', 'font-size': 14, 'font-weight': 650, 'font-family': FONT_STACK[el.font || 'ipop'], fill: tc }, node);
     t.textContent = name;
     fields.slice(0, Math.floor((el.h - 40) / 20)).forEach((f, i) => { const ft = svgEl('text', { x: el.x + 12, y: el.y + Math.min(32, el.h * 0.3) + 20 + i * 20, 'font-size': 12.5, 'font-family': FONT_STACK.mono, fill: tc }, node); ft.textContent = f; });
-  } else if (el.type === 'groupBox') {
-    const t = svgEl('text', { x: el.x + 12, y: el.y + 22, 'font-size': 14, 'font-weight': 650, 'font-family': FONT_STACK.ipop, fill: pal.ink2 }, node);
-    t.textContent = el.title || el.text || 'Group';
-  } else if (el.text && opts.editingId !== el.id) {
+  } else if ((el.type === 'umlClass' || el.type === 'umlInterface') && opts.editingId !== el.id) {
+    // name, then fields; a line with -- starts the methods
+    const tc = el.textColor ? inkFor(el.textColor, pal) : inkOnFill(el.fill, pal) || inkFor(null, pal);
+    const [name, ...rest] = String(el.text || (el.type === 'umlInterface' ? 'Interface' : 'Class')).split('\n');
+    const head = st.head;
+    if (el.type === 'umlInterface') { const k = svgEl('text', { x: el.x + el.w / 2, y: el.y + 16, 'text-anchor': 'middle', 'font-size': 11, 'font-style': 'italic', 'font-family': FONT_STACK.ipop, fill: tc, opacity: 0.7 }, node); k.textContent = '«interface»'; }
+    const t = svgEl('text', { x: el.x + el.w / 2, y: el.y + head - 10, 'text-anchor': 'middle', 'font-size': 14, 'font-weight': 650, 'font-family': FONT_STACK[el.font || 'ipop'], fill: tc }, node);
+    t.textContent = name;
+    let y = el.y + head + 18;
+    for (const line of rest) {
+      if (y > el.y + el.h - 4) break;
+      if (/^\s*--+\s*$/.test(line)) { svgEl('path', { d: `M${el.x} ${y - 10}H${el.x + el.w}`, stroke: common.stroke, 'stroke-width': 1.2 }, node); y += 8; continue; }
+      const ft = svgEl('text', { x: el.x + 12, y, 'font-size': 12.5, 'font-family': FONT_STACK.mono, fill: tc }, node); ft.textContent = line; y += 19;
+    }
+  } else if (el.type === 'orgCard' && opts.editingId !== el.id) {
+    const tc = el.textColor ? inkFor(el.textColor, pal) : inkOnFill(el.fill, pal) || inkFor(null, pal);
     const box = stencilTextBox(el.type, el.x, el.y, el.w, el.h);
-    const size = el.size || (box.below ? 13 : 15);
+    const [name, ...more] = String(el.text || 'Name').split('\n');
+    const nt = svgEl('text', { x: box.x, y: el.y + el.h / 2 - (more.length ? 3 : -5), 'font-size': 14, 'font-weight': 650, 'font-family': FONT_STACK.ipop, fill: tc }, node);
+    nt.textContent = name.length > 26 ? name.slice(0, 25) + '…' : name;
+    more.slice(0, 2).forEach((l, i) => { const m = svgEl('text', { x: box.x, y: el.y + el.h / 2 + 15 + i * 15, 'font-size': 11.5, 'font-family': FONT_STACK.ipop, fill: tc, opacity: 0.65 }, node); m.textContent = l.length > 32 ? l.slice(0, 31) + '…' : l; });
+  } else if (el.type === 'groupBox' || el.type === 'listBox' || el.type === 'fpRoom' || el.type === 'umlPackage' || el.type === 'rack') {
+    const above = el.type === 'rack';
+    const t = svgEl('text', { x: el.x + 12, y: above ? el.y - 10 : el.y + (el.type === 'umlPackage' ? 17 : 22), 'font-size': 14, 'font-weight': 650, 'font-family': FONT_STACK.ipop, fill: pal.ink2 }, node);
+    t.textContent = el.title || el.text || { groupBox: 'Group', listBox: 'List', fpRoom: 'Room', umlPackage: 'Package', rack: 'Rack' }[el.type];
+  } else if (el.text && opts.editingId !== el.id) {
+    // a device in a rack shows its name inside, on the right (there is no room below)
+    const box0 = el.rackU ? { x: el.x + el.w * 0.42, y: el.y + 1, w: el.w * 0.55, h: Math.max(8, el.h - 2) } : stencilTextBox(el.type, el.x, el.y, el.w, el.h);
+    // a progress bar along the bottom gets its own room
+    const box = gr?.bar != null && !box0.below ? { ...box0, h: Math.max(14, box0.h - 10) } : box0;
+    const size = el.size || (el.rackU ? 11 : box.below ? 13 : 15);
     // data fields under the title (Visio shape data), only when there is room
     const data = (el.data || []).filter(d => d && d.value);
     const color = el.textColor ? inkFor(el.textColor, pal) : (!box.below && inkOnFill(el.fill || st.fill, pal)) || inkFor(null, pal);
@@ -429,7 +495,7 @@ function drawStencil(node, el, st, common, pal, opts) {
   }
   // a status in the shape data colours a strip on the left
   const status = (el.data || []).find(d => /status/i.test(d.name || ''))?.value;
-  if (status && !STENCIL[el.type]?.cat?.match(/Network|Timeline/)) {
+  if (status && !gr && !STENCIL[el.type]?.cat?.match(/Network|Timeline|Floor plan/)) {
     const c = /done|selesai|complete|ok/i.test(status) ? '#34C759' : /block|late|stuck|terlambat/i.test(status) ? '#FF3B30' : /progress|doing|proses/i.test(status) ? '#FF9500' : '#8E8E93';
     svgEl('rect', { x: el.x + 1, y: el.y + 8, width: 4, height: Math.max(8, el.h - 16), rx: 2, fill: c }, node);
   }
@@ -439,6 +505,49 @@ function drawStencil(node, el, st, common, pal, opts) {
     const t = svgEl('text', { x: el.x, y: el.y + 4, 'text-anchor': 'middle', 'font-size': 11.5, 'font-weight': 700, 'font-family': FONT_STACK.ipop, fill: '#fff' }, node);
     t.textContent = String(step);
   }
+}
+
+/// VLAN colours: the usual office VLANs have fixed colours, any other number gets a stable one.
+const VLAN_COLORS = { 1: '#8E8E93', 10: '#0A84FF', 20: '#34C759', 30: '#FF9500', 40: '#AF52DE', 50: '#FF2D55', 60: '#30B0C7', 99: '#A2845E' };
+export function vlanColor(v) {
+  const n = parseInt(String(v).replace(/\D+/g, ''), 10);
+  if (!Number.isFinite(n)) return '#8E8E93';
+  if (VLAN_COLORS[n]) return VLAN_COLORS[n];
+  const list = Object.values(VLAN_COLORS).slice(1);
+  return list[n % list.length];
+}
+
+/// The numbered U slots of a 19" rack (U1 at the bottom).
+function drawRackSlots(node, el, pal) {
+  const s = rackSlots(el);
+  const dark = pal === PALETTE.dark;
+  for (let u = 1; u <= s.units; u++) {
+    const b = s.slot(u);
+    svgEl('rect', { x: b.x, y: b.y + 0.5, width: b.w, height: Math.max(1, b.h - 1), fill: dark ? 'rgba(255,255,255,.04)' : 'rgba(0,0,0,.025)', stroke: dark ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.06)' }, node);
+    if (s.uh >= 9) { const t = svgEl('text', { x: el.x + s.side - 6, y: b.y + b.h / 2 + 3.5, 'text-anchor': 'end', 'font-size': Math.min(10, s.uh * 0.7), 'font-family': FONT_STACK.mono, fill: pal.ink3 }, node); t.textContent = String(u); }
+  }
+  // rails
+  for (const x of [el.x + s.side - 2, el.x + el.w - s.side + 2]) svgEl('path', { d: `M${x} ${el.y + s.pad}V${el.y + el.h - s.pad}`, stroke: pal.ink3, 'stroke-width': 1.4 }, node);
+}
+
+/// The photo square (or initials) of a person card.
+function drawOrgAvatar(node, el, pal, opts) {
+  const k = el.h - 16, x = el.x + 8, y = el.y + 8;
+  const url = el.photo ? opts.files?.get(`ph:${el.photo}`) : null;
+  if (url) {
+    const cid = `wbo-${el.id}`;
+    const cp = svgEl('clipPath', { id: cid }, node);
+    svgEl('rect', { x, y, width: k, height: k, rx: 10 }, cp);
+    svgEl('image', { href: url, x, y, width: k, height: k, preserveAspectRatio: 'xMidYMid slice', 'clip-path': `url(#${cid})` }, node);
+    return;
+  }
+  const name = String(el.text || '').split('\n')[0].trim();
+  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+  const colors = ['#0A84FF', '#5856D6', '#AF52DE', '#FF2D55', '#FF9500', '#34C759', '#30B0C7', '#A2845E'];
+  let hsh = 0; for (const ch of name) hsh = (hsh * 31 + ch.charCodeAt(0)) >>> 0;
+  svgEl('rect', { x, y, width: k, height: k, rx: 10, fill: colors[hsh % colors.length] }, node);
+  const t = svgEl('text', { x: x + k / 2, y: y + k / 2 + 5, 'text-anchor': 'middle', 'font-size': Math.min(16, k * 0.36), 'font-weight': 700, 'font-family': FONT_STACK.ipop, fill: '#fff' }, node);
+  t.textContent = initials;
 }
 
 /// A swimlane: lanes with a header strip each; shapes inside are separate elements drawn above it.

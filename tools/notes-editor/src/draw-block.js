@@ -72,6 +72,8 @@ export async function mountScene(container, { ydoc, id, readOnly, mode = 'block'
         comments, tasks, pages, title, taskSearch, voteMap: ydoc.getMap(`wbvote:${id}`), me: { id: awareness?.getLocalState()?.user?.nik },
         emojiData: extras?.drawEmojiData, stickers: extras?.drawStickers, linkPreview: extras?.drawLinkPreview, loadPreviewImage: extras?.drawPreviewImage,
         boardLock: mode === 'board' && id === 'board' ? extras?.drawBoardLock : null,
+        people: extras?.drawPeople, history: extras?.drawHistory ? { list: () => extras.drawHistory.list(), scene: v => extras.drawHistory.scene(v, String(id)), restore: extras.drawHistory.restore } : null,
+        shareToChat: mode === 'board' && id === 'board' ? extras?.drawShareToChat : null, seenKey: mode === 'board' && extras?.currentPageId ? `${extras.currentPageId()}:${id}` : null,
         onPopOut: extras?.drawPopOut && !extras?.isPoppedOut?.() ? () => extras.drawPopOut(popOutId ?? id) : null })
     : mod.mountDraw(container, { ymap: ydoc.getMap(sceneName(id)), doc: ydoc, readOnly, theme: isDark() ? 'dark' : 'light', mode, onLinkOpen });
   const mo = new MutationObserver(() => inst.setTheme(isDark() ? 'dark' : 'light'));

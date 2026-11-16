@@ -62,7 +62,13 @@ public partial class Notes
         try
         {
             await editor.InvokeVoidAsync("setThreads",
-                threads.Select(t => new { id = t.Id, anchor = t.Anchor, resolvedAt = t.ResolvedAt }), focusThread);
+                // the whiteboard lists comments per shape: first words, who wrote it and how many replies (no NIK)
+                threads.Select(t => new
+                {
+                    id = t.Id, anchor = t.Anchor, resolvedAt = t.ResolvedAt, count = t.Comments.Count,
+                    text = t.Comments.FirstOrDefault()?.Body is { } b ? (b.Length > 140 ? b[..140] + "…" : b) : null,
+                    author = t.Comments.FirstOrDefault()?.AuthorName,
+                }), focusThread);
         }
         catch (JSException) { }
     }
@@ -423,6 +429,27 @@ public partial class Notes
         if (editor is not null) await editor.InvokeVoidAsync("flushNow");
         versions = await Auth.GetAsync<List<NoteVersionDto>>($"/api/notes/{note.Id}/versions") ?? [];
         if (versions.Count > 0) await SelectVersion(versions[0].Id);
+    }
+
+    /// The whiteboard's version slider: "Restore this version" opens the page's History on that version
+    /// (same preview, same confirmation, the whole page is restored as it always is).
+    [JSInvokable]
+    public async Task OnRestoreVersionId(string versionId)
+    {
+        if (note is null || !Guid.TryParse(versionId, out var vid)) return;
+        await OpenHistory();
+        if (versions?.Any(v => v.Id == vid) == true) await SelectVersion(vid);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// "Send to Chat" from the board's menu: the page's Share dialog, on the chat tab.
+    [JSInvokable]
+    public async Task OnShareFromBoard()
+    {
+        if (!IsOwner) return;
+        await OpenShare();
+        await OpenSendTab();
+        await InvokeAsync(StateHasChanged);
     }
 
     private record VersionState(string State);

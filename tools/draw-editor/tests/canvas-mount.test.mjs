@@ -37,7 +37,13 @@ test('mounts, paints and destroys cleanly, with and without awareness, even when
     process.on('uncaughtException', onErr);
     try {
       let inst = null;
-      try { inst = mountCanvas(el, { ymap, doc, Y, mode: 'board', theme: 'light', awareness: aw, voteMap: doc.getMap('wbvote:board'), onFullscreen: () => true, toast: () => {} }); }
+      // every host service a real Notes page passes, including comments that already exist (delivered during mount)
+      const comments = { canComment: () => true, start() {}, open() {}, onFocus: () => () => {},
+        subscribe: f => { f([{ id: 't1', anchor: JSON.stringify({ wb: 'board', x: 1, y: 1 }), text: 'Who signs?', author: 'Rina', count: 2 }]); return () => {}; } };
+      try { inst = mountCanvas(el, { ymap, doc, Y, mode: 'board', theme: 'light', awareness: aw, voteMap: doc.getMap('wbvote:board'), onFullscreen: () => true, toast: () => {},
+        comments, library: { list: async () => [] }, pages: { all: () => [], info: () => null }, title: () => 'QA', seenKey: 'p:board',
+        tasks: { get: async () => null, create: async () => [], createMany: async () => [] }, people: { search: async () => [], team: async () => [] },
+        history: { list: async () => [], scene: async () => [] }, shareToChat: () => {} }); }
       catch (err) { aw?.destroy(); doc.destroy(); throw err; }
       aw?.emit('change', [{ added: [999], updated: [], removed: [] }, 'remote']);
       await tick(60);

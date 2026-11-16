@@ -162,6 +162,9 @@ export async function mount(el, opts) {
   let emojiData = null;
   const stickerUrls = new Map();
   const palette = ['#0A84FF', '#5856D6', '#AF52DE', '#FF2D55', '#FF9500', '#34C759', '#30B0C7', '#A2845E'];
+  // who has a profile photo (nik -> photo id), read once for org charts
+  let photoMapP = null;
+  const photoMap = () => (photoMapP ||= api('/api/photos').then(r => (r.ok ? r.json() : {})).catch(() => ({}))); 
   const host = {
     drawDoc: () => ydoc,
     drawAwareness: () => awareness,
@@ -195,6 +198,9 @@ export async function mount(el, opts) {
       },
       open: id => call('OnOpenTask', id),
       create: stickies => makeTasksDialog(stickies),
+      /// diagram steps → tasks: [{ id, title, pic, due, description }] → [{ stepId, task }]
+      createMany: steps => makeTasksDialog(steps.map(s => ({ id: s.id, text: s.title, pic: s.pic, dueIso: s.due, description: s.description })), { fromSteps: true })
+        .then(out => out.map(o => ({ stepId: o.stickyId, task: o.task }))),
     },
     drawPages: { info: id => pages.get(id), open: id => call('OnOpenPage', id), all: () => [...pages.values()].filter(p => p.id !== pageId) },
     drawTaskSearch: async q => {
@@ -277,6 +283,50 @@ export async function mount(el, opts) {
       isLocked: () => pageLocked,
       toggle: () => call('OnBoardLockToggle'),
     },
+    // Whiteboard round 4. Directory for org charts: names, department and photo only (office rule: no NIK or position).
+    drawPeople: {
+      async search(q) {
+        const r = await api(`/api/directory/member-search?q=${encodeURIComponent(q)}`);
+        if (!r.ok) return [];
+        return (await r.json()).map(p => ({ key: p.nik, name: p.name, dept: p.department || '' }));
+      },
+      /// the person, their manager and everyone who reports to them (one level), as tree rows
+      async team(person) {
+        const key = person?.key; if (!key) return [];
+        const [rel, photos] = await Promise.all([api(`/api/directory/employees/${encodeURIComponent(key)}/relations`).then(r => (r.ok ? r.json() : null)).catch(() => null), photoMap()]);
+        if (!rel) return [];
+        const rows = [];
+        const row = (nik, name, dept, managerKey) => rows.push({ key: nik, name, dept: dept || '', managerKey, photo: photos?.[nik] || null });
+        if (rel.manager) row(rel.manager.nik, rel.manager.name, rel.manager.department, null);
+        row(key, person.name, person.dept, rel.manager?.nik || null);
+        for (const p of rel.reports || []) row(p.nik, p.name, p.department, key);
+        return rows;
+      },
+      photo: id => (id ? `${apiBase}/api/photos/${id}` : null),
+    },
+    // Version history for the board: the page's saved versions, this board's scene in each, and Restore (page restore).
+    drawHistory: {
+      async list() {
+        const r = await api(`/api/notes/${pageId}/versions`);
+        if (!r.ok) return [];
+        return (await r.json()).map(v => ({ id: v.id, at: v.createdAt, who: (v.contributors || []).join(', ') })).reverse();
+      },
+      async scene(versionId, boardId = 'board') {
+        const r = await api(`/api/notes/${pageId}/versions/${versionId}`);
+        if (!r.ok) return [];
+        const { state } = await r.json();
+        const tmp = new Y.Doc();
+        try {
+          Y.applyUpdate(tmp, unb64(state));
+          const out = [];
+          tmp.getMap(`wb:${boardId}`).forEach(v => { if (v && typeof v === 'object' && v.id && v.type) out.push(v); });
+          return out;
+        } finally { tmp.destroy(); }
+      },
+      restore: versionId => call('OnRestoreVersionId', versionId),
+    },
+    // "Send to Chat": the page's own Share dialog (sends a live card of the page to a chat)
+    drawShareToChat: opts.access === 'owner' ? () => call('OnShareFromBoard') : null,
     isPoppedOut: () => !!opts.boardOnly,
     drawPopOut: id => { const u = `${location.origin}/notes/${pageId}/board${id && id !== 'board' ? `?d=${encodeURIComponent(id)}` : ''}`; window.open(u, '_blank', 'noopener'); },
     allPages: () => [...pages.values()],
@@ -461,13 +511,16 @@ export async function mount(el, opts) {
   // Title = the sticky's text without @names and dates; an @name that matches a project member becomes the assignee;
   // a date in the text (25 Nov, 2026-11-25, 25/11) becomes the due date. The project list holds only projects the person can add to.
   const LAST_PROJECT = 'ipop.wb.lastProject';
-  async function makeTasksDialog(stickies) {
+  async function makeTasksDialog(stickies, { fromSteps = false } = {}) {
     let projects = [];
     try { const r = await api('/api/projects/writable'); if (r.ok) projects = await r.json(); } catch { /* none */ }
     for (const p of projects) projectNames.set(p.id, p.name);
     if (!projects.length) { host.toast('You are not a member of a project you can add tasks to.'); return []; }
     let last = null; try { last = localStorage.getItem(LAST_PROJECT); } catch { /* blocked */ }
-    const parsed = stickies.map(s => ({ ...s, ...parseSticky(s.text) }));
+    // diagram steps already carry PIC (shape data) and a due date (chained from durations); stickies are parsed
+    const parsed = fromSteps
+      ? stickies.map(s => ({ ...s, title: s.text, who: s.pic || null, due: s.dueIso ? { iso: s.dueIso, label: new Date(`${s.dueIso}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) } : null }))
+      : stickies.map(s => ({ ...s, ...parseSticky(s.text) }));
     return new Promise(resolve => {
       const layer = document.createElement('div');
       layer.className = 'nt-taskdlg-layer';
@@ -492,7 +545,7 @@ export async function mount(el, opts) {
         const out = [];
         for (const t of parsed) {
           try {
-            const r = await api(`/api/projects/${projectId}/tasks`, { method: 'POST', json: { projectId, parentTaskId: null, title: (t.title || 'Untitled task').slice(0, 300), description: t.text !== t.title ? t.text : null, status: 'todo', priority: null, startDate: null, dueDate: t.due?.iso ?? null, estimatedHours: null, dependencies: null, tags: null } });
+            const r = await api(`/api/projects/${projectId}/tasks`, { method: 'POST', json: { projectId, parentTaskId: null, title: (t.title || 'Untitled task').slice(0, 300), description: fromSteps ? (t.description || null) : t.text !== t.title ? t.text : null, status: 'todo', priority: null, startDate: null, dueDate: t.due?.iso ?? null, estimatedHours: null, dependencies: null, tags: null } });
             if (!r.ok) continue;
             const task = await r.json();
             const who = t.who && members.find(m => String(m.name).toLowerCase().startsWith(t.who.toLowerCase()) || String(m.name).toLowerCase().split(' ').some(w => w === t.who.toLowerCase()));
