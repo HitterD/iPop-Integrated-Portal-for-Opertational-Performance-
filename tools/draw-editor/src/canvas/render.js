@@ -363,10 +363,11 @@ export function drawElement(g, el, get, opts = {}) {
       else svgEl('path', { d: shapePath(el.type, el.x, el.y, el.w, el.h), ...common }, node);
       if (el.text && !editing) {
         const box = textBox(el);
-        if (hasFormatting(el.text) || (el.align && el.align !== 'center')) drawRichText(node, el.text, box, { size: el.size || 16, font: el.font || 'ipop', weight: 500, color: inkFor(el.textColor, pal), align: ALIGN[el.align || 'center'] });
+        const tc = el.textColor ? inkFor(el.textColor, pal) : inkOnFill(el.fill, pal) || inkFor(null, pal);
+        if (hasFormatting(el.text) || (el.align && el.align !== 'center')) drawRichText(node, el.text, box, { size: el.size || 16, font: el.font || 'ipop', weight: 500, color: tc, align: ALIGN[el.align || 'center'] });
         else {
           const lt = layoutText(el.text, box, { size: el.size || 16, font: el.font || 'ipop', weight: 500 });
-          drawTextLines(node, lt.lines, box, { ...lt, font: el.font || 'ipop', color: inkFor(el.textColor, pal), weight: 500 });
+          drawTextLines(node, lt.lines, box, { ...lt, font: el.font || 'ipop', color: tc, weight: 500 });
         }
       }
     }
@@ -381,6 +382,15 @@ export function drawElement(g, el, get, opts = {}) {
   return node;
 }
 
+/// Text colour that reads on a fill: dark on light fills, light on dark ones (null = the theme's own ink).
+function inkOnFill(fill, pal) {
+  const m = /^#([0-9a-f]{6})$/i.exec(fill || '');
+  if (!m) return null;
+  const n = parseInt(m[1], 16), lum = (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+  return lum > 0.6 ? '#1D1D1F' : lum < 0.35 ? '#F5F5F7' : null;
+}
+export { inkOnFill };
+
 /// A diagram stencil (flowchart, BPMN, ERD, network, timeline, value stream, group box).
 function drawStencil(node, el, st, common, pal, opts) {
   const sharp = el.rounded === false;
@@ -392,9 +402,10 @@ function drawStencil(node, el, st, common, pal, opts) {
   // ERD tables: name in the header, fields one per line
   if (el.type === 'erTable' && !opts.editingId?.includes?.(el.id) && opts.editingId !== el.id) {
     const [name, ...fields] = String(el.text || 'Table').split('\n');
-    const t = svgEl('text', { x: el.x + el.w / 2, y: el.y + Math.min(32, el.h * 0.3) / 2 + 5, 'text-anchor': 'middle', 'font-size': 14, 'font-weight': 650, 'font-family': FONT_STACK[el.font || 'ipop'], fill: inkFor(el.textColor, pal) }, node);
+    const tc = el.textColor ? inkFor(el.textColor, pal) : inkOnFill(el.fill, pal) || inkFor(null, pal);
+    const t = svgEl('text', { x: el.x + el.w / 2, y: el.y + Math.min(32, el.h * 0.3) / 2 + 5, 'text-anchor': 'middle', 'font-size': 14, 'font-weight': 650, 'font-family': FONT_STACK[el.font || 'ipop'], fill: tc }, node);
     t.textContent = name;
-    fields.slice(0, Math.floor((el.h - 40) / 20)).forEach((f, i) => { const ft = svgEl('text', { x: el.x + 12, y: el.y + Math.min(32, el.h * 0.3) + 20 + i * 20, 'font-size': 12.5, 'font-family': FONT_STACK.mono, fill: inkFor(el.textColor, pal) }, node); ft.textContent = f; });
+    fields.slice(0, Math.floor((el.h - 40) / 20)).forEach((f, i) => { const ft = svgEl('text', { x: el.x + 12, y: el.y + Math.min(32, el.h * 0.3) + 20 + i * 20, 'font-size': 12.5, 'font-family': FONT_STACK.mono, fill: tc }, node); ft.textContent = f; });
   } else if (el.type === 'groupBox') {
     const t = svgEl('text', { x: el.x + 12, y: el.y + 22, 'font-size': 14, 'font-weight': 650, 'font-family': FONT_STACK.ipop, fill: pal.ink2 }, node);
     t.textContent = el.title || el.text || 'Group';
@@ -403,13 +414,13 @@ function drawStencil(node, el, st, common, pal, opts) {
     const size = el.size || (box.below ? 13 : 15);
     // data fields under the title (Visio shape data), only when there is room
     const data = (el.data || []).filter(d => d && d.value);
-    const color = inkFor(el.textColor, pal);
+    const color = el.textColor ? inkFor(el.textColor, pal) : (!box.below && inkOnFill(el.fill || st.fill, pal)) || inkFor(null, pal);
     if (data.length && !box.below) {
       const lines = data.map(d => (d.name ? `${d.name}: ${d.value}` : d.value)).slice(0, 3);
       const titleBox = { ...box, h: Math.max(18, box.h - lines.length * 15) };
       const lt = layoutText(el.text, titleBox, { size, font: el.font || 'ipop', weight: 600 });
       drawTextLines(node, lt.lines, titleBox, { ...lt, font: el.font || 'ipop', color, weight: 600, align: ALIGN[el.align || 'center'] || 'middle' });
-      lines.forEach((l, i) => { const t = svgEl('text', { x: box.x + box.w / 2, y: titleBox.y + titleBox.h + 12 + i * 15, 'text-anchor': 'middle', 'font-size': 11.5, 'font-family': FONT_STACK.ipop, fill: pal.ink3 }, node); t.textContent = l.length > 34 ? l.slice(0, 33) + '…' : l; });
+      lines.forEach((l, i) => { const t = svgEl('text', { x: box.x + box.w / 2, y: titleBox.y + titleBox.h + 12 + i * 15, 'text-anchor': 'middle', 'font-size': 11.5, 'font-family': FONT_STACK.ipop, fill: color, opacity: 0.68 }, node); t.textContent = l.length > 34 ? l.slice(0, 33) + '…' : l; });
     } else if (hasFormatting(el.text) || (el.align && el.align !== 'center')) drawRichText(node, el.text, box, { size, font: el.font || 'ipop', weight: 500, color, align: ALIGN[el.align || 'center'] });
     else {
       const lt = layoutText(el.text, box, { size, font: el.font || 'ipop', weight: 500 });

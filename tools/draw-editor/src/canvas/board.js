@@ -1959,7 +1959,14 @@ export function mountCanvas(container, opts) {
     const b = e.target.closest('[data-st]'); if (!b || readOnly) return;
     const t = b.dataset.st, from = sel.size === 1 ? get([...sel][0]) : null;
     if (from && isShape(from) && !isContainer(from) && t !== 'swimlane' && t !== 'groupBox') { addAfter(from, 'b', t); return; }
-    const r = rect(), c = toWorld(r.width / 2, r.height / 2);
+    const r = rect(); let c = toWorld(r.width / 2, r.height / 2);
+    if (t === 'swimlane' || t === 'groupBox') {
+      const all2 = live().filter(x => !x.isDeleted), ub = unionBounds(all2, get), d = STENCIL[t];
+      if (ub) c = { x: ub.x + ub.w + 120 + d.w / 2, y: ub.y + d.h / 2 };
+      const placed = placeShape(t, c);
+      if (placed) fit([placed], { max: 1 });
+      return;
+    }
     placeShape(t, c);
   });
   /// A new shape of type t centred at c (with its default size and the last style used).
