@@ -59,7 +59,7 @@ const live = new Set();
 const lockListeners = new Set();   // inline blocks re-read the editor's editable state when the page lock changes
 export function setAllReadOnly(readOnly) { live.forEach(i => i.setReadOnly(readOnly)); lockListeners.forEach(f => f(readOnly)); }
 
-export async function mountScene(container, { ydoc, id, readOnly, mode = 'block', onLinkOpen, onFullscreen, toast, library, files, beforeConvert, awareness }) {
+export async function mountScene(container, { ydoc, id, readOnly, mode = 'block', onLinkOpen, onFullscreen, toast, library, files, beforeConvert, awareness, comments, tasks, pages, title, taskSearch }) {
   const mod = await loadDrawBundle();
   const own = mod.ENGINE === 'canvas';
   // First time an old Excalidraw drawing is opened on the new canvas: keep a named version of the page as it was (grill Q26).
@@ -67,7 +67,8 @@ export async function mountScene(container, { ydoc, id, readOnly, mode = 'block'
   // The own canvas resolves (and on first edit converts) its "wb:<id>" scene itself; Excalidraw reads "draw:<id>".
   const inst = own
     ? mod.mountDraw(container, { Y, doc: ydoc, id, readOnly, theme: isDark() ? 'dark' : 'light', mode, onLinkOpen, onFullscreen, toast, library,
-        upload: files?.upload, loadFile: files?.load, openFile: files?.open, awareness, boardKey: String(id) })
+        upload: files?.upload, loadFile: files?.load, openFile: files?.open, awareness, boardKey: String(id),
+        comments, tasks, pages, title, taskSearch, voteMap: ydoc.getMap(`wbvote:${id}`), me: { id: awareness?.getLocalState()?.user?.nik } })
     : mod.mountDraw(container, { ymap: ydoc.getMap(sceneName(id)), doc: ydoc, readOnly, theme: isDark() ? 'dark' : 'light', mode, onLinkOpen });
   const mo = new MutationObserver(() => inst.setTheme(isDark() ? 'dark' : 'light'));
   mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
@@ -146,7 +147,8 @@ export const NoteDraw = Node.create({
         const ydoc = host.drawDoc?.();
         if (!ydoc || !current.attrs.id) { status.textContent = 'This drawing can’t be shown here.'; return; }
         try {
-          inst = await mountScene(stage, { ydoc, id: current.attrs.id, readOnly: !editable, onLinkOpen: url => host.openLink?.(url), onFullscreen: () => host.drawFullscreen?.(current.attrs.id), toast: m => host.toast?.(m), library: host.drawLibrary, files: host.drawFiles, beforeConvert: host.beforeCanvasConvert, awareness: host.drawAwareness?.() });
+          inst = await mountScene(stage, { ydoc, id: current.attrs.id, readOnly: !editable, onLinkOpen: url => host.openLink?.(url), onFullscreen: () => host.drawFullscreen?.(current.attrs.id), toast: m => host.toast?.(m), library: host.drawLibrary, files: host.drawFiles, beforeConvert: host.beforeCanvasConvert, awareness: host.drawAwareness?.(),
+            comments: host.drawComments, tasks: host.drawTasks, pages: host.drawPages, taskSearch: host.drawTaskSearch });
           if (gone) { inst.destroy(); inst = null; return; }
           status.remove();
           dom.classList.toggle('ro', !editable);

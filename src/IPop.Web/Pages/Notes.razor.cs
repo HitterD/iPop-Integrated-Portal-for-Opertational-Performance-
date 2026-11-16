@@ -22,7 +22,7 @@ public partial class Notes
 {
     [Parameter] public Guid? Id { get; set; }
 
-    private const string EditorModule = "./js/notes/notes-editor.js?v=20261116-canvas5";
+    private const string EditorModule = "./js/notes/notes-editor.js?v=20261116-canvas7";
 
     private enum View { Home, Page, New, Trash }
     private enum Pop { None, More, Style, Emoji, Share, History, Tidy, Template }
@@ -326,6 +326,17 @@ public partial class Notes
     }
 
     [JSInvokable] public void OnOpenPage(string id) { if (Guid.TryParse(id, out var g)) Open(g); }
+
+    /// A task card on a whiteboard was opened: show the task in Projects.
+    [JSInvokable]
+    public async Task OnOpenTask(string id)
+    {
+        if (!Guid.TryParse(id, out var taskId)) return;
+        var t = await Auth.GetAsync<TaskRef>($"/api/projects/tasks/{taskId}");
+        if (t is null) { Toasts.Show("You can't open this task", ToastKind.Info); return; }
+        Nav.NavigateTo($"/projects/{t.ProjectId}?task={taskId}");
+    }
+    private record TaskRef(Guid Id, Guid ProjectId);
     [JSInvokable] public void OnToast(string msg) => Toasts.Show(msg, ToastKind.Info);
 
     /// The server refused this page's edits for good (share removed, page deleted, or an update it will never accept).

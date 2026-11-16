@@ -32,6 +32,20 @@ public static class ProjectEndpoints
             return Results.Ok(result);
         });
 
+        // GET /api/projects/writable — projects where I can add tasks (owner, manager, member; not viewer). Used by
+        // the whiteboard's "Make task" so a sticky can never be turned into a task somewhere the person cannot write.
+        g.MapGet("/writable", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var rows = await (from m in db.ProjectMembers.AsNoTracking()
+                              join p in db.Projects.AsNoTracking() on m.ProjectId equals p.Id
+                              where m.UserId == userId && p.IsActive && (m.Role == "owner" || m.Role == "manager" || m.Role == "member")
+                              orderby p.Name
+                              select new { p.Id, p.Name, p.Color }).Take(200).ToListAsync(ct);
+            return Results.Ok(rows);
+        });
+
         // GET /api/projects/{id}
         g.MapGet("/{id:guid}", async (Guid id,
             HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>

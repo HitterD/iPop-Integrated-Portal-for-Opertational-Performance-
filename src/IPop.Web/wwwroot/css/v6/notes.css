@@ -1104,3 +1104,18 @@ html.nt-board-fs-open, html.nt-board-fs-open body { overflow: hidden; }
 .nt-draw-top.nt-draw-top-own { top: 8px; bottom: auto; right: 8px; }
 .nt-draw-top.nt-draw-top-own .nt-draw-btn:first-child { display: none; }
 .nt-draw .wb { border-radius: inherit; }
+
+/* Whiteboard: Make task(s) dialog */
+.nt-taskdlg-layer { position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,.28); display: grid; place-items: center; padding: 16px; }
+.nt-taskdlg { width: min(440px, 100%); max-height: calc(100dvh - 32px); overflow: auto; border-radius: 16px; background: var(--surface, #fff); color: var(--ink, #1D1D1F); box-shadow: 0 20px 60px rgba(0,0,0,.25); padding: 18px; }
+.nt-taskdlg h4 { margin: 0 0 12px; font-size: 16px; }
+.nt-taskdlg-f { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink-3, #86868B); font-weight: 600; margin-bottom: 10px; }
+.nt-taskdlg-f select { font: inherit; font-size: 14px; font-weight: 400; color: var(--ink, #1D1D1F); padding: 7px 9px; border-radius: 9px; border: 1px solid var(--line-2, rgba(0,0,0,.15)); background: var(--surface-2, #F5F5F7); }
+.nt-taskdlg-list { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.nt-taskdlg-list li { display: flex; flex-direction: column; padding: 8px 10px; border-radius: 10px; background: var(--fill, rgba(118,118,128,.12)); }
+.nt-taskdlg-list b { font-size: 13.5px; }
+.nt-taskdlg-list span { font-size: 12px; color: var(--ink-3, #86868B); }
+.nt-taskdlg-acts { display: flex; justify-content: flex-end; gap: 8px; }
+.nt-taskdlg-acts button { height: 34px; padding: 0 14px; border-radius: 9px; border: 0; background: var(--fill, rgba(118,118,128,.12)); color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+.nt-taskdlg-acts .pri { background: var(--accent, #34A853); color: #fff; }
+.nt-taskdlg-acts button:disabled { opacity: .6; }

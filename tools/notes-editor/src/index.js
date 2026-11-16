@@ -9,6 +9,7 @@ import { PageLink, pageLinkIds } from './page-link.js';
 import { listPopup } from './menus.js';
 import { NoteDraw, mountScene, newDrawId, setAllReadOnly } from './draw-block.js';
 import { analyze as tidyAnalyze, apply as tidyApply } from './tidy.js';
+import { parseSticky } from './sticky-task.js';
 import { refusedReason, mentionContexts, savePending, takePending, clearPending } from './sync.js';
 import { Editor, Extension } from '@tiptap/core';
 import { exitSuggestion } from '@tiptap/suggestion';
@@ -150,6 +151,12 @@ export async function mount(el, opts) {
 
   // ── Host services used by nodes and menus ────────────────────────────────
   let beforeConvertDone = null;
+  const titleNow = () => pages.get(pageId)?.title || 'whiteboard';
+  // whiteboards on this page listen for the comment threads (to draw pins)
+  let boardThreads = [];
+  const drawThreadListeners = new Set();
+  const drawFocusListeners = new Set();
+  const projectNames = new Map();
   const palette = ['#0A84FF', '#5856D6', '#AF52DE', '#FF2D55', '#FF9500', '#34C759', '#30B0C7', '#A2845E'];
   const host = {
     drawDoc: () => ydoc,
@@ -164,6 +171,43 @@ export async function mount(el, opts) {
       },
       async update(id, patch) { const r = await api(`/api/notes/library/${id}`, { method: 'PATCH', json: patch }); if (!r.ok) throw new Error(String(r.status)); return r.json(); },
       async remove(id) { const r = await api(`/api/notes/library/${id}`, { method: 'DELETE' }); if (!r.ok) throw new Error(String(r.status)); },
+    },
+    // Comments pinned to a board go through the page's own threads (same panel, mentions, reactions, resolve).
+    drawComments: {
+      start: (quote, anchor) => { if (canComment) call('OnComment', quote, anchor); },
+      open: id => call('OnThreadClick', id),
+      canComment: () => canComment,
+      subscribe(fn) { drawThreadListeners.add(fn); fn(boardThreads); return () => drawThreadListeners.delete(fn); },
+      onFocus(fn) { drawFocusListeners.add(fn); return () => drawFocusListeners.delete(fn); },
+    },
+    // Projects: task cards (live) and "Make task" from stickies. A task the person cannot open comes back as private.
+    drawTasks: {
+      async get(id) {
+        const r = await api(`/api/projects/tasks/${id}`);
+        if (!r.ok) return { private: true };
+        const t = await r.json();
+        return { id: t.id, title: t.title, status: t.status, due: t.dueDate ? new Date(t.dueDate).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : null,
+          people: (t.assignees || []).map(a => String(a.name || '').split(' ')[0]), project: projectNames.get(t.projectId) || null, projectId: t.projectId };
+      },
+      open: id => call('OnOpenTask', id),
+      create: stickies => makeTasksDialog(stickies),
+    },
+    drawPages: { info: id => pages.get(id), open: id => call('OnOpenPage', id), all: () => [...pages.values()].filter(p => p.id !== pageId) },
+    drawTaskSearch: async q => {
+      let projects = [];
+      try { const r = await api('/api/projects/writable'); if (r.ok) projects = await r.json(); } catch { /* none */ }
+      for (const p of projects) projectNames.set(p.id, p.name);
+      const out = [];
+      for (const p of projects.slice(0, 12)) {
+        try {
+          const r = await api(`/api/projects/${p.id}/tasks/list?pageSize=50`);
+          if (!r.ok) continue;
+          const j = await r.json();
+          for (const t of (j.items || j || [])) if (!q || String(t.title).toLowerCase().includes(q.toLowerCase())) out.push({ id: t.id, title: t.title, status: t.status, project: p.name });
+        } catch { /* skipped */ }
+        if (out.length >= 40) break;
+      }
+      return out.slice(0, 40);
     },
     // Before an old drawing becomes the new canvas, the page as it is now is kept as a named version (once per page).
     beforeCanvasConvert: async () => {
@@ -366,6 +410,55 @@ export async function mount(el, opts) {
     snapping = false;
   }
 
+  // ── Make task(s) from stickies ─────────────────────────────────────────
+  // Title = the sticky's text without @names and dates; an @name that matches a project member becomes the assignee;
+  // a date in the text (25 Nov, 2026-11-25, 25/11) becomes the due date. The project list holds only projects the person can add to.
+  const LAST_PROJECT = 'ipop.wb.lastProject';
+  async function makeTasksDialog(stickies) {
+    let projects = [];
+    try { const r = await api('/api/projects/writable'); if (r.ok) projects = await r.json(); } catch { /* none */ }
+    for (const p of projects) projectNames.set(p.id, p.name);
+    if (!projects.length) { host.toast('You are not a member of a project you can add tasks to.'); return []; }
+    let last = null; try { last = localStorage.getItem(LAST_PROJECT); } catch { /* blocked */ }
+    const parsed = stickies.map(s => ({ ...s, ...parseSticky(s.text) }));
+    return new Promise(resolve => {
+      const layer = document.createElement('div');
+      layer.className = 'nt-taskdlg-layer';
+      layer.innerHTML = `<div class="nt-taskdlg" role="dialog" aria-modal="true" aria-label="Make tasks">
+        <h4>Make ${parsed.length === 1 ? 'a task' : `${parsed.length} tasks`}</h4>
+        <label class="nt-taskdlg-f">Project<select data-project>${projects.map(p => `<option value="${p.id}" ${p.id === last ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
+        <ul class="nt-taskdlg-list">${parsed.map(t => `<li><b>${esc(t.title || 'Untitled task')}</b><span>${[t.who ? '@' + esc(t.who) : '', t.due ? esc(t.due.label) : ''].filter(Boolean).join(' · ') || 'No one yet'}</span></li>`).join('')}</ul>
+        <div class="nt-taskdlg-acts"><button type="button" data-x>Cancel</button><button type="button" data-ok class="pri">Create ${parsed.length === 1 ? 'task' : `${parsed.length} tasks`}</button></div>
+      </div>`;
+      document.body.appendChild(layer);
+      const close = v => { layer.remove(); document.removeEventListener('keydown', onKey, true); resolve(v); };
+      const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); close([]); } };
+      document.addEventListener('keydown', onKey, true);
+      layer.addEventListener('click', async e => {
+        if (e.target === layer || e.target.closest('[data-x]')) { close([]); return; }
+        if (!e.target.closest('[data-ok]')) return;
+        const btn = e.target.closest('[data-ok]'); btn.disabled = true; btn.textContent = 'Creating…';
+        const projectId = layer.querySelector('[data-project]').value;
+        try { localStorage.setItem(LAST_PROJECT, projectId); } catch { /* blocked */ }
+        let members = [];
+        try { const r = await api(`/api/projects/${projectId}/members`); if (r.ok) members = await r.json(); } catch { /* none */ }
+        const out = [];
+        for (const t of parsed) {
+          try {
+            const r = await api(`/api/projects/${projectId}/tasks`, { method: 'POST', json: { projectId, parentTaskId: null, title: (t.title || 'Untitled task').slice(0, 300), description: t.text !== t.title ? t.text : null, status: 'todo', priority: null, startDate: null, dueDate: t.due?.iso ?? null, estimatedHours: null, dependencies: null, tags: null } });
+            if (!r.ok) continue;
+            const task = await r.json();
+            const who = t.who && members.find(m => String(m.name).toLowerCase().startsWith(t.who.toLowerCase()) || String(m.name).toLowerCase().split(' ').some(w => w === t.who.toLowerCase()));
+            if (who) await api(`/api/projects/tasks/${task.id}/assignees`, { method: 'POST', json: { userId: who.userId, role: 'assignee' } }).catch(() => {});
+            out.push({ stickyId: t.id, task: { id: task.id, title: task.title, status: task.status, due: t.due?.label ?? null, people: who ? [String(who.name).split(' ')[0]] : [], project: projectNames.get(projectId), projectId } });
+          } catch { /* skipped */ }
+        }
+        if (out.length < parsed.length) host.toast(`${parsed.length - out.length} could not be created`);
+        close(out);
+      });
+    });
+  }
+
   // ── Full-screen drawing ────────────────────────────────────────────────
   // The same scene (same Y.Map) mounted a second time over the page: edits made here show up in the inline block live.
   let fsClose = null;
@@ -382,7 +475,7 @@ export async function mount(el, opts) {
     fsClose = finish;
     close.addEventListener('click', finish);
     document.addEventListener('keydown', onKey, true);
-    try { inst = await mountScene(stage, { ydoc, id, readOnly: !canEdit, mode: 'board', toast: m => host.toast(m), library: host.drawLibrary, files: host.drawFiles, beforeConvert: host.beforeCanvasConvert, awareness }); if (!fsClose) inst.destroy(); }
+    try { inst = await mountScene(stage, { ydoc, id, readOnly: !canEdit, mode: 'board', toast: m => host.toast(m), library: host.drawLibrary, files: host.drawFiles, beforeConvert: host.beforeCanvasConvert, awareness, comments: host.drawComments, tasks: host.drawTasks, pages: host.drawPages, taskSearch: host.drawTaskSearch }); if (!fsClose) inst.destroy(); }
     catch { host.toast('Couldn’t load the drawing tools. Check your connection.'); finish(); }
   }
 
@@ -448,7 +541,7 @@ export async function mount(el, opts) {
       return !!fsHome;
     };
     boardFsExit = () => onBoardFs(false);
-    mountScene(boardEl, { ydoc, id: 'board', readOnly: !canEdit, mode: 'board', onLinkOpen: url => host.openLink(url), toast: m => host.toast(m), onFullscreen: onBoardFs, library: host.drawLibrary, files: host.drawFiles, beforeConvert: host.beforeCanvasConvert, awareness })
+    mountScene(boardEl, { ydoc, id: 'board', readOnly: !canEdit, mode: 'board', onLinkOpen: url => host.openLink(url), toast: m => host.toast(m), onFullscreen: onBoardFs, library: host.drawLibrary, files: host.drawFiles, beforeConvert: host.beforeCanvasConvert, awareness, comments: host.drawComments, tasks: host.drawTasks, pages: host.drawPages, taskSearch: host.drawTaskSearch, title: () => titleNow() })
       .then(inst => { if (closing) inst.destroy(); else board = inst; })
       .catch(() => host.toast('Couldn’t load the whiteboard tools. Check your connection and reload the page.'));
   }
@@ -577,6 +670,7 @@ export async function mount(el, opts) {
       let rel = anchorCache.get(anchor);
       if (!rel) {
         const j = JSON.parse(anchor);
+        if (!j?.a || !j?.b) return null;          // a comment pinned to a whiteboard, not to text
         rel = { a: Y.createRelativePositionFromJSON(j.a), b: Y.createRelativePositionFromJSON(j.b) };
         anchorCache.set(anchor, rel);
       }
@@ -769,11 +863,14 @@ export async function mount(el, opts) {
     },
     setThreads(threads, focus) {
       if (closing) return;
+      boardThreads = threads || [];
+      drawThreadListeners.forEach(f => f(boardThreads));
       const open = (threads || []).filter(t => !t.resolvedAt && t.anchor).map(t => ({ id: t.id, anchor: t.anchor }));
       editor.view.dispatch(editor.state.tr.setMeta(commentKey, { threads: open, focus: focus ?? null }));
     },
     focusThread(id) {
       if (closing) return;
+      drawFocusListeners.forEach(f => f(String(id)));
       const st = commentKey.getState(editor.state);
       editor.view.dispatch(editor.state.tr.setMeta(commentKey, { threads: st.threads, focus: id }));
       const t = st.threads.find(x => x.id === id);

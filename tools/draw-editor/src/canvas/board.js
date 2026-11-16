@@ -8,7 +8,7 @@ import {
   create, bump, isElement, zBetween, topZ, bottomZ, bounds, unionBounds, hitTest, insideBox, frameOf, moved, resizeBox,
   snap, guides, recognise, centre, SHAPES, STICKY_COLORS,
 } from './model.js';
-import { svgEl, defs, drawElement, PALETTE, toPng, toSvg, measure, FONT_STACK, layoutText } from './render.js';
+import { svgEl, defs, drawElement, PALETTE, toPng, toSvg, measure, FONT_STACK, layoutText, pngToPdf } from './render.js';
 import { CANVAS_TEMPLATES, TEMPLATE_INFO } from './templates.js';
 
 const ICONS = {
@@ -50,6 +50,14 @@ ICONS.laser = '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19
 ICONS.play = '<path d="m6 4 14 8-14 8z"/>';
 ICONS.timer = '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/>';
 ICONS.frames = '<rect x="3" y="4" width="7" height="7" rx="1"/><rect x="14" y="4" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 17h7"/>';
+ICONS.comment = '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>';
+ICONS.vote = '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.2" fill="currentColor"/>';
+ICONS.task = '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 12 3 3 5-6"/>';
+ICONS.note = '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>';
+ICONS.download = '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/>';
+ICONS.stamp = '<circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/>';
+ICONS.mind = '<circle cx="12" cy="12" r="3"/><circle cx="4" cy="5" r="2"/><circle cx="20" cy="5" r="2"/><circle cx="4" cy="19" r="2"/><circle cx="20" cy="19" r="2"/><path d="M6 6l4 4M18 6l-4 4M6 18l4-4M18 18l-4-4"/>';
+ICONS.card = '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h10M7 13h6"/>';
 const icon = (name, cls = 'wb-i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
 
 const INK = ['#1D1D1F', '#FF3B30', '#FF9500', '#34A853', '#0A84FF', '#AF52DE'];
@@ -57,7 +65,7 @@ const FILLS = [null, '#FFF3A3', '#C9F2C7', '#CFE6FF', '#FFD3E1', '#E6DAFF', '#F2
 const SIZES = [['S', 14], ['M', 18], ['L', 26], ['XL', 40]];
 
 // Letter shortcuts like ClickUp; digits keep the old Excalidraw meaning (grill Q18).
-const KEYS = { i: 'image', v: 'select', l: 'laser', h: 'hand', p: 'pen', m: 'highlighter', e: 'eraser', s: 'sticky', t: 'text', r: 'rect', o: 'ellipse', d: 'diamond', a: 'connector', f: 'frame' };
+const KEYS = { n: 'card', c: 'comment', k: 'stamp', i: 'image', v: 'select', l: 'laser', h: 'hand', p: 'pen', m: 'highlighter', e: 'eraser', s: 'sticky', t: 'text', r: 'rect', o: 'ellipse', d: 'diamond', a: 'connector', f: 'frame' };
 const DIGITS = { 0: 'eraser', 1: 'select', 2: 'rect', 3: 'diamond', 4: 'ellipse', 5: 'connector', 6: 'connector', 7: 'pen', 8: 'text', 9: 'select' };
 const SHAPE_LABEL = { rect: 'Rectangle', ellipse: 'Circle', diamond: 'Diamond', triangle: 'Triangle', star: 'Star', cloud: 'Cloud', arrowShape: 'Block arrow', cylinder: 'Cylinder', bubble: 'Speech bubble' };
 const MAX_ELEMENTS = 20000;
@@ -158,6 +166,7 @@ export function mountCanvas(container, opts) {
   let following = null;                        // awareness client id being followed
   let lastCursor = null, laserTrail = [], laserFade = 0;
   let presenting = null;                       // { index } while I present
+  const vmap = opts.voteMap || null;           // shared voting round + votes (a Y.Map next to the scene)
   let afterPaint = () => {};   // set by the live section below (cursors, Follow)
   let raf = 0;
   function render() { if (!raf && !destroyed) raf = requestAnimationFrame(() => { raf = 0; paint(); }); }
@@ -180,7 +189,7 @@ export function mountCanvas(container, opts) {
       let c = cache.get(e.id);
       if (!c || c.key !== key) {
         const tmp = svgEl('g');
-        const node = drawElement(tmp, e, get, { theme, editingId: editing?.id, files: opts.files });
+        const node = drawElement(tmp, e, get, { theme, editingId: editing?.id, files: opts.files, cardInfo: opts.cardInfo });
         if (c) c.node.replaceWith(node); else (prev ? prev.after(node) : world.prepend(node));
         c = { key, node }; cache.set(e.id, c);
       }
@@ -246,17 +255,17 @@ export function mountCanvas(container, opts) {
   const TOOLS = [
     ['select', 'Select', 'V'], ['hand', 'Hand', 'H'], '|',
     ['pen', 'Pen', 'P'], ['highlighter', 'Highlighter', 'M'], ['eraser', 'Eraser', 'E'], '|',
-    ['sticky', 'Sticky note', 'S'], ['text', 'Text', 'T'], ['shape', 'Shapes', 'R'], ['connector', 'Connector', 'A'], '|', ['frame', 'Frame', 'F'], ['image', 'Picture or file', 'I'], ['laser', 'Laser pointer', 'L'],
+    ['sticky', 'Sticky note', 'S'], ['text', 'Text', 'T'], ['shape', 'Shapes', 'R'], ['connector', 'Connector', 'A'], '|', ['frame', 'Frame', 'F'], ['image', 'Picture or file', 'I'], ['comment', 'Comment', 'C'], ['stamp', 'Stamp', 'K'], ['card', 'Add a Notes page or Projects task', 'N'], ['laser', 'Laser pointer', 'L'],
   ];
   function paintToolbar() {
     if (readOnly) {
       // viewers still get the hand and the laser pointer (pointing during a meeting)
       toolbar.hidden = false;
-      toolbar.innerHTML = [['hand', 'Hand', 'H'], ['laser', 'Laser pointer', 'L']].map(([k, label, key]) => `<button type="button" data-tool="${k}" class="${tool === k ? 'on' : ''}" title="${label} (${key})" aria-label="${label}" aria-pressed="${tool === k}">${icon(k)}<span class="wb-k">${key}</span></button>`).join('');
+      toolbar.innerHTML = [['hand', 'Hand', 'H'], ...(opts.comments?.canComment?.() ? [['comment', 'Comment', 'C']] : []), ['laser', 'Laser pointer', 'L']].map(([k, label, key]) => `<button type="button" data-tool="${k}" class="${tool === k ? 'on' : ''}" title="${label} (${key})" aria-label="${label}" aria-pressed="${tool === k}">${icon(k)}<span class="wb-k">${key}</span></button>`).join('');
       return;
     }
     toolbar.hidden = false;
-    toolbar.innerHTML = TOOLS.filter(t => !(compact && (t[0] === 'frame' || t[0] === 'highlighter')) && !(t[0] === 'image' && !opts.upload)).map(t => {
+    toolbar.innerHTML = TOOLS.filter(t => !(compact && (t[0] === 'frame' || t[0] === 'highlighter')) && !(t[0] === 'image' && !opts.upload) && !(t[0] === 'comment' && !opts.comments) && !(compact && t[0] === 'stamp') && !(t[0] === 'card' && !opts.pages && !opts.taskSearch)).map(t => {
       if (t === '|') return '<span class="wb-sep"></span>';
       const [k, label, key] = t;
       const on = k === tool || (k === 'shape' && SHAPES.includes(tool));
@@ -271,6 +280,8 @@ export function mountCanvas(container, opts) {
     const k = b.dataset.tool;
     if (k === 'shape') { toggleShapeMenu(b); return; }
     if (k === 'image') { pickFiles(); return; }
+    if (k === 'stamp') { toggleStampMenu(b); return; }
+    if (k === 'card') { toggleCardPicker(); return; }
     if (k === 'sticky' && tool === 'sticky') stickyColor = STICKY_COLORS[(STICKY_COLORS.indexOf(stickyColor) + 1) % STICKY_COLORS.length];
     setTool(k);
   });
@@ -305,7 +316,9 @@ export function mountCanvas(container, opts) {
     const fs = mode === 'board' && opts.onFullscreen;
     const extras = mode === 'board' ? `<button type="button" class="wb-chip" data-c="frames" title="Frames" aria-haspopup="dialog">${icon('frames')}<span>Frames</span></button>`
       + `<button type="button" class="wb-chip" data-c="present" title="Present frame by frame">${icon('play')}<span>Present</span></button>`
-      + (aw ? `<button type="button" class="wb-chip ${timerEnds ? 'on' : ''}" data-c="timer" title="Timer everyone sees">${icon('timer')}<span>${timerEnds ? timerLabel() : 'Timer'}</span></button>` : '') : '';
+      + (aw ? `<button type="button" class="wb-chip ${timerEnds ? 'on' : ''}" data-c="timer" title="Timer everyone sees">${icon('timer')}<span>${timerEnds ? timerLabel() : 'Timer'}</span></button>` : '')
+      + (vmap ? `<button type="button" class="wb-chip ${votingOn() ? 'on' : ''}" data-c="vote" title="Dot voting">${icon('vote')}<span>${votingOn() ? `Voting · ${Math.max(0, (round()?.per || 0) - myVotes().length)} left` : 'Vote'}</span></button>` : '')
+      + `<button type="button" class="wb-chip" data-c="export" title="Export or copy">${icon('download')}<span>Export</span></button>` : '';
     people.remove();
     topRight.innerHTML = extras + (fs ? `<button type="button" class="wb-chip" data-c="fs" title="Full screen (Shift F)" aria-pressed="${fullscreen}"><svg class="wb-i" viewBox="0 0 24 24" aria-hidden="true">${fullscreen ? '<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/>' : '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>'}</svg><span>${fullscreen ? 'Exit full screen' : 'Full screen'}</span></button>` : '');
     topRight.hidden = !fs && !extras && people.hidden;
@@ -335,6 +348,8 @@ export function mountCanvas(container, opts) {
     else if (e.target.closest('[data-c="frames"]')) toggleFrames();
     else if (e.target.closest('[data-c="present"]')) startPresent();
     else if (e.target.closest('[data-c="timer"]')) toggleTimerPanel();
+    else if (e.target.closest('[data-c="vote"]')) toggleVotePanel();
+    else if (e.target.closest('[data-c="export"]')) toggleExport();
   });
   const pickTemplate = e => {
     if (e.target.closest('[data-close]')) { gallery.hidden = true; return; }
@@ -356,7 +371,7 @@ export function mountCanvas(container, opts) {
   // Shared through the page's Yjs awareness (field "wb"): { board, x, y, sel, laser:[[x,y,t]...], view:{x,y,z,w,h} }.
   // Nothing of this is stored; it disappears when someone leaves.
   const boardKey = opts.boardKey || 'board';
-  const now = () => Date.now();
+  function now() { return Date.now(); }
   function setMine(patch) {
     if (!aw) return;
     const cur = aw.getLocalState()?.wb || {};
@@ -484,6 +499,7 @@ export function mountCanvas(container, opts) {
   if (aw) setMine({ x: null, y: null, sel: [], laser: [] });
   // the laser trail fades on everyone's screen even without new messages
   afterPaint = () => {
+    paintPins(); paintVotes(); paintMini();
     paintLive();
     shareView();
     if (aw) { const s2 = [...sel].sort().join(','); if (s2 !== afterPaint.lastSel) { afterPaint.lastSel = s2; setMine({ sel: [...sel].slice(0, 50) }); } }
@@ -492,7 +508,7 @@ export function mountCanvas(container, opts) {
 
   // ── Frames list, Present and the timer ───────────────────────────────────
   for (const c of [framesPanel, timerPanel, presBar, invite]) c.addEventListener('pointerdown', e => e.stopPropagation());
-  const framesInOrder = () => live().filter(e => e.type === 'frame').sort((a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) || a.y - b.y || a.x - b.x);
+  function framesInOrder() { return live().filter(e => e.type === 'frame').sort((a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) || a.y - b.y || a.x - b.x); }
   function showFrame(f, { animate = true } = {}) {
     if (!f) return;
     const r = rect();
@@ -571,7 +587,7 @@ export function mountCanvas(container, opts) {
     if (b.dataset.i === 'follow') { followingPresenter = invitedFor; checkPresenters.last = null; paintLive(); }
   });
   // Timer: a countdown everyone on the board sees (it lives in the starter's awareness; ends for all at the same moment).
-  const timerLabel = () => { const left = Math.max(0, Math.ceil((timerEnds - now()) / 1000)); return `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}`; };
+  function timerLabel() { const left = Math.max(0, Math.ceil((timerEnds - now()) / 1000)); return `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}`; }
   function toggleTimerPanel() {
     if (!timerPanel.hidden) { timerPanel.hidden = true; return; }
     framesPanel.hidden = true; gallery.hidden = true; libPanel.hidden = true;
@@ -598,6 +614,332 @@ export function mountCanvas(container, opts) {
       paintCorners();
     }, 500);
     paintCorners();
+  }
+
+  // ── Comments pinned to the board ─────────────────────────────────────────
+  // Uses the page's own comment threads (mentions, reactions, resolve). The anchor is {"wb":board,"x","y","el"?}: a pin at a
+  // point, or on an element (then it follows the element).
+  const pinLayer = el('div', 'wb-pins');
+  root.append(pinLayer);
+  let threads = [];
+  const anchorOf = t => { try { const a = JSON.parse(t.anchor || ''); return a && a.wb === boardKey ? a : null; } catch { return null; } };
+  function pinPos(a) {
+    if (a.el) { const e = get(a.el); if (e && !e.isDeleted) { const b = bounds(e, get); return { x: b.x + b.w, y: b.y }; } }
+    return { x: a.x, y: a.y };
+  }
+  function paintPins() {
+    if (!opts.comments) { pinLayer.innerHTML = ''; return; }
+    const list = threads.filter(t => !t.resolvedAt).map(t => ({ t, a: anchorOf(t) })).filter(x => x.a);
+    pinLayer.innerHTML = list.map(({ t, a }, i) => {
+      const p = toScreen(pinPos(a).x, pinPos(a).y);
+      return `<button type="button" class="wb-pin" data-thread="${t.id}" style="left:${p.x.toFixed(0)}px;top:${p.y.toFixed(0)}px" title="Open comment" aria-label="Comment ${i + 1}">${t.count > 1 ? t.count : ''}</button>`;
+    }).join('');
+  }
+  pinLayer.addEventListener('pointerdown', e => e.stopPropagation());
+  pinLayer.addEventListener('click', e => { const b = e.target.closest('[data-thread]'); if (b) opts.comments?.open(b.dataset.thread); });
+  function startComment(w, onEl) {
+    if (!opts.comments) return;
+    const anchor = JSON.stringify(onEl ? { wb: boardKey, el: onEl.id, x: Math.round(w.x), y: Math.round(w.y) } : { wb: boardKey, x: Math.round(w.x), y: Math.round(w.y) });
+    const quote = onEl ? String(onEl.text || onEl.name || onEl.title || (SHAPE_LABEL[onEl.type] || onEl.type)).slice(0, 120) : 'On the board';
+    opts.comments.start(quote, anchor);
+  }
+
+  // ── Voting ───────────────────────────────────────────────────────────────
+  // The round lives in the shared document ("wbvote:<board>" key on the scene map is avoided: a separate Y.Map), so it survives
+  // reloads and everyone sees the same round. Votes are per person; they stay hidden until the round ends.
+  function myKey() { return String(opts.me?.id || aw?.getLocalState()?.user?.nik || 'me'); }
+  function round() { const r = vmap?.get('round'); return r && typeof r === 'object' ? r : null; }
+  function votingOn() { const r = round(); return !!r && !r.closedAt && (!r.endsAt || r.endsAt > now()); }
+  function myVotes() { const v = vmap?.get(`v:${round()?.id}:${myKey()}`); return Array.isArray(v) ? v : []; }
+  function tally() {
+    const r = round(); if (!r) return new Map();
+    const t = new Map();
+    vmap.forEach((v, k) => { if (k.startsWith(`v:${r.id}:`) && Array.isArray(v)) for (const id of v) t.set(id, (t.get(id) || 0) + 1); });
+    return t;
+  }
+  function castVote(target, takeBack) {
+    const r = round(); if (!r) return;
+    const mine = myVotes().slice();
+    const i = mine.lastIndexOf(target.id);
+    if (takeBack) { if (i < 0) return; mine.splice(i, 1); }
+    else if (mine.length < r.per) mine.push(target.id);
+    else { toast(`You used all ${r.per} votes. Alt-click a sticky to take one back.`); return; }
+    doc.transact(() => vmap.set(`v:${r.id}:${myKey()}`, mine), ORIGIN);
+    paintVotes(); paintVotePanel();
+  }
+  const votePanel = el('div', 'wb-panel wb-votep'); votePanel.hidden = true;
+  const voteLayer = el('div', 'wb-votes');
+  root.append(votePanel, voteLayer);
+  votePanel.addEventListener('pointerdown', e => e.stopPropagation());
+  function paintVotes() {
+    const r = round();
+    if (!r || !vmap) { voteLayer.innerHTML = ''; return; }
+    const showAll = !!r.closedAt || (r.endsAt && r.endsAt <= now()) || !r.hidden;
+    const counts = showAll ? tally() : new Map(myVotes().reduce((m, id) => m.set(id, (m.get(id) || 0) + 1), new Map()));
+    voteLayer.innerHTML = [...counts].filter(([, n]) => n > 0).map(([id, n]) => {
+      const e = get(id); if (!e || e.isDeleted) return '';
+      const b = bounds(e, get), p = toScreen(b.x + b.w, b.y + b.h);
+      return `<span class="wb-vote ${showAll ? 'all' : 'mine'}" style="left:${p.x.toFixed(0)}px;top:${p.y.toFixed(0)}px">${n}</span>`;
+    }).join('');
+  }
+  function paintVotePanel() {
+    if (votePanel.hidden) return;
+    const r = round(), on = votingOn();
+    if (!r || (!on && !r.closedAt && !(r.endsAt && r.endsAt <= now()))) {
+      votePanel.innerHTML = `<div class="wb-ph"><b>Voting</b><button type="button" data-close aria-label="Close">✕</button></div>
+        <label class="wb-row">Votes for each person <select data-per>${[1, 2, 3, 5, 10].map(n => `<option ${n === 3 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+        <label class="wb-row">Time limit <select data-mins><option value="0">None</option>${[2, 5, 10, 15].map(n => `<option value="${n}">${n} min</option>`).join('')}</select></label>
+        <label class="wb-row"><input type="checkbox" data-hide checked> Hide votes until it ends</label>
+        ${readOnly ? '<p class="wb-note">Only people who can edit can start a vote.</p>' : '<button type="button" class="wb-wide wb-pri" data-start>Start voting</button>'}`;
+    } else if (on) {
+      const left = r.per - myVotes().length;
+      votePanel.innerHTML = `<div class="wb-ph"><b>Voting is on</b><button type="button" data-close aria-label="Close">✕</button></div>
+        <p class="wb-note">Click stickies or cards to vote. You have <b>${left}</b> of ${r.per} left. Alt-click takes one back.${r.endsAt ? ` Ends in ${Math.max(0, Math.ceil((r.endsAt - now()) / 60000))} min.` : ''}</p>
+        ${readOnly && r.by !== myKey() ? '' : '<button type="button" class="wb-wide" data-end>End and show results</button>'}`;
+    } else {
+      const t = [...tally()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+      votePanel.innerHTML = `<div class="wb-ph"><b>Results</b><button type="button" data-close aria-label="Close">✕</button></div>`
+        + (t.length ? `<ol class="wb-results">${t.map(([id, n]) => { const e = get(id); return `<li><button type="button" data-goto="${id}"><b>${n}</b> ${esc(String(e?.text || e?.title || 'Item').split('\n')[0].slice(0, 40))}</button></li>`; }).join('')}</ol>` : '<p class="wb-note">No votes were cast.</p>')
+        + (readOnly ? '' : '<div class="wb-row2"><button type="button" class="wb-wide" data-sort>Line up by votes</button><button type="button" class="wb-wide" data-clear>New vote</button></div>');
+    }
+  }
+  votePanel.addEventListener('click', e => {
+    if (e.target.closest('[data-close]')) { votePanel.hidden = true; return; }
+    if (e.target.closest('[data-start]') && vmap) {
+      const per = +votePanel.querySelector('[data-per]').value, mins = +votePanel.querySelector('[data-mins]').value, hidden = votePanel.querySelector('[data-hide]').checked;
+      doc.transact(() => {
+        vmap.forEach((_, k) => { if (k.startsWith('v:')) vmap.delete(k); });
+        vmap.set('round', { id: Math.random().toString(36).slice(2, 9), per, hidden, endsAt: mins ? now() + mins * 60000 : null, by: myKey(), startedAt: now() });
+      }, ORIGIN);
+      toast('Voting started for everyone on the board');
+    }
+    if (e.target.closest('[data-end]') && vmap) { const r = round(); if (r) doc.transact(() => vmap.set('round', { ...r, closedAt: now() }), ORIGIN); }
+    if (e.target.closest('[data-clear]') && vmap) doc.transact(() => { vmap.forEach((_, k) => vmap.delete(k)); }, ORIGIN);
+    const go = e.target.closest('[data-goto]'); if (go) { const t = get(go.dataset.goto); if (t) { sel = new Set([t.id]); fit([t], { max: 1.2 }); } }
+    if (e.target.closest('[data-sort]')) sortByVotes();
+    paintVotes(); paintVotePanel();
+  });
+  function toggleVotePanel() {
+    if (!vmap) return;
+    if (!votePanel.hidden) { votePanel.hidden = true; return; }
+    framesPanel.hidden = true; timerPanel.hidden = true; libPanel.hidden = true; gallery.hidden = true;
+    votePanel.hidden = false; paintVotePanel();
+  }
+  /// Results as a row: the voted items move into one line, most votes first (one undo step).
+  function sortByVotes() {
+    const t = [...tally()].sort((a, b) => b[1] - a[1]).map(([id]) => get(id)).filter(e => e && !e.locked);
+    if (!t.length) return;
+    const start = unionBounds(t, get);
+    let x = start.x;
+    write(t.map(e => { const m = moved(e, x - e.x, start.y - e.y); x += (e.w || 100) + 24; return m; }), { now: true });
+    commitStop(); fit(t.map(e => get(e.id)), { max: 1 });
+  }
+  const onVote = () => { if (!destroyed) { paintVotes(); paintVotePanel(); paintCorners(); } };
+  vmap?.observe(onVote);
+  const unThreads = opts.comments?.subscribe?.(list => { threads = (list || []).map(t => ({ id: t.id, anchor: t.anchor, resolvedAt: t.resolvedAt, count: t.count || 1 })); paintPins(); });
+
+  // ── Stamps ───────────────────────────────────────────────────────────────
+  const STAMPS = ['👍', '❤️', '⭐', '✅', '❓', '🔥', '🎉', '👀'];
+  let stampEmoji = '👍';
+  const stampMenu = el('div', 'wb-menu wb-stampmenu'); stampMenu.hidden = true;
+  root.append(stampMenu);
+  stampMenu.addEventListener('pointerdown', e => e.stopPropagation());
+  function toggleStampMenu(anchor) {
+    if (!stampMenu.hidden) { stampMenu.hidden = true; return; }
+    stampMenu.innerHTML = STAMPS.map(x => `<button type="button" data-stamp="${x}" class="${x === stampEmoji ? 'on' : ''}" aria-label="Stamp ${x}">${x}</button>`).join('');
+    stampMenu.hidden = false;
+    const r = anchor.getBoundingClientRect(), rr = rect();
+    stampMenu.style.left = `${Math.max(8, Math.min(r.left - rr.left + r.width / 2 - 100, rr.width - 210))}px`;
+    stampMenu.style.bottom = `${rr.bottom - r.top + 8}px`;
+  }
+  stampMenu.addEventListener('click', e => { const b = e.target.closest('[data-stamp]'); if (!b) return; stampEmoji = b.dataset.stamp; stampMenu.hidden = true; setTool('stamp'); });
+
+  // ── Mind map: Tab = branch, Shift+Enter = sibling ────────────────────────
+  function mindAdd(from, kind) {
+    if (readOnly || from.locked) return;
+    const links = live().filter(c => c.type === 'connector');
+    const parentLink = links.find(c => c.to?.id === from.id);
+    const parent = kind === 'sibling' ? (parentLink ? get(parentLink.from.id) : null) : from;
+    if (kind === 'sibling' && !parent) { mindAdd(from, 'child'); return; }
+    const kids = links.filter(c => c.from?.id === parent.id).map(c => get(c.to?.id)).filter(Boolean);
+    const right = !parentLink || centre(from, get).x >= centre(get(parentLink.from.id) || from, get).x;
+    const dir = kind === 'child' ? (right ? 1 : -1) : (centre(from, get).x >= centre(parent, get).x ? 1 : -1);
+    const w = Math.max(160, Math.min(from.w || 160, 240)), h = Math.max(56, Math.min(from.h || 60, 90));
+    const pb = bounds(parent, get);
+    const x = dir > 0 ? pb.x + pb.w + 120 : pb.x - 120 - w;
+    const sameSide = kids.filter(k => (centre(k, get).x - centre(parent, get).x) * dir > 0);
+    const y = sameSide.length ? Math.max(...sameSide.map(k => k.y + k.h)) + 24 : pb.y + pb.h / 2 - h / 2;
+    const node = create(from.type === 'sticky' ? 'sticky' : 'rect', from.type === 'sticky' ? { x, y, w, h, text: '', color: from.color } : { x, y, w, h, text: '', fill: from.fill ?? null, stroke: from.stroke ?? null });
+    const link = create('connector', { from: { id: parent.id }, to: { id: node.id }, route: 'curved', endHead: 'none', startHead: 'none' });
+    add([node, link], { select: false });
+    sel = new Set([node.id]);
+    editSoon2(node);
+  }
+  function editSoon2(node) { setTimeout(() => { const n = get(node.id); if (n && !destroyed) editText(n, { selectAll: true }); }, 0); }
+
+  // ── Notes page and Projects task cards ───────────────────────────────────
+  const taskCache = new Map();   // taskId -> { title, status, due, people, project, private } | 'loading'
+  function ensureTask(id) {
+    if (!id || taskCache.has(id) || !opts.tasks?.get) return;
+    taskCache.set(id, 'loading');
+    opts.tasks.get(id).then(t => { taskCache.set(id, t || { private: true }); cache.clear(); world.innerHTML = ''; render(); }, () => taskCache.set(id, { private: true }));
+  }
+  opts.cardInfo = { task: id => { ensureTask(id); const t = taskCache.get(id); return t === 'loading' ? null : t; }, page: id => opts.pages?.info?.(id) };
+  function addTaskCards(tasks, at) {
+    let y = at.y;
+    const cards = tasks.map(t => { const c = create('taskCard', { x: at.x, y, w: 260, h: 104, taskId: t.id, title: t.title }); y += 120; taskCache.set(t.id, t); return c; });
+    add(cards);
+  }
+  async function makeTasks(stickies) {
+    if (!opts.tasks?.create) return;
+    const r = await opts.tasks.create(stickies.map(s => ({ id: s.id, text: s.text || '' })));
+    if (!r?.length) return;
+    // each sticky becomes the task card in its place
+    const byId = new Map(r.map(x => [x.stickyId, x.task]));
+    const out = [];
+    for (const s of stickies) {
+      const t = byId.get(s.id); if (!t) continue;
+      taskCache.set(t.id, t);
+      out.push(bump(s, { isDeleted: true }), { ...create('taskCard', { x: s.x, y: s.y, w: Math.max(240, s.w), h: 104, taskId: t.id, title: t.title }), z: s.z });
+    }
+    write(out, { now: true }); commitStop(); sel.clear(); paintProps();
+    toast(r.length === 1 ? 'Task created in Projects' : `${r.length} tasks created in Projects`);
+  }
+  // card picker: Notes pages (from the sidebar list) and tasks (projects I can add to)
+  const cardPicker = el('div', 'wb-panel wb-cardpick'); cardPicker.hidden = true;
+  root.append(cardPicker);
+  cardPicker.addEventListener('pointerdown', e => e.stopPropagation());
+  let cardTab = 'pages', cardQ = '', cardSeq = 0;
+  function toggleCardPicker() {
+    if (readOnly) return;
+    if (!cardPicker.hidden) { cardPicker.hidden = true; return; }
+    for (const p of [framesPanel, timerPanel, libPanel, gallery, votePanel, exportPanel]) p.hidden = true;
+    cardPicker.hidden = false; paintCardPicker();
+  }
+  async function paintCardPicker() {
+    const seq = ++cardSeq;
+    cardPicker.innerHTML = `<div class="wb-ph"><b>Add a card</b><button type="button" data-close aria-label="Close">✕</button></div>
+      <div class="wb-seg" role="tablist">${opts.pages ? `<button type="button" data-tab="pages" class="${cardTab === 'pages' ? 'on' : ''}">Notes page</button>` : ''}${opts.taskSearch ? `<button type="button" data-tab="tasks" class="${cardTab === 'tasks' ? 'on' : ''}">Projects task</button>` : ''}</div>
+      <input class="wb-search" type="search" placeholder="${cardTab === 'pages' ? 'Find a page' : 'Find a task'}" value="${esc(cardQ)}" aria-label="Search">
+      <div class="wb-cardlist"><p class="wb-note">${cardTab === 'tasks' ? 'Loading tasks…' : ''}</p></div>`;
+    const input = cardPicker.querySelector('.wb-search');
+    input.focus(); input.setSelectionRange(input.value.length, input.value.length);
+    input.addEventListener('input', () => { cardQ = input.value; clearTimeout(paintCardPicker.t); paintCardPicker.t = setTimeout(fillCards, 200); });
+    input.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Escape') cardPicker.hidden = true; });
+    fillCards(seq);
+  }
+  async function fillCards(seq = cardSeq) {
+    const list = cardPicker.querySelector('.wb-cardlist'); if (!list) return;
+    const q = cardQ.trim().toLowerCase();
+    if (cardTab === 'pages') {
+      const items = (opts.pages?.all?.() || []).filter(p => !q || String(p.title || '').toLowerCase().includes(q)).slice(0, 40);
+      list.innerHTML = items.length ? items.map(p => `<button type="button" data-page="${p.id}">${esc(p.emoji || '📄')} ${esc(p.title || 'Untitled')}</button>`).join('') : '<p class="wb-note">No page found.</p>';
+    } else {
+      const items = await opts.taskSearch(q).catch(() => []);
+      if (seq !== cardSeq && cardTab !== 'tasks') return;
+      list.innerHTML = items.length ? items.map(t => `<button type="button" data-task="${t.id}"><b>${esc(t.title)}</b><small>${esc(t.project || '')}</small></button>`).join('') : '<p class="wb-note">No task found in your projects.</p>';
+      cardPicker._tasks = items;
+    }
+  }
+  cardPicker.addEventListener('click', e => {
+    if (e.target.closest('[data-close]')) { cardPicker.hidden = true; return; }
+    const tab = e.target.closest('[data-tab]'); if (tab) { cardTab = tab.dataset.tab; paintCardPicker(); return; }
+    const r = rect(), c = toWorld(r.width / 2, r.height / 2);
+    const pg = e.target.closest('[data-page]');
+    if (pg) { const p = (opts.pages?.all?.() || []).find(x => x.id === pg.dataset.page); if (p) addPageCard(p, c); cardPicker.hidden = true; return; }
+    const tk = e.target.closest('[data-task]');
+    if (tk) { const t = (cardPicker._tasks || []).find(x => x.id === tk.dataset.task); if (t) addTaskCards([t], { x: c.x - 130, y: c.y - 52 }); cardPicker.hidden = true; }
+  });
+  const unFocus = opts.comments?.onFocus?.(id => {
+    const t = threads.find(x => x.id === id); const a = t && anchorOf(t); if (!a) return;
+    const p = pinPos(a), r = rect(); view.x = r.width / 2 - p.x * view.z; view.y = r.height / 2 - p.y * view.z; render();
+    requestAnimationFrame(() => pinLayer.querySelector(`[data-thread="${id}"]`)?.classList.add('wb-pin-focus'));
+  });
+  function addPageCard(page, at) { add([create('noteCard', { x: at.x - 130, y: at.y - 40, w: 260, h: 80, pageId: page.id, title: page.title, emoji: page.emoji })]); }
+
+  // ── Export ───────────────────────────────────────────────────────────────
+  const exportPanel = el('div', 'wb-panel wb-exportp'); exportPanel.hidden = true;
+  root.append(exportPanel);
+  exportPanel.addEventListener('pointerdown', e => e.stopPropagation());
+  function toggleExport() {
+    if (!exportPanel.hidden) { exportPanel.hidden = true; return; }
+    const frames = framesInOrder();
+    exportPanel.innerHTML = `<div class="wb-ph"><b>Export</b><button type="button" data-close aria-label="Close">✕</button></div>
+      <label class="wb-row">What <select data-what><option value="all">Whole board</option>${sel.size ? '<option value="sel" selected>Selection</option>' : ''}${frames.map(f => `<option value="f:${f.id}">Frame: ${esc(f.name || 'Frame')}</option>`).join('')}</select></label>
+      <label class="wb-row">Format <select data-fmt><option value="png">PNG picture</option><option value="svg">SVG (sharp at any size)</option><option value="pdf">PDF</option></select></label>
+      <label class="wb-row">Background <select data-bg><option value="light">White</option><option value="dark">Dark</option><option value="none">None (PNG / SVG)</option></select></label>
+      <div class="wb-row2"><button type="button" class="wb-wide" data-copy>Copy as image</button><button type="button" class="wb-wide wb-pri" data-dl>Download</button></div>`;
+    framesPanel.hidden = true; votePanel.hidden = true; timerPanel.hidden = true; libPanel.hidden = true; gallery.hidden = true;
+    exportPanel.hidden = false;
+  }
+  function exportSet(what) {
+    if (what === 'sel') return [...sel].map(get).filter(Boolean);
+    if (what?.startsWith('f:')) { const f = get(what.slice(2)); if (!f) return []; return [f, ...live().filter(x => x.id !== f.id && frameOf(x, live(), get)?.id === f.id), ...live().filter(c => c.type === 'connector')].filter((x, i, a) => a.indexOf(x) === i && (x.type !== 'connector' || frameOf(get(x.from?.id) || x, live(), get)?.id === f.id)); }
+    return live();
+  }
+  async function renderExport(els, fmt, bg) {
+    const files = await dataUrls();
+    const theme = bg === 'dark' ? 'dark' : 'light', background = bg !== 'none' || fmt === 'pdf';
+    if (fmt === 'svg') { const o = toSvg(els, { theme, files, background, cardInfo: opts.cardInfo }); return o ? new Blob([new XMLSerializer().serializeToString(o.svg)], { type: 'image/svg+xml' }) : null; }
+    const png = await toPng(els, { scale: 2, theme, files, background, cardInfo: opts.cardInfo });
+    if (fmt !== 'pdf' || !png) return png;
+    return pngToPdf(png);
+  }
+  exportPanel.addEventListener('click', async e => {
+    if (e.target.closest('[data-close]')) { exportPanel.hidden = true; return; }
+    const what = exportPanel.querySelector('[data-what]')?.value, fmt = exportPanel.querySelector('[data-fmt]')?.value, bg = exportPanel.querySelector('[data-bg]')?.value;
+    const els = exportSet(what);
+    if (!els.length) { toast('Nothing to export'); return; }
+    if (e.target.closest('[data-copy]')) {
+      try {
+        const png = await toPng(els, { scale: 2, theme: bg === 'dark' ? 'dark' : 'light', files: await dataUrls(), background: bg !== 'none', cardInfo: opts.cardInfo });
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+        toast('Copied. Paste it in Chat or Mail.');
+      } catch { toast('This browser cannot copy pictures. Use Download instead.'); }
+      return;
+    }
+    if (e.target.closest('[data-dl]')) {
+      const blob = await renderExport(els, fmt, bg).catch(() => null);
+      if (!blob) { toast('Couldn’t make the file'); return; }
+      const name = `${(opts.title?.() || 'whiteboard').replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'whiteboard'}.${fmt}`;
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      exportPanel.hidden = true;
+    }
+  });
+
+  // ── Minimap ──────────────────────────────────────────────────────────────
+  const mini = el('div', 'wb-mini'); mini.setAttribute('aria-label', 'Map of the board');
+  const miniSvg = svgEl('svg', { class: 'wb-minisvg' }, mini);
+  root.append(mini);
+  mini.addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    const b = unionBounds(live(), get); if (!b) return;
+    const r = mini.getBoundingClientRect(), vb = miniSvg.viewBox.baseVal;
+    const wx = vb.x + (e.clientX - r.left) / r.width * vb.width, wy = vb.y + (e.clientY - r.top) / r.height * vb.height;
+    const rr = rect(); view.x = rr.width / 2 - wx * view.z; view.y = rr.height / 2 - wy * view.z; render();
+  });
+  function paintMini() {
+    if (mode !== 'board') { mini.hidden = true; return; }
+    const els = live();
+    const b = unionBounds(els, get);
+    const r = rect();
+    // only worth showing once the board is bigger than the screen
+    if (!b || (b.w * view.z < r.width * 0.9 && b.h * view.z < r.height * 0.9)) { mini.hidden = true; return; }
+    mini.hidden = false;
+    const pad = Math.max(b.w, b.h) * 0.06;
+    miniSvg.setAttribute('viewBox', `${b.x - pad} ${b.y - pad} ${b.w + pad * 2} ${b.h + pad * 2}`);
+    const pal = PALETTE[theme] || PALETTE.light, stroke = Math.max(b.w, b.h) / 120;
+    let html = '';
+    for (const e of els) {
+      if (e.type === 'connector' || e.type === 'path' || e.type === 'stamp') continue;
+      const eb = bounds(e, get);
+      const fill = e.type === 'sticky' ? pal.sticky[e.color] || pal.sticky.yellow : e.type === 'frame' ? 'none' : 'rgba(118,118,128,.35)';
+      html += `<rect x="${eb.x}" y="${eb.y}" width="${Math.max(eb.w, stroke * 2)}" height="${Math.max(eb.h, stroke * 2)}" rx="${stroke * 2}" fill="${fill}" stroke="${e.type === 'frame' ? 'rgba(118,118,128,.6)' : 'none'}" stroke-width="${stroke}"/>`;
+    }
+    const a = toWorld(0, 0), z = toWorld(r.width, r.height);
+    html += `<rect x="${a.x}" y="${a.y}" width="${z.x - a.x}" height="${z.y - a.y}" fill="rgba(10,132,255,.08)" stroke="${pal.sel}" stroke-width="${stroke * 1.5}" rx="${stroke * 3}"/>`;
+    miniSvg.innerHTML = html;
   }
 
   // ── Pictures and files ───────────────────────────────────────────────────
@@ -818,6 +1160,8 @@ export function mountCanvas(container, opts) {
     if (els.some(e => e.type === 'path' || e.type === 'connector' || anyShape)) parts.push(`<button type="button" data-width title="Line weight">≡</button>`);
     if (els.some(e => e.type === 'text' || e.type === 'sticky' || anyShape)) parts.push(['ipop', 'hand', 'mono'].map(f => `<button type="button" data-font="${f}" title="${f === 'ipop' ? 'iPop font' : f === 'hand' ? 'Handwriting' : 'Monospace'}" style="font-family:${FONT_STACK[f].replace(/"/g, "'")}">Aa</button>`).join('') + SIZES.map(([n, s]) => `<button type="button" data-size="${s}" title="Text size ${n}">${n}</button>`).join(''));
     const locked = els.every(e => e.locked);
+    if (opts.tasks?.create && els.every(x => x.type === 'sticky')) parts.push(`<button type="button" data-act="task" class="wb-taskbtn" title="Turn into Projects tasks">${icon('task')}<span>Make ${els.length > 1 ? els.length + ' tasks' : 'task'}</span></button>`);
+    if (els.length === 1 && (SHAPES.includes(els[0].type) || els[0].type === 'sticky')) parts.push(`<button type="button" data-act="branch" title="Add a branch (Tab)">${icon('mind')}</button>`);
     if (opts.library) parts.push(`<button type="button" data-act="lib" title="Add to my library">${icon('bookplus')}</button>`);
     parts.push(`<button type="button" data-act="front" title="Bring to front (Ctrl ])">${icon('front')}</button><button type="button" data-act="back" title="Send to back (Ctrl [)">${icon('back')}</button><button type="button" data-act="dup" title="Duplicate (Ctrl D)">${icon('copy')}</button><button type="button" data-act="lock" title="${locked ? 'Unlock' : 'Lock'}">${icon(locked ? 'unlock' : 'lock')}</button><button type="button" data-act="del" title="Delete (Del)" class="wb-danger">${icon('trash')}</button>`);
     props.innerHTML = parts.join('<span class="wb-sep"></span>');
@@ -859,6 +1203,8 @@ export function mountCanvas(container, opts) {
     else if (b.dataset.act === 'lock') { const lock = !els.every(x => x.locked); upd(() => ({ locked: lock })); toast(lock ? 'Locked: it can no longer be moved by accident' : 'Unlocked'); }
     else if (b.dataset.act === 'del') remove(els);
     else if (b.dataset.act === 'lib') { saveToLibrary(els); return; }
+    else if (b.dataset.act === 'task') { makeTasks(els); return; }
+    else if (b.dataset.act === 'branch') { mindAdd(els[0], 'child'); return; }
     commitStop();
     paintProps();
   });
@@ -1019,6 +1365,16 @@ export function mountCanvas(container, opts) {
 
     stopFollow();
     if (tool === 'laser' && e.button === 0) { interaction = { kind: 'laser' }; laserAt(w); return; }
+    if (tool === 'comment' && e.button === 0) {
+      const hit = hitTest(live(), w.x, w.y, get, tolerance());
+      startComment(w, hit && hit.type !== 'frame' ? hit : null);
+      setTool('select');
+      return;
+    }
+    if (votingOn() && e.button === 0 && !e.shiftKey) {
+      const hit = hitTest(live(), w.x, w.y, get, tolerance());
+      if (hit && (hit.type === 'sticky' || hit.type === 'taskCard' || hit.type === 'noteCard')) { castVote(hit, e.altKey); return; }
+    }
     if (tool === 'hand' || spaceDown || e.button === 1 || (readOnly && tool !== 'laser')) { interaction = { kind: 'pan', sx, sy, view: { ...view } }; root.classList.add('wb-panning'); return; }
     if (e.button === 2) return;
     if (readOnly) return;
@@ -1032,6 +1388,7 @@ export function mountCanvas(container, opts) {
       return;
     }
     if (tool === 'eraser') { interaction = { kind: 'erase', erased: new Set() }; eraseAt(w); return; }
+    if (tool === 'stamp') { add([create('stamp', { x: w.x - 18, y: w.y - 18, w: 36, h: 36, emoji: stampEmoji })], { select: false }); return; }
     if (tool === 'sticky') { const s = create('sticky', { x: w.x - 100, y: w.y - 80, w: 200, h: 160, color: stickyColor, text: '' }); const [placed] = add([s]) || []; setTool('select'); if (placed) editSoon(placed); return; }
     if (tool === 'text') { const t = create('text', { x: w.x, y: w.y - 13, w: 40, h: 26, text: '', size: 20, font: 'ipop', stroke: penColor }); const [placed] = add([t]) || []; setTool('select'); if (placed) editSoon(placed); return; }
     if (SHAPES.includes(tool) || tool === 'frame') {
@@ -1246,6 +1603,8 @@ export function mountCanvas(container, opts) {
       return;
     }
     if (hit?.type === 'file' && hit.fileId && opts.openFile) { opts.openFile(hit.fileId, hit.name); return; }
+    if (hit?.type === 'taskCard' && hit.taskId && opts.tasks?.open) { opts.tasks.open(hit.taskId); return; }
+    if (hit?.type === 'noteCard' && hit.pageId && opts.pages?.open) { opts.pages.open(hit.pageId); return; }
     if (hit && (hit.type === 'sticky' || hit.type === 'text' || SHAPES.includes(hit.type))) { sel = new Set([hit.id]); editText(hit); return; }
     if (hit?.type === 'connector') {
       const label = el('input', 'wb-edit'); label.value = hit.label || ''; label.placeholder = 'Label'; label.setAttribute('aria-label', 'Connector label');
@@ -1311,7 +1670,7 @@ export function mountCanvas(container, opts) {
     if (presenting && (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ')) { e.preventDefault(); goSlide(presenting.index + 1); return; }
     if (presenting && (e.key === 'ArrowLeft' || e.key === 'PageUp')) { e.preventDefault(); goSlide(presenting.index - 1); return; }
     if (e.key === 'Escape') { if (presenting) { stopPresent(); return; } if (following != null) { followingPresenter = null; stopFollow(); return; } if (!keysPanel.hidden) { keysPanel.hidden = true; return; } if (!gallery.hidden) { gallery.hidden = true; return; } if (!libPanel.hidden) { libPanel.hidden = true; return; } if (fullscreen) { toggleFullscreen(); return; } sel.clear(); setTool('select'); paintProps(); render(); return; }
-    if (readOnly) { if (k === 'h' || k === 'l') setTool(k === 'h' ? 'hand' : 'laser'); return; }
+    if (readOnly) { if (k === 'h' || k === 'l') setTool(k === 'h' ? 'hand' : 'laser'); else if (k === 'c' && opts.comments?.canComment?.()) setTool('comment'); return; }
     const chosen = [...sel].map(get).filter(Boolean);
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); remove(chosen.filter(x => !x.locked)); paintProps(); return; }
     if (mod && k === 'd') { e.preventDefault(); duplicate(chosen); return; }
@@ -1320,6 +1679,8 @@ export function mountCanvas(container, opts) {
     if (mod && k === 'v') return;   // handled by the paste event (files, pictures and copied board items)
     if (mod && e.key === ']') { e.preventDefault(); reorder(chosen, 'front'); commitStop(); return; }
     if (mod && e.key === '[') { e.preventDefault(); reorder(chosen, 'back'); commitStop(); return; }
+    if (e.key === 'Tab' && chosen.length === 1 && (SHAPES.includes(chosen[0].type) || chosen[0].type === 'sticky')) { e.preventDefault(); mindAdd(chosen[0], 'child'); return; }
+    if (e.key === 'Enter' && e.shiftKey && chosen.length === 1 && (SHAPES.includes(chosen[0].type) || chosen[0].type === 'sticky')) { e.preventDefault(); mindAdd(chosen[0], 'sibling'); return; }
     if (e.key === 'Enter' && chosen.length === 1 && (chosen[0].type === 'sticky' || chosen[0].type === 'text' || SHAPES.includes(chosen[0].type))) { e.preventDefault(); editText(chosen[0]); return; }
     if (e.key.startsWith('Arrow') && chosen.length) {
       e.preventDefault();
@@ -1331,6 +1692,7 @@ export function mountCanvas(container, opts) {
     // R picks the rectangle; pressing it again while a shape tool is on walks through the other shapes (shown in the bar).
     if (k === 'r') { lastShape = SHAPES.includes(tool) ? SHAPES[(SHAPES.indexOf(tool) + 1) % SHAPES.length] : 'rect'; setTool(lastShape); return; }
     if (k === 'i') { if (opts.upload) pickFiles(); return; }
+    if (k === 'n') { toggleCardPicker(); return; }
     if (KEYS[k]) { if (SHAPES.includes(KEYS[k])) lastShape = KEYS[k]; setTool(KEYS[k]); return; }
     if (/^[0-9]$/.test(k)) setTool(DIGITS[k]);
   });
@@ -1407,12 +1769,17 @@ export function mountCanvas(container, opts) {
     fit: () => fit(),
     focus: () => root.focus({ preventScroll: true }),
     /// PNG of the whole board (light background unless dark is asked for).
-    png: async ({ scale = 2, dark = false } = {}) => toPng(live(), { scale, theme: dark ? 'dark' : 'light', files: await dataUrls() }),
+    png: async ({ scale = 2, dark = false } = {}) => toPng(live(), { scale, theme: dark ? 'dark' : 'light', files: await dataUrls(), cardInfo: opts.cardInfo }),
     svg: ({ dark = false } = {}) => { const o = toSvg(live(), { theme: dark ? 'dark' : 'light', files: opts.files }); return o ? new XMLSerializer().serializeToString(o.svg) : null; },
     count,
     flush,
+    /// The page's comment threads (only those pinned to this board are drawn).
+    setThreads(list) { threads = (list || []).map(t => ({ id: t.id, anchor: t.anchor, resolvedAt: t.resolvedAt, count: t.count || 1 })); paintPins(); },
+    /// Put a Notes page or Projects tasks on the board, in the middle of the screen.
+    addPageCard(page) { if (readOnly) return; const r = rect(); addPageCard(page, toWorld(r.width / 2, r.height / 2)); },
+    addTaskCards(tasks) { if (readOnly || !tasks?.length) return; const r = rect(); const c = toWorld(r.width / 2, r.height / 2); addTaskCards(tasks, { x: c.x - 130, y: c.y - 52 }); },
     setFullscreen(v) { fullscreen = !!v; paintCorners(); requestAnimationFrame(() => fit()); },
-    destroy() { clearInterval(liveTick); clearInterval(timerTick); clearTimeout(cursorTimer); clearTimeout(viewTimer); clearTimeout(laserFade); clearTimeout(offerNeat.t); clearTimeout(flushTimer); aw?.off('change', onAw); if (aw) { const st = aw.getLocalState(); if (st?.wb?.board === boardKey) aw.setLocalStateField('wb', null); } for (const u of files.values()) { try { URL.revokeObjectURL(u); } catch { /* not ours */ } } document.removeEventListener('keydown', fsKeys, true); stopEdit(); flush(); destroyed = true; ymap.unobserve(onY); undo.destroy(); ro.disconnect(); cancelAnimationFrame(raf); root.remove(); },
+    destroy() { unFocus?.(); unThreads?.(); vmap?.unobserve(onVote); clearInterval(liveTick); clearInterval(timerTick); clearTimeout(cursorTimer); clearTimeout(viewTimer); clearTimeout(laserFade); clearTimeout(offerNeat.t); clearTimeout(flushTimer); aw?.off('change', onAw); if (aw) { const st = aw.getLocalState(); if (st?.wb?.board === boardKey) aw.setLocalStateField('wb', null); } for (const u of files.values()) { try { URL.revokeObjectURL(u); } catch { /* not ours */ } } document.removeEventListener('keydown', fsKeys, true); stopEdit(); flush(); destroyed = true; ymap.unobserve(onY); undo.destroy(); ro.disconnect(); cancelAnimationFrame(raf); root.remove(); },
   };
   return api;
 }

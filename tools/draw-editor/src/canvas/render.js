@@ -200,6 +200,46 @@ export function drawElement(g, el, get, opts = {}) {
       }
       break;
     }
+    case 'stamp': {
+      const t = svgEl('text', { x: el.x + el.w / 2, y: el.y + el.h * 0.8, 'text-anchor': 'middle', 'font-size': el.h * 0.85 }, node);
+      t.textContent = el.emoji || '👍';
+      break;
+    }
+    case 'noteCard': {
+      const info = opts.cardInfo?.page?.(el.pageId);
+      const gone = opts.cardInfo?.page && !info;
+      svgEl('rect', { x: el.x, y: el.y, width: el.w, height: el.h, rx: 12, fill: pal.shapeFill, stroke: pal.frameLine }, node);
+      svgEl('rect', { x: el.x, y: el.y + 10, width: 4, height: el.h - 20, rx: 2, fill: '#34A853' }, node);
+      const k = svgEl('text', { x: el.x + 18, y: el.y + 26, 'font-size': 11, fill: pal.ink3, 'font-family': FONT_STACK.ipop }, node);
+      k.textContent = gone ? 'Notes page · no access' : 'Notes page';
+      const t = svgEl('text', { x: el.x + 18, y: el.y + 50, 'font-size': 15, 'font-weight': 650, fill: gone ? pal.ink3 : pal.ink, 'font-family': FONT_STACK.ipop }, node);
+      const title = gone ? 'Private page' : `${info?.emoji || el.emoji || '📄'} ${info?.title || el.title || 'Untitled'}`;
+      t.textContent = title.length > 30 ? title.slice(0, 29) + '…' : title;
+      break;
+    }
+    case 'taskCard': {
+      const info = opts.cardInfo?.task?.(el.taskId);
+      const hidden = info?.private;
+      svgEl('rect', { x: el.x, y: el.y, width: el.w, height: el.h, rx: 12, fill: pal.shapeFill, stroke: pal.frameLine }, node);
+      const st = String(info?.status || 'todo');
+      const stColor = { todo: '#8E8E93', doing: '#FF9500', review: '#AF52DE', done: '#34A853' }[st] || '#0A84FF';
+      svgEl('rect', { x: el.x, y: el.y + 10, width: 4, height: el.h - 20, rx: 2, fill: hidden ? pal.ink3 : stColor }, node);
+      const k = svgEl('text', { x: el.x + 18, y: el.y + 24, 'font-size': 11, fill: pal.ink3, 'font-family': FONT_STACK.ipop }, node);
+      k.textContent = hidden ? 'Projects task' : (info?.project ? `☑ ${String(info.project).slice(0, 34)}` : '☑ Projects task');
+      const t = svgEl('text', { x: el.x + 18, y: el.y + 48, 'font-size': 15, 'font-weight': 650, fill: hidden ? pal.ink3 : pal.ink, 'font-family': FONT_STACK.ipop }, node);
+      const title = hidden ? '🔒 Private task' : String(info?.title || el.title || 'Task');
+      t.textContent = title.length > 30 ? title.slice(0, 29) + '…' : title;
+      if (!hidden) {
+        const label = { todo: 'To do', doing: 'In progress', review: 'In review', done: 'Done' }[st] || st;
+        const lw = measure(label, 11, 'ipop', 600) + 16;
+        svgEl('rect', { x: el.x + 18, y: el.y + 62, width: lw, height: 20, rx: 10, fill: stColor, opacity: 0.16 }, node);
+        const sl = svgEl('text', { x: el.x + 26, y: el.y + 76, 'font-size': 11, 'font-weight': 600, fill: stColor, 'font-family': FONT_STACK.ipop }, node);
+        sl.textContent = label;
+        const meta = [info?.people?.length ? info.people.slice(0, 2).join(', ') + (info.people.length > 2 ? ` +${info.people.length - 2}` : '') : null, info?.due ? `📅 ${info.due}` : null].filter(Boolean).join(' · ');
+        if (meta) { const m = svgEl('text', { x: el.x + 26 + lw, y: el.y + 76, 'font-size': 11, fill: pal.ink3, 'font-family': FONT_STACK.ipop }, node); m.textContent = meta.length > 34 ? meta.slice(0, 33) + '…' : meta; }
+      }
+      break;
+    }
     case 'file': {
       svgEl('rect', { x: el.x, y: el.y, width: el.w, height: el.h, rx: 10, fill: pal.shapeFill, stroke: pal.frameLine }, node);
       const ext = (String(el.name || '').match(/\.([a-z0-9]{1,5})$/i)?.[1] || 'FILE').toUpperCase();
@@ -268,7 +308,7 @@ export function drawAll(world, els, get, opts) {
 }
 
 /// A standalone SVG string of the given elements (for SVG export and for rasterising to PNG).
-export function toSvg(els, { theme = 'light', background = true, padding = 32, files } = {}) {
+export function toSvg(els, { theme = 'light', background = true, padding = 32, files, cardInfo } = {}) {
   const live = els.filter(e => !e.isDeleted);
   if (!live.length) return null;
   const byId = new Map(live.map(e => [e.id, e])), get = id => byId.get(id);
@@ -279,14 +319,14 @@ export function toSvg(els, { theme = 'light', background = true, padding = 32, f
   defs(svg);
   if (background) svgEl('rect', { x: x1 - padding, y: y1 - padding, width: w, height: h, fill: theme === 'dark' ? '#161618' : '#ffffff' }, svg);
   const world = svgEl('g', {}, svg);
-  drawAll(world, live, get, { theme, files });
+  drawAll(world, live, get, { theme, files, cardInfo });
   return { svg, width: w, height: h };
 }
 
 /// PNG blob of the given elements. Pictures on the board are embedded first (an <image> pointing at a blob URL would be blank
 /// once rasterised from a data URL), so `files` should map fileId -> data URL when the board has pictures.
-export async function toPng(els, { scale = 2, theme = 'light', files } = {}) {
-  const out = toSvg(els, { theme, files });
+export async function toPng(els, { scale = 2, theme = 'light', files, background = true, cardInfo } = {}) {
+  const out = toSvg(els, { theme, files, background, cardInfo });
   if (!out) return null;
   const xml = new XMLSerializer().serializeToString(out.svg);
   const url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(xml)}`;
@@ -300,4 +340,33 @@ export async function toPng(els, { scale = 2, theme = 'light', files } = {}) {
   const ctx = canvas.getContext('2d');
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
   return await new Promise(ok => canvas.toBlob(ok, 'image/png'));
+}
+
+/// A one-page PDF holding a PNG (no library: a minimal PDF with one JPEG-free image XObject in Flate-less DCT is not possible from
+/// PNG without decoding, so the PNG is re-encoded to JPEG through a canvas and embedded with DCTDecode).
+export async function pngToPdf(png) {
+  const bmp = await createImageBitmap(png);
+  const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+  const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(bmp, 0, 0);
+  const jpg = new Uint8Array(await (await new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.92))).arrayBuffer());
+  // page in points: fit A4 landscape or portrait to the picture's shape
+  const landscape = c.width >= c.height;
+  const pw = landscape ? 842 : 595, ph = landscape ? 595 : 842, m = 24;
+  const s = Math.min((pw - m * 2) / c.width, (ph - m * 2) / c.height);
+  const w = c.width * s, h = c.height * s, x = (pw - w) / 2, y = (ph - h) / 2;
+  const enc = new TextEncoder();
+  const parts = [], offsets = [];
+  let len = 0;
+  const push = b => { const u = typeof b === 'string' ? enc.encode(b) : b; parts.push(u); len += u.length; };
+  const obj = (n, body) => { offsets[n] = len; push(`${n} 0 obj\n`); for (const b of [].concat(body)) push(b); push('\nendobj\n'); };
+  push('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n');
+  obj(1, '<< /Type /Catalog /Pages 2 0 R >>');
+  obj(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+  obj(3, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pw} ${ph}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>`);
+  obj(4, [`<< /Type /XObject /Subtype /Image /Width ${c.width} /Height ${c.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>\nstream\n`, jpg, '\nendstream']);
+  const content = `q ${w.toFixed(2)} 0 0 ${h.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)} cm /Im0 Do Q`;
+  obj(5, `<< /Length ${content.length} >>\nstream\n${content}\nendstream`);
+  const xref = len;
+  push(`xref\n0 6\n0000000000 65535 f \n${[1, 2, 3, 4, 5].map(n => `${String(offsets[n]).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`);
+  return new Blob(parts, { type: 'application/pdf' });
 }

@@ -168,3 +168,35 @@ input.wb-edit { background: var(--wb-surface); padding: 0 8px; outline-width: 2p
 .wb-invite button { border: 0; border-radius: 8px; height: 28px; padding: 0 12px; background: var(--wb-fill); color: var(--wb-ink); font: inherit; font-weight: 600; cursor: pointer; }
 .wb-invite .wb-pri { background: var(--wb-accent); color: #fff; }
 @media (max-width: 640px) { .wb-tr { max-width: calc(100% - 60px); } }
+
+/* Package 3: pins, votes, stamps, minimap, export, Make task */
+.wb-pins, .wb-votes { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.wb-pin { position: absolute; transform: translate(-6px, -100%); pointer-events: auto; width: 26px; height: 26px; border: 2px solid #fff; border-radius: 13px 13px 13px 3px; background: #5856D6; color: #fff; font: 700 10px/1 inherit; font-family: inherit; display: grid; place-items: center; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+.wb-pin:hover { transform: translate(-6px, -100%) scale(1.1); }
+.wb-vote { position: absolute; transform: translate(-70%, -70%); min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: #0A84FF; color: #fff; font: 700 12px/22px inherit; font-family: inherit; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+.wb-vote.mine { background: var(--wb-surface); color: #0A84FF; outline: 2px solid #0A84FF; }
+.wb-votep, .wb-exportp { top: 56px; right: 12px; left: auto; transform: none; width: min(320px, calc(100% - 24px)); max-height: calc(100% - 140px); }
+.wb-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 8px; font-size: 13px; }
+.wb-row select { font: inherit; padding: 4px 6px; border-radius: 7px; border: 1px solid var(--wb-line); background: var(--wb-surface); color: var(--wb-ink); }
+.wb-row2 { display: flex; gap: 6px; margin-top: 6px; }
+.wb-wide { flex: 1; width: 100%; height: 32px; border-radius: 9px !important; background: var(--wb-fill) !important; font-weight: 600; font-size: 12.5px; }
+.wb-wide.wb-pri { background: var(--wb-accent) !important; color: #fff !important; }
+.wb-results { margin: 0 0 8px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.wb-results button { width: 100%; justify-content: flex-start !important; display: flex !important; gap: 8px; padding: 5px 8px !important; border-radius: 8px !important; font-size: 13px; text-align: left; }
+.wb-results b { min-width: 22px; height: 20px; border-radius: 10px; background: #0A84FF; color: #fff; font-size: 11px; display: grid; place-items: center; }
+.wb-stampmenu { width: 200px; }
+.wb-stampmenu button { width: 40px; height: 40px; font-size: 22px; }
+.wb-taskbtn { display: inline-flex !important; gap: 5px; align-items: center; padding: 0 9px !important; background: rgba(10,132,255,.12) !important; color: #0A84FF !important; }
+.wb-mini { position: absolute; z-index: 3; right: max(12px, env(safe-area-inset-right, 0px)); bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + 44px); width: 168px; height: 108px; border-radius: 10px; background: var(--wb-surface); box-shadow: var(--wb-pop); overflow: hidden; cursor: pointer; }
+.wb.wb-narrow .wb-mini { bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + 98px); }
+.wb-minisvg { width: 100%; height: 100%; display: block; }
+@media (max-width: 700px) { .wb-mini { display: none; } }
+.wb.wb-presenting .wb-mini, .wb.wb-presenting .wb-pins, .wb.wb-presenting .wb-votes { display: none !important; }
+.wb[data-tool="comment"], .wb[data-tool="stamp"] { cursor: crosshair; }
+
+.wb-cardpick { top: 56px; left: 50%; transform: translateX(-50%); width: min(380px, calc(100% - 24px)); max-height: calc(100% - 140px); }
+.wb-search { width: 100%; height: 32px; border-radius: 9px; border: 1px solid var(--wb-line); background: var(--wb-surface); color: var(--wb-ink); padding: 0 10px; font: inherit; margin-bottom: 8px; }
+.wb-cardlist { display: flex; flex-direction: column; gap: 2px; overflow: auto; max-height: 320px; }
+.wb-cardlist button { display: flex !important; flex-direction: column; align-items: flex-start !important; padding: 7px 9px !important; border-radius: 8px !important; text-align: left; font-size: 13px; color: var(--wb-ink) !important; place-items: initial !important; }
+.wb-cardlist small { color: var(--wb-ink3); font-size: 11px; }
+.wb-pin.wb-pin-focus { outline: 3px solid rgba(88,86,214,.35); outline-offset: 2px; }

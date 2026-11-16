@@ -15,7 +15,7 @@
 // Common: id, type, version, versionNonce, isDeleted, z (fractional order string), locked, frameId, rot.
 
 export const SHAPES = ['rect', 'ellipse', 'diamond', 'triangle', 'star', 'cloud', 'arrowShape', 'cylinder', 'bubble'];
-export const BOXED = new Set([...SHAPES, 'sticky', 'text', 'frame', 'image', 'file']);
+export const BOXED = new Set([...SHAPES, 'sticky', 'text', 'frame', 'image', 'file', 'stamp', 'taskCard', 'noteCard']);
 export const STICKY_COLORS = ['yellow', 'green', 'blue', 'pink', 'purple', 'orange'];
 export const FONTS = ['ipop', 'hand', 'mono'];
 

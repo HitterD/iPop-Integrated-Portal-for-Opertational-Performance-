@@ -36,7 +36,9 @@ test('mounts, paints and destroys cleanly, with and without awareness, even when
     const onErr = e => errors.push(e?.message || String(e));
     process.on('uncaughtException', onErr);
     try {
-      const inst = mountCanvas(el, { ymap, doc, Y, mode: 'board', theme: 'light', awareness: aw, onFullscreen: () => true, toast: () => {} });
+      let inst = null;
+      try { inst = mountCanvas(el, { ymap, doc, Y, mode: 'board', theme: 'light', awareness: aw, voteMap: doc.getMap('wbvote:board'), onFullscreen: () => true, toast: () => {} }); }
+      catch (err) { aw?.destroy(); doc.destroy(); throw err; }
       aw?.emit('change', [{ added: [999], updated: [], removed: [] }, 'remote']);
       await tick(60);
       assert.ok(el.querySelector('.wb-tools'), 'tool bar is there');
