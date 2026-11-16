@@ -311,7 +311,8 @@ export async function mount(el, opts) {
     avatarColor: nik => palette[[...String(nik)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % palette.length],
     initials: name => String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join(''),
     commentSelection: () => commentSelection(),
-    lockHandle: on => editor && !closing && (on ? editor.commands.lockDragHandle() : editor.commands.unlockDragHandle()),
+    // the drag handle exists only for people who can edit
+    lockHandle: on => editor && !closing && (on ? editor.commands.lockDragHandle?.() : editor.commands.unlockDragHandle?.()),
   };
 
   // ── Yjs doc + awareness ──────────────────────────────────────────────────

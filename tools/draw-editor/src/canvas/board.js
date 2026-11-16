@@ -465,7 +465,7 @@ export function mountCanvas(container, opts) {
     if (b.dataset.pt) {
       prefs.ptype = b.dataset.pt; savePrefs(prefs);
       tool = b.dataset.pt === 'highlighter' ? 'highlighter' : 'pen'; root.dataset.tool = tool;
-      paintToolbar(); paintPenPop(); return;
+      paintToolbar(); paintPenPop(); root.focus({ preventScroll: true }); return;
     }
     if (b.dataset.sz) { setSize(prefs.ptype, +b.dataset.sz); return; }
     if (b.dataset.esz) { setSize('eraser', +b.dataset.esz); return; }
@@ -567,7 +567,13 @@ export function mountCanvas(container, opts) {
     if (e.key === 'Escape') { colourPop.hidden = true; root.focus({ preventScroll: true }); return; }
     if (e.key === 'Enter' && e.target.matches('[data-hex]')) { let v = e.target.value.trim(); if (!v.startsWith('#')) v = `#${v}`; if (isHex(v)) pickColour(v.toUpperCase()); else e.target.select(); }
   });
-  penPop.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); penPop.hidden = true; colourPop.hidden = true; root.focus({ preventScroll: true }); } });
+  // Esc closes the options wherever focus is (a button inside them, the page, the board)
+  const popKeys = e => {
+    if (e.key !== 'Escape' || (penPop.hidden && colourPop.hidden)) return;
+    if (e.target?.closest?.('.wb-colourpop') && !colourPop.hidden && !penPop.hidden) { e.stopPropagation(); colourPop.hidden = true; return; }
+    e.stopPropagation(); e.preventDefault(); penPop.hidden = true; colourPop.hidden = true; root.focus({ preventScroll: true });
+  };
+  document.addEventListener('keydown', popKeys, true);
 
   // the eraser shows its size under the pointer, so you know what it will remove
   function paintEraserRing(sx, sy) {
@@ -2548,7 +2554,7 @@ export function mountCanvas(container, opts) {
     addPageCard(page) { if (readOnly) return; const r = rect(); addPageCard(page, toWorld(r.width / 2, r.height / 2)); },
     addTaskCards(tasks) { if (readOnly || !tasks?.length) return; const r = rect(); const c = toWorld(r.width / 2, r.height / 2); addTaskCards(tasks, { x: c.x - 130, y: c.y - 52 }); },
     setFullscreen(v) { fullscreen = !!v; paintCorners(); requestAnimationFrame(() => fit()); },
-    destroy() { clearTimeout(paintEmoji.t); unFocus?.(); unThreads?.(); vmap?.unobserve(onVote); clearInterval(liveTick); clearInterval(timerTick); clearTimeout(cursorTimer); clearTimeout(viewTimer); clearTimeout(laserFade); clearTimeout(showNeatToast.t); clearHold(); clearTimeout(flushTimer); aw?.off('change', onAw); if (aw) { const st = aw.getLocalState(); if (st?.wb?.board === boardKey) aw.setLocalStateField('wb', null); } for (const u of files.values()) { try { URL.revokeObjectURL(u); } catch { /* not ours */ } } document.removeEventListener('keydown', fsKeys, true); stopEdit(); flush(); destroyed = true; ymap.unobserve(onY); undo.destroy(); ro.disconnect(); cancelAnimationFrame(raf); root.remove(); },
+    destroy() { document.removeEventListener('keydown', popKeys, true); clearTimeout(paintEmoji.t); unFocus?.(); unThreads?.(); vmap?.unobserve(onVote); clearInterval(liveTick); clearInterval(timerTick); clearTimeout(cursorTimer); clearTimeout(viewTimer); clearTimeout(laserFade); clearTimeout(showNeatToast.t); clearHold(); clearTimeout(flushTimer); aw?.off('change', onAw); if (aw) { const st = aw.getLocalState(); if (st?.wb?.board === boardKey) aw.setLocalStateField('wb', null); } for (const u of files.values()) { try { URL.revokeObjectURL(u); } catch { /* not ours */ } } document.removeEventListener('keydown', fsKeys, true); stopEdit(); flush(); destroyed = true; ymap.unobserve(onY); undo.destroy(); ro.disconnect(); cancelAnimationFrame(raf); root.remove(); },
   };
   return api;
 }
