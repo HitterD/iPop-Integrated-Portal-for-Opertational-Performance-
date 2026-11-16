@@ -493,11 +493,14 @@ export function mountCanvas(container, opts) {
     colourPop.hidden = false;
     paintColours(hasFill);
     if (forWhat === 'pen' && !isPhone()) {
-      const pr = penPop.getBoundingClientRect(), rr = rect();
-      const left = pr.right - rr.left + 10;
+      const pr = penPop.getBoundingClientRect(), rr = rect(), cw = colourPop.offsetWidth;
       colourPop.classList.remove('wb-sheet');
-      colourPop.style.left = `${left + colourPop.offsetWidth > rr.width - 8 ? Math.max(8, pr.left - rr.left - colourPop.offsetWidth - 10) : left}px`;
       colourPop.style.top = ''; colourPop.style.bottom = penPop.style.bottom;
+      // beside the pen options (right, else left); with no room on either side, it replaces them
+      const right = pr.right - rr.left + 10, left = pr.left - rr.left - cw - 10;
+      if (right + cw <= rr.width - 8) colourPop.style.left = `${right}px`;
+      else if (left >= 8) colourPop.style.left = `${left}px`;
+      else { colourPop.style.left = penPop.style.left; penPop.hidden = true; }
     } else if (forWhat === 'sel' && !isPhone()) {
       colourPop.classList.remove('wb-sheet');
       const r = anchor.getBoundingClientRect(), rr = rect();
