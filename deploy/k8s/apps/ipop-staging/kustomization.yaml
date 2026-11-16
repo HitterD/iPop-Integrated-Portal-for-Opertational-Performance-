@@ -99,10 +99,10 @@ patches:
 images:
   - name: ipop-api
     newName: ghcr.io/hitterd/ipop-api
-    newTag: "staging-f3a066dc0b89"
+    newTag: "staging-f331a5c18c7f"
   - name: ipop-web
     newName: ghcr.io/hitterd/ipop-web
-    newTag: "staging-f3a066dc0b89"
+    newTag: "staging-f331a5c18c7f"
 
 
 
