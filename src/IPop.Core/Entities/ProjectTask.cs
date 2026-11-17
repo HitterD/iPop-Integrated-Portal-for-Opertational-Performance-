@@ -21,6 +21,11 @@ public class ProjectTask
     /// "todo" | "doing" | "review" | "done"
     public required string Status { get; set; }
 
+    /// The project's custom status this task shows; its Stage always equals <see cref="Status"/>.
+    /// Null = no custom status (the first option of the stage is shown).
+    public Guid? StatusOptionId { get; set; }
+    public ProjectStatusOption? StatusOption { get; set; }
+
     /// "low" | "medium" | "high" | "urgent"
     public string? Priority { get; set; }
 

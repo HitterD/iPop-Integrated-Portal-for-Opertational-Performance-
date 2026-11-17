@@ -5,13 +5,16 @@ public record CreateProjectRequest(string Name, string? Description, int Year, G
     DateTime? StartDate, DateTime? Deadline, string? Risk, string? Obstacle, string? OwnerNik = null, string? Color = null);
 
 public record UpdateProjectRequest(string? Name, string? Description, int? Year, Guid? OwnerId,
-    DateTime? StartDate, DateTime? Deadline, string? Status, string? Risk, string? Obstacle, string? OwnerNik = null, string? Color = null);
+    DateTime? StartDate, DateTime? Deadline, string? Status, string? Risk, string? Obstacle, string? OwnerNik = null, string? Color = null,
+    /// null = unchanged, "" = clear, else on_track | at_risk | off_track.
+    string? Health = null);
 
 public record ProjectDto(Guid Id, string Name, string? Description, int Year, Guid OwnerId,
     string OwnerName, string OwnerNik, DateTime? StartDate, DateTime? Deadline,
     string Status, int Progress, string? Risk, string? Obstacle, bool IsActive,
     int MemberCount, int TaskCount, int TodoCount, int DoingCount, int ReviewCount, int DoneCount,
-    DateTime CreatedAt, DateTime UpdatedAt, string? Color = null);
+    DateTime CreatedAt, DateTime UpdatedAt, string? Color = null,
+    string? Health = null, IReadOnlyList<string>? Tabs = null);
 
 public record ProjectListDto(Guid Id, string Name, int Year, string OwnerName, string Status,
     int Progress, DateTime? Deadline, int MemberCount, int TaskCount, bool IsActive, string? Color = null);
@@ -38,12 +41,16 @@ public record ProjectPersonDto(Guid UserId, string Nik, string Name, string? Dep
 // Task DTOs
 public record CreateTaskRequest(Guid ProjectId, Guid? ParentTaskId, string Title, string? Description,
     string Status, string? Priority, DateTime? StartDate, DateTime? DueDate,
-    decimal? EstimatedHours, string? Dependencies, string? Tags, Guid? GroupId = null);
+    decimal? EstimatedHours, string? Dependencies, string? Tags, Guid? GroupId = null,
+    /// Custom status; when set it wins over Status (the task takes the option's stage).
+    Guid? StatusOptionId = null);
 
 public record UpdateTaskRequest(string? Title, string? Description, string? Status, string? Priority,
     DateTime? StartDate, DateTime? DueDate, decimal? EstimatedHours, decimal? ActualHours,
     int? SortOrder, string? Dependencies, bool? IsRecurring, string? RecurrenceRule, bool? IsTemplate,
-    string? Tags, bool ClearStartDate = false, bool ClearDueDate = false, bool ClearEstimatedHours = false);
+    string? Tags, bool ClearStartDate = false, bool ClearDueDate = false, bool ClearEstimatedHours = false,
+    /// Custom status; when set it wins over Status (the task takes the option's stage).
+    Guid? StatusOptionId = null);
 
 public record ProjectTaskDto(Guid Id, Guid ProjectId, Guid? ParentTaskId, string Title, string? Description,
     string Status, string? Priority, DateTime? StartDate, DateTime? DueDate,
@@ -61,7 +68,9 @@ public record ProjectTaskDto(Guid Id, Guid ProjectId, Guid? ParentTaskId, string
     /// Set only on the response that completed a recurring task: the next instance it created.
     Guid? NextRecurringTaskId = null,
     /// When the task last entered "done" (null while not done).
-    DateTime? CompletedAt = null);
+    DateTime? CompletedAt = null,
+    /// The project's custom status this task shows (its stage equals Status); null = none.
+    Guid? StatusOptionId = null);
 
 public record DependencyRefDto(Guid Id, string Title, string Status);
 public record SetTaskDependenciesRequest(IReadOnlyList<Guid> DependsOn);
@@ -74,7 +83,8 @@ public record ProjectTaskAssigneeDto(Guid UserId, string Nik, string Name, strin
 public record KanbanBoardDto(Guid ProjectId, IReadOnlyList<ProjectTaskDto> Todo, IReadOnlyList<ProjectTaskDto> Doing,
     IReadOnlyList<ProjectTaskDto> Done, IReadOnlyList<ProjectTaskDto>? Review = null);
 
-public record TaskMoveRequest(string Status, int? SortOrder);
+/// Status is the stage; StatusOptionId (when set) wins and the task takes that option's stage.
+public record TaskMoveRequest(string Status, int? SortOrder, Guid? StatusOptionId = null);
 
 public record TimelineTaskDto(Guid Id, string Title, Guid? ParentTaskId, string Status, string? Priority,
     DateTime? StartDate, DateTime? DueDate, decimal? EstimatedHours, decimal? ActualHours,
@@ -194,7 +204,7 @@ public record DeleteTaskResultDto(bool Success, Guid? BatchId, IReadOnlyList<Gui
 public record RestoreTasksRequest(Guid BatchId);
 
 /// action: status | assign | unassign | due | group | priority | delete.
-/// Value carries the status/priority string, a user id, a group id, or a yyyy-MM-dd date ("" clears due).
+/// Value carries the status stage or a custom status option id, the priority string, a user id, a group id, or a yyyy-MM-dd date ("" clears due).
 /// Evidence is only used by status → doing/review/done: the shared evidence block written into each task.
 public record BulkTaskRequest(IReadOnlyList<Guid> TaskIds, string Action, string? Value, string? Evidence = null);
 public record BulkSkippedDto(Guid Id, string Reason);

@@ -105,6 +105,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<ProjectField> ProjectFields => Set<ProjectField>();
     public DbSet<ProjectTaskFieldValue> ProjectTaskFieldValues => Set<ProjectTaskFieldValue>();
     public DbSet<ProjectTaskDependency> ProjectTaskDependencies => Set<ProjectTaskDependency>();
+    public DbSet<ProjectStatusOption> ProjectStatusOptions => Set<ProjectStatusOption>();
     public DbSet<ProjectSavedView> ProjectSavedViews => Set<ProjectSavedView>();
     public DbSet<TaskTimeEntry> TaskTimeEntries => Set<TaskTimeEntry>();
     public DbSet<ProjectRoom> ProjectRooms => Set<ProjectRoom>();
@@ -704,7 +705,17 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Status).HasMaxLength(32);
             e.Property(x => x.Risk).HasMaxLength(2000);
             e.Property(x => x.Obstacle).HasMaxLength(2000);
+            e.Property(x => x.Health).HasMaxLength(16);
+            e.Property(x => x.TabsJson).HasMaxLength(1000);
             e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<ProjectStatusOption>(e =>
+        {
+            e.HasIndex(x => new { x.ProjectId, x.SortOrder });
+            e.Property(x => x.Label).HasMaxLength(40).IsRequired();
+            e.Property(x => x.Color).HasMaxLength(16);
+            e.Property(x => x.Stage).HasMaxLength(16);
+            e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
         });
 
         // Rencana & Laporan (Fase 4)
@@ -802,6 +813,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             // Deleted tasks wait in the bin for Undo; every normal query skips them.
             e.HasQueryFilter(x => x.DeletedAt == null);
             e.HasIndex(x => x.DeleteBatchId);
+            e.HasOne(x => x.StatusOption).WithMany().HasForeignKey(x => x.StatusOptionId).OnDelete(DeleteBehavior.SetNull);
         });
 
         b.Entity<ProjectTaskDependency>(e =>

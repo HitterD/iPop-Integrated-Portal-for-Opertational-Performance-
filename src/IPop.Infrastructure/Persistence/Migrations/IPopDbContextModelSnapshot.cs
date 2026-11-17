@@ -4037,6 +4037,10 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasMaxLength(4000)
                         .HasColumnType("character varying(4000)");
 
+                    b.Property<string>("Health")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -4066,6 +4070,10 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
+
+                    b.Property<string>("TabsJson")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -4296,6 +4304,43 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("ProjectSavedViews");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.ProjectStatusOption", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Stage")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId", "SortOrder");
+
+                    b.ToTable("ProjectStatusOptions");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.ProjectTask", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4368,6 +4413,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<Guid?>("StatusOptionId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Tags")
                         .HasColumnType("text");
 
@@ -4392,6 +4440,8 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("ProjectId");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("StatusOptionId");
 
                     b.HasIndex("GroupId", "ProjectId");
 
@@ -7640,6 +7690,17 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Project");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.ProjectStatusOption", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.Project", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Project");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.ProjectTask", b =>
                 {
                     b.HasOne("IPop.Core.Entities.User", "CreatedBy")
@@ -7659,6 +7720,11 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("IPop.Core.Entities.ProjectStatusOption", "StatusOption")
+                        .WithMany()
+                        .HasForeignKey("StatusOptionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("IPop.Core.Entities.ProjectGroup", "Group")
                         .WithMany("Tasks")
                         .HasForeignKey("GroupId", "ProjectId")
@@ -7673,6 +7739,8 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("ParentTask");
 
                     b.Navigation("Project");
+
+                    b.Navigation("StatusOption");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.ProjectTaskActivity", b =>

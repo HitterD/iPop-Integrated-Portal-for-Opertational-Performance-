@@ -27,6 +27,12 @@ public class Project
     public string? Risk { get; set; }
     public string? Obstacle { get; set; }
 
+    /// Owner's call on how the project is going: null | "on_track" | "at_risk" | "off_track".
+    public string? Health { get; set; }
+
+    /// JSON array of view keys in tab order (e.g. ["overview","table","gantt"]); null = default layout.
+    public string? TabsJson { get; set; }
+
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

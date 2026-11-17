@@ -390,7 +390,7 @@ public static class ProjectEndpoints
 
             // Ensure projectId matches body
             var req = new CreateTaskRequest(projectId, body.ParentTaskId, body.Title, body.Description,
-                body.Status, body.Priority, body.StartDate, body.DueDate, body.EstimatedHours, body.Dependencies, body.Tags, body.GroupId);
+                body.Status, body.Priority, body.StartDate, body.DueDate, body.EstimatedHours, body.Dependencies, body.Tags, body.GroupId, body.StatusOptionId);
 
             var result = await svc.CreateTaskAsync(userId.Value, req, ct);
             if (!result.Success)
@@ -1348,6 +1348,45 @@ public static class ProjectEndpoints
             return Results.Ok(result);
         }).RequirePermission("projects.write");
 
+        // ──────────────────────────────────────────────────────────────────────
+        // Projects v2: custom statuses + tab layout
+        // ──────────────────────────────────────────────────────────────────────
+
+        // GET /api/projects/{id}/statuses — any member (viewer included); defaults are created on first read
+        g.MapGet("/{id:guid}/statuses", async (Guid id, HttpContext http, IProjectStatusService statuses, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var result = await statuses.GetAsync(id, userId.Value, ct);
+            return result.Success ? Results.Ok(result.Data) : StatusError(result.Error);
+        });
+
+        // PUT /api/projects/{id}/statuses — owner/manager; full replace in order (+ reassign map for removed options)
+        g.MapPut("/{id:guid}/statuses", async (Guid id, SaveStatusOptionsRequest req,
+            HttpContext http, IProjectStatusService statuses, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var result = await statuses.SaveAsync(id, userId.Value, req, ct);
+            if (!result.Success) return StatusError(result.Error);
+            await Audit(http, db, "projects.statuses.save", id.ToString(), ct);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(result.Data);
+        }).RequirePermission("projects.write");
+
+        // PUT /api/projects/{id}/tabs — owner/manager; the project's view tabs in order
+        g.MapPut("/{id:guid}/tabs", async (Guid id, SaveProjectTabsRequest req,
+            HttpContext http, IProjectStatusService statuses, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var result = await statuses.SaveTabsAsync(id, userId.Value, req, ct);
+            if (!result.Success) return StatusError(result.Error);
+            await Audit(http, db, "projects.tabs.save", id.ToString(), ct);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(result.Data);
+        }).RequirePermission("projects.write");
+
         // GET /api/projects/{id}/views — own + shared saved views
         g.MapGet("/{id:guid}/views", async (Guid id, HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
         {
@@ -1407,6 +1446,14 @@ public static class ProjectEndpoints
 
         return app;
     }
+
+    private static IResult StatusError(string? code) => Results.Json(new { code, message = code },
+        statusCode: code switch
+        {
+            "forbidden" => 403,
+            "project_not_found" => 404,
+            _ => 400
+        });
 
     private static IResult Phase2Error(string? code) => Results.Json(new { code, message = code },
         statusCode: code switch

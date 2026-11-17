@@ -158,7 +158,8 @@ public sealed partial class ProjectService
         {
             Id = Guid.NewGuid(), ProjectId = task.ProjectId, GroupId = task.GroupId, ParentTaskId = task.ParentTaskId,
             Title = task.Title, Description = string.IsNullOrEmpty(description) ? null : description,
-            Status = "todo", Priority = task.Priority, StartDate = start, DueDate = due,
+            Status = "todo", StatusOptionId = (await ResolveStatusAsync(task.ProjectId, "todo", null, null, ct)).OptionId,
+            Priority = task.Priority, StartDate = start, DueDate = due,
             EstimatedHours = task.EstimatedHours, SortOrder = maxSort + 100, Tags = task.Tags,
             IsRecurring = true, RecurrenceRule = rule.ToString(),
             CreatedById = actorId, CreatedAt = now, UpdatedAt = now
@@ -351,7 +352,18 @@ public sealed partial class ProjectService
         {
             case "status":
             {
-                if (!TaskStatuses.Contains(value)) return Fail("invalid_value");
+                // Value is a stage (legacy clients) or a custom status option id of this project.
+                Guid? optionId;
+                var byOption = Guid.TryParse(value, out var parsedOption);
+                if (byOption)
+                {
+                    var resolved = await ResolveStatusAsync(projectId, null, parsedOption, null, ct);
+                    if (resolved.Error is not null) return Fail(resolved.Error);
+                    optionId = resolved.OptionId;
+                    value = resolved.Stage;
+                }
+                else if (!TaskStatuses.Contains(value)) return Fail("invalid_value");
+                else optionId = (await ResolveStatusAsync(projectId, value, null, null, ct)).OptionId;
                 var evidence = string.IsNullOrWhiteSpace(req.Evidence) || value == "todo" ? null : req.Evidence.Trim();
                 if (evidence is not null && !EvidenceBlock.IsMatch(evidence)) return Fail("invalid_evidence");
                 var unmet = value == "done" ? await UnmetDependenciesAsync(ids, ct) : [];
@@ -359,7 +371,18 @@ public sealed partial class ProjectService
                     .Select(t => (int?)t.SortOrder).MaxAsync(ct) ?? 0) + 100;
                 foreach (var t in tasks)
                 {
-                    if (t.Status == value) { skipped.Add(new(t.Id, "unchanged")); continue; }
+                    if (t.Status == value)
+                    {
+                        // Same stage: an explicit option still relabels; a bare stage leaves the task alone.
+                        if (byOption && t.StatusOptionId != optionId)
+                        {
+                            t.StatusOptionId = optionId;
+                            t.UpdatedAt = now;
+                            updated++;
+                        }
+                        else skipped.Add(new(t.Id, "unchanged"));
+                        continue;
+                    }
                     if (unmet.ContainsKey(t.Id)) { skipped.Add(new(t.Id, "unmet_dependencies")); continue; }
                     if (evidence is not null)
                     {
@@ -370,6 +393,7 @@ public sealed partial class ProjectService
                     }
                     Track(t.Id, "status_changed", t.Status, value);
                     SetStatus(t, value, now);
+                    t.StatusOptionId = optionId;
                     t.SortOrder = nextSort;
                     nextSort += 100;
                     t.UpdatedAt = now;
