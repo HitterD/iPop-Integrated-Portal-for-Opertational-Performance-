@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Whiteboard Menu Polish</title>
+<style>
+:root{
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",system-ui,sans-serif;
+  --display:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter","Segoe UI",system-ui,sans-serif;
+  --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+  --bg:#F2F2F4;--surface:#fff;--surface-2:#F5F5F7;--fill:rgba(118,118,128,.12);--fill-2:rgba(118,118,128,.2);
+  --line:rgba(0,0,0,.08);--line-2:rgba(0,0,0,.15);
+  --ink:#1D1D1F;--ink-2:#424245;--ink-3:#86868B;--ink-4:#AEAEB2;
+  --accent:#34A853;--accent-ink:#1E8E3E;--accent-soft:rgba(52,168,83,.12);
+  --blue:#0A84FF;--blue-soft:rgba(10,132,255,.12);--orange:#FF9500;--orange-soft:rgba(255,149,0,.14);--red:#FF3B30;--purple:#AF52DE;
+  --pop:0 12px 40px rgba(0,0,0,.14),0 0 0 .5px rgba(0,0,0,.08);
+  --card:0 1px 3px rgba(0,0,0,.06),0 0 0 .5px rgba(0,0,0,.08);
+  --board:#FBFBFA;--grid:rgba(0,0,0,.10);--shape:#FFFFFF;--sl:#1D1D1F;--sticky:#FFF3A3;--sticky-ink:#3A3000;
+}
+:root[data-theme=dark]{
+  --bg:#000;--surface:#1C1C1E;--surface-2:#242426;--fill:rgba(118,118,128,.24);--fill-2:rgba(118,118,128,.36);
+  --line:rgba(255,255,255,.1);--line-2:rgba(255,255,255,.2);
+  --ink:#F5F5F7;--ink-2:#D1D1D6;--ink-3:#8E8E93;--ink-4:#636366;
+  --accent:#30D158;--accent-ink:#30D158;--accent-soft:rgba(48,209,88,.16);
+  --blue:#409CFF;--blue-soft:rgba(64,156,255,.18);--orange-soft:rgba(255,159,10,.18);
+  --pop:0 12px 40px rgba(0,0,0,.6),0 0 0 .5px rgba(255,255,255,.12);--card:0 0 0 .5px rgba(255,255,255,.12);
+  --board:#141416;--grid:rgba(255,255,255,.09);--shape:#1C1C1E;--sl:#F5F5F7;--sticky:#5C5220;--sticky-ink:#FFF6C2;
+}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.5 var(--font);background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer}
+input{font:inherit;color:inherit}
+kbd{font:10.5px var(--mono);padding:1px 5px;border-radius:5px;background:var(--fill);color:var(--ink-3);line-height:1.4;align-self:center}
+svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.topbar{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--surface) 86%,transparent);backdrop-filter:saturate(1.6) blur(20px);border-bottom:1px solid var(--line)}
+.topbar .in{max-width:1280px;margin:0 auto;padding:10px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));display:flex;align-items:center;gap:14px}
+.topbar h1{font:600 15px var(--display);margin:0;white-space:nowrap}
+.topbar nav{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0}
+.topbar nav a{color:var(--ink-2);text-decoration:none;font-size:13px;padding:5px 10px;border-radius:8px;white-space:nowrap}
+.topbar nav a:hover{background:var(--fill)}
+.seg{display:inline-flex;background:var(--fill);border-radius:9px;padding:2px;flex:none}
+.seg button{border:0;background:none;padding:4px 10px;border-radius:7px;font-size:12.5px;color:var(--ink-2)}
+.seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08),0 0 0 .5px var(--line)}
+main{max-width:1280px;margin:0 auto;padding:28px max(16px,env(safe-area-inset-right,0px)) 80px max(16px,env(safe-area-inset-left,0px))}
+.lead{max-width:820px;margin-bottom:22px}
+.lead h2{font:700 26px/1.2 var(--display);margin:0 0 8px;letter-spacing:-.01em}
+.lead p{margin:0;color:var(--ink-2)}
+section{margin-top:44px}
+section>h3{font:600 18px var(--display);margin:0 0 4px}
+section>p.sub{margin:0 0 14px;color:var(--ink-3);font-size:13.5px;max-width:820px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.card{background:var(--surface);border-radius:16px;box-shadow:var(--card);padding:16px;min-width:0}
+.card h4{margin:0 0 4px;font:600 14px var(--display)}
+.card p.why{margin:0 0 12px;color:var(--ink-3);font-size:12.5px}
+.stage{position:relative;background:var(--board);background-image:radial-gradient(var(--grid) 1.1px,transparent 1.3px);background-size:22px 22px;border-radius:12px;overflow:hidden;box-shadow:inset 0 0 0 1px var(--line)}
+.chip{border:0;display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 11px;border-radius:10px;background:var(--surface);box-shadow:0 1px 3px rgba(0,0,0,.08),0 0 0 .5px var(--line-2);font-size:12.5px;font-weight:500}
+.chip.on{background:var(--accent);color:#fff}
+.chip.ico{width:32px;padding:0;justify-content:center}
+.corner{position:absolute;top:12px;right:12px;display:flex;gap:6px;z-index:6}
+.note{font-size:12.5px;color:var(--ink-3)}
+.compare{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:13px;align-items:start}
+.compare b{font-weight:600}
+.bad{color:#C9372C}.good{color:var(--accent-ink)}
+
+/* ── the new board menu: two columns, label + grey line, search on top ── */
+.bmenu{position:absolute;top:52px;right:12px;width:560px;max-width:calc(100% - 24px);background:var(--surface);border-radius:14px;box-shadow:var(--pop);padding:8px;z-index:7;display:flex;flex-direction:column;gap:6px}
+.bmenu .s{width:100%;height:34px;border-radius:9px;border:1px solid var(--line-2);background:var(--surface-2);padding:0 10px;font-size:13px}
+.bmenu .cols{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px}
+.bmenu .col{display:flex;flex-direction:column;gap:1px;min-width:0}
+.bmenu .mh{font-size:10.5px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);padding:6px 8px 2px}
+.mi{border:0;background:none;display:grid;grid-template-columns:22px 1fr auto;gap:0 10px;align-items:center;text-align:left;padding:4px 8px;border-radius:9px;min-width:0}
+.mi:hover,.mi.kb{background:var(--fill)}
+.mi .ic{grid-row:1/3;display:grid;place-items:center;color:var(--ink-2)}
+.mi .l{font-size:13px;font-weight:550;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mi .d{grid-column:2/4;font-size:11.5px;color:var(--ink-3);line-height:1.3}
+.mi.on{background:var(--accent-soft)}
+.mi.on .l::after{content:" · on";color:var(--accent-ink);font-weight:500}
+.mi kbd{grid-column:3;grid-row:1}
+.bmenu .empty{padding:14px 8px;color:var(--ink-3);font-size:13px}
+.bmenu.short .mi .d{display:none}
+.bmenu.short .mi{padding:5px 8px}
+.bmenu .foot{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-3);padding:4px 8px 2px;border-top:1px solid var(--line)}
+/* phone: one list in a bottom sheet */
+.phone{width:360px;max-width:100%;height:640px;border-radius:36px;background:var(--board);background-image:radial-gradient(var(--grid) 1.1px,transparent 1.3px);background-size:22px 22px;box-shadow:0 0 0 10px #1D1D1F,var(--pop);position:relative;overflow:hidden;margin:auto}
+.sheet{position:absolute;left:0;right:0;bottom:0;max-height:78%;background:var(--surface);border-radius:20px 20px 0 0;box-shadow:var(--pop);padding:8px 10px 18px;display:flex;flex-direction:column;gap:6px}
+.sheet .grab{width:38px;height:5px;border-radius:3px;background:var(--fill-2);margin:2px auto 4px}
+.sheet .list{overflow-y:auto;display:flex;flex-direction:column}
+.sheet .mi{padding:9px 8px}
+.sheet .mi .l{font-size:14.5px}
+/* typing lock */
+.shape{position:absolute;background:var(--shape);border:2px solid var(--sl);border-radius:10px;display:grid;place-items:center;font-size:14px;color:var(--ink)}
+.sticky{position:absolute;background:var(--sticky);color:var(--sticky-ink);border-radius:4px;box-shadow:0 3px 8px rgba(0,0,0,.12);padding:10px 12px;font-size:14px;font-weight:500}
+.typing{position:absolute;display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px 0 4px;border-radius:12px;background:#5856D6;color:#fff;font-size:11.5px;font-weight:600;white-space:nowrap}
+.typing .a{width:18px;height:18px;border-radius:9px;background:rgba(255,255,255,.25);display:grid;place-items:center;font-size:9.5px}
+.typing .dots{display:inline-flex;gap:2px}.typing .dots i{width:4px;height:4px;border-radius:2px;background:#fff;opacity:.5;animation:blink 1.2s infinite}
+.typing .dots i:nth-child(2){animation-delay:.2s}.typing .dots i:nth-child(3){animation-delay:.4s}
+@keyframes blink{50%{opacity:1}}
+.lockring{position:absolute;border:2px dashed #5856D6;border-radius:12px;pointer-events:none}
+.tip{position:absolute;background:#1D1D1F;color:#fff;border-radius:10px;padding:7px 11px;font-size:12.5px;max-width:260px;box-shadow:var(--pop)}
+/* present */
+.present{position:absolute;inset:0;background:#0B0B0C;display:grid;place-items:center}
+.present .slide{width:82%;aspect-ratio:16/9;background:var(--board);border-radius:10px;position:relative;overflow:hidden;background-image:radial-gradient(var(--grid) 1.1px,transparent 1.3px);background-size:18px 18px}
+.present .bar{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;background:rgba(40,40,42,.92);color:#fff;border-radius:12px;padding:6px 8px 6px 12px;font-size:12.5px}
+.present .bar button{border:0;background:rgba(255,255,255,.12);color:#fff;border-radius:8px;padding:5px 10px;font-size:12px}
+.hint{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:rgba(40,40,42,.92);color:#fff;border-radius:10px;padding:7px 12px;font-size:12.5px;display:flex;gap:8px;align-items:center;white-space:nowrap}
+.hint button{border:0;background:var(--accent);color:#fff;border-radius:7px;padding:3px 9px;font-size:12px;font-weight:600}
+/* zoom demo */
+.zoomwrap{position:absolute;inset:0;transition:transform .45s cubic-bezier(.2,.8,.2,1);transform-origin:0 0}
+.zbadge{position:absolute;right:10px;bottom:10px;background:var(--surface);border-radius:9px;box-shadow:var(--pop);padding:4px 10px;font-size:12px;font-weight:600}
+.btn{border:0;border-radius:10px;padding:8px 14px;font-weight:600;background:var(--accent);color:#fff}
+.btn.ghost{background:var(--fill);color:var(--ink)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.fb{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start}
+.fb textarea{width:100%;min-height:90px;border-radius:12px;border:1px solid var(--line-2);background:var(--surface);padding:10px;resize:vertical}
+@media (max-width:900px){.grid2{grid-template-columns:1fr}.bmenu{width:auto;left:12px}.bmenu .cols{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<header class="topbar"><div class="in">
+  <h1>Whiteboard · menu &amp; polish</h1>
+  <nav><a href="#menu">Menu ⋯</a><a href="#phone">Ponsel</a><a href="#typing">Sedang mengetik</a><a href="#present">Present</a><a href="#zoom">Auto-zoom</a><a href="#fixed">Sudah diperbaiki</a><a href="#feedback">Masukan</a></nav>
+  <div class="seg" role="group" aria-label="Theme"><button type="button" data-th="light" class="on">Terang</button><button type="button" data-th="dark">Gelap</button></div>
+</div></header>
+<main>
+  <div class="lead">
+    <h2>Menu papan yang lebih jelas, dan papan yang lebih ramah</h2>
+    <p>Mockup dari audit kedua (Q2, Q3, Q6, Q7, Q8). Menu ⋯ jadi dua kolom tanpa scroll; setiap alat punya keterangan pendek di bawahnya. Bentuk yang sedang diketik orang lain terkunci. Present selalu jalan. Mengetik di bentuk kecil otomatis memperbesar tampilan. Semua bagian bisa dicoba. Tulisan di aplikasi tetap bahasa Inggris.</p>
+  </div>
+
+  <section id="menu" style="margin-top:0">
+    <h3>Menu ⋯ dua kolom</h3>
+    <p class="sub">Kiri: Diagram, Network, Meeting. Kanan: Board dan Share. Tidak perlu scroll di laptop 1366×768. Ketik untuk mencari (coba "excel", "rack", "kunci"); panah ↑↓ dan Enter juga berfungsi. Label pendek, penjelasannya di baris abu-abu kecil, jadi tidak ada lagi tulisan yang terpotong "…".</p>
+    <div class="stage" style="height:700px">
+      <div class="corner"><button class="chip" type="button">▶ Present</button><button class="chip ico" type="button" aria-label="Full screen">⤢</button><button class="chip ico on" type="button" id="menuBtn" aria-label="More board tools" aria-expanded="true">⋯</button></div>
+      <div class="bmenu" id="bmenu" role="menu" aria-label="Board tools">
+        <input class="s" id="mq" type="search" placeholder="Search board tools" aria-label="Search board tools">
+        <div class="cols" id="mcols"></div>
+        <div class="foot"><span>↑↓ to move · Enter to open · Esc to close</span><span id="mcount"></span></div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px"><span class="note">Laptop dengan layar pendek (papan &lt; 640px tinggi): keterangan abu-abu disembunyikan dan muncul sebagai tooltip, supaya tetap tanpa scroll.</span><button class="btn ghost" type="button" id="shortBtn">Lihat versi layar pendek</button></div>
+    <div class="grid2" style="margin-top:14px">
+      <div class="card"><h4>Sebelum</h4><div class="compare">
+        <span class="bad">✕</span><span>Satu daftar panjang 21 alat, harus scroll.</span>
+        <span class="bad">✕</span><span>Label terpotong: "Data graphics: bars, icons, colour rul…".</span>
+        <span class="bad">✕</span><span>Berkedip dan lompat ke atas saat orang lain menggerakkan kursor (sudah diperbaiki, 99be8f8).</span>
+      </div></div>
+      <div class="card"><h4>Sesudah</h4><div class="compare">
+        <span class="good">✓</span><span>Dua kolom, semua terlihat sekaligus.</span>
+        <span class="good">✓</span><span>Label pendek + keterangan satu baris.</span>
+        <span class="good">✓</span><span>Alat yang sedang aktif (timer, voting, papan terkunci) diberi tanda "· on".</span>
+      </div></div>
+    </div>
+  </section>
+
+  <section id="phone">
+    <h3>Di ponsel: satu daftar di sheet bawah</h3>
+    <p class="sub">Kolom digabung jadi satu daftar yang bisa di-scroll, dengan baris lebih tinggi untuk jari. Kategori tetap terlihat sebagai judul kecil.</p>
+    <div class="phone"><div class="sheet"><div class="grab"></div><input class="s" style="width:100%;height:36px;border-radius:10px;border:1px solid var(--line-2);background:var(--surface-2);padding:0 10px" placeholder="Search board tools" aria-label="Search board tools"><div class="list" id="plist"></div></div></div>
+  </section>
+
+  <section id="typing">
+    <h3>Bentuk yang sedang diketik orang lain terkunci</h3>
+    <p class="sub">Begitu Rina mulai mengetik di sebuah bentuk, orang lain melihat label ungu "Rina is typing…" di atasnya. Klik dua kali tidak membuka editor; muncul pesan kecil. Saat Rina selesai (Esc, klik di luar, atau tidak mengetik 30 detik), kuncinya lepas. Tidak ada lagi tulisan yang tertimpa diam-diam. Coba klik dua kali bentuk "Make PO".</p>
+    <div class="grid2">
+      <div class="stage" style="height:280px" id="lockStage">
+        <div class="shape" style="left:60px;top:40px;width:170px;height:66px">Raise PR</div>
+        <div class="shape" id="lockedShape" style="left:60px;top:160px;width:170px;height:66px;cursor:not-allowed">Make PO<span id="rinaText" style="color:var(--ink-3)"></span></div>
+        <div class="lockring" style="left:54px;top:154px;width:182px;height:78px"></div>
+        <div class="typing" style="left:60px;top:126px"><span class="a">RS</span>Rina is typing<span class="dots"><i></i><i></i><i></i></span></div>
+        <div class="tip" id="lockTip" style="left:250px;top:170px" hidden>Rina is typing here. You can edit it when she's done.</div>
+      </div>
+      <div class="card"><h4>Kenapa dikunci, bukan digabung?</h4><p class="why" style="margin:0">Teks di satu bentuk biasanya pendek (judul langkah, nama orang). Menggabungkan ketikan dua orang huruf per huruf seperti Google Docs mengubah cara papan menyimpan data dan hasilnya sering aneh untuk teks sependek ini. Kunci sederhana: satu bentuk, satu penulis pada satu waktu, dan semua orang tahu siapa.</p>
+        <div class="row" style="margin-top:12px"><button class="btn ghost" type="button" id="rinaDone">Rina selesai mengetik</button></div></div>
+    </div>
+  </section>
+
+  <section id="present">
+    <h3>Present selalu jalan</h3>
+    <p class="sub">Belum ada frame? Present tetap menampilkan seluruh papan sebagai satu slide, dengan saran kecil di atas untuk membuat frame. Dulu hanya muncul toast "Add a frame first".</p>
+    <div class="stage" style="height:330px">
+      <div class="present">
+        <div class="slide"><svg viewBox="0 0 400 225" style="position:absolute;inset:0;width:100%;height:100%"><rect x="150" y="18" width="100" height="26" rx="13" fill="var(--shape)" stroke="var(--sl)"/><text x="200" y="35" text-anchor="middle" font-size="11" fill="var(--ink)">Start</text><path d="M200 44V62" stroke="var(--sl)"/><rect x="140" y="62" width="120" height="32" rx="6" fill="var(--shape)" stroke="var(--sl)"/><text x="200" y="82" text-anchor="middle" font-size="11" fill="var(--ink)">Raise PR</text><path d="M200 94V112" stroke="var(--sl)"/><path d="M200 112l40 24-40 24-40-24z" fill="var(--shape)" stroke="var(--sl)"/><text x="200" y="140" text-anchor="middle" font-size="10" fill="var(--ink)">Approved?</text><path d="M200 160V180" stroke="var(--sl)"/><rect x="150" y="180" width="100" height="26" rx="13" fill="var(--shape)" stroke="var(--sl)"/><text x="200" y="197" text-anchor="middle" font-size="11" fill="var(--ink)">End</text></svg></div>
+        <div class="hint">Showing the whole board. Add frames to present step by step. <button type="button">Add a frame</button></div>
+        <div class="bar">Whole board · 1 of 1 <button type="button">Esc · Exit</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="zoom">
+    <h3>Mengetik di bentuk kecil: tampilan diperbesar otomatis</h3>
+    <p class="sub">Di zoom 14% sebuah sticky hanya sekitar 60px dan tulisannya tidak terbaca. Saat mulai mengetik di bentuk yang kecil di layar, papan bergeser dan diperbesar ke bentuk itu; setelah selesai, kembali ke posisi semula. Coba tombol di bawah.</p>
+    <div class="grid2">
+      <div class="stage" style="height:300px" id="zstage">
+        <div class="zoomwrap" id="zwrap">
+          <div class="sticky" style="left:40px;top:40px;width:50px;height:50px;font-size:4px;padding:3px">Idea</div>
+          <div class="sticky" style="left:110px;top:60px;width:50px;height:50px;font-size:4px;padding:3px">Budget</div>
+          <div class="sticky" id="zt" style="left:180px;top:120px;width:50px;height:50px;font-size:4px;padding:3px"><span id="ztx">Call vendor</span></div>
+          <div class="shape" style="left:300px;top:60px;width:70px;height:30px;font-size:5px">Process</div>
+        </div>
+        <div class="zbadge" id="zb">14%</div>
+      </div>
+      <div class="card"><h4>Coba</h4><p class="why">Klik "Mulai mengetik" untuk sticky ketiga. Tampilan diperbesar ke sticky itu. Klik "Selesai" untuk kembali ke 14%.</p>
+        <div class="row"><button class="btn" type="button" id="zgo">Mulai mengetik</button><button class="btn ghost" type="button" id="zdone">Selesai</button></div>
+        <p class="note" style="margin-top:12px">Hanya terjadi kalau bentuknya kurang dari ±80px di layar. Di zoom normal tidak ada yang bergerak.</p></div>
+    </div>
+  </section>
+
+  <section id="fixed">
+    <h3>Sudah diperbaiki (tidak perlu persetujuan)</h3>
+    <div class="card"><div class="compare">
+      <span class="good">✓</span><span><b>Menu ⋯ berkedip saat di-hover</b> — penyebab: dibangun ulang setiap kursor orang lain bergerak (99be8f8).</span>
+      <span class="good">✓</span><span><b>Slider riwayat versi macet</b> setelah satu langkah; Shapes dan Templates bertumpuk; Esc tidak menutup panel; toolbar format menumpuk di selection bar; laporan tidak ikut berubah; chip "changes" tidak terbaca; menu di bawah minimap (20a397f).</span>
+      <span class="good">✓</span><span><b>Halaman dokumen</b>: pop-up Style/Share/⋯/Tidy up menutupi top bar aplikasi; judul ponsel 16px; strip kosong di bawah papan ponsel; tab "Gallery later" (20a397f).</span>
+      <span class="good">✓</span><span><b>Error merah di konsol</b> untuk kartu tugas dari proyek orang lain (d917055).</span>
+    </div></div>
+  </section>
+
+  <section id="feedback">
+    <h3>Masukan</h3>
+    <p class="sub">Tulis apa yang ingin diubah, lalu salin dan kirim ke saya.</p>
+    <div class="fb"><textarea id="fbText" aria-label="Masukan" placeholder="Contoh: Version history pindah ke kolom kiri, keterangan lebih pendek…"></textarea><button type="button" class="btn" id="fbCopy">Salin</button></div>
+  </section>
+</main>
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  document.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { document.documentElement.dataset.theme = b.dataset.th; document.querySelectorAll('[data-th]').forEach(x => x.classList.toggle('on', x === b)); });
+  const I = {
+    bulb:'<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z"/>',
+    import:'<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>', book:'<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/>',
+    layout:'<circle cx="12" cy="12" r="2.5"/><circle cx="4.5" cy="5" r="1.8"/><circle cx="19.5" cy="5" r="1.8"/><circle cx="4.5" cy="19" r="1.8"/><circle cx="19.5" cy="19" r="1.8"/>',
+    chart:'<path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/>',
+    org:'<rect x="9" y="2" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 7v4M6 16v-3h12v3"/>',
+    task:'<rect x="3" y="4" width="18" height="16" rx="3"/><path d="m8 12 3 3 5-6"/>', ip:'<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+    search:'<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>', frames:'<rect x="3" y="4" width="7" height="7" rx="1"/><rect x="14" y="4" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+    newtab:'<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>', lock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+    comment:'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>', history:'<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>',
+    timer:'<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/>', vote:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.2"/>', play:'<path d="m6 4 14 8-14 8z"/>',
+    download:'<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>', table:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16"/>', slides:'<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M12 17v4M8 21h8"/>', chat:'<path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12z"/>'
+  };
+  const ic = k => `<svg class="i" viewBox="0 0 24 24">${I[k]}</svg>`;
+  const LEFT = [
+    ['Diagram', [['bulb','Guide','Make a flowchart step by step'],['import','Import','draw.io file or Mermaid text'],['book','Library','Your saved shapes and the team’s'],['layout','Re-layout','Hierarchy, radial or organic'],['chart','Data graphics','Bars, icons and colours from shape data'],['org','Org chart','A team from Directory, with photos'],['task','Make tasks','Turn steps into Projects tasks']]],
+    ['Network', [['ip','Find a device','By IP, hostname or name']]],
+    ['Meeting', [['timer','Timer','A countdown everyone sees'],['vote','Dot voting','Everyone picks their favourites'],['play','Present','Frame by frame, full screen']]],
+  ];
+  const RIGHT = [
+    ['Board', [['search','Find on board','Words on shapes and stickies','Ctrl F'],['frames','Frames','Jump to a frame'],['newtab','Open in a new tab','The board on its own'],['lock','Lock board','People can still view, comment and vote',null,'on'],['comment','Comments','Everything said on this board'],['history','Version history','See and restore earlier versions']]],
+    ['Share', [['download','Export','Picture, SVG or PDF'],['table','Report','Shapes and their data to Excel'],['slides','PowerPoint','Each frame becomes a slide'],['chat','Send to Chat','A live card in a chat']]],
+  ];
+  const row = ([k, l, d, kbd, on]) => `<button type="button" role="menuitem" class="mi ${on ? 'on' : ''}" data-l="${l}"><span class="ic">${ic(k)}</span><span class="l">${l}</span>${kbd ? `<kbd>${kbd}</kbd>` : '<span></span>'}<span class="d">${d}</span></button>`;
+  const colHtml = (groups, q) => groups.map(([g, items]) => { const shown = items.filter(x => !q || (x[1] + ' ' + x[2] + ' ' + g).toLowerCase().includes(q) || (q === 'kunci' && x[1] === 'Lock board')); return shown.length ? `<div class="mh">${g}</div>${shown.map(row).join('')}` : ''; }).join('');
+  let kb = -1;
+  function paint() {
+    const q = $('#mq').value.trim().toLowerCase();
+    const L = colHtml(LEFT, q), R = colHtml(RIGHT, q);
+    $('#mcols').innerHTML = (L || R) ? `<div class="col">${L}</div><div class="col">${R}</div>` : '<div class="empty">Nothing found. Try "export", "rack" or "timer".</div>';
+    const n = document.querySelectorAll('#mcols .mi').length; $('#mcount').textContent = `${n} tools`; kb = -1;
+  }
+  $('#mq').addEventListener('input', paint);
+  $('#mq').addEventListener('keydown', e => {
+    const items = [...document.querySelectorAll('#mcols .mi')];
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); kb = Math.max(0, Math.min(items.length - 1, kb + (e.key === 'ArrowDown' ? 1 : -1))); items.forEach((x, i) => x.classList.toggle('kb', i === kb)); items[kb]?.scrollIntoView({ block: 'nearest' }); }
+    if (e.key === 'Enter') { const t = items[Math.max(0, kb)]; if (t) say(`Opens: ${t.dataset.l}`); }
+    if (e.key === 'Escape') { $('#bmenu').hidden = true; $('#menuBtn').classList.remove('on'); }
+  });
+  $('#mcols').addEventListener('click', e => { const b = e.target.closest('.mi'); if (b) say(`Opens: ${b.dataset.l}`); });
+  $('#menuBtn').onclick = () => { const m = $('#bmenu'); m.hidden = !m.hidden; $('#menuBtn').classList.toggle('on', !m.hidden); if (!m.hidden) $('#mq').focus(); };
+  paint();
+  $('#shortBtn').onclick = () => { const m = $('#bmenu'); m.classList.toggle('short'); $('#shortBtn').textContent = m.classList.contains('short') ? 'Lihat versi lengkap' : 'Lihat versi layar pendek'; document.querySelectorAll('#mcols .mi').forEach(b => b.title = m.classList.contains('short') ? b.querySelector('.d').textContent : ''); };
+  $('#plist').innerHTML = [...LEFT, ...RIGHT].map(([g, items]) => `<div class="mh" style="font-size:10.5px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);padding:10px 8px 3px">${g}</div>${items.map(row).join('')}`).join('');
+  function say(t) { let el = $('#toast'); if (!el) { el = document.createElement('div'); el.id = 'toast'; el.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1D1D1F;color:#fff;border-radius:12px;padding:9px 14px;font-size:13px;z-index:99'; document.body.append(el); } el.textContent = t; el.hidden = false; clearTimeout(say.t); say.t = setTimeout(() => el.hidden = true, 2000); }
+  // typing lock
+  let locked = true, typed = 0;
+  const rina = ' (new template)';
+  const tick = setInterval(() => { if (!locked) return; typed = (typed + 1) % (rina.length + 6); $('#rinaText').textContent = rina.slice(0, Math.min(typed, rina.length)); }, 260);
+  $('#lockedShape').addEventListener('dblclick', () => { if (!locked) { say('Editing Make PO'); return; } const t = $('#lockTip'); t.hidden = false; clearTimeout(t.t); t.t = setTimeout(() => t.hidden = true, 2200); });
+  $('#rinaDone').onclick = () => { locked = false; clearInterval(tick); $('#rinaText').textContent = rina; document.querySelectorAll('#lockStage .typing, #lockStage .lockring').forEach(x => x.remove()); $('#lockedShape').style.cursor = 'text'; say('Rina is done. You can edit Make PO now.'); };
+  // auto zoom
+  $('#zgo').onclick = () => { const s = $('#zstage').getBoundingClientRect(); const k = 4; const x = 180 + 25, y = 120 + 25; $('#zwrap').style.transform = `translate(${s.width / 2 - x * k}px, ${s.height / 2 - y * k}px) scale(${k})`; $('#zb').textContent = '56%'; $('#ztx').textContent = 'Call vendor about the price|'; };
+  $('#zdone').onclick = () => { $('#zwrap').style.transform = ''; $('#zb').textContent = '14%'; $('#ztx').textContent = 'Call vendor about the price'; };
+  $('#fbCopy').onclick = async () => { const t = $('#fbText'); try { await navigator.clipboard.writeText(t.value); $('#fbCopy').textContent = 'Tersalin'; } catch { t.select(); $('#fbCopy').textContent = 'Tekan Ctrl C'; } setTimeout(() => $('#fbCopy').textContent = 'Salin', 2000); };
+})();
+</script>
+</body>
+</html>
