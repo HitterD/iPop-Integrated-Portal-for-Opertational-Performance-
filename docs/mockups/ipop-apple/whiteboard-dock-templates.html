@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Whiteboard Dock + Templates</title>
+<style>
+:root{
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",system-ui,sans-serif;
+  --display:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter","Segoe UI",system-ui,sans-serif;
+  --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+  --bg:#F2F2F4;--surface:#fff;--surface-2:#F5F5F7;--fill:rgba(118,118,128,.12);--fill-2:rgba(118,118,128,.2);
+  --line:rgba(0,0,0,.08);--line-2:rgba(0,0,0,.15);
+  --ink:#1D1D1F;--ink-2:#424245;--ink-3:#86868B;--ink-4:#AEAEB2;
+  --accent:#34A853;--accent-ink:#1E8E3E;--accent-soft:rgba(52,168,83,.12);
+  --blue:#0A84FF;--blue-soft:rgba(10,132,255,.12);--orange:#FF9500;--red:#FF3B30;--purple:#AF52DE;
+  --pop:0 12px 40px rgba(0,0,0,.14),0 0 0 .5px rgba(0,0,0,.08);
+  --card:0 1px 3px rgba(0,0,0,.06),0 0 0 .5px rgba(0,0,0,.08);
+  --board:#FBFBFA;--grid:rgba(0,0,0,.10);--shape:#FFFFFF;--sl:#1D1D1F;
+  --dock:#FFFFFF;--dock-2:#F4F4F6;--tile:#F0F0F2;--tile-on:#E3E3E8;
+  /* template preview palette (fill / stroke) */
+  --pv-bg:#FFFFFF;--pv-ink:#1D1D1F;--pv-ink2:#8A8A90;--pv-line:#C9C9CF;--pv-card:#FFFFFF;--pv-bar:#E2E2E6;
+  --y:#FFF1A8;--yS:#E5C93F;--pk:#FADDE3;--pkS:#E795A6;--o:#FDE3C6;--oS:#EFA458;--g:#D6F1DE;--gS:#67BF86;
+  --b:#D8E7FC;--bS:#6CA3EC;--p:#E7DDF8;--pS:#A88AE4;--gr:#EEEEF0;--grS:#B6B6BC;--r:#FFD9D6;--rS:#E5675C;
+}
+:root[data-theme=dark]{
+  --bg:#000;--surface:#1C1C1E;--surface-2:#242426;--fill:rgba(118,118,128,.24);--fill-2:rgba(118,118,128,.36);
+  --line:rgba(255,255,255,.1);--line-2:rgba(255,255,255,.2);
+  --ink:#F5F5F7;--ink-2:#D1D1D6;--ink-3:#8E8E93;--ink-4:#636366;
+  --accent:#30D158;--accent-ink:#30D158;--accent-soft:rgba(48,209,88,.16);
+  --blue:#409CFF;--blue-soft:rgba(64,156,255,.18);
+  --pop:0 12px 40px rgba(0,0,0,.6),0 0 0 .5px rgba(255,255,255,.12);--card:0 0 0 .5px rgba(255,255,255,.12);
+  --board:#141416;--grid:rgba(255,255,255,.09);--shape:#1C1C1E;--sl:#F5F5F7;
+  --dock:#1E1E20;--dock-2:#2A2A2D;--tile:#2C2C2F;--tile-on:#3A3A3E;
+  --pv-bg:#18181A;--pv-ink:#F2F2F4;--pv-ink2:#8E8E93;--pv-line:#4A4A4E;--pv-card:#232326;--pv-bar:#3A3A3E;
+  --y:#4B4321;--yS:#B09A3E;--pk:#4A2731;--pkS:#B8606F;--o:#4A3421;--oS:#C38143;--g:#1F3D2A;--gS:#4FA36B;
+  --b:#1E3251;--bS:#4F87D2;--p:#33294D;--pS:#8B6ED2;--gr:#2C2C2F;--grS:#5C5C61;--r:#4A2522;--rS:#C65A50;
+}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.5 var(--font);background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer}
+input{font:inherit;color:inherit}
+kbd{font:10.5px var(--mono);padding:1px 5px;border-radius:5px;background:var(--fill);color:var(--ink-3);line-height:1.4}
+svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.topbar{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--surface) 86%,transparent);backdrop-filter:saturate(1.6) blur(20px);border-bottom:1px solid var(--line)}
+.topbar .in{max-width:1280px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:14px}
+.topbar h1{font:600 15px var(--display);margin:0;white-space:nowrap}
+.topbar nav{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0}
+.topbar nav a{color:var(--ink-2);text-decoration:none;font-size:13px;padding:5px 10px;border-radius:8px;white-space:nowrap}
+.topbar nav a:hover{background:var(--fill)}
+.seg{display:inline-flex;background:var(--fill);border-radius:9px;padding:2px;flex:none}
+.seg button{border:0;background:none;padding:4px 10px;border-radius:7px;font-size:12.5px;color:var(--ink-2)}
+.seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08),0 0 0 .5px var(--line)}
+main{max-width:1280px;margin:0 auto;padding:28px 16px 80px}
+.lead{max-width:860px;margin-bottom:22px}
+.lead h2{font:700 26px/1.2 var(--display);margin:0 0 8px;letter-spacing:-.01em}
+.lead p{margin:0;color:var(--ink-2)}
+section{margin-top:44px}
+section>h3{font:600 18px var(--display);margin:0 0 4px}
+section>p.sub{margin:0 0 14px;color:var(--ink-3);font-size:13.5px;max-width:860px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.card{background:var(--surface);border-radius:16px;box-shadow:var(--card);padding:16px;min-width:0}
+.card h4{margin:0 0 4px;font:600 14px var(--display)}
+.card p{margin:0 0 10px;color:var(--ink-3);font-size:12.5px}
+.stage{position:relative;background:var(--board);background-image:radial-gradient(var(--grid) 1.1px,transparent 1.3px);background-size:22px 22px;border-radius:14px;overflow:hidden;box-shadow:inset 0 0 0 1px var(--line)}
+.note{font-size:12.5px;color:var(--ink-3)}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--surface);padding:9px 16px;border-radius:12px;font-size:13px;opacity:0;transition:.25s;pointer-events:none;z-index:200}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ── board demo elements ── */
+.el{position:absolute;display:grid;place-items:center;text-align:center;font-size:12.5px;cursor:pointer;color:var(--sl)}
+.el svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.el span{position:relative;padding:0 8px}
+.el.sel::after{content:"";position:absolute;inset:-5px;border:1.5px solid var(--blue);border-radius:4px;pointer-events:none}
+.el.sticky{background:var(--y);color:var(--pv-ink);box-shadow:0 2px 6px rgba(0,0,0,.12);font-size:12px;padding:10px;place-items:start;text-align:left}
+.hint{position:absolute;font-size:11.5px;background:var(--blue-soft);color:var(--blue);padding:3px 9px;border-radius:999px;white-space:nowrap}
+
+/* ── dock ── */
+.dockwrap{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:0;z-index:10;max-width:calc(100% - 24px)}
+.ctx{background:var(--dock);border-radius:14px 14px 0 0;box-shadow:var(--pop);display:flex;align-items:center;gap:4px;padding:6px 10px 14px;margin-bottom:-8px;max-width:100%;overflow-x:auto;scrollbar-width:none;position:relative;z-index:0}
+.ctx[hidden]{display:none}
+.ctx .sep{width:1px;height:22px;background:var(--line-2);margin:0 4px;flex:none}
+.cb{border:0;background:none;height:32px;min-width:32px;padding:0 7px;border-radius:8px;display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--ink-2);white-space:nowrap;flex:none}
+.cb:hover{background:var(--fill)}
+.cb.on{background:var(--blue-soft);color:var(--blue)}
+.cb .dd{font-size:9px;color:var(--ink-3)}
+.cb.txt{font-weight:550}
+.cb.pri{background:var(--accent);color:#fff}
+.dot{width:18px;height:18px;border-radius:50%;flex:none;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}
+.cb.sw{padding:0;width:26px;min-width:26px}
+.cb.sw.on{background:none}
+.cb.sw.on .dot{box-shadow:0 0 0 2px var(--dock),0 0 0 3.5px var(--ink)}
+.nib{width:30px;height:32px;display:grid;place-items:end center;overflow:hidden}
+.nib i{display:block;width:12px;height:24px;border-radius:2px 2px 0 0;position:relative;background:var(--tile-on)}
+.nib i::before{content:"";position:absolute;left:0;right:0;top:-8px;margin:auto;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:8px solid var(--tc,#1d1d1f)}
+.cb.on .nib i{background:var(--blue-soft)}
+.dock{position:relative;z-index:1;background:var(--dock);border-radius:18px;box-shadow:var(--pop);display:flex;align-items:flex-end;gap:4px;padding:6px 8px 8px;max-width:100%}
+.dock .small{display:grid;grid-template-columns:repeat(2,34px);gap:2px 2px;align-self:center;padding-right:6px;border-right:1px solid var(--line);margin-right:4px}
+.sb{border:0;background:none;height:34px;border-radius:9px;display:grid;place-items:center;color:var(--ink-2);position:relative}
+.sb:hover{background:var(--fill)}
+.sb.on{background:var(--blue-soft);color:var(--blue)}
+.sb .k{position:absolute;top:-1px;right:2px;font:9px var(--mono);color:var(--ink-4)}
+.tiles{display:flex;gap:4px;align-items:flex-end;overflow-x:auto;scrollbar-width:none;padding-top:14px}
+.tile{border:0;background:var(--tile);width:62px;height:54px;border-radius:12px;position:relative;display:grid;place-items:end center;padding:0;flex:none;overflow:visible;transition:transform .15s,background .15s}
+.tile:hover{transform:translateY(-3px)}
+.tile.on{background:var(--tile-on);box-shadow:inset 0 0 0 1.5px var(--blue)}
+.tile .k{position:absolute;top:-15px;left:0;right:0;text-align:center;font:9.5px var(--mono);color:var(--ink-3)}
+.tile .art{width:62px;height:54px;overflow:hidden;border-radius:12px;display:grid;place-items:end center}
+.tile .art svg{display:block}
+.tile .lbl{position:absolute;bottom:-17px;left:-6px;right:-6px;font-size:10px;color:var(--ink-3);text-align:center;opacity:0;transition:.15s;pointer-events:none;white-space:nowrap}
+.tile:hover .lbl{opacity:1}
+.dock .ur{display:flex;flex-direction:column;gap:2px;padding-left:6px;border-left:1px solid var(--line);margin-left:4px;align-self:center}
+
+/* popovers above the context bar */
+.pop{position:absolute;bottom:calc(100% + 6px);background:var(--surface);border-radius:14px;box-shadow:var(--pop);padding:10px;z-index:20;font-size:12.5px}
+.pop[hidden]{display:none}
+.pop h5{margin:0 0 6px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.swgrid{display:grid;grid-template-columns:repeat(8,22px);gap:6px}
+.swgrid .dot{width:22px;height:22px;cursor:pointer}
+.row{display:flex;align-items:center;gap:8px;margin-top:8px}
+.row input[type=range]{flex:1}
+.shpgrid{display:grid;grid-template-columns:repeat(6,40px);gap:4px}
+.shpgrid button{border:0;background:var(--surface-2);height:40px;border-radius:9px;display:grid;place-items:center;color:var(--ink-2)}
+.shpgrid button:hover{background:var(--fill)}
+.pop input.s{width:100%;height:32px;border-radius:9px;border:1px solid var(--line-2);background:var(--surface-2);padding:0 10px;margin-bottom:8px}
+
+/* task / pages picker */
+.picker{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(100% + 8px);width:620px;max-width:calc(100vw - 48px);background:var(--surface);border-radius:14px;box-shadow:var(--pop);z-index:20;display:flex;flex-direction:column;overflow:hidden}
+.picker[hidden]{display:none}
+.picker .tabs{display:flex;gap:4px;padding:8px 12px 0;border-bottom:1px solid var(--line)}
+.picker .tabs button{border:0;background:none;padding:6px 8px 9px;font-size:13px;color:var(--ink-3);display:flex;gap:6px;align-items:center;border-bottom:2px solid transparent;margin-bottom:-1px}
+.picker .tabs button.on{color:var(--ink);border-color:var(--blue);font-weight:600}
+.picker .q{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);color:var(--ink-3)}
+.picker .q input{border:0;background:none;outline:0;flex:1;font-size:14px}
+.picker .lh{display:flex;justify-content:space-between;padding:10px 14px 4px;font-size:12px;color:var(--ink-3)}
+.picker .lh a{color:var(--blue);text-decoration:none}
+.picker ul{list-style:none;margin:0;padding:0 6px 6px;max-height:240px;overflow:auto}
+.picker li{display:grid;grid-template-columns:14px 1fr auto;gap:2px 10px;align-items:center;padding:6px 8px;border-radius:9px;cursor:pointer}
+.picker li:hover,.picker li.kb{background:var(--fill)}
+.picker li .st{width:11px;height:11px;border-radius:50%;border:2.5px solid var(--ink-4)}
+.picker li .pr{grid-column:2/4;font-size:11px;color:var(--ink-3);order:-1}
+.picker li .nm{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.av{display:inline-flex}.av b{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;font-size:9px;color:#fff;margin-left:-4px;box-shadow:0 0 0 2px var(--surface)}
+.picker .ft{border-top:1px solid var(--line);padding:9px 14px;display:flex;justify-content:space-between;font-size:13px}
+.picker .ft button{border:0;background:none;color:var(--ink-2);display:flex;gap:6px;align-items:center;padding:0}
+.lock{color:var(--ink-3);font-size:11.5px}
+
+/* more panel */
+.more{position:absolute;right:0;bottom:calc(100% + 8px);width:560px;max-width:calc(100vw - 48px);background:var(--surface);border-radius:16px;box-shadow:var(--pop);padding:12px;z-index:20}
+.more[hidden]{display:none}
+.more .s{width:100%;height:34px;border-radius:9px;border:1px solid var(--line-2);background:var(--surface-2);padding:0 10px;margin-bottom:10px}
+.more h5{margin:8px 2px 6px;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+.mgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.mt{border:0;background:var(--surface-2);border-radius:12px;padding:10px 4px 8px;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-2);text-align:center;line-height:1.2}
+.mt:hover{background:var(--fill)}
+.mt .ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:#fff}
+.mt .ic svg{width:18px;height:18px}
+
+/* ── Template Center ── */
+.tc-ov{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:120;display:grid;place-items:center;padding:24px}
+.tc-ov[hidden]{display:none}
+.tc{width:min(1180px,100%);height:min(820px,100%);background:var(--surface);border-radius:18px;box-shadow:var(--pop);display:grid;grid-template-columns:232px 1fr;overflow:hidden;position:relative}
+.tc.inline{height:760px;box-shadow:var(--card)}
+.tc aside{background:var(--surface-2);border-right:1px solid var(--line);padding:14px 10px;display:flex;flex-direction:column;gap:2px;overflow:auto}
+.tc aside .brand{display:flex;align-items:center;gap:8px;font:600 15px var(--display);padding:2px 8px 12px}
+.tc aside .brand i{width:26px;height:26px;border-radius:8px;background:conic-gradient(from 200deg,#FF9500,#FF2D55,#AF52DE,#0A84FF,#34C759,#FF9500);display:block}
+.nv{border:0;background:none;display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;font-size:13px;text-align:left;color:var(--ink-2)}
+.nv:hover{background:var(--fill)}
+.nv.on{background:var(--blue-soft);color:var(--blue);font-weight:600}
+.nv .n{margin-left:auto;font-size:11.5px;color:var(--ink-3)}
+.tc aside .gh{font-size:11px;color:var(--ink-3);padding:14px 8px 4px;letter-spacing:.04em}
+.ck{display:flex;align-items:center;gap:8px;padding:4px 8px;font-size:13px;color:var(--ink-2);cursor:pointer}
+.ck input{accent-color:var(--blue)}
+.tc .mainp{display:flex;flex-direction:column;min-width:0;min-height:0}
+.tc .bar{display:flex;gap:8px;padding:14px 18px;align-items:center;border-bottom:1px solid var(--line)}
+.tc .bar .q{flex:1;display:flex;align-items:center;gap:8px;height:36px;border-radius:10px;border:1.5px solid var(--blue);padding:0 10px;color:var(--ink-3)}
+.tc .bar .q input{border:0;background:none;outline:0;flex:1;font-size:13.5px}
+.tc .bar select{height:36px;border-radius:10px;border:1px solid var(--line-2);background:var(--surface);color:var(--ink-2);padding:0 8px;font-size:13px}
+.tc .x{border:0;background:var(--fill);width:30px;height:30px;border-radius:50%;flex:none}
+.tc .body{overflow:auto;padding:4px 18px 24px;flex:1}
+.tc .sec{margin-top:18px}
+.tc .sh{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px}
+.tc .sh h6{margin:0;font:600 15px var(--display)}
+.tc .sh button{border:0;background:none;color:var(--blue);font-size:12.5px}
+.tgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.tcard{border:0;background:var(--surface);border-radius:12px;box-shadow:0 0 0 1px var(--line-2);padding:0;text-align:left;overflow:hidden;display:flex;flex-direction:column;transition:box-shadow .15s,transform .15s;position:relative}
+.tcard:hover{box-shadow:0 0 0 1.5px var(--blue),0 6px 18px rgba(0,0,0,.08);transform:translateY(-1px)}
+.tcard .pv{aspect-ratio:16/10;background:var(--pv-bg);border-bottom:1px solid var(--line);display:block}
+.tcard .pv svg{width:100%;height:100%;display:block}
+.tcard .meta{padding:9px 12px 10px;display:flex;align-items:center;gap:8px}
+.tcard .meta b{font-size:13px;font-weight:600;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lv{font-size:10.5px;padding:1px 7px;border-radius:999px;background:var(--fill);color:var(--ink-3);flex:none}
+.lv.Beginner{background:rgba(52,168,83,.14);color:var(--accent-ink)}
+.lv.Intermediate{background:rgba(255,149,0,.16);color:#B86E00}
+.lv.Advanced{background:rgba(175,82,222,.16);color:#8E3FB8}
+.tag{position:absolute;top:8px;left:8px;font-size:10.5px;padding:2px 7px;border-radius:999px;background:var(--surface);box-shadow:var(--card);color:var(--ink-2)}
+.tcard .del{position:absolute;top:8px;right:8px;border:0;width:26px;height:26px;border-radius:8px;background:var(--surface);box-shadow:var(--card);display:none;place-items:center;color:var(--red)}
+.tcard:hover .del{display:grid}
+.empty{color:var(--ink-3);font-size:13px;padding:30px 0;text-align:center}
+.banner{margin-top:14px;display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;background:var(--blue-soft);color:var(--ink-2);font-size:13px}
+.banner button{margin-left:auto;border:0;background:var(--surface);border-radius:8px;padding:4px 10px;font-size:12.5px;box-shadow:var(--card)}
+/* big preview */
+.bp{position:absolute;inset:0;background:var(--surface);z-index:5;display:grid;grid-template-columns:1fr 320px}
+.bp[hidden]{display:none}
+.bp .canvas{position:relative;background:var(--pv-bg);background-image:radial-gradient(var(--grid) 1px,transparent 1.2px);background-size:20px 20px;overflow:hidden;display:grid;place-items:center}
+.bp .canvas .zz{transition:transform .2s;width:88%}
+.bp .canvas svg{width:100%;height:auto;display:block;filter:drop-shadow(0 4px 18px rgba(0,0,0,.08))}
+.bp .zoom{position:absolute;left:14px;bottom:14px;display:flex;gap:2px;background:var(--surface);border-radius:10px;box-shadow:var(--card);padding:3px}
+.bp .zoom button{border:0;background:none;width:30px;height:28px;border-radius:7px}
+.bp .zoom span{font-size:12px;color:var(--ink-3);align-self:center;width:44px;text-align:center}
+.bp .back{position:absolute;left:14px;top:14px;border:0;background:var(--surface);border-radius:10px;box-shadow:var(--card);height:32px;padding:0 12px;font-size:13px}
+.bp .info{padding:22px;border-left:1px solid var(--line);display:flex;flex-direction:column;gap:12px;overflow:auto}
+.bp .info h4{margin:0;font:700 20px var(--display)}
+.bp .info .chips{display:flex;gap:6px;flex-wrap:wrap}
+.bp .info .chips span{font-size:11.5px;padding:2px 8px;border-radius:999px;background:var(--fill);color:var(--ink-2)}
+.bp .info h5{margin:4px 0 0;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.bp .info p{margin:0;color:var(--ink-2);font-size:13.5px}
+.bp .info ol{margin:0;padding-left:20px;color:var(--ink-2);font-size:13.5px;display:flex;flex-direction:column;gap:4px}
+.bp .info .use{margin-top:auto;border:0;background:var(--accent);color:#fff;height:40px;border-radius:11px;font-weight:600;font-size:14px}
+.bp .info .note{font-size:12px}
+
+/* empty board start */
+.start{position:absolute;inset:0;display:grid;place-items:center;padding:20px}
+.start .box{background:var(--surface);border-radius:18px;box-shadow:var(--pop);padding:18px;width:min(760px,100%)}
+.start .box b{font:600 16px var(--display)}
+.start .box p{margin:2px 0 12px;color:var(--ink-3);font-size:13px}
+.start .g6{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.start .g6 .tcard .meta{padding:6px 10px}
+.start .row2{display:flex;gap:8px;margin-top:12px}
+.btn{border:0;background:var(--fill);border-radius:10px;height:34px;padding:0 14px;font-size:13px;font-weight:550}
+.btn.pri{background:var(--accent);color:#fff}
+
+.mini-tb{display:flex;gap:2px;background:var(--surface);border-radius:12px;box-shadow:var(--pop);padding:4px;width:max-content}
+.mini-tb span{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:var(--ink-2)}
+.mini-tb span.on{background:var(--accent);color:#fff}
+
+@media (max-width:900px){.grid2{grid-template-columns:1fr}.tgrid{grid-template-columns:repeat(2,minmax(0,1fr))}.tc{grid-template-columns:1fr}.tc aside{display:none}.bp{grid-template-columns:1fr;grid-template-rows:1fr auto}.start .g6{grid-template-columns:repeat(2,1fr)}.mgrid{grid-template-columns:repeat(4,1fr)}}
+</style>
+</head>
+<body>
+<div class="topbar"><div class="in">
+  <h1>Whiteboard · round 6</h1>
+  <nav><a href="#dock">Dock + bar</a><a href="#picker-sec">Task / Pages</a><a href="#more">More</a><a href="#center">Template Center</a><a href="#start">Board kosong</a><a href="#list">Daftar template</a><a href="#same">Yang tetap</a></nav>
+  <div class="seg"><button data-th="light" class="on">Light</button><button data-th="dark">Dark</button></div>
+</div></div>
+
+<main>
+<div class="lead">
+  <h2>Dock ala ClickUp, satu bar kontekstual, dan Template Center dengan preview</h2>
+  <p>Semua di halaman ini bisa diklik. Klik tile di dock untuk melihat bar di atasnya berubah, klik shape di papan untuk melihat bar elemen terpilih, buka <b>Task</b>, <b>More</b>, dan <b>Templates</b>. Preview template digambar dari isi template itu sendiri (di build nanti pakai renderer kanvas yang sama), jadi ikut tema terang/gelap.</p>
+</div>
+
+<!-- ───────────── 1. DOCK ───────────── -->
+<section id="dock">
+  <h3>1 · Dock + bar kontekstual</h3>
+  <p class="sub">Halaman Whiteboard, full screen, dan tab baru. Huruf shortcut di atas tile, nama muncul saat hover. Bar di atas dock mengikuti tool yang aktif <i>atau</i> elemen yang dipilih — bar properti lama dan popover pen/shape dihapus. Pilihan lanjutan ada di <b>⌄</b> paling kanan bar.</p>
+  <div class="stage" id="board" style="height:600px">
+    <!-- demo flowchart -->
+    <div class="el" data-el="start" style="left:120px;top:60px;width:150px;height:52px"><svg viewBox="0 0 150 52" preserveAspectRatio="none"><rect x="1" y="1" width="148" height="50" rx="25" style="fill:var(--g);stroke:var(--gS)" stroke-width="1.5"/></svg><span>Start</span></div>
+    <div class="el" data-el="proc" style="left:120px;top:150px;width:150px;height:62px"><svg viewBox="0 0 150 62" preserveAspectRatio="none"><rect x="1" y="1" width="148" height="60" rx="8" style="fill:var(--shape);stroke:var(--sl)" stroke-width="1.5"/></svg><span>Receive PR</span></div>
+    <div class="el" data-el="dec" style="left:115px;top:250px;width:160px;height:96px"><svg viewBox="0 0 160 96" preserveAspectRatio="none"><path d="M80 2 158 48 80 94 2 48Z" style="fill:var(--b);stroke:var(--bS)" stroke-width="1.5"/></svg><span>Budget OK?</span></div>
+    <svg style="position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none"><g style="stroke:var(--sl)" stroke-width="1.5" fill="none" marker-end="url(#ah)"><path d="M195 112v34"/><path d="M195 212v34"/></g><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" style="fill:var(--sl)"/></marker></defs></svg>
+    <div class="el sticky" data-el="sticky" style="left:420px;top:70px;width:150px;height:120px">Ask Finance about the Q4 budget limit</div>
+    <div class="el sticky" data-el="sticky2" style="left:590px;top:100px;width:150px;height:120px;background:var(--pk)">Supplier needs PO before 25 Nov</div>
+    <div class="hint" id="selhint" style="left:300px;top:286px" hidden>Next: add Yes / No branches</div>
+
+    <div class="dockwrap" id="dockwrap">
+      <div class="pop" id="pop" hidden></div>
+      <div class="picker" id="picker" hidden></div>
+      <div class="more" id="morep" hidden></div>
+      <div class="ctx" id="ctx" hidden></div>
+      <div class="dock">
+        <div class="small" id="small"></div>
+        <div class="tiles" id="tiles"></div>
+        <div class="ur">
+          <button class="sb" title="Undo (Ctrl Z)"><svg class="i" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg></button>
+          <button class="sb" title="Redo (Ctrl Y)" style="opacity:.4"><svg class="i" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note" style="margin-top:8px">Coba: klik <b>Pen</b>, <b>Shape</b>, <b>Connector</b>, <b>Sticky</b>, <b>Text</b>, <b>Flowchart</b>; lalu klik belah ketupat “Budget OK?” — bar berubah jadi bar elemen terpilih dengan <b>Next step</b>, <b>Check</b>, <b>Tidy</b> (fitur yang dulu tersembunyi di ⋯). Klik area kosong untuk melepas pilihan.</p>
+</section>
+
+<!-- ───────────── 2. PICKER ───────────── -->
+<section id="picker-sec">
+  <h3 id="picker-h">2 · Picker Task / Pages</h3>
+  <p class="sub">Tile <b>Task</b> (Shift T) membuka picker di atas dock. Recent = task yang terakhir kamu buka/ubah, dengan status, nama project di atasnya, dan avatar assignee. <b>Create new</b> membuat task di project terakhir lalu langsung jadi kartu di papan. Task yang tidak bisa kamu buka tidak pernah muncul di daftar.</p>
+  <div class="card"><button class="btn pri" onclick="openTool('task');document.getElementById('dock').scrollIntoView({behavior:'smooth'})">Buka picker di dock ↑</button> <span class="note">&nbsp;Enter = taruh kartu · ↑↓ pilih · Tab ganti Tasks/Pages</span></div>
+</section>
+
+<!-- ───────────── 3. MORE ───────────── -->
+<section id="more">
+  <h3>3 · Tile “More” — semua fitur lain, bergambar</h3>
+  <p class="sub">Menggantikan daftar teks menu ⋯ untuk alat-alat. Kelompok sama seperti menu dua kolom yang sudah disetujui; menu ⋯ di pojok kanan atas tetap untuk urusan board (share, export, history, lock).</p>
+  <div class="card"><button class="btn pri" onclick="openTool('more');document.getElementById('dock').scrollIntoView({behavior:'smooth'})">Buka More di dock ↑</button></div>
+</section>
+
+<!-- ───────────── 4. TEMPLATE CENTER ───────────── -->
+<section id="center">
+  <h3>4 · Template Center</h3>
+  <p class="sub">Dibuka dari tile More → Templates, tombol <b>Templates</b> di pojok kiri atas papan, atau “Browse all templates” di board kosong. Klik kartu = preview besar + kapan dipakai + langkah. Klik dua kali = langsung dipakai. <b>My templates</b> = “Save as template” pribadi, <b>Team templates</b> = siapa saja boleh publish, Admin bisa hapus (ikon tong sampah saat hover).</p>
+  <div class="tc inline" id="tcInline"></div>
+</section>
+
+<!-- ───────────── 5. EMPTY BOARD ───────────── -->
+<section id="start">
+  <h3>5 · Board kosong</h3>
+  <p class="sub">6 template Featured dengan preview + Browse all. Klik di mana saja di papan / mulai menggambar = start blank.</p>
+  <div class="stage" style="height:520px"><div class="start"><div class="box">
+    <b>Start with a blank board, or pick a template</b>
+    <p>Each template adds a frame and a “How to use” note you can hide in one click.</p>
+    <div class="g6" id="feat6"></div>
+    <div class="row2"><button class="btn pri" onclick="openCenter()">Browse all templates</button><button class="btn">Make a flowchart (Guide)</button><button class="btn">Import Mermaid / draw.io</button></div>
+  </div></div></div>
+</section>
+
+<!-- ───────────── 6. LIST ───────────── -->
+<section id="list">
+  <h3>6 · Daftar template (<span id="tcount"></span>)</h3>
+  <p class="sub">20 lama (diperbarui dengan sticky “How to use”) + 37 baru. Contoh isi memakai istilah kerja (PR, PO, GRN, line produksi). Label <b>New</b> = baru di ronde ini.</p>
+  <div class="card" id="tlist" style="font-size:13px;columns:3 260px;column-gap:24px"></div>
+</section>
+
+<!-- ───────────── 7. SAME ───────────── -->
+<section id="same">
+  <h3>7 · Yang tetap</h3>
+  <div class="grid2">
+    <div class="card"><h4>Blok /draw di dalam halaman</h4><p>Ruangnya sempit — tetap toolbar ikon kecil + “Open full screen”. Bar kontekstual baru tetap dipakai di sini (lebih ringkas, tanpa label).</p>
+      <div class="mini-tb"><span class="on"><svg class="i" viewBox="0 0 24 24"><path d="m4 4 7 16 2-7 7-2z"/></svg></span><span><svg class="i" viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/></svg></span><span><svg class="i" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></span><span><svg class="i" viewBox="0 0 24 24"><path d="M5 19 19 5M19 5h-7M19 5v7"/></svg></span><span><svg class="i" viewBox="0 0 24 24"><path d="M5 4h14v11l-5 5H5z"/></svg></span><span><svg class="i" viewBox="0 0 24 24"><path d="M6 6h12M12 6v13"/></svg></span><span><svg class="i" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></span></div></div>
+    <div class="card"><h4>Ponsel</h4><p>Toolbar ringkas + “More” yang sudah live (select, hand, pen, sticky, picture, comment). Bar kontekstual muncul sebagai sheet bawah. Template Center di ponsel = satu kolom, preview besar di atas, info di bawah.</p></div>
+  </div>
+</section>
+</main>
+
+<div class="tc-ov" id="tcOv" hidden><div class="tc" id="tcModal"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const toast = t => { const e = $('#toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('show'), 1800); };
+document.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { document.documentElement.dataset.theme = b.dataset.th; document.querySelectorAll('[data-th]').forEach(x => x.classList.toggle('on', x === b)); });
+const I = d => `<svg class="i" viewBox="0 0 24 24">${d}</svg>`;
+
+/* ════════════ DOCK ════════════ */
+const SMALL = [['select','Select','V','<path d="m4 4 7 16 2-7 7-2z"/>'],['hand','Hand','H','<path d="M7 11V6a1.5 1.5 0 0 1 3 0v4M10 10V4.5a1.5 1.5 0 0 1 3 0V10M13 10V5.5a1.5 1.5 0 0 1 3 0V11M16 11V8a1.5 1.5 0 0 1 3 0v6a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L7 14"/>'],['comment','Comment','C','<path d="M4 5h16v11H9l-5 4z"/>'],['laser','Laser','L','<circle cx="12" cy="12" r="3" fill="currentColor"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/>']];
+const ART = {
+  task: `<svg width="56" height="46" viewBox="0 0 56 46"><rect x="4" y="8" width="48" height="44" rx="6" style="fill:var(--pv-card)" stroke="rgba(0,0,0,.15)"/><circle cx="12" cy="17" r="3.2" fill="none" stroke="#86868B" stroke-width="1.4"/><path d="m10.6 17 1 1 2-2" stroke="#86868B" stroke-width="1.2" fill="none"/><text x="18" y="20" font-size="8" font-weight="600" style="fill:var(--pv-ink)">Task</text><rect x="9" y="27" width="16" height="4" rx="2" fill="#C9C9CF"/><rect x="29" y="26" width="18" height="6" rx="3" fill="#0A84FF"/><rect x="9" y="36" width="12" height="4" rx="2" fill="#C9C9CF"/></svg>`,
+  pen: c => `<svg width="40" height="50" viewBox="0 0 40 50"><path d="M12 50V22l8-16 8 16v28z" style="fill:var(--pv-card)" stroke="rgba(0,0,0,.18)"/><path d="m16 14 4-8 4 8z" fill="${c}"/><path d="M12 22h16" stroke="rgba(0,0,0,.12)"/></svg>`,
+  shape: `<svg width="54" height="46" viewBox="0 0 54 46"><rect x="5" y="10" width="44" height="40" rx="5" style="fill:var(--pv-card)" stroke="rgba(0,0,0,.14)"/></svg>`,
+  connector: `<svg width="40" height="50" viewBox="0 0 40 50"><path d="M20 50V10M10 20l10-10 10 10" style="stroke:var(--pv-ink)" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  sticky: `<svg width="56" height="48" viewBox="0 0 56 48"><path d="M8 12h40v28l-8 10H8z" fill="#FFE27A"/><path d="M48 40h-8v10z" fill="#E8C34A"/><path d="M14 8h36v30" fill="none" stroke="#FFD24A" stroke-width="3" opacity=".6"/></svg>`,
+  text: `<svg width="48" height="46" viewBox="0 0 48 46"><rect x="6" y="10" width="36" height="40" rx="7" fill="#2C2C2E"/><path d="M16 20h16M24 20v18" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/></svg>`,
+  frame: `<svg width="54" height="46" viewBox="0 0 54 46"><rect x="16" y="8" width="18" height="7" rx="2" fill="#636366"/><rect x="5" y="14" width="44" height="36" rx="5" fill="#3A3A3C"/></svg>`,
+  image: `<svg width="54" height="46" viewBox="0 0 54 46"><defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7DB8F7"/><stop offset="1" stop-color="#CFE6FF"/></linearGradient></defs><rect x="5" y="10" width="44" height="40" rx="5" fill="url(#sky)" stroke="#D9C38A" stroke-width="2"/><circle cx="38" cy="20" r="4" fill="#FFD24A"/><path d="M5 44 20 28l10 10 6-6 13 12v6H5z" fill="#F2B544"/></svg>`,
+  flow: `<svg width="58" height="48" viewBox="0 0 58 48"><rect x="4" y="14" width="50" height="38" rx="6" style="fill:var(--pv-card)" stroke="rgba(0,0,0,.14)"/><circle cx="12" cy="30" r="3.5" fill="#AF52DE"/><path d="M15 30h6" stroke="#0A84FF" stroke-width="1.5"/><rect x="21" y="26" width="10" height="8" rx="2" fill="#0A84FF"/><path d="M31 30h4" stroke="#0A84FF" stroke-width="1.5"/><path d="m40 24 5 6-5 6-5-6z" fill="#34C759"/><rect x="40" y="18" width="10" height="4" rx="2" fill="#FF2D55"/><rect x="40" y="40" width="10" height="4" rx="2" fill="#34C759"/></svg>`,
+  mind: `<svg width="58" height="48" viewBox="0 0 58 48"><rect x="4" y="14" width="50" height="38" rx="6" style="fill:var(--pv-card)" stroke="rgba(0,0,0,.14)"/><rect x="22" y="28" width="14" height="7" rx="3.5" fill="#FF9500"/><path d="M22 31c-4 0-4-8-8-8M22 31c-4 0-4 8-8 8M36 31c4 0 4-8 8-8M36 31c4 0 4 8 8 8" stroke="#86868B" fill="none"/><rect x="6" y="20" width="9" height="5" rx="2.5" fill="#0A84FF"/><rect x="6" y="37" width="9" height="5" rx="2.5" fill="#34C759"/><rect x="43" y="20" width="9" height="5" rx="2.5" fill="#AF52DE"/><rect x="43" y="37" width="9" height="5" rx="2.5" fill="#FF2D55"/></svg>`,
+  tpl: `<svg width="58" height="48" viewBox="0 0 58 48"><rect x="10" y="12" width="40" height="34" rx="5" fill="#E5DBF7" transform="rotate(-8 30 30)"/><rect x="8" y="14" width="42" height="36" rx="5" style="fill:var(--pv-card)" stroke="rgba(0,0,0,.14)"/><rect x="12" y="19" width="16" height="12" rx="2" fill="#FADDE3"/><rect x="30" y="19" width="16" height="12" rx="2" fill="#D6F1DE"/><rect x="12" y="33" width="16" height="12" rx="2" fill="#D8E7FC"/><rect x="30" y="33" width="16" height="12" rx="2" fill="#FDE3C6"/></svg>`,
+  more: `<svg width="56" height="48" viewBox="0 0 56 48"><defs><linearGradient id="mg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF9500"/><stop offset=".5" stop-color="#FF2D55"/><stop offset="1" stop-color="#AF52DE"/></linearGradient></defs><rect x="8" y="12" width="40" height="36" rx="9" fill="url(#mg)"/><circle cx="20" cy="24" r="4" fill="#fff"/><circle cx="36" cy="24" r="4" fill="#fff" opacity=".85"/><circle cx="20" cy="38" r="4" fill="#fff" opacity=".85"/><circle cx="36" cy="38" r="4" fill="#fff" opacity=".7"/></svg>`,
+};
+let penColor = '#1D1D1F';
+const TILES = [['task','Task or page','⇧T'],['pen','Pen','P'],['shape','Shape','R'],['connector','Connector','A'],['sticky','Sticky note','S'],['text','Text','T'],['frame','Frame','F'],['image','Picture or file','I'],['flow','Flowchart','O'],['mind','Mind map','M'],['tpl','Templates','⇧G'],['more','More','']];
+let tool = 'select', selected = null;
+function paintDock() {
+  $('#small').innerHTML = SMALL.map(([k, l, key, d]) => `<button class="sb ${tool === k ? 'on' : ''}" data-tool="${k}" title="${l} (${key})">${I(d)}<span class="k">${key}</span></button>`).join('');
+  $('#tiles').innerHTML = TILES.map(([k, l, key]) => `<button class="tile ${tool === k ? 'on' : ''}" data-tool="${k}" title="${l}${key ? ' (' + key + ')' : ''}"><span class="k">${key}</span><span class="art">${typeof ART[k] === 'function' ? ART[k](penColor) : ART[k]}</span><span class="lbl">${l}</span></button>`).join('');
+}
+const COLS = ['#FF3B30','#FF2D55','#FF9500','#FFCC00','#34C759','#B5E3B8','#0A84FF','#A9CFFA','#5E5CE6','#C3B4F5','#8E8E93','#1D1D1F'];
+const dd = '<span class="dd">▾</span>';
+const shp = { rect:'<rect x="4" y="5" width="16" height="14" rx="1.5"/>', circle:'<circle cx="12" cy="12" r="8"/>', tri:'<path d="M12 4 20 19H4z"/>', dia:'<path d="M12 3 21 12 12 21 3 12z"/>', para:'<path d="M7 5h14l-4 14H3z"/>', trap:'<path d="M7 5h10l4 14H3z"/>', hex:'<path d="M7 4h10l5 8-5 8H7l-5-8z"/>', cloud:'<path d="M7 18a4 4 0 0 1-.5-8A5.5 5.5 0 0 1 17 8.5 4.5 4.5 0 0 1 17.5 18z"/>', star:'<path d="m12 3 2.7 5.6 6.2.9-4.5 4.3 1 6.1L12 17l-5.5 2.9 1-6.1L3 9.5l6.2-.9z"/>' };
+let curShape = 'rect';
+function ctxHtml() {
+  const colorRow = (sel) => COLS.map(c => `<button class="cb sw ${c === sel ? 'on' : ''}" data-col="${c}" title="${c}"><span class="dot" style="background:${c}"></span></button>`).join('') + `<button class="cb" data-pop="colors" title="All colours, recent, any colour">${I('<circle cx="12" cy="12" r="8"/><path d="M12 8v8M8 12h8"/>')}</button>`;
+  const fillBtn = (c = '#FFFFFF') => `<button class="cb" data-pop="colors" title="Fill"><span class="dot" style="background:${c}"></span>${dd}</button>`;
+  const lineBtn = `<button class="cb" data-pop="line" title="Line: colour, width, dashed">${I('<path d="M4 20 20 4"/>')}${dd}</button>`;
+  const fontBtn = `<button class="cb txt" data-pop="font" title="Font: iPop, Handwriting, Monospace"><span style="font-family:Georgia,serif;font-style:italic">Aa</span>${dd}</button>`;
+  const sizeBtn = `<button class="cb txt" data-pop="size">Medium${dd}</button>`;
+  const alignBtn = `<button class="cb" data-pop="align" title="Text align">${I('<path d="M4 6h16M4 12h10M4 18h16"/>')}${dd}</button>`;
+  const adv = (k) => `<span class="sep"></span><button class="cb" data-pop="${k}" title="More options">⌄</button>`;
+  const sep = '<span class="sep"></span>';
+  if (selected === 'dec' || selected === 'proc' || selected === 'start')
+    return fillBtn(selected === 'dec' ? '#D8E7FC' : selected === 'start' ? '#D6F1DE' : '#FFFFFF') + lineBtn + fontBtn + sizeBtn + alignBtn + sep +
+      `<button class="cb txt" onclick="toast('Yes / No branches added')">${I('<path d="M5 12h12M13 6l6 6-6 6"/>')}Next step</button><button class="cb txt" onclick="toast('Check: decision needs Yes and No')">${I('<path d="m5 12 4 4 10-10"/>')}Check</button><button class="cb txt" onclick="toast('Tidied top-down')">${I('<path d="M4 6h16M4 12h16M4 18h16"/>')}Tidy</button><button class="cb txt" data-pop="data" title="Shape data: PIC, duration, status">${I('<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M10 10v10"/>')}Data</button>` + sep +
+      `<button class="cb" title="Link to URL or page">${I('<path d="M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-1 1M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1"/>')}</button><button class="cb" title="Comment">${I('<path d="M4 5h16v11H9l-5 4z"/>')}</button><button class="cb" title="Lock">${I('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>')}</button><button class="cb" data-pop="selmore" title="Copy style, group, arrange…">⋯</button>`;
+  if (selected === 'sticky' || selected === 'sticky2')
+    return ['#FFF1A8','#FADDE3','#D6F1DE','#D8E7FC','#E7DDF8','#FDE3C6'].map((c, i) => `<button class="cb sw ${i === (selected === 'sticky' ? 0 : 1) ? 'on' : ''}"><span class="dot" style="background:${c}"></span></button>`).join('') + sep + fontBtn + sizeBtn + sep +
+      `<button class="cb txt" onclick="toast('Turned into a task in Purchasing 2026 · Undo')">${I('<rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-6"/>')}Make a task</button><button class="cb txt" title="Vote on this">👍 Vote</button><button class="cb" title="Link">${I('<path d="M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-1 1M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1"/>')}</button><button class="cb" data-pop="selmore">⋯</button>`;
+  switch (tool) {
+    case 'pen': return [['Pen','#1D1D1F'],['Marker','#0A84FF'],['Highlighter','#FFCC00'],['Pencil','#8E8E93'],['Eraser','#FFB3C0']].map(([n, c], i) => `<button class="cb ${i === 0 ? 'on' : ''}" title="${n}"><span class="nib"><i style="--tc:${i === 0 ? penColor : c}"></i></span></button>`).join('') + sep + colorRow(penColor) + sep +
+      `<button class="cb" data-pop="brush" title="Brush size">${I('<path d="M4 18c4-8 8 4 16-10" stroke-width="3"/>')}${dd}</button>` + adv('penadv');
+    case 'shape': return Object.keys(shp).map(k => `<button class="cb ${k === curShape ? 'on' : ''}" data-shp="${k}" title="${k}">${I(shp[k])}</button>`).join('') + `<button class="cb txt" data-pop="shapes">More shapes</button>` + sep + fillBtn() + lineBtn + fontBtn + sizeBtn + alignBtn;
+    case 'connector': return `<button class="cb" data-pop="lstyle" title="Solid, dashed, dotted">${I('<path d="M4 12h16"/>')}${dd}</button><button class="cb" data-pop="route" title="Straight, elbow, curved, smart">${I('<path d="M4 18c6 0 4-12 16-12"/>')}${dd}</button><button class="cb" data-pop="heads" title="Arrow ends">${I('<path d="M4 12h15M14 7l5 5-5 5"/>')}${dd}</button>` + `<button class="cb" data-pop="colors"><span class="dot" style="background:#1D1D1F"></span>${dd}</button><button class="cb" data-pop="brush" title="Width">${I('<path d="M4 8h16" stroke-width="1"/><path d="M4 13h16" stroke-width="2.5"/><path d="M4 18h16" stroke-width="4"/>')}${dd}</button>` + fontBtn + adv('connadv');
+    case 'sticky': return ['#FFF1A8','#FADDE3','#D6F1DE','#D8E7FC','#E7DDF8','#FDE3C6'].map((c, i) => `<button class="cb sw ${i === 0 ? 'on' : ''}"><span class="dot" style="background:${c}"></span></button>`).join('') + sep + `<button class="cb txt">S</button><button class="cb txt on">M</button><button class="cb txt">L</button>` + sep + fontBtn + `<span class="note" style="padding:0 6px">Click to place · drag for a stack</span>`;
+    case 'text': return fontBtn + sizeBtn + sep + `<button class="cb txt"><b>B</b></button><button class="cb txt"><i>I</i></button><button class="cb txt"><s>S</s></button><button class="cb" title="List">${I('<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>')}</button>` + alignBtn + `<button class="cb" data-pop="colors"><span class="dot" style="background:#1D1D1F"></span>${dd}</button><button class="cb" title="Link">${I('<path d="M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-1 1M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1"/>')}</button>`;
+    case 'frame': return ['Free','16:9 slide','A4','Phone','Square'].map((n, i) => `<button class="cb txt ${i === 1 ? 'on' : ''}">${n}</button>`).join('') + sep + `<button class="cb txt" onclick="toast('Frame list opened')">Frame list</button><button class="cb txt pri" onclick="toast('Presenting…')">▶ Present</button>`;
+    case 'image': return `<button class="cb txt">${I('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/>')}Upload picture</button><button class="cb txt">${I('<path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4"/>')}Upload file</button><button class="cb txt">${I('<path d="M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-1 1M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1"/>')}Web link card</button><button class="cb txt">😀 Emoji &amp; stickers</button>` + `<span class="note" style="padding:0 6px">or drop / paste onto the board</span>`;
+    case 'flow': return `<button class="cb txt pri" onclick="toast('Guide opened: 1 Start oval')">Guide me</button>` + sep + [['Start / end','<rect x="3" y="7" width="18" height="10" rx="5"/>'],['Process','<rect x="4" y="6" width="16" height="12" rx="1.5"/>'],['Decision','<path d="M12 4 20 12 12 20 4 12z"/>'],['Data','<path d="M7 6h14l-4 12H3z"/>'],['Document','<path d="M4 5h16v12c-4-2-8 3-16 0z"/>'],['Database','<ellipse cx="12" cy="6" rx="7" ry="2.5"/><path d="M5 6v12c0 1.4 3 2.5 7 2.5s7-1.1 7-2.5V6"/>']].map(([n, d]) => `<button class="cb" title="${n}">${I(d)}</button>`).join('') + `<button class="cb txt" data-pop="shapes">All stencils</button>` + sep + `<button class="cb txt">Swimlane</button><button class="cb txt" onclick="toast('Paste Mermaid or .drawio')">Import</button><button class="cb txt" onclick="toast('Check: 1 shape not connected')">Check</button><button class="cb txt" onclick="toast('Tidied')">Tidy</button>` + adv('flowadv');
+    case 'mind': return `<span class="note" style="padding:0 6px"><kbd>Tab</kbd> child · <kbd>Enter</kbd> sibling</span>` + sep + ['Right','Both sides','Tree','Radial'].map((n, i) => `<button class="cb txt ${i === 1 ? 'on' : ''}">${n}</button>`).join('') + sep + `<button class="cb txt">🎨 Branch colours</button><button class="cb txt" onclick="toast('Tidied')">Tidy</button>`;
+    default: return '';
+  }
+}
+function paintCtx() { const c = $('#ctx'), h = ctxHtml(); c.hidden = !h; c.innerHTML = h; }
+const POPS = {
+  colors: () => `<h5>Bright · Soft</h5><div class="swgrid">${['#FF3B30','#FF9500','#FFCC00','#34C759','#00C7BE','#0A84FF','#5E5CE6','#AF52DE','#FFB3AE','#FFD9A8','#FFF1A8','#C8EFCF','#BDF0EC','#C6DFFE','#D4D3FA','#EBD3F7'].map(c => `<span class="dot" style="background:${c}"></span>`).join('')}</div><h5 style="margin-top:10px">Recent</h5><div class="swgrid">${['#1E8E3E','#C9372C','#1D1D1F'].map(c => `<span class="dot" style="background:${c}"></span>`).join('')}</div><div class="row"><span class="dot" style="background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red)"></span>Any colour… <input value="#0A84FF" style="width:80px;border:1px solid var(--line-2);border-radius:6px;padding:2px 6px;background:var(--surface-2)"></div><div class="row">Opacity <input type="range" value="100"></div>`,
+  brush: () => `<h5>Size</h5><div class="row" style="margin:0">${['S','M','L','XL'].map((s, i) => `<button class="btn" style="height:30px;${i === 1 ? 'background:var(--blue-soft);color:var(--blue)' : ''}">${s}</button>`).join('')}</div><div class="row"><input type="range" min="1" max="40" value="4"><b>4 px</b></div><svg width="220" height="30"><path d="M8 20c40-20 70 10 110-6s60-4 94-8" stroke="currentColor" stroke-width="4" fill="none" stroke-linecap="round"/></svg>`,
+  penadv: () => `<h5>Pen options</h5><div class="row" style="margin:0">Smoothing <input type="range" value="50"></div><div class="row">Opacity <input type="range" value="100"></div><div class="row"><input type="checkbox" checked> Hold at the end to make a neat shape</div><div class="row"><input type="checkbox" checked> Pressure (stylus)</div>`,
+  shapes: () => `<input class="s" placeholder="Search shapes: decision, database, router…"><h5>Basic</h5><div class="shpgrid">${Object.values(shp).map(d => `<button>${I(d)}</button>`).join('')}<button>${I('<path d="M4 9h10V5l6 7-6 7v-4H4z"/>')}</button><button>${I('<ellipse cx="12" cy="6" rx="7" ry="2.5"/><path d="M5 6v12c0 1.4 3 2.5 7 2.5s7-1.1 7-2.5V6"/>')}</button><button>${I('<path d="M4 5h16v10H10l-5 4v-4H4z"/>')}</button></div><h5 style="margin-top:10px">Flowchart · BPMN · ERD · Network · UML · Containers</h5><div class="note">All 43+ stencils, same as the Shapes panel today.</div>`,
+  line: () => `<h5>Line</h5><div class="swgrid">${['#1D1D1F','#8E8E93','#FF3B30','#0A84FF','#34C759','#FF9500','#AF52DE','none'].map(c => `<span class="dot" style="background:${c === 'none' ? 'repeating-linear-gradient(45deg,#ddd 0 3px,#fff 3px 6px)' : c}"></span>`).join('')}</div><div class="row">Width <input type="range" value="20"></div><div class="row">${['Solid','Dashed','Dotted'].map((s, i) => `<button class="btn" style="height:28px;${i === 0 ? 'background:var(--blue-soft);color:var(--blue)' : ''}">${s}</button>`).join('')}</div><div class="row"><input type="checkbox"> Shadow · <input type="checkbox" checked> Rounded</div>`,
+  font: () => `<h5>Font</h5>${['iPop','Handwriting','Monospace'].map((f, i) => `<div class="row" style="margin:4px 0;${i === 1 ? 'font-family:Comic Sans MS,cursive' : i === 2 ? 'font-family:var(--mono)' : ''}">${i === 0 ? '✓ ' : '&nbsp;&nbsp; '}${f}</div>`).join('')}`,
+  size: () => `<h5>Text size</h5>${['Small','Medium','Large','Extra large'].map((f, i) => `<div class="row" style="margin:4px 0">${i === 1 ? '✓ ' : '&nbsp;&nbsp; '}${f}</div>`).join('')}`,
+  align: () => `<h5>Align</h5><div class="row" style="margin:0">${['<path d="M4 6h16M4 12h10M4 18h14"/>','<path d="M4 6h16M7 12h10M5 18h14"/>','<path d="M4 6h16M10 12h10M6 18h14"/>','<path d="M4 6h16M4 12h16M4 18h16"/>'].map(d => `<button class="cb">${I(d)}</button>`).join('')}</div><div class="row">${['Top','Middle','Bottom'].map(s => `<button class="btn" style="height:28px">${s}</button>`).join('')}</div>`,
+  lstyle: () => `<h5>Line style</h5>${['Solid','Dashed','Dotted'].map(s => `<div class="row" style="margin:4px 0">${s}</div>`).join('')}`,
+  route: () => `<h5>Route</h5>${['Straight','Elbow','Curved','Smart (around shapes)'].map((s, i) => `<div class="row" style="margin:4px 0">${i === 1 ? '✓ ' : '&nbsp;&nbsp; '}${s}</div>`).join('')}<div class="row"><input type="checkbox" checked> Line jumps at crossings</div>`,
+  heads: () => `<h5>Start · End</h5><div class="note">None, arrow, open, filled, diamond, circle, crow's foot</div>`,
+  connadv: () => `<h5>More</h5><div class="row" style="margin:0"><input type="checkbox" checked> Snap to shape sides</div><div class="row">Label position <input type="range" value="50"></div>`,
+  flowadv: () => `<h5>Flowchart</h5><div class="row" style="margin:0"><input type="checkbox" checked> Next-step hints</div><div class="row"><input type="checkbox" checked> Step numbers</div><div class="row">Theme: Classic ▾</div><div class="row">Layout: Top-down ▾</div>`,
+  data: () => `<h5>Shape data</h5><div class="row" style="margin:0">PIC <b>Sari (Finance)</b></div><div class="row">Duration <b>1 day</b></div><div class="row">Status <b style="color:var(--orange)">● Waiting</b></div>`,
+  selmore: () => `<h5>Selection</h5>${['Copy style  Ctrl ⇧ C','Paste style  Ctrl ⇧ V','Group  Ctrl G','Align & distribute','Bring to front','Add to library','Make tasks from shapes','Delete'].map(s => `<div class="row" style="margin:4px 0">${s}</div>`).join('')}`,
+};
+function closeFloats() { $('#pop').hidden = true; $('#picker').hidden = true; $('#morep').hidden = true; }
+function openPop(k, btn) {
+  const p = $('#pop'); p.innerHTML = POPS[k] ? POPS[k]() : ''; p.hidden = false;
+  const wr = $('#dockwrap').getBoundingClientRect(), br = btn.getBoundingClientRect();
+  p.style.left = Math.max(0, Math.min(br.left - wr.left - 20, wr.width - 280)) + 'px'; p.style.width = '';
+}
+function openTool(k) {
+  closeFloats();
+  if (k === 'tpl') { openCenter(); return; }
+  if (k === 'task') { tool = 'task'; paintDock(); paintCtx(); $('#ctx').hidden = true; renderPicker(); $('#picker').hidden = false; return; }
+  if (k === 'more') { tool = 'more'; paintDock(); $('#ctx').hidden = true; renderMore(); $('#morep').hidden = false; return; }
+  tool = k; selected = null; document.querySelectorAll('.el.sel').forEach(e => e.classList.remove('sel')); $('#selhint').hidden = true;
+  paintDock(); paintCtx();
+}
+$('#dockwrap').addEventListener('click', e => { e.stopPropagation();
+  const t = e.target.closest('[data-tool]'); if (t) { openTool(t.dataset.tool); return; }
+  const pp = e.target.closest('[data-pop]'); if (pp) { openPop(pp.dataset.pop, pp); return; }
+  const c = e.target.closest('[data-col]'); if (c) { penColor = c.dataset.col; paintDock(); paintCtx(); return; }
+  const s = e.target.closest('[data-shp]'); if (s) { curShape = s.dataset.shp; paintCtx(); return; }
+});
+$('#board').addEventListener('click', e => {
+  if (e.target.closest('#dockwrap')) return;
+  const el = e.target.closest('.el');
+  closeFloats();
+  document.querySelectorAll('.el.sel').forEach(x => x.classList.remove('sel'));
+  if (el) { selected = el.dataset.el; el.classList.add('sel'); tool = 'select'; }
+  else selected = null;
+  $('#selhint').hidden = selected !== 'dec';
+  paintDock(); paintCtx();
+});
+
+/* picker */
+const TASKS = [
+  ['Pengembangan Aplikasi Lisensi', 'Licence Management', '#86868B', ['AK']],
+  ['Purchasing 2026', 'API e-BBK for Perdin, FPP; reject = cancel', '#FF3B30', []],
+  ['ICT Infra', 'Check K2 storage and growth per month', '#86868B', ['AK', 'KR']],
+  ['Vendor Portal', 'Vendor portal: vendors visible only to Marketing, can confirm', '#FF3B30', ['BG']],
+  ['Barcode GBB', 'Barcode label layout for raw material', '#FF9500', ['SR']],
+  ['ICT Infra', 'Renew Synology licence', '#34C759', ['BG', 'AK']],
+];
+const PAGES = [['Notes / Purchasing', 'SOP pembelian spare part'], ['Notes / ICT', 'Network diagram 2026'], ['Notes / Meetings', 'Weekly ICT meeting — 17 Nov'], ['Notes / HC', 'Onboarding checklist']];
+let pickTab = 'tasks';
+const AVC = { AK: '#AF52DE', KR: '#5E5CE6', BG: '#34A853', SR: '#FF9500' };
+function renderPicker(q = '') {
+  const p = $('#picker');
+  const list = pickTab === 'tasks'
+    ? TASKS.filter(t => (t[0] + t[1]).toLowerCase().includes(q)).map(([pr, nm, c, av], i) => `<li class="${i === 0 ? 'kb' : ''}" onclick="toast('Task card placed')"><span class="pr">% ${pr}</span><span class="st" style="border-color:${c}"></span><span class="nm">${nm}</span><span class="av">${av.map(a => `<b style="background:${AVC[a]}">${a}</b>`).join('')}</span></li>`).join('')
+    : PAGES.filter(t => (t[0] + t[1]).toLowerCase().includes(q)).map(([pr, nm], i) => `<li class="${i === 0 ? 'kb' : ''}" onclick="toast('Page card placed')"><span class="pr">${pr}</span><span>📄</span><span class="nm">${nm}</span><span></span></li>`).join('');
+  p.innerHTML = `<div class="tabs"><button data-pt="tasks" class="${pickTab === 'tasks' ? 'on' : ''}">${I('<circle cx="12" cy="12" r="8"/><path d="m8.5 12 2.5 2.5 4.5-5"/>')}Tasks</button><button data-pt="pages" class="${pickTab === 'pages' ? 'on' : ''}">${I('<path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4"/>')}Pages</button></div>
+  <div class="q">${I('<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>')}<input id="pq" placeholder="${pickTab === 'tasks' ? 'Search for task name, ID, or URL' : 'Search Notes pages'}" value="${q}"></div>
+  <div class="lh"><span>Recent</span><a href="#" onclick="toast('Browse opens Projects in a side sheet');return false">${pickTab === 'tasks' ? 'Browse tasks' : 'Browse pages'}</a></div>
+  <ul>${list || '<li><span></span><span class="nm" style="color:var(--ink-3)">Nothing found. Tasks you can\'t open are never listed.</span></li>'}</ul>
+  <div class="ft"><button onclick="toast('New task in “Purchasing 2026” → card placed')">${I('<path d="M12 5v14M5 12h14"/>')}Create new ${pickTab === 'tasks' ? 'task' : 'page'}</button><span class="lock">in Purchasing 2026 (last used) ▾</span></div>`;
+  p.querySelectorAll('[data-pt]').forEach(b => b.onclick = ev => { ev.stopPropagation(); pickTab = b.dataset.pt; renderPicker(); });
+  const inp = p.querySelector('#pq'); inp.oninput = () => { const v = inp.value; renderPicker(v.toLowerCase()); const n = $('#pq'); n.focus(); n.setSelectionRange(v.length, v.length); };
+}
+
+/* more */
+const MORE = [
+  ['Create', [['Templates','#AF52DE','<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/>','tpl'],['Emoji & stickers','#FF9500','<circle cx="12" cy="12" r="8"/><path d="M9 14c1.5 2 4.5 2 6 0M9 10h.01M15 10h.01"/>'],['Web link card','#0A84FF','<path d="M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-1 1M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1"/>'],['Library','#5E5CE6','<path d="M4 5h4v14H4zM10 5h4v14h-4zM16 6l3.5-1 2.5 13-3.5 1z"/>'],['Import Mermaid / draw.io','#8E8E93','<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>']]],
+  ['Diagram', [['Flowchart guide','#34C759','<rect x="3" y="7" width="8" height="5" rx="2.5"/><path d="M7 12v3"/><path d="m17 13 4 4-4 4-4-4z"/>'],['Check diagram','#34C759','<path d="m5 12 4 4 10-10"/>'],['Tidy / auto layout','#00C7BE','<path d="M4 6h16M4 12h16M4 18h16"/>'],['Org chart from Directory','#0A84FF','<rect x="9" y="3" width="6" height="5"/><rect x="3" y="16" width="6" height="5"/><rect x="15" y="16" width="6" height="5"/><path d="M12 8v4M6 16v-4h12v4"/>'],['Diagram themes','#FF2D55','<circle cx="12" cy="12" r="8"/><path d="M12 4v16"/>'],['Rack view','#8E8E93','<rect x="5" y="3" width="14" height="18" rx="1"/><path d="M5 8h14M5 13h14"/>'],['Find device by IP','#8E8E93','<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>'],['Report to Excel','#34A853','<rect x="4" y="4" width="16" height="16" rx="2"/><path d="m9 9 6 6M15 9l-6 6"/>'],['Tasks from shapes','#AF52DE','<rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-6"/>'],['Data graphics','#FF9500','<path d="M5 19V9M12 19V5M19 19v-7"/>']]],
+  ['Meeting', [['Present','#FF3B30','<path d="M7 5v14l11-7z"/>'],['Timer','#FF9500','<circle cx="12" cy="13" r="7"/><path d="M12 9v4l2 2M10 3h4"/>'],['Vote','#5E5CE6','<path d="M7 11V20H4v-9zM7 11l4-7c2 0 3 1 3 3v3h5a2 2 0 0 1 2 2l-1.5 7a2 2 0 0 1-2 1H7"/>'],['Frames','#0A84FF','<path d="M7 3v18M17 3v18M3 7h18M3 17h18"/>'],['Follow / who is here','#34C759','<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20a6 6 0 0 1 12 0M14 20a4 4 0 0 1 7 0"/>']]],
+];
+function renderMore() {
+  $('#morep').innerHTML = `<input class="s" placeholder="Search tools…">` + MORE.map(([h, items]) => `<h5>${h}</h5><div class="mgrid">${items.map(([n, c, d, act]) => `<button class="mt" ${act ? `onclick="event.stopPropagation();openCenter()"` : `onclick="toast('${n}')"`}><span class="ic" style="background:${c}">${I(d)}</span>${n}</button>`).join('')}</div>`).join('');
+}
+
+/* ════════════ TEMPLATE PREVIEWS (live SVG from content) ════════════ */
+const F = { y: ['--y','--yS'], pk: ['--pk','--pkS'], o: ['--o','--oS'], g: ['--g','--gS'], b: ['--b','--bS'], p: ['--p','--pS'], gr: ['--gr','--grS'], r: ['--r','--rS'] };
+const st = (c) => c === 'card' ? 'fill:var(--pv-card);stroke:var(--pv-line)' : c === 'none' ? 'fill:none;stroke:var(--pv-line)' : `fill:var(${F[c][0]});stroke:var(${F[c][1]})`;
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+const T = (x, y, s, o = {}) => `<text x="${x}" y="${y}" font-size="${o.fs || 6}" ${o.b ? 'font-weight="700"' : ''} text-anchor="${o.a || 'middle'}" style="fill:var(${o.c || '--pv-ink'})" font-family="Inter,Segoe UI,sans-serif">${esc(s)}</text>`;
+const R = (x, y, w, h, c = 'card', o = {}) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${o.r ?? 3}" style="${st(c)}" stroke-width="${o.sw || .8}" ${o.dash ? 'stroke-dasharray="3 2"' : ''}/>` + (o.t ? T(x + w / 2, y + (o.ty ?? h / 2 + 2), o.t, { fs: o.fs || 6, b: o.b }) : '');
+const S = (x, y, w = 26, h = 20, c = 'y', t = '') => (c = F[c] ? c : c === 'card' ? 'gr' : 'y', `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="1" style="fill:var(${F[c][0]})" filter="url(#sh)"/>` + (t ? T(x + 3, y + 7, t, { fs: 4.2, a: 'start' }) : `<rect x="${x + 3}" y="${y + 5}" width="${w * .6}" height="1.6" rx=".8" style="fill:var(${F[c][1]})" opacity=".7"/><rect x="${x + 3}" y="${y + 9}" width="${w * .45}" height="1.6" rx=".8" style="fill:var(${F[c][1]})" opacity=".7"/>`));
+const E = (cx, cy, rx, ry, c = 'card', t = '') => `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" style="${st(c)}" stroke-width=".8"/>` + (t ? T(cx, cy + 2, t) : '');
+const D = (cx, cy, w, h, c = 'card', t = '') => `<path d="M${cx} ${cy - h / 2} ${cx + w / 2} ${cy} ${cx} ${cy + h / 2} ${cx - w / 2} ${cy}Z" style="${st(c)}" stroke-width=".8"/>` + (t ? T(cx, cy + 2, t, { fs: 5 }) : '');
+const L = (pts, o = {}) => `<path d="M${pts.map(p => p.join(' ')).join(' L')}" fill="none" style="stroke:var(${o.c || '--pv-ink2'})" stroke-width="${o.w || .8}" ${o.dash ? 'stroke-dasharray="3 2"' : ''} ${o.arrow === false ? '' : 'marker-end="url(#ar)"'}/>`;
+const C = (d, o = {}) => `<path d="${d}" fill="none" style="stroke:var(${o.c || '--pv-ink2'})" stroke-width="${o.w || .8}"/>`;
+const bars = (x, y, w, n = 3) => Array.from({ length: n }, (_, i) => `<rect x="${x}" y="${y + i * 5}" width="${w * (i % 2 ? .7 : 1)}" height="2" rx="1" style="fill:var(--pv-bar)"/>`).join('');
+const H = t => T(240, 18, t, { fs: 10, b: true });
+const howto = () => `<rect x="8" y="30" width="70" height="66" rx="2" style="fill:var(--gr)"/>` + T(13, 40, 'How to use', { fs: 5.4, b: true, a: 'start' }) + bars(13, 46, 58, 8);
+const wrap = body => `<svg viewBox="0 0 400 250" xmlns="http://www.w3.org/2000/svg"><defs><filter id="sh" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy=".6" stdDeviation=".6" flood-opacity=".18"/></filter><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 10 5 0 10z" style="fill:var(--pv-ink2)"/></marker></defs><rect width="400" height="250" style="fill:var(--pv-bg)"/>${body}</svg>`;
+
+/* generic layouts (content area x 88–392, y 28–242) */
+function matrix(title, labels, cols, ax) {
+  let s = H(title) + howto(); const x0 = 104, y0 = 34, w = 136, h = 96;
+  labels.forEach((l, i) => { const x = x0 + (i % 2) * (w + 8), y = y0 + Math.floor(i / 2) * (h + 8); s += R(x, y, w, h, cols[i], { r: 4 }) + T(x + 6, y + 10, l, { fs: 6.4, b: true, a: 'start' }); for (let k = 0; k < 2 + (i % 2); k++) s += S(x + 10 + k * 34, y + 26 + (k % 2) * 10, 28, 22, i === 3 ? 'gr' : 'y'); });
+  if (ax) s += L([[98, 238], [98, 30]]) + L([[98, 238], [392, 238]]) + T(245, 248, ax[0], { fs: 5.4, c: '--pv-ink2' }) + `<text x="93" y="134" font-size="5.4" transform="rotate(-90 93 134)" text-anchor="middle" style="fill:var(--pv-ink2)">${esc(ax[1])}</text>`;
+  return s;
+}
+function columns(title, heads, cols, n = 3, how = true) {
+  let s = H(title) + (how ? howto() : ''); const x0 = how ? 88 : 12, W = (how ? 304 : 376), gap = 6, w = (W - gap * (heads.length - 1)) / heads.length;
+  heads.forEach((hd, i) => { const x = x0 + i * (w + gap); s += R(x, 30, w, 14, cols[i % cols.length], { r: 3, t: hd, b: true, fs: heads.length > 5 ? 5 : 6 }) + R(x, 48, w, 192, 'gr', { r: 3 }); for (let k = 0; k < n - (i % 2); k++) s += S(x + 4, 54 + k * 30, w - 8, 24, cols[i % cols.length] === 'gr' ? 'y' : cols[i % cols.length]); });
+  return s;
+}
+function table(title, heads, rows, cell) {
+  let s = H(title) + howto(); const x0 = 88, W = 304, ch = 22, cw = W / heads.length;
+  heads.forEach((hd, i) => s += R(x0 + i * cw, 30, cw, ch, i ? 'b' : 'gr', { r: 0, t: hd, b: true, fs: 5.6 }));
+  rows.forEach((r, j) => { const y = 30 + ch * (j + 1); s += R(x0, y, cw, ch, 'card', { r: 0, t: r, fs: 5.6 }); for (let i = 1; i < heads.length; i++) s += R(x0 + i * cw, y, cw, ch, 'card', { r: 0 }) + (cell ? cell(x0 + i * cw, y, cw, ch, i, j) : bars(x0 + i * cw + 6, y + 8, cw - 12, 2)); });
+  return s;
+}
+function flowV(title, nodes) { // nodes: [kind,label]
+  let s = H(title) + howto(); let y = 34; const cx = 200;
+  nodes.forEach(([k, t], i) => { const h = k === 'd' ? 34 : 20; if (k === 't') s += R(cx - 40, y, 80, h, 'g', { r: 10, t }); else if (k === 'd') s += D(cx, y + h / 2, 90, h, 'b', t); else s += R(cx - 45, y, 90, h, 'card', { t }); if (i < nodes.length - 1) s += L([[cx, y + h], [cx, y + h + 9]]); if (k === 'd') { s += L([[cx + 45, y + h / 2], [300, y + h / 2], [300, y + h / 2 + 18]]) + T(312, y + h / 2 - 3, 'No', { fs: 5 }) + R(260, y + h / 2 + 18, 80, 20, 'pk', { t: 'Ask for details' }) + T(207, y + h + 7, 'Yes', { fs: 5 }); } y += h + 10; });
+  return s;
+}
+function lanes(title, laneNames, stages, cellFn) {
+  let s = H(title) + howto(); const x0 = 88, lw = 44, W = 304 - lw, sw = W / stages.length, lh = Math.min(38, 206 / laneNames.length);
+  stages.forEach((t, i) => s += R(x0 + lw + i * sw + 1, 30, sw - 2, 12, 'p', { r: 3, t, b: true, fs: 5.2 }));
+  laneNames.forEach((n, j) => { const y = 46 + j * lh; s += R(x0, y, lw - 2, lh - 3, 'gr', { r: 3, t: n, fs: 5, b: true }); stages.forEach((_, i) => s += cellFn ? cellFn(x0 + lw + i * sw, y, sw, lh, i, j) : S(x0 + lw + i * sw + 4, y + 3, sw - 8, lh - 9, ['y', 'b', 'pk', 'g', 'o'][j % 5])); });
+  return s;
+}
+function tree(title, root, kids, grand = 2, col = 'b') {
+  let s = H(title) + howto(); const cx = 240; s += R(cx - 36, 34, 72, 22, col, { t: root, b: true });
+  const n = kids.length, span = 290, x0 = 95;
+  kids.forEach((k, i) => { const x = x0 + (i + .5) * span / n; s += L([[cx, 56], [cx, 70], [x, 70], [x, 82]], { arrow: false }) + R(x - 30, 82, 60, 20, 'card', { t: k }); for (let g = 0; g < grand; g++) s += L([[x, 102], [x, 112 + g * 30]], { arrow: false }) + R(x - 24, 112 + g * 30, 48, 18, 'gr', { t: '' }) + bars(x - 18, 119 + g * 30, 36, 1); });
+  return s;
+}
+
+/* the templates */
+const TPL = [];
+const add = (key, name, cat, level, desc, when, steps, draw, extra = {}) => TPL.push({ key, name, cat, level, desc, when, steps, draw, ...extra });
+const CAT = ['Brainstorm', 'Strategy & analysis', 'Planning & meeting', 'Flowchart & process', 'Process improvement', 'Technical'];
+
+// Strategy
+add('eisenhower', 'Eisenhower matrix', CAT[1], 'Beginner', 'Sort work by urgent vs important', 'When the to-do list is too long and you need to decide what to do now, plan, hand over or drop.', ['Put each task on a sticky', 'Drag it into one of the 4 boxes', 'Turn “Do first” stickies into tasks'], () => matrix('Eisenhower Matrix', ['Do first', 'Schedule', 'Delegate', "Don't do"], ['b', 'g', 'o', 'pk'], ['Urgent  →  Not urgent', 'Important']), { isNew: 1, featured: 1 });
+add('bcg', 'BCG matrix', CAT[1], 'Intermediate', 'Products by growth and market share', 'Reviewing a product range: which products to invest in, keep, or stop.', ['List products on stickies', 'Place by market growth and share', 'Agree an action per box'], () => matrix('BCG Matrix', ['Question marks', 'Stars', 'Dogs', 'Cash cows'], ['p', 'y', 'gr', 'g'], ['Market share (high → low)', 'Market growth']), { isNew: 1 });
+add('impact', 'Impact / effort', CAT[1], 'Beginner', 'Quick wins vs big bets', 'Choosing which improvement ideas to start first.', ['Add ideas', 'Vote on impact and effort', 'Start with Quick wins'], () => matrix('Impact / Effort', ['Quick wins', 'Big bets', 'Fill-ins', 'Money pit'], ['g', 'b', 'y', 'pk'], ['Effort (low → high)', 'Impact']), { isNew: 1 });
+add('swot', 'SWOT', CAT[1], 'Beginner', 'Strengths to threats', 'Before a plan or proposal: see what helps and what blocks.', ['Fill the inside (S, W)', 'Fill the outside (O, T)', 'Pick 3 actions'], () => matrix('SWOT Analysis', ['Strengths', 'Weaknesses', 'Opportunities', 'Threats'], ['g', 'pk', 'b', 'o']));
+add('pest', 'PEST analysis', CAT[1], 'Intermediate', 'Political, economic, social, tech', 'Looking at outside changes that could affect the business next year.', ['One box per force', 'Add facts, not opinions', 'Mark high-impact items red'], () => matrix('PEST Analysis', ['Political', 'Economic', 'Social', 'Technological'], ['p', 'g', 'o', 'b']), { isNew: 1 });
+add('porter', "Porter's five forces", CAT[1], 'Advanced', 'How strong is the competition', 'Judging how attractive a market or product line is.', ['Fill each force', 'Rate it low / medium / high', 'Summarise in the middle'], () => { let s = H("Porter's Five Forces") + howto(); s += R(200, 108, 80, 36, 'p', { t: 'Rivalry', b: true }); [[200, 36, 'New entrants', 'b'], [200, 190, 'Substitutes', 'g'], [98, 108, 'Suppliers', 'o'], [302, 108, 'Buyers', 'pk']].forEach(([x, y, t, c]) => s += R(x, y, 80, 36, c, { t, b: true })); s += L([[240, 72], [240, 106]]) + L([[240, 188], [240, 146]]) + L([[178, 126], [198, 126]]) + L([[302, 126], [282, 126]]); return s; }, { isNew: 1 });
+add('competitive', 'Competitive analysis', CAT[1], 'Intermediate', 'Us vs competitors, side by side', 'Before pricing or a sales pitch.', ['Name competitors in the columns', 'Score each row', 'Circle where we win'], () => table('Competitive Analysis', ['', 'Us', 'Comp. A', 'Comp. B'], ['Price', 'Quality', 'Delivery', 'Service', 'Range', 'Payment', 'Overall'], (x, y, w, h, i, j) => `<circle cx="${x + w / 2}" cy="${y + h / 2}" r="4" style="fill:var(${['--gS', '--yS', '--rS'][(i + j) % 3]})"/>`), { isNew: 1 });
+add('benchmark', 'Benchmark table', CAT[1], 'Beginner', 'Compare options on the same criteria', 'Picking a supplier, a machine or software.', ['Write criteria in rows', 'Add options as columns', 'Score 1–5 and add up'], () => table('Benchmark Analysis', ['Criteria', 'Option 1', 'Option 2', 'Option 3', 'Option 4'], ['Price', 'Lead time', 'Warranty', 'Support', 'Score'], (x, y, w, h, i, j) => R(x + 6, y + 6, w - 12, h - 12, ['b', 'o', 'g', 'pk'][i - 1], { r: 5, t: String((i * 3 + j) % 5 + 1), fs: 5.6 })), { isNew: 1 });
+add('bmc', 'Business Model Canvas', CAT[1], 'Advanced', 'A whole business on one page', 'Explaining a new product or business unit.', ['Start with customers and value', 'Fill channels and revenue', 'Then partners and costs'], () => { let s = H('Business Model Canvas') + howto(); const x = 88, w = 304 / 5; [['Key partners', 0, 0, 1, 2], ['Key activities', 1, 0, 1, 1], ['Key resources', 1, 1, 1, 1], ['Value', 2, 0, 1, 2], ['Relationships', 3, 0, 1, 1], ['Channels', 3, 1, 1, 1], ['Customers', 4, 0, 1, 2]].forEach(([t, c, r, cs, rs], i) => { s += R(x + c * w, 30 + r * 70, w * cs, 70 * rs, 'card', { r: 0 }) + T(x + c * w + 4, 38 + r * 70, t, { fs: 5, b: true, a: 'start' }) + S(x + c * w + 6, 44 + r * 70, 22, 16, ['b', 'g', 'g', 'pk', 'o', 'o', 'y'][i]); }); s += R(x, 170, 152, 70, 'card', { r: 0 }) + T(x + 4, 178, 'Costs', { fs: 5, b: true, a: 'start' }) + R(x + 152, 170, 152, 70, 'card', { r: 0 }) + T(x + 156, 178, 'Revenue', { fs: 5, b: true, a: 'start' }) + S(x + 8, 186, 22, 16, 'r') + S(x + 160, 186, 22, 16, 'g'); return s; }, { isNew: 1 });
+add('lean', 'Lean Canvas', CAT[1], 'Intermediate', 'Problem-first business plan', 'Testing a new idea before spending money.', ['Problem and customers first', 'Then solution and metrics', 'Unfair advantage last'], () => { let s = H('Lean Canvas') + howto(); const x = 88, w = 304 / 5; [['Problem', 0, 0, 2], ['Solution', 1, 0, 1], ['Key metrics', 1, 1, 1], ['Unique value', 2, 0, 2], ['Advantage', 3, 0, 1], ['Channels', 3, 1, 1], ['Customers', 4, 0, 2]].forEach(([t, c, r, rs], i) => s += R(x + c * w, 30 + r * 70, w, 70 * rs, i % 2 ? 'card' : 'gr', { r: 0 }) + T(x + c * w + 4, 38 + r * 70, t, { fs: 5, b: true, a: 'start' }) + bars(x + c * w + 4, 44 + r * 70, w - 10, 3)); s += R(x, 170, 152, 70, 'card', { r: 0, t: 'Cost structure', ty: 10, fs: 5 }) + R(x + 152, 170, 152, 70, 'card', { r: 0, t: 'Revenue streams', ty: 10, fs: 5 }); return s; }, { isNew: 1 });
+
+// Brainstorm
+add('retro', 'Retro', CAT[0], 'Beginner', 'Went well, improve, action', 'End of a project or month: learn together.', ['Everyone adds stickies (5 min timer)', 'Group and vote', 'Turn top votes into tasks'], () => columns('Retrospective', ['Went well', 'To improve', 'Actions'], ['g', 'pk', 'b']), { featured: 1 });
+add('brainstorm', 'Brainstorm', CAT[0], 'Beginner', 'Ideas around a topic', 'Collect many ideas fast, no judging yet.', ['Write the topic in the middle', 'Add ideas around it', 'Vote on the best'], () => { let s = H('Brainstorm') + howto(); s += E(240, 135, 46, 24, 'p', 'Topic'); for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; s += S(240 + Math.cos(a) * 118 - 14, 135 + Math.sin(a) * 82 - 11, 28, 22, ['y', 'pk', 'g', 'b', 'o'][i % 5]); } return s; });
+add('mindmap', 'Mind map', CAT[0], 'Beginner', 'Branch out from one idea', 'Planning a topic, event or document outline.', ['Type the main idea', 'Tab = child, Enter = sibling', 'Colour each branch'], () => { let s = H('Mind Map') + howto(); s += R(205, 122, 70, 22, 'o', { r: 11, t: 'Main idea', b: true }); [[152, 60, "b"], [152, 135, "g"], [152, 205, "p"], [325, 60, "pk"], [325, 135, "y"], [325, 205, "b"]].forEach(([x, y, c], i) => { const left = x < 240; s += C(`M${left ? 205 : 275} 133 C ${left ? 170 : 310} 133, ${left ? 180 : 300} ${y}, ${left ? x + 30 : x - 30} ${y}`) + R(x - 30, y - 9, 60, 18, c, { r: 9 }) + bars(x - 22, y - 1, 44, 1); [-14, 14].forEach(d => s += C(`M${left ? x - 30 : x + 30} ${y} l ${left ? -12 : 12} ${d}`) + `<rect x="${left ? x - 70 : x + 42}" y="${y + d - 3}" width="28" height="6" rx="3" style="fill:var(--pv-bar)"/>`); }); return s; }, { featured: 1 });
+add('journey', 'User journey', CAT[0], 'Beginner', 'Steps a user takes', 'Seeing a process from the requester’s side.', ['Write the steps across', 'Add what they do and feel', 'Mark pain points'], () => columns('User Journey', ['Discover', 'Request', 'Wait', 'Receive', 'Feedback'], ['b', 'b', 'b', 'b', 'b'], 3));
+add('cjm', 'Customer journey map', CAT[0], 'Intermediate', 'Actions, touchpoints, feelings, pains, ideas', 'Improving a customer or internal service end to end.', ['Fill stages across the top', 'Fill each lane per stage', 'Draw the feelings line', 'Ideas become tasks'], () => lanes('Customer Journey Map', ['Actions', 'Touch-points', 'Feelings', 'Pain points', 'Ideas'], ['Aware', 'Consider', 'Order', 'Use', 'Repeat'], (x, y, w, h, i, j) => j === 2 ? `<circle cx="${x + w / 2}" cy="${y + h / 2 - 2}" r="7" style="fill:var(${['--g', '--y', '--pk', '--g', '--g'][i]});stroke:var(${['--gS', '--yS', '--pkS', '--gS', '--gS'][i]})" stroke-width=".8"/>` + T(x + w / 2, y + h / 2, ['☺', '–', '☹', '☺', '☺'][i], { fs: 7 }) : S(x + 4, y + 3, w - 8, h - 9, ['b', 'card', '', 'pk', 'y'][j] || 'y')), { isNew: 1, featured: 1 });
+add('affinity', 'Affinity map', CAT[0], 'Intermediate', 'Group many notes into themes', 'After interviews or a big brainstorm with many stickies.', ['Dump all notes', 'Move similar ones together', 'Name each group'], () => { let s = H('Affinity Map') + howto(); [['Price', 100, 'pk'], ['Delivery', 200, 'b'], ['Quality', 300, 'g']].forEach(([t, x, c]) => { s += R(x - 6, 34, 92, 200, 'none', { r: 6, dash: 1 }) + R(x, 40, 80, 14, c, { t, b: true }); for (let k = 0; k < 6; k++) s += S(x + (k % 2) * 42, 60 + Math.floor(k / 2) * 30, 38, 24, 'y'); }); return s; }, { isNew: 1 });
+add('crazy8', 'Crazy 8s', CAT[0], 'Beginner', '8 sketches in 8 minutes', 'Quickly exploring layouts or ideas.', ['Start the 8-minute timer', 'One sketch per box', 'Present and vote'], () => { let s = H('Crazy 8s') + howto(); for (let i = 0; i < 8; i++) { const x = 92 + (i % 4) * 76, y = 34 + Math.floor(i / 4) * 104; s += R(x, y, 70, 98, 'card', { r: 4 }) + T(x + 8, y + 10, String(i + 1), { fs: 6, b: true, c: '--pv-ink2' }) + C(`M${x + 14} ${y + 60} q 14 -24 28 -6 t 18 -10`); } return s; }, { isNew: 1 });
+add('5whys', '5 Whys', CAT[0], 'Beginner', 'Ask why five times to find the cause', 'A problem keeps coming back.', ['Write the problem', 'Ask “why?” and answer below', 'Stop at the root cause'], () => { let s = H('5 Whys') + howto(); s += R(96, 36, 120, 26, 'r', { t: 'Problem: late delivery', b: true }); for (let i = 0; i < 5; i++) { const y = 74 + i * 32; s += L([[156, y - 10], [156, y]]) + R(116, y, 80, 20, 'card') + T(108, y + 13, 'Why?', { fs: 5, a: 'end', c: '--pv-ink2' }) + bars(124, y + 8, 64, 1); } s += R(260, 194, 120, 26, 'g', { t: 'Root cause → action', b: true }) + L([[196, 212], [258, 207]]); return s; }, { isNew: 1 });
+add('sixhats', 'Six Thinking Hats', CAT[0], 'Intermediate', 'Look at one decision six ways', 'A meeting gets stuck in one point of view.', ['Go hat by hat together', 'Add stickies under each', 'Blue hat sums up'], () => { let s = H('Six Thinking Hats') + howto(); [['Facts', 'gr'], ['Feelings', 'r'], ['Risks', 'card'], ['Benefits', 'y'], ['Ideas', 'g'], ['Process', 'b']].forEach(([t, c], i) => { const x = 120 + (i % 3) * 100, y = 34 + Math.floor(i / 3) * 104; s += E(x + 10, y + 16, 30, 13, c, t) + S(x - 10, y + 38, 40, 24, 'y') + S(x - 10 + 4, y + 66, 40, 24, 'y'); }); return s; }, { isNew: 1 });
+add('starburst', 'Starbursting', CAT[0], 'Beginner', 'Who, what, when, where, why, how', 'Before starting a project: find all the questions.', ['Put the idea in the star', 'Add questions per point', 'Answer the important ones'], () => { let s = H('Starbursting') + howto(); s += `<path d="M240 100 254 124 282 126 260 144 268 172 240 156 212 172 220 144 198 126 226 124Z" style="fill:var(--y);stroke:var(--yS)" stroke-width=".8"/>` + T(240, 142, 'Idea', { fs: 6, b: true }); ['Who', 'What', 'When', 'Where', 'Why', 'How'].forEach((t, i) => { const a = -Math.PI / 2 + i / 6 * Math.PI * 2, x = 240 + Math.cos(a) * 112, y = 138 + Math.sin(a) * 84; s += R(x - 30, y - 12, 60, 24, ['b', 'g', 'o', 'p', 'pk', 'b'][i], { t, b: true }); }); return s; }, { isNew: 1 });
+add('empathy', 'Empathy map', CAT[0], 'Intermediate', 'Says, thinks, does, feels', 'Understanding a user group before designing something.', ['Name the person in the middle', 'Fill the four quadrants', 'Add pains and gains'], () => { let s = matrix('Empathy Map', ['Says', 'Thinks', 'Does', 'Feels'], ['b', 'p', 'g', 'pk']); s += `<circle cx="244" cy="134" r="18" style="fill:var(--pv-card);stroke:var(--pv-line)"/>` + T(244, 137, 'User', { fs: 6, b: true }); return s; }, { isNew: 1 });
+
+// Planning
+add('kanban', 'Kanban', CAT[2], 'Beginner', 'To do, doing, done', 'Tracking a small team’s work on one board.', ['Add a card per task', 'Move cards right as work moves', 'Limit what is in Doing'], () => columns('Kanban', ['To do', 'Doing', 'Done'], ['gr', 'b', 'g'], 4), { featured: 1 });
+add('sprint', 'Sprint planning', CAT[2], 'Intermediate', 'Goal, backlog, this sprint, risks', 'Planning the next 1–2 weeks of a project.', ['Write the sprint goal', 'Pull tasks into This sprint', 'Note risks; make tasks'], () => { let s = columns('Sprint Planning', ['Backlog', 'This sprint', 'Risks'], ['gr', 'b', 'pk'], 4); return s; }, { isNew: 1 });
+add('standup', 'Daily stand-up', CAT[2], 'Beginner', 'Yesterday, today, blockers', 'A 10-minute daily team check-in.', ['One row per person', 'Fill three columns', 'Blockers → owner + task'], () => table('Daily Stand-up', ['Name', 'Yesterday', 'Today', 'Blockers'], ['Andi', 'Sari', 'Budi', 'Rina', 'Dewi', 'Joko']), { isNew: 1 });
+add('weekly', 'Weekly planner', CAT[2], 'Beginner', 'Monday to Friday', 'Planning a team or personal week.', ['Drop tasks on days', 'Colour by priority', 'Review Friday'], () => columns('Weekly Planner', ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'], ['b', 'g', 'o', 'p', 'pk'], 3), { isNew: 1 });
+add('raci', 'RACI matrix', CAT[2], 'Intermediate', 'Who is Responsible, Accountable, Consulted, Informed', 'Starting a cross-department project.', ['Tasks in rows, people in columns', 'One A per row', 'Share with the team'], () => table('RACI Matrix', ['Task', 'ICT', 'Finance', 'Purch.', 'Manager'], ['Request', 'Quotation', 'Approve', 'Order PO', 'Receive', 'Pay'], (x, y, w, h, i, j) => { const L2 = 'RACI'[(i + j) % 4]; return R(x + w / 2 - 8, y + 5, 16, 12, ['b', 'pk', 'o', 'gr'][(i + j) % 4], { r: 3, t: L2, b: true, fs: 6 }); }), { isNew: 1 });
+add('okr', 'OKR', CAT[2], 'Intermediate', 'Objectives and key results', 'Setting quarter goals for a team.', ['One objective per row', '3 measurable key results each', 'Update progress monthly'], () => { let s = H('OKR · Q1 2027') + howto(); for (let o = 0; o < 3; o++) { const y = 34 + o * 70; s += R(92, y, 90, 62, ['b', 'g', 'p'][o], { t: `Objective ${o + 1}`, b: true }); for (let k = 0; k < 3; k++) { const yy = y + k * 21; s += R(190, yy, 200, 18, 'card') + bars(196, yy + 8, 90, 1) + `<rect x="300" y="${yy + 7}" width="80" height="4" rx="2" style="fill:var(--pv-bar)"/><rect x="300" y="${yy + 7}" width="${20 + (o * 3 + k) * 7 % 60}" height="4" rx="2" style="fill:var(--gS)"/>`; } } return s; }, { isNew: 1 });
+add('actionplan', 'Action plan', CAT[2], 'Beginner', 'Action, owner, due date, status', 'After a meeting or audit: who does what by when.', ['One action per row', 'Name one owner', 'Turn rows into tasks'], () => table('Action Plan', ['Action', 'Owner', 'Due', 'Status'], ['Fix label', 'Train staff', 'New SOP', 'Audit 5S', 'Report'], (x, y, w, h, i, j) => i === 3 ? R(x + 8, y + 6, w - 16, h - 12, ['g', 'o', 'gr', 'b', 'g'][j], { r: 5, t: ['Done', 'Doing', 'To do', 'Doing', 'Done'][j], fs: 5 }) : bars(x + 6, y + 9, w - 12, 1)), { isNew: 1 });
+add('meetingnotes', 'Meeting notes', CAT[2], 'Beginner', 'Attendees, agenda, notes, decisions, actions', 'Any regular meeting.', ['Fill attendees and agenda before', 'Take notes during', 'Decisions and actions at the end'], () => { let s = H('Meeting Notes') + howto(); [['Attendees', 'b', 30, 48], ['Agenda', 'p', 82, 60], ['Notes', 'gr', 146, 94]].forEach(([t, c, y, h]) => s += R(92, y, 140, h, c, { r: 4 }) + T(98, y + 10, t, { fs: 6, b: true, a: 'start' }) + bars(98, y + 18, 120, Math.floor(h / 8))); s += R(240, 30, 150, 96, 'g', { r: 4 }) + T(246, 40, 'Decisions', { fs: 6, b: true, a: 'start' }) + bars(246, 48, 130, 6) + R(240, 132, 150, 108, 'o', { r: 4 }) + T(246, 142, 'Action items', { fs: 6, b: true, a: 'start' }); for (let i = 0; i < 5; i++) s += R(248, 150 + i * 16, 7, 7, 'card', { r: 1.5 }) + bars(260, 152 + i * 16, 110, 1); return s; }, { isNew: 1 });
+add('kickoff', 'Project kickoff', CAT[2], 'Intermediate', 'Goal, scope, team, timeline, risks', 'First meeting of a new project.', ['Agree the goal in one line', 'Scope in and out', 'Team, dates, risks'], () => { let s = H('Project Kickoff') + howto(); [['Goal', 'g'], ['In scope', 'b'], ['Out of scope', 'pk'], ['Team', 'p'], ['Timeline', 'o'], ['Risks', 'r']].forEach(([t, c], i) => { const x = 92 + (i % 3) * 100, y = 32 + Math.floor(i / 3) * 104; s += R(x, y, 94, 98, 'card', { r: 5 }) + R(x, y, 94, 14, c, { r: 5, t, b: true }) + S(x + 8, y + 22, 36, 26, 'y') + S(x + 50, y + 30, 36, 26, 'y'); }); return s; }, { isNew: 1 });
+add('gantt', 'Simple Gantt', CAT[2], 'Intermediate', 'Tasks as bars over weeks', 'Showing who is busy when in a small project.', ['List tasks down the left', 'Stretch bars across weeks', 'Diamonds for milestones'], () => { let s = H('Gantt') + howto(); for (let w = 0; w < 8; w++) s += R(150 + w * 30, 30, 30, 14, 'gr', { r: 0, t: 'W' + (w + 1), fs: 5 }) + L([[150 + w * 30, 44], [150 + w * 30, 238]], { arrow: false, c: '--pv-bar' }); for (let i = 0; i < 8; i++) { const y = 52 + i * 23; s += T(92, y + 10, `Task ${i + 1}`, { fs: 5.4, a: 'start' }) + R(150 + (i * 23) % 150, y + 3, 40 + (i * 17) % 70, 12, ['b', 'g', 'o', 'p'][i % 4], { r: 6 }); } s += D(372, 228, 12, 12, 'r'); return s; }, { isNew: 1 });
+add('roadmap', 'Product roadmap', CAT[2], 'Intermediate', 'Themes by quarter', 'Sharing what a team will build this year.', ['One lane per theme', 'Bars per quarter', 'Keep it high level'], () => lanes('Product Roadmap', ['Mobile', 'Notes', 'Mail', 'Infra'], ['Q1', 'Q2', 'Q3', 'Q4'], (x, y, w, h, i, j) => (i + j) % 3 === 2 ? '' : R(x + 4, y + 8, w * ((i + j) % 2 ? 1.4 : .9) - 8, h - 18, ['b', 'g', 'o', 'p'][j], { r: 8 })), { isNew: 1 });
+add('projecttimeline', 'Project timeline', CAT[2], 'Beginner', 'Phases and milestones by month', 'Giving everyone the big picture of a project.', ['Name the phases', 'Drop milestones on the line', 'Link milestones to tasks'], () => { let s = H('Project Timeline') + howto(); s += L([[96, 136], [388, 136]], { w: 1.4 }); ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'].forEach((m, i) => { const x = 110 + i * 50; s += T(x, 148, m, { fs: 5.4, c: '--pv-ink2' }) + D(x, 136, 10, 10, i % 2 ? 'o' : 'b') + S(x - 18, i % 2 ? 160 : 92, 36, 28, ['y', 'pk', 'g', 'b', 'o', 'p'][i]); }); return s; });
+add('timeline', 'Timeline', CAT[2], 'Beginner', 'Roadmap by month', 'A simple list of what happens when.', ['Months across', 'Stickies under each', 'Move as plans change'], () => columns('Timeline', ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'], ['o'], 2));
+add('agenda', 'Meeting agenda', CAT[2], 'Beginner', 'Topics, time, owners', 'Sending a clear agenda before a meeting.', ['Topic per row', 'Time box each', 'Owner per topic'], () => table('Meeting Agenda', ['Time', 'Topic', 'Owner'], ['09:00', '09:10', '09:30', '09:45', '10:00']));
+add('orgchart', 'Org chart', CAT[2], 'Beginner', 'Who reports to whom', 'Showing a team structure (or pull it from Directory).', ['Head at the top', 'Teams below', 'Use “Org chart from Directory” to fill'], () => tree('Org Chart', 'Head of ICT', ['Infra', 'Apps', 'Support', 'Security']));
+
+// Flowchart & process
+add('basicflow', 'Basic flowchart', CAT[3], 'Beginner', 'Start → step → decision → end', 'Drawing any simple process. Guided.', ['Start oval', 'Boxes for steps', 'Diamond for a choice', 'End oval'], () => flowV('Basic Flowchart', [['t', 'Start'], ['p', 'Receive request'], ['d', 'Complete?'], ['p', 'Process it'], ['t', 'End']]), { guided: 1, featured: 1 });
+add('approval', 'Approval flow', CAT[3], 'Beginner', 'Request → manager → Finance → approved or returned', 'PR, leave, or any request needing sign-off. Guided.', ['Who requests', 'Each approver = diamond', 'Returned path back'], () => { let s = H('Approval Flow') + howto(); s += R(92, 110, 50, 22, 'g', { r: 11, t: 'Start' }) + L([[142, 121], [152, 121]]) + R(154, 110, 56, 22, 'card', { t: 'Raise PR' }) + L([[210, 121], [220, 121]]) + D(250, 121, 58, 34, 'b', 'Manager?') + L([[279, 121], [290, 121]]) + D(320, 121, 58, 34, 'b', 'Finance?') + L([[349, 121], [356, 121], [356, 160]]) + R(330, 162, 54, 22, 'g', { r: 11, t: 'Approved' }) + L([[250, 138], [250, 190]]) + R(214, 192, 72, 22, 'pk', { t: 'Returned' }) + L([[214, 203], [182, 203], [182, 134]]) + T(258, 160, 'No', { fs: 5 }) + T(364, 150, 'Yes', { fs: 5 }); return s; }, { guided: 1 });
+add('swimflow', 'Cross-department flow', CAT[3], 'Intermediate', 'Warehouse, Purchasing, Finance in lanes', 'A process that crosses departments. Guided.', ['One lane per department', 'Steps in the right lane', 'Arrows cross lanes'], () => { let s = H('Cross-department Flow') + howto(); ['Warehouse', 'Purchasing', 'Finance'].forEach((n, j) => s += R(88, 32 + j * 70, 304, 66, 'none', { r: 2 }) + R(88, 32 + j * 70, 22, 66, 'gr', { r: 2 }) + `<text x="102" y="${65 + j * 70}" font-size="5.4" font-weight="700" transform="rotate(-90 102 ${65 + j * 70})" text-anchor="middle" style="fill:var(--pv-ink)">${n}</text>`); s += R(120, 54, 60, 22, 'card', { t: 'Need part' }) + L([[180, 65], [196, 65], [196, 124], [206, 124]]) + R(208, 112, 60, 24, 'card', { t: 'Raise PO' }) + L([[268, 124], [284, 124], [284, 194], [294, 194]]) + R(296, 182, 60, 24, 'card', { t: 'Pay supplier' }) + L([[238, 112], [238, 76], [300, 76], [300, 66]]) + R(290, 44, 70, 22, 'card', { t: 'Receive (GRN)' }); return s; }, { guided: 1 });
+add('sop', 'Numbered SOP', CAT[3], 'Beginner', 'Steps with PIC and duration', 'Writing a standard procedure people can follow.', ['One box per step', 'Fill PIC and duration', 'Numbers update by themselves'], () => { let s = H('Standard Operating Procedure') + howto(); for (let i = 0; i < 6; i++) { const x = 96 + (i % 3) * 100, y = 40 + Math.floor(i / 3) * 100; s += R(x, y, 86, 56, 'card', { r: 5 }) + `<circle cx="${x + 10}" cy="${y + 10}" r="6" style="fill:var(--bS)"/>` + T(x + 10, y + 12, String(i + 1), { fs: 6, b: true, c: '--pv-bg' }) + bars(x + 20, y + 8, 56, 1) + R(x + 6, y + 36, 34, 12, 'p', { r: 6, t: 'PIC', fs: 5 }) + R(x + 44, y + 36, 34, 12, 'o', { r: 6, t: '1 day', fs: 5 }); if (i % 3 < 2) s += L([[x + 86, y + 28], [x + 98, y + 28]]); } return s; });
+add('bpmn', 'BPMN process', CAT[3], 'Advanced', 'Events, tasks and gateways', 'When IT or audit asks for standard BPMN.', ['Pool and lanes', 'Start / end events', 'Gateways for choices'], () => { let s = H('BPMN Process') + howto(); s += R(88, 50, 304, 150, 'none', { r: 2 }) + `<circle cx="112" cy="124" r="9" style="fill:var(--g);stroke:var(--gS)"/>` + L([[121, 124], [138, 124]]) + R(140, 110, 60, 28, 'card', { r: 6, t: 'Submit' }) + L([[200, 124], [214, 124]]) + D(232, 124, 32, 32, 'y', '×') + L([[248, 124], [266, 124], [266, 92], [278, 92]]) + L([[248, 124], [266, 124], [266, 160], [278, 160]]) + R(280, 78, 60, 28, 'card', { r: 6, t: 'Approve' }) + R(280, 146, 60, 28, 'card', { r: 6, t: 'Reject' }) + `<circle cx="372" cy="124" r="9" style="fill:var(--r);stroke:var(--rS)" stroke-width="2"/>` + L([[340, 92], [372, 92], [372, 113]]) + L([[340, 160], [372, 160], [372, 135]]); return s; });
+add('flowchart', 'Flowchart (simple)', CAT[3], 'Beginner', 'Steps and decisions', 'A quick sketch of a flow.', ['Add steps', 'Connect with arrows', 'Tidy'], () => flowV('Flowchart', [['t', 'Start'], ['p', 'Step'], ['d', 'Choice?'], ['t', 'End']]));
+
+// Process improvement
+add('fishbone', 'Fishbone', CAT[4], 'Intermediate', 'Find the root cause', 'Quality problems with many possible causes.', ['Problem at the head', 'Causes on 6 bones (6M)', 'Circle the likely root'], () => { let s = H('Fishbone (Ishikawa)') + howto(); s += L([[100, 136], [330, 136]], { w: 1.4 }) + R(332, 120, 56, 32, 'r', { t: 'Problem', b: true }); ['Man', 'Machine', 'Method', 'Material', 'Measure', 'Milieu'].forEach((t, i) => { const x = 140 + (i % 3) * 66, up = i < 3; s += L([[x, up ? 60 : 212], [x + 36, 136]], { arrow: false, w: 1 }) + R(x - 26, up ? 44 : 212, 52, 14, ['b', 'g', 'p', 'o', 'pk', 'y'][i], { t, b: true, fs: 5.4 }) + bars(x + (up ? 10 : 10), up ? 84 : 176, 26, 2); }); return s; });
+add('valuestream', 'Value stream', CAT[4], 'Advanced', 'Production steps, stock and lead time', 'Finding waste in a production line.', ['Process boxes left to right', 'Stock triangles between', 'Lead-time ladder below'], () => { let s = H('Value Stream Map') + howto(); ['Cutting', 'Welding', 'Painting', 'Assembly'].forEach((t, i) => { const x = 94 + i * 76; s += R(x, 90, 56, 34, 'card', { r: 2, t, b: true }) + R(x, 124, 56, 26, 'gr', { r: 0 }) + bars(x + 4, 130, 46, 3); if (i < 3) s += `<path d="M${x + 66} 120 l6 -12 6 12z" style="fill:var(--y);stroke:var(--yS)" stroke-width=".8"/>`; }); s += R(160, 36, 90, 26, 'b', { t: 'Production control' }); let p = 'M94 200'; for (let i = 0; i < 4; i++) p += ` h56 v-12 h20 v12`; s += C(p) + T(380, 212, 'Lead time 6.5 d', { fs: 5.4, a: 'end', b: true }); return s; });
+add('pdca', 'PDCA cycle', CAT[4], 'Beginner', 'Plan, Do, Check, Act', 'Running a small improvement and making it stick.', ['Plan the change', 'Try it small', 'Check results', 'Act: standardise or retry'], () => { let s = H('PDCA Cycle') + howto(); const cx = 240, cy = 136, r = 90; [['Plan', 'b', -90], ['Do', 'g', 0], ['Check', 'o', 90], ['Act', 'pk', 180]].forEach(([t, c, a], i) => { const a1 = (a - 90 + 2) * Math.PI / 180, a2 = (a - 2) * Math.PI / 180; s += `<path d="M${cx} ${cy} L${cx + r * Math.cos(a1)} ${cy + r * Math.sin(a1)} A${r} ${r} 0 0 1 ${cx + r * Math.cos(a2)} ${cy + r * Math.sin(a2)}Z" style="fill:var(${F[c][0]});stroke:var(${F[c][1]})" stroke-width=".8"/>`; const am = (a - 45) * Math.PI / 180; s += T(cx + r * .55 * Math.cos(am), cy + r * .55 * Math.sin(am), t, { fs: 9, b: true }); }); return s; }, { isNew: 1 });
+add('dmaic', 'DMAIC', CAT[4], 'Advanced', 'Define, Measure, Analyse, Improve, Control', 'A Six Sigma project with data.', ['Fill phase by phase', 'Attach data and charts', 'Control plan at the end'], () => columns('DMAIC', ['Define', 'Measure', 'Analyse', 'Improve', 'Control'], ['b', 'p', 'o', 'g', 'pk'], 3), { isNew: 1 });
+add('sipoc', 'SIPOC', CAT[4], 'Intermediate', 'Suppliers, inputs, process, outputs, customers', 'Scoping a process before improving it.', ['Start with the 5–7 process steps', 'Then outputs and customers', 'Then inputs and suppliers'], () => columns('SIPOC', ['Suppliers', 'Inputs', 'Process', 'Outputs', 'Customers'], ['gr', 'b', 'g', 'o', 'p'], 4), { isNew: 1 });
+add('a3', 'A3 report', CAT[4], 'Advanced', 'Problem-solving story on one page', 'Reporting an improvement to management.', ['Left: background, current state, goal, analysis', 'Right: countermeasures, plan, follow-up', 'Keep it to one page'], () => { let s = H('A3 Report') + howto(); [['1 Background', 30, 40], ['2 Current state', 74, 56], ['3 Goal', 134, 30], ['4 Root cause', 168, 72]].forEach(([t, y, h]) => s += R(90, y, 148, h, 'card', { r: 2 }) + T(95, y + 9, t, { fs: 5.4, b: true, a: 'start' }) + bars(95, y + 15, 130, Math.floor(h / 10))); [['5 Countermeasures', 30, 70], ['6 Plan', 104, 70], ['7 Follow-up', 178, 62]].forEach(([t, y, h]) => s += R(244, y, 148, h, 'card', { r: 2 }) + T(249, y + 9, t, { fs: 5.4, b: true, a: 'start' }) + bars(249, y + 15, 130, Math.floor(h / 10))); return s; }, { isNew: 1 });
+add('kaizen', 'Kaizen board', CAT[4], 'Beginner', 'Problem, idea, doing, result', 'Collecting improvement ideas from the shop floor.', ['Anyone adds a problem', 'Team adds ideas', 'Move to Doing and Result'], () => columns('Kaizen Board', ['Problem', 'Idea', 'Doing', 'Result'], ['pk', 'y', 'b', 'g'], 3), { isNew: 1 });
+add('5s', '5S checklist', CAT[4], 'Beginner', 'Sort, set, shine, standardise, sustain', 'Area audits in the warehouse or production.', ['One column per S', 'Tick what is done', 'Photos as evidence'], () => { let s = columns('5S Checklist', ['Sort', 'Set in order', 'Shine', 'Standardise', 'Sustain'], ['r', 'o', 'y', 'g', 'b'], 0); for (let i = 0; i < 5; i++) for (let k = 0; k < 6; k++) { const x = 88 + i * (304 - 24) / 5 + i * 6 + 6, y = 56 + k * 28; s += R(x, y, 7, 7, (i + k) % 3 ? 'g' : 'card', { r: 1.5 }) + bars(x + 11, y + 2, 34, 1); } return s; }, { isNew: 1 });
+add('blueprint', 'Service blueprint', CAT[4], 'Advanced', 'Front stage, back stage, support', 'Improving a service like ICT helpdesk or delivery.', ['Customer actions on top', 'What staff do (seen / unseen)', 'Systems below'], () => lanes('Service Blueprint', ['Customer', 'Front stage', 'Back stage', 'Support'], ['Ask', 'Log ticket', 'Fix', 'Close'], (x, y, w, h, i, j) => R(x + 6, y + 6, w - 12, h - 14, ['b', 'g', 'o', 'p'][j], { r: 4 }) + (j === 1 ? L([[x, y + h - 2], [x + w, y + h - 2]], { arrow: false, dash: 1, c: '--rS' }) : '')), { isNew: 1 });
+
+// Technical
+add('erd', 'ERD database', CAT[5], 'Advanced', 'Tables, fields and relations', 'Designing or explaining a database.', ['One box per table', 'Fields inside', 'Crow’s-foot lines for relations'], () => { let s = H('ERD') + howto(); [['Customer', 96, 40], ['Order', 216, 80], ['Product', 316, 40], ['OrderLine', 266, 170]].forEach(([t, x, y]) => { s += R(x, y, 70, 14, 'b', { r: 2, t, b: true }) + R(x, y + 14, 70, 48, 'card', { r: 0 }); for (let k = 0; k < 4; k++) s += bars(x + 5, y + 20 + k * 10, 50, 1); }); s += L([[166, 70], [214, 100]], { arrow: false }) + L([[286, 142], [300, 168]], { arrow: false }) + L([[350, 102], [340, 168]], { arrow: false }); return s; });
+add('network', 'Office network', CAT[5], 'Intermediate', 'Internet, firewall, switch, PCs, printer', 'Documenting an office or branch network.', ['Internet at top', 'Firewall, core switch', 'Devices below; add IPs as data'], () => { let s = H('Office Network') + howto(); s += `<path d="M215 50a12 12 0 0 1 4-22 16 16 0 0 1 30 4 10 10 0 0 1 2 18z" style="fill:var(--b);stroke:var(--bS)" stroke-width=".8"/>` + T(235, 44, 'Internet', { fs: 5 }) + L([[235, 52], [235, 68]], { arrow: false }) + R(210, 68, 50, 18, 'r', { t: 'Firewall' }) + L([[235, 86], [235, 102]], { arrow: false }) + R(200, 102, 70, 18, 'g', { t: 'Core switch' }); ['PC', 'PC', 'Printer', 'NAS', 'AP'].forEach((t, i) => { const x = 110 + i * 62; s += L([[235, 120], [235, 140], [x + 18, 140], [x + 18, 160]], { arrow: false }) + R(x, 160, 36, 26, 'card', { r: 3, t }) + T(x + 18, 196, `10.10.6.${10 + i}`, { fs: 4.4, c: '--pv-ink2' }); }); return s; });
+add('sitemap', 'Sitemap', CAT[5], 'Beginner', 'Pages of a website or app', 'Planning a website, intranet or app menu.', ['Home at the top', 'Sections below', 'Sub-pages per section'], () => tree('Sitemap', 'Home', ['About', 'Products', 'News', 'Contact'], 3, 'p'), { isNew: 1 });
+add('wireframe', 'Wireframe', CAT[5], 'Intermediate', 'Rough screen layout', 'Sketching a screen before building it.', ['Pick a screen size frame', 'Boxes for header, menu, content', 'Notes for behaviour'], () => { let s = H('Wireframe') + howto(); s += R(96, 30, 290, 210, 'card', { r: 6 }) + R(96, 30, 290, 14, 'gr', { r: 6 }) + [0, 1, 2].map(i => `<circle cx="${104 + i * 7}" cy="37" r="2" style="fill:var(--pv-line)"/>`).join('') + R(104, 52, 274, 18, 'gr', { r: 2 }) + R(104, 76, 60, 156, 'gr', { r: 2 }); for (let i = 0; i < 6; i++) { const x = 172 + (i % 3) * 70, y = 76 + Math.floor(i / 3) * 78; s += R(x, y, 64, 72, 'none', { r: 3 }) + C(`M${x} ${y} l64 44 M${x + 64} ${y} l-64 44`, { c: '--pv-bar' }) + bars(x + 5, y + 52, 50, 3); } return s; }, { isNew: 1 });
+add('userflow', 'User flow', CAT[5], 'Intermediate', 'Screens and choices a user goes through', 'Designing a sign-up, order or request flow.', ['One box per screen', 'Diamonds for choices', 'Arrows show taps'], () => { let s = H('User Flow') + howto(); const scr = (x, y, t) => R(x, y, 50, 64, 'card', { r: 6 }) + R(x, y, 50, 10, 'b', { r: 6 }) + T(x + 25, y + 7, t, { fs: 4.8, b: true }) + bars(x + 6, y + 18, 38, 5); s += scr(96, 90, 'Login') + L([[146, 122], [160, 122]]) + D(184, 122, 44, 34, 'y', 'OK?') + L([[206, 122], [222, 122]]) + scr(224, 90, 'Home') + L([[274, 122], [288, 122]]) + scr(290, 40, 'Request') + scr(290, 150, 'Status') + L([[184, 139], [184, 190], [160, 190]]) + scr(108, 168, 'Reset') + T(190, 160, 'No', { fs: 5 }); return s; }, { isNew: 1 });
+add('architecture', 'System architecture', CAT[5], 'Advanced', 'Clients, services, data', 'Explaining how a system fits together.', ['Clients on top', 'Services in the middle', 'Data and storage at the bottom'], () => { let s = H('System Architecture') + howto(); [['Clients', 'b', ['Web', 'Phone', 'Notifier']], ['Services', 'g', ['API', 'Hub', 'Worker']], ['Data', 'o', ['Postgres', 'NAS', 'S3']]].forEach(([n, c, items], j) => { const y = 32 + j * 72; s += R(90, y, 300, 62, 'none', { r: 6, dash: 1 }) + T(96, y + 9, n, { fs: 5.4, b: true, a: 'start', c: '--pv-ink2' }); items.forEach((t, i) => s += R(120 + i * 88, y + 18, 72, 34, c, { r: 5, t, b: true })); if (j < 2) s += L([[240, y + 52], [240, y + 90]]); }); return s; }, { isNew: 1 });
+
+/* ════════════ TEMPLATE CENTER ════════════ */
+const MY = [{ key: 'my1', name: 'Weekly ICT review', cat: 'My templates', level: 'Beginner', desc: 'Saved from “ICT weekly” board', when: 'Your saved board.', steps: ['Use it like any template'], draw: () => columns('Weekly ICT review', ['Incidents', 'Changes', 'Next week'], ['pk', 'b', 'g'], 3, false), mine: 1 }];
+const TEAM = [{ key: 'tm1', name: 'Warehouse 5S audit (Karawang)', cat: 'Team templates', level: 'Beginner', desc: 'Published by Rina · HC', when: 'Monthly 5S audit at SJA Karawang.', steps: ['Copy per area', 'Tick and add photos'], draw: () => TPL.find(t => t.key === '5s').draw(), team: 1 }, { key: 'tm2', name: 'PR → PO approval (Purchasing)', cat: 'Team templates', level: 'Intermediate', desc: 'Published by Budi · Purchasing', when: 'Standard Purchasing approval path.', steps: ['Change names of approvers'], draw: () => TPL.find(t => t.key === 'approval').draw(), team: 1 }];
+const ALL = () => [...TPL, ...MY, ...TEAM];
+const pvCache = {};
+const pv = t => pvCache[t.key] || (pvCache[t.key] = wrap(t.draw()));
+let view = 'featured', q = '', levels = new Set(), cats = new Set(), expanded = new Set();
+const card = t => `<button class="tcard" data-k="${t.key}"><span class="pv">${pv(t)}</span>${t.isNew ? '<span class="tag">New</span>' : t.guided ? '<span class="tag">Guided</span>' : ''}${t.team ? `<span class="del" title="Delete (Admin)" onclick="event.stopPropagation();toast('Deleted from Team templates (Admin)')">${I('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>')}</span>` : ''}<span class="meta"><b>${t.name}</b><span class="lv ${t.level}">${t.level}</span></span></button>`;
+function centerHtml() {
+  const filt = list => list.filter(t => (!q || (t.name + ' ' + t.desc + ' ' + t.cat).toLowerCase().includes(q)) && (!levels.size || levels.has(t.level)) && (!cats.size || cats.has(t.cat)));
+  let body = '';
+  if (q || cats.size || levels.size) {
+    const r = filt(view === 'mine' ? MY : view === 'team' ? TEAM : TPL);
+    body = `<div class="sec"><div class="sh"><h6>${r.length} result${r.length === 1 ? '' : 's'}</h6></div>${r.length ? `<div class="tgrid">${r.map(card).join('')}</div>` : '<div class="empty">No template matches. Try fewer filters.</div>'}</div>`;
+  } else if (view === 'mine') body = `<div class="sec"><div class="sh"><h6>My templates</h6></div><div class="tgrid">${MY.map(card).join('')}</div><div class="banner">Save any board with <b>⋯ → Save as template</b>. The preview is made from the board automatically.</div></div>`;
+  else if (view === 'team') body = `<div class="sec"><div class="sh"><h6>Team templates</h6></div><div class="tgrid">${TEAM.map(card).join('')}</div><div class="banner">Anyone can publish a board here (<b>Save as template → Share with everyone</b>). Admins can remove templates.</div></div>`;
+  else {
+    if (view === 'featured') body += `<div class="banner">${I('<path d="M12 3v18M3 12h18"/>')} Make your own: save any board as a template for yourself or the whole company.<button onclick="toast('⋯ → Save as template')">How</button></div><div class="sec"><div class="sh"><h6>Featured</h6></div><div class="tgrid">${TPL.filter(t => t.featured).map(card).join('')}</div></div><div class="sec"><div class="sh"><h6 style="font-size:17px">iPop templates</h6></div></div>`;
+    for (const c of CAT) { const list = TPL.filter(t => t.cat === c); const open = expanded.has(c) || view === 'cat:' + c; body += `<div class="sec"><div class="sh"><h6>${c}</h6>${list.length > 3 && !open ? `<button data-more="${c}">See ${list.length - 3} more</button>` : ''}</div><div class="tgrid">${(open ? list : list.slice(0, 3)).map(card).join('')}</div></div>`; if (view.startsWith('cat:') && view !== 'cat:' + c) body = body.slice(0, body.lastIndexOf('<div class="sec">')); }
+  }
+  const nv = (k, label, n, ic) => `<button class="nv ${view === k ? 'on' : ''}" data-view="${k}">${ic}${label}<span class="n">${n}</span></button>`;
+  return `<aside><div class="brand"><i></i>Template Center</div>
+    ${nv('featured', 'Featured', TPL.filter(t => t.featured).length, I('<path d="m12 3 2.7 5.6 6.2.9-4.5 4.3 1 6.1L12 17l-5.5 2.9 1-6.1L3 9.5l6.2-.9z"/>'))}
+    ${nv('mine', 'My templates', MY.length, I('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'))}
+    ${nv('team', 'Team templates', TEAM.length, I('<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20a6 6 0 0 1 12 0M14 20a4 4 0 0 1 7 0"/>'))}
+    ${nv('all', 'iPop templates', TPL.length, I('<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/>'))}
+    <div class="gh">Categories</div>${CAT.map(c => `<label class="ck"><input type="checkbox" data-cat="${c}" ${cats.has(c) ? 'checked' : ''}>${c}<span class="n" style="margin-left:auto;font-size:11.5px;color:var(--ink-3)">${TPL.filter(t => t.cat === c).length}</span></label>`).join('')}
+    <div class="gh">Level</div>${['Beginner', 'Intermediate', 'Advanced'].map(l => `<label class="ck"><input type="checkbox" data-lv="${l}" ${levels.has(l) ? 'checked' : ''}>${l}</label>`).join('')}
+  </aside>
+  <div class="mainp"><div class="bar"><div class="q">${I('<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>')}<input class="tq" placeholder="Search templates… (e.g. approval, 5S, meeting)" value="${q}"></div><select class="tcat"><option value="">All categories</option>${CAT.map(c => `<option ${cats.size === 1 && cats.has(c) ? 'selected' : ''}>${c}</option>`).join('')}</select><select class="tlv"><option value="">Any level</option>${['Beginner', 'Intermediate', 'Advanced'].map(l => `<option ${levels.size === 1 && levels.has(l) ? 'selected' : ''}>${l}</option>`).join('')}</select><button class="x" data-closec title="Close (Esc)">✕</button></div>
+  <div class="body">${body}</div></div>
+  <div class="bp" hidden></div>`;
+}
+function bpHtml(t) {
+  return `<div class="canvas"><button class="back" data-back>← All templates</button><div class="zz" style="transform:scale(1)">${pv(t)}</div><div class="zoom"><button data-z="-1">−</button><span>100%</span><button data-z="1">+</button></div></div>
+  <div class="info"><h4>${t.name}</h4><div class="chips"><span>${t.cat}</span><span class="lv ${t.level}">${t.level}</span>${t.guided ? '<span>Guided</span>' : ''}${t.isNew ? '<span>New</span>' : ''}</div>
+  <h5>What it is</h5><p>${t.desc}</p><h5>When to use it</h5><p>${t.when}</p><h5>How</h5><ol>${t.steps.map(s => `<li>${s}</li>`).join('')}</ol>
+  <p class="note">Adds a frame with a “How to use” note (hide it in one click) and a few examples you can delete.</p>
+  <button class="use" data-use="${t.key}">Use template</button></div>`;
+}
+function mountCenter(root) {
+  const render = () => { const sc = root.querySelector('.body')?.scrollTop || 0; root.innerHTML = centerHtml(); root.querySelector('.body').scrollTop = sc; };
+  render();
+  let zoom = 1;
+  root.addEventListener('click', e => {
+    const v = e.target.closest('[data-view]'); if (v) { view = v.dataset.view; q = ''; cats.clear(); levels.clear(); render(); root.querySelector('.body').scrollTop = 0; return; }
+    const m = e.target.closest('[data-more]'); if (m) { expanded.add(m.dataset.more); render(); return; }
+    const k = e.target.closest('.tcard'); if (k) { const t = ALL().find(x => x.key === k.dataset.k); if (e.detail >= 2) { useTpl(t); return; } clearTimeout(root._t); root._t = setTimeout(() => { const bp = root.querySelector('.bp'); bp.innerHTML = bpHtml(t); bp.hidden = false; zoom = 1; }, 220); return; }
+    if (e.target.closest('[data-back]')) { root.querySelector('.bp').hidden = true; return; }
+    const z = e.target.closest('[data-z]'); if (z) { zoom = Math.max(.5, Math.min(3, zoom + (+z.dataset.z) * .25)); root.querySelector('.zz').style.transform = `scale(${zoom})`; root.querySelector('.zoom span').textContent = Math.round(zoom * 100) + '%'; return; }
+    const u = e.target.closest('[data-use]'); if (u) { useTpl(ALL().find(x => x.key === u.dataset.use)); return; }
+    if (e.target.closest('[data-closec]')) { if (root.id === 'tcModal') $('#tcOv').hidden = true; else toast('Close (in the app this closes the window)'); }
+  });
+  root.addEventListener('change', e => {
+    if (e.target.dataset.cat) { e.target.checked ? cats.add(e.target.dataset.cat) : cats.delete(e.target.dataset.cat); render(); }
+    if (e.target.dataset.lv) { e.target.checked ? levels.add(e.target.dataset.lv) : levels.delete(e.target.dataset.lv); render(); }
+    if (e.target.classList.contains('tcat')) { cats.clear(); if (e.target.value) cats.add(e.target.value); render(); }
+    if (e.target.classList.contains('tlv')) { levels.clear(); if (e.target.value) levels.add(e.target.value); render(); }
+  });
+  root.addEventListener('input', e => { if (e.target.classList.contains('tq')) { q = e.target.value.toLowerCase(); const pos = e.target.selectionStart; render(); const n = root.querySelector('.tq'); n.focus(); n.setSelectionRange(pos, pos); } });
+}
+function useTpl(t) { $('#tcOv').hidden = true; toast(`“${t.name}” added beside your work · Undo`); }
+function openCenter() { closeFloats(); const m = $('#tcModal'); if (!m._mounted) { mountCenter(m); m._mounted = 1; } else m.innerHTML = centerHtml(); $('#tcOv').hidden = false; }
+$('#tcOv').addEventListener('click', e => { if (e.target.id === 'tcOv') $('#tcOv').hidden = true; });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (!$('#tcOv').hidden) { const bp = $('#tcModal .bp'); if (bp && !bp.hidden) bp.hidden = true; else $('#tcOv').hidden = true; } else closeFloats(); } });
+
+/* boot */
+paintDock(); paintCtx();
+mountCenter($('#tcInline'));
+$('#feat6').innerHTML = TPL.filter(t => t.featured).map(card).join('');
+$('#feat6').addEventListener('click', e => { const k = e.target.closest('.tcard'); if (k) { openCenter(); setTimeout(() => { const t = TPL.find(x => x.key === k.dataset.k), bp = $('#tcModal .bp'); bp.innerHTML = bpHtml(t); bp.hidden = false; }, 0); } });
+$('#tcount').textContent = TPL.length + ' iPop templates';
+$('#tlist').innerHTML = CAT.map(c => `<div style="break-inside:avoid;margin-bottom:14px"><b>${c}</b> <span class="note">(${TPL.filter(t => t.cat === c).length})</span><br>${TPL.filter(t => t.cat === c).map(t => `${t.name}${t.isNew ? ' <span class="lv Beginner" style="font-size:10px">New</span>' : ''}`).join('<br>')}</div>`).join('');
+document.addEventListener('click', e => { if (!e.target.closest('#dockwrap') && !e.target.closest('#board') && !e.target.closest('.btn')) closeFloats(); });
+</script>
+</body>
+</html>
