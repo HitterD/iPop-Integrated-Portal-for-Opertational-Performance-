@@ -686,3 +686,21 @@ input.wb-edit { background: var(--wb-surface); padding: 0 8px; outline-width: 2p
 .wb.wb-dock-s .wb-dsmall button { height: 30px; }
 .wb.wb-dock-s .wb-tiles { gap: 3px; }
 .wb.wb-dock-s .wb-dock { padding: 5px 6px 6px; gap: 3px; }
+/* round 7: every scrolling panel keeps its wheel to itself; Template Center sticky category headers */
+.wb-panel, .wb-picker .wb-plist, .wb-morep, .wb-ctxpop, .wb-tcbody, .wb-tcside, .wb-bpi, .wb-emptygal, .wb-penpop, .wb-colourpop { overscroll-behavior: contain; }
+.wb-tcsh { position: sticky; top: -4px; z-index: 2; background: var(--wb-surface); padding: 12px 0 8px; margin: 0 0 6px; box-shadow: 0 1px 0 var(--wb-line); }
+.wb-tcsec { margin-top: 10px; }
+.wb-tccount { font-size: 12px; font-weight: 500; color: var(--wb-ink3); margin-left: 4px; }
+.wb-nv.wb-jump { font-size: 12.5px; padding: 5px 8px; }
+
+/* round 7: the contextual bar is a floating pill 8 px above the dock, never wider than it, same height for every tool */
+.wb-ctx { margin: 0 0 8px; padding: 4px 8px; border-radius: 14px; height: 48px; box-sizing: border-box; overflow: hidden; max-width: var(--wb-dockw, 100%); flex-wrap: nowrap; }
+.wb-ctx > * { flex: none; }
+.wb-ctx .wb-nibs { display: flex; align-items: flex-end; height: 40px; overflow: hidden; align-self: flex-end; margin-bottom: -4px; }
+.wb-ctx .wb-nib { height: 40px; margin-bottom: 0; width: 26px; }
+.wb-ctx .wb-nib svg { width: 24px; height: 38px; transform: translateY(14px); }
+.wb-ctx .wb-nib:hover svg { transform: translateY(9px); }
+.wb-ctx .wb-nib.on svg { transform: translateY(3px); }
+.wb-ctx .wb-nib.on::after { bottom: 2px; }
+.wb-ctx .wb-more-ov { margin-left: auto; }
+.wb-ctxpop .wb-ovrow { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }

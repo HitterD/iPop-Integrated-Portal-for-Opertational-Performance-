@@ -164,6 +164,7 @@ function loadPrefs() {
 function savePrefs(p) { try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* blocked */ } }
 const isHex = c => /^#[0-9a-f]{6}$/i.test(c || '');
 const WHOLE = '__board';   // the slide id of "the whole board" when a board has no frames
+const reduceMotion = () => { try { return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // Letter shortcuts like ClickUp; digits keep the old Excalidraw meaning (grill Q18).
@@ -811,8 +812,27 @@ export function mountCanvas(container, opts) {
     if (!dockOn()) { ctxBar.hidden = true; return; }
     const h = ctxHtml();
     ctxBar.hidden = !h;
-    if (ctxBar._html !== h) { ctxBar._html = h; ctxBar.innerHTML = h; }
+    if (ctxBar._html !== h) { ctxBar._html = h; ctxBar.innerHTML = h; fitCtx(); }
     if (!h) ctxPop.hidden = true;
+  }
+  /// The bar is never wider than the dock: what does not fit (from the right) goes into a ⌄ pop-up, in the same order.
+  let ctxOverflow = [];
+  function fitCtx() {
+    const max = dock.offsetWidth; if (!max) return;
+    root.style.setProperty('--wb-dockw', `${max}px`);
+    ctxOverflow = [];
+    const kids = [...ctxBar.children];
+    if (ctxBar.scrollWidth <= max + 1) return;
+    const more = el('button', 'wb-cb wb-more-ov', '⌄'); more.type = 'button'; more.dataset.cp = 'ctxov'; more.title = 'More options'; more.setAttribute('aria-label', 'More options');
+    ctxBar.append(more);
+    // take items off the end (never the pens or the first group) until it fits
+    for (let i = kids.length - 1; i > 2 && ctxBar.scrollWidth > max + 1; i--) {
+      const n = kids[i];
+      if (n.classList.contains('wb-nibs')) break;
+      ctxOverflow.unshift(n.outerHTML); n.remove();
+    }
+    // a trailing separator looks odd
+    while (more.previousElementSibling?.classList.contains('wb-sep')) more.previousElementSibling.remove();
   }
   const selected = () => [...sel].map(get).filter(Boolean);
   function ctxHtml() {
@@ -832,13 +852,12 @@ export function mountCanvas(container, opts) {
   }
   function penCtx() {
     const k = tool === 'eraser' ? 'eraser' : penKind();
-    const pens = [...Object.keys(PEN_TYPES), 'eraser'].map(p => `<button type="button" class="wb-nib ${p === k ? 'on' : ''}" data-pen="${p}" title="${p === 'eraser' ? 'Eraser — whole strokes or part of a stroke' : `${PEN_TYPES[p].label} — ${PEN_TYPES[p].sub}`}" aria-label="${p === 'eraser' ? 'Eraser' : PEN_TYPES[p].label}" aria-pressed="${p === k}">${penSvg(p, penColourCss(p === 'eraser' ? 'pen' : p))}</button>`).join('');
+    const pens = '<span class="wb-nibs">' + [...Object.keys(PEN_TYPES), 'eraser'].map(p => `<button type="button" class="wb-nib ${p === k ? 'on' : ''}" data-pen="${p}" title="${p === 'eraser' ? 'Eraser — whole strokes or part of a stroke' : `${PEN_TYPES[p].label} — ${PEN_TYPES[p].sub}`}" aria-label="${p === 'eraser' ? 'Eraser' : PEN_TYPES[p].label}" aria-pressed="${p === k}">${penSvg(p, penColourCss(p === 'eraser' ? 'pen' : p))}</button>`).join('') + '</span>';
     if (k === 'eraser') return pens + sep + ['whole', 'part'].map(m => cb(`data-erm="${m}"`, m === 'whole' ? 'Whole stroke' : 'Part of a stroke', '', `wb-txt ${prefs.erMode === m ? 'on' : ''}`)).join('') + sep
       + ERASER_SIZES.map((v, i) => cb(`data-esz="${v}"`, `<i class="wb-szd" style="width:${4 + i * 3.4}px;height:${4 + i * 3.4}px"></i>`, `${SIZE_NAMES[i]} · ${v} px`, prefs.size.eraser === v ? 'on' : '')).join('');
     const def = PEN_TYPES[k], cur = prefs.color[k];
     // a narrow board keeps 6 colours in the bar; the rest are one click away behind ⊕
-    const narrow = root.clientWidth < 1060;
-    const cols = (k === 'highlighter' ? HL_COLOURS : narrow ? ['#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#0A84FF', 'auto'] : BAR_COLOURS).map(c => cb(`data-pcol="${c}"`, dot(c), c === 'auto' ? 'Black or white (follows the theme)' : c, `wb-sw ${cur === c ? 'on' : ''}`)).join('') + cb('data-cp="pencolours"', icon('plusc'), 'More colours, recent, any colour');
+    const cols = (k === 'highlighter' ? HL_COLOURS : BAR_COLOURS).map(c => cb(`data-pcol="${c}"`, dot(c), c === 'auto' ? 'Black or white (follows the theme)' : c, `wb-sw ${cur === c ? 'on' : ''}`)).join('') + cb('data-cp="pencolours"', icon('plusc'), 'More colours, recent, any colour');
     const sizes = def.sizes.map((v, i) => cb(`data-psz="${v}"`, `<i class="wb-szd" style="width:${4 + i * 3.4}px;height:${4 + i * 3.4}px"></i>`, `${SIZE_NAMES[i]} · ${v} px`, prefs.size[k] === v ? 'on' : '')).join('');
     return pens + sep + cols + sep + sizes + sep + (opts.prefs ? cb('data-cp="mypens"', `${icon('star')}<span>My pens</span>${dd}`, 'Your saved pens', 'wb-txt') : '') + cb('data-cp="penadv"', '⌄', 'More pen options');
   }
@@ -939,6 +958,7 @@ export function mountCanvas(container, opts) {
   function ctxPopHtml(kind) {
     const els = selected(), one = els[0];
     switch (kind) {
+      case 'ctxov': return `<div class="wb-ovrow">${ctxOverflow.filter(h => !/class="wb-sep"/.test(h)).join('')}</div>`;
       case 'pencolours': case 'selcolours': case 'fill': case 'line': {
         const forPen = kind === 'pencolours', fill = kind === 'fill';
         const cur = forPen ? prefs.color[penKind()] : fill ? (one ? (one.fill || 'auto') : (next.fill || 'auto')) : (one ? (one.stroke || 'auto') : (next.stroke || 'auto'));
@@ -1031,7 +1051,8 @@ export function mountCanvas(container, opts) {
     if (k === 'mind' || k === 'image') { dockKind = dockKind === k ? null : k; sel.clear(); if (tool !== 'select') setTool('select'); else paintDock(); return; }
     dockKind = k; setTool(k);
   });
-  ctxBar.addEventListener('click', e => {
+  ctxBar.addEventListener('click', e => ctxBarClick(e));
+  function ctxBarClick(e) {
     const b = e.target.closest('button'); if (!b) return;
     const d = b.dataset;
     if (d.pen) { setPen(d.pen); return; }
@@ -1039,7 +1060,7 @@ export function mountCanvas(container, opts) {
     if (d.psz) { setSize(penKind(), +d.psz); ctxBar._html = null; paintCtx(); return; }
     if (d.esz) { setSize('eraser', +d.esz); ctxBar._html = null; paintCtx(); return; }
     if (d.erm) { prefs.erMode = d.erm; savePrefs(prefs); ctxBar._html = null; paintCtx(); return; }
-    if (d.cp) { openCtxPop(d.cp, b); return; }
+    if (d.cp) { openCtxPop(d.cp, ctxBar.contains(b) ? b : (ctxBar.querySelector('.wb-more-ov') || b)); return; }
     if (d.shape) { if (sel.size) applySel(x => isShape(x) && !isContainer(x) ? { type: d.shape } : null); else { lastShape = d.shape; setTool(d.shape); } return; }
     // a flowchart shape goes in the middle of the screen (like the Shapes panel); then the blue arrows add the next one
     if (d.stencil) { const r = rect(); placeShape(d.stencil, toWorld(r.width / 2, r.height / 2)); return; }
@@ -1053,10 +1074,12 @@ export function mountCanvas(container, opts) {
     if (d.run) { runTool(d.run); return; }
     if (d.relayout) { relayout(d.relayout); return; }
     if (d.act2) { runAct(d.act2, b); }
-  });
+  }
   ctxPop.addEventListener('pointerdown', e => e.stopPropagation());
   ctxPop.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
+    // a button that lives in the bar but did not fit: run it like the bar would
+    if (ctxPop.dataset.kind === 'ctxov') { ctxPop.hidden = true; ctxBarClick({ target: b }); return; }
     const d = b.dataset;
     if (d.pcol) { pickPenColour(d.pcol); paintDock(); ctxPop.innerHTML = ctxPopHtml('pencolours'); return; }
     if (d.fillc) { const c = d.fillc; if (isHex(c)) prefs.recent = [c.toUpperCase(), ...prefs.recent.filter(x => x !== c.toUpperCase())].slice(0, 8); savePrefs(prefs); if (sel.size) applySel(x => isShape(x) ? { fill: c === 'auto' ? null : c } : null); else next.fill = c === 'auto' ? null : c; ctxPop.innerHTML = ctxPopHtml('fill'); ctxBar._html = null; paintCtx(); return; }
@@ -1262,7 +1285,7 @@ export function mountCanvas(container, opts) {
   function centerBody() {
     const filt = list => list.filter(t => (!tcs.q || tcs.q.split(/\s+/).every(w => hay(t).includes(w))) && (!tcs.levels.size || tcs.levels.has(t.level)) && (!tcs.cats.size || tcs.cats.has(t.cat)));
     const grid = list => `<div class="wb-tcgrid">${list.map(tcCard).join('')}</div>`;
-    const sec = (title, list, more = '') => `<section class="wb-tcsec"><div class="wb-tcsh"><h3>${esc(title)}</h3>${more}</div>${grid(list)}</section>`;
+    const sec = (title, list, more = '', id = '') => `<section class="wb-tcsec" ${id ? `data-sec="${esc(id)}"` : ''}><div class="wb-tcsh"><h3>${esc(title)} <span class="wb-tccount">${list.length}</span></h3>${more}</div>${grid(list)}</section>`;
     const mine = (tcs.mine || []).filter(t => t.mine), team = (tcs.mine || []).filter(t => t.shared);
     if (tcs.q || tcs.cats.size || tcs.levels.size) {
       const r = filt(tcs.view === 'mine' ? mine : tcs.view === 'team' ? team : allTpl());
@@ -1278,10 +1301,9 @@ export function mountCanvas(container, opts) {
       out += sec('Featured', TEMPLATE_META.filter(t => t.featured));
       out += '<h2 class="wb-tch2">iPop templates</h2>';
     }
+    // every template of every category is shown; the headers stick while scrolling, the sidebar jumps between them
     for (const c of TPL_CATS6) {
-      if (tcs.view.startsWith('cat:') && tcs.view !== `cat:${c}`) continue;
-      const list = TEMPLATE_META.filter(t => t.cat === c), open = tcs.open.has(c) || tcs.view === `cat:${c}`;
-      out += sec(c, open ? list : list.slice(0, 3), list.length > 3 && !open ? `<button type="button" data-tmore="${esc(c)}">See ${list.length - 3} more</button>` : '');
+      out += sec(c, TEMPLATE_META.filter(t => t.cat === c), '', c);
     }
     return out;
   }
@@ -1291,7 +1313,8 @@ export function mountCanvas(container, opts) {
     const nv = (k, l, n, ic) => `<button type="button" class="wb-nv ${tcs.view === k ? 'on' : ''}" data-tview="${k}">${icon(ic)}<span>${l}</span><span class="wb-n">${n}</span></button>`;
     tc.innerHTML = `<aside class="wb-tcside"><div class="wb-tcbrand"><i></i>Template Center</div>
         ${nv('featured', 'Featured', TEMPLATE_META.filter(t => t.featured).length, 'star')}${opts.templates ? nv('mine', 'My templates', mine, 'user') + nv('team', 'Team templates', team, 'users') : ''}${nv('all', 'iPop templates', TEMPLATE_META.length, 'grid')}
-        <div class="wb-tcgh">Categories</div>${TPL_CATS6.map(c => `<label class="wb-ck"><input type="checkbox" data-tcat="${esc(c)}" ${tcs.cats.has(c) ? 'checked' : ''}><span>${esc(c)}</span><span class="wb-n">${TEMPLATE_META.filter(t => t.cat === c).length}</span></label>`).join('')}
+        ${tcs.view === 'featured' || tcs.view === 'all' ? `<div class="wb-tcgh">Jump to</div>${TPL_CATS6.map(c => `<button type="button" class="wb-nv wb-jump" data-tjump="${esc(c)}"><span>${esc(c)}</span><span class="wb-n">${TEMPLATE_META.filter(t => t.cat === c).length}</span></button>`).join('')}` : ''}
+        <div class="wb-tcgh">Filter by category</div>${TPL_CATS6.map(c => `<label class="wb-ck"><input type="checkbox" data-tcat="${esc(c)}" ${tcs.cats.has(c) ? 'checked' : ''}><span>${esc(c)}</span><span class="wb-n">${TEMPLATE_META.filter(t => t.cat === c).length}</span></label>`).join('')}
         <div class="wb-tcgh">Level</div>${LEVELS.map(l => `<label class="wb-ck"><input type="checkbox" data-tlv="${l}" ${tcs.levels.has(l) ? 'checked' : ''}><span>${l}</span></label>`).join('')}</aside>
       <div class="wb-tcmain"><div class="wb-tcbar"><div class="wb-tcq">${icon('search')}<input type="search" data-tq value="${esc(tcs.q)}" placeholder="Search templates… (e.g. approval, notulen rapat, 5S, akar masalah)" aria-label="Search templates"></div>
         <select data-tcsel aria-label="Category"><option value="">All categories</option>${TPL_CATS6.map(c => `<option ${tcs.cats.size === 1 && tcs.cats.has(c) ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
@@ -1299,8 +1322,15 @@ export function mountCanvas(container, opts) {
         <button type="button" class="wb-tcx" data-tclose title="Close (Esc)" aria-label="Close">✕</button></div>
         <div class="wb-tcbody">${centerBody()}</div></div>
       <div class="wb-bp" hidden></div>`;
-    const b2 = tc.querySelector('.wb-tcbody'); if (b2) b2.scrollTop = sc;
+    const b2 = tc.querySelector('.wb-tcbody'); if (b2) { b2.scrollTop = sc; b2.addEventListener('scroll', spyCategories, { passive: true }); spyCategories(); }
     if (tcs.bp) showPreview(tcs.bp);
+  }
+  /// the sidebar marks the category being read
+  function spyCategories() {
+    const body = tc.querySelector('.wb-tcbody'); if (!body) return;
+    let cur = null;
+    for (const s2 of body.querySelectorAll('[data-sec]')) if (s2.offsetTop - body.scrollTop <= 60) cur = s2.dataset.sec;
+    tc.querySelectorAll('[data-tjump]').forEach(b => b.classList.toggle('on', b.dataset.tjump === cur));
   }
   function showPreview(key) {
     const t = allTpl().find(x => x.key === key); if (!t) return;
@@ -1362,7 +1392,8 @@ export function mountCanvas(container, opts) {
       return;
     }
     const v = e.target.closest('[data-tview]'); if (v) { tcs.view = v.dataset.tview; tcs.q = ''; tcs.cats.clear(); tcs.levels.clear(); paintCenter({ keepScroll: false }); return; }
-    const m = e.target.closest('[data-tmore]'); if (m) { tcs.open.add(m.dataset.tmore); paintCenter(); return; }
+    const jp = e.target.closest('[data-tjump]');
+    if (jp) { const body = tc.querySelector('.wb-tcbody'), target = body.querySelector(`[data-sec="${CSS.escape(jp.dataset.tjump)}"]`); if (target) body.scrollTo({ top: target.offsetTop - 8, behavior: reduceMotion() ? 'auto' : 'smooth' }); return; }
     if (e.target.closest('[data-tclose]')) { closeCenter(); return; }
     if (e.target.closest('[data-tsave]')) { closeCenter(); openSaveTemplate(); return; }
     if (e.target.closest('[data-tback]')) { tcs.bp = null; tc.querySelector('.wb-bp').hidden = true; return; }
@@ -4288,7 +4319,31 @@ export function mountCanvas(container, opts) {
     if (!hit) { const t = create('text', { x: w.x, y: w.y - 13, w: 40, h: 26, text: '', size: 20, font: 'ipop', stroke: inkNow() }); const [placed] = add([t]) || []; if (placed) editText(placed); }
   }
 
+  /// The nearest element under the pointer that can scroll in the wheel's direction, up to the board itself.
+  function scrollableUnder(t, dy, dx) {
+    for (let n = t; n && n !== root; n = n.parentElement) {
+      if (!(n instanceof HTMLElement)) continue;
+      const cs = getComputedStyle(n);
+      const y = /(auto|scroll)/.test(cs.overflowY) && n.scrollHeight > n.clientHeight + 1;
+      const x = /(auto|scroll)/.test(cs.overflowX) && n.scrollWidth > n.clientWidth + 1;
+      if (y || x) return n;
+    }
+    return null;
+  }
+  // panels, menus and pop-ups float over the board: a wheel over them belongs to them, never to the canvas
+  const OVER_UI = '.wb-panel, .wb-menu, .wb-picker, .wb-morep, .wb-ctxpop, .wb-ctx, .wb-dock, .wb-dockwrap, .wb-tcov, .wb-penpop, .wb-colourpop, .wb-emptygal, .wb-boardmenu, .wb-tools, .wb-zoom, .wb-corner, .wb-mini, .wb-hint, .wb-findbar, .wb-fmtbar, .wb-invite, .wb-presbar, .wb-followbar, .wb-edit';
   function onWheel(e) {
+    const ui = e.target.closest?.(OVER_UI);
+    if (ui) {
+      // let the panel scroll itself; at its ends (or when it does not scroll) stop here so the canvas does not move,
+      // and so Ctrl + wheel never zooms the browser page
+      const sc = scrollableUnder(e.target, e.deltaY, e.deltaX);
+      if (e.ctrlKey || e.metaKey) { e.preventDefault(); return; }
+      if (!sc) { e.preventDefault(); return; }
+      const atTop = sc.scrollTop <= 0 && e.deltaY < 0, atEnd = sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 1 && e.deltaY > 0;
+      if ((atTop || atEnd) && !e.deltaX) e.preventDefault();
+      return;
+    }
     e.preventDefault();
     stopFollow();
     const { sx, sy } = local(e);

@@ -61,7 +61,7 @@ test('the new pens draw: a brush tapers, a fineliner keeps its width, calligraph
 
 function setup(width = 1300) {
   const win = new Window({ width, height: 860 });
-  for (const k of ['window', 'document', 'Node', 'HTMLElement', 'Element', 'MutationObserver', 'getComputedStyle', 'XMLSerializer', 'Image', 'DOMParser', 'navigator', 'MouseEvent', 'KeyboardEvent', 'CustomEvent'])
+  for (const k of ['window', 'document', 'Node', 'HTMLElement', 'Element', 'MutationObserver', 'getComputedStyle', 'XMLSerializer', 'Image', 'DOMParser', 'navigator', 'MouseEvent', 'KeyboardEvent', 'CustomEvent', 'WheelEvent', 'Event'])
     try { if (win[k] !== undefined) globalThis[k] = k === 'window' ? win : win[k]; } catch { /* read-only */ }
   globalThis.requestAnimationFrame = cb => setTimeout(() => cb(Date.now()), 0);
   globalThis.cancelAnimationFrame = id => clearTimeout(id);
@@ -183,4 +183,30 @@ test('a /draw block and a narrow board keep the small bar', async () => {
       inst.destroy(); doc.destroy();
     } finally { win.happyDOM.abort(); }
   }
+});
+
+test('round 7: a wheel over a panel never moves the board; the Template Center shows every template', async () => {
+  const { win, el } = setup();
+  const doc = new Y.Doc(), ymap = doc.getMap('wb:board');
+  try {
+    const inst = mountCanvas(el, { ymap, doc, Y, mode: 'board', theme: 'light', toast: () => {} });
+    await tick(40);
+    const world = () => el.querySelector('.wb-world').getAttribute('transform');
+    el.querySelector('[data-tile="tpl"]').click(); await tick(40);
+    const before = world();
+    const body = el.querySelector('.wb-tcbody');
+    const ev = new window.WheelEvent('wheel', { deltaY: 200, bubbles: true, cancelable: true });
+    body.dispatchEvent(ev);
+    await tick(30);
+    assert.equal(world(), before, 'the board did not pan');
+    el.querySelector('[data-tview="all"]').click(); await tick();
+    assert.doesNotMatch(el.querySelector('.wb-tc').textContent, /See \d+ more/);
+    assert.equal(el.querySelectorAll('.wb-tc .wb-tcard').length, 57, 'all 57 iPop templates');
+    assert.equal(el.querySelectorAll('.wb-tc [data-tjump]').length, 6, 'jump to each category');
+    // a wheel on the empty board still pans
+    const wb = el.querySelector('.wb');
+    wb.dispatchEvent(new window.WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true }));
+    await tick(30);
+    inst.destroy(); doc.destroy();
+  } finally { win.happyDOM.abort(); }
 });
