@@ -2976,6 +2976,46 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("NoteAttachments");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.NoteBoardTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("Json")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Shared")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId", "CreatedAt");
+
+                    b.HasIndex("Shared", "CreatedAt");
+
+                    b.ToTable("NoteBoardTemplates");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.NoteComment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -7133,6 +7173,15 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasOne("IPop.Core.Entities.NotePage", null)
                         .WithMany()
                         .HasForeignKey("PageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NoteBoardTemplate", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

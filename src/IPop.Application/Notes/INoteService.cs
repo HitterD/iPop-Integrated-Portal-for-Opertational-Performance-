@@ -124,6 +124,10 @@ public record NoteLibraryItemDto(Guid Id, string Name, string Json, int Count, b
 public record SaveLibraryItemRequest(string? Name, string Json, bool Shared = false);
 public record UpdateLibraryItemRequest(string? Name, bool? Shared);
 
+public record NoteBoardTemplateDto(Guid Id, string Name, string? Description, string Json, int Count, bool Shared, bool Mine, string OwnerName, DateTime CreatedAt);
+public record SaveBoardTemplateRequest(string? Name, string? Description, string Json, bool Shared = false);
+public record UpdateBoardTemplateRequest(string? Name, string? Description, bool? Shared);
+
 public record NoteViewerDto(Guid UserId, string Name, string? Nik, DateTime LastViewedAt, int Count);
 
 
@@ -228,6 +232,13 @@ public interface INoteService
     Task<NoteResult<NoteLibraryItemDto>> SaveLibraryItemAsync(Guid userId, SaveLibraryItemRequest req, CancellationToken ct);
     Task<NoteResult<NoteLibraryItemDto>> UpdateLibraryItemAsync(Guid userId, Guid itemId, UpdateLibraryItemRequest req, CancellationToken ct);
     Task<NoteResult<bool>> DeleteLibraryItemAsync(Guid userId, Guid itemId, CancellationToken ct);
+
+    /// Whiteboard templates: mine + every shared one (Team templates).
+    Task<IReadOnlyList<NoteBoardTemplateDto>> GetBoardTemplatesAsync(Guid userId, CancellationToken ct);
+    Task<NoteResult<NoteBoardTemplateDto>> SaveBoardTemplateAsync(Guid userId, SaveBoardTemplateRequest req, CancellationToken ct);
+    Task<NoteResult<NoteBoardTemplateDto>> UpdateBoardTemplateAsync(Guid userId, Guid id, UpdateBoardTemplateRequest req, CancellationToken ct);
+    /// The owner removes their own; `isAdmin` (notes.admin) may also remove a shared one.
+    Task<NoteResult<bool>> DeleteBoardTemplateAsync(Guid userId, Guid id, bool isAdmin, CancellationToken ct);
 
     /// Owner and editors only: who opened the page, newest first.
     Task<NoteResult<IReadOnlyList<NoteViewerDto>>> GetViewersAsync(Guid userId, Guid pageId, CancellationToken ct);

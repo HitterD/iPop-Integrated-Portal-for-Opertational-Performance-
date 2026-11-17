@@ -6,6 +6,7 @@ using IPop.Application.Attachments;
 using IPop.Application.Chat;
 using IPop.Application.Notes;
 using IPop.Application.Notifications;
+using IPop.Application.Rbac;
 using IPop.Application.Realtime;
 using IPop.Infrastructure.Persistence;
 using Microsoft.AspNetCore.SignalR;
@@ -159,6 +160,17 @@ public static class NotesEndpoints
             Run(http, async me => From(await svc.UpdateLibraryItemAsync(me.Id, itemId, req, ct)))).RequirePermission("notes.write");
         g.MapDelete("/library/{itemId:guid}", (Guid itemId, HttpContext http, INoteService svc, CancellationToken ct) =>
             Run(http, async me => From(await svc.DeleteLibraryItemAsync(me.Id, itemId, ct)))).RequirePermission("notes.write");
+
+        // ── Whiteboard templates (Template Center: My templates + Team templates) ──
+        g.MapGet("/board-templates", (HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => Results.Ok(await svc.GetBoardTemplatesAsync(me.Id, ct))));
+        g.MapPost("/board-templates", (SaveBoardTemplateRequest req, HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.SaveBoardTemplateAsync(me.Id, req, ct)))).RequirePermission("notes.write");
+        g.MapPatch("/board-templates/{templateId:guid}", (Guid templateId, UpdateBoardTemplateRequest req, HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.UpdateBoardTemplateAsync(me.Id, templateId, req, ct)))).RequirePermission("notes.write");
+        // anyone deletes their own; an admin (notes.admin) also removes one shared with the team
+        g.MapDelete("/board-templates/{templateId:guid}", (Guid templateId, HttpContext http, INoteService svc, IPermissionEvaluator perms, CancellationToken ct) =>
+            Run(http, async me => From(await svc.DeleteBoardTemplateAsync(me.Id, templateId, await perms.IsAllowedAsync(me.Id, "notes.admin", null, ct), ct)))).RequirePermission("notes.write");
 
         // ── Personal templates ───────────────────────────────────────────────
         g.MapGet("/templates", (HttpContext http, INoteService svc, CancellationToken ct) =>

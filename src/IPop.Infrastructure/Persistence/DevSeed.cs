@@ -59,6 +59,7 @@ public static class DevSeed
             ("projects.admin", "Administer and delete projects"),
             ("notes.read", "Open notes pages shared with you and your own"),
             ("notes.write", "Create, edit, and share notes pages"),
+            ("notes.admin", "Remove whiteboard templates anyone shared with the team"),
             ("tickets.read", "See your own ICT tickets from iDesk"),
             ("tickets.create", "File ICT tickets into iDesk"),
             ("admin.users", "Manage user accounts"),

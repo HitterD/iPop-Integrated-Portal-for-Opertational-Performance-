@@ -137,6 +137,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<NoteTemplate> NoteTemplates => Set<NoteTemplate>();
     public DbSet<NoteView> NoteViews => Set<NoteView>();
     public DbSet<NoteLibraryItem> NoteLibraryItems => Set<NoteLibraryItem>();
+    public DbSet<NoteBoardTemplate> NoteBoardTemplates => Set<NoteBoardTemplate>();
     public DbSet<NoteAttachment> NoteAttachments => Set<NoteAttachment>();
 
     // News & Memos entities (single table with type enum: news/announcement/memo)
@@ -1392,6 +1393,14 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Kind).HasMaxLength(16);
             e.Property(x => x.Excerpt).HasMaxLength(300);
             e.HasIndex(x => new { x.OwnerId, x.CreatedAt });
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NoteBoardTemplate>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.Property(x => x.Description).HasMaxLength(300);
+            e.HasIndex(x => new { x.OwnerId, x.CreatedAt });
+            e.HasIndex(x => new { x.Shared, x.CreatedAt });
             e.HasOne<User>().WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<NoteLibraryItem>(e =>

@@ -27,9 +27,11 @@ public sealed partial class NoteService
 
     /// The elements must be a JSON array of objects that each have a string id and a string type; anything else is refused,
     /// so the library never hands a board something it cannot draw.
-    internal static int? CountElements(string json)
+    internal static int? CountElements(string json) => CountElements(json, MaxLibraryJsonBytes, MaxLibraryElements);
+
+    internal static int? CountElements(string json, int maxBytes, int maxElements)
     {
-        if (string.IsNullOrWhiteSpace(json) || System.Text.Encoding.UTF8.GetByteCount(json) > MaxLibraryJsonBytes) return null;
+        if (string.IsNullOrWhiteSpace(json) || System.Text.Encoding.UTF8.GetByteCount(json) > maxBytes) return null;
         try
         {
             using var doc = JsonDocument.Parse(json);
@@ -40,7 +42,7 @@ public sealed partial class NoteService
                 if (e.ValueKind != JsonValueKind.Object
                     || !e.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.String
                     || !e.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String) return null;
-                if (++n > MaxLibraryElements) return null;
+                if (++n > maxElements) return null;
             }
             return n == 0 ? null : n;
         }

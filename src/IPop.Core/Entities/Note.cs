@@ -170,6 +170,21 @@ public class NoteTemplate
 /// A group of whiteboard elements someone saved to reuse ("My library"). `Shared` puts it in the team library, which every
 /// iPop user sees in the board's Library panel; only the owner can rename or remove it. `Json` is the elements, already
 /// moved to start at 0,0 (at most 256 KB).
+/// A whiteboard someone saved as a template (round 6 Template Center). Private ("My templates") unless `Shared`, which puts it
+/// in Team templates for every iPop user. The owner can rename, share/unshare or remove it; an admin (notes.admin) can also
+/// remove a shared one. `Json` is the elements, moved to start at 0,0 (at most 512 KB); the preview is drawn from it.
+public class NoteBoardTemplate
+{
+    public Guid Id { get; set; }
+    public Guid OwnerId { get; set; }
+    public required string Name { get; set; }
+    public string? Description { get; set; }
+    public required string Json { get; set; }
+    public int Count { get; set; }
+    public bool Shared { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
 public class NoteLibraryItem
 {
     public Guid Id { get; set; }
