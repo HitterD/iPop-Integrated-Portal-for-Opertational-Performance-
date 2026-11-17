@@ -85,3 +85,42 @@ test('the board menu keeps its rows while others move their cursors (no flicker,
     inst.destroy(); aw.destroy(); doc.destroy();
   } finally { win.happyDOM.abort(); }
 });
+
+test('a shape someone else is typing in is locked; Present works without frames', async () => {
+  const { win, el } = setup();
+  const doc = new Y.Doc(), ymap = doc.getMap('wb:board');
+  const aw = new Awareness(doc);
+  aw.setLocalStateField('user', { name: 'Me', nik: 'me', color: '#34A853' });
+  const toasts = [];
+  try {
+    const inst = mountCanvas(el, { ymap, doc, Y, mode: 'board', theme: 'light', awareness: aw, voteMap: doc.getMap('wbvote:board'), onFullscreen: () => true, toast: m => toasts.push(m) });
+    const shape = { id: 'po', type: 'process', version: 1, versionNonce: 1, isDeleted: false, z: 'a1', x: 0, y: 0, w: 180, h: 72, text: 'Make PO' };
+    doc.transact(() => ymap.set('po', shape));
+    await tick(40);
+    // Rina is typing in it
+    aw.states.set(999, { user: { name: 'Rina Second', nik: 'rina', color: '#5856D6' }, wb: { board: 'board', typing: { id: 'po', at: Date.now() } } });
+    aw.emit('change', [{ added: [999], updated: [], removed: [] }, 'remote']);
+    await tick(40);
+    const pill = [...el.querySelectorAll('.wb-typing text')].map(t => t.textContent);
+    assert.deepEqual(pill, ['Rina is typing…'], 'others see who is typing');
+    inst.api?.editTextById?.('po');
+    // double-click on it: the editor must not open
+    const wb = el.querySelector('.wb');
+    wb.dispatchEvent(new window.MouseEvent('dblclick', { clientX: 120, clientY: 70, bubbles: true }));
+    await tick(30);
+    assert.equal(el.querySelector('textarea.wb-edit'), null, 'no editor while Rina types');
+    assert.ok(toasts.some(t => /Rina is typing here/.test(t)), 'a short note says why');
+    // a lock with no keystroke for 30 s is let go
+    aw.states.set(999, { user: { name: 'Rina Second', nik: 'rina', color: '#5856D6' }, wb: { board: 'board', typing: { id: 'po', at: Date.now() - 31000 } } });
+    aw.emit('change', [{ added: [], updated: [999], removed: [] }, 'remote']);
+    await tick(30);
+    assert.equal(el.querySelectorAll('.wb-typing').length, 0, 'an old lock is gone');
+    // Present without frames shows the whole board and the tip
+    el.querySelector('.wb-tr [data-c="present"]').click();
+    await tick(40);
+    assert.ok(el.querySelector('.wb').classList.contains('wb-presenting'), 'presenting');
+    assert.equal(el.querySelector('.wb-preshint').hidden, false, 'the "add frames" tip shows');
+    assert.match(el.querySelector('.wb-presbar, .wb-pres')?.textContent || '', /Whole board/);
+    inst.destroy(); aw.destroy(); doc.destroy();
+  } finally { win.happyDOM.abort(); }
+});

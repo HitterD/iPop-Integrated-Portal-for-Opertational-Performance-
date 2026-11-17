@@ -134,6 +134,7 @@ function loadPrefs() {
 }
 function savePrefs(p) { try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* blocked */ } }
 const isHex = c => /^#[0-9a-f]{6}$/i.test(c || '');
+const WHOLE = '__board';   // the slide id of "the whole board" when a board has no frames
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // Letter shortcuts like ClickUp; digits keep the old Excalidraw meaning (grill Q18).
@@ -270,7 +271,7 @@ export function mountCanvas(container, opts) {
     steps = flowOn && prefs.steps !== false ? stepNumbers(allEls) : new Map();
     const boxes = flowOn || allEls.some(x => x.type === 'connector' && x.route === 'smart') ? shapeBoxes() : [];
     // the dot grid doubles its step when zoomed out, so it never turns into grey noise
-    let g = 24 * view.z; while (g < 12) g *= 2;
+    let g = 24 * view.z; if (!(g > 0.01)) g = 24; while (g < 12) g *= 2;
     root.style.backgroundSize = `${g}px ${g}px`;
     root.style.backgroundPosition = `${view.x}px ${view.y}px`;
     const els = allEls;
@@ -746,34 +747,37 @@ export function mountCanvas(container, opts) {
   root.append(boardMenu);
   boardMenu.addEventListener('pointerdown', e => e.stopPropagation());
   let boardMenuQ = '';
+  // Every board tool: a short label and one grey line saying what it does (no cut-off "…" labels). Left column:
+  // Diagram, Network, Meeting; right column: Board, Share (mockup whiteboard-menu-polish).
+  const MENU_LEFT = ['Diagram', 'Network', 'Meeting'];
   function boardTools() {
     const t = [];
-    const add2 = (group, c, label, ic, hint = '', on = false) => t.push({ group, c, label, ic, hint, on });
+    const add2 = (group, c, label, ic, desc, hint = '', on = false) => t.push({ group, c, label, ic, desc, hint, on });
     if (!readOnly) {
-      add2('Diagram', 'guide', 'Guide: make a flowchart step by step', 'bulb', '', !guidePanel.hidden);
-      if (flowOn) add2('Diagram', 'tidy', 'Tidy up flow', 'tidy', 'Alt Shift T');
-      if (flowOn) add2('Diagram', 'check', 'Check this flowchart', 'check', '', !checkPanel.hidden);
-      add2('Diagram', 'import', 'Import draw.io or Mermaid', 'import');
-      if (opts.library) add2('Diagram', 'lib', 'Library', 'book');
-      add2('Diagram', 'relayout', 'Re-layout: hierarchy, radial, organic', 'layout');
-      add2('Diagram', 'graphics', 'Data graphics: bars, icons, colour rules', 'chart');
-      if (opts.people) add2('Diagram', 'org', 'Org chart from Directory', 'org');
-      if (opts.tasks?.createMany) add2('Diagram', 'tasks', 'Make Projects tasks from steps', 'task');
-      add2('Network', 'ipfind', 'Find a device by IP or name', 'ip');
+      add2('Diagram', 'guide', 'Guide', 'bulb', 'Make a flowchart step by step', '', !guidePanel.hidden);
+      if (flowOn) add2('Diagram', 'tidy', 'Tidy up flow', 'tidy', 'Line the steps up neatly', 'Alt Shift T');
+      if (flowOn) add2('Diagram', 'check', 'Check flowchart', 'check', 'Missing Start, End or branches', '', !checkPanel.hidden);
+      add2('Diagram', 'import', 'Import', 'import', 'draw.io file or Mermaid text');
+      if (opts.library) add2('Diagram', 'lib', 'Library', 'book', 'Your saved shapes and the team’s');
+      add2('Diagram', 'relayout', 'Re-layout', 'layout', 'Hierarchy, radial or organic');
+      add2('Diagram', 'graphics', 'Data graphics', 'chart', 'Bars, icons and colours from shape data', '', rulesNow().show && rulesNow().show !== 'off');
+      if (opts.people) add2('Diagram', 'org', 'Org chart', 'org', 'A team from Directory, with photos');
+      if (opts.tasks?.createMany) add2('Diagram', 'tasks', 'Make tasks', 'task', 'Turn steps into Projects tasks');
+      add2('Network', 'ipfind', 'Find a device', 'ip', 'By IP, hostname or name');
     }
-    add2('Board', 'find', 'Find on board', 'search', 'Ctrl F');
-    add2('Board', 'frames', 'Frames', 'frames');
-    if (opts.onPopOut) add2('Board', 'popout', 'Open in a new tab', 'newtab');
-    if (opts.boardLock?.canChange?.()) add2('Board', 'lockboard', opts.boardLock.isLocked() ? 'Unlock the board' : 'Lock the board (view, comment and vote only)', opts.boardLock.isLocked() ? 'unlock' : 'lock', '', opts.boardLock.isLocked());
-    if (aw) add2('Meeting', 'timer', timerEnds ? `Timer · ${timerLabel()}` : 'Timer everyone sees', 'timer', '', !!timerEnds);
-    if (vmap) add2('Meeting', 'vote', votingOn() ? 'Voting is on' : 'Dot voting', 'vote', '', votingOn());
-    add2('Meeting', 'present', 'Present frame by frame', 'play');
-    add2('Board', 'comments', 'Comments on this board', 'comment');
-    if (opts.history) add2('Board', 'history', 'Version history', 'history');
-    add2('Share', 'export', 'Export or copy as picture', 'download');
-    add2('Share', 'report', 'Report to Excel or CSV', 'table');
-    add2('Share', 'pptx', 'Export to PowerPoint (frame = slide)', 'slides');
-    if (opts.shareToChat) add2('Share', 'chat', 'Send to Chat', 'chat');
+    if (aw) add2('Meeting', 'timer', timerEnds ? `Timer · ${timerLabel()}` : 'Timer', 'timer', 'A countdown everyone sees', '', !!timerEnds);
+    if (vmap) add2('Meeting', 'vote', 'Dot voting', 'vote', votingOn() ? 'Voting is running' : 'Everyone picks their favourites', '', votingOn());
+    add2('Meeting', 'present', 'Present', 'play', framesInOrder().length ? 'Frame by frame, full screen' : 'The whole board, full screen');
+    add2('Board', 'find', 'Find on board', 'search', 'Words on shapes and stickies', 'Ctrl F');
+    add2('Board', 'frames', 'Frames', 'frames', 'Jump to a frame');
+    if (opts.onPopOut) add2('Board', 'popout', 'Open in a new tab', 'newtab', 'The board on its own');
+    if (opts.boardLock?.canChange?.()) add2('Board', 'lockboard', opts.boardLock.isLocked() ? 'Unlock board' : 'Lock board', opts.boardLock.isLocked() ? 'unlock' : 'lock', opts.boardLock.isLocked() ? 'Let people edit again' : 'People can still view, comment and vote', '', opts.boardLock.isLocked());
+    add2('Board', 'comments', 'Comments', 'comment', 'Everything said on this board');
+    if (opts.history) add2('Board', 'history', 'Version history', 'history', 'See and restore earlier versions');
+    add2('Share', 'export', 'Export', 'download', 'Picture, SVG or PDF');
+    add2('Share', 'report', 'Report', 'table', 'Shapes and their data to Excel');
+    add2('Share', 'pptx', 'PowerPoint', 'slides', 'Each frame becomes a slide');
+    if (opts.shareToChat) add2('Share', 'chat', 'Send to Chat', 'chat', 'A live card in a chat');
     return t;
   }
   // The menu is painted by many things (others' cursors, the timer, a lock change): rebuilding it each time replaced the row
@@ -782,26 +786,56 @@ export function mountCanvas(container, opts) {
   const menuSearch = el('input', 'wb-search');
   menuSearch.type = 'search'; menuSearch.placeholder = 'Search board tools'; menuSearch.setAttribute('aria-label', 'Search board tools');
   const menuList = el('div', 'wb-mlist');
-  boardMenu.append(menuSearch, menuList);
-  let menuShape = '';
-  menuSearch.addEventListener('input', () => { boardMenuQ = menuSearch.value; paintBoardMenu(); });
-  menuSearch.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Escape') { boardMenu.hidden = true; paintCorners(); } if (e.key === 'Enter') menuList.querySelector('[data-c]')?.click(); });
+  const menuFoot = el('div', 'wb-mfoot', '<span>↑↓ to move · Enter to open · Esc to close</span><span data-n></span>');
+  boardMenu.append(menuSearch, menuList, menuFoot);
+  let menuShape = '', menuKb = -1;
+  const menuRows = () => [...menuList.querySelectorAll('.wb-mitem')];
+  const markKb = () => menuRows().forEach((b, i) => b.classList.toggle('kb', i === menuKb));
+  menuSearch.addEventListener('input', () => { boardMenuQ = menuSearch.value; menuKb = -1; paintBoardMenu(); });
+  menuSearch.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Escape') { boardMenu.hidden = true; paintCorners(); topRight.querySelector('[data-c="menu"]')?.focus({ preventScroll: true }); return; }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const rows = menuRows(); if (!rows.length) return;
+      menuKb = Math.max(0, Math.min(rows.length - 1, menuKb + (e.key === 'ArrowDown' ? 1 : -1)));
+      markKb(); rows[menuKb].scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    if (e.key === 'Enter') { e.preventDefault(); (menuRows()[Math.max(0, menuKb)])?.click(); }
+  });
   function paintBoardMenu() {
     const q = boardMenuQ.trim().toLowerCase();
-    const items = boardTools().filter(x => !q || x.label.toLowerCase().includes(q) || x.group.toLowerCase().includes(q));
-    const groups = [...new Set(items.map(x => x.group))];
+    const items = boardTools().filter(x => !q || `${x.label} ${x.desc} ${x.group}`.toLowerCase().includes(q));
     if (menuSearch.value !== boardMenuQ) menuSearch.value = boardMenuQ;
     const shape = items.map(x => `${x.group}/${x.c}`).join('|');
     if (shape !== menuShape) {
       menuShape = shape;
-      menuList.innerHTML = groups.map(g => `<div class="wb-mh">${g}</div>${items.filter(x => x.group === g).map(x => `<button type="button" role="menuitem" data-c="${x.c}" class="wb-mitem"><span class="wb-mic">${icon(x.ic)}</span><span class="wb-mtext"></span>${x.hint ? `<kbd>${x.hint}</kbd>` : ''}</button>`).join('')}`).join('') || '<p class="wb-note">Nothing found.</p>';
+      const row = x => `<button type="button" role="menuitem" data-c="${x.c}" class="wb-mitem"><span class="wb-mic">${icon(x.ic)}</span><span class="wb-mtext"></span>${x.hint ? `<kbd>${x.hint}</kbd>` : '<span></span>'}<span class="wb-mdesc"></span></button>`;
+      const col = names => names.map(g => { const list = items.filter(x => x.group === g); return list.length ? `<div class="wb-mh">${g}</div>${list.map(row).join('')}` : ''; }).join('');
+      // Diagram always starts the left column and Board the right one; Network, Meeting and Share each go to whichever
+      // column is shorter at that point, so the two stay about the same height (a flowchart adds Tidy up and Check)
+      const size = g => { const n = items.filter(x => x.group === g).length; return n ? n + 0.7 : 0; };
+      const leftG = ['Diagram'], rightG = ['Board'];
+      let lh = size('Diagram'), rh = size('Board');
+      for (const g of ['Network', 'Meeting', 'Share']) { if (!size(g)) continue; if (lh <= rh) { leftG.push(g); lh += size(g); } else { rightG.push(g); rh += size(g); } }
+      // a phone shows one list in a bottom sheet, in the plain order
+      const left = isPhone() ? col(['Diagram', 'Network', 'Meeting', 'Board', 'Share']) : col(leftG), right = isPhone() ? '' : col(rightG);
+      menuList.innerHTML = left || right ? `<div class="wb-mcol">${left}</div><div class="wb-mcol">${right}</div>` : '<p class="wb-note">Nothing found. Try “export”, “timer” or “rack”.</p>';
+      menuFoot.querySelector('[data-n]').textContent = `${items.length} tool${items.length === 1 ? '' : 's'}`;
+      menuKb = Math.min(menuKb, items.length - 1); markKb();
     }
-    // labels and on/off can change without the list changing (a running timer, a lock): update in place
+    // labels, descriptions and on/off can change without the list changing (a running timer, a lock): update in place
     for (const x of items) {
       const b = menuList.querySelector(`[data-c="${x.c}"]`); if (!b) continue;
       b.classList.toggle('on', !!x.on);
-      const t = b.querySelector('.wb-mtext'); if (t.textContent !== x.label) { t.textContent = x.label; b.title = x.label; }
+      const t = b.querySelector('.wb-mtext'); if (t.textContent !== x.label) t.textContent = x.label;
+      const d = b.querySelector('.wb-mdesc'); if (d.textContent !== x.desc) { d.textContent = x.desc; b.title = x.desc; }
     }
+    // a short board shows the labels only (the grey lines become tooltips), so the menu never needs scrolling
+    // on a short laptop the grey lines go (into tooltips) so the menu needs no scrolling; a phone sheet scrolls and keeps them
+    boardMenu.classList.remove('wb-mshort');
+    if (!boardMenu.hidden && !isPhone() && menuList.scrollHeight > menuList.clientHeight + 2) boardMenu.classList.add('wb-mshort');
   }
   function toggleBoardMenu() {
     if (!boardMenu.hidden) { boardMenu.hidden = true; paintCorners(); return; }
@@ -810,7 +844,7 @@ export function mountCanvas(container, opts) {
     boardMenu.hidden = false;
     paintBoardMenu();
     paintCorners();
-    menuList.scrollTop = 0;
+    menuList.scrollTop = 0; menuKb = -1; markKb();
     menuSearch.focus({ preventScroll: true });
   }
   // a pick in the menu runs the same action as the chip of the same name
@@ -934,6 +968,12 @@ export function mountCanvas(container, opts) {
     });
     return [...byPerson.values()];
   };
+  const TYPING_IDLE = 30000;
+  /// The other person typing in this element right now (their name), or null.
+  function typingBy(id) {
+    for (const o of others()) { const t = o.wb.typing; if (t?.id === id && now() - (t.at || 0) < TYPING_IDLE) return o; }
+    return null;
+  }
   const liveLayer = svgEl('g', { class: 'wb-live' }, svg);
   function paintLive() {
     liveLayer.innerHTML = '';
@@ -945,6 +985,21 @@ export function mountCanvas(container, opts) {
         const e = get(id); if (!e || e.isDeleted) continue;
         const b = bounds(e, get), a = toScreen(b.x, b.y), z = toScreen(b.x + b.w, b.y + b.h);
         svgEl('rect', { x: a.x - 5, y: a.y - 5, width: z.x - a.x + 10, height: z.y - a.y + 10, rx: 5, fill: 'none', stroke: color, 'stroke-width': 2, 'stroke-dasharray': '5 3' }, liveLayer);
+      }
+      // typing in a shape: a purple "<Name> is typing…" pill over it and a dashed ring (the shape is locked for others)
+      const ty = o.wb.typing;
+      if (ty?.id && now() - (ty.at || 0) < TYPING_IDLE) {
+        const e2 = get(ty.id);
+        if (e2 && !e2.isDeleted) {
+          const b = bounds(e2, get), a = toScreen(b.x, b.y), z = toScreen(b.x + b.w, b.y + b.h);
+          svgEl('rect', { x: a.x - 6, y: a.y - 6, width: z.x - a.x + 12, height: z.y - a.y + 12, rx: 8, fill: 'none', stroke: color, 'stroke-width': 2, 'stroke-dasharray': '6 4' }, liveLayer);
+          const name = String(o.user.name || 'Someone').split(' ')[0];
+          const label = `${name} is typing…`, w = measure(label, 11.5, 'ipop', 600) + 18;
+          const g = svgEl('g', { class: 'wb-typing', transform: `translate(${a.x - 6} ${Math.max(4, a.y - 32)})` }, liveLayer);
+          svgEl('rect', { width: w, height: 22, rx: 11, fill: color }, g);
+          const t = svgEl('text', { x: 9, y: 15, 'font-size': 11.5, 'font-weight': 600, fill: '#fff', 'font-family': FONT_STACK.ipop }, g);
+          t.textContent = label;
+        }
       }
       // laser trail
       const trail = (o.wb.laser || []).filter(p => now() - p[2] < 1500);
@@ -1004,7 +1059,7 @@ export function mountCanvas(container, opts) {
     root.style.setProperty('--wb-follow', o.user.color || '#5856D6');
     root.classList.add('wb-following');
     world.setAttribute('transform', `translate(${view.x} ${view.y}) scale(${view.z})`);
-    { let g2 = 24 * view.z; while (g2 < 12) g2 *= 2; root.style.backgroundSize = `${g2}px ${g2}px`; }
+    { let g2 = 24 * view.z; if (!(g2 > 0.01)) g2 = 24; while (g2 < 12) g2 *= 2; root.style.backgroundSize = `${g2}px ${g2}px`; }
     root.style.backgroundPosition = `${view.x}px ${view.y}px`;
     paintOverlay(); paintZoom();
   }
@@ -1067,9 +1122,16 @@ export function mountCanvas(container, opts) {
     }
   });
   // Present: one frame at a time, full screen; others are invited (never pulled along).
-  function startPresent() {
+  // Without frames, Present shows the whole board as one slide (it used to only say "add a frame first").
+  function slides() {
     const fs = framesInOrder();
-    if (!fs.length) { toast('Add a frame first (press F and drag). Each frame is a slide.'); return; }
+    if (fs.length) return fs;
+    const b = unionBounds(live().filter(x => !x.isDeleted), get);
+    return b ? [{ id: WHOLE, name: 'Whole board', x: b.x - 20, y: b.y - 20, w: b.w + 40, h: b.h + 40, whole: true }] : [];
+  }
+  function startPresent() {
+    const fs = slides();
+    if (!fs.length) { toast('The board is empty. Add something to present.'); return; }
     framesPanel.hidden = true;
     presenting = { index: 0 };
     if (!fullscreen && opts.onFullscreen) toggleFullscreen();
@@ -1077,7 +1139,7 @@ export function mountCanvas(container, opts) {
     goSlide(0);
   }
   function goSlide(i) {
-    const fs = framesInOrder();
+    const fs = slides();
     if (!presenting || !fs.length) return;
     presenting.index = Math.max(0, Math.min(fs.length - 1, i));
     const f = fs[presenting.index];
@@ -1085,13 +1147,20 @@ export function mountCanvas(container, opts) {
     setMine({ present: { frame: f.id, at: now() } });
     presBar.innerHTML = `<button type="button" data-p="prev" aria-label="Previous slide" ${presenting.index ? '' : 'disabled'}>‹</button><span>${presenting.index + 1} / ${fs.length} · ${esc(f.name || 'Frame')}</span><button type="button" data-p="next" aria-label="Next slide" ${presenting.index < fs.length - 1 ? '' : 'disabled'}>›</button><button type="button" data-p="stop" class="wb-stop">Stop</button>`;
     presBar.hidden = false;
+    // no frames yet: one quiet tip at the top, with a way to make the first one
+    presHint.hidden = !f.whole || readOnly;
   }
   function stopPresent() {
     if (!presenting) return;
-    presenting = null; presBar.hidden = true; root.classList.remove('wb-presenting');
+    presenting = null; presBar.hidden = true; presHint.hidden = true; root.classList.remove('wb-presenting');
     setMine({ present: null });
     if (fullscreen) toggleFullscreen();
   }
+  const presHint = el('div', 'wb-preshint', '<span>Showing the whole board. Add frames to present step by step.</span><button type="button" data-addframe>Add a frame</button>');
+  presHint.hidden = true;
+  root.append(presHint);
+  presHint.addEventListener('pointerdown', e => e.stopPropagation());
+  presHint.addEventListener('click', e => { if (!e.target.closest('[data-addframe]')) return; stopPresent(); setTool('frame'); toast('Drag on the board to draw a frame. Each frame is one slide.'); });
   presBar.addEventListener('click', e => {
     const b = e.target.closest('[data-p]'); if (!b) return;
     if (b.dataset.p === 'prev') goSlide(presenting.index - 1);
@@ -1102,7 +1171,7 @@ export function mountCanvas(container, opts) {
   function checkPresenters(list) {
     const p = list.find(o => o.wb.present?.frame);
     if (!p) { invite.hidden = true; invitedFor = null; if (followingPresenter != null) { followingPresenter = null; stopFollow(); } return; }
-    if (followingPresenter === p.id) { const f = get(p.wb.present.frame); if (f && p.wb.present.frame !== checkPresenters.last) { checkPresenters.last = p.wb.present.frame; showFrame(f); } return; }
+    if (followingPresenter === p.id) { const f = p.wb.present.frame === WHOLE ? slides().find(s => s.whole) || null : get(p.wb.present.frame); if (f && p.wb.present.frame !== checkPresenters.last) { checkPresenters.last = p.wb.present.frame; showFrame(f); } return; }
     if (invitedFor === p.id || presenting) return;
     invitedFor = p.id;
     invite.innerHTML = `<span><b>${esc(String(p.user.name || 'Someone').split(' ')[0])}</b> is presenting.</span><button type="button" data-i="follow" class="wb-pri">Follow</button><button type="button" data-i="no">Not now</button>`;
@@ -2878,7 +2947,19 @@ export function mountCanvas(container, opts) {
   // ── Text editing ─────────────────────────────────────────────────────────
   function editText(target, { selectAll = false } = {}) {
     if (readOnly || target.locked) return;
+    // one writer per shape: two people typing in the same shape used to overwrite each other without a word
+    const busy = typingBy(target.id);
+    if (busy) { toast(`${String(busy.user.name || 'Someone').split(' ')[0]} is typing here. You can edit it when they're done.`); return; }
     stopEdit();
+    // a shape that is tiny on screen (zoomed far out) is brought up to a readable size while typing, then put back
+    // (only when the board has a size: a hidden board measures 0 and must not zoom to nothing)
+    const r0 = rect(), tb = bounds(target, get), small = r0.width > 100 && r0.height > 100 && Math.min(tb.w, tb.h) * view.z < 80;
+    const zoomBack = small ? { ...view } : null;
+    if (small) {
+      const r = rect(), z = Math.min(1.2, (r.width * 0.5) / Math.max(tb.w, 1), (r.height * 0.45) / Math.max(tb.h, 1));
+      view = { z, x: r.width / 2 - (tb.x + tb.w / 2) * z, y: r.height * 0.42 - (tb.y + tb.h / 2) * z };
+      render();
+    }
     const ta = el('textarea', 'wb-edit');
     ta.setAttribute('aria-label', 'Text');
     ta.spellcheck = true;
@@ -2897,7 +2978,8 @@ export function mountCanvas(container, opts) {
       });
     };
     root.append(ta);
-    editing = { id: target.id, ta, place };
+    editing = { id: target.id, ta, place, zoomBack };
+    setMine({ typing: { id: target.id, at: now() } });
     place(); render();
     showFormatBar(target);
     ta.focus();
@@ -2919,6 +3001,8 @@ export function mountCanvas(container, opts) {
       }
     };
     ta.addEventListener('input', grow);
+    // keep the lock fresh while typing (others let it go after 30 s without a keystroke)
+    ta.addEventListener('input', () => { if (now() - (editing?.typedAt || 0) > 4000 && editing) { editing.typedAt = now(); setMine({ typing: { id: target.id, at: now() } }); } });
     ta.addEventListener('keydown', e => {
       e.stopPropagation();
       if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); stopEdit(); root.focus({ preventScroll: true }); return; }
@@ -3016,8 +3100,10 @@ export function mountCanvas(container, opts) {
   }
   function stopEdit() {
     if (!editing) return;
-    const { id, ta } = editing;
+    const { id, ta, zoomBack } = editing;
     editing = null;
+    setMine({ typing: null });
+    if (zoomBack) { view = zoomBack; render(); }
     fmtBar.hidden = true;
     const t = get(id), text = ta.value.replace(/\s+$/, '');
     ta.remove();

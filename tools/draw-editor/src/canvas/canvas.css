@@ -451,3 +451,38 @@ input.wb-edit { background: var(--wb-surface); padding: 0 8px; outline-width: 2p
 /* panels and the board menu sit above the minimap (same layer before) */
 .wb-boardmenu, .wb-r4, .wb-panel { z-index: 5; }
 .wb-mini { z-index: 2; }
+
+/* Board menu, two columns (mockup whiteboard-menu-polish): short label + one grey line, no scrolling on a laptop */
+.wb-boardmenu { width: 560px; max-width: calc(100% - 24px); max-height: calc(100% - 70px); padding: 8px; gap: 6px; }
+.wb-boardmenu .wb-search { height: 34px; margin: 0; }
+.wb-boardmenu .wb-mlist { display: grid !important; grid-template-columns: 1fr 1fr; gap: 0 10px; align-items: start; flex-direction: initial; }
+.wb-boardmenu .wb-mcol { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.wb-boardmenu .wb-mh { font-size: 10.5px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--wb-ink3); padding: 6px 8px 2px; }
+.wb-boardmenu .wb-mitem { display: grid !important; grid-template-columns: 22px 1fr auto; gap: 0 10px; align-items: center !important; height: auto !important; padding: 4px 8px !important; border-radius: 9px !important; text-align: left; }
+.wb-boardmenu .wb-mitem .wb-mic { grid-row: 1 / 3; color: var(--wb-ink2); }
+.wb-boardmenu .wb-mitem .wb-mtext { font-size: 13px; font-weight: 550; color: var(--wb-ink); }
+.wb-boardmenu .wb-mitem .wb-mdesc { grid-column: 2 / 4; font-size: 11.5px; line-height: 1.3; color: var(--wb-ink3); white-space: normal; overflow: visible; }
+.wb-boardmenu .wb-mitem kbd { grid-column: 3; grid-row: 1; }
+.wb-boardmenu .wb-mitem:hover, .wb-boardmenu .wb-mitem.kb { background: var(--wb-fill) !important; }
+.wb-boardmenu .wb-mitem.on { background: color-mix(in srgb, var(--wb-accent) 13%, transparent) !important; }
+.wb-boardmenu .wb-mitem.on .wb-mtext::after { content: " · on"; color: var(--wb-accent); font-weight: 500; }
+.wb-boardmenu .wb-mfoot { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--wb-ink3); padding: 5px 8px 1px; border-top: 1px solid var(--wb-line); }
+.wb-boardmenu.wb-mshort .wb-mdesc { display: none; }
+.wb-boardmenu.wb-mshort .wb-mitem { padding: 5px 8px !important; }
+@media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
+  .wb-boardmenu .wb-mlist { grid-template-columns: 1fr; overflow-y: auto; }
+  .wb-boardmenu .wb-mitem { padding: 8px 8px !important; }
+  .wb-boardmenu .wb-mitem .wb-mtext { font-size: 14.5px; }
+  .wb-boardmenu .wb-mfoot { display: none; }
+  .wb-boardmenu .wb-mitem kbd { display: none; }
+}
+
+/* Present without frames: a quiet tip at the top */
+.wb-preshint { position: absolute; top: max(14px, env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 8; display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 12px; border-radius: 12px; background: rgba(40,40,42,.92); color: #fff; font-size: 12.5px; white-space: nowrap; max-width: calc(100% - 24px); }
+.wb-preshint span { overflow: hidden; text-overflow: ellipsis; }
+.wb-preshint button { border: 0; border-radius: 8px; padding: 4px 10px; background: var(--wb-accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; flex: none; }
+.wb-preshint[hidden] { display: none; }
+.wb-boardmenu.wb-mshort .wb-mitem { padding: 3px 8px !important; }
+.wb-boardmenu.wb-mshort .wb-mh { padding: 4px 8px 1px; }
+.wb-boardmenu.wb-mshort .wb-mfoot { display: none; }
+.wb-boardmenu.wb-mshort { gap: 4px; }
