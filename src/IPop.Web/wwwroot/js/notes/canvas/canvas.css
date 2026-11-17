@@ -435,3 +435,9 @@ input.wb-edit { background: var(--wb-surface); padding: 0 8px; outline-width: 2p
   .wb.wb-tight .wb-moremenu[hidden] { display: none !important; }
   .wb-block.wb-tight .wb-moremenu { bottom: 52px; }
 }
+/* board menu: the search box stays put, only the list scrolls; rows never change size on hover */
+.wb-boardmenu { flex-direction: column; align-items: stretch; overflow: hidden; }
+.wb-boardmenu .wb-mlist { overflow-y: auto; overscroll-behavior: contain; min-height: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 1px; }
+.wb-mitem { transition: none; }
+.wb-mitem .wb-mic { display: grid; place-items: center; width: 20px; flex: none; }
+.wb-mitem .wb-mtext { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

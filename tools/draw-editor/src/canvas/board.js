@@ -768,15 +768,32 @@ export function mountCanvas(container, opts) {
     if (opts.shareToChat) add2('Share', 'chat', 'Send to Chat', 'chat');
     return t;
   }
+  // The menu is painted by many things (others' cursors, the timer, a lock change): rebuilding it each time replaced the row
+  // under the pointer, so the hover flickered, the list jumped back to the top and clicks were lost. Now the search box is
+  // built once, the list is rebuilt only when the items themselves change, and "on" states and labels are updated in place.
+  const menuSearch = el('input', 'wb-search');
+  menuSearch.type = 'search'; menuSearch.placeholder = 'Search board tools'; menuSearch.setAttribute('aria-label', 'Search board tools');
+  const menuList = el('div', 'wb-mlist');
+  boardMenu.append(menuSearch, menuList);
+  let menuShape = '';
+  menuSearch.addEventListener('input', () => { boardMenuQ = menuSearch.value; paintBoardMenu(); });
+  menuSearch.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Escape') { boardMenu.hidden = true; paintCorners(); } if (e.key === 'Enter') menuList.querySelector('[data-c]')?.click(); });
   function paintBoardMenu() {
     const q = boardMenuQ.trim().toLowerCase();
     const items = boardTools().filter(x => !q || x.label.toLowerCase().includes(q) || x.group.toLowerCase().includes(q));
     const groups = [...new Set(items.map(x => x.group))];
-    boardMenu.innerHTML = `<input class="wb-search" type="search" placeholder="Search board tools" value="${esc(boardMenuQ)}" aria-label="Search board tools">`
-      + (groups.map(g => `<div class="wb-mh">${g}</div>${items.filter(x => x.group === g).map(x => `<button type="button" role="menuitem" data-c="${x.c}" class="wb-mitem ${x.on ? 'on' : ''}">${icon(x.ic)}<span>${esc(x.label)}</span>${x.hint ? `<kbd>${x.hint}</kbd>` : ''}</button>`).join('')}`).join('') || '<p class="wb-note">Nothing found.</p>');
-    const input = boardMenu.querySelector('.wb-search');
-    input.addEventListener('input', () => { boardMenuQ = input.value; paintBoardMenu(); const i2 = boardMenu.querySelector('.wb-search'); i2.focus(); i2.setSelectionRange(i2.value.length, i2.value.length); });
-    input.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Escape') { boardMenu.hidden = true; paintCorners(); } if (e.key === 'Enter') boardMenu.querySelector('[data-c]')?.click(); });
+    if (menuSearch.value !== boardMenuQ) menuSearch.value = boardMenuQ;
+    const shape = items.map(x => `${x.group}/${x.c}`).join('|');
+    if (shape !== menuShape) {
+      menuShape = shape;
+      menuList.innerHTML = groups.map(g => `<div class="wb-mh">${g}</div>${items.filter(x => x.group === g).map(x => `<button type="button" role="menuitem" data-c="${x.c}" class="wb-mitem"><span class="wb-mic">${icon(x.ic)}</span><span class="wb-mtext"></span>${x.hint ? `<kbd>${x.hint}</kbd>` : ''}</button>`).join('')}`).join('') || '<p class="wb-note">Nothing found.</p>';
+    }
+    // labels and on/off can change without the list changing (a running timer, a lock): update in place
+    for (const x of items) {
+      const b = menuList.querySelector(`[data-c="${x.c}"]`); if (!b) continue;
+      b.classList.toggle('on', !!x.on);
+      const t = b.querySelector('.wb-mtext'); if (t.textContent !== x.label) { t.textContent = x.label; b.title = x.label; }
+    }
   }
   function toggleBoardMenu() {
     if (!boardMenu.hidden) { boardMenu.hidden = true; paintCorners(); return; }
@@ -785,7 +802,8 @@ export function mountCanvas(container, opts) {
     boardMenu.hidden = false;
     paintBoardMenu();
     paintCorners();
-    boardMenu.querySelector('.wb-search')?.focus({ preventScroll: true });
+    menuList.scrollTop = 0;
+    menuSearch.focus({ preventScroll: true });
   }
   // a pick in the menu runs the same action as the chip of the same name
   boardMenu.addEventListener('click', e => {

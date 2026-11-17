@@ -59,3 +59,29 @@ test('mounts, paints and destroys cleanly, with and without awareness, even when
     assert.deepEqual(errors, [], `no errors (awareness: ${withAw})`);
   }
 });
+
+test('the board menu keeps its rows while others move their cursors (no flicker, no scroll jump)', async () => {
+  const { win, el } = setup();
+  const doc = new Y.Doc(), ymap = doc.getMap('wb:board');
+  const aw = new Awareness(doc);
+  aw.setLocalStateField('user', { name: 'Me', color: '#34A853' });
+  try {
+    const inst = mountCanvas(el, { ymap, doc, Y, mode: 'board', theme: 'light', awareness: aw, voteMap: doc.getMap('wbvote:board'), onFullscreen: () => true, toast: () => {} });
+    await tick(40);
+    el.querySelector('.wb-tr [data-c="menu"]').click();
+    await tick(20);
+    const list = el.querySelector('.wb-boardmenu .wb-mlist');
+    assert.ok(list && list.querySelectorAll('.wb-mitem').length > 5, 'menu is open with its tools');
+    const row = list.querySelector('[data-c="find"]');
+    list.scrollTop = 40;
+    // another person moves their cursor many times: every event repaints the corners
+    for (let i = 0; i < 25; i++) {
+      aw.states.set(999, { user: { name: 'Rina Second', color: '#5856D6' }, wb: { board: 'board', x: i * 10, y: 20, sel: [], laser: [] } });
+      aw.emit('change', [{ added: i ? [] : [999], updated: i ? [999] : [], removed: [] }, 'remote']);
+    }
+    await tick(40);
+    assert.equal(list.querySelector('[data-c="find"]'), row, 'the same row element is still there (not rebuilt)');
+    assert.equal(el.querySelector('.wb-boardmenu .wb-mlist'), list, 'the list itself was not replaced');
+    inst.destroy(); aw.destroy(); doc.destroy();
+  } finally { win.happyDOM.abort(); }
+});
