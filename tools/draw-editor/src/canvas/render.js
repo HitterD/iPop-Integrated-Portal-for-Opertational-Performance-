@@ -19,13 +19,13 @@ export const PALETTE = {
   light: {
     ink: '#1D1D1F', ink2: '#424245', ink3: '#86868B', shapeFill: '#FFFFFF', frameFill: 'rgba(0,0,0,.025)', frameLine: 'rgba(0,0,0,.16)',
     connector: '#6E6E73', sel: '#0A84FF', board: '#FBFBFA',
-    sticky: { yellow: '#FFF3A3', green: '#C9F2C7', blue: '#CFE6FF', pink: '#FFD3E1', purple: '#E6DAFF', orange: '#FFDDB8' },
+    sticky: { yellow: '#FFF3A3', green: '#C9F2C7', blue: '#CFE6FF', pink: '#FFD3E1', purple: '#E6DAFF', orange: '#FFDDB8', gray: '#EEEEF0' },
     stickyInk: '#1D1D1F',
   },
   dark: {
     ink: '#F5F5F7', ink2: '#D1D1D6', ink3: '#8E8E93', shapeFill: '#1C1C1E', frameFill: 'rgba(255,255,255,.035)', frameLine: 'rgba(255,255,255,.2)',
     connector: '#A1A1A6', sel: '#409CFF', board: '#141416',
-    sticky: { yellow: '#5A5220', green: '#244A2A', blue: '#1F3B5A', pink: '#5A2638', purple: '#3A2D5A', orange: '#5A3A1C' },
+    sticky: { yellow: '#5A5220', green: '#244A2A', blue: '#1F3B5A', pink: '#5A2638', purple: '#3A2D5A', orange: '#5A3A1C', gray: '#3A3A3E' },
     stickyInk: '#F5F5F7',
   },
 };
@@ -62,8 +62,13 @@ export function strokeOutline(points, size = 3, { simulatePressure = false, kind
     pen: { size: size * 1.25, thinning: 0.55 },
     marker: { size, thinning: 0, start: { cap: true }, end: { cap: true } },
     pencil: { size: size * 1.1, thinning: 0.25 },
+    // round 6 pens: a fineliner never changes width; a brush tapers at both ends; a crayon is a little uneven
+    fine: { size, thinning: 0, start: { cap: true }, end: { cap: true } },
+    brush: { size: size * 1.35, thinning: 0.7, start: { taper: size * 4, cap: true }, end: { taper: size * 5, cap: true } },
+    crayon: { size, thinning: 0.15, start: { cap: true }, end: { cap: true } },
+    neon: { size, thinning: 0, start: { cap: true }, end: { cap: true } },
   }[kind] || { size: size * 1.6, thinning: 0.5 };
-  const outline = getStroke(points.map(p => [p[0], p[1], p[2] ?? 0.5]), { smoothing: 0.5, streamline: 0.45, simulatePressure: kind === 'marker' ? false : simulatePressure, ...o });
+  const outline = getStroke(points.map(p => [p[0], p[1], p[2] ?? 0.5]), { smoothing: 0.5, streamline: 0.45, simulatePressure: kind === 'marker' || kind === 'fine' || kind === 'neon' ? false : simulatePressure, ...o });
   if (!outline.length) return '';
   let d = `M${outline[0][0].toFixed(2)} ${outline[0][1].toFixed(2)}`;
   for (let i = 1; i < outline.length; i++) {
@@ -72,6 +77,20 @@ export function strokeOutline(points, size = 3, { simulatePressure = false, kind
   }
   return d + 'Z';
 }
+
+/// A calligraphy stroke: a flat nib held at 45°, so the line is thick across and thin along that angle. Filled outline.
+export function nibOutline(points, size = 6) {
+  if (!points?.length) return '';
+  const dx = Math.cos(Math.PI / 4) * size / 2, dy = -Math.sin(Math.PI / 4) * size / 2;
+  let d = '';
+  for (let i = 1; i < points.length; i++) {
+    const [ax, ay] = points[i - 1], [bx, by] = points[i];
+    d += `M${(ax - dx).toFixed(2)} ${(ay - dy).toFixed(2)}L${(ax + dx).toFixed(2)} ${(ay + dy).toFixed(2)}L${(bx + dx).toFixed(2)} ${(by + dy).toFixed(2)}L${(bx - dx).toFixed(2)} ${(by - dy).toFixed(2)}Z`;
+  }
+  if (points.length === 1) { const [x, y] = points[0]; d = `M${x - dx} ${y - dy}L${x + dx} ${y + dy}`; }
+  return d;
+}
+const polyline = pts => pts.map((p, i) => `${i ? 'L' : 'M'}${p[0]} ${p[1]}`).join('');
 
 // Outlines of the shape types (box x,y,w,h). Rect/rounded/ellipse use native SVG; the rest are paths.
 export function shapePath(type, x, y, w, h) {
@@ -227,12 +246,32 @@ export function drawElement(g, el, get, opts = {}) {
         const k = Math.max(1, el.width || 2) / 2;
         svgEl('path', { d, fill: color, opacity: 0.85 }, tg);
         for (const [ox, oy, a] of [[0.45, -0.35, 0.3], [-0.35, 0.45, 0.25]]) svgEl('path', { d, fill: color, opacity: a, transform: `translate(${(ox * k).toFixed(2)} ${(oy * k).toFixed(2)})` }, tg);
-      } else if (el.straight) {
-        let d = '';
-        el.points.forEach((p, i) => { d += `${i ? 'L' : 'M'}${p[0]} ${p[1]}`; });
-        svgEl('path', { d, fill: 'none', stroke: color, 'stroke-width': el.width || 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, tg);
+      } else if (el.straight || el.dashed) {
+        // a ruler line, or any pen drawn dashed: a plain stroked line (an outline cannot be dashed)
+        const w = el.width || 2;
+        svgEl('path', { d: polyline(el.points), fill: 'none', stroke: color, 'stroke-width': w, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-dasharray': el.dashed ? `${(w * 2.6).toFixed(1)} ${(w * 2.2).toFixed(1)}` : null }, tg);
+      } else if (el.tool === 'callig') {
+        svgEl('path', { d: nibOutline(el.points, el.width || 6), fill: color, stroke: color, 'stroke-width': 0.6, 'stroke-linejoin': 'round' }, tg);
+      } else if (el.tool === 'crayon') {
+        // wax on paper: the stroke is broken up by a grain pattern (the filter keeps it deterministic, same on every screen)
+        svgEl('path', { d: strokeOutline(el.points, el.width || 7, { kind: 'crayon' }), fill: color, filter: 'url(#wb-crayon)', opacity: 0.92 }, tg);
+      } else if (el.tool === 'neon') {
+        const w = el.width || 3, d = strokeOutline(el.points, w, { kind: 'neon' });
+        svgEl('path', { d: strokeOutline(el.points, w * 2.4, { kind: 'neon' }), fill: color, opacity: 0.35, filter: 'url(#wb-glow)' }, tg);
+        svgEl('path', { d, fill: color }, tg);
+        svgEl('path', { d: strokeOutline(el.points, Math.max(1, w * 0.38), { kind: 'neon' }), fill: '#FFFFFF', opacity: 0.85 }, tg);
       } else {
-        svgEl('path', { d: strokeOutline(el.points, el.width || 3, { simulatePressure: !!el.simulate, kind: el.tool === 'pen' || el.tool === 'marker' ? el.tool : 'legacy' }), fill: color }, tg);
+        const kind = ['pen', 'marker', 'fine', 'brush'].includes(el.tool) ? el.tool : 'legacy';
+        svgEl('path', { d: strokeOutline(el.points, el.width || 3, { simulatePressure: !!el.simulate, kind }), fill: color }, tg);
+      }
+      // an arrow at the end of the stroke, along its last direction
+      if (el.arrowEnd && el.points.length > 1) {
+        const pts = el.points, b = pts.at(-1);
+        let a = pts[Math.max(0, pts.length - 2)];
+        for (let i = pts.length - 2; i >= 0; i--) { a = pts[i]; if (Math.hypot(b[0] - a[0], b[1] - a[1]) > (el.width || 3) * 3) break; }
+        const ang = Math.atan2(b[1] - a[1], b[0] - a[0]), L = Math.max(10, (el.width || 3) * 3.2);
+        const p1 = [b[0] - L * Math.cos(ang - 0.5), b[1] - L * Math.sin(ang - 0.5)], p2 = [b[0] - L * Math.cos(ang + 0.5), b[1] - L * Math.sin(ang + 0.5)];
+        svgEl('path', { d: `M${p1[0].toFixed(2)} ${p1[1].toFixed(2)}L${b[0]} ${b[1]}L${p2[0].toFixed(2)} ${p2[1].toFixed(2)}`, fill: 'none', stroke: color, 'stroke-width': Math.max(2, (el.width || 3) * 0.9), 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, tg);
       }
       break;
     }
@@ -591,12 +630,20 @@ export function defs(svg) {
   svgEl('circle', { cx: 5, cy: 5, r: 4, fill: 'currentColor' }, dot);
   const f = svgEl('filter', { id: 'wb-soft', x: '-20%', y: '-20%', width: '140%', height: '140%' }, d);
   svgEl('feGaussianBlur', { stdDeviation: 3 }, f);
+  // neon pen: a soft glow around the line
+  const glow = svgEl('filter', { id: 'wb-glow', x: '-50%', y: '-50%', width: '200%', height: '200%' }, d);
+  svgEl('feGaussianBlur', { stdDeviation: 4 }, glow);
+  // crayon pen: grain that eats small holes into the stroke (fixed seed, so it looks the same for everyone)
+  const cr = svgEl('filter', { id: 'wb-crayon', x: '-10%', y: '-10%', width: '120%', height: '120%' }, d);
+  svgEl('feTurbulence', { type: 'fractalNoise', baseFrequency: 0.9, numOctaves: 2, seed: 7, result: 'n' }, cr);
+  svgEl('feColorMatrix', { in: 'n', type: 'matrix', values: '0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -2.2 1.55', result: 'm' }, cr);
+  svgEl('feComposite', { in: 'SourceGraphic', in2: 'm', operator: 'in' }, cr);
   return d;
 }
 
 /// Draws every visible element, frames first then by z. Returns the world group.
 export function drawAll(world, els, get, opts) {
-  for (const el of drawOrder(els.filter(e => !e.isDeleted))) drawElement(world, el, get, opts);
+  for (const el of drawOrder(els.filter(e => !e.isDeleted && !e.hide))) drawElement(world, el, get, opts);
 }
 
 /// A standalone SVG string of the given elements (for SVG export and for rasterising to PNG).

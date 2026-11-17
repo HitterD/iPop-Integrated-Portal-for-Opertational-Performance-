@@ -107,6 +107,27 @@ public partial class Notes
 
     // ── Create ───────────────────────────────────────────────────────────────
 
+    /// Template Center → "As a new board page": a new whiteboard beside this page (same parent), named after the template.
+    /// The board puts the template on itself when it opens (the editor keeps which one in session storage).
+    [JSInvokable]
+    public async Task OnNewBoardFromTemplate(string title)
+    {
+        if (creating) return;
+        creating = true;
+        try
+        {
+            var parent = note?.ParentId;
+            var name = string.IsNullOrWhiteSpace(title) ? "Whiteboard" : title.Trim()[..Math.Min(100, title.Trim().Length)];
+            var res = await Auth.SendAsync(HttpMethod.Post, "/api/notes", new CreateNoteRequest(parent, name, null, null, null, null, "board"));
+            if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't create the board", ToastKind.Error); return; }
+            var created = await res.Content.ReadFromJsonAsync<NotePageDto>(Json);
+            if (created is null) return;
+            await LoadSidebarAsync();
+            Nav.NavigateTo($"/notes/{created.Id}");
+        }
+        finally { creating = false; await InvokeAsync(StateHasChanged); }
+    }
+
     /// One click: a blank page (under <paramref name="parent"/>), opened with the title focused.
     private Task CreateBlank(Guid? parent) => CreateBlank(parent, "page");
 

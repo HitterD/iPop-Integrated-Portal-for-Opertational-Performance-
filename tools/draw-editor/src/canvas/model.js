@@ -247,7 +247,7 @@ export function hits(el, px, py, get, tol = 6) {
 
 /// The top-most element under the point, or null. Locked elements are found too (so they can be unlocked) but report it.
 export function hitTest(els, px, py, get, tol) {
-  const ordered = drawOrder(els.filter(e => !e.isDeleted)).reverse();
+  const ordered = drawOrder(els.filter(e => !e.isDeleted && !e.hide)).reverse();
   return ordered.find(e => hits(e, px, py, get, tol)) || null;
 }
 

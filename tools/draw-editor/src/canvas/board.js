@@ -15,7 +15,7 @@ import { graphicsFor, layoutTree, layoutRadial, layoutOrganic, layoutNetwork, fi
 import { checkFlow, stepNumbers, nextHints, placeNext, layoutFlow, hasFlowchart, facingSide, nearestSide, portPoint, fractionAt } from './flow.js';
 import { fromMermaid, drawioModel, fromDrawioModel } from './importers.js';
 import { svgEl, defs, drawElement, PALETTE, toPng, toSvg, measure, FONT_STACK, layoutText, pngToPdf } from './render.js';
-import { CANVAS_TEMPLATES, TEMPLATE_INFO } from './templates.js';
+import { CANVAS_TEMPLATES, TEMPLATE_INFO, TEMPLATE_META, buildTemplate } from './templates.js';
 import { toggleMark, toggleBullets, makeLink } from './richtext.js';
 
 const ICONS = {
@@ -95,6 +95,13 @@ ICONS.alignvc = '<path d="M3 12h18M7 6v12M15 8v8"/>';
 ICONS.alignbottom = '<path d="M3 20h18M7 6v10M15 10v6"/>';
 ICONS.distx = '<rect x="3" y="8" width="4" height="8"/><rect x="10" y="8" width="4" height="8"/><rect x="17" y="8" width="4" height="8"/>';
 ICONS.disty = '<rect x="8" y="3" width="8" height="4"/><rect x="8" y="10" width="8" height="4"/><rect x="8" y="17" width="8" height="4"/>';
+ICONS.plusc = '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>';
+ICONS.plus = '<path d="M12 5v14M5 12h14"/>';
+ICONS.star = '<path d="m12 3 2.7 5.6 6.2.9-4.5 4.3 1 6.1L12 17l-5.5 2.9 1-6.1L3 9.5l6.2-.9z"/>';
+ICONS.user = '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>';
+ICONS.users = '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20a6 6 0 0 1 12 0M14 20a4 4 0 0 1 7 0"/>';
+ICONS.list = '<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>';
+ICONS.arrowr = '<path d="M5 12h14M13 6l6 6-6 6"/>';
 const HEAD_GLYPH = { none: '', arrow: '➤', open: '›', filled: '▶', diamond: '◇', dot: '●', crow: '⋔', one: '‖' };
 const HEADS = [['none', 'None'], ['arrow', 'Arrow'], ['open', 'Open'], ['filled', 'Filled'], ['diamond', 'Diamond'], ['dot', 'Dot'], ['crow', 'Many (crow\'s foot)'], ['one', 'One']];
 const icon = (name, cls = 'wb-i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
@@ -105,18 +112,38 @@ const BRIGHT = ['auto', '#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#30B0C7', '
 const SOFT = ['#8E8E93', '#FFB3AE', '#FFD29A', '#FFE88A', '#A8E6B4', '#A6E3EC', '#A9CFFF', '#DCC1F2'];
 const ALL_COLOURS = [...BRIGHT, ...SOFT];
 // Pen types: sizes are the S/M/L/XL presets in screen px at 100 %; the slider goes 1–40.
+// Round 6: nine pens, each with its own silhouette in the bar (svg(colour) in a 28×44 box), its own stroke and its own sizes.
+const WOOD = '#E9C78E';
 const PEN_TYPES = {
-  pen: { label: 'Pen', sizes: [2, 4, 8, 14], size: 4, color: 'auto' },
-  marker: { label: 'Marker', sizes: [4, 8, 14, 24], size: 8, color: '#FF3B30' },
-  highlighter: { label: 'Highlight', sizes: [10, 16, 24, 36], size: 16, color: '#FFCC00' },
-  pencil: { label: 'Pencil', sizes: [1, 2, 4, 7], size: 2, color: 'auto' },
+  pen: { label: 'Pen', sub: 'Pressure, like a ballpoint', sizes: [2, 3, 5, 8], size: 3, color: 'auto',
+    svg: c => `<path class="nb" d="M10 44V17l4-11 4 11v27z"/><path d="M10 17h8" class="nl"/><path d="m12.4 10.4 1.6-4.4 1.6 4.4z" fill="${c}"/><rect class="nb2" x="10" y="28" width="8" height="3"/>` },
+  fine: { label: 'Fineliner', sub: 'Thin, even line for writing', sizes: [1, 1.5, 2.5, 4], size: 1.5, color: 'auto',
+    svg: c => `<path class="nb" d="M11 44V20l3-6 3 6v24z"/><rect x="13.2" y="3" width="1.6" height="11.5" rx=".6" fill="${c}"/><rect x="11" y="32" width="6" height="12" fill="${c}" opacity=".85"/>` },
+  marker: { label: 'Marker', sub: 'Bold and round, for headings', sizes: [4, 6, 9, 14], size: 6, color: '#0A84FF',
+    svg: c => `<path class="nb" d="M7 44V21q0-3 3-3h8q3 0 3 3v23z"/><path d="M9.5 18v-6q0-5 4.5-5t4.5 5v6z" fill="${c}"/><rect x="7" y="30" width="14" height="5" fill="${c}"/>` },
+  highlighter: { label: 'Highlighter', sub: 'See-through, goes under text', sizes: [8, 12, 18, 26], size: 12, color: '#FFD60A',
+    svg: c => `<path class="nb" d="M6 44V22q0-2 2-2h12q2 0 2 2v22z"/><path d="M9 20V9l10-5v16z" fill="${c}" opacity=".85"/><path d="M9 20V9l10-5v16z" fill="none" class="nl"/><rect x="6" y="31" width="16" height="4" fill="${c}" opacity=".85"/>` },
+  pencil: { label: 'Pencil', sub: 'Soft and grainy, for sketching', sizes: [1.5, 2.5, 4, 6], size: 2.5, color: 'auto',
+    svg: c => `<path d="M10 44V18h8v26z" fill="#F4C430" class="nl"/><path d="M12.7 18v26M15.3 18v26" stroke="rgba(0,0,0,.12)" stroke-width=".6"/><path d="M10 18l4-12 4 12z" fill="${WOOD}" class="nl"/><path d="m12.6 10.2 1.4-4.2 1.4 4.2z" fill="${c}"/>` },
+  brush: { label: 'Brush', sub: 'Tapered ends, painterly', sizes: [4, 7, 11, 16], size: 7, color: '#FF2D55',
+    svg: c => `<rect class="nb2" x="12" y="24" width="4" height="20" rx="1.5"/><rect x="11" y="17" width="6" height="8" rx="1" fill="#B8B8BE" class="nl"/><path d="M14 2c-3.5 5-4 10-3 15h6c1-5 .5-10-3-15z" fill="${c}"/>` },
+  callig: { label: 'Calligraphy', sub: 'Thick and thin by direction', sizes: [4, 6, 9, 13], size: 6, color: 'auto',
+    svg: c => `<path class="nb" d="M10 44V18h8v26z"/><path d="M10 18 14 3l4 15z" fill="${c}"/><path d="M14 8v8" stroke="var(--wb-nib)" stroke-width=".8"/><circle cx="14" cy="15.5" r="1" fill="var(--wb-nib)"/>` },
+  crayon: { label: 'Crayon', sub: 'Waxy texture, fun for workshops', sizes: [4, 7, 10, 14], size: 7, color: '#FF9500',
+    svg: c => `<path d="M9 44V18h10v26z" fill="${c}"/><rect class="nb" x="9" y="24" width="10" height="14"/><path d="M11 29h6M11 33h4" stroke="${c}" stroke-width="1"/><path d="M9 18l2-9h6l2 9z" fill="${c}"/><path d="M11 9q3-3 6 0" fill="${c}"/>` },
+  neon: { label: 'Neon', sub: 'Glowing line for presenting', sizes: [2, 3, 5, 8], size: 3, color: '#30D5FF',
+    svg: c => `<path class="nb" d="M9 44V20q0-2 2-2h6q2 0 2 2v24z"/><circle cx="14" cy="10" r="5" fill="${c}" opacity=".35"/><path d="M11.5 18v-6q0-3 2.5-3t2.5 3v6z" fill="${c}"/><rect x="9" y="30" width="10" height="3" fill="${c}"/>` },
 };
-const ERASER_SIZES = [8, 16, 32, 56];
+const ERASER_SVG = `<rect class="nb" x="8" y="22" width="12" height="22" rx="1"/><rect x="8" y="8" width="12" height="15" rx="3" fill="#FF9EB0" class="nl"/><rect x="8" y="20" width="12" height="4" fill="#5E8DE6"/>`;
+const HL_COLOURS = ['#FFD60A', '#A8F07A', '#FF8FB1', '#7FD3FF', '#FFB35C', '#C7A6FF'];
+// the 12 colours shown in the pen bar (the rest are behind ⊕)
+const BAR_COLOURS = ['#FF3B30', '#FF2D55', '#FF9500', '#FFCC00', '#34C759', '#A8E6B4', '#0A84FF', '#A9CFFF', '#5E5CE6', '#C3B4F5', '#8E8E93', 'auto'];
+const ERASER_SIZES = [8, 16, 28, 44];
 const SIZE_NAMES = ['Small', 'Medium', 'Large', 'Extra large'];
 const PREFS_KEY = 'ipop.wb.prefs';
 /// Per person, per browser: the last pen, sizes, colours. Never shared, so a broken entry only resets the defaults.
 function loadPrefs() {
-  const base = { ptype: 'pen', size: { eraser: 16 }, color: {}, smooth: 50, erMode: 'whole', snap: true, recent: [], opacity: 100 };
+  const base = { ptype: 'pen', size: { eraser: 16 }, color: {}, smooth: 50, erMode: 'whole', snap: true, recent: [], opacity: 100, arrowEnd: false, dashed: false };
   for (const [k, v] of Object.entries(PEN_TYPES)) { base.size[k] = v.size; base.color[k] = v.color; }
   try {
     const s = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null');
@@ -128,6 +155,8 @@ function loadPrefs() {
       if (s.erMode === 'part') base.erMode = 'part';
       if (s.snap === false) base.snap = false;
       if (Array.isArray(s.recent)) base.recent = s.recent.filter(c => /^#[0-9a-f]{6}$/i.test(c)).slice(0, 8);
+      if (s.arrowEnd === true) base.arrowEnd = true;
+      if (s.dashed === true) base.dashed = true;
     }
   } catch { /* private window or bad entry: defaults */ }
   return base;
@@ -274,7 +303,8 @@ export function mountCanvas(container, opts) {
     let g = 24 * view.z; if (!(g > 0.01)) g = 24; while (g < 12) g *= 2;
     root.style.backgroundSize = `${g}px ${g}px`;
     root.style.backgroundPosition = `${view.x}px ${view.y}px`;
-    const els = allEls;
+    // hidden "How to use" notes stay on the board but are not drawn (More → Show them again)
+    const els = allEls.filter(x => !x.hide);
     const rulesKey = JSON.stringify(rulesNow());
     const UNDER = x => x.type === 'frame' || isContainer(x);
     const ordered = [...els].sort((p, q) => UNDER(p) !== UNDER(q) ? (UNDER(p) ? -1 : 1) : (p.z < q.z ? -1 : p.z > q.z ? 1 : p.id < q.id ? -1 : 1));
@@ -387,6 +417,7 @@ export function mountCanvas(container, opts) {
   // one phone breakpoint for the whole app: ask ipop.mobile (same query as the CSS)
   const isPhone = () => { try { return !!window.ipop?.mobile?.isMobile?.(); } catch { return false; } };
   let moreOpen = false;
+  let dockReady = false;   // the dock section below has run (paintToolbar is called before it during start-up)
   let tight = false;   // the board is narrower than the full tool bar
   const moreMenu = el('div', 'wb-menu wb-moremenu'); moreMenu.hidden = true;
   root.append(moreMenu);
@@ -409,6 +440,9 @@ export function mountCanvas(container, opts) {
     setTool(k);
   });
   function paintToolbar() {
+    // the Whiteboard page on a wide screen uses the dock instead (round 6)
+    if (dockReady && dockOn()) { toolbar.hidden = true; paintDock(); return; }
+    if (dockReady) { dock.hidden = true; ctxBar.hidden = true; root.classList.remove('wb-hasdock'); }
     if (readOnly) {
       // viewers still get the hand and the laser pointer (pointing during a meeting)
       toolbar.hidden = false;
@@ -428,7 +462,7 @@ export function mountCanvas(container, opts) {
       const pk = k === 'pen' ? (tool === 'highlighter' ? 'highlighter' : prefs.ptype) : null;
       const ic = k === 'sticky' ? `<span class="wb-stk" style="background:${pal().sticky[stickyColor]}"></span>`
         : k === 'shape' ? icon(lastShape)
-        : pk ? `${icon(pk === 'pen' ? 'pen' : pk)}<span class="wb-pendot" style="background:${colourCss(prefs.color[pk])}"></span>`
+        : pk ? `${ICONS[pk] ? icon(pk) : icon('pen')}<span class="wb-pendot" style="background:${colourCss(prefs.color[pk])}"></span>`
         : icon(k);
       return `<button type="button" data-tool="${k}" class="${on ? 'on' : ''}" title="${label} (${key})" aria-label="${label}" aria-pressed="${on}">${ic}<span class="wb-k">${key}</span></button>`;
     }).join('') + (phone ? `<button type="button" data-tool="more" class="${moreOpen ? 'on' : ''}" title="More tools" aria-label="More tools" aria-expanded="${moreOpen}">${icon('more')}</button>` : '') + (compact && opts.onPopOut ? `<span class="wb-sep"></span><button type="button" data-act="popout" title="Open in a new tab" aria-label="Open in a new tab">${icon('newtab')}</button>` : '') + (compact && opts.onFullscreen ? `<button type="button" data-act="fullscreen" title="Open full screen" aria-label="Open full screen"><svg class="wb-i" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>` : '');
@@ -504,7 +538,7 @@ export function mountCanvas(container, opts) {
     }
     const t = prefs.ptype, def = PEN_TYPES[t], s = prefs.size[t];
     penPop.setAttribute('aria-label', 'Pen options');
-    penPop.innerHTML = `<div class="wb-pb"><div class="wb-ph5">Pen</div><div class="wb-ptypes">${Object.entries(PEN_TYPES).map(([k, v]) => `<button type="button" data-pt="${k}" class="${t === k ? 'on' : ''}" aria-pressed="${t === k}">${icon(k === 'pen' ? 'pen' : k)}<span>${v.label}</span></button>`).join('')}</div></div>
+    penPop.innerHTML = `<div class="wb-pb"><div class="wb-ph5">Pen</div><div class="wb-ptypes">${Object.entries(PEN_TYPES).map(([k, v]) => `<button type="button" data-pt="${k}" class="${t === k ? 'on' : ''}" aria-pressed="${t === k}" title="${v.sub}"><span class="wb-ptsvg"><svg viewBox="0 0 28 44" aria-hidden="true">${v.svg(colourCss(prefs.color[k]))}</svg></span><span>${v.label}</span></button>`).join('')}</div></div>
       <div class="wb-pb"><div class="wb-ph5">Size</div><div class="wb-sizes">${def.sizes.map((v, i) => `<button type="button" data-sz="${v}" class="${s === v ? 'on' : ''}" title="${SIZE_NAMES[i]} · ${v} px" aria-label="${SIZE_NAMES[i]}"><i class="wb-dotsz" style="width:${Math.min(22, 3 + v * 0.7)}px;height:${Math.min(22, 3 + v * 0.7)}px"></i></button>`).join('')}</div>
         <label class="wb-rl"><span>Custom</span><b>${s} px</b></label><input type="range" min="1" max="40" value="${s}" data-range="size" aria-label="Pen size">
         <canvas class="wb-prev" height="40" aria-hidden="true"></canvas></div>
@@ -642,6 +676,8 @@ export function mountCanvas(container, opts) {
   const popKeys = e => {
     // Esc closes the open pop-up wherever focus is: after clicking a chip the chip has focus, not the board
     const mine = t => t === document.body || root.contains(t);
+    if (e.key === 'Escape' && dockReady && !tcOverlay.hidden) { e.stopPropagation(); e.preventDefault(); const bp = tc.querySelector('.wb-bp'); if (bp && !bp.hidden) { tcs.bp = null; bp.hidden = true; } else closeCenter(); return; }
+    if (e.key === 'Escape' && dockReady && (!ctxPop.hidden || !picker.hidden || !morePanel.hidden) && mine(e.target) && !e.target.closest?.('textarea, [contenteditable="true"], .wb-edit')) { e.stopPropagation(); ctxPop.hidden = true; picker.hidden = true; morePanel.hidden = true; paintDock(); root.focus({ preventScroll: true }); return; }
     if (e.key === 'Escape' && penPop.hidden && colourPop.hidden && mine(e.target) && !e.target.closest?.('textarea, [contenteditable="true"], .wb-edit')) {
       if (!propsMore.hidden) { e.stopPropagation(); propsMore.hidden = true; root.focus({ preventScroll: true }); return; }
       if (!gallery.hidden) { e.stopPropagation(); gallery.hidden = true; root.focus({ preventScroll: true }); return; }
@@ -686,9 +722,718 @@ export function mountCanvas(container, opts) {
     shapeMenu.hidden = true;
     if (t !== 'pen' && t !== 'highlighter' && t !== 'eraser') penPop.hidden = true;
     eraserRing.hidden = t !== 'eraser';
+    if (t === 'pen' || t === 'highlighter' || t === 'eraser') dockKind = 'pen';
+    else if (SHAPES.includes(t) && dockKind !== 'flow') dockKind = 'shape';
+    else if (!['select', 'hand', 'laser', 'comment'].includes(t) && dockKind !== 'flow') dockKind = t;
+    if (t === 'select' && dockKind === 'pen') dockKind = null;
     paintToolbar(); render();
+    if (typeof paintDock === 'function') paintDock();
+    paintEmpty(count() === 0);
   }
 
+  // ══ Round 6: the dock, one contextual bar, Task / Pages picker, the More panel and the Template Center ══════════
+  // The dock (big picture tiles like ClickUp) is used on the Whiteboard page, full screen and the pop-out tab; a /draw block
+  // and a phone keep the small icon bar. The bar above the dock follows the active tool or what is selected; it replaces the
+  // floating selection bar and the pen popover on the dock (they stay for the small bar).
+  // the dock needs about 940 px; a narrower board keeps the small bar (which itself goes to "More" when tight)
+  // narrower than ~1060 px the tiles shrink (a laptop with both sidebars open is about 880 px); under 720 px the small bar is back
+  const dockOn = () => mode === 'board' && !readOnly && !isPhone() && !tight && root.clientWidth >= 720;
+  const dock = el('div', 'wb-dock'); dock.setAttribute('role', 'toolbar'); dock.setAttribute('aria-label', 'Tools'); dock.hidden = true;
+  const ctxBar = el('div', 'wb-ctx'); ctxBar.setAttribute('role', 'toolbar'); ctxBar.setAttribute('aria-label', 'Options'); ctxBar.hidden = true;
+  const ctxPop = el('div', 'wb-ctxpop'); ctxPop.hidden = true; ctxPop.setAttribute('role', 'dialog');
+  const picker = el('div', 'wb-picker'); picker.hidden = true; picker.setAttribute('role', 'dialog'); picker.setAttribute('aria-label', 'Add a task or a page');
+  const morePanel = el('div', 'wb-morep'); morePanel.hidden = true; morePanel.setAttribute('role', 'dialog'); morePanel.setAttribute('aria-label', 'More tools');
+  const dockWrap = el('div', 'wb-dockwrap');
+  dockWrap.append(ctxPop, picker, morePanel, ctxBar, dock);
+  root.append(dockWrap);
+  for (const n of [dockWrap]) n.addEventListener('pointerdown', e => e.stopPropagation());
+  const tcOverlay = el('div', 'wb-tcov'); tcOverlay.hidden = true;
+  const tc = el('div', 'wb-tc'); tc.setAttribute('role', 'dialog'); tc.setAttribute('aria-label', 'Template Center'); tc.setAttribute('aria-modal', 'true');
+  tcOverlay.append(tc);
+  root.append(tcOverlay);
+  tcOverlay.addEventListener('pointerdown', e => { e.stopPropagation(); if (e.target === tcOverlay) closeCenter(); });
+
+  // tile pictures (ClickUp-like): drawn here so they follow the theme through CSS variables
+  const ART = {
+    card: `<svg width="56" height="46" viewBox="0 0 56 46"><rect x="4" y="8" width="48" height="44" rx="6" class="wb-a-card"/><circle cx="12" cy="17" r="3.2" fill="none" stroke="#86868B" stroke-width="1.4"/><path d="m10.6 17 1 1 2-2" stroke="#86868B" stroke-width="1.2" fill="none"/><text x="18" y="20" font-size="8" font-weight="600" class="wb-a-ink">Task</text><rect x="9" y="27" width="16" height="4" rx="2" fill="#C9C9CF"/><rect x="29" y="26" width="18" height="6" rx="3" fill="#0A84FF"/><rect x="9" y="36" width="12" height="4" rx="2" fill="#C9C9CF"/></svg>`,
+    shape: () => `<svg width="54" height="46" viewBox="0 0 54 46"><g transform="translate(5 10)" class="wb-a-shape">${tileShape(lastShape)}</g></svg>`,
+    connector: `<svg width="40" height="50" viewBox="0 0 40 50"><path d="M20 50V10M10 20l10-10 10 10" class="wb-a-line" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    sticky: () => `<svg width="56" height="48" viewBox="0 0 56 48"><path d="M8 12h40v28l-8 10H8z" fill="${pal().sticky[stickyColor] || '#FFE27A'}"/><path d="M48 40h-8v10z" fill="rgba(0,0,0,.12)"/></svg>`,
+    text: `<svg width="48" height="46" viewBox="0 0 48 46"><rect x="6" y="10" width="36" height="40" rx="7" fill="#2C2C2E"/><path d="M16 20h16M24 20v18" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/></svg>`,
+    frame: `<svg width="54" height="46" viewBox="0 0 54 46"><rect x="16" y="8" width="18" height="7" rx="2" fill="#636366"/><rect x="5" y="14" width="44" height="36" rx="5" fill="#3A3A3C"/></svg>`,
+    image: `<svg width="54" height="46" viewBox="0 0 54 46"><rect x="5" y="10" width="44" height="40" rx="5" fill="#A9D0FA" stroke="#D9C38A" stroke-width="2"/><circle cx="38" cy="20" r="4" fill="#FFD24A"/><path d="M5 44 20 28l10 10 6-6 13 12v6H5z" fill="#F2B544"/></svg>`,
+    flow: `<svg width="58" height="48" viewBox="0 0 58 48"><rect x="4" y="14" width="50" height="38" rx="6" class="wb-a-card"/><circle cx="12" cy="30" r="3.5" fill="#AF52DE"/><path d="M15 30h6M31 30h4" stroke="#0A84FF" stroke-width="1.5"/><rect x="21" y="26" width="10" height="8" rx="2" fill="#0A84FF"/><path d="m40 24 5 6-5 6-5-6z" fill="#34C759"/><rect x="40" y="18" width="10" height="4" rx="2" fill="#FF2D55"/><rect x="40" y="40" width="10" height="4" rx="2" fill="#34C759"/></svg>`,
+    mind: `<svg width="58" height="48" viewBox="0 0 58 48"><rect x="4" y="14" width="50" height="38" rx="6" class="wb-a-card"/><rect x="22" y="28" width="14" height="7" rx="3.5" fill="#FF9500"/><path d="M22 31c-4 0-4-8-8-8M22 31c-4 0-4 8-8 8M36 31c4 0 4-8 8-8M36 31c4 0 4 8 8 8" stroke="#86868B" fill="none"/><rect x="6" y="20" width="9" height="5" rx="2.5" fill="#0A84FF"/><rect x="6" y="37" width="9" height="5" rx="2.5" fill="#34C759"/><rect x="43" y="20" width="9" height="5" rx="2.5" fill="#AF52DE"/><rect x="43" y="37" width="9" height="5" rx="2.5" fill="#FF2D55"/></svg>`,
+    tpl: `<svg width="58" height="48" viewBox="0 0 58 48"><rect x="10" y="12" width="40" height="34" rx="5" fill="#E5DBF7" transform="rotate(-8 30 30)"/><rect x="8" y="14" width="42" height="36" rx="5" class="wb-a-card"/><rect x="12" y="19" width="16" height="12" rx="2" fill="#FADDE3"/><rect x="30" y="19" width="16" height="12" rx="2" fill="#D6F1DE"/><rect x="12" y="33" width="16" height="12" rx="2" fill="#D8E7FC"/><rect x="30" y="33" width="16" height="12" rx="2" fill="#FDE3C6"/></svg>`,
+    more: `<svg width="56" height="48" viewBox="0 0 56 48"><defs><linearGradient id="wb-mg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF9500"/><stop offset=".5" stop-color="#FF2D55"/><stop offset="1" stop-color="#AF52DE"/></linearGradient></defs><rect x="8" y="12" width="40" height="36" rx="9" fill="url(#wb-mg)"/><circle cx="20" cy="24" r="4" fill="#fff"/><circle cx="36" cy="24" r="4" fill="#fff" opacity=".85"/><circle cx="20" cy="38" r="4" fill="#fff" opacity=".85"/><circle cx="36" cy="38" r="4" fill="#fff" opacity=".7"/></svg>`,
+  };
+  const tileShape = t => t === 'ellipse' ? '<ellipse cx="22" cy="20" rx="20" ry="18"/>' : t === 'diamond' ? '<path d="M22 1 43 20 22 39 1 20z"/>' : t === 'triangle' ? '<path d="M22 2 43 38H1z"/>' : '<rect x="0" y="0" width="44" height="40" rx="5"/>';
+  const penSvg = (k, c) => `<svg viewBox="0 0 28 44" aria-hidden="true">${k === 'eraser' ? ERASER_SVG : PEN_TYPES[k].svg(c)}</svg>`;
+  const penColourCss = k => { const c = prefs.color[k]; return isHex(c) ? c : pal().ink; };
+  // the dock tiles: [key, label, shortcut]
+  const TILES = () => [
+    ...(opts.pages || opts.taskSearch ? [['card', 'Task or page', '⇧T']] : []),
+    ['pen', 'Pen', 'P'], ['shape', 'Shape', 'R'], ['connector', 'Connector', 'A'], ['sticky', 'Sticky note', 'S'], ['text', 'Text', 'T'], ['frame', 'Frame', 'F'],
+    ...(opts.upload ? [['image', 'Picture or file', 'I']] : []), ['flow', 'Flowchart', ''], ['mind', 'Mind map', ''], ['tpl', 'Templates', '⇧G'], ['more', 'More', ''],
+  ];
+  let dockKind = null;   // pen | shape | connector | sticky | text | frame | image | flow | mind (what the bar shows when nothing is selected)
+  function dockActive(k) {
+    if (k === 'card') return !picker.hidden;
+    if (k === 'more') return !morePanel.hidden;
+    if (k === 'pen') return tool === 'pen' || tool === 'highlighter' || tool === 'eraser';
+    if (k === 'shape') return SHAPES.includes(tool);
+    if (k === 'flow' || k === 'mind' || k === 'image') return dockKind === k;
+    return tool === k;
+  }
+  function paintDock() {
+    if (!dockOn()) { dock.hidden = true; ctxBar.hidden = true; ctxPop.hidden = true; root.classList.remove('wb-hasdock'); return; }
+    dock.hidden = false; root.classList.add('wb-hasdock'); root.classList.toggle('wb-dock-s', root.clientWidth < 1060);
+    requestAnimationFrame(layoutBars);
+    const small = [['select', 'Select', 'V'], ['hand', 'Hand', 'H'], ...(opts.comments ? [['comment', 'Comment', 'C']] : []), ['laser', 'Laser pointer', 'L']];
+    const ptype = tool === 'eraser' ? 'eraser' : penKind();
+    dock.innerHTML = `<div class="wb-dsmall">${small.map(([k, l, key]) => `<button type="button" data-dtool="${k}" class="${tool === k ? 'on' : ''}" title="${l} (${key})" aria-label="${l}" aria-pressed="${tool === k}">${icon(k)}<span class="wb-k">${key}</span></button>`).join('')}</div>
+      <div class="wb-tiles">${TILES().map(([k, l, key]) => {
+        const art = k === 'pen' ? `<span class="wb-penart">${penSvg(ptype, penColourCss(ptype === 'eraser' ? 'pen' : ptype))}</span>` : typeof ART[k] === 'function' ? ART[k]() : ART[k];
+        const on = dockActive(k);
+        return `<button type="button" class="wb-tile ${on ? 'on' : ''}" data-tile="${k}" title="${l}${key ? ` (${key})` : ''}" aria-label="${l}" aria-pressed="${on}"><span class="wb-tk">${key}</span><span class="wb-art">${art}</span><span class="wb-tl2">${l}</span></button>`;
+      }).join('')}</div>
+      <div class="wb-dur"><button type="button" data-dact="undo" title="Undo (Ctrl Z)" aria-label="Undo" ${undo.undoStack.length ? '' : 'disabled'}>${icon('undo')}</button><button type="button" data-dact="redo" title="Redo (Ctrl Y)" aria-label="Redo" ${undo.redoStack.length ? '' : 'disabled'}>${icon('redo')}</button></div>`;
+    paintCtx();
+  }
+  // ── the contextual bar ──
+  const dd = '<span class="wb-dd" aria-hidden="true">▾</span>';
+  const sep = '<span class="wb-sep"></span>';
+  const cb = (attrs, inner, title = '', cls = '') => `<button type="button" class="wb-cb ${cls}" ${attrs} ${title ? `title="${esc(title)}" aria-label="${esc(title)}"` : ''}>${inner}</button>`;
+  const dot = c => `<span class="wb-dot" style="background:${c === 'none' ? 'transparent' : isHex(c) ? c : pal().ink}"></span>`;
+  // defaults the bar sets for the next shape / connector / text (only used when nothing is selected)
+  const next = { fill: null, stroke: null, font: 'ipop', size: 18, align: 'center', route: 'straight', endHead: 'arrow', startHead: 'none', dashed: false, width: 2, frameSize: '16:9', mindLayout: 'both' };
+  function paintCtx() {
+    if (!dockOn()) { ctxBar.hidden = true; return; }
+    const h = ctxHtml();
+    ctxBar.hidden = !h;
+    if (ctxBar._html !== h) { ctxBar._html = h; ctxBar.innerHTML = h; }
+    if (!h) ctxPop.hidden = true;
+  }
+  const selected = () => [...sel].map(get).filter(Boolean);
+  function ctxHtml() {
+    if (interaction || editing) return ctxBar._html || '';
+    const els = selected();
+    if (els.length) return selCtx(els);
+    if (tool === 'pen' || tool === 'highlighter' || tool === 'eraser') return penCtx();
+    if (SHAPES.includes(tool) && dockKind !== 'flow') return shapeCtx(null);
+    if (dockKind === 'flow') return flowCtx();
+    if (tool === 'connector') return connCtx(null);
+    if (tool === 'sticky') return stickyCtx(null);
+    if (tool === 'text') return textCtx(null);
+    if (tool === 'frame') return frameCtx();
+    if (dockKind === 'image') return imageCtx();
+    if (dockKind === 'mind') return mindCtx();
+    return '';
+  }
+  function penCtx() {
+    const k = tool === 'eraser' ? 'eraser' : penKind();
+    const pens = [...Object.keys(PEN_TYPES), 'eraser'].map(p => `<button type="button" class="wb-nib ${p === k ? 'on' : ''}" data-pen="${p}" title="${p === 'eraser' ? 'Eraser — whole strokes or part of a stroke' : `${PEN_TYPES[p].label} — ${PEN_TYPES[p].sub}`}" aria-label="${p === 'eraser' ? 'Eraser' : PEN_TYPES[p].label}" aria-pressed="${p === k}">${penSvg(p, penColourCss(p === 'eraser' ? 'pen' : p))}</button>`).join('');
+    if (k === 'eraser') return pens + sep + ['whole', 'part'].map(m => cb(`data-erm="${m}"`, m === 'whole' ? 'Whole stroke' : 'Part of a stroke', '', `wb-txt ${prefs.erMode === m ? 'on' : ''}`)).join('') + sep
+      + ERASER_SIZES.map((v, i) => cb(`data-esz="${v}"`, `<i class="wb-szd" style="width:${4 + i * 3.4}px;height:${4 + i * 3.4}px"></i>`, `${SIZE_NAMES[i]} · ${v} px`, prefs.size.eraser === v ? 'on' : '')).join('');
+    const def = PEN_TYPES[k], cur = prefs.color[k];
+    // a narrow board keeps 6 colours in the bar; the rest are one click away behind ⊕
+    const narrow = root.clientWidth < 1060;
+    const cols = (k === 'highlighter' ? HL_COLOURS : narrow ? ['#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#0A84FF', 'auto'] : BAR_COLOURS).map(c => cb(`data-pcol="${c}"`, dot(c), c === 'auto' ? 'Black or white (follows the theme)' : c, `wb-sw ${cur === c ? 'on' : ''}`)).join('') + cb('data-cp="pencolours"', icon('plusc'), 'More colours, recent, any colour');
+    const sizes = def.sizes.map((v, i) => cb(`data-psz="${v}"`, `<i class="wb-szd" style="width:${4 + i * 3.4}px;height:${4 + i * 3.4}px"></i>`, `${SIZE_NAMES[i]} · ${v} px`, prefs.size[k] === v ? 'on' : '')).join('');
+    return pens + sep + cols + sep + sizes + sep + (opts.prefs ? cb('data-cp="mypens"', `${icon('star')}<span>My pens</span>${dd}`, 'Your saved pens', 'wb-txt') : '') + cb('data-cp="penadv"', '⌄', 'More pen options');
+  }
+  const fontBtn = f => cb('data-cp="font"', `<span style="font-family:${(FONT_STACK[f || 'ipop']).replace(/"/g, "'")}">Aa</span>${dd}`, 'Font', 'wb-txt');
+  const sizeName = s => (SIZES.find(([, v]) => v === s)?.[0] ? { S: 'Small', M: 'Medium', L: 'Large', XL: 'Extra large' }[SIZES.find(([, v]) => v === s)[0]] : 'Medium');
+  const sizeBtn = s => cb('data-cp="size"', `${sizeName(s)}${dd}`, 'Text size', 'wb-txt');
+  const alignBtn = cb('data-cp="align"', `${icon('alignhc')}${dd}`, 'Text align');
+  function shapeCtx(s) {
+    const row = ICON_SHAPES.map(t => cb(`data-shape="${t}"`, icon(t), SHAPE_LABEL[t], (s ? s.type === t : tool === t) ? 'on' : '')).join('') + cb('data-cp="moreshapes"', 'More shapes', 'All shapes and stencils', 'wb-txt');
+    const fill = s ? (s.fill || 'auto') : (next.fill || 'auto'), line = s ? (s.stroke || 'auto') : (next.stroke || 'auto');
+    return row + sep + cb('data-cp="fill"', dot(fill === 'auto' ? pal().shapeFill : fill) + dd, 'Fill') + cb('data-cp="line"', `<span class="wb-ringd" style="--c:${isHex(line) ? line : pal().ink}"></span>${dd}`, 'Line: colour, width, dashed') + fontBtn(s?.font || next.font) + sizeBtn(s?.size || next.size) + alignBtn;
+  }
+  function connCtx(c) {
+    const route = c ? (c.route || 'straight') : next.route, head = c ? (c.endHead ?? 'arrow') : next.endHead, start = c ? (c.startHead || 'none') : next.startHead;
+    const routes = [['straight', 'Straight', '<path d="M4 20 20 4"/>'], ['elbow', 'Elbow', '<path d="M4 20V10h16V4"/>'], ['curved', 'Curved', '<path d="M4 20C4 8 20 16 20 4"/>'], ['smart', 'Goes around shapes', '<path d="M4 20h6V8h10"/><rect x="11" y="12" width="5" height="5"/>']];
+    return routes.map(([r, t, d]) => cb(`data-route="${r}"`, `<svg class="wb-i" viewBox="0 0 24 24">${d}</svg>`, t, route === r ? 'on' : '')).join('') + sep
+      + cb('data-cp="heads"', `<span class="wb-heads">${HEAD_GLYPH[start]}─${HEAD_GLYPH[head]}</span>${dd}`, 'Arrow ends', 'wb-txt')
+      + cb('data-cdash', '┄', 'Dashed', (c ? c.dashed : next.dashed) ? 'on' : '')
+      + cb('data-cp="line"', `<span class="wb-ringd" style="--c:${isHex(c?.stroke ?? next.stroke) ? (c?.stroke ?? next.stroke) : pal().ink}"></span>${dd}`, 'Colour and width')
+      + (c ? cb('data-act2="label"', `${icon('text')}<span>Label</span>`, 'Write on the line (double-click it too)', 'wb-txt') : '');
+  }
+  function stickyCtx(s) {
+    const cur = s ? s.color : stickyColor;
+    return STICKY_COLORS.map(c => cb(`data-stcol="${c}"`, `<span class="wb-dot wb-sq" style="background:${pal().sticky[c]}"></span>`, c[0].toUpperCase() + c.slice(1), `wb-sw ${cur === c ? 'on' : ''}`)).join('') + sep + fontBtn(s?.font) + sizeBtn(s?.size || 16)
+      + (!s ? '<span class="wb-cnote">Click to place</span>' : '');
+  }
+  function textCtx(t) {
+    return fontBtn(t?.font || 'ipop') + sizeBtn(t?.size || 20) + sep + cb('data-fmt="bold"', '<b>B</b>', 'Bold (Ctrl B)') + cb('data-fmt="italic"', '<i>I</i>', 'Italic (Ctrl I)') + cb('data-fmt="strike"', '<s>S</s>', 'Strike') + cb('data-fmt="bullets"', icon('list'), 'List') + alignBtn
+      + cb('data-cp="line"', `${dot(t?.stroke || 'auto')}${dd}`, 'Text colour');
+  }
+  const FRAME_SIZES = [['free', 'Free', null], ['16:9', '16:9 slide', [960, 540]], ['a4', 'A4', [595, 842]], ['phone', 'Phone', [390, 844]], ['square', 'Square', [600, 600]]];
+  function frameCtx() {
+    return FRAME_SIZES.map(([k, l]) => cb(`data-fsz="${k}"`, l, '', `wb-txt ${next.frameSize === k ? 'on' : ''}`)).join('') + sep + cb('data-run="frames"', `${icon('frames')}<span>Frame list</span>`, '', 'wb-txt') + cb('data-run="present"', `${icon('play')}<span>Present</span>`, '', 'wb-txt wb-pri');
+  }
+  function imageCtx() {
+    return cb('data-run="upload"', `${icon('image')}<span>Upload picture or file</span>`, '', 'wb-txt') + (opts.linkPreview ? cb('data-run="linkcard"', `${icon('linkcard')}<span>Web link card</span>`, '', 'wb-txt') : '') + cb('data-run="emoji"', `${icon('emoji')}<span>Emoji &amp; stickers</span>`, '', 'wb-txt') + '<span class="wb-cnote">or drop / paste onto the board</span>';
+  }
+  const FLOW_ROW = ['terminator', 'process', 'decision', 'data', 'document', 'database'];
+  function flowCtx() {
+    return cb('data-run="guide"', `${icon('bulb')}<span>Guide me</span>`, 'Make a flowchart step by step', 'wb-txt wb-pri') + sep
+      + FLOW_ROW.map(t => cb(`data-stencil="${t}"`, shapeIcon(t), SHAPE_LABEL[t], tool === t ? 'on' : '')).join('') + cb('data-run="shapes"', 'All stencils', 'Every shape: flowchart, BPMN, ERD, network, UML…', 'wb-txt') + sep
+      + cb('data-stencil="swimlane"', 'Swimlane', 'Rows for departments', 'wb-txt') + cb('data-run="import"', 'Import', 'draw.io file or Mermaid text', 'wb-txt')
+      + (flowOn ? cb('data-run="check"', `${icon('check')}<span>Check</span>`, 'Missing Start, End or branches', 'wb-txt') + cb('data-run="tidy"', `${icon('tidy')}<span>Tidy</span>`, 'Line the steps up', 'wb-txt') : '') + cb('data-cp="flowadv"', '⌄', 'Flowchart options');
+  }
+  function mindCtx() {
+    return '<span class="wb-cnote"><kbd>Tab</kbd> child · <kbd>Enter</kbd> sibling</span>' + sep + cb('data-run="mindnew"', `${icon('mind')}<span>New mind map</span>`, 'Put a main idea in the middle of the screen', 'wb-txt wb-pri')
+      + [['tree', 'Tree'], ['radial', 'Radial'], ['organic', 'Organic']].map(([k, l]) => cb(`data-relayout="${k}"`, l, `Lay the mind map out as a ${l.toLowerCase()}`, 'wb-txt')).join('');
+  }
+  /// The bar for what is selected: the same groups as for the tool, plus the things you do with a selection.
+  function selCtx(els) {
+    const one = els.length === 1 ? els[0] : null;
+    const types = new Set(els.map(e => e.type));
+    const only = t => types.size === 1 && types.has(t);
+    const locked = els.every(e => e.locked);
+    let main = '';
+    if (only('sticky')) main = stickyCtx(one || els[0]);
+    else if (only('connector')) main = connCtx(one || els[0]);
+    else if (only('text')) main = textCtx(one || els[0]);
+    else if (only('path')) {
+      const p = els[0], k = PEN_TYPES[p.tool] ? p.tool : 'pen';
+      main = (p.tool === 'highlighter' ? HL_COLOURS : BAR_COLOURS).map(c => cb(`data-scol="${c}"`, dot(c), c, `wb-sw ${(p.stroke || 'auto') === c ? 'on' : ''}`)).join('') + cb('data-cp="selcolours"', icon('plusc'), 'More colours')
+        + sep + PEN_TYPES[k].sizes.map((v, i) => cb(`data-ssz="${v}"`, `<i class="wb-szd" style="width:${4 + i * 3.4}px;height:${4 + i * 3.4}px"></i>`, `${SIZE_NAMES[i]} · ${v} px`)).join('');
+    } else if (els.every(e => isShape(e))) {
+      main = FLOW_TYPES.has(els[0].type) && one ? cb('data-cp="fill"', dot(one.fill || pal().shapeFill) + dd, 'Fill') + cb('data-cp="line"', `<span class="wb-ringd" style="--c:${isHex(one.stroke) ? one.stroke : pal().ink}"></span>${dd}`, 'Line') + fontBtn(one.font) + sizeBtn(one.size || 18) + alignBtn : shapeCtx(els[0]);
+    } else if (els.some(e => isShape(e) || e.type === 'sticky' || e.type === 'text')) main = cb('data-cp="line"', `${dot('auto')}${dd}`, 'Colour') + fontBtn() + sizeBtn(18);
+    const acts = [];
+    // what a flowchart shape can do next (these were hidden in the ⋯ menu before)
+    if (one && FLOW_TYPES.has(one.type)) {
+      const hs = nextHints(one, live()).filter(h => h.kind !== 'info');
+      if (hs.length) acts.push(cb('data-act2="next"', `${icon('arrowr')}<span>Next step</span>`, hs.map(h => h.label).join(' · '), 'wb-txt'));
+      acts.push(cb('data-run="check"', `${icon('check')}<span>Check</span>`, 'Missing Start, End or branches', 'wb-txt'), cb('data-run="tidy"', `${icon('tidy')}<span>Tidy</span>`, 'Line the steps up', 'wb-txt'));
+      if (!isContainer(one)) acts.push(cb('data-act2="data"', `${icon('table')}<span>Data</span>`, 'Shape data: PIC, duration, status', `wb-txt ${one.data?.length ? 'on' : ''}`));
+      acts.push(cb('data-act2="theme"', '🎨', 'Diagram theme: colours and font for the whole flowchart'));
+    }
+    if (one?.type === 'swimlane') acts.push(cb('data-act2="laneadd"', '+ Lane', '', 'wb-txt'), cb('data-act2="laneflip"', one.orient === 'vertical' ? '⇅ Rows' : '⇄ Columns', 'Turn the lanes', 'wb-txt'));
+    if (one?.type === 'listBox') acts.push(cb('data-act2="restack"', '≡ Tidy list', '', 'wb-txt'));
+    if (opts.tasks?.create && els.every(x => x.type === 'sticky')) acts.push(cb('data-act2="task"', `${icon('task')}<span>Make ${els.length > 1 ? `${els.length} tasks` : 'a task'}</span>`, 'Turn into Projects tasks', 'wb-txt'));
+    if (vmap && votingOn() && one && one.type !== 'connector') acts.push(cb('data-act2="vote"', '👍 Vote', 'Vote on this', 'wb-txt'));
+    if (one && (isShape(one) || one.type === 'sticky') && !FLOW_TYPES.has(one.type)) acts.push(cb('data-act2="branch"', icon('mind'), 'Add a branch (Tab)'));
+    if (els.length > 1) { const grouped = els.every(x => x.groupId && x.groupId === els[0].groupId); acts.push(cb(`data-act2="${grouped ? 'ungroup' : 'group'}"`, `${icon(grouped ? 'ungroup' : 'group')}<span>${grouped ? 'Ungroup' : 'Group'}</span>`, grouped ? 'Ungroup (Ctrl Shift G)' : 'Group (Ctrl G)', 'wb-txt'), cb('data-act2="arrange"', `${icon('arrange')}<span>Arrange</span>`, 'Align and space evenly', 'wb-txt')); }
+    const tail = [];
+    if (one && one.type !== 'connector') tail.push(cb('data-act2="link"', icon('link'), one.link ? 'Change or remove the link' : 'Link to a web page or a Notes page (Ctrl K)', one.link ? 'on' : ''));
+    if (one && opts.comments?.canComment?.()) tail.push(cb('data-act2="comment"', icon('comment'), 'Comment on this'));
+    tail.push(cb('data-act2="lock"', icon(locked ? 'unlock' : 'lock'), locked ? 'Unlock' : 'Lock', locked ? 'on' : ''), cb('data-act2="dup"', icon('copy'), 'Duplicate (Ctrl D)'), cb('data-cp="selmore"', icon('more'), 'More: copy style, arrange, library…'), cb('data-act2="del"', icon('trash'), 'Delete (Del)', 'wb-danger'));
+    return [main, acts.join(''), tail.join('')].filter(Boolean).join(sep);
+  }
+  // ── small pop-ups above the bar ──
+  function openCtxPop(kind, anchor) {
+    if (!ctxPop.hidden && ctxPop.dataset.kind === kind) { ctxPop.hidden = true; return; }
+    const html = ctxPopHtml(kind);
+    if (html == null) return;
+    ctxPop.dataset.kind = kind; ctxPop.innerHTML = html; ctxPop.hidden = false;
+    const r = anchor.getBoundingClientRect(), wr = dockWrap.getBoundingClientRect();
+    ctxPop.style.left = `${Math.max(0, Math.min(r.left - wr.left - 16, wr.width - ctxPop.offsetWidth))}px`;
+    if (kind === 'pencolours' || kind === 'selcolours') requestAnimationFrame(() => ctxPop.querySelector('[data-hex]')?.select?.());
+  }
+  const swatchGrid = (list, cur, attr) => `<div class="wb-swgrid">${list.map(c => `<button type="button" ${attr}="${c}" class="wb-swb ${c === 'auto' ? 'wb-auto' : c === 'none' ? 'wb-none' : ''} ${cur === c ? 'on' : ''}" style="${isHex(c) ? `background:${c}` : ''}" title="${c === 'auto' ? 'Black or white' : c === 'none' ? 'No fill' : c}" aria-label="${c}"></button>`).join('')}</div>`;
+  function ctxPopHtml(kind) {
+    const els = selected(), one = els[0];
+    switch (kind) {
+      case 'pencolours': case 'selcolours': case 'fill': case 'line': {
+        const forPen = kind === 'pencolours', fill = kind === 'fill';
+        const cur = forPen ? prefs.color[penKind()] : fill ? (one ? (one.fill || 'auto') : (next.fill || 'auto')) : (one ? (one.stroke || 'auto') : (next.stroke || 'auto'));
+        const attr = forPen ? 'data-pcol' : fill ? 'data-fillc' : 'data-linec';
+        const list = fill ? ['none', ...ALL_COLOURS.slice(1)] : ALL_COLOURS;
+        const hex = isHex(cur) ? cur.toUpperCase() : '#000000';
+        const widths = kind === 'line' ? `<div class="wb-ph5">Width</div><div class="wb-row">${[1, 2, 4, 6, 8].map(v => `<button type="button" class="wb-cb ${(one?.strokeWidth ?? next.width) === v ? 'on' : ''}" data-lw="${v}" title="${v} px"><span class="wb-wline" style="height:${Math.max(1, v)}px"></span></button>`).join('')}</div><div class="wb-row">${['solid', 'dashed'].map(s => `<button type="button" class="wb-cb wb-txt ${((one ? one.dashed : next.dashed) ? 'dashed' : 'solid') === s ? 'on' : ''}" data-ldash="${s}">${s === 'solid' ? 'Solid' : 'Dashed'}</button>`).join('')}</div>` : '';
+        return `<div class="wb-ph5">${fill ? 'Fill' : forPen ? 'Pen colour' : 'Colour'}</div>${swatchGrid(list, cur, attr)}
+          <div class="wb-ph5">Recent</div>${prefs.recent.length ? swatchGrid(prefs.recent, cur, attr) : '<p class="wb-note">Colours you pick show up here</p>'}
+          <div class="wb-ph5">Any colour</div><div class="wb-custom"><input type="color" value="${hex}" data-anyc="${attr}" aria-label="Pick any colour"><input type="text" value="${hex}" maxlength="7" spellcheck="false" data-hex="${attr}" aria-label="Hex code"></div>${widths}`;
+      }
+      case 'penadv': {
+        const k = penKind(), s = prefs.size[k];
+        return `<div class="wb-ph5">${esc(PEN_TYPES[k].label)} options</div>
+          <label class="wb-rl"><span>Exact size</span><b>${s} px</b></label><input type="range" min="1" max="40" value="${s}" data-rng="size" aria-label="Pen size">
+          <label class="wb-rl"><span>Smoothing</span><b>${smoothLabel()}</b></label><input type="range" min="0" max="100" value="${prefs.smooth}" data-rng="smooth" aria-label="Smoothing">
+          <label class="wb-rl"><span>Opacity</span><b>${prefs.opacity}%</b></label><input type="range" min="10" max="100" value="${prefs.opacity}" data-rng="opacity" aria-label="Opacity">
+          <label class="wb-chk"><input type="checkbox" data-pchk="snap" ${prefs.snap ? 'checked' : ''}> Hold at the end to make a neat shape</label>
+          <label class="wb-chk"><input type="checkbox" data-pchk="arrowEnd" ${prefs.arrowEnd ? 'checked' : ''}> Arrow at the end of the stroke</label>
+          <label class="wb-chk"><input type="checkbox" data-pchk="dashed" ${prefs.dashed ? 'checked' : ''}> Dashed stroke</label>`;
+      }
+      case 'mypens': {
+        const list = myPens || [];
+        return `<div class="wb-ph5">My pens</div><div class="wb-mypens">${list.length ? list.map((m, i) => `<div class="wb-mypen"><button type="button" data-mypen="${i}">${penSvg(PEN_TYPES[m.type] ? m.type : 'pen', isHex(m.color) ? m.color : pal().ink)}<span>${esc(m.name)}</span><small>${esc(PEN_TYPES[m.type]?.label || '')} · ${['S', 'M', 'L', 'XL'][m.size] || 'M'}</small></button><button type="button" class="wb-x" data-mypendel="${i}" aria-label="Remove ${esc(m.name)}" title="Remove">✕</button></div>`).join('') : '<p class="wb-note">Save the pen you use most, with its colour and size.</p>'}</div>
+          <div class="wb-row"><input class="wb-search" data-mypenname placeholder="Name, e.g. Red check" maxlength="40" aria-label="Name for this pen"><button type="button" class="wb-cb wb-txt wb-pri" data-mypensave>Save</button></div><p class="wb-note">Saved for you, on every device.</p>`;
+      }
+      case 'font': return `<div class="wb-ph5">Font</div>${['ipop', 'hand', 'mono'].map(f => `<button type="button" class="wb-mrow2" data-font2="${f}" style="font-family:${FONT_STACK[f].replace(/"/g, "'")}">${f === 'ipop' ? 'iPop' : f === 'hand' ? 'Handwriting' : 'Monospace'}</button>`).join('')}`;
+      case 'size': return `<div class="wb-ph5">Text size</div>${SIZES.map(([n, v]) => `<button type="button" class="wb-mrow2" data-size2="${v}">${{ S: 'Small', M: 'Medium', L: 'Large', XL: 'Extra large' }[n]}</button>`).join('')}`;
+      case 'align': return `<div class="wb-ph5">Align</div><div class="wb-row">${[['left', 'alignleft'], ['center', 'alignhc'], ['right', 'alignright']].map(([a, ic]) => `<button type="button" class="wb-cb" data-align2="${a}" title="${a}">${icon(ic)}</button>`).join('')}</div>`;
+      case 'heads': { const c = one?.type === 'connector' ? one : null; return `<div class="wb-ph5">Start</div><div class="wb-row wb-wrap">${HEADS.map(([k, l]) => `<button type="button" class="wb-cb wb-txt ${(c ? (c.startHead || 'none') : next.startHead) === k ? 'on' : ''}" data-head2="s:${k}" title="${l}">${HEAD_GLYPH[k] || '—'}</button>`).join('')}</div><div class="wb-ph5">End</div><div class="wb-row wb-wrap">${HEADS.map(([k, l]) => `<button type="button" class="wb-cb wb-txt ${(c ? (c.endHead ?? 'arrow') : next.endHead) === k ? 'on' : ''}" data-head2="e:${k}" title="${l}">${HEAD_GLYPH[k] || '—'}</button>`).join('')}</div>`; }
+      case 'moreshapes': toggleShapePanel(); paintCorners(); return null;
+      case 'flowadv': return `<div class="wb-ph5">Flowchart</div><label class="wb-chk"><input type="checkbox" data-hints ${hintsOn() ? 'checked' : ''}> Next-step hints</label><button type="button" class="wb-mrow2" data-run="tidylr">Tidy left to right</button><button type="button" class="wb-mrow2" data-act2="theme">Diagram theme…</button>`;
+      case 'selmore': return `<div class="wb-ph5">Selection</div>${[['copystyle', 'Copy style (Ctrl Shift C)'], ...(styleClip ? [['pastestyle', 'Paste style (Ctrl Shift V)']] : []), ['front', 'Bring to front (Ctrl ])'], ['back', 'Send to back (Ctrl [)'], ...(opts.library ? [['lib', 'Add to my library']] : []), ...(els.length === 1 && isShape(one) && !isContainer(one) ? [['callout', 'Add a callout that follows it']] : []), ...(els.length > 1 ? [['arrange', 'Align and space evenly']] : [])].map(([k, l]) => `<button type="button" class="wb-mrow2" data-act2="${k}">${l}</button>`).join('')}`;
+      default: return '';
+    }
+  }
+  // ── bar actions ──
+  const applySel = (fn, { repaint = true } = {}) => { applyToSelection(fn); if (repaint) { ctxBar._html = null; paintCtx(); } };
+  function setPen(k) {
+    if (k === 'eraser') { setTool('eraser'); return; }
+    prefs.ptype = k; savePrefs(prefs);
+    setTool(k === 'highlighter' ? 'highlighter' : 'pen');
+  }
+  function pickPenColour(c) {
+    const k = penKind();
+    if (isHex(c)) prefs.recent = [c.toUpperCase(), ...prefs.recent.filter(x => x.toUpperCase() !== c.toUpperCase())].slice(0, 8);
+    prefs.color[k] = c; savePrefs(prefs);
+    paintToolbar();
+  }
+  const runAct = (act, anchor) => {
+    // the selection bar's own handler already knows how to do these: reuse it
+    const map = { dup: 'dup', del: 'del', lock: 'lock', group: 'group', ungroup: 'ungroup', arrange: 'arrange', link: 'link', data: 'data', theme: 'theme', task: 'task', branch: 'branch', laneadd: 'laneadd', laneflip: 'laneflip', restack: 'restack', copystyle: 'copystyle', pastestyle: 'pastestyle', front: 'front', back: 'back', lib: 'lib', callout: 'callout' };
+    if (map[act]) { const b = document.createElement('button'); b.dataset.act = map[act]; b.getBoundingClientRect = () => anchor.getBoundingClientRect(); props.dispatchEvent(new CustomEvent('wb-act', { detail: b })); ctxBar._html = null; paintCtx(); return; }
+    const one = selected()[0];
+    if (act === 'next' && one) { const h = nextHints(one, live()).find(x => x.kind !== 'info'); if (h) addAfter(one, h.dir || 'b', h.type, { text: h.text, label: h.branch }); return; }
+    if (act === 'label' && one) { editText(one); return; }
+    if (act === 'comment' && one) { const b = bounds(one, get); startComment({ x: b.x + b.w, y: b.y }, one); return; }
+    if (act === 'vote' && one) { castVote(one, false); return; }
+  };
+  const runTool = k => {
+    ctxPop.hidden = true;
+    switch (k) {
+      case 'upload': pickFiles(); break;
+      case 'linkcard': askLinkCard(); break;
+      case 'emoji': toggleEmojiPicker(dock); break;
+      case 'guide': runCorner(Object.assign(document.createElement('button'), { dataset: { c: 'guide' } }), {}); break;
+      case 'shapes': toggleShapePanel(); paintCorners(); break;
+      case 'import': toggleImport(); break;
+      case 'check': runCorner(Object.assign(document.createElement('button'), { dataset: { c: 'check' } }), {}); break;
+      case 'tidy': tidyFlow('TB'); break;
+      case 'tidylr': tidyFlow('LR'); break;
+      case 'frames': toggleFrames(); break;
+      case 'present': startPresent(); break;
+      case 'mindnew': { const r = rect(), c = toWorld(r.width / 2, r.height / 2); const n = create('rect', { x: c.x - 110, y: c.y - 40, w: 220, h: 80, text: 'Main idea', fill: '#FFDDB8', size: 20 }); const [p] = add([n]) || []; if (p) { setTool('select'); sel = new Set([p.id]); editSoon2(p); toast('Press Tab to add a branch, Enter for the next one.'); } break; }
+      default: break;
+    }
+  };
+  dock.addEventListener('click', e => {
+    const s = e.target.closest('[data-dtool]'); if (s) { dockKind = null; setTool(s.dataset.dtool); return; }
+    const a = e.target.closest('[data-dact]'); if (a) { if (a.dataset.dact === 'undo') doUndo(); else doRedo(); paintDock(); return; }
+    const t = e.target.closest('[data-tile]'); if (!t) return;
+    const k = t.dataset.tile;
+    picker.hidden = k !== 'card' || !picker.hidden ? true : picker.hidden; morePanel.hidden = k !== 'more' ? true : morePanel.hidden; ctxPop.hidden = true;
+    if (k === 'card') { if (picker.hidden) openPicker(); else picker.hidden = true; paintDock(); return; }
+    if (k === 'more') { if (morePanel.hidden) openMore(); else morePanel.hidden = true; paintDock(); return; }
+    if (k === 'tpl') { openCenter(); return; }
+    if (k === 'pen') { dockKind = 'pen'; if (tool === 'pen' || tool === 'highlighter' || tool === 'eraser') { setTool('select'); return; } setPen(prefs.ptype); return; }
+    if (k === 'shape') { dockKind = 'shape'; setTool(SHAPES.includes(lastShape) ? lastShape : 'rect'); return; }
+    if (k === 'flow') { dockKind = dockKind === 'flow' ? null : 'flow'; sel.clear(); paintDock(); return; }
+    if (k === 'mind' || k === 'image') { dockKind = dockKind === k ? null : k; sel.clear(); if (tool !== 'select') setTool('select'); else paintDock(); return; }
+    dockKind = k; setTool(k);
+  });
+  ctxBar.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    const d = b.dataset;
+    if (d.pen) { setPen(d.pen); return; }
+    if (d.pcol) { pickPenColour(d.pcol); paintDock(); return; }
+    if (d.psz) { setSize(penKind(), +d.psz); ctxBar._html = null; paintCtx(); return; }
+    if (d.esz) { setSize('eraser', +d.esz); ctxBar._html = null; paintCtx(); return; }
+    if (d.erm) { prefs.erMode = d.erm; savePrefs(prefs); ctxBar._html = null; paintCtx(); return; }
+    if (d.cp) { openCtxPop(d.cp, b); return; }
+    if (d.shape) { if (sel.size) applySel(x => isShape(x) && !isContainer(x) ? { type: d.shape } : null); else { lastShape = d.shape; setTool(d.shape); } return; }
+    // a flowchart shape goes in the middle of the screen (like the Shapes panel); then the blue arrows add the next one
+    if (d.stencil) { const r = rect(); placeShape(d.stencil, toWorld(r.width / 2, r.height / 2)); return; }
+    if (d.route) { if (sel.size) applySel(x => x.type === 'connector' ? { route: d.route } : null); else { next.route = d.route; ctxBar._html = null; paintCtx(); } return; }
+    if ('cdash' in d) { if (sel.size) applySel(x => x.type === 'connector' ? { dashed: !x.dashed || undefined } : null); else { next.dashed = !next.dashed; ctxBar._html = null; paintCtx(); } return; }
+    if (d.stcol) { if (sel.size) applySel(x => x.type === 'sticky' ? { color: d.stcol } : null); else { stickyColor = d.stcol; paintDock(); } return; }
+    if (d.scol) { applySel(x => x.type === 'path' ? { stroke: isHex(d.scol) ? d.scol : null } : null); return; }
+    if (d.ssz) { applySel(x => x.type === 'path' ? { width: +(+d.ssz / view.z).toFixed(2) } : null); return; }
+    if (d.fmt) { const els = selected().filter(x => x.type === 'text' || x.type === 'sticky' || isShape(x)); if (els.length === 1) { editText(els[0], { selectAll: true }); setTimeout(() => fmt(d.fmt), 0); } else toast('Double-click the text, select words, then press B, I or S'); return; }
+    if (d.fsz) { next.frameSize = d.fsz; ctxBar._html = null; paintCtx(); return; }
+    if (d.run) { runTool(d.run); return; }
+    if (d.relayout) { relayout(d.relayout); return; }
+    if (d.act2) { runAct(d.act2, b); }
+  });
+  ctxPop.addEventListener('pointerdown', e => e.stopPropagation());
+  ctxPop.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    const d = b.dataset;
+    if (d.pcol) { pickPenColour(d.pcol); paintDock(); ctxPop.innerHTML = ctxPopHtml('pencolours'); return; }
+    if (d.fillc) { const c = d.fillc; if (isHex(c)) prefs.recent = [c.toUpperCase(), ...prefs.recent.filter(x => x !== c.toUpperCase())].slice(0, 8); savePrefs(prefs); if (sel.size) applySel(x => isShape(x) ? { fill: c === 'auto' ? null : c } : null); else next.fill = c === 'auto' ? null : c; ctxPop.innerHTML = ctxPopHtml('fill'); ctxBar._html = null; paintCtx(); return; }
+    if (d.linec) { const c = d.linec; if (isHex(c)) prefs.recent = [c.toUpperCase(), ...prefs.recent.filter(x => x !== c.toUpperCase())].slice(0, 8); savePrefs(prefs); if (sel.size) applySel(x => x.type === 'sticky' || x.type === 'frame' || x.type === 'image' ? null : { stroke: isHex(c) ? c : null, ...(isShape(x) ? { textColor: isHex(c) ? c : null } : {}) }); else next.stroke = isHex(c) ? c : null; ctxPop.innerHTML = ctxPopHtml(ctxPop.dataset.kind); ctxBar._html = null; paintCtx(); return; }
+    if (d.lw) { if (sel.size) applySel(x => (x.type === 'connector' || isShape(x)) ? { strokeWidth: +d.lw } : null); else next.width = +d.lw; ctxPop.innerHTML = ctxPopHtml('line'); return; }
+    if (d.ldash) { const on = d.ldash === 'dashed'; if (sel.size) applySel(x => (x.type === 'connector' || isShape(x)) ? { dashed: on || undefined } : null); else next.dashed = on; ctxPop.innerHTML = ctxPopHtml('line'); return; }
+    if (d.font2) { if (sel.size) applySel(x => (x.type === 'text' || x.type === 'sticky' || isShape(x)) ? { font: d.font2 } : null); else next.font = d.font2; ctxPop.hidden = true; ctxBar._html = null; paintCtx(); return; }
+    if (d.size2) { const s = +d.size2; if (sel.size) applySel(x => { if (x.type === 'text') { const lines = String(x.text).split('\n'); return { size: s, w: Math.max(...lines.map(l => measure(l, s, x.font || 'ipop'))) + 4, h: lines.length * s * 1.3 }; } return (x.type === 'sticky' || isShape(x)) ? { size: s } : null; }); else next.size = s; ctxPop.hidden = true; ctxBar._html = null; paintCtx(); return; }
+    if (d.align2) { if (sel.size) applySel(x => (x.type === 'text' || x.type === 'sticky' || isShape(x)) ? { align: d.align2 } : null); else next.align = d.align2; ctxPop.hidden = true; return; }
+    if (d.head2) { const [w, k] = d.head2.split(':'); const key = w === 's' ? 'startHead' : 'endHead'; if (sel.size) applySel(x => x.type === 'connector' ? { [key]: k } : null); else next[key] = k; ctxPop.innerHTML = ctxPopHtml('heads'); ctxBar._html = null; paintCtx(); return; }
+    if (d.mypen) { const m = myPens[+d.mypen]; if (!m) return; const k = PEN_TYPES[m.type] ? m.type : 'pen'; prefs.color[k] = m.color; prefs.size[k] = PEN_TYPES[k].sizes[m.size] ?? PEN_TYPES[k].size; savePrefs(prefs); ctxPop.hidden = true; setPen(k); return; }
+    if (d.mypendel) { myPens.splice(+d.mypendel, 1); saveMyPens(); ctxPop.innerHTML = ctxPopHtml('mypens'); return; }
+    if ('mypensave' in d) {
+      const k = penKind(), name = (ctxPop.querySelector('[data-mypenname]')?.value || '').trim() || `${PEN_TYPES[k].label} ${myPens.length + 1}`;
+      if (myPens.length >= 12) { toast('You can keep 12 pens. Remove one first.'); return; }
+      const sizeIdx = Math.max(0, PEN_TYPES[k].sizes.indexOf(prefs.size[k]));
+      myPens.push({ name: name.slice(0, 40), type: k, color: isHex(prefs.color[k]) ? prefs.color[k] : 'auto', size: sizeIdx < 0 ? 1 : sizeIdx });
+      saveMyPens(); ctxPop.innerHTML = ctxPopHtml('mypens'); toast(`Saved to My pens as “${name}”`); return;
+    }
+    if (d.run) { runTool(d.run); return; }
+    if (d.act2) { ctxPop.hidden = true; runAct(d.act2, b); }
+  });
+  ctxPop.addEventListener('input', e => {
+    const r = e.target.closest('[data-rng]'); if (!r) return;
+    const v = +r.value, k = penKind(), lab = r.previousElementSibling?.querySelector('b');
+    if (r.dataset.rng === 'size') { prefs.size[k] = v; if (lab) lab.textContent = `${v} px`; }
+    if (r.dataset.rng === 'smooth') { prefs.smooth = v; if (lab) lab.textContent = smoothLabel(); }
+    if (r.dataset.rng === 'opacity') { prefs.opacity = v; if (lab) lab.textContent = `${v}%`; }
+    savePrefs(prefs);
+  });
+  ctxPop.addEventListener('change', e => {
+    const t = e.target;
+    if (t.matches('[data-rng="size"]')) { setSize(penKind(), +t.value); ctxBar._html = null; paintCtx(); }
+    if (t.dataset.pchk) { prefs[t.dataset.pchk] = t.checked; savePrefs(prefs); }
+    if (t.matches('[data-hints]')) { try { if (t.checked) localStorage.removeItem(HINTS_KEY); else localStorage.setItem(HINTS_KEY, 'off'); } catch { /* blocked */ } paintHint(); }
+    if (t.dataset.anyc) pickFromPop(t.dataset.anyc, t.value.toUpperCase());
+  });
+  ctxPop.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Escape') { ctxPop.hidden = true; root.focus({ preventScroll: true }); return; }
+    if (e.key === 'Enter' && e.target.dataset.hex) { let v = e.target.value.trim(); if (!v.startsWith('#')) v = `#${v}`; if (isHex(v)) pickFromPop(e.target.dataset.hex, v.toUpperCase()); else e.target.select(); }
+    if (e.key === 'Enter' && 'mypenname' in e.target.dataset) ctxPop.querySelector('[data-mypensave]')?.click();
+  });
+  /// "Any colour" (wheel or hex): the same as clicking a swatch with that colour.
+  function pickFromPop(attr, c) { const b = document.createElement('button'); b.type = 'button'; b.hidden = true; b.setAttribute(attr, c); ctxPop.append(b); b.click(); b.remove(); }
+
+  // ── My pens (per person, on the server) ──
+  let myPens = [];
+  const saveMyPens = () => { opts.prefs?.set?.('wb-pens', myPens).catch?.(() => {}); };
+  if (opts.prefs && mode === 'board') opts.prefs.get('wb-pens').then(v => { if (Array.isArray(v)) myPens = v.filter(p => p && PEN_TYPES[p.type]).slice(0, 12); }).catch(() => {});
+
+  // ── Task / Pages picker ──
+  let pickTab = 'tasks', pickQ = '', pickSeq = 0, pickKb = 0, pickItems = [];
+  function openPicker() {
+    if (readOnly) return;
+    if (!opts.taskSearch) pickTab = 'pages';
+    picker.hidden = false; pickQ = ''; pickKb = 0;
+    picker.innerHTML = `<div class="wb-ptabs" role="tablist">${opts.taskSearch ? `<button type="button" role="tab" data-ptab="tasks">${icon('check')}Tasks</button>` : ''}${opts.pages ? `<button type="button" role="tab" data-ptab="pages">${icon('note')}Pages</button>` : ''}</div>
+      <div class="wb-pq">${icon('search')}<input type="search" data-pq placeholder="" aria-label="Search"></div>
+      <div class="wb-plh"><span>Recent</span><button type="button" class="wb-plink" data-pbrowse></button></div>
+      <ul class="wb-plist" role="listbox"></ul>
+      <div class="wb-pft"><button type="button" data-pnew>${icon('plus')}<span></span></button><span class="wb-pwhere"></span></div>`;
+    paintPickTabs();
+    const input = picker.querySelector('[data-pq]');
+    input.addEventListener('input', () => { pickQ = input.value; pickKb = 0; clearTimeout(openPicker.t); openPicker.t = setTimeout(fillPicker, 180); });
+    input.addEventListener('keydown', e => {
+      e.stopPropagation();
+      if (e.key === 'Escape') { picker.hidden = true; paintDock(); root.focus({ preventScroll: true }); return; }
+      if (e.key === 'Tab' && opts.taskSearch && opts.pages) { e.preventDefault(); pickTab = pickTab === 'tasks' ? 'pages' : 'tasks'; paintPickTabs(); return; }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); pickKb = Math.max(0, Math.min(pickItems.length - 1, pickKb + (e.key === 'ArrowDown' ? 1 : -1))); markPick(); return; }
+      if (e.key === 'Enter') { e.preventDefault(); placePicked(pickItems[pickKb]); }
+    });
+    input.focus({ preventScroll: true });
+  }
+  function paintPickTabs() {
+    picker.querySelectorAll('[data-ptab]').forEach(b => { b.classList.toggle('on', b.dataset.ptab === pickTab); b.setAttribute('aria-selected', String(b.dataset.ptab === pickTab)); });
+    picker.querySelector('[data-pq]').placeholder = pickTab === 'tasks' ? 'Search for task name, ID, or URL' : 'Search Notes pages';
+    picker.querySelector('[data-pbrowse]').textContent = pickTab === 'tasks' ? 'Browse tasks' : 'All pages';
+    picker.querySelector('[data-pnew] span').textContent = pickTab === 'tasks' ? 'Create new task' : 'New page card';
+    picker.querySelector('[data-pnew]').hidden = pickTab === 'tasks' ? !opts.taskCreate : true;
+    const where = picker.querySelector('.wb-pwhere'); where.textContent = '';
+    if (pickTab === 'tasks' && opts.lastProject) opts.lastProject().then(n => { if (n && !picker.hidden) where.textContent = `in ${n} (last used)`; }).catch(() => {});
+    fillPicker();
+  }
+  async function fillPicker() {
+    const seq = ++pickSeq, list = picker.querySelector('.wb-plist'); if (!list) return;
+    const q = pickQ.trim();
+    // a pasted task link opens that task: /projects/<p>/tasks/<id> or …?task=<id>
+    const idFromUrl = /(?:tasks\/|task=)([0-9a-f-]{36})/i.exec(q)?.[1];
+    if (pickTab === 'pages') {
+      pickItems = (opts.pages?.all?.() || []).filter(p => !q || String(p.title || '').toLowerCase().includes(q.toLowerCase())).slice(0, 40).map(p => ({ kind: 'page', ...p }));
+    } else {
+      list.innerHTML = '<li class="wb-pnote">Loading…</li>';
+      const items = await opts.taskSearch(idFromUrl ? '' : q).catch(() => []);
+      if (seq !== pickSeq) return;
+      pickItems = (idFromUrl ? items.filter(t => String(t.id).toLowerCase() === idFromUrl.toLowerCase()) : items).map(t => ({ kind: 'task', ...t }));
+    }
+    pickKb = Math.min(pickKb, Math.max(0, pickItems.length - 1));
+    const STATUS = { todo: '#8E8E93', 'in-progress': '#0A84FF', inprogress: '#0A84FF', doing: '#0A84FF', review: '#FF9500', done: '#34C759', blocked: '#FF3B30' };
+    const AV = ['#AF52DE', '#5E5CE6', '#34A853', '#FF9500', '#0A84FF', '#FF2D55'];
+    const initials = n => String(n || '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+    list.innerHTML = pickItems.length ? pickItems.map((it, i) => it.kind === 'page'
+      ? `<li role="option" data-pi="${i}" class="${i === pickKb ? 'kb' : ''}"><span class="wb-ppr">Notes</span><span class="wb-pst">${esc(it.emoji || '📄')}</span><span class="wb-pnm">${esc(it.title || 'Untitled')}</span><span></span></li>`
+      : `<li role="option" data-pi="${i}" class="${i === pickKb ? 'kb' : ''}"><span class="wb-ppr">${esc(it.project || '')}</span><span class="wb-pst"><i style="border-color:${STATUS[String(it.status || '').toLowerCase()] || '#8E8E93'}"></i></span><span class="wb-pnm">${esc(it.title)}</span><span class="wb-pav">${(it.people || []).slice(0, 3).map((n, k) => `<b style="background:${AV[(String(n).charCodeAt(0) + k) % AV.length]}" title="${esc(n)}">${esc(initials(n))}</b>`).join('')}</span></li>`).join('')
+      : `<li class="wb-pnote">${pickTab === 'tasks' ? (q ? 'No task found. Tasks you can’t open are never listed.' : 'No tasks yet in projects you can add to.') : 'No page found.'}</li>`;
+  }
+  const markPick = () => picker.querySelectorAll('[data-pi]').forEach(li => li.classList.toggle('kb', +li.dataset.pi === pickKb));
+  function placePicked(it) {
+    if (!it) return;
+    const r = rect(), c = toWorld(r.width / 2, r.height / 2);
+    if (it.kind === 'page') addPageCard(it, c); else addTaskCards([it], { x: c.x - 130, y: c.y - 52 });
+    picker.hidden = true; paintDock();
+  }
+  picker.addEventListener('pointerdown', e => e.stopPropagation());
+  picker.addEventListener('click', async e => {
+    const tab = e.target.closest('[data-ptab]'); if (tab) { pickTab = tab.dataset.ptab; pickKb = 0; paintPickTabs(); picker.querySelector('[data-pq]').focus(); return; }
+    const li = e.target.closest('[data-pi]'); if (li) { placePicked(pickItems[+li.dataset.pi]); return; }
+    if (e.target.closest('[data-pbrowse]')) { if (pickTab === 'tasks') window.open('/projects', '_blank', 'noopener'); else { pickQ = ''; picker.querySelector('[data-pq]').value = ''; fillPicker(); } return; }
+    if (e.target.closest('[data-pnew]') && opts.taskCreate) {
+      const title = pickQ.trim() || 'New task';
+      const t = await opts.taskCreate(title).catch(() => null);
+      if (!t) { toast('Couldn’t create the task. You need a project you can add tasks to.'); return; }
+      placePicked({ kind: 'task', ...t });
+      toast(`Task created in ${t.project}`);
+    }
+  });
+
+  // ── More panel: every other tool, as coloured tiles ──
+  const MORE_GROUPS = () => [
+    ['Create', [['tpl', 'Templates', 'grid', '#AF52DE'], ['emoji', 'Emoji & stickers', 'emoji', '#FF9500'], ...(opts.linkPreview ? [['linkcard', 'Web link card', 'linkcard', '#0A84FF']] : []), ...(opts.library ? [['lib', 'Library', 'book', '#5E5CE6']] : []), ['import', 'Import Mermaid / draw.io', 'import', '#8E8E93']]],
+    ['Diagram', [['guide', 'Flowchart guide', 'bulb', '#34C759'], ...(flowOn ? [['check', 'Check diagram', 'check', '#34C759'], ['tidy', 'Tidy / auto layout', 'tidy', '#00C7BE']] : []), ['relayout', 'Re-layout', 'layout', '#00C7BE'], ...(opts.people ? [['org', 'Org chart from Directory', 'org', '#0A84FF']] : []), ['graphics', 'Data graphics', 'chart', '#FF9500'], ...(opts.tasks?.createMany ? [['tasks', 'Tasks from shapes', 'task', '#AF52DE']] : []), ['ipfind', 'Find device by IP', 'ip', '#8E8E93'], ['report', 'Report to Excel', 'table', '#34A853']]],
+    ['Meeting', [['present', 'Present', 'play', '#FF3B30'], ...(aw ? [['timer', 'Timer', 'timer', '#FF9500']] : []), ...(vmap ? [['vote', 'Vote', 'vote', '#5E5CE6']] : []), ['frames', 'Frames', 'frames', '#0A84FF'], ['find', 'Find on board', 'search', '#8E8E93'], ['laser', 'Laser pointer', 'laser', '#FF2D55']]],
+    ['Board', [['savetpl', 'Save as template', 'bookplus', '#AF52DE'], ['howto', live().some(x => x.howTo && x.hide) ? 'Show “How to use” notes' : 'Hide “How to use” notes', 'note', '#8E8E93'], ['export', 'Export', 'download', '#34A853'], ['pptx', 'PowerPoint', 'slides', '#FF9500'], ...(opts.history ? [['history', 'Version history', 'history', '#8E8E93']] : []), ['keys', 'Keyboard shortcuts', 'keys', '#8E8E93']]],
+  ];
+  function openMore(q = '') {
+    morePanel.hidden = false;
+    const ql = q.trim().toLowerCase();
+    const groups = MORE_GROUPS().map(([g, items]) => [g, items.filter(([, l]) => !ql || l.toLowerCase().includes(ql) || g.toLowerCase().includes(ql))]).filter(([, items]) => items.length);
+    const body = groups.length ? groups.map(([g, items]) => `<div class="wb-mh">${g}</div><div class="wb-mgrid">${items.map(([k, l, ic, c]) => `<button type="button" class="wb-mt" data-more2="${k}"><span class="wb-mtic" style="background:${c}">${icon(ic)}</span><span>${esc(l)}</span></button>`).join('')}</div>`).join('') : '<p class="wb-note">Nothing found.</p>';
+    if (!morePanel.querySelector('.wb-search')) { morePanel.innerHTML = '<input class="wb-search" type="search" placeholder="Search tools…" aria-label="Search tools"><div class="wb-mbody"></div>'; const s = morePanel.querySelector('.wb-search'); s.addEventListener('input', () => openMore(s.value)); s.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Escape') { morePanel.hidden = true; paintDock(); } if (e.key === 'Enter') morePanel.querySelector('[data-more2]')?.click(); }); }
+    morePanel.querySelector('.wb-mbody').innerHTML = body;
+    if (!q) requestAnimationFrame(() => morePanel.querySelector('.wb-search')?.focus({ preventScroll: true }));
+  }
+  morePanel.addEventListener('pointerdown', e => e.stopPropagation());
+  morePanel.addEventListener('click', e => {
+    const b = e.target.closest('[data-more2]'); if (!b) return;
+    const k = b.dataset.more2;
+    morePanel.hidden = true; const s = morePanel.querySelector('.wb-search'); if (s) s.value = '';
+    paintDock();
+    if (k === 'tpl') { openCenter(); return; }
+    if (k === 'emoji') { toggleEmojiPicker(dock); return; }
+    if (k === 'linkcard') { askLinkCard(); return; }
+    if (k === 'laser') { setTool('laser'); return; }
+    if (k === 'keys') { toggleKeys(); return; }
+    if (k === 'savetpl') { openSaveTemplate(); return; }
+    if (k === 'howto') { toggleHowTo(); return; }
+    runCorner(Object.assign(document.createElement('button'), { dataset: { c: k } }), {});
+  });
+  /// Hide or show every "How to use this template" note on the board (they stay on the board, just hidden).
+  function toggleHowTo() {
+    const notes = live().filter(x => x.howTo);
+    if (!notes.length) { toast('There are no “How to use” notes on this board.'); return; }
+    const hide = notes.some(x => !x.hide);
+    write(notes.map(x => bump(x, { hide: hide || undefined })), { now: true }); commitStop();
+    toast(hide ? `${notes.length === 1 ? 'The note is' : `${notes.length} notes are`} hidden. Show them again from More.` : 'The “How to use” notes are back.');
+  }
+
+  // ══ Template Center ══
+  const LEVELS = ['Beginner', 'Intermediate', 'Advanced'];
+  const TPL_CATS6 = ['Brainstorm', 'Strategy & analysis', 'Planning & meeting', 'Flowchart & process', 'Process improvement', 'Technical'];
+  const META = new Map(TEMPLATE_META.map(t => [t.key, t]));
+  const tcs = { view: 'featured', q: '', cats: new Set(), levels: new Set(), open: new Set(), bp: null, zoom: 1, mine: null, recent: [], where: 'board', withHow: true, withEx: true };
+  const pvCache = new Map();
+  /// The preview of a template: its own elements drawn with this renderer, so it always matches and follows the theme.
+  function tplElements(t) {
+    if (t.json) { try { return JSON.parse(t.json).filter(isElement); } catch { return []; } }
+    return buildTemplate(t.key, { x: 0, y: 0 });
+  }
+  function previewSvg(t, big = false) {
+    const key = `${t.key || t.id}:${theme}:${big ? 1 : 0}`;
+    if (pvCache.has(key)) return pvCache.get(key);
+    let html = '';
+    try {
+      const o = toSvg(tplElements(t), { theme, background: true, padding: big ? 40 : 24, cardInfo: { task: () => null, page: () => null } });
+      if (o) { o.svg.setAttribute('width', '100%'); o.svg.setAttribute('height', '100%'); o.svg.setAttribute('preserveAspectRatio', 'xMidYMid meet'); o.svg.querySelectorAll('[id]').forEach(n => { if (n.closest('defs')) return; }); html = new XMLSerializer().serializeToString(o.svg); }
+    } catch { html = ''; }
+    pvCache.set(key, html);
+    return html;
+  }
+  const userTpl = t => ({ key: `u:${t.id}`, id: t.id, name: t.name, desc: t.description || (t.mine ? (t.shared ? 'Shared with the team' : 'Only you') : `By ${t.ownerName}`), cat: t.mine ? 'My templates' : 'Team templates', level: 'Beginner', when: t.description || 'A board someone in the company saved to reuse.', steps: ['Use it like any template', 'Change anything on it'], json: t.json, mine: t.mine, shared: t.shared, owner: t.ownerName });
+  async function loadMine(force = false) {
+    if (!opts.templates) return [];
+    if (tcs.mine && !force) return tcs.mine;
+    tcs.mine = (await opts.templates.list().catch(() => [])).map(userTpl);
+    return tcs.mine;
+  }
+  const allTpl = () => [...TEMPLATE_META, ...(tcs.mine || [])];
+  const hay = t => `${t.name} ${t.desc} ${t.cat} ${t.aliases || ''}`.toLowerCase();
+  const tcCard = t => `<button type="button" class="wb-tcard" data-tk="${esc(t.key)}"><span class="wb-tpv">${previewSvg(t)}</span>${t.isNew ? '<span class="wb-ttag">New</span>' : t.guided ? '<span class="wb-ttag">Guided</span>' : ''}
+      ${t.id && (t.mine || (t.shared && opts.templates?.isAdmin?.())) ? `<span class="wb-tdel" data-tdel="${t.id}" title="${t.mine ? 'Remove' : 'Remove from Team templates (admin)'}" role="button" aria-label="Remove ${esc(t.name)}">${icon('trash')}</span>` : ''}
+      <span class="wb-thov"><span class="wb-thb" data-tprev="${esc(t.key)}">Preview</span><span class="wb-thb wb-pri" data-tuse="${esc(t.key)}">Use</span></span>
+      <span class="wb-tmeta"><b>${esc(t.name)}</b><span class="wb-lv wb-lv-${t.level}">${t.level}</span></span></button>`;
+  function centerBody() {
+    const filt = list => list.filter(t => (!tcs.q || tcs.q.split(/\s+/).every(w => hay(t).includes(w))) && (!tcs.levels.size || tcs.levels.has(t.level)) && (!tcs.cats.size || tcs.cats.has(t.cat)));
+    const grid = list => `<div class="wb-tcgrid">${list.map(tcCard).join('')}</div>`;
+    const sec = (title, list, more = '') => `<section class="wb-tcsec"><div class="wb-tcsh"><h3>${esc(title)}</h3>${more}</div>${grid(list)}</section>`;
+    const mine = (tcs.mine || []).filter(t => t.mine), team = (tcs.mine || []).filter(t => t.shared);
+    if (tcs.q || tcs.cats.size || tcs.levels.size) {
+      const r = filt(tcs.view === 'mine' ? mine : tcs.view === 'team' ? team : allTpl());
+      return r.length ? sec(`${r.length} result${r.length === 1 ? '' : 's'}`, r) : '<p class="wb-tcempty">No template matches. Try fewer filters or other words.</p>';
+    }
+    if (tcs.view === 'mine') return mine.length ? sec('My templates', mine) : `<p class="wb-tcempty">Save any board with <b>More → Save as template</b>. Its preview is made from the board automatically.</p>`;
+    if (tcs.view === 'team') return team.length ? sec('Team templates', team) : `<p class="wb-tcempty">Nothing shared yet. Save a board as a template and tick “Share with everyone”.</p>`;
+    let out = '';
+    if (tcs.view === 'featured') {
+      out += `<div class="wb-tcban">${icon('bookplus')}<span>Make your own: save any board as a template for yourself or the whole company.</span><button type="button" data-tsave>Save this board</button></div>`;
+      const rec = tcs.recent.map(k => allTpl().find(t => t.key === k)).filter(Boolean);
+      if (rec.length) out += sec('Recently used', rec);
+      out += sec('Featured', TEMPLATE_META.filter(t => t.featured));
+      out += '<h2 class="wb-tch2">iPop templates</h2>';
+    }
+    for (const c of TPL_CATS6) {
+      if (tcs.view.startsWith('cat:') && tcs.view !== `cat:${c}`) continue;
+      const list = TEMPLATE_META.filter(t => t.cat === c), open = tcs.open.has(c) || tcs.view === `cat:${c}`;
+      out += sec(c, open ? list : list.slice(0, 3), list.length > 3 && !open ? `<button type="button" data-tmore="${esc(c)}">See ${list.length - 3} more</button>` : '');
+    }
+    return out;
+  }
+  function paintCenter({ keepScroll = true } = {}) {
+    const body = tc.querySelector('.wb-tcbody'), sc = keepScroll && body ? body.scrollTop : 0;
+    const mine = (tcs.mine || []).filter(t => t.mine).length, team = (tcs.mine || []).filter(t => t.shared).length;
+    const nv = (k, l, n, ic) => `<button type="button" class="wb-nv ${tcs.view === k ? 'on' : ''}" data-tview="${k}">${icon(ic)}<span>${l}</span><span class="wb-n">${n}</span></button>`;
+    tc.innerHTML = `<aside class="wb-tcside"><div class="wb-tcbrand"><i></i>Template Center</div>
+        ${nv('featured', 'Featured', TEMPLATE_META.filter(t => t.featured).length, 'star')}${opts.templates ? nv('mine', 'My templates', mine, 'user') + nv('team', 'Team templates', team, 'users') : ''}${nv('all', 'iPop templates', TEMPLATE_META.length, 'grid')}
+        <div class="wb-tcgh">Categories</div>${TPL_CATS6.map(c => `<label class="wb-ck"><input type="checkbox" data-tcat="${esc(c)}" ${tcs.cats.has(c) ? 'checked' : ''}><span>${esc(c)}</span><span class="wb-n">${TEMPLATE_META.filter(t => t.cat === c).length}</span></label>`).join('')}
+        <div class="wb-tcgh">Level</div>${LEVELS.map(l => `<label class="wb-ck"><input type="checkbox" data-tlv="${l}" ${tcs.levels.has(l) ? 'checked' : ''}><span>${l}</span></label>`).join('')}</aside>
+      <div class="wb-tcmain"><div class="wb-tcbar"><div class="wb-tcq">${icon('search')}<input type="search" data-tq value="${esc(tcs.q)}" placeholder="Search templates… (e.g. approval, notulen rapat, 5S, akar masalah)" aria-label="Search templates"></div>
+        <select data-tcsel aria-label="Category"><option value="">All categories</option>${TPL_CATS6.map(c => `<option ${tcs.cats.size === 1 && tcs.cats.has(c) ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
+        <select data-tlsel aria-label="Level"><option value="">Any level</option>${LEVELS.map(l => `<option ${tcs.levels.size === 1 && tcs.levels.has(l) ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <button type="button" class="wb-tcx" data-tclose title="Close (Esc)" aria-label="Close">✕</button></div>
+        <div class="wb-tcbody">${centerBody()}</div></div>
+      <div class="wb-bp" hidden></div>`;
+    const b2 = tc.querySelector('.wb-tcbody'); if (b2) b2.scrollTop = sc;
+    if (tcs.bp) showPreview(tcs.bp);
+  }
+  function showPreview(key) {
+    const t = allTpl().find(x => x.key === key); if (!t) return;
+    tcs.bp = key;
+    const bp = tc.querySelector('.wb-bp');
+    bp.innerHTML = `<div class="wb-bpc"><button type="button" class="wb-bpback" data-tback>← All templates</button><div class="wb-bpz" style="transform:scale(${tcs.zoom})">${previewSvg(t, true)}</div>
+        <div class="wb-bpzoom"><button type="button" data-tz="-1" aria-label="Zoom out">−</button><span>${Math.round(tcs.zoom * 100)}%</span><button type="button" data-tz="1" aria-label="Zoom in">+</button></div>
+        <button type="button" class="wb-bpnav" data-tstep="-1" style="left:14px" title="Previous (←)" aria-label="Previous template">‹</button><button type="button" class="wb-bpnav" data-tstep="1" style="right:14px" title="Next (→)" aria-label="Next template">›</button></div>
+      <div class="wb-bpi"><h3>${esc(t.name)}</h3><div class="wb-bpchips"><span>${esc(t.cat)}</span><span class="wb-lv wb-lv-${t.level}">${t.level}</span>${t.guided ? '<span>Guided</span>' : ''}${t.isNew ? '<span>New</span>' : ''}</div>
+        <h4>What it is</h4><p>${esc(t.desc)}</p><h4>When to use it</h4><p>${esc(t.when)}</p><h4>How</h4><ol>${t.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>
+        <h4>Add it</h4><div class="wb-useopts"><label><input type="radio" name="wb-uw" data-uw="board" ${tcs.where === 'board' ? 'checked' : ''}> Into this board, beside my work</label>${opts.templates?.newBoardPage ? `<label><input type="radio" name="wb-uw" data-uw="page" ${tcs.where === 'page' ? 'checked' : ''}> As a new board page</label>` : ''}
+        ${t.json ? '' : `<label><input type="checkbox" data-uex ${tcs.withEx ? 'checked' : ''}> Include example content</label><label><input type="checkbox" data-uhow ${tcs.withHow ? 'checked' : ''}> Include “How to use” note</label>`}</div>
+        <button type="button" class="wb-use" data-tuse="${esc(t.key)}">Use template</button></div>`;
+    bp.hidden = false;
+  }
+  function stepPreview(d) { const list = allTpl(), i = list.findIndex(x => x.key === tcs.bp); tcs.zoom = 1; showPreview(list[(i + d + list.length) % list.length].key); }
+  async function openCenter(view) {
+    if (readOnly) return;
+    ctxPop.hidden = true; picker.hidden = true; morePanel.hidden = true; gallery.hidden = true; emptyGallery.hidden = true;
+    if (view) tcs.view = view;
+    tcs.bp = null; tcs.zoom = 1;
+    tcOverlay.hidden = false;
+    paintCenter({ keepScroll: false });
+    tc.querySelector('[data-tq]')?.focus({ preventScroll: true });
+    if (opts.prefs && !tcs.recentLoaded) { tcs.recentLoaded = true; opts.prefs.get('wb-tpl-recent').then(v => { if (Array.isArray(v)) { tcs.recent = v.slice(0, 6); if (!tcOverlay.hidden && tcs.view === 'featured') paintCenter(); } }).catch(() => {}); }
+    if (opts.templates) { await loadMine(); if (!tcOverlay.hidden) paintCenter(); }
+  }
+  function closeCenter() { tcOverlay.hidden = true; tcs.bp = null; paintEmpty(count() === 0); root.focus({ preventScroll: true }); }
+  async function useTemplate(key) {
+    const t = allTpl().find(x => x.key === key); if (!t) return;
+    tcs.recent = [key, ...tcs.recent.filter(k => k !== key)].slice(0, 6);
+    opts.prefs?.set?.('wb-tpl-recent', tcs.recent.filter(k => !k.startsWith('u:') || true).slice(0, 6));
+    closeCenter();
+    if (tcs.where === 'page' && opts.templates?.newBoardPage && !t.json) { await opts.templates.newBoardPage(t.name, t.key, { howTo: tcs.withHow, examples: tcs.withEx }); return; }
+    const n = t.json ? placeElements(tplElements(t)) : api.applyTemplate(t.key, { howTo: tcs.withHow, examples: tcs.withEx });
+    if (n) toast(t.guided ? `“${t.name}” added. Click a shape for hints on what comes next.` : `“${t.name}” added beside your work. Undo with Ctrl Z.`);
+  }
+  /// A saved template (elements starting at 0,0) placed to the right of what is on the board, with fresh ids.
+  function placeElements(els) {
+    if (readOnly || !els.length) return 0;
+    const b = unionBounds(live(), get), at = { x: b ? b.x + b.w + 120 : 0, y: b ? b.y : 0 };
+    const map = new Map(els.map(x => [x.id, create(x.type).id]));
+    const out = els.map(x => {
+      const copy = { ...structuredClone(x), id: map.get(x.id), version: 1 };
+      if (x.type === 'connector') { const end = y => (y?.id && map.has(y.id) ? { id: map.get(y.id) } : { x: (y?.x ?? 0) + at.x, y: (y?.y ?? 0) + at.y }); return { ...copy, from: end(x.from), to: end(x.to) }; }
+      return { ...copy, x: x.x + at.x, y: x.y + at.y };
+    });
+    const placed = add(out) || [];
+    fit(placed, { max: 1 });
+    return placed.length;
+  }
+  tc.addEventListener('click', async e => {
+    const d = e.target.closest('[data-tdel]');
+    if (d) {
+      e.stopPropagation();
+      const t = (tcs.mine || []).find(x => x.id === d.dataset.tdel); if (!t) return;
+      if (!confirm(`Remove the template “${t.name}”${!t.mine ? ' from Team templates for everyone' : ''}?`)) return;
+      try { await opts.templates.remove(t.id); await loadMine(true); pvCache.clear(); paintCenter(); toast('Template removed'); } catch { toast('Couldn’t remove it'); }
+      return;
+    }
+    const v = e.target.closest('[data-tview]'); if (v) { tcs.view = v.dataset.tview; tcs.q = ''; tcs.cats.clear(); tcs.levels.clear(); paintCenter({ keepScroll: false }); return; }
+    const m = e.target.closest('[data-tmore]'); if (m) { tcs.open.add(m.dataset.tmore); paintCenter(); return; }
+    if (e.target.closest('[data-tclose]')) { closeCenter(); return; }
+    if (e.target.closest('[data-tsave]')) { closeCenter(); openSaveTemplate(); return; }
+    if (e.target.closest('[data-tback]')) { tcs.bp = null; tc.querySelector('.wb-bp').hidden = true; return; }
+    const z = e.target.closest('[data-tz]'); if (z) { tcs.zoom = Math.max(0.5, Math.min(3, tcs.zoom + (+z.dataset.tz) * 0.25)); tc.querySelector('.wb-bpz').style.transform = `scale(${tcs.zoom})`; tc.querySelector('.wb-bpzoom span').textContent = `${Math.round(tcs.zoom * 100)}%`; return; }
+    const st2 = e.target.closest('[data-tstep]'); if (st2) { stepPreview(+st2.dataset.tstep); return; }
+    const u = e.target.closest('[data-tuse]'); if (u) { e.stopPropagation(); useTemplate(u.dataset.tuse); return; }
+    const p = e.target.closest('[data-tprev]'); if (p) { e.stopPropagation(); tcs.zoom = 1; showPreview(p.dataset.tprev); return; }
+    const card = e.target.closest('[data-tk]');
+    if (card) {
+      // one click = big preview; a double click uses it straight away
+      if (e.detail >= 2) { clearTimeout(tc._t); useTemplate(card.dataset.tk); return; }
+      clearTimeout(tc._t); tc._t = setTimeout(() => { tcs.zoom = 1; showPreview(card.dataset.tk); }, 220);
+    }
+  });
+  tc.addEventListener('change', e => {
+    const t = e.target;
+    if (t.dataset.tcat) { if (t.checked) tcs.cats.add(t.dataset.tcat); else tcs.cats.delete(t.dataset.tcat); paintCenter({ keepScroll: false }); }
+    if (t.dataset.tlv) { if (t.checked) tcs.levels.add(t.dataset.tlv); else tcs.levels.delete(t.dataset.tlv); paintCenter({ keepScroll: false }); }
+    if ('tcsel' in t.dataset) { tcs.cats.clear(); if (t.value) tcs.cats.add(t.value); paintCenter({ keepScroll: false }); }
+    if ('tlsel' in t.dataset) { tcs.levels.clear(); if (t.value) tcs.levels.add(t.value); paintCenter({ keepScroll: false }); }
+    if (t.dataset.uw) tcs.where = t.dataset.uw;
+    if ('uex' in t.dataset) tcs.withEx = t.checked;
+    if ('uhow' in t.dataset) tcs.withHow = t.checked;
+  });
+  tc.addEventListener('input', e => {
+    if (!('tq' in e.target.dataset)) return;
+    tcs.q = e.target.value.trim().toLowerCase();
+    const pos = e.target.selectionStart;
+    paintCenter({ keepScroll: false });
+    const n = tc.querySelector('[data-tq]'); n.focus(); n.setSelectionRange(pos, pos);
+  });
+  tc.addEventListener('keydown', e => {
+    e.stopPropagation();
+    const bp = tc.querySelector('.wb-bp');
+    if (e.key === 'Escape') { e.preventDefault(); if (bp && !bp.hidden) { tcs.bp = null; bp.hidden = true; } else closeCenter(); return; }
+    if (bp && !bp.hidden && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.target.matches('input[type=search], input[type=text]')) { e.preventDefault(); stepPreview(e.key === 'ArrowLeft' ? -1 : 1); }
+  });
+  // ── Save this board as a template ──
+  const savePanel = el('div', 'wb-panel wb-savetpl'); savePanel.hidden = true; savePanel.setAttribute('role', 'dialog'); savePanel.setAttribute('aria-label', 'Save as template');
+  root.append(savePanel);
+  savePanel.addEventListener('pointerdown', e => e.stopPropagation());
+  function openSaveTemplate() {
+    if (readOnly || !opts.templates) { if (!opts.templates) toast('Templates can be saved from a Notes whiteboard'); return; }
+    if (!count()) { toast('The board is empty: add something first.'); return; }
+    const els = sel.size ? selected() : live();
+    savePanel.innerHTML = `<div class="wb-ph"><b>Save as template</b><button type="button" data-close aria-label="Close">✕</button></div>
+      <div class="wb-stpv">${previewSvg({ key: `save:${Date.now()}`, json: JSON.stringify(packForLibrary(els)) })}</div>
+      <label class="wb-fl">Name<input class="wb-search" data-sname maxlength="100" value="${esc((opts.title?.() || 'My template').slice(0, 100))}"></label>
+      <label class="wb-fl">What it is for (optional)<input class="wb-search" data-sdesc maxlength="300" placeholder="e.g. Monthly 5S audit at Karawang"></label>
+      <label class="wb-chk"><input type="checkbox" data-sshare> Share with everyone (Team templates)</label>
+      <p class="wb-note">${sel.size ? `Only the ${sel.size} selected thing${sel.size === 1 ? '' : 's'} will be saved.` : 'The whole board is saved. Select some things first to save only those.'} Pictures are left out.</p>
+      <div class="wb-row"><button type="button" class="wb-cb wb-txt wb-pri" data-ssave>Save template</button></div>`;
+    savePanel.hidden = false;
+    savePanel.querySelector('[data-sname]').select();
+  }
+  savePanel.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Escape') savePanel.hidden = true; if (e.key === 'Enter' && e.target.matches('input.wb-search')) savePanel.querySelector('[data-ssave]')?.click(); });
+  savePanel.addEventListener('click', async e => {
+    if (e.target.closest('[data-close]')) { savePanel.hidden = true; return; }
+    const b = e.target.closest('[data-ssave]'); if (!b || b.disabled) return;
+    const els = packForLibrary(sel.size ? selected() : live());
+    if (!els.length) { toast('Nothing to save (pictures are left out)'); return; }
+    b.disabled = true;
+    try {
+      await opts.templates.save({ name: savePanel.querySelector('[data-sname]').value.trim(), description: savePanel.querySelector('[data-sdesc]').value.trim() || null, json: JSON.stringify(els), shared: savePanel.querySelector('[data-sshare]').checked });
+      savePanel.hidden = true; tcs.mine = null; pvCache.clear();
+      toast(savePanel.querySelector('[data-sshare]').checked ? 'Saved. Everyone finds it under Team templates.' : 'Saved under My templates.');
+    } catch (err) { toast(err?.message === 'templates_full' ? 'You have 100 templates. Remove some first.' : err?.message === 'template_too_big' ? 'This board is too big for a template. Save part of it (select first).' : 'Couldn’t save the template'); }
+    finally { b.disabled = false; }
+  });
+
+  dockReady = true;
   // ── Corners: templates and full screen ──────────────────────────────────
   const TPL_EMOJI = { retro: '🔁', flowchart: '🔀', brainstorm: '💡', mindmap: '🧠', kanban: '🗂️', swot: '🧭', timeline: '🗓️', journey: '🚶', fishbone: '🐟', agenda: '📋', orgchart: '🏢' };
   Object.assign(TPL_EMOJI, { basicflow: '🟢', approval: '✅', swimflow: '🏊', sop: '🔢', bpmn: '⚙️', erd: '🗄️', network: '🖧', valuestream: '🏭', projecttimeline: '📆' });
@@ -871,8 +1616,7 @@ export function mountCanvas(container, opts) {
     if (e.target.closest('[data-c="lib"]')) { toggleLibrary(); return; }
     if (e.target.closest('[data-c="shapes"]')) { toggleShapePanel(); paintCorners(); return; }
     if (!e.target.closest('[data-c="tpl"]')) return;
-    if (!gallery.hidden) { gallery.hidden = true; return; }
-    openGallery();
+    openCenter();
   });
   topRight.addEventListener('click', e => { const b = e.target.closest('[data-c]'); if (b) runCorner(b, e); });
   function runCorner(b, e) {
@@ -909,6 +1653,11 @@ export function mountCanvas(container, opts) {
   }
   const pickTemplate = e => {
     if (e.target.closest('[data-close]')) { gallery.hidden = true; return; }
+    if (e.target.closest('[data-tbrowse]')) { openCenter('featured'); return; }
+    if (e.target.closest('[data-tguide]')) { runCorner(Object.assign(document.createElement('button'), { dataset: { c: 'guide' } }), {}); return; }
+    if (e.target.closest('[data-timport]')) { toggleImport(); return; }
+    const tu = e.target.closest('[data-tuse]'); if (tu) { useTemplate(tu.dataset.tuse); return; }
+    const tp = e.target.closest('[data-tprev], [data-tk]'); if (tp && emptyGallery.contains(tp)) { openCenter('featured').then(() => { tcs.zoom = 1; showPreview(tp.dataset.tprev || tp.dataset.tk); }); return; }
     const tc = e.target.closest('[data-tcat]');
     if (tc) { galleryCat = tc.dataset.tcat; if (gallery.contains(tc)) openGallery(); else emptyGallery.innerHTML = emptyHtml(); return; }
     const b = e.target.closest('[data-tpl]'); if (!b) return;
@@ -918,9 +1667,10 @@ export function mountCanvas(container, opts) {
   };
   gallery.addEventListener('click', pickTemplate);
   emptyGallery.addEventListener('click', pickTemplate);
-  const emptyHtml = () => `<b>Start with a blank board, or pick a template</b>${galleryTabs()}<div class="wb-tgrid">${galleryHtml()}</div><p class="wb-note">Making a flowchart? Press <b>Guide</b> at the top for step-by-step help. Or pick a tool below and start drawing.</p>`;
+  const emptyHtml = () => `<b>Start with a blank board, or pick a template</b><p class="wb-note">Each template comes in a frame with a “How to use” note you can hide in one click.</p><div class="wb-tcgrid wb-feat6">${TEMPLATE_META.filter(t => t.featured).map(tcCard).join('')}</div><div class="wb-row wb-startrow"><button type="button" class="wb-cb wb-txt wb-pri" data-tbrowse>Browse all templates</button><button type="button" class="wb-cb wb-txt" data-tguide>Make a flowchart (Guide)</button><button type="button" class="wb-cb wb-txt" data-timport>Import Mermaid / draw.io</button></div><p class="wb-note" hidden>Making a flowchart? Press <b>Guide</b> at the top for step-by-step help. Or pick a tool below and start drawing.</p>`;
   function paintEmpty(isEmpty) {
-    const show = isEmpty && !readOnly && mode === 'board' && !interaction;
+    // the start card steps aside as soon as a tool is picked (or the person starts drawing)
+    const show = isEmpty && !readOnly && mode === 'board' && !interaction && tool === 'select' && !dockKind;
     if (show && emptyGallery.hidden) emptyGallery.innerHTML = emptyHtml();
     emptyGallery.hidden = !show;
     root.classList.toggle('wb-empty', isEmpty && !show);
@@ -1811,11 +2561,12 @@ export function mountCanvas(container, opts) {
   // moves up above the tool bar instead of covering its last buttons.
   function layoutBars() {
     const w = root.clientWidth;
-    root.classList.toggle('wb-narrow', w > 0 && (w - toolbar.offsetWidth) / 2 < zoomBar.offsetWidth + 24);
+    const bar = dockReady && !dock.hidden ? dock : toolbar;
+    root.classList.toggle('wb-narrow', w > 0 && (w - bar.offsetWidth) / 2 < zoomBar.offsetWidth + 24);
   }
   function paintZoom() {
     zoomBar.innerHTML = `<button type="button" data-z="out" aria-label="Zoom out" title="Zoom out (Ctrl −)">−</button><button type="button" data-z="pct" class="wb-pct" title="Zoom to 100%">${Math.round(view.z * 100)}%</button><button type="button" data-z="in" aria-label="Zoom in" title="Zoom in (Ctrl +)">+</button><button type="button" data-z="fit" title="Fit everything (Shift 1)">Fit</button>`
-      + (readOnly ? '' : `<span class="wb-sep"></span><button type="button" data-z="undo" aria-label="Undo" title="Undo (Ctrl Z)" ${undo.undoStack.length ? '' : 'disabled'}>${icon('undo')}</button><button type="button" data-z="redo" aria-label="Redo" title="Redo (Ctrl Y)" ${undo.redoStack.length ? '' : 'disabled'}>${icon('redo')}</button>`)
+      + (readOnly || (dockReady && dockOn()) ? '' : `<span class="wb-sep"></span><button type="button" data-z="undo" aria-label="Undo" title="Undo (Ctrl Z)" ${undo.undoStack.length ? '' : 'disabled'}>${icon('undo')}</button><button type="button" data-z="redo" aria-label="Redo" title="Redo (Ctrl Y)" ${undo.redoStack.length ? '' : 'disabled'}>${icon('redo')}</button>`)
       + (compact ? '' : `<span class="wb-sep"></span><button type="button" data-z="keys" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>`);
     layoutBars();
   }
@@ -1848,7 +2599,7 @@ export function mountCanvas(container, opts) {
   function paintProps() {
     const els = [...sel].map(get).filter(Boolean);
     widthMenu.hidden = true; arrangeMenu.hidden = true; headsMenu.hidden = true; themeMenu.hidden = true; propsMore.hidden = true;
-    if (!els.length || readOnly || interaction || editing) { props.hidden = true; if (colourFor === 'sel') colourPop.hidden = true; return; }
+    if (!els.length || readOnly || interaction || editing) { props.hidden = true; if (colourFor === 'sel') colourPop.hidden = true; if (dockReady) { ctxBar._html = null; paintCtx(); } return; }
     const types = new Set(els.map(e => e.type));
     const only = t => types.size === 1 && types.has(t);
     const anyShape = els.some(e => isShape(e));
@@ -1898,8 +2649,8 @@ export function mountCanvas(container, opts) {
     propsMore.innerHTML = more.join('');
     propsMore.hidden = true;
     props.innerHTML = parts.join('<span class="wb-sep"></span>');
-    props.hidden = false;
-    positionProps();
+    props.hidden = dockOn();
+    if (dockOn()) { ctxBar._html = null; paintCtx(); } else positionProps();
   }
   // the selection bar's ⋯ More menu: the same buttons, handled by the bar's own click handler
   const propsMore = el('div', 'wb-menu wb-propsmore'); propsMore.hidden = true; propsMore.setAttribute('role', 'menu');
@@ -2362,7 +3113,7 @@ export function mountCanvas(container, opts) {
     if (e.target.closest('[data-close]')) { guidePanel.hidden = true; paintCorners(); return; }
     const b = e.target.closest('[data-g]'); if (!b || b.disabled || readOnly) return;
     const k = b.dataset.g;
-    if (k === 'tpl') { guidePanel.hidden = true; openGallery('Flowchart & process'); return; }
+    if (k === 'tpl') { guidePanel.hidden = true; tcs.cats = new Set(['Flowchart & process']); openCenter('all'); return; }
     if (k === 'start') {
       const r = rect(), c = toWorld(r.width / 2, Math.min(r.height * 0.25, 140));
       const s = makeShape('terminator', { x: c.x - 80, y: c.y - 28 }, 'Start');
@@ -2903,6 +3654,7 @@ export function mountCanvas(container, opts) {
     const placed = els.map(e => { z = zBetween(z || null, null); return { ...e, z }; });
     write(placed, { now: true });
     commitStop();
+    if (dockReady) paintDock();
     if (select) { sel = new Set(placed.filter(e => e.type !== 'connector' || placed.length === 1).map(e => e.id)); paintProps(); }
     if (count() > MAX_ELEMENTS * 0.9) toast('This board is getting very large. Think about moving part of it to a new board.');
     return placed;
@@ -2939,8 +3691,8 @@ export function mountCanvas(container, opts) {
     else for (const e of sorted.reverse()) { z = z ? zBetween(null, z) : 'a0'; out.unshift(bump(e, { z })); }
     write(out, { now: true });
   }
-  function doUndo() { flush(); undo.undo(); sel.clear(); render(); paintZoom(); }
-  function doRedo() { flush(); undo.redo(); sel.clear(); render(); paintZoom(); }
+  function doUndo() { flush(); undo.undo(); sel.clear(); render(); paintZoom(); paintDock(); }
+  function doRedo() { flush(); undo.redo(); sel.clear(); render(); paintZoom(); paintDock(); }
   undo.on('stack-item-added', () => paintZoom());
   undo.on('stack-item-popped', () => paintZoom());
 
@@ -3199,7 +3951,8 @@ export function mountCanvas(container, opts) {
       const pressure = e.pointerType === 'pen' ? e.pressure || 0.5 : 0.5;
       const c = prefs.color[kind];
       const p = create('path', { x: w.x, y: w.y, points: [[0, 0, pressure]], stroke: isHex(c) ? c : null, width: +(prefs.size[kind] / view.z).toFixed(2), tool: kind,
-        highlight: kind === 'highlighter' || undefined, simulate: e.pointerType !== 'pen' || undefined, opacity: prefs.opacity < 100 ? prefs.opacity / 100 : undefined });
+        highlight: kind === 'highlighter' || undefined, simulate: e.pointerType !== 'pen' || undefined, opacity: prefs.opacity < 100 ? prefs.opacity / 100 : undefined,
+        arrowEnd: (prefs.arrowEnd && kind !== 'highlighter') || undefined, dashed: (prefs.dashed && kind !== 'highlighter') || undefined });
       p.z = zBetween(topZ(all()) || null, null);
       interaction = { kind: 'draw', el: p, pen: e.pointerType === 'pen', raw: [[w.x, w.y]], last: { x: w.x, y: w.y } };
       draft.set(p.id, p); render();
@@ -3704,7 +4457,8 @@ export function mountCanvas(container, opts) {
     // R picks the rectangle; pressing it again while a shape tool is on walks through the other shapes (shown in the bar).
     if (k === 'r') { lastShape = SHAPES.includes(tool) ? SHAPES[(SHAPES.indexOf(tool) + 1) % SHAPES.length] : 'rect'; setTool(lastShape); return; }
     if (k === 'i') { if (opts.upload) pickFiles(); return; }
-    if (k === 'n') { toggleCardPicker(); return; }
+    if (k === 'n' || (e.shiftKey && k === 't')) { if (dockOn()) { openPicker(); paintDock(); } else toggleCardPicker(); return; }
+    if (e.shiftKey && k === 'g') { openCenter(); return; }
     if (k === 'k' && !compact) { toggleEmojiPicker(toolbar.querySelector('[data-tool="emoji"]') || toolbar); return; }
     if (k === 'u' && opts.linkPreview && !compact) { askLinkCard(); return; }
     if (k === 'm') { prefs.ptype = 'highlighter'; savePrefs(prefs); setTool('highlighter'); return; }
@@ -3755,6 +4509,7 @@ export function mountCanvas(container, opts) {
   let wasTight = tight;
   const ro = new ResizeObserver(() => {
     if (isPhone() !== wasPhone) { wasPhone = isPhone(); paintToolbar(); }
+    if (dockOn() !== !dock.hidden) paintToolbar();
     // all tools need about 40 px each; under that the bar switches to the short set + More
     tight = root.clientWidth > 0 && root.clientWidth < (mode === 'block' ? 640 : 560);
     if (tight !== wasTight) { wasTight = tight; root.classList.toggle('wb-tight', tight); moreOpen = false; moreMenu.hidden = true; paintToolbar(); }
@@ -3777,19 +4532,18 @@ export function mountCanvas(container, opts) {
   const api = {
     root,
     /// Adds a starter layout beside what is already on the board. Returns how many things were added.
-    applyTemplate(name) {
-      const make = CANVAS_TEMPLATES[name];
-      if (!make || readOnly) return 0;
+    applyTemplate(name, { howTo: withHow = true, examples = true } = {}) {
+      if (!CANVAS_TEMPLATES[name] || readOnly) return 0;
       const b = unionBounds(live(), get);
-      const items = make({ x: b ? b.x + b.w + 120 : 0, y: b ? b.y : 0 });
+      const items = buildTemplate(name, { x: b ? b.x + b.w + 120 : 0, y: b ? b.y : 0, howTo: withHow, examples });
       const placed = add(items) || [];
       fit(placed, { max: 1 });
       return placed.length;
     },
-    setReadOnly(v) { readOnly = !!v; if (readOnly) { stopEdit(); sel.clear(); setTool('select'); gallery.hidden = true; penPop.hidden = true; colourPop.hidden = true; emojiPop.hidden = true; } paintToolbar(); paintCorners(); paintZoom(); render(); paintProps(); },
+    setReadOnly(v) { readOnly = !!v; if (readOnly) { stopEdit(); sel.clear(); setTool('select'); gallery.hidden = true; tcOverlay.hidden = true; ctxPop.hidden = true; picker.hidden = true; morePanel.hidden = true; penPop.hidden = true; colourPop.hidden = true; emojiPop.hidden = true; } paintToolbar(); paintCorners(); paintZoom(); render(); paintProps(); },
     /// Repaints the corner buttons (the page lock changed, for example).
     refreshCorners() { paintCorners(); },
-    setTheme(t) { theme = t; cache.clear(); world.innerHTML = ''; root.classList.toggle('wb-dark', t === 'dark'); paintToolbar(); render(); },
+    setTheme(t) { theme = t; cache.clear(); world.innerHTML = ''; root.classList.toggle('wb-dark', t === 'dark'); pvCache.clear(); paintToolbar(); render(); if (!tcOverlay.hidden) paintCenter(); },
     fit: () => fit(),
     tidyFlow: dir => tidyFlow(dir),
     focus: () => root.focus({ preventScroll: true }),

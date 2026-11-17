@@ -22,7 +22,7 @@ public partial class Notes
 {
     [Parameter] public Guid? Id { get; set; }
 
-    internal const string EditorModulePath = "./js/notes/notes-editor.js?v=20261117-r4";
+    internal const string EditorModulePath = "./js/notes/notes-editor.js?v=20261117-r6";
     private const string EditorModule = EditorModulePath;
 
     private enum View { Home, Page, New, Trash }
@@ -229,6 +229,8 @@ public partial class Notes
             kind = p.Kind,
             locked = p.LockedAt is not null,
             boardEl = p.Kind == "board" ? boardRef : (object?)null,
+            // whiteboard Template Center: an admin may remove templates others shared with the team (the API checks it again)
+            notesAdmin = Auth.Can("notes.admin"),
         };
         try
         {

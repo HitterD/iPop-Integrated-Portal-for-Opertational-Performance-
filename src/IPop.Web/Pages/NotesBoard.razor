@@ -93,6 +93,7 @@
                 locked = note.LockedAt is not null,
                 boardEl = boardRef,
                 boardOnly = true,
+                notesAdmin = Auth.Can("notes.admin"),
                 drawingId = note.Kind == "board" ? null : DrawingId,
             });
         }

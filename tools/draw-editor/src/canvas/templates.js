@@ -3,6 +3,10 @@
 import { create } from './model.js';
 import { STENCIL } from './stencils.js';
 import { layoutFlow } from './flow.js';
+import { ROUND6, howTo, HOWTO_W } from './templates-round6.js';
+import { TEMPLATE_META } from './template-meta.js';
+const TEMPLATE_META_BY_KEY = new Map(TEMPLATE_META.map(t => [t.key, t]));
+export { TEMPLATE_META } from './template-meta.js';
 
 const sticky = (x, y, text = '', color = 'yellow', w = 200, h = 150) => create('sticky', { x, y, w, h, text, color });
 const frame = (x, y, w, h, name) => create('frame', { x, y, w, h, name });
@@ -193,4 +197,29 @@ export const CANVAS_TEMPLATES = {
     const team = [0, 330, 660].map((dx, i) => box('rect', x + dx, y + 200, 240, 80, `Team ${i + 1}`, { fill: '#CFE6FF' }));
     return [head, ...team, ...team.map(t => link(head, t, { route: 'elbow', endHead: 'none' }))];
   },
+
+  // ══ Round 6 (Template Center): 37 more everyday templates. Each lives in a frame named after it; a grey "How to use"
+  // sticky sits on the left (the Template Center can leave it out); small work examples are plain text you can delete. ══
+  ...ROUND6,
 };
+
+/// Builds a template for the board: { els, name }. The round-6 templates lay themselves out in a frame with a How-to note;
+/// the older ones get the same treatment here (a frame around them and the note on the left), so every template looks alike.
+/// opts: { howTo = true, examples = true }.
+export function buildTemplate(key, { x = 0, y = 0, howTo: withHow = true, examples = true } = {}) {
+  const make = CANVAS_TEMPLATES[key];
+  if (!make) return [];
+  const meta = TEMPLATE_META_BY_KEY.get(key);
+  if (ROUND6[key]) return make({ x, y, howTo: withHow, examples });
+  // older templates: build at an offset, then wrap
+  const pad = 40, top = 60, left = pad + (withHow ? HOWTO_W + 40 : 0);
+  const els = make({ x: x + left, y: y + top });
+  let x2 = x + left, y2 = y + top;
+  for (const e of els) {
+    if (e.type === 'connector') continue;
+    if (e.type === 'path') { for (const [dx, dy] of e.points || []) { x2 = Math.max(x2, e.x + dx); y2 = Math.max(y2, e.y + dy); } continue; }
+    x2 = Math.max(x2, e.x + (e.w || 0)); y2 = Math.max(y2, e.y + (e.h || 0));
+  }
+  const f = create('frame', { x, y, w: x2 - x + pad, h: Math.max(y2 - y, top + 320) + pad, name: meta?.name || key });
+  return [f, ...(withHow && meta ? [howTo(x + pad, y + top, meta.steps)] : []), ...els];
+}

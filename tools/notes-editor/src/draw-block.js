@@ -18,12 +18,14 @@ export function useOwnCanvas() {
 export function loadCanvasBundle() {
   if (canvasBundle) return canvasBundle;
   const base = new URL('./canvas/', import.meta.url);
+  // the editor's own ?v= also busts the canvas files, so a deploy never mixes a new page with an old cached board
+  const ver = new URL(import.meta.url).search;
   if (!document.querySelector('link[data-ipop-canvas-css]')) {
     const l = document.createElement('link');
-    l.rel = 'stylesheet'; l.href = new URL('canvas.css', base).href; l.dataset.ipopCanvasCss = '1';
+    l.rel = 'stylesheet'; l.href = new URL(`canvas.css${ver}`, base).href; l.dataset.ipopCanvasCss = '1';
     document.head.appendChild(l);
   }
-  canvasBundle = import(/* @vite-ignore */ new URL('canvas.js', base).href).catch(e => { canvasBundle = null; throw e; });
+  canvasBundle = import(/* @vite-ignore */ new URL(`canvas.js${ver}`, base).href).catch(e => { canvasBundle = null; throw e; });
   return canvasBundle;
 }
 
@@ -60,7 +62,7 @@ const lockListeners = new Set();   // inline blocks re-read the editor's editabl
 export function setAllReadOnly(readOnly) { live.forEach(i => i.setReadOnly(readOnly)); lockListeners.forEach(f => f(readOnly)); }
 export function refreshBoards() { live.forEach(i => i.refreshCorners?.()); }
 
-export async function mountScene(container, { ydoc, id, readOnly, mode = 'block', onLinkOpen, onFullscreen, toast, library, files, beforeConvert, awareness, comments, tasks, pages, title, taskSearch, extras, popOutId }) {
+export async function mountScene(container, { ydoc, id, readOnly, mode = 'block', onLinkOpen, onFullscreen, toast, library, files, beforeConvert, awareness, comments, tasks, pages, title, taskSearch, extras, popOutId, templates, prefs, taskCreate, lastProject }) {
   const mod = await loadDrawBundle();
   const own = mod.ENGINE === 'canvas';
   // First time an old Excalidraw drawing is opened on the new canvas: keep a named version of the page as it was (grill Q26).
@@ -69,6 +71,7 @@ export async function mountScene(container, { ydoc, id, readOnly, mode = 'block'
   const inst = own
     ? mod.mountDraw(container, { Y, doc: ydoc, id, readOnly, theme: isDark() ? 'dark' : 'light', mode, onLinkOpen, onFullscreen, toast, library,
         upload: files?.upload, loadFile: files?.load, openFile: files?.open, awareness, boardKey: String(id),
+        templates: templates || extras?.drawTemplates, prefs: prefs || extras?.drawPrefs, taskCreate: taskCreate || extras?.drawTaskCreate, lastProject: lastProject || extras?.drawLastProjectName,
         comments, tasks, pages, title, taskSearch, voteMap: ydoc.getMap(`wbvote:${id}`), me: { id: awareness?.getLocalState()?.user?.nik },
         emojiData: extras?.drawEmojiData, stickers: extras?.drawStickers, linkPreview: extras?.drawLinkPreview, loadPreviewImage: extras?.drawPreviewImage,
         boardLock: mode === 'board' && id === 'board' ? extras?.drawBoardLock : null,

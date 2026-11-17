@@ -179,6 +179,28 @@ export async function mount(el, opts) {
       async update(id, patch) { const r = await api(`/api/notes/library/${id}`, { method: 'PATCH', json: patch }); if (!r.ok) throw new Error(String(r.status)); return r.json(); },
       async remove(id) { const r = await api(`/api/notes/library/${id}`, { method: 'DELETE' }); if (!r.ok) throw new Error(String(r.status)); },
     },
+    // Template Center (round 6): boards people saved as templates (mine + shared with the team). An admin may remove shared ones.
+    drawTemplates: {
+      async list() { const r = await api('/api/notes/board-templates'); if (!r.ok) throw new Error(String(r.status)); return r.json(); },
+      async save(t) {
+        const r = await api('/api/notes/board-templates', { method: 'POST', json: t });
+        if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.code || String(r.status)); }
+        return r.json();
+      },
+      async update(id, patch) { const r = await api(`/api/notes/board-templates/${id}`, { method: 'PATCH', json: patch }); if (!r.ok) throw new Error(String(r.status)); return r.json(); },
+      async remove(id) { const r = await api(`/api/notes/board-templates/${id}`, { method: 'DELETE' }); if (!r.ok) throw new Error(String(r.status)); },
+      isAdmin: () => !!opts.notesAdmin,
+      /// "As a new board page": a whiteboard page next to this one, opened in this tab; the template is put on it there.
+      newBoardPage: async (title, key, o = {}) => {
+        try { sessionStorage.setItem('ipop.wb.pendingTemplate', JSON.stringify({ key, at: Date.now(), howTo: o.howTo !== false, examples: o.examples !== false })); } catch { /* blocked */ }
+        return call('OnNewBoardFromTemplate', title);
+      },
+    },
+    // Per-person whiteboard prefs that follow the account: "My pens" and the templates used last.
+    drawPrefs: {
+      async get(key) { const r = await api(`/api/me/ui-prefs/${key}`); if (r.status !== 200) return null; return r.json().catch(() => null); },
+      async set(key, value) { await api(`/api/me/ui-prefs/${key}`, { method: 'PUT', json: value }).catch(() => {}); },
+    },
     // Comments pinned to a board go through the page's own threads (same panel, mentions, reactions, resolve).
     drawComments: {
       start: (quote, anchor) => { if (canComment) call('OnComment', quote, anchor); },
@@ -216,11 +238,32 @@ export async function mount(el, opts) {
           const r = await api(`/api/projects/${p.id}/tasks/list?pageSize=50`);
           if (!r.ok) continue;
           const j = await r.json();
-          for (const t of (j.items || j || [])) if (!q || String(t.title).toLowerCase().includes(q.toLowerCase())) out.push({ id: t.id, title: t.title, status: t.status, project: p.name });
+          for (const t of (j.items || j || [])) if (!q || String(t.title).toLowerCase().includes(q.toLowerCase()) || String(t.id).startsWith(q.toLowerCase())) out.push({ id: t.id, title: t.title, status: t.status, project: p.name, projectId: p.id, updatedAt: t.updatedAt, people: (t.assignees || []).map(a => a.name) });
         } catch { /* skipped */ }
         if (out.length >= 40) break;
       }
+      // most recently changed first: what you touched last is what you want on the board
+      out.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
       return out.slice(0, 40);
+    },
+    // "+ Create new" in the Task picker: a task in the project last used for the board (or the first one you can add to)
+    drawTaskCreate: async title => {
+      let projects = [];
+      try { const r = await api('/api/projects/writable'); if (r.ok) projects = await r.json(); } catch { /* none */ }
+      if (!projects.length) return null;
+      let last = null; try { last = localStorage.getItem('ipop.wb.lastProject'); } catch { /* blocked */ }
+      const p = projects.find(x => x.id === last) || projects[0];
+      const r = await api(`/api/projects/${p.id}/tasks`, { method: 'POST', json: { projectId: p.id, parentTaskId: null, title: String(title || 'New task').slice(0, 300), description: null, status: 'todo', priority: null, startDate: null, dueDate: null, estimatedHours: null, dependencies: null, tags: null } });
+      if (!r.ok) return null;
+      const t = await r.json();
+      projectNames.set(p.id, p.name);
+      return { id: t.id, title: t.title, status: t.status, project: p.name, projectId: p.id };
+    },
+    drawLastProjectName: async () => {
+      let projects = [];
+      try { const r = await api('/api/projects/writable'); if (r.ok) projects = await r.json(); } catch { /* none */ }
+      let last = null; try { last = localStorage.getItem('ipop.wb.lastProject'); } catch { /* blocked */ }
+      return (projects.find(x => x.id === last) || projects[0])?.name || null;
     },
     // Before an old drawing becomes the new canvas, the page as it is now is kept as a named version (once per page).
     beforeCanvasConvert: async () => {
@@ -646,8 +689,16 @@ export async function mount(el, opts) {
       return !!fsHome;
     };
     boardFsExit = () => onBoardFs(false);
-    mountScene(boardEl, { ydoc, id: sceneId, readOnly: !canEdit, mode: 'board', onLinkOpen: url => host.openLink(url), toast: m => host.toast(m), onFullscreen: opts.boardOnly ? null : onBoardFs, library: host.drawLibrary, files: host.drawFiles, beforeConvert: host.beforeCanvasConvert, awareness, comments: host.drawComments, tasks: host.drawTasks, pages: host.drawPages, taskSearch: host.drawTaskSearch, extras: host, popOutId: sceneId, title: () => titleNow() })
-      .then(inst => { if (closing) inst.destroy(); else board = inst; })
+    mountScene(boardEl, { ydoc, id: sceneId, readOnly: !canEdit, mode: 'board', templates: host.drawTemplates, prefs: host.drawPrefs, taskCreate: host.drawTaskCreate, lastProject: host.drawLastProjectName, onLinkOpen: url => host.openLink(url), toast: m => host.toast(m), onFullscreen: opts.boardOnly ? null : onBoardFs, library: host.drawLibrary, files: host.drawFiles, beforeConvert: host.beforeCanvasConvert, awareness, comments: host.drawComments, tasks: host.drawTasks, pages: host.drawPages, taskSearch: host.drawTaskSearch, extras: host, popOutId: sceneId, title: () => titleNow() })
+      .then(inst => {
+        if (closing) { inst.destroy(); return; }
+        board = inst;
+        // "Use template → As a new board page": the new page puts the chosen template on itself once (within 2 minutes)
+        try {
+          const pend = JSON.parse(sessionStorage.getItem('ipop.wb.pendingTemplate') || 'null');
+          if (pend?.key && Date.now() - pend.at < 120000 && canEdit && inst.count() === 0) { sessionStorage.removeItem('ipop.wb.pendingTemplate'); inst.applyTemplate(pend.key, { howTo: pend.howTo !== false, examples: pend.examples !== false }); }
+        } catch { /* blocked */ }
+      })
       .catch(() => host.toast('Couldn’t load the whiteboard tools. Check your connection and reload the page.'));
   }
 
