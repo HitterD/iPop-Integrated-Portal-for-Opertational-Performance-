@@ -190,9 +190,12 @@ export async function mount(el, opts) {
     // Projects: task cards (live) and "Make task" from stickies. A task the person cannot open comes back as private.
     drawTasks: {
       async get(id) {
-        const r = await api(`/api/projects/tasks/${id}`);
+        // the card endpoint answers { private: true } for a task this person can't open (no red 404 in the console)
+        const r = await api(`/api/projects/tasks/${id}/card`);
         if (!r.ok) return { private: true };
-        const t = await r.json();
+        const c = await r.json();
+        if (c.private || !c.task) return { private: true };
+        const t = c.task;
         return { id: t.id, title: t.title, status: t.status, due: t.dueDate ? new Date(t.dueDate).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : null,
           people: (t.assignees || []).map(a => String(a.name || '').split(' ')[0]), project: projectNames.get(t.projectId) || null, projectId: t.projectId };
       },

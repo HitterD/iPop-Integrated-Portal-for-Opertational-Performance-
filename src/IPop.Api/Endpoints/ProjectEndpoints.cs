@@ -369,6 +369,18 @@ public static class ProjectEndpoints
                 : Results.Json(new { code = "task_not_found", message = "Task not found or access denied." }, statusCode: 404);
         });
 
+        // GET /api/projects/tasks/{taskId}/card — what a whiteboard task card shows. A task the viewer can't open is an
+        // ordinary answer here ({ private: true }), not an error: a shared board often holds cards from other people's
+        // projects, and a 404 for each one filled the browser console with red errors. Nothing about the task is revealed.
+        g.MapGet("/tasks/{taskId:guid}/card", async (Guid taskId,
+            HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var task = await svc.GetTaskAsync(taskId, userId.Value, ct);
+            return task is not null ? Results.Ok(new { @private = false, task }) : Results.Ok(new { @private = true, task = (object?)null });
+        });
+
         // POST /api/projects/{projectId}/tasks — create task (optionally with parentId for subtask)
         g.MapPost("/{projectId:guid}/tasks", async (Guid projectId, CreateTaskRequest body,
             HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
