@@ -303,6 +303,13 @@ public sealed class PracticeSandbox
                 new { id = ProjectId, name = "Office Wi-Fi Upgrade (sample)", year = DateTime.UtcNow.Year, ownerName = Me.Name, status = "active", progress = Progress, deadline = Day(21), memberCount = 4, taskCount = Tasks.Count, isActive = true, color = "#0d9488" },
                 new { id = G("d", 2), name = "Onboarding Handbook (sample)", year = DateTime.UtcNow.Year, ownerName = Maya.Name, status = "planning", progress = 10, deadline = Day(40), memberCount = 3, taskCount = 0, isActive = true, color = "#2563eb" },
             });
+            if (M(url, @"/statuses")) return new[]
+            {
+                new { id = G("5", 1), label = "Not started", color = "#c4c4c4", stage = "todo", sortOrder = 0, taskCount = By("todo").Count },
+                new { id = G("5", 2), label = "Working on it", color = "#fdab3d", stage = "doing", sortOrder = 1, taskCount = By("doing").Count },
+                new { id = G("5", 3), label = "Ready to check", color = "#579bfc", stage = "review", sortOrder = 2, taskCount = By("review").Count },
+                new { id = G("5", 4), label = "Done", color = "#00c875", stage = "done", sortOrder = 3, taskCount = By("done").Count },
+            };
             if (M(url, @"/members")) return new[] { Me, Rina, Dimas, Maya }.Select((p, i) => new { userId = p.Id, nik = p.Nik, name = p.Name, role = i == 0 ? "owner" : "member", joinedAt = Day(-14) });
             if (M(url, @"/groups")) return new[] { new { id = GroupId, projectId = ProjectId, name = "Tasks", color = "#8E8E93", sortOrder = 0, taskCount = Tasks.Count, progress = Progress, overdueCount = 1 } };
             if (M(url, @"/kanban")) return new { projectId = ProjectId, todo = By("todo"), doing = By("doing"), done = By("done"), review = By("review") };
@@ -547,6 +554,8 @@ public sealed class PracticeSandbox
                     t["status"] = Str("status") ?? t["status"];
                     return (new { success = true }, "Moved — only in practice", "In real mode the assignees would see the new status.");
                 }
+                if (method == HttpMethod.Put && M(url, @"/api/projects/[0-9a-f-]{36}/statuses$"))
+                    return (Array.Empty<object>(), "Statuses saved — only in practice", "In real mode everyone in the project would see the new statuses.");
                 if (method == HttpMethod.Post && M(url, @"/api/projects/[0-9a-f-]{36}/tasks$"))
                 {
                     var nt = Task(Str("title") ?? "My practice task", Str("status") ?? "todo", null, Str("priority"), [Me]);

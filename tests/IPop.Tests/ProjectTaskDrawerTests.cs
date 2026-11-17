@@ -64,7 +64,7 @@ public class ProjectTaskDrawerTests
         var moves = new List<(Guid, string)>();
         var cut = ctx.Render<ProjectTaskDrawer>(p => p
             .Add(c => c.Task, task)
-            .Add(c => c.OnStatusChange, ((ProjectTaskDto Task, string NewStatus) a) => moves.Add((a.Task.Id, a.NewStatus))));
+            .Add(c => c.OnStatusChange, ((ProjectTaskDto Task, string NewStatus, Guid? StatusOptionId) a) => moves.Add((a.Task.Id, a.NewStatus))));
 
         Assert.Empty(cut.FindAll("select.td-status, .app-select.td-status"));
         var pills = cut.FindAll(".td-status-pill");

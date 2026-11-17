@@ -46,6 +46,7 @@
                 <div class="ph-menu" role="menu" @onclick:stopPropagation="true">
                     <button type="button" role="menuitem" @onclick="() => { showMore = false; ScheduleTeam(); }"><i data-lucide="calendar-plus"></i>Schedule team meeting</button>
                     <button type="button" role="menuitem" @onclick="() => Run(OnOpenEditModal)"><i data-lucide="pencil"></i>Edit project details</button>
+                    <button type="button" role="menuitem" @onclick="() => Run(OnEditStatuses)"><i data-lucide="list-checks"></i>Statuses…</button>
                     <button type="button" role="menuitem" @onclick="() => Run(OnExport)"><i data-lucide="download"></i>Export to Excel (CSV)</button>
                     <button type="button" role="menuitem" @onclick="CopyLink"><i data-lucide="link"></i>Copy link</button>
                     <button type="button" role="menuitem" @onclick="OpenSaveTemplate"><i data-lucide="layout-template"></i>Save as template…</button>
@@ -121,6 +122,8 @@
     [Parameter] public EventCallback OnCopyLink { get; set; }
     [Parameter] public EventCallback OnDeleteProject { get; set; }
     [Parameter] public EventCallback OnMarkCompleted { get; set; }
+    /// "Statuses…" in the ⋯ menu: opens the project's status editor.
+    [Parameter] public EventCallback OnEditStatuses { get; set; }
     [Parameter] public EventCallback OnBack { get; set; }
     /// Owner/manager/member: shows "New task".
     [Parameter] public bool CanWrite { get; set; }

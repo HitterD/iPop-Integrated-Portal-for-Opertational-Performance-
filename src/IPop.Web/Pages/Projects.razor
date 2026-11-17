@@ -136,6 +136,7 @@ else
                 OnDeleteProject="HandleDeleteProject"
                 OnMarkCompleted="HandleMarkProjectCompleted"
                 OnBack="CloseMobileDetail"
+                OnEditStatuses="OpenStatusModal"
                 CanWrite="CanWriteTasks"
                 OnNewTask="CreateTaskAndOpen" />
 
@@ -271,6 +272,7 @@ else
                             {
                                 <ProjectKanbanBoard ReadOnly="@(!CanWriteTasks)"
                                     Kanban="kanban"
+                                    StatusOptions="statusOptions"
                                     Members="projectMembers"
                                     Groups="projectGroups"
                                     OnMoveToGroup="HandleMoveTaskToGroup"
@@ -281,7 +283,7 @@ else
                                     CurrentUserNik="@currentUserNik"
                                     HighlightTaskId="highlightTaskId"
                                     OnTaskClick="OpenTaskEditor"
-                                    OnTaskMove="HandleTaskMove"
+                                    OnTaskMove="HandleTaskMoveWithOption"
                                     OnToggleComplete="ToggleTaskComplete"
                                     OnQuickAdd="HandleQuickAdd"
                                     OnToggleAssignee="HandleToggleAssignee"
@@ -309,6 +311,10 @@ else
                                     }
                                 </div>
                                 <ProjectTableView ReadOnly="@(!CanWriteTasks)"
+                                    StatusOptions="statusOptions"
+                                    CanEditStatuses="CanManageMembers"
+                                    OnEditStatuses="OpenStatusModal"
+                                    OnAddField="() => addingField = true"
                                     Tasks="taskList.Items.ToList()"
                                     Members="projectMembers"
                                     Groups="projectGroups"
@@ -344,7 +350,7 @@ else
                                     OnSelectionChanged="ids => selectedTaskIds = ids" />
                                 @if (selectedTaskIds.Count > 0)
                                 {
-                                    <ProjectBulkBar Count="selectedTaskIds.Count" Members="projectMembers" Groups="projectGroups" Busy="bulkBusy"
+                                    <ProjectBulkBar StatusOptions="statusOptions" Count="selectedTaskIds.Count" Members="projectMembers" Groups="projectGroups" Busy="bulkBusy"
                                                     OnAction="HandleBulkAction" OnClear="ClearSelection" />
                                 }
                             }
@@ -397,6 +403,12 @@ else
 }
 
 @* Modals & Drawers *@
+@if (showStatusModal && selectedProjectId != Guid.Empty)
+{
+    <ProjectStatusesModal ProjectId="selectedProjectId" Options="statusOptions" CanEdit="CanManageMembers"
+                          OnSaved="HandleStatusesSaved" OnClose="() => showStatusModal = false" />
+}
+
 @if (showEvidenceModal && evidenceTask is not null)
 {
     <ProjectStatusEvidenceModal
@@ -405,7 +417,7 @@ else
         TargetStatus="@evidenceTargetStatus"
         Members="projectMembers"
         OnConfirm="HandleEvidenceConfirm"
-        OnCancel="() => { showEvidenceModal = false; evidenceTask = null; bulkEvidenceStatus = null; }" />
+        OnCancel="() => { showEvidenceModal = false; evidenceTask = null; bulkEvidenceStatus = null; evidenceOptionId = null; }" />
 }
 
 @if (showExtensionModal && extensionTask is not null)
@@ -419,7 +431,7 @@ else
 
 @if (showTaskEditor && editingTask is not null)
 {
-    <ProjectTaskDrawer @ref="taskDrawer" PhoneLayout="Phone.IsPhone"
+    <ProjectTaskDrawer @ref="taskDrawer" CustomStatuses="statusOptions" PhoneLayout="Phone.IsPhone"
         ReadOnly="@(!CanWriteTasks)"
         OnAutoSave="HandleAutoSaveTask"
         TakeFocusTitle="focusNewTaskTitle"
@@ -571,6 +583,32 @@ else
     private Guid? highlightTaskId;
 
     // Task Inspector Drawer state
+    // Projects v2 custom statuses
+    private List<ProjectStatusOptionDto> statusOptions = [];
+    private bool showStatusModal;
+    private void OpenStatusModal() { if (selectedProjectId != Guid.Empty) showStatusModal = true; }
+
+    private async Task LoadStatusOptions()
+    {
+        if (selectedProjectId == Guid.Empty) return;
+        var pid = selectedProjectId;
+        List<ProjectStatusOptionDto>? list = null;
+        try { list = await Auth.GetAsync<List<ProjectStatusOptionDto>>($"/api/projects/{pid}/statuses"); } catch { }
+        if (pid == selectedProjectId) statusOptions = list ?? [];
+    }
+
+    private async Task HandleStatusesSaved(List<ProjectStatusOptionDto> saved)
+    {
+        statusOptions = saved;
+        await LoadKanban();
+        await LoadTaskList();
+        StateHasChanged();
+    }
+
+    private ProjectStatusOptionDto? OptionOf(Guid? id) => id is { } g ? statusOptions.FirstOrDefault(o => o.Id == g) : null;
+
+    private Task HandleTaskMoveWithOption((Guid TaskId, string TargetStatus, Guid? StatusOptionId) arg) => MoveTo(arg.TaskId, arg.TargetStatus, arg.StatusOptionId);
+
     private ProjectTaskDto? editingTask;
     private bool showTaskEditor;
     private ProjectTaskDrawer? taskDrawer;
@@ -1084,7 +1122,7 @@ else
 
     private async Task LoadProjectViewsCoreAsync()
     {
-        await Task.WhenAll(LoadMembers(), LoadGroups(), LoadFields());
+        await Task.WhenAll(LoadMembers(), LoadGroups(), LoadFields(), LoadStatusOptions());
         await Task.WhenAll(LoadKanban(), LoadTaskList(), LoadTimeline());
     }
 
@@ -1381,29 +1419,39 @@ else
         await InvokeAsync(StateHasChanged);
     }
 
-    private async Task HandleTaskMove((Guid TaskId, string TargetStatus) arg)
+    private Task HandleTaskMove((Guid TaskId, string TargetStatus) arg) => MoveTo(arg.TaskId, arg.TargetStatus, null);
+
+    /// Board/phone/checkbox moves. A stage-only move lands on the first status of that stage.
+    private async Task MoveTo(Guid taskId, string targetStatus, Guid? optionId)
     {
         if (!CanWriteTasks) return;
-        var task = AllCurrentTasks.FirstOrDefault(t => t.Id == arg.TaskId);
-        if (task != null && (arg.TargetStatus == "doing" || arg.TargetStatus == "review" || arg.TargetStatus == "done") && task.Status != arg.TargetStatus)
+        var task = AllCurrentTasks.FirstOrDefault(t => t.Id == taskId);
+        if (task != null && optionId is null && statusOptions.Count > 0 && task.Status != targetStatus)
+            optionId = statusOptions.FirstOrDefault(o => o.Stage == targetStatus)?.Id;
+        if (task != null && task.Status == targetStatus && (optionId is null || optionId == task.StatusOptionId)) return;
+        if (task != null && (targetStatus == "doing" || targetStatus == "review" || targetStatus == "done") && task.Status != targetStatus)
         {
             evidenceTask = task;
-            evidenceTargetStatus = arg.TargetStatus;
+            evidenceTargetStatus = targetStatus;
+            evidenceOptionId = optionId;
             showEvidenceModal = true;
             StateHasChanged();
             await JS.InvokeVoidAsync("ipop.icons");
             return;
         }
 
-        await ExecuteTaskMove(arg.TaskId, arg.TargetStatus);
+        await ExecuteTaskMove(taskId, targetStatus, optionId);
     }
 
-    private async Task<bool> ExecuteTaskMove(Guid taskId, string targetStatus)
+    private Guid? evidenceOptionId;
+
+    private async Task<bool> ExecuteTaskMove(Guid taskId, string targetStatus, Guid? optionId = null)
     {
         // #37: completing from the List remembers row positions so the row can pop, strike, then glide.
         var animateDone = tab == 1 && targetStatus == "done";
         if (animateDone) { try { await JS.InvokeVoidAsync("ipopTaskMotion.prepare"); } catch { } }
-        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/tasks/{taskId}/move", new TaskMoveRequest(targetStatus, null));
+        var prev = AllCurrentTasks.FirstOrDefault(t => t.Id == taskId);
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/tasks/{taskId}/move", new TaskMoveRequest(targetStatus, null, optionId));
         if (res.IsSuccessStatusCode)
         {
             ProjectTaskDto? moved = null;
@@ -1416,8 +1464,14 @@ else
             RefreshEditingTask();
             StateHasChanged();
             await JS.InvokeVoidAsync("ipop.icons");
+            try { await JS.InvokeVoidAsync("ipopPv2.statusChanged", taskId.ToString(), targetStatus); } catch { }
             if (animateDone) { try { await JS.InvokeVoidAsync("ipopTaskMotion.completed", taskId.ToString()); } catch { } }
             NotifyRecurringSpawn(moved);
+            if (prev is not null && optionId is not null && OptionOf(optionId) is { } to)
+            {
+                var back = prev;
+                Toasts.ShowUndo($"Status changed to {to.Label}.", () => ExecuteTaskMove(back.Id, back.Status, back.StatusOptionId), "Undo", 5000);
+            }
             return true;
         }
         else
@@ -1457,7 +1511,8 @@ else
             showEvidenceModal = true;
             return;
         }
-        if (!await ExecuteTaskMove(arg.Task.Id, arg.TargetStatus)) return;
+        var optId = evidenceOptionId; evidenceOptionId = null;
+        if (!await ExecuteTaskMove(arg.Task.Id, arg.TargetStatus, optId)) return;
         evidenceTask = null;
         Toasts.Show(arg.TargetStatus switch
         {
@@ -1470,23 +1525,14 @@ else
     private async Task ToggleTaskComplete(ProjectTaskDto t)
     {
         var targetStatus = t.Status == "done" ? "todo" : "done";
-        await HandleTaskMove((t.Id, targetStatus));
+        await MoveTo(t.Id, targetStatus, null);
     }
 
-    private async Task HandleStatusChangeDirect((ProjectTaskDto Task, string NewStatus) arg)
+    private async Task HandleStatusChangeDirect((ProjectTaskDto Task, string NewStatus, Guid? StatusOptionId) arg)
     {
         if (!CanWriteTasks) return;
-        if (arg.Task.Status == arg.NewStatus) return;
-        if (arg.NewStatus == "doing" || arg.NewStatus == "review" || arg.NewStatus == "done")
-        {
-            evidenceTask = arg.Task;
-            evidenceTargetStatus = arg.NewStatus;
-            showEvidenceModal = true;
-            StateHasChanged();
-            await JS.InvokeVoidAsync("ipop.icons");
-            return;
-        }
-        await ExecuteTaskMove(arg.Task.Id, arg.NewStatus);
+        if (arg.Task.Status == arg.NewStatus && (arg.StatusOptionId is null || arg.StatusOptionId == arg.Task.StatusOptionId)) return;
+        await MoveTo(arg.Task.Id, arg.NewStatus, arg.StatusOptionId);
     }
 
     private async Task HandlePriorityChangeDirect((ProjectTaskDto Task, string? Priority) arg)
@@ -1750,6 +1796,21 @@ else
     private async Task HandleBulkAction((string Action, string? Value) arg)
     {
         if (selectedTaskIds.Count == 0) return;
+        if (arg.Action == "status" && Guid.TryParse(arg.Value, out var bulkOptId) && OptionOf(bulkOptId) is { } bulkOpt)
+        {
+            if (bulkOpt.Stage is "doing" or "review" or "done")
+            {
+                var firstSel = AllCurrentTasks.FirstOrDefault(t => selectedTaskIds.Contains(t.Id));
+                if (firstSel is null) return;
+                bulkEvidenceStatus = arg.Value;
+                evidenceTargetStatus = bulkOpt.Stage;
+                evidenceTask = firstSel with { Id = Guid.Empty, Title = $"{selectedTaskIds.Count} selected {(selectedTaskIds.Count == 1 ? "task" : "tasks")}", Description = null };
+                showEvidenceModal = true;
+                return;
+            }
+            await RunBulk(arg.Action, arg.Value, null);
+            return;
+        }
         if (arg.Action == "status" && arg.Value is "doing" or "review" or "done")
         {
             // One shared evidence for every selected task; the modal only needs a task to title itself.
