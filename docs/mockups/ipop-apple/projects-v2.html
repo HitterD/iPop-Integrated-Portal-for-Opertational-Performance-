@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projects v2 mockup</title>
+<style>
+:root{
+  --frame:#173a2c;--frame-2:#21493a;--frame-line:rgba(255,255,255,.1);--frame-ink:#e9f1ec;--frame-ink-2:#a8c0b3;
+  --canvas:#f3f2ee;--surface:#fff;--surface-2:#faf9f7;--surface-3:#f2f0ec;--line:#ebe8e3;--line-2:#dfdbd4;
+  --ink:#1c1f23;--ink-2:#5d646c;--ink-3:#8f949a;--accent:#2e9d6b;--accent-soft:#e3f4eb;
+  --danger:#d8452e;--danger-soft:#fdeeea;--warn:#c98a06;--warn-soft:#fdf5e2;--info:#2f6fed;--info-soft:#ecf2ff;--violet:#7c4dd6;--violet-soft:#f1ebfd;
+  --s-todo:#c4c4c4;--s-doing:#fdab3d;--s-stuck:#e2445c;--s-review:#579bfc;--s-done:#00c875;--s-wait:#a25ddc;
+  --sh-pop:0 18px 44px -14px rgba(20,24,22,.28);--sh-card:0 1px 2px rgba(20,24,22,.05),0 4px 14px -6px rgba(20,24,22,.08);
+  --ease:cubic-bezier(.16,1,.3,1);--spring:cubic-bezier(.34,1.56,.64,1);
+}
+[data-theme=dark]{
+  --frame:#0c1d16;--frame-2:#163126;--frame-ink:#e3ece7;--frame-ink-2:#8fa79a;
+  --canvas:#16191c;--surface:#1f2326;--surface-2:#24282c;--surface-3:#2a2f33;--line:#2f3439;--line-2:#3a4046;
+  --ink:#eceef0;--ink-2:#a8afb6;--ink-3:#7c838a;--accent:#45c486;--accent-soft:rgba(69,196,134,.15);
+  --danger:#ff7a63;--danger-soft:rgba(255,122,99,.13);--warn:#e7b44a;--warn-soft:rgba(231,180,74,.14);--info:#7aa7ff;--info-soft:rgba(122,167,255,.14);--violet:#b69cff;--violet-soft:rgba(182,156,255,.14);
+  --sh-pop:0 18px 44px -14px rgba(0,0,0,.7);--sh-card:0 1px 2px rgba(0,0,0,.3);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--canvas);color:var(--ink);font:13.5px/1.45 -apple-system,"Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+svg.i{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit}
+/* mockup nav */
+.mk{position:sticky;top:0;z-index:100;display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--line)}
+.mk b{margin-right:8px}
+.mk button{border:1px solid var(--line-2);background:var(--surface);border-radius:999px;padding:5px 12px;font-size:12.5px;cursor:pointer;transition:transform .12s var(--ease)}
+.mk button:active{transform:scale(.96)}
+.mk button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.mk .sp{flex:1}
+.stage{padding:22px 16px 40px;display:flex;flex-direction:column;align-items:center;gap:18px}
+.screen{display:none;width:min(1440px,100%)}
+.screen.on{display:block;animation:rise .35s var(--ease)}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}}
+@keyframes pop{from{opacity:0;transform:scale(.96) translateY(-4px)}}
+.cap{width:min(1440px,100%);display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;color:var(--ink-2);font-size:13px}
+.cap>div{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:13px 15px}
+.cap h3{margin:0 0 5px;font-size:13.5px;color:var(--ink)}
+.cap .tag{display:inline-block;font-size:11px;font-weight:650;padding:1px 7px;border-radius:6px;background:var(--accent-soft);color:var(--accent);margin-bottom:6px}
+.cap .tag.old{background:var(--surface-3);color:var(--ink-3)}
+.cap ul{margin:4px 0 0;padding-left:18px}
+/* app window */
+.win{border-radius:18px;overflow:hidden;box-shadow:var(--sh-pop);border:1px solid var(--line);display:grid;grid-template-columns:208px 1fr;height:820px;background:var(--frame);position:relative}
+.side{padding:16px 0 12px 12px;color:var(--frame-ink);display:flex;flex-direction:column;gap:2px;overflow:hidden}
+.brand{display:flex;align-items:center;gap:9px;font-weight:750;font-size:17px;padding:0 8px 14px}
+.brand .lg{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#4cc98a,#1f7a53);display:grid;place-items:center;color:#fff;font-size:14px}
+.side h6{margin:12px 10px 4px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--frame-ink-2);font-weight:650}
+.si{display:flex;align-items:center;gap:10px;height:36px;padding:0 12px;border-radius:11px 0 0 11px;font-size:14px;color:var(--frame-ink);cursor:pointer;transition:background .15s}
+.si:hover{background:var(--frame-2)}
+.si.on{background:var(--canvas);color:var(--ink);font-weight:700}
+.si.on svg{color:var(--accent)}
+.si .n{margin-left:auto;margin-right:12px;font-size:11px;background:rgba(255,255,255,.14);padding:0 7px;border-radius:9px}
+.main{background:var(--canvas);display:grid;grid-template-columns:236px 1fr;min-width:0;border-radius:18px 0 0 0;overflow:hidden}
+/* project rail */
+.prail{background:var(--surface-2);border-right:1px solid var(--line);padding:14px 10px;display:flex;flex-direction:column;gap:2px;overflow:auto}
+.prail .top{display:flex;gap:6px;margin-bottom:8px}
+.search{flex:1;display:flex;align-items:center;gap:7px;height:32px;padding:0 10px;border-radius:9px;background:var(--surface);border:1px solid var(--line);color:var(--ink-3);font-size:12.5px}
+.prail h6{margin:12px 8px 4px;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);font-weight:650;display:flex;align-items:center}
+.prail h6 span{margin-left:auto;font-weight:500;text-transform:none;letter-spacing:0}
+.pi{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:9px;cursor:pointer;font-size:13px;color:var(--ink-2);transition:background .15s}
+.pi:hover{background:var(--surface-3)}
+.pi.on{background:var(--surface);color:var(--ink);font-weight:650;box-shadow:var(--sh-card)}
+.pi .dot{width:10px;height:10px;border-radius:3px;flex:none}
+.pi .pc{margin-left:auto;font-size:11px;color:var(--ink-3)}
+.mywork{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:11px;background:var(--surface);border:1px solid var(--line);font-weight:650;font-size:13px;cursor:pointer;margin-bottom:2px}
+.mywork .bd{margin-left:auto;background:var(--danger);color:#fff;font-size:10.5px;border-radius:9px;padding:0 6px}
+/* content */
+.content{display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.ph{background:var(--surface);border-bottom:1px solid var(--line);padding:14px 22px 0}
+.crumb{font-size:12px;color:var(--ink-3);display:flex;gap:5px;align-items:center}
+.titlerow{display:flex;align-items:center;gap:12px;margin:4px 0 10px}
+.titlerow h1{margin:0;font-size:22px;letter-spacing:-.01em}
+.health{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:650;padding:3px 10px;border-radius:999px;background:var(--accent-soft);color:var(--accent);cursor:pointer}
+.health i{width:7px;height:7px;border-radius:50%;background:currentColor}
+.titlerow .sp{flex:1}
+.avs{display:flex}
+.av{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;font-size:11px;font-weight:700;color:#fff;border:2px solid var(--surface);margin-left:-6px}
+.av:first-child{margin-left:0}
+.av.sm{width:24px;height:24px;font-size:10px;border-width:0;margin:0;border-radius:7px}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:9px;border:1px solid var(--line-2);background:var(--surface);font-size:13px;cursor:pointer;white-space:nowrap;transition:transform .12s var(--ease),background .15s}
+.btn:hover{background:var(--surface-3)}
+.btn:active{transform:scale(.97)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:650}
+.btn.pri:hover{filter:brightness(1.06)}
+.btn.ghost{border-color:transparent;background:none;color:var(--ink-2)}
+.btn.ghost:hover{background:var(--surface-3)}
+.btn.sm{height:28px;padding:0 9px;font-size:12.5px}
+.progress{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--ink-2);margin-bottom:10px}
+.progress .bar{width:220px;height:6px;border-radius:9px;background:var(--surface-3);overflow:hidden;display:flex}
+.progress .bar i{display:block;height:100%}
+/* views tabs */
+.vtabs{display:flex;align-items:center;gap:2px;position:relative}
+.vt{display:flex;align-items:center;gap:7px;padding:9px 12px 11px;font-size:13px;color:var(--ink-2);cursor:pointer;position:relative;border-radius:8px 8px 0 0;transition:color .15s,background .15s}
+.vt:hover{color:var(--ink);background:var(--surface-3)}
+.vt.on{color:var(--ink);font-weight:650}
+.vt.on::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2.5px;border-radius:2px;background:var(--accent)}
+.vt .pin{width:12px;height:12px;color:var(--ink-3)}
+.vt.add{color:var(--accent);font-weight:650}
+.vt.add.open{background:var(--accent-soft)}
+/* toolbar */
+.tb{display:flex;align-items:center;gap:6px;padding:10px 22px;border-bottom:1px solid var(--line);background:var(--surface)}
+.tb .sp{flex:1}
+.chip{white-space:nowrap;display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:8px;font-size:12.5px;color:var(--ink-2);cursor:pointer;border:1px solid transparent;transition:background .15s}
+.chip:hover{background:var(--surface-3)}
+.chip.on{background:var(--info-soft);color:var(--info);border-color:transparent;font-weight:600}
+.body{flex:1;overflow:auto;padding:16px 22px 30px}
+/* monday table */
+.grp{margin-bottom:22px}
+.gh{display:flex;align-items:center;gap:8px;margin:0 0 6px;font-weight:700;font-size:15px}
+.gh .cv{transition:transform .2s}
+.gh small{font-weight:500;color:var(--ink-3);font-size:12px}
+.tbl{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:var(--sh-card)}
+.row{display:grid;grid-template-columns:6px 30px minmax(200px,1fr) 76px 118px 92px 132px 72px 84px 34px;align-items:stretch;border-bottom:1px solid var(--line);min-height:40px;transition:background .12s}
+.row:last-child{border-bottom:0}
+.row:hover{background:var(--surface-2)}
+.row>div{display:flex;align-items:center;padding:0 10px;border-left:1px solid var(--line);min-width:0;font-size:13px}
+.row>div:nth-child(1),.row>div:nth-child(2){border-left:0;padding:0}
+.row>div:nth-child(2){justify-content:center}
+.row .gc{padding:0!important;border-left:0!important}
+.row.head{min-height:34px;background:var(--surface-2)}
+.row.head>div{font-size:11.5px;color:var(--ink-3);font-weight:650;justify-content:center}
+.row.head>div:nth-child(3){justify-content:flex-start}
+.cb{width:15px;height:15px;border:1.5px solid var(--line-2);border-radius:4px}
+.tname{gap:8px;justify-content:space-between}
+.tname .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tname .meta{display:flex;gap:8px;color:var(--ink-3);font-size:11.5px;align-items:center;flex:none}
+.tname .meta span{display:inline-flex;gap:3px;align-items:center}
+.tname .meta svg{width:13px;height:13px}
+.tname .open{opacity:0;transition:opacity .15s;color:var(--ink-2);display:inline-flex;align-items:center;gap:4px;font-size:12px;border:1px solid var(--line-2);border-radius:6px;padding:1px 6px;background:var(--surface)}
+.row:hover .tname .open{opacity:1}
+.cell-c{justify-content:center!important}
+.st{width:100%;height:100%;display:grid;place-items:center;color:#fff;font-weight:600;font-size:12.5px;padding:0;margin:0 -10px;white-space:nowrap;cursor:pointer;transition:filter .15s}
+.row>div.stc{padding:0;overflow:hidden}
+.st:hover{filter:brightness(1.07)}
+.st.todo{background:var(--s-todo)}.st.doing{background:var(--s-doing)}.st.stuck{background:var(--s-stuck)}.st.review{background:var(--s-review)}.st.done{background:var(--s-done)}.st.wait{background:var(--s-wait)}
+.due{gap:5px;white-space:nowrap}
+.due.late{color:var(--danger);font-weight:600}
+.tl{width:100%;height:20px;border-radius:10px;background:var(--surface-3);overflow:hidden;position:relative;font-size:11px;color:#fff;display:grid;place-items:center;font-weight:600}
+.tl i{position:absolute;left:0;top:0;bottom:0;border-radius:10px}
+.tl span{position:relative}
+.pri-p{font-size:12px;font-weight:600;padding:2px 8px;border-radius:6px}
+.p-h{background:var(--danger-soft);color:var(--danger)}.p-m{background:var(--warn-soft);color:var(--warn)}.p-l{background:var(--info-soft);color:var(--info)}
+.pbar{width:100%;display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-2)}
+.pbar b{flex:1;height:6px;border-radius:9px;background:var(--surface-3);position:relative;overflow:hidden}
+.pbar b i{position:absolute;inset:0 auto 0 0;background:var(--accent);border-radius:9px}
+.addrow{display:grid;grid-template-columns:6px 30px 1fr;min-height:38px;border-top:1px solid var(--line)}
+.addrow div:last-child{display:flex;align-items:center;padding:0 10px;color:var(--ink-3);font-size:13px}
+.sumrow{display:grid;grid-template-columns:6px 30px minmax(200px,1fr) 76px 118px 92px 132px 72px 84px 34px;min-height:34px;background:var(--surface-2);border-top:1px solid var(--line)}
+.sumrow>div{display:flex;align-items:center;padding:0 10px;font-size:11.5px;color:var(--ink-3)}
+.dist{width:100%;height:18px;border-radius:5px;overflow:hidden;display:flex}
+.dist i{display:block;height:100%}
+.sub{background:var(--surface-2)}
+.sub .tname{padding-left:30px!important}
+.colplus{justify-content:center!important;color:var(--ink-3);cursor:pointer}
+/* popover */
+.pop{position:absolute;z-index:40;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh-pop);animation:pop .28s var(--spring);transform-origin:top left}
+.vp{width:640px;padding:12px;right:22px;top:134px;transform-origin:top right}
+.vp .sr{display:flex;align-items:center;gap:8px;height:38px;border-radius:10px;border:1px solid var(--line-2);padding:0 12px;color:var(--ink-3);font-size:13.5px}
+.vp .opts{display:flex;gap:16px;margin:10px 4px 4px;font-size:12.5px;color:var(--ink-2)}
+.vp .opts label{display:flex;align-items:center;gap:6px}
+.vp h5{margin:14px 6px 6px;font-size:11px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em}
+.vgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:2px}
+.vo{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:9px;cursor:pointer;transition:background .12s}
+.vo:hover{background:var(--surface-3)}
+.vo .ic{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:#fff;flex:none}
+.vo .ic svg{width:15px;height:15px}
+.vo b{font-size:13px;font-weight:600;display:block}
+.vo small{font-size:11.5px;color:var(--ink-3);display:block;line-height:1.25}
+.vo .new{font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:5px;padding:0 5px;margin-left:4px}
+.vo.added{opacity:.55}
+.vo.added small::after{content:" · Added";font-weight:600}
+.vp .hint{display:flex;gap:10px;align-items:center;margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--surface-2);font-size:12.5px;color:var(--ink-2)}
+/* gantt */
+.gantt{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:var(--sh-card);display:grid;grid-template-columns:340px 1fr}
+.gl{border-right:1px solid var(--line)}
+.gl .r,.gr .r{height:36px;border-bottom:1px solid var(--line);display:flex;align-items:center;font-size:12.5px}
+.gl .r{display:grid;grid-template-columns:44px 1fr 62px 56px;padding:0 10px;gap:6px}
+.gl .r.h,.gr .r.h{height:44px;background:var(--surface-2);font-size:11px;color:var(--ink-3);font-weight:650}
+.gl .r.g{font-weight:700;background:var(--surface-2)}
+.gl .wbs{color:var(--ink-3);font-variant-numeric:tabular-nums}
+.gr{position:relative;overflow:hidden}
+.gr .r.h{display:grid;grid-template-columns:repeat(8,1fr)}
+.gr .r.h div{border-left:1px solid var(--line);height:100%;display:flex;flex-direction:column;justify-content:center;padding-left:8px}
+.gr .r.h b{color:var(--ink);font-size:11.5px}
+.gr .cols{position:absolute;inset:44px 0 0 0;display:grid;grid-template-columns:repeat(8,1fr);pointer-events:none}
+.gr .cols div{border-left:1px dashed var(--line)}
+.gr .cols div.we{background:repeating-linear-gradient(135deg,transparent 0 6px,var(--surface-2) 6px 7px)}
+.gb{position:absolute;height:18px;border-radius:6px;font-size:11px;color:#fff;display:flex;align-items:center;padding:0 8px;font-weight:600;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.12);cursor:grab}
+.gb .done{position:absolute;inset:0 auto 0 0;background:rgba(255,255,255,.28);border-radius:6px 0 0 6px}
+.gb span{position:relative}
+.gb.crit{background:var(--danger)!important}
+.base{position:absolute;height:5px;border-radius:3px;background:var(--ink-3);opacity:.45}
+.gsum{position:absolute;height:8px;background:var(--ink-2);border-radius:2px}
+.gsum::before,.gsum::after{content:"";position:absolute;bottom:-5px;border:5px solid transparent;border-top-color:var(--ink-2)}
+.gsum::before{left:0;border-left-color:var(--ink-2)}.gsum::after{right:0;border-right-color:var(--ink-2)}
+.ms{position:absolute;width:14px;height:14px;transform:rotate(45deg);background:var(--violet);border-radius:2px}
+.today{position:absolute;top:44px;bottom:0;width:2px;background:var(--accent)}
+.today::before{content:"Today";position:absolute;top:2px;left:4px;font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-soft);padding:0 5px;border-radius:5px}
+.toast{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);background:var(--surface);border:1px solid var(--line);box-shadow:var(--sh-pop);border-radius:14px;padding:12px 14px;display:flex;gap:12px;align-items:center;width:600px;animation:pop .35s var(--spring);font-size:13px}
+.toast .ic{width:34px;height:34px;border-radius:10px;background:var(--warn-soft);color:var(--warn);display:grid;place-items:center;flex:none}
+.toast p{margin:0;flex:1;color:var(--ink-2)}
+.toast b{color:var(--ink)}
+.seg{display:inline-flex;padding:2px;gap:2px;background:var(--surface-3);border-radius:9px}
+.seg button{border:0;background:none;padding:4px 10px;border-radius:7px;font-size:12px;color:var(--ink-2);cursor:pointer}
+.seg button.on{background:var(--surface);color:var(--ink);font-weight:650;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.tog{white-space:nowrap;display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-2)}
+.tog i{width:28px;height:16px;border-radius:9px;background:var(--line-2);position:relative;transition:background .2s}
+.tog i::after{content:"";position:absolute;width:12px;height:12px;border-radius:50%;background:#fff;top:2px;left:2px;transition:left .2s var(--spring)}
+.tog.on i{background:var(--accent)}.tog.on i::after{left:14px}
+.legend{display:flex;flex-wrap:wrap;gap:8px 14px;margin-bottom:90px;font-size:11.5px;color:var(--ink-3);margin-top:10px}
+.legend span{display:inline-flex;gap:6px;align-items:center}
+/* modal */
+.scrim{position:absolute;inset:0;border-radius:18px;background:rgba(15,20,18,.38);backdrop-filter:blur(2px);z-index:60;display:grid;place-items:center}
+.modal{background:var(--surface);border-radius:18px;box-shadow:var(--sh-pop);animation:pop .32s var(--spring);overflow:hidden;display:flex;flex-direction:column}
+.mh{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--line)}
+.mh h2{margin:0;font-size:17px}
+.mh .sp{flex:1}
+.steps{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--ink-3)}
+.steps span{display:inline-flex;gap:6px;align-items:center}
+.steps em{font-style:normal;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:var(--surface-3);font-size:11px;font-weight:700}
+.steps .on{color:var(--ink);font-weight:650}.steps .on em{background:var(--accent);color:#fff}
+.steps .ok em{background:var(--accent-soft);color:var(--accent)}
+.steps hr{width:22px;border:0;border-top:1px solid var(--line-2);margin:0}
+.mf{display:flex;align-items:center;gap:8px;padding:12px 20px;border-top:1px solid var(--line);background:var(--surface-2)}
+.mf .sp{flex:1}
+.tc{display:grid;grid-template-columns:190px 1fr 320px;height:560px}
+.tc .cats{border-right:1px solid var(--line);padding:12px 8px;background:var(--surface-2)}
+.tc .cats .pi .pc{font-size:11px}
+.tc .cards{padding:14px;overflow:auto;display:grid;grid-template-columns:repeat(2,1fr);gap:10px;align-content:start}
+.tcard{border:1px solid var(--line);border-radius:12px;padding:10px;cursor:pointer;transition:transform .15s var(--ease),box-shadow .15s,border-color .15s;background:var(--surface)}
+.tcard:hover{transform:translateY(-2px);box-shadow:var(--sh-card)}
+.tcard.on{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.thumb{height:74px;border-radius:8px;background:var(--surface-2);margin-bottom:8px;padding:8px;display:flex;flex-direction:column;gap:5px;overflow:hidden}
+.thumb i{display:block;height:7px;border-radius:4px}
+.tcard b{font-size:13px;display:block}
+.tcard small{color:var(--ink-3);font-size:11.5px}
+.tcard .used{float:right;font-size:11px;color:var(--ink-3)}
+.tprev{border-left:1px solid var(--line);padding:16px;overflow:auto}
+.tprev h3{margin:0 0 4px;font-size:16px}
+.tprev p{margin:0 0 12px;color:var(--ink-2);font-size:12.5px}
+.kv{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px}
+.kv div{background:var(--surface-2);border-radius:9px;padding:8px;font-size:11px;color:var(--ink-3)}
+.kv b{display:block;font-size:15px;color:var(--ink)}
+.tprev h5{margin:12px 0 6px;font-size:11px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em}
+.plist{font-size:12.5px;display:flex;flex-direction:column;gap:5px}
+.plist div{display:flex;gap:8px;align-items:center}
+.plist i{width:8px;height:8px;border-radius:2px;flex:none}
+.plist small{margin-left:auto;color:var(--ink-3)}
+.vchips{display:flex;flex-wrap:wrap;gap:5px}
+.vchips span{font-size:11.5px;padding:2px 8px;border-radius:6px;background:var(--surface-3);color:var(--ink-2)}
+/* forms */
+.f{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
+.f label{font-size:12.5px;font-weight:650}
+.f .in{height:38px;border-radius:10px;border:1px solid var(--line-2);display:flex;align-items:center;padding:0 12px;font-size:13.5px;gap:8px;background:var(--surface)}
+.f .in.focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.f .in.ta{height:64px;align-items:flex-start;padding-top:9px;color:var(--ink-2)}
+.f small{color:var(--ink-3);font-size:11.5px}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.calc{display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:10px;background:var(--accent-soft);color:var(--accent);font-size:12.5px;font-weight:600}
+.role{display:grid;grid-template-columns:160px 1fr;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.role b{font-size:13px}.role small{display:block;color:var(--ink-3);font-size:11.5px;font-weight:400}
+.pick{white-space:nowrap;display:flex;align-items:center;gap:8px;height:36px;border:1px solid var(--line-2);border-radius:10px;padding:0 8px;font-size:13px}
+.pick .ph2{color:var(--ink-3)}
+/* status editor */
+.sel{display:grid;grid-template-columns:18px 26px 1fr 170px 26px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.sw{width:22px;height:22px;border-radius:6px}
+.sel .nm{height:34px;border:1px solid var(--line-2);border-radius:9px;display:flex;align-items:center;padding:0 10px;font-size:13px}
+.sel .dd{height:34px;border:1px solid var(--line-2);border-radius:9px;display:flex;align-items:center;padding:0 10px;font-size:12.5px;justify-content:space-between;color:var(--ink-2)}
+.palette{display:flex;gap:6px;flex-wrap:wrap;padding:10px;border:1px solid var(--line);border-radius:10px;margin:6px 0 4px 54px;width:max-content}
+.palette i{width:22px;height:22px;border-radius:6px;cursor:pointer;transition:transform .15s var(--spring)}
+.palette i:hover{transform:scale(1.15)}
+/* my work */
+.mwgrid{display:grid;grid-template-columns:1fr 320px;gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh-card)}
+.card h4{margin:0;padding:12px 16px;border-bottom:1px solid var(--line);font-size:14px;display:flex;align-items:center;gap:8px}
+.card h4 small{color:var(--ink-3);font-weight:500}
+.mwi{display:grid;grid-template-columns:18px 1fr 150px 110px 90px;gap:10px;align-items:center;padding:9px 16px;border-bottom:1px solid var(--line);font-size:13px}
+.mwi:last-child{border-bottom:0}
+.mwi .pj{display:flex;gap:6px;align-items:center;color:var(--ink-2);font-size:12px}
+.mwi .pj i{width:8px;height:8px;border-radius:2px}
+.st.pill{height:24px;border-radius:7px;margin:0;font-size:11.5px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.kpi small{color:var(--ink-3);font-size:12px}
+.kpi b{display:block;font-size:24px;letter-spacing:-.02em}
+.kpi.r b{color:var(--danger)}
+/* form view */
+.fv{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.fq{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;gap:10px;align-items:center;background:var(--surface);font-size:13px}
+.fq .map{margin-left:auto;font-size:11.5px;color:var(--ink-3);display:flex;gap:5px;align-items:center}
+.fq .grip{color:var(--ink-3)}
+.pubform{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:var(--sh-card)}
+.pubform h3{margin:0 0 4px;font-size:18px}
+.pubform p{margin:0 0 16px;color:var(--ink-2);font-size:13px}
+/* close */
+.close-hero{display:grid;grid-template-columns:1.2fr 1fr;gap:16px}
+.ring{width:120px;height:120px;border-radius:50%;background:conic-gradient(var(--accent) 0 82%,var(--surface-3) 0);display:grid;place-items:center}
+.ring div{width:94px;height:94px;border-radius:50%;background:var(--surface);display:grid;place-items:center;text-align:center;font-size:11px;color:var(--ink-3)}
+.ring b{display:block;font-size:24px;color:var(--ink)}
+.lesson{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+.lesson:last-child{border:0}
+/* board */
+.board{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+.col{background:var(--surface-2);border-radius:14px;padding:10px;border:1px solid var(--line)}
+.colh{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;margin-bottom:8px}
+.colh i{width:10px;height:10px;border-radius:3px}
+.colh small{color:var(--ink-3);font-weight:500}
+.kc{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:10px;margin-bottom:8px;box-shadow:var(--sh-card);font-size:13px;transition:transform .15s var(--ease)}
+.kc:hover{transform:translateY(-2px)}
+.kc .gtag{font-size:11px;color:var(--ink-3);display:flex;gap:5px;align-items:center;margin-bottom:4px}
+.kc .gtag i{width:7px;height:7px;border-radius:2px}
+.kc .ft{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11.5px;color:var(--ink-3)}
+.kc .ft .av{margin-left:auto}
+.kc.drag{transform:rotate(2deg) translateY(-3px);box-shadow:var(--sh-pop)}
+/* phone */
+.phone{width:360px;height:740px;border-radius:44px;background:#000;padding:12px;box-shadow:var(--sh-pop)}
+.phone .scr{background:var(--canvas);border-radius:34px;height:100%;overflow:hidden;display:flex;flex-direction:column}
+.phwrap{display:flex;gap:28px;justify-content:center;flex-wrap:wrap}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="mk">
+  <b>Projects v2</b>
+  <button data-s="table" class="on">1 · Project (Table)</button>
+  <button data-s="picker">2 · + View picker</button>
+  <button data-s="board">3 · Board</button>
+  <button data-s="gantt">4 · Gantt</button>
+  <button data-s="new">5 · New project · Templates</button>
+  <button data-s="setup">6 · New project · Details & people</button>
+  <button data-s="status">7 · Edit statuses</button>
+  <button data-s="mywork">8 · My work</button>
+  <button data-s="form">9 · Form (requests)</button>
+  <button data-s="close">10 · Close project</button>
+  <button data-s="phone">11 · Phone</button>
+  <span class="sp"></span>
+  <button id="theme">Dark</button>
+</div>
+
+<div class="stage">
+  <div id="screens" class="screen on" style="display:block"></div>
+  <div class="cap" id="cap"></div>
+</div>
+
+<script>
+const I={
+ grid:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+ list:'<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/>',
+ table:'<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/>',
+ board:'<rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="4" height="8" rx="1"/>',
+ gantt:'<line x1="3" y1="4" x2="3" y2="20"/><rect x="6" y="5" width="9" height="3" rx="1"/><rect x="9" y="11" width="10" height="3" rx="1"/><rect x="7" y="17" width="6" height="3" rx="1"/>',
+ cal:'<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+ time:'<path d="M3 6h10"/><path d="M8 12h12"/><path d="M5 18h9"/>',
+ users:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+ dash:'<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
+ act:'<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+ img:'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>',
+ doc:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>',
+ wb:'<path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>',
+ form:'<rect x="5" y="2" width="14" height="20" rx="2"/><line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/><line x1="9" y1="15" x2="13" y2="15"/>',
+ folder:'<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
+ chart:'<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
+ tpl:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/>',
+ brief:'<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>',
+ plus:'<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+ search:'<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+ filter:'<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
+ user:'<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+ more:'<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+ chev:'<polyline points="6 9 12 15 18 9"/>',
+ chevr:'<polyline points="9 18 15 12 9 6"/>',
+ chat:'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+ clip:'<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+ msg:'<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>',
+ pin:'<line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24z"/>',
+ lock:'<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+ home:'<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+ mail:'<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>',
+ news:'<path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/>',
+ notes:'<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+ check:'<polyline points="20 6 9 17 4 12"/>',
+ star:'<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+ alert:'<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+ grip:'<circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/>',
+ x:'<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+ link:'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+ flag:'<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>',
+ arch:'<polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/>',
+ save:'<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>',
+ wand:'<path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8L19 13"/><path d="M15 9h0"/><path d="M17.8 6.2L19 5"/><path d="M3 21l9-9"/><path d="M12.2 6.2L11 5"/>',
+ eye:'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+ phone:'<rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/>',
+};
+const ic=(n,s='')=>`<svg class="i" viewBox="0 0 24 24" ${s?`style="${s}"`:''}>${I[n]}</svg>`;
+const AV={AN:'#2f6fed',RS:'#d8452e',BG:'#2e9d6b',DW:'#7c4dd6',MF:'#c98a06',YT:'#0e9aa7',SP:'#e05a9b'};
+const av=(k,c='')=>`<span class="av ${c}" style="background:${AV[k]}">${k}</span>`;
+const ST={todo:'Not started',doing:'Working on it',stuck:'Stuck',review:'Ready to check',done:'Done',wait:'Waiting vendor'};
+
+function shell(inner,{rail=true,active='projects'}={}){
+ const nav=[['home','Dashboard'],['msg','Chat'],['mail','Mail'],['cal','Calendar'],['brief','Projects'],['notes','Notes'],['users','Directory'],['news','News']];
+ return `<div class="win"><aside class="side"><div class="brand"><span class="lg">i</span>iPop</div>
+ <h6>Work</h6>${nav.map(([i,l])=>`<div class="si ${l==='Projects'?'on':''}">${ic(i)}${l}${l==='Chat'?'<span class="n">4</span>':''}</div>`).join('')}</aside>
+ <div class="main" style="${rail?'':'grid-template-columns:1fr'}">${rail?prail(active):''}<section class="content">${inner}</section></div></div>`;
+}
+function prail(active){
+ const p=(c,n,pc,on)=>`<div class="pi ${on?'on':''}"><span class="dot" style="background:${c}"></span>${n}<span class="pc">${pc}</span></div>`;
+ return `<aside class="prail"><div class="top"><div class="search">${ic('search')}Find a project</div><button class="btn pri sm" title="New project">${ic('plus')}</button></div>
+ <div class="mywork" ${active==='mywork'?'style="border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)"':''}>${ic('check','color:var(--accent)')}My work<span class="bd">3 late</span></div>
+ <h6>Favourites</h6>${p('#2e9d6b','ERP Rollout Sepanjang','62%',active==='projects')}${p('#579bfc','Office Move Karawang','18%')}
+ <h6>ICT <span>4</span></h6>${p('#a25ddc','Helpdesk iDesk v3','40%')}${p('#fdab3d','CCTV Plant 2','85%')}${p('#c4c4c4','Laptop Refresh 2027','—')}
+ <h6>HC <span>2</span></h6>${p('#e2445c','Onboarding Batch Dec','30%')}${p('#00c875','Annual Gathering','100%')}
+ <h6>Marketing <span>1</span></h6>${p('#e05a9b','Kopi Launch Q1','12%')}
+ <div style="margin-top:auto;padding:10px 8px 0;font-size:12px;color:var(--ink-3);display:flex;gap:6px;align-items:center">${ic('arch')}Archived (12)</div></aside>`;
+}
+function header(view){
+ const tabs=[['dash','Overview'],['table','Table'],['board','Board'],['gantt','Gantt'],['cal','Calendar'],['doc','Brief (Doc)'],['folder','Files']];
+ return `<div class="ph"><div class="crumb">Projects ${ic('chevr','width:12px;height:12px')} ICT</div>
+ <div class="titlerow"><h1>ERP Rollout Sepanjang</h1><span class="health"><i></i>On track ${ic('chev','width:12px;height:12px')}</span>
+ <span class="sp"></span><div class="avs">${av('BG')}${av('AN')}${av('RS')}${av('DW')}<span class="av" style="background:var(--surface-3);color:var(--ink-2)">+3</span></div>
+ <button class="btn">${ic('users')}Members</button><button class="btn">${ic('chat')}Chat</button><button class="btn ghost" title="More">${ic('more')}</button>
+ <button class="btn pri">${ic('plus')}New task</button></div>
+ <div class="progress"><div class="bar"><i style="width:38%;background:var(--s-done)"></i><i style="width:20%;background:var(--s-doing)"></i><i style="width:4%;background:var(--s-stuck)"></i><i style="width:8%;background:var(--s-review)"></i></div>
+ <b style="color:var(--ink)">62% done</b> · 24 of 39 tasks · Due 31 Jan 2027 · <span style="color:var(--danger)">2 late</span></div>
+ <div class="vtabs">${tabs.map(([i,l])=>`<div class="vt ${l.toLowerCase().startsWith(view)?'on':''}">${ic(i)}${l}${l==='Table'?`<svg class="i pin" viewBox="0 0 24 24">${I.pin}</svg>`:''}</div>`).join('')}
+ <div class="vt add ${view==='picker'?'open':''}">${ic('plus')}View</div></div></div>`;
+}
+function toolbar(extra=''){
+ return `<div class="tb"><div class="search" style="flex:0 0 220px">${ic('search')}Search tasks</div>
+ <span class="chip">${ic('user')}Person</span><span class="chip on">${ic('filter')}Status: not Done ${ic('x','width:12px;height:12px')}</span><span class="chip">${ic('table')}Group by: Phase</span><span class="chip">${ic('eye')}Hide</span>
+ <span class="sp"></span>${extra}<span class="chip">${ic('save')}Save view</span></div>`;
+}
+const row=(t,sub=false)=>`<div class="row ${sub?'sub':''}"><div class="gc" style="background:${t.g}"></div><div><span class="cb"></span></div>
+ <div class="tname"><span class="t">${sub?'↳ ':''}${t.n}</span><span class="meta">${t.sub?`<span>${ic('list')}${t.sub}</span>`:''}${t.c?`<span>${ic('msg')}${t.c}</span>`:''}${t.f?`<span>${ic('clip')}${t.f}</span>`:''}<span class="open">${ic('chevr','width:12px;height:12px')}Open</span></span></div>
+ <div class="cell-c">${t.o.map(o=>av(o,'sm')).join('')||`<span style="color:var(--ink-3)">${ic('user')}</span>`}</div>
+ <div class="stc"><div class="st ${t.s}">${ST[t.s]}</div></div>
+ <div class="due cell-c ${t.late?'late':''}">${t.late?ic('alert','width:13px;height:13px'):''}${t.d}</div>
+ <div><div class="tl"><i style="width:${t.tl}%;background:${t.g}"></i><span style="color:${t.tl>=60?"#fff":"var(--ink-2)"}">${t.r}</span></div></div>
+ <div class="cell-c">${t.p?`<span class="pri-p p-${t.p[0].toLowerCase()}">${t.p}</span>`:''}</div>
+ <div><div class="pbar"><b><i style="width:${t.pc}%"></i></b>${t.pc}%</div></div><div></div></div>`;
+function group(name,color,count,range,rows,dist){
+ return `<div class="grp"><div class="gh" style="color:${color}">${ic('chev')}${name}<small>${count} tasks · ${range}</small></div><div class="tbl">
+ <div class="row head"><div class="gc" style="background:${color}"></div><div><span class="cb"></span></div><div>Task</div><div>Owner</div><div>Status</div><div>Due</div><div>Timeline</div><div>Priority</div><div>Progress</div><div class="colplus" title="Add column">${ic('plus')}</div></div>
+ ${rows}<div class="addrow"><div style="background:${color};opacity:.5"></div><div></div><div>+ Add task</div></div>
+ <div class="sumrow"><div></div><div></div><div></div><div></div><div><div class="dist">${dist}</div></div><div></div><div style="justify-content:center">${range}</div><div></div><div></div><div></div></div></div></div>`;
+}
+const D=(a)=>a.map(([c,w])=>`<i style="background:var(--s-${c});width:${w}%"></i>`).join('');
+
+function tableScreen(picker=false){
+ const g1='#00c875',g2='#fdab3d',g3='#579bfc';
+ const body=group('Planning',g1,4,'1–19 Nov',[
+  {g:g1,n:'Kick-off meeting with plant managers',o:['BG'],s:'done',d:'4 Nov',tl:100,r:'1–4 Nov',p:'',pc:100,c:3},
+  {g:g1,n:'Map current purchasing & stock process',o:['AN','RS'],s:'done',d:'12 Nov',tl:100,r:'5–12 Nov',p:'High',pc:100,f:4,sub:'3/3'},
+  {g:g1,n:'Sign scope & budget',o:['BG'],s:'review',d:'19 Nov',tl:90,r:'13–19 Nov',p:'High',pc:90,c:2},
+ ].map(t=>row(t)).join(''),D([['done',75],['review',25]]))
+ + group('Build & data migration',g2,6,'20 Nov – 20 Dec',[
+  {g:g2,n:'Data migration — item master',o:['DW'],s:'stuck',d:'15 Nov',late:1,tl:40,r:'10–15 Nov',p:'High',pc:40,c:6,f:2},
+  {g:g2,n:'Configure warehouse locations',o:['AN'],s:'doing',d:'28 Nov',tl:55,r:'20–28 Nov',p:'Med',pc:55,sub:'2/5'},
+  {g:g2,n:'Clean vendor list (SAP export)',o:['RS'],s:'doing',d:'25 Nov',tl:30,r:'20–25 Nov',p:'Med',pc:30},
+  {g:g2,n:'Approve printer for barcode labels',o:['MF'],s:'wait',d:'16 Nov',late:1,tl:20,r:'12–16 Nov',p:'Low',pc:10,c:1},
+  {g:g2,n:'Write user guide (Indonesian)',o:[],s:'todo',d:'10 Dec',tl:0,r:'1–10 Dec',p:'',pc:0},
+ ].map(t=>row(t)).join('')+row({g:g2,n:'Screenshots for receiving flow',o:['YT'],s:'todo',d:'5 Dec',tl:0,r:'2–5 Dec',p:'',pc:0},true),D([['stuck',17],['doing',33],['wait',17],['todo',33]]))
+ + group('Go-live',g3,3,'6 – 31 Jan',[
+  {g:g3,n:'Training for warehouse staff',o:['AN','YT'],s:'todo',d:'14 Jan',tl:0,r:'6–14 Jan',p:'Med',pc:0},
+ ].map(t=>row(t)).join(''),D([['todo',100]]));
+ const pop=picker?pickerPop():'';
+ return shell(header(picker?'picker':'table')+toolbar()+`<div class="body">${body}</div>${pop}`);
+}
+function pickerPop(){
+ const o=(i,c,b,s,n,added)=>`<div class="vo ${added?'added':''}"><span class="ic" style="background:${c}">${ic(i)}</span><div><b>${b}${n?'<span class="new">NEW</span>':''}</b><small>${s}</small></div></div>`;
+ return `<div class="pop vp"><div class="sr">${ic('search')}Search views, e.g. "gantt" or "files"</div>
+ <div class="opts"><label><span class="cb"></span>Only me (private view)</label><label><span class="cb" style="background:var(--accent);border-color:var(--accent)"></span>Pin to tabs</label></div>
+ <h5>Plan & track tasks</h5><div class="vgrid">
+ ${o('table','#579bfc','Table','Rows & columns, like Excel','',1)}${o('board','#2e9d6b','Board','Cards by status','',1)}${o('gantt','#e2445c','Gantt','Dependencies & critical path',1,1)}
+ ${o('list','#8f949a','List','Simple checklist')}${o('time','#fdab3d','Timeline','Bars by person or phase')}${o('cal','#0e9aa7','Calendar','Tasks on a month view','',1)}
+ ${o('users','#7c4dd6','Workload','Who is overloaded')}${o('dash','#e05a9b','Dashboard','Charts & numbers',1)}${o('act','#2f6fed','Activity','Everything that changed',1)}
+ ${o('user','#c98a06','Team','One lane per person',1)}${o('img','#d8452e','Gallery','Cards with evidence photos',1)}${o('chart','#5d646c','Reports','Burndown, milestones, on-time')}
+ </div><h5>Docs & files</h5><div class="vgrid">
+ ${o('doc','#2f6fed','Doc','A Notes page inside the project','',1)}${o('wb','#fdab3d','Whiteboard','Brainstorm, flowcharts')}${o('form','#7c4dd6','Form','Requests become tasks',1)}
+ ${o('folder','#2e9d6b','Files','All evidence & attachments','',1)}</div>
+ <div class="hint">${ic('wand','color:var(--accent)')}<span>Tip: each project shows only the views you add. Pinned views appear as tabs; drag tabs to reorder.</span></div></div>`;
+}
+function boardScreen(){
+ const card=(g,gc,n,o,d,late,f)=>`<div class="kc"><div class="gtag"><i style="background:${gc}"></i>${g}</div><b style="font-weight:600">${n}</b><div class="ft"><span style="${late?'color:var(--danger);font-weight:600':''}">${ic('cal','width:12px;height:12px')} ${d}</span>${f?`<span>${ic('clip','width:12px;height:12px')}${f}</span>`:''}${av(o,'sm')}</div></div>`;
+ const col=(s,c,n,cards)=>`<div class="col"><div class="colh"><i style="background:var(--s-${s})"></i>${ST[s]}<small>${n}</small><span style="margin-left:auto;color:var(--ink-3)">${ic('plus','width:14px;height:14px')}</span></div>${cards}</div>`;
+ return shell(header('board')+toolbar('<span class="chip">'+ic('board')+'Columns: Status</span>')+`<div class="body"><div class="board">
+ ${col('todo','',3,card('Build','#fdab3d','Write user guide (Indonesian)','YT','10 Dec')+card('Go-live','#579bfc','Training for warehouse staff','AN','14 Jan'))}
+ ${col('doing','',2,card('Build','#fdab3d','Configure warehouse locations','AN','28 Nov','',2).replace('class="kc"','class="kc drag"')+card('Build','#fdab3d','Clean vendor list','RS','25 Nov'))}
+ ${col('stuck','',1,card('Build','#fdab3d','Data migration — item master','DW','15 Nov',1,2))}
+ ${col('wait','',1,card('Build','#fdab3d','Approve printer for barcode labels','MF','16 Nov',1))}
+ ${col('review','',1,card('Planning','#00c875','Sign scope & budget','BG','19 Nov'))}
+ </div></div>`);
+}
+function ganttScreen(){
+ const rows=[
+  ['1','Planning','',''], ['1.1','Kick-off meeting','4d','100%'],['1.2','Map current process','6d','100%'],['1.3','Sign scope & budget','5d','90%'],
+  ['2','Build & data migration','',''],['2.1','Data migration — item master','6d','40%'],['2.2','Configure warehouse locations','7d','55%'],['2.3','Clean vendor list','4d','30%'],['2.4','Write user guide','8d','0%'],
+  ['3','Go-live','',''],['3.1','Training for warehouse staff','7d','0%'],['3.2','◆ Go-live','0d','']];
+ const L=rows.map(r=>`<div class="r ${r[2]===''&&r[0].length===1?'g':''}"><span class="wbs">${r[0]}</span><span style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${r[1]}</span><span style="color:var(--ink-3)">${r[2]}</span><span style="color:var(--ink-3)">${r[3]}</span></div>`).join('');
+ // x in %, rows top = 44 + i*36
+ const y=i=>44+i*36+9;
+ const bars=[
+  [0,'sum',2,30],[1,'b',2,8,'#00c875',100],[2,'b',9,10,'#00c875',100],[3,'b',19,10,'#579bfc',90,1],
+  [4,'sum',27,48],[5,'b',27,12,'#e2445c',40,1],[6,'b',39,14,'#fdab3d',55,1],[7,'b',39,9,'#fdab3d',30],[8,'b',55,15,'#c4c4c4',0],
+  [9,'sum',75,22],[10,'b',75,14,'#579bfc',0,1]];
+ const base=[[3,17,10],[5,22,11],[6,33,14],[10,68,14]];
+ let B=bars.map(([i,t,x,w,c,pc,cr])=>t==='sum'?`<div class="gsum" style="top:${y(i)+4}px;left:${x}%;width:${w}%"></div>`:
+  `<div class="gb ${cr&&crit?'crit':''}" style="top:${y(i)}px;left:${x}%;width:${w}%;background:${c}"><i class="done" style="width:${pc}%"></i><span>${pc?pc+'%':''}</span></div>`).join('');
+ B+=base.map(([i,x,w])=>`<div class="base" style="top:${y(i)+21}px;left:${x}%;width:${w}%"></div>`).join('');
+ B+=`<div class="ms" style="top:${y(11)+2}px;left:90%"></div><span style="position:absolute;top:${y(11)}px;right:12%;font-size:11px;font-weight:650;white-space:nowrap">Go-live · 31 Jan</span>`;
+ B+=`<div class="today" style="left:33%"></div>`;
+ const arrows=`<svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible" viewBox="0 0 1000 476" preserveAspectRatio="none">
+  <defs><marker id="ah" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="var(--danger)"/></marker></defs>
+  <path d="M290 ${y(3)+9} H300 V${y(5)+9} H270" stroke="var(--danger)" stroke-width="1.6" fill="none" marker-end="url(#ah)" vector-effect="non-scaling-stroke"/>
+  <path d="M390 ${y(5)+9} H395 V${y(6)+9} H390" stroke="var(--danger)" stroke-width="1.6" fill="none" marker-end="url(#ah)" vector-effect="non-scaling-stroke"/>
+  <path d="M530 ${y(6)+9} H540 V${y(10)+9} H750" stroke="var(--danger)" stroke-width="1.6" fill="none" marker-end="url(#ah)" vector-effect="non-scaling-stroke"/></svg>`;
+ const weeks=['4 Nov','11 Nov','18 Nov','25 Nov','2 Dec','9 Dec','16 Dec','6 Jan'];
+ const g=`<div class="gantt"><div class="gl"><div class="r h"><span>WBS</span><span>Task</span><span>Duration</span><span>Done</span></div>${L}</div>
+ <div class="gr"><div class="r h">${weeks.map((w,i)=>`<div><b>Week ${i+45>52?i-6:i+45}</b>${w}</div>`).join('')}</div><div class="cols">${weeks.map((_,i)=>`<div class="${i==6?'we':''}"></div>`).join('')}</div>${arrows}${B}</div></div>
+ <div class="legend"><span><i style="width:14px;height:8px;border-radius:3px;background:var(--danger)"></i>Critical path — a delay here delays go-live</span><span><i style="width:14px;height:4px;border-radius:3px;background:var(--ink-3);opacity:.5"></i>Baseline (plan locked 8 Nov)</span><span><i style="width:9px;height:9px;transform:rotate(45deg);background:var(--violet)"></i>Milestone</span><span>Drag a bar to move · drag its edge to resize · drag from the dot to link</span></div>`;
+ const ex=`<div class="seg"><button>Day</button><button class="on">Week</button><button>Month</button></div><span class="tog ${crit?'on':''}"><i></i>Critical path</span><span class="tog on"><i></i>Baseline</span><span class="tog"><i></i>WBS numbers</span>`;
+ return shell(header('gantt')+`<div class="tb"><div class="search" style="flex:0 0 200px">${ic('search')}Search tasks</div><span class="chip">${ic('user')}Person</span>${ex}<span class="sp"></span><span class="chip">${ic('flag')}Set baseline</span><span class="chip">Export PDF</span></div>
+ <div class="body">${g}</div>
+ <div class="toast"><span class="ic">${ic('alert')}</span><p><b>Move "Data migration" 3 days later?</b><br>4 tasks that depend on it will move too. Go-live moves to <b>5 Feb</b>.</p><button class="btn sm">Only this task</button><button class="btn pri sm">Move all</button></div>`);
+}
+let crit=true;
+function tplModal(){
+ const cats=[['All templates',24,1],['ICT',5],['Operations & plant',4],['Events',3],['HC',3],['Marketing',3],['Finance & purchasing',3],['My templates',2],['Shared with my dept',1]];
+ const T=(n,s,u,cols,on,g)=>`<div class="tcard ${on?'on':''}"><div class="thumb">${cols.map((c,i)=>`<i style="background:${c};width:${[70,45,85,55][i]}%;opacity:${on?1:.8}"></i>`).join('')}</div><b>${n}<span class="used">${u}</span></b><small>${s}</small>${g?`<div style="margin-top:4px;font-size:11px;color:var(--accent);font-weight:600">${g}</div>`:''}</div>`;
+ const cards=[
+  T('Blank project','Start empty — add groups yourself','',['#c4c4c4','#e3e3e3']),
+  T('ICT implementation','Plan → build → test → go-live, with data migration','used 14×',['#00c875','#fdab3d','#579bfc','#e2445c'],1,'Built-in · SJA'),
+  T('Helpdesk / system rollout','Pilot users, training, cut-over, hypercare','used 6×',['#a25ddc','#579bfc','#00c875']),
+  T('Office event','Venue, budget, vendors, rundown, after-event','used 9×',['#e05a9b','#fdab3d','#00c875']),
+  T('Machine maintenance','Weekly / monthly checks that repeat by themselves','used 21×',['#0e9aa7','#0e9aa7','#c4c4c4']),
+  T('Audit / ISO','Checklist per clause, evidence for every item','used 3×',['#7c4dd6','#579bfc','#00c875','#e2445c']),
+  T('Procurement','Request → quotations → PO → delivery → payment','used 5×',['#c98a06','#fdab3d','#00c875']),
+  T('New employee onboarding','Before day 1, first week, first month','used 11×',['#2f6fed','#00c875','#579bfc']),
+  T('Product launch','Brief, design, production, launch day','used 2×',['#e2445c','#e05a9b','#fdab3d']),
+  T('Marketing campaign','Plan, content calendar, results','used 4×',['#e05a9b','#579bfc']),
+ ].join('');
+ const prev=`<div class="tprev"><div class="thumb" style="height:120px">${['#00c875','#fdab3d','#fdab3d','#579bfc','#e2445c'].map((c,i)=>`<i style="background:${c};width:${[40,70,55,80,30][i]}%;margin-left:${[0,25,35,50,72][i]}%"></i>`).join('')}</div>
+ <h3>ICT implementation</h3><p>For new systems like ERP, CCTV, or network upgrades. Dates move with your start date.</p>
+ <div class="kv"><div><b>4</b>groups</div><div><b>22</b>tasks</div><div><b>~10</b>weeks</div></div>
+ <h5>What's inside</h5><div class="plist">
+  <div><i style="background:#00c875"></i>Planning<small>5 tasks · week 1–2</small></div><div><i style="background:#fdab3d"></i>Build & data migration<small>8 tasks · week 3–6</small></div>
+  <div><i style="background:#579bfc"></i>Testing & training<small>6 tasks · week 7–9</small></div><div><i style="background:#e2445c"></i>Go-live & hypercare<small>3 tasks · week 10</small></div></div>
+ <h5>Statuses</h5><div class="vchips">${['todo','doing','stuck','wait','review','done'].map(s=>`<span style="background:var(--s-${s});color:#fff">${ST[s]}</span>`).join('')}</div>
+ <h5>Views</h5><div class="vchips"><span>Overview</span><span>Table</span><span>Board</span><span>Gantt</span><span>Files</span></div>
+ <h5>Roles to fill</h5><div class="vchips"><span>Project lead</span><span>IT engineer</span><span>Key user</span></div>
+ <h5>Columns</h5><div class="vchips"><span>Owner</span><span>Status</span><span>Due</span><span>Timeline</span><span>Priority</span><span>Progress</span><span>Plant</span></div></div>`;
+ const m=`<div class="scrim"><div class="modal" style="width:min(1060px,calc(100% - 40px))"><div class="mh"><h2>New project</h2><div class="steps"><span class="on"><em>1</em>Pick a template</span><hr><span><em>2</em>Name & dates</span><hr><span><em>3</em>People</span></div><span class="sp"></span><button class="btn ghost">${ic('x')}</button></div>
+ <div class="tc"><div class="cats"><div class="search" style="margin-bottom:8px">${ic('search')}Search templates</div>${cats.map(([n,c,on])=>`<div class="pi ${on?'on':''}">${n}<span class="pc">${c}</span></div>`).join('')}</div>
+ <div class="cards">${cards}</div>${prev}</div>
+ <div class="mf"><span style="font-size:12.5px;color:var(--ink-3)">You can change everything later — groups, statuses, columns and views.</span><span class="sp"></span><button class="btn">Cancel</button><button class="btn pri">Use this template ${ic('chevr')}</button></div></div></div>`;
+ return shell(header('table')+toolbar()+'<div class="body"></div>'+m);
+}
+function setupModal(){
+ const m=`<div class="scrim"><div class="modal" style="width:860px"><div class="mh"><h2>New project</h2><div class="steps"><span class="ok"><em>${ic('check','width:11px;height:11px')}</em>ICT implementation</span><hr><span class="on"><em>2</em>Name & dates</span><hr><span class="on"><em>3</em>People</span></div><span class="sp"></span><button class="btn ghost">${ic('x')}</button></div>
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
+ <div style="padding:18px 20px;border-right:1px solid var(--line)"><h4 style="margin:0 0 12px">Name & dates</h4>
+  <div class="f"><label>Project name</label><div class="in focus">ERP Rollout Sepanjang<span style="width:1px;height:18px;background:var(--accent);animation:none"></span></div></div>
+  <div class="f"><label>Goal <span style="font-weight:400;color:var(--ink-3)">(optional)</span></label><div class="in ta">Replace Excel stock & purchasing at Plant Sepanjang with ERP by end of January.</div><small>Shown at the top of Overview so everyone knows why this project exists.</small></div>
+  <div class="f2"><div class="f"><label>Department</label><div class="in">ICT ${ic('chev','margin-left:auto;color:var(--ink-3)')}</div></div><div class="f"><label>Colour</label><div class="in" style="gap:6px">${['#2e9d6b','#579bfc','#a25ddc','#fdab3d','#e2445c','#e05a9b'].map((c,i)=>`<i style="width:18px;height:18px;border-radius:5px;background:${c};${i==0?'box-shadow:0 0 0 2px var(--surface),0 0 0 4px '+c:''}"></i>`).join('')}</div></div></div>
+  <div class="f2"><div class="f"><label>Start date</label><div class="in">${ic('cal','color:var(--ink-3)')}Mon, 4 Nov 2026</div></div><div class="f"><label>Finish by</label><div class="in">${ic('cal','color:var(--ink-3)')}Fri, 31 Jan 2027</div></div></div>
+  <div class="calc">${ic('wand')}22 task dates were spread from 4 Nov to 31 Jan (skipping weekends & holidays).</div>
+  <div class="f" style="margin-top:14px"><label>Who can see it</label><div class="seg"><button>Only members</button><button class="on">My department</button><button>Everyone</button></div></div>
+ </div>
+ <div style="padding:18px 20px"><h4 style="margin:0 0 4px">People</h4><p style="margin:0 0 8px;color:var(--ink-3);font-size:12.5px">The template has 3 roles. Pick someone for each — their tasks are assigned automatically.</p>
+  <div class="role"><div><b>Project lead</b><small>4 tasks · can manage the project</small></div><div class="pick">${av('BG','sm')}Bagas (you)</div></div>
+  <div class="role"><div><b>IT engineer</b><small>11 tasks</small></div><div class="pick">${av('AN','sm')}Andi ${av('DW','sm')}Dewi <span class="ph2" style="margin-left:auto">+ add</span></div></div>
+  <div class="role"><div><b>Key user</b><small>7 tasks</small></div><div class="pick"><span class="ph2">${ic('search','width:14px;height:14px;vertical-align:-2px')} Type a name…</span></div></div>
+  <div style="margin-top:12px;font-size:12px;color:var(--ink-3)">Suggested from ICT & Warehouse</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${[['RS','Rina S. · Warehouse'],['MF','M. Fauzi · Purchasing'],['YT','Yanti · ICT']].map(([k,n])=>`<span class="btn sm">${av(k,'sm')}${n} ${ic('plus','width:13px;height:13px')}</span>`).join('')}</div>
+  <div style="margin-top:16px;padding:12px;border-radius:12px;background:var(--surface-2);font-size:12.5px;color:var(--ink-2)"><b style="color:var(--ink)">What happens next</b><br>Project opens on <b>Overview</b> with a short checklist: add the goal, invite key users, check the Gantt dates. Members get one notification — not one per task.</div>
+ </div></div>
+ <div class="mf"><button class="btn">${ic('chevr','transform:rotate(180deg)')}Back</button><span class="sp"></span><button class="btn pri">Create project</button></div></div></div>`;
+ return shell(header('table')+toolbar()+'<div class="body"></div>'+m);
+}
+function statusModal(){
+ const S=[['todo','Not started','Not started'],['doing','Working on it','Working'],['stuck','Stuck','Working'],['wait','Waiting vendor','Working'],['review','Ready to check','Review'],['done','Done','Done']];
+ const m=`<div class="scrim"><div class="modal" style="width:640px"><div class="mh"><h2>Statuses for this project</h2><span class="sp"></span><button class="btn ghost">${ic('x')}</button></div>
+ <div style="padding:14px 20px"><p style="margin:0 0 6px;color:var(--ink-2);font-size:12.5px">Name them your way. The <b>stage</b> tells iPop what each status means, so progress, Reports and reminders keep working.</p>
+ <div class="sel" style="font-size:11px;color:var(--ink-3);font-weight:650;border:0;padding-bottom:0"><span></span><span></span><span>Label</span><span>Stage</span><span></span></div>
+ ${S.map(([s,n,stg],i)=>`<div class="sel"><span style="color:var(--ink-3)">${ic('grip')}</span><span class="sw" style="background:var(--s-${s})"></span><div class="nm" ${i==3?'style="border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)"':''}>${n}</div><div class="dd">${stg}${ic('chev','width:14px;height:14px')}</div><span style="color:var(--ink-3)">${ic('x','width:14px;height:14px')}</span></div>${i==3?`<div class="palette">${['#c4c4c4','#fdab3d','#e2445c','#a25ddc','#579bfc','#00c875','#0e9aa7','#e05a9b','#c98a06','#5d646c'].map(c=>`<i style="background:${c}"></i>`).join('')}</div>`:''}`).join('')}
+ <button class="btn ghost" style="margin-top:8px;color:var(--accent)">${ic('plus')}Add status</button>
+ <div style="margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--surface-2);font-size:12.5px;color:var(--ink-2);display:flex;gap:8px">${ic('alert','color:var(--warn)')}<span>Deleting a status that is in use asks where its 3 tasks should go.</span></div></div>
+ <div class="mf"><span style="font-size:12px;color:var(--ink-3)">Opened by clicking any status cell → "Edit statuses"</span><span class="sp"></span><span style="font-size:12px;color:var(--accent);display:flex;gap:4px;align-items:center">${ic('check','width:14px;height:14px')}Saved</span><button class="btn">Close</button></div></div></div>`;
+ return shell(header('table')+toolbar()+'<div class="body"></div>'+m);
+}
+function myWork(){
+ const it=(n,pj,pc,s,d,late)=>`<div class="mwi"><span class="cb"></span><span>${n}</span><span class="pj"><i style="background:${pc}"></i>${pj}</span><div class="st pill ${s}">${ST[s]}</div><span style="${late?'color:var(--danger);font-weight:600':'color:var(--ink-2)'}">${d}</span></div>`;
+ const body=`<div class="ph" style="padding-bottom:14px"><div class="titlerow" style="margin:0"><h1>My work</h1><span class="sp"></span><div class="seg"><button class="on">List</button><button>Calendar</button></div><button class="btn pri">${ic('plus')}New task</button></div><div style="color:var(--ink-3);font-size:12.5px">Every task assigned to you, from all projects.</div></div>
+ <div class="body"><div class="kpis"><div class="kpi r"><small>Late</small><b>3</b></div><div class="kpi"><small>Due today</small><b>2</b></div><div class="kpi"><small>This week</small><b>7</b></div><div class="kpi"><small>Done this week</small><b style="color:var(--accent)">9</b></div></div>
+ <div class="mwgrid"><div class="card"><h4 style="color:var(--danger)">Late <small>3</small></h4>
+ ${it('Data migration — item master','ERP Rollout Sepanjang','#2e9d6b','stuck','15 Nov',1)}${it('Approve printer for barcode labels','ERP Rollout Sepanjang','#2e9d6b','wait','16 Nov',1)}${it('Collect NDA forms','Onboarding Batch Dec','#e2445c','doing','16 Nov',1)}
+ <h4>Today <small>2</small></h4>${it('Sign scope & budget','ERP Rollout Sepanjang','#2e9d6b','review','Today')}${it('CCTV camera 14 re-aim','CCTV Plant 2','#fdab3d','doing','Today')}
+ <h4>This week <small>7</small></h4>${it('Clean vendor list (SAP export)','ERP Rollout Sepanjang','#2e9d6b','doing','Mon 25 Nov')}${it('Book venue for gathering','Annual Gathering','#00c875','todo','Wed 27 Nov')}
+ <h4>Later <small>12</small></h4></div>
+ <div class="card"><h4>Waiting on me</h4><div style="padding:12px 16px;font-size:13px;color:var(--ink-2);display:flex;flex-direction:column;gap:10px">
+ <div>${av('RS','sm')} <b>Rina</b> mentioned you in <b>Clean vendor list</b><br><span style="color:var(--ink-3);font-size:12px">"Pak, yang duplikat dihapus atau digabung?" · 10 min</span></div>
+ <div>${av('DW','sm')} <b>Dewi</b> marked <b>Data migration</b> as Stuck<br><span style="color:var(--ink-3);font-size:12px">Blocks 4 tasks · 1 h</span></div>
+ <div>${ic('form','color:var(--violet)')} New request via form in <b>Helpdesk iDesk v3</b><br><span style="color:var(--ink-3);font-size:12px">"Tambah kategori ticket Produksi" · 2 h</span></div></div></div></div></div>`;
+ return shell(body,{active:'mywork'});
+}
+function formScreen(){
+ const q=(n,t,map)=>`<div class="fq"><span class="grip">${ic('grip')}</span><div><b style="font-weight:600">${n}</b><div style="font-size:11.5px;color:var(--ink-3)">${t}</div></div><span class="map">→ ${map}</span></div>`;
+ const tabs=header('table').replace('<div class="vt add','<div class="vt on">'+ic('form')+'Request form</div><div class="vt add').replace('vt on">'+ic('table'),'vt">'+ic('table'));
+ return shell(tabs+`<div class="tb"><span style="font-weight:650">Form builder</span><span class="sp"></span><span class="tog on"><i></i>Accepting requests</span><span class="chip">${ic('link')}Copy link</span><span class="chip">${ic('eye')}Who can submit: anyone in SJA</span></div>
+ <div class="body"><div class="fv"><div><p style="margin:0 0 10px;color:var(--ink-2);font-size:12.5px">Each answer fills a column. Every submission becomes a new task in <b>Intake</b> with status <b>Not started</b>, and the submitter gets updates when it changes.</p>
+ ${q('What do you need?','Short text · required','Task name')}${q('Details','Long text','Description')}${q('Which plant?','Choice: Sepanjang, Karawang, Head office','Plant')}${q('Needed by','Date','Due')}${q('Screenshot / file','Upload','Files')}
+ <button class="btn ghost" style="color:var(--accent)">${ic('plus')}Add question</button>
+ <div class="f" style="margin-top:12px"><label>New requests are assigned to</label><div class="pick">${av('BG','sm')}Bagas <span class="ph2">· and notified</span></div></div></div>
+ <div class="pubform"><div style="font-size:12px;color:var(--ink-3);margin-bottom:8px">Preview — what requesters see</div><h3>Request for ERP team</h3><p>Ask for a change, report a problem, or request access. We reply within 2 working days.</p>
+ <div class="f"><label>What do you need? *</label><div class="in">Add field "Batch No." on receiving</div></div><div class="f"><label>Details</label><div class="in ta">Supplier kopi sekarang kirim batch number…</div></div>
+ <div class="f2"><div class="f"><label>Which plant?</label><div class="in">Sepanjang ${ic('chev','margin-left:auto')}</div></div><div class="f"><label>Needed by</label><div class="in">${ic('cal')}29 Nov</div></div></div><button class="btn pri" style="width:100%;justify-content:center;height:38px">Send request</button></div></div></div>`);
+}
+function closeScreen(){
+ const m=`<div class="scrim"><div class="modal" style="width:820px"><div class="mh"><h2>Close project</h2><span style="color:var(--ink-3);font-size:12.5px">Annual Gathering 2026</span><span class="sp"></span><button class="btn ghost">${ic('x')}</button></div>
+ <div style="padding:18px 20px"><div class="close-hero"><div style="display:flex;gap:18px;align-items:center"><div class="ring"><div><b>82%</b>on time</div></div>
+ <div style="font-size:13px;color:var(--ink-2);line-height:1.8"><b style="color:var(--ink);font-size:15px">Finished 2 days after the plan</b><br>41 of 41 tasks done · 5 were late<br>Longest delay: <b>Vendor contract</b> (+6 days)<br>Budget column: Rp 182 jt of Rp 190 jt</div></div>
+ <div class="card" style="box-shadow:none"><h4>Before you close</h4><div style="padding:6px 16px">
+ <div class="lesson">${ic('check','color:var(--accent)')}All tasks are done</div><div class="lesson">${ic('check','color:var(--accent)')}Files stay on the NAS, read-only</div><div class="lesson">${ic('alert','color:var(--warn)')}2 open comments — they'll be kept</div></div></div></div>
+ <div class="f" style="margin-top:16px"><label>What should we do differently next time? <span style="font-weight:400;color:var(--ink-3)">(optional, saved to the project & template)</span></label><div class="in ta">Sign vendor contract 3 weeks earlier; book venue before budget approval.</div></div>
+ <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:6px"><span class="cb" style="background:var(--accent);border-color:var(--accent)"></span>Save as template "Office event" — with groups, statuses, columns & lessons (no people, no dates)</label>
+ <label style="display:flex;gap:8px;align-items:center;font-size:13px"><span class="cb" style="background:var(--accent);border-color:var(--accent)"></span>Post a short summary in the project chat</label></div>
+ <div class="mf"><span style="font-size:12px;color:var(--ink-3)">Closed projects move to Archived and can be reopened any time.</span><span class="sp"></span><button class="btn">Cancel</button><button class="btn pri">${ic('arch')}Close & archive</button></div></div></div>`;
+ return shell(header('dash')+'<div class="body"></div>'+m);
+}
+function phoneScreen(){
+ const ph=(inner)=>`<div class="phone"><div class="scr">${inner}</div></div>`;
+ const top=`<div style="padding:44px 18px 10px;background:var(--surface);border-bottom:1px solid var(--line)"><div style="font-size:12px;color:var(--ink-3)">ICT</div><div style="font-size:19px;font-weight:750">ERP Rollout Sepanjang</div>
+ <div style="display:flex;gap:6px;margin-top:10px;overflow:hidden">${['Table','Board','Gantt','Calendar','Files'].map((t,i)=>`<span style="padding:5px 11px;border-radius:999px;font-size:12.5px;${i==0?'background:var(--accent);color:#fff;font-weight:650':'background:var(--surface-3);color:var(--ink-2)'}">${t}</span>`).join('')}</div></div>`;
+ const it=(n,s,d,late,g)=>`<div style="background:var(--surface);border-radius:13px;padding:11px 12px;border-left:4px solid ${g};display:flex;flex-direction:column;gap:7px"><b style="font-weight:600;font-size:14px">${n}</b><div style="display:flex;gap:8px;align-items:center"><span class="st pill ${s}" style="width:auto;padding:0 10px;display:inline-grid;flex:none">${ST[s]}</span><span style="font-size:12px;${late?'color:var(--danger);font-weight:600':'color:var(--ink-3)'}">${d}</span></div></div>`;
+ const list=`<div style="padding:12px;display:flex;flex-direction:column;gap:8px;overflow:hidden"><div style="font-weight:700;color:#fdab3d;font-size:13px">Build & data migration · 6</div>${it('Data migration — item master','stuck','15 Nov · late',1,'#fdab3d')}${it('Configure warehouse locations','doing','28 Nov',0,'#fdab3d')}${it('Approve printer for labels','wait','16 Nov · late',1,'#fdab3d')}<div style="font-weight:700;color:#579bfc;font-size:13px;margin-top:6px">Go-live · 3</div>${it('Training for warehouse staff','todo','14 Jan',0,'#579bfc')}</div>`;
+ const sheet=`<div style="flex:1;background:rgba(0,0,0,.35);display:flex;align-items:flex-end"><div style="background:var(--surface);width:100%;border-radius:22px 22px 0 0;padding:10px 16px 24px"><div style="width:38px;height:5px;border-radius:3px;background:var(--line-2);margin:0 auto 12px"></div><b>Change status</b><div style="display:flex;flex-direction:column;gap:7px;margin-top:10px">${['todo','doing','stuck','wait','review','done'].map(s=>`<div class="st pill ${s}" style="height:40px;border-radius:11px;font-size:14px">${ST[s]}</div>`).join('')}</div></div></div>`;
+ return `<div class="phwrap">${ph(top+list)}${ph(`<div style="padding:44px 18px 12px;background:var(--surface)"><b style="font-size:16px">Data migration — item master</b></div>`+sheet)}</div>`;
+}
+
+const CAP={
+ table:[['NEW','Monday-style Table',`Groups (phases) with a colour bar, <b>full-width coloured status cells</b> (click → pick), owner avatars, timeline bar, progress, summary row per group showing the status mix. "+ Add task" at the bottom of every group; "+" at the end of the header adds a column (Status, People, Date, Number, Dropdown, Files, Progress…).`],
+  ['NEW','Project header',`Health chip (On track / At risk / Off track, set by the lead), one coloured progress bar for the whole project, "2 late" in red. Same buttons as today: Members, Chat, ⋯, New task.`],
+  ['NEW','Left rail',`<b>My work</b> on top (with late count), then Favourites and projects grouped by department with their % done. Archived at the bottom.`],
+  ['NOW → NEW','What stays',`Task drawer, evidence on NAS, autosave, comments, Reports, Workload, saved views — unchanged. Statuses are now per project but every status still maps to one of the 4 stages.`]],
+ picker:[['NEW','"+ View" picker',`Opened from the "+ View" tab. Grouped like ClickUp, with a search box, "Only me" (private view) and "Pin to tabs". Views already in this project are dimmed with "Added". NEW = views that don't exist yet.`],
+  ['PHASE','What gets built when',`<b>Phase 1:</b> picker, Table/Board/List/Timeline/Calendar/Workload/Reports (existing), <b>Gantt, Doc (Notes page), Whiteboard (existing board), Form, Files</b>.<br><b>Phase 2:</b> Dashboard, Activity, Team, Gallery.`],
+  ['SKIP','Left out on purpose','Mind map, Map, Embed, Survey, Website, App — little use for office projects.']],
+ board:[['NEW','Board with custom statuses','One column per status of this project (e.g. "Waiting vendor"). Each card shows its group colour, due date (red when late), files and owner. Drag between columns = change status, with the existing evidence prompt when moving to Done.']],
+ gantt:[['NEW','Gantt (MS Project-lite)',`WBS numbers (toggle), duration and % done on the left; bars with progress fill; group summary brackets; milestone diamonds; weekends shaded; Today line.`],
+  ['NEW','Dependencies & critical path','Drag from a bar\'s dot to link (finish → start, with optional lag). Red = critical path: any delay here delays go-live.'],
+  ['NEW','Auto-move with confirm','Moving a task that others depend on shows the toast: "4 tasks will move too. Go-live moves to 5 Feb" → Only this task / Move all.'],
+  ['NEW','Baseline','"Set baseline" freezes the plan; thin grey lines under bars show plan vs actual.']],
+ new:[['NEW','Template Center','Same pattern as the Whiteboard Template Center: categories left, cards in the middle (with how often used), full preview on the right — groups with weeks, statuses, views, roles and columns.'],
+  ['NEW','SJA templates','ICT implementation, Helpdesk/system rollout, Office event, Machine maintenance (repeating), Audit/ISO, Procurement, Onboarding, Product launch, Marketing campaign + Blank. "My templates" and "Shared with my dept" from Save as template.']],
+ setup:[['NEW','Steps 2 + 3 in one screen','Name, goal, department, colour, start and finish date → task dates spread automatically over working days. Visibility: only members / department / everyone.'],
+  ['NEW','Roles instead of picking people per task','Template roles (Project lead, IT engineer, Key user). Pick people per role → their tasks are assigned. Suggestions from the same departments (no NIK, same search as Notes @mention).'],
+  ['NEW','One notification','Members get a single "You were added to ERP Rollout" notification, not one per task. Project opens on Overview with a starter checklist.']],
+ status:[['NEW','Your own statuses','Add, rename, recolour (palette), drag to reorder, delete (asks where tasks go). Each status has a <b>stage</b>: Not started / Working / Review / Done — Reports, burndown, late reminders and "Done" evidence keep working.']],
+ mywork:[['NEW','My work','Everything assigned to me across all projects: Late / Today / This week / Later, with project colour and status. Right card "Waiting on me": mentions, someone marking my task Stuck, new form requests. Also a Calendar toggle.']],
+ form:[['NEW','Request form (optional per project)','Build questions, map each to a column. A submission = a new task in the "Intake" group, assigned to the chosen person. Link can be shared to anyone in SJA; requester gets status updates. <b>No approval step</b> — as requested.']],
+ close:[['NEW','Close project','Auto summary: % on time, how late it finished, longest delay, budget column. Optional lessons learned, "Save as template" (no people/dates) and a summary post in project chat. Project goes to Archived and can be reopened.']],
+ phone:[['PHONE','Phone (phase 1)','Same views as tabs (view-only for Gantt/Files), grouped task cards with status pills, big status sheet. Adding/arranging views stays on desktop.']],
+};
+const R={table:()=>tableScreen(),picker:()=>tableScreen(true),board:boardScreen,gantt:ganttScreen,new:tplModal,setup:setupModal,status:statusModal,mywork:myWork,form:formScreen,close:closeScreen,phone:phoneScreen};
+function show(s){
+ document.querySelectorAll('.mk button[data-s]').forEach(b=>b.classList.toggle('on',b.dataset.s===s));
+ const el=document.getElementById('screens');el.innerHTML=R[s]();el.classList.remove('on');void el.offsetWidth;el.classList.add('on');
+ document.getElementById('cap').innerHTML=(CAP[s]||[]).map(([t,h,p])=>`<div><span class="tag ${t==='SKIP'?'old':''}">${t}</span><h3>${h}</h3>${p}</div>`).join('');
+ try{localStorage.setItem('pmv2',s)}catch(e){}
+}
+document.querySelectorAll('.mk button[data-s]').forEach(b=>b.onclick=()=>show(b.dataset.s));
+document.getElementById('theme').onclick=e=>{const d=document.documentElement;const dk=d.dataset.theme==='dark';d.dataset.theme=dk?'light':'dark';e.target.textContent=dk?'Dark':'Light'};
+document.addEventListener('click',e=>{const t=e.target.closest('.vt.add');if(t)show('picker');const tg=e.target.closest('.tog');if(tg){if(tg.textContent.includes('Critical')){crit=!crit;show('gantt')}else tg.classList.toggle('on')}
+ const tc=e.target.closest('.tcard');if(tc){document.querySelectorAll('.tcard').forEach(x=>x.classList.remove('on'));tc.classList.add('on')}
+ const sg=e.target.closest('.seg button');if(sg){sg.parentNode.querySelectorAll('button').forEach(x=>x.classList.remove('on'));sg.classList.add('on')}});
+let start='table';try{start=localStorage.getItem('pmv2')||'table'}catch(e){}
+show(R[start]?start:'table');
+</script>
+</body>
+</html>
