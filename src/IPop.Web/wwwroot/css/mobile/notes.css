@@ -30,9 +30,12 @@
     .m-notes-nav { flex-shrink: 0; border-bottom: 1px solid var(--sep); background: var(--surface); }
     .m-notes-save { font-size: 11px; color: var(--ink-3); }
     .m-notes-detail .nt-doc-scroll { padding-bottom: 70px; }
+    /* a whiteboard page has no bottom tab bar to clear */
+    .m-notes-detail .nt-doc-scroll:has(> .nt-board, .nt-boardhead) { padding-bottom: 0; }
     .m-notes-detail .nt-page { padding-left: 22px; padding-right: 22px; }
-    /* !important: the phone-wide "inputs are 16px" rule (stops iOS zooming) would otherwise shrink the page title to body size */
-    .m-notes-detail .nt-page-title { font-size: 30px !important; min-height: 44px; }
+    /* The phone-wide "inputs are 16px !important" rule (stops iOS zooming) has five :not([type]) parts (specificity 0,5,1),
+       so the title needs more than that to stay 30px: the repeated class only raises specificity. */
+    .notes-page.m-notes-detail input.nt-page-title.nt-page-title.nt-page-title.nt-page-title { font-size: 30px !important; min-height: 44px; }
     .m-notes-detail .nt-editor { font-size: 16px; }
     .m-notes-detail .nt-editor.ProseMirror { padding-bottom: 90px; }
     .m-notes-detail .nt-page-props { flex-wrap: wrap; }

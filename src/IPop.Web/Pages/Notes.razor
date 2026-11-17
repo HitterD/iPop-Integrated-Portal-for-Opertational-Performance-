@@ -467,7 +467,7 @@
     @switch (pop)
     {
         case Pop.More:
-            <div class="nt-layer nt-menu-l" style="top:52px;right:14px">
+            <div class="nt-layer nt-menu-l" style="top:var(--nt-pop-top);right:14px">
                 @if (CanEdit)
                 {
                     <button type="button" class="mi" @onclick="() => pop = Pop.Style"><i data-lucide="palette" class="sm"></i>Style</button>
@@ -504,7 +504,7 @@
             break;
 
         case Pop.Template:
-            <div class="nt-layer nt-menu-l nt-tplsave" role="dialog" aria-label="Save as template" style="top:52px;right:14px">
+            <div class="nt-layer nt-menu-l nt-tplsave" role="dialog" aria-label="Save as template" style="top:var(--nt-pop-top);right:14px">
                 <div class="mh">SAVE AS A TEMPLATE</div>
                 <div class="nt-vname-form col">
                     <input maxlength="100" aria-label="Template name" placeholder="Template name" value="@templateName" @oninput="e => templateName = e.Value?.ToString() ?? string.Empty" @onkeydown="OnTemplateKey" />
@@ -515,7 +515,7 @@
             break;
 
         case Pop.Tidy:
-            <div class="nt-layer nt-tidy" style="top:52px;right:14px">
+            <div class="nt-layer nt-tidy" style="top:var(--nt-pop-top);right:14px">
                 <h4>SUGGESTIONS@(tidySuggestions.Count > 0 ? $" · {tidySuggestions.Count} left" : "")</h4>
                 @if (tidySuggestions.Count == 0)
                 {
@@ -540,14 +540,13 @@
             break;
 
         case Pop.Style:
-            <div class="nt-layer nt-style" style="top:52px;right:14px">
+            <div class="nt-layer nt-style" style="top:var(--nt-pop-top);right:14px">
                 <section>
                     <h4>COVER</h4>
                     <div class="nt-tabs" role="tablist">
                         <button type="button" role="tab" aria-selected="@(coverTab == CoverTab.Colours)" class="@(coverTab == CoverTab.Colours ? "on" : "")" @onclick="() => SetCoverTab(CoverTab.Colours)">Colours</button>
                         <button type="button" role="tab" aria-selected="@(coverTab == CoverTab.Upload)" class="@(coverTab == CoverTab.Upload ? "on" : "")" @onclick="() => SetCoverTab(CoverTab.Upload)">Upload</button>
                         <button type="button" role="tab" aria-selected="@(coverTab == CoverTab.ThisPage)" class="@(coverTab == CoverTab.ThisPage ? "on" : "")" @onclick="() => SetCoverTab(CoverTab.ThisPage)">This page</button>
-                        <button type="button" role="tab" disabled title="Coming later">Gallery <small>later</small></button>
                     </div>
                     @if (coverTab == CoverTab.Colours)
                     {

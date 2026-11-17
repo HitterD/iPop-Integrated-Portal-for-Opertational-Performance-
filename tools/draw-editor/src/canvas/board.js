@@ -223,7 +223,7 @@ export function mountCanvas(container, opts) {
   const commitStop = () => { flush(); undo.stopCapturing(); };
   const count = () => { let n = 0; ymap.forEach(v => { if (isElement(v) && !v.isDeleted) n++; }); return n; };
 
-  const onY = () => { if (!destroyed) render(); };
+  const onY = () => { if (!destroyed) { render(); if (r4Kind === 'report' || r4Kind === 'ipfind') { clearTimeout(onY.t); onY.t = setTimeout(() => { if (!destroyed && !r4.hidden && !r4.contains(document.activeElement)) paintPanelR4(); }, 400); } } };
   ymap.observe(onY);
 
   // ── Coordinates ──────────────────────────────────────────────────────────
@@ -639,6 +639,13 @@ export function mountCanvas(container, opts) {
   });
   // Esc closes the options wherever focus is (a button inside them, the page, the board)
   const popKeys = e => {
+    // Esc closes the open pop-up wherever focus is: after clicking a chip the chip has focus, not the board
+    const mine = t => t === document.body || root.contains(t);
+    if (e.key === 'Escape' && penPop.hidden && colourPop.hidden && mine(e.target) && !e.target.closest?.('textarea, [contenteditable="true"], .wb-edit')) {
+      if (!propsMore.hidden) { e.stopPropagation(); propsMore.hidden = true; root.focus({ preventScroll: true }); return; }
+      if (!gallery.hidden) { e.stopPropagation(); gallery.hidden = true; root.focus({ preventScroll: true }); return; }
+      if (!shapePanel.hidden && !shapePanel.contains(e.target)) { e.stopPropagation(); shapePanel.hidden = true; shapeTip.hidden = true; paintCorners(); root.focus({ preventScroll: true }); return; }
+    }
     // a round-4 side panel closes on Esc wherever focus is (also from inside its own select boxes)
     if (e.key === 'Escape' && penPop.hidden && colourPop.hidden && !r4.hidden && (r4.contains(e.target) || e.target === document.body || root.contains(e.target))) { e.stopPropagation(); r4.hidden = true; clearVersionView(); root.focus({ preventScroll: true }); return; }
     if (e.key !== 'Escape' || (penPop.hidden && colourPop.hidden)) return;
@@ -690,6 +697,7 @@ export function mountCanvas(container, opts) {
   const galleryTabs = () => `<div class="wb-seg wb-tcats" role="tablist">${TPL_CATS.map(c => `<button type="button" role="tab" data-tcat="${c}" class="${c === galleryCat ? 'on' : ''}" aria-selected="${c === galleryCat}">${c}</button>`).join('')}</div>`;
   function openGallery(cat) {
     if (cat) galleryCat = cat;
+    shapePanel.hidden = true; shapeTip.hidden = true; if (!r4.hidden) { r4.hidden = true; clearVersionView(); }
     gallery.innerHTML = `<div class="wb-ph"><b>Start from a template</b><button type="button" data-close aria-label="Close">✕</button></div>${galleryTabs()}<p class="wb-note">Added beside what is already on the board, never over it.</p><div class="wb-tgrid">${galleryHtml()}</div>`;
     gallery.hidden = false;
   }
@@ -722,7 +730,7 @@ export function mountCanvas(container, opts) {
     if (mode === 'board' && timerEnds && aw) live.push(`<button type="button" class="wb-chip on" data-c="timer" title="Timer everyone sees">${icon('timer')}<span></span></button>`);
     if (mode === 'board' && vmap && votingOn()) live.push(`<button type="button" class="wb-chip on" data-c="vote" title="Dot voting">${icon('vote')}<span>Voting · ${Math.max(0, (round()?.per || 0) - myVotes().length)} left</span></button>`);
     if (mode === 'board' && opts.boardLock?.isLocked?.()) live.push(`<button type="button" class="wb-chip on" data-c="lockboard" title="Unlock the board so people can edit it">${icon('lock')}<span>Locked</span></button>`);
-    if (mode === 'board' && sinceLast) live.push(`<button type="button" class="wb-chip on wb-chg" data-c="changes" title="Since you last opened: ${esc(sinceLast.text)}">${icon('history')}<span>${sinceLast.added.length + sinceLast.changed.length + sinceLast.removed.length} changes</span></button>`);
+    if (mode === 'board' && sinceLast) live.push(`<button type="button" class="wb-chip on wb-chg" data-c="changes" title="Since you last opened: ${esc(sinceLast.text)}">${icon('history')}<span>${(n => `${n} change${n === 1 ? '' : 's'}`)(sinceLast.added.length + sinceLast.changed.length + sinceLast.removed.length)}</span></button>`);
     if (mode === 'board') live.push(`<button type="button" class="wb-chip" data-c="present" title="Present frame by frame">${icon('play')}<span>Present</span></button>`);
     if (fs) live.push(`<button type="button" class="wb-chip" data-c="fs" title="${fullscreen ? 'Exit full screen (Esc)' : 'Full screen (Shift F)'}" aria-label="${fullscreen ? 'Exit full screen' : 'Full screen'}" aria-pressed="${fullscreen}"><svg class="wb-i" viewBox="0 0 24 24" aria-hidden="true">${fullscreen ? '<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/>' : '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>'}</svg></button>`);
     if (mode === 'board') live.push(`<button type="button" class="wb-chip ${!boardMenu.hidden ? 'on' : ''}" data-c="menu" title="More: guide, tidy up, find, frames, timer, vote, export…" aria-label="More board tools" aria-haspopup="menu">${icon('more')}</button>`);
@@ -2614,17 +2622,25 @@ export function mountCanvas(container, opts) {
       r4State.list = list;
     } else if (k === 'history') {
       const v = r4State.versions;
-      r4.innerHTML = head4('Version history') + (!v ? '<p class="wb-note">Loading…</p>' : !v.length ? '<p class="wb-note">No saved versions yet. A version is kept every few minutes while people edit.</p>'
-        : `<input type="range" class="wb-vslide" min="0" max="${v.length}" value="${r4State.at ?? v.length}" aria-label="Version">
-          <p class="wb-vlabel"><b>${esc(r4State.at == null || r4State.at === v.length ? 'Now' : fmtWhen(v[v.length - 1 - r4State.at]))}</b>${r4State.at != null && r4State.at < v.length && v[v.length - 1 - r4State.at].who ? ` · ${esc(v[v.length - 1 - r4State.at].who)}` : ''}</p>
-          ${r4State.diff ? `<div class="wb-legend"><span><i style="background:#34C759"></i>Added since (${r4State.diff.added.length})</span><span><i style="background:#FF9500"></i>Changed (${r4State.diff.changed.length})</span><span><i style="background:#FF3B30"></i>Removed (${r4State.diff.removed.length})</span></div>` : '<p class="wb-note">Slide back to see what the board looked like and what changed since.</p>'}
-          ${r4State.at != null && r4State.at < v.length && opts.history?.restore && !readOnly ? '<div class="wb-row2"><button type="button" class="wb-wide" data-vrestore>Restore this version…</button></div>' : ''}`);
-      const sl = r4.querySelector('.wb-vslide');
-      sl?.addEventListener('input', () => { r4State.at = +sl.value; showVersion(); });
+      // the slider is built once and kept: rebuilding it while it is being dragged stopped the drag after one step
+      if (!v || !v.length || !r4.querySelector('.wb-vslide')) {
+        r4.innerHTML = head4('Version history') + (!v ? '<p class="wb-note">Loading…</p>' : !v.length ? '<p class="wb-note">No saved versions yet. A version is kept every few minutes while people edit.</p>'
+          : `<input type="range" class="wb-vslide" min="0" max="${v.length}" value="${r4State.at ?? v.length}" aria-label="Version"><div class="wb-vinfo"></div>`);
+        const sl = r4.querySelector('.wb-vslide');
+        sl?.addEventListener('input', () => { r4State.at = +sl.value; paintVersionInfo(); showVersion(); });
+      }
+      if (v?.length) paintVersionInfo();
     } else if (k === 'changes') {
       const c = r4State.changes || sinceLast;
       r4.innerHTML = head4('Since you last opened') + (c ? `<p>${esc(c.who ? `${c.who} ` : '')}${esc(c.text)}</p><div class="wb-row2"><button type="button" class="wb-wide wb-pri" data-showchg>Show me on the board</button><button type="button" class="wb-wide" data-close>Dismiss</button></div>` : '<p class="wb-note">Nothing changed since you last opened this board.</p>');
     }
+  }
+  function paintVersionInfo() {
+    const v = r4State.versions, box = r4.querySelector('.wb-vinfo'); if (!v || !box) return;
+    const at = r4State.at ?? v.length, ver = at < v.length ? v[v.length - 1 - at] : null;
+    box.innerHTML = `<p class="wb-vlabel"><b>${esc(ver ? fmtWhen(ver) : 'Now')}</b>${ver?.who ? ` · ${esc(ver.who)}` : ''}</p>`
+      + (ver && r4State.diff ? `<div class="wb-legend"><span><i style="background:#34C759"></i>Added since (${r4State.diff.added.length})</span><span><i style="background:#FF9500"></i>Changed (${r4State.diff.changed.length})</span><span><i style="background:#FF3B30"></i>Removed (${r4State.diff.removed.length})</span></div>` : `<p class="wb-note">${ver ? 'Working out what changed…' : 'Slide back to see what the board looked like and what changed since.'}</p>`)
+      + (ver && opts.history?.restore && !readOnly ? '<div class="wb-row2"><button type="button" class="wb-wide" data-vrestore>Restore this version…</button></div>' : '');
   }
   const fmtWhen = v => { try { return new Date(v.at).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return String(v.at); } };
   r4.addEventListener('change', e => {
@@ -2763,7 +2779,7 @@ export function mountCanvas(container, opts) {
   }
   async function showVersion() {
     const v = r4State.versions; const i = r4State.at;
-    if (i == null || i >= v.length) { clearVersionView(); r4State.diff = null; paintPanelR4(); return; }
+    if (i == null || i >= v.length) { clearVersionView(); r4State.diff = null; paintVersionInfo(); return; }
     const ver = v[v.length - 1 - i];
     let old = ver._scene;
     if (!old) { try { old = ver._scene = await opts.history.scene(ver.id); } catch { old = []; } }
@@ -2771,8 +2787,7 @@ export function mountCanvas(container, opts) {
     const d = diffScenes(old || [], live());
     r4State.diff = d;
     versionView = { old: old || [], diff: d };
-    paintPanelR4(); paintDiff();
-    const sl = r4.querySelector('.wb-vslide'); sl?.focus();
+    paintVersionInfo(); paintDiff();
   }
   function clearVersionView() { versionView = null; diffLayer.innerHTML = ''; root.classList.remove('wb-vview'); }
   function paintDiff() {
@@ -2938,6 +2953,8 @@ export function mountCanvas(container, opts) {
   }
   function placeFmtBar() {
     if (fmtBar.hidden || !editing) return;
+    // while typing, the selection bar is out of the way (the two used to sit on top of each other)
+    props.hidden = true; propsMore.hidden = true;
     const r = editing.ta.getBoundingClientRect(), rr = rect();
     const w = fmtBar.offsetWidth, h = fmtBar.offsetHeight;
     let y = r.top - rr.top - h - 10; if (y < 8) y = r.bottom - rr.top + 10;

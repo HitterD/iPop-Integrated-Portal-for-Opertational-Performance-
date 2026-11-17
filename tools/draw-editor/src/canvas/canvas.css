@@ -441,3 +441,13 @@ input.wb-edit { background: var(--wb-surface); padding: 0 8px; outline-width: 2p
 .wb-mitem { transition: none; }
 .wb-mitem .wb-mic { display: grid; place-items: center; width: 20px; flex: none; }
 .wb-mitem .wb-mtext { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* audit 2 fixes */
+.wb-chip.wb-chg { color: #8A4B00 !important; }
+.wb-chip.wb-chg .wb-i { color: #C2410C; }
+.wb.wb-dark .wb-chip.wb-chg, [data-theme="dark"] .wb .wb-chip.wb-chg { color: #FFD9A8 !important; }
+.wb-mitem { align-items: center !important; }
+.wb-mitem kbd { align-self: center; line-height: 1.4; }
+/* panels and the board menu sit above the minimap (same layer before) */
+.wb-boardmenu, .wb-r4, .wb-panel { z-index: 5; }
+.wb-mini { z-index: 2; }

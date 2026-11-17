@@ -17,6 +17,8 @@
   --cv-night:linear-gradient(135deg,#2C2C54,#1C1C1E);
 }
 
+/* page pop-ups open just under the page's own toolbar (app top bar 72px + page bar 52px), never over the app top bar */
+:root { --nt-pop-top: 128px; }
 .notes-page, .nt-pop, .nt-layer {
   --fill: rgba(118,118,128,.12); --fill-strong: rgba(118,118,128,.18);
   --hl: rgba(255,204,0,.28); --hl-strong: rgba(255,204,0,.5);
@@ -461,7 +463,7 @@
 .nt-emoji .foot { display:flex; justify-content:space-between; margin-top:4px; padding:0 8px; }
 
 /* share */
-.nt-share { top:58px; right:14px; width:440px; }
+.nt-share { top:var(--nt-pop-top); right:14px; width:440px; }
 .nt-share-tabs { display:flex; gap:18px; padding:14px 18px 0; border-bottom:1px solid var(--line-soft); }
 .nt-share-tabs button { padding:0 0 10px !important; color:var(--ink-3) !important; font-weight:500; border-bottom:2px solid transparent !important; margin-bottom:-1px; }
 .nt-share-tabs button.on { color:var(--ink) !important; border-color:var(--ink) !important; }
