@@ -18,6 +18,7 @@
   --card:0 1px 3px rgba(0,0,0,.06),0 0 0 .5px rgba(0,0,0,.08);
   --board:#FBFBFA;--grid:rgba(0,0,0,.10);--shape:#FFFFFF;--sl:#1D1D1F;
   --dock:#FFFFFF;--dock-2:#F4F4F6;--tile:#F0F0F2;--tile-on:#E3E3E8;
+  --nib:#FFFFFF;--nib-2:#E6E6EA;--nib-s:rgba(0,0,0,.22);
   /* template preview palette (fill / stroke) */
   --pv-bg:#FFFFFF;--pv-ink:#1D1D1F;--pv-ink2:#8A8A90;--pv-line:#C9C9CF;--pv-card:#FFFFFF;--pv-bar:#E2E2E6;
   --y:#FFF1A8;--yS:#E5C93F;--pk:#FADDE3;--pkS:#E795A6;--o:#FDE3C6;--oS:#EFA458;--g:#D6F1DE;--gS:#67BF86;
@@ -32,6 +33,7 @@
   --pop:0 12px 40px rgba(0,0,0,.6),0 0 0 .5px rgba(255,255,255,.12);--card:0 0 0 .5px rgba(255,255,255,.12);
   --board:#141416;--grid:rgba(255,255,255,.09);--shape:#1C1C1E;--sl:#F5F5F7;
   --dock:#1E1E20;--dock-2:#2A2A2D;--tile:#2C2C2F;--tile-on:#3A3A3E;
+  --nib:#D8D8DC;--nib-2:#9A9AA0;--nib-s:rgba(0,0,0,.4);
   --pv-bg:#18181A;--pv-ink:#F2F2F4;--pv-ink2:#8E8E93;--pv-line:#4A4A4E;--pv-card:#232326;--pv-bar:#3A3A3E;
   --y:#4B4321;--yS:#B09A3E;--pk:#4A2731;--pkS:#B8606F;--o:#4A3421;--oS:#C38143;--g:#1F3D2A;--gS:#4FA36B;
   --b:#1E3251;--bS:#4F87D2;--p:#33294D;--pS:#8B6ED2;--gr:#2C2C2F;--grS:#5C5C61;--r:#4A2522;--rS:#C65A50;
@@ -91,10 +93,25 @@ section>p.sub{margin:0 0 14px;color:var(--ink-3);font-size:13.5px;max-width:860p
 .cb.sw{padding:0;width:26px;min-width:26px}
 .cb.sw.on{background:none}
 .cb.sw.on .dot{box-shadow:0 0 0 2px var(--dock),0 0 0 3.5px var(--ink)}
-.nib{width:30px;height:32px;display:grid;place-items:end center;overflow:hidden}
-.nib i{display:block;width:12px;height:24px;border-radius:2px 2px 0 0;position:relative;background:var(--tile-on)}
-.nib i::before{content:"";position:absolute;left:0;right:0;top:-8px;margin:auto;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:8px solid var(--tc,#1d1d1f)}
-.cb.on .nib i{background:var(--blue-soft)}
+/* pens: real tool silhouettes, the active one rises out of the bar */
+.nibb{border:0;background:none;width:30px;height:42px;padding:0;overflow:hidden;display:grid;place-items:end center;flex:none;border-radius:8px 8px 0 0;position:relative;margin-bottom:-14px}
+.nibb svg{width:28px;height:44px;transform:translateY(12px);transition:transform .18s cubic-bezier(.3,1.4,.5,1)}
+.nibb:hover svg{transform:translateY(7px)}
+.nibb.on svg{transform:translateY(1px)}
+.nibb.on::after{content:"";position:absolute;bottom:13px;left:50%;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:var(--blue)}
+.nb{fill:var(--nib);stroke:var(--nib-s);stroke-width:.8}.nb2{fill:var(--nib-2);stroke:var(--nib-s);stroke-width:.6}
+.szb{border:0;background:none;width:26px;height:32px;border-radius:8px;display:grid;place-items:center;flex:none}
+.szb:hover{background:var(--fill)}
+.szb.on{background:var(--blue-soft)}
+.szb i{display:block;border-radius:50%;background:var(--ink-2)}
+.szb.on i{background:var(--blue)}
+.preset{border:0;height:28px;padding:0 8px 0 4px;border-radius:999px;background:var(--fill);display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ink-2);flex:none}
+.preset svg{width:16px;height:24px}
+#ink{position:absolute;inset:0;width:100%;height:100%;z-index:4;pointer-events:none;touch-action:none}
+#board.drawing #ink{pointer-events:auto;cursor:crosshair}
+#board.erasing #ink{pointer-events:auto;cursor:cell}
+.inkhint{position:absolute;left:16px;top:14px;z-index:6;font-size:12px;color:var(--ink-3);background:var(--surface);padding:4px 10px;border-radius:999px;box-shadow:var(--card)}
+.inkhint[hidden]{display:none}
 .dock{position:relative;z-index:1;background:var(--dock);border-radius:18px;box-shadow:var(--pop);display:flex;align-items:flex-end;gap:4px;padding:6px 8px 8px;max-width:100%}
 .dock .small{display:grid;grid-template-columns:repeat(2,34px);gap:2px 2px;align-self:center;padding-right:6px;border-right:1px solid var(--line);margin-right:4px}
 .sb{border:0;background:none;height:34px;border-radius:9px;display:grid;place-items:center;color:var(--ink-2);position:relative}
@@ -197,6 +214,13 @@ section>p.sub{margin:0 0 14px;color:var(--ink-3);font-size:13.5px;max-width:860p
 .tag{position:absolute;top:8px;left:8px;font-size:10.5px;padding:2px 7px;border-radius:999px;background:var(--surface);box-shadow:var(--card);color:var(--ink-2)}
 .tcard .del{position:absolute;top:8px;right:8px;border:0;width:26px;height:26px;border-radius:8px;background:var(--surface);box-shadow:var(--card);display:none;place-items:center;color:var(--red)}
 .tcard:hover .del{display:grid}
+.tcard .hov{position:absolute;left:0;right:0;top:0;aspect-ratio:16/10;display:flex;align-items:center;justify-content:center;gap:8px;background:color-mix(in srgb,var(--pv-bg) 55%,transparent);opacity:0;transition:opacity .15s}
+.tcard:hover .hov,.tcard:focus-visible .hov{opacity:1}
+.hb{height:30px;padding:0 14px;border-radius:9px;background:var(--surface);box-shadow:var(--card);display:inline-flex;align-items:center;font-size:12.5px;font-weight:600;color:var(--ink)}
+.hb.pri{background:var(--accent);color:#fff}
+.bp .nav2{position:absolute;top:50%;transform:translateY(-50%);border:0;width:36px;height:36px;border-radius:50%;background:var(--surface);box-shadow:var(--card);font-size:16px}
+.usebox{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--ink-2)}
+.usebox label{display:flex;gap:8px;align-items:center;cursor:pointer}
 .empty{color:var(--ink-3);font-size:13px;padding:30px 0;text-align:center}
 .banner{margin-top:14px;display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;background:var(--blue-soft);color:var(--ink-2);font-size:13px}
 .banner button{margin-left:auto;border:0;background:var(--surface);border-radius:8px;padding:4px 10px;font-size:12.5px;box-shadow:var(--card)}
@@ -241,7 +265,7 @@ section>p.sub{margin:0 0 14px;color:var(--ink-3);font-size:13.5px;max-width:860p
 <body>
 <div class="topbar"><div class="in">
   <h1>Whiteboard · round 6</h1>
-  <nav><a href="#dock">Dock + bar</a><a href="#picker-sec">Task / Pages</a><a href="#more">More</a><a href="#center">Template Center</a><a href="#start">Board kosong</a><a href="#list">Daftar template</a><a href="#same">Yang tetap</a></nav>
+  <nav><a href="#dock">Dock + bar</a><a href="#pens">Pens</a><a href="#picker-sec">Task / Pages</a><a href="#more">More</a><a href="#center">Template Center</a><a href="#start">Board kosong</a><a href="#list">Daftar template</a><a href="#better">Improvement lain</a><a href="#same">Yang tetap</a></nav>
   <div class="seg"><button data-th="light" class="on">Light</button><button data-th="dark">Dark</button></div>
 </div></div>
 
@@ -264,6 +288,8 @@ section>p.sub{margin:0 0 14px;color:var(--ink-3);font-size:13.5px;max-width:860p
     <div class="el sticky" data-el="sticky" style="left:420px;top:70px;width:150px;height:120px">Ask Finance about the Q4 budget limit</div>
     <div class="el sticky" data-el="sticky2" style="left:590px;top:100px;width:150px;height:120px;background:var(--pk)">Supplier needs PO before 25 Nov</div>
     <div class="hint" id="selhint" style="left:300px;top:286px" hidden>Next: add Yes / No branches</div>
+    <canvas id="ink"></canvas>
+    <div class="inkhint" id="inkhint" hidden>Draw on the board — every pen has its own stroke</div>
 
     <div class="dockwrap" id="dockwrap">
       <div class="pop" id="pop" hidden></div>
@@ -281,6 +307,12 @@ section>p.sub{margin:0 0 14px;color:var(--ink-3);font-size:13.5px;max-width:860p
     </div>
   </div>
   <p class="note" style="margin-top:8px">Coba: klik <b>Pen</b>, <b>Shape</b>, <b>Connector</b>, <b>Sticky</b>, <b>Text</b>, <b>Flowchart</b>; lalu klik belah ketupat “Budget OK?” — bar berubah jadi bar elemen terpilih dengan <b>Next step</b>, <b>Check</b>, <b>Tidy</b> (fitur yang dulu tersembunyi di ⋯). Klik area kosong untuk melepas pilihan.</p>
+</section>
+
+<section id="pens">
+  <h3>1b · Pens — 9 alat + eraser, bentuk asli</h3>
+  <p class="sub">Klik tile <b>Pen</b>, lalu pilih alat di bar: <b>Pen</b> (tebal-tipis ikut kecepatan), <b>Fineliner</b> (tipis rata untuk tulisan), <b>Marker</b> (tebal bulat), <b>Highlighter</b> (tembus pandang, di bawah teks, warna stabilo sendiri), <b>Pencil</b> (berbutir), <b>Brush</b> (ujung meruncing), <b>Calligraphy</b> (tebal-tipis menurut arah), <b>Crayon</b> (tekstur lilin), <b>Neon</b> (garis menyala untuk presentasi), dan <b>Eraser</b> (seluruh goresan / sebagian). Alat yang aktif “naik” dari bar seperti ClickUp; ujungnya ikut warna yang dipilih. Tiap alat ingat warna dan ukurannya sendiri. <b>My pens</b> = simpan kombinasi favorit (mis. “Red check”), tersimpan per orang di semua perangkat. Langsung coba gambar di papan di atas.</p>
+  <div class="card"><button class="btn pri" onclick="openTool('pen');document.getElementById('dock').scrollIntoView({behavior:'smooth'})">Coba pens di papan ↑</button> <span class="note">&nbsp;<kbd>P</kbd> lagi = ganti ke alat berikutnya · tahan <kbd>Shift</kbd> = garis lurus · <kbd>[</kbd> <kbd>]</kbd> = ukuran</span></div>
 </section>
 
 <!-- ───────────── 2. PICKER ───────────── -->
@@ -323,9 +355,27 @@ section>p.sub{margin:0 0 14px;color:var(--ink-3);font-size:13.5px;max-width:860p
   <div class="card" id="tlist" style="font-size:13px;columns:3 260px;column-gap:24px"></div>
 </section>
 
+<section id="better">
+  <h3>7 · Improvement lain yang saya temukan saat review</h3>
+  <div class="grid2">
+    <div class="card"><h4>Template Center</h4><p style="color:var(--ink-2);font-size:13px;margin:0">
+      • <b>Recently used</b> di atas Featured (6 terakhir per orang).<br>
+      • Hover kartu → tombol <b>Preview</b> dan <b>Use</b> langsung.<br>
+      • Pencarian paham kata kerja Indonesia: “notulen rapat”, “akar masalah”, “persetujuan”, “5R”, “jadwal proyek”.<br>
+      • Preview besar: <b>‹ ›</b> / panah kiri-kanan untuk lihat template berikutnya.<br>
+      • Pilihan saat memakai: masuk ke board ini atau jadi halaman board baru, dengan / tanpa contoh isi, dengan / tanpa catatan “How to use”.</p></div>
+    <div class="card"><h4>Dock &amp; bar</h4><p style="color:var(--ink-2);font-size:13px;margin:0">
+      • Tile Pen di dock menampilkan alat yang terakhir dipakai dengan warnanya.<br>
+      • Ukuran pen jadi 4 titik (S M L XL) langsung di bar; angka pas ada di <b>⌄</b>.<br>
+      • Opsi baru pen: panah di ujung goresan, goresan putus-putus.<br>
+      • Tinta hitam otomatis jadi putih di mode gelap (dan sebaliknya) supaya tidak hilang.<br>
+      • Highlighter di mode gelap memakai blend yang tetap terlihat.</p></div>
+  </div>
+</section>
+
 <!-- ───────────── 7. SAME ───────────── -->
 <section id="same">
-  <h3>7 · Yang tetap</h3>
+  <h3>8 · Yang tetap</h3>
   <div class="grid2">
     <div class="card"><h4>Blok /draw di dalam halaman</h4><p>Ruangnya sempit — tetap toolbar ikon kecil + “Open full screen”. Bar kontekstual baru tetap dipakai di sini (lebih ringkas, tanpa label).</p>
       <div class="mini-tb"><span class="on"><svg class="i" viewBox="0 0 24 24"><path d="m4 4 7 16 2-7 7-2z"/></svg></span><span><svg class="i" viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/></svg></span><span><svg class="i" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></span><span><svg class="i" viewBox="0 0 24 24"><path d="M5 19 19 5M19 5h-7M19 5v7"/></svg></span><span><svg class="i" viewBox="0 0 24 24"><path d="M5 4h14v11l-5 5H5z"/></svg></span><span><svg class="i" viewBox="0 0 24 24"><path d="M6 6h12M12 6v13"/></svg></span><span><svg class="i" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></span></div></div>
@@ -340,14 +390,14 @@ section>p.sub{margin:0 0 14px;color:var(--ink-3);font-size:13.5px;max-width:860p
 <script>
 const $ = s => document.querySelector(s);
 const toast = t => { const e = $('#toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('show'), 1800); };
-document.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { document.documentElement.dataset.theme = b.dataset.th; document.querySelectorAll('[data-th]').forEach(x => x.classList.toggle('on', x === b)); });
+document.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { document.documentElement.dataset.theme = b.dataset.th; document.querySelectorAll('[data-th]').forEach(x => x.classList.toggle('on', x === b)); window.redraw && redraw(); });
 const I = d => `<svg class="i" viewBox="0 0 24 24">${d}</svg>`;
 
 /* ════════════ DOCK ════════════ */
 const SMALL = [['select','Select','V','<path d="m4 4 7 16 2-7 7-2z"/>'],['hand','Hand','H','<path d="M7 11V6a1.5 1.5 0 0 1 3 0v4M10 10V4.5a1.5 1.5 0 0 1 3 0V10M13 10V5.5a1.5 1.5 0 0 1 3 0V11M16 11V8a1.5 1.5 0 0 1 3 0v6a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.6L7 14"/>'],['comment','Comment','C','<path d="M4 5h16v11H9l-5 4z"/>'],['laser','Laser','L','<circle cx="12" cy="12" r="3" fill="currentColor"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/>']];
 const ART = {
   task: `<svg width="56" height="46" viewBox="0 0 56 46"><rect x="4" y="8" width="48" height="44" rx="6" style="fill:var(--pv-card)" stroke="rgba(0,0,0,.15)"/><circle cx="12" cy="17" r="3.2" fill="none" stroke="#86868B" stroke-width="1.4"/><path d="m10.6 17 1 1 2-2" stroke="#86868B" stroke-width="1.2" fill="none"/><text x="18" y="20" font-size="8" font-weight="600" style="fill:var(--pv-ink)">Task</text><rect x="9" y="27" width="16" height="4" rx="2" fill="#C9C9CF"/><rect x="29" y="26" width="18" height="6" rx="3" fill="#0A84FF"/><rect x="9" y="36" width="12" height="4" rx="2" fill="#C9C9CF"/></svg>`,
-  pen: c => `<svg width="40" height="50" viewBox="0 0 40 50"><path d="M12 50V22l8-16 8 16v28z" style="fill:var(--pv-card)" stroke="rgba(0,0,0,.18)"/><path d="m16 14 4-8 4 8z" fill="${c}"/><path d="M12 22h16" stroke="rgba(0,0,0,.12)"/></svg>`,
+  pen: () => `<svg width="36" height="52" viewBox="0 0 28 40" style="margin-bottom:-2px">${PENS[penType].svg(prefOf(penType).color)}</svg>`,
   shape: `<svg width="54" height="46" viewBox="0 0 54 46"><rect x="5" y="10" width="44" height="40" rx="5" style="fill:var(--pv-card)" stroke="rgba(0,0,0,.14)"/></svg>`,
   connector: `<svg width="40" height="50" viewBox="0 0 40 50"><path d="M20 50V10M10 20l10-10 10 10" style="stroke:var(--pv-ink)" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   sticky: `<svg width="56" height="48" viewBox="0 0 56 48"><path d="M8 12h40v28l-8 10H8z" fill="#FFE27A"/><path d="M48 40h-8v10z" fill="#E8C34A"/><path d="M14 8h36v30" fill="none" stroke="#FFD24A" stroke-width="3" opacity=".6"/></svg>`,
@@ -359,6 +409,35 @@ const ART = {
   tpl: `<svg width="58" height="48" viewBox="0 0 58 48"><rect x="10" y="12" width="40" height="34" rx="5" fill="#E5DBF7" transform="rotate(-8 30 30)"/><rect x="8" y="14" width="42" height="36" rx="5" style="fill:var(--pv-card)" stroke="rgba(0,0,0,.14)"/><rect x="12" y="19" width="16" height="12" rx="2" fill="#FADDE3"/><rect x="30" y="19" width="16" height="12" rx="2" fill="#D6F1DE"/><rect x="12" y="33" width="16" height="12" rx="2" fill="#D8E7FC"/><rect x="30" y="33" width="16" height="12" rx="2" fill="#FDE3C6"/></svg>`,
   more: `<svg width="56" height="48" viewBox="0 0 56 48"><defs><linearGradient id="mg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF9500"/><stop offset=".5" stop-color="#FF2D55"/><stop offset="1" stop-color="#AF52DE"/></linearGradient></defs><rect x="8" y="12" width="40" height="36" rx="9" fill="url(#mg)"/><circle cx="20" cy="24" r="4" fill="#fff"/><circle cx="36" cy="24" r="4" fill="#fff" opacity=".85"/><circle cx="20" cy="38" r="4" fill="#fff" opacity=".85"/><circle cx="36" cy="38" r="4" fill="#fff" opacity=".7"/></svg>`,
 };
+/* ── pens: each has its own silhouette, its own stroke and its own sizes ── */
+const WOOD = '#E9C78E';
+const PENS = {
+  pen: { name: 'Pen', sub: 'Pressure, like a ballpoint', sizes: [2, 3, 5, 8], color: '#1D1D1F',
+    svg: c => `<path class="nb" d="M10 44V17l4-11 4 11v27z"/><path d="M10 17h8" stroke="var(--nib-s)" stroke-width=".8"/><path d="m12.4 10.4 1.6-4.4 1.6 4.4z" fill="${c}"/><rect class="nb2" x="10" y="28" width="8" height="3"/>` },
+  fine: { name: 'Fineliner', sub: 'Thin, even line for writing', sizes: [1, 1.5, 2.5, 4], color: '#1D1D1F',
+    svg: c => `<path class="nb" d="M11 44V20l3-6 3 6v24z"/><rect x="13.2" y="3" width="1.6" height="11.5" rx=".6" fill="${c}"/><rect x="11" y="32" width="6" height="12" fill="${c}" opacity=".85"/>` },
+  marker: { name: 'Marker', sub: 'Bold, round, for headings', sizes: [4, 6, 9, 14], color: '#0A84FF',
+    svg: c => `<path class="nb" d="M7 44V21q0-3 3-3h8q3 0 3 3v23z"/><path d="M9.5 18v-6q0-5 4.5-5t4.5 5v6z" fill="${c}"/><rect x="7" y="30" width="14" height="5" fill="${c}"/>` },
+  highlighter: { name: 'Highlighter', sub: 'See-through, goes under text', sizes: [8, 12, 18, 26], color: '#FFD60A', hl: true,
+    svg: c => `<path class="nb" d="M6 44V22q0-2 2-2h12q2 0 2 2v22z"/><path d="M9 20V9l10-5v16z" fill="${c}" opacity=".85"/><path d="M9 20V9l10-5v16z" fill="none" stroke="var(--nib-s)" stroke-width=".6"/><rect x="6" y="31" width="16" height="4" fill="${c}" opacity=".85"/>` },
+  pencil: { name: 'Pencil', sub: 'Soft and grainy, for sketching', sizes: [1.5, 2.5, 4, 6], color: '#48484A',
+    svg: c => `<path d="M10 44V18h8v26z" fill="#F4C430" stroke="var(--nib-s)" stroke-width=".8"/><path d="M12.7 18v26M15.3 18v26" stroke="rgba(0,0,0,.12)" stroke-width=".6"/><path d="M10 18l4-12 4 12z" fill="${WOOD}" stroke="var(--nib-s)" stroke-width=".6"/><path d="m12.6 10.2 1.4-4.2 1.4 4.2z" fill="${c}"/>` },
+  brush: { name: 'Brush', sub: 'Tapered ends, painterly', sizes: [4, 7, 11, 16], color: '#FF2D55',
+    svg: c => `<rect class="nb2" x="12" y="24" width="4" height="20" rx="1.5"/><rect x="11" y="17" width="6" height="8" rx="1" fill="#B8B8BE" stroke="var(--nib-s)" stroke-width=".6"/><path d="M14 2c-3.5 5-4 10-3 15h6c1-5 .5-10-3-15z" fill="${c}"/>` },
+  callig: { name: 'Calligraphy', sub: 'Thick and thin by direction', sizes: [4, 6, 9, 13], color: '#1D1D1F',
+    svg: c => `<path class="nb" d="M10 44V18h8v26z"/><path d="M10 18 14 3l4 15z" fill="${c}"/><path d="M14 8v8" stroke="var(--nib)" stroke-width=".8"/><circle cx="14" cy="15.5" r="1" fill="var(--nib)"/>` },
+  crayon: { name: 'Crayon', sub: 'Waxy texture, fun for workshops', sizes: [4, 7, 10, 14], color: '#FF9500',
+    svg: c => `<path d="M9 44V18h10v26z" fill="${c}"/><rect class="nb" x="9" y="24" width="10" height="14"/><path d="M11 29h6M11 33h4" stroke="${c}" stroke-width="1"/><path d="M9 18l2-9h6l2 9z" fill="${c}"/><path d="M11 9q3-3 6 0" fill="${c}"/>` },
+  neon: { name: 'Neon', sub: 'Glowing line for presenting', sizes: [2, 3, 5, 8], color: '#30D5FF',
+    svg: c => `<defs><filter id="glw" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="1.6"/></filter></defs><path class="nb" d="M9 44V20q0-2 2-2h6q2 0 2 2v24z"/><circle cx="14" cy="10" r="4" fill="${c}" filter="url(#glw)"/><path d="M11.5 18v-6q0-3 2.5-3t2.5 3v6z" fill="${c}"/><rect x="9" y="30" width="10" height="3" fill="${c}"/>` },
+  eraser: { name: 'Eraser', sub: 'Whole strokes or part of a stroke', sizes: [8, 16, 28, 44], eraser: true,
+    svg: () => `<rect class="nb" x="8" y="22" width="12" height="22" rx="1"/><rect x="8" y="8" width="12" height="15" rx="3" fill="#FF9EB0" stroke="var(--nib-s)" stroke-width=".8"/><rect x="8" y="20" width="12" height="4" fill="#5E8DE6"/>` },
+};
+const HL_COLS = ['#FFD60A', '#A8F07A', '#FF8FB1', '#7FD3FF', '#FFB35C', '#C7A6FF'];
+const penPrefs = {};
+const prefOf = k => penPrefs[k] || (penPrefs[k] = { color: PENS[k].color || '#1D1D1F', size: 1 });
+let penType = 'pen', eraseMode = 'stroke';
+const myPens = [{ name: 'Red check', type: 'marker', color: '#FF3B30', size: 1 }, { name: 'Yellow mark', type: 'highlighter', color: '#FFD60A', size: 2 }, { name: 'Notes', type: 'fine', color: '#1D1D1F', size: 1 }];
 let penColor = '#1D1D1F';
 const TILES = [['task','Task or page','⇧T'],['pen','Pen','P'],['shape','Shape','R'],['connector','Connector','A'],['sticky','Sticky note','S'],['text','Text','T'],['frame','Frame','F'],['image','Picture or file','I'],['flow','Flowchart','O'],['mind','Mind map','M'],['tpl','Templates','⇧G'],['more','More','']];
 let tool = 'select', selected = null;
@@ -387,8 +466,15 @@ function ctxHtml() {
     return ['#FFF1A8','#FADDE3','#D6F1DE','#D8E7FC','#E7DDF8','#FDE3C6'].map((c, i) => `<button class="cb sw ${i === (selected === 'sticky' ? 0 : 1) ? 'on' : ''}"><span class="dot" style="background:${c}"></span></button>`).join('') + sep + fontBtn + sizeBtn + sep +
       `<button class="cb txt" onclick="toast('Turned into a task in Purchasing 2026 · Undo')">${I('<rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-6"/>')}Make a task</button><button class="cb txt" title="Vote on this">👍 Vote</button><button class="cb" title="Link">${I('<path d="M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-1 1M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1"/>')}</button><button class="cb" data-pop="selmore">⋯</button>`;
   switch (tool) {
-    case 'pen': return [['Pen','#1D1D1F'],['Marker','#0A84FF'],['Highlighter','#FFCC00'],['Pencil','#8E8E93'],['Eraser','#FFB3C0']].map(([n, c], i) => `<button class="cb ${i === 0 ? 'on' : ''}" title="${n}"><span class="nib"><i style="--tc:${i === 0 ? penColor : c}"></i></span></button>`).join('') + sep + colorRow(penColor) + sep +
-      `<button class="cb" data-pop="brush" title="Brush size">${I('<path d="M4 18c4-8 8 4 16-10" stroke-width="3"/>')}${dd}</button>` + adv('penadv');
+    case 'pen': {
+      const P = PENS[penType], pr = prefOf(penType);
+      const pens = Object.entries(PENS).map(([k, p]) => `<button class="nibb ${k === penType ? 'on' : ''}" data-pen="${k}" title="${p.name} — ${p.sub}" aria-label="${p.name}" aria-pressed="${k === penType}"><svg viewBox="0 0 28 44">${p.svg(prefOf(k).color)}</svg></button>`).join('');
+      const cols = P.eraser
+        ? ['stroke', 'part'].map(m => `<button class="cb txt ${eraseMode === m ? 'on' : ''}" data-erase="${m}">${m === 'stroke' ? 'Whole stroke' : 'Part of a stroke'}</button>`).join('')
+        : (P.hl ? HL_COLS : COLS).map(c => `<button class="cb sw ${c === pr.color ? 'on' : ''}" data-col="${c}" title="${c}"><span class="dot" style="background:${c}"></span></button>`).join('') + `<button class="cb" data-pop="colors" title="All colours, recent, any colour">${I('<circle cx="12" cy="12" r="8"/><path d="M12 8v8M8 12h8"/>')}</button>`;
+      const sizes = P.sizes.map((s, i) => `<button class="szb ${i === pr.size ? 'on' : ''}" data-size="${i}" title="${['S', 'M', 'L', 'XL'][i]} · ${s} px"><i style="width:${4 + i * 3.4}px;height:${4 + i * 3.4}px"></i></button>`).join('');
+      return pens + sep + cols + sep + sizes + sep + `<button class="cb txt" data-pop="mypens" title="Your saved pens">${I('<path d="m12 3 2.7 5.6 6.2.9-4.5 4.3 1 6.1L12 17l-5.5 2.9 1-6.1L3 9.5l6.2-.9z"/>')}My pens${dd}</button>` + adv('penadv');
+    }
     case 'shape': return Object.keys(shp).map(k => `<button class="cb ${k === curShape ? 'on' : ''}" data-shp="${k}" title="${k}">${I(shp[k])}</button>`).join('') + `<button class="cb txt" data-pop="shapes">More shapes</button>` + sep + fillBtn() + lineBtn + fontBtn + sizeBtn + alignBtn;
     case 'connector': return `<button class="cb" data-pop="lstyle" title="Solid, dashed, dotted">${I('<path d="M4 12h16"/>')}${dd}</button><button class="cb" data-pop="route" title="Straight, elbow, curved, smart">${I('<path d="M4 18c6 0 4-12 16-12"/>')}${dd}</button><button class="cb" data-pop="heads" title="Arrow ends">${I('<path d="M4 12h15M14 7l5 5-5 5"/>')}${dd}</button>` + `<button class="cb" data-pop="colors"><span class="dot" style="background:#1D1D1F"></span>${dd}</button><button class="cb" data-pop="brush" title="Width">${I('<path d="M4 8h16" stroke-width="1"/><path d="M4 13h16" stroke-width="2.5"/><path d="M4 18h16" stroke-width="4"/>')}${dd}</button>` + fontBtn + adv('connadv');
     case 'sticky': return ['#FFF1A8','#FADDE3','#D6F1DE','#D8E7FC','#E7DDF8','#FDE3C6'].map((c, i) => `<button class="cb sw ${i === 0 ? 'on' : ''}"><span class="dot" style="background:${c}"></span></button>`).join('') + sep + `<button class="cb txt">S</button><button class="cb txt on">M</button><button class="cb txt">L</button>` + sep + fontBtn + `<span class="note" style="padding:0 6px">Click to place · drag for a stack</span>`;
@@ -400,11 +486,12 @@ function ctxHtml() {
     default: return '';
   }
 }
-function paintCtx() { const c = $('#ctx'), h = ctxHtml(); c.hidden = !h; c.innerHTML = h; }
+function paintCtx() { const c = $('#ctx'), h = ctxHtml(); c.hidden = !h; c.innerHTML = h; syncInk(); }
 const POPS = {
   colors: () => `<h5>Bright · Soft</h5><div class="swgrid">${['#FF3B30','#FF9500','#FFCC00','#34C759','#00C7BE','#0A84FF','#5E5CE6','#AF52DE','#FFB3AE','#FFD9A8','#FFF1A8','#C8EFCF','#BDF0EC','#C6DFFE','#D4D3FA','#EBD3F7'].map(c => `<span class="dot" style="background:${c}"></span>`).join('')}</div><h5 style="margin-top:10px">Recent</h5><div class="swgrid">${['#1E8E3E','#C9372C','#1D1D1F'].map(c => `<span class="dot" style="background:${c}"></span>`).join('')}</div><div class="row"><span class="dot" style="background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red)"></span>Any colour… <input value="#0A84FF" style="width:80px;border:1px solid var(--line-2);border-radius:6px;padding:2px 6px;background:var(--surface-2)"></div><div class="row">Opacity <input type="range" value="100"></div>`,
   brush: () => `<h5>Size</h5><div class="row" style="margin:0">${['S','M','L','XL'].map((s, i) => `<button class="btn" style="height:30px;${i === 1 ? 'background:var(--blue-soft);color:var(--blue)' : ''}">${s}</button>`).join('')}</div><div class="row"><input type="range" min="1" max="40" value="4"><b>4 px</b></div><svg width="220" height="30"><path d="M8 20c40-20 70 10 110-6s60-4 94-8" stroke="currentColor" stroke-width="4" fill="none" stroke-linecap="round"/></svg>`,
-  penadv: () => `<h5>Pen options</h5><div class="row" style="margin:0">Smoothing <input type="range" value="50"></div><div class="row">Opacity <input type="range" value="100"></div><div class="row"><input type="checkbox" checked> Hold at the end to make a neat shape</div><div class="row"><input type="checkbox" checked> Pressure (stylus)</div>`,
+  penadv: () => `<h5>${PENS[penType].name} options</h5><div class="row" style="margin:0">Exact size <input type="range" min="1" max="40" value="${PENS[penType].sizes[prefOf(penType).size]}"><b>${PENS[penType].sizes[prefOf(penType).size]} px</b></div><div class="row">Smoothing <input type="range" value="50"></div><div class="row">Opacity <input type="range" value="${PENS[penType].hl ? 40 : 100}"></div><div class="row"><input type="checkbox" checked> Hold at the end to make a neat shape</div><div class="row"><input type="checkbox" checked> Pressure (stylus)</div><div class="row"><input type="checkbox"> Arrow at the end of the stroke</div><div class="row"><input type="checkbox"> Dashed stroke</div>`,
+  mypens: () => `<h5>My pens</h5><div style="display:flex;flex-direction:column;gap:4px;min-width:220px">${myPens.map((m, i) => `<button class="preset" data-mypen="${i}" style="justify-content:flex-start;border-radius:9px;height:32px"><svg viewBox="0 0 28 44">${PENS[m.type].svg(m.color)}</svg>${m.name}<span style="margin-left:auto;color:var(--ink-3)">${PENS[m.type].name} · ${['S', 'M', 'L', 'XL'][m.size]}</span></button>`).join('')}</div><div class="row"><button class="btn" data-savepen>＋ Save current pen</button></div><div class="note" style="margin-top:6px">Saved per person, on every device.</div>`,
   shapes: () => `<input class="s" placeholder="Search shapes: decision, database, router…"><h5>Basic</h5><div class="shpgrid">${Object.values(shp).map(d => `<button>${I(d)}</button>`).join('')}<button>${I('<path d="M4 9h10V5l6 7-6 7v-4H4z"/>')}</button><button>${I('<ellipse cx="12" cy="6" rx="7" ry="2.5"/><path d="M5 6v12c0 1.4 3 2.5 7 2.5s7-1.1 7-2.5V6"/>')}</button><button>${I('<path d="M4 5h16v10H10l-5 4v-4H4z"/>')}</button></div><h5 style="margin-top:10px">Flowchart · BPMN · ERD · Network · UML · Containers</h5><div class="note">All 43+ stencils, same as the Shapes panel today.</div>`,
   line: () => `<h5>Line</h5><div class="swgrid">${['#1D1D1F','#8E8E93','#FF3B30','#0A84FF','#34C759','#FF9500','#AF52DE','none'].map(c => `<span class="dot" style="background:${c === 'none' ? 'repeating-linear-gradient(45deg,#ddd 0 3px,#fff 3px 6px)' : c}"></span>`).join('')}</div><div class="row">Width <input type="range" value="20"></div><div class="row">${['Solid','Dashed','Dotted'].map((s, i) => `<button class="btn" style="height:28px;${i === 0 ? 'background:var(--blue-soft);color:var(--blue)' : ''}">${s}</button>`).join('')}</div><div class="row"><input type="checkbox"> Shadow · <input type="checkbox" checked> Rounded</div>`,
   font: () => `<h5>Font</h5>${['iPop','Handwriting','Monospace'].map((f, i) => `<div class="row" style="margin:4px 0;${i === 1 ? 'font-family:Comic Sans MS,cursive' : i === 2 ? 'font-family:var(--mono)' : ''}">${i === 0 ? '✓ ' : '&nbsp;&nbsp; '}${f}</div>`).join('')}`,
@@ -435,7 +522,12 @@ function openTool(k) {
 $('#dockwrap').addEventListener('click', e => { e.stopPropagation();
   const t = e.target.closest('[data-tool]'); if (t) { openTool(t.dataset.tool); return; }
   const pp = e.target.closest('[data-pop]'); if (pp) { openPop(pp.dataset.pop, pp); return; }
-  const c = e.target.closest('[data-col]'); if (c) { penColor = c.dataset.col; paintDock(); paintCtx(); return; }
+  const pn = e.target.closest('[data-pen]'); if (pn) { penType = pn.dataset.pen; paintDock(); paintCtx(); syncInk(); return; }
+  const sz = e.target.closest('[data-size]'); if (sz) { prefOf(penType).size = +sz.dataset.size; paintCtx(); return; }
+  const er = e.target.closest('[data-erase]'); if (er) { eraseMode = er.dataset.erase; paintCtx(); return; }
+  const mp = e.target.closest('[data-mypen]'); if (mp) { const m = myPens[+mp.dataset.mypen]; penType = m.type; Object.assign(prefOf(m.type), { color: m.color, size: m.size }); closeFloats(); paintDock(); paintCtx(); syncInk(); return; }
+  if (e.target.closest('[data-savepen]')) { const p = prefOf(penType); myPens.push({ name: `${PENS[penType].name} ${myPens.length + 1}`, type: penType, color: p.color, size: p.size }); closeFloats(); toast('Saved to My pens'); return; }
+  const c = e.target.closest('[data-col]'); if (c) { if (tool === 'pen') prefOf(penType).color = c.dataset.col; penColor = c.dataset.col; paintDock(); paintCtx(); return; }
   const s = e.target.closest('[data-shp]'); if (s) { curShape = s.dataset.shp; paintCtx(); return; }
 });
 $('#board').addEventListener('click', e => {
@@ -615,12 +707,16 @@ add('architecture', 'System architecture', CAT[5], 'Advanced', 'Clients, service
 const MY = [{ key: 'my1', name: 'Weekly ICT review', cat: 'My templates', level: 'Beginner', desc: 'Saved from “ICT weekly” board', when: 'Your saved board.', steps: ['Use it like any template'], draw: () => columns('Weekly ICT review', ['Incidents', 'Changes', 'Next week'], ['pk', 'b', 'g'], 3, false), mine: 1 }];
 const TEAM = [{ key: 'tm1', name: 'Warehouse 5S audit (Karawang)', cat: 'Team templates', level: 'Beginner', desc: 'Published by Rina · HC', when: 'Monthly 5S audit at SJA Karawang.', steps: ['Copy per area', 'Tick and add photos'], draw: () => TPL.find(t => t.key === '5s').draw(), team: 1 }, { key: 'tm2', name: 'PR → PO approval (Purchasing)', cat: 'Team templates', level: 'Intermediate', desc: 'Published by Budi · Purchasing', when: 'Standard Purchasing approval path.', steps: ['Change names of approvers'], draw: () => TPL.find(t => t.key === 'approval').draw(), team: 1 }];
 const ALL = () => [...TPL, ...MY, ...TEAM];
+/* search also understands Indonesian work words and synonyms */
+const ALIAS = { approval: 'persetujuan approve pengajuan pr po izin cuti', swimflow: 'antar departemen lintas divisi alur', sop: 'prosedur instruksi kerja ik', meetingnotes: 'notulen rapat notulensi mom', agenda: 'rapat acara', actionplan: 'rencana tindakan tindak lanjut', kanban: 'tugas board', weekly: 'mingguan jadwal', gantt: 'jadwal proyek', projecttimeline: 'jadwal proyek', orgchart: 'struktur organisasi bagan', fishbone: 'tulang ikan akar masalah ishikawa', '5whys': 'akar masalah kenapa', '5s': 'ringkas rapi resik rawat rajin 5r', kaizen: 'perbaikan improvement', pdca: 'perbaikan siklus', swot: 'kekuatan kelemahan peluang ancaman', network: 'jaringan lan wifi', erd: 'database tabel', brainstorm: 'ide gagasan curah pendapat', retro: 'evaluasi', raci: 'tanggung jawab peran', okr: 'target sasaran kpi', eisenhower: 'prioritas penting mendesak', kickoff: 'proyek baru pembukaan', valuestream: 'produksi lean pabrik' };
+const hay = t => (t.name + ' ' + t.desc + ' ' + t.cat + ' ' + (ALIAS[t.key] || '')).toLowerCase();
+let recent = ['approval', 'meetingnotes', 'kanban'];
 const pvCache = {};
 const pv = t => pvCache[t.key] || (pvCache[t.key] = wrap(t.draw()));
 let view = 'featured', q = '', levels = new Set(), cats = new Set(), expanded = new Set();
-const card = t => `<button class="tcard" data-k="${t.key}"><span class="pv">${pv(t)}</span>${t.isNew ? '<span class="tag">New</span>' : t.guided ? '<span class="tag">Guided</span>' : ''}${t.team ? `<span class="del" title="Delete (Admin)" onclick="event.stopPropagation();toast('Deleted from Team templates (Admin)')">${I('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>')}</span>` : ''}<span class="meta"><b>${t.name}</b><span class="lv ${t.level}">${t.level}</span></span></button>`;
+const card = t => `<button class="tcard" data-k="${t.key}"><span class="pv">${pv(t)}</span>${t.isNew ? '<span class="tag">New</span>' : t.guided ? '<span class="tag">Guided</span>' : ''}${t.team ? `<span class="del" title="Delete (Admin)" onclick="event.stopPropagation();toast('Deleted from Team templates (Admin)')">${I('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>')}</span>` : ''}<span class="hov"><span class="hb" data-prev="${t.key}">Preview</span><span class="hb pri" data-use="${t.key}">Use</span></span><span class="meta"><b>${t.name}</b><span class="lv ${t.level}">${t.level}</span></span></button>`;
 function centerHtml() {
-  const filt = list => list.filter(t => (!q || (t.name + ' ' + t.desc + ' ' + t.cat).toLowerCase().includes(q)) && (!levels.size || levels.has(t.level)) && (!cats.size || cats.has(t.cat)));
+  const filt = list => list.filter(t => (!q || q.split(/\s+/).every(w => hay(t).includes(w))) && (!levels.size || levels.has(t.level)) && (!cats.size || cats.has(t.cat)));
   let body = '';
   if (q || cats.size || levels.size) {
     const r = filt(view === 'mine' ? MY : view === 'team' ? TEAM : TPL);
@@ -628,7 +724,7 @@ function centerHtml() {
   } else if (view === 'mine') body = `<div class="sec"><div class="sh"><h6>My templates</h6></div><div class="tgrid">${MY.map(card).join('')}</div><div class="banner">Save any board with <b>⋯ → Save as template</b>. The preview is made from the board automatically.</div></div>`;
   else if (view === 'team') body = `<div class="sec"><div class="sh"><h6>Team templates</h6></div><div class="tgrid">${TEAM.map(card).join('')}</div><div class="banner">Anyone can publish a board here (<b>Save as template → Share with everyone</b>). Admins can remove templates.</div></div>`;
   else {
-    if (view === 'featured') body += `<div class="banner">${I('<path d="M12 3v18M3 12h18"/>')} Make your own: save any board as a template for yourself or the whole company.<button onclick="toast('⋯ → Save as template')">How</button></div><div class="sec"><div class="sh"><h6>Featured</h6></div><div class="tgrid">${TPL.filter(t => t.featured).map(card).join('')}</div></div><div class="sec"><div class="sh"><h6 style="font-size:17px">iPop templates</h6></div></div>`;
+    if (view === 'featured') body += `<div class="banner">${I('<path d="M12 3v18M3 12h18"/>')} Make your own: save any board as a template for yourself or the whole company.<button onclick="toast('⋯ → Save as template')">How</button></div>${recent.length ? `<div class="sec"><div class="sh"><h6>Recently used</h6></div><div class="tgrid">${recent.map(k => ALL().find(t => t.key === k)).filter(Boolean).map(card).join('')}</div></div>` : ''}<div class="sec"><div class="sh"><h6>Featured</h6></div><div class="tgrid">${TPL.filter(t => t.featured).map(card).join('')}</div></div><div class="sec"><div class="sh"><h6 style="font-size:17px">iPop templates</h6></div></div>`;
     for (const c of CAT) { const list = TPL.filter(t => t.cat === c); const open = expanded.has(c) || view === 'cat:' + c; body += `<div class="sec"><div class="sh"><h6>${c}</h6>${list.length > 3 && !open ? `<button data-more="${c}">See ${list.length - 3} more</button>` : ''}</div><div class="tgrid">${(open ? list : list.slice(0, 3)).map(card).join('')}</div></div>`; if (view.startsWith('cat:') && view !== 'cat:' + c) body = body.slice(0, body.lastIndexOf('<div class="sec">')); }
   }
   const nv = (k, label, n, ic) => `<button class="nv ${view === k ? 'on' : ''}" data-view="${k}">${ic}${label}<span class="n">${n}</span></button>`;
@@ -640,15 +736,16 @@ function centerHtml() {
     <div class="gh">Categories</div>${CAT.map(c => `<label class="ck"><input type="checkbox" data-cat="${c}" ${cats.has(c) ? 'checked' : ''}>${c}<span class="n" style="margin-left:auto;font-size:11.5px;color:var(--ink-3)">${TPL.filter(t => t.cat === c).length}</span></label>`).join('')}
     <div class="gh">Level</div>${['Beginner', 'Intermediate', 'Advanced'].map(l => `<label class="ck"><input type="checkbox" data-lv="${l}" ${levels.has(l) ? 'checked' : ''}>${l}</label>`).join('')}
   </aside>
-  <div class="mainp"><div class="bar"><div class="q">${I('<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>')}<input class="tq" placeholder="Search templates… (e.g. approval, 5S, meeting)" value="${q}"></div><select class="tcat"><option value="">All categories</option>${CAT.map(c => `<option ${cats.size === 1 && cats.has(c) ? 'selected' : ''}>${c}</option>`).join('')}</select><select class="tlv"><option value="">Any level</option>${['Beginner', 'Intermediate', 'Advanced'].map(l => `<option ${levels.size === 1 && levels.has(l) ? 'selected' : ''}>${l}</option>`).join('')}</select><button class="x" data-closec title="Close (Esc)">✕</button></div>
+  <div class="mainp"><div class="bar"><div class="q">${I('<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>')}<input class="tq" placeholder="Search templates… (e.g. approval, notulen rapat, 5S, akar masalah)" value="${q}"></div><select class="tcat"><option value="">All categories</option>${CAT.map(c => `<option ${cats.size === 1 && cats.has(c) ? 'selected' : ''}>${c}</option>`).join('')}</select><select class="tlv"><option value="">Any level</option>${['Beginner', 'Intermediate', 'Advanced'].map(l => `<option ${levels.size === 1 && levels.has(l) ? 'selected' : ''}>${l}</option>`).join('')}</select><button class="x" data-closec title="Close (Esc)">✕</button></div>
   <div class="body">${body}</div></div>
   <div class="bp" hidden></div>`;
 }
 function bpHtml(t) {
-  return `<div class="canvas"><button class="back" data-back>← All templates</button><div class="zz" style="transform:scale(1)">${pv(t)}</div><div class="zoom"><button data-z="-1">−</button><span>100%</span><button data-z="1">+</button></div></div>
+  return `<div class="canvas"><button class="back" data-back>← All templates</button><div class="zz" style="transform:scale(1)">${pv(t)}</div><div class="zoom"><button data-z="-1">−</button><span>100%</span><button data-z="1">+</button></div><button class="nav2" data-step="-1" style="left:14px" title="Previous (←)">‹</button><button class="nav2" data-step="1" style="right:14px" title="Next (→)">›</button></div>
   <div class="info"><h4>${t.name}</h4><div class="chips"><span>${t.cat}</span><span class="lv ${t.level}">${t.level}</span>${t.guided ? '<span>Guided</span>' : ''}${t.isNew ? '<span>New</span>' : ''}</div>
   <h5>What it is</h5><p>${t.desc}</p><h5>When to use it</h5><p>${t.when}</p><h5>How</h5><ol>${t.steps.map(s => `<li>${s}</li>`).join('')}</ol>
   <p class="note">Adds a frame with a “How to use” note (hide it in one click) and a few examples you can delete.</p>
+  <h5>Add it</h5><div class="usebox"><label><input type="radio" name="uw" checked> Into this board, beside my work</label><label><input type="radio" name="uw"> As a new board page</label><label><input type="checkbox" checked> Include example content</label><label><input type="checkbox" checked> Include “How to use” note</label></div>
   <button class="use" data-use="${t.key}">Use template</button></div>`;
 }
 function mountCenter(root) {
@@ -658,7 +755,10 @@ function mountCenter(root) {
   root.addEventListener('click', e => {
     const v = e.target.closest('[data-view]'); if (v) { view = v.dataset.view; q = ''; cats.clear(); levels.clear(); render(); root.querySelector('.body').scrollTop = 0; return; }
     const m = e.target.closest('[data-more]'); if (m) { expanded.add(m.dataset.more); render(); return; }
-    const k = e.target.closest('.tcard'); if (k) { const t = ALL().find(x => x.key === k.dataset.k); if (e.detail >= 2) { useTpl(t); return; } clearTimeout(root._t); root._t = setTimeout(() => { const bp = root.querySelector('.bp'); bp.innerHTML = bpHtml(t); bp.hidden = false; zoom = 1; }, 220); return; }
+    const pr = e.target.closest('[data-prev]'); if (pr) { showBp(root, ALL().find(x => x.key === pr.dataset.prev)); return; }
+    const st2 = e.target.closest('[data-step]'); if (st2) { stepBp(root, +st2.dataset.step); return; }
+    const u0 = e.target.closest('[data-use]'); if (u0) { useTpl(ALL().find(x => x.key === u0.dataset.use)); return; }
+    const k = e.target.closest('.tcard'); if (k) { const t = ALL().find(x => x.key === k.dataset.k); if (e.detail >= 2) { useTpl(t); return; } clearTimeout(root._t); root._t = setTimeout(() => { showBp(root, t); zoom = 1; }, 220); return; }
     if (e.target.closest('[data-back]')) { root.querySelector('.bp').hidden = true; return; }
     const z = e.target.closest('[data-z]'); if (z) { zoom = Math.max(.5, Math.min(3, zoom + (+z.dataset.z) * .25)); root.querySelector('.zz').style.transform = `scale(${zoom})`; root.querySelector('.zoom span').textContent = Math.round(zoom * 100) + '%'; return; }
     const u = e.target.closest('[data-use]'); if (u) { useTpl(ALL().find(x => x.key === u.dataset.use)); return; }
@@ -672,10 +772,46 @@ function mountCenter(root) {
   });
   root.addEventListener('input', e => { if (e.target.classList.contains('tq')) { q = e.target.value.toLowerCase(); const pos = e.target.selectionStart; render(); const n = root.querySelector('.tq'); n.focus(); n.setSelectionRange(pos, pos); } });
 }
-function useTpl(t) { $('#tcOv').hidden = true; toast(`“${t.name}” added beside your work · Undo`); }
+function showBp(root, t) { const bp = root.querySelector('.bp'); bp.innerHTML = bpHtml(t); bp.hidden = false; bp.dataset.k = t.key; }
+function stepBp(root, d) { const list = ALL(), i = list.findIndex(x => x.key === root.querySelector('.bp').dataset.k); showBp(root, list[(i + d + list.length) % list.length]); }
+function useTpl(t) { recent = [t.key, ...recent.filter(k => k !== t.key)].slice(0, 6); $('#tcOv').hidden = true; toast(`“${t.name}” added beside your work · Undo`); }
 function openCenter() { closeFloats(); const m = $('#tcModal'); if (!m._mounted) { mountCenter(m); m._mounted = 1; } else m.innerHTML = centerHtml(); $('#tcOv').hidden = false; }
 $('#tcOv').addEventListener('click', e => { if (e.target.id === 'tcOv') $('#tcOv').hidden = true; });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (!$('#tcOv').hidden) { const bp = $('#tcModal .bp'); if (bp && !bp.hidden) bp.hidden = true; else $('#tcOv').hidden = true; } else closeFloats(); } });
+document.addEventListener('keydown', e => { const bpo = document.querySelector('#tcModal .bp'); if (!$('#tcOv').hidden && bpo && !bpo.hidden && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { stepBp($('#tcModal'), e.key === 'ArrowLeft' ? -1 : 1); return; } if (e.key === 'Escape') { if (!$('#tcOv').hidden) { const bp = $('#tcModal .bp'); if (bp && !bp.hidden) bp.hidden = true; else $('#tcOv').hidden = true; } else closeFloats(); } });
+
+/* ════════════ INK: each pen draws its own way (mock of the real renderer) ════════════ */
+const ink = $('#ink'), ictx = ink.getContext('2d'); const strokes = []; let cur = null;
+function sizeInk() { const r = ink.getBoundingClientRect(), d = devicePixelRatio || 1; ink.width = r.width * d; ink.height = r.height * d; ictx.setTransform(d, 0, 0, d, 0, 0); redraw(); }
+function syncInk() { const b = $('#board'); b.classList.toggle('drawing', tool === 'pen' && penType !== 'eraser'); b.classList.toggle('erasing', tool === 'pen' && penType === 'eraser'); $('#inkhint').hidden = tool !== 'pen'; }
+const rnd = s => { let x = Math.sin(s) * 1e4; return x - Math.floor(x); };
+function drawStroke(s) {
+  const p = s.pts; if (p.length < 2) return; const w = s.w, dark = document.documentElement.dataset.theme === 'dark', c = dark && s.color === '#1D1D1F' ? '#F5F5F7' : dark && s.color === '#48484A' ? '#C7C7CC' : s.color; ictx.save(); ictx.lineCap = 'round'; ictx.lineJoin = 'round';
+  const path = () => { ictx.beginPath(); ictx.moveTo(p[0].x, p[0].y); for (let i = 1; i < p.length - 1; i++) ictx.quadraticCurveTo(p[i].x, p[i].y, (p[i].x + p[i + 1].x) / 2, (p[i].y + p[i + 1].y) / 2); ictx.lineTo(p.at(-1).x, p.at(-1).y); };
+  switch (s.type) {
+    case 'pen': case 'brush': { // width follows speed (pen) or tapers at both ends (brush)
+      ictx.fillStyle = c; for (let i = 1; i < p.length; i++) { const a = p[i - 1], b = p[i], v = Math.hypot(b.x - a.x, b.y - a.y), t = i / p.length;
+        const ww = s.type === 'brush' ? w * Math.sin(Math.PI * Math.min(1, t * 1.05)) * (1.1 - Math.min(v, 20) / 40) : w * (1.25 - Math.min(v, 18) / 30);
+        ictx.lineWidth = Math.max(.6, ww); ictx.strokeStyle = c; ictx.beginPath(); ictx.moveTo(a.x, a.y); ictx.lineTo(b.x, b.y); ictx.stroke(); } break; }
+    case 'fine': ictx.strokeStyle = c; ictx.lineWidth = w; path(); ictx.stroke(); break;
+    case 'marker': ictx.strokeStyle = c; ictx.globalAlpha = .92; ictx.lineWidth = w; path(); ictx.stroke(); break;
+    case 'highlighter': ictx.globalCompositeOperation = document.documentElement.dataset.theme === 'dark' ? 'screen' : 'multiply'; ictx.strokeStyle = c; ictx.globalAlpha = .45; ictx.lineCap = 'butt'; ictx.lineWidth = w; path(); ictx.stroke(); break;
+    case 'pencil': ictx.strokeStyle = c; for (let k = 0; k < 3; k++) { ictx.globalAlpha = .35; ictx.lineWidth = w * .7; ictx.beginPath(); p.forEach((q, i) => { const jx = (rnd(i * 7 + k) - .5) * w * .8, jy = (rnd(i * 13 + k) - .5) * w * .8; i ? ictx.lineTo(q.x + jx, q.y + jy) : ictx.moveTo(q.x + jx, q.y + jy); }); ictx.stroke(); } break;
+    case 'callig': ictx.fillStyle = c; for (let i = 1; i < p.length; i++) { const a = p[i - 1], b = p[i], dx = Math.cos(Math.PI / 4) * w / 2, dy = -Math.sin(Math.PI / 4) * w / 2; ictx.beginPath(); ictx.moveTo(a.x - dx, a.y - dy); ictx.lineTo(a.x + dx, a.y + dy); ictx.lineTo(b.x + dx, b.y + dy); ictx.lineTo(b.x - dx, b.y - dy); ictx.closePath(); ictx.fill(); } break;
+    case 'crayon': ictx.fillStyle = c; for (let i = 1; i < p.length; i++) { const a = p[i - 1], b = p[i], n = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 1.5) + 1; for (let j = 0; j < n; j++) { const x = a.x + (b.x - a.x) * j / n, y = a.y + (b.y - a.y) * j / n; for (let k = 0; k < w * .9; k++) { if (rnd(x * 3.1 + y * 7.7 + k) < .45) continue; ictx.globalAlpha = .55 + rnd(k + x) * .4; ictx.fillRect(x + (rnd(k * 1.3 + y) - .5) * w, y + (rnd(k * 2.1 + x) - .5) * w, 1.2, 1.2); } } } break;
+    case 'neon': ictx.shadowColor = c; ictx.shadowBlur = w * 3; ictx.strokeStyle = c; ictx.lineWidth = w; path(); ictx.stroke(); ictx.shadowBlur = 0; ictx.strokeStyle = '#fff'; ictx.globalAlpha = .85; ictx.lineWidth = Math.max(1, w * .35); path(); ictx.stroke(); break;
+  }
+  ictx.restore();
+}
+function redraw() { const r = ink.getBoundingClientRect(); ictx.clearRect(0, 0, r.width, r.height); strokes.forEach(drawStroke); if (cur) drawStroke(cur); }
+const pt = e => { const r = ink.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+ink.addEventListener('pointerdown', e => { e.stopPropagation(); ink.setPointerCapture(e.pointerId); closeFloats();
+  if (penType === 'eraser') { cur = { erase: true }; eraseAt(pt(e)); return; }
+  const pr = prefOf(penType); cur = { type: penType, color: pr.color, w: PENS[penType].sizes[pr.size], pts: [pt(e)] }; });
+ink.addEventListener('pointermove', e => { if (!cur) return; if (cur.erase) { eraseAt(pt(e)); return; } cur.pts.push(pt(e)); redraw(); });
+ink.addEventListener('pointerup', () => { if (cur && !cur.erase && cur.pts.length > 1) strokes.push(cur); cur = null; redraw(); });
+ink.addEventListener('click', e => e.stopPropagation());
+function eraseAt(q) { const r = PENS.eraser.sizes[prefOf('eraser').size] / 2 + 3; for (let i = strokes.length - 1; i >= 0; i--) { const s = strokes[i]; const hit = s.pts.findIndex(p => Math.hypot(p.x - q.x, p.y - q.y) < r); if (hit < 0) continue; if (eraseMode === 'stroke') strokes.splice(i, 1); else { const a = s.pts.slice(0, Math.max(0, hit - 1)), b = s.pts.slice(hit + 2); strokes.splice(i, 1, ...[a, b].filter(x => x.length > 1).map(pts => ({ ...s, pts }))); } } redraw(); }
+new ResizeObserver(sizeInk).observe(ink);
 
 /* boot */
 paintDock(); paintCtx();
