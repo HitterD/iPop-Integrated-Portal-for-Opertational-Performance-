@@ -210,3 +210,39 @@ test('round 7: a wheel over a panel never moves the board; the Template Center s
     inst.destroy(); doc.destroy();
   } finally { win.happyDOM.abort(); }
 });
+
+test('round 7: Z zooms, the context menu adds things, Ctrl / finds commands, undo says what it did', async () => {
+  const { win, el } = setup();
+  const doc = new Y.Doc(), ymap = doc.getMap('wb:board');
+  try {
+    const inst = mountCanvas(el, { ymap, doc, Y, mode: 'board', theme: 'light', toast: () => {} });
+    await tick(40);
+    const wb = el.querySelector('.wb');
+    // Z tool is in the dock
+    assert.ok(el.querySelector('.wb-dsmall [data-dtool="zoom"]'), 'zoom in the dock');
+    el.querySelector('.wb-dsmall [data-dtool="zoom"]').click(); await tick();
+    assert.equal(wb.dataset.tool, 'zoom');
+    // right-click on the empty board: Add a sticky here
+    wb.dispatchEvent(new window.MouseEvent('contextmenu', { clientX: 300, clientY: 200, bubbles: true, cancelable: true }));
+    await tick();
+    const menu = el.querySelector('.wb-cmenu');
+    assert.equal(menu.hidden, false, 'context menu opens');
+    menu.querySelector('[data-cm="addsticky"]').click(); await tick(40);
+    const els = []; ymap.forEach(v => els.push(v));
+    assert.equal(els.filter(e => e.type === 'sticky').length, 1, 'a sticky was added where you clicked');
+    // command palette
+    wb.focus(); wb.dispatchEvent(new window.KeyboardEvent('keydown', { key: '/', code: 'Slash', ctrlKey: true, bubbles: true }));
+    await tick();
+    const pal = el.querySelector('.wb-palov');
+    assert.equal(pal.hidden, false, 'palette opens');
+    const input = pal.querySelector('input'); input.value = 'notulen'; input.dispatchEvent(new window.Event('input', { bubbles: true }));
+    assert.match(pal.querySelector('.wb-pall').textContent, /Meeting notes/);
+    input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(pal.hidden, true);
+    // undo shows what it did, with Redo
+    wb.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
+    await tick(30);
+    assert.match(el.querySelector('.wb-acttoast').textContent, /Undid: .*Redo/);
+    inst.destroy(); doc.destroy();
+  } finally { win.happyDOM.abort(); }
+});

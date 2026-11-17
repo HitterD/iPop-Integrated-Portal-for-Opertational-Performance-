@@ -101,6 +101,8 @@ ICONS.star = '<path d="m12 3 2.7 5.6 6.2.9-4.5 4.3 1 6.1L12 17l-5.5 2.9 1-6.1L3 
 ICONS.user = '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>';
 ICONS.users = '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20a6 6 0 0 1 12 0M14 20a4 4 0 0 1 7 0"/>';
 ICONS.list = '<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>';
+ICONS.eyedrop = '<path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z"/>';
+ICONS.zoom = '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M8 11h6M11 8v6"/>';
 ICONS.arrowr = '<path d="M5 12h14M13 6l6 6-6 6"/>';
 const HEAD_GLYPH = { none: '', arrow: '➤', open: '›', filled: '▶', diamond: '◇', dot: '●', crow: '⋔', one: '‖' };
 const HEADS = [['none', 'None'], ['arrow', 'Arrow'], ['open', 'Open'], ['filled', 'Filled'], ['diamond', 'Diamond'], ['dot', 'Dot'], ['crow', 'Many (crow\'s foot)'], ['one', 'One']];
@@ -135,6 +137,7 @@ const PEN_TYPES = {
     svg: c => `<path class="nb" d="M9 44V20q0-2 2-2h6q2 0 2 2v24z"/><circle cx="14" cy="10" r="5" fill="${c}" opacity=".35"/><path d="M11.5 18v-6q0-3 2.5-3t2.5 3v6z" fill="${c}"/><rect x="9" y="30" width="10" height="3" fill="${c}"/>` },
 };
 const ERASER_SVG = `<rect class="nb" x="8" y="22" width="12" height="22" rx="1"/><rect x="8" y="8" width="12" height="15" rx="3" fill="#FF9EB0" class="nl"/><rect x="8" y="20" width="12" height="4" fill="#5E8DE6"/>`;
+const PEN_ORDER = ['pen', 'fine', 'marker', 'highlighter', 'pencil', 'brush', 'callig', 'crayon', 'neon'];
 const HL_COLOURS = ['#FFD60A', '#A8F07A', '#FF8FB1', '#7FD3FF', '#FFB35C', '#C7A6FF'];
 // the 12 colours shown in the pen bar (the rest are behind ⊕)
 const BAR_COLOURS = ['#FF3B30', '#FF2D55', '#FF9500', '#FFCC00', '#34C759', '#A8E6B4', '#0A84FF', '#A9CFFF', '#5E5CE6', '#C3B4F5', '#8E8E93', 'auto'];
@@ -169,6 +172,7 @@ const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 
 // Letter shortcuts like ClickUp; digits keep the old Excalidraw meaning (grill Q18).
 const KEYS = { n: 'card', c: 'comment', i: 'image', v: 'select', l: 'laser', h: 'hand', p: 'pen', m: 'highlighter', e: 'eraser', s: 'sticky', t: 'text', r: 'rect', o: 'ellipse', d: 'diamond', a: 'connector', f: 'frame' };
+// (Z is handled on its own: tap = the zoom tool, hold = zoom for a moment)
 const DIGITS = { 0: 'eraser', 1: 'select', 2: 'rect', 3: 'diamond', 4: 'ellipse', 5: 'connector', 6: 'connector', 7: 'pen', 8: 'text', 9: 'select' };
 const SHAPE_LABEL = { rect: 'Rectangle', ellipse: 'Circle', diamond: 'Diamond', triangle: 'Triangle', star: 'Star', cloud: 'Cloud', arrowShape: 'Block arrow', cylinder: 'Cylinder', bubble: 'Speech bubble', ...Object.fromEntries(STENCILS.map(s => [s[0], s[1]])) };
 const BASIC_TIPS = { rect: 'A plain box.', ellipse: 'A circle or oval.', diamond: 'A diamond.', triangle: 'A triangle.', star: 'A star.', cloud: 'A cloud.', arrowShape: 'A big arrow.', cylinder: 'A cylinder.', bubble: 'A speech bubble.' };
@@ -250,6 +254,7 @@ export function mountCanvas(container, opts) {
     if (readOnly) { render(); return; }
     doc.transact(() => { for (const e of batch) ymap.set(e.id, e); }, ORIGIN);
     opts.onChange?.(count());
+    try { markSaving(); } catch { /* the pill is created later in start-up */ }
   }
   const commitStop = () => { flush(); undo.stopCapturing(); };
   const count = () => { let n = 0; ymap.forEach(v => { if (isElement(v) && !v.isDeleted) n++; }); return n; };
@@ -332,6 +337,7 @@ export function mountCanvas(container, opts) {
           obstaclesFor: c => boxes.filter(b => b.id !== c.from?.id && b.id !== c.to?.id),
           jumpsFor: c => [...routed.entries()].filter(([id]) => id < c.id).map(([, p]) => p),
           onRouted: (id, pts) => routed.set(id, pts) });
+        if (c?.node.classList.contains('wb-lift')) node.classList.add('wb-lift');
         if (c) c.node.replaceWith(node); else (prev ? prev.after(node) : world.prepend(node));
         c = { key, node }; cache.set(e.id, c);
       }
@@ -383,6 +389,22 @@ export function mountCanvas(container, opts) {
     if (interaction?.marquee) {
       const m = interaction.marquee, a = toScreen(m.x, m.y), z = toScreen(m.x + m.w, m.y + m.h);
       svgEl('rect', { x: a.x, y: a.y, width: z.x - a.x, height: z.y - a.y, fill: 'rgba(10,132,255,.08)', stroke: p.sel, 'stroke-dasharray': '4 3' }, overlay);
+    }
+    if (interaction?.kind === 'lasso' && interaction.pts.length > 1) {
+      svgEl('path', { d: `M${interaction.pts.map(([x, y]) => { const q = toScreen(x, y); return `${q.x.toFixed(1)} ${q.y.toFixed(1)}`; }).join(' L')}Z`, fill: 'rgba(10,132,255,.08)', stroke: p.sel, 'stroke-width': 1.5, 'stroke-dasharray': '4 3' }, overlay);
+    }
+    for (const d of interaction?.distances || []) {
+      const q = toScreen(d.x, d.y), t = `${Math.round(d.gap)} px`;
+      svgEl('rect', { x: q.x - (t.length * 3.4 + 6), y: q.y - 9, width: t.length * 6.8 + 12, height: 18, rx: 5, fill: '#FF2D55' }, overlay);
+      const tx = svgEl('text', { x: q.x, y: q.y + 4, 'font-size': 10.5, 'font-weight': 600, fill: '#fff', 'text-anchor': 'middle', 'font-family': FONT_STACK.ipop }, overlay); tx.textContent = t;
+    }
+    if (flashIds.size) {
+      const now = performance.now();
+      for (const [id, until] of flashIds) {
+        const e2 = get(id); if (!e2) continue;
+        const b = bounds(e2, get), a = toScreen(b.x, b.y), z = toScreen(b.x + b.w, b.y + b.h), k = Math.max(0, (until - now) / 900);
+        svgEl('rect', { x: a.x - 6 - (1 - k) * 8, y: a.y - 6 - (1 - k) * 8, width: z.x - a.x + 12 + (1 - k) * 16, height: z.y - a.y + 12 + (1 - k) * 16, rx: 10, fill: 'none', stroke: '#0A84FF', 'stroke-width': 3, opacity: (k * 0.55).toFixed(2) }, overlay);
+      }
     }
     for (const l of interaction?.guideLines || []) {
       const a = toScreen(l.x1, l.y1), z = toScreen(l.x2, l.y2);
@@ -720,6 +742,7 @@ export function mountCanvas(container, opts) {
     tool = t;
     if (t !== 'select') { sel.clear(); }
     root.dataset.tool = SHAPES.includes(t) ? 'shape' : t;
+    if (typeof brushRing !== 'undefined' && t !== 'pen' && t !== 'highlighter') brushRing.hidden = true;
     shapeMenu.hidden = true;
     if (t !== 'pen' && t !== 'highlighter' && t !== 'eraser') penPop.hidden = true;
     eraserRing.hidden = t !== 'eraser';
@@ -790,7 +813,7 @@ export function mountCanvas(container, opts) {
     if (!dockOn()) { dock.hidden = true; ctxBar.hidden = true; ctxPop.hidden = true; root.classList.remove('wb-hasdock'); return; }
     dock.hidden = false; root.classList.add('wb-hasdock'); root.classList.toggle('wb-dock-s', root.clientWidth < 1060);
     requestAnimationFrame(layoutBars);
-    const small = [['select', 'Select', 'V'], ['hand', 'Hand', 'H'], ...(opts.comments ? [['comment', 'Comment', 'C']] : []), ['laser', 'Laser pointer', 'L']];
+    const small = [['select', 'Select', 'V'], ['hand', 'Hand', 'H'], ['zoom', 'Zoom (hold Z)', 'Z'], ...(opts.comments ? [['comment', 'Comment', 'C']] : []), ['laser', 'Laser pointer', 'L']];
     const ptype = tool === 'eraser' ? 'eraser' : penKind();
     dock.innerHTML = `<div class="wb-dsmall">${small.map(([k, l, key]) => `<button type="button" data-dtool="${k}" class="${tool === k ? 'on' : ''}" title="${l} (${key})" aria-label="${l}" aria-pressed="${tool === k}">${icon(k)}<span class="wb-k">${key}</span></button>`).join('')}</div>
       <div class="wb-tiles">${TILES().map(([k, l, key]) => {
@@ -968,7 +991,7 @@ export function mountCanvas(container, opts) {
         const widths = kind === 'line' ? `<div class="wb-ph5">Width</div><div class="wb-row">${[1, 2, 4, 6, 8].map(v => `<button type="button" class="wb-cb ${(one?.strokeWidth ?? next.width) === v ? 'on' : ''}" data-lw="${v}" title="${v} px"><span class="wb-wline" style="height:${Math.max(1, v)}px"></span></button>`).join('')}</div><div class="wb-row">${['solid', 'dashed'].map(s => `<button type="button" class="wb-cb wb-txt ${((one ? one.dashed : next.dashed) ? 'dashed' : 'solid') === s ? 'on' : ''}" data-ldash="${s}">${s === 'solid' ? 'Solid' : 'Dashed'}</button>`).join('')}</div>` : '';
         return `<div class="wb-ph5">${fill ? 'Fill' : forPen ? 'Pen colour' : 'Colour'}</div>${swatchGrid(list, cur, attr)}
           <div class="wb-ph5">Recent</div>${prefs.recent.length ? swatchGrid(prefs.recent, cur, attr) : '<p class="wb-note">Colours you pick show up here</p>'}
-          <div class="wb-ph5">Any colour</div><div class="wb-custom"><input type="color" value="${hex}" data-anyc="${attr}" aria-label="Pick any colour"><input type="text" value="${hex}" maxlength="7" spellcheck="false" data-hex="${attr}" aria-label="Hex code"></div>${widths}`;
+          <div class="wb-ph5">Any colour</div><div class="wb-custom"><input type="color" value="${hex}" data-anyc="${attr}" aria-label="Pick any colour"><input type="text" value="${hex}" maxlength="7" spellcheck="false" data-hex="${attr}" aria-label="Hex code"><button type="button" class="wb-cb" data-eyedrop="${forPen ? 'pen' : fill ? 'fill' : 'line'}" title="Take a colour from the board" aria-label="Take a colour from the board">${icon('eyedrop')}</button></div>${widths}`;
       }
       case 'penadv': {
         const k = penKind(), s = prefs.size[k];
@@ -1081,6 +1104,7 @@ export function mountCanvas(container, opts) {
     // a button that lives in the bar but did not fit: run it like the bar would
     if (ctxPop.dataset.kind === 'ctxov') { ctxPop.hidden = true; ctxBarClick({ target: b }); return; }
     const d = b.dataset;
+    if (d.eyedrop) { ctxPop.hidden = true; startEyedrop(d.eyedrop); return; }
     if (d.pcol) { pickPenColour(d.pcol); paintDock(); ctxPop.innerHTML = ctxPopHtml('pencolours'); return; }
     if (d.fillc) { const c = d.fillc; if (isHex(c)) prefs.recent = [c.toUpperCase(), ...prefs.recent.filter(x => x !== c.toUpperCase())].slice(0, 8); savePrefs(prefs); if (sel.size) applySel(x => isShape(x) ? { fill: c === 'auto' ? null : c } : null); else next.fill = c === 'auto' ? null : c; ctxPop.innerHTML = ctxPopHtml('fill'); ctxBar._html = null; paintCtx(); return; }
     if (d.linec) { const c = d.linec; if (isHex(c)) prefs.recent = [c.toUpperCase(), ...prefs.recent.filter(x => x !== c.toUpperCase())].slice(0, 8); savePrefs(prefs); if (sel.size) applySel(x => x.type === 'sticky' || x.type === 'frame' || x.type === 'image' ? null : { stroke: isHex(c) ? c : null, ...(isShape(x) ? { textColor: isHex(c) ? c : null } : {}) }); else next.stroke = isHex(c) ? c : null; ctxPop.innerHTML = ctxPopHtml(ctxPop.dataset.kind); ctxBar._html = null; paintCtx(); return; }
@@ -1463,6 +1487,388 @@ export function mountCanvas(container, opts) {
     } catch (err) { toast(err?.message === 'templates_full' ? 'You have 100 templates. Remove some first.' : err?.message === 'template_too_big' ? 'This board is too big for a template. Save part of it (select first).' : 'Couldn’t save the template'); }
     finally { b.disabled = false; }
   });
+
+  // ══ Round 7: motion, Z zoom, context menu, command palette, quality of life ═══════════════════════════════════
+  // ── Smooth camera ──
+  // Every jump of the view (zoom buttons, Fit, Shift 1/2, a frame, a template, Follow) glides instead of snapping.
+  let camAnim = 0;
+  function glideTo(target, ms = 260) {
+    cancelAnimationFrame(camAnim);
+    if (reduceMotion() || destroyed) { view = { ...target }; render(); paintZoom(); return; }
+    const from = { ...view }, t0 = performance.now();
+    const ease = t => 1 - Math.pow(1 - t, 3);
+    const step = now => {
+      const t = Math.min(1, (now - t0) / ms), k = ease(t);
+      // zoom is interpolated in log space so it feels even
+      const z = Math.exp(Math.log(from.z) + (Math.log(target.z) - Math.log(from.z)) * k);
+      // keep the centre moving on a straight line in world terms
+      const r = rect(), cx = r.width / 2, cy = r.height / 2;
+      const wa = { x: (cx - from.x) / from.z, y: (cy - from.y) / from.z }, wb = { x: (cx - target.x) / target.z, y: (cy - target.y) / target.z };
+      const wx = wa.x + (wb.x - wa.x) * k, wy = wa.y + (wb.y - wa.y) * k;
+      view = { z, x: cx - wx * z, y: cy - wy * z };
+      render();
+      if (t < 1) camAnim = requestAnimationFrame(step); else { view = { ...target }; render(); paintZoom(); }
+    };
+    camAnim = requestAnimationFrame(step);
+  }
+  /// The view that fit() would make, without moving there.
+  function fitView(els, { pad = 60, max = 1.4 } = {}) {
+    const r = rect(); const b = unionBounds(els, get); if (!b || r.width < 50) return null;
+    const top = 30, bottom = readOnly ? 20 : 70;
+    const z = Math.max(0.1, Math.min(max, (r.width - pad * 2) / Math.max(b.w, 1), (r.height - top - bottom - pad) / Math.max(b.h + 26, 1)));
+    return { z, x: (r.width - b.w * z) / 2 - b.x * z, y: top + (r.height - top - bottom - b.h * z) / 2 - b.y * z + 13 * z };
+  }
+  const glideFit = (els = live(), o = {}) => { const v = fitView(els, o); if (v) glideTo(v); };
+  const glideZoom = (f, sx, sy) => { const r = rect(); sx ??= r.width / 2; sy ??= r.height / 2; const w = toWorld(sx, sy), z = Math.min(4, Math.max(0.1, view.z * f)); glideTo({ z, x: sx - w.x * z, y: sy - w.y * z }, 180); showZoomHud(sx, sy, z); };
+
+  // ── Inertial pan: a flick keeps gliding and slows down ──
+  let panVel = null, panTrack = [], inertiaRaf = 0;
+  function trackPan(sx, sy) { const t = performance.now(); panTrack.push({ sx, sy, t }); while (panTrack.length > 5) panTrack.shift(); }
+  function startInertia() {
+    cancelAnimationFrame(inertiaRaf);
+    if (reduceMotion() || panTrack.length < 2) { panTrack = []; return; }
+    const a = panTrack[0], b = panTrack.at(-1), dt = Math.max(1, b.t - a.t);
+    panTrack = [];
+    if (performance.now() - b.t > 60) return;           // the finger stopped before lifting: no glide
+    panVel = { x: (b.sx - a.sx) / dt * 16, y: (b.sy - a.sy) / dt * 16 };
+    if (Math.hypot(panVel.x, panVel.y) < 2) return;
+    const step = () => {
+      panVel.x *= 0.92; panVel.y *= 0.92;
+      view.x += panVel.x; view.y += panVel.y; render();
+      if (Math.hypot(panVel.x, panVel.y) > 0.4 && !destroyed) inertiaRaf = requestAnimationFrame(step);
+    };
+    inertiaRaf = requestAnimationFrame(step);
+  }
+  const stopInertia = () => { cancelAnimationFrame(inertiaRaf); cancelAnimationFrame(camAnim); };
+
+  // ── Zoom HUD (percentage near the cursor) ──
+  const zoomHud = el('div', 'wb-zhud'); zoomHud.setAttribute('aria-hidden', 'true');
+  const zoomBox = el('div', 'wb-zbox');
+  root.append(zoomHud, zoomBox);
+  function showZoomHud(sx, sy, z = view.z) {
+    zoomHud.textContent = `${Math.round(z * 100)}%`;
+    zoomHud.style.left = `${sx}px`; zoomHud.style.top = `${sy}px`;
+    zoomHud.classList.add('on');
+    clearTimeout(showZoomHud.t); showZoomHud.t = setTimeout(() => zoomHud.classList.remove('on'), 900);
+  }
+
+  // ── Z: the zoom tool, and hold Z for a moment of zooming (like Space for moving) ──
+  let zHeld = false, zDownAt = 0, zUsed = false;
+  const zooming = () => tool === 'zoom' || zHeld;
+  function zoomDown(e, sx, sy) {
+    zUsed = true;
+    interaction = { kind: 'zoom', x: sx, y: sy, sy0: e.clientY, z0: view.z, moved: false, box: false, alt: e.altKey };
+  }
+  function zoomMove(it, e, sx, sy) {
+    const dx = sx - it.x, dy = sy - it.y;
+    if (!it.moved && Math.hypot(dx, dy) > 4) it.moved = true;
+    if (!it.moved) return;
+    // mostly sideways = a box to zoom into; up/down = a smooth zoom around where the press started
+    if (it.box || Math.abs(dx) > Math.abs(dy) * 1.2) {
+      it.box = true;
+      zoomBox.style.display = 'block';
+      zoomBox.style.left = `${Math.min(sx, it.x)}px`; zoomBox.style.top = `${Math.min(sy, it.y)}px`;
+      zoomBox.style.width = `${Math.abs(dx)}px`; zoomBox.style.height = `${Math.abs(dy)}px`;
+      return;
+    }
+    const target = Math.max(0.1, Math.min(4, it.z0 * Math.exp(-(e.clientY - it.sy0) * 0.008)));
+    const w = toWorld(it.x, it.y);
+    view = { z: target, x: it.x - w.x * target, y: it.y - w.y * target };
+    render(); showZoomHud(sx, sy, target);
+  }
+  function zoomUp(it, e, sx, sy) {
+    zoomBox.style.display = 'none';
+    if (!it.moved) { glideZoom(e.altKey || it.alt ? 1 / 1.5 : 1.5, sx, sy); return; }
+    if (it.box) {
+      const bw = Math.abs(sx - it.x), bh = Math.abs(sy - it.y); if (bw < 20 || bh < 20) return;
+      const a = toWorld(Math.min(sx, it.x), Math.min(sy, it.y)), b = toWorld(Math.max(sx, it.x), Math.max(sy, it.y));
+      const v = fitView([{ id: '__z', type: 'rect', x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y, version: 1 }], { pad: 20, max: 4 });
+      if (v) { glideTo(v); const r = rect(); showZoomHud(r.width / 2, r.height / 2, v.z); }
+    }
+    paintZoom();
+  }
+
+  // ── Stylus: the side button erases while held, and a one-time tips card ──
+  const TIPS_KEY = 'ipop.wb.stylusTips';
+  const tipsCard = el('div', 'wb-tips'); tipsCard.hidden = true; tipsCard.setAttribute('role', 'status');
+  tipsCard.innerHTML = `<span class="wb-tipsic" aria-hidden="true">✍️</span><div><b>Tips for your stylus</b><ul><li><kbd>Z</kbd> hold and drag up or down to zoom · tap to zoom in</li><li><kbd>Space</kbd> hold to move the board</li><li>Stylus side button = eraser while you hold it</li></ul></div><div class="wb-tipsx"><button type="button" class="wb-cb wb-txt wb-pri" data-tips="ok">Got it</button><button type="button" class="wb-cb wb-txt" data-tips="never">Don’t show again</button></div>`;
+  root.append(tipsCard);
+  tipsCard.addEventListener('pointerdown', e => e.stopPropagation());
+  tipsCard.addEventListener('click', e => {
+    const b = e.target.closest('[data-tips]'); if (!b) return;
+    closeFloat(tipsCard);
+    try { localStorage.setItem(TIPS_KEY, b.dataset.tips === 'never' ? 'never' : String(Date.now())); } catch { /* blocked */ }
+  });
+  let tipsShown = false;
+  function maybeStylusTips() {
+    if (tipsShown || readOnly || mode !== 'board') return;
+    tipsShown = true;
+    let seen = null; try { seen = localStorage.getItem(TIPS_KEY); } catch { /* blocked */ }
+    if (seen) return;
+    openFloat(tipsCard);
+    setTimeout(() => { if (!tipsCard.hidden) closeFloat(tipsCard); }, 14000);
+  }
+
+  // ── Opening and closing floating things with a spring (and fast close) ──
+  function openFloat(n) { n.hidden = false; if (reduceMotion()) return; n.classList.remove('wb-out'); n.classList.remove('wb-in'); void n.offsetWidth; n.classList.add('wb-in'); }
+  function closeFloat(n) {
+    if (n.hidden) return;
+    if (reduceMotion()) { n.hidden = true; return; }
+    n.classList.remove('wb-in'); n.classList.add('wb-out');
+    setTimeout(() => { n.hidden = true; n.classList.remove('wb-out'); }, 110);
+  }
+  // every panel and pop-up gets the spring when it appears (they are shown in many places; watch the attribute)
+  const springWatch = new MutationObserver(list => {
+    if (reduceMotion()) return;
+    for (const m of list) {
+      const n = m.target;
+      if (m.attributeName !== 'hidden' || n.hidden || !(n instanceof HTMLElement)) continue;
+      if (!n.matches('.wb-panel, .wb-menu, .wb-picker, .wb-morep, .wb-ctxpop, .wb-penpop, .wb-colourpop, .wb-boardmenu, .wb-tc, .wb-tcov, .wb-hint, .wb-cmenu, .wb-palov, .wb-savetpl')) continue;
+      n.classList.remove('wb-in'); void n.offsetWidth; n.classList.add('wb-in');
+    }
+  });
+  springWatch.observe(root, { attributes: true, attributeFilter: ['hidden'], subtree: true });
+
+  // ── New elements pop in; the camera glides to a template; undo flashes what changed ──
+  const flashIds = new Map();   // id -> until (ms); drawn in paintOverlay as a soft blue ring
+  function flash(ids, ms = 900) { if (reduceMotion()) return; const until = performance.now() + ms; for (const id of ids) flashIds.set(id, until); tickFlash(); }
+  function tickFlash() {
+    cancelAnimationFrame(tickFlash.r);
+    const now = performance.now();
+    for (const [id, u] of flashIds) if (u < now) flashIds.delete(id);
+    render();
+    if (flashIds.size) tickFlash.r = requestAnimationFrame(tickFlash);
+  }
+  function popIn(ids) {
+    if (reduceMotion()) return;
+    requestAnimationFrame(() => { for (const id of ids) { const n = cache.get(id)?.node; if (!n) continue; n.classList.remove('wb-popin'); void n.getBBox?.(); n.classList.add('wb-popin'); setTimeout(() => n.classList.remove('wb-popin'), 260); } });
+  }
+  /// Undo / redo: what changed is highlighted and a toast names it (with the opposite action one click away).
+  function undoStep(redo) {
+    const before = new Map(live().map(e => [e.id, e.version]));
+    flush(); (redo ? undo.redo : undo.undo).call(undo); sel.clear();
+    const after = live();
+    const changed = after.filter(e => before.get(e.id) !== e.version).map(e => e.id);
+    const added = after.filter(e => !before.has(e.id)).length, removed = [...before.keys()].filter(id => !after.some(e => e.id === id)).length;
+    render(); paintZoom(); paintDock();
+    flash(changed);
+    const what = added && !removed ? `brought back ${added} thing${added === 1 ? '' : 's'}` : removed && !added ? `removed ${removed} thing${removed === 1 ? '' : 's'}` : changed.length ? `changed ${changed.length} thing${changed.length === 1 ? '' : 's'}` : 'nothing to change';
+    actionToast(`${redo ? 'Redid' : 'Undid'}: ${what}`, redo ? 'Undo' : 'Redo', () => undoStep(!redo));
+  }
+  const actToast = el('div', 'wb-acttoast'); actToast.hidden = true; root.append(actToast);
+  actToast.addEventListener('pointerdown', e => e.stopPropagation());
+  function actionToast(text, label, fn) {
+    actToast.innerHTML = `<span>${esc(text)}</span>${label ? `<button type="button">${esc(label)}</button>` : ''}`;
+    actToast.querySelector('button')?.addEventListener('click', () => { closeFloat(actToast); fn?.(); });
+    openFloat(actToast);
+    clearTimeout(actionToast.t); actionToast.t = setTimeout(() => closeFloat(actToast), 2600);
+  }
+
+  // ── Saved / Saving… ──
+  const savedPill = el('div', 'wb-saved'); savedPill.innerHTML = '<i></i><span>Saved</span>'; savedPill.hidden = mode !== 'board' || readOnly;
+  root.append(savedPill);
+  function markSaving() {
+    if (savedPill.hidden) return;
+    savedPill.classList.add('saving'); savedPill.querySelector('span').textContent = 'Saving…';
+    clearTimeout(markSaving.t); markSaving.t = setTimeout(() => { savedPill.classList.remove('saving'); savedPill.querySelector('span').textContent = 'Saved'; }, 800);
+  }
+
+  // ── Remember the view per person per board (this browser) ──
+  const VIEW_KEY = opts.seenKey ? `ipop.wb.view:${opts.seenKey}` : null;
+  function saveView() { if (!VIEW_KEY) return; try { localStorage.setItem(VIEW_KEY, JSON.stringify({ x: Math.round(view.x), y: Math.round(view.y), z: +view.z.toFixed(3), w: Math.round(rect().width), h: Math.round(rect().height) })); } catch { /* blocked */ } }
+  function restoreView() {
+    if (!VIEW_KEY) return false;
+    try {
+      const v = JSON.parse(localStorage.getItem(VIEW_KEY) || 'null');
+      if (!v || !Number.isFinite(v.z) || !count()) return false;
+      // keep the same centre if the window size changed
+      const r = rect(), cxW = ((v.w || r.width) / 2 - v.x) / v.z, cyW = ((v.h || r.height) / 2 - v.y) / v.z;
+      view = { z: v.z, x: r.width / 2 - cxW * v.z, y: r.height / 2 - cyW * v.z };
+      render(); return true;
+    } catch { return false; }
+  }
+  const viewSaver = setInterval(saveView, 3000);
+
+  // ── Brush ring under the pointer for every pen (the eraser has its own) ──
+  const brushRing = el('div', 'wb-brushring'); brushRing.hidden = true; root.append(brushRing);
+  root.addEventListener('pointermove', e => {
+    if ((tool === 'pen' || tool === 'highlighter') && e.pointerType !== 'touch' && !e.target.closest(OVER_UI)) {
+      const d = Math.max(4, prefs.size[penKind()] || 3);
+      brushRing.style.width = brushRing.style.height = `${d}px`;
+      brushRing.style.left = `${local(e).sx - d / 2}px`; brushRing.style.top = `${local(e).sy - d / 2}px`;
+      brushRing.style.borderColor = penColourCss(penKind());
+      brushRing.hidden = false;
+    } else brushRing.hidden = true;
+  });
+  root.addEventListener('pointerleave', () => { brushRing.hidden = true; });
+
+  // ── Lasso (Alt + draw on empty board with the select tool) ──
+  function lassoSelect(pts) {
+    const inside = (px, py) => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) c = !c; } return c; };
+    const hit = live().filter(x => x.type !== 'frame' && x.type !== 'connector' && (() => { const b = bounds(x, get); return inside(b.x + b.w / 2, b.y + b.h / 2); })());
+    sel = expandGroups(new Set(hit.map(x => x.id)), live());
+  }
+
+  // ── Distance labels while dragging (gap to the nearest neighbour on the same row or column) ──
+  function distanceLabels(box, others) {
+    const out = [];
+    let bestX = null, bestY = null;
+    for (const o of others) {
+      const overlapY = o.y < box.y + box.h && o.y + o.h > box.y, overlapX = o.x < box.x + box.w && o.x + o.w > box.x;
+      if (overlapY) { const gap = o.x >= box.x + box.w ? o.x - (box.x + box.w) : box.x >= o.x + o.w ? box.x - (o.x + o.w) : null; if (gap != null && gap < 600 && (!bestX || gap < bestX.gap)) bestX = { gap, x: o.x >= box.x + box.w ? box.x + box.w + gap / 2 : o.x + o.w + gap / 2, y: Math.max(box.y, o.y) + Math.min(box.h, o.h) / 2 }; }
+      if (overlapX) { const gap = o.y >= box.y + box.h ? o.y - (box.y + box.h) : box.y >= o.y + o.h ? box.y - (o.y + o.h) : null; if (gap != null && gap < 600 && (!bestY || gap < bestY.gap)) bestY = { gap, y: o.y >= box.y + box.h ? box.y + box.h + gap / 2 : o.y + o.h + gap / 2, x: Math.max(box.x, o.x) + Math.min(box.w, o.w) / 2 }; }
+    }
+    if (bestX) out.push(bestX); if (bestY) out.push(bestY);
+    return out;
+  }
+
+  // ── Eyedropper: the next click on the board takes that element's colour ──
+  let eyedropFor = null;
+  function startEyedrop(forWhat) { eyedropFor = forWhat; root.classList.add('wb-eyedrop'); toast('Click something on the board to take its colour. Esc to cancel.'); }
+  function takeColour(hit) {
+    const c = hit.type === 'sticky' ? pal().sticky[hit.color] : isHex(hit.fill) ? hit.fill : isHex(hit.stroke) ? hit.stroke : null;
+    const f = eyedropFor; eyedropFor = null; root.classList.remove('wb-eyedrop');
+    if (!c || !isHex(c)) { toast('That one has the automatic colour. Pick something coloured.'); return; }
+    const hex = c.toUpperCase();
+    prefs.recent = [hex, ...prefs.recent.filter(x => x !== hex)].slice(0, 8); savePrefs(prefs);
+    if (f === 'pen') { prefs.color[penKind()] = hex; savePrefs(prefs); paintToolbar(); }
+    else if (f === 'fill') applySel(x => isShape(x) ? { fill: hex } : null);
+    else applySel(x => x.type === 'sticky' || x.type === 'frame' || x.type === 'image' ? null : { stroke: hex, ...(isShape(x) ? { textColor: hex } : {}) });
+    toast(`Took ${hex}`);
+  }
+
+  // ── Context menu (right-click on the board or on something) ──
+  const cmenu = el('div', 'wb-cmenu'); cmenu.hidden = true; cmenu.setAttribute('role', 'menu');
+  root.append(cmenu);
+  cmenu.addEventListener('pointerdown', e => e.stopPropagation());
+  let cmenuAt = null;
+  const kb = k => (k ? `<kbd>${k}</kbd>` : '');
+  function openContextMenu(e) {
+    const { sx, sy } = local(e), w = toWorld(sx, sy);
+    const hit = hitTest(live(), w.x, w.y, get, tolerance());
+    cmenuAt = w;
+    if (hit && !sel.has(hit.id)) { sel = pickInside ? new Set([hit.id]) : expandGroups(new Set([hit.id]), live()); paintProps(); render(); }
+    if (!hit && sel.size) { sel.clear(); paintProps(); render(); }
+    const els = selected(), one = els.length === 1 ? els[0] : null, locked = els.length && els.every(x => x.locked);
+    const grouped = els.length > 1 && els.every(x => x.groupId && x.groupId === els[0].groupId);
+    const items = readOnly
+      ? [['fit', 'Fit everything', 'Shift 1'], ...(opts.comments?.canComment?.() ? [['comment', 'Add a comment here', 'C']] : []), ['copyimg', 'Copy as picture']]
+      : els.length
+        ? [['copy', 'Copy', 'Ctrl C'], ['cut', 'Cut', 'Ctrl X'], ['dup', 'Duplicate', 'Ctrl D'], ['copystyle', 'Copy style', 'Ctrl Shift C'], ...(styleClip ? [['pastestyle', 'Paste style', 'Ctrl Shift V']] : []), '-',
+          ['front', 'Bring to front', 'Ctrl ]'], ['back', 'Send to back', 'Ctrl ['], ...(els.length > 1 ? [[grouped ? 'ungroup' : 'group', grouped ? 'Ungroup' : 'Group', grouped ? 'Ctrl Shift G' : 'Ctrl G'], ['arrange', 'Align and space evenly', '']] : []), ['lock', locked ? 'Unlock' : 'Lock', ''], '-',
+          ...(one && opts.comments?.canComment?.() ? [['comment', 'Add a comment', 'C']] : []), ...(one && one.type !== 'connector' ? [['link', one.link ? 'Change link…' : 'Link…', 'Ctrl K']] : []),
+          ...(opts.tasks?.create && els.every(x => x.type === 'sticky') ? [['task', els.length > 1 ? `Make ${els.length} tasks` : 'Make a task', '']] : []), ...(opts.library ? [['lib', 'Add to my library', '']] : []), ['zoomsel', 'Zoom to this', 'Shift 2'], '-',
+          ['del', 'Delete', 'Del', 'red']]
+        : [['paste', 'Paste here', 'Ctrl V', clipboard?.length ? '' : 'dis'], ['selall', 'Select all', 'Ctrl A'], '-', ['addsticky', 'Add a sticky here', 'S'], ['addtext', 'Add text here', 'T'], ['addshape', 'Add a shape here', 'R'], '-',
+          ['fit', 'Fit everything', 'Shift 1'], ['tpl', 'Templates…', 'Shift G'], ['palette', 'Command palette', 'Ctrl /'], ['keys', 'Keyboard shortcuts', '?']];
+    cmenu.innerHTML = items.map(i => i === '-' ? '<div class="wb-cmsep" role="separator"></div>' : `<button type="button" role="menuitem" class="wb-cmi ${i[3] || ''}" data-cm="${i[0]}" ${i[3] === 'dis' ? 'disabled' : ''}><span>${esc(i[1])}</span>${kb(i[2])}</button>`).join('');
+    cmenu.hidden = false;
+    const r = rect();
+    cmenu.style.left = `${Math.max(8, Math.min(sx, r.width - cmenu.offsetWidth - 8))}px`;
+    cmenu.style.top = `${sy + cmenu.offsetHeight + 8 <= r.height ? sy : Math.max(8, sy - cmenu.offsetHeight)}px`;
+    cmenu.querySelector('.wb-cmi:not([disabled])')?.focus({ preventScroll: true });
+  }
+  cmenu.addEventListener('keydown', e => {
+    e.stopPropagation();
+    const items = [...cmenu.querySelectorAll('.wb-cmi:not([disabled])')], i = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus(); }
+    if (e.key === 'Escape') { cmenu.hidden = true; root.focus({ preventScroll: true }); }
+  });
+  cmenu.addEventListener('click', e => {
+    const b = e.target.closest('[data-cm]'); if (!b || b.disabled) return;
+    cmenu.hidden = true; root.focus({ preventScroll: true });
+    runCommand(b.dataset.cm, b);
+  });
+  root.addEventListener('contextmenu', e => {
+    if (e.target.closest(OVER_UI) || e.target.closest('.wb-edit')) return;
+    e.preventDefault(); openContextMenu(e);
+  });
+
+  /// One place that runs a named command (context menu, command palette, keyboard).
+  function runCommand(c, anchor) {
+    const els = selected(), w = cmenuAt || toWorld(rect().width / 2, rect().height / 2);
+    const passToBar = act => { const b = document.createElement('button'); b.dataset.act = act; b.getBoundingClientRect = () => (anchor || root).getBoundingClientRect(); props.dispatchEvent(new CustomEvent('wb-act', { detail: b })); };
+    switch (c) {
+      case 'copy': copySel(els); break;
+      case 'cut': copySel(els); remove(els.filter(x => !x.locked)); break;
+      case 'paste': pasteClip(w); break;
+      case 'selall': sel = new Set(live().filter(x => x.type !== 'frame').map(x => x.id)); paintProps(); render(); break;
+      case 'dup': case 'front': case 'back': case 'group': case 'ungroup': case 'arrange': case 'lock': case 'link': case 'task': case 'lib': case 'copystyle': case 'pastestyle': case 'del': passToBar(c); break;
+      case 'comment': { const one = els[0]; const b = one ? bounds(one, get) : null; startComment(b ? { x: b.x + b.w, y: b.y } : w, one || null); break; }
+      case 'zoomsel': glideFit(els, { max: 2 }); break;
+      case 'addsticky': { const s = create('sticky', { x: w.x - 100, y: w.y - 80, w: 200, h: 160, color: stickyColor, text: '' }); const [p] = add([s]) || []; if (p) editSoon2(p); break; }
+      case 'addtext': { const t = create('text', { x: w.x, y: w.y - 13, w: 40, h: 26, text: '', size: 20, font: 'ipop', stroke: inkNow() }); const [p] = add([t]) || []; if (p) editSoon2(p); break; }
+      case 'addshape': { const s = makeShape(lastShape || 'rect', { x: w.x - 80, y: w.y - 50 }, ''); const [p] = add([{ ...s, w: s.w || 160, h: s.h || 100 }]) || []; if (p) editSoon2(p); break; }
+      case 'fit': glideFit(); break;
+      case 'tpl': openCenter(); break;
+      case 'palette': openPalette(); break;
+      case 'keys': toggleKeys(); break;
+      case 'copyimg': runCorner(Object.assign(document.createElement('button'), { dataset: { c: 'export' } }), {}); break;
+      default: break;
+    }
+    cmenuAt = null;
+  }
+
+  // ── Command palette (Ctrl /) ──
+  const palOv = el('div', 'wb-palov'); palOv.hidden = true;
+  palOv.innerHTML = `<div class="wb-pal" role="dialog" aria-label="Command palette"><div class="wb-palq">${icon('search')}<input type="search" placeholder="Type a command, tool or template…  (e.g. notulen, timer, export)" aria-label="Command"></div><ul class="wb-pall" role="listbox"></ul><div class="wb-palft"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>Enter</kbd> run</span><span><kbd>Esc</kbd> close</span></div></div>`;
+  root.append(palOv);
+  palOv.addEventListener('pointerdown', e => { e.stopPropagation(); if (e.target === palOv) closePalette(); });
+  const palInput = palOv.querySelector('input'), palList = palOv.querySelector('.wb-pall');
+  let palItems = [], palKb = 0;
+  function paletteCommands() {
+    const toolCmd = (k, label, key, words = '') => ({ group: 'Tool', label, key, words, ic: ICONS[k] ? k : 'pen', run: () => (k === 'pen' ? setPen(prefs.ptype) : setTool(k)) });
+    const out = [
+      toolCmd('select', 'Select', 'V', 'pilih'), toolCmd('hand', 'Hand', 'H', 'geser'), toolCmd('zoom', 'Zoom', 'Z', 'perbesar'), toolCmd('pen', 'Pen', 'P', 'pena gambar'),
+      toolCmd('eraser', 'Eraser', 'E', 'hapus penghapus'), toolCmd('sticky', 'Sticky note', 'S', 'catatan tempel'), toolCmd('text', 'Text', 'T', 'teks tulisan'),
+      toolCmd('rect', 'Shape', 'R', 'bentuk kotak'), toolCmd('connector', 'Connector', 'A', 'panah garis'), toolCmd('frame', 'Frame', 'F', 'bingkai slide'), toolCmd('laser', 'Laser pointer', 'L', 'presentasi'),
+      ...(opts.comments ? [toolCmd('comment', 'Comment', 'C', 'komentar')] : []),
+      ...PEN_ORDER.map(k => ({ group: 'Pen', label: PEN_TYPES[k].label, key: '', words: `pen ${PEN_TYPES[k].sub}`, ic: 'pen', run: () => setPen(k) })),
+      ...TEMPLATE_META.map(t => ({ group: 'Template', label: t.name, key: '', words: `${t.desc} ${t.cat} ${t.aliases || ''}`, ic: 'grid', run: () => { tcs.where = 'board'; useTemplate(t.key); } })),
+      ...boardTools().map(x => ({ group: 'Action', label: x.label, key: x.hint || '', words: `${x.desc} ${x.group}`, ic: x.ic, run: () => runCorner(Object.assign(document.createElement('button'), { dataset: { c: x.c } }), {}) })),
+      { group: 'Action', label: 'Templates', key: 'Shift G', words: 'template galeri', ic: 'grid', run: () => openCenter() },
+      { group: 'Action', label: 'Save board as template', key: '', words: 'simpan template', ic: 'bookplus', run: () => openSaveTemplate() },
+      { group: 'Action', label: live().some(x => x.howTo && x.hide) ? 'Show “How to use” notes' : 'Hide “How to use” notes', key: '', words: 'sembunyikan petunjuk', ic: 'note', run: () => toggleHowTo() },
+      { group: 'View', label: 'Fit everything', key: 'Shift 1', words: 'semua lihat', ic: 'layout', run: () => glideFit() },
+      { group: 'View', label: 'Zoom to 100%', key: 'Ctrl 0', words: 'ukuran asli', ic: 'search', run: () => glideZoom(1 / view.z) },
+      { group: 'View', label: 'Keyboard shortcuts', key: '?', words: 'pintasan tombol', ic: 'keys', run: () => toggleKeys() },
+      ...(opts.onFullscreen && mode === 'board' ? [{ group: 'View', label: fullscreen ? 'Exit full screen' : 'Full screen', key: 'Shift F', words: 'layar penuh', ic: 'newtab', run: () => toggleFullscreen() }] : []),
+    ];
+    return out;
+  }
+  function paintPalette() {
+    const q = palInput.value.trim().toLowerCase();
+    const words = q.split(/\s+/).filter(Boolean);
+    palItems = paletteCommands().filter(c => !words.length || words.every(w => `${c.label} ${c.group} ${c.words}`.toLowerCase().includes(w)))
+      // labels that start with what was typed come first
+      .sort((a, b) => (b.label.toLowerCase().startsWith(q) ? 1 : 0) - (a.label.toLowerCase().startsWith(q) ? 1 : 0)).slice(0, 60);
+    palKb = Math.min(palKb, Math.max(0, palItems.length - 1));
+    palList.innerHTML = palItems.length ? palItems.map((c, i) => `<li role="option" data-pi="${i}" class="${i === palKb ? 'kb' : ''}" aria-selected="${i === palKb}"><span class="wb-palic">${icon(c.ic)}</span><span class="wb-pallb">${esc(c.label)}</span>${c.key ? `<kbd>${esc(c.key)}</kbd>` : ''}<span class="wb-palg">${c.group}</span></li>`).join('') : '<li class="wb-palnone">Nothing found. Try other words.</li>';
+  }
+  function openPalette() { if (destroyed) return; palInput.value = ''; palKb = 0; paintPalette(); palOv.hidden = false; palInput.focus({ preventScroll: true }); }
+  function closePalette() { palOv.hidden = true; root.focus({ preventScroll: true }); }
+  function runPalette(i) { const c = palItems[i]; if (!c) return; closePalette(); try { c.run(); } catch { /* the command explains itself */ } }
+  palInput.addEventListener('input', () => { palKb = 0; paintPalette(); });
+  palInput.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Escape') { e.preventDefault(); closePalette(); return; }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); palKb = Math.max(0, Math.min(palItems.length - 1, palKb + (e.key === 'ArrowDown' ? 1 : -1))); paintPalette(); palList.children[palKb]?.scrollIntoView({ block: 'nearest' }); return; }
+    if (e.key === 'Enter') { e.preventDefault(); runPalette(palKb); }
+  });
+  palList.addEventListener('click', e => { const li = e.target.closest('[data-pi]'); if (li) runPalette(+li.dataset.pi); });
+  palList.addEventListener('pointermove', e => { const li = e.target.closest('[data-pi]'); if (li && +li.dataset.pi !== palKb) { palKb = +li.dataset.pi; palList.querySelectorAll('[data-pi]').forEach(x => x.classList.toggle('kb', x === li)); } });
+
+  // ── Keyboard shortcuts panel: grouped and searchable ──
+  const KEY_GROUPS = [
+    ['Tools', [['V', 'Select'], ['H', 'Hand (or hold Space)'], ['Z', 'Zoom (or hold Z)'], ['P', 'Pen'], ['M', 'Highlighter'], ['E', 'Eraser'], ['S', 'Sticky note (again: next colour)'], ['T', 'Text'], ['R', 'Shape (again: next shape)'], ['A', 'Connector'], ['F', 'Frame'], ['C', 'Comment'], ['L', 'Laser pointer'], ['I', 'Picture or file'], ['Shift T', 'Task or page card']]],
+    ['Edit', [['Ctrl Z / Ctrl Y', 'Undo / redo'], ['Ctrl C / X / V', 'Copy / cut / paste'], ['Ctrl D', 'Duplicate'], ['Alt + drag', 'Duplicate while moving'], ['Ctrl G', 'Group (Shift: ungroup)'], ['Ctrl Shift C / V', 'Copy / paste style'], ['Ctrl ] / [', 'Front / back'], ['Arrows', 'Move 1 px (Shift: 10 px)'], ['Del', 'Delete'], ['Ctrl K', 'Link'], ['Enter', 'Edit text'], ['Ctrl Enter', 'Next sticky (while typing)'], ['Tab / Shift Enter', 'Mind map branch / sibling'], ['Alt + draw', 'Lasso select']]],
+    ['View', [['Ctrl /', 'Command palette'], ['Shift 1', 'Fit everything'], ['Shift 2', 'Zoom to selection'], ['Ctrl + / −', 'Zoom in / out'], ['Ctrl 0', 'Zoom to 100%'], ['Shift F', 'Full screen'], ['Ctrl F', 'Find on board'], ['Shift G', 'Templates'], ['[ / ]', 'Pen size'], ['?', 'This list']]],
+  ];
+  function paintKeys(q = '') {
+    const ql = q.trim().toLowerCase();
+    const groups = KEY_GROUPS.map(([g, rows]) => [g, rows.filter(([k, d]) => !ql || `${k} ${d}`.toLowerCase().includes(ql))]).filter(([, r]) => r.length);
+    keysPanel.querySelector('.wb-kbody').innerHTML = groups.length ? `<div class="wb-kgrid3">${groups.map(([g, rows]) => `<div><h5>${g}</h5>${rows.map(([k, d]) => `<div class="wb-krow"><span>${esc(d)}</span><kbd>${esc(k)}</kbd></div>`).join('')}</div>`).join('')}</div>` : '<p class="wb-note">No shortcut matches.</p>';
+  }
 
   dockReady = true;
   // ── Corners: templates and full screen ──────────────────────────────────
@@ -1876,8 +2282,8 @@ export function mountCanvas(container, opts) {
     if (!f) return;
     const r = rect();
     const z = Math.min(4, (r.width - 80) / Math.max(f.w, 1), (r.height - 120) / Math.max(f.h + 30, 1));
-    view = { z, x: (r.width - f.w * z) / 2 - f.x * z, y: (r.height - f.h * z) / 2 - f.y * z + 10 };
-    render();
+    const v = { z, x: (r.width - f.w * z) / 2 - f.x * z, y: (r.height - f.h * z) / 2 - f.y * z + 10 };
+    if (animate && dockReady) glideTo(v, 320); else { view = v; render(); }
   }
   function toggleFrames() {
     if (!framesPanel.hidden) { framesPanel.hidden = true; return; }
@@ -2470,6 +2876,7 @@ export function mountCanvas(container, opts) {
   function imageSize(file) {
     return new Promise((ok, fail) => { const img = new Image(), u = URL.createObjectURL(file); img.onload = () => { ok({ w: img.naturalWidth, h: img.naturalHeight }); URL.revokeObjectURL(u); }; img.onerror = () => { URL.revokeObjectURL(u); fail(new Error('not an image')); }; img.src = u; });
   }
+  const dropZone = el('div', 'wb-dropzone', '<span>Drop to add pictures and files to the board</span>'); root.append(dropZone);
   root.addEventListener('dragover', e => { if (!readOnly && opts.upload && [...(e.dataTransfer?.types || [])].includes('Files')) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; root.classList.add('wb-dropping'); } });
   root.addEventListener('dragleave', e => { if (e.target === root) root.classList.remove('wb-dropping'); });
   root.addEventListener('drop', e => {
@@ -2605,7 +3012,7 @@ export function mountCanvas(container, opts) {
   zoomBar.addEventListener('click', e => {
     const b = e.target.closest('[data-z]'); if (!b) return;
     const z = b.dataset.z;
-    if (z === 'in') zoomAt(1.2); else if (z === 'out') zoomAt(1 / 1.2); else if (z === 'pct') zoomAt(1 / view.z); else if (z === 'fit') fit();
+    if (z === 'in') glideZoom(1.25); else if (z === 'out') glideZoom(1 / 1.25); else if (z === 'pct') glideZoom(1 / view.z); else if (z === 'fit') glideFit();
     else if (z === 'undo') doUndo(); else if (z === 'redo') doRedo(); else if (z === 'keys') toggleKeys();
   });
   function zoomAt(f, sx, sy) {
@@ -3685,7 +4092,7 @@ export function mountCanvas(container, opts) {
     const placed = els.map(e => { z = zBetween(z || null, null); return { ...e, z }; });
     write(placed, { now: true });
     commitStop();
-    if (dockReady) paintDock();
+    if (dockReady) { paintDock(); popIn(placed.map(x => x.id)); markSaving(); }
     if (select) { sel = new Set(placed.filter(e => e.type !== 'connector' || placed.length === 1).map(e => e.id)); paintProps(); }
     if (count() > MAX_ELEMENTS * 0.9) toast('This board is getting very large. Think about moving part of it to a new board.');
     return placed;
@@ -3698,8 +4105,10 @@ export function mountCanvas(container, opts) {
       const fix = end => { if (!ids.has(end?.id)) return end; const t = get(end.id), p = t ? centre(t, get) : end; return { x: p.x, y: p.y }; };
       return bump(c, { from: fix(c.from), to: fix(c.to) });
     });
-    write([...els.map(e => bump(e, { isDeleted: true })), ...extra], { now: true });
-    sel.clear(); commitStop();
+    // a quick fade before they go
+    if (!reduceMotion()) for (const e of els) cache.get(e.id)?.node.classList.add('wb-fadeout');
+    const go = () => { write([...els.map(e => bump(e, { isDeleted: true })), ...extra], { now: true }); sel.clear(); commitStop(); };
+    if (reduceMotion()) go(); else setTimeout(go, 120);
   }
   function duplicate(els) {
     const map = new Map();
@@ -3722,8 +4131,8 @@ export function mountCanvas(container, opts) {
     else for (const e of sorted.reverse()) { z = z ? zBetween(null, z) : 'a0'; out.unshift(bump(e, { z })); }
     write(out, { now: true });
   }
-  function doUndo() { flush(); undo.undo(); sel.clear(); render(); paintZoom(); paintDock(); }
-  function doRedo() { flush(); undo.redo(); sel.clear(); render(); paintZoom(); paintDock(); }
+  function doUndo() { if (dockReady) { undoStep(false); return; } flush(); undo.undo(); sel.clear(); render(); paintZoom(); }
+  function doRedo() { if (dockReady) { undoStep(true); return; } flush(); undo.redo(); sel.clear(); render(); paintZoom(); }
   undo.on('stack-item-added', () => paintZoom());
   undo.on('stack-item-popped', () => paintZoom());
 
@@ -3788,6 +4197,12 @@ export function mountCanvas(container, opts) {
     ta.addEventListener('input', () => { if (now() - (editing?.typedAt || 0) > 4000 && editing) { editing.typedAt = now(); setMine({ typing: { id: target.id, at: now() } }); } });
     ta.addEventListener('keydown', e => {
       e.stopPropagation();
+      // Ctrl Enter in a sticky: finish it and start the next one right beside it (brainstorming at speed)
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && get(target.id)?.type === 'sticky' && !readOnly) {
+        e.preventDefault(); const cur = get(target.id); stopEdit();
+        const n = create('sticky', { x: cur.x + cur.w + 24, y: cur.y, w: cur.w, h: cur.h, color: cur.color, text: '' });
+        const [p] = add([n]) || []; if (p) editSoon2(p); return;
+      }
       if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); stopEdit(); root.focus({ preventScroll: true }); return; }
       const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
       if (mod && k === 'b') { e.preventDefault(); fmt('bold'); }
@@ -3958,7 +4373,13 @@ export function mountCanvas(container, opts) {
       }
     }
 
-    stopFollow();
+    stopFollow(); stopInertia();
+    cmenu.hidden = true;
+    if (e.pointerType === 'pen') maybeStylusTips();
+    if (eyedropFor && e.button === 0) { const hit = hitTest(live(), w.x, w.y, get, tolerance()); if (hit) takeColour(hit); else { eyedropFor = null; root.classList.remove('wb-eyedrop'); } return; }
+    if (zooming() && e.button === 0) { zoomDown(e, sx, sy); return; }
+    // the stylus side button (barrel) erases while it is held, whatever tool is on
+    if (e.pointerType === 'pen' && (e.buttons & 32 || e.button === 5) && !readOnly) { interaction = { kind: 'erase', erased: new Set(), barrel: true }; eraseAt(w); return; }
     if (tool === 'laser' && e.button === 0) { interaction = { kind: 'laser' }; laserAt(w); return; }
     if (tool === 'comment' && e.button === 0) {
       const hit = hitTest(live(), w.x, w.y, get, tolerance());
@@ -3971,7 +4392,7 @@ export function mountCanvas(container, opts) {
       if (hit && (hit.type === 'sticky' || hit.type === 'taskCard' || hit.type === 'noteCard')) { castVote(hit, e.altKey); return; }
     }
     if (readOnly && e.button === 0) { const bd = e.target.closest?.('[data-link]') || e.target.closest?.('[data-href]'); if (bd) { openLink(bd.dataset?.link || bd.getAttribute('data-href')); return; } }
-    if (tool === 'hand' || spaceDown || e.button === 1 || (readOnly && tool !== 'laser' && tool !== 'comment')) { interaction = { kind: 'pan', sx, sy, view: { ...view } }; root.classList.add('wb-panning'); return; }
+    if (tool === 'hand' || spaceDown || e.button === 1 || (readOnly && tool !== 'laser' && tool !== 'comment')) { interaction = { kind: 'pan', sx, sy, view: { ...view } }; panTrack = []; trackPan(sx, sy); root.classList.add('wb-panning'); return; }
     if (e.button === 2) return;
     if (readOnly) return;
     if (tool === 'pen' || tool === 'highlighter') {
@@ -4024,8 +4445,16 @@ export function mountCanvas(container, opts) {
       const unit = pickInside ? new Set([hit.id]) : expandGroups(new Set([hit.id]), live());
       if (e.shiftKey) { const on = sel.has(hit.id); for (const id of unit) on ? sel.delete(id) : sel.add(id); paintProps(); render(); return; }
       if (!sel.has(hit.id)) sel = unit;
-      const movers = [...sel].map(get).filter(x => x && !x.locked);
+      let movers = [...sel].map(get).filter(x => x && !x.locked);
       if (!movers.length) { paintProps(); render(); return; }
+      // Alt + drag: the copies move, the originals stay
+      if (e.altKey && !readOnly) {
+        const map = new Map(), copies = movers.filter(m => m.type !== 'connector').map(m => { const c = { ...structuredClone(m), id: create(m.type).id, version: 1, locked: false }; map.set(m.id, c.id); return c; });
+        for (const c of live().filter(c => c.type === 'connector' && map.has(c.from?.id) && map.has(c.to?.id))) copies.push({ ...structuredClone(c), id: create('connector').id, version: 1, from: { ...c.from, id: map.get(c.from.id) }, to: { ...c.to, id: map.get(c.to.id) } });
+        const placed = add(copies, { select: false }) || [];
+        sel = new Set(placed.filter(x => x.type !== 'connector').map(x => x.id));
+        movers = [...sel].map(get).filter(Boolean);
+      }
       // moving a frame carries what sits inside it
       const ids = new Set(movers.map(m => m.id));
       for (const f of movers.filter(m => m.type === 'frame')) for (const x of live()) if (!ids.has(x.id) && !x.locked && frameOf(x, live(), get)?.id === f.id) { ids.add(x.id); }
@@ -4039,7 +4468,8 @@ export function mountCanvas(container, opts) {
       return;
     }
     sel.clear(); props.hidden = true; pickInside = false;
-    if (touch) { interaction = { kind: 'pan', sx, sy, view: { ...view } }; root.classList.add('wb-panning'); render(); return; }
+    if (touch) { interaction = { kind: 'pan', sx, sy, view: { ...view } }; panTrack = []; trackPan(sx, sy); root.classList.add('wb-panning'); render(); return; }
+    if (e.altKey) { interaction = { kind: 'lasso', pts: [[w.x, w.y]] }; render(); return; }
     interaction = { kind: 'marquee', ox: w.x, oy: w.y, marquee: { x: w.x, y: w.y, w: 0, h: 0 } };
     render();
   }
@@ -4057,7 +4487,9 @@ export function mountCanvas(container, opts) {
     const it = interaction; if (!it) return;
     const { sx, sy } = local(e), w = toWorld(sx, sy);
     switch (it.kind) {
-      case 'pan': view.x = it.view.x + sx - it.sx; view.y = it.view.y + sy - it.sy; render(); break;
+      case 'pan': view.x = it.view.x + sx - it.sx; view.y = it.view.y + sy - it.sy; trackPan(sx, sy); render(); break;
+      case 'zoom': zoomMove(it, e, sx, sy); break;
+      case 'lasso': { const last = it.pts.at(-1); if (Math.hypot(last[0] - w.x, last[1] - w.y) * view.z > 3) it.pts.push([w.x, w.y]); render(); break; }
       case 'draw': {
         if (it.snapped) break;            // became a neat shape while held: the rest of this press draws nothing
         // Coalesced events give smooth lines at high pointer rates; some browsers (and synthetic events) return none.
@@ -4156,6 +4588,12 @@ export function mountCanvas(container, opts) {
           it.guideLines = g.lines;
         }
         interaction.guideLines = it.guideLines;
+        if (box) interaction.distances = distanceLabels({ x: box.x + dx, y: box.y + dy, w: box.w, h: box.h }, it.others);
+        if (!root.classList.contains('wb-lifting')) {
+          root.classList.add('wb-lifting');
+          // what moves is lifted: a deeper shadow while it is held
+          if (!reduceMotion()) for (const o of it.orig) cache.get(o.id)?.node.classList.add('wb-lift');
+        }
         write(it.orig.map(o => ({ ...moved(o, dx, dy), version: o.version + 1 })));
         break;
       }
@@ -4183,10 +4621,14 @@ export function mountCanvas(container, opts) {
     pointers.delete(e.pointerId);
     if (pinch) { if (pointers.size < 2) pinch = null; return; }
     const it = interaction; interaction = null;
-    root.classList.remove('wb-panning');
+    root.classList.remove('wb-panning'); root.classList.remove('wb-lifting');
+    for (const n of world.querySelectorAll('.wb-lift')) n.classList.remove('wb-lift');
     if (!it) return;
     const { sx, sy } = local(e), w = toWorld(sx, sy);
     switch (it.kind) {
+      case 'pan': startInertia(); break;
+      case 'zoom': zoomUp(it, e, sx, sy); break;
+      case 'lasso': if (it.pts.length > 3) lassoSelect(it.pts); break;
       case 'draw': {
         clearHold();
         draft.delete(it.el.id);
@@ -4347,7 +4789,8 @@ export function mountCanvas(container, opts) {
     e.preventDefault();
     stopFollow();
     const { sx, sy } = local(e);
-    if (e.ctrlKey || e.metaKey) zoomAt(Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.0018)), sx, sy);
+    stopInertia();
+    if (e.ctrlKey || e.metaKey) { zoomAt(Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.0018)), sx, sy); if (dockReady) showZoomHud(sx, sy); }
     else { view.x -= e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX; view.y -= e.shiftKey && !e.deltaX ? 0 : e.deltaY; render(); }
     if (editing) editing.place();
   }
@@ -4463,20 +4906,25 @@ export function mountCanvas(container, opts) {
     if (e.target !== root) return;
     const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
     if (e.key === ' ' && !spaceDown) { spaceDown = true; root.classList.add('wb-space'); e.preventDefault(); return; }
+    if (k === 'z' && !mod && !e.altKey && !readOnly) { e.preventDefault(); if (!e.repeat && !zHeld) { zHeld = true; zDownAt = performance.now(); zUsed = false; root.classList.add('wb-zooming'); } return; }
     if (mod && k === 'z') { e.preventDefault(); if (!readOnly) (e.shiftKey ? doRedo : doUndo)(); return; }
     if (mod && k === 'y') { e.preventDefault(); if (!readOnly) doRedo(); return; }
     if (mod && k === 'a') { e.preventDefault(); sel = new Set(live().filter(x => x.type !== 'frame').map(x => x.id)); paintProps(); render(); return; }
-    if (mod && (k === '=' || k === '+')) { e.preventDefault(); zoomAt(1.2); return; }
-    if (mod && k === '-') { e.preventDefault(); zoomAt(1 / 1.2); return; }
-    if (mod && k === '0') { e.preventDefault(); zoomAt(1 / view.z); return; }
-    if (e.shiftKey && k === '!') { fit(); return; }
-    if (e.shiftKey && e.code === 'Digit1') { e.preventDefault(); fit(); return; }
-    if (e.shiftKey && e.code === 'Digit2' && sel.size) { e.preventDefault(); fit([...sel].map(get).filter(Boolean), { max: 2 }); return; }
+    if (mod && (k === '=' || k === '+')) { e.preventDefault(); glideZoom(1.25); return; }
+    if (mod && k === '-') { e.preventDefault(); glideZoom(1 / 1.25); return; }
+    if (mod && k === '0') { e.preventDefault(); glideZoom(1 / view.z); return; }
+    if (mod && (e.key === '/' || e.code === 'Slash')) { e.preventDefault(); openPalette(); return; }
+    if (e.shiftKey && k === '!') { glideFit(); return; }
+    if (e.shiftKey && e.code === 'Digit1') { e.preventDefault(); glideFit(); return; }
+    if (e.shiftKey && e.code === 'Digit2' && sel.size) { e.preventDefault(); glideFit([...sel].map(get).filter(Boolean), { max: 2 }); return; }
     if (e.shiftKey && k === 'f' && !mod && mode === 'board' && opts.onFullscreen) { e.preventDefault(); toggleFullscreen(); return; }
     if (e.key === '?') { toggleKeys(); return; }
     if (mod && k === 'f') { e.preventDefault(); openFind(); return; }
     if (presenting && (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ')) { e.preventDefault(); goSlide(presenting.index + 1); return; }
     if (presenting && (e.key === 'ArrowLeft' || e.key === 'PageUp')) { e.preventDefault(); goSlide(presenting.index - 1); return; }
+    if (e.key === 'Escape' && eyedropFor) { eyedropFor = null; root.classList.remove('wb-eyedrop'); return; }
+    if (e.key === 'Escape' && !cmenu.hidden) { cmenu.hidden = true; return; }
+    if (e.key === 'Escape' && tool === 'zoom') { setTool('select'); return; }
     if (e.key === 'Escape' && (!penPop.hidden || !colourPop.hidden)) { penPop.hidden = true; colourPop.hidden = true; return; }
     if (e.key === 'Escape' && !boardMenu.hidden) { boardMenu.hidden = true; paintCorners(); return; }
     if (e.key === 'Escape' && !r4.hidden) { r4.hidden = true; clearVersionView(); return; }
@@ -4500,7 +4948,7 @@ export function mountCanvas(container, opts) {
     if (e.key === 'Enter' && chosen.length === 1 && (chosen[0].type === 'sticky' || chosen[0].type === 'text' || isShape(chosen[0]))) { e.preventDefault(); editText(chosen[0]); return; }
     if (e.key.startsWith('Arrow') && chosen.length) {
       e.preventDefault();
-      const step = e.shiftKey ? 24 : 1, dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0, dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+      const step = e.shiftKey ? 10 : 1, dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0, dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
       write(chosen.filter(x => !x.locked).map(x => moved(x, dx, dy))); commitStop(); return;
     }
     if (mod || e.altKey) return;
@@ -4521,7 +4969,11 @@ export function mountCanvas(container, opts) {
     if (KEYS[k]) { if (SHAPES.includes(KEYS[k])) lastShape = KEYS[k]; setTool(KEYS[k]); return; }
     if (/^[0-9]$/.test(k)) setTool(DIGITS[k]);
   });
-  root.addEventListener('keyup', e => { if (e.key === ' ') { spaceDown = false; root.classList.remove('wb-space'); } });
+  root.addEventListener('keyup', e => {
+    if (e.key === ' ') { spaceDown = false; root.classList.remove('wb-space'); }
+    // Z: a quick tap switches to the zoom tool; a hold that zoomed goes back to what you had
+    if (e.key.toLowerCase() === 'z' && zHeld) { zHeld = false; root.classList.remove('wb-zooming'); if (performance.now() - zDownAt < 250 && !zUsed) setTool(tool === 'zoom' ? 'select' : 'zoom'); }
+  });
 
   function copySel(els) {
     const ids = new Set(els.map(x => x.id));
@@ -4531,10 +4983,10 @@ export function mountCanvas(container, opts) {
     try { navigator.clipboard?.writeText(JSON.stringify({ ipopBoard: 1, elements: clipboard })).catch(() => {}); } catch { /* blocked */ }
     toast(`Copied ${els.length === 1 ? '1 thing' : `${els.length} things`}`);
   }
-  function pasteClip() {
+  function pasteClip(at) {
     if (!clipboard?.length) return;
     const b = unionBounds(clipboard, id => clipboard.find(x => x.id === id));
-    const r = rect(), c = toWorld(r.width / 2, r.height / 2);
+    const r = rect(), c = at || toWorld(r.width / 2, r.height / 2);
     const dx = b ? c.x - (b.x + b.w / 2) : 24, dy = b ? c.y - (b.y + b.h / 2) : 24;
     const map = new Map(clipboard.map(x => [x.id, create(x.type).id]));
     const out = clipboard.map(x => {
@@ -4547,6 +4999,17 @@ export function mountCanvas(container, opts) {
 
   function toggleKeys() {
     if (!keysPanel.hidden) { keysPanel.hidden = true; return; }
+    if (dockReady) {
+      keysPanel.innerHTML = `<div class="wb-ph"><b>Keyboard shortcuts</b><button type="button" data-close aria-label="Close">✕</button></div><input class="wb-search" type="search" placeholder="Search shortcuts…" aria-label="Search shortcuts"><div class="wb-kbody"></div>`;
+      paintKeys();
+      const s = keysPanel.querySelector('.wb-search');
+      s.addEventListener('input', () => paintKeys(s.value));
+      s.addEventListener('keydown', ev => { ev.stopPropagation(); if (ev.key === 'Escape') { keysPanel.hidden = true; root.focus({ preventScroll: true }); } });
+      keysPanel.classList.add('wb-keys3');
+      // focus after this key press is done, or the "?" that opened the panel lands in the search box
+      keysPanel.hidden = false; setTimeout(() => s.focus({ preventScroll: true }), 0);
+      return;
+    }
     const rows = [['V', 'Select'], ['H', 'Hand (or hold Space)'], ['P', 'Pen (click it again: pen, marker, pencil, size, colour)'], ['M', 'Highlighter'], ['E', 'Eraser (click it again: whole or part)'], ['[ / ]', 'Smaller / bigger pen or eraser'], ['S', 'Sticky note (again: next colour)'], ['T', 'Text'], ['R', 'Shape (again: next shape)'], ['O', 'Circle'], ['D', 'Diamond'], ['A', 'Connector'], ['F', 'Frame'], ['Shift F', 'Full screen'], ['L', 'Laser pointer'], ['K', 'Emoji and stickers'], ['U', 'Web link card (or paste an address)'], ['→ / ←', 'Next / previous slide while presenting'],
       ['1–9, 0', 'The old drawing keys'], ['Enter', 'Edit the selected text'], ['Ctrl D', 'Duplicate'], ['Ctrl G', 'Group (Shift: ungroup)'], ['Ctrl Shift C / V', 'Copy / paste style'], ['Alt Shift T', 'Tidy up flow'], ['Hover a shape', 'Blue arrows add the next shape'], ['Ctrl K', 'Link the selected thing'], ['Ctrl C / V', 'Copy / paste'], ['Ctrl Z / Y', 'Undo / redo'], ['Ctrl F', 'Find on board'], ['Ctrl ] / [', 'Front / back'], ['Arrows', 'Nudge (Shift: 24 px)'], ['Ctrl + wheel', 'Zoom'], ['Shift 1', 'Fit everything'], ['Alt while dragging', 'No snapping']];
     keysPanel.innerHTML = `<div class="wb-ph"><b>Keyboard shortcuts</b><button type="button" data-close aria-label="Close">✕</button></div><div class="wb-kgrid">${rows.map(([k, d]) => `<div><kbd>${k}</kbd><span>${d}</span></div>`).join('')}</div>`;
@@ -4569,7 +5032,7 @@ export function mountCanvas(container, opts) {
     tight = root.clientWidth > 0 && root.clientWidth < (mode === 'block' ? 640 : 560);
     if (tight !== wasTight) { wasTight = tight; root.classList.toggle('wb-tight', tight); moreOpen = false; moreMenu.hidden = true; paintToolbar(); }
     const r = rect();
-    if (!fitted && r.width > 60 && r.height > 60) { fitted = true; fit(); }
+    if (!fitted && r.width > 60 && r.height > 60) { fitted = true; if (!restoreView()) fit(); }
     else render();
     if (editing) editing.place();
   });
@@ -4592,7 +5055,7 @@ export function mountCanvas(container, opts) {
       const b = unionBounds(live(), get);
       const items = buildTemplate(name, { x: b ? b.x + b.w + 120 : 0, y: b ? b.y : 0, howTo: withHow, examples });
       const placed = add(items) || [];
-      fit(placed, { max: 1 });
+      if (dockReady) { glideFit(placed, { max: 1 }); const f = placed.find(x => x.type === 'frame'); if (f) setTimeout(() => flash([f.id], 1100), reduceMotion() ? 0 : 300); } else fit(placed, { max: 1 });
       return placed.length;
     },
     setReadOnly(v) { readOnly = !!v; if (readOnly) { stopEdit(); sel.clear(); setTool('select'); gallery.hidden = true; tcOverlay.hidden = true; ctxPop.hidden = true; picker.hidden = true; morePanel.hidden = true; penPop.hidden = true; colourPop.hidden = true; emojiPop.hidden = true; } paintToolbar(); paintCorners(); paintZoom(); render(); paintProps(); },
@@ -4613,7 +5076,7 @@ export function mountCanvas(container, opts) {
     addPageCard(page) { if (readOnly) return; const r = rect(); addPageCard(page, toWorld(r.width / 2, r.height / 2)); },
     addTaskCards(tasks) { if (readOnly || !tasks?.length) return; const r = rect(); const c = toWorld(r.width / 2, r.height / 2); addTaskCards(tasks, { x: c.x - 130, y: c.y - 52 }); },
     setFullscreen(v) { fullscreen = !!v; paintCorners(); requestAnimationFrame(() => fit()); },
-    destroy() { clearInterval(seenTimer); try { saveSeen(); } catch { /* gone */ } meta?.unobserve(onMeta); clearTimeout(r4State.t); clearTimeout(arrowHold); document.removeEventListener('keydown', popKeys, true); clearTimeout(paintEmoji.t); unFocus?.(); unThreads?.(); vmap?.unobserve(onVote); clearInterval(liveTick); clearInterval(timerTick); clearTimeout(cursorTimer); clearTimeout(viewTimer); clearTimeout(laserFade); clearTimeout(showNeatToast.t); clearHold(); clearTimeout(flushTimer); aw?.off('change', onAw); if (aw) { const st = aw.getLocalState(); if (st?.wb?.board === boardKey) aw.setLocalStateField('wb', null); } for (const u of files.values()) { try { URL.revokeObjectURL(u); } catch { /* not ours */ } } document.removeEventListener('keydown', fsKeys, true); stopEdit(); flush(); destroyed = true; ymap.unobserve(onY); undo.destroy(); ro.disconnect(); cancelAnimationFrame(raf); root.remove(); },
+    destroy() { clearInterval(viewSaver); try { saveView(); } catch { /* gone */ } springWatch.disconnect(); cancelAnimationFrame(camAnim); cancelAnimationFrame(inertiaRaf); clearInterval(seenTimer); try { saveSeen(); } catch { /* gone */ } meta?.unobserve(onMeta); clearTimeout(r4State.t); clearTimeout(arrowHold); document.removeEventListener('keydown', popKeys, true); clearTimeout(paintEmoji.t); unFocus?.(); unThreads?.(); vmap?.unobserve(onVote); clearInterval(liveTick); clearInterval(timerTick); clearTimeout(cursorTimer); clearTimeout(viewTimer); clearTimeout(laserFade); clearTimeout(showNeatToast.t); clearHold(); clearTimeout(flushTimer); aw?.off('change', onAw); if (aw) { const st = aw.getLocalState(); if (st?.wb?.board === boardKey) aw.setLocalStateField('wb', null); } for (const u of files.values()) { try { URL.revokeObjectURL(u); } catch { /* not ours */ } } document.removeEventListener('keydown', fsKeys, true); stopEdit(); flush(); destroyed = true; ymap.unobserve(onY); undo.destroy(); ro.disconnect(); cancelAnimationFrame(raf); root.remove(); },
   };
   return api;
 }
