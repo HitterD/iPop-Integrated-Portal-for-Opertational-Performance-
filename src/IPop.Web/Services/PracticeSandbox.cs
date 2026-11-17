@@ -554,6 +554,12 @@ public sealed class PracticeSandbox
                     t["status"] = Str("status") ?? t["status"];
                     return (new { success = true }, "Moved — only in practice", "In real mode the assignees would see the new status.");
                 }
+                if (method == HttpMethod.Put && M(url, @"/api/projects/[0-9a-f-]{36}/tabs$"))
+                {
+                    var tabs = body is { ValueKind: JsonValueKind.Object } tb && tb.TryGetProperty("tabs", out var tv) && tv.ValueKind == JsonValueKind.Array
+                        ? tv.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 0).ToArray() : Array.Empty<string>();
+                    return (tabs, "Views saved — only in practice", "In real mode everyone in the project would see the new views.");
+                }
                 if (method == HttpMethod.Put && M(url, @"/api/projects/[0-9a-f-]{36}/statuses$"))
                     return (Array.Empty<object>(), "Statuses saved — only in practice", "In real mode everyone in the project would see the new statuses.");
                 if (method == HttpMethod.Post && M(url, @"/api/projects/[0-9a-f-]{36}/tasks$"))

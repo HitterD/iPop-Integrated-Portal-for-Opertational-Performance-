@@ -1,0 +1,193 @@
+@using IPop.Application.Projects
+@using IPop.Web.Services
+@inject AuthState Auth
+@inject ToastService Toasts
+@inject IJSRuntime JS
+@* Projects v2: the project's view tabs with a sliding indicator, and the "+ View" picker (mockup #vtabs + picker()). *@
+<div class="pv2 pv2-vbar">
+    <div class="pv2-vtabs" @ref="tabsEl" role="tablist" aria-label="Project views">
+        @foreach (var key in Tabs)
+        {
+            var v = ProjectViewCatalog.Get(key);
+            var on = key == ActiveKey;
+            <div class="pv2-vtw @(on ? "on" : "") @(CanManage && Tabs.Count > 1 ? "canx" : "") @(key == newKey ? "newtab" : "")" @key="key">
+                <button type="button" role="tab" class="pv2-vt @(on ? "on" : "")" aria-selected="@(on ? "true" : "false")" data-view="@key" @onclick="() => OnSelect.InvokeAsync(key)">
+                    <i data-lucide="@v.Icon"></i>@v.Label
+                </button>
+                @if (CanManage && Tabs.Count > 1)
+                {
+                    <button type="button" class="pv2-vx" title="Remove this view" aria-label="Remove @v.Label view" @onclick="() => RemoveAsync(key)"><i data-lucide="x"></i></button>
+                }
+            </div>
+        }
+        <span class="pv2-ind" aria-hidden="true"></span>
+    </div>
+    <button type="button" class="pv2-vt add @(open ? "open" : "")" @ref="addEl" aria-haspopup="dialog" aria-expanded="@(open ? "true" : "false")" @onclick="TogglePicker">
+        <i data-lucide="plus"></i>View
+    </button>
+</div>
+
+@if (open)
+{
+    <div class="pv2-pick-backdrop" @onclick="ClosePicker"></div>
+    <div class="pv2 pv2-pick" @ref="pickEl" role="dialog" aria-label="Add a view" @onkeydown="OnPickKey">
+        <label class="pv2-search"><i data-lucide="search"></i>
+            <input type="search" id="pv2-pick-q" placeholder="Search views, e.g. gantt or files" aria-label="Search views" value="@query" @oninput="e => query = e.Value?.ToString() ?? string.Empty" />
+        </label>
+        <div class="pv2-pick-opts">
+            <label><input type="checkbox" @bind="privateView" />Only me (private view)</label>
+            <label><input type="checkbox" @bind="pinView" />Pin to tabs</label>
+        </div>
+        @if (!CanManage)
+        {
+            <p class="pv2-pick-note" role="note"><i data-lucide="lock"></i>Only the project owner or a manager can add views.</p>
+        }
+        @{ var shown = 0; }
+        @foreach (var (heading, keys) in ProjectViewCatalog.PickGroups)
+        {
+            var list = keys.Select(ProjectViewCatalog.Get).Where(Matches).ToList();
+            if (list.Count == 0) continue;
+            shown += list.Count;
+            <h5>@heading</h5>
+            <div class="pv2-vgrid">
+                @foreach (var v in list)
+                {
+                    var added = Tabs.Contains(v.Key);
+                    <button type="button" class="pv2-vo @(added ? "added" : "")" data-view="@v.Key" disabled="@(!CanManage && !added)" @onclick="() => PickAsync(v.Key)">
+                        <span class="pv2-voic" style="background:@v.Color"><i data-lucide="@v.Icon"></i></span>
+                        <span class="pv2-vot">
+                            <span class="pv2-vol">@v.Label@if (v.Later) {<span class="pv2-p2">LATER</span>} else if (v.IsNew) {<span class="pv2-new">NEW</span>}</span>
+                            <small>@v.Description@if (added) {<text> · <b>Added</b></text>}</small>
+                        </span>
+                    </button>
+                }
+            </div>
+        }
+        @if (shown == 0)
+        {
+            <p class="pv2-pick-none">No view matches "@query".</p>
+        }
+        <div class="pv2-pick-hint"><i data-lucide="wand-sparkles"></i><span>Each project shows only the views you add. Use the small x on a tab to remove it.</span></div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public ProjectDto Project { get; set; } = default!;
+    /// Key of the highlighted tab (null = none).
+    [Parameter] public string? ActiveKey { get; set; }
+    /// Owner/manager only: add and remove views.
+    [Parameter] public bool CanManage { get; set; }
+    [Parameter] public EventCallback<string> OnSelect { get; set; }
+    /// The saved tab list after an add/remove, so the page can update the project it shows.
+    [Parameter] public EventCallback<IReadOnlyList<string>> OnTabsSaved { get; set; }
+
+    private ElementReference tabsEl, addEl, pickEl;
+    private bool open, justOpened, busy, privateView, pinView = true, firstDone;
+    private string query = "";
+    private string? newKey;
+
+    private IReadOnlyList<string> Tabs => ProjectViewCatalog.Resolve(Project.Tabs);
+
+    private bool Matches(ProjectViewCatalog.View v)
+    {
+        var q = query.Trim().ToLowerInvariant();
+        return q.Length == 0 || v.Label.ToLowerInvariant().Contains(q) || v.Description.ToLowerInvariant().Contains(q);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("ipop.icons");
+            await JS.InvokeVoidAsync("ipopPv2.moveInd", tabsEl, !firstDone);
+            if (!firstDone) { firstDone = true; await JS.InvokeVoidAsync("ipopPv2.watchTabs", tabsEl); }
+            if (justOpened) { justOpened = false; await JS.InvokeVoidAsync("ipopPv2.openPick", pickEl, addEl); }
+        }
+        catch { }
+    }
+
+    private void TogglePicker()
+    {
+        open = !open;
+        if (open) { query = ""; justOpened = true; }
+    }
+
+    private void ClosePicker() => open = false;
+
+    private void OnPickKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") open = false;
+    }
+
+    /// Esc from the page: closes the picker when it is open. Returns true when it did.
+    public bool CloseIfOpen()
+    {
+        if (!open) return false;
+        open = false;
+        StateHasChanged();
+        return true;
+    }
+
+    private async Task PickAsync(string key)
+    {
+        open = false;
+        if (Tabs.Contains(key)) { await OnSelect.InvokeAsync(key); return; }
+        if (!CanManage || busy) return;
+        var before = Tabs.ToList();
+        var next = before.Append(key).ToList();
+        var saved = await SaveAsync(next);
+        if (saved is null) return;
+        newKey = key;
+        await OnTabsSaved.InvokeAsync(saved);
+        await OnSelect.InvokeAsync(key);
+        Toasts.ShowUndo($"Added {ProjectViewCatalog.Get(key).Label} to this project.", async () =>
+        {
+            var undone = await SaveAsync(before);
+            if (undone is null) return;
+            await OnTabsSaved.InvokeAsync(undone);
+            if (ActiveKey == key) await OnSelect.InvokeAsync(undone[0]);
+        }, "Undo", 6000);
+    }
+
+    private async Task RemoveAsync(string key)
+    {
+        if (!CanManage || busy || Tabs.Count <= 1) return;
+        var before = Tabs.ToList();
+        var next = before.Where(k => k != key).ToList();
+        var saved = await SaveAsync(next);
+        if (saved is null) return;
+        await OnTabsSaved.InvokeAsync(saved);
+        if (ActiveKey == key) await OnSelect.InvokeAsync(saved[0]);
+        Toasts.ShowUndo($"Removed {ProjectViewCatalog.Get(key).Label} from this project.", async () =>
+        {
+            var undone = await SaveAsync(before);
+            if (undone is not null) await OnTabsSaved.InvokeAsync(undone);
+        }, "Undo", 6000);
+    }
+
+    /// PUT /api/projects/{id}/tabs; null (with an error toast) when it failed.
+    private async Task<List<string>?> SaveAsync(List<string> tabs)
+    {
+        busy = true;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/{Project.Id}/tabs", new { tabs });
+            if (!res.IsSuccessStatusCode)
+            {
+                Toasts.Show(res.StatusCode == System.Net.HttpStatusCode.Forbidden
+                    ? "Only the project owner or a manager can change views."
+                    : "Could not update the project views.", ToastKind.Error);
+                return null;
+            }
+            List<string>? saved = null;
+            try { saved = await res.Content.ReadFromJsonAsync<List<string>>(); } catch { }
+            return saved is { Count: > 0 } ? saved : tabs;
+        }
+        catch
+        {
+            Toasts.Show("Could not update the project views. Check your connection.", ToastKind.Error);
+            return null;
+        }
+        finally { busy = false; }
+    }
+}

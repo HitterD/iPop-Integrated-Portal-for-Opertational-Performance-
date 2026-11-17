@@ -78,8 +78,9 @@
 }
 else
 {
-<div class="proj-workspace @(mDetail ? "m-detail" : "")">
-    @* Left Project Navigator Sidebar *@
+<div class="proj-workspace pv2-ws @(mDetail ? "m-detail" : "") @(fullScreen ? "proj-fs" : "") @(fullScreen && railOpen ? "pv2-rail-open" : "")">
+    @* Left Project Navigator Sidebar (in a wrapper so the full screen layout can slide the column to 0) *@
+    <div class="pv2-rail">
     <ProjectSidebar
         Projects="filteredProjects"
         SelectedProjectId="selectedProjectId"
@@ -95,6 +96,7 @@ else
         OnYearChanged="SetYearFilter"
         OnSearchChanged="HandleProjectSearch"
         OnCreateClick="() => showCreateModal = true" />
+    </div>
 
     @* Main Project Workspace Canvas *@
     <main class="proj-canvas" id="project-detail" role="region" aria-label="Project Workspace">
@@ -123,8 +125,16 @@ else
         }
         else
         {
+            @* Crumb row: project list toggle + Full screen *@
+            <ProjectCrumbBar FullScreen="fullScreen" RailOpen="railOpen" Trail="@selectedProject.Year.ToString()"
+                             OnToggleFullScreen="ToggleFullScreen" OnToggleRail="() => railOpen = !railOpen" OnProjectsClick="SelectPortfolio" />
+
             @* Canvas Header *@
             <ProjectHeader
+                V2="true"
+                CanManage="CanManageMembers"
+                LateCount="LateTaskCount"
+                OnHealthChanged="HandleHealthChanged"
                 Project="selectedProject"
                 Members="projectMembers"
                 OnOpenTeamModal="() => showTeamModal = true"
@@ -140,31 +150,10 @@ else
                 CanWrite="CanWriteTasks"
                 OnNewTask="CreateTaskAndOpen" />
 
-            @* Canvas View Switcher Bar (Overview / Board / List / Timeline / Workload) *@
-            <div class="proj-canvas-bar">
-                <div class="proj-tabs">
-                    <button class="proj-tab-btn @(tab == 4 ? "active" : "")" @onclick="() => SwitchTab(4)" title="Overview & Progress">
-                        <i data-lucide="layout-dashboard"></i> Overview
-                    </button>
-                    <button class="proj-tab-btn @(tab == 0 ? "active" : "")" @onclick="() => SwitchTab(0)">
-                        <i data-lucide="kanban"></i> Board
-                    </button>
-                    <button class="proj-tab-btn @(tab == 1 ? "active" : "")" @onclick="() => SwitchTab(1)">
-                        <i data-lucide="list"></i> List
-                    </button>
-                    <button class="proj-tab-btn @(tab == 2 ? "active" : "")" @onclick="() => SwitchTab(2)">
-                        <i data-lucide="calendar-range"></i> Timeline
-                    </button>
-                    <button class="proj-tab-btn @(tab == 6 ? "active" : "")" @onclick="() => SwitchTab(6)">
-                        <i data-lucide="calendar-days"></i> Calendar
-                    </button>
-                    <button class="proj-tab-btn @(tab == 3 ? "active" : "")" @onclick="() => SwitchTab(3)">
-                        <i data-lucide="users"></i> Workload
-                    </button>
-                    <button class="proj-tab-btn @(tab == 5 ? "active" : "")" @onclick="() => SwitchTab(5)" title="Reports: progress, milestones, burndown, velocity">
-                        <i data-lucide="chart-no-axes-combined"></i> Reports
-                    </button>
-                </div>
+            @* View tabs (from the project's Tabs) + search / filter / Add task *@
+            <div class="proj-canvas-bar pv2-bar">
+                <ProjectViewTabs @ref="viewTabs" Project="selectedProject" ActiveKey="ActiveViewKey" CanManage="CanManageMembers"
+                                 OnSelect="SelectView" OnTabsSaved="HandleTabsSaved" />
 
                 <div class="proj-bar-right">
                     <div class="v6-search proj-task-search">
@@ -202,7 +191,7 @@ else
 
             @* Canvas Body Content *@
             <div class="proj-canvas-body">
-                @if (tab != 4 && tab != 5)
+                @if (tab != 4 && tab != 5 && tab != -1)
                 {
                     <ProjectSavedViewsBar Views="savedViews" ActiveViewId="ActiveSavedViewId" CanSave="FiltersDifferFromDefault"
                                           CanManage="CanManageMembers" OnApply="ApplySavedView" OnSave="SaveCurrentView"
@@ -253,7 +242,11 @@ else
                     </div>
                 }
 
-                @if (tab == 4)
+                @if (tab == -1)
+                {
+                    <ProjectViewPlaceholder Key="@(viewKey ?? "list")" />
+                }
+                else if (tab == 4)
                 {
                     <ProjectExecutiveDashboard
                         Project="selectedProject"
@@ -499,6 +492,104 @@ else
     private PagedResult<PortfolioTaskDto>? portfolioTasks;
     private (string Filter, Guid? ProjectId, Guid? AssigneeId)? portfolioTaskFilter;
     private bool sidebarCollapsed = false;
+
+    // ── Projects v2: full screen, view tabs ──
+    // Full screen is on by default on desktop; the choice is remembered in localStorage (ipop.projects.fs).
+    private bool fullScreen = true;
+    private bool railOpen;
+    private bool fsInit;
+    private ProjectViewTabs? viewTabs;
+    /// Selected tab key when several keys share one screen (gantt/timeline) or have none yet (tab == -1).
+    private string? viewKey;
+    private DotNetObjectReference<Projects>? _fsRef;
+
+    private int LateTaskCount => AllCurrentTasks.Count(t => t.DueDate.HasValue && t.DueDate.Value.Date < DateTime.Today && t.Status != "done");
+
+    private string? ActiveViewKey
+    {
+        get
+        {
+            var tabs = ProjectViewCatalog.Resolve(selectedProject?.Tabs);
+            if (tab == -1) return viewKey;
+            if (viewKey is not null && tabs.Contains(viewKey) && ProjectViewCatalog.TabIndex(viewKey) == tab) return viewKey;
+            return tabs.FirstOrDefault(k => ProjectViewCatalog.TabIndex(k) == tab);
+        }
+    }
+
+    private async Task SelectView(string key)
+    {
+        viewKey = key;
+        var idx = ProjectViewCatalog.TabIndex(key);
+        if (idx < 0)
+        {
+            if (tab != -1) selectedTaskIds = new HashSet<Guid>();
+            tab = -1;
+            StateHasChanged();
+            return;
+        }
+        await SwitchTab(idx);
+        viewKey = key;
+        StateHasChanged();
+    }
+
+    private void HandleTabsSaved(IReadOnlyList<string> tabs)
+    {
+        if (selectedProject is not null) selectedProject = selectedProject with { Tabs = tabs };
+        StateHasChanged();
+    }
+
+    private void HandleHealthChanged(string health)
+    {
+        if (selectedProject is not null) selectedProject = selectedProject with { Health = health };
+    }
+
+    /// A project whose tab list lacks the current view opens on its first tab instead.
+    private void EnsureValidView()
+    {
+        if (selectedProject is null || Phone.IsPhone) return;
+        var tabs = ProjectViewCatalog.Resolve(selectedProject.Tabs);
+        if (tab == -1 ? viewKey is not null && tabs.Contains(viewKey) : tabs.Any(k => ProjectViewCatalog.TabIndex(k) == tab)) return;
+        var first = tabs.FirstOrDefault(k => ProjectViewCatalog.TabIndex(k) >= 0);
+        if (first is null) return;
+        viewKey = first;
+        tab = ProjectViewCatalog.TabIndex(first);
+    }
+
+    private async Task ToggleFullScreen() => await SetFullScreen(!fullScreen, persist: true);
+
+    private async Task SetFullScreen(bool on, bool persist)
+    {
+        fullScreen = on;
+        if (!on) railOpen = false;
+        StateHasChanged();
+        try { await JS.InvokeVoidAsync("ipopPv2.setFullScreen", on, persist); } catch { }
+    }
+
+    /// Esc / F from the page-wide key handler in js/projects-v2.js.
+    [JSInvokable]
+    public async Task FullScreenKey(bool on)
+    {
+        if (_disposed || Phone.IsPhone || on == fullScreen) return;
+        if (!on && viewTabs?.CloseIfOpen() == true) return;
+        await InvokeAsync(() => SetFullScreen(on, persist: true));
+    }
+
+    private async Task InitFullScreenAsync()
+    {
+        if (fsInit || Phone.IsPhone) return;
+        fsInit = true;
+        string? pref = null;
+        try { pref = await JS.InvokeAsync<string?>("ipopPv2.fullScreenPref"); } catch { }
+        if (pref == "0") fullScreen = false;
+        _fsRef ??= DotNetObjectReference.Create(this);
+        try
+        {
+            await JS.InvokeVoidAsync("ipopPv2.attachKeys", _fsRef);
+            await JS.InvokeVoidAsync("ipopPv2.setFullScreen", fullScreen, false);
+        }
+        catch { }
+        StateHasChanged();
+    }
     private bool myTasksOnly = false;
     private bool overdueOnly = false;
     private string priorityFilter = "";
@@ -860,6 +951,7 @@ else
                     selectedProjectId = ProjectId.Value;
                     selectedGroupId = null;
                     selectedProject = proj;
+                    EnsureValidView();
                     _ = Notifs.MarkReadByTargetAsync("project", proj.Id);
                     await LoadProjectViewsAsync();
                     StateHasChanged();
@@ -966,6 +1058,7 @@ else
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await JS.InvokeVoidAsync("ipop.icons");
+        if (firstRender) await InitFullScreenAsync();
     }
 
     private string? phoneProjectError;
@@ -1047,6 +1140,7 @@ else
         if (p.Id != selectedProjectId) return;
         _ = Notifs.MarkReadByTargetAsync("project", p.Id);
         selectedProject = proj;
+        EnsureValidView();
 
         await LoadProjectViewsAsync();
         if (tab == 3) await LoadWorkloadData();
@@ -1066,6 +1160,7 @@ else
     {
         if (newTab != tab) selectedTaskIds = new HashSet<Guid>();
         tab = newTab;
+        viewKey = null;
         if (tab == 1) await LoadTaskList();
         if (tab == 3) await LoadWorkloadData();
         StateHasChanged();
@@ -1942,7 +2037,7 @@ else
         listUnassignedOnly = false;
         listAssigneeId = Id("assigneeId") is { } aid && projectMembers.Any(m => m.UserId == aid) ? aid : null;
         selectedTaskIds = new HashSet<Guid>();
-        if (int.TryParse(Str("tab"), out var t) && t is >= 0 and <= 6) tab = t;
+        if (int.TryParse(Str("tab"), out var t) && t is >= 0 and <= 6) { tab = t; viewKey = null; }
         await LoadKanban();
         await LoadTaskList();
         await LoadTimeline();
@@ -2566,6 +2661,8 @@ else
         _disposed = true;
         Phone.Changed -= PhoneChanged;
         try { _ = JS.InvokeVoidAsync("ipop.mobile.clearDetail"); } catch { }
+        try { _ = JS.InvokeVoidAsync("ipopPv2.releaseFullScreen"); } catch { }
+        _fsRef?.Dispose();
         _mRef?.Dispose();
         _projectSub?.Dispose();
         Auth.HubReconnected -= OnHubReconnected;
