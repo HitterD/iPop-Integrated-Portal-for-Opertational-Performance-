@@ -192,6 +192,18 @@ public class ProjectTaskDrawerTests
     }
 
     [Fact]
+    public void A_normal_task_open_always_resets_to_the_side_panel()
+    {
+        var page = RepoFile("src/IPop.Web/Pages/Projects.razor");
+        // OpenTaskEditor clears the full-editor flag unless the open came from OpenFullEditor / the new-task flow,
+        // and closing clears it too, so a stale true can never route later clicks to the drawer.
+        Assert.Contains("if (!openingNewTask && !(showTaskEditor && fullEditor)) { fullEditor = false;", page);
+        Assert.Contains("openingNewTask = true;", page);
+        var close = page[page.IndexOf("private void CloseTaskEditor()", StringComparison.Ordinal)..];
+        Assert.Contains("fullEditor = false;", close[..close.IndexOf('}')]);
+    }
+
+    [Fact]
     public void Quick_view_is_gone_from_the_page_and_the_task_menus()
     {
         var page = RepoFile("src/IPop.Web/Pages/Projects.razor");

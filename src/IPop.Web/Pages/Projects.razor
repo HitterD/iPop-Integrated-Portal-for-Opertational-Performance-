@@ -984,7 +984,7 @@ else
     private async Task HandleSelectedProjectGone()
     {
         Toasts.Show("This project was deleted or you are no longer a member.", ToastKind.Info);
-        showTaskEditor = false; editingTask = null; subtasks.Clear();
+        showTaskEditor = false; fullEditor = false; focusNewTaskTitle = false; editingTask = null; subtasks.Clear();
         showEditModal = false; showTeamModal = false;
         showEvidenceModal = false; evidenceTask = null;
         showExtensionModal = false; extensionTask = null;
@@ -1846,8 +1846,10 @@ else
 
     private async Task OpenTaskEditor(ProjectTaskDto t)
     {
-        if (editingTask?.Id != t.Id && !focusNewTaskTitle) focusNewTaskTitle = false;
-        if (focusNewTaskTitle) fullEditor = true; // a brand-new task needs its title focused in the editor
+        // Only the brand-new-task flow (OpenNewTaskEditor) may force the full editor; every other open
+        // (row click, navigation, notification) uses the side panel, so stale flags must not leak.
+        if (!openingNewTask && !(showTaskEditor && fullEditor)) { fullEditor = false; focusNewTaskTitle = false; }
+        openingNewTask = false;
         editingTask = t;
         _ = Notifs.MarkReadByTargetAsync("task", t.Id);
         showTaskEditor = true;
@@ -1857,8 +1859,11 @@ else
         await JS.InvokeVoidAsync("ipop.icons");
     }
 
+    private bool openingNewTask;
+
     private async Task OpenFullEditor(ProjectTaskDto t)
     {
+        openingNewTask = true; // keep fullEditor for this open only
         fullEditor = true;
         await OpenTaskEditor(t);
     }
@@ -1895,6 +1900,7 @@ else
     private void CloseTaskEditor()
     {
         fullEditor = false;
+        focusNewTaskTitle = false;
         showTaskEditor = false;
         editingTask = null;
         subtasks.Clear();
@@ -2583,7 +2589,7 @@ else
         await LoadKanban();
         await LoadTaskList();
         selectedProject = await Auth.GetAsync<ProjectDto>($"/api/projects/{selectedProjectId}");
-        if (created is not null) { focusNewTaskTitle = true; await OpenTaskEditor(created); }
+        if (created is not null) { focusNewTaskTitle = true; await OpenFullEditor(created); }
         StateHasChanged();
     }
 
