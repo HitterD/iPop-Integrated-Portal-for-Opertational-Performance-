@@ -1454,6 +1454,158 @@ public static class ProjectEndpoints
         });
 
         // ──────────────────────────────────────────────────────────────────────
+        // Projects v2 stage 4: My work, request form, close, automations, overview, weekly workload
+        // ──────────────────────────────────────────────────────────────────────
+
+        // GET /api/projects/my-work?localToday=
+        g.MapGet("/my-work", async (DateTime? localToday, HttpContext http, IMyWorkService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            return Results.Ok(await svc.GetAsync(userId.Value, MilestoneToday(localToday), ct));
+        });
+
+        // GET /api/projects/{id}/form - owner/manager; creates a default (closed) config on first call
+        g.MapGet("/{id:guid}/form", async (Guid id, HttpContext http, IProjectFormService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.GetAsync(id, userId.Value, ct);
+            return r.Success ? Results.Ok(r.Value) : Stage4Error(r.Error);
+        });
+
+        // PUT /api/projects/{id}/form - owner/manager
+        g.MapPut("/{id:guid}/form", async (Guid id, SaveProjectFormRequest req,
+            HttpContext http, IProjectFormService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.SaveAsync(id, userId.Value, req, ct);
+            if (!r.Success) return Stage4Error(r.Error);
+            await Audit(http, db, "projects.form.save", id.ToString(), ct);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(r.Value);
+        }).RequirePermission("projects.write");
+
+        // GET /api/projects/forms/{projectId}/public - what the signed-in submitter sees (never anonymous)
+        g.MapGet("/forms/{projectId:guid}/public", async (Guid projectId, HttpContext http, IProjectFormService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.GetPublicAsync(projectId, userId.Value, ct);
+            return r.Success ? Results.Ok(r.Value) : Stage4Error(r.Error);
+        });
+
+        // POST /api/projects/forms/{projectId}/submit - creates the Intake task; any signed-in user the audience allows
+        g.MapPost("/forms/{projectId:guid}/submit", async (Guid projectId, SubmitFormRequest req,
+            HttpContext http, IProjectFormService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.SubmitAsync(projectId, userId.Value, req, ct);
+            if (!r.Success) return Stage4Error(r.Error);
+            await Audit(http, db, "projects.form.submit", projectId.ToString(), ct);
+            await PushProjectChangedAsync(realtime, projectId);
+            return Results.Ok(r.Value);
+        });
+
+        // GET /api/projects/{id}/close-summary - any member
+        g.MapGet("/{id:guid}/close-summary", async (Guid id, HttpContext http, IProjectCloseService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.GetSummaryAsync(id, userId.Value, ct);
+            return r.Success ? Results.Ok(r.Value) : Stage4Error(r.Error);
+        });
+
+        // POST /api/projects/{id}/close - owner/manager
+        g.MapPost("/{id:guid}/close", async (Guid id, CloseProjectRequest req,
+            HttpContext http, IProjectCloseService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.CloseAsync(id, userId.Value, req, ct);
+            if (!r.Success) return Stage4Error(r.Error);
+            await Audit(http, db, "projects.close", id.ToString(), ct);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(r.Value);
+        }).RequirePermission("projects.write");
+
+        // POST /api/projects/{id}/reopen - owner/manager
+        g.MapPost("/{id:guid}/reopen", async (Guid id, HttpContext http, IProjectCloseService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.ReopenAsync(id, userId.Value, ct);
+            if (!r.Success) return Stage4Error(r.Error);
+            await Audit(http, db, "projects.reopen", id.ToString(), ct);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(new { success = true });
+        }).RequirePermission("projects.write");
+
+        // GET /api/projects/{id}/automations - any member; catalogue merged with the project's rows
+        g.MapGet("/{id:guid}/automations", async (Guid id, HttpContext http, IProjectAutomationService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.GetAsync(id, userId.Value, ct);
+            return r.Success ? Results.Ok(r.Value) : Stage4Error(r.Error);
+        });
+
+        // PUT /api/projects/{id}/automations/{kind} - owner/manager
+        g.MapPut("/{id:guid}/automations/{kind}", async (Guid id, string kind, SaveAutomationRequest req,
+            HttpContext http, IProjectAutomationService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.SaveAsync(id, userId.Value, kind, req, ct);
+            if (!r.Success) return Stage4Error(r.Error);
+            await Audit(http, db, "projects.automation.save", id.ToString(), ct);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(r.Value);
+        }).RequirePermission("projects.write");
+
+        // GET /api/projects/{id}/overview?localToday= - any member
+        g.MapGet("/{id:guid}/overview", async (Guid id, DateTime? localToday, HttpContext http, IProjectOverviewService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.GetOverviewAsync(id, userId.Value, MilestoneToday(localToday), ct);
+            return r.Success ? Results.Ok(r.Value) : Stage4Error(r.Error);
+        });
+
+        // GET /api/projects/{id}/workload/weekly?from=&localToday= - any member
+        g.MapGet("/{id:guid}/workload/weekly", async (Guid id, DateTime? from, DateTime? localToday, HttpContext http, IProjectOverviewService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.GetWeeklyWorkloadAsync(id, userId.Value, from, MilestoneToday(localToday), ct);
+            return r.Success ? Results.Ok(r.Value) : Stage4Error(r.Error);
+        });
+
+        // POST /api/projects/{id}/workload/suggest - read-only: computes suggestions, writes nothing
+        g.MapPost("/{id:guid}/workload/suggest", async (Guid id, WorkloadSuggestRequest req, HttpContext http, IProjectOverviewService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.SuggestAsync(id, userId.Value, req, ct);
+            return r.Success ? Results.Ok(r.Value) : Stage4Error(r.Error);
+        });
+
+        // POST /api/projects/{id}/workload/reassign - owner/manager/member
+        g.MapPost("/{id:guid}/workload/reassign", async (Guid id, WorkloadReassignRequest req,
+            HttpContext http, IProjectOverviewService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.ReassignAsync(id, userId.Value, req, ct);
+            if (!r.Success) return Stage4Error(r.Error);
+            await Audit(http, db, "projects.workload.reassign", id.ToString(), ct);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(new { success = true });
+        }).RequirePermission("projects.write");
+
+        // ──────────────────────────────────────────────────────────────────────
         // Projects v2 stage 3: Gantt engine (IGanttService)
         // ──────────────────────────────────────────────────────────────────────
 
@@ -1600,6 +1752,15 @@ public static class ProjectEndpoints
             "forbidden" => 403,
             not null when code.EndsWith("_not_found") => 404,
             "file_too_large" => 413,
+            _ => 422
+        });
+
+    private static IResult Stage4Error(string? code) => Results.Json(new { code, message = code },
+        statusCode: code switch
+        {
+            "forbidden" => 403,
+            "rate_limited" => 429,
+            not null when code.EndsWith("_not_found") => 404,
             _ => 422
         });
 

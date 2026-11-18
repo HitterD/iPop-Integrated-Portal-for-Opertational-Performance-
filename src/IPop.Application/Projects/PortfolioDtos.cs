@@ -4,10 +4,13 @@ namespace IPop.Application.Projects;
 public record PortfolioDto(string Scope, bool IsSuperAdmin, int ActiveProjects, int AtRiskProjects,
     int AverageProgress, int MyDueWeek, int OverdueTasks,
     PagedResult<PortfolioProjectDto> Projects, IReadOnlyList<PortfolioPersonDto> OverdueByPerson,
-    IReadOnlyList<PortfolioPersonDto> WorkloadByPerson, IReadOnlyList<PortfolioDeadlineDto> Deadlines);
+    IReadOnlyList<PortfolioPersonDto> WorkloadByPerson, IReadOnlyList<PortfolioDeadlineDto> Deadlines,
+    int OnTrackProjects = 0, int OffTrackProjects = 0);
 
 public record PortfolioProjectDto(Guid ProjectId, string Name, string Status, int Progress,
-    DateTime? Deadline, int TaskCount, int DoneCount, int OverdueCount, string Health);
+    DateTime? Deadline, int TaskCount, int DoneCount, int OverdueCount, string Health,
+    DateTime? StartDate = null, string? NextMilestoneTitle = null, DateTime? NextMilestoneDate = null,
+    string? OwnerName = null, string? OwnerNik = null, string? DepartmentName = null, string? Color = null);
 
 public record PortfolioPersonDto(Guid UserId, string Name, int OverdueCount, int OpenTaskCount,
     decimal EstimatedHours, int CapacityTasks, bool OverCapacity);

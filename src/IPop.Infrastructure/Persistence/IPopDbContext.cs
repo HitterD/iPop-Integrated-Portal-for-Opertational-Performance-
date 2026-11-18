@@ -123,6 +123,9 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<ProjectTemplateMilestone> ProjectTemplateMilestones => Set<ProjectTemplateMilestone>();
     public DbSet<ProjectMilestone> ProjectMilestones => Set<ProjectMilestone>();
     public DbSet<ProjectMilestoneTask> ProjectMilestoneTasks => Set<ProjectMilestoneTask>();
+    public DbSet<ProjectForm> ProjectForms => Set<ProjectForm>();
+    public DbSet<ProjectFormSubmission> ProjectFormSubmissions => Set<ProjectFormSubmission>();
+    public DbSet<ProjectAutomation> ProjectAutomations => Set<ProjectAutomation>();
     public DbSet<ProjectBaseline> ProjectBaselines => Set<ProjectBaseline>();
     public DbSet<ProjectBaselineTask> ProjectBaselineTasks => Set<ProjectBaselineTask>();
     // Notes
@@ -710,6 +713,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Health).HasMaxLength(16);
             e.Property(x => x.TabsJson).HasMaxLength(1000);
             e.Property(x => x.Goal).HasMaxLength(1000);
+            e.Property(x => x.Lessons).HasMaxLength(2000);
             e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Restrict);
         });
         b.Entity<ProjectStatusOption>(e =>
@@ -825,6 +829,30 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasQueryFilter(x => x.DeletedAt == null);
             e.HasIndex(x => x.DeleteBatchId);
             e.HasOne(x => x.StatusOption).WithMany().HasForeignKey(x => x.StatusOptionId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        b.Entity<ProjectForm>(e =>
+        {
+            e.HasIndex(x => x.ProjectId).IsUnique();
+            e.Property(x => x.Title).HasMaxLength(120);
+            e.Property(x => x.Intro).HasMaxLength(500);
+            e.Property(x => x.AudienceScope).HasMaxLength(16);
+            e.Property(x => x.QuestionsJson).HasMaxLength(4000);
+            e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<ProjectFormSubmission>(e =>
+        {
+            e.HasIndex(x => new { x.FormId, x.SubmitterId, x.CreatedAt });
+            e.HasIndex(x => x.TaskId);
+            e.HasOne(x => x.Form).WithMany().HasForeignKey(x => x.FormId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Task).WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<ProjectAutomation>(e =>
+        {
+            e.HasIndex(x => new { x.ProjectId, x.Kind }).IsUnique();
+            e.Property(x => x.Kind).HasMaxLength(40);
+            e.Property(x => x.ConfigJson).HasMaxLength(1000);
+            e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<ProjectBaseline>(e =>

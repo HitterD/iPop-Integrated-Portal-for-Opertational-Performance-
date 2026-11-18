@@ -36,6 +36,11 @@ public class Project
     /// Why the project exists (one or two sentences); shown at the top of Overview. Set from the create wizard.
     public string? Goal { get; set; }
 
+    /// When the owner closed the project (Status "completed"); cleared on reopen.
+    public DateTime? ClosedAt { get; set; }
+    /// Lessons learned written at close (max 2000).
+    public string? Lessons { get; set; }
+
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

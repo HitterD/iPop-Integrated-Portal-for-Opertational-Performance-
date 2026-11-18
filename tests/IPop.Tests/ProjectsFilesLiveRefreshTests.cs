@@ -34,7 +34,9 @@ public class ProjectsFilesLiveRefreshTests
         // Templates are not tied to a project; nothing on screen shows them live.
         var exempt = new HashSet<string> { "Post /templates", "Delete /templates/{id:guid}",
             // POST but read-only: the preview computes a plan without writing.
-            "Post /{id:guid}/gantt/reschedule/preview" };
+            "Post /{id:guid}/gantt/reschedule/preview",
+            // POST but read-only: suggestions are computed, nothing is written.
+            "Post /{id:guid}/workload/suggest" };
         var missing = Routes(src)
             .Where(r => r.Verb != "Get" && !exempt.Contains($"{r.Verb} {r.Route}"))
             .Where(r => !r.Body.Contains("PushProjectChangedAsync("))

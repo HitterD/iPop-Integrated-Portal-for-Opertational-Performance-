@@ -87,6 +87,12 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         // ipop-21 PERFECTION: dedicated chat room per project (interconnect).
         // Room is created atomically with the project so members can talk immediately.
         CreateProjectRoom(project, actorId, ownerId, now);
+        foreach (var rule in ProjectAutomationCatalogue.All.Where(e => e.Kind != ProjectAutomationCatalogue.FormToIntake))
+            db.ProjectAutomations.Add(new ProjectAutomation
+            {
+                Id = Guid.NewGuid(), ProjectId = project.Id, Kind = rule.Kind, ConfigJson = rule.DefaultConfigJson,
+                IsEnabled = rule.DefaultOnForNewProjects, CreatedAt = now
+            });
 
         await db.SaveChangesAsync(ct);
 
@@ -654,6 +660,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         // Diskusi Tugas (Fase 2): catat perubahan penting ke riwayat aktivitas.
         var activityRows = new List<ProjectTaskActivity>();
         Guid? nextRecurringId = null;
+        string? hookOldStage = null;
+        Guid? hookOldOption = null;
         void Track(string action, string? oldVal, string? newVal)
             => activityRows.Add(new ProjectTaskActivity
             {
@@ -731,6 +739,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
             var resolved = await ResolveStatusAsync(task.ProjectId, req.Status ?? task.Status, req.StatusOptionId, task, ct);
             if (resolved.Error is not null) return new TaskResultDto(false, null, resolved.Error);
             var newStatus = resolved.Stage;
+            hookOldStage = task.Status;
+            hookOldOption = task.StatusOptionId;
 
             if (newStatus == "done" && task.Status != "done"
                 && (await UnmetDependenciesAsync([taskId], ct)).Count > 0)
@@ -755,6 +765,7 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         if (activityRows.Count > 0) db.ProjectTaskActivities.AddRange(activityRows);
         await db.SaveChangesAsync(ct);
         await RecalculateProgressAsync(task.ProjectId, ct);
+        if (hookOldStage is not null) await ProjectTaskHooks.AfterStatusChangeAsync(db, notificationGateway, task, hookOldStage, hookOldOption, actorId, ct);
 
         return new TaskResultDto(true, (await MapToTaskDtoAsync(taskId, ct))! with { NextRecurringTaskId = nextRecurringId }, null);
     }
@@ -918,6 +929,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         }
 
         Guid? nextRecurringId = null;
+        var moveOldStage = task.Status;
+        var moveOldOption = task.StatusOptionId;
         task.StatusOptionId = resolved.OptionId;
         if (newStatus != task.Status)
         {
@@ -937,6 +950,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         task.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         await RecalculateProgressAsync(task.ProjectId, ct);
+
+        await ProjectTaskHooks.AfterStatusChangeAsync(db, notificationGateway, task, moveOldStage, moveOldOption, actorId, ct);
 
         return new TaskResultDto(true, (await MapToTaskDtoAsync(taskId, ct))! with { NextRecurringTaskId = nextRecurringId }, null);
     }
