@@ -1781,13 +1781,41 @@ else
         catch { /* the next change, live push or navigation resyncs */ }
     }
 
-    private async Task<bool> ExecuteTaskMove(Guid taskId, string targetStatus, Guid? optionId = null)
+    /// Shows a move before the server has answered: the card/row changes status in the local lists at once.
+    /// Returns the task as it was, so a failed save can put it back.
+    private ProjectTaskDto? ApplyMoveOptimistically(Guid taskId, string targetStatus, Guid? optionId)
+    {
+        var before = AllCurrentTasks.FirstOrDefault(t => t.Id == taskId);
+        if (before is null || tab == 6 || before.ProjectId != selectedProjectId) return null;
+        PatchTaskLocally(before with { Status = targetStatus, StatusOptionId = optionId ?? (before.Status == targetStatus ? before.StatusOptionId : null) });
+        StateHasChanged();
+        return before;
+    }
+
+    private void RollBackMove(ProjectTaskDto? before)
+    {
+        if (before is null) return;
+        PatchTaskLocally(before);
+        RefreshEditingTask();
+        StateHasChanged();
+    }
+
+    private async Task<bool> ExecuteTaskMove(Guid taskId, string targetStatus, Guid? optionId = null, ProjectTaskDto? already = null)
     {
         // #37: completing from the List remembers row positions so the row can pop, strike, then glide.
         var animateDone = tab == 1 && targetStatus == "done";
+        // Optimistic: the card/row moves in this frame; the server answer below confirms it or rolls it back.
+        var prev = already ?? ApplyMoveOptimistically(taskId, targetStatus, optionId) ?? AllCurrentTasks.FirstOrDefault(t => t.Id == taskId);
+        var optimistic = already is not null || (prev is not null && AllCurrentTasks.FirstOrDefault(t => t.Id == taskId)?.Status == targetStatus && prev.Status != targetStatus);
         if (animateDone) { try { await JS.InvokeVoidAsync("ipopTaskMotion.prepare"); } catch { } }
-        var prev = AllCurrentTasks.FirstOrDefault(t => t.Id == taskId);
-        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/tasks/{taskId}/move", new TaskMoveRequest(targetStatus, null, optionId));
+        HttpResponseMessage res;
+        try { res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/tasks/{taskId}/move", new TaskMoveRequest(targetStatus, null, optionId)); }
+        catch (HttpRequestException)
+        {
+            if (optimistic) RollBackMove(prev);
+            Toasts.Show("Failed to move task. Check your connection.", ToastKind.Error);
+            return false;
+        }
         if (res.IsSuccessStatusCode)
         {
             ProjectTaskDto? moved = null;
@@ -1830,6 +1858,7 @@ else
         else
         {
             var body = await res.Content.ReadAsStringAsync();
+            if (optimistic) RollBackMove(prev);
             if (body.Contains("unmet_dependencies"))
                 Toasts.Show("Cannot move to Done — task dependencies are incomplete.", ToastKind.Error);
             else
@@ -1848,6 +1877,8 @@ else
             await RunBulk("status", bulkStatus, TaskEvidenceHelper.Serialize("", arg.Evidence));
             return;
         }
+        // The card moves and the dialog closes right away; the notes and the move are saved behind it.
+        var movedFrom = ApplyMoveOptimistically(arg.Task.Id, arg.TargetStatus, evidenceOptionId);
         var parsed = TaskEvidenceHelper.Parse(arg.Task.Description);
         var newDesc = TaskEvidenceHelper.Serialize(parsed.CleanDescription, arg.Evidence);
 
@@ -1860,12 +1891,13 @@ else
         using var saved = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{arg.Task.Id}", updateReq);
         if (!saved.IsSuccessStatusCode)
         {
+            RollBackMove(movedFrom);
             Toasts.Show("Could not save progress notes. The task status was not changed.", ToastKind.Error);
             showEvidenceModal = true;
             return;
         }
         var optId = evidenceOptionId; evidenceOptionId = null;
-        if (!await ExecuteTaskMove(arg.Task.Id, arg.TargetStatus, optId)) return;
+        if (!await ExecuteTaskMove(arg.Task.Id, arg.TargetStatus, optId, movedFrom)) return;
         evidenceTask = null;
         Toasts.Show(arg.TargetStatus switch
         {
