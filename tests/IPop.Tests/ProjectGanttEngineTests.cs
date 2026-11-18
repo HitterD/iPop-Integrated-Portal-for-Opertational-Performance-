@@ -458,19 +458,22 @@ public sealed class MsProjectTests
         var tasks = T(1, "Phase", 1, summary: true)
             + T(2, "Alpha", 2, "<Start>2026-11-02T08:00:00</Start><Finish>2026-11-04T17:00:00</Finish><Duration>PT24H0M0S</Duration><PercentComplete>50</PercentComplete>")
             + T(3, "Beta", 2, "<Start>2026-11-05T08:00:00</Start><Duration>PT16H0M0S</Duration><PredecessorLink><PredecessorUID>2</PredecessorUID><Type>2</Type><LinkLag>0</LinkLag></PredecessorLink>")
+            + T(5, "Gamma", 2, "<Start>2026-11-02T08:00:00</Start><Finish>2026-11-02T17:00:00</Finish><Duration>PT8H0M0S</Duration><PercentComplete>100</PercentComplete>")
             + T(4, "Orphan", 1);
         var res = "<Resource><UID>1</UID><Name>Nobody Real</Name></Resource><Resource><UID>2</UID><Name>user G_M</Name></Resource>";
         var asg = "<Assignment><TaskUID>2</TaskUID><ResourceUID>1</ResourceUID></Assignment><Assignment><TaskUID>2</TaskUID><ResourceUID>2</ResourceUID></Assignment>";
         var r = await f.G().ImportMsProjectAsync(f.Owner, f.ProjectId, Encoding.UTF8.GetBytes(Mspdi(tasks, res, asg)), "a.xml", false, default);
         Assert.True(r.Success, r.Error);
-        Assert.Equal((1, 3, 1), (r.Value!.GroupCount, r.Value.TaskCount, r.Value.LinkCount));
+        Assert.Equal((1, 4, 1), (r.Value!.GroupCount, r.Value.TaskCount, r.Value.LinkCount));
         Assert.Contains(r.Value.Warnings, w => w.Contains("Nobody Real"));
         Assert.Contains(r.Value.Warnings, w => w.Contains("Start-to-Finish"));
         Assert.DoesNotContain(r.Value.Warnings, w => w.Contains("G_M"));
 
         using var v = f.T.Verify();
         Assert.Equal(usersBefore, await v.Users.CountAsync());
-        Assert.Equal(4, await v.ProjectTasks.CountAsync(t => t.ProjectId == f.ProjectId));   // existing kept
+        Assert.Equal(5, await v.ProjectTasks.CountAsync(t => t.ProjectId == f.ProjectId));   // existing kept
+        // The project's stored progress (lists, portfolio, header) follows the imported tasks: 1 of 5 done.
+        Assert.Equal(20, (await v.Projects.SingleAsync(p => p.Id == f.ProjectId)).Progress);
         var alpha = await v.ProjectTasks.Include(t => t.Assignees).SingleAsync(t => t.Title == "Alpha");
         Assert.Equal(f.Member, Assert.Single(alpha.Assignees).UserId);
         Assert.Equal("doing", alpha.Status);

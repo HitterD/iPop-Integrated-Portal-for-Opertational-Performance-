@@ -102,6 +102,7 @@ public sealed class ProjectAutomationWorker(IServiceScopeFactory scopeFactory, I
                 rule.RunCount++;
                 rule.LastRunAt = utcNow;
                 await db.SaveChangesAsync(ct);
+                await new ProjectService(db).RecalculateProgressAsync(rule.ProjectId, ct);
             }
             catch (Exception ex) { log.LogWarning(ex, "Weekly task rule {Rule} failed", rule.Id); }
         }

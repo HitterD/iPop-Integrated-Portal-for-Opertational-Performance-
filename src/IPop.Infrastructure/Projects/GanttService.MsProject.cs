@@ -495,6 +495,7 @@ public sealed partial class GanttService
             db.ProjectMilestoneTasks.AddRange(ids.Select(id => new ProjectMilestoneTask { MilestoneId = m.Id, TaskId = id }));
         }
         await db.SaveChangesAsync(ct);
+        await new ProjectService(db).RecalculateProgressAsync(projectId, ct);
         return Ok(result);
     }
 }

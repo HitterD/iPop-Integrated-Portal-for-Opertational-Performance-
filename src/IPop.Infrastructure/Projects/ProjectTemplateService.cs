@@ -346,6 +346,7 @@ public sealed class ProjectTemplateService(IPopDbContext db, IProjectService pro
             db.ProjectMembers.Add(new ProjectMember { ProjectId = projectId, UserId = uid, Role = "member", JoinedAt = now });
         await db.SaveChangesAsync(ct);
 
+        await new ProjectService(db).RecalculateProgressAsync(projectId, ct);
         await db.ProjectTemplates.Where(t => t.Id == tpl.Id)
             .ExecuteUpdateAsync(s => s.SetProperty(t => t.UsedCount, t => t.UsedCount + 1), ct);
 
