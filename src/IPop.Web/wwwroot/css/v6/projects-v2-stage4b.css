@@ -221,3 +221,5 @@
 .pv2-rail .proj-list > * { flex: none; }
 .pv2-rail .pv2r-top, .pv2-rail .pv2r-search, .pv2-rail .pv2r-years { flex: none; }
 .pv2-rail .pv2r-years { margin-top: 0; }
+.pv2-ws .pv2-rail > .proj-sidebar { overflow: hidden; }
+.pv2-rail .proj-list { flex: 1 1 0; min-height: 0; }
