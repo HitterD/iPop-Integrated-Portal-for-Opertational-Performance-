@@ -149,7 +149,7 @@ public sealed class ProjectOverviewService(IPopDbContext db, INotificationGatewa
             "comment_replied" => $"replied on \"{title}\"",
             "rescheduled" => $"rescheduled \"{title}\"",
             "due_changed" => $"changed the due date of \"{title}\" to {newValue ?? "none"}",
-            "form_request" => $"{newValue ?? "Someone"} sent a request: \"{title}\"",
+            "form_request" => $"sent a request: \"{title}\"",
             "assignee_added" => $"assigned {newValue} to \"{title}\"",
             "assignee_removed" => $"unassigned {oldValue} from \"{title}\"",
             "health_changed" => $"set project health to {newValue}",

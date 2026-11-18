@@ -95,7 +95,7 @@
 .pv2w-pg:active { transform: scale(.92); }
 .pv2w-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; color: var(--ink-2); border: 1px solid transparent; background: none; white-space: nowrap; }
 .pv2w-chip b { margin-left: 4px; color: var(--ink); }
-.pv2w-chip.btn { border-color: var(--line-2); background: var(--surface); }
+.pv2w-chip.btn { border-color: var(--line-2); background: var(--surface); color: var(--ink); cursor: pointer; }
 .pv2w-chip .lucide { width: 14px; height: 14px; }
 .pv2w-note { font-size: 12px; color: var(--ink-3); }
 .pv2w-team { position: relative; }
@@ -107,7 +107,8 @@
 .pv2w-mbtn { width: 26px; height: 26px; border: 0; background: none; border-radius: 7px; display: grid; place-items: center; color: var(--ink-3); }
 .pv2w-mbtn:hover { background: var(--surface-3, var(--tray)); color: var(--ink); }
 .pv2w-mbtn.danger:hover { color: var(--danger); }
-.pv2w-wrap { position: relative; overflow-x: auto; }
+.pv2w-wrap { position: relative; overflow-x: auto; /* the suggestion popover hangs below the last row and would be clipped by the scroller; give it room */ padding-bottom: 190px; margin-bottom: -190px; pointer-events: none; }
+.pv2w-wrap > * { pointer-events: auto; }
 .pv2w-grid { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 1px 2px rgba(20, 24, 22, .05), 0 4px 14px -6px rgba(20, 24, 22, .08); min-width: 880px; }
 .pv2w-row { display: grid; grid-template-columns: 220px repeat(8, 1fr); border-bottom: 1px solid var(--line); align-items: stretch; min-height: 52px; }
 .pv2w-row:last-child { border: 0; }

@@ -383,7 +383,8 @@
     private int LoggedSeconds()
     {
         var s = (time?.TotalMinutes ?? 0) * 60;
-        if (running && Timer.Running is { } r && time is not null && time.Entries.All(e => e.EndedAt is not null))
+        // TotalMinutes only sums ended entries, so a running timer's elapsed time is always on top of it.
+        if (running && Timer.Running is { } r)
             s += (int)(DateTime.UtcNow - r.StartedAt).TotalSeconds;
         return s;
     }

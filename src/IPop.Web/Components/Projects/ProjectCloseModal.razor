@@ -7,7 +7,7 @@
 @* Projects v2 Close project (mockup closeModal): automatic summary (ring, finish vs plan, counts, longest delay), "Before you close"
    checks, lessons, Save as template and a chat summary, then Close & archive. Backend: GET close-summary, POST close. *@
 <div class="pv2 pv2-scrim" @onclick="Close">
-    <div class="pv2-modal pv2cl-modal" role="dialog" aria-modal="true" aria-labelledby="pv2cl-title" @onclick:stopPropagation="true" @onkeydown="OnKey">
+    <div class="pv2-modal pv2cl-modal" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="pv2cl-title" @onclick:stopPropagation="true" @onkeydown="OnKey">
         <div class="pv2-mh">
             <h2 id="pv2cl-title">Close project</h2>
             <span class="pv2-note">@ProjectName</span>
@@ -140,6 +140,8 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+        // Esc is handled on the dialog, so keyboard focus has to start inside it.
+        if (firstRender) { try { await JS.InvokeVoidAsync("ipopPv2.focusDialog", ".pv2cl-modal"); } catch { } }
         try { await JS.InvokeVoidAsync("ipopPv2.ringAnim"); } catch { }
     }
 }

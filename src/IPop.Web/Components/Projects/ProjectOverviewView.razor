@@ -35,7 +35,7 @@
         var burn = ProjectOverviewMath.Build(o.BurnUp);
         <div class="pv2o-grid">
             <div class="pv2o-card @(allDone ? "pv2o-c12" : "pv2o-c8")" style="animation-delay:0s" data-card="goal">
-                <h4><i data-lucide="target" style="color:var(--accent)"></i>Goal@if (CanManage) {<button type="button" class="pv2o-link" @onclick="() => OnEdit.InvokeAsync()">Edit</button>}</h4>
+                <h4><i data-lucide="target" style="color:var(--accent)"></i><span>Goal</span>@if (CanManage) {<button type="button" class="pv2o-link" @onclick="() => OnEdit.InvokeAsync()">Edit</button>}</h4>
                 <div class="pv2o-in">
                     @if (string.IsNullOrWhiteSpace(o.Goal))
                     {

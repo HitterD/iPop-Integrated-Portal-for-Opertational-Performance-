@@ -53,6 +53,9 @@
         if (e.defaultPrevented) return;
         const on = document.documentElement.classList.contains(ROOT_CLS);
         if (e.key === 'Escape') {
+          // v2 modals close on Esc via their own keydown, which needs focus inside; after a re-render focus can sit on <body>.
+          const v2m = document.querySelector('.pv2-scrim .pv2-modal');
+          if (v2m && !v2m.contains(document.activeElement)) { const x = v2m.querySelector('.pv2-mh [aria-label="Close"]'); if (x) { e.preventDefault(); x.click(); return; } }
           if (document.querySelector(OVERLAYS) || document.getElementById('pv2-panel')) return;
           const pop = document.querySelector(POPOVERS);
           if (pop) { pop.click(); return; }
@@ -120,6 +123,9 @@
 // Only the final day delta goes to C# (one call per drop), so dragging never round-trips per pixel.
 (function () {
   const st = new WeakMap();
+  // Own copies: OVERLAYS / typing() live in the first IIFE above (the task panel keys below ran into a ReferenceError).
+  const OVERLAYS = '.proj-modal, .pv2-scrim, .rep-scrim, .evidence-modal-backdrop, .task-drawer, .confirm-center, .confirm-backdrop, .pcal-pop, .cs-sheet, .modal-backdrop';
+  const typing = t => !!t && !!t.tagName && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable);
   const reduced = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   function hideTip(root) { const t = root.querySelector(':scope > .pv2g-tip'); if (t) t.remove(); }
@@ -318,6 +324,7 @@
         requestAnimationFrame(step);
       });
     },
+    focusDialog(sel) { const d = document.querySelector(sel); if (d && !d.contains(document.activeElement)) d.focus({ preventScroll: true }); },
     focusPanel() { const p = document.getElementById('pv2-panel'); if (p) p.focus({ preventScroll: true }); },
     // Esc closes the panel, Up/Down step to the neighbouring task. Leaves typing fields and open overlays alone.
     panelKeys(dotNet) {

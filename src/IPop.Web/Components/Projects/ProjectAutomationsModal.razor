@@ -8,7 +8,7 @@
 @* Projects v2 Automations (docs/mockups/ipop-apple/projects-v2.html autoModal): the fixed rule catalogue as plain sentences
    with token chips, run counts and an on/off switch, plus a "New rule" builder. Owner/manager can change; others read. *@
 <div class="pv2 pv2-scrim" @onclick="Close">
-    <div class="pv2-modal pv2au-modal" role="dialog" aria-modal="true" aria-labelledby="pv2au-title" @onclick:stopPropagation="true" @onkeydown="OnKey">
+    <div class="pv2-modal pv2au-modal" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="pv2au-title" @onclick:stopPropagation="true" @onkeydown="OnKey">
         <div class="pv2-mh">
             <i data-lucide="zap" style="color:var(--warn)"></i>
             <h2 id="pv2au-title">Automations</h2>
@@ -142,6 +142,8 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+        // Esc is handled on the dialog, so keyboard focus has to start inside it.
+        if (firstRender) { try { await JS.InvokeVoidAsync("ipopPv2.focusDialog", ".pv2au-modal"); } catch { } }
     }
 
     private async Task Toggle(AutomationDto r)
