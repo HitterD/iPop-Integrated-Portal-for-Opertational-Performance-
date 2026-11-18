@@ -23,12 +23,33 @@ public sealed class ProjectAutomationWorker(IServiceScopeFactory scopeFactory, I
             {
                 using var scope = scopeFactory.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<IPopDbContext>();
-                await RunOnceAsync(db, scope.ServiceProvider.GetService<INotificationGatewayService>(), DateTime.Now, DateTime.UtcNow, log, stoppingToken);
+                await RunExclusiveAsync(db, () => RunOnceAsync(db, scope.ServiceProvider.GetService<INotificationGatewayService>(),
+                    DateTime.Now, DateTime.UtcNow, log, stoppingToken), stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             catch (Exception ex) { log.LogWarning(ex, "ProjectAutomationWorker tick failed"); }
             await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
         }
+    }
+
+    /// Runs one tick only when no other API instance is running one (rolling deploys briefly run two pods against
+    /// the same database; both would pass the "already ran / already reminded" checks and double the weekly task and
+    /// the reminders). PostgreSQL session advisory lock on a dedicated open connection; other providers run directly.
+    private static async Task RunExclusiveAsync(IPopDbContext db, Func<Task> tick, CancellationToken ct)
+    {
+        if (!db.Database.IsNpgsql()) { await tick(); return; }
+        await db.Database.OpenConnectionAsync(ct);
+        try
+        {
+            var got = await db.Database.SqlQuery<bool>($"SELECT pg_try_advisory_lock(hashtext('ipop-project-automation-worker')) AS \"Value\"").SingleAsync(ct);
+            if (!got) return;
+            try { await tick(); }
+            finally
+            {
+                await db.Database.SqlQuery<bool>($"SELECT pg_advisory_unlock(hashtext('ipop-project-automation-worker')) AS \"Value\"").SingleAsync(CancellationToken.None);
+            }
+        }
+        finally { await db.Database.CloseConnectionAsync(); }
     }
 
     /// <param name="localNow">Server wall-clock time (decides which rules are due).</param>
@@ -89,6 +110,7 @@ public sealed class ProjectAutomationWorker(IServiceScopeFactory scopeFactory, I
     private static async Task DueTomorrowAsync(IPopDbContext db, INotificationGatewayService gateway, DateTime localNow, DateTime utcNow, ILogger log, CancellationToken ct)
     {
         var tomorrow = DateTime.SpecifyKind(localNow.Date.AddDays(1), DateTimeKind.Utc);
+        var dayAfter = tomorrow.AddDays(1);
         var dayStartUtc = utcNow.AddHours(-24);
         var rules = await db.ProjectAutomations.Where(a => a.IsEnabled && a.Kind == ProjectAutomationCatalogue.DueTomorrowRemind
             && a.Project.IsActive && a.Project.Status != "completed" && a.Project.Status != "cancelled").ToListAsync(ct);
@@ -97,7 +119,7 @@ public sealed class ProjectAutomationWorker(IServiceScopeFactory scopeFactory, I
             try
             {
                 var tasks = await db.ProjectTasks.AsNoTracking()
-                    .Where(t => t.ProjectId == rule.ProjectId && t.Status != "done" && t.DueDate == tomorrow && t.Assignees.Any())
+                    .Where(t => t.ProjectId == rule.ProjectId && t.Status != "done" && t.DueDate >= tomorrow && t.DueDate < dayAfter && t.Assignees.Any())
                     .Select(t => new { t.Id, t.Title, Assignees = t.Assignees.Select(a => a.UserId).ToList() }).ToListAsync(ct);
                 if (tasks.Count == 0) continue;
                 var projectInfo = await db.Projects.AsNoTracking().Where(p => p.Id == rule.ProjectId).Select(p => new { p.Name, p.OwnerId }).FirstAsync(ct);
