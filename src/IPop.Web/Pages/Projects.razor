@@ -152,7 +152,7 @@ else
 
             @* View tabs (from the project's Tabs) + search / filter / Add task *@
             <div class="proj-canvas-bar pv2-bar">
-                <ProjectViewTabs @ref="viewTabs" Project="selectedProject" ActiveKey="ActiveViewKey" CanManage="CanManageMembers"
+                <ProjectViewTabs @ref="viewTabs" Project="selectedProject" ActiveKey="@ActiveViewKey" CanManage="CanManageMembers"
                                  OnSelect="SelectView" OnTabsSaved="HandleTabsSaved" />
 
                 <div class="proj-bar-right">

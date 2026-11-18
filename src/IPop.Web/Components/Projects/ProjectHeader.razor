@@ -69,7 +69,7 @@
         <div class="pv2-progress">
             <div class="pv2-pbar-big" role="img" aria-label="@Project.Progress% done">@foreach (var seg in Segments) {<i style="width:@seg.Pct.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)%;background:@seg.Color"></i>}</div>
             <b class="pv2-num">@Project.Progress% done</b>
-            <span class="pv2-num">· @Project.DoneCount of @Project.TaskCount tasks@if (Project.Deadline.HasValue) {<text> · Due @Project.Deadline.Value.ToString("dd MMM yyyy")</text>}</span>
+            <span class="pv2-num">· @Project.DoneCount of @Project.TaskCount tasks@(Project.Deadline.HasValue ? " · Due " + Project.Deadline.Value.ToString("dd MMM yyyy") : "")</span>
             @if (LateCount > 0) { <span class="pv2-late">· @LateCount late</span> }
         </div>
     </div>

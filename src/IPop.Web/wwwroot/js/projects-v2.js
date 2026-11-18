@@ -45,10 +45,10 @@
     // Page left: never leave the rest of the app covered.
     releaseFullScreen() {
       document.documentElement.classList.remove(ROOT_CLS);
-      if (keyHandler) { document.removeEventListener('keydown', keyHandler); keyHandler = null; }
+      if (keyHandler) { document.removeEventListener('keydown', keyHandler, true); keyHandler = null; }
     },
     attachKeys(dotNet) {
-      if (keyHandler) document.removeEventListener('keydown', keyHandler);
+      if (keyHandler) document.removeEventListener('keydown', keyHandler, true);
       keyHandler = e => {
         if (e.defaultPrevented) return;
         const on = document.documentElement.classList.contains(ROOT_CLS);
@@ -65,7 +65,8 @@
           dotNet.invokeMethodAsync('FullScreenKey', true).catch(() => {});
         }
       };
-      document.addEventListener('keydown', keyHandler);
+      // Capture phase: decide before the drawer/modal's own Esc handler closes it (else one Esc closes both).
+      document.addEventListener('keydown', keyHandler, true);
     },
     moveInd(tabs, instant) {
       if (!tabs) return;

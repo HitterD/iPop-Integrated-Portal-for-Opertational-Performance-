@@ -142,10 +142,12 @@
         await OnSelect.InvokeAsync(key);
         Toasts.ShowUndo($"Added {ProjectViewCatalog.Get(key).Label} to this project.", async () =>
         {
+            // Read the active tab before the parent re-renders: ActiveKey is already null once the tab is gone.
+            var wasActive = ActiveKey == key;
             var undone = await SaveAsync(before);
             if (undone is null) return;
             await OnTabsSaved.InvokeAsync(undone);
-            if (ActiveKey == key) await OnSelect.InvokeAsync(undone[0]);
+            if (wasActive) await OnSelect.InvokeAsync(undone[0]);
         }, "Undo", 6000);
     }
 
@@ -154,10 +156,12 @@
         if (!CanManage || busy || Tabs.Count <= 1) return;
         var before = Tabs.ToList();
         var next = before.Where(k => k != key).ToList();
+        // Read the active tab before the parent re-renders: ActiveKey is already null once the tab is gone.
+        var wasActive = ActiveKey == key;
         var saved = await SaveAsync(next);
         if (saved is null) return;
         await OnTabsSaved.InvokeAsync(saved);
-        if (ActiveKey == key) await OnSelect.InvokeAsync(saved[0]);
+        if (wasActive) await OnSelect.InvokeAsync(saved[0]);
         Toasts.ShowUndo($"Removed {ProjectViewCatalog.Get(key).Label} from this project.", async () =>
         {
             var undone = await SaveAsync(before);
