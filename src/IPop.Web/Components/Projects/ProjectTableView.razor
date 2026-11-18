@@ -7,8 +7,7 @@
 @* Projects v2 Table: monday-style groups with a coloured edge, full-width custom status cells,
    timeline bars, progress and a status-distribution summary (docs/mockups/ipop-apple/projects-v2.html).
    Everything is namespaced under .pv2 (css/v6/projects-v2.css). *@
-<div class="pv2 pv2-root @(resizingFieldId.HasValue ? "is-resizing" : "")"
-     @onpointermove="OnResizeMove" @onpointerup="EndResize" @onpointerleave="EndResize">
+<div class="pv2 pv2-root" @ref="rootRef">
     @if (FilteredTasks.Count == 0 && Tasks.Count > 0)
     {
         <div class="pv2-empty"><i data-lucide="search-x"></i>No tasks match the current filters.</div>
@@ -151,15 +150,14 @@
     private readonly Dictionary<Guid, int> fieldWidths = [];
     private string? loadedPrefKey;
     private bool showColumnsMenu;
-    private Guid? resizingFieldId;
-    private double resizeStartX;
-    private int resizeStartWidth;
+    private ElementReference rootRef;
+    private bool colResizeReady;
 
     private List<ProjectFieldDto> VisibleFields => Fields.Where(f => !hiddenFieldIds.Contains(f.Id)).ToList();
 
     // edge, select, task, owner, status, due, timeline, priority, progress, custom fields, "+"
     private string ColumnsStyle =>
-        $"grid-template-columns: 6px 34px minmax(240px, 1fr) 92px 132px 104px 150px 84px 112px {string.Concat(VisibleFields.Select(f => fieldWidths.TryGetValue(f.Id, out var w) ? $"{w}px " : "minmax(120px, 1fr) "))}56px";
+        $"grid-template-columns: 6px 34px minmax(240px, 1fr) 92px 132px 104px 150px 84px 112px {string.Concat(VisibleFields.Select(f => $"var(--pv2fw-{f.Id}, {(fieldWidths.TryGetValue(f.Id, out var w) ? $"{w}px" : "minmax(120px, 1fr)")}) "))}56px";
 
     private sealed record ColumnPrefs(List<Guid>? Hidden, Dictionary<Guid, int>? Widths);
 
@@ -210,23 +208,13 @@
         await SaveColumnPrefs();
     }
 
-    private void StartResize(Guid fieldId, PointerEventArgs e)
+    /// Column drag ends (js/projects-v2.js colResize): the only .NET call of a resize, so pointer moves never render the table.
+    [JSInvokable]
+    public async Task ColumnResized(string fieldId, int width)
     {
-        resizingFieldId = fieldId;
-        resizeStartX = e.ClientX;
-        resizeStartWidth = fieldWidths.TryGetValue(fieldId, out var w) ? w : 140;
-    }
-
-    private void OnResizeMove(PointerEventArgs e)
-    {
-        if (resizingFieldId is not { } id) return;
-        fieldWidths[id] = Math.Clamp(resizeStartWidth + (int)(e.ClientX - resizeStartX), MinFieldWidth, MaxFieldWidth);
-    }
-
-    private async Task EndResize()
-    {
-        if (resizingFieldId is null) return;
-        resizingFieldId = null;
+        if (!Guid.TryParse(fieldId, out var id) || !Fields.Any(f => f.Id == id)) return;
+        fieldWidths[id] = Math.Clamp(width, MinFieldWidth, MaxFieldWidth);
+        StateHasChanged();
         await SaveColumnPrefs();
     }
 
@@ -449,6 +437,11 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await JS.InvokeVoidAsync("ipop.icons");
+        if (!colResizeReady)
+        {
+            selfRef ??= DotNetObjectReference.Create(this);
+            try { await JS.InvokeVoidAsync("ipopPv2.colResize", rootRef, selfRef); colResizeReady = true; } catch { /* disposed circuit / prerender */ }
+        }
         var key = OpenMenuKey;
         try
         {
@@ -503,6 +496,7 @@
     public async ValueTask DisposeAsync()
     {
         if (timerHooked) Timer.Changed -= OnTimerChanged;
+        if (colResizeReady) { try { await JS.InvokeVoidAsync("ipopPv2.colResizeOff", rootRef); } catch { } }
         if (portalKey is not null)
         {
             try { await JS.InvokeVoidAsync("ipop.menuDrop"); } catch { }
@@ -653,7 +647,7 @@
                                 @if (!ReadOnly && CanManageGroups) { <button type="button" aria-label="Delete @field.Name field" @onclick="() => Mutate(() => OnDeleteField.InvokeAsync(field.Id))">×</button> }
                                 <span class="plist-col-resize" role="separator" aria-orientation="vertical" aria-label="Resize @field.Name column"
                                       tabindex="0" title="Drag to resize · double-click to reset"
-                                      @onpointerdown="e => StartResize(field.Id, e)" @ondblclick="() => ResetWidth(field.Id)"
+                                      data-fid="@field.Id" @ondblclick="() => ResetWidth(field.Id)"
                                       @onkeydown="e => ResizeByKey(field.Id, e)"></span>
                             </div>
                         }
@@ -704,7 +698,7 @@
                             fill = done ? 100 : Math.Clamp(((DateTime.Today - start.Value.Date).TotalDays + 1) / span * 100, 0, 100);
                         }
                         <div @key="t.Id" data-flip-key="@t.Id" class="pv2-row pv2-task plist-task @(done ? "is-done" : "") @(isOverdue ? "late" : "") @(selected ? "sel is-selected" : "") @(SelectedIds.Count > 0 ? "selecting" : "") @(freshIds.Contains(t.Id) ? "pv2-rise" : "")" style="@ColumnsStyle" draggable="@(ReadOnly ? "false" : "true")" @ondragstart="() => { if (!ReadOnly) dragTaskId = t.Id; }" @ondragend="() => dragTaskId = null"
-                             @onclick="() => RowClick(t)" @onpointerdown="e => StartLongPress(t.Id, e)" @onpointerup="CancelLongPress" @onpointerleave="CancelLongPress" @onpointercancel="CancelLongPress">
+                             @onclick="() => RowClick(t)" @onpointerdown="e => StartLongPress(t.Id, e)" @onpointerup="CancelLongPress" @onpointercancel="CancelLongPress">
                             <div class="pv2-edge" style="background:@gcolor"></div>
                             <div class="pv2-lead" @onclick:stopPropagation="true">
                                 @if (!ReadOnly)

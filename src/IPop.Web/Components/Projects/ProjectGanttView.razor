@@ -711,7 +711,15 @@
     });
 
     [JSInvokable]
-    public Task OnBarMoved(string id, int days, string kind) => InvokeAsync(() => HandleMovedAsync(id, days, kind));
+    public Task OnBarMoved(string id, int days, string kind) => InvokeAsync(async () =>
+    {
+        // One move at a time: a second one would start from the not-yet-reloaded layout and double-apply or race the Undo.
+        if (moving) { renderKey++; StateHasChanged(); return; }
+        moving = true;
+        try { await HandleMovedAsync(id, days, kind); }
+        finally { moving = false; }
+    });
+    private bool moving;
 
     private async Task HandleMovedAsync(string idText, int days, string kind)
     {

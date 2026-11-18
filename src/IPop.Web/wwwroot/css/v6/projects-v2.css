@@ -57,6 +57,8 @@ html:not([data-theme="dark"]) .pv2, html:not([data-theme="dark"]) .proj-workspac
 
 /* ---------- groups ---------- */
 .pv2-root { padding: 2px 0 90px; }
+.pv2-root.is-resizing { cursor: col-resize; user-select: none; }
+.pv2-root.is-resizing .plist-col-resize::after { background: var(--accent); width: 2px; }
 .pv2-grp { margin-bottom: 18px; }
 .pv2-gh-row { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; }
 .pv2-gh { display: flex; align-items: center; gap: 8px; border: 0; background: none; padding: 2px 6px 2px 4px; border-radius: 7px; font-weight: 700; font-size: 15px; color: var(--gc); min-width: 0; }

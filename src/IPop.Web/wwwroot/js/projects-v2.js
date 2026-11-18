@@ -280,8 +280,22 @@
       if (ro()) return;
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         e.preventDefault();
+        // A held arrow key auto-repeats ~30/s; each move is a preview + apply + reload, so one at a time.
+        if (s.keyBusy) return;
         const n = (e.shiftKey ? 7 : 1) * (e.key === 'ArrowLeft' ? -1 : 1);
-        dotnet.invokeMethodAsync('OnBarMoved', b.dataset.gid, n, b.dataset.kind === 'milestone' ? 'milestone' : 'move').catch(() => { });
+        s.keyBusy = true;
+        dotnet.invokeMethodAsync('OnBarMoved', b.dataset.gid, n, b.dataset.kind === 'milestone' ? 'milestone' : 'move')
+          .catch(() => { }).finally(() => {
+            s.keyBusy = false;
+            // The bars are re-created after a move; keep keyboard focus on the same task so the next key press works.
+            const gid = b.dataset.gid;
+            requestAnimationFrame(() => {
+              if (b.isConnected && document.activeElement === b) return;
+              const nb = root.querySelector('[data-gid="' + CSS.escape(gid) + '"]');
+              const a = document.activeElement;
+              if (nb && (!a || a === document.body || root.contains(a))) nb.focus({ preventScroll: true });
+            });
+          });
       }
     };
     root.addEventListener('pointerdown', down);
@@ -353,6 +367,49 @@
       document.addEventListener('keydown', panelHandler, true);
     },
     panelKeysOff() { if (panelHandler) { document.removeEventListener('keydown', panelHandler, true); panelHandler = null; } },
+  });
+
+  // ---- Table field-column resize: pointer capture on the handle, widths live in a CSS variable while dragging,
+  // C# only hears the final width (one call per drop), so moving the mouse never renders the table. ----
+  const colSt = new WeakMap();
+  Object.assign(window.ipopPv2, {
+    colResize(root, dotNet) {
+      if (!root) return;
+      const old = colSt.get(root); if (old) old.off();
+      let d = null;
+      const down = e => {
+        const h = e.target.closest && e.target.closest('.plist-col-resize[data-fid]');
+        if (!h || !root.contains(h) || e.button !== 0) return;
+        const head = h.closest('.pv2-field-heading');
+        d = { h, fid: h.dataset.fid, x0: e.clientX, w0: Math.round(head ? head.getBoundingClientRect().width : 140), w: null };
+        try { h.setPointerCapture(e.pointerId); } catch (_) { }
+        root.classList.add('is-resizing');
+        e.preventDefault();
+      };
+      const move = e => {
+        if (!d) return;
+        const w = Math.max(80, Math.min(480, Math.round(d.w0 + e.clientX - d.x0)));
+        if (w === d.w) return;
+        d.w = w;
+        root.style.setProperty('--pv2fw-' + d.fid, w + 'px');
+      };
+      const up = e => {
+        if (!d) return;
+        const x = d; d = null;
+        try { x.h.releasePointerCapture(e.pointerId); } catch (_) { }
+        root.classList.remove('is-resizing');
+        if (x.w == null || e.type === 'pointercancel') { root.style.removeProperty('--pv2fw-' + x.fid); return; }
+        // Keep the dragged width until .NET has rendered it inline, then drop the override.
+        dotNet.invokeMethodAsync('ColumnResized', x.fid, x.w)
+          .catch(() => { }).finally(() => root.style.removeProperty('--pv2fw-' + x.fid));
+      };
+      root.addEventListener('pointerdown', down);
+      root.addEventListener('pointermove', move);
+      root.addEventListener('pointerup', up);
+      root.addEventListener('pointercancel', up);
+      colSt.set(root, { off() { root.removeEventListener('pointerdown', down); root.removeEventListener('pointermove', move); root.removeEventListener('pointerup', up); root.removeEventListener('pointercancel', up); colSt.delete(root); } });
+    },
+    colResizeOff(root) { const s = root && colSt.get(root); if (s) s.off(); },
   });
 
   // ---- Stage 4 (web B): sliding knob for the page segmented controls (.pv2pg-seg) ----
