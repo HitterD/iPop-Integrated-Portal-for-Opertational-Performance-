@@ -8,6 +8,7 @@
    timeline bars, progress and a status-distribution summary (docs/mockups/ipop-apple/projects-v2.html).
    Everything is namespaced under .pv2 (css/v6/projects-v2.css). *@
 <div class="pv2 pv2-root" @ref="rootRef">
+    @{ BeginRender(); }
     @if (FilteredTasks.Count == 0 && Tasks.Count > 0)
     {
         <div class="pv2-empty"><i data-lucide="search-x"></i>No tasks match the current filters.</div>
@@ -86,9 +87,10 @@
     private bool suppressNextClick;
 
     /// Top-level tasks in on-screen order (groups by SortOrder), for shift-range and select-all.
-    private List<Guid> VisibleOrder
+    private List<Guid> VisibleOrder => renderOrder ??= ComputeVisibleOrder();
+
+    private List<Guid> ComputeVisibleOrder()
     {
-        get
         {
             var filtered = FilteredTasks;
             return Groups.OrderBy(g => g.SortOrder)
@@ -153,10 +155,25 @@
     private ElementReference rootRef;
     private bool colResizeReady;
 
-    private List<ProjectFieldDto> VisibleFields => Fields.Where(f => !hiddenFieldIds.Contains(f.Id)).ToList();
+    private List<ProjectFieldDto> VisibleFields => renderFields ?? Fields.Where(f => !hiddenFieldIds.Contains(f.Id)).ToList();
+
+    // Per-render snapshot: with 300 rows the column template, visible fields, filtered list and select-all order
+    // were rebuilt for every row and group header (thousands of LINQ/string allocations per render).
+    private List<ProjectFieldDto>? renderFields;
+    private string? renderColumns;
+    private List<ProjectTaskDto>? renderFiltered;
+    private List<Guid>? renderOrder;
+    private void BeginRender()
+    {
+        renderFields = null; renderColumns = null; renderFiltered = null; renderOrder = null;
+        renderFields = VisibleFields;
+        renderColumns = BuildColumnsStyle();
+        renderFiltered = ComputeFiltered();
+    }
 
     // edge, select, task, owner, status, due, timeline, priority, progress, custom fields, "+"
-    private string ColumnsStyle =>
+    private string ColumnsStyle => renderColumns ?? BuildColumnsStyle();
+    private string BuildColumnsStyle() =>
         $"grid-template-columns: 6px 34px minmax(240px, 1fr) 92px 132px 104px 150px 84px 112px {string.Concat(VisibleFields.Select(f => $"var(--pv2fw-{f.Id}, {(fieldWidths.TryGetValue(f.Id, out var w) ? $"{w}px" : "minmax(120px, 1fr)")}) "))}56px";
 
     private sealed record ColumnPrefs(List<Guid>? Hidden, Dictionary<Guid, int>? Widths);
@@ -344,9 +361,10 @@
         await OnQuickAddSubtask.InvokeAsync((taskId, title));
     }
 
-    private List<ProjectTaskDto> FilteredTasks
+    private List<ProjectTaskDto> FilteredTasks => renderFiltered ?? ComputeFiltered();
+
+    private List<ProjectTaskDto> ComputeFiltered()
     {
-        get
         {
             var list = Tasks.AsEnumerable();
             if (!string.IsNullOrEmpty(StatusFilter))
@@ -436,6 +454,8 @@
     // Popovers render inside this component, so the parent's icon pass never sees them.
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // The per-render snapshot is only valid while rendering; events read live values.
+        renderFields = null; renderColumns = null; renderFiltered = null; renderOrder = null;
         await JS.InvokeVoidAsync("ipop.icons");
         if (!colResizeReady)
         {

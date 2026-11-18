@@ -1712,6 +1712,47 @@ else
 
     private Guid? evidenceOptionId;
 
+    /// Replaces one task in the loaded list and board columns (moving it between stage columns).
+    private void PatchTaskLocally(ProjectTaskDto t)
+    {
+        if (taskList.Items.Any(x => x.Id == t.Id))
+            taskList = taskList with { Items = taskList.Items.Select(x => x.Id == t.Id ? t : x).ToList() };
+        if (kanban is { } k && (k.Todo.Concat(k.Doing).Concat(k.Done).Concat(k.Review ?? []).Any(x => x.Id == t.Id)))
+        {
+            List<ProjectTaskDto> Col(IReadOnlyList<ProjectTaskDto>? c, string stage)
+            {
+                var list = (c ?? []).Where(x => x.Id != t.Id).ToList();
+                if (t.Status == stage)
+                {
+                    var at = (c ?? []).ToList().FindIndex(x => x.Id == t.Id);
+                    if (at >= 0 && at <= list.Count) list.Insert(at, t); else list.Add(t);
+                }
+                return list;
+            }
+            kanban = k with { Todo = Col(k.Todo, "todo"), Doing = Col(k.Doing, "doing"), Review = Col(k.Review, "review"), Done = Col(k.Done, "done") };
+        }
+    }
+
+    /// Background resync after an optimistic move: lists (order, rollups), header progress, Gantt/overview.
+    private int reconcileGen;
+    private async Task ReconcileAfterMoveAsync(Guid projectId)
+    {
+        var gen = ++reconcileGen;
+        try
+        {
+            await Task.Delay(150);
+            if (gen != reconcileGen || projectId != selectedProjectId || _disposed) return;
+            await LoadKanban();
+            await LoadTaskList();
+            var proj = await Auth.GetAsync<ProjectDto>($"/api/projects/{projectId}");
+            if (gen != reconcileGen || projectId != selectedProjectId || _disposed) return;
+            if (proj is not null) selectedProject = proj;
+            RefreshEditingTask();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { /* the next change, live push or navigation resyncs */ }
+    }
+
     private async Task<bool> ExecuteTaskMove(Guid taskId, string targetStatus, Guid? optionId = null)
     {
         // #37: completing from the List remembers row positions so the row can pop, strike, then glide.
@@ -1723,16 +1764,33 @@ else
         {
             ProjectTaskDto? moved = null;
             try { moved = await res.Content.ReadFromJsonAsync<ProjectTaskDto>(); } catch { }
-            await LoadKanban();
-            await LoadTaskList();
-            if (tab == 6) await ReloadCalendar();
-            if (selectedProjectId != Guid.Empty)
-                selectedProject = await Auth.GetAsync<ProjectDto>($"/api/projects/{selectedProjectId}");
-            RefreshEditingTask();
-            StateHasChanged();
-            await JS.InvokeVoidAsync("ipop.icons");
-            try { await JS.InvokeVoidAsync("ipopPv2.statusChanged", taskId.ToString(), targetStatus); } catch { }
-            if (animateDone) { try { await JS.InvokeVoidAsync("ipopTaskMotion.completed", taskId.ToString()); } catch { } }
+            var projectId = selectedProjectId;
+            if (moved is not null && moved.ProjectId == projectId && tab != 6)
+            {
+                // Show the server's answer at once (one row changes); the full lists, header progress and the
+                // other views reconcile right after. With 300 tasks the three sequential reloads made every
+                // status change take ~1.2 s before anything moved.
+                PatchTaskLocally(moved);
+                RefreshEditingTask();
+                StateHasChanged();
+                await JS.InvokeVoidAsync("ipop.icons");
+                try { await JS.InvokeVoidAsync("ipopPv2.statusChanged", taskId.ToString(), targetStatus); } catch { }
+                if (animateDone) { try { await JS.InvokeVoidAsync("ipopTaskMotion.completed", taskId.ToString()); } catch { } }
+                _ = ReconcileAfterMoveAsync(projectId);
+            }
+            else
+            {
+                await LoadKanban();
+                await LoadTaskList();
+                if (tab == 6) await ReloadCalendar();
+                if (selectedProjectId != Guid.Empty)
+                    selectedProject = await Auth.GetAsync<ProjectDto>($"/api/projects/{selectedProjectId}");
+                RefreshEditingTask();
+                StateHasChanged();
+                await JS.InvokeVoidAsync("ipop.icons");
+                try { await JS.InvokeVoidAsync("ipopPv2.statusChanged", taskId.ToString(), targetStatus); } catch { }
+                if (animateDone) { try { await JS.InvokeVoidAsync("ipopTaskMotion.completed", taskId.ToString()); } catch { } }
+            }
             NotifyRecurringSpawn(moved);
             if (prev is not null && optionId is not null && OptionOf(optionId) is { } to)
             {
