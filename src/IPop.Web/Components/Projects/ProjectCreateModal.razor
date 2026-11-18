@@ -105,7 +105,7 @@
         {
             <div class="pv2-mbody pv2n-setup @(IsBlank ? "blank" : "")">
                 <div class="pv2n-left">
-                    <div class="pv2n-f"><label for="pv2n-name">Project name</label><input class="pv2n-in" id="pv2n-name" maxlength="200" @bind="createName" @bind:event="oninput" @ref="nameRef" placeholder="e.g. Attendance digitization" /></div>
+                    <div class="pv2n-f"><label for="pv2n-name">Project name</label><input class="pv2n-in" id="pv2n-name" maxlength="200" @bind="createName" @bind:event="oninput" @ref="nameRef" placeholder="e.g. Attendance digitization" aria-invalid="@(nameError && string.IsNullOrWhiteSpace(createName) ? "true" : null)" aria-describedby="@(nameError && string.IsNullOrWhiteSpace(createName) ? "pv2n-name-err" : null)" />@if (nameError && string.IsNullOrWhiteSpace(createName)){<div class="pv2n-err" id="pv2n-name-err" role="alert">Give the project a name to continue.</div>}</div>
                     <div class="pv2n-f"><label for="pv2n-goal">Goal <span class="opt">(optional)</span></label>
                         <textarea class="pv2n-in pv2n-ta" id="pv2n-goal" maxlength="1000" @bind="createGoal" @bind:event="oninput" placeholder="Why does this project exist?"></textarea>
                         <small>Shown at the top of Overview so everyone knows why this project exists.</small></div>
@@ -191,7 +191,7 @@
             <div class="pv2-mf">
                 <button type="button" class="pv2-btn" @onclick="() => step = 1"><i data-lucide="chevron-left"></i>Back</button>
                 <span class="pv2-sp"></span>
-                <button type="button" class="pv2-btn pri" disabled="@(Busy || string.IsNullOrWhiteSpace(createName))" @onclick="HandleSubmit">Create project</button>
+                <button type="button" class="pv2-btn pri" disabled="@Busy" @onclick="HandleSubmit">Create project</button>
             </div>
         }
     </div>
@@ -240,6 +240,7 @@
     private CancellationTokenSource? cts = new();
 
     // step 2
+    private bool nameError;
     private string createName = "", createGoal = "", startText = "";
     private string selectedColor = PaletteColors[0];
     private DateTime? createDeadline;
@@ -490,7 +491,7 @@
             {
                 templates?.RemoveAll(x => x.Id == t.Id);
                 details.Remove(t.Id);
-                if (selectedId == t.Id) selectedId = templates?.FirstOrDefault()?.Id ?? Guid.Empty;
+                if (selectedId == t.Id) selectedId = Filtered.FirstOrDefault()?.Id ?? (ShowBlank ? Guid.Empty : (templates?.FirstOrDefault()?.Id ?? Guid.Empty));
                 menuFor = null;
                 Toasts.Show($"Template \"{t.Name}\" deleted.", ToastKind.Success);
                 if (selectedId != Guid.Empty) await LoadDetailAsync(selectedId);
@@ -623,7 +624,8 @@
 
     private async Task HandleSubmit()
     {
-        if (string.IsNullOrWhiteSpace(createName) || Busy) return;
+        if (Busy) return;
+        if (string.IsNullOrWhiteSpace(createName)) { nameError = true; await nameRef.FocusAsync(); return; }
         var start = DateTime.SpecifyKind(StartDay.Date, DateTimeKind.Utc);
         IReadOnlyDictionary<string, IReadOnlyList<Guid>>? roles = null;
         if (!IsBlank)

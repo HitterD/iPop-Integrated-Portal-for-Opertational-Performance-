@@ -393,8 +393,8 @@ button.pv2-health:active { transform: scale(.94); }
 .pv2n-steps .ok em .lucide { width: 11px; height: 11px; }
 .pv2n-steps hr { width: 22px; border: 0; border-top: 1px solid var(--line-2, var(--line)); margin: 0; }
 
-.pv2n-tc { display: grid; grid-template-columns: 190px minmax(0, 1fr) 330px; height: min(560px, calc(100vh - 300px)); min-height: 420px; }
-.pv2n-cats { border-right: 1px solid var(--line); padding: 12px 8px; background: var(--surface-2, var(--tray)); overflow: auto; }
+.pv2n-tc { display: grid; grid-template-columns: 214px minmax(0, 1fr) 330px; height: min(560px, calc(100vh - 300px)); min-height: 420px; }
+.pv2n-cats { border-right: 1px solid var(--line); padding: 12px 8px; background: var(--surface-2, var(--tray)); overflow-x: hidden; overflow-y: auto; min-width: 0; }
 .pv2n-tsearch { height: 32px; margin-bottom: 8px; }
 .pv2n-catlist { display: flex; flex-direction: column; gap: 0; }
 .pv2n-pi { display: flex; align-items: center; gap: 9px; width: 100%; padding: 7px 8px; border: 0; border-radius: 9px; background: none; font-size: 13px; color: var(--ink-2); text-align: left; white-space: nowrap; transition: background .15s, transform .14s var(--pv2-ease); }
@@ -492,7 +492,9 @@ button.pv2-health:active { transform: scale(.94); }
 }
 @media (max-width: 720px) {
   .pv2n-w1, .pv2n-w2 { width: calc(100vw - 16px); max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
-  .pv2n-w1 .pv2-mh { flex-wrap: wrap; row-gap: 6px; }
+  .pv2n-modal .pv2-mh { flex-wrap: wrap; row-gap: 6px; }
+  .pv2n-steps { flex-wrap: wrap; row-gap: 4px; }
+  .pv2n-steps span { white-space: normal; }
   .pv2n-steps { order: 5; width: 100%; font-size: 12px; }
   .pv2n-tc { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); height: auto; min-height: 0; flex: 1; overflow: auto; }
   .pv2n-cats { border-right: 0; border-bottom: 1px solid var(--line); padding: 10px 12px 8px; overflow: visible; }
@@ -515,3 +517,5 @@ button.pv2-health:active { transform: scale(.94); }
   .pv2n-tcard:hover { transform: none; }
   .pv2n-skel, .pv2n-pskel i { animation: none; }
 }
+.pv2n-err { color: var(--danger, #dc2626); font-size: 12px; margin-top: 2px; }
+.pv2n-in[aria-invalid="true"] { border-color: var(--danger, #dc2626); }
