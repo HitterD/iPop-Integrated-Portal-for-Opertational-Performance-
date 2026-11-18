@@ -388,6 +388,27 @@ public class ProjectV2Stage4WebBTests
     }
 
     [Fact]
+    public void Comment_composer_enables_send_while_typing_and_completes_mentions()
+    {
+        var (ctx, _, _) = NewContext();
+        using var _c = ctx;
+        (string Text, Guid? Parent)? sent = null;
+        var members = new List<ProjectMemberDto> { new(Guid.NewGuid(), "0009", "Dewi Sartika", "member", DateTime.UtcNow), new(Guid.NewGuid(), "0010", "Bagas", "owner", DateTime.UtcNow) };
+        var cut = ctx.Render<TaskDiscussion>(p => p.Add(x => x.Members, members)
+            .Add(x => x.OnSubmit, EventCallback.Factory.Create<(string, Guid?)>(ctx, v => sent = v)));
+        Assert.True(cut.Find("button.btn-sm.accent").HasAttribute("disabled"));
+        cut.Find("textarea").Input("Please check @de");
+        Assert.False(cut.Find("button.btn-sm.accent").HasAttribute("disabled"));
+        var opts = cut.FindAll(".td-mention-opt");
+        Assert.Single(opts);
+        opts[0].Click();
+        Assert.Equal("Please check @Dewi Sartika ", cut.Find("textarea").GetAttribute("value"));
+        Assert.Empty(cut.FindAll(".td-mention-opt"));
+        cut.Find("button.btn-sm.accent").Click();
+        Assert.Equal("Please check @Dewi Sartika", sent?.Text);
+    }
+
+    [Fact]
     public void Close_modal_failure_keeps_it_open()
     {
         var (ctx, _, toasts) = NewContext((r, b) => r.RequestUri!.AbsolutePath.EndsWith("/close") ? new HttpResponseMessage(HttpStatusCode.InternalServerError) : CloseApi(r, b));

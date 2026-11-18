@@ -24,10 +24,22 @@
     }
     @if (!ReadOnly)
     {
-    <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-end">
+    <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-end;position:relative">
+        @if (MentionMatches.Count > 0)
+        {
+            <div class="td-mention-pop" role="listbox" aria-label="Mention someone">
+                @foreach (var m in MentionMatches)
+                {
+                    var mm = m;
+                    <button type="button" role="option" class="td-mention-opt" @onmousedown:preventDefault="true" @onclick="() => PickMention(mm)">
+                        <PersonAvatar Nik="@mm.Nik" Name="@mm.Name" Size="20" Decorative="true" /><span>@mm.Name</span>
+                    </button>
+                }
+            </div>
+        }
         <textarea class="org-input" style="flex:1;min-height:38px;resize:vertical;font-size:12.5px"
-                  placeholder="@(replyTo is null ? "Write a comment…" : $"Reply to @{replyTo.Author}…")"
-                  @bind="newText"></textarea>
+                  placeholder="@(replyTo is null ? (Members.Count > 0 ? "Write a comment… type @ to mention" : "Write a comment…") : $"Reply to @{replyTo.Author}…")"
+                  @bind="newText" @bind:event="oninput" @onkeydown="OnComposerKey"></textarea>
         <button class="btn-sm accent" style="padding:6px 12px" disabled="@string.IsNullOrWhiteSpace(newText)" @onclick="Submit">
             <i data-lucide="send" style="width:12px;height:12px"></i>
         </button>
@@ -54,6 +66,36 @@
 
     private string newText = "";
     private TaskCommentItem? replyTo;
+
+    /// Project members that can be @mentioned (the API notifies whoever is named "@Full Name").
+    [Parameter] public IReadOnlyList<IPop.Application.Projects.ProjectMemberDto> Members { get; set; } = [];
+
+    // "@que" at the end of the text being typed -> up to 6 members whose name contains "que".
+    private List<IPop.Application.Projects.ProjectMemberDto> MentionMatches
+    {
+        get
+        {
+            if (Members.Count == 0 || string.IsNullOrEmpty(newText)) return [];
+            var at = newText.LastIndexOf('@');
+            if (at < 0 || (at > 0 && !char.IsWhiteSpace(newText[at - 1]))) return [];
+            var q = newText[(at + 1)..];
+            if (q.Length > 30 || q.Contains((char)10)) return [];
+            if (Members.Any(m => q.Equals(m.Name, StringComparison.OrdinalIgnoreCase) || q.StartsWith(m.Name + " ", StringComparison.OrdinalIgnoreCase))) return [];
+            return Members.Where(m => q.Length == 0 || m.Name.Contains(q.Trim(), StringComparison.OrdinalIgnoreCase)).Take(6).ToList();
+        }
+    }
+
+    private void PickMention(IPop.Application.Projects.ProjectMemberDto m)
+    {
+        var at = newText.LastIndexOf('@');
+        if (at < 0) return;
+        newText = newText[..at] + "@" + m.Name + " ";
+    }
+
+    private async Task OnComposerKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && (e.CtrlKey || e.MetaKey)) await Submit();
+    }
 
     private List<TaskCommentItem> Roots =>
         Items.Where(c => c.ParentCommentId is null).OrderBy(c => c.At).ToList();

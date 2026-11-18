@@ -307,6 +307,22 @@ public sealed class ProjectStage4Tests
         Assert.Equal("active", again.Status); Assert.Null(again.ClosedAt);
     }
 
+    [Fact]
+    public async Task Comment_mentions_notify_each_mentioned_member_once_never_the_author_or_outsiders()
+    {
+        using var e = new Env();
+        var task = await e.TaskAsync("mapping");
+        var db = e.T.Verify();
+        var n = await ProjectCommentMentions.NotifyAsync(db, e.Gw, task, e.Member.Id,
+            $"Thanks @{e.Owner.Name}, also @{e.Viewer.Name} and @{e.Owner.Name} again; @{e.Member.Name} @{e.Outsider.Name} @nobody", default);
+        Assert.Equal(2, n);
+        Assert.Equal(2, e.Gw.Sent.Count(s => s.Event == "project.task_mention"));
+        Assert.Contains(e.Gw.Sent, s => s.Event == "project.task_mention" && s.User == e.Owner.Id);
+        Assert.Contains(e.Gw.Sent, s => s.Event == "project.task_mention" && s.User == e.Viewer.Id);
+        Assert.DoesNotContain(e.Gw.Sent, s => s.User == e.Member.Id || s.User == e.Outsider.Id);
+        Assert.Equal(0, await ProjectCommentMentions.NotifyAsync(db, e.Gw, task, e.Member.Id, "no mentions here, mail me at a@b.c", default));
+    }
+
     private sealed class FailingTemplates(Func<TemplateResult<ProjectTemplateDto>> create) : IProjectTemplateService
     {
         public Task<TemplateResult<ProjectTemplateDto>> CreateAsync(Guid actorId, CreateProjectTemplateRequest req, CancellationToken ct) => Task.FromResult(create());

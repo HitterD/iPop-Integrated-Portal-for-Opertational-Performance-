@@ -66,7 +66,7 @@
                 <div class="task-drawer-body td-body">
                     <button type="button" class="td-back" @onclick="ShowDetails"><i data-lucide="arrow-left"></i> Back to details</button>
                     <div class="td-section-title">DISCUSSION</div>
-                    <TaskDiscussion ReadOnly="ReadOnly" Items="commentItems" OnSubmit="SubmitComment" />
+                    <TaskDiscussion ReadOnly="ReadOnly" Items="commentItems" Members="Members" OnSubmit="SubmitComment" />
                 </div>
             }
             else
@@ -397,7 +397,7 @@
 
                     <section class="td-section td-comments">
                         <span class="td-section-title">Comments</span>
-                        <TaskDiscussion ReadOnly="ReadOnly" Items="commentItems" OnSubmit="SubmitComment" />
+                        <TaskDiscussion ReadOnly="ReadOnly" Items="commentItems" Members="Members" OnSubmit="SubmitComment" />
                     </section>
                 </div>
                 <div class="task-drawer-foot td-foot"><span class="td-autosave-note">@(ReadOnly ? "View only" : "Changes save automatically.")</span><button type="button" class="primary-soft" @onclick="CloseDrawer">Close</button></div>

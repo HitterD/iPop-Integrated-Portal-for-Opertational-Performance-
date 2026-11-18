@@ -791,7 +791,7 @@ public static class ProjectEndpoints
 
         // POST /api/projects/tasks/{taskId}/comments — komentar baru / balasan.
         g.MapPost("/tasks/{taskId:guid}/comments", async (Guid taskId, AddTaskCommentRequest req,
-            HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+            HttpContext http, IPopDbContext db, IRealtime realtime, IPop.Application.Notifications.INotificationGatewayService gateway, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -821,6 +821,7 @@ public static class ProjectEndpoints
             await db.SaveChangesAsync(ct);
 
             var author = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
+            await IPop.Infrastructure.Projects.ProjectCommentMentions.NotifyAsync(db, gateway, taskId, userId.Value, comment.Content, ct);
             await PushProjectChangedAsync(realtime, await TaskProjectIdAsync(db, taskId, ct));
             return Results.Ok(new TaskCommentDto(comment.Id, author?.Name ?? "Unknown", author?.Nik ?? "", comment.Content, comment.ParentCommentId, comment.CreatedAt));
         }).RequirePermission("projects.write");
