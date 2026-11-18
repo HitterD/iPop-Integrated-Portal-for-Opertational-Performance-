@@ -36,6 +36,7 @@
         var origin = layout.Origin;
         var width = layout.TotalDays * px;
         var rows = layout.VisibleRows;
+        var lim = Math.Min(shownLines, layout.Lines.Count);
         var bodyH = rows * GanttMath.RowHeight;
         var cols = (showWbs ? "30px " : "") + "minmax(150px,1fr) 34px 50px 50px 38px";
         var gl = showWbs ? 400 : 366;
@@ -91,8 +92,9 @@
                             @if (showWbs) { <span>WBS</span> }
                             <span>Task</span><span>Days</span><span>Start</span><span>Finish</span><span title="Finish compared with baseline">Var.</span>
                         </div>
-                        @foreach (var l in layout.Lines)
+                        @for (var li = 0; li < lim; li++)
                         {
+                            var l = layout.Lines[li];
                             if (l.Kind == GanttLineKind.Group)
                             {
                                 var g = l;
@@ -155,7 +157,7 @@
                         </div>
                         <div class="pv2g-bodyx" style="height:@(bodyH)px;@GanttMath.WeekendBackground(px)" @key="renderKey">
                             <div class="pv2g-gridbg">
-                                @for (var i = 0; i < layout.Lines.Count; i++)
+                                @for (var i = 0; i < lim; i++)
                                 {
                                     var ln = layout.Lines[i];
                                     if (ln.Hidden) { continue; }
@@ -176,7 +178,7 @@
                                     <marker id="pv2g-ah" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" style="fill:var(--ink-3)" /></marker>
                                     <marker id="pv2g-ahr" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" style="fill:var(--danger)" /></marker>
                                 </defs>
-                                @foreach (var a in Arrows(origin, px, criticalIds, conflictKeys))
+                                @foreach (var a in Arrows(origin, px, criticalIds, conflictKeys, lim))
                                 {
                                     var arrow = a;
                                     <path d="@a.Path" class="@a.Css" marker-end="url(#@(a.Css.Contains("conf") || a.Css.Contains("crit") ? "pv2g-ahr" : "pv2g-ah"))" />
@@ -187,8 +189,9 @@
                                 }
                             </svg>
 
-                            @foreach (var l in layout.Lines)
+                            @for (var bi = 0; bi < lim; bi++)
                             {
+                                var l = layout.Lines[bi];
                                 var y = l.Y * GanttMath.RowHeight;
                                 if (l.Kind == GanttLineKind.Group)
                                 {
@@ -416,6 +419,10 @@
     private Guid? confirmDelete;
     private bool busy;
     private int renderKey;
+    // First paint draws only the first rows; the rest follows in small chunks so no single render is a long task.
+    private const int FirstChunk = 16, NextChunk = 20;
+    private int shownLines = int.MaxValue;
+    private bool chunking;
     private int renderedPx;
     private bool jsReady, needScroll = true, prefsLoaded;
     private LinkEdit? linkEdit;
@@ -474,6 +481,7 @@
             dto = res.Value;
             pendingConflicts.Clear();
             holidaySet = dto.Holidays.Select(h => h.Date.Date).ToHashSet();
+            if (layout is null) shownLines = FirstChunk;
             state = LoadState.Ready;
             Relayout();
         }
@@ -526,11 +534,29 @@
             var px = Px;
             if (renderedPx != 0 && renderedPx != px) await JS.InvokeVoidAsync("ipopPv2.ganttRescale", rootRef, renderedPx, px);
             renderedPx = px;
-            await JS.InvokeVoidAsync("ipopPv2.ganttSeg", rootRef);
+            if (shownLines >= (layout?.Lines.Count ?? 0)) await JS.InvokeVoidAsync("ipopPv2.ganttSeg", rootRef);
             if (needScroll && layout is { HasDates: true } lay)
             {
                 needScroll = false;
                 await JS.InvokeVoidAsync("ipopPv2.ganttScrollTo", rootRef, TodayScrollX(lay), false);
+            }
+            if (shownLines < (layout?.Lines.Count ?? 0))
+            {
+                if (!chunking)
+                {
+                    chunking = true;
+                    try
+                    {
+                        while (!disposed && layout is not null && shownLines < layout.Lines.Count)
+                        {
+                            await Task.Delay(30);
+                            shownLines += NextChunk;
+                            StateHasChanged();
+                            await Task.Delay(1);
+                        }
+                    }
+                    finally { chunking = false; }
+                }
             }
         }
         catch (JSException) { }
@@ -617,9 +643,11 @@
     private void ClosePopup() { popup = null; confirmDelete = null; }
 
     // ── arrows ──
-    private IEnumerable<Arrow> Arrows(DateTime origin, int px, HashSet<Guid> critical, HashSet<string> conflicts)
+    private IEnumerable<Arrow> Arrows(DateTime origin, int px, HashSet<Guid> critical, HashSet<string> conflicts, int lim)
     {
         if (layout is null) yield break;
+        var lines = lim >= layout.Lines.Count ? layout.Lines : layout.Lines.Take(lim).ToList();
+        var inScope = lim >= layout.Lines.Count ? null : lines.Select(x => x.Id).ToHashSet();
         GanttBox? BoxOf(GanttLine l)
         {
             if (l.Hidden || l.Start is not { } s || l.End is not { } e) return null;
@@ -627,13 +655,13 @@
                 ? new GanttBox(GanttMath.DayIndex(origin, s) * px, GanttMath.DayIndex(origin, s) * px, l.Y, true)
                 : new GanttBox(GanttMath.DayIndex(origin, s) * px, (GanttMath.DayIndex(origin, e) + 1) * px, l.Y, false);
         }
-        foreach (var succ in layout.Lines.Where(l => l.Kind == GanttLineKind.Task))
+        foreach (var succ in lines.Where(l => l.Kind == GanttLineKind.Task))
         {
             var sb = BoxOf(succ);
             if (sb is null) continue;
             foreach (var dep in succ.Task!.DependsOn)
             {
-                if (!layout.ByTask.TryGetValue(dep.TaskId, out var pred)) continue;
+                if (!layout.ByTask.TryGetValue(dep.TaskId, out var pred) || (inScope is not null && !inScope.Contains(pred.Id))) continue;
                 var pb = BoxOf(pred);
                 if (pb is null) continue;
                 var conf = conflicts.Contains(dep.TaskId + ">" + succ.Id);
@@ -641,13 +669,13 @@
                 yield return new Arrow(GanttMath.ArrowPath(dep.LinkType, pb, sb), conf ? "conf" : crit ? "crit" : "", dep.TaskId, succ.Id, dep.LinkType, dep.LagDays, pred.Title, succ.Title, true);
             }
         }
-        foreach (var ms in layout.Lines.Where(l => l.Kind == GanttLineKind.Milestone))
+        foreach (var ms in lines.Where(l => l.Kind == GanttLineKind.Milestone))
         {
             var mb = BoxOf(ms);
             if (mb is null) continue;
             foreach (var tid in ms.Milestone!.LinkedTaskIds)
             {
-                if (!layout.ByTask.TryGetValue(tid, out var pred)) continue;
+                if (!layout.ByTask.TryGetValue(tid, out var pred) || (inScope is not null && !inScope.Contains(pred.Id))) continue;
                 var pb = BoxOf(pred);
                 if (pb is null) continue;
                 var crit = showCrit && ms.Milestone.IsCritical && critical.Contains(tid);
@@ -674,18 +702,43 @@
         return Math.Max(1, (int)(e.Value.Date - s.Value.Date).TotalDays + 1) * px;
     }
 
+    // Hand-built {"t":..,"l":..,"s":[..]}: reflection-based serializing of one anonymous object per bar was a large share of the first Gantt paint in wasm.
+    private static string TipObj(string t, string l, IEnumerable<string> s)
+    {
+        var sb = new System.Text.StringBuilder(160);
+        sb.Append("{\"t\":"); Q(sb, t); sb.Append(",\"l\":"); Q(sb, l); sb.Append(",\"s\":[");
+        var first = true;
+        foreach (var x in s) { if (!first) sb.Append(','); first = false; Q(sb, x); }
+        return sb.Append("]}").ToString();
+        static void Q(System.Text.StringBuilder b, string v)
+        {
+            b.Append('"');
+            foreach (var c in v)
+            {
+                switch (c)
+                {
+                    case '"': b.Append("\\\""); break;
+                    case '\\': b.Append("\\\\"); break;
+                    case '\n': b.Append("\\n"); break;
+                    case '\r': b.Append("\\r"); break;
+                    case '\t': b.Append("\\t"); break;
+                    default:
+                        if (c < 0x20) b.Append("\\u").Append(((int)c).ToString("x4")); else b.Append(c);
+                        break;
+                }
+            }
+            b.Append('"');
+        }
+    }
+
     private string TipJson(GanttLine l, HashSet<Guid> critical)
     {
         if (l.Kind == GanttLineKind.Milestone)
         {
             var m = l.Milestone!;
             var linked = m.LinkedTaskIds.Select(id => layout?.ByTask.GetValueOrDefault(id)?.Title).Where(t => t is not null).ToList();
-            return JsonSerializer.Serialize(new
-            {
-                t = "◆ " + m.Title,
-                l = GanttMath.FormatLong(m.Date),
-                s = new[] { m.AchievedAt is not null ? "Reached" : m.IsCritical ? "Critical" : "", linked.Count > 0 ? "Waits for: " + string.Join(", ", linked) : "" }.Where(x => x.Length > 0),
-            });
+            return TipObj("◆ " + m.Title, GanttMath.FormatLong(m.Date),
+                new[] { m.AchievedAt is not null ? "Reached" : m.IsCritical ? "Critical" : "", linked.Count > 0 ? "Waits for: " + string.Join(", ", linked) : "" }.Where(x => x.Length > 0));
         }
         var r = l.Task!;
         var owners = r.Assignees.Count == 0 ? "No owner" : string.Join(", ", r.Assignees.Select(a => FirstName(a.Name)));
@@ -699,7 +752,7 @@
         var line = l.Start is { } s && l.End is { } e
             ? $"{GanttMath.FormatLong(s)} → {GanttMath.FormatLong(e)}" + (r.DurationDays > 0 ? $" · {r.DurationDays} days" : "")
             : "No dates";
-        return JsonSerializer.Serialize(new { t = r.Title, l = line, s = spans });
+        return TipObj(r.Title, line, spans);
     }
 
     // ── moves (called from js/projects-v2.js once per drop) ──
