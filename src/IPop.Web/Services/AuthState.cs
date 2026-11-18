@@ -460,7 +460,12 @@ public class AuthState(HttpClient http, IJSRuntime js)
     /// cancellation still throws OperationCanceledException. A 2xx whose body is not the
     /// expected JSON (proxy HTML page, truncated body) is Failed, never an exception.
     public Task<GetResult<T>> GetResultAsync<T>(string url, CancellationToken ct = default)
-        => GetCoreAsync<T>(url, tolerateBadBody: true, ct);
+        => GetCoreAsync<T>(url, tolerateBadBody: true, ct, null);
+
+    /// Same, but reads the body with a source-generated serializer: in wasm, reflection-based
+    /// System.Text.Json is several times slower on large payloads (a 300-task Gantt blocked ~150 ms).
+    public Task<GetResult<T>> GetResultAsync<T>(string url, System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> typeInfo, CancellationToken ct = default)
+        => GetCoreAsync<T>(url, tolerateBadBody: true, ct, typeInfo);
 
     // ── Reads in flight, for the thin top progress bar (MainLayout) ──
     private int _readsInFlight;
@@ -471,14 +476,14 @@ public class AuthState(HttpClient http, IJSRuntime js)
     private void ReadStarted() { if (Interlocked.Increment(ref _readsInFlight) == 1) BusyChanged?.Invoke(); }
     private void ReadEnded() { if (Interlocked.Decrement(ref _readsInFlight) == 0) BusyChanged?.Invoke(); }
 
-    private async Task<GetResult<T>> GetCoreAsync<T>(string url, bool tolerateBadBody, CancellationToken ct)
+    private async Task<GetResult<T>> GetCoreAsync<T>(string url, bool tolerateBadBody, CancellationToken ct, System.Text.Json.Serialization.Metadata.JsonTypeInfo<T>? typeInfo = null)
     {
         ReadStarted();
-        try { return await GetCoreInnerAsync<T>(url, tolerateBadBody, ct); }
+        try { return await GetCoreInnerAsync<T>(url, tolerateBadBody, ct, typeInfo); }
         finally { ReadEnded(); }
     }
 
-    private async Task<GetResult<T>> GetCoreInnerAsync<T>(string url, bool tolerateBadBody, CancellationToken ct)
+    private async Task<GetResult<T>> GetCoreInnerAsync<T>(string url, bool tolerateBadBody, CancellationToken ct, System.Text.Json.Serialization.Metadata.JsonTypeInfo<T>? typeInfo = null)
     {
         HttpResponseMessage res;
         try
@@ -507,7 +512,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
         };
         if (status != GetStatus.Ok) return new(status, default, code);
         T? value;
-        try { value = await res.Content.ReadFromJsonAsync<T>(cancellationToken: ct); }
+        try { value = typeInfo is null ? await res.Content.ReadFromJsonAsync<T>(cancellationToken: ct) : await res.Content.ReadFromJsonAsync(typeInfo, ct); }
         catch (Exception ex) when (tolerateBadBody && !ct.IsCancellationRequested
             && ex is System.Text.Json.JsonException or NotSupportedException or HttpRequestException or IOException)
         {

@@ -473,9 +473,11 @@
         if (!quiet) state = LoadState.Loading;
         var q = GroupId is { } g ? $"?groupId={g}" : "";
         GetResult<GanttV2Dto> res;
-        try { res = await Auth.GetResultAsync<GanttV2Dto>($"/api/projects/{ProjectId}/gantt/v2{q}"); }
+        try { res = await Auth.GetResultAsync($"/api/projects/{ProjectId}/gantt/v2{q}", GanttJson.Default.GanttV2Dto); }
         catch (OperationCanceledException) { return; }
         if (seq != loadSeq || disposed) return;
+        // Parsing the payload and laying out the first rows are separate tasks, so neither is a long one.
+        if (!quiet) { await Task.Yield(); if (seq != loadSeq || disposed) return; }
         if (res.IsOk && res.Value is not null)
         {
             dto = res.Value;
