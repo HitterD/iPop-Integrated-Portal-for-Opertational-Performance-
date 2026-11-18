@@ -138,3 +138,30 @@ public class ProjectMilestoneTask
     public ProjectMilestone Milestone { get; set; } = default!;
     public ProjectTask Task { get; set; } = default!;
 }
+
+/// A saved snapshot of every task's planned start/due (Gantt baseline). Up to 5 per project;
+/// the active one is drawn under the bars and used for variance.
+public class ProjectBaseline
+{
+    public Guid Id { get; set; }
+    public Guid ProjectId { get; set; }
+    public required string Name { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public Guid CreatedById { get; set; }
+    public bool IsActive { get; set; }
+
+    public Project Project { get; set; } = default!;
+    public User CreatedBy { get; set; } = default!;
+    public ICollection<ProjectBaselineTask> Tasks { get; set; } = [];
+}
+
+public class ProjectBaselineTask
+{
+    public Guid BaselineId { get; set; }
+    public Guid TaskId { get; set; }
+    public DateTime? Start { get; set; }
+    public DateTime? Due { get; set; }
+
+    public ProjectBaseline Baseline { get; set; } = default!;
+    public ProjectTask Task { get; set; } = default!;
+}

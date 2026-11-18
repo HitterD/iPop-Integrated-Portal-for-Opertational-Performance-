@@ -680,15 +680,15 @@ public static class ProjectEndpoints
         // ──────────────────────────────────────────────────────────────────────
 
         // GET /api/projects/{id}/gantt — date-mapped chart data with critical path
-        g.MapGet("/{id:guid}/gantt", async (Guid id, Guid? groupId,
-            HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
+        g.MapGet("/{id:guid}/gantt", async (Guid id, Guid? groupId, Guid? baselineId,
+            HttpContext http, IProjectService svc, IGanttService gantts, IPopDbContext db, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
 
             var gantt = await svc.GetGanttAsync(id, userId.Value, ct, groupId);
             return gantt is not null
-                ? Results.Ok(gantt)
+                ? Results.Ok(await gantts.WithBaselineAsync(gantt, baselineId, ct))
                 : Results.Json(new { code = "project_not_found", message = "Not a member of this project." }, statusCode: 404);
         });
 
@@ -1453,8 +1453,155 @@ public static class ProjectEndpoints
             return cal is not null ? Results.Ok(cal) : Phase2Error("project_not_found");
         });
 
+        // ──────────────────────────────────────────────────────────────────────
+        // Projects v2 stage 3: Gantt engine (IGanttService)
+        // ──────────────────────────────────────────────────────────────────────
+
+        // GET /api/projects/{id}/gantt/v2?baselineId=&groupId=
+        g.MapGet("/{id:guid}/gantt/v2", async (Guid id, Guid? baselineId, Guid? groupId,
+            HttpContext http, IGanttService gantts, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await gantts.GetGanttV2Async(userId.Value, id, baselineId, groupId, ct);
+            return r.Success ? Results.Ok(r.Value) : GanttError(r.Error);
+        });
+
+        g.MapGet("/{id:guid}/baselines", async (Guid id, HttpContext http, IGanttService gantts, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await gantts.ListBaselinesAsync(userId.Value, id, ct);
+            return r.Success ? Results.Ok(r.Value) : GanttError(r.Error);
+        });
+
+        g.MapPost("/{id:guid}/baselines", async (Guid id, CreateBaselineRequest? req,
+            HttpContext http, IGanttService gantts, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await gantts.CreateBaselineAsync(userId.Value, id, req ?? new CreateBaselineRequest(), ct);
+            if (!r.Success) return GanttError(r.Error);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(r.Value);
+        }).RequirePermission("projects.write");
+
+        g.MapPut("/{id:guid}/baselines/{baselineId:guid}/activate", async (Guid id, Guid baselineId,
+            HttpContext http, IGanttService gantts, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await gantts.ActivateBaselineAsync(userId.Value, id, baselineId, ct);
+            if (!r.Success) return GanttError(r.Error);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(r.Value);
+        }).RequirePermission("projects.write");
+
+        g.MapDelete("/{id:guid}/baselines/{baselineId:guid}", async (Guid id, Guid baselineId,
+            HttpContext http, IGanttService gantts, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await gantts.DeleteBaselineAsync(userId.Value, id, baselineId, ct);
+            if (!r.Success) return GanttError(r.Error);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(new { success = true });
+        }).RequirePermission("projects.write");
+
+        g.MapPost("/{id:guid}/gantt/reschedule/preview", async (Guid id, RescheduleRequest req,
+            HttpContext http, IGanttService gantts, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await gantts.PreviewRescheduleAsync(userId.Value, id, req, ct);
+            return r.Success ? Results.Ok(r.Value) : GanttError(r.Error);
+        }).RequirePermission("projects.write");
+
+        g.MapPost("/{id:guid}/gantt/reschedule/apply", async (Guid id, RescheduleRequest req,
+            HttpContext http, IGanttService gantts, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await gantts.ApplyRescheduleAsync(userId.Value, id, req, ct);
+            if (!r.Success) return GanttError(r.Error);
+            await Audit(http, db, "projects.gantt.reschedule", id.ToString(), ct);
+            if (r.Value!.Changes.Count > 0) await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(r.Value);
+        }).RequirePermission("projects.write");
+
+        g.MapPost("/{id:guid}/gantt/reschedule/revert", async (Guid id, RescheduleRevertRequest req,
+            HttpContext http, IGanttService gantts, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await gantts.RevertRescheduleAsync(userId.Value, id, req, ct);
+            if (!r.Success) return GanttError(r.Error);
+            if (r.Value!.Reverted > 0) await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(r.Value);
+        }).RequirePermission("projects.write");
+
+        // GET /api/projects/{id}/export/msproject — Microsoft Project XML (MSPDI)
+        g.MapGet("/{id:guid}/export/msproject", async (Guid id,
+            HttpContext http, IGanttService gantts, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await gantts.ExportMsProjectAsync(userId.Value, id, ct);
+            if (!r.Success) return GanttError(r.Error);
+            return Results.File(System.Text.Encoding.UTF8.GetBytes(r.Value!.Xml), "application/xml", r.Value.FileName);
+        });
+
+        // POST /api/projects/{id}/import/msproject?dryRun=true — multipart "file" or a raw XML body (max 20 MB).
+        g.MapPost("/{id:guid}/import/msproject", async Task<IResult> (Guid id, bool? dryRun,
+            HttpContext http, IGanttService gantts, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            byte[] bytes; string? name = null;
+            try
+            {
+                using var ms = new MemoryStream();
+                if (http.Request.HasFormContentType)
+                {
+                    var form = await http.Request.ReadFormAsync(ct);
+                    var file = form.Files.FirstOrDefault();
+                    if (file is null) return GanttError("invalid_file");
+                    if (file.Length > IPop.Infrastructure.Projects.GanttService.MaxImportBytes) return GanttError("file_too_large");
+                    name = file.FileName;
+                    await using var s = file.OpenReadStream();
+                    await s.CopyToAsync(ms, ct);
+                }
+                else await http.Request.Body.CopyToAsync(ms, ct);
+                bytes = ms.ToArray();
+            }
+            catch (Microsoft.AspNetCore.Http.BadHttpRequestException) { return GanttError("file_too_large"); }
+            catch (InvalidDataException) { return GanttError("invalid_file"); }
+            var r = await gantts.ImportMsProjectAsync(userId.Value, id, bytes, name, dryRun == true, ct);
+            if (!r.Success) return GanttError(r.Error);
+            if (dryRun != true)
+            {
+                await Audit(http, db, "projects.import.msproject", id.ToString(), ct);
+                await PushProjectChangedAsync(realtime, id);
+            }
+            return Results.Ok(r.Value);
+        })
+        .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(IPop.Infrastructure.Projects.GanttService.MaxImportBytes + 1024 * 1024))
+        .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestFormLimitsAttribute { MultipartBodyLengthLimit = IPop.Infrastructure.Projects.GanttService.MaxImportBytes + 1024 * 1024 })
+        .DisableAntiforgery()
+        .RequirePermission("projects.write");
+
         return app;
     }
+
+    private static IResult GanttError(string? code) => code == "mpp_not_supported"
+        ? Results.Json(new { code, message = "Save the plan as XML in Microsoft Project (File → Save As → XML) and import that file." }, statusCode: 415)
+        : Results.Json(new { code, message = code }, statusCode: code switch
+        {
+            "forbidden" => 403,
+            not null when code.EndsWith("_not_found") => 404,
+            "file_too_large" => 413,
+            _ => 422
+        });
 
     private static IResult StatusError(string? code) => Results.Json(new { code, message = code },
         statusCode: code switch

@@ -637,7 +637,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
                 t.CreatedById, t.CreatedBy?.Name ?? "Unknown",
                 assignees, subCount, subDone, t.CreatedAt, t.UpdatedAt,
                 commentCounts.GetValueOrDefault(t.Id), attachmentCounts.GetValueOrDefault(t.Id), reminderTaskIds.Contains(t.Id), t.GroupId,
-                CompletedAt: t.CompletedAt, StatusOptionId: t.StatusOptionId));
+                CompletedAt: t.CompletedAt, StatusOptionId: t.StatusOptionId,
+                DeadlineDate: t.DeadlineDate, ConstraintType: t.ConstraintType, ConstraintDate: t.ConstraintDate));
         }
         return await WithDependenciesAsync(result, ct);
     }
@@ -702,6 +703,26 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         }
         if (req.IsTemplate.HasValue) task.IsTemplate = req.IsTemplate.Value;
         if (req.Tags is not null) task.Tags = req.Tags.Trim();
+
+        if (req.ClearDeadline) task.DeadlineDate = null;
+        else if (req.DeadlineDate.HasValue) task.DeadlineDate = AsUtcDate(req.DeadlineDate.Value).Date;
+        if (req.ClearConstraint) { task.ConstraintType = null; task.ConstraintDate = null; }
+        else if (req.ConstraintType is not null || req.ConstraintDate.HasValue)
+        {
+            var ctype = (req.ConstraintType ?? task.ConstraintType)?.Trim().ToLowerInvariant();
+            var cdate = req.ConstraintDate.HasValue ? AsUtcDate(req.ConstraintDate.Value).Date : task.ConstraintDate;
+            if (!GanttScheduler.IsValidConstraintType(ctype) || cdate is null)
+                return new TaskResultDto(false, null, "invalid_constraint");
+            if (ctype == "mso" && (task.StartDate is null || task.StartDate.Value.Date != cdate.Value))
+            {
+                // A must-start-on constraint pins the task: move its start (keeping duration) onto the date.
+                var span = task.StartDate.HasValue && task.DueDate.HasValue ? task.DueDate.Value.Date - task.StartDate.Value.Date : TimeSpan.Zero;
+                task.StartDate = AsUtcDate(cdate.Value);
+                if (task.DueDate.HasValue || span > TimeSpan.Zero) task.DueDate = AsUtcDate(cdate.Value + span);
+            }
+            task.ConstraintType = ctype;
+            task.ConstraintDate = cdate;
+        }
 
         if (req.Status is not null || req.StatusOptionId is not null)
         {
@@ -858,7 +879,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
                 t.Tags,
                 t.CreatedById, t.CreatedBy?.Name ?? "Unknown", ass, subCount, subDone, t.CreatedAt, t.UpdatedAt,
                 boardCommentCounts.GetValueOrDefault(t.Id), boardAttachmentCounts.GetValueOrDefault(t.Id), boardReminderTaskIds.Contains(t.Id), t.GroupId,
-                CompletedAt: t.CompletedAt, StatusOptionId: t.StatusOptionId);
+                CompletedAt: t.CompletedAt, StatusOptionId: t.StatusOptionId,
+                DeadlineDate: t.DeadlineDate, ConstraintType: t.ConstraintType, ConstraintDate: t.ConstraintDate);
         }
 
         var mapped = await WithDependenciesAsync(all.Select(Map).ToList(), ct);
@@ -953,7 +975,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
                 t.Dependencies, t.IsRecurring, t.RecurrenceRule, t.IsTemplate,
                 t.Tags,
                 t.CreatedById, t.CreatedBy?.Name ?? "Unknown", ass, subCount, subDone, t.CreatedAt, t.UpdatedAt,
-                GroupId: t.GroupId, CompletedAt: t.CompletedAt, StatusOptionId: t.StatusOptionId);
+                GroupId: t.GroupId, CompletedAt: t.CompletedAt, StatusOptionId: t.StatusOptionId,
+                DeadlineDate: t.DeadlineDate, ConstraintType: t.ConstraintType, ConstraintDate: t.ConstraintDate);
         }).ToList();
 
         return new PagedResult<ProjectTaskDto>(await WithDependenciesAsync(dtos, ct), total, page, pageSize);
@@ -1069,7 +1092,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
                 t.Dependencies, t.IsRecurring, t.RecurrenceRule, t.IsTemplate,
                 t.Tags,
                 t.CreatedById, t.CreatedBy?.Name ?? "Unknown",
-                ass, subCount, subDone, t.CreatedAt, t.UpdatedAt, GroupId: t.GroupId, CompletedAt: t.CompletedAt, StatusOptionId: t.StatusOptionId);
+                ass, subCount, subDone, t.CreatedAt, t.UpdatedAt, GroupId: t.GroupId, CompletedAt: t.CompletedAt, StatusOptionId: t.StatusOptionId,
+                DeadlineDate: t.DeadlineDate, ConstraintType: t.ConstraintType, ConstraintDate: t.ConstraintDate);
         }).ToList();
         taskDtos = await WithDependenciesAsync(taskDtos, ct);
 
@@ -1363,7 +1387,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
             t.CreatedById, t.CreatedBy?.Name ?? "Unknown",
             ass, subCount, subDone, t.CreatedAt, t.UpdatedAt,
             commentCount, attachmentCount, hasReminder, t.GroupId,
-            deps, t.Status != "done" && deps.Any(d => d.Status != "done"), CompletedAt: t.CompletedAt, StatusOptionId: t.StatusOptionId);
+            deps, t.Status != "done" && deps.Any(d => d.Status != "done"), CompletedAt: t.CompletedAt, StatusOptionId: t.StatusOptionId,
+                DeadlineDate: t.DeadlineDate, ConstraintType: t.ConstraintType, ConstraintDate: t.ConstraintDate);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -1562,9 +1587,10 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
             dayIndexes[t.Id] = (s, e - s + 1);
         }
 
-        // Critical path via dependency graph (forward + backward pass)
+        // Critical path: forward + backward pass over link types/lag in working days (weekends/holidays skipped
+        // via GanttScheduler; the v1 chart keeps calendar-day positions).
         var ganttEdges = await ProjectDependencyEdgesAsync(projectId, ct);
-        var critical = ComputeCriticalPath(tasks, dayIndexes, ganttEdges);
+        var critical = ComputeCriticalPath(tasks, ganttEdges, await LoadScheduleInputsAsync(projectId, ct));
 
         var ganttTasks = tasks.Select(t =>
         {
@@ -1583,81 +1609,31 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         return new ProjectGanttDto(project.Id, project.Name, windowStart, windowEnd, totalDays, ganttTasks, critical);
     }
 
-    /// Forward/backward pass over the dependency graph. Duration = day-index span when dated, else 1.
-    /// Returns the set of task IDs on the critical path (zero slack), ordered by earliest start.
+    /// Zero-slack task ids ordered by start, from GanttScheduler. Undated tasks and tasks outside the
+    /// (group-filtered) set are ignored.
     private static IReadOnlyList<Guid> ComputeCriticalPath(
-        IReadOnlyList<ProjectTask> tasks,
-        IReadOnlyDictionary<Guid, (int Start, int Duration)> dayIndexes,
-        IReadOnlyDictionary<Guid, List<Guid>> dependsOn)
+        IReadOnlyList<ProjectTask> tasks, IReadOnlyDictionary<Guid, List<Guid>> dependsOn, ScheduleInputs inputs)
     {
         var ids = tasks.Select(t => t.Id).ToHashSet();
-        IEnumerable<Guid> Deps(Guid id) => dependsOn.TryGetValue(id, out var d) ? d : [];
+        var links = inputs.Links.Where(l => ids.Contains(l.PredecessorId) && ids.Contains(l.SuccessorId)).ToList();
+        var analysis = GanttScheduler.Analyze(tasks.Select(ToSched), links, inputs.Holidays, skipWeekends: false);
+        return analysis.CriticalPath;
+    }
 
-        // predecessor -> successor edges from the dependency rows
-        var successors = new Dictionary<Guid, List<Guid>>();
-        foreach (var t in tasks)
-        {
-            foreach (var dep in Deps(t.Id))
-            {
-                if (!ids.Contains(dep)) continue; // dangling dependency: ignore for CP
-                if (!successors.TryGetValue(dep, out var list)) successors[dep] = list = [];
-                list.Add(t.Id);
-            }
-        }
+    internal static SchedTask ToSched(ProjectTask t) =>
+        new(t.Id, t.StartDate, t.DueDate, t.ConstraintType, t.ConstraintDate, t.Status == "done");
 
-        int Duration(Guid id)
-        {
-            if (dayIndexes.TryGetValue(id, out var p)) return Math.Max(1, p.Duration);
-            return 1;
-        }
+    internal sealed record ScheduleInputs(IReadOnlyList<SchedLink> Links, IReadOnlyList<DateTime> Holidays);
 
-        // Kahn topological order
-        var indegree = tasks.ToDictionary(t => t.Id, _ => 0);
-        foreach (var t in tasks)
-            foreach (var dep in Deps(t.Id))
-                if (ids.Contains(dep)) indegree[t.Id]++;
-
-        var queue = new Queue<Guid>(indegree.Where(kv => kv.Value == 0).Select(kv => kv.Key));
-        var topo = new List<Guid>();
-        while (queue.Count > 0)
-        {
-            var n = queue.Dequeue();
-            topo.Add(n);
-            if (!successors.TryGetValue(n, out var succ)) continue;
-            foreach (var s in succ)
-            {
-                indegree[s]--;
-                if (indegree[s] == 0) queue.Enqueue(s);
-            }
-        }
-
-        // Forward pass: earliest finish (EF) = ES + duration, ES = max EF of predecessors
-        var ef = new Dictionary<Guid, int>();
-        foreach (var n in topo)
-        {
-            var es = 0;
-            foreach (var (pred, succ) in successors.SelectMany(kv => kv.Value.Select(v => (Pred: kv.Key, Succ: v))))
-            {
-                if (succ == n && ef.TryGetValue(pred, out var pe)) es = Math.Max(es, pe);
-            }
-            ef[n] = es + Duration(n);
-        }
-
-        var projectFinish = topo.Count > 0 ? ef.Values.Max() : 0;
-
-        // Backward pass: latest finish (LF) = min LS over successors; LF = projectFinish for sinks.
-        // In reversed topo order successors are already resolved.
-        var lf = new Dictionary<Guid, int>();
-        foreach (var n in topo.AsEnumerable().Reverse())
-        {
-            if (!successors.TryGetValue(n, out var succ) || succ.Count == 0)
-                lf[n] = projectFinish;
-            else
-                lf[n] = succ.Select(s => lf[s] - Duration(s)).Min();
-        }
-
-        // Slack = LS - ES = (LF - duration) - (EF - duration) = LF - EF
-        return topo.Where(n => lf[n] - ef[n] <= 0).ToList();
+    internal async Task<ScheduleInputs> LoadScheduleInputsAsync(Guid projectId, CancellationToken ct)
+    {
+        var links = await db.ProjectTaskDependencies.AsNoTracking()
+            .Where(d => d.Task.ProjectId == projectId)
+            .Select(d => new { d.TaskId, d.DependsOnTaskId, d.LinkType, d.LagDays }).ToListAsync(ct);
+        var holidays = await db.WorkCalendarEntries.AsNoTracking()
+            .Where(e => e.ProjectId == projectId && (e.Kind == "holiday" || e.Kind == "offday"))
+            .Select(e => e.Date).ToListAsync(ct);
+        return new ScheduleInputs(links.Select(l => new SchedLink(l.DependsOnTaskId, l.TaskId, l.LinkType, l.LagDays)).ToList(), holidays);
     }
 
     private static IEnumerable<Guid> ParseDependencyIds(string? dependencies)

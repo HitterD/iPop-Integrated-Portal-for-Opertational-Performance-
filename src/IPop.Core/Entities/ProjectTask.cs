@@ -32,6 +32,12 @@ public class ProjectTask
     public DateTime? StartDate { get; set; }
     public DateTime? DueDate { get; set; }
 
+    /// Hard target, separate from the planned DueDate; the Gantt flags "late vs deadline".
+    public DateTime? DeadlineDate { get; set; }
+    /// null | "snet" (start no earlier than) | "fnlt" (finish no later than) | "mso" (must start on).
+    public string? ConstraintType { get; set; }
+    public DateTime? ConstraintDate { get; set; }
+
     /// Time tracking (hours). Estimate vs Actual.
     public decimal? EstimatedHours { get; set; }
     public decimal? ActualHours { get; set; }

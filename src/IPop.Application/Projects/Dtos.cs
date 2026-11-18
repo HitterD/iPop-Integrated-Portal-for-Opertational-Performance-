@@ -51,7 +51,10 @@ public record UpdateTaskRequest(string? Title, string? Description, string? Stat
     int? SortOrder, string? Dependencies, bool? IsRecurring, string? RecurrenceRule, bool? IsTemplate,
     string? Tags, bool ClearStartDate = false, bool ClearDueDate = false, bool ClearEstimatedHours = false,
     /// Custom status; when set it wins over Status (the task takes the option's stage).
-    Guid? StatusOptionId = null);
+    Guid? StatusOptionId = null,
+    /// Gantt: hard target date, and an optional scheduling constraint (snet | fnlt | mso) with its date.
+    DateTime? DeadlineDate = null, string? ConstraintType = null, DateTime? ConstraintDate = null,
+    bool ClearDeadline = false, bool ClearConstraint = false);
 
 public record ProjectTaskDto(Guid Id, Guid ProjectId, Guid? ParentTaskId, string Title, string? Description,
     string Status, string? Priority, DateTime? StartDate, DateTime? DueDate,
@@ -71,10 +74,14 @@ public record ProjectTaskDto(Guid Id, Guid ProjectId, Guid? ParentTaskId, string
     /// When the task last entered "done" (null while not done).
     DateTime? CompletedAt = null,
     /// The project's custom status this task shows (its stage equals Status); null = none.
-    Guid? StatusOptionId = null);
+    Guid? StatusOptionId = null,
+    DateTime? DeadlineDate = null, string? ConstraintType = null, DateTime? ConstraintDate = null);
 
-public record DependencyRefDto(Guid Id, string Title, string Status);
-public record SetTaskDependenciesRequest(IReadOnlyList<Guid> DependsOn);
+public record DependencyRefDto(Guid Id, string Title, string Status, string LinkType = "FS", int LagDays = 0);
+/// One prerequisite: LinkType FS | SS | FF, LagDays -365..365 (working days; negative = lead).
+public record TaskLinkRequest(Guid DependsOnTaskId, string LinkType = "FS", int LagDays = 0);
+/// DependsOn = all finish-to-start, lag 0 (legacy). When Links is not null it wins.
+public record SetTaskDependenciesRequest(IReadOnlyList<Guid> DependsOn, IReadOnlyList<TaskLinkRequest>? Links = null);
 
 public record ProjectTaskAssigneeDto(Guid UserId, string Nik, string Name, string? Role, DateTime AssignedAt);
 
@@ -146,7 +153,9 @@ public record GanttTaskDto(
     int? DayIndexStart,           // days from project start (0-based)
     int? DurationDays,            // end - start in days (1 for single-day tasks)
     bool IsCritical,              // true if task is on the critical path (slack = 0)
-    IReadOnlyList<Guid>? DependsOn = null
+    IReadOnlyList<Guid>? DependsOn = null,
+    // Stage 3: active/selected baseline (GET gantt?baselineId=); null when none.
+    DateTime? BaselineStart = null, DateTime? BaselineDue = null, int? VarianceDays = null
 );
 
 /// Full Gantt chart data for a project, including date range and critical path.

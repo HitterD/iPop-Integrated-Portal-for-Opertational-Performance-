@@ -123,6 +123,8 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<ProjectTemplateMilestone> ProjectTemplateMilestones => Set<ProjectTemplateMilestone>();
     public DbSet<ProjectMilestone> ProjectMilestones => Set<ProjectMilestone>();
     public DbSet<ProjectMilestoneTask> ProjectMilestoneTasks => Set<ProjectMilestoneTask>();
+    public DbSet<ProjectBaseline> ProjectBaselines => Set<ProjectBaseline>();
+    public DbSet<ProjectBaselineTask> ProjectBaselineTasks => Set<ProjectBaselineTask>();
     // Notes
     public DbSet<NotePage> NotePages => Set<NotePage>();
     public DbSet<NoteUpdate> NoteUpdates => Set<NoteUpdate>();
@@ -809,6 +811,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasOne(x => x.Group).WithMany(g => g.Tasks)
                 .HasForeignKey(x => new { x.GroupId, x.ProjectId })
                 .HasPrincipalKey(g => new { g.Id, g.ProjectId }).OnDelete(DeleteBehavior.Restrict);
+            e.Property(x => x.ConstraintType).HasMaxLength(8);
             e.Property(x => x.Title).HasMaxLength(300);
             e.Property(x => x.Description).HasMaxLength(4000);
             e.Property(x => x.Status).HasMaxLength(32);
@@ -824,10 +827,26 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasOne(x => x.StatusOption).WithMany().HasForeignKey(x => x.StatusOptionId).OnDelete(DeleteBehavior.SetNull);
         });
 
+        b.Entity<ProjectBaseline>(e =>
+        {
+            e.HasIndex(x => x.ProjectId);
+            e.Property(x => x.Name).HasMaxLength(60);
+            e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.CreatedBy).WithMany().HasForeignKey(x => x.CreatedById).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<ProjectBaselineTask>(e =>
+        {
+            e.HasKey(x => new { x.BaselineId, x.TaskId });
+            e.HasOne(x => x.Baseline).WithMany(x => x.Tasks).HasForeignKey(x => x.BaselineId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Task).WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         b.Entity<ProjectTaskDependency>(e =>
         {
             e.HasKey(x => new { x.TaskId, x.DependsOnTaskId });
             e.HasIndex(x => x.DependsOnTaskId);
+            e.Property(x => x.LinkType).HasMaxLength(2).HasDefaultValue("FS");
+            e.Property(x => x.LagDays).HasDefaultValue(0);
             e.HasOne(x => x.Task).WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.DependsOn).WithMany().HasForeignKey(x => x.DependsOnTaskId).OnDelete(DeleteBehavior.Cascade);
         });
