@@ -233,11 +233,11 @@ span.pv2p-pri { border-color: transparent; }
 .pv2au-t { display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; border-radius: 7px; background: var(--surface-3, var(--tray)); font-weight: 650; font-size: 13px; border-bottom: 2px solid var(--line-2); line-height: 1.6; vertical-align: 1px; }
 .pv2au-t.s { color: #fff; border-bottom-color: transparent; }
 .pv2au-t .pv2-av { margin-left: -2px; border-radius: 6px; }
-.pv2au-tog { width: 34px; height: 20px; border-radius: 10px; border: 0; background: var(--line-2); position: relative; transition: background .25s; flex: none; padding: 0; }
-.pv2au-tog i { position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #fff; top: 2px; left: 2px; transition: left .3s var(--pv2-spring); box-shadow: 0 1px 2px rgba(0, 0, 0, .2); }
-.pv2au-tog.on { background: var(--accent); }
-.pv2au-tog.on i { left: 16px; }
-.pv2au-tog:active:not(:disabled) i { width: 20px; }
+.pv2au-tog { width: 38px; height: 18px; border: 0; background: none; position: relative; flex: none; padding: 0; }
+.pv2au-tog i { position: absolute; left: 4px; top: 0; width: 30px; height: 18px; border-radius: 9px; background: var(--line-2); transition: background .25s; }
+.pv2au-tog i::after { content: ""; position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #fff; top: 2px; left: 2px; transition: left .3s var(--pv2-spring); box-shadow: 0 1px 2px rgba(0, 0, 0, .2); }
+.pv2au-tog.on i { background: var(--accent); }
+.pv2au-tog.on i::after { left: 14px; }
 .pv2au-tog:disabled { opacity: .6; cursor: default; }
 .pv2au-builder { border: 1.5px dashed var(--line-2); border-radius: 12px; padding: 12px; margin-top: 12px; font-size: 14px; line-height: 2.1; }
 .pv2au-bh { font-size: 11px; color: var(--ink-3); letter-spacing: .05em; text-transform: uppercase; }
@@ -259,7 +259,7 @@ span.pv2p-pri { border-color: transparent; }
 .pv2au-rule .ic .lucide { width: 17px; height: 17px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .pv2o-card, .pv2p, .pv2w-pop, .pv2au-browse, .pv2-cb, .pv2au-tog i, .pv2w-load { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+  .pv2o-card, .pv2p, .pv2w-pop, .pv2au-browse, .pv2-cb, .pv2au-tog i, .pv2au-tog i::after, .pv2w-load { animation-duration: .001ms !important; transition-duration: .001ms !important; }
   .pv2o-skel, .pv2w-skel, .pv2au-skel { animation: none; }
   .pv2o-chk.done .tx::after, .pv2p-cl.done .tx::after { animation: none; }
 }

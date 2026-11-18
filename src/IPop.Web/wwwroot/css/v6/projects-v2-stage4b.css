@@ -223,3 +223,21 @@
 .pv2-rail .pv2r-years { margin-top: 0; }
 .pv2-ws .pv2-rail > .proj-sidebar { overflow: hidden; }
 .pv2-rail .proj-list { flex: 1 1 0; min-height: 0; }
+
+/* ---- Round 4a: Statuses modal parity (mockup .sel .dd 34px/9px/12.5px, .btn.ghost.sm.icon 28px) ---- */
+.pv2-sel .pv2-stage.app-select.block .app-select-trigger { min-height: 34px; height: 34px; padding: 0 10px; border-radius: 9px; font-size: 12.5px; color: var(--ink-2); }
+.pv2-sel > .pv2-ibtn { width: 28px; height: 28px; border-radius: 9px; }
+.pv2o-card h4, .pv2pg-card h4 { color: var(--ink); font-weight: 700; line-height: 1.45; }
+.pv2cl-modal textarea.pv2f-in.ta { height: 64px; min-height: 64px; resize: none; }
+
+/* ---- Round 4a: toasts on the Projects page match the mockup card (surface, r14, 32px r10 tile, 28px Undo) ----
+   Scoped by :has(.pv2-ws, .pv2-rail) so other modules keep the shared neutral-glass toast. */
+body:has(.pv2-ws, .pv2-rail) .toast-host .toast { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; border: 1px solid var(--line); border-radius: 14px; padding: 11px 12px 11px 14px; gap: 12px; align-items: center; box-shadow: var(--sh-pop, 0 18px 44px -14px rgba(20, 24, 22, .28)); }
+body:has(.pv2-ws, .pv2-rail) .toast-host .toast-icon { width: 32px; height: 32px; margin-top: 0; border-radius: 10px; background: var(--info-soft, var(--accent-soft)); color: var(--info, var(--accent)); }
+body:has(.pv2-ws, .pv2-rail) .toast-host .toast.success .toast-icon { background: var(--accent-soft); color: var(--accent); }
+body:has(.pv2-ws, .pv2-rail) .toast-host .toast.warning .toast-icon { background: var(--warn-soft); color: var(--warn); }
+body:has(.pv2-ws, .pv2-rail) .toast-host .toast.error .toast-icon { background: var(--danger-soft); color: var(--danger); }
+body:has(.pv2-ws, .pv2-rail) .toast-host .toast-body { padding-top: 0; }
+body:has(.pv2-ws, .pv2-rail) .toast-host .toast-title { font-weight: 400; color: var(--ink-2); letter-spacing: 0; }
+body:has(.pv2-ws, .pv2-rail) .toast-host .toast-action { height: 28px; padding: 0 9px; border-radius: 9px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font-size: 12.5px; font-weight: 400; }
+body:has(.pv2-ws, .pv2-rail) .toast-host .toast-action:hover { background: var(--surface-3, var(--fill)); }

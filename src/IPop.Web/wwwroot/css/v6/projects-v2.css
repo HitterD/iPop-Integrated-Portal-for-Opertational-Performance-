@@ -198,7 +198,8 @@ html:not([data-theme="dark"]) .pv2, html:not([data-theme="dark"]) .proj-workspac
 .pv2-scrim { position: fixed; inset: 0; z-index: 1050; background: rgba(15, 22, 18, .36); backdrop-filter: blur(3px); display: grid; place-items: center; animation: pv2-fade .25s; }
 .pv2-modal { width: min(660px, calc(100vw - 32px)); max-height: calc(100vh - 40px); background: var(--surface); color: var(--ink); border-radius: 18px; box-shadow: 0 18px 44px -14px rgba(20, 24, 22, .4); animation: pv2-popc .35s var(--pv2-spring); overflow: hidden; display: flex; flex-direction: column; }
 .pv2-mh { display: flex; align-items: center; gap: 12px; padding: 15px 20px; border-bottom: 1px solid var(--line); }
-.pv2-mh h2 { margin: 0; font-size: 17px; }
+.pv2-mh h2 { margin: 0; font-size: 17px; font-weight: 700; line-height: 1.45; color: var(--ink); }
+.pv2-mh .pv2-ibtn { width: 32px; height: 32px; border-radius: 9px; color: var(--ink-2); }
 .pv2-mbody { overflow: auto; padding: 14px 20px; }
 .pv2-mnote { margin: 0 0 6px; color: var(--ink-2); font-size: 12.5px; }
 .pv2-mf { display: flex; align-items: center; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--line); background: var(--surface-2, var(--tray)); }
@@ -455,16 +456,16 @@ button.pv2-health:active { transform: scale(.94); }
 .pv2n-tmenu button:hover { background: var(--danger-soft, var(--surface-3)); }
 
 .pv2n-tprev { border-left: 1px solid var(--line); padding: 16px; overflow: auto; animation: pv2-fade .3s; }
-.pv2n-tprev h3 { margin: 0 0 4px; font-size: 16px; }
+.pv2n-tprev h3 { margin: 0 0 4px; font-size: 16px; line-height: 1.45; font-weight: 700; color: var(--ink); }
 .pv2n-tprev p { margin: 0 0 12px; color: var(--ink-2); font-size: 12.5px; }
 .pv2n-kv { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; }
 .pv2n-kv div { background: var(--surface-2, var(--tray)); border-radius: 9px; padding: 8px; font-size: 11px; color: var(--ink-3); }
 .pv2n-kv b { display: block; font-size: 15px; color: var(--ink); }
-.pv2n-tprev h5 { margin: 12px 0 6px; font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; font-weight: 650; }
+.pv2n-tprev h5 { margin: 12px 0 6px; font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; line-height: 1.45; }
 .pv2n-plist { font-size: 12.5px; display: flex; flex-direction: column; gap: 5px; }
 .pv2n-plist div { display: flex; gap: 8px; align-items: center; }
 .pv2n-plist i { width: 8px; height: 8px; border-radius: 2px; flex: none; }
-.pv2n-plist small { margin-left: auto; color: var(--ink-3); white-space: nowrap; }
+.pv2n-plist small { margin-left: auto; color: var(--ink-3); white-space: nowrap; font-size: 83.333%; }
 .pv2n-vchips { display: flex; flex-wrap: wrap; gap: 5px; }
 .pv2n-vchips span { font-size: 11.5px; padding: 2px 8px; border-radius: 6px; background: var(--surface-3, var(--tray)); color: var(--ink-2); animation: pv2-pop .3s var(--pv2-spring) backwards; }
 .pv2n-pskel { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
