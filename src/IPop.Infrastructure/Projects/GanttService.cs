@@ -14,6 +14,9 @@ public sealed partial class GanttService(IPopDbContext db) : IGanttService
     public const int MaxRevertChanges = 500;
 
     private static GanttResult<T> Fail<T>(string code) => new(default, code);
+
+    /// Dates the Gantt accepts from a client (same window as the MS Project import).
+    private static bool InRange(DateTime d) => d >= MinImportDate && d <= MaxImportDate;
     private static GanttResult<T> Ok<T>(T value) => new(value, null);
 
     // ── Access ──
@@ -30,7 +33,7 @@ public sealed partial class GanttService(IPopDbContext db) : IGanttService
             && (m.Role == "owner" || m.Role == "manager"), ct);
 
     private async Task<bool> ProjectExistsAsync(Guid projectId, CancellationToken ct) =>
-        await db.Projects.AnyAsync(p => p.Id == projectId, ct);
+        await db.Projects.AnyAsync(p => p.Id == projectId && p.IsActive, ct);
 
     private async Task<List<DateTime>> HolidaysAsync(Guid projectId, CancellationToken ct) =>
         await db.WorkCalendarEntries.AsNoTracking()
@@ -173,7 +176,7 @@ public sealed partial class GanttService(IPopDbContext db) : IGanttService
 
     public async Task<GanttResult<GanttV2Dto>> GetGanttV2Async(Guid actorId, Guid projectId, Guid? baselineId, Guid? groupId, CancellationToken ct)
     {
-        var project = await db.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == projectId, ct);
+        var project = await db.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == projectId && p.IsActive, ct);
         if (project is null || !await CanViewAsync(projectId, actorId, ct)) return Fail<GanttV2Dto>("project_not_found");
 
         var groups = await db.ProjectGroups.AsNoTracking().Where(g => g.ProjectId == projectId)
@@ -283,6 +286,8 @@ public sealed partial class GanttService(IPopDbContext db) : IGanttService
         if (!await ProjectExistsAsync(projectId, ct)) return Fail<(ReschedulePreviewDto, Dictionary<Guid, ProjectTask>)>("project_not_found");
         if (!await CanMutateAsync(projectId, actorId, ct)) return Fail<(ReschedulePreviewDto, Dictionary<Guid, ProjectTask>)>("forbidden");
         var q = track ? db.ProjectTasks.Where(t => t.ProjectId == projectId) : db.ProjectTasks.AsNoTracking().Where(t => t.ProjectId == projectId);
+        if (req is null || !InRange(req.NewStart) || (req.NewDue is { } nd && !InRange(nd)))
+            return Fail<(ReschedulePreviewDto, Dictionary<Guid, ProjectTask>)>("invalid_range");
         var tasks = await q.ToListAsync(ct);
         var byId = tasks.ToDictionary(t => t.Id);
         if (!byId.ContainsKey(req.TaskId)) return Fail<(ReschedulePreviewDto, Dictionary<Guid, ProjectTask>)>("task_not_found");
@@ -338,6 +343,9 @@ public sealed partial class GanttService(IPopDbContext db) : IGanttService
         var changes = (req?.Changes ?? []).GroupBy(c => c.TaskId).Select(g => g.Last()).ToList();
         if (changes.Count == 0) return Ok(new RescheduleRevertResultDto(0));
         if (changes.Count > MaxRevertChanges) return Fail<RescheduleRevertResultDto>("too_many_changes");
+        if (changes.Any(c => (c.Start is { } s && !InRange(s)) || (c.Due is { } d && !InRange(d))
+                || (c.Start is { } s2 && c.Due is { } d2 && d2.Date < s2.Date)))
+            return Fail<RescheduleRevertResultDto>("invalid_range");
         var ids = changes.Select(c => c.TaskId).ToList();
         var tasks = await db.ProjectTasks.Where(t => t.ProjectId == projectId && ids.Contains(t.Id)).ToDictionaryAsync(t => t.Id, ct);
         if (tasks.Count != ids.Count) return Fail<RescheduleRevertResultDto>("task_not_found");

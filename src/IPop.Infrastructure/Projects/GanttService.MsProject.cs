@@ -29,7 +29,7 @@ public sealed partial class GanttService
 
     public async Task<GanttResult<MsProjectExportDto>> ExportMsProjectAsync(Guid actorId, Guid projectId, CancellationToken ct)
     {
-        var project = await db.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == projectId, ct);
+        var project = await db.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == projectId && p.IsActive, ct);
         if (project is null || !await CanViewAsync(projectId, actorId, ct)) return Fail<MsProjectExportDto>("project_not_found");
 
         var groups = await db.ProjectGroups.AsNoTracking().Where(g => g.ProjectId == projectId).OrderBy(g => g.SortOrder).ToListAsync(ct);
@@ -232,8 +232,16 @@ public sealed partial class GanttService
     private static XElement? Child(XElement e, string name) => e.Elements().FirstOrDefault(x => x.Name.LocalName == name);
     private static string? Val(XElement e, string name) => Child(e, name)?.Value.Trim();
     private static int? IntVal(XElement e, string name) => int.TryParse(Val(e, name), NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : null;
+    /// Imported dates outside this window are ignored: a year-1 or year-9999 date would stretch every later Gantt
+    /// read (the working-day calendar walks day by day from the earliest to the latest date) or overflow DateTime.
+    internal static readonly DateTime MinImportDate = new(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+    internal static readonly DateTime MaxImportDate = new(2100, 12, 31, 0, 0, 0, DateTimeKind.Utc);
+    /// Longest task span an import may create (about 10 years of working days).
+    internal const int MaxImportDurationDays = 2600;
+
     private static DateTime? DateVal(XElement e, string name) =>
-        DateTime.TryParse(Val(e, name), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var d) ? d : null;
+        DateTime.TryParse(Val(e, name), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var d)
+            && d >= MinImportDate && d <= MaxImportDate ? d : null;
 
     /// "PT16H0M0S" (also P1DT8H...) to working days at 8 h/day.
     private static double? ParseDays(string? s)
@@ -244,7 +252,7 @@ public sealed partial class GanttService
             var ts = XmlConvert.ToTimeSpan(s);
             return ts.TotalHours / 8.0;
         }
-        catch (FormatException) { return null; }
+        catch (Exception e) when (e is FormatException or OverflowException) { return null; }
     }
 
     public async Task<GanttResult<MsProjectImportResultDto>> ImportMsProjectAsync(Guid actorId, Guid projectId, byte[] content, string? fileName, bool dryRun, CancellationToken ct)
@@ -383,10 +391,15 @@ public sealed partial class GanttService
             var start = t.Start?.Date; var due = t.Finish?.Date;
             if (start.HasValue && !due.HasValue)
             {
-                var days = Math.Max(1, (int)Math.Round(t.DurationDays ?? 1));
+                var days = (int)Math.Clamp(Math.Round(t.DurationDays ?? 1), 1, MaxImportDurationDays);
                 due = WorkingDays.AddWorkingDays(start.Value, days - 1);
             }
             if (due.HasValue && due < start) due = start;
+            if (start.HasValue && due.HasValue && (due.Value - start.Value).TotalDays > MaxImportDurationDays * 7 / 5)
+            {
+                warnings.Add($"\"{name}\" spans more than 10 years; its finish was shortened.");
+                due = start.Value.AddDays(MaxImportDurationDays * 7 / 5);
+            }
             var status = t.Percent >= 100 ? "done" : t.Percent > 0 ? "doing" : "todo";
             var task = new ProjectTask
             {

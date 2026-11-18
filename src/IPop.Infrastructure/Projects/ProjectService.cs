@@ -719,7 +719,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         {
             var ctype = (req.ConstraintType ?? task.ConstraintType)?.Trim().ToLowerInvariant();
             var cdate = req.ConstraintDate.HasValue ? AsUtcDate(req.ConstraintDate.Value).Date : task.ConstraintDate;
-            if (!GanttScheduler.IsValidConstraintType(ctype) || cdate is null)
+            if (!GanttScheduler.IsValidConstraintType(ctype) || cdate is null
+                || cdate < GanttService.MinImportDate || cdate > GanttService.MaxImportDate)
                 return new TaskResultDto(false, null, "invalid_constraint");
             if (ctype == "mso" && (task.StartDate is null || task.StartDate.Value.Date != cdate.Value))
             {

@@ -24,6 +24,8 @@ public sealed class WorkCalendar
     {
         var list = relevantDates.ToList();
         var min = list.Count == 0 ? DateTime.UtcNow.Date : list.Min().Date;
+        // A stray year-1 date (old data / API typo) must not underflow DateTime.
+        if (min < DateTime.MinValue.AddDays(61)) min = DateTime.MinValue.AddDays(61);
         return new WorkCalendar(min.AddDays(-60), holidays ?? [], skipWeekends);
     }
 
