@@ -1,97 +1,200 @@
-@using IPop.Web.Services
+@using IPop.Application.Projects
+@using System.Globalization
+@implements IDisposable
 @inject AuthState Auth
 @inject IJSRuntime JS
 @inject ToastService Toasts
 
-<div class="proj-modal-backdrop" @onclick="OnClose"></div>
-<div class="proj-modal v6-project-modal" role="dialog" aria-modal="true" aria-label="Create New Project">
-    <div class="proj-modal-head">
-        <span class="vpm-tile" style="background:@selectedColor">@(string.IsNullOrWhiteSpace(createName) ? "P" : ProjectUiHelpers.GetInitials(createName))</span>
-        <span>New project</span>
-        <button type="button" class="vpm-close" @onclick="OnClose" aria-label="Close"><i data-lucide="x"></i></button>
-    </div>
-    <div class="proj-modal-body">
-        <div class="field"><label>Project name <span class="vpm-required">*</span></label><input class="org-input" @bind="createName" placeholder="e.g. Attendance digitization" /></div>
-        <div class="field">
-            <label>Start from</label>
-            <div class="vpm-from" role="radiogroup" aria-label="Start from">
-                <button type="button" role="radio" aria-checked="@(!fromTemplate ? "true" : "false")" class="@(!fromTemplate ? "on" : "")" @onclick="() => fromTemplate = false">
-                    <span class="fi c-mut"><i data-lucide="file"></i></span><span><b>Blank project</b><small>Empty board, add your own</small></span>
-                </button>
-                <button type="button" role="radio" aria-checked="@(fromTemplate ? "true" : "false")" class="@(fromTemplate ? "on" : "")" @onclick="ChooseTemplate">
-                    <span class="fi c-acc"><i data-lucide="layout-template"></i></span><span><b>Template</b><small>Sections, tasks, milestones</small></span>
-                </button>
+@* New project, two steps (docs/mockups/ipop-apple/projects-v2.html tplModal + setupModal):
+   1 Pick a template (categories, cards, live preview)  2 Name, dates and people (roles from the template).
+   Every class is pv2n- prefixed under .pv2 so nothing here can collide with Tailwind or the older v6 modals. *@
+<div class="pv2 pv2-scrim" @onclick="OnClose">
+    <div class="pv2-modal pv2n-modal @(step == 1 ? "pv2n-w1" : "pv2n-w2")" role="dialog" aria-modal="true" aria-labelledby="pv2n-title" tabindex="-1"
+         @ref="modalRef" @onclick:stopPropagation="true" @onkeydown="OnKey">
+        <div class="pv2-mh">
+            <h2 id="pv2n-title">New project</h2>
+            <div class="pv2n-steps" aria-label="Step @step of 2">
+                @if (step == 1)
+                {
+                    <span class="on"><em>1</em>Pick a template</span>
+                }
+                else
+                {
+                    <span class="ok"><em><i data-lucide="check"></i></em>@PickedName</span>
+                }
+                <hr />
+                <span class="@(step == 2 ? "on" : "")"><em>2</em>Name, dates &amp; people</span>
             </div>
+            <span class="pv2-sp"></span>
+            <button type="button" class="pv2-ibtn" aria-label="Close" @onclick="OnClose"><i data-lucide="x"></i></button>
         </div>
-        <div class="vpm-collapse @(fromTemplate ? "open" : "")" aria-hidden="@(fromTemplate ? "false" : "true")"><div>
-            @if (templates is null)
-            {
-                <div class="vpm-tpl-none">Loading templates…</div>
-            }
-            else if (templates.Count == 0)
-            {
-                <div class="vpm-tpl-none">No templates yet. Open a project and choose ⋯ → Save as template… to make one.</div>
-            }
-            else
-            {
-                <div class="vpm-tpl-list" role="radiogroup" aria-label="Template">
-                    @foreach (var (heading, rows) in TemplateSections)
+
+        @if (step == 1)
+        {
+            <div class="pv2n-tc">
+                <div class="pv2n-cats">
+                    <label class="pv2-search pv2n-tsearch">
+                        <i data-lucide="search"></i>
+                        <input type="search" placeholder="Search templates" aria-label="Search templates" value="@search" @oninput="OnSearch" @ref="searchRef" />
+                    </label>
+                    <div class="pv2n-catlist" role="group" aria-label="Categories">
+                        @foreach (var c in Categories)
+                        {
+                            var cat = c.Name;
+                            <button type="button" class="pv2n-pi @(cat == category ? "on" : "")" aria-pressed="@(cat == category ? "true" : "false")" @onclick="() => SetCategory(cat)">@cat<span class="pc pv2-num">@c.Count</span></button>
+                        }
+                    </div>
+                </div>
+                <div class="pv2n-cards">
+                    @if (templates is null)
                     {
-                        <div class="vpm-tpl-h">@heading</div>
-                        @foreach (var t in rows)
+                        @for (var i = 0; i < 4; i++) { <div class="pv2n-tcard pv2n-skel" aria-hidden="true"><div class="pv2n-thumb"></div><b>&nbsp;</b><small>&nbsp;</small></div> }
+                    }
+                    else
+                    {
+                        @if (ShowBlank)
+                        {
+                            <div class="pv2n-cardw">
+                                <button type="button" class="pv2n-tcard @(selectedId == Guid.Empty ? "on" : "")" aria-pressed="@(selectedId == Guid.Empty ? "true" : "false")" @onclick="() => Select(Guid.Empty)">
+                                    <div class="pv2n-thumb">@ThumbBars(null)</div>
+                                    <b>Blank project</b>
+                                    <small>Start empty and add groups yourself</small>
+                                </button>
+                            </div>
+                        }
+                        @foreach (var t in Filtered)
                         {
                             var tpl = t;
-                            var on = selectedTemplate?.Id == tpl.Id;
-                            <div class="vpm-tpl-row @(tpl.CanDelete ? "has-more" : "")" @key="tpl.Id">
-                                <button type="button" role="radio" aria-checked="@(on ? "true" : "false")" class="vpm-tpl @(on ? "on" : "")" tabindex="@(fromTemplate ? 0 : -1)" @onclick="() => PickTemplate(tpl)">
-                                    <span class="ic @ToneClass(tpl)"><i data-lucide="@(string.IsNullOrWhiteSpace(tpl.Icon) ? "layout-template" : tpl.Icon)"></i></span>
-                                    <span style="min-width:0"><b>@tpl.Name</b><small>@Subline(tpl)</small></span>
-                                    <span class="rd"></span>
+                            var on = selectedId == tpl.Id;
+                            <div class="pv2n-cardw" @key="tpl.Id">
+                                <button type="button" class="pv2n-tcard @(on ? "on" : "")" aria-pressed="@(on ? "true" : "false")" @onclick="() => Select(tpl.Id)">
+                                    <div class="pv2n-thumb">@ThumbBars(tpl)</div>
+                                    <b>@tpl.Name<span>@(tpl.UsedCount > 0 ? $"used {tpl.UsedCount}×" : "")</span></b>
+                                    <small>@Subline(tpl)</small>
+                                    @if (tpl.IsBuiltIn) { <div class="pv2n-tag">Built-in · SJA</div> }
                                 </button>
                                 @if (tpl.CanDelete)
                                 {
-                                    <button type="button" class="vpm-tpl-more" title="More" aria-label="More actions for @tpl.Name" aria-expanded="@(menuFor == tpl.Id ? "true" : "false")"
-                                            tabindex="@(fromTemplate ? 0 : -1)" @onclick="() => menuFor = menuFor == tpl.Id ? null : tpl.Id"><i data-lucide="ellipsis"></i></button>
+                                    <button type="button" class="pv2n-more" title="More" aria-label="More actions for @tpl.Name" aria-expanded="@(menuFor == tpl.Id ? "true" : "false")"
+                                            @onclick="() => menuFor = menuFor == tpl.Id ? null : tpl.Id"><i data-lucide="ellipsis"></i></button>
                                     @if (menuFor == tpl.Id)
                                     {
-                                        <div class="app-select-pop on vpm-tpl-menu" role="menu">
-                                            <button type="button" role="menuitem" class="app-select-opt" style="color:var(--danger)" disabled="@deleting" @onclick="() => DeleteTemplateAsync(tpl)"><i data-lucide="trash-2" style="width:13px;height:13px"></i> Delete template</button>
+                                        <div class="pv2n-tmenu" role="menu">
+                                            <button type="button" role="menuitem" disabled="@deleting" @onclick="() => DeleteTemplateAsync(tpl)"><i data-lucide="trash-2"></i> Delete template</button>
                                         </div>
                                     }
                                 }
                             </div>
                         }
+                        @if (!ShowBlank && Filtered.Count == 0)
+                        {
+                            <div class="pv2n-none">No template matches. Try another word or category.</div>
+                        }
                     }
                 </div>
-            }
-            @if (selectedTemplate is not null)
-            {
-                <div class="vpm-incl"><i data-lucide="info"></i><span>@SummaryLine</span></div>
-            }
-            <div class="field vpm-start"><label>Start date</label><AppDatePicker @bind-Value="createStart" AriaLabel="Start date" /></div>
-        </div></div>
-        <div class="field"><label>Description</label><textarea class="org-input" rows="2" @bind="createDescription" placeholder="What is this project about?"></textarea></div>
-        <div class="vpm-grid">
-            <div class="field"><label>Year <span class="vpm-required">*</span></label><input type="number" class="org-input" @bind="createYear" /></div>
-            <div class="field"><label>Deadline</label><AppDatePicker @bind-Value="createDeadline" AllowClear="true" AriaLabel="Deadline" /></div>
-        </div>
-        <div class="field">
-            <label>Color</label>
-            <div style="display:flex;align-items:center;gap:10px;margin-top:2px">
-                @foreach (var c in PaletteColors)
-                {
-                    var col = c;
-                    var isSelected = selectedColor.Equals(col, StringComparison.OrdinalIgnoreCase);
-                    <button type="button" style="width:28px;height:28px;border-radius:50%;border:none;background:@col;cursor:pointer;box-shadow:@(isSelected ? $"0 0 0 2px var(--surface), 0 0 0 4px {col}" : "none");transition:box-shadow .15s ease"
-                            @onclick="() => selectedColor = col" aria-label="Choose color @col"></button>
-                }
+                <div class="pv2n-tprev" @key="selectedId" aria-live="polite">@PreviewBody()</div>
             </div>
-        </div>
-        <div class="field"><label>Project owner</label><IPop.Web.Components.AppMemberPicker Placeholder="Search by name for owner..." ValueChanged="r => createOwner = r" />
-            @if (createOwner is not null) { <span class="vpm-owner">@createOwner.Name · @createOwner.PositionLabel</span> }
-        </div>
+            <div class="pv2-mf">
+                <span class="pv2-note">You can change everything later: groups, statuses, columns and views.</span>
+                <span class="pv2-sp"></span>
+                <button type="button" class="pv2-btn" @onclick="OnClose">Cancel</button>
+                <button type="button" class="pv2-btn pri" disabled="@(templates is null)" @onclick="GoStep2">@(selectedId == Guid.Empty ? "Start blank" : "Use this template") <i data-lucide="chevron-right"></i></button>
+            </div>
+        }
+        else
+        {
+            <div class="pv2-mbody pv2n-setup @(IsBlank ? "blank" : "")">
+                <div class="pv2n-left">
+                    <div class="pv2n-f"><label for="pv2n-name">Project name</label><input class="pv2n-in" id="pv2n-name" maxlength="200" @bind="createName" @bind:event="oninput" @ref="nameRef" placeholder="e.g. Attendance digitization" /></div>
+                    <div class="pv2n-f"><label for="pv2n-goal">Goal <span class="opt">(optional)</span></label>
+                        <textarea class="pv2n-in pv2n-ta" id="pv2n-goal" maxlength="1000" @bind="createGoal" @bind:event="oninput" placeholder="Why does this project exist?"></textarea>
+                        <small>Shown at the top of Overview so everyone knows why this project exists.</small></div>
+                    <div class="pv2n-f"><label>Colour</label>
+                        <div class="pv2n-in pv2n-colours" role="radiogroup" aria-label="Colour">
+                            @foreach (var c in PaletteColors)
+                            {
+                                var col = c;
+                                var isSel = selectedColor.Equals(col, StringComparison.OrdinalIgnoreCase);
+                                <button type="button" role="radio" aria-checked="@(isSel ? "true" : "false")" class="pv2n-sw" style="background:@col;@(isSel ? $"box-shadow:0 0 0 2px var(--surface),0 0 0 4px {col}" : "")"
+                                        @onclick="() => selectedColor = col" aria-label="Colour @col"></button>
+                            }
+                        </div></div>
+                    <div class="pv2n-f2">
+                        <div class="pv2n-f"><label for="pv2n-sd">Start date</label><input type="date" class="pv2n-in" id="pv2n-sd" value="@startText" @oninput="OnStart" /></div>
+                        @if (IsBlank)
+                        {
+                            <div class="pv2n-f"><label>Deadline <span class="opt">(optional)</span></label><AppDatePicker @bind-Value="createDeadline" AllowClear="true" AriaLabel="Deadline" /></div>
+                        }
+                        else
+                        {
+                            <div class="pv2n-f"><label>Go-live</label><div class="pv2n-in pv2n-fin"><i data-lucide="calendar"></i>@(GoLive is { } g ? Fmt(g, "ddd d MMM yyyy") : "Calculated on create")</div></div>
+                        }
+                    </div>
+                    @if (!IsBlank)
+                    {
+                        <div class="pv2n-calc @(calcTick > 0 ? "flash" : "")" @key="calcTick"><i data-lucide="wand-sparkles"></i><span>@CalcText</span></div>
+                    }
+                    <div class="pv2n-f pv2n-owner"><label>Project owner <span class="opt">(defaults to you)</span></label>
+                        <div @onkeydown:stopPropagation="true"><AppMemberPicker Placeholder="Search by name for owner..." ValueChanged="r => createOwner = r" /></div>
+                        @if (createOwner is not null) { <span class="pv2n-ownernote">@createOwner.Name · @createOwner.PositionLabel</span> }
+                    </div>
+                </div>
+                <div class="pv2n-right">
+                    @if (IsBlank)
+                    {
+                        <b class="pv2n-h">Start blank</b>
+                        <p class="pv2n-sub">The project opens with one empty group. Add people from the Team button once it exists.</p>
+                    }
+                    else
+                    {
+                        <b class="pv2n-h">People</b>
+                        <p class="pv2n-sub">The template has @Plural(Roles.Count, "role", "roles"). Pick someone for each and their tasks are assigned automatically.</p>
+                        @foreach (var r in Roles)
+                        {
+                            var role = r;
+                            <div class="pv2n-role" @key="role.Key">
+                                <div><b>@role.Label</b><small>@RoleHint(role)</small></div>
+                                <div class="pv2n-pick">
+                                    @foreach (var p in PeopleFor(role.Key))
+                                    {
+                                        var person = p;
+                                        <span class="ch" @key="person.UserId">
+                                            <PersonAvatar Nik="@person.Nik" Name="@person.Name" Size="20" Decorative="true" />
+                                            @(person.Name)@(person.UserId == Auth.Me?.UserId ? " (you)" : "")
+                                            <button type="button" class="x" aria-label="Remove @person.Name" @onclick="() => RemovePerson(role.Key, person.UserId)"><i data-lucide="x"></i></button>
+                                        </span>
+                                    }
+                                    <div class="pv2n-pickin" @onkeydown:stopPropagation="true">
+                                        <AppMemberPicker Placeholder="@(PeopleFor(role.Key).Count == 0 ? "Type a name…" : "Add…")" ValueChanged="x => AddPerson(role.Key, x)" />
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                        @if (Suggestions.Count > 0 && SuggestRole is not null)
+                        {
+                            <div class="pv2n-sugh">Suggested from @(scope?.DepartmentName ?? "your department")</div>
+                            <div class="pv2n-sugg">
+                                @foreach (var s in Suggestions)
+                                {
+                                    var sg = s;
+                                    var gone = suggestGone.Contains(sg.UserId);
+                                    <button type="button" class="pv2-btn sm @(gone ? "gone" : "")" @key="sg.UserId" tabindex="@(gone ? -1 : 0)" @onclick="() => AddSuggestion(sg)">
+                                        <PersonAvatar Nik="@sg.Nik" Name="@sg.Name" Size="20" Decorative="true" />@(sg.Name)@(string.IsNullOrWhiteSpace(sg.Department) ? "" : " · " + sg.Department) <i data-lucide="plus"></i>
+                                    </button>
+                                }
+                            </div>
+                        }
+                    }
+                    <div class="pv2n-next"><b>What happens next</b><br />The project opens on <b>Overview</b> with a short checklist. Members get one notification, not one per task.</div>
+                </div>
+            </div>
+            <div class="pv2-mf">
+                <button type="button" class="pv2-btn" @onclick="() => step = 1"><i data-lucide="chevron-left"></i>Back</button>
+                <span class="pv2-sp"></span>
+                <button type="button" class="pv2-btn pri" disabled="@(Busy || string.IsNullOrWhiteSpace(createName))" @onclick="HandleSubmit">Create project</button>
+            </div>
+        }
     </div>
-    <div class="proj-modal-foot"><button type="button" class="btn-sm surface" @onclick="OnClose">Cancel</button><button type="button" class="btn-sm accent" disabled="@(Busy || (fromTemplate && selectedTemplate is null))" @onclick="HandleSubmit"><i data-lucide="plus"></i>Create project</button></div>
 </div>
 
 @code {
@@ -99,81 +202,284 @@
     [Parameter] public EventCallback<CreateProjectModel> OnSubmit { get; set; }
     /// The page is creating the project: the Create button stays disabled.
     [Parameter] public bool Busy { get; set; }
-
-    /// GET /api/projects/templates row.
-    public sealed record TemplateRow(Guid Id, string Name, string? Description, int TaskCount, Guid? SourceProjectId,
-        int GroupCount = 0, int MilestoneCount = 0, int UsedCount = 0, bool IsBuiltIn = false, string Visibility = "everyone",
-        string? CreatedByName = null, string? DepartmentName = null, string? Icon = null, string? Color = null,
-        bool CanDelete = false, string? SourceProjectName = null);
-
     /// Test hook: today's date (defaults to the browser's local date).
     [Parameter] public DateTime? Today { get; set; }
 
-    private bool fromTemplate;
+    public sealed record CreateProjectModel(
+        string Name,
+        int Year,
+        DateTime? Deadline,
+        string? Goal,
+        string? OwnerNik,
+        string? Color = null,
+        /// Set when a template is chosen: POST /api/projects/from-template.
+        Guid? TemplateId = null,
+        /// The day task and milestone offsets count from.
+        DateTime? StartDate = null,
+        /// Template roles: roleKey -> people who get that role's tasks.
+        IReadOnlyDictionary<string, IReadOnlyList<Guid>>? RoleAssignments = null);
 
-    // Menus/sheets in here re-render without the page: draw their Lucide icons.
+    private static readonly string[] PaletteColors = ["#2E9E5B", "#0A84FF", "#7657C4", "#FF9F0A", "#C0513A", "#18808A"];
+    private const string AllCat = "All templates";
+
+    private int step = 1;
+    private ElementReference modalRef, searchRef, nameRef;
+    private bool focusSearch = true, focusName;
+
+    // step 1
+    private List<ProjectTemplateDto>? templates;
+    private List<ProjectTemplateCategoryDto> apiCategories = [];
+    private ProjectTemplateScopeDto? scope;
+    private readonly Dictionary<Guid, ProjectTemplateDetailDto> details = [];
+    private string category = AllCat;
+    private string search = "";
+    private Guid selectedId;            // Guid.Empty = blank project
+    private bool detailLoading;
+    private Guid? menuFor;
+    private bool deleting;
+    private CancellationTokenSource? cts = new();
+
+    // step 2
+    private string createName = "", createGoal = "", startText = "";
+    private string selectedColor = PaletteColors[0];
+    private DateTime? createDeadline;
+    private MemberSearchRow? createOwner;
+    private int calcTick;
+    private readonly Dictionary<string, List<PersonRef>> picked = [];
+    private List<PersonRef> suggestions = [];
+    private readonly HashSet<Guid> suggestGone = [];
+
+    private sealed record PersonRef(Guid UserId, string Nik, string Name, string? Department);
+
+    private DateTime StartDay => DateTime.TryParseExact(startText, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : (Today ?? DateTime.Today).Date;
+    private bool IsBlank => selectedId == Guid.Empty;
+    private ProjectTemplateDto? Selected => templates?.FirstOrDefault(t => t.Id == selectedId);
+    private ProjectTemplateDetailDto? Detail => details.GetValueOrDefault(selectedId);
+    private string PickedName => IsBlank ? "Blank project" : Selected?.Name ?? "Template";
+    private IReadOnlyList<ProjectTemplateRoleDto> Roles => Detail?.Roles ?? [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        startText = (Today ?? DateTime.Today).Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        try { templates = await Auth.GetAsync<List<ProjectTemplateDto>>("/api/projects/templates") ?? []; }
+        catch { templates = []; }
+        try { apiCategories = await Auth.GetAsync<List<ProjectTemplateCategoryDto>>("/api/projects/templates/categories") ?? []; }
+        catch { apiCategories = []; }
+        try { scope = await Auth.GetAsync<ProjectTemplateScopeDto>("/api/projects/templates/scope"); }
+        catch { scope = null; }
+        if (templates.Count > 0) { selectedId = templates[0].Id; await LoadDetailAsync(selectedId); }
+        _ = PrefetchAsync();
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        try { await JS.InvokeVoidAsync("ipop.icons"); }
+        try
+        {
+            await JS.InvokeVoidAsync("ipop.icons");
+            if (focusSearch && step == 1) { focusSearch = false; await searchRef.FocusAsync(); }
+            else if (focusName && step == 2) { focusName = false; await nameRef.FocusAsync(); }
+            else if (firstRender) await modalRef.FocusAsync();
+        }
         catch (JSException) { }
         catch (InvalidOperationException) { }
     }
-    private List<TemplateRow>? templates;
-    private TemplateRow? selectedTemplate;
-    private Guid? menuFor;
-    private bool deleting;
-    private DateTime createStart;
 
-    protected override void OnInitialized() => createStart = (Today ?? DateTime.Today).Date;
-
-    /// Built-in first, then templates saved by the caller's team (mockup artboard 2).
-    private IEnumerable<(string Heading, List<TemplateRow> Rows)> TemplateSections
+    /// Thumbnails use each template's real section colours, so the details load quietly in the background.
+    private async Task PrefetchAsync()
     {
-        get
+        var token = cts?.Token ?? CancellationToken.None;
+        foreach (var t in (templates ?? []).Take(40).ToList())
         {
-            var builtIn = (templates ?? []).Where(t => t.IsBuiltIn).ToList();
-            var team = (templates ?? []).Where(t => !t.IsBuiltIn).ToList();
-            if (builtIn.Count > 0) yield return ("Built-in", builtIn);
-            if (team.Count > 0) yield return ("Saved by your team", team);
+            if (token.IsCancellationRequested) return;
+            if (details.ContainsKey(t.Id)) continue;
+            try
+            {
+                var d = await Auth.GetAsync<ProjectTemplateDetailDto>($"/api/projects/templates/{t.Id}", token);
+                if (token.IsCancellationRequested) return;
+                if (d is not null) { details[t.Id] = d; await InvokeAsync(StateHasChanged); }
+            }
+            catch { }
         }
     }
 
-    private static string ToneClass(TemplateRow t) => t.Color switch
+    private async Task LoadDetailAsync(Guid id)
     {
-        "inf" => "c-inf", "war" => "c-war", "vio" => "c-vio", "dan" => "c-dan", _ => "c-acc",
-    };
+        if (id == Guid.Empty || details.ContainsKey(id)) return;
+        detailLoading = true;
+        try
+        {
+            var d = await Auth.GetAsync<ProjectTemplateDetailDto>($"/api/projects/templates/{id}");
+            if (d is not null) details[id] = d;
+        }
+        catch { }
+        finally { if (selectedId == id) detailLoading = false; }
+    }
+
+    // ---------- step 1: filtering ----------
+    private IEnumerable<ProjectTemplateCategoryDto> Categories
+    {
+        get
+        {
+            yield return new(AllCat, templates?.Count ?? 0);
+            var rows = apiCategories.Count > 0 ? apiCategories
+                : (templates ?? []).Where(t => t.Category is not null).GroupBy(t => t.Category!).Select(g => new ProjectTemplateCategoryDto(g.Key, g.Count())).ToList();
+            foreach (var r in rows) yield return r;
+        }
+    }
+
+    private bool IsMine(ProjectTemplateDto t) => !t.IsBuiltIn && !string.IsNullOrEmpty(Auth.Me?.Name) && t.CreatedByName == Auth.Me.Name;
+
+    private List<ProjectTemplateDto> Filtered => (templates ?? []).Where(t =>
+    {
+        if (category != AllCat)
+        {
+            var ok = category switch
+            {
+                "My templates" => IsMine(t) || (t.CanDelete && !Auth.IsAdmin),
+                "Shared with my department" => !t.IsBuiltIn && !IsMine(t) && t.Visibility == "department",
+                _ => string.Equals(t.Category, category, StringComparison.OrdinalIgnoreCase),
+            };
+            if (!ok) return false;
+        }
+        var q = search.Trim();
+        return q.Length == 0 || t.Name.Contains(q, StringComparison.OrdinalIgnoreCase) || (t.Description?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false);
+    }).ToList();
+
+    private bool ShowBlank => category == AllCat && (search.Trim().Length == 0 || "blank project start empty".Contains(search.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    private void OnSearch(ChangeEventArgs e) => search = e.Value?.ToString() ?? "";
+    private void SetCategory(string c) { category = c; menuFor = null; }
+
+    private async Task Select(Guid id)
+    {
+        selectedId = id;
+        menuFor = null;
+        if (id != Guid.Empty && !details.ContainsKey(id)) { detailLoading = true; await LoadDetailAsync(id); }
+        else detailLoading = false;
+    }
+
+    private static string Subline(ProjectTemplateDto t)
+    {
+        if (!string.IsNullOrWhiteSpace(t.Description)) return t.Description!;
+        return $"{Plural(t.TaskCount, "task", "tasks")} · {Plural(t.GroupCount, "group", "groups")}";
+    }
 
     internal static string Plural(int n, string one, string many) => $"{n} {(n == 1 ? one : many)}";
 
-    /// Built-in: its stage line. Team: who saved it · their department · counts · how often it was used.
-    private static string Subline(TemplateRow t)
+    private static string ToneColor(string? c) => c switch
     {
-        var counts = $"{Plural(t.TaskCount, "task", "tasks")} · {Plural(t.GroupCount, "section", "sections")} · {Plural(t.MilestoneCount, "milestone", "milestones")}";
-        if (t.IsBuiltIn) return string.IsNullOrWhiteSpace(t.Description) ? counts : t.Description!;
-        var parts = new List<string>();
-        if (!string.IsNullOrWhiteSpace(t.CreatedByName)) parts.Add(t.CreatedByName!);
-        if (t.Visibility == "department" && !string.IsNullOrWhiteSpace(t.DepartmentName)) parts.Add(t.DepartmentName!);
-        else if (t.Visibility == "private") parts.Add("Only you");
-        parts.Add(counts);
-        if (t.UsedCount > 0) parts.Add($"used {t.UsedCount}×");
-        return string.Join(" · ", parts);
-    }
+        { Length: > 0 } s when s[0] == '#' && s.Length is 4 or 7 => s,
+        "inf" => "#579bfc", "war" => "#fdab3d", "vio" => "#a25ddc", "dan" => "#e2445c", _ => "#00c875",
+    };
 
-    /// "Creates 12 tasks in 4 sections · 2 milestones, dates from 12 Oct 2026."
-    internal string SummaryLine
+    private static readonly int[] FallbackW = [70, 45, 85, 55], FallbackL = [0, 20, 35, 50];
+
+    /// The mini Gantt: a bar per section at its real weeks when the detail is known, else a tidy default pattern in the template's colour.
+    private Microsoft.AspNetCore.Components.RenderFragment ThumbBars(ProjectTemplateDto? t, int max = 4) => b =>
     {
-        get
+        var seq = 0;
+        if (t is null)
         {
-            var t = selectedTemplate;
-            if (t is null) return "";
-            var tasks = Plural(t.TaskCount, "task", "tasks");
-            var where = t.GroupCount > 0 ? $" in {Plural(t.GroupCount, "section", "sections")}" : "";
-            var ms = t.MilestoneCount > 0 ? Plural(t.MilestoneCount, "milestone", "milestones") : "no milestones";
-            return $"Creates {tasks}{where} · {ms}, dates from {createStart.ToString("d MMM yyyy", System.Globalization.CultureInfo.InvariantCulture)}.";
+            string[] cs = ["#b9bcc0", "#dcd8d0"];
+            for (var i = 0; i < cs.Length; i++) Bar(b, ref seq, cs[i], FallbackW[i], FallbackL[i]);
+            return;
         }
+        if (details.TryGetValue(t.Id, out var d) && d.GroupSummaries is { Count: > 0 } gs)
+        {
+            var total = Math.Max(1, gs.Max(g => g.WeekTo));
+            foreach (var g in gs.Take(max))
+            {
+                var left = (g.WeekFrom - 1) * 100.0 / total;
+                var width = Math.Max(14, (g.WeekTo - g.WeekFrom + 1) * 100.0 / total);
+                Bar(b, ref seq, ToneColor(g.Color), (int)Math.Min(width, 100 - left), (int)left);
+            }
+            return;
+        }
+        var col = ToneColor(t.Color);
+        for (var i = 0; i < Math.Clamp(t.GroupCount, 2, max); i++) Bar(b, ref seq, col, FallbackW[i], FallbackL[i]);
+    };
+
+    private static void Bar(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder b, ref int seq, string color, int width, int left)
+    {
+        b.OpenElement(seq++, "i");
+        b.AddAttribute(seq++, "style", $"background:{color};width:{width}%;margin-left:{left}%");
+        b.CloseElement();
     }
 
-    private async Task DeleteTemplateAsync(TemplateRow t)
+    // ---------- step 1: preview ----------
+    private Microsoft.AspNetCore.Components.RenderFragment PreviewBody() => b =>
+    {
+        var seq = 0;
+        var t = Selected;
+        var d = Detail;
+        var blank = IsBlank;
+        var title = blank ? "Blank project" : t?.Name ?? "";
+        var desc = blank ? "Start empty and add groups yourself" : t?.Description ?? "";
+        b.OpenElement(seq++, "div"); b.AddAttribute(seq++, "class", "pv2n-thumb big");
+        if (blank) Bar(b, ref seq, "#b9bcc0", 40, 0);
+        else if (d?.GroupSummaries is { Count: > 0 } gs)
+        {
+            var total = Math.Max(1, gs.Max(g => g.WeekTo));
+            foreach (var g in gs.Take(6))
+            {
+                var left = (g.WeekFrom - 1) * 100.0 / total;
+                Bar(b, ref seq, ToneColor(g.Color), (int)Math.Min(Math.Max(14, (g.WeekTo - g.WeekFrom + 1) * 100.0 / total), 100 - left), (int)left);
+            }
+        }
+        else if (t is not null) { var col = ToneColor(t.Color); for (var i = 0; i < 4; i++) Bar(b, ref seq, col, new[] { 40, 60, 50, 70 }[i], new[] { 0, 22, 35, 48 }[i]); }
+        b.CloseElement();
+        b.AddContent(seq++, (MarkupString)($"<h3>{System.Net.WebUtility.HtmlEncode(title)}</h3><p>{System.Net.WebUtility.HtmlEncode(desc)}{(desc.Length > 0 ? ". " : "")}Dates move with your start date and skip weekends.</p>"));
+        var groups = blank ? 1 : t?.GroupCount ?? 0;
+        var tasks = blank ? 0 : t?.TaskCount ?? 0;
+        var weeks = blank ? null : d?.DurationWeeks ?? t?.DurationWeeks ?? (d?.GroupSummaries is { Count: > 0 } w ? w.Max(x => x.WeekTo) : (int?)null);
+        b.AddContent(seq++, (MarkupString)$"<div class=\"pv2n-kv\"><div><b class=\"pv2-num\">{groups}</b>groups</div><div><b class=\"pv2-num\">{tasks}</b>tasks</div><div><b class=\"pv2-num\">{(weeks is > 0 ? "~" + weeks : "·")}</b>weeks</div></div>");
+        if (blank)
+        {
+            b.AddContent(seq++, (MarkupString)"<h5>Includes</h5><div class=\"pv2n-vchips\"><span>Groups</span><span>Statuses</span><span>Columns</span><span>Views</span><span>Roles</span><span>Automations</span></div>");
+            return;
+        }
+        if (d is null)
+        {
+            b.AddContent(seq++, (MarkupString)(detailLoading ? "<div class=\"pv2n-pskel\" aria-label=\"Loading\"><i></i><i></i><i></i><i></i></div>" : ""));
+            return;
+        }
+        Func<string?, string> e = s => System.Net.WebUtility.HtmlEncode(s ?? "");
+        var sb = new System.Text.StringBuilder();
+        if (d.GroupSummaries is { Count: > 0 } sums)
+        {
+            sb.Append("<h5>What's inside</h5><div class=\"pv2n-plist\">");
+            foreach (var g in sums)
+                sb.Append($"<div><i style=\"background:{e(ToneColor(g.Color))}\"></i>{e(g.Name)}<small>{Plural(g.TaskCount, "task", "tasks")} · {(g.WeekFrom == g.WeekTo ? $"week {g.WeekFrom}" : $"week {g.WeekFrom}–{g.WeekTo}")}</small></div>");
+            sb.Append("</div>");
+        }
+        if (d.Statuses is { Count: > 0 } st)
+        {
+            sb.Append("<h5>Statuses</h5><div class=\"pv2n-vchips\">");
+            foreach (var s in st) sb.Append($"<span style=\"background:{e(ProjectStatusUi.SafeColor(s.Color))};color:#fff\">{e(s.Label)}</span>");
+            sb.Append("</div>");
+        }
+        if (d.Tabs is { Count: > 0 } tabs)
+        {
+            sb.Append("<h5>Views</h5><div class=\"pv2n-vchips\">");
+            foreach (var k in tabs) sb.Append($"<span>{e(ProjectViewCatalog.Views.TryGetValue(k, out var v) ? v.Label : k)}</span>");
+            sb.Append("</div>");
+        }
+        if (d.Roles is { Count: > 0 } rl)
+        {
+            sb.Append("<h5>Roles to fill</h5><div class=\"pv2n-vchips\">");
+            foreach (var r in rl) sb.Append($"<span>{e(r.Label)}</span>");
+            sb.Append("</div>");
+        }
+        if (d.Automations is { Count: > 0 } au)
+        {
+            sb.Append("<h5>Automations</h5><div class=\"pv2n-vchips\">");
+            foreach (var a in au) sb.Append($"<span>{e(a)}</span>");
+            sb.Append("</div>");
+        }
+        b.AddContent(seq++, (MarkupString)sb.ToString());
+    };
+
+    private async Task DeleteTemplateAsync(ProjectTemplateDto t)
     {
         if (deleting) return;
         deleting = true;
@@ -183,9 +489,11 @@
             if (res.IsSuccessStatusCode)
             {
                 templates?.RemoveAll(x => x.Id == t.Id);
-                if (selectedTemplate?.Id == t.Id) selectedTemplate = null;
+                details.Remove(t.Id);
+                if (selectedId == t.Id) selectedId = templates?.FirstOrDefault()?.Id ?? Guid.Empty;
                 menuFor = null;
                 Toasts.Show($"Template \"{t.Name}\" deleted.", ToastKind.Success);
+                if (selectedId != Guid.Empty) await LoadDetailAsync(selectedId);
             }
             else
             {
@@ -198,58 +506,152 @@
         finally { deleting = false; }
     }
 
-    private async Task ChooseTemplate()
+    // ---------- step 2 ----------
+    private async Task GoStep2()
     {
-        fromTemplate = true;
-        if (templates is not null) return;
-        try { templates = await Auth.GetAsync<List<TemplateRow>>("/api/projects/templates") ?? []; }
-        catch { templates = []; }
-        if (selectedTemplate is null && templates.Count > 0) PickTemplate(templates.FirstOrDefault(t => !t.IsBuiltIn) ?? templates[0]);
-    }
-
-    private void PickTemplate(TemplateRow t)
-    {
-        selectedTemplate = t;
+        if (templates is null) return;
+        if (!IsBlank && !details.ContainsKey(selectedId)) await LoadDetailAsync(selectedId);
+        if (string.IsNullOrWhiteSpace(createName)) createName = IsBlank ? "" : Selected?.Name ?? "";
+        step = 2;
+        focusName = true;
         menuFor = null;
-        if (string.IsNullOrWhiteSpace(createName)) createName = t.Name;
+        if (!IsBlank) await SeedPeopleAsync();
     }
 
-    private string createName = "";
-    private string selectedColor = "#2E9E5B";
-    private int createYear = DateTime.UtcNow.Year;
-    private DateTime? createDeadline;
-    private string? createDescription;
-    private MemberSearchRow? createOwner;
+    private async Task SeedPeopleAsync()
+    {
+        var me = Auth.Me ?? await Auth.LoadMeAsync();
+        if (me?.UserId is { } id && Roles.FirstOrDefault(r => r.Key == "lead") is { } lead && !picked.ContainsKey(lead.Key))
+            picked[lead.Key] = [new PersonRef(id, me.Nik, me.Name, me.Department)];
+        if (suggestions.Count == 0 && !string.IsNullOrWhiteSpace(me?.DepartmentCode))
+        {
+            try
+            {
+                var page = await Auth.GetAsync<DirectoryPageDto>($"/api/directory/employees?departmentCode={Uri.EscapeDataString(me.DepartmentCode)}&pageSize=12");
+                suggestions = (page?.Items ?? []).Where(x => x.UserId is not null && x.UserId != me.UserId)
+                    .Take(6).Select(x => new PersonRef(x.UserId!.Value, x.Nik, x.Name, x.Department)).ToList();
+            }
+            catch { }
+        }
+    }
 
-    private static readonly string[] PaletteColors = ["#2E9E5B", "#0A84FF", "#7657C4", "#FF9F0A", "#C0513A", "#18808A"];
+    private void OnStart(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString();
+        if (string.IsNullOrEmpty(v)) return;
+        startText = v;
+        calcTick++;
+    }
+
+    private static string Fmt(DateTime d, string f) => d.ToString(f, CultureInfo.InvariantCulture);
+
+    /// Same rule as the server: working-day offsets skip Saturday and Sunday (holidays are not applied yet).
+    internal static DateTime AddWorkingDays(DateTime start, int n)
+    {
+        var d = start.Date;
+        while (d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) d = d.AddDays(1);
+        for (var left = Math.Max(0, n); left > 0;)
+        {
+            d = d.AddDays(1);
+            if (d.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday)) left--;
+        }
+        return d;
+    }
+
+    private int? LastOffset
+    {
+        get
+        {
+            var d = Detail;
+            if (d is null) return null;
+            var o = d.Tasks.Where(t => t.DueOffsetDays is not null).Select(t => t.DueOffsetDays!.Value)
+                .Concat((d.Milestones ?? []).Select(m => m.DueOffsetDays)).ToList();
+            return o.Count == 0 ? null : o.Max();
+        }
+    }
+
+    private DateTime? GoLive => LastOffset is { } n
+        ? (Detail!.OffsetsInWorkingDays ? AddWorkingDays(StartDay, n) : StartDay.AddDays(n)) : null;
+
+    private string CalcText
+    {
+        get
+        {
+            var n = Detail?.Tasks.Count(t => t.DueOffsetDays is not null) ?? 0;
+            if (GoLive is not { } end || n == 0) return "Task dates are calculated from your start date when the project is created.";
+            return $"{Plural(n, "task date", "task dates")} spread from {Fmt(StartDay, "d MMM")} to {Fmt(end, "d MMM")}{(Detail!.OffsetsInWorkingDays ? ", skipping weekends" : "")}.";
+        }
+    }
+
+    private static string RoleHint(ProjectTemplateRoleDto r)
+    {
+        var parts = new List<string>();
+        if (r.TaskCount > 0) parts.Add(Plural(r.TaskCount, "task", "tasks"));
+        if (!string.IsNullOrWhiteSpace(r.Hint)) parts.Add(r.Hint!);
+        return parts.Count == 0 ? "" : string.Join(" · ", parts);
+    }
+
+    private IReadOnlyList<PersonRef> PeopleFor(string key) => picked.TryGetValue(key, out var l) ? l : [];
+
+    private void AddPerson(string key, MemberSearchRow? row)
+    {
+        if (row?.UserId is not { } id) return;
+        AddTo(key, new PersonRef(id, row.Nik, row.Name, row.Department));
+    }
+
+    private void AddTo(string key, PersonRef p)
+    {
+        if (!picked.TryGetValue(key, out var l)) picked[key] = l = [];
+        if (l.All(x => x.UserId != p.UserId)) l.Add(p);
+    }
+
+    private void RemovePerson(string key, Guid id)
+    {
+        if (picked.TryGetValue(key, out var l)) l.RemoveAll(x => x.UserId == id);
+    }
+
+    /// Suggestions go to the last role that is not the lead (the mockup's "Key user").
+    private ProjectTemplateRoleDto? SuggestRole => Roles.LastOrDefault(r => r.Key != "lead");
+    private List<PersonRef> Suggestions => suggestions;
+
+    private void AddSuggestion(PersonRef p)
+    {
+        if (SuggestRole is not { } r || suggestGone.Contains(p.UserId)) return;
+        AddTo(r.Key, p);
+        suggestGone.Add(p.UserId);
+    }
 
     private async Task HandleSubmit()
     {
         if (string.IsNullOrWhiteSpace(createName) || Busy) return;
-        if (fromTemplate && selectedTemplate is null) return;
-        var model = new CreateProjectModel(
-            createName.Trim(),
-            createYear,
-            createDeadline,
-            createDescription?.Trim(),
-            createOwner?.Nik,
-            selectedColor,
-            fromTemplate ? selectedTemplate?.Id : null,
-            fromTemplate ? DateTime.SpecifyKind(createStart.Date, DateTimeKind.Utc) : null
-        );
-        await OnSubmit.InvokeAsync(model);
+        var start = DateTime.SpecifyKind(StartDay.Date, DateTimeKind.Utc);
+        IReadOnlyDictionary<string, IReadOnlyList<Guid>>? roles = null;
+        if (!IsBlank)
+        {
+            var map = picked.Where(kv => kv.Value.Count > 0).ToDictionary(kv => kv.Key, kv => (IReadOnlyList<Guid>)kv.Value.Select(x => x.UserId).Distinct().ToList());
+            if (map.Count > 0) roles = map;
+        }
+        await OnSubmit.InvokeAsync(new CreateProjectModel(
+            createName.Trim(), start.Year,
+            IsBlank ? createDeadline : null,
+            string.IsNullOrWhiteSpace(createGoal) ? null : createGoal.Trim(),
+            createOwner?.Nik, selectedColor,
+            IsBlank ? null : selectedId, start, roles));
     }
 
-    public record CreateProjectModel(
-        string Name,
-        int Year,
-        DateTime? Deadline,
-        string? Description,
-        string? OwnerNik,
-        string? Color = null,
-        /// Set when "Start from: Template" is chosen: POST /api/projects/from-template.
-        Guid? TemplateId = null,
-        /// Template only: task and milestone dates are offsets from this day.
-        DateTime? StartDate = null
-    );
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            if (menuFor is not null) { menuFor = null; return; }
+            await OnClose.InvokeAsync();
+        }
+    }
+
+    public void Dispose()
+    {
+        cts?.Cancel();
+        cts?.Dispose();
+        cts = null;
+    }
 }

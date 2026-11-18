@@ -216,7 +216,7 @@ public static class DirectoryEndpoints
             return Results.Ok(await db.Users.AsNoTracking().Where(u => u.IsActive)
                 .Where(u => EF.Functions.ILike(u.Name, pat, @"\") || (admin && EF.Functions.ILike(u.Nik, pat, @"\")))
                 .OrderBy(u => u.Name).Take(8)
-                .Select(u => new MemberSearchRow(u.Nik, u.Name, admin ? u.Position : null, u.Department!.Name))
+                .Select(u => new MemberSearchRow(u.Nik, u.Name, admin ? u.Position : null, u.Department!.Name, u.Id))
                 .ToListAsync(ct));
         }).RequireAuthorization().RequirePermission("directory.read");
 
@@ -259,7 +259,7 @@ public static class DirectoryEndpoints
         return app;
     }
 
-    public record MemberSearchRow(string Nik, string Name, string? Position, string? Department);
+    public record MemberSearchRow(string Nik, string Name, string? Position, string? Department, Guid? UserId = null);
 
     // Full /api/directory/employees query: name/NIK search (same ILIKE-escape pattern as
     // /divisions and /member-search) plus department/site/division exact-code filters, presence

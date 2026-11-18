@@ -366,7 +366,7 @@ public sealed class ProjectTemplateService(IPopDbContext db, IProjectService pro
                 SplitGuids(m.TaskIds).ToList())).ToList(),
             ParseStatuses(tpl.StatusesJson) ?? ProjectStatusDefaults.Options.Select(o => new ProjectTemplateStatusDto(o.Label, o.Color, o.Stage)).ToList(),
             ParseStrings(tpl.TabsJson).Where(ProjectStatusDefaults.TabKeys.Contains).ToList(),
-            roles, ParseStrings(tpl.AutomationsJson), summaries, tpl.Category, tpl.DurationWeeks);
+            roles, ParseStrings(tpl.AutomationsJson), summaries, tpl.Category, tpl.DurationWeeks, tpl.OffsetsInWorkingDays);
     }
 
     private static readonly System.Text.Json.JsonSerializerOptions JsonOpts = new(System.Text.Json.JsonSerializerDefaults.Web);

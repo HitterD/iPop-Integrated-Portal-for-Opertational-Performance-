@@ -52,6 +52,7 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
             Progress = 0,
             Risk = req.Risk?.Trim(),
             Obstacle = req.Obstacle?.Trim(),
+            Goal = string.IsNullOrWhiteSpace(req.Goal) ? null : req.Goal.Trim()[..Math.Min(req.Goal.Trim().Length, 1000)],
             IsActive = true,
             CreatedAt = now,
             UpdatedAt = now

@@ -2336,55 +2336,40 @@ else
 
     private async Task HandleSubmitCreateProject(ProjectCreateModal.CreateProjectModel m)
     {
-        if (m.TemplateId is { } templateId)
-        {
-            await CreateProjectFromTemplate(m, templateId);
-            return;
-        }
-        var create = new CreateProjectRequest(
-            m.Name, m.Description, m.Year, Guid.Empty,
-            null, m.Deadline, null, null, m.OwnerNik, m.Color
-        );
-        var r = await Auth.SendAsync(HttpMethod.Post, "/api/projects", create);
-        if (r.IsSuccessStatusCode)
-        {
-            showCreateModal = false;
-            await ReloadProjects();
-            Toasts.Show("Project created successfully.", ToastKind.Success);
-        }
-        else
-        {
-            Toasts.Show($"Failed to create project: {await ProjectErrorAsync(r)}", ToastKind.Error);
-        }
-    }
-
-    /// "Start from: Template" in New project: the server copies the template's tasks, then the
-    /// new project opens.
-    private async Task CreateProjectFromTemplate(ProjectCreateModal.CreateProjectModel m, Guid templateId)
-    {
         if (creatingProject) return;
         creatingProject = true;
         try
         {
-            var res = await Auth.SendAsync(HttpMethod.Post, "/api/projects/from-template", new
+            HttpResponseMessage res;
+            if (m.TemplateId is { } templateId)
             {
-                templateId, name = m.Name, description = m.Description, year = m.Year, startDate = m.StartDate,
-                deadline = m.Deadline is { } d ? DateTime.SpecifyKind(d.Date, DateTimeKind.Utc) : (DateTime?)null,
-                ownerNik = m.OwnerNik, color = m.Color,
-            });
+                res = await Auth.SendAsync(HttpMethod.Post, "/api/projects/from-template", new
+                {
+                    templateId, name = m.Name, goal = m.Goal, year = m.Year, startDate = m.StartDate,
+                    deadline = m.Deadline is { } d ? DateTime.SpecifyKind(d.Date, DateTimeKind.Utc) : (DateTime?)null,
+                    ownerNik = m.OwnerNik, color = m.Color, roleAssignments = m.RoleAssignments,
+                });
+            }
+            else
+            {
+                var create = new CreateProjectRequest(
+                    m.Name, null, m.Year, Guid.Empty,
+                    m.StartDate, m.Deadline, null, null, m.OwnerNik, m.Color, m.Goal);
+                res = await Auth.SendAsync(HttpMethod.Post, "/api/projects", create);
+            }
             if (!res.IsSuccessStatusCode)
             {
-                Toasts.Show($"Failed to create project: {(res.StatusCode == System.Net.HttpStatusCode.NotFound ? "that template no longer exists." : await ProjectErrorAsync(res))}", ToastKind.Error);
+                Toasts.Show($"Failed to create project: {(res.StatusCode == System.Net.HttpStatusCode.NotFound && m.TemplateId is not null ? "that template no longer exists." : await ProjectErrorAsync(res))}", ToastKind.Error);
                 return;
             }
             ProjectDto? created = null;
             try { created = await res.Content.ReadFromJsonAsync<ProjectDto>(); } catch { }
             showCreateModal = false;
             await ReloadProjects();
-            Toasts.Show($"Project \"{m.Name}\" created from template.", ToastKind.Success);
+            Toasts.Show($"{m.Name} is ready. Members get one notification each.", ToastKind.Success);
             if (created is not null)
             {
-                // The route change selects and loads it (OnParametersSetAsync).
+                // Opens on Overview; the route change selects and loads it (OnParametersSetAsync).
                 tab = 4;
                 Nav.NavigateTo($"/projects/{created.Id}");
             }

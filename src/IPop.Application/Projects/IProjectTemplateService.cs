@@ -24,7 +24,9 @@ public record ProjectTemplateDetailDto(Guid Id, string Name, string? Description
     IReadOnlyList<ProjectTemplateStatusDto>? Statuses = null, IReadOnlyList<string>? Tabs = null,
     IReadOnlyList<ProjectTemplateRoleDto>? Roles = null, IReadOnlyList<string>? Automations = null,
     IReadOnlyList<ProjectTemplateGroupSummaryDto>? GroupSummaries = null,
-    string? Category = null, int? DurationWeeks = null);
+    string? Category = null, int? DurationWeeks = null,
+    /// True: task offsets count Mon-Fri working days (the wizard previews the go-live date with the same rule).
+    bool OffsetsInWorkingDays = false);
 
 /// Save as template. Tasks (top-level) are always copied when SourceProjectId is set; the
 /// Include* flags add sections, milestones (dates relative to the project start) and assignees

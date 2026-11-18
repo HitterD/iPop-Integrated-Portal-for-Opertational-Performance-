@@ -30,7 +30,7 @@ public record OrgNodeMemberDto(string Nik, string Name, string? Position, string
     string? Site, string Status);
 
 /// Mirrors the API's member-search rows (admin picker).
-public record MemberSearchRow(string Nik, string Name, string? Position, string? Department)
+public record MemberSearchRow(string Nik, string Name, string? Position, string? Department, Guid? UserId = null)
 {
     public string Initials =>
         string.Concat(Name.Split(' ', StringSplitOptions.RemoveEmptyEntries)

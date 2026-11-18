@@ -2,7 +2,8 @@ namespace IPop.Application.Projects;
 
 // Project DTOs
 public record CreateProjectRequest(string Name, string? Description, int Year, Guid OwnerId,
-    DateTime? StartDate, DateTime? Deadline, string? Risk, string? Obstacle, string? OwnerNik = null, string? Color = null);
+    DateTime? StartDate, DateTime? Deadline, string? Risk, string? Obstacle, string? OwnerNik = null, string? Color = null,
+    string? Goal = null);
 
 public record UpdateProjectRequest(string? Name, string? Description, int? Year, Guid? OwnerId,
     DateTime? StartDate, DateTime? Deadline, string? Status, string? Risk, string? Obstacle, string? OwnerNik = null, string? Color = null,
