@@ -1292,7 +1292,7 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
             p.Owner?.Name ?? "Unknown", p.Owner?.Nik ?? "Unknown",
             p.StartDate, p.Deadline, p.Status, p.Progress, p.Risk, p.Obstacle, p.IsActive,
             p.Members.Count, p.Tasks.Count, todo, doing, review, done,
-            p.CreatedAt, p.UpdatedAt, p.Color, p.Health, ParseTabs(p.TabsJson));
+            p.CreatedAt, p.UpdatedAt, p.Color, p.Health, ParseTabs(p.TabsJson), p.Goal);
     }
 
     /// The only way a task's status changes: CompletedAt follows the "done" lane (set on entering,

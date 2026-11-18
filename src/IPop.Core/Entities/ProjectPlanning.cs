@@ -25,6 +25,21 @@ public class ProjectTemplate
     /// Shipped with the app (seeded by fixed id); never deletable.
     public bool IsBuiltIn { get; set; }
 
+    /// Template Center filter chip ("ICT", "Operations & plant", "Events", "HC", "Marketing", "Finance & purchasing"); null for user templates.
+    public string? Category { get; set; }
+    /// Typical project length, shown on the card ("10 weeks").
+    public int? DurationWeeks { get; set; }
+    /// JSON [{label,color,stage}] applied as the new project's statuses; null = the project defaults.
+    public string? StatusesJson { get; set; }
+    /// JSON array of view keys for the new project's tabs; null = default layout.
+    public string? TabsJson { get; set; }
+    /// JSON [{key,label,hint}] roles the creator fills with people; tasks point at a key.
+    public string? RolesJson { get; set; }
+    /// JSON [string] short descriptions of the automations the template suggests (display only for now).
+    public string? AutomationsJson { get; set; }
+    /// True when task/milestone offsets count working days (Mon-Fri); false = calendar days (older templates, save-as-template).
+    public bool OffsetsInWorkingDays { get; set; }
+
     public Project? SourceProject { get; set; }
     public User? CreatedBy { get; set; }
     public Department? Department { get; set; }
@@ -82,6 +97,12 @@ public class ProjectTemplateTask
     public Guid? GroupId { get; set; }
     /// Comma-separated NIKs; applied when the template is used, only for users that still exist.
     public string? AssigneeNiks { get; set; }
+    /// The task spans DueOffset-DurationDays+1 .. DueOffset (calendar days); null = a single-day task without a start date.
+    public int? DurationDays { get; set; }
+    /// Role key from the template's RolesJson; the people picked for that role are assigned.
+    public string? RoleKey { get; set; }
+    /// Recurrence rule copied onto the created task (IsRecurring = true), e.g. "FREQ=WEEKLY;INTERVAL=1;BYDAY=MO".
+    public string? RecurrenceRule { get; set; }
 
     public ProjectTemplate Template { get; set; } = default!;
 }

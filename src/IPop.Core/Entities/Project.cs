@@ -33,6 +33,9 @@ public class Project
     /// JSON array of view keys in tab order (e.g. ["overview","table","gantt"]); null = default layout.
     public string? TabsJson { get; set; }
 
+    /// Why the project exists (one or two sentences); shown at the top of Overview. Set from the create wizard.
+    public string? Goal { get; set; }
+
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

@@ -14,7 +14,7 @@ public record ProjectDto(Guid Id, string Name, string? Description, int Year, Gu
     string Status, int Progress, string? Risk, string? Obstacle, bool IsActive,
     int MemberCount, int TaskCount, int TodoCount, int DoingCount, int ReviewCount, int DoneCount,
     DateTime CreatedAt, DateTime UpdatedAt, string? Color = null,
-    string? Health = null, IReadOnlyList<string>? Tabs = null);
+    string? Health = null, IReadOnlyList<string>? Tabs = null, string? Goal = null);
 
 public record ProjectListDto(Guid Id, string Name, int Year, string OwnerName, string Status,
     int Progress, DateTime? Deadline, int MemberCount, int TaskCount, bool IsActive, string? Color = null);

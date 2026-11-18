@@ -4037,6 +4037,10 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasMaxLength(4000)
                         .HasColumnType("character varying(4000)");
 
+                    b.Property<string>("Goal")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
                     b.Property<string>("Health")
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
@@ -4710,6 +4714,14 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("AutomationsJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
                     b.Property<string>("Color")
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
@@ -4727,6 +4739,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<int?>("DurationWeeks")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Icon")
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
@@ -4742,8 +4757,23 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<bool>("OffsetsInWorkingDays")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("RolesJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
                     b.Property<Guid?>("SourceProjectId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("StatusesJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("TabsJson")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
 
                     b.Property<int>("UsedCount")
                         .HasColumnType("integer");
@@ -4844,12 +4874,23 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<int?>("DueOffsetDays")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("DurationDays")
+                        .HasColumnType("integer");
+
                     b.Property<Guid?>("GroupId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("Priority")
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
+
+                    b.Property<string>("RecurrenceRule")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("RoleKey")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
 
                     b.Property<int>("SortOrder")
                         .HasColumnType("integer");

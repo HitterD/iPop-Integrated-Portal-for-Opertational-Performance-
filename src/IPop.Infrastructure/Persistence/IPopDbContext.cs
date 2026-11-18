@@ -707,6 +707,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Obstacle).HasMaxLength(2000);
             e.Property(x => x.Health).HasMaxLength(16);
             e.Property(x => x.TabsJson).HasMaxLength(1000);
+            e.Property(x => x.Goal).HasMaxLength(1000);
             e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Restrict);
         });
         b.Entity<ProjectStatusOption>(e =>
@@ -729,6 +730,11 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Visibility).HasMaxLength(16).HasDefaultValue(ProjectTemplateVisibility.Everyone);
             e.Property(x => x.Icon).HasMaxLength(40);
             e.Property(x => x.Color).HasMaxLength(16);
+            e.Property(x => x.Category).HasMaxLength(40);
+            e.Property(x => x.StatusesJson).HasMaxLength(2000);
+            e.Property(x => x.TabsJson).HasMaxLength(1000);
+            e.Property(x => x.RolesJson).HasMaxLength(2000);
+            e.Property(x => x.AutomationsJson).HasMaxLength(2000);
             e.HasIndex(x => x.CreatedById);
             e.HasOne(x => x.CreatedBy).WithMany().HasForeignKey(x => x.CreatedById).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.Department).WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.SetNull);
@@ -753,6 +759,8 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Description).HasMaxLength(2000);
             e.Property(x => x.Priority).HasMaxLength(32);
             e.Property(x => x.AssigneeNiks).HasMaxLength(2000);
+            e.Property(x => x.RoleKey).HasMaxLength(40);
+            e.Property(x => x.RecurrenceRule).HasMaxLength(200);
             e.HasOne(x => x.Template).WithMany(t => t.Tasks).HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<ProjectMilestone>(e =>

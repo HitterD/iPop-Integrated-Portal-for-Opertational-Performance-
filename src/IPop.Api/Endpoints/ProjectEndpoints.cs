@@ -1099,6 +1099,15 @@ public static class ProjectEndpoints
             return Results.Ok(await templates.ListAsync(userId.Value, http.User.IsInRole("Admin"), ct));
         });
 
+        // GET /api/projects/templates/categories: [{name,count}] for the Template Center sidebar, incl.
+        // "My templates" and "Shared with my department". The client filters the full list by Category.
+        g.MapGet("/templates/categories", async (HttpContext http, IPopDbContext db, IProjectTemplateService templates, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            return Results.Ok(await templates.CategoriesAsync(userId.Value, ct));
+        });
+
         // GET /api/projects/templates/scope — the caller's department for "Who can use it".
         g.MapGet("/templates/scope", async (HttpContext http, IPopDbContext db, IProjectTemplateService templates, CancellationToken ct) =>
         {
