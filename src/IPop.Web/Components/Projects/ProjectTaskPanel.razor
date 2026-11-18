@@ -32,7 +32,11 @@
             </div>
         </div>
         <div class="pv2p-b">
-            @if (tabKey == "details")
+            @if (!bodyReady)
+            {
+                <div class="pv2p-muted" role="status" style="padding:18px">Loading…</div>
+            }
+            else if (tabKey == "details")
             {
                 <div class="pv2p-kvs">
                     <span>Status</span>
@@ -264,6 +268,8 @@
     private IReadOnlyList<IPop.Application.Chat.AttachmentDto>? viewerSiblings;
     private DotNetObjectReference<ProjectTaskPanel>? self;
     private bool keysOn;
+    // Header and tabs paint first; the heavy body follows one frame later so opening the panel is not one long task.
+    private bool bodyReady;
     private int doneBefore = -1;
 
     private record CommentRow(Guid Id, string AuthorName, string AuthorNik, string Content, Guid? ParentCommentId, DateTime CreatedAt);
@@ -310,13 +316,20 @@
         var other = Task.Id != loadedFor;
         loadedFor = Task.Id;
         loadedVersion = Task;
-        if (other) { tabKey = "details"; statusOpen = ownerOpen = depOpen = false; depError = null; comments = []; activity = []; files = []; time = null; doneBefore = Subtasks.Count(s => s.Status == "done"); }
+        if (other) { bodyReady = false; tabKey = "details"; statusOpen = ownerOpen = depOpen = false; depError = null; comments = []; activity = []; files = []; time = null; doneBefore = Subtasks.Count(s => s.Status == "done"); }
         await System.Threading.Tasks.Task.WhenAll(LoadDiscussion(), LoadFiles(), LoadTime());
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (Task is null) return;
+        if (!bodyReady)
+        {
+            await System.Threading.Tasks.Task.Delay(1);
+            bodyReady = true;
+            StateHasChanged();
+            return;
+        }
         try
         {
             await JS.InvokeVoidAsync("ipop.icons");

@@ -864,9 +864,20 @@ else
     private bool showEditModal;
     private bool showTeamModal;
 
-    private List<ProjectTaskDto> AllCurrentTasks =>
-        taskList.Items.Concat(kanban?.Todo ?? []).Concat(kanban?.Doing ?? [])
-            .Concat(kanban?.Review ?? []).Concat(kanban?.Done ?? []).DistinctBy(x => x.Id).ToList();
+    // Rebuilt only when the task list or the board object changes: every render of this page (opening the panel,
+    // a toast, a toolbar toggle) used to re-merge and de-duplicate all tasks several times.
+    private List<ProjectTaskDto> AllCurrentTasks
+    {
+        get
+        {
+            if (_allTasksCache is not null && ReferenceEquals(_allTasksFromList, taskList) && ReferenceEquals(_allTasksFromKanban, kanban)) return _allTasksCache;
+            _allTasksFromList = taskList; _allTasksFromKanban = kanban;
+            return _allTasksCache = taskList.Items.Concat(kanban?.Todo ?? []).Concat(kanban?.Doing ?? [])
+                .Concat(kanban?.Review ?? []).Concat(kanban?.Done ?? []).DistinctBy(x => x.Id).ToList();
+        }
+    }
+    private List<ProjectTaskDto>? _allTasksCache;
+    private object? _allTasksFromList, _allTasksFromKanban;
 
     private static readonly string[] StatusOrder = ["todo", "doing", "review", "done"];
 
@@ -888,6 +899,18 @@ else
     private List<ProjectTaskDto> DrawerNavTasks
     {
         get
+        {
+            var key = (tab, taskList, kanban, timeline, taskSearchQuery, myTasksOnly, overdueOnly, priorityFilter, currentUserNik, selectedGroupId, listStatusFilter);
+            if (_navCache is not null && _navKey.Equals(key)) return _navCache;
+            _navKey = key;
+            return _navCache = BuildDrawerNavTasks();
+        }
+    }
+    private List<ProjectTaskDto>? _navCache;
+    private (int, object?, object?, object?, string?, bool, bool, string?, string?, Guid?, string?) _navKey;
+
+    private List<ProjectTaskDto> BuildDrawerNavTasks()
+    {
         {
             switch (tab)
             {

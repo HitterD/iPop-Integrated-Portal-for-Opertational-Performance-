@@ -213,7 +213,9 @@ public class ProjectV2Stage4WebTests
 
     private static IRenderedComponent<ProjectTaskPanel> RenderPanel(BunitContext ctx, ProjectTaskDto t, IReadOnlyList<ProjectTaskDto>? subs = null,
         bool ro = false, EventCallback? onClose = null, EventCallback<ProjectTaskDto>? onToggle = null, IReadOnlyList<ProjectTaskDto>? nav = null, EventCallback<ProjectTaskDto>? onNav = null)
-        => ctx.Render<ProjectTaskPanel>(p =>
+    {
+        // The panel paints header + tabs first and the body one frame later.
+        var cut = ctx.Render<ProjectTaskPanel>(p =>
         {
             p.Add(x => x.Task, t).Add(x => x.Subtasks, subs ?? []).Add(x => x.ReadOnly, ro).Add(x => x.Today, DateTime.Today)
              .Add(x => x.Options, ProjectStatusUi.StageDefaults).AllTasksOf(nav ?? [t]).Add(x => x.NavTasks, nav ?? [t]);
@@ -221,6 +223,9 @@ public class ProjectV2Stage4WebTests
             if (onToggle is { } tg) p.Add(x => x.OnToggleSubtask, tg);
             if (onNav is { } n) p.Add(x => x.OnNavigate, n);
         });
+        cut.WaitForState(() => cut.FindAll(".pv2p-b .pv2p-kvs").Count > 0, TimeSpan.FromSeconds(5));
+        return cut;
+    }
 
     [Fact]
     public void Panel_renders_tabs_details_and_late_days()
