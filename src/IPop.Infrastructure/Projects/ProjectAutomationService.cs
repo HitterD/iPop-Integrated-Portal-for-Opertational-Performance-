@@ -16,20 +16,39 @@ public sealed class ProjectAutomationService(IPopDbContext db) : IProjectAutomat
     private async Task EnsureRowsAsync(Guid projectId, CancellationToken ct)
     {
         var have = await db.ProjectAutomations.Where(a => a.ProjectId == projectId).Select(a => a.Kind).ToListAsync(ct);
-        var now = DateTime.UtcNow;
+        if (ProjectAutomationCatalogue.All.All(e => e.Kind == ProjectAutomationCatalogue.FormToIntake || have.Contains(e.Kind))) return;
+        // Opening an older project fires several first reads at once. On PostgreSQL concurrent inserts of the same
+        // (ProjectId, Kind) keys raced into unique violations and even deadlocks (40P01 -> HTTP 500), so serialize
+        // on a transaction-scoped advisory lock and re-read inside it (same pattern as EnsureStatusesAsync).
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? own = null;
         var added = new List<ProjectAutomation>();
-        foreach (var e in ProjectAutomationCatalogue.All.Where(e => e.Kind != ProjectAutomationCatalogue.FormToIntake && !have.Contains(e.Kind)))
+        try
         {
-            var row = new ProjectAutomation { Id = Guid.NewGuid(), ProjectId = projectId, Kind = e.Kind, ConfigJson = e.DefaultConfigJson, IsEnabled = false, CreatedAt = now };
-            db.ProjectAutomations.Add(row);
-            added.Add(row);
+            if (db.Database.IsNpgsql())
+            {
+                if (db.Database.CurrentTransaction is null) own = await db.Database.BeginTransactionAsync(ct);
+                var key = "ipop-project-automations-" + projectId;
+                await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtext({key}))", ct);
+                have = await db.ProjectAutomations.Where(a => a.ProjectId == projectId).Select(a => a.Kind).ToListAsync(ct);
+            }
+            var now = DateTime.UtcNow;
+            foreach (var e in ProjectAutomationCatalogue.All.Where(e => e.Kind != ProjectAutomationCatalogue.FormToIntake && !have.Contains(e.Kind)))
+            {
+                var row = new ProjectAutomation { Id = Guid.NewGuid(), ProjectId = projectId, Kind = e.Kind, ConfigJson = e.DefaultConfigJson, IsEnabled = false, CreatedAt = now };
+                db.ProjectAutomations.Add(row);
+                added.Add(row);
+            }
+            if (added.Count > 0) await db.SaveChangesAsync(ct);
+            if (own is not null) await own.CommitAsync(ct);
         }
-        if (added.Count == 0) return;
-        try { await db.SaveChangesAsync(ct); }
-        catch (DbUpdateException)
+        catch (DbUpdateException) when (own is null)
         {
-            // A concurrent first read created the rows (unique ProjectId+Kind); theirs are as good as ours.
+            // Other providers (no lock): a concurrent first read created the rows (unique ProjectId+Kind); theirs are as good as ours.
             foreach (var row in added) db.Entry(row).State = EntityState.Detached;
+        }
+        finally
+        {
+            if (own is not null) await own.DisposeAsync();
         }
     }
 
