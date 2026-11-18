@@ -200,6 +200,10 @@
         try { await JS.InvokeVoidAsync("ipop.prefSet", PrefKey, json); } catch { }
     }
 
+    public int HiddenFieldCount => hiddenFieldIds.Count;
+    public bool IsFieldHidden(Guid fieldId) => hiddenFieldIds.Contains(fieldId);
+    public async Task ToggleFieldColumnAsync(Guid fieldId) { await ToggleFieldColumn(fieldId); StateHasChanged(); }
+
     private async Task ToggleFieldColumn(Guid fieldId)
     {
         if (!hiddenFieldIds.Remove(fieldId)) hiddenFieldIds.Add(fieldId);

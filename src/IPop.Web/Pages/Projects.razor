@@ -178,94 +178,15 @@ else
             <div class="proj-canvas-bar pv2-bar">
                 <ProjectViewTabs @ref="viewTabs" Project="selectedProject" ActiveKey="@ActiveViewKey" CanManage="CanManageMembers"
                                  OnSelect="SelectView" OnTabsSaved="HandleTabsSaved" />
-
-                <div class="proj-bar-right">
-                    <div class="v6-search proj-task-search">
-                        <i data-lucide="search"></i>
-                        <input type="search" placeholder="Search tasks or tags" aria-label="Search tasks" @bind="taskSearchQuery" @bind:event="oninput" />
-                    </div>
-                    <div class="proj-filter-wrap">
-                        <button type="button" class="ghost-btn @(ActiveTaskFilterCount > 0 ? "on" : "")" aria-expanded="@(filterOpen ? "true" : "false")" @onclick="() => filterOpen = !filterOpen">
-                            <i data-lucide="list-filter"></i>Filter
-                            @if (ActiveTaskFilterCount > 0) { <span class="n">@ActiveTaskFilterCount</span> }
-                        </button>
-                        @if (filterOpen)
-                        {
-                            <div class="proj-filter-pop" @onclick:stopPropagation="true">
-                                <label class="pf-row"><input type="checkbox" @bind="myTasksOnly" /><i data-lucide="user"></i>My tasks</label>
-                                <label class="pf-row"><input type="checkbox" @bind="overdueOnly" /><i data-lucide="clock-alert"></i>Overdue only</label>
-                                @if (projectGroups.Count > 1)
-                                {
-                                    <div class="pf-label">Group</div>
-                                    <AppSelect Value="@(selectedGroupId?.ToString() ?? "")" ValueChanged="ChangeGroupFilter" Options="GroupFilterOptions" Label="Group" CssClass="pf-sel" Block="true" />
-                                }
-                                <div class="pf-label">Priority</div>
-                                <AppSelect Value="@priorityFilter" ValueChanged="v => priorityFilter = v ?? string.Empty" Options="PriorityFilterOptions" Label="Priority" CssClass="pf-sel" Block="true" />
-                            </div>
-                        }
-                    </div>
-                    @if (CanWriteTasks)
-                    {
-                    <button type="button" class="btn-primary proj-add-task" @onclick='() => HandleQuickAdd(("todo", "New Task"))'>
-                        <i data-lucide="plus"></i>Add task
-                    </button>
-                    }
-                </div>
             </div>
+
+            @if (tab != 4 && tab != 5 && tab != -1)
+            {
+                @ToolbarRow()
+            }
 
             @* Canvas Body Content *@
             <div class="proj-canvas-body">
-                @if (tab != 4 && tab != 5 && tab != -1)
-                {
-                    <ProjectSavedViewsBar Views="savedViews" ActiveViewId="ActiveSavedViewId" CanSave="FiltersDifferFromDefault"
-                                          CanManage="CanManageMembers" OnApply="ApplySavedView" OnSave="SaveCurrentView"
-                                          OnRename="RenameSavedView" OnShare="ToggleShareSavedView" OnDelete="DeleteSavedView" />
-                }
-                @if (selectedGroupId.HasValue || myTasksOnly || overdueOnly || !string.IsNullOrWhiteSpace(priorityFilter) || !string.IsNullOrWhiteSpace(taskSearchQuery) || (tab == 1 && HasListAssigneeFilter))
-                {
-                    <div class="proj-filter-chips">
-                        <span class="pfc-count">@VisibleTaskCount tasks</span>
-                        @if (selectedGroupId is { } filteredGroup)
-                        {
-                            <span class="pfc">Group: @projectGroups.FirstOrDefault(g => g.Id == filteredGroup)?.Name
-                                <button type="button" @onclick="() => SetGroupFilter(null)" aria-label="Remove group filter"><i data-lucide="x"></i></button>
-                            </span>
-                        }
-                        @if (myTasksOnly)
-                        {
-                            <span class="pfc">
-                                My Tasks <button type="button" @onclick="() => myTasksOnly = false" aria-label="Remove filter"><i data-lucide="x"></i></button>
-                            </span>
-                        }
-                        @if (overdueOnly)
-                        {
-                            <span class="pfc">
-                                Overdue <button type="button" @onclick="() => overdueOnly = false" aria-label="Remove filter"><i data-lucide="x"></i></button>
-                            </span>
-                        }
-                        @if (!string.IsNullOrWhiteSpace(priorityFilter))
-                        {
-                            <span class="pfc">
-                                @priorityFilter <button type="button" @onclick='() => priorityFilter = ""' aria-label="Remove filter"><i data-lucide="x"></i></button>
-                            </span>
-                        }
-                        @if (!string.IsNullOrWhiteSpace(taskSearchQuery))
-                        {
-                            <span class="pfc">
-                                "@taskSearchQuery" <button type="button" @onclick='() => taskSearchQuery = ""' aria-label="Remove filter"><i data-lucide="x"></i></button>
-                            </span>
-                        }
-                        @if (tab == 1 && HasListAssigneeFilter)
-                        {
-                            <span class="pfc">
-                                @ListAssigneeFilterLabel
-                                <button type="button" @onclick="ClearListAssigneeFilter" aria-label="Remove assignee filter"><i data-lucide="x"></i></button>
-                            </span>
-                        }
-                        <button type="button" class="pfc-clear" @onclick="ClearTaskFilters">Clear all</button>
-                    </div>
-                }
-
                 @if (tab == -1 && viewKey == "form")
                 {
                     <ProjectFormBuilder ProjectId="selectedProjectId" CanManage="CanManageMembers" ProjectName="@selectedProject.Name" ProjectColor="@selectedProject.Color"
@@ -310,26 +231,7 @@ else
                             }
                             else if (tab == 1)
                             {
-                                <div class="project-fields-toolbar">
-                                    @if (CanManageMembers) { <button type="button" class="project-fields-add" @onclick="() => addingField = !addingField" aria-expanded="@addingField"><i data-lucide="plus"></i>Fields</button> }
-                                    @if (addingField && CanManageMembers)
-                                    {
-                                        <div class="project-fields-create">
-                                            <strong>Add field</strong>
-                                            <div class="project-field-presets">
-                                                <button type="button" @onclick="PresetBiaya">Cost · Rp</button>
-                                                <button type="button" @onclick="PresetLokasi">Location · Text</button>
-                                                <button type="button" @onclick="PresetVendor">Vendor · Dropdown</button>
-                                            </div>
-                                            <input aria-label="Field name" maxlength="100" placeholder="Field name" @bind="newFieldName" />
-                                            <AppSelect Value="@newFieldType" ValueChanged="v => newFieldType = v ?? newFieldType" Options="FieldTypeOptions" Label="Field type" CssClass="project-field-type" />
-                                            @if (newFieldType == "Dropdown") { <input aria-label="Dropdown options" placeholder="Options separated by commas" @bind="newFieldOptions" /> }
-                                            <button type="button" @onclick="CreateField">Add field</button>
-                                            <button type="button" @onclick="() => addingField = false">Cancel</button>
-                                        </div>
-                                    }
-                                </div>
-                                <ProjectTableView ReadOnly="@(!CanWriteTasks)"
+                                <ProjectTableView @ref="tableView" ReadOnly="@(!CanWriteTasks)"
                                     StatusOptions="statusOptions"
                                     CanEditStatuses="CanManageMembers"
                                     OnEditStatuses="OpenStatusModal"
@@ -695,6 +597,155 @@ else
         }
     }
 
+    private RenderFragment ToolbarRow() => __builder =>
+    {
+        var statusLabel = statusOptions.FirstOrDefault(o => o.Id.ToString() == listStatusFilter)?.Label ?? listStatusFilter;
+        var personOn = HasListAssigneeFilter || myTasksOnly;
+        var moreCount = (overdueOnly ? 1 : 0) + (selectedGroupId.HasValue ? 1 : 0) + (string.IsNullOrWhiteSpace(priorityFilter) ? 0 : 1);
+        <div class="pv2 pv2-tb" role="toolbar" aria-label="View toolbar">
+            <label class="pv2-search">
+                <i data-lucide="search"></i>
+                <input type="search" id="tq" placeholder="Search tasks" aria-label="Search tasks" @bind="taskSearchQuery" @bind:event="oninput" />
+            </label>
+            <div class="pv2-tbw">
+                <button type="button" class="pv2-chip @(personOn ? "on" : "")" aria-haspopup="true" aria-expanded="@(openTb == "person" ? "true" : "false")" @onclick='() => ToggleTb("person")'>
+                    <i data-lucide="user"></i>@(HasListAssigneeFilter && tab == 1 ? ListAssigneeFilterLabel : myTasksOnly ? "Person: me" : "Person")
+                </button>
+                @if (openTb == "person")
+                {
+                    <div class="pv2-tbback" @onclick="CloseTb"></div>
+                    <div class="pv2-tbpop" role="menu">
+                        <label class="pf-row"><input type="checkbox" checked="@myTasksOnly" @onchange="e => { myTasksOnly = e.Value is true; }" /><i data-lucide="user"></i>My tasks</label>
+                        @if (tab == 1)
+                        {
+                            <div class="pf-label">Assignee</div>
+                            <button type="button" class="pf-row @(!HasListAssigneeFilter ? "cur" : "")" @onclick="async () => { await ClearListAssigneeFilter(); CloseTb(); }">Everyone</button>
+                            <button type="button" class="pf-row @(listUnassignedOnly ? "cur" : "")" @onclick="async () => { listAssigneeId = null; listUnassignedOnly = true; await LoadTaskList(); CloseTb(); }">Unassigned</button>
+                            @foreach (var m in projectMembers)
+                            {
+                                var mid = m.UserId;
+                                <button type="button" class="pf-row @(listAssigneeId == mid ? "cur" : "")" @onclick="async () => { listUnassignedOnly = false; listAssigneeId = mid; await LoadTaskList(); CloseTb(); }">@m.Name</button>
+                            }
+                        }
+                    </div>
+                }
+            </div>
+            @if (tab == 1)
+            {
+                <div class="pv2-tbw">
+                    <button type="button" class="pv2-chip @(string.IsNullOrEmpty(listStatusFilter) ? "" : "on")" aria-haspopup="true" aria-expanded="@(openTb == "status" ? "true" : "false")" @onclick='() => ToggleTb("status")'>
+                        <i data-lucide="filter"></i>@(string.IsNullOrEmpty(listStatusFilter) ? "Status" : $"Status: {statusLabel}")
+                        @if (!string.IsNullOrEmpty(listStatusFilter))
+                        {
+                            <span class="pv2-chipx" role="button" aria-label="Remove status filter" @onclick:stopPropagation="true" @onclick='() => { listStatusFilter = ""; }'><i data-lucide="x"></i></span>
+                        }
+                    </button>
+                    @if (openTb == "status")
+                    {
+                        <div class="pv2-tbback" @onclick="CloseTb"></div>
+                        <div class="pv2-tbpop" role="menu">
+                            <button type="button" class="pf-row @(string.IsNullOrEmpty(listStatusFilter) ? "cur" : "")" @onclick='() => { listStatusFilter = ""; CloseTb(); }'>All statuses</button>
+                            @foreach (var o in statusOptions)
+                            {
+                                var oid = o.Id.ToString();
+                                <button type="button" class="pf-row @(listStatusFilter == oid ? "cur" : "")" @onclick="() => { listStatusFilter = oid; CloseTb(); }"><span class="pv2-dot" style="background:@o.Color"></span>@o.Label</button>
+                            }
+                        </div>
+                    }
+                </div>
+                <span class="pv2-chip static"><i data-lucide="table"></i>Group by: Phase</span>
+            }
+            <div class="pv2-tbw">
+                <button type="button" class="pv2-chip @(moreCount > 0 ? "on" : "")" aria-haspopup="true" aria-expanded="@(openTb == "more" ? "true" : "false")" @onclick='() => ToggleTb("more")'>
+                    <i data-lucide="list-filter"></i>More filters@if (moreCount > 0) { <span class="pv2-n">@moreCount</span> }
+                </button>
+                @if (openTb == "more")
+                {
+                    <div class="pv2-tbback" @onclick="CloseTb"></div>
+                    <div class="pv2-tbpop" role="menu">
+                        <label class="pf-row"><input type="checkbox" checked="@overdueOnly" @onchange="e => { overdueOnly = e.Value is true; }" /><i data-lucide="clock-alert"></i>Overdue only</label>
+                        @if (projectGroups.Count > 1)
+                        {
+                            <div class="pf-label">Group</div>
+                            <AppSelect Value="@(selectedGroupId?.ToString() ?? "")" ValueChanged="ChangeGroupFilter" Options="GroupFilterOptions" Label="Group" CssClass="pf-sel" Block="true" />
+                        }
+                        <div class="pf-label">Priority</div>
+                        <AppSelect Value="@priorityFilter" ValueChanged="v => priorityFilter = v ?? string.Empty" Options="PriorityFilterOptions" Label="Priority" CssClass="pf-sel" Block="true" />
+                        @if (ActiveTaskFilterCount > 0 || HasListAssigneeFilter)
+                        {
+                            <button type="button" class="pf-row" @onclick="async () => { await ClearTaskFilters(); CloseTb(); }"><i data-lucide="x"></i>Clear all filters</button>
+                        }
+                    </div>
+                }
+            </div>
+            @if (tab == 1)
+            {
+                <div class="pv2-tbw">
+                    <button type="button" class="pv2-chip" aria-haspopup="true" aria-expanded="@(openTb == "hide" ? "true" : "false")" @onclick='() => ToggleTb("hide")'>
+                        <i data-lucide="eye"></i>Hide@if (tableView?.HiddenFieldCount > 0) { <span class="pv2-n">@tableView.HiddenFieldCount</span> }
+                    </button>
+                    @if (openTb == "hide")
+                    {
+                        <div class="pv2-tbback" @onclick="CloseTb"></div>
+                        <div class="pv2-tbpop" role="menu" aria-label="Field columns">
+                            <div class="pf-label">Columns</div>
+                            @if (projectFields.Count == 0) { <p class="pv2-tbnote">No custom fields yet.</p> }
+                            @foreach (var f in projectFields)
+                            {
+                                var fid = f.Id;
+                                <label class="pf-row"><input type="checkbox" checked="@(!(tableView?.IsFieldHidden(fid) ?? false))" @onchange="async () => { if (tableView is not null) await tableView.ToggleFieldColumnAsync(fid); }" /><span>@f.Name</span></label>
+                            }
+                            @if (CanManageMembers)
+                            {
+                                <button type="button" class="pf-row add" @onclick="() => { addingField = true; CloseTb(); }"><i data-lucide="plus"></i>Add field</button>
+                            }
+                            <p class="pv2-tbnote">Hidden columns still appear in task details.</p>
+                        </div>
+                    }
+                </div>
+            }
+            <span class="pv2-sp"></span>
+            <div class="pv2-tbw right">
+                <button type="button" class="pv2-chip @(ActiveSavedViewId is not null ? "on" : "")" aria-haspopup="true" aria-expanded="@(openTb == "views" ? "true" : "false")" @onclick='() => ToggleTb("views")'>
+                    <i data-lucide="save"></i>Save view@if (savedViews.Count > 0) { <span class="pv2-n">@savedViews.Count</span> }
+                </button>
+                @if (openTb == "views")
+                {
+                    <div class="pv2-tbback" @onclick="CloseTb"></div>
+                    <div class="pv2-tbpop views" role="dialog" aria-label="Saved views">
+                        <ProjectSavedViewsBar Views="savedViews" ActiveViewId="ActiveSavedViewId" CanSave="true"
+                                              CanManage="CanManageMembers" OnApply="ApplySavedView" OnSave="SaveCurrentView"
+                                              OnRename="RenameSavedView" OnShare="ToggleShareSavedView" OnDelete="DeleteSavedView" />
+                    </div>
+                }
+            </div>
+            @if (addingField && CanManageMembers && tab == 1)
+            {
+                <div class="pv2-tbback" @onclick="() => addingField = false"></div>
+                <div class="project-fields-create pv2-fieldform">
+                    <strong>Add field</strong>
+                    <div class="project-field-presets">
+                        <button type="button" @onclick="PresetBiaya">Cost · Rp</button>
+                        <button type="button" @onclick="PresetLokasi">Location · Text</button>
+                        <button type="button" @onclick="PresetVendor">Vendor · Dropdown</button>
+                    </div>
+                    <input aria-label="Field name" maxlength="100" placeholder="Field name" @bind="newFieldName" />
+                    <AppSelect Value="@newFieldType" ValueChanged="v => newFieldType = v ?? newFieldType" Options="FieldTypeOptions" Label="Field type" CssClass="project-field-type" />
+                    @if (newFieldType == "Dropdown") { <input aria-label="Dropdown options" placeholder="Options separated by commas" @bind="newFieldOptions" /> }
+                    <button type="button" @onclick="CreateField">Add field</button>
+                    <button type="button" @onclick="() => addingField = false">Cancel</button>
+                </div>
+            }
+        </div>
+    };
+
+    private void ToggleTb(string key) => openTb = openTb == key ? null : key;
+    private void CloseTb() => openTb = null;
+
+    private bool MatchesListStatus(ProjectTaskDto t) =>
+        string.IsNullOrEmpty(listStatusFilter) || t.Status == listStatusFilter
+        || (Guid.TryParse(listStatusFilter, out var sid) && t.StatusOptionId == sid);
+
     private async Task ClearTaskFilters()
     {
         myTasksOnly = false;
@@ -790,7 +841,8 @@ else
     private ProjectTaskDto? evidenceTask;
     private string evidenceTargetStatus = "doing";
 
-    private bool filterOpen;
+    private ProjectTableView? tableView;
+    private string? openTb;
     private int ActiveTaskFilterCount => (myTasksOnly ? 1 : 0) + (overdueOnly ? 1 : 0) + (selectedGroupId.HasValue ? 1 : 0) + (string.IsNullOrWhiteSpace(priorityFilter) ? 0 : 1);
 
     // Deadline Extension Modal state
@@ -834,7 +886,7 @@ else
                         .SelectMany(col => col ?? []).Where(MatchesTaskFilters).ToList();
                 case 1:
                     return taskList.Items.Where(MatchesTaskFilters)
-                        .Where(t => string.IsNullOrEmpty(listStatusFilter) || t.Status == listStatusFilter)
+                        .Where(MatchesListStatus)
                         .OrderBy(t => Array.IndexOf(StatusOrder, t.Status) is var i && i < 0 ? StatusOrder.Length : i)
                         .ToList();
                 case 2:
@@ -1346,7 +1398,7 @@ else
                 foreach (var row in values) taskFieldValues[row.TaskId] = row.Values.ToDictionary(v => v.FieldId, v => v.Value);
             }
         }
-        if (!string.IsNullOrEmpty(listStatusFilter) && !taskList.Items.Any(t => t.Status == listStatusFilter))
+        if (!string.IsNullOrEmpty(listStatusFilter) && !taskList.Items.Any(MatchesListStatus))
             listStatusFilter = "";
     }
 
