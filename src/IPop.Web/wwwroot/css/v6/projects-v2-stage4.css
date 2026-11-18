@@ -24,7 +24,7 @@
 /* ============ Overview ============ */
 .pv2o { padding: 4px 0 40px; }
 .pv2o-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; }
-.pv2o-card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 1px 2px rgba(20, 24, 22, .05), 0 4px 14px -6px rgba(20, 24, 22, .08); min-width: 0; animation: pv2-rise .4s var(--pv2-ease) backwards; }
+.pv2o-card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--sh-card); min-width: 0; animation: pv2-rise .4s var(--pv2-ease) backwards; }
 .pv2o-card h4 { margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: 13.5px; display: flex; align-items: center; gap: 8px; }
 .pv2o-card h4 small { color: var(--ink-3); font-weight: 500; margin-left: auto; }
 .pv2o-card h4 .pv2o-link { margin-left: auto; border: 0; background: none; color: var(--accent); font-size: 12px; font-weight: 500; padding: 2px 6px; border-radius: 6px; }
@@ -109,7 +109,7 @@
 .pv2w-mbtn.danger:hover { color: var(--danger); }
 .pv2w-wrap { position: relative; overflow-x: auto; /* the suggestion popover hangs below the last row and would be clipped by the scroller; give it room */ padding-bottom: 190px; margin-bottom: -190px; pointer-events: none; }
 .pv2w-wrap > * { pointer-events: auto; }
-.pv2w-grid { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 1px 2px rgba(20, 24, 22, .05), 0 4px 14px -6px rgba(20, 24, 22, .08); min-width: 880px; }
+.pv2w-grid { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--sh-card); min-width: 880px; }
 .pv2w-row { display: grid; grid-template-columns: 220px repeat(8, 1fr); border-bottom: 1px solid var(--line); align-items: stretch; min-height: 52px; }
 .pv2w-row:last-child { border: 0; }
 .pv2w-row.h { min-height: 38px; background: var(--surface-2, var(--tray)); font-size: 11.5px; color: var(--ink-3); font-weight: 650; border-radius: 14px 14px 0 0; }
@@ -130,7 +130,7 @@ button.pv2w-load.l3:hover { transform: scale(1.05); }
 button.pv2w-load.l3:active { transform: scale(.97); }
 .pv2w-load.off { background: repeating-linear-gradient(135deg, var(--surface-2, var(--tray)) 0 6px, var(--surface-3, var(--tray)) 6px 8px); }
 .pv2w-load.flash { animation: pv2-flash .5s var(--pv2-spring); }
-.pv2w-pop { position: absolute; z-index: 160; top: calc(100% - 4px); left: 0; width: 300px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 18px 44px -14px rgba(20, 24, 22, .28), 0 2px 6px rgba(20, 24, 22, .06); animation: pv2-pop .3s var(--pv2-spring); transform-origin: top left; font-size: 13px; font-weight: 400; color: var(--ink); text-align: left; }
+.pv2w-pop { position: absolute; z-index: 160; top: calc(100% - 4px); left: 0; width: 300px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--sh-pop); animation: pv2-pop .3s var(--pv2-spring); transform-origin: top left; font-size: 13px; font-weight: 400; color: var(--ink); text-align: left; }
 .pv2w-pop p { margin: 4px 0 10px; font-size: 12.5px; color: var(--ink-2); }
 .pv2w-pop .row { display: flex; gap: 6px; }
 .pv2w-row > div:nth-last-child(-n+3) .pv2w-pop { left: auto; right: 0; transform-origin: top right; }

@@ -10,6 +10,30 @@
   --pv2-done: #00c875;
   color: var(--ink);
   font-size: 13.5px;
+  /* the mockup's system stack, no Inter tracking: the app body sets Inter + -0.011em + ss01 */
+  font-family: -apple-system, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  letter-spacing: normal;
+  font-feature-settings: normal;
+  line-height: 1.45;
+  --on-accent: #fff;
+}
+[data-theme="dark"] .pv2, [data-theme="dark"].pv2 { --on-accent: #06150d; }
+/* ---------- mockup palette for the Projects v2 workspace (docs/mockups/ipop-apple/projects-v2.html :root) ----------
+   Light values are scoped to .pv2 so other modules keep the global light theme. Dark already matches (tokens.css). */
+.pv2, .proj-workspace.pv2-ws {
+  --violet: #7c4dd6; --violet-soft: #f1ebfd;
+  --wknd: rgba(28, 31, 35, .035); --freeze: rgba(124, 77, 214, .07); --scrim: rgba(15, 22, 18, .36);
+}
+html:not([data-theme="dark"]) .pv2, html:not([data-theme="dark"]) .proj-workspace.pv2-ws {
+  --canvas: #f3f2ee; --surface: #fff; --surface-2: #faf9f7; --surface-3: #f1efea; --line: #ebe8e3; --line-2: #dcd8d0;
+  --ink: #1c1f23; --ink-2: #5b636b; --ink-3: #8b9198; --accent: #2e9d6b; --accent-soft: #e3f4eb; --on-accent: #fff;
+  --danger: #d8452e; --danger-soft: #fdeeea; --warn: #b97f05; --warn-soft: #fdf5e2; --info: #2f6fed; --info-soft: #ecf2ff;
+  --sh-pop: 0 18px 44px -14px rgba(20, 24, 22, .28), 0 2px 6px rgba(20, 24, 22, .06);
+  --sh-card: 0 1px 2px rgba(20, 24, 22, .05), 0 4px 14px -6px rgba(20, 24, 22, .08);
+}
+[data-theme="dark"] .pv2, [data-theme="dark"] .proj-workspace.pv2-ws {
+  --violet: #b69cff; --violet-soft: rgba(182, 156, 255, .14); --wknd: rgba(255, 255, 255, .03); --freeze: rgba(182, 156, 255, .08); --scrim: rgba(0, 0, 0, .5);
+  --sh-pop: 0 18px 44px -14px rgba(0, 0, 0, .7), 0 0 0 1px rgba(255, 255, 255, .04); --sh-card: 0 1px 2px rgba(0, 0, 0, .3);
 }
 .pv2 *, .pv2 *::before, .pv2 *::after { box-sizing: border-box; }
 /* :where keeps this reset at zero specificity so .pv2-st / .pv2-pri keep their own font and colour */
@@ -45,7 +69,7 @@
 .pv2-gbody { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .4s var(--pv2-smooth), opacity .3s; }
 .pv2-grp.collapsed .pv2-gbody { grid-template-rows: 0fr; opacity: .3; }
 .pv2-gbody > div { overflow: hidden; min-height: 0; }
-.pv2-tbl { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; box-shadow: 0 1px 2px rgba(20, 24, 22, .05), 0 4px 14px -6px rgba(20, 24, 22, .08); }
+.pv2-tbl { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; box-shadow: var(--sh-card); }
 .pv2-tbl > .pv2-row, .pv2-tbl > .pv2-addrow { min-width: 980px; }
 
 /* ---------- rows (grid-template-columns comes inline from ColumnsStyle) ---------- */
@@ -104,7 +128,7 @@
 .pv2-st { width: 100%; height: 100%; min-height: 40px; border: 0; display: grid; place-items: center; background: var(--c, #8b9198); color: #fff; font-weight: 600; font-size: 12.5px; white-space: nowrap; padding: 0 8px; transition: filter .15s, background .3s, transform .15s var(--pv2-spring); overflow: hidden; text-overflow: ellipsis; }
 .pv2-st:hover:not(:disabled) { filter: brightness(1.08); }
 .pv2-st:active:not(:disabled) { transform: scale(.97); }
-.pv2-stpop { position: absolute; z-index: 160; top: calc(100% + 2px); left: 50%; margin-left: -110px; width: 220px; padding: 8px; display: flex; flex-direction: column; gap: 5px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 18px 44px -14px rgba(20, 24, 22, .28), 0 2px 6px rgba(20, 24, 22, .06); animation: pv2-pop .3s var(--pv2-spring); transform-origin: top center; }
+.pv2-stpop { position: absolute; z-index: 160; top: calc(100% + 2px); left: 50%; margin-left: -110px; width: 220px; padding: 8px; display: flex; flex-direction: column; gap: 5px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--sh-pop); animation: pv2-pop .3s var(--pv2-spring); transform-origin: top center; }
 .pv2-pill { display: grid; place-items: center; height: 32px; width: 100%; border: 0; border-radius: 9px; background: var(--c, #8b9198); color: #fff; font-weight: 600; font-size: 13px; white-space: nowrap; padding: 0 10px; transition: transform .15s var(--pv2-spring), filter .15s; }
 .pv2-pill:hover { transform: scale(1.03); filter: brightness(1.06); }
 .pv2-pill.cur { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink-3); }
@@ -195,7 +219,7 @@
 .pv2-btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--line-2, var(--line)); background: var(--surface); font-size: 13px; white-space: nowrap; transition: transform .14s var(--pv2-ease), background .15s; }
 .pv2-btn:hover:not(:disabled) { background: var(--surface-3, var(--fill)); }
 .pv2-btn:disabled { opacity: .5; }
-.pv2-btn.pri { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 650; }
+.pv2-btn.pri { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 650; }
 .pv2-btn.ghost { border-color: transparent; background: none; color: var(--accent); }
 .pv2-add { margin-top: 8px; }
 .pv2-warn { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2, var(--tray)); font-size: 12.5px; color: var(--ink-2); display: flex; gap: 8px; }
@@ -266,7 +290,7 @@ html.proj-fs-open, html.proj-fs-open body { overflow: hidden; }
 .proj-canvas > .pv2-ph { background: var(--surface); padding: 2px 20px 0; flex: none; }
 .pv2-titlerow { display: flex; align-items: center; gap: 10px; margin: 2px 0 8px; min-width: 0; flex-wrap: wrap; row-gap: 8px; }
 .pv2-tile { width: 34px; height: 34px; border-radius: 10px; display: inline-grid; place-items: center; color: #fff; font-weight: 700; font-size: 12px; flex: none; }
-.pv2-h1 { margin: 0; font-size: 21px; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 46ch; }
+.pv2-h1 { margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 46ch; }
 .pv2-health { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 650; padding: 3px 10px; border-radius: 999px; border: 0; white-space: nowrap; transition: background .3s, color .3s, transform .15s var(--pv2-spring); }
 button.pv2-health { cursor: pointer; }
 button.pv2-health:active { transform: scale(.94); }
@@ -279,17 +303,18 @@ button.pv2-health:active { transform: scale(.94); }
 .pv2-health.flash { animation: pv2-flash .5s var(--pv2-spring); }
 .pv2-health.ro { cursor: default; }
 /* member avatar stack: overlaps, spreads on hover */
-.pv2-avs { display: flex; padding-left: 6px; }
-.pv2-avs .pv2-av { border: 2px solid var(--surface); margin-left: -6px; transition: margin .25s var(--pv2-spring); }
+.pv2-avs { display: flex; }
+.pv2-avs .pv2-av:first-child { margin-left: 0; }
+.pv2-avs .pv2-av { font-size: 10.5px !important; font-weight: 700 !important; border: 2px solid var(--surface); margin-left: -6px; transition: margin .25s var(--pv2-spring); }
 .pv2-avs:hover .pv2-av:not(:first-child), .pv2-avs:hover .pv2-av-more { margin-left: -1px; }
-.pv2-avs .pv2-av-more { margin-left: -6px; height: 28px; min-width: 28px; display: inline-grid; place-items: center; border-radius: 8px; border: 2px solid var(--surface); background: var(--surface-3, var(--tray)); color: var(--ink-2); font-size: 10.5px; font-weight: 700; padding: 0 4px; transition: margin .25s var(--pv2-spring); }
+.pv2-avs .pv2-av-more { margin-left: -6px; height: 28px; min-width: 28px; padding: 0; display: inline-grid; place-items: center; border-radius: 8px; border: 2px solid var(--surface); background: var(--surface-3, var(--tray)); color: var(--ink-2); font-size: 10.5px; font-weight: 700; transition: margin .25s var(--pv2-spring); }
 .pv2-hbtn { padding: 0 12px; border-color: var(--line-2, var(--line)); background: var(--surface); color: var(--ink); }
 .pv2-hbtn:hover { background: var(--surface-3, var(--tray)); }
 .pv2-hbtn .lucide { width: 16px; height: 16px; }
 .pv2-hbtn.ghost { border-color: transparent; background: none; color: var(--ink-2); }
 .pv2-hbtn.ghost:hover { background: var(--surface-3, var(--tray)); color: var(--ink); }
 .pv2-hbtn.icon { width: 32px; padding: 0; justify-content: center; }
-.pv2-hbtn.pri { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 650; }
+.pv2-hbtn.pri { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 650; }
 .pv2-hbtn.pri:hover { background: var(--accent); filter: brightness(1.07); box-shadow: 0 4px 14px -4px color-mix(in srgb, var(--accent) 60%, transparent); }
 .pv2-hbtn .ph-count { color: var(--ink-3); font-weight: 500; }
 .pv2-ph .ph-menu { top: 38px; }
@@ -328,7 +353,7 @@ button.pv2-health:active { transform: scale(.94); }
 
 /* ---------- "+ View" picker ---------- */
 .pv2-pick-backdrop { position: fixed; inset: 0; z-index: 54; background: transparent; }
-.pv2-pick { position: fixed; z-index: 55; top: 0; left: 0; width: min(660px, calc(100vw - 16px)); overflow: auto; padding: 12px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 18px 44px -14px rgba(20, 24, 22, .28), 0 2px 6px rgba(20, 24, 22, .06); animation: pv2-pop .3s var(--pv2-spring); transform-origin: top right; }
+.pv2-pick { position: fixed; z-index: 55; top: 0; left: 0; width: min(660px, calc(100vw - 16px)); overflow: auto; padding: 12px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--sh-pop); animation: pv2-pop .3s var(--pv2-spring); transform-origin: top right; }
 .pv2-search { display: flex; align-items: center; gap: 7px; height: 38px; padding: 0 10px; border-radius: 9px; background: var(--surface); border: 1px solid var(--line); color: var(--ink-3); font-size: 12.5px; transition: border-color .2s, box-shadow .2s; }
 .pv2-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .pv2-search input { border: 0; outline: 0; box-shadow: none; background: none; flex: 1; min-width: 0; font: inherit; font-size: 13px; color: var(--ink); }
@@ -338,7 +363,7 @@ button.pv2-health:active { transform: scale(.94); }
 .pv2-pick-opts input { accent-color: var(--accent); margin: 0; }
 .pv2-pick-note { display: flex; gap: 8px; align-items: center; margin: 8px 4px 0; padding: 8px 10px; border-radius: 9px; background: var(--warn-soft); color: var(--ink-2); font-size: 12.5px; }
 .pv2-pick-note .lucide { width: 14px; height: 14px; color: var(--warn); }
-.pv2-pick h5 { margin: 14px 6px 6px; font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; font-weight: 650; }
+.pv2-pick h5 { margin: 14px 6px 6px; font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
 .pv2-pick-none { margin: 16px 6px; color: var(--ink-3); text-align: center; }
 .pv2-vgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; }
 .pv2-vo { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 9px; border: 0; background: none; text-align: left; color: var(--ink); min-width: 0; transition: background .12s, transform .15s var(--pv2-ease), opacity .2s; }
@@ -351,7 +376,7 @@ button.pv2-health:active { transform: scale(.94); }
 .pv2-vol { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 5px; }
 .pv2-vot small { font-size: 11.5px; color: var(--ink-3); display: block; line-height: 1.25; }
 .pv2-new { font-size: 9.5px; font-weight: 800; color: var(--accent); background: var(--accent-soft); border-radius: 5px; padding: 0 5px; letter-spacing: .03em; }
-.pv2-p2 { font-size: 9.5px; font-weight: 800; color: #7c4dd6; background: color-mix(in srgb, #7c4dd6 14%, transparent); border-radius: 5px; padding: 0 5px; }
+.pv2-p2 { font-size: 9.5px; font-weight: 800; color: var(--violet); background: var(--violet-soft); border-radius: 5px; padding: 0 5px; }
 .pv2-vo.added { opacity: .55; }
 .pv2-vo:disabled:not(.added) { opacity: .45; }
 .pv2-pick-hint { display: flex; gap: 10px; align-items: center; margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2, var(--tray)); font-size: 12.5px; color: var(--ink-2); }
@@ -402,13 +427,13 @@ button.pv2-health:active { transform: scale(.94); }
 .pv2n-pi { display: flex; align-items: center; gap: 9px; width: 100%; padding: 7px 8px; border: 0; border-radius: 9px; background: none; font-size: 13px; color: var(--ink-2); text-align: left; white-space: nowrap; transition: background .15s, transform .14s var(--pv2-ease); }
 .pv2n-pi:hover { background: var(--surface-3, var(--fill)); }
 .pv2n-pi:active { transform: scale(.97); }
-.pv2n-pi.on { background: var(--surface); color: var(--ink); font-weight: 650; box-shadow: 0 1px 2px rgba(20, 24, 22, .05), 0 4px 14px -6px rgba(20, 24, 22, .08); }
+.pv2n-pi.on { background: var(--surface); color: var(--ink); font-weight: 650; box-shadow: var(--sh-card); }
 .pv2n-pi .pc { margin-left: auto; font-size: 11px; color: var(--ink-3); font-weight: 400; }
 
 .pv2n-cards { padding: 14px; overflow: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-content: start; }
 .pv2n-cardw { position: relative; display: flex; min-width: 0; animation: pv2-rise .3s var(--pv2-ease) backwards; }
 .pv2n-tcard { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: var(--surface); text-align: left; color: var(--ink); transition: transform .2s var(--pv2-ease), box-shadow .2s, border-color .2s; }
-.pv2n-tcard:hover { transform: translateY(-2px); box-shadow: 0 1px 2px rgba(20, 24, 22, .05), 0 4px 14px -6px rgba(20, 24, 22, .08); }
+.pv2n-tcard:hover { transform: translateY(-2px); box-shadow: var(--sh-card); }
 .pv2n-tcard:active { transform: scale(.98); }
 .pv2n-tcard.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .pv2n-thumb { height: 74px; border-radius: 8px; background: var(--surface-2, var(--tray)); margin-bottom: 8px; padding: 8px; display: flex; flex-direction: column; gap: 5px; overflow: hidden; }
@@ -527,3 +552,44 @@ button.pv2-health:active { transform: scale(.94); }
 [data-theme="dark"] { --s-todo: #6d7379; --s-todo-ink: #fff; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme]) { --s-todo: #6d7379; --s-todo-ink: #fff; } }
 [style*="--s-todo"] { color: var(--s-todo-ink) !important; }
+
+/* ============================================================================
+   Round 2: Board matched to the mockup (.board .col .colh .kc .gtag .ft). Overrides the legacy lane/card rules
+   in modules/projects/kanban.css + v6/projects.css, which paint coloured lanes and dashed borders.
+   ========================================================================== */
+.pv2-ws .kanban-board-grid { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(230px, 1fr); grid-template-columns: none; gap: 12px; align-items: start; padding-bottom: 16px; }
+.pv2-ws .kanban-column, .pv2-ws .kanban-column.col-todo, .pv2-ws .kanban-column.col-doing, .pv2-ws .kanban-column.col-review, .pv2-ws .kanban-column.col-done {
+  background: var(--surface-2) !important; border: 1px solid var(--line) !important; border-radius: 14px; padding: 10px; min-height: 200px; min-width: 0; max-width: none; box-shadow: none; max-height: none;
+  transition: background .2s, border-color .2s, transform .2s var(--pv2-ease) !important;
+}
+.pv2-ws .kanban-column.drag-over, .pv2-ws .kanban-column.col-todo.drag-over, .pv2-ws .kanban-column.col-doing.drag-over, .pv2-ws .kanban-column.col-review.drag-over, .pv2-ws .kanban-column.col-done.drag-over {
+  background: var(--accent-soft) !important; border-color: var(--accent) !important; transform: scale(1.01);
+}
+.pv2-ws .kanban-col-header { display: flex; align-items: center; gap: 8px; padding: 0; margin-bottom: 8px; font-weight: 700; font-size: 13px; background: transparent !important; border: 0; }
+.pv2-ws .kanban-col-header .col-dot { width: 10px; height: 10px; border-radius: 3px; margin: 0; }
+.pv2-ws .kanban-col-header .col-title { font-size: 13px; font-weight: 700; gap: 8px; }
+.pv2-ws .kanban-col-header .col-count,
+.pv2-ws .kanban-column[style*="--pv2-col"] .kanban-col-header .col-count { background: none !important; border: 0 !important; padding: 0; min-width: 0; height: auto; border-radius: 0; font-size: 13px; font-weight: 500; color: var(--ink-3) !important; font-variant-numeric: tabular-nums; }
+.pv2-ws .kanban-col-header .col-quick-icon { margin-left: auto; width: 24px; height: 24px; color: var(--ink-3); }
+.pv2-ws .kanban-cards-stream { gap: 0; }
+.pv2-ws .kanban-task-card { background: var(--surface); border: 1px solid var(--line); border-radius: 11px; padding: 10px; margin-bottom: 8px; box-shadow: var(--sh-card); font-size: 13px; gap: 0; transition: transform .2s var(--pv2-ease), box-shadow .2s, opacity .2s; }
+.pv2-ws .kanban-task-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px -10px rgba(0, 0, 0, .25); }
+.pv2-ws .kanban-task-card.is-source-dragged, .pv2-ws .kanban-task-card.dragging { opacity: .4; transform: rotate(2deg) scale(.98); }
+.pv2-ws .kanban-task-card .kc-top { flex-wrap: nowrap; gap: 6px; margin-bottom: 4px; min-height: 18px; }
+.pv2-ws .kanban-task-card .gtag { font-size: 11px; color: var(--ink-3); display: flex; gap: 5px; align-items: center; min-width: 0; }
+.pv2-ws .kanban-task-card .gtag i { width: 7px; height: 7px; border-radius: 2px; flex: none; }
+.pv2-ws .kanban-task-card .gtag-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pv2-ws .kanban-task-card .task-card-title { font-size: 13px; font-weight: 600; line-height: 1.45; }
+.pv2-ws .kanban-task-card .kc-foot { margin-top: 8px; padding-top: 0; border-top: 0; min-height: 0; gap: 8px; font-size: 11.5px; color: var(--ink-3); }
+.pv2-ws .kanban-task-card .kc-due { height: auto; padding: 0; background: none; color: var(--ink-3); font-size: 11.5px; font-weight: 400; gap: 4px; }
+.pv2-ws .kanban-task-card .kc-due.overdue, .pv2-ws .kanban-task-card .kc-due.soon.overdue { background: none; color: var(--danger); font-weight: 600; }
+.pv2-ws .kanban-task-card .kc-due.soon { background: none; color: var(--warn); }
+.pv2-ws .kanban-task-card .kc-meta { font-size: 11.5px; color: var(--ink-3); }
+.pv2-ws .kanban-task-card .kc-av { width: 20px; height: 20px; border: 0; margin-right: 2px; border-radius: 6px; font-size: 8.5px; }
+.pv2-ws .kanban-task-card .kc-avs { padding: 0; gap: 2px; }
+.pv2-ws .kanban-task-card .kc-av.more { background: var(--surface-3); color: var(--ink-2); }
+.pv2-ws .kanban-task-card .kc-pill.blocked { background: var(--warn-soft); color: var(--warn); }
+.pv2-ws .kanban-task-card .kc-pill.info { background: var(--info-soft); color: var(--info); }
+.pv2-ws .kanban-task-card .kc-sub-bar { background: var(--surface-3); }
+.pv2-ws .kanban-task-card .kc-sub { margin-top: 6px; }
+.pv2-ws .kanban-empty-lane { color: var(--ink-3); }

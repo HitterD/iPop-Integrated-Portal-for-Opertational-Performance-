@@ -262,14 +262,11 @@
                          @ondragover:preventDefault="true"
                          @ondragend="() => draggingTaskId = null">
                         @{ var pp = ProjectUiHelpers.GetPriorityPill(t.Priority); var dueState = ProjectUiHelpers.GetDueState(t); }
+                        @{ var grp = Groups.FirstOrDefault(g => g.Id == t.GroupId); }
                         <div class="kc-top">
-                            @if (!string.IsNullOrWhiteSpace(t.Priority))
+                            @if (grp is not null)
                             {
-                                <span class="v6-pri @pp.Key"><i data-lucide="@pp.Icon"></i>@pp.Label</span>
-                            }
-                            @if (isOverdue)
-                            {
-                                <span class="kc-pill danger">Overdue</span>
+                                <span class="gtag"><i style="background:@ProjectStatusUi.SafeColor(grp.Color)"></i><span class="gtag-t">@grp.Name</span></span>
                             }
                             @if (evidence.IsExtended)
                             {
@@ -338,7 +335,7 @@
                         <div class="kc-foot">
                             @if (t.DueDate.HasValue)
                             {
-                                <span class="kc-due @dueState"><i data-lucide="calendar"></i>@t.DueDate.Value.ToString("MMM d")</span>
+                                <span class="kc-due @dueState dd"><i data-lucide="calendar"></i>@t.DueDate.Value.ToString("MMM d")</span>
                             }
                             @if (t.CommentCount > 0)
                             {
