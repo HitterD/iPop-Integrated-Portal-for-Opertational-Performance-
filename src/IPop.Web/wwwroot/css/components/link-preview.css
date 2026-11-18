@@ -107,7 +107,7 @@ a.lp-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px;
 [data-theme="dark"] .lp-card { background: var(--surface); border-color: rgba(255, 255, 255, .10); box-shadow: none; }
 [data-theme="dark"] a.lp-card:hover { background: var(--surface-2); }
 [data-theme="dark"] .lp-thumb { background: var(--surface-3); }
-[data-theme="dark"] .lp-card.lp-internal::before { background: #7D7AFF; }
+[data-theme="dark"] .lp-card.lp-internal::before { background: var(--violet, #b69cff); }
 [data-theme="dark"] .lp-icon { background: rgba(125, 122, 255, .18); color: #A5A3FF; }
 
 /* ── Composer: card above the input, with the remove button ── */

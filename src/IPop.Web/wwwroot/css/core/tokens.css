@@ -63,6 +63,8 @@
   --success-soft: #f0f9f4;
   --info: #2563eb;
   --info-soft: #eff6ff;
+  --violet: #7c4dd6;
+  --violet-soft: #f1ebfd;
 
   /* RGB forms for rgba() usage */
   --accent-rgb: 46, 157, 107;
@@ -248,6 +250,8 @@
   --success-soft: rgba(69, 196, 134, 0.15);
   --info: #7aa7ff;
   --info-soft: rgba(122, 167, 255, 0.14);
+  --violet: #b69cff;
+  --violet-soft: rgba(182, 156, 255, 0.14);
 
   --bubble-sent: var(--accent-500);
   --bubble-sent-text: #06150d;

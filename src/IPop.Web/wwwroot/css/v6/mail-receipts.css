@@ -18,7 +18,7 @@
   --mrr-sep: rgba(84, 84, 88, .6);
   --mrr-green: #30d158;
   --mrr-green-soft: rgba(48, 209, 88, .14);
-  --mrr-card: #2c2c2e;
+  --mrr-card: var(--surface-2);
   --mrr-pop-sh: 0 30px 70px -20px rgba(0, 0, 0, .8), 0 0 0 .5px rgba(255, 255, 255, .12);
 }
 
@@ -123,7 +123,7 @@ button.mrr-x .lucide { width: 13px; height: 13px; stroke-width: 2.4; }
 }
 .mrr-seg button .lucide { width: 14px; height: 14px; }
 .mrr-seg button.on { background: var(--surface, #fff); color: var(--ink); font-weight: 650; box-shadow: 0 1px 3px rgba(0, 0, 0, .12), 0 0 0 .5px rgba(0, 0, 0, .04); }
-[data-theme="dark"] .mrr-seg button.on { background: #636366; }
+[data-theme="dark"] .mrr-seg button.on { background: var(--line-2); }
 .mrr-srch { flex: none; margin: 0 14px 8px; height: 34px; border-radius: 10px; background: var(--mrr-fill); display: flex; align-items: center; gap: 7px; padding: 0 10px; color: var(--ink-3); }
 .mrr-srch .lucide { width: 15px; height: 15px; flex: none; }
 .mrr-srch input { flex: 1; min-width: 0; border: 0; background: transparent; outline: none; font: inherit; font-size: 13.5px; color: var(--ink); padding: 0; box-shadow: none; height: auto; }

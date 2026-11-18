@@ -20,7 +20,7 @@
   --fx-folder: #7AB0E0; --fx-folder-ink: #9CC4EA;
   --fx-sel: #3B82F6; --fx-sel-soft: rgba(59, 130, 246, .18);
   --fx-hover: rgba(255, 255, 255, .045);
-  --fx-side: #202022;
+  --fx-side: var(--surface-2);
 }
 
 .fx-window {

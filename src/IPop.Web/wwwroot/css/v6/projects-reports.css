@@ -325,7 +325,7 @@
 .vpm-tpl .ic.c-inf { background: var(--info-soft); color: var(--info); }
 .vpm-tpl .ic.c-war { background: var(--warn-soft); color: var(--warn-ink, #a8760c); }
 .vpm-tpl .ic.c-vio { background: #f2ecfd; color: #7c4dd6; }
-[data-theme="dark"] .vpm-tpl .ic.c-vio { background: #2a2240; color: #b69cff; }
+[data-theme="dark"] .vpm-tpl .ic.c-vio { background: var(--violet-soft); color: var(--violet); }
 .vpm-tpl .ic.c-dan { background: var(--danger-soft); color: var(--danger); }
 .vpm-tpl small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vpm-tpl-row { position: relative; }

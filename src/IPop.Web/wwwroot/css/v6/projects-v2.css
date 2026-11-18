@@ -35,6 +35,7 @@ html:not([data-theme="dark"]) .pv2, html:not([data-theme="dark"]) .proj-workspac
   --violet: #b69cff; --violet-soft: rgba(182, 156, 255, .14); --wknd: rgba(255, 255, 255, .03); --freeze: rgba(182, 156, 255, .08); --scrim: rgba(0, 0, 0, .5);
   --sh-pop: 0 18px 44px -14px rgba(0, 0, 0, .7), 0 0 0 1px rgba(255, 255, 255, .04); --sh-card: 0 1px 2px rgba(0, 0, 0, .3);
 }
+.pv2 :where(h1, h2, h3, h4, h5, h6) { font-weight: 700; letter-spacing: normal; }
 .pv2 *, .pv2 *::before, .pv2 *::after { box-sizing: border-box; }
 /* :where keeps this reset at zero specificity so .pv2-st / .pv2-pri keep their own font and colour */
 .pv2 :where(button) { font: inherit; color: inherit; cursor: pointer; }

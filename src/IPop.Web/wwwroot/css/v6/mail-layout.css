@@ -30,21 +30,21 @@
   --mlx-w2: 380px;
 }
 [data-theme="dark"] .mlx {
-  --mlx-hair: rgba(84, 84, 88, .65);
-  --mlx-sep: rgba(84, 84, 88, .5);
-  --mlx-fill: rgba(118, 118, 128, .24);
-  --mlx-fill-2: rgba(118, 118, 128, .13);
-  --mlx-green: #30d158;
-  --mlx-green-h: #28b84c;
-  --mlx-green-soft: rgba(48, 209, 88, .14);
-  --mlx-sel: rgba(48, 209, 88, .10);
-  --mlx-glass: rgba(36, 36, 38, .82);
-  --mlx-pop-bg: #2c2c2e;
+  --mlx-hair: var(--line-2);
+  --mlx-sep: var(--line);
+  --mlx-fill: var(--surface-3);
+  --mlx-fill-2: var(--surface-2);
+  --mlx-green: var(--accent);
+  --mlx-green-h: var(--accent-hover);
+  --mlx-green-soft: var(--accent-soft);
+  --mlx-sel: rgba(69, 196, 134, .10);
+  --mlx-glass: color-mix(in srgb, var(--surface-2) 82%, transparent);
+  --mlx-pop-bg: var(--surface-2);
   --mlx-pop: 0 30px 70px -20px rgba(0, 0, 0, .8), 0 0 0 .5px rgba(255, 255, 255, .12);
   --t-bg: 18%; --t-bg-h: 26%; --t-mix: 62%; --t-ink: #ffffff;
   --t-reply: #4cd27a; --t-all: #5ac8dc; --t-fwd: #f0b44c;
-  --mlx-grp: #232325;
-  --mlx-grp-line: rgba(255, 255, 255, .08);
+  --mlx-grp: var(--surface-2);
+  --mlx-grp-line: var(--line);
 }
 
 /* ───────── frame: fill the panel under the topbar, no empty band ───────── */
@@ -107,7 +107,7 @@ body.mlx-resizing, body.mlx-resizing * { cursor: col-resize !important; user-sel
 .mlx .mlx-seg button { flex: 1; height: 28px; border: 0; border-radius: 7px; background: transparent; font-size: 12.5px; font-weight: 550; color: var(--ink-2); display: flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; cursor: pointer; }
 .mlx .mlx-seg button .lucide { width: 13px; height: 13px; }
 .mlx .mlx-seg button.on { background: var(--mlx-card); color: var(--ink); font-weight: 650; box-shadow: 0 1px 3px rgba(0, 0, 0, .12), 0 0 0 .5px rgba(0, 0, 0, .04); }
-[data-theme="dark"] .mlx .mlx-seg button.on { background: #636366; }
+[data-theme="dark"] .mlx .mlx-seg button.on { background: var(--line-2); }
 .mlx .mlx-dprev { margin: 0 4px 6px; padding: 7px 9px; border-radius: 9px; background: var(--mlx-fill-2); font-size: 11.5px; color: var(--ink-3); line-height: 1.4; white-space: normal; }
 .mlx .mlx-dprev b { color: var(--ink); font-weight: 600; }
 .mlx .mlx-empty { padding: 4px 10px; font-size: 12px; color: var(--ink-4); }

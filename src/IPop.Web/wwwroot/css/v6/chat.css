@@ -445,7 +445,7 @@
 .chat-area .grp-member .tag { flex: none; font-size: 10px; }
 .chat-area .contact-manager-av, .chat-area .add-user-item .avatar { border-radius: 9px; }
 [data-theme="dark"] .chat-area .chat-detail-panel, [data-theme="dark"] .chat-area .panel-header { background: var(--surface-2); }
-[data-theme="dark"] .chat-area .msg .bubble.deleted { background: #28282D; }
+[data-theme="dark"] .chat-area .msg .bubble.deleted { background: var(--surface-2); }
 
 /* ---- v6 global drawer: a third column so the conversation stays visible ---- */
 .chat-area.with-global-drawer { grid-template-columns: 320px minmax(0, 1fr) 370px; }
