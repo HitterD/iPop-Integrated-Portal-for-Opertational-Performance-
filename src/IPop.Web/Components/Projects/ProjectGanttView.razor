@@ -1053,8 +1053,7 @@
 
     private void ShowToast(string html, bool warn, bool persist, List<ToastAction> actions, int ms = 5200)
     {
-        toastCts?.Cancel();
-        toastCts?.Dispose();
+        StopToastTimer();
         var t = new GToast(Guid.NewGuid(), html, warn, actions);
         toast = t;
         if (!persist)
@@ -1074,7 +1073,15 @@
         StateHasChanged();
     }
 
-    private void CloseToast() { toastCts?.Cancel(); toast = null; }
+    private void StopToastTimer()
+    {
+        var c = toastCts; toastCts = null;
+        if (c is null) return;
+        try { c.Cancel(); } catch (ObjectDisposedException) { }
+        c.Dispose();
+    }
+
+    private void CloseToast() { StopToastTimer(); toast = null; }
 
     private async Task RunToastAction(GToast t, ToastAction a)
     {
@@ -1086,7 +1093,7 @@
     public async ValueTask DisposeAsync()
     {
         disposed = true;
-        toastCts?.Cancel();
+        StopToastTimer();
         try { if (jsReady) await JS.InvokeVoidAsync("ipopPv2.ganttDispose", rootRef); } catch { }
         self?.Dispose();
     }
