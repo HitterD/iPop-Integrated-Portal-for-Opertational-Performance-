@@ -93,9 +93,9 @@
 .pv2g-done { position: absolute; inset: 0 auto 0 0; background: rgba(0, 0, 0, .18); border-radius: 6px 0 0 6px; }
 .pv2g-bar span { position: relative; }
 .pv2g-bar.crit { background: var(--danger) !important; }
-.pv2g-hand { position: absolute; right: -5px; top: 4px; width: 10px; height: 10px; border-radius: 50%; background: var(--surface); border: 2px solid var(--ink-2); opacity: 0; transition: opacity .15s; cursor: crosshair; }
+.pv2g-hand { position: absolute; right: -15px; top: 4px; width: 10px; height: 10px; border-radius: 50%; background: var(--surface); border: 2px solid var(--ink-2); opacity: 0; transition: opacity .15s; cursor: crosshair; }
 .pv2g-bar:hover .pv2g-hand, .pv2g-bar.linking .pv2g-hand, .pv2g-bar:focus-visible .pv2g-hand { opacity: 1; }
-.pv2g-rs { position: absolute; right: 0; top: 0; bottom: 0; width: 6px; cursor: ew-resize; border-radius: 0 6px 6px 0; }
+.pv2g-rs { position: absolute; right: 0; top: 0; bottom: 0; width: 9px; cursor: ew-resize; border-radius: 0 6px 6px 0; }
 .pv2g-rs:hover { background: rgba(255, 255, 255, .35); }
 .pv2g-glabel { position: absolute; font-size: 11px; color: var(--ink-2); white-space: nowrap; z-index: 2; pointer-events: none; transition: opacity .2s; }
 .pv2g-base { position: absolute; height: 5px; border-radius: 3px; background: var(--ink-3); opacity: .45; z-index: 2; transition: opacity .25s; }

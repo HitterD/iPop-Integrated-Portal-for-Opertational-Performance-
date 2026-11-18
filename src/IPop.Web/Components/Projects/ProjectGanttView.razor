@@ -294,7 +294,7 @@
     @if (linkEdit is { } le)
     {
         <div class="pv2-pick-backdrop pv2g-backdrop" @onclick="() => linkEdit = null"></div>
-        <div class="pv2g-pop pv2g-linkpop" style="position:fixed;left:@(Math.Max(8, le.X - 120))px;top:@(le.Y + 10)px" role="dialog" aria-label="Edit link">
+        <div class="pv2g-pop pv2g-linkpop" style="position:fixed;left:min(max(8px, @(le.X - 120)px), calc(100vw - 276px));top:min(@(le.Y + 10)px, calc(100vh - 240px))" role="dialog" aria-label="Edit link">
             <h5>Link</h5>
             <p class="pv2g-hint"><b>@le.PredTitle</b> → <b>@le.SuccTitle</b></p>
             <div class="pv2g-seg pv2g-linkseg" role="group" aria-label="Link type">
