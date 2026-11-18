@@ -224,6 +224,10 @@ public class ProjectV2Stage4WebTests
             if (onNav is { } n) p.Add(x => x.OnNavigate, n);
         });
         cut.WaitForState(() => cut.FindAll(".pv2p-b .pv2p-kvs").Count > 0, TimeSpan.FromSeconds(5));
+        // The body is deferred by one frame and re-renders once more after it shows; let that settle so a click
+        // made right after RenderPanel is not overwritten by the late render.
+        System.Threading.Thread.Sleep(30);
+        cut.WaitForState(() => cut.FindAll(".pv2p-b .pv2p-kvs").Count > 0, TimeSpan.FromSeconds(5));
         return cut;
     }
 
