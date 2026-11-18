@@ -391,6 +391,8 @@
     [Parameter] public string? CurrentUserNik { get; set; }
     /// Changes whenever the page refreshed this project (live update): the Gantt reloads quietly.
     [Parameter] public int Version { get; set; }
+    /// The project's "dependents_follow" automation: "Move all" is the highlighted default of the drag confirmation.
+    [Parameter] public bool DependentsFollow { get; set; } = true;
     [Parameter] public DateTime? Today { get; set; }
     [Parameter] public EventCallback<Guid> OnOpenTask { get; set; }
     [Parameter] public EventCallback OnOpenTable { get; set; }
@@ -748,11 +750,11 @@
         var head = resize ? $"Change the finish of \"{E(title)}\"?" : $"Move \"{E(title)}\" {Dist(days)}?";
         ShowToast($"<b>{head}</b><br>{k} task{(k == 1 ? "" : "s")} waiting for it will move too. {goLive}", warn: true, persist: true,
         [
-            new ToastAction("Only this task", false, async () =>
+            new ToastAction("Only this task", !DependentsFollow, async () =>
             {
                 await ApplyAsync(single, "Moved only this task. The dashed red links show what now overlaps.");
             }),
-            new ToastAction("Move all", true, async () =>
+            new ToastAction("Move all", DependentsFollow, async () =>
             {
                 var goNow = newFinish is { } f ? $" Go-live is now <b>{GanttMath.FormatLong(f)}</b>." : "";
                 await ApplyAsync(all, $"Moved {{n}} task{{s}}.{goNow}");

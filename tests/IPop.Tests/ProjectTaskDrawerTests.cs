@@ -198,7 +198,7 @@ public class ProjectTaskDrawerTests
         Assert.DoesNotContain("ProjectTaskQuickViewer", page);
         Assert.DoesNotContain("QuickView", page);
         Assert.DoesNotContain("quick viewer", page, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("OnInspectTask=\"OpenTaskEditor\"", page);
+        Assert.Contains("OnOpenTask=\"OpenTaskById\"", page); // stage 4: Overview opens tasks (the executive dashboard is no longer rendered)
         foreach (var f in new[] { "ProjectKanbanBoard.razor", "ProjectTableView.razor" })
         {
             var src = RepoFile("src/IPop.Web/Components/Projects/" + f);

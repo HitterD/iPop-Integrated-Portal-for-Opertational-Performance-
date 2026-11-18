@@ -1,0 +1,260 @@
+@using IPop.Application.Projects
+@using System.Text.Json
+@using System.Globalization
+@inject IPop.Web.Services.AuthState Auth
+@inject IPop.Web.Services.ToastService Toasts
+@inject IJSRuntime JS
+
+@* Projects v2 Automations (docs/mockups/ipop-apple/projects-v2.html autoModal): the fixed rule catalogue as plain sentences
+   with token chips, run counts and an on/off switch, plus a "New rule" builder. Owner/manager can change; others read. *@
+<div class="pv2 pv2-scrim" @onclick="Close">
+    <div class="pv2-modal pv2au-modal" role="dialog" aria-modal="true" aria-labelledby="pv2au-title" @onclick:stopPropagation="true" @onkeydown="OnKey">
+        <div class="pv2-mh">
+            <i data-lucide="zap" style="color:var(--warn)"></i>
+            <h2 id="pv2au-title">Automations</h2>
+            <span class="pv2-note">Rules that do routine work for this project</span>
+            <span class="pv2-sp"></span>
+            <button type="button" class="pv2-ibtn" aria-label="Close" @onclick="Close"><i data-lucide="x"></i></button>
+        </div>
+        <div class="pv2-mbody pv2au-body">
+            @if (loading)
+            {
+                <div class="pv2au-skel" role="status" aria-label="Loading automations"></div>
+            }
+            else if (list is null)
+            {
+                <div class="pv2o-error" role="alert"><h3>Couldn't load the automations</h3><p>@error</p><button type="button" class="pv2-btn pri" @onclick="Load">Retry</button></div>
+            }
+            else
+            {
+                @foreach (var r in list.Rules)
+                {
+                    var rule = r;
+                    var m = Meta(rule.Kind);
+                    <div class="pv2au-rule @(rule.IsEnabled ? "" : "off")" @key="rule.Kind" data-kind="@rule.Kind">
+                        <span class="ic" style="background:@m.Color"><i data-lucide="@m.Icon"></i></span>
+                        <div>
+                            <p>@Sentence(rule)</p>
+                            <small>@RunText(rule)</small>
+                        </div>
+                        <button type="button" class="pv2au-tog @(rule.IsEnabled ? "on" : "")" role="switch" aria-checked="@(rule.IsEnabled ? "true" : "false")" aria-label="@rule.Title" disabled="@(!CanManage || busyKind == rule.Kind)" @onclick="() => Toggle(rule)"><i></i></button>
+                    </div>
+                }
+                @if (error is not null) { <div class="pv2-err" role="alert">@error</div> }
+                @if (CanManage)
+                {
+                    <div class="pv2au-builder" data-sec="builder">
+                        <b class="pv2au-bh">New rule</b>
+                        <div class="pv2au-bline">
+                            <span class="pv2au-tk"><select aria-label="Rule" @bind="newKind" @bind:after="OnKindChanged">
+                                @foreach (var e in ProjectAutomationCatalogue.All)
+                                {
+                                    <option value="@e.Kind">@e.Title</option>
+                                }
+                            </select><i data-lucide="chevron-down"></i></span>
+                        </div>
+                        @if (newKind == ProjectAutomationCatalogue.WeeklyRecurringTask)
+                        {
+                            <div class="pv2au-bline">
+                                Every
+                                <span class="pv2au-tk"><select aria-label="Weekday" @bind="wWeekday">
+                                    @for (var d = 1; d <= 7; d++) { <option value="@d">@Weekday(d) 07:30</option> }
+                                </select><i data-lucide="chevron-down"></i></span>
+                                create
+                                <input class="pv2au-in" type="text" maxlength="200" placeholder="Task title" aria-label="Task title" @bind="wTitle" @bind:event="oninput" />
+                                for
+                                <span class="pv2au-tk"><select aria-label="Assignee" @bind="wAssignee">
+                                    <option value="">nobody</option>
+                                    @foreach (var mem in Members.Where(x => x.Role != "viewer")) { <option value="@mem.UserId">@mem.Name</option> }
+                                </select><i data-lucide="chevron-down"></i></span>
+                                in
+                                <span class="pv2au-tk"><select aria-label="Group" @bind="wGroup">
+                                    <option value="">the first group</option>
+                                    @foreach (var g in Groups) { <option value="@g.Id">@g.Name</option> }
+                                </select><i data-lucide="chevron-down"></i></span>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="pv2au-bline pv2au-desc">@(ProjectAutomationCatalogue.Find(newKind)?.Description)</div>
+                        }
+                        <div class="pv2au-bactions">
+                            <button type="button" class="pv2-btn pri sm" data-act="add-rule" disabled="@(busyKind is not null)" @onclick="AddRule"><i data-lucide="plus"></i>Add rule</button>
+                            <button type="button" class="pv2-btn sm" aria-expanded="@(browse ? "true" : "false")" @onclick="() => browse = !browse">Browse @ProjectAutomationCatalogue.All.Count ready-made rules</button>
+                        </div>
+                        @if (browse)
+                        {
+                            <div class="pv2au-browse">
+                                @foreach (var e in ProjectAutomationCatalogue.All)
+                                {
+                                    var entry = e;
+                                    var cur = list.Rules.FirstOrDefault(x => x.Kind == entry.Kind);
+                                    <div class="pv2au-bitem">
+                                        <span class="ic" style="background:@Meta(entry.Kind).Color"><i data-lucide="@Meta(entry.Kind).Icon"></i></span>
+                                        <div><b>@entry.Title</b><small>@entry.Description</small></div>
+                                        @if (cur?.IsEnabled == true) { <span class="pv2-saved">On</span> }
+                                        else { <button type="button" class="pv2-btn sm" @onclick="() => PickCatalogue(entry.Kind)">Use</button> }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        </div>
+        <div class="pv2-mf">
+            <span class="pv2-note">Automations act as "iPop Bot" and show up in each task's Activity.@(CanManage ? "" : " Only the project owner or a manager can change them.")</span>
+            <span class="pv2-sp"></span>
+            <button type="button" class="pv2-btn" @onclick="Close">Done</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Guid ProjectId { get; set; }
+    [Parameter] public bool CanManage { get; set; }
+    [Parameter] public IReadOnlyList<ProjectStatusOptionDto> Options { get; set; } = [];
+    [Parameter] public IReadOnlyList<ProjectMemberDto> Members { get; set; } = [];
+    [Parameter] public IReadOnlyList<ProjectGroupDto> Groups { get; set; } = [];
+    [Parameter] public string? LeadName { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    /// Fired after every successful change so the header badge, Gantt default and form follow.
+    [Parameter] public EventCallback<AutomationListDto> OnChanged { get; set; }
+
+    private AutomationListDto? list;
+    private bool loading = true, browse;
+    private string? error, busyKind;
+    private string newKind = ProjectAutomationCatalogue.WeeklyRecurringTask;
+    private int wWeekday = 1;
+    private string wTitle = "", wAssignee = "", wGroup = "";
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true; error = null; StateHasChanged();
+        var res = await Auth.GetResultAsync<AutomationListDto>($"/api/projects/{ProjectId}/automations");
+        loading = false;
+        if (res.IsOk && res.Value is not null) list = res.Value;
+        else error = res.Status == GetStatus.Unreachable ? "iPop could not reach the server. Check your connection and try again." : "Something went wrong while loading the rules. Try again in a moment.";
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+    }
+
+    private async Task Toggle(AutomationDto r)
+    {
+        if (!CanManage) return;
+        await Save(r.Kind, !r.IsEnabled, null);
+    }
+
+    private async Task Save(string kind, bool enabled, JsonElement? config)
+    {
+        busyKind = kind; error = null;
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/{ProjectId}/automations/{kind}", new SaveAutomationRequest(enabled, config));
+        busyKind = null;
+        if (!res.IsSuccessStatusCode)
+        {
+            var body = await res.Content.ReadAsStringAsync();
+            error = body.Contains("invalid_title") ? "Give the task a title first."
+                : body.Contains("invalid_assignee") ? "That person can't be assigned tasks in this project."
+                : body.Contains("forbidden") ? "Only the project owner or a manager can change automations."
+                : "Couldn't save the rule. Try again.";
+            return;
+        }
+        AutomationDto? saved = null;
+        try { saved = await res.Content.ReadFromJsonAsync<AutomationDto>(); } catch { }
+        if (list is not null && saved is not null)
+        {
+            var rules = list.Rules.Select(x => x.Kind == kind ? saved : x).ToList();
+            list = new AutomationListDto(rules, kind == ProjectAutomationCatalogue.DependentsFollow ? saved.IsEnabled : list.DependentsFollow);
+            await OnChanged.InvokeAsync(list);
+        }
+        else await Load();
+    }
+
+    private void OnKindChanged() { if (newKind == ProjectAutomationCatalogue.WeeklyRecurringTask && string.IsNullOrEmpty(wTitle)) wTitle = ""; }
+
+    private void PickCatalogue(string kind) { newKind = kind; browse = false; }
+
+    private async Task AddRule()
+    {
+        if (!CanManage) return;
+        JsonElement? cfg = null;
+        if (newKind == ProjectAutomationCatalogue.WeeklyRecurringTask)
+        {
+            if (string.IsNullOrWhiteSpace(wTitle)) { error = "Give the task a title first."; return; }
+            var dict = new Dictionary<string, object> { ["title"] = wTitle.Trim(), ["weekday"] = wWeekday };
+            if (wAssignee.Length > 0) dict["assigneeId"] = wAssignee;
+            if (wGroup.Length > 0) dict["groupId"] = wGroup;
+            cfg = JsonSerializer.SerializeToElement(dict);
+        }
+        await Save(newKind, true, cfg);
+        if (error is null) Toasts.Show("Rule is on.", IPop.Web.Services.ToastKind.Success);
+    }
+
+    private Task Close() => OnClose.InvokeAsync();
+    private Task OnKey(KeyboardEventArgs e) => e.Key == "Escape" ? Close() : System.Threading.Tasks.Task.CompletedTask;
+
+    private static string Weekday(int d) => CultureInfo.InvariantCulture.DateTimeFormat.GetDayName(d == 7 ? DayOfWeek.Sunday : (DayOfWeek)d);
+
+    private static (string Color, string Icon) Meta(string kind) => kind switch
+    {
+        ProjectAutomationCatalogue.StuckNotifyLead => ("#e2445c", "alert-triangle"),
+        ProjectAutomationCatalogue.DueTomorrowRemind => ("#fdab3d", "bell"),
+        ProjectAutomationCatalogue.SubtasksDoneReview => ("#00c875", "list-checks"),
+        ProjectAutomationCatalogue.FormToIntake => ("#7c4dd6", "clipboard-list"),
+        ProjectAutomationCatalogue.WeeklyRecurringTask => ("#0e9aa7", "repeat"),
+        _ => ("#2f6fed", "link"),
+    };
+
+    private static string RunText(AutomationDto r) => !r.IsEnabled ? "Off" : r.Kind == ProjectAutomationCatalogue.FormToIntake && r.RunCount == 0 ? "Open for requests"
+        : $"Ran {r.RunCount}× so far" + (r.LastRunAt is { } at ? $" · last {at.ToLocalTime():d MMM}" : "");
+
+    private RenderFragment Tok(string text, string? color = null, bool avatar = false, string? nik = null) => __builder =>
+    {
+        <span class="pv2au-t @(color is null ? "" : "s")" style="@(color is null ? "" : $"background:{ProjectStatusUi.SafeColor(color)}")">@if (avatar) { <PersonAvatar Nik="@nik" Name="@text" Size="18" Class="pv2-av" Decorative="true" /> }@text</span>
+    };
+
+    private string StatusColor(string? label, string stage)
+    {
+        var o = Options.FirstOrDefault(x => x.Label.Equals(label ?? "", StringComparison.OrdinalIgnoreCase)) ?? Options.FirstOrDefault(x => x.Stage == stage)
+            ?? ProjectStatusUi.StageDefaults.First(x => x.Stage == stage);
+        return o.Color;
+    }
+
+    private static string? Str(JsonElement c, string n) => c.ValueKind == JsonValueKind.Object && c.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
+    private RenderFragment Sentence(AutomationDto r) => __builder =>
+    {
+        switch (r.Kind)
+        {
+            case ProjectAutomationCatalogue.StuckNotifyLead:
+                var lbl = Str(r.Config, "statusLabel") ?? "Stuck";
+                <text>When </text>@Tok("Status", StatusColor(lbl, "doing"))<text> changes to </text>@Tok(lbl, StatusColor(lbl, "doing"))<text>, notify </text>@Tok(LeadName ?? "Project lead", null, true, Members.FirstOrDefault(m => m.Role == "owner")?.Nik)
+                break;
+            case ProjectAutomationCatalogue.DueTomorrowRemind:
+                <text>When a task is </text>@Tok("due tomorrow")<text> and not </text>@Tok(Options.FirstOrDefault(o => o.Stage == "done")?.Label ?? "Done", StatusColor(null, "done"))<text>, remind </text>@Tok("its owner")<text> at </text>@Tok("08:00")
+                break;
+            case ProjectAutomationCatalogue.SubtasksDoneReview:
+                <text>When </text>@Tok("all checklist items")<text> are ticked, set status to </text>@Tok(Options.FirstOrDefault(o => o.Stage == "review")?.Label ?? "Review", StatusColor(null, "review"))
+                break;
+            case ProjectAutomationCatalogue.FormToIntake:
+                <text>When the </text>@Tok("Request form")<text> is sent, put it in </text>@Tok("Intake")
+                break;
+            case ProjectAutomationCatalogue.WeeklyRecurringTask:
+                var title = Str(r.Config, "title");
+                var wd = r.Config.ValueKind == JsonValueKind.Object && r.Config.TryGetProperty("weekday", out var w) && w.TryGetInt32(out var wi) ? wi : 1;
+                var aid = Str(r.Config, "assigneeId");
+                var who = Guid.TryParse(aid, out var g) ? Members.FirstOrDefault(m => m.UserId == g) : null;
+                <text>Every </text>@Tok($"{Weekday(wd)} 07:30")<text>, create </text>@Tok(string.IsNullOrWhiteSpace(title) ? "a weekly task" : title)
+                @if (who is not null) { <text> for </text>@Tok(who.Name, null, true, who.Nik) }
+                break;
+            default:
+                <text>When a task moves later, move </text>@Tok("the tasks that wait for it")<text> and tell </text>@Tok("their owners")
+                break;
+        }
+    };
+}

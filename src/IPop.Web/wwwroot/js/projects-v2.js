@@ -53,7 +53,7 @@
         if (e.defaultPrevented) return;
         const on = document.documentElement.classList.contains(ROOT_CLS);
         if (e.key === 'Escape') {
-          if (document.querySelector(OVERLAYS)) return;
+          if (document.querySelector(OVERLAYS) || document.getElementById('pv2-panel')) return;
           const pop = document.querySelector(POPOVERS);
           if (pop) { pop.click(); return; }
           if (on) dotNet.invokeMethodAsync('FullScreenKey', false).catch(() => {});
@@ -301,5 +301,38 @@
         if (k && on) { k.style.left = on.offsetLeft + 'px'; k.style.width = on.offsetWidth + 'px'; }
       });
     },
+  });
+
+  // ---- Stage 4: overview ring animation + task panel keys ----
+  let panelHandler = null;
+  Object.assign(window.ipopPv2, {
+    // Count the progress ring up from 0 to its --pv2o-t target (skipped with reduced motion).
+    ringAnim() {
+      document.querySelectorAll('.pv2o-ring[style*="--pv2o-t"]').forEach(r => {
+        if (r.dataset.anim === r.style.getPropertyValue('--pv2o-t')) return;
+        const tgt = parseFloat(r.style.getPropertyValue('--pv2o-t')) || 0;
+        r.dataset.anim = String(tgt);
+        if (reduced()) { r.style.setProperty('--v', tgt); return; }
+        let cur = 0; r.style.setProperty('--v', 0);
+        const step = () => { cur += Math.max(.6, (tgt - cur) * .1); if (cur >= tgt) cur = tgt; r.style.setProperty('--v', cur); if (cur < tgt) requestAnimationFrame(step); };
+        requestAnimationFrame(step);
+      });
+    },
+    focusPanel() { const p = document.getElementById('pv2-panel'); if (p) p.focus({ preventScroll: true }); },
+    // Esc closes the panel, Up/Down step to the neighbouring task. Leaves typing fields and open overlays alone.
+    panelKeys(dotNet) {
+      if (panelHandler) document.removeEventListener('keydown', panelHandler, true);
+      panelHandler = e => {
+        if (e.defaultPrevented || !document.getElementById('pv2-panel')) return;
+        if (e.key !== 'Escape' && e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+        if (document.querySelector(OVERLAYS) || document.querySelector('.pv2-stpop, .pv2p-deppop, .quick-assign-popover, .plist-menu')) return;
+        if (e.key !== 'Escape' && typing(e.target)) return;
+        if (e.key === 'Escape' && typing(e.target) && e.target.tagName !== 'INPUT') return;
+        e.preventDefault();
+        dotNet.invokeMethodAsync('PanelKey', e.key).catch(() => {});
+      };
+      document.addEventListener('keydown', panelHandler, true);
+    },
+    panelKeysOff() { if (panelHandler) { document.removeEventListener('keydown', panelHandler, true); panelHandler = null; } },
   });
 })();

@@ -34,6 +34,10 @@
                 }
                 @if (more > 0) { <span class="pv2-av-more">+@more</span> }
             </div>
+            @if (AutomationCount is { } autoN)
+            {
+                <button type="button" class="pv2-hbtn pv2-auto" data-act="automate" @onclick="OnOpenAutomations" title="Rules that do routine work for this project" aria-label="Automations (@autoN on)"><i data-lucide="zap" style="color:var(--warn)"></i>Automate<span class="pv2-badge @(autoFlash > 0 ? "flash" : "")" @key="autoFlash">@autoN</span></button>
+            }
             <button type="button" class="pv2-hbtn ph-members" @onclick="OnOpenTeamModal" title="See and add project members" aria-label="Members (@Members.Count)"><i data-lucide="users"></i>Members<span class="ph-count">@Members.Count</span></button>
             <button type="button" class="pv2-hbtn" @onclick="OnOpenChatRoom" title="Open the project's chat room"><i data-lucide="message-circle"></i>Chat</button>
             <div class="ph-more-wrap">
@@ -200,6 +204,12 @@ else
     /// Owner/manager/member: shows "New task".
     [Parameter] public bool CanWrite { get; set; }
     [Parameter] public EventCallback OnNewTask { get; set; }
+    /// Enabled automation rules; null hides the Automate button (not loaded yet).
+    [Parameter] public int? AutomationCount { get; set; }
+    [Parameter] public EventCallback OnOpenAutomations { get; set; }
+    private int autoFlash, lastAuto = -1;
+
+
     /// Projects v2 header (desktop): health chip, avatar stack and progress row. Off = the phone sheet's old header.
     [Parameter] public bool V2 { get; set; }
     /// Owner/manager: can change the health chip.
@@ -216,6 +226,11 @@ else
     protected override void OnParametersSet()
     {
         if (Project.Health != seenHealth) { seenHealth = Project.Health; localHealth = null; }
+        if (AutomationCount is { } n)
+        {
+            if (lastAuto >= 0 && n != lastAuto) autoFlash++;
+            lastAuto = n;
+        }
     }
 
     private sealed record HealthView(string Value, string Label, string Css);

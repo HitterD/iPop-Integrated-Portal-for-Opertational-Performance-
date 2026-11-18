@@ -147,6 +147,8 @@ else
                 OnMarkCompleted="HandleMarkProjectCompleted"
                 OnBack="CloseMobileDetail"
                 OnEditStatuses="OpenStatusModal"
+                AutomationCount="@(automations?.Rules.Count(r => r.IsEnabled))"
+                OnOpenAutomations="() => showAutoModal = true"
                 CanWrite="CanWriteTasks"
                 OnNewTask="CreateTaskAndOpen" />
 
@@ -248,14 +250,11 @@ else
                 }
                 else if (tab == 4)
                 {
-                    <ProjectExecutiveDashboard
-                        Project="selectedProject"
-                        AllTasks="AllCurrentTasks"
-                        Members="projectMembers"
-                        OnInspectTask="OpenTaskEditor"
-                        OnRequestExtension="OpenExtensionModal"
-                        OnOpenBoard="() => SwitchTab(0)"
-                        OnOpenTeamModal="() => showTeamModal = true" />
+                    <ProjectOverviewView ProjectId="selectedProjectId" CanManage="CanManageMembers" Version="ganttVersion"
+                        OnEdit="() => showEditModal = true"
+                        OnOpenGantt="() => SwitchTab(7)"
+                        OnOpenTeam="() => showTeamModal = true"
+                        OnOpenTask="OpenTaskById" />
                 }
                 else
                 {
@@ -373,6 +372,7 @@ else
                                     PriorityFilter="@priorityFilter"
                                     CurrentUserNik="@currentUserNik"
                                     Version="ganttVersion"
+                                    DependentsFollow="@(automations?.DependentsFollow ?? true)"
                                     OnOpenTask="OpenTaskById"
                                     OnOpenTable="() => SwitchTab(1)"
                                     OnExportCsv="ExportSelected" />
@@ -389,14 +389,16 @@ else
                             }
                             else if (tab == 3)
                             {
-                                <ProjectWorkloadView
-                                    Workload="workloadData"
-                                    ProjectId="selectedProjectId"
+                                <ProjectWeeklyWorkloadView ProjectId="selectedProjectId"
+                                    ReadOnly="@(!CanWriteTasks)"
                                     CanManageMembers="CanManageMembers"
+                                    Version="ganttVersion"
+                                    Workload="workloadData"
                                     OwnerIds="@OwnerMemberIds"
                                     OnAddMember="() => showTeamModal = true"
                                     OnViewTasks="ViewWorkloadTasks"
-                                    OnRemoveMember="HandleRemoveTeamMember" />
+                                    OnRemoveMember="HandleRemoveTeamMember"
+                                    OnChanged="HandleWorkloadChanged" />
                             }
                             else if (tab == 5)
                             {
@@ -406,6 +408,16 @@ else
                     </div>
                 }
             </div>
+            @if (showTaskEditor && editingTask is not null && !fullEditor && !Phone.IsPhone)
+            {
+                <ProjectTaskPanel Task="editingTask" Subtasks="subtasks" Members="projectMembers" Groups="projectGroups" Options="statusOptions"
+                    AllTasks="AllCurrentTasks" NavTasks="DrawerNavTasks" ProjectName="@(selectedProject?.Name ?? "Project")"
+                    ReadOnly="@(!CanWriteTasks)" CurrentUserNik="@currentUserNik"
+                    OnClose="CloseTaskEditor" OnOpenFull="OpenFullEditor" OnNavigate="OpenTaskEditor"
+                    OnStatusChange="HandleStatusChangeDirect" OnToggleAssignee="HandleToggleAssignee"
+                    OnToggleSubtask="HandleToggleSubtask" OnAddSubtask="HandleAddSubtask"
+                    OnPriority="HandlePanelPriority" OnDue="HandlePanelDue" OnTaskChanged="HandleDrawerTaskChanged" />
+            }
         }
     </main>
 </div>
@@ -416,6 +428,13 @@ else
 {
     <ProjectStatusesModal ProjectId="selectedProjectId" Options="statusOptions" CanEdit="CanManageMembers"
                           OnSaved="HandleStatusesSaved" OnClose="() => showStatusModal = false" />
+}
+
+@if (showAutoModal && selectedProjectId != Guid.Empty)
+{
+    <ProjectAutomationsModal ProjectId="selectedProjectId" CanManage="CanManageMembers" Options="statusOptions" Members="projectMembers"
+                             Groups="projectGroups" LeadName="@selectedProject?.OwnerName"
+                             OnChanged="a => automations = a" OnClose="() => showAutoModal = false" />
 }
 
 @if (showEvidenceModal && evidenceTask is not null)
@@ -438,7 +457,7 @@ else
         OnCancel="() => { showExtensionModal = false; extensionTask = null; }" />
 }
 
-@if (showTaskEditor && editingTask is not null)
+@if (showTaskEditor && editingTask is not null && (fullEditor || Phone.IsPhone))
 {
     <ProjectTaskDrawer @ref="taskDrawer" CustomStatuses="statusOptions" PhoneLayout="Phone.IsPhone"
         ReadOnly="@(!CanWriteTasks)"
@@ -720,6 +739,10 @@ else
 
     private ProjectTaskDto? editingTask;
     private bool showTaskEditor;
+    /// The side panel is the default task view on desktop; the full drawer opens from its maximize button.
+    private bool fullEditor;
+    private bool showAutoModal;
+    private AutomationListDto? automations;
     private ProjectTaskDrawer? taskDrawer;
     /// Set by the header's "New task" so the drawer puts the cursor in the title once.
     private bool focusNewTaskTitle;
@@ -929,7 +952,7 @@ else
         showExtensionModal = false; extensionTask = null;
         selectedProjectId = Guid.Empty; selectedProject = null;
         mDetail = false;
-        kanban = null; taskList = new([], 0, 1, 50); timeline = null; workloadData = null; projectMembers = [];
+        kanban = null; taskList = new([], 0, 1, 50); timeline = null; workloadData = null; projectMembers = []; automations = null; showAutoModal = false;
         if (ProjectId is not null)
             Nav.NavigateTo("/projects", replace: true); // OnParametersSetAsync then selects the first project
         else if (filteredProjects.Count > 0)
@@ -1236,7 +1259,7 @@ else
 
     private async Task LoadProjectViewsCoreAsync()
     {
-        await Task.WhenAll(LoadMembers(), LoadGroups(), LoadFields(), LoadStatusOptions());
+        await Task.WhenAll(LoadMembers(), LoadGroups(), LoadFields(), LoadStatusOptions(), LoadAutomations());
         await Task.WhenAll(LoadKanban(), LoadTaskList(), LoadTimeline());
     }
 
@@ -1777,6 +1800,7 @@ else
     private async Task OpenTaskEditor(ProjectTaskDto t)
     {
         if (editingTask?.Id != t.Id && !focusNewTaskTitle) focusNewTaskTitle = false;
+        if (focusNewTaskTitle) fullEditor = true; // a brand-new task needs its title focused in the editor
         editingTask = t;
         _ = Notifs.MarkReadByTargetAsync("task", t.Id);
         showTaskEditor = true;
@@ -1786,8 +1810,44 @@ else
         await JS.InvokeVoidAsync("ipop.icons");
     }
 
+    private async Task OpenFullEditor(ProjectTaskDto t)
+    {
+        fullEditor = true;
+        await OpenTaskEditor(t);
+    }
+
+    private async Task HandlePanelPriority((ProjectTaskDto Task, string? Priority) arg)
+    {
+        await HandlePriorityChangeDirect(arg);
+        RefreshEditingTask();
+        StateHasChanged();
+    }
+
+    private async Task HandlePanelDue((ProjectTaskDto Task, DateTime? Due) arg)
+    {
+        await HandleDueDateChangeDirect(arg);
+        RefreshEditingTask();
+        StateHasChanged();
+    }
+
+    private async Task HandleWorkloadChanged()
+    {
+        await ReloadCurrentView();
+        RefreshEditingTask();
+        StateHasChanged();
+    }
+
+    private async Task LoadAutomations()
+    {
+        if (selectedProjectId == Guid.Empty) return;
+        var id = selectedProjectId;
+        var res = await Auth.GetResultAsync<AutomationListDto>($"/api/projects/{id}/automations");
+        if (id == selectedProjectId && res.IsOk) automations = res.Value;
+    }
+
     private void CloseTaskEditor()
     {
+        fullEditor = false;
         showTaskEditor = false;
         editingTask = null;
         subtasks.Clear();

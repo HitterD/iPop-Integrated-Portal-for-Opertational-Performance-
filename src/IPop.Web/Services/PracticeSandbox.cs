@@ -327,6 +327,21 @@ public sealed class PracticeSandbox
                 new { id = ProjectId, name = "Office Wi-Fi Upgrade (sample)", year = DateTime.UtcNow.Year, ownerName = Me.Name, status = "active", progress = Progress, deadline = Day(21), memberCount = 4, taskCount = Tasks.Count, isActive = true, color = "#0d9488" },
                 new { id = G("d", 2), name = "Onboarding Handbook (sample)", year = DateTime.UtcNow.Year, ownerName = Maya.Name, status = "planning", progress = 10, deadline = Day(40), memberCount = 3, taskCount = 0, isActive = true, color = "#2563eb" },
             });
+            if (M(url, @"/api/projects/[0-9a-f-]{36}/overview")) return new
+            {
+                goal = "Replace the old access points before the end of the quarter.", startDate = Day(-14), deadline = Day(21), projectFinish = Day(21), leadName = Me.Name, nasPath = (string?)null,
+                checklist = new[] { new { key = "goal", label = "Add the goal", done = true }, new { key = "people", label = "Invite key users", done = true }, new { key = "dates", label = "Check Gantt dates", done = true }, new { key = "baseline", label = "Save a baseline", done = false } },
+                statusCounts = new[] { new { label = "Not started", color = "#c4c4c4", stage = "todo", count = By("todo").Count }, new { label = "Working on it", color = "#fdab3d", stage = "doing", count = By("doing").Count }, new { label = "Ready to check", color = "#579bfc", stage = "review", count = By("review").Count }, new { label = "Done", color = "#00c875", stage = "done", count = By("done").Count } },
+                burnUp = new { weeks = new[] { "Week 1", "Week 2", "Week 3", "Week 4" }, plan = new[] { 0, 2, 4, 6 }, done = new int?[] { 0, 1, 2, null } },
+                milestones = Array.Empty<object>(), needsAttention = Array.Empty<object>(), latestUpdates = Array.Empty<object>(),
+            };
+            if (M(url, @"/workload/weekly")) return new
+            {
+                weeks = Enumerable.Range(0, 8).Select(i => new { start = Day(7 * i), label = Day(7 * i).ToString("d MMM") }).ToArray(),
+                people = new[] { Me, Rina }.Select((pp, k) => new { userId = pp.Id, name = pp.Name, nik = pp.Nik, role = k == 0 ? "owner" : "member", weeks = Enumerable.Range(0, 8).Select(i => new { hours = (decimal)(10 + 4 * i), tasks = 2, percent = (10 + 4 * i) * 100 / 40, off = false }).ToArray() }).ToArray(),
+                capacityHoursPerWeek = 40,
+            };
+            if (M(url, @"/automations")) return new { rules = Array.Empty<object>(), dependentsFollow = true };
             if (M(url, @"/statuses")) return new[]
             {
                 new { id = G("5", 1), label = "Not started", color = "#c4c4c4", stage = "todo", sortOrder = 0, taskCount = By("todo").Count },
