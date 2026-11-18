@@ -296,6 +296,30 @@ public sealed class PracticeSandbox
             createdAt = Day(-14), updatedAt = Min(-30), color = "#0d9488",
         };
 
+        private object GanttV2()
+        {
+            var dated = Tasks.Where(t => t["dueDate"] is DateTime).ToList();
+            var start = dated.Count > 0 ? dated.Min(t => (DateTime)t["dueDate"]!).AddDays(-7) : Day(0);
+            var end = dated.Count > 0 ? dated.Max(t => (DateTime)t["dueDate"]!) : Day(14);
+            return new
+            {
+                project = new { id = ProjectId, name = "Office Wi-Fi Upgrade (sample)", start = (DateTime?)null, deadline = (DateTime?)Day(21) },
+                window = new { start, end },
+                groups = new[] { new { id = GroupId, name = "Tasks", color = "#8E8E93", sortOrder = 0 } },
+                rows = dated.Select((t, i) => new
+                {
+                    id = t["id"], groupId = GroupId, parentTaskId = (Guid?)null, wbsPath = $"1.{i + 1}", title = t["title"], status = t["status"], statusOptionId = (Guid?)null,
+                    stageStatus = t["status"], priority = t["priority"], startDate = (DateTime?)((DateTime)t["dueDate"]!).AddDays(-2), dueDate = (DateTime?)t["dueDate"], durationDays = 3,
+                    percentDone = (string?)t["status"] == "done" ? 100 : 0, assignees = Array.Empty<object>(), isCritical = false, slackDays = (int?)null,
+                    deadlineDate = (DateTime?)null, constraintType = (string?)null, constraintDate = (DateTime?)null, baselineStart = (DateTime?)null, baselineDue = (DateTime?)null,
+                    varianceDays = (int?)null, dependsOn = Array.Empty<object>(), isMilestoneRow = false,
+                }).ToList(),
+                milestones = Array.Empty<object>(), holidays = Array.Empty<object>(), conflicts = Array.Empty<object>(),
+                criticalPathTaskIds = Array.Empty<Guid>(), projectFinish = (DateTime?)end, baselines = Array.Empty<object>(), baselineId = (Guid?)null,
+                constraintViolationTaskIds = Array.Empty<Guid>(),
+            };
+        }
+
         private object? GetProjects(string url)
         {
             if (M(url, @"^/api/projects\?")) return Paged(new object[]
@@ -314,6 +338,8 @@ public sealed class PracticeSandbox
             if (M(url, @"/groups")) return new[] { new { id = GroupId, projectId = ProjectId, name = "Tasks", color = "#8E8E93", sortOrder = 0, taskCount = Tasks.Count, progress = Progress, overdueCount = 1 } };
             if (M(url, @"/kanban")) return new { projectId = ProjectId, todo = By("todo"), doing = By("doing"), done = By("done"), review = By("review") };
             if (M(url, @"/tasks/list")) return Paged(Tasks);
+            if (M(url, @"/gantt/v2")) return GanttV2();
+            if (M(url, @"/baselines")) return Array.Empty<object>();
             if (M(url, @"/(fields|views|milestones|activity|comments|attachments|reminders|templates)")) return Array.Empty<object>();
             if (IdIn(url, @"/api/projects/tasks/([0-9a-f-]{36})($|\?)") is { } tid) return Tasks.FirstOrDefault(t => (Guid)t["id"]! == tid);
             if (M(url, @"/api/projects/[0-9a-f-]{36}($|\?)")) return ProjectDetail();

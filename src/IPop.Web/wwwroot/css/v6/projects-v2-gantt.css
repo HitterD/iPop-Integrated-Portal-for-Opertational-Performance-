@@ -1,0 +1,183 @@
+/* Projects v2 Gantt (docs/mockups/ipop-apple/projects-v2.html .gwrap .gin .gleft ...). Everything lives under .pv2g and uses
+   the pv2g- prefix so Tailwind's bare class names are never touched. iPop tokens drive light and dark. */
+
+.pv2g {
+  --pv2g-violet: #7c4dd6;
+  --pv2g-freeze: rgba(124, 77, 214, .07);
+  --pv2g-wknd: rgba(28, 31, 35, .035);
+  position: relative; display: flex; flex-direction: column; min-height: 0; height: 100%;
+  animation: pv2-fade .25s var(--pv2-ease);
+}
+[data-theme="dark"] .pv2g { --pv2g-violet: #b69cff; --pv2g-freeze: rgba(182, 156, 255, .08); --pv2g-wknd: rgba(255, 255, 255, .03); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .pv2g { --pv2g-violet: #b69cff; --pv2g-freeze: rgba(182, 156, 255, .08); --pv2g-wknd: rgba(255, 255, 255, .03); }
+}
+.pv2g .pv2g-i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.pv2g .pv2g-i.pv2g-sm { width: 12px; height: 12px; }
+.pv2g-num { font-variant-numeric: tabular-nums; }
+.pv2g-spacer { flex: 1; }
+.pv2g :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- toolbar ---------- */
+.pv2g-tb { display: flex; align-items: center; gap: 6px; padding: 8px 20px; border-bottom: 1px solid var(--line); background: var(--surface); overflow-x: auto; scrollbar-width: none; flex: none; }
+.pv2g-search { display: flex; align-items: center; gap: 7px; height: 32px; padding: 0 10px; border-radius: 9px; background: var(--surface); border: 1px solid var(--line); color: var(--ink-3); font-size: 12.5px; min-width: 0; flex: 0 0 170px; transition: border-color .2s, box-shadow .2s; }
+.pv2g-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.pv2g-search input { border: 0; outline: 0; background: none; flex: 1; min-width: 0; font-size: 13px; color: var(--ink); }
+.pv2g-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; color: var(--ink-2); border: 1px solid transparent; background: none; white-space: nowrap; transition: background .15s, transform .14s var(--pv2-ease); }
+.pv2g-chip:hover { background: var(--surface-3, var(--tray)); }
+.pv2g-chip:active { transform: scale(.96); }
+.pv2g-chip[aria-expanded="true"] { background: var(--info-soft); color: var(--info); font-weight: 600; }
+.pv2g-sep { width: 1px; height: 20px; background: var(--line-2); margin: 0 4px; flex: none; }
+.pv2g-seg { display: inline-flex; padding: 2px; gap: 2px; background: var(--surface-3, var(--tray)); border-radius: 9px; position: relative; flex: none; }
+.pv2g-seg button { border: 0; background: none; padding: 4px 11px; border-radius: 7px; font-size: 12px; color: var(--ink-2); position: relative; z-index: 1; transition: color .2s; }
+.pv2g-seg button.on { color: var(--ink); font-weight: 650; }
+.pv2g-knob { position: absolute; top: 2px; bottom: 2px; border-radius: 7px; background: var(--surface); box-shadow: 0 1px 2px rgba(0, 0, 0, .1); transition: left .3s var(--pv2-smooth), width .3s var(--pv2-smooth); }
+.pv2g-tog { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--ink-2); background: none; border: 0; padding: 0 4px; white-space: nowrap; }
+.pv2g-tog i { width: 30px; height: 18px; border-radius: 9px; background: var(--line-2); position: relative; transition: background .25s; flex: none; }
+.pv2g-tog i::after { content: ""; position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #fff; top: 2px; left: 2px; transition: left .3s var(--pv2-spring); box-shadow: 0 1px 2px rgba(0, 0, 0, .2); }
+.pv2g-tog.on i { background: var(--accent); }
+.pv2g-tog.on i::after { left: 14px; }
+
+.pv2g-btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font-size: 13px; white-space: nowrap; transition: transform .14s var(--pv2-ease), background .15s, box-shadow .2s, filter .15s; }
+.pv2g-btn:hover:not(:disabled) { background: var(--surface-3, var(--tray)); }
+.pv2g-btn:active:not(:disabled) { transform: scale(.96); }
+.pv2g-btn:disabled { opacity: .5; cursor: default; }
+.pv2g-btn.pri { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 650; }
+.pv2g-btn.pri:hover:not(:disabled) { background: var(--accent); filter: brightness(1.07); box-shadow: 0 4px 14px -4px color-mix(in srgb, var(--accent) 60%, transparent); }
+.pv2g-btn.ghost { border-color: transparent; background: none; color: var(--ink-2); }
+.pv2g-btn.danger { border-color: var(--danger); color: var(--danger); }
+.pv2g-btn.sm { height: 28px; padding: 0 9px; font-size: 12.5px; }
+
+/* ---------- table + grid ---------- */
+.pv2g-wrap { flex: 1; overflow: auto; position: relative; background: var(--surface); min-height: 0; overscroll-behavior: contain; }
+.pv2g-in { display: grid; grid-template-columns: var(--pv2g-gl) max-content; min-width: 100%; }
+.pv2g-left { position: sticky; left: 0; z-index: 6; background: var(--surface); border-right: 1px solid var(--line-2); box-shadow: 4px 0 10px -8px rgba(0, 0, 0, .25); }
+.pv2g-row { display: grid; grid-template-columns: var(--pv2g-cols); height: 34px; align-items: center; border-bottom: 1px solid var(--line); font-size: 12.5px; padding: 0 8px; gap: 6px; white-space: nowrap; transition: background .15s, height .3s var(--pv2-smooth), opacity .25s; overflow: hidden; }
+.pv2g-row > span { overflow: hidden; text-overflow: ellipsis; }
+.pv2g-row.h { position: sticky; top: 0; z-index: 7; background: var(--surface-2, var(--tray)); height: 52px; font-size: 11px; color: var(--ink-3); font-weight: 650; align-items: end; padding-bottom: 8px; }
+.pv2g-row.g { font-weight: 700; background: var(--surface-2, var(--tray)); cursor: pointer; }
+.pv2g-row.g .pv2g-cv { transition: transform .3s var(--pv2-smooth); width: 14px; height: 14px; vertical-align: -2px; }
+.pv2g-row.g.col .pv2g-cv { transform: rotate(-90deg); }
+.pv2g-row.hid { height: 0; opacity: 0; border-bottom-width: 0; pointer-events: none; }
+.pv2g-row .w { color: var(--ink-3); }
+.pv2g-row.crit-row .pv2g-nm { color: var(--danger); }
+.pv2g-row:hover, .pv2g-row.hl { background: var(--surface-3, var(--tray)); }
+.pv2g-nm { cursor: pointer; }
+.pv2g-nm:hover { text-decoration: underline; }
+.pv2g-row .var-p { color: var(--danger); font-weight: 600; }
+.pv2g-row .var-n { color: var(--accent); font-weight: 600; }
+.pv2g-cons { display: inline-flex; color: var(--info); vertical-align: -1px; }
+.pv2g-cons .pv2g-i { width: 12px; height: 12px; }
+
+.pv2g-right { position: relative; }
+.pv2g-head { position: sticky; top: 0; z-index: 5; height: 52px; background: var(--surface-2, var(--tray)); border-bottom: 1px solid var(--line); }
+.pv2g-head .mo, .pv2g-head .wk { position: absolute; font-size: 11px; white-space: nowrap; overflow: hidden; border-left: 1px solid var(--line); padding-left: 6px; }
+.pv2g-head .mo { top: 0; height: 24px; line-height: 24px; font-weight: 700; color: var(--ink); }
+.pv2g-head .wk { top: 24px; height: 28px; line-height: 28px; color: var(--ink-3); }
+.pv2g-bodyx { position: relative; transition: height .3s var(--pv2-smooth); }
+.pv2g-gridbg { position: absolute; inset: 0; }
+.pv2g-rowline { position: absolute; left: 0; right: 0; height: 34px; border-bottom: 1px solid var(--line); }
+.pv2g-rowline.g { background: var(--surface-2, var(--tray)); }
+.pv2g-freeze { position: absolute; top: 0; bottom: 0; background: var(--pv2g-freeze); border-left: 1px dashed var(--pv2g-violet); border-right: 1px dashed var(--pv2g-violet); z-index: 1; }
+.pv2g-freeze span { position: absolute; top: 6px; left: 6px; font-size: 10.5px; font-weight: 700; color: var(--pv2g-violet); white-space: nowrap; background: var(--surface); padding: 0 5px; border-radius: 5px; }
+.pv2g-today { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); z-index: 4; }
+.pv2g-today span { position: absolute; top: 4px; left: 4px; font-size: 10px; font-weight: 700; color: var(--accent); background: var(--accent-soft); padding: 0 5px; border-radius: 5px; white-space: nowrap; }
+
+.pv2g-bar { position: absolute; height: 18px; border-radius: 6px; font-size: 10.5px; color: #fff; display: flex; align-items: center; padding: 0 6px; font-weight: 700; white-space: nowrap; box-shadow: 0 1px 2px rgba(0, 0, 0, .15); cursor: grab; z-index: 3; touch-action: none; user-select: none; transition: box-shadow .2s, transform .2s var(--pv2-ease), background .3s, outline-color .2s, opacity .25s; }
+.pv2g-bar:hover { box-shadow: 0 4px 12px -2px rgba(0, 0, 0, .3); transform: translateY(-1px); }
+.pv2g-bar.dragging { cursor: grabbing; transform: translateY(-2px) scale(1.02); box-shadow: 0 10px 24px -6px rgba(0, 0, 0, .4); }
+.pv2g-bar.hl-b, .pv2g-ms.hl-b { outline: 2px solid var(--info); outline-offset: 1px; }
+.pv2g-bar.target { outline: 2px dashed var(--accent); outline-offset: 2px; }
+.pv2g-bar.hid, .pv2g-ms.hid, .pv2g-base.hid, .pv2g-slack.hid, .pv2g-glabel.hid, .pv2g-dl.hid { opacity: 0; pointer-events: none; transition: opacity .2s; }
+.pv2g[data-ro="1"] .pv2g-bar { cursor: pointer; }
+.pv2g-done { position: absolute; inset: 0 auto 0 0; background: rgba(0, 0, 0, .18); border-radius: 6px 0 0 6px; }
+.pv2g-bar span { position: relative; }
+.pv2g-bar.crit { background: var(--danger) !important; }
+.pv2g-hand { position: absolute; right: -5px; top: 4px; width: 10px; height: 10px; border-radius: 50%; background: var(--surface); border: 2px solid var(--ink-2); opacity: 0; transition: opacity .15s; cursor: crosshair; }
+.pv2g-bar:hover .pv2g-hand, .pv2g-bar.linking .pv2g-hand, .pv2g-bar:focus-visible .pv2g-hand { opacity: 1; }
+.pv2g-rs { position: absolute; right: 0; top: 0; bottom: 0; width: 6px; cursor: ew-resize; border-radius: 0 6px 6px 0; }
+.pv2g-rs:hover { background: rgba(255, 255, 255, .35); }
+.pv2g-glabel { position: absolute; font-size: 11px; color: var(--ink-2); white-space: nowrap; z-index: 2; pointer-events: none; transition: opacity .2s; }
+.pv2g-base { position: absolute; height: 5px; border-radius: 3px; background: var(--ink-3); opacity: .45; z-index: 2; transition: opacity .25s; }
+.pv2g-base.off, .pv2g-slack.off { opacity: 0; pointer-events: none; }
+.pv2g-slack { position: absolute; height: 2px; border-top: 2px dashed var(--ink-3); opacity: .6; z-index: 2; transition: opacity .25s; }
+.pv2g-gsum { position: absolute; height: 7px; background: var(--ink-2); border-radius: 2px; z-index: 2; }
+.pv2g-gsum::before, .pv2g-gsum::after { content: ""; position: absolute; top: 7px; border: 5px solid transparent; border-top-color: var(--ink-2); }
+.pv2g-gsum::before { left: 0; border-left-color: var(--ink-2); }
+.pv2g-gsum::after { right: 0; border-right-color: var(--ink-2); }
+.pv2g-ms { position: absolute; width: 14px; height: 14px; transform: rotate(45deg); background: var(--pv2g-violet); border-radius: 2px; z-index: 3; cursor: grab; touch-action: none; transition: transform .2s var(--pv2-spring), opacity .25s; }
+.pv2g-ms:hover { transform: rotate(45deg) scale(1.2); }
+.pv2g-ms.crit { background: var(--danger); }
+.pv2g-ms.done { opacity: .6; }
+.pv2g[data-ro="1"] .pv2g-ms { cursor: default; }
+.pv2g-dl { position: absolute; z-index: 3; color: var(--danger); display: flex; align-items: center; }
+.pv2g-dl .pv2g-i { width: 13px; height: 13px; }
+.pv2g-arrows { position: absolute; inset: 0; pointer-events: none; z-index: 2; overflow: visible; }
+.pv2g-arrows path { fill: none; stroke: var(--ink-3); stroke-width: 1.4; transition: stroke .25s, opacity .25s; }
+.pv2g-arrows path.crit { stroke: var(--danger); stroke-width: 1.6; }
+.pv2g-arrows path.conf { stroke: var(--danger); stroke-dasharray: 4 3; animation: pv2g-pulse 1s infinite; }
+.pv2g-arrows path.pv2g-hit { stroke: transparent; stroke-width: 10; pointer-events: stroke; cursor: pointer; animation: none; }
+.pv2g-arrows path.pv2g-hit:hover { stroke: color-mix(in srgb, var(--info) 25%, transparent); }
+@keyframes pv2g-pulse { 50% { opacity: .35; } }
+
+/* ---------- legend ---------- */
+.pv2g-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 11.5px; color: var(--ink-3); padding: 8px 20px; border-top: 1px solid var(--line); background: var(--surface); flex: none; }
+.pv2g-legend span { display: inline-flex; gap: 6px; align-items: center; }
+
+/* ---------- tooltip, toast, popovers ---------- */
+.pv2g-tip { position: fixed; z-index: 1100; pointer-events: none; background: var(--ink); color: var(--surface); border-radius: 10px; padding: 8px 10px; font-size: 12px; line-height: 1.5; box-shadow: var(--sh-pop); animation: pv2-fade .15s; max-width: 280px; }
+.pv2g-tip b { display: block; font-size: 12.5px; }
+.pv2g-tip span { opacity: .75; }
+.pv2g-linkline { position: fixed; height: 2px; background: var(--accent); transform-origin: 0 50%; z-index: 1100; pointer-events: none; }
+.pv2g-toast { position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%); z-index: 170; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--sh-pop); border-radius: 14px; padding: 11px 12px 11px 14px; display: flex; gap: 12px; align-items: center; max-width: min(680px, calc(100% - 24px)); animation: pv2g-slideup .4s var(--pv2-spring); font-size: 13px; color: var(--ink); }
+.pv2g-toast .ic { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; flex: none; background: var(--accent-soft); color: var(--accent); }
+.pv2g-toast.warn .ic { background: var(--warn-soft); color: var(--warn); }
+.pv2g-toast p { margin: 0; flex: 1; color: var(--ink-2); }
+.pv2g-toast p b { color: var(--ink); }
+@keyframes pv2g-slideup { from { transform: translate(-50%, 16px); opacity: 0; } }
+.pv2g-backdrop { position: fixed; inset: 0; z-index: 154; background: transparent; }
+.pv2g-pop { position: absolute; top: 96px; z-index: 160; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--sh-pop); animation: pv2-pop .3s var(--pv2-spring); transform-origin: top right; padding: 6px; }
+.pv2g-pop h5 { margin: 2px 4px 6px; font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; }
+.pv2g-menu { width: 240px; display: flex; flex-direction: column; }
+.pv2g-mi { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; border: 0; background: none; font-size: 13px; text-align: left; color: var(--ink); transition: background .12s; }
+.pv2g-mi:hover { background: var(--surface-3, var(--tray)); }
+.pv2g-bl { width: 340px; padding: 12px; }
+.pv2g-hint { margin: 0 4px 8px; font-size: 12px; color: var(--ink-3); }
+.pv2g-blnew { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+.pv2g-blnew input { flex: 1; min-width: 0; height: 30px; border: 1px solid var(--line-2); border-radius: 9px; padding: 0 10px; background: var(--surface); color: var(--ink); font-size: 13px; outline: 0; }
+.pv2g-blnew input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.pv2g-bli { display: flex; align-items: center; gap: 6px; padding: 7px 4px; border-top: 1px solid var(--line); font-size: 12.5px; }
+.pv2g-bli .nm { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pv2g-bli small { color: var(--ink-3); font-size: 11px; }
+.pv2g-badge { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 7px; background: var(--accent-soft); color: var(--accent); }
+.pv2g-linkpop { width: 260px; padding: 12px; transform-origin: top left; }
+.pv2g-linkseg { margin: 0 0 10px; }
+.pv2g-lag { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-2); margin-bottom: 10px; }
+.pv2g-lag input { width: 70px; height: 28px; border: 1px solid var(--line-2); border-radius: 8px; padding: 0 8px; background: var(--surface); color: var(--ink); }
+
+/* ---------- states ---------- */
+.pv2g-empty { display: grid; place-items: center; text-align: center; padding: 60px 20px; color: var(--ink-2); gap: 10px; }
+.pv2g-empty h3 { margin: 0; font-size: 17px; color: var(--ink); }
+.pv2g-empty p { margin: 0; max-width: 420px; }
+.pv2g-bigic { width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; background: var(--surface-3, var(--tray)); color: var(--ink-2); }
+.pv2g-bigic .pv2g-i { width: 24px; height: 24px; }
+.pv2g-skel { padding: 0 0 20px; }
+.pv2g-skel-tb { height: 49px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.pv2g-skel-row { display: flex; align-items: center; height: 34px; border-bottom: 1px solid var(--line); padding: 0 20px; gap: 0; }
+.pv2g-skel-row span, .pv2g-skel-row i { height: 12px; border-radius: 6px; background: var(--surface-3, var(--tray)); animation: pv2g-skel 1.2s infinite; display: block; }
+.pv2g-skel-row i { height: 16px; }
+@keyframes pv2g-skel { 50% { opacity: .45; } }
+
+/* ---------- import dialog ---------- */
+.pv2g-imp { display: flex; flex-direction: column; gap: 10px; }
+.pv2g-file { font-size: 13px; color: var(--ink); }
+.pv2g-imp-err { padding: 10px 12px; border-radius: 10px; background: var(--danger-soft, rgba(220, 38, 38, .1)); color: var(--danger); font-size: 12.5px; }
+.pv2g-imp-sum { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.pv2g-imp-sum div { background: var(--surface-2, var(--tray)); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; align-items: center; }
+.pv2g-imp-sum b { font-size: 20px; }
+.pv2g-imp-sum span { font-size: 11.5px; color: var(--ink-3); }
+.pv2g-imp-warn { margin: 0; padding: 8px 12px 8px 28px; border-radius: 10px; background: var(--warn-soft); color: var(--ink-2); font-size: 12.5px; max-height: 140px; overflow: auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pv2g, .pv2g *, .pv2g-tip, .pv2g-toast, .pv2g-pop { animation: none !important; transition: none !important; }
+}

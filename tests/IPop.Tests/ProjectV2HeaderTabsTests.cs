@@ -217,7 +217,7 @@ public class ProjectV2HeaderTabsTests
     public void Tabs_without_a_screen_map_to_placeholders()
     {
         Assert.Equal(-1, ProjectViewCatalog.TabIndex("whiteboard"));
-        Assert.Equal(2, ProjectViewCatalog.TabIndex("gantt"));
+        Assert.Equal(7, ProjectViewCatalog.TabIndex("gantt")); // stage 3: Gantt has its own screen
         Assert.Equal(1, ProjectViewCatalog.TabIndex("table"));
         var (ctx, _, _) = NewContext();
         using var _c = ctx;

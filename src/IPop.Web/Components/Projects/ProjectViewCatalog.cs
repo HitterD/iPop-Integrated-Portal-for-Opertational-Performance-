@@ -35,10 +35,10 @@ public static class ProjectViewCatalog
         ("Docs & files", ["doc", "whiteboard", "form", "files"]),
     ];
 
-    /// Page `tab` number (0 Board, 1 Table, 2 Timeline, 3 Workload, 4 Overview, 5 Reports, 6 Calendar); -1 = no view yet (placeholder).
+    /// Page `tab` number (0 Board, 1 Table, 2 Timeline, 3 Workload, 4 Overview, 5 Reports, 6 Calendar, 7 Gantt); -1 = no view yet (placeholder).
     public static int TabIndex(string key) => key switch
     {
-        "board" => 0, "table" => 1, "gantt" or "timeline" => 2, "workload" => 3, "overview" => 4, "reports" => 5, "calendar" => 6,
+        "board" => 0, "table" => 1, "timeline" => 2, "gantt" => 7, "workload" => 3, "overview" => 4, "reports" => 5, "calendar" => 6,
         _ => -1,
     };
 

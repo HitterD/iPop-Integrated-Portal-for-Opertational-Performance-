@@ -1,0 +1,1093 @@
+@using IPop.Application.Projects
+@using System.Net
+@using System.Net.Http.Headers
+@using System.Text.Json
+@inject IPop.Web.Services.AuthState Auth
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@* Projects v2 Gantt (docs/mockups/ipop-apple/projects-v2.html ganttView): sticky WBS table on the left, time grid on the
+   right with bars, arrows, baseline, slack, deadline flags, milestones and holiday shading. Drag, resize, link and keyboard
+   moves are handled in js/projects-v2.js (pointer capture) and reported here once per drop; every move goes through the
+   reschedule preview/apply endpoints and has Undo. *@
+<div class="pv2 pv2g" @ref="rootRef" data-px="@Px" data-ro="@(ReadOnly ? "1" : "0")" data-view="gantt">
+    @if (state == LoadState.Loading)
+    {
+        <div class="pv2g-skel" role="status" aria-label="Loading Gantt">
+            <div class="pv2g-skel-tb"></div>
+            @for (var i = 0; i < 9; i++)
+            {
+                <div class="pv2g-skel-row"><span style="width:@(120 + (i * 37) % 80)px"></span><i style="margin-left:@(40 + (i * 53) % 220)px;width:@(70 + (i * 29) % 140)px"></i></div>
+            }
+        </div>
+    }
+    else if (state == LoadState.Error)
+    {
+        <div class="pv2g-empty" role="alert">
+            <span class="pv2g-bigic">@GanttIcons.Svg("alert")</span>
+            <h3>Couldn't load the Gantt</h3>
+            <p>@errorText</p>
+            <button type="button" class="pv2g-btn pri" @onclick="() => LoadAsync(false)">Retry</button>
+        </div>
+    }
+    else if (dto is not null && layout is not null)
+    {
+        var px = Px;
+        var origin = layout.Origin;
+        var width = layout.TotalDays * px;
+        var rows = layout.VisibleRows;
+        var bodyH = rows * GanttMath.RowHeight;
+        var cols = (showWbs ? "30px " : "") + "minmax(150px,1fr) 34px 50px 50px 38px";
+        var gl = showWbs ? 400 : 366;
+        var todayIdx = GanttMath.DayIndex(origin, TodayDate);
+        var criticalIds = dto.CriticalPathTaskIds.ToHashSet();
+        var conflictKeys = dto.Conflicts.Select(c => c.FromTaskId + ">" + c.ToTaskId).Concat(pendingConflicts).ToHashSet();
+        var baselineOn = dto.Baselines.FirstOrDefault(b => b.Id == dto.BaselineId);
+
+        <div class="pv2g-tb" role="toolbar" aria-label="Gantt tools">
+            <label class="pv2g-search">@GanttIcons.Svg("search")<input type="search" placeholder="Search tasks" aria-label="Search tasks in the Gantt" value="@localSearch" @oninput="OnLocalSearch" /></label>
+            <div class="pv2g-seg" role="group" aria-label="Zoom">
+                @foreach (var z in new[] { GanttZoom.Day, GanttZoom.Week, GanttZoom.Month })
+                {
+                    var zz = z;
+                    <button type="button" class="@(zoom == z ? "on" : "")" aria-pressed="@(zoom == z ? "true" : "false")" @onclick="() => SetZoom(zz)">@z</button>
+                }
+                <span class="pv2g-knob"></span>
+            </div>
+            <button type="button" class="pv2g-chip" @onclick="FitProject">@GanttIcons.Svg("max")Fit project</button>
+            <button type="button" class="pv2g-chip" @onclick="ScrollToday">@GanttIcons.Svg("target")Today</button>
+            <span class="pv2g-sep"></span>
+            @Toggle("Critical path", showCrit, () => { showCrit = !showCrit; return SavePrefs(); })
+            @Toggle("Baseline", showBase, () => { showBase = !showBase; return SavePrefs(); })
+            @Toggle("Slack", showSlack, () => { showSlack = !showSlack; return SavePrefs(); })
+            @Toggle("WBS", showWbs, () => { showWbs = !showWbs; return SavePrefs(); })
+            <span class="pv2g-spacer"></span>
+            @if (CanManage)
+            {
+                <button type="button" class="pv2g-chip" aria-expanded="@(popup == "baseline" ? "true" : "false")" @onclick='() => OpenPopup("baseline")'>@GanttIcons.Svg("flag")Set baseline</button>
+            }
+            <button type="button" class="pv2g-chip" aria-expanded="@(popup == "export" ? "true" : "false")" @onclick='() => OpenPopup("export")'>@GanttIcons.Svg("download")Export</button>
+            @if (CanManage)
+            {
+                <button type="button" class="pv2g-chip" @onclick="OpenImport">@GanttIcons.Svg("upload")Import</button>
+            }
+        </div>
+
+        @if (!layout.HasDates)
+        {
+            <div class="pv2g-empty">
+                <span class="pv2g-bigic">@GanttIcons.Svg("gantt")</span>
+                <h3>@(filtersActive ? "No tasks match these filters" : "Add dates to your tasks to see them here")</h3>
+                <p>@(filtersActive ? "Clear the search or filters to see the whole plan." : "The Gantt draws every task that has a start or a finish date.")</p>
+                @if (!filtersActive) { <button type="button" class="pv2g-btn pri" @onclick="() => OnOpenTable.InvokeAsync()">Open Table</button> }
+            </div>
+        }
+        else
+        {
+            <div class="pv2g-wrap" style="--pv2g-gl:@(gl)px">
+                <div class="pv2g-in">
+                    <div class="pv2g-left">
+                        <div class="pv2g-row h" style="--pv2g-cols:@cols">
+                            @if (showWbs) { <span>WBS</span> }
+                            <span>Task</span><span>Days</span><span>Start</span><span>Finish</span><span title="Finish compared with baseline">Var.</span>
+                        </div>
+                        @foreach (var l in layout.Lines)
+                        {
+                            if (l.Kind == GanttLineKind.Group)
+                            {
+                                var g = l;
+                                <div class="pv2g-row g @(l.Collapsed ? "col" : "")" style="--pv2g-cols:@cols" role="button" tabindex="0" aria-expanded="@(l.Collapsed ? "false" : "true")"
+                                     data-g="@l.Id" @onclick="() => ToggleGroup(g.Id)" @onkeydown="ke => GroupKey(ke, g.Id)">
+                                    @if (showWbs) { <span class="w">@l.Wbs</span> }
+                                    <span>@GanttIcons.Svg("chev", "pv2g-cv") @l.Title</span>
+                                    <span class="w pv2g-num">@(l.SpanDays > 0 ? l.SpanDays.ToString() : "")</span>
+                                    <span class="w pv2g-num">@(l.Start is { } s ? GanttMath.FormatShort(s) : "")</span>
+                                    <span class="w pv2g-num">@(l.End is { } e ? GanttMath.FormatShort(e) : "")</span>
+                                    <span></span>
+                                </div>
+                            }
+                            else if (l.Kind == GanttLineKind.Milestone)
+                            {
+                                var m = l.Milestone!;
+                                <div class="pv2g-row @(l.Hidden ? "hid" : "") @(showCrit && m.IsCritical ? "crit-row" : "")" style="--pv2g-cols:@cols" data-hid="@l.Id">
+                                    @if (showWbs) { <span class="w pv2g-num">@l.Wbs</span> }
+                                    <span class="pv2g-nm">◆ @l.Title</span>
+                                    <span class="w pv2g-num">0</span>
+                                    <span class="w pv2g-num">@GanttMath.FormatShort(m.Date)</span>
+                                    <span class="w pv2g-num">@GanttMath.FormatShort(m.Date)</span>
+                                    <span class="w pv2g-num"></span>
+                                </div>
+                            }
+                            else
+                            {
+                                var r = l.Task!;
+                                var v = showBase ? r.VarianceDays : null;
+                                var tid = r.Id;
+                                <div class="pv2g-row @(l.Hidden ? "hid" : "") @(showCrit && r.IsCritical ? "crit-row" : "")" style="--pv2g-cols:@cols" data-hid="@r.Id">
+                                    @if (showWbs) { <span class="w pv2g-num">@l.Wbs</span> }
+                                    <span class="pv2g-nm" @onclick="() => OnOpenTask.InvokeAsync(tid)" title="@r.Title">@r.Title@if (r.ConstraintType is not null && r.ConstraintDate is not null) {<text> </text><span class="pv2g-cons" title="@GanttMath.ConstraintText(r.ConstraintType, r.ConstraintDate)">@GanttIcons.Svg("pin")</span>}</span>
+                                    <span class="w pv2g-num">@(r.DurationDays > 0 ? r.DurationDays.ToString() : "")</span>
+                                    <span class="w pv2g-num">@(l.Start is { } s2 ? GanttMath.FormatShort(s2) : "")</span>
+                                    <span class="w pv2g-num">@(l.End is { } e2 ? GanttMath.FormatShort(e2) : "")</span>
+                                    <span class="pv2g-num @(v > 0 ? "var-p" : v < 0 ? "var-n" : "w")">@(v is null ? "" : v > 0 ? "+" + v + "d" : v < 0 ? v + "d" : "0")</span>
+                                </div>
+                            }
+                        }
+                    </div>
+
+                    <div class="pv2g-right" style="width:@(width)px">
+                        <div class="pv2g-head">
+                            @foreach (var b in GanttMath.MonthBands(origin, layout.TotalDays, zoom))
+                            {
+                                <div class="mo" style="left:@(b.Day * px)px;width:@(b.Length * px)px">@b.Label</div>
+                            }
+                            @foreach (var b in GanttMath.SubBands(origin, layout.TotalDays, zoom))
+                            {
+                                if (zoom == GanttZoom.Day)
+                                {
+                                    <div class="wk pv2g-num" style="left:@(b.Day * px)px;width:@(px)px;padding-left:0;text-align:center;@(GanttMath.IsWeekend(origin.AddDays(b.Day)) ? "opacity:.5" : "")">@b.Label</div>
+                                }
+                                else
+                                {
+                                    <div class="wk pv2g-num" style="left:@(b.Day * px)px;width:@(7 * px)px">@b.Label</div>
+                                }
+                            }
+                        </div>
+                        <div class="pv2g-bodyx" style="height:@(bodyH)px;@GanttMath.WeekendBackground(px)" @key="renderKey">
+                            <div class="pv2g-gridbg">
+                                @for (var i = 0; i < layout.Lines.Count; i++)
+                                {
+                                    var ln = layout.Lines[i];
+                                    if (ln.Hidden) { continue; }
+                                    <div class="pv2g-rowline @(ln.Kind == GanttLineKind.Group ? "g" : "")" style="top:@(ln.Y * GanttMath.RowHeight)px"></div>
+                                }
+                            </div>
+                            @foreach (var hb in holidayBands)
+                            {
+                                <div class="pv2g-freeze" style="left:@(hb.Day * px)px;width:@(hb.Length * px)px"><span>@hb.Label</span></div>
+                            }
+                            @if (todayIdx >= 0 && todayIdx < layout.TotalDays)
+                            {
+                                <div class="pv2g-today" style="left:@(todayIdx * px)px"><span>Today · @GanttMath.FormatShort(TodayDate)</span></div>
+                            }
+
+                            <svg class="pv2g-arrows @(showCrit ? "" : "nocrit")" width="@width" height="@bodyH">
+                                <defs>
+                                    <marker id="pv2g-ah" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" style="fill:var(--ink-3)" /></marker>
+                                    <marker id="pv2g-ahr" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" style="fill:var(--danger)" /></marker>
+                                </defs>
+                                @foreach (var a in Arrows(origin, px, criticalIds, conflictKeys))
+                                {
+                                    var arrow = a;
+                                    <path d="@a.Path" class="@a.Css" marker-end="url(#@(a.Css.Contains("conf") || a.Css.Contains("crit") ? "pv2g-ahr" : "pv2g-ah"))" />
+                                    @if (!ReadOnly && a.Editable)
+                                    {
+                                        <path d="@a.Path" class="pv2g-hit" @onclick="e => OpenLinkEdit(arrow, e)"><title>Edit this link</title></path>
+                                    }
+                                }
+                            </svg>
+
+                            @foreach (var l in layout.Lines)
+                            {
+                                var y = l.Y * GanttMath.RowHeight;
+                                if (l.Kind == GanttLineKind.Group)
+                                {
+                                    if (l.Start is { } gs && l.End is { } ge)
+                                    {
+                                        <div class="pv2g-gsum" style="top:@(y + 12)px;left:@(GanttMath.DayIndex(origin, gs) * px)px;width:@((GanttMath.DayIndex(origin, ge) - GanttMath.DayIndex(origin, gs) + 1) * px)px"></div>
+                                    }
+                                    continue;
+                                }
+                                if (l.Kind == GanttLineKind.Milestone)
+                                {
+                                    var m = l.Milestone!;
+                                    var mx = GanttMath.DayIndex(origin, m.Date) * px;
+                                    var mcrit = showCrit && m.IsCritical;
+                                    <div class="pv2g-ms @(mcrit ? "crit" : "") @(l.Hidden ? "hid" : "") @(m.AchievedAt is not null ? "done" : "")" data-gid="@m.Id" data-kind="milestone" data-start="@m.Date.ToString("yyyy-MM-dd")"
+                                         data-tip="@TipJson(l, criticalIds)" tabindex="@(l.Hidden ? -1 : 0)" role="button" aria-label="Milestone @m.Title, @GanttMath.FormatLong(m.Date)"
+                                         style="top:@(y + 10)px;left:@(mx - 7)px"></div>
+                                    <div class="pv2g-glabel @(l.Hidden ? "hid" : "")" data-lid="@m.Id" style="top:@(y + 9)px;left:@(mx + 12)px;font-weight:700;color:var(--ink)">@m.Title · @GanttMath.FormatShort(m.Date)</div>
+                                    continue;
+                                }
+                                var r = l.Task!;
+                                if (l.Start is not { } st || l.End is not { } en)
+                                {
+                                    continue;
+                                }
+                                var sIdx = GanttMath.DayIndex(origin, st);
+                                var eIdx = GanttMath.DayIndex(origin, en);
+                                var bw = Math.Max((eIdx - sIdx + 1) * px, 6);
+                                var crit = showCrit && r.IsCritical;
+                                var pc = r.StageStatus == "done" ? 100 : Math.Clamp(r.PercentDone, 0, 100);
+                                var slackDays = r.SlackDays is > 0 && !r.IsCritical ? GanttMath.SlackCalendarDays(en, r.SlackDays.Value, holidaySet) : 0;
+                                var owners = string.Join(", ", r.Assignees.Select(a => FirstName(a.Name)));
+                                var hid = l.Hidden;
+                                <div class="pv2g-base @(showBase && r.BaselineStart is not null || showBase && r.BaselineDue is not null ? "" : "off") @(hid ? "hid" : "")" style="top:@(y + 27)px;left:@(BaseLeft(r, origin, px))px;width:@(BaseWidth(r, px))px"></div>
+                                <div class="pv2g-bar @(crit ? "crit" : "") @(hid ? "hid" : "")" data-gid="@r.Id" data-kind="task" data-start="@st.ToString("yyyy-MM-dd")" data-end="@en.ToString("yyyy-MM-dd")" data-px="@px"
+                                     data-tip="@TipJson(l, criticalIds)" tabindex="@(hid ? -1 : 0)" role="button" aria-label="@r.Title, @GanttMath.FormatShort(st) to @GanttMath.FormatShort(en)"
+                                     style="top:@(y + 8)px;left:@(sIdx * px)px;width:@(bw)px;background:@ProjectStatusUi.SafeColor(l.Color)">
+                                    <i class="pv2g-done" style="width:@(pc)%"></i><span>@(bw > 34 ? pc + "%" : "")</span>
+                                    @if (!ReadOnly)
+                                    {
+                                        <i class="pv2g-rs" title="Drag to change the finish"></i>
+                                        <i class="pv2g-hand" title="Drag to another bar to link"></i>
+                                    }
+                                </div>
+                                <div class="pv2g-slack @(showSlack && slackDays > 0 ? "" : "off") @(hid ? "hid" : "")" style="top:@(y + 16)px;left:@((eIdx + 1) * px)px;width:@(slackDays * px)px"></div>
+                                <div class="pv2g-glabel @(hid ? "hid" : "")" data-lid="@r.Id" style="top:@(y + 9)px;left:@((eIdx + 1 + (showSlack ? slackDays : 0)) * px + 6)px">@owners</div>
+                                @if (r.DeadlineDate is { } dl)
+                                {
+                                    <div class="pv2g-dl @(hid ? "hid" : "")" style="top:@(y + 1)px;left:@(GanttMath.DayIndex(origin, dl) * px - 2)px" title="Deadline @GanttMath.FormatShort(dl)">@GanttIcons.Svg("flag")</div>
+                                }
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="pv2g-legend">
+                <span><i style="width:16px;height:8px;border-radius:3px;background:var(--danger)"></i>Critical path: a delay here delays go-live</span>
+                <span><i style="width:16px;height:4px;border-radius:3px;background:var(--ink-3);opacity:.5"></i>@(baselineOn is null ? "Baseline" : $"Baseline (plan saved {GanttMath.FormatShort(baselineOn.CreatedAt)})")</span>
+                <span><i style="width:16px;border-top:2px dashed var(--ink-3)"></i>Slack: days a task can slip</span>
+                <span><i style="width:9px;height:9px;transform:rotate(45deg);background:var(--pv2g-violet)"></i>Milestone</span>
+                <span style="color:var(--danger)">@GanttIcons.Svg("flag", "pv2g-sm")Deadline</span>
+                <span style="color:var(--info)">@GanttIcons.Svg("pin", "pv2g-sm")Date constraint</span>
+                <span><b style="color:var(--ink-2)">Drag a bar</b> to move it · <b style="color:var(--ink-2)">click</b> to open · hover for details</span>
+            </div>
+        }
+
+        @if (popup is not null)
+        {
+            <div class="pv2-pick-backdrop pv2g-backdrop" @onclick="ClosePopup"></div>
+        }
+        @if (popup == "export")
+        {
+            <div class="pv2g-pop pv2g-menu" style="right:20px" role="menu">
+                <h5>Export Gantt</h5>
+                <button type="button" class="pv2g-mi" role="menuitem" @onclick="ExportXml">@GanttIcons.Svg("gantt")MS Project XML</button>
+                <button type="button" class="pv2g-mi" role="menuitem" @onclick="ExportCsv">@GanttIcons.Svg("table")Excel (.csv)</button>
+            </div>
+        }
+        @if (popup == "baseline")
+        {
+            <div class="pv2g-pop pv2g-bl" style="right:96px" role="dialog" aria-label="Baselines">
+                <h5>Baseline</h5>
+                <p class="pv2g-hint">Save today's plan to compare against later. Earlier baselines stay in the list.</p>
+                <div class="pv2g-blnew">
+                    <input type="text" maxlength="60" placeholder="@NextBaselineName" aria-label="Baseline name" @bind="baselineName" @bind:event="oninput" @onkeydown="BaselineKey" />
+                    <button type="button" class="pv2g-btn pri sm" disabled="@busy" @onclick="SaveBaseline">Save</button>
+                </div>
+                @foreach (var b in dto.Baselines.OrderByDescending(x => x.CreatedAt))
+                {
+                    var bb = b;
+                    <div class="pv2g-bli @(b.IsActive ? "on" : "")">
+                        <span class="nm"><b>@b.Name</b><small>@GanttMath.FormatShort(b.CreatedAt) · @b.TaskCount tasks · @b.CreatedByName</small></span>
+                        @if (b.IsActive) { <span class="pv2g-badge">Active</span> }
+                        else { <button type="button" class="pv2g-btn sm" disabled="@busy" @onclick="() => ActivateBaseline(bb.Id)">Activate</button> }
+                        <button type="button" class="pv2g-btn sm @(confirmDelete == b.Id ? "danger" : "ghost")" disabled="@busy" aria-label="Delete @b.Name" @onclick="() => DeleteBaseline(bb.Id)">@(confirmDelete == b.Id ? "Sure?" : "Delete")</button>
+                    </div>
+                }
+                @if (dto.Baselines.Count == 0) { <p class="pv2g-hint">No baseline yet.</p> }
+            </div>
+        }
+    }
+
+    @if (linkEdit is { } le)
+    {
+        <div class="pv2-pick-backdrop pv2g-backdrop" @onclick="() => linkEdit = null"></div>
+        <div class="pv2g-pop pv2g-linkpop" style="position:fixed;left:@(Math.Max(8, le.X - 120))px;top:@(le.Y + 10)px" role="dialog" aria-label="Edit link">
+            <h5>Link</h5>
+            <p class="pv2g-hint"><b>@le.PredTitle</b> → <b>@le.SuccTitle</b></p>
+            <div class="pv2g-seg pv2g-linkseg" role="group" aria-label="Link type">
+                @foreach (var t in new[] { "FS", "SS", "FF" })
+                {
+                    var tt = t;
+                    <button type="button" class="@(le.Type == t ? "on" : "")" aria-pressed="@(le.Type == t ? "true" : "false")" title="@LinkTypeHelp(t)" @onclick="() => linkEdit = le with { Type = tt }">@t</button>
+                }
+            </div>
+            <label class="pv2g-lag">Lag (days)<input type="number" min="-365" max="365" value="@le.Lag" @onchange="e => linkEdit = le with { Lag = ParseLag(e.Value) }" /></label>
+            <div class="pv2g-blnew">
+                <button type="button" class="pv2g-btn sm danger" disabled="@busy" @onclick="DeleteLink">Delete link</button>
+                <span class="pv2g-spacer"></span>
+                <button type="button" class="pv2g-btn pri sm" disabled="@busy" @onclick="SaveLink">Save</button>
+            </div>
+        </div>
+    }
+
+    @if (importOpen)
+    {
+        <div class="pv2 pv2-scrim" @onclick="CloseImport">
+            <div class="pv2-modal" role="dialog" aria-modal="true" aria-labelledby="pv2g-imp-title" @onclick:stopPropagation="true">
+                <div class="pv2-mh">
+                    <h2 id="pv2g-imp-title">Import from MS Project</h2>
+                    <span class="pv2-sp"></span>
+                    <button type="button" class="pv2-ibtn" aria-label="Close" @onclick="CloseImport">@GanttIcons.Svg("x")</button>
+                </div>
+                <div class="pv2-mbody pv2g-imp">
+                    <p class="pv2-mnote">Pick a Microsoft Project file saved as <b>XML</b>. A <b>.mpp</b> file can't be read directly: in Microsoft Project use <b>File → Save As → XML</b> first.</p>
+                    <InputFile OnChange="OnImportFile" accept=".xml,application/xml,text/xml" class="pv2g-file" aria-label="Choose an XML file" />
+                    @if (importName is not null) { <p class="pv2-note">@importName</p> }
+                    @if (importError is not null) { <div class="pv2g-imp-err" role="alert">@importError</div> }
+                    @if (importPreview is { } ip)
+                    {
+                        <div class="pv2g-imp-sum">
+                            <div><b>@ip.GroupCount</b><span>phases</span></div>
+                            <div><b>@ip.TaskCount</b><span>tasks</span></div>
+                            <div><b>@ip.LinkCount</b><span>links</span></div>
+                            <div><b>@ip.MilestoneCount</b><span>milestones</span></div>
+                        </div>
+                        @if (ip.Warnings.Count > 0)
+                        {
+                            <ul class="pv2g-imp-warn">
+                                @foreach (var w in ip.Warnings.Take(12)) { <li>@w</li> }
+                                @if (ip.Warnings.Count > 12) { <li>and @(ip.Warnings.Count - 12) more</li> }
+                            </ul>
+                        }
+                        <p class="pv2-note">Nothing has been imported yet. Import adds these to this project.</p>
+                    }
+                </div>
+                <div class="pv2-mf">
+                    <span class="pv2-sp"></span>
+                    <button type="button" class="pv2g-btn" @onclick="CloseImport">Cancel</button>
+                    <button type="button" class="pv2g-btn pri" disabled="@(importPreview is null || busy)" @onclick="ConfirmImport">Import</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (toast is { } tt2)
+    {
+        <div class="pv2g-toast @(tt2.Warn ? "warn" : "")" role="status" @key="tt2.Id">
+            <span class="ic">@GanttIcons.Svg(tt2.Warn ? "alert" : "check")</span>
+            <p>@((MarkupString)tt2.Html)</p>
+            @for (var i = 0; i < tt2.Actions.Count; i++)
+            {
+                var a = tt2.Actions[i];
+                <button type="button" class="pv2g-btn sm @(a.Primary ? "pri" : "")" @onclick="() => RunToastAction(tt2, a)">@a.Label</button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private enum LoadState { Loading, Ready, Error }
+
+    private sealed record ToastAction(string Label, bool Primary, Func<Task> Run);
+    private sealed record GToast(Guid Id, string Html, bool Warn, List<ToastAction> Actions);
+    private sealed record Arrow(string Path, string Css, Guid PredId, Guid SuccId, string Type, int Lag, string PredTitle, string SuccTitle, bool Editable);
+    private sealed record LinkEdit(Guid PredId, Guid SuccId, string PredTitle, string SuccTitle, string Type, int Lag, double X, double Y);
+    private sealed record Prefs(bool Crit = true, bool Base = true, bool Slack = true, bool Wbs = true, string Zoom = "Week");
+
+    public const string PrefsKey = "ipop.gantt.prefs";
+
+    [Parameter, EditorRequired] public Guid ProjectId { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+    /// Owner or manager: baselines and MS Project import.
+    [Parameter] public bool CanManage { get; set; }
+    [Parameter] public Guid? GroupId { get; set; }
+    [Parameter] public string? SearchQuery { get; set; }
+    [Parameter] public bool MyTasksOnly { get; set; }
+    [Parameter] public bool OverdueOnly { get; set; }
+    [Parameter] public string? PriorityFilter { get; set; }
+    [Parameter] public string? CurrentUserNik { get; set; }
+    /// Changes whenever the page refreshed this project (live update): the Gantt reloads quietly.
+    [Parameter] public int Version { get; set; }
+    [Parameter] public DateTime? Today { get; set; }
+    [Parameter] public EventCallback<Guid> OnOpenTask { get; set; }
+    [Parameter] public EventCallback OnOpenTable { get; set; }
+    [Parameter] public EventCallback OnExportCsv { get; set; }
+
+    private ElementReference rootRef;
+    private DotNetObjectReference<ProjectGanttView>? self;
+    private LoadState state = LoadState.Loading;
+    private string? errorText;
+    private GanttV2Dto? dto;
+    private GanttLayout? layout;
+    private IReadOnlyList<GanttBand> holidayBands = [];
+    private HashSet<DateTime> holidaySet = [];
+    private readonly HashSet<Guid> collapsed = [];
+    private readonly HashSet<string> pendingConflicts = [];
+    private GanttZoom zoom = GanttZoom.Week;
+    private bool showCrit = true, showBase = true, showSlack = true, showWbs = true;
+    private string localSearch = "";
+    private string? popup;
+    private string baselineName = "";
+    private Guid? confirmDelete;
+    private bool busy;
+    private int renderKey;
+    private int renderedPx;
+    private bool jsReady, needScroll = true, prefsLoaded;
+    private LinkEdit? linkEdit;
+    private GToast? toast;
+    private CancellationTokenSource? toastCts;
+    private Guid loadedProject;
+    private Guid? loadedGroup;
+    private int loadedVersion = -1;
+    private int loadSeq;
+    private string filterSig = "";
+    private bool disposed;
+
+    // import dialog
+    private bool importOpen;
+    private string? importName, importError;
+    private byte[]? importBytes;
+    private MsProjectImportResultDto? importPreview;
+
+    private int Px => GanttMath.PxPerDay(zoom);
+    private DateTime TodayDate => (Today ?? DateTime.Today).Date;
+    private bool filtersActive => !string.IsNullOrWhiteSpace(SearchQuery) || !string.IsNullOrWhiteSpace(localSearch) || MyTasksOnly || OverdueOnly || !string.IsNullOrWhiteSpace(PriorityFilter);
+    private string NextBaselineName => $"Plan {(dto?.Baselines.Count ?? 0) + 1}";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var sig = $"{SearchQuery}|{MyTasksOnly}|{OverdueOnly}|{PriorityFilter}|{CurrentUserNik}";
+        var filterChanged = sig != filterSig;
+        filterSig = sig;
+        if (ProjectId == Guid.Empty) return;
+        if (ProjectId != loadedProject || GroupId != loadedGroup)
+        {
+            var newProject = ProjectId != loadedProject;
+            loadedProject = ProjectId; loadedGroup = GroupId; loadedVersion = Version;
+            if (newProject) { dto = null; layout = null; needScroll = true; collapsed.Clear(); pendingConflicts.Clear(); }
+            await LoadAsync(dto is not null);
+        }
+        else if (Version != loadedVersion)
+        {
+            loadedVersion = Version;
+            await LoadAsync(true);
+        }
+        else if (filterChanged && dto is not null) Relayout();
+    }
+
+    private async Task LoadAsync(bool quiet)
+    {
+        var seq = ++loadSeq;
+        if (!quiet) state = LoadState.Loading;
+        var q = GroupId is { } g ? $"?groupId={g}" : "";
+        GetResult<GanttV2Dto> res;
+        try { res = await Auth.GetResultAsync<GanttV2Dto>($"/api/projects/{ProjectId}/gantt/v2{q}"); }
+        catch (OperationCanceledException) { return; }
+        if (seq != loadSeq || disposed) return;
+        if (res.IsOk && res.Value is not null)
+        {
+            dto = res.Value;
+            pendingConflicts.Clear();
+            holidaySet = dto.Holidays.Select(h => h.Date.Date).ToHashSet();
+            state = LoadState.Ready;
+            Relayout();
+        }
+        else if (!quiet || dto is null)
+        {
+            state = LoadState.Error;
+            errorText = res.Status switch
+            {
+                GetStatus.Forbidden or GetStatus.NotFound => "You no longer have access to this project.",
+                GetStatus.Unreachable => "iPop could not reach the server. Check your connection and try again.",
+                _ => "Something went wrong while loading the plan. Try again in a moment.",
+            };
+        }
+    }
+
+    private void Relayout()
+    {
+        if (dto is null) return;
+        var q = (SearchQuery ?? "").Trim();
+        var lq = localSearch.Trim();
+        var today = TodayDate;
+        bool Keep(GanttRowDto r)
+        {
+            if (q.Length > 0 && !r.Title.Contains(q, StringComparison.OrdinalIgnoreCase)) return false;
+            if (lq.Length > 0 && !r.Title.Contains(lq, StringComparison.OrdinalIgnoreCase)) return false;
+            if (MyTasksOnly && (string.IsNullOrEmpty(CurrentUserNik) || !r.Assignees.Any(a => a.Nik.Equals(CurrentUserNik, StringComparison.OrdinalIgnoreCase)))) return false;
+            if (OverdueOnly && !(r.DueDate.HasValue && r.DueDate.Value.Date < today && r.StageStatus != "done")) return false;
+            if (!string.IsNullOrWhiteSpace(PriorityFilter) && !string.Equals(r.Priority, PriorityFilter, StringComparison.OrdinalIgnoreCase)) return false;
+            return true;
+        }
+        var onlyText = !MyTasksOnly && !OverdueOnly && string.IsNullOrWhiteSpace(PriorityFilter);
+        bool KeepMs(GanttMilestoneDto m) => onlyText
+            && (q.Length == 0 || m.Title.Contains(q, StringComparison.OrdinalIgnoreCase))
+            && (lq.Length == 0 || m.Title.Contains(lq, StringComparison.OrdinalIgnoreCase));
+        layout = GanttLayout.Build(dto, Keep, KeepMs, collapsed, filtersActive);
+        holidayBands = GanttMath.HolidayBands(dto.Holidays, layout.Origin, layout.TotalDays, zoom);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            self = DotNetObjectReference.Create(this);
+            await LoadPrefs();
+        }
+        if (state != LoadState.Ready || disposed) return;
+        try
+        {
+            if (!jsReady) { await JS.InvokeVoidAsync("ipopPv2.ganttInit", rootRef, self); jsReady = true; }
+            var px = Px;
+            if (renderedPx != 0 && renderedPx != px) await JS.InvokeVoidAsync("ipopPv2.ganttRescale", rootRef, renderedPx, px);
+            renderedPx = px;
+            await JS.InvokeVoidAsync("ipopPv2.ganttSeg", rootRef);
+            if (needScroll && layout is { HasDates: true } lay)
+            {
+                needScroll = false;
+                await JS.InvokeVoidAsync("ipopPv2.ganttScrollTo", rootRef, TodayScrollX(lay), false);
+            }
+        }
+        catch (JSException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    private double TodayScrollX(GanttLayout lay) => Math.Max(0, (GanttMath.DayIndex(lay.Origin, TodayDate) - 8) * Px);
+
+    // ── preferences ──
+    private async Task LoadPrefs()
+    {
+        if (prefsLoaded) return;
+        prefsLoaded = true;
+        try
+        {
+            var raw = await JS.InvokeAsync<string?>("localStorage.getItem", PrefsKey);
+            if (string.IsNullOrWhiteSpace(raw)) return;
+            var p = JsonSerializer.Deserialize<Prefs>(raw, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            if (p is null) return;
+            showCrit = p.Crit; showBase = p.Base; showSlack = p.Slack; showWbs = p.Wbs;
+            if (Enum.TryParse<GanttZoom>(p.Zoom, true, out var z)) zoom = z;
+            if (dto is not null) Relayout();
+            StateHasChanged();
+        }
+        catch { /* storage blocked or bad JSON: defaults */ }
+    }
+
+    private async Task SavePrefs()
+    {
+        try { await JS.InvokeVoidAsync("localStorage.setItem", PrefsKey, JsonSerializer.Serialize(new Prefs(showCrit, showBase, showSlack, showWbs, zoom.ToString()), new JsonSerializerOptions(JsonSerializerDefaults.Web))); }
+        catch { }
+    }
+
+    private RenderFragment Toggle(string label, bool on, Func<Task> flip) => b =>
+    {
+        b.OpenElement(0, "button");
+        b.AddAttribute(1, "type", "button");
+        b.AddAttribute(2, "class", "pv2g-tog" + (on ? " on" : ""));
+        b.AddAttribute(3, "aria-pressed", on ? "true" : "false");
+        b.AddAttribute(4, "onclick", EventCallback.Factory.Create(this, flip));
+        b.OpenElement(5, "i");
+        b.CloseElement();
+        b.AddContent(6, label);
+        b.CloseElement();
+    };
+
+    // ── toolbar ──
+    private async Task SetZoom(GanttZoom z)
+    {
+        if (z == zoom) return;
+        zoom = z;
+        Relayout();
+        await SavePrefs();
+    }
+
+    private async Task FitProject()
+    {
+        zoom = GanttZoom.Month;
+        Relayout();
+        await SavePrefs();
+        await JS.InvokeVoidAsync("ipopPv2.ganttScrollTo", rootRef, 0, true);
+    }
+
+    private async Task ScrollToday()
+    {
+        if (layout is null) return;
+        await JS.InvokeVoidAsync("ipopPv2.ganttScrollTo", rootRef, TodayScrollX(layout), true);
+    }
+
+    private void OnLocalSearch(ChangeEventArgs e) { localSearch = e.Value?.ToString() ?? ""; Relayout(); }
+
+    private void ToggleGroup(Guid id)
+    {
+        if (!collapsed.Remove(id)) collapsed.Add(id);
+        Relayout();
+    }
+
+    private void GroupKey(KeyboardEventArgs e, Guid id)
+    {
+        if (e.Key is "Enter" or " ") ToggleGroup(id);
+    }
+
+    private void OpenPopup(string name) { linkEdit = null; popup = popup == name ? null : name; confirmDelete = null; }
+    private void ClosePopup() { popup = null; confirmDelete = null; }
+
+    // ── arrows ──
+    private IEnumerable<Arrow> Arrows(DateTime origin, int px, HashSet<Guid> critical, HashSet<string> conflicts)
+    {
+        if (layout is null) yield break;
+        GanttBox? BoxOf(GanttLine l)
+        {
+            if (l.Hidden || l.Start is not { } s || l.End is not { } e) return null;
+            return l.Kind == GanttLineKind.Milestone
+                ? new GanttBox(GanttMath.DayIndex(origin, s) * px, GanttMath.DayIndex(origin, s) * px, l.Y, true)
+                : new GanttBox(GanttMath.DayIndex(origin, s) * px, (GanttMath.DayIndex(origin, e) + 1) * px, l.Y, false);
+        }
+        foreach (var succ in layout.Lines.Where(l => l.Kind == GanttLineKind.Task))
+        {
+            var sb = BoxOf(succ);
+            if (sb is null) continue;
+            foreach (var dep in succ.Task!.DependsOn)
+            {
+                if (!layout.ByTask.TryGetValue(dep.TaskId, out var pred)) continue;
+                var pb = BoxOf(pred);
+                if (pb is null) continue;
+                var conf = conflicts.Contains(dep.TaskId + ">" + succ.Id);
+                var crit = showCrit && critical.Contains(dep.TaskId) && critical.Contains(succ.Id);
+                yield return new Arrow(GanttMath.ArrowPath(dep.LinkType, pb, sb), conf ? "conf" : crit ? "crit" : "", dep.TaskId, succ.Id, dep.LinkType, dep.LagDays, pred.Title, succ.Title, true);
+            }
+        }
+        foreach (var ms in layout.Lines.Where(l => l.Kind == GanttLineKind.Milestone))
+        {
+            var mb = BoxOf(ms);
+            if (mb is null) continue;
+            foreach (var tid in ms.Milestone!.LinkedTaskIds)
+            {
+                if (!layout.ByTask.TryGetValue(tid, out var pred)) continue;
+                var pb = BoxOf(pred);
+                if (pb is null) continue;
+                var crit = showCrit && ms.Milestone.IsCritical && critical.Contains(tid);
+                yield return new Arrow(GanttMath.ArrowPath("FS", pb, mb), crit ? "crit" : "", tid, ms.Id, "FS", 0, pred.Title, ms.Title, false);
+            }
+        }
+    }
+
+    private static string FirstName(string name)
+    {
+        var t = name.Trim();
+        var i = t.IndexOf(' ');
+        return i > 0 ? t[..i] : t;
+    }
+
+    private double BaseLeft(GanttRowDto r, DateTime origin, int px)
+        => GanttMath.DayIndex(origin, (r.BaselineStart ?? r.BaselineDue ?? origin)) * px;
+
+    private double BaseWidth(GanttRowDto r, int px)
+    {
+        var s = r.BaselineStart ?? r.BaselineDue;
+        var e = r.BaselineDue ?? r.BaselineStart;
+        if (s is null || e is null) return 0;
+        return Math.Max(1, (int)(e.Value.Date - s.Value.Date).TotalDays + 1) * px;
+    }
+
+    private string TipJson(GanttLine l, HashSet<Guid> critical)
+    {
+        if (l.Kind == GanttLineKind.Milestone)
+        {
+            var m = l.Milestone!;
+            var linked = m.LinkedTaskIds.Select(id => layout?.ByTask.GetValueOrDefault(id)?.Title).Where(t => t is not null).ToList();
+            return JsonSerializer.Serialize(new
+            {
+                t = "◆ " + m.Title,
+                l = GanttMath.FormatLong(m.Date),
+                s = new[] { m.AchievedAt is not null ? "Reached" : m.IsCritical ? "Critical" : "", linked.Count > 0 ? "Waits for: " + string.Join(", ", linked) : "" }.Where(x => x.Length > 0),
+            });
+        }
+        var r = l.Task!;
+        var owners = r.Assignees.Count == 0 ? "No owner" : string.Join(", ", r.Assignees.Select(a => FirstName(a.Name)));
+        var tail = r.SlackDays is > 0 ? $"{r.SlackDays} days slack" : r.IsCritical ? "critical" : "";
+        var preds = r.DependsOn.Select(d => layout?.ByTask.GetValueOrDefault(d.TaskId)?.Title).Where(t => t is not null).ToList();
+        var spans = new List<string> { string.Join(" · ", new[] { owners, r.Status, tail }.Where(x => x.Length > 0)) };
+        if (preds.Count > 0) spans.Add("Waits for: " + string.Join(", ", preds));
+        var ct = GanttMath.ConstraintText(r.ConstraintType, r.ConstraintDate);
+        if (ct.Length > 0) spans.Add(ct);
+        if (r.DeadlineDate is { } dl) spans.Add("Deadline " + GanttMath.FormatShort(dl));
+        var line = l.Start is { } s && l.End is { } e
+            ? $"{GanttMath.FormatLong(s)} → {GanttMath.FormatLong(e)}" + (r.DurationDays > 0 ? $" · {r.DurationDays} days" : "")
+            : "No dates";
+        return JsonSerializer.Serialize(new { t = r.Title, l = line, s = spans });
+    }
+
+    // ── moves (called from js/projects-v2.js once per drop) ──
+    [JSInvokable]
+    public Task OnBarClick(string id) => InvokeAsync(async () =>
+    {
+        if (Guid.TryParse(id, out var g) && (layout?.ByTask.ContainsKey(g) ?? false)) await OnOpenTask.InvokeAsync(g);
+        else if (Guid.TryParse(id, out var m) && (dto?.Milestones.Any(x => x.Id == m) ?? false)) { /* milestones have no drawer */ }
+    });
+
+    [JSInvokable]
+    public Task OnBarMoved(string id, int days, string kind) => InvokeAsync(() => HandleMovedAsync(id, days, kind));
+
+    private async Task HandleMovedAsync(string idText, int days, string kind)
+    {
+        if (ReadOnly || days == 0 || dto is null || layout is null || !Guid.TryParse(idText, out var id)) { renderKey++; StateHasChanged(); return; }
+        CloseToast();
+        pendingConflicts.Clear();
+        if (kind == "milestone") { await MoveMilestoneAsync(id, days); return; }
+        if (!layout.ByTask.TryGetValue(id, out var line) || line.Start is not { } start || line.End is not { } end) { renderKey++; return; }
+        var title = line.Title;
+        var resize = kind == "resize";
+        var newStart = resize ? start : start.AddDays(days);
+        DateTime? newDue = resize ? end.AddDays(days) : null;
+        if (newDue is { } nd && nd < newStart) { renderKey++; return; }
+
+        var single = new RescheduleRequest(id, Utc(newStart), "single", newDue is { } d1 ? Utc(d1) : null);
+        var prev = await Post<ReschedulePreviewDto>($"/api/projects/{ProjectId}/gantt/reschedule/preview", single);
+        if (prev.Value is null) { await Fail(prev.Code, resize ? "change the finish" : "move this task"); return; }
+
+        var known = dto.Conflicts.Select(c => c.FromTaskId + ">" + c.ToTaskId).ToHashSet();
+        var fresh = prev.Value.Conflicts.Where(c => !known.Contains(c.FromTaskId + ">" + c.ToTaskId)).ToList();
+        if (fresh.Count == 0)
+        {
+            await ApplyAsync(single, resize ? $"Changed the finish of \"<b>{E(title)}</b>\". Nothing else had to move."
+                : $"Moved \"<b>{E(title)}</b>\" {Dist(days)}. Nothing else had to move.");
+            return;
+        }
+
+        var all = new RescheduleRequest(id, single.NewStart, "cascade", single.NewDue);
+        var casc = await Post<ReschedulePreviewDto>($"/api/projects/{ProjectId}/gantt/reschedule/preview", all);
+        var k = Math.Max(0, (casc.Value?.Changes.Count ?? 1) - 1);
+        var newFinish = casc.Value?.NewProjectFinish ?? prev.Value.NewProjectFinish;
+        var goLive = newFinish is { } nf && dto.ProjectFinish is { } of && nf.Date != of.Date
+            ? $"Go-live moves to <b>{GanttMath.FormatLong(nf)}</b>."
+            : newFinish is { } nf2 ? $"Go-live stays on <b>{GanttMath.FormatLong(nf2)}</b>." : "";
+        foreach (var c in fresh) pendingConflicts.Add(c.FromTaskId + ">" + c.ToTaskId);
+        var head = resize ? $"Change the finish of \"{E(title)}\"?" : $"Move \"{E(title)}\" {Dist(days)}?";
+        ShowToast($"<b>{head}</b><br>{k} task{(k == 1 ? "" : "s")} waiting for it will move too. {goLive}", warn: true, persist: true,
+        [
+            new ToastAction("Only this task", false, async () =>
+            {
+                await ApplyAsync(single, "Moved only this task. The dashed red links show what now overlaps.");
+            }),
+            new ToastAction("Move all", true, async () =>
+            {
+                var goNow = newFinish is { } f ? $" Go-live is now <b>{GanttMath.FormatLong(f)}</b>." : "";
+                await ApplyAsync(all, $"Moved {{n}} task{{s}}.{goNow}");
+            }),
+            new ToastAction("Cancel", false, () => { pendingConflicts.Clear(); renderKey++; StateHasChanged(); return Task.CompletedTask; }),
+        ]);
+        StateHasChanged();
+    }
+
+    private async Task ApplyAsync(RescheduleRequest req, string message)
+    {
+        busy = true;
+        var res = await Post<ReschedulePreviewDto>($"/api/projects/{ProjectId}/gantt/reschedule/apply", req);
+        busy = false;
+        if (res.Value is null) { await Fail(res.Code, "move this task"); return; }
+        var undo = res.Value.Changes.Select(c => new RevertChangeDto(c.TaskId, c.OldStart, c.OldDue)).ToList();
+        var n = res.Value.Changes.Count;
+        message = message.Replace("{n}", n.ToString()).Replace("{s}", n == 1 ? "" : "s");
+        renderKey++;
+        await LoadAsync(true);
+        ShowToast(message, warn: false, persist: false, [new ToastAction("Undo", false, () => UndoAsync(undo))]);
+    }
+
+    private async Task UndoAsync(List<RevertChangeDto> changes)
+    {
+        var res = await Post<RescheduleRevertResultDto>($"/api/projects/{ProjectId}/gantt/reschedule/revert", new RescheduleRevertRequest(changes));
+        renderKey++;
+        if (res.Value is null) { await Fail(res.Code, "undo that"); return; }
+        await LoadAsync(true);
+        ShowToast("Undone.", warn: false, persist: false, [], 1800);
+    }
+
+    private async Task MoveMilestoneAsync(Guid id, int days)
+    {
+        var m = dto?.Milestones.FirstOrDefault(x => x.Id == id);
+        if (m is null) { renderKey++; return; }
+        var from = m.Date.Date;
+        var to = from.AddDays(days);
+        var res = await Send(HttpMethod.Patch, $"/api/projects/{ProjectId}/milestones/{id}?localToday={TodayDate:yyyy-MM-dd}", new { DueDate = Utc(to) });
+        if (!res.Ok) { await Fail(res.Code, "move this milestone"); return; }
+        renderKey++;
+        await LoadAsync(true);
+        ShowToast($"Moved milestone \"<b>{E(m.Title)}</b>\" to <b>{GanttMath.FormatLong(to)}</b>.", warn: false, persist: false, [new ToastAction("Undo", false, async () =>
+        {
+            var back = await Send(HttpMethod.Patch, $"/api/projects/{ProjectId}/milestones/{id}?localToday={TodayDate:yyyy-MM-dd}", new { DueDate = Utc(from) });
+            renderKey++;
+            await LoadAsync(true);
+            ShowToast(back.Ok ? "Undone." : "Couldn't undo that.", warn: !back.Ok, persist: false, [], 1800);
+        })]);
+    }
+
+    // ── links ──
+    [JSInvokable]
+    public Task OnLinkDrawn(string from, string to) => InvokeAsync(async () =>
+    {
+        if (ReadOnly || dto is null || layout is null || !Guid.TryParse(from, out var pred) || !Guid.TryParse(to, out var succ) || pred == succ) return;
+        if (!layout.ByTask.TryGetValue(succ, out var sl) || !layout.ByTask.ContainsKey(pred)) return;
+        if (sl.Task!.DependsOn.Any(d => d.TaskId == pred)) { ShowToast("These two tasks are already linked.", false, false, [], 2600); return; }
+        var links = sl.Task.DependsOn.Select(d => new TaskLinkRequest(d.TaskId, d.LinkType, d.LagDays)).Append(new TaskLinkRequest(pred, "FS", 0)).ToList();
+        var ok = await SaveLinksAsync(succ, links);
+        if (ok) ShowToast($"Linked: <b>{E(layout.ByTask[pred].Title)}</b> then <b>{E(sl.Title)}</b>.", false, false, [], 3000);
+    });
+
+    private async Task<bool> SaveLinksAsync(Guid succ, List<TaskLinkRequest> links)
+    {
+        busy = true;
+        var res = await Send(HttpMethod.Put, $"/api/projects/tasks/{succ}/dependencies",
+            new SetTaskDependenciesRequest(links.Select(l => l.DependsOnTaskId).ToList(), links));
+        busy = false;
+        if (!res.Ok)
+        {
+            if (res.Code == "dependency_cycle") ShowToast("That link would create a loop.", true, false, [], 4000);
+            else await Fail(res.Code, "save that link");
+            return false;
+        }
+        await LoadAsync(true);
+        return true;
+    }
+
+    private void OpenLinkEdit(Arrow a, MouseEventArgs e)
+    {
+        popup = null;
+        linkEdit = new LinkEdit(a.PredId, a.SuccId, a.PredTitle, a.SuccTitle, a.Type, a.Lag, e.ClientX, e.ClientY);
+    }
+
+    private static int ParseLag(object? v) => int.TryParse(v?.ToString(), out var n) ? Math.Clamp(n, -365, 365) : 0;
+    private static string LinkTypeHelp(string t) => t switch
+    {
+        "SS" => "Start to start: starts when the other starts",
+        "FF" => "Finish to finish: finishes when the other finishes",
+        _ => "Finish to start: starts after the other finishes",
+    };
+
+    private async Task SaveLink()
+    {
+        if (linkEdit is not { } le || layout is null || !layout.ByTask.TryGetValue(le.SuccId, out var sl)) return;
+        var links = sl.Task!.DependsOn.Where(d => d.TaskId != le.PredId).Select(d => new TaskLinkRequest(d.TaskId, d.LinkType, d.LagDays))
+            .Append(new TaskLinkRequest(le.PredId, le.Type, le.Lag)).ToList();
+        linkEdit = null;
+        await SaveLinksAsync(le.SuccId, links);
+    }
+
+    private async Task DeleteLink()
+    {
+        if (linkEdit is not { } le || layout is null || !layout.ByTask.TryGetValue(le.SuccId, out var sl)) return;
+        var links = sl.Task!.DependsOn.Where(d => d.TaskId != le.PredId).Select(d => new TaskLinkRequest(d.TaskId, d.LinkType, d.LagDays)).ToList();
+        var removed = sl.Task.DependsOn.First(d => d.TaskId == le.PredId);
+        linkEdit = null;
+        if (await SaveLinksAsync(le.SuccId, links))
+            ShowToast("Link removed.", false, false, [new ToastAction("Undo", false, async () =>
+            {
+                var back = sl.Task.DependsOn.Select(d => new TaskLinkRequest(d.TaskId, d.LinkType, d.LagDays)).ToList();
+                if (back.All(b => b.DependsOnTaskId != removed.TaskId)) back.Add(new TaskLinkRequest(removed.TaskId, removed.LinkType, removed.LagDays));
+                await SaveLinksAsync(le.SuccId, back);
+            })]);
+    }
+
+    // ── baselines ──
+    private async Task SaveBaseline()
+    {
+        busy = true;
+        var name = string.IsNullOrWhiteSpace(baselineName) ? null : baselineName.Trim();
+        var res = await Send(HttpMethod.Post, $"/api/projects/{ProjectId}/baselines", new CreateBaselineRequest(name));
+        busy = false;
+        if (!res.Ok)
+        {
+            await Fail(res.Code == "too_many_baselines" ? "too_many_baselines" : res.Code, "save the baseline");
+            return;
+        }
+        baselineName = "";
+        await LoadAsync(true);
+        ShowToast($"Baseline saved for <b>{GanttMath.FormatLong(TodayDate)}</b>. The earlier one stays in the list.", false, false, [], 2600);
+    }
+
+    private void BaselineKey(KeyboardEventArgs e) { if (e.Key == "Enter") _ = SaveBaseline(); }
+
+    private async Task ActivateBaseline(Guid id)
+    {
+        busy = true;
+        var res = await Send(HttpMethod.Put, $"/api/projects/{ProjectId}/baselines/{id}/activate", null);
+        busy = false;
+        if (!res.Ok) { await Fail(res.Code, "switch the baseline"); return; }
+        await LoadAsync(true);
+    }
+
+    private async Task DeleteBaseline(Guid id)
+    {
+        if (confirmDelete != id) { confirmDelete = id; return; }
+        confirmDelete = null;
+        busy = true;
+        var res = await Send(HttpMethod.Delete, $"/api/projects/{ProjectId}/baselines/{id}", null);
+        busy = false;
+        if (!res.Ok) { await Fail(res.Code, "delete the baseline"); return; }
+        await LoadAsync(true);
+    }
+
+    // ── export / import ──
+    private async Task ExportCsv()
+    {
+        popup = null;
+        await OnExportCsv.InvokeAsync();
+    }
+
+    private async Task ExportXml()
+    {
+        popup = null;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Get, $"/api/projects/{ProjectId}/export/msproject");
+            if (!res.IsSuccessStatusCode) { ShowToast("Couldn't export the plan.", true, false, [], 3500); return; }
+            var bytes = await res.Content.ReadAsByteArrayAsync();
+            var name = res.Content.Headers.ContentDisposition?.FileNameStar ?? res.Content.Headers.ContentDisposition?.FileName?.Trim('"');
+            if (string.IsNullOrWhiteSpace(name)) name = $"project-{DateTime.Now:yyyyMMdd-HHmm}.xml";
+            await JS.InvokeVoidAsync("ipop.download", Convert.ToBase64String(bytes), name);
+            ShowToast("Exported the plan as MS Project XML.", false, false, [], 3000);
+        }
+        catch (Exception) { ShowToast("Couldn't export the plan.", true, false, [], 3500); }
+    }
+
+    private void OpenImport()
+    {
+        popup = null;
+        importOpen = true; importName = null; importError = null; importBytes = null; importPreview = null;
+    }
+
+    private void CloseImport() { importOpen = false; importBytes = null; importPreview = null; }
+
+    private async Task OnImportFile(InputFileChangeEventArgs e)
+    {
+        importError = null; importPreview = null; importBytes = null; importName = e.File.Name;
+        if (e.File.Name.EndsWith(".mpp", StringComparison.OrdinalIgnoreCase))
+        {
+            importError = "A .mpp file can't be read directly. In Microsoft Project use File → Save As → XML, then pick that file.";
+            return;
+        }
+        try
+        {
+            await using var s = e.File.OpenReadStream(20L * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await s.CopyToAsync(ms);
+            importBytes = ms.ToArray();
+        }
+        catch (IOException) { importError = "That file is too large. The limit is 20 MB."; return; }
+        busy = true;
+        var res = await PostImportAsync(true);
+        busy = false;
+        if (res.Value is null) importError = res.Message ?? "That file could not be read.";
+        else importPreview = res.Value;
+    }
+
+    private async Task ConfirmImport()
+    {
+        if (importBytes is null) return;
+        busy = true;
+        var res = await PostImportAsync(false);
+        busy = false;
+        if (res.Value is null) { importError = res.Message ?? "The import failed."; return; }
+        importOpen = false; importBytes = null; importPreview = null;
+        renderKey++;
+        await LoadAsync(true);
+        ShowToast($"Imported <b>{res.Value.TaskCount}</b> tasks in {res.Value.GroupCount} phases.", false, false, [], 4000);
+    }
+
+    private sealed record ImportResult(MsProjectImportResultDto? Value, string? Message);
+
+    private async Task<ImportResult> PostImportAsync(bool dryRun)
+    {
+        try
+        {
+            using var form = new MultipartFormDataContent();
+            var file = new ByteArrayContent(importBytes!);
+            file.Headers.ContentType = new MediaTypeHeaderValue("application/xml");
+            form.Add(file, "file", importName ?? "plan.xml");
+            var res = await Auth.SendMultipartAsync($"/api/projects/{ProjectId}/import/msproject" + (dryRun ? "?dryRun=true" : ""), form);
+            if (res.IsSuccessStatusCode)
+                return new ImportResult(await res.Content.ReadFromJsonAsync<MsProjectImportResultDto>(), null);
+            var err = await ReadError(res);
+            return new ImportResult(null, err.Message is { Length: > 0 } m && m != err.Code ? m : ImportMessage(err.Code, res.StatusCode));
+        }
+        catch (Exception) { return new ImportResult(null, "Couldn't reach the server. Try again."); }
+    }
+
+    private static string ImportMessage(string? code, HttpStatusCode status) => code switch
+    {
+        "mpp_not_supported" => "Save the plan as XML in Microsoft Project (File → Save As → XML) and import that file.",
+        "invalid_file" => "That doesn't look like an MS Project XML file.",
+        "file_too_large" => "That file is too large. The limit is 20 MB.",
+        "too_many_tasks" => "That plan has too many tasks to import at once.",
+        "forbidden" => "Only the project owner or a manager can import a plan.",
+        _ => status == HttpStatusCode.Forbidden ? "Only the project owner or a manager can import a plan." : "The import failed.",
+    };
+
+    // ── helpers ──
+    private sealed record Reply<T>(T? Value, string? Code, bool Ok);
+    private sealed record ApiErr(string? Code, string? Message);
+
+    private static async Task<ApiErr> ReadError(HttpResponseMessage res)
+    {
+        try { return await res.Content.ReadFromJsonAsync<ApiErr>() ?? new ApiErr(null, null); }
+        catch { return new ApiErr(null, null); }
+    }
+
+    private async Task<Reply<T>> Post<T>(string url, object body) => await Send<T>(HttpMethod.Post, url, body);
+    private async Task<Reply<object>> Send(HttpMethod m, string url, object? body) => await Send<object>(m, url, body);
+
+    private async Task<Reply<T>> Send<T>(HttpMethod m, string url, object? body)
+    {
+        try
+        {
+            var res = await Auth.SendAsync(m, url, body);
+            if (!res.IsSuccessStatusCode) return new Reply<T>(default, (await ReadError(res)).Code ?? ((int)res.StatusCode).ToString(), false);
+            if (typeof(T) == typeof(object)) return new Reply<T>(default, null, true);
+            var v = await res.Content.ReadFromJsonAsync<T>();
+            return new Reply<T>(v, null, v is not null);
+        }
+        catch (Exception) { return new Reply<T>(default, "network", false); }
+    }
+
+    private async Task Fail(string? code, string what)
+    {
+        renderKey++;
+        pendingConflicts.Clear();
+        var msg = code switch
+        {
+            "constraint_violation" => "That task is pinned to its date, so it can't move. Change the date constraint in the task first.",
+            "forbidden" or "403" => "You can view this plan but not change it.",
+            "too_many_baselines" => "Too many baselines. Delete an old one first.",
+            "network" => $"Couldn't {what}. Check your connection and try again.",
+            _ => $"Couldn't {what}.",
+        };
+        ShowToast(E(msg), true, false, [], 4800);
+        await LoadAsync(true);
+    }
+
+    private static DateTime Utc(DateTime d) => DateTime.SpecifyKind(d.Date, DateTimeKind.Utc);
+    private static string E(string s) => WebUtility.HtmlEncode(s);
+    private static string Dist(int days) => days > 0 ? $"{days} day{(days == 1 ? "" : "s")} later" : $"{-days} day{(days == -1 ? "" : "s")} earlier";
+
+    private void ShowToast(string html, bool warn, bool persist, List<ToastAction> actions, int ms = 5200)
+    {
+        toastCts?.Cancel();
+        toastCts?.Dispose();
+        var t = new GToast(Guid.NewGuid(), html, warn, actions);
+        toast = t;
+        if (!persist)
+        {
+            var cts = toastCts = new CancellationTokenSource();
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(ms, cts.Token);
+                    await InvokeAsync(() => { if (toast?.Id == t.Id) { toast = null; StateHasChanged(); } });
+                }
+                catch (OperationCanceledException) { }
+                catch (ObjectDisposedException) { }
+            });
+        }
+        StateHasChanged();
+    }
+
+    private void CloseToast() { toastCts?.Cancel(); toast = null; }
+
+    private async Task RunToastAction(GToast t, ToastAction a)
+    {
+        if (toast?.Id == t.Id) CloseToast();
+        await a.Run();
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+        toastCts?.Cancel();
+        try { if (jsReady) await JS.InvokeVoidAsync("ipopPv2.ganttDispose", rootRef); } catch { }
+        self?.Dispose();
+    }
+}
