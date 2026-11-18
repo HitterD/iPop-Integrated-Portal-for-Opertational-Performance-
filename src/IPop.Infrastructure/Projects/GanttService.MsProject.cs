@@ -128,7 +128,9 @@ public sealed partial class GanttService
                     {
                         var cal = WorkCalendar.Create([s.Value, d.Value], holidays.Select(h => h.Date));
                         var days = analysis.Floats.TryGetValue(t.Id, out var f) ? f.DurationDays : cal.Duration(s.Value, d.Value);
-                        el.Add(new XElement(Ns + "Start", Iso(s.Value, 8)), new XElement(Ns + "Finish", Iso(d.Value, 17)),
+                        // MSPDI permits omitted dates. Do not turn a due-only task into a scheduled task.
+                        el.Add(t.StartDate.HasValue ? new XElement(Ns + "Start", Iso(t.StartDate.Value, 8)) : null,
+                               t.DueDate.HasValue ? new XElement(Ns + "Finish", Iso(t.DueDate.Value, 17)) : null,
                                new XElement(Ns + "Duration", Duration(days)), new XElement(Ns + "DurationFormat", 7));
                     }
                     var subs = byParent[t.Id].ToList();

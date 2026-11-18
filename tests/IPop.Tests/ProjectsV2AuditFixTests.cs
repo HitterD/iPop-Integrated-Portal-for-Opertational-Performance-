@@ -15,6 +15,29 @@ public sealed class ProjectsV2AuditFixTests
         $"<?xml version=\"1.0\"?><Project xmlns=\"http://schemas.microsoft.com/project\"><Tasks>{tasks}</Tasks></Project>";
 
     [Fact]
+    public async Task Export_import_preserves_missing_start_date()
+    {
+        using var f = new GanttFixture();
+        await f.TaskAsync("Due only", null, 3);
+        var exported = await f.G().ExportMsProjectAsync(f.Owner, f.ProjectId, default);
+        Assert.True(exported.Success, exported.Error);
+        var document = System.Xml.Linq.XDocument.Parse(exported.Value!.Xml);
+        System.Xml.Linq.XNamespace ns = "http://schemas.microsoft.com/project";
+        var exportedTask = document.Descendants(ns + "Task").Single(t => (string?)t.Element(ns + "Name") == "Due only");
+        Assert.Null(exportedTask.Element(ns + "Start"));
+        Assert.NotNull(exportedTask.Element(ns + "Finish"));
+        var fresh = (await f.Svc.CreateProjectAsync(f.Owner,
+            new CreateProjectRequest("Round trip", null, 2026, f.Owner, null, null, null, null), default)).Project!.Id;
+        var imported = await f.G().ImportMsProjectAsync(f.Owner, fresh,
+            Encoding.UTF8.GetBytes(exported.Value!.Xml), "roundtrip.xml", false, default);
+        Assert.True(imported.Success, imported.Error);
+        using var db = f.T.Verify();
+        var task = await db.ProjectTasks.SingleAsync(t => t.ProjectId == fresh && t.Title == "Due only");
+        Assert.Null(task.StartDate);
+        Assert.Equal(GanttFixture.D(3), task.DueDate);
+    }
+
+    [Fact]
     public async Task Import_ignores_absurd_dates_and_durations_so_the_gantt_still_loads()
     {
         using var f = new GanttFixture();
