@@ -1156,21 +1156,16 @@ else
         }
     }
 
+    /// ?task= deep link (notifications, search, My work): the task panel opens over whatever view the
+    /// project is on (v2 keeps the user's tab), and works for subtasks and tasks outside the loaded list too.
     private async Task HighlightTask(Guid taskId)
     {
-        var inKanban = (kanban?.Todo ?? []).Any(t => t.Id == taskId)
-            || (kanban?.Doing ?? []).Any(t => t.Id == taskId)
-            || (kanban?.Review ?? []).Any(t => t.Id == taskId)
-            || (kanban?.Done ?? []).Any(t => t.Id == taskId);
-        if (!inKanban) return;
+        var foundTask = AllCurrentTasks.FirstOrDefault(t => t.Id == taskId)
+            ?? await Auth.GetAsync<ProjectTaskDto>($"/api/projects/tasks/{taskId}");
+        if (foundTask is null || foundTask.ProjectId != selectedProjectId) return;
 
-        tab = 0;
         highlightTaskId = taskId;
-        var foundTask = AllCurrentTasks.FirstOrDefault(t => t.Id == taskId);
-        if (foundTask != null)
-        {
-            await OpenTaskEditor(foundTask);
-        }
+        await OpenTaskEditor(foundTask);
         StateHasChanged();
         await Task.Delay(80);
         try { await JS.InvokeVoidAsync("ipop.scrollIntoView", $"task-card-{taskId}"); } catch { }
@@ -2821,12 +2816,13 @@ else
         return Task.CompletedTask;
     }
 
+    /// My work / All projects -> one task: a single history entry (/projects/{id}), so Back returns to the list.
     private async Task OpenPortfolioTask((Guid ProjectId, Guid TaskId) target)
     {
         await OpenPortfolioProject(target.ProjectId);
-        Nav.NavigateTo($"/projects/{target.ProjectId}?task={target.TaskId}");
-        var task = await Auth.GetAsync<ProjectTaskDto>($"/api/projects/tasks/{target.TaskId}");
-        if (task is not null) await OpenTaskEditor(task);
+        if (selectedProjectId != target.ProjectId) return;
+        var task = AllCurrentTasks.FirstOrDefault(t => t.Id == target.TaskId) ?? await Auth.GetAsync<ProjectTaskDto>($"/api/projects/tasks/{target.TaskId}");
+        if (task is not null && selectedProjectId == target.ProjectId) await OpenTaskEditor(task);
     }
 
     // ---- Phone layout (<= 767px): the project list is screen 1, the workspace is the detail ----
