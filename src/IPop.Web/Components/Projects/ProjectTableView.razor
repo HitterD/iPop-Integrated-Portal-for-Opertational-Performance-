@@ -637,8 +637,8 @@
                             @if (!ReadOnly)
                             {
                                 var visibleIds = VisibleOrder; var allVisible = visibleIds.Count > 0 && visibleIds.All(SelectedIds.Contains);
-                                <input type="checkbox" class="pv2-cb" aria-label="Select all visible tasks" checked="@allVisible"
-                                       @onchange="() => SetSelection(allVisible ? SelectedIds.Except(visibleIds) : SelectedIds.Union(visibleIds))" />
+                                <button type="button" class="pv2-cb @(allVisible ? "on" : "")" role="checkbox" aria-checked="@(allVisible ? "true" : "false")" aria-label="Select all visible tasks"
+                                        @onclick="() => SetSelection(allVisible ? SelectedIds.Except(visibleIds) : SelectedIds.Union(visibleIds))"></button>
                             }
                         </div>
                         <div class="pv2-h-task">Task</div><div>Owner</div><div>Status</div><div>Due</div><div>Timeline</div><div>Priority</div><div>Progress</div>
@@ -656,7 +656,7 @@
                         <div class="pv2-colplus">
                             @if (!ReadOnly && CanManageGroups)
                             {
-                                <button type="button" class="pv2-ibtn pv2-plus" title="Add column" aria-label="Add field column" @onclick="() => OnAddField.InvokeAsync()"><i data-lucide="plus"></i></button>
+                                <button type="button" class="pv2-ibtn pv2-plus" aria-label="Add field column" @onclick="() => OnAddField.InvokeAsync()"><i data-lucide="plus"></i></button>
                             }
                             @if (Fields.Count > 0 && Groups.OrderBy(g => g.SortOrder).First().Id == group.Id)
                             {
@@ -705,19 +705,11 @@
                             <div class="pv2-lead" @onclick:stopPropagation="true">
                                 @if (!ReadOnly)
                                 {
-                                    <input type="checkbox" class="pv2-cb" aria-label="Select @t.Title" checked="@selected" @onclick="e => ToggleSelect(t.Id, e.ShiftKey)" />
+                                    <button type="button" class="pv2-cb @(selected ? "on" : "")" role="checkbox" aria-checked="@(selected ? "true" : "false")" aria-label="Select @t.Title" @onclick="e => ToggleSelect(t.Id, e.ShiftKey)"></button>
                                 }
                             </div>
 
                             <div class="pv2-name">
-                                @if (!ReadOnly)
-                                {
-                                    <button type="button" class="pv2-check plist-check @(done ? "done" : "")" @onclick:stopPropagation="true"
-                                            aria-label="@(done ? "Mark incomplete" : "Mark complete")" title="@(done ? "Mark incomplete" : "Mark complete")"
-                                            @onclick="() => ToggleDone(t)">
-                                        @if (done) { <i data-lucide="check"></i> }
-                                    </button>
-                                }
                                 <span class="pv2-tt" title="@t.Title">@t.Title</span>
                                 <span class="pv2-meta">
                                     @if (CanTrackTime)
@@ -732,7 +724,7 @@
                                     }
                                     @if (t.IsBlocked)
                                     {
-                                        <span class="pv2-badge warn" title="@BlockedTitle(t)"><i data-lucide="lock"></i>Waiting</span>
+                                        <span class="pv2-badge warn" title="@BlockedTitle(t)" aria-label="@BlockedTitle(t)"><i data-lucide="lock"></i></span>
                                     }
                                     @if (t.IsRecurring)
                                     {
@@ -750,7 +742,7 @@
                                         }
                                     }
                                     <span class="pv2-subwrap" @onclick:stopPropagation="true">
-                                        <button type="button" disabled="@ReadOnly" class="pv2-badge pv2-sub" data-menu-trigger aria-haspopup="true" aria-label="Subtasks" aria-expanded="@(openSubtaskTaskId == t.Id ? "true" : "false")" @onclick="() => ToggleSubtaskDropdown(t.Id)">
+                                        <button type="button" disabled="@ReadOnly" class="pv2-badge pv2-sub @(t.SubtaskCount > 0 ? "has" : "")" data-menu-trigger aria-haspopup="true" aria-label="Subtasks" aria-expanded="@(openSubtaskTaskId == t.Id ? "true" : "false")" @onclick="() => ToggleSubtaskDropdown(t.Id)">
                                             <i data-lucide="list-checks"></i>@(t.SubtaskCount > 0 ? $"{t.SubtaskDoneCount}/{t.SubtaskCount}" : "")
                                         </button>
                                         @if (!ReadOnly && openSubtaskTaskId == t.Id)
@@ -928,7 +920,7 @@
 
                             @* More *@
                             <div class="pv2-cell pv2-end" @onclick:stopPropagation="true">
-                                <button type="button" class="pv2-ibtn" data-menu-trigger aria-haspopup="true" aria-expanded="@(openMoreTaskId == t.Id ? "true" : "false")" title="More" aria-label="More actions" @onclick="() => ToggleMoreMenu(t.Id)"><i data-lucide="ellipsis"></i></button>
+                                <button type="button" class="pv2-ibtn pv2-more" data-menu-trigger aria-haspopup="true" aria-expanded="@(openMoreTaskId == t.Id ? "true" : "false")" title="More" aria-label="More actions" @onclick="() => ToggleMoreMenu(t.Id)"><i data-lucide="ellipsis"></i></button>
                                 @if (openMoreTaskId == t.Id)
                                 {
                                     <div class="plist-backdrop" @onclick="CloseAllPopovers"></div>

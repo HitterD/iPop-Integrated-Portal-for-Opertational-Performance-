@@ -263,16 +263,6 @@
                          @ondragend="() => draggingTaskId = null">
                         @{ var pp = ProjectUiHelpers.GetPriorityPill(t.Priority); var dueState = ProjectUiHelpers.GetDueState(t); }
                         <div class="kc-top">
-                            <button disabled="@ReadOnly" type="button" class="task-card-check @(t.Status == "done" ? "done" : "")"
-                                    @onclick="() => OnToggleComplete.InvokeAsync(t)"
-                                    @onclick:stopPropagation="true"
-                                    aria-label="@(t.Status == "done" ? "Mark incomplete" : "Mark completed")"
-                                    title="@(t.Status == "done" ? "Mark incomplete" : "Mark completed")">
-                                @if (t.Status == "done")
-                                {
-                                    <i data-lucide="check"></i>
-                                }
-                            </button>
                             @if (!string.IsNullOrWhiteSpace(t.Priority))
                             {
                                 <span class="v6-pri @pp.Key"><i data-lucide="@pp.Icon"></i>@pp.Label</span>

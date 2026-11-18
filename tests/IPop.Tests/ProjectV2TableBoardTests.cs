@@ -62,6 +62,27 @@ public class ProjectV2TableBoardTests
     }
 
     [Fact]
+    public void Table_row_has_one_square_checkbox_and_no_round_complete_circle()
+    {
+        using var ctx = NewContext();
+        var t = MkTask("Count stock", "todo", NotStarted.Id);
+        var cut = ctx.Render<ProjectTableView>(p => p
+            .Add(x => x.Tasks, [t]).Add(x => x.Groups, [Group()]).Add(x => x.StatusOptions, Options));
+        var row = cut.Find(".pv2-task");
+        Assert.Single(row.QuerySelectorAll(".pv2-cb"));
+        Assert.Empty(row.QuerySelectorAll(".pv2-check, .plist-check"));
+        Assert.Equal("checkbox", row.QuerySelector(".pv2-cb")!.GetAttribute("role"));
+        Assert.Equal("false", cut.Find(".pv2-row.pv2-head .pv2-cb").GetAttribute("aria-checked"));
+    }
+
+    [Fact]
+    public void Default_not_started_grey_follows_the_theme_variable()
+    {
+        Assert.Equal("var(--s-todo)", ProjectStatusUi.SafeColor("#b9bcc0"));
+        Assert.Equal("#00c875", ProjectStatusUi.SafeColor("#00c875"));
+    }
+
+    [Fact]
     public void Task_without_an_option_falls_back_to_the_first_option_of_its_stage()
     {
         using var ctx = NewContext();

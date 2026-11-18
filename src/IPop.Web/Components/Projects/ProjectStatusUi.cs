@@ -27,7 +27,13 @@ public static class ProjectStatusUi
     private static readonly Regex Hex = new("^#[0-9a-fA-F]{3,8}$", RegexOptions.Compiled);
 
     /// Colours come from the server; only a plain hex value may reach a style attribute.
-    public static string SafeColor(string? c) => c is not null && Hex.IsMatch(c) ? c : "#8b9198";
+    public static string SafeColor(string? c) =>
+        c is not null && Hex.IsMatch(c) ? (IsTodoGrey(c) ? "var(--s-todo)" : c) : "#8b9198";
+
+    /// The default "Not started" greys follow the theme (--s-todo: light #b9bcc0, dark #6d7379) so white
+    /// status text stays readable in both; every other colour is the project's own choice.
+    public static bool IsTodoGrey(string c) =>
+        c.Equals("#b9bcc0", StringComparison.OrdinalIgnoreCase) || c.Equals("#c4c4c4", StringComparison.OrdinalIgnoreCase);
 
     public static string StageLabel(string? stage) => stage switch
     {
