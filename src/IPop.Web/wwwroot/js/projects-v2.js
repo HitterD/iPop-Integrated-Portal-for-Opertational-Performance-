@@ -13,7 +13,7 @@
   // Anything that is open on top of the workspace: Esc and F must leave those alone.
   const OVERLAYS = '.proj-modal, .pv2-scrim, .rep-scrim, .evidence-modal-backdrop, .task-drawer, .confirm-center, .confirm-backdrop, .pcal-pop, .cs-sheet, .modal-backdrop';
   // Light popovers: Esc closes them by clicking their click-catcher.
-  const POPOVERS = '.pv2-pick-backdrop, .ph-menu-backdrop, .plist-backdrop, .kc-menu-backdrop, .pview-backdrop, .pbulk-backdrop';
+  const POPOVERS = '.pv2-pick-backdrop, .ph-menu-backdrop, .plist-backdrop, .kc-menu-backdrop, .pview-backdrop, .pbulk-backdrop, .pv2-tbback, .td-menu-backdrop';
   let keyHandler = null;
 
   function typing(t) {

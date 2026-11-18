@@ -1089,6 +1089,11 @@ else
                 var proj = await Auth.GetAsync<ProjectDto>($"/api/projects/{ProjectId.Value}");
                 if (proj is not null)
                 {
+                    // Same reset as SelectProject: nothing from the project being left may stay open or selected.
+                    selectedTaskIds = new HashSet<Guid>();
+                    savedViews = [];
+                    showTaskEditor = false; fullEditor = false; focusNewTaskTitle = false; editingTask = null; subtasks.Clear();
+                    showStatusModal = false; showCloseModal = false; showAutoModal = false; automations = null;
                     listAssigneeId = null;
                     listUnassignedOnly = false;
                     selectedProjectId = ProjectId.Value;
@@ -1097,6 +1102,7 @@ else
                     EnsureValidView();
                     _ = Notifs.MarkReadByTargetAsync("project", proj.Id);
                     await LoadProjectViewsAsync();
+                    await LoadSavedViews();
                     StateHasChanged();
                 }
                 else
@@ -2251,16 +2257,23 @@ else
         _ => "Couldn't save the view.",
     };
 
-    private async Task<SavedViewResultDto?> SendSavedView(HttpMethod method, string url, SaveProjectViewRequest req)
+    /// The API answers 200 with the view itself, or 4xx with { code } (Phase2Error).
+    private async Task<ProjectSavedViewDto?> SendSavedView(HttpMethod method, string url, SaveProjectViewRequest req)
     {
         var res = await Auth.SendAsync(method, url, req);
-        SavedViewResultDto? result = null;
-        try { result = await res.Content.ReadFromJsonAsync<SavedViewResultDto>(); } catch { }
-        if (!res.IsSuccessStatusCode || result?.Success != true) { Toasts.Show(SavedViewError(result?.Error), ToastKind.Error); return null; }
+        if (!res.IsSuccessStatusCode)
+        {
+            string? code = null;
+            try { code = (await res.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("code").GetString(); } catch { }
+            Toasts.Show(SavedViewError(code), ToastKind.Error);
+            return null;
+        }
+        ProjectSavedViewDto? view = null;
+        try { view = await res.Content.ReadFromJsonAsync<ProjectSavedViewDto>(); } catch { }
         await LoadSavedViews();
         StateHasChanged();
         await JS.InvokeVoidAsync("ipop.icons");
-        return result;
+        return view ?? savedViews.FirstOrDefault(v => v.Name == req.Name);
     }
 
     private async Task SaveCurrentView(string name)
