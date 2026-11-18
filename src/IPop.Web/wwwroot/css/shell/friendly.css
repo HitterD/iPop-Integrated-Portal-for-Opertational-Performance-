@@ -32,12 +32,12 @@
   --topbar-height: 72px;
 }
 [data-theme="dark"] {
-  --frame: #0b2219;
-  --frame-2: #133126;
+  --frame: #0c1d16;
+  --frame-2: #163126;
   --frame-3: #1b3f31;
   --frame-line: rgba(255, 255, 255, 0.08);
-  --frame-ink: #e3efe8;
-  --frame-ink-2: #93b3a4;
+  --frame-ink: #e3ece7;
+  --frame-ink-2: #8fa79a;
   --frame-label: #9fbfaf;
 }
 

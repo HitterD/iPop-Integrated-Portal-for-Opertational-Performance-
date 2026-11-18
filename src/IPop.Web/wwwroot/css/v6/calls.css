@@ -470,7 +470,7 @@ html.callx-resizing, html.callx-resizing * { cursor:nwse-resize !important; }
 @keyframes sheet2-pop { from { transform:scale(1.04); opacity:0; } }
 .sheet2 { position:relative; width:640px; max-width:100%; max-height:100%; display:flex; flex-direction:column; border-radius:22px; overflow:hidden; background:var(--surface); color:var(--ink);
   box-shadow:0 24px 60px -18px rgba(0,0,0,.35), 0 0 0 .5px rgba(0,0,0,.08); animation:sheet2-pop .32s cubic-bezier(.32,.72,0,1); font-size:14px; line-height:1.45; }
-[data-theme="dark"] .sheet2 { background:#1c1c1e; box-shadow:0 30px 70px -20px rgba(0,0,0,.8), 0 0 0 .5px rgba(255,255,255,.12); }
+[data-theme="dark"] .sheet2 { background:var(--surface); box-shadow:0 30px 70px -20px rgba(0,0,0,.8), 0 0 0 .5px rgba(255,255,255,.12); }
 .sheet2 button { font:inherit; color:inherit; background:none; border:0; cursor:pointer; }
 .sheet2 button:disabled { cursor:not-allowed; }
 .sheet2 .lucide { width:18px; height:18px; flex:none; }
@@ -483,7 +483,7 @@ html.callx-resizing, html.callx-resizing * { cursor:nwse-resize !important; }
 .sheet2 .x .lucide { width:15px; height:15px; stroke-width:2.4; }
 .sheet2 .sh-b { padding:4px 18px 16px; overflow:auto; min-height:0; }
 .sheet2 .sh-f { display:flex; align-items:center; gap:8px; padding:12px 18px 16px; border-top:.5px solid var(--line-2); background:var(--surface); }
-[data-theme="dark"] .sheet2 .sh-f { background:#1c1c1e; }
+[data-theme="dark"] .sheet2 .sh-f { background:var(--surface); }
 .sheet2 .spacer { flex:1; }
 .sheet2 .btn { display:inline-flex; align-items:center; justify-content:center; gap:7px; width:auto; height:40px; margin:0; padding:0 20px; border-radius:999px; font-size:14.5px; font-weight:600; white-space:nowrap; transform:none; }
 .sheet2 .btn .lucide { width:16px; height:16px; }

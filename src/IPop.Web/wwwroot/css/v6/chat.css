@@ -71,7 +71,7 @@
 /* Bubble fill + type. Geometry (padding, corners, tail) lives under "Message geometry". */
 .chat-area .msg .bubble { font-size: 14px; line-height: 1.4; }
 .chat-area .msg.recv .bubble { background: #E9E9EB; color: var(--ink); border: none; }
-[data-theme="dark"] .chat-area .msg.recv .bubble { background: #2C2C2E; }
+[data-theme="dark"] .chat-area .msg.recv .bubble { background: var(--surface-3); }
 .chat-area .msg.sent .bubble { background: var(--accent); color: #fff; }
 /* Dark theme: the accent (#30D158) is too bright for white text/ticks (2:1); the bubble alone uses a deeper green (white 4.4:1). */
 [data-theme="dark"] .chat-area .msg.sent .bubble:not(.media-only):not(.jumbo-emoji):not(.sticker-only):not(.deleted) { background: #1F8A4C; }
@@ -444,7 +444,7 @@
 .chat-area .grp-member .member-row-copy .role { font-size: 11px; color: var(--ink-3); }
 .chat-area .grp-member .tag { flex: none; font-size: 10px; }
 .chat-area .contact-manager-av, .chat-area .add-user-item .avatar { border-radius: 9px; }
-[data-theme="dark"] .chat-area .chat-detail-panel, [data-theme="dark"] .chat-area .panel-header { background: #202024; }
+[data-theme="dark"] .chat-area .chat-detail-panel, [data-theme="dark"] .chat-area .panel-header { background: var(--surface-2); }
 [data-theme="dark"] .chat-area .msg .bubble.deleted { background: #28282D; }
 
 /* ---- v6 global drawer: a third column so the conversation stays visible ---- */
@@ -486,9 +486,9 @@
 .chat-area .cgd-retry { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 5px 12px; font: 500 12px inherit; cursor: pointer; }
 .chat-area .cgd-spin { animation: cgd-rotate .9s linear infinite; }
 @keyframes cgd-rotate { to { transform: rotate(360deg); } }
-[data-theme="dark"] .chat-area .chat-global-drawer { background: #202024; }
-[data-theme="dark"] .chat-area .cgd-search { background: #2C2C2E; }
-[data-theme="dark"] .chat-area .cgd-card { background: #2C2C2E; }
+[data-theme="dark"] .chat-area .chat-global-drawer { background: var(--surface-2); }
+[data-theme="dark"] .chat-area .cgd-search { background: var(--surface-3); }
+[data-theme="dark"] .chat-area .cgd-card { background: var(--surface-3); }
 @media (max-width: 1180px) { .chat-area.with-global-drawer { grid-template-columns: 300px minmax(0, 1fr) 330px; } }
 @media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) {
   .shell:has(.chat-area), .shell.collapsed:has(.chat-area) { grid-template-columns: minmax(0, 1fr); }
@@ -529,7 +529,7 @@
 .chat-area .msg .edit-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .chat-area .msg .edit-actions .comp-btn { width: auto; height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); font: 500 13px inherit; color: var(--ink); }
 .chat-area .msg .edit-actions .comp-btn:first-child { background: var(--accent); border-color: var(--accent); color: #fff; }
-[data-theme="dark"] .chat-area .msg .edit-textarea { background: #2C2C2E; }
+[data-theme="dark"] .chat-area .msg .edit-textarea { background: var(--surface-3); }
 
 /* ---- Drawer rework: one contact card, one pinned panel, group settings in the drawer ---- */
 /* ContactCard inside the room drawer (DM info page + person view). */
@@ -538,7 +538,7 @@
 .chat-area .chat-detail-panel .contact-card + .inset-groups { margin-top: 16px; }
 .chat-area .chat-detail-panel .contact-av-wrap .presence { border-color: #F5F5F7; }
 .chat-area .chat-detail-panel .contact-card .hero-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-[data-theme="dark"] .chat-area .chat-detail-panel .contact-av-wrap .presence { border-color: #202024; }
+[data-theme="dark"] .chat-area .chat-detail-panel .contact-av-wrap .presence { border-color: var(--surface-2); }
 
 /* Pinned chats section label. */
 .chat-area .room-section-label.room-pinned-head { justify-content: flex-start; gap: 6px; }
@@ -562,9 +562,9 @@
 .chat-area .pinned-panel .pin-top .pin-sender { margin: 0; flex: none; }
 .chat-area .pinned-panel .pin-room { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--ink-3); }
 .chat-area .pinned-panel .pp-retry { margin-left: 4px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 3px 10px; font: 500 12px inherit; font-family: inherit; cursor: pointer; }
-[data-theme="dark"] .chat-area .pp-scope { background: #2C2C2E; }
-[data-theme="dark"] .chat-area .pp-scope-item.on { background: #3A3A3C; }
-[data-theme="dark"] .chat-area .pinned-panel .pin-item { background: #2C2C2E; }
+[data-theme="dark"] .chat-area .pp-scope { background: var(--surface-3); }
+[data-theme="dark"] .chat-area .pp-scope-item.on { background: var(--line-2); }
+[data-theme="dark"] .chat-area .pinned-panel .pin-item { background: var(--surface-3); }
 
 /* Group settings as a drawer view: the page's gs-* cards, compacted to 330px. */
 .chat-area .gs-panel { display: grid; gap: 12px; }
@@ -584,7 +584,7 @@
 .chat-area .gs-panel .gs-swatches { gap: 8px; }
 .chat-area .gs-panel .gs-danger-row { flex-direction: column; align-items: stretch; gap: 8px; }
 .chat-area .gs-panel .gs-danger-row .gs-btn { justify-content: center; }
-[data-theme="dark"] .chat-area .gs-panel .gs-card { background: #2C2C2E; }
+[data-theme="dark"] .chat-area .gs-panel .gs-card { background: var(--surface-3); }
 
 /* =====================================================================   @MENTIONS (2026-09-28) — bubble tokens + composer suggestion list.
    The only bubble .mention rules used to live in the unloaded ipop.css monolith,

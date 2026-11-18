@@ -3,7 +3,6 @@
    Everything lives under .pv2 with pv2r-/pv2pg-/pv2mw-/pv2pf-/pv2fm-/pv2cl- prefixes. */
 
 /* --line-2 is only defined for light in the v6 shell; without this every v2 outline (checkboxes, inputs) vanishes in dark. */
-[data-theme="dark"] .pv2 { --line-2: rgba(255, 255, 255, 0.2); }
 
 /* ---------- project rail (prail) ---------- */
 .pv2r-top { display: flex; flex-direction: column; gap: 4px; margin: 0 12px 10px; }
