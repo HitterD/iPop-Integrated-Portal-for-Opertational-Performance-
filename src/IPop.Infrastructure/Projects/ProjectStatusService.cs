@@ -128,6 +128,30 @@ public sealed partial class ProjectStatusService(IPopDbContext db) : IProjectSta
     internal static async Task EnsureStatusesAsync(IPopDbContext db, Guid projectId, CancellationToken ct)
     {
         if (await db.ProjectStatusOptions.AnyAsync(o => o.ProjectId == projectId, ct)) return;
+        // Opening an older project fires several first reads at once (statuses, overview, form submit...). Without a
+        // lock each one sees "no rows" and writes its own default set, leaving the project with duplicate statuses.
+        // PostgreSQL: serialize on a transaction-scoped advisory lock and re-check inside it.
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? own = null;
+        try
+        {
+            if (db.Database.IsNpgsql())
+            {
+                if (db.Database.CurrentTransaction is null) own = await db.Database.BeginTransactionAsync(ct);
+                var key = "ipop-project-statuses-" + projectId;
+                await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtext({key}))", ct);
+                if (await db.ProjectStatusOptions.AnyAsync(o => o.ProjectId == projectId, ct)) { if (own is not null) await own.CommitAsync(ct); return; }
+            }
+            await CreateDefaultStatusesAsync(db, projectId, ct);
+            if (own is not null) await own.CommitAsync(ct);
+        }
+        finally
+        {
+            if (own is not null) await own.DisposeAsync();
+        }
+    }
+
+    private static async Task CreateDefaultStatusesAsync(IPopDbContext db, Guid projectId, CancellationToken ct)
+    {
         var now = DateTime.UtcNow;
         var options = ProjectStatusDefaults.Options.Select((d, i) => new ProjectStatusOption
         {

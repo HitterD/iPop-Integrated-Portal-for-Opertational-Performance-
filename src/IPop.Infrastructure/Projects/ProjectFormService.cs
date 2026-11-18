@@ -54,7 +54,13 @@ public sealed partial class ProjectFormService(IPopDbContext db, INotificationGa
                 AudienceScope = "project", QuestionsJson = JsonSerializer.Serialize(DefaultQuestions(), Json), CreatedAt = now, UpdatedAt = now
             };
             db.ProjectForms.Add(form);
-            await db.SaveChangesAsync(ct);
+            try { await db.SaveChangesAsync(ct); }
+            catch (DbUpdateException)
+            {
+                // A concurrent first read created the form (unique ProjectId); use that one.
+                db.Entry(form).State = EntityState.Detached;
+                form = await db.ProjectForms.FirstAsync(f => f.ProjectId == projectId, ct);
+            }
         }
         return Ok(await ToDtoAsync(form, ct));
     }

@@ -17,13 +17,20 @@ public sealed class ProjectAutomationService(IPopDbContext db) : IProjectAutomat
     {
         var have = await db.ProjectAutomations.Where(a => a.ProjectId == projectId).Select(a => a.Kind).ToListAsync(ct);
         var now = DateTime.UtcNow;
-        var added = false;
+        var added = new List<ProjectAutomation>();
         foreach (var e in ProjectAutomationCatalogue.All.Where(e => e.Kind != ProjectAutomationCatalogue.FormToIntake && !have.Contains(e.Kind)))
         {
-            db.ProjectAutomations.Add(new ProjectAutomation { Id = Guid.NewGuid(), ProjectId = projectId, Kind = e.Kind, ConfigJson = e.DefaultConfigJson, IsEnabled = false, CreatedAt = now });
-            added = true;
+            var row = new ProjectAutomation { Id = Guid.NewGuid(), ProjectId = projectId, Kind = e.Kind, ConfigJson = e.DefaultConfigJson, IsEnabled = false, CreatedAt = now };
+            db.ProjectAutomations.Add(row);
+            added.Add(row);
         }
-        if (added) await db.SaveChangesAsync(ct);
+        if (added.Count == 0) return;
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException)
+        {
+            // A concurrent first read created the rows (unique ProjectId+Kind); theirs are as good as ours.
+            foreach (var row in added) db.Entry(row).State = EntityState.Detached;
+        }
     }
 
     private static JsonElement ParseConfig(string json)
