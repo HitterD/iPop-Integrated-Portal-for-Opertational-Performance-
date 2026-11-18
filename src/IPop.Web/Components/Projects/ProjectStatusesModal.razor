@@ -246,6 +246,8 @@
     private async Task Close()
     {
         debounce?.Cancel();
+        // An edit made while the previous save was in flight is still dirty: wait for that save, then send it.
+        for (var waited = 0; saving && waited < 10_000; waited += 100) await Task.Delay(100);
         if (dirty && !saving && error is null) await SaveAsync();
         await OnClose.InvokeAsync();
     }

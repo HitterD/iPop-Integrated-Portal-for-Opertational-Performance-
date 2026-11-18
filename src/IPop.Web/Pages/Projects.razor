@@ -1046,6 +1046,7 @@ else
         selectedProjectId = Guid.Empty; selectedProject = null;
         mDetail = false;
         kanban = null; taskList = new([], 0, 1, 50); timeline = null; workloadData = null; projectMembers = []; automations = null; showAutoModal = false;
+        showStatusModal = false; showCloseModal = false;
         if (ProjectId is not null)
             Nav.NavigateTo("/projects", replace: true); // OnParametersSetAsync then selects the first project
         else if (filteredProjects.Count > 0)
@@ -1279,6 +1280,13 @@ else
         listAssigneeId = null;
         listUnassignedOnly = false;
         selectedGroupId = null;
+        if (p.Id != selectedProjectId)
+        {
+            // The v2 panel and the project dialogs do not block the sidebar: close whatever belongs to the project
+            // being left so nothing keeps showing (or writing) A's task/statuses/summary while B is selected.
+            showTaskEditor = false; fullEditor = false; focusNewTaskTitle = false; editingTask = null; subtasks.Clear();
+            showStatusModal = false; showCloseModal = false; showAutoModal = false; automations = null;
+        }
         selectedProjectId = p.Id;
         var proj = await Auth.GetAsync<ProjectDto>($"/api/projects/{p.Id}");
         if (p.Id != selectedProjectId) return;

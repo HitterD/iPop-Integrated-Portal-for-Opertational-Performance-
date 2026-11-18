@@ -155,6 +155,11 @@ else
     protected override async Task OnParametersSetAsync()
     {
         if (!CanManage || loadedFor == ProjectId) return;
+        // Switching project: an edit still waiting for its autosave belongs to the previous project. Save it there
+        // now, then drop the old form before loading, so a late timer can never PUT A's form onto B.
+        if (debounce is not null && loadedFor != Guid.Empty && form is not null) { debounce.Cancel(); await SaveNow(); }
+        debounce?.Cancel();
+        form = null; questions = []; editKey = null;
         loadedFor = ProjectId;
         await LoadAsync();
     }
@@ -306,14 +311,18 @@ else
 
     private async Task SaveNow()
     {
-        if (form is null || disposed) return;
+        if (form is null) return;
+        debounce?.Dispose(); debounce = null;
+        // The form in memory belongs to the project it was loaded for, never to whatever ProjectId is by now.
+        var target = loadedFor;
+        if (target == Guid.Empty) return;
         var my = ++saveSeq;
-        saving = true; StateHasChanged();
+        saving = true; if (!disposed) StateHasChanged();
         try
         {
             var req = new SaveProjectFormRequest(form.IsOpen, form.Title, form.Intro, form.AudienceScope, form.AssigneeId, questions.ToList());
-            var r = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/{ProjectId}/form", req);
-            if (my != saveSeq || disposed) return;
+            var r = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/{target}/form", req);
+            if (my != saveSeq || disposed || target != loadedFor) return;
             if (r.IsSuccessStatusCode)
             {
                 var saved = await r.Content.ReadFromJsonAsync<ProjectFormDto>();
@@ -336,10 +345,13 @@ else
             "title_mapping_required" => "One question must fill the task name.",
             "invalid_title" => "Give the form a title (up to 120 characters).",
             "invalid_label" => "Every question needs a label.",
-            "invalid_options" => "A choice question needs 1 to 20 choices.",
+            "invalid_options" => "A choice question needs 1 to 20 choices, each up to 100 characters.",
             "duplicate_mapping" => "Two questions fill the same column.",
             "invalid_mapping" => "A question fills a column that doesn't fit its type.",
             "too_many_questions" => "A form can have up to 12 questions.",
+            "form_too_large" => "The form is too long. Shorten some questions or choices.",
+            "invalid_intro" => "The intro can be up to 500 characters.",
+            "invalid_key" or "invalid_type" => "One question is not valid. Remove it and add it again.",
             "invalid_assignee" => "Pick a member who can do tasks.",
             "forbidden" => "Only the owner and managers can change the form.",
             _ => "Couldn't save the form.",
@@ -354,7 +366,10 @@ else
 
     public void Dispose()
     {
+        // Leaving the tab within the 700 ms autosave window: send the last edit instead of dropping it.
+        var pending = debounce is not null && form is not null;
+        debounce?.Cancel();
         disposed = true;
-        debounce?.Cancel(); debounce?.Dispose();
+        if (pending) _ = SaveNow();
     }
 }

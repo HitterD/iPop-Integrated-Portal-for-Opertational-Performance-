@@ -135,16 +135,19 @@
         if (!CanManage || busy) return;
         var before = Tabs.ToList();
         var next = before.Append(key).ToList();
-        var saved = await SaveAsync(next);
+        var projectId = Project.Id;
+        var saved = await SaveAsync(projectId, next);
         if (saved is null) return;
         newKey = key;
         await OnTabsSaved.InvokeAsync(saved);
         await OnSelect.InvokeAsync(key);
         Toasts.ShowUndo($"Added {ProjectViewCatalog.Get(key).Label} to this project.", async () =>
         {
+            // The component is reused across projects: undo only while the same project is open, and only on it.
+            if (Project.Id != projectId) return;
             // Read the active tab before the parent re-renders: ActiveKey is already null once the tab is gone.
             var wasActive = ActiveKey == key;
-            var undone = await SaveAsync(before);
+            var undone = await SaveAsync(projectId, before);
             if (undone is null) return;
             await OnTabsSaved.InvokeAsync(undone);
             if (wasActive) await OnSelect.InvokeAsync(undone[0]);
@@ -158,24 +161,26 @@
         var next = before.Where(k => k != key).ToList();
         // Read the active tab before the parent re-renders: ActiveKey is already null once the tab is gone.
         var wasActive = ActiveKey == key;
-        var saved = await SaveAsync(next);
+        var projectId = Project.Id;
+        var saved = await SaveAsync(projectId, next);
         if (saved is null) return;
         await OnTabsSaved.InvokeAsync(saved);
         if (wasActive) await OnSelect.InvokeAsync(saved[0]);
         Toasts.ShowUndo($"Removed {ProjectViewCatalog.Get(key).Label} from this project.", async () =>
         {
-            var undone = await SaveAsync(before);
+            if (Project.Id != projectId) return;
+            var undone = await SaveAsync(projectId, before);
             if (undone is not null) await OnTabsSaved.InvokeAsync(undone);
         }, "Undo", 6000);
     }
 
     /// PUT /api/projects/{id}/tabs; null (with an error toast) when it failed.
-    private async Task<List<string>?> SaveAsync(List<string> tabs)
+    private async Task<List<string>?> SaveAsync(Guid projectId, List<string> tabs)
     {
         busy = true;
         try
         {
-            var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/{Project.Id}/tabs", new { tabs });
+            var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/{projectId}/tabs", new { tabs });
             if (!res.IsSuccessStatusCode)
             {
                 Toasts.Show(res.StatusCode == System.Net.HttpStatusCode.Forbidden
