@@ -1,5 +1,6 @@
 @page "/projects"
 @page "/projects/overview"
+@page "/projects/mywork"
 @page "/projects/{ProjectId:guid}"
 @using Microsoft.AspNetCore.Authorization
 @using IPop.Web.Services
@@ -91,6 +92,9 @@ else
         Loading="loading"
         PortfolioSelected="portfolioSelected"
         OnSelectPortfolio="SelectPortfolio"
+        MyWorkSelected="myWorkSelected"
+        OnSelectMyWork="SelectMyWork"
+        LateCount="myLateCount"
         OnSelectProject="SelectProjectFromList"
         OnToggleSidebar="() => sidebarCollapsed = !sidebarCollapsed"
         OnYearChanged="SetYearFilter"
@@ -100,9 +104,16 @@ else
 
     @* Main Project Workspace Canvas *@
     <main class="proj-canvas" id="project-detail" role="region" aria-label="Project Workspace">
-        @if (portfolioSelected)
+        @if (myWorkSelected)
+        {
+            <ProjectMyWorkPage FullScreen="fullScreen" RailOpen="railOpen" OnToggleFullScreen="ToggleFullScreen" OnToggleRail="() => railOpen = !railOpen"
+                               Projects="projects" Version="myWorkVersion" OnOpenTask="OpenPortfolioTask" OnCounts="HandleMyWorkCounts" />
+        }
+        else if (portfolioSelected)
         {
             <ProjectPortfolioView Data="portfolioData" Loading="portfolioLoading" Tasks="portfolioTasks"
+                                  FullScreen="fullScreen" RailOpen="railOpen" OnToggleFullScreen="ToggleFullScreen" OnToggleRail="() => railOpen = !railOpen"
+                                  OnNewProject="() => showCreateModal = true"
                                   OnRetry="LoadPortfolio" OnOpenProject="OpenPortfolioProject"
                                   OnOpenTasks="OpenPortfolioTasks" OnOpenTask="OpenPortfolioTask"
                                   OnTaskPage="LoadPortfolioTaskPage" OnProjectPage="LoadPortfolioProjectPage"
@@ -129,6 +140,15 @@ else
             <ProjectCrumbBar FullScreen="fullScreen" RailOpen="railOpen" Trail="@selectedProject.Year.ToString()"
                              OnToggleFullScreen="ToggleFullScreen" OnToggleRail="() => railOpen = !railOpen" OnProjectsClick="SelectPortfolio" />
 
+            @if (selectedProject.Status.Equals("completed", StringComparison.OrdinalIgnoreCase) && CanManageMembers)
+            {
+                <div class="pv2 pv2cl-banner" role="status" data-banner="closed">
+                    <i data-lucide="archive"></i>
+                    <span>Closed on <b>@selectedProject.UpdatedAt.ToLocalTime().ToString("d MMM yyyy", System.Globalization.CultureInfo.InvariantCulture)</b></span>
+                    <button type="button" class="pv2-btn sm" data-act="reopen-banner" @onclick="ReopenProject">Reopen</button>
+                </div>
+            }
+
             @* Canvas Header *@
             <ProjectHeader
                 V2="true"
@@ -145,6 +165,8 @@ else
                 OnCopyLink="CopyProjectLink"
                 OnDeleteProject="HandleDeleteProject"
                 OnMarkCompleted="HandleMarkProjectCompleted"
+                OnCloseProject="() => showCloseModal = true"
+                OnReopenProject="ReopenProject"
                 OnBack="CloseMobileDetail"
                 OnEditStatuses="OpenStatusModal"
                 AutomationCount="@(automations?.Rules.Count(r => r.IsEnabled))"
@@ -244,7 +266,12 @@ else
                     </div>
                 }
 
-                @if (tab == -1)
+                @if (tab == -1 && viewKey == "form")
+                {
+                    <ProjectFormBuilder ProjectId="selectedProjectId" CanManage="CanManageMembers" ProjectName="@selectedProject.Name" ProjectColor="@selectedProject.Color"
+                                        Members="projectMembers" Fields="projectFields" OnSaved="LoadAutomations" />
+                }
+                else if (tab == -1)
                 {
                     <ProjectViewPlaceholder Key="@(viewKey ?? "list")" />
                 }
@@ -497,6 +524,11 @@ else
         OnSubmit="HandleSubmitCreateProject" />
 }
 
+@if (showCloseModal && selectedProject is not null)
+{
+    <ProjectCloseModal ProjectId="selectedProjectId" ProjectName="@selectedProject.Name" OnClose="() => showCloseModal = false" OnClosed="HandleProjectClosed" />
+}
+
 @if (showEditModal && selectedProject is not null)
 {
     <ProjectEditModal
@@ -522,6 +554,11 @@ else
 
     private bool loading = true;
     private bool portfolioSelected;
+    // Projects v2 stage 4 (web B): My work page, close project
+    private bool myWorkSelected;
+    private int myWorkVersion;
+    private int myLateCount;
+    private bool showCloseModal;
     private bool portfolioLoading;
     private PortfolioDto? portfolioData;
     private PagedResult<PortfolioTaskDto>? portfolioTasks;
@@ -874,6 +911,7 @@ else
         {
             await RefreshProjectListSilently();
             if (portfolioSelected) await LoadPortfolio();
+            if (myWorkSelected) myWorkVersion++; else _ = LoadMyLateAsync();
             if (selectedProjectId != Guid.Empty && touched.Contains(selectedProjectId))
                 await RefreshSelectedProjectSilently();
             if (_disposed) return;
@@ -963,6 +1001,7 @@ else
     {
         if (Nav.ToAbsoluteUri(Nav.Uri).AbsolutePath.TrimEnd('/').Equals("/projects/overview", StringComparison.OrdinalIgnoreCase))
         {
+            myWorkSelected = false;
             if (!portfolioSelected)
             {
                 portfolioSelected = true;
@@ -971,6 +1010,12 @@ else
             }
             return;
         }
+        if (Nav.ToAbsoluteUri(Nav.Uri).AbsolutePath.TrimEnd('/').Equals("/projects/mywork", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!myWorkSelected) { myWorkSelected = true; portfolioSelected = false; mDetail = true; }
+            return;
+        }
+        myWorkSelected = false;
         if (portfolioSelected) portfolioSelected = false;
         if (ProjectId is null && selectedProjectId != Guid.Empty && selectedProject is null)
         {
@@ -1137,12 +1182,13 @@ else
 
         availableYears = projects.Select(p => p.Year).Distinct().OrderByDescending(y => y).ToList();
 
-        if (!portfolioSelected && selectedProjectId == Guid.Empty && filteredProjects.Count > 0)
+        if (!portfolioSelected && !myWorkSelected && selectedProjectId == Guid.Empty && filteredProjects.Count > 0)
         {
             await SelectProject(filteredProjects[0]);
         }
 
         loading = false;
+        _ = LoadMyLateAsync();
         StateHasChanged();
     }
 
@@ -1173,6 +1219,7 @@ else
         selectedTaskIds = new HashSet<Guid>();
         savedViews = [];
         portfolioSelected = false;
+        myWorkSelected = false;
         portfolioTasks = null;
         listAssigneeId = null;
         listUnassignedOnly = false;
@@ -2579,8 +2626,52 @@ else
         StateHasChanged();
     }
 
+    private Task SelectMyWork()
+    {
+        myWorkSelected = true;
+        portfolioSelected = false;
+        mDetail = true;
+        myWorkVersion++;
+        Nav.NavigateTo("/projects/mywork");
+        return Task.CompletedTask;
+    }
+
+    private void HandleMyWorkCounts(MyWorkCountsDto c) { myLateCount = c.Late; _ = InvokeAsync(StateHasChanged); }
+
+    /// Late count for the rail badge (the My work page keeps it fresh while open).
+    private async Task LoadMyLateAsync()
+    {
+        if (Phone.IsPhone || _disposed) return;
+        try
+        {
+            var res = await Auth.GetResultAsync<MyWorkDto>($"/api/projects/my-work?localToday={DateTime.Today:yyyy-MM-dd}");
+            if (res.IsOk && res.Value is not null && !_disposed) { myLateCount = res.Value.Counts.Late; await InvokeAsync(StateHasChanged); }
+        }
+        catch { }
+    }
+
+    private async Task HandleProjectClosed(CloseProjectResultDto _)
+    {
+        showCloseModal = false;
+        selectedProjectId = Guid.Empty; selectedProject = null;
+        await ReloadProjects();
+        await SelectPortfolio();
+    }
+
+    private async Task ReopenProject()
+    {
+        if (selectedProjectId == Guid.Empty || !CanManageMembers) return;
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{selectedProjectId}/reopen");
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't reopen the project.", ToastKind.Error); return; }
+        Toasts.Show($"{selectedProject?.Name} is open again.", ToastKind.Success);
+        selectedProject = await Auth.GetAsync<ProjectDto>($"/api/projects/{selectedProjectId}") ?? selectedProject;
+        await RefreshProjectListSilently();
+        StateHasChanged();
+    }
+
     private async Task SelectPortfolio()
     {
+        myWorkSelected = false;
         portfolioSelected = true;
         portfolioTasks = null;
         portfolioTaskFilter = null;
@@ -2619,6 +2710,7 @@ else
             selectedProjectId = id;
             selectedProject = await Auth.GetAsync<ProjectDto>($"/api/projects/{id}");
             portfolioSelected = false;
+            myWorkSelected = false;
             await ReloadCurrentView();
             mDetail = true;
         }

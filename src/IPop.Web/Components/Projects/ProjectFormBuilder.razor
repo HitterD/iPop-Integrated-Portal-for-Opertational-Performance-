@@ -1,0 +1,360 @@
+@using IPop.Application.Projects
+@using System.Net.Http.Json
+@inject IPop.Web.Services.AuthState Auth
+@inject IPop.Web.Services.ToastService Toasts
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@implements IDisposable
+
+@* Projects v2 "Request form" tab (mockup formView). Owner/manager: builder on the left, live preview on the right, autosaved.
+   Other members: the same request page a requester sees. Backend: GET/PUT /api/projects/{id}/form. *@
+@if (!CanManage)
+{
+    <div class="pv2 pv2fm-wrap member" data-view="form-member">
+        <div class="pv2fm-solo"><ProjectRequestForm ProjectId="ProjectId" /></div>
+    </div>
+}
+else if (state == LoadState.Loading)
+{
+    <div class="pv2 pv2fm-wrap" role="status" aria-label="Loading the request form">
+        <div class="pv2fm-grid"><div class="pv2pg-skel" style="height:360px;border-radius:14px"></div><div class="pv2pg-skel" style="height:360px;border-radius:14px"></div></div>
+    </div>
+}
+else if (state == LoadState.Error || form is null)
+{
+    <div class="pv2 pv2pg-empty" role="alert">
+        <span class="pv2-bigic"><i data-lucide="triangle-alert"></i></span>
+        <h3>Couldn't load the request form</h3>
+        <p>@errorText</p>
+        <button type="button" class="pv2-btn pri" @onclick="LoadAsync">Retry</button>
+    </div>
+}
+else
+{
+    <div class="pv2 pv2fm-wrap" data-view="form-builder">
+        <div class="pv2fm-tb">
+            <b>Form builder</b>
+            <span class="pv2-sp"></span>
+            <span class="pv2-saved @(saving ? "saving" : "")" role="status" aria-live="polite">@if (saving) { <text>Saving…</text> } else if (saveError is not null) { <span style="color:var(--danger)">@saveError</span> } else if (savedOnce) { <i data-lucide="check"></i><text>Saved</text> }</span>
+            <button type="button" class="pv2fm-tog @(form.IsOpen ? "on" : "")" role="switch" aria-checked="@(form.IsOpen ? "true" : "false")" data-act="open" @onclick="ToggleOpen"><i></i>Accepting requests</button>
+            <button type="button" class="pv2fm-chip" data-act="copylink" @onclick="CopyLink"><i data-lucide="link"></i>Copy link</button>
+            <span class="pv2fm-chip static"><i data-lucide="eye"></i>Who can send: @AudienceLabel(form.AudienceScope)</span>
+        </div>
+        <div class="pv2fm-grid">
+            <div class="pv2fm-left">
+                <p class="pv2mnote">Each answer fills a column. Every request becomes a new task in the <b>Intake</b> group with status <b>Not started</b>. The person who sent it gets updates when it changes. No approval step.</p>
+
+                <div class="pv2fm-meta">
+                    <div class="pv2f"><label class="pv2f-l" for="pv2fm-title">Form title</label><input id="pv2fm-title" class="pv2-nm pv2f-in" maxlength="120" value="@form.Title" @oninput="e => Edit(() => form = form! with { Title = e.Value?.ToString() ?? string.Empty })" /></div>
+                    <div class="pv2f"><label class="pv2f-l" for="pv2fm-intro">Intro <span class="pv2-note">(optional)</span></label><textarea id="pv2fm-intro" class="pv2-nm pv2f-in ta" rows="2" maxlength="500" value="@form.Intro" @oninput="e => Edit(() => form = form! with { Intro = e.Value?.ToString() ?? string.Empty })"></textarea></div>
+                </div>
+
+                @for (var i = 0; i < questions.Count; i++)
+                {
+                    var idx = i;
+                    var q = questions[i];
+                    var editing = editKey == q.Key;
+                    <div class="pv2fm-q @(editing ? "editing" : "")" @key="q.Key" data-q="@q.Key">
+                        <div class="pv2fm-qrow">
+                            <span class="pv2-grip" aria-hidden="true"><i data-lucide="grip-vertical"></i></span>
+                            <button type="button" class="pv2fm-qmain" aria-expanded="@(editing ? "true" : "false")" @onclick="() => editKey = editing ? null : q.Key">
+                                <b>@q.Label</b>
+                                <small>@TypeLabel(q)</small>
+                            </button>
+                            <span class="pv2fm-map">→ fills <b>@MapLabel(q.MapsTo)</b></span>
+                            <button type="button" class="pv2-ibtn" aria-label="Move up" disabled="@(idx == 0)" @onclick="() => Move(idx, -1)"><i data-lucide="chevron-up"></i></button>
+                            <button type="button" class="pv2-ibtn" aria-label="Move down" disabled="@(idx == questions.Count - 1)" @onclick="() => Move(idx, 1)"><i data-lucide="chevron-down"></i></button>
+                            <button type="button" class="pv2-ibtn" aria-label="Remove question" data-act="rmq" @onclick="() => Remove(idx)"><i data-lucide="trash-2"></i></button>
+                        </div>
+                        @if (editing)
+                        {
+                            <div class="pv2fm-qedit">
+                                <div class="pv2f"><label class="pv2f-l" for="pv2fm-ql-@q.Key">Question</label><input id="pv2fm-ql-@q.Key" class="pv2-nm pv2f-in" maxlength="120" value="@q.Label" @oninput="e => Update(idx, q with { Label = e.Value?.ToString() ?? string.Empty })" /></div>
+                                <div class="pv2fm-two">
+                                    <div class="pv2f"><label class="pv2f-l" for="pv2fm-qt-@q.Key">Answer type</label>
+                                        <select id="pv2fm-qt-@q.Key" class="pv2-nm pv2f-in" value="@q.Type" @onchange="e => ChangeType(idx, e.Value?.ToString())">
+                                            <option value="text">Short text</option><option value="longtext">Long text</option><option value="choice">Choice</option><option value="date">Date</option>
+                                        </select></div>
+                                    <div class="pv2f"><label class="pv2f-l" for="pv2fm-qm-@q.Key">Fills</label>
+                                        <select id="pv2fm-qm-@q.Key" class="pv2-nm pv2f-in" value="@q.MapsTo" @onchange="e => ChangeMap(idx, e.Value?.ToString())">
+                                            @foreach (var m in MapOptions(q)) { <option value="@m.Value">@m.Label</option> }
+                                        </select></div>
+                                </div>
+                                @if (q.Type == "choice")
+                                {
+                                    <div class="pv2f"><label class="pv2f-l" for="pv2fm-qo-@q.Key">Choices <span class="pv2-note">(one per line)</span></label>
+                                        <textarea id="pv2fm-qo-@q.Key" class="pv2-nm pv2f-in ta" rows="3" value="@string.Join("\n", q.Options ?? [])" @oninput="e => Update(idx, q with { Options = SplitOptions(e.Value?.ToString()) })"></textarea></div>
+                                }
+                                <label class="pv2fm-req"><button type="button" class="pv2-cb @(q.Required ? "on" : "")" role="checkbox" aria-checked="@(q.Required ? "true" : "false")" aria-label="Required" @onclick="() => Update(idx, q with { Required = !q.Required })"></button>Required</label>
+                            </div>
+                        }
+                    </div>
+                }
+                @if (questions.Count < MaxQuestions)
+                {
+                    <button type="button" class="pv2-btn ghost" data-act="addq" @onclick="AddQuestion"><i data-lucide="plus"></i>Add question</button>
+                }
+                else { <p class="pv2-note">A form can have up to @MaxQuestions questions.</p> }
+
+                <div class="pv2f" style="margin-top:12px">
+                    <label class="pv2f-l" for="pv2fm-assignee">New requests go to</label>
+                    <select id="pv2fm-assignee" class="pv2-nm pv2f-in" value="@(form.AssigneeId?.ToString() ?? "")" @onchange="e => Edit(() => form = form! with { AssigneeId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null, AssigneeName = null })">
+                        <option value="">Nobody (the task lands unassigned)</option>
+                        @foreach (var m in Members.Where(x => x.Role != "viewer")) { <option value="@m.UserId">@m.Name</option> }
+                    </select>
+                    <small class="pv2-note">They are notified in iPop and on the phone.</small>
+                </div>
+
+                <div class="pv2f" style="margin-top:10px">
+                    <label class="pv2f-l" id="pv2fm-aud-l">Who can send</label>
+                    <div class="pv2pg-seg pv2fm-aud" role="radiogroup" aria-labelledby="pv2fm-aud-l">
+                        @foreach (var a in Audiences)
+                        {
+                            var key = a.Key;
+                            <button type="button" role="radio" class="@(form.AudienceScope == key ? "on" : "")" aria-checked="@(form.AudienceScope == key ? "true" : "false")" data-aud="@key" @onclick="() => Edit(() => form = form! with { AudienceScope = key })">@a.Label</button>
+                        }
+                        <span class="pv2pg-knob"></span>
+                    </div>
+                    <small class="pv2-note">Everyone must be signed in to iPop. @AudienceHelp(form.AudienceScope)</small>
+                </div>
+                <p class="pv2-note" style="margin-top:10px">Requests land in the <b>Intake</b> group@(form.SubmissionCount > 0 ? $" · {form.SubmissionCount} sent so far" : "").</p>
+            </div>
+            <div class="pv2fm-right">
+                <ProjectRequestForm Preview="true" PreviewData="PreviewData" ProjectId="ProjectId" />
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private enum LoadState { Loading, Ready, Error }
+    private const int MaxQuestions = 12;
+
+    private static readonly (string Key, string Label)[] Audiences = [("project", "Project members"), ("department", "Same department"), ("everyone", "Everyone at SJA")];
+
+    [Parameter, EditorRequired] public Guid ProjectId { get; set; }
+    [Parameter] public bool CanManage { get; set; }
+    [Parameter] public string ProjectName { get; set; } = "";
+    [Parameter] public string? ProjectColor { get; set; }
+    [Parameter] public List<ProjectMemberDto> Members { get; set; } = [];
+    [Parameter] public List<ProjectFieldDto> Fields { get; set; } = [];
+    /// Raised after a save so the page can refresh anything that depends on the form (automations "Requests land in Intake").
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private LoadState state = LoadState.Loading;
+    private ProjectFormDto? form;
+    private List<FormQuestionDto> questions = [];
+    private string? errorText, editKey, saveError;
+    private bool saving, savedOnce, disposed;
+    private Guid loadedFor;
+    private CancellationTokenSource? debounce;
+    private int saveSeq;
+
+    private PublicFormDto PreviewData => new(ProjectId, ProjectName, ProjectColor ?? "", form?.Title ?? "", form?.Intro ?? "", questions.ToList());
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!CanManage || loadedFor == ProjectId) return;
+        loadedFor = ProjectId;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        state = LoadState.Loading; StateHasChanged();
+        var res = await Auth.GetResultAsync<ProjectFormDto>($"/api/projects/{ProjectId}/form");
+        if (disposed) return;
+        if (res.IsOk && res.Value is not null)
+        {
+            form = res.Value; questions = form.Questions.ToList(); state = LoadState.Ready; savedOnce = false; saveError = null;
+        }
+        else
+        {
+            state = LoadState.Error;
+            errorText = res.Status switch
+            {
+                GetStatus.Forbidden => "Only the project owner and managers can edit the request form.",
+                GetStatus.Unreachable => "iPop could not reach the server. Check your connection and try again.",
+                _ => "Something went wrong while loading the form. Try again in a moment.",
+            };
+        }
+    }
+
+    // ── editing (every change schedules an autosave) ──
+    private void Edit(Action change) { change(); Schedule(); }
+    private void Update(int i, FormQuestionDto q) { if (i < questions.Count) { questions[i] = q; Schedule(); } }
+
+    private void AddQuestion()
+    {
+        var n = questions.Count + 1;
+        var keys = questions.Select(x => x.Key).ToHashSet();
+        while (keys.Contains("q" + n)) n++;
+        var q = new FormQuestionDto("q" + n, "New question", "text", false, null, questions.Any(x => x.MapsTo == "title") ? "none" : "title");
+        questions.Add(q);
+        editKey = q.Key;
+        Schedule();
+    }
+
+    private void Remove(int i)
+    {
+        if (i >= questions.Count) return;
+        if (editKey == questions[i].Key) editKey = null;
+        questions.RemoveAt(i);
+        Schedule();
+    }
+
+    private void Move(int i, int by)
+    {
+        var j = i + by;
+        if (j < 0 || j >= questions.Count) return;
+        (questions[i], questions[j]) = (questions[j], questions[i]);
+        Schedule();
+    }
+
+    private void ChangeType(int i, string? type0)
+    {
+        var type = type0 ?? "text";
+        var q = questions[i];
+        var maps = q.MapsTo;
+        if (maps == "title" && type is not ("text" or "longtext")) maps = "none";
+        if (maps == "dueDate" && type != "date") maps = "none";
+        var options = type == "choice" ? (q.Options is { Count: > 0 } ? q.Options : ["Option 1", "Option 2"]) : null;
+        Update(i, q with { Type = type, MapsTo = maps, Options = options });
+    }
+
+    private void ChangeMap(int i, string? maps0)
+    {
+        var maps = maps0 ?? "none";
+        var q = questions[i];
+        if (maps is "title" or "description" or "dueDate")
+        {
+            // Each of these can only be filled by one question: the previous owner stops filling it.
+            for (var k = 0; k < questions.Count; k++)
+                if (k != i && questions[k].MapsTo == maps) questions[k] = questions[k] with { MapsTo = "none" };
+        }
+        Update(i, q with { MapsTo = maps });
+    }
+
+    private static IReadOnlyList<string> SplitOptions(string? text) =>
+        (text ?? "").Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Distinct().Take(20).ToList();
+
+    private List<AppOptionLite> MapOptions(FormQuestionDto q)
+    {
+        var list = new List<AppOptionLite>();
+        if (q.Type is "text" or "longtext") list.Add(new("title", "Task name"));
+        list.Add(new("description", "Description"));
+        if (q.Type == "date") list.Add(new("dueDate", "Due date"));
+        foreach (var f in Fields) list.Add(new("field:" + f.Id, f.Name));
+        list.Add(new("none", "Nothing (note only)"));
+        return list;
+    }
+    private sealed record AppOptionLite(string Value, string Label);
+
+    private string MapLabel(string maps) => maps switch
+    {
+        "title" => "Task name", "description" => "Description", "dueDate" => "Due", "none" => "nothing",
+        _ when maps.StartsWith("field:") => Fields.FirstOrDefault(f => "field:" + f.Id == maps)?.Name ?? "a column",
+        _ => maps,
+    };
+
+    private static string TypeLabel(FormQuestionDto q) => (q.Type switch
+    {
+        "longtext" => "Long text", "choice" => "Choice: " + string.Join(", ", q.Options ?? []), "date" => "Date", _ => "Short text",
+    }) + (q.Required ? " · required" : "");
+
+    private static string AudienceLabel(string scope) => scope switch
+    {
+        "department" => "people in the same department", "everyone" => "anyone at SJA (signed in)", _ => "project members",
+    };
+    private static string AudienceHelp(string scope) => scope switch
+    {
+        "department" => "Project members and people in the owner's department.",
+        "everyone" => "Anyone with an iPop account, once they sign in.",
+        _ => "Only people already in this project.",
+    };
+
+    // ── toggle, link ──
+    private void ToggleOpen() => Edit(() => form = form! with { IsOpen = !form!.IsOpen });
+
+    private async Task CopyLink()
+    {
+        var url = $"{Nav.BaseUri}projects/form/{ProjectId}";
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", url);
+            Toasts.Show("Request link copied. Anyone signed in who is allowed can open it.", ToastKind.Success);
+        }
+        catch { Toasts.Show("Couldn't copy the link: " + url, ToastKind.Warning); }
+    }
+
+    // ── autosave: ~700 ms after the last change ──
+    private void Schedule()
+    {
+        saveError = null;
+        debounce?.Cancel(); debounce?.Dispose();
+        debounce = new CancellationTokenSource();
+        var token = debounce.Token;
+        _ = RunLater(token);
+    }
+
+    private async Task RunLater(CancellationToken ct)
+    {
+        try { await Task.Delay(700, ct); } catch (OperationCanceledException) { return; }
+        if (disposed || ct.IsCancellationRequested) return;
+        await InvokeAsync(SaveNow);
+    }
+
+    private async Task SaveNow()
+    {
+        if (form is null || disposed) return;
+        var my = ++saveSeq;
+        saving = true; StateHasChanged();
+        try
+        {
+            var req = new SaveProjectFormRequest(form.IsOpen, form.Title, form.Intro, form.AudienceScope, form.AssigneeId, questions.ToList());
+            var r = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/{ProjectId}/form", req);
+            if (my != saveSeq || disposed) return;
+            if (r.IsSuccessStatusCode)
+            {
+                var saved = await r.Content.ReadFromJsonAsync<ProjectFormDto>();
+                if (saved is not null && my == saveSeq) form = form with { AssigneeName = saved.AssigneeName, IntakeGroupId = saved.IntakeGroupId, SubmissionCount = saved.SubmissionCount };
+                savedOnce = true; saveError = null;
+                await OnSaved.InvokeAsync();
+            }
+            else saveError = await ErrorText(r);
+        }
+        catch { saveError = "Couldn't save. Check your connection."; }
+        finally { if (my == saveSeq) saving = false; if (!disposed) StateHasChanged(); }
+    }
+
+    private static async Task<string> ErrorText(HttpResponseMessage r)
+    {
+        string? code = null;
+        try { code = (await r.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("code").GetString(); } catch { }
+        return code switch
+        {
+            "title_mapping_required" => "One question must fill the task name.",
+            "invalid_title" => "Give the form a title (up to 120 characters).",
+            "invalid_label" => "Every question needs a label.",
+            "invalid_options" => "A choice question needs 1 to 20 choices.",
+            "duplicate_mapping" => "Two questions fill the same column.",
+            "invalid_mapping" => "A question fills a column that doesn't fit its type.",
+            "too_many_questions" => "A form can have up to 12 questions.",
+            "invalid_assignee" => "Pick a member who can do tasks.",
+            "forbidden" => "Only the owner and managers can change the form.",
+            _ => "Couldn't save the form.",
+        };
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+        try { await JS.InvokeVoidAsync("ipopPv2.pgSeg"); } catch { }
+    }
+
+    public void Dispose()
+    {
+        disposed = true;
+        debounce?.Cancel(); debounce?.Dispose();
+    }
+}

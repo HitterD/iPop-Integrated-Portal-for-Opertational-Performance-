@@ -335,4 +335,16 @@
     },
     panelKeysOff() { if (panelHandler) { document.removeEventListener('keydown', panelHandler, true); panelHandler = null; } },
   });
+
+  // ---- Stage 4 (web B): sliding knob for the page segmented controls (.pv2pg-seg) ----
+  Object.assign(window.ipopPv2, {
+    pgSeg() {
+      document.querySelectorAll('.pv2pg-seg').forEach(seg => {
+        const k = seg.querySelector('.pv2pg-knob'), on = seg.querySelector('button.on');
+        if (!k || !on || on.offsetWidth === 0) return;
+        k.style.left = on.offsetLeft + 'px';
+        k.style.width = on.offsetWidth + 'px';
+      });
+    },
+  });
 })();

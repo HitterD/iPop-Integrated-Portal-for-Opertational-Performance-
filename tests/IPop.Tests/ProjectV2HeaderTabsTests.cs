@@ -190,7 +190,7 @@ public class ProjectV2HeaderTabsTests
         Assert.Contains("3 late", cut.Find(".pv2-late").TextContent);
         cut.Find("button[aria-haspopup=menu]").Click();
         var menu = cut.Find(".ph-menu").TextContent;
-        foreach (var item in new[] { "Statuses", "Edit project details", "Export to Excel", "Copy link", "Save as template", "Mark project completed", "Delete project", "Schedule team meeting", "Project status" })
+        foreach (var item in new[] { "Statuses", "Edit project details", "Export to Excel", "Copy link", "Save as template", "Close project", "Delete project", "Schedule team meeting", "Project status" })
             Assert.Contains(item, menu);
     }
 

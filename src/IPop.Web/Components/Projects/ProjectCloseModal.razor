@@ -1,0 +1,145 @@
+@using IPop.Application.Projects
+@using System.Net.Http.Json
+@inject IPop.Web.Services.AuthState Auth
+@inject IPop.Web.Services.ToastService Toasts
+@inject IJSRuntime JS
+
+@* Projects v2 Close project (mockup closeModal): automatic summary (ring, finish vs plan, counts, longest delay), "Before you close"
+   checks, lessons, Save as template and a chat summary, then Close & archive. Backend: GET close-summary, POST close. *@
+<div class="pv2 pv2-scrim" @onclick="Close">
+    <div class="pv2-modal pv2cl-modal" role="dialog" aria-modal="true" aria-labelledby="pv2cl-title" @onclick:stopPropagation="true" @onkeydown="OnKey">
+        <div class="pv2-mh">
+            <h2 id="pv2cl-title">Close project</h2>
+            <span class="pv2-note">@ProjectName</span>
+            <span class="pv2-sp"></span>
+            <button type="button" class="pv2-ibtn" aria-label="Close" @onclick="Close"><i data-lucide="x"></i></button>
+        </div>
+        <div class="pv2-mbody pv2cl-body">
+            @if (loading)
+            {
+                <div class="pv2pg-skel" style="height:200px;border-radius:12px" role="status" aria-label="Loading the summary"></div>
+            }
+            else if (summary is null)
+            {
+                <div class="pv2pg-empty" role="alert">
+                    <span class="pv2-bigic"><i data-lucide="triangle-alert"></i></span>
+                    <h3>Couldn't load the summary</h3><p>@loadError</p>
+                    <button type="button" class="pv2-btn pri" @onclick="Load">Retry</button>
+                </div>
+            }
+            else
+            {
+                var s = summary;
+                <div class="pv2cl-hero">
+                    <div class="pv2cl-left">
+                        <div class="pv2o-ring pv2cl-ring" style="--pv2o-t:@(s.OnTimePercent ?? 0)" role="img" aria-label="@(s.OnTimePercent is { } p ? p + "% on time" : "No dated tasks")"><div><b class="pv2-num">@(s.OnTimePercent is { } pp ? pp + "%" : "·")</b>on time</div></div>
+                        <div class="pv2cl-facts">
+                            <b data-fact="finish">@FinishText(s.FinishedDaysVsPlan)</b><br />
+                            <span data-fact="counts">@s.Done of @s.Total tasks done · @s.LateCount @(s.LateCount == 1 ? "was" : "were") late</span><br />
+                            @if (s.LongestDelay is { } ld) { <span data-fact="delay">Longest delay: <b>@ld.Title</b> (+@ld.Days @(ld.Days == 1 ? "day" : "days"))</span> }
+                            else { <span data-fact="delay">No delays to report.</span> }
+                        </div>
+                    </div>
+                    <div class="pv2pg-card pv2cl-checks" style="box-shadow:none;animation:none">
+                        <h4>Before you close</h4>
+                        <div class="pv2cl-chk" style="padding:4px 16px">
+                            @if (s.OpenTasks == 0) { <div class="pv2cl-li ok" data-check="tasks"><i data-lucide="check"></i>All tasks are done</div> }
+                            else { <div class="pv2cl-li warn" data-check="tasks"><i data-lucide="triangle-alert"></i>@s.OpenTasks @(s.OpenTasks == 1 ? "task is" : "tasks are") still open. You can still close the project.</div> }
+                            @if (s.FilesOnNas) { <div class="pv2cl-li ok" data-check="files"><i data-lucide="check"></i>Files stay on the NAS, read-only</div> }
+                            @if (s.OpenCommentsCount > 0) { <div class="pv2cl-li warn" data-check="comments"><i data-lucide="triangle-alert"></i>@s.OpenCommentsCount open @(s.OpenCommentsCount == 1 ? "comment" : "comments") will be kept</div> }
+                            else { <div class="pv2cl-li ok" data-check="comments"><i data-lucide="check"></i>Comments will be kept</div> }
+                        </div>
+                    </div>
+                </div>
+                <div class="pv2f" style="margin-top:16px">
+                    <label class="pv2f-l" for="pv2cl-lessons">What should we do differently next time? <span class="pv2-note" style="font-weight:400">(optional, saved with the project and the template)</span></label>
+                    <textarea id="pv2cl-lessons" class="pv2-nm pv2f-in ta" rows="3" maxlength="2000" @bind="lessons" @bind:event="oninput"></textarea>
+                </div>
+                <label class="pv2cl-cbrow" data-opt="template"><button type="button" class="pv2-cb @(saveTemplate ? "on" : "")" role="checkbox" aria-checked="@(saveTemplate ? "true" : "false")" aria-label="Save as template" @onclick="() => saveTemplate = !saveTemplate"></button>Save as a template with groups, statuses, columns, automations and lessons (no people, no dates)</label>
+                @if (saveTemplate)
+                {
+                    <div class="pv2f pv2cl-tname"><label class="pv2f-l" for="pv2cl-tname">Template name</label><input id="pv2cl-tname" class="pv2-nm pv2f-in" maxlength="200" @bind="templateName" @bind:event="oninput" /></div>
+                }
+                <label class="pv2cl-cbrow" data-opt="chat"><button type="button" class="pv2-cb @(postChat ? "on" : "")" role="checkbox" aria-checked="@(postChat ? "true" : "false")" aria-label="Post a summary in the project chat" @onclick="() => postChat = !postChat"></button>Post a short summary in the project chat</label>
+                @if (error is not null) { <div class="pv2-err" role="alert">@error</div> }
+            }
+        </div>
+        <div class="pv2-mf">
+            <span class="pv2-note">Closed projects move to Archived and can be reopened any time.</span>
+            <span class="pv2-sp"></span>
+            <button type="button" class="pv2-btn" @onclick="Close">Cancel</button>
+            <button type="button" class="pv2-btn pri" data-act="archive" disabled="@(busy || summary is null)" @onclick="Archive"><i data-lucide="archive"></i>@(busy ? "Closing…" : "Close & archive")</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Guid ProjectId { get; set; }
+    [Parameter] public string ProjectName { get; set; } = "";
+    [Parameter] public EventCallback OnClose { get; set; }
+    /// Raised after a successful close; the page reloads the list and returns to All projects.
+    [Parameter] public EventCallback<CloseProjectResultDto> OnClosed { get; set; }
+
+    private CloseSummaryDto? summary;
+    private bool loading = true, busy, saveTemplate, postChat;
+    private string lessons = "", templateName = "", loadError = "";
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        templateName = ProjectName + " template";
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        loading = true; StateHasChanged();
+        var res = await Auth.GetResultAsync<CloseSummaryDto>($"/api/projects/{ProjectId}/close-summary");
+        summary = res.IsOk ? res.Value : null;
+        loadError = res.Status == GetStatus.Unreachable ? "iPop could not reach the server. Check your connection and try again." : "Something went wrong while loading the summary.";
+        loading = false;
+    }
+
+    private static string FinishText(int? d) => d switch
+    {
+        null => "No planned dates to compare with",
+        0 => "Finished on the planned date",
+        > 0 => $"Finished {d} {(d == 1 ? "day" : "days")} after the plan",
+        _ => $"Finished {-d} {(-d == 1 ? "day" : "days")} before the plan",
+    };
+
+    private Task Close() => OnClose.InvokeAsync();
+    private Task OnKey(KeyboardEventArgs e) => e.Key == "Escape" && !busy ? Close() : Task.CompletedTask;
+
+    private async Task Archive()
+    {
+        if (busy) return;
+        busy = true; error = null;
+        try
+        {
+            var name = string.IsNullOrWhiteSpace(templateName) ? ProjectName + " template" : templateName.Trim();
+            var req = new CloseProjectRequest(string.IsNullOrWhiteSpace(lessons) ? null : lessons.Trim(), saveTemplate, saveTemplate ? name : null, postChat);
+            var r = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{ProjectId}/close", req);
+            if (!r.IsSuccessStatusCode)
+            {
+                error = r.StatusCode == System.Net.HttpStatusCode.Forbidden
+                    ? "Only the project owner and managers can close a project."
+                    : "Couldn't close the project. Nothing was changed; try again.";
+                Toasts.Show("Couldn't close the project.", ToastKind.Error);
+                return;
+            }
+            CloseProjectResultDto? res = null;
+            try { res = await r.Content.ReadFromJsonAsync<CloseProjectResultDto>(); } catch { }
+            Toasts.Show($"{ProjectName} is closed and archived." + (res?.TemplateId is not null ? " Template saved." : ""), ToastKind.Success);
+            await OnClosed.InvokeAsync(res!);
+        }
+        catch { error = "Couldn't close the project. Check your connection and try again."; Toasts.Show("Couldn't close the project.", ToastKind.Error); }
+        finally { busy = false; }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+        try { await JS.InvokeVoidAsync("ipopPv2.ringAnim"); } catch { }
+    }
+}

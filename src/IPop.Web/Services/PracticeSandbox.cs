@@ -341,6 +341,14 @@ public sealed class PracticeSandbox
                 people = new[] { Me, Rina }.Select((pp, k) => new { userId = pp.Id, name = pp.Name, nik = pp.Nik, role = k == 0 ? "owner" : "member", weeks = Enumerable.Range(0, 8).Select(i => new { hours = (decimal)(10 + 4 * i), tasks = 2, percent = (10 + 4 * i) * 100 / 40, off = false }).ToArray() }).ToArray(),
                 capacityHoursPerWeek = 40,
             };
+            if (M(url, @"/api/projects/my-work")) return new
+            {
+                counts = new { late = 0, dueToday = 1, thisWeek = 2, later = 0, doneThisWeek = 1 },
+                items = Tasks.Where(t => (string?)t["status"] != "done").Take(3).Select(t => new { taskId = t["id"], projectId = ProjectId, projectName = "Office Wi-Fi Upgrade (sample)", projectColor = "#0d9488", title = t["title"], status = "Working on it", statusColor = "#fdab3d", stage = t["status"], dueDate = t["dueDate"], isLate = false, groupName = "Tasks" }).ToArray(),
+                waitingOnMe = Array.Empty<object>(),
+            };
+            if (M(url, @"/api/projects/[0-9a-f-]{36}/form$")) return new { projectId = ProjectId, isOpen = false, title = "Request for the team", intro = "", audienceScope = "project", assigneeId = (Guid?)null, assigneeName = (string?)null, intakeGroupId = (Guid?)null, questions = new[] { new { key = "title", label = "What do you need?", type = "text", required = true, options = (string[]?)null, mapsTo = "title" } }, submissionCount = 0 };
+            if (M(url, @"/close-summary")) return new { total = Tasks.Count, done = By("done").Count, onTimePercent = (int?)100, lateCount = 0, finishedDaysVsPlan = (int?)0, longestDelay = (object?)null, openCommentsCount = 0, openTasks = Tasks.Count - By("done").Count, filesOnNas = true };
             if (M(url, @"/automations")) return new { rules = Array.Empty<object>(), dependentsFollow = true };
             if (M(url, @"/statuses")) return new[]
             {

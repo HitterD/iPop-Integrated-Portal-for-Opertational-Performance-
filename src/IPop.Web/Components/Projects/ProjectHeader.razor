@@ -60,7 +60,14 @@
                             <button type="button" role="menuitemradio" aria-checked="@(cur ? "true" : "false")" class="pv2-st-item @(cur ? "cur" : "")" @onclick="() => PickStatus(so.Value)"><i data-lucide="@(cur ? "check" : "circle")"></i>@so.Label</button>
                         }
                         <div class="ph-sep"></div>
-                        <button type="button" role="menuitem" @onclick="MarkDone"><i data-lucide="check-circle"></i>Mark project completed</button>
+                        @if (Project.Status.Equals("completed", StringComparison.OrdinalIgnoreCase))
+                        {
+                            @if (CanManage) { <button type="button" role="menuitem" data-act="reopen" @onclick="Reopen"><i data-lucide="rotate-ccw"></i>Reopen project</button> }
+                        }
+                        else
+                        {
+                            <button type="button" role="menuitem" data-act="close" @onclick="CloseProject"><i data-lucide="archive"></i>Close project…</button>
+                        }
                         <button type="button" role="menuitem" class="danger" @onclick="Delete"><i data-lucide="trash-2"></i>Delete project</button>
                     </div>
                 }
@@ -198,6 +205,9 @@ else
     [Parameter] public EventCallback OnCopyLink { get; set; }
     [Parameter] public EventCallback OnDeleteProject { get; set; }
     [Parameter] public EventCallback OnMarkCompleted { get; set; }
+    /// "Close project…" in the v2 ⋯ menu (opens the Close project modal).
+    [Parameter] public EventCallback OnCloseProject { get; set; }
+    [Parameter] public EventCallback OnReopenProject { get; set; }
     /// "Statuses…" in the ⋯ menu: opens the project's status editor.
     [Parameter] public EventCallback OnEditStatuses { get; set; }
     [Parameter] public EventCallback OnBack { get; set; }
@@ -400,6 +410,18 @@ else
             "invalid_visibility" => "choose who can use it.",
             _ => "a name is required (max 200 characters).",
         };
+    }
+
+    private async Task CloseProject()
+    {
+        showMore = false;
+        await OnCloseProject.InvokeAsync();
+    }
+
+    private async Task Reopen()
+    {
+        showMore = false;
+        await OnReopenProject.InvokeAsync();
     }
 
     private async Task MarkDone()

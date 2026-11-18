@@ -1,0 +1,323 @@
+@using IPop.Application.Projects
+@using System.Globalization
+@using System.Net.Http.Json
+@inject IPop.Web.Services.AuthState Auth
+@inject IPop.Web.Services.ToastService Toasts
+@inject IJSRuntime JS
+@implements IDisposable
+
+@* Projects v2 "My work" page (docs/mockups/ipop-apple/projects-v2.html myWorkPage): everything assigned to me from every project,
+   bucketed Late / Today / This week / Later, with KPIs, tick-to-finish rows and a "Waiting on me" card. Data: GET /api/projects/my-work. *@
+<ProjectPageHead Title="My work" Subtitle="Everything assigned to you, from every project. Tick a task to finish it."
+                 FullScreen="FullScreen" RailOpen="RailOpen" OnToggleFullScreen="OnToggleFullScreen" OnToggleRail="OnToggleRail">
+    <Right>
+        <div class="pv2pg-seg" role="tablist" aria-label="Layout">
+            <button type="button" role="tab" class="@(!calendarMode ? "on" : "")" aria-selected="@(!calendarMode ? "true" : "false")" data-act="mw-list" @onclick="() => SetMode(false)">List</button>
+            <button type="button" role="tab" class="@(calendarMode ? "on" : "")" aria-selected="@(calendarMode ? "true" : "false")" data-act="mw-cal" @onclick="() => SetMode(true)">Calendar</button>
+            <span class="pv2pg-knob"></span>
+        </div>
+        <button type="button" class="pv2-hbtn pri" data-act="mw-new" @onclick="OpenNew"><i data-lucide="plus"></i>New task</button>
+    </Right>
+</ProjectPageHead>
+
+<div class="pv2 pv2pg-body" data-page="mywork">
+    @if (state == LoadState.Loading)
+    {
+        <div class="pv2pg-kpis" role="status" aria-label="Loading my work">
+            @for (var i = 0; i < 4; i++) { <div class="pv2pg-kpi pv2pg-skel"></div> }
+        </div>
+        <div class="pv2mw-grid"><div class="pv2pg-card pv2pg-skel" style="height:300px"></div><div class="pv2pg-card pv2pg-skel" style="height:200px"></div></div>
+    }
+    else if (state == LoadState.Error || dto is null)
+    {
+        <div class="pv2pg-empty" role="alert">
+            <span class="pv2-bigic"><i data-lucide="triangle-alert"></i></span>
+            <h3>Couldn't load your work</h3>
+            <p>@errorText</p>
+            <button type="button" class="pv2-btn pri" @onclick="() => LoadAsync(false)">Retry</button>
+        </div>
+    }
+    else
+    {
+        <div class="pv2pg-kpis">
+            <div class="pv2pg-kpi r"><small>Late</small><b class="pv2-num @(Flash(0))" @key="flash[0]" id="pv2mw-k-late">@counts.Late</b></div>
+            <div class="pv2pg-kpi"><small>Due today</small><b class="pv2-num @(Flash(1))" @key="flash[1]" id="pv2mw-k-today">@counts.DueToday</b></div>
+            <div class="pv2pg-kpi"><small>This week</small><b class="pv2-num @(Flash(2))" @key="flash[2]" id="pv2mw-k-week">@counts.ThisWeek</b></div>
+            <div class="pv2pg-kpi g"><small>Done this week</small><b class="pv2-num @(Flash(3))" @key="flash[3]" id="pv2mw-k-done">@counts.DoneThisWeek</b></div>
+        </div>
+
+        <div class="pv2mw-grid">
+            @if (calendarMode)
+            {
+                <div class="pv2mw-calwrap">
+                    <div class="pv2mw-caltb">
+                        <button type="button" class="pv2-ibtn" aria-label="Previous month" @onclick="() => ShiftMonth(-1)"><i data-lucide="chevron-left"></i></button>
+                        <b>@month.ToString("MMMM yyyy", CultureInfo.InvariantCulture)</b>
+                        <button type="button" class="pv2-ibtn" aria-label="Next month" @onclick="() => ShiftMonth(1)"><i data-lucide="chevron-right"></i></button>
+                        <button type="button" class="pv2-btn sm" @onclick="GoToday">Today</button>
+                    </div>
+                    <div class="pv2mw-cal">
+                        @foreach (var dn in new[] { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" }) { <div class="dh">@dn</div> }
+                        @foreach (var d in MyWorkMath.MonthCells(month))
+                        {
+                            var evs = Visible().Where(i => i.DueDate?.Date == d.Date).ToList();
+                            <div class="cd @(d.Month != month.Month ? "out" : "") @(d.Date == day ? "today" : "")" data-day="@d.ToString("yyyy-MM-dd")">
+                                <span class="dn pv2-num">@d.Day</span>
+                                @foreach (var i in evs.Take(4))
+                                {
+                                    var it = i;
+                                    <div class="ev" role="button" tabindex="0" style="background:@ProjectStatusUi.SafeColor(it.StatusColor)" title="@it.Title (@it.ProjectName)" @onclick="() => Open(it)">@it.Title</div>
+                                }
+                                @if (evs.Count > 4) { <small class="pv2-note">+@(evs.Count - 4) more</small> }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="pv2pg-card" data-card="tasks">
+                    @if (Visible().Count == 0 && counts.Late + counts.DueToday + counts.ThisWeek + counts.Later == 0)
+                    {
+                        <div class="pv2pg-empty" style="padding:44px 16px">
+                            <span class="pv2-bigic" style="background:var(--accent)"><i data-lucide="check"></i></span>
+                            <h3>You're all caught up</h3>
+                            <p>Nothing is assigned to you right now. New tasks from your projects show up here.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var b in new[] { MyWorkMath.Bucket.Late, MyWorkMath.Bucket.Today, MyWorkMath.Bucket.ThisWeek, MyWorkMath.Bucket.Later })
+                        {
+                            var rows = Visible().Where(i => MyWorkMath.BucketOf(i, day) == b).ToList();
+                            <h4 class="pv2mw-h @(b == MyWorkMath.Bucket.Late ? "late" : "")" data-bucket="@b">@MyWorkMath.BucketLabel(b) <small class="pv2-num">@MyWorkMath.CountOf(counts, b)</small></h4>
+                            @if (rows.Count == 0 && MyWorkMath.CountOf(counts, b) == 0 && b != MyWorkMath.Bucket.Late)
+                            {
+                                <div class="pv2mw-none">@(b == MyWorkMath.Bucket.Today ? "Nothing due today." : b == MyWorkMath.Bucket.ThisWeek ? "Nothing else due this week." : "Nothing planned further ahead.")</div>
+                            }
+                            @foreach (var i in rows)
+                            {
+                                var it = i;
+                                var gone = goneIds.Contains(it.TaskId);
+                                <div class="pv2mw-row @(gone ? "gone" : "")" @key="it.TaskId" data-task="@it.TaskId" data-late="@(it.IsLate ? "1" : "0")" role="button" tabindex="0"
+                                     @onclick="() => Open(it)" @onkeydown="e => RowKey(e, it)">
+                                    <button type="button" class="pv2-cb @(gone ? "on" : "")" role="checkbox" aria-checked="@(gone ? "true" : "false")" aria-label="Mark done: @it.Title" data-act="mwdone"
+                                            @onclick="() => Complete(it)" @onclick:stopPropagation="true"></button>
+                                    <span class="pv2mw-t">@it.Title</span>
+                                    <span class="pj" title="@it.ProjectName"><i style="background:@ProjectStatusUi.SafeColor(it.ProjectColor)"></i>@it.ProjectName</span>
+                                    <span><span class="pv2pg-pill" style="--c:@ProjectStatusUi.SafeColor(it.StatusColor)">@it.Status</span></span>
+                                    <span class="pv2-num pv2mw-due @(it.IsLate ? "late" : "")">@MyWorkMath.DueText(it, day)</span>
+                                </div>
+                            }
+                        }
+                    }
+                </div>
+            }
+
+            <div class="pv2pg-card" data-card="waiting">
+                <h4>Waiting on me</h4>
+                <div class="pv2pg-cbin">
+                    @if (dto.WaitingOnMe.Count == 0)
+                    {
+                        <div class="pv2mw-none" style="padding:0">Nobody is waiting on you.</div>
+                    }
+                    @foreach (var w in dto.WaitingOnMe)
+                    {
+                        var item = w;
+                        <button type="button" class="pv2mw-wait" data-kind="@item.Kind" @onclick="() => OnOpenTask.InvokeAsync((item.ProjectId, item.TaskId))">
+                            @if (item.Kind == "request") { <i data-lucide="clipboard-list" style="color:var(--pv2-violet)"></i> }
+                            else if (!string.IsNullOrEmpty(item.FromNik)) { <PersonAvatar Nik="@item.FromNik" Name="@item.FromName" Size="22" Class="pv2-av" Decorative="true" /> }
+                            else { <i data-lucide="octagon-alert" style="color:var(--danger)"></i> }
+                            <span><b>@item.Text</b><small>@item.ProjectName@(string.IsNullOrEmpty(item.FromName) ? "" : " · " + item.FromName) · @MyWorkMath.Ago(item.At)</small></span>
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@if (newOpen)
+{
+    <div class="pv2 pv2-scrim" @onclick="CloseNew">
+        <div class="pv2-modal pv2mw-newmodal" role="dialog" aria-modal="true" aria-labelledby="pv2mw-newt" @onclick:stopPropagation="true" @onkeydown="NewKey">
+            <div class="pv2-mh"><h2 id="pv2mw-newt">New task</h2><span class="pv2-sp"></span><button type="button" class="pv2-ibtn" aria-label="Close" @onclick="CloseNew"><i data-lucide="x"></i></button></div>
+            <div class="pv2-mbody">
+                <label class="pv2f-l" for="pv2mw-proj">Which project?</label>
+                <select id="pv2mw-proj" class="pv2-nm pv2f-in" @bind="newProject">
+                    <option value="">Choose a project</option>
+                    @foreach (var p in OpenProjects) { <option value="@p.Id">@p.Name</option> }
+                </select>
+                <label class="pv2f-l" for="pv2mw-title" style="margin-top:12px">Task name</label>
+                <input id="pv2mw-title" class="pv2-nm pv2f-in" maxlength="200" placeholder="What needs to be done?" @bind="newTitle" @bind:event="oninput" @onkeydown="NewKey" />
+                @if (newError.Length > 0) { <div class="pv2-err" role="alert">@newError</div> }
+            </div>
+            <div class="pv2-mf"><span class="pv2-sp"></span><button type="button" class="pv2-btn" @onclick="CloseNew">Cancel</button><button type="button" class="pv2-btn pri" disabled="@(newBusy || string.IsNullOrEmpty(newProject))" data-act="mw-create" @onclick="CreateNew">Create task</button></div>
+        </div>
+    </div>
+}
+
+@code {
+    private enum LoadState { Loading, Ready, Error }
+
+    [Parameter] public bool FullScreen { get; set; }
+    [Parameter] public bool RailOpen { get; set; }
+    [Parameter] public EventCallback OnToggleFullScreen { get; set; }
+    [Parameter] public EventCallback OnToggleRail { get; set; }
+    /// Project list (for the "New task" picker).
+    [Parameter] public List<ProjectListDto> Projects { get; set; } = [];
+    /// Bumped on live refresh; the page reloads quietly.
+    [Parameter] public int Version { get; set; }
+    [Parameter] public DateTime? Today { get; set; }
+    [Parameter] public EventCallback<(Guid ProjectId, Guid TaskId)> OnOpenTask { get; set; }
+    /// Fires whenever the counters change (the rail's red "N late" badge follows).
+    [Parameter] public EventCallback<MyWorkCountsDto> OnCounts { get; set; }
+
+    private LoadState state = LoadState.Loading;
+    private MyWorkDto? dto;
+    private MyWorkCountsDto counts = new(0, 0, 0, 0, 0);
+    private string? errorText;
+    private readonly int[] flash = new int[4];
+    private readonly HashSet<Guid> goneIds = [];
+    private readonly Dictionary<Guid, List<ProjectStatusOptionDto>> options = [];
+    private bool calendarMode;
+    private DateTime month;
+    private int seq, loadedVersion = -1;
+    private bool disposed;
+    private DateTime day => (Today ?? DateTime.Today).Date;
+
+    private bool newOpen, newBusy;
+    private string newProject = "", newTitle = "", newError = "";
+    private IEnumerable<ProjectListDto> OpenProjects => Projects.Where(p => p.IsActive && !p.Status.Equals("completed", StringComparison.OrdinalIgnoreCase) && !p.Status.Equals("cancelled", StringComparison.OrdinalIgnoreCase)).OrderBy(p => p.Name);
+
+    private string Flash(int i) => flash[i] > 0 ? "pv2-flash" : "";
+    private List<MyWorkItemDto> Visible() => dto?.Items.ToList() ?? [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (month == default) month = new DateTime(day.Year, day.Month, 1);
+        if (loadedVersion == Version) return;
+        var quiet = loadedVersion >= 0 && dto is not null;
+        loadedVersion = Version;
+        await LoadAsync(quiet);
+    }
+
+    private async Task LoadAsync(bool quiet)
+    {
+        var my = ++seq;
+        if (!quiet) { state = LoadState.Loading; StateHasChanged(); }
+        GetResult<MyWorkDto> res;
+        try { res = await Auth.GetResultAsync<MyWorkDto>($"/api/projects/my-work?localToday={day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}"); }
+        catch (OperationCanceledException) { return; }
+        if (my != seq || disposed) return;
+        if (res.IsOk && res.Value is not null)
+        {
+            dto = res.Value; state = LoadState.Ready; errorText = null;
+            goneIds.Clear();
+            SetCounts(dto.Counts, animate: quiet);
+        }
+        else if (!quiet || dto is null)
+        {
+            state = LoadState.Error;
+            errorText = res.Status == GetStatus.Unreachable
+                ? "iPop could not reach the server. Check your connection and try again."
+                : "Something went wrong while loading your work. Try again in a moment.";
+        }
+    }
+
+    private void SetCounts(MyWorkCountsDto next, bool animate)
+    {
+        if (animate)
+        {
+            if (next.Late != counts.Late) flash[0]++;
+            if (next.DueToday != counts.DueToday) flash[1]++;
+            if (next.ThisWeek != counts.ThisWeek) flash[2]++;
+            if (next.DoneThisWeek != counts.DoneThisWeek) flash[3]++;
+        }
+        counts = next;
+        _ = OnCounts.InvokeAsync(next);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+        try { await JS.InvokeVoidAsync("ipopPv2.pgSeg"); } catch { }
+    }
+
+    private void SetMode(bool cal) { calendarMode = cal; }
+    private void ShiftMonth(int by) => month = month.AddMonths(by);
+    private void GoToday() => month = new DateTime(day.Year, day.Month, 1);
+
+    private Task Open(MyWorkItemDto i) => OnOpenTask.InvokeAsync((i.ProjectId, i.TaskId));
+    private Task RowKey(KeyboardEventArgs e, MyWorkItemDto i) => e.Key is "Enter" ? Open(i) : Task.CompletedTask;
+
+    /// Tick: move the task to the project's first Done status, slide the row out, update the counters. Undo moves it back.
+    private async Task Complete(MyWorkItemDto i)
+    {
+        if (goneIds.Contains(i.TaskId)) return;
+        var bucket = MyWorkMath.BucketOf(i, day);
+        goneIds.Add(i.TaskId);
+        StateHasChanged();
+        var opts = await OptionsFor(i.ProjectId);
+        var done = opts.FirstOrDefault(o => o.Stage == "done");
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/tasks/{i.TaskId}/move", new TaskMoveRequest("done", null, done is not null && done.Id != Guid.Empty ? done.Id : null));
+        if (!res.IsSuccessStatusCode)
+        {
+            goneIds.Remove(i.TaskId);
+            Toasts.Show("Couldn't finish that task. Try again.", ToastKind.Error);
+            return;
+        }
+        SetCounts(MyWorkMath.Remove(counts, bucket), animate: true);
+        Toasts.ShowUndo("Done. It moved to Done this week.", () => Undo(i), "Undo", 5000);
+    }
+
+    private async Task Undo(MyWorkItemDto i)
+    {
+        var opts = await OptionsFor(i.ProjectId);
+        var back = opts.FirstOrDefault(o => o.Stage == i.Stage && o.Label == i.Status) ?? opts.FirstOrDefault(o => o.Stage == i.Stage);
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/tasks/{i.TaskId}/move", new TaskMoveRequest(i.Stage, null, back is not null && back.Id != Guid.Empty ? back.Id : null));
+        if (!res.IsSuccessStatusCode) Toasts.Show("Couldn't undo that.", ToastKind.Error);
+        await LoadAsync(true);
+        if (!disposed) await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task<List<ProjectStatusOptionDto>> OptionsFor(Guid projectId)
+    {
+        if (options.TryGetValue(projectId, out var cached)) return cached;
+        List<ProjectStatusOptionDto>? list = null;
+        try { list = await Auth.GetAsync<List<ProjectStatusOptionDto>>($"/api/projects/{projectId}/statuses"); } catch { }
+        list ??= [];
+        if (list.Count > 0) options[projectId] = list;
+        return list;
+    }
+
+    private void OpenNew() { newOpen = true; newError = ""; newTitle = ""; newProject = OpenProjects.Count() == 1 ? OpenProjects.First().Id.ToString() : ""; }
+    private void CloseNew() => newOpen = false;
+    private Task NewKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") newOpen = false;
+        else if (e.Key == "Enter") return CreateNew();
+        return Task.CompletedTask;
+    }
+
+    private async Task CreateNew()
+    {
+        if (newBusy || !Guid.TryParse(newProject, out var pid)) return;
+        newBusy = true; newError = "";
+        try
+        {
+            var title = string.IsNullOrWhiteSpace(newTitle) ? "New task" : newTitle.Trim();
+            var req = new CreateTaskRequest(pid, null, title, null, "todo", null, null, null, null, null, null);
+            var r = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{pid}/tasks", req);
+            if (!r.IsSuccessStatusCode) { newError = "Couldn't add the task. You may only have view access to that project."; return; }
+            ProjectTaskDto? created = null;
+            try { created = await r.Content.ReadFromJsonAsync<ProjectTaskDto>(); } catch { }
+            newOpen = false;
+            if (created is not null) await OnOpenTask.InvokeAsync((pid, created.Id));
+        }
+        catch { newError = "Couldn't add the task. Check your connection and try again."; }
+        finally { newBusy = false; }
+    }
+
+    public void Dispose() => disposed = true;
+}
