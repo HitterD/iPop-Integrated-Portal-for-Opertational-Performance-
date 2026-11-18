@@ -39,6 +39,10 @@ public class ProjectTemplate
     public string? AutomationsJson { get; set; }
     /// True when task/milestone offsets count working days (Mon-Fri); false = calendar days (older templates, save-as-template).
     public bool OffsetsInWorkingDays { get; set; }
+    /// Save-as-template: JSON [{name,type,options}] custom field columns recreated on the new project; null = none.
+    public string? FieldsJson { get; set; }
+    /// Save-as-template: JSON [{kind,enabled,config}] automation settings applied to the new project; null = defaults.
+    public string? RulesJson { get; set; }
 
     public Project? SourceProject { get; set; }
     public User? CreatedBy { get; set; }

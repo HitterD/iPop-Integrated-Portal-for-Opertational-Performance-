@@ -197,4 +197,47 @@ public sealed class ProjectTemplateV2Tests
         using var v = c.T.Verify();
         Assert.Equal(ProjectStatusDefaults.Options.Count, await v.ProjectStatusOptions.CountAsync(o => o.ProjectId == r.Value!.Id));
     }
+
+    [Fact]
+    public async Task Save_as_template_keeps_statuses_tabs_columns_automations_and_task_lengths()
+    {
+        using var c = await SetupAsync();
+        var db = c.T.Verify();
+        var src = (await new ProjectService(db).CreateProjectAsync(c.Owner.Id, new CreateProjectRequest("Src", null, 2026, c.Owner.Id, Monday, null, null, null), default)).Project!.Id;
+        await new ProjectStatusService(db).EnsureStatusesAsync(src, default);
+        var w = c.T.Db;
+        var opts = w.ProjectStatusOptions.Where(o => o.ProjectId == src).OrderBy(o => o.SortOrder).ToList();
+        opts[0].Label = "To do"; opts[0].Color = "#c4c4c4";
+        w.ProjectStatusOptions.Add(new ProjectStatusOption { Id = Guid.NewGuid(), ProjectId = src, Label = "QA hold", Color = "#0e9aa7", Stage = "doing", SortOrder = 9999, CreatedAt = DateTime.UtcNow });
+        w.Projects.Single(p => p.Id == src).TabsJson = "[\"overview\",\"table\",\"gantt\",\"form\"]";
+        w.ProjectFields.Add(new ProjectField { Id = Guid.NewGuid(), ProjectId = src, Name = "Vendor", Type = "Dropdown", OptionsJson = "[\"A\",\"B\"]", SortOrder = 1, CreatedAt = DateTime.UtcNow });
+        w.ProjectFields.Add(new ProjectField { Id = Guid.NewGuid(), ProjectId = src, Name = "Cost", Type = "Number", SortOrder = 0, CreatedAt = DateTime.UtcNow });
+        var weekly = w.ProjectAutomations.Single(a => a.ProjectId == src && a.Kind == ProjectAutomationCatalogue.WeeklyRecurringTask);
+        weekly.IsEnabled = true; weekly.ConfigJson = "{\"title\":\"Weekly sync\",\"weekday\":3}";
+        w.ProjectAutomations.Single(a => a.ProjectId == src && a.Kind == ProjectAutomationCatalogue.DueTomorrowRemind).IsEnabled = false;
+        var group = w.ProjectGroups.First(g => g.ProjectId == src);
+        w.ProjectTasks.Add(new ProjectTask { Id = Guid.NewGuid(), ProjectId = src, GroupId = group.Id, Title = "Three days", Status = "todo",
+            StartDate = Monday.AddDays(1), DueDate = Monday.AddDays(3), CreatedById = c.Owner.Id, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        w.SaveChanges();
+
+        var tpl = await c.Svc().CreateAsync(c.Owner.Id, new CreateProjectTemplateRequest("Saved", null, src, Visibility: "private"), default);
+        Assert.True(tpl.Success, tpl.Error);
+        var made = await c.Svc().CreateProjectAsync(c.Owner.Id, new CreateProjectFromTemplateRequest(tpl.Value!.Id, "Copy", null, null, null, Monday.AddDays(7), null), default);
+        Assert.True(made.Success, made.Error);
+        var v = c.T.Verify(); var np = made.Value!.Id;
+        Assert.Equal(new[] { "To do", "Working on it", "Stuck", "Ready to check", "Done", "QA hold" }.OrderBy(x => x),
+            v.ProjectStatusOptions.Where(o => o.ProjectId == np).Select(o => o.Label).ToList().OrderBy(x => x));
+        Assert.Equal("[\"overview\",\"table\",\"gantt\",\"form\"]", v.Projects.Single(p => p.Id == np).TabsJson);
+        var fields = v.ProjectFields.Where(f => f.ProjectId == np).OrderBy(f => f.SortOrder).ToList();
+        Assert.Equal(new[] { "Cost", "Vendor" }, fields.Select(f => f.Name));
+        Assert.Equal("[\"A\",\"B\"]", fields[1].OptionsJson);
+        var rules = v.ProjectAutomations.Where(a => a.ProjectId == np).ToList();
+        Assert.True(rules.Single(a => a.Kind == ProjectAutomationCatalogue.WeeklyRecurringTask).IsEnabled);
+        Assert.Contains("Weekly sync", rules.Single(a => a.Kind == ProjectAutomationCatalogue.WeeklyRecurringTask).ConfigJson);
+        Assert.False(rules.Single(a => a.Kind == ProjectAutomationCatalogue.DueTomorrowRemind).IsEnabled);
+        Assert.Single(rules, a => a.Kind == ProjectAutomationCatalogue.WeeklyRecurringTask);
+        var t = v.ProjectTasks.Single(x => x.ProjectId == np && x.Title == "Three days");
+        Assert.Equal(Monday.AddDays(8), t.StartDate);
+        Assert.Equal(Monday.AddDays(10), t.DueDate);
+    }
 }

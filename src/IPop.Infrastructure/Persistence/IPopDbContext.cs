@@ -741,6 +741,8 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.TabsJson).HasMaxLength(1000);
             e.Property(x => x.RolesJson).HasMaxLength(2000);
             e.Property(x => x.AutomationsJson).HasMaxLength(2000);
+            e.Property(x => x.FieldsJson).HasMaxLength(8000);
+            e.Property(x => x.RulesJson).HasMaxLength(4000);
             e.HasIndex(x => x.CreatedById);
             e.HasOne(x => x.CreatedBy).WithMany().HasForeignKey(x => x.CreatedById).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.Department).WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.SetNull);

@@ -115,6 +115,25 @@ public sealed class ProjectTemplateService(IPopDbContext db, IProjectService pro
             // Offsets are counted from the source project's start (or creation) date.
             var baseDate = (source.StartDate ?? source.CreatedAt).Date;
 
+            // The project's own setup travels with it: statuses, tabs, custom field columns and automation settings
+            // (Close project promises "groups, statuses, columns, automations and lessons").
+            var srcStatuses = await db.ProjectStatusOptions.AsNoTracking().Where(o => o.ProjectId == source.Id)
+                .OrderBy(o => o.SortOrder).ThenBy(o => o.CreatedAt)
+                .Select(o => new ProjectTemplateStatusDto(o.Label, o.Color, o.Stage)).ToListAsync(ct);
+            if (srcStatuses.Count > 0) tpl.StatusesJson = Json(srcStatuses);
+            tpl.TabsJson = string.IsNullOrWhiteSpace(source.TabsJson) ? null : source.TabsJson;
+            var srcFields = await db.ProjectFields.AsNoTracking().Where(f => f.ProjectId == source.Id)
+                .OrderBy(f => f.SortOrder).ThenBy(f => f.CreatedAt)
+                .Select(f => new TemplateField(f.Name, f.Type, f.OptionsJson)).ToListAsync(ct);
+            if (srcFields.Count > 0) tpl.FieldsJson = Json(srcFields);
+            var srcRules = await db.ProjectAutomations.AsNoTracking().Where(a => a.ProjectId == source.Id)
+                .Select(a => new TemplateRule(a.Kind, a.IsEnabled, a.ConfigJson)).ToListAsync(ct);
+            if (srcRules.Count > 0) tpl.RulesJson = Json(srcRules);
+            if (tpl.StatusesJson is { Length: > 2000 }) tpl.StatusesJson = null;
+            if (tpl.TabsJson is { Length: > 1000 }) tpl.TabsJson = null;
+            if (tpl.FieldsJson is { Length: > 8000 }) tpl.FieldsJson = null;
+            if (tpl.RulesJson is { Length: > 4000 }) tpl.RulesJson = null;
+
             var groupMap = new Dictionary<Guid, Guid>();
             if (req.IncludeSections)
             {
@@ -134,7 +153,7 @@ public sealed class ProjectTemplateService(IPopDbContext db, IProjectService pro
                 .OrderBy(t => t.Group.SortOrder).ThenBy(t => t.SortOrder)
                 .Select(t => new
                 {
-                    t.Id, t.Title, t.Description, t.Priority, t.DueDate, t.GroupId,
+                    t.Id, t.Title, t.Description, t.Priority, t.DueDate, t.StartDate, t.GroupId,
                     Niks = t.Assignees.Select(a => a.User.Nik).ToList(),
                 })
                 .ToListAsync(ct);
@@ -147,6 +166,8 @@ public sealed class ProjectTemplateService(IPopDbContext db, IProjectService pro
                     Id = Guid.NewGuid(), TemplateId = tpl.Id, Title = t.Title, Description = t.Description,
                     Priority = t.Priority, SortOrder = i++ * 100,
                     DueOffsetDays = t.DueDate is { } due ? (due.Date - baseDate).Days : null,
+                    // Calendar-day span, so a 3-day task is still 3 days long in the new project.
+                    DurationDays = t is { DueDate: { } d1, StartDate: { } s1 } && d1.Date >= s1.Date ? (d1.Date - s1.Date).Days + 1 : null,
                     GroupId = groupMap.TryGetValue(t.GroupId, out var gid) ? gid : null,
                     AssigneeNiks = req.IncludeAssignees && t.Niks.Count > 0 ? string.Join(",", t.Niks.Distinct()) : null,
                 };
@@ -297,6 +318,26 @@ public sealed class ProjectTemplateService(IPopDbContext db, IProjectService pro
             db.ProjectMilestones.Add(m);
             foreach (var tid in linked) db.ProjectMilestoneTasks.Add(new ProjectMilestoneTask { MilestoneId = m.Id, TaskId = tid });
         }
+        // Saved-from-a-project setup: custom field columns and the automation settings.
+        foreach (var (f, fi) in ParseList<TemplateField>(tpl.FieldsJson).Where(f => !string.IsNullOrWhiteSpace(f.Name) && !string.IsNullOrWhiteSpace(f.Type)).Select((f, i) => (f, i)))
+            db.ProjectFields.Add(new ProjectField { Id = Guid.NewGuid(), ProjectId = projectId, Name = f.Name.Trim(), Type = f.Type, OptionsJson = f.Options, SortOrder = fi, CreatedAt = now });
+        var savedRules = ParseList<TemplateRule>(tpl.RulesJson);
+        if (savedRules.Count > 0)
+        {
+            var rows = await db.ProjectAutomations.Where(a => a.ProjectId == projectId).ToListAsync(ct);
+            foreach (var r in savedRules.Where(r => ProjectAutomationCatalogue.Find(r.Kind) is not null).GroupBy(r => r.Kind).Select(g => g.First()))
+            {
+                var row = rows.FirstOrDefault(a => a.Kind == r.Kind);
+                if (row is null)
+                {
+                    row = new ProjectAutomation { Id = Guid.NewGuid(), ProjectId = projectId, Kind = r.Kind, CreatedAt = now, ConfigJson = "{}" };
+                    db.ProjectAutomations.Add(row);
+                }
+                row.IsEnabled = r.Enabled;
+                if (!string.IsNullOrWhiteSpace(r.Config) && r.Config.Length <= 1000) row.ConfigJson = r.Config;
+            }
+        }
+
         // This creation flow owns the new project: membership and assignments are saved together.
         // Do not ignore a separate AddMemberAsync result after tasks have already been persisted.
         var existingMembers = await db.ProjectMembers.Where(m => m.ProjectId == projectId)
@@ -370,6 +411,18 @@ public sealed class ProjectTemplateService(IPopDbContext db, IProjectService pro
     }
 
     private static readonly System.Text.Json.JsonSerializerOptions JsonOpts = new(System.Text.Json.JsonSerializerDefaults.Web);
+
+    private sealed record TemplateField(string Name, string Type, string? Options);
+    private sealed record TemplateRule(string Kind, bool Enabled, string? Config);
+
+    private static string Json<T>(T value) => System.Text.Json.JsonSerializer.Serialize(value, JsonOpts);
+
+    private static List<T> ParseList<T>(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try { return System.Text.Json.JsonSerializer.Deserialize<List<T>>(json, JsonOpts) ?? []; }
+        catch (System.Text.Json.JsonException) { return []; }
+    }
 
     private static List<string> ParseStrings(string? json)
     {

@@ -4945,6 +4945,10 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<int?>("DurationWeeks")
                         .HasColumnType("integer");
 
+                    b.Property<string>("FieldsJson")
+                        .HasMaxLength(8000)
+                        .HasColumnType("character varying(8000)");
+
                     b.Property<string>("Icon")
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
@@ -4966,6 +4970,10 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<string>("RolesJson")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("RulesJson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
 
                     b.Property<Guid?>("SourceProjectId")
                         .HasColumnType("uuid");
