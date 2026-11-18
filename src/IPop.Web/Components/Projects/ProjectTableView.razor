@@ -15,7 +15,7 @@
     }
     @foreach (var group in Groups.OrderBy(g => g.SortOrder))
     {
-        @RenderGroup(group, FilteredTasks.Where(t => t.GroupId == group.Id && t.ParentTaskId is null).ToList())
+        @RenderGroup(group, GroupItems(group.Id))
     }
     @if (Groups.Count == 0)
     {
@@ -36,7 +36,7 @@
 
 @code {
     [Parameter] public bool ReadOnly { get; set; }
-    [Parameter] public List<ProjectTaskDto> Tasks { get; set; } = [];
+    [Parameter] public IReadOnlyList<ProjectTaskDto> Tasks { get; set; } = [];
     [Parameter] public List<ProjectMemberDto> Members { get; set; } = [];
     [Parameter] public List<ProjectGroupDto> Groups { get; set; } = [];
     [Parameter] public List<ProjectFieldDto> Fields { get; set; } = [];
@@ -159,6 +159,9 @@
 
     // Per-render snapshot: with 300 rows the column template, visible fields, filtered list and select-all order
     // were rebuilt for every row and group header (thousands of LINQ/string allocations per render).
+    private Dictionary<Guid, List<ProjectTaskDto>> groupedRows = [];
+    private object? groupedRowsKey;
+    private List<ProjectTaskDto> GroupItems(Guid groupId) => groupedRows.GetValueOrDefault(groupId) ?? [];
     private List<ProjectFieldDto>? renderFields;
     private string? renderColumns;
     private List<ProjectTaskDto>? renderFiltered;
@@ -168,7 +171,14 @@
         renderFields = null; renderColumns = null; renderFiltered = null; renderOrder = null;
         renderFields = VisibleFields;
         renderColumns = BuildColumnsStyle();
-        renderFiltered = ComputeFiltered();
+        var key = (Tasks, SearchQuery, MyTasksOnly, OverdueOnly, PriorityFilter, CurrentUserNik, StatusFilter);
+        if (!Equals(groupedRowsKey, key))
+        {
+            renderFiltered = ComputeFiltered();
+            groupedRows = renderFiltered.Where(t => t.ParentTaskId is null).GroupBy(t => t.GroupId)
+                .ToDictionary(g => g.Key, g => g.ToList());
+            groupedRowsKey = key;
+        }
     }
 
     // edge, select, task, owner, status, due, timeline, priority, progress, custom fields, "+"
@@ -647,7 +657,9 @@
                 }
             </div>
 
-            <div class="pv2-gbody"><div @attributes="@(isCollapsed ? InertAttr : null)">
+            @if (!isCollapsed)
+            {
+            <div class="pv2-gbody"><div>
                 <div class="pv2-tbl">
                     <div class="pv2-row pv2-head" style="@ColumnsStyle">
                         <div class="pv2-edge" style="background:@gcolor"></div>
@@ -699,8 +711,9 @@
                         </div>
                     </div>
 
-                    @foreach (var t in groupItems)
-                    {
+                    <Microsoft.AspNetCore.Components.Web.Virtualization.Virtualize Items="groupItems" Context="t" ItemSize="40" OverscanCount="4">
+                        <ItemContent>
+                        @{
                         var isOverdue = t.DueDate.HasValue && t.DueDate.Value < DateTime.UtcNow && t.Status != "done";
                         var evidence = TaskEvidenceHelper.Parse(t.Description).Evidence;
                         var pp = ProjectUiHelpers.GetPriorityPill(t.Priority);
@@ -716,6 +729,7 @@
                         {
                             var span = Math.Max(1, (due.Value.Date - start.Value.Date).TotalDays + 1);
                             fill = done ? 100 : Math.Clamp(((DateTime.Today - start.Value.Date).TotalDays + 1) / span * 100, 0, 100);
+                        }
                         }
                         <div @key="t.Id" data-flip-key="@t.Id" class="pv2-row pv2-task plist-task @(done ? "is-done" : "") @(isOverdue ? "late" : "") @(selected ? "sel is-selected" : "") @(SelectedIds.Count > 0 ? "selecting" : "") @(freshIds.Contains(t.Id) ? "pv2-rise" : "")" style="@ColumnsStyle" draggable="@(ReadOnly ? "false" : "true")" @ondragstart="() => { if (!ReadOnly) dragTaskId = t.Id; }" @ondragend="() => dragTaskId = null"
                              @onclick="() => RowClick(t)" @onpointerdown="e => StartLongPress(t.Id, e)" @onpointerup="CancelLongPress" @onpointercancel="CancelLongPress">
@@ -983,7 +997,8 @@
                                 }
                             </div>
                         </div>
-                    }
+                        </ItemContent>
+                    </Microsoft.AspNetCore.Components.Web.Virtualization.Virtualize>
 
                     @if (!ReadOnly)
                     {
@@ -1026,6 +1041,7 @@
                     </div>
                 </div>
             </div></div>
+            }
         </div>;
     }
 }

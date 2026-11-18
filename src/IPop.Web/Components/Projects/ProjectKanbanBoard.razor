@@ -18,8 +18,9 @@
     private IReadOnlyList<ProjectStatusOptionDto> Opts => StatusOptions.Count > 0 ? StatusOptions : ProjectStatusUi.StageDefaults;
     private List<ProjectTaskDto> AllKanbanTasks => [.. Kanban?.Todo ?? [], .. Kanban?.Doing ?? [], .. Kanban?.Review ?? [], .. Kanban?.Done ?? []];
     /// A card sits in the column of its StatusOptionId, else the first option of its stage.
-    private List<ProjectTaskDto> TasksFor(ProjectStatusOptionDto opt) =>
-        AllKanbanTasks.Where(t => ProjectStatusUi.Resolve(t, Opts) == opt).ToList();
+    private object? laneKey;
+    private Dictionary<ProjectStatusOptionDto, List<ProjectTaskDto>> lanes = [];
+    private List<ProjectTaskDto> TasksFor(ProjectStatusOptionDto opt) => lanes.GetValueOrDefault(opt) ?? [];
     private static string ColKey(ProjectStatusOptionDto o) => o.Id == Guid.Empty ? o.Stage : o.Id.ToString();
     [Parameter] public List<ProjectMemberDto> Members { get; set; } = [];
     [Parameter] public List<ProjectGroupDto> Groups { get; set; } = [];
@@ -38,6 +39,24 @@
     [Parameter] public EventCallback<(Guid TaskId, Guid UserId, bool IsAssigned)> OnToggleAssignee { get; set; }
     [Parameter] public EventCallback<ProjectTaskDto> OnRequestExtension { get; set; }
 
+    // HTML drag feedback is handled by the existing JS follower. Starting/ending a drag
+    // changes no card data and must not diff every lane.
+    private bool suppressDragRender;
+    protected override void OnParametersSet()
+    {
+        suppressDragRender = false;
+        var key = (Kanban, StatusOptions);
+        if (Equals(laneKey, key)) return;
+        lanes = AllKanbanTasks.GroupBy(t => ProjectStatusUi.Resolve(t, Opts)).ToDictionary(g => g.Key, g => g.ToList());
+        laneKey = key;
+    }
+    protected override bool ShouldRender()
+    {
+        if (!suppressDragRender) return true;
+        suppressDragRender = false;
+        return false;
+    }
+    private void EndDrag() { draggingTaskId = null; suppressDragRender = true; }
     private Guid? draggingTaskId;
     private Guid? quickAssignTaskId;
     private string? quickAddColumn;
@@ -107,6 +126,7 @@
     {
         if (ReadOnly) return;
         draggingTaskId = taskId;
+        suppressDragRender = true;
         try
         {
             if (e.DataTransfer != null)
@@ -185,7 +205,7 @@
         moreTaskId = null;
     }
 
-    private RenderFragment RenderKanbanCol(ProjectStatusOptionDto opt, IReadOnlyList<ProjectTaskDto> items)
+    private RenderFragment RenderKanbanCol(ProjectStatusOptionDto opt, List<ProjectTaskDto> items)
     {
         var statusKey = ColKey(opt);
         var title = opt.Label;
@@ -210,7 +230,8 @@
             filteredItems = filteredItems.Where(t => t.Title.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase)
                 || (t.Tags?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false));
         }
-        var taskList = filteredItems.ToList();
+        var taskList = !MyTasksOnly && !OverdueOnly && string.IsNullOrWhiteSpace(PriorityFilter) && string.IsNullOrWhiteSpace(SearchQuery)
+            ? items : filteredItems.ToList();
 
         @* Lane highlight is toggled in ipop.initKanbanDragFollower so dragover never re-renders Blazor. *@
         return @<div class="kanban-column @colThemeClass" data-lane="@statusKey" style="--pv2-col:@ccolor"
@@ -246,21 +267,21 @@
                     <div class="kanban-empty-lane">Drop tasks here</div>
                 }
 
-                @foreach (var t in taskList)
-                {
+                <Microsoft.AspNetCore.Components.Web.Virtualization.Virtualize Items="taskList" Context="t" ItemSize="130" OverscanCount="3">
+                    <ItemContent>
+                    @{
                     var isOverdue = t.DueDate.HasValue && t.DueDate.Value < DateTime.UtcNow && t.Status != "done";
                     var evidence = TaskEvidenceHelper.Parse(t.Description).Evidence;
                     var isJustArrived = justMovedTaskId == t.Id;
                     var isJustCreated = HighlightTaskId == t.Id;
-
-
+                    }
                     <div id="task-card-@t.Id" @key="t.Id"
                          class="kanban-task-card @(t.Status == "done" ? "is-done" : "") @(isJustArrived ? "task-just-arrived" : "") @(isJustCreated ? "task-just-created" : "") @(HighlightTaskId == t.Id ? "task-highlight" : "")"
                          draggable="@(ReadOnly ? "false" : "true")"
                          @onclick="() => OnTaskClick.InvokeAsync(t)"
                          @ondragstart="e => OnDragStart(t.Id, e)"
                          @ondragover:preventDefault="true"
-                         @ondragend="() => draggingTaskId = null">
+                         @ondragend="EndDrag">
                         @{ var pp = ProjectUiHelpers.GetPriorityPill(t.Priority); var dueState = ProjectUiHelpers.GetDueState(t); }
                         @{ var grp = Groups.FirstOrDefault(g => g.Id == t.GroupId); }
                         <div class="kc-top">
@@ -419,7 +440,8 @@
                         </div>
                     </div>
 
-                }
+                    </ItemContent>
+                </Microsoft.AspNetCore.Components.Web.Virtualization.Virtualize>
 
             </div>
 

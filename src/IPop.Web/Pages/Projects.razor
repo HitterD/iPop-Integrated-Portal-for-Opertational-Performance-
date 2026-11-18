@@ -210,6 +210,7 @@ else
                         <div class="proj-canvas-split-main">
                             @if (tab == 0)
                             {
+                                <ProjectViewGate RenderKey="@((kanban, statusOptions, projectMembers, projectGroups, taskSearchQuery, myTasksOnly, overdueOnly, priorityFilter, currentUserNik, highlightTaskId, CanWriteTasks))">
                                 <ProjectKanbanBoard ReadOnly="@(!CanWriteTasks)"
                                     Kanban="kanban"
                                     StatusOptions="statusOptions"
@@ -228,15 +229,17 @@ else
                                     OnQuickAdd="HandleQuickAdd"
                                     OnToggleAssignee="HandleToggleAssignee"
                                     OnRequestExtension="OpenExtensionModal" />
+                                </ProjectViewGate>
                             }
                             else if (tab == 1)
                             {
+                                <ProjectViewGate RenderKey="@((taskList, statusOptions, projectMembers, projectGroups, projectFields, taskFieldValues, taskSearchQuery, myTasksOnly, overdueOnly, priorityFilter, currentUserNik, listStatusFilter, selectedTaskIds, CanWriteTasks, CanManageMembers))">
                                 <ProjectTableView @ref="tableView" ReadOnly="@(!CanWriteTasks)"
                                     StatusOptions="statusOptions"
                                     CanEditStatuses="CanManageMembers"
                                     OnEditStatuses="OpenStatusModal"
                                     OnAddField="() => addingField = true"
-                                    Tasks="taskList.Items.ToList()"
+                                    Tasks="taskList.Items"
                                     Members="projectMembers"
                                     Groups="projectGroups"
                                     Fields="projectFields"
@@ -269,6 +272,7 @@ else
                                     OnRequestExtension="OpenExtensionModal"
                                     SelectedIds="selectedTaskIds"
                                     OnSelectionChanged="ids => selectedTaskIds = ids" />
+                                </ProjectViewGate>
                                 @if (selectedTaskIds.Count > 0)
                                 {
                                     <ProjectBulkBar StatusOptions="statusOptions" Count="selectedTaskIds.Count" Members="projectMembers" Groups="projectGroups" Busy="bulkBusy"
@@ -1333,7 +1337,8 @@ else
         if (newTab != tab) selectedTaskIds = new HashSet<Guid>();
         tab = newTab;
         viewKey = null;
-        if (tab == 1) await LoadTaskList();
+        // The list is loaded with the project; only assignee-filtered lists need a fresh query.
+        if (tab == 1 && HasListAssigneeFilter) await LoadTaskList();
         if (tab == 3) await LoadWorkloadData();
         StateHasChanged();
     }
@@ -1559,7 +1564,7 @@ else
     {
         if (selectedProjectId == Guid.Empty || projectFields.Count == 0) return;
         var values = await Auth.GetAsync<List<ProjectFieldValueDto>>($"/api/projects/{selectedProjectId}/tasks/{taskId}/fields") ?? [];
-        taskFieldValues[taskId] = values.ToDictionary(v => v.FieldId, v => v.Value);
+        taskFieldValues = new(taskFieldValues) { [taskId] = values.ToDictionary(v => v.FieldId, v => v.Value) };
     }
 
     private async Task SetFieldValue((Guid TaskId, Guid FieldId, string? Value) update)
@@ -1994,8 +1999,10 @@ else
         editingTask = t;
         _ = Notifs.MarkReadByTargetAsync("task", t.Id);
         showTaskEditor = true;
-        await LoadSubtasks(t.Id);
-        await LoadFieldValues(t.Id);
+        // Paint the shell immediately; related data must not delay visible feedback.
+        StateHasChanged();
+        await Task.Yield();
+        await Task.WhenAll(LoadSubtasks(t.Id), LoadFieldValues(t.Id));
         StateHasChanged();
         await JS.InvokeVoidAsync("ipop.icons");
     }

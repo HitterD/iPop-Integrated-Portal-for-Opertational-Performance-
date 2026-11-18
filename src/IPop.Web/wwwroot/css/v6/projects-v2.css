@@ -639,5 +639,11 @@ button.pv2-health:active { transform: scale(.94); }
 
 /* Long tables (300+ rows): the browser skips style/layout/paint of rows outside the viewport.
    Each row keeps its last measured height, so the scrollbar and anchors stay stable. */
-.pv2-root .pv2-row.pv2-task { content-visibility: auto; contain-intrinsic-size: auto 41px; }
-.pv2-ws .kanban-task-card { content-visibility: auto; contain-intrinsic-size: auto 96px; }
+/* One bounded scroll root for all groups (not one unbounded horizontal scroller
+   per group). Clip is not a scroll container, so Virtualize observes this root. */
+.pv2-root { height: calc(100dvh - 240px); min-height: 240px; overflow: auto; }
+.pv2-root .pv2-gbody > div { overflow: visible; }
+.pv2-root .pv2-tbl { overflow: visible; }
+.pv2-root .pv2-row.pv2-task { min-height: 40px; }
+.pv2-ws .kanban-cards-stream { display: block; max-height: calc(100dvh - 330px); }
+.pv2-ws .kanban-task-card { content-visibility: visible; }
