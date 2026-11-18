@@ -2879,7 +2879,16 @@ else
         StateHasChanged();
     }
 
-    private void PhoneChanged() => _ = InvokeAsync(StateHasChanged);
+    private void PhoneChanged() => _ = InvokeAsync(async () =>
+    {
+        StateHasChanged();
+        if (_disposed) return;
+        // html.proj-fs-open locks page scrolling; the phone layout has no full screen, so it must not keep that class
+        // when the window narrows mid-session. Widening again restores (or first sets up) the desktop full screen.
+        if (Phone.IsPhone) { try { await JS.InvokeVoidAsync("ipopPv2.setFullScreen", false, false); } catch { } }
+        else if (!fsInit) await InitFullScreenAsync();
+        else { try { await JS.InvokeVoidAsync("ipopPv2.setFullScreen", fullScreen, false); } catch { } }
+    });
     private IDisposable? _projectSub;
     public void Dispose()
     {
