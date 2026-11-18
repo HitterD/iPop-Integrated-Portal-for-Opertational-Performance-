@@ -492,8 +492,11 @@ else
         }
     }
 
+    private const string LastViewPref = "projects.lastView";
+
     private async Task SelectView(string key)
     {
+        try { _ = JS.InvokeVoidAsync("ipop.prefSet", LastViewPref, key); } catch { }
         viewKey = key;
         var idx = ProjectViewCatalog.TabIndex(key);
         if (idx < 0)
@@ -928,6 +931,22 @@ else
         }
         catch { }
 
+        // Desktop reopens on the view used last (mockup: remembered per browser); a project that lacks it
+        // falls back to its first tab (EnsureValidView).
+        if (!Phone.IsPhone)
+        {
+            try
+            {
+                var last = await JS.InvokeAsync<string?>("ipop.prefGet", LastViewPref);
+                if (!string.IsNullOrEmpty(last) && ProjectViewCatalog.Resolve([last]).Contains(last))
+                {
+                    var idx = ProjectViewCatalog.TabIndex(last);
+                    tab = idx >= 0 ? idx : -1;
+                    viewKey = last;
+                }
+            }
+            catch { /* storage blocked: default view */ }
+        }
         await ReloadProjects();
         _projectSub = Auth.On<Guid>(IPop.Application.Realtime.RealtimeEvents.ProjectChanged, QueueLiveRefresh);
         Auth.HubReconnected += OnHubReconnected;
@@ -2860,6 +2879,11 @@ else
     private async Task SelectProjectFromList(ProjectListDto p)
     {
         await SelectProject(p);
+        // The address follows the project on screen (reload, copy link, Back); the route change is a no-op
+        // re-entry because OnParametersSetAsync only selects when ProjectId differs from the selection.
+        if (!Phone.IsPhone && selectedProjectId == p.Id
+            && !Nav.ToAbsoluteUri(Nav.Uri).AbsolutePath.TrimEnd('/').Equals($"/projects/{p.Id}", StringComparison.OrdinalIgnoreCase))
+            Nav.NavigateTo($"/projects/{p.Id}");
         await OpenMobileDetail();
     }
 

@@ -166,11 +166,15 @@
         if (saved is null) return;
         await OnTabsSaved.InvokeAsync(saved);
         if (wasActive) await OnSelect.InvokeAsync(saved[0]);
+        var projectName = Project.Name;
         Toasts.ShowUndo($"Removed {ProjectViewCatalog.Get(key).Label} from this project.", async () =>
         {
-            if (Project.Id != projectId) return;
+            // Undo always restores the project the view was removed from; the open page only follows when
+            // that project is still the one on screen (the component is reused across projects).
             var undone = await SaveAsync(projectId, before);
-            if (undone is not null) await OnTabsSaved.InvokeAsync(undone);
+            if (undone is null) return;
+            if (Project.Id == projectId) await OnTabsSaved.InvokeAsync(undone);
+            else Toasts.Show($"{ProjectViewCatalog.Get(key).Label} is back in {projectName}.", ToastKind.Success);
         }, "Undo", 6000);
     }
 

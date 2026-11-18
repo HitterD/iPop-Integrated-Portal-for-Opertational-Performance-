@@ -111,6 +111,29 @@ public class ProjectV2HeaderTabsTests
     }
 
     [Fact]
+    public async Task Removing_a_view_then_switching_project_Undo_restores_the_first_project_only()
+    {
+        var (ctx, api, toasts) = NewContext();
+        using var _c = ctx;
+        IReadOnlyList<string>? saved = null;
+        var a = Proj(["table", "board", "gantt"]);
+        var cut = ctx.Render<ProjectViewTabs>(p => p.Add(x => x.Project, a).Add(x => x.CanManage, true)
+            .Add(x => x.OnTabsSaved, (IReadOnlyList<string> t) => saved = t));
+        cut.Find("[aria-label='Remove Gantt view']").Click();
+        var b = Proj(["overview", "table"]);
+        cut.Render(p => p.Add(x => x.Project, b));
+        saved = null;
+        var undo = Assert.Single(toasts.Active, t => t.Undo is not null);
+        await cut.InvokeAsync(() => undo.Undo!());
+        var puts = api.Calls.Where(c => c.Method == HttpMethod.Put).ToList();
+        Assert.Equal(2, puts.Count);
+        Assert.Equal($"/api/projects/{a.Id}/tabs", puts[1].Path);
+        Assert.Contains("\"tabs\":[\"table\",\"board\",\"gantt\"]", puts[1].Body);
+        Assert.Null(saved);   // project B's page is left alone
+        Assert.DoesNotContain(api.Calls, c => c.Path.Contains(b.Id.ToString()));
+    }
+
+    [Fact]
     public void Picking_a_view_that_is_already_there_only_switches_to_it()
     {
         var (ctx, api, _) = NewContext();
