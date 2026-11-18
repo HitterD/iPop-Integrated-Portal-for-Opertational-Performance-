@@ -370,6 +370,24 @@ public class ProjectV2Stage4WebBTests
     }
 
     [Fact]
+    public void Close_modal_says_when_the_template_could_not_be_saved()
+    {
+        var (ctx, _, toasts) = NewContext((r, b) => r.RequestUri!.AbsolutePath.EndsWith("/close")
+            ? Json(new CloseProjectResultDto(Summary(), false, null, false, "no_department")) : CloseApi(r, b));
+        using var _c = ctx;
+        CloseProjectResultDto? closed = null;
+        var cut = ctx.Render<ProjectCloseModal>(p => p.Add(x => x.ProjectId, P1).Add(x => x.ProjectName, "Gathering")
+            .Add(x => x.OnClosed, EventCallback.Factory.Create<CloseProjectResultDto>(ctx, r => closed = r)));
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("[data-act=archive]")));
+        cut.Find("[data-opt=template] button").Click();
+        cut.Find("[data-act=archive]").Click();
+        cut.WaitForAssertion(() => Assert.NotNull(closed));
+        Assert.Equal("no_department", closed!.TemplateError);
+        Assert.Contains(toasts.Active, t => t.Message.StartsWith("Project closed, but the template couldn't be saved: ") && t.Message.Contains("department"));
+        Assert.DoesNotContain(toasts.Active, t => t.Message.Contains("Template saved"));
+    }
+
+    [Fact]
     public void Close_modal_failure_keeps_it_open()
     {
         var (ctx, _, toasts) = NewContext((r, b) => r.RequestUri!.AbsolutePath.EndsWith("/close") ? new HttpResponseMessage(HttpStatusCode.InternalServerError) : CloseApi(r, b));

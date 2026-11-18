@@ -53,7 +53,8 @@ public record CloseSummaryDto(int Total, int Done, int? OnTimePercent, int LateC
     LongestDelayDto? LongestDelay, int OpenCommentsCount, int OpenTasks, bool FilesOnNas);
 public record CloseProjectRequest(string? Lessons, bool SaveAsTemplate, string? TemplateName, bool PostSummaryInChat);
 /// OpenTasksWarning is a flag, not an error: a project may be closed with open work.
-public record CloseProjectResultDto(CloseSummaryDto Summary, bool OpenTasksWarning, Guid? TemplateId, bool SummaryPosted);
+/// TemplateError: the project closed but "Save as template" failed ("no_department", "invalid_name", "template_failed", ...).
+public record CloseProjectResultDto(CloseSummaryDto Summary, bool OpenTasksWarning, Guid? TemplateId, bool SummaryPosted, string? TemplateError = null);
 
 public interface IProjectCloseService
 {

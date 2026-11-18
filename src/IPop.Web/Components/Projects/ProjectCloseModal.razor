@@ -130,12 +130,24 @@
             }
             CloseProjectResultDto? res = null;
             try { res = await r.Content.ReadFromJsonAsync<CloseProjectResultDto>(); } catch { }
-            Toasts.Show($"{ProjectName} is closed and archived." + (res?.TemplateId is not null ? " Template saved." : ""), ToastKind.Success);
+            if (res?.TemplateError is { } te)
+                Toasts.Show($"Project closed, but the template couldn't be saved: {TemplateErrorText(te)}", ToastKind.Warning);
+            else
+                Toasts.Show($"{ProjectName} is closed and archived." + (res?.TemplateId is not null ? " Template saved." : ""), ToastKind.Success);
             await OnClosed.InvokeAsync(res!);
         }
         catch { error = "Couldn't close the project. Check your connection and try again."; Toasts.Show("Couldn't close the project.", ToastKind.Error); }
         finally { busy = false; }
     }
+
+    internal static string TemplateErrorText(string code) => code switch
+    {
+        "no_department" => "your account has no department for a department template.",
+        "invalid_name" => "the template name is empty or too long.",
+        "forbidden" => "you don't have permission to create templates.",
+        "not_found" => "the project could not be found.",
+        _ => "something went wrong. Open the closed project and save it as a template again.",
+    };
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

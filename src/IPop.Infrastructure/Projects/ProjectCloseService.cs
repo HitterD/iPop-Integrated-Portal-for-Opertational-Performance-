@@ -77,15 +77,30 @@ public sealed class ProjectCloseService(IPopDbContext db, IProjectTemplateServic
         project.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
 
+        // The close itself is committed above; a template failure is reported, never rolled into a failed close.
         Guid? templateId = null;
-        if (request?.SaveAsTemplate == true && templates is not null)
+        string? templateError = null;
+        if (request?.SaveAsTemplate == true)
         {
-            var description = string.IsNullOrEmpty(lessons) ? null : "Lessons learned: " + lessons;
-            if (description is { Length: > ProjectTemplateService.MaxDescription }) description = description[..ProjectTemplateService.MaxDescription];
-            var created = await templates.CreateAsync(userId, new CreateProjectTemplateRequest(
-                string.IsNullOrEmpty(templateName) ? project.Name : templateName, description, projectId,
-                IncludeSections: true, IncludeMilestones: true, IncludeAssignees: false, Visibility: "private"), ct);
-            if (created.Success) templateId = created.Value!.Id;
+            if (templates is null) templateError = "template_failed";
+            else
+            {
+                var description = string.IsNullOrEmpty(lessons) ? null : "Lessons learned: " + lessons;
+                if (description is { Length: > ProjectTemplateService.MaxDescription }) description = description[..ProjectTemplateService.MaxDescription];
+                try
+                {
+                    var created = await templates.CreateAsync(userId, new CreateProjectTemplateRequest(
+                        string.IsNullOrEmpty(templateName) ? project.Name : templateName, description, projectId,
+                        IncludeSections: true, IncludeMilestones: true, IncludeAssignees: false, Visibility: "private"), ct);
+                    if (created.Success) templateId = created.Value!.Id;
+                    else templateError = created.Error ?? "template_failed";
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    templateError = "template_failed";
+                    db.ChangeTracker.Clear();
+                }
+            }
         }
 
         var posted = false;
@@ -107,7 +122,7 @@ public sealed class ProjectCloseService(IPopDbContext db, IProjectTemplateServic
                 posted = true;
             }
         }
-        return Ok(new CloseProjectResultDto(summary, summary.OpenTasks > 0, templateId, posted));
+        return Ok(new CloseProjectResultDto(summary, summary.OpenTasks > 0, templateId, posted, templateError));
     }
 
     public async Task<ProjectOpResult<bool>> ReopenAsync(Guid projectId, Guid userId, CancellationToken ct)

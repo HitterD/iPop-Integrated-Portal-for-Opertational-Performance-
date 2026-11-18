@@ -307,6 +307,41 @@ public sealed class ProjectStage4Tests
         Assert.Equal("active", again.Status); Assert.Null(again.ClosedAt);
     }
 
+    private sealed class FailingTemplates(Func<TemplateResult<ProjectTemplateDto>> create) : IProjectTemplateService
+    {
+        public Task<TemplateResult<ProjectTemplateDto>> CreateAsync(Guid actorId, CreateProjectTemplateRequest req, CancellationToken ct) => Task.FromResult(create());
+        public Task<IReadOnlyList<ProjectTemplateDto>> ListAsync(Guid actorId, bool isAdmin, CancellationToken ct) => throw new NotImplementedException();
+        public Task<IReadOnlyList<ProjectTemplateCategoryDto>> CategoriesAsync(Guid actorId, CancellationToken ct) => throw new NotImplementedException();
+        public Task<TemplateResult<ProjectTemplateDetailDto>> GetAsync(Guid actorId, Guid templateId, CancellationToken ct) => throw new NotImplementedException();
+        public Task<ProjectTemplateScopeDto> ScopeAsync(Guid actorId, CancellationToken ct) => throw new NotImplementedException();
+        public Task<TemplateResult<ProjectDto>> CreateProjectAsync(Guid actorId, CreateProjectFromTemplateRequest req, CancellationToken ct) => throw new NotImplementedException();
+        public Task<TemplateResult<bool>> DeleteAsync(Guid actorId, Guid templateId, bool isAdmin, CancellationToken ct) => throw new NotImplementedException();
+    }
+
+    [Fact]
+    public async Task Close_reports_a_template_that_could_not_be_saved()
+    {
+        using var e = new Env();
+        await e.TaskAsync("open one");
+        var refused = new ProjectCloseService(e.T.Verify(), new FailingTemplates(() => new TemplateResult<ProjectTemplateDto>(null, "no_department")));
+        var r = await refused.CloseAsync(e.P, e.Owner.Id, new CloseProjectRequest(null, true, "Tpl", false), default);
+        Assert.True(r.Success);
+        Assert.Null(r.Value!.TemplateId);
+        Assert.Equal("no_department", r.Value.TemplateError);
+        Assert.Equal("completed", e.T.Verify().Projects.Single(x => x.Id == e.P).Status);
+
+        Assert.True((await refused.ReopenAsync(e.P, e.Owner.Id, default)).Success);
+        var crashed = new ProjectCloseService(e.T.Verify(), new FailingTemplates(() => throw new InvalidOperationException("db down")));
+        var r2 = await crashed.CloseAsync(e.P, e.Owner.Id, new CloseProjectRequest(null, true, "Tpl", false), default);
+        Assert.True(r2.Success);
+        Assert.Equal("template_failed", r2.Value!.TemplateError);
+        Assert.Equal("completed", e.T.Verify().Projects.Single(x => x.Id == e.P).Status);
+
+        Assert.True((await refused.ReopenAsync(e.P, e.Owner.Id, default)).Success);
+        var noTemplate = await refused.CloseAsync(e.P, e.Owner.Id, new CloseProjectRequest(null, false, null, false), default);
+        Assert.Null(noTemplate.Value!.TemplateError);
+    }
+
     // ───────────── Automations ─────────────
 
     [Fact]
