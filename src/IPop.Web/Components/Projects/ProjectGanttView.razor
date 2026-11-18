@@ -719,19 +719,19 @@
         CloseToast();
         pendingConflicts.Clear();
         if (kind == "milestone") { await MoveMilestoneAsync(id, days); return; }
-        if (!layout.ByTask.TryGetValue(id, out var line) || line.Start is not { } start || line.End is not { } end) { renderKey++; return; }
+        if (!layout.ByTask.TryGetValue(id, out var line) || line.Start is not { } start || line.End is not { } end) { renderKey++; StateHasChanged(); return; }
         var title = line.Title;
         var resize = kind == "resize";
         var newStart = resize ? start : start.AddDays(days);
         DateTime? newDue = resize ? end.AddDays(days) : null;
-        if (newDue is { } nd && nd < newStart) { renderKey++; return; }
+        if (newDue is { } nd && nd < newStart) { renderKey++; StateHasChanged(); return; }
 
         var single = new RescheduleRequest(id, Utc(newStart), "single", newDue is { } d1 ? Utc(d1) : null);
         var prev = await Post<ReschedulePreviewDto>($"/api/projects/{ProjectId}/gantt/reschedule/preview", single);
         if (prev.Value is null) { await Fail(prev.Code, resize ? "change the finish" : "move this task"); return; }
 
         var known = dto.Conflicts.Select(c => c.FromTaskId + ">" + c.ToTaskId).ToHashSet();
-        var fresh = prev.Value.Conflicts.Where(c => !known.Contains(c.FromTaskId + ">" + c.ToTaskId)).ToList();
+        var fresh = (prev.Value.Conflicts ?? []).Where(c => !known.Contains(c.FromTaskId + ">" + c.ToTaskId)).ToList();
         if (fresh.Count == 0)
         {
             await ApplyAsync(single, resize ? $"Changed the finish of \"<b>{E(title)}</b>\". Nothing else had to move."
@@ -790,7 +790,7 @@
     private async Task MoveMilestoneAsync(Guid id, int days)
     {
         var m = dto?.Milestones.FirstOrDefault(x => x.Id == id);
-        if (m is null) { renderKey++; return; }
+        if (m is null) { renderKey++; StateHasChanged(); return; }
         var from = m.Date.Date;
         var to = from.AddDays(days);
         var res = await Send(HttpMethod.Patch, $"/api/projects/{ProjectId}/milestones/{id}?localToday={TodayDate:yyyy-MM-dd}", new { DueDate = Utc(to) });
@@ -990,7 +990,12 @@
             form.Add(file, "file", importName ?? "plan.xml");
             var res = await Auth.SendMultipartAsync($"/api/projects/{ProjectId}/import/msproject" + (dryRun ? "?dryRun=true" : ""), form);
             if (res.IsSuccessStatusCode)
-                return new ImportResult(await res.Content.ReadFromJsonAsync<MsProjectImportResultDto>(), null);
+            {
+                // Practice mode answers a bare {success:true}: Warnings would be null and the preview would throw in render.
+                var value = await res.Content.ReadFromJsonAsync<MsProjectImportResultDto>();
+                if (value is not null && value.Warnings is null) value = value with { Warnings = [] };
+                return new ImportResult(value, null);
+            }
             var err = await ReadError(res);
             return new ImportResult(null, err.Message is { Length: > 0 } m && m != err.Code ? m : ImportMessage(err.Code, res.StatusCode));
         }

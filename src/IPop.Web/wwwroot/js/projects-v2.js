@@ -79,9 +79,20 @@
     },
     watchTabs(tabs) {
       if (!tabs || tabObservers.has(tabs)) return;
-      const redo = () => place(tabs, true);
+      let ro = null;
+      // Self-cleaning: once this tab strip has left the page, drop its observer and window listener
+      // (the component is re-created on every visit, so they would otherwise pile up).
+      const redo = () => {
+        if (!tabs.isConnected) {
+          window.removeEventListener('resize', redo);
+          if (ro) ro.disconnect();
+          tabObservers.delete(tabs);
+          return;
+        }
+        place(tabs, true);
+      };
       if ('ResizeObserver' in window) {
-        const ro = new ResizeObserver(redo);
+        ro = new ResizeObserver(redo);
         ro.observe(tabs);
         tabs.querySelectorAll('.pv2-vt').forEach(b => ro.observe(b));
         tabObservers.set(tabs, ro);
@@ -332,7 +343,8 @@
       panelHandler = e => {
         if (e.defaultPrevented || !document.getElementById('pv2-panel')) return;
         if (e.key !== 'Escape' && e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-        if (document.querySelector(OVERLAYS) || document.querySelector('.pv2-stpop, .pv2p-deppop, .quick-assign-popover, .plist-menu')) return;
+        // Date picker and AppSelect popups own their arrow keys and Esc (Esc closes the popup, not the panel).
+        if (document.querySelector(OVERLAYS) || document.querySelector('.pv2-stpop, .pv2p-deppop, .quick-assign-popover, .plist-menu, .dp-pop, .app-select-pop.on')) return;
         if (e.key !== 'Escape' && typing(e.target)) return;
         if (e.key === 'Escape' && typing(e.target) && e.target.tagName !== 'INPUT') return;
         e.preventDefault();
