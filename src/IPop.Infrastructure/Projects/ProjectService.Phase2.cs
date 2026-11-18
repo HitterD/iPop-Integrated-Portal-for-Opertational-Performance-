@@ -660,6 +660,7 @@ public sealed partial class ProjectService
             .Select(t => new
             {
                 t.Id, t.ParentTaskId, t.Title, t.Status, t.Priority, t.StartDate, t.DueDate, t.GroupId, t.IsRecurring,
+                StatusColor = t.StatusOption != null ? t.StatusOption.Color : null,
                 Assignees = t.Assignees.Select(a => a.UserId).ToList()
             })
             .ToListAsync(ct);
@@ -667,7 +668,7 @@ public sealed partial class ProjectService
         if (truncated) rows.RemoveAt(rows.Count - 1);
         var unmet = await UnmetDependenciesAsync(rows.Select(r => r.Id).ToList(), ct);
         var tasks = rows.Select(r => new CalendarTaskDto(r.Id, r.ParentTaskId, r.Title, r.Status, r.Priority,
-            r.StartDate, r.DueDate, r.GroupId, r.Assignees, r.Status != "done" && unmet.ContainsKey(r.Id), r.IsRecurring)).ToList();
+            r.StartDate, r.DueDate, r.GroupId, r.Assignees, r.Status != "done" && unmet.ContainsKey(r.Id), r.IsRecurring, r.StatusColor)).ToList();
         return new ProjectCalendarDto(projectId, from, to, tasks, truncated);
     }
 }

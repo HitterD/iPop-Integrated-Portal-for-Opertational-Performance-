@@ -257,3 +257,20 @@ body:has(.pv2-ws, .pv2-rail) .toast-host .toast-action:hover { background: var(-
 .pv2-ws .pcal-num { width: 24px; height: 24px; min-width: 24px; border-radius: 50%; font-weight: 650; color: var(--ink); }
 .pv2-ws .pcal-day.today .pcal-num { background: var(--accent); color: var(--on-accent, #fff); }
 .pv2-ws .pcal-day-head { height: 24px; }
+
+/* ---- Round 4b: Calendar cells 104px min + chips like the mockup .ev (solid status fill, white text) ---- */
+.pv2-ws .pcal-week { grid-template-rows: 24px repeat(3, 20px) 1fr; row-gap: 3px; min-height: 105px; }
+.pv2-ws .pcal-grid.week .pcal-week { min-height: 420px; }
+.pv2-ws .pcal-bar-item { --ev: #b9bcc0; height: 20px; margin: 0 6px; padding: 2px 6px; border: 0; border-radius: 6px; background: var(--ev); color: #fff; font-size: 11.5px; font-weight: 600; line-height: 14px; box-shadow: none; }
+.pv2-ws .pcal-bar-item.todo { --ev: var(--s-todo); }
+.pv2-ws .pcal-bar-item.doing { --ev: #fdab3d; background: var(--ev); }
+.pv2-ws .pcal-bar-item.review { --ev: #579bfc; background: var(--ev); }
+.pv2-ws .pcal-bar-item.done { --ev: #00c875; background: var(--ev); color: #fff; }
+.pv2-ws .pcal-bar-item.overdue { box-shadow: inset 0 0 0 1.5px var(--danger); }
+.pv2-ws .pcal-bar-item .pcal-ico { color: #fff; }
+.pv2-ws .pcal-bar-item.cont-before { margin-left: 0; }
+.pv2-ws .pcal-bar-item.cont-after { margin-right: 0; }
+.pv2-ws .pcal-bar-item:hover { filter: none; transform: translateX(2px); }
+[data-theme="dark"] .pv2-ws .pcal-bar-item, [data-theme="dark"] .pv2-ws .pcal-bar-item.doing, [data-theme="dark"] .pv2-ws .pcal-bar-item.review, [data-theme="dark"] .pv2-ws .pcal-bar-item.done { background: var(--ev); }
+[data-theme="dark"] .pv2-ws .pcal-bar-item.todo { --ev: var(--s-todo); }
+.pv2-ws .pcal-day { font-size: 12px; }

@@ -226,7 +226,7 @@ public record SaveProjectViewRequest(string Name, string StateJson, bool IsShare
 public record SavedViewResultDto(bool Success, ProjectSavedViewDto? View, string? Error);
 
 public record CalendarTaskDto(Guid Id, Guid? ParentTaskId, string Title, string Status, string? Priority,
-    DateTime? StartDate, DateTime? DueDate, Guid GroupId, IReadOnlyList<Guid> AssigneeUserIds, bool IsBlocked, bool IsRecurring);
+    DateTime? StartDate, DateTime? DueDate, Guid GroupId, IReadOnlyList<Guid> AssigneeUserIds, bool IsBlocked, bool IsRecurring, string? StatusColor = null);
 public record ProjectCalendarDto(Guid ProjectId, DateTime From, DateTime To, IReadOnlyList<CalendarTaskDto> Tasks, bool Truncated);
 
 // Result wrappers
