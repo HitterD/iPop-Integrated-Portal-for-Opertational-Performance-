@@ -149,7 +149,7 @@
                                 }
                                 else
                                 {
-                                    <div class="wk pv2g-num" style="left:@(b.Day * px)px;width:@(7 * px)px">@b.Label</div>
+                                    <div class="wk pv2g-num" style="left:@(b.Day * px)px;width:@(7 * px)px">@if (zoom == GanttZoom.Week && b.Label.IndexOf(" · ", StringComparison.Ordinal) is var sp and > 0) { <b>@b.Label[..sp]</b><text> · @b.Label[(sp + 3)..]</text> } else { @b.Label }</div>
                                 }
                             }
                         </div>

@@ -74,6 +74,7 @@
 .pv2g-head .mo, .pv2g-head .wk { position: absolute; font-size: 11px; white-space: nowrap; overflow: hidden; border-left: 1px solid var(--line); padding-left: 6px; }
 .pv2g-head .mo { top: 0; height: 24px; line-height: 24px; font-weight: 700; color: var(--ink); }
 .pv2g-head .wk { top: 24px; height: 28px; line-height: 28px; color: var(--ink-3); }
+.pv2g-head .wk b { color: var(--ink-2); font-weight: 650; }
 .pv2g-bodyx { position: relative; transition: height .3s var(--pv2-smooth); }
 .pv2g-gridbg { position: absolute; inset: 0; }
 .pv2g-rowline { position: absolute; left: 0; right: 0; height: 34px; border-bottom: 1px solid var(--line); }
