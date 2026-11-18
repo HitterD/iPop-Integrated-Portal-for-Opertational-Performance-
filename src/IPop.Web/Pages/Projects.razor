@@ -657,7 +657,8 @@ else
             }
             <div class="pv2-tbw">
                 <button type="button" class="pv2-chip @(moreCount > 0 ? "on" : "")" aria-haspopup="true" aria-expanded="@(openTb == "more" ? "true" : "false")" @onclick='() => ToggleTb("more")'>
-                    <i data-lucide="list-filter"></i>More filters@if (moreCount > 0) { <span class="pv2-n">@moreCount</span> }
+                    <i data-lucide="list-filter"></i>More filters
+                    @if (moreCount > 0) { <span class="pv2-n">@moreCount</span> }
                 </button>
                 @if (openTb == "more")
                 {
@@ -682,7 +683,8 @@ else
             {
                 <div class="pv2-tbw">
                     <button type="button" class="pv2-chip" aria-haspopup="true" aria-expanded="@(openTb == "hide" ? "true" : "false")" @onclick='() => ToggleTb("hide")'>
-                        <i data-lucide="eye"></i>Hide@if (tableView?.HiddenFieldCount > 0) { <span class="pv2-n">@tableView.HiddenFieldCount</span> }
+                        <i data-lucide="eye"></i>Hide
+                        @if (tableView?.HiddenFieldCount > 0) { <span class="pv2-n">@tableView.HiddenFieldCount</span> }
                     </button>
                     @if (openTb == "hide")
                     {
@@ -707,7 +709,8 @@ else
             <span class="pv2-sp"></span>
             <div class="pv2-tbw right">
                 <button type="button" class="pv2-chip @(ActiveSavedViewId is not null ? "on" : "")" aria-haspopup="true" aria-expanded="@(openTb == "views" ? "true" : "false")" @onclick='() => ToggleTb("views")'>
-                    <i data-lucide="save"></i>Save view@if (savedViews.Count > 0) { <span class="pv2-n">@savedViews.Count</span> }
+                    <i data-lucide="save"></i>Save view
+                    @if (savedViews.Count > 0) { <span class="pv2-n">@savedViews.Count</span> }
                 </button>
                 @if (openTb == "views")
                 {

@@ -2,22 +2,13 @@
 @inject IJSRuntime JS
 
 <aside class="proj-sidebar @(IsCollapsed ? "collapsed" : "")" aria-label="Project Navigator">
-    <div class="proj-sidebar-head">
-        @if (!IsCollapsed)
-        {
-            <div class="title">
-                <span>Projects</span>
-                <span class="badge">@Projects.Count</span>
-            </div>
-        }
-        <div class="proj-sidebar-actions" style="@(IsCollapsed ? "margin:0 auto;display:flex;justify-content:center;width:100%" : "display:flex;align-items:center;gap:6px")">
-            @if (!IsCollapsed)
-            {
-                <button class="proj-new-btn" @onclick="OnCreateClick" title="Create New Project">
-                    <i data-lucide="plus"></i>New
-                </button>
-            }
-        </div>
+    @* Mockup prail(): search + green "+" on one row, then My work / All projects *@
+    <div class="pv2 pv2r-search">
+        <label class="pv2r-q">
+            <i data-lucide="search"></i>
+            <input class="proj-search-input" placeholder="Find a project" aria-label="Find a project" value="@SearchQuery" @oninput="HandleSearchInput" />
+        </label>
+        <button type="button" class="pv2r-plus" @onclick="OnCreateClick" title="New project" aria-label="New project"><i data-lucide="plus"></i></button>
     </div>
 
     @* Mockup prail(): "My work" (red late badge) and "All projects" buttons on top *@
@@ -29,21 +20,6 @@
         <button type="button" class="pv2r-btn @(PortfolioSelected ? "on" : "")" data-act="portfolio" aria-current="@(PortfolioSelected ? "page" : null)" @onclick="OnSelectPortfolio" title="All projects overview">
             <i data-lucide="layout-grid" style="color:var(--info)"></i><span>All projects</span>
         </button>
-    </div>
-
-    @* Quick search projects *@
-    <div class="proj-search-wrap">
-        <i data-lucide="search" style="width:14px;height:14px;color:var(--ink-3)"></i>
-        <input class="proj-search-input" placeholder="Search projects" value="@SearchQuery" @oninput="HandleSearchInput" />
-    </div>
-
-    @* Year filter chips *@
-    <div class="proj-year-chips">
-        <button class="year-chip @(SelectedYear == null ? "active" : "")" @onclick="() => OnYearChanged.InvokeAsync(null)">All</button>
-        @foreach (var y in AvailableYears)
-        {
-            <button class="year-chip @(SelectedYear == y ? "active" : "")" @onclick="() => OnYearChanged.InvokeAsync(y)">@y</button>
-        }
     </div>
 
     @* Projects stream list *@
@@ -85,6 +61,15 @@
                     </div>
                 }
             }
+        }
+    </div>
+
+    @* Year filter: small text chips at the foot of the rail (the mockup has no year filter) *@
+    <div class="pv2 pv2r-years" role="group" aria-label="Filter by year">
+        <button type="button" class="pv2r-yr @(SelectedYear == null ? "on" : "")" @onclick="() => OnYearChanged.InvokeAsync(null)">All</button>
+        @foreach (var y in AvailableYears)
+        {
+            <button type="button" class="pv2r-yr @(SelectedYear == y ? "on" : "")" @onclick="() => OnYearChanged.InvokeAsync(y)">@y</button>
         }
     </div>
 </aside>

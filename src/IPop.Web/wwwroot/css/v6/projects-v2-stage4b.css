@@ -195,3 +195,29 @@
   .pv2pg-skel { animation: none; }
   .pv2mw-row, .pv2pg-knob, .pv2fm-q { transition-duration: .001ms !important; }
 }
+
+/* ---------- project-list rail = mockup .prail (236px, surface-2, 14px 10px padding) ---------- */
+.pv2-ws .pv2-rail { background: var(--surface-2); border-right: 1px solid var(--line); }
+.pv2-ws .pv2-rail > .proj-sidebar { width: 236px; min-width: 236px; background: var(--surface-2); border-right: 0; padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; overflow: auto; }
+.proj-workspace.pv2-ws.proj-fs.pv2-rail-open { grid-template-columns: 236px minmax(0, 1fr); }
+.proj-workspace.pv2-ws.proj-fs .pv2-rail > .proj-sidebar { width: 236px; min-width: 236px; }
+.pv2r-search { display: flex; gap: 6px; margin-bottom: 8px; }
+.pv2r-q { flex: 1; display: flex; align-items: center; gap: 7px; height: 32px; padding: 0 10px; border-radius: 9px; background: var(--surface); border: 1px solid var(--line); color: var(--ink-3); font-size: 12.5px; min-width: 0; transition: border-color .2s, box-shadow .2s; }
+.pv2r-q:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.pv2r-q .lucide { width: 14px; height: 14px; flex: none; }
+.pv2r-q input { border: 0; outline: 0; background: none; flex: 1; min-width: 0; font-size: 13px; color: var(--ink); padding: 0; height: auto; box-shadow: none; }
+.pv2r-plus { width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); display: inline-grid; place-items: center; padding: 0; cursor: pointer; flex: none; transition: transform .14s var(--pv2-ease), filter .15s; }
+.pv2r-plus:hover { filter: brightness(1.07); }
+.pv2r-plus:active { transform: scale(.96); }
+.pv2r-plus .lucide { width: 16px; height: 16px; }
+.pv2r-top { margin: 0 0 0; gap: 4px; }
+.pv2-rail .proj-list { padding: 0; margin: 0; flex: 1 1 auto; min-height: 0; overflow: visible; display: flex; flex-direction: column; gap: 2px; }
+.pv2r-years { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 8px 0; margin-top: auto; }
+.pv2r-yr { border: 0; background: none; font-size: 12px; color: var(--ink-3); padding: 2px 8px; border-radius: 7px; cursor: pointer; font-family: inherit; }
+.pv2r-yr:hover { background: var(--surface-3); color: var(--ink); }
+.pv2r-yr.on { background: var(--surface); color: var(--ink); font-weight: 650; box-shadow: var(--sh-card); }
+.proj-sidebar.collapsed .pv2r-search, .proj-sidebar.collapsed .pv2r-years { display: none; }
+.pv2-rail .proj-list { overflow-y: auto; overflow-x: hidden; }
+.pv2-rail .proj-list > * { flex: none; }
+.pv2-rail .pv2r-top, .pv2-rail .pv2r-search, .pv2-rail .pv2r-years { flex: none; }
+.pv2-rail .pv2r-years { margin-top: 0; }
