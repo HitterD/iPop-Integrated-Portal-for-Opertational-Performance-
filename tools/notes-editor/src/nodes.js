@@ -295,15 +295,26 @@ export function countTodos(doc) {
 export function todoDueItems(doc) {
   const items = [], seen = new Map();
   doc.descendants(n => {
-    if (n.type.name !== 'taskItem' || !n.attrs.assigneeId || !n.attrs.due) return;
+    if (n.type.name !== 'taskItem' || !n.attrs.due || (!n.attrs.assigneeId && !n.attrs.taskId)) return;
     const text = (n.firstChild?.textContent ?? '').trim().slice(0, 200);
-    let raw = `${n.attrs.assigneeId}|${n.attrs.due}|${text}`;
+    let raw = `${n.attrs.assigneeId || ''}|${n.attrs.due}|${text}`;
     let h = 5381; for (let i = 0; i < raw.length; i++) h = ((h << 5) + h + raw.charCodeAt(i)) >>> 0;
     const base = `t${h.toString(36)}`;
     const k = (seen.get(base) ?? 0) + 1; seen.set(base, k);
-    items.push({ key: k === 1 ? base : `${base}-${k}`, assigneeId: n.attrs.assigneeId, due: n.attrs.due, text, done: !!n.attrs.checked });
+    items.push({ key: k === 1 ? base : `${base}-${k}`, assigneeId: n.attrs.assigneeId || null, due: n.attrs.due, text, done: !!n.attrs.checked, taskId: n.attrs.taskId || null });
   });
   return items.slice(0, 200);
+}
+
+/// To-dos that were turned into Projects tasks ("→ Task"): reported with every save so a ticked to-do completes its task. One entry
+/// per task (a task shared by two to-dos is done when either is ticked), at most 50.
+export function todoTaskItems(doc) {
+  const byTask = new Map();
+  doc.descendants(n => {
+    if (n.type.name !== 'taskItem' || !n.attrs.taskId) return;
+    byTask.set(n.attrs.taskId, (byTask.get(n.attrs.taskId) || false) || !!n.attrs.checked);
+  });
+  return [...byTask].slice(0, 50).map(([taskId, done]) => ({ taskId, done }));
 }
 
 /// Comment highlights: threads are anchored by Yjs relative positions, so they follow edits made by

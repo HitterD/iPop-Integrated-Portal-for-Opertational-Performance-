@@ -95,10 +95,18 @@ public record NoteDocDto(string? State, long Version, IReadOnlyList<NoteUpdateDt
 /// A page that links to the current page. Only pages the viewer can open are ever listed.
 public record NoteBacklinkDto(Guid Id, string Title, string? Emoji, string? Excerpt);
 
-public record NoteTodoDueDto(string Key, Guid? AssigneeId, string Due, string Text, bool Done);
+/// "→ Task": make a Projects task from a to-do. Everything comes from the editor (it is the person's own action; the Projects
+/// service still checks they can add tasks to that project and that the assignee is a member).
+public record NoteTodoTaskRequest(string Title, Guid ProjectId, string? Due, Guid? AssigneeId);
+public record NoteTodoTaskDto(Guid TaskId, Guid ProjectId, string Title, string ProjectName, bool Assigned);
+/// A to-do that points at a Projects task, as reported with a save: ticking it completes the task.
+public record NoteTodoTaskLinkDto(Guid TaskId, bool Done);
+
+public record NoteTodoDueDto(string Key, Guid? AssigneeId, string Due, string Text, bool Done, Guid? TaskId = null);
 
 public record NoteSnapshotRequest(string State, long BaseVersion, IReadOnlyList<long> MergedUpdateIds,
-    string? PlainText, int TodoDone, int TodoTotal, IReadOnlyList<NoteTodoDueDto>? TodoDue = null, IReadOnlyList<Guid>? LinksTo = null);
+    string? PlainText, int TodoDone, int TodoTotal, IReadOnlyList<NoteTodoDueDto>? TodoDue = null, IReadOnlyList<Guid>? LinksTo = null,
+    IReadOnlyList<NoteTodoTaskLinkDto>? TodoTasks = null);
 
 public record NoteSnapshotResultDto(long Version);
 

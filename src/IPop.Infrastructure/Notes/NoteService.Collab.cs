@@ -181,11 +181,11 @@ public sealed partial class NoteService
             var row = existing.FirstOrDefault(r => r.ItemKey == key);
             if (row is null)
             {
-                db.NoteTodoDues.Add(new NoteTodoDue { PageId = pageId, ItemKey = key, AssigneeId = i.AssigneeId, Due = due, Text = text, Done = i.Done });
+                db.NoteTodoDues.Add(new NoteTodoDue { PageId = pageId, ItemKey = key, AssigneeId = i.AssigneeId, Due = due, Text = text, Done = i.Done, TaskId = i.TaskId });
                 continue;
             }
             if (row.Due != due || row.AssigneeId != i.AssigneeId) { row.DayBeforeSentAt = null; row.DaySentAt = null; }
-            row.AssigneeId = i.AssigneeId; row.Due = due; row.Text = text; row.Done = i.Done;
+            row.AssigneeId = i.AssigneeId; row.Due = due; row.Text = text; row.Done = i.Done; row.TaskId = i.TaskId;
         }
     }
 

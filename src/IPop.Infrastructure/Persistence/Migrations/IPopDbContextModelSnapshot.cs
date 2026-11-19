@@ -3422,6 +3422,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<DateOnly>("Due")
                         .HasColumnType("date");
 
+                    b.Property<Guid?>("TaskId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Text")
                         .IsRequired()
                         .HasMaxLength(200)

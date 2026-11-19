@@ -6,6 +6,7 @@ using IPop.Application.Attachments;
 using IPop.Application.Chat;
 using IPop.Application.Notes;
 using IPop.Application.Notifications;
+using IPop.Application.Projects;
 using IPop.Application.Rbac;
 using IPop.Application.Realtime;
 using IPop.Infrastructure.Persistence;
@@ -136,8 +137,17 @@ public static class NotesEndpoints
         // ── Document ─────────────────────────────────────────────────────────
         g.MapGet("/{id:guid}/doc", (Guid id, HttpContext http, INoteService svc, CancellationToken ct) =>
             Run(http, async me => From(await svc.GetDocAsync(me.Id, id, ct))));
-        g.MapPost("/{id:guid}/snapshot", (Guid id, NoteSnapshotRequest req, HttpContext http, INoteService svc, CancellationToken ct) =>
-            Run(http, async me => From(await svc.SnapshotAsync(me.Id, id, req, ct)))).RequirePermission("notes.write");
+        g.MapPost("/{id:guid}/snapshot", (Guid id, NoteSnapshotRequest req, HttpContext http, INoteService svc, IProjectService projects,
+            IPopDbContext db, ILoggerFactory logs, CancellationToken ct) =>
+            Run(http, async me =>
+            {
+                var result = await svc.SnapshotAsync(me.Id, id, req, ct);
+                // A to-do that was ticked in the note completes the Projects task it was turned into ("→ Task"). Best effort: the page is
+                // already saved, and a person who cannot change that task simply leaves it as it is.
+                if (result.Success && req.TodoTasks is { Count: > 0 })
+                    await CompleteTasksOfDoneTodosAsync(db, projects, me.Id, req.TodoTasks, logs.CreateLogger("IPop.Notes"), ct);
+                return From(result);
+            })).RequirePermission("notes.write");
         g.MapPost("/{id:guid}/seed", (Guid id, HttpContext http, INoteService svc, CancellationToken ct) =>
             Run(http, async me => From(await svc.ClaimSeedAsync(me.Id, id, ct), t => new { template = t }))).RequirePermission("notes.write");
         g.MapGet("/{id:guid}/versions", (Guid id, HttpContext http, INoteService svc, CancellationToken ct) =>
@@ -413,6 +423,29 @@ public static class NotesEndpoints
             }
         }).DisableAntiforgery().RequirePermission("notes.write");
 
+        // ── To-do → Task ─────────────────────────────────────────────────────
+        // "→ Task" on a to-do: a Projects task made by the person themselves. They must be able to edit the page AND add tasks to the
+        // chosen project (the Projects service checks the second, and that the assignee is a member of that project).
+        g.MapPost("/{id:guid}/todo-task", (Guid id, NoteTodoTaskRequest req, HttpContext http, INoteService svc, IProjectService projects,
+            IPopDbContext db, IRealtime rt, CancellationToken ct) => Run(http, async me =>
+        {
+            var can = await svc.CanUploadAsync(me.Id, id, ct);   // edit access to the page
+            if (!can.Success) return Error(can.Error!);
+            var title = (req.Title ?? "").Trim();
+            if (title.Length == 0) title = "To-do from Notes";
+            if (title.Length > 300) title = title[..300];
+            DateTime? due = DateTime.TryParseExact(req.Due, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var d) ? d : null;
+            var pageTitle = await db.NotePages.AsNoTracking().Where(p => p.Id == id).Select(p => p.Title).FirstOrDefaultAsync(ct);
+            var created = await projects.CreateTaskAsync(me.Id, new CreateTaskRequest(req.ProjectId, null, title,
+                string.IsNullOrWhiteSpace(pageTitle) ? "From a note." : $"From the note “{pageTitle}”.", "todo", null, null, due, null, null, null), ct);
+            if (!created.Success) return Results.Json(new { code = created.Error, message = created.Error }, statusCode: created.Error == "forbidden" ? 403 : 422);
+            var task = created.Task!;
+            var assigned = req.AssigneeId is { } who && (await projects.AssignUserAsync(me.Id, task.Id, who, null, ct)).Success;
+            var projectName = await db.Projects.AsNoTracking().Where(p => p.Id == req.ProjectId).Select(p => p.Name).FirstOrDefaultAsync(ct) ?? "";
+            try { await rt.ToAllAsync(RealtimeEvents.ProjectChanged, req.ProjectId); } catch (Exception) { /* advisory */ }
+            return Results.Ok(new NoteTodoTaskDto(task.Id, req.ProjectId, task.Title, projectName, assigned));
+        })).RequirePermission("notes.write");
+
         // ── Whiteboard thumbnail ─────────────────────────────────────────────
         // The editor draws a small picture of the board and uploads it here after the board is saved. One per board: the previous
         // one is removed from the NAS. This is not an edit (no "edited just now"), so it never wakes other people's editors.
@@ -450,6 +483,25 @@ public static class NotesEndpoints
         }).DisableAntiforgery().RequirePermission("notes.write");
 
         return app;
+    }
+
+    /// Done to-dos that point at a Projects task: that task becomes "done" (once; a task that is already done, or that the person cannot
+    /// change, is left alone). Un-ticking the to-do does not reopen the task: the task is the system of record for work.
+    internal static async Task CompleteTasksOfDoneTodosAsync(IPopDbContext db, IProjectService projects, Guid userId,
+        IReadOnlyList<NoteTodoTaskLinkDto> todos, ILogger log, CancellationToken ct)
+    {
+        var ids = todos.Where(t => t.Done).Select(t => t.TaskId).Distinct().Take(50).ToList();
+        if (ids.Count == 0) return;
+        var open = await db.ProjectTasks.AsNoTracking().Where(t => ids.Contains(t.Id) && t.Status != "done").Select(t => t.Id).ToListAsync(ct);
+        foreach (var taskId in open)
+        {
+            try
+            {
+                var r = await projects.UpdateTaskAsync(userId, taskId, new UpdateTaskRequest(null, null, "done", null, null, null, null, null, null, null, null, null, null, null), ct);
+                if (!r.Success) log.LogInformation("Note to-do could not complete task {Task}: {Error}", taskId, r.Error);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning(ex, "Completing task {Task} from a note failed", taskId); }
+        }
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────

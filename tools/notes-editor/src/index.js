@@ -38,7 +38,7 @@ import * as Y from 'yjs';
 import { Awareness, encodeAwarenessUpdate, applyAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness';
 import * as signalR from '@microsoft/signalr';
 
-import { BlockBackground, Callout, NoteWidget, NoteToc, HeadingFlash, SubPage, NoteFile, CommentHighlights, commentKey, countTodos, todoDueItems, releaseBlobs, esc, flashKey, loadBlob } from './nodes.js';
+import { BlockBackground, Callout, NoteWidget, NoteToc, HeadingFlash, SubPage, NoteFile, CommentHighlights, commentKey, countTodos, todoDueItems, todoTaskItems, releaseBlobs, esc, flashKey, loadBlob } from './nodes.js';
 import { SlashMenu, mentionSuggestion, phoneMentionKey, createToolbar, createHandle, createBlockMenu, place } from './menus.js';
 import { NoteImage, NoteGallery, NoteBookmark, NoteEmbed, RichTaskItem, TodoExtras, tableExtensions, taskItemAt, todoInsertPos, createRichUi, closeLightboxes } from './rich.js';
 import { TEMPLATES, GUIDE_COMMENT_TEXT } from './templates.js';
@@ -233,6 +233,9 @@ export async function mount(el, opts) {
       createMany: steps => makeTasksDialog(steps.map(s => ({ id: s.id, text: s.title, pic: s.pic, dueIso: s.due, description: s.description })), { fromSteps: true })
         .then(out => out.map(o => ({ stepId: o.stickyId, task: o.task }))),
     },
+    /// "→ Task" on a to-do: { id, text, dueIso, assigneeId, assigneeName } → { id, title, projectId, project } | null
+    todoToTask: async t => (await makeTasksDialog([t], { fromTodo: true }))[0]?.task ?? null,
+    openTask: id => call('OnOpenTask', id),
     drawPages: { info: id => pages.get(id), open: id => call('OnOpenPage', id), all: () => [...pages.values()].filter(p => p.id !== pageId) },
     drawTaskSearch: async q => {
       let projects = [];
@@ -550,7 +553,7 @@ export async function mount(el, opts) {
     try {
       const r = await api(`/api/notes/${pageId}/snapshot`, { method: 'POST', json: {
         state: b64(Y.encodeStateAsUpdate(ydoc)), baseVersion: version, mergedUpdateIds: ids,
-        plainText: editor.getText({ blockSeparator: '\n' }), todoDone: done, todoTotal: total, todoDue: todoDueItems(editor.state.doc), linksTo: pageLinkIds(editor.state.doc),
+        plainText: editor.getText({ blockSeparator: '\n' }), todoDone: done, todoTotal: total, todoDue: todoDueItems(editor.state.doc), todoTasks: todoTaskItems(editor.state.doc), linksTo: pageLinkIds(editor.state.doc),
       } });
       if (r.ok) { version = (await r.json()).version; ids.forEach(i => unmerged.delete(i)); }
       else if (r.status === 403 || r.status === 404) stopEditing(r.status === 404 ? 'not_found' : 'forbidden');
@@ -563,14 +566,17 @@ export async function mount(el, opts) {
   // Title = the sticky's text without @names and dates; an @name that matches a project member becomes the assignee;
   // a date in the text (25 Nov, 2026-11-25, 25/11) becomes the due date. The project list holds only projects the person can add to.
   const LAST_PROJECT = 'ipop.wb.lastProject';
-  async function makeTasksDialog(stickies, { fromSteps = false } = {}) {
+  async function makeTasksDialog(stickies, { fromSteps = false, fromTodo = false } = {}) {
     let projects = [];
     try { const r = await api('/api/projects/writable'); if (r.ok) projects = await r.json(); } catch { /* none */ }
     for (const p of projects) projectNames.set(p.id, p.name);
     if (!projects.length) { host.toast('You are not a member of a project you can add tasks to.'); return []; }
     let last = null; try { last = localStorage.getItem(LAST_PROJECT); } catch { /* blocked */ }
     // diagram steps already carry PIC (shape data) and a due date (chained from durations); stickies are parsed
-    const parsed = fromSteps
+    const parsed = fromTodo
+      // a to-do already has its person and date as data (not typed into the text): assignee by id, date as chosen
+      ? stickies.map(t => ({ ...t, title: t.text, who: null, due: t.dueIso ? { iso: `${t.dueIso}T00:00:00Z`, label: new Date(`${t.dueIso}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) } : null }))
+      : fromSteps
       ? stickies.map(s => ({ ...s, title: s.text, who: s.pic || null, due: s.dueIso ? { iso: s.dueIso, label: new Date(`${s.dueIso}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) } : null }))
       : stickies.map(s => ({ ...s, ...parseSticky(s.text) }));
     return new Promise(resolve => {
@@ -579,7 +585,7 @@ export async function mount(el, opts) {
       layer.innerHTML = `<div class="nt-taskdlg" role="dialog" aria-modal="true" aria-label="Make tasks">
         <h4>Make ${parsed.length === 1 ? 'a task' : `${parsed.length} tasks`}</h4>
         <label class="nt-taskdlg-f">Project<select data-project>${projects.map(p => `<option value="${p.id}" ${p.id === last ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
-        <ul class="nt-taskdlg-list">${parsed.map(t => `<li><b>${esc(t.title || 'Untitled task')}</b><span>${[t.who ? '@' + esc(t.who) : '', t.due ? esc(t.due.label) : ''].filter(Boolean).join(' · ') || 'No one yet'}</span></li>`).join('')}</ul>
+        <ul class="nt-taskdlg-list">${parsed.map(t => `<li><b>${esc(t.title || 'Untitled task')}</b><span>${[t.who ? '@' + esc(t.who) : t.assigneeName ? '@' + esc(t.assigneeName) : '', t.due ? esc(t.due.label) : ''].filter(Boolean).join(' · ') || 'No one yet'}</span></li>`).join('')}</ul>
         <div class="nt-taskdlg-acts"><button type="button" data-x>Cancel</button><button type="button" data-ok class="pri">Create ${parsed.length === 1 ? 'task' : `${parsed.length} tasks`}</button></div>
       </div>`;
       document.body.appendChild(layer);
@@ -600,7 +606,7 @@ export async function mount(el, opts) {
             const r = await api(`/api/projects/${projectId}/tasks`, { method: 'POST', json: { projectId, parentTaskId: null, title: (t.title || 'Untitled task').slice(0, 300), description: fromSteps ? (t.description || null) : t.text !== t.title ? t.text : null, status: 'todo', priority: null, startDate: null, dueDate: t.due?.iso ?? null, estimatedHours: null, dependencies: null, tags: null } });
             if (!r.ok) continue;
             const task = await r.json();
-            const who = t.who && members.find(m => String(m.name).toLowerCase().startsWith(t.who.toLowerCase()) || String(m.name).toLowerCase().split(' ').some(w => w === t.who.toLowerCase()));
+            const who = (fromTodo && t.assigneeId && members.find(m => String(m.userId) === String(t.assigneeId))) || t.who && members.find(m => String(m.name).toLowerCase().startsWith(t.who.toLowerCase()) || String(m.name).toLowerCase().split(' ').some(w => w === t.who.toLowerCase()));
             if (who) await api(`/api/projects/tasks/${task.id}/assignees`, { method: 'POST', json: { userId: who.userId, role: 'assignee' } }).catch(() => {});
             out.push({ stickyId: t.id, task: { id: task.id, title: task.title, status: task.status, due: t.due?.label ?? null, people: who ? [String(who.name).split(' ')[0]] : [], project: projectNames.get(projectId), projectId } });
           } catch { /* skipped */ }
@@ -682,7 +688,7 @@ export async function mount(el, opts) {
     element: el,
     editable: canEdit,
     extensions: [
-      ...baseExtensions(host, { rich: { onMenu: (pos, a) => rich?.openTodoMenu(pos, a), onChip: (pos, a, k) => rich?.onChip(pos, a, k) } }),
+      ...baseExtensions(host, { rich: { onMenu: (pos, a) => rich?.openTodoMenu(pos, a), onChip: (pos, a, k) => rich?.onChip(pos, a, k), onOpenTask: id => host.openTask(id) } }),
       Collaboration.configure({ document: ydoc, field: FIELD }),
       CollaborationCaret.configure({ provider: { awareness }, user: { name: opts.user.name, nik: opts.user.nik, color: opts.user.color } }),
       NotePlaceholder,

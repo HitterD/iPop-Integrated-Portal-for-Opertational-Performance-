@@ -230,6 +230,9 @@ public class NoteTodoDue
     public bool Done { get; set; }
     public DateTime? DayBeforeSentAt { get; set; }
     public DateTime? DaySentAt { get; set; }
+    /// The Projects task this to-do was turned into ("→ Task"); reported with each save. Null = no task. (Not a foreign key: a task
+    /// that is deleted in Projects must not block saving the note.)
+    public Guid? TaskId { get; set; }
 }
 
 /// One emoji by one person on one comment. A person has at most one row per emoji per comment (toggle).

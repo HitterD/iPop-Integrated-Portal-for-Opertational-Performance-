@@ -752,6 +752,10 @@
 .nt-editor .nt-tmeta .chip { font-size:11.5px; font-weight:500; padding:1px 8px; border-radius:999px; line-height:18px; }
 .nt-editor .nt-tmeta .who { background:color-mix(in srgb,#0A84FF 14%,transparent); color:var(--nt-blue); }
 .nt-editor .nt-tmeta .due { background:color-mix(in srgb,#FF9500 15%,transparent); color:#C26A00; }
+/* a to-do that became a task in Projects: opens the task */
+.nt-editor .nt-tmeta .task { background:color-mix(in srgb,#7E57C2 14%,transparent); color:#6A45B0; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nt-editor .nt-tmeta .task:hover { background:color-mix(in srgb,#7E57C2 24%,transparent); }
+[data-theme="dark"] .nt-editor .nt-tmeta .task { color:#B39DDB; }
 .nt-editor .nt-tmeta .due.late { background:color-mix(in srgb,#FF3B30 15%,transparent); color:var(--danger); }
 .nt-editor .nt-tmeta .more { background:none; color:var(--ink-3); width:22px; height:20px; border-radius:6px; opacity:0; transition:opacity .12s; font-size:14px; line-height:1; padding:0; }
 .nt-editor li:hover > div > p > .nt-tmeta .more, .nt-editor li:focus-within > div > p > .nt-tmeta .more { opacity:1; }

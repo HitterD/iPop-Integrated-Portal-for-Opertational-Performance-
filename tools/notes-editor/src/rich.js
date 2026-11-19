@@ -434,6 +434,9 @@ export const RichTaskItem = TaskItem.extend({
       assigneeName: { default: null, keepOnSplit: false, parseHTML: e => e.getAttribute('data-assignee'), renderHTML: a => a.assigneeName ? { 'data-assignee': a.assigneeName } : {} },
       completedOn: { default: null, keepOnSplit: false, parseHTML: e => validDue(e.getAttribute('data-completed')), renderHTML: a => a.completedOn ? { 'data-completed': a.completedOn } : {} },
       due: { default: null, keepOnSplit: false, parseHTML: e => validDue(e.getAttribute('data-due')), renderHTML: a => a.due ? { 'data-due': a.due } : {} },
+      // The Projects task this to-do was turned into ("→ Task"). Survives edits to the text; sent with every save so the server can complete it.
+      taskId: { default: null, keepOnSplit: false, parseHTML: e => (/^[0-9a-f-]{36}$/i.test(e.getAttribute('data-task-id') || '') ? e.getAttribute('data-task-id') : null), renderHTML: a => a.taskId ? { 'data-task-id': a.taskId } : {} },
+      taskName: { default: null, keepOnSplit: false, parseHTML: e => e.getAttribute('data-task-name'), renderHTML: a => a.taskName ? { 'data-task-name': a.taskName } : {} },
     };
   },
 });
@@ -457,7 +460,7 @@ export function todoInsertPos(doc, pos) {
 const todoKey = new PluginKey('todoExtras');
 export const TodoExtras = Extension.create({
   name: 'todoExtras',
-  addOptions() { return { onMenu: null, onChip: null }; },
+  addOptions() { return { onMenu: null, onChip: null, onOpenTask: null }; },
   addProseMirrorPlugins() {
     const editor = this.editor, opts = this.options;
     return [new Plugin({
@@ -518,8 +521,8 @@ function buildTodoDecorations(state, editor, opts) {
       }, { side: -1, key: `tp-${done}-${total}`, ignoreSelection: true }));
     }
     if (t !== 'taskItem' || node.firstChild?.type.name !== 'paragraph') return;
-    const { assigneeId, assigneeName, due, checked, completedOn } = node.attrs;
-    if (!assigneeId && !due && !completedOn && !editable) return;
+    const { assigneeId, assigneeName, due, checked, completedOn, taskId } = node.attrs;
+    if (!assigneeId && !due && !completedOn && !taskId && !editable) return;
     const at = pos + 1 + node.firstChild.nodeSize - 1;
     decos.push(Decoration.widget(at, (view, getPos) => {
       const d = el('span', 'nt-tmeta');
@@ -530,6 +533,7 @@ function buildTodoDecorations(state, editor, opts) {
         c.title = !checked && due < today ? 'Overdue' : 'Due date';
         d.append(c);
       }
+      if (taskId) { const c = el('button', 'chip task', `▣ ${esc(node.attrs.taskName || 'Task')}`); c.title = 'Open the task in Projects'; c.dataset.task = taskId; d.append(c); }
       if (checked && completedOn) d.append(el('span', 'chip done', `✓ Done ${esc(fmtDue(completedOn))}`));
       if (editable) { const m = el('button', 'more', '⋯'); m.title = 'Photo, file, sub-item, assignee, due date'; m.setAttribute('aria-label', 'To-do options'); d.append(m); }
       d.querySelectorAll('button').forEach(b => { b.type = 'button'; b.tabIndex = -1; });
@@ -538,11 +542,12 @@ function buildTodoDecorations(state, editor, opts) {
         const b = e.target.closest('button'); if (!b || !editable) return;
         const it = taskItemAt(view.state.doc, getPos());
         if (!it) return;
+        if (b.dataset.task) { opts.onOpenTask?.(b.dataset.task); return; }
         if (b.classList.contains('more')) opts.onMenu?.(it.pos, b);
         else opts.onChip?.(it.pos, b, b.classList.contains('who') ? 'who' : 'due');
       });
       return d;
-    }, { side: 1, key: `tm-${assigneeId}-${assigneeName}-${due}-${checked}-${completedOn}-${editable}-${due && due < today}`, ignoreSelection: true, stopEvent: () => true }));
+    }, { side: 1, key: `tm-${assigneeId}-${assigneeName}-${due}-${checked}-${completedOn}-${editable}-${due && due < today}-${taskId}-${node.attrs.taskName}`, ignoreSelection: true, stopEvent: () => true }));
   });
   return DecorationSet.create(state.doc, decos);
 }
@@ -729,7 +734,8 @@ export function createRichUi(editor, host) {
       + '<div class="mi" data-m="sub"><span class="sw">↳</span>Add sub-item<span class="ds">Tab</span></div><hr>'
       + `<div class="mi" data-m="who"><span class="sw">@</span>${n?.attrs.assigneeId ? 'Change person' : 'Assign person'}</div>`
       + (n?.attrs.assigneeId ? '<div class="mi" data-m="unwho"><span class="sw">⊘</span>Remove person</div>' : '')
-      + `<div class="mi" data-m="due"><span class="sw">📅</span>${n?.attrs.due ? 'Change due date' : 'Due date'}</div><hr>`
+      + `<div class="mi" data-m="due"><span class="sw">📅</span>${n?.attrs.due ? 'Change due date' : 'Due date'}</div>`
+      + (n?.attrs.taskId ? '<div class="mi" data-m="task-open"><span class="sw">▣</span>Open task in Projects</div>' : '<div class="mi" data-m="task"><span class="sw">▣</span>Make a task in Projects…<span class="ds">→ Task</span></div>') + '<hr>'
       + '<div class="mi danger" data-m="del"><span class="sw">🗑</span>Delete item</div>';
     place(todoMenu, anchor.getBoundingClientRect(), { align: 'right' });
   }
@@ -752,6 +758,15 @@ export function createRichUi(editor, host) {
       case 'who': openPeople(itemPos, anchor); break;
       case 'unwho': setItemAttrs({ assigneeId: null, assigneeName: null }); break;
       case 'due': openDue(itemPos, anchor); break;
+      case 'task-open': host.openTask?.(n.attrs.taskId); break;
+      case 'task': {
+        const pos = itemPos;
+        const text = (n.firstChild?.textContent ?? '').trim();
+        host.todoToTask?.({ id: pos, text, dueIso: n.attrs.due || null, assigneeId: n.attrs.assigneeId || null, assigneeName: n.attrs.assigneeName || null })
+          .then(t => { if (t) { const cur = nodeAt(pos); if (cur?.type.name === 'taskItem') setAttrs(pos, { taskId: t.id, taskName: t.project ? `${t.project}` : 'Task' }); host.toast?.(`Task created in ${t.project || 'Projects'}`); } })
+          .catch(() => host.toast?.('Couldn’t create the task'));
+        break;
+      }
       case 'del': editor.chain().focus().deleteRange({ from: itemPos, to: itemPos + n.nodeSize }).run(); break;
     }
   });
