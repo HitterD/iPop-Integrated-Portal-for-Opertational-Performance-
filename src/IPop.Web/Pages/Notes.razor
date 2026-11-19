@@ -511,6 +511,10 @@
                 @if (HasEditAccess)
                 {
                     <button type="button" class="mi" @onclick="BeginSaveTemplate"><i data-lucide="bookmark-plus" class="sm"></i>Save as template…</button>
+                    @if (note.Kind == "page" && !note.IsGuide)
+                    {
+                        <button type="button" class="mi" @onclick="BeginRepeat"><i data-lucide="repeat" class="sm"></i>Repeat…<span class="ds">@(repeatNow is null ? "" : repeatNow.Description)</span></button>
+                    }
                 }
                 <button type="button" class="mi" @onclick="CopyLink"><i data-lucide="link" class="sm"></i>Copy link</button>
                 <a class="mi" href="@CalLinks.NewMeeting(DisplayTitle(note.Title), notes: Nav.ToAbsoluteUri($"/notes/{note.Id}").ToString(), from: $"From note “{DisplayTitle(note.Title)}”")"><i data-lucide="calendar-plus" class="sm"></i>Schedule follow-up</a>
@@ -538,6 +542,43 @@
                     <input maxlength="100" aria-label="Template name" placeholder="Template name" value="@templateName" @oninput="e => templateName = e.Value?.ToString() ?? string.Empty" @onkeydown="OnTemplateKey" />
                     <div class="ds">Only you can see it. Find it under New page ▾.</div>
                     <div class="acts"><button type="button" class="nt-btn ghost" @onclick="ClosePop">Cancel</button><button type="button" class="nt-btn primary" disabled="@(busy || string.IsNullOrWhiteSpace(templateName))" @onclick="SaveTemplateAsync">Save template</button></div>
+                </div>
+            </div>
+            break;
+
+        case Pop.Repeat:
+            <div class="nt-layer nt-menu-l nt-repeat" role="dialog" aria-label="Repeat this page" style="top:var(--nt-pop-top);right:14px">
+                <div class="mh">REPEAT THIS PAGE</div>
+                <div class="nt-repeat-body">
+                    <div class="ds">A new copy of this page is made next to it on the days you choose, at 06:00 (Jakarta time), titled “@DisplayTitle(note.Title) — date”. The people who can open this page's folder are told.</div>
+                    <div class="nt-seg wide" role="tablist" aria-label="How often">
+                        @foreach (var (k, label) in RepeatKinds)
+                        {
+                            var kk = k;
+                            <button type="button" role="tab" aria-selected="@(repeatKind == kk ? "true" : "false")" class="@(repeatKind == kk ? "on" : "")" @onclick="() => repeatKind = kk">@label</button>
+                        }
+                    </div>
+                    @if (repeatKind == "weekly")
+                    {
+                        <div class="nt-days" role="group" aria-label="Days of the week">
+                            @foreach (var (code, label) in RepeatDays)
+                            {
+                                var cc = code;
+                                <button type="button" aria-pressed="@(repeatDays.Contains(cc) ? "true" : "false")" class="@(repeatDays.Contains(cc) ? "on" : "")" title="@label" @onclick="() => ToggleRepeatDay(cc)">@label[..2]</button>
+                            }
+                        </div>
+                    }
+                    else if (repeatKind == "monthly")
+                    {
+                        <label class="nt-repeat-m">On day <input type="number" min="1" max="31" value="@repeatMonthDay" @oninput="e => repeatMonthDay = int.TryParse(e.Value?.ToString(), out var v) ? Math.Clamp(v, 1, 31) : 1" aria-label="Day of the month" /> of the month</label>
+                    }
+                    <div class="nt-repeat-sum" aria-live="polite">@RepeatSummary</div>
+                    <div class="acts">
+                        @if (repeatNow is not null) { <button type="button" class="nt-btn ghost danger" disabled="@busy" @onclick="StopRepeatAsync">Stop repeating</button> }
+                        <span style="flex:1"></span>
+                        <button type="button" class="nt-btn ghost" @onclick="ClosePop">Cancel</button>
+                        <button type="button" class="nt-btn primary" disabled="@(busy || (repeatKind == "weekly" && repeatDays.Count == 0))" @onclick="SaveRepeatAsync">@(repeatNow is null ? "Start repeating" : "Save")</button>
+                    </div>
                 </div>
             </div>
             break;

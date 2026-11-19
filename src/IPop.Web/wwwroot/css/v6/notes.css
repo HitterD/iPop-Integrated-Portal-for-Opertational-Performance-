@@ -398,6 +398,22 @@
 .nt-new-guide .muted { color:var(--ink-3); font-size:12.5px; }
 
 /* home (no page open) */
+/* ── Repeat… popover ── */
+.nt-menu-l.nt-repeat { width:340px; padding:8px; }
+.nt-repeat-body { padding:4px 10px 10px; display:flex; flex-direction:column; gap:10px; }
+.nt-repeat-body .ds { font-size:12px; color:var(--ink-3); line-height:1.45; }
+.nt-seg.wide { display:grid; grid-template-columns:repeat(4,1fr); gap:3px; background:var(--fill); border-radius:10px; padding:3px; }
+.nt-seg.wide button { height:30px; border-radius:8px; font-size:12px; padding:0 2px; white-space:nowrap; font-weight:600; color:var(--ink-2); }
+.nt-seg.wide button.on { background:var(--surface); color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,.1); }
+.nt-days { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+.nt-days button { height:32px; border-radius:8px; font-size:12px; font-weight:600; border:1px solid var(--line); color:var(--ink-2); background:var(--surface); }
+.nt-days button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+.nt-repeat-m { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--ink-2); }
+.nt-repeat-m input { width:64px; height:30px; border-radius:8px; border:1px solid var(--line); background:var(--surface); color:var(--ink); padding:0 8px; font:inherit; }
+.nt-repeat-sum { font-size:12.5px; font-weight:600; color:var(--ink); padding:8px 10px; border-radius:9px; background:var(--accent-soft, rgba(10,132,255,.12)); }
+.nt-repeat .acts { display:flex; align-items:center; gap:6px; }
+.nt-seg.wide button:focus-visible, .nt-days button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
 /* ── Notes / Whiteboards list pages ── */
 .nl { max-width:1180px; margin:0 auto; padding:22px 28px 120px; }
 .nl-top { display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-bottom:14px; }

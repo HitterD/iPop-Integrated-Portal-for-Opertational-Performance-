@@ -252,3 +252,24 @@ public class NoteAttachment
     public Guid AttachmentId { get; set; }
     public Guid PageId { get; set; }
 }
+
+/// "Repeat…" on a page: a new copy of the page is made on a schedule. The page is the template: each run copies its content as it is at
+/// that moment into a new page next to it (same parent, so the same people can open it), titled "Name — 24 Nov 2026", owned by whoever set
+/// the repeat up. At most one page per rule per local day (<see cref="LastCreatedFor"/>).
+public class NoteRecurrence
+{
+    public Guid Id { get; set; }
+    /// The page that is copied (the template). Deleting it deletes the rule.
+    public Guid PageId { get; set; }
+    /// Who set it up: the owner of every page it makes, and the person asked to be able to edit the template.
+    public Guid OwnerId { get; set; }
+    /// RRULE subset: FREQ=DAILY|WEEKLY|MONTHLY;INTERVAL;BYDAY;BYMONTHDAY. "Workdays" is WEEKLY;BYDAY=MO,TU,WE,TH,FR.
+    public required string Rule { get; set; }
+    /// First day this rule may create a page (the day it was set up, in local time): never back-fills missed days.
+    public DateOnly StartsOn { get; set; }
+    public bool Enabled { get; set; } = true;
+    /// The local day the last page was made for (null = none yet). A run never makes a second page for the same day.
+    public DateOnly? LastCreatedFor { get; set; }
+    public Guid? LastPageId { get; set; }
+    public DateTime CreatedAt { get; set; }
+}

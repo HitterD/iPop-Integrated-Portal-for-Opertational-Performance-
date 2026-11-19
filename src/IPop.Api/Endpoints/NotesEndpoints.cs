@@ -446,6 +446,17 @@ public static class NotesEndpoints
             return Results.Ok(new NoteTodoTaskDto(task.Id, req.ProjectId, task.Title, projectName, assigned));
         })).RequirePermission("notes.write");
 
+        // ── Repeat… ──────────────────────────────────────────────────────────
+        // A page that repeats: a copy of it is made on a schedule (NotesRecurrenceWorker). The day is judged in Jakarta time.
+        g.MapGet("/{id:guid}/repeat", (Guid id, HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.GetRecurrenceAsync(me.Id, id, ct), r => r is null ? Results.NoContent() : Results.Ok(r))));
+        g.MapPut("/{id:guid}/repeat", (Guid id, SetNoteRecurrenceRequest req, HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.SetRecurrenceAsync(me.Id, id, req,
+                DateOnly.FromDateTime(NoteRecurrenceRules.LocalNow(DateTime.UtcNow)), ct))))
+            .RequirePermission("notes.write");
+        g.MapDelete("/{id:guid}/repeat", (Guid id, HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.StopRecurrenceAsync(me.Id, id, ct)))).RequirePermission("notes.write");
+
         // ── Whiteboard thumbnail ─────────────────────────────────────────────
         // The editor draws a small picture of the board and uploads it here after the board is saved. One per board: the previous
         // one is removed from the NAS. This is not an edit (no "edited just now"), so it never wakes other people's editors.
@@ -534,6 +545,7 @@ public static class NotesEndpoints
 
     private static IResult From<T>(NoteResult<T> r) => r.Success ? Results.Ok(r.Data) : Error(r.Error!);
     private static IResult From<T>(NoteResult<T> r, Func<T?, object> map) => r.Success ? Results.Ok(map(r.Data)) : Error(r.Error!);
+    private static IResult From<T>(NoteResult<T> r, Func<T?, IResult> choose) => r.Success ? choose(r.Data) : Error(r.Error!);
 
     private static async Task<string> TitleAsync(HttpContext http, Guid id, CancellationToken ct)
     {

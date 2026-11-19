@@ -3276,6 +3276,50 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("NotePages");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.NoteRecurrence", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateOnly?>("LastCreatedFor")
+                        .HasColumnType("date");
+
+                    b.Property<Guid?>("LastPageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Rule")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateOnly>("StartsOn")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId");
+
+                    b.HasIndex("PageId")
+                        .IsUnique();
+
+                    b.HasIndex("Enabled", "OwnerId");
+
+                    b.ToTable("NoteRecurrences");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.NoteShare", b =>
                 {
                     b.Property<Guid>("Id")
@@ -7592,6 +7636,21 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Owner");
 
                     b.Navigation("Parent");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NoteRecurrence", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.NotePage", null)
+                        .WithMany()
+                        .HasForeignKey("PageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.NoteShare", b =>

@@ -139,6 +139,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<NoteComment> NoteComments => Set<NoteComment>();
     public DbSet<NoteCommentReaction> NoteCommentReactions => Set<NoteCommentReaction>();
     public DbSet<NoteTodoDue> NoteTodoDues => Set<NoteTodoDue>();
+    public DbSet<NoteRecurrence> NoteRecurrences => Set<NoteRecurrence>();
     public DbSet<NoteLink> NoteLinks => Set<NoteLink>();
     public DbSet<NoteTemplate> NoteTemplates => Set<NoteTemplate>();
     public DbSet<NoteView> NoteViews => Set<NoteView>();
@@ -1492,6 +1493,15 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasIndex(x => x.ToPageId);
             e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.FromPageId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.ToPageId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NoteRecurrence>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Rule).HasMaxLength(200);
+            e.HasIndex(x => x.PageId).IsUnique();
+            e.HasIndex(x => new { x.Enabled, x.OwnerId });
+            e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.PageId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<NoteTodoDue>(e =>
         {

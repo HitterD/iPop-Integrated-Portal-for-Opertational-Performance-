@@ -26,7 +26,7 @@ public partial class Notes
     private const string EditorModule = EditorModulePath;
 
     private enum View { Home, Page, New, Trash }
-    private enum Pop { None, More, Style, Emoji, Share, History, Tidy, Template }
+    private enum Pop { None, More, Style, Emoji, Share, History, Tidy, Template, Repeat }
 
     private View view = View.Home;
     /// The Whiteboards list lives at /whiteboards; it is the same page as Notes, with the other list showing.
@@ -217,6 +217,7 @@ public partial class Notes
         mountPending = true;
         _ = LoadThreadsAsync();
         _ = LoadBacklinksAsync();
+        _ = LoadRepeatAsync();
         _ = LoadViewersAsync();
     }
 

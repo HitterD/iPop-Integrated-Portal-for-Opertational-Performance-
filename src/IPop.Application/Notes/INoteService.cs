@@ -102,6 +102,13 @@ public record NoteTodoTaskDto(Guid TaskId, Guid ProjectId, string Title, string 
 /// A to-do that points at a Projects task, as reported with a save: ticking it completes the task.
 public record NoteTodoTaskLinkDto(Guid TaskId, bool Done);
 
+/// What a repeat run made: the new page and everyone who can open it except its owner (they are told about the new page).
+public record NoteRecurrenceRunDto(Guid PageId, string Title, IReadOnlyList<Guid> NotifyUserIds);
+
+/// "Repeat…" on a page: what is stored, in the words the dialog shows.
+public record NoteRecurrenceDto(Guid PageId, string Rule, string Description, bool Enabled, DateOnly StartsOn, DateOnly? LastCreatedFor, Guid? LastPageId);
+public record SetNoteRecurrenceRequest(string Kind, IReadOnlyList<string>? Days, int? MonthDay);
+
 public record NoteTodoDueDto(string Key, Guid? AssigneeId, string Due, string Text, bool Done, Guid? TaskId = null);
 
 public record NoteSnapshotRequest(string State, long BaseVersion, IReadOnlyList<long> MergedUpdateIds,
@@ -288,6 +295,14 @@ public interface INoteService
     Task<NoteResult<bool>> CanUploadAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task LinkAttachmentAsync(Guid pageId, Guid attachmentId, CancellationToken ct);
     /// Makes an already-uploaded, page-linked image the page's cover (Can edit). Image-only; replaces a gradient.
+    /// A repeating page's run: copies the template page as it is now into a new page next to it, owned by <paramref name="ownerId"/>
+    /// (the person who set the repeat up), titled <paramref name="title"/>. Shares are not copied: the new page sits in the same parent,
+    /// so it is open to the same people as the template. Returns the new page id and who can open it (to tell them).
+    Task<NoteResult<NoteRecurrenceRunDto>> CreateRecurringCopyAsync(Guid templatePageId, Guid ownerId, string title, CancellationToken ct);
+    Task<NoteResult<NoteRecurrenceDto?>> GetRecurrenceAsync(Guid userId, Guid pageId, CancellationToken ct);
+    /// Sets (or changes) how a page repeats; needs edit access. The first page is made on the first matching day from today on.
+    Task<NoteResult<NoteRecurrenceDto>> SetRecurrenceAsync(Guid userId, Guid pageId, SetNoteRecurrenceRequest req, DateOnly today, CancellationToken ct);
+    Task<NoteResult<bool>> StopRecurrenceAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task<NoteResult<NotePageDto>> SetCoverImageAsync(Guid userId, Guid pageId, Guid attachmentId, CancellationToken ct);
     /// Whiteboards: stores the picture the editor drew of the board as the page's thumbnail (replacing the previous one).
     /// Returns the attachment id that is no longer used so the caller can delete it from the store.
