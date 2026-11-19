@@ -3,15 +3,25 @@
 @implements IAsyncDisposable
 
 <div class="kanban-board-grid @(draggingTaskId.HasValue ? "is-dragging" : "")">
-    @RenderKanbanCol("todo", "To Do", "todo", "col-todo", Kanban?.Todo ?? [])
-    @RenderKanbanCol("doing", "In Progress", "doing", "col-doing", Kanban?.Doing ?? [])
-    @RenderKanbanCol("review", "Review", "review", "col-review", Kanban?.Review ?? [])
-    @RenderKanbanCol("done", "Done", "done", "col-done", Kanban?.Done ?? [])
+    @foreach (var opt in Opts)
+    {
+        @RenderKanbanCol(opt, TasksFor(opt))
+    }
 </div>
 
 @code {
     [Parameter] public bool ReadOnly { get; set; }
     [Parameter] public KanbanBoardDto? Kanban { get; set; }
+    /// The project's custom statuses: one column each. Empty falls back to the four stages.
+    [Parameter] public List<ProjectStatusOptionDto> StatusOptions { get; set; } = [];
+
+    private IReadOnlyList<ProjectStatusOptionDto> Opts => StatusOptions.Count > 0 ? StatusOptions : ProjectStatusUi.StageDefaults;
+    private List<ProjectTaskDto> AllKanbanTasks => [.. Kanban?.Todo ?? [], .. Kanban?.Doing ?? [], .. Kanban?.Review ?? [], .. Kanban?.Done ?? []];
+    /// A card sits in the column of its StatusOptionId, else the first option of its stage.
+    private object? laneKey;
+    private Dictionary<ProjectStatusOptionDto, List<ProjectTaskDto>> lanes = [];
+    private List<ProjectTaskDto> TasksFor(ProjectStatusOptionDto opt) => lanes.GetValueOrDefault(opt) ?? [];
+    private static string ColKey(ProjectStatusOptionDto o) => o.Id == Guid.Empty ? o.Stage : o.Id.ToString();
     [Parameter] public List<ProjectMemberDto> Members { get; set; } = [];
     [Parameter] public List<ProjectGroupDto> Groups { get; set; } = [];
     [Parameter] public EventCallback<(Guid TaskId, Guid GroupId)> OnMoveToGroup { get; set; }
@@ -23,12 +33,30 @@
     [Parameter] public Guid? HighlightTaskId { get; set; }
 
     [Parameter] public EventCallback<ProjectTaskDto> OnTaskClick { get; set; }
-    [Parameter] public EventCallback<(Guid TaskId, string TargetStatus)> OnTaskMove { get; set; }
+    [Parameter] public EventCallback<(Guid TaskId, string TargetStatus, Guid? StatusOptionId)> OnTaskMove { get; set; }
     [Parameter] public EventCallback<ProjectTaskDto> OnToggleComplete { get; set; }
     [Parameter] public EventCallback<(string Status, string Title)> OnQuickAdd { get; set; }
     [Parameter] public EventCallback<(Guid TaskId, Guid UserId, bool IsAssigned)> OnToggleAssignee { get; set; }
     [Parameter] public EventCallback<ProjectTaskDto> OnRequestExtension { get; set; }
 
+    // HTML drag feedback is handled by the existing JS follower. Starting/ending a drag
+    // changes no card data and must not diff every lane.
+    private bool suppressDragRender;
+    protected override void OnParametersSet()
+    {
+        suppressDragRender = false;
+        var key = (Kanban, StatusOptions);
+        if (Equals(laneKey, key)) return;
+        lanes = AllKanbanTasks.GroupBy(t => ProjectStatusUi.Resolve(t, Opts)).ToDictionary(g => g.Key, g => g.ToList());
+        laneKey = key;
+    }
+    protected override bool ShouldRender()
+    {
+        if (!suppressDragRender) return true;
+        suppressDragRender = false;
+        return false;
+    }
+    private void EndDrag() { draggingTaskId = null; suppressDragRender = true; }
     private Guid? draggingTaskId;
     private Guid? quickAssignTaskId;
     private string? quickAddColumn;
@@ -98,6 +126,7 @@
     {
         if (ReadOnly) return;
         draggingTaskId = taskId;
+        suppressDragRender = true;
         try
         {
             if (e.DataTransfer != null)
@@ -109,7 +138,7 @@
         catch { }
     }
 
-    private async Task OnDrop(string targetStatus, DragEventArgs e)
+    private async Task OnDrop(ProjectStatusOptionDto target, DragEventArgs e)
     {
         if (ReadOnly) return;
         if (draggingTaskId is null) return;
@@ -117,7 +146,7 @@
         draggingTaskId = null;
         justMovedTaskId = id;
 
-        await OnTaskMove.InvokeAsync((id, targetStatus));
+        await OnTaskMove.InvokeAsync((id, target.Stage, ProjectStatusUi.RealId(target)));
 
         var task = ClearJustMovedAfterDelay(id);
     }
@@ -156,7 +185,6 @@
     }
 
     private Guid? moreTaskId;
-    private static readonly (string Key, string Label)[] MoveTargets = [("todo", "To Do"), ("doing", "In Progress"), ("review", "Review"), ("done", "Done")];
 
     private void ToggleMore(Guid taskId)
     {
@@ -177,8 +205,13 @@
         moreTaskId = null;
     }
 
-    private RenderFragment RenderKanbanCol(string statusKey, string title, string dotClass, string colThemeClass, IReadOnlyList<ProjectTaskDto> items)
+    private RenderFragment RenderKanbanCol(ProjectStatusOptionDto opt, List<ProjectTaskDto> items)
     {
+        var statusKey = ColKey(opt);
+        var title = opt.Label;
+        var dotClass = opt.Stage;
+        var colThemeClass = "col-" + opt.Stage;
+        var ccolor = ProjectStatusUi.SafeColor(opt.Color);
         var filteredItems = items.AsEnumerable();
         if (MyTasksOnly)
         {
@@ -197,18 +230,19 @@
             filteredItems = filteredItems.Where(t => t.Title.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase)
                 || (t.Tags?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false));
         }
-        var taskList = filteredItems.ToList();
+        var taskList = !MyTasksOnly && !OverdueOnly && string.IsNullOrWhiteSpace(PriorityFilter) && string.IsNullOrWhiteSpace(SearchQuery)
+            ? items : filteredItems.ToList();
 
         @* Lane highlight is toggled in ipop.initKanbanDragFollower so dragover never re-renders Blazor. *@
-        return @<div class="kanban-column @colThemeClass" data-lane="@statusKey"
+        return @<div class="kanban-column @colThemeClass" data-lane="@statusKey" style="--pv2-col:@ccolor"
                      @ondragover:preventDefault="true"
-                     @ondrop="e => OnDrop(statusKey, e)">
+                     @ondrop="e => OnDrop(opt, e)">
             <div class="kanban-col-header">
-                <span class="col-dot @dotClass"></span>
+                <span class="col-dot @dotClass" style="background:@ccolor"></span>
                 <div class="col-title">
                     <span>@title</span>
                 </div>
-                <span class="col-count @dotClass">@taskList.Count</span>
+                <span class="col-count @dotClass" data-pv2-count>@taskList.Count</span>
                 <button type="button" class="col-quick-icon" title="Add task" @onclick="() => StartQuickAdd(statusKey)">
                     <i data-lucide="plus" style="width:15px;height:15px"></i>
                 </button>
@@ -233,40 +267,27 @@
                     <div class="kanban-empty-lane">Drop tasks here</div>
                 }
 
-                @foreach (var t in taskList)
-                {
+                <Microsoft.AspNetCore.Components.Web.Virtualization.Virtualize Items="taskList" Context="t" ItemSize="130" OverscanCount="3">
+                    <ItemContent>
+                    @{
                     var isOverdue = t.DueDate.HasValue && t.DueDate.Value < DateTime.UtcNow && t.Status != "done";
                     var evidence = TaskEvidenceHelper.Parse(t.Description).Evidence;
                     var isJustArrived = justMovedTaskId == t.Id;
                     var isJustCreated = HighlightTaskId == t.Id;
-
-
+                    }
                     <div id="task-card-@t.Id" @key="t.Id"
                          class="kanban-task-card @(t.Status == "done" ? "is-done" : "") @(isJustArrived ? "task-just-arrived" : "") @(isJustCreated ? "task-just-created" : "") @(HighlightTaskId == t.Id ? "task-highlight" : "")"
                          draggable="@(ReadOnly ? "false" : "true")"
                          @onclick="() => OnTaskClick.InvokeAsync(t)"
                          @ondragstart="e => OnDragStart(t.Id, e)"
                          @ondragover:preventDefault="true"
-                         @ondragend="() => draggingTaskId = null">
+                         @ondragend="EndDrag">
                         @{ var pp = ProjectUiHelpers.GetPriorityPill(t.Priority); var dueState = ProjectUiHelpers.GetDueState(t); }
+                        @{ var grp = Groups.FirstOrDefault(g => g.Id == t.GroupId); }
                         <div class="kc-top">
-                            <button disabled="@ReadOnly" type="button" class="task-card-check @(t.Status == "done" ? "done" : "")"
-                                    @onclick="() => OnToggleComplete.InvokeAsync(t)"
-                                    @onclick:stopPropagation="true"
-                                    aria-label="@(t.Status == "done" ? "Mark incomplete" : "Mark completed")"
-                                    title="@(t.Status == "done" ? "Mark incomplete" : "Mark completed")">
-                                @if (t.Status == "done")
-                                {
-                                    <i data-lucide="check"></i>
-                                }
-                            </button>
-                            @if (!string.IsNullOrWhiteSpace(t.Priority))
+                            @if (grp is not null)
                             {
-                                <span class="v6-pri @pp.Key"><i data-lucide="@pp.Icon"></i>@pp.Label</span>
-                            }
-                            @if (isOverdue)
-                            {
-                                <span class="kc-pill danger">Overdue</span>
+                                <span class="gtag"><i style="background:@ProjectStatusUi.SafeColor(grp.Color)"></i><span class="gtag-t">@grp.Name</span></span>
                             }
                             @if (evidence.IsExtended)
                             {
@@ -290,10 +311,10 @@
                                         <button type="button" role="menuitem" @onclick="() => RunMore(() => OnToggleComplete.InvokeAsync(t))"><i data-lucide="circle-check"></i>@(t.Status == "done" ? "Mark incomplete" : "Mark complete")</button>
                                         @* Touch has no drag-and-drop: phones move cards from here (hidden on desktop by css/mobile/projects.css). *@
                                         <div class="kc-move-head" aria-hidden="true">Move to…</div>
-                                        @foreach (var (key, label) in MoveTargets)
+                                        @foreach (var mo in Opts)
                                         {
-                                            if (key == t.Status) continue;
-                                            <button type="button" role="menuitem" class="kc-move" aria-label="Move to @label" @onclick="() => RunMore(() => OnTaskMove.InvokeAsync((t.Id, key)))"><span class="col-dot @key"></span>@label</button>
+                                            if (mo == ProjectStatusUi.Resolve(t, Opts)) continue;
+                                            <button type="button" role="menuitem" class="kc-move" aria-label="Move to @mo.Label" @onclick="() => RunMore(() => OnTaskMove.InvokeAsync((t.Id, mo.Stage, ProjectStatusUi.RealId(mo))))"><span class="col-dot" style="background:@ProjectStatusUi.SafeColor(mo.Color)"></span>@mo.Label</button>
                                         }
                                         @if (Groups.Count > 1)
                                         {
@@ -335,7 +356,7 @@
                         <div class="kc-foot">
                             @if (t.DueDate.HasValue)
                             {
-                                <span class="kc-due @dueState"><i data-lucide="calendar"></i>@t.DueDate.Value.ToString("MMM d")</span>
+                                <span class="kc-due @dueState dd"><i data-lucide="calendar"></i>@t.DueDate.Value.ToString("MMM d")</span>
                             }
                             @if (t.CommentCount > 0)
                             {
@@ -419,7 +440,8 @@
                         </div>
                     </div>
 
-                }
+                    </ItemContent>
+                </Microsoft.AspNetCore.Components.Web.Virtualization.Virtualize>
 
             </div>
 

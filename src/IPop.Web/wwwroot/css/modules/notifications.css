@@ -75,7 +75,7 @@ textarea.body:focus { outline:none;border-color:var(--accent);box-shadow:0 0 0 3
 }
 
 [data-theme="dark"] .apple-notif-pop-card {
-  background: #1c1c1e !important;
+  background: var(--surface) !important;
   border-color: rgba(255, 255, 255, 0.12);
   box-shadow: 0 20px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
@@ -380,7 +380,7 @@ textarea.body:focus { outline:none;border-color:var(--accent);box-shadow:0 0 0 3
 }
 
 [data-theme="dark"] .apple-banner {
-  background: rgba(30, 29, 27, 0.88);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
   border-color: rgba(255, 255, 255, 0.12);
   box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.55), 0 4px 14px -2px rgba(0, 0, 0, 0.3);
 }

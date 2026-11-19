@@ -66,7 +66,7 @@
                 <div class="task-drawer-body td-body">
                     <button type="button" class="td-back" @onclick="ShowDetails"><i data-lucide="arrow-left"></i> Back to details</button>
                     <div class="td-section-title">DISCUSSION</div>
-                    <TaskDiscussion ReadOnly="ReadOnly" Items="commentItems" OnSubmit="SubmitComment" />
+                    <TaskDiscussion ReadOnly="ReadOnly" Items="commentItems" Members="Members" OnSubmit="SubmitComment" />
                 </div>
             }
             else
@@ -77,15 +77,29 @@
                     @* One click moves the task through the page's move flow (evidence modal + dependency guard). *@
                     @if (PhoneLayout)
                     {
-                        <TaskPropertiesPhone ReadOnly="ReadOnly" Status="@Task.Status" Priority="@editPriority" Due="editDue" Estimate="editEstH" OnStatus="ChangeStatus" OnPriority="SetPriority" OnDue="SetDue" OnEstimate="SetPhoneEstimate" />
+                        <TaskPropertiesPhone ReadOnly="ReadOnly" Status="@Task.Status" Priority="@editPriority" Due="editDue" Estimate="editEstH" OnStatus="s => ChangeStatus(s)" OnPriority="SetPriority" OnDue="SetDue" OnEstimate="SetPhoneEstimate" />
                     }
                     <div class="td-status-pills td-status-seg" role="radiogroup" aria-label="Status">
-                        @foreach (var (key, label) in StatusOptions)
+                        @if (CustomStatuses.Count > 0)
                         {
-                            var on = Task.Status == key;
-                            <button type="button" role="radio" aria-checked="@(on ? "true" : "false")" class="td-status-pill @key @(on ? "on" : "")" disabled="@(ReadOnly || statusBusy)" @onclick="() => ChangeStatus(key)">
-                                <span class="col-dot @key"></span>@label
-                            </button>
+                            var cur = ProjectStatusUi.Resolve(Task, CustomStatuses);
+                            @foreach (var o in CustomStatuses)
+                            {
+                                var on = o == cur;
+                                <button type="button" role="radio" aria-checked="@(on ? "true" : "false")" class="td-status-pill @o.Stage @(on ? "on" : "")" disabled="@(ReadOnly || statusBusy)" @onclick="() => ChangeStatus(o.Stage, ProjectStatusUi.RealId(o))">
+                                    <span class="col-dot" style="background:@ProjectStatusUi.SafeColor(o.Color)"></span>@o.Label
+                                </button>
+                            }
+                        }
+                        else
+                        {
+                            @foreach (var (key, label) in StatusOptions)
+                            {
+                                var on = Task.Status == key;
+                                <button type="button" role="radio" aria-checked="@(on ? "true" : "false")" class="td-status-pill @key @(on ? "on" : "")" disabled="@(ReadOnly || statusBusy)" @onclick="() => ChangeStatus(key)">
+                                    <span class="col-dot @key"></span>@label
+                                </button>
+                            }
                         }
                     </div>
                     @if (IsOverdue)
@@ -383,7 +397,7 @@
 
                     <section class="td-section td-comments">
                         <span class="td-section-title">Comments</span>
-                        <TaskDiscussion ReadOnly="ReadOnly" Items="commentItems" OnSubmit="SubmitComment" />
+                        <TaskDiscussion ReadOnly="ReadOnly" Items="commentItems" Members="Members" OnSubmit="SubmitComment" />
                     </section>
                 </div>
                 <div class="task-drawer-foot td-foot"><span class="td-autosave-note">@(ReadOnly ? "View only" : "Changes save automatically.")</span><button type="button" class="primary-soft" @onclick="CloseDrawer">Close</button></div>
@@ -426,7 +440,9 @@
     [Parameter] public List<ProjectTaskDto> NavTasks { get; set; } = [];
     [Parameter] public EventCallback<ProjectTaskDto> OnNavigate { get; set; }
     /// Status pill click: the page runs its move flow (evidence modal, dependency guard).
-    [Parameter] public EventCallback<(ProjectTaskDto Task, string NewStatus)> OnStatusChange { get; set; }
+    [Parameter] public EventCallback<(ProjectTaskDto Task, string NewStatus, Guid? StatusOptionId)> OnStatusChange { get; set; }
+    /// The project's custom statuses; empty shows the four stages.
+    [Parameter] public List<ProjectStatusOptionDto> CustomStatuses { get; set; } = [];
     /// Every task of the project (dependency picker candidates).
     [Parameter] public List<ProjectTaskDto> AllTasks { get; set; } = [];
     /// Raised after the drawer saved dependencies or recurrence itself; the page reloads the task.
@@ -469,15 +485,16 @@
         await OnMoveToGroup.InvokeAsync((Task.Id, id));
     }
 
-    private async Task ChangeStatus(string status)
+    private async Task ChangeStatus(string status, Guid? optionId = null)
     {
         if (ReadOnly) return;
-        if (Task is null || statusBusy || Task.Status == status) return;
+        if (Task is null || statusBusy) return;
+        if (optionId is null ? Task.Status == status : ProjectStatusUi.Resolve(Task, CustomStatuses).Id == optionId) return;
         statusBusy = true;
         try
         {
             if (!await FlushAsync()) return; // pending edits first, so the move sees them
-            await OnStatusChange.InvokeAsync((Task, status));
+            await OnStatusChange.InvokeAsync((Task, status, optionId));
             if (status is "doing" or "review" or "done") progressOpen = true;
         }
         finally { statusBusy = false; }

@@ -1,0 +1,11 @@
+@* Parent-only UI (drawer, modal, picker) must not re-diff hundreds of task cards.
+   Child event handlers still render normally; the key lists every data/filter input. *@
+@ChildContent
+
+@code {
+    [Parameter] public object? RenderKey { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    private object? renderedKey;
+    protected override bool ShouldRender() => !Equals(renderedKey, RenderKey);
+    protected override void OnAfterRender(bool firstRender) => renderedKey = RenderKey;
+}

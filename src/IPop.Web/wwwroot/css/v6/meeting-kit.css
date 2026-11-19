@@ -11,7 +11,7 @@
 .k-voice { --a:#8583ff; --b:#3634a3; --kind:#5e5ce6; }
 .k-person { --a:#45c4c6; --b:#0b5f61; --kind:#0f8b8d; }
 .k-event { --a:#7cb5ff; --b:#1c5fc0; }
-[data-theme="dark"] .k-voice { --kind:#7d7aff; }
+[data-theme="dark"] .k-voice { --kind:var(--violet, #b69cff); }
 [data-theme="dark"] .k-person { --kind:#2bb3b5; }
 .grad { background:radial-gradient(120% 120% at 0% 0%, var(--a), var(--b)); }
 
@@ -146,7 +146,7 @@
 .tl-tags > span.r { transform:translateX(-100%); }
 .tl-tags .lucide, .tl-tags svg { width:11px; height:11px; color:var(--ink-3); }
 .tl-track { position:relative; height:58px; border-radius:10px; background:var(--surface); box-shadow:inset 0 0 0 .5px var(--line-2); touch-action:none; user-select:none; }
-[data-theme="dark"] .tl-track { background:#2c2c2e; }
+[data-theme="dark"] .tl-track { background:var(--surface-3); }
 .tl-track .tl-tk { position:absolute; top:0; bottom:0; width:.5px; background:var(--line-2); }
 .tl-track .tl-tk.half { top:38px; opacity:.9; }
 .tl-past { position:absolute; left:0; top:0; bottom:0; border-radius:10px 0 0 10px; background:rgba(118,118,128,.09); }
@@ -183,7 +183,7 @@
 .ip-cnt { margin-left:auto; font-size:12px; color:var(--ink-3); font-weight:600; white-space:nowrap; }
 .ip-chip { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 4px 0 3px; border-radius:999px; background:var(--surface); font-size:12.5px; font-weight:600; color:var(--ink);
   box-shadow:0 0 0 .5px var(--line-2), 0 1px 2px rgba(0,0,0,.04); white-space:nowrap; }
-[data-theme="dark"] .ip-chip { background:#3a3a3c; }
+[data-theme="dark"] .ip-chip { background:var(--line-2); }
 .ip-chip .pav { border-radius:50% !important; }
 .ip-chip .bz { width:7px; height:7px; border-radius:50%; background:var(--danger); margin-left:-2px; }
 .ip-chip.busy { box-shadow:0 0 0 1px rgba(255,59,48,.45); }
@@ -204,7 +204,7 @@
 .ip-drop { position:relative; z-index:40; margin-top:10px; border-radius:16px; overflow:hidden;
   background:rgba(255,255,255,.86); backdrop-filter:blur(30px) saturate(1.8); -webkit-backdrop-filter:blur(30px) saturate(1.8);
   box-shadow:0 24px 60px -18px rgba(0,0,0,.35), 0 0 0 .5px rgba(0,0,0,.08); }
-[data-theme="dark"] .ip-drop { background:rgba(44,44,46,.92); }
+[data-theme="dark"] .ip-drop { background:color-mix(in srgb, var(--surface-2) 92%, transparent); }
 .ip-drop-in { max-height:360px; overflow:auto; padding:6px; }
 .ip-sec { font-size:11.5px; font-weight:650; color:var(--ink-3); text-transform:uppercase; letter-spacing:.5px; padding:10px 10px 4px; }
 .ip-sec em { font-style:normal; text-transform:none; letter-spacing:0; font-weight:500; }

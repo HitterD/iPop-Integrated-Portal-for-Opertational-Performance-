@@ -306,6 +306,25 @@ public static class ProjectEndpoints
             return Results.Ok(result);
         }).RequirePermission("projects.write");
 
+        // PUT /api/projects/{id}/members/{userId}/role — { role: "member" | "viewer" }
+        g.MapPut("/{id:guid}/members/{userId:guid}/role", async (Guid id, Guid userId, SetProjectMemberRoleRequest req,
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var actorId = await GetUserIdAsync(http, db);
+            if (actorId is null) return Results.Unauthorized();
+
+            var result = await svc.SetMemberRoleAsync(actorId.Value, id, userId, req.Role, ct);
+            if (!result.Success)
+            {
+                var statusCode = result.Error switch { "forbidden" => 403, "member_not_found" => 404, _ => 422 };
+                return Results.Json(new { code = result.Error, message = result.Error }, statusCode: statusCode);
+            }
+
+            await Audit(http, db, "projects.member.role", $"{id}:{userId}:{req.Role}", ct);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(result);
+        }).RequirePermission("projects.write");
+
         // DELETE /api/projects/{id}/members/{userId}
         g.MapDelete("/{id:guid}/members/{userId:guid}", async (Guid id, Guid userId,
             HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, IChatNotifier chat, CancellationToken ct) =>
@@ -390,7 +409,7 @@ public static class ProjectEndpoints
 
             // Ensure projectId matches body
             var req = new CreateTaskRequest(projectId, body.ParentTaskId, body.Title, body.Description,
-                body.Status, body.Priority, body.StartDate, body.DueDate, body.EstimatedHours, body.Dependencies, body.Tags, body.GroupId);
+                body.Status, body.Priority, body.StartDate, body.DueDate, body.EstimatedHours, body.Dependencies, body.Tags, body.GroupId, body.StatusOptionId);
 
             var result = await svc.CreateTaskAsync(userId.Value, req, ct);
             if (!result.Success)
@@ -680,15 +699,15 @@ public static class ProjectEndpoints
         // ──────────────────────────────────────────────────────────────────────
 
         // GET /api/projects/{id}/gantt — date-mapped chart data with critical path
-        g.MapGet("/{id:guid}/gantt", async (Guid id, Guid? groupId,
-            HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
+        g.MapGet("/{id:guid}/gantt", async (Guid id, Guid? groupId, Guid? baselineId,
+            HttpContext http, IProjectService svc, IGanttService gantts, IPopDbContext db, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
 
             var gantt = await svc.GetGanttAsync(id, userId.Value, ct, groupId);
             return gantt is not null
-                ? Results.Ok(gantt)
+                ? Results.Ok(await gantts.WithBaselineAsync(gantt, baselineId, ct))
                 : Results.Json(new { code = "project_not_found", message = "Not a member of this project." }, statusCode: 404);
         });
 
@@ -791,7 +810,7 @@ public static class ProjectEndpoints
 
         // POST /api/projects/tasks/{taskId}/comments — komentar baru / balasan.
         g.MapPost("/tasks/{taskId:guid}/comments", async (Guid taskId, AddTaskCommentRequest req,
-            HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+            HttpContext http, IPopDbContext db, IRealtime realtime, IPop.Application.Notifications.INotificationGatewayService gateway, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -821,6 +840,7 @@ public static class ProjectEndpoints
             await db.SaveChangesAsync(ct);
 
             var author = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
+            await IPop.Infrastructure.Projects.ProjectCommentMentions.NotifyAsync(db, gateway, taskId, userId.Value, comment.Content, ct);
             await PushProjectChangedAsync(realtime, await TaskProjectIdAsync(db, taskId, ct));
             return Results.Ok(new TaskCommentDto(comment.Id, author?.Name ?? "Unknown", author?.Nik ?? "", comment.Content, comment.ParentCommentId, comment.CreatedAt));
         }).RequirePermission("projects.write");
@@ -1099,6 +1119,15 @@ public static class ProjectEndpoints
             return Results.Ok(await templates.ListAsync(userId.Value, http.User.IsInRole("Admin"), ct));
         });
 
+        // GET /api/projects/templates/categories: [{name,count}] for the Template Center sidebar, incl.
+        // "My templates" and "Shared with my department". The client filters the full list by Category.
+        g.MapGet("/templates/categories", async (HttpContext http, IPopDbContext db, IProjectTemplateService templates, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            return Results.Ok(await templates.CategoriesAsync(userId.Value, ct));
+        });
+
         // GET /api/projects/templates/scope — the caller's department for "Who can use it".
         g.MapGet("/templates/scope", async (HttpContext http, IPopDbContext db, IProjectTemplateService templates, CancellationToken ct) =>
         {
@@ -1348,6 +1377,45 @@ public static class ProjectEndpoints
             return Results.Ok(result);
         }).RequirePermission("projects.write");
 
+        // ──────────────────────────────────────────────────────────────────────
+        // Projects v2: custom statuses + tab layout
+        // ──────────────────────────────────────────────────────────────────────
+
+        // GET /api/projects/{id}/statuses — any member (viewer included); defaults are created on first read
+        g.MapGet("/{id:guid}/statuses", async (Guid id, HttpContext http, IProjectStatusService statuses, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var result = await statuses.GetAsync(id, userId.Value, ct);
+            return result.Success ? Results.Ok(result.Data) : StatusError(result.Error);
+        });
+
+        // PUT /api/projects/{id}/statuses — owner/manager; full replace in order (+ reassign map for removed options)
+        g.MapPut("/{id:guid}/statuses", async (Guid id, SaveStatusOptionsRequest req,
+            HttpContext http, IProjectStatusService statuses, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var result = await statuses.SaveAsync(id, userId.Value, req, ct);
+            if (!result.Success) return StatusError(result.Error);
+            await Audit(http, db, "projects.statuses.save", id.ToString(), ct);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(result.Data);
+        }).RequirePermission("projects.write");
+
+        // PUT /api/projects/{id}/tabs — owner/manager; the project's view tabs in order
+        g.MapPut("/{id:guid}/tabs", async (Guid id, SaveProjectTabsRequest req,
+            HttpContext http, IProjectStatusService statuses, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var result = await statuses.SaveTabsAsync(id, userId.Value, req, ct);
+            if (!result.Success) return StatusError(result.Error);
+            await Audit(http, db, "projects.tabs.save", id.ToString(), ct);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(result.Data);
+        }).RequirePermission("projects.write");
+
         // GET /api/projects/{id}/views — own + shared saved views
         g.MapGet("/{id:guid}/views", async (Guid id, HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
         {
@@ -1405,8 +1473,324 @@ public static class ProjectEndpoints
             return cal is not null ? Results.Ok(cal) : Phase2Error("project_not_found");
         });
 
+        // ──────────────────────────────────────────────────────────────────────
+        // Projects v2 stage 4: My work, request form, close, automations, overview, weekly workload
+        // ──────────────────────────────────────────────────────────────────────
+
+        // GET /api/projects/my-work?localToday=
+        g.MapGet("/my-work", async (DateTime? localToday, HttpContext http, IMyWorkService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            return Results.Ok(await svc.GetAsync(userId.Value, MilestoneToday(localToday), ct));
+        });
+
+        // GET /api/projects/{id}/form - owner/manager; creates a default (closed) config on first call
+        g.MapGet("/{id:guid}/form", async (Guid id, HttpContext http, IProjectFormService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.GetAsync(id, userId.Value, ct);
+            return r.Success ? Results.Ok(r.Value) : Stage4Error(r.Error);
+        });
+
+        // PUT /api/projects/{id}/form - owner/manager
+        g.MapPut("/{id:guid}/form", async (Guid id, SaveProjectFormRequest req,
+            HttpContext http, IProjectFormService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.SaveAsync(id, userId.Value, req, ct);
+            if (!r.Success) return Stage4Error(r.Error);
+            await Audit(http, db, "projects.form.save", id.ToString(), ct);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(r.Value);
+        }).RequirePermission("projects.write");
+
+        // GET /api/projects/forms/{projectId}/public - what the signed-in submitter sees (never anonymous)
+        g.MapGet("/forms/{projectId:guid}/public", async (Guid projectId, HttpContext http, IProjectFormService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.GetPublicAsync(projectId, userId.Value, ct);
+            return r.Success ? Results.Ok(r.Value) : Stage4Error(r.Error);
+        });
+
+        // POST /api/projects/forms/{projectId}/submit - creates the Intake task; any signed-in user the audience allows
+        g.MapPost("/forms/{projectId:guid}/submit", async (Guid projectId, SubmitFormRequest req,
+            HttpContext http, IProjectFormService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.SubmitAsync(projectId, userId.Value, req, ct);
+            if (!r.Success) return Stage4Error(r.Error);
+            await Audit(http, db, "projects.form.submit", projectId.ToString(), ct);
+            await PushProjectChangedAsync(realtime, projectId);
+            return Results.Ok(r.Value);
+        });
+
+        // GET /api/projects/{id}/close-summary - any member
+        g.MapGet("/{id:guid}/close-summary", async (Guid id, HttpContext http, IProjectCloseService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.GetSummaryAsync(id, userId.Value, ct);
+            return r.Success ? Results.Ok(r.Value) : Stage4Error(r.Error);
+        });
+
+        // POST /api/projects/{id}/close - owner/manager
+        g.MapPost("/{id:guid}/close", async (Guid id, CloseProjectRequest req,
+            HttpContext http, IProjectCloseService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.CloseAsync(id, userId.Value, req, ct);
+            if (!r.Success) return Stage4Error(r.Error);
+            await Audit(http, db, "projects.close", id.ToString(), ct);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(r.Value);
+        }).RequirePermission("projects.write");
+
+        // POST /api/projects/{id}/reopen - owner/manager
+        g.MapPost("/{id:guid}/reopen", async (Guid id, HttpContext http, IProjectCloseService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.ReopenAsync(id, userId.Value, ct);
+            if (!r.Success) return Stage4Error(r.Error);
+            await Audit(http, db, "projects.reopen", id.ToString(), ct);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(new { success = true });
+        }).RequirePermission("projects.write");
+
+        // GET /api/projects/{id}/automations - any member; catalogue merged with the project's rows
+        g.MapGet("/{id:guid}/automations", async (Guid id, HttpContext http, IProjectAutomationService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.GetAsync(id, userId.Value, ct);
+            return r.Success ? Results.Ok(r.Value) : Stage4Error(r.Error);
+        });
+
+        // PUT /api/projects/{id}/automations/{kind} - owner/manager
+        g.MapPut("/{id:guid}/automations/{kind}", async (Guid id, string kind, SaveAutomationRequest req,
+            HttpContext http, IProjectAutomationService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.SaveAsync(id, userId.Value, kind, req, ct);
+            if (!r.Success) return Stage4Error(r.Error);
+            await Audit(http, db, "projects.automation.save", id.ToString(), ct);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(r.Value);
+        }).RequirePermission("projects.write");
+
+        // GET /api/projects/{id}/overview?localToday= - any member
+        g.MapGet("/{id:guid}/overview", async (Guid id, DateTime? localToday, HttpContext http, IProjectOverviewService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.GetOverviewAsync(id, userId.Value, MilestoneToday(localToday), ct);
+            return r.Success ? Results.Ok(r.Value) : Stage4Error(r.Error);
+        });
+
+        // GET /api/projects/{id}/workload/weekly?from=&localToday= - any member
+        g.MapGet("/{id:guid}/workload/weekly", async (Guid id, DateTime? from, DateTime? localToday, HttpContext http, IProjectOverviewService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.GetWeeklyWorkloadAsync(id, userId.Value, from, MilestoneToday(localToday), ct);
+            return r.Success ? Results.Ok(r.Value) : Stage4Error(r.Error);
+        });
+
+        // POST /api/projects/{id}/workload/suggest - read-only: computes suggestions, writes nothing
+        g.MapPost("/{id:guid}/workload/suggest", async (Guid id, WorkloadSuggestRequest req, HttpContext http, IProjectOverviewService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.SuggestAsync(id, userId.Value, req, ct);
+            return r.Success ? Results.Ok(r.Value) : Stage4Error(r.Error);
+        });
+
+        // POST /api/projects/{id}/workload/reassign - owner/manager/member
+        g.MapPost("/{id:guid}/workload/reassign", async (Guid id, WorkloadReassignRequest req,
+            HttpContext http, IProjectOverviewService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.ReassignAsync(id, userId.Value, req, ct);
+            if (!r.Success) return Stage4Error(r.Error);
+            await Audit(http, db, "projects.workload.reassign", id.ToString(), ct);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(new { success = true });
+        }).RequirePermission("projects.write");
+
+        // ──────────────────────────────────────────────────────────────────────
+        // Projects v2 stage 3: Gantt engine (IGanttService)
+        // ──────────────────────────────────────────────────────────────────────
+
+        // GET /api/projects/{id}/gantt/v2?baselineId=&groupId=
+        g.MapGet("/{id:guid}/gantt/v2", async (Guid id, Guid? baselineId, Guid? groupId,
+            HttpContext http, IGanttService gantts, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await gantts.GetGanttV2Async(userId.Value, id, baselineId, groupId, ct);
+            return r.Success ? Results.Ok(r.Value) : GanttError(r.Error);
+        });
+
+        g.MapGet("/{id:guid}/baselines", async (Guid id, HttpContext http, IGanttService gantts, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await gantts.ListBaselinesAsync(userId.Value, id, ct);
+            return r.Success ? Results.Ok(r.Value) : GanttError(r.Error);
+        });
+
+        g.MapPost("/{id:guid}/baselines", async (Guid id, CreateBaselineRequest? req,
+            HttpContext http, IGanttService gantts, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await gantts.CreateBaselineAsync(userId.Value, id, req ?? new CreateBaselineRequest(), ct);
+            if (!r.Success) return GanttError(r.Error);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(r.Value);
+        }).RequirePermission("projects.write");
+
+        g.MapPut("/{id:guid}/baselines/{baselineId:guid}/activate", async (Guid id, Guid baselineId,
+            HttpContext http, IGanttService gantts, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await gantts.ActivateBaselineAsync(userId.Value, id, baselineId, ct);
+            if (!r.Success) return GanttError(r.Error);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(r.Value);
+        }).RequirePermission("projects.write");
+
+        g.MapDelete("/{id:guid}/baselines/{baselineId:guid}", async (Guid id, Guid baselineId,
+            HttpContext http, IGanttService gantts, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await gantts.DeleteBaselineAsync(userId.Value, id, baselineId, ct);
+            if (!r.Success) return GanttError(r.Error);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(new { success = true });
+        }).RequirePermission("projects.write");
+
+        g.MapPost("/{id:guid}/gantt/reschedule/preview", async (Guid id, RescheduleRequest req,
+            HttpContext http, IGanttService gantts, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await gantts.PreviewRescheduleAsync(userId.Value, id, req, ct);
+            return r.Success ? Results.Ok(r.Value) : GanttError(r.Error);
+        }).RequirePermission("projects.write");
+
+        g.MapPost("/{id:guid}/gantt/reschedule/apply", async (Guid id, RescheduleRequest req,
+            HttpContext http, IGanttService gantts, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await gantts.ApplyRescheduleAsync(userId.Value, id, req, ct);
+            if (!r.Success) return GanttError(r.Error);
+            await Audit(http, db, "projects.gantt.reschedule", id.ToString(), ct);
+            if (r.Value!.Changes.Count > 0) await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(r.Value);
+        }).RequirePermission("projects.write");
+
+        g.MapPost("/{id:guid}/gantt/reschedule/revert", async (Guid id, RescheduleRevertRequest req,
+            HttpContext http, IGanttService gantts, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await gantts.RevertRescheduleAsync(userId.Value, id, req, ct);
+            if (!r.Success) return GanttError(r.Error);
+            if (r.Value!.Reverted > 0) await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(r.Value);
+        }).RequirePermission("projects.write");
+
+        // GET /api/projects/{id}/export/msproject — Microsoft Project XML (MSPDI)
+        g.MapGet("/{id:guid}/export/msproject", async (Guid id,
+            HttpContext http, IGanttService gantts, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await gantts.ExportMsProjectAsync(userId.Value, id, ct);
+            if (!r.Success) return GanttError(r.Error);
+            return Results.File(System.Text.Encoding.UTF8.GetBytes(r.Value!.Xml), "application/xml", r.Value.FileName);
+        });
+
+        // POST /api/projects/{id}/import/msproject?dryRun=true — multipart "file" or a raw XML body (max 20 MB).
+        g.MapPost("/{id:guid}/import/msproject", async Task<IResult> (Guid id, bool? dryRun,
+            HttpContext http, IGanttService gantts, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            byte[] bytes; string? name = null;
+            try
+            {
+                using var ms = new MemoryStream();
+                if (http.Request.HasFormContentType)
+                {
+                    var form = await http.Request.ReadFormAsync(ct);
+                    var file = form.Files.FirstOrDefault();
+                    if (file is null) return GanttError("invalid_file");
+                    if (file.Length > IPop.Infrastructure.Projects.GanttService.MaxImportBytes) return GanttError("file_too_large");
+                    name = file.FileName;
+                    await using var s = file.OpenReadStream();
+                    await s.CopyToAsync(ms, ct);
+                }
+                else await http.Request.Body.CopyToAsync(ms, ct);
+                bytes = ms.ToArray();
+            }
+            catch (Microsoft.AspNetCore.Http.BadHttpRequestException) { return GanttError("file_too_large"); }
+            catch (InvalidDataException) { return GanttError("invalid_file"); }
+            var r = await gantts.ImportMsProjectAsync(userId.Value, id, bytes, name, dryRun == true, ct);
+            if (!r.Success) return GanttError(r.Error);
+            if (dryRun != true)
+            {
+                await Audit(http, db, "projects.import.msproject", id.ToString(), ct);
+                await PushProjectChangedAsync(realtime, id);
+            }
+            return Results.Ok(r.Value);
+        })
+        .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(IPop.Infrastructure.Projects.GanttService.MaxImportBytes + 1024 * 1024))
+        .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestFormLimitsAttribute { MultipartBodyLengthLimit = IPop.Infrastructure.Projects.GanttService.MaxImportBytes + 1024 * 1024 })
+        .DisableAntiforgery()
+        .RequirePermission("projects.write");
+
         return app;
     }
+
+    private static IResult GanttError(string? code) => code == "mpp_not_supported"
+        ? Results.Json(new { code, message = "Save the plan as XML in Microsoft Project (File → Save As → XML) and import that file." }, statusCode: 415)
+        : Results.Json(new { code, message = code }, statusCode: code switch
+        {
+            "forbidden" => 403,
+            not null when code.EndsWith("_not_found") => 404,
+            "file_too_large" => 413,
+            _ => 422
+        });
+
+    private static IResult Stage4Error(string? code) => Results.Json(new { code, message = code },
+        statusCode: code switch
+        {
+            "forbidden" => 403,
+            "rate_limited" => 429,
+            not null when code.EndsWith("_not_found") => 404,
+            _ => 422
+        });
+
+    private static IResult StatusError(string? code) => Results.Json(new { code, message = code },
+        statusCode: code switch
+        {
+            "forbidden" => 403,
+            "project_not_found" => 404,
+            _ => 400
+        });
 
     private static IResult Phase2Error(string? code) => Results.Json(new { code, message = code },
         statusCode: code switch

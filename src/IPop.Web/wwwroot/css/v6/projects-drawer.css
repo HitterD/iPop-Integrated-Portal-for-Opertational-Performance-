@@ -156,7 +156,7 @@
 .td-seg { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--fill); }
 .td-seg button { height: 24px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-2); font: 500 12px/1 inherit; cursor: pointer; }
 .td-seg button.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
-[data-theme="dark"] .td-seg button.on { background: #636366; }
+[data-theme="dark"] .td-seg button.on { background: var(--line-2); }
 .td-weekdays { display: inline-flex; gap: 3px; flex-basis: 100%; }
 .td-weekdays button { width: 30px; height: 26px; padding: 0; border: 1px solid var(--line-soft); border-radius: 7px; background: var(--surface); color: var(--ink-2); font: 600 11px/1 inherit; cursor: pointer; }
 .td-weekdays button.on { background: var(--accent); border-color: var(--accent); color: #fff; }

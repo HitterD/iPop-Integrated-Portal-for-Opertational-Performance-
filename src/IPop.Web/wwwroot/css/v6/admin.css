@@ -127,7 +127,7 @@
 .adm-chart-board { display:flex; flex-direction:column; align-items:center; gap:2px; padding:12px 26px; border-radius:12px; background:#1D1D1F; color:#fff; box-shadow:0 4px 14px rgba(0,0,0,.18); }
 .adm-chart-board b { font-size:14px; font-weight:600; }
 .adm-chart-board span { font-size:11px; opacity:.7; }
-[data-theme="dark"] .adm-chart-board { background:#3A3A3C; }
+[data-theme="dark"] .adm-chart-board { background:var(--line-2); }
 .adm-chart-stem { width:1px; height:22px; background:var(--line); }
 .adm-chart-row { display:flex; align-items:flex-start; gap:22px; padding-top:22px; }
 .adm-chart-branch { display:flex; flex-direction:column; align-items:flex-start; position:relative; }

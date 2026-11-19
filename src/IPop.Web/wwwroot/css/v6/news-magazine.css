@@ -8,8 +8,8 @@
   --nm-card-sh: 0 1px 2px rgba(25,24,22,.05), 0 6px 18px -10px rgba(25,24,22,.18);
 }
 :root[data-theme="dark"] .nm {
-  --c-news: #7aa7ff; --c-news-soft: #1a2540; --c-memo: #b39ef0; --c-memo-soft: #2a2340;
-  --c-ann: #f2a35b; --c-ann-soft: #3a2a18; --c-con: #b5b1a9; --c-con-soft: #2a2927;
+  --c-news: #7aa7ff; --c-news-soft: var(--info-soft); --c-memo: #b39ef0; --c-memo-soft: #2a2340;
+  --c-ann: #f2a35b; --c-ann-soft: var(--warn-soft); --c-con: #b5b1a9; --c-con-soft: var(--surface-3);
   --nm-card-sh: 0 1px 2px rgba(0,0,0,.4), 0 6px 18px -10px rgba(0,0,0,.6);
 }
 .nm .k-news { --k: var(--c-news); --ks: var(--c-news-soft); }

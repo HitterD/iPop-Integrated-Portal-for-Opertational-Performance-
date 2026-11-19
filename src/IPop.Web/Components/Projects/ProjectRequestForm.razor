@@ -1,0 +1,171 @@
+@using IPop.Application.Projects
+@using System.Net
+@using System.Net.Http.Json
+@inject IPop.Web.Services.AuthState Auth
+@inject IJSRuntime JS
+@implements IDisposable
+
+@* Projects v2 request page (mockup .pubform): what a requester sees. Real mode loads GET /api/projects/forms/{id}/public and posts
+   to .../submit. Preview mode (used by the builder) renders the same card from supplied data and only simulates the "Request sent" state. *@
+<div class="pv2 pv2fm-card @(Preview ? "preview" : "")" data-view="request-form">
+    @if (state == State.Loading)
+    {
+        <div class="pv2pg-skel" style="height:260px;border-radius:12px" role="status" aria-label="Loading the request form"></div>
+    }
+    else if (state is State.Closed or State.Forbidden or State.Error)
+    {
+        <div class="pv2fm-state" role="status" data-state="@state.ToString().ToLowerInvariant()">
+            <span class="pv2-bigic" style="background:@(state == State.Error ? "var(--danger)" : "var(--ink-3)")"><i data-lucide="@(state == State.Closed ? "lock" : state == State.Forbidden ? "shield-off" : "triangle-alert")"></i></span>
+            <h3>@(state == State.Closed ? "This form isn't taking requests" : state == State.Forbidden ? "You can't use this form" : "Couldn't open the form")</h3>
+            <p>@(state == State.Closed ? "The project team has switched it off, or the project is finished. Ask the project owner if you still need something."
+               : state == State.Forbidden ? "Only the people the project owner chose can send requests here. Ask the project owner for access."
+               : "Something went wrong while loading it. Try again in a moment.")</p>
+            @if (state == State.Error) { <button type="button" class="pv2-btn pri" @onclick="LoadAsync">Retry</button> }
+        </div>
+    }
+    else if (sent)
+    {
+        <div class="pv2fm-sent" role="status" data-state="sent">
+            <span class="pv2fm-okc"><i data-lucide="check"></i></span>
+            <h3>Request sent</h3>
+            <p>@(sentTitle is { Length: > 0 } ? "It is now the task " : "It is now a task ")@if (sentTitle is { Length: > 0 }) { <b>@sentTitle</b> } in Intake.<br />You'll get a notification when its status changes.</p>
+            <button type="button" class="pv2-btn" data-act="send-another" @onclick="Reset">Send another</button>
+        </div>
+    }
+    else if (form is not null)
+    {
+        @if (Preview) { <div class="pv2fm-pvl">Preview: what requesters see</div> }
+        <h3 class="pv2fm-h">@form.Title</h3>
+        @if (!string.IsNullOrWhiteSpace(form.Intro)) { <p class="pv2fm-intro">@form.Intro</p> }
+        <div class="pv2fm-qs">
+            @foreach (var q in form.Questions)
+            {
+                var qq = q;
+                var id = "pv2fm-" + (Preview ? "p-" : "") + qq.Key;
+                <div class="pv2fm-f @(missing.Contains(qq.Key) ? "bad" : "")" @key="qq.Key">
+                    <label for="@id">@qq.Label@(qq.Required ? " *" : "")</label>
+                    @switch (qq.Type)
+                    {
+                        case "longtext":
+                            <textarea id="@id" class="pv2fm-in ta" rows="3" maxlength="2000" value="@Get(qq.Key)" @oninput="e => Set(qq.Key, e.Value?.ToString())"></textarea>
+                            break;
+                        case "choice":
+                            <select id="@id" class="pv2fm-in" value="@Get(qq.Key)" @onchange="e => Set(qq.Key, e.Value?.ToString())">
+                                <option value="">Choose…</option>
+                                @foreach (var o in qq.Options ?? []) { <option value="@o">@o</option> }
+                            </select>
+                            break;
+                        case "date":
+                            <input id="@id" type="date" class="pv2fm-in" value="@Get(qq.Key)" @onchange="e => Set(qq.Key, e.Value?.ToString())" />
+                            break;
+                        default:
+                            <input id="@id" type="text" class="pv2fm-in" maxlength="2000" value="@Get(qq.Key)" @oninput="e => Set(qq.Key, e.Value?.ToString())" />
+                            break;
+                    }
+                    @if (missing.Contains(qq.Key)) { <small class="pv2fm-err">This one is needed.</small> }
+                </div>
+            }
+        </div>
+        @if (error is not null) { <div class="pv2-err" role="alert">@error</div> }
+        <button type="button" class="pv2-btn pri pv2fm-send" data-act="formsend" disabled="@busy" @onclick="Send">@(busy ? "Sending…" : "Send request")</button>
+    }
+</div>
+
+@code {
+    private enum State { Loading, Ready, Closed, Forbidden, Error }
+
+    [Parameter] public Guid ProjectId { get; set; }
+    /// Builder preview: no requests are made and nothing is created.
+    [Parameter] public bool Preview { get; set; }
+    [Parameter] public PublicFormDto? PreviewData { get; set; }
+
+    private State state = State.Loading;
+    private PublicFormDto? form;
+    private readonly Dictionary<string, string> answers = [];
+    private readonly HashSet<string> missing = [];
+    private bool sent, busy, disposed;
+    private string? sentTitle, error;
+    private Guid loadedFor;
+
+    private PublicFormDto? Source => Preview ? PreviewData : form;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Preview)
+        {
+            form = PreviewData;
+            state = form is null ? State.Loading : State.Ready;
+            return;
+        }
+        if (loadedFor == ProjectId && form is not null) return;
+        loadedFor = ProjectId;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        state = State.Loading; StateHasChanged();
+        try
+        {
+            var r = await Auth.SendAsync(HttpMethod.Get, $"/api/projects/forms/{ProjectId}/public");
+            if (disposed) return;
+            if (r.IsSuccessStatusCode)
+            {
+                form = await r.Content.ReadFromJsonAsync<PublicFormDto>();
+                state = form is null ? State.Error : State.Ready;
+            }
+            else state = r.StatusCode switch { HttpStatusCode.Forbidden => State.Forbidden, HttpStatusCode.NotFound => State.Closed, _ => State.Error };
+        }
+        catch { state = State.Error; }
+    }
+
+    private string Get(string key) => answers.TryGetValue(key, out var v) ? v : "";
+    private void Set(string key, string? v) { answers[key] = v ?? ""; missing.Remove(key); }
+
+    private void Reset() { sent = false; sentTitle = null; answers.Clear(); missing.Clear(); error = null; }
+
+    private async Task Send()
+    {
+        if (busy || form is null) return;
+        missing.Clear(); error = null;
+        foreach (var q in form.Questions)
+            if (q.Required && string.IsNullOrWhiteSpace(Get(q.Key))) missing.Add(q.Key);
+        if (missing.Count > 0) { error = "Please fill in the questions marked with *."; return; }
+
+        if (Preview)
+        {
+            // Nothing is sent from the builder preview: show the sent state only.
+            var tq = form.Questions.FirstOrDefault(x => x.MapsTo == "title");
+            sentTitle = tq is null ? null : Get(tq.Key);
+            sent = true;
+            return;
+        }
+
+        busy = true;
+        try
+        {
+            var body = new SubmitFormRequest(form.Questions.Where(q => !string.IsNullOrWhiteSpace(Get(q.Key))).ToDictionary(q => q.Key, q => Get(q.Key).Trim()));
+            var r = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/forms/{ProjectId}/submit", body);
+            if (r.IsSuccessStatusCode)
+            {
+                SubmitFormResultDto? res = null;
+                try { res = await r.Content.ReadFromJsonAsync<SubmitFormResultDto>(); } catch { }
+                sentTitle = res?.Title;
+                sent = true;
+            }
+            else if (r.StatusCode == HttpStatusCode.Forbidden) state = State.Forbidden;
+            else if (r.StatusCode == HttpStatusCode.NotFound) state = State.Closed;
+            else if (r.StatusCode == HttpStatusCode.TooManyRequests) error = "You've sent a lot of requests this hour. Please try again a little later.";
+            else error = "Couldn't send your request. Check the answers and try again.";
+        }
+        catch { error = "Couldn't send your request. Check your connection and try again."; }
+        finally { busy = false; }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+    }
+
+    public void Dispose() => disposed = true;
+}

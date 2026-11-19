@@ -1,101 +1,126 @@
 @using IPop.Application.Projects
+@using System.Globalization
+@inject IJSRuntime JS
 
-<section class="portfolio" aria-label="All projects overview">
-    <div class="portfolio-heading">
-        <div>
-            <h2>All projects overview</h2>
-            <p>Priorities and deadlines across the projects you can see.</p>
-        </div>
-        <span class="portfolio-scope">@(Data?.Scope == "all" ? "All projects" : "My projects")</span>
-    </div>
-    @if (Loading)
+@* Projects v2 "All projects" page (docs/mockups/ipop-apple/projects-v2.html portfolioPage): KPI cards and a table with
+   health, progress, a shared timeline, late count and next milestone. Row click opens the project. The API already scopes the rows.
+   Kept from the old overview: paging, "overdue" / "my tasks this week" drill-down lists and the timesheet card. *@
+<ProjectPageHead Title="All projects" Subtitle="Every project you can see. One place to check health without opening each project."
+                 FullScreen="FullScreen" RailOpen="RailOpen" OnToggleFullScreen="OnToggleFullScreen" OnToggleRail="OnToggleRail">
+    <Right>
+        <button type="button" class="pv2-hbtn pri" data-act="pf-new" @onclick="OnNewProject"><i data-lucide="plus"></i>New project</button>
+    </Right>
+</ProjectPageHead>
+
+<div class="pv2 pv2pg-body" data-page="portfolio">
+    @if (Loading && Data is null)
     {
-        <div class="portfolio-empty">Loading project summary…</div>
+        <div class="pv2pg-kpis" role="status" aria-label="Loading projects">
+            @for (var i = 0; i < 4; i++) { <div class="pv2pg-kpi pv2pg-skel"></div> }
+        </div>
+        <div class="pv2pg-card pv2pg-skel" style="height:320px"></div>
     }
     else if (Data is null)
     {
-        <div class="portfolio-empty">Summary unavailable. <button type="button" @onclick="OnRetry">Try again</button></div>
+        <div class="pv2pg-empty" role="alert">
+            <span class="pv2-bigic"><i data-lucide="triangle-alert"></i></span>
+            <h3>Couldn't load the projects</h3>
+            <p>Summary unavailable. Check your connection and try again.</p>
+            <button type="button" class="pv2-btn pri" @onclick="OnRetry">Try again</button>
+        </div>
     }
     else
     {
-        <div class="portfolio-metrics">
-            <div class="portfolio-metric"><span>Active projects</span><strong>@Data.ActiveProjects</strong></div>
-            <div class="portfolio-metric"><span>Needs attention</span><strong>@Data.AtRiskProjects</strong></div>
-            <button type="button" class="portfolio-metric" @onclick="OpenDueWeek"><span>My tasks this week</span><strong>@Data.MyDueWeek</strong></button>
-            <button type="button" class="portfolio-metric" @onclick="OpenOverdue"><span>Overdue tasks</span><strong>@Data.OverdueTasks</strong></button>
+        var scale = PortfolioMath.ScaleFor(Data.Projects.Items, Today ?? DateTime.Today);
+        <div class="pv2pg-kpis">
+            <div class="pv2pg-kpi"><small>Active projects</small><b class="pv2-num" data-kpi="active">@Data.ActiveProjects</b></div>
+            <div class="pv2pg-kpi g"><small>On track</small><b class="pv2-num" data-kpi="ontrack">@Data.OnTrackProjects</b></div>
+            <div class="pv2pg-kpi w"><small>At risk</small><b class="pv2-num" data-kpi="atrisk">@AtRisk</b></div>
+            <div class="pv2pg-kpi r"><small>Off track</small><b class="pv2-num" data-kpi="offtrack">@Data.OffTrackProjects</b></div>
         </div>
-        <div class="portfolio-grid">
-            <section class="portfolio-card portfolio-projects">
-                <h3>Projects <small>@Data.AverageProgress% average complete</small></h3>
-                @if (Data.Projects.TotalCount == 0)
-                {
-                    <p class="portfolio-muted">No active projects yet. Choose New to create one.</p>
-                }
-                @foreach (var project in Data.Projects.Items)
-                {
-                    <button type="button" class="portfolio-row" @onclick="() => OnOpenProject.InvokeAsync(project.ProjectId)">
-                        <span class="portfolio-row-main"><b>@project.Name</b><small>@project.TaskCount tasks · @project.Progress% complete</small></span>
-                        <span class="portfolio-health @project.Health">@HealthLabel(project.Health)</span>
-                    </button>
-                }
-                @if (Data.Projects.TotalCount > Data.Projects.PageSize)
-                {
-                    <div class="portfolio-pages"><button type="button" disabled="@(Data.Projects.Page <= 1)" @onclick="() => OnProjectPage.InvokeAsync(Data.Projects.Page - 1)">Previous</button><span>@Data.Projects.Page / @((Data.Projects.TotalCount + Data.Projects.PageSize - 1) / Data.Projects.PageSize)</span><button type="button" disabled="@(Data.Projects.Page * Data.Projects.PageSize >= Data.Projects.TotalCount)" @onclick="() => OnProjectPage.InvokeAsync(Data.Projects.Page + 1)">Next</button></div>
-                }
-            </section>
-            <section class="portfolio-card">
-                <h3>Overdue by person</h3>
-                @if (Data.OverdueByPerson.Count == 0) { <p class="portfolio-muted">No overdue tasks.</p> }
-                @foreach (var person in Data.OverdueByPerson)
-                {
-                    <button type="button" class="portfolio-row" @onclick="() => OpenPersonTasks(person, false)"><span>@person.Name</span><b>@person.OverdueCount tasks</b></button>
-                }
-            </section>
-            <section class="portfolio-card">
-                <h3>Workload this week</h3>
-                @if (Data.WorkloadByPerson.Count == 0) { <p class="portfolio-muted">No tasks scheduled this week.</p> }
-                @foreach (var person in Data.WorkloadByPerson)
-                {
-                    <button type="button" class="portfolio-row" @onclick="() => OpenPersonTasks(person, true)">
-                        <span>@person.Name</span><b>@person.OpenTaskCount tasks</b>
-                    </button>
-                }
-            </section>
-            <section class="portfolio-card">
-                <h3>Upcoming project deadlines</h3>
-                @if (Data.Deadlines.Count == 0) { <p class="portfolio-muted">No upcoming deadlines.</p> }
-                @foreach (var deadline in Data.Deadlines)
-                {
-                    <button type="button" class="portfolio-row" @onclick="() => OnOpenProject.InvokeAsync(deadline.ProjectId)"><span>@deadline.Name</span><time datetime="@(deadline.Deadline.ToString("yyyy-MM-dd"))">@deadline.Deadline.ToString("dd MMM")</time></button>
-                }
-            </section>
+
+        <div class="pv2pf-port" role="table" aria-label="Projects">
+            <div class="pv2pf-row h" role="row">
+                <div role="columnheader">Project</div><div role="columnheader">Department</div><div role="columnheader">Health</div>
+                <div role="columnheader">Progress</div><div role="columnheader">@PortfolioMath.TimelineHeading(scale)</div><div role="columnheader">Late</div><div role="columnheader">Next milestone</div>
+            </div>
+            @if (Data.Projects.TotalCount == 0)
+            {
+                <div class="pv2mw-none" style="padding:22px 16px">No active projects yet. Choose New project to create one.</div>
+            }
+            @foreach (var p in Data.Projects.Items)
+            {
+                var project = p;
+                var h = PortfolioMath.Health(project.Health);
+                var bar = scale?.BarFor(project);
+                var color = ProjectStatusUi.SafeColor(project.Color);
+                <div class="pv2pf-row" role="row" tabindex="0" data-pid="@project.ProjectId" @key="project.ProjectId" @onclick="() => OnOpenProject.InvokeAsync(project.ProjectId)" @onkeydown="e => RowKey(e, project)">
+                    <div role="cell"><span class="pv2pf-dot" style="background:@color"></span><b class="pv2pf-name" title="@project.Name">@project.Name</b>
+                        @if (!string.IsNullOrEmpty(project.OwnerNik)) { <PersonAvatar Nik="@project.OwnerNik" Name="@project.OwnerName" Size="22" Class="pv2-av" Decorative="true" /> }</div>
+                    <div role="cell" class="pv2pf-dept">@(project.DepartmentName ?? "·")</div>
+                    <div role="cell"><span class="pv2-health @h.Css"><i class="pv2-hdot"></i>@h.Label</span></div>
+                    <div role="cell"><div class="pv2-pbar"><b><i style="width:@Math.Clamp(project.Progress, 0, 100)%"></i></b><span class="pv2-num">@Math.Clamp(project.Progress, 0, 100)%</span></div></div>
+                    <div role="cell"><div class="pv2pf-ptl" data-ptl>
+                        @if (bar is not null) { <i style="left:@Pc(bar.Left)%;width:@Pc(bar.Width)%;background:@color" title="@Range(project)"></i> }
+                        @if (scale?.TodayPct is { } tp) { <span class="now" style="left:@Pc(tp)%"></span> }
+                    </div></div>
+                    <div role="cell" class="pv2-num pv2pf-late @(project.OverdueCount > 0 ? "on" : "")">@(project.OverdueCount > 0 ? project.OverdueCount.ToString() : "·")</div>
+                    <div role="cell" class="pv2pf-ms">
+                        @if (!string.IsNullOrEmpty(project.NextMilestoneTitle))
+                        {
+                            <i data-lucide="flag" style="color:var(--pv2-violet)"></i><span title="@project.NextMilestoneTitle">@project.NextMilestoneTitle@(project.NextMilestoneDate is { } nd ? " · " + nd.ToString("d MMM", CultureInfo.InvariantCulture) : "")</span>
+                        }
+                        else { <span class="pv2-note">·</span> }
+                    </div>
+                </div>
+            }
         </div>
+
+        @if (Data.Projects.TotalCount > Data.Projects.PageSize)
+        {
+            <div class="pv2pf-pages"><button type="button" class="pv2-btn sm" disabled="@(Data.Projects.Page <= 1)" @onclick="() => OnProjectPage.InvokeAsync(Data.Projects.Page - 1)">Previous</button><span>@Data.Projects.Page / @((Data.Projects.TotalCount + Data.Projects.PageSize - 1) / Data.Projects.PageSize)</span><button type="button" class="pv2-btn sm" disabled="@(Data.Projects.Page * Data.Projects.PageSize >= Data.Projects.TotalCount)" @onclick="() => OnProjectPage.InvokeAsync(Data.Projects.Page + 1)">Next</button></div>
+        }
+
+        <div class="pv2pf-drill">
+            <button type="button" class="pv2-btn sm" data-act="pf-overdue" @onclick="OpenOverdue"><i data-lucide="clock-alert"></i>Overdue tasks <b class="pv2-num">@Data.OverdueTasks</b></button>
+            <button type="button" class="pv2-btn sm" data-act="pf-week" @onclick="OpenDueWeek"><i data-lucide="calendar-days"></i>My tasks this week <b class="pv2-num">@Data.MyDueWeek</b></button>
+        </div>
+
         @if (Tasks is not null)
         {
-            <section class="portfolio-card portfolio-drilldown" aria-label="Related tasks">
-                <div class="portfolio-drilldown-head"><h3>Related tasks</h3><button type="button" @onclick="OnCloseTasks">Close</button></div>
-                @if (Tasks.Items.Count == 0) { <p class="portfolio-muted">No tasks for this selection.</p> }
-                @foreach (var task in Tasks.Items)
-                {
-                    <button type="button" class="portfolio-row" @onclick="() => OnOpenTask.InvokeAsync((task.ProjectId, task.TaskId))">
-                        <span class="portfolio-row-main"><b>@task.Title</b><small>@task.ProjectName · @string.Join(", ", task.Assignees.Select(a => a.Name))</small></span>
-                        <time>@(task.DueDate?.ToString("dd MMM") ?? "—")</time>
-                    </button>
-                }
-                @if (Tasks.TotalCount > Tasks.PageSize)
-                {
-                    <div class="portfolio-pages"><button type="button" disabled="@(Tasks.Page <= 1)" @onclick="() => OnTaskPage.InvokeAsync(Tasks.Page - 1)">Previous</button><span>@Tasks.Page / @((Tasks.TotalCount + Tasks.PageSize - 1) / Tasks.PageSize)</span><button type="button" disabled="@(Tasks.Page * Tasks.PageSize >= Tasks.TotalCount)" @onclick="() => OnTaskPage.InvokeAsync(Tasks.Page + 1)">Next</button></div>
-                }
+            <section class="pv2pg-card pv2pf-tasks" aria-label="Related tasks" data-card="related">
+                <h4>Related tasks<button type="button" class="pv2-ibtn" style="margin-left:auto" aria-label="Close" @onclick="OnCloseTasks"><i data-lucide="x"></i></button></h4>
+                <div class="pv2pg-cbin">
+                    @if (Tasks.Items.Count == 0) { <div class="pv2mw-none" style="padding:0">No tasks for this selection.</div> }
+                    @foreach (var task in Tasks.Items)
+                    {
+                        var t = task;
+                        <button type="button" class="pv2mw-wait" @onclick="() => OnOpenTask.InvokeAsync((t.ProjectId, t.TaskId))">
+                            <span><b>@t.Title</b><small>@t.ProjectName · @string.Join(", ", t.Assignees.Select(a => a.Name))</small></span>
+                            <time class="pv2-note">@(t.DueDate?.ToString("dd MMM") ?? "·")</time>
+                        </button>
+                    }
+                    @if (Tasks.TotalCount > Tasks.PageSize)
+                    {
+                        <div class="pv2pf-pages"><button type="button" class="pv2-btn sm" disabled="@(Tasks.Page <= 1)" @onclick="() => OnTaskPage.InvokeAsync(Tasks.Page - 1)">Previous</button><span>@Tasks.Page / @((Tasks.TotalCount + Tasks.PageSize - 1) / Tasks.PageSize)</span><button type="button" class="pv2-btn sm" disabled="@(Tasks.Page * Tasks.PageSize >= Tasks.TotalCount)" @onclick="() => OnTaskPage.InvokeAsync(Tasks.Page + 1)">Next</button></div>
+                    }
+                </div>
             </section>
         }
-        <TimesheetCard ProjectId="null" Version="Data" Class="portfolio-card portfolio-timesheet" />
+        <TimesheetCard ProjectId="null" Version="Data" Class="pv2pg-card portfolio-timesheet" />
     }
-</section>
+</div>
 
 @code {
     [Parameter] public PortfolioDto? Data { get; set; }
     [Parameter] public PagedResult<PortfolioTaskDto>? Tasks { get; set; }
     [Parameter] public bool Loading { get; set; }
+    [Parameter] public bool FullScreen { get; set; }
+    [Parameter] public bool RailOpen { get; set; }
+    [Parameter] public DateTime? Today { get; set; }
+    [Parameter] public EventCallback OnToggleFullScreen { get; set; }
+    [Parameter] public EventCallback OnToggleRail { get; set; }
+    [Parameter] public EventCallback OnNewProject { get; set; }
     [Parameter] public EventCallback OnRetry { get; set; }
     [Parameter] public EventCallback<Guid> OnOpenProject { get; set; }
     [Parameter] public EventCallback<(string Filter, Guid? ProjectId, Guid? AssigneeId)> OnOpenTasks { get; set; }
@@ -104,15 +129,18 @@
     [Parameter] public EventCallback<int> OnProjectPage { get; set; }
     [Parameter] public EventCallback OnCloseTasks { get; set; }
 
+    /// Active = on track + at risk + off track: "At risk" is what is left.
+    private int AtRisk => Math.Max(0, Data!.ActiveProjects - Data.OnTrackProjects - Data.OffTrackProjects);
+
+    private static string Pc(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+    private static string Range(PortfolioProjectDto p) =>
+        $"{(p.StartDate?.ToString("d MMM", CultureInfo.InvariantCulture) ?? "?")} → {(p.Deadline?.ToString("d MMM", CultureInfo.InvariantCulture) ?? "?")}";
+    private Task RowKey(KeyboardEventArgs e, PortfolioProjectDto p) => e.Key is "Enter" ? OnOpenProject.InvokeAsync(p.ProjectId) : Task.CompletedTask;
     private Task OpenDueWeek() => OnOpenTasks.InvokeAsync(("due_week", null, null));
     private Task OpenOverdue() => OnOpenTasks.InvokeAsync(("overdue", null, null));
-    private Task OpenPersonTasks(PortfolioPersonDto person, bool workload) =>
-        OnOpenTasks.InvokeAsync((workload ? "workload" : "overdue", null, person.UserId));
 
-    private static string HealthLabel(string health) => health switch
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        "at_risk" => "Needs attention",
-        "due_soon" => "Due soon",
-        _ => "On track"
-    };
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+    }
 }

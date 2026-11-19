@@ -50,10 +50,14 @@ window.ipopMicro = (() => {
     ind.style.height = on.offsetHeight + 'px';
     root.classList.add('mi-live');
   }
+  // One document walk for all slider kinds (this runs after every render; big pages such as a 300-row
+  // project table have ~18k nodes, and 13 separate querySelectorAll passes cost ~30 ms per tick).
+  const SLIDER_ALL = SLIDERS.map(s => s[0]).join(', ');
   function scanSliders() {
-    for (const [rootSel, itemSel, onSel, extra] of SLIDERS) {
-      for (const root of document.querySelectorAll(rootSel)) {
-        if (!root.offsetParent) continue;
+    for (const root of document.querySelectorAll(SLIDER_ALL)) {
+      if (!root.isConnected || !root.offsetParent) continue;
+      for (const [rootSel, itemSel, onSel, extra] of SLIDERS) {
+        if (!root.matches(rootSel)) continue;
         if (!root.classList.contains('mi-slider')) { root.classList.add('mi-slider'); if (extra) root.classList.add(extra); }
         placeSlider(root, itemSel, onSel);
       }
@@ -415,14 +419,19 @@ window.ipopMicro = (() => {
 
   // ── Observe renders (debounced to one frame) ──
   let queued = false;
+  // Glide/slider/palette positions are visible feedback, so they follow the render in the same frame.
+  // Badge bumps and presence ripples only compare text/classes across all matching nodes; on big pages
+  // (a 300-row project table is ~18k nodes) they ran inside the click's frame, so they now wait for idle.
+  let lazyQueued = false;
+  function lazyTick() { lazyQueued = false; scanBadges(); scanPresence(); }
+  const idle = window.requestIdleCallback ? cb => requestIdleCallback(cb, { timeout: 400 }) : cb => setTimeout(cb, 120);
   function tick() {
     queued = false;
     scanSliders();
     placeGlide();
     navEdges(document.querySelector('.sidebar .nav-scroll'));
     placePaletteSel();
-    scanBadges();
-    scanPresence();
+    if (!lazyQueued) { lazyQueued = true; idle(lazyTick); }
     onNavigated();
   }
   function schedule() { if (!queued) { queued = true; requestAnimationFrame(tick); } }

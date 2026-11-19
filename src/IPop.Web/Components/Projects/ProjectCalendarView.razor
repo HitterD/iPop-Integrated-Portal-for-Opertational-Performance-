@@ -66,7 +66,7 @@
                 {
                     var t = seg.Task;
                     <button type="button" class="pcal-bar-item @t.Status @(seg.ContinuesBefore ? "cont-before" : "") @(seg.ContinuesAfter ? "cont-after" : "") @(IsOverdue(t) ? "overdue" : "")"
-                            style="grid-column:@(seg.StartCol + 1) / span @seg.Span; grid-row:@(seg.Lane + 2)"
+                            style="@SegStyle(seg)"
                             draggable="@(ReadOnly ? "false" : "true")" title="@BarTitle(t)"
                             @ondragstart="() => { if (!ReadOnly) dragTask = t; }" @ondragend="() => { dragTask = null; dropDay = null; }"
                             @onclick="() => OnTaskClick.InvokeAsync(t.Id)">
@@ -178,6 +178,8 @@
 
     private IEnumerable<CalendarTaskDto> Visible =>
         (data?.Tasks ?? []).Where(t => Filter is null || Filter(t));
+
+    private static string SegStyle(ProjectCalendarLayout.Segment seg) => string.Concat("grid-column:", seg.StartCol + 1, " / span ", seg.Span, "; grid-row:", seg.Lane + 2, string.IsNullOrEmpty(seg.Task.StatusColor) ? "" : ";--ev:" + ProjectStatusUi.SafeColor(seg.Task.StatusColor));
 
     private static bool IsOverdue(CalendarTaskDto t) => t.Status != "done" && t.DueDate is { } d && d.Date < DateTime.Today;
 

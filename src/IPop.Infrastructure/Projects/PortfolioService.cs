@@ -34,19 +34,28 @@ public sealed class PortfolioService(IPopDbContext db) : IPortfolioService
         pageSize = Math.Clamp(pageSize, 1, 100);
         var totalProjects = await visible.CountAsync(ct);
         // The dashboard and cards use SQL aggregates; only the requested card page is materialized.
+        var healths = await visible.Select(p => new { p.Status, p.Deadline, p.Health,
+            Overdue = p.Tasks.Count(t => t.ParentTaskId == null && t.Status != "done" && t.DueDate < day) }).ToListAsync(ct);
+        var onTrack = healths.Count(h => Health(h.Status, h.Deadline, h.Overdue, day, h.Health) is "on_track" or "due_soon");
+        var offTrack = healths.Count(h => Health(h.Status, h.Deadline, h.Overdue, day, h.Health) == "off_track");
         var atRiskProjects = await visible.CountAsync(p => p.Status == "on_hold" ||
             p.Deadline < day || p.Tasks.Any(t => t.ParentTaskId == null && t.Status != "done" && t.DueDate < day), ct);
         var averageProgress = totalProjects == 0 ? 0 : (int)Math.Round(await visible.AverageAsync(p => (double)p.Progress, ct));
         var projects = await visible.OrderBy(p => p.Name).ThenBy(p => p.Id)
             .Skip((page - 1) * pageSize).Take(pageSize)
             .Select(p => new {
-                p.Id, p.Name, p.Status, p.Progress, p.Deadline,
+                p.Id, p.Name, p.Status, p.Progress, p.Deadline, p.StartDate, p.Health, p.Color,
+                OwnerName = p.Owner.Name, OwnerNik = p.Owner.Nik,
+                DepartmentName = p.Owner.DepartmentId == null ? null : db.Departments.Where(d => d.Id == p.Owner.DepartmentId).Select(d => d.Name).FirstOrDefault(),
+                NextMs = db.ProjectMilestones.Where(m => m.ProjectId == p.Id && m.AchievedAt == null && m.DueDate >= day)
+                    .OrderBy(m => m.DueDate).Select(m => new { m.Title, m.DueDate }).FirstOrDefault(),
                 TaskCount = p.Tasks.Count(t => t.ParentTaskId == null),
                 DoneCount = p.Tasks.Count(t => t.ParentTaskId == null && t.Status == "done"),
                 OverdueCount = p.Tasks.Count(t => t.ParentTaskId == null && t.Status != "done" && t.DueDate < day)
             }).ToListAsync(ct);
         var rows = projects.Select(p => new PortfolioProjectDto(p.Id, p.Name, p.Status, p.Progress, p.Deadline,
-            p.TaskCount, p.DoneCount, p.OverdueCount, Health(p.Status, p.Deadline, p.OverdueCount, day))).ToList();
+            p.TaskCount, p.DoneCount, p.OverdueCount, Health(p.Status, p.Deadline, p.OverdueCount, day, p.Health),
+            p.StartDate, p.NextMs?.Title, p.NextMs?.DueDate, p.OwnerName, p.OwnerNik, p.DepartmentName, p.Color)).ToList();
         var tasks = db.ProjectTasks.AsNoTracking().Where(t => t.ParentTaskId == null && visible.Any(p => p.Id == t.ProjectId));
 
         // Count distinct tasks assigned to the caller, including assignments on multiple projects.
@@ -80,11 +89,12 @@ public sealed class PortfolioService(IPopDbContext db) : IPortfolioService
             p.Progress, Health(p.Status, p.Deadline, p.Overdue, day))).ToList();
         return new PortfolioDto(all ? "all" : "member", superAdmin, totalProjects,
             atRiskProjects, averageProgress, myDueWeek, overdueTasks,
-            new PagedResult<PortfolioProjectDto>(rows, totalProjects, page, pageSize), overduePeople, workload, deadlines);
+            new PagedResult<PortfolioProjectDto>(rows, totalProjects, page, pageSize), overduePeople, workload, deadlines, onTrack, offTrack);
     }
 
-    private static string Health(string status, DateTime? deadline, int overdue, DateTime day)
+    private static string Health(string status, DateTime? deadline, int overdue, DateTime day, string? explicitHealth = null)
     {
+        if (explicitHealth is "on_track" or "at_risk" or "off_track") return explicitHealth;
         if (overdue > 0 || deadline < day || status == "on_hold") return "at_risk";
         if (deadline < day.AddDays(7)) return "due_soon";
         return "on_track";

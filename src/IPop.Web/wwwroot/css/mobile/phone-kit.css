@@ -16,11 +16,11 @@
     --ph-frame: #123528;
   }
   [data-theme="dark"] {
-    --ph-bg: #000; --ph-card: #1c1c1e; --ph-sheet: #1c1c1e;
+    --ph-bg: #15181b; --ph-card: #1e2225; --ph-sheet: #1e2225;
     --ph-fill: rgba(118, 118, 128, .24); --ph-fill-2: rgba(118, 118, 128, .13);
     --ph-sep: rgba(84, 84, 88, .55); --ph-hair: rgba(84, 84, 88, .65);
-    --ph-ink: #f5f5f7; --ph-ink-2: #d1d1d6; --ph-ink-3: #98989d; --ph-ink-4: #636366;
-    --ph-green: #30d158; --ph-green-soft: rgba(48, 209, 88, .16); --ph-red: #ff453a;
+    --ph-ink: #eceef0; --ph-ink-2: #a9b0b7; --ph-ink-3: #7d848b; --ph-ink-4: #656c73;
+    --ph-green: #45c486; --ph-green-soft: rgba(69, 196, 134, .16); --ph-red: #ff453a;
     --ph-on-green: #03210f;
   }
 
@@ -109,7 +109,7 @@
     background-color: transparent; color: var(--ph-ink-2); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
   }
   .ph-seg button.on { background-color: var(--ph-card); color: var(--ph-ink); filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .12)); }
-  [data-theme="dark"] .ph-seg button.on { background-color: #636366; }
+  [data-theme="dark"] .ph-seg button.on { background-color: var(--line-2); }
   .ph-seg-n { margin-left: 5px; font-style: normal; font-size: 12px; opacity: .7; }
 
   /* ---------- Floating action button ---------- */

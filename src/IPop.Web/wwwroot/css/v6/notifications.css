@@ -241,7 +241,7 @@
 }
 
 [data-theme="dark"] .topbar-right .apple-notif-pop-card {
-  background: rgba(30, 29, 27, 0.95) !important;
+  background: color-mix(in srgb, var(--surface) 95%, transparent) !important;
   border-color: rgba(255, 255, 255, 0.12) !important;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55) !important;
 }

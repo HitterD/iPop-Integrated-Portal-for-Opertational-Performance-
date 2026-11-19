@@ -257,7 +257,7 @@ button.portfolio-metric:hover, .portfolio-row:hover { background: var(--tray); }
   width: 24px; height: 24px; margin-right: -6px; border-radius: 50%; border: 2px solid var(--surface); box-sizing: border-box;
   color: #fff; font-size: 9px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center;
 }
-.kc-av.more { background: #E5E5EA; color: #3A3A3C; }
+.kc-av.more { background: var(--surface-3); color: var(--ink-2); }
 .kc-assign {
   height: 24px; padding: 0 8px; border-radius: 12px; border: 1px dashed rgba(0, 0, 0, 0.18); background: transparent;
   font-size: 11px; color: #6E6E73; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
@@ -457,7 +457,7 @@ button.portfolio-metric:hover, .portfolio-row:hover { background: var(--tray); }
 [data-theme="dark"] .plist-due, [data-theme="dark"] .plist-sub { color: #AEAEB2; }
 [data-theme="dark"] .plist-due.overdue { color: #FF6961; }
 [data-theme="dark"] .plist-due.soon { color: #FFB340; }
-[data-theme="dark"] .plist-due.empty { color: #636366; }
+[data-theme="dark"] .plist-due.empty { color: var(--ink-4); }
 @media (max-width: 1200px) { .plist-card { overflow-x: auto; } .plist-row, .plist-group-head, .plist-add-row { min-width: 860px; } }
 /* Phase 1 List extensions: rows retain their native grid; fields appear only when configured. */
 .plist-group-heading { display: flex; align-items: center; border-bottom: 1px solid var(--line-soft); }
@@ -569,7 +569,7 @@ button.portfolio-metric:hover, .portfolio-row:hover { background: var(--tray); }
 
 /* Floating bulk bar */
 .pbulk { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 14px; border-radius: 14px; border: 1px solid var(--line-soft); background: rgba(255, 255, 255, 0.86); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16); max-width: calc(100vw - 24px); box-sizing: border-box; }
-[data-theme="dark"] .pbulk { background: rgba(44, 44, 46, 0.86); border-color: rgba(255, 255, 255, 0.1); }
+[data-theme="dark"] .pbulk { background: color-mix(in srgb, var(--surface-2) 90%, transparent); border-color: rgba(255, 255, 255, 0.1); }
 .pbulk-count { font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; padding-right: 4px; }
 .pbulk-actions { display: flex; align-items: center; gap: 2px; }
 .pbulk-wrap { position: relative; }
@@ -672,8 +672,8 @@ button.portfolio-metric:hover, .portfolio-row:hover { background: var(--tray); }
 [data-theme="dark"] .pcal-bar-item.review { background: rgba(255, 159, 10, 0.18); }
 [data-theme="dark"] .pcal-bar-item.done { background: rgba(48, 209, 88, 0.16); }
 [data-theme="dark"] .pcal-day.outside { background: rgba(255, 255, 255, 0.03); }
-[data-theme="dark"] .pcal-day.outside .pcal-num { color: #636366; }
-[data-theme="dark"] .pcal-mode button.on { background: #636366; }
+[data-theme="dark"] .pcal-day.outside .pcal-num { color: var(--ink-4); }
+[data-theme="dark"] .pcal-mode button.on { background: var(--line-2); }
 .pcal-agenda { display: none; flex-direction: column; gap: 10px; }
 .pcal-agenda-day { border: 1px solid var(--line-soft); border-radius: 12px; background: var(--surface); padding: 8px; position: relative; }
 .pcal-agenda-day.today { border-color: var(--accent); }

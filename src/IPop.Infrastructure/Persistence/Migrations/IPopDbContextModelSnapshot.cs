@@ -4020,6 +4020,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Color")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -4037,8 +4040,20 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasMaxLength(4000)
                         .HasColumnType("character varying(4000)");
 
+                    b.Property<string>("Goal")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Health")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("Lessons")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -4067,6 +4082,10 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<string>("TabsJson")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -4086,6 +4105,98 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("Year", "Status");
 
                     b.ToTable("Projects");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectAutomation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ConfigJson")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTime?>("LastRunAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("RunCount")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId", "Kind")
+                        .IsUnique();
+
+                    b.ToTable("ProjectAutomations");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectBaseline", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("ProjectId");
+
+                    b.ToTable("ProjectBaselines");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectBaselineTask", b =>
+                {
+                    b.Property<Guid>("BaselineId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("Due")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("Start")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("BaselineId", "TaskId");
+
+                    b.HasIndex("TaskId");
+
+                    b.ToTable("ProjectBaselineTasks");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.ProjectField", b =>
@@ -4122,6 +4233,88 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("ProjectId", "SortOrder");
 
                     b.ToTable("ProjectFields");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectForm", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AssigneeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AudienceScope")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("IntakeGroupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Intro")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<bool>("IsOpen")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("QuestionsJson")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId")
+                        .IsUnique();
+
+                    b.ToTable("ProjectForms");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectFormSubmission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("FormId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SubmitterId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TaskId");
+
+                    b.HasIndex("FormId", "SubmitterId", "CreatedAt");
+
+                    b.ToTable("ProjectFormSubmissions");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.ProjectGroup", b =>
@@ -4296,6 +4489,43 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("ProjectSavedViews");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.ProjectStatusOption", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Stage")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId", "SortOrder");
+
+                    b.ToTable("ProjectStatusOptions");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.ProjectTask", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4308,11 +4538,21 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("ConstraintDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ConstraintType")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("CreatedById")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DeadlineDate")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("DeleteBatchId")
                         .HasColumnType("uuid");
@@ -4368,6 +4608,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<Guid?>("StatusOptionId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Tags")
                         .HasColumnType("text");
 
@@ -4392,6 +4635,8 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("ProjectId");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("StatusOptionId");
 
                     b.HasIndex("GroupId", "ProjectId");
 
@@ -4554,6 +4799,18 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("DependsOnTaskId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("LagDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("LinkType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)")
+                        .HasDefaultValue("FS");
+
                     b.HasKey("TaskId", "DependsOnTaskId");
 
                     b.HasIndex("DependsOnTaskId");
@@ -4660,6 +4917,14 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("AutomationsJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
                     b.Property<string>("Color")
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
@@ -4677,6 +4942,13 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<int?>("DurationWeeks")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FieldsJson")
+                        .HasMaxLength(8000)
+                        .HasColumnType("character varying(8000)");
+
                     b.Property<string>("Icon")
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
@@ -4692,8 +4964,27 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<bool>("OffsetsInWorkingDays")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("RolesJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("RulesJson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
                     b.Property<Guid?>("SourceProjectId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("StatusesJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("TabsJson")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
 
                     b.Property<int>("UsedCount")
                         .HasColumnType("integer");
@@ -4794,12 +5085,23 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<int?>("DueOffsetDays")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("DurationDays")
+                        .HasColumnType("integer");
+
                     b.Property<Guid?>("GroupId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("Priority")
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
+
+                    b.Property<string>("RecurrenceRule")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("RoleKey")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
 
                     b.Property<int>("SortOrder")
                         .HasColumnType("integer");
@@ -7517,6 +7819,55 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Owner");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.ProjectAutomation", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.Project", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectBaseline", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.Project", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectBaselineTask", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.ProjectBaseline", "Baseline")
+                        .WithMany("Tasks")
+                        .HasForeignKey("BaselineId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.ProjectTask", "Task")
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Baseline");
+
+                    b.Navigation("Task");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.ProjectField", b =>
                 {
                     b.HasOne("IPop.Core.Entities.Project", "Project")
@@ -7526,6 +7877,36 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectForm", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.Project", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectFormSubmission", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.ProjectForm", "Form")
+                        .WithMany()
+                        .HasForeignKey("FormId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.ProjectTask", "Task")
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Form");
+
+                    b.Navigation("Task");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.ProjectGroup", b =>
@@ -7640,6 +8021,17 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Project");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.ProjectStatusOption", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.Project", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Project");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.ProjectTask", b =>
                 {
                     b.HasOne("IPop.Core.Entities.User", "CreatedBy")
@@ -7659,6 +8051,11 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("IPop.Core.Entities.ProjectStatusOption", "StatusOption")
+                        .WithMany()
+                        .HasForeignKey("StatusOptionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("IPop.Core.Entities.ProjectGroup", "Group")
                         .WithMany("Tasks")
                         .HasForeignKey("GroupId", "ProjectId")
@@ -7673,6 +8070,8 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("ParentTask");
 
                     b.Navigation("Project");
+
+                    b.Navigation("StatusOption");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.ProjectTaskActivity", b =>
@@ -8427,6 +8826,11 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
                     b.Navigation("Members");
 
+                    b.Navigation("Tasks");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectBaseline", b =>
+                {
                     b.Navigation("Tasks");
                 });
 

@@ -1,0 +1,36 @@
+@* Projects v2: crumb row above the project header (mockup .crumb): project-list toggle (full screen only),
+   "Projects > year", and the Full screen / Exit full screen button with its key hint. *@
+<div class="pv2 pv2-crumb">
+    @if (FullScreen)
+    {
+        <button type="button" class="pv2-railbtn @(RailOpen ? "on" : "")" aria-pressed="@(RailOpen ? "true" : "false")"
+                title="@(RailOpen ? "Hide" : "Show") project list" aria-label="@(RailOpen ? "Hide" : "Show") project list" @onclick="OnToggleRail">
+            <i data-lucide="panel-left"></i>
+        </button>
+    }
+    <button type="button" class="pv2-crumb-link" @onclick="OnProjectsClick">Projects</button>
+    @if (!string.IsNullOrWhiteSpace(Trail))
+    {
+        <i data-lucide="chevron-right" class="pv2-crumb-sep"></i><span class="pv2-crumb-cur">@Trail</span>
+    }
+    <span class="pv2-sp"></span>
+    <button type="button" class="pv2-fsbtn" aria-pressed="@(FullScreen ? "true" : "false")"
+            title="@(FullScreen ? "Exit full screen (Esc)" : "Full screen (F)")" @onclick="OnToggleFullScreen">
+        <i data-lucide="@(FullScreen ? "minimize-2" : "maximize-2")"></i>@(FullScreen ? "Exit full screen" : "Full screen")<kbd>@(FullScreen ? "Esc" : "F")</kbd>
+    </button>
+</div>
+
+@code {
+    [Parameter] public bool FullScreen { get; set; }
+    [Parameter] public bool RailOpen { get; set; }
+    [Parameter] public string? Trail { get; set; }
+    [Parameter] public EventCallback OnToggleFullScreen { get; set; }
+    [Parameter] public EventCallback OnToggleRail { get; set; }
+    [Parameter] public EventCallback OnProjectsClick { get; set; }
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+    }
+}

@@ -1,0 +1,15 @@
+@page "/projects/form/{ProjectId:guid}"
+@using Microsoft.AspNetCore.Authorization
+@using IPop.Web.Components.Projects
+@attribute [Authorize]
+
+<PageTitle>Request - iPop</PageTitle>
+
+@* The link the form builder copies. Signed-in iPop users only: the API checks the audience the project owner chose. *@
+<div class="pv2 pv2fm-page">
+    <ProjectRequestForm ProjectId="ProjectId" />
+</div>
+
+@code {
+    [Parameter] public Guid ProjectId { get; set; }
+}

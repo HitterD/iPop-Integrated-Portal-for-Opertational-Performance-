@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Projects SPMO Phase A</title>
+<style>
+:root{
+  --canvas:#f3f2ee;--surface:#fff;--surface-2:#faf9f7;--surface-3:#f1efea;--line:#ebe8e3;--line-2:#dcd8d0;
+  --ink:#1c1f23;--ink-2:#5b636b;--ink-3:#8b9198;--accent:#2e9d6b;--accent-soft:#e3f4eb;--on-accent:#fff;
+  --danger:#d8452e;--danger-soft:#fdeeea;--warn:#b97f05;--warn-soft:#fdf5e2;--info:#2f6fed;--info-soft:#ecf2ff;--violet:#7c4dd6;--violet-soft:#f1ebfd;
+  --star:#e0a100;
+  --sh-pop:0 18px 44px -14px rgba(20,24,22,.28),0 2px 6px rgba(20,24,22,.06);--sh-card:0 1px 2px rgba(20,24,22,.05),0 4px 14px -6px rgba(20,24,22,.08);
+  --ease:cubic-bezier(.16,1,.3,1);--spring:cubic-bezier(.34,1.56,.64,1);
+  --font:-apple-system,"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --canvas:#15181b;--surface:#1e2225;--surface-2:#23272b;--surface-3:#2a2f33;--line:#2e3338;--line-2:#3b4147;
+  --ink:#eceef0;--ink-2:#a9b0b7;--ink-3:#7d848b;--accent:#45c486;--accent-soft:rgba(69,196,134,.15);--on-accent:#06150d;
+  --danger:#ff7a63;--danger-soft:rgba(255,122,99,.13);--warn:#e7b44a;--warn-soft:rgba(231,180,74,.14);--info:#7aa7ff;--info-soft:rgba(122,167,255,.14);--violet:#b69cff;--violet-soft:rgba(182,156,255,.14);
+  --star:#f2c14e;--sh-pop:0 18px 44px -14px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.04);--sh-card:0 1px 2px rgba(0,0,0,.3);color-scheme:dark}}
+:root[data-theme="dark"]{
+  --canvas:#15181b;--surface:#1e2225;--surface-2:#23272b;--surface-3:#2a2f33;--line:#2e3338;--line-2:#3b4147;
+  --ink:#eceef0;--ink-2:#a9b0b7;--ink-3:#7d848b;--accent:#45c486;--accent-soft:rgba(69,196,134,.15);--on-accent:#06150d;
+  --danger:#ff7a63;--danger-soft:rgba(255,122,99,.13);--warn:#e7b44a;--warn-soft:rgba(231,180,74,.14);--info:#7aa7ff;--info-soft:rgba(122,167,255,.14);--violet:#b69cff;--violet-soft:rgba(182,156,255,.14);
+  --star:#f2c14e;--sh-pop:0 18px 44px -14px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.04);--sh-card:0 1px 2px rgba(0,0,0,.3);color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--canvas);color:var(--ink);font:13.5px/1.45 var(--font);-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+svg.i{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.num{font-variant-numeric:tabular-nums}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}}
+@keyframes pop{0%{transform:scale(1)}40%{transform:scale(1.35)}100%{transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* mockup chrome */
+.mk{position:sticky;top:0;z-index:50;display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:var(--surface);border-bottom:1px solid var(--line);padding:9px 16px}
+.mk b{margin-right:8px;font-size:14px}
+.mk button{border:1px solid var(--line-2);background:var(--surface);border-radius:999px;padding:4px 12px;font-size:12.5px;transition:background .2s,transform .14s var(--ease)}
+.mk button:hover{background:var(--surface-3)}
+.mk button:active{transform:scale(.95)}
+.mk button.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.mk .sp{flex:1}
+.wrap{width:min(1480px,100%);margin:0 auto;padding:16px}
+.screen{display:none}.screen.on{display:block;animation:rise .35s var(--ease)}
+.note{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:12px;margin-top:14px}
+.note>div{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;color:var(--ink-2);font-size:13px}
+.note h3{margin:0 0 4px;font-size:13.5px;color:var(--ink)}
+.tag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.04em;padding:1px 7px;border-radius:6px;background:var(--accent-soft);color:var(--accent);margin-bottom:5px}
+.tag.chg{background:var(--info-soft);color:var(--info)}
+
+/* app surface */
+.app{background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--sh-card);overflow:hidden}
+.ph{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;padding:18px 20px 12px}
+.ph h1{margin:0;font-size:22px;letter-spacing:-.01em}
+.ph p{margin:2px 0 0;color:var(--ink-2)}
+.sp{flex:1}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:9px;border:1px solid var(--line-2);background:var(--surface);font-size:13px;transition:background .2s,transform .14s var(--ease)}
+.btn:hover{background:var(--surface-3)}.btn:active{transform:scale(.96)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+.seg{display:inline-flex;background:var(--surface-3);border-radius:10px;padding:2px}
+.seg button{border:0;background:none;height:28px;padding:0 12px;border-radius:8px;font-size:12.5px;color:var(--ink-2)}
+.seg button.on{background:var(--surface);color:var(--ink);box-shadow:var(--sh-card);font-weight:600}
+
+/* scope + filters */
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:0 20px 12px}
+.chip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:999px;border:1px solid var(--line-2);background:var(--surface);font-size:12.5px;color:var(--ink-2)}
+.chip b{color:var(--ink);font-weight:600}
+.chip:hover{background:var(--surface-3)}
+.chip.set{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.chip.set b{color:var(--accent)}
+
+/* KPI band */
+.kpis{display:grid;grid-template-columns:1.25fr repeat(4,1fr);gap:12px;padding:0 20px 14px}
+@media (max-width:1100px){.kpis{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:560px){.kpis{grid-template-columns:1fr}}
+.kpi{background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:13px 14px;min-width:0}
+.kpi .l{font-size:11.5px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;font-weight:600;display:flex;align-items:center;gap:6px}
+.kpi .v{font-size:26px;font-weight:700;letter-spacing:-.02em;margin-top:2px}
+.kpi .s{font-size:12px;color:var(--ink-2)}
+.ring{display:flex;align-items:center;gap:14px}
+.ring svg{width:76px;height:76px;flex:none}
+.ring .v{font-size:30px}
+.bars{display:flex;height:8px;border-radius:999px;overflow:hidden;background:var(--surface-3);margin-top:8px}
+.bars i{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-size:12px;color:var(--ink-2)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:8px;height:8px;border-radius:3px;display:inline-block}
+.ben{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;margin-top:6px;font-size:12.5px}
+.ben span{color:var(--ink-3)}.ben b{text-align:right;font-weight:600}
+.ach{color:var(--accent);font-weight:700}
+.muted{color:var(--ink-3)}
+.info{display:inline-flex;width:14px;height:14px;border-radius:50%;background:var(--surface-3);color:var(--ink-3);font-size:10px;align-items:center;justify-content:center;font-weight:700;cursor:help}
+
+/* two-column lower area */
+.low{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:14px;padding:0 20px 20px}
+@media (max-width:1100px){.low{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.card h4{margin:0;padding:12px 14px;font-size:13px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line)}
+.card h4 em{font-style:normal;color:var(--ink-3);font-weight:500}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{font-size:11.5px;font-weight:600;color:var(--ink-3);text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;background:var(--surface-2)}
+.tbl td{padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl tr:last-child td{border-bottom:0}
+.tbl tbody tr{transition:background .15s}
+.tbl tbody tr:hover{background:var(--surface-2)}
+.tbl .r{text-align:right}
+.scrollx{overflow-x:auto}
+.pname{display:flex;align-items:center;gap:8px;font-weight:600}
+.pname small{display:block;font-weight:400;color:var(--ink-3);font-size:11.5px}
+.star{border:0;background:none;padding:2px;color:var(--ink-3);display:inline-flex;border-radius:6px}
+.star:hover{background:var(--surface-3)}
+.star.on{color:var(--star)}
+.star.on svg{fill:var(--star)}
+.star.pop{animation:pop .4s var(--spring)}
+.hc{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:2px 8px;border-radius:999px;font-weight:600}
+.hc i{width:7px;height:7px;border-radius:50%;background:currentColor}
+.h0{background:var(--accent-soft);color:var(--accent)}.h1{background:var(--warn-soft);color:var(--warn)}.h2{background:var(--danger-soft);color:var(--danger)}.h3{background:var(--surface-3);color:var(--ink-2)}
+.pb{display:flex;align-items:center;gap:8px;min-width:120px}
+.pb .t{flex:1;height:6px;border-radius:999px;background:var(--surface-3);overflow:hidden}
+.pb .t i{display:block;height:100%;background:var(--accent);border-radius:999px}
+.pill{font-size:11.5px;padding:1px 7px;border-radius:6px;background:var(--surface-3);color:var(--ink-2)}
+.pill.empty{background:none;border:1px dashed var(--line-2);color:var(--ink-3)}
+.late{color:var(--danger);font-weight:600}
+.fu li{display:flex;gap:10px;align-items:flex-start;padding:10px 14px;border-bottom:1px solid var(--line)}
+.fu{list-style:none;margin:0;padding:0}
+.fu li:last-child{border-bottom:0}
+.fu .d{width:8px;height:8px;border-radius:50%;margin-top:6px;flex:none}
+.fu .t{font-weight:600;font-size:13px}
+.fu .m{font-size:12px;color:var(--ink-2)}
+.plant{display:grid;grid-template-columns:1fr auto auto;gap:4px 12px;padding:10px 14px;font-size:12.5px;align-items:center}
+.plant .bar1{grid-column:1/-1;height:5px;border-radius:999px;background:var(--surface-3);overflow:hidden;margin-bottom:6px}
+.plant .bar1 i{display:block;height:100%;background:var(--info)}
+.empty-watch{padding:28px;text-align:center;color:var(--ink-2)}
+
+/* popover */
+.pop{position:absolute;z-index:30;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--sh-pop);padding:6px;min-width:230px;animation:rise .2s var(--ease)}
+.pop button{display:flex;width:100%;align-items:center;gap:8px;border:0;background:none;padding:7px 9px;border-radius:8px;text-align:left;font-size:13px}
+.pop button:hover{background:var(--surface-3)}
+.pop .cur{font-weight:600;color:var(--accent)}
+.pop small{display:block;color:var(--ink-3);font-size:11.5px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--surface);border:1px solid var(--line);box-shadow:var(--sh-pop);border-radius:14px;padding:10px 14px;font-size:13px;z-index:99;animation:rise .25s var(--ease)}
+
+/* project header + table (weights) */
+.crumb{font-size:12px;color:var(--ink-3);padding:12px 20px 0}
+.phead{display:flex;align-items:center;gap:10px;padding:4px 20px 10px;flex-wrap:wrap}
+.phead h2{margin:0;font-size:20px}
+.meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:0 20px 12px;font-size:12.5px;color:var(--ink-2)}
+.prog{display:flex;align-items:center;gap:10px;padding:0 20px 14px;font-size:12.5px}
+.prog .t{width:240px;height:7px;border-radius:999px;background:var(--surface-3);overflow:hidden}
+.prog .t i{display:block;height:100%;background:var(--accent);transition:width .5s var(--ease)}
+.grp{padding:0 20px 20px}
+.grp h5{margin:6px 0 8px;font-size:14px;color:var(--info);display:flex;gap:8px;align-items:center}
+.st{display:inline-block;min-width:104px;text-align:center;color:#fff;font-weight:600;font-size:12px;padding:5px 8px;border-radius:4px}
+.s-todo{background:#b9bcc0}.s-doing{background:#fdab3d}.s-done{background:#00c875}.s-review{background:#579bfc}
+.wt{width:64px;height:28px;border:1px solid transparent;border-radius:7px;background:none;text-align:right;padding:0 8px}
+.wt:hover{border-color:var(--line-2)}
+.wt:focus{border-color:var(--accent);outline:none;background:var(--surface)}
+.wt::placeholder{color:var(--ink-3)}
+.contrib{display:flex;align-items:center;gap:6px;justify-content:flex-end}
+.contrib .t{width:46px;height:5px;border-radius:999px;background:var(--surface-3);overflow:hidden}
+.contrib .t i{display:block;height:100%;background:var(--violet)}
+.hint{margin:10px 20px 0;padding:10px 12px;border-radius:12px;background:var(--violet-soft);color:var(--ink-2);font-size:12.5px;display:flex;gap:10px;align-items:flex-start}
+.hint b{color:var(--ink)}
+.tfoot td{font-weight:600;background:var(--surface-2)}
+
+/* settings modal */
+.scrim{position:relative;background:color-mix(in srgb,var(--canvas) 60%,transparent);border-radius:18px;padding:40px 16px;display:flex;justify-content:center}
+.modal{width:min(560px,100%);background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--sh-pop);overflow:hidden}
+.mh{display:flex;align-items:center;gap:10px;padding:16px 18px;border-bottom:1px solid var(--line);font-weight:700;font-size:15px}
+.mb{padding:16px 18px;display:grid;gap:14px}
+.fld label{display:block;font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:5px}
+.fld .in{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border:1px solid var(--line-2);border-radius:10px;background:var(--surface)}
+.fld .in select{border:0;background:none;flex:1;height:100%;outline:none}
+.fld small{display:block;color:var(--ink-3);font-size:11.5px;margin-top:4px}
+.auto{font-size:11px;padding:1px 6px;border-radius:5px;background:var(--info-soft);color:var(--info);font-weight:600}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:560px){.two{grid-template-columns:1fr}}
+.mf{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;border-top:1px solid var(--line);background:var(--surface-2)}
+
+/* admin roles */
+.adm{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:520px}
+@media (max-width:760px){.adm{grid-template-columns:1fr}}
+.adm nav{background:var(--surface-2);border-right:1px solid var(--line);padding:14px 10px}
+.adm nav div{padding:7px 10px;border-radius:8px;color:var(--ink-2);font-size:13px}
+.adm nav div.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.adm main{padding:18px 22px}
+.perm{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.perm .tx{flex:1}
+.perm .tx b{display:block;font-size:13.5px}
+.perm .tx span{font-size:12.5px;color:var(--ink-2)}
+.new{font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:5px;background:var(--accent-soft);color:var(--accent);margin-left:6px;vertical-align:1px}
+.sw{width:38px;height:22px;border-radius:999px;background:var(--line-2);position:relative;border:0;flex:none;transition:background .2s}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .25s var(--spring);box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.sw.on{background:var(--accent)}.sw.on::after{transform:translateX(16px)}
+
+/* ---------- in-context full page ---------- */
+.fp{display:grid;grid-template-columns:236px minmax(0,1fr);background:var(--surface);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:var(--sh-card);min-height:640px}
+@media (max-width:900px){.fp{grid-template-columns:1fr}.fp .rail{display:none}}
+.rail{background:var(--surface-2);border-right:1px solid var(--line);padding:14px 10px;display:flex;flex-direction:column;gap:3px;font-size:13px}
+.rail .q{display:flex;gap:6px;margin-bottom:8px}
+.rail .q span{flex:1;height:32px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink-3);display:flex;align-items:center;padding:0 10px;font-size:12.5px}
+.rail .q b{width:32px;height:32px;border-radius:9px;background:var(--accent);color:var(--on-accent);display:flex;align-items:center;justify-content:center}
+.rail .it{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:9px;color:var(--ink-2)}
+.rail .it.on{background:var(--surface);color:var(--ink);font-weight:600;box-shadow:var(--sh-card)}
+.rail .yr{font-size:11px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em;margin:10px 10px 4px;display:flex}
+.rail .pr{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;color:var(--ink-2);font-size:12.5px}
+.rail .pr i{width:8px;height:8px;border-radius:3px;flex:none}
+.rail .pr{white-space:nowrap;overflow:hidden}.rail .pr em{margin-left:auto;font-style:normal;color:var(--ink-3);font-size:11.5px}
+.rail .pr.on{background:var(--surface);color:var(--ink);font-weight:600}
+.rail .pr .st{color:var(--star);font-size:12px}
+.fmain{min-width:0;display:flex;flex-direction:column}
+.fcrumb{display:flex;align-items:center;gap:6px;padding:8px 20px 0;font-size:12px;color:var(--ink-3)}
+.fhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 20px 4px}
+.fhead h2{margin:0;font-size:21px}
+.hbtn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 11px;border-radius:9px;border:1px solid var(--line-2);background:var(--surface);font-size:12.5px;color:var(--ink);position:relative}
+.hbtn.pri{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+.avs{display:flex}.avs i{width:26px;height:26px;border-radius:7px;border:2px solid var(--surface);margin-left:-6px;display:block}
+.fsub{display:flex;align-items:center;gap:10px;padding:2px 20px 10px;font-size:12.5px;color:var(--ink-2);flex-wrap:wrap}
+.fsub .t{width:220px;height:7px;border-radius:999px;background:var(--surface-3);overflow:hidden;display:flex}
+.ftabs{display:flex;gap:2px;padding:0 14px;border-bottom:1px solid var(--line);font-size:13px;overflow-x:auto}
+.ftabs span{padding:9px 10px;color:var(--ink-2);white-space:nowrap}
+.ftabs span.on{color:var(--ink);font-weight:600;box-shadow:inset 0 -2px var(--accent)}
+.ftool{display:flex;gap:8px;align-items:center;padding:10px 20px;font-size:12.5px;color:var(--ink-2)}
+.ftool .s{height:30px;width:220px;border:1px solid var(--line);border-radius:9px;display:flex;align-items:center;padding:0 10px;color:var(--ink-3)}
+.ftbl{margin:0 20px 20px;border:1px solid var(--line);border-radius:12px;overflow:auto}
+.ftbl table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:900px}
+.ftbl th{background:var(--surface-2);color:var(--ink-3);font-weight:600;font-size:11.5px;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;position:relative}
+.ftbl td{padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+.newcol{background:color-mix(in srgb,var(--star) 12%,transparent)!important}
+th.newcol{color:var(--ink)!important}
+.mkr{position:absolute;z-index:5;width:22px;height:22px;border-radius:50%;background:#ff6b00;color:#fff;font:700 12px/22px var(--font);text-align:center;box-shadow:0 0 0 3px color-mix(in srgb,#ff6b00 30%,transparent);animation:mk 2s ease-in-out infinite}
+@keyframes mk{50%{box-shadow:0 0 0 7px color-mix(in srgb,#ff6b00 10%,transparent)}}
+.hl{outline:2px dashed #ff6b00;outline-offset:3px;border-radius:9px;position:relative}
+.legend2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:10px;margin-top:14px}
+.legend2>div{display:flex;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:12.5px;color:var(--ink-2)}
+.legend2 b.n{flex:none;width:22px;height:22px;border-radius:50%;background:#ff6b00;color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center}
+.legend2 strong{color:var(--ink);display:block;font-size:13px}
+.ctxtabs{margin-bottom:12px}
+</style>
+
+<div class="mk" role="toolbar" aria-label="Mockup screens">
+  <b>Projects · SPMO Phase A</b>
+  <button class="on" data-s="ctx">0 · Di halaman Projects</button>
+  <button data-s="all">1 · All projects (SPMO)</button>
+  <button data-s="empty">2 · Watchlist empty</button>
+  <button data-s="weight">3 · Task weight</button>
+  <button data-s="settings">4 · Plant &amp; Department</button>
+  <button data-s="admin">5 · PMO access (Admin › People)</button>
+  <span class="sp"></span>
+  <button id="theme">Toggle dark</button>
+</div>
+
+<div class="wrap">
+
+<!-- ============ 0. In context ============ -->
+<section class="screen on" id="s-ctx">
+<div class="seg ctxtabs" role="tablist"><button class="on" data-ctx="proj">Halaman 1 project (Bug/Fitur)</button><button data-ctx="pf">Halaman All projects</button></div>
+
+<div id="ctx-proj">
+<div class="fp">
+  <div class="rail">
+    <div class="q"><span>Find a project</span><b>+</b></div>
+    <div class="it">✓ My work</div>
+    <div class="it ">▦ All projects</div>
+    <div class="yr">2026<span style="margin-left:auto">30</span></div>
+    <div class="pr"><i style="background:#2e9d6b"></i>Auger line J1 <span class="st">★</span><em>34%</em></div>
+    <div class="pr on"><i style="background:#2f6fed"></i>Bug/Fitur <span class="st">★</span><em>53%</em></div>
+    <div class="pr"><i style="background:#d8452e"></i>COBA WITH BU RARA<em>0%</em></div>
+    <div class="pr"><i style="background:#2e9d6b"></i>Instalasi Mesin ICA <span class="st">★</span><em>80%</em></div>
+    <div class="pr"><i style="background:#2e9d6b"></i>Goglio<em>100%</em></div>
+    <div class="pr"><i style="background:#b97f05"></i>ICT x SOE Gathering<em>0%</em></div>
+    <div class="pr"><i style="background:#2e9d6b"></i>Integrasi Chestny Znak <span class="st">★</span><em>12%</em></div>
+  </div>
+  <div class="fmain">
+    <div class="fcrumb">▢ Projects › 2026 <span class="sp"></span>⤡ Exit full screen <span class="pill">Esc</span></div>
+    <div class="fhead">
+      <h2>Bug/Fitur</h2><span class="hc h3" style="font-weight:500">● Set health ▾</span>
+      <span class="hl" style="padding:3px;display:inline-flex"><svg class="i" viewBox="0 0 24 24" style="width:15px;height:15px;fill:var(--star)"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.5 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><span class="mkr" style="top:-14px;right:-14px">1</span></span>
+      <span class="sp"></span>
+      <span class="avs"><i style="background:#2e9d6b"></i><i style="background:#8a6d3b"></i><i style="background:#5a7bd8"></i><i style="background:#9aa0a6"></i></span>
+      <span class="hbtn">⚡ Automate</span><span class="hbtn">👥 Members 12</span><span class="hbtn">💬 Chat</span>
+      <span class="hbtn hl">⋯<span class="mkr" style="top:-14px;right:-14px">4</span></span>
+      <span class="hbtn pri">+ New task</span>
+    </div>
+    <div class="fsub">
+      <span class="hl" style="display:inline-flex;gap:6px;padding:2px 4px"><span class="pill">Sepanjang</span><span class="pill">ICT</span><span class="mkr" style="top:-14px;right:-14px">3</span></span>
+      <span class="t"><i style="width:30%;background:#00c875"></i><i style="width:8%;background:#579bfc"></i><i style="width:15%;background:#fdab3d"></i></span>
+      <b class="num">53% done</b>
+      <span class="hl" style="padding:1px 6px">weighted progress · 8 of 15 tasks<span class="mkr" style="top:-14px;right:-14px">2</span></span>
+      <span>· Due 04 Oct 2026</span>
+    </div>
+    <div class="ftabs"><span>Overview</span><span class="on">Table</span><span>Board</span><span>Gantt</span><span>Workload</span><span>Calendar</span><span>Reports</span><span style="color:var(--accent)">+ View</span></div>
+    <div class="ftool"><span class="s">Search tasks</span><span>👤 Person</span><span>☰ More filters</span><span class="sp"></span><span>Save view</span></div>
+    <div class="ftbl"><table>
+      <thead><tr><th>Task</th><th>Owner</th><th>Status</th><th>Due</th><th>Timeline</th><th>Priority</th><th>Progress</th><th class="newcol r">Weight<span class="mkr" style="top:-2px;right:-8px">5</span></th><th class="newcol r">Contribution</th><th>+</th></tr></thead>
+      <tbody><tr><td>Siku2 terlalu tajam</td><td>▲</td><td><span class="st s-doing">Working on it</span></td><td style="color:var(--warn)">19 Nov</td><td><span class="pill">19 Nov – 19 Nov</span></td><td>—</td><td>0%</td><td class="newcol r num ">2</td><td class="newcol r num">10.0%</td><td></td></tr><tr><td>Mail Label count tidak berkurang</td><td>▲</td><td><span class="st s-doing">Working on it</span></td><td style="color:var(--warn)">19 Nov</td><td><span class="pill">19 Nov – 19 Nov</span></td><td>—</td><td>0%</td><td class="newcol r num muted">1</td><td class="newcol r num">5.0%</td><td></td></tr><tr><td>preview PDF di Chat nama nya random</td><td>▲</td><td><span class="st s-doing">Working on it</span></td><td style="color:var(--warn)">19 Nov</td><td><span class="pill">19 Nov – 19 Nov</span></td><td>—</td><td>0%</td><td class="newcol r num ">3</td><td class="newcol r num">15.0%</td><td></td></tr><tr><td><s class="muted">Whiteboard component</s></td><td>▲</td><td><span class="st s-done">Done</span></td><td class="muted">Add date</td><td></td><td>—</td><td>100%</td><td class="newcol r num ">4</td><td class="newcol r num">20.0%</td><td></td></tr><tr><td>Department tidak sesuai</td><td>▲</td><td><span class="st s-review">Ready to check</span></td><td class="muted">Add date</td><td></td><td>—</td><td>0%</td><td class="newcol r num muted">1</td><td class="newcol r num">5.0%</td><td></td></tr></tbody></table></div>
+  </div>
+</div>
+<div class="legend2">
+  <div><b class="n">1</b><div><strong>☆ Watch</strong>Bintang di kanan chip health. Klik = project ini masuk "Watching" (overview + report). Project yang di-watch dapat ★ kecil di daftar kiri.</div></div>
+  <div><b class="n">2</b><div><strong>"weighted progress"</strong>Teks di samping % done berubah jadi "weighted progress" kalau ada task berbobot. Tanpa bobot tetap "8 of 15 tasks" seperti sekarang.</div></div>
+  <div><b class="n">3</b><div><strong>Plant · Department</strong>Dua chip kecil di depan progress bar. Klik chip = buka Edit project details.</div></div>
+  <div><b class="n">4</b><div><strong>⋯ › Edit project details</strong>Dialog yang sudah ada, ditambah field Plant dan Department (layar 4).</div></div>
+  <div><b class="n">5</b><div><strong>Weight + Contribution</strong>Dua kolom baru di tab Table, setelah Progress. Bisa disembunyikan lewat "+" seperti kolom lain.</div></div>
+</div>
+</div>
+
+<div id="ctx-pf" style="display:none">
+<div class="fp">
+  <div class="rail">
+    <div class="q"><span>Find a project</span><b>+</b></div>
+    <div class="it">✓ My work</div>
+    <div class="it on">▦ All projects</div>
+    <div class="yr">2026<span style="margin-left:auto">30</span></div>
+    <div class="pr"><i style="background:#2e9d6b"></i>Auger line J1 <span class="st">★</span><em>34%</em></div>
+    <div class="pr "><i style="background:#2f6fed"></i>Bug/Fitur <span class="st">★</span><em>53%</em></div>
+    <div class="pr"><i style="background:#d8452e"></i>COBA WITH BU RARA<em>0%</em></div>
+    <div class="pr"><i style="background:#2e9d6b"></i>Instalasi Mesin ICA <span class="st">★</span><em>80%</em></div>
+    <div class="pr"><i style="background:#2e9d6b"></i>Goglio<em>100%</em></div>
+    <div class="pr"><i style="background:#b97f05"></i>ICT x SOE Gathering<em>0%</em></div>
+    <div class="pr"><i style="background:#2e9d6b"></i>Integrasi Chestny Znak <span class="st">★</span><em>12%</em></div>
+  </div>
+  <div class="fmain">
+    <div class="fcrumb">▢ Projects <span class="sp"></span>⤡ Exit full screen <span class="pill">Esc</span></div>
+    <div class="fhead"><h2>All projects</h2><span class="sp"></span>
+      <span class="seg hl"><button class="on">☆ Watching 8</button><button>All I can see 42</button><span class="mkr" style="top:-14px;right:-14px">1</span></span>
+      <span class="hbtn hl">Export<span class="mkr" style="top:-14px;right:-14px">6</span></span><span class="hbtn pri">+ New project</span></div>
+    <div class="fsub" style="padding-bottom:6px"><span class="hl" style="display:inline-flex;gap:6px;padding:3px">
+      <span class="chip set">Plant: <b>All</b> ▾</span><span class="chip">Department: <b>All</b> ▾</span><span class="chip">Year: <b>2026</b> ▾</span><span class="chip">PM: <b>Anyone</b> ▾</span><span class="mkr" style="top:-14px;right:-14px">2</span></span></div>
+    <div class="kpis hl" style="margin:8px 20px 16px;padding:0">
+      <div class="kpi"><div class="l">Overall realisation</div><div class="v num">63%</div><div class="s">avg. of 8 projects</div></div>
+      <div class="kpi"><div class="l">Health</div><div class="v num">8</div><div class="s">4 on track · 2 at risk · 1 off</div></div>
+      <div class="kpi"><div class="l">Tasks</div><div class="v num">212<span class="s"> / 336</span></div><div class="s late">17 overdue</div></div>
+      <div class="kpi"><div class="l">Benefit (IDR)</div><div class="v num">7.9 M</div><div class="s">of 12.4 M · 64%</div></div>
+      <div class="kpi"><div class="l">Cost (IDR)</div><div class="v num">1.6 M</div><div class="s">4.9× benefit</div></div>
+      <span class="mkr" style="top:-14px;left:-14px">3</span>
+    </div>
+    <div class="low" style="grid-template-columns:minmax(0,1fr) 260px">
+      <div class="card"><h4>Projects <em>· 8 watching</em></h4>
+        <div class="scrollx"><table class="tbl"><thead><tr><th class="newcol" style="position:relative">☆<span class="mkr" style="top:2px;left:22px">4</span></th><th>Project</th><th class="newcol">Plant</th><th>Health</th><th>Progress</th><th class="r newcol">Benefit</th><th>Due</th></tr></thead>
+        <tbody><tr><td style="color:var(--star)">★</td><td><b>Auger line J1</b></td><td><span class="pill">Sepanjang</span></td><td><span class="hc h2"><i></i>Off track</span></td><td>34%</td><td class="r">58%</td><td>12 Dec</td></tr>
+        <tr><td style="color:var(--star)">★</td><td><b>Bug/Fitur</b></td><td><span class="pill">Sepanjang</span></td><td><span class="hc h0"><i></i>On track</span></td><td>53%</td><td class="r">—</td><td>04 Oct</td></tr>
+        <tr><td style="color:var(--star)">★</td><td><b>Integrasi Chestny Znak</b></td><td><span class="pill">Karawang</span></td><td><span class="hc h1"><i></i>At risk</span></td><td>12%</td><td class="r">—</td><td>30 Jan</td></tr></tbody></table></div></div>
+      <div class="card hl" style="overflow:visible"><h4>Follow up · By plant</h4><div style="padding:12px 14px;font-size:12.5px;color:var(--ink-2)">Auger line J1 — off track<br>Chestny Znak — 5 overdue<br><br>Sepanjang 71% · Karawang 58%</div><span class="mkr" style="top:-14px;right:-14px">5</span></div>
+    </div>
+  </div>
+</div>
+<div class="legend2">
+  <div><b class="n">1</b><div><strong>Watching / All I can see</strong>Kanan atas, di sebelah Export dan + New project.</div></div>
+  <div><b class="n">2</b><div><strong>Filter</strong>Baris baru di bawah judul "All projects".</div></div>
+  <div><b class="n">3</b><div><strong>Kartu ringkasan</strong>Menggantikan 4 kotak lama (Active / On track / At risk / Off track) di posisi yang sama.</div></div>
+  <div><b class="n">4</b><div><strong>Kolom baru</strong>☆, Plant dan Benefit ditambahkan ke tabel project yang sudah ada.</div></div>
+  <div><b class="n">5</b><div><strong>Follow up · By plant</strong>Kolom kanan. Panel "Related tasks" yang sekarang tetap ada, pindah ke bawah tabel.</div></div>
+  <div><b class="n">6</b><div><strong>Export</strong>Tombol disiapkan; isi PDF / PPTX / XLSX dikerjakan di Fase C.</div></div>
+</div>
+</div>
+</section>
+
+<!-- ============ 1. All projects ============ -->
+<section class="screen" id="s-all">
+<div class="app">
+  <div class="ph">
+    <div><h1>All projects</h1><p>Realisation, health and benefit across the projects you watch.</p></div>
+    <span class="sp"></span>
+    <div class="seg" role="tablist" aria-label="Scope">
+      <button class="on" data-scope="watch">☆ Watching <span class="num">8</span></button>
+      <button data-scope="all">All I can see <span class="num">42</span></button>
+    </div>
+    <button class="btn">Export</button>
+    <button class="btn pri">+ New project</button>
+  </div>
+
+  <div class="bar">
+    <button class="chip set" data-pop="plant">Plant: <b>All</b> ▾</button>
+    <button class="chip" data-pop="dept">Department: <b>All</b> ▾</button>
+    <button class="chip">Year: <b>2026</b> ▾</button>
+    <button class="chip">PM: <b>Anyone</b> ▾</button>
+    <span class="sp"></span>
+    <span class="muted" style="font-size:12px">Updated just now</span>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi">
+      <div class="l">Overall realisation <span class="info" title="Average of each project's progress. Projects with task weights use their weighted progress.">i</span></div>
+      <div class="ring">
+        <svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--surface-3)" stroke-width="4"/><circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--accent)" stroke-width="4" stroke-linecap="round" stroke-dasharray="61.2 97.4" transform="rotate(-90 18 18)"/></svg>
+        <div><div class="v num">63%</div><div class="s">avg. of 8 projects · <span class="ach">+5%</span> vs last month</div></div>
+      </div>
+    </div>
+    <div class="kpi">
+      <div class="l">Health</div>
+      <div class="v num">8 <span class="s">projects</span></div>
+      <div class="bars"><i style="width:50%;background:var(--accent)"></i><i style="width:25%;background:var(--warn)"></i><i style="width:12.5%;background:var(--danger)"></i><i style="width:12.5%;background:var(--ink-3)"></i></div>
+      <div class="legend"><span><i style="background:var(--accent)"></i>4 on track</span><span><i style="background:var(--warn)"></i>2 at risk</span><span><i style="background:var(--danger)"></i>1 off track</span><span><i style="background:var(--ink-3)"></i>1 done</span></div>
+    </div>
+    <div class="kpi">
+      <div class="l">Tasks</div>
+      <div class="v num">212 <span class="s">/ 336 done</span></div>
+      <div class="s"><span class="late">17 overdue</span> in 4 projects</div>
+    </div>
+    <div class="kpi">
+      <div class="l">Benefit (IDR) <span class="info" title="Filled in Phase B (Charter → Target & Benefit). Achievement uses Validated when filled, otherwise Actual.">i</span></div>
+      <div class="ben num"><span>Target</span><b>12.4 M</b><span>Estimate</span><b>11.1 M</b><span>Actual / validated</span><b>7.9 M</b></div>
+      <div class="s" style="margin-top:4px">Achievement <span class="ach num">64%</span></div>
+    </div>
+    <div class="kpi">
+      <div class="l">Cost (IDR)</div>
+      <div class="v num">1.6 M</div>
+      <div class="s">Benefit ÷ cost <b class="num">4.9×</b></div>
+    </div>
+  </div>
+
+  <div class="low">
+    <div class="card">
+      <h4>Projects <em>· 8 watching</em><span class="sp"></span><span class="muted" style="font-weight:400;font-size:12px">☆ = watch · shows in this overview and in reports</span></h4>
+      <div class="scrollx">
+      <table class="tbl" id="ptable">
+        <thead><tr><th style="width:34px"></th><th>Project</th><th>Plant</th><th>Department</th><th>PM</th><th>Health</th><th>Progress</th><th class="r">Overdue</th><th class="r">Benefit ach.</th><th>Due</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      </div>
+    </div>
+    <div style="display:grid;gap:14px;align-content:start">
+      <div class="card">
+        <h4>Follow up <em>· 4</em></h4>
+        <ul class="fu">
+          <li><span class="d" style="background:var(--danger)"></span><div><div class="t">Auger line J1</div><div class="m">Off track · 6 tasks overdue · due 12 Dec</div></div></li>
+          <li><span class="d" style="background:var(--warn)"></span><div><div class="t">Integrasi Chestny Znak</div><div class="m">At risk · 5 overdue · no update 9 days</div></div></li>
+          <li><span class="d" style="background:var(--warn)"></span><div><div class="t">Kegembungan SP Merah</div><div class="m">At risk · benefit 41% of target</div></div></li>
+          <li><span class="d" style="background:var(--ink-3)"></span><div><div class="t">New Asset Management</div><div class="m">Plant not filled in</div></div></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>By plant</h4>
+        <div class="plant num">
+          <span>Sepanjang</span><span class="muted">4</span><b>71%</b><div class="bar1"><i style="width:71%"></i></div>
+          <span>Karawang</span><span class="muted">3</span><b>58%</b><div class="bar1"><i style="width:58%"></i></div>
+          <span class="muted">Not filled in</span><span class="muted">1</span><b>12%</b><div class="bar1"><i style="width:12%;background:var(--ink-3)"></i></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="note">
+  <div><span class="tag">NEW</span><h3>Watch ☆</h3>Each person picks their own projects. "Watching" is the default scope of this page and of reports. "All I can see" shows every project you have access to. SPMO with the PMO permission sees every project in the company.</div>
+  <div><span class="tag">NEW</span><h3>Overall realisation</h3>The average progress of the projects in scope. A project that uses task weights contributes its weighted progress, all others count as they do today.</div>
+  <div><span class="tag">NEW</span><h3>Benefit &amp; cost</h3>Totals of the Target &amp; Benefit table that each project fills in Phase B. Until then these tiles show "—".</div>
+  <div><span class="tag chg">CHANGED</span><h3>Filters + by plant</h3>Plant and Department come from the project (auto-filled from the owner). Projects without a plant are listed as "Not filled in" so SPMO can chase them.</div>
+</div>
+</section>
+
+<!-- ============ 2. Watchlist empty ============ -->
+<section class="screen" id="s-empty">
+<div class="app">
+  <div class="ph">
+    <div><h1>All projects</h1><p>Realisation, health and benefit across the projects you watch.</p></div>
+    <span class="sp"></span>
+    <div class="seg"><button class="on">☆ Watching <span class="num">0</span></button><button>All I can see <span class="num">42</span></button></div>
+  </div>
+  <div class="empty-watch">
+    <div style="font-size:34px;color:var(--star)">☆</div>
+    <h3 style="margin:6px 0 4px;color:var(--ink)">You aren't watching any project yet</h3>
+    <p style="margin:0 0 14px">Press ☆ on the projects you want to follow. They show up here and in your reports.</p>
+    <button class="btn pri" data-go="all">Show all projects I can see</button>
+  </div>
+</div>
+<div class="note"><div><span class="tag">NEW</span><h3>First visit</h3>With no watched projects the page opens on "All I can see" automatically; this empty state only shows when someone un-watches everything.</div></div>
+</section>
+
+<!-- ============ 3. Task weight ============ -->
+<section class="screen" id="s-weight">
+<div class="app">
+  <div class="crumb">Projects › 2026</div>
+  <div class="phead"><h2>Instalasi Mesin ICA</h2><span class="hc h0"><i></i>On track</span><span class="sp"></span>
+    <button class="star on" aria-label="Watching" title="Watching" id="pstar"><svg class="i" viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.5 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg></button>
+  </div>
+  <div class="meta"><span class="pill">Sepanjang</span><span class="pill">Engineering</span><span>PM: Yudi Arta</span></div>
+  <div class="prog"><div class="t"><i id="pbar" style="width:0"></i></div><b class="num" id="ppct">0%</b><span class="muted" id="pmode">weighted progress</span></div>
+  <div class="grp">
+    <h5>▾ Installation</h5>
+    <div class="scrollx">
+    <table class="tbl" id="wtable">
+      <thead><tr><th>Task</th><th>Owner</th><th>Status</th><th class="r">Weight <span class="info" title="Optional. Empty = weight 1. Leave every task empty to keep the old count-based progress.">i</span></th><th class="r">Contribution</th></tr></thead>
+      <tbody></tbody>
+      <tfoot><tr class="tfoot"><td colspan="3">Total</td><td class="r num" id="wsum">0</td><td class="r num">100%</td></tr></tfoot>
+    </table>
+    </div>
+  </div>
+  <div class="hint"><span>ℹ</span><div><b>How progress is counted.</b> Done tasks add their full weight, every other status adds 0. Progress = weight of done tasks ÷ weight of all tasks. Try typing a weight or changing a status above.</div></div>
+  <div style="height:16px"></div>
+</div>
+<div class="note">
+  <div><span class="tag">NEW</span><h3>Weight column</h3>An optional column in Table (top-level tasks). Empty = 1, so projects that never use it keep exactly today's numbers.</div>
+  <div><span class="tag">NEW</span><h3>Contribution %</h3>Read-only: this task's share of the whole project. It's what "if this is done, it's worth X%" means in the KPI sheet.</div>
+  <div><span class="tag chg">CHANGED</span><h3>Progress label</h3>Under the header bar it says "weighted progress" once any task has a weight, otherwise "tasks done" as today.</div>
+</div>
+</section>
+
+<!-- ============ 4. Plant & Department ============ -->
+<section class="screen" id="s-settings">
+<div class="scrim">
+  <div class="modal" role="dialog" aria-label="Project details">
+    <div class="mh">Project details<span class="sp"></span><button class="btn" style="height:28px">✕</button></div>
+    <div class="mb">
+      <div class="fld"><label>Name</label><div class="in">Instalasi Mesin ICA</div></div>
+      <div class="two">
+        <div class="fld"><label>Plant / site <span class="auto">from owner</span></label><div class="in"><select><option>Sepanjang</option><option>Karawang</option><option>— Not set —</option></select></div><small>Filled in from the owner's Directory record. Change it if the project runs at another plant.</small></div>
+        <div class="fld"><label>Department <span class="auto">from owner</span></label><div class="in"><select><option>Engineering</option><option>ICT</option><option>Production</option><option>Quality Control</option><option>— Not set —</option></select></div><small>Used for filters and the "By plant" recap. Optional.</small></div>
+      </div>
+      <div class="fld"><label>Goal</label><div class="in" style="height:auto;min-height:60px;padding:8px 10px;align-items:flex-start">Install and commission the ICA machine in line 3 by December.</div></div>
+    </div>
+    <div class="mf"><button class="btn">Cancel</button><button class="btn pri">Save</button></div>
+  </div>
+</div>
+<div class="note">
+  <div><span class="tag">NEW</span><h3>Plant + Department</h3>Two optional fields in the existing project details dialog. The create wizard does not change: both are filled from the owner automatically.</div>
+  <div><span class="tag">NEW</span><h3>Existing projects</h3>A one-time backfill copies the owner's plant and department. Anything that can't be matched stays "Not set" and shows in Follow up.</div>
+</div>
+</section>
+
+<!-- ============ 5. PMO permission ============ -->
+<section class="screen" id="s-admin">
+<div class="app">
+  <div class="adm">
+    <nav><div>Overview</div><div class="on">People</div><div>Organisation</div><div>Email</div></nav>
+    <main>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px"><span style="width:44px;height:44px;border-radius:12px;background:var(--info-soft);color:var(--info);display:flex;align-items:center;justify-content:center;font-weight:700">RS</span><div><h2 style="margin:0;font-size:18px">Rina Susanti</h2><p class="muted" style="margin:0">SPMO · Sepanjang</p></div></div>
+      <h4 style="margin:12px 0 4px;font-size:12px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em">Role</h4>
+      <div class="perm"><div class="tx"><b>● Employee</b><span>Uses iPop like everyone else.</span></div></div>
+      <div class="perm" style="opacity:.6"><div class="tx"><b>○ HR · News</b><span>…existing roles stay as they are…</span></div></div>
+      <h4 style="margin:16px 0 4px;font-size:12px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em">Extra access</h4>
+      <div class="perm"><div class="tx"><b>See all projects (PMO)<span class="new">NEW</span></b><span>Read-only access to every project in the company: overview, tasks, files, reports and export. They can comment and watch, but can't edit tasks or members. Works on top of any role above.</span></div><button class="sw on" aria-pressed="true"></button></div>
+    </main>
+  </div>
+</div>
+<div class="note">
+  <div><span class="tag">NEW</span><h3>Where</h3>Admin › People › open the person › "Extra access". One switch, on top of the role they already have, so SPMO or a PM's secretary keeps their normal role.</div>
+  <div><span class="tag chg">CHANGED</span><h3>Admin / HR</h3>Today Admin, HR and Super Admin see every project because of hard-coded role names. They keep that; the new switch just makes it assignable to anyone.</div>
+</div>
+</section>
+
+</div>
+
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const starSvg='<svg class="i" viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.5 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>';
+function toast(t){const e=document.createElement('div');e.className='toast';e.innerHTML=t;document.body.appendChild(e);setTimeout(()=>e.remove(),1900)}
+
+/* screens */
+function show(id){$$('.screen').forEach(s=>s.classList.toggle('on',s.id==='s-'+id));$$('.mk [data-s]').forEach(b=>b.classList.toggle('on',b.dataset.s===id));}
+$$('.mk [data-s]').forEach(b=>b.onclick=()=>show(b.dataset.s));
+$$('[data-go]').forEach(b=>b.onclick=()=>show(b.dataset.go));
+$('#theme').onclick=()=>{const r=document.documentElement;const dark=r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme:dark)').matches);r.dataset.theme=dark?'light':'dark'};
+
+$$('[data-ctx]').forEach(b=>b.onclick=()=>{$$('[data-ctx]').forEach(x=>x.classList.toggle('on',x===b));$('#ctx-proj').style.display=b.dataset.ctx==='proj'?'':'none';$('#ctx-pf').style.display=b.dataset.ctx==='pf'?'':'none'});
+/* projects table */
+const P=[
+ ['Auger line J1','Sepanjang','Engineering','Yudi Arta',2,34,6,'58%','12 Dec',1],
+ ['Bug/Fitur iPop','Sepanjang','ICT','IPop Admin',0,53,0,'—','04 Oct',1],
+ ['Instalasi Mesin ICA','Sepanjang','Engineering','Yudi Arta',0,80,0,'92%','20 Dec',1],
+ ['Integrasi Chestny Znak','Karawang','ICT','Jason K.',1,12,5,'—','30 Jan',1],
+ ['Kegembungan SP Merah','Karawang','Quality Control','Alphin S.',1,40,3,'41%','15 Jan',1],
+ ['Pembayaran Jual Beli','Karawang','Finance','Beny S.',3,100,0,'105%','01 Nov',1],
+ ['Hermes FIX3 verify','Sepanjang','ICT','Yohanes O.',0,67,3,'—','28 Dec',1],
+ ['New Asset Management','','ICT','Billy E.',0,12,0,'—','31 Mar',1],
+ ['COBA WITH BU RARA','Sepanjang','HC','Rara',0,0,0,'—','—',0],
+ ['Goglio','Karawang','Production','Firdaus',3,100,0,'—','10 Oct',0],
+];
+const HC=[['h0','On track'],['h1','At risk'],['h2','Off track'],['h3','Done']];
+function renderP(scope){
+  const rows=P.filter(p=>scope==='all'||p[9]);
+  $('#ptable tbody').innerHTML=rows.map((p,i)=>`<tr style="animation:rise .3s var(--ease) ${i*.025}s backwards">
+   <td><button class="star ${p[9]?'on':''}" data-i="${P.indexOf(p)}" aria-label="${p[9]?'Stop watching':'Watch'} ${p[0]}" title="${p[9]?'Watching':'Watch'}">${starSvg}</button></td>
+   <td><div class="pname">${p[0]}</div></td>
+   <td>${p[1]?`<span class="pill">${p[1]}</span>`:'<span class="pill empty">Not set</span>'}</td>
+   <td>${p[2]}</td><td>${p[3]}</td>
+   <td><span class="hc ${HC[p[4]][0]}"><i></i>${HC[p[4]][1]}</span></td>
+   <td><div class="pb"><div class="t"><i style="width:${p[5]}%"></i></div><span class="num">${p[5]}%</span></div></td>
+   <td class="r num ${p[6]?'late':'muted'}">${p[6]||'—'}</td>
+   <td class="r num">${p[7]}</td><td class="num">${p[8]}</td></tr>`).join('');
+}
+let scope='watch';renderP(scope);
+$$('[data-scope]').forEach(b=>b.onclick=()=>{scope=b.dataset.scope;$$('[data-scope]').forEach(x=>x.classList.toggle('on',x===b));renderP(scope)});
+$('#ptable').addEventListener('click',e=>{const b=e.target.closest('.star');if(!b)return;const p=P[b.dataset.i];p[9]=p[9]?0:1;
+  b.classList.toggle('on',!!p[9]);b.classList.remove('pop');void b.offsetWidth;b.classList.add('pop');
+  toast(p[9]?`Watching <b>${p[0]}</b>. It now counts in your overview and reports.`:`Stopped watching <b>${p[0]}</b>.`);
+  const n=P.filter(x=>x[9]).length;$('[data-scope="watch"]').innerHTML=`☆ Watching <span class="num">${n}</span>`;
+  if(scope==='watch'&&!p[9])setTimeout(()=>renderP(scope),350)});
+$('#pstar').onclick=e=>{const b=e.currentTarget;b.classList.toggle('on');b.classList.remove('pop');void b.offsetWidth;b.classList.add('pop');toast(b.classList.contains('on')?'Watching this project.':'Stopped watching this project.')};
+
+/* filter popover */
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-pop]');$$('.pop').forEach(p=>p.remove());if(!t)return;
+  const r=t.getBoundingClientRect(),p=document.createElement('div');p.className='pop';
+  p.style.left=(r.left+scrollX)+'px';p.style.top=(r.bottom+scrollY+6)+'px';
+  p.innerHTML=t.dataset.pop==='plant'?'<button class="cur">All plants</button><button>Sepanjang <small>4 projects</small></button><button>Karawang <small>3 projects</small></button><button>Not set <small>1 project</small></button>':'<button class="cur">All departments</button><button>Engineering</button><button>ICT</button><button>Quality Control</button><button>Finance</button>';
+  document.body.appendChild(p);e.stopPropagation();
+});
+
+/* weights */
+const T=[['Site survey & layout','Yudi','done',''],['Foundation & anchoring','Beny','done','2'],['Machine delivery','Jason','done','3'],['Mechanical install','Yudi','doing','3'],['Electrical & PLC','Alphin','todo','2'],['Trial run + FAT','Yudi','todo',''],['Operator training','Rara','todo','']];
+const SL={todo:['s-todo','Not started'],doing:['s-doing','Working on it'],review:['s-review','Ready to check'],done:['s-done','Done']};
+const order=['todo','doing','review','done'];
+function renderW(){
+  const w=t=>+t[3]||1,sum=T.reduce((a,t)=>a+w(t),0),done=T.filter(t=>t[2]==='done').reduce((a,t)=>a+w(t),0);
+  const any=T.some(t=>t[3]!=='');
+  $('#wtable tbody').innerHTML=T.map((t,i)=>{const c=w(t)/sum*100;return `<tr>
+   <td>${t[0]}</td><td>${t[1]}</td>
+   <td><button class="st ${SL[t[2]][0]}" data-st="${i}" style="border:0">${SL[t[2]][1]}</button></td>
+   <td class="r"><input class="wt num" data-w="${i}" inputmode="decimal" placeholder="1" value="${t[3]}" aria-label="Weight for ${t[0]}"></td>
+   <td class="r"><div class="contrib"><span class="num">${c.toFixed(1)}%</span><div class="t"><i style="width:${c}%"></i></div></div></td></tr>`}).join('');
+  $('#wsum').textContent=sum;
+  const pct=Math.round(done/sum*100);$('#pbar').style.width=pct+'%';$('#ppct').textContent=pct+'%';$('#pmode').textContent=any?'weighted progress':'tasks done';
+}
+renderW();
+$('#wtable').addEventListener('change',e=>{const i=e.target.dataset.w;if(i==null)return;const v=e.target.value.trim();T[i][3]=v===''||isNaN(+v)||+v<=0?'':String(+v);renderW()});
+$('#wtable').addEventListener('click',e=>{const b=e.target.closest('[data-st]');if(!b)return;const t=T[b.dataset.st];t[2]=order[(order.indexOf(t[2])+1)%4];renderW()});
+</script>
+</html>

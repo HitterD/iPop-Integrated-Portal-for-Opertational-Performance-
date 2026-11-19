@@ -1,0 +1,17 @@
+@* Projects v2: a tab whose view is not built yet (mockup otherView()). *@
+@{ var v = ProjectViewCatalog.Get(Key); }
+<div class="pv2 pv2-vempty" role="status">
+    <span class="pv2-bigic" style="background:@v.Color"><i data-lucide="@v.Icon"></i></span>
+    <h3>@v.Label</h3>
+    <p>@ProjectViewCatalog.PlaceholderText(Key)</p>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Key { get; set; } = "";
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+    }
+}
