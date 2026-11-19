@@ -88,17 +88,23 @@
                     </span>
                     <span>Dates</span>
                     <span class="pv2-num pv2p-dates">
-                        @if (t.StartDate.HasValue || t.DueDate.HasValue)
+                        @if (ReadOnly)
                         {
-                            @Fd(t.StartDate ?? t.DueDate)<text> → </text>@Fd(t.DueDate ?? t.StartDate)
+                            @if (t.StartDate.HasValue || t.DueDate.HasValue)
+                            {
+                                @Fd(t.StartDate ?? t.DueDate)<text> → </text>@Fd(t.DueDate ?? t.StartDate)
+                            }
+                            else { <span class="pv2p-muted">No dates</span> }
                         }
-                        else { <span class="pv2p-muted">No dates</span> }
-                        @if (late) { <b class="pv2p-late">· @LateDays(t) days late</b> }
-                        @if (!ReadOnly)
+                        else
                         {
-                            <AppDatePicker TValue="DateTime?" Value="t.DueDate" Compact="true" AllowClear="true" Class="pv2p-dp" AriaLabel="Due date"
+                            <AppDatePicker TValue="DateTime?" Value="t.StartDate" Compact="true" AllowClear="true" Class="pv2p-dp" Placeholder="Start" AriaLabel="Start date"
+                                           ValueChanged="d => OnStart.InvokeAsync((t, d))" />
+                            <text> → </text>
+                            <AppDatePicker TValue="DateTime?" Value="t.DueDate" Compact="true" AllowClear="true" Class="pv2p-dp" Placeholder="Due" AriaLabel="Due date"
                                            ValueChanged="d => OnDue.InvokeAsync((t, d))" />
                         }
+                        @if (late) { <b class="pv2p-late">· @LateDays(t) days late</b> }
                     </span>
                     <span>Priority</span>
                     <span>
@@ -247,6 +253,7 @@
     [Parameter] public EventCallback<string> OnAddSubtask { get; set; }
     [Parameter] public EventCallback<(ProjectTaskDto Task, string? Priority)> OnPriority { get; set; }
     [Parameter] public EventCallback<(ProjectTaskDto Task, DateTime? Due)> OnDue { get; set; }
+    [Parameter] public EventCallback<(ProjectTaskDto Task, DateTime? Start)> OnStart { get; set; }
     /// A dependency was saved: the page refreshes its tasks.
     [Parameter] public EventCallback<ProjectTaskDto?> OnTaskChanged { get; set; }
     [Parameter] public DateTime? Today { get; set; }

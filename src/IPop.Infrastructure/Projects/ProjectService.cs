@@ -518,6 +518,28 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         return new MemberResultDto(true, null);
     }
 
+    public async Task<MemberResultDto> SetMemberRoleAsync(Guid actorId, Guid projectId, Guid userId, string role, CancellationToken ct)
+    {
+        var isOwnerOrManager = await db.ProjectMembers
+            .AnyAsync(m => m.ProjectId == projectId && m.UserId == actorId && (m.Role == "owner" || m.Role == "manager"), ct);
+        if (!isOwnerOrManager) return new MemberResultDto(false, "forbidden");
+
+        role = (role ?? "").Trim();
+        if (role is not ("member" or "viewer")) return new MemberResultDto(false, "invalid_role");
+
+        var member = await db.ProjectMembers.FirstOrDefaultAsync(m => m.ProjectId == projectId && m.UserId == userId, ct);
+        if (member is null) return new MemberResultDto(false, "member_not_found");
+        // Owners and managers keep their role; only member <-> viewer is switched here.
+        if (member.Role is "owner" or "manager") return new MemberResultDto(false, "forbidden");
+
+        if (member.Role != role)
+        {
+            member.Role = role;
+            await db.SaveChangesAsync(ct);
+        }
+        return new MemberResultDto(true, null);
+    }
+
     public async Task<IReadOnlyList<ProjectMemberDto>> GetMembersAsync(Guid projectId, CancellationToken ct)
     {
         return await db.ProjectMembers

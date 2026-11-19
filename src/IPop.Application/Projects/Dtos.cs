@@ -33,6 +33,7 @@ public record DeletedProjectGroupDto(Guid GroupId, Guid ProjectId, string Name, 
 public record DeleteGroupResultDto(bool Success, DeletedProjectGroupDto? Deleted, string? Error);
 
 // Project Member DTOs
+public record SetProjectMemberRoleRequest(string Role);
 public record AddProjectMemberRequest(Guid UserId, string Role, string? Nik = null);
 public record ProjectMemberDto(Guid UserId, string Nik, string Name, string Role, DateTime JoinedAt);
 

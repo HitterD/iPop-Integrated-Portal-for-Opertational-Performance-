@@ -283,3 +283,22 @@ body:has(.pv2-ws, .pv2-rail) .toast-host .toast-action:hover { background: var(-
 .pv2-ws .kanban-col-header .col-quick-icon { height: 19px; }
 .pv2-ws .kanban-col-header .col-quick-icon svg { width: 14px !important; height: 14px !important; }
 .pv2-ws .kanban-column { font-size: 13.5px; }
+
+/* ---------- full screen: project list is an overlay (hidden by default), notice breathes for 5 s ---------- */
+.proj-workspace.pv2-ws.proj-fs, .proj-workspace.pv2-ws.proj-fs.pv2-rail-open { grid-template-columns: 0px minmax(0, 1fr); }
+.proj-workspace.pv2-ws.proj-fs.pv2-rail-open .pv2-rail { position: absolute; inset: 0 auto 0 0; width: 236px; z-index: 6; visibility: visible; background: var(--surface-2); box-shadow: 0 8px 32px rgba(0, 0, 0, .28); }
+.pv2-rail-scrim { position: absolute; inset: 0; z-index: 5; background: transparent; }
+@keyframes pv2-fs-breathe {
+  0%, 100% { opacity: .55; box-shadow: 0 0 0 0 transparent; }
+  50% { opacity: 1; box-shadow: 0 0 0 4px var(--accent-soft); }
+}
+.proj-fs .pv2-fsbtn { animation: pv2-fs-breathe 2.5s ease-in-out 2; }
+@media (prefers-reduced-motion: reduce) { .proj-fs .pv2-fsbtn { animation: none; } }
+
+/* Task panel: drop files anywhere to add evidence */
+.pv2p { position: relative; }
+.pv2p.pv2p-dropping::after {
+  content: "Drop to add evidence"; position: absolute; inset: 8px; z-index: 20; display: flex; align-items: center; justify-content: center;
+  border: 2px dashed var(--accent); border-radius: 16px; background: color-mix(in srgb, var(--surface) 88%, var(--accent) 12%);
+  color: var(--accent-ink, var(--accent)); font-size: 14px; font-weight: 600; pointer-events: none;
+}

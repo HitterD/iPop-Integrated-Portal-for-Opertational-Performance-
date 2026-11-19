@@ -21,6 +21,8 @@ public interface IProjectService
     // Members
     Task<MemberResultDto> AddMemberAsync(Guid actorId, Guid projectId, AddProjectMemberRequest req, CancellationToken ct);
     Task<MemberResultDto> RemoveMemberAsync(Guid actorId, Guid projectId, Guid userId, CancellationToken ct);
+    /// Owner/manager switches a member between "member" (read & write) and "viewer" (read only).
+    Task<MemberResultDto> SetMemberRoleAsync(Guid actorId, Guid projectId, Guid userId, string role, CancellationToken ct);
     Task<IReadOnlyList<ProjectMemberDto>> GetMembersAsync(Guid projectId, CancellationToken ct);
 
     // Tasks

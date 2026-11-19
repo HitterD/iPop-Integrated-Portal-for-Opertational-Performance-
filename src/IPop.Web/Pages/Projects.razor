@@ -81,6 +81,10 @@ else
 {
 <div class="proj-workspace pv2-ws @(mDetail ? "m-detail" : "") @(fullScreen ? "proj-fs" : "") @(fullScreen && railOpen ? "pv2-rail-open" : "")">
     @* Left Project Navigator Sidebar (in a wrapper so the full screen layout can slide the column to 0) *@
+    @if (fullScreen && railOpen)
+    {
+        <div class="pv2-rail-scrim" @onclick="() => railOpen = false"></div>
+    }
     <div class="pv2-rail">
     <ProjectSidebar
         Projects="filteredProjects"
@@ -137,7 +141,7 @@ else
         else
         {
             @* Crumb row: project list toggle + Full screen *@
-            <ProjectCrumbBar FullScreen="fullScreen" RailOpen="railOpen" Trail="@selectedProject.Year.ToString()"
+            <ProjectCrumbBar @key="fsNoticeKey" FullScreen="fullScreen" RailOpen="railOpen"Trail="@selectedProject.Year.ToString()"
                              OnToggleFullScreen="ToggleFullScreen" OnToggleRail="() => railOpen = !railOpen" OnProjectsClick="SelectPortfolio" />
 
             @if (selectedProject.Status.Equals("completed", StringComparison.OrdinalIgnoreCase) && CanManageMembers)
@@ -349,7 +353,7 @@ else
                     OnClose="CloseTaskEditor" OnOpenFull="OpenFullEditor" OnNavigate="OpenTaskEditor"
                     OnStatusChange="HandleStatusChangeDirect" OnToggleAssignee="HandleToggleAssignee"
                     OnToggleSubtask="HandleToggleSubtask" OnAddSubtask="HandleAddSubtask"
-                    OnPriority="HandlePanelPriority" OnDue="HandlePanelDue" OnTaskChanged="HandleDrawerTaskChanged" />
+                    OnPriority="HandlePanelPriority" OnDue="HandlePanelDue" OnStart="HandlePanelStart" OnTaskChanged="HandleDrawerTaskChanged" />
             }
         }
     </main>
@@ -451,7 +455,8 @@ else
         CanManage="CanManageMembers"
         OnClose="() => showTeamModal = false"
         OnAddPeople="HandleAddPeople"
-        OnRemoveMember="HandleRemoveTeamMember" />
+        OnRemoveMember="HandleRemoveTeamMember"
+        OnChangeRole="HandleChangeMemberRole" />
 }
 
 @code {
@@ -475,6 +480,7 @@ else
     // Full screen is on by default on desktop; the choice is remembered in localStorage (ipop.projects.fs).
     private bool fullScreen = true;
     private bool railOpen;
+    private int fsNoticeKey;
     private bool fsInit;
     private ProjectViewTabs? viewTabs;
     /// Bumped on every live refresh so the Gantt reloads its own data quietly.
@@ -543,7 +549,8 @@ else
     private async Task SetFullScreen(bool on, bool persist)
     {
         fullScreen = on;
-        if (!on) railOpen = false;
+        railOpen = false; // the project list starts hidden on every full screen entry
+        fsNoticeKey++;    // restarts the 5 s breathing on the "Exit full screen" notice
         StateHasChanged();
         try { await JS.InvokeVoidAsync("ipopPv2.setFullScreen", on, persist); } catch { }
     }
@@ -1771,7 +1778,16 @@ else
             await Task.Delay(150);
             if (gen != reconcileGen || projectId != selectedProjectId || _disposed) return;
             await LoadKanban();
+            // List (table): a status change must not make the row jump (the server sorts by status), so the
+            // rows keep the order on screen until the next real reload, filter change or refresh.
+            var keepOrder = tab == 1 ? taskList.Items.Select(t => t.Id).ToList() : null;
             await LoadTaskList();
+            if (keepOrder is { Count: > 0 })
+            {
+                var pos = new Dictionary<Guid, int>(keepOrder.Count);
+                for (var i = 0; i < keepOrder.Count; i++) pos[keepOrder[i]] = i;
+                taskList = taskList with { Items = taskList.Items.OrderBy(t => pos.TryGetValue(t.Id, out var p) ? p : int.MaxValue).ToList() };
+            }
             var proj = await Auth.GetAsync<ProjectDto>($"/api/projects/{projectId}");
             if (gen != reconcileGen || projectId != selectedProjectId || _disposed) return;
             if (proj is not null) selectedProject = proj;
@@ -2080,9 +2096,33 @@ else
 
     private async Task HandlePanelDue((ProjectTaskDto Task, DateTime? Due) arg)
     {
-        await HandleDueDateChangeDirect(arg);
+        // A Due before the Start pulls the Start back to the Due.
+        await SaveTaskDatesAsync(arg.Task, arg.Task.StartDate is { } s && arg.Due is { } d && d.Date < s.Date ? arg.Due : arg.Task.StartDate, arg.Due, "Task due date updated.");
+    }
+
+    private async Task HandlePanelStart((ProjectTaskDto Task, DateTime? Start) arg)
+    {
+        // A Start after the Due pushes the Due forward to the Start.
+        await SaveTaskDatesAsync(arg.Task, arg.Start, arg.Task.DueDate is { } d && arg.Start is { } s && s.Date > d.Date ? arg.Start : arg.Task.DueDate, "Task start date updated.");
+    }
+
+    private async Task SaveTaskDatesAsync(ProjectTaskDto t, DateTime? start, DateTime? due, string okMessage)
+    {
+        if (!CanWriteTasks) return;
+        var req = new UpdateTaskRequest(
+            t.Title, t.Description, t.Status, t.Priority, start, due,
+            t.EstimatedHours, t.ActualHours, null, null, null, null, null, t.Tags,
+            ClearStartDate: start is null, ClearDueDate: due is null);
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{t.Id}", req);
+        if (res.IsSuccessStatusCode)
+        {
+            await LoadKanban();
+            await LoadTaskList();
+            Toasts.Show(okMessage, ToastKind.Success);
+        }
         RefreshEditingTask();
         StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
     }
 
     private async Task HandleWorkloadChanged()
@@ -2800,6 +2840,21 @@ else
         await LoadTaskList();
         selectedProject = await Auth.GetAsync<ProjectDto>($"/api/projects/{selectedProjectId}");
         if (created is not null) { focusNewTaskTitle = true; await OpenFullEditor(created); }
+        StateHasChanged();
+    }
+
+    private async Task HandleChangeMemberRole((Guid UserId, string Role) arg)
+    {
+        if (selectedProjectId == Guid.Empty || !CanManageMembers) return;
+        var member = projectMembers.FirstOrDefault(m => m.UserId == arg.UserId);
+        if (member is null || member.Role is "owner" or "manager" || member.Role == arg.Role) return;
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/{selectedProjectId}/members/{arg.UserId}/role", new SetProjectMemberRoleRequest(arg.Role));
+        if (res.IsSuccessStatusCode)
+        {
+            await ReloadCurrentView();
+            Toasts.Show($"{member.Name} can now {(arg.Role == "viewer" ? "only read" : "read and write")}.", ToastKind.Success);
+        }
+        else Toasts.Show("Couldn't change access.", ToastKind.Error);
         StateHasChanged();
     }
 

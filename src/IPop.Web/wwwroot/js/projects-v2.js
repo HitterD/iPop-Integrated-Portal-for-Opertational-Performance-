@@ -423,4 +423,56 @@
       });
     },
   });
+  // ---- Task panel evidence: Ctrl+V and drag & drop feed the panel's own file input (same limits, progress, errors) ----
+  (function () {
+    if (window.__pv2Evidence) return;
+    window.__pv2Evidence = true;
+    const input = () => document.querySelector('#pv2-panel [data-sec="files"] input[type="file"]');
+    const isTyping = t => !!t && !!t.tagName && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable);
+    const give = files => {
+      const inp = input();
+      if (!inp || !files || !files.length) return false;
+      const dt = new DataTransfer();
+      Array.from(files).forEach((f, i) => {
+        // Clipboard screenshots arrive as "image.png"; give them a unique name.
+        const named = (f.name === 'image.png' || !f.name) ? new File([f], 'pasted-' + Date.now() + '-' + i + '.' + ((f.type.split('/')[1] || 'png').replace('jpeg', 'jpg')), { type: f.type }) : f;
+        dt.items.add(named);
+      });
+      inp.files = dt.files;
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    };
+    const hasFiles = e => e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+    let depth = 0;
+    const panel = () => document.getElementById('pv2-panel');
+    const clear = () => { depth = 0; const p = panel(); if (p) p.classList.remove('pv2p-dropping'); };
+    document.addEventListener('paste', e => {
+      if (!input() || isTyping(e.target)) return;
+      const files = e.clipboardData && e.clipboardData.files;
+      if (files && files.length && give(files)) e.preventDefault();
+    });
+    document.addEventListener('dragenter', e => {
+      const p = panel();
+      if (!p || !input() || !hasFiles(e) || !p.contains(e.target)) return;
+      depth++; p.classList.add('pv2p-dropping');
+    });
+    document.addEventListener('dragover', e => {
+      const p = panel();
+      if (p && input() && hasFiles(e) && p.contains(e.target)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }
+    });
+    document.addEventListener('dragleave', e => {
+      const p = panel();
+      if (!p || !p.contains(e.target)) return;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) p.classList.remove('pv2p-dropping');
+    });
+    document.addEventListener('drop', e => {
+      const p = panel();
+      if (!p || !input() || !hasFiles(e) || !p.contains(e.target)) { clear(); return; }
+      e.preventDefault();
+      give(e.dataTransfer.files);
+      clear();
+    });
+    document.addEventListener('dragend', clear);
+  })();
 })();

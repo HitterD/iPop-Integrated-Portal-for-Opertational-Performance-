@@ -306,6 +306,25 @@ public static class ProjectEndpoints
             return Results.Ok(result);
         }).RequirePermission("projects.write");
 
+        // PUT /api/projects/{id}/members/{userId}/role — { role: "member" | "viewer" }
+        g.MapPut("/{id:guid}/members/{userId:guid}/role", async (Guid id, Guid userId, SetProjectMemberRoleRequest req,
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var actorId = await GetUserIdAsync(http, db);
+            if (actorId is null) return Results.Unauthorized();
+
+            var result = await svc.SetMemberRoleAsync(actorId.Value, id, userId, req.Role, ct);
+            if (!result.Success)
+            {
+                var statusCode = result.Error switch { "forbidden" => 403, "member_not_found" => 404, _ => 422 };
+                return Results.Json(new { code = result.Error, message = result.Error }, statusCode: statusCode);
+            }
+
+            await Audit(http, db, "projects.member.role", $"{id}:{userId}:{req.Role}", ct);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(result);
+        }).RequirePermission("projects.write");
+
         // DELETE /api/projects/{id}/members/{userId}
         g.MapDelete("/{id:guid}/members/{userId:guid}", async (Guid id, Guid userId,
             HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, IChatNotifier chat, CancellationToken ct) =>
