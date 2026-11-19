@@ -202,7 +202,7 @@ svg.i{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-widt
   <button data-s="empty">2 · Watchlist empty</button>
   <button data-s="weight">3 · Task weight</button>
   <button data-s="settings">4 · Plant &amp; Department</button>
-  <button data-s="admin">5 · PMO permission</button>
+  <button data-s="admin">5 · PMO access (Admin › People)</button>
   <span class="sp"></span>
   <button id="theme">Toggle dark</button>
 </div>
@@ -375,20 +375,19 @@ svg.i{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-widt
 <section class="screen" id="s-admin">
 <div class="app">
   <div class="adm">
-    <nav><div>People</div><div class="on">Roles &amp; permissions</div><div>Organisation</div><div>Email</div></nav>
+    <nav><div>Overview</div><div class="on">People</div><div>Organisation</div><div>Email</div></nav>
     <main>
-      <h2 style="margin:0 0 2px;font-size:18px">SPMO</h2>
-      <p class="muted" style="margin:0 0 10px">Role · 3 people</p>
-      <h4 style="margin:12px 0 0;font-size:12px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em">Projects</h4>
-      <div class="perm"><div class="tx"><b>Use Projects</b><span>Open the Projects module and the projects they are a member of.</span></div><button class="sw on" aria-pressed="true"></button></div>
-      <div class="perm"><div class="tx"><b>Create projects</b><span>Start new projects.</span></div><button class="sw" aria-pressed="false"></button></div>
-      <div class="perm"><div class="tx"><b>See all projects (PMO)<span class="new">NEW</span></b><span>Read-only access to every project in the company: overview, tasks, files, reports and export. They can comment and watch, but can't edit tasks or members.</span></div><button class="sw on" aria-pressed="true"></button></div>
-      <div class="perm"><div class="tx"><b>Delete projects</b><span>Remove a project for everyone.</span></div><button class="sw" aria-pressed="false"></button></div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px"><span style="width:44px;height:44px;border-radius:12px;background:var(--info-soft);color:var(--info);display:flex;align-items:center;justify-content:center;font-weight:700">RS</span><div><h2 style="margin:0;font-size:18px">Rina Susanti</h2><p class="muted" style="margin:0">SPMO · Sepanjang</p></div></div>
+      <h4 style="margin:12px 0 4px;font-size:12px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em">Role</h4>
+      <div class="perm"><div class="tx"><b>● Employee</b><span>Uses iPop like everyone else.</span></div></div>
+      <div class="perm" style="opacity:.6"><div class="tx"><b>○ HR · News</b><span>…existing roles stay as they are…</span></div></div>
+      <h4 style="margin:16px 0 4px;font-size:12px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em">Extra access</h4>
+      <div class="perm"><div class="tx"><b>See all projects (PMO)<span class="new">NEW</span></b><span>Read-only access to every project in the company: overview, tasks, files, reports and export. They can comment and watch, but can't edit tasks or members. Works on top of any role above.</span></div><button class="sw on" aria-pressed="true"></button></div>
     </main>
   </div>
 </div>
 <div class="note">
-  <div><span class="tag">NEW</span><h3>One switch for SPMO</h3>Give it to the SPMO role (or a PM's secretary). No one has to add SPMO as a member of each project.</div>
+  <div><span class="tag">NEW</span><h3>Where</h3>Admin › People › open the person › "Extra access". One switch, on top of the role they already have, so SPMO or a PM's secretary keeps their normal role.</div>
   <div><span class="tag chg">CHANGED</span><h3>Admin / HR</h3>Today Admin, HR and Super Admin see every project because of hard-coded role names. They keep that; the new switch just makes it assignable to anyone.</div>
 </div>
 </section>
