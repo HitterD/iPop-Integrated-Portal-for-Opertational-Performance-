@@ -50,6 +50,7 @@ public partial class Calendar
         new("mail", "Scheduled mail", "mail"),
         new("news", "News & Memos", "newspaper"),
         new("tickets", "Tickets", "life-buoy"),
+        new("notes", "Notes to-dos", "square-check"),
         new("idesk", "iDesk bookings", "video"),
         new("holidays", "Holidays", "party-popper"),
     ];
@@ -609,6 +610,7 @@ public partial class Calendar
         "holiday" or "offday" => i.Source == "holidays" ? "party-popper" : "palmtree",
         "company-holiday" => "party-popper",
         "ticket-due" => "life-buoy",
+        "note-todo" => "square-check",
         "scheduled-mail" => "send",
         "ack-due" => "clipboard-check",
         "news-scheduled" => "clock",
