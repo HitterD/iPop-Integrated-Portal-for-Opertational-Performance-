@@ -28,6 +28,74 @@ public partial class Notes
         await InvokeAsync(StateHasChanged);
     }
     private Guid? focusThread;
+
+    // ── Margin comments (desktop) ────────────────────────────────────────────
+    // Open threads anchored to text are cards in the right margin, level with their text. When the screen is too narrow (or the
+    // page is full width) they become count bubbles beside the line, and a click opens the thread in a popover. The side drawer
+    // is only for All / Resolved. The editor bundle measures positions (margin-comments.js); here we only render.
+    private ElementReference pageWrapRef, pageRef, marginRef;
+    private IJSObjectReference? marginJs;
+    private bool marginMode;
+    private Guid? bubbleThread;
+    private int bubbleX, bubbleY;
+
+    private bool MarginMode => marginMode && !Phone.IsPhone && note?.Kind != "board" && !(note?.FullWidth ?? false);
+
+    /// Open threads pinned to text, in the order they appear on the page is decided in the browser; here: oldest first.
+    private IEnumerable<NoteThreadDto> OpenAnchoredThreads =>
+        threads.Where(t => t.ResolvedAt is null && t.Anchor is not null).OrderBy(t => t.CreatedAt);
+
+    /// Called after every render: (re)creates the margin layout once the page is on screen, and re-measures.
+    private async Task MarginAfterRenderAsync()
+    {
+        if (module is null || Phone.IsPhone || view != View.Page || note is null || note.Kind == "board" || editor is null)
+        {
+            if (marginJs is not null && (view != View.Page || note is null)) await DisposeMarginAsync();
+            return;
+        }
+        try
+        {
+            if (marginJs is null || marginFor != note.Id)
+            {
+                await DisposeMarginAsync();
+                marginFor = note.Id;
+                marginJs = await editor.InvokeAsync<IJSObjectReference>("margin", scrollRef, pageRef, marginRef, selfRef);
+            }
+            await marginJs.InvokeVoidAsync("layout");
+        }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+    }
+    private Guid? marginFor;
+
+    private async Task DisposeMarginAsync()
+    {
+        var js = marginJs; marginJs = null; marginFor = null;
+        if (js is null) return;
+        try { await js.InvokeVoidAsync("destroy"); await js.DisposeAsync(); }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+    }
+
+    [JSInvokable]
+    public void OnMarginMode(string mode)
+    {
+        var on = mode == "margin";
+        if (on == marginMode) return;
+        marginMode = on;
+        StateHasChanged();
+    }
+
+    private async Task OpenBubble(Guid id)
+    {
+        bubbleThread = bubbleThread == id ? null : id;
+        focusThread = id;
+        if (bubbleThread is not null && marginJs is not null)
+        {
+            try { var pos = await marginJs.InvokeAsync<int[]>("bubbleAt", id); bubbleX = pos[0]; bubbleY = pos[1]; } catch (JSException) { }
+        }
+        await PushThreadsAsync();
+    }
     private readonly Dictionary<Guid, string?> replies = [];
     private CommentDraft? draft;
     private Guid? cmtMentionTarget;
@@ -80,7 +148,7 @@ public partial class Notes
     {
         if (!CanComment) return;
         draft = new CommentDraft(quote.Length > 300 ? quote[..300] + "…" : quote, anchor);
-        commentsOpen = true;
+        commentsOpen = !(MarginMode && anchor is not null);   // wide screen + text selected: the box appears in the margin next to the text; otherwise the drawer opens
         focusDraft = true;
         StateHasChanged();
     }
@@ -89,8 +157,12 @@ public partial class Notes
     public async Task OnThreadClick(string id)
     {
         if (!Guid.TryParse(id, out var g)) return;
+        var resolved = threads.FirstOrDefault(t => t.Id == g) is { ResolvedAt: not null };
+        // an open thread on a wide screen is already in the margin: just lift its card; everything else uses the drawer / popover
+        if (!Phone.IsPhone && !resolved && MarginMode) { focusThread = g; await PushThreadsAsync(); StateHasChanged(); return; }
+        if (!Phone.IsPhone && !resolved && note?.Kind != "board") { await OpenBubble(g); StateHasChanged(); return; }
         commentsOpen = true;
-        if (threads.FirstOrDefault(t => t.Id == g) is { ResolvedAt: not null }) showResolved = true;
+        if (resolved) showResolved = true;
         focusThread = g;
         await PushThreadsAsync();
         StateHasChanged();
@@ -100,6 +172,7 @@ public partial class Notes
     {
         focusThread = id;
         if (editor is not null) await editor.InvokeVoidAsync("focusThread", id);
+        if (marginJs is not null) { try { await marginJs.InvokeVoidAsync("layout"); } catch (JSException) { } }
     }
 
     private void ToggleComments() => commentsOpen = !commentsOpen;

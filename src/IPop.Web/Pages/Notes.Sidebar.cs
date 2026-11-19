@@ -152,6 +152,43 @@ public partial class Notes
         finally { creating = false; }
     }
 
+    // ── Whiteboards list ─────────────────────────────────────────────────────
+
+    /// The "Start from a template" row on the Whiteboards list: the common ones; "Templates" opens the full Template Center in a new board.
+    private static readonly List<(string Key, string Emoji, string Name)> BoardQuickTemplates =
+    [
+        ("basicflow", "🔀", "Flowchart"), ("retro", "🟨", "Retro"), ("mindmap", "🧠", "Mind map"),
+        ("kanban", "📋", "Kanban"), ("swot", "⬛", "SWOT"), ("agenda", "🗓", "Meeting agenda"),
+    ];
+
+    /// A new board from a template: the board is created, the template key waits in session storage, and the new board puts it
+    /// on itself when it opens (the same hand-over the Template Center uses for "As a new board page").
+    private async Task NewBoardFromQuickTemplate(string key)
+    {
+        var name = BoardQuickTemplates.FirstOrDefault(t => t.Key == key).Name ?? "Whiteboard";
+        try { await JS.InvokeVoidAsync("sessionStorage.setItem", "ipop.wb.pendingTemplate", JsonSerializer.Serialize(new { key, at = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), howTo = true, examples = true })); }
+        catch (JSException) { }
+        await OnNewBoardFromTemplate(name);
+    }
+
+    /// "Templates": a blank board with the Template Center already open (Shift G on the board).
+    private async Task OpenBoardTemplatesFromList()
+    {
+        try { await JS.InvokeVoidAsync("sessionStorage.setItem", "ipop.wb.openCenter", JsonSerializer.Serialize(new { at = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() })); }
+        catch (JSException) { }
+        await CreateBlank(null, "board");
+    }
+
+    private string ListKind => IsBoardsRoute ? "board" : "page";
+    private Task CreateFromList() => CreateBlank(null, ListKind);
+
+    private async Task SetFavoriteFromList((Guid Id, bool Favorite) arg)
+    {
+        var p = sidebar?.Pages.FirstOrDefault(x => x.Id == arg.Id);
+        if (p is null) return;
+        await SetFavorite(p, arg.Favorite);
+    }
+
     private void OpenNewMenu(MouseEventArgs e)
     {
         menuFor = null;

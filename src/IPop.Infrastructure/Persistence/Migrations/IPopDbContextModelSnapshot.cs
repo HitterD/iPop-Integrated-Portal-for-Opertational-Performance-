@@ -3237,6 +3237,12 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<long>("StateVersion")
                         .HasColumnType("bigint");
 
+                    b.Property<DateTime?>("ThumbnailAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ThumbnailId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(200)

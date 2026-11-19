@@ -1,0 +1,216 @@
+@using IPop.Application.Notes
+@using IPop.Web.Services
+@inject AuthState Auth
+@inject IJSRuntime JS
+@inject HttpClient Http
+
+@* The Notes and Whiteboards list pages (one component, Kind = "page" | "board"): every page the person can open as cards or rows,
+   with All / Mine / Shared with me / Favorites, search, sort and Grid / List. The list is the one the sidebar already loads. *@
+<div class="nl @(Kind == "board" ? "boards" : "notes")">
+    <div class="nl-top">
+        <div class="nl-title">
+            <h1>@(Kind == "board" ? "Whiteboards" : "Notes")</h1>
+            <div class="nl-sub">@(Kind == "board" ? "Draw, plan and run workshops together" : "Everything you wrote or that was shared with you")</div>
+        </div>
+        <div class="nl-acts">
+            @if (Kind == "board")
+            {
+                <button type="button" class="nt-btn" @onclick="OnTemplates"><i data-lucide="layout-template" class="sm"></i>Templates</button>
+            }
+            <button type="button" class="nt-btn primary" disabled="@Creating" @onclick="OnCreate"><i data-lucide="plus" class="sm"></i>@(Kind == "board" ? "New whiteboard" : "New page")</button>
+        </div>
+    </div>
+
+    <div class="nl-ctl">
+        <label class="nl-search">
+            <i data-lucide="search" class="sm"></i>
+            <input placeholder="@(Kind == "board" ? "Search whiteboards" : "Search notes by title or text")" value="@query" @oninput="OnQuery" aria-label="Search" />
+            @if (query.Length > 0) { <button type="button" class="nt-icon-btn" title="Clear" aria-label="Clear search" @onclick="ClearQuery"><i data-lucide="x" class="sm"></i></button> }
+        </label>
+        <div class="nl-seg" role="tablist" aria-label="Show">
+            @foreach (var (key, label) in Filters)
+            {
+                var k = key;
+                <button type="button" role="tab" aria-selected="@(filter == k ? "true" : "false")" class="@(filter == k ? "on" : "")" @onclick="() => SetFilter(k)">@label</button>
+            }
+        </div>
+        <span class="nl-sp"></span>
+        <AppSelect CssClass="nl-sort" Label="Sort" Value="@sort" Options="@SortOptions" ValueChanged="OnSort" />
+        <div class="nl-seg" role="group" aria-label="Layout">
+            <button type="button" title="Grid" aria-label="Grid" aria-pressed="@(list ? "false" : "true")" class="@(list ? "" : "on")" @onclick="() => SetLayout(false)"><i data-lucide="layout-grid" class="sm"></i></button>
+            <button type="button" title="List" aria-label="List" aria-pressed="@(list ? "true" : "false")" class="@(list ? "on" : "")" @onclick="() => SetLayout(true)"><i data-lucide="list" class="sm"></i></button>
+        </div>
+    </div>
+
+    @if (Sidebar is null)
+    {
+        <div class="nl-empty">Loading…</div>
+    }
+    else
+    {
+        var all = NoteListView.Build(Sidebar.Pages, Kind, NoteListView.ParseFilter(filter), query, NoteListView.ParseSort(sort));
+        var rows = all.Take(shown).ToList();
+        @if (Kind == "board" && query.Length == 0 && filter == "all" && Templates.Count > 0)
+        {
+            <div class="nl-grp">Start from a template</div>
+            <div class="nl-tpls">
+                @foreach (var t in Templates)
+                {
+                    var key = t.Key;
+                    <button type="button" class="nl-tpl" @onclick="() => OnTemplate.InvokeAsync(key)"><span class="e">@t.Emoji</span><span>@t.Name</span></button>
+                }
+            </div>
+        }
+        @if (all.Count == 0)
+        {
+            <div class="nl-empty">
+                @if (query.Length > 0) { <b>Nothing matches “@query”.</b> }
+                else if (filter == "fav") { <b>No favorites yet.</b><span>Click the ★ on a card to keep it here.</span> }
+                else if (filter == "shared") { <b>Nothing has been shared with you yet.</b> }
+                else { <b>@(Kind == "board" ? "No whiteboards yet." : "No notes yet.")</b><span>Click “@(Kind == "board" ? "New whiteboard" : "New page")” to start.</span> }
+            </div>
+        }
+        else if (list)
+        {
+            <div class="nl-rows" role="table" aria-label="@(Kind == "board" ? "Whiteboards" : "Notes")">
+                <div class="nl-row h" role="row"><span></span><span>Name</span><span>Owner</span><span>Sharing</span><span>Edited</span><span></span></div>
+                @foreach (var p in rows)
+                {
+                    var pp = p;
+                    <div class="nl-row" role="row" tabindex="0" @onclick="() => Open(pp)" @onkeydown="e => OnKey(e, pp)">
+                        <span class="e">@(p.Emoji ?? (p.Kind == "board" ? "🧩" : "📄"))</span>
+                        <span class="t" title="@Title(p)">@Title(p)</span>
+                        <span class="m"><PersonAvatar Nik="@p.OwnerNik" Name="@p.OwnerName" Size="20" Class="nt-av s20" Decorative="true" />@p.OwnerName</span>
+                        <span class="m">@(p.IsShared || !p.IsMine ? "Shared" : "Only me")</span>
+                        <span class="m">@Ago(p.UpdatedAt)</span>
+                        <button type="button" class="nl-star @(p.IsFavorite ? "on" : "")" title="@(p.IsFavorite ? "Remove from favorites" : "Add to favorites")" aria-label="@(p.IsFavorite ? "Remove from favorites" : "Add to favorites")" aria-pressed="@(p.IsFavorite ? "true" : "false")" @onclick="() => Star(pp)" @onclick:stopPropagation>★</button>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            var lastGroup = "";
+            <div class="nl-grid">
+                @foreach (var p in rows)
+                {
+                    var pp = p;
+                    var g = sort == "recent" ? NoteListView.Group(p.UpdatedAt, DateTime.UtcNow) : "";
+                    @if (g != lastGroup)
+                    {
+                        lastGroup = g;
+                        @if (g.Length > 0) { <div class="nl-grp full">@g</div> }
+                    }
+                    <div class="nl-card @(p.Kind == "board" ? "bcard" : "")" role="link" tabindex="0" @onclick="() => Open(pp)" @onkeydown="e => OnKey(e, pp)">
+                        @if (p.Kind == "board")
+                        {
+                            <div class="thumb">
+                                @if (p.ThumbnailId is { } tid) { <img data-ipop-att="@tid" alt="" decoding="async" /> }
+                                else { <span class="none"><i data-lucide="layout-dashboard"></i>No preview yet</span> }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="cv @(p.CoverImageId is not null ? "photo" : "")" style="@CoverStyle(p)">
+                                @if (p.CoverImageId is { } cid) { <img data-ipop-att="@cid" alt="" decoding="async" /> }
+                            </div>
+                            <span class="ico">@(p.Emoji ?? "📄")</span>
+                        }
+                        <button type="button" class="nl-star @(p.IsFavorite ? "on" : "")" title="@(p.IsFavorite ? "Remove from favorites" : "Add to favorites")" aria-label="@(p.IsFavorite ? "Remove from favorites" : "Add to favorites")" aria-pressed="@(p.IsFavorite ? "true" : "false")" @onclick="() => Star(pp)" @onclick:stopPropagation>★</button>
+                        <div class="bd">
+                            <h4 title="@Title(p)">@(p.Kind == "board" && p.Emoji is { } be ? be + " " : "")@Title(p)</h4>
+                            @if (p.Kind != "board") { <div class="sn">@NoteListView.Snippet(p.Excerpt)</div> }
+                            <div class="ft">
+                                <PersonAvatar Nik="@p.OwnerNik" Name="@p.OwnerName" Size="20" Class="nt-av s20" Decorative="true" />
+                                <span class="who">@(p.IsMine ? "You" : p.OwnerName)</span>
+                                <span class="when">· @Ago(p.UpdatedAt)</span>
+                                @if (p.IsShared || !p.IsMine) { <span class="pill sh" title="Shared"><i data-lucide="users" class="sm"></i></span> }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        @if (all.Count > rows.Count)
+        {
+            <div class="nl-more"><button type="button" class="nt-btn" @onclick="ShowMore">Show more (@(all.Count - rows.Count))</button></div>
+        }
+    }
+</div>
+
+@code {
+    private const int Batch = 36;
+
+    [Parameter, EditorRequired] public string Kind { get; set; } = "page";
+    [Parameter] public NoteSidebarDto? Sidebar { get; set; }
+    [Parameter] public bool Creating { get; set; }
+    [Parameter] public EventCallback OnCreate { get; set; }
+    [Parameter] public EventCallback OnTemplates { get; set; }
+    [Parameter] public EventCallback<string> OnTemplate { get; set; }
+    [Parameter] public EventCallback<Guid> OnOpen { get; set; }
+    [Parameter] public EventCallback<(Guid Id, bool Favorite)> OnFavorite { get; set; }
+    /// Quick-start templates shown above the boards (Whiteboards list only).
+    [Parameter] public List<(string Key, string Emoji, string Name)> Templates { get; set; } = [];
+
+    private string filter = "all", sort = "recent", query = "";
+    private bool list;
+    private int shown = Batch;
+
+    private static readonly (string, string)[] Filters = [("all", "All"), ("mine", "Mine"), ("shared", "Shared with me"), ("fav", "★ Favorites")];
+    private static readonly List<AppOption> SortOptions =
+    [
+        new("recent", "Recently edited"), new("name", "Name A–Z"), new("created", "Created"),
+    ];
+
+    private string Key => $"nl.layout.{Kind}";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                list = await JS.InvokeAsync<string?>("ipop.prefGet", Key) == "list";
+                if (list) StateHasChanged();
+            }
+            catch (JSException) { }
+        }
+        try
+        {
+            await JS.InvokeVoidAsync("ipop.icons");
+            // pictures of the cards (cover photos, board thumbnails) are bearer-protected files: fetched once each, shown as blob URLs
+            await JS.InvokeVoidAsync("ipop.mailImages.hydrate", null, Http.BaseAddress?.ToString() ?? "", Auth.AccessToken);
+        }
+        catch (JSException) { }
+    }
+
+    private async Task SetLayout(bool asList)
+    {
+        list = asList;
+        try { await JS.InvokeVoidAsync("ipop.prefSet", Key, asList ? "list" : "grid"); } catch (JSException) { }
+    }
+
+    private void OnQuery(ChangeEventArgs e) { query = e.Value?.ToString() ?? string.Empty; shown = Batch; }
+    private void ClearQuery() { query = string.Empty; shown = Batch; }
+    private void OnSort(string? v) { sort = v ?? "recent"; shown = Batch; }
+    private void SetFilter(string f) { filter = f; shown = Batch; }
+    private void ShowMore() => shown += Batch;
+    private Task Open(NoteListItemDto p) => OnOpen.InvokeAsync(p.Id);
+    private Task Star(NoteListItemDto p) => OnFavorite.InvokeAsync((p.Id, !p.IsFavorite));
+    private Task OnKey(KeyboardEventArgs e, NoteListItemDto p) => e.Key is "Enter" or " " ? Open(p) : Task.CompletedTask;
+
+    private static string Title(NoteListItemDto p) => string.IsNullOrWhiteSpace(p.Title) ? "Untitled" : p.Title;
+    private static string CoverStyle(NoteListItemDto p) =>
+        p.CoverImageId is not null || !NoteStyle.Covers.Contains(p.Cover ?? "") ? "" : $"--cover:var(--cv-{p.Cover})";
+
+    private static string Ago(DateTime utc)
+    {
+        var d = DateTime.UtcNow - DateTime.SpecifyKind(utc, DateTimeKind.Utc);
+        if (d.TotalMinutes < 1) return "just now";
+        if (d.TotalMinutes < 60) return $"{(int)d.TotalMinutes} min ago";
+        if (d.TotalHours < 24) return $"{(int)d.TotalHours} hr ago";
+        if (d.TotalDays < 2) return "yesterday";
+        if (d.TotalDays < 7) return $"{(int)d.TotalDays} days ago";
+        return utc.ToLocalTime().ToString("d MMM yyyy");
+    }
+}

@@ -24,6 +24,10 @@ public class NotePage
     public Guid? CoverImageId { get; set; }
     /// Vertical focus of the photo inside the cover band, 0 (top) .. 100 (bottom).
     public int CoverPosY { get; set; } = 50;
+    /// Whiteboards only: a small picture of the board (a notes attachment linked to this page) shown on the Whiteboards list.
+    /// Replaced, never accumulated: the previous one is deleted when a new one is saved.
+    public Guid? ThumbnailId { get; set; }
+    public DateTime? ThumbnailAt { get; set; }
     public required string Accent { get; set; }
     public required string Font { get; set; }
     public bool FullWidth { get; set; }

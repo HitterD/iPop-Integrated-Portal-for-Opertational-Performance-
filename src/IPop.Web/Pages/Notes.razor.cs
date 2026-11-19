@@ -22,13 +22,15 @@ public partial class Notes
 {
     [Parameter] public Guid? Id { get; set; }
 
-    internal const string EditorModulePath = "./js/notes/notes-editor.js?v=20261119-s1";
+    internal const string EditorModulePath = "./js/notes/notes-editor.js?v=20261119-s7";
     private const string EditorModule = EditorModulePath;
 
     private enum View { Home, Page, New, Trash }
     private enum Pop { None, More, Style, Emoji, Share, History, Tidy, Template }
 
     private View view = View.Home;
+    /// The Whiteboards list lives at /whiteboards; it is the same page as Notes, with the other list showing.
+    private bool IsBoardsRoute => Nav.Uri.Contains("/whiteboards", StringComparison.OrdinalIgnoreCase) && Id is null;
     private Pop pop = Pop.None;
     private bool sideOpen, commentsOpen, showResolved, busy, creating, showTemplates;
 
@@ -86,13 +88,23 @@ public partial class Notes
 
     private Guid? lastId;
     private bool paramsSeen;
+    private bool lastBoardsRoute;
+
+    /// The top bar names the list that is showing: Whiteboards at /whiteboards, Notes everywhere else.
+    private void SetListHeader() =>
+        Layout?.SetHeader(IsBoardsRoute ? "Whiteboards" : "Notes", IsBoardsRoute ? "Draw, plan and run workshops together" : "Shared notes & docs");
 
     protected override async Task OnParametersSetAsync()
     {
         // The cascading MainLayout re-runs this on every layout render — only react to a real route change.
-        if (paramsSeen && lastId == Id) return;
+        // /notes and /whiteboards are one component: moving between them keeps the page, but the header follows the route
+        if (paramsSeen && lastId == Id && lastBoardsRoute == IsBoardsRoute) return;
+        var routeSwitch = paramsSeen && lastId == Id && lastBoardsRoute != IsBoardsRoute;
         paramsSeen = true;
         lastId = Id;
+        lastBoardsRoute = IsBoardsRoute;
+        // a list page always shows fresh data: boards save their thumbnail while you are on the board, edits move "Recently edited"
+        if (routeSwitch) { SetListHeader(); searchQ = ""; await LoadSidebarAsync(); return; }
         pop = Pop.None;
         sideOpen = false;
         if (Id is { } id)
@@ -106,6 +118,7 @@ public partial class Notes
             await UnmountAsync();
             note = null;
             view = View.Home;
+            await LoadSidebarAsync();
         }
     }
 
@@ -114,7 +127,7 @@ public partial class Notes
         if (disposed) return;
         if (firstRender)
         {
-            Layout?.SetHeader("Notes", "Shared notes & docs");
+            SetListHeader();
             module = await JS.InvokeAsync<IJSObjectReference>("import", EditorModule);
             hotkeys = await module.InvokeAsync<IJSObjectReference>("hotkeys", selfRef);
             await SidebarFirstRenderAsync();
@@ -137,6 +150,7 @@ public partial class Notes
         await ImportAfterRenderAsync();
         await CoverAfterRenderAsync();
         await TidyAfterRenderAsync();
+        await MarginAfterRenderAsync();
     }
 
     public async ValueTask DisposeAsync()
@@ -227,6 +241,7 @@ public partial class Notes
             pages = (sidebar?.Pages ?? []).Select(x => new { id = x.Id, title = DisplayTitle(x.Title), emoji = x.Emoji ?? "📄" }),
             dotnet = selfRef,
             kind = p.Kind,
+            hasThumbnail = sidebar?.Pages.FirstOrDefault(x => x.Id == p.Id)?.ThumbnailId is not null,
             locked = p.LockedAt is not null,
             boardEl = p.Kind == "board" ? boardRef : (object?)null,
             // whiteboard Template Center: an admin may remove templates others shared with the team (the API checks it again)
@@ -259,6 +274,8 @@ public partial class Notes
     private async Task UnmountAsync()
     {
         mountedId = null;
+        await DisposeMarginAsync();
+        bubbleThread = null; marginMode = false;
         var ed = editor;
         editor = null;
         if (ed is null) return;
@@ -488,6 +505,7 @@ public partial class Notes
     }
 
     private void GoHome() => Nav.NavigateTo("/notes");
+    private void GoHomeLink() { sideOpen = false; Nav.NavigateTo("/notes"); }
 
     private bool IsActive(Guid id) => view == View.Page && note?.Id == id;
 

@@ -158,7 +158,7 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         var visible = await VisibleAsync(userId, ct);
         var ids = visible.Keys.ToList();
         var rows = await db.NotePages.AsNoTracking().Where(p => ids.Contains(p.Id))
-            .Select(p => new { p.Id, p.Title, p.Emoji, p.IsGuide, p.TodoDone, p.TodoTotal, p.UpdatedAt, p.SortOrder, p.Kind, OwnerName = p.Owner.Name })
+            .Select(p => new { p.Id, p.Title, p.Emoji, p.IsGuide, p.TodoDone, p.TodoTotal, p.UpdatedAt, p.CreatedAt, p.SortOrder, p.Kind, OwnerName = p.Owner.Name, OwnerNik = p.Owner.Nik, p.Excerpt, p.Cover, p.CoverImageId, p.ThumbnailId, p.ThumbnailAt })
             .ToListAsync(ct);
         var favs = (await db.NoteFavorites.AsNoTracking().Where(f => f.UserId == userId).Select(f => f.PageId).ToListAsync(ct)).ToHashSet();
         var sharedIds = (await db.NoteShares.AsNoTracking().Where(s => ids.Contains(s.PageId)).Select(s => s.PageId).Distinct().ToListAsync(ct)).ToHashSet();
@@ -175,7 +175,8 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
             var v = visible[r.Id];
             return new NoteListItemDto(r.Id, v.ParentId, r.Title, r.Emoji, NoteLevels.Name(v.Access),
                 v.OwnerId == userId, IsShared(r.Id), favs.Contains(r.Id), r.IsGuide && v.OwnerId == userId,
-                r.TodoDone, r.TodoTotal, r.UpdatedAt, r.OwnerName, r.SortOrder, r.Kind);
+                r.TodoDone, r.TodoTotal, r.UpdatedAt, r.OwnerName, r.SortOrder, r.Kind,
+                r.Kind == "board" ? null : r.Excerpt, r.Cover, r.CoverImageId, r.ThumbnailId, r.ThumbnailAt, r.OwnerNik, r.CreatedAt);
         }).OrderBy(p => p.Title, StringComparer.CurrentCultureIgnoreCase).ToList();
 
         var recent = await db.NoteVisits.AsNoTracking().Where(v => v.UserId == userId && ids.Contains(v.PageId))

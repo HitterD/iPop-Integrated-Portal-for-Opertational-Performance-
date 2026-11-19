@@ -589,6 +589,27 @@ public sealed partial class NoteService
         return Ok<IReadOnlyList<NoteImageDto>>(rows);
     }
 
+    public async Task<NoteResult<Guid?>> SetThumbnailAsync(Guid userId, Guid pageId, Guid attachmentId, CancellationToken ct)
+    {
+        var access = await GetAccessAsync(userId, pageId, ct);
+        if (access < NoteAccess.Edit) return Fail<Guid?>(Denied(access));
+        var page = await db.NotePages.FirstOrDefaultAsync(p => p.Id == pageId && p.DeletedAt == null, ct);
+        if (page is null) return Fail<Guid?>("not_found");
+        if (page.Kind != "board") return Fail<Guid?>("not_a_board");
+        // only a picture that was uploaded to THIS page can become its thumbnail
+        var linked = await (from na in db.NoteAttachments.AsNoTracking()
+                            join a in db.Attachments.AsNoTracking() on na.AttachmentId equals a.Id
+                            where na.PageId == pageId && na.AttachmentId == attachmentId && a.DeletedAt == null && a.ContentType.StartsWith("image/")
+                            select a.Id).AnyAsync(ct);
+        if (!linked) return Fail<Guid?>("invalid_image");
+        var old = page.ThumbnailId;
+        page.ThumbnailId = attachmentId;
+        page.ThumbnailAt = DateTime.UtcNow;
+        // the thumbnail is bookkeeping, not an edit: it must not move "edited 2 min ago" or the page's UpdatedBy
+        await db.SaveChangesAsync(ct);
+        return Ok<Guid?>(old is { } o && o != attachmentId ? o : null);
+    }
+
     public async Task LinkAttachmentAsync(Guid pageId, Guid attachmentId, CancellationToken ct)
     {
         db.NoteAttachments.Add(new NoteAttachment { AttachmentId = attachmentId, PageId = pageId });

@@ -413,6 +413,42 @@ public static class NotesEndpoints
             }
         }).DisableAntiforgery().RequirePermission("notes.write");
 
+        // ── Whiteboard thumbnail ─────────────────────────────────────────────
+        // The editor draws a small picture of the board and uploads it here after the board is saved. One per board: the previous
+        // one is removed from the NAS. This is not an edit (no "edited just now"), so it never wakes other people's editors.
+        g.MapPost("/{id:guid}/thumbnail", async Task<IResult> (Guid id, IFormFile file, HttpContext http, INoteService svc, IAttachmentStore store,
+            IHubContext<NotesHub> hub, CancellationToken ct) =>
+        {
+            var me = await MeAsync(http);
+            if (me is null) return Results.Unauthorized();
+            var can = await svc.CanUploadAsync(me.Id, id, ct);
+            if (!can.Success) return Error(can.Error!);
+            await using var input = file.OpenReadStream();
+            await using var buffered = new MemoryStream();
+            await input.CopyToAsync(buffered, ct);
+            buffered.Position = 0;
+            var prepared = NoteBoardThumbnail.Prepare(buffered, buffered.Length, out var problem);
+            if (prepared is null)
+                return Results.Json(new { code = problem, message = "That isn't a usable picture." }, statusCode: problem == "too_large" ? 413 : 422);
+            try
+            {
+                await using var body = new MemoryStream(prepared.Bytes);
+                var stored = await store.PutAsync(AttachmentAreas.Notes, "board-thumbnail" + prepared.Extension, prepared.ContentType, body, me.Id, ct);
+                await svc.LinkAttachmentAsync(id, stored.Id, ct);
+                var set = await svc.SetThumbnailAsync(me.Id, id, stored.Id, ct);
+                if (!set.Success)
+                {
+                    await store.DeleteAsync(stored.Id, ct);   // not a board / no access: don't leave the file behind
+                    return Error(set.Error!);
+                }
+                if (set.Data is { } replaced) await store.DeleteAsync(replaced, ct);
+                await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteThumbnail", id, stored.Id, ct);
+                return Results.Ok(new { id = stored.Id });
+            }
+            catch (AttachmentRejectedException ex) { return Results.Json(new { code = ex.Code, message = ex.Message }, statusCode: 422); }
+            catch (IPop.Application.Files.SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
+        }).DisableAntiforgery().RequirePermission("notes.write");
+
         return app;
     }
 

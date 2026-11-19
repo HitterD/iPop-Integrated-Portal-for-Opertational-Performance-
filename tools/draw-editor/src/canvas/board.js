@@ -5077,6 +5077,8 @@ export function mountCanvas(container, opts) {
     tidyFlow: dir => tidyFlow(dir),
     focus: () => root.focus({ preventScroll: true }),
     /// PNG of the whole board (light background unless dark is asked for).
+    /// The Template Center (Shift G), opened from outside: the Whiteboards list's "Templates" button.
+    openCenter: view => openCenter(view),
     png: async ({ scale = 2, dark = false } = {}) => toPng(live(), { scale, theme: dark ? 'dark' : 'light', files: await dataUrls(), cardInfo: opts.cardInfo }),
     svg: ({ dark = false } = {}) => { const o = toSvg(live(), { theme: dark ? 'dark' : 'light', files: opts.files }); return o ? new XMLSerializer().serializeToString(o.svg) : null; },
     count,

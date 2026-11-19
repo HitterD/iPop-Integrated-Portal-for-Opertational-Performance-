@@ -26,6 +26,7 @@ import { NotePlaceholder } from './placeholder.js';
 import { Symbols } from './symbols.js';
 import { ListNumbering } from './lists.js';
 import { moveBlockTr } from './block-menu.js';
+import { createMarginLayout } from './margin-comments.js';
 import { sliceText, cleanOfficeHtml, preferFiles } from './paste.js';
 import { pictureClipboard } from './clip-images.js';
 import Collaboration from '@tiptap/extension-collaboration';
@@ -740,14 +741,48 @@ export async function mount(el, opts) {
       .then(inst => {
         if (closing) { inst.destroy(); return; }
         board = inst;
+        startBoardThumbnail(inst);
         // "Use template → As a new board page": the new page puts the chosen template on itself once (within 2 minutes)
         try {
           const pend = JSON.parse(sessionStorage.getItem('ipop.wb.pendingTemplate') || 'null');
           if (pend?.key && Date.now() - pend.at < 120000 && canEdit && inst.count() === 0) { sessionStorage.removeItem('ipop.wb.pendingTemplate'); inst.applyTemplate(pend.key, { howTo: pend.howTo !== false, examples: pend.examples !== false }); }
+          // "Templates" on the Whiteboards list: a blank board that opens with the Template Center showing
+          const wantCenter = JSON.parse(sessionStorage.getItem('ipop.wb.openCenter') || 'null');
+          if (wantCenter && Date.now() - wantCenter.at < 120000 && canEdit) { sessionStorage.removeItem('ipop.wb.openCenter'); setTimeout(() => inst.openCenter?.(), 300); }
         } catch { /* blocked */ }
       })
       .catch(() => host.toast('Couldn’t load the whiteboard tools. Check your connection and reload the page.'));
   }
+
+  // The Whiteboards list shows a small picture of each board. Drawn here (the board knows how), a few seconds after the last edit
+  // by someone who can edit, then uploaded; the server keeps one per board. Skipped for an empty board, a pop-out tab and viewers.
+  let thumbTimer = 0, thumbBusy = false, thumbSig = '';
+  function startBoardThumbnail(inst) {
+    if (!canEdit || opts.boardOnly) return;
+    const sceneMap = () => ydoc.getMap('wb:board');
+    const schedule = () => { clearTimeout(thumbTimer); thumbTimer = setTimeout(draw, 6000); };
+    async function draw() {
+      if (closing || thumbBusy || !board) return;
+      const count = board.count();
+      if (!count) return;
+      // changed since the last picture? (element count + the doc size is enough to skip idle re-uploads)
+      const sig = `${count}:${Y.encodeStateVector(ydoc).length}:${[...sceneMap().keys()].length}`;
+      if (sig === thumbSig) return;
+      thumbBusy = true;
+      try {
+        const png = await board.png({ dark: false, scale: 0.5 });
+        if (!png || closing) return;
+        const form = new FormData(); form.append('file', png, 'board.png');
+        const r = await api(`/api/notes/${pageId}/thumbnail`, { method: 'POST', body: form });
+        if (r.ok) thumbSig = sig;
+      } catch { /* the list keeps the previous picture */ }
+      finally { thumbBusy = false; }
+    }
+    ydoc.on('update', (_u, origin) => { if (origin !== 'remote') schedule(); });
+    // a board opened and left without edits still gets its first picture
+    setTimeout(() => { if (!closing && !pageHasThumbnail) draw(); }, 4000);
+  }
+  const pageHasThumbnail = !!opts.hasThumbnail;
 
   const toolbar = createToolbar(editor, host);
   // Find & replace (Ctrl+F while the page has focus) and the word-count pill.
@@ -1081,6 +1116,31 @@ export async function mount(el, opts) {
       if (r) editor.view.domAtPos(r.from)?.node?.parentElement?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     },
     setAccent(k) { accent = k; accentListeners.forEach(f => f()); },
+    /// Comments in the page margin (margin-comments.js): measures where each commented text is and where the cards fit.
+    /// scroller = the page's scroll area, page = the page column, cards = the margin column; net gets OnMarginMode('margin'|'bubbles').
+    margin(scroller, page, cards, netRef) {
+      const root = () => editor?.view?.dom;
+      const lay = createMarginLayout({
+        scroller, page, cards, editorRoot: root,
+        draftTop: () => { const { from } = editor.state.selection; try { const c = editor.view.coordsAtPos(from); return c.top - scroller.getBoundingClientRect().top + scroller.scrollTop - 8; } catch { return 0; } },
+        onMode: m => { try { netRef.invokeMethodAsync('OnMarginMode', m).catch(() => {}); } catch { /* disposed */ } },
+      });
+      // anything that changes the text moves the cards
+      const onUpd = () => lay.schedule();
+      editor.on('update', onUpd);
+      return {
+        layout: () => lay.layout(),
+        reveal: id => lay.reveal(id),
+        /// where a thread's popover goes: just below its highlighted text, kept on screen
+        bubbleAt: id => {
+          const el = root()?.querySelector(`[data-thread="${CSS.escape(String(id))}"]`);
+          if (!el) return [Math.round(innerWidth / 2 - 160), 120];
+          const r = el.getBoundingClientRect();
+          return [Math.max(12, Math.min(Math.round(r.left), innerWidth - 332)), Math.max(60, Math.min(Math.round(r.bottom + 8), innerHeight - 260))];
+        },
+        destroy: () => { editor?.off?.('update', onUpd); lay.destroy(); },
+      };
+    },
     /// Page locked / unlocked (own action or someone else's): the text becomes read-only or editable again in place.
     setLocked(on) {
       if (closing) return;
@@ -1133,7 +1193,7 @@ export async function mount(el, opts) {
     async destroy() {
       if (closing) return;
       closing = true;
-      scheduleSnapshot.cancel();
+      scheduleSnapshot.cancel(); clearTimeout(thumbTimer);
       try { await flush(); await snapshot(); } catch { /* best effort */ }
       destroyed = true;
       removeAwarenessStates(awareness, [ydoc.clientID], 'local');

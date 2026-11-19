@@ -53,7 +53,13 @@ public record NoteResult<T>(T? Data, string? Error)
 /// (a sub-page shared on its own shows as a root).
 public record NoteListItemDto(Guid Id, Guid? ParentId, string Title, string? Emoji, string Access,
     bool IsMine, bool IsShared, bool IsFavorite, bool IsGuide, int TodoDone, int TodoTotal,
-    DateTime UpdatedAt, string OwnerName, int SortOrder = 0, string Kind = "page");
+    DateTime UpdatedAt, string OwnerName, int SortOrder = 0, string Kind = "page",
+    /// Two lines of the page text for the Notes list cards (null for boards and empty pages).
+    string? Excerpt = null,
+    /// Cover for the list cards: a gradient key, or a photo (attachment id) that wins over it.
+    string? Cover = null, Guid? CoverImageId = null,
+    /// Whiteboards: the saved picture of the board (attachment id) and when it was taken.
+    Guid? ThumbnailId = null, DateTime? ThumbnailAt = null, string? OwnerNik = null, DateTime? CreatedAt = null);
 
 public record NoteSidebarDto(IReadOnlyList<NoteListItemDto> Pages, IReadOnlyList<Guid> Recent, int TrashCount = 0);
 
@@ -275,6 +281,9 @@ public interface INoteService
     Task LinkAttachmentAsync(Guid pageId, Guid attachmentId, CancellationToken ct);
     /// Makes an already-uploaded, page-linked image the page's cover (Can edit). Image-only; replaces a gradient.
     Task<NoteResult<NotePageDto>> SetCoverImageAsync(Guid userId, Guid pageId, Guid attachmentId, CancellationToken ct);
+    /// Whiteboards: stores the picture the editor drew of the board as the page's thumbnail (replacing the previous one).
+    /// Returns the attachment id that is no longer used so the caller can delete it from the store.
+    Task<NoteResult<Guid?>> SetThumbnailAsync(Guid userId, Guid pageId, Guid attachmentId, CancellationToken ct);
     /// Images attached to this page (newest first), for "pick from this page".
     Task<NoteResult<IReadOnlyList<NoteImageDto>>> GetPageImagesAsync(Guid userId, Guid pageId, CancellationToken ct);
 
