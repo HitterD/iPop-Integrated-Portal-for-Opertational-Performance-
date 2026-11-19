@@ -22,7 +22,7 @@ public partial class Notes
 {
     [Parameter] public Guid? Id { get; set; }
 
-    internal const string EditorModulePath = "./js/notes/notes-editor.js?v=20261119-s9";
+    internal const string EditorModulePath = "./js/notes/notes-editor.js?v=20261119-r4";
     private const string EditorModule = EditorModulePath;
 
     private enum View { Home, Page, New, Trash }
