@@ -22,7 +22,7 @@ public partial class Notes
 {
     [Parameter] public Guid? Id { get; set; }
 
-    internal const string EditorModulePath = "./js/notes/notes-editor.js?v=20261117-r7c";
+    internal const string EditorModulePath = "./js/notes/notes-editor.js?v=20261119-s1";
     private const string EditorModule = EditorModulePath;
 
     private enum View { Home, Page, New, Trash }
@@ -362,9 +362,15 @@ public partial class Notes
     }
 
     [JSInvokable]
-    public void OnHotkey(string key)
+    public async Task OnHotkey(string key)
     {
         if (key == "new") _ = CreateBlank(null);
+        if (key == "save")
+        {
+            // Notes saves as you type; Ctrl S only makes sure the last keystrokes are on the server and says so.
+            if (editor is not null) { try { await editor.InvokeVoidAsync("flushNow"); } catch (JSException) { } catch (JSDisconnectedException) { } }
+            Toasts.Show(saveState == "offline" ? "You're offline — changes will save when you're back online" : "Saved — Notes saves automatically as you type", ToastKind.Info);
+        }
         StateHasChanged();
     }
 

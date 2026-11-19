@@ -91,11 +91,24 @@ export const NoteImage = Node.create({
       width: { default: 100, parseHTML: e => Math.min(100, Math.max(15, +e.getAttribute('data-width') || 100)) },
       align: { default: 'center', parseHTML: e => ['left', 'right'].includes(e.getAttribute('data-align')) ? e.getAttribute('data-align') : 'center' },
       caption: { default: '', parseHTML: e => e.getAttribute('data-caption') || '' },
+      // A picture pasted from a web page before it is saved here: its web address. The pasting editor copies it into the page
+      // (then `id` is set and `src` cleared); if that fails it stays as a picture shown from the website, marked "External".
+      src: { default: null, parseHTML: e => e.getAttribute('data-src') || null },
     };
   },
-  parseHTML() { return [{ tag: 'figure[data-image]' }]; },
+  parseHTML() {
+    return [
+      { tag: 'figure[data-image]', priority: 60 },
+      // <img> from other apps and web pages: web and data: pictures only (blob: addresses die with the tab they came from)
+      { tag: 'img[src]', getAttrs: e => {
+        const src = e.getAttribute('src') || '';
+        if (!/^(https?:|data:image\/(png|jpe?g|gif|webp);base64,)/i.test(src)) return false;
+        return { src, name: (e.getAttribute('alt') || '').slice(0, 120) };
+      } },
+    ];
+  },
   renderHTML({ node: { attrs: a } }) {
-    return ['figure', { 'data-image': '', 'data-id': a.id, 'data-name': a.name, 'data-size': a.size, 'data-width': a.width, 'data-align': a.align, 'data-caption': a.caption }];
+    return ['figure', { 'data-image': '', 'data-id': a.id, 'data-name': a.name, 'data-size': a.size, 'data-width': a.width, 'data-align': a.align, 'data-caption': a.caption, ...(a.src ? { 'data-src': a.src } : {}) }];
   },
   addOptions() { return { host: null }; },
   addNodeView() {
@@ -163,12 +176,21 @@ export const NoteImage = Node.create({
         const img = document.createElement('img'); img.src = url; img.alt = node.attrs.caption || node.attrs.name; img.draggable = false;
         box.replaceChildren(img);
       }).catch(() => { box.querySelector('.nt-img-wait').textContent = "Couldn't load the image"; });
+      else if (node.attrs.src) {
+        // not saved here (yet): shown straight from the website, no cookies or referrer sent
+        const img = document.createElement('img'); img.src = node.attrs.src; img.alt = node.attrs.caption || node.attrs.name || ''; img.draggable = false;
+        img.referrerPolicy = 'no-referrer';
+        img.onerror = () => { box.innerHTML = '<span class="nt-img-wait">Couldn’t load the picture from the website</span>'; };
+        const tag = el('span', 'nt-img-ext', 'External');
+        tag.title = 'Shown from the website it was copied from. It disappears if that website removes it.';
+        box.replaceChildren(img, tag);
+      }
 
       const view = () => { const all = pageImages(editor.state.doc); openLightbox(host, all, all.findIndex(x => x.id === node.attrs.id)); };
       dom.addEventListener(editable ? 'dblclick' : 'click', e => { if (!e.target.closest('input,.rs')) view(); });
       return {
         dom,
-        update(n) { if (n.type.name !== 'noteImage' || n.attrs.id !== node.attrs.id) return false; node = n; paint(n); return true; },
+        update(n) { if (n.type.name !== 'noteImage' || n.attrs.id !== node.attrs.id || n.attrs.src !== node.attrs.src) return false; node = n; paint(n); return true; },
         ignoreMutation: () => true,
         stopEvent: e => !!e.target.closest?.('input,.rs'),
         destroy: () => cancelResize(),
@@ -559,7 +581,7 @@ export function createRichUi(editor, host) {
       : (inTodo ? '' : ['left', 'center', 'right'].map(x => `<button data-i="al-${x}" class="${a.align === x ? 'on' : ''}" title="Align ${x}">${cap(x)}</button>`).join('')
         + '<span class="div"></span>' + [['S', 33], ['M', 60], ['Full', 100]].map(([k, v]) => `<button data-i="w-${v}" class="${a.width === v ? 'on' : ''}">${k}</button>`).join('')
         + '<span class="div"></span><button data-i="cap">Caption</button>')
-        + '<button data-i="view">View</button><button data-i="dl">Download</button><span class="div"></span><button data-i="del" class="danger">Delete</button>';
+        + `<button data-i="view">View</button><button data-i="copy" title="Copy the picture (Ctrl C) — paste it in another note, Chat, Mail or Word">Copy</button>${a.id ? '<button data-i="dl">Download</button>' : ''}<span class="div"></span><button data-i="del" class="danger">Delete</button>`;
     const dom = editor.view.nodeDOM(sel.from);
     if (dom) above(imgBar, (dom.querySelector?.('.nt-img-frame') || dom).getBoundingClientRect());
   }
@@ -571,6 +593,7 @@ export function createRichUi(editor, host) {
     else if (k === 'cap') { editor.view.nodeDOM(imgPos)?.querySelector('input.nt-img-cap')?.focus(); imgBar.classList.remove('show'); return; }
     else if (k === 'view') { const all = pageImages(editor.state.doc); const id = n.type.name === 'noteGallery' ? galleryItems(n)[0]?.id : n.attrs.id; openLightbox(host, all, all.findIndex(x => x.id === id)); }
     else if (k === 'dl') download(host, n.attrs.id, n.attrs.name);
+    else if (k === 'copy') { host.copyImage?.(n).then(ok => host.toast?.(ok ? 'Picture copied' : 'Couldn’t copy the picture — right-click it and choose Copy image')); }
     else if (k === 'del') editor.chain().focus().deleteRange({ from: imgPos, to: imgPos + n.nodeSize }).run();
     else if (k === 'ungroup') editor.chain().focus().insertContentAt({ from: imgPos, to: imgPos + n.nodeSize }, galleryItems(n).map(it => ({ type: 'noteImage', attrs: { ...it, size: it.size || 0 } }))).run();
     syncImg();

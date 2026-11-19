@@ -172,7 +172,7 @@ const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 
 // Letter shortcuts like ClickUp; digits keep the old Excalidraw meaning (grill Q18).
 const KEYS = { n: 'card', c: 'comment', i: 'image', v: 'select', l: 'laser', h: 'hand', p: 'pen', m: 'highlighter', e: 'eraser', s: 'sticky', t: 'text', r: 'rect', o: 'ellipse', d: 'diamond', a: 'connector', f: 'frame' };
-// (Z is handled on its own: tap = the zoom tool, hold = zoom for a moment)
+// (Z is handled on its own: tap = zoom in 2x at the pointer, tap again = back; hold = zoom for a moment)
 const DIGITS = { 0: 'eraser', 1: 'select', 2: 'rect', 3: 'diamond', 4: 'ellipse', 5: 'connector', 6: 'connector', 7: 'pen', 8: 'text', 9: 'select' };
 const SHAPE_LABEL = { rect: 'Rectangle', ellipse: 'Circle', diamond: 'Diamond', triangle: 'Triangle', star: 'Star', cloud: 'Cloud', arrowShape: 'Block arrow', cylinder: 'Cylinder', bubble: 'Speech bubble', ...Object.fromEntries(STENCILS.map(s => [s[0], s[1]])) };
 const BASIC_TIPS = { rect: 'A plain box.', ellipse: 'A circle or oval.', diamond: 'A diamond.', triangle: 'A triangle.', star: 'A star.', cloud: 'A cloud.', arrowShape: 'A big arrow.', cylinder: 'A cylinder.', bubble: 'A speech bubble.' };
@@ -813,7 +813,7 @@ export function mountCanvas(container, opts) {
     if (!dockOn()) { dock.hidden = true; ctxBar.hidden = true; ctxPop.hidden = true; root.classList.remove('wb-hasdock'); return; }
     dock.hidden = false; root.classList.add('wb-hasdock'); root.classList.toggle('wb-dock-s', root.clientWidth < 1060);
     requestAnimationFrame(layoutBars);
-    const small = [['select', 'Select', 'V'], ['hand', 'Hand', 'H'], ['zoom', 'Zoom (hold Z)', 'Z'], ...(opts.comments ? [['comment', 'Comment', 'C']] : []), ['laser', 'Laser pointer', 'L']];
+    const small = [['select', 'Select', 'V'], ['hand', 'Hand', 'H'], ['zoom', 'Zoom (tap Z: in · again: out)', 'Z'], ...(opts.comments ? [['comment', 'Comment', 'C']] : []), ['laser', 'Laser pointer', 'L']];
     const ptype = tool === 'eraser' ? 'eraser' : penKind();
     dock.innerHTML = `<div class="wb-dsmall">${small.map(([k, l, key]) => `<button type="button" data-dtool="${k}" class="${tool === k ? 'on' : ''}" title="${l} (${key})" aria-label="${l}" aria-pressed="${tool === k}">${icon(k)}<span class="wb-k">${key}</span></button>`).join('')}</div>
       <div class="wb-tiles">${TILES().map(([k, l, key]) => {
@@ -1554,6 +1554,17 @@ export function mountCanvas(container, opts) {
 
   // ── Z: the zoom tool, and hold Z for a moment of zooming (like Space for moving) ──
   let zHeld = false, zDownAt = 0, zUsed = false;
+  // Tap Z = a magnifier: zoom in 2x where the pointer is; tap Z again = back to the zoom you had (same spot).
+  let zPeek = null, zPtr = null;
+  root.addEventListener('pointermove', e => { const { sx, sy } = local(e); zPtr = { sx, sy }; });
+  root.addEventListener('pointerleave', () => { zPtr = null; });
+  function zTap() {
+    const r = rect();
+    if (zPeek) { const back = zPeek; zPeek = null; glideTo(back, 200); showZoomHud(zPtr?.sx ?? r.width / 2, zPtr?.sy ?? r.height / 2, back.z); return; }
+    if (view.z >= 4) { toast('Already zoomed in all the way. Ctrl 0 = 100%'); return; }
+    zPeek = { ...view };
+    glideZoom(2, zPtr?.sx, zPtr?.sy);
+  }
   const zooming = () => tool === 'zoom' || zHeld;
   function zoomDown(e, sx, sy) {
     zUsed = true;
@@ -1591,7 +1602,7 @@ export function mountCanvas(container, opts) {
   // ── Stylus: the side button erases while held, and a one-time tips card ──
   const TIPS_KEY = 'ipop.wb.stylusTips';
   const tipsCard = el('div', 'wb-tips'); tipsCard.hidden = true; tipsCard.setAttribute('role', 'status');
-  tipsCard.innerHTML = `<span class="wb-tipsic" aria-hidden="true">✍️</span><div><b>Tips for your stylus</b><ul><li><kbd>Z</kbd> hold and drag up or down to zoom · tap to zoom in</li><li><kbd>Space</kbd> hold to move the board</li><li>Stylus side button = eraser while you hold it</li></ul></div><div class="wb-tipsx"><button type="button" class="wb-cb wb-txt wb-pri" data-tips="ok">Got it</button><button type="button" class="wb-cb wb-txt" data-tips="never">Don’t show again</button></div>`;
+  tipsCard.innerHTML = `<span class="wb-tipsic" aria-hidden="true">✍️</span><div><b>Tips for your stylus</b><ul><li><kbd>Z</kbd> tap to zoom in where you point · tap again to zoom back out · hold and drag up or down to zoom</li><li><kbd>Space</kbd> hold to move the board</li><li>Stylus side button = eraser while you hold it</li></ul></div><div class="wb-tipsx"><button type="button" class="wb-cb wb-txt wb-pri" data-tips="ok">Got it</button><button type="button" class="wb-cb wb-txt" data-tips="never">Don’t show again</button></div>`;
   root.append(tipsCard);
   tipsCard.addEventListener('pointerdown', e => e.stopPropagation());
   tipsCard.addEventListener('click', e => {
@@ -1860,7 +1871,7 @@ export function mountCanvas(container, opts) {
 
   // ── Keyboard shortcuts panel: grouped and searchable ──
   const KEY_GROUPS = [
-    ['Tools', [['V', 'Select'], ['H', 'Hand (or hold Space)'], ['Z', 'Zoom (or hold Z)'], ['P', 'Pen'], ['M', 'Highlighter'], ['E', 'Eraser'], ['S', 'Sticky note (again: next colour)'], ['T', 'Text'], ['R', 'Shape (again: next shape)'], ['A', 'Connector'], ['F', 'Frame'], ['C', 'Comment'], ['L', 'Laser pointer'], ['I', 'Picture or file'], ['Shift T', 'Task or page card']]],
+    ['Tools', [['V', 'Select'], ['H', 'Hand (or hold Space)'], ['Z', 'Tap: zoom in 2× where you point · tap again: back · hold: zoom'], ['P', 'Pen'], ['M', 'Highlighter'], ['E', 'Eraser'], ['S', 'Sticky note (again: next colour)'], ['T', 'Text'], ['R', 'Shape (again: next shape)'], ['A', 'Connector'], ['F', 'Frame'], ['C', 'Comment'], ['L', 'Laser pointer'], ['I', 'Picture or file'], ['Shift T', 'Task or page card']]],
     ['Edit', [['Ctrl Z / Ctrl Y', 'Undo / redo'], ['Ctrl C / X / V', 'Copy / cut / paste'], ['Ctrl D', 'Duplicate'], ['Alt + drag', 'Duplicate while moving'], ['Ctrl G', 'Group (Shift: ungroup)'], ['Ctrl Shift C / V', 'Copy / paste style'], ['Ctrl ] / [', 'Front / back'], ['Arrows', 'Move 1 px (Shift: 10 px)'], ['Del', 'Delete'], ['Ctrl K', 'Link'], ['Enter', 'Edit text'], ['Ctrl Enter', 'Next sticky (while typing)'], ['Tab / Shift Enter', 'Mind map branch / sibling'], ['Alt + draw', 'Lasso select']]],
     ['View', [['Ctrl /', 'Command palette'], ['Shift 1', 'Fit everything'], ['Shift 2', 'Zoom to selection'], ['Ctrl + / −', 'Zoom in / out'], ['Ctrl 0', 'Zoom to 100%'], ['Shift F', 'Full screen'], ['Ctrl F', 'Find on board'], ['Shift G', 'Templates'], ['[ / ]', 'Pen size'], ['?', 'This list']]],
   ];
@@ -4971,8 +4982,8 @@ export function mountCanvas(container, opts) {
   });
   root.addEventListener('keyup', e => {
     if (e.key === ' ') { spaceDown = false; root.classList.remove('wb-space'); }
-    // Z: a quick tap switches to the zoom tool; a hold that zoomed goes back to what you had
-    if (e.key.toLowerCase() === 'z' && zHeld) { zHeld = false; root.classList.remove('wb-zooming'); if (performance.now() - zDownAt < 250 && !zUsed) setTool(tool === 'zoom' ? 'select' : 'zoom'); }
+    // Z: a quick tap zooms in 2x at the pointer, the next tap zooms back out; a hold that zoomed goes back to what you had
+    if (e.key.toLowerCase() === 'z' && zHeld) { zHeld = false; root.classList.remove('wb-zooming'); if (performance.now() - zDownAt < 250 && !zUsed) zTap(); }
   });
 
   function copySel(els) {

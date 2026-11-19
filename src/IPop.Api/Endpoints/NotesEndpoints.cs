@@ -29,6 +29,7 @@ public static class NotesEndpoints
     public record SendToChatRequest(Guid RoomId, string Level, string? Message);
     public record DocMentionRequest(IReadOnlyList<Guid> UserIds, string? Context);
     public record NoteUploadDto(Guid Id, string FileName, string ContentType, long Size, string Url);
+    public record FromUrlRequest(string? Url);
 
     public static IEndpointRouteBuilder MapNotes(this IEndpointRouteBuilder app)
     {
@@ -342,6 +343,28 @@ public static class NotesEndpoints
                 return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502);
             }
         }).DisableAntiforgery().RequirePermission("notes.write");
+
+        // A picture pasted from a web page (the clipboard only has its address): fetched server-side and stored like an upload.
+        // 204 = it couldn't be fetched (private address, not a picture, too big, site refused): the editor keeps it as a link.
+        g.MapPost("/{id:guid}/uploads/from-url", async Task<IResult> (Guid id, FromUrlRequest req, HttpContext http, INoteService svc,
+            IAttachmentStore store, IPop.Infrastructure.Links.SafeHttpFetcher fetcher, CancellationToken ct) =>
+        {
+            var me = await MeAsync(http);
+            if (me is null) return Results.Unauthorized();
+            var can = await svc.CanUploadAsync(me.Id, id, ct);
+            if (!can.Success) return Error(can.Error!);
+            var img = await WebImageImport.FetchAsync(fetcher, req.Url, ct);
+            if (img is null) return Results.NoContent();
+            try
+            {
+                await using var stream = new MemoryStream(img.Bytes, writable: false);
+                var stored = await store.PutAsync(AttachmentAreas.Notes, img.FileName, img.ContentType, stream, me.Id, ct);
+                await svc.LinkAttachmentAsync(id, stored.Id, ct);
+                return Results.Ok(new NoteUploadDto(stored.Id, stored.FileName, stored.ContentType, stored.Size, $"/api/attachments/{stored.Id}"));
+            }
+            catch (AttachmentRejectedException ex) { return Results.Json(new { code = ex.Code, message = ex.Message }, statusCode: 422); }
+            catch (IPop.Application.Files.SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
+        }).RequirePermission("notes.write").RequireRateLimiting(LinkPreviewEndpoints.RateLimitPolicy);
 
         // ── Photo cover ──────────────────────────────────────────────────────
         // Images already in this page, for "pick from this page" in the cover picker.

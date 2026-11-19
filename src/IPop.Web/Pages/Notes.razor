@@ -183,6 +183,10 @@
                         }
                     </button>
                 }
+                @if (CanEdit && note.Kind != "board")
+                {
+                    <button type="button" class="nt-icon-btn hide-sm @(note.FullWidth ? "on" : "")" title="@(note.FullWidth ? "Normal width" : "Full width")" aria-label="Full width" aria-pressed="@(note.FullWidth ? "true" : "false")" @onclick="() => PatchAsync(new UpdateNoteMetaRequest(null, null, null, null, null, !note.FullWidth, null))"><i data-lucide="@(note.FullWidth ? "minimize-2" : "move-horizontal")"></i></button>
+                }
                 <button type="button" class="nt-icon-btn @(commentsOpen ? "on" : "") @(note.OpenThreads > 0 ? "has-badge" : "")" title="Comments" aria-label="Comments" @onclick="ToggleComments"><i data-lucide="message-square"></i>@if (note.OpenThreads > 0) { <span class="nt-badge">@note.OpenThreads</span> }</button>
                 @if (IsOwner)
                 {

@@ -22,7 +22,12 @@ import { Details, DetailsContent } from '@tiptap/extension-details';
 import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
 import { FindReplace, createFindBar, Columns, Column, DateChip, EmojiShortcodes, ToggleSummary, wordStats, BlockId, findBlock, ensureBlockId, uploadXhr, createUploadTray, blockTexts, diffLines, foldSame } from './extras.js';
-import { Placeholder } from '@tiptap/extensions';
+import { NotePlaceholder } from './placeholder.js';
+import { Symbols } from './symbols.js';
+import { ListNumbering } from './lists.js';
+import { moveBlockTr } from './block-menu.js';
+import { sliceText, cleanOfficeHtml, preferFiles } from './paste.js';
+import { pictureClipboard } from './clip-images.js';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCaret from '@tiptap/extension-collaboration-caret';
 import Mention from '@tiptap/extension-mention';
@@ -63,7 +68,7 @@ function baseExtensions(host, { collab = true, rich = {} } = {}) {
     TextStyle, Color, BackgroundColor,
     Details.configure({ persist: true, HTMLAttributes: { class: 'nt-toggle' } }), ToggleSummary, DetailsContent,
     CodeBlockLowlight.configure({ lowlight, defaultLanguage: null, HTMLAttributes: { class: 'nt-code' } }),
-    Columns, Column, DateChip, EmojiShortcodes, BlockId,
+    Columns, Column, DateChip, EmojiShortcodes, Symbols, ListNumbering, BlockId,
     BlockBackground, Callout,
     NoteWidget.configure({ host: () => host }),
     NoteToc, HeadingFlash,
@@ -628,10 +633,48 @@ export async function mount(el, opts) {
   // ── Editor ───────────────────────────────────────────────────────────────
   let editor = null;
   let handlePos = -1;
+  // Pictures in and out of the clipboard (clip-images.js): pasted web pictures are saved into the page.
+  const pics = pictureClipboard(() => editor, {
+    loadBlob: id => loadBlob(host, id),
+    toast: m => host.toast(m),
+    async upload(file) {
+      const form = new FormData(); form.append('file', file, file.name);
+      const r = await uploadXhr(`${apiBase}/api/notes/${pageId}/uploads`, form, await token());
+      return r.ok ? r.json : null;
+    },
+    async importUrl(url) {
+      const r = await api(`/api/notes/${pageId}/uploads/from-url`, { method: 'POST', json: { url } });
+      return r.status === 200 ? r.json() : null;
+    },
+  });
+  host.copyImage = node => pics.copy(node);
   const handleEl = createHandle(host);
   const Keys = Extension.create({
     name: 'noteKeys',
-    addKeyboardShortcuts() { return { 'Mod-Shift-m': () => { commentSelection(); return true; } }; },
+    addKeyboardShortcuts() {
+      // the block the caret is in (top level of its list / column / callout), for duplicate and move
+      const blockAt = () => {
+        const { $from } = this.editor.state.selection;
+        for (let d = $from.depth; d > 0; d--) {
+          const parent = $from.node(d - 1).type.name;
+          if (['doc', 'column', 'callout', 'detailsContent', 'blockquote'].includes(parent)) return { pos: $from.before(d), node: $from.node(d) };
+        }
+        return null;
+      };
+      const move = dir => { const b = blockAt(); const tr = b && moveBlockTr(this.editor.state, b.pos, dir); if (tr) this.editor.view.dispatch(tr.scrollIntoView()); return !!b; };
+      return {
+        'Mod-Shift-m': () => { commentSelection(); return true; },
+        'Mod-Alt-0': () => this.editor.commands.setParagraph(),
+        'Mod-Alt-1': () => this.editor.commands.toggleHeading({ level: 1 }),
+        'Mod-Alt-2': () => this.editor.commands.toggleHeading({ level: 2 }),
+        'Mod-Alt-3': () => this.editor.commands.toggleHeading({ level: 3 }),
+        'Mod-Shift-9': () => this.editor.commands.toggleTaskList(),
+        'Mod-Alt-c': () => this.editor.commands.toggleCodeBlock(),
+        'Mod-d': () => { const b = blockAt(); if (b) this.editor.chain().insertContentAt(b.pos + b.node.nodeSize, b.node.toJSON()).run(); return true; },
+        'Mod-Shift-ArrowUp': () => move(-1),
+        'Mod-Shift-ArrowDown': () => move(1),
+      };
+    },
   });
 
   editor = new Editor({
@@ -641,10 +684,7 @@ export async function mount(el, opts) {
       ...baseExtensions(host, { rich: { onMenu: (pos, a) => rich?.openTodoMenu(pos, a), onChip: (pos, a, k) => rich?.onChip(pos, a, k) } }),
       Collaboration.configure({ document: ydoc, field: FIELD }),
       CollaborationCaret.configure({ provider: { awareness }, user: { name: opts.user.name, nik: opts.user.nik, color: opts.user.color } }),
-      Placeholder.configure({
-        includeChildren: true,
-        placeholder: ({ node }) => node.type.name === 'heading' ? `Heading ${node.attrs.level}` : node.type.name === 'detailsSummary' ? 'Toggle' : "Type '/' for commands…",
-      }),
+      NotePlaceholder,
       SlashMenu.configure({ host }),
       FindReplace,
       CommentHighlights.configure({ resolve: resolveAnchor, onClick: id => call('OnThreadClick', id) }),
@@ -656,7 +696,14 @@ export async function mount(el, opts) {
     ],
     editorProps: {
       attributes: { class: 'nt-editor', spellcheck: 'true' },
-      handlePaste: (view, event) => dropFiles(event.clipboardData?.files, todoInsertPos(view.state.doc, view.state.selection.from))
+      // Text other apps get from a copy: one line per paragraph, list markers kept (not a blank line between every block).
+      clipboardTextSerializer: slice => sliceText(slice.content),
+      // Word / Outlook HTML: real lists instead of "·" paragraphs, without Office's styles.
+      transformPastedHTML: html => { try { return cleanOfficeHtml(html); } catch { return html; } },
+      transformPasted: slice => pics.editorProps.transformPasted(slice),
+      handleDOMEvents: pics.editorProps.handleDOMEvents,
+      // A copied picture or screenshot is a file; a Word/Excel copy also carries a picture of itself, so text wins there.
+      handlePaste: (view, event) => (preferFiles(event.clipboardData) && dropFiles(event.clipboardData?.files, todoInsertPos(view.state.doc, view.state.selection.from)))
         || !!rich?.handlePasteUrl(event),
       handleDrop: (view, event, _slice, moved) => {
         if (moved || !event.dataTransfer?.files?.length) return false;
@@ -1115,6 +1162,10 @@ export function hotkeys(net) {
     const k = e.key.toLowerCase();
     if (k === 'n' && e.altKey && !e.ctrlKey && !e.metaKey) {
       e.preventDefault(); e.stopImmediatePropagation(); net.invokeMethodAsync('OnHotkey', 'new').catch(() => {});
+    }
+    // Ctrl S: Notes saves by itself; instead of the browser's "Save page as HTML", push anything pending and say so.
+    if (k === 's' && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+      e.preventDefault(); e.stopImmediatePropagation(); net.invokeMethodAsync('OnHotkey', 'save').catch(() => {});
     }
   };
   window.addEventListener('keydown', onKey, true);

@@ -182,7 +182,7 @@
 .nt-cover-actions { position:absolute; right:16px; bottom:12px; display:flex; gap:6px; z-index:1; opacity:0; transition:opacity .15s; }
 .nt-cover:hover .nt-cover-actions { opacity:1; }
 .nt-cover-actions button { height:26px; padding:0 10px !important; border-radius:7px; background:rgba(255,255,255,.88) !important; color:#1D1D1F !important; font-size:12px; font-weight:500; backdrop-filter:blur(10px); display:flex; gap:5px; align-items:center; }
-.nt-page { max-width:760px; margin:0 auto; padding:0 64px 180px; position:relative; transition:max-width .2s; }
+.nt-page { max-width:820px; margin:0 auto; padding:0 64px 180px; position:relative; transition:max-width .2s; }
 .nt-page.wide { max-width:1100px; }
 .nt-page.no-cover { padding-top:64px; }
 .nt-page-icon { font-size:62px; line-height:1; margin-top:-40px; position:relative; width:80px; height:80px; display:grid; place-items:center; border-radius:16px; cursor:pointer; }
@@ -239,7 +239,9 @@
 .nt-editor li { padding:1px 0; }
 .nt-editor li > p { padding:0; }
 .nt-editor ul li::marker { color:var(--ink-3); }
-.nt-editor ol li::marker { font-weight:600; color:var(--pc-ink); }
+.nt-editor ol li::marker { font-weight:600; color:var(--nt-marker, var(--pc-ink)); }
+/* bullets take the item's text colour too (lists.js sets --nt-marker) */
+.nt-editor ul li[style*="--nt-marker"]::marker { color:var(--nt-marker); }
 .nt-editor hr { border:0; height:1px; background:var(--line); margin:18px 0; }
 .nt-editor hr.ProseMirror-selectednode { background:var(--pc); }
 .nt-editor .nt-mention { color:var(--pc-ink); background:var(--pc-soft); border-radius:5px; padding:0 4px; font-weight:500; white-space:nowrap; }
@@ -327,6 +329,9 @@
 .nt-editor .nt-img-box { min-height:120px; display:grid; place-items:center; background:var(--surface-2); color:var(--ink-4); cursor:zoom-in; }
 .nt-editor .nt-img-box:has(img) { min-height:0; }
 .nt-editor .nt-img-box img { display:block; width:100%; max-height:720px; object-fit:contain; }
+.nt-editor .nt-img-box { position:relative; }
+/* a picture shown from the website it was pasted from (couldn't be saved here) */
+.nt-editor .nt-img-ext { position:absolute; top:8px; left:8px; font:600 11px/1 var(--nt-font); color:#fff; background:rgba(0,0,0,.55); padding:4px 7px; border-radius:6px; cursor:help; }
 .nt-editor .nt-img .rs { position:absolute; top:50%; width:6px; height:44px; margin-top:-22px; border-radius:4px; background:rgba(255,255,255,.95); box-shadow:0 0 0 1px rgba(0,0,0,.18),0 1px 4px rgba(0,0,0,.2); cursor:ew-resize; opacity:0; transition:opacity .12s; touch-action:none; }
 .nt-editor .nt-img .rs.l { left:6px; } .nt-editor .nt-img .rs.r { right:6px; }
 .nt-editor .nt-img:hover .rs, .nt-editor .ProseMirror-selectednode.nt-img .rs { opacity:1; }
@@ -351,8 +356,8 @@
 
 /* drag handle */
 .nt-handle { display:flex; gap:1px; padding-right:6px; }
-.nt-handle button { width:22px; height:24px; border-radius:5px; display:grid; place-items:center; color:var(--ink-4); background:none; border:0; cursor:pointer; font-size:15px; line-height:1; }
-.nt-handle button:hover { background:var(--fill); color:var(--ink-2); }
+.nt-handle button { width:26px; height:28px; border-radius:7px; display:grid; place-items:center; color:var(--ink-3); background:none; border:0; cursor:pointer; font-size:17px; line-height:1; transition:background .12s,color .12s; }
+.nt-handle button:hover { background:var(--fill); color:var(--ink); }
 .nt-handle .grip { cursor:grab; }
 @media (pointer: coarse) { .nt-handle button { width:32px; height:32px; font-size:18px; } }
 
@@ -547,6 +552,37 @@
 .nt-menu .swrow .sq:hover { transform:scale(1.1); }
 .nt-menu .swrow .sq.on { box-shadow:0 0 0 2px var(--surface),0 0 0 3.5px var(--ink); }
 .nt-colors { width:210px; max-height:420px; }
+/* ── Block menu (⠿): search, Turn into tiles, colours, actions ── */
+.nt-block-menu { width:288px; padding:8px; max-height:min(72vh,560px); }
+.nt-block-menu [hidden] { display:none !important; }
+.nt-block-menu .nt-bm-q { width:100%; box-sizing:border-box; height:32px; padding:0 10px; margin-bottom:4px; border-radius:8px; border:1px solid var(--line); background:var(--surface-2); color:var(--ink); font:inherit; }
+.nt-block-menu .nt-bm-q:focus { outline:none; border-color:var(--accent); background:var(--surface); }
+.nt-bm-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; padding:2px 2px 6px; }
+.nt-bm-tile { display:flex; flex-direction:column; align-items:center; gap:3px; padding:7px 2px 6px; border-radius:8px; border:0; background:none; color:var(--ink-2); cursor:pointer; font:11px/1.2 var(--nt-font); min-width:0; }
+.nt-bm-tile .sw { width:28px !important; height:28px !important; font-size:13px !important; background:var(--surface); }
+.nt-bm-tile .nm { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nt-bm-tile:hover, .nt-bm-tile.kb { background:var(--fill); color:var(--ink); }
+.nt-bm-tile.on .sw { border-color:var(--accent); color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+.nt-block-menu .mi.kb, .nt-block-menu .sq.kb { background:var(--fill); }
+.nt-block-menu .swrow .sq.kb { box-shadow:0 0 0 2px var(--surface),0 0 0 3.5px var(--accent); }
+.nt-bm-empty { padding:12px; color:var(--ink-3); text-align:center; }
+.nt-bm-start { display:flex; align-items:center; gap:8px; padding:4px 9px; }
+.nt-bm-start input { width:72px; height:28px; padding:0 8px; border-radius:7px; border:1px solid var(--line); background:var(--surface); color:var(--ink); font:inherit; }
+.nt-bm-start button { height:28px; padding:0 12px; border-radius:7px; background:var(--accent); color:#fff; font-weight:600; border:0; cursor:pointer; }
+/* ── Typed symbols: the "replaced" hint and the /symbol panel ── */
+.nt-sym-hint { position:fixed; z-index:1080; display:flex; align-items:center; gap:5px; padding:5px 9px; border-radius:8px; background:var(--ink); color:var(--surface); font:12px/1.3 var(--nt-font); box-shadow:0 4px 14px rgba(0,0,0,.18); pointer-events:none; animation:nt-pop .14s ease-out; }
+.nt-sym-hint b { font-size:14px; }
+.nt-sym-hint code { font-family:var(--mono); opacity:.8; }
+.nt-sym-hint kbd { font:600 10.5px/1 var(--nt-font); padding:2px 5px; border-radius:4px; background:rgba(255,255,255,.18); }
+.nt-sym-panel { width:min(360px,calc(100vw - 16px)); max-height:min(60vh,440px); overflow:auto; padding:10px; }
+.nt-sym-panel .hd { display:flex; flex-direction:column; gap:2px; margin-bottom:4px; }
+.nt-sym-panel .hd span { font-size:11.5px; color:var(--ink-3); }
+.nt-sym-panel .grp { font-size:11px; font-weight:600; color:var(--ink-3); padding:8px 2px 4px; }
+.nt-sym-panel .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(52px,1fr)); gap:4px; }
+.nt-sym-panel .sy { display:flex; flex-direction:column; align-items:center; gap:2px; padding:6px 2px; border-radius:8px; border:1px solid var(--line-soft); background:var(--surface); cursor:pointer; color:var(--ink); }
+.nt-sym-panel .sy span { font-size:18px; line-height:1.1; }
+.nt-sym-panel .sy kbd { font:10px/1 var(--mono); color:var(--ink-3); max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+.nt-sym-panel .sy:hover { background:var(--fill); border-color:var(--line); }
 .nt-link-pop { width:min(320px,calc(100vw - 16px)); padding:8px; }
 .nt-link-in { width:100%; box-sizing:border-box; height:32px; padding:0 10px; border-radius:7px; border:1px solid var(--line); background:var(--surface); color:var(--ink); font:inherit; }
 .nt-link-in:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent); }
