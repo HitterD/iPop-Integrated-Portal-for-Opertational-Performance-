@@ -1,9 +1,9 @@
 @using IPop.Application.Notes
-<PhoneScreen Title="@(StartOn == "boards" ? "Whiteboards" : "Notes")" Class="m-notes-list">
+<PhoneScreen Title="Notes" Class="m-notes-list">
     <Below>
         <label class="m-notes-search"><i data-lucide="search"></i><input aria-label="Search notes" placeholder="Search notes" value="@Search" @oninput="OnSearch" /></label>
         <div class="ph-segmented" role="tablist" aria-label="Notes filter">
-            @foreach (var item in ShownFilters)
+            @foreach (var item in Filters)
             {
                 <button type="button" role="tab" data-value="@item.Key" aria-selected="@(filter == item.Key ? "true" : "false")" @onclick="() => filter = item.Key">@item.Label</button>
             }
@@ -31,13 +31,8 @@
                     @if (!Recent.Any()) { <p class="m-notes-empty">Your recently opened pages appear here.</p> }
                 </div>
             }
-            <h2 class="m-notes-section">@(filter == "favorites" ? "Favorites" : filter == "boards" ? "Whiteboards" : "My pages")</h2>
-            @if (filter == "boards")
-            {
-                @foreach (var itemPage in Sidebar.Pages.Where(p => p.Kind == "board").OrderByDescending(p => p.UpdatedAt)) { @Row(itemPage, 0, false) }
-                @if (!Sidebar.Pages.Any(p => p.Kind == "board")) { <p class="m-notes-empty">No whiteboards yet. Open Notes on a computer to draw one.</p> }
-            }
-            else if (filter == "favorites") { foreach (var itemPage in Sidebar.Pages.Where(p => p.IsFavorite)) { @Row(itemPage, 0, false) } }
+            <h2 class="m-notes-section">@(filter == "favorites" ? "Favorites" : "My pages")</h2>
+            @if (filter == "favorites") { foreach (var itemPage in Sidebar.Pages.Where(p => p.IsFavorite)) { @Row(itemPage, 0, false) } }
             else
             {
                 @foreach (var itemPage in Sidebar.Pages.Where(p => p.ParentId is null && p.IsMine).OrderBy(p => p.SortOrder > 0).ThenByDescending(p => p.SortOrder > 0 ? DateTime.MinValue : p.UpdatedAt).ThenBy(p => p.SortOrder)) { @Row(itemPage, 0, true) }
@@ -58,13 +53,7 @@
     [Parameter] public EventCallback<Guid> OnOpen { get; set; }
     [Parameter] public EventCallback OnCreate { get; set; }
     [Parameter] public bool Creating { get; set; }
-    /// "boards" when the page was opened from the Whiteboards menu item.
-    [Parameter] public string? StartOn { get; set; }
     private string filter = "recent";
-    private bool started;
-    /// The Boards tab exists only when the page was opened from the Whiteboards menu item; the usual three tabs stay as they were.
-    private (string Key, string Label)[] ShownFilters => StartOn == "boards" ? [("boards", "Boards"), .. Filters] : Filters;
-    protected override void OnParametersSet() { if (!started) { started = true; if (StartOn == "boards") filter = "boards"; } }
     private readonly HashSet<Guid> expanded = [];
     private static readonly (string Key, string Label)[] Filters = [("recent", "Recent"), ("favorites", "Favorites"), ("all", "All")];
     private IEnumerable<NoteListItemDto> Recent => Sidebar?.Recent.Select(id => Sidebar.Pages.FirstOrDefault(p => p.Id == id)).OfType<NoteListItemDto>().Take(8) ?? [];

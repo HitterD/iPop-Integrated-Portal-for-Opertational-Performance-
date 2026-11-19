@@ -13,9 +13,10 @@ public class NoteListViewTests
             excerpt, null, null, null, null, null, DateTime.UtcNow.AddDays(-createdDaysAgo));
 
     [Fact]
-    public void Notes_list_has_pages_only_and_boards_list_has_boards_only_and_neither_has_the_guide()
+    public void The_Notes_list_shows_pages_and_whiteboards_together_and_the_type_filters_split_them_and_the_guide_stays_out()
     {
         var all = new[] { N("A"), N("Board", "board"), N("Guide", guide: true) };
+        Assert.Equal(["A", "Board"], Build(all, "all", Filter.All, null, Sort.Name).Select(p => p.Title));
         Assert.Equal(["A"], Build(all, "page", Filter.All, null, Sort.Recent).Select(p => p.Title));
         Assert.Equal(["Board"], Build(all, "board", Filter.All, null, Sort.Recent).Select(p => p.Title));
     }
@@ -24,9 +25,9 @@ public class NoteListViewTests
     public void Filters_split_mine_shared_and_favorites()
     {
         var all = new[] { N("mine"), N("theirs", mine: false), N("star", fav: true, mine: false) };
-        Assert.Equal(["mine"], Build(all, "page", Filter.Mine, null, Sort.Name).Select(p => p.Title));
-        Assert.Equal(["star", "theirs"], Build(all, "page", Filter.Shared, null, Sort.Name).Select(p => p.Title));
-        Assert.Equal(["star"], Build(all, "page", Filter.Favorites, null, Sort.Name).Select(p => p.Title));
+        Assert.Equal(["mine"], Build(all, "all", Filter.Mine, null, Sort.Name).Select(p => p.Title));
+        Assert.Equal(["star", "theirs"], Build(all, "all", Filter.Shared, null, Sort.Name).Select(p => p.Title));
+        Assert.Equal(["star"], Build(all, "all", Filter.Favorites, null, Sort.Name).Select(p => p.Title));
     }
 
     [Fact]

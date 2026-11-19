@@ -25,10 +25,12 @@ import { FindReplace, createFindBar, Columns, Column, DateChip, EmojiShortcodes,
 import { NotePlaceholder } from './placeholder.js';
 import { Symbols } from './symbols.js';
 import { ListNumbering } from './lists.js';
+import { LineBreakMarkers } from './linebreak-markers.js';
 import { moveBlockTr } from './block-menu.js';
 import { createMarginLayout } from './margin-comments.js';
 import { sliceText, cleanOfficeHtml, preferFiles } from './paste.js';
 import { pictureClipboard } from './clip-images.js';
+import { pastedImageWidth } from './image-size.js';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCaret from '@tiptap/extension-collaboration-caret';
 import Mention from '@tiptap/extension-mention';
@@ -69,7 +71,7 @@ function baseExtensions(host, { collab = true, rich = {} } = {}) {
     TextStyle, Color, BackgroundColor,
     Details.configure({ persist: true, HTMLAttributes: { class: 'nt-toggle' } }), ToggleSummary, DetailsContent,
     CodeBlockLowlight.configure({ lowlight, defaultLanguage: null, HTMLAttributes: { class: 'nt-code' } }),
-    Columns, Column, DateChip, EmojiShortcodes, Symbols, ListNumbering, BlockId,
+    Columns, Column, DateChip, EmojiShortcodes, Symbols, ListNumbering, LineBreakMarkers, BlockId,
     BlockBackground, Callout,
     NoteWidget.configure({ host: () => host }),
     NoteToc, HeadingFlash,
@@ -399,6 +401,7 @@ export async function mount(el, opts) {
     toast: m => call('OnToast', m),
     canComment: () => canComment,
     createSubPage: () => net.invokeMethodAsync('CreateSubPage').catch(() => null),
+    createWhiteboard: () => net.invokeMethodAsync('CreateWhiteboard').catch(() => null),
     pickFiles: (accept, pos) => pickFiles(accept, pos),
     apiBase,
     tablePicker: () => rich?.tablePicker(),
@@ -698,6 +701,9 @@ export async function mount(el, opts) {
       Keys,
       ...(canEdit ? [DragHandle.configure({
         render: () => handleEl,
+        // Inside lists, quotes, callouts, toggles and columns every row (also a nested list item) gets its own handle, not just the
+        // outermost block; plain paragraphs and headings keep the top-level handle. Near the left edge the whole list is grabbed.
+        nested: { allowedContainers: ['bulletList', 'orderedList', 'taskList', 'blockquote', 'callout', 'detailsContent', 'column'], edgeDetection: 'left' },
         onNodeChange: ({ pos }) => { handlePos = pos ?? -1; },
       })] : []),
     ],
@@ -710,7 +716,7 @@ export async function mount(el, opts) {
       transformPasted: slice => pics.editorProps.transformPasted(slice),
       handleDOMEvents: pics.editorProps.handleDOMEvents,
       // A copied picture or screenshot is a file; a Word/Excel copy also carries a picture of itself, so text wins there.
-      handlePaste: (view, event) => (preferFiles(event.clipboardData) && dropFiles(event.clipboardData?.files, todoInsertPos(view.state.doc, view.state.selection.from)))
+      handlePaste: (view, event) => (preferFiles(event.clipboardData) && dropFiles(event.clipboardData?.files, todoInsertPos(view.state.doc, view.state.selection.from), true))
         || !!rich?.handlePasteUrl(event),
       handleDrop: (view, event, _slice, moved) => {
         if (moved || !event.dataTransfer?.files?.length) return false;
@@ -1038,7 +1044,7 @@ export async function mount(el, opts) {
     };
     input.click();
   }
-  function dropFiles(files, pos) {
+  function dropFiles(files, pos, pasted = false) {
     if (!canEdit || !files?.length) return false;
     const list = [...files];
     (async () => {
@@ -1062,6 +1068,10 @@ export async function mount(el, opts) {
           row.done();
           const u = r.json;
           const node = { type: u.contentType?.startsWith('image/') ? 'noteImage' : 'noteFile', attrs: { id: u.id, name: u.fileName, size: u.size } };
+          if (node.type === 'noteImage' && pasted) {
+            const originalWidth = await pastedImageWidth(f);
+            if (originalWidth) Object.assign(node.attrs, { originalWidth, originalSize: true });
+          }
           if (closing) return;
           const at = Math.min(toAbs(rel) ?? editor.state.doc.content.size, editor.state.doc.content.size);
           const before = editor.state.doc.content.size;

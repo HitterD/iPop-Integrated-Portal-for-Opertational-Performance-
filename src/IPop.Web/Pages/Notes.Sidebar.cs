@@ -179,8 +179,8 @@ public partial class Notes
         await CreateBlank(null, "board");
     }
 
-    private string ListKind => IsBoardsRoute ? "board" : "page";
-    private Task CreateFromList() => CreateBlank(null, ListKind);
+    private Task CreatePageFromList() => CreateBlank(null, "page");
+    private Task CreateBoardFromList() => CreateBlank(null, "board");
 
     private async Task SetFavoriteFromList((Guid Id, bool Favorite) arg)
     {

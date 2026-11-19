@@ -29,8 +29,6 @@ public partial class Notes
     private enum Pop { None, More, Style, Emoji, Share, History, Tidy, Template, Repeat }
 
     private View view = View.Home;
-    /// The Whiteboards list lives at /whiteboards; it is the same page as Notes, with the other list showing.
-    private bool IsBoardsRoute => Nav.Uri.Contains("/whiteboards", StringComparison.OrdinalIgnoreCase) && Id is null;
     private Pop pop = Pop.None;
     private bool sideOpen, commentsOpen, showResolved, busy, creating, showTemplates;
 
@@ -88,23 +86,15 @@ public partial class Notes
 
     private Guid? lastId;
     private bool paramsSeen;
-    private bool lastBoardsRoute;
 
-    /// The top bar names the list that is showing: Whiteboards at /whiteboards, Notes everywhere else.
-    private void SetListHeader() =>
-        Layout?.SetHeader(IsBoardsRoute ? "Whiteboards" : "Notes", IsBoardsRoute ? "Draw, plan and run workshops together" : "Shared notes & docs");
+    private void SetListHeader() => Layout?.SetHeader("Notes", "Shared notes & docs");
 
     protected override async Task OnParametersSetAsync()
     {
         // The cascading MainLayout re-runs this on every layout render — only react to a real route change.
-        // /notes and /whiteboards are one component: moving between them keeps the page, but the header follows the route
-        if (paramsSeen && lastId == Id && lastBoardsRoute == IsBoardsRoute) return;
-        var routeSwitch = paramsSeen && lastId == Id && lastBoardsRoute != IsBoardsRoute;
+        if (paramsSeen && lastId == Id) return;
         paramsSeen = true;
         lastId = Id;
-        lastBoardsRoute = IsBoardsRoute;
-        // a list page always shows fresh data: boards save their thumbnail while you are on the board, edits move "Recently edited"
-        if (routeSwitch) { SetListHeader(); searchQ = ""; await LoadSidebarAsync(); return; }
         pop = Pop.None;
         sideOpen = false;
         if (Id is { } id)
@@ -393,10 +383,15 @@ public partial class Notes
     }
 
     [JSInvokable]
-    public async Task<object?> CreateSubPage()
+    public Task<object?> CreateSubPage() => CreateChildPage("page");
+
+    [JSInvokable]
+    public Task<object?> CreateWhiteboard() => CreateChildPage("board");
+
+    private async Task<object?> CreateChildPage(string kind)
     {
         if (note is null || !CanEdit) return null;
-        var res = await Auth.SendAsync(HttpMethod.Post, "/api/notes", new CreateNoteRequest(note.Id, null, "📄", null, null, null));
+        var res = await Auth.SendAsync(HttpMethod.Post, "/api/notes", new CreateNoteRequest(note.Id, null, kind == "board" ? "▱" : "📄", null, null, null, kind));
         if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't create the sub-page", ToastKind.Error); return null; }
         var created = await res.Content.ReadFromJsonAsync<NotePageDto>(Json);
         if (created is null) return null;

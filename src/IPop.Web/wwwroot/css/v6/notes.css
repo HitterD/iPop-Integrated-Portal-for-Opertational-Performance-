@@ -257,9 +257,19 @@
 .nt-editor ul, .nt-editor ol { margin:0; padding-left:24px; }
 /* The global reset strips list markers; editor lists need them back (numbered steps read wrong without). */
 .nt-editor ul:not([data-type]) { list-style:disc; }
+/* List markers repeat by depth, like Word: 1. a. i. / • ◦ ▪ (the same on every row, however deep). */
 .nt-editor ul:not([data-type]) ul:not([data-type]) { list-style:circle; }
+.nt-editor ul:not([data-type]) ul:not([data-type]) ul:not([data-type]) { list-style:square; }
+.nt-editor ul:not([data-type]) ul:not([data-type]) ul:not([data-type]) ul:not([data-type]) { list-style:disc; }
 .nt-editor ol { list-style:decimal; }
 .nt-editor ol ol { list-style:lower-alpha; }
+.nt-editor ol ol ol { list-style:lower-roman; }
+.nt-editor ol ol ol ol { list-style:decimal; }
+.nt-editor ol ol ol ol ol { list-style:lower-alpha; }
+.nt-editor ol ol ol ol ol ol { list-style:lower-roman; }
+/* a bullet list inside a numbered one (and the reverse) keeps its own marker */
+.nt-editor ol ul:not([data-type]) { list-style:disc; }
+.nt-editor ul:not([data-type]) ol { list-style:decimal; }
 .nt-editor li { padding:1px 0; }
 .nt-editor li > p { padding:0; }
 .nt-editor ul li::marker { color:var(--ink-3); }
@@ -299,6 +309,32 @@
 .nt-editor ul[data-type="taskList"] input[type="checkbox"]:checked::after { content:""; width:9px; height:5px; border:2px solid #fff; border-top:0; border-right:0; transform:rotate(-45deg) translate(1px,-1px); }
 .nt-editor ul[data-type="taskList"] li[data-checked="true"] > div { color:var(--ink-3); text-decoration:line-through; text-decoration-color:var(--ink-4); }
 .nt-editor ul[data-type="taskList"] li[data-checked="true"] .nt-cmt { text-decoration:line-through; }
+
+/* Categorised slash picker: the list scrolls independently, never the document. */
+.nt-pop.nt-list.nt-slash { width:650px; max-width:calc(100vw - 16px); max-height:calc(100dvh - 24px); padding:0; overflow:auto; }
+.nt-slash-search { padding:12px 14px; font-size:12px; color:var(--ink-3); border-bottom:1px solid var(--line); }
+.nt-slash-tabs { display:flex; gap:3px; padding:7px; flex-wrap:wrap; border-bottom:1px solid var(--line); }
+.nt-slash-tabs button { border:0; background:none; color:var(--ink-2); padding:7px 10px; border-radius:7px; font:inherit; font-size:12px; cursor:pointer; }
+.nt-slash-tabs button:hover, .nt-slash-tabs button[aria-selected="true"] { background:var(--fill); color:var(--ink); }
+.nt-slash-body { display:grid; grid-template-columns:minmax(0,1fr) 230px; }
+.nt-slash-items { position:relative; min-width:0; height:285px; overflow-y:auto; overscroll-behavior:contain; padding:6px; }
+.nt-slash-items .it { cursor:pointer; }
+.nt-slash-preview { min-width:0; padding:18px; border-left:1px solid var(--line); background:var(--fill); font-size:13px; }
+.nt-slash-preview p { color:var(--ink-2); line-height:1.5; margin:8px 0; }
+.nt-slash-preview small { color:var(--ink-3); font-size:11px; }
+.nt-slash-sample { white-space:pre-wrap; overflow-wrap:anywhere; min-height:125px; padding:14px; margin-bottom:14px; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--ink); line-height:1.8; }
+.nt-slash-sample.sample-Heading-1 { font-size:23px; font-weight:700; }
+.nt-slash-sample.sample-Heading-2 { font-size:19px; font-weight:650; }
+.nt-slash-sample.sample-Heading-3 { font-size:16px; font-weight:600; }
+.nt-slash-foot { border-top:1px solid var(--line); color:var(--ink-3); padding:9px 14px; font-size:11px; }
+@media(max-width:600px) {
+  .nt-slash-body { grid-template-columns:minmax(0,1fr); }
+  .nt-slash-items { height:210px; }
+  .nt-slash-preview { border-left:0; border-top:1px solid var(--line); padding:10px 14px; }
+  .nt-slash-sample { display:none; }
+  .nt-slash-preview p { margin:4px 0; }
+  .nt-slash-tabs button { padding:8px; }
+}
 
 /* toggles */
 .nt-editor .nt-toggle, .nt-editor div[data-type="details"] { display:flex; gap:4px; align-items:flex-start; margin:2px 0; }

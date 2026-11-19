@@ -89,6 +89,8 @@ export const NoteImage = Node.create({
       size: { default: 0, parseHTML: e => +e.getAttribute('data-size') || 0 },
       // Width is a % of the text column so it fits on phones too; older images are full width.
       width: { default: 100, parseHTML: e => Math.min(100, Math.max(15, +e.getAttribute('data-width') || 100)) },
+      originalWidth: { default: null, parseHTML: e => Math.max(0, +e.getAttribute('data-original-width') || 0) || null },
+      originalSize: { default: false, parseHTML: e => e.getAttribute('data-original-size') === 'true' },
       align: { default: 'center', parseHTML: e => ['left', 'right'].includes(e.getAttribute('data-align')) ? e.getAttribute('data-align') : 'center' },
       caption: { default: '', parseHTML: e => e.getAttribute('data-caption') || '' },
       // A picture pasted from a web page before it is saved here: its web address. The pasting editor copies it into the page
@@ -108,7 +110,7 @@ export const NoteImage = Node.create({
     ];
   },
   renderHTML({ node: { attrs: a } }) {
-    return ['figure', { 'data-image': '', 'data-id': a.id, 'data-name': a.name, 'data-size': a.size, 'data-width': a.width, 'data-align': a.align, 'data-caption': a.caption, ...(a.src ? { 'data-src': a.src } : {}) }];
+    return ['figure', { 'data-image': '', 'data-id': a.id, 'data-name': a.name, 'data-size': a.size, 'data-width': a.width, 'data-original-width': a.originalWidth, 'data-original-size': String(a.originalSize), 'data-align': a.align, 'data-caption': a.caption, ...(a.src ? { 'data-src': a.src } : {}) }];
   },
   addOptions() { return { host: null }; },
   addNodeView() {
@@ -146,7 +148,7 @@ export const NoteImage = Node.create({
             const up = () => {
               cancelResize();
               const snap = SNAPS.find(s => Math.abs(pct - s) <= 5);
-              set({ width: snap ?? pct });
+              set({ width: snap ?? pct, originalSize: false });
             };
             cancelResize = () => {
               window.removeEventListener('pointermove', move);
@@ -167,7 +169,7 @@ export const NoteImage = Node.create({
 
       const paint = n => {
         dom.className = `nt-img al-${n.attrs.align}`;
-        dom.style.setProperty('--w', `${n.attrs.width}%`);
+        dom.style.setProperty('--w', n.attrs.originalSize && n.attrs.originalWidth > 0 ? `min(100%, ${n.attrs.originalWidth}px)` : `${n.attrs.width}%`);
         if (editable) { if (document.activeElement !== capEl) capEl.value = n.attrs.caption || ''; }
         else { capEl.textContent = n.attrs.caption || ''; capEl.hidden = !n.attrs.caption; }
       };
@@ -584,7 +586,8 @@ export function createRichUi(editor, host) {
     imgBar.innerHTML = n.type.name === 'noteGallery'
       ? '<button data-i="view">View</button><button data-i="ungroup">Ungroup</button><span class="div"></span><button data-i="del" class="danger">Delete</button>'
       : (inTodo ? '' : ['left', 'center', 'right'].map(x => `<button data-i="al-${x}" class="${a.align === x ? 'on' : ''}" title="Align ${x}">${cap(x)}</button>`).join('')
-        + '<span class="div"></span>' + [['S', 33], ['M', 60], ['Full', 100]].map(([k, v]) => `<button data-i="w-${v}" class="${a.width === v ? 'on' : ''}">${k}</button>`).join('')
+        + '<span class="div"></span>' + [['S', 33], ['M', 60], ['Full', 100]].map(([k, v]) => `<button data-i="w-${v}" class="${!a.originalSize && a.width === v ? 'on' : ''}">${k}</button>`).join('')
+        + (a.originalWidth > 0 ? `<button data-i="original" class="${a.originalSize ? 'on' : ''}" title="Original size, up to the page width">Original</button>` : '')
         + '<span class="div"></span><button data-i="cap">Caption</button>')
         + `<button data-i="view">View</button><button data-i="copy" title="Copy the picture (Ctrl C) — paste it in another note, Chat, Mail or Word">Copy</button>${a.id ? '<button data-i="dl">Download</button>' : ''}<span class="div"></span><button data-i="del" class="danger">Delete</button>`;
     const dom = editor.view.nodeDOM(sel.from);
@@ -594,7 +597,8 @@ export function createRichUi(editor, host) {
     const b = e.target.closest('[data-i]'); const n = nodeAt(imgPos); if (!b || !n) return;
     const k = b.dataset.i;
     if (k.startsWith('al-')) setAttrs(imgPos, { align: k.slice(3) });
-    else if (k.startsWith('w-')) setAttrs(imgPos, { width: +k.slice(2) });
+    else if (k.startsWith('w-')) setAttrs(imgPos, { width: +k.slice(2), originalSize: false });
+    else if (k === 'original' && n.attrs.originalWidth > 0) setAttrs(imgPos, { originalSize: true });
     else if (k === 'cap') { editor.view.nodeDOM(imgPos)?.querySelector('input.nt-img-cap')?.focus(); imgBar.classList.remove('show'); return; }
     else if (k === 'view') { const all = pageImages(editor.state.doc); const id = n.type.name === 'noteGallery' ? galleryItems(n)[0]?.id : n.attrs.id; openLightbox(host, all, all.findIndex(x => x.id === id)); }
     else if (k === 'dl') download(host, n.attrs.id, n.attrs.name);

@@ -1,6 +1,5 @@
 @page "/notes"
 @page "/notes/{Id:guid}"
-@page "/whiteboards"
 @implements IAsyncDisposable
 @using IPop.Application.Notes
 @using IPop.Web.Components.Phone.Notes
@@ -21,7 +20,7 @@
 
 @if (Phone.IsPhone && view == View.Home)
 {
-    <NotesListPhone StartOn="@(IsBoardsRoute ? "boards" : null)" Sidebar="sidebar" Search="@searchQ" Hits="hits" OnSearch="OnSearchInput" OnOpen="Open" OnCreate="() => CreateBlank(null)" Creating="creating" />
+    <NotesListPhone Sidebar="sidebar" Search="@searchQ" Hits="hits" OnSearch="OnSearchInput" OnOpen="Open" OnCreate="() => CreateBlank(null)" Creating="creating" />
 }
 <div class="notes-page @(sideOpen ? "side-open" : "") @(Phone.IsPhone ? (view == View.Home ? "m-notes-home" : "m-notes-detail") : null)">
     @* ── Sidebar ──────────────────────────────────────────────────────────── *@
@@ -455,8 +454,8 @@
             }
             else
             {
-                <NoteListPage Kind="@ListKind" Sidebar="sidebar" Creating="creating"
-                              OnCreate="CreateFromList" OnOpen="Open"
+                <NoteListPage Sidebar="sidebar" Creating="creating"
+                              OnCreate="CreatePageFromList" OnNewBoard="CreateBoardFromList" OnOpen="Open"
                               OnFavorite="SetFavoriteFromList" OnTemplates="OpenBoardTemplatesFromList"
                               OnTemplate="NewBoardFromQuickTemplate" Templates="BoardQuickTemplates" />
             }

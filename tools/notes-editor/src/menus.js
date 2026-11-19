@@ -5,6 +5,7 @@ import { PluginKey, TextSelection } from '@tiptap/pm/state';
 import { COLORS, cap, esc } from './nodes.js';
 import { columnsJson, toggleJson, isoDay } from './extras.js';
 import { openSymbolPanel } from './symbols.js';
+import { categoryFor, slashPopup } from './slash-popup.js';
 
 const $el = (cls, html = '') => { const e = document.createElement('div'); e.className = cls; e.innerHTML = html; return e; };
 
@@ -56,7 +57,7 @@ export const SLASH_ALIASES = {
   'To-do list': 'todo task checkbox checklist', 'Bulleted list': 'bullet ul list', 'Numbered list': 'number ol ordered list',
   Toggle: 'collapse expand details accordion', Quote: 'blockquote cite', Callout: 'info note tip warning alert box',
   Divider: 'hr line separator rule', Code: 'snippet pre programming', Table: 'grid spreadsheet', Image: 'picture photo img',
-  File: 'attachment upload document', Drawing: 'draw sketch whiteboard paint', Date: 'day calendar today time',
+  File: 'attachment upload document', Drawing: 'draw sketch paint', Whiteboard: 'board canvas diagram flowchart', Date: 'day calendar today time',
   'Link to page': 'page link backlink wiki', '2 columns': 'column layout split', '3 columns': 'column layout split',
   'Table of contents': 'toc contents outline', 'Embed video': 'youtube video mp4', Bookmark: 'link card url',
   Symbol: 'simbol arrow panah check centang degree derajat special char', Today: 'date tanggal hari ini now',
@@ -102,6 +103,11 @@ export function slashCommands(host) {
     }],
     ['Basic blocks', 'Table of contents', 'A live list of the headings on this page', '☰', '', setBlock(c => c.insertContent({ type: 'noteToc' }))],
     ['Basic blocks', 'Link to page', 'Mention another page, type [[ too', '↗', '[[', ({ editor, range }) => editor.chain().focus().deleteRange(range).insertContent('[[').run()],
+    ['Insert', 'Whiteboard', 'Create a whiteboard inside Notes', '▱', '', async ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).run();
+      const p = await host.createWhiteboard();
+      if (p) editor.chain().focus().insertContent({ type: 'subPage', attrs: { id: p.id, title: p.title, emoji: p.emoji || '▱' } }).run();
+    }],
     ['Media', 'Drawing', 'Sketch by hand, together in real time', '✏️', '', setBlock(c => c.insertContent({ type: 'noteDraw', attrs: { id: newDrawId(), height: 320 } }))],
     ['Media', 'Image', 'Upload or paste — stored on NAS', '🖼', '', ({ editor, range }) => { editor.chain().focus().deleteRange(range).run(); host.pickFiles('image/*'); }],
     ['Media', 'File', 'Attach any file', '📎', '', ({ editor, range }) => { editor.chain().focus().deleteRange(range).run(); host.pickFiles(''); }],
@@ -115,7 +121,7 @@ export function slashCommands(host) {
     ['Inline', 'Today', "Today's date as a chip (also @today)", '📅', '', ({ editor, range }) => editor.chain().focus().deleteRange(range)
       .insertContent([{ type: 'dateChip', attrs: { date: isoDay(new Date()) } }, { type: 'text', text: ' ' }]).run()],
     ['Inline', 'Symbol', 'Arrows, ticks, ° ± ≠ … and what to type for them', '→', '->', ({ editor, range }) => { editor.chain().focus().deleteRange(range).run(); openSymbolPanel(editor); }],
-  ].map(([group, name, desc, box, kbd, run]) => ({ group, name, desc, box, kbd, run }));
+  ].map(([, name, desc, box, kbd, run]) => ({ group: categoryFor(name), name, desc, box, kbd, run }));
 }
 
 /// A keyboard-driven popup list used by both "/" and "@".
@@ -214,10 +220,10 @@ export const SlashMenu = Extension.create({
         const $from = state.doc.resolve(range.from);
         return $from.parent.type.name !== 'codeBlock';
       },
-      // While searching, results are ranked best-first, so group titles would repeat ("Media … Basic blocks … Media"): drop them.
-      items: ({ query }) => (String(query || '').trim() ? filterSlash(cmds, query).map(c => ({ ...c, group: null })) : cmds),
+      // Keep category metadata during search; the picker searches across every category.
+      items: ({ query }) => filterSlash(cmds, query),
       command: ({ editor, range, props }) => props.run({ editor, range }),
-      render: () => listPopup(c => `<span class="bx">${esc(c.box)}</span><div><div class="nm">${esc(c.name)}</div><div class="ds">${esc(c.desc)}</div></div>${c.kbd ? `<kbd>${esc(c.kbd)}</kbd>` : ''}`, 'No results'),
+      render: () => slashPopup(place),
     })];
   },
 });

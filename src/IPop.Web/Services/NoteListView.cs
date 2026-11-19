@@ -13,12 +13,13 @@ public static class NoteListView
     public static Filter ParseFilter(string? s) => s switch { "mine" => Filter.Mine, "shared" => Filter.Shared, "fav" => Filter.Favorites, _ => Filter.All };
     public static Sort ParseSort(string? s) => s switch { "name" => Sort.Name, "created" => Sort.Created, _ => Sort.Recent };
 
-    /// kind: "page" for the Notes list, "board" for the Whiteboards list. The per-person tutorial page stays out of both lists
+    /// kind: "all" (Notes list, pages and whiteboards together), "page" or "board" (the Pages / Whiteboards filters). The per-person tutorial page stays out of both lists
     /// (it has its own row in the sidebar).
     public static List<NoteListItemDto> Build(IEnumerable<NoteListItemDto> pages, string kind, Filter filter, string? query, Sort sort)
     {
         var q = (query ?? "").Trim();
-        IEnumerable<NoteListItemDto> rows = pages.Where(p => (kind == "board" ? p.Kind == "board" : p.Kind != "board") && !p.IsGuide);
+        // kind: "page" = text pages, "board" = whiteboards, anything else ("all") = both: whiteboards are Notes pages like the others.
+        IEnumerable<NoteListItemDto> rows = pages.Where(p => (kind == "board" ? p.Kind == "board" : kind == "page" ? p.Kind != "board" : true) && !p.IsGuide);
         rows = filter switch
         {
             Filter.Mine => rows.Where(p => p.IsMine),

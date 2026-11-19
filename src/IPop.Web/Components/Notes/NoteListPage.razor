@@ -4,29 +4,33 @@
 @inject IJSRuntime JS
 @inject HttpClient Http
 
-@* The Notes and Whiteboards list pages (one component, Kind = "page" | "board"): every page the person can open as cards or rows,
+@* The Notes home: every page and whiteboard the person can open as cards or rows (whiteboards are Notes pages, filtered with All / Pages / Whiteboards),
    with All / Mine / Shared with me / Favorites, search, sort and Grid / List. The list is the one the sidebar already loads. *@
-<div class="nl @(Kind == "board" ? "boards" : "notes")">
+<div class="nl @(type == "board" ? "boards" : "notes")">
     <div class="nl-top">
         <div class="nl-title">
-            <h1>@(Kind == "board" ? "Whiteboards" : "Notes")</h1>
-            <div class="nl-sub">@(Kind == "board" ? "Draw, plan and run workshops together" : "Everything you wrote or that was shared with you")</div>
+            <h1>Notes</h1>
+            <div class="nl-sub">Pages and whiteboards you wrote or that were shared with you</div>
         </div>
         <div class="nl-acts">
-            @if (Kind == "board")
-            {
-                <button type="button" class="nt-btn" @onclick="OnTemplates"><i data-lucide="layout-template" class="sm"></i>Templates</button>
-            }
-            <button type="button" class="nt-btn primary" disabled="@Creating" @onclick="OnCreate"><i data-lucide="plus" class="sm"></i>@(Kind == "board" ? "New whiteboard" : "New page")</button>
+            <button type="button" class="nt-btn" @onclick="OnNewBoard" disabled="@Creating"><i data-lucide="presentation" class="sm"></i>New whiteboard</button>
+            <button type="button" class="nt-btn primary" disabled="@Creating" @onclick="OnCreate"><i data-lucide="plus" class="sm"></i>New page</button>
         </div>
     </div>
 
     <div class="nl-ctl">
         <label class="nl-search">
             <i data-lucide="search" class="sm"></i>
-            <input placeholder="@(Kind == "board" ? "Search whiteboards" : "Search notes by title or text")" value="@query" @oninput="OnQuery" aria-label="Search" />
+            <input placeholder="Search notes by title or text" value="@query" @oninput="OnQuery" aria-label="Search" />
             @if (query.Length > 0) { <button type="button" class="nt-icon-btn" title="Clear" aria-label="Clear search" @onclick="ClearQuery"><i data-lucide="x" class="sm"></i></button> }
         </label>
+        <div class="nl-seg" role="tablist" aria-label="Type">
+            @foreach (var (key, label) in Types)
+            {
+                var k = key;
+                <button type="button" role="tab" aria-selected="@(type == k ? "true" : "false")" class="@(type == k ? "on" : "")" @onclick="() => SetType(k)">@label</button>
+            }
+        </div>
         <div class="nl-seg" role="tablist" aria-label="Show">
             @foreach (var (key, label) in Filters)
             {
@@ -48,9 +52,9 @@
     }
     else
     {
-        var all = NoteListView.Build(Sidebar.Pages, Kind, NoteListView.ParseFilter(filter), query, NoteListView.ParseSort(sort));
+        var all = NoteListView.Build(Sidebar.Pages, type, NoteListView.ParseFilter(filter), query, NoteListView.ParseSort(sort));
         var rows = all.Take(shown).ToList();
-        @if (Kind == "board" && query.Length == 0 && filter == "all" && Templates.Count > 0)
+        @if (type == "board" && query.Length == 0 && filter == "all" && Templates.Count > 0)
         {
             <div class="nl-grp">Start from a template</div>
             <div class="nl-tpls">
@@ -67,12 +71,12 @@
                 @if (query.Length > 0) { <b>Nothing matches “@query”.</b> }
                 else if (filter == "fav") { <b>No favorites yet.</b><span>Click the ★ on a card to keep it here.</span> }
                 else if (filter == "shared") { <b>Nothing has been shared with you yet.</b> }
-                else { <b>@(Kind == "board" ? "No whiteboards yet." : "No notes yet.")</b><span>Click “@(Kind == "board" ? "New whiteboard" : "New page")” to start.</span> }
+                else { <b>@(type == "board" ? "No whiteboards yet." : "No notes yet.")</b><span>Click “@(type == "board" ? "New whiteboard" : "New page")” to start.</span> }
             </div>
         }
         else if (list)
         {
-            <div class="nl-rows" role="table" aria-label="@(Kind == "board" ? "Whiteboards" : "Notes")">
+            <div class="nl-rows" role="table" aria-label="Notes">
                 <div class="nl-row h" role="row"><span></span><span>Name</span><span>Owner</span><span>Sharing</span><span>Edited</span><span></span></div>
                 @foreach (var p in rows)
                 {
@@ -141,10 +145,10 @@
 @code {
     private const int Batch = 36;
 
-    [Parameter, EditorRequired] public string Kind { get; set; } = "page";
     [Parameter] public NoteSidebarDto? Sidebar { get; set; }
     [Parameter] public bool Creating { get; set; }
     [Parameter] public EventCallback OnCreate { get; set; }
+    [Parameter] public EventCallback OnNewBoard { get; set; }
     [Parameter] public EventCallback OnTemplates { get; set; }
     [Parameter] public EventCallback<string> OnTemplate { get; set; }
     [Parameter] public EventCallback<Guid> OnOpen { get; set; }
@@ -152,7 +156,8 @@
     /// Quick-start templates shown above the boards (Whiteboards list only).
     [Parameter] public List<(string Key, string Emoji, string Name)> Templates { get; set; } = [];
 
-    private string filter = "all", sort = "recent", query = "";
+    private string type = "all", filter = "all", sort = "recent", query = "";
+    private static readonly (string, string)[] Types = [("all", "All"), ("page", "Pages"), ("board", "Whiteboards")];
     private bool list;
     private int shown = Batch;
 
@@ -162,7 +167,8 @@
         new("recent", "Recently edited"), new("name", "Name A–Z"), new("created", "Created"),
     ];
 
-    private string Key => $"nl.layout.{Kind}";
+    private const string Key = "nl.layout.notes";
+    private void SetType(string t) { type = t; shown = Batch; }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
