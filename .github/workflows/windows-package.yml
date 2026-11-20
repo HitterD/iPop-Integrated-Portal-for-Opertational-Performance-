@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 1593418dc715c2aa4b81e04b0256aa0cd663e40d
+          ref: 0ad00bde41b50703f0e8eeda2f7cad536126cd9d
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
@@ -33,10 +33,10 @@ jobs:
           from pathlib import Path
           for p in Path('package').rglob('appsettings*.json'):
               p.unlink()
-          Path('package/SOURCE.txt').write_text('1593418dc715c2aa4b81e04b0256aa0cd663e40d\n')
+          Path('package/SOURCE.txt').write_text('0ad00bde41b50703f0e8eeda2f7cad536126cd9d\n')
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-1593418
+          name: windows-0ad00bd
           path: package/
           retention-days: 3
