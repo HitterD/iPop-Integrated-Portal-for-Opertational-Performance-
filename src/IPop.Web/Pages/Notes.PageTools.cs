@@ -13,7 +13,7 @@ public partial class Notes
 {
     // ── Named versions + "what changed" ──────────────────────────────────────
 
-    private string versionName = "";
+    private string renameVersionText = "", newVersionName = "";
     private bool namingVersion, showDiff;
     private List<DiffLine>? diffLines;
     private int diffAdded, diffRemoved;
@@ -25,15 +25,18 @@ public partial class Notes
 
     private async Task NameSelectedVersionAsync()
     {
-        if (note is null || selVersion is not { } vid || versions is null) return;
-        var name = versionName.Trim();
+        if (note is null || !CanEdit || selVersion is not { } vid || versions is null) return;
+        var pageId = note.Id;
+        var name = renameVersionText.Trim();
         busy = true;
         try
         {
-            var res = await Auth.SendAsync(HttpMethod.Put, $"/api/notes/{note.Id}/versions/{vid}/name", new { name });
+            var res = await Auth.SendAsync(HttpMethod.Put, $"/api/notes/{pageId}/versions/{vid}/name", new { name });
+            if (disposed || note?.Id != pageId) return;
             if (!res.IsSuccessStatusCode) { Toasts.Show(name.Length == 0 ? "Couldn't clear the name" : "Couldn't name this version", ToastKind.Error); return; }
-            versions = await Auth.GetAsync<List<NoteVersionDto>>($"/api/notes/{note.Id}/versions") ?? versions;
-            namingVersion = false; versionName = "";
+            versions = await Auth.GetAsync<List<NoteVersionDto>>($"/api/notes/{pageId}/versions") ?? versions;
+            if (disposed || note?.Id != pageId) return;
+            namingVersion = false; renameVersionText = "";
             Toasts.Show(name.Length == 0 ? "Name removed" : "Version named. It is kept for good.", ToastKind.Success);
         }
         finally { busy = false; }
@@ -50,25 +53,29 @@ public partial class Notes
 
     private void BeginNameVersion()
     {
+        if (!CanEdit) return;
         var v = versions?.FirstOrDefault(x => x.Id == selVersion);
-        versionName = v?.Name ?? "";
+        renameVersionText = v?.Name ?? "";
         namingVersion = true;
     }
 
     /// "Save a named version now" from the history panel: snapshots the page as it is and gives it a name.
     private async Task SaveNamedNowAsync()
     {
-        if (note is null || editor is null) return;
-        var name = versionName.Trim();
+        if (note is null || editor is null || !CanEdit) return;
+        var pageId = note.Id;
+        var name = newVersionName.Trim();
         if (name.Length == 0) return;
         busy = true;
         try
         {
-            await editor.InvokeVoidAsync("flushNow");
-            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notes/{note.Id}/versions", new { name });
+            await TryJsAsync(() => editor.InvokeVoidAsync("flushNow").AsTask());
+            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notes/{pageId}/versions", new { name });
+            if (disposed || note?.Id != pageId) return;
             if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't save the version", ToastKind.Error); return; }
-            versions = await Auth.GetAsync<List<NoteVersionDto>>($"/api/notes/{note.Id}/versions") ?? versions;
-            namingVersion = false; versionName = "";
+            versions = await Auth.GetAsync<List<NoteVersionDto>>($"/api/notes/{pageId}/versions") ?? versions;
+            if (disposed || note?.Id != pageId) return;
+            namingVersion = false; newVersionName = "";
             if (versions.Count > 0) await SelectVersion(versions[0].Id);
             Toasts.Show("Named version saved", ToastKind.Success);
         }
@@ -134,12 +141,14 @@ public partial class Notes
 
     private async Task SaveTemplateAsync()
     {
-        if (note is null || editor is null) return;
+        if (note is null || editor is null || !HasEditAccess) return;
+        var pageId = note.Id;
         busy = true;
         try
         {
-            await editor.InvokeVoidAsync("flushNow");
-            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notes/{note.Id}/save-template", new { name = templateName.Trim() });
+            await TryJsAsync(() => editor.InvokeVoidAsync("flushNow").AsTask());
+            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notes/{pageId}/save-template", new { name = templateName.Trim() });
+            if (disposed || note?.Id != pageId) return;
             if (res.IsSuccessStatusCode)
             {
                 pop = Pop.None;
@@ -148,7 +157,7 @@ public partial class Notes
             }
             else
             {
-                var code = (await res.Content.ReadFromJsonAsync<ApiCode>(Json))?.Code;
+                var code = await ErrorCodeAsync(res);
                 Toasts.Show(code switch
                 {
                     "empty_page" => "Write something on the page first",
@@ -161,20 +170,19 @@ public partial class Notes
         finally { busy = false; }
     }
 
-    private record ApiCode(string? Code);
-
     private async Task NewFromMyTemplateAsync(Guid templateId)
     {
+        if (!CanWriteNotes) return;
         newMenuOpen = false;
         busy = true;
         try
         {
-            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notes/templates/{templateId}/use", new { parentId = newParent });
+            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notes/templates/{templateId}/use", new { parentId = (Guid?)null });
+            if (disposed) return;
             if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't create the page from this template", ToastKind.Error); return; }
             var created = await res.Content.ReadFromJsonAsync<NotePageDto>(Json);
-            newParent = null;
             await LoadSidebarAsync();
-            if (created is not null) Nav.NavigateTo($"/notes/{created.Id}");
+            if (!disposed && created is not null) Nav.NavigateTo($"/notes/{created.Id}");
         }
         finally { busy = false; }
     }

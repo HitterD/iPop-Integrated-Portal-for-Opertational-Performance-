@@ -16,6 +16,7 @@ public sealed partial class NoteService
     {
         var (page, access) = await LoadAsync(userId, pageId, NoteAccess.Edit, ct);
         if (page is null) return Fail<NoteVersionDto>(Denied(access));
+        if (page.LockedAt is not null) return Fail<NoteVersionDto>("locked");
         var v = await db.NoteVersions.FirstOrDefaultAsync(x => x.Id == versionId && x.PageId == pageId, ct);
         if (v is null) return Fail<NoteVersionDto>("not_found");
         var clean = Clean(name, 100);
@@ -31,6 +32,7 @@ public sealed partial class NoteService
     {
         var (page, access) = await LoadAsync(userId, pageId, NoteAccess.Edit, ct);
         if (page is null) return Fail<NoteVersionDto>(Denied(access));
+        if (page.LockedAt is not null) return Fail<NoteVersionDto>("locked");
         var clean = Clean(name, 100);
         if (clean is null) return Fail<NoteVersionDto>("name_required");
         if (page.YState is null) return Fail<NoteVersionDto>("empty_page");
@@ -41,7 +43,8 @@ public sealed partial class NoteService
             Contributors = page.PendingContributors ?? userId.ToString(), CreatedAt = DateTime.UtcNow,
         };
         db.NoteVersions.Add(v);
-        page.PendingContributors = null;
+        if (!await db.NoteUpdates.AsNoTracking().AnyAsync(u => u.PageId == pageId, ct))
+            page.PendingContributors = null;
         await db.SaveChangesAsync(ct);
         return Ok(new NoteVersionDto(v.Id, v.CreatedAt, v.Title, [], v.Name));
     }
@@ -57,7 +60,7 @@ public sealed partial class NoteService
         if (page is null) return Fail<NoteTemplateDto>(Denied(access));
         if (page.YState is null) return Fail<NoteTemplateDto>("empty_page");
         if (await db.NoteTemplates.CountAsync(t => t.OwnerId == userId, ct) >= MaxTemplatesPerUser) return Fail<NoteTemplateDto>("too_many_templates");
-        var title = string.IsNullOrWhiteSpace(page.Title) ? "Untitled" : page.Title;
+        var title = Clean(page.Title, 100) ?? "Untitled";
         var t = new NoteTemplate
         {
             Id = Guid.NewGuid(), OwnerId = userId, Name = Clean(name, 100) ?? title, Emoji = page.Emoji, Accent = page.Accent, Kind = page.Kind,
@@ -84,7 +87,10 @@ public sealed partial class NoteService
         if (t is null) return Fail<NotePageDto>("not_found");
         if (req.ParentId is { } parentId)
         {
-            var access = await GetAccessAsync(userId, parentId, ct);
+            var chain = await ChainAsync(parentId, ct);
+            if (chain.Count == 0 || chain.Any(n => n.DeletedAt != null)) return Fail<NotePageDto>("not_found");
+            if (chain.Count >= MaxDepth || chain[^1].ParentId != null) return Fail<NotePageDto>("max_depth");
+            var access = await AccessOnChainAsync(userId, chain, ct);
             if (access < NoteAccess.Edit) return Fail<NotePageDto>(Denied(access));
         }
         var now = DateTime.UtcNow;
@@ -96,11 +102,9 @@ public sealed partial class NoteService
         };
         db.NotePages.Add(page);
 
-        // Files inside the template are cloned for the new page (same bytes on the NAS, own rows), like Duplicate does. A file
-        // that no longer exists is skipped: it shows as a missing image instead of failing the whole page.
+        // Files inside the template are cloned for the new page only while the caller can still read them.
         var ids = GuidText.Matches(System.Text.Encoding.Latin1.GetString(t.State)).Select(m => Guid.Parse(m.Value)).Distinct().Take(500).ToList();
-        var atts = ids.Count == 0 ? [] : await db.Attachments.AsNoTracking()
-            .Where(a => ids.Contains(a.Id) && a.Area == IPop.Application.Attachments.AttachmentAreas.Notes && a.DeletedAt == null).ToListAsync(ct);
+        var atts = await FilterReadableNotesAttachmentsAsync(userId, ids, ct);
         var remap = new List<(byte[] OldBytes, byte[] NewBytes)>(atts.Count);
         foreach (var att in atts)
         {

@@ -35,7 +35,11 @@
         bar.style.transform = `translateY(${toolbarOffset(visible, root.innerHeight)}px)`;
         if (!show) return;
         const sel = root.getSelection();
-        const rect = sel?.rangeCount ? sel.getRangeAt(0).getBoundingClientRect() : null;
+        let rect = sel?.rangeCount ? sel.getRangeAt(0).getBoundingClientRect() : null;
+        if (!rect?.height && sel?.focusNode) {
+          const el = sel.focusNode.nodeType === 1 ? sel.focusNode : sel.focusNode.parentElement;
+          rect = el?.getBoundingClientRect() || rect;
+        }
         const scroll = focused.closest('.nt-doc-scroll');
         if (rect?.height && scroll) {
           const overlap = rect.bottom + 12 - (visible.offsetTop + visible.height - bar.offsetHeight);

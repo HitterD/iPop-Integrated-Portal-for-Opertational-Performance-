@@ -824,7 +824,7 @@
                         @if (namingVersion)
                         {
                             <div class="nt-vname-form">
-                                <input maxlength="100" placeholder="e.g. Before the audit" aria-label="Version name" value="@versionName" @oninput="e => versionName = e.Value?.ToString() ?? string.Empty" @onkeydown="OnVersionNameKey" />
+                                <input maxlength="100" placeholder="e.g. Before the audit" aria-label="Version name" value="@renameVersionText" @oninput="e => renameVersionText = e.Value?.ToString() ?? string.Empty" @onkeydown="OnVersionNameKey" />
                                 <button type="button" class="nt-btn primary" disabled="@busy" @onclick="NameSelectedVersionAsync">Save</button>
                                 <button type="button" class="nt-btn ghost" @onclick="() => namingVersion = false">Cancel</button>
                             </div>
@@ -855,8 +855,8 @@
                                 <div class="nt-vnow">
                                     <div class="d">Current version</div>
                                     <div class="nt-vname-form tight">
-                                        <input maxlength="100" placeholder="Name it and keep it for good" aria-label="Name the current version" value="@(namingVersion ? "" : versionName)" @oninput="e => versionName = e.Value?.ToString() ?? string.Empty" @onkeydown="OnSaveNamedKey" />
-                                        <button type="button" class="nt-btn" disabled="@(busy || string.IsNullOrWhiteSpace(versionName))" @onclick="SaveNamedNowAsync">Save</button>
+                                        <input maxlength="100" placeholder="Name it and keep it for good" aria-label="Name the current version" value="@newVersionName" @oninput="e => newVersionName = e.Value?.ToString() ?? string.Empty" @onkeydown="OnSaveNamedKey" />
+                                        <button type="button" class="nt-btn" disabled="@(busy || string.IsNullOrWhiteSpace(newVersionName))" @onclick="SaveNamedNowAsync">Save</button>
                                     </div>
                                 </div>
                             }

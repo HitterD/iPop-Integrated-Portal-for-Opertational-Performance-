@@ -34,8 +34,11 @@ public partial class Notes
 
     private async Task BeginRepeat()
     {
+        if (note is null || !HasEditAccess) return;
+        var pageId = note.Id;
         // what is stored fills the form; a page that does not repeat yet starts on "Weekdays"
         await LoadRepeatAsync();
+        if (disposed || note?.Id != pageId) return;
         if (repeatNow is { } r) ReadRule(r.Rule);
         else { repeatKind = "workdays"; repeatDays.Clear(); repeatDays.Add("MO"); repeatMonthDay = 1; }
         pop = Pop.Repeat;
@@ -66,6 +69,7 @@ public partial class Notes
     {
         get
         {
+            if (repeatKind == "weekly" && repeatDays.Count == 0) return "Pick at least one day.";
             var order = RepeatDays.Select(d => d.Code).ToList();
             var rule = NoteRecurrenceRules.FromChoice(repeatKind, repeatDays.OrderBy(d => order.IndexOf(d)).ToList(), repeatMonthDay);
             return rule is null ? "Pick at least one day." : $"{NoteRecurrenceRules.Describe(rule)}, from today.";
@@ -74,13 +78,16 @@ public partial class Notes
 
     private async Task SaveRepeatAsync()
     {
-        if (note is null) return;
+        if (note is null || !HasEditAccess) return;
+        if (repeatKind == "weekly" && repeatDays.Count == 0) return;
+        var pageId = note.Id;
         busy = true;
         try
         {
             var order = RepeatDays.Select(d => d.Code).ToList();
-            var res = await Auth.SendAsync(HttpMethod.Put, $"/api/notes/{note.Id}/repeat",
+            var res = await Auth.SendAsync(HttpMethod.Put, $"/api/notes/{pageId}/repeat",
                 new SetNoteRecurrenceRequest(repeatKind, repeatKind == "weekly" ? repeatDays.OrderBy(d => order.IndexOf(d)).ToList() : null, repeatKind == "monthly" ? repeatMonthDay : null));
+            if (disposed || note?.Id != pageId) return;
             if (res.IsSuccessStatusCode)
             {
                 repeatNow = await res.Content.ReadFromJsonAsync<NoteRecurrenceDto>(Json);
@@ -89,11 +96,11 @@ public partial class Notes
             }
             else
             {
-                var code = (await res.Content.ReadFromJsonAsync<ApiCode>(Json))?.Code;
+                var code = await ErrorCodeAsync(res);
                 Toasts.Show(code switch
                 {
                     "too_many" => $"You can keep up to {NoteRecurrenceRules.MaxRulesPerPerson} repeating pages. Stop one first.",
-                    "forbidden" or "not_found" => "You need edit access to make this page repeat",
+                    "forbidden" or "not_found" or "locked" => "You need edit access to make this page repeat",
                     "not_a_page" => "Only a text page can repeat",
                     _ => "Couldn't set up the repeat",
                 }, ToastKind.Error);
@@ -104,11 +111,13 @@ public partial class Notes
 
     private async Task StopRepeatAsync()
     {
-        if (note is null) return;
+        if (note is null || !HasEditAccess) return;
+        var pageId = note.Id;
         busy = true;
         try
         {
-            var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/notes/{note.Id}/repeat");
+            var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/notes/{pageId}/repeat");
+            if (disposed || note?.Id != pageId) return;
             if (res.IsSuccessStatusCode) { repeatNow = null; pop = Pop.None; Toasts.Show("This page no longer repeats", ToastKind.Success); }
             else Toasts.Show("Couldn't stop the repeat", ToastKind.Error);
         }

@@ -32,7 +32,9 @@ public sealed class NotesTrashWorker(IServiceScopeFactory scopes, ILogger<NotesT
                 try
                 {
                     await using var scope = scopes.CreateAsyncScope();
-                    var (pages, files) = await RunOnceAsync(scope.ServiceProvider, Retention, PagesPerPass, log, stoppingToken);
+                    var db = scope.ServiceProvider.GetRequiredService<IPopDbContext>();
+                    var (pages, files) = await RunWithAdvisoryLockAsync(db, "ipop-notes-trash-worker",
+                        () => RunOnceAsync(scope.ServiceProvider, Retention, PagesPerPass, log, stoppingToken), (0, 0), stoppingToken);
                     if (pages + files > 0) log.LogInformation("Notes trash: purged {Pages} page(s) and {Files} file(s) older than {Days} days", pages, files, Retention.TotalDays);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
@@ -40,6 +42,20 @@ public sealed class NotesTrashWorker(IServiceScopeFactory scopes, ILogger<NotesT
             } while (await timer.WaitForNextTickAsync(stoppingToken));
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+    }
+
+    internal static async Task<T> RunWithAdvisoryLockAsync<T>(IPopDbContext db, string lockKey, Func<Task<T>> tick, T fallback, CancellationToken ct)
+    {
+        if (!db.Database.IsNpgsql()) return await tick();
+        await db.Database.OpenConnectionAsync(ct);
+        try
+        {
+            var got = await db.Database.SqlQuery<bool>($"SELECT pg_try_advisory_lock(hashtext({lockKey})) AS \"Value\"").SingleAsync(ct);
+            if (!got) return fallback;
+            try { return await tick(); }
+            finally { await db.Database.SqlQuery<bool>($"SELECT pg_advisory_unlock(hashtext({lockKey})) AS \"Value\"").SingleAsync(CancellationToken.None); }
+        }
+        finally { await db.Database.CloseConnectionAsync(); }
     }
 
     /// One pass. Returns (pages purged, files removed from storage).
@@ -53,18 +69,31 @@ public sealed class NotesTrashWorker(IServiceScopeFactory scopes, ILogger<NotesT
 
         // The pages are gone. A file goes only when no remaining page links it (a file may be linked to several pages).
         var store = sp.GetService<IAttachmentStore>();
+        var removed = await DeleteOrphanAttachmentsAsync(db, store, attachmentIds, log, ct);
+        return (Math.Max(0, before - after), removed);
+    }
+
+    /// Safely deletes unreferenced Notes attachments from storage (or soft-deletes if another live row shares StoragePath).
+    public static async Task<int> DeleteOrphanAttachmentsAsync(IPopDbContext db, IAttachmentStore? store, IEnumerable<Guid> attachmentIds,
+        ILogger log, CancellationToken ct)
+    {
         var removed = 0;
         foreach (var id in attachmentIds.Distinct())
         {
             if (await db.NoteAttachments.AsNoTracking().AnyAsync(a => a.AttachmentId == id, ct)) continue;
             // Another attachment row can point at the very same stored file (Duplicate copies rows, not bytes).
-            var row = await db.Attachments.AsNoTracking().Where(a => a.Id == id).Select(a => new { a.StoragePath }).FirstOrDefaultAsync(ct);
+            var row = await db.Attachments.AsNoTracking().Where(a => a.Id == id && a.DeletedAt == null)
+                .Select(a => new { a.StoragePath }).FirstOrDefaultAsync(ct);
             if (row is null) continue;
-            var sharedBytes = await db.Attachments.AsNoTracking().AnyAsync(a => a.Id != id && a.StoragePath == row.StoragePath && a.DeletedAt == null, ct);
+            var sharedBytes = await db.Attachments.AsNoTracking()
+                .AnyAsync(a => a.Id != id && a.StoragePath == row.StoragePath && a.DeletedAt == null, ct);
             try
             {
-                if (sharedBytes) await db.Attachments.Where(a => a.Id == id).ExecuteUpdateAsync(s => s.SetProperty(a => a.DeletedAt, DateTime.UtcNow), ct);   // keep the bytes
-                else if (store is not null) await store.DeleteAsync(id, ct);
+                if (sharedBytes)
+                    await db.Attachments.Where(a => a.Id == id && a.DeletedAt == null)
+                        .ExecuteUpdateAsync(s => s.SetProperty(a => a.DeletedAt, DateTime.UtcNow), ct);   // keep the bytes
+                else if (store is not null)
+                    await store.DeleteAsync(id, ct);
                 removed++;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -72,6 +101,6 @@ public sealed class NotesTrashWorker(IServiceScopeFactory scopes, ILogger<NotesT
                 log.LogWarning(ex, "Notes trash: couldn't remove file {Id}; the next pass retries it", id);
             }
         }
-        return (Math.Max(0, before - after), removed);
+        return removed;
     }
 }

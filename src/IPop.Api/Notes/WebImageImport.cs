@@ -17,6 +17,7 @@ public static class WebImageImport
 
     public static async Task<Result?> FetchAsync(SafeHttpFetcher fetcher, string? url, CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(url) || url.Length > 2048) return null;
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)) return null;
         var res = await fetcher.FetchAsync(new FetchRequest(uri, Accept, MaxBytes, AllowTruncate: false,
             Accept: "image/avif,image/webp,image/png,image/jpeg,image/gif;q=0.9"), ct);
@@ -29,9 +30,11 @@ public static class WebImageImport
 
     internal static string? Sniff(byte[] b)
     {
-        if (b.Length >= 8 && b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E && b[3] == 0x47) return "image/png";
+        if (b.Length >= 8 && b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E && b[3] == 0x47
+            && b[4] == 0x0D && b[5] == 0x0A && b[6] == 0x1A && b[7] == 0x0A) return "image/png";
         if (b.Length >= 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF) return "image/jpeg";
-        if (b.Length >= 6 && b[0] == 'G' && b[1] == 'I' && b[2] == 'F' && b[3] == '8') return "image/gif";
+        if (b.Length >= 6 && b[0] == 'G' && b[1] == 'I' && b[2] == 'F' && b[3] == '8'
+            && (b[4] == '7' || b[4] == '9') && b[5] == 'a') return "image/gif";
         if (b.Length >= 12 && b[0] == 'R' && b[1] == 'I' && b[2] == 'F' && b[3] == 'F' && b[8] == 'W' && b[9] == 'E' && b[10] == 'B' && b[11] == 'P') return "image/webp";
         if (b.Length >= 12 && b[4] == 'f' && b[5] == 't' && b[6] == 'y' && b[7] == 'p' && b[8] == 'a' && b[9] == 'v' && b[10] == 'i') return "image/avif";
         if (b.Length >= 2 && b[0] == 'B' && b[1] == 'M') return "image/bmp";

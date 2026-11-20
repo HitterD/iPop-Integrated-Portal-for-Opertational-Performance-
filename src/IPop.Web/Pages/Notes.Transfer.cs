@@ -53,19 +53,23 @@ public partial class Notes
 
     // ── Import ───────────────────────────────────────────────────────────────
 
-    private bool CanImport => sidebar is not null && Auth.Me is not null;
+    private bool CanImport => sidebar is not null && Auth.Me is not null && CanWriteNotes;
 
     /// Opens the dialog; <paramref name="parent"/> preselects "Inside a page".
     private async Task OpenImport(Guid? parent)
     {
+        if (!CanWriteNotes) return;
         newMenuOpen = false; menuFor = null; pop = Pop.None;
         if (importStep == ImportStep.Running) { return; }
-        if (await TransferAsync() is not { } t) return;
+        if (await TransferAsync() is not { } t || disposed) return;
         if (importJs is null) importJs = await t.InvokeAsync<IJSObjectReference>("importer");
-        else await importJs.InvokeVoidAsync("reset");
+        else await TryJsAsync(() => importJs.InvokeVoidAsync("reset").AsTask());
+        if (disposed) return;
         importSummary = null; importProgress = null; importResult = null;
-        importWhere = parent is null ? "root" : "inside";
-        importInsideId = parent ?? note?.Id ?? ImportTargets().FirstOrDefault()?.Id;
+        var targets = ImportTargets();
+        var candidate = parent ?? note?.Id;
+        importInsideId = candidate is { } cid && targets.Any(x => x.Id == cid) ? cid : targets.FirstOrDefault()?.Id;
+        importWhere = parent is null || importInsideId is null ? "root" : "inside";
         importStep = ImportStep.Pick;
         bindImportDrop = true;
     }
@@ -99,55 +103,75 @@ public partial class Notes
     [JSInvokable]
     public async Task OnImportFileChosen(string name)
     {
-        if (importJs is null) return;
-        if (importStep == ImportStep.None) { importStep = ImportStep.Pick; importInsideId ??= note?.Id; bindImportDrop = true; }
+        if (importJs is null || !CanImport) return;
+        if (importStep == ImportStep.None)
+        {
+            importWhere = "root";
+            var targets = ImportTargets();
+            importInsideId = importInsideId is { } cid && targets.Any(x => x.Id == cid) ? cid : targets.FirstOrDefault()?.Id;
+            importStep = ImportStep.Pick;
+            bindImportDrop = true;
+        }
         analyzing = true; importSummary = new ImportSummary(name, 0, null, 0, 0, null, null, null);
         StateHasChanged();
         try { importSummary = await importJs.InvokeAsync<ImportSummary>("analyze"); }
         catch (JSException) { importSummary = new ImportSummary(name, 0, null, 0, 0, null, null, "This file couldn't be read."); }
         finally { analyzing = false; }
-        StateHasChanged();
+        if (!disposed) StateHasChanged();
     }
 
-    private void ClearImportFile() { importSummary = null; _ = importJs?.InvokeVoidAsync("reset").AsTask(); bindImportDrop = true; }
+    private void ClearImportFile()
+    {
+        if (analyzing || importStep == ImportStep.Running) return;
+        importSummary = null; _ = TryJsAsync(() => importJs?.InvokeVoidAsync("reset").AsTask() ?? Task.CompletedTask); bindImportDrop = true;
+    }
 
     private Guid? ImportParent => importWhere == "inside" ? importInsideId : null;
 
     /// Pages the user can import into (edit access), in sidebar order.
     private List<NoteListItemDto> ImportTargets() =>
-        sidebar?.Pages.Where(p => p.Access is "owner" or "edit" && !p.IsGuide).OrderBy(p => DisplayTitle(p.Title), StringComparer.CurrentCultureIgnoreCase).ToList() ?? [];
+        sidebar?.Pages.Where(p => p.Access is "owner" or "edit" && !p.IsGuide && !p.IsLocked).OrderBy(p => DisplayTitle(p.Title), StringComparer.CurrentCultureIgnoreCase).ToList() ?? [];
 
     private List<AppOption> ImportTargetOptions => ImportTargets().Select(p => new AppOption(p.Id.ToString(), $"{p.Emoji ?? "📄"} {DisplayTitle(p.Title)}")).ToList();
 
-    private NoteListItemDto? ImportTargetPage => importInsideId is { } id ? sidebar?.Pages.FirstOrDefault(p => p.Id == id) : null;
+    private NoteListItemDto? ImportTargetPage => importInsideId is { } id ? ImportTargets().FirstOrDefault(p => p.Id == id) : null;
 
     private async Task StartImport()
     {
-        if (importJs is null || importSummary is not { Error: null, Pages: > 0 }) return;
-        if (importWhere == "inside" && importInsideId is null) return;
+        if (!CanImport || importJs is null || importStep == ImportStep.Running || importSummary is not { Error: null, Pages: > 0 }) return;
+        if (importWhere == "inside" && (importInsideId is not { } tid || ImportTargets().All(p => p.Id != tid))) return;
         importStep = ImportStep.Running;
         importProgress = new ImportProgress(0, importSummary.Pages, 0, importSummary.Attachments, []);
         StateHasChanged();
         try
         {
-            importResult = await importJs.InvokeAsync<ImportResult?>("run", TimeSpan.FromHours(2), ImportParent?.ToString());
+            try
+            {
+                importResult = await importJs.InvokeAsync<ImportResult?>("run", TimeSpan.FromHours(2), ImportParent?.ToString());
+            }
+            catch (JSException)
+            {
+                importResult = new ImportResult(0, 0, [new ImportFailure(importSummary.Title ?? "Import", "The import stopped unexpectedly.")], [], [], null, importSummary.Title ?? "", false, importSummary.Source ?? "");
+            }
+            if (disposed) return;
+            if (ImportParent is { } p) expanded.Add(p);
+            if (importResult?.RootId is { } root) expanded.Add(root);
+            await LoadSidebarAsync();
+            if (disposed) return;
+            importStep = ImportStep.Done;
+            countUpResult = true;
+            StateHasChanged();
+            if (importResult is { RootId: { } rid, Failed.Count: 0, Converted.Count: 0, Covers.Count: <= 1, Pages: 1 })
+            {
+                // A clean single page: open it straight away; the toast confirms it.
+                importStep = ImportStep.None;
+                Toasts.Show($"“{DisplayTitle(importResult.RootTitle)}” imported", ToastKind.Success);
+                Open(rid);
+            }
         }
-        catch (JSException)
+        finally
         {
-            importResult = new ImportResult(0, 0, [new ImportFailure(importSummary.Title ?? "Import", "The import stopped unexpectedly.")], [], [], null, importSummary.Title ?? "", false, importSummary.Source ?? "");
-        }
-        if (ImportParent is { } p) expanded.Add(p);
-        if (importResult?.RootId is { } root) expanded.Add(root);
-        await LoadSidebarAsync();
-        importStep = ImportStep.Done;
-        countUpResult = true;
-        StateHasChanged();
-        if (importResult is { RootId: { } rid, Failed.Count: 0, Converted.Count: 0, Covers.Count: <= 1, Pages: 1 })
-        {
-            // A clean single page: open it straight away; the toast confirms it.
-            importStep = ImportStep.None;
-            Toasts.Show($"“{DisplayTitle(importResult.RootTitle)}” imported", ToastKind.Success);
-            Open(rid);
+            if (importStep == ImportStep.Running) importStep = ImportStep.Pick;
         }
     }
 
@@ -236,16 +260,23 @@ public partial class Notes
         StateHasChanged();
         try
         {
+            if (editor is not null && CanEdit)
+            {
+                await FlushTitle();
+                await TryJsAsync(() => editor.InvokeVoidAsync("flushNow").AsTask());
+            }
             await t.InvokeVoidAsync("exportPages", TimeSpan.FromHours(1), new
             {
                 pages, rootIds = roots, format = exportFormat, includeSub = exportAll || exportSub,
                 includeFiles = exportFiles, name = exportAll ? $"iPop Notes {DateTime.Now:yyyy-MM-dd}" : ExportTitle,
                 by = Auth.Me?.Name, sharedRootIds = exportAll && exportShared ? ExportRoots(true).Select(p => p.Id) : [],
             });
+            if (disposed) return;
             exportOpen = false;
             Toasts.Show(exportFormat == "pdf" ? "Print preview opened — choose “Save as PDF”" : "Export downloaded", ToastKind.Success);
         }
         catch (JSException) { Toasts.Show("Export failed — try again", ToastKind.Error); }
+        catch (JSDisconnectedException) { }
         finally { exportBusy = false; }
     }
 
@@ -260,7 +291,17 @@ public partial class Notes
 
     private async Task DisposeTransferAsync()
     {
-        if (importJs is not null) { await importJs.InvokeVoidAsync("dispose"); await importJs.DisposeAsync(); }
-        if (transferJs is not null) await transferJs.DisposeAsync();
+        var imp = importJs; importJs = null;
+        if (imp is not null)
+        {
+            await TryJsAsync(async () =>
+            {
+                await imp.InvokeVoidAsync("stop");
+                await imp.InvokeVoidAsync("dispose");
+                await imp.DisposeAsync();
+            });
+        }
+        var tr = transferJs; transferJs = null;
+        if (tr is not null) await TryJsAsync(() => tr.DisposeAsync().AsTask());
     }
 }

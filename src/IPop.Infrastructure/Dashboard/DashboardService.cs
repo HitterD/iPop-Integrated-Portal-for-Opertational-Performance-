@@ -147,7 +147,7 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
             .OrderBy(i => i.AllDay ? 0 : 1).ThenBy(i => i.StartAt).ThenBy(i => i.Title)
             .Select(i => new DashboardAgendaItem(
                 i.Kind switch { "task-overdue" => "task", "ticket-due" => "ticket", "company-holiday" => "holiday", _ => i.Kind },
-                Guid.Parse(i.Id[(i.Id.IndexOf(':') + 1)..]), i.Title, i.Subtitle ?? "Calendar",
+                ParseFeedEntityId(i.Id), i.Title, i.Subtitle ?? "Calendar",
                 i.AllDay ? null : i.StartAt, i.AllDay ? null : i.EndAt,
                 !i.AllDay && i.EndAt < now,
                 i.Kind == "task-overdue" || (!i.AllDay && (i.Source is "projects" or "tickets") && i.EndAt < now),
@@ -237,19 +237,23 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
         attention.AddRange(sortedTasks.Where(t => IsOverdue(t.DueDate)).Take(3).Select(t => new DashboardAttentionItem("overdue",
             $"“{t.Title}” is overdue", $"{t.ProjectName} · due {t.DueDate:dd MMM}", "Open", $"/projects/{t.ProjectId}?task={t.Id}")));
 
-        // ── Notes ── pages I visited lately, topped up with ones I own.
-        var visited = await db.NoteVisits.AsNoTracking()
+        // ── Notes ── pages I visited lately, topped up with ones I own (filtered to live openable access).
+        var visitedCandidates = await db.NoteVisits.AsNoTracking()
             .Where(v => v.UserId == userId && db.NotePages.Any(p => p.Id == v.PageId && p.DeletedAt == null))
             .OrderByDescending(v => v.VisitedAt)
-            .Take(4)
+            .Take(24)
             .Select(v => v.PageId)
             .ToListAsync(ct);
-        var owned = await db.NotePages.AsNoTracking()
+        var openableVisited = await IPop.Infrastructure.Notes.NoteVisibility.OpenableAsync(db, userId, visitedCandidates, ct);
+        var visited = visitedCandidates.Where(openableVisited.Contains).Take(4).ToList();
+        var ownedCandidates = await db.NotePages.AsNoTracking()
             .Where(p => p.OwnerId == userId && p.DeletedAt == null && !p.IsGuide && !visited.Contains(p.Id))
             .OrderByDescending(p => p.UpdatedAt)
-            .Take(4)
+            .Take(12)
             .Select(p => p.Id)
             .ToListAsync(ct);
+        var openableOwned = await IPop.Infrastructure.Notes.NoteVisibility.OpenableAsync(db, userId, ownedCandidates, ct);
+        var owned = ownedCandidates.Where(openableOwned.Contains).Take(4).ToList();
         var noteIds = visited.Concat(owned).Take(4).ToList();
         var favs = await db.NoteFavorites.AsNoTracking().Where(f => f.UserId == userId && noteIds.Contains(f.PageId)).Select(f => f.PageId).ToListAsync(ct);
         var notePages = await db.NotePages.AsNoTracking()
@@ -344,6 +348,15 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
             .Where(p => p.Status != "off")
             .OrderBy(p => p.Status == "on" ? 0 : p.Status == "busy" ? 1 : 2).ThenBy(p => p.Name)
             .ToList();
+    }
+
+    private static Guid ParseFeedEntityId(string id)
+    {
+        var start = id.IndexOf(':') + 1;
+        if (start <= 0 || start >= id.Length) return Guid.Empty;
+        var end = id.IndexOf(':', start);
+        var part = end < 0 ? id.AsSpan(start) : id.AsSpan(start, end - start);
+        return Guid.TryParse(part, out var parsed) ? parsed : Guid.Empty;
     }
 
     private static string FirstName(string? name) =>

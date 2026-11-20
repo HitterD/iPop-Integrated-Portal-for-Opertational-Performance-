@@ -43,6 +43,7 @@ public static class NoteVisibility
                 if (n.Owner == userId || shared.Contains(c)) opens = true;
                 cur = n.Parent;
             }
+            if (cur is not null) live = false;   // truncated beyond MaxDepth or cyclic: fail closed
             if (live && opens) result.Add(id);
         }
         return result;

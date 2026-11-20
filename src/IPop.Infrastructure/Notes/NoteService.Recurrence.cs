@@ -21,15 +21,20 @@ public sealed partial class NoteService
     {
         var (page, access) = await LoadAsync(userId, pageId, NoteAccess.Edit, ct);
         if (page is null) return Fail<NoteRecurrenceDto>(Denied(access));
+        if (page.LockedAt is not null) return Fail<NoteRecurrenceDto>("locked");
         if (page.Kind != "page" || page.IsGuide) return Fail<NoteRecurrenceDto>("not_a_page");
         var rule = NoteRecurrenceRules.FromChoice(req.Kind, req.Days, req.MonthDay);
         if (rule is null) return Fail<NoteRecurrenceDto>("invalid_rule");
 
         var existing = await db.NoteRecurrences.FirstOrDefaultAsync(x => x.PageId == pageId, ct);
-        if (existing is null)
+        var needsSlot = existing is null || !existing.Enabled || existing.OwnerId != userId;
+        if (needsSlot)
         {
             var mine = await db.NoteRecurrences.CountAsync(x => x.OwnerId == userId && x.Enabled, ct);
             if (mine >= NoteRecurrenceRules.MaxRulesPerPerson) return Fail<NoteRecurrenceDto>("too_many");
+        }
+        if (existing is null)
+        {
             existing = new NoteRecurrence { Id = Guid.NewGuid(), PageId = pageId, OwnerId = userId, Rule = rule, StartsOn = today, Enabled = true, CreatedAt = DateTime.UtcNow };
             db.NoteRecurrences.Add(existing);
         }
@@ -39,29 +44,50 @@ public sealed partial class NoteService
             // A page already made for today stays made for today (LastCreatedFor is kept).
             existing.Rule = rule; existing.Enabled = true; existing.OwnerId = userId; existing.StartsOn = today;
         }
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            db.ChangeTracker.Clear();
+            existing = await db.NoteRecurrences.FirstAsync(x => x.PageId == pageId, ct);
+            existing.Rule = rule; existing.Enabled = true; existing.OwnerId = userId; existing.StartsOn = today;
+            await db.SaveChangesAsync(ct);
+        }
         return Ok(Dto(existing));
     }
 
     public async Task<NoteResult<bool>> StopRecurrenceAsync(Guid userId, Guid pageId, CancellationToken ct)
     {
-        var access = await GetAccessAsync(userId, pageId, ct);
-        if (access < NoteAccess.Edit) return Fail<bool>(Denied(access));
+        var (page, access) = await LoadAsync(userId, pageId, NoteAccess.Edit, ct);
+        if (page is null) return Fail<bool>(Denied(access));
+        if (page.LockedAt is not null) return Fail<bool>("locked");
         await db.NoteRecurrences.Where(x => x.PageId == pageId).ExecuteUpdateAsync(s => s.SetProperty(x => x.Enabled, false), ct);
         return Ok(true);
     }
 
     public async Task<NoteResult<NoteRecurrenceRunDto>> CreateRecurringCopyAsync(Guid templatePageId, Guid ownerId, string title, CancellationToken ct)
     {
+        if (!await db.Users.AsNoTracking().AnyAsync(u => u.Id == ownerId && u.IsActive, ct)) return Fail<NoteRecurrenceRunDto>("forbidden");
         var src = await db.NotePages.AsNoTracking().FirstOrDefaultAsync(p => p.Id == templatePageId && p.DeletedAt == null, ct);
         if (src is null) return Fail<NoteRecurrenceRunDto>("not_found");
         // The person who set the repeat up must still be able to edit the template; a page in Trash (or under a trashed parent) makes nothing.
         if (await GetAccessAsync(ownerId, templatePageId, ct) < NoteAccess.Edit) return Fail<NoteRecurrenceRunDto>("forbidden");
 
+        Guid? parent = null;
+        if (src.ParentId is { } pid)
+        {
+            var pChain = await ChainAsync(pid, ct);
+            if (pChain.Count > 0 && pChain.Count < MaxDepth && pChain[^1].ParentId is null && !pChain.Any(n => n.DeletedAt != null)
+                && await AccessOnChainAsync(ownerId, pChain, ct) >= NoteAccess.Edit)
+                parent = pid;
+        }
+
         var now = DateTime.UtcNow;
         var copy = new NotePage
         {
-            Id = Guid.NewGuid(), OwnerId = ownerId, ParentId = src.ParentId,
+            Id = Guid.NewGuid(), OwnerId = ownerId, ParentId = parent,
             Title = Clean(title, 200) ?? "Untitled", Emoji = src.Emoji, Kind = src.Kind, Cover = src.Cover, CoverPosY = src.CoverPosY, Accent = src.Accent,
             Font = src.Font, FullWidth = src.FullWidth, SmallText = src.SmallText,
             YState = src.YState, Excerpt = src.Excerpt, PlainText = src.PlainText,
@@ -70,8 +96,10 @@ public sealed partial class NoteService
         };
         db.NotePages.Add(copy);
 
-        // Files inside the template are cloned for the new page, like Duplicate does.
-        var srcAttIds = await db.NoteAttachments.AsNoTracking().Where(a => a.PageId == templatePageId).Select(a => a.AttachmentId).ToListAsync(ct);
+        // Files inside the template are cloned for the new page, like Duplicate does (exclude thumbnail).
+        var srcAttIds = await db.NoteAttachments.AsNoTracking()
+            .Where(a => a.PageId == templatePageId && (src.ThumbnailId == null || a.AttachmentId != src.ThumbnailId))
+            .Select(a => a.AttachmentId).ToListAsync(ct);
         var srcAtts = srcAttIds.Count == 0 ? [] : await db.Attachments.AsNoTracking().Where(a => srcAttIds.Contains(a.Id) && a.DeletedAt == null).ToListAsync(ct);
         var remap = new List<(byte[] OldBytes, byte[] NewBytes)>(srcAtts.Count);
         foreach (var att in srcAtts)

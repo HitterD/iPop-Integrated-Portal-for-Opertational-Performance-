@@ -175,6 +175,26 @@ public class NotesRecurrenceWorkerTests
         Assert.True((await Svc(t).GetPageAsync(owner, copy.Id, Ct)).Success);
     }
 
+    [Fact]
+    public async Task More_due_rules_than_one_batch_are_all_made_in_a_single_pass()
+    {
+        using var t = new TestDb();
+        var owner = t.AddUser("rr8");
+        for (var i = 0; i < 205; i++)
+        {
+            var page = (await Svc(t).CreateAsync(owner.Id, new CreateNoteRequest(null, $"T{i}", null, null, null, null), Ct)).Data!.Id;
+            t.Db.NoteRecurrences.Add(new IPop.Core.Entities.NoteRecurrence
+            {
+                Id = Guid.NewGuid(), PageId = page, OwnerId = owner.Id, Rule = "FREQ=DAILY", StartsOn = new DateOnly(2026, 11, 23), CreatedAt = DateTime.UtcNow.AddSeconds(i),
+            });
+        }
+        t.Db.SaveChanges();
+
+        // rows that were just claimed leave the query, so the second batch must not skip over the ones that follow
+        Assert.Equal(205, await Run(t, new RecordingGateway(), Jkt(24, 9)));
+        Assert.Equal(0, await Run(t, new RecordingGateway(), Jkt(24, 10)));
+    }
+
     // ── set up / stop through the service ──
 
     [Fact]

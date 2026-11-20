@@ -21,6 +21,7 @@ namespace IPop.Web.Pages;
 public partial class Notes
 {
     [Parameter] public Guid? Id { get; set; }
+    [SupplyParameterFromQuery(Name = "b")] public string? BlockId { get; set; }
 
     internal const string EditorModulePath = "./js/notes/notes-editor.js?v=20261119-r4";
     private const string EditorModule = EditorModulePath;
@@ -56,18 +57,21 @@ public partial class Notes
     [CascadingParameter] public IPop.Web.Layout.MainLayout? Layout { get; set; }
     private DotNetObjectReference<Notes>? selfRef;
     private Guid? mountedId, loadingId;
-    private bool mountPending, focusNewTitle, focusDraft, focusSearch;
+    private int loadSeq;
+    private bool mountPending, focusNewTitle, focusDraft, focusSearch, dropRegistered;
     private readonly List<IDisposable> subs = [];
     private bool disposed;
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    private bool HasEditAccess => note?.Access is "owner" or "edit";
+    private bool CanWriteNotes => Auth.Can("notes.write");
+    private bool HasEditAccess => CanWriteNotes && note?.Access is "owner" or "edit";
     private bool IsLocked => note?.LockedAt is not null;
     /// Editing needs edit access AND an unlocked page; unlocking itself only needs edit access (HasEditAccess).
     private bool CanEdit => HasEditAccess && !IsLocked;
-    private bool CanComment => CanEdit || note?.Access == "comment";
-    private bool IsOwner => note?.Access == "owner";
+    /// Owners and editors can still comment on locked pages; commenting requires notes.write.
+    private bool CanComment => CanWriteNotes && (HasEditAccess || note?.Access == "comment");
+    private bool IsOwner => CanWriteNotes && note?.Access == "owner";
     private Guid? GuideId => sidebar?.Pages.FirstOrDefault(p => p.IsGuide && p.IsMine)?.Id;
     private string FontClass => note?.Font is "serif" or "mono" ? $"f-{note.Font}" : "";
 
@@ -79,22 +83,38 @@ public partial class Notes
     {
         selfRef = DotNetObjectReference.Create(this);
         Phone.Changed += PhoneChanged;
-        subs.Add(Auth.On("notesChanged", () => _ = InvokeAsync(async () => { await LoadSidebarAsync(); if (view == View.Trash) await LoadTrashAsync(); StateHasChanged(); })));
+        subs.Add(Auth.On("notesChanged", () => _ = InvokeAsync(async () =>
+        {
+            if (disposed) return;
+            await LoadSidebarAsync();
+            if (disposed) return;
+            if (view == View.Trash) await LoadTrashAsync();
+            if (!disposed) StateHasChanged();
+        })));
         await LoadSidebarAsync();
-        _ = LoadMyTemplatesAsync();
+        if (!disposed) _ = LoadMyTemplatesAsync();
     }
 
     private Guid? lastId;
+    private string? lastBlockId;
     private bool paramsSeen;
 
     private void SetListHeader() => Layout?.SetHeader("Notes", "Shared notes & docs");
 
     protected override async Task OnParametersSetAsync()
     {
-        // The cascading MainLayout re-runs this on every layout render — only react to a real route change.
-        if (paramsSeen && lastId == Id) return;
+        // The cascading MainLayout re-runs this on every layout render — only react to a real route or block query change.
+        if (paramsSeen && lastId == Id && lastBlockId == BlockId) return;
+        if (paramsSeen && lastId == Id)
+        {
+            lastBlockId = BlockId;
+            if (editor is not null && !string.IsNullOrWhiteSpace(BlockId))
+                await TryJsAsync(() => editor.InvokeVoidAsync("scrollToBlock", BlockId).AsTask());
+            return;
+        }
         paramsSeen = true;
         lastId = Id;
+        lastBlockId = BlockId;
         pop = Pop.None;
         sideOpen = false;
         if (Id is { } id)
@@ -106,7 +126,7 @@ public partial class Notes
         else if (view == View.Page)
         {
             await UnmountAsync();
-            note = null;
+            note = null; pageError = null;
             view = View.Home;
             await LoadSidebarAsync();
         }
@@ -118,49 +138,87 @@ public partial class Notes
         if (firstRender)
         {
             SetListHeader();
-            module = await JS.InvokeAsync<IJSObjectReference>("import", EditorModule);
-            hotkeys = await module.InvokeAsync<IJSObjectReference>("hotkeys", selfRef);
-            await SidebarFirstRenderAsync();
-            await ImportFirstRenderAsync();
-            sidebarPhoneMode = Phone.IsPhone;
-            if (note is not null) mountPending = true;
+            try
+            {
+                module = await JS.InvokeAsync<IJSObjectReference>("import", EditorModule);
+                if (disposed) return;
+                hotkeys = await module.InvokeAsync<IJSObjectReference>("hotkeys", selfRef);
+                if (disposed) return;
+                await SidebarFirstRenderAsync();
+                if (disposed) return;
+                await ImportFirstRenderAsync();
+                if (disposed) return;
+                sidebarPhoneMode = Phone.IsPhone;
+                if (note is not null) mountPending = true;
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException or ObjectDisposedException) { return; }
         }
+        if (disposed) return;
         await ReconcilePhoneSidebar();
+        if (disposed) return;
         await SyncPhoneNotes();
-        await JS.InvokeVoidAsync("ipop.icons");
+        if (disposed) return;
+        await TryJsAsync(() => JS.InvokeVoidAsync("ipop.icons").AsTask());
+        if (disposed) return;
         if (mountPending && module is not null && note is not null && view == View.Page)
         {
             mountPending = false;
             await MountAsync(note);
         }
-        if (focusNewTitle) { focusNewTitle = false; await newTitleRef.FocusAsync(); }
-        if (focusDraft) { focusDraft = false; try { await draftRef.FocusAsync(); } catch (JSException) { } }
-        if (focusSearch) { focusSearch = false; await searchRef.FocusAsync(); }
+        if (disposed) return;
+        if (focusNewTitle) { focusNewTitle = false; await TryJsAsync(() => newTitleRef.FocusAsync().AsTask()); }
+        if (focusDraft) { focusDraft = false; await TryJsAsync(() => draftRef.FocusAsync().AsTask()); }
+        if (focusSearch) { focusSearch = false; await TryJsAsync(() => searchRef.FocusAsync().AsTask()); }
         await SidebarAfterRenderAsync();
+        if (disposed) return;
         await ImportAfterRenderAsync();
+        if (disposed) return;
         await CoverAfterRenderAsync();
+        if (disposed) return;
         await TidyAfterRenderAsync();
+        if (disposed) return;
         await MarginAfterRenderAsync();
+    }
+
+    private static void CancelAndDispose(ref CancellationTokenSource? cts)
+    {
+        var c = cts; cts = null;
+        if (c is null) return;
+        try { c.Cancel(); } catch (ObjectDisposedException) { }
+        try { c.Dispose(); } catch (ObjectDisposedException) { }
+    }
+
+    private static async Task TryJsAsync(Func<Task> action)
+    {
+        try { await action(); }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or ObjectDisposedException) { }
     }
 
     public async ValueTask DisposeAsync()
     {
         disposed = true;
         foreach (var s in subs) s.Dispose();
-        titleCts?.Cancel();
-        searchCts?.Cancel();
-        try
+        CancelAndDispose(ref titleCts);
+        CancelAndDispose(ref searchCts);
+        CancelAndDispose(ref cmtMentionCts);
+        CancelAndDispose(ref inviteCts);
+        CancelAndDispose(ref tidyCts);
+        await TryJsAsync(DisposePhoneNotes);
+        await TryJsAsync(UnmountAsync);
+        await TryJsAsync(DestroyPreviewAsync);
+        await TryJsAsync(DisposeSidebarAsync);
+        await TryJsAsync(DisposeTransferAsync);
+        await TryJsAsync(DisposeCoverAsync);
+        if (hotkeys is not null)
         {
-            await DisposePhoneNotes();
-            await UnmountAsync();
-            await DestroyPreviewAsync();
-            await DisposeSidebarAsync();
-            await DisposeTransferAsync();
-            await DisposeCoverAsync();
-            if (hotkeys is not null) { await hotkeys.InvokeVoidAsync("dispose"); await hotkeys.DisposeAsync(); }
-            if (module is not null) await module.DisposeAsync();
+            var hk = hotkeys; hotkeys = null;
+            await TryJsAsync(async () => { await hk.InvokeVoidAsync("dispose"); await hk.DisposeAsync(); });
         }
-        catch (JSDisconnectedException) { }
+        if (module is not null)
+        {
+            var mod = module; module = null;
+            await TryJsAsync(() => mod.DisposeAsync().AsTask());
+        }
         selfRef?.Dispose();
     }
 
@@ -170,13 +228,15 @@ public partial class Notes
     {
         // Last-seen page tree renders at once; the fetch replaces it (memory only).
         sidebar ??= Cache.Peek<NoteSidebarDto>("notes.sidebar");
-        if (sidebar is not null) StateHasChanged();
+        if (sidebar is not null && !disposed) StateHasChanged();
         var fresh = await Auth.GetAsync<NoteSidebarDto>("/api/notes/sidebar");
+        if (disposed) return;
         if (fresh is not null) Cache.Put("notes.sidebar", fresh);
         sidebar = fresh ?? sidebar;
         if (note is not null) ExpandTo(note);
         if (editor is not null && sidebar is not null)
-            await editor.InvokeVoidAsync("setPages", sidebar.Pages.Select(p => new { id = p.Id, title = DisplayTitle(p.Title), emoji = p.Emoji ?? "📄" }));
+            await TryJsAsync(() => editor.InvokeVoidAsync("setPages", sidebar.Pages.Select(p => new { id = p.Id, title = DisplayTitle(p.Title), emoji = p.Emoji ?? "📄" })).AsTask());
+        if (!disposed) StateHasChanged();
     }
 
     private async Task LoadPageAsync(Guid id)
@@ -188,19 +248,23 @@ public partial class Notes
 
     private async Task LoadPageCoreAsync(Guid id)
     {
+        var seq = ++loadSeq;
         await UnmountAsync();
+        if (seq != loadSeq || disposed) return;
         note = null; pageError = null; threads = []; draft = null; focusThread = null;
         presence = []; saveState = "saved"; showTemplates = false;
         StateHasChanged();
         var res = await Auth.SendAsync(HttpMethod.Get, $"/api/notes/{id}");
-        if (Id != id) return; // navigated away meanwhile
+        if (seq != loadSeq || disposed || Id != id) return; // navigated away meanwhile
         if (!res.IsSuccessStatusCode)
         {
             pageError = res.StatusCode == HttpStatusCode.NotFound ? "not_found" : "forbidden";
             return;
         }
-        note = await res.Content.ReadFromJsonAsync<NotePageDto>(Json);
-        if (note is null) { pageError = "not_found"; return; }
+        var loaded = await res.Content.ReadFromJsonAsync<NotePageDto>(Json);
+        if (seq != loadSeq || disposed || Id != id) return;
+        if (loaded is null) { pageError = "not_found"; return; }
+        note = loaded;
         _ = Notifs.MarkReadByTargetAsync("note", id);
         titleDraft = note.Title;
         ExpandTo(note);
@@ -220,13 +284,15 @@ public partial class Notes
 
     private async Task MountAsync(NotePageDto p)
     {
+        var seq = loadSeq;
         await UnmountAsync();
+        if (seq != loadSeq || disposed || note?.Id != p.Id) return;
         var me = Auth.Me;
         var opts = new
         {
             apiBase = Http.BaseAddress?.ToString() ?? "",
             pageId = p.Id,
-            access = p.Access,
+            access = CanWriteNotes ? p.Access : "view",
             user = new { name = me?.Name ?? "Me", nik = me?.Nik ?? "", color = AvatarPalette.For(me?.Nik) },
             accent = p.Accent,
             pages = (sidebar?.Pages ?? []).Select(x => new { id = x.Id, title = DisplayTitle(x.Title), emoji = x.Emoji ?? "📄" }),
@@ -235,6 +301,7 @@ public partial class Notes
             hasThumbnail = sidebar?.Pages.FirstOrDefault(x => x.Id == p.Id)?.ThumbnailId is not null,
             locked = p.LockedAt is not null,
             boardEl = p.Kind == "board" ? boardRef : (object?)null,
+            blockId = BlockId,
             // whiteboard Template Center: an admin may remove templates others shared with the team (the API checks it again)
             notesAdmin = Auth.Can("notes.admin"),
         };
@@ -242,19 +309,29 @@ public partial class Notes
         {
             mountedId = p.Id;
             var ed = await module!.InvokeAsync<IJSObjectReference>("mount", editorRef, opts);
-            if (disposed || note?.Id != p.Id) { await ed.InvokeVoidAsync("destroy"); await ed.DisposeAsync(); return; }
+            if (seq != loadSeq || disposed || note?.Id != p.Id)
+            {
+                await TryJsAsync(async () => { await ed.InvokeVoidAsync("destroy"); await ed.DisposeAsync(); });
+                return;
+            }
             editor = ed;
             // #12: files from Windows dropped on the page show the shared drop target (the editor
             // already uploads dropped/pasted files and images itself).
-            if (p.Access is "owner" or "edit")
-                try { await JS.InvokeVoidAsync("ipopMicro.registerDrop", editorRef, "Drop to add to the page", "Images go inline, other files as attachments"); }
-                catch (JSException) { }
+            if (CanWriteNotes && p.Access is "owner" or "edit" && p.LockedAt is null)
+            {
+                await TryJsAsync(async () =>
+                {
+                    await JS.InvokeVoidAsync("ipopMicro.registerDrop", editorRef, "Drop to add to the page", "Images go inline, other files as attachments");
+                    dropRegistered = true;
+                });
+            }
             await PushThreadsAsync();
             await RefreshEmptyAsync();
-            StateHasChanged();
+            if (!disposed) StateHasChanged();
         }
         catch (JSException ex)
         {
+            if (seq != loadSeq || disposed || note?.Id != p.Id) return;
             mountedId = null;
             if (ex.Message.Contains("forbidden")) pageError = "forbidden";
             else Toasts.Show("Couldn't open the editor. Try reloading the page.", ToastKind.Error);
@@ -264,15 +341,26 @@ public partial class Notes
 
     private async Task UnmountAsync()
     {
+        if (titleCts is not null && note is not null && CanEdit && titleDraft != note.Title)
+            await FlushTitle();
+        CancelAndDispose(ref titleCts);
+        CancelAndDispose(ref tidyCts);
         mountedId = null;
+        phoneMentionOpen = false;
+        tidySuggestions = []; tidyCount = 0; tidyCheckedFor = null;
+        await StopRepositionAsync();
+        paintedCover = null; paintedPos = -1; coverUploading = false; coverError = null;
+        if (dropRegistered)
+        {
+            dropRegistered = false;
+            await TryJsAsync(() => JS.InvokeVoidAsync("ipopMicro.unregisterDrop", editorRef).AsTask());
+        }
         await DisposeMarginAsync();
         bubbleThread = null; marginMode = false;
         var ed = editor;
         editor = null;
         if (ed is null) return;
-        try { await ed.InvokeVoidAsync("destroy"); await ed.DisposeAsync(); }
-        catch (JSDisconnectedException) { }
-        catch (JSException) { }
+        await TryJsAsync(async () => { await ed.InvokeVoidAsync("destroy"); await ed.DisposeAsync(); });
     }
 
     private async Task RefreshEmptyAsync()
@@ -295,7 +383,7 @@ public partial class Notes
     }
 
     /// The access token is a JWT; refresh a minute early so the editor's own fetches never 401.
-    private static bool TokenExpiresSoon(string? jwt)
+    internal static bool TokenExpiresSoon(string? jwt)
     {
         try
         {
@@ -358,6 +446,21 @@ public partial class Notes
     [JSInvokable]
     public void OnRefused(string reason, bool unsaved)
     {
+        if (pop is Pop.Style or Pop.Emoji or Pop.Template or Pop.Repeat) pop = Pop.None;
+        if (reason == "locked" && note is not null)
+        {
+            saveState = "locked";
+            note = note with { LockedAt = note.LockedAt ?? DateTime.UtcNow };
+        }
+        else if (reason == "forbidden" && note is not null)
+        {
+            saveState = "saved";
+            note = note with { Access = "view" };
+        }
+        else if (reason == "not_found" && note is not null)
+        {
+            pageError = "not_found";
+        }
         var why = reason switch
         {
             "not_found" => "You no longer have access to this page",
@@ -372,11 +475,13 @@ public partial class Notes
     [JSInvokable]
     public async Task OnHotkey(string key)
     {
-        if (key == "new") _ = CreateBlank(null);
+        if (key == "new") { if (CanWriteNotes) _ = CreateBlank(null); }
         if (key == "save")
         {
+            if (!CanEdit || IsLocked) return;
+            await FlushTitle();
             // Notes saves as you type; Ctrl S only makes sure the last keystrokes are on the server and says so.
-            if (editor is not null) { try { await editor.InvokeVoidAsync("flushNow"); } catch (JSException) { } catch (JSDisconnectedException) { } }
+            if (editor is not null) { await TryJsAsync(() => editor.InvokeVoidAsync("flushNow").AsTask()); }
             Toasts.Show(saveState == "offline" ? "You're offline — changes will save when you're back online" : "Saved — Notes saves automatically as you type", ToastKind.Info);
         }
         StateHasChanged();
@@ -395,10 +500,11 @@ public partial class Notes
         if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't create the sub-page", ToastKind.Error); return null; }
         var created = await res.Content.ReadFromJsonAsync<NotePageDto>(Json);
         if (created is null) return null;
-        expanded.Add(note.Id);
-        note = note with { Children = [.. note.Children, new NoteCrumbDto(created.Id, created.Title, created.Emoji)] };
+        expanded.Add(created.ParentId ?? note.Id);
+        if (note is not null && note.Id == created.ParentId)
+            note = note with { Children = [.. note.Children, new NoteCrumbDto(created.Id, created.Title, created.Emoji)] };
         await LoadSidebarAsync();
-        StateHasChanged();
+        if (!disposed) StateHasChanged();
         return new { id = created.Id, title = DisplayTitle(created.Title), emoji = created.Emoji ?? "📄" };
     }
 
@@ -409,11 +515,14 @@ public partial class Notes
     public void OnMeta(NotePageDto m)
     {
         if (note?.Id != m.Id) return;
-        // Access and favourite are per-user; the broadcast carries the editor's view of them.
-        note = m with { Access = note.Access, IsFavorite = note.IsFavorite };
+        // Access, favourite, breadcrumb and chat shares stay anchored to the viewer's own context.
+        note = m with { Access = note.Access, IsFavorite = note.IsFavorite, Breadcrumb = note.Breadcrumb, Rooms = note.Rooms };
         if (titleCts is null) titleDraft = m.Title;
-        _ = editor?.InvokeVoidAsync("setAccent", m.Accent);
-        _ = editor?.InvokeVoidAsync("setLocked", m.LockedAt is not null);
+        if (editor is not null)
+        {
+            _ = TryJsAsync(() => editor.InvokeVoidAsync("setAccent", m.Accent).AsTask());
+            _ = TryJsAsync(() => editor.InvokeVoidAsync("setLocked", m.LockedAt is not null).AsTask());
+        }
         StateHasChanged();
     }
 
@@ -426,13 +535,15 @@ public partial class Notes
         if (note is null || !CanEdit) return;
         var id = note.Id;
         var res = await Auth.SendAsync(HttpMethod.Patch, $"/api/notes/{id}", req);
+        if (disposed || note?.Id != id) return;
         if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't save your changes", ToastKind.Error); return; }
         var updated = await res.Content.ReadFromJsonAsync<NotePageDto>(Json);
-        if (updated is null || note?.Id != id) return;
+        if (disposed || updated is null || note?.Id != id) return;
         note = updated with { IsFavorite = note.IsFavorite };
-        if (req.Accent is not null && !fromEditor && editor is not null) await editor.InvokeVoidAsync("setAccent", req.Accent);
+        if (req.Accent is not null && !fromEditor && editor is not null)
+            await TryJsAsync(() => editor.InvokeVoidAsync("setAccent", req.Accent).AsTask());
         if (req.Title is not null || req.Emoji is not null) await LoadSidebarAsync();
-        StateHasChanged();
+        if (!disposed) StateHasChanged();
     }
 
     private Task SetAccentAsync(string k) => PatchAsync(new UpdateNoteMetaRequest(null, null, null, k, null, null, null));
@@ -446,15 +557,14 @@ public partial class Notes
     private void OnTitleInput(ChangeEventArgs e)
     {
         titleDraft = e.Value?.ToString() ?? "";
-        titleCts?.Cancel();
+        CancelAndDispose(ref titleCts);
         var cts = titleCts = new CancellationTokenSource();
-        _ = Task.Delay(600, cts.Token).ContinueWith(t => { if (!t.IsCanceled) _ = InvokeAsync(FlushTitle); }, TaskScheduler.Default);
+        _ = Task.Delay(600, cts.Token).ContinueWith(t => { if (!t.IsCanceled && !disposed) _ = InvokeAsync(FlushTitle); }, TaskScheduler.Default);
     }
 
     private async Task FlushTitle()
     {
-        titleCts?.Cancel();
-        titleCts = null;
+        CancelAndDispose(ref titleCts);
         if (note is null || !CanEdit || titleDraft == note.Title) return;
         await PatchAsync(new UpdateNoteMetaRequest(titleDraft, null, null, null, null, null, null));
     }
@@ -464,16 +574,18 @@ public partial class Notes
         if (e.Key is "Enter" or "ArrowDown" && editor is not null)
         {
             await FlushTitle();
-            await editor.InvokeVoidAsync("focus");
+            if (!disposed && editor is not null) await TryJsAsync(() => editor.InvokeVoidAsync("focus").AsTask());
         }
     }
 
     private async Task ToggleFavorite()
     {
-        if (note is null) return;
+        if (note is null || !CanWriteNotes) return;
+        var pageId = note.Id;
         var fav = !note.IsFavorite;
         note = note with { IsFavorite = fav };
-        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/notes/{note.Id}/favorite", new { favorite = fav });
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/notes/{pageId}/favorite", new { favorite = fav });
+        if (disposed || note?.Id != pageId) return;
         if (!res.IsSuccessStatusCode) { note = note with { IsFavorite = !fav }; Toasts.Show("Couldn't update favorites", ToastKind.Error); }
         await LoadSidebarAsync();
     }
@@ -500,8 +612,23 @@ public partial class Notes
         Nav.NavigateTo($"/notes/{id}");
     }
 
-    private void GoHome() => Nav.NavigateTo("/notes");
-    private void GoHomeLink() { sideOpen = false; Nav.NavigateTo("/notes"); }
+    private async Task GoHome()
+    {
+        sideOpen = false; pop = Pop.None;
+        await UnmountAsync();
+        note = null; pageError = null;
+        view = View.Home;
+        Nav.NavigateTo("/notes");
+    }
+
+    private async Task GoHomeLink()
+    {
+        sideOpen = false; pop = Pop.None;
+        await UnmountAsync();
+        note = null; pageError = null;
+        view = View.Home;
+        Nav.NavigateTo("/notes");
+    }
 
     private bool IsActive(Guid id) => view == View.Page && note?.Id == id;
 
@@ -521,6 +648,7 @@ public partial class Notes
 
     private async Task RestorePage(Guid id)
     {
+        if (!CanWriteNotes) return;
         var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notes/{id}/restore");
         if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't restore the page", ToastKind.Error); return; }
         Toasts.Show("Page restored", ToastKind.Success);
@@ -530,6 +658,7 @@ public partial class Notes
 
     private async Task PurgePage(NoteListItemDto t)
     {
+        if (!CanWriteNotes) return;
         if (!await Confirm.AskAsync("Delete forever?", $"“{DisplayTitle(t.Title)}” and its sub-pages, comments and history will be deleted permanently.", "Delete forever")) return;
         var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/notes/{t.Id}/purge");
         if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't delete", ToastKind.Error); return; }
@@ -539,6 +668,7 @@ public partial class Notes
 
     private async Task EmptyTrashAsync()
     {
+        if (!CanWriteNotes) return;
         var mine = trash?.Where(t => t.IsMine).ToList() ?? [];
         if (mine.Count == 0) return;
         if (!await Confirm.AskAsync("Empty trash?", $"Permanently delete {mine.Count} page{(mine.Count == 1 ? "" : "s")} and all their sub-pages, comments and history?", "Empty trash")) return;
@@ -549,6 +679,7 @@ public partial class Notes
 
     private void OpenNewPage(Guid? parent)
     {
+        if (!CanWriteNotes) return;
         pop = Pop.None; sideOpen = false;
         newParent = parent; newTitle = ""; newAccent = "blue";
         if (Id is not null) Nav.NavigateTo("/notes");
@@ -566,7 +697,7 @@ public partial class Notes
 
     private async Task CreatePage(string? template)
     {
-        if (creating) return;
+        if (creating || !CanWriteNotes) return;
         creating = true;
         try
         {

@@ -31,7 +31,7 @@ public static class NoteListView
             rows = rows.Where(p => Contains(p.Title, q) || Contains(p.Excerpt, q) || Contains(p.OwnerName, q));
         return (sort switch
         {
-            Sort.Name => rows.OrderBy(p => p.Title, StringComparer.CurrentCultureIgnoreCase).ThenByDescending(p => p.UpdatedAt),
+            Sort.Name => rows.OrderBy(p => string.IsNullOrWhiteSpace(p.Title) ? "Untitled" : p.Title, StringComparer.CurrentCultureIgnoreCase).ThenByDescending(p => p.UpdatedAt),
             Sort.Created => rows.OrderByDescending(p => p.CreatedAt ?? p.UpdatedAt),
             _ => rows.OrderByDescending(p => p.UpdatedAt),
         }).ToList();

@@ -16,14 +16,16 @@ public partial class Notes
     private async Task ToggleLockAsync()
     {
         if (note is null || !HasEditAccess) return;
+        var pageId = note.Id;
         pop = Pop.None;
         var lockIt = !IsLocked;
-        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/notes/{note.Id}/lock", new { locked = lockIt });
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/notes/{pageId}/lock", new { locked = lockIt });
+        if (disposed || note?.Id != pageId) return;
         if (!res.IsSuccessStatusCode) { Toasts.Show(lockIt ? "Couldn't lock the page" : "Couldn't unlock the page", ToastKind.Error); return; }
         var fresh = await res.Content.ReadFromJsonAsync<NotePageDto>(Json);
-        if (fresh is null || note?.Id != fresh.Id) return;
+        if (disposed || fresh is null || note?.Id != fresh.Id) return;
         note = fresh with { IsFavorite = note.IsFavorite };
-        if (editor is not null) await editor.InvokeVoidAsync("setLocked", IsLocked);
+        if (editor is not null) await TryJsAsync(() => editor.InvokeVoidAsync("setLocked", IsLocked).AsTask());
         Toasts.Show(IsLocked ? "Page locked. Nobody can edit it until it is unlocked." : "Page unlocked.", ToastKind.Success);
     }
 
@@ -65,16 +67,23 @@ public partial class Notes
     /// Called after every render: paints the photo once per cover change.
     private async Task CoverAfterRenderAsync()
     {
-        if (module is null || note is null || view != View.Page) return;
+        if (module is null || note is null || view != View.Page || note.Kind == "board")
+        {
+            paintedCover = null; paintedPos = -1;
+            return;
+        }
         if (note.CoverImageId is not { } id) { paintedCover = null; paintedPos = -1; return; }
         if (coverRepositioning) return;   // the drag owns --y while it is active
         if (paintedCover == id && paintedPos == note.CoverPosY && !coverPaintPending) return;
-        paintedCover = id; paintedPos = note.CoverPosY; coverPaintPending = false;
+        var pageId = note.Id;
+        var pos = note.CoverPosY;
+        paintedCover = id; paintedPos = pos; coverPaintPending = false;
         try
         {
             var js = await CoverModuleAsync();
-            var ok = await js.InvokeAsync<bool>("paint", coverRef, id, note.CoverPosY);
-            if (!ok) Toasts.Show("Couldn't load the cover image.", ToastKind.Warning);
+            if (disposed || note?.Id != pageId) return;
+            var ok = await js.InvokeAsync<bool>("paint", coverRef, id, pos);
+            if (!ok && !disposed && note?.Id == pageId) Toasts.Show("Couldn't load the cover image.", ToastKind.Warning);
         }
         catch (JSException) { }
         catch (JSDisconnectedException) { }
@@ -95,13 +104,17 @@ public partial class Notes
         coverError = null;
         if (tab == CoverTab.ThisPage && note is not null)
         {
-            pageImages = (await Auth.GetAsync<List<NoteImageDto>>($"/api/notes/{note.Id}/images")) ?? [];
+            var pageId = note.Id;
+            pageImages = (await Auth.GetAsync<List<NoteImageDto>>($"/api/notes/{pageId}/images")) ?? [];
+            if (disposed || note?.Id != pageId) return;
             StateHasChanged();
             if (pageImages.Count > 0)
             {
                 await Task.Yield();
+                if (disposed || note?.Id != pageId) return;
                 try { await (await CoverModuleAsync()).InvokeVoidAsync("thumbs", coverThumbsRef, pageImages.Select(i => i.Id)); }
                 catch (JSException) { }
+                catch (JSDisconnectedException) { }
             }
         }
     }
@@ -111,9 +124,16 @@ public partial class Notes
     private async Task ChooseCoverFile()
     {
         if (note is null || !CanEdit || coverUploading) return;
-        var js = await CoverModuleAsync();
-        // The file never passes through Blazor: the browser picks it and covers.js uploads it with progress.
-        await js.InvokeAsync<bool>("pickAndUpload", note.Id);
+        var pageId = note.Id;
+        try
+        {
+            var js = await CoverModuleAsync();
+            if (disposed || note?.Id != pageId) return;
+            // The file never passes through Blazor: the browser picks it and covers.js uploads it with progress.
+            await js.InvokeAsync<bool>("pickAndUpload", pageId);
+        }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
     }
 
     [JSInvokable]
@@ -148,13 +168,14 @@ public partial class Notes
     public async Task OnCoverUploaded()
     {
         if (note is null) return;
-        var fresh = await Auth.GetAsync<NotePageDto>($"/api/notes/{note.Id}");
-        if (fresh is null || note?.Id != fresh.Id) return;
+        var pageId = note.Id;
+        var fresh = await Auth.GetAsync<NotePageDto>($"/api/notes/{pageId}");
+        if (disposed || fresh is null || note?.Id != pageId) return;
         note = fresh with { IsFavorite = note.IsFavorite };
         coverRepositioning = false;
         coverPaintPending = true;
         StateHasChanged();
-        await StartRepositionAsync();   // a fresh photo opens straight in reposition mode, like the mockup
+        if (CanEdit) await StartRepositionAsync();   // a fresh photo opens straight in reposition mode, like the mockup
     }
 
     private async Task PickCoverImage(Guid attachmentId)

@@ -12,6 +12,8 @@ public static class NoteBoardThumbnail
 {
     public const long MaxBytes = 4L * 1024 * 1024;
     public const int MaxWidth = 640;
+    public const int MaxHeight = 640;
+    public const long MaxPixels = 40_000_000;
 
     public sealed record Result(byte[] Bytes, string ContentType, string Extension);
 
@@ -26,9 +28,18 @@ public static class NoteBoardThumbnail
             var format = Image.DetectFormat(input);
             if (format is not (JpegFormat or PngFormat or WebpFormat)) { error = format is null ? "not_an_image" : "unsupported_format"; return null; }
             input.Position = 0;
+            var info = Image.Identify(input);
+            if (info is null || info.Width <= 0 || info.Height <= 0) { error = "not_an_image"; return null; }
+            if ((long)info.Width * info.Height > MaxPixels) { error = "too_large"; return null; }
+            input.Position = 0;
             using var image = Image.Load(input);
-            if (image.Width > MaxWidth)
-                image.Mutate(x => x.Resize(new ResizeOptions { Size = new Size(MaxWidth, 0), Mode = ResizeMode.Max }));
+            image.Mutate(x => x.AutoOrient());
+            image.Metadata.ExifProfile = null;
+            image.Metadata.XmpProfile = null;
+            image.Metadata.IptcProfile = null;
+            image.Metadata.IccProfile = null;
+            if (image.Width > MaxWidth || image.Height > MaxHeight)
+                image.Mutate(x => x.Resize(new ResizeOptions { Size = new Size(MaxWidth, MaxHeight), Mode = ResizeMode.Max }));
             using var ms = new MemoryStream();
             image.SaveAsJpeg(ms, new JpegEncoder { Quality = 80 });
             return new Result(ms.ToArray(), "image/jpeg", ".jpg");

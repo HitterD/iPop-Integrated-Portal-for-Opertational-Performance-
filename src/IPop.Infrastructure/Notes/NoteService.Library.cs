@@ -17,12 +17,18 @@ public sealed partial class NoteService
 
     public async Task<IReadOnlyList<NoteLibraryItemDto>> GetLibraryAsync(Guid userId, CancellationToken ct)
     {
-        var rows = await (from i in db.NoteLibraryItems.AsNoTracking()
+        var mine = await (from i in db.NoteLibraryItems.AsNoTracking()
                           join u in db.Users.AsNoTracking() on i.OwnerId equals u.Id
-                          where i.OwnerId == userId || i.Shared
+                          where i.OwnerId == userId
                           orderby i.CreatedAt descending
-                          select new { i, u.Name }).Take(400).ToListAsync(ct);
-        return rows.Select(r => LibDto(r.i, userId, r.Name)).ToList();
+                          select new { i, u.Name }).Take(MaxLibraryItemsPerUser).ToListAsync(ct);
+        var shared = await (from i in db.NoteLibraryItems.AsNoTracking()
+                            join u in db.Users.AsNoTracking() on i.OwnerId equals u.Id
+                            where i.Shared && i.OwnerId != userId
+                            orderby i.CreatedAt descending
+                            select new { i, u.Name }).Take(200).ToListAsync(ct);
+        return mine.Concat(shared).OrderByDescending(r => r.i.CreatedAt)
+            .Select(r => LibDto(r.i, userId, r.Name)).ToList();
     }
 
     /// The elements must be a JSON array of objects that each have a string id and a string type; anything else is refused,
@@ -75,9 +81,9 @@ public sealed partial class NoteService
         return Ok(LibDto(item, userId, owner));
     }
 
-    public async Task<NoteResult<bool>> DeleteLibraryItemAsync(Guid userId, Guid itemId, CancellationToken ct)
+    public async Task<NoteResult<bool>> DeleteLibraryItemAsync(Guid userId, Guid itemId, CancellationToken ct, bool isAdmin = false)
     {
-        var n = await db.NoteLibraryItems.Where(i => i.Id == itemId && i.OwnerId == userId).ExecuteDeleteAsync(ct);
+        var n = await db.NoteLibraryItems.Where(i => i.Id == itemId && (i.OwnerId == userId || (isAdmin && i.Shared))).ExecuteDeleteAsync(ct);
         return n == 1 ? Ok(true) : Fail<bool>("not_found");
     }
 }

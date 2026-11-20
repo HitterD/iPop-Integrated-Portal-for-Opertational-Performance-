@@ -13,26 +13,43 @@ public partial class Notes
     private List<TidySuggestion> tidySuggestions = [];
     private int tidyCount;
     private Guid? tidyCheckedFor;
+    private CancellationTokenSource? tidyCts;
 
     /// A quiet background check once a page is open, so the button can show how many suggestions there are.
-    private async Task TidyAfterRenderAsync()
+    private Task TidyAfterRenderAsync()
     {
-        if (editor is null || note is null || !CanEdit || view != View.Page || tidyCheckedFor == note.Id) return;
-        tidyCheckedFor = note.Id;
-        await Task.Delay(1200);   // let the first sync land before looking at the content
-        if (editor is null || note is null) return;
-        await RefreshTidyAsync();
-        StateHasChanged();
+        if (editor is null || note is null || !CanEdit || view != View.Page || note.Kind == "board" || tidyCheckedFor == note.Id)
+            return Task.CompletedTask;
+        var id = note.Id;
+        tidyCheckedFor = id;
+        CancelAndDispose(ref tidyCts);
+        var cts = tidyCts = new CancellationTokenSource();
+        _ = RunDelayedTidyAsync(id, cts.Token);
+        return Task.CompletedTask;
+    }
+
+    private async Task RunDelayedTidyAsync(Guid id, CancellationToken token)
+    {
+        try { await Task.Delay(1200, token); }   // let the first sync land before looking at the content
+        catch (OperationCanceledException) { return; }
+        if (token.IsCancellationRequested || disposed || editor is null || note?.Id != id || !CanEdit || view != View.Page || note.Kind == "board") return;
+        await InvokeAsync(async () =>
+        {
+            if (token.IsCancellationRequested || disposed || editor is null || note?.Id != id || !CanEdit) return;
+            await RefreshTidyAsync();
+            if (!disposed) StateHasChanged();
+        });
     }
 
     private async Task RefreshTidyAsync()
     {
-        if (editor is null || note is null) { tidySuggestions = []; tidyCount = 0; return; }
+        if (editor is null || note is null || note.Kind == "board") { tidySuggestions = []; tidyCount = 0; return; }
         try
         {
             tidySuggestions = await editor.InvokeAsync<List<TidySuggestion>>("tidySuggestions", titleDraft) ?? [];
         }
         catch (JSException) { tidySuggestions = []; }
+        catch (JSDisconnectedException) { tidySuggestions = []; }
         tidyCount = tidySuggestions.Count;
     }
 
@@ -44,12 +61,15 @@ public partial class Notes
 
     private async Task ApplyTidyAsync(List<string> rules)
     {
-        if (editor is null || note is null || !CanEdit || rules.Count == 0) return;
+        if (editor is null || note is null || !CanEdit || note.Kind == "board" || rules.Count == 0) return;
+        var id = note.Id;
         var result = await editor.InvokeAsync<TidyResult>("tidyApply", rules, titleDraft);
+        if (disposed || note?.Id != id) return;
         if (!string.IsNullOrWhiteSpace(result?.Title) && string.IsNullOrWhiteSpace(titleDraft))
         {
             titleDraft = result.Title!;
             await PatchAsync(new UpdateNoteMetaRequest(titleDraft, null, null, null, null, null, null));
+            if (disposed || note?.Id != id) return;
         }
         await RefreshTidyAsync();
         pop = tidySuggestions.Count == 0 ? Pop.None : Pop.Tidy;

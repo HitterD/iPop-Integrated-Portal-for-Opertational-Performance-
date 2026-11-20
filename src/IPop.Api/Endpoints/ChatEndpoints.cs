@@ -5,6 +5,7 @@ using IPop.Application.Rbac;
 using IPop.Application.Realtime;
 using IPop.Core.Entities;
 using IPop.Infrastructure.Persistence;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Processing;
@@ -86,7 +87,9 @@ public static class ChatEndpoints
 
         // DELETE /api/chat/rooms/{roomId}/leave
         g.MapDelete("/rooms/{roomId:guid}/leave", async (Guid roomId,
-            HttpContext http, IChatService svc, IChatNotifier notifier, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IChatService svc, IChatNotifier notifier, IPopDbContext db,
+            IHubContext<IPop.Api.Notes.NotesHub> notesHub, IPop.Application.Notes.INoteService noteSvc,
+            IPermissionEvaluator perms, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -102,6 +105,9 @@ public static class ChatEndpoints
                 roomId, "left", leaver?.Name ?? "Unknown", leaver?.Name ?? "Unknown", userId.Value), ct);
             // Every tab of the leaver, not only the one that clicked Leave, stops getting the room's events.
             await notifier.NotifyRemovedAsync(userId.Value, roomId, ct);
+            var sharedNotePage = await db.NoteShares.AsNoTracking().Where(s => s.RoomId == roomId).Select(s => (Guid?)s.PageId).FirstOrDefaultAsync(ct);
+            if (sharedNotePage is { } notePageId)
+                await IPop.Api.Notes.NotesHub.EvictAllPodsAsync(notesHub, noteSvc, notePageId, ct, perms);
 
             return Results.Ok(result);
         });
@@ -935,7 +941,9 @@ public static class ChatEndpoints
 
         // DELETE /api/chat/rooms/{roomId}/members/{userId}
         g.MapDelete("/rooms/{roomId:guid}/members/{memberId:guid}", async (Guid roomId, Guid memberId,
-            HttpContext http, IChatService svc, IChatNotifier notifier, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IChatService svc, IChatNotifier notifier, IPopDbContext db,
+            IHubContext<IPop.Api.Notes.NotesHub> notesHub, IPop.Application.Notes.INoteService noteSvc,
+            IPermissionEvaluator perms, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -957,6 +965,9 @@ public static class ChatEndpoints
             await notifier.NotifyMemberChangeAsync(roomId, new MemberChangeDto(
                 roomId, "removed", actor?.Name ?? "Unknown", target?.Name ?? "Unknown", memberId), ct);
             await notifier.NotifyRemovedAsync(memberId, roomId, ct);
+            var sharedNotePage = await db.NoteShares.AsNoTracking().Where(s => s.RoomId == roomId).Select(s => (Guid?)s.PageId).FirstOrDefaultAsync(ct);
+            if (sharedNotePage is { } notePageId)
+                await IPop.Api.Notes.NotesHub.EvictAllPodsAsync(notesHub, noteSvc, notePageId, ct, perms);
 
             return Results.Ok(result);
         }).RequirePermission("chat.send");

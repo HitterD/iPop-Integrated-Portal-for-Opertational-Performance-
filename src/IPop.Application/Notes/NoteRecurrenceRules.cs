@@ -24,15 +24,29 @@ public static class NoteRecurrenceRules
         return DateTime.SpecifyKind(utcNow, DateTimeKind.Utc).AddHours(7);
     }
 
+    private static readonly IReadOnlySet<string> ValidDays = new HashSet<string>(StringComparer.Ordinal)
+        { "SU", "MO", "TU", "WE", "TH", "FR", "SA" };
+
     /// "daily" | "workdays" | "weekly" (+ days) | "monthly" (+ day of month) → the stored rule, or null when it is not valid.
     public static string? FromChoice(string? kind, IReadOnlyList<string>? days, int? monthDay)
     {
+        if (kind == "weekly")
+        {
+            if (days is not { Count: > 0 and <= 7 }) return null;
+            var cleaned = new List<string>(days.Count);
+            foreach (var raw in days)
+            {
+                if (raw is null) return null;
+                var d = raw.Trim().ToUpperInvariant();
+                if (!ValidDays.Contains(d)) return null;
+                if (!cleaned.Contains(d)) cleaned.Add(d);
+            }
+            return TaskRecurrence.Parse("FREQ=WEEKLY;BYDAY=" + string.Join(',', cleaned))?.ToString();
+        }
         string? rule = kind switch
         {
             "daily" => "FREQ=DAILY",
             "workdays" => "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR",
-            "weekly" when days is { Count: > 0 } => "FREQ=WEEKLY;BYDAY=" + string.Join(',', days.Select(d => d.Trim().ToUpperInvariant())),
-            "weekly" => "FREQ=WEEKLY",
             "monthly" when monthDay is >= 1 and <= 31 => $"FREQ=MONTHLY;BYMONTHDAY={monthDay}",
             _ => null,
         };
@@ -87,9 +101,20 @@ public static class NoteRecurrenceRules
     {
         var name = string.IsNullOrWhiteSpace(templateTitle) ? "Untitled" : templateTitle.Trim();
         var date = day.ToString("d MMM yyyy", System.Globalization.CultureInfo.InvariantCulture);
-        var full = $"{name} — {date}";
-        // keep the date visible when the name is long: the title limit is 200
-        return full.Length <= 200 ? full : name[..(200 - date.Length - 3)] + $" — {date}";
+        var suffix = $" — {date}";
+        var full = name + suffix;
+        // keep the date visible when the name is long (without splitting UTF-16 surrogate pairs): the title limit is 200
+        if (full.Length <= 200) return full;
+        var limit = Math.Max(0, 200 - suffix.Length);
+        var info = new System.Globalization.StringInfo(name);
+        var cut = new System.Text.StringBuilder();
+        for (var i = 0; i < info.LengthInTextElements; i++)
+        {
+            var el = info.SubstringByTextElements(i, 1);
+            if (cut.Length + el.Length > limit) break;
+            cut.Append(el);
+        }
+        return (cut.Length == 0 ? "Untitled" : cut.ToString().TrimEnd()) + suffix;
     }
 
     /// Short, human text for the Repeat dialog ("Every weekday", "Every Monday and Wednesday", "Monthly on the 15th").

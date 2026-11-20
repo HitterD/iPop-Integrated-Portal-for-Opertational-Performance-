@@ -46,27 +46,35 @@ public partial class Notes
             guideHidden = await JS.InvokeAsync<string?>("ipop.prefGet", GuidePref) == "true";
         }
         catch (JsonException) { }
-        if (!Phone.IsPhone) sidebarJs = await module!.InvokeAsync<IJSObjectReference>("sidebar", sideRef, selfRef);
-        if (collapsed.Count > 0 || guideHidden) StateHasChanged();
+        catch (JSException) { }
+        catch (JSDisconnectedException) { return; }
+        if (disposed || Phone.IsPhone || module is null) return;
+        try { sidebarJs = await module.InvokeAsync<IJSObjectReference>("sidebar", sideRef, selfRef); }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { return; }
+        if ((collapsed.Count > 0 || guideHidden) && !disposed) StateHasChanged();
     }
 
     private async Task SidebarAfterRenderAsync()
     {
-        if (placeMenu && module is not null) { placeMenu = false; await module.InvokeVoidAsync("place", menuRef); }
-        if (focusRename) { focusRename = false; try { if (module is not null) await module.InvokeVoidAsync("focusSelect", renameRef); } catch (JSException) { } }
-        if (focusMove) { focusMove = false; try { await moveRef.FocusAsync(); } catch (JSException) { } }
+        if (disposed) return;
+        if (placeMenu && module is not null) { placeMenu = false; await TryJsAsync(() => module.InvokeVoidAsync("place", menuRef).AsTask()); }
+        if (focusRename) { focusRename = false; if (module is not null) await TryJsAsync(() => module.InvokeVoidAsync("focusSelect", renameRef).AsTask()); }
+        if (focusMove) { focusMove = false; await TryJsAsync(() => moveRef.FocusAsync().AsTask()); }
         if (focusTitleFor is { } fid && note?.Id == fid && view == View.Page)
         {
             focusTitleFor = null;
-            try { await titleRef.FocusAsync(); } catch (JSException) { }
+            await TryJsAsync(() => titleRef.FocusAsync().AsTask());
         }
     }
 
     private async Task DisposeSidebarAsync()
     {
-        if (sidebarJs is null) return;
-        await sidebarJs.InvokeVoidAsync("dispose");
-        await sidebarJs.DisposeAsync();
+        var js = sidebarJs; sidebarJs = null;
+        if (js is null) return;
+        try { await js.InvokeVoidAsync("dispose"); await js.DisposeAsync(); }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
     }
 
     // ── Ordering (mirrors NoteService.Arrange) ───────────────────────────────
@@ -91,7 +99,7 @@ public partial class Notes
     private async Task ToggleSection(string key)
     {
         if (!collapsed.Remove(key)) collapsed.Add(key);
-        await JS.InvokeVoidAsync("ipop.prefSet", SectionsPref, JsonSerializer.Serialize(collapsed));
+        await TryJsAsync(() => JS.InvokeVoidAsync("ipop.prefSet", SectionsPref, JsonSerializer.Serialize(collapsed)).AsTask());
     }
 
     /// Hidden by choice, or automatically once every step is done; the Notes home still lists it.
@@ -101,7 +109,7 @@ public partial class Notes
     {
         menuFor = null;
         guideHidden = hide;
-        await JS.InvokeVoidAsync("ipop.prefSet", GuidePref, hide ? "true" : "false");
+        await TryJsAsync(() => JS.InvokeVoidAsync("ipop.prefSet", GuidePref, hide ? "true" : "false").AsTask());
         if (hide) Toasts.Show("“Start here” hidden — you can still open it from the Notes home", ToastKind.Info);
     }
 
@@ -112,20 +120,27 @@ public partial class Notes
     [JSInvokable]
     public async Task OnNewBoardFromTemplate(string title)
     {
-        if (creating) return;
+        if (creating || !CanWriteNotes) return;
         creating = true;
         try
         {
-            var parent = note?.ParentId;
+            var candidate = note?.ParentId;
+            var parent = candidate is { } pid && sidebar?.Pages.FirstOrDefault(p => p.Id == pid) is { Access: "owner" or "edit", IsLocked: false } ? pid : (Guid?)null;
             var name = string.IsNullOrWhiteSpace(title) ? "Whiteboard" : title.Trim()[..Math.Min(100, title.Trim().Length)];
             var res = await Auth.SendAsync(HttpMethod.Post, "/api/notes", new CreateNoteRequest(parent, name, null, null, null, null, "board"));
-            if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't create the board", ToastKind.Error); return; }
+            if (!res.IsSuccessStatusCode)
+            {
+                await TryJsAsync(() => JS.InvokeVoidAsync("sessionStorage.removeItem", "ipop.wb.pendingTemplate").AsTask());
+                Toasts.Show("Couldn't create the board", ToastKind.Error);
+                return;
+            }
             var created = await res.Content.ReadFromJsonAsync<NotePageDto>(Json);
-            if (created is null) return;
+            if (created is null || disposed) return;
+            if (parent is { } ep) expanded.Add(ep);
             await LoadSidebarAsync();
-            Nav.NavigateTo($"/notes/{created.Id}");
+            if (!disposed) Nav.NavigateTo($"/notes/{created.Id}");
         }
-        finally { creating = false; await InvokeAsync(StateHasChanged); }
+        finally { creating = false; if (!disposed) await InvokeAsync(StateHasChanged); }
     }
 
     /// One click: a blank page (under <paramref name="parent"/>), opened with the title focused.
@@ -134,7 +149,12 @@ public partial class Notes
     /// kind: "page" (a document) or "board" (a whiteboard). A new board is titled "Whiteboard" so it never shows up as Untitled.
     private async Task CreateBlank(Guid? parent, string kind)
     {
-        if (creating) return;
+        if (creating || !CanWriteNotes) return;
+        if (parent is { } pid && sidebar?.Pages.FirstOrDefault(p => p.Id == pid) is { IsLocked: true })
+        {
+            Toasts.Show("Unlock the parent page before adding sub-pages", ToastKind.Info);
+            return;
+        }
         creating = true; newMenuOpen = false; menuFor = null; pop = Pop.None;
         try
         {
@@ -142,9 +162,10 @@ public partial class Notes
                 new CreateNoteRequest(parent, kind == "board" ? "Whiteboard" : "", null, null, null, null, kind));
             if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't create the page", ToastKind.Error); return; }
             var created = await res.Content.ReadFromJsonAsync<NotePageDto>(Json);
-            if (created is null) return;
+            if (created is null || disposed) return;
             if (parent is { } p) expanded.Add(p);
             await LoadSidebarAsync();
+            if (disposed) return;
             sideOpen = false;
             focusTitleFor = created.Id;
             Nav.NavigateTo($"/notes/{created.Id}");
@@ -250,12 +271,15 @@ public partial class Notes
     private async Task Duplicate(NoteListItemDto p)
     {
         menuFor = null;
+        if (!CanWriteNotes || p.IsGuide) return;
         var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notes/{p.Id}/duplicate");
+        if (disposed) return;
         if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't duplicate the page", ToastKind.Error); return; }
         var copy = await res.Content.ReadFromJsonAsync<NotePageDto>(Json);
-        if (copy is null) return;
+        if (disposed || copy is null) return;
         if (copy.ParentId is { } parent) expanded.Add(parent);
         await LoadSidebarAsync();
+        if (disposed) return;
         Toasts.Show($"Duplicated as “{DisplayTitle(copy.Title)}”", ToastKind.Success);
         Open(copy.Id);
     }
@@ -264,14 +288,17 @@ public partial class Notes
     {
         menuFor = null;
         if (module is null) return;
-        var ok = await module.InvokeAsync<bool>("copyText", Nav.ToAbsoluteUri($"/notes/{id}").ToString());
+        var ok = false;
+        try { ok = await module.InvokeAsync<bool>("copyText", Nav.ToAbsoluteUri($"/notes/{id}").ToString()); }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { return; }
         Toasts.Show(ok ? "Link copied — only people with access can open it" : "Couldn't copy the link", ok ? ToastKind.Success : ToastKind.Error);
     }
 
     private async Task OpenInNewTab(Guid id)
     {
         menuFor = null;
-        if (module is not null) await module.InvokeVoidAsync("openTab", Nav.ToAbsoluteUri($"/notes/{id}").ToString());
+        if (module is not null) await TryJsAsync(() => module.InvokeVoidAsync("openTab", Nav.ToAbsoluteUri($"/notes/{id}").ToString()).AsTask());
     }
 
     // ── Rename ───────────────────────────────────────────────────────────────
@@ -279,7 +306,7 @@ public partial class Notes
     private void StartRename(NoteListItemDto p)
     {
         menuFor = null;
-        if (p.Access is not ("owner" or "edit") || p.IsGuide) return;
+        if (!CanWriteNotes || p.Access is not ("owner" or "edit") || p.IsGuide || p.IsLocked) return;
         renamingId = p.Id;
         renameDraft = p.Title;
         focusRename = true;
@@ -297,10 +324,11 @@ public partial class Notes
         renamingId = null;
         var old = sidebar?.Pages.FirstOrDefault(p => p.Id == id);
         var title = renameDraft.Trim();
-        if (old is null || title == old.Title.Trim()) return;
+        if (!CanWriteNotes || old is null || old.IsLocked || title == old.Title.Trim()) return;
         // Show it right away; the PATCH and the live refresh confirm it.
         sidebar = sidebar! with { Pages = sidebar.Pages.Select(p => p.Id == id ? p with { Title = title } : p).ToList() };
         var res = await Auth.SendAsync(HttpMethod.Patch, $"/api/notes/{id}", new UpdateNoteMetaRequest(title, null, null, null, null, null, null));
+        if (disposed) return;
         if (!res.IsSuccessStatusCode) Toasts.Show("Couldn't rename the page", ToastKind.Error);
         else if (note?.Id == id && await res.Content.ReadFromJsonAsync<NotePageDto>(Json) is { } updated)
         {
@@ -315,6 +343,7 @@ public partial class Notes
     private void OpenMoveDialog(NoteListItemDto p)
     {
         menuFor = null;
+        if (!CanWriteNotes || p.IsLocked || p.IsGuide) return;
         moveFor = p; moveQ = "";
         focusMove = true;
     }
@@ -332,7 +361,7 @@ public partial class Notes
         }
         var q = moveQ.Trim();
         return sidebar.Pages
-            .Where(p => p.Access is "owner" or "edit" && !below.Contains(p.Id) && p.Id != mv.ParentId)
+            .Where(p => p.Access is "owner" or "edit" && !p.IsGuide && !p.IsLocked && !below.Contains(p.Id) && p.Id != mv.ParentId)
             .Where(p => q.Length == 0 || DisplayTitle(p.Title).Contains(q, StringComparison.CurrentCultureIgnoreCase))
             .OrderByDescending(p => p.IsMine).ThenBy(p => DisplayTitle(p.Title), StringComparer.CurrentCultureIgnoreCase)
             .Take(50).ToList();
@@ -348,7 +377,9 @@ public partial class Notes
     [JSInvokable]
     public async Task OnRowDrop(string dragId, string? targetId, string zone)
     {
-        if (sidebar is null || !Guid.TryParse(dragId, out var id) || sidebar.Pages.FirstOrDefault(p => p.Id == id) is not { } page) return;
+        if (sidebar is null || !CanWriteNotes || !Guid.TryParse(dragId, out var id) || sidebar.Pages.FirstOrDefault(p => p.Id == id) is not { } page) return;
+        if (page.Access is not ("owner" or "edit") || page.IsGuide) return;
+        if (page.IsLocked) { Toasts.Show("Unlock this page first", ToastKind.Info); return; }
         if (zone == "trash") { await TrashById(id); StateHasChanged(); return; }
         if (!Guid.TryParse(targetId, out var tid) || sidebar.Pages.FirstOrDefault(p => p.Id == tid) is not { } target) return;
 
@@ -421,19 +452,22 @@ public partial class Notes
     private async Task TrashById(Guid id)
     {
         menuFor = null; pop = Pop.None;
+        if (!CanWriteNotes) return;
         var page = sidebar?.Pages.FirstOrDefault(p => p.Id == id);
+        if (page?.IsLocked == true || (note?.Id == id && IsLocked)) { Toasts.Show("Unlock this page before moving it to Trash", ToastKind.Info); return; }
         var title = DisplayTitle(page?.Title ?? (note?.Id == id ? note.Title : null));
         var wasOpen = note is { } n && (n.Id == id || n.Breadcrumb.Any(c => c.Id == id));
         var openId = note?.Id;
         var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/notes/{id}");
+        if (disposed) return;
         if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't delete the page", ToastKind.Error); return; }
         await LeaveRowAsync(id);
         await LoadSidebarAsync();
+        if (disposed) return;
+        var parent = page?.ParentId ?? (note?.Id == id ? note.ParentId : null);
+        var landedOn = parent is { } pid && sidebar?.Pages.Any(x => x.Id == pid) == true ? pid : (Guid?)null;
         if (wasOpen)
-        {
-            var parent = page?.ParentId ?? (note?.Id == id ? note.ParentId : null);
-            Nav.NavigateTo(parent is { } pid && sidebar?.Pages.Any(x => x.Id == pid) == true ? $"/notes/{pid}" : "/notes");
-        }
+            Nav.NavigateTo(landedOn is { } targetId ? $"/notes/{targetId}" : "/notes");
         else await RefreshNoteAsync();
 
         Toasts.ShowUndo($"“{title}” moved to Trash", async () =>
@@ -442,11 +476,13 @@ public partial class Notes
             if (!r.IsSuccessStatusCode) { Toasts.Show("Couldn't restore the page", ToastKind.Error); return; }
             await InvokeAsync(async () =>
             {
+                if (disposed) return;
                 await LoadSidebarAsync();
+                if (disposed) return;
                 if (view == View.Trash) await LoadTrashAsync();
-                if (wasOpen && openId is { } back && Id is null) Nav.NavigateTo($"/notes/{back}");
+                if (wasOpen && openId is { } back && Id == landedOn) Nav.NavigateTo($"/notes/{back}");
                 else await RefreshNoteAsync();
-                StateHasChanged();
+                if (!disposed) StateHasChanged();
             });
         }, ms: 6000);
     }

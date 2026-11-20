@@ -59,7 +59,9 @@ public record NoteListItemDto(Guid Id, Guid? ParentId, string Title, string? Emo
     /// Cover for the list cards: a gradient key, or a photo (attachment id) that wins over it.
     string? Cover = null, Guid? CoverImageId = null,
     /// Whiteboards: the saved picture of the board (attachment id) and when it was taken.
-    Guid? ThumbnailId = null, DateTime? ThumbnailAt = null, string? OwnerNik = null, DateTime? CreatedAt = null);
+    Guid? ThumbnailId = null, DateTime? ThumbnailAt = null, string? OwnerNik = null, DateTime? CreatedAt = null, bool IsLocked = false);
+
+public record NoteLinkSummaryDto(Guid Id, string Title, string? Emoji);
 
 public record NoteSidebarDto(IReadOnlyList<NoteListItemDto> Pages, IReadOnlyList<Guid> Recent, int TrashCount = 0);
 
@@ -213,6 +215,8 @@ public interface INoteService
     Task<IReadOnlyList<NoteListItemDto>> GetTrashAsync(Guid userId, CancellationToken ct);
 
     Task<NoteResult<NotePageDto>> GetPageAsync(Guid userId, Guid pageId, CancellationToken ct);
+    /// Lightweight read-only summary (title/emoji) for internal link previews without recording visits or views.
+    Task<NoteResult<NoteLinkSummaryDto>> GetLinkSummaryAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task<NoteResult<NotePageDto>> CreateAsync(Guid userId, CreateNoteRequest req, CancellationToken ct);
     Task<NoteResult<NotePageDto>> UpdateMetaAsync(Guid userId, Guid pageId, UpdateNoteMetaRequest req, CancellationToken ct);
     /// Lock or unlock a page. Needs edit access; a locked page refuses every change until it is unlocked.
@@ -229,6 +233,7 @@ public interface INoteService
     Task<NoteResult<bool>> TrashAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task<NoteResult<bool>> RestoreAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task<NoteResult<bool>> PurgeAsync(Guid userId, Guid pageId, CancellationToken ct);
+    Task<NoteResult<IReadOnlyList<Guid>>> PurgeWithOrphansAsync(Guid userId, Guid pageId, CancellationToken ct);
 
     Task<NoteResult<NoteDocDto>> GetDocAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task<NoteResult<long>> AppendUpdateAsync(Guid userId, Guid pageId, byte[] update, CancellationToken ct);
@@ -252,7 +257,7 @@ public interface INoteService
     Task<IReadOnlyList<NoteLibraryItemDto>> GetLibraryAsync(Guid userId, CancellationToken ct);
     Task<NoteResult<NoteLibraryItemDto>> SaveLibraryItemAsync(Guid userId, SaveLibraryItemRequest req, CancellationToken ct);
     Task<NoteResult<NoteLibraryItemDto>> UpdateLibraryItemAsync(Guid userId, Guid itemId, UpdateLibraryItemRequest req, CancellationToken ct);
-    Task<NoteResult<bool>> DeleteLibraryItemAsync(Guid userId, Guid itemId, CancellationToken ct);
+    Task<NoteResult<bool>> DeleteLibraryItemAsync(Guid userId, Guid itemId, CancellationToken ct, bool isAdmin = false);
 
     /// Whiteboard templates: mine + every shared one (Team templates).
     Task<IReadOnlyList<NoteBoardTemplateDto>> GetBoardTemplatesAsync(Guid userId, CancellationToken ct);

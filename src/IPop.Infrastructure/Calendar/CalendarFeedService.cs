@@ -170,20 +170,46 @@ public static class CalendarFeedService
 
         // 8) To-dos in Notes that are mine (a person and a due date). Only while I can still open the note; they are all-day items that
         //    open the note. Never part of anyone else's free/busy: they are reminders, not time blocked.
-        var dueFrom = DateOnly.FromDateTime(dayFrom);
-        var dueTo = DateOnly.FromDateTime(dayTo);
-        var todos = await db.NoteTodoDues.AsNoTracking()
-            .Where(x => x.AssigneeId == userId && !x.Done && x.Due >= dueFrom && x.Due < dueTo)
-            .OrderBy(x => x.Due).Take(300)
-            .Select(x => new { x.PageId, x.ItemKey, x.Due, x.Text }).ToListAsync(ct);
-        if (todos.Count > 0)
+        if (access.Notes)
         {
-            var openable = await IPop.Infrastructure.Notes.NoteVisibility.OpenableAsync(db, userId, todos.Select(t => t.PageId).Distinct().ToList(), ct);
-            var titles = await db.NotePages.AsNoTracking().Where(p => openable.Contains(p.Id)).Select(p => new { p.Id, p.Title }).ToDictionaryAsync(p => p.Id, p => p.Title, ct);
-            items.AddRange(todos.Where(t => openable.Contains(t.PageId)).Select(t =>
+            var dueFrom = DateOnly.FromDateTime(dayFrom);
+            var dueTo = DateOnly.FromDateTime(dayTo);
+            var todos = new List<(Guid PageId, string ItemKey, DateOnly Due, string Text)>();
+            var pageTitles = new Dictionary<Guid, string>();
+            const int batchSize = 300;
+            for (var skip = 0; todos.Count < batchSize && skip < batchSize * 10; skip += batchSize)
+            {
+                var batch = await db.NoteTodoDues.AsNoTracking()
+                    .Where(x => x.AssigneeId == userId && !x.Done && x.Due >= dueFrom && x.Due < dueTo
+                        && db.NotePages.Any(p => p.Id == x.PageId && p.DeletedAt == null))
+                    .OrderBy(x => x.Due).ThenBy(x => x.PageId).ThenBy(x => x.ItemKey)
+                    .Skip(skip).Take(batchSize)
+                    .Select(x => new { x.PageId, x.ItemKey, x.Due, x.Text }).ToListAsync(ct);
+                if (batch.Count == 0) break;
+
+                var openable = await IPop.Infrastructure.Notes.NoteVisibility.OpenableAsync(db, userId, batch.Select(t => t.PageId).Distinct().ToList(), ct);
+                if (openable.Count > 0)
+                {
+                    var missing = openable.Where(id => !pageTitles.ContainsKey(id)).ToList();
+                    if (missing.Count > 0)
+                    {
+                        var fetched = await db.NotePages.AsNoTracking().Where(p => missing.Contains(p.Id))
+                            .Select(p => new { p.Id, p.Title }).ToListAsync(ct);
+                        foreach (var f in fetched) pageTitles[f.Id] = f.Title;
+                    }
+                    foreach (var t in batch)
+                    {
+                        if (!openable.Contains(t.PageId)) continue;
+                        todos.Add((t.PageId, t.ItemKey, t.Due, t.Text));
+                        if (todos.Count >= batchSize) break;
+                    }
+                }
+                if (batch.Count < batchSize) break;
+            }
+            items.AddRange(todos.Select(t =>
             {
                 var day = DateTime.SpecifyKind(t.Due.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
-                var page = titles.GetValueOrDefault(t.PageId);
+                var page = pageTitles.GetValueOrDefault(t.PageId);
                 return new CalendarFeedItem($"note:{t.PageId}:{t.ItemKey}", "notes", "note-todo", string.IsNullOrWhiteSpace(t.Text) ? "To-do" : t.Text,
                     day, day.AddDays(1), true, $"/notes/{t.PageId}", string.IsNullOrWhiteSpace(page) ? "To-do in Notes" : $"To-do in {page}",
                     null, null, null, false, null, null);
