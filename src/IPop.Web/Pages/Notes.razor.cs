@@ -23,7 +23,7 @@ public partial class Notes
     [Parameter] public Guid? Id { get; set; }
     [SupplyParameterFromQuery(Name = "b")] public string? BlockId { get; set; }
 
-    internal const string EditorModulePath = "./js/notes/notes-editor.js?v=20261119-r4";
+    internal const string EditorModulePath = "./js/notes/notes-editor.js?v=20261120-h1";
     private const string EditorModule = EditorModulePath;
 
     private enum View { Home, Page, New, Trash }

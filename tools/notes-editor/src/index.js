@@ -26,6 +26,7 @@ import { NotePlaceholder } from './placeholder.js';
 import { Symbols } from './symbols.js';
 import { ListNumbering } from './lists.js';
 import { LineBreakMarkers } from './linebreak-markers.js';
+import { handleClearsMarker } from './handle-position.js';
 import { moveBlockTr } from './block-menu.js';
 import { createMarginLayout } from './margin-comments.js';
 import { sliceText, cleanOfficeHtml, preferFiles } from './paste.js';
@@ -643,6 +644,7 @@ export async function mount(el, opts) {
   // ── Editor ───────────────────────────────────────────────────────────────
   let editor = null;
   let handlePos = -1;
+  let handleNodeType = null;   // the block the drag handle sits next to (a list item moves it left of its marker)
   // Pictures in and out of the clipboard (clip-images.js): pasted web pictures are saved into the page.
   const pics = pictureClipboard(() => editor, {
     loadBlob: id => loadBlob(host, id),
@@ -704,7 +706,9 @@ export async function mount(el, opts) {
         // Inside lists, quotes, callouts, toggles and columns every row (also a nested list item) gets its own handle, not just the
         // outermost block; plain paragraphs and headings keep the top-level handle. Near the left edge the whole list is grabbed.
         nested: { allowedContainers: ['bulletList', 'orderedList', 'taskList', 'blockquote', 'callout', 'detailsContent', 'column'], edgeDetection: 'left' },
-        onNodeChange: ({ pos }) => { handlePos = pos ?? -1; },
+        // A list item's number / bullet / checkbox is drawn LEFT of the item box: put the handle left of the marker, never on it.
+        computePositionConfig: { placement: 'left-start', middleware: [handleClearsMarker(() => ({ type: handleNodeType, el: handlePos >= 0 ? editor?.view.nodeDOM(handlePos) : null }))] },
+        onNodeChange: ({ node, pos }) => { handlePos = pos ?? -1; handleNodeType = node?.type.name ?? null; },
       })] : []),
     ],
     editorProps: {
