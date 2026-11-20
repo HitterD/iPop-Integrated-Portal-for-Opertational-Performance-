@@ -191,6 +191,11 @@ public record NoteSearchPageDto(IReadOnlyList<NoteSearchRowDto> Items, int Total
 /// Chat card payload, stored as "[note]" + json in ChatMessage.Content.
 public record NoteImageDto(Guid Id, string FileName, long Size);
 
+/// A file in a page, for its card and the viewer. Kind: pdf | word | slides | sheet | image | video | audio | text | none.
+/// Pages counts pages (Unit "pages") or sheets (Unit "sheets"); null when unknown. ThumbnailId is a picture of page 1 (an image
+/// is its own thumbnail), PdfId the file converted to PDF (Word/PowerPoint). Previewable = the viewer can show it.
+public record NoteFilePreviewDto(string Kind, int? Pages, string? Unit, Guid? ThumbnailId, Guid? PdfId, bool Previewable, string? Error);
+
 public record NoteCardDto(Guid Id, string Title, string? Emoji, string? Cover, string Accent, string Level, string? Excerpt,
     Guid? CoverImageId = null, int CoverPosY = 50);
 

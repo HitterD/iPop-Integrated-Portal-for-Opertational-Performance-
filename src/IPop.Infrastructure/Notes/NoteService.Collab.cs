@@ -645,6 +645,7 @@ public sealed partial class NoteService
                           join a in db.Attachments.AsNoTracking() on na.AttachmentId equals a.Id
                           where na.PageId == pageId && a.DeletedAt == null && RasterImageTypes.Contains(a.ContentType)
                               && (thumbId == null || a.Id != thumbId)
+                              && !NoteFilePreviewService.DerivedIds(db).Contains(a.Id)
                           orderby a.CreatedAt descending
                           select new NoteImageDto(a.Id, a.FileName, a.Size)).Take(60).ToListAsync(ct);
         return Ok<IReadOnlyList<NoteImageDto>>(rows);

@@ -486,6 +486,10 @@
     }
 </div>
 
+@* File card → Preview: the shared viewer, ← → through the page's files. *@
+<IPop.Web.Components.AttachmentViewer Attachment="viewerFile" Siblings="viewerFiles" ConvertedPdf="ViewerPdf"
+                                      OnClose="CloseFileViewer" OnNavigate="a => viewerFile = a" />
+
 @* ── Popovers ─────────────────────────────────────────────────────────────── *@
 @if (pop != Pop.None && note is not null)
 {

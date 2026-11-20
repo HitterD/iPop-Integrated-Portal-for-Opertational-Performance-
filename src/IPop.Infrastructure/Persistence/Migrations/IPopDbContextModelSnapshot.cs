@@ -3088,6 +3088,40 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("NoteFavorites");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.NoteFilePreview", b =>
+                {
+                    b.Property<Guid>("AttachmentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int?>("Pages")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("PdfAttachmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ThumbAttachmentId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("AttachmentId");
+
+                    b.HasIndex("ThumbAttachmentId");
+
+                    b.ToTable("NoteFilePreviews");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.NoteLibraryItem", b =>
                 {
                     b.Property<Guid>("Id")

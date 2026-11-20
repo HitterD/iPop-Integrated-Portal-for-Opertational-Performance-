@@ -94,6 +94,8 @@ public sealed class NotesTrashWorker(IServiceScopeFactory scopes, ILogger<NotesT
                         .ExecuteUpdateAsync(s => s.SetProperty(a => a.DeletedAt, DateTime.UtcNow), ct);   // keep the bytes
                 else if (store is not null)
                     await store.DeleteAsync(id, ct);
+                // a file card's remembered preview goes with its file (its picture/PDF are linked to the same pages, so they are orphans too)
+                await db.NoteFilePreviews.Where(p => p.AttachmentId == id).ExecuteDeleteAsync(ct);
                 removed++;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

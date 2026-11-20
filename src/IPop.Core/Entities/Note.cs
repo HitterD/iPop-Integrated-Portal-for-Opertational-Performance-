@@ -253,6 +253,26 @@ public class NoteAttachment
     public Guid PageId { get; set; }
 }
 
+/// Preview of a file in a page (Notes "file card"), made once on first view and reused: the page count, a picture of
+/// page 1 and, for Word/PowerPoint, the file converted to PDF. The derived files are ordinary notes attachments linked to
+/// the page(s) the file is in, so they follow page access and are purged with the page like any other file.
+public class NoteFilePreview
+{
+    /// The attached file this preview is for.
+    public Guid AttachmentId { get; set; }
+    /// pdf | word | slides | sheet | image | video | audio | text | none
+    public required string Kind { get; set; }
+    /// Pages (PDF/Word/PowerPoint) or sheets (Excel); null when unknown or not counted (too big, failed).
+    public int? Pages { get; set; }
+    /// Word/PowerPoint converted to PDF (null for other kinds or when the conversion failed).
+    public Guid? PdfAttachmentId { get; set; }
+    /// Picture of page 1 (for an image: the image itself).
+    public Guid? ThumbAttachmentId { get; set; }
+    /// Why the preview could not be made ("conversion_failed", "too_large"); null when it worked.
+    public string? Error { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
 /// "Repeat…" on a page: a new copy of the page is made on a schedule. The page is the template: each run copies its content as it is at
 /// that moment into a new page next to it (same parent, so the same people can open it), titled "Name — 24 Nov 2026", owned by whoever set
 /// the repeat up. At most one page per rule per local day (<see cref="LastCreatedFor"/>).

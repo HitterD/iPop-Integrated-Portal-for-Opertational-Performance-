@@ -173,7 +173,19 @@ export async function mount(el, opts) {
   const palette = ['#0A84FF', '#5856D6', '#AF52DE', '#FF2D55', '#FF9500', '#34C759', '#30B0C7', '#A2845E'];
   // who has a profile photo (nik -> photo id), read once for org charts
   let photoMapP = null;
-  const photoMap = () => (photoMapP ||= api('/api/photos').then(r => (r.ok ? r.json() : {})).catch(() => ({}))); 
+  const photoMap = () => (photoMapP ||= api('/api/photos').then(r => (r.ok ? r.json() : {})).catch(() => ({})));
+  // File cards: one preview-info request per file per page view (the server converts on the first one and remembers it).
+  const fileInfos = new Map(), fileInfoDone = new Map();
+  const filePreviewInfo = id => {
+    if (!fileInfos.has(id)) {
+      const p = api(`/api/notes/${pageId}/files/${id}/preview-info`).then(r => (r.ok ? r.json() : null)).catch(() => null);
+      fileInfos.set(id, p);
+      p.then(v => { if (v) fileInfoDone.set(id, v); else fileInfos.delete(id); });   // a failure (NAS away) is asked again next time
+    }
+    return fileInfos.get(id);
+  };
+  // What is known so far, for the viewer: { fileId: pdfId } of files it shows through their converted PDF.
+  const filePreviews = () => Object.fromEntries([...fileInfoDone].filter(([, v]) => v.pdfId).map(([id, v]) => [id, v.pdfId]));
   const host = {
     drawDoc: () => ydoc,
     drawAwareness: () => awareness,
@@ -398,6 +410,10 @@ export async function mount(el, opts) {
     setAccent: k => { accent = k; call('SetAccent', k); accentListeners.forEach(f => f()); },
     onAccent: f => accentListeners.add(f),
     pageInfo: id => pages.get(id),
+    // File cards: what the server knows about a file in this page (kind, pages, picture of page 1, PDF), asked once per file.
+    filePreview: id => filePreviewInfo(id),
+    // Preview → the full-screen viewer (Blazor), with every file of this page for ← →.
+    previewFile: (id, files) => { document.activeElement?.blur?.(); call('OnPreviewFile', id, files, filePreviews()); },
     openPage: id => call('OnOpenPage', id),
     toast: m => call('OnToast', m),
     canComment: () => canComment,

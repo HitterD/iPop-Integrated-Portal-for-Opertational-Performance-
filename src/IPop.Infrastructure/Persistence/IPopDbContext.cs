@@ -146,6 +146,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<NoteLibraryItem> NoteLibraryItems => Set<NoteLibraryItem>();
     public DbSet<NoteBoardTemplate> NoteBoardTemplates => Set<NoteBoardTemplate>();
     public DbSet<NoteAttachment> NoteAttachments => Set<NoteAttachment>();
+    public DbSet<NoteFilePreview> NoteFilePreviews => Set<NoteFilePreview>();
 
     // News & Memos entities (single table with type enum: news/announcement/memo)
     public DbSet<NewsPost> NewsPosts => Set<NewsPost>();
@@ -1523,6 +1524,13 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasKey(x => new { x.AttachmentId, x.PageId }); // one file can belong to several pages (pasted across pages)
             e.HasIndex(x => x.PageId);
             e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.PageId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NoteFilePreview>(e =>
+        {
+            e.HasKey(x => x.AttachmentId);   // one preview per file: a second viewer opening it at the same time cannot make another
+            e.Property(x => x.Kind).HasMaxLength(16);
+            e.Property(x => x.Error).HasMaxLength(64);
+            e.HasIndex(x => x.ThumbAttachmentId);
         });
         b.Entity<SearchHistory>(e =>
         {

@@ -70,4 +70,22 @@ public class PdfService(IDevExpressDocumentFactory factory) : IPdfService
             return processor.GetText() ?? string.Empty;
         }, ct);
     }
+
+    public Task<PdfFirstPage> RenderFirstPageAsync(Stream pdfStream, int longestEdge, CancellationToken ct = default)
+    {
+        return Task.Run(() =>
+        {
+            using var processor = factory.CreatePdfProcessor();
+            if (pdfStream.CanSeek) pdfStream.Position = 0;
+            processor.LoadDocument(pdfStream, true);
+            var pages = processor.Document?.Pages.Count ?? 0;
+            if (pages == 0) return new PdfFirstPage(0, null);
+            ct.ThrowIfCancellationRequested();
+            // DXBitmap draws through the Skia engine (DocumentServiceExtensions), so this also works in the Linux containers.
+            using var bmp = processor.CreateDXBitmap(1, longestEdge);
+            using var ms = new MemoryStream();
+            bmp.Save(ms, DevExpress.Drawing.DXImageFormat.Jpeg);
+            return new PdfFirstPage(pages, ms.Length > 0 ? ms.ToArray() : null);
+        }, ct);
+    }
 }

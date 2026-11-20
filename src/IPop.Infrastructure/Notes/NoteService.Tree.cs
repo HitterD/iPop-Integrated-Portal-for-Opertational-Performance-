@@ -123,7 +123,8 @@ public sealed partial class NoteService
 
         // Clone attachment links so images/files in the duplicate keep working even if the original is unshared or purged (exclude board thumbnail).
         var srcAttIds = await db.NoteAttachments.AsNoTracking()
-            .Where(a => a.PageId == pageId && (src.ThumbnailId == null || a.AttachmentId != src.ThumbnailId))
+            .Where(a => a.PageId == pageId && (src.ThumbnailId == null || a.AttachmentId != src.ThumbnailId)
+                && !NoteFilePreviewService.DerivedIds(db).Contains(a.AttachmentId))   // file previews are made again for the copy
             .Select(a => a.AttachmentId).ToListAsync(ct);
         var srcAtts = srcAttIds.Count == 0 ? []
             : await db.Attachments.AsNoTracking().Where(a => srcAttIds.Contains(a.Id) && a.DeletedAt == null).ToListAsync(ct);

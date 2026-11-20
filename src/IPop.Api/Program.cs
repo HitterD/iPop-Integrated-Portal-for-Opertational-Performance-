@@ -383,6 +383,7 @@ builder.Services.AddScoped<IAttachmentAccessPolicy, IPop.Api.Endpoints.RemoteMed
 // Notes module (Notion-like pages, Yjs co-editing over /hubs/notes)
 builder.Services.AddScoped<IPop.Application.Notes.INoteService, IPop.Infrastructure.Notes.NoteService>();
 builder.Services.AddScoped<IAttachmentAccessPolicy, IPop.Infrastructure.Notes.NotesAttachmentPolicy>();
+builder.Services.AddScoped<IPop.Infrastructure.Notes.NoteFilePreviewService>();
 
 // ICT tickets via iDesk (IDesk:ClientSecret >= 32 chars, else fail closed: create 503, webhook 503).
 builder.Services.AddSingleton(IPop.Infrastructure.Tickets.IdeskOptions.Bind(builder.Configuration));

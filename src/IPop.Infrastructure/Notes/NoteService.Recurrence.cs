@@ -98,7 +98,8 @@ public sealed partial class NoteService
 
         // Files inside the template are cloned for the new page, like Duplicate does (exclude thumbnail).
         var srcAttIds = await db.NoteAttachments.AsNoTracking()
-            .Where(a => a.PageId == templatePageId && (src.ThumbnailId == null || a.AttachmentId != src.ThumbnailId))
+            .Where(a => a.PageId == templatePageId && (src.ThumbnailId == null || a.AttachmentId != src.ThumbnailId)
+                && !NoteFilePreviewService.DerivedIds(db).Contains(a.AttachmentId))   // file previews are made again for the copy
             .Select(a => a.AttachmentId).ToListAsync(ct);
         var srcAtts = srcAttIds.Count == 0 ? [] : await db.Attachments.AsNoTracking().Where(a => srcAttIds.Contains(a.Id) && a.DeletedAt == null).ToListAsync(ct);
         var remap = new List<(byte[] OldBytes, byte[] NewBytes)>(srcAtts.Count);

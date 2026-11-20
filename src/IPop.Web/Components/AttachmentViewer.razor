@@ -10,7 +10,7 @@
 @if (Attachment is not null)
 {
     var att = Attachment;
-    var kind = ChatAttachments.Kind(att);
+    var kind = KindOf(att);
 
     <div class="att-viewer" role="dialog" aria-modal="true" aria-label="@att.FileName">
         <div class="av-backdrop" @onclick="RequestClose"></div>
@@ -141,6 +141,17 @@
     /// Raised when the user navigates to a sibling so the parent can keep its own selection in sync.
     [Parameter] public EventCallback<AttachmentDto> OnNavigate { get; set; }
 
+    /// Optional: a server-made PDF of a file the browser cannot draw (Word .doc/.rtf/.odt, PowerPoint .pptx). When it returns an
+    /// attachment id (already registered with the shared store), the file is shown as that PDF; Download still saves the original.
+    /// Null (Chat, Projects) keeps the "No in-browser preview" card.
+    [Parameter] public Func<AttachmentDto, Guid?>? ConvertedPdf { get; set; }
+
+    private Guid? ConvertedPdfOf(AttachmentDto att) =>
+        ConvertedPdf is not null && ChatAttachments.Kind(att) is AttachmentKind.LegacyDoc or AttachmentKind.Slides ? ConvertedPdf(att) : null;
+
+    /// What the viewer draws: a file with a converted PDF is drawn as a PDF.
+    private AttachmentKind KindOf(AttachmentDto att) => ConvertedPdfOf(att) is not null ? AttachmentKind.Pdf : ChatAttachments.Kind(att);
+
     private ElementReference imageRef;
     private DotNetObjectReference<AttachmentViewer>? selfRef;
 
@@ -184,8 +195,9 @@
 
     private async Task LoadAsync(AttachmentDto att)
     {
-        var kind = ChatAttachments.Kind(att);
+        var kind = KindOf(att);
         var id = att.Id;
+        var bytesId = ConvertedPdfOf(att) ?? id;
 
         try
         {
@@ -222,7 +234,7 @@
                     break;
 
                 default:
-                    var url = await Att.GetAsync(id, thumb: false);
+                    var url = await Att.GetAsync(bytesId, thumb: false);
                     if (loadedId != id) return;
                     blobUrl = url;
                     if (blobUrl is null) error = "This file could not be loaded.";
@@ -262,7 +274,7 @@
             if (Attachment?.Id != att.Id) return;
         }
 
-        var kind = ChatAttachments.Kind(att);
+        var kind = KindOf(att);
 
         if (kind == AttachmentKind.Image && blobUrl is not null && !zoomBound)
         {
@@ -302,7 +314,7 @@
     {
         if (Attachment is null) return;
         Media.Forget(blobUrl);
-        error = MediaStream.Explain(null, ChatAttachments.Kind(Attachment) == AttachmentKind.Video);
+        error = MediaStream.Explain(null, KindOf(Attachment) == AttachmentKind.Video);
     }
 
     private async Task OpenTab()

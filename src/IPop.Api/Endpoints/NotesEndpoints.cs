@@ -407,6 +407,19 @@ public static class NotesEndpoints
             catch (IPop.Application.Files.SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
         }).RequirePermission("notes.write").RequireRateLimiting(LinkPreviewEndpoints.RateLimitPolicy);
 
+        // ── File cards ───────────────────────────────────────────────────────
+        // What the card and the viewer need for a file in this page: kind, page/sheet count, picture of page 1 and (Word/PowerPoint)
+        // the file as PDF. Made on the first call and remembered; 404 when the caller can't open the page or the file isn't in it.
+        g.MapGet("/{id:guid}/files/{attachmentId:guid}/preview-info", async Task<IResult> (Guid id, Guid attachmentId, HttpContext http,
+            IPop.Infrastructure.Notes.NoteFilePreviewService previews, CancellationToken ct) =>
+        {
+            var me = await MeAsync(http);
+            if (me is null) return Results.Unauthorized();
+            try { return From(await previews.GetAsync(me.Id, id, attachmentId, ct)); }
+            catch (IPop.Application.Files.SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
+            catch (FileNotFoundException) { return Results.Json(new { code = "file_missing", message = "The file is missing from storage." }, statusCode: 502); }
+        });
+
         // ── Photo cover ──────────────────────────────────────────────────────
         // Images already in this page, for "pick from this page" in the cover picker.
         g.MapGet("/{id:guid}/images", (Guid id, HttpContext http, INoteService svc, CancellationToken ct) =>
