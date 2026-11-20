@@ -11,7 +11,7 @@ import DragHandle from '@tiptap/extension-drag-handle';
 import { handleClearsMarker } from './src/handle-position.js';
 let type = null, pos = -1;
 const handle = document.createElement('div'); handle.className = 'nt-handle'; handle.innerHTML = '<button>+</button><button>::</button>';
-const editor = new Editor({ element: document.querySelector('#ed'), content: '<p>Evaluasi :</p><ol><li><p>Fokus menjawab</p></li><li><p>Security program</p></li><li><p>Story telling</p></li></ol><p>after</p>',
+const editor = new Editor({ element: document.querySelector('#ed'), content: '<p>Evaluasi :</p><ol><li><p>Fokus menjawab</p></li><li><p>Security program</p></li><li><p>Story telling</p></li><li><p></p></li></ol><p>PPT - review bersama</p>',
   editorProps: { attributes: { class: 'nt-editor' } },
   extensions: [StarterKit, DragHandle.configure({ render: () => handle,
     nested: { allowedContainers: ['bulletList','orderedList'], edgeDetection: 'left' },
@@ -40,6 +40,31 @@ try {
   await p.screenshot({ path: 'tests/handle-qa.png', clip: { x: 0, y: 0, width: 700, height: 220 } });
   if (r.visible === 'hidden') throw new Error('handle not shown');
   if (Math.abs(r.handleTop - r.liTop) > 6) throw new Error('handle is not on the hovered row');
-  if (r.handleRight > r.olLeft + 1) throw new Error(`handle overlaps the marker: right ${r.handleRight} > marker start ${r.olLeft}`);
+  // the number glyph is drawn right-aligned against the <li> box (outside marker); measure its real left edge
+  const markerLeft = await p.evaluate(() => {
+    const li = document.querySelectorAll('.nt-editor ol > li')[1];
+    const probe = document.createElement('span'); probe.textContent = '2.'; probe.style.cssText = 'position:absolute;visibility:hidden;font-weight:600;white-space:nowrap';
+    li.appendChild(probe); const w = probe.getBoundingClientRect().width; probe.remove();
+    return li.getBoundingClientRect().left - w - parseFloat(getComputedStyle(li, '::marker').marginInlineEnd || 0) - 6;
+  });
+  const grip = await p.evaluate(() => { const b = [...document.querySelectorAll('.nt-handle button')].pop().getBoundingClientRect(); return b.right; });
+  console.log(JSON.stringify({ gripRight: grip, markerLeft }));
+  if (grip > markerLeft + 1) throw new Error(`grip overlaps the number: grip right ${grip} > number left ${markerLeft}`);
   console.log('PASS handle sits left of the number marker on the hovered row');
+  // Travel: from the middle of the text, move left in small steps onto the handle; it must stay visible all the way.
+  const row = await p.locator('.nt-editor ol > li').last().boundingBox();
+  const y = row.y + row.height / 2;
+  await p.mouse.move(row.x + 300, y); await p.waitForTimeout(300);
+  const hb = await p.locator('.nt-handle').boundingBox();
+  const target = hb.x + hb.width - 10;   // the grip button
+  let hidden = null;
+  for (let x = row.x + 300; x >= target; x -= 3) {
+    await p.mouse.move(x, y); await p.waitForTimeout(20);
+    const vis = await p.evaluate(() => getComputedStyle(document.querySelector('.nt-handle')).visibility);
+    if (vis === 'hidden') { hidden = x; break; }
+  }
+  if (hidden !== null) throw new Error(`handle disappeared while moving left, at x=${hidden} (handle right ${hb.x + hb.width}, list left ${r.olLeft})`);
+  const under = await p.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('.nt-handle') !== null, [target, y]);
+  if (!under) throw new Error('pointer over the grip does not hit the handle');
+  console.log('PASS moving left from the text onto the handle keeps it visible and reachable');
 } finally { await b.close(); }
