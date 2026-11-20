@@ -233,6 +233,15 @@
                     else error = MediaStream.Explain(reason, kind == AttachmentKind.Video);
                     break;
 
+                case AttachmentKind.Pdf:
+                    // Named URL: the PDF viewer, its tab and "Save" show the real file name, not a blob id
+                    // (a converted Office file opens as "<name>.pdf").
+                    var named = await Media.ViewChatAsync(bytesId, Att.IsShared(bytesId)) ?? await Att.GetAsync(bytesId, thumb: false);
+                    if (loadedId != id) return;
+                    blobUrl = named;
+                    if (blobUrl is null) error = "This file could not be loaded.";
+                    break;
+
                 default:
                     var url = await Att.GetAsync(bytesId, thumb: false);
                     if (loadedId != id) return;
@@ -319,7 +328,10 @@
 
     private async Task OpenTab()
     {
-        if (blobUrl is not null) await JS.InvokeVoidAsync("ipop.openBlobTab", blobUrl);
+        if (blobUrl is null || Attachment is null) return;
+        // Images get a named URL too; a PDF already has one (blobUrl is the named ticket URL).
+        var named = KindOf(Attachment) == AttachmentKind.Image ? await Media.ViewChatAsync(Attachment.Id, Att.IsShared(Attachment.Id)) : null;
+        await JS.InvokeVoidAsync("ipop.openBlobTab", named ?? blobUrl);
     }
 
     private async Task Print() => await JS.InvokeVoidAsync("ipop.printFrame", "av-pdf");

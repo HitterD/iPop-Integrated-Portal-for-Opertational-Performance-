@@ -29,6 +29,41 @@ public sealed class MediaStreamAndLinksTests
         Assert.Null(MediaStreamEndpoints.Unprotect(dp, foreign));
     }
 
+    // ── Named view tickets (grilled 2026-11-20: previews show the real file name) ──
+
+    [Fact]
+    public void View_ticket_round_trips_and_is_not_a_stream_ticket()
+    {
+        var dp = new EphemeralDataProtectionProvider();
+        var m = new MediaStreamEndpoints.MediaRef("chat", Guid.NewGuid().ToString("N"), Guid.NewGuid(), "UAT Stock Opname.pdf", "application/pdf");
+        var t = MediaStreamEndpoints.ProtectView(dp, m);
+        Assert.Equal(m, MediaStreamEndpoints.UnprotectView(dp, t));
+        Assert.Null(MediaStreamEndpoints.Unprotect(dp, t));
+        Assert.Null(MediaStreamEndpoints.UnprotectView(dp, t[..^2] + "AA"));
+        Assert.Null(MediaStreamEndpoints.UnprotectView(new EphemeralDataProtectionProvider(), t));
+        // A stream ticket never opens a view URL either.
+        var stream = MediaStreamEndpoints.Protect(dp, m with { Mime = "video/mp4" });
+        Assert.Null(MediaStreamEndpoints.UnprotectView(dp, stream));
+    }
+
+    [Theory]
+    [InlineData("application/pdf", true)]
+    [InlineData("image/png", true)]
+    [InlineData("image/svg+xml", false)]
+    [InlineData("text/html", false)]
+    [InlineData("application/octet-stream", false)]
+    [InlineData("video/mp4", true)]
+    public void Only_safe_types_are_viewable(string mime, bool ok) => Assert.Equal(ok, MediaStreamEndpoints.IsViewable(mime));
+
+    [Fact]
+    public void View_name_is_safe_and_pdf_mime_comes_from_the_extension()
+    {
+        Assert.Equal("a_b_c.pdf", MediaStreamEndpoints.SafeName(@"a/b\c.pdf"));
+        Assert.Equal("file", MediaStreamEndpoints.SafeName("  "));
+        Assert.Equal("application/pdf", MediaStreamEndpoints.ViewMime("Report.PDF", "application/octet-stream"));
+        Assert.Equal("image/png", MediaStreamEndpoints.ViewMime("x.png", "image/png"));
+    }
+
     [Theory]
     [InlineData("video/mp4", true)]
     [InlineData("audio/mpeg", true)]

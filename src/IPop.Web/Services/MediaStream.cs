@@ -21,6 +21,32 @@ public sealed class MediaStream(AuthState auth, HttpClient http)
 
     public string? LastError { get; private set; }
 
+    // ── Named view URLs (grilled 2026-11-20) ──
+    // PDFs/pictures opened from a blob: URL showed a random id as the viewer title, tab name and "Save as" name. A view
+    // ticket URL ends in the real file name instead. Tickets last 5 min; a cached one is reused for up to 3.
+    private readonly Dictionary<string, (string Url, DateTime Until)> _views = [];
+
+    public Task<string?> ViewChatAsync(Guid id, bool shared) => ViewAsync(shared ? "shared" : "chat", id, null, null, null, null);
+    public Task<string?> ViewMailAsync(Guid id) => ViewAsync("mail", id, null, null, null, null);
+    public Task<string?> ViewFileAsync(string server, string path, long size = 0, long mtime = 0) => ViewAsync("files", null, server, path, size, mtime);
+
+    private async Task<string?> ViewAsync(string source, Guid? id, string? server, string? path, long? size, long? mtime)
+    {
+        var key = $"{source}|{id}|{server}|{path}|{size}|{mtime}";
+        if (_views.TryGetValue(key, out var hit) && hit.Until > DateTime.UtcNow) return hit.Url;
+        try
+        {
+            var res = await auth.SendAsync(HttpMethod.Post, "/api/media/view-ticket", new { source, id, server, path, size, mtime });
+            if (!res.IsSuccessStatusCode) return null;
+            var t = await res.Content.ReadFromJsonAsync<Ticket>();
+            if (t?.StreamUrl is not { Length: > 0 }) return null;
+            var url = new Uri(http.BaseAddress!, t.StreamUrl).ToString();
+            _views[key] = (url, DateTime.UtcNow.AddMinutes(3));
+            return url;
+        }
+        catch { return null; }
+    }
+
     /// Drops a cached ticket (after a player error) so the next call asks the server again.
     public void Forget(string? url)
     {

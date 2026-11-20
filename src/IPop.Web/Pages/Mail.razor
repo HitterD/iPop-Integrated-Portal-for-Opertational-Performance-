@@ -873,7 +873,6 @@
         if (Auth.IsAuthenticated)
         {
             await ReloadAll();
-            await LoadLabelsAsync();
             await JS.InvokeVoidAsync("ipop.icons");
         }
         _mailSub = Auth.On(IPop.Application.Realtime.RealtimeEvents.MailChanged, OnMailChanged);
@@ -911,7 +910,7 @@
             bool? unreadOnly = tabFilter == "unread" ? true : null;
             bool? starredOnly = tabFilter == "starred" ? true : null;
 
-            var c = await MailSvc.GetCountsAsync();
+            var c = await CountsAndLabelsAsync();
             var fresh = new List<MailSummary>();
             var total = 0;
             var pages = Math.Max(1, page);
@@ -970,10 +969,9 @@
 
     public async Task ReloadAll()
     {
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         await LoadPage(1);
-        await LoadLabelsAsync();
     }
 
     private void UpdateHeader()
@@ -1222,6 +1220,15 @@
         }
     }
 
+    /// Folder counts plus label badges: every move/delete/restore changes both, so they are
+    /// always re-read together (label counts used to stay stale until a full reload).
+    private async Task<MailCounts?> CountsAndLabelsAsync()
+    {
+        var c = MailSvc.GetCountsAsync();
+        await Task.WhenAll(c, LoadLabelsAsync());
+        return await c;
+    }
+
     private async Task LoadLabelsAsync()
     {
         try
@@ -1366,7 +1373,10 @@
     private async Task SelectFolder(MailFolder f)
     {
         mFolderSheet = false;
-        if (activeFolder == f) { await LoadPage(1); return; }
+        // A label view spans folders, so picking a folder leaves it.
+        var leftLabel = labelFilter is not null;
+        labelFilter = null;
+        if (activeFolder == f) { if (leftLabel) UpdateHeader(); await LoadPage(1); return; }
         activeFolder = f;
         selected.Clear();
         selectedMail = null;
@@ -1398,7 +1408,7 @@
         if (detail?.Folder == "inbox" && !detail.IsRead)
         {
             await MailSvc.MarkReadAsync(id);
-            var c = await MailSvc.GetCountsAsync();
+            var c = await CountsAndLabelsAsync();
             if (c is not null) counts = c;
             UpdateHeader();
             await RefreshLoadedAsync();
@@ -1558,7 +1568,7 @@
                 Toasts.Show("Could not mark the selected messages as read.", ToastKind.Error);
                 return;
             }
-            counts = await MailSvc.GetCountsAsync();
+            counts = await CountsAndLabelsAsync();
             UpdateHeader();
             await RefreshLoadedAsync();
             Toasts.Show("Marked as read.", ToastKind.Success);
@@ -1584,14 +1594,14 @@
         await MailSvc.ToggleStarAsync(id);
         await ReloadDetail();
         await RefreshLoadedAsync();
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
     });
 
     private Task MarkUnread(Guid id) => RunAction(async () =>
     {
         await MailSvc.MarkUnreadAsync(id);
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         BackToList();
         await RefreshLoadedAsync();
@@ -1601,7 +1611,7 @@
     {
         if (item.IsRead) await MailSvc.MarkUnreadAsync(item.Id);
         else await MailSvc.MarkReadAsync(item.Id);
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         await RefreshLoadedAsync();
     });
@@ -1624,7 +1634,7 @@
         }
         await LeaveRowsAsync([id]);
         if (selectedMail == id) BackToList();
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         await RefreshLoadedAsync();
         undoAfter?.Invoke();
@@ -1643,7 +1653,7 @@
         if (res.IsSuccessStatusCode)
         {
             Toasts.Show("Message recalled.", ToastKind.Success);
-            counts = await MailSvc.GetCountsAsync();
+            counts = await CountsAndLabelsAsync();
             UpdateHeader();
             await RefreshLoadedAsync();
         }
@@ -1663,7 +1673,7 @@
         var res = await MailSvc.MoveAsync(id, f);
         if (res?.Success != true) { Toasts.Show($"Could not move the message to {FolderLabel(f)}.", ToastKind.Error); return; }
         await LeaveRowsAsync([id]);
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         BackToList();
         await RefreshLoadedAsync();
@@ -1679,7 +1689,7 @@
             if (!await MailSvc.BulkMoveAsync(ids, origin)) { Toasts.Show("Could not undo.", ToastKind.Error); return; }
             // The toast outlives the page: after navigating away, don't touch another page's header.
             if (_disposed) return;
-            counts = await MailSvc.GetCountsAsync();
+            counts = await CountsAndLabelsAsync();
             UpdateHeader();
             foreach (var rid in ids) returningIds.Add(rid);
             await RefreshLoadedAsync();
@@ -1738,7 +1748,7 @@
     {
         if (detail is null) return;
         if (!await MailSvc.BulkRestoreAsync([detail.Id])) { Toasts.Show("Could not restore the message.", ToastKind.Error); return; }
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         BackToList();
         await RefreshLoadedAsync();
@@ -1753,7 +1763,7 @@
         var res = await MailSvc.DeleteAsync(id);
         if (res?.Success != true) { Toasts.Show("Could not delete the message.", ToastKind.Error); return; }
         await LeaveRowsAsync([id]);
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         if (selectedMail == id) BackToList();
         await RefreshLoadedAsync();
@@ -1765,7 +1775,7 @@
         if (!await MailSvc.BulkRestoreAsync([id])) { Toasts.Show("Could not restore the message.", ToastKind.Error); return; }
         await LeaveRowsAsync([id]);
         if (selectedMail == id) BackToList();
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         await RefreshLoadedAsync();
         Toasts.Show("Restored.", ToastKind.Success);
@@ -1777,7 +1787,7 @@
         if (res?.Success != true) { Toasts.Show($"Could not move the message to {FolderLabel(f)}.", ToastKind.Error); return; }
         await LeaveRowsAsync([id]);
         if (selectedMail == id) BackToList();
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         await RefreshLoadedAsync();
         ShowMoveUndo(new[] { id }, activeFolder == MailFolder.Trash || activeFolder == MailFolder.Archive ? activeFolder : MailFolder.Inbox, f);
@@ -2059,7 +2069,7 @@
         if (!await MailSvc.BulkMoveAsync(ids, f)) { Toasts.Show($"Could not move the selected messages to {FolderLabel(f)}.", ToastKind.Error); return; }
         selected.Clear();
         await LeaveRowsAsync(ids);
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         await RefreshLoadedAsync();
         ShowMoveUndo(ids, origin, f);
@@ -2073,7 +2083,7 @@
         if (!await MailSvc.BulkRestoreAsync(ids)) { Toasts.Show("Could not restore the selected messages.", ToastKind.Error); return; }
         selected.Clear();
         await LeaveRowsAsync(ids);
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         await RefreshLoadedAsync();
         // Sent mail goes back to Sent and drafts to Drafts, so no single folder name fits.
@@ -2084,7 +2094,7 @@
     {
         if (selected.Count == 0) return;
         if (!await MailSvc.BulkStarAsync(selected.ToList())) { Toasts.Show("Could not update stars.", ToastKind.Error); return; }
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         await RefreshLoadedAsync();
     });
@@ -2101,7 +2111,7 @@
         selected.Clear();
         await LeaveRowsAsync(ids);
         if (selectedMail is { } open && ids.Contains(open)) BackToList();
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         await RefreshLoadedAsync();
         Toasts.Show("Deleted forever.", ToastKind.Success);
@@ -2110,7 +2120,7 @@
     private async Task MarkAllRead()
     {
         await MailSvc.MarkAllReadAsync(activeFolder);
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         await RefreshLoadedAsync();
     }

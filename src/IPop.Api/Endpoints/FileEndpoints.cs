@@ -147,6 +147,7 @@ public static class FileEndpoints
                 {
                     return Results.Json(new { code = "conversion_failed", message = "This document couldn't be rendered for preview. Download it to open locally." }, statusCode: 500);
                 }
+                pdf = IPop.Infrastructure.Documents.PdfTitle.Set(pdf, Path.GetFileName(path.Trim()));
                 return Results.File(pdf, "application/pdf", $"{Path.GetFileNameWithoutExtension(path)}.pdf");
             }
             catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }

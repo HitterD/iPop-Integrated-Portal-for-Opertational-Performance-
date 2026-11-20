@@ -184,6 +184,7 @@ public sealed class NoteFilePreviewService(
         else
         {
             pdfBytes = kind == "slides" ? await slides.ConvertToPdfAsync(buffer, ct) : await word.ConvertToPdfAsync(buffer, ct);
+            pdfBytes = IPop.Infrastructure.Documents.PdfTitle.Set(pdfBytes, fileName);
             using var pdfStream = new MemoryStream(pdfBytes, writable: false);
             var stored = await store.PutAsync(AttachmentAreas.Notes, baseName + ".pdf", "application/pdf", pdfStream, uploaderId, ct);
             made.Add(stored.Id);
