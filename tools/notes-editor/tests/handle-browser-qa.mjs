@@ -8,13 +8,13 @@ const entry = `
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import DragHandle from '@tiptap/extension-drag-handle';
-import { handleClearsMarker } from './src/handle-position.js';
+import { handleClearsMarker, nestedHandleRule } from './src/handle-position.js';
 let type = null, pos = -1;
 const handle = document.createElement('div'); handle.className = 'nt-handle'; handle.innerHTML = '<button>+</button><button>::</button>';
 const editor = new Editor({ element: document.querySelector('#ed'), content: '<p>Evaluasi :</p><ol><li><p>Fokus menjawab</p></li><li><p>Security program</p></li><li><p>Story telling</p></li><li><p></p></li></ol><p>PPT - review bersama</p>',
   editorProps: { attributes: { class: 'nt-editor' } },
   extensions: [StarterKit, DragHandle.configure({ render: () => handle,
-    nested: { allowedContainers: ['bulletList','orderedList'], edgeDetection: 'left' },
+    nested: { rules: [nestedHandleRule(['bulletList','orderedList'])], edgeDetection: 'left' },
     computePositionConfig: { placement: 'left-start', middleware: [handleClearsMarker(() => ({ type, el: pos >= 0 ? editor.view.nodeDOM(pos) : null }))] },
     onNodeChange: ({ node, pos: p }) => { pos = p ?? -1; type = node?.type.name ?? null; } })] });
 window.ed = editor;`;
@@ -67,4 +67,14 @@ try {
   const under = await p.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('.nt-handle') !== null, [target, y]);
   if (!under) throw new Error('pointer over the grip does not hit the handle');
   console.log('PASS moving left from the text onto the handle keeps it visible and reachable');
+  // Typing hides the handle (TipTap does that on keydown); hovering a top-level paragraph afterwards must bring it back.
+  const para = p.locator('.nt-editor > p').first();
+  const pb = await para.boundingBox();
+  await p.mouse.click(pb.x + 30, pb.y + pb.height / 2); await p.keyboard.type('x');
+  const last = p.locator('.nt-editor > p').last(); const lb = await last.boundingBox();
+  await p.mouse.move(lb.x + 30, lb.y + lb.height / 2, { steps: 4 }); await p.waitForTimeout(300);
+  await p.mouse.move(pb.x + 30, pb.y + pb.height / 2, { steps: 4 }); await p.waitForTimeout(300);
+  const after = await p.evaluate(() => getComputedStyle(document.querySelector('.nt-handle')).visibility);
+  if (after === 'hidden') throw new Error('handle never comes back on a paragraph after typing');
+  console.log('PASS handle comes back on a top-level paragraph after typing');
 } finally { await b.close(); }

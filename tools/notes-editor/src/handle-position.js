@@ -31,3 +31,19 @@ export function handleClearsMarker(current, { gap = MARKER_GAP, getStyle } = {})
     },
   };
 }
+
+/// Which blocks get the drag handle (TipTap DragHandle `nested.rules`). Every top-level block (paragraph, heading, picture,
+/// table…) keeps its handle, and inside the given containers (lists, quotes, callouts, toggles, columns) each row gets its own.
+/// TipTap's own `allowedContainers` option can't express this: it requires an allowed ANCESTOR, and a top-level block's only
+/// ancestor is the document, so top-level blocks lost the handle for good once it was hidden (after a keystroke or mouseleave).
+export function nestedHandleRule(containers) {
+  const allowed = new Set(containers);
+  return {
+    id: 'notesNestedContainers',
+    evaluate: ({ depth, $pos }) => {
+      if (depth <= 1) return 0;
+      for (let d = Math.min(depth - 1, $pos.depth); d >= 0; d--) if (allowed.has($pos.node(d).type.name)) return 0;
+      return 1000;
+    },
+  };
+}

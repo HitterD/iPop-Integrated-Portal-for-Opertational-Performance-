@@ -1360,3 +1360,8 @@ html.nt-board-fs-open, html.nt-board-fs-open body { overflow: hidden; }
 .nt-popout-board { flex:1 1 auto; min-height:0; position:relative; background:var(--nt-board,#FAFAF7); }
 [data-theme="dark"] .nt-popout-board { --nt-board:#161618; }
 @media (max-width: 767px), (max-height: 500px) and (max-width: 932px) and (pointer: coarse) { .nt-popout-sync { display:none; } .nt-popout-back span { display:none; } }
+/* Confirms asked from inside a Notes layer ("Restore this version?" in Version history, delete a comment in the bubble popover)
+   opened at z-index 91, under the layer (1060+): invisible, and the click never resolved. Lift them above while a layer is open. */
+/* On phones the comments are a bottom sheet (z 181): "Delete this comment?" opened under it the same way. */
+body:has(.nt-layer, .nt-bubble-pop, .m-notes-comments) .confirm-backdrop { z-index: 1180; }
+body:has(.nt-layer, .nt-bubble-pop, .m-notes-comments) .confirm-center { z-index: 1181; }

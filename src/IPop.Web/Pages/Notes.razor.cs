@@ -23,7 +23,7 @@ public partial class Notes
     [Parameter] public Guid? Id { get; set; }
     [SupplyParameterFromQuery(Name = "b")] public string? BlockId { get; set; }
 
-    internal const string EditorModulePath = "./js/notes/notes-editor.js?v=20261120-fp1";
+    internal const string EditorModulePath = "./js/notes/notes-editor.js?v=20261120-c1";
     private const string EditorModule = EditorModulePath;
 
     private enum View { Home, Page, New, Trash }
@@ -470,6 +470,22 @@ public partial class Notes
         };
         Toasts.Show(unsaved ? $"{why}. Your last changes were not saved — copy them before leaving." : why + ".", ToastKind.Error);
         StateHasChanged();
+    }
+
+    /// The owner changed this person's share level while the page was open (NotesEndpoints sends "noteAccessChanged"). The page
+    /// used to keep the old level until a reload: an editor turned viewer kept typing into edits the server refused, a viewer
+    /// made editor could not type. Reopen the page with the new level when it really changed for this person.
+    [JSInvokable]
+    public async Task OnAccessChanged()
+    {
+        if (note is null || disposed) return;
+        var id = note.Id;
+        var fresh = await Auth.GetAsync<NotePageDto>($"/api/notes/{id}");
+        if (disposed || note?.Id != id || Id != id) return;
+        if (fresh is null || fresh.Access == note.Access) return;   // no access at all is handled by noteAccessLost
+        Toasts.Show(fresh.Access is "owner" or "edit" ? "You can now edit this page" : fresh.Access == "comment" ? "You can now only comment on this page" : "You can now only view this page", ToastKind.Info);
+        await LoadPageAsync(id);
+        if (!disposed) StateHasChanged();
     }
 
     [JSInvokable]

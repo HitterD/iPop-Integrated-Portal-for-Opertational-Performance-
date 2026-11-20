@@ -26,7 +26,7 @@ import { NotePlaceholder } from './placeholder.js';
 import { Symbols } from './symbols.js';
 import { ListNumbering } from './lists.js';
 import { LineBreakMarkers } from './linebreak-markers.js';
-import { handleClearsMarker } from './handle-position.js';
+import { handleClearsMarker, nestedHandleRule } from './handle-position.js';
 import { moveBlockTr } from './block-menu.js';
 import { createMarginLayout } from './margin-comments.js';
 import { sliceText, cleanOfficeHtml, preferFiles } from './paste.js';
@@ -484,7 +484,27 @@ export async function mount(el, opts) {
   let lostEarly = false; // access lost while the page was still loading (stopEditing isn't ready yet)
   hub.on('noteAccessLost', pid => { if (pid !== pageId) return; if (loaded) stopEditing('not_found'); else lostEarly = true; });
   hub.onreconnecting(() => { if (loaded) status('offline'); });
-  hub.onreconnected(async () => { await join(); await refetch(); flush(); sendAwareness([ydoc.clientID]); });
+  hub.onreconnected(() => resync());
+  // Automatic reconnect gives up after ~70 s (laptop asleep, Wi-Fi gone, server restarted). Without this the page stayed
+  // "Offline — changes will save when you reconnect" forever and never reconnected until a reload: keep trying, slower.
+  let restartTimer = 0, restartWait = 5000;
+  hub.onclose(() => {
+    if (closing || destroyed || refused || !loaded) return;
+    status('offline'); parkUnsent();
+    clearTimeout(restartTimer); restartTimer = setTimeout(restart, restartWait);
+  });
+  async function restart() {
+    if (closing || destroyed || refused || hub.state !== signalR.HubConnectionState.Disconnected) return;
+    try { await hub.start(); restartWait = 5000; await resync(); }
+    catch { restartWait = Math.min(restartWait * 2, 60000); if (hub.state === signalR.HubConnectionState.Disconnected && !closing) restartTimer = setTimeout(restart, restartWait); }
+  }
+  async function resync() {
+    try { await join(); await refetch(); }
+    catch (err) { if (err?.message === 'forbidden' || err?.message === '404') stopEditing('not_found'); return; }
+    flush(); sendAwareness([ydoc.clientID]);
+  }
+  // The owner changed this person's level (e.g. Can edit → Can view): the page reopens with the new access.
+  hub.on('noteAccessChanged', pid => { if (pid === pageId && loaded && !closing) call('OnAccessChanged'); });
 
   async function join() {
     const ok = await hub.invoke('JoinPage', pageId).catch(() => false);
@@ -505,8 +525,10 @@ export async function mount(el, opts) {
   }
 
   await hub.start();
-  await join();
-  await refetch();
+  // Joining or loading can still fail (access removed meanwhile, server error): the caller gets the error and never gets a
+  // handle to destroy(), so close the connection here or it stays open (and keeps reconnecting) until the tab closes.
+  try { await join(); await refetch(); }
+  catch (err) { await hub.stop().catch(() => {}); throw err; }
   loaded = true;
   for (const m of early.splice(0)) { Y.applyUpdate(ydoc, unb64(m.data), 'remote'); unmerged.add(m.id); }
 
@@ -721,7 +743,8 @@ export async function mount(el, opts) {
         render: () => handleEl,
         // Inside lists, quotes, callouts, toggles and columns every row (also a nested list item) gets its own handle, not just the
         // outermost block; plain paragraphs and headings keep the top-level handle. Near the left edge the whole list is grabbed.
-        nested: { allowedContainers: ['bulletList', 'orderedList', 'taskList', 'blockquote', 'callout', 'detailsContent', 'column'], edgeDetection: 'left' },
+        // (a rule, not TipTap's allowedContainers: that option drops every top-level block — see nestedHandleRule)
+        nested: { rules: [nestedHandleRule(['bulletList', 'orderedList', 'taskList', 'blockquote', 'callout', 'detailsContent', 'column'])], edgeDetection: 'left' },
         // A list item's number / bullet / checkbox is drawn LEFT of the item box: put the handle left of the marker, never on it.
         computePositionConfig: { placement: 'left-start', middleware: [handleClearsMarker(() => ({ type: handleNodeType, el: handlePos >= 0 ? editor?.view.nodeDOM(handlePos) : null }))] },
         onNodeChange: ({ node, pos }) => { handlePos = pos ?? -1; handleNodeType = node?.type.name ?? null; },
@@ -826,8 +849,10 @@ export async function mount(el, opts) {
     return true;
   };
   // Opened from a block link (?b=<id>): wait for the page to arrive, then scroll to the block and flash it.
-  const wantBlock = new URLSearchParams(location.search).get('b');
-  if (wantBlock) {
+  // Also called by Blazor (scrollToBlock) when a ?b= link to this same page is opened while it is already open.
+  let seekTimer = 0;
+  function seekBlock(wantBlock) {
+    clearTimeout(seekTimer);
     let tries = 0;
     const seek = () => {
       if (closing || editor.isDestroyed) return;
@@ -838,10 +863,12 @@ export async function mount(el, opts) {
         const dom = editor.view.nodeDOM(pos);
         (dom?.nodeType === 1 ? dom : dom?.parentElement)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
         setTimeout(() => { try { if (!editor.isDestroyed) editor.view.dispatch(editor.state.tr.setMeta(flashKey, null).setMeta('addToHistory', false)); } catch { /* closed */ } }, 1800);
-      } else if (++tries < 25) setTimeout(seek, 300);
+      } else if (++tries < 25) seekTimer = setTimeout(seek, 300);
     };
     seek();
   }
+  const wantBlock = new URLSearchParams(location.search).get('b');
+  if (wantBlock) seekBlock(wantBlock);
   const findBar = createFindBar(editor, host);
   el.before(findBar.dom);
   const stats = document.createElement('div');
@@ -879,6 +906,7 @@ export async function mount(el, opts) {
   // Progress (tutorial ring + sidebar pill) follows the checkboxes.
   let lastProgress = '';
   const progress = debounce(() => {
+    if (closing) return;   // a tick right before leaving must not land on the next page's counters
     const { done, total } = countTodos(editor.state.doc);
     const k = `${done}/${total}`;
     if (k !== lastProgress) { lastProgress = k; call('OnProgress', done, total); }
@@ -963,7 +991,7 @@ export async function mount(el, opts) {
   // Only people who can open the page are ever notified (the server checks again). Tagging someone
   // without access asks the owner to share the page; otherwise the tag stays as plain text.
   const mentionQueue = new Map();
-  const sendMentions = debounce(async () => {
+  const sendMentionsNow = async () => {
     if (!mentionQueue.size) return;
     // The notification quotes the paragraph the mention sits in (not wherever the cursor happens to be by now).
     // Typed then deleted (or undone) before the batch went out: nobody to notify.
@@ -972,7 +1000,9 @@ export async function mount(el, opts) {
     for (const [context, ids] of contexts) {
       await api(`/api/notes/${pageId}/mentions`, { method: 'POST', json: { userIds: ids, context } }).catch(() => {});
     }
-  }, 4000);
+  };
+  // Batched for 4 s; leaving the page sends what is waiting (destroy), so a tag typed just before leaving still notifies.
+  const sendMentions = debounce(sendMentionsNow, 4000);
   function queueMention(p) {
     if (!canEdit) return;
     if (p.hasAccess === false) { offerShare(p); paintAccess(); return; }
@@ -1215,6 +1245,7 @@ export async function mount(el, opts) {
     /// The page as it is right now, as a base64 Yjs state (for comparing with a saved version).
     currentState() { return b64(Y.encodeStateAsUpdate(ydoc)); },
     focus() { if (!closing) editor.commands.focus('start'); },
+    scrollToBlock(id) { if (!closing && id) seekBlock(String(id)); },
     restore(state) {
       if (closing || !canEdit) return;
       const tmp = new Y.Doc();
@@ -1229,8 +1260,10 @@ export async function mount(el, opts) {
     async destroy() {
       if (closing) return;
       closing = true;
-      scheduleSnapshot.cancel(); clearTimeout(thumbTimer);
+      scheduleSnapshot.cancel(); clearTimeout(thumbTimer); clearTimeout(restartTimer); clearTimeout(seekTimer); progress.cancel(); checkAccess.cancel();
       try { await flush(); await snapshot(); } catch { /* best effort */ }
+      sendMentions.cancel();
+      if (canEdit && !refused) await sendMentionsNow().catch(() => {});
       destroyed = true;
       removeAwarenessStates(awareness, [ydoc.clientID], 'local');
       await hub.invoke('LeavePage', pageId).catch(() => {});

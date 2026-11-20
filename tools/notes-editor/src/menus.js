@@ -368,6 +368,10 @@ export function createToolbar(editor, host) {
 
 export function createHandle(host) {
   const dom = $el('nt-handle', '<button type="button" class="add" title="Add block below">+</button><button type="button" class="grip" title="Drag to move · Click for options" data-drag-handle>⠿</button>');
+  // TipTap shows the handle only on hover but never hides it first: until the first hover it sat at the editor's top-left
+  // corner, drawn over the first line of the page. Start hidden; TipTap's own showHandle() clears both on hover.
+  dom.style.visibility = 'hidden';
+  dom.style.pointerEvents = 'none';
   return dom;
 }
 

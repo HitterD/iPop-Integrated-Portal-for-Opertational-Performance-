@@ -469,7 +469,7 @@
         <NotesCommentsSheet Open="@(commentsOpen && view == View.Page)" OpenChanged="v => commentsOpen = v">@CommentsBody</NotesCommentsSheet>
         @if (note is not null && view == View.Page)
         {
-            <NotesMoreSheet Open="phoneMoreOpen" OpenChanged="v => phoneMoreOpen = v" CanEdit="CanEdit" IsOwner="IsOwner" IsFavorite="note.IsFavorite" OnAction="PhoneNoteAction" />
+            <NotesMoreSheet Open="phoneMoreOpen" OpenChanged="v => phoneMoreOpen = v" CanEdit="CanEdit" IsOwner="IsOwner" IsBoard="@(note.Kind == "board")" IsFavorite="note.IsFavorite" OnAction="PhoneNoteAction" />
             @if (CanEdit) { <NotesKeyboardToolbar OnCommand="PhoneEditorCommand" /> }
         }
     }
