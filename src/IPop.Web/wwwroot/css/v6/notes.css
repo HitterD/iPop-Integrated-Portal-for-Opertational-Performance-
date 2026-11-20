@@ -107,7 +107,7 @@
 .nt-row .emo { width:18px; text-align:center; font-size:14px; flex:none; }
 .nt-row .sico { width:18px; display:grid; place-items:center; color:var(--ink-3); flex:none; }
 .nt-row .t { flex:1; overflow:hidden; text-overflow:ellipsis; }
-.nt-row .meta { font-size:11px; color:var(--ink-4); display:flex; }
+.nt-row .meta { font-size:11px; color:var(--ink-3); display:flex; }
 .nt-row .actions { display:none; gap:2px; }
 .nt-row:hover .actions { display:flex; }
 .nt-row:hover .meta { display:none; }
