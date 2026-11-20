@@ -50,3 +50,6 @@ tools/mobile-qa/out/
 
 # Local-disk fallback for uploads when the NAS is not configured (dev/QA only).
 src/IPop.Api/attachment-files/
+
+# Local attachment stores written by a running API (dev/QA)
+src/IPop.Api/chat-files/

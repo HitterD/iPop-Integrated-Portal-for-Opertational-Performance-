@@ -136,19 +136,24 @@ public static class MediaStreamEndpoints
             // Only PDF/image/plain text/media are ever served here (IsViewable) and nosniff stops a browser from
             // treating them as HTML. No CSP: a strict one breaks Chrome's built-in PDF viewer, and the dev Web
             // (another port) must be able to frame it.
-            h.ContentDisposition = new System.Net.Http.Headers.ContentDispositionHeaderValue("inline") { FileNameStar = SafeName(media.FileName) }.ToString();
-            h.CacheControl = "private, max-age=300";
+            void Named()
+            {
+                h.ContentDisposition = new System.Net.Http.Headers.ContentDispositionHeaderValue("inline") { FileNameStar = SafeName(media.FileName) }.ToString();
+                h.CacheControl = "private, max-age=300";
+            }
 
             var local = await LocalFileAsync(media, db, env, ct);
             if (local is { Found: false }) return Results.NotFound();
             // Ranges only for video/audio: a PDF viewer asking for later chunks after the 5-minute ticket expired
             // would break mid-document, so documents and pictures are sent whole while the ticket is valid.
             var ranges = IsStreamable(media.Mime);
-            if (local is { Path: { } path }) return Results.File(path, media.Mime, enableRangeProcessing: ranges);
+            if (local is { Path: { } path }) { Named(); return Results.File(path, media.Mime, enableRangeProcessing: ranges); }
             try
             {
                 var cached = await Cache(cfg).GetAsync(media.Key, c => OpenNasAsync(media, scopes, c), ct);
-                return cached is null ? Results.NotFound() : Results.File(cached, media.Mime, enableRangeProcessing: ranges);
+                if (cached is null) return Results.NotFound();
+                Named();
+                return Results.File(cached, media.Mime, enableRangeProcessing: ranges);
             }
             catch (IOException)
             {

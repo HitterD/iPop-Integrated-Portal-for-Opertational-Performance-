@@ -976,10 +976,12 @@
 
     private void UpdateHeader()
     {
-        var title = FolderLabel(activeFolder);
+        // A label view spans folders: it is titled by the label, not by the folder underneath.
+        var title = labelFilter is { } lbl ? $"Label · {lbl}" : FolderLabel(activeFolder);
         Layout.SetHeader(title);
         var total = AllCount;
         var msgs = $"{total} {(total == 1 ? "message" : "messages")} · synced {lastSyncedTime}";
+        if (labelFilter is not null) { Layout.SetSubtitle(msgs); return; }
         // Only the Inbox has a real unread count; elsewhere a hard-coded "0 unread" contradicted
         // the Unread chip, and Sent/Drafts/Scheduled have no "unread" at all.
         var sub = activeFolder == MailFolder.Inbox ? $"{UnreadCount} unread · {msgs}" : msgs;
@@ -1241,15 +1243,10 @@
     private async Task ToggleLabelFilter(string name)
     {
         mFolderSheet = false;
-        if (labelFilter == name)
-        {
-            labelFilter = null;
-        }
-        else
-        {
-            labelFilter = name;
-        }
+        labelFilter = labelFilter == name ? null : name;
+        UpdateHeader();
         await LoadPage(1);
+        UpdateHeader();
     }
 
     /// The plain first page of a folder (no search or filters) is what a return visit shows
