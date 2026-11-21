@@ -1077,7 +1077,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
     public async Task<SendMailResult> RequestPdfExportAsync(Guid userId, Guid mailId, CancellationToken ct)
     {
         var isParticipant = await db.MailRecipients
-            .AnyAsync(r => r.MailId == mailId && r.UserId == userId, ct);
+            .AnyAsync(r => r.MailId == mailId && r.UserId == userId && r.Folder != "pending", ct);
         if (!isParticipant) return new SendMailResult(false, null, "mail_not_found");
 
         var mail = await db.Mails.FindAsync([mailId], ct);

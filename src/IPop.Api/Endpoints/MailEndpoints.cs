@@ -640,7 +640,7 @@ public static class MailEndpoints
 
             // Access rule: only participants of the linked mail — or the uploader for pending orphans.
             var canAccess = attachment.MailId is { } linkedMailId
-                ? await db.MailRecipients.AnyAsync(r => r.MailId == linkedMailId && r.UserId == userId.Value, ct)
+                ? await db.MailRecipients.AnyAsync(r => r.MailId == linkedMailId && r.UserId == userId.Value && r.Folder != "pending", ct)
                 : IsPendingUploadOf(attachment, userId.Value);
             if (!canAccess) return Results.Forbid();
 
@@ -694,7 +694,7 @@ public static class MailEndpoints
                 .FirstOrDefaultAsync(a => a.Id == id && a.ThumbnailPath != null, ct);
             if (attachment is null) return Results.NotFound();
             var canAccess = attachment.MailId is { } linkedMailId
-                ? await db.MailRecipients.AnyAsync(r => r.MailId == linkedMailId && r.UserId == userId.Value, ct)
+                ? await db.MailRecipients.AnyAsync(r => r.MailId == linkedMailId && r.UserId == userId.Value && r.Folder != "pending", ct)
                 : IsPendingUploadOf(attachment, userId.Value);
             if (!canAccess) return Results.Forbid();
             if (!IsRasterImageMime(attachment.MimeType)) return Results.NotFound();
@@ -1014,7 +1014,7 @@ public static class MailEndpoints
             if (userId is null) return Results.Unauthorized();
             var label = await db.MailLabels.AsNoTracking().FirstOrDefaultAsync(l => l.Id == labelId && l.UserId == userId.Value, ct);
             if (label is null) return Results.Json(new { code = "label_not_found", message = "Label not found." }, statusCode: 404);
-            var canSee = await db.MailRecipients.AnyAsync(r => r.MailId == mailId && r.UserId == userId.Value, ct);
+            var canSee = await db.MailRecipients.AnyAsync(r => r.MailId == mailId && r.UserId == userId.Value && r.Folder != "pending", ct);
             if (!canSee) return Results.Json(new { code = "mail_not_found", message = "Mail not found." }, statusCode: 404);
 
             var exists = await db.MailLabelAssignments.AnyAsync(a => a.LabelId == labelId && a.MailId == mailId, ct);
