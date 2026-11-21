@@ -1,5 +1,7 @@
 using System.Text.Json;
 using IPop.Application.Notifications;
+using IPop.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -9,6 +11,8 @@ namespace IPop.Infrastructure.Ops;
 
 /// Hourly server health check for admins: the nightly DB backup (backup-status.json written by
 /// deploy/backup/backup-ipop-db.ps1 next to the dumps on the NAS) and free space on the data drives.
+/// It also watches the HRIS directory sync: when no run has succeeded for two days while runs keep happening,
+/// the directory is silently going stale (2026-11: HRIS refused connections for 11 days without anyone noticing).
 /// Each problem notifies the Admin role at most once per day, so a broken backup can't go unnoticed.
 public sealed class OpsHealthWorker(IServiceScopeFactory scopes, IConfiguration config, ILogger<OpsHealthWorker> log) : BackgroundService
 {
@@ -47,6 +51,21 @@ public sealed class OpsHealthWorker(IServiceScopeFactory scopes, IConfiguration 
         return list;
     }
 
+    public sealed record HrisSyncHealth(DateTime? LastSuccessAt, DateTime? LastRunAt, string? LastError);
+
+    /// HRIS sync health. Nothing when sync never ran (not configured) or when it succeeded within <paramref name="maxAge"/>.
+    public static List<Problem> HrisProblems(HrisSyncHealth? health, DateTime nowUtc, TimeSpan maxAge)
+    {
+        if (health?.LastRunAt is null) return [];
+        if (health.LastSuccessAt is { } ok && nowUtc - ok <= maxAge) return [];
+        var since = health.LastSuccessAt is { } at
+            ? $"No successful HRIS sync for {(int)(nowUtc - at).TotalDays} days (last good {at.ToLocalTime():d MMM HH:mm})."
+            : "HRIS sync has never succeeded.";
+        var error = string.IsNullOrWhiteSpace(health.LastError) ? "" : $" Last error: {health.LastError.Trim()}";
+        if (error.Length > 300) error = error[..300] + "…";
+        return [new("hris-stale", "HRIS sync is failing", since + " New employees and leavers are not reaching the directory." + error, "high")];
+    }
+
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
         var statusPath = config["Ops:BackupStatusPath"] ?? @"\\192.168.2.16\sja\SJA SPJ\ICT\backup\ipop-db\backup-status.json";
@@ -82,10 +101,12 @@ public sealed class OpsHealthWorker(IServiceScopeFactory scopes, IConfiguration 
             catch { return (d + ":", 0L, 0L); } // unreadable drive: skipped (total 0)
         });
         var now = DateTime.UtcNow;
+        using var scope = scopes.CreateScope();
         var problems = Problems(status, now, free, limits, TimeSpan.FromHours(30));
+        try { problems.AddRange(HrisProblems(await ReadHrisHealthAsync(scope.ServiceProvider.GetRequiredService<IPopDbContext>(), ct), now, TimeSpan.FromHours(48))); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning(ex, "Could not read HRIS sync health"); }
         if (problems.Count == 0) return;
 
-        using var scope = scopes.CreateScope();
         var notify = scope.ServiceProvider.GetRequiredService<INotificationGatewayService>();
         foreach (var p in problems)
         {
@@ -95,5 +116,15 @@ public sealed class OpsHealthWorker(IServiceScopeFactory scopes, IConfiguration 
                 new NotificationTarget(Role: "Admin"), p.Priority, "/admin", ct);
             _lastAlert[p.Key] = now;
         }
+    }
+
+    private static async Task<HrisSyncHealth?> ReadHrisHealthAsync(IPopDbContext db, CancellationToken ct)
+    {
+        var last = await db.HrisSyncRuns.AsNoTracking().OrderByDescending(r => r.StartedAt)
+            .Select(r => new { r.StartedAt, r.Error }).FirstOrDefaultAsync(ct);
+        if (last is null) return null;
+        var lastOk = await db.HrisSyncRuns.AsNoTracking().Where(r => r.Succeeded)
+            .OrderByDescending(r => r.StartedAt).Select(r => (DateTime?)r.StartedAt).FirstOrDefaultAsync(ct);
+        return new(lastOk, last.StartedAt, last.Error);
     }
 }

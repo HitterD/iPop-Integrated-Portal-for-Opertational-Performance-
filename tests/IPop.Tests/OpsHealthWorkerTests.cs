@@ -57,4 +57,28 @@ public class OpsHealthWorkerTests
     [Fact]
     public void Backup_problems_stay_high_priority() =>
         Assert.Equal("high", Assert.Single(OpsHealthWorker.Problems(null, Now, Roomy, Limits, TimeSpan.FromHours(30))).Priority);
+    [Fact]
+    public void Hris_sync_failing_for_more_than_two_days_alerts_with_the_last_error()
+    {
+        var p = Assert.Single(OpsHealthWorker.HrisProblems(
+            new(LastSuccessAt: Now.AddDays(-11), LastRunAt: Now.AddHours(-8), LastError: "connection refused (10.10.6.51:27080)"),
+            Now, TimeSpan.FromHours(48)));
+        Assert.Equal(("hris-stale", "high"), (p.Key, p.Priority));
+        Assert.Contains("11 days", p.Message);
+        Assert.Contains("connection refused", p.Message);
+    }
+
+    [Fact]
+    public void Hris_sync_that_succeeded_recently_or_never_ran_raises_nothing()
+    {
+        Assert.Empty(OpsHealthWorker.HrisProblems(new(Now.AddHours(-20), Now.AddHours(-20), null), Now, TimeSpan.FromHours(48)));
+        Assert.Empty(OpsHealthWorker.HrisProblems(null, Now, TimeSpan.FromHours(48)));
+    }
+
+    [Fact]
+    public void Hris_sync_that_never_succeeded_but_keeps_running_alerts()
+    {
+        var p = Assert.Single(OpsHealthWorker.HrisProblems(new(null, Now.AddHours(-1), "timeout"), Now, TimeSpan.FromHours(48)));
+        Assert.Equal("hris-stale", p.Key);
+    }
 }
