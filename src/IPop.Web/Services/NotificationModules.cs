@@ -19,6 +19,7 @@ public static class NotificationModules
     public static readonly NotificationModule Notes = new("notes", "Notes", "notebook-pen");
     public static readonly NotificationModule Files = new("files", "Files", "folder");
     public static readonly NotificationModule Tickets = new("tickets", "Tickets", "life-buoy");
+    public static readonly NotificationModule Hub = new("hub", "The Hub", "messages-square");
     public static readonly NotificationModule Admin = new("admin", "Administration", "shield-check");
     public static readonly NotificationModule System = new("system", "System", "bell");
 
@@ -34,6 +35,7 @@ public static class NotificationModules
             return path.StartsWith("/notes") ? Notes : Mention;
         if (path.StartsWith("/notes")) return Notes;
         if (path.StartsWith("/tickets") || e.StartsWith("ticket")) return Tickets;
+        if (path.StartsWith("/hub") || e.StartsWith("hub.")) return Hub;
         if (path.StartsWith("/calls") || path.StartsWith("/meeting")) return Meeting;
         if (path.StartsWith("/calendar")) return Calendar;
         if (path.StartsWith("/files")) return Files;

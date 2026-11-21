@@ -247,6 +247,7 @@ builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Badges.Notificati
 builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Badges.NewsBadgeProvider>();
 builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Badges.CallsBadgeProvider>();
 builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Badges.TicketsBadgeProvider>();
+builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Hub.HubBadgeProvider>();
 builder.Services.AddSingleton<PresenceBroadcaster>();
 builder.Services.AddSingleton<PresenceConnections>();
 builder.Services.AddSingleton<PresenceDevices>();
@@ -401,6 +402,11 @@ builder.Services.AddScoped<IPop.Application.Tickets.ITicketService>(sp => new IP
 if (outboundWorkers) builder.Services.AddHostedService<IPop.Infrastructure.Tickets.TicketOutboxWorker>();
 if (outboundWorkers) builder.Services.AddHostedService<IPop.Infrastructure.Tickets.TicketReconcileWorker>();
 if (outboundWorkers) builder.Services.AddHostedService<IPop.Infrastructure.Tickets.IdeskCalendarWorker>();
+
+// The Hub — confidential cross-department topics (docs/superpowers/specs/2026-11-21-the-hub-design.md).
+builder.Services.AddScoped<IPop.Application.Hub.IHubService, IPop.Infrastructure.Hub.HubService>();
+builder.Services.AddScoped<IAttachmentAccessPolicy, IPop.Infrastructure.Hub.HubAttachmentPolicy>();
+if (outboundWorkers) builder.Services.AddHostedService<IPop.Infrastructure.Hub.HubReminderWorker>();
 
 builder.Services.AddScoped<IHrisSyncService, HrisSyncService>();
 // Adapter by config (spec §4): Production → HttpHrisGateway (Polly), otherwise JSON file.
@@ -618,6 +624,7 @@ app.MapNewsComposerMedia();
 app.MapNewsVideos();
 app.MapNotes();
 app.MapTickets();
+app.MapHub();
 app.MapNotificationGateway();
 app.MapPush();
 app.MapPresence();
