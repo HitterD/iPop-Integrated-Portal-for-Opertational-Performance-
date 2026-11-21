@@ -1,0 +1,49 @@
+/* Excalidraw dressed as part of iPop Notes: iPop colours, rounded controls, none of Excalidraw's own links or branding. */
+.nt-draw .excalidraw,
+.nt-board .excalidraw,
+.nt-draw-fs .excalidraw {
+  --color-primary: var(--accent, #34A853);
+  --color-primary-darker: color-mix(in srgb, var(--accent, #34A853) 85%, black);
+  --color-primary-darkest: color-mix(in srgb, var(--accent, #34A853) 70%, black);
+  --color-primary-light: color-mix(in srgb, var(--accent, #34A853) 14%, transparent);
+  --color-primary-light-darker: color-mix(in srgb, var(--accent, #34A853) 22%, transparent);
+  --island-bg-color: var(--surface, #fff);
+  --font-family: var(--nt-font, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
+  --border-radius-lg: 12px;
+  --default-border-color: var(--line, rgba(0, 0, 0, .08));
+}
+/* The canvas shows the page behind it; the "paper" colour comes from the block. */
+.nt-draw .excalidraw .excalidraw-container,
+.nt-draw-fs .excalidraw .excalidraw-container { background: transparent; }
+.nt-draw .excalidraw.theme--dark,
+.nt-draw-fs .excalidraw.theme--dark { --island-bg-color: var(--surface, #1C1C1E); }
+
+/* Everything that points back to Excalidraw or to the hosted service is hidden. */
+.nt-draw .excalidraw .welcome-screen-center,
+.nt-draw .excalidraw .welcome-screen-menu-item,
+.nt-draw .excalidraw .help-icon,
+.nt-draw .excalidraw .layer-ui__wrapper__footer-right,
+.nt-draw .excalidraw .sidebar-trigger,
+.nt-draw .excalidraw .main-menu-trigger,
+.nt-draw .excalidraw .library-button,
+.nt-draw .excalidraw a[href*="excalidraw.com"],
+.nt-draw .excalidraw a[href*="github.com"],
+.nt-draw .excalidraw .excalidraw-textEditorContainer + .HintViewer { display: none !important; }
+.nt-draw-fs .excalidraw .welcome-screen-center,
+.nt-draw-fs .excalidraw .help-icon,
+.nt-draw-fs .excalidraw .library-button,
+.nt-draw-fs .excalidraw a[href*="excalidraw.com"],
+.nt-draw-fs .excalidraw a[href*="github.com"] { display: none !important; }
+
+/* Read-only blocks: no tools at all. */
+.nt-draw.ro .excalidraw .App-toolbar,
+.nt-draw.ro .excalidraw .layer-ui__wrapper__top-right,
+.nt-draw.ro .excalidraw .App-bottom-bar { display: none !important; }
+
+/* Whiteboard page: the canvas sits on the page's dotted background, tools are always visible. */
+.nt-board .excalidraw .welcome-screen-center,
+.nt-board .excalidraw .help-icon,
+.nt-board .excalidraw .library-button,
+.nt-board .excalidraw a[href*="excalidraw.com"],
+.nt-board .excalidraw a[href*="github.com"] { display: none !important; }
+.nt-board .excalidraw .excalidraw-container { background: transparent; }

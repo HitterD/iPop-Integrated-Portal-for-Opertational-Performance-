@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Whiteboard Motion & Zoom</title>
+<style>
+:root{
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",system-ui,sans-serif;
+  --bg:#F2F2F4;--surface:#fff;--surface-2:#F5F5F7;--fill:rgba(118,118,128,.12);--fill-2:rgba(118,118,128,.2);
+  --line:rgba(0,0,0,.08);--line-2:rgba(0,0,0,.15);
+  --ink:#1D1D1F;--ink-2:#424245;--ink-3:#86868B;--ink-4:#AEAEB2;
+  --accent:#34A853;--accent-ink:#1E8E3E;--blue:#0A84FF;--blue-soft:rgba(10,132,255,.12);--red:#FF3B30;
+  --pop:0 12px 40px rgba(0,0,0,.14),0 0 0 .5px rgba(0,0,0,.08);
+  --card:0 1px 3px rgba(0,0,0,.06),0 0 0 .5px rgba(0,0,0,.08);
+  --board:#FBFBFA;--grid:rgba(0,0,0,.10);--sticky:#FFF1A8;
+  --spring:cubic-bezier(.3,1.35,.5,1);--out:cubic-bezier(.2,.8,.2,1);
+}
+:root[data-theme=dark]{
+  --bg:#000;--surface:#1C1C1E;--surface-2:#242426;--fill:rgba(118,118,128,.24);--fill-2:rgba(118,118,128,.36);
+  --line:rgba(255,255,255,.1);--line-2:rgba(255,255,255,.2);
+  --ink:#F5F5F7;--ink-2:#D1D1D6;--ink-3:#8E8E93;--ink-4:#636366;
+  --accent:#30D158;--accent-ink:#30D158;--blue:#409CFF;--blue-soft:rgba(64,156,255,.18);
+  --pop:0 12px 40px rgba(0,0,0,.6),0 0 0 .5px rgba(255,255,255,.12);--card:0 0 0 .5px rgba(255,255,255,.12);
+  --board:#141416;--grid:rgba(255,255,255,.09);--sticky:#4B4321;
+}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.5 var(--font);background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer}
+input{font:inherit;color:inherit}
+kbd{font:10.5px ui-monospace,Menlo,Consolas,monospace;padding:1px 6px;border-radius:5px;background:var(--fill);color:var(--ink-2)}
+svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.topbar{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--surface) 86%,transparent);backdrop-filter:saturate(1.6) blur(20px);border-bottom:1px solid var(--line)}
+.topbar .in{max-width:1280px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:14px}
+.topbar h1{font:600 15px var(--font);margin:0;white-space:nowrap}
+.topbar nav{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0}
+.topbar nav a{color:var(--ink-2);text-decoration:none;font-size:13px;padding:5px 10px;border-radius:8px;white-space:nowrap}
+.topbar nav a:hover{background:var(--fill)}
+.seg{display:inline-flex;background:var(--fill);border-radius:9px;padding:2px;flex:none}
+.seg button{border:0;background:none;padding:4px 10px;border-radius:7px;font-size:12.5px;color:var(--ink-2)}
+.seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08),0 0 0 .5px var(--line)}
+main{max-width:1280px;margin:0 auto;padding:28px 16px 80px}
+.lead h2{font:700 26px/1.2 var(--font);margin:0 0 8px}
+.lead p{margin:0;color:var(--ink-2);max-width:860px}
+section{margin-top:40px}
+section>h3{font:600 18px var(--font);margin:0 0 4px}
+section>p.sub{margin:0 0 14px;color:var(--ink-3);font-size:13.5px;max-width:860px}
+.stage{position:relative;background:var(--board);background-image:radial-gradient(var(--grid) 1.1px,transparent 1.3px);background-size:22px 22px;border-radius:14px;overflow:hidden;box-shadow:inset 0 0 0 1px var(--line);user-select:none}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.card{background:var(--surface);border-radius:16px;box-shadow:var(--card);padding:16px;min-width:0}
+.card h4{margin:0 0 6px;font:600 14px var(--font)}
+.card p{margin:0;color:var(--ink-3);font-size:12.5px}
+.btn{border:0;background:var(--fill);border-radius:10px;height:34px;padding:0 14px;font-size:13px;font-weight:550;transition:transform .12s var(--out),background .15s}
+.btn:active{transform:scale(.96)}
+.btn.pri{background:var(--accent);color:#fff}
+.note{font-size:12.5px;color:var(--ink-3)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+/* ── motion primitives (all off with prefers-reduced-motion) ── */
+.pop-in{animation:popIn .2s var(--spring) both}
+@keyframes popIn{from{opacity:0;transform:scale(.96) translateY(4px)}to{opacity:1;transform:none}}
+.pop-out{animation:popOut .12s var(--out) both}
+@keyframes popOut{to{opacity:0;transform:scale(.97) translateY(2px)}}
+.el-in{animation:elIn .22s var(--spring) both}
+@keyframes elIn{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:none}}
+.el-out{animation:elOut .16s var(--out) both}
+@keyframes elOut{to{opacity:0;transform:scale(.9)}}
+.flash{animation:flash .9s var(--out)}
+@keyframes flash{0%{box-shadow:0 0 0 0 rgba(10,132,255,.0)}20%{box-shadow:0 0 0 6px rgba(10,132,255,.35)}100%{box-shadow:0 0 0 14px rgba(10,132,255,0)}}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+/* demo board elements */
+.el{position:absolute;display:grid;place-items:center;font-size:13px;cursor:grab;border-radius:6px;transition:box-shadow .15s var(--out),transform .15s var(--out)}
+.el.sticky{background:var(--sticky);box-shadow:0 2px 6px rgba(0,0,0,.12);padding:12px;place-items:start;text-align:left;color:#1D1D1F}
+:root[data-theme=dark] .el.sticky{color:#FFF6C2}
+.el.shape{background:var(--surface);border:1.5px solid var(--ink)}
+.el.lift{box-shadow:0 14px 28px rgba(0,0,0,.18),0 2px 6px rgba(0,0,0,.1);transform:scale(1.02) rotate(-.6deg);cursor:grabbing;z-index:5}
+.el.sel{outline:1.5px solid var(--blue);outline-offset:4px}
+.guide{position:absolute;background:#FF2D55;opacity:0;transition:opacity .12s}
+.guide.on{opacity:.85}
+.dist{position:absolute;font:600 10.5px var(--font);background:#FF2D55;color:#fff;padding:1px 5px;border-radius:5px;opacity:0;transition:opacity .12s;transform:translate(-50%,-50%)}
+.dist.on{opacity:1}
+.toast{position:absolute;left:50%;top:14px;transform:translateX(-50%);background:var(--surface);color:var(--ink);box-shadow:var(--pop);padding:7px 14px;border-radius:10px;font-size:12.5px;display:flex;gap:10px;align-items:center;z-index:30}
+.toast button{border:0;background:none;color:var(--blue);font-weight:600;font-size:12.5px;padding:0}
+.saved{position:absolute;right:14px;top:14px;font-size:11.5px;color:var(--ink-3);display:flex;align-items:center;gap:6px;background:var(--surface);padding:4px 10px;border-radius:999px;box-shadow:var(--card);z-index:6}
+.saved i{width:7px;height:7px;border-radius:50%;background:var(--accent);display:block;transition:background .2s}
+.saved.saving i{background:#FF9500;animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.35}}
+/* zoom hud */
+.zhud{position:absolute;pointer-events:none;font:600 12px var(--font);background:var(--ink);color:var(--surface);padding:3px 8px;border-radius:7px;opacity:0;transition:opacity .15s;z-index:20;transform:translate(14px,14px)}
+.zhud.on{opacity:1}
+.zbox{position:absolute;border:1.5px dashed var(--blue);background:var(--blue-soft);pointer-events:none;display:none;z-index:4}
+.world{position:absolute;inset:0;transform-origin:0 0;transition:transform .32s var(--out)}
+.world.instant{transition:none}
+.tip{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);background:var(--surface);box-shadow:var(--pop);border-radius:14px;padding:12px 14px;display:flex;gap:12px;align-items:flex-start;width:min(560px,calc(100% - 32px));z-index:10}
+.tip .ic{width:34px;height:34px;border-radius:10px;background:#5E5CE6;color:#fff;display:grid;place-items:center;flex:none}
+.tip b{display:block;font-size:13.5px;margin-bottom:4px}
+.tip ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:3px;font-size:12.5px;color:var(--ink-2)}
+.tip .x{margin-left:auto;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.tip .x button{border:0;background:none;font-size:12px;color:var(--ink-3);padding:0}
+.tip .x button.p{color:var(--blue);font-weight:600}
+.ztool{position:absolute;left:14px;top:14px;display:flex;gap:4px;background:var(--surface);border-radius:12px;box-shadow:var(--pop);padding:4px;z-index:6}
+.ztool button{border:0;background:none;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;position:relative}
+.ztool button.on{background:var(--blue-soft);color:var(--blue)}
+.ztool .k{position:absolute;top:0;right:2px;font:600 8.5px ui-monospace,Menlo,monospace;color:var(--ink-4)}
+/* context menu */
+.cmenu{position:absolute;z-index:25;min-width:230px;max-height:calc(100% - 16px);overflow:auto;overscroll-behavior:contain;background:var(--surface);border-radius:12px;box-shadow:var(--pop);padding:5px;font-size:13px}
+.cmenu .it{display:flex;align-items:center;gap:10px;padding:6px 9px;border-radius:7px;cursor:default}
+.cmenu .it:hover{background:var(--blue);color:#fff}
+.cmenu .it:hover kbd{background:rgba(255,255,255,.22);color:#fff}
+.cmenu .it kbd{margin-left:auto}
+.cmenu .sep{height:1px;background:var(--line);margin:4px 6px}
+.cmenu .it.dis{opacity:.4}
+.cmenu .it.red{color:var(--red)}
+.cmenu .it.red:hover{background:var(--red);color:#fff}
+/* palette */
+.palov{position:absolute;inset:0;background:rgba(0,0,0,.18);display:grid;place-items:start center;padding-top:70px;z-index:30}
+.pal{width:min(560px,calc(100% - 32px));background:var(--surface);border-radius:14px;box-shadow:var(--pop);overflow:hidden}
+.pal .q{display:flex;gap:10px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line);color:var(--ink-3)}
+.pal .q input{border:0;outline:0;background:none;flex:1;font-size:15px;color:var(--ink)}
+.pal ul{list-style:none;margin:0;padding:6px;max-height:320px;overflow:auto;overscroll-behavior:contain}
+.pal li{display:flex;gap:10px;align-items:center;padding:8px 10px;border-radius:9px;font-size:13.5px}
+.pal li.kb{background:var(--blue-soft)}
+.pal li .ic{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;background:var(--fill);color:var(--ink-2)}
+.pal li .g{font-size:11px;color:var(--ink-3);margin-left:auto}
+.pal .ft{padding:8px 14px;border-top:1px solid var(--line);font-size:11.5px;color:var(--ink-3);display:flex;gap:14px}
+/* one panel style */
+.pnl{background:var(--surface);border-radius:14px;box-shadow:var(--pop);padding:12px;width:100%;max-width:300px}
+.pnl .h{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.pnl .h b{font-size:13.5px}
+.pnl .h button{border:0;background:var(--fill);width:26px;height:26px;border-radius:50%;font-size:12px}
+.pnl .b{max-height:150px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:4px}
+.pnl .b div{padding:7px 9px;border-radius:8px;background:var(--surface-2);font-size:12.5px;transition:background .12s}
+.pnl .b div:hover{background:var(--fill)}
+/* dock press */
+.mini-dock{display:flex;gap:4px;background:var(--surface);border-radius:16px;box-shadow:var(--pop);padding:8px;width:max-content}
+.mini-dock button{border:0;width:54px;height:48px;border-radius:12px;background:#F0F0F2;display:grid;place-items:center;transition:transform .14s var(--spring),background .15s}
+:root[data-theme=dark] .mini-dock button{background:#2C2C2F}
+.mini-dock button:hover{transform:translateY(-3px)}
+.mini-dock button:active{transform:scale(.92)}
+.mini-dock button.on{box-shadow:inset 0 0 0 1.5px var(--blue)}
+.sw{width:26px;height:26px;border-radius:50%;border:0;transition:transform .16s var(--spring),box-shadow .16s}
+.sw:hover{transform:scale(1.12)}
+.sw.on{box-shadow:0 0 0 2px var(--surface),0 0 0 3.5px var(--ink);transform:scale(1.08)}
+.lasso{position:absolute;inset:0;pointer-events:none}
+.drop{position:absolute;inset:10px;border:2px dashed var(--blue);border-radius:12px;background:var(--blue-soft);display:none;place-items:center;font-weight:600;color:var(--blue);z-index:20}
+.drop.on{display:grid;animation:popIn .18s var(--spring)}
+.ring{position:absolute;border:1.5px solid var(--ink);border-radius:50%;pointer-events:none;transform:translate(-50%,-50%);opacity:.6;transition:width .12s,height .12s}
+.kgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.kgrid h5{margin:0 0 6px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.kgrid div div{display:flex;justify-content:space-between;font-size:12.5px;padding:3px 0;border-bottom:1px solid var(--line)}
+@media (max-width:900px){.grid2{grid-template-columns:1fr}.kgrid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="topbar"><div class="in">
+  <h1>Whiteboard · round 7</h1>
+  <nav><a href="#motion">Micro-interactions</a><a href="#zoom">Zoom + stylus</a><a href="#menu">Klik kanan</a><a href="#palette">Command palette</a><a href="#qol">Quality of life</a><a href="#panels">Satu gaya panel</a></nav>
+  <div class="seg"><button data-th="light" class="on">Light</button><button data-th="dark">Dark</button></div>
+</div></div>
+<main>
+<div class="lead">
+  <h2>Board yang terasa hidup: gerak halus, zoom stylus, klik kanan, palette</h2>
+  <p>Bug scroll panel, “See more”, dan bar pen sudah diperbaiki langsung (commit 496dafc). Halaman ini hanya untuk bagian yang perlu <b>dirasakan</b> sebelum dibangun. Semua bisa dicoba. Animasi 120–220 ms, mati otomatis kalau Windows “Reduce motion” aktif.</p>
+</div>
+
+<!-- MOTION -->
+<section id="motion">
+  <h3>1 · Micro-interactions</h3>
+  <p class="sub">Seret sticky (terangkat + bayangan, garis bantu &amp; jarak muncul saat sejajar). Klik tombol di bawah untuk melihat pop-in, hapus, undo dengan kilatan, dan kamera yang meluncur ke template.</p>
+  <div class="stage" id="mstage" style="height:420px">
+    <div class="saved" id="saved"><i></i><span>Saved</span></div>
+    <div class="world" id="mworld">
+      <div class="el sticky" id="s1" style="left:120px;top:90px;width:150px;height:120px">Drag me</div>
+      <div class="el shape" id="s2" style="left:380px;top:110px;width:160px;height:80px">Process</div>
+      <div class="el sticky" id="s3" style="left:620px;top:200px;width:150px;height:120px;background:#FADDE3">Line me up</div>
+      <div id="tplFrame" style="position:absolute;left:1500px;top:600px;width:520px;height:300px;border:1.5px solid var(--line-2);border-radius:14px;background:var(--surface-2)"><div style="position:absolute;top:-22px;left:2px;font:600 13px var(--font);color:var(--ink-3)">Retro</div></div>
+    </div>
+    <div class="guide" id="gx" style="width:1px;top:0;bottom:0"></div>
+    <div class="guide" id="gy" style="height:1px;left:0;right:0"></div>
+    <div class="dist" id="dist">24 px</div>
+    <div id="mtoast"></div>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <button class="btn" id="addS">＋ Sticky (pop-in)</button>
+    <button class="btn" id="delS">Hapus terakhir (fade)</button>
+    <button class="btn" id="undoS">Undo (kilatan + toast)</button>
+    <button class="btn" id="tplS">Pakai template (kamera meluncur)</button>
+    <button class="btn" id="fitS">Fit (zoom halus)</button>
+  </div>
+  <div class="grid2" style="margin-top:16px">
+    <div class="card"><h4>Dock &amp; warna</h4><p style="margin-bottom:10px">Tile naik saat hover, mengecil saat ditekan; warna terpilih “pop”.</p>
+      <div class="mini-dock" id="mdock"><button>✏️</button><button class="on">▢</button><button>↗</button><button>🗒️</button><button>T</button></div>
+      <div class="row" style="margin-top:12px" id="msw"><button class="sw on" style="background:#FF3B30"></button><button class="sw" style="background:#FF9500"></button><button class="sw" style="background:#FFCC00"></button><button class="sw" style="background:#34C759"></button><button class="sw" style="background:#0A84FF"></button><button class="sw" style="background:#1D1D1F"></button></div></div>
+    <div class="card"><h4>Panel &amp; popup</h4><p style="margin-bottom:10px">Membuka dengan pegas (0.96 → 1 + fade), menutup lebih cepat.</p>
+      <button class="btn" id="pT">Buka / tutup panel</button>
+      <div style="position:relative;height:150px;margin-top:10px"><div class="pnl" id="pDemo" hidden><div class="h"><b>Frames</b><button>✕</button></div><div class="b"><div>1 · Kickoff</div><div>2 · Timeline</div><div>3 · Risks</div><div>4 · Budget</div></div></div></div></div>
+  </div>
+</section>
+
+<!-- ZOOM -->
+<section id="zoom">
+  <h3>2 · Zoom untuk stylus (Z)</h3>
+  <p class="sub"><b>Z</b> = tool Zoom: klik = zoom in, <b>Alt</b>+klik = out, seret atas/bawah = zoom halus, seret kotak = zoom ke area itu. <b>Tahan Z</b> = sementara (lepas → kembali ke pen). Persentase muncul di dekat kursor. Coba: klik papan dulu, lalu tekan/tahan Z.</p>
+  <div class="stage" id="zstage" style="height:420px" tabindex="0">
+    <div class="ztool"><button id="zp" class="on" title="Pen (P)">✏️<span class="k">P</span></button><button id="zz" title="Zoom (Z)"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M8 11h6M11 8v6"/></svg><span class="k">Z</span></button><button id="zh" title="Hand (H)">✋<span class="k">H</span></button></div>
+    <div class="world instant" id="zworld">
+      <div class="el sticky" style="left:200px;top:120px;width:150px;height:120px;cursor:inherit">Q1 goals</div>
+      <div class="el shape" style="left:420px;top:150px;width:160px;height:80px;cursor:inherit">Approve PR</div>
+      <div class="el sticky" style="left:650px;top:230px;width:150px;height:120px;background:#D6F1DE;cursor:inherit">Ship in Dec</div>
+    </div>
+    <div class="zbox" id="zbox"></div>
+    <div class="zhud" id="zhud">100%</div>
+    <div class="tip" id="ztip" hidden>
+      <div class="ic">✍️</div>
+      <div><b>Tips for your stylus</b><ul><li><kbd>Z</kbd> hold and drag up/down to zoom · tap to zoom in</li><li><kbd>Space</kbd> hold to move the board</li><li>Stylus side button = eraser, while you hold it</li></ul></div>
+      <div class="x"><button class="p" id="tipOk">Got it</button><button id="tipNo">Don’t show again</button></div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:10px"><button class="btn" id="showTip">Simulasikan: stylus pertama kali menyentuh papan</button><span class="note" id="zmode">Mode: Pen</span></div>
+</section>
+
+<!-- MENU -->
+<section id="menu">
+  <h3>3 · Menu klik kanan</h3>
+  <p class="sub">Klik kanan di kanvas kosong atau di sebuah elemen. Isi menu berbeda sesuai yang diklik. Shortcut ditampilkan di kanan.</p>
+  <div class="stage" id="cstage" style="height:460px">
+    <div class="el sticky" id="c1" style="left:160px;top:110px;width:150px;height:120px">Right-click me</div>
+    <div class="el shape" id="c2" style="left:420px;top:140px;width:160px;height:80px">Or me</div>
+  </div>
+</section>
+
+<!-- PALETTE -->
+<section id="palette">
+  <h3>4 · Command palette (Ctrl /)</h3>
+  <p class="sub">Cari dan jalankan apa saja: tool, template, aksi, pengaturan. ↑↓ pilih, Enter jalankan. Juga paham kata Indonesia.</p>
+  <div class="stage" id="pstage" style="height:420px">
+    <div class="row" style="position:absolute;left:16px;top:16px"><button class="btn pri" id="openPal">Tekan Ctrl / (atau klik)</button></div>
+  </div>
+</section>
+
+<!-- QOL -->
+<section id="qol">
+  <h3>5 · Quality of life</h3>
+  <p class="sub">Semua yang disetujui (a–l). Beberapa bisa dicoba di papan kecil ini: <b>Alt+seret</b> = duplikat, <b>Alt+gambar</b> = lasso, lingkaran ukuran kuas mengikuti kursor, seret file ke sini = drop zone.</p>
+  <div class="stage" id="qstage" style="height:340px">
+    <div class="el sticky qel" style="left:120px;top:90px;width:140px;height:110px">Alt-drag me</div>
+    <div class="el shape qel" style="left:340px;top:120px;width:150px;height:70px">Lasso me</div>
+    <div class="el sticky qel" style="left:560px;top:170px;width:140px;height:110px;background:#D8E7FC">And me</div>
+    <svg class="lasso" id="lasso"><path id="lassoP" fill="rgba(10,132,255,.08)" stroke="#0A84FF" stroke-width="1.5" stroke-dasharray="4 3"/></svg>
+    <div class="ring" id="ring" style="width:14px;height:14px;display:none"></div>
+    <div class="drop" id="drop">Drop to add pictures and files to the board</div>
+  </div>
+  <div class="grid2" style="margin-top:16px">
+    <div class="card"><h4>Lainnya (dibangun, tidak semua didemokan)</h4><p>
+      • <b>Ctrl Enter</b> di sticky → sticky berikutnya di sebelahnya.<br>
+      • Panah = geser 1 px, <b>Shift</b>+panah = 10 px.<br>
+      • <b>Eyedropper</b> di popup warna: klik elemen untuk mengambil warnanya.<br>
+      • Papan mengingat posisi &amp; zoom terakhir <b>per orang</b>.<br>
+      • Indikator <b>Saved / Saving…</b> (lihat pojok kanan atas papan di bagian 1).<br>
+      • Toast undo: “Undid: moved 3 shapes · Redo”.</p></div>
+    <div class="card"><h4>Shortcut keyboard (panel baru, dikelompokkan + bisa dicari)</h4>
+      <input class="btn" style="width:100%;background:var(--surface-2);font-weight:400;text-align:left;margin-bottom:10px" placeholder="Search shortcuts…">
+      <div class="kgrid"><div><h5>Tools</h5><div><span>Pen</span><kbd>P</kbd></div><div><span>Zoom</span><kbd>Z</kbd></div><div><span>Sticky</span><kbd>S</kbd></div></div><div><h5>Edit</h5><div><span>Duplicate</span><kbd>Ctrl D</kbd></div><div><span>Group</span><kbd>Ctrl G</kbd></div><div><span>Palette</span><kbd>Ctrl /</kbd></div></div><div><h5>View</h5><div><span>Fit</span><kbd>Shift 1</kbd></div><div><span>Selection</span><kbd>Shift 2</kbd></div><div><span>Full screen</span><kbd>Shift F</kbd></div></div></div></div>
+  </div>
+</section>
+
+<!-- PANELS -->
+<section id="panels">
+  <h3>6 · Satu gaya untuk semua panel</h3>
+  <p class="sub">Header + ✕ di kanan, radius 14, padding 12, bayangan sama, scroll di dalam (tidak tembus ke papan). Berlaku untuk Shapes, Library, Comments, History, Export, Timer, Vote, Picker, More, popup warna, menu ⋯.</p>
+  <div class="row" style="align-items:flex-start;gap:16px">
+    <div class="pnl"><div class="h"><b>Shapes</b><button>✕</button></div><div class="b"><div>Rectangle</div><div>Diamond</div><div>Database</div><div>Document</div><div>Swimlane</div><div>Cloud</div></div></div>
+    <div class="pnl"><div class="h"><b>Timer</b><button>✕</button></div><div class="b"><div>3 min</div><div>5 min</div><div>10 min</div><div>Custom…</div></div></div>
+    <div class="pnl"><div class="h"><b>Version history</b><button>✕</button></div><div class="b"><div>Today 14:20 · Andi</div><div>Today 11:02 · Sari</div><div>Yesterday · Budi</div><div>16 Nov · Rina</div><div>15 Nov · Dewi</div></div></div>
+  </div>
+</section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const reduce = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+document.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { document.documentElement.dataset.theme = b.dataset.th; document.querySelectorAll('[data-th]').forEach(x => x.classList.toggle('on', x === b)); });
+
+/* ── 1. motion ── */
+const mw = $('#mworld'), ms = $('#mstage');
+let cam = { x: 0, y: 0, z: 1 };
+const setCam = (c, instant) => { cam = c; mw.classList.toggle('instant', !!instant); mw.style.transform = `translate(${cam.x}px,${cam.y}px) scale(${cam.z})`; };
+function toast(stage, html, ms2 = 2200) { const t = document.createElement('div'); t.className = 'toast pop-in'; t.innerHTML = html; stage.append(t); setTimeout(() => { t.className = 'toast pop-out'; setTimeout(() => t.remove(), 140); }, ms2); }
+function saving() { const s = $('#saved'); s.classList.add('saving'); s.querySelector('span').textContent = 'Saving…'; clearTimeout(saving.t); saving.t = setTimeout(() => { s.classList.remove('saving'); s.querySelector('span').textContent = 'Saved'; }, 700); }
+// drag with lift, guides, distance
+let drag = null;
+mw.addEventListener('pointerdown', e => {
+  const el = e.target.closest('.el'); if (!el) return;
+  document.querySelectorAll('#mworld .el').forEach(x => x.classList.toggle('sel', x === el));
+  const alt = e.altKey;
+  drag = { el, sx: e.clientX, sy: e.clientY, x: el.offsetLeft, y: el.offsetTop }; el.classList.add('lift'); el.setPointerCapture(e.pointerId);
+  void alt;
+});
+mw.addEventListener('pointermove', e => {
+  if (!drag) return;
+  let x = drag.x + (e.clientX - drag.sx) / cam.z, y = drag.y + (e.clientY - drag.sy) / cam.z;
+  const others = [...mw.querySelectorAll('.el')].filter(o => o !== drag.el);
+  let gx = null, gy = null;
+  for (const o of others) {
+    if (Math.abs(o.offsetTop - y) < 8) { y = o.offsetTop; gy = y; }
+    if (Math.abs(o.offsetLeft - x) < 8) { x = o.offsetLeft; gx = x; }
+  }
+  drag.el.style.left = x + 'px'; drag.el.style.top = y + 'px';
+  $('#gx').classList.toggle('on', gx != null); if (gx != null) $('#gx').style.left = gx * cam.z + cam.x + 'px';
+  $('#gy').classList.toggle('on', gy != null); if (gy != null) $('#gy').style.top = gy * cam.z + cam.y + 'px';
+  const n = others.filter(o => Math.abs(o.offsetTop - y) < 2).sort((a, b) => Math.abs(a.offsetLeft - x) - Math.abs(b.offsetLeft - x))[0];
+  const d = $('#dist');
+  if (n) { const gap = n.offsetLeft > x ? n.offsetLeft - (x + drag.el.offsetWidth) : x - (n.offsetLeft + n.offsetWidth); d.textContent = `${Math.round(gap)} px`; d.style.left = ((n.offsetLeft > x ? x + drag.el.offsetWidth + gap / 2 : n.offsetLeft + n.offsetWidth + gap / 2) * cam.z + cam.x) + 'px'; d.style.top = (y - 12) * cam.z + cam.y + 'px'; d.classList.add('on'); } else d.classList.remove('on');
+});
+mw.addEventListener('pointerup', () => { if (!drag) return; drag.el.classList.remove('lift'); drag = null; $('#gx').classList.remove('on'); $('#gy').classList.remove('on'); $('#dist').classList.remove('on'); saving(); });
+let added = [];
+$('#addS').onclick = () => { const s = document.createElement('div'); s.className = 'el sticky el-in'; s.style.cssText = `left:${160 + added.length * 40}px;top:${250 + added.length * 10}px;width:130px;height:100px;background:${['#FFF1A8', '#D6F1DE', '#D8E7FC', '#FADDE3'][added.length % 4]}`; s.textContent = 'New idea'; mw.append(s); added.push(s); saving(); };
+$('#delS').onclick = () => { const s = added.pop() || mw.querySelector('#s3'); if (!s) return; s.classList.add('el-out'); setTimeout(() => s.remove(), 170); saving(); };
+$('#undoS').onclick = () => { const s = $('#s2'); s.style.left = '380px'; s.style.top = '110px'; s.classList.remove('flash'); void s.offsetWidth; s.classList.add('flash'); toast(ms, 'Undid: moved 1 shape <button>Redo</button>'); };
+$('#tplS').onclick = () => { setCam({ x: -1500 * .8 + ms.clientWidth / 2 - 260 * .8, y: -600 * .8 + 60, z: .8 }); const f = $('#tplFrame'); setTimeout(() => { f.classList.remove('flash'); void f.offsetWidth; f.classList.add('flash'); }, reduce() ? 0 : 320); toast(ms, '“Retro” added · Undo with Ctrl Z'); };
+$('#fitS').onclick = () => setCam({ x: 0, y: 0, z: 1 });
+// panel spring
+$('#pT').onclick = () => { const p = $('#pDemo'); if (p.hidden) { p.hidden = false; p.className = 'pnl pop-in'; } else { p.className = 'pnl pop-out'; setTimeout(() => { p.hidden = true; }, 120); } };
+$('#mdock').onclick = e => { const b = e.target.closest('button'); if (!b) return; $('#mdock').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); };
+$('#msw').onclick = e => { const b = e.target.closest('.sw'); if (!b) return; $('#msw').querySelectorAll('.sw').forEach(x => x.classList.toggle('on', x === b)); };
+
+/* ── 2. zoom ── */
+const zs = $('#zstage'), zw = $('#zworld'), hud = $('#zhud');
+let z = { x: 0, y: 0, z: 1 }, ztool = 'pen', zHeld = false, zDrag = null;
+const zApply = (smooth) => { zw.classList.toggle('instant', !smooth); zw.style.transform = `translate(${z.x}px,${z.y}px) scale(${z.z})`; };
+const showHud = (x, y) => { hud.textContent = Math.round(z.z * 100) + '%'; hud.style.left = x + 'px'; hud.style.top = y + 'px'; hud.classList.add('on'); clearTimeout(showHud.t); showHud.t = setTimeout(() => hud.classList.remove('on'), 900); };
+const zoomAt = (f, x, y, smooth) => { const wx = (x - z.x) / z.z, wy = (y - z.y) / z.z; z.z = Math.max(.1, Math.min(4, z.z * f)); z.x = x - wx * z.z; z.y = y - wy * z.z; zApply(smooth); showHud(x, y); };
+const mode = () => (zHeld ? 'zoom' : ztool);
+function paintZ() { $('#zp').classList.toggle('on', mode() === 'pen'); $('#zz').classList.toggle('on', mode() === 'zoom'); $('#zh').classList.toggle('on', mode() === 'hand'); zs.style.cursor = mode() === 'zoom' ? 'zoom-in' : mode() === 'hand' ? 'grab' : 'crosshair'; $('#zmode').textContent = 'Mode: ' + (zHeld ? 'Zoom (held Z)' : mode()[0].toUpperCase() + mode().slice(1)); }
+$('#zp').onclick = () => { ztool = 'pen'; paintZ(); }; $('#zz').onclick = () => { ztool = 'zoom'; paintZ(); }; $('#zh').onclick = () => { ztool = 'hand'; paintZ(); };
+zs.addEventListener('keydown', e => {
+  if (e.key.toLowerCase() === 'z' && !e.ctrlKey) { if (e.repeat) return; zs._zDown = Date.now(); zHeld = true; paintZ(); }
+  if (e.key.toLowerCase() === 'p') { ztool = 'pen'; paintZ(); }
+  if (e.key.toLowerCase() === 'h') { ztool = 'hand'; paintZ(); }
+});
+zs.addEventListener('keyup', e => { if (e.key.toLowerCase() === 'z') { zHeld = false; if (Date.now() - zs._zDown < 220 && !zs._zUsed) ztool = 'zoom'; zs._zUsed = false; paintZ(); } });
+zs.addEventListener('pointerdown', e => {
+  if (e.target.closest('.ztool, .tip')) return;
+  zs.focus();
+  const r = zs.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  if (mode() === 'zoom') { zs._zUsed = true; zDrag = { x, y, sy: e.clientY, z0: z.z, moved: false, box: e.shiftKey || false }; zs.setPointerCapture(e.pointerId); }
+  if (mode() === 'hand') { zDrag = { pan: true, sx: e.clientX, sy: e.clientY, x0: z.x, y0: z.y }; zs.setPointerCapture(e.pointerId); }
+});
+zs.addEventListener('pointermove', e => {
+  if (!zDrag) return;
+  const r = zs.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  if (zDrag.pan) { z.x = zDrag.x0 + e.clientX - zDrag.sx; z.y = zDrag.y0 + e.clientY - zDrag.sy; zApply(); return; }
+  const dx = x - zDrag.x, dy = y - zDrag.y;
+  if (!zDrag.moved && Math.hypot(dx, dy) > 4) zDrag.moved = true;
+  if (!zDrag.moved) return;
+  // a drag mostly sideways draws a box; up/down zooms smoothly
+  if (Math.abs(dx) > Math.abs(dy) * 1.2 || zDrag.boxOn) { zDrag.boxOn = true; const b = $('#zbox'); b.style.display = 'block'; b.style.left = Math.min(x, zDrag.x) + 'px'; b.style.top = Math.min(y, zDrag.y) + 'px'; b.style.width = Math.abs(dx) + 'px'; b.style.height = Math.abs(dy) + 'px'; return; }
+  const f = Math.exp(-(e.clientY - zDrag.sy) * 0.008); const target = Math.max(.1, Math.min(4, zDrag.z0 * f)); zoomAt(target / z.z, zDrag.x, zDrag.y, false);
+});
+zs.addEventListener('pointerup', e => {
+  if (!zDrag) return;
+  const r = zs.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  if (!zDrag.pan && !zDrag.moved) zoomAt(e.altKey ? 1 / 1.5 : 1.5, x, y, true);
+  if (zDrag.boxOn) { const b = $('#zbox'); const bx = Math.min(x, zDrag.x), by = Math.min(y, zDrag.y), bw = Math.abs(x - zDrag.x), bh = Math.abs(y - zDrag.y); b.style.display = 'none'; if (bw > 20 && bh > 20) { const f = Math.min(zs.clientWidth / bw, zs.clientHeight / bh) * .9; const wx = (bx + bw / 2 - z.x) / z.z, wy = (by + bh / 2 - z.y) / z.z; z.z = Math.max(.1, Math.min(4, z.z * f)); z.x = zs.clientWidth / 2 - wx * z.z; z.y = zs.clientHeight / 2 - wy * z.z; zApply(true); showHud(zs.clientWidth / 2, zs.clientHeight / 2); } }
+  zDrag = null;
+});
+$('#showTip').onclick = () => { const t = $('#ztip'); t.hidden = false; t.className = 'tip pop-in'; };
+$('#tipOk').onclick = $('#tipNo').onclick = () => { const t = $('#ztip'); t.className = 'tip pop-out'; setTimeout(() => (t.hidden = true), 120); };
+paintZ();
+
+/* ── 3. context menu ── */
+const cs = $('#cstage');
+const K = { c: 'Ctrl C', v: 'Ctrl V', d: 'Ctrl D', g: 'Ctrl G', l: 'Ctrl Shift L', f: 'Ctrl ]', b: 'Ctrl [', del: 'Del', a: 'Ctrl A', p: 'Shift 1' };
+function cmenu(x, y, items) {
+  cs.querySelector('.cmenu')?.remove();
+  const m = document.createElement('div'); m.className = 'cmenu pop-in';
+  m.innerHTML = items.map(i => i === '-' ? '<div class="sep"></div>' : `<div class="it ${i[2] || ''}">${i[0]}${i[1] ? `<kbd>${i[1]}</kbd>` : ''}</div>`).join('');
+  cs.append(m);
+  // opens below the pointer, or above it when there is no room; never past the board's edges
+  m.style.left = Math.max(8, Math.min(x, cs.clientWidth - m.offsetWidth - 8)) + 'px';
+  m.style.top = (y + m.offsetHeight + 8 <= cs.clientHeight ? y : Math.max(8, y - m.offsetHeight)) + 'px';
+  m.addEventListener('click', () => { m.className = 'cmenu pop-out'; setTimeout(() => m.remove(), 110); });
+}
+cs.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const r = cs.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, el = e.target.closest('.el');
+  cs.querySelectorAll('.el').forEach(o => o.classList.toggle('sel', o === el));
+  cmenu(x, y, el ? [['Copy', K.c], ['Duplicate', K.d], ['Copy style', 'Ctrl Shift C'], '-', ['Bring to front', K.f], ['Send to back', K.b], ['Group', K.g, 'dis'], ['Lock', K.l], '-', ['Add comment', 'C'], ['Link…', 'Ctrl K'], ['Make a task'], ['Add to my library'], '-', ['Delete', K.del, 'red']]
+    : [['Paste here', K.v], ['Select all', K.a], '-', ['Add sticky here', 'S'], ['Add text here', 'T'], ['Add shape here', 'R'], '-', ['Fit everything', K.p], ['Grid and snap', ''], ['Templates…', 'Shift G'], ['Command palette', 'Ctrl /']]);
+});
+document.addEventListener('pointerdown', e => { if (!e.target.closest('.cmenu')) cs.querySelector('.cmenu')?.remove(); });
+
+/* ── 4. palette ── */
+const P = [['Pen', 'Tool', '✏️', 'pena'], ['Zoom', 'Tool', '🔍', ''], ['Sticky note', 'Tool', '🗒️', 'catatan tempel'], ['Connector', 'Tool', '↗', 'panah garis'], ['Frame', 'Tool', '▭', 'bingkai'], ['Approval flow', 'Template', '✅', 'persetujuan'], ['Meeting notes', 'Template', '📝', 'notulen rapat'], ['Fishbone', 'Template', '🐟', 'akar masalah'], ['Kanban', 'Template', '🗂️', 'tugas'], ['Present', 'Action', '▶', 'presentasi'], ['Start a timer', 'Action', '⏱', 'waktu'], ['Export as PNG', 'Action', '⬇', 'unduh gambar'], ['Hide “How to use” notes', 'Action', '👁', 'sembunyikan'], ['Tidy up flow', 'Action', '≡', 'rapikan'], ['Dark mode', 'Setting', '🌙', 'gelap'], ['Grid and snap', 'Setting', '#', 'kisi']];
+let palKb = 0, palItems = P;
+function openPal() {
+  $('#pstage').querySelector('.palov')?.remove();
+  const ov = document.createElement('div'); ov.className = 'palov';
+  ov.innerHTML = `<div class="pal pop-in"><div class="q">🔎<input placeholder="Type a command, tool or template…  (e.g. notulen, timer, export)"></div><ul></ul><div class="ft"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>Enter</kbd> run</span><span><kbd>Esc</kbd> close</span></div></div>`;
+  $('#pstage').append(ov);
+  const inp = ov.querySelector('input'), ul = ov.querySelector('ul');
+  const paint = () => { const q = inp.value.trim().toLowerCase(); palItems = P.filter(p => !q || `${p[0]} ${p[1]} ${p[3]}`.toLowerCase().includes(q)); palKb = Math.min(palKb, Math.max(0, palItems.length - 1)); ul.innerHTML = palItems.map((p, i) => `<li class="${i === palKb ? 'kb' : ''}"><span class="ic">${p[2]}</span>${p[0]}<span class="g">${p[1]}</span></li>`).join('') || '<li style="color:var(--ink-3)">Nothing found</li>'; };
+  inp.oninput = () => { palKb = 0; paint(); };
+  inp.onkeydown = e => { if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); palKb = Math.max(0, Math.min(palItems.length - 1, palKb + (e.key === 'ArrowDown' ? 1 : -1))); paint(); ul.children[palKb]?.scrollIntoView({ block: 'nearest' }); } if (e.key === 'Escape' || e.key === 'Enter') ov.remove(); };
+  ov.onclick = e => { if (e.target === ov || e.target.closest('li')) ov.remove(); };
+  paint(); inp.focus();
+}
+$('#openPal').onclick = openPal;
+document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === '/') { e.preventDefault(); $('#palette').scrollIntoView({ behavior: 'smooth' }); openPal(); } });
+
+/* ── 5. QoL demos ── */
+const qs = $('#qstage');
+let qd = null, lasso = null;
+qs.addEventListener('pointerdown', e => {
+  const r = qs.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  let el = e.target.closest('.qel');
+  if (el && e.altKey) { const c = el.cloneNode(true); c.classList.add('el-in'); qs.append(c); el = c; }
+  if (el) { qs.querySelectorAll('.qel').forEach(o => o.classList.remove('sel')); el.classList.add('sel', 'lift'); qd = { el, sx: e.clientX, sy: e.clientY, x: el.offsetLeft, y: el.offsetTop }; qs.setPointerCapture(e.pointerId); return; }
+  if (e.altKey) { lasso = [[x, y]]; qs.setPointerCapture(e.pointerId); }
+});
+qs.addEventListener('pointermove', e => {
+  const r = qs.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  const ring = $('#ring'); ring.style.display = 'block'; ring.style.left = x + 'px'; ring.style.top = y + 'px';
+  if (qd) { qd.el.style.left = qd.x + e.clientX - qd.sx + 'px'; qd.el.style.top = qd.y + e.clientY - qd.sy + 'px'; }
+  if (lasso) { lasso.push([x, y]); $('#lassoP').setAttribute('d', 'M' + lasso.map(p => p.join(' ')).join(' L') + 'Z'); }
+});
+qs.addEventListener('pointerleave', () => { $('#ring').style.display = 'none'; });
+qs.addEventListener('pointerup', () => {
+  if (qd) { qd.el.classList.remove('lift'); qd = null; }
+  if (lasso) {
+    const inside = (px, py) => { let c = false; for (let i = 0, j = lasso.length - 1; i < lasso.length; j = i++) { const [xi, yi] = lasso[i], [xj, yj] = lasso[j]; if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) c = !c; } return c; };
+    qs.querySelectorAll('.qel').forEach(o => o.classList.toggle('sel', inside(o.offsetLeft + o.offsetWidth / 2, o.offsetTop + o.offsetHeight / 2)));
+    lasso = null; setTimeout(() => $('#lassoP').setAttribute('d', ''), 150);
+  }
+});
+qs.addEventListener('wheel', e => { e.preventDefault(); const ring = $('#ring'); const s = Math.max(6, Math.min(60, ring.offsetWidth + (e.deltaY > 0 ? -2 : 2))); ring.style.width = ring.style.height = s + 'px'; }, { passive: false });
+['dragenter', 'dragover'].forEach(t => qs.addEventListener(t, e => { e.preventDefault(); $('#drop').classList.add('on'); }));
+['dragleave', 'drop'].forEach(t => qs.addEventListener(t, e => { e.preventDefault(); if (t === 'drop' || e.target === qs) $('#drop').classList.remove('on'); }));
+</script>
+</body>
+</html>

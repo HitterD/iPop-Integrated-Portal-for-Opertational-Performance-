@@ -10,7 +10,9 @@
     .m-notes-list [role=tab] { flex: 1; min-height: 44px; border-radius: 9px; color: var(--ink-3); }
     .m-notes-list [role=tab][aria-selected=true] { color: var(--ink); background: var(--surface); box-shadow: 0 1px 4px #0001; }
     .m-notes-section { margin: 18px 20px 10px; font-size: 13px; font-weight: 600; color: var(--ink-3); }
-    .m-notes-recents { display: flex; overflow-x: auto; gap: 12px; padding: 2px 20px 10px; }
+    .m-notes-recents { display: flex; overflow-x: auto; gap: 12px; padding: 2px 20px 10px; scrollbar-width: none; scroll-snap-type: x proximity; }
+    .m-notes-recents::-webkit-scrollbar { display: none; }
+    .m-notes-recents > * { scroll-snap-align: start; }
     .m-notes-card { flex: 0 0 158px; min-height: 134px; display: flex; flex-direction: column; gap: 8px; padding: 16px; border: 1px solid var(--sep); border-radius: 15px; background: var(--fill); text-align: left; }
     .m-notes-card > span { font-size: 25px; }
     .m-notes-card b { font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
@@ -28,8 +30,12 @@
     .m-notes-nav { flex-shrink: 0; border-bottom: 1px solid var(--sep); background: var(--surface); }
     .m-notes-save { font-size: 11px; color: var(--ink-3); }
     .m-notes-detail .nt-doc-scroll { padding-bottom: 70px; }
+    /* a whiteboard page has no bottom tab bar to clear */
+    .m-notes-detail .nt-doc-scroll:has(> .nt-board, .nt-boardhead) { padding-bottom: 0; }
     .m-notes-detail .nt-page { padding-left: 22px; padding-right: 22px; }
-    .m-notes-detail .nt-page-title { font-size: 30px; min-height: 44px; }
+    /* The phone-wide "inputs are 16px !important" rule (stops iOS zooming) has five :not([type]) parts (specificity 0,5,1),
+       so the title needs more than that to stay 30px: the repeated class only raises specificity. */
+    .notes-page.m-notes-detail input.nt-page-title.nt-page-title.nt-page-title.nt-page-title { font-size: 30px !important; min-height: 44px; }
     .m-notes-detail .nt-editor { font-size: 16px; }
     .m-notes-detail .nt-editor.ProseMirror { padding-bottom: 90px; }
     .m-notes-detail .nt-page-props { flex-wrap: wrap; }
@@ -58,4 +64,13 @@
     .nt-fmt.show::-webkit-scrollbar { display: none; }
     .nt-fmt button { flex-shrink: 0; height: 44px; min-width: 44px; padding: 0 10px; font-size: 15px; }
     .nt-fmt .div { flex-shrink: 0; }
+    /* Photo cover on a phone: finger-sized tabs and buttons, a shorter band, and the picker never wider than the screen. */
+    .m-notes-detail .nt-cover, .nt-cover { height: 150px; }
+    .nt-style { width: min(340px, calc(100vw - 24px)); }
+    .nt-tabs button, .nt-drop .nt-btn, .nt-cover-foot .nt-btn { min-height: 44px; }
+    .nt-thumbs { grid-template-columns: repeat(2, 1fr); }
+    .nt-thumbs button { height: 84px; }
+    .nt-cover-actions { opacity: 1; }
+    .nt-cover-actions button { height: 36px; padding: 0 12px !important; }
+    .nt-cover.repo { touch-action: none; }
 }

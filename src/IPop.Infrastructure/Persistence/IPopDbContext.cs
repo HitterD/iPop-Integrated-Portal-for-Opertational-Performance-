@@ -105,6 +105,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<ProjectField> ProjectFields => Set<ProjectField>();
     public DbSet<ProjectTaskFieldValue> ProjectTaskFieldValues => Set<ProjectTaskFieldValue>();
     public DbSet<ProjectTaskDependency> ProjectTaskDependencies => Set<ProjectTaskDependency>();
+    public DbSet<ProjectStatusOption> ProjectStatusOptions => Set<ProjectStatusOption>();
     public DbSet<ProjectSavedView> ProjectSavedViews => Set<ProjectSavedView>();
     public DbSet<TaskTimeEntry> TaskTimeEntries => Set<TaskTimeEntry>();
     public DbSet<ProjectRoom> ProjectRooms => Set<ProjectRoom>();
@@ -122,6 +123,11 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<ProjectTemplateMilestone> ProjectTemplateMilestones => Set<ProjectTemplateMilestone>();
     public DbSet<ProjectMilestone> ProjectMilestones => Set<ProjectMilestone>();
     public DbSet<ProjectMilestoneTask> ProjectMilestoneTasks => Set<ProjectMilestoneTask>();
+    public DbSet<ProjectForm> ProjectForms => Set<ProjectForm>();
+    public DbSet<ProjectFormSubmission> ProjectFormSubmissions => Set<ProjectFormSubmission>();
+    public DbSet<ProjectAutomation> ProjectAutomations => Set<ProjectAutomation>();
+    public DbSet<ProjectBaseline> ProjectBaselines => Set<ProjectBaseline>();
+    public DbSet<ProjectBaselineTask> ProjectBaselineTasks => Set<ProjectBaselineTask>();
     // Notes
     public DbSet<NotePage> NotePages => Set<NotePage>();
     public DbSet<NoteUpdate> NoteUpdates => Set<NoteUpdate>();
@@ -131,7 +137,16 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<NoteVersion> NoteVersions => Set<NoteVersion>();
     public DbSet<NoteThread> NoteThreads => Set<NoteThread>();
     public DbSet<NoteComment> NoteComments => Set<NoteComment>();
+    public DbSet<NoteCommentReaction> NoteCommentReactions => Set<NoteCommentReaction>();
+    public DbSet<NoteTodoDue> NoteTodoDues => Set<NoteTodoDue>();
+    public DbSet<NoteRecurrence> NoteRecurrences => Set<NoteRecurrence>();
+    public DbSet<NoteLink> NoteLinks => Set<NoteLink>();
+    public DbSet<NoteTemplate> NoteTemplates => Set<NoteTemplate>();
+    public DbSet<NoteView> NoteViews => Set<NoteView>();
+    public DbSet<NoteLibraryItem> NoteLibraryItems => Set<NoteLibraryItem>();
+    public DbSet<NoteBoardTemplate> NoteBoardTemplates => Set<NoteBoardTemplate>();
     public DbSet<NoteAttachment> NoteAttachments => Set<NoteAttachment>();
+    public DbSet<NoteFilePreview> NoteFilePreviews => Set<NoteFilePreview>();
 
     // News & Memos entities (single table with type enum: news/announcement/memo)
     public DbSet<NewsPost> NewsPosts => Set<NewsPost>();
@@ -697,7 +712,19 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Status).HasMaxLength(32);
             e.Property(x => x.Risk).HasMaxLength(2000);
             e.Property(x => x.Obstacle).HasMaxLength(2000);
+            e.Property(x => x.Health).HasMaxLength(16);
+            e.Property(x => x.TabsJson).HasMaxLength(1000);
+            e.Property(x => x.Goal).HasMaxLength(1000);
+            e.Property(x => x.Lessons).HasMaxLength(2000);
             e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<ProjectStatusOption>(e =>
+        {
+            e.HasIndex(x => new { x.ProjectId, x.SortOrder });
+            e.Property(x => x.Label).HasMaxLength(40).IsRequired();
+            e.Property(x => x.Color).HasMaxLength(16);
+            e.Property(x => x.Stage).HasMaxLength(16);
+            e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
         });
 
         // Rencana & Laporan (Fase 4)
@@ -711,6 +738,13 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Visibility).HasMaxLength(16).HasDefaultValue(ProjectTemplateVisibility.Everyone);
             e.Property(x => x.Icon).HasMaxLength(40);
             e.Property(x => x.Color).HasMaxLength(16);
+            e.Property(x => x.Category).HasMaxLength(40);
+            e.Property(x => x.StatusesJson).HasMaxLength(2000);
+            e.Property(x => x.TabsJson).HasMaxLength(1000);
+            e.Property(x => x.RolesJson).HasMaxLength(2000);
+            e.Property(x => x.AutomationsJson).HasMaxLength(2000);
+            e.Property(x => x.FieldsJson).HasMaxLength(8000);
+            e.Property(x => x.RulesJson).HasMaxLength(4000);
             e.HasIndex(x => x.CreatedById);
             e.HasOne(x => x.CreatedBy).WithMany().HasForeignKey(x => x.CreatedById).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.Department).WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.SetNull);
@@ -735,6 +769,8 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Description).HasMaxLength(2000);
             e.Property(x => x.Priority).HasMaxLength(32);
             e.Property(x => x.AssigneeNiks).HasMaxLength(2000);
+            e.Property(x => x.RoleKey).HasMaxLength(40);
+            e.Property(x => x.RecurrenceRule).HasMaxLength(200);
             e.HasOne(x => x.Template).WithMany(t => t.Tasks).HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<ProjectMilestone>(e =>
@@ -783,6 +819,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasOne(x => x.Group).WithMany(g => g.Tasks)
                 .HasForeignKey(x => new { x.GroupId, x.ProjectId })
                 .HasPrincipalKey(g => new { g.Id, g.ProjectId }).OnDelete(DeleteBehavior.Restrict);
+            e.Property(x => x.ConstraintType).HasMaxLength(8);
             e.Property(x => x.Title).HasMaxLength(300);
             e.Property(x => x.Description).HasMaxLength(4000);
             e.Property(x => x.Status).HasMaxLength(32);
@@ -795,12 +832,53 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             // Deleted tasks wait in the bin for Undo; every normal query skips them.
             e.HasQueryFilter(x => x.DeletedAt == null);
             e.HasIndex(x => x.DeleteBatchId);
+            e.HasOne(x => x.StatusOption).WithMany().HasForeignKey(x => x.StatusOptionId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        b.Entity<ProjectForm>(e =>
+        {
+            e.HasIndex(x => x.ProjectId).IsUnique();
+            e.Property(x => x.Title).HasMaxLength(120);
+            e.Property(x => x.Intro).HasMaxLength(500);
+            e.Property(x => x.AudienceScope).HasMaxLength(16);
+            e.Property(x => x.QuestionsJson).HasMaxLength(4000);
+            e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<ProjectFormSubmission>(e =>
+        {
+            e.HasIndex(x => new { x.FormId, x.SubmitterId, x.CreatedAt });
+            e.HasIndex(x => x.TaskId);
+            e.HasOne(x => x.Form).WithMany().HasForeignKey(x => x.FormId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Task).WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<ProjectAutomation>(e =>
+        {
+            e.HasIndex(x => new { x.ProjectId, x.Kind }).IsUnique();
+            e.Property(x => x.Kind).HasMaxLength(40);
+            e.Property(x => x.ConfigJson).HasMaxLength(1000);
+            e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<ProjectBaseline>(e =>
+        {
+            e.HasIndex(x => x.ProjectId);
+            e.Property(x => x.Name).HasMaxLength(60);
+            e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.CreatedBy).WithMany().HasForeignKey(x => x.CreatedById).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<ProjectBaselineTask>(e =>
+        {
+            e.HasKey(x => new { x.BaselineId, x.TaskId });
+            e.HasOne(x => x.Baseline).WithMany(x => x.Tasks).HasForeignKey(x => x.BaselineId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Task).WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<ProjectTaskDependency>(e =>
         {
             e.HasKey(x => new { x.TaskId, x.DependsOnTaskId });
             e.HasIndex(x => x.DependsOnTaskId);
+            e.Property(x => x.LinkType).HasMaxLength(2).HasDefaultValue("FS");
+            e.Property(x => x.LagDays).HasDefaultValue(0);
             e.HasOne(x => x.Task).WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.DependsOn).WithMany().HasForeignKey(x => x.DependsOnTaskId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -1312,6 +1390,9 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Title).HasMaxLength(200);
             e.Property(x => x.Emoji).HasMaxLength(16);
             e.Property(x => x.Cover).HasMaxLength(16);
+            e.Property(x => x.CoverPosY).HasDefaultValue(50);
+            e.Property(x => x.Kind).HasMaxLength(8).HasDefaultValue("page");
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.LockedById).OnDelete(DeleteBehavior.SetNull);
             e.Property(x => x.Accent).HasMaxLength(16);
             e.Property(x => x.Font).HasMaxLength(8);
             e.Property(x => x.SeedTemplate).HasMaxLength(16);
@@ -1356,6 +1437,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
         b.Entity<NoteVersion>(e =>
         {
             e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.Name).HasMaxLength(100);
             e.Property(x => x.Contributors).HasMaxLength(2000);
             e.HasIndex(x => new { x.PageId, x.CreatedAt });
             e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.PageId).OnDelete(DeleteBehavior.Cascade);
@@ -1374,11 +1456,81 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasIndex(x => new { x.ThreadId, x.CreatedAt });
             e.HasOne(x => x.Author).WithMany().HasForeignKey(x => x.AuthorId).OnDelete(DeleteBehavior.Cascade);
         });
+        b.Entity<NoteTemplate>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.Property(x => x.Emoji).HasMaxLength(16);
+            e.Property(x => x.Accent).HasMaxLength(16);
+            e.Property(x => x.Kind).HasMaxLength(16);
+            e.Property(x => x.Excerpt).HasMaxLength(300);
+            e.HasIndex(x => new { x.OwnerId, x.CreatedAt });
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NoteBoardTemplate>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.Property(x => x.Description).HasMaxLength(300);
+            e.HasIndex(x => new { x.OwnerId, x.CreatedAt });
+            e.HasIndex(x => new { x.Shared, x.CreatedAt });
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NoteLibraryItem>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.HasIndex(x => new { x.OwnerId, x.CreatedAt });
+            e.HasIndex(x => new { x.Shared, x.CreatedAt });
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NoteView>(e =>
+        {
+            e.HasKey(x => new { x.PageId, x.UserId });
+            e.HasIndex(x => new { x.PageId, x.LastViewedAt });
+            e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.PageId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NoteLink>(e =>
+        {
+            e.HasKey(x => new { x.FromPageId, x.ToPageId });
+            e.HasIndex(x => x.ToPageId);
+            e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.FromPageId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.ToPageId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NoteRecurrence>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Rule).HasMaxLength(200);
+            e.HasIndex(x => x.PageId).IsUnique();
+            e.HasIndex(x => new { x.Enabled, x.OwnerId });
+            e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.PageId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NoteTodoDue>(e =>
+        {
+            e.HasKey(x => new { x.PageId, x.ItemKey });
+            e.Property(x => x.ItemKey).HasMaxLength(64);
+            e.Property(x => x.Text).HasMaxLength(200);
+            e.HasIndex(x => x.Due);
+            e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.PageId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NoteCommentReaction>(e =>
+        {
+            e.HasKey(x => new { x.CommentId, x.UserId, x.Emoji });
+            e.Property(x => x.Emoji).HasMaxLength(16);
+            e.HasOne(x => x.Comment).WithMany(c => c.Reactions).HasForeignKey(x => x.CommentId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
         b.Entity<NoteAttachment>(e =>
         {
-            e.HasKey(x => x.AttachmentId);
+            e.HasKey(x => new { x.AttachmentId, x.PageId }); // one file can belong to several pages (pasted across pages)
             e.HasIndex(x => x.PageId);
             e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.PageId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NoteFilePreview>(e =>
+        {
+            e.HasKey(x => x.AttachmentId);   // one preview per file: a second viewer opening it at the same time cannot make another
+            e.Property(x => x.Kind).HasMaxLength(16);
+            e.Property(x => x.Error).HasMaxLength(64);
+            e.HasIndex(x => x.ThumbAttachmentId);
         });
         b.Entity<SearchHistory>(e =>
         {

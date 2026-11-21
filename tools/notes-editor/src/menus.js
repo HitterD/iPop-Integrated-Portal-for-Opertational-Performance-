@@ -1,7 +1,11 @@
+import { newDrawId } from './draw-block.js';
 import { Extension } from '@tiptap/core';
 import Suggestion from '@tiptap/suggestion';
-import { PluginKey } from '@tiptap/pm/state';
+import { PluginKey, TextSelection } from '@tiptap/pm/state';
 import { COLORS, cap, esc } from './nodes.js';
+import { columnsJson, toggleJson, isoDay } from './extras.js';
+import { openSymbolPanel } from './symbols.js';
+import { categoryFor, slashPopup } from './slash-popup.js';
 
 const $el = (cls, html = '') => { const e = document.createElement('div'); e.className = cls; e.innerHTML = html; return e; };
 
@@ -19,6 +23,20 @@ export function place(pop, rect, { align = 'left', gap = 6 } = {}) {
 // ── Block types (shared by the slash menu and "Turn into") ──────────────────
 
 const setBlock = (fn) => ({ editor, range }) => { const c = editor.chain().focus(); if (range) c.deleteRange(range); fn(c).run(); };
+/// Replaces the typed "/command" with a block (columns, toggle heading) and puts the cursor at the start of it, so typing goes
+/// into the first column / the toggle title. Finds the block it just inserted instead of counting positions.
+export function insertAt(editor, range, json) {
+  const at = range.from;
+  editor.chain().focus().deleteRange(range).insertContentAt(at, json).command(({ tr, dispatch }) => {
+    // The block now starts at the nearest block boundary at or before `at` (the emptied paragraph is replaced, or the block
+    // lands after it): look for the first node of this type from there.
+    let start = -1;
+    tr.doc.nodesBetween(Math.max(0, at - 2), Math.min(tr.doc.content.size, at + 2), (n, pos) => { if (start < 0 && n.type.name === json.type) start = pos; return start < 0; });
+    if (start >= 0 && dispatch) tr.setSelection(TextSelection.near(tr.doc.resolve(start + 1), 1));
+    return true;
+  }).run();
+}
+
 export const TURN_INTO = [
   { key: 'text', name: 'Text', box: 'T', run: c => c.setParagraph() },
   { key: 'h1', name: 'Heading 1', box: 'H1', run: c => c.setHeading({ level: 1 }) },
@@ -29,7 +47,35 @@ export const TURN_INTO = [
   { key: 'number', name: 'Numbered list', box: '1.', run: c => c.toggleOrderedList() },
   { key: 'quote', name: 'Quote', box: '❝', run: c => c.toggleBlockquote() },
   { key: 'code', name: 'Code', box: '</>', run: c => c.toggleCodeBlock() },
+  { key: 'callout', name: 'Callout', box: '💡', run: c => c.wrapIn('callout', { emoji: '💡', color: 'yellow' }) },
+  { key: 'toggle', name: 'Toggle', box: '▸', run: c => c.setDetails() },
 ];
+
+/// Words people type after "/" that should find a command even though they are not in its name.
+export const SLASH_ALIASES = {
+  'Heading 1': 'h1 title big', 'Heading 2': 'h2 subtitle', 'Heading 3': 'h3',
+  'To-do list': 'todo task checkbox checklist', 'Bulleted list': 'bullet ul list', 'Numbered list': 'number ol ordered list',
+  Toggle: 'collapse expand details accordion', Quote: 'blockquote cite', Callout: 'info note tip warning alert box',
+  Divider: 'hr line separator rule', Code: 'snippet pre programming', Table: 'grid spreadsheet', Image: 'picture photo img',
+  File: 'attachment upload document', Drawing: 'draw sketch paint', Whiteboard: 'board canvas diagram flowchart', Date: 'day calendar today time',
+  'Link to page': 'page link backlink wiki', '2 columns': 'column layout split', '3 columns': 'column layout split',
+  'Table of contents': 'toc contents outline', 'Embed video': 'youtube video mp4', Bookmark: 'link card url',
+  Symbol: 'simbol arrow panah check centang degree derajat special char', Today: 'date tanggal hari ini now',
+};
+/// Slash menu search: matches the name, a word in the name, or an alias. Names that start with the query come first.
+export function filterSlash(cmds, query) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return cmds;
+  const rank = c => {
+    const n = c.name.toLowerCase(), a = (SLASH_ALIASES[c.name] || '').toLowerCase();
+    if (n.startsWith(q)) return 0;
+    if (n.split(/\s+/).some(w => w.startsWith(q))) return 1;
+    if (n.includes(q)) return 2;
+    if (a.split(/\s+/).some(w => w.startsWith(q))) return 3;
+    return 9;
+  };
+  return cmds.map((c, i) => ({ c, i, r: rank(c) })).filter(x => x.r < 9).sort((x, y) => x.r - y.r || x.i - y.i).map(x => x.c);
+}
 
 export function slashCommands(host) {
   const byKey = k => TURN_INTO.find(t => t.key === k).run;
@@ -42,6 +88,11 @@ export function slashCommands(host) {
     ['Basic blocks', 'Bulleted list', 'Simple bulleted list', '•', '-', setBlock(byKey('bullet'))],
     ['Basic blocks', 'Numbered list', 'List with numbering', '1.', '1.', setBlock(byKey('number'))],
     ['Basic blocks', 'Toggle', 'Hide content inside', '▸', '', setBlock(c => c.setDetails())],
+    ['Basic blocks', 'Toggle heading 1', 'A big heading that opens and closes', '▸H1', '', ({ editor, range }) => insertAt(editor, range, toggleJson(1))],
+    ['Basic blocks', 'Toggle heading 2', 'A medium heading that opens and closes', '▸H2', '', ({ editor, range }) => insertAt(editor, range, toggleJson(2))],
+    ['Basic blocks', 'Toggle heading 3', 'A small heading that opens and closes', '▸H3', '', ({ editor, range }) => insertAt(editor, range, toggleJson(3))],
+    ['Basic blocks', '2 columns', 'Put blocks side by side', '▥', '', ({ editor, range }) => insertAt(editor, range, columnsJson(2))],
+    ['Basic blocks', '3 columns', 'Three blocks side by side', '▥', '', ({ editor, range }) => insertAt(editor, range, columnsJson(3))],
     ['Basic blocks', 'Quote', 'Capture a quote', '❝', '>', setBlock(byKey('quote'))],
     ['Basic blocks', 'Callout', 'Make writing stand out', '💡', '', setBlock(c => c.insertContent({ type: 'callout', attrs: { emoji: '💡', color: 'yellow' }, content: [{ type: 'paragraph' }] }))],
     ['Basic blocks', 'Divider', 'Visually divide blocks', '—', '---', setBlock(c => c.setHorizontalRule())],
@@ -50,6 +101,14 @@ export function slashCommands(host) {
       const p = await host.createSubPage();
       if (p) editor.chain().focus().insertContent({ type: 'subPage', attrs: { id: p.id, title: p.title, emoji: p.emoji || '📄' } }).run();
     }],
+    ['Basic blocks', 'Table of contents', 'A live list of the headings on this page', '☰', '', setBlock(c => c.insertContent({ type: 'noteToc' }))],
+    ['Basic blocks', 'Link to page', 'Mention another page, type [[ too', '↗', '[[', ({ editor, range }) => editor.chain().focus().deleteRange(range).insertContent('[[').run()],
+    ['Insert', 'Whiteboard', 'Create a whiteboard inside Notes', '▱', '', async ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).run();
+      const p = await host.createWhiteboard();
+      if (p) editor.chain().focus().insertContent({ type: 'subPage', attrs: { id: p.id, title: p.title, emoji: p.emoji || '▱' } }).run();
+    }],
+    ['Media', 'Drawing', 'Sketch by hand, together in real time', '✏️', '', setBlock(c => c.insertContent({ type: 'noteDraw', attrs: { id: newDrawId(), height: 320 } }))],
     ['Media', 'Image', 'Upload or paste — stored on NAS', '🖼', '', ({ editor, range }) => { editor.chain().focus().deleteRange(range).run(); host.pickFiles('image/*'); }],
     ['Media', 'File', 'Attach any file', '📎', '', ({ editor, range }) => { editor.chain().focus().deleteRange(range).run(); host.pickFiles(''); }],
     ['Media', 'Code', 'Capture a code snippet', '</>', '```', setBlock(byKey('code'))],
@@ -57,14 +116,17 @@ export function slashCommands(host) {
     ['Media', 'Bookmark', 'Link card with title and picture', '🔖', '', ({ editor, range }) => { editor.chain().focus().deleteRange(range).run(); host.askLink?.('bookmark'); }],
     ['Media', 'Embed video', 'YouTube or .mp4 link, plays in the page', '▶', '', ({ editor, range }) => { editor.chain().focus().deleteRange(range).run(); host.askLink?.('embed'); }],
     ['Inline', 'Mention person', 'Notify someone', '@', '@', ({ editor, range }) => editor.chain().focus().deleteRange(range).insertContent('@').run()],
-    ['Inline', 'Date', 'Insert today\'s date', '📅', '', ({ editor, range }) => editor.chain().focus().deleteRange(range)
-      .insertContent(new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) + ' ').run()],
-  ].map(([group, name, desc, box, kbd, run]) => ({ group, name, desc, box, kbd, run }));
+    ['Inline', 'Date', 'A date chip you can change, today by default', '📅', '', ({ editor, range }) => editor.chain().focus().deleteRange(range)
+      .insertContent([{ type: 'dateChip', attrs: { date: isoDay(new Date()) } }, { type: 'text', text: ' ' }]).run()],
+    ['Inline', 'Today', "Today's date as a chip (also @today)", '📅', '', ({ editor, range }) => editor.chain().focus().deleteRange(range)
+      .insertContent([{ type: 'dateChip', attrs: { date: isoDay(new Date()) } }, { type: 'text', text: ' ' }]).run()],
+    ['Inline', 'Symbol', 'Arrows, ticks, ° ± ≠ … and what to type for them', '→', '->', ({ editor, range }) => { editor.chain().focus().deleteRange(range).run(); openSymbolPanel(editor); }],
+  ].map(([, name, desc, box, kbd, run]) => ({ group: categoryFor(name), name, desc, box, kbd, run }));
 }
 
 /// A keyboard-driven popup list used by both "/" and "@".
 /// emptyText: a string, or (query) => string for a message that follows what was typed.
-function listPopup(renderItem, emptyText, host) {
+export function listPopup(renderItem, emptyText, host) {
   let pop = null, items = [], sel = 0, command = null, query = '';
   const phonePosition = () => {
     if (!pop?.classList.contains('m-notes-mentions')) return;
@@ -72,17 +134,34 @@ function listPopup(renderItem, emptyText, host) {
     pop.style.bottom = `${Math.max(0, innerHeight - ((vv?.offsetTop || 0) + (vv?.height || innerHeight))) + 48}px`;
   };
   const unwatch = () => { window.visualViewport?.removeEventListener('resize', phonePosition); window.visualViewport?.removeEventListener('scroll', phonePosition); };
+  let painted = '';
+  // Moves the highlight without rebuilding the list, and scrolls only inside the popup (scrollIntoView would also scroll the
+  // page, which made the page jump while someone else was typing on it).
+  const highlight = (reveal = true) => {
+    pop.querySelectorAll('.it.sel').forEach(x => x.classList.remove('sel'));
+    const cur = pop.querySelector(`.it[data-i="${sel}"]`);
+    if (!cur) return;
+    cur.classList.add('sel');
+    if (!reveal) return;
+    const top = cur.offsetTop, bottom = top + cur.offsetHeight;
+    if (top < pop.scrollTop) pop.scrollTop = top - 4;
+    else if (bottom > pop.scrollTop + pop.clientHeight) pop.scrollTop = bottom - pop.clientHeight + 4;
+  };
   const paint = () => {
     let g = '', html = '';
     items.forEach((it, i) => {
       if (it.group && it.group !== g) { g = it.group; html += `<div class="grp">${esc(g)}</div>`; }
-      html += `<div class="it ${i === sel ? 'sel' : ''}" data-i="${i}">${renderItem(it)}</div>`;
+      html += `<div class="it" data-i="${i}">${renderItem(it)}</div>`;
     });
-    pop.innerHTML = html || `<div class="empty">${typeof emptyText === 'function' ? emptyText(query) : emptyText}</div>`;
-    pop.querySelector('.it.sel')?.scrollIntoView({ block: 'nearest' });
+    html ||= `<div class="empty">${typeof emptyText === 'function' ? emptyText(query) : emptyText}</div>`;
+    // Same list as before (an edit by someone else on the page re-runs the suggestion): keep the DOM and its scroll.
+    const fresh = html !== painted;
+    if (fresh) { pop.innerHTML = html; painted = html; pop.scrollTop = 0; }
+    highlight(fresh);   // the same list again: don't scroll it back to the selected row
   };
   return {
     onStart(props) {
+      painted = ''; query = props.query ?? '';
       pop = $el('nt-pop nt-list');
       if (host && window.ipop?.mobile?.isMobile()) {
         pop.classList.add('m-notes-mentions');
@@ -96,12 +175,17 @@ function listPopup(renderItem, emptyText, host) {
         e.preventDefault();
         const it = e.target.closest('[data-i]'); if (it) command(items[+it.dataset.i]);
       });
-      pop.addEventListener('mousemove', e => { const it = e.target.closest('[data-i]'); if (it && +it.dataset.i !== sel) { sel = +it.dataset.i; paint(); } });
+      pop.addEventListener('mousemove', e => { const it = e.target.closest('[data-i]'); if (it && +it.dataset.i !== sel) { sel = +it.dataset.i; highlight(false); } });
       document.body.appendChild(pop);
       this.onUpdate(props);
     },
     onUpdate(props) {
       if (!pop) return; // a late async search must not revive a dismissed suggestion
+      // Every update (also one caused by someone else typing elsewhere on the page) first arrives "loading" with no items,
+      // then again with the results. Painting the empty one flashed "No results" and reset the list's scroll: keep what is
+      // shown until the results come (a first paint still shows the empty text).
+      if (props.loading && painted) { command = props.command; const r = props.clientRect?.(); if (r && !pop.classList.contains('m-notes-mentions')) place(pop, r); return; }
+      if (query !== (props.query ?? '')) sel = 0; // a new search starts at the top
       items = props.items; command = props.command; query = props.query ?? ''; sel = Math.min(sel, Math.max(items.length - 1, 0));
       paint();
       const r = props.clientRect?.();
@@ -113,12 +197,12 @@ function listPopup(renderItem, emptyText, host) {
     onKeyDown({ event }) {
       if (event.key === 'Escape') { unwatch(); host?.mentionSheet(false); pop?.remove(); pop = null; return true; }
       if (!items.length) return false;
-      if (event.key === 'ArrowDown') { sel = (sel + 1) % items.length; paint(); return true; }
-      if (event.key === 'ArrowUp') { sel = (sel - 1 + items.length) % items.length; paint(); return true; }
+      if (event.key === 'ArrowDown') { sel = (sel + 1) % items.length; highlight(); return true; }
+      if (event.key === 'ArrowUp') { sel = (sel - 1 + items.length) % items.length; highlight(); return true; }
       if (event.key === 'Enter' || event.key === 'Tab') { command(items[sel]); return true; }
       return false;
     },
-    onExit() { unwatch(); host?.mentionSheet(false); pop?.remove(); pop = null; sel = 0; },
+    onExit() { unwatch(); host?.mentionSheet(false); pop?.remove(); pop = null; sel = 0; painted = ''; query = ''; },
   };
 }
 
@@ -136,9 +220,10 @@ export const SlashMenu = Extension.create({
         const $from = state.doc.resolve(range.from);
         return $from.parent.type.name !== 'codeBlock';
       },
-      items: ({ query }) => cmds.filter(c => c.name.toLowerCase().includes(query.toLowerCase())),
+      // Keep category metadata during search; the picker searches across every category.
+      items: ({ query }) => filterSlash(cmds, query),
       command: ({ editor, range, props }) => props.run({ editor, range }),
-      render: () => listPopup(c => `<span class="bx">${esc(c.box)}</span><div><div class="nm">${esc(c.name)}</div><div class="ds">${esc(c.desc)}</div></div>${c.kbd ? `<kbd>${esc(c.kbd)}</kbd>` : ''}`, 'No results'),
+      render: () => slashPopup(place),
     })];
   },
 });
@@ -283,57 +368,11 @@ export function createToolbar(editor, host) {
 
 export function createHandle(host) {
   const dom = $el('nt-handle', '<button type="button" class="add" title="Add block below">+</button><button type="button" class="grip" title="Drag to move · Click for options" data-drag-handle>⠿</button>');
+  // TipTap shows the handle only on hover but never hides it first: until the first hover it sat at the editor's top-left
+  // corner, drawn over the first line of the page. Start hidden; TipTap's own showHandle() clears both on hover.
+  dom.style.visibility = 'hidden';
+  dom.style.pointerEvents = 'none';
   return dom;
 }
 
-export function createBlockMenu(editor, host, getTarget) {
-  const menu = $el('nt-pop nt-menu nt-block-menu');
-  document.body.appendChild(menu);
-  let target = null;
-  const close = () => { menu.classList.remove('show'); host.lockHandle(false); };
-
-  function open(anchor) {
-    target = getTarget();
-    if (!target) return;
-    const node = editor.state.doc.nodeAt(target);
-    if (!node) return;
-    const isCallout = node.type.name === 'callout';
-    const cur = isCallout ? node.attrs.color : node.attrs.bg;
-    menu.innerHTML = `<div class="mh">TURN INTO</div>`
-      + TURN_INTO.map(t => `<div class="mi" data-turn="${t.key}"><span class="sw">${esc(t.box)}</span>${esc(t.name)}</div>`).join('')
-      + `<hr><div class="mh">${isCallout ? 'CALLOUT COLOUR' : 'BACKGROUND COLOUR'}</div><div class="swrow">`
-      + (isCallout ? '' : `<span class="sq ${!cur ? 'on' : ''}" data-bg="" title="Default" style="background:var(--surface)"></span>`)
-      + COLORS.map(c => `<span class="sq ${cur === c ? 'on' : ''}" data-bg="${c}" title="${cap(c)}" style="background:var(--nb-${c})"></span>`).join('')
-      + `</div><hr>`
-      + (host.canComment() ? '<div class="mi" data-act="comment"><span class="sw">💬</span>Comment<span class="ds">Ctrl ⇧ M</span></div>' : '')
-      + '<div class="mi" data-act="dup"><span class="sw">⧉</span>Duplicate</div>'
-      + '<div class="mi danger" data-act="del"><span class="sw">🗑</span>Delete<span class="ds">Del</span></div>';
-    host.lockHandle(true);
-    place(menu, anchor.getBoundingClientRect());
-  }
-
-  menu.addEventListener('mousedown', e => e.preventDefault());
-  menu.addEventListener('click', e => {
-    const pos = target; const node = pos == null ? null : editor.state.doc.nodeAt(pos);
-    if (!node) return close();
-    const turn = e.target.closest('[data-turn]'), bg = e.target.closest('[data-bg]'), act = e.target.closest('[data-act]');
-    if (turn) {
-      const inner = Math.min(pos + 1, editor.state.doc.content.size);
-      TURN_INTO.find(t => t.key === turn.dataset.turn).run(editor.chain().focus().setTextSelection(inner)).run();
-    } else if (bg) {
-      const attrs = node.type.name === 'callout' ? { ...node.attrs, color: bg.dataset.bg || 'gray' } : { ...node.attrs, bg: bg.dataset.bg || null };
-      if ('bg' in node.attrs || node.type.name === 'callout') editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, attrs));
-    } else if (act?.dataset.act === 'dup') {
-      editor.chain().focus().insertContentAt(pos + node.nodeSize, node.toJSON()).run();
-    } else if (act?.dataset.act === 'del') {
-      editor.chain().focus().deleteRange({ from: pos, to: pos + node.nodeSize }).run();
-    } else if (act?.dataset.act === 'comment') {
-      editor.chain().focus().setTextSelection({ from: pos + 1, to: pos + node.nodeSize - 1 }).run();
-      host.commentSelection();
-    } else return;
-    close();
-  });
-  const outside = ev => { if (!menu.contains(ev.target) && !ev.target.closest?.('.nt-handle')) close(); };
-  document.addEventListener('mousedown', outside);
-  return { open, close, destroy() { document.removeEventListener('mousedown', outside); menu.remove(); } };
-}
+export { createBlockMenu } from './block-menu.js';

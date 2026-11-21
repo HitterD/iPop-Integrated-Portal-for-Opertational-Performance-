@@ -13,7 +13,9 @@ public record MailSummary(
     bool IsPinned = false, string Importance = "normal", DateTime? ScheduledAt = null,
     bool IsMuted = false,
     /// Label pengguna pada surat ini (Fase 3 — Surat Lanjutan).
-    IReadOnlyList<string>? Labels = null);
+    IReadOnlyList<string>? Labels = null,
+    /// The reader's own folder for this row; lists that span folders (Starred, a label) act per row.
+    string? Folder = null);
 
 public record MailCounts(
     int InboxUnread, int InboxTotal, int SentTotal, int DraftTotal,

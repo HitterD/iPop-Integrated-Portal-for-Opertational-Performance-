@@ -1324,3 +1324,8 @@
 
 
 /* Workload Capacity View */
+
+/* Dark mode: quiet ghost Add task button (the solid light block was too contrasty) */
+[data-theme="dark"] .col-quick-btn:not(:hover) { background: transparent; color: var(--ink-3); border-color: var(--line-soft); }
+[data-theme="dark"] .col-quick-btn:disabled { opacity: .5; background: transparent; }
+[data-theme="dark"] .col-quick-btn:hover { background: rgba(255, 255, 255, .05); box-shadow: none; }

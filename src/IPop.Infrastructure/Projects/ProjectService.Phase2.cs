@@ -32,7 +32,19 @@ public sealed partial class ProjectService
         if (!await CanMutateTasksAsync(actorId, task.ProjectId, ct))
             return new(false, null, "forbidden");
 
-        var ids = (req.DependsOn ?? []).Distinct().ToList();
+        var wanted = new List<TaskLinkRequest>();
+        if (req.Links is not null)
+        {
+            foreach (var l in req.Links)
+            {
+                if (!GanttScheduler.IsValidLinkType(l.LinkType)) return new(false, null, "invalid_link_type");
+                if (l.LagDays is < -365 or > 365) return new(false, null, "invalid_lag");
+                if (wanted.All(w => w.DependsOnTaskId != l.DependsOnTaskId))
+                    wanted.Add(l with { LinkType = GanttScheduler.NormalizeLinkType(l.LinkType) });
+            }
+        }
+        else wanted.AddRange((req.DependsOn ?? []).Distinct().Select(id => new TaskLinkRequest(id)));
+        var ids = wanted.Select(w => w.DependsOnTaskId).ToList();
         if (ids.Count > MaxDependencies) return new(false, null, "too_many_dependencies");
         if (ids.Contains(taskId)) return new(false, null, "invalid_dependency");
         if (task.ParentTaskId is { } parentId && ids.Contains(parentId)) return new(false, null, "invalid_dependency");
@@ -57,11 +69,18 @@ public sealed partial class ProjectService
 
         var existing = await db.ProjectTaskDependencies.Where(d => d.TaskId == taskId).ToListAsync(ct);
         var before = existing.Select(d => d.DependsOnTaskId).ToHashSet();
-        if (before.SetEquals(ids)) return new(true, await MapToTaskDtoAsync(taskId, ct), null);
+        var linkChanged = false;
+        foreach (var d in existing)
+        {
+            var w = wanted.FirstOrDefault(x => x.DependsOnTaskId == d.DependsOnTaskId);
+            if (w is null || (w.LinkType == d.LinkType && w.LagDays == d.LagDays)) continue;
+            d.LinkType = w.LinkType; d.LagDays = w.LagDays; linkChanged = true;
+        }
+        if (before.SetEquals(ids) && !linkChanged) return new(true, await MapToTaskDtoAsync(taskId, ct), null);
 
         db.ProjectTaskDependencies.RemoveRange(existing.Where(d => !ids.Contains(d.DependsOnTaskId)));
-        db.ProjectTaskDependencies.AddRange(ids.Where(id => !before.Contains(id))
-            .Select(id => new ProjectTaskDependency { TaskId = taskId, DependsOnTaskId = id }));
+        db.ProjectTaskDependencies.AddRange(wanted.Where(w => !before.Contains(w.DependsOnTaskId))
+            .Select(w => new ProjectTaskDependency { TaskId = taskId, DependsOnTaskId = w.DependsOnTaskId, LinkType = w.LinkType, LagDays = w.LagDays }));
         var titles = string.Join(", ", targets.Select(t => t.Title));
         db.ProjectTaskActivities.Add(new ProjectTaskActivity
         {
@@ -102,10 +121,10 @@ public sealed partial class ProjectService
         if (taskIds.Count == 0) return [];
         var rows = await db.ProjectTaskDependencies.AsNoTracking()
             .Where(d => taskIds.Contains(d.TaskId))
-            .Join(db.ProjectTasks, d => d.DependsOnTaskId, t => t.Id, (d, t) => new { d.TaskId, t.Id, t.Title, t.Status })
+            .Join(db.ProjectTasks, d => d.DependsOnTaskId, t => t.Id, (d, t) => new { d.TaskId, t.Id, t.Title, t.Status, d.LinkType, d.LagDays })
             .ToListAsync(ct);
         return rows.GroupBy(r => r.TaskId).ToDictionary(g => g.Key,
-            g => g.OrderBy(r => r.Title).Select(r => new DependencyRefDto(r.Id, r.Title, r.Status)).ToList());
+            g => g.OrderBy(r => r.Title).Select(r => new DependencyRefDto(r.Id, r.Title, r.Status, r.LinkType, r.LagDays)).ToList());
     }
 
     /// Adds DependsOn/IsBlocked to already-mapped task DTOs with one query per page.
@@ -158,7 +177,8 @@ public sealed partial class ProjectService
         {
             Id = Guid.NewGuid(), ProjectId = task.ProjectId, GroupId = task.GroupId, ParentTaskId = task.ParentTaskId,
             Title = task.Title, Description = string.IsNullOrEmpty(description) ? null : description,
-            Status = "todo", Priority = task.Priority, StartDate = start, DueDate = due,
+            Status = "todo", StatusOptionId = (await ResolveStatusAsync(task.ProjectId, "todo", null, null, ct)).OptionId,
+            Priority = task.Priority, StartDate = start, DueDate = due,
             EstimatedHours = task.EstimatedHours, SortOrder = maxSort + 100, Tags = task.Tags,
             IsRecurring = true, RecurrenceRule = rule.ToString(),
             CreatedById = actorId, CreatedAt = now, UpdatedAt = now
@@ -172,8 +192,8 @@ public sealed partial class ProjectService
         db.ProjectTaskFieldValues.AddRange(fields.Select(v => new ProjectTaskFieldValue
             { Id = Guid.NewGuid(), ProjectTaskId = next.Id, ProjectFieldId = v.ProjectFieldId, Value = v.Value, UpdatedAt = now }));
         var deps = await db.ProjectTaskDependencies.AsNoTracking().Where(d => d.TaskId == task.Id)
-            .Join(db.ProjectTasks, d => d.DependsOnTaskId, t => t.Id, (d, _) => d.DependsOnTaskId).ToListAsync(ct);
-        db.ProjectTaskDependencies.AddRange(deps.Select(id => new ProjectTaskDependency { TaskId = next.Id, DependsOnTaskId = id }));
+            .Join(db.ProjectTasks, d => d.DependsOnTaskId, t => t.Id, (d, _) => new { d.DependsOnTaskId, d.LinkType, d.LagDays }).ToListAsync(ct);
+        db.ProjectTaskDependencies.AddRange(deps.Select(x => new ProjectTaskDependency { TaskId = next.Id, DependsOnTaskId = x.DependsOnTaskId, LinkType = x.LinkType, LagDays = x.LagDays }));
         db.ProjectTaskActivities.Add(new ProjectTaskActivity
         {
             Id = Guid.NewGuid(), TaskId = task.Id, ActorId = actorId, Action = "recurrence_spawned",
@@ -351,7 +371,18 @@ public sealed partial class ProjectService
         {
             case "status":
             {
-                if (!TaskStatuses.Contains(value)) return Fail("invalid_value");
+                // Value is a stage (legacy clients) or a custom status option id of this project.
+                Guid? optionId;
+                var byOption = Guid.TryParse(value, out var parsedOption);
+                if (byOption)
+                {
+                    var resolved = await ResolveStatusAsync(projectId, null, parsedOption, null, ct);
+                    if (resolved.Error is not null) return Fail(resolved.Error);
+                    optionId = resolved.OptionId;
+                    value = resolved.Stage;
+                }
+                else if (!TaskStatuses.Contains(value)) return Fail("invalid_value");
+                else optionId = (await ResolveStatusAsync(projectId, value, null, null, ct)).OptionId;
                 var evidence = string.IsNullOrWhiteSpace(req.Evidence) || value == "todo" ? null : req.Evidence.Trim();
                 if (evidence is not null && !EvidenceBlock.IsMatch(evidence)) return Fail("invalid_evidence");
                 var unmet = value == "done" ? await UnmetDependenciesAsync(ids, ct) : [];
@@ -359,7 +390,18 @@ public sealed partial class ProjectService
                     .Select(t => (int?)t.SortOrder).MaxAsync(ct) ?? 0) + 100;
                 foreach (var t in tasks)
                 {
-                    if (t.Status == value) { skipped.Add(new(t.Id, "unchanged")); continue; }
+                    if (t.Status == value)
+                    {
+                        // Same stage: an explicit option still relabels; a bare stage leaves the task alone.
+                        if (byOption && t.StatusOptionId != optionId)
+                        {
+                            t.StatusOptionId = optionId;
+                            t.UpdatedAt = now;
+                            updated++;
+                        }
+                        else skipped.Add(new(t.Id, "unchanged"));
+                        continue;
+                    }
                     if (unmet.ContainsKey(t.Id)) { skipped.Add(new(t.Id, "unmet_dependencies")); continue; }
                     if (evidence is not null)
                     {
@@ -370,6 +412,7 @@ public sealed partial class ProjectService
                     }
                     Track(t.Id, "status_changed", t.Status, value);
                     SetStatus(t, value, now);
+                    t.StatusOptionId = optionId;
                     t.SortOrder = nextSort;
                     nextSort += 100;
                     t.UpdatedAt = now;
@@ -617,6 +660,7 @@ public sealed partial class ProjectService
             .Select(t => new
             {
                 t.Id, t.ParentTaskId, t.Title, t.Status, t.Priority, t.StartDate, t.DueDate, t.GroupId, t.IsRecurring,
+                StatusColor = t.StatusOption != null ? t.StatusOption.Color : null,
                 Assignees = t.Assignees.Select(a => a.UserId).ToList()
             })
             .ToListAsync(ct);
@@ -624,7 +668,7 @@ public sealed partial class ProjectService
         if (truncated) rows.RemoveAt(rows.Count - 1);
         var unmet = await UnmetDependenciesAsync(rows.Select(r => r.Id).ToList(), ct);
         var tasks = rows.Select(r => new CalendarTaskDto(r.Id, r.ParentTaskId, r.Title, r.Status, r.Priority,
-            r.StartDate, r.DueDate, r.GroupId, r.Assignees, r.Status != "done" && unmet.ContainsKey(r.Id), r.IsRecurring)).ToList();
+            r.StartDate, r.DueDate, r.GroupId, r.Assignees, r.Status != "done" && unmet.ContainsKey(r.Id), r.IsRecurring, r.StatusColor)).ToList();
         return new ProjectCalendarDto(projectId, from, to, tasks, truncated);
     }
 }

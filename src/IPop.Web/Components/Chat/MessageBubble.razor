@@ -98,6 +98,7 @@
             else if (NoteCard(Message) is { } note)
             {
                 <button type="button" class="notecard" style="--pc:@NoteAccentHex(note.Accent)" @onclick='() => Nav.NavigateTo("/notes/" + note.Id)' @onclick:stopPropagation>
+                    @* A photo cover is bearer-protected, so the chat card keeps the page's accent colour instead of loading a picture per message. *@
                     <div class="nc-cover" style='@(note.Cover is null ? "" : "--cover:var(--cv-" + note.Cover + ")")'><span class="nc-emo">@(note.Emoji ?? "📄")</span></div>
                     <div class="nc-body">
                         <div class="nc-kind"><i data-lucide="notebook-pen"></i>Note</div>

@@ -25,6 +25,25 @@ public class ProjectTemplate
     /// Shipped with the app (seeded by fixed id); never deletable.
     public bool IsBuiltIn { get; set; }
 
+    /// Template Center filter chip ("ICT", "Operations & plant", "Events", "HC", "Marketing", "Finance & purchasing"); null for user templates.
+    public string? Category { get; set; }
+    /// Typical project length, shown on the card ("10 weeks").
+    public int? DurationWeeks { get; set; }
+    /// JSON [{label,color,stage}] applied as the new project's statuses; null = the project defaults.
+    public string? StatusesJson { get; set; }
+    /// JSON array of view keys for the new project's tabs; null = default layout.
+    public string? TabsJson { get; set; }
+    /// JSON [{key,label,hint}] roles the creator fills with people; tasks point at a key.
+    public string? RolesJson { get; set; }
+    /// JSON [string] short descriptions of the automations the template suggests (display only for now).
+    public string? AutomationsJson { get; set; }
+    /// True when task/milestone offsets count working days (Mon-Fri); false = calendar days (older templates, save-as-template).
+    public bool OffsetsInWorkingDays { get; set; }
+    /// Save-as-template: JSON [{name,type,options}] custom field columns recreated on the new project; null = none.
+    public string? FieldsJson { get; set; }
+    /// Save-as-template: JSON [{kind,enabled,config}] automation settings applied to the new project; null = defaults.
+    public string? RulesJson { get; set; }
+
     public Project? SourceProject { get; set; }
     public User? CreatedBy { get; set; }
     public Department? Department { get; set; }
@@ -82,6 +101,12 @@ public class ProjectTemplateTask
     public Guid? GroupId { get; set; }
     /// Comma-separated NIKs; applied when the template is used, only for users that still exist.
     public string? AssigneeNiks { get; set; }
+    /// The task spans DueOffset-DurationDays+1 .. DueOffset (calendar days); null = a single-day task without a start date.
+    public int? DurationDays { get; set; }
+    /// Role key from the template's RolesJson; the people picked for that role are assigned.
+    public string? RoleKey { get; set; }
+    /// Recurrence rule copied onto the created task (IsRecurring = true), e.g. "FREQ=WEEKLY;INTERVAL=1;BYDAY=MO".
+    public string? RecurrenceRule { get; set; }
 
     public ProjectTemplate Template { get; set; } = default!;
 }
@@ -115,5 +140,32 @@ public class ProjectMilestoneTask
     public Guid TaskId { get; set; }
 
     public ProjectMilestone Milestone { get; set; } = default!;
+    public ProjectTask Task { get; set; } = default!;
+}
+
+/// A saved snapshot of every task's planned start/due (Gantt baseline). Up to 5 per project;
+/// the active one is drawn under the bars and used for variance.
+public class ProjectBaseline
+{
+    public Guid Id { get; set; }
+    public Guid ProjectId { get; set; }
+    public required string Name { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public Guid CreatedById { get; set; }
+    public bool IsActive { get; set; }
+
+    public Project Project { get; set; } = default!;
+    public User CreatedBy { get; set; } = default!;
+    public ICollection<ProjectBaselineTask> Tasks { get; set; } = [];
+}
+
+public class ProjectBaselineTask
+{
+    public Guid BaselineId { get; set; }
+    public Guid TaskId { get; set; }
+    public DateTime? Start { get; set; }
+    public DateTime? Due { get; set; }
+
+    public ProjectBaseline Baseline { get; set; } = default!;
     public ProjectTask Task { get; set; } = default!;
 }

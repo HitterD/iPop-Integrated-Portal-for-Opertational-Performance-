@@ -52,6 +52,7 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
             Progress = 0,
             Risk = req.Risk?.Trim(),
             Obstacle = req.Obstacle?.Trim(),
+            Goal = string.IsNullOrWhiteSpace(req.Goal) ? null : req.Goal.Trim()[..Math.Min(req.Goal.Trim().Length, 1000)],
             IsActive = true,
             CreatedAt = now,
             UpdatedAt = now
@@ -86,6 +87,12 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         // ipop-21 PERFECTION: dedicated chat room per project (interconnect).
         // Room is created atomically with the project so members can talk immediately.
         CreateProjectRoom(project, actorId, ownerId, now);
+        foreach (var rule in ProjectAutomationCatalogue.All.Where(e => e.Kind != ProjectAutomationCatalogue.FormToIntake))
+            db.ProjectAutomations.Add(new ProjectAutomation
+            {
+                Id = Guid.NewGuid(), ProjectId = project.Id, Kind = rule.Kind, ConfigJson = rule.DefaultConfigJson,
+                IsEnabled = rule.DefaultOnForNewProjects, CreatedAt = now
+            });
 
         await db.SaveChangesAsync(ct);
 
@@ -204,6 +211,13 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         }
         if (req.Risk is not null) project.Risk = req.Risk.Trim();
         if (req.Obstacle is not null) project.Obstacle = req.Obstacle.Trim();
+        if (req.Health is not null)
+        {
+            var health = req.Health.Trim().ToLowerInvariant();
+            if (health.Length > 0 && !ProjectStatusDefaults.Healths.Contains(health))
+                return new ProjectResultDto(false, null, "invalid_health");
+            project.Health = health.Length == 0 ? null : health;
+        }
         if (!string.IsNullOrWhiteSpace(req.Color))
         {
             var validColors = new[] { "#2E9E5B", "#0A84FF", "#7657C4", "#FF9F0A", "#C0513A", "#18808A" };
@@ -504,6 +518,28 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         return new MemberResultDto(true, null);
     }
 
+    public async Task<MemberResultDto> SetMemberRoleAsync(Guid actorId, Guid projectId, Guid userId, string role, CancellationToken ct)
+    {
+        var isOwnerOrManager = await db.ProjectMembers
+            .AnyAsync(m => m.ProjectId == projectId && m.UserId == actorId && (m.Role == "owner" || m.Role == "manager"), ct);
+        if (!isOwnerOrManager) return new MemberResultDto(false, "forbidden");
+
+        role = (role ?? "").Trim();
+        if (role is not ("member" or "viewer")) return new MemberResultDto(false, "invalid_role");
+
+        var member = await db.ProjectMembers.FirstOrDefaultAsync(m => m.ProjectId == projectId && m.UserId == userId, ct);
+        if (member is null) return new MemberResultDto(false, "member_not_found");
+        // Owners and managers keep their role; only member <-> viewer is switched here.
+        if (member.Role is "owner" or "manager") return new MemberResultDto(false, "forbidden");
+
+        if (member.Role != role)
+        {
+            member.Role = role;
+            await db.SaveChangesAsync(ct);
+        }
+        return new MemberResultDto(true, null);
+    }
+
     public async Task<IReadOnlyList<ProjectMemberDto>> GetMembersAsync(Guid projectId, CancellationToken ct)
     {
         return await db.ProjectMembers
@@ -529,7 +565,10 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
 
         var validStatus = new[] { "todo", "doing", "review", "done" };
         var status = string.IsNullOrWhiteSpace(req.Status) ? "todo" : req.Status.Trim();
-        if (!validStatus.Contains(status)) return new TaskResultDto(false, null, "invalid_status");
+        if (req.StatusOptionId is null && !validStatus.Contains(status)) return new TaskResultDto(false, null, "invalid_status");
+        var resolved = await ResolveStatusAsync(req.ProjectId, status, req.StatusOptionId, null, ct);
+        if (resolved.Error is not null) return new TaskResultDto(false, null, resolved.Error);
+        status = resolved.Stage;
 
         Guid? parentGroupId = null;
         if (req.ParentTaskId.HasValue)
@@ -560,6 +599,7 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
             Title = req.Title.Trim(),
             Description = req.Description?.Trim(),
             Status = status,
+            StatusOptionId = resolved.OptionId,
             Priority = req.Priority?.Trim(),
             StartDate = AsUtcDate(req.StartDate),
             DueDate = AsUtcDate(req.DueDate),
@@ -625,7 +665,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
                 t.CreatedById, t.CreatedBy?.Name ?? "Unknown",
                 assignees, subCount, subDone, t.CreatedAt, t.UpdatedAt,
                 commentCounts.GetValueOrDefault(t.Id), attachmentCounts.GetValueOrDefault(t.Id), reminderTaskIds.Contains(t.Id), t.GroupId,
-                CompletedAt: t.CompletedAt));
+                CompletedAt: t.CompletedAt, StatusOptionId: t.StatusOptionId,
+                DeadlineDate: t.DeadlineDate, ConstraintType: t.ConstraintType, ConstraintDate: t.ConstraintDate));
         }
         return await WithDependenciesAsync(result, ct);
     }
@@ -641,6 +682,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         // Diskusi Tugas (Fase 2): catat perubahan penting ke riwayat aktivitas.
         var activityRows = new List<ProjectTaskActivity>();
         Guid? nextRecurringId = null;
+        string? hookOldStage = null;
+        Guid? hookOldOption = null;
         void Track(string action, string? oldVal, string? newVal)
             => activityRows.Add(new ProjectTaskActivity
             {
@@ -691,26 +734,53 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         if (req.IsTemplate.HasValue) task.IsTemplate = req.IsTemplate.Value;
         if (req.Tags is not null) task.Tags = req.Tags.Trim();
 
-        if (req.Status is not null)
+        if (req.ClearDeadline) task.DeadlineDate = null;
+        else if (req.DeadlineDate.HasValue) task.DeadlineDate = AsUtcDate(req.DeadlineDate.Value).Date;
+        if (req.ClearConstraint) { task.ConstraintType = null; task.ConstraintDate = null; }
+        else if (req.ConstraintType is not null || req.ConstraintDate.HasValue)
+        {
+            var ctype = (req.ConstraintType ?? task.ConstraintType)?.Trim().ToLowerInvariant();
+            var cdate = req.ConstraintDate.HasValue ? AsUtcDate(req.ConstraintDate.Value).Date : task.ConstraintDate;
+            if (!GanttScheduler.IsValidConstraintType(ctype) || cdate is null
+                || cdate < GanttService.MinImportDate || cdate > GanttService.MaxImportDate)
+                return new TaskResultDto(false, null, "invalid_constraint");
+            if (ctype == "mso" && (task.StartDate is null || task.StartDate.Value.Date != cdate.Value))
+            {
+                // A must-start-on constraint pins the task: move its start (keeping duration) onto the date.
+                var span = task.StartDate.HasValue && task.DueDate.HasValue ? task.DueDate.Value.Date - task.StartDate.Value.Date : TimeSpan.Zero;
+                task.StartDate = AsUtcDate(cdate.Value);
+                if (task.DueDate.HasValue || span > TimeSpan.Zero) task.DueDate = AsUtcDate(cdate.Value + span);
+            }
+            task.ConstraintType = ctype;
+            task.ConstraintDate = cdate;
+        }
+
+        if (req.Status is not null || req.StatusOptionId is not null)
         {
             var valid = new[] { "todo", "doing", "review", "done" };
-            if (!valid.Contains(req.Status)) return new TaskResultDto(false, null, "invalid_status");
+            if (req.StatusOptionId is null && !valid.Contains(req.Status)) return new TaskResultDto(false, null, "invalid_status");
+            var resolved = await ResolveStatusAsync(task.ProjectId, req.Status ?? task.Status, req.StatusOptionId, task, ct);
+            if (resolved.Error is not null) return new TaskResultDto(false, null, resolved.Error);
+            var newStatus = resolved.Stage;
+            hookOldStage = task.Status;
+            hookOldOption = task.StatusOptionId;
 
-            if (req.Status == "done" && task.Status != "done"
+            if (newStatus == "done" && task.Status != "done"
                 && (await UnmetDependenciesAsync([taskId], ct)).Count > 0)
                 return new TaskResultDto(false, null, "unmet_dependencies");
 
-            if (req.Status != task.Status)
+            if (newStatus != task.Status)
             {
-                if (req.Status == "done") nextRecurringId = await QueueNextRecurrenceAsync(task, actorId, ct);
-                Track("status_changed", task.Status, req.Status);
+                if (newStatus == "done") nextRecurringId = await QueueNextRecurrenceAsync(task, actorId, ct);
+                Track("status_changed", task.Status, newStatus);
                 var maxSort = await db.ProjectTasks
-                    .Where(t => t.ProjectId == task.ProjectId && t.Status == req.Status && t.ParentTaskId == task.ParentTaskId)
+                    .Where(t => t.ProjectId == task.ProjectId && t.Status == newStatus && t.ParentTaskId == task.ParentTaskId)
                     .Select(t => (int?)t.SortOrder)
                     .MaxAsync(ct) ?? 0;
                 task.SortOrder = maxSort + 100;
             }
-            SetStatus(task, req.Status, DateTime.UtcNow);
+            SetStatus(task, newStatus, DateTime.UtcNow);
+            task.StatusOptionId = resolved.OptionId;
         }
 
         task.UpdatedAt = DateTime.UtcNow;
@@ -718,6 +788,7 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         if (activityRows.Count > 0) db.ProjectTaskActivities.AddRange(activityRows);
         await db.SaveChangesAsync(ct);
         await RecalculateProgressAsync(task.ProjectId, ct);
+        if (hookOldStage is not null) await ProjectTaskHooks.AfterStatusChangeAsync(db, notificationGateway, task, hookOldStage, hookOldOption, actorId, ct);
 
         return new TaskResultDto(true, (await MapToTaskDtoAsync(taskId, ct))! with { NextRecurringTaskId = nextRecurringId }, null);
     }
@@ -842,7 +913,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
                 t.Tags,
                 t.CreatedById, t.CreatedBy?.Name ?? "Unknown", ass, subCount, subDone, t.CreatedAt, t.UpdatedAt,
                 boardCommentCounts.GetValueOrDefault(t.Id), boardAttachmentCounts.GetValueOrDefault(t.Id), boardReminderTaskIds.Contains(t.Id), t.GroupId,
-                CompletedAt: t.CompletedAt);
+                CompletedAt: t.CompletedAt, StatusOptionId: t.StatusOptionId,
+                DeadlineDate: t.DeadlineDate, ConstraintType: t.ConstraintType, ConstraintDate: t.ConstraintDate);
         }
 
         var mapped = await WithDependenciesAsync(all.Select(Map).ToList(), ct);
@@ -864,10 +936,13 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         if (!isMember) return new TaskResultDto(false, null, "forbidden");
 
         var valid = new[] { "todo", "doing", "review", "done" };
-        if (!valid.Contains(req.Status)) return new TaskResultDto(false, null, "invalid_status");
+        if (req.StatusOptionId is null && !valid.Contains(req.Status)) return new TaskResultDto(false, null, "invalid_status");
+        var resolved = await ResolveStatusAsync(task.ProjectId, req.Status, req.StatusOptionId, task, ct);
+        if (resolved.Error is not null) return new TaskResultDto(false, null, resolved.Error);
+        var newStatus = resolved.Stage;
 
         // DETAIL MAX: dependency guard — cannot move to "done" unless all listed dependencies are "done"
-        if (req.Status == "done" && task.Status != "done")
+        if (newStatus == "done" && task.Status != "done")
         {
             var (canComplete, unmet) = await ValidateTaskDependenciesAsync(taskId, actorId, ct);
             if (!canComplete)
@@ -877,15 +952,18 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         }
 
         Guid? nextRecurringId = null;
-        if (req.Status != task.Status)
+        var moveOldStage = task.Status;
+        var moveOldOption = task.StatusOptionId;
+        task.StatusOptionId = resolved.OptionId;
+        if (newStatus != task.Status)
         {
             var maxSort = await db.ProjectTasks
-                .Where(t => t.ProjectId == task.ProjectId && t.Status == req.Status && t.ParentTaskId == task.ParentTaskId)
+                .Where(t => t.ProjectId == task.ProjectId && t.Status == newStatus && t.ParentTaskId == task.ParentTaskId)
                 .Select(t => (int?)t.SortOrder)
                 .MaxAsync(ct) ?? 0;
             task.SortOrder = req.SortOrder ?? (maxSort + 100);
-            if (req.Status == "done") nextRecurringId = await QueueNextRecurrenceAsync(task, actorId, ct);
-            SetStatus(task, req.Status, DateTime.UtcNow);
+            if (newStatus == "done") nextRecurringId = await QueueNextRecurrenceAsync(task, actorId, ct);
+            SetStatus(task, newStatus, DateTime.UtcNow);
         }
         else if (req.SortOrder.HasValue)
         {
@@ -895,6 +973,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         task.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         await RecalculateProgressAsync(task.ProjectId, ct);
+
+        await ProjectTaskHooks.AfterStatusChangeAsync(db, notificationGateway, task, moveOldStage, moveOldOption, actorId, ct);
 
         return new TaskResultDto(true, (await MapToTaskDtoAsync(taskId, ct))! with { NextRecurringTaskId = nextRecurringId }, null);
     }
@@ -933,7 +1013,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
                 t.Dependencies, t.IsRecurring, t.RecurrenceRule, t.IsTemplate,
                 t.Tags,
                 t.CreatedById, t.CreatedBy?.Name ?? "Unknown", ass, subCount, subDone, t.CreatedAt, t.UpdatedAt,
-                GroupId: t.GroupId, CompletedAt: t.CompletedAt);
+                GroupId: t.GroupId, CompletedAt: t.CompletedAt, StatusOptionId: t.StatusOptionId,
+                DeadlineDate: t.DeadlineDate, ConstraintType: t.ConstraintType, ConstraintDate: t.ConstraintDate);
         }).ToList();
 
         return new PagedResult<ProjectTaskDto>(await WithDependenciesAsync(dtos, ct), total, page, pageSize);
@@ -1049,7 +1130,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
                 t.Dependencies, t.IsRecurring, t.RecurrenceRule, t.IsTemplate,
                 t.Tags,
                 t.CreatedById, t.CreatedBy?.Name ?? "Unknown",
-                ass, subCount, subDone, t.CreatedAt, t.UpdatedAt, GroupId: t.GroupId, CompletedAt: t.CompletedAt);
+                ass, subCount, subDone, t.CreatedAt, t.UpdatedAt, GroupId: t.GroupId, CompletedAt: t.CompletedAt, StatusOptionId: t.StatusOptionId,
+                DeadlineDate: t.DeadlineDate, ConstraintType: t.ConstraintType, ConstraintDate: t.ConstraintDate);
         }).ToList();
         taskDtos = await WithDependenciesAsync(taskDtos, ct);
 
@@ -1273,7 +1355,7 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
             p.Owner?.Name ?? "Unknown", p.Owner?.Nik ?? "Unknown",
             p.StartDate, p.Deadline, p.Status, p.Progress, p.Risk, p.Obstacle, p.IsActive,
             p.Members.Count, p.Tasks.Count, todo, doing, review, done,
-            p.CreatedAt, p.UpdatedAt, p.Color);
+            p.CreatedAt, p.UpdatedAt, p.Color, p.Health, ParseTabs(p.TabsJson), p.Goal);
     }
 
     /// The only way a task's status changes: CompletedAt follows the "done" lane (set on entering,
@@ -1283,6 +1365,35 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         if (status == "done") { if (task.Status != "done" || task.CompletedAt is null) task.CompletedAt = now; }
         else task.CompletedAt = null;
         task.Status = status;
+    }
+
+    private static IReadOnlyList<string>? ParseTabs(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return null;
+        try { return System.Text.Json.JsonSerializer.Deserialize<List<string>>(json); }
+        catch (System.Text.Json.JsonException) { return null; }
+    }
+
+    /// Turns a requested status into (stage, custom option). An option id wins and must belong to the
+    /// project; a bare stage keeps the task's current option when it already has that stage, otherwise
+    /// takes the first option of the stage (null when the project has no option rows yet).
+    private async Task<(string Stage, Guid? OptionId, string? Error)> ResolveStatusAsync(
+        Guid projectId, string? stage, Guid? optionId, ProjectTask? task, CancellationToken ct)
+    {
+        if (optionId is { } id)
+        {
+            var option = await db.ProjectStatusOptions.AsNoTracking()
+                .Where(o => o.Id == id && o.ProjectId == projectId).Select(o => new { o.Id, o.Stage }).FirstOrDefaultAsync(ct);
+            return option is null ? ("", null, "invalid_status_option") : (option.Stage, option.Id, null);
+        }
+        var target = stage!.Trim();
+        if (task is not null && task.Status == target && task.StatusOptionId is { } current
+            && await db.ProjectStatusOptions.AnyAsync(o => o.Id == current && o.ProjectId == projectId && o.Stage == target, ct))
+            return (target, current, null);
+        var first = await db.ProjectStatusOptions.AsNoTracking()
+            .Where(o => o.ProjectId == projectId && o.Stage == target)
+            .OrderBy(o => o.SortOrder).ThenBy(o => o.CreatedAt).Select(o => (Guid?)o.Id).FirstOrDefaultAsync(ct);
+        return (target, first, null);
     }
 
     private async Task<ProjectTaskDto?> MapToTaskDtoAsync(Guid taskId, CancellationToken ct)
@@ -1314,7 +1425,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
             t.CreatedById, t.CreatedBy?.Name ?? "Unknown",
             ass, subCount, subDone, t.CreatedAt, t.UpdatedAt,
             commentCount, attachmentCount, hasReminder, t.GroupId,
-            deps, t.Status != "done" && deps.Any(d => d.Status != "done"), CompletedAt: t.CompletedAt);
+            deps, t.Status != "done" && deps.Any(d => d.Status != "done"), CompletedAt: t.CompletedAt, StatusOptionId: t.StatusOptionId,
+                DeadlineDate: t.DeadlineDate, ConstraintType: t.ConstraintType, ConstraintDate: t.ConstraintDate);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -1513,9 +1625,10 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
             dayIndexes[t.Id] = (s, e - s + 1);
         }
 
-        // Critical path via dependency graph (forward + backward pass)
+        // Critical path: forward + backward pass over link types/lag in working days (weekends/holidays skipped
+        // via GanttScheduler; the v1 chart keeps calendar-day positions).
         var ganttEdges = await ProjectDependencyEdgesAsync(projectId, ct);
-        var critical = ComputeCriticalPath(tasks, dayIndexes, ganttEdges);
+        var critical = ComputeCriticalPath(tasks, ganttEdges, await LoadScheduleInputsAsync(projectId, ct));
 
         var ganttTasks = tasks.Select(t =>
         {
@@ -1534,81 +1647,31 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         return new ProjectGanttDto(project.Id, project.Name, windowStart, windowEnd, totalDays, ganttTasks, critical);
     }
 
-    /// Forward/backward pass over the dependency graph. Duration = day-index span when dated, else 1.
-    /// Returns the set of task IDs on the critical path (zero slack), ordered by earliest start.
+    /// Zero-slack task ids ordered by start, from GanttScheduler. Undated tasks and tasks outside the
+    /// (group-filtered) set are ignored.
     private static IReadOnlyList<Guid> ComputeCriticalPath(
-        IReadOnlyList<ProjectTask> tasks,
-        IReadOnlyDictionary<Guid, (int Start, int Duration)> dayIndexes,
-        IReadOnlyDictionary<Guid, List<Guid>> dependsOn)
+        IReadOnlyList<ProjectTask> tasks, IReadOnlyDictionary<Guid, List<Guid>> dependsOn, ScheduleInputs inputs)
     {
         var ids = tasks.Select(t => t.Id).ToHashSet();
-        IEnumerable<Guid> Deps(Guid id) => dependsOn.TryGetValue(id, out var d) ? d : [];
+        var links = inputs.Links.Where(l => ids.Contains(l.PredecessorId) && ids.Contains(l.SuccessorId)).ToList();
+        var analysis = GanttScheduler.Analyze(tasks.Select(ToSched), links, inputs.Holidays, skipWeekends: false);
+        return analysis.CriticalPath;
+    }
 
-        // predecessor -> successor edges from the dependency rows
-        var successors = new Dictionary<Guid, List<Guid>>();
-        foreach (var t in tasks)
-        {
-            foreach (var dep in Deps(t.Id))
-            {
-                if (!ids.Contains(dep)) continue; // dangling dependency: ignore for CP
-                if (!successors.TryGetValue(dep, out var list)) successors[dep] = list = [];
-                list.Add(t.Id);
-            }
-        }
+    internal static SchedTask ToSched(ProjectTask t) =>
+        new(t.Id, t.StartDate, t.DueDate, t.ConstraintType, t.ConstraintDate, t.Status == "done");
 
-        int Duration(Guid id)
-        {
-            if (dayIndexes.TryGetValue(id, out var p)) return Math.Max(1, p.Duration);
-            return 1;
-        }
+    internal sealed record ScheduleInputs(IReadOnlyList<SchedLink> Links, IReadOnlyList<DateTime> Holidays);
 
-        // Kahn topological order
-        var indegree = tasks.ToDictionary(t => t.Id, _ => 0);
-        foreach (var t in tasks)
-            foreach (var dep in Deps(t.Id))
-                if (ids.Contains(dep)) indegree[t.Id]++;
-
-        var queue = new Queue<Guid>(indegree.Where(kv => kv.Value == 0).Select(kv => kv.Key));
-        var topo = new List<Guid>();
-        while (queue.Count > 0)
-        {
-            var n = queue.Dequeue();
-            topo.Add(n);
-            if (!successors.TryGetValue(n, out var succ)) continue;
-            foreach (var s in succ)
-            {
-                indegree[s]--;
-                if (indegree[s] == 0) queue.Enqueue(s);
-            }
-        }
-
-        // Forward pass: earliest finish (EF) = ES + duration, ES = max EF of predecessors
-        var ef = new Dictionary<Guid, int>();
-        foreach (var n in topo)
-        {
-            var es = 0;
-            foreach (var (pred, succ) in successors.SelectMany(kv => kv.Value.Select(v => (Pred: kv.Key, Succ: v))))
-            {
-                if (succ == n && ef.TryGetValue(pred, out var pe)) es = Math.Max(es, pe);
-            }
-            ef[n] = es + Duration(n);
-        }
-
-        var projectFinish = topo.Count > 0 ? ef.Values.Max() : 0;
-
-        // Backward pass: latest finish (LF) = min LS over successors; LF = projectFinish for sinks.
-        // In reversed topo order successors are already resolved.
-        var lf = new Dictionary<Guid, int>();
-        foreach (var n in topo.AsEnumerable().Reverse())
-        {
-            if (!successors.TryGetValue(n, out var succ) || succ.Count == 0)
-                lf[n] = projectFinish;
-            else
-                lf[n] = succ.Select(s => lf[s] - Duration(s)).Min();
-        }
-
-        // Slack = LS - ES = (LF - duration) - (EF - duration) = LF - EF
-        return topo.Where(n => lf[n] - ef[n] <= 0).ToList();
+    internal async Task<ScheduleInputs> LoadScheduleInputsAsync(Guid projectId, CancellationToken ct)
+    {
+        var links = await db.ProjectTaskDependencies.AsNoTracking()
+            .Where(d => d.Task.ProjectId == projectId)
+            .Select(d => new { d.TaskId, d.DependsOnTaskId, d.LinkType, d.LagDays }).ToListAsync(ct);
+        var holidays = await db.WorkCalendarEntries.AsNoTracking()
+            .Where(e => e.ProjectId == projectId && (e.Kind == "holiday" || e.Kind == "offday"))
+            .Select(e => e.Date).ToListAsync(ct);
+        return new ScheduleInputs(links.Select(l => new SchedLink(l.DependsOnTaskId, l.TaskId, l.LinkType, l.LagDays)).ToList(), holidays);
     }
 
     private static IEnumerable<Guid> ParseDependencyIds(string? dependencies)

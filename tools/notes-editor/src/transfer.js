@@ -13,6 +13,7 @@ import { marked } from 'marked';
 import * as Y from 'yjs';
 import { prosemirrorJSONToYDoc, yXmlFragmentToProsemirrorJSON } from '@tiptap/y-tiptap';
 import { COLORS } from './nodes.js';
+import { loadDrawBundle } from './draw-block.js';
 
 export const LIMITS = { bytes: 100 * 1024 * 1024, pages: 300 };
 const FIELD = 'default';
@@ -431,12 +432,10 @@ export function pageToDoc(page, ctx) {
   $$('input').forEach(e => e.remove());
 
   let json = generateJSON(root.innerHTML, ctx.extensions);
-  if (page.coverImage) {
-    const ref = asset({ path: page.coverImage, name: baseName(page.coverImage), image: true });
-    json = { ...json, content: [{ type: 'noteImage', attrs: { id: ref, name: baseName(page.coverImage), size: 0, width: 100, align: 'center', caption: '' } }, ...(json.content || [])] };
-  }
+  // A photo cover is no longer pasted into the page: it is uploaded like any image and then set as the page's cover.
+  const coverRef = page.coverImage ? asset({ path: page.coverImage, name: baseName(page.coverImage), image: true, cover: true }) : null;
   if (!json.content?.length) json = { type: 'doc', content: [{ type: 'paragraph' }] };
-  return { json, assets, notes };
+  return { json, assets, notes, coverRef };
 }
 
 function textBetween(a, b) {
@@ -490,13 +489,39 @@ export function docToState(json, extensions) {
   return { state, plainText: node.textBetween(0, node.content.size, '\n', leaf => leaf.type.name === 'mention' ? `@${leaf.attrs.label ?? ''}` : ''), todoDone: done, todoTotal: total };
 }
 
-export function stateToDoc(doc) {
+/// The page body and every drawing scene stored with it: { json, scenes: Map(sceneId -> live Excalidraw elements) }.
+/// A scene is a Y.Map named "draw:<id>" (see draw-block.js); the whiteboard page uses the id "board".
+export function stateToParts(doc) {
   const y = new Y.Doc();
   if (doc.state) Y.applyUpdate(y, unb64(doc.state));
   for (const u of doc.updates || []) Y.applyUpdate(y, unb64(u.data));
   const json = yXmlFragmentToProsemirrorJSON(y.getXmlFragment(FIELD));
+  const scenes = new Map();
+  // A drawing converted to iPop's own canvas lives in "wb:<id>"; one never opened since then is still only in "draw:<id>"
+  // (the export renderer converts those on the fly). The canvas scene wins when both exist.
+  const read = name => { const els = []; y.getMap(name).forEach(v => { if (v && typeof v === 'object' && typeof v.id === 'string' && typeof v.type === 'string' && !v.isDeleted) els.push(v); }); return els; };
+  for (const name of y.share.keys()) {
+    if (!name.startsWith('draw:')) continue;
+    const els = read(name);
+    if (els.length) scenes.set(name.slice(5), els);
+  }
+  for (const name of y.share.keys()) {
+    if (!name.startsWith('wb:')) continue;
+    const els = read(name);
+    if (els.length) scenes.set(name.slice(3), els);
+  }
   y.destroy();
-  return json;
+  return { json, scenes };
+}
+
+export function stateToDoc(doc) { return stateToParts(doc).json; }
+
+/// Drawing ids a page refers to (the /draw blocks), in reading order.
+export function drawIds(json) {
+  const ids = [];
+  const walk = n => { if (n.type === 'noteDraw' && n.attrs?.id) ids.push(n.attrs.id); (n.content || []).forEach(walk); };
+  walk(json);
+  return ids;
 }
 
 // ── Export ───────────────────────────────────────────────────────────────────
@@ -533,6 +558,12 @@ function inlineMd(nodes, ctx) {
   return (nodes || []).map(n => {
     if (n.type === 'hardBreak') return '<br>';
     if (n.type === 'mention') return `@${n.attrs?.label ?? ''}`;
+    if (n.type === 'dateChip') return n.attrs?.date || '';
+    if (n.type === 'pageLink') {
+      const title = (ctx.title?.(n.attrs?.id) || n.attrs?.title || 'Untitled').replace(/[[\]]/g, '');
+      const p = ctx.link(n.attrs?.id);
+      return p ? `[${title}](${relPath(ctx.dir, p)})` : title;
+    }
     if (n.type !== 'text') return '';
     let t = n.text.replace(/([\\`*_[\]<>])/g, '\\$1');
     const marks = n.marks || [];
@@ -573,7 +604,8 @@ export function docToMarkdown(json, ctx) {
       case 'details': {
         const sum = n.content?.find(c => c.type === 'detailsSummary');
         const body = n.content?.find(c => c.type === 'detailsContent');
-        return `<details>\n<summary>${esc((sum?.content || []).map(t => t.text || '').join(''))}</summary>\n\n${body ? (body.content || []).map(block).join('\n\n') : ''}\n\n</details>`;
+        const lv = sum?.attrs?.level, st = esc((sum?.content || []).map(t => t.text || '').join(''));
+        return `<details>\n<summary>${lv ? `<h${lv}>${st}</h${lv}>` : st}</summary>\n\n${body ? (body.content || []).map(block).join('\n\n') : ''}\n\n</details>`;
       }
       case 'callout': return `<aside>\n${n.attrs?.emoji || '💡'} ${kids()}\n</aside>`;
       case 'table': {
@@ -583,13 +615,15 @@ export function docToMarkdown(json, ctx) {
         const line = r => `| ${Array.from({ length: w }, (_, i) => r[i] ?? ' ').join(' | ')} |`;
         return [line(rows[0]), `|${' --- |'.repeat(w)}`, ...rows.slice(1).map(line)].join('\n');
       }
+      case 'noteDraw': { const f = ctx.draw?.(n.attrs?.id); return f ? `![Drawing](${f.dataUrl || relPath(ctx.dir, f.path)})` : '_[drawing]_'; }
       case 'noteImage': { const f = ctx.file(n.attrs?.id); return f ? `![${(n.attrs?.caption || n.attrs?.name || '').replace(/[[\]]/g, '')}](${f.dataUrl || relPath(ctx.dir, f.path)})` : `_[image: ${n.attrs?.name || ''}]_`; }
       case 'noteGallery': { let items = []; try { items = JSON.parse(n.attrs?.items || '[]'); } catch { /* ignore */ } return items.map(i => block({ type: 'noteImage', attrs: i })).join('\n\n'); }
       case 'noteFile': { const f = ctx.file(n.attrs?.id); return f ? `[${n.attrs?.name || 'file'}](${f.dataUrl || relPath(ctx.dir, f.path)})` : `_[file: ${n.attrs?.name || ''}]_`; }
       case 'noteBookmark': return `[${(n.attrs?.title || n.attrs?.url || '').replace(/[[\]]/g, '')}](${n.attrs?.url || ''})`;
       case 'noteEmbed': return `[${n.attrs?.url || ''}](${n.attrs?.url || ''})`;
       case 'subPage': { const p = ctx.link(n.attrs?.id); const t = `${n.attrs?.emoji ? n.attrs.emoji + ' ' : ''}${ctx.title?.(n.attrs?.id) || n.attrs?.title || 'Untitled'}`; return p ? `[${t}](${relPath(ctx.dir, p)})` : t; }
-      case 'noteWidget': return null;
+      case 'columns': return (n.content || []).map(col => (col.content || []).map(block).filter(Boolean).join('\n\n')).join('\n\n---\n\n');
+      case 'noteWidget': case 'noteToc': return null;
       default: return kids();
     }
   };
@@ -600,6 +634,12 @@ function inlineHtml(nodes, ctx) {
   return (nodes || []).map(n => {
     if (n.type === 'hardBreak') return '<br>';
     if (n.type === 'mention') return `<span class="mention">@${esc(n.attrs?.label ?? '')}</span>`;
+    if (n.type === 'dateChip') return `<time datetime="${esc(n.attrs?.date || '')}">${esc(n.attrs?.date || '')}</time>`;
+    if (n.type === 'pageLink') {
+      const title = esc(ctx.title?.(n.attrs?.id) || n.attrs?.title || 'Untitled');
+      const p = ctx.link(n.attrs?.id);
+      return p ? `<a class="pagelink" href="${esc(safeUrl(relPath(ctx.dir, p)))}">${title}</a>` : title;
+    }
     if (n.type !== 'text') return '';
     let t = esc(n.text);
     for (const m of n.marks || []) {
@@ -635,13 +675,17 @@ export function docToHtml(json, ctx) {
       case 'codeBlock': return `<pre${bg(n)}><code>${esc((n.content || []).map(t => t.text).join(''))}</code></pre>`;
       case 'horizontalRule': return '<hr>';
       case 'details': return `<details open${bg(n)}>${kids()}</details>`;
-      case 'detailsSummary': return `<summary>${inlineHtml(n.content, ctx)}</summary>`;
+      case 'detailsSummary': { const lv = n.attrs?.level; return `<summary>${lv ? `<h${lv} style="display:inline;margin:0">${inlineHtml(n.content, ctx)}</h${lv}>` : inlineHtml(n.content, ctx)}</summary>`; }
       case 'detailsContent': return `<div class="toggle-body">${kids()}</div>`;
       case 'callout': return `<div class="callout" style="background:${BG_HEX[n.attrs?.color] || BG_HEX.yellow}"><span class="ce">${esc(n.attrs?.emoji || '💡')}</span><div>${kids()}</div></div>`;
       case 'table': return `<table>${kids()}</table>`;
       case 'tableRow': return `<tr>${kids()}</tr>`;
       case 'tableHeader': return `<th>${(n.content || []).map(p => inlineHtml(p.content, ctx)).join('<br>')}</th>`;
       case 'tableCell': return `<td>${(n.content || []).map(p => inlineHtml(p.content, ctx)).join('<br>')}</td>`;
+      case 'noteDraw': {
+        const f = ctx.draw?.(n.attrs?.id); const src = f ? safeUrl(f.dataUrl || relPath(ctx.dir, f.path)) : '';
+        return `<figure style="text-align:center">${src ? `<img src="${esc(src)}" alt="Drawing" style="max-width:100%">` : '<div class="missing">[empty drawing]</div>'}</figure>`;
+      }
       case 'noteImage': {
         const f = ctx.file(n.attrs?.id), w = Math.min(100, Math.max(15, +n.attrs?.width || 100));
         const src = f ? safeUrl(f.dataUrl || relPath(ctx.dir, f.path)) : '';
@@ -652,7 +696,9 @@ export function docToHtml(json, ctx) {
       case 'noteBookmark': { const u = safeUrl(n.attrs?.url); return `<a class="bookmark"${u ? ` href="${esc(u)}"` : ''}><b>${esc(n.attrs?.title || n.attrs?.url || '')}</b>${n.attrs?.desc ? `<span>${esc(n.attrs.desc)}</span>` : ''}<small>${esc(n.attrs?.url || '')}</small></a>`; }
       case 'noteEmbed': { const u = safeUrl(n.attrs?.url); return `<p>${u ? `<a href="${esc(u)}">${esc(n.attrs?.url || '')}</a>` : esc(n.attrs?.url || '')}</p>`; }
       case 'subPage': { const p = ctx.link(n.attrs?.id); const t = `${esc(n.attrs?.emoji || '📄')} ${esc(ctx.title?.(n.attrs?.id) || n.attrs?.title || 'Untitled')}`; return p ? `<p class="subpage"><a href="${esc(relPath(ctx.dir, p))}">${t}</a></p>` : `<p class="subpage">${t}</p>`; }
-      case 'noteWidget': return '';
+      case 'columns': return `<div class="cols">${kids()}</div>`;
+      case 'column': return `<div class="col">${kids()}</div>`;
+      case 'noteWidget': case 'noteToc': return '';
       default: return kids();
     }
   };
@@ -664,6 +710,7 @@ h1.title{font-size:34px;line-height:1.2;margin:0 0 4px}.emoji{font-size:44px;lin
 h1{font-size:26px}h2{font-size:21px}h3{font-size:18px}h1,h2,h3{margin:1.3em 0 .3em}p{margin:.25em 0}
 a{color:#0a64d6}code{background:#f2f2f4;border-radius:4px;padding:1px 4px;font-size:.9em}pre{background:#f5f5f7;border-radius:8px;padding:12px 14px;overflow:auto}
 pre code{background:none;padding:0}blockquote{border-left:3px solid #d2d2d7;margin:.5em 0;padding:0 0 0 14px;color:#424245}
+.cols{display:flex;gap:20px;margin:.6em 0}.cols .col{flex:1 1 0;min-width:0}time{background:#e8f1ff;border-radius:999px;padding:0 8px}
 .callout{display:flex;gap:10px;border-radius:10px;padding:12px 14px;margin:.6em 0}.callout .ce{font-size:18px}
 ul.todo{list-style:none;padding-left:4px}ul.todo li{display:flex;gap:8px}ul.todo .box{flex:none;width:16px;height:16px;margin-top:4px;border:1.5px solid #c7c7cc;border-radius:4px;font-size:11px;line-height:14px;text-align:center;color:#fff}
 ul.todo li.done>.box{background:#34a853;border-color:#34a853}ul.todo li.done>div>p:first-child{text-decoration:line-through;color:#86868b}
@@ -787,7 +834,7 @@ export function importer({ api, net, extensions }) {
       result.rootId = ids.get(plan.pages[0].key);
       const gradients = plan.pages.filter(p => p.cover).length, photos = plan.pages.filter(p => p.coverImage).length;
       if (gradients) result.covers.push(`${gradients} Notion cover${gradients > 1 ? 's' : ''} → nearest iPop cover`);
-      if (photos) result.covers.push(`${photos} photo cover${photos > 1 ? 's' : ''} → image at the top of the page`);
+      if (photos) result.covers.push(`${photos} photo cover${photos > 1 ? 's' : ''} → page cover`);
       progress(true);
 
       for (let i = 0; i < plan.pages.length; i++) {
@@ -797,7 +844,7 @@ export function importer({ api, net, extensions }) {
         try {
           await yieldUi();
           const childrenOf = key => plan.pages.filter(c => c.parentKey === key).map(c => ({ id: ids.get(c.key), title: c.title, emoji: c.emoji }));
-          const { json, assets, notes } = pageToDoc(p, { files: plan.files, extensions, pageOf: path => pageOfPath.get(path) ?? null, childrenOf });
+          const { json, assets, notes, coverRef } = pageToDoc(p, { files: plan.files, extensions, pageOf: path => pageOfPath.get(path) ?? null, childrenOf });
           for (const [label, n] of notes) { const c = converted.get(label) || { count: 0, pages: [] }; c.count += n; if (!c.pages.includes(p.title)) c.pages.push(p.title); converted.set(label, c); }
           const uploaded = new Map();
           let k = 0;
@@ -821,6 +868,10 @@ export function importer({ api, net, extensions }) {
             } catch {
               result.failed.push({ title: p.title, reason: `${a.name} couldn't be uploaded. The rest of the page was imported without it.` });
             }
+          }
+          if (coverRef && uploaded.has(coverRef)) {
+            const cv = await api(`/api/notes/${id}`, { method: 'PATCH', json: { coverImageId: uploaded.get(coverRef).id } }).catch(() => null);
+            if (!cv?.ok) result.failed.push({ title: p.title, reason: 'The cover photo was uploaded but could not be set as the cover. It is attached to the page.' });
           }
           const s = docToState(fillAssets(json, uploaded), extensions);
           const w = await api(`/api/notes/${id}/snapshot`, { method: 'POST', json: { ...s, baseVersion: 0, mergedUpdateIds: [] } });
@@ -895,10 +946,17 @@ export async function exportPages(api, net, opts) {
 
   // Content first (so the attachment total is known), then files.
   const docs = new Map();
+  const scenes = new Map();      // pageId -> Map(sceneId -> elements)
   let done = 0;
   for (const p of chosen) {
     const r = await api(`/api/notes/${p.id}/doc`);
-    docs.set(p.id, r.ok ? stateToDoc(await r.json()) : { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: "This page couldn't be exported." }] }] });
+    if (r.ok) {
+      const parts = stateToParts(await r.json());
+      let json = parts.json;
+      // A whiteboard page has no text: its board becomes the page content (one image).
+      if (parts.scenes.has('board') && !drawIds(json).includes('board')) json = { ...json, content: [{ type: 'noteDraw', attrs: { id: 'board', height: 520 } }, ...(json.content || [])] };
+      docs.set(p.id, json); scenes.set(p.id, parts.scenes);
+    } else docs.set(p.id, { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: "This page couldn't be exported." }] }] });
     call('OnExportProgress', ++done, chosen.length, 0, 0);
   }
   const wanted = opts.includeFiles || opts.format === 'pdf' ? chosen.flatMap(p => attachmentIds(docs.get(p.id)).map(a => ({ ...a, page: p.id }))) : [];
@@ -933,9 +991,34 @@ export async function exportPages(api, net, opts) {
     call('OnExportProgress', chosen.length, chosen.length, ++filesDone, wanted.length);
   }
 
+  // Drawings: each scene a page shows is rendered to a PNG (light theme, so it prints and reads anywhere) and stored next to
+  // the page like any image. A scene that fails to render is exported as "[empty drawing]" instead of failing the export.
+  const drawFiles = new Map();   // `${pageId}:${sceneId}` -> { path | dataUrl }
+  const wantedScenes = chosen.flatMap(p => drawIds(docs.get(p.id)).map(sid => [p.id, sid])).filter(([pid, sid]) => scenes.get(pid)?.has(sid));
+  if (wantedScenes.length) {
+    let render = null;
+    try { render = (await loadDrawBundle()).renderPng; } catch { /* drawing tools unavailable: exported without drawings */ }
+    for (const [pid, sid] of wantedScenes) {
+      const key = `${pid}:${sid}`;
+      if (!render || drawFiles.has(key)) continue;
+      try {
+        const blob = await render(scenes.get(pid).get(sid), { scale: 2, loadFile: async fid => { const r = await api(`/api/attachments/${fid}`); if (!r.ok) throw new Error(String(r.status)); return URL.createObjectURL(await r.blob()); } });
+        if (!blob) continue;
+        if (opts.format === 'pdf') drawFiles.set(key, { dataUrl: await blobToDataUrl(blob) });
+        else {
+          const folder = `${layout.get(pid).folder}/attachments`;
+          let n = `drawing-${sid === 'board' ? 'whiteboard' : sid.slice(0, 8)}.png`, k = 2;
+          while (zip[`${folder}/${n}`]) n = n.replace(/(\.png)?$/, m => `-${k++}${m}`);
+          zip[`${folder}/${n}`] = new Uint8Array(await blob.arrayBuffer());
+          drawFiles.set(key, { path: `${folder}/${n}` });
+        }
+      } catch { /* exported without this drawing */ }
+    }
+  }
+
   const origin = location.origin;
   const titleOf = id => all.find(p => p.id === id)?.title;
-  const ctxFor = id => ({ dir: layout.get(id).dir, link: pid => layout.get(pid)?.file ?? null, file: aid => files.get(aid) ?? null, origin, title: titleOf });
+  const ctxFor = id => ({ dir: layout.get(id).dir, link: pid => layout.get(pid)?.file ?? null, file: aid => files.get(aid) ?? null, draw: sid => drawFiles.get(`${id}:${sid}`) ?? null, origin, title: titleOf });
   const stamp = new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
 
   if (opts.format === 'pdf') {

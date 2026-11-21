@@ -276,8 +276,13 @@ builder.Services.AddScoped<IStickerService, IPop.Infrastructure.Chat.StickerServ
 builder.Services.AddScoped<INotificationGateway, NotificationGateway>();
 builder.Services.AddHostedService<ChatAttachmentGcWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Mail.MailAttachmentGcWorker>();
+builder.Services.AddHostedService<IPop.Infrastructure.Notes.NotesTrashWorker>();
+if (outboundWorkers) builder.Services.AddHostedService<IPop.Infrastructure.Notes.NotesReminderWorker>();
+if (outboundWorkers) builder.Services.AddHostedService<IPop.Infrastructure.Notes.NotesRecurrenceWorker>();
+builder.Services.AddHostedService<IPop.Api.Notes.NotesEvictionBus>();
 builder.Services.AddHostedService<ChatMentionNotifyWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Projects.TaskReminderWorker>();
+builder.Services.AddHostedService<IPop.Infrastructure.Projects.ProjectAutomationWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Projects.DeletedTaskPurgeWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Projects.TimerAutoStopWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Meetings.MeetingReminderWorker>();
@@ -320,8 +325,15 @@ builder.Services.AddHostedService<IPop.Api.Calls.CallReaperWorker>();
 // Projects module
 builder.Services.AddScoped<IPop.Application.Projects.IProjectService, IPop.Infrastructure.Projects.ProjectService>();
 builder.Services.AddScoped<IPop.Application.Projects.IProjectFieldService, IPop.Infrastructure.Projects.ProjectFieldService>();
+builder.Services.AddScoped<IPop.Application.Projects.IProjectStatusService, IPop.Infrastructure.Projects.ProjectStatusService>();
 builder.Services.AddScoped<IPop.Application.Projects.IPortfolioService, IPop.Infrastructure.Projects.PortfolioService>();
 builder.Services.AddScoped<IPop.Application.Projects.ITaskFileService, IPop.Infrastructure.Projects.TaskFileService>();
+builder.Services.AddScoped<IPop.Application.Projects.IMyWorkService, IPop.Infrastructure.Projects.MyWorkService>();
+builder.Services.AddScoped<IPop.Application.Projects.IProjectFormService, IPop.Infrastructure.Projects.ProjectFormService>();
+builder.Services.AddScoped<IPop.Application.Projects.IProjectCloseService, IPop.Infrastructure.Projects.ProjectCloseService>();
+builder.Services.AddScoped<IPop.Application.Projects.IProjectAutomationService, IPop.Infrastructure.Projects.ProjectAutomationService>();
+builder.Services.AddScoped<IPop.Application.Projects.IProjectOverviewService, IPop.Infrastructure.Projects.ProjectOverviewService>();
+builder.Services.AddScoped<IPop.Application.Projects.IGanttService, IPop.Infrastructure.Projects.GanttService>();
 builder.Services.AddScoped<IPop.Application.Projects.IMilestoneService, IPop.Infrastructure.Projects.MilestoneService>();
 builder.Services.AddScoped<IPop.Application.Projects.IProjectTemplateService, IPop.Infrastructure.Projects.ProjectTemplateService>();
 builder.Services.AddScoped<IAttachmentAccessPolicy, IPop.Infrastructure.Projects.ProjectsAttachmentPolicy>();
@@ -371,6 +383,7 @@ builder.Services.AddScoped<IAttachmentAccessPolicy, IPop.Api.Endpoints.RemoteMed
 // Notes module (Notion-like pages, Yjs co-editing over /hubs/notes)
 builder.Services.AddScoped<IPop.Application.Notes.INoteService, IPop.Infrastructure.Notes.NoteService>();
 builder.Services.AddScoped<IAttachmentAccessPolicy, IPop.Infrastructure.Notes.NotesAttachmentPolicy>();
+builder.Services.AddScoped<IPop.Infrastructure.Notes.NoteFilePreviewService>();
 
 // ICT tickets via iDesk (IDesk:ClientSecret >= 32 chars, else fail closed: create 503, webhook 503).
 builder.Services.AddSingleton(IPop.Infrastructure.Tickets.IdeskOptions.Bind(builder.Configuration));

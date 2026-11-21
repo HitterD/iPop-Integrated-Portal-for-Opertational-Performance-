@@ -59,7 +59,8 @@ public class MobileHotfixTests
         // <button ... class="nt-icon-btn ..." ...><i data-lucide=...></i></button> with no text must have aria-label.
         var re = new System.Text.RegularExpressions.Regex(@"<button\b(?:[^>""]|""[^""]*"")*>\s*(<i [^>]*></i>\s*)+</button>");
         var all = re.Matches(src).Select(m => m.Value).ToList();
-        Assert.True(all.Count >= 15, $"expected the icon-only buttons to be found, got {all.Count}");
+        // 14 since the header star moved into the ⋯ menu (a text item there); every icon-only button still needs its label.
+        Assert.True(all.Count >= 14, $"expected the icon-only buttons to be found, got {all.Count}");
         var missing = all.Where(b => !b.Contains("aria-label")).ToList();
         Assert.Empty(missing);
         // Row ⋯ / + spans are buttons for screen readers too.

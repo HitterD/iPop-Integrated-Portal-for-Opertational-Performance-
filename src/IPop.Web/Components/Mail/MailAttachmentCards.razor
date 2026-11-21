@@ -164,6 +164,8 @@
             var reason = url is null ? Media.LastError ?? "server" : await Media.WhenReadyAsync(url, () => preview?.Id == a.Id);
             if (reason is not null) { previewReason = reason; url = null; }
         }
+        // PDFs open from a URL that ends in the file name, so the viewer and its "Save" show the real name.
+        else if (KindOf(a) == "pdf") url = await Media.ViewMailAsync(a.Id) ?? await FetchBlob($"/api/mail/attachments/{a.Id}/download?inline=true");
         else url = await FetchBlob($"/api/mail/attachments/{a.Id}/download?inline=true");
         if (preview?.Id != a.Id) { Release(url); return; }
         previewUrl = url;

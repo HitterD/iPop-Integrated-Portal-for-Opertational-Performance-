@@ -138,7 +138,7 @@ public static class CalendarDelegateEndpoints
     public static async Task<List<CalendarEndpoints.CalendarFeedItem>> BuildManagedFeedAsync(IPopDbContext db, Guid ownerId, string level,
         DateTime from, DateTime to, CancellationToken ct)
     {
-        var items = await CalendarEndpoints.BuildFeedAsync(db, ownerId, from, to, new CalendarEndpoints.FeedAccess(false, false, false, false), ct);
+        var items = await CalendarEndpoints.BuildFeedAsync(db, ownerId, from, to, new CalendarEndpoints.FeedAccess(false, false, false, false, Notes: false), ct);
         var canEdit = DelegateLevel.CanEdit(level);
         return items.Select(i => i.Visibility == CalendarVisibility.Private && level != DelegateLevel.Full
                 ? i with { Id = $"private:{i.Id}", Title = "Private", Url = null, Subtitle = null, EventId = null, MeetingId = null,

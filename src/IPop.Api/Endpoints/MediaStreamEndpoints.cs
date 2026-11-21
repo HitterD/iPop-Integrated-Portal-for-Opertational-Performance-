@@ -95,7 +95,117 @@ public static class MediaStreamEndpoints
             }
         }).AllowAnonymous();
 
+        // ── File preview with the real file name (grilled 2026-11-20) ──
+        // A blob: URL has no name, so the browser's PDF viewer, its tab and "Save" all showed a random id. The
+        // viewer gets a short-lived ticket URL that ENDS in the file name instead, served inline with that name.
+        app.MapPost("/api/media/view-ticket", async (TicketRequest req, HttpContext http, IPopDbContext db,
+            IEnumerable<IAttachmentAccessPolicy> policies, IDataProtectionProvider dp, CancellationToken ct) =>
+        {
+            var nik = http.User.FindFirst("nik")?.Value;
+            if (string.IsNullOrEmpty(nik)) return Results.Unauthorized();
+            var userId = await db.Users.AsNoTracking().Where(u => u.Nik == nik).Select(u => (Guid?)u.Id).FirstOrDefaultAsync(ct);
+            if (userId is null) return Results.Unauthorized();
+            MediaRef? media = req.Source switch
+            {
+                "chat" when req.Id is { } id => await ChatRefAsync(db, id, userId.Value, ct),
+                "mail" when req.Id is { } id => await MailRefAsync(db, id, userId.Value, ct),
+                "shared" when req.Id is { } id => await SharedRefAsync(db, policies, id, userId.Value, ct),
+                "files" when !string.IsNullOrWhiteSpace(req.Server) && !string.IsNullOrWhiteSpace(req.Path) =>
+                    FilesRef(req.Server.Trim(), req.Path.Trim(), req.Size ?? 0, req.Mtime ?? 0, userId.Value),
+                _ => null,
+            };
+            if (media is null) return Results.Json(new { code = "not_found", message = "File not found." }, statusCode: 404);
+            media = media with { Mime = ViewMime(media.FileName, media.Mime) };
+            // A NAS copy is made with this person's own credential: keep it theirs (the cache is keyed by Key).
+            if (media.Source == "files") media = media with { Key = media.Key + "|" + userId.Value.ToString("N") };
+            if (!IsViewable(media.Mime)) return Results.Json(new { code = "not_viewable" }, statusCode: 415);
+            var t = ViewProtector(dp).Protect(Pack(media), ViewLifetime);
+            return Results.Ok(new TicketResponse($"/api/media/view/{t}/{Uri.EscapeDataString(SafeName(media.FileName))}",
+                media.Mime, DateTime.UtcNow.Add(ViewLifetime)));
+        }).RequireAuthorization();
+
+        app.MapMethods("/api/media/view/{t}/{name}", ["GET", "HEAD"], async (string t, string name, HttpContext http, IPopDbContext db,
+            IEnumerable<IAttachmentAccessPolicy> policies, IWebHostEnvironment env, IServiceScopeFactory scopes, IConfiguration cfg,
+            IDataProtectionProvider dp, CancellationToken ct) =>
+        {
+            if (UnprotectView(dp, t) is not { } media) return Results.Unauthorized();
+            if (!await StillAllowedAsync(media, db, policies, ct)) return Results.Unauthorized();
+            var h = http.Response.Headers;
+            h["X-Content-Type-Options"] = "nosniff";
+            h["Referrer-Policy"] = "no-referrer";
+            // Only PDF/image/plain text/media are ever served here (IsViewable) and nosniff stops a browser from
+            // treating them as HTML. No CSP: a strict one breaks Chrome's built-in PDF viewer, and the dev Web
+            // (another port) must be able to frame it.
+            void Named()
+            {
+                h.ContentDisposition = new System.Net.Http.Headers.ContentDispositionHeaderValue("inline") { FileNameStar = SafeName(media.FileName) }.ToString();
+                h.CacheControl = "private, max-age=300";
+            }
+
+            var local = await LocalFileAsync(media, db, env, ct);
+            if (local is { Found: false }) return Results.NotFound();
+            // Ranges only for video/audio: a PDF viewer asking for later chunks after the 5-minute ticket expired
+            // would break mid-document, so documents and pictures are sent whole while the ticket is valid.
+            var ranges = IsStreamable(media.Mime);
+            if (local is { Path: { } path }) { Named(); return Results.File(path, media.Mime, enableRangeProcessing: ranges); }
+            try
+            {
+                var cached = await Cache(cfg).GetAsync(media.Key, c => OpenNasAsync(media, scopes, c), ct);
+                if (cached is null) return Results.NotFound();
+                Named();
+                return Results.File(cached, media.Mime, enableRangeProcessing: ranges);
+            }
+            catch (IOException)
+            {
+                var cache = Cache(cfg);
+                if (cache.State(media.Key) is CacheState.Failed(var error)) { cache.Forget(media.Key); return error; }
+                return Results.Json(new { code = "synology_error", message = "The file could not be read from the NAS." }, statusCode: 502);
+            }
+        }).AllowAnonymous();
+
         return app;
+    }
+
+    private static readonly TimeSpan ViewLifetime = TimeSpan.FromMinutes(5);
+    private const string ViewPurpose = "IPop.Media.View";
+
+    /// Types the browser shows itself without running page script. Everything else (HTML, SVG, Office…) is never
+    /// served inline from here.
+    internal static bool IsViewable(string? mime) => mime is not null &&
+        (mime.Equals("application/pdf", StringComparison.OrdinalIgnoreCase)
+         || (mime.StartsWith("image/", StringComparison.OrdinalIgnoreCase) && !mime.Contains("svg", StringComparison.OrdinalIgnoreCase))
+         || mime.Equals("text/plain", StringComparison.OrdinalIgnoreCase)
+         || IsStreamable(mime));
+
+    /// A stale DB MIME ("application/octet-stream") must not stop a .pdf from showing.
+    internal static string ViewMime(string fileName, string mime) =>
+        Path.GetExtension(fileName).Equals(".pdf", StringComparison.OrdinalIgnoreCase) ? "application/pdf" : mime;
+
+    /// The last URL segment and the header name: no path separators or control characters.
+    internal static string SafeName(string fileName)
+    {
+        var n = new string((fileName ?? "").Select(c => c is '/' or '\\' || char.IsControl(c) ? '_' : c).ToArray()).Trim();
+        return n.Length == 0 ? "file" : n.Length > 180 ? n[..180] : n;
+    }
+
+    private static ITimeLimitedDataProtector ViewProtector(IDataProtectionProvider dp) =>
+        dp.CreateProtector(ViewPurpose).ToTimeLimitedDataProtector();
+
+    private static string Pack(MediaRef m) =>
+        string.Join('\n', m.Source, m.Key, m.UserId.ToString("N"), m.FileName.Replace('\n', ' '), m.Mime);
+
+    internal static string ProtectView(IDataProtectionProvider dp, MediaRef m) => ViewProtector(dp).Protect(Pack(m), ViewLifetime);
+
+    internal static MediaRef? UnprotectView(IDataProtectionProvider dp, string? ticket)
+    {
+        if (string.IsNullOrEmpty(ticket)) return null;
+        try
+        {
+            var p = ViewProtector(dp).Unprotect(ticket).Split('\n');
+            if (p.Length != 5 || !Guid.TryParse(p[2], out var uid) || !IsViewable(p[4])) return null;
+            return new MediaRef(p[0], p[1], uid, p[3], p[4]);
+        }
+        catch (CryptographicException) { return null; }
     }
 
     internal static bool IsStreamable(string? mime) =>

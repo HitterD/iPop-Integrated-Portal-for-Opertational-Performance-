@@ -18,6 +18,8 @@
     <PackageReference Include="DevExpress.Document.Processor" Version="26.1.4" />
     <PackageReference Include="DevExpress.Docs.Presentation" Version="26.1.4" />
     <PackageReference Include="DevExpress.Drawing.Skia" Version="26.1.4" />
+    <!-- PdfDocumentProcessor.CreateDXBitmap (Notes file card: picture of page 1) draws through this on Windows and Linux -->
+    <PackageReference Include="DevExpress.Pdf.SkiaRenderer" Version="26.1.4" />
   </ItemGroup>
 
   <PropertyGroup>

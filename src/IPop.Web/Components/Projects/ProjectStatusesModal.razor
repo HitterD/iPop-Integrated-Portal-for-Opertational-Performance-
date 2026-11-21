@@ -1,0 +1,256 @@
+@using IPop.Application.Projects
+@inject IPop.Web.Services.AuthState Auth
+@inject IJSRuntime JS
+@implements IDisposable
+
+@* "Statuses for this project" (docs/mockups/ipop-apple/projects-v2.html statusModal): rename, recolour,
+   reorder, set the stage and add/remove statuses. Autosaves ~600 ms after the last change. *@
+<div class="pv2 pv2-scrim" @onclick="Close">
+    <div class="pv2-modal" role="dialog" aria-modal="true" aria-labelledby="pv2-sm-title" @onclick:stopPropagation="true" @onkeydown="OnKey">
+        <div class="pv2-mh">
+            <h2 id="pv2-sm-title">Statuses for this project</h2>
+            <span class="pv2-sp"></span>
+            <button type="button" class="pv2-ibtn" aria-label="Close" @onclick="Close"><i data-lucide="x"></i></button>
+        </div>
+        <div class="pv2-mbody">
+            <p class="pv2-mnote">Name them your way. The <b>stage</b> tells iPop what each status means, so progress, Reports and reminders keep working.</p>
+            <div class="pv2-sel pv2-sel-head"><span></span><span></span><span>Label</span><span>Stage</span><span></span></div>
+            @for (var i = 0; i < rows.Count; i++)
+            {
+                var idx = i;
+                var r = rows[i];
+                <div class="pv2-sel @(dragKey == r.Key ? "dragging" : "") @(dragOverKey == r.Key ? "over" : "")" @key="r.Key"
+                     draggable="@(CanEdit ? "true" : "false")"
+                     @ondragstart="() => dragKey = r.Key" @ondragend="() => { dragKey = null; dragOverKey = null; }"
+                     @ondragover="() => dragOverKey = r.Key" @ondragover:preventDefault="@CanEdit"
+                     @ondrop="() => DropOn(r.Key)">
+                    <span class="pv2-grip" title="Drag to reorder" aria-hidden="true"><i data-lucide="grip-vertical"></i></span>
+                    <button type="button" class="pv2-sw" style="background:@ProjectStatusUi.SafeColor(r.Color)" disabled="@(!CanEdit)" aria-label="Change colour of @r.Label" aria-expanded="@(paletteKey == r.Key ? "true" : "false")"
+                            @onclick="() => paletteKey = paletteKey == r.Key ? null : r.Key"></button>
+                    <input class="pv2-nm" value="@r.Label" maxlength="@ProjectStatusDefaults.MaxLabelLength" disabled="@(!CanEdit)" aria-label="Status name"
+                           @oninput="e => { r.Label = e.Value?.ToString() ?? string.Empty; Touch(); }" />
+                    <AppSelect Value="@r.Stage" ValueChanged="v => { r.Stage = v ?? r.Stage; Touch(); }" Options="StageOptions" Label="@($"Stage of {r.Label}")" Block="true" Disabled="@(!CanEdit)" CssClass="pv2-stage" />
+                    <button type="button" class="pv2-ibtn" aria-label="Delete @r.Label" disabled="@(!CanEdit)" @onclick="() => AskDelete(r)"><i data-lucide="x"></i></button>
+                </div>
+                @if (paletteKey == r.Key)
+                {
+                    <div class="pv2-palette" role="group" aria-label="Colours">
+                        @foreach (var c in ProjectStatusUi.Palette)
+                        {
+                            <button type="button" style="background:@c" aria-label="@c" class="@(string.Equals(c, r.Color, StringComparison.OrdinalIgnoreCase) ? "on" : "")" @onclick="() => { r.Color = c; paletteKey = null; Touch(); }"></button>
+                        }
+                    </div>
+                }
+                @if (deleting?.Key == r.Key)
+                {
+                    <div class="pv2-reassign" role="group" aria-label="Move tasks before deleting">
+                        <span><b>@r.TaskCount</b> @(r.TaskCount == 1 ? "task uses" : "tasks use") “@r.Label”. Move them to</span>
+                        <AppSelect Value="@(reassignTo?.ToString())" ValueChanged="v => reassignTo = Guid.TryParse(v, out var g) ? g : null" Options="ReassignOptions(r)" Label="Move tasks to" />
+                        <button type="button" class="pv2-btn pri" disabled="@(reassignTo is null)" @onclick="ConfirmDelete">Move and delete</button>
+                        <button type="button" class="pv2-btn" @onclick="() => deleting = null">Cancel</button>
+                    </div>
+                }
+            }
+            @if (CanEdit)
+            {
+                <button type="button" class="pv2-btn ghost pv2-add" disabled="@(rows.Count >= ProjectStatusDefaults.MaxOptions)" @onclick="AddRow"><i data-lucide="plus"></i>Add status</button>
+            }
+            <div class="pv2-warn"><i data-lucide="triangle-alert"></i><span>@(CanEdit ? "Deleting a status that is in use asks where its tasks should go." : "Only the project owner or a manager can change statuses.")</span></div>
+            @if (error is not null) { <div class="pv2-err" role="alert">@error</div> }
+        </div>
+        <div class="pv2-mf">
+            <span class="pv2-note">Also opens from any status cell → “Edit statuses”</span>
+            <span class="pv2-sp"></span>
+            @if (state == SaveState.Saving) { <span class="pv2-saved saving">Saving…</span> }
+            else if (state == SaveState.Saved) { <span class="pv2-saved"><i data-lucide="check"></i>Saved</span> }
+            <button type="button" class="pv2-btn" @onclick="Close">Close</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private sealed class Row
+    {
+        public Guid Key = Guid.NewGuid();
+        public Guid? Id;
+        public string Label = "";
+        public string Color = "#b9bcc0";
+        public string Stage = "doing";
+        public int TaskCount;
+    }
+
+    private enum SaveState { Idle, Saving, Saved }
+
+    [Parameter, EditorRequired] public Guid ProjectId { get; set; }
+    [Parameter] public List<ProjectStatusOptionDto> Options { get; set; } = [];
+    [Parameter] public bool CanEdit { get; set; }
+    [Parameter] public EventCallback<List<ProjectStatusOptionDto>> OnSaved { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private readonly List<Row> rows = [];
+    private readonly Dictionary<Guid, Guid> reassign = [];
+    private Row? deleting;
+    private Guid? reassignTo;
+    private Guid? paletteKey, dragKey, dragOverKey;
+    private string? error;
+    private SaveState state;
+    private CancellationTokenSource? debounce;
+    private bool dirty, saving, loaded;
+
+    private static readonly List<AppOption> StageOptions = ProjectStatusUi.Stages.Select(s => new AppOption(s.Value, s.Label)).ToList();
+
+    protected override void OnParametersSet()
+    {
+        if (loaded) return;
+        loaded = true;
+        foreach (var o in Options.OrderBy(o => o.SortOrder))
+            rows.Add(new Row { Id = o.Id, Label = o.Label, Color = o.Color, Stage = o.Stage, TaskCount = o.TaskCount });
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+    }
+
+    private List<AppOption> ReassignOptions(Row removing) =>
+        rows.Where(x => x.Id is not null && x.Key != removing.Key).Select(x => new AppOption(x.Id!.Value.ToString(), x.Label)).ToList();
+
+    private void AddRow()
+    {
+        if (!CanEdit || rows.Count >= ProjectStatusDefaults.MaxOptions) return;
+        rows.Add(new Row { Label = "New status", Color = ProjectStatusUi.Palette[rows.Count % ProjectStatusUi.Palette.Length], Stage = "doing" });
+        Touch();
+    }
+
+    private void AskDelete(Row r)
+    {
+        if (!CanEdit) return;
+        if (r.Id is null || r.TaskCount == 0) { rows.Remove(r); Touch(); return; }
+        deleting = r;
+        reassignTo = ReassignOptions(r).Select(o => Guid.Parse(o.Value)).Cast<Guid?>().FirstOrDefault();
+    }
+
+    private void ConfirmDelete()
+    {
+        if (deleting?.Id is not { } id || reassignTo is not { } target) return;
+        reassign[id] = target;
+        // Tasks that were in the removed status now count towards the target.
+        if (rows.FirstOrDefault(x => x.Id == target) is { } t) t.TaskCount += deleting.TaskCount;
+        rows.Remove(deleting);
+        deleting = null;
+        Touch(0);
+    }
+
+    private void DropOn(Guid targetKey)
+    {
+        if (!CanEdit || dragKey is not { } src || src == targetKey) { dragKey = dragOverKey = null; return; }
+        var from = rows.FindIndex(x => x.Key == src);
+        var to = rows.FindIndex(x => x.Key == targetKey);
+        dragKey = dragOverKey = null;
+        if (from < 0 || to < 0) return;
+        var item = rows[from];
+        rows.RemoveAt(from);
+        rows.Insert(to, item);
+        Touch(0);
+    }
+
+    private void Touch(int delayMs = 600)
+    {
+        if (!CanEdit) return;
+        dirty = true;
+        error = null;
+        state = SaveState.Idle;
+        debounce?.Cancel();
+        var cts = debounce = new CancellationTokenSource();
+        _ = SaveLaterAsync(delayMs, cts.Token);
+    }
+
+    private async Task SaveLaterAsync(int delayMs, CancellationToken ct)
+    {
+        try { if (delayMs > 0) await Task.Delay(delayMs, ct); }
+        catch (TaskCanceledException) { return; }
+        await InvokeAsync(SaveAsync);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (saving) { debounce?.Cancel(); var cts = debounce = new CancellationTokenSource(); _ = SaveLaterAsync(300, cts.Token); return; }
+        if (!dirty) return;
+        if (rows.Any(r => string.IsNullOrWhiteSpace(r.Label))) { error = "Every status needs a name."; StateHasChanged(); return; }
+        dirty = false;
+        saving = true;
+        state = SaveState.Saving;
+        StateHasChanged();
+        var sent = rows.ToList();
+        var sentReassign = new Dictionary<Guid, Guid>(reassign);
+        try
+        {
+            var req = new SaveStatusOptionsRequest(
+                sent.Select(r => new SaveStatusOptionRequest(r.Id, r.Label.Trim(), r.Color, r.Stage)).ToList(),
+                sentReassign.Count > 0 ? sentReassign : null);
+            var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/{ProjectId}/statuses", req);
+            if (!res.IsSuccessStatusCode)
+            {
+                var body = "";
+                try { body = await res.Content.ReadAsStringAsync(); } catch { }
+                error = FriendlyError(body);
+                state = SaveState.Idle;
+                dirty = true;
+                return;
+            }
+            var saved = await res.Content.ReadFromJsonAsync<List<ProjectStatusOptionDto>>() ?? [];
+            foreach (var k in sentReassign.Keys) reassign.Remove(k);
+            // Give the rows their new ids without re-creating them (keeps focus in the text box).
+            if (saved.Count == sent.Count)
+                for (var i = 0; i < sent.Count; i++) { sent[i].Id = saved[i].Id; sent[i].TaskCount = saved[i].TaskCount; }
+            state = dirty ? SaveState.Idle : SaveState.Saved;
+            await OnSaved.InvokeAsync(saved);
+        }
+        catch
+        {
+            error = "Couldn't save. Check your connection and try again.";
+            state = SaveState.Idle;
+            dirty = true;
+        }
+        finally { saving = false; StateHasChanged(); }
+    }
+
+    private static string FriendlyError(string body) =>
+        (body.Contains("duplicate_label") ? "duplicate_label"
+        : body.Contains("invalid_label") ? "invalid_label"
+        : body.Contains("invalid_color") ? "invalid_color"
+        : body.Contains("invalid_stage") ? "invalid_stage"
+        : body.Contains("stage_required") ? "stage_required"
+        : body.Contains("too_many") ? "too_many"
+        : body.Contains("reassign_required") ? "reassign_required"
+        : body.Contains("invalid_status_option") ? "invalid_status_option"
+        : body.Contains("forbidden") ? "forbidden" : "") switch
+        {
+            "duplicate_label" => "Two statuses have the same name. Give each one its own name.",
+            "invalid_label" => $"A status name must be 1 to {ProjectStatusDefaults.MaxLabelLength} characters.",
+            "invalid_color" => "That colour isn't allowed. Pick one from the palette.",
+            "invalid_stage" => "Pick a stage for every status.",
+            "stage_required" => "Keep at least one “Not started” and one “Done” status.",
+            "too_many" => $"A project can have at most {ProjectStatusDefaults.MaxOptions} statuses.",
+            "reassign_required" => "Choose where the tasks of a deleted status should go.",
+            "invalid_status_option" => "These statuses are out of date. Close this window and reopen it.",
+            "forbidden" => "Only the project owner or a manager can change statuses.",
+            _ => "Couldn't save the statuses. Try again.",
+        };
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") await Close();
+    }
+
+    private async Task Close()
+    {
+        debounce?.Cancel();
+        // An edit made while the previous save was in flight is still dirty: wait for that save, then send it.
+        for (var waited = 0; saving && waited < 10_000; waited += 100) await Task.Delay(100);
+        if (dirty && !saving && error is null) await SaveAsync();
+        await OnClose.InvokeAsync();
+    }
+
+    public void Dispose() => debounce?.Cancel();
+}

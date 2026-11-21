@@ -16,10 +16,15 @@
         ("hide", "Hide keyboard", "keyboard-off")];
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender) await JS.InvokeVoidAsync("ipop.notesKb.attach", toolbar);
+        if (!firstRender) return;
+        try { await JS.InvokeVoidAsync("ipop.notesKb.attach", toolbar); }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
     }
     public async ValueTask DisposeAsync()
     {
-        try { await JS.InvokeVoidAsync("ipop.notesKb.detach", toolbar); } catch (JSDisconnectedException) { }
+        try { await JS.InvokeVoidAsync("ipop.notesKb.detach", toolbar); }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
     }
 }

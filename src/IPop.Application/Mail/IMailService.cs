@@ -14,6 +14,8 @@ public interface IMailService
 
     // Sidebar badges — all per-folder counters in one call.
     Task<FolderCountsDto> GetFolderCountsAsync(Guid userId, CancellationToken ct);
+    // Label badges — mails per label outside Trash (Archive counts).
+    Task<IReadOnlyDictionary<Guid, int>> GetLabelCountsAsync(Guid userId, CancellationToken ct);
 
     // Threading
     Task<PagedResult<MailSummaryDto>> GetThreadAsync(Guid userId, Guid threadRootId, int page, int pageSize, CancellationToken ct);

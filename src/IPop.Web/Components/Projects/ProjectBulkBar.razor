@@ -11,9 +11,10 @@
             @if (open == "status")
             {
                 <div class="pbulk-menu" role="menu">
-                    @foreach (var s in new[] { "todo", "doing", "review", "done" })
+                    @foreach (var o in StatusOptions.Count > 0 ? StatusOptions : ProjectStatusUi.StageDefaults)
                     {
-                        <button type="button" role="menuitem" @onclick='() => Pick("status", s)'><span class="col-dot @s"></span>@ProjectUiHelpers.StatusLabel(s)</button>
+                        var value = o.Id == Guid.Empty ? o.Stage : o.Id.ToString();
+                        <button type="button" role="menuitem" @onclick='() => Pick("status", value)'><span class="col-dot" style="background:@ProjectStatusUi.SafeColor(o.Color)"></span>@o.Label</button>
                     }
                 </div>
             }
@@ -86,6 +87,7 @@
     [Parameter] public List<ProjectMemberDto> Members { get; set; } = [];
     [Parameter] public List<ProjectGroupDto> Groups { get; set; } = [];
     [Parameter] public bool Busy { get; set; }
+    [Parameter] public List<ProjectStatusOptionDto> StatusOptions { get; set; } = [];
     [Parameter] public EventCallback<(string Action, string? Value)> OnAction { get; set; }
     [Parameter] public EventCallback OnClear { get; set; }
 

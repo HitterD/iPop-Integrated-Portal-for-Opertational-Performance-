@@ -180,8 +180,11 @@ public sealed class SynologyAttachmentStore(
     {
         var row = await db.Attachments.FirstOrDefaultAsync(a => a.Id == id && a.DeletedAt == null, ct);
         if (row is null) return;
+        var sharedBytes = await db.Attachments.AsNoTracking()
+            .AnyAsync(a => a.Id != id && a.StoragePath == row.StoragePath && a.DeletedAt == null, ct);
         row.DeletedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+        if (sharedBytes) return;
         if (IsLocal(row.StoragePath))
         {
             if (LocalFullPath(row.StoragePath) is { } full && File.Exists(full)) File.Delete(full);

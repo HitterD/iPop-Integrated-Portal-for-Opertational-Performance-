@@ -42,3 +42,6 @@
 .proj-head-actions > .team-add-circ { width: 30px; height: 30px; box-sizing: border-box; border: 1.5px dashed var(--ink-4); border-radius: 50%; background: var(--surface); color: var(--ink-2); display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; }
 .proj-head-actions > .team-add-circ .lucide { width: 14px; height: 14px; }
 @media(max-width:520px) { .vpm-grid { grid-template-columns: 1fr; } .v6-project-modal .proj-modal-body { padding: 0 16px 14px; } }
+.vpm-member-role { height: 28px; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink-2); font-size: 12px; cursor: pointer; margin-right: 4px; }
+.vpm-member-role:hover { border-color: var(--line-2, var(--line)); color: var(--ink); }
+.vpm-member-role:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

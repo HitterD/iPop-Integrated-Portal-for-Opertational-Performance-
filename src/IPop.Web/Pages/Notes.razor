@@ -3,6 +3,7 @@
 @implements IAsyncDisposable
 @using IPop.Application.Notes
 @using IPop.Web.Components.Phone.Notes
+@using IPop.Web.Components.Notes
 @inject PhoneState Phone
 @inject AuthState Auth
 @inject NotificationState Notifs
@@ -29,7 +30,7 @@
     <aside class="nt-side" aria-label="Notes" @ref="sideRef">
         <div class="nt-x-drop" aria-hidden="true"><div><span class="ic"><i data-lucide="file-up"></i></span><b>Drop to import</b><small>Notion export, Markdown or HTML</small></div></div>
         <div class="nt-side-head">
-            <h1>Notes</h1>
+            <h1><a href="/notes" title="All notes" @onclick="GoHomeLink" @onclick:preventDefault>Notes</a></h1>
             <button type="button" class="nt-icon-btn nt-mobile-only" title="Close" aria-label="Close" @onclick="() => sideOpen = false"><i data-lucide="x"></i></button>
         </div>
         <label class="nt-search">
@@ -81,6 +82,13 @@
                     </div>
                 }
 
+                var favs = sidebar.Pages.Where(p => p.IsFavorite).ToList();
+                if (favs.Count > 0)
+                {
+                    @Section("favorites", "Favorites", null)
+                    @if (!collapsed.Contains("favorites")) { @foreach (var p in favs) { @Row(p, false, false) } }
+                }
+
                 var recent = sidebar.Recent.Select(id => sidebar.Pages.FirstOrDefault(p => p.Id == id)).Where(p => p is not null && !p.IsGuide).Take(4).ToList();
                 if (recent.Count > 0)
                 {
@@ -91,7 +99,7 @@
                         {
                             <div class="nt-row @(IsActive(p!.Id) ? "active" : "") @(menuFor?.Id == p.Id ? "menu-on" : "")" role="button" tabindex="0" data-id="@p.Id"
                                  @onclick="() => Open(p.Id)" @onkeydown="e => OnRowKey(e, p)">
-                                <span class="emo">@(p.Emoji ?? "📄")</span><span class="t">@DisplayTitle(p.Title)</span>
+                                <span class="emo">@(p.Emoji ?? "📄")</span><span class="t">@DisplayTitle(p.Title)</span><span class="nt-kind" hidden="@(p.Kind != "board")">Board</span>
                                 <span class="meta">@Ago(p.UpdatedAt)</span>
                                 <span class="actions">
                                     <span role="button" tabindex="-1" title="More" aria-label="Page options" @onclick="e => OpenRowMenu(p, e)" @onclick:stopPropagation><i data-lucide="ellipsis"></i></span>
@@ -99,13 +107,6 @@
                             </div>
                         }
                     }
-                }
-
-                var favs = sidebar.Pages.Where(p => p.IsFavorite).ToList();
-                if (favs.Count > 0)
-                {
-                    @Section("favorites", "Favorites", null)
-                    @if (!collapsed.Contains("favorites")) { @foreach (var p in favs) { @Row(p, false, false) } }
                 }
 
                 var shared = Roots(false);
@@ -117,7 +118,7 @@
                 }
 
                 var mine = Roots(true).Where(p => !p.IsGuide).ToList();
-                @Section("mine", "My pages", () => CreateBlank(null))
+                @Section("mine", "Private", () => CreateBlank(null))
                 @if (!collapsed.Contains("mine"))
                 {
                     @foreach (var p in mine) { @Row(p, true, true) }
@@ -141,7 +142,7 @@
     <main class="nt-doc">
         @if (Phone.IsPhone)
         {
-            <NotesEditorNav HasPage="@(note is not null)" Status='@(saveState == "saving" ? "Saving…" : saveState == "offline" ? "Offline" : CanEdit ? "Saved" : "View only")' OnBack="PhoneNotesBack" OnComments="ToggleComments" OnMore="() => phoneMoreOpen = true" />
+            <NotesEditorNav HasPage="@(note is not null)" Status='@(saveState == "saving" ? "Saving…" : saveState == "offline" ? "Offline" : saveState == "locked" ? "Can't save" : CanEdit ? "Saved" : "View only")' OnBack="PhoneNotesBack" OnComments="ToggleComments" OnMore="() => phoneMoreOpen = true" />
         }
         else
         {
@@ -156,8 +157,9 @@
                     }
                     <a class="cur">@(note.Emoji ?? "📄") @DisplayTitle(note.Title)</a>
                 </nav>
-                <span class="nt-saved hide-sm @(saveState == "offline" ? "offline" : "")">
-                    @if (saveState == "saving") { <i data-lucide="loader"></i><span>Saving…</span> }
+                <span class="nt-saved hide-sm @(saveState is "offline" or "locked" ? "offline" : "")">
+                    @if (saveState == "locked") { <i data-lucide="lock"></i><span>Changes can't be saved here</span> }
+                    else if (saveState == "saving") { <i data-lucide="loader"></i><span>Saving…</span> }
                     else if (saveState == "offline") { <i data-lucide="wifi-off"></i><span>Offline — changes will save when you reconnect</span> }
                     else if (!CanEdit) { <i data-lucide="eye"></i><span>@(note.Access == "comment" ? "Can comment" : "View only")</span> }
                     else { <i data-lucide="check"></i><span>Saved</span> }
@@ -175,10 +177,18 @@
                 }
                 @if (CanEdit)
                 {
-                    <button type="button" class="nt-btn ghost hide-sm" @onclick="() => pop = Pop.Style"><i data-lucide="palette" class="sm"></i>Style</button>
+                    <button type="button" class="nt-btn tidy hide-sm" title="Check this page for things to tidy" @onclick="OpenTidyAsync"><i data-lucide="sparkles" class="sm"></i><span>Tidy up</span>
+                        @if (tidyCount > 0)
+                        {
+                            <span class="nt-tidy-n">@tidyCount</span>
+                        }
+                    </button>
+                }
+                @if (CanEdit && note.Kind != "board")
+                {
+                    <button type="button" class="nt-icon-btn hide-sm @(note.FullWidth ? "on" : "")" title="@(note.FullWidth ? "Normal width" : "Full width")" aria-label="Full width" aria-pressed="@(note.FullWidth ? "true" : "false")" @onclick="() => PatchAsync(new UpdateNoteMetaRequest(null, null, null, null, null, !note.FullWidth, null))"><i data-lucide="@(note.FullWidth ? "minimize-2" : "move-horizontal")"></i></button>
                 }
                 <button type="button" class="nt-icon-btn @(commentsOpen ? "on" : "") @(note.OpenThreads > 0 ? "has-badge" : "")" title="Comments" aria-label="Comments" @onclick="ToggleComments"><i data-lucide="message-square"></i>@if (note.OpenThreads > 0) { <span class="nt-badge">@note.OpenThreads</span> }</button>
-                <button type="button" class="nt-icon-btn fav @(note.IsFavorite ? "on" : "")" title="@(note.IsFavorite ? "Remove from favorites" : "Add to favorites")" aria-label="@(note.IsFavorite ? "Remove from favorites" : "Add to favorites")" @onclick="ToggleFavorite"><i data-lucide="star"></i></button>
                 @if (IsOwner)
                 {
                     <button type="button" class="nt-btn primary" @onclick="OpenShare"><i data-lucide="share" class="sm"></i>Share</button>
@@ -271,26 +281,68 @@
                 }
                 else
                 {
-                    <section class="nt-pageview @FontClass @(note.SmallText ? "small" : "")" style="--pc:@AccentHex(note.Accent)">
-                        @if (note.Cover is not null)
+                    <section class="nt-pageview @FontClass @(note.SmallText ? "small" : "") @(note.Kind == "board" ? "is-board" : "")" style="--pc:@AccentHex(note.Accent)">
+                        @if (IsLocked)
                         {
-                            <div class="nt-cover" style="--cover:@CoverCss(note.Cover)">
-                                @if (CanEdit)
+                            <div class="nt-lockbar" role="status"><i data-lucide="lock" class="sm"></i><span>This page is locked@(note.LockedByName is { } lbn ? $" by {FirstName(lbn)}" : ""). Nobody can edit it until it is unlocked.</span>@if (HasEditAccess) {<button type="button" class="nt-btn" @onclick="ToggleLockAsync">Unlock</button>}</div>
+                        }
+                        @if (note.Kind == "board")
+                        {
+                            @* A whiteboard fills the page: icon + title in one slim bar, then the board. Templates and full screen are on the board. *@
+                            <div class="nt-boardhead">
+                                <button type="button" class="nt-boardhead-icon" title="@(CanEdit ? "Change icon" : "")" disabled="@(!CanEdit)" @onclick="() => { if (CanEdit) pop = Pop.Emoji; }">@(note.Emoji ?? "🧩")</button>
+                                <input class="nt-boardhead-title" placeholder="Untitled" value="@titleDraft" readonly="@(!CanEdit)" @ref="titleRef"
+                                       @oninput="OnTitleInput" @onkeydown="OnTitleKey" @onblur="FlushTitle" aria-label="Title" />
+                                <span class="nt-boardhead-meta">Edited @Ago(note.UpdatedAt)@(note.UpdatedByName is { } bub ? $" by {FirstName(bub)}" : "")</span>
+                            </div>
+                            <div class="nt-board" @ref="boardRef" @key="@($"board-{note.Id}")"></div>
+                        }
+                        else
+                        {
+                        @if (HasCover || coverUploading)
+                        {
+                            <div class="nt-cover @(HasPhotoCover ? "photo" : "") @(coverRepositioning ? "repo" : "") @(coverUploading ? "loading" : "")" style="@CoverStyle" @ref="coverRef">
+                                @if (coverRepositioning)
+                                {
+                                    <div class="nt-cover-hint"><i data-lucide="move-vertical" class="sm"></i>Drag the image to reposition</div>
+                                }
+                                @if (coverUploading)
+                                {
+                                    <div class="nt-cover-upl" role="status" aria-live="polite">
+                                        <div class="bar"><i style="width:@(coverProgress)%"></i></div>
+                                        <span>@(coverProgress < 100 ? $"Uploading… {coverProgress}%" : "Resizing…")</span>
+                                    </div>
+                                }
+                                @if (CanEdit && !coverUploading)
                                 {
                                     <div class="nt-cover-actions">
-                                        <button type="button" @onclick="() => pop = Pop.Style"><i data-lucide="image" class="sm"></i>Change cover</button>
-                                        <button type="button" @onclick='() => PatchAsync(new UpdateNoteMetaRequest(null, null, "", null, null, null, null))'>Remove</button>
+                                        @if (coverRepositioning)
+                                        {
+                                            <button type="button" class="pri" @onclick="SaveRepositionAsync">Save position</button>
+                                            <button type="button" @onclick="CancelRepositionAsync">Cancel</button>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" @onclick="() => pop = Pop.Style"><i data-lucide="image" class="sm"></i>Change cover</button>
+                                            @if (HasPhotoCover) { <button type="button" @onclick="StartRepositionAsync">Reposition</button> }
+                                            <button type="button" @onclick="RemoveCoverAsync">Remove</button>
+                                        }
                                     </div>
                                 }
                             </div>
                         }
-                        <div class="nt-page @(note.FullWidth ? "wide" : "") @(note.Cover is null ? "no-cover" : "")">
+                        <div class="nt-pagewrap @(MarginMode ? "has-margin" : "")" @ref="pageWrapRef">
+                        <div class="nt-page @(note.FullWidth ? "wide" : "") @(HasCover || coverUploading ? "" : "no-cover")" @ref="pageRef">
                             <div class="nt-page-icon" title="@(CanEdit ? "Change icon" : "")" style="@(CanEdit ? "" : "cursor:default")" @onclick="() => { if (CanEdit) pop = Pop.Emoji; }">@(note.Emoji ?? "📄")</div>
-                            @if (CanEdit && note.Cover is null)
+                            @if (CanEdit)
                             {
-                                <div class="nt-add-row">
-                                    <button type="button" @onclick='() => PatchAsync(new UpdateNoteMetaRequest(null, null, "ocean", null, null, null, null))'><i data-lucide="image" class="sm"></i>Add cover</button>
-                                    <button type="button" @onclick="ToggleComments"><i data-lucide="message-square" class="sm"></i>Comment</button>
+                                <div class="nt-add-row @(HasCover || coverUploading ? "has-cover" : "")">
+                                    @if (!HasCover && !coverUploading)
+                                    {
+                                        <button type="button" @onclick="() => { pop = Pop.Style; coverTab = CoverTab.Upload; }"><i data-lucide="image" class="sm"></i>Add cover</button>
+                                    }
+                                    <button type="button" @onclick="() => pop = Pop.Style"><i data-lucide="palette" class="sm"></i>Style</button>
+                                    <button type="button" @onclick="StartPageComment"><i data-lucide="message-square" class="sm"></i>Comment</button>
                                 </div>
                             }
                             <input class="nt-page-title" placeholder="Untitled" value="@titleDraft" readonly="@(!CanEdit)" @ref="titleRef"
@@ -313,6 +365,10 @@
                                 {
                                     <span class="nt-prop"><i data-lucide="lock"></i>Private</span>
                                 }
+                                @if (note.IsFavorite)
+                                {
+                                    <span class="nt-prop fav" title="In your favorites"><i data-lucide="star"></i>Favorite</span>
+                                }
                                 @if (note.TodoTotal > 0)
                                 {
                                     <span class="nt-prop"><i data-lucide="square-check"></i>@note.TodoDone/@note.TodoTotal</span>
@@ -322,7 +378,16 @@
                                     <span class="nt-prop nt-imported" title="Imported @ShortDate(note.CreatedAt)"><i data-lucide="file-up"></i>Imported from @SourceLabel(src)</span>
                                 }
                             </div>
-                            <div @ref="editorRef" @key="note.Id"></div>
+                            @EditorHost
+                            @if (!Phone.IsPhone)
+                            {
+                                @* Narrow screen / full width: a small count bubble beside each commented line (click = the thread in a popover). *@
+                                @foreach (var t in OpenAnchoredThreads)
+                                {
+                                    var tid = t.Id;
+                                    <button type="button" class="nt-bubble" data-bubble="@tid" hidden="@MarginMode" title="@t.Comments.Count comment@(t.Comments.Count == 1 ? "" : "s")" aria-label="Open comment thread" @onclick="() => OpenBubble(tid)" @onclick:stopPropagation><span>@t.Comments.Count</span></button>
+                                }
+                            }
                             @if (showTemplates)
                             {
                                 <div class="nt-tpl-hint">OR START FROM A TEMPLATE</div>
@@ -336,6 +401,20 @@
                                     }
                                 </div>
                             }
+                            @if (backlinks.Count > 0)
+                            {
+                                <div class="nt-tpl-hint">LINKED FROM</div>
+                                <div class="nt-backlinks">
+                                    @foreach (var b in backlinks)
+                                    {
+                                        var bid = b.Id;
+                                        <button type="button" class="nt-backlink" @onclick="() => Open(bid)">
+                                            <span class="emo">@(b.Emoji ?? "📄")</span>
+                                            <span class="bt">@(string.IsNullOrWhiteSpace(b.Title) ? "Untitled" : b.Title)</span>
+                                        </button>
+                                    }
+                                </div>
+                            }
                             @if (note.Children.Count > 0)
                             {
                                 <div class="nt-tpl-hint">SUB-PAGES</div>
@@ -345,28 +424,40 @@
                                 }
                             }
                         </div>
+                        @if (!Phone.IsPhone && note.Kind != "board")
+                        {
+                            <div class="nt-margin" aria-label="Comments" @ref="marginRef" hidden="@(!MarginMode)">
+                                @if (draft is not null && MarginMode && !draft.IsPageLevel)
+                                {
+                                    <div class="nt-thread draft in-margin" data-card="draft">
+                                        @if (!draft.IsPageLevel) { <div class="quoteline"><span>@draft.Quote</span></div> } else { <div class="nt-pagecm">Comment on this page</div> }
+                                        <textarea @ref="draftRef" placeholder="Write a comment… (@@ to mention)" value="@draft.Body" @oninput="OnDraftInput" @onkeydown="OnDraftKey"></textarea>
+                                        @if (cmtMentionTarget == Guid.Empty && cmtMentionHits.Count > 0) { @CommentMentionMenu(Guid.Empty) }
+                                        <div class="acts">
+                                            <button type="button" class="nt-btn ghost" @onclick="() => draft = null">Cancel</button>
+                                            <button type="button" class="nt-btn primary" disabled="@(string.IsNullOrWhiteSpace(draft.Body) || busy)" @onclick="PostDraft">Send</button>
+                                        </div>
+                                    </div>
+                                }
+                                @foreach (var t in OpenAnchoredThreads) { @ThreadCard(t, true) }
+                            </div>
+                        }
+                        </div>
+                        }
+                        @if (note.Kind == "board")
+                        {
+                            @* A whiteboard has no document text, but the text editor still carries the page's sync, so it stays mounted (hidden). *@
+                            <div class="nt-editor-hidden">@EditorHost</div>
+                        }
                     </section>
                 }
             }
             else
             {
-                <div class="nt-home">
-                    <h2>Notes</h2>
-                    <div class="sub">Notes, SOPs and meeting minutes — share them to chat and edit together.</div>
-                    <div class="nt-cards">
-                        <button type="button" class="nt-card" @onclick="() => CreateBlank(null)"><span class="emo">➕</span><span class="t">New page</span><span class="m">Alt N</span></button>
-                        @if (sidebar is not null)
-                        {
-                            @foreach (var p in sidebar.Pages.OrderByDescending(p => p.IsGuide && !GuideHidden(p)).ThenByDescending(p => p.UpdatedAt).Take(11))
-                            {
-                                <button type="button" class="nt-card" @onclick="() => Open(p.Id)">
-                                    <span class="emo">@(p.Emoji ?? "📄")</span><span class="t">@DisplayTitle(p.Title)</span>
-                                    <span class="m">@(p.IsMine ? "" : p.OwnerName + " · ")@Ago(p.UpdatedAt)</span>
-                                </button>
-                            }
-                        }
-                    </div>
-                </div>
+                <NoteListPage Sidebar="sidebar" Creating="creating"
+                              OnCreate="CreatePageFromList" OnNewBoard="CreateBoardFromList" OnOpen="Open"
+                              OnFavorite="SetFavoriteFromList" OnTemplates="OpenBoardTemplatesFromList"
+                              OnTemplate="NewBoardFromQuickTemplate" Templates="BoardQuickTemplates" />
             }
         </div>
     </main>
@@ -378,16 +469,26 @@
         <NotesCommentsSheet Open="@(commentsOpen && view == View.Page)" OpenChanged="v => commentsOpen = v">@CommentsBody</NotesCommentsSheet>
         @if (note is not null && view == View.Page)
         {
-            <NotesMoreSheet Open="phoneMoreOpen" OpenChanged="v => phoneMoreOpen = v" CanEdit="CanEdit" IsOwner="IsOwner" IsFavorite="note.IsFavorite" OnAction="PhoneNoteAction" />
+            <NotesMoreSheet Open="phoneMoreOpen" OpenChanged="v => phoneMoreOpen = v" CanEdit="CanEdit" IsOwner="IsOwner" IsBoard="@(note.Kind == "board")" IsFavorite="note.IsFavorite" OnAction="PhoneNoteAction" />
             @if (CanEdit) { <NotesKeyboardToolbar OnCommand="PhoneEditorCommand" /> }
         }
     }
     else
     {
         @if (commentsOpen && view == View.Page) { <OverlayHook OnClose="() => commentsOpen = false" /> }
-        <aside class="nt-comments @(commentsOpen && view == View.Page ? "open" : "")" aria-label="Comments">@CommentsBody</aside>
+        <aside class="nt-comments @(commentsOpen && view == View.Page ? "open" : "")" aria-label="All comments">@CommentsBody</aside>
+        @if (bubbleThread is { } bt && threads.FirstOrDefault(x => x.Id == bt) is { } bthread && view == View.Page)
+        {
+            <OverlayHook OnClose="() => bubbleThread = null" />
+            <div class="nt-scrim clear" @onclick="() => bubbleThread = null"></div>
+            <div class="nt-bubble-pop" style="top:@(bubbleY)px; left:@(bubbleX)px" role="dialog" aria-label="Comment thread">@ThreadCard(bthread, false)</div>
+        }
     }
 </div>
+
+@* File card → Preview: the shared viewer, ← → through the page's files. *@
+<IPop.Web.Components.AttachmentViewer Attachment="viewerFile" Siblings="viewerFiles" ConvertedPdf="ViewerPdf"
+                                      OnClose="CloseFileViewer" OnNavigate="a => viewerFile = a" />
 
 @* ── Popovers ─────────────────────────────────────────────────────────────── *@
 @if (pop != Pop.None && note is not null)
@@ -397,13 +498,27 @@
     @switch (pop)
     {
         case Pop.More:
-            <div class="nt-layer nt-menu-l" style="top:52px;right:14px">
+            <div class="nt-layer nt-menu-l" style="top:var(--nt-pop-top);right:14px">
                 @if (CanEdit)
                 {
                     <button type="button" class="mi" @onclick="() => pop = Pop.Style"><i data-lucide="palette" class="sm"></i>Style</button>
                     <button type="button" class="mi" @onclick="() => CreateBlank(note.Id)"><i data-lucide="file-plus" class="sm"></i>Add sub-page</button>
+                    <button type="button" class="mi" @onclick='() => CreateBlank(note.Id, "board")'><i data-lucide="layout-dashboard" class="sm"></i>Add whiteboard</button>
                 }
+                @if (HasEditAccess)
+                {
+                    <button type="button" class="mi" @onclick="ToggleLockAsync"><i data-lucide="@(IsLocked ? "lock-open" : "lock")" class="sm"></i>@(IsLocked ? "Unlock page" : "Lock page")</button>
+                }
+                <button type="button" class="mi" @onclick="() => { pop = Pop.None; _ = ToggleFavorite(); }"><i data-lucide="star" class="sm"></i>@(note.IsFavorite ? "Remove from favorites" : "Add to favorites")</button>
                 <button type="button" class="mi" @onclick="OpenHistory"><i data-lucide="history" class="sm"></i>Version history</button>
+                @if (HasEditAccess)
+                {
+                    <button type="button" class="mi" @onclick="BeginSaveTemplate"><i data-lucide="bookmark-plus" class="sm"></i>Save as template…</button>
+                    @if (note.Kind == "page" && !note.IsGuide)
+                    {
+                        <button type="button" class="mi" @onclick="BeginRepeat"><i data-lucide="repeat" class="sm"></i>Repeat…<span class="ds">@(repeatNow is null ? "" : repeatNow.Description)</span></button>
+                    }
+                }
                 <button type="button" class="mi" @onclick="CopyLink"><i data-lucide="link" class="sm"></i>Copy link</button>
                 <a class="mi" href="@CalLinks.NewMeeting(DisplayTitle(note.Title), notes: Nav.ToAbsoluteUri($"/notes/{note.Id}").ToString(), from: $"From note “{DisplayTitle(note.Title)}”")"><i data-lucide="calendar-plus" class="sm"></i>Schedule follow-up</a>
                 <hr />
@@ -423,17 +538,131 @@
             </div>
             break;
 
-        case Pop.Style:
-            <div class="nt-layer nt-style" style="top:52px;right:14px">
-                <section>
-                    <h4>COVER</h4>
-                    <div class="nt-covers">
-                        <button type="button" class="none @(note.Cover is null ? "on" : "")" @onclick='() => PatchAsync(new UpdateNoteMetaRequest(null, null, "", null, null, null, null))'>None</button>
-                        @foreach (var c in Covers)
+        case Pop.Template:
+            <div class="nt-layer nt-menu-l nt-tplsave" role="dialog" aria-label="Save as template" style="top:var(--nt-pop-top);right:14px">
+                <div class="mh">SAVE AS A TEMPLATE</div>
+                <div class="nt-vname-form col">
+                    <input maxlength="100" aria-label="Template name" placeholder="Template name" value="@templateName" @oninput="e => templateName = e.Value?.ToString() ?? string.Empty" @onkeydown="OnTemplateKey" />
+                    <div class="ds">Only you can see it. Find it under New page ▾.</div>
+                    <div class="acts"><button type="button" class="nt-btn ghost" @onclick="ClosePop">Cancel</button><button type="button" class="nt-btn primary" disabled="@(busy || string.IsNullOrWhiteSpace(templateName))" @onclick="SaveTemplateAsync">Save template</button></div>
+                </div>
+            </div>
+            break;
+
+        case Pop.Repeat:
+            <div class="nt-layer nt-menu-l nt-repeat" role="dialog" aria-label="Repeat this page" style="top:var(--nt-pop-top);right:14px">
+                <div class="mh">REPEAT THIS PAGE</div>
+                <div class="nt-repeat-body">
+                    <div class="ds">A new copy of this page is made next to it on the days you choose, at 06:00 (Jakarta time), titled “@DisplayTitle(note.Title) — date”. The people who can open this page's folder are told.</div>
+                    <div class="nt-seg wide" role="tablist" aria-label="How often">
+                        @foreach (var (k, label) in RepeatKinds)
                         {
-                            <button type="button" class="@(note.Cover == c ? "on" : "")" style="--cv:var(--cv-@c)" title="@c" @onclick="() => PatchAsync(new UpdateNoteMetaRequest(null, null, c, null, null, null, null))"></button>
+                            var kk = k;
+                            <button type="button" role="tab" aria-selected="@(repeatKind == kk ? "true" : "false")" class="@(repeatKind == kk ? "on" : "")" @onclick="() => repeatKind = kk">@label</button>
                         }
                     </div>
+                    @if (repeatKind == "weekly")
+                    {
+                        <div class="nt-days" role="group" aria-label="Days of the week">
+                            @foreach (var (code, label) in RepeatDays)
+                            {
+                                var cc = code;
+                                <button type="button" aria-pressed="@(repeatDays.Contains(cc) ? "true" : "false")" class="@(repeatDays.Contains(cc) ? "on" : "")" title="@label" @onclick="() => ToggleRepeatDay(cc)">@label[..2]</button>
+                            }
+                        </div>
+                    }
+                    else if (repeatKind == "monthly")
+                    {
+                        <label class="nt-repeat-m">On day <input type="number" min="1" max="31" value="@repeatMonthDay" @oninput="e => repeatMonthDay = int.TryParse(e.Value?.ToString(), out var v) ? Math.Clamp(v, 1, 31) : 1" aria-label="Day of the month" /> of the month</label>
+                    }
+                    <div class="nt-repeat-sum" aria-live="polite">@RepeatSummary</div>
+                    <div class="acts">
+                        @if (repeatNow is not null) { <button type="button" class="nt-btn ghost danger" disabled="@busy" @onclick="StopRepeatAsync">Stop repeating</button> }
+                        <span style="flex:1"></span>
+                        <button type="button" class="nt-btn ghost" @onclick="ClosePop">Cancel</button>
+                        <button type="button" class="nt-btn primary" disabled="@(busy || (repeatKind == "weekly" && repeatDays.Count == 0))" @onclick="SaveRepeatAsync">@(repeatNow is null ? "Start repeating" : "Save")</button>
+                    </div>
+                </div>
+            </div>
+            break;
+
+        case Pop.Tidy:
+            <div class="nt-layer nt-tidy" style="top:var(--nt-pop-top);right:14px">
+                <h4>SUGGESTIONS@(tidySuggestions.Count > 0 ? $" · {tidySuggestions.Count} left" : "")</h4>
+                @if (tidySuggestions.Count == 0)
+                {
+                    <div class="nt-tidy-ok"><b>✨</b>This page looks tidy.</div>
+                }
+                else
+                {
+                    <div class="nt-tidy-hint">Nothing changes until you press Apply. Undo puts it back.</div>
+                    @foreach (var s in tidySuggestions)
+                    {
+                        var rule = s.Rule;
+                        <div class="nt-tidy-row">
+                            <div class="tx"><b>@s.Label</b><span>@s.Detail</span></div>
+                            <button type="button" class="nt-btn" @onclick="() => ApplyTidyAsync([rule])">Apply</button>
+                        </div>
+                    }
+                    <div class="nt-cover-foot">
+                        <button type="button" class="nt-btn primary" style="flex:1;justify-content:center" @onclick="() => ApplyTidyAsync(tidySuggestions.Select(x => x.Rule).ToList())">Apply all</button>
+                    </div>
+                }
+            </div>
+            break;
+
+        case Pop.Style:
+            <div class="nt-layer nt-style" style="top:var(--nt-pop-top);right:14px">
+                <section>
+                    <h4>COVER</h4>
+                    <div class="nt-tabs" role="tablist">
+                        <button type="button" role="tab" aria-selected="@(coverTab == CoverTab.Colours)" class="@(coverTab == CoverTab.Colours ? "on" : "")" @onclick="() => SetCoverTab(CoverTab.Colours)">Colours</button>
+                        <button type="button" role="tab" aria-selected="@(coverTab == CoverTab.Upload)" class="@(coverTab == CoverTab.Upload ? "on" : "")" @onclick="() => SetCoverTab(CoverTab.Upload)">Upload</button>
+                        <button type="button" role="tab" aria-selected="@(coverTab == CoverTab.ThisPage)" class="@(coverTab == CoverTab.ThisPage ? "on" : "")" @onclick="() => SetCoverTab(CoverTab.ThisPage)">This page</button>
+                    </div>
+                    @if (coverTab == CoverTab.Colours)
+                    {
+                        <div class="nt-covers">
+                            <button type="button" class="none @(!HasCover ? "on" : "")" @onclick="RemoveCoverAsync">None</button>
+                            @foreach (var c in Covers)
+                            {
+                                var key = c;
+                                <button type="button" class="@(!HasPhotoCover && note.Cover == key ? "on" : "")" style="--cv:var(--cv-@key)" title="@key" @onclick="() => PickGradient(key)"></button>
+                            }
+                        </div>
+                    }
+                    else if (coverTab == CoverTab.Upload)
+                    {
+                        <div class="nt-drop">
+                            <b>Choose a picture for the top of this page</b>
+                            <span>JPG, PNG or WebP · up to 10 MB</span>
+                            <button type="button" class="nt-btn" @onclick="ChooseCoverFile" disabled="@coverUploading"><i data-lucide="image-up" class="sm"></i>Choose image…</button>
+                        </div>
+                        @if (coverError is not null) { <div class="nt-cover-err" role="alert">@coverError</div> }
+                    }
+                    else
+                    {
+                        @if (pageImages is null) { <div class="nt-side-empty">Loading…</div> }
+                        else if (pageImages.Count == 0) { <div class="nt-side-empty">No images in this page yet. Add one with <b>/image</b>, then pick it here.</div> }
+                        else
+                        {
+                            <div class="nt-thumbs" @ref="coverThumbsRef">
+                                @foreach (var im in pageImages)
+                                {
+                                    var imgId = im.Id;
+                                    <button type="button" data-img="@imgId" title="@im.FileName" aria-label="Use @im.FileName as the cover" class="@(note.CoverImageId == imgId ? "on" : "")" @onclick="() => PickCoverImage(imgId)"></button>
+                                }
+                            </div>
+                        }
+                    }
+                    @if (HasCover)
+                    {
+                        <div class="nt-cover-foot">
+                            @if (HasPhotoCover) { <button type="button" class="nt-btn" @onclick="StartRepositionAsync">Reposition</button> }
+                            <span style="flex:1"></span>
+                            <button type="button" class="nt-btn danger" @onclick="RemoveCoverAsync">Remove cover</button>
+                        </div>
+                    }
                 </section>
                 <section>
                     <h4>ACCENT COLOR</h4>
@@ -588,8 +817,35 @@
                     {
                         var v = versions.First(x => x.Id == selVersion);
                         <div class="nt-page-title" style="margin-top:0">@DisplayTitle(v.Title)</div>
+                        <div class="nt-vbar">
+                            @if (!string.IsNullOrEmpty(v.Name)) { <span class="nt-vname">🏷 @v.Name</span> }
+                            <button type="button" class="nt-btn ghost" disabled="@diffBusy" @onclick="ToggleDiffAsync"><i data-lucide="@(showDiff ? "eye" : "git-compare")" class="sm"></i>@(showDiff ? "Show the page" : v.Id == CurrentVersionId() ? "What changed in this version" : "Compare with now")</button>
+                            @if (CanEdit)
+                            {
+                                <button type="button" class="nt-btn ghost" @onclick="BeginNameVersion"><i data-lucide="tag" class="sm"></i>@(string.IsNullOrEmpty(v.Name) ? "Name this version" : "Rename")</button>
+                            }
+                        </div>
+                        @if (namingVersion)
+                        {
+                            <div class="nt-vname-form">
+                                <input maxlength="100" placeholder="e.g. Before the audit" aria-label="Version name" value="@renameVersionText" @oninput="e => renameVersionText = e.Value?.ToString() ?? string.Empty" @onkeydown="OnVersionNameKey" />
+                                <button type="button" class="nt-btn primary" disabled="@busy" @onclick="NameSelectedVersionAsync">Save</button>
+                                <button type="button" class="nt-btn ghost" @onclick="() => namingVersion = false">Cancel</button>
+                            </div>
+                        }
                     }
-                    <div class="nt-pageview" style="--pc:@AccentHex(note.Accent)"><div @ref="previewRef"></div></div>
+                    @if (showDiff && diffLines is not null)
+                    {
+                        <div class="nt-diff" role="region" aria-label="Changes">
+                            <div class="sum"><span class="add">+@diffAdded added</span><span class="del">−@diffRemoved removed</span></div>
+                            @if (diffAdded + diffRemoved == 0) { <div class="nt-cp-empty">No text changes.</div> }
+                            @foreach (var l in diffLines)
+                            {
+                                <div class="ln @l.Kind"><span class="mk">@(l.Kind switch { "add" => "+", "del" => "−", _ => "" })</span><span class="tx">@(l.Kind == "fold" ? "… " + l.Text + " …" : l.Text)</span></div>
+                            }
+                        </div>
+                    }
+                    <div class="nt-pageview" style="--pc:@AccentHex(note.Accent);@(showDiff ? "display:none" : "")"><div @ref="previewRef"></div></div>
                     @if (versions is { Count: 0 }) { <div class="nt-cp-empty">No saved versions yet. Versions are created automatically as the page is edited.</div> }
                 </div>
                 <div class="nt-h-list">
@@ -598,10 +854,20 @@
                         @if (versions is null) { <div class="nt-loading">Loading…</div> }
                         else
                         {
+                            @if (CanEdit)
+                            {
+                                <div class="nt-vnow">
+                                    <div class="d">Current version</div>
+                                    <div class="nt-vname-form tight">
+                                        <input maxlength="100" placeholder="Name it and keep it for good" aria-label="Name the current version" value="@newVersionName" @oninput="e => newVersionName = e.Value?.ToString() ?? string.Empty" @onkeydown="OnSaveNamedKey" />
+                                        <button type="button" class="nt-btn" disabled="@(busy || string.IsNullOrWhiteSpace(newVersionName))" @onclick="SaveNamedNowAsync">Save</button>
+                                    </div>
+                                </div>
+                            }
                             @foreach (var v in versions)
                             {
                                 <button type="button" class="hi @(selVersion == v.Id ? "on" : "")" @onclick="() => SelectVersion(v.Id)">
-                                    <div class="d">@StampDate(v.CreatedAt)</div>
+                                    <div class="d">@(string.IsNullOrEmpty(v.Name) ? "" : "🏷 ")@(string.IsNullOrEmpty(v.Name) ? StampDate(v.CreatedAt) : v.Name)@(string.IsNullOrEmpty(v.Name) ? "" : " · " + StampDate(v.CreatedAt))</div>
                                     <div class="w">
                                         @foreach (var n in v.Contributors.Take(3)) { <PersonAvatar Nik="@ContributorNik(n)" Name="@n" Size="20" Class="nt-av s20" Decorative="true" /> }
                                         <span>@string.Join(", ", v.Contributors.Select(FirstName))</span>
@@ -674,8 +940,22 @@
         {
             <button type="button" class="mi" @onclick="() => CreateFromTemplate(t.Key)"><span class="nt-mi-emo">@t.Emoji</span>@t.Name</button>
         }
+        @if (myTemplates.Count > 0)
+        {
+            <hr />
+            <div class="mh">My templates</div>
+            @foreach (var mt in myTemplates)
+            {
+                var tid = mt.Id;
+                <div class="nt-mytpl">
+                    <button type="button" class="mi" @onclick="() => NewFromMyTemplateAsync(tid)"><span class="nt-mi-emo">@(mt.Emoji ?? "📄")</span>@mt.Name</button>
+                    <button type="button" class="nt-icon-btn" title="Delete template" aria-label="@($"Delete template {mt.Name}")" @onclick="() => DeleteMyTemplateAsync(mt)"><i data-lucide="trash-2" class="sm"></i></button>
+                </div>
+            }
+        }
         <hr />
         <button type="button" class="mi" @onclick="() => CreateBlank(null)"><span class="nt-mi-emo">📄</span>Blank page</button>
+        <button type="button" class="mi" @onclick='() => CreateBlank(null, "board")'><span class="nt-mi-emo">🧩</span>Whiteboard<span class="ds">Sticky notes, shapes, drawing</span></button>
         <button type="button" class="mi nt-mi-import" @onclick="() => OpenImport(null)"><i data-lucide="file-up" class="sm"></i>Import…<span class="ds">Notion, Markdown, HTML</span></button>
         @if (TutorialRegistry.Get("notes") is { } tour) { <hr /><button type="button" class="mi" @onclick="async () => { newMenuOpen = false; await Tutorials.StartTourAsync(tour); }"><span class="nt-mi-emo">🧭</span>1-minute tour</button> }
     </div>
@@ -938,7 +1218,7 @@
                 }
                 else
                 {
-                    <span class="t">@DisplayTitle(p.Title)</span>
+                    <span class="t">@DisplayTitle(p.Title)</span><span class="nt-kind" hidden="@(p.Kind != "board")">Board</span>
                     @if (p.IsShared) { <span class="meta"><i data-lucide="users" class="sm"></i></span> }
                     <span class="actions">
                         <span role="button" tabindex="-1" title="More" aria-label="Page options" @onclick="e => OpenRowMenu(p, e)" @onclick:stopPropagation><i data-lucide="ellipsis"></i></span>
@@ -983,6 +1263,83 @@
         }
     };
 
+
+    /// One comment thread: the same card in the right margin (inMargin), in the popover on narrow screens, and in the All / Resolved drawer.
+    private RenderFragment ThreadCard(NoteThreadDto t, bool inMargin) => __builder =>
+    {
+        <div class="nt-thread @(t.Id == focusThread ? "focus" : "") @(t.ResolvedAt is null ? "" : "resolved") @(inMargin ? "in-margin" : "")" @onclick="() => FocusThread(t.Id)" data-card="@(inMargin ? t.Id.ToString() : null)">
+            @if (string.IsNullOrEmpty(t.Quote) && t.Anchor is null)
+            {
+                <div class="nt-pagecm">
+                    <span>On this page</span>
+                    @if (CanComment)
+                    {
+                        <button type="button" title="@(t.ResolvedAt is null ? "Resolve" : "Reopen")" aria-label="@(t.ResolvedAt is null ? "Resolve" : "Reopen")" @onclick="() => Resolve(t)" @onclick:stopPropagation><i data-lucide="@(t.ResolvedAt is null ? "circle-check" : "rotate-ccw")" class="sm"></i></button>
+                    }
+                </div>
+            }
+            @if (!string.IsNullOrEmpty(t.Quote))
+            {
+                <div class="quoteline">
+                    <span>@t.Quote</span>
+                    @if (CanComment)
+                    {
+                        <button type="button" title="@(t.ResolvedAt is null ? "Resolve" : "Reopen")" aria-label="@(t.ResolvedAt is null ? "Resolve" : "Reopen")" @onclick="() => Resolve(t)" @onclick:stopPropagation>
+                            <i data-lucide="@(t.ResolvedAt is null ? "circle-check" : "rotate-ccw")" class="sm"></i>
+                        </button>
+                    }
+                </div>
+            }
+            @foreach (var c in t.Comments)
+            {
+                <div class="nt-c-msg">
+                    @if (c.AuthorNik is null) { <span class="nt-av s24 bot">iP</span> }
+                    else { <PersonAvatar Nik="@c.AuthorNik" Name="@c.AuthorName" Size="24" Class="nt-av s24" Decorative="true" /> }
+                    <div style="min-width:0">
+                        <div class="who">@c.AuthorName<span class="when">@Ago(c.CreatedAt)@(c.EditedAt is not null ? " · edited" : "")</span></div>
+                        @if (editingComment == c.Id)
+                        {
+                            <div class="nt-cedit" @onclick:stopPropagation>
+                                <textarea value="@editText" @oninput="e => editText = e.Value?.ToString() ?? string.Empty" @onkeydown="e => OnEditKeyAsync(e, t, c)"></textarea>
+                                <div class="acts"><button type="button" class="nt-btn ghost" @onclick="CancelEdit">Cancel</button><button type="button" class="nt-btn primary" disabled="@string.IsNullOrWhiteSpace(editText)" @onclick="() => SaveEditAsync(t, c)">Save</button></div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="txt">@c.Body</div>
+                            <div class="nt-creacts" @onclick:stopPropagation>
+                                @foreach (var r in c.Reactions ?? [])
+                                {
+                                    var em = r.Emoji;
+                                    <button type="button" class="nt-react @(r.Mine ? "mine" : "")" disabled="@(!CanComment)" title="@(r.Mine ? "Remove your reaction" : "React")" @onclick="() => ReactAsync(t, c, em)">@r.Emoji <span>@r.Count</span></button>
+                                }
+                                @if (CanComment)
+                                {
+                                    <button type="button" class="nt-react add" title="Add a reaction" aria-label="Add a reaction" @onclick="() => reactionPickerFor = reactionPickerFor == c.Id ? null : c.Id">☺ +</button>
+                                    @if (reactionPickerFor == c.Id)
+                                    {
+                                        <span class="nt-reactpick">@foreach (var em in ReactionChoices) { var e2 = em; <button type="button" @onclick="() => ReactAsync(t, c, e2)">@em</button> }</span>
+                                    }
+                                    @if (c.CanEdit) { <button type="button" class="nt-clink" @onclick="() => BeginEdit(c)">Edit</button> }
+                                    @if (c.CanEdit || IsOwner) { <button type="button" class="nt-clink" @onclick="() => DeleteCommentAsync(t, c)">Delete</button> }
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+            @if (CanComment && t.ResolvedAt is null)
+            {
+                <div class="nt-c-reply" @onclick:stopPropagation>
+                    <input placeholder="Reply… (@@ to mention)" value="@(replies.GetValueOrDefault(t.Id) ?? "")" @oninput="e => OnReplyInput(e, t.Id)" @onkeydown="e => OnReplyKey(e, t)" />
+                    @if (cmtMentionTarget == t.Id && cmtMentionHits.Count > 0) { @CommentMentionMenu(t.Id) }
+                    <button type="button" class="nt-icon-btn" title="Send" aria-label="Send" @onclick="() => Reply(t)"><i data-lucide="arrow-up"></i></button>
+                </div>
+            }
+        </div>
+
+    };
+
     private RenderFragment CommentMentionMenu(Guid target) => __builder =>
     {
         <div class="nt-sugg nt-cmt-sugg">
@@ -1006,6 +1363,8 @@
 }
 
 @code {
+    private RenderFragment EditorHost => @<div @ref="editorRef" @key="note!.Id"></div>;
+
     private RenderFragment CommentsBody => @<text>
         <div class="nt-cp-head">
             <h2>Comments</h2>
@@ -1016,10 +1375,10 @@
             <button type="button" class="nt-icon-btn" title="Close" aria-label="Close" @onclick="() => commentsOpen = false"><i data-lucide="x"></i></button>
         </div>
         <div class="nt-cp-body">
-            @if (draft is not null)
+            @if (draft is not null && !(MarginMode && !draft.IsPageLevel))
             {
                 <div class="nt-thread draft">
-                    <div class="quoteline"><span>@draft.Quote</span></div>
+                    @if (!draft.IsPageLevel) { <div class="quoteline"><span>@draft.Quote</span></div> } else { <div class="nt-pagecm">Comment on this page</div> }
                     <textarea @ref="draftRef" placeholder="Write a comment… (@@ to mention)" value="@draft.Body" @oninput="OnDraftInput" @onkeydown="OnDraftKey"></textarea>
                     @if (cmtMentionTarget == Guid.Empty && cmtMentionHits.Count > 0) { @CommentMentionMenu(Guid.Empty) }
                     <div class="acts">
@@ -1036,41 +1395,20 @@
                     @if (CanComment) { <span>Select text, then click <b>💬 Comment</b> or press <kbd>Ctrl Shift M</kbd>.</span> }
                 </div>
             }
+            @if (HasEditAccess && viewers is { Count: > 0 })
+            {
+                <div class="nt-viewers">
+                    <h5>OPENED BY · ONLY OWNER AND EDITORS SEE THIS</h5>
+                    @foreach (var vw in viewers.Take(8))
+                    {
+                        <div class="vr"><span>@vw.Name</span><small>@Ago(vw.LastViewedAt)@(vw.Count > 1 ? $" · {vw.Count}×" : "")</small></div>
+                    }
+                    @if (viewers.Count > 8) { <div class="vr"><small>and @(viewers.Count - 8) more</small></div> }
+                </div>
+            }
             @foreach (var t in shown)
             {
-                <div class="nt-thread @(t.Id == focusThread ? "focus" : "") @(t.ResolvedAt is null ? "" : "resolved")" @onclick="() => FocusThread(t.Id)">
-                    @if (!string.IsNullOrEmpty(t.Quote))
-                    {
-                        <div class="quoteline">
-                            <span>@t.Quote</span>
-                            @if (CanComment)
-                            {
-                                <button type="button" title="@(t.ResolvedAt is null ? "Resolve" : "Reopen")" aria-label="@(t.ResolvedAt is null ? "Resolve" : "Reopen")" @onclick="() => Resolve(t)" @onclick:stopPropagation>
-                                    <i data-lucide="@(t.ResolvedAt is null ? "circle-check" : "rotate-ccw")" class="sm"></i>
-                                </button>
-                            }
-                        </div>
-                    }
-                    @foreach (var c in t.Comments)
-                    {
-                        <div class="nt-c-msg">
-                            @if (c.AuthorNik is null) { <span class="nt-av s24 bot">iP</span> }
-                            else { <PersonAvatar Nik="@c.AuthorNik" Name="@c.AuthorName" Size="24" Class="nt-av s24" Decorative="true" /> }
-                            <div style="min-width:0">
-                                <div class="who">@c.AuthorName<span class="when">@Ago(c.CreatedAt)</span></div>
-                                <div class="txt">@c.Body</div>
-                            </div>
-                        </div>
-                    }
-                    @if (CanComment && t.ResolvedAt is null)
-                    {
-                        <div class="nt-c-reply" @onclick:stopPropagation>
-                            <input placeholder="Reply… (@@ to mention)" value="@(replies.GetValueOrDefault(t.Id) ?? "")" @oninput="e => OnReplyInput(e, t.Id)" @onkeydown="e => OnReplyKey(e, t)" />
-                            @if (cmtMentionTarget == t.Id && cmtMentionHits.Count > 0) { @CommentMentionMenu(t.Id) }
-                            <button type="button" class="nt-icon-btn" title="Send" aria-label="Send" @onclick="() => Reply(t)"><i data-lucide="arrow-up"></i></button>
-                        </div>
-                    }
-                </div>
+                @ThreadCard(t, false)
             }
         </div>
     </text>;

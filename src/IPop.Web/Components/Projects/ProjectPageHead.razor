@@ -1,0 +1,40 @@
+@* Projects v2 page header (mockup pageHead()): crumb row (project-list toggle in full screen + Full screen button),
+   big title, optional right-hand controls and a one-line subtitle. Renders two sibling blocks so the canvas styles apply. *@
+<div class="pv2 pv2-crumb">
+    @if (FullScreen)
+    {
+        <button type="button" class="pv2-railbtn @(RailOpen ? "on" : "")" aria-pressed="@(RailOpen ? "true" : "false")"
+                title="@(RailOpen ? "Hide" : "Show") project list" aria-label="@(RailOpen ? "Hide" : "Show") project list" @onclick="OnToggleRail">
+            <i data-lucide="panel-left"></i>
+        </button>
+    }
+    <span class="pv2-sp"></span>
+    <button type="button" class="pv2-fsbtn" aria-pressed="@(FullScreen ? "true" : "false")"
+            title="@(FullScreen ? "Exit full screen (Esc)" : "Full screen (F)")" @onclick="OnToggleFullScreen">
+        <i data-lucide="@(FullScreen ? "minimize-2" : "maximize-2")"></i>@(FullScreen ? "Exit full screen" : "Full screen")<kbd>@(FullScreen ? "Esc" : "F")</kbd>
+    </button>
+</div>
+<div class="pv2 pv2-ph pv2pg-ph">
+    <div class="pv2-titlerow">
+        <h1 class="pv2-h1">@Title</h1>
+        <span class="pv2-sp"></span>
+        @Right
+    </div>
+    <div class="pv2pg-sub">@Subtitle</div>
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public bool FullScreen { get; set; }
+    [Parameter] public bool RailOpen { get; set; }
+    [Parameter] public EventCallback OnToggleFullScreen { get; set; }
+    [Parameter] public EventCallback OnToggleRail { get; set; }
+    [Parameter] public RenderFragment? Right { get; set; }
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+    }
+}

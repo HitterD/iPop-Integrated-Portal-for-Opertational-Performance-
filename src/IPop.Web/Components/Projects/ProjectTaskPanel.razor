@@ -1,0 +1,541 @@
+@using IPop.Application.Projects
+@using System.Globalization
+@inject IPop.Web.Services.AuthState Auth
+@inject IPop.Web.Services.TimerState Timer
+@inject IPop.Web.Services.ToastService Toasts
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@implements IDisposable
+
+@* Projects v2 task detail side panel (docs/mockups/ipop-apple/projects-v2.html panel()): a 480px quick view that slides in
+   inside the workspace. The full drawer (ProjectTaskDrawer) stays the complete editor, reachable with the maximize button. *@
+@if (Task is not null)
+{
+    var t = Task;
+    var opt = ProjectStatusUi.Resolve(t, Options);
+    var group = Groups.FirstOrDefault(g => g.Id == t.GroupId);
+    var late = IsLate(t);
+    <aside class="pv2 pv2p" id="pv2-panel" role="complementary" aria-label="Task details" tabindex="-1" @onkeydown="OnKey" @key="t.Id">
+        <div class="pv2p-h">
+            <div class="top">
+                <i class="pv2p-dot" style="background:@(group is null ? "var(--ink-3)" : ProjectStatusUi.SafeColor(group.Color))"></i>@(group?.Name ?? ProjectName)
+                <span class="pv2-sp"></span>
+                <button type="button" class="pv2p-ib" title="Copy link" aria-label="Copy link" @onclick="CopyLink"><i data-lucide="link"></i></button>
+                <button type="button" class="pv2p-ib" data-act="open-full" title="Open full editor" aria-label="Open full editor" @onclick="() => OnOpenFull.InvokeAsync(t)"><i data-lucide="maximize-2"></i></button>
+                <button type="button" class="pv2p-ib" data-act="close" title="Close (Esc)" aria-label="Close" @onclick="() => OnClose.InvokeAsync()"><i data-lucide="x"></i></button>
+            </div>
+            <h2>@t.Title</h2>
+            <div class="pv2p-tabs" role="tablist">
+                <button type="button" role="tab" class="@(tabKey == "details" ? "on" : "")" aria-selected="@(tabKey == "details" ? "true" : "false")" data-tab="details" @onclick='() => SetTab("details")'>Details</button>
+                <button type="button" role="tab" class="@(tabKey == "updates" ? "on" : "")" aria-selected="@(tabKey == "updates" ? "true" : "false")" data-tab="updates" @onclick='() => SetTab("updates")'>Updates@(comments.Count > 0 ? " " + comments.Count : "")</button>
+                <button type="button" role="tab" class="@(tabKey == "activity" ? "on" : "")" aria-selected="@(tabKey == "activity" ? "true" : "false")" data-tab="activity" @onclick='() => SetTab("activity")'>Activity</button>
+            </div>
+        </div>
+        <div class="pv2p-b">
+            @if (!bodyReady)
+            {
+                <div class="pv2p-muted" role="status" style="padding:18px">Loading…</div>
+            }
+            else if (tabKey == "details")
+            {
+                <div class="pv2p-kvs">
+                    <span>Status</span>
+                    <span class="pv2p-pop-host">
+                        <button type="button" class="pv2p-pill" style="--c:@ProjectStatusUi.SafeColor(opt.Color)" disabled="@ReadOnly" data-act="status" aria-haspopup="true" aria-expanded="@(statusOpen ? "true" : "false")" @onclick="() => { statusOpen = !statusOpen; ownerOpen = false; depOpen = false; }">@opt.Label<i data-lucide="chevron-down"></i></button>
+                        @if (statusOpen && !ReadOnly)
+                        {
+                            <div class="plist-backdrop" @onclick="CloseAll"></div>
+                            <div class="pv2-stpop pv2p-stpop" role="menu" aria-label="Status">
+                                @foreach (var o in OptionList)
+                                {
+                                    var oo = o;
+                                    <button type="button" role="menuitemradio" aria-checked="@(oo == opt ? "true" : "false")" class="pv2-pill @(oo == opt ? "cur" : "")" style="--c:@ProjectStatusUi.SafeColor(oo.Color)" @onclick="() => PickStatus(oo)">@oo.Label</button>
+                                }
+                            </div>
+                        }
+                    </span>
+                    <span>Owner</span>
+                    <span class="pv2p-owners pv2p-pop-host">
+                        @foreach (var a in t.Assignees)
+                        {
+                            <span class="pv2p-owner"><PersonAvatar Nik="@a.Nik" Name="@a.Name" Size="22" Class="pv2-av" Decorative="true" />@First(a.Name)</span>
+                        }
+                        @if (t.Assignees.Count == 0) { <span class="pv2p-muted">No owner</span> }
+                        @if (!ReadOnly)
+                        {
+                            <button type="button" class="pv2p-ib" aria-label="Add owner" data-act="add-owner" @onclick="() => { ownerOpen = !ownerOpen; statusOpen = false; depOpen = false; }"><i data-lucide="plus"></i></button>
+                        }
+                        @if (ownerOpen && !ReadOnly)
+                        {
+                            <div class="plist-backdrop" @onclick="CloseAll"></div>
+                            <div class="quick-assign-popover table-popover pv2p-ownpop" role="dialog" aria-label="Assign member">
+                                <div class="quick-assign-popover-head"><span>Assign Member</span></div>
+                                <div class="quick-assign-popover-list">
+                                    @foreach (var m in Members.Where(m => m.Role != "viewer"))
+                                    {
+                                        var mm = m;
+                                        var isAssigned = t.Assignees.Any(a => a.UserId == mm.UserId);
+                                        <div class="quick-assign-item @(isAssigned ? "assigned" : "")" role="menuitemcheckbox" tabindex="0" aria-checked="@(isAssigned ? "true" : "false")"
+                                             @onclick="() => OnToggleAssignee.InvokeAsync((t.Id, mm.UserId, isAssigned))">
+                                            <PersonAvatar Nik="@mm.Nik" Name="@mm.Name" Size="22" Class="team-avatar-circ" Decorative="true" />
+                                            <div class="quick-assign-item-info"><div class="name">@mm.Name</div><div class="role">@mm.Role</div></div>
+                                            @if (isAssigned) { <i data-lucide="check" style="width:13px;height:13px;color:var(--accent)"></i> }
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </span>
+                    <span>Dates</span>
+                    <span class="pv2-num pv2p-dates">
+                        @if (ReadOnly)
+                        {
+                            @if (t.StartDate.HasValue || t.DueDate.HasValue)
+                            {
+                                @Fd(t.StartDate ?? t.DueDate)<text> → </text>@Fd(t.DueDate ?? t.StartDate)
+                            }
+                            else { <span class="pv2p-muted">No dates</span> }
+                        }
+                        else
+                        {
+                            <AppDatePicker TValue="DateTime?" Value="t.StartDate" Compact="true" AllowClear="true" Class="pv2p-dp" Placeholder="Start" AriaLabel="Start date"
+                                           ValueChanged="d => OnStart.InvokeAsync((t, d))" />
+                            <text> → </text>
+                            <AppDatePicker TValue="DateTime?" Value="t.DueDate" Compact="true" AllowClear="true" Class="pv2p-dp" Placeholder="Due" AriaLabel="Due date"
+                                           ValueChanged="d => OnDue.InvokeAsync((t, d))" />
+                        }
+                        @if (late) { <b class="pv2p-late">· @LateDays(t) days late</b> }
+                    </span>
+                    <span>Priority</span>
+                    <span>
+                        @if (ReadOnly)
+                        {
+                            <span class="pv2p-pri @PriClass(t.Priority)">@PriLabel(t.Priority)</span>
+                        }
+                        else
+                        {
+                            <span class="pv2p-prisel" role="radiogroup" aria-label="Priority">
+                                @foreach (var (key, label) in Priorities)
+                                {
+                                    var k = key;
+                                    var on = (t.Priority ?? "") == k;
+                                    <button type="button" role="radio" aria-checked="@(on ? "true" : "false")" class="pv2p-pri @PriClass(k) @(on ? "on" : "")" @onclick="() => OnPriority.InvokeAsync((t, string.IsNullOrEmpty(k) ? null : k))">@label</button>
+                                }
+                            </span>
+                        }
+                    </span>
+                    <span>Group</span>
+                    <span><i class="pv2p-dot inl" style="background:@(group is null ? "var(--ink-3)" : ProjectStatusUi.SafeColor(group.Color))"></i> @(group?.Name ?? "No group")</span>
+                    <span>Repeat</span>
+                    <span class="pv2p-muted"><i data-lucide="repeat"></i> @(t.IsRecurring ? "Repeats" : "Does not repeat")</span>
+                </div>
+
+                <div class="pv2p-sec" data-sec="checklist">
+                    <h4>Checklist <em class="pv2-num @(clFlash ? "flash" : "")" id="pv2p-clc">@Subtasks.Count(s => s.Status == "done")/@Subtasks.Count</em></h4>
+                    @foreach (var st in Subtasks)
+                    {
+                        var sub = st;
+                        var done = sub.Status == "done";
+                        <div class="pv2p-cl @(done ? "done" : "")" @key="sub.Id">
+                            <button type="button" class="pv2-cb @(done ? "on" : "")" role="checkbox" aria-checked="@(done ? "true" : "false")" aria-label="@sub.Title" disabled="@ReadOnly" @onclick="() => ToggleSub(sub)"></button>
+                            <span class="tx">@sub.Title</span>
+                        </div>
+                    }
+                    @if (Subtasks.Count == 0) { <div class="pv2p-muted">No checklist yet.</div> }
+                    @if (!ReadOnly)
+                    {
+                        <label class="pv2p-add"><i data-lucide="plus"></i><input type="text" maxlength="200" placeholder="Add a checklist item" aria-label="Add a checklist item" @bind="newItem" @bind:event="oninput" @onkeydown="AddItemKey" /></label>
+                    }
+                </div>
+
+                <div class="pv2p-sec" data-sec="dependencies">
+                    <h4>Dependencies</h4>
+                    @foreach (var d in t.DependsOn ?? [])
+                    {
+                        var dd = d;
+                        <div class="pv2p-dep">
+                            <span class="k">Waits for</span><span class="nm">@dd.Title</span><span class="pv2-sp"></span>
+                            <span class="k">@LinkLabel(dd.LinkType)@LagLabel(dd.LagDays)</span>
+                            @DepStatus(dd.Status)
+                            @if (!ReadOnly) { <button type="button" class="pv2p-ib sm" aria-label="Remove dependency @dd.Title" @onclick="() => RemoveDep(dd.Id)"><i data-lucide="x"></i></button> }
+                        </div>
+                    }
+                    @foreach (var s in Successors)
+                    {
+                        <div class="pv2p-dep">
+                            <span class="k blocks">Blocks</span><span class="nm">@s.Task.Title</span><span class="pv2-sp"></span>
+                            <span class="k">@LagText(s.Ref)</span>
+                        </div>
+                    }
+                    @if (!ReadOnly)
+                    {
+                        <div class="pv2p-pop-host">
+                            <button type="button" class="pv2-btn ghost sm" data-act="add-dep" @onclick="() => { depOpen = !depOpen; statusOpen = false; ownerOpen = false; }"><i data-lucide="link"></i>Add dependency</button>
+                            @if (depOpen)
+                            {
+                                <div class="plist-backdrop" @onclick="CloseAll"></div>
+                                <div class="pv2p-deppop" role="dialog" aria-label="Add dependency">
+                                    <input type="search" placeholder="Search tasks" aria-label="Search tasks" @bind="depQuery" @bind:event="oninput" />
+                                    <div class="list">
+                                        @foreach (var c in Candidates)
+                                        {
+                                            var cc = c;
+                                            <button type="button" @onclick="() => AddDep(cc.Id)">@cc.Title</button>
+                                        }
+                                        @if (!Candidates.Any()) { <div class="pv2p-muted" style="padding:8px">No other tasks to wait for.</div> }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    @if (depError is not null) { <div class="pv2-err" role="alert">@depError</div> }
+                </div>
+
+                <div class="pv2p-sec" data-sec="time">
+                    <h4>Time</h4>
+                    <div class="pv2p-timer">
+                        @if (!ReadOnly && (time?.CanTrack ?? false))
+                        {
+                            <button type="button" class="pv2-btn icon @(running ? "" : "pri")" data-act="timer" aria-pressed="@(running ? "true" : "false")" title="@(running ? "Stop" : "Start") timer" aria-label="@(running ? "Stop" : "Start") timer" disabled="@timerBusy" @onclick="ToggleTimer"><i data-lucide="@(running ? "pause" : "play")"></i></button>
+                        }
+                        <div>
+                            <div class="clock pv2-num" id="pv2p-clock">@Clock()</div>
+                            <div class="sub">@if (running) {<span class="run"></span><text>Running · </text>}logged@(t.EstimatedHours is > 0 ? $" of {t.EstimatedHours:0.#} h estimate" : "")</div>
+                        </div>
+                        <span class="pv2-sp"></span>
+                        @if (t.EstimatedHours is > 0)
+                        {
+                            <div class="pv2p-pbar" role="img" aria-label="@((int)TimePercent())% of the estimate logged"><b><i style="width:@((int)TimePercent())%"></i></b></div>
+                        }
+                    </div>
+                </div>
+
+                <div class="pv2p-sec" data-sec="files">
+                    <h4>Evidence &amp; files <em class="pv2-num">@files.Count</em></h4>
+                    <TaskFiles ReadOnly="ReadOnly" TaskId="t.Id" Kind="attachment" Files="files" UploadLabel="Add file" MyUserId="MyUserId" IsOwner="IsOwner"
+                               OnChanged="LoadFiles" OnOpen="OpenViewer" />
+                </div>
+            }
+            else if (tabKey == "updates")
+            {
+                <div class="pv2p-upd"><TaskDiscussion ReadOnly="ReadOnly" Items="comments" Members="Members" OnSubmit="SubmitComment" /></div>
+            }
+            else
+            {
+                <div class="pv2p-act"><TaskActivityTimeline Items="activity" /></div>
+            }
+        </div>
+        <div class="pv2p-foot">
+            <i data-lucide="check"></i>Every change saves by itself<span class="pv2-sp"></span>
+            <span>↑ ↓ next task</span>
+        </div>
+    </aside>
+    <IPop.Web.Components.AttachmentViewer Attachment="viewerFile" Siblings="viewerSiblings" OnClose="() => viewerFile = null" OnNavigate="a => viewerFile = a" />
+}
+
+@code {
+    [Parameter] public ProjectTaskDto? Task { get; set; }
+    [Parameter] public IReadOnlyList<ProjectTaskDto> Subtasks { get; set; } = [];
+    [Parameter] public IReadOnlyList<ProjectMemberDto> Members { get; set; } = [];
+    [Parameter] public IReadOnlyList<ProjectGroupDto> Groups { get; set; } = [];
+    [Parameter] public IReadOnlyList<ProjectStatusOptionDto> Options { get; set; } = [];
+    [Parameter] public IReadOnlyList<ProjectTaskDto> AllTasks { get; set; } = [];
+    [Parameter] public IReadOnlyList<ProjectTaskDto> NavTasks { get; set; } = [];
+    [Parameter] public string ProjectName { get; set; } = "Project";
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public string? CurrentUserNik { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<ProjectTaskDto> OnOpenFull { get; set; }
+    [Parameter] public EventCallback<ProjectTaskDto> OnNavigate { get; set; }
+    [Parameter] public EventCallback<(ProjectTaskDto Task, string NewStatus, Guid? StatusOptionId)> OnStatusChange { get; set; }
+    [Parameter] public EventCallback<(Guid TaskId, Guid UserId, bool IsAssigned)> OnToggleAssignee { get; set; }
+    [Parameter] public EventCallback<ProjectTaskDto> OnToggleSubtask { get; set; }
+    [Parameter] public EventCallback<string> OnAddSubtask { get; set; }
+    [Parameter] public EventCallback<(ProjectTaskDto Task, string? Priority)> OnPriority { get; set; }
+    [Parameter] public EventCallback<(ProjectTaskDto Task, DateTime? Due)> OnDue { get; set; }
+    [Parameter] public EventCallback<(ProjectTaskDto Task, DateTime? Start)> OnStart { get; set; }
+    /// A dependency was saved: the page refreshes its tasks.
+    [Parameter] public EventCallback<ProjectTaskDto?> OnTaskChanged { get; set; }
+    [Parameter] public DateTime? Today { get; set; }
+
+    private static readonly (string Key, string Label)[] Priorities = [("", "None"), ("low", "Low"), ("medium", "Medium"), ("high", "High"), ("urgent", "Urgent")];
+
+    private string tabKey = "details";
+    private bool statusOpen, ownerOpen, depOpen, timerBusy, clFlash;
+    private string depQuery = "", newItem = "";
+    private string? depError;
+    private Guid loadedFor;
+    private object? loadedVersion;
+    private List<TaskDiscussion.TaskCommentItem> comments = [];
+    private List<TaskActivityTimeline.TaskActivityItem> activity = [];
+    private List<TaskFiles.TaskFileDto> files = [];
+    private TaskTimeDto? time;
+    private System.Threading.Timer? tick;
+    private IPop.Application.Chat.AttachmentDto? viewerFile;
+    private IReadOnlyList<IPop.Application.Chat.AttachmentDto>? viewerSiblings;
+    private DotNetObjectReference<ProjectTaskPanel>? self;
+    private bool keysOn;
+    // Header and tabs paint first; the heavy body follows one frame later so opening the panel is not one long task.
+    private bool bodyReady;
+    private int doneBefore = -1;
+
+    private record CommentRow(Guid Id, string AuthorName, string AuthorNik, string Content, Guid? ParentCommentId, DateTime CreatedAt);
+    private record ActivityRow(Guid Id, string ActorName, string Action, string? OldValue, string? NewValue, DateTime CreatedAt);
+    private record ActivityPage(List<ActivityRow> Items, int TotalCount, int Page, int PageSize);
+
+    private IReadOnlyList<ProjectStatusOptionDto> OptionList => Options.Count == 0 ? ProjectStatusUi.StageDefaults : Options;
+    private bool running => Task is not null && Timer.IsRunning(Task.Id);
+    private Guid? MyUserId => CurrentUserNik is { } nik ? Members.FirstOrDefault(m => m.Nik == nik)?.UserId : null;
+    private bool IsOwner => CurrentUserNik is { } nik && Members.Any(m => m.Nik == nik && m.Role == "owner");
+    private DateTime TodayDate => (Today ?? DateTime.Today).Date;
+
+    private IEnumerable<(ProjectTaskDto Task, DependencyRefDto Ref)> Successors =>
+        Task is null ? [] : AllTasks.Where(x => x.DependsOn?.Any(d => d.Id == Task.Id) == true)
+            .Select(x => (x, x.DependsOn!.First(d => d.Id == Task.Id))).ToList();
+
+    private IEnumerable<ProjectTaskDto> Candidates
+    {
+        get
+        {
+            if (Task is null) return [];
+            var taken = (Task.DependsOn ?? []).Select(d => d.Id).ToHashSet();
+            var q = depQuery.Trim();
+            return AllTasks.Where(x => x.Id != Task.Id && x.Id != Task.ParentTaskId && !taken.Contains(x.Id)
+                    && (q.Length == 0 || x.Title.Contains(q, StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(x => x.Status == "done").ThenBy(x => x.Title, StringComparer.OrdinalIgnoreCase).Take(30);
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        Timer.Changed += OnTimerChanged;
+        tick = new System.Threading.Timer(_ => { if (running) _ = InvokeAsync(StateHasChanged); }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Task is null) return;
+        var done = Subtasks.Count(s => s.Status == "done");
+        if (doneBefore >= 0 && done != doneBefore) clFlash = true; else clFlash = false;
+        doneBefore = done;
+        // Reload when another task is shown or the page handed us a fresh copy (live refresh).
+        if (Task.Id == loadedFor && ReferenceEquals(Task, loadedVersion)) return;
+        var other = Task.Id != loadedFor;
+        loadedFor = Task.Id;
+        loadedVersion = Task;
+        if (other) { bodyReady = false; tabKey = "details"; statusOpen = ownerOpen = depOpen = false; depError = null; comments = []; activity = []; files = []; time = null; doneBefore = Subtasks.Count(s => s.Status == "done"); }
+        await System.Threading.Tasks.Task.WhenAll(LoadDiscussion(), LoadFiles(), LoadTime());
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Task is null) return;
+        if (!bodyReady)
+        {
+            await System.Threading.Tasks.Task.Delay(1);
+            bodyReady = true;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+        try
+        {
+            await JS.InvokeVoidAsync("ipop.icons");
+            if (!keysOn) { self = DotNetObjectReference.Create(this); await JS.InvokeVoidAsync("ipopPv2.panelKeys", self); keysOn = true; }
+            if (firstRender) await JS.InvokeVoidAsync("ipopPv2.focusPanel");
+        }
+        catch { /* no JS (tests / prerender) */ }
+    }
+
+    private async Task LoadDiscussion()
+    {
+        var id = Task!.Id;
+        try
+        {
+            var rows = await Auth.GetAsync<List<CommentRow>>($"/api/projects/tasks/{id}/comments") ?? [];
+            var acts = await Auth.GetAsync<ActivityPage>($"/api/projects/tasks/{id}/activity?pageSize=50");
+            if (Task?.Id != id) return;
+            comments = rows.Select(c => new TaskDiscussion.TaskCommentItem(c.Id, c.AuthorName, c.Content, c.CreatedAt, [], c.ParentCommentId, c.AuthorNik)).ToList();
+            activity = (acts?.Items ?? []).Select(a => new TaskActivityTimeline.TaskActivityItem(a.ActorName, ActivityLabel(a.Action), a.NewValue ?? a.OldValue, a.CreatedAt)).ToList();
+        }
+        catch { /* leave empty */ }
+    }
+
+    public async Task LoadFiles()
+    {
+        if (Task is null) return;
+        var id = Task.Id;
+        try
+        {
+            var rows = await Auth.GetAsync<List<TaskFiles.TaskFileDto>>($"/api/projects/tasks/{id}/files");
+            if (Task?.Id != id) return;
+            files = rows ?? [];
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { }
+    }
+
+    private async Task LoadTime()
+    {
+        var id = Task!.Id;
+        try
+        {
+            var fresh = await Auth.GetAsync<TaskTimeDto>($"/api/projects/tasks/{id}/time");
+            if (Task?.Id == id) time = fresh;
+        }
+        catch { }
+    }
+
+    private void OnTimerChanged() => _ = InvokeAsync(async () => { await LoadTime(); StateHasChanged(); });
+
+    private async Task ToggleTimer()
+    {
+        if (ReadOnly || Task is null) return;
+        timerBusy = true;
+        try
+        {
+            var err = Timer.IsRunning(Task.Id) ? await Timer.StopTimerAsync() : await Timer.StartTimerAsync(Task.Id);
+            if (err is not null) Toasts.Show("Couldn't change the timer. Try again.", IPop.Web.Services.ToastKind.Error);
+            await LoadTime();
+        }
+        finally { timerBusy = false; }
+    }
+
+    private int LoggedSeconds()
+    {
+        var s = (time?.TotalMinutes ?? 0) * 60;
+        // TotalMinutes only sums ended entries, so a running timer's elapsed time is always on top of it.
+        if (running && Timer.Running is { } r)
+            s += (int)(DateTime.UtcNow - r.StartedAt).TotalSeconds;
+        return s;
+    }
+    private string Clock() { var s = LoggedSeconds(); return $"{s / 3600}:{s % 3600 / 60:00}:{s % 60:00}"; }
+    private double TimePercent() => Task?.EstimatedHours is > 0 ? Math.Min(100, LoggedSeconds() / 3600.0 / (double)Task.EstimatedHours.Value * 100) : 0;
+
+    private void SetTab(string k) { tabKey = k; CloseAll(); }
+    private void CloseAll() { statusOpen = ownerOpen = depOpen = false; }
+
+    private async Task PickStatus(ProjectStatusOptionDto o)
+    {
+        statusOpen = false;
+        if (Task is null) return;
+        await OnStatusChange.InvokeAsync((Task, o.Stage, ProjectStatusUi.RealId(o)));
+    }
+
+    private async Task ToggleSub(ProjectTaskDto sub)
+    {
+        if (ReadOnly) return;
+        await OnToggleSubtask.InvokeAsync(sub);
+    }
+
+    private async Task AddItemKey(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter" || string.IsNullOrWhiteSpace(newItem) || ReadOnly) return;
+        var text = newItem.Trim();
+        newItem = "";
+        await OnAddSubtask.InvokeAsync(text);
+    }
+
+    private Task AddDep(Guid id)
+    {
+        depOpen = false; depQuery = "";
+        var links = (Task!.DependsOn ?? []).Select(d => new TaskLinkRequest(d.Id, d.LinkType, d.LagDays)).Append(new TaskLinkRequest(id)).ToList();
+        return SaveDeps(links);
+    }
+
+    private Task RemoveDep(Guid id) =>
+        SaveDeps((Task!.DependsOn ?? []).Where(d => d.Id != id).Select(d => new TaskLinkRequest(d.Id, d.LinkType, d.LagDays)).ToList());
+
+    private async Task SaveDeps(List<TaskLinkRequest> links)
+    {
+        if (ReadOnly || Task is null) return;
+        depError = null;
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{Task.Id}/dependencies", new SetTaskDependenciesRequest(links.Select(l => l.DependsOnTaskId).ToList(), links));
+        if (res.IsSuccessStatusCode)
+        {
+            ProjectTaskDto? fresh = null;
+            try { fresh = await res.Content.ReadFromJsonAsync<ProjectTaskDto>(); } catch { }
+            await OnTaskChanged.InvokeAsync(fresh);
+            return;
+        }
+        var body = await res.Content.ReadAsStringAsync();
+        depError = body.Contains("dependency_cycle") ? "Not allowed: that task already waits on this one (indirectly)."
+            : body.Contains("too_many_dependencies") ? "A task can have at most 20 dependencies."
+            : body.Contains("forbidden") ? "You don't have access to change this task."
+            : "Couldn't save the dependency.";
+    }
+
+    private async Task SubmitComment((string Text, Guid? ParentId) input)
+    {
+        if (ReadOnly || Task is null) return;
+        try
+        {
+            await Auth.SendAsync(HttpMethod.Post, $"/api/projects/tasks/{Task.Id}/comments", new { content = input.Text, parentCommentId = input.ParentId });
+            await LoadDiscussion();
+        }
+        catch { }
+    }
+
+    private void OpenViewer((IPop.Application.Chat.AttachmentDto Open, IReadOnlyList<IPop.Application.Chat.AttachmentDto> All) pick)
+    {
+        viewerSiblings = pick.All;
+        viewerFile = pick.Open;
+    }
+
+    private async Task CopyLink()
+    {
+        if (Task is null) return;
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", $"{Nav.BaseUri}projects/{Task.ProjectId}?task={Task.Id}"); Toasts.Show("Link copied.", IPop.Web.Services.ToastKind.Success); }
+        catch { }
+    }
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") await OnClose.InvokeAsync();
+    }
+
+    /// Called from js/projects-v2.js: Escape closes, arrows step through the current view's order.
+    [JSInvokable]
+    public async Task PanelKey(string key)
+    {
+        if (Task is null) return;
+        if (key == "Escape") { await OnClose.InvokeAsync(); return; }
+        var i = NavIndex();
+        if (i < 0) return;
+        var next = key == "ArrowDown" ? i + 1 : i - 1;
+        if (next >= 0 && next < NavTasks.Count) await OnNavigate.InvokeAsync(NavTasks[next]);
+    }
+
+    private int NavIndex() { var id = Task!.Id; for (var i = 0; i < NavTasks.Count; i++) if (NavTasks[i].Id == id) return i; return -1; }
+
+    private bool IsLate(ProjectTaskDto t) => t.Status != "done" && t.DueDate.HasValue && t.DueDate.Value.Date < TodayDate;
+    private int LateDays(ProjectTaskDto t) => (TodayDate - t.DueDate!.Value.Date).Days;
+    private static string Fd(DateTime? d) => d.HasValue ? d.Value.ToString("ddd d MMM", CultureInfo.InvariantCulture) : "";
+    private static string First(string n) => n.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? n;
+    private static string PriLabel(string? p) => string.IsNullOrEmpty(p) ? "None" : char.ToUpperInvariant(p[0]) + p[1..];
+    private static string PriClass(string? p) => "p-" + (string.IsNullOrEmpty(p) ? "none" : p);
+    private static string LinkLabel(string t) => t switch { "SS" => "Start → Start", "FF" => "Finish → Finish", "SF" => "Start → Finish", _ => "Finish → Start" };
+    private static string LagLabel(int lag) => lag == 0 ? "" : lag > 0 ? $" +{lag}d" : $" {lag}d";
+    private static string LagText(DependencyRefDto d) => $"{(d.LagDays >= 0 ? "+" : "")}{d.LagDays} day{(Math.Abs(d.LagDays) == 1 ? "" : "s")} lag";
+    private RenderFragment DepStatus(string status) => __builder =>
+    {
+        var o = OptionList.FirstOrDefault(x => x.Stage == status);
+        <span class="pv2p-mini" style="--c:@ProjectStatusUi.SafeColor(o?.Color)">@(o?.Label ?? ProjectStatusUi.StageLabel(status))</span>
+    };
+
+    private static string ActivityLabel(string action) => action switch
+    {
+        "comment_added" => "added a comment", "comment_replied" => "replied to a comment", "comment_deleted" => "deleted a comment",
+        "attachment_added" => "added an attachment", "file_added" => "added a file", "file_removed" => "removed a file",
+        "attachment_removed" => "removed an attachment", "status_changed" => "changed status", "title_changed" => "changed title",
+        "priority_changed" => "changed priority", "due_changed" => "changed deadline", "assignee_added" => "assigned member",
+        "assignee_removed" => "unassigned member", var x => x
+    };
+
+    public void Dispose()
+    {
+        Timer.Changed -= OnTimerChanged;
+        tick?.Dispose();
+        try { _ = JS.InvokeVoidAsync("ipopPv2.panelKeysOff"); } catch { }
+        self?.Dispose();
+    }
+}

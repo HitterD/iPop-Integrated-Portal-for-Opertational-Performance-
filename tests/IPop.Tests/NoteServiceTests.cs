@@ -435,6 +435,39 @@ public class NoteServiceTests
     }
 
     [Fact]
+    public async Task Image_pasted_into_another_page_is_readable_by_that_pages_people()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("pa"); var b = t.AddUser("pb");
+        var src = await PageAsync(t, a.Id, null, "Original");   // private to a
+        var dst = await PageAsync(t, a.Id, null, "Copy target");
+        await Svc(t).AddShareAsync(a.Id, dst, new AddNoteShareRequest(b.Id, null, NoteLevels.View), Ct);
+
+        var attId = Guid.NewGuid();
+        t.Db.Attachments.Add(new IPop.Core.Entities.Attachment
+        {
+            Id = attId, Area = "notes", FileName = "pic.png", ContentType = "image/png",
+            Size = 42, Sha256 = "abc", StoragePath = "local:notes/pic.png", UploaderId = a.Id, CreatedAt = DateTime.UtcNow,
+        });
+        await t.Db.SaveChangesAsync();
+        await Svc(t).LinkAttachmentAsync(src, attId, Ct);
+
+        var policy = new NotesAttachmentPolicy(t.Verify(), Svc(t));
+        Assert.False(await policy.CanReadAsync(attId, b.Id, Ct), "b cannot open the original page");
+
+        // The pasted content on the target page mentions the attachment id; saving it links the file to that page too.
+        var payload = System.Text.Encoding.ASCII.GetBytes($"x{attId:D}y");
+        var snap = await Svc(t).SnapshotAsync(a.Id, dst, new NoteSnapshotRequest(Convert.ToBase64String(payload), 0, [], "img", 0, 0), Ct);
+        Assert.True(snap.Success, snap.Error);
+
+        Assert.True(await new NotesAttachmentPolicy(t.Verify(), Svc(t)).CanReadAsync(attId, b.Id, Ct));
+        // Saving again must not duplicate the link or fail on the composite key.
+        var again = await Svc(t).SnapshotAsync(a.Id, dst, new NoteSnapshotRequest(Convert.ToBase64String(payload), 1, [], "img", 0, 0), Ct);
+        Assert.True(again.Success, again.Error);
+        Assert.Equal(2, await t.Verify().NoteAttachments.CountAsync(x => x.AttachmentId == attId));
+    }
+
+    [Fact]
     public async Task Duplicate_clones_attachments_and_purge_soft_deletes_purged_page_attachments()
     {
         using var t = new TestDb();
@@ -475,18 +508,45 @@ public class NoteServiceTests
     }
 
     [Fact]
-    public async Task Versions_are_pruned_beyond_fifty_snapshots()
+    public async Task Old_versions_are_thinned_when_a_new_one_is_saved()
     {
         using var t = new TestDb();
         var a = t.AddUser("vp");
         var page = await PageAsync(t, a.Id);
-        var t0 = DateTime.UtcNow;
-        for (var i = 0; i < 55; i++)
+        var now = DateTime.UtcNow;
+        // Six versions on one day 30 days ago (11 min apart), then a fresh snapshot "now".
+        var oldDay = now.AddDays(-30).Date.AddHours(9);
+        for (var i = 0; i < 6; i++)
         {
             await Svc(t).AppendUpdateAsync(a.Id, page, [1], Ct);
-            var r = await Svc(t).SnapshotAsync(a.Id, page, new NoteSnapshotRequest("AQ==", i, [], "", 0, 0), Ct, t0.AddMinutes(i * 11));
+            var r = await Svc(t).SnapshotAsync(a.Id, page, new NoteSnapshotRequest("AQ==", i, [], "", 0, 0), Ct, oldDay.AddMinutes(i * 11));
             Assert.True(r.Success, r.Error);
         }
-        Assert.Equal(50, await t.Verify().NoteVersions.CountAsync(v => v.PageId == page));
+        // Each save pruned as it went (the earlier ones were "recent" relative to the next save), so the old day is still dense
+        // until a save happens much later.
+        await Svc(t).AppendUpdateAsync(a.Id, page, [1], Ct);
+        var last = await Svc(t).SnapshotAsync(a.Id, page, new NoteSnapshotRequest("AQ==", 6, [], "", 0, 0), Ct, now);
+        Assert.True(last.Success, last.Error);
+
+        // 6 old versions collapse to the newest of that day, plus the new one.
+        Assert.Equal(2, await t.Verify().NoteVersions.CountAsync(v => v.PageId == page));
+    }
+
+    [Fact]
+    public void Version_pruning_keeps_week_dense_then_daily_then_weekly()
+    {
+        var now = new DateTime(2026, 11, 15, 12, 0, 0, DateTimeKind.Utc);
+        var v = (int hoursAgo) => new NoteService.VersionStamp(Guid.NewGuid(), now.AddHours(-hoursAgo));
+        // last 7 days: all kept
+        var recent = new[] { v(1), v(5), v(30), v(100) };
+        // 20 days ago: two on the same day, only the newest stays
+        var d20a = v(20 * 24); var d20b = v(20 * 24 + 3);
+        // 200 days ago: two in the same week, only the newest stays
+        var w1 = v(200 * 24); var w2 = v(200 * 24 + 26);
+        var all = recent.Concat(new[] { d20a, d20b, w1, w2 }).ToList();
+
+        var stale = NoteService.StaleVersions(all, now).ToHashSet();
+        Assert.Equal(new HashSet<Guid> { d20b.Id, w2.Id }, stale);
+        Assert.Empty(NoteService.StaleVersions(recent, now));
     }
 }

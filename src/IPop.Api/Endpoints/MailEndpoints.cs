@@ -474,6 +474,7 @@ public static class MailEndpoints
             }
             // mode=preview → inline (iframe); default → unduhan dengan nama dari subjek.
             var download = !string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase);
+            bytes = IPop.Infrastructure.Documents.PdfTitle.Set(bytes, string.IsNullOrWhiteSpace(models[0].Subject) ? "(no subject)" : models[0].Subject);
             return Results.File(bytes, "application/pdf",
                 download ? PdfFileName(models[0].Subject, id) : null);
         });
@@ -746,15 +747,18 @@ public static class MailEndpoints
         // ──────────────────────────────────────────────────────────────────────
 
         // GET /api/mail/labels — label milik pengguna + jumlah surat terlabel.
-        g.MapGet("/labels", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>        {
+        // Count = mails the user still holds outside Trash (Archive counts), same rule as the label view.
+        g.MapGet("/labels", async (HttpContext http, IPopDbContext db, IMailService svc, CancellationToken ct) =>
+        {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
-            var rows = await db.MailLabels.AsNoTracking()
+            var labels = await db.MailLabels.AsNoTracking()
                 .Where(l => l.UserId == userId.Value)
                 .OrderBy(l => l.Name)
-                .Select(l => new MailLabelDto(l.Id, l.Name, l.Color, l.Assignments.Count))
+                .Select(l => new { l.Id, l.Name, l.Color })
                 .ToListAsync(ct);
-            return Results.Ok(rows);
+            var counts = await svc.GetLabelCountsAsync(userId.Value, ct);
+            return Results.Ok(labels.Select(l => new MailLabelDto(l.Id, l.Name, l.Color, counts.GetValueOrDefault(l.Id))).ToList());
         });
 
         // POST /api/mail/labels — buat label (nama unik per pengguna).

@@ -83,4 +83,18 @@ public class SpreadsheetService(IDevExpressDocumentFactory factory) : ISpreadshe
             return result;
         }, ct);
     }
+
+    public Task<int> GetSheetCountAsync(Stream excelStream, string fileName, CancellationToken ct = default)
+    {
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        if (ext == ".csv") return Task.FromResult(1);
+        var format = ext switch { ".xls" => DocumentFormat.Xls, ".xlsm" => DocumentFormat.Xlsm, _ => DocumentFormat.Xlsx };
+        return Task.Run(() =>
+        {
+            using var workbook = factory.CreateWorkbook();
+            if (excelStream.CanSeek) excelStream.Position = 0;
+            workbook.LoadDocument(excelStream, format);
+            return workbook.Worksheets.Count;
+        }, ct);
+    }
 }

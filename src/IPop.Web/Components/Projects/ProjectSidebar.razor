@@ -1,41 +1,25 @@
 @using IPop.Application.Projects
+@inject IJSRuntime JS
 
 <aside class="proj-sidebar @(IsCollapsed ? "collapsed" : "")" aria-label="Project Navigator">
-    <div class="proj-sidebar-head">
-        @if (!IsCollapsed)
-        {
-            <div class="title">
-                <span>All projects</span>
-                <span class="badge">@Projects.Count</span>
-            </div>
-        }
-        <div class="proj-sidebar-actions" style="@(IsCollapsed ? "margin:0 auto;display:flex;justify-content:center;width:100%" : "display:flex;align-items:center;gap:6px")">
-            @if (!IsCollapsed)
-            {
-                <button class="proj-new-btn" @onclick="OnCreateClick" title="Create New Project">
-                    <i data-lucide="plus"></i>New
-                </button>
-            }
-        </div>
+    @* Mockup prail(): search + green "+" on one row, then My work / All projects *@
+    <div class="pv2 pv2r-search">
+        <label class="pv2r-q">
+            <i data-lucide="search"></i>
+            <input class="proj-search-input" placeholder="Find a project" aria-label="Find a project" value="@SearchQuery" @oninput="HandleSearchInput" />
+        </label>
+        <button type="button" class="pv2r-plus" @onclick="OnCreateClick" title="New project" aria-label="New project"><i data-lucide="plus"></i></button>
     </div>
 
-    <button type="button" class="proj-portfolio-link @(PortfolioSelected ? "active" : "")" aria-current="@(PortfolioSelected ? "page" : null)" @onclick="OnSelectPortfolio" title="All projects overview">
-        <i data-lucide="layout-dashboard"></i><span>All projects overview</span>
-    </button>
-
-    @* Quick search projects *@
-    <div class="proj-search-wrap">
-        <i data-lucide="search" style="width:14px;height:14px;color:var(--ink-3)"></i>
-        <input class="proj-search-input" placeholder="Search projects" value="@SearchQuery" @oninput="HandleSearchInput" />
-    </div>
-
-    @* Year filter chips *@
-    <div class="proj-year-chips">
-        <button class="year-chip @(SelectedYear == null ? "active" : "")" @onclick="() => OnYearChanged.InvokeAsync(null)">All</button>
-        @foreach (var y in AvailableYears)
-        {
-            <button class="year-chip @(SelectedYear == y ? "active" : "")" @onclick="() => OnYearChanged.InvokeAsync(y)">@y</button>
-        }
+    @* Mockup prail(): "My work" (red late badge) and "All projects" buttons on top *@
+    <div class="pv2 pv2r-top">
+        <button type="button" class="pv2r-btn @(MyWorkSelected ? "on" : "")" data-act="mywork" aria-current="@(MyWorkSelected ? "page" : null)" @onclick="OnSelectMyWork" title="Everything assigned to you">
+            <i data-lucide="check" style="color:var(--accent)"></i><span>My work</span>
+            @if (LateCount > 0) { <span class="pv2r-bd">@LateCount late</span> }
+        </button>
+        <button type="button" class="pv2r-btn @(PortfolioSelected ? "on" : "")" data-act="portfolio" aria-current="@(PortfolioSelected ? "page" : null)" @onclick="OnSelectPortfolio" title="All projects overview">
+            <i data-lucide="layout-grid" style="color:var(--info)"></i><span>All projects</span>
+        </button>
     </div>
 
     @* Projects stream list *@
@@ -57,43 +41,35 @@
         }
         else
         {
-            @foreach (var p in Projects)
+            @foreach (var grp in Groups)
             {
-                var isSel = p.Id == SelectedProjectId;
-                <div class="proj-nav-item @(isSel ? "active" : "")" @onclick="() => OnSelectProject.InvokeAsync(p)" title="@p.Name (@p.Status)">
-                    <div class="proj-nav-collapsed-icon">
-                        @(string.IsNullOrWhiteSpace(p.Name) ? "P" : p.Name.Trim().Substring(0, 1).ToUpper())
-                    </div>
-                    <div class="proj-nav-body">
-                        <div class="proj-nav-head">
-                            <span class="proj-tile" style="background:@(!string.IsNullOrWhiteSpace(p.Color) ? p.Color : ProjectUiHelpers.GetAvatarBg(p.Name))">@ProjectUiHelpers.GetInitials(p.Name)</span>
-                            <span class="proj-nav-id">
-                                <span class="proj-nav-name" title="@p.Name">@p.Name</span>
-                                <span class="proj-nav-sub">@p.TaskCount @(p.TaskCount == 1 ? "task" : "tasks") · @p.MemberCount @(p.MemberCount == 1 ? "member" : "members")</span>
-                            </span>
+                @if (grp.Show)
+                {
+                    <h6 class="pv2r-h" data-group="@grp.Key">@grp.Key <span>@grp.Items.Count</span></h6>
+                }
+                @foreach (var p in grp.Items)
+                {
+                    var isSel = p.Id == SelectedProjectId && !MyWorkSelected && !PortfolioSelected;
+                    var pct = Math.Clamp(p.Progress, 0, 100);
+                    <div class="proj-nav-item pv2r-pi @(isSel ? "active on" : "")" role="button" tabindex="0" data-pid="@p.Id" @onclick="() => OnSelectProject.InvokeAsync(p)" title="@p.Name (@StatusLabel(p.Status))">
+                        <div class="proj-nav-collapsed-icon">
+                            @(string.IsNullOrWhiteSpace(p.Name) ? "P" : p.Name.Trim().Substring(0, 1).ToUpper())
                         </div>
-                        @* Only what tells this project apart: no "0%" bar, "Planning" pill or "No deadline"
-                           on every card — those are the defaults, and repeating them hid what mattered. *@
-                        @{ var pct = Math.Clamp(p.Progress, 0, 100); var due = pct >= 100 ? null : DueLabel(p.Deadline, p.Status); var showStatus = !p.Status.Equals("planning", StringComparison.OrdinalIgnoreCase); }
-                        @if (pct > 0)
-                        {
-                            <div class="proj-nav-prog">
-                                <div class="proj-nav-bar">
-                                    <div class="proj-nav-bar-fill @(pct >= 100 ? "done" : "")" style="width:@(pct)%"></div>
-                                </div>
-                                <span>@(pct)%</span>
-                            </div>
-                        }
-                        @if (showStatus || due is not null)
-                        {
-                            <div class="proj-nav-foot">
-                                @if (showStatus) { <span class="proj-st @p.Status.ToLower()">@StatusLabel(p.Status)</span> }
-                                @if (due is not null) { <span class="due @due.Value.Css">@due.Value.Text</span> }
-                            </div>
-                        }
+                        <span class="pv2r-dot" style="background:@(!string.IsNullOrWhiteSpace(p.Color) ? ProjectStatusUi.SafeColor(p.Color) : ProjectUiHelpers.GetAvatarBg(p.Name))"></span>
+                        <span class="pv2r-name">@p.Name</span>
+                        <span class="pv2r-pc">@(p.TaskCount == 0 ? "·" : pct + "%")</span>
                     </div>
-                </div>
+                }
             }
+        }
+    </div>
+
+    @* Year filter: small text chips at the foot of the rail (the mockup has no year filter) *@
+    <div class="pv2 pv2r-years" role="group" aria-label="Filter by year">
+        <button type="button" class="pv2r-yr @(SelectedYear == null ? "on" : "")" @onclick="() => OnYearChanged.InvokeAsync(null)">All</button>
+        @foreach (var y in AvailableYears)
+        {
+            <button type="button" class="pv2r-yr @(SelectedYear == y ? "on" : "")" @onclick="() => OnYearChanged.InvokeAsync(y)">@y</button>
         }
     </div>
 </aside>
@@ -108,6 +84,23 @@
     [Parameter] public bool Loading { get; set; }
     [Parameter] public bool PortfolioSelected { get; set; }
     [Parameter] public EventCallback OnSelectPortfolio { get; set; }
+    [Parameter] public bool MyWorkSelected { get; set; }
+    [Parameter] public EventCallback OnSelectMyWork { get; set; }
+    /// Late tasks assigned to the user (red badge on My work).
+    [Parameter] public int LateCount { get; set; }
+
+    private sealed record Group(string Key, bool Show, List<ProjectListDto> Items);
+
+    /// Grouped by year (the list has no department); the heading only shows when more than one year is visible.
+    /// There are no project favourites in iPop, so the mockup's Favourites group is not shown.
+    private List<Group> Groups
+    {
+        get
+        {
+            var byYear = Projects.GroupBy(p => p.Year).OrderByDescending(g => g.Key).ToList();
+            return byYear.Select(g => new Group(g.Key.ToString(), byYear.Count > 1, g.OrderBy(p => p.Name).ToList())).ToList();
+        }
+    }
 
     [Parameter] public EventCallback<ProjectListDto> OnSelectProject { get; set; }
     [Parameter] public EventCallback OnToggleSidebar { get; set; }
@@ -141,5 +134,10 @@
     private async Task HandleSearchInput(ChangeEventArgs e)
     {
         await OnSearchChanged.InvokeAsync(e.Value?.ToString() ?? "");
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
     }
 }

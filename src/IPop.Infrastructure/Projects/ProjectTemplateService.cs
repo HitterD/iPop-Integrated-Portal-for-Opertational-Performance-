@@ -22,7 +22,7 @@ public sealed class ProjectTemplateService(IPopDbContext db, IProjectService pro
             .Select(t => new
             {
                 t.Id, t.Name, t.Description, t.SourceProjectId, t.IsBuiltIn, t.Visibility, t.UsedCount, t.CreatedAt,
-                t.Icon, t.Color, t.CreatedById,
+                t.Icon, t.Color, t.CreatedById, t.Category, t.DurationWeeks,
                 CreatedByName = t.CreatedBy != null ? t.CreatedBy.Name : null,
                 DepartmentName = t.Department != null ? t.Department.Name : null,
                 SourceName = t.SourceProject != null ? t.SourceProject.Name : null,
@@ -36,8 +36,27 @@ public sealed class ProjectTemplateService(IPopDbContext db, IProjectService pro
             .ThenByDescending(t => t.UsedCount).ThenBy(t => t.Name)
             .Select(t => new ProjectTemplateDto(t.Id, t.Name, t.Description, t.Tasks, t.SourceProjectId,
                 t.Groups, t.Milestones, t.UsedCount, t.IsBuiltIn, t.Visibility, t.CreatedByName, t.DepartmentName,
-                t.Icon, t.Color, !t.IsBuiltIn && (isAdmin || (t.CreatedById is { } c && c == actorId)), t.SourceName))
+                t.Icon, t.Color, !t.IsBuiltIn && (isAdmin || (t.CreatedById is { } c && c == actorId)), t.SourceName,
+                t.Category, t.DurationWeeks))
             .ToList();
+    }
+
+    public const string MyTemplates = "My templates";
+    public const string SharedWithDepartment = "Shared with my department";
+
+    public async Task<IReadOnlyList<ProjectTemplateCategoryDto>> CategoriesAsync(Guid actorId, CancellationToken ct)
+    {
+        var deptId = await DepartmentOfAsync(actorId, ct);
+        var rows = await Usable(db.ProjectTemplates.AsNoTracking(), actorId, deptId)
+            .Select(t => new { t.Category, t.CreatedById, t.Visibility, t.DepartmentId }).ToListAsync(ct);
+        var result = rows.Where(r => r.Category is not null).GroupBy(r => r.Category!)
+            .OrderBy(g => g.Key).Select(g => new ProjectTemplateCategoryDto(g.Key, g.Count())).ToList();
+        var mine = rows.Count(r => r.CreatedById == actorId);
+        var shared = deptId is null ? 0 : rows.Count(r => r.Visibility == ProjectTemplateVisibility.Department
+            && r.DepartmentId == deptId && r.CreatedById != actorId);
+        result.Add(new(MyTemplates, mine));
+        result.Add(new(SharedWithDepartment, shared));
+        return result;
     }
 
     public async Task<TemplateResult<ProjectTemplateDetailDto>> GetAsync(Guid actorId, Guid templateId, CancellationToken ct)
@@ -96,6 +115,25 @@ public sealed class ProjectTemplateService(IPopDbContext db, IProjectService pro
             // Offsets are counted from the source project's start (or creation) date.
             var baseDate = (source.StartDate ?? source.CreatedAt).Date;
 
+            // The project's own setup travels with it: statuses, tabs, custom field columns and automation settings
+            // (Close project promises "groups, statuses, columns, automations and lessons").
+            var srcStatuses = await db.ProjectStatusOptions.AsNoTracking().Where(o => o.ProjectId == source.Id)
+                .OrderBy(o => o.SortOrder).ThenBy(o => o.CreatedAt)
+                .Select(o => new ProjectTemplateStatusDto(o.Label, o.Color, o.Stage)).ToListAsync(ct);
+            if (srcStatuses.Count > 0) tpl.StatusesJson = Json(srcStatuses);
+            tpl.TabsJson = string.IsNullOrWhiteSpace(source.TabsJson) ? null : source.TabsJson;
+            var srcFields = await db.ProjectFields.AsNoTracking().Where(f => f.ProjectId == source.Id)
+                .OrderBy(f => f.SortOrder).ThenBy(f => f.CreatedAt)
+                .Select(f => new TemplateField(f.Name, f.Type, f.OptionsJson)).ToListAsync(ct);
+            if (srcFields.Count > 0) tpl.FieldsJson = Json(srcFields);
+            var srcRules = await db.ProjectAutomations.AsNoTracking().Where(a => a.ProjectId == source.Id)
+                .Select(a => new TemplateRule(a.Kind, a.IsEnabled, a.ConfigJson)).ToListAsync(ct);
+            if (srcRules.Count > 0) tpl.RulesJson = Json(srcRules);
+            if (tpl.StatusesJson is { Length: > 2000 }) tpl.StatusesJson = null;
+            if (tpl.TabsJson is { Length: > 1000 }) tpl.TabsJson = null;
+            if (tpl.FieldsJson is { Length: > 8000 }) tpl.FieldsJson = null;
+            if (tpl.RulesJson is { Length: > 4000 }) tpl.RulesJson = null;
+
             var groupMap = new Dictionary<Guid, Guid>();
             if (req.IncludeSections)
             {
@@ -115,7 +153,7 @@ public sealed class ProjectTemplateService(IPopDbContext db, IProjectService pro
                 .OrderBy(t => t.Group.SortOrder).ThenBy(t => t.SortOrder)
                 .Select(t => new
                 {
-                    t.Id, t.Title, t.Description, t.Priority, t.DueDate, t.GroupId,
+                    t.Id, t.Title, t.Description, t.Priority, t.DueDate, t.StartDate, t.GroupId,
                     Niks = t.Assignees.Select(a => a.User.Nik).ToList(),
                 })
                 .ToListAsync(ct);
@@ -128,6 +166,8 @@ public sealed class ProjectTemplateService(IPopDbContext db, IProjectService pro
                     Id = Guid.NewGuid(), TemplateId = tpl.Id, Title = t.Title, Description = t.Description,
                     Priority = t.Priority, SortOrder = i++ * 100,
                     DueOffsetDays = t.DueDate is { } due ? (due.Date - baseDate).Days : null,
+                    // Calendar-day span, so a 3-day task is still 3 days long in the new project.
+                    DurationDays = t is { DueDate: { } d1, StartDate: { } s1 } && d1.Date >= s1.Date ? (d1.Date - s1.Date).Days + 1 : null,
                     GroupId = groupMap.TryGetValue(t.GroupId, out var gid) ? gid : null,
                     AssigneeNiks = req.IncludeAssignees && t.Niks.Count > 0 ? string.Join(",", t.Niks.Distinct()) : null,
                 };
@@ -166,8 +206,16 @@ public sealed class ProjectTemplateService(IPopDbContext db, IProjectService pro
         if (tpl is null) return Fail<ProjectDto>("not_found");
 
         var startDate = UtcDates.AsUtcDate(req.StartDate ?? DateTime.UtcNow.Date);
+        var goal = Trim(req.Goal, 1000);
+        var wd = tpl.OffsetsInWorkingDays;
+        DateTime At(int offset) => wd ? WorkingDays.AddWorkingDays(startDate, offset) : startDate.AddDays(offset);
+        var deadline = req.Deadline ?? req.FinishBy;
+        if (deadline is null && wd && tpl.Tasks.Any(t => t.DueOffsetDays != null))
+            deadline = At(Math.Max(tpl.Tasks.Max(t => t.DueOffsetDays ?? 0), tpl.Milestones.Count == 0 ? 0 : tpl.Milestones.Max(m => m.DueOffsetDays)));
+        if (deadline is not null) deadline = UtcDates.AsUtcDate(deadline.Value);
+        var statuses = ParseStatuses(tpl.StatusesJson);
         var createReq = new CreateProjectRequest(string.IsNullOrWhiteSpace(req.Name) ? tpl.Name : req.Name, req.Description ?? tpl.Description,
-            req.Year ?? startDate.Year, req.OwnerId ?? actorId, startDate, req.Deadline, null, null,
+            req.Year ?? startDate.Year, req.OwnerId ?? actorId, startDate, deadline, null, null,
             string.IsNullOrWhiteSpace(req.OwnerNik) ? null : req.OwnerNik, req.Color);
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var created = await projects.CreateProjectAsync(actorId, createReq, ct);
@@ -194,6 +242,38 @@ public sealed class ProjectTemplateService(IPopDbContext db, IProjectService pro
             groupMap[tg.Id] = g.Id;
         }
 
+        // Statuses: the template's own set, else the project defaults; tasks point at the first todo option.
+        if (statuses is not null)
+        {
+            db.ProjectStatusOptions.RemoveRange(await db.ProjectStatusOptions.Where(o => o.ProjectId == projectId).ToListAsync(ct));
+            for (var i = 0; i < statuses.Count; i++)
+                db.ProjectStatusOptions.Add(new ProjectStatusOption
+                {
+                    Id = Guid.NewGuid(), ProjectId = projectId, Label = statuses[i].Label.Trim(), Color = statuses[i].Color, Stage = statuses[i].Stage,
+                    SortOrder = (i + 1) * 100, CreatedAt = now,
+                });
+            await db.SaveChangesAsync(ct);
+        }
+        else await ProjectStatusService.EnsureStatusesAsync(db, projectId, ct);
+        var todoOption = await db.ProjectStatusOptions.AsNoTracking().Where(o => o.ProjectId == projectId && o.Stage == "todo")
+            .OrderBy(o => o.SortOrder).Select(o => (Guid?)o.Id).FirstOrDefaultAsync(ct);
+
+        var project = await db.Projects.FirstAsync(p => p.Id == projectId, ct);
+        project.Goal = goal;
+        var tabs = ParseStrings(tpl.TabsJson).Where(ProjectStatusDefaults.TabKeys.Contains).Distinct().ToList();
+        if (tabs.Count > 0) project.TabsJson = System.Text.Json.JsonSerializer.Serialize(tabs);
+
+        // Role assignments: roleKey -> people. Only active users count; they join as members.
+        var roleKeys = ParseRoles(tpl.RolesJson).Select(r => r.Key).ToHashSet();
+        var roleUsers = new Dictionary<string, List<Guid>>();
+        if (req.RoleAssignments is { Count: > 0 })
+        {
+            var wanted = req.RoleAssignments.Where(kv => roleKeys.Contains(kv.Key)).SelectMany(kv => kv.Value).Distinct().ToList();
+            var active = (await db.Users.AsNoTracking().Where(u => wanted.Contains(u.Id) && u.IsActive).Select(u => u.Id).ToListAsync(ct)).ToHashSet();
+            foreach (var kv in req.RoleAssignments.Where(kv => roleKeys.Contains(kv.Key)))
+                roleUsers[kv.Key] = kv.Value.Where(active.Contains).Distinct().ToList();
+        }
+
         // Assignees: only NIKs that still name an active user; they join the project as members.
         var allNiks = tpl.Tasks.SelectMany(t => SplitNiks(t.AssigneeNiks)).Distinct().ToList();
         var users = allNiks.Count == 0 ? new Dictionary<string, Guid>()
@@ -206,16 +286,25 @@ public sealed class ProjectTemplateService(IPopDbContext db, IProjectService pro
             var task = new ProjectTask
             {
                 Id = Guid.NewGuid(), ProjectId = projectId, Title = tt.Title, Description = tt.Description,
-                Status = "todo", Priority = tt.Priority,
+                Status = "todo", StatusOptionId = todoOption, Priority = tt.Priority,
                 GroupId = tt.GroupId is { } tg && groupMap.TryGetValue(tg, out var g) ? g : firstGroup.Id,
-                DueDate = tt.DueOffsetDays is { } d ? startDate.AddDays(d) : null,
+                DueDate = tt.DueOffsetDays is { } d ? At(d) : null,
+                StartDate = tt is { DueOffsetDays: { } d2, DurationDays: { } dur and > 1 }
+                    ? (wd ? At(Math.Max(0, d2 - (dur - 1))) : startDate.AddDays(d2 - (dur - 1))) : null,
+                IsRecurring = !string.IsNullOrWhiteSpace(tt.RecurrenceRule),
+                RecurrenceRule = string.IsNullOrWhiteSpace(tt.RecurrenceRule) ? null : tt.RecurrenceRule,
                 SortOrder = tt.SortOrder, CreatedById = actorId, CreatedAt = now, UpdatedAt = now,
             };
             db.ProjectTasks.Add(task);
             taskMap[tt.Id] = task.Id;
+            var assigned = new HashSet<Guid>();
             foreach (var nik in SplitNiks(tt.AssigneeNiks).Distinct())
-                if (users.TryGetValue(nik, out var uid))
+                if (users.TryGetValue(nik, out var uid) && assigned.Add(uid))
                     db.ProjectTaskAssignees.Add(new ProjectTaskAssignee { TaskId = task.Id, UserId = uid, AssignedAt = now });
+            if (tt.RoleKey is { } rk && roleUsers.TryGetValue(rk, out var ru))
+                foreach (var uid in ru)
+                    if (assigned.Add(uid))
+                        db.ProjectTaskAssignees.Add(new ProjectTaskAssignee { TaskId = task.Id, UserId = uid, AssignedAt = now });
         }
 
         foreach (var tm in tpl.Milestones.OrderBy(m => m.SortOrder))
@@ -223,20 +312,41 @@ public sealed class ProjectTemplateService(IPopDbContext db, IProjectService pro
             var linked = SplitGuids(tm.TaskIds).Where(taskMap.ContainsKey).Select(id => taskMap[id]).Distinct().ToList();
             var m = new ProjectMilestone
             {
-                Id = Guid.NewGuid(), ProjectId = projectId, Title = tm.Title, DueDate = startDate.AddDays(tm.DueOffsetDays),
+                Id = Guid.NewGuid(), ProjectId = projectId, Title = tm.Title, DueDate = At(tm.DueOffsetDays),
                 TaskId = linked.Count > 0 ? linked[0] : null, CreatedAt = now,
             };
             db.ProjectMilestones.Add(m);
             foreach (var tid in linked) db.ProjectMilestoneTasks.Add(new ProjectMilestoneTask { MilestoneId = m.Id, TaskId = tid });
         }
+        // Saved-from-a-project setup: custom field columns and the automation settings.
+        foreach (var (f, fi) in ParseList<TemplateField>(tpl.FieldsJson).Where(f => !string.IsNullOrWhiteSpace(f.Name) && !string.IsNullOrWhiteSpace(f.Type)).Select((f, i) => (f, i)))
+            db.ProjectFields.Add(new ProjectField { Id = Guid.NewGuid(), ProjectId = projectId, Name = f.Name.Trim(), Type = f.Type, OptionsJson = f.Options, SortOrder = fi, CreatedAt = now });
+        var savedRules = ParseList<TemplateRule>(tpl.RulesJson);
+        if (savedRules.Count > 0)
+        {
+            var rows = await db.ProjectAutomations.Where(a => a.ProjectId == projectId).ToListAsync(ct);
+            foreach (var r in savedRules.Where(r => ProjectAutomationCatalogue.Find(r.Kind) is not null).GroupBy(r => r.Kind).Select(g => g.First()))
+            {
+                var row = rows.FirstOrDefault(a => a.Kind == r.Kind);
+                if (row is null)
+                {
+                    row = new ProjectAutomation { Id = Guid.NewGuid(), ProjectId = projectId, Kind = r.Kind, CreatedAt = now, ConfigJson = "{}" };
+                    db.ProjectAutomations.Add(row);
+                }
+                row.IsEnabled = r.Enabled;
+                if (!string.IsNullOrWhiteSpace(r.Config) && r.Config.Length <= 1000) row.ConfigJson = r.Config;
+            }
+        }
+
         // This creation flow owns the new project: membership and assignments are saved together.
         // Do not ignore a separate AddMemberAsync result after tasks have already been persisted.
         var existingMembers = await db.ProjectMembers.Where(m => m.ProjectId == projectId)
             .Select(m => m.UserId).ToListAsync(ct);
-        foreach (var uid in users.Values.Distinct().Except(existingMembers))
+        foreach (var uid in users.Values.Concat(roleUsers.Values.SelectMany(x => x)).Distinct().Except(existingMembers))
             db.ProjectMembers.Add(new ProjectMember { ProjectId = projectId, UserId = uid, Role = "member", JoinedAt = now });
         await db.SaveChangesAsync(ct);
 
+        await new ProjectService(db).RecalculateProgressAsync(projectId, ct);
         await db.ProjectTemplates.Where(t => t.Id == tpl.Id)
             .ExecuteUpdateAsync(s => s.SetProperty(t => t.UsedCount, t => t.UsedCount + 1), ct);
 
@@ -276,13 +386,74 @@ public sealed class ProjectTemplateService(IPopDbContext db, IProjectService pro
     private Task<Guid?> DepartmentOfAsync(Guid userId, CancellationToken ct) =>
         db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.DepartmentId).FirstOrDefaultAsync(ct);
 
-    private static ProjectTemplateDetailDto Detail(ProjectTemplate tpl) => new(
-        tpl.Id, tpl.Name, tpl.Description,
-        tpl.Tasks.OrderBy(t => t.SortOrder).Select(t => new ProjectTemplateTaskDto(t.Id, t.Title, t.Description, t.Priority,
-            t.DueOffsetDays, t.SortOrder, t.GroupId, SplitNiks(t.AssigneeNiks).ToList())).ToList(),
-        tpl.Groups.OrderBy(g => g.SortOrder).Select(g => new ProjectTemplateGroupDto(g.Id, g.Name, g.Color, g.SortOrder)).ToList(),
-        tpl.Milestones.OrderBy(m => m.SortOrder).Select(m => new ProjectTemplateMilestoneDto(m.Id, m.Title, m.DueOffsetDays,
-            SplitGuids(m.TaskIds).ToList())).ToList());
+    private static ProjectTemplateDetailDto Detail(ProjectTemplate tpl)
+    {
+        var roles = ParseRoles(tpl.RolesJson)
+            .Select(r => new ProjectTemplateRoleDto(r.Key, r.Label, r.Hint, tpl.Tasks.Count(t => t.RoleKey == r.Key))).ToList();
+        var perWeek = tpl.OffsetsInWorkingDays ? 5 : 7;
+        var summaries = tpl.Groups.OrderBy(g => g.SortOrder).Select(g =>
+        {
+            var ts = tpl.Tasks.Where(t => t.GroupId == g.Id && t.DueOffsetDays != null).ToList();
+            var ends = ts.Select(t => t.DueOffsetDays!.Value).ToList();
+            var starts = ts.Select(t => Math.Max(0, t.DueOffsetDays!.Value - ((t.DurationDays ?? 1) - 1))).ToList();
+            return new ProjectTemplateGroupSummaryDto(g.Name, g.Color, tpl.Tasks.Count(t => t.GroupId == g.Id),
+                starts.Count == 0 ? 1 : starts.Min() / perWeek + 1, ends.Count == 0 ? 1 : ends.Max() / perWeek + 1);
+        }).ToList();
+        return new(
+            tpl.Id, tpl.Name, tpl.Description,
+            tpl.Tasks.OrderBy(t => t.SortOrder).Select(t => new ProjectTemplateTaskDto(t.Id, t.Title, t.Description, t.Priority,
+                t.DueOffsetDays, t.SortOrder, t.GroupId, SplitNiks(t.AssigneeNiks).ToList(), t.DurationDays, t.RoleKey, t.RecurrenceRule)).ToList(),
+            tpl.Groups.OrderBy(g => g.SortOrder).Select(g => new ProjectTemplateGroupDto(g.Id, g.Name, g.Color, g.SortOrder)).ToList(),
+            tpl.Milestones.OrderBy(m => m.SortOrder).Select(m => new ProjectTemplateMilestoneDto(m.Id, m.Title, m.DueOffsetDays,
+                SplitGuids(m.TaskIds).ToList())).ToList(),
+            ParseStatuses(tpl.StatusesJson) ?? ProjectStatusDefaults.Options.Select(o => new ProjectTemplateStatusDto(o.Label, o.Color, o.Stage)).ToList(),
+            ParseStrings(tpl.TabsJson).Where(ProjectStatusDefaults.TabKeys.Contains).ToList(),
+            roles, ParseStrings(tpl.AutomationsJson), summaries, tpl.Category, tpl.DurationWeeks, tpl.OffsetsInWorkingDays);
+    }
+
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOpts = new(System.Text.Json.JsonSerializerDefaults.Web);
+
+    private sealed record TemplateField(string Name, string Type, string? Options);
+    private sealed record TemplateRule(string Kind, bool Enabled, string? Config);
+
+    private static string Json<T>(T value) => System.Text.Json.JsonSerializer.Serialize(value, JsonOpts);
+
+    private static List<T> ParseList<T>(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try { return System.Text.Json.JsonSerializer.Deserialize<List<T>>(json, JsonOpts) ?? []; }
+        catch (System.Text.Json.JsonException) { return []; }
+    }
+
+    private static List<string> ParseStrings(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try { return System.Text.Json.JsonSerializer.Deserialize<List<string>>(json, JsonOpts) ?? []; }
+        catch (System.Text.Json.JsonException) { return []; }
+    }
+
+    private static List<ProjectTemplateRoleDto> ParseRoles(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try { return (System.Text.Json.JsonSerializer.Deserialize<List<ProjectTemplateRoleDto>>(json, JsonOpts) ?? []).Where(r => !string.IsNullOrWhiteSpace(r.Key)).ToList(); }
+        catch (System.Text.Json.JsonException) { return []; }
+    }
+
+    /// Null when the template has no (valid) custom status set, so the project defaults apply.
+    private static List<ProjectTemplateStatusDto>? ParseStatuses(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            var list = System.Text.Json.JsonSerializer.Deserialize<List<ProjectTemplateStatusDto>>(json, JsonOpts);
+            if (list is null || list.Count is 0 or > ProjectStatusDefaults.MaxOptions) return null;
+            if (list.Any(o => string.IsNullOrWhiteSpace(o.Label) || o.Label.Length > ProjectStatusDefaults.MaxLabelLength
+                    || !ProjectStatusDefaults.Stages.Contains(o.Stage) || string.IsNullOrWhiteSpace(o.Color))) return null;
+            if (!list.Any(o => o.Stage == "todo") || !list.Any(o => o.Stage == "done")) return null;
+            return list;
+        }
+        catch (System.Text.Json.JsonException) { return null; }
+    }
 
     internal static IEnumerable<string> SplitNiks(string? s) =>
         string.IsNullOrWhiteSpace(s) ? [] : s.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

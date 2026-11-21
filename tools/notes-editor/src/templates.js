@@ -45,7 +45,12 @@ const guide = () => doc(
       [code('- '), ' bulleted list · ', code('1. '), ' numbered list · ', code('[ ] '), ' to-do'],
       [code('> '), ' quote · ', code('```'), ' code block · ', code('---'), ' divider'],
       [code('@'), ' mention a colleague — they get a notification'],
+      [code('Ctrl Alt 1/2/3'), ' heading · ', code('Ctrl D'), ' duplicate a block · ', code('Ctrl ⇧ ↑/↓'), ' move it · ', code('Ctrl S'), ' saves now (it saves by itself anyway)'],
     ])),
+  todos([
+    ['Type ', code('->'), ' and watch it become →. Also ', code('=>'), ' ⇒, ', code('!='), ' ≠, ', code('...'), ' …, ', code('(v)'), ' ✓, ', code(':deg:'), ' °. ',
+      b('Backspace'), ' right after puts it back. All of them: type ', code('/symbol'), '.'],
+  ]),
 
   h(2, '2️⃣ Organizing pages'),
   todos([

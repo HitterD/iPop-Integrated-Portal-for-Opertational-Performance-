@@ -12,10 +12,12 @@ namespace IPop.Api.Endpoints;
 ///   notif-card  — "dismissed" once the phone notification card was answered with "Not now"
 ///   dash-order  — dashboard widget order (string array)
 ///   notifier    — iPop Notifier desktop settings (IPop.Application.Notifier.NotifierSettings, normalised on save)
+///   wb-pens     — whiteboard "My pens": up to 12 { name, type, color, size }
+///   wb-tpl-recent — whiteboard templates used last (up to 6 keys)
 public static class UiPrefsEndpoints
 {
     public const int MaxJsonBytes = 2048;
-    private static readonly string[] Keys = ["tabs", "notif-card", "dash-order", "notifier"];
+    private static readonly string[] Keys = ["tabs", "notif-card", "dash-order", "notifier", "wb-pens", "wb-tpl-recent"];
 
     public static IEndpointRouteBuilder MapUiPrefs(this IEndpointRouteBuilder app)
     {
@@ -61,6 +63,8 @@ public static class UiPrefsEndpoints
             "notif-card" => value.ValueKind == JsonValueKind.String && value.GetString() is "dismissed" or "enabled",
             "dash-order" => ReadStrings(json) is { Count: <= 40 } list && list.All(s => s.Length is > 0 and <= 32),
             "notifier" => value.ValueKind == JsonValueKind.Object,
+            "wb-pens" => IsPenList(value),
+            "wb-tpl-recent" => ReadStrings(json) is { Count: <= 6 } recent && recent.All(s => s.Length is > 0 and <= 64),
             _ => false,
         };
         if (!ok) return 400;
@@ -100,5 +104,22 @@ public static class UiPrefsEndpoints
     {
         var nik = http.User.FindFirst("nik")?.Value;
         return db.Users.AsNoTracking().Where(u => u.Nik == nik).Select(u => (Guid?)u.Id).FirstOrDefaultAsync(ct);
+    }
+
+    /// "My pens": an array of at most 12 objects with a short name, a known pen type, a colour (#RRGGBB or auto) and a size 0–3.
+    internal static bool IsPenList(JsonElement v)
+    {
+        if (v.ValueKind != JsonValueKind.Array || v.GetArrayLength() > 12) return false;
+        string[] types = ["pen", "fine", "marker", "highlighter", "pencil", "brush", "callig", "crayon", "neon"];
+        foreach (var p in v.EnumerateArray())
+        {
+            if (p.ValueKind != JsonValueKind.Object) return false;
+            if (!p.TryGetProperty("name", out var n) || n.ValueKind != JsonValueKind.String || n.GetString() is not { Length: > 0 and <= 40 }) return false;
+            if (!p.TryGetProperty("type", out var t) || t.ValueKind != JsonValueKind.String || !types.Contains(t.GetString())) return false;
+            if (!p.TryGetProperty("color", out var c) || c.ValueKind != JsonValueKind.String
+                || !System.Text.RegularExpressions.Regex.IsMatch(c.GetString()!, "^(auto|#[0-9A-Fa-f]{6})$")) return false;
+            if (!p.TryGetProperty("size", out var z) || z.ValueKind != JsonValueKind.Number || !z.TryGetInt32(out var size) || size is < 0 or > 3) return false;
+        }
+        return true;
     }
 }

@@ -1,0 +1,340 @@
+@using IPop.Application.Projects
+@using System.Globalization
+@inject IPop.Web.Services.AuthState Auth
+@inject IPop.Web.Services.ToastService Toasts
+@inject IJSRuntime JS
+@implements IDisposable
+
+@* Projects v2 Workload (docs/mockups/ipop-apple/projects-v2.html workloadView): person x 8 weeks in hours against a weekly
+   capacity. Clicking an over-capacity cell asks the API for a suggestion (nothing is written) and applies it on request. *@
+<div class="pv2 pv2w" data-view="workload">
+    <div class="pv2w-tb">
+        <div class="pv2w-seg" role="group" aria-label="Show hours or tasks">
+            <button type="button" class="@(mode == "hours" ? "on" : "")" aria-pressed="@(mode == "hours" ? "true" : "false")" @onclick='() => SetMode("hours")'>Hours</button>
+            <button type="button" class="@(mode == "tasks" ? "on" : "")" aria-pressed="@(mode == "tasks" ? "true" : "false")" @onclick='() => SetMode("tasks")'>Tasks</button>
+            <span class="pv2w-knob" style="left:@(mode == "hours" ? 2 : 56)px;width:@(mode == "hours" ? 54 : 50)px"></span>
+        </div>
+        <div class="pv2w-pager" role="group" aria-label="Weeks">
+            <button type="button" class="pv2w-pg" aria-label="Previous week" @onclick="() => Shift(-7)"><i data-lucide="chevron-left"></i></button>
+            <span class="pv2w-chip"><i data-lucide="calendar"></i>@RangeLabel</span>
+            <button type="button" class="pv2w-pg" aria-label="Next week" @onclick="() => Shift(7)"><i data-lucide="chevron-right"></i></button>
+        </div>
+        @if (dto is not null)
+        {
+            <span class="pv2w-chip">Capacity <b>@dto.CapacityHoursPerWeek h / week</b></span>
+        }
+        <span class="pv2-sp"></span>
+        <span class="pv2w-note">Hours come from task estimates, spread over working days. Holidays count as 0.</span>
+        <div class="pv2w-team">
+            <button type="button" class="pv2w-chip btn" aria-haspopup="menu" aria-expanded="@(teamOpen ? "true" : "false")" @onclick="() => teamOpen = !teamOpen"><i data-lucide="users"></i>Team<i data-lucide="more-horizontal"></i></button>
+            @if (teamOpen)
+            {
+                <div class="plist-backdrop" @onclick="() => teamOpen = false"></div>
+                <div class="pv2w-menu" role="menu" aria-label="Team">
+                    @if (CanManageMembers)
+                    {
+                        <button type="button" role="menuitem" @onclick="AddMember"><i data-lucide="user-plus"></i>Add member</button>
+                    }
+                    @if (Workload is not null)
+                    {
+                        @foreach (var m in Workload.ByAssignee)
+                        {
+                            var member = m;
+                            var memberId = member.IsUnassigned ? (Guid?)null : member.UserId;
+                            <div class="pv2w-mrow">
+                                <span class="nm">@member.Name<small>@(member.TaskCount - member.DoneCount) open@(member.OverdueCount > 0 ? $" · {member.OverdueCount} overdue" : "")</small></span>
+                                <button type="button" role="menuitem" class="pv2w-mbtn" aria-label="View tasks for @member.Name" title="View tasks" @onclick="() => ViewTasks(memberId)"><i data-lucide="list-checks"></i></button>
+                                @if (CanManageMembers && !member.IsUnassigned && !OwnerIds.Contains(member.UserId))
+                                {
+                                    <button type="button" role="menuitem" class="pv2w-mbtn danger" aria-label="Remove @member.Name from project" title="Remove member" @onclick="() => RemoveMember(member.UserId)"><i data-lucide="trash-2"></i></button>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (state == LoadState.Loading)
+    {
+        <div class="pv2w-wrap" role="status" aria-label="Loading workload"><div class="pv2w-skel"></div></div>
+    }
+    else if (state == LoadState.Error || dto is null)
+    {
+        <div class="pv2o-error" role="alert">
+            <span class="pv2o-bigic"><i data-lucide="triangle-alert"></i></span>
+            <h3>Couldn't load the workload</h3>
+            <p>@errorText</p>
+            <button type="button" class="pv2-btn pri" @onclick="() => LoadAsync(false)">Retry</button>
+        </div>
+    }
+    else
+    {
+        <div class="pv2w-wrap">
+            <div class="pv2w-grid" role="table" aria-label="Workload per person and week">
+                <div class="pv2w-row h" role="row">
+                    <div role="columnheader">Person</div>
+                    @foreach (var w in dto.Weeks)
+                    {
+                        <div role="columnheader">@WeekHeader(w)</div>
+                    }
+                </div>
+                @foreach (var p in dto.People)
+                {
+                    var person = p;
+                    <div class="pv2w-row" role="row" @key="person.UserId">
+                        <div role="rowheader">
+                            <PersonAvatar Nik="@person.Nik" Name="@person.Name" Size="28" Class="pv2-av" Decorative="true" />
+                            <div><b>@person.Name</b><div class="role">@RoleLabel(person.Role)</div></div>
+                        </div>
+                        @for (var i = 0; i < dto.Weeks.Count && i < person.Weeks.Count; i++)
+                        {
+                            var idx = i;
+                            var cell = person.Weeks[i];
+                            var cls = CellClass(cell);
+                            var clickable = cls == "l3" && !ReadOnly;
+                            <div role="cell">
+                                @if (clickable)
+                                {
+                                    <button type="button" class="pv2w-load @cls @(flashKey == (person.UserId, idx) ? "flash" : "")" aria-label="@CellLabel(person, cell, idx)" aria-haspopup="dialog" @onclick="() => OpenSuggestion(person, idx)">
+                                        @Body(cell, dto.Weeks[idx], dto.CapacityHoursPerWeek)
+                                    </button>
+                                }
+                                else
+                                {
+                                    <div class="pv2w-load @cls @(cell.Off ? "off" : "") @(flashKey == (person.UserId, idx) ? "flash" : "")" role="img" aria-label="@CellLabel(person, cell, idx)">
+                                        @Body(cell, dto.Weeks[idx], dto.CapacityHoursPerWeek)
+                                    </div>
+                                }
+                                @if (pop is not null && pop.UserId == person.UserId && pop.Idx == idx)
+    {
+        <div class="plist-backdrop" @onclick="ClosePop"></div>
+        <div class="pv2w-pop" role="dialog" aria-label="Suggestion">
+            <b>@pop.PersonName has @pop.Hours h in @pop.WeekLabel</b>
+            @if (pop.Loading) { <p>Looking for someone with room…</p> }
+            else if (pop.Suggestion is { } s)
+            {
+                <p>Move <b>@s.Title</b> (@Hrs(s.Hours) h) to <b>@s.ToName</b>? @s.ToName has @Hrs(s.ToFreeHours) h free that week and is in the same project.</p>
+                <div class="row">
+                    <button type="button" class="pv2-btn pri sm" disabled="@busy" @onclick="ApplySuggestion">Move to @First(s.ToName)</button>
+                    <button type="button" class="pv2-btn sm" @onclick="ClosePop">Keep</button>
+                </div>
+            }
+            else
+            {
+                <p>@(pop.Error ?? "Nobody on this project has enough free time that week. Try moving the task's dates or adding someone to the team.")</p>
+                <div class="row"><button type="button" class="pv2-btn sm" @onclick="ClosePop">Close</button></div>
+            }
+        </div>
+    }
+                            </div>
+                        }
+                    </div>
+                }
+                @if (dto.People.Count == 0)
+                {
+                    <div class="pv2w-none">No people on this project yet.</div>
+                }
+            </div>
+        </div>
+        <div class="pv2w-legend">
+            <span><i class="sw l1"></i> Under 75%</span>
+            <span><i class="sw l2"></i> 75–100%</span>
+            <span><i class="sw l3"></i> Over capacity@(ReadOnly ? "" : ": click it for a suggestion")</span>
+            <span><i class="sw off"></i> Off week</span>
+        </div>
+    }
+    @if (ProjectId != Guid.Empty)
+    {
+        <TimesheetCard ProjectId="ProjectId" Version="Version" Class="v6-workload__timesheet" />
+    }
+</div>
+
+@code {
+    private enum LoadState { Loading, Ready, Error }
+
+    private sealed class Pop
+    {
+        public Guid UserId; public string PersonName = ""; public decimal Hours; public string WeekLabel = ""; public DateTime WeekStart;
+        public bool Loading = true; public WorkloadSuggestionDto? Suggestion; public string? Error; public Guid FromUser;
+        public int Idx;
+    }
+
+    private RenderFragment Body(WorkloadCellDto cell, WorkloadWeekDto week, int capacity) => __builder =>
+    {
+        if (cell.Off)
+        {
+            <small>@OffLabel(week)</small>
+        }
+        else
+        {
+            <span class="pv2-num">@(mode == "tasks" ? $"{cell.Tasks} {(cell.Tasks == 1 ? "task" : "tasks")}" : $"{Hrs(cell.Hours)} h")</span>
+            <small>@(CellClass(cell) == "l3" ? $"over by {Hrs(cell.Hours - Math.Max(1, capacity))} h" : $"{cell.Percent}%")</small>
+        }
+    };
+
+    [Parameter, EditorRequired] public Guid ProjectId { get; set; }
+    /// Viewers: the grid is read-only (no click affordance).
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public bool CanManageMembers { get; set; }
+    [Parameter] public int Version { get; set; }
+    [Parameter] public DateTime? Today { get; set; }
+    /// The old per-person task counts, only used by the Team menu.
+    [Parameter] public ProjectWorkloadDto? Workload { get; set; }
+    [Parameter] public IReadOnlySet<Guid> OwnerIds { get; set; } = new HashSet<Guid>();
+    [Parameter] public EventCallback OnAddMember { get; set; }
+    [Parameter] public EventCallback<Guid?> OnViewTasks { get; set; }
+    [Parameter] public EventCallback<Guid> OnRemoveMember { get; set; }
+    /// Called after a reassignment (and its undo) so the page can refresh its task lists.
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private LoadState state = LoadState.Loading;
+    private WeeklyWorkloadDto? dto;
+    private string? errorText;
+    private string mode = "hours";
+    private DateTime? from;
+    private Guid loadedFor;
+    private int loadedVersion = -1;
+    private int seq;
+    private bool disposed, teamOpen, busy;
+    private Pop? pop;
+    private (Guid, int)? flashKey;
+
+    private string RangeLabel => dto is { Weeks.Count: > 0 } d
+        ? $"{d.Weeks[0].Start.ToString("d MMM", CultureInfo.InvariantCulture)} – {d.Weeks[^1].Start.AddDays(6).ToString("d MMM", CultureInfo.InvariantCulture)}"
+        : "Next 8 weeks";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ProjectId == loadedFor && Version == loadedVersion) return;
+        var sameProject = ProjectId == loadedFor;
+        if (!sameProject) from = null;
+        loadedFor = ProjectId;
+        loadedVersion = Version;
+        await LoadAsync(sameProject && dto is not null);
+    }
+
+    private async Task LoadAsync(bool quiet)
+    {
+        var my = ++seq;
+        if (!quiet) { state = LoadState.Loading; StateHasChanged(); }
+        var today = (Today ?? DateTime.Today).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var q = $"localToday={today}" + (from is { } f ? $"&from={f:yyyy-MM-dd}" : "");
+        GetResult<WeeklyWorkloadDto> res;
+        try { res = await Auth.GetResultAsync<WeeklyWorkloadDto>($"/api/projects/{ProjectId}/workload/weekly?{q}"); }
+        catch (OperationCanceledException) { return; }
+        if (my != seq || disposed) return;
+        if (res.IsOk && res.Value is not null) { dto = res.Value; state = LoadState.Ready; errorText = null; }
+        else if (!quiet || dto is null)
+        {
+            state = LoadState.Error;
+            errorText = res.Status switch
+            {
+                GetStatus.Forbidden or GetStatus.NotFound => "You no longer have access to this project.",
+                GetStatus.Unreachable => "iPop could not reach the server. Check your connection and try again.",
+                _ => "Something went wrong while loading the workload. Try again in a moment.",
+            };
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+    }
+
+    private void SetMode(string m) { mode = m; }
+
+    private async Task Shift(int days)
+    {
+        pop = null;
+        var basis = from ?? dto?.Weeks.FirstOrDefault()?.Start ?? DateTime.Today;
+        from = basis.AddDays(days);
+        await LoadAsync(true);
+    }
+
+    private async Task AddMember() { teamOpen = false; await OnAddMember.InvokeAsync(); }
+    private async Task ViewTasks(Guid? id) { teamOpen = false; await OnViewTasks.InvokeAsync(id); }
+    private async Task RemoveMember(Guid id) { teamOpen = false; await OnRemoveMember.InvokeAsync(id); }
+
+    public static string CellClass(WorkloadCellDto c)
+    {
+        if (c.Off) return "l0";
+        if (c.Hours <= 0) return "l0";
+        if (c.Percent > 100) return "l3";
+        return c.Percent >= 75 ? "l2" : "l1";
+    }
+
+    public static string OffLabel(WorkloadWeekDto w)
+    {
+        var s = w.Start; var e = w.Start.AddDays(6);
+        var yearEnd = (s.Month == 12 && s.Day >= 20) || (s.Month == 1 && s.Day <= 3) || (e.Month == 1 && e.Day <= 3 && s.Month == 12);
+        return yearEnd ? "Year-end break" : "Holiday";
+    }
+
+    private static string WeekHeader(WorkloadWeekDto w) =>
+        $"W{ISOWeek.GetWeekOfYear(w.Start)} · {w.Start.ToString("d MMM", CultureInfo.InvariantCulture)}";
+
+    private static string Hrs(decimal h) => h.ToString("0.#", CultureInfo.InvariantCulture);
+    private static string First(string name) => name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name;
+    private static string RoleLabel(string role) => role switch { "owner" => "Project lead", "manager" => "Manager", "member" => "Team member", "viewer" => "Viewer", _ => role };
+
+    private string CellLabel(WorkloadPersonDto p, WorkloadCellDto c, int i)
+    {
+        var wk = dto is null ? "" : WeekHeader(dto.Weeks[i]);
+        return c.Off ? $"{p.Name}, {wk}: off week"
+            : $"{p.Name}, {wk}: {Hrs(c.Hours)} hours, {c.Tasks} tasks, {c.Percent}% of capacity";
+    }
+
+    private async Task OpenSuggestion(WorkloadPersonDto p, int idx)
+    {
+        if (dto is null || ReadOnly) return;
+        var w = dto.Weeks[idx];
+        var cell = p.Weeks[idx];
+        pop = new Pop
+        {
+            UserId = p.UserId, PersonName = p.Name, Hours = cell.Hours, WeekStart = w.Start, FromUser = p.UserId,
+            WeekLabel = "W" + ISOWeek.GetWeekOfYear(w.Start), Idx = idx,
+        };
+        var my = pop;
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{ProjectId}/workload/suggest", new WorkloadSuggestRequest(p.UserId, w.Start));
+        if (pop != my) return;
+        my.Loading = false;
+        if (res.IsSuccessStatusCode)
+        {
+            try { my.Suggestion = (await res.Content.ReadFromJsonAsync<WorkloadSuggestionsDto>())?.Suggestions.FirstOrDefault(); }
+            catch { my.Error = "Couldn't read the suggestion. Try again."; }
+        }
+        else my.Error = "Couldn't get a suggestion. Try again in a moment.";
+    }
+
+    private void ClosePop() => pop = null;
+
+    private async Task ApplySuggestion()
+    {
+        if (pop?.Suggestion is not { } s || busy) return;
+        var from = pop.FromUser;
+        var fromName = pop.PersonName;
+        busy = true;
+        var ok = await Reassign(s.TaskId, from, s.ToUserId);
+        busy = false;
+        pop = null;
+        if (!ok) { Toasts.Show("Couldn't move the task. It may have changed. Try again.", IPop.Web.Services.ToastKind.Error); return; }
+        await LoadAsync(true);
+        flashKey = (from, 0);
+        await OnChanged.InvokeAsync();
+        Toasts.ShowUndo($"Moved \"{s.Title}\" to {s.ToName}. Both were notified.", async () =>
+        {
+            if (await Reassign(s.TaskId, s.ToUserId, from)) { await LoadAsync(true); await OnChanged.InvokeAsync(); await InvokeAsync(StateHasChanged); }
+            else Toasts.Show($"Couldn't move \"{s.Title}\" back to {fromName}.", IPop.Web.Services.ToastKind.Error);
+        });
+    }
+
+    private async Task<bool> Reassign(Guid taskId, Guid fromUser, Guid toUser)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{ProjectId}/workload/reassign", new WorkloadReassignRequest(taskId, fromUser, toUser));
+        return res.IsSuccessStatusCode;
+    }
+
+    public void Dispose() { disposed = true; seq++; }
+}

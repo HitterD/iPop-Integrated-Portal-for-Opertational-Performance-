@@ -64,7 +64,7 @@ public class ProjectTaskDrawerTests
         var moves = new List<(Guid, string)>();
         var cut = ctx.Render<ProjectTaskDrawer>(p => p
             .Add(c => c.Task, task)
-            .Add(c => c.OnStatusChange, ((ProjectTaskDto Task, string NewStatus) a) => moves.Add((a.Task.Id, a.NewStatus))));
+            .Add(c => c.OnStatusChange, ((ProjectTaskDto Task, string NewStatus, Guid? StatusOptionId) a) => moves.Add((a.Task.Id, a.NewStatus))));
 
         Assert.Empty(cut.FindAll("select.td-status, .app-select.td-status"));
         var pills = cut.FindAll(".td-status-pill");
@@ -192,13 +192,25 @@ public class ProjectTaskDrawerTests
     }
 
     [Fact]
+    public void A_normal_task_open_always_resets_to_the_side_panel()
+    {
+        var page = RepoFile("src/IPop.Web/Pages/Projects.razor");
+        // OpenTaskEditor clears the full-editor flag unless the open came from OpenFullEditor / the new-task flow,
+        // and closing clears it too, so a stale true can never route later clicks to the drawer.
+        Assert.Contains("if (!openingNewTask && !(showTaskEditor && fullEditor)) { fullEditor = false;", page);
+        Assert.Contains("openingNewTask = true;", page);
+        var close = page[page.IndexOf("private void CloseTaskEditor()", StringComparison.Ordinal)..];
+        Assert.Contains("fullEditor = false;", close[..close.IndexOf('}')]);
+    }
+
+    [Fact]
     public void Quick_view_is_gone_from_the_page_and_the_task_menus()
     {
         var page = RepoFile("src/IPop.Web/Pages/Projects.razor");
         Assert.DoesNotContain("ProjectTaskQuickViewer", page);
         Assert.DoesNotContain("QuickView", page);
         Assert.DoesNotContain("quick viewer", page, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("OnInspectTask=\"OpenTaskEditor\"", page);
+        Assert.Contains("OnOpenTask=\"OpenTaskById\"", page); // stage 4: Overview opens tasks (the executive dashboard is no longer rendered)
         foreach (var f in new[] { "ProjectKanbanBoard.razor", "ProjectTableView.razor" })
         {
             var src = RepoFile("src/IPop.Web/Components/Projects/" + f);

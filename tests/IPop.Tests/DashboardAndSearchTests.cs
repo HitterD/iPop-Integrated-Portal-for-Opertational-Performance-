@@ -399,14 +399,15 @@ public class DashboardAndSearchTests
         // Roles, department and project memberships used to be read twice per Dashboard (once more by the calendar's news part).
         Assert.Single(first, q => q.Contains("\"UserRoles\"") && q.Contains("\"Name\"") && !q.Contains("EXISTS"));
         // The standalone membership read; the projects/milestones queries also name the table in subqueries.
-        Assert.Single(first, q => q.TrimStart().StartsWith("SELECT \"p\".\"ProjectId\"") && q.Contains("FROM \"ProjectMembers\" AS \"p\"\nWHERE"));
+        Assert.Single(first, q => q.TrimStart().StartsWith("SELECT \"p\".\"ProjectId\"") && q.Replace("\r\n", "\n").Contains("FROM \"ProjectMembers\" AS \"p\"\nWHERE"));
         Assert.Single(first, q => q.Contains("FROM \"MailRecipients\""));
         Assert.Contains(first, q => q.Contains("\"EmailOutbox\""));
         Assert.DoesNotContain(counter.Texts, q => q.Contains("\"EmailOutbox\"") || q.Contains("\"HrisSyncRuns\""));
-        // Permission checks are stubbed here (production caches them). Measured 37 after missed calls moved to
-        // COUNT + LIMIT (one extra statement, but no longer sized by the account's history). The message lists
-        // every read so a new one is easy to spot.
-        Assert.True(first.Count <= 37, $"{first.Count} commands:\n" + string.Join("\n", first.Select(q => q.Replace("\n", " ")[..Math.Min(100, q.Replace("\n", " ").Length)])));
+        // Permission checks are stubbed here (production caches them). The Notes calendar feed adds one
+        // bounded NoteTodoDues read to the previous 37-query budget. Keep it a single query, not one per note.
+        Assert.Single(first, q => q.Contains("FROM \"NoteTodoDues\""));
+        // The message lists every read so an unexpected extra query is easy to spot.
+        Assert.True(first.Count <= 38, $"{first.Count} commands:\n" + string.Join("\n", first.Select(q => q.Replace("\n", " ")[..Math.Min(100, q.Replace("\n", " ").Length)])));
     }
 
     private sealed class CommandCounter : Microsoft.EntityFrameworkCore.Diagnostics.DbCommandInterceptor

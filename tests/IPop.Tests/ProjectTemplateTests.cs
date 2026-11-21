@@ -11,6 +11,7 @@ namespace IPop.Tests;
 /// template, built-in seeding, delete rules; plus the milestone Owner field.
 public sealed class ProjectTemplateTests
 {
+    private const int BuiltInCount = 20;   // 3 original + 17 added by Projects v2 stage 2
     private static readonly DateTime SourceStart = new(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc);
     private static readonly DateTime NewStart = new(2026, 10, 12, 0, 0, 0, DateTimeKind.Utc);
     private static readonly DateTime Today = new(2026, 10, 6, 0, 0, 0, DateTimeKind.Utc);
@@ -63,7 +64,7 @@ public sealed class ProjectTemplateTests
         Assert.DoesNotContain("Mine private", colleague); Assert.DoesNotContain("QA only", colleague);
 
         var outsider = await Names(c.Outsider);   // no department
-        Assert.Equal(4, outsider.Count);           // 3 built-ins + "For all"
+        Assert.Equal(BuiltInCount + 1, outsider.Count);   // every built-in + "For all"
         Assert.Contains("For all", outsider);
 
         // A template the caller may not use is not found either.
@@ -238,7 +239,7 @@ public sealed class ProjectTemplateTests
         await BuiltInProjectTemplates.EnsureSeededAsync(c.T.Verify());
 
         var list = (await c.Svc().ListAsync(c.Owner.Id, true, default)).Where(t => t.IsBuiltIn).ToList();
-        Assert.Equal(3, list.Count);
+        Assert.Equal(BuiltInCount, list.Count);
         var sprint = list.Single(t => t.Name == "Software sprint");
         Assert.Equal((12, 4, 2), (sprint.TaskCount, sprint.GroupCount, sprint.MilestoneCount));
         var proc = list.Single(t => t.Name == "IT procurement");
@@ -248,8 +249,8 @@ public sealed class ProjectTemplateTests
         Assert.All(list, t => { Assert.Equal("everyone", t.Visibility); Assert.False(t.CanDelete); });
 
         using var v = c.T.Verify();
-        Assert.Equal(3, await v.ProjectTemplates.CountAsync());
-        Assert.Equal(35, await v.ProjectTemplateTasks.CountAsync());
+        Assert.Equal(BuiltInCount, await v.ProjectTemplates.CountAsync());
+        Assert.Equal(35, await v.ProjectTemplateTasks.CountAsync(t => t.TemplateId == BuiltInProjectTemplates.SoftwareSprintId || t.TemplateId == BuiltInProjectTemplates.ItProcurementId || t.TemplateId == BuiltInProjectTemplates.EventPlanningId));
 
         // A used built-in keeps its count across restarts.
         var r = await c.Svc().CreateProjectAsync(c.Owner.Id, new CreateProjectFromTemplateRequest(BuiltInProjectTemplates.ItProcurementId, "Laptops", null, null, null, NewStart, null), default);

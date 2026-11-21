@@ -56,7 +56,7 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
     public async Task<NoteAccess> GetAccessAsync(Guid userId, Guid pageId, CancellationToken ct)
     {
         var chain = await ChainAsync(pageId, ct);
-        if (chain.Count == 0 || chain.Any(n => n.DeletedAt != null)) return NoteAccess.None;
+        if (chain.Count == 0 || chain.Any(n => n.DeletedAt != null) || chain[^1].ParentId != null) return NoteAccess.None;
         return await AccessOnChainAsync(userId, chain, ct);
     }
 
@@ -104,10 +104,30 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
             foreach (var k in kids.Where(k => all.TryAdd(k.Id, k))) frontier.Add(k.Id);
         }
 
-        // A page under a trashed (or otherwise hidden-to-everyone) parent is not live.
-        var parentIds = all.Values.Where(n => n.ParentId is { } p && !all.ContainsKey(p)).Select(n => n.ParentId!.Value).Distinct().ToList();
-        var deadParents = parentIds.Count == 0 ? [] : (await db.NotePages.AsNoTracking()
-            .Where(p => parentIds.Contains(p.Id) && p.DeletedAt != null).Select(p => p.Id).ToListAsync(ct)).ToHashSet();
+        // A page under a trashed (or truncated/cyclic invisible) ancestor is not live.
+        var deadParents = new HashSet<Guid>();
+        var parentChain = new Dictionary<Guid, (Guid? ParentId, DateTime? DeletedAt)>();
+        var pFrontier = all.Values.Where(n => n.ParentId is { } p && !all.ContainsKey(p)).Select(n => n.ParentId!.Value).Distinct().ToList();
+        var startParents = pFrontier.ToList();
+        for (var depth = 0; pFrontier.Count > 0 && depth < MaxDepth; depth++)
+        {
+            var rows = await db.NotePages.AsNoTracking().Where(p => pFrontier.Contains(p.Id))
+                .Select(p => new { p.Id, p.ParentId, p.DeletedAt }).ToListAsync(ct);
+            foreach (var r in rows) parentChain[r.Id] = (r.ParentId, r.DeletedAt);
+            pFrontier = rows.Where(r => r.ParentId is { } pid && !all.ContainsKey(pid) && !parentChain.ContainsKey(pid))
+                .Select(r => r.ParentId!.Value).Distinct().ToList();
+        }
+        foreach (var start in startParents)
+        {
+            Guid? cur = start;
+            for (var steps = 0; cur is { } c && steps < MaxDepth; steps++)
+            {
+                if (all.TryGetValue(c, out var visNode)) { cur = visNode.ParentId; continue; }
+                if (!parentChain.TryGetValue(c, out var pn) || pn.DeletedAt is not null) { deadParents.Add(start); cur = null; break; }
+                cur = pn.ParentId;
+            }
+            if (cur is not null) deadParents.Add(start);
+        }
 
         var result = new Dictionary<Guid, Visible>();
         NoteAccess Resolve(Guid id, int guard)
@@ -122,12 +142,12 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         }
         foreach (var id in all.Keys) Resolve(id, 0);
 
-        // Drop subtrees whose invisible parent is in Trash.
+        // Drop subtrees whose invisible parent is in Trash or exceeds MaxDepth.
         bool Dead(Guid id, int guard)
         {
             var n = all[id];
             if (n.ParentId is not { } p) return false;
-            if (all.ContainsKey(p)) return guard < MaxDepth && Dead(p, guard + 1);
+            if (all.ContainsKey(p)) return guard >= MaxDepth || Dead(p, guard + 1);
             return deadParents.Contains(p);
         }
         foreach (var id in all.Keys.Where(id => Dead(id, 0)).ToList()) result.Remove(id);
@@ -149,8 +169,17 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
             CreatedAt = now, UpdatedAt = now,
         };
         db.NotePages.Add(page);
-        await db.SaveChangesAsync(ct);
-        return page.Id;
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            return page.Id;
+        }
+        catch (DbUpdateException)
+        {
+            db.ChangeTracker.Clear();
+            return await db.NotePages.AsNoTracking().Where(p => p.OwnerId == userId && p.IsGuide)
+                .Select(p => p.Id).FirstAsync(ct);
+        }
     }
 
     public async Task<NoteSidebarDto> GetSidebarAsync(Guid userId, CancellationToken ct)
@@ -158,14 +187,16 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         var visible = await VisibleAsync(userId, ct);
         var ids = visible.Keys.ToList();
         var rows = await db.NotePages.AsNoTracking().Where(p => ids.Contains(p.Id))
-            .Select(p => new { p.Id, p.Title, p.Emoji, p.IsGuide, p.TodoDone, p.TodoTotal, p.UpdatedAt, p.SortOrder, OwnerName = p.Owner.Name })
+            .Select(p => new { p.Id, p.ParentId, p.Title, p.Emoji, p.IsGuide, p.TodoDone, p.TodoTotal, p.UpdatedAt, p.CreatedAt, p.SortOrder, p.Kind, p.LockedAt, OwnerName = p.Owner.Name, OwnerNik = p.Owner.Nik, p.Excerpt, p.Cover, p.CoverImageId, p.ThumbnailId, p.ThumbnailAt })
             .ToListAsync(ct);
         var favs = (await db.NoteFavorites.AsNoTracking().Where(f => f.UserId == userId).Select(f => f.PageId).ToListAsync(ct)).ToHashSet();
         var sharedIds = (await db.NoteShares.AsNoTracking().Where(s => ids.Contains(s.PageId)).Select(s => s.PageId).Distinct().ToListAsync(ct)).ToHashSet();
 
-        bool IsShared(Guid id)
+        bool IsShared(Guid id, Guid? rawParentId, Guid? visParentId)
         {
-            for (Guid? cur = id; cur is { } c && visible.TryGetValue(c, out var v); cur = v.ParentId)
+            if (rawParentId != null && visParentId == null) return true;   // parent owner retains ancestor access
+            var seen = new HashSet<Guid>();
+            for (Guid? cur = id; cur is { } c && seen.Add(c) && visible.TryGetValue(c, out var v); cur = v.ParentId)
                 if (sharedIds.Contains(c)) return true;
             return false;
         }
@@ -174,8 +205,9 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         {
             var v = visible[r.Id];
             return new NoteListItemDto(r.Id, v.ParentId, r.Title, r.Emoji, NoteLevels.Name(v.Access),
-                v.OwnerId == userId, IsShared(r.Id), favs.Contains(r.Id), r.IsGuide && v.OwnerId == userId,
-                r.TodoDone, r.TodoTotal, r.UpdatedAt, r.OwnerName, r.SortOrder);
+                v.OwnerId == userId, IsShared(r.Id, r.ParentId, v.ParentId), favs.Contains(r.Id), r.IsGuide && v.OwnerId == userId,
+                r.TodoDone, r.TodoTotal, r.UpdatedAt, r.OwnerName, r.SortOrder, r.Kind,
+                r.Kind == "board" ? null : r.Excerpt, r.Cover, r.CoverImageId, r.ThumbnailId, r.ThumbnailAt, r.OwnerNik, r.CreatedAt, r.LockedAt != null);
         }).OrderBy(p => p.Title, StringComparer.CurrentCultureIgnoreCase).ToList();
 
         var recent = await db.NoteVisits.AsNoTracking().Where(v => v.UserId == userId && ids.Contains(v.PageId))
@@ -185,11 +217,12 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
 
     public async Task<IReadOnlyList<NoteSearchHitDto>> SearchAsync(Guid userId, string query, CancellationToken ct)
     {
-        var q = query.Trim().ToLower();
+        var q = query.Trim().ToLowerInvariant();
         if (q.Length == 0) return [];
+        var like = LikeContains(q);
         var ids = (await VisibleAsync(userId, ct)).Keys.ToList();
         var rows = await db.NotePages.AsNoTracking()
-            .Where(p => ids.Contains(p.Id) && (p.Title.ToLower().Contains(q) || (p.PlainText != null && p.PlainText.ToLower().Contains(q))))
+            .Where(p => ids.Contains(p.Id) && (EF.Functions.Like(p.Title.ToLower(), like) || (p.PlainText != null && EF.Functions.Like(p.PlainText.ToLower(), like))))
             .OrderByDescending(p => p.UpdatedAt).Take(30)
             .Select(p => new { p.Id, p.Title, p.Emoji, p.PlainText }).ToListAsync(ct);
         return rows.Select(r => new NoteSearchHitDto(r.Id, r.Title, r.Emoji, Snippet(r.PlainText, q))).ToList();
@@ -198,6 +231,7 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
     /// Snapshot keeps this many characters of the editor's plain text (NoteService.Collab); the body search
     /// can only see that much, so callers say so when a visible page is that long.
     public const int PlainTextLimit = 20000;
+    public const int MaxPlainTextLength = 500_000;
 
     public async Task<NoteSearchPageDto> SearchPagedAsync(Guid userId, string query, int page, int pageSize, CancellationToken ct)
     {
@@ -211,8 +245,10 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         var live = db.NotePages.AsNoTracking().Where(p => ids.Contains(p.Id));
         // Three ranked tiers, each newest first; the page is cut across them in order.
         var exact = live.Where(p => p.Title.ToLower() == q);
-        var title = live.Where(p => p.Title.ToLower() != q && p.Title.ToLower().Contains(q));
-        var body = live.Where(p => !p.Title.ToLower().Contains(q) && p.PlainText != null && p.PlainText.ToLower().Contains(q));
+        // LIKE on lower(column) (not strpos) so the trigram indexes on lower("Title") / lower("PlainText") can be used.
+        var like = LikeContains(q);
+        var title = live.Where(p => p.Title.ToLower() != q && EF.Functions.Like(p.Title.ToLower(), like));
+        var body = live.Where(p => !EF.Functions.Like(p.Title.ToLower(), like) && p.PlainText != null && EF.Functions.Like(p.PlainText.ToLower(), like));
         var tiers = new[] { exact, title, body };
         var skip = (page - 1) * pageSize;
         var take = pageSize;
@@ -236,9 +272,12 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
             }
             total += count;
         }
-        var truncated = await live.AnyAsync(p => p.PlainText != null && p.PlainText.Length == PlainTextLimit, ct);
+        var truncated = await live.AnyAsync(p => p.PlainText != null && (p.PlainText.Length == PlainTextLimit || p.PlainText.Length >= MaxPlainTextLength - 1), ct);
         return new NoteSearchPageDto(rows, total, truncated);
     }
+
+    private static string LikeContains(string lowered)
+        => $"%{lowered.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_")}%";
 
     private static string? Snippet(string? text, string q)
     {
@@ -250,27 +289,49 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         return (start > 0 ? "…" : "") + text.Substring(start, len) + (start + len < text.Length ? "…" : "");
     }
 
-    /// Top of each trashed subtree the user owns or trashed themselves.
+    /// Top of each trashed subtree the user owns or trashed themselves (or user's own sub-page under another owner's trashed parent).
     private IQueryable<NotePage> TrashQuery(Guid userId) => db.NotePages.AsNoTracking()
         .Where(p => p.DeletedAt != null && (p.OwnerId == userId || p.DeletedById == userId)
-            && (p.ParentId == null || p.Parent!.DeletedAt == null || p.Parent.DeletedAt != p.DeletedAt));
+            && (p.ParentId == null || p.Parent!.DeletedAt == null || p.Parent.DeletedAt != p.DeletedAt
+                || (p.OwnerId == userId && p.Parent.OwnerId != userId)));
 
     public async Task<IReadOnlyList<NoteListItemDto>> GetTrashAsync(Guid userId, CancellationToken ct)
     {
-        var rows = await TrashQuery(userId)
+        var candidates = await TrashQuery(userId)
             .OrderByDescending(p => p.DeletedAt)
-            .Select(p => new NoteListItemDto(p.Id, null, p.Title, p.Emoji, "owner", p.OwnerId == userId, false, false,
-                p.IsGuide, p.TodoDone, p.TodoTotal, p.DeletedAt!.Value, p.Owner.Name))
+            .Select(p => new
+            {
+                p.Id, p.OwnerId, p.Title, p.Emoji, p.IsGuide, p.TodoDone, p.TodoTotal,
+                DeletedAt = p.DeletedAt!.Value, OwnerName = p.Owner.Name, p.Kind,
+            })
             .ToListAsync(ct);
-        return rows;
+        var result = new List<NoteListItemDto>(candidates.Count);
+        foreach (var p in candidates)
+        {
+            if (p.OwnerId != userId && await AccessOnChainAsync(userId, await ChainAsync(p.Id, ct), ct) < NoteAccess.Edit)
+                continue;
+            result.Add(new NoteListItemDto(p.Id, null, p.Title, p.Emoji, p.OwnerId == userId ? "owner" : "edit",
+                p.OwnerId == userId, false, false, p.IsGuide && p.OwnerId == userId,
+                p.TodoDone, p.TodoTotal, p.DeletedAt, p.OwnerName, 0, p.Kind));
+        }
+        return result;
     }
 
     // ── Page ──────────────────────────────────────────────────────────────────
 
+    public async Task<NoteResult<NoteLinkSummaryDto>> GetLinkSummaryAsync(Guid userId, Guid pageId, CancellationToken ct)
+    {
+        var access = await GetAccessAsync(userId, pageId, ct);
+        if (access == NoteAccess.None) return Fail<NoteLinkSummaryDto>("not_found");
+        var row = await db.NotePages.AsNoTracking().Where(p => p.Id == pageId)
+            .Select(p => new NoteLinkSummaryDto(p.Id, p.Title, p.Emoji)).FirstOrDefaultAsync(ct);
+        return row is null ? Fail<NoteLinkSummaryDto>("not_found") : Ok(row);
+    }
+
     public async Task<NoteResult<NotePageDto>> GetPageAsync(Guid userId, Guid pageId, CancellationToken ct)
     {
         var chain = await ChainAsync(pageId, ct);
-        if (chain.Count == 0 || chain.Any(n => n.DeletedAt != null)) return Fail<NotePageDto>("not_found");
+        if (chain.Count == 0 || chain.Any(n => n.DeletedAt != null) || chain[^1].ParentId != null) return Fail<NotePageDto>("not_found");
         var access = await AccessOnChainAsync(userId, chain, ct);
         if (access == NoteAccess.None) return Fail<NotePageDto>("not_found");
 
@@ -284,6 +345,7 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
             db.ChangeTracker.Clear();
         }
 
+        await RecordViewAsync(userId, pageId, ct);
         return Ok(await BuildPageAsync(userId, pageId, chain, access, ct));
     }
 
@@ -292,16 +354,18 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         var p = await db.NotePages.AsNoTracking().Where(x => x.Id == pageId).Select(x => new
         {
             x.Id, x.ParentId, x.Title, x.Emoji, x.Cover, x.Accent, x.Font, x.FullWidth, x.SmallText, x.IsGuide,
-            x.CreatedAt, x.UpdatedAt, x.UpdatedById, x.TodoDone, x.TodoTotal, x.ImportSource,
+            x.CreatedAt, x.UpdatedAt, x.UpdatedById, x.TodoDone, x.TodoTotal, x.ImportSource, x.CoverImageId, x.CoverPosY, x.Kind, x.LockedAt, x.LockedById,
             OwnerName = x.Owner.Name, OwnerNik = x.Owner.Nik,
         }).FirstAsync(ct);
 
         // Breadcrumb: ancestors the user can open (all of them unless access came from a sub-page share).
         var crumbs = new List<NoteCrumbDto>();
+        var openableChainIds = new List<Guid> { pageId };
         for (var i = 1; i < chain.Count; i++)
         {
             var sub = chain.Skip(i).ToList();
             if (await AccessOnChainAsync(userId, sub, ct) == NoteAccess.None) break;
+            openableChainIds.Add(chain[i].Id);
             var a = await db.NotePages.AsNoTracking().Where(x => x.Id == chain[i].Id)
                 .Select(x => new NoteCrumbDto(x.Id, x.Title, x.Emoji)).FirstAsync(ct);
             crumbs.Insert(0, a);
@@ -311,28 +375,33 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
             .Select(x => new NoteCrumbDto(x.Id, x.Title, x.Emoji)).ToListAsync(ct);
 
         var chainIds = chain.Select(n => n.Id).ToList();
-        var roomShares = await db.NoteShares.AsNoTracking().Where(s => chainIds.Contains(s.PageId) && s.RoomId != null)
+        var roomShares = await db.NoteShares.AsNoTracking().Where(s => openableChainIds.Contains(s.PageId) && s.RoomId != null)
             .Select(s => new { RoomId = s.RoomId!.Value, s.Level }).ToListAsync(ct);
         var rooms = new List<NoteRoomShareDto>();
         foreach (var g in roomShares.GroupBy(r => r.RoomId))
             rooms.Add(new NoteRoomShareDto(g.Key, await RoomLabelAsync(g.Key, userId, ct),
                 NoteLevels.Name(g.Select(x => NoteLevels.ToAccess(x.Level)).Max())));
-        var isShared = rooms.Count > 0 || await db.NoteShares.AnyAsync(s => chainIds.Contains(s.PageId), ct);
+        var isShared = rooms.Count > 0 || await db.NoteShares.AnyAsync(s => chainIds.Contains(s.PageId), ct)
+            || chain.Any(n => n.OwnerId != chain[0].OwnerId);
 
+        var lockedBy = p.LockedById is { } lb ? await db.Users.AsNoTracking().Where(u => u.Id == lb).Select(u => u.Name).FirstOrDefaultAsync(ct) : null;
         var updatedBy = p.UpdatedById is { } ub ? await db.Users.AsNoTracking().Where(u => u.Id == ub).Select(u => u.Name).FirstOrDefaultAsync(ct) : null;
         var fav = await db.NoteFavorites.AnyAsync(f => f.UserId == userId && f.PageId == pageId, ct);
         var open = await db.NoteThreads.CountAsync(t => t.PageId == pageId && t.ResolvedAt == null, ct);
 
         return new NotePageDto(p.Id, p.ParentId, p.Title, p.Emoji, p.Cover, p.Accent, p.Font, p.FullWidth, p.SmallText,
             p.IsGuide, NoteLevels.Name(access), fav, isShared, p.OwnerName, p.OwnerNik, p.CreatedAt, p.UpdatedAt, updatedBy,
-            p.TodoDone, p.TodoTotal, open, crumbs, children, rooms, p.ImportSource);
+            p.TodoDone, p.TodoTotal, open, crumbs, children, rooms, p.ImportSource, p.CoverImageId, p.CoverPosY, p.Kind, p.LockedAt, lockedBy);
     }
 
-    /// Group name, or for a DM the other person's name as seen by <paramref name="viewerId"/>.
+    /// Group name, or for a DM the other person's name as seen by <paramref name="viewerId"/>; generic if viewer is not a room member.
     private async Task<string> RoomLabelAsync(Guid roomId, Guid viewerId, CancellationToken ct)
     {
         var room = await db.ChatRooms.AsNoTracking().Where(r => r.Id == roomId).Select(r => new { r.Type, r.Name }).FirstOrDefaultAsync(ct);
         if (room is null) return "Chat";
+        var isMember = await db.ChatRoomMembers.AsNoTracking()
+            .AnyAsync(m => m.RoomId == roomId && m.UserId == viewerId && m.LeftAt == null, ct);
+        if (!isMember) return room.Type == "group" ? "Private group" : "Direct message";
         if (room.Type == "group") return room.Name ?? "Group";
         var names = await db.ChatRoomMembers.AsNoTracking().Where(m => m.RoomId == roomId)
             .OrderBy(m => m.UserId == viewerId).Select(m => m.User.Name).ToListAsync(ct);
@@ -345,10 +414,16 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         string? cover = null;
         if (req.ParentId is { } parentId)
         {
-            var access = await GetAccessAsync(userId, parentId, ct);
+            var chain = await ChainAsync(parentId, ct);
+            if (chain.Count == 0 || chain.Any(n => n.DeletedAt != null)) return Fail<NotePageDto>("not_found");
+            if (chain.Count >= MaxDepth || chain[^1].ParentId != null) return Fail<NotePageDto>("max_depth");
+            var access = await AccessOnChainAsync(userId, chain, ct);
             if (access < NoteAccess.Edit) return Fail<NotePageDto>(Denied(access));
         }
-        if (req.Template is { } t && (!NoteStyle.Templates.Contains(t) || t == "guide")) return Fail<NotePageDto>("invalid_template");
+        if (req.Kind is { } kd && !NoteStyle.Kinds.Contains(kd)) return Fail<NotePageDto>("invalid_style");
+        var kind = req.Kind ?? "page";
+        // A whiteboard has no document text, so a text template makes no sense for it.
+        if (req.Template is { } t && (kind == "board" || !NoteStyle.Templates.Contains(t) || t == "guide")) return Fail<NotePageDto>("invalid_template");
         if (req.Accent is { } a) { if (!NoteStyle.Accents.Contains(a)) return Fail<NotePageDto>("invalid_style"); accent = a; }
         if (req.Cover is { } c) { if (!NoteStyle.Covers.Contains(c)) return Fail<NotePageDto>("invalid_style"); cover = c; }
 
@@ -356,7 +431,7 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         var page = new NotePage
         {
             Id = Guid.NewGuid(), OwnerId = userId, ParentId = req.ParentId,
-            Title = Clean(req.Title, 200) ?? "", Emoji = Clean(req.Emoji, 16),
+            Title = Clean(req.Title, 200) ?? "", Emoji = Clean(req.Emoji, 16) ?? (kind == "board" ? "🧩" : null), Kind = kind,
             Cover = cover, Accent = accent, Font = font, SeedTemplate = req.Template,
             CreatedAt = now, UpdatedAt = now, UpdatedById = userId,
         };
@@ -369,20 +444,45 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
     {
         if (s is null) return null;
         s = s.Trim();
-        return s.Length == 0 ? null : s.Length <= max ? s : s[..max];
+        if (s.Length == 0) return null;
+        if (s.Length <= max) return s;
+        // cut between whole characters: halving an emoji (a surrogate pair or a ZWJ sequence) stores a broken "?"
+        var info = new System.Globalization.StringInfo(s);
+        var cut = new System.Text.StringBuilder();
+        for (var i = 0; i < info.LengthInTextElements; i++)
+        {
+            var el = info.SubstringByTextElements(i, 1);
+            if (cut.Length + el.Length > max) break;
+            cut.Append(el);
+        }
+        return cut.Length == 0 ? null : cut.ToString();
     }
 
     public async Task<NoteResult<NotePageDto>> UpdateMetaAsync(Guid userId, Guid pageId, UpdateNoteMetaRequest req, CancellationToken ct)
     {
         var (page, access) = await LoadAsync(userId, pageId, NoteAccess.Edit, ct);
         if (page is null) return Fail<NotePageDto>(Denied(access));
+        // Unlocking goes through SetLockedAsync; every other change waits until the page is unlocked.
+        if (page.LockedAt is not null) return Fail<NotePageDto>("locked");
         if (req.Cover is { } c && c != "" && !NoteStyle.Covers.Contains(c)) return Fail<NotePageDto>("invalid_style");
         if (req.Accent is { } a && !NoteStyle.Accents.Contains(a)) return Fail<NotePageDto>("invalid_style");
         if (req.Font is { } f && !NoteStyle.Fonts.Contains(f)) return Fail<NotePageDto>("invalid_style");
 
         if (req.Title is not null) page.Title = Clean(req.Title, 200) ?? "";
         if (req.Emoji is not null) page.Emoji = Clean(req.Emoji, 16);
-        if (req.Cover is not null) page.Cover = req.Cover == "" ? null : req.Cover;
+        if (req.Cover is not null)
+        {
+            // Any explicit cover choice (a gradient, or "" = none) replaces a photo.
+            page.Cover = req.Cover == "" ? null : req.Cover;
+            page.CoverImageId = null;
+            page.CoverPosY = 50;
+        }
+        if (req.CoverImageId is { } imgId)
+        {
+            if (!await IsPageImageAsync(pageId, imgId, ct)) return Fail<NotePageDto>("invalid_style");
+            page.CoverImageId = imgId; page.Cover = null; page.CoverPosY = 50;
+        }
+        if (req.CoverPosY is { } posY) page.CoverPosY = Math.Clamp(posY, 0, 100);
         if (req.Accent is not null) page.Accent = req.Accent;
         if (req.Font is not null) page.Font = req.Font;
         if (req.FullWidth is { } w) page.FullWidth = w;
@@ -393,6 +493,21 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         return Ok(await BuildPageAsync(userId, pageId, await ChainAsync(pageId, ct), access, ct));
     }
 
+    public async Task<NoteResult<NotePageDto>> SetLockedAsync(Guid userId, Guid pageId, bool locked, CancellationToken ct)
+    {
+        var (page, access) = await LoadAsync(userId, pageId, NoteAccess.Edit, ct);
+        if (page is null) return Fail<NotePageDto>(Denied(access));
+        if (locked != (page.LockedAt is not null))
+        {
+            page.LockedAt = locked ? DateTime.UtcNow : null;
+            page.LockedById = locked ? userId : null;
+            page.UpdatedAt = DateTime.UtcNow;
+            page.UpdatedById = userId;
+            await db.SaveChangesAsync(ct);
+        }
+        return Ok(await BuildPageAsync(userId, pageId, await ChainAsync(pageId, ct), access, ct));
+    }
+
     public async Task<NoteResult<bool>> SetFavoriteAsync(Guid userId, Guid pageId, bool favorite, CancellationToken ct)
     {
         var access = await GetAccessAsync(userId, pageId, ct);
@@ -400,7 +515,8 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         var row = await db.NoteFavorites.FirstOrDefaultAsync(f => f.UserId == userId && f.PageId == pageId, ct);
         if (favorite && row is null) db.NoteFavorites.Add(new NoteFavorite { UserId = userId, PageId = pageId, CreatedAt = DateTime.UtcNow });
         if (!favorite && row is not null) db.NoteFavorites.Remove(row);
-        await db.SaveChangesAsync(ct);
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException) { db.ChangeTracker.Clear(); }
         return Ok(true);
     }
 
@@ -418,12 +534,55 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         return ids;
     }
 
+    /// Maximum node count from <paramref name="pageId"/> to its deepest descendant (1 = leaf page).
+    private async Task<int> SubtreeHeightAsync(Guid pageId, CancellationToken ct)
+    {
+        var seen = new HashSet<Guid> { pageId };
+        var frontier = new List<Guid> { pageId };
+        var height = 0;
+        while (frontier.Count > 0 && height <= MaxDepth)
+        {
+            height++;
+            var f = frontier;
+            frontier = await db.NotePages.AsNoTracking()
+                .Where(p => p.ParentId != null && f.Contains(p.ParentId.Value))
+                .Select(p => p.Id).ToListAsync(ct);
+            frontier = frontier.Where(seen.Add).ToList();
+        }
+        return height;
+    }
+
+    /// Filters Notes-area attachment IDs to those alive AND readable by <paramref name="userId"/>:
+    /// already linked to an openable page, or uploaded by <paramref name="userId"/> if not yet linked.
+    private async Task<List<Attachment>> FilterReadableNotesAttachmentsAsync(Guid userId, IReadOnlyList<Guid> ids, CancellationToken ct)
+    {
+        if (ids.Count == 0) return [];
+        var candidates = await db.Attachments.AsNoTracking()
+            .Where(a => ids.Contains(a.Id) && a.Area == IPop.Application.Attachments.AttachmentAreas.Notes && a.DeletedAt == null)
+            .ToListAsync(ct);
+        if (candidates.Count == 0) return [];
+        var candIds = candidates.Select(c => c.Id).ToList();
+        var links = await db.NoteAttachments.AsNoTracking()
+            .Where(na => candIds.Contains(na.AttachmentId))
+            .Select(na => new { na.AttachmentId, na.PageId })
+            .ToListAsync(ct);
+        var byAtt = links.GroupBy(l => l.AttachmentId).ToDictionary(g => g.Key, g => g.Select(x => x.PageId).ToList());
+        var allPages = links.Select(l => l.PageId).Distinct().ToList();
+        var openable = await NoteVisibility.OpenableAsync(db, userId, allPages, ct);
+        return candidates.Where(a =>
+            byAtt.TryGetValue(a.Id, out var linkedPages)
+                ? linkedPages.Any(openable.Contains)
+                : a.UploaderId == userId).ToList();
+    }
+
     /// Editors may move a page (and its sub-pages) to Trash; it can be restored by its owner or by whoever trashed it.
     public async Task<NoteResult<bool>> TrashAsync(Guid userId, Guid pageId, CancellationToken ct)
     {
         var access = await GetAccessAsync(userId, pageId, ct);
         if (access < NoteAccess.Edit) return Fail<bool>(Denied(access));
         var ids = await SubtreeAsync(pageId, q => q.Where(p => p.DeletedAt == null), ct);
+        if (await db.NotePages.AsNoTracking().AnyAsync(p => ids.Contains(p.Id) && p.LockedAt != null, ct))
+            return Fail<bool>("locked");
         var now = DateTime.UtcNow;
         await db.NotePages.Where(p => ids.Contains(p.Id))
             .ExecuteUpdateAsync(s => s.SetProperty(p => p.DeletedAt, now).SetProperty(p => p.DeletedById, userId), ct);
@@ -434,8 +593,17 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
     {
         var page = await db.NotePages.AsNoTracking().FirstOrDefaultAsync(p => p.Id == pageId && p.DeletedAt != null, ct);
         if (page is null) return null;
-        if (page.OwnerId == userId || page.DeletedById == userId) return page;
-        return await AccessOnChainAsync(userId, await ChainAsync(pageId, ct), ct) == NoteAccess.Owner ? page : null;
+        if (page.ParentId is { } pid)
+        {
+            var parent = await db.NotePages.AsNoTracking().Where(p => p.Id == pid)
+                .Select(p => new { p.DeletedAt, p.OwnerId }).FirstOrDefaultAsync(ct);
+            if (parent is not null && parent.DeletedAt == page.DeletedAt && !(page.OwnerId == userId && parent.OwnerId != userId))
+                return null;
+        }
+        if (page.OwnerId == userId) return page;
+        var chainAccess = await AccessOnChainAsync(userId, await ChainAsync(pageId, ct), ct);
+        if (page.DeletedById == userId && chainAccess >= NoteAccess.Edit) return page;
+        return chainAccess == NoteAccess.Owner ? page : null;
     }
 
     public async Task<NoteResult<bool>> RestoreAsync(Guid userId, Guid pageId, CancellationToken ct)
@@ -444,8 +612,10 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         if (page is null) return Fail<bool>("not_found");
         var at = page.DeletedAt;
         var ids = await SubtreeAsync(pageId, q => q.Where(p => p.DeletedAt == at), ct);
-        // Restoring under a parent that is itself in Trash would leave it unreachable: lift it to the top level.
-        var parentGone = page.ParentId is { } pid && await db.NotePages.AnyAsync(p => p.Id == pid && p.DeletedAt != null, ct);
+        // Restoring under a parent that is itself in Trash (or deeper than MaxDepth) would leave it unreachable: lift to top level (owner only).
+        var pChain = page.ParentId is { } pid ? await ChainAsync(pid, ct) : [];
+        var parentGone = page.ParentId is not null && (pChain.Count == 0 || pChain.Any(n => n.DeletedAt != null) || pChain[^1].ParentId != null);
+        if (parentGone && page.OwnerId != userId) return Fail<bool>("forbidden");
         await db.NotePages.Where(p => ids.Contains(p.Id))
             .ExecuteUpdateAsync(s => s.SetProperty(p => p.DeletedAt, (DateTime?)null).SetProperty(p => p.DeletedById, (Guid?)null), ct);
         if (parentGone)
@@ -461,27 +631,66 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
     {
         var page = await TrashedTopAsync(userId, pageId, ct);
         if (page is null) return Fail<bool>("not_found");
-        if (page.OwnerId != userId && await AccessOnChainAsync(userId, await ChainAsync(pageId, ct), ct) != NoteAccess.Owner)
-            return Fail<bool>("forbidden");
+        if (page.OwnerId != userId) return Fail<bool>("forbidden");
+        await PurgeTreeAsync(pageId, page.OwnerId, softDeleteOrphans: true, ct);
+        return Ok(true);
+    }
+
+    public async Task<NoteResult<IReadOnlyList<Guid>>> PurgeWithOrphansAsync(Guid userId, Guid pageId, CancellationToken ct)
+    {
+        var page = await TrashedTopAsync(userId, pageId, ct);
+        if (page is null) return Fail<IReadOnlyList<Guid>>("not_found");
+        if (page.OwnerId != userId) return Fail<IReadOnlyList<Guid>>("forbidden");
+        return Ok<IReadOnlyList<Guid>>(await PurgeTreeAsync(pageId, page.OwnerId, softDeleteOrphans: false, ct));
+    }
+
+    public async Task<IReadOnlyList<Guid>> PurgeExpiredTrashAsync(TimeSpan retention, int maxPages, CancellationToken ct)
+    {
+        var cutoff = DateTime.UtcNow - retention;
+        // The top of each expired trashed subtree: a trashed page whose parent is not trashed in the same moment.
+        var tops = await db.NotePages.AsNoTracking()
+            .Where(p => p.DeletedAt != null && p.DeletedAt < cutoff
+                && (p.ParentId == null || p.Parent!.DeletedAt == null || p.Parent.DeletedAt != p.DeletedAt))
+            .OrderBy(p => p.DeletedAt).Take(maxPages)
+            .Select(p => new { p.Id, p.OwnerId }).ToListAsync(ct);
+        var files = new List<Guid>();
+        foreach (var top in tops)
+            files.AddRange(await PurgeTreeAsync(top.Id, top.OwnerId, softDeleteOrphans: false, ct));
+        return files;
+    }
+
+    /// Removes a trashed page and everything below it. Returns the orphan attachment ids no longer linked to any remaining page.
+    private async Task<List<Guid>> PurgeTreeAsync(Guid pageId, Guid ownerId, bool softDeleteOrphans, CancellationToken ct)
+    {
+        var page = new { OwnerId = ownerId };
         var subtree = await SubtreeAsync(pageId, q => q, ct);
         var foreignRoots = await db.NotePages.AsNoTracking()
             .Where(p => subtree.Contains(p.Id) && p.Id != pageId && p.OwnerId != page.OwnerId
                 && p.ParentId != null && db.NotePages.Any(parent => parent.Id == p.ParentId && parent.OwnerId == page.OwnerId))
             .Select(p => p.Id).ToListAsync(ct);
         if (foreignRoots.Count > 0)
-            await db.NotePages.Where(p => foreignRoots.Contains(p.Id)).ExecuteUpdateAsync(s => s.SetProperty(p => p.ParentId, (Guid?)null), ct);
+        {
+            var liftedAt = DateTime.UtcNow;
+            await db.NotePages.Where(p => foreignRoots.Contains(p.Id))
+                .ExecuteUpdateAsync(s => s.SetProperty(p => p.ParentId, (Guid?)null).SetProperty(p => p.DeletedAt, liftedAt), ct);
+        }
         var ids = await SubtreeAsync(pageId, q => q, ct);
         var attIds = await db.NoteAttachments.AsNoTracking()
-            .Where(a => ids.Contains(a.PageId)).Select(a => a.AttachmentId).ToListAsync(ct);
+            .Where(a => ids.Contains(a.PageId)).Select(a => a.AttachmentId).Distinct().ToListAsync(ct);
         ids.Reverse();   // children first, so the self-referencing FK never blocks
         foreach (var id in ids)
             await db.NotePages.Where(p => p.Id == id).ExecuteDeleteAsync(ct);
-        if (attIds.Count > 0)
+        if (attIds.Count == 0) return [];
+        var stillLinked = (await db.NoteAttachments.AsNoTracking()
+            .Where(a => attIds.Contains(a.AttachmentId))
+            .Select(a => a.AttachmentId).Distinct().ToListAsync(ct)).ToHashSet();
+        var orphans = attIds.Where(id => !stillLinked.Contains(id)).ToList();
+        if (softDeleteOrphans && orphans.Count > 0)
         {
             var now = DateTime.UtcNow;
-            await db.Attachments.Where(a => attIds.Contains(a.Id) && a.DeletedAt == null)
+            await db.Attachments.Where(a => orphans.Contains(a.Id) && a.DeletedAt == null)
                 .ExecuteUpdateAsync(s => s.SetProperty(a => a.DeletedAt, now), ct);
         }
-        return Ok(true);
+        return orphans;
     }
 }

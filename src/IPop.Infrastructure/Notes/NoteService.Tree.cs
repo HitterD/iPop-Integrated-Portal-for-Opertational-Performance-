@@ -12,6 +12,7 @@ public sealed partial class NoteService
         var access = await GetAccessAsync(userId, pageId, ct);
         if (access == NoteAccess.None) return Fail<bool>("not_found");
         var page = await db.NotePages.FirstAsync(p => p.Id == pageId, ct);
+        if (page.LockedAt is not null) return Fail<bool>("locked");
 
         if (page.ParentId != req.ParentId)
         {
@@ -21,9 +22,12 @@ public sealed partial class NoteService
             if (req.ParentId is { } target)
             {
                 var targetChain = await ChainAsync(target, ct);
-                if (targetChain.Count == 0 || targetChain.Any(n => n.DeletedAt != null)) return Fail<bool>("not_found");
+                if (targetChain.Count == 0 || targetChain.Any(n => n.DeletedAt != null) || targetChain[^1].ParentId != null) return Fail<bool>("forbidden");
                 if (targetChain.Any(n => n.Id == pageId)) return Fail<bool>("invalid_move");
-                if (await AccessOnChainAsync(userId, targetChain, ct) < NoteAccess.Edit) return Fail<bool>("forbidden");
+                var targetAccess = await AccessOnChainAsync(userId, targetChain, ct);
+                if (targetAccess < NoteAccess.Edit) return Fail<bool>("forbidden");
+                var height = await SubtreeHeightAsync(pageId, ct);
+                if (targetChain.Count + height > MaxDepth) return Fail<bool>("max_depth");
             }
             if (!req.Confirm && await AudienceChangesAsync(page, req.ParentId, ct)) return Fail<bool>("confirm_audience");
         }
@@ -59,16 +63,40 @@ public sealed partial class NoteService
             : placed.Concat(rest.OrderBy(p => p.Title, StringComparer.CurrentCultureIgnoreCase)).ToList();
     }
 
-    /// Whether moving the page under <paramref name="newParent"/> changes who inherits access to it.
+    /// Whether moving the page under <paramref name="newParent"/> changes who inherits access or their access level.
     private async Task<bool> AudienceChangesAsync(NotePage page, Guid? newParent, CancellationToken ct)
     {
-        async Task<HashSet<Guid>> Inherited(Guid? parent)
+        async Task<Dictionary<Guid, NoteAccess>> Inherited(Guid? parent)
         {
-            var set = parent is { } p ? (await GetAudienceAsync(p, ct)).ToHashSet() : [];
-            set.Add(page.OwnerId);
-            return set;
+            var map = new Dictionary<Guid, NoteAccess> { [page.OwnerId] = NoteAccess.Owner };
+            if (parent is not { } pid) return map;
+            var chain = await ChainAsync(pid, ct);
+            if (chain.Count == 0) return map;
+            foreach (var n in chain) map[n.OwnerId] = NoteAccess.Owner;
+            var chainIds = chain.Select(n => n.Id).ToList();
+            var shares = await db.NoteShares.AsNoTracking().Where(s => chainIds.Contains(s.PageId))
+                .Select(s => new { s.UserId, s.RoomId, s.Level }).ToListAsync(ct);
+            void Grant(Guid uid, NoteAccess lvl)
+            {
+                if (!map.TryGetValue(uid, out var prev) || lvl > prev) map[uid] = lvl;
+            }
+            foreach (var s in shares.Where(s => s.UserId != null)) Grant(s.UserId!.Value, NoteLevels.ToAccess(s.Level));
+            var rooms = shares.Where(s => s.RoomId != null).Select(s => s.RoomId!.Value).Distinct().ToList();
+            if (rooms.Count > 0)
+            {
+                var members = await db.ChatRoomMembers.AsNoTracking().Where(m => rooms.Contains(m.RoomId) && m.LeftAt == null)
+                    .Select(m => new { m.RoomId, m.UserId }).ToListAsync(ct);
+                foreach (var s in shares.Where(s => s.RoomId != null))
+                {
+                    var lvl = NoteLevels.ToAccess(s.Level);
+                    foreach (var m in members.Where(m => m.RoomId == s.RoomId)) Grant(m.UserId, lvl);
+                }
+            }
+            return map;
         }
-        return !(await Inherited(page.ParentId)).SetEquals(await Inherited(newParent));
+        var before = await Inherited(page.ParentId);
+        var after = await Inherited(newParent);
+        return before.Count != after.Count || before.Any(kv => !after.TryGetValue(kv.Key, out var lvl) || lvl != kv.Value);
     }
 
     /// Copies the page alone (no sub-pages, no shares): content, icon, cover and style, as "Copy of …".
@@ -78,23 +106,26 @@ public sealed partial class NoteService
         var (src, access) = await LoadAsync(userId, pageId, NoteAccess.Edit, ct);
         if (src is null) return Fail<NotePageDto>(Denied(access));
         var parent = src.ParentId is { } pid && await GetAccessAsync(userId, pid, ct) >= NoteAccess.Edit ? src.ParentId : null;
+        if (parent is { } parentId && (await ChainAsync(parentId, ct)).Count >= MaxDepth) parent = null;
 
         var now = DateTime.UtcNow;
         var title = string.IsNullOrWhiteSpace(src.Title) ? "Untitled" : src.Title;
         var copy = new NotePage
         {
             Id = Guid.NewGuid(), OwnerId = userId, ParentId = parent,
-            Title = Clean("Copy of " + title, 200)!, Emoji = src.Emoji, Cover = src.Cover, Accent = src.Accent,
-            Font = src.Font, FullWidth = src.FullWidth, SmallText = src.SmallText, SeedTemplate = src.SeedTemplate,
+            Title = Clean("Copy of " + title, 200)!, Emoji = src.Emoji, Kind = src.Kind, Cover = src.Cover, CoverPosY = src.CoverPosY, Accent = src.Accent,
+            Font = src.Font, FullWidth = src.FullWidth, SmallText = src.SmallText, SeedTemplate = src.SeedTemplate == "guide" ? null : src.SeedTemplate,
             YState = src.YState, Excerpt = src.Excerpt, PlainText = src.PlainText,
             TodoDone = src.TodoDone, TodoTotal = src.TodoTotal,
             CreatedAt = now, UpdatedAt = now, UpdatedById = userId,
         };
         db.NotePages.Add(copy);
 
-        // Clone attachment links so images/files in the duplicate keep working even if the original is unshared or purged.
+        // Clone attachment links so images/files in the duplicate keep working even if the original is unshared or purged (exclude board thumbnail).
         var srcAttIds = await db.NoteAttachments.AsNoTracking()
-            .Where(a => a.PageId == pageId).Select(a => a.AttachmentId).ToListAsync(ct);
+            .Where(a => a.PageId == pageId && (src.ThumbnailId == null || a.AttachmentId != src.ThumbnailId)
+                && !NoteFilePreviewService.DerivedIds(db).Contains(a.AttachmentId))   // file previews are made again for the copy
+            .Select(a => a.AttachmentId).ToListAsync(ct);
         var srcAtts = srcAttIds.Count == 0 ? []
             : await db.Attachments.AsNoTracking().Where(a => srcAttIds.Contains(a.Id) && a.DeletedAt == null).ToListAsync(ct);
         var remap = new List<(byte[] OldBytes, byte[] NewBytes)>(srcAtts.Count);
@@ -112,6 +143,12 @@ public sealed partial class NoteService
                        System.Text.Encoding.ASCII.GetBytes(cloneId.ToString("D"))));
         }
         copy.YState = RemapGuids(src.YState, remap);
+        // The photo cover is one of the cloned attachments: point the copy at its clone.
+        if (src.CoverImageId is { } coverImg)
+        {
+            var idx = srcAtts.FindIndex(a => a.Id == coverImg);
+            if (idx >= 0 && Guid.TryParse(System.Text.Encoding.ASCII.GetString(remap[idx].NewBytes), out var newCover)) copy.CoverImageId = newCover;
+        }
 
         // Edits not yet folded into the snapshot travel along; Yjs merges them on first open.
         var updates = await db.NoteUpdates.AsNoTracking().Where(u => u.PageId == pageId).OrderBy(u => u.Id)

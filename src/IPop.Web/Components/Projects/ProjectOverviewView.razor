@@ -1,0 +1,244 @@
+@using IPop.Application.Projects
+@using System.Globalization
+@inject IPop.Web.Services.AuthState Auth
+@inject IJSRuntime JS
+@implements IDisposable
+
+@* Projects v2 Overview (docs/mockups/ipop-apple/projects-v2.html overviewView): goal, getting-started checklist, progress ring,
+   burn-up chart, milestones, needs attention and the latest updates, all from GET /api/projects/{id}/overview. *@
+<div class="pv2 pv2o" data-view="overview">
+    @if (state == LoadState.Loading)
+    {
+        <div class="pv2o-grid" role="status" aria-label="Loading overview">
+            <div class="pv2o-card pv2o-c8 pv2o-skel"></div><div class="pv2o-card pv2o-c4 pv2o-skel"></div>
+            <div class="pv2o-card pv2o-c4 pv2o-skel"></div><div class="pv2o-card pv2o-c8 pv2o-skel"></div>
+            <div class="pv2o-card pv2o-c4 pv2o-skel"></div><div class="pv2o-card pv2o-c4 pv2o-skel"></div>
+        </div>
+    }
+    else if (state == LoadState.Error || dto is null)
+    {
+        <div class="pv2o-error" role="alert">
+            <span class="pv2o-bigic"><i data-lucide="triangle-alert"></i></span>
+            <h3>Couldn't load the overview</h3>
+            <p>@errorText</p>
+            <button type="button" class="pv2-btn pri" @onclick="() => LoadAsync(false)">Retry</button>
+        </div>
+    }
+    else
+    {
+        var o = dto;
+        var allDone = o.Checklist.Count > 0 && o.Checklist.All(c => c.Done);
+        var doneCount = o.Checklist.Count(c => c.Done);
+        var total = o.StatusCounts.Sum(s => s.Count);
+        var doneTasks = o.StatusCounts.Where(s => s.Stage == "done").Sum(s => s.Count);
+        var pct = total == 0 ? 0 : (int)Math.Round(doneTasks * 100.0 / total);
+        var burn = ProjectOverviewMath.Build(o.BurnUp);
+        <div class="pv2o-grid">
+            <div class="pv2o-card @(allDone ? "pv2o-c12" : "pv2o-c8")" style="animation-delay:0s" data-card="goal">
+                <h4><i data-lucide="target" style="color:var(--accent)"></i><span>Goal</span>@if (CanManage) {<button type="button" class="pv2o-link" @onclick="() => OnEdit.InvokeAsync()">Edit</button>}</h4>
+                <div class="pv2o-in">
+                    @if (string.IsNullOrWhiteSpace(o.Goal))
+                    {
+                        <p class="pv2o-goal pv2o-goal-empty">No goal yet. A one-line goal tells everyone what "done" looks like.</p>
+                    }
+                    else
+                    {
+                        <p class="pv2o-goal">@o.Goal</p>
+                    }
+                    <div class="pv2o-meta">
+                        <span><i data-lucide="user"></i> Lead <b>@o.LeadName</b></span>
+                        @if (o.StartDate.HasValue || o.ProjectFinish.HasValue || o.Deadline.HasValue)
+                        {
+                            <span class="pv2-num"><i data-lucide="calendar"></i> @(o.StartDate.HasValue ? Fd(o.StartDate.Value) : "No start") → @(o.ProjectFinish.HasValue ? Fd(o.ProjectFinish.Value) : o.Deadline.HasValue ? Fd(o.Deadline.Value) : "No end date")</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(o.NasPath))
+                        {
+                            <span><i data-lucide="folder"></i> NAS: @o.NasPath</span>
+                        }
+                    </div>
+                </div>
+            </div>
+            @if (!allDone)
+            {
+                <div class="pv2o-card pv2o-c4" style="animation-delay:.03s" data-card="checklist">
+                    <h4><i data-lucide="check" style="color:var(--accent)"></i>Getting started<small>@doneCount of @o.Checklist.Count</small></h4>
+                    <div class="pv2o-in tight">
+                        @foreach (var c in o.Checklist)
+                        {
+                            var item = c;
+                            <div class="pv2o-chk @(item.Done ? "done" : "")" @key="item.Key">
+                                <button type="button" class="pv2-cb @(item.Done ? "on" : "")" role="checkbox" aria-checked="@(item.Done ? "true" : "false")" aria-label="@item.Label" @onclick="() => ChecklistClick(item)"></button>
+                                <span class="tx">@item.Label</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+            <div class="pv2o-card pv2o-c4" style="animation-delay:.06s" data-card="progress">
+                <h4>Progress</h4>
+                <div class="pv2o-in pv2o-prog">
+                    <div class="pv2o-ring" style="--pv2o-t:@pct" role="img" aria-label="@pct% of tasks done"><div><b class="pv2-num">@pct%</b>done</div></div>
+                    <div class="pv2o-counts">
+                        @foreach (var s in o.StatusCounts)
+                        {
+                            <div><i style="background:@ProjectStatusUi.SafeColor(s.Color)"></i>@s.Label<b class="pv2-num">@s.Count</b></div>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="pv2o-card pv2o-c8" style="animation-delay:.09s" data-card="burnup">
+                <h4><i data-lucide="trending-up"></i>Burn-up<small>Tasks done vs plan</small></h4>
+                <div class="pv2o-in" style="padding:6px 10px">
+                    <svg class="pv2o-chart" viewBox="0 0 520 175" width="100%" height="210" role="img" aria-label="@BurnLabel(burn)">
+                        @foreach (var t in burn.Ticks)
+                        {
+                            <line class="grid" x1="40" x2="490" y1="@ProjectOverviewMath.F(t.Y)" y2="@ProjectOverviewMath.F(t.Y)" />
+                            @Txt(32, t.Y + 3, t.Value.ToString(), "end")
+                        }
+                        @foreach (var l in burn.XLabels)
+                        {
+                            @Txt(l.X, 168, l.Label, "middle")
+                        }
+                        @if (burn.AreaPath.Length > 0) { <path class="area" d="@burn.AreaPath" /> }
+                        <polyline class="plan" points="@burn.PlanPoints" />
+                        @if (burn.DonePoints.Length > 0) { <polyline class="done" points="@burn.DonePoints" /> }
+                        @if (burn.DoneX is { } dx && burn.DoneY is { } dy)
+                        {
+                            <circle cx="@ProjectOverviewMath.F(dx)" cy="@ProjectOverviewMath.F(dy)" r="4" style="fill:var(--accent)" />
+                            <line class="now" x1="@ProjectOverviewMath.F(burn.NowX)" x2="@ProjectOverviewMath.F(burn.NowX)" y1="24" y2="150" />
+                            @Txt(burn.NowX + 4, 22, "Today")
+                            @Txt(dx + 8, dy + 4, $"Done: {burn.DoneLast}")
+                        }
+                        @Txt(burn.PlanEndX - 4, burn.PlanEndY - 6, $"Plan: {burn.PlanMax}", "end")
+                    </svg>
+                </div>
+            </div>
+            <div class="pv2o-card pv2o-c4" style="animation-delay:.12s" data-card="milestones">
+                <h4><i data-lucide="flag" style="color:var(--pv2-violet)"></i>Milestones</h4>
+                <div class="pv2o-in tight">
+                    @if (o.Milestones.Count == 0) { <div class="pv2o-none">No milestones yet. Add them from the Gantt.</div> }
+                    @foreach (var m in o.Milestones)
+                    {
+                        <div class="pv2o-mst @MsClass(m.State)" @key="m.Id">
+                            <span class="dia"></span>
+                            <div>@m.Title<div class="sub @(m.State == "at_risk" ? "risk" : "")">@(m.Note ?? MsDefault(m))</div></div>
+                            <span class="pv2-num dt">@Fd(m.Date)</span>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="pv2o-card pv2o-c4" style="animation-delay:.15s" data-card="attention">
+                <h4><i data-lucide="alert-triangle" style="color:var(--danger)"></i>Needs attention</h4>
+                <div class="pv2o-in tight">
+                    @if (o.NeedsAttention.Count == 0) { <div class="pv2o-none">Nothing is late, stuck or overloaded.</div> }
+                    @foreach (var a in o.NeedsAttention)
+                    {
+                        var row = a;
+                        <button type="button" class="pv2o-risk @row.Reason" @key="(row.TaskId, row.Reason)" @onclick="() => OnOpenTask.InvokeAsync(row.TaskId)" title="@row.Title">
+                            @if (row.Reason == "overloaded")
+                            {
+                                <span class="pv2o-pill warn">Overloaded</span>
+                                <span class="tx">@row.OwnerName is over capacity this week</span>
+                            }
+                            else
+                            {
+                                <span class="pv2o-pill" style="background:@ProjectStatusUi.SafeColor(row.StatusColor)">@row.Status</span>
+                                <span class="tx">@row.Title</span>
+                            }
+                            @if (row.OwnerNik is not null) { <PersonAvatar Nik="@row.OwnerNik" Name="@row.OwnerName" Size="22" Class="pv2-av" Decorative="true" /> }
+                        </button>
+                    }
+                </div>
+            </div>
+            <div class="pv2o-card pv2o-c4" style="animation-delay:.18s" data-card="updates">
+                <h4><i data-lucide="message-square"></i>Latest updates</h4>
+                <div class="pv2o-in tight">
+                    @if (o.LatestUpdates.Count == 0) { <div class="pv2o-none">No activity yet.</div> }
+                    @foreach (var u in o.LatestUpdates)
+                    {
+                        <div class="pv2o-feed">
+                            <PersonAvatar Nik="@u.ActorNik" Name="@u.ActorName" Size="22" Class="pv2-av" Decorative="true" />
+                            <div><b>@u.ActorName</b> @u.Text<small>@ProjectOverviewMath.Relative(u.At)</small></div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private enum LoadState { Loading, Ready, Error }
+
+    [Parameter, EditorRequired] public Guid ProjectId { get; set; }
+    [Parameter] public bool CanManage { get; set; }
+    /// Changes when the page refreshed this project (live update): the overview reloads quietly.
+    [Parameter] public int Version { get; set; }
+    [Parameter] public DateTime? Today { get; set; }
+    [Parameter] public EventCallback OnEdit { get; set; }
+    [Parameter] public EventCallback OnOpenGantt { get; set; }
+    [Parameter] public EventCallback OnOpenTeam { get; set; }
+    [Parameter] public EventCallback<Guid> OnOpenTask { get; set; }
+
+    private LoadState state = LoadState.Loading;
+    private ProjectOverviewDto? dto;
+    private string? errorText;
+    private Guid loadedFor;
+    private int loadedVersion = -1;
+    private int seq;
+    private bool disposed;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ProjectId == loadedFor && Version == loadedVersion) return;
+        var quiet = ProjectId == loadedFor && dto is not null;
+        loadedFor = ProjectId;
+        loadedVersion = Version;
+        await LoadAsync(quiet);
+    }
+
+    private async Task LoadAsync(bool quiet)
+    {
+        var my = ++seq;
+        if (!quiet) { state = LoadState.Loading; StateHasChanged(); }
+        var day = (Today ?? DateTime.Today).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        GetResult<ProjectOverviewDto> res;
+        try { res = await Auth.GetResultAsync<ProjectOverviewDto>($"/api/projects/{ProjectId}/overview?localToday={day}"); }
+        catch (OperationCanceledException) { return; }
+        if (my != seq || disposed) return;
+        if (res.IsOk && res.Value is not null) { dto = res.Value; state = LoadState.Ready; errorText = null; }
+        else if (!quiet || dto is null)
+        {
+            state = LoadState.Error;
+            errorText = res.Status switch
+            {
+                GetStatus.Forbidden or GetStatus.NotFound => "You no longer have access to this project.",
+                GetStatus.Unreachable => "iPop could not reach the server. Check your connection and try again.",
+                _ => "Something went wrong while loading the overview. Try again in a moment.",
+            };
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+        try { await JS.InvokeVoidAsync("ipopPv2.ringAnim"); } catch { }
+    }
+
+    private Task ChecklistClick(OverviewChecklistItemDto c) => c.Key switch
+    {
+        "goal" => CanManage ? OnEdit.InvokeAsync() : Task.CompletedTask,
+        "people" => OnOpenTeam.InvokeAsync(),
+        _ => OnOpenGantt.InvokeAsync(),
+    };
+
+    private static MarkupString Txt(double x, double y, string text, string anchor = "start") =>
+        new($"<text x=\"{ProjectOverviewMath.F(x)}\" y=\"{ProjectOverviewMath.F(y)}\" text-anchor=\"{anchor}\">{System.Net.WebUtility.HtmlEncode(text)}</text>");
+
+    private static string Fd(DateTime d) => d.ToString("ddd d MMM", CultureInfo.InvariantCulture);
+    private static string MsClass(string state) => state switch { "achieved" => "ok", "at_risk" => "risk", _ => "" };
+    private static string MsDefault(OverviewMilestoneDto m) => m.State == "achieved" ? "Achieved" : "On track";
+    private static string BurnLabel(ProjectOverviewMath.Burn b) => $"Burn-up: planned {b.PlanMax} tasks, {b.DoneLast} done so far";
+
+    public void Dispose() { disposed = true; seq++; }
+}

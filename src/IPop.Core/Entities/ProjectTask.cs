@@ -21,11 +21,22 @@ public class ProjectTask
     /// "todo" | "doing" | "review" | "done"
     public required string Status { get; set; }
 
+    /// The project's custom status this task shows; its Stage always equals <see cref="Status"/>.
+    /// Null = no custom status (the first option of the stage is shown).
+    public Guid? StatusOptionId { get; set; }
+    public ProjectStatusOption? StatusOption { get; set; }
+
     /// "low" | "medium" | "high" | "urgent"
     public string? Priority { get; set; }
 
     public DateTime? StartDate { get; set; }
     public DateTime? DueDate { get; set; }
+
+    /// Hard target, separate from the planned DueDate; the Gantt flags "late vs deadline".
+    public DateTime? DeadlineDate { get; set; }
+    /// null | "snet" (start no earlier than) | "fnlt" (finish no later than) | "mso" (must start on).
+    public string? ConstraintType { get; set; }
+    public DateTime? ConstraintDate { get; set; }
 
     /// Time tracking (hours). Estimate vs Actual.
     public decimal? EstimatedHours { get; set; }

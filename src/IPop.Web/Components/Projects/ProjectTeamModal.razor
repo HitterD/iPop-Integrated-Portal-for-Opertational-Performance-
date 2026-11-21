@@ -17,7 +17,7 @@
     <div class="proj-modal-body">
         @if (CanManage)
         {
-            <p class="ap-lead">Find a colleague by name, then press <b>Add</b>. Members can work on tasks; viewers can only look.</p>
+            <p class="ap-lead">Find a colleague by name, then press <b>Add</b>. Read &amp; write people can work on tasks; read only people can only look.</p>
             <div class="ap-step"><span class="ap-num">1</span>Search a name or pick a suggestion</div>
             <div class="ap-search">
                 <i data-lucide="search"></i>
@@ -57,8 +57,8 @@
                             <PersonAvatar Nik="@pick.Person.Nik" Name="@pick.Person.Name" Size="26" Class="ap-av" Decorative="true" />
                             <span class="ap-chip-name">@FirstName(pick.Person.Name)</span>
                             <select aria-label="@($"Role for {pick.Person.Name}")" value="@pick.Role" @onchange="e => SetRole(id, e.Value?.ToString())">
-                                <option value="member">Member</option>
-                                <option value="viewer">Viewer</option>
+                                <option value="member">Read &amp; write</option>
+                                <option value="viewer">Read only</option>
                             </select>
                             <button type="button" class="ap-chip-x" aria-label="@($"Remove {pick.Person.Name}")" @onclick="() => picked.Remove(id)"><i data-lucide="x"></i></button>
                         </span>
@@ -74,7 +74,14 @@
                     <PersonAvatar Nik="@m.Nik" Name="@m.Name" Size="36" Class="vpm-member-avatar" Decorative="true" />
                     <span class="vpm-member-text"><strong>@m.Name</strong><small>@RoleLabel(m.Role)</small></span>
                     @if (m.Role == "owner") { <span class="vpm-member-owner">Owner</span> }
-                    else if (CanManage) { <button type="button" class="vpm-member-remove" @onclick="() => OnRemoveMember.InvokeAsync(m.UserId)" title="Remove from project" aria-label="Remove @m.Name"><i data-lucide="x"></i></button> }
+                    else if (CanManage && m.Role != "manager")
+                    {
+                        <select class="vpm-member-role" aria-label="@($"Access for {m.Name}")" value="@m.Role" @onchange="e => OnChangeRole.InvokeAsync((m.UserId, e.Value?.ToString() ?? m.Role))">
+                            <option value="member">Read &amp; write</option>
+                            <option value="viewer">Read only</option>
+                        </select>
+                    }
+                    @if (m.Role != "owner" && CanManage) { <button type="button" class="vpm-member-remove" @onclick="() => OnRemoveMember.InvokeAsync(m.UserId)" title="Remove from project" aria-label="Remove @m.Name"><i data-lucide="x"></i></button> }
                 </div>
             }
         </div>
@@ -104,6 +111,8 @@
     /// Adds the picked people; the page reloads members and toasts.
     [Parameter] public EventCallback<IReadOnlyList<(ProjectPersonDto Person, string Role)>> OnAddPeople { get; set; }
     [Parameter] public EventCallback<Guid> OnRemoveMember { get; set; }
+    /// Owner/manager picked a new access level for a member: "member" (read & write) or "viewer" (read only).
+    [Parameter] public EventCallback<(Guid UserId, string Role)> OnChangeRole { get; set; }
 
     private sealed record Pick(ProjectPersonDto Person, string Role);
 
@@ -183,7 +192,7 @@
 
     private static string RoleLabel(string role) => role switch
     {
-        "owner" => "Owner", "manager" => "Manager", "viewer" => "Viewer (can only look)", _ => "Member"
+        "owner" => "Owner", "manager" => "Manager", "viewer" => "Read only", _ => "Read & write"
     };
 
     public void Dispose() => cts?.Cancel();

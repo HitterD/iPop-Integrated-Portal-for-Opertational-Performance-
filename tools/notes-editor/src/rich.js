@@ -89,13 +89,28 @@ export const NoteImage = Node.create({
       size: { default: 0, parseHTML: e => +e.getAttribute('data-size') || 0 },
       // Width is a % of the text column so it fits on phones too; older images are full width.
       width: { default: 100, parseHTML: e => Math.min(100, Math.max(15, +e.getAttribute('data-width') || 100)) },
+      originalWidth: { default: null, parseHTML: e => Math.max(0, +e.getAttribute('data-original-width') || 0) || null },
+      originalSize: { default: false, parseHTML: e => e.getAttribute('data-original-size') === 'true' },
       align: { default: 'center', parseHTML: e => ['left', 'right'].includes(e.getAttribute('data-align')) ? e.getAttribute('data-align') : 'center' },
       caption: { default: '', parseHTML: e => e.getAttribute('data-caption') || '' },
+      // A picture pasted from a web page before it is saved here: its web address. The pasting editor copies it into the page
+      // (then `id` is set and `src` cleared); if that fails it stays as a picture shown from the website, marked "External".
+      src: { default: null, parseHTML: e => e.getAttribute('data-src') || null },
     };
   },
-  parseHTML() { return [{ tag: 'figure[data-image]' }]; },
+  parseHTML() {
+    return [
+      { tag: 'figure[data-image]', priority: 60 },
+      // <img> from other apps and web pages: web and data: pictures only (blob: addresses die with the tab they came from)
+      { tag: 'img[src]', getAttrs: e => {
+        const src = e.getAttribute('src') || '';
+        if (!/^(https?:|data:image\/(png|jpe?g|gif|webp);base64,)/i.test(src)) return false;
+        return { src, name: (e.getAttribute('alt') || '').slice(0, 120) };
+      } },
+    ];
+  },
   renderHTML({ node: { attrs: a } }) {
-    return ['figure', { 'data-image': '', 'data-id': a.id, 'data-name': a.name, 'data-size': a.size, 'data-width': a.width, 'data-align': a.align, 'data-caption': a.caption }];
+    return ['figure', { 'data-image': '', 'data-id': a.id, 'data-name': a.name, 'data-size': a.size, 'data-width': a.width, 'data-original-width': a.originalWidth, 'data-original-size': String(a.originalSize), 'data-align': a.align, 'data-caption': a.caption, ...(a.src ? { 'data-src': a.src } : {}) }];
   },
   addOptions() { return { host: null }; },
   addNodeView() {
@@ -133,7 +148,7 @@ export const NoteImage = Node.create({
             const up = () => {
               cancelResize();
               const snap = SNAPS.find(s => Math.abs(pct - s) <= 5);
-              set({ width: snap ?? pct });
+              set({ width: snap ?? pct, originalSize: false });
             };
             cancelResize = () => {
               window.removeEventListener('pointermove', move);
@@ -154,7 +169,7 @@ export const NoteImage = Node.create({
 
       const paint = n => {
         dom.className = `nt-img al-${n.attrs.align}`;
-        dom.style.setProperty('--w', `${n.attrs.width}%`);
+        dom.style.setProperty('--w', n.attrs.originalSize && n.attrs.originalWidth > 0 ? `min(100%, ${n.attrs.originalWidth}px)` : `${n.attrs.width}%`);
         if (editable) { if (document.activeElement !== capEl) capEl.value = n.attrs.caption || ''; }
         else { capEl.textContent = n.attrs.caption || ''; capEl.hidden = !n.attrs.caption; }
       };
@@ -163,12 +178,21 @@ export const NoteImage = Node.create({
         const img = document.createElement('img'); img.src = url; img.alt = node.attrs.caption || node.attrs.name; img.draggable = false;
         box.replaceChildren(img);
       }).catch(() => { box.querySelector('.nt-img-wait').textContent = "Couldn't load the image"; });
+      else if (node.attrs.src) {
+        // not saved here (yet): shown straight from the website, no cookies or referrer sent
+        const img = document.createElement('img'); img.src = node.attrs.src; img.alt = node.attrs.caption || node.attrs.name || ''; img.draggable = false;
+        img.referrerPolicy = 'no-referrer';
+        img.onerror = () => { box.innerHTML = '<span class="nt-img-wait">Couldn’t load the picture from the website</span>'; };
+        const tag = el('span', 'nt-img-ext', 'External');
+        tag.title = 'Shown from the website it was copied from. It disappears if that website removes it.';
+        box.replaceChildren(img, tag);
+      }
 
       const view = () => { const all = pageImages(editor.state.doc); openLightbox(host, all, all.findIndex(x => x.id === node.attrs.id)); };
       dom.addEventListener(editable ? 'dblclick' : 'click', e => { if (!e.target.closest('input,.rs')) view(); });
       return {
         dom,
-        update(n) { if (n.type.name !== 'noteImage' || n.attrs.id !== node.attrs.id) return false; node = n; paint(n); return true; },
+        update(n) { if (n.type.name !== 'noteImage' || n.attrs.id !== node.attrs.id || n.attrs.src !== node.attrs.src) return false; node = n; paint(n); return true; },
         ignoreMutation: () => true,
         stopEvent: e => !!e.target.closest?.('input,.rs'),
         destroy: () => cancelResize(),
@@ -179,6 +203,17 @@ export const NoteImage = Node.create({
 
 export function galleryItems(node) {
   try { return (JSON.parse(node.attrs.items || '[]') || []).filter(x => x && typeof x.id === 'string'); } catch { return []; }
+}
+
+/// New order of a gallery's items after moving the item at `from` to `to` (both clamped). Returns the same array when nothing moves.
+export function moveGalleryItem(items, from, to) {
+  if (!Array.isArray(items) || from < 0 || from >= items.length) return items;
+  const dest = Math.max(0, Math.min(items.length - 1, to));
+  if (dest === from) return items;
+  const next = items.slice();
+  const [it] = next.splice(from, 1);
+  next.splice(dest, 0, it);
+  return next;
 }
 
 /// A grid of images stored as one block. Items are a JSON string attribute (plain values sync safely in Yjs).
@@ -192,24 +227,44 @@ export const NoteGallery = Node.create({
   renderHTML({ node }) { return ['div', { 'data-gallery': '', 'data-items': node.attrs.items }]; },
   addOptions() { return { host: null }; },
   addNodeView() {
-    return ({ node, editor }) => {
+    return ({ node, editor, getPos }) => {
       const host = this.options.host?.() ?? {};
       const dom = el('div', 'nt-gal');
       dom.contentEditable = 'false';
-      let generation = 0;
+      let generation = 0, arranging = false;
       const paint = n => {
         const current = ++generation;
-        const items = galleryItems(n), shown = items.slice(0, 4), more = items.length - shown.length;
-        dom.className = `nt-gal n${Math.min(items.length, 4)}`;
-        dom.innerHTML = shown.map((it, k) => `<button type="button" class="t${k === 3 && more > 0 ? ' more' : ''}" data-k="${k}" ${k === 3 && more > 0 ? `data-more="+${more}"` : ''} title="${esc(it.name)}"><span class="nt-img-wait"></span></button>`).join('');
+        const items = galleryItems(n), shown = items;
+        const edit = editor.isEditable;
+        dom.className = `nt-gal n${items.length > 4 ? 'x' : Math.min(items.length, 4)}${edit && arranging ? ' arranging' : ''}`;
+        dom.innerHTML = shown.map((it, k) => `<div class="t" data-k="${k}" role="button" tabindex="0" title="${esc(it.name)}"><span class="nt-img-wait"></span>`
+          + (edit && arranging ? `<span class="gbar"><button type="button" data-mv="-1" aria-label="Move earlier"${k === 0 ? ' disabled' : ''}>←</button><button type="button" data-mv="1" aria-label="Move later"${k === items.length - 1 ? ' disabled' : ''}>→</button><button type="button" data-rm="1" aria-label="Remove from gallery">✕</button></span>` : '') + '</div>').join('')
+          + (edit ? `<button type="button" class="garr" data-arr="1" aria-pressed="${arranging}">${arranging ? 'Done' : 'Arrange'}</button>` : '');
         shown.forEach((it, k) => loadBlob(host, it.id).then(u => {
           const b = dom.querySelector(`[data-k="${k}"]`); if (!b || current !== generation) return;
-          const img = document.createElement('img'); img.src = u; img.alt = it.name || ''; img.draggable = false; b.replaceChildren(img);
+          const img = document.createElement('img'); img.src = u; img.alt = it.name || ''; img.draggable = false; b.querySelector('.nt-img-wait')?.replaceWith(img);
         }, () => {}));
       };
       paint(node);
       dom.addEventListener('click', e => {
+        if (e.target.closest('[data-arr]')) { arranging = !arranging; paint(node); return; }
         const t = e.target.closest('[data-k]'); if (!t) return;
+        const mv = e.target.closest('[data-mv]'), rm = e.target.closest('[data-rm]');
+        if (mv || rm) {
+          e.preventDefault(); e.stopPropagation();
+          const items = galleryItems(node), k = +t.dataset.k;
+          const next = rm ? items.filter((_, i) => i !== k) : moveGalleryItem(items, k, k + +mv.dataset.mv);
+          const pos = getPos();
+          if (pos == null || next === items) return;
+          const tr = editor.state.tr;
+          // An emptied gallery disappears, a single image turns back into a plain image block.
+          if (next.length === 0) tr.delete(pos, pos + node.nodeSize);
+          else if (next.length === 1) tr.replaceWith(pos, pos + node.nodeSize, editor.schema.nodes.noteImage.create({ ...next[0], size: next[0].size || 0 }));
+          else tr.setNodeMarkup(pos, undefined, { ...node.attrs, items: JSON.stringify(next) });
+          editor.view.dispatch(tr);
+          return;
+        }
+        if (arranging) return;
         const all = pageImages(editor.state.doc), first = galleryItems(node)[+t.dataset.k];
         openLightbox(host, all, all.findIndex(x => x.id === first?.id));
       });
@@ -381,6 +436,9 @@ export const RichTaskItem = TaskItem.extend({
       assigneeName: { default: null, keepOnSplit: false, parseHTML: e => e.getAttribute('data-assignee'), renderHTML: a => a.assigneeName ? { 'data-assignee': a.assigneeName } : {} },
       completedOn: { default: null, keepOnSplit: false, parseHTML: e => validDue(e.getAttribute('data-completed')), renderHTML: a => a.completedOn ? { 'data-completed': a.completedOn } : {} },
       due: { default: null, keepOnSplit: false, parseHTML: e => validDue(e.getAttribute('data-due')), renderHTML: a => a.due ? { 'data-due': a.due } : {} },
+      // The Projects task this to-do was turned into ("→ Task"). Survives edits to the text; sent with every save so the server can complete it.
+      taskId: { default: null, keepOnSplit: false, parseHTML: e => (/^[0-9a-f-]{36}$/i.test(e.getAttribute('data-task-id') || '') ? e.getAttribute('data-task-id') : null), renderHTML: a => a.taskId ? { 'data-task-id': a.taskId } : {} },
+      taskName: { default: null, keepOnSplit: false, parseHTML: e => e.getAttribute('data-task-name'), renderHTML: a => a.taskName ? { 'data-task-name': a.taskName } : {} },
     };
   },
 });
@@ -404,7 +462,7 @@ export function todoInsertPos(doc, pos) {
 const todoKey = new PluginKey('todoExtras');
 export const TodoExtras = Extension.create({
   name: 'todoExtras',
-  addOptions() { return { onMenu: null, onChip: null }; },
+  addOptions() { return { onMenu: null, onChip: null, onOpenTask: null }; },
   addProseMirrorPlugins() {
     const editor = this.editor, opts = this.options;
     return [new Plugin({
@@ -412,63 +470,89 @@ export const TodoExtras = Extension.create({
       appendTransaction(transactions, oldState, state) {
         if (!transactions.some(t => t.docChanged) || transactions.some(t => t.getMeta('todoDates'))) return null;
         const tr = state.tr;
-        state.doc.descendants((n, pos) => {
-          if (n.type.name !== 'taskItem') return;
+        // Only the ranges these transactions touched (a keystroke touches one paragraph, not the whole page).
+        let ranges = [];
+        for (const t of transactions) {
+          ranges = ranges.map(([a, b]) => [t.mapping.map(a, -1), t.mapping.map(b, 1)]);
+          t.mapping.maps.forEach(m => m.forEach((_o, _oe, from, to) => ranges.push([from, to])));
+        }
+        const seen = new Set();
+        const visit = (n, pos) => {
+          if (n.type.name !== 'taskItem' || seen.has(pos)) return;
+          seen.add(pos);
           let oldPos = pos;
           for (let i = transactions.length - 1; i >= 0; i--) oldPos = transactions[i].mapping.invert().map(oldPos);
           const old = oldState.doc.nodeAt(Math.min(oldPos, oldState.doc.content.size));
           if (old?.type.name !== 'taskItem' || old.attrs.checked === n.attrs.checked) return;
           tr.setNodeMarkup(pos, undefined, { ...n.attrs, completedOn: n.attrs.checked ? isoToday() : null });
-        });
+        };
+        for (const [a, b] of ranges) state.doc.nodesBetween(Math.max(0, a), Math.min(state.doc.content.size, b), visit);
         return tr.docChanged ? tr.setMeta('todoDates', true).setMeta('addToHistory', false) : null;
+      },
+      // The decorations only depend on the document and on whether the editor is editable, so they are rebuilt then
+      // (not on every cursor move or selection change) and just mapped through other transactions.
+      state: {
+        init: (_c, state) => ({ editable: editor.isEditable, set: buildTodoDecorations(state, editor, opts) }),
+        apply(tr, value, _old, state) {
+          if (!tr.docChanged && value.editable === editor.isEditable) return { editable: value.editable, set: value.set.map(tr.mapping, tr.doc) };
+          return { editable: editor.isEditable, set: buildTodoDecorations(state, editor, opts) };
+        },
       },
       props: {
         decorations(state) {
-          const editable = editor.isEditable, decos = [], today = isoToday();
-          state.doc.descendants((node, pos, parent) => {
-            const t = node.type.name;
-            if (t === 'taskList' && parent?.type.name !== 'taskItem') {
-              let done = 0, total = 0;
-              node.descendants(n => { if (n.type.name === 'taskItem') { total++; if (n.attrs.checked) done++; } });
-              if (total >= 3) decos.push(Decoration.widget(pos, () => {
-                const d = el('div', 'nt-tprog', `<span class="bar"><i style="width:${Math.round(done / total * 100)}%"></i></span><span>${done === total ? '✓ All done' : `${done} of ${total} done`}</span>`);
-                d.contentEditable = 'false';
-                return d;
-              }, { side: -1, key: `tp-${done}-${total}`, ignoreSelection: true }));
-            }
-            if (t !== 'taskItem' || node.firstChild?.type.name !== 'paragraph') return;
-            const { assigneeId, assigneeName, due, checked, completedOn } = node.attrs;
-            if (!assigneeId && !due && !completedOn && !editable) return;
-            const at = pos + 1 + node.firstChild.nodeSize - 1;
-            decos.push(Decoration.widget(at, (view, getPos) => {
-              const d = el('span', 'nt-tmeta');
-              d.contentEditable = 'false';
-              if (assigneeId) d.append(el('button', 'chip who', `@${esc(assigneeName || 'Someone')}`));
-              if (due) {
-                const c = el('button', `chip due${!checked && due < today ? ' late' : ''}${due === today ? ' today' : ''}`, `📅 ${esc(due === today ? 'Today' : fmtDue(due))}`);
-                c.title = !checked && due < today ? 'Overdue' : 'Due date';
-                d.append(c);
-              }
-              if (checked && completedOn) d.append(el('span', 'chip done', `✓ Done ${esc(fmtDue(completedOn))}`));
-              if (editable) { const m = el('button', 'more', '⋯'); m.title = 'Photo, file, sub-item, assignee, due date'; m.setAttribute('aria-label', 'To-do options'); d.append(m); }
-              d.querySelectorAll('button').forEach(b => { b.type = 'button'; b.tabIndex = -1; });
-              d.addEventListener('mousedown', e => e.preventDefault());
-              d.addEventListener('click', e => {
-                const b = e.target.closest('button'); if (!b || !editable) return;
-                const it = taskItemAt(view.state.doc, getPos());
-                if (!it) return;
-                if (b.classList.contains('more')) opts.onMenu?.(it.pos, b);
-                else opts.onChip?.(it.pos, b, b.classList.contains('who') ? 'who' : 'due');
-              });
-              return d;
-            }, { side: 1, key: `tm-${assigneeId}-${assigneeName}-${due}-${checked}-${completedOn}-${editable}-${due && due < today}`, ignoreSelection: true, stopEvent: () => true }));
-          });
-          return DecorationSet.create(state.doc, decos);
+          const v = todoKey.getState(state);
+          // setEditable() does not dispatch a transaction, so apply() never sees it: rebuild here when the cache is stale.
+          return v && v.editable === editor.isEditable ? v.set : buildTodoDecorations(state, editor, opts);
         },
       },
     })];
   },
 });
+
+function buildTodoDecorations(state, editor, opts) {
+  const editable = editor.isEditable, decos = [], today = isoToday();
+  state.doc.descendants((node, pos, parent) => {
+    const t = node.type.name;
+    if (t === 'taskList' && parent?.type.name !== 'taskItem') {
+      let done = 0, total = 0;
+      node.descendants(n => { if (n.type.name === 'taskItem') { total++; if (n.attrs.checked) done++; } });
+      if (total >= 3) decos.push(Decoration.widget(pos, () => {
+        const d = el('div', 'nt-tprog', `<span class="bar"><i style="width:${Math.round(done / total * 100)}%"></i></span><span>${done === total ? '✓ All done' : `${done} of ${total} done`}</span>`);
+        d.contentEditable = 'false';
+        return d;
+      }, { side: -1, key: `tp-${done}-${total}`, ignoreSelection: true }));
+    }
+    if (t !== 'taskItem' || node.firstChild?.type.name !== 'paragraph') return;
+    const { assigneeId, assigneeName, due, checked, completedOn, taskId } = node.attrs;
+    if (!assigneeId && !due && !completedOn && !taskId && !editable) return;
+    const at = pos + 1 + node.firstChild.nodeSize - 1;
+    decos.push(Decoration.widget(at, (view, getPos) => {
+      const d = el('span', 'nt-tmeta');
+      d.contentEditable = 'false';
+      if (assigneeId) d.append(el('button', 'chip who', `@${esc(assigneeName || 'Someone')}`));
+      if (due) {
+        const c = el('button', `chip due${!checked && due < today ? ' late' : ''}${due === today ? ' today' : ''}`, `📅 ${esc(due === today ? 'Today' : fmtDue(due))}`);
+        c.title = !checked && due < today ? 'Overdue' : 'Due date';
+        d.append(c);
+      }
+      if (taskId) { const c = el('button', 'chip task', `▣ ${esc(node.attrs.taskName || 'Task')}`); c.title = 'Open the task in Projects'; c.dataset.task = taskId; d.append(c); }
+      if (checked && completedOn) d.append(el('span', 'chip done', `✓ Done ${esc(fmtDue(completedOn))}`));
+      if (editable) { const m = el('button', 'more', '⋯'); m.title = 'Photo, file, sub-item, assignee, due date'; m.setAttribute('aria-label', 'To-do options'); d.append(m); }
+      d.querySelectorAll('button').forEach(b => { b.type = 'button'; b.tabIndex = -1; });
+      d.addEventListener('mousedown', e => e.preventDefault());
+      d.addEventListener('click', e => {
+        const b = e.target.closest('button'); if (!b || !editable) return;
+        const it = taskItemAt(view.state.doc, getPos());
+        if (!it) return;
+        if (b.dataset.task) { opts.onOpenTask?.(b.dataset.task); return; }
+        if (b.classList.contains('more')) opts.onMenu?.(it.pos, b);
+        else opts.onChip?.(it.pos, b, b.classList.contains('who') ? 'who' : 'due');
+      });
+      return d;
+    }, { side: 1, key: `tm-${assigneeId}-${assigneeName}-${due}-${checked}-${completedOn}-${editable}-${due && due < today}-${taskId}-${node.attrs.taskName}`, ignoreSelection: true, stopEvent: () => true }));
+  });
+  return DecorationSet.create(state.doc, decos);
+}
 
 // ── Floating UI: image bar, table bar + size picker, to-do menus, paste menu ─
 
@@ -502,9 +586,10 @@ export function createRichUi(editor, host) {
     imgBar.innerHTML = n.type.name === 'noteGallery'
       ? '<button data-i="view">View</button><button data-i="ungroup">Ungroup</button><span class="div"></span><button data-i="del" class="danger">Delete</button>'
       : (inTodo ? '' : ['left', 'center', 'right'].map(x => `<button data-i="al-${x}" class="${a.align === x ? 'on' : ''}" title="Align ${x}">${cap(x)}</button>`).join('')
-        + '<span class="div"></span>' + [['S', 33], ['M', 60], ['Full', 100]].map(([k, v]) => `<button data-i="w-${v}" class="${a.width === v ? 'on' : ''}">${k}</button>`).join('')
+        + '<span class="div"></span>' + [['S', 33], ['M', 60], ['Full', 100]].map(([k, v]) => `<button data-i="w-${v}" class="${!a.originalSize && a.width === v ? 'on' : ''}">${k}</button>`).join('')
+        + (a.originalWidth > 0 ? `<button data-i="original" class="${a.originalSize ? 'on' : ''}" title="Original size, up to the page width">Original</button>` : '')
         + '<span class="div"></span><button data-i="cap">Caption</button>')
-        + '<button data-i="view">View</button><button data-i="dl">Download</button><span class="div"></span><button data-i="del" class="danger">Delete</button>';
+        + `<button data-i="view">View</button><button data-i="copy" title="Copy the picture (Ctrl C) — paste it in another note, Chat, Mail or Word">Copy</button>${a.id ? '<button data-i="dl">Download</button>' : ''}<span class="div"></span><button data-i="del" class="danger">Delete</button>`;
     const dom = editor.view.nodeDOM(sel.from);
     if (dom) above(imgBar, (dom.querySelector?.('.nt-img-frame') || dom).getBoundingClientRect());
   }
@@ -512,10 +597,12 @@ export function createRichUi(editor, host) {
     const b = e.target.closest('[data-i]'); const n = nodeAt(imgPos); if (!b || !n) return;
     const k = b.dataset.i;
     if (k.startsWith('al-')) setAttrs(imgPos, { align: k.slice(3) });
-    else if (k.startsWith('w-')) setAttrs(imgPos, { width: +k.slice(2) });
+    else if (k.startsWith('w-')) setAttrs(imgPos, { width: +k.slice(2), originalSize: false });
+    else if (k === 'original' && n.attrs.originalWidth > 0) setAttrs(imgPos, { originalSize: true });
     else if (k === 'cap') { editor.view.nodeDOM(imgPos)?.querySelector('input.nt-img-cap')?.focus(); imgBar.classList.remove('show'); return; }
     else if (k === 'view') { const all = pageImages(editor.state.doc); const id = n.type.name === 'noteGallery' ? galleryItems(n)[0]?.id : n.attrs.id; openLightbox(host, all, all.findIndex(x => x.id === id)); }
     else if (k === 'dl') download(host, n.attrs.id, n.attrs.name);
+    else if (k === 'copy') { host.copyImage?.(n).then(ok => host.toast?.(ok ? 'Picture copied' : 'Couldn’t copy the picture — right-click it and choose Copy image')); }
     else if (k === 'del') editor.chain().focus().deleteRange({ from: imgPos, to: imgPos + n.nodeSize }).run();
     else if (k === 'ungroup') editor.chain().focus().insertContentAt({ from: imgPos, to: imgPos + n.nodeSize }, galleryItems(n).map(it => ({ type: 'noteImage', attrs: { ...it, size: it.size || 0 } }))).run();
     syncImg();
@@ -651,7 +738,8 @@ export function createRichUi(editor, host) {
       + '<div class="mi" data-m="sub"><span class="sw">↳</span>Add sub-item<span class="ds">Tab</span></div><hr>'
       + `<div class="mi" data-m="who"><span class="sw">@</span>${n?.attrs.assigneeId ? 'Change person' : 'Assign person'}</div>`
       + (n?.attrs.assigneeId ? '<div class="mi" data-m="unwho"><span class="sw">⊘</span>Remove person</div>' : '')
-      + `<div class="mi" data-m="due"><span class="sw">📅</span>${n?.attrs.due ? 'Change due date' : 'Due date'}</div><hr>`
+      + `<div class="mi" data-m="due"><span class="sw">📅</span>${n?.attrs.due ? 'Change due date' : 'Due date'}</div>`
+      + (n?.attrs.taskId ? '<div class="mi" data-m="task-open"><span class="sw">▣</span>Open task in Projects</div>' : '<div class="mi" data-m="task"><span class="sw">▣</span>Make a task in Projects…<span class="ds">→ Task</span></div>') + '<hr>'
       + '<div class="mi danger" data-m="del"><span class="sw">🗑</span>Delete item</div>';
     place(todoMenu, anchor.getBoundingClientRect(), { align: 'right' });
   }
@@ -674,6 +762,15 @@ export function createRichUi(editor, host) {
       case 'who': openPeople(itemPos, anchor); break;
       case 'unwho': setItemAttrs({ assigneeId: null, assigneeName: null }); break;
       case 'due': openDue(itemPos, anchor); break;
+      case 'task-open': host.openTask?.(n.attrs.taskId); break;
+      case 'task': {
+        const pos = itemPos;
+        const text = (n.firstChild?.textContent ?? '').trim();
+        host.todoToTask?.({ id: pos, text, dueIso: n.attrs.due || null, assigneeId: n.attrs.assigneeId || null, assigneeName: n.attrs.assigneeName || null })
+          .then(t => { if (t) { const cur = nodeAt(pos); if (cur?.type.name === 'taskItem') setAttrs(pos, { taskId: t.id, taskName: t.project ? `${t.project}` : 'Task' }); host.toast?.(`Task created in ${t.project || 'Projects'}`); } })
+          .catch(() => host.toast?.('Couldn’t create the task'));
+        break;
+      }
       case 'del': editor.chain().focus().deleteRange({ from: itemPos, to: itemPos + n.nodeSize }).run(); break;
     }
   });

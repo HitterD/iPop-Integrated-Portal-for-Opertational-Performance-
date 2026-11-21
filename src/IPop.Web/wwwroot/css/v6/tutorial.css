@@ -92,6 +92,16 @@ body:has(.outlook-composer.minimized) .tut-invite { bottom: 76px; }
   /* Sits above the phone tab bar (it used to cover the More button); edge-anchored when the bar is hidden. */
   .tut-invite { left: 12px; right: 12px; bottom: calc(var(--m-tabbar-h, 56px) + var(--m-safe-b, env(safe-area-inset-bottom, 0px)) + 12px); width: auto; }
   body.m-hide-tabbar .tut-invite { bottom: calc(12px + var(--m-safe-b, env(safe-area-inset-bottom, 0px))); }
+  /* Compact on phones: the full card covered about a third of the page until dismissed. Title + buttons only, icon beside the
+     title, the long description hidden (the Help panel still has it). */
+  .tut-invite { padding: 10px 40px 10px 12px; border-radius: 16px; display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 10px; row-gap: 8px; }
+  .tut-invite .ic { width: 30px; height: 30px; border-radius: 9px; }
+  .tut-invite .ic svg { width: 16px; height: 16px; }
+  .tut-invite h3 { margin: 0; font-size: 14.5px; }
+  .tut-invite p { display: none; }
+  .tut-invite .acts { grid-column: 1 / -1; gap: 6px; }
+  .tut-invite .tut-btn { height: 32px; padding: 0 12px; font-size: 13px; }
+  .tut-invite .tut-x { top: 8px; right: 8px; }
   body:has(.outlook-composer.minimized) .tut-invite { bottom: calc(var(--m-tabbar-h, 56px) + var(--m-safe-b, env(safe-area-inset-bottom, 0px)) + 64px); }
   /* Tour card becomes a bottom sheet so it never covers what it points at. */
   .driver-popover.tut-pop { position: fixed !important; left: 0 !important; right: 0 !important; top: auto !important; bottom: 0 !important; width: auto; max-width: none; border-radius: 22px 22px 0 0; padding-bottom: calc(18px + env(safe-area-inset-bottom)); }

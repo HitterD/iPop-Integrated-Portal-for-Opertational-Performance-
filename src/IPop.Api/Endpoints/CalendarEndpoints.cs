@@ -173,21 +173,21 @@ public static partial class CalendarEndpoints
     // ── Feed ──────────────────────────────────────────────────────────────────
 
     /// Which module sources the caller may read (mirrors each module's own read permission).
-    public sealed record FeedAccess(bool Projects, bool Mail, bool Chat, bool News, bool Tickets = true)
+    public sealed record FeedAccess(bool Projects, bool Mail, bool Chat, bool News, bool Tickets = true, bool Notes = true)
     {
-        public static readonly FeedAccess All = new(true, true, true, true);
+        public static readonly FeedAccess All = new(true, true, true, true, true, true);
 
         public static async Task<FeedAccess> ForAsync(IPermissionEvaluator perms, Guid userId, CancellationToken ct)
         {
             var access = await IPop.Application.Calendar.CalendarFeedAccess.ForAsync(perms, userId, ct);
-            return new(access.Projects, access.Mail, access.Chat, access.News, access.Tickets);
+            return new(access.Projects, access.Mail, access.Chat, access.News, access.Tickets, access.Notes);
         }
     }
 
     public static async Task<List<CalendarFeedItem>> BuildFeedAsync(IPopDbContext db, Guid userId, DateTime from, DateTime to, FeedAccess access, CancellationToken ct)
     {
         var items = await IPop.Infrastructure.Calendar.CalendarFeedService.BuildAsync(db, userId, from, to,
-            new IPop.Application.Calendar.CalendarFeedAccess(access.Projects, access.Mail, access.Chat, access.News, access.Tickets), ct);
+            new IPop.Application.Calendar.CalendarFeedAccess(access.Projects, access.Mail, access.Chat, access.News, access.Tickets, access.Notes), ct);
         return items.Select(i => new CalendarFeedItem(i.Id, i.Source, i.Kind, i.Title, i.StartAt, i.EndAt, i.AllDay,
             i.Url, i.Subtitle, i.EventId, i.MeetingId, i.Rsvp, i.CanEdit, i.Location, i.Link, i.Visibility, i.MeetingKind, i.RoomKey)).ToList();
     }

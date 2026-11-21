@@ -148,7 +148,7 @@ public sealed class SafeHttpFetcher : IDisposable
             if (media is null || !req.AcceptMediaType(media)) return new FetchResult(FetchOutcome.WrongType);
             if (res.Content.Headers.ContentLength > req.MaxBytes && !req.AllowTruncate) return new FetchResult(FetchOutcome.TooLarge);
 
-            var (body, truncated) = await ReadCappedAsync(res.Content, req.MaxBytes, ct);
+            var (body, truncated) = await ReadCappedAsync(res.Content, req.MaxBytes, req.AllowTruncate, ct);
             if (truncated && !req.AllowTruncate) return new FetchResult(FetchOutcome.TooLarge);
             return new FetchResult(FetchOutcome.Ok, uri, media, res.Content.Headers.ContentType?.CharSet, body, truncated);
         }
@@ -162,7 +162,7 @@ public sealed class SafeHttpFetcher : IDisposable
         catch (ArgumentException) { return null; }
     }
 
-    private static async Task<(byte[] Body, bool Truncated)> ReadCappedAsync(HttpContent content, int max, CancellationToken ct)
+    private static async Task<(byte[] Body, bool Truncated)> ReadCappedAsync(HttpContent content, int max, bool allowTruncate, CancellationToken ct)
     {
         await using var s = await content.ReadAsStreamAsync(ct);
         var buf = new byte[81920];
@@ -173,6 +173,7 @@ public sealed class SafeHttpFetcher : IDisposable
             var room = max - (int)ms.Length;
             if (n > room)
             {
+                if (!allowTruncate) return ([], true);
                 ms.Write(buf, 0, room);
                 return (ms.ToArray(), true);
             }

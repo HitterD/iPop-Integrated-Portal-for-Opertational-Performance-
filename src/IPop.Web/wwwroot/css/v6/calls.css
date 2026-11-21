@@ -470,7 +470,7 @@ html.callx-resizing, html.callx-resizing * { cursor:nwse-resize !important; }
 @keyframes sheet2-pop { from { transform:scale(1.04); opacity:0; } }
 .sheet2 { position:relative; width:640px; max-width:100%; max-height:100%; display:flex; flex-direction:column; border-radius:22px; overflow:hidden; background:var(--surface); color:var(--ink);
   box-shadow:0 24px 60px -18px rgba(0,0,0,.35), 0 0 0 .5px rgba(0,0,0,.08); animation:sheet2-pop .32s cubic-bezier(.32,.72,0,1); font-size:14px; line-height:1.45; }
-[data-theme="dark"] .sheet2 { background:#1c1c1e; box-shadow:0 30px 70px -20px rgba(0,0,0,.8), 0 0 0 .5px rgba(255,255,255,.12); }
+[data-theme="dark"] .sheet2 { background:var(--surface); box-shadow:0 30px 70px -20px rgba(0,0,0,.8), 0 0 0 .5px rgba(255,255,255,.12); }
 .sheet2 button { font:inherit; color:inherit; background:none; border:0; cursor:pointer; }
 .sheet2 button:disabled { cursor:not-allowed; }
 .sheet2 .lucide { width:18px; height:18px; flex:none; }
@@ -483,7 +483,7 @@ html.callx-resizing, html.callx-resizing * { cursor:nwse-resize !important; }
 .sheet2 .x .lucide { width:15px; height:15px; stroke-width:2.4; }
 .sheet2 .sh-b { padding:4px 18px 16px; overflow:auto; min-height:0; }
 .sheet2 .sh-f { display:flex; align-items:center; gap:8px; padding:12px 18px 16px; border-top:.5px solid var(--line-2); background:var(--surface); }
-[data-theme="dark"] .sheet2 .sh-f { background:#1c1c1e; }
+[data-theme="dark"] .sheet2 .sh-f { background:var(--surface); }
 .sheet2 .spacer { flex:1; }
 .sheet2 .btn { display:inline-flex; align-items:center; justify-content:center; gap:7px; width:auto; height:40px; margin:0; padding:0 20px; border-radius:999px; font-size:14.5px; font-weight:600; white-space:nowrap; transform:none; }
 .sheet2 .btn .lucide { width:16px; height:16px; }
@@ -565,7 +565,7 @@ html.callx-resizing, html.callx-resizing * { cursor:nwse-resize !important; }
 .sheet2 .seg2 button { height:28px; padding:0 11px; border-radius:7px; font-size:12.5px; font-weight:550; color:var(--ink-2); white-space:nowrap; display:flex; align-items:center; gap:5px; }
 .sheet2 .seg2 button .sw { width:10px; height:10px; border-radius:3px; background:radial-gradient(120% 120% at 0% 0%, var(--a), var(--b)); }
 .sheet2 .seg2 button.on { background:var(--surface); color:var(--ink); font-weight:650; box-shadow:0 2px 6px rgba(0,0,0,.08); }
-[data-theme="dark"] .sheet2 .seg2 button.on { background:#636366; }
+[data-theme="dark"] .sheet2 .seg2 button.on { background:var(--line-2); }
 /* "Move to…" (v3 gaps): every room free on a clashing date, as an in-flow choice row under that date (a popup was
    clipped by the list's rounded overflow and the sheet's scroller). */
 .sheet2 .seg2 .bs-move .bs-move-cv { width:12px; height:12px; opacity:.6; margin-left:1px; }
@@ -746,7 +746,7 @@ html.callx-resizing, html.callx-resizing * { cursor:nwse-resize !important; }
   .calls-v6 .calls-toolbar .calls-tabs { flex:1 1 100%; display:flex; gap:0; padding:2px; border-radius:10px; background:var(--fill); overflow:visible; }
   .calls-v6 .calls-toolbar .calls-tabs button { flex:1 1 0; min-width:0; height:32px; min-height:32px; padding:0 6px; justify-content:center; border-radius:8px; font-size:13px; font-weight:500; color:var(--ink-2); }
   .calls-v6 .calls-toolbar .calls-tabs button.active { background:var(--surface); color:var(--ink); font-weight:600; box-shadow:0 3px 8px rgba(0,0,0,.08), 0 0 0 .5px rgba(0,0,0,.04); }
-  [data-theme="dark"] .calls-v6 .calls-toolbar .calls-tabs button.active { background:#636366; }
+  [data-theme="dark"] .calls-v6 .calls-toolbar .calls-tabs button.active { background:var(--line-2); }
   .calls-v6 .calls-toolbar .calls-tabs button .lucide, .calls-v6 .calls-toolbar .calls-tabs button svg,
   .calls-v6 .calls-toolbar .calls-tabs button .cl-seg-long, .calls-v6 .calls-toolbar .calls-tabs button > span:last-child { display:none; }
   .calls-v6 .calls-toolbar .calls-tabs button .cl-seg-short { display:inline; font-size:inherit; color:inherit; }
