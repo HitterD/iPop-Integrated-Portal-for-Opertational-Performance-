@@ -170,7 +170,7 @@ kbd{font:600 11.5px/1 ui-monospace,"Cascadia Mono",monospace;padding:3px 6px;bor
 .wsnack button{height:30px;padding:0 10px;border-radius:8px;font-weight:650;color:var(--snack-acc);flex:none}
 .wsnack button:hover{background:rgba(127,127,127,.18)}
 .wsnack svg.lucide{width:17px;height:17px;color:var(--snack-acc)}
-.inbox .wsnack{bottom:76px}.wide .wsnack{bottom:84px}.desk .wsnack{bottom:62px;left:38%}.fwin .wsnack{bottom:118px}
+.fwin2 .wsnack{bottom:84px}.inbox .wsnack{bottom:76px}.wide .wsnack{bottom:84px}.desk .wsnack{bottom:62px;left:38%}.fwin .wsnack{bottom:118px}
 
 /* empty state */
 .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px;padding:48px 20px;color:var(--ink-3);font-size:13.5px;animation:fade .4s var(--spring)}
@@ -242,7 +242,7 @@ kbd{font:600 11.5px/1 ui-monospace,"Cascadia Mono",monospace;padding:3px 6px;bor
 .sbox .sx svg.lucide{width:15px;height:15px}
 .sbox.open{width:calc(100% - 128px);background:var(--surface);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 28%,transparent)}
 .sbox.open input,.sbox.open .sx{opacity:1}
-.summary{margin:0 18px 12px;padding:10px 12px;border-radius:12px;background:var(--sunk);display:flex;align-items:center;gap:6px;font-size:13.5px;color:var(--ink-2)}
+.summary{overflow:hidden;margin:0 18px 12px;padding:10px 12px;border-radius:12px;background:var(--sunk);display:flex;align-items:center;gap:6px;font-size:13.5px;color:var(--ink-2)}
 .summary>svg.lucide{color:var(--act);margin-right:2px}
 .summary button{padding:3px 6px;border-radius:7px;white-space:nowrap;transition:background .15s}
 .summary button:hover{background:var(--fill)}
@@ -630,20 +630,259 @@ td.qa2 svg.lucide{width:15px;height:15px}
 .saved.on{opacity:1;transform:none}
 .saved svg{width:15px;height:15px}
 
+
+/* ---------- 7 FULL SIZE PER SOURCE ---------- */
+:root{--tix:#2563EB}.dark{--tix:#3B82F6}
+.kinds7{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}
+.kinds7>.thumb{background:var(--page-ink);border-radius:999px}
+.kinds7 button{height:34px;padding:0 13px;border-radius:999px;font-size:13px;font-weight:600;color:var(--ink-2);display:inline-flex;align-items:center;gap:7px}
+.kinds7 button:not(.on):hover{background:var(--fill-2)}
+.kinds7 button i.d{width:8px;height:8px;border-radius:50%;background:var(--m);display:block}
+.kinds7 button.on{color:var(--page)}
+.fwin2{width:100%;height:820px;min-width:1100px}
+.fwin2 .ttl2{display:flex;align-items:center;gap:10px;height:46px;padding:0 0 0 16px;border-bottom:1px solid var(--sep);flex:none}
+.fwin2 .ttl2 .ico{width:28px;height:28px;border-radius:8px}.fwin2 .ttl2 .ico svg.lucide{width:16px;height:16px}.fwin2 .ttl2 .ico img{width:17px}
+.fwin2 .ttl2 b{font-size:14px}.fwin2 .ttl2 small{font-size:12.5px;color:var(--ink-3)}
+.fwin2 .ttl2 .sp{flex:1}
+.fwin2 .ttl2 .wcs{display:flex}.fwin2 .ttl2 .wcs button{width:46px;height:46px;display:grid;place-items:center;color:var(--ink-3)}
+.fwin2 .ttl2 .wcs button:hover{background:var(--fill)}.fwin2 .ttl2 .wcs button.x:hover{background:#E81123;color:#fff}
+.fwin2 .ttl2 .wcs svg.lucide{width:15px;height:15px}
+.fbody{flex:1;overflow:auto;position:relative}
+.pane>*{animation:fade .5s var(--spring) backwards;animation-delay:calc(var(--i,0)*55ms)}
+.fcol{max-width:880px;margin:0 auto;padding:28px 40px 40px}
+.factions{border-top:1px solid var(--sep);padding:12px 24px;display:flex;justify-content:center;flex:none;position:relative}
+.factions .in{display:flex;gap:8px;align-items:center;width:100%;max-width:880px}
+.factions .sp{flex:1}
+.factions .btn{height:42px}
+.sect2{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:26px 0 10px;display:flex;align-items:center;gap:8px}
+.sect2 svg.lucide{width:15px;height:15px}
+.sect2 .lnk{margin-left:auto;text-transform:none;letter-spacing:0;font-size:13px;color:var(--accent-ink);font-weight:600;padding:4px 8px;border-radius:7px;display:inline-flex;align-items:center;gap:6px}
+.sect2 .lnk:hover{background:var(--accent-soft)}
+.pc{display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:14px;border:.5px solid var(--line);background:var(--surface)}
+.pc .avatar{width:40px;height:40px}
+.pc small{display:block;font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-4)}
+.pc b{font-size:15px}.pc span{display:block;font-size:13px;color:var(--ink-3)}
+/* mail */
+.msubj{font-size:28px;font-weight:700;letter-spacing:-.025em;line-height:1.2;margin-bottom:16px}
+.mmeta{display:flex;align-items:flex-start;gap:14px;margin-bottom:20px}
+.mmeta .avatar{width:48px;height:48px;border-radius:12px;font-size:16px}
+.mmeta .who{flex:1;min-width:0}
+.mmeta .who>b{font-size:16px}
+.mmeta .who .line{font-size:13.5px;color:var(--ink-3);margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.mmeta .when{font-size:13px;color:var(--ink-3);text-align:right;white-space:nowrap}
+.rcpt{display:inline-flex;gap:4px;flex-wrap:wrap;align-items:center}
+.rcpt .p{background:var(--fill-2);border-radius:6px;padding:1px 7px;color:var(--ink-2);font-weight:550}
+.rcpt .more{color:var(--accent-ink);font-weight:650;cursor:pointer;padding:1px 4px;border-radius:6px}
+.rcpt .more:hover{background:var(--accent-soft)}
+.rcpt .p.x{animation:fade .3s var(--spring)}
+.mailbody{font-size:16px;line-height:1.7;color:var(--ink-2);border-top:1px solid var(--sep);padding-top:20px}
+.mailbody p{margin-bottom:14px}
+.mailbody table{border-collapse:collapse;margin:8px 0 16px;font-size:14px;width:auto}
+.mailbody td,.mailbody th{border:1px solid var(--sep);padding:6px 12px;text-align:left;position:static;background:none;white-space:nowrap}
+.mailbody th{background:var(--sunk);font-size:13px;color:var(--ink-2)}
+.mailbody .poster{border-radius:12px;height:200px;background:linear-gradient(135deg,#123528,#2E9E5B 60%,#9be7b4);color:#fff;display:flex;align-items:flex-end;padding:22px;font-size:24px;font-weight:800;letter-spacing:-.02em;margin:6px 0 18px}
+.mailbody .sig{color:var(--ink-3);font-size:14px;border-top:1px dashed var(--sep);padding-top:10px;margin-top:6px}
+.quoted{margin-top:14px;border-left:3px solid var(--sep);padding:6px 0 6px 14px;color:var(--ink-3);font-size:14px}
+.quoted summary{cursor:pointer;color:var(--accent-ink);font-weight:600;list-style:none;display:inline-flex;align-items:center;gap:6px}
+.quoted summary svg.lucide{width:14px;height:14px;transition:transform .3s var(--spring)}
+.quoted[open] summary svg.lucide{transform:rotate(90deg)}
+.quoted .qb{margin-top:8px;animation:fade .35s var(--spring)}
+.files2{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
+/* ticket */
+.ttitle{font-size:26px;font-weight:700;letter-spacing:-.025em;margin:8px 0 18px}
+.steps{display:flex;align-items:center;margin:0 0 20px;padding:14px 18px;background:var(--sunk);border-radius:14px}
+.step{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:var(--ink-3);flex:none}
+.step i{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--fill);color:var(--ink-3);font-style:normal;font-size:11px;font-weight:800}
+.step.done i{background:var(--tix);color:#fff}.step.done{color:var(--ink-2)}
+.step.cur i{background:var(--tix);color:#fff;animation:halo2 1.8s ease-out infinite}
+.step.cur{color:var(--ink)}
+@keyframes halo2{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--tix) 45%,transparent)}100%{box-shadow:0 0 0 11px transparent}}
+.stepline{flex:1;height:2px;background:var(--fill);margin:0 10px;position:relative;overflow:hidden;border-radius:2px}
+.stepline.done::after{content:"";position:absolute;inset:0;background:var(--tix);transform-origin:left;animation:grow .7s var(--ease) backwards;animation-delay:calc(var(--i,0)*150ms + .25s)}
+@keyframes grow{from{transform:scaleX(0)}}
+.people2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px}
+.sla{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--act-soft);color:var(--act)}
+.sla svg.lucide{width:13px;height:13px}
+.convo{display:flex;flex-direction:column;gap:12px}
+.cm{display:flex;gap:10px;align-items:flex-end;max-width:80%}
+.cm.me{align-self:flex-end;flex-direction:row-reverse}
+.cm .avatar{width:32px;height:32px;border-radius:9px;font-size:11.5px}
+.cm .bb{background:var(--sunk);border-radius:16px 16px 16px 5px;padding:10px 13px;font-size:15px;line-height:1.5;color:var(--ink-2)}
+.cm.me .bb{background:color-mix(in srgb,var(--m) 14%,var(--surface));border-radius:16px 16px 5px 16px}
+.cm .bb b{display:block;font-size:12.5px;color:var(--ink-3);font-weight:650;margin-bottom:2px}
+.cm .bb .t{font-size:11.5px;color:var(--ink-4);margin-top:4px;text-align:right}
+.cm.in{animation:msgIn .45s var(--spring)}
+.sysline{align-self:center;font-size:12.5px;color:var(--ink-3);background:var(--fill-2);padding:4px 12px;border-radius:999px;display:inline-flex;gap:6px;align-items:center}
+.sysline svg.lucide{width:13px;height:13px}
+.attn{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.attn span{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:4px 9px;border-radius:8px;background:var(--surface);border:.5px solid var(--line);color:var(--ink-2)}
+.attn svg.lucide{width:13px;height:13px}
+.daysep{align-self:center;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-4);margin:6px 0}
+.composer2{display:flex;gap:8px;align-items:center;width:100%;max-width:880px}
+.composer2 .box{flex:1;min-height:44px;border-radius:12px;border:.5px solid var(--line);background:var(--fill-2);display:flex;align-items:center;padding:0 6px 0 14px;gap:4px;transition:box-shadow .25s,background .2s}
+.composer2 .box:focus-within{background:var(--surface);box-shadow:0 0 0 3px color-mix(in srgb,var(--m) 28%,transparent)}
+.composer2 input{flex:1;border:0;background:none;outline:none;font-size:15px;height:42px;color:var(--ink);min-width:0}
+.composer2 .ib{width:34px;height:34px;border:0;background:none}
+.composer2 .btn{height:44px}
+/* chat */
+.chathead{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.chathead .avatar{width:48px;height:48px;font-size:15px}
+.chathead b{font-size:19px}.chathead .s{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--ink-3);margin-top:2px}
+.presence{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--accent-ink);font-weight:600}
+.presence i{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:halo4 2s ease-out infinite}
+@keyframes halo4{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 50%,transparent)}100%{box-shadow:0 0 0 7px transparent}}
+.typing{display:inline-flex;gap:4px;padding:13px 14px;background:var(--sunk);border-radius:16px 16px 16px 5px}
+.typing i{width:6px;height:6px;border-radius:50%;background:var(--ink-4);animation:blink 1.2s infinite}
+.typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,60%,100%{opacity:.3;transform:none}30%{opacity:1;transform:translateY(-3px)}}
+.reacts{display:inline-flex;gap:2px;margin-top:5px;font-size:12px;background:var(--surface);border:.5px solid var(--line);border-radius:999px;padding:1px 7px}
+.reacts.pop{animation:tick .45s var(--bounce)}
+.quick{display:flex;gap:6px;margin-top:4px}
+.quick button{height:30px;padding:0 11px;border-radius:999px;border:.5px solid var(--line);background:var(--surface);font-size:13px;font-weight:600;color:var(--ink-2);transition:transform .2s var(--spring),background .15s}
+.quick button:hover{background:var(--fill-2);transform:translateY(-1px)}
+/* meeting */
+.evcard{display:grid;grid-template-columns:120px 1fr;gap:26px;align-items:start;margin-bottom:12px}
+.datecard{border-radius:18px;overflow:hidden;box-shadow:var(--shadow-s);text-align:center;background:var(--surface);animation:popIn .6s var(--spring)}
+.datecard .mo{background:var(--m);color:#fff;font-size:13px;font-weight:800;letter-spacing:.08em;padding:6px 0;text-transform:uppercase}
+.datecard .dd{font-size:46px;font-weight:700;letter-spacing:-.03em;padding:6px 0 0}
+.datecard .wd{font-size:13px;color:var(--ink-3);padding-bottom:10px}
+.evt{font-size:26px;font-weight:700;letter-spacing:-.025em;margin-bottom:8px}
+.evrow{display:flex;align-items:center;gap:10px;font-size:15.5px;color:var(--ink-2);padding:4px 0}
+.evrow svg.lucide{color:var(--ink-3)}
+.countdown{display:inline-flex;align-items:center;gap:8px;margin-top:10px;padding:8px 12px;border-radius:10px;background:var(--act-soft);color:var(--act);font-weight:700;font-size:14px;font-variant-numeric:tabular-nums}
+.countdown svg.lucide{animation:ring 1s var(--ease) .6s 2}
+.att{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px}
+.att .pc{padding:9px 12px}.att .pc .avatar{width:34px;height:34px;font-size:12px}
+.rsvp{margin-left:auto;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;transition:background .3s,color .3s}
+.rsvp.y{background:var(--accent-soft);color:var(--accent-ink)}.rsvp.n{background:var(--danger-soft);color:var(--danger)}.rsvp.m{background:var(--fill);color:var(--ink-3)}
+.rsvp.tick{animation:tick .45s var(--bounce)}
+.agenda{counter-reset:a;list-style:none;font-size:15px;color:var(--ink-2)}
+.agenda li{counter-increment:a;display:flex;gap:12px;padding:9px 0;border-bottom:1px solid var(--sep);align-items:center}
+.agenda li::before{content:counter(a);width:24px;height:24px;border-radius:7px;background:var(--fill);display:grid;place-items:center;font-size:12px;font-weight:800;flex:none}
+.agenda li span{margin-left:auto;color:var(--ink-4);font-size:13px}
+.seg3{display:inline-flex;background:var(--fill);border-radius:10px;padding:3px;gap:3px}
+.seg3>.thumb{background:var(--surface);border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.seg3 button{height:36px;padding:0 14px;border-radius:8px;font-size:14px;font-weight:650;color:var(--ink-3);display:inline-flex;align-items:center;gap:6px}
+.seg3 button.on{color:var(--ink)}
+.seg3 button.on[data-r="y"]{color:var(--accent-ink)}.seg3 button.on[data-r="n"]{color:var(--danger)}
+.seg3 button svg.lucide{width:16px;height:16px}
+/* news */
+.cover{height:290px;background:linear-gradient(120deg,#5b2a4a,#9B3F78 45%,#e7a3c6);display:flex;align-items:flex-end;position:relative;overflow:hidden}
+.cover::after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 35%,rgba(0,0,0,.5))}
+.cover .ct{position:relative;z-index:1;max-width:880px;width:100%;margin:0 auto;padding:0 40px 26px;color:#fff;animation:fade .6s var(--spring) .1s backwards}
+.cover .ct small{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.9}
+.cover .ct h1{font-size:34px;letter-spacing:-.03em;line-height:1.15;margin-top:6px}
+.cover .shine{position:absolute;inset:-50%;background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.28),transparent 40%);animation:drift 12s ease-in-out infinite alternate}
+@keyframes drift{to{transform:translate(12%,8%)}}
+.byline{display:flex;align-items:center;gap:12px;margin-bottom:20px;font-size:14px;color:var(--ink-3)}
+.byline .avatar{width:36px;height:36px;font-size:12px}
+.byline b{color:var(--ink);font-size:14.5px}
+.article{font-family:"Iowan Old Style","Charter","Georgia",serif;font-size:18px;line-height:1.75;color:var(--ink-2)}
+.article p{margin-bottom:16px}
+.article blockquote{border-left:3px solid var(--m);padding:4px 0 4px 16px;font-style:italic;color:var(--ink);margin:6px 0 18px}
+.ackbar{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:14px;background:color-mix(in srgb,var(--m) 8%,var(--surface));border:.5px solid color-mix(in srgb,var(--m) 30%,transparent);margin-top:12px}
+.ackbar .tx{flex:1;font-size:14.5px;color:var(--ink-2)}.ackbar .tx b{color:var(--ink)}
+.ackbar .prog{height:6px;border-radius:3px;background:var(--fill);overflow:hidden;margin-top:8px;max-width:320px}
+.ackbar .prog i{display:block;height:100%;width:var(--w,62%);background:var(--m);transition:width .6s var(--spring);animation:grow .9s var(--ease) .3s backwards;transform-origin:left}
+/* project */
+.taskhead{display:flex;align-items:flex-start;gap:14px;margin-bottom:18px}
+.chk{width:30px;height:30px;border-radius:9px;border:2px solid var(--line);display:grid;place-items:center;flex:none;margin-top:3px;transition:background .25s,border-color .25s,transform .2s var(--bounce);cursor:pointer;color:#fff}
+.chk:active{transform:scale(.88)}
+.chk.on{background:var(--accent);border-color:var(--accent)}
+.chk svg{width:18px;height:18px;opacity:0}.chk.on svg{opacity:1}
+.chk.on svg path{stroke-dasharray:24;stroke-dashoffset:24;animation:draw .35s var(--ease) forwards}
+.taskhead h2{font-size:26px;letter-spacing:-.025em;line-height:1.2;transition:color .3s}
+.taskhead.done h2{color:var(--ink-4);text-decoration:line-through}
+.taskhead .crumb{font-size:13px;color:var(--ink-3);margin-bottom:4px}
+.props{display:grid;grid-template-columns:140px 1fr;gap:10px 16px;font-size:15px;padding:16px;border-radius:14px;border:.5px solid var(--line);align-items:center}
+.props>span{color:var(--ink-3);display:flex;align-items:center;gap:8px}
+.props>span svg.lucide{width:16px;height:16px}
+.stpill{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:7px;font-size:13px;font-weight:700;color:#fff;background:#FDAB3D;transition:background .3s}
+.stpill.dn{background:#00C875}
+.avs{display:flex;align-items:center;gap:10px}.avs .row2{display:flex}.avs .avatar{width:26px;height:26px;border-radius:7px;font-size:10px;margin-right:-6px;box-shadow:0 0 0 2px var(--surface)}
+.prog2{display:flex;align-items:center;gap:10px;font-variant-numeric:tabular-nums}.prog2 .bar2{flex:1;max-width:240px;height:8px;border-radius:4px;background:var(--fill);overflow:hidden}
+.prog2 .bar2 i{display:block;height:100%;width:var(--w,50%);background:var(--accent);transition:width .5s var(--spring)}
+.checklist{list-style:none}
+.checklist li{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--sep);font-size:15px;cursor:pointer;border-radius:8px;transition:background .15s}
+.checklist li:hover{background:var(--fill-2)}
+.checklist li .chk{width:22px;height:22px;border-radius:7px;margin:0}
+.checklist li .chk svg{width:14px;height:14px}
+.checklist li span{transition:color .25s}
+.checklist li.done span{text-decoration:line-through;color:var(--ink-4)}
+/* notes */
+.notepage{border-radius:16px;border:.5px solid var(--line);overflow:hidden;margin-bottom:6px}
+.notepage .np-h{padding:14px 18px;background:var(--sunk);display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-3)}
+.notepage .np-h b{color:var(--ink);font-size:15px}
+.notepage .np-h .emo{font-size:22px}
+.notepage .np-b{padding:18px 22px;font-size:16px;line-height:1.75;color:var(--ink-2)}
+.notepage .np-b .fade{opacity:.45}
+.notepage .np-b mark{color:var(--ink);border-radius:4px;padding:1px 3px;background:color-mix(in srgb,#F5C04A 32%,transparent);animation:hl 1.8s ease-out .6s backwards}
+@keyframes hl{from{background:color-mix(in srgb,#F5C04A 95%,transparent)}}
+.mention{color:var(--accent-ink);font-weight:650;background:var(--accent-soft);border-radius:5px;padding:0 4px}
+/* approval */
+.apphead{display:flex;align-items:flex-start;gap:14px;margin-bottom:6px}
+.apphead .amt{margin-left:auto;text-align:right}
+.apphead .amt small{display:block;font-size:12px;color:var(--ink-3);font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.apphead .amt b{font-size:30px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.approute{display:flex;align-items:center;margin:14px 0 6px;padding:18px;border-radius:14px;background:var(--sunk)}
+.approute .st{display:flex;flex-direction:column;align-items:center;gap:6px;flex:none;width:130px;text-align:center;font-size:12.5px;color:var(--ink-3)}
+.approute .st .avatar{width:40px;height:40px;font-size:12px;position:relative;overflow:visible}
+.approute .st b{font-size:13px;color:var(--ink-2)}
+.approute .st.ok .avatar::after{content:"✓";position:absolute;right:-5px;bottom:-5px;width:18px;height:18px;border-radius:50%;background:var(--accent);color:#fff;font-size:11px;display:grid;place-items:center;box-shadow:0 0 0 2px var(--sunk)}
+.approute .st.me .avatar{animation:halo3 1.8s ease-out infinite}
+@keyframes halo3{0%{box-shadow:0 0 0 3px var(--appr),0 0 0 3px color-mix(in srgb,var(--appr) 45%,transparent)}100%{box-shadow:0 0 0 3px var(--appr),0 0 0 15px transparent}}
+.approute .ln{flex:1;height:2px;background:var(--fill);margin-bottom:38px;position:relative;overflow:hidden}
+.approute .ln.ok::after{content:"";position:absolute;inset:0;background:var(--accent);transform-origin:left;animation:grow .7s var(--ease) .3s backwards}
+.lines{width:100%;border-collapse:separate;border-spacing:0;font-size:14.5px;border:.5px solid var(--line);border-radius:12px;overflow:hidden}
+.lines th{background:var(--sunk);position:static;font-size:12.5px}
+.lines td,.lines th{padding:9px 12px;border-bottom:1px solid var(--sep);white-space:nowrap}
+.lines td.n,.lines th.n{text-align:right;font-variant-numeric:tabular-nums}
+.lines tr:last-child td{border-bottom:0;font-weight:700;background:var(--sunk)}
+.lines tbody tr{animation:rowIn .4s var(--spring) backwards;animation-delay:calc(var(--i,0)*45ms + .2s)}
+/* system / other */
+.syscard{max-width:600px;margin:60px auto 0;text-align:center;display:flex;flex-direction:column;align-items:center;gap:14px;padding:0 24px}
+.syscard .big{width:88px;height:88px;border-radius:24px;display:grid;place-items:center;background:color-mix(in srgb,var(--m) 14%,transparent);color:var(--m);position:relative;animation:popIn .6s var(--spring)}
+.syscard .big svg.lucide{width:42px;height:42px;stroke-width:1.7}
+.syscard .big::before{content:"";position:absolute;inset:-10px;border-radius:30px;border:2px solid color-mix(in srgb,var(--m) 30%,transparent);animation:pulse3 2.4s ease-out infinite}
+@keyframes pulse3{0%{transform:scale(.9);opacity:1}100%{transform:scale(1.25);opacity:0}}
+.syscard h1{font-size:28px;letter-spacing:-.025em;line-height:1.2}
+.syscard p{font-size:16.5px;color:var(--ink-2);line-height:1.6}
+.statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%;margin-top:6px}
+.statgrid div{padding:16px 12px;border-radius:14px;background:var(--sunk)}
+.statgrid b{display:block;font-size:28px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.statgrid span{font-size:12.5px;color:var(--ink-3)}
+.srcchip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--ink-3);background:var(--fill-2);padding:4px 10px;border-radius:999px}
+.srcchip svg.lucide{width:13px;height:13px}
+.altsrc{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%;margin-top:18px;text-align:left}
+.altsrc .pc{align-items:flex-start}
+.altsrc .pc .ico{width:36px;height:36px}
+/* small inbox v3 */
+.tchip{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border-radius:6px;font-size:11.5px;font-weight:700}
+.tchip i{width:6px;height:6px;border-radius:50%;display:block;background:currentColor}
+.tchip.new{background:color-mix(in srgb,var(--tix) 14%,transparent);color:var(--tix)}
+.tchip.rep{background:var(--accent-soft);color:var(--accent-ink)}
+.tchip.res{background:var(--fill);color:var(--ink-3)}
+.anim-note{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:12px;background:var(--surface);color:var(--ink);box-shadow:var(--shadow-s);max-width:440px;font-size:13px;line-height:1.5;margin-top:12px}
+.anim-note svg.lucide{color:var(--accent-ink);margin-top:1px}
+.anim-note b{color:var(--ink)}
+.ihead .tools .ib.more{position:relative}
+.omenu{right:18px;top:56px;transform-origin:top right}
+
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;animation-delay:0ms!important;transition-duration:.01ms!important}}
 ::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
 </style>
 </head>
 <body>
 <div class="top">
-  <div><h1>iPop Notifier — Priority Inbox</h1><div class="sub">Mockup v2 · 2026-11-21 · categories, leaders, wide Inbox, file preview, micro-interactions · Notifier 1.5.0</div></div>
+  <div><h1>iPop Notifier — Priority Inbox</h1><div class="sub">Mockup v3 · 2026-11-21 · + full-size view per source, Inbox fixes, Animations setting · Notifier 1.5.1</div></div>
   <div class="nav slider" id="nav"><span class="thumb"></span>
     <button data-s="small" class="on">1 · Inbox</button>
     <button data-s="wide">2 · Maximized Inbox</button>
     <button data-s="popups">3 · Popup tiers</button>
-    <button data-s="files">4 · Popup with files</button>
+    <button data-s="files">4 · Files</button>
     <button data-s="viewer">5 · File viewer</button>
-    <button data-s="settings">6 · Settings › Categories</button>
+    <button data-s="settings">6 · Settings</button>
+    <button data-s="full">7 · Full size</button>
   </div>
   <button class="themeb" id="theme"><i data-lucide="moon"></i><span>Dark</span></button>
 </div>
@@ -668,7 +907,8 @@ td.qa2 svg.lucide{width:15px;height:15px}
       </div>
       <div class="summary"><i data-lucide="sparkles"></i>
         <button data-f="act"><b data-count="appr">2</b> approvals</button><span class="sep"></span>
-        <button data-f="act"><b data-count="lead">2</b> from leaders</button><span class="sep"></span>
+        <button data-f="act"><b data-count="lead">2</b> leaders</button><span class="sep"></span>
+        <button data-f="act"><b data-count="tixme">1</b> ticket</button><span class="sep"></span>
         <button data-f="msg"><b data-count="msg">4</b> messages</button></div>
       <div class="chips slider" id="smallChips"><span class="thumb"></span>
         <button class="on" data-f="all">All</button>
@@ -682,7 +922,8 @@ td.qa2 svg.lucide{width:15px;height:15px}
     <div>
       <div class="note"><b>Before → after:</b> in your screenshot the same ticket showed three times and system notices sat at the top. Now the ticket is one row, and system notices drop into “For your info”.</div>
       <div class="note"><b>Motion:</b> read dots shrink away, counts tick, snoozed rows fold up, new arrivals slide in with a soft flash in their tier colour. Every change has <b>Undo</b>.</div>
-      <div class="note"><b>Accessibility:</b> with Windows “Animation effects” off, everything appears instantly.</div>
+      <div class="anim-note"><i data-lucide="sparkles"></i><div><b>Animations: On by default (1.5.1).</b> 1.5.0 switched every animation off when Windows “Animation effects” was off, which is the case on many office PCs. Now the Notifier has its own setting: Settings › Appearance › Animations <b>On</b> / <b>Reduced</b>.</div></div>
+      <div class="note"><b>1.5.1 Inbox fixes:</b> summary names what waits (approvals · leaders · tickets for you · messages, zeros hidden) · header = search, mark all read, settings; Devices + Maximize in ⋯ · every chip shows its count · dates read Today 16.38 / Yesterday / Mon 17 Nov · tickets show New / Replied / Resolved · iDesk “Assigned to you” stays in Needs action only while unopened and under 24 h.</div>
     </div>
   </div>
 </section>
@@ -873,6 +1114,17 @@ td.qa2 svg.lucide{width:15px;height:15px}
     </div>
   </div>
 </section>
+
+<!-- ================= 7 FULL SIZE PER SOURCE ================= -->
+<section class="screen" id="s-full">
+  <div class="cap">
+    <h2>Full size — the window becomes what was sent</h2>
+    <p>Maximizing a popup (□ or double-click the title) no longer stretches the small card. Each source gets its own layout: <b>Mail</b> reads like Outlook, an <b>iDesk ticket</b> shows its progress and conversation, <b>Chat</b> becomes a conversation, a <b>Meeting</b> becomes an event card, and <b>News</b> becomes an article. A notice from iPop itself or another system (EPop import, HRIS, SPP…) becomes a clear info card instead of an empty page.</p>
+    <div class="try"><span><i data-lucide="mouse-pointer-click"></i>Pick a source</span><span><i data-lucide="send"></i>Type a reply + Enter (Mail, Ticket, Chat, Project, Notes)</span><span><i data-lucide="square-check"></i>Tick the task and checklist</span><span><i data-lucide="calendar-check"></i>Accept / Maybe / Decline</span><span><i data-lucide="users"></i>"+5 more" recipients</span></div>
+  </div>
+  <div class="kinds7 slider" id="kinds7"><span class="thumb"></span></div>
+  <div class="win fwin2" id="fwin"></div>
+</section>
 </div>
 
 <div class="simdock" id="simdock"><span class="l"><i data-lucide="flask-conical"></i>Simulate new</span>
@@ -893,7 +1145,7 @@ const reflow=el=>void el.offsetWidth;
 
 /* ================= data ================= */
 const M={mail:['mail','Mail'],chat:['message-circle','Chat'],tickets:['life-buoy','iDesk'],calendar:['calendar','Calendar'],projects:['folder-kanban','Projects'],notes:['notebook-pen','Notes'],news:['newspaper','News'],system:['bell','System'],approval:['stamp','Approval']};
-const P={HW:['Hendra Wijaya','Director of Operations','#A16207'],LS:['Lina Santoso','General Manager Finance · BOD','#A16207'],DK:['Dewi Kartika','Indirect Procurement','#5562B8'],UP:['Ursula Philomena','Finance, Tax & Accounting','#2563EB'],AS:['Agus Salim','ICT Infrastructure','#2E9E5B'],EV:['Eklesia Vida Kurnia','Quality Control','#2563EB'],DL:['Dia Kartika Lestari','Indirect Procurement','#2563EB'],RT:['Rina Tanjung','HC · People','#9B3F78'],IP:['iPop','System','#5B6B78'],BS:['Bambang Sutrisno','ICT Manager','#A16207'],YP:['Yudi Prasetyo','Logistics','#0A6CFF'],ME:['You','','#2E9E5B']};
+const P={HW:['Hendra Wijaya','Director of Operations','#A16207'],LS:['Lina Santoso','General Manager Finance · BOD','#A16207'],DK:['Dewi Kartika','Indirect Procurement','#5562B8'],UP:['Ursula Philomena','Finance, Tax & Accounting','#2563EB'],AS:['Agus Salim','ICT Infrastructure','#2E9E5B'],EV:['Eklesia Vida Kurnia','Quality Control','#2563EB'],DL:['Dia Kartika Lestari','Indirect Procurement','#2563EB'],RT:['Rina Tanjung','HC · People','#9B3F78'],IP:['iPop','System','#5B6B78'],BS:['Bambang Sutrisno','ICT Manager','#A16207'],YP:['Yudi Prasetyo','Logistics','#0A6CFF'],AW:['Andi Wijaya','Plant Manager Karawang','#0F766E'],SR:['Siti Rahma','Corporate Secretary','#C2410C'],ME:['You','','#2E9E5B']};
 const F={
  q4:{t:'pdf',n:'Q4-Budget-Revision.pdf',s:'PDF · 12 pages · 1.8 MB',from:'Lina Santoso’s mail'},
  xl:{t:'xlsx',n:'Cost-per-site-2026.xlsx',s:'Excel · 4 sheets · 640 KB',from:'Lina Santoso’s mail'},
@@ -909,16 +1161,17 @@ let N=[
  {id:'a2',tier:'act',mod:'approval',appr:1,who:'RT',title:'Leave request — Agus Salim, 24–26 Nov',sub:'3 working days · annual leave',time:'11:02',day:'Today',unread:1,kv:[['Employee','Agus Salim'],['Dates','24–26 Nov 2026'],['Type','Annual leave · 3 days'],['Balance after','6 days']],body:['Family event in Malang. Handover to Yudi Prasetyo.'],acts:['Open to approve','Mark as read','Snooze 1 h']},
  {id:'l1',tier:'act',mod:'chat',lead:1,who:'HW',title:'Hendra Wijaya',sub:'I need the cost and the target date.',time:'14:31',day:'Today',unread:1,thread:[['HW','Rudi, could you send me the network upgrade status before the 3 pm board meeting?'],['HW','I need the cost and the target date.']],acts:['Reply','Mark as read','Open chat']},
  {id:'m1',tier:'act',mod:'mail',lead:1,who:'LS',title:'Q4 budget revision — please review before Friday',sub:'Attached are the revised Q4 budget, the cost breakdown per site…',time:'10:05',day:'Today',unread:1,files:['q4','xl','pp','zip'],body:['Dear all,','Attached are the revised Q4 budget, the cost breakdown per site, and the slides for Monday’s BOD meeting. Please send your comments by Friday 17:00.','Thank you,<br>Lina'],acts:['Reply','Reply all','Mark as read']},
+ {id:'t9',tier:'act',tixme:1,tst:'new',mod:'tickets',who:'EV',title:'Komputer tiba tiba restart sendiri',sub:'Assigned to you · SLA 4 h',time:'14:53',day:'Today',unread:1,tag:'#211126-TRA-0029',acts:['Reply','Mark as read','Open in iDesk']},
  {id:'c1',tier:'act',mod:'calendar',who:'IP',title:'BOD weekly review starts in 5 min',sub:'15:00–16:00 · Meeting room Merbabu · 9 people',time:'14:55',day:'Today',unread:0,kv:[['When','Today 15:00–16:00'],['Where','Meeting room Merbabu'],['Organiser','Lina Santoso']],acts:['Join','Snooze 5 min','Mark as read']},
- {id:'t1',tier:'msg',mod:'tickets',who:'UP',title:'PELAMPUNG 9FE TIDAK BISA DIBUKA',sub:'Ursula: “Ko, ini screenshot errornya…”',time:'13:09',day:'Today',unread:1,count:3,tag:'#201126-FIN-0031',files:['shot','doc'],thread:[['UP','Assigned to you. SLA 4 h.'],['UP','bisaa'],['UP','Ko, ini screenshot errornya waktu buka file. Saya lampirkan juga file-nya.']],acts:['Reply','Mark as read','Open in iDesk']},
+ {id:'t1',tier:'msg',tst:'rep',mod:'tickets',who:'UP',title:'PELAMPUNG 9FE TIDAK BISA DIBUKA',sub:'Ursula: “Ko, ini screenshot errornya…”',time:'13:09',day:'Today',unread:1,count:3,tag:'#201126-FIN-0031',files:['shot','doc'],thread:[['UP','Assigned to you. SLA 4 h.'],['UP','bisaa'],['UP','Ko, ini screenshot errornya waktu buka file. Saya lampirkan juga file-nya.']],acts:['Reply','Mark as read','Open in iDesk']},
  {id:'ch',tier:'msg',mod:'chat',who:'AS',title:'Agus Salim',sub:"The switch for warehouse B is installed, I'll send the photos after lunch.",time:'12:40',day:'Today',unread:1,count:2,thread:[['AS','Pak, switch gudang B sudah terpasang.'],['AS',"The switch for warehouse B is installed, I'll send the photos after lunch."]],acts:['Reply','Mark as read','Open chat']},
- {id:'t2',tier:'msg',mod:'tickets',who:'EV',title:'Koneksi internet bermasalah',sub:'Eklesia: “okee ko, nanti kalau ada kendala lagi…”',time:'11:22',day:'Today',unread:1,count:4,tag:'#201126-QC-0014',thread:[['EV','Internet di QC putus-putus sejak pagi.'],['EV','Sudah coba restart router.'],['EV','5 lampiran'],['EV','okee ko, nanti kalau ada kendala lagi saya kabari']],acts:['Reply','Mark as read','Open in iDesk']},
+ {id:'t2',tier:'msg',tst:'rep',mod:'tickets',who:'EV',title:'Koneksi internet bermasalah',sub:'Eklesia: “okee ko, nanti kalau ada kendala lagi…”',time:'11:22',day:'Today',unread:1,count:4,tag:'#201126-QC-0014',thread:[['EV','Internet di QC putus-putus sejak pagi.'],['EV','Sudah coba restart router.'],['EV','5 lampiran'],['EV','okee ko, nanti kalau ada kendala lagi saya kabari']],acts:['Reply','Mark as read','Open in iDesk']},
  {id:'p1',tier:'msg',mod:'projects',who:'YP',title:'Network upgrade 2026 · “Pull fibre to warehouse B”',sub:'Yudi commented: cable arrives Monday',time:'09:40',day:'Today',unread:0,acts:['Reply','Mark as read','Open project']},
- {id:'t3',tier:'msg',mod:'tickets',who:'DL',title:'Printer tidak bisa ngeprint',sub:'Confirmed as fixed by Dia. The ticket is closed.',time:'20 Nov',day:'Yesterday',unread:1,tag:'#201126-IP-0022',acts:['Open in iDesk','Mark as read']},
- {id:'i1',tier:'info',mod:'system',who:'IP',title:'Your EPop history is in iPop Mail',sub:'275 new messages added under the label “Arsip EPop”',time:'20 Nov',day:'Yesterday',unread:1,count:2,body:['275 new messages from EPop were added to Mail under the label “Arsip EPop”.'],acts:['Open Mail','Mark as read']},
- {id:'i2',tier:'info',mod:'news',who:'RT',title:'Year-end gathering 2026 — registration open',sub:'HC · News',time:'20 Nov',day:'Yesterday',unread:1,acts:['Read in iPop','Mark as read']},
- {id:'i3',tier:'info',mod:'mail',who:'RT',title:'[All staff] Canteen menu 24–28 November',sub:'Mass mail · 1.204 recipients',time:'20 Nov',day:'Yesterday',unread:1,acts:['Open','Mark as read']},
- {id:'i4',tier:'info',mod:'projects',who:'YP',title:'“Office move Karawang” moved to Done',sub:'You are watching this project',time:'19 Nov',day:'Earlier',unread:0,acts:['Open project']},
+ {id:'t3',tier:'msg',tst:'res',mod:'tickets',who:'DL',title:'Printer tidak bisa ngeprint',sub:'Confirmed as fixed by Dia. The ticket is closed.',time:'16:38',day:'Yesterday',unread:1,tag:'#201126-IP-0022',acts:['Open in iDesk','Mark as read']},
+ {id:'i1',tier:'info',mod:'system',who:'IP',title:'Your EPop history is in iPop Mail',sub:'275 new messages added under the label “Arsip EPop”',time:'16:38',day:'Yesterday',unread:1,count:2,body:['275 new messages from EPop were added to Mail under the label “Arsip EPop”.'],acts:['Open Mail','Mark as read']},
+ {id:'i2',tier:'info',mod:'news',who:'RT',title:'Year-end gathering 2026 — registration open',sub:'HC · News',time:'16:38',day:'Yesterday',unread:1,acts:['Read in iPop','Mark as read']},
+ {id:'i3',tier:'info',mod:'mail',who:'RT',title:'[All staff] Canteen menu 24–28 November',sub:'Mass mail · 1.204 recipients',time:'16:38',day:'Yesterday',unread:1,acts:['Open','Mark as read']},
+ {id:'i4',tier:'info',mod:'projects',who:'YP',title:'“Office move Karawang” moved to Done',sub:'You are watching this project',time:'11:05',day:'Wed 19 Nov',unread:0,acts:['Open project']},
 ];
 const SIM={
  appr:{tier:'act',mod:'approval',appr:1,who:'DK',title:'SPP #0419 — Laptop replacement, Karawang',sub:'Rp 42.700.000 · step 2 of 3 — you',files:['spp'],kv:[['Amount','Rp 42.700.000'],['Items','3 lines'],['Requested by','Dewi Kartika'],['Step','2 of 3 — waiting for you']],body:['Three laptops for the Karawang warehouse admins; the old units are 6 years old.'],acts:['Open in SPP to approve','Mark as read','Snooze 1 h']},
@@ -928,7 +1181,7 @@ const SIM={
 };
 const TIER={act:['Needs action','var(--act)'],msg:['Messages','var(--unread)'],info:['For your info','var(--ink-4)']};
 const TL={act:'Needs action',msg:'Message',info:'Info'};
-const DAYS=['Today','Yesterday','Earlier'];
+const DAYS=['Today','Yesterday','Wed 19 Nov'];
 const byId=id=>N.find(n=>n.id===id);
 const person=k=>P[k]||P.IP;
 const first=k=>person(k)[0].split(' ')[0];
@@ -945,8 +1198,10 @@ function placeThumb(c,instant){const t=c.querySelector(':scope>.thumb'),b=c.quer
 function placeAll(instant){$$('.slider').forEach(c=>placeThumb(c,instant))}
 function setOn(c,btn){c.querySelectorAll(':scope>button').forEach(b=>b.classList.toggle('on',b===btn));placeThumb(c)}
 function setNum(el,v){const s=String(v);if(el.textContent!==s){el.textContent=s;el.classList.remove('tick');reflow(el);if(v>0)el.classList.add('tick')}if(el.classList.contains('badge')||el.closest('.tray'))el.classList.toggle('zero',v===0)}
-function counts(){const c={unread:0,all:0,act:0,msg:0,info:0,lead:0,appr:0};N.forEach(n=>{if(!n.unread||n.snz)return;c.unread++;c.all++;c[n.tier]++;if(n.lead)c.lead++;if(n.appr)c.appr++;c[n.mod]=(c[n.mod]||0)+1});return c}
+function counts(){const c={unread:0,all:0,act:0,msg:0,info:0,lead:0,appr:0,tixme:0};N.forEach(n=>{if(!n.unread||n.snz)return;c.unread++;c.all++;c[n.tier]++;if(n.lead)c.lead++;if(n.appr)c.appr++;if(n.tixme)c.tixme++;c[n.mod]=(c[n.mod]||0)+1});return c}
 function updateCounts(){const c=counts();$$('[data-count]').forEach(el=>setNum(el,c[el.dataset.count]||0));
+ $$('.summary>button').forEach(b=>{const v=c[b.querySelector('[data-count]').dataset.count]||0;b.hidden=!v;const sp=b.previousElementSibling;if(sp&&sp.classList.contains('sep'))sp.hidden=!v});
+ const first=$('.summary>button:not([hidden])');if(first){const sp=first.previousElementSibling;if(sp&&sp.classList.contains('sep'))sp.hidden=true}
  $$('[data-unread-text]').forEach(el=>el.textContent=c.unread?`RM · ${c.unread} unread`:'RM · All caught up');
  const xs=fil(state.wf);$('#lCount').textContent=`${xs.filter(n=>n.unread).length} unread · ${xs.length} total`}
 
@@ -963,10 +1218,12 @@ function wsnack(host,html,undo,extra=[]){if(!host)return;let s=host.querySelecto
 function chipsFor(n){let s='';
  if(n.appr)s+=`<span class="chip appr">${ic('stamp')}Approval</span>`;
  if(n.lead)s+=`<span class="chip lead">${ic('crown')}Your leader</span>`;
- if(n.tier==='act'&&!n.appr&&!n.lead)s+=`<span class="chip act">${ic('alarm-clock')}Starts soon</span>`;
+ if(n.tixme)s+=`<span class="chip act">${ic('user-check')}Assigned to you</span>`;
+ else if(n.tier==='act'&&!n.appr&&!n.lead)s+=`<span class="chip act">${ic('alarm-clock')}Starts soon</span>`;
  if(n.appr&&n.kv&&n.kv.find(k=>k[0]==='Due'))s+=`<span class="chip act">${ic('clock')}Due 17:00</span>`;
  if(n.count)s+=`<span class="chip thr" data-x>${n.count} updates${ic('chevron-down')}</span>`;
  if(n.files)s+=`<span class="chip mod">${ic('paperclip')}${n.files.length}</span>`;
+ if(n.tst)s+=`<span class="tchip ${n.tst}"><i></i>${{new:'New',rep:'Replied',res:'Resolved'}[n.tst]}</span>`;
  if(n.tag)s+=`<span class="chip mod">${n.tag}</span>`;
  return s?`<div class="chipsr">${s}</div>`:''}
 function row(n,i,o={}){const p=person(n.who),info=n.tier==='info';
@@ -1260,6 +1517,190 @@ $('#simdock').addEventListener('click',e=>{const b=e.target.closest('[data-sim]'
  updateCounts();
  if(scr==='popups'){if(kind==='appr'||kind==='lead'){spawnPopup(n);bumpTray()}else if(kind==='msg'){showToast(n);bumpTray()}else floatTray('+1 info')}});
 
+/* ================= 7 · full size per source ================= */
+const FK=[
+ ['mail','Mail','mail','mail'],['ticket','iDesk ticket','tickets','life-buoy'],['chat','Chat','chat','message-circle'],
+ ['meeting','Meeting','calendar','calendar'],['news','News & memo','news','newspaper'],['project','Projects task','projects','folder-kanban'],
+ ['notes','Notes mention','notes','notebook-pen'],['approval','Approval (SPP)','approval','stamp'],['system','iPop & other systems','system','bell']];
+let fk='mail';
+const FTIER={mail:['act','Your leader'],ticket:['act','Assigned to you'],chat:['act','Your leader'],meeting:['act','Starts in 5 min'],news:['info','For your info'],project:['msg','Message'],notes:['msg','Message'],approval:['act','Approval'],system:['info','For your info']};
+const I=(n)=>`style="--i:${n}"`;
+function ttl(mod,label,when){const t=FTIER[fk];const tc=t[0]==='act'?'act':t[0]==='msg'?'thr':'mod';
+ return `<div class="ttl2 m-${mod}"><div class="ico">${mod==='tickets'?'<img src="idesk-mark.png" alt="">':modIcon(mod)}</div><b>${label}</b><small>· ${when}</small><span class="chip ${t[1]==='Your leader'?'lead':t[1]==='Approval'?'appr':tc}" style="margin-left:6px">${t[1]==='Your leader'?ic('crown'):t[1]==='Approval'?ic('stamp'):''}${t[1]}</span><span class="sp"></span>
+ <div class="wcs"><button title="Minimize">${ic('minus')}</button><button title="Restore">${ic('copy')}</button><button class="x" title="Close">${ic('x')}</button></div></div>`}
+function composer(ph,mod,extra=''){return `<div class="factions m-${mod}"><div class="composer2"><div class="box"><button class="ib" title="Attach">${ic('paperclip')}</button><input data-reply placeholder="${ph}"><button class="ib" title="Emoji">${ic('smile')}</button></div><button class="btn p" data-send disabled>${ic('send')}Send</button>${extra}</div></div>`}
+function actions(mod,primary,rest){return `<div class="factions m-${mod}"><div class="in">${primary}<span class="sp"></span>${rest}</div></div>`}
+
+const FV={
+ mail:()=>`${ttl('mail','Mail','Today 10:05')}
+ <div class="fbody"><div class="fcol pane">
+  <div class="msubj" ${I(0)}>Q4 budget revision — please review before Friday</div>
+  <div class="mmeta" ${I(1)}>${av('LS')}<div class="who"><b>Lina Santoso</b> <span style="color:var(--ink-3);font-size:13.5px">· General Manager Finance</span>
+   <div class="line">To <span class="rcpt" id="rcptTo"><span class="p">You</span><span class="p">Bambang Sutrisno</span><span class="p">Dewi Kartika</span><span class="more" data-more-rcpt>+5 more</span></span></div>
+   <div class="line">Cc <span class="rcpt"><span class="p">Finance Team</span></span></div></div>
+   <div class="when">Today 10:05<br><span class="chip lead" style="margin-top:6px">${ic('crown')}Your leader · BOD</span></div></div>
+  <div class="mailbody" ${I(2)}>
+   <p>Dear all,</p>
+   <p>Attached are the revised Q4 budget, the cost breakdown per site, and the slides for Monday's BOD meeting. The headline numbers:</p>
+   <table><tr><th>Site</th><th>Plan (Rp jt)</th><th>Revised</th><th>Δ</th></tr><tr><td>Sepanjang</td><td>4.820</td><td>4.710</td><td>−2.3%</td></tr><tr><td>Karawang</td><td>3.150</td><td>2.890</td><td>−8.3%</td></tr><tr><td>Jatake</td><td>1.940</td><td>1.960</td><td>+1.0%</td></tr></table>
+   <div class="poster">Q4 Budget — what changes</div>
+   <p>Please send your comments by <b>Friday 17:00</b>.</p>
+   <div class="sig">Lina Santoso · General Manager Finance · PT Santos Jaya Abadi</div>
+   <details class="quoted"><summary>${ic('chevron-right')}Show earlier message from Bambang Sutrisno</summary><div class="qb">On Wed, Bambang wrote: “Could we see the Karawang breakdown before the BOD meeting?”</div></details>
+  </div>
+  <div ${I(3)}><div class="sect2">${ic('paperclip')}4 attachments · 32.8 MB<button class="lnk" data-dlall-full>${ic('download')}Download all</button></div><div class="files2">${['q4','xl','pp','zip'].map(fileCard).join('')}</div></div>
+ </div></div>
+ ${composer('Reply to Lina…','mail',`<button class="btn">${ic('reply-all')}Reply all</button><button class="btn">${ic('forward')}Forward</button>`)}`,
+
+ ticket:()=>`${ttl('tickets','iDesk ticket','Today 13:09')}
+ <div class="fbody"><div class="fcol pane">
+  <div ${I(0)} style="display:flex;gap:8px;align-items:center"><span class="chip mod">#201126-FIN-0031</span><span class="chip mod">Software · Office</span><span class="sla">${ic('timer')}SLA 2 h 41 m left</span></div>
+  <div class="ttitle" ${I(1)}>PELAMPUNG 9FE TIDAK BISA DIBUKA</div>
+  <div class="steps" ${I(2)}>
+   <div class="step done"><i>✓</i>Open</div><div class="stepline done" style="--i:0"></div>
+   <div class="step done"><i>✓</i>Assigned</div><div class="stepline done" style="--i:1"></div>
+   <div class="step cur"><i>3</i>In progress</div><div class="stepline"></div>
+   <div class="step"><i>4</i>Resolved</div><div class="stepline"></div><div class="step"><i>5</i>Closed</div></div>
+  <div class="people2" ${I(3)}><div class="pc">${av('UP')}<div><small>Reported by</small><b>Ursula Philomena</b><span>Finance, Tax &amp; Accounting · Sepanjang</span></div></div>
+   <div class="pc">${av('ME')}<div><small>PIC</small><b>You (Rudi M.)</b><span>ICT Support</span></div></div></div>
+  <div ${I(4)}><div class="sect2">${ic('messages-square')}Conversation</div>
+  <div class="convo" id="fconvo">
+   <div class="daysep">Today</div>
+   <div class="sysline">${ic('user-check')}Assigned to you · 13:02</div>
+   <div class="cm">${av('UP')}<div class="bb"><b>Ursula</b>Ko, file Pelampung 9FE tidak bisa dibuka di Excel, muncul error “file corrupt”.<div class="t">13:05</div></div></div>
+   <div class="cm me">${av('ME')}<div class="bb">Baik Bu, boleh kirim screenshot errornya?<div class="t">13:07 · Read</div></div></div>
+   <div class="cm">${av('UP')}<div class="bb"><b>Ursula</b>Ko, ini screenshot errornya waktu buka file. Saya lampirkan juga file-nya.<div class="attn"><span>${ic('image')}error-screenshot.jpg</span><span>${ic('file-text')}Pelampung-9FE.docx</span></div><div class="t">13:09</div></div></div>
+  </div></div>
+ </div></div>
+ ${composer('Reply to Ursula…','tickets',`<button class="btn">${ic('circle-check')}Mark resolved</button><button class="btn">${ic('external-link')}Open in iDesk</button>`)}`,
+
+ chat:()=>`${ttl('chat','Chat','Today 14:31')}
+ <div class="fbody"><div class="fcol pane">
+  <div class="chathead" ${I(0)}>${av('HW')}<div><b>Hendra Wijaya</b><div class="s">Director of Operations · <span class="presence"><i></i>Online</span></div></div><span class="chip lead" style="margin-left:auto">${ic('crown')}Your manager's manager</span></div>
+  <div class="convo" id="fconvo" ${I(1)}>
+   <div class="daysep">Yesterday</div>
+   <div class="cm">${av('HW')}<div class="bb">Thanks for the update on the warehouse Wi-Fi 👍<div class="t">16:40</div></div></div>
+   <div class="cm me">${av('ME')}<div class="bb">Sama-sama Pak. Access points arrive Monday.<div class="t">16:42 · Read</div></div></div>
+   <div class="daysep">Today</div>
+   <div class="cm">${av('HW')}<div class="bb">Rudi, could you send me the network upgrade status before the 3 pm board meeting?<div class="t">14:29</div></div></div>
+   <div class="cm">${av('HW')}<div class="bb">I need the cost and the target date.<div class="t">14:31</div><span class="reacts" id="react">👀</span></div></div>
+   <div class="cm" id="typing">${av('HW')}<div class="typing"><i></i><i></i><i></i></div></div>
+  </div>
+  <div class="quick" ${I(2)}><button data-quick="On it, Pak — sending in 10 minutes.">On it, Pak</button><button data-quick="Will do 👍">Will do 👍</button><button data-quick="Can we talk at 14:45?">Call at 14:45?</button></div>
+ </div></div>
+ ${composer('Message Hendra…','chat',`<button class="btn">${ic('phone')}Call</button>`)}`,
+
+ meeting:()=>`${ttl('calendar','Meeting','starts in 5 min')}
+ <div class="fbody"><div class="fcol pane m-calendar">
+  <div class="evcard" ${I(0)}><div class="datecard"><div class="mo">Nov</div><div class="dd">21</div><div class="wd">Friday</div></div>
+   <div><div class="evt">BOD weekly review</div>
+    <div class="evrow">${ic('clock')}15:00 – 16:00 · 1 hour</div><div class="evrow">${ic('map-pin')}Meeting room Merbabu · Sepanjang HQ</div><div class="evrow">${ic('video')}Also on iPop Meeting room</div><div class="evrow">${ic('user')}Organised by Lina Santoso</div>
+    <div class="countdown">${ic('bell-ring')}Starts in <span id="cd">04:59</span></div></div></div>
+  <div ${I(1)}><div class="sect2">${ic('list-ordered')}Agenda</div><ol class="agenda"><li>Q4 budget revision<span>Lina · 20 min</span></li><li>Network upgrade status<span>Rudi · 10 min</span></li><li>Karawang warehouse timeline<span>Andi · 15 min</span></li><li>Other matters<span>15 min</span></li></ol></div>
+  <div ${I(2)}><div class="sect2">${ic('users')}9 people · 6 going</div><div class="att">
+   ${[['LS','Organiser','y','Going'],['HW','Director of Operations','y','Going'],['BS','ICT Manager','y','Going'],['ME','You','m','No reply'],['AW','Plant Manager Karawang','y','Going'],['SR','Corporate Secretary','n','Declined']].map(a=>`<div class="pc">${av(a[0])}<div><b style="font-size:14px">${a[0]==='ME'?'You':person(a[0])[0]}</b><span>${a[1]}</span></div><span class="rsvp ${a[2]}" ${a[0]==='ME'?'id="myrsvp"':''}>${a[3]}</span></div>`).join('')}</div></div>
+ </div></div>
+ ${actions('calendar',`<button class="btn p">${ic('video')}Join now</button><div class="seg3 slider" id="rsvpseg"><span class="thumb"></span><button data-r="y">${ic('check')}Accept</button><button data-r="m">${ic('circle-help')}Maybe</button><button data-r="n">${ic('x')}Decline</button></div>`,`<button class="btn">${ic('alarm-clock')}Snooze 5 min</button>`)}`,
+
+ news:()=>`${ttl('news','News & memo','Yesterday')}
+ <div class="fbody"><div class="pane m-news">
+  <div class="cover"><div class="shine"></div><div class="ct"><small>Memo · HC · Please acknowledge</small><h1>Year-end gathering 2026 — registration open</h1></div></div>
+  <div class="fcol">
+   <div class="byline" ${I(0)}>${av('RT')}<div><b>Rina Tanjung</b> · Human Capital<br>Yesterday 09:00 · 3 min read</div></div>
+   <div class="article" ${I(1)}><p>The year-end gathering will be held on <b>Saturday 13 December 2026</b> at Hotel Majapahit, Surabaya. Every employee and one family member are invited.</p>
+    <blockquote>“Thank you for a year of hard work — let's celebrate it together.”</blockquote>
+    <p>Please register before <b>5 December</b> through iPop › News so we can arrange transport from each site. Buses leave Karawang, Jatake and Semarang at 07:00.</p>
+    <p>Dress code: batik. There will be a lucky draw and the long-service awards.</p></div>
+   <div class="ackbar" ${I(2)}><div class="tx"><b id="ackn">745 of 1,204</b> people acknowledged<div class="prog"><i id="ackbar"></i></div></div><button class="btn p" id="ackbtn">${ic('check')}Acknowledge</button></div>
+  </div></div></div>
+ ${actions('news',`<button class="btn p">${ic('arrow-up-right')}Register in iPop</button>`,`<button class="btn">${ic('check')}Mark as read</button>`)}`,
+
+ project:()=>`${ttl('projects','Projects','Today 09:40')}
+ <div class="fbody"><div class="fcol pane m-projects">
+  <div class="taskhead" id="taskhead" ${I(0)}><button class="chk" id="taskchk" title="Mark done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button><div><div class="crumb">Network upgrade 2026 › Warehouse B</div><h2>Pull fibre to warehouse B</h2></div></div>
+  <div class="props" ${I(1)}>
+   <span>${ic('circle-dot')}Status</span><div><span class="stpill" id="stpill">Working on it</span></div>
+   <span>${ic('users')}Assignees</span><div class="avs"><div class="row2">${av('ME')}${av('YP')}</div><span style="font-size:14px;color:var(--ink-2)">You, Yudi Prasetyo</span></div>
+   <span>${ic('calendar')}Due</span><div>Mon 24 Nov · <span style="color:var(--act);font-weight:650">in 3 days</span></div>
+   <span>${ic('gauge')}Progress</span><div class="prog2"><div class="bar2"><i id="pbar" style="--w:50%"></i></div><span id="ptxt">2 of 4</span></div></div>
+  <div ${I(2)}><div class="sect2">${ic('list-checks')}Checklist</div><ul class="checklist" id="clist">
+   ${[['Survey cable route',1],['Order 300 m OM4 fibre',1],['Install patch panel',0],['Test link and label',0]].map(c=>`<li class="${c[1]?'done':''}"><span class="chk ${c[1]?'on':''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span><span>${c[0]}</span></li>`).join('')}</ul></div>
+  <div ${I(3)}><div class="sect2">${ic('message-square')}Comments</div><div class="convo" id="fconvo">
+   <div class="cm">${av('YP')}<div class="bb"><b>Yudi Prasetyo</b>Cable arrives Monday morning, I'll be on site from 08:00. <span class="mention">@Rudi</span> can you bring the splicer?<div class="t">09:40</div></div></div></div></div>
+ </div></div>
+ ${composer('Comment on this task…','projects',`<button class="btn">${ic('arrow-up-right')}Open project</button>`)}`,
+
+ notes:()=>`${ttl('notes','Notes','Today 11:15')}
+ <div class="fbody"><div class="fcol pane m-notes">
+  <div ${I(0)} style="font-size:15px;color:var(--ink-3);margin-bottom:12px"><b style="color:var(--ink)">Dewi Kartika</b> mentioned you in a page</div>
+  <div class="notepage" ${I(1)}><div class="np-h"><span class="emo">🧾</span><div><b>Procurement SOP 2027 (draft)</b><br>Shared with Procurement + ICT · edited 4 min ago</div></div>
+   <div class="np-b"><p class="fade">4.2 Purchase requests above Rp 25 juta need two quotations and the Manager's approval before an SPP is raised.</p>
+   <p><mark><span class="mention">@Rudi Mulyadi</span> please confirm which IT items need ICT review first — laptops, printers, network gear?</mark></p>
+   <p class="fade">4.3 Delivery is checked by the requester within 2 working days…</p></div></div>
+  <div ${I(2)}><div class="sect2">${ic('messages-square')}Thread · 2 replies</div><div class="convo" id="fconvo">
+   <div class="cm">${av('DK')}<div class="bb"><b>Dewi Kartika</b>Draft due to the Director next Wednesday.<div class="t">11:15</div></div></div>
+   <div class="cm">${av('BS')}<div class="bb"><b>Bambang Sutrisno</b>Laptops and network gear for sure.<div class="t">11:32</div></div></div></div></div>
+ </div></div>
+ ${composer('Reply in the thread…','notes',`<button class="btn">${ic('arrow-up-right')}Open page</button>`)}`,
+
+ approval:()=>`${ttl('approval','Approval · SPP','Just now')}
+ <div class="fbody"><div class="fcol pane m-approval">
+  <div class="apphead" ${I(0)}><div><span class="chip mod">SPP #0412</span><div class="ttitle" style="margin:8px 0 4px">Toner &amp; printer parts, Sepanjang office</div><div style="font-size:14px;color:var(--ink-3)">Requested by Dewi Kartika · Indirect Procurement · yesterday 16:20</div></div>
+   <div class="amt"><small>Total</small><b>Rp 18.450.000</b><div class="chip act" style="margin-top:6px">${ic('alarm-clock')}Due today 17:00</div></div></div>
+  <div class="approute" ${I(1)}>
+   <div class="st ok">${av('DK')}<b>Dewi K.</b>Requester</div><div class="ln ok"></div>
+   <div class="st ok">${av('BS')}<b>Bambang S.</b>Manager · approved 09:12</div><div class="ln ok"></div>
+   <div class="st me">${av('ME')}<b>You</b>Waiting for you</div><div class="ln"></div>
+   <div class="st">${av('LS')}<b>Lina S.</b>GM Finance</div></div>
+  <div ${I(2)}><div class="sect2">${ic('list')}12 lines</div><table class="lines"><thead><tr><th>Item</th><th class="n">Qty</th><th class="n">Price</th><th class="n">Total</th></tr></thead><tbody>
+   ${[['Toner HP 59A',8,'1.150.000','9.200.000'],['Fuser unit M404',2,'2.350.000','4.700.000'],['Drum unit Brother DR-2455',3,'850.000','2.550.000'],['Pickup roller kit',5,'400.000','2.000.000'],['','','Total','Rp 18.450.000']].map((r,i)=>`<tr style="--i:${i}"><td>${r[0]}</td><td class="n">${r[1]}</td><td class="n">${r[2]}</td><td class="n">${r[3]}</td></tr>`).join('')}</tbody></table></div>
+  <div ${I(3)}><div class="sect2">${ic('paperclip')}Quotation</div><div class="files2">${fileCard('spp')}</div></div>
+ </div></div>
+ ${actions('approval',`<button class="btn p">${ic('external-link')}Open in SPP to approve</button>`,`<button class="btn">${ic('alarm-clock')}Snooze 1 h</button><button class="btn">${ic('check')}Mark as read</button>`)}`,
+
+ system:()=>`${ttl('system','iPop','Yesterday 23:47')}
+ <div class="fbody"><div class="pane m-system"><div class="syscard">
+  <div class="big">${ic('archive-restore')}</div>
+  <span class="srcchip">${ic('server')}From iPop · EPop import</span>
+  <h1>Your EPop history is in iPop Mail</h1>
+  <p>275 messages from your old EPop mailbox were added to iPop Mail under the label <b>“Arsip EPop”</b>. Nothing else in your mailbox changed.</p>
+  <div class="statgrid"><div><b data-count-to="275">0</b><span>messages</span></div><div><b data-count-to="38">0</b><span>with attachments</span></div><div><b>2019–2026</b><span>date range</span></div></div>
+  <div class="altsrc"><div class="pc"><div class="ico m-system">${ic('user-cog')}</div><div><small>Same layout for</small><b>HRIS sync</b><span>“Your department changed to ICT Support”</span></div></div>
+   <div class="pc"><div class="ico m-approval">${ic('plug')}</div><div><small>…and other systems</small><b>Gateway apps</b><span>SPP, payroll — title, text, key facts and a button</span></div></div></div>
+ </div></div></div>
+ ${actions('system',`<button class="btn p">${ic('mail')}Open “Arsip EPop” in Mail</button>`,`<button class="btn">${ic('check')}Mark as read</button>`)}`
+};
+
+function renderFull(){
+ const k=$('#kinds7');
+ if(!k.querySelector('button')){k.insertAdjacentHTML('beforeend',FK.map(x=>`<button class="m-${x[2]} ${x[0]===fk?'on':''}" data-k="${x[0]}"><i class="d"></i>${x[1]}</button>`).join(''));
+  k.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.dataset.k===fk)return;fk=b.dataset.k;setOn(k,b);drawFull()})}
+ requestAnimationFrame(()=>placeThumb(k,true));
+ drawFull()}
+let cdT;
+function drawFull(){const w=$('#fwin');w.className='win fwin2 m-'+FK.find(x=>x[0]===fk)[2];w.innerHTML=FV[fk]();icons();clearInterval(cdT);
+ const seg=$('#rsvpseg');if(seg)requestAnimationFrame(()=>placeThumb(seg,true));
+ const inp=w.querySelector('[data-reply]'),send=w.querySelector('[data-send]');
+ if(inp){const go2=()=>{const v=inp.value.trim();if(!v)return;const c=$('#fconvo');
+   if(c){$('#typing')?.remove();c.insertAdjacentHTML('beforeend',`<div class="cm me in">${av('ME')}<div class="bb">${v.replace(/</g,'&lt;')}<div class="t">now · Sent</div></div></div>`);const fb=w.querySelector('.fbody');fb.scrollTo({top:fb.scrollHeight,behavior:RM?'auto':'smooth'})}
+   inp.value='';send.disabled=true;wsnack(w,`${CHECK}<span>Sent</span>`)};
+  inp.oninput=()=>send.disabled=!inp.value.trim();inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();go2()}};send.onclick=go2}
+ if(fk==='chat'){setTimeout(()=>{const t=$('#typing');if(t&&fk==='chat'){t.remove();const c=$('#fconvo');c.insertAdjacentHTML('beforeend',`<div class="cm in">${av('HW')}<div class="bb">A one-page summary is enough.<div class="t">14:32</div></div></div>`)}},RM?0:2600)}
+ if(fk==='meeting'){let s=299;cdT=setInterval(()=>{s=Math.max(0,s-1);const el=$('#cd');if(!el){clearInterval(cdT);return}el.textContent=`0${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`},1000)}
+ if(fk==='system'){$$('#fwin [data-count-to]').forEach(el=>{const to=+el.dataset.countTo,t0=performance.now(),D=RM?1:900;const step=t=>{const p=Math.min(1,(t-t0)/D);el.textContent=Math.round(to*(1-Math.pow(1-p,3)));if(p<1)requestAnimationFrame(step)};requestAnimationFrame(step)})}
+}
+$('#fwin').addEventListener('click',e=>{const w=$('#fwin');
+ const m=e.target.closest('[data-more-rcpt]');if(m){m.insertAdjacentHTML('beforebegin',['Yudi Prasetyo','Rina Tanjung','Andi Wijaya','Siti Rahma','Hartono Gunawan'].map(n=>`<span class="p x">${n}</span>`).join(''));m.remove();return}
+ const q=e.target.closest('[data-quick]');if(q){const i=w.querySelector('[data-reply]');i.value=q.dataset.quick;i.dispatchEvent(new Event('input'));i.focus();return}
+ if(e.target.closest('#react')){const r=$('#react');r.textContent=r.textContent.includes('👍')?'👀':'👀 👍';r.classList.remove('pop');reflow(r);r.classList.add('pop');return}
+ const r=e.target.closest('#rsvpseg button');if(r){setOn($('#rsvpseg'),r);const my=$('#myrsvp');my.className='rsvp '+r.dataset.r+' tick';my.textContent={y:'Going',m:'Maybe',n:'Declined'}[r.dataset.r];wsnack(w,`${CHECK}<span>${{y:'Accepted — Lina will see you are going',m:'Marked as maybe',n:'Declined'}[r.dataset.r]}</span>`);return}
+ if(e.target.closest('#ackbtn')){const b=$('#ackbtn');if(b.disabled)return;b.disabled=true;b.innerHTML=CHECK+'Acknowledged';$('#ackn').textContent='746 of 1,204';$('#ackbar').style.setProperty('--w','62.1%');wsnack(w,`${CHECK}<span>Thanks — HC can see you acknowledged</span>`);return}
+ if(e.target.closest('#taskchk')){const c=$('#taskchk');const on=c.classList.toggle('on');$('#taskhead').classList.toggle('done',on);const p=$('#stpill');p.classList.toggle('dn',on);p.textContent=on?'Done':'Working on it';if(on)$$('#clist li').forEach((li,i)=>setTimeout(()=>{li.classList.add('done');li.querySelector('.chk').classList.add('on');upd()},RM?0:i*90));wsnack(w,on?`${CHECK}<span>Task done — Yudi will be notified</span>`:'<span>Task reopened</span>');return}
+ const li=e.target.closest('#clist li');if(li){li.classList.toggle('done');li.querySelector('.chk').classList.toggle('on');upd();return}
+ const fd=e.target.closest('[data-dlall-full]');if(fd){['q4','xl','pp','zip'].forEach((k,i)=>{const bt=w.querySelector(`[data-fd="${k}"]`);bt&&setTimeout(()=>dl(bt,k),i*160)})}
+});
+function upd(){const all=$$('#clist li').length,d=$$('#clist li.done').length;$('#pbar').style.setProperty('--w',(d/all*100)+'%');$('#ptxt').textContent=`${d} of ${all}`}
+
 /* ================= navigation + theme ================= */
 function go(s){state.screen=s;$$('.screen').forEach(x=>x.classList.toggle('on',x.id==='s-'+s));setOn($('#nav'),$(`#nav>button[data-s="${s}"]`));
  $('#simdock').classList.toggle('hide',!['small','wide','popups'].includes(s));
@@ -1267,6 +1708,7 @@ function go(s){state.screen=s;$$('.screen').forEach(x=>x.classList.toggle('on',x
  requestAnimationFrame(()=>{$$(`#s-${s} .slider`).forEach(c=>placeThumb(c,true))});
  if(s==='popups')renderDesk();
  if(s==='viewer'&&!$('#vstage').innerHTML)vshow(0);
+ if(s==='full')renderFull();
  window.scrollTo({top:0,behavior:RM?'auto':'smooth'})}
 $('#nav').addEventListener('click',e=>{const b=e.target.closest('button');if(b)go(b.dataset.s)});
 $('#theme').onclick=e=>{const apply=()=>{const d=document.documentElement.classList.toggle('dark');$('#theme').innerHTML=`${ic(d?'sun':'moon')}<span>${d?'Light':'Dark'}</span>`;icons()};
