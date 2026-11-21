@@ -43,7 +43,7 @@ public static partial class ApiBridge
         ("POST", R($"^api/projects/tasks/{G}/move$")),
         ("POST", R($"^api/notes/{G}/threads/{G}/replies$")),
         ("POST", R($"^api/chat/rooms/{G}/messages$")),
-        ("POST", R($"^api/notifications/v1/notifications/{G}/(read|unread|snooze|acknowledge)$")),
+        ("POST", R($"^api/notifications/v1/notifications/{G}/(read|unread|snooze|unsnooze|acknowledge)$")),
         ("POST", R("^api/notifications/v1/inbox/read-all$")),
         ("POST", R("^api/notifications/v1/read-by-target$")),
     ];

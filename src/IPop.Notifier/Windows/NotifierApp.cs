@@ -552,6 +552,8 @@ public sealed class NotifierApp : ApplicationContext
         return new
         {
             name = device.DisplayName ?? api.Session?.Name ?? "",
+            // The maximized Inbox's chat pane tells my own messages apart (MessageDto.SenderNik), as the popups do.
+            nik = api.Session?.Nik,
             unread,
             act = actUnread,
             tiers = c.Tiers,
