@@ -3,6 +3,9 @@
 #   1. pg_dump (custom format) inside the ipop-postgres container
 #   2. copy to \\192.168.2.16\sja\SJA SPJ\ICT\backup\ipop-db as ipop-YYYYMMDD-HHmm.dump
 #   3. verify the copy: same SHA-256 as the dump, and pg_restore can list it
+#   3c. restore test: the dump is restored into a scratch database, every index and table page is checked
+#       with amcheck (0 corrupt rows allowed), and the restored copy must have every table and a non-empty Users.
+#       A dump that cannot be restored is a failed backup, not a good one.
 #   4. keep 14 daily + 8 weekly (Sunday) backups; "-manual" dumps are never pruned
 #   5. nothing stays on C:; the result is written to backup-status.json next to the dumps,
 #      which the API's BackupMonitorWorker reads to alert admins when backups stop.
@@ -13,7 +16,8 @@ param(
     [string]$Container = 'ipop-postgres',
     [string]$Database = 'ipop',
     [int]$KeepDaily = 14,
-    [int]$KeepWeekly = 8
+    [int]$KeepWeekly = 8,
+    [switch]$SkipRestoreTest
 )
 $ErrorActionPreference = 'Stop'
 $stamp = Get-Date -Format 'yyyyMMdd-HHmm'
@@ -37,6 +41,31 @@ try {
     $tables = (& docker exec $Container pg_restore -l $inside | Select-String 'TABLE DATA').Count
     if ($LASTEXITCODE -ne 0 -or $tables -lt 50) { throw "pg_restore could not read the dump ($tables tables)" }
     $status.tables = $tables
+    # 3c. restore test into a scratch database (dropped afterwards)
+    if (-not $SkipRestoreTest) {
+        $verifyDb = 'ipop_backup_verify'
+        $countSql = "do `$`$ declare r record; n bigint; begin create temp table _c(t text, n bigint); for r in select tablename from pg_tables where schemaname='public' loop execute format('select count(*) from public.%I', r.tablename) into n; insert into _c values (r.tablename, n); end loop; end `$`$; select t || '=' || n from _c order by t;"
+        & docker exec $Container dropdb -U ipop --if-exists $verifyDb | Out-Null
+        & docker exec $Container createdb -U ipop $verifyDb
+        if ($LASTEXITCODE -ne 0) { throw "restore test: createdb failed ($LASTEXITCODE)" }
+        try {
+            & docker exec $Container pg_restore -U ipop -d $verifyDb --no-owner --exit-on-error $inside
+            if ($LASTEXITCODE -ne 0) { throw "restore test: pg_restore failed ($LASTEXITCODE)" }
+            $check = "create extension if not exists amcheck; select count(*) from (select bt_index_check(index => c.oid, heapallindexed => true) from pg_index i join pg_class c on c.oid = i.indexrelid join pg_am a on a.oid = c.relam join pg_namespace n on n.oid = c.relnamespace where a.amname = 'btree' and n.nspname = 'public' and i.indisvalid) x; select count(*) from (select (verify_heapam(c.oid, on_error_stop => false)).* from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r') v;"
+            $amcheck = @(& docker exec $Container psql -U ipop -d $verifyDb -At -v ON_ERROR_STOP=1 -c $check)
+            if ($LASTEXITCODE -ne 0) { throw "restore test: amcheck failed ($LASTEXITCODE)" }
+            if ($amcheck[-1] -ne '0') { throw "restore test: $($amcheck[-1]) corrupt rows in the restored copy" }
+            $restored = @(& docker exec $Container psql -U ipop -d $verifyDb -At -c $countSql)
+            $status.restoredTables = $restored.Count
+            $status.restoredRows = ($restored | ForEach-Object { [int64]($_ -split '=')[1] } | Measure-Object -Sum).Sum
+            $status.indexesChecked = [int]$amcheck[-2]
+            if ($restored.Count -lt 50) { throw "restore test: only $($restored.Count) tables restored" }
+            $usersRow = $restored | Where-Object { $_ -like 'Users=*' }
+            if (-not $usersRow -or [int64]($usersRow -split '=')[1] -le 0) { throw 'restore test: Users table is empty in the restored copy' }
+        }
+        finally { & docker exec $Container dropdb -U ipop --if-exists $verifyDb | Out-Null }
+    }
+
     & docker cp "${Container}:$inside" $tmp
     if ($LASTEXITCODE -ne 0) { throw "docker cp failed ($LASTEXITCODE)" }
     & docker exec $Container rm -f $inside | Out-Null
