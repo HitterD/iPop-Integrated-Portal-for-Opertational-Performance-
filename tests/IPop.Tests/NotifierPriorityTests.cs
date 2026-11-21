@@ -65,6 +65,7 @@ public class NotifierPriorityTests
         var row = Assert.Single(inbox.Items);
         Assert.Equal(boss.Id, row.ActorId);
         Assert.Equal(boss.Name, row.ActorName);
+        Assert.Equal("project.task_mention", row.EventType);   // the app classifies by the full event type
         var json = JsonSerializer.Serialize(inbox, Web);
         Assert.DoesNotContain("ACT1", json);   // the actor's name only, never their NIK
     }

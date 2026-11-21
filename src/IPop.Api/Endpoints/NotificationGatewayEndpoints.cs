@@ -680,7 +680,8 @@ public static class NotificationGatewayEndpoints
             r.TargetUrl,
             r.SnoozedUntil,
             r.ActorUserId,
-            r.ActorUserId is { } a ? actorNames.GetValueOrDefault(a) : null)).ToList();
+            r.ActorUserId is { } a ? actorNames.GetValueOrDefault(a) : null,
+            r.EventType)).ToList();
 
         return new InboxListResult(items, total, unread, p, size);
     }
@@ -718,7 +719,10 @@ public static class NotificationGatewayEndpoints
         Guid Id, string Type, string Title, string Body,
         string Source, DateTime At, bool IsRead, string Priority,
         string? TargetUrl = null, DateTime? SnoozedUntil = null,
-        Guid? ActorId = null, string? ActorName = null);
+        Guid? ActorId = null, string? ActorName = null,
+        // The full event type ("mail.new", "ticket.assigned", "approval.requested"…): Type is only the coarse module,
+        // and the Notifier's priority tiers (NotifierSettings.KindOf) need the real one.
+        string? EventType = null);
 
     public record SnoozeNotificationRequest(DateTime? Until = null, double? Hours = null);
     public record MuteTypeRequest(string Type, bool Muted);
