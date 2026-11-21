@@ -37,6 +37,10 @@ metadata:
   name: ipop-api
   namespace: ipop
 spec:
+  # /healthz answers JSON; Prometheus 3 rejects a non-metrics Content-Type unless a fallback is set,
+  # which kept up{job="ipop-api"} at 0 (a permanent false TargetDown since 2026-11-12, so a real outage
+  # would not have stood out).
+  fallbackScrapeProtocol: PrometheusText0.0.4
   selector:
     matchLabels: { app.kubernetes.io/name: ipop-api }
   endpoints:
