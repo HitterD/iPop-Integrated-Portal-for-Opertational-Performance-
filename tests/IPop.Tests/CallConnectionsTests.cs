@@ -23,13 +23,14 @@ public class CallConnectionsTests
     public async Task Reconnecting_inside_the_grace_keeps_the_call()
     {
         var probe = new Probe();
-        var c = new CallConnections(TimeSpan.FromMilliseconds(200), probe.End);
+        // Generous grace: a slow CI runner must not turn the 50 ms pause into "away past the grace".
+        var c = new CallConnections(TimeSpan.FromSeconds(2), probe.End);
         var u = Guid.NewGuid();
         c.Connected(u);
         c.Disconnected(u);
         await Task.Delay(50);
         c.Connected(u);
-        await Task.Delay(400);
+        await Task.Delay(2500);
         Assert.Empty(probe.Ended);
     }
 
