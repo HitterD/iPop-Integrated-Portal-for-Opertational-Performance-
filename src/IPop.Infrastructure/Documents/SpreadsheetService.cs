@@ -55,6 +55,23 @@ public class SpreadsheetService(IDevExpressDocumentFactory factory) : ISpreadshe
         }, ct);
     }
 
+    public Task<byte[]> ConvertToPdfAsync(Stream excelStream, string fileName, CancellationToken ct = default)
+    {
+        var format = Path.GetExtension(fileName).ToLowerInvariant() switch
+        {
+            ".xls" => DocumentFormat.Xls, ".xlsm" => DocumentFormat.Xlsm, ".csv" => DocumentFormat.Csv, _ => DocumentFormat.Xlsx,
+        };
+        return Task.Run(() =>
+        {
+            using var workbook = factory.CreateWorkbook();
+            if (excelStream.CanSeek) excelStream.Position = 0;
+            workbook.LoadDocument(excelStream, format);
+            using var pdfMs = new MemoryStream();
+            workbook.ExportToPdf(pdfMs);
+            return pdfMs.ToArray();
+        }, ct);
+    }
+
     public Task<List<string[]>> ReadSheetDataAsync(Stream excelStream, string? sheetName = null, CancellationToken ct = default)
     {
         return Task.Run(() =>
