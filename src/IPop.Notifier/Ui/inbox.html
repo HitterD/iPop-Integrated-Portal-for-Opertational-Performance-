@@ -16,15 +16,19 @@
     <div class="sbox" id="sbox" data-nodrag><button class="sbtn" title="Search"><i data-lucide="search"></i></button><input id="sq" placeholder="Search notifications" aria-label="Search notifications"><button class="sx" title="Close search"><i data-lucide="x"></i></button></div>
     <div class="tools">
       <button class="ib" data-all title="Mark all as read"><i data-lucide="check-check"></i></button>
-      <button class="ib" data-devices title="Devices (ICT)" hidden><i data-lucide="monitor"></i></button>
       <button class="ib" data-gear title="Settings"><i data-lucide="settings"></i></button>
-      <button class="ib" data-max title="Maximize"></button>
+      <button class="ib" id="moreBtn" title="More" aria-haspopup="menu" aria-expanded="false"><i data-lucide="ellipsis"></i></button>
+    </div>
+    <!-- 1.5.1: Devices (ICT only) and Maximize live here; a double-click on the header still maximizes -->
+    <div class="menu" id="moreMenu" role="menu" hidden>
+      <button role="menuitem" data-maxitem><i data-lucide="maximize-2"></i><span>Maximize</span></button>
+      <button role="menuitem" data-devices hidden><i data-lucide="monitor"></i><span>Devices (ICT)</span></button>
     </div>
   </div>
   <div class="strip" data-conn><i></i><span>Reconnecting to iPop… your notifications are safe</span></div>
   <div class="summary" id="summary"></div>
   <div class="chips slider" id="chips"><span class="thumb"></span>
-    <button class="on" data-f="all">All</button>
+    <button class="on" data-f="all">All <span class="badge g zero" data-count="all"></span></button>
     <button data-f="act">Needs action <span class="badge act zero" data-count="act"></span></button>
     <button data-f="msg">Messages <span class="badge g zero" data-count="msg"></span></button>
     <button data-f="info">Info <span class="badge g zero" data-count="info"></span></button>

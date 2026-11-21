@@ -5,7 +5,7 @@
   const { api, esc, post } = window.app;
   const M = window.inboxModel, F = window.files;
   const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
-  const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const rm = () => window.reducedMotion(); // Settings › Animations "Reduced" (html.reduce-motion)
   const reflow = el => void el.offsetWidth;
   const G = '[0-9a-fA-F-]{36}';
   const CHECK = F.CHECK;
@@ -19,6 +19,7 @@
   const TIER = { act: ['Needs action', 'var(--act)', 'Needs action'], msg: ['Messages', 'var(--unread)', 'Message'], info: ['For your info', 'var(--ink-4)', 'Info'] };
   const VIEWS = [['act', 'Needs action', 'zap', 'var(--act)', 'act'], ['lead', 'From leaders', 'crown', 'var(--lead)', ''], ['appr', 'Approvals', 'stamp', 'var(--appr)', ''],
     ['msg', 'Messages', 'message-square', 'var(--unread)', ''], ['info', 'For your info', 'info', 'var(--ink-3)', 'g'], ['all', 'All', 'inbox', 'var(--ink-3)', 'g']];
+  const TSTATUS = { new: 'New', rep: 'Replied', res: 'Resolved' };
   const SIDE_MODS = ['mail', 'chat', 'tickets', 'calendar', 'projects', 'notes', 'calls', 'news', 'system'];
   const modIcon = m => m === 'tickets' ? '<img src="idesk-mark.png" alt="iDesk">' : IC((MODS[m] || MODS.system)[0]);
   const modName = m => (MODS[m] || MODS.system)[1];
@@ -35,9 +36,9 @@
     const t = c.querySelector(':scope>.thumb'), b = c.querySelector(':scope>button.on');
     if (!t) return;
     if (!b || !c.offsetParent) { t.style.width = '0'; return; }
-    if (instant || RM) t.style.transition = 'none';
+    if (instant || rm()) t.style.transition = 'none';
     t.style.width = b.offsetWidth + 'px'; t.style.height = b.offsetHeight + 'px'; t.style.transform = `translate(${b.offsetLeft}px,${b.offsetTop}px)`;
-    if (instant || RM) { reflow(t); t.style.transition = ''; }
+    if (instant || rm()) { reflow(t); t.style.transition = ''; }
   }
   const placeAll = instant => $$('.slider').forEach(c => placeThumb(c, instant));
   function setOn(c, btn) { c.querySelectorAll(':scope>button').forEach(b => b.classList.toggle('on', b === btn)); placeThumb(c); }
@@ -47,7 +48,7 @@
     if (el.classList.contains('badge')) el.classList.toggle('zero', !v);
   }
   addEventListener('resize', () => { placeAll(true); placeSearch(); });
-  // The search button sits just left of the header tools (3 or 4 of them: Devices is ICT only).
+  // The search button sits just left of the header tools (mark all, settings, ⋯).
   function placeSearch() {
     const tools = $('#ihead .tools');
     if (tools.offsetWidth) $('#sbox').style.setProperty('--r', (tools.offsetWidth + 18 + 8) + 'px');
@@ -55,7 +56,28 @@
 
   // ── chrome: header, footer, window buttons ────────────────────────────────
   $$('[data-gear]').forEach(b => b.onclick = () => post({ type: 'settings' }));
-  $$('[data-devices]').forEach(b => b.onclick = () => post({ type: 'devices' }));
+  $$('[data-devices]').forEach(b => b.onclick = () => { closeMenu(); post({ type: 'devices' }); });
+  // ⋯ menu (1.5.1): Maximize/Restore and Devices (ICT). Closes on a click elsewhere, Esc or a choice.
+  const menu = $('#moreMenu'), moreBtn = $('#moreBtn');
+  function closeMenu() { if (menu.hidden) return; menu.hidden = true; moreBtn.classList.remove('on'); moreBtn.setAttribute('aria-expanded', 'false'); }
+  function openMenu() {
+    const max = isMax(), item = $('[data-maxitem]');
+    // Same rule as the title bar button: hidden when the window can't maximize.
+    item.hidden = !!$('#wide [data-max]') && $('#wide [data-max]').hidden;
+    item.innerHTML = IC(max ? 'minimize-2' : 'maximize-2') + `<span>${max ? 'Restore' : 'Maximize'}</span>`;
+    menu.hidden = false; moreBtn.classList.add('on'); moreBtn.setAttribute('aria-expanded', 'true');
+    window.icons();
+    const first = menu.querySelector('button:not([hidden])'); if (first) first.focus({ preventScroll: true });
+  }
+  moreBtn.onclick = e => { e.stopPropagation(); menu.hidden ? openMenu() : closeMenu(); };
+  $('[data-maxitem]').onclick = () => { closeMenu(); post({ type: 'maximize' }); };
+  document.addEventListener('mousedown', e => { if (!menu.hidden && !e.target.closest('#moreMenu,#moreBtn')) closeMenu(); }, true);
+  menu.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.stopPropagation(); closeMenu(); moreBtn.focus(); return; }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const bs = [...menu.querySelectorAll('button:not([hidden])')], i = bs.indexOf(document.activeElement);
+    bs[(i + (e.key === 'ArrowDown' ? 1 : bs.length - 1)) % bs.length].focus(); e.preventDefault();
+  });
   $$('[data-min]').forEach(b => b.onclick = () => post({ type: 'minimize' }));
   $$('[data-close]').forEach(b => b.onclick = () => post({ type: 'close' }));
   $('[data-open]').onclick = () => post({ type: 'openIPop', path: '/notifications' });
@@ -142,9 +164,11 @@
     let s = '';
     if (t.approval) s += `<span class="chip appr">${IC('stamp')}Approval</span>`;
     if (t.leader) s += t.leader === 'VIP' ? `<span class="chip lead">${IC('star')}VIP</span>` : `<span class="chip lead">${IC('crown')}Your leader</span>`;
+    if (t.assigned) s += `<span class="chip act">${IC('user-check')}Assigned to you</span>`;
     if (t.soon) s += `<span class="chip act">${IC('alarm-clock')}Starts soon</span>`;
     if (t.unread && (ctx.held || []).some(id => t.ids.includes(id))) s += `<span class="chip miss">Missed</span>`;
     if (t.items.length > 1) s += `<span class="chip thr" data-x>${t.items.length} updates${IC('chevron-down')}</span>`;
+    if (t.status) s += `<span class="tchip ${t.status}"><i></i>${TSTATUS[t.status]}</span>`;
     if (t.line.tag) s += `<span class="chip mod">${esc(t.line.tag)}</span>`;
     return s ? `<div class="chipsr">${s}</div>` : '';
   }
@@ -153,8 +177,8 @@
     const anim = o.fresh && t.ids.some(id => o.fresh.includes(id)) ? 'new' : o.still ? 'still' : '';
     const xp = t.items.length > 1 ? `<div class="xp"><div>${t.items.slice(1, 8).map(x => `<div><b>${esc(timeShort(x.at))}</b> ${esc(M.lineOf(x).text || x.title)}</div>`).join('')}${t.items.length > 8 ? `<div>+${t.items.length - 8} more</div>` : ''}</div></div>` : '';
     return `<div class="it m-${t.mod} t-${t.tier} ${t.unread ? '' : 'read'} ${info ? 'info' : ''} ${o.sel === t.key ? 'sel' : ''} ${anim}" data-k="${esc(t.key)}" style="--i:${i}" tabindex="-1">
-      <span class="dot"></span><div class="ico ${info ? 'muted' : ''}">${modIcon(t.mod)}</div>
-      <div class="main"><div class="l1"><div class="tl">${esc(t.head.title)}</div><div class="tm">${esc(timeShort(t.at))}</div></div><div class="who">${who}${esc(t.line.text)}</div>${info && !t.items[1] ? '' : chipsFor(t)}${xp}</div>
+      <span class="dot"></span><div class="ico ${info && t.mod !== 'tickets' ? 'muted' : ''}">${modIcon(t.mod)}</div>
+      <div class="main"><div class="l1"><div class="tl">${esc(t.head.title)}</div><div class="tm" title="${esc(new Date(t.at).toLocaleString())}">${esc(M.relTime(t.at))}</div></div><div class="who">${who}${esc(t.line.text)}</div>${info && !t.items[1] ? '' : chipsFor(t)}${xp}</div>
       <div class="qa"><button data-a="read" title="${t.unread ? 'Mark as read' : 'Mark as unread'}">${IC(t.unread ? 'check' : 'mail')}</button><button data-a="snooze" title="Snooze 1 hour">${IC('alarm-clock')}</button></div></div>`;
   }
   const emptyHtml = (t, s, err) => `<div class="empty ${err ? 'err' : ''}"><svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="23"/>${err ? '<path d="M26 15v14M26 36v1"/>' : '<path d="M15 27l7 7 15-16"/>'}</svg><b>${esc(t)}</b><span>${esc(s)}</span></div>`;
@@ -177,15 +201,16 @@
   function counts() {
     const c = M.counts(threads);
     $$('[data-count]').forEach(el => { const k = el.dataset.count; setNum(el, k.startsWith('mod:') ? c.mod[k.slice(4)] || 0 : c[k] || 0); });
-    const parts = [['appr', c.appr, c.appr === 1 ? 'approval' : 'approvals', 'act'], ['lead', c.lead, 'from leaders', 'act'], ['msg', c.msg, c.msg === 1 ? 'message' : 'messages', 'msg']];
+    // 1.5.1: "2 approvals · 2 leaders · 1 ticket · 4 messages" — zero parts and their dots left out.
+    const parts = M.summaryParts(c);
     const sum = $('#summary');
     if (!loaded || failed) { sum.hidden = true; }
     else if (!c.act && !c.msg) { sum.hidden = false; sum.className = 'summary calm'; sum.innerHTML = `${IC('sparkles')}<span>Nothing needs you right now${c.info ? ` · <b>${c.info}</b> for your info` : ''}</span>`; }
     else {
       sum.hidden = false; sum.className = 'summary';
-      const shown = parts.filter(p => p[1] || p[0] === 'msg');
-      sum.innerHTML = IC('sparkles') + shown.map((p, i) => `${i ? '<span class="sep"></span>' : ''}<button data-jump="${p[3]}"><b>${p[1]}</b> ${p[2]}</button>`).join('')
-        + (c.act > c.appr + c.lead ? `<span class="sep"></span><button data-jump="act"><b>${c.act - c.appr - c.lead}</b> more need action</button>` : '');
+      // Only meetings starting soon (or other Needs action without a name of its own): say so once.
+      const shown = parts.length ? parts : [['act', c.act, 'need' + (c.act === 1 ? 's' : '') + ' action', 'act']];
+      sum.innerHTML = IC('sparkles') + shown.map((p, i) => `${i ? '<span class="sep"></span>' : ''}<button data-jump="${p[3]}"><b>${p[1]}</b> ${p[2]}</button>`).join('');
     }
     if (isMax()) {
       const xs = wideItems();
@@ -286,7 +311,7 @@
   }
   function collapse(el) {
     return new Promise(res => {
-      if (RM || !el.offsetHeight) { el.remove(); return res(); }
+      if (rm() || !el.offsetHeight) { el.remove(); return res(); }
       el.style.height = el.offsetHeight + 'px'; el.style.overflow = 'hidden'; reflow(el);
       el.style.transition = 'height .34s var(--spring),opacity .2s,padding .34s var(--spring)';
       el.style.height = '0px'; el.style.opacity = '0'; el.style.paddingTop = el.style.paddingBottom = '0px';
@@ -318,7 +343,7 @@
     if (!todo.length) { F.snack(`${CHECK}<span>Nothing unread here</span>`); return; }
     const everything = todo.length === threads.filter(t => t.unread).length && rows.length >= total;
     const before = new Map(todo.map(t => [t, t.items.filter(x => !x.isRead).map(x => x.id)]));
-    todo.forEach((t, k) => setTimeout(() => { t.items.forEach(x => x.isRead = true); t.unread = false; paintRead(t); }, RM ? 0 : Math.min(k, 20) * 55));
+    todo.forEach((t, k) => setTimeout(() => { t.items.forEach(x => x.isRead = true); t.unread = false; paintRead(t); }, rm() ? 0 : Math.min(k, 20) * 55));
     const ids = [...before.values()].flat();
     const ok = everything ? (await api('POST', 'api/notifications/v1/inbox/read-all')).ok
       : (await Promise.all(ids.map(id => api('POST', `api/notifications/v1/notifications/${id}/read`)))).every(r => r.ok);
@@ -328,7 +353,7 @@
         before.forEach((xs, t) => { t.items.forEach(x => { if (xs.includes(x.id)) x.isRead = false; }); t.unread = true; paintRead(t); });
         await Promise.all(ids.map(id => api('POST', `api/notifications/v1/notifications/${id}/unread`)));
       }]]);
-    }, RM ? 0 : Math.min(todo.length, 20) * 55 + 120);
+    }, rm() ? 0 : Math.min(todo.length, 20) * 55 + 120);
   }
   $$('[data-all]').forEach(b => b.onclick = markAll);
 
@@ -377,7 +402,7 @@
     st.sel = key; markSel();
     if (changed || !$('#rpane .rin')) drawRead();
     const r = $(`#wideList .it[data-k="${CSS.escape(key)}"]`);
-    if (r) r.scrollIntoView({ block: 'nearest', behavior: RM ? 'auto' : 'smooth' });
+    if (r) r.scrollIntoView({ block: 'nearest', behavior: rm() ? 'auto' : 'smooth' });
     // Shown ~1 s = read (as in Mail).
     clearTimeout(readT);
     const t = byKey(key);
@@ -407,7 +432,7 @@
       : t.approval ? `<span class="chip appr rel">${IC('stamp')}Waiting for you</span>` : '';
     let html = `<div class="rscroll m-${t.mod}"><div class="rin">`
       + `<div class="rmeta" ${I()}><div class="ico sm">${modIcon(t.mod)}</div><span class="mn">${esc(modName(t.mod))}</span>${line.tag ? `<span class="chip mod">${esc(line.tag)}</span>` : ''}`
-      + `<span class="chip" style="background:color-mix(in srgb,${TIER[t.tier][1]} 14%,transparent);color:${TIER[t.tier][1]}">${TIER[t.tier][0]}</span><span class="when">${esc(M.dayLabel(h.at))} · ${esc(new Date(h.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}</span></div>`
+      + `<span class="chip" style="background:color-mix(in srgb,${TIER[t.tier][1]} 14%,transparent);color:${TIER[t.tier][1]}">${TIER[t.tier][0]}</span><span class="when">${esc(M.dayLabel(h.at))} · ${esc(M.clock(h.at))}</span></div>`
       + `<div class="rtitle sel" ${I()}>${esc(h.title)}</div>`
       + (t.approval ? `<div class="duebar" ${I()}>${IC('alarm-clock')}Waiting for your approval<span>Open it to approve or reject</span></div>` : '')
       + (who ? `<div class="person" id="rperson" ${I()}>${avatar(who)}<div><div class="nm">${esc(who)}</div><div class="rl">${esc(p && p.department || line.whoSub || modName(t.mod))}</div></div>${rel}</div>` : '')
@@ -542,7 +567,7 @@
         const o = b.innerHTML; b.classList.add('loading'); b.innerHTML = '<span class="spin"></span>';
         post({ type: 'openIPop', path: h.targetUrl || '/notifications' });
         if (t.unread) setRead(t, true, true);
-        setTimeout(() => { b.innerHTML = o; b.classList.remove('loading'); window.icons(); }, RM ? 0 : 650);
+        setTimeout(() => { b.innerHTML = o; b.classList.remove('loading'); window.icons(); }, rm() ? 0 : 650);
       }
     };
     const inp = $('#rinp');
@@ -559,7 +584,7 @@
         if (hist) {
           hist.insertAdjacentHTML('beforeend', bubble({ me: true, text, at: new Date().toISOString() }, 'in'));
           const c = $('#hcount'); if (c) c.textContent = hist.children.length;
-          const sc = $('#rpane .rscroll'); sc.scrollTo({ top: sc.scrollHeight, behavior: RM ? 'auto' : 'smooth' });
+          const sc = $('#rpane .rscroll'); sc.scrollTo({ top: sc.scrollHeight, behavior: rm() ? 'auto' : 'smooth' });
         }
         const n = byKey(t.key) || t; if (n.unread) setRead(n, true, true);
         F.snack(`${CHECK}<span>Sent to <b>${esc(String(d.reply.to).split(' ')[0])}</b></span>`);
@@ -627,7 +652,7 @@
           <td><span class="from">${from}</span></td>
           <td class="subj">${esc(t.head.title)}${t.items.length > 1 ? ` <span class="chip thr">${t.items.length}</span>` : ''}<span style="color:var(--ink-3);font-weight:400"> — ${esc(t.line.text)}</span></td>
           <td><span class="mc m-${t.mod}"><span class="sq">${modIcon(t.mod)}</span>${esc(modName(t.mod))}</span></td>
-          <td style="color:var(--ink-3)">${esc(timeShort(t.at))}</td><td><span class="st ${t.unread ? 'u' : ''}">${t.unread ? 'Unread' : 'Read'}</span></td>
+          <td style="color:var(--ink-3)">${esc(M.relTime(t.at))}</td><td><span class="st ${t.unread ? 'u' : ''}">${t.unread ? 'Unread' : 'Read'}</span></td>
           <td class="qa2"><button data-a="read" title="${t.unread ? 'Mark as read' : 'Mark as unread'}">${IC(t.unread ? 'check' : 'mail')}</button><button data-a="snooze" title="Snooze 1 hour">${IC('alarm-clock')}</button></td></tr>`;
       }).join('');
     });
@@ -663,7 +688,7 @@
   }
   $$('[data-seg]').forEach(s => s.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b || b.classList.contains('on')) return;
-    setOn(s, b); setTimeout(() => setView(b.dataset.v), RM ? 0 : 180);
+    setOn(s, b); setTimeout(() => setView(b.dataset.v), rm() ? 0 : 180);
   }));
 
   // ── keyboard (maximized list): ↑↓ / j k move, E read/unread, S snooze ─────

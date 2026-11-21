@@ -150,3 +150,19 @@ snooze, Undo snackbars, count tick, empty state check-draw, file card hover over
   tiers, viewer, settings; screenshots light/dark.
 - Release: Notifier 1.5.0 → pilot via `publish-notifier.ps1`, then promote (user said "kerjakan sampai tuntas lalu deploy").
   API/Web deploy to both prods (cluster via ship.ps1, Windows prod swap) because of the migration + new endpoints.
+
+## 1.5.1 (mockup v3, `docs/mockups/notifier/priority.html` @ 542baa5, screen 1)
+- **Animations** setting (`NotifierSettings.Animations`, "on" default | "reduced"; Settings › General › Appearance).
+  The app sends `reduceMotion` with the `theme` message; `bridge.js` toggles `html.reduce-motion` and exposes
+  `window.reducedMotion()`. No page reads `prefers-reduced-motion` any more (Windows "Animation effects" is off on
+  many office PCs and WebView2 reports it as reduced motion). There are no native C# window animations to follow.
+- **24 h rule**: `ticketassigned` is Needs action only while unread and younger than 24 h, then a Message
+  (`NotifierSettings.TierFor(..., at, read, now)`, `tiers.js tierFor/classify`; cases with `ageHours`/`read` in
+  `tests/notifier-tier-cases.json`). Live popups have no age yet, so they still act.
+- **System label**: `system.*` event types are module "system" (iPop) whatever they link to
+  (`system.epop_import` → `/mail`): `Notice.ModuleOfInbox`, `inbox-model.js moduleOf`, `popup.js render`.
+- **Small Inbox**: summary "N approvals · N leaders · N tickets · N messages" (zeros hidden, `inboxModel.summaryParts`);
+  header = search, mark all read, settings, ⋯ (Maximize/Restore, Devices for ICT); count on every chip; row times
+  `inboxModel.relTime` (today 24 h clock, Yesterday, weekday within 6 days, "17 Nov"), group headers "Mon 17 Nov";
+  iDesk rows get a New / Replied / Resolved `.tchip` (`ticketStatus`) and "Assigned to you" (`assignedToMe`), and the
+  iDesk mark sits on a white plate in full colour (dimmed only once read).

@@ -33,6 +33,11 @@ html.max #small,html:not(.max) #wide{display:none}
 .ico img{width:24px;height:24px;object-fit:contain}
 .ico.sm{width:32px;height:32px;border-radius:9px}.ico.sm svg.lucide{width:17px;height:17px}.ico.sm img{width:19px;height:19px}
 .ico.muted{background:var(--fill-2);color:var(--ink-4)}
+/* iDesk mark: full colour on a white plate (as in the popups) so it never reads as faded; read rows dim it */
+.it.m-tickets .ico,.rmeta .ico.tix{background:#fff;box-shadow:0 0 0 .5px var(--sep)}
+.it.m-tickets .ico img{width:30px;height:30px}
+.it.info.m-tickets .ico img{width:24px;height:24px}
+.it.read.m-tickets .ico img{opacity:.55;filter:saturate(.5)}
 .chip{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 7px;border-radius:6px;font-size:11.5px;font-weight:650;letter-spacing:.01em;white-space:nowrap}
 .chip svg.lucide{width:12px;height:12px;stroke-width:2.3}
 .chip.lead{background:var(--lead-soft);color:var(--lead)}
@@ -40,6 +45,12 @@ html.max #small,html:not(.max) #wide{display:none}
 .chip.act{background:var(--act-soft);color:var(--act)}
 .chip.mod{background:var(--fill-2);color:var(--ink-3);font-weight:600}
 .chip.miss{background:color-mix(in srgb,var(--cal) 14%,transparent);color:var(--cal)}
+/* iDesk ticket status (1.5.1, mockup .tchip): New / Replied / Resolved */
+.tchip{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border-radius:6px;font-size:11.5px;font-weight:700;white-space:nowrap}
+.tchip i{width:6px;height:6px;border-radius:50%;display:block;background:currentColor}
+.tchip.new{background:color-mix(in srgb,var(--tix) 14%,transparent);color:var(--tix)}
+.tchip.rep{background:var(--accent-soft);color:var(--accent-ink)}
+.tchip.res{background:var(--fill);color:var(--ink-3)}
 .chip.thr{background:var(--fill);color:var(--ink-2);cursor:pointer;transition:background .15s}
 .chip.thr:hover{background:color-mix(in srgb,var(--ink) 14%,transparent)}
 .chip.thr svg.lucide{transition:transform .3s var(--spring)}
@@ -150,6 +161,16 @@ html.large .it .tl{font-size:17px}html.large .it .who{font-size:14.5px}html.larg
 .sbox .sx svg.lucide{width:15px;height:15px}
 .sbox.open{width:calc(100% - var(--r,110px) - 18px);background:var(--surface);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 28%,transparent)}
 .sbox.open input,.sbox.open .sx{opacity:1}
+/* ⋯ menu (mockup .menu): Devices (ICT) + Maximize */
+@keyframes menuIn{from{opacity:0;transform:scale(.94) translateY(-4px)}to{opacity:1;transform:none}}
+.menu{position:absolute;z-index:40;right:18px;top:62px;background:var(--surface);color:var(--ink);border-radius:12px;box-shadow:var(--shadow);padding:6px;min-width:210px;transform-origin:top right;animation:menuIn .24s var(--spring)}
+.menu[hidden]{display:none}
+.menu button{display:flex;align-items:center;gap:10px;width:100%;height:38px;padding:0 10px;border-radius:8px;font-size:14px;font-weight:550;text-align:left}
+.menu button[hidden]{display:none}
+.menu button:hover,.menu button:focus-visible{background:var(--fill)}
+.menu button svg.lucide{width:16px;height:16px;color:var(--ink-3)}
+html.large .menu button{font-size:16px;height:44px}
+.ib.on{background:var(--fill);color:var(--ink)}
 .summary{margin:0 18px 12px;padding:10px 12px;border-radius:12px;background:var(--sunk);display:flex;align-items:center;gap:6px;font-size:13.5px;color:var(--ink-2);flex-wrap:wrap}
 .summary>svg.lucide{color:var(--act);margin-right:2px}
 .summary.calm>svg.lucide{color:var(--accent)}
@@ -332,4 +353,4 @@ td.qa2 button:hover{background:var(--fill);color:var(--ink)}
 tr.r:hover td.qa2 button,tr.r:focus-within td.qa2 button{opacity:1}
 td.qa2 svg.lucide{width:15px;height:15px}
 @media (max-width:1180px){.wgrid{grid-template-columns:210px minmax(300px,360px) 1fr}.rscroll{padding:18px 24px}}
-@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;animation-delay:0ms!important;transition-duration:.01ms!important}}
+html.reduce-motion *,html.reduce-motion *::before,html.reduce-motion *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;animation-delay:0ms!important;transition-duration:.01ms!important}

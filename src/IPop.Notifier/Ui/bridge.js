@@ -107,4 +107,5 @@ window.MOD = {
 };
 window.initials = name => String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 window.avatarColor = name => { const p = ['#c2442e', '#7c4dd8', '#2563eb', '#1f8fa6', '#2e9e5b', '#d19a2a', '#a0457a', '#4f6b8f', '#5562b8']; let h = 0; for (const c of String(name || '')) h = (h * 31 + c.charCodeAt(0)) >>> 0; return p[h % p.length]; };
-window.timeShort = iso => { const d = new Date(iso); const now = new Date(); const same = d.toDateString() === now.toDateString(); return same ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
+// 24 h clock in the PC's own separator ("16.38" / "16:38"); other days "20 Nov 16.38".
+window.timeShort = iso => { const d = new Date(iso); const now = new Date(); const same = d.toDateString() === now.toDateString(); const t = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }); return same ? t : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' ' + t; };

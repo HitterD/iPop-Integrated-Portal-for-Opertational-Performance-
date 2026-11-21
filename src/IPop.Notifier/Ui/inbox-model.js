@@ -5,10 +5,12 @@
   const G = '[0-9a-fA-F-]{36}';
   const RANK = { act: 3, msg: 2, info: 1 };
 
-  // Module for the icon/colour and the sidebar "Modules" list.
+  // Module for the icon/colour and the sidebar "Modules" list. The event type decides first: a system notice
+  // ("system.epop_import", linking to /mail) is iPop's own, not Mail.
   function moduleOf(i) {
     const u = String(i.targetUrl || '');
     const e = String(i.eventType || '').toLowerCase();
+    if (e.startsWith('system.')) return 'system';
     if (e.startsWith('approval.')) return 'approval';
     if (/^(meeting|calendar)\./.test(e)) return 'calendar';
     if (u.startsWith('/tickets') || u.startsWith('/idesk/tickets') || /^(ticket|tickets|idesk)\./.test(e)) return 'tickets';
@@ -36,6 +38,36 @@
     return { who: lines[0].split(' · ')[0], whoSub: lines[0].split(' · ').slice(1).join(' · '), text: lines.slice(1).join(' '), number };
   }
 
+  // iDesk ticket status chip (1.5.1, mockup .tchip): 'new' (assigned / reopened / created / sent), 'rep' (a reply in
+  // the ticket chat), 'res' (resolved / closed), or null. Event names: TicketService; sentences: TicketNotificationText.
+  function ticketStatus(i) {
+    const e = String(i.eventType || '').toLowerCase().replace(/^(tickets|idesk)\./, 'ticket.');
+    const text = ticketParts(i.body).text || '';
+    if (e === 'ticket.message_created') return 'rep';
+    if (e === 'ticket.resolved' || e === 'ticket.closed') return 'res';
+    if (e === 'ticket.assigned' || e === 'ticket.reopened' || e === 'ticket.created' || e === 'ticket.sent') return 'new';
+    if (e === 'ticket.status_changed') {
+      if (/^Reopened\b/.test(text)) return 'new';
+      if (/→ (Resolved|Closed)\.$|^Status: (Resolved|Closed)\.$/.test(text)) return 'res';
+      return null;
+    }
+    if (!e.startsWith('ticket.')) {
+      // Older servers send only the coarse type: read the sentence.
+      if (/^(Assigned to you|Reopened)\b/.test(text)) return 'new';
+      if (/^Marked as resolved|closed\.$|^Closed\b|Confirmed as fixed/i.test(text)) return 'res';
+      if (/^[^:\s]+: “/.test(text)) return 'rep';
+    }
+    return null;
+  }
+
+  // "Assigned to you" (technician): iDesk's status line for my own ticket queue (/idesk/tickets/{id}#update).
+  function assignedToMe(i) {
+    const e = String(i.eventType || '').toLowerCase();
+    const u = String(i.targetUrl || '');
+    if (e === 'ticket.assigned' && /^\/idesk\/tickets\//i.test(u)) return true;
+    return /^\/idesk\/tickets\/.*#update$/i.test(u) && /^Assigned to you\b/.test(ticketParts(i.body).text || '');
+  }
+
   // What a row shows under its title: the person (if known) and one line of text; plus the ticket number chip.
   function lineOf(i) {
     const mod = moduleOf(i);
@@ -51,11 +83,12 @@
   // Rows (newest first) → threads: { key, head, items (newest first), ids, unread, tier, kind, leader, mod }.
   // The head is the newest; the thread is unread if any is, and takes the highest tier of its unread updates
   // (of all updates when everything is read), so a leader's message inside a busy ticket still counts.
-  function group(rows, ctx) {
+  // now = optional clock (tests): a ticket assigned to me leaves Needs action after 24 h (tiers.js).
+  function group(rows, ctx, now) {
     const tiers = root.tiers || (typeof require === 'function' ? require('./tiers.js') : null);
     const out = [], byKey = new Map();
     for (const r of rows || []) {
-      const c = tiers.classify(r, ctx);
+      const c = tiers.classify(r, ctx, now);
       const it = Object.assign({}, r, { kind: c.kind, tier: c.tier, leader: c.leader });
       const key = threadKey(r);
       const t = key && byKey.get(key);
@@ -81,18 +114,22 @@
       t.mod = moduleOf(head);
       t.at = head.at;
       t.line = lineOf(head);
+      t.status = t.mod === 'tickets' ? ticketStatus(head) : null;
+      // "Assigned to you" while that assignment is what still counts (Needs action, < 24 h, unread).
+      t.assigned = t.mod === 'tickets' && t.tier === 'act' && t.items.some(x => x.kind === 'ticketassigned' && assignedToMe(x));
     }
     return out;
   }
 
-  // Unread threads per tier, leaders, approvals and module.
+  // Unread threads per tier, leaders, approvals, iDesk tickets waiting on me (Needs action) and module.
   function counts(threads) {
-    const c = { all: 0, act: 0, msg: 0, info: 0, lead: 0, appr: 0, mod: {} };
+    const c = { all: 0, act: 0, msg: 0, info: 0, lead: 0, appr: 0, tix: 0, mod: {} };
     for (const t of threads) {
       if (!t.unread) continue;
       c.all++; c[t.tier]++;
       if (t.leader) c.lead++;
       if (t.approval) c.appr++;
+      if (t.tier === 'act' && t.mod === 'tickets' && t.kind === 'ticketassigned') c.tix++;
       c.mod[t.mod] = (c.mod[t.mod] || 0) + 1;
     }
     return c;
@@ -113,17 +150,49 @@
     return t.items.some(i => [i.title, i.body, i.actorName].some(s => String(s || '').toLowerCase().includes(q)));
   }
 
-  // "Today" | "Yesterday" | "Monday 17 Nov" (en-GB order; the UI is English).
-  function dayLabel(iso, now) {
+  // Whole days between the item and now, in local time (0 = today).
+  function daysAgo(iso, now) {
     const d = new Date(iso), n = now ? new Date(now) : new Date();
     const day = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-    const diff = Math.round((day(n) - day(d)) / 864e5);
-    if (diff <= 0) return 'Today';
-    if (diff === 1) return 'Yesterday';
-    return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' });
+    return Math.round((day(n) - day(d)) / 864e5);
   }
 
-  const api = { moduleOf, threadKey, ticketParts, lineOf, group, counts, inView, matches, dayLabel };
+  // Group headers: "Today" | "Yesterday" | "Mon 17 Nov" (en-GB order; the UI is English).
+  function dayLabel(iso, now) {
+    const diff = daysAgo(iso, now);
+    if (diff <= 0) return 'Today';
+    if (diff === 1) return 'Yesterday';
+    return new Date(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  }
+
+  // 24 h clock in the PC's own style ("16.38" in Indonesian Windows, "16:38" elsewhere). locale = optional (tests).
+  function clock(iso, locale) {
+    return new Date(iso).toLocaleTimeString(locale || [], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  }
+
+  // Row time (1.5.1): today → "16.38", yesterday → "Yesterday", within 6 days → "Mon", older → "17 Nov".
+  function relTime(iso, now, locale) {
+    const diff = daysAgo(iso, now);
+    if (diff <= 0) return clock(iso, locale);
+    if (diff === 1) return 'Yesterday';
+    const d = new Date(iso);
+    if (diff <= 6) return d.toLocaleDateString('en-GB', { weekday: 'short' });
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  }
+
+  // Summary line (small Inbox): "2 approvals · 2 leaders · 1 ticket · 4 messages", zero parts left out.
+  // [count key, number, label, chip it jumps to].
+  function summaryParts(c) {
+    const n = (v, one, many) => (v === 1 ? one : many);
+    return [
+      ['appr', c.appr, n(c.appr, 'approval', 'approvals'), 'act'],
+      ['lead', c.lead, n(c.lead, 'leader', 'leaders'), 'act'],
+      ['tix', c.tix, n(c.tix, 'ticket', 'tickets'), 'act'],
+      ['msg', c.msg, n(c.msg, 'message', 'messages'), 'msg'],
+    ].filter(p => p[1] > 0);
+  }
+
+  const api = { moduleOf, threadKey, ticketParts, ticketStatus, assignedToMe, lineOf, group, counts, inView, matches, dayLabel, clock, relTime, summaryParts };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.inboxModel = api;
 })(typeof window !== 'undefined' ? window : globalThis);
