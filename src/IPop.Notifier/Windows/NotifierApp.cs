@@ -44,6 +44,7 @@ public sealed class NotifierApp : ApplicationContext
         settings = new SettingsService(api, state);
         Theme.LargeText = settings.Current.TextSize == "large";
         Theme.Mode = settings.Current.Theme;
+        Theme.ReducedMotion = settings.Current.Animations == "reduced";
         Theme.FollowWindows();
         device = new DeviceReporter(api);
         leaders = new Leaders(api);
@@ -67,7 +68,7 @@ public sealed class NotifierApp : ApplicationContext
         device.Beat += () => Post(() => { api.WebBaseOverride = device.WebBase; devicesItem!.Visible = device.IctTools; UpdateTray(); });
         settings.Changed += s => Post(() =>
         {
-            Theme.LargeText = s.TextSize == "large"; Theme.Mode = s.Theme; UpdateTray();
+            Theme.LargeText = s.TextSize == "large"; Theme.Mode = s.Theme; Theme.ReducedMotion = s.Animations == "reduced"; UpdateTray();
             // Tiers or VIPs may have changed: open windows and the counts follow, and the VIP names reload.
             popups.RefreshContext();
             if (!api.IsSignedIn || session.IsCancellationRequested) return;

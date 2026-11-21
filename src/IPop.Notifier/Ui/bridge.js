@@ -15,6 +15,9 @@
     if (m.type === 'theme') {
       const h = document.documentElement;
       h.classList.toggle('dark', !!m.dark); h.classList.toggle('large', !!m.large);
+      // Settings › Appearance › Animations "Reduced" (1.5.1). Never prefers-reduced-motion: Windows "Animation
+      // effects" is off on many office PCs and must not take the Notifier's motion with it.
+      h.classList.toggle('reduce-motion', !!m.reduceMotion);
       if (m.mode) h.dataset.theme = m.mode;
     }
     if (m.type === 'winstate') winState(m);
@@ -85,6 +88,8 @@
 
 // Icons: Lucide, the same set and names as iPop web (IPop.Web/Services/NotificationModules.cs).
 // IC() returns a placeholder; lucide.createIcons() turns it into the SVG (run after every render).
+// Motion is reduced only when the person chose Animations "Reduced" (html.reduce-motion, set from the theme message).
+window.reducedMotion = () => document.documentElement.classList.contains('reduce-motion');
 window.IC = (name, cls) => `<i data-lucide="${name}"${cls ? ` class="${cls}"` : ''}></i>`;
 window.icons = () => { try { window.lucide && window.lucide.createIcons({ attrs: { 'stroke-width': 1.9 } }); } catch { } };
 // Freshly rendered title bars get the right □ / Restore icon too.

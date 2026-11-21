@@ -31,4 +31,4 @@ html.dark{--act:#FF8A4C;--act-soft:rgba(255,138,76,.16);--lead:#F5C04A;--lead-so
 .wsnack button{height:30px;padding:0 10px;border-radius:8px;font-weight:650;color:var(--snack-acc);flex:none}
 .wsnack button:hover{background:rgba(127,127,127,.18)}
 .wsnack svg.lucide{width:17px;height:17px;color:var(--snack-acc)}
-@media (prefers-reduced-motion:reduce){.fm,.ring.ind{animation:none}}
+html.reduce-motion .fm,html.reduce-motion .ring.ind{animation:none}

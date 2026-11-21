@@ -30,6 +30,9 @@ public sealed record NotifierSettings
     public string TextSize { get; init; } = "normal";
     /// "system" (follows Windows light/dark, default) | "light" | "dark": every Notifier window (Settings → General → Appearance, 1.4.0).
     public string Theme { get; init; } = "system";
+    /// "on" (default) | "reduced": motion in every Notifier window (Settings → General → Appearance, 1.5.1). The app's
+    /// own choice: Windows "Animation effects" (off on many office PCs) no longer switches the Notifier's motion off.
+    public string Animations { get; init; } = "on";
     /// 1.5.0 priority inbox: kind (<see cref="KindKeys"/>) → "act" | "msg" | "info". Empty in settings saved by an
     /// older app; <see cref="Normalized"/> then derives it from <see cref="Modules"/> (module "off" → its kinds info).
     public Dictionary<string, string> Tiers { get; init; } = new(StringComparer.OrdinalIgnoreCase);
@@ -48,6 +51,7 @@ public sealed record NotifierSettings
     private static readonly string[] Delivery = ["popup", "toast", "off"];
     private static readonly string[] TextSizes = ["normal", "large"];
     private static readonly string[] Themes = ["system", "light", "dark"];
+    private static readonly string[] AnimationModes = ["on", "reduced"];
 
     public const int MaxVips = 50;
     public const string Act = "act", Msg = "msg", Info = "info";
@@ -101,6 +105,7 @@ public sealed record NotifierSettings
         Volume = Math.Clamp(Volume, 0, 100),
         TextSize = TextSizes.Contains(TextSize) ? TextSize : "normal",
         Theme = Themes.Contains(Theme) ? Theme : "system",
+        Animations = AnimationModes.Contains(Animations) ? Animations : "on",
         Modules = ModuleKeys.ToDictionary(k => k, DeliveryFor, StringComparer.OrdinalIgnoreCase),
         Tiers = KindKeys.ToDictionary(k => k, NormalizedTier, StringComparer.OrdinalIgnoreCase),
         Vips = (Vips ?? []).Where(v => v != Guid.Empty).Distinct().Take(MaxVips).ToList(),

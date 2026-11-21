@@ -77,4 +77,4 @@ html.dark{--unread:#0A84FF;--shadow:0 0 0 .5px rgba(255,255,255,.10),0 18px 40px
 .dark .saved.warn{background:rgba(255,159,10,.14);color:#ffc069}
 .saved svg{width:15px;height:15px}
 @media (max-width:900px){.tiers{grid-template-columns:1fr}.tseg button{padding:0 8px}}
-@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;animation-delay:0ms!important;transition-duration:.01ms!important}}
+html.reduce-motion *,html.reduce-motion *::before,html.reduce-motion *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;animation-delay:0ms!important;transition-duration:.01ms!important}

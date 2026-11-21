@@ -61,6 +61,7 @@
     $('#vol').value = S.volume; $('#sound').classList.toggle('on', S.sound);
     $('#autostart').classList.toggle('on', S.startWithWindows);
     pill('#textsize', S.textSize || 'normal');
+    pill('#anim', S.animations || 'on');
     document.querySelectorAll('#theme .th').forEach(b => b.classList.toggle('on', b.dataset.t === (S.theme || 'system')));
     drawCategories();
     $('#previews').innerHTML = SOUNDS.map(([k, n]) => `<div class="row"><span class="t">${esc(n)}</span><button class="btn" data-snd="${k}">${IC('play')}Play</button></div>`).join('');
@@ -92,6 +93,8 @@
       if (p.id === 'meet') return save({ duringMeetings: v });
       if (p.id === 'pos') return save({ position: v });
       if (p.id === 'textsize') { document.documentElement.classList.toggle('large', v === 'large'); return save({ textSize: v }); }
+      // The app sends it to every open window (theme message); this window follows at once.
+      if (p.id === 'anim') { document.documentElement.classList.toggle('reduce-motion', v === 'reduced'); return save({ animations: v }); }
     }
     const sw = e.target.closest('.sw'); if (sw) {
       const on = !sw.classList.contains('on');
@@ -107,7 +110,7 @@
 
   // ── Settings › Categories (1.5.0, docs/mockups/notifier/priority.html screen 6) ───────────────────────────
   // Every change saves at once through the app (save → saved), as every other setting here.
-  const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const rm = () => window.reducedMotion(); // Settings › Animations "Reduced" (html.reduce-motion)
   const reflow = el => void el.offsetWidth;
   const T = window.tiers;
   // [kind, module (icon/colour), label, hint] — kinds and labels: docs/notifier/PRIORITY-150.md "Kinds".
@@ -138,9 +141,9 @@
   function thumb(c, instant) {
     const t = c.querySelector(':scope>.thumb'), b = c.querySelector(':scope>.on');
     if (!t || !b || !c.offsetParent) return;
-    if (instant || RM) t.style.transition = 'none';
+    if (instant || rm()) t.style.transition = 'none';
     t.style.width = b.offsetWidth + 'px'; t.style.height = b.offsetHeight + 'px'; t.style.transform = `translate(${b.offsetLeft}px,${b.offsetTop}px)`;
-    if (instant || RM) { reflow(t); t.style.transition = ''; }
+    if (instant || rm()) { reflow(t); t.style.transition = ''; }
   }
   addEventListener('resize', () => document.querySelectorAll('.slider').forEach(c => thumb(c, true)));
   function setNum(el, v) { const s = String(v); if (el.textContent !== s) { el.textContent = s; el.classList.remove('tick'); reflow(el); if (v > 0) el.classList.add('tick'); } }
@@ -178,7 +181,7 @@
     KINDROWS.forEach(([k]) => { next[k] = T.defaultTier(k); });
     document.querySelectorAll('#modrows .tseg').forEach(sg => {
       const d = next[sg.dataset.k];
-      if (tierOf(sg.dataset.k) !== d) { n++; setTimeout(() => { paintSeg(sg, d); thumb(sg); }, RM ? 0 : n * 60); }
+      if (tierOf(sg.dataset.k) !== d) { n++; setTimeout(() => { paintSeg(sg, d); thumb(sg); }, rm() ? 0 : n * 60); }
     });
     if (!n) { flash('Already the defaults'); return; }
     S = Object.assign({}, S, { tiers: next });
@@ -283,7 +286,7 @@
     S = Object.assign({}, S, { vips: (S.vips || []).filter(v => !same(v, id)) });
     post({ type: 'save', settings: S });
     const done = () => { r.remove(); if (!S.vips.length) drawVips(); vipCount(); };
-    if (RM) return done();
+    if (rm()) return done();
     r.style.height = r.offsetHeight + 'px'; r.style.overflow = 'hidden'; reflow(r);
     r.style.transition = 'height .34s var(--spring),opacity .2s,padding .34s var(--spring),min-height .34s var(--spring)';
     r.style.height = '0px'; r.style.minHeight = '0px'; r.style.opacity = '0'; r.style.paddingTop = r.style.paddingBottom = '0px';

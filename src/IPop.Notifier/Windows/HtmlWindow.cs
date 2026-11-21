@@ -148,7 +148,7 @@ public class HtmlWindow : Form
         if (ready) SendTheme();
     }
 
-    private void SendTheme() => WebHost.Post(View, new { type = "theme", dark = Theme.IsDark, large = Theme.LargeText, mode = Theme.Mode });
+    private void SendTheme() => WebHost.Post(View, new { type = "theme", dark = Theme.IsDark, large = Theme.LargeText, mode = Theme.Mode, reduceMotion = Theme.ReducedMotion });
 
     /// Messages sent before the page said "ready" are queued.
     public void Send(object message)
@@ -212,6 +212,15 @@ public static class Theme
         get => large;
         set { if (large == value) return; large = value; Changed?.Invoke(); }
     }
+
+    /// Settings → Appearance → Animations "Reduced" (1.5.1): pages get html.reduce-motion. The Notifier's own choice —
+    /// Windows "Animation effects" off (and the prefers-reduced-motion WebView2 then reports) no longer turns motion off.
+    public static bool ReducedMotion
+    {
+        get => reduced;
+        set { if (reduced == value) return; reduced = value; Changed?.Invoke(); }
+    }
+    private static bool reduced;
 
     /// "system" | "light" | "dark".
     public static string Mode

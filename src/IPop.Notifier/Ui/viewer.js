@@ -5,7 +5,7 @@
   const { post, esc } = window.app;
   const F = window.files;
   const $ = s => document.querySelector(s);
-  const RM = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const rm = () => !!window.reducedMotion && window.reducedMotion(); // Settings › Animations "Reduced"
   let list = [], vi = 0, vz = 1, seq = 0, current = null;
   const state = new Map(); // path → { kind, url, error, preparing }
   const waiters = new Map(); // load id → path
@@ -61,7 +61,7 @@
     else if (st.kind === 'video') html = `<video class="vmed" src="${esc(st.url)}" controls autoplay></video>`;
     else if (st.kind === 'audio') html = `<audio class="vmed" src="${esc(st.url)}" controls autoplay></audio>`;
     else html = only(f, null);
-    $('#vstage').innerHTML = `<div class="vcontent ${RM ? '' : cls}">${html}</div>`;
+    $('#vstage').innerHTML = `<div class="vcontent ${rm() ? '' : cls}">${html}</div>`;
     $('#vstage').scrollTop = 0;
     $('#zoom').hidden = !(st.done && st.kind === 'image');
   }

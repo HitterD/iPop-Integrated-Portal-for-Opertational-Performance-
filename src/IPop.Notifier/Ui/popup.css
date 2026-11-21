@@ -247,4 +247,4 @@ html.max .fm .fn{font-size:16px}html.max .fm .fs{font-size:13.5px}
 /* Snooze menu */
 .menu .mh{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);padding:6px 10px 4px}
 .menu button svg.lucide{width:16px;height:16px;color:var(--ink-3)}
-@media (prefers-reduced-motion: reduce){body.t-act .ttl .ic,body.t-act .ttl .ic svg,body.t-act .hd .ico,body.t-act .hd .ico svg,.prio-strip{animation:none!important}}
+html.reduce-motion body.t-act .ttl .ic,html.reduce-motion body.t-act .ttl .ic svg,html.reduce-motion body.t-act .hd .ico,html.reduce-motion body.t-act .hd .ico svg,html.reduce-motion .prio-strip{animation:none!important}
