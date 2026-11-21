@@ -40,6 +40,22 @@ Referensi tanpa FK (66 kolom uuid dicek): 0 orphan nyata. Sisa data uji lama: 2 
 | Log API prod 4 jam | 0 `fail`/`crit` | – |
 | Cluster | 3 node Ready, CNPG 2/2 sehat, WAL archive OK (terakhir gagal 11-Nov), Longhorn 3 volume healthy + backup harian Completed | – |
 
+## Putaran 2 — HRIS tidak bocor ke user + celah lain
+
+| Area | Sebelum | Sesudah |
+|---|---|---|
+| Notifikasi "HRIS Sync Complete" | `Target.All` → **10 sync sejak 30-Sep = 49.198 notifikasi ke user biasa** | Hanya role Admin, buka `/admin` — `14c2e1e` |
+| API Dashboard `Status` (HRIS, outbox mail, NAS) | Panel disembunyikan di UI, tapi JSON tetap dikirim ke semua user | Non-admin terima list kosong (DB tidak dibaca) — `d04e7d7` |
+| Endpoint `/api/admin/hris/*` | AdminOnly | Dicek ulang: semua AdminOnly; scan 297 route tanpa login → hanya `/api/app/android/latest` (info versi APK, by design) |
+| Alert HRIS gagal | Admin only | Tetap Admin only (+ alert stale 48 jam baru) |
+| Buat DM paralel | 2 request bersamaan → **2 room DM** (dibuktikan di Postgres) | Advisory lock per pasangan: 5 paralel → 1 room — `2725cc7` |
+| Lockout login (5× salah) | Hitungan baca-tulis: 2 salah paralel tercatat 1 (test RED) → tebakan paralel tak pernah terkunci | UPDATE atomik — `e5a89e0` (RED `43a8846` → GREEN) |
+| Mail terjadwal | Penerima "pending" masih bisa unduh lampiran/thumbnail, pasang label, minta PDF, lihat gambar inline (jika tahu GUID) | Aturan `Folder != "pending"` di 5 jalur + test — commit mail |
+| Pengingat meeting | `Take(200)` tanpa urutan → backlog >200 bisa melewatkan yang terlama | Urut dari jatuh tempo terlama — `b101431` |
+| Audit IDOR (Mail, Notifikasi, Calendar, Files, Notes, Recording) | – | Semua endpoint ber-id dicek sampai ke service: tidak ada IDOR yang bisa dieksploitasi |
+
+Bersih prod: 0 DM ganda (492 DM), 0 duplikat penerima/anggota. Data uji lama yang **tidak** saya hapus (perlu izin): 2 meeting "Standup Kalender UI" (ipopadmin, Sep), 2 mail "sent" tanpa penerima (Sep/Okt).
+
 ## Masih terbuka (butuh keputusan/akses user)
 
 1. **HRIS 10.10.6.51:27080 mati** sejak 2026-11-11 — perlu tim HRIS/server; directory tidak menerima karyawan baru/keluar.
