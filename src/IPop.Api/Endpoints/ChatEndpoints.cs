@@ -1042,7 +1042,7 @@ public static class ChatEndpoints
                         .Where(m => m.RoomId == roomId && m.LeftAt == null && m.UserId != userId.Value && m.User.IsActive)
                         .Select(m => m.UserId).ToListAsync(ct);
                     if (others.Count > 0)
-                        await gateway.SendEmergencyNotificationAsync(others, result.Message.SenderName, room ?? "Chat", result.Message.Content, CancellationToken.None, roomId);
+                        await gateway.SendEmergencyNotificationAsync(others, result.Message.SenderName, room ?? "Chat", result.Message.Content, CancellationToken.None, roomId, userId.Value);
                 }
                 catch (Exception ex) { log.LogError(ex, "Emergency alert for room {RoomId} was not recorded", roomId); }
             }

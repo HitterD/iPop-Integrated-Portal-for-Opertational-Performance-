@@ -3793,6 +3793,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("AcceptedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Body")
                         .IsRequired()
                         .HasMaxLength(4000)

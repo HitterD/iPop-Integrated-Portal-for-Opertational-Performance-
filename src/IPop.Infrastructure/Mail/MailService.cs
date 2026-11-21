@@ -1301,9 +1301,11 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
             title: $"New email from {mail.Sender?.Name ?? "Someone"}",
             message: string.IsNullOrWhiteSpace(preview) ? mail.Subject : $"{mail.Subject} — {preview}",
             target: new NotificationTarget(UserIds: recipientIds),
+            actorUserId: mail.SenderId,
             // Stable per mail: a retry after a failed job save returns the existing notification (no second toast).
             idempotencyKey: $"new-{mail.Id:N}",
-            priority: mail.Importance == "high" ? "high" : "normal",
+            // Mass mail ("All staff", department blasts) is published low: the Notifier files it under For your info.
+            priority: mail.IsMass ? "low" : mail.Importance == "high" ? "high" : "normal",
             targetUrl: $"/mail?mailId={mail.Id}",
             ct: ct);
         // A rejected request (validation) won't succeed on retry; only exceptions are retried.

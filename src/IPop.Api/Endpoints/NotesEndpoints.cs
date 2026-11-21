@@ -224,7 +224,7 @@ public static class NotesEndpoints
             if (r.Success)
             {
                 await ChangedAsync(svc, rt, http, id, ct);
-                if (req.UserId is { } uid) await NotifyAsync(notify, uid, "note.shared", $"{me.Name} shared a note with you",
+                if (req.UserId is { } uid) await NotifyAsync(notify, me.Id, uid, "note.shared", $"{me.Name} shared a note with you",
                     await TitleAsync(http, id, ct), id, ct);
             }
             return From(r);
@@ -298,7 +298,7 @@ public static class NotesEndpoints
             await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteThreads", id, ct);
             var title = await TitleAsync(http, id, ct);
             foreach (var uid in r.Data!.NotifyUserIds)
-                await NotifyAsync(notify, uid, "note.mention", $"{me.Name} mentioned you in {title}", req.Body, id, ct);
+                await NotifyAsync(notify, me.Id, uid, "note.mention", $"{me.Name} mentioned you in {title}", req.Body, id, ct);
             return Results.Ok(r.Data.Thread);
         }));
         g.MapPost("/{id:guid}/threads/{threadId:guid}/replies", (Guid id, Guid threadId, NoteReplyRequest req, HttpContext http,
@@ -309,7 +309,7 @@ public static class NotesEndpoints
             await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteThreads", id, ct);
             var title = await TitleAsync(http, id, ct);
             foreach (var uid in r.Data!.NotifyUserIds)
-                await NotifyAsync(notify, uid, "note.comment", $"{me.Name} replied to a comment in {title}", req.Body, id, ct);
+                await NotifyAsync(notify, me.Id, uid, "note.comment", $"{me.Name} replied to a comment in {title}", req.Body, id, ct);
             return Results.Ok(r.Data.Thread);
         }));
         g.MapPut("/{id:guid}/threads/{threadId:guid}/resolved", (Guid id, Guid threadId, ResolveRequest req, HttpContext http,
@@ -350,7 +350,7 @@ public static class NotesEndpoints
             if (!r.Success) return Error(r.Error!);
             var title = await TitleAsync(http, id, ct);
             foreach (var uid in r.Data!)
-                await NotifyAsync(notify, uid, "note.mention", $"{me.Name} mentioned you in {title}", req.Context, id, ct);
+                await NotifyAsync(notify, me.Id, uid, "note.mention", $"{me.Name} mentioned you in {title}", req.Context, id, ct);
             return Results.Ok(new { notified = r.Data.Count });
         })).RequirePermission("notes.write");
         // Mentions already in the page: which of these people can open it (the rest render greyed).
@@ -651,7 +651,7 @@ public static class NotesEndpoints
         await rt.ToUsersAsync(niks, RealtimeEvents.NotesChanged, null, ct);
     }
 
-    private static async Task NotifyAsync(INotificationGatewayService notify, Guid userId, string evt, string title, string? message,
+    private static async Task NotifyAsync(INotificationGatewayService notify, Guid actorId, Guid userId, string evt, string title, string? message,
         Guid pageId, CancellationToken ct)
     {
         try
@@ -659,7 +659,7 @@ public static class NotesEndpoints
             var body = message ?? "";
             await notify.PublishInternalAsync(clientSlug: "notes", eventType: evt, title: title,
                 message: body.Length > 200 ? body[..200] + "…" : body, target: new NotificationTarget(UserId: userId),
-                priority: "normal", targetUrl: $"/notes/{pageId}", ct: ct);
+                actorUserId: actorId, idempotencyKey: null, priority: "normal", targetUrl: $"/notes/{pageId}", ct: ct);
         }
         catch
         {

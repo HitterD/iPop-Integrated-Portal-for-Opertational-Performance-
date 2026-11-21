@@ -32,6 +32,10 @@ public class NotificationRequest
     /// Target URL deep link for frontend navigation upon clicking the notification.
     public string? TargetUrl { get; set; }
 
+    /// The person whose action caused this notification (mail sender, chat author, project commenter…), when there
+    /// is one. Lets the iPop Notifier raise notifications from the reader's leaders and VIPs. Null = the system.
+    public Guid? ActorUserId { get; set; }
+
     /// Targeting snapshot, as submitted. May be pushed before expansion.
     /// "employeeId" (single NIK) | "departmentId" | "role" | "all"
     public string? TargetEmployeeNik { get; set; }

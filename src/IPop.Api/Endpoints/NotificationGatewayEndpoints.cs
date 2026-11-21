@@ -79,7 +79,9 @@ public static class NotificationGatewayEndpoints
             if (!await TryTakeRateTicketAsync(client.Id, client.RateLimitPerSecond, ct))
                 return Results.Json(new { code = NotificationErrors.RateLimited, message = "Rate limit exceeded." }, statusCode: 429);
 
-            var result = await svc.EnqueueAsync(client.Id, req, ct);
+            // The actor is for iPop's own modules only: an outside client can't claim to be someone (a leader's
+            // notification breaks through the Notifier's quiet tiers).
+            var result = await svc.EnqueueAsync(client.Id, req with { ActorUserId = null }, ct);
             if (!result.Success)
             {
                 var statusCode = result.ErrorCode switch
@@ -657,8 +659,14 @@ public static class NotificationGatewayEndpoints
                 d.UpdatedAt,
                 d.Status,
                 d.SnoozedUntil,
+                d.Request.ActorUserId,
             })
             .ToListAsync(ct);
+
+        // Who caused each row (name only: never NIK or position).
+        var actorIds = rows.Where(r => r.ActorUserId != null).Select(r => r.ActorUserId!.Value).Distinct().ToList();
+        var actorNames = actorIds.Count == 0 ? new Dictionary<Guid, string>()
+            : await db.Users.AsNoTracking().Where(u => actorIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.Name, ct);
 
         var items = rows.Select(r => new InboxItemRow(
             r.RequestId,
@@ -670,7 +678,9 @@ public static class NotificationGatewayEndpoints
             r.Status == NotificationStatus.Read || r.Status == NotificationStatus.Acknowledged,
             r.Priority,
             r.TargetUrl,
-            r.SnoozedUntil)).ToList();
+            r.SnoozedUntil,
+            r.ActorUserId,
+            r.ActorUserId is { } a ? actorNames.GetValueOrDefault(a) : null)).ToList();
 
         return new InboxListResult(items, total, unread, p, size);
     }
@@ -707,7 +717,8 @@ public static class NotificationGatewayEndpoints
     public record InboxItemRow(
         Guid Id, string Type, string Title, string Body,
         string Source, DateTime At, bool IsRead, string Priority,
-        string? TargetUrl = null, DateTime? SnoozedUntil = null);
+        string? TargetUrl = null, DateTime? SnoozedUntil = null,
+        Guid? ActorId = null, string? ActorName = null);
 
     public record SnoozeNotificationRequest(DateTime? Until = null, double? Hours = null);
     public record MuteTypeRequest(string Type, bool Muted);

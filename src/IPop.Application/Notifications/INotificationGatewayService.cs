@@ -73,4 +73,22 @@ public interface INotificationGatewayService
         string? targetUrl = null,
         CancellationToken ct = default)
         => PublishInternalAsync(clientSlug, eventType, title, message, target, priority, targetUrl, ct);
+
+    /// Same as the overloads above, recording who caused the notification (<paramref name="actorUserId"/>: the mail
+    /// sender, the person who commented/mentioned/assigned, the meeting organiser). Null key = a fresh one. The
+    /// default implementation drops the actor (test fakes); NotificationGatewayService stores it.
+    Task<NotificationEnqueueResult> PublishInternalAsync(
+        string clientSlug,
+        string eventType,
+        string title,
+        string message,
+        NotificationTarget target,
+        Guid? actorUserId,
+        string? idempotencyKey,
+        string priority = "normal",
+        string? targetUrl = null,
+        CancellationToken ct = default)
+        => idempotencyKey is null
+            ? PublishInternalAsync(clientSlug, eventType, title, message, target, priority, targetUrl, ct)
+            : PublishInternalAsync(clientSlug, eventType, title, message, target, idempotencyKey, priority, targetUrl, ct);
 }

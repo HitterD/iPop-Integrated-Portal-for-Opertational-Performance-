@@ -25,7 +25,8 @@ public sealed record PushPayload(
     string? DeliveryId = null,
     string? JobId = null,
     string? Acct = null,
-    string? Sender = null);
+    string? Sender = null,
+    Guid? SenderId = null);
 
 /// Web Push from the durable outbox. A <see cref="PushJob"/> is expanded once into one
 /// <see cref="PushDelivery"/> per browser; each delivery is sent and retried on its own, and the
@@ -397,7 +398,8 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
 
         return new Audience("chat", recipients.ToList(),
             uid => recipients.Contains(uid)
-                ? new PushPayload("chat", title, previewOff.Contains(uid) ? "New message" : preview, url, tag, RequireInteraction: emergency)
+                ? new PushPayload("chat", title, previewOff.Contains(uid) ? "New message" : preview, url, tag, RequireInteraction: emergency,
+                    SenderId: msg.SenderId)
                 : null,
             emergency, msg.CreatedAt + TimeSpan.FromHours(emergency ? 1 : 12));
     }
