@@ -513,10 +513,10 @@
     if (d.conv && d.conv.length) html += `<div class="sect">${IC('messages-square')}Conversation · <span id="hcount">${d.conv.length}</span> messages</div><div class="hist" id="hist">${d.conv.map(bubble).join('')}</div>`;
     else if (d.conv) html += `<div class="rbody sel"><p>${esc(t.line.text)}</p></div><div class="hist" id="hist"></div>`;
     if (t.items.length > 1 && !d.conv) html += `<div class="sect">${IC('history')}Updates · ${t.items.length}</div><div class="upd">${t.items.map(x => `<div><small>${esc(timeShort(x.at))}</small>${esc(x.title)} — ${esc(M.lineOf(x).text)}</div>`).join('')}</div>`;
-    if (d.files.length) html += `<div class="sect">${IC('paperclip')}Files · ${d.files.length}${d.files.length > 1 ? `<button class="lnk" data-dlall>${IC('download')}Download all</button>` : ''}</div><div class="files">${d.files.map(fileCard).join('')}</div>`;
+    if (d.files.length) html += `<div class="sect">${IC('paperclip')}Files · ${d.files.length}${d.files.length > 1 ? `<button class="lnk" data-dlall>${IC('download')}Download all</button>` : ''}</div><div class="files">${d.files.map(F.card).join('')}</div>`;
     box.innerHTML = html;
     const frame = box.querySelector('iframe[data-mail]'); if (frame) mailFrame(frame, d.mailHtml);
-    box.querySelectorAll('img[data-thumb]').forEach(async img => { const url = await app.image(img.dataset.thumb); if (url) { img.src = url; img.hidden = false; img.previousElementSibling?.remove(); } });
+    F.thumbs(box);
     box.onclick = e => {
       const p = e.target.closest('[data-fp]'); if (p) return F.preview(d.files, +p.dataset.fp);
       const dl = e.target.closest('[data-fd]'); if (dl) return F.download(d.files[+dl.dataset.fd], dl, { labeled: true });
@@ -530,20 +530,6 @@
   function bubble(x, cls) {
     const atts = (x.atts || []).map(a => `<span class="att">${IC('paperclip')}${esc(a)}</span>`).join('');
     return `<div class="msg ${x.me ? 'me' : ''} ${cls || ''}">${avatar(x.me ? (ctx.name || 'You') : x.name)}<div class="bub"><b>${esc(x.me ? 'You' : x.name)}${x.at ? ' · ' + esc(timeShort(x.at)) : ''}</b>${esc(x.text || '')}${atts}</div></div>`;
-  }
-  // File card with a page-1 look per type; pictures show their thumbnail.
-  function fileCard(f, i) {
-    const b = F.badge(f.name), kind = F.kind(f.name), can = kind !== 'none';
-    let th;
-    if (f.thumb) th = `<div class="pg"><i class="h"></i><i></i><i></i></div><img class="im" data-thumb="${esc(f.thumb)}" alt="" hidden>`;
-    else if (b.cls === 'xlsx') th = `<div class="xl">${'<i class="h"></i>'.repeat(4)}${'<i></i>'.repeat(16)}</div>`;
-    else if (b.cls === 'pptx') th = `<div class="sl"></div>`;
-    else if (b.cls === 'pdf' || b.cls === 'docx') th = `<div class="pg"><i class="h"></i><i></i><i></i><i style="width:80%"></i><i></i><i style="width:60%"></i><i></i><i></i></div>`;
-    else th = `<div class="gen">${IC(kind === 'video' ? 'film' : kind === 'audio' ? 'music' : kind === 'image' ? 'image' : 'file-archive')}</div>`;
-    const meta = [F.typeName(f.name), F.fmtSize(f.size), can ? '' : 'download only'].filter(Boolean).join(' · ');
-    return `<div class="fc ${can ? '' : 'np'}" style="animation-delay:${Math.min(i, 6) * 40}ms"><div class="th" ${can ? `data-fp="${i}"` : ''}>${th}<span class="ft ${b.cls}">${esc(b.label)}</span><div class="ov"><span>${IC('eye')}Preview</span></div></div>`
-      + `<div class="fi"><div class="fn" title="${esc(f.name)}">${esc(f.name)}</div><div class="fs">${esc(meta)}</div></div>`
-      + `<div class="fa"><button class="${can ? '' : 'na'}" ${can ? `data-fp="${i}"` : 'title="No preview for this type"'}>${IC(can ? 'eye' : 'eye-off')}Preview</button><button data-fd="${i}" data-label>${IC('download')}Download</button></div></div>`;
   }
   // Action bar: inline reply for chat + iDesk, Reply (popup) for mail, Open, Mark read/unread, Snooze.
   function actions(t, d) {

@@ -40,6 +40,27 @@
     }).join('')}</div>`;
   }
 
+  // Big file card (Inbox reading pane, maximized popup — mockup priority.html screens 2 and 7): a page-1 look per
+  // type, pictures show their thumbnail (f.thumb = an allow-listed image route), Preview + Download underneath.
+  function card(f, i) {
+    const b = badge(f.name), k = kind(f.name), can = k !== 'none';
+    let th;
+    if (f.thumb) th = `<div class="pg"><i class="h"></i><i></i><i></i></div><img class="im" data-thumb="${esc(f.thumb)}" alt="" hidden>`;
+    else if (b.cls === 'xlsx') th = `<div class="xl">${'<i class="h"></i>'.repeat(4)}${'<i></i>'.repeat(16)}</div>`;
+    else if (b.cls === 'pptx') th = `<div class="sl"></div>`;
+    else if (b.cls === 'pdf' || b.cls === 'docx') th = `<div class="pg"><i class="h"></i><i></i><i></i><i style="width:80%"></i><i></i><i style="width:60%"></i><i></i><i></i></div>`;
+    else th = `<div class="gen">${IC(k === 'video' ? 'film' : k === 'audio' ? 'music' : k === 'image' ? 'image' : 'file-archive')}</div>`;
+    const meta = [typeName(f.name), fmtSize(f.size), can ? '' : 'download only'].filter(Boolean).join(' · ');
+    return `<div class="fc ${can ? '' : 'np'}" style="animation-delay:${Math.min(i, 6) * 40}ms"><div class="th" ${can ? `data-fp="${i}"` : ''}>${th}<span class="ft ${b.cls}">${esc(b.label)}</span><div class="ov"><span>${IC('eye')}Preview</span></div></div>`
+      + `<div class="fi"><div class="fn" title="${esc(f.name)}">${esc(f.name)}</div><div class="fs">${esc(meta)}</div></div>`
+      + `<div class="fa"><button class="${can ? '' : 'na'}" ${can ? `data-fp="${i}"` : 'title="No preview for this type"'}>${IC(can ? 'eye' : 'eye-off')}Preview</button><button data-fd="${i}" data-label>${IC('download')}Download</button></div></div>`;
+  }
+  const grid = list => list && list.length ? `<div class="files fgrid">${list.map(card).join('')}</div>` : '';
+  // Picture thumbnails in big cards (after the HTML is on screen).
+  function thumbs(box) {
+    box.querySelectorAll('img[data-thumb]').forEach(async img => { const url = await app.image(img.dataset.thumb); if (url) { img.src = url; img.hidden = false; img.previousElementSibling?.remove(); } });
+  }
+
   // Click handling for cards inside `box`; `list` = the same array given to cards().
   function wire(box, list) {
     box.addEventListener('click', e => {
@@ -117,5 +138,5 @@
     arm();
   }
 
-  window.files = { kind, ext, badge, typeName, fmtSize, cards, wire, preview, download, snack, CHECK };
+  window.files = { kind, ext, badge, typeName, fmtSize, cards, card, grid, thumbs, wire, preview, download, snack, CHECK };
 })();
