@@ -25,6 +25,9 @@ public static partial class ApiBridge
         ("GET", R("^api/notifications/v1/unread-count$")),
         ("GET", R("^api/notifier/devices(\\?q=[^&]{0,80})?$")),
         ("GET", R("^api/notifier/me$")),
+        // 1.5.0 priority inbox: my leaders + VIPs, and the VIP picker (q is plain text, ≤ 80 characters).
+        ("GET", R("^api/notifier/leaders$")),
+        ("GET", R("^api/notifier/people\\?q=[^&]{1,80}$")),
         ("GET", R($"^api/notifier/remote/sessions/{G}/join$")),
         ("GET", R($"^api/notifier/remote/sessions/{G}$")),
         ("GET", R("^api/notifier/remote/media$")),
@@ -54,6 +57,18 @@ public static partial class ApiBridge
         R($"^api/photos/{G}(/large)?$"),
         R($"^api/news/composer/media/{G}\\?t=[A-Za-z0-9_\\-]+$"),
     ];
+
+    /// Files the app may download for a page (Download, Preview, Open in app — 1.5.0). The bytes never reach the page
+    /// as such: they are saved to Downloads or the viewer's media cache by the app. iDesk ticket attachments are not
+    /// here: iPop only knows their names (TicketAttachmentDto / TicketMessageDto carry no id or route).
+    private static readonly Regex[] Downloads =
+    [
+        R($"^api/mail/attachments/{G}/download$"),
+        R($"^api/chat/attachments/{G}/download$"),
+        R($"^api/attachments/{G}$"),
+    ];
+
+    public static bool IsDownload(string path) => Downloads.Any(r => r.IsMatch(path));
 
     private static Regex R(string p) => new(p, RegexOptions.CultureInvariant);
 

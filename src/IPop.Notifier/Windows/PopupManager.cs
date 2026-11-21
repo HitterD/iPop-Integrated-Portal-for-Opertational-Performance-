@@ -3,6 +3,8 @@ using IPop.Notifier.Core;
 namespace IPop.Notifier.Windows;
 
 /// Decides what happens to each notification and lays the windows out.
+/// 1.5.0 priority tiers (docs/notifier/PRIORITY-150.md): Needs action → its own window; Messages → a toast;
+/// For your info → nothing but the count. Window styles:
 ///  • "windows" (v2, default): one real window per notification, no limit (1.4.2: "20 popups = 20 windows"), never
 ///    minimised by the app. Cascaded 30 px from the screen corner, newest in front; when the next step would leave the
 ///    screen a new cascade column starts further left (then a new row), so every window stays visible and clickable.
@@ -11,7 +13,7 @@ namespace IPop.Notifier.Windows;
 ///  • "stack" (v1): glass cards stacked at the corner; as many as fit the screen height are shown, only the ones that
 ///    physically don't fit wait behind "+N more" and appear as cards close. While held they wait in the queue.
 /// Nothing is ever dropped: every notification is also in the tray Inbox.
-public sealed class PopupManager(IPopClient api, SettingsService settings, LocalState state, DeviceReporter device)
+public sealed class PopupManager(IPopClient api, SettingsService settings, LocalState state, DeviceReporter device, Leaders leaders)
 {
     private readonly List<NoticeWindow> open = [];
     private readonly Queue<Notice> waiting = new();
@@ -28,29 +30,48 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
     public event Action? CountChanged;
     public int OpenCount => open.Count + waiting.Count;
 
+    /// Unread "Needs action" in the Inbox (counted by the app): the number on the taskbar badge.
+    public int ActCount
+    {
+        get => actCount;
+        set { if (actCount == value) return; actCount = value; Badge(); }
+    }
+    private int actCount;
+
+    /// What the popup pages get besides the notice (tiers, leaders, VIPs; set by the app).
+    public Func<object>? PageContext { get; set; }
+
+    /// Kind + tier with the settings and leaders of this moment.
+    public Notice Classify(Notice n) => n.Classified(settings.Effective(DateTime.UtcNow), leaders);
+
+    /// Busy (Windows Focus/full screen/meeting, or iPop status Busy) with "hold" chosen: popups and toasts wait.
+    /// Needs action breaks through when "Let Needs action break through" is on.
     public bool Held(Notice n, NotifierSettings s)
     {
-        if (n.Urgent && s.UrgentBreaksThrough) return false;
+        if (n.NeedsAction && s.UrgentBreaksThrough) return false;
         return s.DuringMeetings == "hold" && (Native.UserIsBusy() || device.IPopBusy);
     }
 
-    /// Everything still unread from while the PC was off. Chat/ticket chat collapse to one toast per conversation;
-    /// the rest open one window at a time; the next opens when that one is closed, read or answered.
+    /// Everything still unread from while the PC was off. Only Needs action opens windows, one at a time (the next
+    /// opens when that one is closed, read or answered). Messages collapse into toasts: one per conversation (chat,
+    /// iDesk ticket chat) as before, one per module for the rest ("5 unread · newest title"). For your info stays in
+    /// the Inbox.
     public void ShowBacklog(IReadOnlyList<Notice> items)
     {
         var s = settings.Effective(DateTime.UtcNow);
-        var fresh = items.Where(n => !state.Shown.Contains(n.Id) && backlog.All(b => b.Id != n.Id)).ToList();
-        foreach (var group in fresh.Where(IsConversation).GroupBy(n => n.TargetUrl ?? n.Id.ToString()))
+        var fresh = items.Where(n => !state.Shown.Contains(n.Id) && backlog.All(b => b.Id != n.Id)).Select(Classify).ToList();
+        foreach (var n in fresh.Where(n => n.Tier == NotifierSettings.Info)) state.Shown.Add(n.Id);
+        foreach (var group in fresh.Where(n => n.Tier == NotifierSettings.Msg).GroupBy(n => IsConversation(n) ? "c" + (n.TargetUrl ?? n.Id.ToString()) : "m" + n.Module))
         {
             var newest = group.MaxBy(n => n.At)!;
             var count = group.Count();
             foreach (var n in group) state.Shown.Add(n.Id);
-            if (s.DeliveryFor(newest.Module, newest.EventType) == "off") continue;
-            var title = count > 1 ? $"{count} unread · " + newest.Title : newest.Title;
+            if (s.HideMessageToasts) continue;
             if (s.Popups != "on" || Held(newest, s)) { foreach (var n in group) Hold(n); continue; }
+            var title = count > 1 ? $"{count} unread · " + newest.Title : newest.Title;
             Toasts.ShowNotice(newest with { Title = title }, api.Server);
         }
-        foreach (var n in fresh.Where(n => !IsConversation(n))) backlog.Enqueue(n);
+        foreach (var n in fresh.Where(n => n.NeedsAction)) backlog.Enqueue(n);
         backlogTotal = backlogShown + backlog.Count + (backlogWindow is null ? 0 : 1);
         state.Save();
         NextBacklog();
@@ -65,13 +86,14 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
     {
         if (backlogWindow is { IsDisposed: false } || backlog.Count == 0) return;
         var s = settings.Effective(DateTime.UtcNow);
-        if (s.Popups != "on" || Held(backlog.Peek(), s)) return;
+        var peek = Classify(backlog.Peek());
+        if ((s.Popups != "on" && !(peek.NeedsAction && s.UrgentBreaksThrough)) || Held(peek, s)) return;
         while (backlog.Count > 0)
         {
-            var n = backlog.Dequeue();
+            var n = Classify(backlog.Dequeue());
             if (state.Shown.Contains(n.Id)) continue;
             state.Shown.Add(n.Id);
-            if (s.DeliveryFor(n.Module, n.EventType) == "off") continue;
+            if (!n.NeedsAction) continue; // its category changed while it waited: it stays in the Inbox
             backlogShown++;
             var w = Open(n, s, minimized: false, pending: (backlogShown, Math.Max(backlogTotal, backlogShown)));
             backlogWindow = w;
@@ -92,7 +114,10 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
         CountChanged?.Invoke();
     }
 
-    /// Entry point for every notification (live or caught up).
+    /// Entry point for every notification (live or caught up). By tier: Needs action → its own window with sound
+    /// (breaks through Busy/full screen/paused popups when "Let Needs action break through" is on); Messages → a toast
+    /// with a soft sound (none at all with "Hide Messages toasts"; held while Busy or paused); For your info → nothing
+    /// but the count.
     public void Show(Notice n)
     {
         if (state.Shown.Contains(n.Id)) return;
@@ -100,22 +125,47 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
         if (state.LastShownAt is null || n.At > state.LastShownAt) state.LastShownAt = n.At;
 
         var s = settings.Effective(DateTime.UtcNow);
-        var delivery = s.DeliveryFor(n.Module, n.EventType);
+        n = n.Classified(s, leaders);
         var popupsOff = s.Popups != "on";
-        if (delivery == "off") { state.Save(); return; }
+        if (n.Tier == NotifierSettings.Info) { state.Save(); CountChanged?.Invoke(); return; }
         var held = Held(n, s);
 
-        if (delivery == "toast" || n.Module == "chat")
+        if (n.Tier == NotifierSettings.Msg)
         {
-            if (popupsOff || held) Hold(n);
-            else { Toasts.ShowNotice(n, api.Server); Sounds.Play(Sounds.For(n), s); }
+            if (!s.HideMessageToasts)
+            {
+                if (popupsOff || held) Hold(n);
+                else { Toasts.ShowNotice(n, api.Server); Sounds.Play(Sounds.For(n), s); }
+            }
             state.Save();
+            CountChanged?.Invoke();
             return;
         }
-        if (popupsOff && !(n.Urgent && s.UrgentBreaksThrough)) { Hold(n); state.Save(); return; }
+        if (popupsOff && !s.UrgentBreaksThrough) { Hold(n); state.Save(); return; }
         if (held) Hold(n);
         state.Save();
+        ShowWindow(n, s, held);
+    }
 
+    /// A Needs action chat message that came as a "desktopToast" (a leader's / VIP's chat, an emergency): opens as a
+    /// window. One window per conversation: the next message from the same chat refreshes the one already open.
+    public void ShowChat(Notice n)
+    {
+        var s = settings.Effective(DateTime.UtcNow);
+        var held = Held(n, s);
+        if (s.Popups != "on" && !s.UrgentBreaksThrough) return; // the toast path holds it; the Inbox has it anyway
+        ShowWindow(n, s, held);
+    }
+
+    private void ShowWindow(Notice n, NotifierSettings s, bool held)
+    {
+        if (n.Module == "chat" && n.TargetUrl is { } url
+            && open.FirstOrDefault(w => !w.IsDisposed && w.Notice.Module == "chat" && w.Notice.TargetUrl == url) is { } same)
+        {
+            same.Update(n);
+            if (!held) Sounds.Play(Sounds.For(n), s);
+            return;
+        }
         if (s.Style == "stack")
         {
             if (held || !StackHasRoom()) { waiting.Enqueue(n); UpdateMore(); CountChanged?.Invoke(); return; }
@@ -128,17 +178,20 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
         if (!held) Sounds.Play(Sounds.For(n), s);
     }
 
-    /// "Snooze 5 min" (meeting reminders): the server only hides it from the Inbox for that time; nothing pushes it
-    /// again, so the app brings the same reminder back itself (before 1.4.8 a snoozed reminder never came back).
+    /// Snooze (5 min on a meeting reminder; 15 min / 1 h / tomorrow 08:00 from the Snooze menu): the server only hides
+    /// it from the Inbox until then; nothing pushes it again, so the app brings the same notification back itself as
+    /// Needs action. Kept in memory: after a restart it simply reappears in the Inbox.
     public static readonly TimeSpan SnoozeFor = TimeSpan.FromMinutes(5);
     private readonly HashSet<Guid> snoozed = [];
     private System.Windows.Forms.Timer? snoozeTimer;
     private readonly List<(Notice Notice, DateTime Due)> dueAgain = [];
 
-    private void SnoozeAgain(Notice n)
+    private void SnoozeAgain(Notice n, DateTime? until)
     {
         if (!snoozed.Add(n.Id)) return;
-        dueAgain.Add((n, DateTime.UtcNow + SnoozeFor));
+        var now = DateTime.UtcNow;
+        var due = until is { } u && u > now && u < now.AddDays(8) ? u : now + SnoozeFor;
+        dueAgain.Add((n, due));
         snoozeTimer ??= new System.Windows.Forms.Timer { Interval = 15_000 };
         snoozeTimer.Tick -= OnSnoozeTick;
         snoozeTimer.Tick += OnSnoozeTick;
@@ -159,13 +212,13 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
         if (dueAgain.Count == 0) snoozeTimer?.Stop();
     }
 
-    /// Inbox > click a notification: opens as its own window, always (also for held, "Toast" and "Off" modules), without
-    /// a sound and without changing what counts as shown or missed.
+    /// Inbox > click a notification: opens as its own window, always (also for held ones and Messages / For your info),
+    /// without a sound and without changing what counts as shown or missed.
     public void OpenFromInbox(Notice n)
     {
         var s = settings.Effective(DateTime.UtcNow);
         state.Held.Remove(n.Id);
-        Open(n, s with { Style = "windows" }, minimized: false);
+        Open(Classify(n), s with { Style = "windows" }, minimized: false);
         state.Save();
     }
 
@@ -181,9 +234,9 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
             try { area = Screen.FromPoint(Cursor.Position).WorkingArea; }
             catch { area = null; }
         }
-        var w = new NoticeWindow(n, s.Style, api, pending);
+        var w = new NoticeWindow(n, s.Style, api, pending, PageContext);
         w.FormClosed += (_, _) => Closed(w);
-        w.Done += (_, action) => { if (action == "snooze") SnoozeAgain(n); };
+        w.Done += (_, action, until) => { if (action == "snooze") SnoozeAgain(w.Notice, until); };
         w.HeightChanged += _ => Layout();
         w.Activated += (_, _) => Front(w);
         open.Add(w);
@@ -242,7 +295,14 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
         dueAgain.Clear(); snoozed.Clear(); snoozeTimer?.Stop();
         waiting.Clear();
         backlog.Clear();
+        actCount = 0;
         foreach (var w in open.ToList()) w.Close();
+    }
+
+    /// Leaders or settings changed: open windows get the new context (chips like "Your leader").
+    public void RefreshContext()
+    {
+        foreach (var w in open.ToList()) if (!w.IsDisposed) w.SendContext();
     }
 
     /// The style changed in Settings: open windows/cards are rebuilt in the new style.
@@ -332,7 +392,8 @@ public sealed class PopupManager(IPopClient api, SettingsService settings, Local
         for (var i = 0; i < cards.Count; i++) cards[i].SetMore(i == cards.Count - 1 ? waiting.Count : 0);
     }
 
-    private void Badge() => TaskbarBadge.Set(open.Where(w => w.Style != "stack"), open.Count(w => w.Style != "stack"));
+    /// 1.5.0: the badge on the iPop taskbar button counts unread Needs action (from the Inbox), not open windows.
+    private void Badge() => TaskbarBadge.Set(open.Where(w => w.Style != "stack"), actCount);
 
     private static int Scale(Control c, int v) => (int)Math.Round(v * c.DeviceDpi / 96.0);
 }

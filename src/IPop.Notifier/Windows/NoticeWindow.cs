@@ -8,9 +8,11 @@ namespace IPop.Notifier.Windows;
 /// not on the taskbar. The same page (Ui/popup.html) renders both.
 public sealed class NoticeWindow : BridgedWindow
 {
-    public Notice Notice { get; }
+    public Notice Notice { get; private set; }
     public string Style { get; }
-    public event Action<NoticeWindow, string>? Done;
+    /// Acted on: action ("done", "read", "snooze"…) and, for a snooze, until when (UTC).
+    public event Action<NoticeWindow, string, DateTime?>? Done;
+    private readonly Func<object>? context;
     public event Action<NoticeWindow>? HeightChanged;
     public int WantedHeight { get; private set; }
 
@@ -23,10 +25,11 @@ public sealed class NoticeWindow : BridgedWindow
     /// Set for a notification from while the PC was off: "2 of 9 pending".
     public (int Index, int Total)? Pending { get; }
 
-    public NoticeWindow(Notice notice, string style, IPopClient api, (int Index, int Total)? pending = null)
+    public NoticeWindow(Notice notice, string style, IPopClient api, (int Index, int Total)? pending = null, Func<object>? context = null)
         : base("popup.html", style == "stack" ? CardSize : StandardSize, api, noActivate: true, showInTaskbar: style != "stack")
     {
         Notice = notice;
+        this.context = context;
         Pending = pending;
         Style = style;
         // Sizes are logical (96 dpi); the form doesn't auto-scale, so scale to this screen's DPI here.
@@ -49,9 +52,21 @@ public sealed class NoticeWindow : BridgedWindow
         Send(new { type = "more", count });
     }
 
+    /// The next message of the same conversation (a leader's chat): the window shows it instead of opening another.
+    public void Update(Notice next)
+    {
+        Notice = next;
+        Text = next.Title.Length > 80 ? next.Title[..80] + "…" : next.Title;
+        OnReady();
+    }
+
+    /// Tiers, leaders and VIPs (1.5.0) for the page's chips; sent again when they change.
+    public void SendContext() { if (context is not null) Send(new { type = "context", ctx = context() }); }
+
     protected override void OnReady() => Send(new
     {
         type = "notice",
+        ctx = context?.Invoke(),
         style = Style,
         server = Api.Server.ToString(),
         notice = Notice,
@@ -73,7 +88,8 @@ public sealed class NoticeWindow : BridgedWindow
                 HeightChanged?.Invoke(this);
                 break;
             case "done": // acted on (sent, joined, acknowledged…) or "Mark read": closes after its little animation
-                Done?.Invoke(this, msg?["action"]?.GetValue<string>() ?? "done");
+                DateTime? until = DateTime.TryParse(msg?["until"]?.GetValue<string>(), null, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out var u) ? u : null;
+                Done?.Invoke(this, msg?["action"]?.GetValue<string>() ?? "done", until);
                 Close();
                 break;
             case "focus":
