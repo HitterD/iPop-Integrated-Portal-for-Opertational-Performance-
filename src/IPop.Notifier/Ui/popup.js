@@ -760,7 +760,8 @@
     };
     view.fa = {
       taskdone: async b => {
-        const done = t.status === 'done', next = done ? 'in_progress' : 'done';
+        // Task stages are todo | doing | review | done (ProjectService.MoveTaskAsync); "in_progress" is rejected.
+        const done = t.status === 'done', next = done ? 'doing' : 'done';
         const res = await api('POST', `api/projects/tasks/${tid}/move`, { status: next });
         if (!res.ok) return failSnack(res.json?.message || "Couldn't update the task.");
         t.status = next;
@@ -788,7 +789,7 @@
       readTool,
     ];
   }
-  const statusName = s => ({ todo: 'To do', in_progress: 'In progress', review: 'In review', done: 'Done' }[s] || s || 'Task');
+  const statusName = s => ({ todo: 'To do', doing: 'In progress', in_progress: 'In progress', review: 'In review', done: 'Done' }[s] || s || 'Task');
 
   async function notes() {
     const pid = id(new RegExp('^/notes/' + G));

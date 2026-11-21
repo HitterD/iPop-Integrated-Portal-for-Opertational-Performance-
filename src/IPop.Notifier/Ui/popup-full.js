@@ -308,7 +308,7 @@
     ${actions(btn('open', 'arrow-up-right', 'Open in iPop', ack && !p.isAcknowledged ? '' : 'p'), btn('read', 'check', 'Mark as read'))}`;
   };
 
-  const ST = { todo: ['To do', 'todo'], in_progress: ['In progress', 'prog'], review: ['In review', 'rev'], done: ['Done', 'dn'] };
+  const ST = { todo: ['To do', 'todo'], doing: ['In progress', 'prog'], in_progress: ['In progress', 'prog'], review: ['In review', 'rev'], done: ['Done', 'dn'] };
   R.project = env => {
     const { N, view } = env, s = view.src, t = s.t;
     const done = t.status === 'done';

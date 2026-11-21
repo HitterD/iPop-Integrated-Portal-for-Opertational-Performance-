@@ -86,6 +86,11 @@ const meet = F.render({ loaded: true, nik: "0001", files, N: N({ module: "calend
 assert.match(meet, /Ruang Rapat Lt\. 2/);
 assert.doesNotMatch(meet, /meeting-53f0/, "no LiveKit room id as the place");
 const popupJs = fs.readFileSync(path.join(ui, "popup.js"), "utf8");
+// Projects: task stages are todo | doing | review | done (the API rejects "in_progress"); "doing" reads In progress.
+const task = F.render({ loaded: true, nik: "0001", files, N: N({ module: "projects", kind: "projects", eventType: "project.task_assigned" }), view: { src: { kind: "project",
+  t: { id: "t1", title: "Switch", status: "doing", priority: "high", assignees: [] }, subs: [], comments: [] } } });
+assert.match(task, /data-stpill>In progress</);
+assert.doesNotMatch(popupJs, /'in_progress' : 'done'|next = done \? 'in_progress'/, "reopening a task moves it to doing");
 assert.doesNotMatch(popupJs, /src\.roomName/, "the small card doesn't show the LiveKit room id either");
 
 // Wiring: popup.html loads popup-full.js before popup.js; ApiBridge allows the extra reads only.
