@@ -24,6 +24,8 @@ public sealed record Notice(Guid Id, string Module, string EventType, string Tit
 {
     public bool NeedsAction => Tier == NotifierSettings.Act;
 
+    /// Module (icon + label) comes from the event type first: a system notice ("system.epop_import") stays "iPop"
+    /// even when its link opens Mail.
     public static Notice From(Delivery d) => new(d.RequestId, NotifierSettings.ModuleOf(d.EventType), d.EventType ?? "system",
         d.Title ?? "iPop", d.Body ?? "", d.Priority ?? "normal", d.TargetUrl, (d.DeliveredAt ?? DateTime.UtcNow).ToUniversalTime(), d.ActorId);
 
@@ -32,11 +34,12 @@ public sealed record Notice(Guid Id, string Module, string EventType, string Tit
 
     /// Kind and tier with these settings: a leader or VIP, an emergency, a mandatory memo or priority high always
     /// needs action (NotifierSettings.AlwaysAct); otherwise the kind's tier from Settings › Categories.
-    public Notice Classified(NotifierSettings s, Leaders? leaders)
+    /// An iDesk ticket assigned to me counts as Needs action only for its first 24 h (<paramref name="now"/> for tests).
+    public Notice Classified(NotifierSettings s, Leaders? leaders, DateTime? now = null)
     {
         var kind = NotifierSettings.KindOf(EventType, Priority, TargetUrl);
         var leader = leaders?.ReasonFor(ActorId, s);
-        return this with { Kind = kind, Tier = s.TierFor(kind, EventType, Priority, leader is not null), Leader = leader };
+        return this with { Kind = kind, Tier = s.TierFor(kind, EventType, Priority, leader is not null, At, now: now ?? DateTime.UtcNow), Leader = leader };
     }
 
     /// The inbox only has a coarse type; a ticket chat message is recognisable by its link, and must stay one (iDesk
@@ -57,6 +60,8 @@ public sealed record Notice(Guid Id, string Module, string EventType, string Tit
         var url = i.TargetUrl ?? "";
         // Servers since 1.5.0 send the full event type: a meeting reminder linking to /calls?tab=rooms is still Calendar.
         var head = (i.EventType ?? "").Split('.', 2)[0].ToLowerInvariant();
+        // A system notice is iPop's own, whatever it links to ("Your EPop history is in iPop Mail" → /mail).
+        if (head == "system") return "system";
         if (head is "meeting" or "calendar") return "calendar";
         if (url.StartsWith("/tickets") || url.StartsWith("/idesk/tickets")) return "tickets";
         if (url.StartsWith("/calls?tab=scheduled") || url.StartsWith("/calls?tab=rooms&join") || url.StartsWith("/calendar")) return "calendar";

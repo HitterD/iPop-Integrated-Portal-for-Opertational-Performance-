@@ -9,7 +9,12 @@ namespace IPop.Tests;
 /// very same cases.
 public class NotifierTierTests
 {
-    public sealed record TierCase(string? EventType, string? Priority, bool Leader, string Kind, string Tier, string? TargetUrl = null);
+    /// AgeHours / Read (optional, 1.5.1): how old the notification is and whether it was opened — an iDesk ticket
+    /// assigned to me is Needs action only while unread and under 24 h.
+    public sealed record TierCase(string? EventType, string? Priority, bool Leader, string Kind, string Tier, string? TargetUrl = null,
+        double? AgeHours = null, bool Read = false);
+
+    private static readonly DateTime Now = new(2026, 11, 21, 8, 0, 0, DateTimeKind.Utc);
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -28,7 +33,20 @@ public class NotifierTierTests
     {
         var kind = NotifierSettings.KindOf(c.EventType, c.Priority, c.TargetUrl);
         Assert.Equal(c.Kind, kind);
-        Assert.Equal(c.Tier, NotifierSettings.Parse(null).TierFor(kind, c.EventType, c.Priority, c.Leader));
+        DateTime? at = c.AgeHours is { } h ? Now.AddHours(-h) : null;
+        Assert.Equal(c.Tier, NotifierSettings.Parse(null).TierFor(kind, c.EventType, c.Priority, c.Leader, at, c.Read, Now));
+    }
+
+    [Fact]
+    public void Assigned_ticket_leaves_needs_action_after_24_hours_with_the_real_clock()
+    {
+        var s = NotifierSettings.Parse(null);
+        Assert.Equal("act", s.TierFor("ticketassigned", "ticket.assigned", "normal", false, DateTime.UtcNow.AddMinutes(-5)));
+        Assert.Equal("msg", s.TierFor("ticketassigned", "ticket.assigned", "normal", false, DateTime.UtcNow.AddHours(-25)));
+        Assert.Equal("act", s.TierFor("ticketassigned", "ticket.assigned", "normal", false));   // live, no time: new
+        // A chosen "msg" or "info" stays as chosen; the rule only ever lowers Needs action.
+        var quiet = NotifierSettings.Parse("""{"tiers":{"ticketassigned":"info"}}""");
+        Assert.Equal("info", quiet.TierFor("ticketassigned", "ticket.assigned", "normal", false, DateTime.UtcNow.AddHours(-30)));
     }
 
     [Fact]

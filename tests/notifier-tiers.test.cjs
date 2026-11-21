@@ -8,12 +8,23 @@ const t = require(path.join(__dirname, "../src/IPop.Notifier/Ui/tiers.js"));
 const cases = JSON.parse(fs.readFileSync(path.join(__dirname, "notifier-tier-cases.json"), "utf8"));
 assert.ok(cases.length > 40, "case table loaded");
 
+// Optional ageHours / read (1.5.1): an iDesk ticket assigned to me is Needs action only while unread and < 24 h old.
+const NOW = Date.parse("2026-11-21T08:00:00Z");
 for (const c of cases) {
-  const label = `${c.eventType}/${c.priority}/${c.leader ? "leader" : "-"}${c.targetUrl ? " " + c.targetUrl : ""}`;
+  const label = `${c.eventType}/${c.priority}/${c.leader ? "leader" : "-"}${c.targetUrl ? " " + c.targetUrl : ""}${c.ageHours != null ? " " + c.ageHours + "h" : ""}${c.read ? " read" : ""}`;
   const kind = t.kindOf(c.eventType, c.priority, c.targetUrl);
   assert.equal(kind, c.kind, "kind of " + label);
-  assert.equal(t.tierFor(kind, c.eventType, c.priority, c.leader, {}), c.tier, "tier of " + label);
+  const at = c.ageHours != null ? new Date(NOW - c.ageHours * 3600e3).toISOString() : undefined;
+  assert.equal(t.tierFor(kind, c.eventType, c.priority, c.leader, {}, at, !!c.read, NOW), c.tier, "tier of " + label);
+  // classify() reads the row's own at / isRead.
+  if (!c.leader) assert.equal(t.classify({ eventType: c.eventType, priority: c.priority, targetUrl: c.targetUrl, at, isRead: !!c.read }, {}, NOW).tier, c.tier, "classify " + label);
 }
+// No clock given → the real one: assigned just now still acts, two days ago does not; a live notice without "at" acts.
+assert.equal(t.classify({ eventType: "ticket.assigned", at: new Date().toISOString() }, {}).tier, "act");
+assert.equal(t.classify({ eventType: "ticket.assigned", at: new Date(Date.now() - 48 * 3600e3).toISOString() }, {}).tier, "msg");
+assert.equal(t.classify({ eventType: "ticket.assigned" }, {}).tier, "act");
+// A chosen msg/info stays; the rule only ever lowers Needs action.
+assert.equal(t.tierFor("ticketassigned", "ticket.assigned", "normal", false, { ticketassigned: "info" }, new Date(NOW - 48 * 3600e3), false, NOW), "info");
 
 // Every kind has a default and the 15 keys match the C# list.
 assert.equal(t.KINDS.length, 15);

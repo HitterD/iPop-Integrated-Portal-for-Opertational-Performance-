@@ -21,6 +21,8 @@
 
   // ── layout ────────────────────────────────────────────────────────────────
   function render() {
+    // A system notice is iPop's own even when it links elsewhere ("Your EPop history is in iPop Mail" → /mail).
+    if (/^system\./i.test(N.eventType || '')) N.module = 'system';
     const mod = MOD[N.module] || MOD.system;
     document.body.className = (STYLE === 'stack' ? 'card' : 'win') + ' m-' + (MOD[N.module] ? N.module : 'system') + (N.module === 'tickets' ? ' idesk' : '')
       + ' t-' + (N.tier || 'msg') + (N.kind === 'approval' ? ' k-approval' : '');

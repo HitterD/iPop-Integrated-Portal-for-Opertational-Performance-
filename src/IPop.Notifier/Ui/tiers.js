@@ -46,11 +46,22 @@
       || (lower(priority) === 'high' && lower(eventType) !== 'chat.mention'); // a colleague's @mention stays a Message
   }
 
+  // An iDesk ticket assigned / reopened to me is Needs action only while unread and younger than this (1.5.1).
+  const ASSIGNED_ACT_MS = 24 * 3600e3;
+
   // tiers = the settings' Tiers map (kind → act|msg|info); missing/unknown → the kind's default.
-  function tierFor(kind, eventType, priority, fromLeaderOrVip, tiers) {
+  // at (ISO / Date / ms, optional), read and now (default: the clock) only matter for "ticketassigned".
+  function tierFor(kind, eventType, priority, fromLeaderOrVip, tiers, at, read, now) {
     if (alwaysAct(eventType, priority, fromLeaderOrVip)) return ACT;
     const t = tiers && tiers[kind];
-    return t === ACT || t === MSG || t === INFO ? t : defaultTier(kind);
+    const tier = t === ACT || t === MSG || t === INFO ? t : defaultTier(kind);
+    if (tier === ACT && kind === 'ticketassigned') {
+      if (read) return MSG;
+      const a = at == null ? NaN : new Date(at).getTime();
+      const n = now == null ? Date.now() : new Date(now).getTime();
+      if (!isNaN(a) && n - a >= ASSIGNED_ACT_MS) return MSG;
+    }
+    return tier;
   }
 
   // Why someone counts: leader reason ("Manager", "BOD / GM level"…), "VIP", or null. ctx = the app's context.
@@ -63,14 +74,15 @@
   }
 
   // An Inbox row / notice → { kind, tier, leader }. Rows carry eventType (servers since 1.5.0) or only the coarse type.
-  function classify(item, ctx) {
+  // item.at + item.isRead feed the 24 h rule for tickets assigned to me; now = optional clock (tests).
+  function classify(item, ctx, now) {
     const eventType = item.eventType || item.type;
     const kind = kindOf(eventType, item.priority, item.targetUrl);
     const leader = leaderReason(item.actorId, ctx);
-    return { kind, tier: tierFor(kind, eventType, item.priority, !!leader, ctx && ctx.tiers), leader };
+    return { kind, tier: tierFor(kind, eventType, item.priority, !!leader, ctx && ctx.tiers, item.at, !!item.isRead, now), leader };
   }
 
-  const api = { ACT, MSG, INFO, KINDS, kindOf, defaultTier, alwaysAct, tierFor, leaderReason, classify };
+  const api = { ACT, MSG, INFO, KINDS, ASSIGNED_ACT_MS, kindOf, defaultTier, alwaysAct, tierFor, leaderReason, classify };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.tiers = api;
 })(typeof window !== 'undefined' ? window : globalThis);

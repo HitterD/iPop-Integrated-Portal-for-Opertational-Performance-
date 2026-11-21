@@ -199,10 +199,20 @@ public sealed record NotifierSettings
         || (string.Equals(priority, "high", StringComparison.OrdinalIgnoreCase)
             && !string.Equals(eventType, "chat.mention", StringComparison.OrdinalIgnoreCase));
 
-    /// "act" | "msg" | "info" for a notification of <paramref name="kind"/> with these settings.
-    public string TierFor(string kind, string? eventType, string? priority, bool fromLeaderOrVip)
+    /// How long an iDesk ticket assigned / reopened to me stays in Needs action (1.5.1): after that, or once opened,
+    /// it is a Message — yesterday's assignments must not crowd the box.
+    public static readonly TimeSpan AssignedActFor = TimeSpan.FromHours(24);
+
+    /// "act" | "msg" | "info" for a notification of <paramref name="kind"/> with these settings. <paramref name="at"/>
+    /// (when it arrived), <paramref name="read"/> and <paramref name="now"/> (default: the clock) only matter for
+    /// "ticketassigned": Needs action only while unread and younger than <see cref="AssignedActFor"/>.
+    public string TierFor(string kind, string? eventType, string? priority, bool fromLeaderOrVip,
+        DateTime? at = null, bool read = false, DateTime? now = null)
     {
         if (AlwaysAct(eventType, priority, fromLeaderOrVip)) return Act;
-        return Tiers.TryGetValue(kind, out var t) && TierValues.Contains(t) ? t : DefaultTier(kind);
+        var tier = Tiers.TryGetValue(kind, out var t) && TierValues.Contains(t) ? t : DefaultTier(kind);
+        if (tier == Act && kind == "ticketassigned" && (read || (at is { } a && (now ?? DateTime.UtcNow) - a.ToUniversalTime() >= AssignedActFor)))
+            return Msg;
+        return tier;
     }
 }
