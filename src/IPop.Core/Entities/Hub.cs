@@ -25,6 +25,8 @@ public class HubTopic
     public bool HasReply { get; set; }
     public DateTime? SolvedAt { get; set; }
     public Guid? SolvedById { get; set; }
+    /// The reply marked "Best answer": shown under the opening post and used to pre-fill Mark as solved.
+    public Guid? BestPostId { get; set; }
     public string? SolvedSummary { get; set; }
     public DateTime? DeletedAt { get; set; }
 }
@@ -52,6 +54,18 @@ public class HubPost
     public required string Body { get; set; }
     /// reply | system
     public required string Kind { get; set; }
+    public DateTime CreatedAt { get; set; }
+    /// Set when the author changed the text ("edited").
+    public DateTime? EditedAt { get; set; }
+    /// Soft delete by the author: the thread keeps a "This reply was deleted" line so replies under it still make sense.
+    public DateTime? DeletedAt { get; set; }
+}
+
+/// One-tap "Noted": the person has read the reply and agrees / has nothing to add.
+public class HubNote
+{
+    public Guid PostId { get; set; }
+    public Guid UserId { get; set; }
     public DateTime CreatedAt { get; set; }
 }
 

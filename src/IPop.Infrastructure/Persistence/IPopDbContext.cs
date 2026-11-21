@@ -192,6 +192,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<HubPost> HubPosts => Set<HubPost>();
     public DbSet<HubAsk> HubAsks => Set<HubAsk>();
     public DbSet<HubAttachment> HubAttachments => Set<HubAttachment>();
+    public DbSet<HubNote> HubNotes => Set<HubNote>();
 
     private static readonly HallRoom[] HallRooms_Seed =
     [
@@ -1581,6 +1582,12 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasKey(x => new { x.TopicId, x.AttachmentId });
             e.HasIndex(x => x.AttachmentId);
             e.HasOne<HubTopic>().WithMany().HasForeignKey(x => x.TopicId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<HubNote>(e =>
+        {
+            e.HasKey(x => new { x.PostId, x.UserId });
+            e.HasOne<HubPost>().WithMany().HasForeignKey(x => x.PostId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<Ticket>(e =>
         {

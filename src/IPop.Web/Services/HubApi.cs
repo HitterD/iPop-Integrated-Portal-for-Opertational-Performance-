@@ -25,6 +25,18 @@ public sealed class HubApi(AuthState auth)
     public Task<HubCall<HubTopicDto>> PostAsync(Guid id, CreateHubPostRequest req, CancellationToken ct = default) =>
         SendAsync<HubTopicDto>(HttpMethod.Post, $"/api/hub/topics/{id}/posts", req, ct);
 
+    public Task<HubCall<HubTopicDto>> EditPostAsync(Guid id, Guid postId, string body, CancellationToken ct = default) =>
+        SendAsync<HubTopicDto>(HttpMethod.Put, $"/api/hub/topics/{id}/posts/{postId}", new EditHubPostRequest(body), ct);
+
+    public Task<HubCall<HubTopicDto>> DeletePostAsync(Guid id, Guid postId, CancellationToken ct = default) =>
+        SendAsync<HubTopicDto>(HttpMethod.Delete, $"/api/hub/topics/{id}/posts/{postId}", null, ct);
+
+    public Task<HubCall<HubTopicDto>> NoteAsync(Guid id, Guid postId, CancellationToken ct = default) =>
+        SendAsync<HubTopicDto>(HttpMethod.Post, $"/api/hub/topics/{id}/posts/{postId}/noted", null, ct);
+
+    public Task<HubCall<HubTopicDto>> BestAsync(Guid id, Guid? postId, CancellationToken ct = default) =>
+        SendAsync<HubTopicDto>(HttpMethod.Post, $"/api/hub/topics/{id}/best", new HubBestRequest(postId), ct);
+
     public Task<HubCall<HubTopicDto>> AddMembersAsync(Guid id, IReadOnlyList<Guid> people, CancellationToken ct = default) =>
         SendAsync<HubTopicDto>(HttpMethod.Post, $"/api/hub/topics/{id}/members", new AddHubMembersRequest(people), ct);
 

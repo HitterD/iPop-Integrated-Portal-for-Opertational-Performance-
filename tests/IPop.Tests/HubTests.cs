@@ -258,6 +258,151 @@ public class HubTests
         Assert.Contains(opened.Value!.Posts, p => p.IsNew || opened.Value.ReadUpTo is null);
         Assert.False((await w.Hub.ListAsync(w.Dedi.Id, "all", null, default)).Topics.Single().Unread);
     }
+
+    // ── Round 2: edit / delete, Noted, Best answer, Seen by ──────────────
+
+    private static async Task<(HubTopicDto Topic, Guid PostId)> WithReply(World w, Guid author, string body, Guid? ask = null)
+    {
+        var topic = await Start(w, w.Dedi.Id, w.Yuli.Id);
+        var r = await w.Hub.PostAsync(author, topic.Id, new CreateHubPostRequest(body, null, ask, null), default);
+        Assert.True(r.Success, r.Message);
+        return (r.Value!, r.Value!.Posts.Last(p => p.Kind == "reply").Id);
+    }
+
+    [Fact]
+    public async Task Only_the_author_can_edit_and_the_reply_says_edited()
+    {
+        var w = Make();
+        var (topic, post) = await WithReply(w, w.Dedi.Id, "About 290.000 a month");
+        Assert.Equal("forbidden", (await w.Hub.EditPostAsync(w.Rina.Id, topic.Id, post, new EditHubPostRequest("hacked"), default)).Error);
+
+        var r = await w.Hub.EditPostAsync(w.Dedi.Id, topic.Id, post, new EditHubPostRequest("About 300.000 a month"), default);
+        Assert.True(r.Success, r.Message);
+        var p = r.Value!.Posts.Single(x => x.Id == post);
+        Assert.Equal("About 300.000 a month", p.Body);
+        Assert.NotNull(p.EditedAt);
+        Assert.Equal("invalid", (await w.Hub.EditPostAsync(w.Dedi.Id, topic.Id, post, new EditHubPostRequest("  "), default)).Error);
+    }
+
+    [Fact]
+    public async Task Deleting_a_reply_keeps_a_line_and_drops_its_open_question()
+    {
+        var w = Make();
+        var (topic, post) = await WithReply(w, w.Rina.Id, "Dedi, can you check stock?", ask: w.Dedi.Id);
+        Assert.Equal(1, await w.Hub.WaitingCountAsync(w.Dedi.Id, default));
+        Assert.Equal("forbidden", (await w.Hub.DeletePostAsync(w.Dedi.Id, topic.Id, post, default)).Error);
+
+        var r = await w.Hub.DeletePostAsync(w.Rina.Id, topic.Id, post, default);
+        Assert.True(r.Success, r.Message);
+        var p = r.Value!.Posts.Single(x => x.Id == post);
+        Assert.True(p.Deleted);
+        Assert.Equal("", p.Body);
+        Assert.Null(p.AskTo);
+        Assert.Equal(0, await w.Hub.WaitingCountAsync(w.Dedi.Id, default));
+        Assert.Empty(r.Value.Asks);
+        // Gone from the list preview and the reply count.
+        var row = (await w.Hub.ListAsync(w.Rina.Id, "all", null, default)).Topics.Single();
+        Assert.Equal(0, row.Replies);
+        Assert.Null(row.LastPreview);
+        // Can't edit or note a deleted reply.
+        Assert.Equal("invalid", (await w.Hub.EditPostAsync(w.Rina.Id, topic.Id, post, new EditHubPostRequest("again"), default)).Error);
+        Assert.Equal("invalid", (await w.Hub.NoteAsync(w.Dedi.Id, topic.Id, post, default)).Error);
+    }
+
+    [Fact]
+    public async Task Noted_toggles_and_lists_who_noted_but_not_on_your_own_reply()
+    {
+        var w = Make();
+        var (topic, post) = await WithReply(w, w.Dedi.Id, "Stock lasts until March.");
+        Assert.Equal("invalid", (await w.Hub.NoteAsync(w.Dedi.Id, topic.Id, post, default)).Error);
+        Assert.Equal("not_found", (await w.Hub.NoteAsync(w.Head.Id, topic.Id, post, default)).Error);
+
+        var a = await w.Hub.NoteAsync(w.Rina.Id, topic.Id, post, default);
+        var b = await w.Hub.NoteAsync(w.Yuli.Id, topic.Id, post, default);
+        var p = b.Value!.Posts.Single(x => x.Id == post);
+        Assert.Equal(2, p.NotedBy!.Count);
+        Assert.True(p.NotedByMe);
+        Assert.True(a.Value!.Posts.Single(x => x.Id == post).NotedByMe);
+
+        var undo = await w.Hub.NoteAsync(w.Rina.Id, topic.Id, post, default);
+        var after = undo.Value!.Posts.Single(x => x.Id == post);
+        Assert.Single(after.NotedBy!);
+        Assert.False(after.NotedByMe);
+    }
+
+    [Fact]
+    public async Task Best_answer_is_one_reply_toggles_and_clears_on_delete()
+    {
+        var w = Make();
+        var (topic, post) = await WithReply(w, w.Dedi.Id, "Stop buying after the March PO.");
+        var r = await w.Hub.BestAsync(w.Rina.Id, topic.Id, post, default);
+        Assert.True(r.Success, r.Message);
+        Assert.Equal(post, r.Value!.BestPostId);
+        Assert.True(r.Value.Posts.Single(x => x.Id == post).Best);
+        Assert.Contains(r.Value.Posts, x => x.Kind == "system" && x.Body.Contains("best answer"));
+
+        // Marking it again clears it.
+        var off = await w.Hub.BestAsync(w.Rina.Id, topic.Id, post, default);
+        Assert.Null(off.Value!.BestPostId);
+
+        await w.Hub.BestAsync(w.Rina.Id, topic.Id, post, default);
+        var del = await w.Hub.DeletePostAsync(w.Dedi.Id, topic.Id, post, default);
+        Assert.Null(del.Value!.BestPostId);
+
+        Assert.Equal("not_found", (await w.Hub.BestAsync(w.Head.Id, topic.Id, post, default)).Error);
+    }
+
+    [Fact]
+    public async Task Seen_by_counts_members_who_read_the_latest_reply()
+    {
+        var w = Make();
+        var topic = await Start(w, w.Dedi.Id, w.Yuli.Id);
+        // Only the starter has seen it.
+        var first = (await w.Hub.GetAsync(w.Rina.Id, topic.Id, false, default)).Value!.Seen!;
+        Assert.Equal((1, 3), (first.Seen, first.Total));
+        Assert.Equal(2, first.NotYet.Count);
+
+        // Dedi opens it: the response already counts him.
+        var dedi = (await w.Hub.GetAsync(w.Dedi.Id, topic.Id, true, default)).Value!.Seen!;
+        Assert.Equal(2, dedi.Seen);
+
+        // A new reply from Dedi: Rina hasn't read it yet, Dedi has.
+        var after = (await w.Hub.PostAsync(w.Dedi.Id, topic.Id, new CreateHubPostRequest("Checking.", null, null, null), default)).Value!.Seen!;
+        Assert.Equal(1, after.Seen);
+        Assert.Equal(2, after.NotYet.Count);
+    }
+
+    [Fact]
+    public async Task Solved_topics_lock_edits_and_best_answer()
+    {
+        var w = Make();
+        var (topic, post) = await WithReply(w, w.Dedi.Id, "Done on our side.");
+        await w.Hub.SolveAsync(w.Rina.Id, topic.Id, new SolveHubTopicRequest("Stopped in June.", []), default);
+        Assert.Equal("solved", (await w.Hub.EditPostAsync(w.Dedi.Id, topic.Id, post, new EditHubPostRequest("x"), default)).Error);
+        Assert.Equal("solved", (await w.Hub.DeletePostAsync(w.Dedi.Id, topic.Id, post, default)).Error);
+        Assert.Equal("solved", (await w.Hub.BestAsync(w.Rina.Id, topic.Id, post, default)).Error);
+        // Noted still works on a solved topic (it's a read receipt, not a change).
+        Assert.True((await w.Hub.NoteAsync(w.Rina.Id, topic.Id, post, default)).Success);
+    }
+
+    [Theory]
+    [InlineData(20, "just now")]
+    [InlineData(5 * 60, "5 min ago")]
+    public void Relative_time_reads_like_a_person(int secondsAgo, string expected)
+    {
+        var now = DateTime.UtcNow;
+        Assert.Equal(expected, IPop.Web.Pages.Hub.Relative(now.AddSeconds(-secondsAgo), now));
+    }
+
+    [Fact]
+    public void Relative_time_uses_dates_for_older_replies()
+    {
+        var now = new DateTime(2026, 11, 21, 6, 0, 0, DateTimeKind.Utc);
+        var old = new DateTime(2026, 10, 2, 6, 0, 0, DateTimeKind.Utc);
+        Assert.Equal(old.ToLocalTime().ToString("d MMM"), IPop.Web.Pages.Hub.Relative(old, now));
+        Assert.Equal("Abdul, Dedi and 2 others", IPop.Web.Pages.Hub.NotedText(["Abdul", "Dedi", "Yuli", "Rina"]));
+        Assert.Equal("Abdul and Dedi", IPop.Web.Pages.Hub.NotedText(["Abdul", "Dedi"]));
+    }
 }
 
 /// The Hub is reachable on every screen: the desktop sidebar (hub.use) and the phone's More sheet.

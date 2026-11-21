@@ -120,14 +120,37 @@
             <div class="hub-room @(detailsOpen ? "det" : "")">
                 <div class="hub-panel">
                     <div class="hub-bar">
-                        <button type="button" class="hub-btn sm back" @onclick="Back"><i data-lucide="arrow-left"></i>All topics</button>
-                        <span class="hx-stg st-@t.Status"><i></i>@(t.Status switch { HubStatus.Solved => "Solved", HubStatus.Ongoing => "Ongoing", _ => "New" })</span>
-                        <span class="hx-kindpill k-@t.Kind">@HubKinds.Label(t.Kind)</span>
-                        <span class="hx-conf" title="Only these people can open this topic"><i data-lucide="lock"></i>Confidential · @t.People.Count</span>
+                        <button type="button" class="hub-btn sm back" @onclick="Back" aria-label="All topics"><i data-lucide="arrow-left"></i><span class="hx-desk">All topics</span></button>
+                        <span class="hx-stg hx-phone st-@t.Status"><i></i>@StatusLabel(t.Status)</span>
+                        <span class="hx-kindpill hx-desk k-@t.Kind">@HubKinds.Label(t.Kind)</span>
+                        <span class="hx-conf hx-desk" title="Only these people can open this topic"><i data-lucide="lock"></i>Confidential · @t.People.Count</span>
+                        @if (t.Seen is { } seen)
+                        {
+                            <button type="button" class="hx-seen hx-desk @(seen.Seen == seen.Total ? "all" : "")" aria-expanded="@(seenOpen ? "true" : "false")" @onclick="ToggleSeen"
+                                    title="Who has read the latest reply"><i data-lucide="@(seen.Seen == seen.Total ? "check-check" : "eye")"></i>Seen by @seen.Seen of @seen.Total</button>
+                        }
                         <span class="hx-sp"></span>
-                        @if (CanWrite) { <button type="button" class="hub-btn ok sm" @onclick="OpenSolveAsync"><i data-lucide="check"></i>Mark as solved</button> }
-                        <button type="button" class="hub-btn sm @(detailsOpen ? "pressed" : "")" aria-pressed="@(detailsOpen ? "true" : "false")" @onclick="() => detailsOpen = !detailsOpen"><i data-lucide="users"></i>Details</button>
+                        @if (CanWrite) { <button type="button" class="hub-btn ok sm hx-desk" @onclick="OpenSolveAsync"><i data-lucide="check"></i>Mark as solved</button> }
+                        <button type="button" class="hub-btn sm hx-desk @(detailsOpen ? "pressed" : "")" aria-pressed="@(detailsOpen ? "true" : "false")" @onclick="() => detailsOpen = !detailsOpen"><i data-lucide="users"></i>Details</button>
+                        <button type="button" class="hub-btn sm hx-phone hx-dots" aria-label="More" aria-expanded="@(menuOpen ? "true" : "false")" @onclick="() => { menuOpen = !menuOpen; seenOpen = false; }"><i data-lucide="more-horizontal"></i></button>
                     </div>
+                    @if (menuOpen)
+                    {
+                        <div class="hub-menu" role="menu" @onclick="() => menuOpen = false">
+                            @if (CanWrite) { <button type="button" role="menuitem" @onclick="OpenSolveAsync"><i data-lucide="check"></i>Mark as solved</button> }
+                            <button type="button" role="menuitem" @onclick="() => detailsOpen = true"><i data-lucide="users"></i>People, answers and files</button>
+                            @if (t.Seen is { } ms) { <button type="button" role="menuitem" @onclick:stopPropagation="true" @onclick="ToggleSeen"><i data-lucide="eye"></i>Seen by @ms.Seen of @ms.Total</button> }
+                            <span class="hx-mnote"><i data-lucide="lock"></i>@HubKinds.Label(t.Kind) · confidential to @t.People.Count people</span>
+                        </div>
+                    }
+                    @if (seenOpen && t.Seen is { } sp)
+                    {
+                        <div class="hub-seenpop" role="dialog" aria-label="Who has seen it">
+                            <b>@(sp.Seen == sp.Total ? "Everyone has seen the latest reply." : $"{sp.Seen} of {sp.Total} have seen the latest reply")</b>
+                            @if (sp.NotYet.Count > 0) { <p>Not yet: @string.Join(", ", sp.NotYet)</p><small>They were told on PC and phone. Use Remind in the Next step card if you need an answer.</small> }
+                            <button type="button" class="hub-btn sm" @onclick="() => seenOpen = false">OK</button>
+                        </div>
+                    }
 
                     <div class="hub-scroll" id="hub-scroll">
                         <article class="hub-post">
@@ -145,9 +168,18 @@
                                     @if (i > 0) { <span class="hx-ln @(i <= StageIndex ? "done" : "")"></span> }
                                     <span class="hx-s @(i < StageIndex ? "done" : i == StageIndex ? "now" : "")"><b>@(i < StageIndex ? "✓" : (i + 1).ToString())</b>@label</span>
                                 }
-                                <span class="hx-hint">@StageHint</span>
                             </div>
                         </article>
+
+                        @if (Best is { } best)
+                        {
+                            <div class="hub-best">
+                                <span class="hx-ic"><i data-lucide="award"></i></span>
+                                <div><small>Best answer · @(best.Author?.Name ?? "Former employee")</small>
+                                    <p>@best.Body</p></div>
+                                <button type="button" class="hub-btn sm ghost" @onclick="() => JumpTo(best.Id)">Show in thread</button>
+                            </div>
+                        }
 
                         @if (t.SolvedAt is not null)
                         {
@@ -201,8 +233,8 @@
                             {
                                 <div class="hub-next n-green">
                                     <span class="hx-ic"><i data-lucide="check-check"></i></span>
-                                    <div><small>Next step</small><b>Everyone has answered. Is it solved?</b>
-                                        <p>Write the answer in one or two sentences so nobody has to ask again.</p></div>
+                                    <div><small>Next step</small><b>@(Best is not null ? "A best answer is picked. Is it solved?" : "Everyone has answered. Is it solved?")</b>
+                                        <p>@(Best is not null ? "Mark as solved starts from the best answer. Change it if needed." : "Write the answer in one or two sentences so nobody has to ask again.")</p></div>
                                     <div class="hx-acts"><button type="button" class="hub-btn go" @onclick="OpenSolveAsync"><i data-lucide="check"></i>Mark as solved</button></div>
                                 </div>
                             }
@@ -255,7 +287,7 @@
                         {
                             @if (item is HubPostDto sys)
                             {
-                                <div class="hub-ev" @key="sys.Id"><i data-lucide="sparkles"></i><span>@sys.Body <span class="hx-muted">· @When(sys.CreatedAt)</span></span></div>
+                                <div class="hub-ev" @key="sys.Id"><i data-lucide="sparkles"></i><span>@sys.Body <span class="hx-muted" title="@Full(sys.CreatedAt)">· @Rel(sys.CreatedAt)</span></span></div>
                             }
                             else if (item is Thread th)
                             {
@@ -323,7 +355,7 @@
                         </div>
                         <div class="hub-card"><h3><i data-lucide="paperclip"></i>Files · @t.Files.Count</h3>
                             @if (t.Files.Count == 0) { <p class="hx-muted">No files yet.</p> }
-                            @foreach (var f in t.Files) { <a class="hub-file" href="@f.Url" target="_blank" rel="noopener"><span class="hx-fi">@FileTag(f.FileName, f.ContentType)</span><span><b>@f.FileName</b><small>@Size(f.Size) · @f.Uploader</small></span></a> }
+                            @foreach (var f in t.Files) { <button type="button" class="hub-file" @onclick="() => OpenFileAsync(f)"><span class="hx-fi">@FileTag(f.FileName, f.ContentType)</span><span><b>@f.FileName</b><small>@Size(f.Size) · @f.Uploader</small></span></button> }
                         </div>
                         <div class="hub-card note"><i data-lucide="lock"></i><span>Confidential. Only these @t.People.Count people can open this topic, its replies and files.</span></div>
                     </aside>
@@ -446,23 +478,97 @@
     </div>
 }
 
+@if (zoom is { } zf)
+{
+    <div class="hub-zoom" role="dialog" aria-modal="true" aria-label="@zf.FileName" @onclick="() => zoom = null" @onkeydown="OnZoomKey" tabindex="-1" id="hub-zoom">
+        <div class="hx-zbar" @onclick:stopPropagation="true">
+            <b>@zf.FileName</b><span class="hx-sp"></span>
+            <button type="button" class="hub-btn sm" @onclick="() => zoomBig = !zoomBig"><i data-lucide="@(zoomBig ? "zoom-out" : "zoom-in")"></i>@(zoomBig ? "Fit" : "Zoom")</button>
+            <button type="button" class="hub-btn sm" @onclick="() => OpenFileAsync(zf)"><i data-lucide="download"></i>Download</button>
+            <button type="button" class="hub-btn sm" @onclick="() => zoom = null" aria-label="Close"><i data-lucide="x"></i></button>
+        </div>
+        <div class="hx-zimg @(zoomBig ? "big" : "")">
+            <img data-ipop-att="@zf.Id" alt="@zf.FileName" title="Click to @(zoomBig ? "fit" : "zoom")" @onclick:stopPropagation="true" @onclick="() => zoomBig = !zoomBig" />
+        </div>
+    </div>
+}
+
 @code {
     private RenderFragment PostView(HubPostDto p, bool kid) => __builder =>
     {
-        <div class="hub-rp @(kid ? "kid" : "") @(p.IsNew ? "isnew" : "")" id="hub-p-@p.Id">
+        @if (p.Deleted)
+        {
+            <div class="hub-rp gone @(kid ? "kid" : "")" id="hub-p-@p.Id">
+                <span class="hx-goneic"><i data-lucide="trash-2"></i></span>
+                <div class="hub-rp-b"><div class="hx-tx">This reply was deleted by @(p.Author?.Name ?? "its author").</div></div>
+            </div>
+            return;
+        }
+        var mineP = p.Author?.Id == Me;
+        var images = p.Files.Where(IsImage).ToList();
+        var others = p.Files.Where(f => !IsImage(f)).ToList();
+        <div class="hub-rp @(kid ? "kid" : "") @(p.IsNew ? "isnew" : "") @(p.Best ? "best" : "")" id="hub-p-@p.Id">
             <PersonAvatar Name="@(p.Author?.Name)" Photo="@(p.Author?.PhotoUrl)" Size="@(kid ? 32 : 40)" Decorative="true" />
             <div class="hub-rp-b">
-                <div class="hx-hd"><b>@(p.Author?.Name ?? "Former employee")</b><span>@(p.Author?.Department) · @When(p.CreatedAt)</span>@if (p.IsNew) {<span class="hx-newdot">New</span>}</div>
-                <div class="hx-tx">@p.Body</div>
+                <div class="hx-hd"><b>@(p.Author?.Name ?? "Former employee")</b><span>@(p.Author?.Department) · <time title="@Full(p.CreatedAt)">@Rel(p.CreatedAt)</time>@if (p.EditedAt is { } ed) {<em title="Edited @Full(ed)"> · edited</em>}</span>
+                    @if (p.IsNew) {<span class="hx-newdot">New</span>}
+                    @if (p.Best) {<span class="hx-bestpill"><i data-lucide="award"></i>Best answer</span>}
+                    @if (mineP && CanWrite && editing != p.Id)
+                    {
+                        <span class="hx-own">
+                            <button type="button" aria-label="Edit your reply" title="Edit" @onclick="() => StartEdit(p)"><i data-lucide="pencil"></i></button>
+                            <button type="button" aria-label="Delete your reply" title="Delete" @onclick="() => confirmDelete = p.Id"><i data-lucide="trash-2"></i></button>
+                        </span>
+                    }
+                </div>
+                @if (editing == p.Id)
+                {
+                    <div class="hub-inl-box hx-edit">
+                        <textarea rows="3" aria-label="Edit your reply" @bind="editDraft" @bind:event="oninput" @onkeydown="OnEditKeyAsync" autofocus></textarea>
+                        <div class="hx-crow"><span class="hx-kb">Ctrl+Enter to save · Esc to cancel</span><span class="hx-sp"></span>
+                            <button type="button" class="hub-btn sm" @onclick="CancelEdit">Cancel</button>
+                            <button type="button" class="hub-btn pri sm @(acting == p.Id ? "busy" : "")" @onclick="SaveEditAsync">Save</button></div>
+                    </div>
+                }
+                else
+                {
+                    <div class="hx-tx">@p.Body</div>
+                }
+                @if (confirmDelete == p.Id)
+                {
+                    <div class="hx-confirm"><span>Delete this reply for everyone?</span>
+                        <button type="button" class="hub-btn sm danger @(acting == p.Id ? "busy" : "")" @onclick="() => DeleteAsync(p)">Delete</button>
+                        <button type="button" class="hub-btn sm" @onclick="() => confirmDelete = null">Keep it</button></div>
+                }
                 @if (p.AskTo is not null)
                 {
                     <span class="hub-askchip @(p.AskAnswered ? "ok" : "")"><i data-lucide="@(p.AskAnswered ? "check" : "at-sign")"></i>@(p.AskAnswered ? $"{p.AskToName} answered" : $"Needs an answer from {p.AskToName}")</span>
                 }
-                @if (p.Files.Count > 0)
+                @if (images.Count > 0)
                 {
-                    <div class="hub-files">@foreach (var f in p.Files) {<a class="hub-file" href="@f.Url" target="_blank" rel="noopener"><span class="hx-fi">@FileTag(f.FileName, f.ContentType)</span><span><b>@f.FileName</b><small>@Size(f.Size)</small></span></a>}</div>
+                    <div class="hub-imgs n@(Math.Min(images.Count, 3))">@foreach (var f in images) {
+                        <button type="button" class="hx-img" title="@f.FileName · click to enlarge" @onclick="() => OpenZoom(f)"><img data-ipop-att="@f.Id" alt="@f.FileName" loading="lazy" /></button>}</div>
                 }
-                @if (CanWrite) { <div class="hx-ft"><button type="button" @onclick="() => StartReply(p)"><i data-lucide="message-circle"></i>Reply</button></div> }
+                @if (others.Count > 0)
+                {
+                    <div class="hub-files">@foreach (var f in others) {<button type="button" class="hub-file" @onclick="() => OpenFileAsync(f)"><span class="hx-fi">@FileTag(f.FileName, f.ContentType)</span><span><b>@f.FileName</b><small>@Size(f.Size)</small></span></button>}</div>
+                }
+                <div class="hx-ft">
+                    @if (CanWrite) { <button type="button" @onclick="() => StartReply(p)"><i data-lucide="message-circle"></i>Reply</button> }
+                    @if (IsMember && !mineP)
+                    {
+                        <button type="button" class="hx-noted @(p.NotedByMe ? "on" : "") @(acting == p.Id ? "busy" : "")" aria-pressed="@(p.NotedByMe ? "true" : "false")"
+                                title="@(p.NotedByMe ? "You noted this. Click to undo." : "One tap: I've read it, no need to reply")" @onclick="() => NoteAsync(p)">
+                            <i data-lucide="thumbs-up"></i>Noted</button>
+                    }
+                    @if (CanWrite)
+                    {
+                        <button type="button" class="hx-bestbtn @(p.Best ? "on" : "")" aria-pressed="@(p.Best ? "true" : "false")"
+                                title="@(p.Best ? "Remove best answer" : "This reply answers the topic")" @onclick="() => BestAsync(p)">
+                            <i data-lucide="award"></i>@(p.Best ? "Best answer" : "Mark best")</button>
+                    }
+                    @if (p.NotedBy is { Count: > 0 } nb) { <span class="hx-nby"><i data-lucide="thumbs-up"></i>Noted by @NotedText(nb)</span> }
+                </div>
             </div>
         </div>
     };

@@ -60,7 +60,11 @@ public sealed record HubAskDto(Guid Id, Guid PostId, HubPersonDto To, HubPersonD
 public sealed record HubFileDto(Guid Id, string FileName, string ContentType, long Size, string Url, Guid? PostId, string Uploader);
 
 public sealed record HubPostDto(Guid Id, Guid? ParentId, HubPersonDto? Author, string Body, string Kind, DateTime CreatedAt,
-    bool IsNew, IReadOnlyList<HubFileDto> Files, Guid? AskTo, string? AskToName, bool AskAnswered);
+    bool IsNew, IReadOnlyList<HubFileDto> Files, Guid? AskTo, string? AskToName, bool AskAnswered,
+    DateTime? EditedAt = null, bool Deleted = false, IReadOnlyList<string>? NotedBy = null, bool NotedByMe = false, bool Best = false);
+
+/// Who in the topic has read it up to the latest post ("Seen by 3 of 4"), and who hasn't yet.
+public sealed record HubSeenDto(int Seen, int Total, IReadOnlyList<string> NotYet);
 
 public sealed record HubTaskLinkDto(Guid TaskId, Guid ProjectId, string Title, string ProjectName, string Assignee, DateTime? DueDate);
 
@@ -69,10 +73,12 @@ public sealed record HubTopicDto(
     HubPersonDto CreatedBy, IReadOnlyList<HubPersonDto> People, IReadOnlyList<string> Departments,
     IReadOnlyList<HubPostDto> Posts, IReadOnlyList<HubAskDto> Asks, IReadOnlyList<HubFileDto> Files,
     DateTime? SolvedAt, HubPersonDto? SolvedBy, string? SolvedSummary, IReadOnlyList<HubTaskLinkDto> Tasks,
-    DateTime? ReadUpTo);
+    DateTime? ReadUpTo, Guid? BestPostId = null, HubSeenDto? Seen = null);
 
 public sealed record CreateHubTopicRequest(string? Kind, string? Title, string? Need, DateTime? DueDate, IReadOnlyList<Guid>? People);
 public sealed record CreateHubPostRequest(string? Body, Guid? ParentId, Guid? AskUserId, IReadOnlyList<Guid>? AttachmentIds);
+public sealed record EditHubPostRequest(string? Body);
+public sealed record HubBestRequest(Guid? PostId);
 public sealed record AddHubMembersRequest(IReadOnlyList<Guid>? People);
 public sealed record HubFollowUpTask(string? Title, Guid AssigneeId, Guid ProjectId, DateTime? DueDate);
 public sealed record SolveHubTopicRequest(string? Summary, IReadOnlyList<HubFollowUpTask>? Tasks);
@@ -92,6 +98,12 @@ public interface IHubService
     Task<HubResult<HubTopicDto>> GetAsync(Guid me, Guid topicId, bool markRead, CancellationToken ct);
     Task<HubResult<HubTopicDto>> CreateAsync(Guid me, CreateHubTopicRequest req, CancellationToken ct);
     Task<HubResult<HubTopicDto>> PostAsync(Guid me, Guid topicId, CreateHubPostRequest req, CancellationToken ct);
+    Task<HubResult<HubTopicDto>> EditPostAsync(Guid me, Guid topicId, Guid postId, EditHubPostRequest req, CancellationToken ct);
+    Task<HubResult<HubTopicDto>> DeletePostAsync(Guid me, Guid topicId, Guid postId, CancellationToken ct);
+    /// Toggles my "Noted" on a reply.
+    Task<HubResult<HubTopicDto>> NoteAsync(Guid me, Guid topicId, Guid postId, CancellationToken ct);
+    /// Marks a reply as the best answer, or clears it when postId is null or already the best one.
+    Task<HubResult<HubTopicDto>> BestAsync(Guid me, Guid topicId, Guid? postId, CancellationToken ct);
     Task<HubResult<HubTopicDto>> AddMembersAsync(Guid me, Guid topicId, AddHubMembersRequest req, CancellationToken ct);
     Task<HubResult<bool>> RemindAsync(Guid me, Guid topicId, Guid askId, CancellationToken ct);
     Task<HubResult<HubTopicDto>> SolveAsync(Guid me, Guid topicId, SolveHubTopicRequest req, CancellationToken ct);

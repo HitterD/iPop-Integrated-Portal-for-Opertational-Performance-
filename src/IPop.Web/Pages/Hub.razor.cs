@@ -23,6 +23,7 @@ public partial class Hub : IDisposable
     [Inject] private NavigationManager Nav { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
     [Inject] private PageCache Cache { get; set; } = default!;
+    [Inject] private HttpClient Http { get; set; } = default!;
 
     internal const string CacheKey = "hub.list";
     public const long MaxUpload = 50L * 1024 * 1024;
@@ -55,6 +56,15 @@ public partial class Hub : IDisposable
     private readonly HashSet<Guid> reminded = [];
     private Guid? remindBusy;
     private Guid? addPerson;
+
+    // ── Post actions (edit / delete / noted / best) ──
+    private Guid? editing;
+    private string editDraft = "";
+    private Guid? confirmDelete;
+    private Guid? acting;
+    private bool menuOpen, seenOpen;
+    private HubFileDto? zoom;
+    private bool zoomBig, zoomFocused;
 
     // ── Sheets ──
     private bool newOpen, solveOpen;
@@ -112,6 +122,7 @@ public partial class Hub : IDisposable
         if (loadedId == Id) return;
         loadedId = Id;
         replyParent = null; draft = ""; askTo = null; pending.Clear(); flashPost = null;
+        editing = null; confirmDelete = null; menuOpen = false; seenOpen = false; zoom = null;
         await LoadTopicAsync(Id.Value, markRead: true);
     }
 
@@ -123,6 +134,12 @@ public partial class Hub : IDisposable
             await JS.InvokeVoidAsync("ipop.icons");
             await JS.InvokeVoidAsync("ipopHub.after", flashPost?.ToString());
             flashPost = null;
+            // Pictures in replies and the zoom view: /api/attachments wants the bearer token, so they load as blob: URLs.
+            if (topic?.Files.Any(IsImage) == true)
+                await JS.InvokeVoidAsync("ipop.mailImages.hydrate", null, Http.BaseAddress?.ToString() ?? "", Auth.AccessToken);
+            // Esc closes the picture: the dialog needs focus to hear it.
+            if (zoom is not null && !zoomFocused) { zoomFocused = true; await JS.InvokeVoidAsync("ipopHub.focus", "hub-zoom"); }
+            if (zoom is null) zoomFocused = false;
         }
         catch (JSDisconnectedException) { }
         catch (InvalidOperationException) { }
@@ -254,17 +271,6 @@ public partial class Hub : IDisposable
 
     private int StageIndex => topic?.Status switch { HubStatus.Solved => 2, HubStatus.Ongoing => 1, _ => 0 };
 
-    private string StageHint
-    {
-        get
-        {
-            if (topic is null) return "";
-            if (topic.Status == HubStatus.Solved) return "Done.";
-            if (OpenAsks.Count > 0) return $"Waiting for {string.Join(", ", OpenAsks.Select(a => Short(a.To.Name)).Distinct())}.";
-            return topic.Status == HubStatus.New ? "Waiting for the first reply." : "Everyone has answered. Ready to mark it solved?";
-        }
-    }
-
     internal static string Short(string name) => IPop.Application.PersonName.Short(name);
 
     private sealed record Thread(HubPostDto Post, List<HubPostDto> Replies);
@@ -276,19 +282,52 @@ public partial class Hub : IDisposable
         var tops = new List<object>();
         var byParent = topic.Posts.Where(p => p.ParentId is not null).GroupBy(p => p.ParentId!.Value).ToDictionary(g => g.Key, g => g.ToList());
         foreach (var p in topic.Posts.Where(p => p.ParentId is null))
-            tops.Add(p.Kind == "system" ? p : new Thread(p, byParent.TryGetValue(p.Id, out var r) ? r : []));
+        {
+            var kids = byParent.TryGetValue(p.Id, out var r) ? r.Where(k => !k.Deleted).ToList() : [];
+            if (p.Kind == "system") tops.Add(p);
+            else if (!p.Deleted || kids.Count > 0) tops.Add(new Thread(p, kids));
+        }
         if (sort == "new") tops.Reverse();
         return tops;
     }
 
-    private int ReplyCount => topic?.Posts.Count(p => p.Kind == "reply") ?? 0;
+    private int ReplyCount => topic?.Posts.Count(p => p.Kind == "reply" && !p.Deleted) ?? 0;
 
-    private static string When(DateTime utc)
+    private bool IsMember => topic is not null && topic.People.Any(p => p.Id == Me);
+
+    private HubPostDto? Best => topic?.BestPostId is { } b ? topic.Posts.FirstOrDefault(p => p.Id == b && !p.Deleted) : null;
+
+    internal static string StatusLabel(string status) => status switch { HubStatus.Solved => "Solved", HubStatus.Ongoing => "Ongoing", _ => "New" };
+
+    internal static bool IsImage(HubFileDto f) => f.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+        && !f.ContentType.Contains("svg", StringComparison.OrdinalIgnoreCase);
+
+    /// "Abdul", "Abdul and Dedi", "Abdul, Dedi and 2 others".
+    internal static string NotedText(IReadOnlyList<string> names) => names.Count switch
     {
+        1 => names[0],
+        2 => $"{names[0]} and {names[1]}",
+        3 => $"{names[0]}, {names[1]} and {names[2]}",
+        _ => $"{names[0]}, {names[1]} and {names.Count - 2} others",
+    };
+
+    private static string Rel(DateTime utc) => Relative(utc, DateTime.UtcNow);
+
+    /// Short, friendly time for a reply: "just now", "5 min ago", "2 hours ago", "yesterday 14:05", "Tue 09:12", "3 Nov".
+    internal static string Relative(DateTime utc, DateTime nowUtc)
+    {
+        var ago = nowUtc - utc;
+        if (ago < TimeSpan.FromMinutes(1)) return "just now";
+        if (ago < TimeSpan.FromHours(1)) return $"{(int)ago.TotalMinutes} min ago";
         var l = utc.ToLocalTime();
-        var today = DateTime.Today;
-        return l.Date == today ? $"Today · {l:HH:mm}" : l.Date == today.AddDays(-1) ? $"Yesterday · {l:HH:mm}" : $"{l:d MMM} · {l:HH:mm}";
+        var today = nowUtc.ToLocalTime().Date;
+        if (l.Date == today) { var h = (int)ago.TotalHours; return h == 1 ? "1 hour ago" : $"{h} hours ago"; }
+        if (l.Date == today.AddDays(-1)) return $"yesterday {l:HH:mm}";
+        if (l.Date > today.AddDays(-7)) return $"{l:ddd HH:mm}";
+        return l.Year == today.Year ? $"{l:d MMM}" : $"{l:d MMM yyyy}";
     }
+
+    private static string Full(DateTime utc) => utc.ToLocalTime().ToString("dddd d MMMM yyyy, HH:mm");
 
     private static string Size(long b) => b >= 1024 * 1024 ? $"{b / 1024d / 1024:0.#} MB" : $"{Math.Max(1, b / 1024)} KB";
 
@@ -297,6 +336,82 @@ public partial class Hub : IDisposable
         var ext = Path.GetExtension(name).TrimStart('.').ToUpperInvariant();
         if (type.StartsWith("image/")) return "IMG";
         return ext.Length is > 0 and <= 4 ? ext : "FILE";
+    }
+
+    // ── Post actions ─────────────────────────────────────────────────────
+
+    private void StartEdit(HubPostDto p) { editing = p.Id; editDraft = p.Body; confirmDelete = null; }
+    private void CancelEdit() { editing = null; editDraft = ""; }
+
+    private async Task SaveEditAsync()
+    {
+        if (topic is null || editing is not { } id || acting is not null) return;
+        if (string.IsNullOrWhiteSpace(editDraft)) { Toasts.Show("Write something, or delete the reply instead.", ToastKind.Info); return; }
+        acting = id;
+        var r = await Api.EditPostAsync(topic.Id, id, editDraft);
+        acting = null;
+        if (!r.Ok) { Toasts.Show(r.Message ?? "Not saved. Try again.", ToastKind.Error); return; }
+        topic = r.Value;
+        CancelEdit();
+        flashPost = id;
+        Toasts.Show("Saved. Everyone sees it marked as edited.", ToastKind.Success);
+    }
+
+    private async Task OnEditKeyAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && (e.CtrlKey || e.MetaKey)) await SaveEditAsync();
+        else if (e.Key == "Escape") CancelEdit();
+    }
+
+    private async Task DeleteAsync(HubPostDto p)
+    {
+        if (topic is null || acting is not null) return;
+        acting = p.Id;
+        var r = await Api.DeletePostAsync(topic.Id, p.Id);
+        acting = null;
+        confirmDelete = null;
+        if (!r.Ok) { Toasts.Show(r.Message ?? "Not deleted. Try again.", ToastKind.Error); return; }
+        topic = r.Value;
+        Toasts.Show("Reply deleted.", ToastKind.Success);
+        await LoadListAsync();
+        await Badges.RefreshAsync();
+    }
+
+    private async Task NoteAsync(HubPostDto p)
+    {
+        if (topic is null || acting is not null) return;
+        acting = p.Id;
+        var r = await Api.NoteAsync(topic.Id, p.Id);
+        acting = null;
+        if (!r.Ok) { Toasts.Show(r.Message ?? "Couldn't save that. Try again.", ToastKind.Error); return; }
+        topic = r.Value;
+    }
+
+    private async Task BestAsync(HubPostDto p)
+    {
+        if (topic is null || acting is not null) return;
+        acting = p.Id;
+        var r = await Api.BestAsync(topic.Id, p.Best ? null : p.Id);
+        acting = null;
+        if (!r.Ok) { Toasts.Show(r.Message ?? "Couldn't save that. Try again.", ToastKind.Error); return; }
+        topic = r.Value;
+        Toasts.Show(p.Best ? "Best answer removed." : "Marked as the best answer. It's pinned under the topic.", ToastKind.Success);
+        await LoadListAsync();
+    }
+
+    private void JumpTo(Guid postId) => flashPost = postId;
+
+    private void ToggleSeen() { seenOpen = !seenOpen; menuOpen = false; }
+
+    private void OpenZoom(HubFileDto f) { zoom = f; zoomBig = false; }
+
+    private void OnZoomKey(KeyboardEventArgs e) { if (e.Key == "Escape") zoom = null; }
+
+    /// Files need the sign-in token, so they are fetched and handed to the browser instead of linked.
+    private async Task OpenFileAsync(HubFileDto f)
+    {
+        try { await JS.InvokeVoidAsync("ipopHub.open", Http.BaseAddress?.ToString() ?? "", Auth.AccessToken, f.Id.ToString(), f.FileName, IsImage(f) || f.ContentType == "application/pdf"); }
+        catch (JSException) { Toasts.Show("The file couldn't be opened. Try again.", ToastKind.Error); }
     }
 
     // ── Composer ─────────────────────────────────────────────────────────
@@ -496,13 +611,16 @@ public partial class Hub : IDisposable
 
     private async Task OpenSolveAsync()
     {
-        solve = new Solve();
+        solve = new Solve { Summary = Best is { } b ? Trim(b.Body, 600) : "" };
         solveOpen = true;
+        menuOpen = false;
         var r = await Api.ProjectsAsync();
         if (r.Ok) solve.Projects = r.Value!;
     }
 
     private void CloseSolve() => solveOpen = false;
+
+    private static string Trim(string text, int max) => text.Length <= max ? text : text[..(max - 1)].TrimEnd() + "…";
 
     private void SetFollowUp(bool on)
     {

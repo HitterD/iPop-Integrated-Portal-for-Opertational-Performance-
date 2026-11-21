@@ -39,7 +39,7 @@ public sealed class HubService(
             .Select(m => new { m.TopicId, m.UserId, m.AddedAt }).ToListAsync(ct);
         var asks = await db.HubAsks.AsNoTracking().Where(a => ids.Contains(a.TopicId) && a.AnsweredAt == null)
             .Select(a => new { a.TopicId, a.ToUserId, a.CreatedAt }).ToListAsync(ct);
-        var posts = await db.HubPosts.AsNoTracking().Where(p => ids.Contains(p.TopicId))
+        var posts = await db.HubPosts.AsNoTracking().Where(p => ids.Contains(p.TopicId) && p.DeletedAt == null)
             .Select(p => new { p.TopicId, p.AuthorId, p.Kind, p.Body, p.CreatedAt }).ToListAsync(ct);
         var people = await People(members.Select(m => m.UserId).Distinct(), ct);
 
@@ -94,12 +94,17 @@ public sealed class HubService(
         var member = await db.HubMembers.FirstOrDefaultAsync(m => m.TopicId == topicId && m.UserId == me, ct);
         if (member is null || !await db.HubTopics.AnyAsync(t => t.Id == topicId && t.DeletedAt == null, ct)) return NotFound<HubTopicDto>();
         var readUpTo = member.LastReadAt;
-        var dto = await BuildAsync(me, topicId, readUpTo, ct);
         if (markRead)
         {
             member.LastReadAt = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
+        }
+        var dto = await BuildAsync(me, topicId, readUpTo, ct);
+        if (markRead)
+        {
             await PushBadgeAsync([me], ct);
+            // "Seen by" changed for everyone else in the topic.
+            if (readUpTo is null || dto.Posts.Any(p => p.IsNew)) await PushChangedAsync(topicId, ct);
         }
         return HubResult<HubTopicDto>.Ok(dto);
     }
@@ -216,6 +221,103 @@ public sealed class HubService(
         await PushChangedAsync(topicId, ct);
         if (answered.Count > 0) await PushBadgeAsync([me], ct);
         return HubResult<HubTopicDto>.Ok(await BuildAsync(me, topicId, now, ct));
+    }
+
+    public async Task<HubResult<HubTopicDto>> EditPostAsync(Guid me, Guid topicId, Guid postId, EditHubPostRequest req, CancellationToken ct)
+    {
+        var (post, err) = await OwnPostAsync(me, topicId, postId, ct);
+        if (post is null) return Fail<HubTopicDto>(err!.Value.Code, err.Value.Message);
+        var body = (req.Body ?? "").Trim();
+        if (body.Length == 0) return Fail<HubTopicDto>("invalid", "Write something, or delete the reply instead.");
+        if (body.Length > HubEvents.BodyMax) body = body[..HubEvents.BodyMax];
+        if (body == post.Body) return HubResult<HubTopicDto>.Ok(await BuildAsync(me, topicId, DateTime.UtcNow, ct));
+        post.Body = body;
+        post.EditedAt = DateTime.UtcNow;
+        // A question asked in this reply follows the new wording.
+        await db.HubAsks.Where(a => a.PostId == postId).ForEachAsync(a => a.Question = body.Length > 500 ? body[..500] : body, ct);
+        await db.SaveChangesAsync(ct);
+        await PushChangedAsync(topicId, ct);
+        return HubResult<HubTopicDto>.Ok(await BuildAsync(me, topicId, DateTime.UtcNow, ct));
+    }
+
+    public async Task<HubResult<HubTopicDto>> DeletePostAsync(Guid me, Guid topicId, Guid postId, CancellationToken ct)
+    {
+        var (post, err) = await OwnPostAsync(me, topicId, postId, ct);
+        if (post is null) return Fail<HubTopicDto>(err!.Value.Code, err.Value.Message);
+        var now = DateTime.UtcNow;
+        post.DeletedAt = now;
+        // An open question in a deleted reply no longer waits for anyone.
+        var open = await db.HubAsks.Where(a => a.PostId == postId && a.AnsweredAt == null).ToListAsync(ct);
+        db.HubAsks.RemoveRange(open);
+        db.HubNotes.RemoveRange(await db.HubNotes.Where(n => n.PostId == postId).ToListAsync(ct));
+        var topic = await db.HubTopics.FirstAsync(t => t.Id == topicId, ct);
+        if (topic.BestPostId == postId) topic.BestPostId = null;
+        await db.SaveChangesAsync(ct);
+        await PushChangedAsync(topicId, ct);
+        if (open.Count > 0) await PushBadgeAsync(open.Select(a => a.ToUserId), ct);
+        return HubResult<HubTopicDto>.Ok(await BuildAsync(me, topicId, now, ct));
+    }
+
+    public async Task<HubResult<HubTopicDto>> NoteAsync(Guid me, Guid topicId, Guid postId, CancellationToken ct)
+    {
+        var topic = await MemberTopicAsync(me, topicId, ct);
+        if (topic is null) return NotFound<HubTopicDto>();
+        var post = await db.HubPosts.AsNoTracking().FirstOrDefaultAsync(p => p.Id == postId && p.TopicId == topicId, ct);
+        if (post is null || post.Kind != "reply" || post.DeletedAt is not null) return Fail<HubTopicDto>("invalid", "That reply isn't there any more.");
+        if (post.AuthorId == me) return Fail<HubTopicDto>("invalid", "You can't note your own reply.");
+        var mine = await db.HubNotes.FirstOrDefaultAsync(n => n.PostId == postId && n.UserId == me, ct);
+        if (mine is null) db.HubNotes.Add(new HubNote { PostId = postId, UserId = me, CreatedAt = DateTime.UtcNow });
+        else db.HubNotes.Remove(mine);
+        // Noting a reply means I've read the topic up to here.
+        var member = await db.HubMembers.FirstAsync(m => m.TopicId == topicId && m.UserId == me, ct);
+        member.LastReadAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        await PushChangedAsync(topicId, ct);
+        return HubResult<HubTopicDto>.Ok(await BuildAsync(me, topicId, member.LastReadAt, ct));
+    }
+
+    public async Task<HubResult<HubTopicDto>> BestAsync(Guid me, Guid topicId, Guid? postId, CancellationToken ct)
+    {
+        var topic = await MemberTopicAsync(me, topicId, ct);
+        if (topic is null) return NotFound<HubTopicDto>();
+        if (topic.SolvedAt is not null) return Fail<HubTopicDto>("solved", "This topic is solved. Reopen it to change the best answer.");
+        var now = DateTime.UtcNow;
+        var name = await NameAsync(me, ct);
+        if (postId is null || topic.BestPostId == postId)
+        {
+            if (topic.BestPostId is null) return HubResult<HubTopicDto>.Ok(await BuildAsync(me, topicId, now, ct));
+            topic.BestPostId = null;
+            db.HubPosts.Add(new HubPost { Id = Guid.NewGuid(), TopicId = topicId, Kind = "system", CreatedAt = now, Body = $"{name} removed the best answer." });
+        }
+        else
+        {
+            var post = await db.HubPosts.AsNoTracking().FirstOrDefaultAsync(p => p.Id == postId && p.TopicId == topicId, ct);
+            if (post is null || post.Kind != "reply" || post.DeletedAt is not null) return Fail<HubTopicDto>("invalid", "That reply isn't there any more.");
+            topic.BestPostId = post.Id;
+            var author = post.AuthorId is { } a ? await NameAsync(a, ct) : "a former employee";
+            db.HubPosts.Add(new HubPost
+            {
+                Id = Guid.NewGuid(), TopicId = topicId, Kind = "system", CreatedAt = now,
+                Body = post.AuthorId == me ? $"{name} marked their own reply as the best answer." : $"{name} marked {author}'s reply as the best answer.",
+            });
+        }
+        topic.LastActivityAt = now;
+        topic.UpdatedAt = now;
+        await db.SaveChangesAsync(ct);
+        await PushChangedAsync(topicId, ct);
+        return HubResult<HubTopicDto>.Ok(await BuildAsync(me, topicId, now, ct));
+    }
+
+    /// My own, not deleted reply in an open topic I'm a member of.
+    private async Task<(HubPost? Post, (string Code, string Message)? Error)> OwnPostAsync(Guid me, Guid topicId, Guid postId, CancellationToken ct)
+    {
+        var topic = await MemberTopicAsync(me, topicId, ct);
+        if (topic is null) return (null, ("not_found", "Topic not found."));
+        if (topic.SolvedAt is not null) return (null, ("solved", "This topic is solved. Reopen it to change replies."));
+        var post = await db.HubPosts.FirstOrDefaultAsync(p => p.Id == postId && p.TopicId == topicId, ct);
+        if (post is null || post.Kind != "reply" || post.DeletedAt is not null) return (null, ("invalid", "That reply isn't there any more."));
+        if (post.AuthorId != me) return (null, ("forbidden", "You can only change your own replies."));
+        return (post, null);
     }
 
     public async Task<HubResult<HubTopicDto>> AddMembersAsync(Guid me, Guid topicId, AddHubMembersRequest req, CancellationToken ct)
@@ -410,16 +512,33 @@ public sealed class HubService(
                      select new HubFileDto(a.Id, a.FileName, a.ContentType, a.Size, $"/api/attachments/{a.Id}", l.PostId,
                          people.TryGetValue(l.UploaderId, out var up) ? PersonName.Short(up.Name) : "")).ToList();
         var askByPost = asks.GroupBy(a => a.PostId).ToDictionary(g => g.Key, g => g.First());
+        var postIds = posts.Select(p => p.Id).ToList();
+        var notes = await db.HubNotes.AsNoTracking().Where(n => postIds.Contains(n.PostId)).OrderBy(n => n.CreatedAt)
+            .Select(n => new { n.PostId, n.UserId }).ToListAsync(ct);
+        var notePeople = await People(notes.Select(n => n.UserId).Where(id => !people.ContainsKey(id)), ct);
+        foreach (var (k, v) in notePeople) people[k] = v;
+        var notesByPost = notes.GroupBy(n => n.PostId).ToDictionary(g => g.Key, g => g.ToList());
         var postDtos = posts.Select(p =>
         {
             askByPost.TryGetValue(p.Id, out var ask);
-            return new HubPostDto(p.Id, p.ParentId, p.AuthorId is { } a && people.TryGetValue(a, out var ap) ? ap : null, p.Body, p.Kind, p.CreatedAt,
-                p.AuthorId != me && readUpTo is { } r && p.CreatedAt > r, files.Where(f => f.PostId == p.Id).ToList(),
-                ask?.ToUserId, ask is null ? null : PersonName.Short(people[ask.ToUserId].Name), ask?.AnsweredAt is not null);
+            var gone = p.DeletedAt is not null;
+            notesByPost.TryGetValue(p.Id, out var pn);
+            return new HubPostDto(p.Id, p.ParentId, p.AuthorId is { } a && people.TryGetValue(a, out var ap) ? ap : null, gone ? "" : p.Body, p.Kind, p.CreatedAt,
+                !gone && p.AuthorId != me && readUpTo is { } r && p.CreatedAt > r, gone ? [] : files.Where(f => f.PostId == p.Id).ToList(),
+                gone ? null : ask?.ToUserId, gone || ask is null ? null : PersonName.Short(people[ask.ToUserId].Name), ask?.AnsweredAt is not null,
+                gone ? null : p.EditedAt, gone, pn?.Select(n => PersonName.Short(people[n.UserId].Name)).ToList() ?? [],
+                pn?.Any(n => n.UserId == me) == true, t.BestPostId == p.Id);
         }).ToList();
         var askDtos = asks.Select(a => new HubAskDto(a.Id, a.PostId, people[a.ToUserId], people[a.AskedById], a.Question, a.CreatedAt,
             a.AnsweredAt, a.AnsweredAt is null && IsLate(a.CreatedAt, now), a.LastRemindedAt)).ToList();
         var members = memberIds.Select(id => people[id]).ToList();
+
+        // Seen: members who have read up to the latest reply (or the opening post when nobody replied).
+        var latest = posts.Where(p => p.Kind == "reply" && p.DeletedAt == null).Select(p => (DateTime?)p.CreatedAt).Max() ?? t.CreatedAt;
+        var reads = await db.HubMembers.AsNoTracking().Where(m => m.TopicId == topicId).Select(m => new { m.UserId, m.LastReadAt }).ToListAsync(ct);
+        var notYet = reads.Where(m => m.LastReadAt is null || m.LastReadAt < latest).Select(m => m.UserId).ToHashSet();
+        var seen = new HubSeenDto(reads.Count - notYet.Count, reads.Count,
+            memberIds.Where(notYet.Contains).Select(id => PersonName.Short(people[id].Name)).ToList());
 
         var (summary, taskRefs) = SplitSummary(t.SolvedSummary);
         var tasks = new List<HubTaskLinkDto>();
@@ -440,7 +559,7 @@ public sealed class HubService(
 
         return new HubTopicDto(t.Id, t.Kind, t.Title, t.Need, StatusOf(t), t.CreatedAt, t.DueDate, people[t.CreatedById], members,
             members.Select(m => m.Department ?? "No department").Distinct().ToList(), postDtos, askDtos, files,
-            t.SolvedAt, t.SolvedById is { } sb ? people[sb] : null, summary, tasks, readUpTo);
+            t.SolvedAt, t.SolvedById is { } sb ? people[sb] : null, summary, tasks, readUpTo, t.BestPostId, seen);
     }
 
     internal static (string? Summary, List<(Guid Task, Guid Project)> Tasks) SplitSummary(string? raw)

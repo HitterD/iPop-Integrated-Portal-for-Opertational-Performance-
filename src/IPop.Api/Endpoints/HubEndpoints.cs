@@ -28,6 +28,19 @@ public static class HubEndpoints
         g.MapPost("/topics/{id:guid}/posts", (Guid id, CreateHubPostRequest req, HttpContext http, IHubService svc, CancellationToken ct) =>
             Run(http, async me => From(await svc.PostAsync(me, id, req, ct))));
 
+        g.MapPut("/topics/{id:guid}/posts/{postId:guid}", (Guid id, Guid postId, EditHubPostRequest req, HttpContext http, IHubService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.EditPostAsync(me, id, postId, req, ct))));
+
+        g.MapDelete("/topics/{id:guid}/posts/{postId:guid}", (Guid id, Guid postId, HttpContext http, IHubService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.DeletePostAsync(me, id, postId, ct))));
+
+        g.MapPost("/topics/{id:guid}/posts/{postId:guid}/noted", (Guid id, Guid postId, HttpContext http, IHubService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.NoteAsync(me, id, postId, ct))));
+
+        // { postId } marks the best answer; null (or the current one) clears it.
+        g.MapPost("/topics/{id:guid}/best", (Guid id, HubBestRequest req, HttpContext http, IHubService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.BestAsync(me, id, req.PostId, ct))));
+
         g.MapPost("/topics/{id:guid}/members", (Guid id, AddHubMembersRequest req, HttpContext http, IHubService svc, CancellationToken ct) =>
             Run(http, async me => From(await svc.AddMembersAsync(me, id, req, ct))));
 
