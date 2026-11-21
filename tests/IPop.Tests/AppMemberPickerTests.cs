@@ -72,10 +72,14 @@ public class AppMemberPickerTests
         cut.Find("input").Input("bud");
         cut.WaitForAssertion(() => Assert.Empty(cut.FindAll(".member-picker-opt")), TimeSpan.FromMilliseconds(150));
         cut.Find("input").KeyDown("Enter");
-        Assert.Empty(picked);
-
-        cut.WaitForAssertion(() => Assert.Contains("Person bud", cut.Find(".member-picker-opt").TextContent), TimeSpan.FromSeconds(3));
-        cut.Find("input").KeyDown("Enter");
+        // Never the stale "bu" row. On a slow machine the fresh "bud" results may already be in by the time Enter
+        // lands; picking that one is correct too.
+        Assert.DoesNotContain(picked, r => r?.Nik == "NIK-bu");
+        if (picked.Count == 0)
+        {
+            cut.WaitForAssertion(() => Assert.Contains("Person bud", cut.Find(".member-picker-opt").TextContent), TimeSpan.FromSeconds(3));
+            cut.Find("input").KeyDown("Enter");
+        }
         cut.WaitForAssertion(() => Assert.Equal("NIK-bud", Assert.Single(picked)!.Nik), TimeSpan.FromSeconds(3));
     }
 
