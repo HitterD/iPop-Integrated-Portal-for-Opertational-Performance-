@@ -143,7 +143,7 @@ public sealed record NotifierSettings
             "meeting" or "calendar" => "calendar",
             "chat" => "chat",
             "project" or "task" => "projects",
-            "news" => "news",
+            "news" or "memo" => "news", // memo.published / memo.mandatory / memo.reminder are News posts
             "note" or "notes" => "notes",
             "call" or "calls" => "calls",
             _ => "system",

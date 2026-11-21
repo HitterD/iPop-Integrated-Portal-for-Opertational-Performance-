@@ -91,6 +91,8 @@ public class NotifierSettingsTests
     [InlineData("chat.mention", "chat")]
     [InlineData("project.task_assigned", "projects")]
     [InlineData("news.published", "news")]
+    [InlineData("memo.mandatory", "news")]   // a live memo popup loads the post (article + Acknowledge), not the info card
+    [InlineData("memo.reminder", "news")]
     [InlineData("note.comment", "notes")]
     [InlineData("system.hris_sync_failed", "system")]
     [InlineData("system.epop_import", "system")]   // links to /mail, still iPop's own notice
