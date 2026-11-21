@@ -56,7 +56,7 @@
     else if (!st.done) html = k === 'office' && st.preparing ? skeleton(f) : `<span class="vconv"><span class="spin"></span>Loading ${esc(F.typeName(f.name))}…</span>`;
     else if (st.error || !st.url) html = only(f, st.error || "Couldn't load the file.");
     else if (st.kind === 'pdf' || st.kind === 'office') html = (st.kind === 'office' ? `<span class="vconv">${IC('refresh-cw')}Converted to PDF by iPop · Download gives the original .${esc(F.ext(f.name))}</span>` : '')
-      + `<iframe class="pdf" src="${esc(st.url)}" title="${esc(f.name)}"></iframe>`;
+      + `<iframe class="vpdf" src="${esc(st.url)}" title="${esc(f.name)}"></iframe>`;
     else if (st.kind === 'image') html = `<div class="vimgw"><img class="vimg" src="${esc(st.url)}" alt="${esc(f.name)}" style="--z:${vz}"></div>`;
     else if (st.kind === 'video') html = `<video class="vmed" src="${esc(st.url)}" controls autoplay></video>`;
     else if (st.kind === 'audio') html = `<audio class="vmed" src="${esc(st.url)}" controls autoplay></audio>`;
