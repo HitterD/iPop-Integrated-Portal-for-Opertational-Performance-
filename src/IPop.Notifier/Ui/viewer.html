@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https://media.notifier.ipop; media-src https://media.notifier.ipop; frame-src https://media.notifier.ipop; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>Preview</title>
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="files.css">
+<link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+<div class="vw" id="vw">
+  <div class="vtb" data-drag>
+    <span class="t"><img src="ipop-mark.png" alt="">Preview</span>
+    <span class="sp"></span>
+    <button class="wc" data-min title="Minimize"><i data-lucide="minus"></i></button><button class="wc" data-max title="Maximize"></button><button class="wc x" data-close title="Close"><i data-lucide="x"></i></button>
+  </div>
+  <div class="vtool">
+    <span class="ft" id="vft"></span>
+    <div class="vmeta"><div class="nm" id="vnm"></div><div class="mt" id="vmt"></div></div>
+    <span class="sp"></span>
+    <span class="zoom" id="zoom" hidden><button class="vbtn" data-z="-1" title="Zoom out"><i data-lucide="zoom-out"></i></button><span class="zv" id="vz">100%</span><button class="vbtn" data-z="1" title="Zoom in"><i data-lucide="zoom-in"></i></button></span>
+    <button class="vbtn" id="vopen" title="Download and open in its Windows app"><i data-lucide="app-window"></i><span>Open in app</span></button>
+    <button class="vbtn p" id="vdl"><i data-lucide="download"></i><span>Download</span></button>
+  </div>
+  <div class="vbody">
+    <div class="vstage" id="vstage"></div>
+    <button class="vnav l" data-vs="-1" title="Previous file (←)"><i data-lucide="chevron-left"></i></button>
+    <button class="vnav r" data-vs="1" title="Next file (→)"><i data-lucide="chevron-right"></i></button>
+    <div class="vthumbs" id="vthumbs"></div>
+  </div>
+</div>
+<script src="lucide.min.js"></script>
+<script src="bridge.js"></script>
+<script src="files.js"></script>
+<script src="viewer.js"></script>
+</body>
+</html>

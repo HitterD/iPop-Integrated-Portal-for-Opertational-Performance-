@@ -13,6 +13,9 @@ public sealed class IPopClient
 {
     private readonly SessionStore store;
     private readonly HttpClient http;
+    /// Same connections, no overall timeout: file downloads (mail allows 500 MB) and the Office → PDF preview, which
+    /// stream for as long as they need; the caller's token bounds them.
+    private readonly HttpClient longHttp;
     /// Refresh vs. sign-in/sign-out/switch: see <see cref="NotifierAuthGate"/> (1.4.8: no more hang when a session ends).
     private readonly NotifierAuthGate auth = new();
     private string? access;
@@ -41,8 +44,11 @@ public sealed class IPopClient
     public IPopClient(SessionStore store, HttpMessageHandler? handler = null)
     {
         this.store = store;
-        http = new HttpClient(handler ?? new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) }) { Timeout = TimeSpan.FromSeconds(30) };
+        var shared = handler ?? new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) };
+        http = new HttpClient(shared, disposeHandler: false) { Timeout = TimeSpan.FromSeconds(30) };
         http.DefaultRequestHeaders.UserAgent.ParseAdd("iPopNotifier/" + AppInfo.Version);
+        longHttp = new HttpClient(shared, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan };
+        longHttp.DefaultRequestHeaders.UserAgent.ParseAdd("iPopNotifier/" + AppInfo.Version);
         Session = store.Load();
     }
 
@@ -261,6 +267,27 @@ public sealed class IPopClient
             foreach (var h in content.Headers) body.Headers.TryAddWithoutValidation(h.Key, h.Value);
             req.Content = body;
             var res = await http.SendAsync(req, ct);
+            if (generation != Generation) { res.Dispose(); throw new InvalidOperationException("Account changed."); }
+            if (res.StatusCode != HttpStatusCode.Unauthorized || attempt == 1) return res;
+            access = null;
+            res.Dispose();
+        }
+        throw new InvalidOperationException("unreachable");
+    }
+
+    /// A long transfer: returns as soon as the headers arrive (the body is read as a stream), no 30 s limit. The body
+    /// (if any) is rebuilt by <paramref name="content"/> for the one retry after a token renewal.
+    public async Task<HttpResponseMessage> SendLongAsync(HttpMethod method, string path, Func<HttpContent>? content = null, CancellationToken ct = default)
+    {
+        var generation = Generation;
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var token = await AccessTokenAsync(ct) ?? throw new InvalidOperationException("Signed out.");
+            if (generation != Generation) throw new InvalidOperationException("Account changed.");
+            using var req = new HttpRequestMessage(method, new Uri(Server, path.TrimStart('/')));
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            if (content is not null) req.Content = content();
+            var res = await longHttp.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
             if (generation != Generation) { res.Dispose(); throw new InvalidOperationException("Account changed."); }
             if (res.StatusCode != HttpStatusCode.Unauthorized || attempt == 1) return res;
             access = null;

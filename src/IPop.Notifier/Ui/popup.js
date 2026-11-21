@@ -3,11 +3,13 @@
 (function () {
   const { api, image, esc, post, snack } = window.app;
   const G = '([0-9a-fA-F-]{36})';
-  let N, STYLE, ME, NIK, MORE = 0, PENDING = null, root, view = {}, drawn = false;
+  let N, STYLE, ME, NIK, MORE = 0, PENDING = null, CTX = null, root, view = {}, drawn = false, loaded = false, rang = false;
   // Maximised (1.4.0): comfortable reading, the whole message inline (view.full) instead of "Read full message".
   const isMax = () => document.documentElement.classList.contains('max');
 
-  app.on('notice', m => { N = m.notice; STYLE = m.style; ME = m.me; NIK = m.nik; MORE = m.more || 0; PENDING = m.pending || null; render(); });
+  app.on('notice', m => { N = m.notice; STYLE = m.style; ME = m.me; NIK = m.nik; MORE = m.more || 0; PENDING = m.pending || null; CTX = m.ctx || CTX; render(); });
+  // Tiers / leaders / VIPs changed (1.5.0): the header chip follows.
+  app.on('context', m => { CTX = m.ctx; if (N && root && window.tiers) { const c = window.tiers.classify(N, CTX); N.leader = c.leader || N.leader; shell(); } });
   app.on('more', m => { MORE = m.count; showMore(); });
   // Maximise/restore and Light/Dark re-draw in place (the mail frame takes the new type size / colours).
   let wasMax = null;
@@ -20,14 +22,15 @@
   // ── layout ────────────────────────────────────────────────────────────────
   function render() {
     const mod = MOD[N.module] || MOD.system;
-    document.body.className = (STYLE === 'stack' ? 'card' : 'win') + ' m-' + (MOD[N.module] ? N.module : 'system') + (N.module === 'tickets' ? ' idesk' : '');
+    document.body.className = (STYLE === 'stack' ? 'card' : 'win') + ' m-' + (MOD[N.module] ? N.module : 'system') + (N.module === 'tickets' ? ' idesk' : '')
+      + ' t-' + (N.tier || 'msg') + (N.kind === 'approval' ? ' k-approval' : '');
     root = document.getElementById('root');
     root.style.removeProperty('--m'); // module colour comes from body.m-* (popup.css), light and dark
     // body = normal view; full = maximised view (null: same as body); more = "Read full message" link when cut.
-    view = { tools: [], chips: [], title: N.title, who: null, body: `<p class="txt sel">${esc(N.body)}</p>`, full: null, more: true, done: 'Done' };
-    drawn = false;
+    view = { tools: [], chips: [], title: N.title, who: null, body: `<p class="txt sel">${esc(N.body)}</p>`, full: null, more: true, done: 'Done', files: null };
+    drawn = false; loaded = false; rang = false;
     shell();
-    load().catch(() => { }).finally(() => { shell(); });
+    load().catch(() => { }).finally(() => { loaded = true; shell(); });
   }
 
   // iDesk notifications carry the iDesk mark (and its blue) so they never read as iPop's own.
@@ -37,6 +40,12 @@
   const pendingStrip = () => PENDING
     ? `<div class="pending">${IC('history')}<b>${PENDING.index} of ${PENDING.total} pending</b><span>· arrived while this PC was off · closing keeps it unread</span></div>`
     : '';
+
+  // 1.5.0 priority: approvals get the orange "Waiting for you" strip (mockup priority.html screen 3).
+  const waitStrip = () => N.kind === 'approval' ? `<div class="prio-strip">${IC('alarm-clock')}<b>Waiting for you</b><span>· your approval is needed</span></div>` : '';
+  // Header chip: "Approval", else "Your leader" (or "VIP") when a leader / VIP caused it.
+  const tierChip = () => N.kind === 'approval' ? `<span class="chip appr hc">${IC('stamp')}Approval</span>`
+    : N.leader ? `<span class="chip lead hc" title="${esc(N.leader)}">${IC('crown')}${N.leader === 'VIP' ? 'VIP' : 'Your leader'}</span>` : '';
 
   function shell() {
     const mod = MOD[N.module] || MOD.system;
@@ -55,12 +64,13 @@
     const more = view.more && !max ? `<a class="more-link" data-full hidden>${IC('maximize-2')}${esc(view.more === true ? 'Read full message' : view.more)}</a>` : '';
     const body = max && view.full != null ? view.full : view.body;
     const card = `<div class="mcard sel"><div class="clip">${body}</div>${more}${view.extra || ''}</div>`;
+    const filesHtml = view.files && view.files.length && window.files ? window.files.cards(view.files) : '';
 
     if (STYLE === 'stack') {
       const tools = view.tools.map((t, i) => `<button class="btn ${t.cls || ''}" data-t="${i}" ${t.disabled ? 'disabled' : ''}>${label(t)}</button>`);
       root.innerHTML = `<div class="pop" data-drag><i class="bar"></i>
-        <div class="hd"><span class="ico">${modIcon()}</span><span class="src"><b>${esc(mod.n)}</b><small>${esc(time)}</small></span><button class="x" data-close title="Close">${ICON.x}</button></div>
-        ${pendingStrip()}<div class="bd"><div class="ttl2">${esc(view.title)}</div>${view.who ? `<div class="from">${who}</div>` : ''}${chips}<div class="msg sel">${view.body}${view.extra || ''}</div></div>
+        <div class="hd"><span class="ico">${modIcon()}</span><span class="src"><b>${esc(mod.n)}</b><small>${esc(time)}</small></span>${tierChip()}<button class="x" data-close title="Close">${ICON.x}</button></div>
+        ${pendingStrip()}${waitStrip()}<div class="bd"><div class="ttl2">${esc(view.title)}</div>${view.who ? `<div class="from">${who}</div>` : ''}${chips}<div class="msg sel">${view.body}${view.extra || ''}</div>${filesHtml}</div>
         ${reply}
         ${view.tools.length ? `<div class="acts">${tools.join('')}</div>` : ''}
         ${done}
@@ -68,8 +78,8 @@
     } else {
       root.innerHTML = `<div class="win">
         ${header(mod, time)}
-        ${pendingStrip()}
-        <div class="body"><div class="col"><h3 class="ptitle sel">${esc(view.title)}</h3>${who}${chips}${card}</div></div>
+        ${pendingStrip()}${waitStrip()}
+        <div class="body"><div class="col"><h3 class="ptitle sel">${esc(view.title)}</h3>${who}${chips}${card}${filesHtml}</div></div>
         ${reply}
         ${footer(view.tools)}
         ${done}</div>`;
@@ -77,8 +87,11 @@
     const box = root.firstElementChild;
     if (drawn) box.classList.add('again'); // re-draw (loaded, maximised, theme): no second entrance animation
     drawn = true;
+    // Needs action: the icon rings once, when the content is in (a later re-draw doesn't ring again).
+    if (loaded && !rang) { rang = true; if (N.tier === 'act') box.classList.add('ringing'); }
     if (wasReplying && view.reply) { box.classList.add('replying'); const ed = box.querySelector('.ed'); if (ed && draft) ed.innerHTML = draft; }
     wire(box);
+    if (filesHtml) window.files.wire(box, view.files);
     hydrate(box);
     if (STYLE === 'stack') showMore();
     size();
@@ -90,7 +103,7 @@
   // Header: neutral, module colour only in the 28 px icon chip. – □ ✕ identical in every window.
   function header(mod, time) {
     const name = /^meeting\./.test(N.eventType || '') ? 'Meeting' : mod.n;
-    return `<div class="ttl" data-drag><span class="ic">${modIcon()}</span><b>${esc(name)}</b><small>· ${esc(time)}</small><span class="sp"></span>`
+    return `<div class="ttl" data-drag><span class="ic">${modIcon()}</span><b>${esc(name)}</b><small>· ${esc(time)}</small>${tierChip()}<span class="sp"></span>`
       + `<button class="wc" data-min title="Minimize">${ICON.min}</button><button class="wc" data-max title="Maximize"></button><button class="wc x" data-close title="Close">${ICON.x}</button></div>`;
   }
 
@@ -224,19 +237,51 @@
     });
   }
 
-  function closeOut(action) {
+  // until (ISO, snooze only): when the app brings it back.
+  function closeOut(action, until) {
     const box = root.firstElementChild;
     box.classList.add('out');
-    setTimeout(() => post(action ? { type: 'done', action } : { type: 'close' }), 260);
+    setTimeout(() => post(action ? { type: 'done', action, until: until || null } : { type: 'close' }), 260);
   }
 
-  function finish(text, action) {
+  function finish(text, action, until) {
     const box = root.firstElementChild;
     document.getElementById('doneText').textContent = text;
     box.classList.remove('replying'); box.classList.add('sent');
     size();
-    setTimeout(() => closeOut(action || 'done'), 1400);
+    setTimeout(() => closeOut(action || 'done', until), 1400);
   }
+
+  // Snooze menu (1.5.0, mockup screen 3): the server hides it until then, the app brings it back.
+  function snoozeTimes(withFive) {
+    const now = new Date(), t = new Date(now); t.setDate(t.getDate() + 1); t.setHours(8, 0, 0, 0);
+    const hm = d => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return [
+      ...(withFive ? [{ label: 'In 5 minutes', icon: 'clock-2', at: new Date(+now + 5 * 60000), say: () => 'Snoozed for 5 minutes' }] : []),
+      { label: 'In 15 minutes', icon: 'clock-3', at: new Date(+now + 15 * 60000) },
+      { label: 'In 1 hour', icon: 'clock', at: new Date(+now + 3600000) },
+      { label: 'Tomorrow 08:00', icon: 'sunrise', at: t, day: true },
+    ].map(x => Object.assign(x, { text: x.say ? x.say() : 'Snoozed until ' + (x.day ? 'tomorrow 08:00' : hm(x.at)) }));
+  }
+  function snoozeMenu(btn, withFive) {
+    document.querySelectorAll('.menu').forEach(m => m.remove());
+    const opts = snoozeTimes(withFive);
+    const m = document.createElement('div'); m.className = 'menu snz';
+    m.innerHTML = `<div class="mh">Snooze until</div>` + opts.map((o, i) => `<button data-sn="${i}">${IC(o.icon)}${esc(o.label)}</button>`).join('');
+    document.body.appendChild(m);
+    const r = btn.getBoundingClientRect();
+    m.style.left = Math.max(10, Math.min(window.innerWidth - m.offsetWidth - 10, r.right - m.offsetWidth)) + 'px';
+    m.style.top = Math.max(10, r.top - m.offsetHeight - 6) + 'px';
+    m.onclick = async e => {
+      const b = e.target.closest('[data-sn]'); if (!b) return;
+      e.stopPropagation(); m.remove();
+      const o = opts[+b.dataset.sn];
+      const res = await api('POST', `api/notifications/v1/notifications/${N.id}/snooze`, { until: o.at.toISOString() });
+      if (res.ok) finish(o.text, 'snooze', o.at.toISOString()); else snack("Couldn't snooze. Try again.");
+    };
+    setTimeout(() => document.addEventListener('click', () => m.remove(), { once: true }), 0);
+  }
+  const snoozeTool = withFive => ({ label: IC('alarm-clock') + 'Snooze', run: async b => snoozeMenu(b, withFive) });
 
   const openIPop = path => post({ type: 'openIPop', path: path || '/notifications' });
   const markRead = () => api('POST', `api/notifications/v1/notifications/${N.id}/read`);
@@ -248,10 +293,10 @@
 
   // ── per module ────────────────────────────────────────────────────────────
   async function load() {
-    const loaders = { mail, tickets, calendar, news, projects, notes, calls };
+    const loaders = { mail, tickets, calendar, news, projects, notes, calls, chat };
     const fn = loaders[N.module];
     if (fn && await fn() !== false) return;
-    view.tools = [openTool('Open in iPop', null, true), readTool];
+    view.tools = [openTool('Open in iPop', null, true), readTool, ...(N.tier === 'act' ? [snoozeTool(false)] : [])];
   }
 
   async function mail() {
@@ -272,10 +317,10 @@
     const atts = (d.attachments || []);
     const pics = atts.filter(a => (a.mimeType || '').startsWith('image/'));
     const pic = a => `<img class="img" data-img data-src="api/mail/attachments/${a.id}/download?inline=true" alt="${esc(a.fileName)}">`;
-    const files = atts.length ? `<div class="files">${atts.map(a => `<span class="file" title="${esc(a.fileName)}"><span class="fi">${esc(ext(a.fileName))}</span><span>${esc(a.fileName)} · ${fmtSize(a.fileSize)}</span></span>`).join('')}</div>` : '';
     view.body = `<iframe data-mail sandbox="allow-same-origin" title="Message"></iframe>` + pics.slice(0, 2).map(pic).join('');
     view.full = `<iframe data-mail sandbox="allow-same-origin" title="Message"></iframe>` + pics.map(pic).join('');
-    view.extra = files;
+    // 1.5.0: every attachment is a file card with Preview + Download (pictures also show inline above).
+    view.files = atts.map(a => ({ name: a.fileName, path: `api/mail/attachments/${a.id}/download`, size: a.fileSize, from: 'Mail · ' + (d.senderName || '') }));
     const canAll = d.canReplyAll && replyPlan(d, true).count > replyPlan(d, false).count;
     view.reply = { rich: true, attach: true, placeholder: 'Write your reply…' };
     // Reply | Forward · Open · Mark as read (with Reply all: Reply all · Mark as read · More → Forward, Open)
@@ -448,7 +493,7 @@
     view.tools = [
       ...(canJoin ? [{ label: IC('video') + 'Join now', cls: 'p', run: async () => { if (key) openIPop(`/calls?tab=rooms&join=${key}`); else post({ type: 'openUrl', url: link }); await markRead(); finish('Joining…', 'join'); } }] : []),
       ...(mt && invited && mt.myResponse !== 'accept' && !canJoin ? [{ label: IC('check') + 'Accept', cls: 'p', run: () => rsvp(mt.id, 'accept', 'Accepted') }] : []),
-      { label: IC('alarm-clock') + 'Snooze 5 min', run: async () => { const r = await api('POST', `api/notifications/v1/notifications/${N.id}/snooze`, { until: new Date(Date.now() + 5 * 60000).toISOString() }); if (r.ok) finish('Snoozed for 5 minutes', 'snooze'); else snack('Couldn\'t snooze. Try again.'); } },
+      snoozeTool(true),
       openTool(!canJoin && !(mt && invited && mt.myResponse !== 'accept') ? 'Open in iPop' : 'Open', N.targetUrl, !canJoin && !(mt && invited && mt.myResponse !== 'accept')),
       ...(mt && invited && mt.myResponse !== 'decline' ? [{ label: IC('x') + 'Decline', cls: 'r', run: () => rsvp(mt.id, 'decline', 'Declined') }] : []),
     ];
@@ -543,6 +588,38 @@
     };
     view.done = 'Reply added';
     view.tools = [{ label: IC('reply') + 'Reply', cls: 'p', reply: true }, openTool('Open'), readTool];
+  }
+
+  // Chat (1.5.0): a leader's / VIP's message or an emergency opens as a window: the last messages + inline reply.
+  async function chat() {
+    const room = id(new RegExp('^/chat/' + G));
+    if (!room) return false;
+    const markChat = () => api('POST', 'api/notifications/v1/read-by-target', { kind: 'chat', id: room });
+    view.tools = [openTool('Open chat', null, true), readTool];
+    const r = await api('GET', `api/chat/rooms/${room}/messages?page=1&pageSize=8`);
+    const items = (r.ok && (r.json?.items || r.json?.Items)) || [];
+    if (items.length) {
+      const last = items.filter(x => !x.isDeleted && x.type !== 'system');
+      const them = last.filter(x => x.senderNik !== NIK).slice(-1)[0];
+      if (them) view.who = { name: them.senderName, sub: N.leader ? (N.leader === 'VIP' ? 'VIP' : 'Your leader · ' + N.leader) : N.title };
+      const one = x => `<div class="msg-it sel ${x.senderNik === NIK ? 'me' : ''}"><b>${esc(x.senderNik === NIK ? 'You' : x.senderName)}</b><small>${esc(timeShort(x.createdAt))}</small><p>${esc(x.content || (x.attachments?.length ? '📎 ' + x.attachments.map(a => a.fileName).join(', ') : ''))}</p></div>`;
+      view.body = `<div class="msg-list">${last.slice(-3).map(one).join('')}</div>`;
+      if (last.length > 3) view.full = `<div class="msg-list">${last.map(one).join('')}</div>`;
+      view.files = last.slice(-3).flatMap(x => (x.attachments || []).map(a => ({ name: a.fileName, path: `api/chat/attachments/${a.id}/download`, size: a.fileSize, from: 'Chat · ' + (x.senderName || '') })));
+    }
+    view.reply = { rich: false, placeholder: 'Reply…', hint: 'Sent to the chat' };
+    view.send = async text => {
+      const res = await api('POST', `api/chat/rooms/${room}/messages`, { content: text, idempotencyKey: crypto.randomUUID() });
+      if (res.ok) { await markChat(); return null; }
+      return res.json?.message || "Couldn't send the reply. Open the chat to try again.";
+    };
+    view.done = 'Reply sent';
+    view.tools = [
+      { label: IC('reply') + 'Reply', cls: 'p', reply: true },
+      { label: IC('arrow-up-right') + 'Open chat', run: async () => { openIPop(N.targetUrl); await markChat(); closeOut('open'); } },
+      { label: IC('check') + 'Mark as read', run: async () => { await markChat(); closeOut('read'); } },
+      ...(N.tier === 'act' ? [snoozeTool(false)] : []),
+    ];
   }
 
   async function calls() {
@@ -669,6 +746,4 @@
     const v = document.createElement('div'); v.className = 'viewer'; v.innerHTML = `<img src="${src}" alt="">`;
     v.onclick = () => v.remove(); document.body.appendChild(v);
   }
-  const ext = n => (String(n).split('.').pop() || 'FILE').slice(0, 4).toUpperCase();
-  const fmtSize = b => b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
 })();

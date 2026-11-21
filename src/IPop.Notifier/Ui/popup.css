@@ -217,3 +217,34 @@ body.card{background:var(--surface)}
 .tk-ch>div{flex:1;min-width:0;background:var(--card);border:1px solid var(--sep);border-radius:12px;padding:8px 12px;font-size:14.5px;line-height:1.45;color:var(--ink-2);white-space:pre-wrap;word-break:break-word}
 .tk-ch>div b{display:block;font-size:12.5px;color:var(--ink-3);font-weight:600;white-space:normal}
 .tk-ch.me>div{background:var(--m-soft);border-color:transparent}
+
+/* ===== 1.5.0 priority (docs/mockups/notifier/priority.html screens 3–4) ===== */
+/* header chip: "Approval" / "Your leader" / "VIP" */
+.chip.hc{height:22px;padding:0 8px;border-radius:6px;font-size:11.5px;font-weight:650;gap:4px;border:0;flex:none;margin-left:2px}
+.chip.hc svg.lucide{width:12px;height:12px;stroke-width:2.3}
+.chip.lead{background:var(--lead-soft);color:var(--lead)}
+.chip.appr{background:var(--appr-soft);color:var(--appr)}
+.win .ttl .chip.hc{margin-left:8px}
+.pop .hd .chip.hc{margin-right:2px}
+html.max .chip.hc{height:26px;font-size:13px;padding:0 10px}
+/* approvals: orange "Waiting for you" strip */
+.prio-strip{display:flex;align-items:center;gap:8px;margin:12px 20px 0;padding:8px 12px;border-radius:10px;background:var(--act-soft);color:var(--act);font-size:13px;font-weight:650;flex:none;animation:winIn .4s var(--spring) .1s backwards}
+.prio-strip span{font-weight:500;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prio-strip svg.lucide{width:16px;height:16px}
+.pop .prio-strip{margin:4px 16px 2px}
+html.max .prio-strip{margin-left:max(24px,calc((100% - 720px)/2));margin-right:max(24px,calc((100% - 720px)/2))}
+/* Needs action: the icon rings once on entrance, with a halo */
+@keyframes ring{0%,100%{transform:rotate(0)}15%{transform:rotate(14deg)}30%{transform:rotate(-12deg)}45%{transform:rotate(9deg)}60%{transform:rotate(-6deg)}75%{transform:rotate(3deg)}}
+@keyframes halo{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--act) 45%,transparent)}100%{box-shadow:0 0 0 12px transparent}}
+body.t-act .ringing .ttl .ic,body.t-act .ringing .hd .ico{animation:halo 1.3s ease-out .2s 2}
+body.t-act .ringing .ttl .ic svg,body.t-act .ringing .hd .ico svg,body.t-act .ringing .ttl .ic img,body.t-act .ringing .hd .ico img{animation:ring .9s cubic-bezier(.2,.8,.2,1) .25s 2;transform-origin:50% 20%}
+/* files */
+.col>.fmini{margin-top:12px}
+.pop .fmini{margin-top:10px}
+html.max .fm .fn{font-size:16px}html.max .fm .fs{font-size:13.5px}
+/* chat loader: my own lines are tinted */
+.msg-it.me{background:var(--accent-soft);border-color:transparent}
+/* Snooze menu */
+.menu .mh{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);padding:6px 10px 4px}
+.menu button svg.lucide{width:16px;height:16px;color:var(--ink-3)}
+@media (prefers-reduced-motion: reduce){body.t-act .ttl .ic,body.t-act .ttl .ic svg,body.t-act .hd .ico,body.t-act .hd .ico svg,.prio-strip{animation:none!important}}

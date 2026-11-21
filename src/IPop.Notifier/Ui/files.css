@@ -1,0 +1,34 @@
+/* Files (1.5.0, docs/mockups/notifier/priority.html): tier/leader tokens, type badge colours, the .fm file card
+   (popups, Inbox), the download progress ring → tick, and the snackbar with actions ("Saved to Downloads · Open"). */
+:root{--act:#D9480F;--act-soft:#FFF0E6;--lead:#A16207;--lead-soft:#FEF6DC;--appr:#7C3AED;--appr-soft:#F1EBFE;--fill-2:rgba(118,118,128,.07);
+  --snack:#1d1d1f;--snack-ink:#fff;--snack-acc:#5EE08A;--ease:cubic-bezier(.2,.8,.2,1);--bounce:cubic-bezier(.34,1.56,.64,1)}
+html.dark{--act:#FF8A4C;--act-soft:rgba(255,138,76,.16);--lead:#F5C04A;--lead-soft:rgba(245,192,74,.15);--appr:#B794F6;--appr-soft:rgba(183,148,246,.16);--fill-2:rgba(118,118,128,.14);
+  --snack:#f5f5f7;--snack-ink:#1d1d1f;--snack-acc:#1C7A44}
+.ft{color:#fff;font-weight:800;letter-spacing:.03em;background:#6E6E73}
+.ft.pdf{background:#E5484D}.ft.xlsx{background:#1F8A4C}.ft.pptx{background:#D9622B}.ft.docx{background:#2B5FD9}.ft.jpg{background:#6E56CF}.ft.zip{background:#6E6E73}
+.ft.vid{background:#0F766E}.ft.aud{background:#B45309}
+.fmini{display:flex;flex-direction:column;gap:8px}
+.fm{display:flex;align-items:center;gap:10px;padding:8px 8px 8px 10px;border-radius:11px;border:.5px solid var(--line);background:var(--surface);transition:background .15s,border-color .2s;animation:fmIn .35s var(--spring) backwards}
+@keyframes fmIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.fm:hover{background:var(--fill-2)}
+.fm .ft{height:34px;width:34px;border-radius:8px;font-size:9.5px;display:grid;place-items:center;flex:none}
+.fm .mid{flex:1;min-width:0}
+.fm .fn{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+.fm .fs{font-size:12px;color:var(--ink-3)}
+.fm .ib{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;background:var(--fill-2);border:.5px solid var(--line);color:var(--ink-2);transition:background .15s,transform .15s,color .2s;flex:none}
+.fm .ib:hover{background:var(--fill)}
+.fm .ib:active{transform:scale(.93)}
+.fm .ib.na{opacity:.35;pointer-events:none}
+.fm .ib.done{color:var(--accent-ink)}
+.fm .ib svg.lucide{width:16px;height:16px}
+.ring{width:16px;height:16px;border-radius:50%;background:conic-gradient(var(--accent) calc(var(--p,0)*1%),var(--fill) 0);-webkit-mask:radial-gradient(circle,transparent 4.5px,#000 5px);mask:radial-gradient(circle,transparent 4.5px,#000 5px);flex:none}
+.ring.ind{background:conic-gradient(var(--accent) 25%,var(--fill) 0);animation:spin .8s linear infinite}
+.tk path{stroke-dasharray:24;stroke-dashoffset:24;animation:draw .45s var(--ease) .05s forwards}
+.wsnack{position:fixed;left:50%;bottom:18px;transform:translate(-50%,18px) scale(.96);opacity:0;z-index:99;background:var(--snack);color:var(--snack-ink);border-radius:12px;padding:6px 6px 6px 14px;min-height:42px;display:flex;align-items:center;gap:8px;font-size:13.5px;box-shadow:0 12px 30px -8px rgba(0,0,0,.45);transition:transform .4s var(--spring),opacity .25s;white-space:nowrap;max-width:calc(100% - 24px)}
+.wsnack.on{transform:translate(-50%,0);opacity:1}
+.wsnack>span{overflow:hidden;text-overflow:ellipsis}
+.wsnack b{font-weight:650}
+.wsnack button{height:30px;padding:0 10px;border-radius:8px;font-weight:650;color:var(--snack-acc);flex:none}
+.wsnack button:hover{background:rgba(127,127,127,.18)}
+.wsnack svg.lucide{width:17px;height:17px;color:var(--snack-acc)}
+@media (prefers-reduced-motion:reduce){.fm,.ring.ind{animation:none}}
