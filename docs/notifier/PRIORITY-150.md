@@ -166,3 +166,18 @@ snooze, Undo snackbars, count tick, empty state check-draw, file card hover over
   `inboxModel.relTime` (today 24 h clock, Yesterday, weekday within 6 days, "17 Nov"), group headers "Mon 17 Nov";
   iDesk rows get a New / Replied / Resolved `.tchip` (`ticketStatus`) and "Assigned to you" (`assignedToMe`), and the
   iDesk mark sits on a white plate in full colour (dimmed only once read).
+- **Full size per source** (mockup v3 screen 7): a maximized popup (`html.max`) renders `Ui/popup-full.js` instead of a
+  wider card; Restore returns to the 440×560 card. Each loader in `popup.js` sets `view.src` (the real DTO) and, for
+  data only the full layout shows, `view.extras` (fetched once, on first maximize). Mail: department via
+  `api/notifier/people` matched by user id (never NIK/position), To/Cc pills with "+N more", sandboxed `mailFrame`,
+  file grid, one-line quick reply (Enter sends, Reply all toggle, attachments) + Forward/Mark as read. iDesk: chips
+  (number, module·category, priority, SLA from `SlaTarget`), steps Open→Assigned→In progress→Resolved→Closed, reporter +
+  PIC, events + chat oldest first; technician tickets show the notification line as the first bubble. Chat: room
+  (`GET api/chat/rooms/{id}`) name/presence, 30 messages by day, quick replies. Meeting: date card, room/link/organiser,
+  countdown within 60 min, agenda (numbered lines → list), attendees + RSVP chips, Accept/Maybe/Decline segment.
+  News: cover image (or gradient), byline, article, AckCount/AckTotal bar, attachments. Projects: status/assignees/
+  due/priority, checklist = subtasks (`GET api/projects/{pid}/tasks?parentId=`; ticking moves the subtask), comments
+  (`GET api/projects/tasks/{id}/comments`). Notes: page name from the title, quoted text, thread. Approval: Key: value
+  lines → facts table, Total/Amount as the big number, Open to approve. System/other: info card, source chip from the
+  event type, stat grid only from Key: value lines, button named after the link ("/mail" → "Open in Mail").
+  Tests: `tests/notifier-popup-full.test.cjs`.

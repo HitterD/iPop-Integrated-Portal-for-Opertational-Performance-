@@ -20,6 +20,11 @@ public static partial class ApiBridge
         ("GET", R($"^api/news/composer/posts/{G}/media$")),
         ("GET", R($"^api/projects/tasks/{G}$")),
         ("GET", R($"^api/notes/{G}/threads$")),
+        // 1.5.1 maximized popup (full layout per source): the task's comments and its subtasks (= the checklist), and
+        // the chat room (name, members, presence) — all read-only, the same rows the iPop page of that item shows.
+        ("GET", R($"^api/projects/tasks/{G}/comments$")),
+        ("GET", R($"^api/projects/{G}/tasks\\?parentId={G}$")),
+        ("GET", R($"^api/chat/rooms/{G}$")),
         ("GET", R($"^api/chat/rooms/{G}/messages\\?page=1&pageSize=\\d+$")),
         ("GET", R("^api/notifications/v1/inbox\\?[a-zA-Z0-9=&]*$")),
         ("GET", R("^api/notifications/v1/unread-count$")),

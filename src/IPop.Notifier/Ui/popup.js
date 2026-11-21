@@ -4,7 +4,8 @@
   const { api, image, esc, post, snack } = window.app;
   const G = '([0-9a-fA-F-]{36})';
   let N, STYLE, ME, NIK, MORE = 0, PENDING = null, CTX = null, root, view = {}, drawn = false, loaded = false, rang = false;
-  // Maximised (1.4.0): comfortable reading, the whole message inline (view.full) instead of "Read full message".
+  // Maximised (1.5.1, mockup priority.html screen 7): the window becomes what was sent — one layout per source
+  // (popup-full.js) from the same real data the loaders fetch (view.src). Restoring goes back to the 440×560 card.
   const isMax = () => document.documentElement.classList.contains('max');
 
   app.on('notice', m => { N = m.notice; STYLE = m.style; ME = m.me; NIK = m.nik; MORE = m.more || 0; PENDING = m.pending || null; CTX = m.ctx || CTX; render(); });
@@ -14,7 +15,7 @@
   // Maximise/restore and Light/Dark re-draw in place (the mail frame takes the new type size / colours).
   let wasMax = null;
   app.on('winstate', m => { if (N && root && !!m.max !== wasMax) shell(); });
-  app.on('theme', () => { if (N && root && view.html) shell(); });
+  app.on('theme', () => { if (N && root && (view.html || isMax())) shell(); });
   window.addEventListener('resize', () => fitFooter());
   function showMore() { const r = document.querySelector('.more-row'); if (!r) return; r.classList.toggle('on', MORE > 0); r.querySelector('b').textContent = MORE; size(); }
   app.ready();
@@ -28,9 +29,11 @@
       + ' t-' + (N.tier || 'msg') + (N.kind === 'approval' ? ' k-approval' : '');
     root = document.getElementById('root');
     root.style.removeProperty('--m'); // module colour comes from body.m-* (popup.css), light and dark
-    // body = normal view; full = maximised view (null: same as body); more = "Read full message" link when cut.
-    view = { tools: [], chips: [], title: N.title, who: null, body: `<p class="txt sel">${esc(N.body)}</p>`, full: null, more: true, done: 'Done', files: null };
-    drawn = false; loaded = false; rang = false;
+    // body = normal view; more = "Read full message" link when cut (maximises). src = what the maximised layout
+    // shows (popup-full.js; none = the info card); extras = more of it, fetched only once maximised.
+    view = { tools: [], chips: [], title: N.title, who: null, body: `<p class="txt sel">${esc(N.body)}</p>`, more: true, done: 'Done', files: null,
+      src: null, extras: null, fa: {}, sentLocal: [] };
+    drawn = false; loaded = false; rang = false; extrasRun = false; fullDraft = '';
     shell();
     load().catch(() => { }).finally(() => { loaded = true; shell(); });
   }
@@ -54,18 +57,19 @@
     const time = timeShort(N.at);
     const max = STYLE !== 'stack' && isMax();
     wasMax = max;
+    clearInterval(cdTimer);
+    if (max) return shellFull(mod);
     const label = t => STYLE === 'stack' ? t.label.replace('Open in iPop ', 'Open ').replace('Open in iDesk ', 'iDesk ') : t.label;
-    const sub = view.who && (max && view.who.subFull ? view.who.subFull : view.who.sub);
+    const sub = view.who && view.who.sub;
     const who = view.who ? `<div class="who"><span class="av" style="background:${avatarColor(view.who.name)}" ${view.who.photo ? `data-photo="${esc(view.who.photo)}"` : ''}>${esc(initials(view.who.name))}</span><span class="nm"><b>${esc(view.who.name)}</b><small>${esc(sub || '')}</small></span></div>` : '';
     const chips = view.chips.length ? `<div class="chips">${view.chips.map(c => `<span class="chip ${c.st ? 'st' : ''}">${esc(c.t)}</span>`).join('')}</div>` : '';
     const reply = view.reply ? replyBox() : '';
     const done = `<div class="done"><span class="ck">${ICON.check}</span><span id="doneText">${esc(view.done)}</span></div>`;
     const wasReplying = root.firstElementChild?.classList.contains('replying');
     const draft = root.querySelector('.ed')?.innerHTML;
-    // Normal view: a long message is cut with "Read full message" (maximises). Maximised: everything inline.
-    const more = view.more && !max ? `<a class="more-link" data-full hidden>${IC('maximize-2')}${esc(view.more === true ? 'Read full message' : view.more)}</a>` : '';
-    const body = max && view.full != null ? view.full : view.body;
-    const card = `<div class="mcard sel"><div class="clip">${body}</div>${more}${view.extra || ''}</div>`;
+    // Normal view: a long message is cut with "Read full message" (maximises into the full layout).
+    const more = view.more ? `<a class="more-link" data-full hidden>${IC('maximize-2')}${esc(view.more === true ? 'Read full message' : view.more)}</a>` : '';
+    const card = `<div class="mcard sel"><div class="clip">${view.body}</div>${more}${view.extra || ''}</div>`;
     const filesHtml = view.files && view.files.length && window.files ? window.files.cards(view.files) : '';
 
     if (STYLE === 'stack') {
@@ -100,6 +104,170 @@
     fitFooter();
     clipCheck();
   }
+
+  // ── maximised: the full layout per source (1.5.1, mockup priority.html screen 7) ──
+  let cdTimer = 0, extrasRun = false, fullDraft = '';
+  function shellFull(mod) {
+    const F = window.popupFull;
+    const appr = N.kind === 'approval';
+    if (appr) document.body.classList.add('k-approval');
+    const name = N.kind === 'approval' ? 'Approval' : /^meeting\./.test(N.eventType || '') ? 'Meeting' : mod.n;
+    const env = { N, view, me: ME, nik: NIK, files: window.files, loaded };
+    const draft = fullDraft;
+    root.innerHTML = `<div class="win full">
+      <div class="ttl" data-drag><span class="ic">${appr ? IC('stamp') : modIcon()}</span><b>${esc(name)}</b><small>· ${esc(F.when(N.at))}</small>${F.tierChip(N)}<span class="sp"></span>`
+      + `<button class="wc" data-min title="Minimize">${ICON.min}</button><button class="wc" data-max title="Restore"></button><button class="wc x" data-close title="Close">${ICON.x}</button></div>
+      ${pendingStrip()}${F.render(env)}
+      <div class="done"><span class="ck">${ICON.check}</span><span id="doneText">${esc(view.done)}</span></div></div>`;
+    const box = root.firstElementChild;
+    if (drawn) box.classList.add('again');
+    drawn = true;
+    if (loaded && !rang) { rang = true; if (N.tier === 'act') box.classList.add('ringing'); }
+    wireFull(box);
+    if (draft) { const i = box.querySelector('[data-reply]'); if (i) { i.value = draft; i.dispatchEvent(new Event('input')); } }
+    hydrate(box);
+    if (loaded && !extrasRun && view.extras) runExtras().then(changed => { if (changed && isMax()) shell(); });
+  }
+
+  // More of the source, only for the full layout (department, longer history, comments, checklist, cover).
+  async function runExtras() {
+    if (extrasRun || !view.extras) return false;
+    extrasRun = true;
+    try { await view.extras(); return true; } catch { return false; }
+  }
+
+  // A department for someone iPop only names (no NIK, no position — office rule): the VIP picker's people search,
+  // matched by id so a namesake never lends their department.
+  async function departmentOf(userId, name) {
+    if (!userId || !name || name.length < 2) return null;
+    const r = await api('GET', `api/notifier/people?q=${encodeURIComponent(name.trim().slice(0, 24))}`);
+    const p = r.ok && (r.json || []).find(x => String(x.id).toLowerCase() === String(userId).toLowerCase());
+    return (p && p.department) || null;
+  }
+
+  function wireFull(box) {
+    const list = () => view.fullFiles || view.files || [];
+    box.addEventListener('click', async e => {
+      const t = e.target;
+      const fp = t.closest('[data-fp]'); if (fp) { e.stopPropagation(); return window.files.preview(list(), +fp.dataset.fp); }
+      const fd = t.closest('[data-fd]'); if (fd) { e.stopPropagation(); return window.files.download(list()[+fd.dataset.fd], fd, { labeled: true }); }
+      if (t.closest('[data-dlall]')) return list().forEach((f, i) => setTimeout(() => window.files.download(f, box.querySelector(`[data-fd="${i}"]`), { labeled: true, quiet: i > 0 }), i * 160));
+      const b = t.closest('button,[data-img],[data-more-rcpt],[data-sub]'); if (!b) return;
+      if (b.hasAttribute('data-close')) return closeOut();
+      if (b.hasAttribute('data-min')) return post({ type: 'minimize' });
+      if (b.hasAttribute('data-max')) return;
+      if (b.hasAttribute('data-img')) return viewer(b.src);
+      if (b.hasAttribute('data-attach')) return box.querySelector('[data-file]').click();
+      if (b.hasAttribute('data-more-rcpt')) { b.insertAdjacentHTML('beforebegin', view.src?.hidden?.[b.dataset.moreRcpt] || ''); b.remove(); return; }
+      if (b.hasAttribute('data-quick')) { const i = box.querySelector('[data-reply]'); i.value = b.dataset.quick; i.dispatchEvent(new Event('input')); i.focus(); return; }
+      if (b.hasAttribute('data-fsend')) return sendFull(box);
+      if (b.dataset.r && b.closest('[data-rsvpseg]')) return rsvpFull(box, b);
+      if (b.hasAttribute('data-sub')) return toggleSub(box, b);
+      if (b.dataset.fa) {
+        const fn = FULL_ACTIONS[b.dataset.fa]; if (!fn) return;
+        if (b.disabled) return;
+        b.disabled = true;
+        try { await fn(b, box); } finally { if (document.body.contains(b)) b.disabled = false; }
+      }
+    });
+    const inp = box.querySelector('[data-reply]'), sendBtn = box.querySelector('[data-fsend]');
+    if (inp) {
+      inp.addEventListener('input', () => { sendBtn.disabled = !inp.value.trim(); fullDraft = inp.value; });
+      // The quick reply is one line: Enter sends (mail too). Formatting and long replies: open it in iPop.
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendFull(box); } if (e.key === 'Escape' && inp.value) { e.stopPropagation(); inp.value = ''; sendBtn.disabled = true; } });
+      inp.addEventListener('focus', () => post({ type: 'focus' }));
+    }
+    const file = box.querySelector('[data-file]');
+    if (file) file.addEventListener('change', () => attach(box, file));
+    window.files.thumbs(box);
+    const seg = box.querySelector('[data-rsvpseg]'); if (seg) requestAnimationFrame(() => placeSeg(seg, true));
+    // Meeting within the hour: live countdown.
+    const cd = box.querySelector('[data-cd]');
+    if (cd) cdTimer = setInterval(() => { if (!document.body.contains(cd)) return clearInterval(cdTimer); cd.textContent = window.popupFull.fmtCd(cd.dataset.cd); }, 1000);
+    // Chat reads bottom-up: start at the newest message.
+    if (view.src?.kind === 'chat') requestAnimationFrame(() => { const fb = box.querySelector('.fbody'); if (fb) fb.scrollTop = fb.scrollHeight; });
+    document.body.dataset.esc = 'on';
+  }
+
+  function placeSeg(c, instant) {
+    const th = c.querySelector(':scope>.thumb'), b = c.querySelector(':scope>button.on');
+    if (!th) return;
+    if (!b) { th.style.opacity = '0'; return; }
+    th.style.opacity = '1';
+    if (instant || window.reducedMotion()) th.style.transition = 'none';
+    th.style.width = b.offsetWidth + 'px'; th.style.height = b.offsetHeight + 'px'; th.style.transform = `translate(${b.offsetLeft}px,${b.offsetTop}px)`;
+    if (instant || window.reducedMotion()) { void th.offsetWidth; th.style.transition = ''; }
+  }
+
+  const okSnack = text => window.files.snack(`${window.files.CHECK}<span>${esc(text)}</span>`);
+  const failSnack = text => window.files.snack(`${IC('circle-alert')}<span>${esc(text)}</span>`);
+
+  // Quick reply in the full layout: the loader's own send path; the message joins the conversation, the window stays.
+  async function sendFull(box) {
+    const inp = box.querySelector('[data-reply]'), btn = box.querySelector('[data-fsend]');
+    const text = inp && inp.value.trim();
+    if (!text || !view.send || btn.classList.contains('busy')) return;
+    btn.classList.add('busy'); btn.disabled = true; inp.disabled = true;
+    const ids = [...box.querySelectorAll('.attq span[data-id]')].map(s => s.dataset.id);
+    const html = '<p>' + esc(text).replace(/\n/g, '<br/>') + '</p>';
+    const fail = await (view.reply?.rich ? view.send(html, ids) : view.send(text));
+    btn.classList.remove('busy'); inp.disabled = false;
+    if (fail) { btn.disabled = false; failSnack(fail); inp.focus(); return; }
+    inp.value = ''; fullDraft = ''; btn.disabled = true;
+    box.querySelectorAll('.attq span').forEach(s => s.remove());
+    const convo = box.querySelector('[data-convo]');
+    if (convo) {
+      convo.querySelector('.sysline.empty')?.remove();
+      convo.insertAdjacentHTML('beforeend', window.popupFull.bubbles([{ me: true, text, at: new Date().toISOString(), status: 'Sent' }], ME).replace(/^<div class="daysep">[^<]*<\/div>/, '').replace('class="cm me"', 'class="cm me in"'));
+      const fb = box.querySelector('.fbody'); fb.scrollTo({ top: fb.scrollHeight, behavior: window.reducedMotion() ? 'auto' : 'smooth' });
+    }
+    okSnack(view.done || 'Sent');
+    inp.focus();
+  }
+
+  async function rsvpFull(box, b) {
+    const mt = view.src?.mt; if (!mt) return;
+    const seg = b.closest('[data-rsvpseg]'), was = seg.querySelector(':scope>button.on');
+    seg.querySelectorAll(':scope>button').forEach(x => x.classList.toggle('on', x === b)); placeSeg(seg);
+    const r = await api('POST', `api/meetings/${mt.id}/rsvp`, { response: b.dataset.r });
+    if (!r.ok) {
+      seg.querySelectorAll(':scope>button').forEach(x => x.classList.toggle('on', x === was)); placeSeg(seg);
+      return failSnack(r.json?.message || "Couldn't send your answer. Try again.");
+    }
+    mt.myResponse = b.dataset.r;
+    const my = box.querySelector('[data-myrsvp]');
+    if (my) { my.className = 'rsvp tick ' + ({ accept: 'y', maybe: 'm', decline: 'n' })[b.dataset.r]; my.textContent = ({ accept: 'Going', maybe: 'Maybe', decline: 'Declined' })[b.dataset.r]; }
+    await markRead();
+    okSnack(({ accept: `Accepted — ${mt.organizerName || 'the organiser'} will see you are going`, maybe: 'Marked as maybe', decline: 'Declined' })[b.dataset.r]);
+  }
+
+  // Checklist = the task's subtasks; ticking one moves it (same route as Mark as done).
+  async function toggleSub(box, li) {
+    if (li.classList.contains('busy')) return;
+    const on = !li.classList.contains('ok');
+    li.classList.add('busy'); li.classList.toggle('ok', on); li.querySelector('.chk').classList.toggle('on', on); progress(box);
+    const res = await api('POST', `api/projects/tasks/${li.dataset.sub}/move`, { status: on ? 'done' : (li.dataset.was || 'todo') });
+    li.classList.remove('busy');
+    if (!res.ok) { li.classList.toggle('ok', !on); li.querySelector('.chk').classList.toggle('on', !on); progress(box); failSnack(res.json?.message || "Couldn't update the checklist."); }
+  }
+  function progress(box) {
+    const all = box.querySelectorAll('.checklist li').length, d = box.querySelectorAll('.checklist li.ok').length;
+    const bar = box.querySelector('[data-pbar]'), txt = box.querySelector('[data-ptxt]');
+    if (bar && all) bar.style.setProperty('--w', Math.round(d / all * 100) + '%');
+    if (txt && all) txt.textContent = `${d} of ${all}`;
+  }
+
+  const openTarget = url => /^https?:\/\//i.test(url || '') ? post({ type: 'openUrl', url }) : openIPop(url);
+  // Buttons of the full layouts (data-fa). Loaders may override one with view.fa[key].
+  const FULL_ACTIONS = new Proxy({
+    read: async () => { await markRead(); closeOut('read'); },
+    open: async () => { openTarget(N.targetUrl); await markRead(); closeOut('open'); },
+    snooze: async b => snoozeMenu(b, N.module === 'calendar'),
+    replyall: async b => {
+      view.replyAll = !view.replyAll; b.classList.toggle('on', view.replyAll); b.setAttribute('aria-pressed', String(view.replyAll));
+      const i = b.closest('.factions').querySelector('[data-reply]'); if (i) { i.placeholder = view.replyAll ? 'Reply all…' : `Reply to ${(view.mail?.senderName || '').split(' ')[0] || 'the sender'}…`; i.focus(); }
+    },
+  }, { get: (base, k) => (view.fa && view.fa[k]) || base[k] });
 
   // ── shared header + footer (every module; 1.4.0 mockup docs/mockups/notifier/aligned.html §1) ──
   // Header: neutral, module colour only in the 28 px icon chip. – □ ✕ identical in every window.
@@ -322,10 +490,17 @@
     const pics = atts.filter(a => (a.mimeType || '').startsWith('image/'));
     const pic = a => `<img class="img" data-img data-src="api/mail/attachments/${a.id}/download?inline=true" alt="${esc(a.fileName)}">`;
     view.body = `<iframe data-mail sandbox="allow-same-origin" title="Message"></iframe>` + pics.slice(0, 2).map(pic).join('');
-    view.full = `<iframe data-mail sandbox="allow-same-origin" title="Message"></iframe>` + pics.map(pic).join('');
     // 1.5.0: every attachment is a file card with Preview + Download (pictures also show inline above).
-    view.files = atts.map(a => ({ name: a.fileName, path: `api/mail/attachments/${a.id}/download`, size: a.fileSize, from: 'Mail · ' + (d.senderName || '') }));
+    view.files = atts.map(a => ({ name: a.fileName, path: `api/mail/attachments/${a.id}/download`, size: a.fileSize, from: 'Mail · ' + (d.senderName || ''),
+      thumb: (a.mimeType || '').startsWith('image/') ? `api/mail/attachments/${a.id}/download?inline=true` : null }));
     const canAll = d.canReplyAll && replyPlan(d, true).count > replyPlan(d, false).count;
+    // Full layout: the sender's department (never NIK/position), recipients, the body frame, the attachment grid.
+    view.src = { kind: 'mail', d, canAll, dept: null };
+    view.extras = async () => { view.src.dept = await departmentOf(d.senderId, d.senderName); };
+    view.fa = {
+      forward: async () => { openIPop(N.targetUrl + '&forward=1'); closeOut('open'); },
+      read: async () => { await api('POST', `api/mail/${mid}/read`); await markRead(); closeOut('read'); },
+    };
     view.reply = { rich: true, attach: true, placeholder: 'Write your reply…' };
     // Reply | Forward · Open · Mark as read (with Reply all: Reply all · Mark as read · More → Forward, Open)
     view.tools = [
@@ -428,6 +603,8 @@
       const c = chat && chatOf(x.sentence);
       view.body = `<div class="tk">${c ? tkChat(x.who?.name || c.from, false, N.at, c.text) : tkEvent(N.eventType, x.sentence)}</div>`;
       ticketReply(agentTid);
+      view.src = { kind: 'ticket', t: null, x, c };
+      view.fa = { idesk: openIdesk(null).run };
       const replyFirst = chat || /^Reopened/.test(x.sentence);
       const open = { ...openIdesk(null), cls: replyFirst ? '' : 'p' };
       const reply = { label: IC('reply') + 'Reply', cls: replyFirst ? 'p' : '', reply: true };
@@ -460,6 +637,8 @@
     const reply = view.reply ? [{ label: IC('reply') + 'Reply', reply: true }] : [];
     // No confirm endpoint in the iPop ticket API: confirming happens in iDesk (as on the web Tickets page).
     const confirm = t.status === 'RESOLVED' && { ...openIdesk(url), label: IC('check') + 'Confirm in iDesk', cls: 'p' };
+    view.src = { kind: 'ticket', t, msgs, x, confirm: !!confirm };
+    view.fa = { idesk: openIdesk(url).run, confirm: openIdesk(url).run };
     view.tools = confirm ? [confirm, ...reply, { ...openIdesk(url), label: IC('arrow-up-right') + 'Open' }, readAll]
       : chat && view.reply ? [{ ...reply[0], cls: 'p' }, openIdesk(url), readAll]
       : [{ ...openIdesk(url), cls: 'p' }, ...reply, readAll];
@@ -486,14 +665,15 @@
         src.attendees?.length && { t: `${src.attendees.length} people` }].filter(Boolean);
       const notes = mt?.description || mt?.agenda || ev?.notes;
       view.body = `<p class="txt sel">${esc(notes || N.body)}</p>`;
-      const people = (src.attendees || []).map(a => a.name || a.displayName).filter(Boolean);
-      if (people.length) view.full = view.body + `<div class="people"><b>${people.length} ${people.length === 1 ? 'person' : 'people'}</b><p>${people.map(esc).join(' · ')}</p></div>`;
       view.who = src.ownerName || mt?.organizerName ? { name: src.ownerName || mt.organizerName, sub: 'Organizer' } : null;
     }
     const key = joinKey || mt?.roomKey || ev?.roomKey;
     const link = mt?.link || ev?.link;
     const canJoin = key || link;
-    const invited = mt && mt.myResponse !== undefined && mt.myResponse !== 'organizer';
+    const invited = mt && mt.myResponse !== undefined && mt.myResponse !== 'organizer'
+      && (mt.attendees || []).some(a => (a.nik || '').toLowerCase() === (NIK || '').toLowerCase()) && (mt.organizerNik || '').toLowerCase() !== (NIK || '').toLowerCase();
+    if (src) view.src = { kind: 'meeting', mt, ev, key, link, canJoin: !!canJoin, invited };
+    view.fa = { join: async () => { if (key) openIPop(`/calls?tab=rooms&join=${key}`); else post({ type: 'openUrl', url: link }); await markRead(); finish('Joining…', 'join'); } };
     view.tools = [
       ...(canJoin ? [{ label: IC('video') + 'Join now', cls: 'p', run: async () => { if (key) openIPop(`/calls?tab=rooms&join=${key}`); else post({ type: 'openUrl', url: link }); await markRead(); finish('Joining…', 'join'); } }] : []),
       ...(mt && invited && mt.myResponse !== 'accept' && !canJoin ? [{ label: IC('check') + 'Accept', cls: 'p', run: () => rsvp(mt.id, 'accept', 'Accepted') }] : []),
@@ -517,13 +697,34 @@
     view.title = p.title;
     view.who = { name: p.authorName, sub: p.type === 'memo' ? 'Memo' : p.type === 'condolence' ? 'Condolence' : 'News' };
     if (p.requiresAcknowledgement) view.chips.push({ t: p.isAcknowledged ? 'Acknowledged' : 'Please acknowledge', st: true });
-    let cover = '';
+    let cover = '', coverPath = null;
     if (p.coverMediaId) {
       const m = await api('GET', `api/news/composer/posts/${pid}/media`);
       const it = m.ok && (m.json || []).find(x => x.mediaId === p.coverMediaId);
       const src = it && (it.posterUrl || it.streamUrl);
-      if (src) cover = `<img class="img" data-img data-src="${esc(src.replace(/^\//, ''))}" alt="">`;
+      if (src) { coverPath = src.replace(/^\//, ''); cover = `<img class="img" data-img data-src="${esc(coverPath)}" alt="">`; }
     }
+    // Full layout: cover, byline, the article, acknowledgement counts (NewsDetailDto.AckCount/AckTotal), attachments.
+    view.src = { kind: 'news', p, coverPath, dept: null };
+    view.extras = async () => {
+      const [dept, url] = await Promise.all([departmentOf(p.authorId, p.authorName), coverPath ? image(coverPath) : null]);
+      view.src.dept = dept; view.src.coverUrl = url || null;
+    };
+    view.fullFiles = (p.attachments || []).map(a => ({ name: a.fileName, path: `api/attachments/${a.id}`, size: a.size, from: 'News · ' + (p.title || ''),
+      thumb: (a.contentType || '').startsWith('image/') ? `api/attachments/${a.id}` : null }));
+    view.fa = {
+      ack: async b => {
+        const a = await api('POST', `api/news/${pid}/acknowledge?contentVersion=${p.contentVersion ?? 1}`);
+        if (!a.ok) return failSnack(a.status === 409 ? 'The memo was updated — open it in iPop to read the new version.' : "Couldn't acknowledge. Try again.");
+        await api('POST', `api/notifications/v1/notifications/${N.id}/acknowledge`);
+        p.isAcknowledged = true; p.ackCount = (p.ackCount || 0) + 1;
+        const n = b.closest('.ackbar'), num = n.querySelector('[data-ackn]'), bar = n.querySelector('[data-ackbar]');
+        if (num) { num.textContent = `${p.ackCount.toLocaleString('en-US')} of ${p.ackTotal.toLocaleString('en-US')}`; num.classList.add('tick'); }
+        if (bar && p.ackTotal) bar.style.setProperty('--w', Math.min(100, p.ackCount / p.ackTotal * 100) + '%');
+        b.outerHTML = `<button class="btn" disabled>${IC('check')}Acknowledged</button>`;
+        okSnack('Thanks — ' + (p.type === 'memo' ? 'the sender' : 'HC') + ' can see you acknowledged');
+      },
+    };
     view.html = p.bodyFormat === 'html' ? p.body : null;
     view.body = (view.html ? '<iframe data-mail sandbox="allow-same-origin" title="Post"></iframe>' : `<p class="txt sel">${esc(p.body)}</p>`) + cover;
     view.more = 'Read full article';
@@ -548,7 +749,27 @@
     view.chips = [{ t: statusName(t.status), st: true }, t.dueDate && { t: 'Due ' + new Date(t.dueDate).toLocaleDateString([], { day: 'numeric', month: 'short' }) }, t.priority && { t: t.priority }].filter(Boolean);
     const desc = d => `<p class="txt sel" style="margin-top:10px;color:var(--ink-3)">${esc(d)}</p>`;
     view.body = `<p class="txt sel">${esc(N.body)}</p>` + (t.description ? desc(t.description.slice(0, 600)) : '');
-    if (t.description && t.description.length > 600) view.full = `<p class="txt sel">${esc(N.body)}</p>` + desc(t.description);
+    // Full layout: task card, checklist (= subtasks), comments. Both lists are fetched only once maximised.
+    view.src = { kind: 'project', t, subs: [], comments: [] };
+    view.extras = async () => {
+      const [c, st] = await Promise.all([api('GET', `api/projects/tasks/${tid}/comments`),
+        t.subtaskCount && t.projectId ? api('GET', `api/projects/${t.projectId}/tasks?parentId=${tid}`) : Promise.resolve({ ok: false })]);
+      if (c.ok && Array.isArray(c.json)) view.src.comments = c.json.filter(x => !x.parentCommentId).concat(c.json.filter(x => x.parentCommentId)).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+      if (st.ok && Array.isArray(st.json)) view.src.subs = st.json;
+    };
+    view.fa = {
+      taskdone: async b => {
+        const done = t.status === 'done', next = done ? 'in_progress' : 'done';
+        const res = await api('POST', `api/projects/tasks/${tid}/move`, { status: next });
+        if (!res.ok) return failSnack(res.json?.message || "Couldn't update the task.");
+        t.status = next;
+        b.classList.toggle('on', !done); b.title = !done ? 'Done' : 'Mark done';
+        b.closest('[data-taskhead]').classList.toggle('isdone', !done);
+        const pill = document.querySelector('[data-stpill]'); if (pill) { pill.className = 'stpill ' + (!done ? 'dn' : 'prog'); pill.textContent = !done ? 'Done' : 'In progress'; }
+        if (!done) await markRead();
+        okSnack(!done ? 'Task done' : 'Task reopened');
+      },
+    };
     view.reply = { rich: false, placeholder: 'Write a comment…', hint: 'Comment on the task' };
     view.send = async text => {
       const res = await api('POST', `api/projects/tasks/${tid}/comments`, { content: text });
@@ -572,6 +793,7 @@
     const pid = id(new RegExp('^/notes/' + G));
     if (!pid) return false;
     view.tools = [openTool('Open in iPop', null, true), readTool];
+    view.src = { kind: 'notes', th: null };
     if (!/comment|mention/.test(N.eventType)) return;
     const r = await api('GET', `api/notes/${pid}/threads`);
     const threads = (r.ok && r.json) || [];
@@ -583,7 +805,7 @@
     view.who = { name: last.authorName, sub: th.quote ? `on “${th.quote.slice(0, 60)}”` : 'commented' };
     const list = cs => `<div class="msg-list">${cs.map(c => `<div class="msg-it sel"><b>${esc(c.authorName)}</b><small>${esc(timeShort(c.createdAt))}</small><p>${esc(c.body)}</p></div>`).join('')}</div>`;
     view.body = list(th.comments.slice(-3));
-    if (th.comments.length > 3) view.full = list(th.comments);
+    view.src = { kind: 'notes', th };
     view.reply = { rich: false, placeholder: 'Reply to the comment…', hint: 'Reply in the comment thread' };
     view.send = async text => {
       const res = await api('POST', `api/notes/${pid}/threads/${th.id}/replies`, { body: text });
@@ -608,9 +830,27 @@
       if (them) view.who = { name: them.senderName, sub: N.leader ? (N.leader === 'VIP' ? 'VIP' : 'Your leader · ' + N.leader) : N.title };
       const one = x => `<div class="msg-it sel ${x.senderNik === NIK ? 'me' : ''}"><b>${esc(x.senderNik === NIK ? 'You' : x.senderName)}</b><small>${esc(timeShort(x.createdAt))}</small><p>${esc(app.plainChat(x.content) || (x.attachments?.length ? '📎 ' + x.attachments.map(a => a.fileName).join(', ') : ''))}</p></div>`;
       view.body = `<div class="msg-list">${last.slice(-3).map(one).join('')}</div>`;
-      if (last.length > 3) view.full = `<div class="msg-list">${last.map(one).join('')}</div>`;
       view.files = last.slice(-3).flatMap(x => (x.attachments || []).map(a => ({ name: a.fileName, path: `api/chat/attachments/${a.id}/download`, size: a.fileSize, from: 'Chat · ' + (x.senderName || '') })));
     }
+    // Full layout: the conversation (more of it), the room's name/members/presence, the other person's department.
+    view.src = { kind: 'chat', items, room: null, dept: null };
+    const allFiles = list => list.filter(x => !x.isDeleted && x.type !== 'system').sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+      .flatMap(x => (x.attachments || []).map(a => ({ name: a.fileName, path: `api/chat/attachments/${a.id}/download`, size: a.fileSize, from: 'Chat · ' + (x.senderName || '') })));
+    view.fullFiles = allFiles(items);
+    view.extras = async () => {
+      const [more, rm] = await Promise.all([api('GET', `api/chat/rooms/${room}/messages?page=1&pageSize=30`), api('GET', `api/chat/rooms/${room}`)]);
+      const list = (more.ok && (more.json?.items || more.json?.Items)) || null;
+      if (list && list.length) { view.src.items = list; view.fullFiles = allFiles(list); }
+      if (rm.ok && rm.json) {
+        view.src.room = rm.json;
+        const other = rm.json.type === 'dm' ? (rm.json.members || []).find(m => (m.nik || '').toLowerCase() !== (NIK || '').toLowerCase()) : null;
+        if (other) view.src.dept = await departmentOf(other.userId, other.name);
+      }
+    };
+    view.fa = {
+      open: async () => { openIPop(N.targetUrl); await markChat(); closeOut('open'); },
+      read: async () => { await markChat(); closeOut('read'); },
+    };
     view.reply = { rich: false, placeholder: 'Reply…', hint: 'Sent to the chat' };
     view.send = async text => {
       const res = await api('POST', `api/chat/rooms/${room}/messages`, { content: text, idempotencyKey: crypto.randomUUID() });
@@ -627,6 +867,7 @@
   }
 
   async function calls() {
+    view.fa = { callback: async () => { openIPop('/calls?tab=recents'); await markRead(); closeOut('call'); } };
     view.tools = [
       { label: IC('phone') + 'Call back', cls: 'p', run: async () => { openIPop('/calls?tab=recents'); await markRead(); closeOut('call'); } },
       openTool('Open', '/calls?tab=recents'), readTool,
@@ -664,7 +905,7 @@
   }
 
   async function attach(box, input) {
-    const list = box.querySelector('.att');
+    const list = box.querySelector('.attq') || box.querySelector('.att');
     for (const f of [...input.files].slice(0, 5)) {
       if (f.size > 25 * 1024 * 1024) { snack(`${f.name} is too large here — attach it in iPop.`); continue; }
       const chip = document.createElement('span'); chip.innerHTML = IC('loader-circle', 'spin') + esc(f.name); list.appendChild(chip); size();
@@ -680,11 +921,14 @@
   async function mailFrame(frame, html) {
     const dark = document.documentElement.classList.contains('dark'), max = isMax() && STYLE !== 'stack';
     const cs = getComputedStyle(document.documentElement);
-    const fs = max ? (document.documentElement.classList.contains('large') ? 22 : 20) : (parseFloat(cs.getPropertyValue('--fs-body')) || 16);
-    const ink = max ? (dark ? '#f5f5f7' : '#1d1d1f') : (dark ? '#d1d1d6' : '#3c3c43');
+    // Full layout (mockup screen 7): mail 16/1.7, a news article 18/1.75 in a book face; Large text adds 2 px.
+    const article = frame.hasAttribute('data-article'), big = document.documentElement.classList.contains('large') ? 2 : 0;
+    const fs = max ? (article ? 18 : 16) + big : (parseFloat(cs.getPropertyValue('--fs-body')) || 16);
+    const ink = max ? (dark ? '#d1d1d6' : '#3c3c43') : (dark ? '#d1d1d6' : '#3c3c43');
+    const face = max && article ? '"Iowan Old Style","Charter","Georgia",serif' : '"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif';
     frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>
-      html,body{margin:0;padding:0;background:transparent;color:${ink};font:${fs}px/${max ? 1.7 : 1.55} "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;word-break:break-word;overflow:hidden}
-      p{margin:0 0 ${max ? 18 : 10}px}
+      html,body{margin:0;padding:0;background:transparent;color:${ink};font:${fs}px/${max ? (article ? 1.75 : 1.7) : 1.55} ${face};word-break:break-word;overflow:hidden}
+      p{margin:0 0 ${max ? (article ? 16 : 14) : 10}px}
       img{max-width:100%;height:auto;border-radius:8px;cursor:zoom-in} a{color:${dark ? '#5ee08a' : '#1c7a44'}} table{max-width:100%}
       blockquote{margin:8px 0;padding-left:10px;border-left:3px solid rgba(120,120,128,.35);color:#8e8e93}
       details.mail-quote>summary{cursor:pointer;color:#8e8e93;list-style:none}
