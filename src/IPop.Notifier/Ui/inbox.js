@@ -440,7 +440,7 @@
         const r = await api('GET', `api/chat/rooms/${room}/messages?page=1&pageSize=20`);
         const items = ((r.ok && (r.json?.items || r.json?.Items)) || []).filter(x => !x.isDeleted && x.type !== 'system');
         items.sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
-        d.conv = items.map(x => ({ name: x.senderName, me: !!ctx.nik && x.senderNik === ctx.nik, text: x.content, at: x.createdAt, atts: (x.attachments || []).map(a => a.fileName) }));
+        d.conv = items.map(x => ({ name: x.senderName, me: !!ctx.nik && x.senderNik === ctx.nik, text: app.plainChat(x.content), at: x.createdAt, atts: (x.attachments || []).map(a => a.fileName) }));
         d.files = items.flatMap(x => (x.attachments || []).map(a => ({ name: a.fileName, path: `api/chat/attachments/${a.id}/download`, size: a.fileSize, from: 'Chat · ' + (x.senderName || ''),
           thumb: (a.mimeType || a.contentType || '').startsWith('image/') ? `api/chat/attachments/${a.id}/thumbnail` : null }))).reverse();
         d.reply = {

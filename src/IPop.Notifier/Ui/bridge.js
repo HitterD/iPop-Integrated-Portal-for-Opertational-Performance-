@@ -40,9 +40,11 @@
     setTimeout(() => s.remove(), 3200);
   }
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // Chat text as people read it: mention tokens "@[Name](u:id)" / "@[all](all)" / project and task links → "@Name".
+  const plainChat = s => String(s ?? '').replace(/@\[([^\[\]\r\n]{1,100})\]\((?:all|[upt]:[0-9a-fA-F-]{36}|[0-9a-fA-F-]{36})\)/g, '@$1');
 
   window.app = {
-    post, api, image, snack, esc,
+    post, api, image, snack, esc, plainChat,
     on: (type, h) => (handlers[type] = handlers[type] || []).push(h),
     syncMax: () => syncMax(),
     ready: () => post({ type: 'ready' }),

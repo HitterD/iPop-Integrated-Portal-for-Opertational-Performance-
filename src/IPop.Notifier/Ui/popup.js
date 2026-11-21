@@ -192,7 +192,9 @@
     const file = box.querySelector('[data-file]');
     if (file) file.addEventListener('change', () => attach(box, file));
     box.querySelectorAll('.ed').forEach(ed => ed.addEventListener('keydown', e => {
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(box, box.querySelector('[data-send]')); }
+      // Mail (rich) sends with Ctrl+Enter; chat and iDesk replies send on Enter like the chat itself (Shift+Enter = new line).
+      const plainSend = !view.reply?.rich && !e.shiftKey && !e.isComposing;
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || plainSend)) { e.preventDefault(); send(box, box.querySelector('[data-send]')); }
       if (e.key === 'Escape') { e.stopPropagation(); box.classList.remove('replying'); size(); }
     }));
     document.body.dataset.esc = 'on';
@@ -602,7 +604,7 @@
       const last = items.filter(x => !x.isDeleted && x.type !== 'system');
       const them = last.filter(x => x.senderNik !== NIK).slice(-1)[0];
       if (them) view.who = { name: them.senderName, sub: N.leader ? (N.leader === 'VIP' ? 'VIP' : 'Your leader · ' + N.leader) : N.title };
-      const one = x => `<div class="msg-it sel ${x.senderNik === NIK ? 'me' : ''}"><b>${esc(x.senderNik === NIK ? 'You' : x.senderName)}</b><small>${esc(timeShort(x.createdAt))}</small><p>${esc(x.content || (x.attachments?.length ? '📎 ' + x.attachments.map(a => a.fileName).join(', ') : ''))}</p></div>`;
+      const one = x => `<div class="msg-it sel ${x.senderNik === NIK ? 'me' : ''}"><b>${esc(x.senderNik === NIK ? 'You' : x.senderName)}</b><small>${esc(timeShort(x.createdAt))}</small><p>${esc(app.plainChat(x.content) || (x.attachments?.length ? '📎 ' + x.attachments.map(a => a.fileName).join(', ') : ''))}</p></div>`;
       view.body = `<div class="msg-list">${last.slice(-3).map(one).join('')}</div>`;
       if (last.length > 3) view.full = `<div class="msg-list">${last.map(one).join('')}</div>`;
       view.files = last.slice(-3).flatMap(x => (x.attachments || []).map(a => ({ name: a.fileName, path: `api/chat/attachments/${a.id}/download`, size: a.fileSize, from: 'Chat · ' + (x.senderName || '') })));
