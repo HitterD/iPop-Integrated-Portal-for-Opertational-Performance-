@@ -683,6 +683,46 @@ public class MailServiceTests
     }
 
     [Fact]
+    public async Task Drafts_and_scheduled_mail_move_to_trash_and_scheduled_is_cancelled()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("A");
+        var b = t.AddUser("B");
+        var draft = (await new MailService(t.Verify()).SaveDraftAsync(a.Id, new ComposeMailRequest("D", "<p>x</p>", [b.Nik], [], []), default)).MailId!.Value;
+        var sched = (await new MailService(t.Verify()).SendAsync(a.Id, new ComposeMailRequest("S", "<p>x</p>", [b.Nik], [], [],
+            ScheduledAt: DateTime.UtcNow.AddHours(2)), default)).MailId!.Value;
+        var draft2 = (await new MailService(t.Verify()).SaveDraftAsync(a.Id, new ComposeMailRequest("D2", "<p>x</p>", [b.Nik], [], []), default)).MailId!.Value;
+
+        Assert.True((await new MailService(t.Verify()).MoveToFolderAsync(a.Id, draft, MailFolder.Trash, default)).Success);
+        Assert.True((await new MailService(t.Verify()).MoveToFolderAsync(a.Id, sched, MailFolder.Trash, default)).Success);
+        var bulk = await new MailService(t.Verify()).BulkMoveAsync(a.Id, [draft2], MailFolder.Trash, default);
+        Assert.Equal(1, bulk.Affected);
+
+        using var v = t.Verify();
+        Assert.All(v.MailRecipients.Where(r => r.UserId == a.Id), r => Assert.Equal("trash", r.Folder));
+        // The scheduled mail never reaches B.
+        Assert.Equal("draft", v.Mails.Single(m => m.Id == sched).Status);
+        Assert.False(v.MailRecipients.Any(r => r.UserId == b.Id && r.MailId == sched && r.Folder != "pending"));
+
+        // Restore puts them back in Drafts; other moves of drafts are still refused.
+        await new MailService(t.Verify()).BulkRestoreAsync(a.Id, [draft], default);
+        Assert.Equal("draft", t.Verify().MailRecipients.Single(r => r.UserId == a.Id && r.MailId == draft).Folder);
+        Assert.False((await new MailService(t.Verify()).MoveToFolderAsync(a.Id, draft, MailFolder.Archive, default)).Success);
+    }
+
+    [Fact]
+    public async Task Folder_rows_carry_their_own_folder()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("A");
+        var b = t.AddUser("B");
+        var id = (await new MailService(t.Verify()).SendAsync(a.Id, new ComposeMailRequest("F", "<p>x</p>", [b.Nik], [], []), default)).MailId!.Value;
+        await new MailService(t.Verify()).MoveToFolderAsync(b.Id, id, MailFolder.Archive, default);
+        var page = await new MailService(t.Verify()).GetFolderAsync(b.Id, MailFolder.Archive, 1, 20, null, default);
+        Assert.Equal("archive", Assert.Single(page.Items).Folder);
+    }
+
+    [Fact]
     public async Task Label_count_and_view_exclude_trash_keep_archive_and_drop_on_delete_forever()
     {
         using var t = new TestDb();

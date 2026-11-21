@@ -432,7 +432,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
             .Take(pageSize)
             .Select(r => new
             {
-                r.MailId, r.IsStarred, r.IsRead, r.IsPinned, r.IsMuted,
+                r.MailId, r.IsStarred, r.IsRead, r.IsPinned, r.IsMuted, r.Folder,
                 Row = new MailRow(r.Mail.Id, r.Mail.SenderId, r.Mail.Sender.Name, r.Mail.Sender.Nik, r.Mail.Subject,
                     r.Mail.Body.Substring(0, SnippetSourceChars), r.Mail.SentAt, r.Mail.CreatedAt, r.Mail.HasAttachment,
                     r.Mail.ThreadCount, r.Mail.ThreadRootId, r.Mail.InReplyToId, r.Mail.Importance, r.Mail.ScheduledAt),
@@ -452,7 +452,8 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
 
         var dtos = items.Select(r => ToSummaryFromRow(r.Row, r.IsStarred, r.IsRead, r.IsPinned, r.IsMuted) with
         {
-            Labels = labelByMail.TryGetValue(r.MailId, out var lbls) ? lbls : null
+            Labels = labelByMail.TryGetValue(r.MailId, out var lbls) ? lbls : null,
+            Folder = r.Folder,
         }).ToList();
         return new PagedResult<MailSummaryDto>(dtos, totalCount, page, pageSize);
     }
@@ -874,6 +875,10 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
 
         if (recipient.Folder == "trash" && FolderToString(folder) != "trash")
             return new SendMailResult(false, null, "mail_trashed");
+        // Drafts and scheduled mail only leave their folder for Trash, and a scheduled one is
+        // cancelled first so it is never delivered from Trash. Restore brings it back as a draft.
+        if (folder == MailFolder.Trash && recipient.Folder is "draft" or "scheduled")
+            return await DeleteAsync(userId, mailId, ct);
 
         var status = await db.Mails.Where(m => m.Id == mailId).Select(m => m.Status).FirstOrDefaultAsync(ct);
         var folderStr = recipient.Folder == "trash" ? "trash" : MoveTarget(recipient, status, folder);
@@ -958,6 +963,14 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         if (folder is not (MailFolder.Inbox or MailFolder.Sent or MailFolder.Archive or MailFolder.Trash))
             return new BulkResultDto(0, "invalid_folder");
 
+        if (folder == MailFolder.Trash)
+        {
+            // Scheduled mail is cancelled first (see DeleteAsync); drafts go to Trash like any row.
+            var scheduled = await db.MailRecipients
+                .Where(r => r.UserId == userId && mailIds.Contains(r.MailId) && r.Folder == "scheduled")
+                .Select(r => r.MailId).ToListAsync(ct);
+            foreach (var id in scheduled) await CancelScheduleAsync(userId, id, ct);
+        }
         var rows = await db.MailRecipients
             .Include(r => r.Mail)
             .Where(r => r.UserId == userId && mailIds.Contains(r.MailId) && r.Folder != "trash")
@@ -965,6 +978,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         var moved = 0;
         foreach (var r in rows)
         {
+            if (folder == MailFolder.Trash && r.Folder == "draft") { r.Folder = "trash"; moved++; continue; }
             if (MoveTarget(r, r.Mail.Status, folder) is not { } target) continue;
             r.Folder = target;
             moved++;

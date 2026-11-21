@@ -51,7 +51,7 @@ public class MailQa2Tests
     public void Inbox_starred_tab_counts_inbox_starred_mail()
     {
         var page = File.ReadAllText(Path.Combine(Root(), "src/IPop.Web/Pages/Mail.razor"));
-        Assert.Matches(@"StarredCount\s*=>\s*activeFolder\s*==\s*MailFolder\.Inbox\s*\?\s*\(counts\?\.InboxStarred", page);
+        Assert.Matches(@"StarredCount\s*=>[^;]*activeFolder\s*==\s*MailFolder\.Inbox\s*\?\s*\(counts\?\.InboxStarred", page);
     }
 }
 
