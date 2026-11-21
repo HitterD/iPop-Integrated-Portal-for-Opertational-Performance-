@@ -1,0 +1,1879 @@
+<meta charset="utf-8">
+<title>iPop Business Plan</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+/* Layout: iPop friendly shell. Forest-green frame around one full-width light panel; 4 work tabs; cards fill the width (3 columns on wide screens). */
+:root{
+  --frame:#123528; --frame-2:#1a4535; --frame-3:#22533f; --frame-ink:#e7f2ec; --frame-ink-2:#a3c2b3; --frame-line:rgba(255,255,255,.10);
+  --bg:#f6f5f2; --surface:#ffffff; --surface-2:#f4f2ee; --line:#e8e5df; --line-2:#d9d5ce;
+  --ink:#1c1917; --ink-2:#44403c; --ink-3:#736d68; --ink-4:#a8a29e;
+  --accent:#2e9d6b; --accent-ink:#1d6646; --accent-soft:#dcf2e5;
+  --danger:#c93a2b; --danger-soft:#fdecea; --warn:#a85f05; --warn-soft:#fcf0dc; --ok:#23804e; --ok-soft:#e1f3e8; --info:#2f74b5; --info-soft:#e4effa;
+  --note:#fff7d6; --note-ink:#5b4a0c; --note-line:#ecd98a;
+  --scrim:rgba(10,20,15,.45);
+  --sh-card:0 1px 2px rgba(25,24,22,.05); --sh-pop:0 18px 44px -14px rgba(25,24,22,.28);
+  --font:"Inter",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --r-card:18px; --r-ctl:12px;
+  --c-me:#2f74b5; --c-me-soft:#e6f0fa; --c-ov:#23804e; --c-ov-soft:#e1f3e8; --c-chg:#c4532f; --c-chg-soft:#fbe8e0; --c-buy:#a86b06; --c-buy-soft:#fcf1da; --c-why:#0f7f86; --c-why-soft:#ddf2f2; --c-rule:#5b6b78; --c-rule-soft:#e9edf0; --c-int:#b0457a; --c-int-soft:#f8e4ee; --c-prj:#3a86c8; --c-prj-soft:#e3eef9;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --frame:#0b2219; --frame-2:#133126; --frame-3:#1b3f31; --frame-ink:#e3efe8; --frame-ink-2:#93b3a4;
+  --bg:#151816; --surface:#1d211f; --surface-2:#252a27; --line:#2d3330; --line-2:#3a423d;
+  --ink:#ecefed; --ink-2:#c9cfcb; --ink-3:#99a39d; --ink-4:#6d7772;
+  --accent:#4cbf8a; --accent-ink:#86dcb2; --accent-soft:#1d3a2c;
+  --danger:#f07a6c; --danger-soft:#3a1f1c; --warn:#e8a447; --warn-soft:#382a16; --ok:#5fcf8f; --ok-soft:#173326; --info:#7db4ea; --info-soft:#1a2b3c;
+  --note:#2f2a17; --note-ink:#ecdca0; --note-line:#5a4e22; --scrim:rgba(0,0,0,.6);
+  --c-me:#7db4ea; --c-me-soft:#1a2b3c; --c-ov:#5fcf8f; --c-ov-soft:#173326; --c-chg:#f0936f; --c-chg-soft:#3a2219; --c-buy:#e8b04f; --c-buy-soft:#372a14; --c-why:#5fd0d4; --c-why-soft:#143334; --c-rule:#a9b7c2; --c-rule-soft:#262d32; --c-int:#ec8bb8; --c-int-soft:#3a1d2b; --c-prj:#8cc3f0; --c-prj-soft:#17293a;
+  --sh-card:0 1px 2px rgba(0,0,0,.3); --sh-pop:0 18px 44px -14px rgba(0,0,0,.6); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --frame:#0b2219; --frame-2:#133126; --frame-3:#1b3f31; --frame-ink:#e3efe8; --frame-ink-2:#93b3a4;
+  --bg:#151816; --surface:#1d211f; --surface-2:#252a27; --line:#2d3330; --line-2:#3a423d;
+  --ink:#ecefed; --ink-2:#c9cfcb; --ink-3:#99a39d; --ink-4:#6d7772;
+  --accent:#4cbf8a; --accent-ink:#86dcb2; --accent-soft:#1d3a2c;
+  --danger:#f07a6c; --danger-soft:#3a1f1c; --warn:#e8a447; --warn-soft:#382a16; --ok:#5fcf8f; --ok-soft:#173326; --info:#7db4ea; --info-soft:#1a2b3c;
+  --note:#2f2a17; --note-ink:#ecdca0; --note-line:#5a4e22; --scrim:rgba(0,0,0,.6);
+  --c-me:#7db4ea; --c-me-soft:#1a2b3c; --c-ov:#5fcf8f; --c-ov-soft:#173326; --c-chg:#f0936f; --c-chg-soft:#3a2219; --c-buy:#e8b04f; --c-buy-soft:#372a14; --c-why:#5fd0d4; --c-why-soft:#143334; --c-rule:#a9b7c2; --c-rule-soft:#262d32; --c-int:#ec8bb8; --c-int-soft:#3a1d2b; --c-prj:#8cc3f0; --c-prj-soft:#17293a;
+  --sh-card:0 1px 2px rgba(0,0,0,.3); --sh-pop:0 18px 44px -14px rgba(0,0,0,.6); color-scheme:dark}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--frame);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+.num{font-variant-numeric:tabular-nums}
+svg.i{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+h2,h3,h4{text-wrap:balance}
+
+/* ---------- shell ---------- */
+.shell{display:flex;min-height:100%}
+.sidebar{width:248px;flex:none;color:var(--frame-ink);padding:18px 0 14px 14px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh}
+.logo{display:flex;align-items:center;gap:10px;padding:4px 12px 12px;font-weight:800;font-size:19px;letter-spacing:-.02em}
+.logo b{width:34px;height:34px;border-radius:10px;background:linear-gradient(140deg,#4cd787,#1d6646);display:grid;place-items:center;font-size:15px;color:#fff}
+.navh{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--frame-ink-2);padding:12px 14px 4px;display:flex;align-items:center;gap:8px}
+.navh::after{content:"";flex:1;height:1px;background:var(--frame-line);margin-right:14px}
+.nav a{display:flex;align-items:center;gap:11px;padding:9px 14px;border-radius:12px 0 0 12px;color:var(--frame-ink);text-decoration:none;font-weight:500}
+.nav a .dot{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:var(--frame-2)}
+.nav a .dot svg{width:15px;height:15px}
+.nav a.work .dot{color:#8cc3f0}.nav a.comm .dot{color:#f2a58b}.nav a.res .dot{color:#f0c76a}.nav a.adm .dot{color:#b9c6cf}
+.nav a:hover{background:var(--frame-2)}
+.nav a.on{background:var(--bg);color:var(--ink);font-weight:600}
+.nav a.on .dot{background:#3a86c8;color:#fff}
+.nav a .badge{margin-left:auto;margin-right:10px;font-size:11px;font-weight:700;background:#cf6a4c;color:#fff;border-radius:99px;padding:0 7px}
+.me{margin-top:auto;margin-right:14px;display:flex;gap:10px;align-items:center;padding:10px;border-radius:14px;background:var(--frame-2)}
+.av{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;font-weight:700;font-size:12px;color:#fff;flex:none}
+.me small{display:block;color:var(--frame-ink-2);font-size:12px}
+
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{min-height:68px;display:flex;align-items:center;gap:12px;padding:10px max(16px,env(safe-area-inset-right,0px)) 10px 22px;color:var(--frame-ink);flex-wrap:wrap}
+.topbar h1{font-size:20px;margin:0;font-weight:700;letter-spacing:-.01em}
+.topbar .sp{flex:1}
+.search{display:flex;align-items:center;gap:8px;background:var(--frame-2);border-radius:12px;padding:8px 12px;color:var(--frame-ink-2);min-width:200px}
+.seg{display:flex;background:var(--frame-2);border-radius:12px;padding:3px;gap:2px}
+.seg button{border:0;background:transparent;color:var(--frame-ink-2);border-radius:9px;padding:6px 10px;display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12.5px;font-weight:600}
+.seg button svg{width:15px;height:15px}
+.seg button[aria-pressed="true"]{background:var(--frame-ink);color:var(--frame)}
+.viewas{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--frame-ink-2)}
+.viewas select{background:var(--frame-2);border:1px solid var(--frame-line);color:var(--frame-ink);border-radius:10px;padding:7px 10px;font-weight:600}
+.viewas option{color:#1c1917;background:#fff}
+.panel{flex:1;background:var(--bg);border-top-left-radius:26px;min-width:0;display:flex;flex-direction:column}
+.tabbar{display:flex;align-items:flex-end;gap:12px;border-bottom:1px solid var(--line);padding:10px 24px 0;overflow-x:auto;scrollbar-width:none}
+.tabbar::-webkit-scrollbar{display:none}
+.tabs{display:flex;gap:2px}
+.tabs a{padding:10px 14px 12px;color:var(--ink-3);text-decoration:none;font-weight:600;border-bottom:2px solid transparent;display:flex;align-items:center;gap:7px;white-space:nowrap;font-size:14.5px}
+.tabs a:hover{color:var(--ink)}
+.tabs a.on{color:var(--accent-ink);border-color:var(--accent)}
+.cnt{font-size:11px;background:var(--danger);color:#fff;border-radius:99px;padding:0 7px;font-weight:700;line-height:18px}
+.tabbar .extra{margin-left:auto;display:flex;gap:4px;padding-bottom:8px}
+.tabbar .extra a{font-size:13px;color:var(--ink-3);text-decoration:none;padding:6px 10px;border-radius:10px;display:flex;gap:6px;align-items:center;white-space:nowrap;font-weight:600}
+.tabbar .extra a:hover,.tabbar .extra a.on{background:var(--surface-2);color:var(--ink)}
+.tabbar .extra svg{width:15px;height:15px}
+.content{padding:20px 24px 48px;width:100%}
+
+/* ---------- common ---------- */
+.note{background:var(--note);color:var(--note-ink);border:1px solid var(--note-line);border-radius:14px;padding:9px 14px;font-size:13px;display:flex;gap:10px;align-items:flex-start;margin-bottom:16px}
+.note svg{margin-top:1px}
+.grid{display:grid;gap:16px}
+.stack{display:grid;gap:16px;align-content:start;min-width:0}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.g2{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)}
+.g2e{grid-template-columns:repeat(2,minmax(0,1fr))}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--sh-card);padding:18px;min-width:0}
+.card h3{margin:0;font-size:15.5px;font-weight:700;letter-spacing:-.005em}
+.sub{color:var(--ink-3);font-size:13px;margin:2px 0 0}
+.hd{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+.kpi{display:flex;flex-direction:column}
+.kpi .lbl{font-size:12.5px;color:var(--ink-3);font-weight:600}
+.kpi .val{font-size:30px;font-weight:800;letter-spacing:-.02em;margin:2px 0;line-height:1.2}
+.kpi .val small{font-size:16px;font-weight:700;letter-spacing:0}
+.kpi .foot{font-size:12.5px;color:var(--ink-3)}
+.kpi.bad .val{color:var(--danger)} .kpi.good .val{color:var(--ok)}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;border-radius:99px;padding:2px 9px;white-space:nowrap}
+.p-red{background:var(--danger-soft);color:var(--danger)} .p-amb{background:var(--warn-soft);color:var(--warn)} .p-grn{background:var(--ok-soft);color:var(--ok)} .p-blu{background:var(--info-soft);color:var(--info)} .p-gry{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line)}
+.btn{border:1px solid var(--line-2);background:var(--surface);border-radius:var(--r-ctl);padding:8px 14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;text-decoration:none;color:var(--ink)}
+.btn:hover{background:var(--surface-2)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.pri:hover{filter:brightness(.95)}
+.btn.warn{background:var(--warn-soft);border-color:transparent;color:var(--warn)}
+.btn.sm{padding:5px 10px;font-size:13px;border-radius:10px}
+.btn svg{width:16px;height:16px}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.muted{color:var(--ink-3)}
+.id{color:var(--ink-4);font-size:12px;font-weight:500}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;font-size:11.5px;color:var(--ink-3);font-weight:600;letter-spacing:.03em;text-transform:uppercase;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr:last-child td{border-bottom:0}
+tr.click{cursor:pointer} tr.click:hover td{background:var(--surface-2)}
+td.r,th.r{text-align:right}
+.att{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--line);align-items:flex-start}
+.att:last-child{border-bottom:0;padding-bottom:0}
+.sev{width:4px;align-self:stretch;border-radius:4px;flex:none}
+.sev.red{background:var(--danger)}.sev.amb{background:var(--warn)}.sev.blu{background:var(--info)}.sev.grn{background:var(--ok)}
+.att .t{font-weight:600}
+.att .d{font-size:13px;color:var(--ink-3)}
+.att .act{margin-left:auto}
+.colh{font-size:11.5px;font-weight:700;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase}
+.circle-av{display:flex}
+.circle-av .av{width:28px;height:28px;border-radius:8px;border:2px solid var(--surface);margin-left:-6px;font-size:10.5px}
+.circle-av .av:first-child{margin-left:0}
+
+/* ---------- For me ---------- */
+.forme{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:16px;align-items:start}
+.hello{display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap}
+.hello h2{margin:0;font-size:22px;letter-spacing:-.015em}
+.hello .big{font-size:22px;font-weight:800;color:var(--danger)}
+.task{border:1px solid var(--line);border-radius:16px;padding:16px;background:var(--surface);display:grid;gap:10px}
+.task+.task{margin-top:12px}
+.task.late{border-color:var(--danger);box-shadow:inset 4px 0 0 var(--danger)}
+.task.soon{box-shadow:inset 4px 0 0 var(--warn)}
+.task .top{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+.task h4{margin:2px 0 0;font-size:16.5px;letter-spacing:-.01em}
+.task .why{font-size:14px;color:var(--ink-2);max-width:72ch}
+.task .meta{font-size:12.5px;color:var(--ink-3);display:flex;gap:6px 14px;flex-wrap:wrap}
+.task .ans{display:flex;gap:8px;flex-wrap:wrap}
+.task .ans .btn{padding:10px 16px}
+.task .impact{display:grid;grid-template-columns:240px minmax(0,1fr) auto;gap:8px;align-items:start;background:var(--surface-2);border-radius:12px;padding:10px}
+.task .done{display:flex;gap:8px;align-items:center;color:var(--ok);font-weight:600}
+.task.answered{opacity:.75}
+.toastmock{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;box-shadow:var(--sh-pop)}
+.toastmock .app{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-3);margin-bottom:6px}
+.toastmock .app b{width:18px;height:18px;border-radius:5px;background:linear-gradient(140deg,#4cd787,#1d6646);display:grid;place-items:center;color:#fff;font-size:9px}
+.toastmock .tt{font-weight:700}
+.toastmock .tb{font-size:13px;color:var(--ink-2)}
+.toastmock .tbtn{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:10px}
+.toastmock .tbtn span{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:6px 4px;text-align:center;font-size:12px;font-weight:600}
+.chan{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+.chan:last-child{border-bottom:0}
+.chan .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--surface-2);color:var(--ink-2)}
+.chan .ic svg{width:16px;height:16px}
+label.f{display:flex;flex-direction:column;gap:5px;font-size:12.5px;font-weight:600;color:var(--ink-2)}
+label.f input,label.f select,label.f textarea{border:1px solid var(--line-2);background:var(--surface);border-radius:10px;padding:8px 10px;font-weight:500;width:100%}
+.empty{text-align:center;padding:48px 20px}
+.empty .ic{width:56px;height:56px;border-radius:16px;background:var(--surface-2);display:grid;place-items:center;margin:0 auto 14px;color:var(--ink-3)}
+.empty h2{margin:0 0 6px;font-size:20px}
+.empty p{margin:0 auto;max-width:52ch}
+
+/* ---------- Overview ---------- */
+.ov{display:grid;gap:16px;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr)}
+.ov{align-items:start}
+.wrow{display:grid;grid-template-columns:minmax(0,1.2fr) 150px minmax(0,1.5fr) auto;gap:14px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+.wrow:last-child{border-bottom:0;padding-bottom:0}
+.wrow .nm{font-weight:600;cursor:pointer}
+.wrow .nm:hover{color:var(--accent-ink)}
+.wrow .nm .id{display:block}
+.dots{display:flex;align-items:center}
+.dots i{width:10px;height:10px;border-radius:50%;background:var(--line-2);flex:none}
+.dots b{flex:1;height:2px;background:var(--line-2)}
+.dots i.d,.dots b.d{background:var(--accent)}
+.dots i.n{width:14px;height:14px;background:var(--warn);box-shadow:0 0 0 3px var(--warn-soft)}
+.dots i.l{width:14px;height:14px;background:var(--danger);box-shadow:0 0 0 3px var(--danger-soft)}
+.dots-lbl{font-size:11.5px;color:var(--ink-3);margin-top:4px}
+.wrow .who{font-size:13.5px}
+.wrow .who b{font-weight:600}
+.bar{display:grid;grid-template-columns:110px minmax(0,1fr) 120px;gap:10px;align-items:center;padding:7px 0;font-size:13px}
+.bar .tr{height:12px;background:var(--surface-2);border-radius:6px;overflow:hidden;display:flex}
+.bar .tr span{display:block;height:100%}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--ink-3);margin-top:10px;flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.meet{display:flex;gap:14px;align-items:center}
+.meet .date{width:56px;flex:none;border-radius:14px;background:var(--accent-soft);color:var(--accent-ink);text-align:center;padding:6px 0;font-weight:800;font-size:22px;line-height:1.1}
+.meet .date small{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.agenda{list-style:none;margin:12px 0 0;padding:0;counter-reset:a}
+.agenda li{display:grid;grid-template-columns:24px minmax(0,1fr);gap:8px;padding:7px 0;border-top:1px solid var(--line);font-size:13.5px}
+.agenda li::before{counter-increment:a;content:counter(a);width:22px;height:22px;border-radius:7px;background:var(--surface-2);display:grid;place-items:center;font-weight:700;font-size:11.5px;color:var(--ink-2)}
+
+/* ---------- product change detail ---------- */
+.nhead{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;margin-bottom:14px}
+.nhead h2{margin:6px 0 4px;font-size:24px;letter-spacing:-.015em}
+.stepper{display:flex;overflow-x:auto;padding:2px 0}
+.step{flex:1;min-width:120px;position:relative;padding-top:24px;font-size:12.5px;color:var(--ink-3)}
+.step::before{content:"";position:absolute;top:8px;left:0;right:0;height:3px;background:var(--line-2)}
+.step.done::before{background:var(--accent)}
+.step b{display:block;color:var(--ink);font-size:13px}
+.step i{position:absolute;top:1px;left:0;width:17px;height:17px;border-radius:50%;background:var(--surface);border:3px solid var(--line-2)}
+.step.done i{background:var(--accent);border-color:var(--accent)}
+.step.now i{border-color:var(--danger);background:var(--danger-soft)}
+.subtabs{display:flex;gap:6px;margin:16px 0;flex-wrap:wrap}
+.subtabs a{padding:8px 14px;border-radius:12px;background:var(--surface);border:1px solid var(--line);font-weight:600;color:var(--ink-2);text-decoration:none;display:flex;gap:8px;align-items:center}
+.subtabs a.on{background:var(--frame);color:var(--frame-ink);border-color:var(--frame)}
+.subtabs a .pill{font-size:11px;padding:0 7px}
+.people{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.person{border:1px solid var(--line);border-radius:14px;padding:12px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;align-items:center;background:var(--surface)}
+.person.late{border-color:var(--danger);background:var(--danger-soft)}
+.person .n{font-weight:600;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+.person .n small{display:block;color:var(--ink-3);font-weight:500;font-size:12.5px}
+.person .imp{grid-column:1 / -1;font-size:13px;color:var(--ink-2)}
+.range{width:100%;accent-color:var(--accent);height:28px}
+.ro-out{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}
+.ro-out div{background:var(--surface-2);border-radius:12px;padding:10px 12px}
+.ro-out small{display:block;color:var(--ink-3);font-size:12px;font-weight:600}
+.ro-out strong{font-size:20px;letter-spacing:-.01em}
+.opt{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line);font-size:13.5px;cursor:pointer}
+.opt input{margin-top:3px;accent-color:var(--accent);width:16px;height:16px;flex:none}
+.opt .s{margin-left:auto;color:var(--ok);font-weight:700;white-space:nowrap}
+.dep{border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center}
+.dep+.dep{margin-top:8px}
+.dep b{display:block;font-size:13.5px}
+.dep .ic{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:var(--surface-2)}
+.dep .ic svg{width:16px;height:16px}
+.dep.risk{border-color:var(--danger);background:var(--danger-soft)}
+.dep.shared{border-style:dashed}
+.msg{display:flex;gap:10px;padding:7px 0}
+.msg .b{background:var(--surface-2);border-radius:4px 14px 14px 14px;padding:8px 12px;font-size:13.5px;min-width:0}
+.msg .b small{display:block;color:var(--ink-3);font-size:12px;font-weight:600;margin-bottom:2px}
+.compose{display:flex;gap:8px;margin-top:8px}
+.compose input{flex:1;min-width:0;border:1px solid var(--line-2);border-radius:12px;padding:9px 12px;background:var(--surface)}
+.sign{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);font-size:14px}
+.sign:last-child{border-bottom:0}
+.sign small{display:block;color:var(--ink-3);font-size:12.5px}
+.plan{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.plan div{background:var(--surface-2);border-radius:12px;padding:12px}
+.plan small{display:block;color:var(--ink-3);font-size:12px;font-weight:600}
+.plan strong{font-size:17px}
+
+/* ---------- before you buy ---------- */
+.gate{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:start;padding:16px 0;border-bottom:1px solid var(--line)}
+.gate:first-of-type{padding-top:4px}
+.gate:last-child{border-bottom:0;padding-bottom:0}
+.gate .ic{width:40px;height:40px;border-radius:12px;display:grid;place-items:center}
+.gate h4{margin:0;font-size:15px}
+.gate .meta{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--ink-3);margin:3px 0 8px}
+.gate .q{background:var(--warn-soft);border-radius:12px;padding:10px 12px;font-size:13.5px}
+.gate .q.red{background:var(--danger-soft)} .gate .q.grn{background:var(--ok-soft)}
+.gate .q b{display:block;margin-bottom:4px}
+.gate .ans{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.cover{height:8px;border-radius:5px;background:var(--surface-2);position:relative;margin-top:4px}
+.cover span{position:absolute;top:0;bottom:0;left:0;border-radius:5px}
+.cover em{position:absolute;top:-3px;bottom:-3px;width:3px;border-radius:2px;background:var(--ink)}
+.calc{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.result{margin-top:14px;border-radius:14px;padding:14px;font-size:13.5px}
+
+/* ---------- why / rules ---------- */
+.case{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,.9fr);border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--surface)}
+.case+.case{margin-top:12px}
+.case>div{padding:14px 16px;min-width:0}
+.case>div+div{border-left:1px solid var(--line)}
+.case .k{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+.case h4{margin:0 0 4px;font-size:15px}
+.case p{margin:0;font-size:13.5px;color:var(--ink-2)}
+.case .fix{background:var(--accent-soft)}
+.case .fix .k{color:var(--accent-ink)}
+.case ul{margin:4px 0 0;padding-left:18px;font-size:13.5px;color:var(--ink-2)}
+.stage{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;padding:14px 0;border-bottom:1px solid var(--line);align-items:start}
+.stage:last-child{border-bottom:0}
+.stage .n{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;font-weight:800;background:var(--surface-2);border:1px solid var(--line)}
+.stage.on .n{background:var(--accent);color:#fff;border-color:var(--accent)}
+code{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;font-size:12.5px;background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;margin-top:8px}
+.flow span{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:5px 10px;font-weight:600}
+.flow svg{color:var(--ink-4)}
+
+/* ---------- sheet / toast ---------- */
+.scrim{position:fixed;inset:0;background:var(--scrim);display:flex;justify-content:flex-end;z-index:20}
+.sheet{width:min(520px,100%);background:var(--bg);height:100%;overflow:auto;padding:22px max(16px,env(safe-area-inset-right,0px)) 30px 22px;box-shadow:var(--sh-pop);display:flex;flex-direction:column;gap:14px;margin:0}
+.sheet h2{margin:0;font-size:19px}
+.types{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.types label{border:1px solid var(--line-2);border-radius:12px;padding:10px 12px;cursor:pointer;font-size:13px;display:flex;gap:8px;align-items:flex-start;background:var(--surface)}
+.types label:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+.types label b{display:block;font-size:13.5px}
+.types input{accent-color:var(--accent);margin-top:3px}
+.toast{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:var(--sh-pop);border-radius:14px;padding:10px 16px;font-weight:600;display:flex;gap:8px;align-items:center;z-index:30;max-width:calc(100% - 32px)}
+.toast svg{color:var(--ok)}
+
+
+/* ---------- colour per section ---------- */
+.tabs a .ti,.tabbar .extra a .ti{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:var(--ts);color:var(--tc);flex:none}
+.tabbar .extra a .ti{width:22px;height:22px;border-radius:7px}
+.tabs a .ti svg,.tabbar .extra a .ti svg{width:14px;height:14px}
+.tabs a.on{color:var(--tc);border-color:var(--tc)}
+.tabs a.on .ti{background:var(--tc);color:var(--surface)}
+.tabbar .extra a.on{background:var(--ts);color:var(--tc)}
+.vhead{display:flex;gap:14px;align-items:flex-start;background:var(--ts);border-radius:18px;padding:14px 16px;margin-bottom:16px}
+.vhead .vic{width:40px;height:40px;border-radius:12px;background:var(--tc);color:var(--surface);display:grid;place-items:center;flex:none}
+.vhead h2{margin:0;font-size:18px;letter-spacing:-.01em;color:var(--tc)}
+.vhead .lead{margin:1px 0 0;color:var(--ink);font-size:13.5px;font-weight:500}
+.vhead .mnote{margin:6px 0 0;font-size:12.5px;color:var(--ink-2);max-width:130ch}
+.card h3{display:flex;align-items:center;gap:9px}
+.hic{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:var(--ts);color:var(--tc);flex:none}
+.hic svg{width:16px;height:16px}
+.kpi.tint{background:var(--ts);border-color:transparent}
+.kpi.tint .val{color:var(--tc)}
+.kpi .lbl{display:flex;align-items:center;gap:8px;color:var(--ink-2)}
+.kic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:var(--surface);color:var(--tc);flex:none}
+.kic svg{width:15px;height:15px}
+.subtabs a svg{color:var(--tc)}
+.subtabs a.on{background:var(--tc);color:var(--surface);border-color:var(--tc)}
+.subtabs a.on svg{color:var(--surface)}
+.meet .date{background:var(--c-me-soft);color:var(--c-me)}
+/* money and quantity inputs */
+label.f .fx{display:flex;align-items:center;border:1px solid var(--line-2);background:var(--surface);border-radius:10px;overflow:hidden}
+label.f .fx:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+label.f .fx input{border:0;background:transparent;padding:9px 10px;flex:1;min-width:0;width:auto;text-align:right;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;outline:none}
+label.f .fx b,label.f .fx em{padding:0 10px;color:var(--ink-3);font-style:normal;font-weight:600;font-size:12.5px;white-space:nowrap}
+label.f .fx b{border-right:1px solid var(--line);align-self:stretch;display:flex;align-items:center;background:var(--surface-2)}
+label.f .hint{font-weight:500;color:var(--ink-3);font-size:12px;min-height:16px;text-align:right}
+.sumline{margin-top:12px;background:var(--surface-2);border-radius:12px;padding:10px 12px;font-size:13.5px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline}
+.sumline b{font-size:15px}
+
+
+/* ---------- Projects view ---------- */
+.ptop{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.pav{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;color:#fff;font-weight:800;font-size:15px;flex:none}
+.ptop .tt{min-width:0;flex:1}
+.ptop .tt b{font-size:18px;letter-spacing:-.01em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ptop .tt small{display:block;color:var(--ink-3);font-size:13px;margin-top:2px}
+.linkchip{display:inline-flex;align-items:center;gap:7px;border-radius:12px;padding:7px 12px;background:var(--c-chg-soft);color:var(--c-chg);font-weight:700;text-decoration:none;font-size:13px}
+.linkchip svg{width:16px;height:16px}
+.members{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line-2);background:var(--surface);border-radius:12px;padding:5px 12px 5px 6px;font-weight:600;cursor:pointer}
+.members .circle-av .av{width:26px;height:26px;font-size:10px}
+.ptabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:14px 0 14px}
+.ptabs span{padding:9px 14px 11px;font-weight:600;color:var(--ink-3);border-bottom:2px solid transparent;cursor:pointer}
+.ptabs span.on{color:var(--c-prj);border-color:var(--c-prj)}
+.ptools{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.pseg{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:3px}
+.pseg button{border:0;background:transparent;border-radius:9px;padding:6px 12px;font-weight:600;color:var(--ink-3);cursor:pointer}
+.pseg button.on{background:var(--surface);color:var(--ink);box-shadow:var(--sh-card)}
+.pstrip{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:10px}
+.pc{border:1px solid var(--line);border-radius:14px;padding:10px 12px;background:var(--surface);display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 10px;align-items:center;cursor:pointer;text-align:left}
+.pc:hover{border-color:var(--line-2)}
+.pc.on{border-color:var(--c-prj);box-shadow:0 0 0 3px var(--c-prj-soft)}
+.pc.late{border-color:var(--danger)}
+.pc .nm{font-weight:600;font-size:13.5px;line-height:1.25}
+.pc .nm small{display:block;color:var(--ink-3);font-weight:500;font-size:12px}
+.pc .ct{grid-column:1/-1;font-size:12.5px;margin-top:4px;display:flex;gap:6px;flex-wrap:wrap}
+.pwrap{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:16px;align-items:start;margin-top:14px}
+.pgrp+.pgrp{margin-top:6px}
+.pgh{display:flex;align-items:center;gap:10px;padding:12px 4px 8px;border-bottom:1px solid var(--line)}
+.pgh i{width:10px;height:10px;border-radius:3px;background:var(--tc);flex:none}
+.pgh b{font-size:14px}
+.pgh span{color:var(--ink-3);font-size:12.5px}
+.trow{display:grid;grid-template-columns:24px minmax(0,1fr) 170px 96px 118px;gap:12px;align-items:center;padding:10px 4px;border-bottom:1px solid var(--line);cursor:pointer}
+.trow:hover{background:var(--surface-2)}
+.trow.sel{background:var(--c-prj-soft)}
+.trow.dim{opacity:.35}
+.trow .tt{min-width:0}
+.trow .tt b{font-weight:600;display:block}
+.trow.isdone .tt b{text-decoration:line-through;color:var(--ink-3)}
+.trow .tt small{display:flex;gap:8px;flex-wrap:wrap;color:var(--ink-3);font-size:12px;margin-top:2px}
+.trow .who{display:flex;align-items:center;gap:8px;font-size:13px;min-width:0}
+.trow .who .circle-av .av{width:24px;height:24px;font-size:9.5px;border-radius:7px}
+.trow .who span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trow .due{font-size:13px}
+.trow .due.late{color:var(--danger);font-weight:700}
+.ck{width:20px;height:20px;border-radius:6px;border:2px solid var(--line-2);display:grid;place-items:center;background:var(--surface);cursor:pointer;padding:0}
+.ck svg{width:13px;height:13px;opacity:0}
+.ck.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.ck.on svg{opacity:1}
+.bpchip{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;color:var(--c-chg);background:var(--c-chg-soft);border-radius:99px;padding:0 8px}
+.bpchip svg{width:12px;height:12px}
+.drawer{position:sticky;top:12px}
+.drawer h3{font-size:17px}
+.dsec{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
+.dsec .colh{margin-bottom:6px}
+.dkv{display:grid;grid-template-columns:90px minmax(0,1fr);gap:6px 10px;font-size:13.5px;align-items:center}
+.dkv span:nth-child(odd){color:var(--ink-3)}
+.bpbox{background:var(--c-chg-soft);border-radius:12px;padding:10px 12px;font-size:13.5px}
+.bpbox b{color:var(--c-chg)}
+.subt{display:flex;gap:10px;align-items:center;padding:6px 0;font-size:13.5px}
+.subt.on span{text-decoration:line-through;color:var(--ink-3)}
+.cm{display:flex;gap:10px;padding:6px 0}
+.cm .b{background:var(--surface-2);border-radius:4px 12px 12px 12px;padding:8px 10px;font-size:13px}
+.cm .b small{display:block;font-weight:600;color:var(--ink-3);font-size:11.5px}
+/* ---------- Dashboard view ---------- */
+.mt{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}
+.mt:last-child{border-bottom:0}
+.mt .tt b{font-weight:600}
+.mt.isdone .tt b{text-decoration:line-through;color:var(--ink-3)}
+.mt .tt small{display:flex;gap:8px;flex-wrap:wrap;align-items:center;color:var(--ink-3);font-size:12.5px;margin-top:2px}
+.pjchip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:var(--c-prj);background:var(--c-prj-soft);border-radius:99px;padding:0 8px}
+.ag{display:grid;grid-template-columns:96px minmax(0,1fr);gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+.ag:last-child{border-bottom:0}
+.ag .w{color:var(--ink-3);font-weight:600;font-size:12.5px}
+.ag .k{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px}
+/* ---------- How it connects ---------- */
+.fev{display:flex;gap:14px;align-items:center;background:var(--c-chg-soft);border-radius:16px;padding:14px 16px}
+.fev .vic{width:44px;height:44px;border-radius:12px;background:var(--c-chg);color:var(--surface);display:grid;place-items:center;flex:none}
+.fdown{display:flex;justify-content:center;color:var(--ink-4);padding:6px 0}
+.fdown svg{transform:rotate(90deg);width:22px;height:22px}
+.ftiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.ft{border:1px solid var(--line);border-radius:14px;padding:12px;background:var(--surface);display:grid;gap:4px;align-content:start}
+.ft .h{display:flex;align-items:center;gap:8px;font-weight:700}
+.ft .h .hic{width:26px;height:26px}
+.ft p{margin:0;font-size:13px;color:var(--ink-2)}
+.sync td:first-child{width:42%;font-weight:600}
+.have li{padding:5px 0;font-size:13.5px;list-style:none;display:flex;gap:8px}
+.have{margin:8px 0 0;padding:0}
+.have svg{width:16px;height:16px;flex:none;margin-top:2px}
+@media (max-width:1240px){.pwrap{grid-template-columns:minmax(0,1fr)}.drawer{position:static}.ftiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:900px){.trow{grid-template-columns:24px minmax(0,1fr) auto}.trow .who,.trow .due{display:none}}
+@media (max-width:560px){.ftiles{grid-template-columns:minmax(0,1fr)}}
+
+
+/* ---------- match the live iPop shell ---------- */
+.sidebar{width:284px}
+.nav{flex:1;min-height:0;overflow-y:auto;scrollbar-width:none;display:flex;flex-direction:column}
+.navh{font-size:12px;letter-spacing:.1em;padding:14px 14px 4px}
+.navh::after{display:none}
+.nav a{font-size:15.5px;font-weight:600;padding:8px 14px;gap:12px;cursor:pointer}
+.nav a .dot{background:transparent!important;width:22px;height:22px;color:var(--frame-ink)!important}
+.nav a .dot svg{width:20px;height:20px}
+.nav a.on .dot{color:var(--ink)!important}
+.nav a .badge{background:#e5484d;line-height:18px}
+.nav a{white-space:nowrap}
+.nav a .newp{margin-left:auto;margin-right:6px;font-size:9.5px;font-weight:800;background:#f0c76a;color:#3b2c05;border-radius:5px;padding:1px 5px}
+.nav a .newp+.badge{margin-left:0}
+.ttl{display:flex;flex-direction:column;line-height:1.2}
+.ttl h1{font-size:22px}
+.ttl small{color:var(--frame-ink-2);font-size:12.5px;margin-top:2px}
+.search kbd{margin-left:auto;font:600 11px var(--font);background:var(--frame-3);color:var(--frame-ink);border-radius:6px;padding:2px 6px}
+.search{min-width:300px}
+/* ---------- Projects, as live ---------- */
+.pj{display:grid;grid-template-columns:290px minmax(0,1fr);gap:16px;align-items:start}
+.pjlist{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:14px;display:grid;gap:8px;position:sticky;top:12px}
+.cntg{font-size:12px;background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:1px 7px;color:var(--ink-3);font-weight:600;margin-left:4px}
+.pjov,.pjsearch{display:flex;gap:8px;align-items:center;font-size:13.5px;color:var(--ink-2);padding:8px 10px;border-radius:10px}
+.pjsearch{background:var(--surface-2);color:var(--ink-4)}
+.yrs{display:flex;gap:6px}
+.yrs span{padding:3px 12px;border-radius:99px;border:1px solid var(--line);font-size:13px;font-weight:600}
+.yrs span.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.pjc{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;padding:10px;border-radius:14px;cursor:pointer;border:1px solid transparent}
+.pjc:hover{background:var(--surface-2)}
+.pjc.on{border-color:var(--line);box-shadow:var(--sh-pop)}
+.pjc .pav{width:34px;height:34px;border-radius:9px;font-size:12px}
+.pjc b{font-size:14px;font-weight:600;display:block;line-height:1.3}
+.pjc small{color:var(--ink-3);font-size:12px}
+.pjc .pr{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;font-size:12px;color:var(--ink-3)}
+.pjc .pr i{height:5px;border-radius:3px;background:var(--surface-2);overflow:hidden;display:block}
+.pjc .pr i span{display:block;height:100%;background:var(--accent);border-radius:3px}
+.pjc .du{grid-column:1/-1;font-size:12px;color:var(--ink-3)}
+.pjc .du.late{color:var(--danger);font-weight:600}
+.newb{font-size:9.5px;font-weight:800;letter-spacing:.04em;background:var(--c-int);color:var(--surface);border-radius:5px;padding:1px 5px;margin-left:6px}
+.phead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.phead .pav{width:46px;height:46px}
+.ptitle{font-size:20px;letter-spacing:-.01em}
+.stpill{font-size:12px;font-weight:600;color:var(--ok);background:var(--ok-soft);border-radius:8px;padding:2px 8px;display:inline-flex;gap:4px;align-items:center}
+.stpill svg{width:12px;height:12px}
+.pviews{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:3px;gap:2px;flex-wrap:wrap}
+.pviews button{border:0;background:transparent;border-radius:9px;padding:6px 11px;font-weight:600;color:var(--ink-2);cursor:pointer;display:flex;gap:6px;align-items:center;font-size:13.5px}
+.pviews button svg{width:15px;height:15px}
+.pviews button.on{background:var(--surface);color:var(--ink);box-shadow:var(--sh-card)}
+.tsearch{display:flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:6px 10px;color:var(--ink-4);font-size:13.5px;min-width:210px;background:var(--surface)}
+.fchip{display:inline-flex;gap:8px;align-items:center;background:var(--c-prj-soft);color:var(--c-prj);border-radius:99px;padding:4px 5px 4px 12px;font-size:13px;font-weight:600;margin-bottom:10px}
+.fchip button{border:0;background:var(--surface);color:var(--ink-2);border-radius:99px;width:22px;height:22px;cursor:pointer;font-weight:700}
+.ptable td{padding:10px}
+.ptable .grow td{font-size:13.5px;padding:10px;background:transparent}
+.ptable .grow i{display:inline-block;width:8px;height:8px;border-radius:50%;margin:0 8px 0 6px;vertical-align:1px}
+.ptable tr.tr{cursor:pointer}
+.ptable tr.tr:hover td{background:var(--surface-2)}
+.ptable .t{font-weight:500}
+.ptable tr.isdone .t{text-decoration:line-through;color:var(--ink-3)}
+.ptable td.tt{min-width:300px}
+.stw{position:relative;display:inline-flex;align-items:center;border-radius:8px}
+.stw select{appearance:none;-webkit-appearance:none;border:0;background:transparent;color:inherit;padding:3px 24px 3px 9px;font-weight:600;font-size:12.5px;cursor:pointer;border-radius:8px}
+.stw svg{position:absolute;right:6px;width:12px;height:12px;pointer-events:none}
+.s-todo{background:var(--surface-2);color:var(--ink-2);border:1px solid var(--line)}
+.s-doing{background:var(--info-soft);color:var(--info)}
+.s-review{background:var(--warn-soft);color:var(--warn)}
+.s-done{background:var(--ok-soft);color:var(--ok)}
+.stw option{color:#1c1917;background:#fff}
+.prio{font-size:12px;color:var(--ink-4);border:1px solid var(--line);border-radius:7px;padding:2px 8px;white-space:nowrap}
+.prio.urg{color:var(--danger);background:var(--danger-soft);border-color:transparent;font-weight:700}
+.asg{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;text-transform:uppercase;white-space:nowrap;max-width:270px;min-width:0}
+.asg .circle-av .av{width:22px;height:22px;font-size:9px;border-radius:6px}
+.asg .nm{overflow:hidden;text-overflow:ellipsis}
+.dued{display:inline-flex;gap:5px;align-items:center;font-size:13px;white-space:nowrap}
+.dued svg{width:14px;height:14px}
+.dued.late{color:var(--danger);font-weight:600}
+.board{display:grid;grid-template-columns:repeat(4,minmax(240px,1fr));gap:12px;overflow-x:auto;padding-bottom:4px}
+.bcol{border-radius:16px;padding:10px;background:var(--surface-2);display:grid;gap:10px;align-content:start}
+.bcol.c-doing{background:var(--info-soft)} .bcol.c-review{background:var(--warn-soft)} .bcol.c-done{background:var(--ok-soft)}
+.bch{display:flex;align-items:center;gap:8px;font-weight:700;padding:4px}
+.bch i{width:8px;height:8px;border-radius:50%}
+.bch .n{font-size:12px;background:var(--surface);border-radius:7px;padding:0 7px;font-weight:600}
+.bcard{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;display:grid;gap:8px;cursor:pointer;box-shadow:var(--sh-card)}
+.bcard .t{font-weight:600;font-size:13.5px}
+.bcard.isdone .t{text-decoration:line-through;color:var(--ink-3)}
+.bcard .circle-av .av{width:24px;height:24px;font-size:9.5px;border-radius:7px}
+.circ{width:18px;height:18px;border-radius:50%;border:2px solid var(--line-2);display:inline-grid;place-items:center;flex:none}
+.circ.on{background:var(--ok);border-color:var(--ok);color:#fff}
+.circ svg{width:11px;height:11px}
+.ovd{font-size:11.5px;font-weight:700;color:var(--danger);background:var(--danger-soft);border-radius:6px;padding:1px 7px}
+.badd{color:var(--ink-3);font-size:13px;text-align:center;padding:6px;cursor:pointer}
+.tsheet{width:min(560px,100%)}
+@media (max-width:1240px){.pj{grid-template-columns:minmax(0,1fr)}.pjlist{display:none}}
+
+
+/* ---------- sidebar note, guide bar ---------- */
+.navnote{margin:14px 14px 0 14px;font-size:12px;color:var(--frame-ink-2);border-top:1px solid var(--frame-line);padding-top:12px;line-height:1.45}
+.guidebar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;border:1px dashed var(--line-2);border-radius:14px;padding:8px 12px;margin-bottom:14px;font-size:13.5px;background:var(--surface)}
+.guidebar .gi{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:var(--c-int-soft);color:var(--c-int);flex:none}
+.guidebar .gi svg{width:16px;height:16px}
+/* ---------- create wizard ---------- */
+.wiz{width:min(620px,100%);gap:12px}
+.wsteps{display:flex;gap:6px;list-style:none;margin:0;padding:0}
+.wsteps li{flex:1;font-size:11.5px;font-weight:600;color:var(--ink-4);border-top:3px solid var(--line-2);padding-top:6px;min-width:0}
+.wsteps li.done{border-color:var(--accent);color:var(--ink-2)}
+.wsteps li.on{border-color:var(--c-chg);color:var(--c-chg)}
+.wguide{background:var(--c-me-soft);border-radius:12px;padding:10px 12px;font-size:13.5px;display:flex;gap:10px;align-items:flex-start}
+.wguide svg{color:var(--c-me);margin-top:1px}
+.wq{font-size:17px;font-weight:700;margin:2px 0 0;letter-spacing:-.01em}
+.wbody{display:grid;gap:12px;align-content:start}
+.wfoot{margin-top:auto;display:flex;gap:8px;align-items:center;border-top:1px solid var(--line);padding-top:12px;position:sticky;bottom:-30px;background:var(--bg);padding-bottom:4px}
+.wfoot .muted{font-size:12.5px;margin-right:auto}
+.wt{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+.wt input[type=checkbox]{width:17px;height:17px;accent-color:var(--accent)}
+.wt.off{opacity:.45}
+.wt small{display:block;color:var(--ink-3);font-size:12px}
+.tagx{font-size:10.5px;font-weight:800;letter-spacing:.03em;border-radius:5px;padding:1px 6px;white-space:nowrap}
+.tag-auto{background:var(--ok-soft);color:var(--ok)}
+.tag-you{background:var(--c-me-soft);color:var(--c-me)}
+.wadd{display:grid;grid-template-columns:minmax(0,1fr) 170px auto;gap:8px;align-items:end;background:var(--surface-2);border-radius:12px;padding:10px}
+.wimp{display:grid;gap:8px}
+.wimp div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13.5px}
+.wimp small{display:block;color:var(--ink-3);font-size:12px}
+.wteam{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.wteam div{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:8px 10px;background:var(--surface);font-size:13.5px}
+.wteam small{display:block;color:var(--ink-3);font-size:12px}
+.wnext li{padding:6px 0;font-size:13.5px}
+.wnext{margin:0;padding-left:20px}
+/* ---------- How it works ---------- */
+.hw{display:grid;gap:10px}
+.hws{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:14px;align-items:start;border:1px solid var(--line);border-radius:16px;padding:14px;background:var(--surface);position:relative}
+.hws:not(:last-child)::after{content:"";position:absolute;left:35px;top:58px;bottom:-12px;width:2px;background:var(--line-2)}
+.hws .n{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-weight:800;font-size:17px;background:var(--ts);color:var(--tc);position:relative;z-index:1}
+.hws h4{margin:0;font-size:15.5px}
+.hws p{margin:3px 0 8px;font-size:13.5px;color:var(--ink-2);max-width:80ch}
+.hws .meta{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--ink-3)}
+.hws .btn{align-self:center}
+.faq{display:grid;gap:10px}
+.faq div{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--surface)}
+.faq b{display:block;margin-bottom:3px}
+.faq span{font-size:13.5px;color:var(--ink-2)}
+/* ---------- Projects guide + add task ---------- */
+.pguide{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:16px;align-items:start;background:var(--c-prj-soft);border-radius:16px;padding:14px 16px;margin-bottom:14px}
+.pguide .s>b{display:block;font-size:13.5px}
+.pguide .s span{font-size:12.5px;color:var(--ink-2)}
+.pguide .k{width:24px;height:24px;border-radius:8px;background:var(--c-prj);color:var(--surface);display:inline-grid;place-items:center;font-weight:800;font-size:12px;margin-bottom:4px}
+.atg{display:grid;gap:12px}
+.atg .num1{width:20px;height:20px;border-radius:6px;background:var(--c-prj);color:var(--surface);display:inline-grid;place-items:center;font-size:11px;font-weight:800;margin-right:6px}
+.atg .who-out{font-size:12.5px;color:var(--ink-3)}
+@media (max-width:900px){.pguide{grid-template-columns:minmax(0,1fr)}.wteam{grid-template-columns:minmax(0,1fr)}.wadd{grid-template-columns:minmax(0,1fr)}.hws{grid-template-columns:44px minmax(0,1fr)}.hws .btn{grid-column:2;justify-self:start}}
+
+/* role-based visibility */
+body:not([data-role="gm"]) .gm-only{display:none!important}
+body[data-role="gm"] .team-note{display:none}
+
+@media (min-width:1600px){
+  .people{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media (max-width:1240px){
+  .g4{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .g2,.ov,.forme{grid-template-columns:minmax(0,1fr)}
+  .wrow{grid-template-columns:minmax(0,1fr) 140px auto} .wrow .who{grid-column:1/-1;grid-row:2}
+}
+@media (max-width:900px){
+  .sidebar{display:none}
+  .topbar{padding-left:max(16px,env(safe-area-inset-left,0px))}
+  .search{display:none}
+  .panel{border-top-left-radius:20px;border-top-right-radius:20px}
+  .tabbar{padding:8px 12px 0}
+  .content{padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+  .g2e,.people,.calc,.plan,.ro-out{grid-template-columns:minmax(0,1fr)}
+  .case{grid-template-columns:minmax(0,1fr)} .case>div+div{border-left:0;border-top:1px solid var(--line)}
+  .gate{grid-template-columns:auto minmax(0,1fr)} .gate>.pill{grid-column:2;justify-self:start}
+  .task .impact{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:560px){
+  .g4{grid-template-columns:minmax(0,1fr)}
+  .viewas span,.seg button span{display:none}
+  .bar{grid-template-columns:84px minmax(0,1fr) 96px}
+  .wrow{grid-template-columns:minmax(0,1fr) auto} .wrow .dotsbox{grid-column:1/-1;grid-row:3}
+}
+@media (prefers-reduced-motion:no-preference){.view{animation:in .2s ease-out}@keyframes in{from{opacity:.5;transform:translateY(3px)}to{opacity:1;transform:none}}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19H16a3.5 3.5 0 0 0 0-7H8a3.5 3.5 0 0 1 0-7h7.5"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-4-6"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></symbol>
+  <symbol id="i-cog" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></symbol>
+  <symbol id="i-land" viewBox="0 0 24 24"><path d="M3 21h18M5 21V10l7-5 7 5v11"/><path d="M9 21v-6h6v6"/></symbol>
+  <symbol id="i-cart" viewBox="0 0 24 24"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.7 12.3a2 2 0 0 0 2 1.7h7.6a2 2 0 0 0 2-1.6L21 8H6"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M11 18l-6-6 6-6"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5h13L22 12v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
+  <symbol id="i-q" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-kanban" viewBox="0 0 24 24"><path d="M6 5v14M12 5v9M18 5v6"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></symbol>
+  <symbol id="i-ticket" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="m4.9 4.9 4.3 4.3M14.8 14.8l4.3 4.3M14.8 9.2l4.3-4.3M4.9 19.1l4.3-4.3"/></symbol>
+  <symbol id="i-news" viewBox="0 0 24 24"><rect x="3" y="4" width="14" height="16" rx="2"/><path d="M17 8h3v10a2 2 0 0 1-2 2M7 8h6M7 12h6M7 16h4"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+  <symbol id="i-gantt" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h6M10 13h7M7 17h4"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 20h18M6 16l4-5 3 3 5-7"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></symbol>
+</svg>
+
+<div class="shell">
+  <aside class="sidebar" aria-label="Main menu">
+    <div class="logo"><b>iP</b>iPop</div>
+    <nav class="nav">
+      <div class="navh">Workspace</div>
+      <a class="work" href="#forme" data-nav="bp"><span class="dot"><svg class="i"><use href="#i-route"/></svg></span>Business Plan<span class="newp">NEW</span><span class="badge" id="navBadge">2</span></a>
+      <a class="work" href="#project" data-nav="project"><span class="dot"><svg class="i"><use href="#i-kanban"/></svg></span>Projects</a>
+      <div class="navnote">Mockup: only these two pages. Other menus stay as they are today.</div>
+    </nav>
+    <div class="me"><span class="av" id="meAv">HS</span><div><div id="meName">Hendra S.</div><small id="meRole">General Manager</small></div></div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="ttl"><h1 id="topTitle">Business Plan</h1><small id="topSub">6 product changes · 3 purchases on hold</small></div>
+      <div class="sp"></div>
+      <div class="search"><svg class="i"><use href="#i-search"/></svg>Search people, chat, notes, mail…<kbd>Ctrl K</kbd></div>
+      <div class="seg" role="group" aria-label="Theme">
+        <button type="button" data-theme-set="light" aria-pressed="false"><svg class="i"><use href="#i-sun"/></svg><span>Light</span></button>
+        <button type="button" data-theme-set="dark" aria-pressed="false"><svg class="i"><use href="#i-moon"/></svg><span>Dark</span></button>
+        <button type="button" data-theme-set="system" aria-pressed="true"><svg class="i"><use href="#i-monitor"/></svg><span>System</span></button>
+      </div>
+      <label class="viewas"><span>View as</span>
+        <select id="role" aria-label="View the mockup as">
+          <option value="gm">GM · Hendra</option>
+          <option value="mkt">Marketing · Rina</option>
+          <option value="ppic">PPIC · Dedi</option>
+          <option value="sales">Sales · Andi (not in a team)</option>
+        </select>
+      </label>
+    </header>
+
+    <div class="panel">
+      <div class="tabbar">
+        <nav class="tabs" id="tabs" aria-label="Business Plan sections">
+          <a href="#forme" data-v="forme" style="--tc:var(--c-me);--ts:var(--c-me-soft)"><span class="ti"><svg class="i"><use href="#i-inbox"/></svg></span>For me <span class="cnt" id="tabCnt">2</span></a>
+          <a href="#overview" data-v="overview" style="--tc:var(--c-ov);--ts:var(--c-ov-soft)"><span class="ti"><svg class="i"><use href="#i-grid"/></svg></span>Overview</a>
+          <a href="#changes" data-v="changes" style="--tc:var(--c-chg);--ts:var(--c-chg-soft)"><span class="ti"><svg class="i"><use href="#i-bell"/></svg></span>Product changes</a>
+          <a href="#buy" data-v="buy" style="--tc:var(--c-buy);--ts:var(--c-buy-soft)"><span class="ti"><svg class="i"><use href="#i-cart"/></svg></span>Before you buy <span class="cnt">3</span></a>
+        </nav>
+        <div class="extra">
+          <a href="#why" data-v="why" style="--tc:var(--c-why);--ts:var(--c-why-soft)"><span class="ti"><svg class="i"><use href="#i-book"/></svg></span>Why this module</a>
+          <a href="#connect" data-v="connect" style="--tc:var(--c-int);--ts:var(--c-int-soft)"><span class="ti"><svg class="i"><use href="#i-route"/></svg></span>How it works</a>
+          <a href="#rules" data-v="rules" style="--tc:var(--c-rule);--ts:var(--c-rule-soft)"><span class="ti"><svg class="i"><use href="#i-shield"/></svg></span>Rules &amp; data</a>
+        </div>
+      </div>
+
+      <main class="content">
+<div class="guidebar" id="guideBar"><span class="gi"><svg class="i"><use href="#i-route"/></svg></span><span><b>New to Business Plan?</b> See what happens from start to finish, who does what, and what iPop does for you.</span><span style="flex:1"></span><a class="btn sm" href="#connect">How it works</a><button class="btn sm pri" type="button" data-open-sheet><svg class="i"><use href="#i-plus"/></svg>New product change</button></div>
+
+<!-- ================= LOCKED (not in a team) ================= -->
+<section class="view" data-view="locked" hidden>
+  <div class="card empty"><div class="ic"><svg class="i"><use href="#i-lock"/></svg></div><h2>You're not in a product team</h2><p class="muted">Product changes and purchase checks are shared only with the people who plan, buy, make, store and pay for that product. Ask your department head if you should be in one.</p></div>
+</section>
+
+<!-- ================= FOR ME ================= -->
+<section class="view" data-view="forme" hidden>
+  <div class="vhead" style="--tc:var(--c-me);--ts:var(--c-me-soft)"><span class="vic"><svg class="i"><use href="#i-inbox"/></svg></span><div style="min-width:0"><h2>For me</h2><p class="lead">Only what needs your answer. Most answers take one click.</p><p class="mnote"><b>Catatan mockup:</b> halaman pertama untuk semua orang selain GM, Finance, dan Direksi. Isinya hanya hal yang <b>harus Anda jawab</b>, dan sebagian besar selesai dengan <b>satu klik</b>. Kabar yang sama juga muncul di Notifier PC, HP, dan Chat tim. Coba ganti "View as".</p></div></div>
+
+  <!-- PPIC -->
+  <div data-for="ppic" class="forme-role">
+    <div class="hello"><h2>Good morning, Dedi.</h2><span class="pill p-red" data-left>2 things need your answer</span><span style="flex:1"></span><a class="btn sm" href="#dash"><svg class="i"><use href="#i-grid"/></svg>My tasks on Dashboard</a><a class="btn sm" href="#project"><svg class="i"><use href="#i-folder"/></svg>Mocca project</a></div>
+    <div class="forme">
+      <div class="card">
+        <div class="task late" data-task data-sync="a-dp">
+          <div class="top"><div><span class="pill p-red">Product will stop</span> <span class="id">CN-014</span><h4>Kopi Mix Mocca 25g stops being made after June 2027</h4></div><span class="pill p-red">3 days late</span></div>
+          <div class="why">Rina (Marketing): sales are down 38% in a year, and shelf space goes to Gula Aren. Do you have packaging, materials or orders planned for Mocca?</div>
+          <div class="meta"><span>Sent 4 Nov to the Kopi Mix team (8 people)</span><span>5 of 8 have answered</span></div>
+          <div class="ans">
+            <button class="btn" data-ans="none"><svg class="i"><use href="#i-check"/></svg>Noted, no impact</button>
+            <button class="btn warn" data-ans="impact"><svg class="i"><use href="#i-pen"/></svg>Noted, has impact</button>
+            <button class="btn" data-ans="q"><svg class="i"><use href="#i-q"/></svg>I have a question</button>
+          </div>
+          <div class="impact" hidden>
+            <label class="f">Money involved (optional)<span class="fx"><b>Rp</b><input id="imp1" class="numin" inputmode="numeric" value="2.140.000.000"></span><small class="hint" data-hint="rp"></small></label>
+            <label class="f">What it affects<input type="text" value="18,6 juta sachet laminate in stock, lasts until 2031" id="imp1n"></label>
+            <button class="btn pri" data-send style="margin-top:21px">Send</button>
+          </div>
+          <div class="done" hidden><svg class="i"><use href="#i-check"/></svg><span></span></div>
+        </div>
+        <div class="task soon" data-task data-sync="x-dp12">
+          <div class="top"><div><span class="pill p-blu">Recipe change</span> <span class="id">CN-012</span><h4>Kopi Susu Jahe 30g gets a new ginger supplier and recipe in Feb 2027</h4></div><span class="pill p-amb">Due tomorrow</span></div>
+          <div class="why">Budi (R&amp;D): the ginger powder changes. The sachet and box stay the same.</div>
+          <div class="ans">
+            <button class="btn" data-ans="none"><svg class="i"><use href="#i-check"/></svg>Noted, no impact</button>
+            <button class="btn warn" data-ans="impact"><svg class="i"><use href="#i-pen"/></svg>Noted, has impact</button>
+            <button class="btn" data-ans="q"><svg class="i"><use href="#i-q"/></svg>I have a question</button>
+          </div>
+          <div class="impact" hidden>
+            <label class="f">Money involved (optional)<span class="fx"><b>Rp</b><input id="imp2" class="numin" inputmode="numeric" placeholder="0"></span><small class="hint" data-hint="rp"></small></label>
+            <label class="f">What it affects<input type="text" placeholder="e.g. old ginger powder in stock" id="imp2n"></label>
+            <button class="btn pri" data-send style="margin-top:21px">Send</button>
+          </div>
+          <div class="done" hidden><svg class="i"><use href="#i-check"/></svg><span></span></div>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="card"><h3><span class="hic" style="--tc:var(--c-buy);--ts:var(--c-buy-soft)"><svg class="i"><use href="#i-cart"/></svg></span>Your purchase checks</h3><p class="sub">You asked Marketing before ordering</p>
+          <div class="att"><span class="sev amb"></span><div><div class="t">Latte 25g sachet laminate · Rp 1,73 miliar</div><div class="d">Waiting for Rina since 8 Nov · lasts 54 months</div></div><a class="btn sm act" href="#buy">Open</a></div>
+          <div class="att"><span class="sev grn"></span><div><div class="t">Original 30g carton · Rp 310 juta</div><div class="d">Cleared 5 Nov · product runs past 2029</div></div></div>
+          <a class="btn pri" href="#buy" style="margin-top:12px"><svg class="i"><use href="#i-plus"/></svg>Check before I order</a>
+        </div>
+        <div class="card"><h3><span class="hic" style="--tc:var(--c-me);--ts:var(--c-me-soft)"><svg class="i"><use href="#i-bell"/></svg></span>How this reached you</h3><p class="sub">Nobody can miss a product change</p>
+          <div class="toastmock" style="margin:10px 0 12px"><div class="app"><b>iP</b>iPop Notifier · now</div><div class="tt">Kopi Mix Mocca 25g will stop in June 2027</div><div class="tb">Rina (Marketing) needs your answer. 3 days late.</div><div class="tbtn"><span>No impact</span><span>Has impact</span><span>Question</span></div></div>
+          <div class="chan"><span class="ic"><svg class="i"><use href="#i-monitor"/></svg></span>Notifier on your PC<span class="muted">4, 6, 9 Nov</span></div>
+          <div class="chan"><span class="ic"><svg class="i"><use href="#i-phone"/></svg></span>iPop on your phone<span class="muted">4, 6, 9 Nov</span></div>
+          <div class="chan"><span class="ic"><svg class="i"><use href="#i-chat"/></svg></span>Kopi Mix team chat<span class="muted">4 Nov</span></div>
+          <div class="chan"><span class="ic"><svg class="i"><use href="#i-alert"/></svg></span>Told your GM<span class="muted">10 Nov</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MARKETING -->
+  <div data-for="mkt" class="forme-role">
+    <div class="hello"><h2>Good morning, Rina.</h2><span class="pill p-red" data-left>2 things need your answer</span><span style="flex:1"></span><a class="btn sm" href="#dash"><svg class="i"><use href="#i-grid"/></svg>My tasks on Dashboard</a><a class="btn sm" href="#project"><svg class="i"><use href="#i-folder"/></svg>Mocca project</a></div>
+    <div class="forme">
+      <div class="card">
+        <div class="task late" data-task data-sync="x-ra">
+          <div class="top"><div><span class="pill p-amb">Before you buy</span><h4>Will Kopi Mix Latte 25g still be sold, in this design, until May 2031?</h4></div><span class="pill p-amb">Asked 8 Nov</span></div>
+          <div class="why">Dedi (PPIC) wants to order 15 juta printed sachets, the supplier's minimum. That is <b>Rp 1,73 miliar</b> and with stock in hand lasts <b>54 months</b>. If Latte changes before then, the rest is thrown away.</div>
+          <div class="ans">
+            <button class="btn pri" data-ans="none" data-label="Yes, sold past May 2031"><svg class="i"><use href="#i-check"/></svg>Yes, past May 2031</button>
+            <button class="btn warn" data-ans="none" data-label="Not sure, buy in smaller deliveries"><svg class="i"><use href="#i-q"/></svg>Not sure, buy in smaller deliveries</button>
+            <button class="btn" data-ans="none" data-label="No, a change is planned. PPIC will buy less"><svg class="i"><use href="#i-alert"/></svg>No, a change is planned</button>
+          </div>
+          <div class="done" hidden><svg class="i"><use href="#i-check"/></svg><span></span></div>
+        </div>
+        <div class="task" data-task>
+          <div class="top"><div><span class="pill p-red">Product will stop</span> <span class="id">CN-014</span><h4>Your change: Mocca 25g. 3 people haven't answered</h4></div><span class="pill p-red">PPIC · Purchasing late</span></div>
+          <div class="why">Purchasing created a new carton order on 9 Nov, after your notice. It can still be cancelled until 20 Nov.</div>
+          <div class="ans">
+            <a class="btn pri" href="#change"><svg class="i"><use href="#i-arrow"/></svg>Open the change</a>
+            <button class="btn" data-ans="none" data-label="Reminder sent to Dedi and Yuli"><svg class="i"><use href="#i-bell"/></svg>Remind them</button>
+          </div>
+          <div class="done" hidden><svg class="i"><use href="#i-check"/></svg><span></span></div>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="card"><h3><span class="hic" style="--tc:var(--c-chg);--ts:var(--c-chg-soft)"><svg class="i"><use href="#i-plus"/></svg></span>Planning a change?</h3><p class="sub">Tell the team before it's decided, not after</p>
+          <p style="font-size:13.5px;margin:10px 0 12px">iPop shows how much packaging, stock and machine time depends on the product, so you can see the cost before you send.</p>
+          <button class="btn pri" data-open-sheet><svg class="i"><use href="#i-plus"/></svg>New product change</button>
+        </div>
+        <div class="card"><h3><span class="hic" style="--tc:var(--c-ov);--ts:var(--c-ov-soft)"><svg class="i"><use href="#i-check"/></svg></span>Answered this month</h3>
+          <div class="att"><span class="sev grn"></span><div><div class="t">Original 30g carton</div><div class="d">"Yes, past 2029" · 5 Nov</div></div></div>
+          <div class="att"><span class="sev grn"></span><div><div class="t">WH-4 warehouse lease</div><div class="d">"Volume only for 3 years" · 2 Nov</div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GM -->
+  <div data-for="gm" class="forme-role">
+    <div class="hello"><h2>Good morning, Hendra.</h2><span class="pill p-red" data-left>2 things need your answer</span><span style="flex:1"></span><a class="btn sm" href="#dash"><svg class="i"><use href="#i-grid"/></svg>My tasks on Dashboard</a><a class="btn sm" href="#project"><svg class="i"><use href="#i-folder"/></svg>Mocca project</a></div>
+    <div class="forme">
+      <div class="card">
+        <div class="task late" data-task>
+          <div class="top"><div><span class="pill p-red">Escalated to you</span> <span class="id">CN-014</span><h4>PPIC and Purchasing haven't answered the Mocca 25g change</h4></div><span class="pill p-red">3 days late</span></div>
+          <div class="why">Rp 4,7 miliar of stock, open orders and machine time depends on Mocca. A new carton order (Rp 1,05 miliar) was created after the notice.</div>
+          <div class="ans">
+            <button class="btn pri" data-ans="none" data-label="Reminded Dedi and Yuli, with a copy to their heads"><svg class="i"><use href="#i-bell"/></svg>Remind with a copy to their heads</button>
+            <a class="btn" href="#change"><svg class="i"><use href="#i-arrow"/></svg>Open the change</a>
+          </div>
+          <div class="done" hidden><svg class="i"><use href="#i-check"/></svg><span></span></div>
+        </div>
+        <div class="task" data-task data-sync="x-hs13">
+          <div class="top"><div><span class="pill p-blu">New pack design</span> <span class="id">CN-013</span><h4>Sign the stop plan for Kopi Hitam 165g pouch</h4></div><span class="pill p-amb">Needs your sign-off</span></div>
+          <div class="why">New design starts 1 Mar 2027, when the old film runs out. Left over: Rp 0. Marketing, PPIC and Finance signed.</div>
+          <div class="ans">
+            <button class="btn pri" data-ans="none" data-label="Signed · stop plan for Kopi Hitam pouch"><svg class="i"><use href="#i-pen"/></svg>Sign</button>
+            <button class="btn" data-ans="q"><svg class="i"><use href="#i-q"/></svg>Ask a question</button>
+          </div>
+          <div class="done" hidden><svg class="i"><use href="#i-check"/></svg><span></span></div>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="card"><h3><span class="hic" style="--tc:var(--c-ov);--ts:var(--c-ov-soft)"><svg class="i"><use href="#i-grid"/></svg></span>Your start page is Overview</h3><p class="sub">GM, Finance and Directors open Business Plan on Overview</p><a class="btn" href="#overview" style="margin-top:12px"><svg class="i"><use href="#i-grid"/></svg>Go to Overview</a></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SALES -->
+  <div data-for="sales" class="forme-role">
+    <div class="card empty"><div class="ic"><svg class="i"><use href="#i-inbox"/></svg></div><h2>Nothing for you here</h2><p class="muted">You see product changes only for the product teams you're in. Andi is in Sales and not in any product team, so other tabs are locked.</p></div>
+  </div>
+</section>
+
+<!-- ================= OVERVIEW ================= -->
+<section class="view" data-view="overview" hidden>
+  <div class="vhead" style="--tc:var(--c-ov);--ts:var(--c-ov-soft)"><span class="vic"><svg class="i"><use href="#i-grid"/></svg></span><div style="min-width:0"><h2>Overview</h2><p class="lead">Money at risk, who we're waiting for, and this month's product meeting.</p><p class="mnote"><b>Catatan mockup:</b> halaman pertama untuk GM, Finance, dan Direksi. Isinya: berapa Rupiah yang berisiko, <b>siapa yang ditunggu dan sejak kapan</b>, dan rapat produk bulan ini. Orang lain hanya melihat angka tim produknya.</p></div></div>
+  <div class="note team-note"><svg class="i"><use href="#i-lock"/></svg><div>You see the Kopi Mix team only. Company-wide totals are for GM, Finance and Directors.</div></div>
+
+  <div class="grid g4">
+    <div class="card kpi tint" style="--tc:var(--danger);--ts:var(--danger-soft)"><div class="lbl"><span class="kic"><svg class="i"><use href="#i-alert"/></svg></span>Money at risk</div><div class="val num">Rp 9,8 <small>miliar</small></div><div class="foot">Stock, open orders and machines tied to products that are stopping or changing</div></div>
+    <div class="card kpi tint" style="--tc:var(--ok);--ts:var(--ok-soft)"><div class="lbl"><span class="kic"><svg class="i"><use href="#i-check"/></svg></span>Saved this year</div><div class="val num">Rp 3,1 <small>miliar</small></div><div class="foot">Orders cancelled, smaller deliveries, stock re-used · 7 cases</div></div>
+    <div class="card kpi tint" style="--tc:var(--c-chg);--ts:var(--c-chg-soft)"><div class="lbl"><span class="kic"><svg class="i"><use href="#i-bell"/></svg></span>Product changes open</div><div class="val num">6</div><div class="foot"><span class="pill p-red">2 waiting on late answers</span></div></div>
+    <div class="card kpi tint" style="--tc:var(--c-buy);--ts:var(--c-buy-soft)"><div class="lbl"><span class="kic"><svg class="i"><use href="#i-cart"/></svg></span>Purchases on hold</div><div class="val num">3 <small>· Rp 9,6 miliar</small></div><div class="foot">Waiting for Marketing to confirm the product's life</div></div>
+  </div>
+
+  <div class="ov" style="margin-top:16px">
+    <div class="card waiting">
+      <div class="hd"><div><h3><span class="hic" style="--tc:var(--c-chg);--ts:var(--c-chg-soft)"><svg class="i"><use href="#i-users"/></svg></span>Who we're waiting for</h3><p class="sub">Every open product change, from announcement to closed</p></div><a class="btn sm" href="#changes">All changes</a></div>
+      <div class="wrow"><div class="nm" data-go="change">Kopi Mix Mocca 25g<span class="id">Stops · CN-014 · Rp 4,7 miliar</span></div><div class="dotsbox"><div class="dots"><i class="d"></i><b class="d"></b><i class="l"></i><b></b><i></i><b></b><i></i><b></b><i></i></div><div class="dots-lbl">Answers</div></div><div class="who">Waiting for <b>PPIC (Dedi)</b> and <b>Purchasing (Yuli)</b> <span class="pill p-red">3 days late</span></div><button class="btn sm" data-toast="Reminded Dedi and Yuli">Remind</button></div>
+      <div class="wrow"><div class="nm" data-go="change">Kopi Gula Aren 25g<span class="id">New product · CN-015</span></div><div class="dotsbox"><div class="dots"><i class="d"></i><b class="d"></b><i class="n"></i><b></b><i></i><b></b><i></i><b></b><i></i></div><div class="dots-lbl">Answers</div></div><div class="who">Waiting for <b>Production (Agus)</b> and <b>Warehouse (Faisal)</b> <span class="pill p-amb">due 12 Nov</span></div><button class="btn sm" data-toast="Reminded Agus and Faisal">Remind</button></div>
+      <div class="wrow"><div class="nm" data-go="change">Kopi Susu Jahe 30g<span class="id">Recipe change · CN-012 · Rp 210 juta</span></div><div class="dotsbox"><div class="dots"><i class="d"></i><b class="d"></b><i class="n"></i><b></b><i></i><b></b><i></i><b></b><i></i></div><div class="dots-lbl">Answers</div></div><div class="who">Waiting for <b>PPIC (Dedi)</b> <span class="pill p-amb">due tomorrow</span></div><button class="btn sm" data-toast="Reminded Dedi">Remind</button></div>
+      <div class="wrow"><div class="nm" data-go="change">Kopi Hitam 165g pouch<span class="id">New pack design · CN-013 · Rp 620 juta</span></div><div class="dotsbox"><div class="dots"><i class="d"></i><b class="d"></b><i class="d"></i><b class="d"></b><i class="n"></i><b></b><i></i><b></b><i></i></div><div class="dots-lbl">Sign-off</div></div><div class="who">Waiting for <b>GM (you)</b> to sign the stop plan <span class="pill p-amb">today</span></div><a class="btn sm pri" href="#forme">Sign</a></div>
+      <div class="wrow"><div class="nm" data-go="change">Kopi Hitam 380g can<span class="id">Supplier change · CN-010 · Rp 95 juta</span></div><div class="dotsbox"><div class="dots"><i class="d"></i><b class="d"></b><i class="d"></i><b class="d"></b><i class="n"></i><b></b><i></i><b></b><i></i></div><div class="dots-lbl">Sign-off</div></div><div class="who">Waiting for <b>Finance (Lina)</b> <span class="pill p-amb">due 13 Nov</span></div><button class="btn sm" data-toast="Reminded Lina">Remind</button></div>
+      <div class="wrow"><div class="nm" data-go="change">Cappuccino 12-pack<span class="id">Stops · CN-011 · Rp 380 juta</span></div><div class="dotsbox"><div class="dots"><i class="d"></i><b class="d"></b><i class="d"></i><b class="d"></b><i class="d"></i><b class="d"></b><i class="n"></i><b></b><i></i></div><div class="dots-lbl">Using up stock</div></div><div class="who">Nobody late · boxes <b>62% used</b>, on track for zero by March</div><span class="pill p-grn">On track</span></div>
+      <div class="legend"><span>Stages: Announced · Answers · Stop plan · Sign-off · Using up stock</span><span><i style="background:var(--danger)"></i>Late, GM told</span><span><i style="background:var(--warn)"></i>In progress</span></div>
+    </div>
+
+    <div class="stack">
+    <div class="card">
+      <h3><span class="hic" style="--tc:var(--danger);--ts:var(--danger-soft)"><svg class="i"><use href="#i-alert"/></svg></span>Needs your attention</h3><p class="sub">Biggest money first</p>
+      <div style="margin-top:6px">
+      <div class="att"><span class="sev red"></span><div><div class="t">New Oracle order for a product that is stopping</div><div class="d">Mocca carton · 250.000 pcs · Rp 1,05 miliar · no check before ordering</div></div><a class="btn sm act" href="#buy">Review</a></div>
+      <div class="att"><span class="sev amb"></span><div><div class="t">Machine waits for product plans</div><div class="d">Stick-pack filler L5 · Rp 6,8 miliar · Mocca was half its volume</div></div><a class="btn sm act" href="#buy">Review</a></div>
+      <div class="att"><span class="sev amb"></span><div><div class="t">Latte laminate waits for Marketing</div><div class="d">Rp 1,73 miliar · asked 8 Nov</div></div><a class="btn sm act" href="#buy">Review</a></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="meet"><div class="date"><small>Nov</small>18</div><div><h3>Monthly product meeting</h3><p class="sub">Wed 09:00–10:30 · Meeting room Kopi · on 9 calendars</p></div></div>
+      <ol class="agenda">
+        <li><span>Pick the stop date for Mocca 25g</span></li>
+        <li><span>Latte laminate: full minimum order or smaller deliveries</span></li>
+        <li><span>Machine L5 without Mocca volume</span></li>
+        <li><span>Gula Aren launch: which line, which packaging order</span></li>
+      </ol>
+      <div class="row" style="margin-top:12px"><button class="btn sm pri" data-toast="Joining Meeting room Kopi"><svg class="i"><use href="#i-users"/></svg>Join</button><button class="btn sm" data-toast="Minutes opened in Notes"><svg class="i"><use href="#i-file"/></svg>Minutes</button></div>
+    </div>
+    </div>
+  </div>
+
+  <div class="grid g2e" style="margin-top:16px">
+    <div class="card gm-only">
+      <h3><span class="hic" style="--tc:var(--c-buy);--ts:var(--c-buy-soft)"><svg class="i"><use href="#i-cart"/></svg></span>Money at risk by brand</h3><p class="sub">Whole company · only GM, Finance and Directors see this</p>
+      <div style="margin-top:8px">
+      <div class="bar"><span>Kopi Mix</span><div class="tr"><span style="width:40%;background:var(--danger)"></span><span style="width:12%;background:var(--warn)"></span><span style="width:20%;background:var(--info)"></span></div><b class="num" style="text-align:right">Rp 5,4 miliar</b></div>
+      <div class="bar"><span>Cappuccino</span><div class="tr"><span style="width:14%;background:var(--danger)"></span><span style="width:6%;background:var(--warn)"></span></div><b class="num" style="text-align:right">Rp 1,5 miliar</b></div>
+      <div class="bar"><span>Kopi Hitam</span><div class="tr"><span style="width:16%;background:var(--danger)"></span><span style="width:4%;background:var(--warn)"></span></div><b class="num" style="text-align:right">Rp 1,5 miliar</b></div>
+      <div class="bar"><span>Kopi Susu</span><div class="tr"><span style="width:11%;background:var(--danger)"></span><span style="width:8%;background:var(--warn)"></span></div><b class="num" style="text-align:right">Rp 1,4 miliar</b></div>
+      </div>
+      <div class="legend"><span><i style="background:var(--danger)"></i>Packaging &amp; materials in stock</span><span><i style="background:var(--warn)"></i>Open orders</span><span><i style="background:var(--info)"></i>Machines that would sit idle</span></div>
+    </div>
+    <div class="card">
+      <h3><span class="hic" style="--tc:var(--c-ov);--ts:var(--c-ov-soft)"><svg class="i"><use href="#i-check"/></svg></span>What we saved</h3><p class="sub">Closed cases in 2026 · example figures</p>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Product</th><th>What we did</th><th class="r">Saved</th></tr></thead>
+        <tbody>
+          <tr><td>Cappuccino 12-pack</td><td>Stop date moved 4 months so the boxes run out</td><td class="r num">Rp 1,2 miliar</td></tr>
+          <tr><td>Kopi Hitam pouch</td><td>New design starts when old film reaches zero</td><td class="r num">Rp 860 juta</td></tr>
+          <tr><td>Latte sachet film</td><td>Minimum order split into 4 deliveries</td><td class="r num">Rp 640 juta</td></tr>
+          <tr><td>Warehouse WH-4</td><td>3 + 2 year lease instead of fixed 5</td><td class="r num">Rp 400 juta</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PRODUCT CHANGES ================= -->
+<section class="view" data-view="changes" hidden>
+  <div class="vhead" style="--tc:var(--c-chg);--ts:var(--c-chg-soft)"><span class="vic"><svg class="i"><use href="#i-bell"/></svg></span><div style="min-width:0"><h2>Product changes</h2><p class="lead">Every decision that changes a product, sent only to that product's team.</p><p class="mnote"><b>Catatan mockup:</b> setiap keputusan yang mengubah produk (berhenti, desain kemasan baru, ganti resep, ganti supplier, produk baru, volume naik/turun) dikirim dari sini ke <b>tim produk</b>-nya saja.</p></div></div>
+  <div class="row" style="justify-content:space-between;margin-bottom:14px">
+    <div class="row"><span class="pill p-gry">All 6</span><span class="pill p-red">Late 1</span><span class="pill p-amb">In progress 4</span><span class="pill p-grn">Closed this year 7</span></div>
+    <button class="btn pri" data-open-sheet><svg class="i"><use href="#i-plus"/></svg>New product change</button>
+  </div>
+  <div class="card" style="padding:6px 16px">
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Product</th><th>Change</th><th>Now</th><th>Answers</th><th class="r">Money at risk</th><th>From</th><th></th></tr></thead>
+      <tbody>
+        <tr class="click" data-go="change"><td><b>Kopi Mix Mocca 25g</b><div class="id">CN-014 · Kopi Mix team</div></td><td><span class="pill p-red">Stops</span></td><td><span class="pill p-red">Waiting for answers · late</span></td><td class="num">5 of 8</td><td class="r num">Rp 4,7 miliar</td><td>Jun 2027</td><td class="r"><svg class="i" style="color:var(--ink-4)"><use href="#i-arrow"/></svg></td></tr>
+        <tr class="click" data-go="change"><td><b>Kopi Gula Aren 25g</b><div class="id">CN-015 · Kopi Mix team</div></td><td><span class="pill p-grn">New product</span></td><td><span class="pill p-amb">Waiting for answers</span></td><td class="num">6 of 8</td><td class="r num">—</td><td>Apr 2027</td><td class="r"><svg class="i" style="color:var(--ink-4)"><use href="#i-arrow"/></svg></td></tr>
+        <tr class="click" data-go="change"><td><b>Kopi Hitam 165g pouch</b><div class="id">CN-013 · Kopi Hitam team</div></td><td><span class="pill p-blu">New pack design</span></td><td><span class="pill p-amb">Sign-off</span></td><td class="num">8 of 8</td><td class="r num">Rp 620 juta</td><td>Mar 2027</td><td class="r"><svg class="i" style="color:var(--ink-4)"><use href="#i-arrow"/></svg></td></tr>
+        <tr class="click" data-go="change"><td><b>Kopi Susu Jahe 30g</b><div class="id">CN-012 · Kopi Susu team</div></td><td><span class="pill p-blu">Recipe change</span></td><td><span class="pill p-amb">Waiting for answers</span></td><td class="num">7 of 8</td><td class="r num">Rp 210 juta</td><td>Feb 2027</td><td class="r"><svg class="i" style="color:var(--ink-4)"><use href="#i-arrow"/></svg></td></tr>
+        <tr class="click" data-go="change"><td><b>Cappuccino 12-pack</b><div class="id">CN-011 · Cappuccino team</div></td><td><span class="pill p-red">Stops</span></td><td><span class="pill p-grn">Using up stock · 62%</span></td><td class="num">8 of 8</td><td class="r num">Rp 380 juta</td><td>Mar 2027</td><td class="r"><svg class="i" style="color:var(--ink-4)"><use href="#i-arrow"/></svg></td></tr>
+        <tr class="click" data-go="change"><td><b>Kopi Hitam 380g can</b><div class="id">CN-010 · Kopi Hitam team</div></td><td><span class="pill p-gry">Supplier change</span></td><td><span class="pill p-amb">Sign-off</span></td><td class="num">8 of 8</td><td class="r num">Rp 95 juta</td><td>Jan 2027</td><td class="r"><svg class="i" style="color:var(--ink-4)"><use href="#i-arrow"/></svg></td></tr>
+      </tbody>
+    </table></div>
+  </div>
+</section>
+
+<!-- ================= CHANGE DETAIL ================= -->
+<section class="view" data-view="change" hidden>
+  <div class="vhead" style="--tc:var(--c-chg);--ts:var(--c-chg-soft)"><span class="vic"><svg class="i"><use href="#i-bell"/></svg></span><div style="min-width:0"><h2>Product change</h2><p class="lead">One change, from announcement to closed.</p><p class="mnote"><b>Catatan mockup:</b> kasus GM. Dibagi tiga bagian: <b>Who knows</b> (semua orang, cukup satu klik), <b>Money &amp; stop date</b> (Marketing, PPIC, Finance, dan GM memilih tanggal stop paling murah), dan <b>Sign-off</b>.</p></div></div>
+  <a href="#changes" class="btn sm" style="margin-bottom:12px"><svg class="i"><use href="#i-back"/></svg>Product changes</a>
+  <div class="card">
+    <div class="nhead">
+      <div style="min-width:0">
+        <div class="row"><span class="pill p-red">Stops</span><span class="id">CN-014 · announced 4 Nov 2026 by Rina A. (Marketing)</span></div>
+        <h2>Kopi Mix Mocca 25g stops after June 2027</h2>
+        <div class="muted" style="max-width:72ch">Sales are down 38% in 12 months. Shelf space goes to Kopi Gula Aren 25g.</div>
+      </div>
+      <div style="text-align:right">
+        <div class="circle-av" style="justify-content:flex-end"><span class="av" style="background:#cf6a4c">RA</span><span class="av" style="background:#3a86c8">DP</span><span class="av" style="background:#d19a2a">YS</span><span class="av" style="background:#6f8290">AW</span><span class="av" style="background:#2e9d6b">MF</span><span class="av" style="background:#8a5cc2">LT</span><span class="av" style="background:#b4543a">BK</span><span class="av" style="background:#123528">HS</span></div>
+        <div class="muted" style="font-size:12.5px;margin-top:4px"><svg class="i" style="width:13px;height:13px;vertical-align:-2px"><use href="#i-lock"/></svg> Kopi Mix team · only these 8 people see this</div>
+        <a class="linkchip" href="#project" style="margin-top:8px;background:var(--c-prj-soft);color:var(--c-prj)"><svg class="i"><use href="#i-folder"/></svg>Open the project · 12 tasks</a>
+      </div>
+    </div>
+    <div class="stepper">
+      <div class="step done"><i></i><b>Announced</b>4 Nov</div>
+      <div class="step now"><i></i><b>Answers</b><span style="color:var(--danger);font-weight:600">3 days late</span></div>
+      <div class="step"><i></i><b>Stop plan</b>at meeting 18 Nov</div>
+      <div class="step"><i></i><b>Sign-off</b>Marketing, PPIC, Finance, GM</div>
+      <div class="step"><i></i><b>Using up stock</b>tracked to zero</div>
+    </div>
+  </div>
+
+  <div class="subtabs" role="tablist">
+    <a href="#change" data-sub="who" style="--tc:var(--c-me)"><svg class="i"><use href="#i-users"/></svg>Who knows <span class="pill p-red">5 of 8</span></a>
+    <a href="#change-money" data-sub="money" style="--tc:var(--c-buy)"><svg class="i"><use href="#i-cart"/></svg>Money &amp; stop date <span class="pill p-amb">Rp 4,7 miliar</span></a>
+    <a href="#change-sign" data-sub="sign" style="--tc:var(--c-ov)"><svg class="i"><use href="#i-pen"/></svg>Sign-off <span class="pill p-gry">not open yet</span></a>
+    <a href="#change-tasks" data-sub="tasks" style="--tc:var(--c-prj)"><svg class="i"><use href="#i-folder"/></svg>Tasks <span class="pill p-red" id="cTaskPill">2 late</span></a>
+  </div>
+
+  <!-- WHO KNOWS -->
+  <div class="sub" data-sub="who">
+    <div class="g2 grid">
+      <div class="card">
+        <div class="hd"><div><h3><span class="hic" style="--tc:var(--c-me);--ts:var(--c-me-soft)"><svg class="i"><use href="#i-users"/></svg></span>Who knows</h3><p class="sub">Each person answers with one click. "Has impact" adds one line.</p></div><button class="btn sm" data-toast="Reminded Dedi and Yuli on PC and phone"><svg class="i"><use href="#i-bell"/></svg>Remind late people</button></div>
+        <div class="people">
+          <div class="person"><span class="av" style="background:#cf6a4c">RA</span><div class="n"><span>Rina A.<small>Marketing · decided</small></span><span class="pill p-grn">Sent</span></div></div>
+          <div class="person late"><span class="av" style="background:#3a86c8">DP</span><div class="n"><span>Dedi P.<small>PPIC</small></span><span class="pill p-red">3 days late</span></div><div class="imp">Seen on PC 4 Nov · not answered · GM told 10 Nov</div></div>
+          <div class="person late"><span class="av" style="background:#d19a2a">YS</span><div class="n"><span>Yuli S.<small>Purchasing</small></span><span class="pill p-red">3 days late</span></div><div class="imp">Made carton order 9 Nov, after this notice</div></div>
+          <div class="person"><span class="av" style="background:#6f8290">AW</span><div class="n"><span>Agus W.<small>Production</small></span><span class="pill p-amb">Has impact</span></div><div class="imp">Line L4 idle 70% after the last run. Gula Aren can move to L4.</div></div>
+          <div class="person"><span class="av" style="background:#2e9d6b">MF</span><div class="n"><span>M. Faisal<small>Warehouse</small></span><span class="pill p-amb">Has impact</span></div><div class="imp">41 pallets of laminate in WH-2</div></div>
+          <div class="person"><span class="av" style="background:#8a5cc2">LT</span><div class="n"><span>Lina T.<small>Finance</small></span><span class="pill p-amb">Has impact</span></div><div class="imp">Write-off above Rp 250 juta needs GM sign-off</div></div>
+          <div class="person"><span class="av" style="background:#b4543a">BK</span><div class="n"><span>Budi K.<small>R&amp;D / QA</small></span><span class="pill p-grn">No impact</span></div></div>
+          <div class="person"><span class="av" style="background:#123528">HS</span><div class="n"><span>Hendra S.<small>GM · watching</small></span><span class="pill p-gry">Signs later</span></div></div>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="card">
+          <div class="hd"><div><h3><span class="hic" style="--tc:var(--c-chg);--ts:var(--c-chg-soft)"><svg class="i"><use href="#i-chat"/></svg></span>Team chat</h3><p class="sub">Same room in Chat · only the 8 people above</p></div><a class="btn sm" href="#change"><svg class="i"><use href="#i-chat"/></svg>Open in Chat</a></div>
+          <div class="msg"><span class="av" style="background:#d19a2a">YS</span><div class="b"><small>Yuli S. · Purchasing · 10 Nov 08:12</small>The carton order was planned in October, before I saw this. The supplier says we can cancel until 20 Nov.</div></div>
+          <div class="msg"><span class="av" style="background:#123528">HS</span><div class="b"><small>Hendra S. · GM · 10 Nov 08:40</small>Please cancel it. Dedi, add the laminate numbers today. We pick the date on the 18th.</div></div>
+          <div class="compose"><input id="chatIn" placeholder="Message the Kopi Mix team" aria-label="Message the Kopi Mix team"><button class="btn pri" data-toast="Message sent to the Kopi Mix team"><svg class="i"><use href="#i-send"/></svg></button></div>
+        </div>
+        <div class="card"><h3><span class="hic" style="--tc:var(--c-me);--ts:var(--c-me-soft)"><svg class="i"><use href="#i-bell"/></svg></span>How people were told</h3>
+          <div class="chan"><span class="ic"><svg class="i"><use href="#i-monitor"/></svg></span>Notifier on PC, with answer buttons<span class="muted">8 of 8</span></div>
+          <div class="chan"><span class="ic"><svg class="i"><use href="#i-phone"/></svg></span>iPop on phone<span class="muted">7 of 8</span></div>
+          <div class="chan"><span class="ic"><svg class="i"><use href="#i-bell"/></svg></span>Reminders to late people<span class="muted">6 and 9 Nov</span></div>
+          <div class="chan"><span class="ic"><svg class="i"><use href="#i-alert"/></svg></span>GM told after 3 working days<span class="muted">10 Nov</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TASKS -->
+  <div class="sub" data-sub="tasks" hidden>
+    <div class="card">
+      <div class="hd"><div><h3><span class="hic" style="--tc:var(--c-prj);--ts:var(--c-prj-soft)"><svg class="i"><use href="#i-folder"/></svg></span>Who does what</h3><p class="sub">Made from the "Stops" task list when Rina sent this change. Each person sees their part in Projects, on their Dashboard and in Calendar. Click a person to see their tasks.</p></div><a class="btn pri" href="#project"><svg class="i"><use href="#i-folder"/></svg>Open in Projects</a></div>
+      <div class="pstrip" id="cStrip"></div>
+    </div>
+  </div>
+
+  <!-- MONEY -->
+  <div class="sub" data-sub="money" hidden>
+    <div class="g2 grid">
+      <div class="card">
+        <div class="hd"><div><h3><span class="hic" style="--tc:var(--c-buy);--ts:var(--c-buy-soft)"><svg class="i"><use href="#i-cal"/></svg></span>When to stop</h3><p class="sub">Move the last production month. iPop shows the packaging left over and its cost.</p></div><span class="pill p-amb" id="roBadge">Marketing's date</span></div>
+        <label for="ro" class="row" style="justify-content:space-between;font-weight:600"><span>Last production</span><span id="roLabel" class="num" style="font-size:16px">Jun 2027</span></label>
+        <input type="range" id="ro" class="range" min="1" max="62" value="7">
+        <div class="row muted" style="justify-content:space-between;font-size:12px"><span>Dec 2026</span><span>No leftovers: Nov 2031</span></div>
+        <div class="ro-out">
+          <div><small>Left over if we do nothing</small><strong class="num" id="roLeft">–</strong></div>
+          <div><small>Left over with the choices below</small><strong class="num" id="roNet">–</strong></div>
+          <div><small>Saved by the choices</small><strong class="num" id="roSaved" style="color:var(--ok)">–</strong></div>
+        </div>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Material</th><th class="r">In stock</th><th class="r">On order</th><th class="r">Used / month</th><th class="r">Lasts</th><th class="r">Left over</th></tr></thead>
+          <tbody id="roRows"></tbody>
+        </table></div>
+        <div style="margin-top:12px">
+          <div class="colh" style="margin-bottom:2px">Ways to lose less</div>
+          <label class="opt"><input type="checkbox" id="o1" checked><span><b>Cancel the new carton order</b><br><span class="muted">Not printed yet. Supplier accepts until 20 Nov.</span></span><span class="s num" id="s1"></span></label>
+          <label class="opt"><input type="checkbox" id="o2" checked><span><b>Use the plain inner box for Latte 25g</b><br><span class="muted">Same size, no product print. Production agrees.</span></span><span class="s num" id="s2"></span></label>
+          <label class="opt"><input type="checkbox" id="o3" checked><span><b>Supplier buys back unprinted laminate</b> at 25%<br><span class="muted">Clause in the 2026 film contract.</span></span><span class="s num" id="s3"></span></label>
+          <label class="opt"><input type="checkbox" id="o4"><span><b>Last months as a bonus pack</b> to sell faster<br><span class="muted">Marketing estimate: +80.000 sachets a month.</span></span><span class="s num" id="s4"></span></label>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="card">
+          <h3><span class="hic" style="--tc:var(--c-chg);--ts:var(--c-chg-soft)"><svg class="i"><use href="#i-box"/></svg></span>What depends on Mocca 25g</h3><p class="sub">From Oracle: materials, orders, machines, space</p>
+          <div style="margin-top:12px">
+            <div class="dep risk"><span class="ic"><svg class="i"><use href="#i-box"/></svg></span><div><b>Printed sachet laminate</b>Only Mocca · 18,6 juta in stock</div><span class="pill p-red">At risk</span></div>
+            <div class="dep risk"><span class="ic"><svg class="i"><use href="#i-box"/></svg></span><div><b>Outer carton 48×</b>Only Mocca · 120.000 + 250.000 on order</div><span class="pill p-red">At risk</span></div>
+            <div class="dep shared"><span class="ic"><svg class="i"><use href="#i-box"/></svg></span><div><b>Plain inner box 10×</b>Shared with Latte · can be re-used</div><span class="pill p-grn">Re-use</span></div>
+            <div class="dep risk"><span class="ic"><svg class="i"><use href="#i-cog"/></svg></span><div><b>Stick-pack filler L4 · Sepanjang</b>Mocca uses 70% of its hours · book value Rp 3,4 miliar</div><span class="pill p-amb">Move Gula Aren</span></div>
+            <div class="dep"><span class="ic"><svg class="i"><use href="#i-cog"/></svg></span><div><b>Stick-pack filler L5 · Karawang</b>Planned, Rp 6,8 miliar · on hold</div><span class="pill p-amb">On hold</span></div>
+            <div class="dep shared"><span class="ic"><svg class="i"><use href="#i-land"/></svg></span><div><b>Warehouse WH-2</b>41 pallets free after the stock is used</div><span class="pill p-gry">Free later</span></div>
+          </div>
+        </div>
+        <div class="card"><h3><span class="hic" style="--tc:var(--c-rule);--ts:var(--c-rule-soft)"><svg class="i"><use href="#i-cog"/></svg></span>Line L4 after Mocca stops</h3><p class="sub">Production's answer</p>
+          <div style="display:flex;height:30px;border-radius:9px;overflow:hidden;margin-top:12px;font-size:11.5px;font-weight:600">
+            <span style="width:70%;background:var(--danger-soft);color:var(--danger);display:flex;align-items:center;padding:0 8px">Mocca 70% → Gula Aren from Apr 2027</span><span style="width:30%;background:var(--ok-soft);color:var(--ok);display:flex;align-items:center;padding:0 8px">Latte 30%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIGN-OFF -->
+  <div class="sub" data-sub="sign" hidden>
+    <div class="g2 grid">
+      <div class="card">
+        <div class="hd"><div><h3><span class="hic" style="--tc:var(--c-ov);--ts:var(--c-ov-soft)"><svg class="i"><use href="#i-pen"/></svg></span>Stop plan to sign</h3><p class="sub">Opens when all 8 have answered (5 of 8 now). Draft from the monthly meeting.</p></div><span class="pill p-gry">Draft</span></div>
+        <div class="plan">
+          <div><small>Last production</small><strong id="planDate">Jun 2027</strong></div>
+          <div><small>Left over</small><strong class="num" id="planLeft">–</strong></div>
+          <div><small>Saved by choices</small><strong class="num" id="planSaved" style="color:var(--ok)">–</strong></div>
+        </div>
+        <p class="muted" style="font-size:13px;margin:12px 0 0">The plan follows what you set in <a href="#change-money">Money &amp; stop date</a>. After signing, iPop tracks the stock down to zero and closes the change with the real numbers.</p>
+      </div>
+      <div class="card">
+        <h3><span class="hic" style="--tc:var(--c-ov);--ts:var(--c-ov-soft)"><svg class="i"><use href="#i-users"/></svg></span>Who signs</h3><p class="sub">GM signs too because the leftover is above Rp 250 juta</p>
+        <div class="sign"><span class="av" style="background:#cf6a4c">RA</span><div>Rina A.<small>Marketing</small></div><span class="pill p-gry">Waiting</span></div>
+        <div class="sign"><span class="av" style="background:#3a86c8">DP</span><div>Dedi P.<small>PPIC</small></div><span class="pill p-gry">Waiting</span></div>
+        <div class="sign"><span class="av" style="background:#8a5cc2">LT</span><div>Lina T.<small>Finance</small></div><span class="pill p-gry">Waiting</span></div>
+        <div class="sign"><span class="av" style="background:#123528">HS</span><div>Hendra S.<small>GM</small></div><span class="pill p-gry">Waiting</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= BEFORE YOU BUY ================= -->
+<section class="view" data-view="buy" hidden>
+  <div class="vhead" style="--tc:var(--c-buy);--ts:var(--c-buy-soft)"><span class="vic"><svg class="i"><use href="#i-cart"/></svg></span><div style="min-width:0"><h2>Before you buy</h2><p class="lead">Check how long the product will live before money goes out.</p><p class="mnote"><b>Catatan mockup:</b> sebelum uang keluar untuk material yang cukup <b>lebih dari 12 bulan</b> atau bernilai <b>di atas Rp 250 juta</b>, <b>mesin apa pun</b> untuk sebuah produk, atau <b>sewa/lahan di atas 3 tahun</b>, Marketing wajib menjawab: "produk ini masih jalan sampai kapan?"</p></div></div>
+  <div class="grid g2">
+    <div class="card">
+      <div class="hd"><div><h3><span class="hic" style="--tc:var(--c-buy);--ts:var(--c-buy-soft)"><svg class="i"><use href="#i-cart"/></svg></span>Waiting for an answer</h3><p class="sub">Don't order these until Marketing answers</p></div><span class="pill p-amb">3 on hold</span></div>
+
+      <div class="gate">
+        <div class="ic" style="background:var(--danger-soft);color:var(--danger)"><svg class="i"><use href="#i-alert"/></svg></div>
+        <div>
+          <h4>Outer carton Mocca 48× · order PO-2611873</h4>
+          <div class="meta"><span>250.000 pcs (supplier minimum)</span><span class="num">Rp 1,05 miliar</span><span>Yuli S., Purchasing</span><span>Found in Oracle 10 Nov 02:00</span></div>
+          <div class="cover"><span style="width:100%;background:var(--danger)"></span><em style="left:18%"></em></div>
+          <div class="row muted" style="justify-content:space-between;font-size:12px;margin-top:4px"><span>Product stops Jun 2027 (7 months)</span><span>This order lasts 38 months</span></div>
+          <div class="q red" style="margin-top:10px"><b>Ordered in Oracle without a check, for a product that is stopping.</b>iPop found it in the nightly import and told Purchasing, PPIC, Marketing and the GM.</div>
+          <div class="ans"><button class="btn sm pri" data-toast="Purchasing asked to cancel PO-2611873">Ask Purchasing to cancel</button><a class="btn sm" href="#change">Open the Mocca change</a></div>
+        </div>
+        <span class="pill p-red">Stop</span>
+      </div>
+
+      <div class="gate">
+        <div class="ic" style="background:var(--warn-soft);color:var(--warn)"><svg class="i"><use href="#i-box"/></svg></div>
+        <div>
+          <h4>Printed sachet laminate · Latte 25g</h4>
+          <div class="meta"><span>15 juta sachets (supplier minimum)</span><span class="num">Rp 1,73 miliar</span><span>Dedi P., PPIC</span><span>Asked 8 Nov</span></div>
+          <div class="cover"><span style="width:100%;background:var(--warn)"></span></div>
+          <div class="row muted" style="justify-content:space-between;font-size:12px;margin-top:4px"><span>Uses 290.000 a month</span><span>With stock in hand, lasts 54 months · until May 2031</span></div>
+          <div class="q"><b>Rina, will Latte 25g still be sold in this design until May 2031?</b>
+            <div class="ans">
+              <button class="btn sm pri" data-toast="Answered: Latte 25g continues past May 2031">Yes</button>
+              <button class="btn sm" data-toast="Answered: buy in smaller deliveries">Not sure, buy in smaller deliveries</button>
+              <button class="btn sm" data-toast="Answered: a change is planned, buy less">No, a change is planned</button>
+            </div>
+          </div>
+        </div>
+        <span class="pill p-amb">On hold</span>
+      </div>
+
+      <div class="gate">
+        <div class="ic" style="background:var(--info-soft);color:var(--info)"><svg class="i"><use href="#i-cog"/></svg></div>
+        <div>
+          <h4>Stick-pack filler L5 · Karawang</h4>
+          <div class="meta"><span>Machine</span><span class="num">Rp 6,8 miliar</span><span>Pays back in 6 years</span><span>Teguh R., Engineering</span></div>
+          <div class="q"><b>This machine is for Mocca 25g and Latte 25g, and Mocca is stopping.</b>Marketing confirms the products for 2027–2032. Finance re-checks the payback without Mocca. If bought, iPop checks real use after 24 months.</div>
+          <div class="ans"><a class="btn sm" href="#change-money">See what depends on it</a><button class="btn sm" data-toast="Added to the 18 Nov meeting agenda">Add to monthly meeting</button></div>
+        </div>
+        <span class="pill p-amb">On hold</span>
+      </div>
+
+      <div class="gate">
+        <div class="ic" style="background:var(--ok-soft);color:var(--ok)"><svg class="i"><use href="#i-land"/></svg></div>
+        <div>
+          <h4>Warehouse lease WH-4 Karawang</h4>
+          <div class="meta"><span class="num">Rp 2,4 miliar over 5 years</span><span>Sinta M., GA</span></div>
+          <div class="q grn"><b>Cleared 2 Nov.</b>Marketing confirmed volume for 3 years only. Signed as 3 years + 2-year option instead of a fixed 5 years.</div>
+        </div>
+        <span class="pill p-grn">Cleared</span>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="card">
+        <h3><span class="hic" style="--tc:var(--c-buy);--ts:var(--c-buy-soft)"><svg class="i"><use href="#i-search"/></svg></span>Check before I order</h3><p class="sub">Fill in the order. iPop tells you if Marketing needs to answer first.</p>
+        <div class="calc" style="margin-top:12px">
+          <label class="f" style="grid-column:1/-1">Product<select id="cProd"><option value="mocca">Kopi Mix Mocca 25g · stops Jun 2027</option><option value="latte" selected>Kopi Mix Latte 25g · selling</option><option value="aren">Kopi Gula Aren 25g · launches Apr 2027</option></select></label>
+          <label class="f">How many to order<span class="fx"><input id="cQty" class="numin" inputmode="numeric" value="15.000.000"><em>pcs</em></span><small class="hint" data-hint="pcs"></small></label>
+          <label class="f">Used per month<span class="fx"><input id="cUse" class="numin" inputmode="numeric" value="290.000"><em>pcs / month</em></span><small class="hint" data-hint="pcs a month"></small></label>
+          <label class="f">Price per piece<span class="fx"><b>Rp</b><input id="cPrice" class="numin" inputmode="numeric" value="115"></span><small class="hint" data-hint="rp"></small></label>
+          <label class="f">Already in stock<span class="fx"><input id="cStock" class="numin" inputmode="numeric" value="600.000"><em>pcs</em></span><small class="hint" data-hint="pcs"></small></label>
+        </div>
+        <div class="sumline" id="cSum"></div>
+        <div class="result" id="cRes"></div>
+      </div>
+      <div class="card">
+        <h3><span class="hic" style="--tc:var(--c-rule);--ts:var(--c-rule-soft)"><svg class="i"><use href="#i-shield"/></svg></span>When a check is needed</h3><p class="sub">Set by Admin · <a href="#rules">change rules</a></p>
+        <div class="att"><span class="sev amb"></span><div><div class="t">Materials &amp; packaging</div><div class="d">Lasts more than 12 months, or costs more than Rp 250 juta</div></div></div>
+        <div class="att"><span class="sev blu"></span><div><div class="t">Machines</div><div class="d">Every purchase made for a product</div></div></div>
+        <div class="att"><span class="sev grn"></span><div><div class="t">Land, lease, building</div><div class="d">Contract longer than 3 years</div></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PROJECT (Projects module) ================= -->
+<section class="view" data-view="project" hidden>
+  <div class="vhead" style="--tc:var(--c-prj);--ts:var(--c-prj-soft)"><span class="vic"><svg class="i"><use href="#i-kanban"/></svg></span><div style="min-width:0"><h2>Projects</h2><p class="lead">The Mocca change as a normal project, in the Projects module people already use.</p><p class="mnote"><b>Catatan mockup:</b> tampilan disamakan dengan Projects yang live: daftar project di kiri, tab Overview / Board / List / Timeline / Calendar / Workload / Reports, tabel List dengan kolom Status, Priority, Assignee, Due, Subtasks, serta Board 4 kolom. Yang baru hanya yang bertanda <span class="newb" style="margin:0">NEW</span>: chip Business Plan, tag Product change, dan isi task otomatis per peran. Coba List, Board, dan Workload. Ubah status di sini, maka For me dan Dashboard ikut berubah.</p></div></div>
+  <div class="pj">
+    <aside class="pjlist" aria-label="All projects">
+      <div class="row" style="justify-content:space-between"><b style="font-size:16px">All projects<span class="cntg">6</span></b><button class="btn pri sm" type="button" data-toast="New project"><svg class="i"><use href="#i-plus"/></svg>New</button></div>
+      <div class="pjov"><svg class="i"><use href="#i-grid"/></svg>All projects overview</div>
+      <div class="pjsearch"><svg class="i"><use href="#i-search"/></svg>Search projects</div>
+      <div class="yrs"><span class="on">All</span><span>2026</span><span>2025</span></div>
+      <div id="pjCards" style="display:grid;gap:4px"></div>
+    </aside>
+    <div style="min-width:0">
+      <div class="card">
+        <div class="phead">
+          <span class="pav" style="background:#c4532f">MO</span>
+          <div style="min-width:0"><div class="row" style="gap:8px"><b class="ptitle">Mocca 25g stops</b><span class="stpill">Active<svg class="i"><use href="#i-chev"/></svg></span></div><small class="muted" id="pSum">17% complete · Due 25 Nov 2026</small></div>
+          <a class="linkchip" href="#change"><svg class="i"><use href="#i-route"/></svg>From Business Plan · CN-014<span class="newb">NEW</span></a>
+          <span style="flex:1"></span>
+          <button class="members" type="button" data-toast="Kopi Mix team · 8 members"><span class="circle-av"><span class="av" style="background:#cf6a4c">RA</span><span class="av" style="background:#3a86c8">DP</span><span class="av" style="background:#d19a2a">YS</span></span>Members <span class="muted">8</span></button>
+          <a class="btn" href="#change"><svg class="i"><use href="#i-chat"/></svg>Chat</a>
+          <button class="btn pri" type="button" data-addtask="todo"><svg class="i"><use href="#i-plus"/></svg>New task</button>
+          <button class="btn" type="button" data-toast="More: schedule meeting, edit, export, template"><svg class="i" style="width:16px;height:16px"><use href="#i-sliders"/></svg>More</button>
+        </div>
+        <div class="row" style="justify-content:space-between">
+          <div class="pviews" id="pViews">
+            <button type="button" data-pv="overview"><svg class="i"><use href="#i-grid"/></svg>Overview</button>
+            <button type="button" data-pv="board"><svg class="i"><use href="#i-kanban"/></svg>Board</button>
+            <button type="button" data-pv="list" class="on"><svg class="i"><use href="#i-list"/></svg>List</button>
+            <button type="button" data-pv="timeline"><svg class="i"><use href="#i-gantt"/></svg>Timeline</button>
+            <button type="button" data-pv="calendar"><svg class="i"><use href="#i-cal"/></svg>Calendar</button>
+            <button type="button" data-pv="workload"><svg class="i"><use href="#i-users"/></svg>Workload</button>
+            <button type="button" data-pv="reports"><svg class="i"><use href="#i-chart"/></svg>Reports</button>
+          </div>
+          <div class="row"><div class="tsearch"><svg class="i" style="width:15px;height:15px"><use href="#i-search"/></svg>Search tasks or tags</div><button class="btn sm" type="button" id="pFilterBtn"><svg class="i"><use href="#i-filter"/></svg>Filter: only mine</button></div>
+        </div>
+      </div>
+      <div style="margin-top:14px">
+        <div class="pguide" id="pGuide"><div class="s"><span class="k">1</span><b>Find your tasks</b><span>Press <b>Filter: only mine</b>. iPop already gave you the tasks for your role.</span></div><div class="s"><span class="k">2</span><b>Move them along</b><span>Change Status: To Do → In Progress → Review → Done. Business Plan updates by itself.</span></div><div class="s"><span class="k">3</span><b>Need more work?</b><span>Press <b>New task</b>, write what, pick a role. iPop shows who that is.</span></div><button class="btn sm" type="button" id="pGuideX">Got it</button></div>
+        <div id="pFilterChip"></div><div id="pBody"></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= DASHBOARD ================= -->
+<section class="view" data-view="dash" hidden>
+  <div class="vhead" style="--tc:var(--c-ov);--ts:var(--c-ov-soft)"><span class="vic"><svg class="i"><use href="#i-grid"/></svg></span><div style="min-width:0"><h2>Dashboard</h2><p class="lead">Your day in iPop. Product change tasks sit next to your other work.</p><p class="mnote"><b>Catatan mockup:</b> widget <b>My tasks</b> yang sudah ada di Dashboard diperluas. Task dari Business Plan diberi chip <b>Product change</b> dan nilai Rupiahnya, lalu diurutkan dari yang terlambat. Tenggatnya juga muncul di Agenda (Calendar). Ganti "View as" untuk melihat Dashboard tiap orang.</p></div></div>
+  <div class="hello"><h2 id="dHello">Good morning.</h2></div>
+  <div class="grid g4" id="dKpi"></div>
+  <div class="grid g2" style="margin-top:16px;align-items:start">
+    <div class="card">
+      <div class="hd"><div><h3><span class="hic" style="--tc:var(--c-prj);--ts:var(--c-prj-soft)"><svg class="i"><use href="#i-check"/></svg></span>My tasks</h3><p class="sub">All projects · late first</p></div><a class="btn sm" href="#project">View all</a></div>
+      <div id="dTasks"></div>
+    </div>
+    <div class="stack">
+      <div class="card"><h3><span class="hic" style="--tc:var(--c-me);--ts:var(--c-me-soft)"><svg class="i"><use href="#i-cal"/></svg></span>Agenda</h3><p class="sub">This week · from Calendar</p><div id="dAgenda" style="margin-top:6px"></div></div>
+      <div class="card"><h3><span class="hic" style="--tc:var(--c-chg);--ts:var(--c-chg-soft)"><svg class="i"><use href="#i-route"/></svg></span>Business Plan</h3><div id="dBp" style="margin-top:8px"></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= HOW IT CONNECTS ================= -->
+<section class="view" data-view="connect" hidden>
+  <div class="vhead" style="--tc:var(--c-int);--ts:var(--c-int-soft)"><span class="vic"><svg class="i"><use href="#i-route"/></svg></span><div style="min-width:0"><h2>How it works</h2><p class="lead">From one decision to the last sachet: 7 steps, who does each one, and what iPop does for you.</p><p class="mnote"><b>Catatan mockup:</b> Business Plan tidak berdiri sendiri. Satu product change otomatis menjadi project + task di <b>Projects</b>, ruang <b>Chat</b>, tenggat di <b>Calendar</b>, pengingat di <b>Notifier/HP</b>, dan <b>My tasks</b> di Dashboard. Statusnya selalu sama di semua tempat karena datanya satu.</p></div></div>
+  <div class="card" style="margin-bottom:16px"><div class="hd"><div><h3><span class="hic" style="--tc:var(--c-int);--ts:var(--c-int-soft)"><svg class="i"><use href="#i-route"/></svg></span>Start to finish</h3><p class="sub"><span class="tagx tag-you">You</span> = a person does it · <span class="tagx tag-auto">iPop does it</span> = automatic</p></div></div><div class="hw"><div class="hws" style="--tc:var(--c-chg);--ts:var(--c-chg-soft)"><span class="n">1</span><div><h4>Marketing creates a product change</h4><p>Business Plan › New product change. Six short steps with help on each one: what changes, which product, the money involved, who is told, the tasks, and send.</p><div class="meta"><span class="tagx tag-you">Marketing · about 3 minutes</span><span>Business Plan</span></div></div><button class="btn sm pri" type="button" data-open-sheet>Try it</button></div><div class="hws" style="--tc:var(--c-buy);--ts:var(--c-buy-soft)"><span class="n">2</span><div><h4>iPop shows the money before it is sent</h4><p>Stock, open orders and machines tied to the product come from the nightly Oracle import. Nobody types these numbers.</p><div class="meta"><span class="tagx tag-auto">iPop does it</span><span>Rp 4,7 miliar for Mocca 25g</span></div></div><a class="btn sm" href="#change-money">See it</a></div><div class="hws" style="--tc:var(--c-prj);--ts:var(--c-prj-soft)"><span class="n">3</span><div><h4>iPop makes the project and the tasks</h4><p>One project in Projects, with the task list for that kind of change. Each task goes to the right person by role, the team chat opens, and due dates go on everyone's calendar.</p><div class="meta"><span class="tagx tag-auto">iPop does it</span><span>12 tasks for 8 people</span></div></div><a class="btn sm" href="#project">See it</a></div><div class="hws" style="--tc:var(--c-me);--ts:var(--c-me-soft)"><span class="n">4</span><div><h4>Everyone answers in one click</h4><p>A popup on the PC and the phone: No impact, Has impact, or Question. Day 1 and 2 bring a reminder. After 3 working days the GM is told.</p><div class="meta"><span class="tagx tag-you">Everyone · 1 click</span><span class="tagx tag-auto">reminders by iPop</span><span>For me · Notifier · phone</span></div></div><a class="btn sm" href="#forme">See it</a></div><div class="hws" style="--tc:var(--c-prj);--ts:var(--c-prj-soft)"><span class="n">5</span><div><h4>Each person does their tasks in Projects</h4><p>Open Projects, press Filter: only mine, move each task To Do → In Progress → Review → Done. Need more work? Press New task and pick a role.</p><div class="meta"><span class="tagx tag-you">Each person</span><span>Projects · Dashboard · Calendar</span></div></div><a class="btn sm" href="#project">See it</a></div><div class="hws" style="--tc:var(--c-ov);--ts:var(--c-ov-soft)"><span class="n">6</span><div><h4>Decide and sign at the monthly product meeting</h4><p>The agenda is built for you. Pick the stop date with the When to stop tool, then Marketing, PPIC, Finance and the GM sign.</p><div class="meta"><span class="tagx tag-you">Marketing · PPIC · Finance · GM</span><span>Meeting room Kopi · 18 Nov</span></div></div><a class="btn sm" href="#change-sign">See it</a></div><div class="hws" style="--tc:var(--c-why);--ts:var(--c-why-soft)"><span class="n">7</span><div><h4>Use up the stock, then close</h4><p>PPIC updates the stock left each month (a repeating task). When it reaches zero the project closes with the money saved and written off in Reports.</p><div class="meta"><span class="tagx tag-you">PPIC · monthly</span><span class="tagx tag-auto">closes by itself</span><span>Projects › Reports</span></div></div><a class="btn sm" href="#overview">See it</a></div></div></div>
+  <h3 style="margin:4px 0 10px;font-size:15px">Where it shows up</h3>
+  <div class="card">
+    <div class="fev"><span class="vic"><svg class="i"><use href="#i-send"/></svg></span><div><b style="font-size:15.5px">Rina sends "Kopi Mix Mocca 25g stops after June 2027"</b><div class="muted" style="font-size:13px">Business Plan · Product change · Kopi Mix team (8 people)</div></div></div>
+    <div class="fdown"><svg class="i"><use href="#i-arrow"/></svg></div>
+    <div class="ftiles">
+      <div class="ft"><div class="h"><span class="hic" style="--tc:var(--c-prj);--ts:var(--c-prj-soft)"><svg class="i"><use href="#i-folder"/></svg></span>Projects</div><p>Project "Mocca 25g stops" with 12 tasks, each given to the right person by role.</p><a class="btn sm" href="#project" style="justify-self:start;margin-top:6px">See it</a></div>
+      <div class="ft"><div class="h"><span class="hic" style="--tc:var(--c-ov);--ts:var(--c-ov-soft)"><svg class="i"><use href="#i-grid"/></svg></span>Dashboard</div><p>Each person's tasks in My tasks, with a Product change chip and the money.</p><a class="btn sm" href="#dash" style="justify-self:start;margin-top:6px">See it</a></div>
+      <div class="ft"><div class="h"><span class="hic" style="--tc:var(--c-me);--ts:var(--c-me-soft)"><svg class="i"><use href="#i-cal"/></svg></span>Calendar</div><p>Every due date, plus the monthly product meeting in Meeting room Kopi.</p></div>
+      <div class="ft"><div class="h"><span class="hic" style="--tc:var(--c-me);--ts:var(--c-me-soft)"><svg class="i"><use href="#i-monitor"/></svg></span>Notifier &amp; phone</div><p>A popup with answer buttons. Reminders on day 1 and 2, then the GM.</p></div>
+      <div class="ft"><div class="h"><span class="hic" style="--tc:var(--c-chg);--ts:var(--c-chg-soft)"><svg class="i"><use href="#i-chat"/></svg></span>Chat</div><p>One room for the team, linked to the project and the change.</p></div>
+      <div class="ft"><div class="h"><span class="hic" style="--tc:var(--c-buy);--ts:var(--c-buy-soft)"><svg class="i"><use href="#i-file"/></svg></span>Notes</div><p>Meeting minutes linked to each change that was discussed.</p></div>
+      <div class="ft"><div class="h"><span class="hic" style="--tc:var(--c-buy);--ts:var(--c-buy-soft)"><svg class="i"><use href="#i-db"/></svg></span>Files on the NAS</div><p>Supplier quotes and Oracle exports in the project folder.</p></div>
+      <div class="ft"><div class="h"><span class="hic" style="--tc:var(--c-rule);--ts:var(--c-rule-soft)"><svg class="i"><use href="#i-search"/></svg></span>Search</div><p>Ctrl+K finds the change, its project and its tasks, for team members only.</p></div>
+    </div>
+  </div>
+  <div class="grid g2" style="margin-top:16px;align-items:start">
+    <div class="card">
+      <h3><span class="hic" style="--tc:var(--c-int);--ts:var(--c-int-soft)"><svg class="i"><use href="#i-route"/></svg></span>Always in step, both ways</h3><p class="sub">One record, shown in several places</p>
+      <div class="tbl-wrap" style="margin-top:8px"><table class="sync"><tbody>
+        <tr><td>Rina sends a product change</td><td>The project is made from the task list for that change type. Tasks go to people by role, the team chat opens, and due dates land on calendars.</td></tr>
+        <tr><td>Dedi presses "Has impact" in Notifier</td><td>His "Answer" task is done, his line becomes a comment on the task, and Overview shows 6 of 8.</td></tr>
+        <tr><td>Dedi ticks "Count packaging" in Projects</td><td>The numbers fill When to stop, and Lina's and Rina's tasks that wait for it can start.</td></tr>
+        <tr><td>A task is 3 working days late</td><td>Reminders on day 1 and 2, then the GM sees it in For me and Notifier.</td></tr>
+        <tr><td>The nightly Oracle import finds a new order</td><td>A task "Cancel or explain PO-…" goes to Purchasing in the project.</td></tr>
+        <tr><td>All four people sign the stop plan</td><td>The monthly "Update stock left" task starts. The project closes when stock is zero, with saved and written-off money in Reports.</td></tr>
+      </tbody></table></div>
+    </div>
+    <div class="card">
+      <h3><span class="hic" style="--tc:var(--c-ov);--ts:var(--c-ov-soft)"><svg class="i"><use href="#i-check"/></svg></span>Already in iPop</h3><p class="sub">Used as it is</p>
+      <ul class="have">
+        <li><svg class="i" style="color:var(--ok)"><use href="#i-check"/></svg>Tasks with several people and roles (lead, reviewer)</li>
+        <li><svg class="i" style="color:var(--ok)"><use href="#i-check"/></svg>Checklists, tasks that wait for other tasks, repeating tasks</li>
+        <li><svg class="i" style="color:var(--ok)"><use href="#i-check"/></svg>Comments, files on the NAS, due-date reminders</li>
+        <li><svg class="i" style="color:var(--ok)"><use href="#i-check"/></svg>My tasks widget, task due dates in Calendar</li>
+        <li><svg class="i" style="color:var(--ok)"><use href="#i-check"/></svg>Projects from a template, Reports tab</li>
+      </ul>
+      <div class="dsec"><div class="colh">To add</div>
+      <ul class="have" style="margin:0">
+        <li><svg class="i" style="color:var(--c-int)"><use href="#i-plus"/></svg>A link from each task to its product change</li>
+        <li><svg class="i" style="color:var(--c-int)"><use href="#i-plus"/></svg>Roles in task lists, filled from the product team</li>
+        <li><svg class="i" style="color:var(--c-int)"><use href="#i-plus"/></svg>Tell the GM after 3 working days late</li>
+        <li><svg class="i" style="color:var(--c-int)"><use href="#i-plus"/></svg>"Product change" chip and money in My tasks</li>
+      </ul></div>
+    </div>
+  </div>
+<div class="card" style="margin-top:16px"><h3><span class="hic" style="--tc:var(--c-me);--ts:var(--c-me-soft)"><svg class="i"><use href="#i-q"/></svg></span>Common questions</h3>
+  <div class="faq" style="margin-top:12px">
+    <div><b>Are the project tasks made automatically?</b><span>Yes. Each kind of change has its own task list (Admin can edit it in Rules &amp; data). When you send, iPop makes the tasks and gives each one to the person who has that role in the product team. In step 5 of the form you can untick tasks that don't apply, or add your own.</span></div>
+    <div><b>Can I add a task later?</b><span>Yes. In the project press <b>New task</b> or <b>+ Add task</b> under a column. A short form asks what, who (pick a role, iPop shows the person), when, and what it waits for.</span></div>
+    <div><b>Who picks the people?</b><span>Each department head sets their person for each brand once. Every change for that brand uses the same team.</span></div>
+    <div><b>Where do I see my tasks?</b><span>In Projects with Filter: only mine, in My tasks on the Dashboard, and on your Calendar. Answers that need one click also pop up on your PC and phone.</span></div>
+  </div></div>
+</section>
+
+<!-- ================= WHY ================= -->
+<section class="view" data-view="why" hidden>
+  <div class="vhead" style="--tc:var(--c-why);--ts:var(--c-why-soft)"><span class="vic"><svg class="i"><use href="#i-book"/></svg></span><div style="min-width:0"><h2>Why this module</h2><p class="lead">Similar cases in other companies, and how they prevent them.</p><p class="mnote"><b>Catatan mockup:</b> halaman penjelasan untuk presentasi ke GM, bukan tab harian. Isinya pola kejadian serupa di manufaktur/FMCG, cara industri mencegahnya, dan bagian modul yang menjawabnya. Disusun dari praktik umum S&amp;OP, PLM, dan CapEx governance.</p></div></div>
+  <div class="case">
+    <div><div class="k">What happens</div><h4>Packaging bought at the minimum order, then the product stops</h4><p>Printed film, cartons and labels have big minimum orders and fit one product only. When it stops, what's left is written off.</p></div>
+    <div><div class="k">How others prevent it</div><ul><li>An official change notice every affected team must answer</li><li>Stop date planned from leftover materials</li><li>Bonus packs or bundles to use stock faster</li></ul></div>
+    <div class="fix"><div class="k">In iPop</div><p><b>Product changes</b> + <b>When to stop</b>, which shows the leftover in Rupiah for each date.</p></div>
+  </div>
+  <div class="case">
+    <div><div class="k">What happens</div><h4>Teams buy without knowing Marketing's plan</h4><p>PPIC and Purchasing buy on the old forecast while Marketing already plans a change. Each is right with their own data.</p></div>
+    <div><div class="k">How others prevent it</div><ul><li>S&amp;OP: one monthly meeting, one plan for every team</li><li>Long purchases need a product-life check</li></ul></div>
+    <div class="fix"><div class="k">In iPop</div><p><b>Before you buy</b> + the <b>monthly product meeting</b> with its agenda built for you.</p></div>
+  </div>
+  <div class="case">
+    <div><div class="k">What happens</div><h4>Supplier minimums force 3–5 years of stock</h4><p>One big order gets a lower unit price. If the product changes, the saving per piece is smaller than the loss on leftovers.</p></div>
+    <div><div class="k">How others prevent it</div><ul><li>Blanket orders: minimum-order price, delivered in parts</li><li>Supplier buy-back or consignment</li><li>Plain packaging plus a label for small-volume products</li></ul></div>
+    <div class="fix"><div class="k">In iPop</div><p>The answer <b>"Not sure, buy in smaller deliveries"</b> and the choices in When to stop.</p></div>
+  </div>
+  <div class="case">
+    <div><div class="k">What happens</div><h4>A machine is bought, then sits idle</h4><p>A special machine is bought for one product or format. The product stops or shrinks, and the machine keeps costing money.</p></div>
+    <div><div class="k">How others prevent it</div><ul><li>Each machine purchase names its products and how long</li><li>Check real use 12–24 months after installing</li><li>Plan which product moves onto the line before one stops</li></ul></div>
+    <div class="fix"><div class="k">In iPop</div><p>A check for <b>every machine</b>, the <b>What depends on it</b> list, and a 24-month review.</p></div>
+  </div>
+  <div class="case">
+    <div><div class="k">What happens</div><h4>Land or a long lease goes unused</h4><p>A 5-year contract or land for an expansion that doesn't happen keeps costing money for more than 3 years.</p></div>
+    <div><div class="k">How others prevent it</div><ul><li>Contracts with options (3 + 2), not a fixed term</li><li>Marketing confirms volume before signing</li></ul></div>
+    <div class="fix"><div class="k">In iPop</div><p>A check for <b>land or leases longer than 3 years</b>.</p></div>
+  </div>
+  <div class="case">
+    <div><div class="k">What happens</div><h4>New design or new label rules</h4><p>A new logo, claim or label rule means old packaging can't be used after a certain date.</p></div>
+    <div><div class="k">How others prevent it</div><ul><li>New design starts when the old stock runs out</li><li>If a rule sets the date, buy less of the old design early</li></ul></div>
+    <div class="fix"><div class="k">In iPop</div><p>The <b>New pack design</b> change uses the same When to stop tool.</p></div>
+  </div>
+</section>
+
+<!-- ================= RULES & DATA ================= -->
+<section class="view" data-view="rules" hidden>
+  <div class="vhead" style="--tc:var(--c-rule);--ts:var(--c-rule-soft)"><span class="vic"><svg class="i"><use href="#i-shield"/></svg></span><div style="min-width:0"><h2>Rules &amp; data</h2><p class="lead">Admin settings, and how Oracle data reaches iPop.</p><p class="mnote"><b>Catatan mockup:</b> bagian Admin › Business Plan. Oracle on-premise cukup <b>dibaca</b> (stok, PO terbuka, pemakaian, BOM, aset). iPop <b>tidak pernah menulis</b> ke Oracle. Mulai dari tahap 1 hari ini.</p></div></div>
+  <div class="grid g2">
+    <div class="card">
+      <h3><span class="hic" style="--tc:var(--c-why);--ts:var(--c-why-soft)"><svg class="i"><use href="#i-db"/></svg></span>How Oracle data gets to iPop</h3><p class="sub">Three steps. Each keeps working when the next is added.</p>
+      <div class="stage on"><span class="n">1</span><div><b>Upload Excel</b><div class="muted" style="font-size:13px">PPIC uploads the stock, open order and usage reports they already pull from Oracle. iPop checks the columns and shows what changed.</div><div class="flow"><span>Oracle report</span><svg class="i"><use href="#i-arrow"/></svg><span>Excel</span><svg class="i"><use href="#i-arrow"/></svg><span>iPop</span></div></div><span class="pill p-grn">Works today</span></div>
+      <div class="stage"><span class="n">2</span><div><b>Nightly file on the NAS</b><div class="muted" style="font-size:13px">A scheduled Oracle report writes CSV files to <code>\\NAS\bizplan-import\</code> at 01:00. iPop reads them at 02:00, the same way the EPop mail import works.</div><div class="flow"><span>Oracle scheduled report</span><svg class="i"><use href="#i-arrow"/></svg><span>NAS folder</span><svg class="i"><use href="#i-arrow"/></svg><span>iPop 02:00</span></div></div><span class="pill p-amb">Needs Oracle team</span></div>
+      <div class="stage"><span class="n">3</span><div><b>Read-only views</b><div class="muted" style="font-size:13px">The DBA creates a read-only user and views (<code>V_IPOP_STOCK</code>, <code>V_IPOP_OPEN_PO</code>, <code>V_IPOP_BOM</code>, <code>V_IPOP_ASSET</code>). iPop reads them nightly, and every hour for orders.</div><div class="flow"><span>Oracle views</span><svg class="i"><use href="#i-arrow"/></svg><span>iPop, read only</span></div></div><span class="pill p-gry">Needs DBA</span></div>
+    </div>
+    <div class="stack">
+      <div class="card">
+        <div class="hd"><div><h3><span class="hic" style="--tc:var(--c-why);--ts:var(--c-why-soft)"><svg class="i"><use href="#i-file"/></svg></span>Last imports</h3><p class="sub">Example data</p></div><button class="btn sm pri" data-toast="Choose an Excel file to upload"><svg class="i"><use href="#i-plus"/></svg>Upload Excel</button></div>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>When</th><th>File</th><th class="r">Rows</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td class="num">10 Nov 02:00</td><td>open_po.csv</td><td class="r num">1.284</td><td><span class="pill p-red">1 order flagged</span></td></tr>
+            <tr><td class="num">10 Nov 02:00</td><td>stock.csv</td><td class="r num">6.930</td><td><span class="pill p-grn">OK</span></td></tr>
+            <tr><td class="num">9 Nov 02:00</td><td>bom.csv</td><td class="r num">18.402</td><td><span class="pill p-grn">OK</span></td></tr>
+            <tr><td class="num">3 Nov 14:10</td><td>assets.xlsx</td><td class="r num">412</td><td><span class="pill p-amb">3 machines without a product</span></td></tr>
+          </tbody>
+        </table></div>
+      </div>
+      <div class="card">
+        <h3><span class="hic" style="--tc:var(--c-rule);--ts:var(--c-rule-soft)"><svg class="i"><use href="#i-shield"/></svg></span>Rules</h3><p class="sub">Who has to answer, and when</p>
+        <div class="tbl-wrap"><table><tbody>
+          <tr><td>Check materials when</td><td>lasts &gt; 12 months or &gt; Rp 250 juta</td></tr>
+          <tr><td>Check machines</td><td>always, if made for a product</td></tr>
+          <tr><td>Check land / leases when</td><td>contract &gt; 3 years</td></tr>
+          <tr><td>Time to answer a change</td><td>3 working days, reminders day 1 and 2, then GM</td></tr>
+          <tr><td>GM signs the stop plan when</td><td>leftover &gt; Rp 250 juta</td></tr>
+          <tr><td>Product teams</td><td>one per brand; each department head picks their person</td></tr>
+        </tbody></table></div>
+      </div>
+      <div class="card">
+        <div class="hd"><div><h3><span class="hic" style="--tc:var(--c-prj);--ts:var(--c-prj-soft)"><svg class="i"><use href="#i-folder"/></svg></span>Task list per change type</h3><p class="sub">Becomes a project in Projects. People are filled in from the product team by their role.</p></div><span class="pill p-blu">Stops</span></div>
+        <div class="row" style="margin-bottom:8px"><span class="pill p-red">Stops</span><span class="pill p-gry">New pack design</span><span class="pill p-gry">Recipe change</span><span class="pill p-gry">Supplier change</span><span class="pill p-gry">New product</span><span class="pill p-gry">Volume change</span></div>
+        <div class="tbl-wrap"><table><thead><tr><th>Task</th><th>Role</th><th>When</th></tr></thead><tbody>
+          <tr><td>Answer the change</td><td>Everyone in the team</td><td>3 working days</td></tr>
+          <tr><td>Count packaging and materials left</td><td>PPIC</td><td>7 days</td></tr>
+          <tr><td>Cancel or explain open orders</td><td>Purchasing</td><td>7 days</td></tr>
+          <tr><td>Plan the line after the product stops</td><td>Production</td><td>14 days</td></tr>
+          <tr><td>Plan warehouse space</td><td>Warehouse</td><td>21 days</td></tr>
+          <tr><td>Estimate the write-off provision</td><td>Finance</td><td>after PPIC's count</td></tr>
+          <tr><td>Pick the stop date</td><td>Marketing</td><td>next monthly meeting</td></tr>
+          <tr><td>Sign the stop plan</td><td>Marketing, PPIC, Finance, GM</td><td>7 days after the meeting</td></tr>
+          <tr><td>Update stock left</td><td>PPIC</td><td>every month until zero</td></tr>
+        </tbody></table></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+      </main>
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="scrim" hidden>
+  <form class="sheet wiz" id="cnForm" aria-labelledby="cnTitle">
+    <div class="row" style="justify-content:space-between"><h2 id="cnTitle">New product change</h2><button type="button" class="btn sm" id="cnClose">Close</button></div>
+    <ol class="wsteps"><li>What</li><li>Product</li><li>Money</li><li>People</li><li>Tasks</li><li>Send</li></ol>
+
+    <div class="wbody" data-ws="1">
+      <p class="wq">What is changing?</p>
+      <div class="wguide"><svg class="i"><use href="#i-info"/></svg><span>Pick the closest one. It decides which task list iPop makes for the team. Not sure? Pick the biggest change.</span></div>
+      <div class="types">
+        <label><input type="radio" name="t" value="stops" checked><span><b>Stops</b>no longer made</span></label>
+        <label><input type="radio" name="t" value="pack"><span><b>New pack design</b>artwork, size, claim</span></label>
+        <label><input type="radio" name="t" value="recipe"><span><b>Recipe change</b>ingredient or formula</span></label>
+        <label><input type="radio" name="t" value="supplier"><span><b>Supplier change</b>material source</span></label>
+        <label><input type="radio" name="t" value="new"><span><b>New product</b>new product or size</span></label>
+        <label><input type="radio" name="t" value="volume"><span><b>Volume change</b>much more or less</span></label>
+      </div>
+    </div>
+
+    <div class="wbody" data-ws="2" hidden>
+      <p class="wq">Which product, and from when?</p>
+      <div class="wguide"><svg class="i"><use href="#i-info"/></svg><span>Use your best guess for the date. The team agrees the final stop date later, at the monthly product meeting.</span></div>
+      <label class="f">Product<select id="cnProd"><option>Kopi Mix Mocca 25g</option><option>Kopi Mix Latte 25g</option><option>Kopi Susu Jahe 30g</option></select></label>
+      <label class="f">From when<input id="cnDate" type="month" value="2027-06"></label>
+      <label class="f">Why, in one or two sentences<textarea id="cnWhy" rows="3">Sales down 38% in 12 months; shelf space goes to Gula Aren.</textarea></label>
+    </div>
+
+    <div class="wbody" data-ws="3" hidden>
+      <p class="wq">This is the money tied to it</p>
+      <div class="wguide"><svg class="i"><use href="#i-info"/></svg><span>You don't type anything here. iPop reads it from last night's Oracle import so everyone sees the same number.</span></div>
+      <div class="wimp">
+        <div><span><b>Printed sachet laminate</b><small>18,6 juta in stock · only used by this product</small></span><b class="num">Rp 2,14 miliar</b></div>
+        <div><span><b>Outer carton 48×</b><small>120.000 in stock + 250.000 on order (PO-2611873)</small></span><b class="num">Rp 1,55 miliar</b></div>
+        <div><span><b>Stick-pack filler L4</b><small>70% of its hours are for this product</small></span><b class="num">Rp 1,0 miliar</b></div>
+      </div>
+      <div class="card" style="padding:12px 14px;background:var(--danger-soft);border-color:transparent"><b>Total: Rp 4,7 miliar.</b> The team will see this number, so they know why their answer matters.</div>
+    </div>
+
+    <div class="wbody" data-ws="4" hidden>
+      <p class="wq">Who is told</p>
+      <div class="wguide"><svg class="i"><use href="#i-info"/></svg><span>This is the Kopi Mix product team. Department heads chose these people, so you don't need to pick anyone. Only they will see this change.</span></div>
+      <div class="wteam">
+        <div><span class="av" style="background:#cf6a4c">RA</span><span>Rina Agustina<small>Marketing · you</small></span></div>
+        <div><span class="av" style="background:#3a86c8">DP</span><span>Dedi Prasetyo<small>PPIC</small></span></div>
+        <div><span class="av" style="background:#d19a2a">YS</span><span>Yuli Setiawati<small>Purchasing</small></span></div>
+        <div><span class="av" style="background:#6f8290">AW</span><span>Agus Wibowo<small>Production</small></span></div>
+        <div><span class="av" style="background:#2e9d6b">MF</span><span>Muhammad Faisal<small>Warehouse</small></span></div>
+        <div><span class="av" style="background:#8a5cc2">LT</span><span>Lina Tanjung<small>Finance</small></span></div>
+        <div><span class="av" style="background:#b4543a">BK</span><span>Budi Kurniawan<small>R&amp;D / QA</small></span></div>
+        <div><span class="av" style="background:#123528">HS</span><span>Hendra Santoso<small>GM · watches</small></span></div>
+      </div>
+      <label class="opt" style="border:0"><input type="checkbox" id="wEng"><span><b>Also tell Engineering</b><br><span class="muted">Tick this when a machine is involved (here: line L4).</span></span></label>
+    </div>
+
+    <div class="wbody" data-ws="5" hidden>
+      <p class="wq">The tasks iPop will make</p>
+      <div class="wguide"><svg class="i"><use href="#i-info"/></svg><span>These come from the <b id="wTplName">Stops</b> task list. Each one goes to the person with that role. Untick what doesn't apply, or add your own at the bottom. Everyone can still change tasks later in Projects.</span></div>
+      <div id="wTasks"></div>
+      <div class="wadd">
+        <label class="f">Add a task<input id="wNewT" placeholder="e.g. Tell the distributor about the last order"></label>
+        <label class="f">Who<select id="wNewR"></select></label>
+        <button class="btn" type="button" id="wAddBtn"><svg class="i"><use href="#i-plus"/></svg>Add</button>
+      </div>
+    </div>
+
+    <div class="wbody" data-ws="6" hidden>
+      <p class="wq">Ready to send</p>
+      <div id="wSum"></div>
+      <div class="card" style="padding:12px 16px"><b>What happens when you press Send</b>
+        <ol class="wnext">
+          <li>Everyone in the team gets a popup on their PC and phone, with answer buttons.</li>
+          <li>A project is made in Projects with <b id="wSumN">12</b> tasks, each given to the right person.</li>
+          <li>Due dates go on everyone's calendar, and a team chat opens.</li>
+          <li>Late answers get a reminder on day 1 and 2. After 3 working days the GM is told.</li>
+          <li>You follow it all in Business Plan › Overview.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="wfoot"><span class="muted" id="wCount">Step 1 of 6</span><button class="btn" type="button" id="wBack">Back</button><button class="btn" type="button" id="cnDraft">Save draft</button><button class="btn pri" type="button" id="wNext">Next</button><button class="btn pri" type="submit" id="wSend"><svg class="i"><use href="#i-send"/></svg>Send to the team</button></div>
+  </form>
+</div>
+<div class="scrim" id="tScrim" hidden><aside class="sheet tsheet" id="pDrawer" aria-label="Task"></aside></div>
+<div class="toast" id="toast" hidden><svg class="i"><use href="#i-check"/></svg><span id="toastMsg"></span></div>
+
+<script>
+(function(){
+  const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
+  const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+
+  // ---- theme ----
+  function setTheme(t){
+    if(t==="system") document.documentElement.removeAttribute("data-theme"); else document.documentElement.dataset.theme=t;
+    $$("[data-theme-set]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.themeSet===t)));
+    store.set("bp-theme",t);
+  }
+  $$("[data-theme-set]").forEach(b=>b.addEventListener("click",()=>setTheme(b.dataset.themeSet)));
+  setTheme(store.get("bp-theme")||"system");
+
+  // ---- role ----
+  const people={gm:["HS","Hendra S.","General Manager","#123528","overview"],mkt:["RA","Rina A.","Marketing · Kopi Mix","#cf6a4c","forme"],ppic:["DP","Dedi P.","PPIC · Kopi Mix","#3a86c8","forme"],sales:["AN","Andi N.","Sales","#6f8290","forme"]};
+  let role="gm";
+
+  // ---- routing ----
+  const VIEWS=["forme","overview","changes","change","change-money","change-sign","change-tasks","buy","why","rules","connect","project","dash"];
+  function show(){
+    let v=location.hash.slice(1); if(!VIEWS.includes(v)) v=people[role][4];
+    let sub="who"; if(v.indexOf("change-")===0){sub=v.slice(7);v="change"}
+    const locked=role==="sales" && !["forme","why","dash","connect"].includes(v);
+    $$(".view").forEach(s=>s.hidden=locked? s.dataset.view!=="locked" : s.dataset.view!==v);
+    const mod=v==="project"?"project":v==="dash"?"dash":"bp";
+    $(".tabbar").hidden=mod!=="bp";
+    $("#topTitle").textContent=mod==="project"?"Projects":mod==="dash"?"Dashboard":"Business Plan";
+    $("#topSub").textContent=mod==="project"?"6 projects · 49 tasks · example data":mod==="dash"?"Tuesday, 10 November 2026":"6 product changes · 3 purchases on hold";
+    if(v!=="project") $("#tScrim").hidden=true;
+    $("#guideBar").hidden=mod!=="bp"||v==="connect"||locked;
+    $$(".nav a[data-nav]").forEach(a=>a.classList.toggle("on",a.dataset.nav===mod));
+    const tab=v==="change"?"changes":v;
+    $$("#tabs a,.tabbar .extra a").forEach(a=>a.classList.toggle("on",a.dataset.v===tab));
+    $$(".subtabs a").forEach(a=>a.classList.toggle("on",a.dataset.sub===sub));
+    $$(".sub").forEach(s=>s.hidden=s.dataset.sub!==sub);
+    if(sub==="sign") calc();
+    if(!locked){ if(v==="project") renderProject(); if(v==="dash") renderDash(); if(v==="change") renderStrip($("#cStrip"),"go"); }
+  }
+  addEventListener("hashchange",()=>{show();window.scrollTo(0,0)});
+
+  function setRole(r,go){
+    role=r; document.body.dataset.role=r; const p=people[r];
+    $("#meAv").textContent=p[0];$("#meAv").style.background=p[3];$("#meName").textContent=p[1];$("#meRole").textContent=p[2];
+    $$(".forme-role").forEach(x=>x.hidden=x.dataset.for!==r);
+    updateCounts(); store.set("bp-role",r); pFilter=null; pSel=null;
+    if(go){ if(location.hash==="#"+p[4]) show(); else location.hash=p[4]; } else show();
+  }
+  $("#role").addEventListener("change",e=>setRole(e.target.value,true));
+
+  function updateCounts(){
+    const blk=document.querySelector(`.forme-role[data-for="${role}"]`);
+    const n=blk?blk.querySelectorAll("[data-task]:not(.answered)").length:0;
+    $("#tabCnt").textContent=n; $("#tabCnt").hidden=n===0; $("#navBadge").textContent=n; $("#navBadge").hidden=n===0;
+    const l=blk&&blk.querySelector("[data-left]");
+    if(l){ l.textContent=n?`${n} thing${n>1?"s":""} need${n>1?"":"s"} your answer`:"All answered"; l.className="pill "+(n?"p-red":"p-grn"); }
+  }
+
+  // ---- Rupiah and quantity inputs: dots for thousands, words underneath ----
+  const num=v=>+String(v||"").replace(/\D/g,"")||0;
+  const dots=v=>Math.round(v).toLocaleString("id-ID");
+  const trim=x=>x.replace(/0+$/,"").replace(/\.$/,"").replace(".",",");
+  const words=v=>v>=1e9?trim((v/1e9).toFixed(2))+" miliar":v>=1e6?trim((v/1e6).toFixed(2))+" juta":v>=1e3?trim((v/1e3).toFixed(1))+" ribu":String(v);
+  function hint(inp){ const h=inp.closest("label").querySelector(".hint"); if(!h) return; const v=num(inp.value), k=h.dataset.hint;
+    h.textContent=!v?"":k==="rp"?"Rp "+words(v):words(v)+" "+k; }
+  $$(".numin").forEach(inp=>{
+    inp.addEventListener("input",()=>{
+      const pos=inp.selectionStart, before=inp.value.slice(0,pos).replace(/\D/g,"").length;
+      const raw=inp.value.replace(/\D/g,""); inp.value=raw===""?"":dots(+raw);
+      let i=0,seen=0; while(i<inp.value.length&&seen<before){ if(/\d/.test(inp.value[i])) seen++; i++; }
+      try{inp.setSelectionRange(i,i)}catch(e){}
+      hint(inp);
+    });
+    hint(inp);
+  });
+
+  // ---- toast ----
+  let tt; function toast(m){$("#toastMsg").textContent=m;$("#toast").hidden=false;clearTimeout(tt);tt=setTimeout(()=>$("#toast").hidden=true,2600)}
+
+  // ---- tasks ----
+  function finish(task,label){
+    task.classList.add("answered");
+    task.querySelector(".ans").hidden=true; const im=task.querySelector(".impact"); if(im) im.hidden=true;
+    const d=task.querySelector(".done"); d.hidden=false; d.querySelector("span").textContent=label+" · just now";
+    updateCounts(); toast(label);
+    if(task.dataset.sync) setDone(task.dataset.sync,true);
+  }
+  document.addEventListener("click",e=>{
+    const a=e.target.closest("[data-ans]");
+    if(a){ const task=a.closest("[data-task]"); const k=a.dataset.ans;
+      if(k==="none") finish(task,a.dataset.label||"Noted, no impact");
+      else if(k==="impact"){ const im=task.querySelector(".impact"); im.hidden=!im.hidden; if(!im.hidden) im.querySelector("input").focus(); }
+      else if(k==="q") toast("Opening the team chat");
+      return; }
+    const s=e.target.closest("[data-send]");
+    if(s){ const task=s.closest("[data-task]"); const ins=task.querySelectorAll(".impact input"); const money=ins[0].value.trim();
+      const mv=num(money); finish(task,"Noted, has impact"+(mv?" · "+rp(mv):"")); return; }
+    const g=e.target.closest("[data-go]"); if(g){location.hash=g.dataset.go;return}
+    const t=e.target.closest("[data-toast]"); if(t){toast(t.dataset.toast);return}
+    if(e.target.closest("[data-open-sheet]")) openWiz();
+  });
+
+  // ---- When to stop (example numbers) ----
+  const M=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const mon=m=>{const i=10+m; return M[i%12]+" "+(2026+Math.floor(i/12))};
+  const mats=[
+    {n:"Printed sachet laminate",stock:18600000,po:0,use:310000,price:115,per:1},
+    {n:"Outer carton 48×",stock:120000,po:250000,use:6500,price:4200,per:48},
+    {n:"Plain inner box 10×",stock:900000,po:0,use:31000,price:650,per:10}
+  ];
+  const rp=v=>v<=0?"Rp 0":v>=1e9?"Rp "+(v/1e9).toFixed(2).replace(".",",")+" miliar":"Rp "+Math.round(v/1e6)+" juta";
+  const qty=v=>v>=1e6?(v/1e6).toFixed(1).replace(".",",")+" juta":Math.round(v).toLocaleString("id-ID");
+  function leftovers(m,o){
+    return mats.map((x,i)=>{
+      const use=x.use+(o.o4?Math.round(80000/x.per):0);
+      const po=(i===1&&o.o1)?0:x.po;
+      const q=Math.max(0,x.stock+po-use*m);
+      let v=q*x.price; if(i===2&&o.o2) v=0; if(i===0&&o.o3) v*=.75;
+      return {q,v};
+    });
+  }
+  const sum=a=>a.reduce((s,x)=>s+x.v,0);
+  function calc(){
+    const m=+$("#ro").value, o={o1:$("#o1").checked,o2:$("#o2").checked,o3:$("#o3").checked,o4:$("#o4").checked};
+    const none={o1:false,o2:false,o3:false,o4:false};
+    const gross=sum(leftovers(m,none)), cur=leftovers(m,o), net=sum(cur);
+    ["o1","o2","o3","o4"].forEach((k,i)=>{ const without=Object.assign({},o,{[k]:false}); const d=sum(leftovers(m,without))-net; $("#s"+(i+1)).textContent=o[k]&&d>0?"− "+rp(d):""; });
+    $("#roRows").innerHTML=mats.map((x,i)=>{
+      const r=cur[i]; const po=(i===1&&o.o1)?`<s class="muted">${qty(x.po)}</s> <span class="pill p-grn">cancel</span>`:(x.po?qty(x.po):"—");
+      const note=(i===2&&o.o2&&r.q)?" · re-used":"";
+      return `<tr><td>${x.n}</td><td class="r num">${qty(x.stock)}</td><td class="r num">${po}</td><td class="r num">${qty(x.use)}</td><td class="r num">${Math.round((x.stock+x.po)/x.use)} months</td><td class="r num" style="font-weight:600;color:${r.v>0?'var(--danger)':'var(--ok)'}">${r.q?qty(r.q)+" · "+rp(r.v)+note:"none"}</td></tr>`;
+    }).join("");
+    $("#roLabel").textContent=mon(m);
+    $("#roLeft").textContent=rp(gross);
+    $("#roNet").textContent=rp(net); $("#roNet").style.color=net>2.5e8?"var(--danger)":net>0?"var(--warn)":"var(--ok)";
+    $("#roSaved").textContent=rp(gross-net);
+    $("#planDate").textContent=mon(m); $("#planLeft").textContent=rp(net); $("#planSaved").textContent=rp(gross-net);
+    const b=$("#roBadge");
+    if(net===0){b.textContent="No leftovers";b.className="pill p-grn"}
+    else if(m===7){b.textContent="Marketing's date";b.className="pill p-amb"}
+    else {b.textContent=net>2.5e8?"GM must sign":"Within limit";b.className="pill "+(net>2.5e8?"p-red":"p-amb")}
+  }
+  ["ro","o1","o2","o3","o4"].forEach(id=>$("#"+id).addEventListener("input",calc)); calc();
+
+  // ---- Check before I order ----
+  const prodEnd={mocca:7,latte:null,aren:null};
+  function gate(){
+    const p=$("#cProd").value,q=num($("#cQty").value),u=Math.max(1,num($("#cUse").value)),pr=num($("#cPrice").value),s=num($("#cStock").value);
+    const months=(q+s)/u, val=q*pr, end=prodEnd[p], mm=Math.round(months);
+    $("#cSum").innerHTML=`<span class="num">${dots(q)} pcs × Rp ${dots(pr)}</span><span>Total <b class="num">Rp ${dots(val)}</b> <span class="muted">· ${rp(val)}</span></span>`;
+    let h,bg;
+    if(end!==null&&months>end){bg="var(--danger-soft)";h=`<b style="color:var(--danger)">Don't order. This product stops in ${end} months.</b><br>With your stock this order lasts <b>${mm} months</b>. About <b>${rp(Math.max(0,q+s-u*end)*pr)}</b> would be left over. Agree the stop plan in the Mocca change first.`}
+    else if(months>12||val>2.5e8){bg="var(--warn-soft)";h=`<b style="color:var(--warn)">Marketing needs to answer first.</b><br>Lasts <b>${mm} months</b> (until ${mon(mm)}) and costs <b>${rp(val)}</b>. iPop will ask Marketing if the product runs until ${mon(mm)}. They have 2 working days.<div class="row" style="margin-top:10px"><button class="btn sm pri" type="button" data-toast="Sent to Rina (Marketing)">Send to Marketing</button></div>`}
+    else {bg="var(--ok-soft)";h=`<b style="color:var(--ok)">No check needed.</b><br>Lasts ${mm} months and costs ${rp(val)}. Order as usual.`}
+    $("#cRes").style.background=bg; $("#cRes").innerHTML=h;
+  }
+  ["cProd","cQty","cUse","cPrice","cStock"].forEach(id=>$("#"+id).addEventListener("input",gate)); gate();
+
+  // ---- New product change: 6 guided steps ----
+  const TPL={
+    stops:["Stops",[["Answer the change","Everyone","3 working days"],["Count packaging and materials left","PPIC","1 week"],["Cancel or explain open orders","Purchasing","1 week"],["Plan the line after the product stops","Production","2 weeks"],["Plan warehouse space","Warehouse","3 weeks"],["Estimate the write-off provision","Finance","after PPIC's count"],["Pick the stop date","Marketing","next monthly meeting"],["Sign the stop plan","Marketing, PPIC, Finance, GM","1 week after the meeting"],["Update stock left","PPIC","every month until zero"]]],
+    pack:["New pack design",[["Answer the change","Everyone","3 working days"],["Count old packaging left","PPIC","1 week"],["Order the new packaging","Purchasing","after the start date is set"],["Approve the new artwork","Marketing","2 weeks"],["Check the label rules","R&D / QA","2 weeks"],["Pick the start date when old stock runs out","Marketing","next monthly meeting"]]],
+    recipe:["Recipe change",[["Answer the change","Everyone","3 working days"],["Trial run and taste test","R&D / QA","3 weeks"],["Count old ingredient left","PPIC","1 week"],["Update the production order","Production","after the trial"]]],
+    supplier:["Supplier change",[["Answer the change","Everyone","3 working days"],["Check and approve the new supplier","R&D / QA","3 weeks"],["Agree price and minimum order","Purchasing","2 weeks"],["Count stock from the old supplier","PPIC","1 week"]]],
+    new:["New product",[["Answer the change","Everyone","3 working days"],["Pick the line","Production","2 weeks"],["Order packaging (check the minimum order)","Purchasing","4 weeks"],["Plan the first production","PPIC","4 weeks"],["Plan shelf space and launch","Marketing","6 weeks"]]],
+    volume:["Volume change",[["Answer the change","Everyone","3 working days"],["Re-plan production","PPIC","1 week"],["Re-check open orders","Purchasing","1 week"]]]
+  };
+  const ROLEP={Everyone:"8 people",Marketing:"Rina Agustina",PPIC:"Dedi Prasetyo",Purchasing:"Yuli Setiawati",Production:"Agus Wibowo",Warehouse:"Muhammad Faisal",Finance:"Lina Tanjung","R&D / QA":"Budi Kurniawan",GM:"Hendra Santoso","Marketing, PPIC, Finance, GM":"4 people"};
+  let ws=1, wList=[];
+  const WS=6;
+  $("#wNewR").innerHTML=["PPIC","Purchasing","Production","Warehouse","Finance","Marketing","R&D / QA","GM"].map(r=>`<option value="${r}">${r} · ${ROLEP[r]}</option>`).join("");
+  function wType(){ return (document.querySelector('#cnForm input[name="t"]:checked')||{}).value||"stops"; }
+  function openWiz(){ ws=1; wList=TPL[wType()][1].map(x=>({t:x[0],r:x[1],w:x[2],on:true})); wshow(); $("#scrim").hidden=false; }
+  function wshow(){
+    $$("#cnForm [data-ws]").forEach(d=>d.hidden=+d.dataset.ws!==ws);
+    $$("#cnForm .wsteps li").forEach((l,i)=>{ l.classList.toggle("done",i+1<ws); l.classList.toggle("on",i+1===ws); });
+    $("#wBack").hidden=ws===1; $("#wNext").hidden=ws===WS; $("#wSend").hidden=ws!==WS;
+    $("#wCount").textContent=`Step ${ws} of ${WS}`;
+    if(ws===5) wTasks(); if(ws===6) wSum();
+  }
+  function wTasks(){
+    $("#wTplName").textContent=TPL[wType()][0];
+    $("#wTasks").innerHTML=wList.map((x,i)=>`<div class="wt${x.on?"":" off"}"><input type="checkbox" data-wt="${i}"${x.on?" checked":""} aria-label="Include task"><span><b>${x.t}</b><small>${x.r} · ${ROLEP[x.r]||x.r} · ${x.w}</small></span><span class="tagx ${x.own?"tag-you":"tag-auto"}">${x.own?"Added by you":"From the list"}</span></div>`).join("");
+  }
+  function wSum(){
+    const n=wList.filter(x=>x.on).length;
+    $("#wSumN").textContent=n;
+    $("#wSum").innerHTML=`<div class="wimp"><div><span><b>${$("#cnProd").value}</b><small>${TPL[wType()][0]} · from ${$("#cnDate").value.split("-").reverse().join("/")}</small></span><span class="pill p-red">Rp 4,7 miliar</span></div><div><span><b>Kopi Mix team</b><small>8 people${$("#wEng").checked?" + Engineering":""}</small></span><span class="pill p-gry">${n} tasks</span></div></div>`;
+  }
+  $("#wTasks").addEventListener("change",e=>{ const c=e.target.closest("[data-wt]"); if(c){ wList[+c.dataset.wt].on=c.checked; wTasks(); } });
+  $("#wAddBtn").addEventListener("click",()=>{ const t=$("#wNewT").value.trim(); if(!t){ $("#wNewT").focus(); toast("Write what needs doing first"); return; } wList.push({t,r:$("#wNewR").value,w:"you set the date in Projects",on:true,own:true}); $("#wNewT").value=""; wTasks(); });
+  $("#wNext").addEventListener("click",()=>{ if(ws===1) wList=TPL[wType()][1].map(x=>({t:x[0],r:x[1],w:x[2],on:true})); ws=Math.min(WS,ws+1); wshow(); });
+  $("#wBack").addEventListener("click",()=>{ ws=Math.max(1,ws-1); wshow(); });
+  const close=()=>$("#scrim").hidden=true;
+  $("#cnClose").addEventListener("click",close);
+  $("#cnDraft").addEventListener("click",()=>{close();toast("Draft saved. Only you can see it.")});
+  $("#scrim").addEventListener("click",e=>{if(e.target.id==="scrim")close()});
+  $("#cnForm").addEventListener("submit",e=>{e.preventDefault();close();const n=wList.filter(x=>x.on).length;toast(`Sent to the Kopi Mix team · project made with ${n} tasks`);location.hash="change";});
+  addEventListener("keydown",e=>{if(e.key==="Escape"){close();$("#tScrim").hidden=true}});
+
+  // ================= Projects + Dashboard (one set of tasks, shown in every place) =================
+  const P={RA:["Rina A.","Rina Agustina","Marketing","#cf6a4c"],DP:["Dedi P.","Dedi Prasetyo","PPIC","#3a86c8"],YS:["Yuli S.","Yuli Setiawati","Purchasing","#d19a2a"],AW:["Agus W.","Agus Wibowo","Production","#6f8290"],MF:["M. Faisal","Muhammad Faisal","Warehouse","#2e9d6b"],LT:["Lina T.","Lina Tanjung","Finance","#8a5cc2"],BK:["Budi K.","Budi Kurniawan","R&D / QA","#b4543a"],HS:["Hendra S.","Hendra Santoso","GM","#123528"],AN:["Andi N.","Andi Nugroho","Sales","#6f8290"]};
+  const ME={gm:"HS",mkt:"RA",ppic:"DP",sales:"AN"};
+  const GROUPS=[["Everyone answers","due 7 Nov","var(--c-chg)"],["Numbers and plans","by 30 Nov","var(--c-buy)"],["Decide and sign","18 to 25 Nov","var(--c-ov)"],["Use up the stock","every month","var(--c-me)"]];
+  const MOCCA="Mocca 25g stops";
+  const ST={todo:"To Do",doing:"In Progress",review:"Review",done:"Done"};
+  const T=[
+    {id:"a-ra",g:0,t:"Send the change to the Kopi Mix team",who:["RA"],due:"4 Nov",st:"done"},
+    {id:"a-dp",g:0,t:"Answer the Mocca change",who:["DP"],due:"7 Nov",st:"todo",late:1,bp:"Answering in For me or Notifier ticks this task.",money:"Rp 4,7 miliar"},
+    {id:"a-ys",g:0,t:"Answer the Mocca change",who:["YS"],due:"7 Nov",st:"todo",late:1,bp:"Answering in For me or Notifier ticks this task.",money:"Rp 4,7 miliar"},
+    {id:"a-oth",g:0,t:"Answer the Mocca change",who:["AW","MF","LT","BK"],due:"7 Nov",st:"done",note:"4 of 4 answered"},
+    {id:"n-dp",g:1,t:"Count packaging and materials left",who:["DP"],due:"13 Nov",st:"doing",money:"Rp 3,7 miliar",bp:"Your numbers fill the When to stop table.",check:[["Sachet laminate · from Oracle",1],["Outer carton 48× · from Oracle",1],["Plain inner box 10×",0],["Check the count with Warehouse",0]],cm:["DP","From Business Plan · 10 Nov","Has impact · Rp 2.140.000.000 · 18,6 juta sachet laminate in stock"]},
+    {id:"n-ys",g:1,t:"Cancel carton order PO-2611873",who:["YS"],due:"20 Nov",st:"todo",pri:1,money:"Rp 1,05 miliar",bp:"Found by the nightly Oracle import. The supplier accepts cancellation until 20 Nov."},
+    {id:"n-aw",g:1,t:"Plan line L4 after Mocca stops",who:["AW"],due:"24 Nov",st:"review",bp:"Answer goes to What depends on Mocca 25g."},
+    {id:"n-mf",g:1,t:"Plan WH-2 space after the stock is used",who:["MF"],due:"30 Nov",st:"todo"},
+    {id:"n-lt",g:1,t:"Estimate the write-off provision",who:["LT"],due:"16 Nov",st:"todo",wait:"n-dp"},
+    {id:"d-ra",g:2,t:"Pick the stop date at the monthly meeting",who:["RA"],due:"18 Nov",st:"todo",wait:"n-dp",bp:"The date you pick becomes the stop plan to sign."},
+    {id:"d-sign",g:2,t:"Sign the stop plan",who:["RA","DP","LT","HS"],due:"25 Nov",st:"todo",wait:"d-ra",bp:"GM signs because the leftover is above Rp 250 juta."},
+    {id:"u-dp",g:3,t:"Update stock left",who:["DP"],due:"1 Dec",st:"todo",repeat:"Every month until zero"}
+  ];
+  const X=[
+    {id:"x-dp12",proj:"Kopi Susu Jahe: recipe change",t:"Answer the recipe change",who:["DP"],due:"11 Nov",soon:1,st:"todo",bp:1},
+    {id:"x-ra",proj:"Before you buy · Latte laminate",t:"Answer: is Latte 25g sold past May 2031?",who:["RA"],due:"8 Nov",late:1,st:"todo",bp:1,money:"Rp 1,73 miliar"},
+    {id:"x-hs13",proj:"Kopi Hitam pouch: new design",t:"Sign the stop plan",who:["HS"],due:"Today",soon:1,st:"todo",bp:1,money:"Rp 620 juta"},
+    {id:"o-dp",proj:"Gula Aren 25g: new product",t:"Packaging order for the launch",who:["DP"],due:"Today",soon:1,st:"todo"},
+    {id:"o-ra",proj:"Gula Aren 25g: new product",t:"Write the launch brief",who:["RA"],due:"15 Nov",st:"doing"},
+    {id:"o-hs",proj:"Gula Aren 25g: new product",t:"Approve the launch budget",who:["HS"],due:"12 Nov",st:"todo"},
+    {id:"o-an",proj:"Sales East Java",t:"Visit Indomaret Surabaya",who:["AN"],due:"Today",soon:1,st:"todo"},
+    {id:"o-an2",proj:"Sales East Java",t:"Send October sales recap",who:["AN"],due:"13 Nov",st:"todo"}
+  ];
+  const ALL=()=>T.concat(X);
+  const byId=id=>ALL().find(x=>x.id===id);
+  const isLate=t=>!!t.late&&t.st!=="done";
+  const waiting=t=>!!t.wait&&byId(t.wait).st!=="done"&&t.st!=="done";
+  let pFilter=null, pSel=null, pView="list";
+  const av=c=>`<span class="av" style="background:${P[c][3]}">${c}</span>`;
+  const ckIc='<svg class="i"><use href="#i-check"/></svg>';
+  const bpChip=()=>`<span class="bpchip"><svg class="i"><use href="#i-route"/></svg>Product change</span>`;
+  const stPill=t=>t.st==="done"?'<span class="pill p-grn">Done</span>':isLate(t)?'<span class="pill p-red">3 days late</span>':waiting(t)?'<span class="pill p-gry">Waiting</span>':t.st==="doing"?'<span class="pill p-blu">In progress</span>':t.st==="review"?'<span class="pill p-amb">Review</span>':'<span class="pill p-gry">To do</span>';
+
+  function setStatus(id,st,fromForMe){
+    const t=byId(id); if(!t||t.st===st) return;
+    t.st=st;
+    if(st==="done"&&!fromForMe){ const card=document.querySelector(`[data-sync="${id}"]:not(.answered)`); if(card) finish(card,"Done in Projects"); }
+    rerender();
+  }
+  const setDone=(id,fromForMe)=>setStatus(id,"done",fromForMe);
+  function rerender(){
+    const v=location.hash.slice(1);
+    if(v==="project") renderProject(); if(v==="dash") renderDash(); if(v.indexOf("change")===0) renderStrip($("#cStrip"),"go");
+    if(!$("#tScrim").hidden&&pSel) renderDrawer();
+  }
+
+  function renderStrip(el,mode){
+    if(!el) return;
+    const me=ME[role];
+    el.innerHTML=["RA","DP","YS","AW","MF","LT","BK","HS"].map(c=>{
+      const open=T.filter(t=>t.who.includes(c)&&t.st!=="done"), late=open.filter(isLate);
+      const ct=!open.length?'<span class="pill p-grn">All done</span>':`<span class="pill p-gry">${open.length} open</span>`+(late.length?`<span class="pill p-red">${late.length} late</span>`:"");
+      return `<button type="button" class="pc${late.length?" late":""}" data-pp="${c}">${av(c)}<span class="nm">${P[c][0]}${c===me?" (you)":""}<small>${P[c][2]}</small></span><span class="ct">${ct}</span></button>`;
+    }).join("");
+    el.querySelectorAll("[data-pp]").forEach(b=>b.addEventListener("click",()=>{ pFilter=b.dataset.pp; pView="list"; pSel=null; if(mode==="go") location.hash="project"; else renderProject(); }));
+    const late=T.filter(isLate).length, cp=$("#cTaskPill"); if(cp){ cp.textContent=late?late+" late":"on track"; cp.className="pill "+(late?"p-red":"p-grn"); }
+  }
+
+  const PJ=[
+    {i:"MO",n:"Mocca 25g stops",c:"#c4532f",bp:1,on:1},
+    {i:"KH",n:"Kopi Hitam pouch: new design",c:"#3a86c8",bp:1,s:"9 tasks · 8 members",p:78,d:"Due 25 Nov"},
+    {i:"GA",n:"Gula Aren 25g: new product",c:"#2e9d6b",bp:1,s:"11 tasks · 8 members",p:35,d:"Due 1 Apr 2027"},
+    {i:"KS",n:"Kopi Susu Jahe: recipe change",c:"#8a5cc2",bp:1,s:"6 tasks · 8 members",p:40,d:"Due 28 Feb 2027"},
+    {i:"CP",n:"Cappuccino 12-pack stops",c:"#c4532f",bp:1,s:"8 tasks · 8 members",p:88,d:"Using up stock · 62%"},
+    {i:"KC",n:"Kopi Hitam 380g can: new supplier",c:"#d19a2a",bp:1,s:"3 tasks · 7 members",p:20,d:"3 days late",late:1}
+  ];
+  const pct=()=>Math.round(T.filter(t=>t.st==="done").length/T.length*100);
+  function renderCards(){
+    $("#pjCards").innerHTML=PJ.map(x=>{
+      const pc=x.on?pct():x.p, sub=x.on?`${T.length} tasks · 8 members`:x.s, d=x.on?"Due 25 Nov":x.d;
+      return `<div class="pjc${x.on?" on":""}"${x.on?"":' data-toast="Only the Mocca project is filled in for this mockup"'}><span class="pav" style="background:${x.c}">${x.i}</span><span style="min-width:0"><b>${x.n}</b><small>${sub}</small>${x.bp?'<div style="margin-top:3px"><span class="bpchip"><svg class="i"><use href="#i-route"/></svg>Business Plan</span><span class="newb">NEW</span></div>':""}</span><span class="pr"><i><span style="width:${pc}%"></span></i>${pc}%</span>${d?`<span class="du${x.late?" late":""}">${d}</span>`:""}</div>`;
+    }).join("");
+  }
+
+  const stSel=t=>`<span class="stw s-${t.st}"><select data-stsel="${t.id}" aria-label="Status">${Object.keys(ST).map(k=>`<option value="${k}"${k===t.st?" selected":""}>${ST[k]}</option>`).join("")}</select><svg class="i"><use href="#i-chev"/></svg></span>`;
+  function rowHtml(t){
+    const sub=t.check?`${t.check.filter(c=>c[1]).length}/${t.check.length}`:"—";
+    return `<tr class="tr${t.st==="done"?" isdone":""}" data-tid="${t.id}">
+      <td class="tt"><span class="t">${t.t}</span>${t.bp?" "+bpChip():""}${waiting(t)?`<div class="muted" style="font-size:12px;margin-top:2px">Starts after: ${byId(t.wait).t}</div>`:""}${t.repeat?`<div class="muted" style="font-size:12px;margin-top:2px">${t.repeat}</div>`:""}</td>
+      <td>${stSel(t)}</td>
+      <td>${t.pri?'<span class="prio urg">Urgent</span>':'<span class="prio">— Priority</span>'}</td>
+      <td><span class="asg"><span class="circle-av">${t.who.map(av).join("")}</span><span class="nm">${t.who.map(c=>P[c][1]).join(", ")}</span></span></td>
+      <td><span class="dued${isLate(t)?" late":""}"><svg class="i"><use href="#i-cal"/></svg>${t.due}</span></td>
+      <td class="muted">${sub}</td>
+      <td><button type="button" class="btn sm" style="padding:2px 9px" data-toast="Task menu: duplicate, move, delete" aria-label="Task menu">⋯</button></td></tr>`;
+  }
+  function listHtml(vis){
+    const rows=GROUPS.map((g,gi)=>{
+      const all=T.filter(t=>t.g===gi), shown=all.filter(vis); if(!shown.length) return "";
+      const dn=all.filter(t=>t.st==="done").length, od=all.filter(isLate).length;
+      return `<tr class="grow"><td colspan="7"><svg class="i" style="width:14px;height:14px;vertical-align:-2px;color:var(--ink-3)"><use href="#i-chev"/></svg><i style="background:${g[2]}"></i><b>${g[0]}</b> <span class="muted">${all.length} task${all.length>1?"s":""} · ${Math.round(dn/all.length*100)}% done${od?` · <span style="color:var(--danger)">${od} overdue</span>`:""} · ${g[1]}</span></td></tr>`+shown.map(rowHtml).join("");
+    }).join("");
+    return `<div class="card" style="padding:4px 8px"><div class="tbl-wrap"><table class="ptable"><thead><tr><th>Task</th><th>Status</th><th>Priority</th><th>Assignee</th><th>Due</th><th>Subtasks</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  }
+  function boardHtml(vis){
+    const cols=[["todo","To Do","var(--ink-4)"],["doing","In Progress","var(--info)"],["review","Review","var(--warn)"],["done","Done","var(--ok)"]];
+    return `<div class="board">${cols.map(([k,l,c])=>{
+      const ts=T.filter(t=>t.st===k&&vis(t));
+      return `<div class="bcol c-${k}"><div class="bch"><i style="background:${c}"></i>${l}<span class="n">${ts.length}</span></div>${ts.map(t=>`<div class="bcard${t.st==="done"?" isdone":""}" data-tid="${t.id}"><div class="row" style="gap:8px"><span class="circ${t.st==="done"?" on":""}">${t.st==="done"?ckIc:""}</span>${isLate(t)?'<span class="ovd">Overdue</span>':""}${t.bp?bpChip():""}</div><div class="t">${t.t}</div><div class="row" style="justify-content:space-between"><span class="dued${isLate(t)?" late":""}" style="font-size:12px"><svg class="i"><use href="#i-cal"/></svg>${t.due}</span><span class="circle-av">${t.who.map(av).join("")}</span></div></div>`).join("")}<div class="badd" data-addtask="${k}">+ Add task</div></div>`;
+    }).join("")}</div>`;
+  }
+  function renderProject(){
+    renderCards();
+    $("#pSum").textContent=`${pct()}% complete · Due 25 Nov 2026`;
+    $$("#pViews [data-pv]").forEach(b=>b.classList.toggle("on",b.dataset.pv===pView));
+    $("#pFilterChip").innerHTML=pFilter?`<span class="fchip">Assignee: ${P[pFilter][0]}${pFilter===ME[role]?" (you)":""}<button type="button" data-clear-f aria-label="Clear filter">×</button></span>`:"";
+    const vis=t=>!pFilter||t.who.includes(pFilter);
+    const body=$("#pBody");
+    if(pView==="board") body.innerHTML=boardHtml(vis);
+    else if(pView==="workload"){ body.innerHTML=`<div class="card"><div class="hd"><div><h3><span class="hic" style="--tc:var(--c-prj);--ts:var(--c-prj-soft)"><svg class="i"><use href="#i-users"/></svg></span>Workload</h3><p class="sub">Who does what in this project. Click a person to see only their tasks in List.</p></div></div><div class="pstrip" id="pStrip"></div></div>`; renderStrip($("#pStrip"),"filter"); }
+    else body.innerHTML=listHtml(vis);
+  }
+  function openTask(id){ pSel=id; $("#tScrim").hidden=false; renderDrawer(); }
+  function renderDrawer(){
+    const t=pSel&&byId(pSel), el=$("#pDrawer"); if(!t) return;
+    const g=GROUPS[t.g], w=t.wait&&byId(t.wait);
+    el.innerHTML=`<div class="row" style="justify-content:space-between"><span class="pill p-gry">${MOCCA} · ${g[0]}</span><button type="button" class="btn sm" data-close-t>Close</button></div>
+      <h2 style="margin:0">${t.t}</h2>
+      <div class="row">${stPill(t)}${t.bp?bpChip():""}${t.pri?'<span class="prio urg">Urgent</span>':""}</div>
+      <div class="pseg" style="align-self:flex-start">${Object.keys(ST).map(k=>`<button type="button" data-st="${k}" class="${t.st===k?"on":""}">${ST[k]}</button>`).join("")}</div>
+      <div class="dsec" style="margin-top:0"><div class="colh">Who &amp; when</div><div class="dkv">
+        <span>Who</span><span>${t.who.map(c=>`<span class="row" style="gap:8px;margin:2px 0">${av(c)}${P[c][1]} · ${P[c][2]}</span>`).join("")}</span>
+        <span>Due</span><span style="${isLate(t)?"color:var(--danger);font-weight:700":""}">${t.due} 2026${isLate(t)?" · 3 days late":""}</span>
+        ${t.repeat?`<span>Repeats</span><span>${t.repeat}</span>`:""}
+        ${w?`<span>Waits for</span><span>${w.t} · ${w.st==="done"?"done":P[w.who[0]][0]+", due "+w.due}</span>`:""}
+        <span>Reminders</span><span>1 day before and on the day. After 3 working days late, the GM is told. <span class="newb">NEW</span></span>
+      </div></div>
+      <div class="bpbox"><b>Linked to Business Plan</b> <span class="newb">NEW</span><br>Kopi Mix Mocca 25g stops · CN-014${t.money?" · "+t.money:""}<br>${t.bp||"Done here shows as done in Business Plan."}<div class="row" style="margin-top:8px"><a class="btn sm" href="#change">Open the change</a>${t.id.indexOf("n-")===0?'<a class="btn sm" href="#change-money">When to stop</a>':""}</div></div>
+      ${t.check?`<div class="dsec" style="margin-top:0"><div class="colh">Subtasks · ${t.check.filter(c=>c[1]).length} of ${t.check.length}</div>${t.check.map((c,i)=>`<div class="subt${c[1]?" on":""}"><button type="button" class="ck${c[1]?" on":""}" data-sub-ck="${i}" aria-label="Done">${ckIc}</button><span>${c[0]}</span></div>`).join("")}</div>`:""}
+      <div class="dsec" style="margin-top:0"><div class="colh">Comments</div>${t.cm?`<div class="cm">${av(t.cm[0])}<div class="b"><small>${t.cm[1]}</small>${t.cm[2]}</div></div>`:'<div class="muted" style="font-size:13px">No comments yet. Answers from Business Plan show up here.</div>'}
+        <div class="compose"><input placeholder="Write a comment" aria-label="Write a comment"><button class="btn pri" type="button" data-toast="Comment added"><svg class="i"><use href="#i-send"/></svg></button></div></div>`;
+  }
+  $("#pBody").addEventListener("click",e=>{ if(e.target.closest("select,[data-toast],[data-pp],[data-addtask]")) return; const r=e.target.closest("[data-tid]"); if(r) openTask(r.dataset.tid); });
+  $("#pBody").addEventListener("change",e=>{ const x=e.target.closest("[data-stsel]"); if(x) setStatus(x.dataset.stsel,x.value,false); });
+  $("#pViews").addEventListener("click",e=>{ const b=e.target.closest("[data-pv]"); if(!b) return; const v=b.dataset.pv;
+    if(["list","board","workload"].includes(v)){ pView=v; renderProject(); } else toast(b.textContent.trim()+" works as it does today in Projects"); });
+  $("#pFilterBtn").addEventListener("click",()=>{ pFilter=pFilter===ME[role]?null:ME[role]; renderProject(); });
+  document.addEventListener("click",e=>{ if(e.target.closest("[data-clear-f]")){ pFilter=null; renderProject(); } });
+  $("#tScrim").addEventListener("click",e=>{ if(e.target.id==="tScrim"||e.target.closest("[data-close-t]")) $("#tScrim").hidden=true; });
+  $("#pDrawer").addEventListener("click",e=>{
+    const b=e.target.closest("[data-st]"); if(b){ setStatus(pSel,b.dataset.st,false); renderDrawer(); return; }
+    const c=e.target.closest("[data-sub-ck]"); if(c){ const it=byId(pSel).check[+c.dataset.subCk]; it[1]=it[1]?0:1; renderDrawer(); if(location.hash==="#project") renderProject(); }
+  });
+
+  // ---- guide + New task form ----
+  try{ if(localStorage.getItem("bp-pguide")==="hide") $("#pGuide").hidden=true; }catch(e){}
+  $("#pGuideX").addEventListener("click",()=>{ $("#pGuide").hidden=true; try{localStorage.setItem("bp-pguide","hide")}catch(e){} });
+  let ownN=0, addSt="todo";
+  const DUE=[["13 Nov","in 3 days"],["17 Nov","in 1 week"],["24 Nov","in 2 weeks"],["30 Nov","end of month"]];
+  function openAdd(st){
+    addSt=st||"todo"; pSel=null; $("#tScrim").hidden=false;
+    const roles=["DP","YS","AW","MF","LT","RA","BK","HS"];
+    $("#pDrawer").innerHTML=`<div class="row" style="justify-content:space-between"><span class="pill p-gry">${MOCCA} · New task</span><button type="button" class="btn sm" data-close-t>Close</button></div>
+      <h2 style="margin:0">Add a task</h2>
+      <div class="wguide"><svg class="i"><use href="#i-info"/></svg><span>Four quick answers. The person gets a popup, and the date goes on their calendar.</span></div>
+      <div class="atg">
+        <label class="f"><span><span class="num1">1</span>What needs doing? Start with a verb.</span><input id="atT" placeholder="e.g. Ask the supplier to buy back the laminate"></label>
+        <label class="f"><span><span class="num1">2</span>Who does it? Pick a role.</span><select id="atR">${roles.map(c=>`<option value="${c}">${P[c][2]} · ${P[c][1]}</option>`).join("")}</select></label>
+        <label class="f"><span><span class="num1">3</span>By when?</span><select id="atD">${DUE.map((d,i)=>`<option value="${i}">${d[0]} · ${d[1]}</option>`).join("")}</select></label>
+        <label class="f"><span><span class="num1">4</span>Does it wait for another task? (optional)</span><select id="atW"><option value="">No, it can start now</option>${T.filter(t=>t.st!=="done").map(t=>`<option value="${t.id}">${t.t} · ${P[t.who[0]][0]}</option>`).join("")}</select></label>
+        <label class="f">Group<select id="atG">${GROUPS.map((g,i)=>`<option value="${i}"${i===1?" selected":""}>${g[0]}</option>`).join("")}</select></label>
+      </div>
+      <div class="row"><button class="btn pri" type="button" data-add-save><svg class="i"><use href="#i-plus"/></svg>Add task</button><button class="btn" type="button" data-close-t>Cancel</button></div>`;
+    setTimeout(()=>{ const i=$("#atT"); if(i) i.focus(); },30);
+  }
+  document.addEventListener("click",e=>{ const a=e.target.closest("[data-addtask]"); if(a) openAdd(a.dataset.addtask); });
+  $("#pDrawer").addEventListener("click",e=>{
+    if(!e.target.closest("[data-add-save]")) return;
+    const t=$("#atT").value.trim(); if(!t){ $("#atT").focus(); toast("Write what needs doing first"); return; }
+    const c=$("#atR").value, d=DUE[+$("#atD").value][0], w=$("#atW").value||undefined;
+    T.push({id:"own"+(++ownN),g:+$("#atG").value,t,who:[c],due:d,st:addSt,wait:w,own:1});
+    $("#tScrim").hidden=true; renderProject(); toast(`Task added for ${P[c][1]} · due ${d}`);
+  });
+
+  const AGENDA={
+    DP:[["Today","Packaging order for the Gula Aren launch","var(--c-prj)"],["Wed 11 Nov","Answer the Jahe recipe change","var(--c-chg)"],["Fri 13 Nov","Count packaging and materials left","var(--c-chg)"],["Wed 18 Nov","09:00 Monthly product meeting · Meeting room Kopi","var(--c-me)"]],
+    RA:[["Thu 12 Nov","Answer: Latte 25g past May 2031?","var(--c-chg)"],["Sun 15 Nov","Write the Gula Aren launch brief","var(--c-prj)"],["Wed 18 Nov","09:00 Monthly product meeting · you pick the Mocca stop date","var(--c-me)"]],
+    HS:[["Today","Sign the Kopi Hitam pouch stop plan","var(--c-chg)"],["Thu 12 Nov","Approve the Gula Aren launch budget","var(--c-prj)"],["Wed 18 Nov","09:00 Monthly product meeting · Meeting room Kopi","var(--c-me)"],["Wed 25 Nov","Sign the Mocca stop plan","var(--c-chg)"]],
+    AN:[["Today","Visit Indomaret Surabaya","var(--c-prj)"],["Fri 13 Nov","Send October sales recap","var(--c-prj)"]]
+  };
+  function renderDash(){
+    const me=ME[role];
+    $("#dHello").textContent=`Good morning, ${P[me][0].split(" ")[0]}.`;
+    const mine=ALL().filter(t=>t.who.includes(me)), open=mine.filter(t=>t.st!=="done"), late=open.filter(isLate), up=open.filter(t=>!isLate(t));
+    const blk=document.querySelector(`.forme-role[data-for="${role}"]`);
+    const ans=blk?blk.querySelectorAll("[data-task]:not(.answered)").length:0;
+    const k=(lbl,val,tc,ts,ic,foot)=>`<div class="card kpi tint" style="--tc:${tc};--ts:${ts}"><div class="lbl"><span class="kic"><svg class="i"><use href="#i-${ic}"/></svg></span>${lbl}</div><div class="val num">${val}</div><div class="foot">${foot}</div></div>`;
+    $("#dKpi").innerHTML=k("Open tasks",open.length,"var(--c-prj)","var(--c-prj-soft)","check","Across all your projects")+k("Late",late.length,"var(--danger)","var(--danger-soft)","alert",late.length?"Do these first":"Nothing late")+k("Coming up",up.length,"var(--c-buy)","var(--c-buy-soft)","cal","Due dates are on your Calendar")+k("Product changes for you",ans,"var(--c-chg)","var(--c-chg-soft)","route",ans?"Waiting for your answer":"All answered");
+    const rank=t=>t.st==="done"?3:isLate(t)?0:t.soon?1:2;
+    const list=mine.slice().sort((a,b)=>rank(a)-rank(b));
+    $("#dTasks").innerHTML=list.length?list.map(t=>{
+      const proj=t.proj||MOCCA, isBp=t.bp||!t.proj;
+      const when=t.st==="done"?'<span class="muted" style="font-size:12.5px">Done</span>':isLate(t)?`<span class="pill p-red">Late · ${t.due}</span>`:t.soon?`<span class="pill p-amb">${t.due}</span>`:`<span class="muted" style="font-size:12.5px">${t.due}</span>`;
+      return `<div class="mt${t.st==="done"?" isdone":""}"><button type="button" class="ck${t.st==="done"?" on":""}" data-dck="${t.id}" aria-label="Mark done">${ckIc}</button>
+        <div class="tt"><b>${t.t}</b><small><span class="pjchip"><svg class="i" style="width:12px;height:12px"><use href="#i-kanban"/></svg>${proj}</span>${isBp?bpChip()+'<span class="newb" style="margin:0">NEW</span>':""}${t.money?`<span>${t.money}</span>`:""}</small></div>${when}</div>`;
+    }).join(""):'<div class="muted">No tasks.</div>';
+    $$("#dTasks [data-dck]").forEach(b=>b.addEventListener("click",()=>{ const t=byId(b.dataset.dck); setStatus(t.id,t.st==="done"?"todo":"done",false); }));
+    $("#dAgenda").innerHTML=(AGENDA[me]||[]).map(a=>`<div class="ag"><span class="w">${a[0]}</span><span><span class="k" style="background:${a[2]}"></span>${a[1]}</span></div>`).join("");
+    $("#dBp").innerHTML=role==="sales"?'<div class="muted" style="font-size:13.5px">You are not in a product team, so nothing from Business Plan shows here.</div>':
+      `<div style="font-size:14px;margin-bottom:10px">${ans?`<b>${ans} thing${ans>1?"s":""}</b> need${ans>1?"":"s"} your answer.`:"Nothing waiting for you."}${role==="gm"?" Two people in the Kopi Mix team are 3 days late.":""}</div><div class="row"><a class="btn sm pri" href="#forme">Open For me</a><a class="btn sm" href="#project">Mocca project</a></div>`;
+  }
+
+  const r0=store.get("bp-role"); const start=people[r0]?r0:"gm";
+  $("#role").value=start; setRole(start,false);
+})();
+</script>

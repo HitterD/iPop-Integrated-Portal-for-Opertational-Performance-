@@ -1,0 +1,499 @@
+@page "/hub"
+@page "/hub/{Id:guid}"
+@using IPop.Application.Hub
+@using IPop.Web.Components
+
+<PageTitle>@(topic is { } tt ? $"{tt.Title} - The Hub" : "The Hub") — IPop</PageTitle>
+
+<div class="hub-page @(Id is not null ? "hub-has-sel" : "")">
+
+    @* ── List ─────────────────────────────────────────────────────────── *@
+    <section class="hub-lst" aria-label="Topics">
+        <div class="hub-lst-h">
+            <div class="hub-row">
+                <h1>The Hub</h1>
+                <button type="button" class="hub-btn pri" @onclick="OpenNewAsync" title="Start a topic with another department">
+                    <i data-lucide="plus"></i>New topic
+                </button>
+            </div>
+
+            @if (!howtoHidden)
+            {
+                <div class="hub-howto">
+                    <div class="hub-howto-h"><span>How a topic works</span><button type="button" @onclick="HideHowtoAsync">Got it</button></div>
+                    <ol>
+                        <li><b><span>1</span>Ask</b></li>
+                        <li><b><span>2</span>Discuss</b></li>
+                        <li><b><span>3</span>Solve</b></li>
+                    </ol>
+                    <p>Ask another department, talk it through, then write the answer and mark it <b>Solved</b>. Only the people you invite can see it.</p>
+                </div>
+            }
+
+            <label class="hub-search">
+                <i data-lucide="search"></i>
+                <input type="search" placeholder="Search topics or people" @bind="q" @bind:event="oninput" aria-label="Search topics" />
+            </label>
+
+            <div class="hub-seg" role="group" aria-label="Show">
+                @foreach (var (key, label) in new[] { ("mine", "For me"), ("new", "New"), ("ongoing", "Ongoing"), ("solved", "Solved") })
+                {
+                    <button type="button" class="@(filter == key ? "on" : "")" aria-pressed="@(filter == key ? "true" : "false")" @onclick="() => filter = key">
+                        <span class="hx-n" @key="@($"{key}-{Count(key)}")">@Count(key)</span><small>@label</small>
+                    </button>
+                }
+            </div>
+            <div class="hub-fhelp">@FilterHelp(filter)</div>
+            <select class="hub-kind" @bind="kind" aria-label="Kind of topic">
+                <option value="">All kinds</option>
+                @foreach (var k in HubKinds.All) { <option value="@k">@HubKinds.Label(k)</option> }
+            </select>
+        </div>
+
+        <div class="hub-rows" role="list">
+            @if (list is null)
+            {
+                @if (listError is not null) { <div class="hub-empty"><i data-lucide="cloud-off"></i><p>@listError</p></div> }
+                else { @for (var i = 0; i < 4; i++) { <div class="hub-skel"></div> } }
+            }
+            else
+            {
+                var rows = Visible.ToList();
+                @if (rows.Count == 0)
+                {
+                    <div class="hub-empty">
+                        <i data-lucide="@(list.Topics.Count == 0 ? "messages-square" : "inbox")"></i>
+                        <p>@(list.Topics.Count == 0 ? "No topics yet. Start one when you need something from another department."
+                            : !string.IsNullOrWhiteSpace(q) ? "No topic matches your search."
+                            : filter == "mine" ? "Nothing needs you right now. Good work." : "Nothing here.")</p>
+                        @if (list.Topics.Count == 0) { <button type="button" class="hub-btn pri" @onclick="OpenNewAsync"><i data-lucide="plus"></i>Start a topic</button> }
+                    </div>
+                }
+                @for (var i = 0; i < rows.Count; i++)
+                {
+                    var t = rows[i];
+                    var (css, text) = Say(t);
+                    <button type="button" role="listitem" @key="t.Id"
+                            class="hub-item k-@t.Kind @(t.Id == Id ? "on" : "") @(t.Unread ? "unread" : "") @(t.Status == HubStatus.Solved ? "done" : "") @(freshRows.Contains(t.Id) ? "fresh" : "")"
+                            style="--i:@Math.Min(i, 8)" @onclick="() => Open(t.Id)">
+                        <span class="hx-bar"></span>
+                        <span class="hx-txt">
+                            <span class="hx-top"><b>@t.Title</b>@if (t.Unread) {<span class="hx-udot" title="New replies"></span>}</span>
+                            @if (t.LastPreview is not null) { <span class="hx-prev"><b>@t.LastAuthor:</b> @t.LastPreview</span> }
+                            <span class="hx-say @css"><i></i>@text</span>
+                            <span class="hx-sub2">
+                                <span class="hx-kind">@HubKinds.Label(t.Kind)</span>·
+                                <span class="hx-avs">@foreach (var p in t.People.Take(4)) {<PersonAvatar Name="@p.Name" Photo="@p.PhotoUrl" Size="20" Decorative="true" />}</span>
+                                @t.People.Count people
+                            </span>
+                        </span>
+                    </button>
+                }
+            }
+        </div>
+    </section>
+
+    @* ── Topic ────────────────────────────────────────────────────────── *@
+    <section class="hub-main" aria-label="Topic">
+        @if (Id is null)
+        {
+            <div class="hub-pick">
+                <span class="hx-ic"><i data-lucide="messages-square"></i></span>
+                <h2>Pick a topic, or start one</h2>
+                <p>The Hub is for work across departments: a problem, a question that needs a clear answer, or an idea. Everything you write here is confidential to the people in the topic.</p>
+                <button type="button" class="hub-btn pri" @onclick="OpenNewAsync"><i data-lucide="plus"></i>New topic</button>
+            </div>
+        }
+        else if (topic is null)
+        {
+            @if (topicError is not null)
+            {
+                <div class="hub-pick"><span class="hx-ic"><i data-lucide="lock"></i></span><h2>This topic isn't shared with you</h2><p>@topicError</p>
+                    <button type="button" class="hub-btn" @onclick="Back"><i data-lucide="arrow-left"></i>All topics</button></div>
+            }
+            else { <div class="hub-loading"><div class="hub-skel big"></div><div class="hub-skel"></div><div class="hub-skel"></div></div> }
+        }
+        else
+        {
+            var t = topic;
+            var mine = MyAsk;
+            <div class="hub-room @(detailsOpen ? "det" : "")">
+                <div class="hub-panel">
+                    <div class="hub-bar">
+                        <button type="button" class="hub-btn sm back" @onclick="Back"><i data-lucide="arrow-left"></i>All topics</button>
+                        <span class="hx-stg st-@t.Status"><i></i>@(t.Status switch { HubStatus.Solved => "Solved", HubStatus.Ongoing => "Ongoing", _ => "New" })</span>
+                        <span class="hx-kindpill k-@t.Kind">@HubKinds.Label(t.Kind)</span>
+                        <span class="hx-conf" title="Only these people can open this topic"><i data-lucide="lock"></i>Confidential · @t.People.Count</span>
+                        <span class="hx-sp"></span>
+                        @if (CanWrite) { <button type="button" class="hub-btn ok sm" @onclick="OpenSolveAsync"><i data-lucide="check"></i>Mark as solved</button> }
+                        <button type="button" class="hub-btn sm @(detailsOpen ? "pressed" : "")" aria-pressed="@(detailsOpen ? "true" : "false")" @onclick="() => detailsOpen = !detailsOpen"><i data-lucide="users"></i>Details</button>
+                    </div>
+
+                    <div class="hub-scroll" id="hub-scroll">
+                        <article class="hub-post">
+                            <div class="hx-ph"><PersonAvatar Name="@t.CreatedBy.Name" Photo="@t.CreatedBy.PhotoUrl" Size="44" />
+                                <div><b>@t.CreatedBy.Name</b><small>@(t.CreatedBy.Department ?? "") · started @t.CreatedAt.ToLocalTime().ToString("d MMM")</small></div></div>
+                            <h2>@t.Title</h2>
+                            <p class="hx-need">@t.Need</p>
+                            <div class="hx-facts">
+                                @if (t.DueDate is { } due) { <span class="hx-fact"><i data-lucide="calendar"></i>Answer by @due.ToString("ddd d MMM")</span> }
+                                @foreach (var d in t.Departments) { <span class="hx-dchip">@d</span> }
+                            </div>
+                            <div class="hx-flow" aria-label="Status">
+                                @foreach (var (i, label) in new[] { (0, "New"), (1, "Ongoing"), (2, "Solved") })
+                                {
+                                    @if (i > 0) { <span class="hx-ln @(i <= StageIndex ? "done" : "")"></span> }
+                                    <span class="hx-s @(i < StageIndex ? "done" : i == StageIndex ? "now" : "")"><b>@(i < StageIndex ? "✓" : (i + 1).ToString())</b>@label</span>
+                                }
+                                <span class="hx-hint">@StageHint</span>
+                            </div>
+                        </article>
+
+                        @if (t.SolvedAt is not null)
+                        {
+                            <div class="hub-solved">
+                                <span class="hx-h"><svg viewBox="0 0 24 24" class="hx-tick"><path d="M20 6 9 17l-5-5" /></svg><b>Solved @t.SolvedAt.Value.ToLocalTime().ToString("d MMM")</b>
+                                    <small>· marked by @(t.SolvedBy?.Name)</small></span>
+                                <p>@t.SolvedSummary</p>
+                                @if (t.Tasks.Count > 0)
+                                {
+                                    <ul>@foreach (var k in t.Tasks) {<li><a href="/projects/@k.ProjectId?task=@k.TaskId">@k.Title</a> · @k.Assignee@(k.DueDate is { } kd ? $", by {kd:d MMM}" : "") <span class="hx-muted">in @k.ProjectName</span></li>}</ul>
+                                }
+                                @if (t.People.Any(p => p.Id == Me)) { <div><button type="button" class="hub-btn sm" @onclick="ReopenAsync">Not solved after all? Reopen</button></div> }
+                            </div>
+                        }
+                        else if (CanWrite && mine is null)
+                        {
+                            var late = OpenAsks.Where(a => a.Late).ToList();
+                            @if (late.Count > 0)
+                            {
+                                <div class="hub-next n-red">
+                                    <span class="hx-ic"><i data-lucide="bell-ring"></i></span>
+                                    <div><small>Next step</small><b>@string.Join(" and ", late.Select(a => Short(a.To.Name)).Distinct()) @(late.Count > 1 ? "have" : "has") not answered for 3 working days</b>
+                                        <p>Their department heads got a reminder too, without the topic. A friendly nudge usually works.</p></div>
+                                    <div class="hx-acts">
+                                        @if (late.All(a => reminded.Contains(a.Id))) { <span class="hub-btn done"><i data-lucide="check"></i>Reminded</span> }
+                                        else { <button type="button" class="hub-btn go @(remindBusy is not null ? "busy" : "")" @onclick="RemindLateAsync"><i data-lucide="bell"></i>Remind @(late.Count > 1 ? "them" : Short(late[0].To.Name))</button> }
+                                    </div>
+                                </div>
+                            }
+                            else if (OpenAsks.Count > 0)
+                            {
+                                <div class="hub-next n-amber">
+                                    <span class="hx-ic"><i data-lucide="clock"></i></span>
+                                    <div><small>Next step</small><b>Waiting for @string.Join(" and ", OpenAsks.Select(a => Short(a.To.Name)).Distinct())</b>
+                                        <p>@(t.DueDate is { } dd ? $"They have until {dd:ddd d MMM}. " : "")iPop reminds them after 2 working days.</p></div>
+                                    <div class="hx-acts">
+                                        @if (OpenAsks.All(a => reminded.Contains(a.Id))) { <span class="hub-btn done"><i data-lucide="check"></i>Reminded</span> }
+                                        else { <button type="button" class="hub-btn @(remindBusy is not null ? "busy" : "")" @onclick="RemindAllAsync"><i data-lucide="bell"></i>Remind now</button> }
+                                    </div>
+                                </div>
+                            }
+                            else if (t.Status == HubStatus.New)
+                            {
+                                <div class="hub-next n-blue">
+                                    <span class="hx-ic"><i data-lucide="send"></i></span>
+                                    <div><small>Next step</small><b>Sent. Waiting for the first reply</b>
+                                        <p>@(t.People.Count - 1) @(t.People.Count - 1 == 1 ? "person was" : "people were") told on PC and phone. Use <b>Ask</b> in your reply to make a question someone must answer.</p></div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="hub-next n-green">
+                                    <span class="hx-ic"><i data-lucide="check-check"></i></span>
+                                    <div><small>Next step</small><b>Everyone has answered. Is it solved?</b>
+                                        <p>Write the answer in one or two sentences so nobody has to ask again.</p></div>
+                                    <div class="hx-acts"><button type="button" class="hub-btn go" @onclick="OpenSolveAsync"><i data-lucide="check"></i>Mark as solved</button></div>
+                                </div>
+                            }
+                        }
+
+                        @if (mine is not null && CanWrite)
+                        {
+                            <div class="hub-turn">
+                                <div class="hx-q"><small class="hx-lbl">Your turn</small>
+                                    <small>@mine.AskedBy.Name asked you · @(mine.Late ? "3 days late" : t.DueDate is { } d2 ? $"answer by {d2:d MMM}" : "please answer")</small>
+                                    <b>@mine.Question</b></div>
+                                <button type="button" class="hub-btn sm" @onclick="NeedMoreTimeAsync"><i data-lucide="clock"></i>I need more time</button>
+                            </div>
+                        }
+
+                        @if (CanWrite)
+                        {
+                            <div class="hub-compose @(mine is not null ? "answer" : "")">
+                                <PersonAvatar Name="@(Auth.Me?.Name)" Nik="@(Auth.Me?.Nik)" Size="40" Decorative="true" />
+                                <div>
+                                    <textarea rows="2" placeholder="@(mine is not null ? "Write your answer…" : "Post a reply to everyone in this topic…")" aria-label="@(mine is not null ? "Your answer" : "Your reply")"
+                                              @bind="draft" @bind:event="oninput" @onkeydown="OnComposerKeyAsync"></textarea>
+                                    @if (pending.Count > 0)
+                                    {
+                                        <div class="hub-files">@foreach (var f in pending) {
+                                            <span class="hub-file pend"><span class="hx-fi">@FileTag(f.FileName, f.ContentType)</span><span><b>@f.FileName</b><small>@Size(f.Size)</small></span>
+                                                <button type="button" aria-label="Remove @f.FileName" @onclick="() => RemovePending(f)">×</button></span>}</div>
+                                    }
+                                    <div class="hx-crow">
+                                        <label class="hub-btn sm ghost @(uploading ? "busy" : "")"><i data-lucide="paperclip"></i>File
+                                            <InputFile OnChange="OnFilesAsync" multiple class="hub-fileinput" /></label>
+                                        <label class="hx-ask"><i data-lucide="at-sign"></i>Ask
+                                            <select @bind="askTo" aria-label="Needs an answer from">
+                                                <option value="">nobody</option>
+                                                @foreach (var p in t.People.Where(p => p.Id != Me)) { <option value="@p.Id">@p.Name</option> }
+                                            </select></label>
+                                        <span class="hx-kb">Ctrl+Enter to send</span>
+                                        <span class="hx-sp"></span>
+                                        <button type="button" class="hub-btn @(mine is not null ? "hub" : "pri") @(sending ? "busy" : "")" @onclick="SendAsync"><i data-lucide="send"></i>@(mine is not null ? "Send answer" : "Post")</button>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
+                        <div class="hub-sort"><b>@ReplyCount @(ReplyCount == 1 ? "reply" : "replies")</b><span class="hx-sp"></span>
+                            <button type="button" class="@(sort == "old" ? "on" : "")" @onclick='() => sort = "old"'>Oldest first</button>
+                            <button type="button" class="@(sort == "new" ? "on" : "")" @onclick='() => sort = "new"'>Newest first</button></div>
+
+                        @foreach (var item in Items())
+                        {
+                            @if (item is HubPostDto sys)
+                            {
+                                <div class="hub-ev" @key="sys.Id"><i data-lucide="sparkles"></i><span>@sys.Body <span class="hx-muted">· @When(sys.CreatedAt)</span></span></div>
+                            }
+                            else if (item is Thread th)
+                            {
+                                <div class="hub-tw @(th.Replies.Count > 0 || replyParent == th.Post.Id ? "kids" : "")" @key="th.Post.Id">
+                                    @PostView(th.Post, false)
+                                    @foreach (var r in th.Replies) { @PostView(r, true) }
+                                    @if (replyParent == th.Post.Id && replyTo is not null)
+                                    {
+                                        <div class="hub-inl">
+                                            <PersonAvatar Name="@(Auth.Me?.Name)" Nik="@(Auth.Me?.Nik)" Size="32" Decorative="true" />
+                                            <div class="hub-inl-box">
+                                                <textarea rows="1" placeholder="Reply to @Short(replyTo.Author?.Name ?? "them")" aria-label="Your reply" @bind="replyDraft" @bind:event="oninput" @onkeydown="OnReplyKeyAsync" autofocus></textarea>
+                                                <div class="hx-crow"><button type="button" class="hub-btn sm" @onclick="CancelReply">Cancel</button>
+                                                    <button type="button" class="hub-btn pri sm @(sending ? "busy" : "")" @onclick="SendReplyAsync">Reply</button></div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        }
+                        <div class="hub-end">@(t.SolvedAt is not null ? "This topic is solved. You can still read it." : "That's everything so far.")</div>
+                    </div>
+                </div>
+
+                @if (detailsOpen)
+                {
+                    <aside class="hub-details" aria-label="Topic details">
+                        @if (t.Asks.Count > 0)
+                        {
+                            <div class="hub-card"><h3><i data-lucide="at-sign"></i>Answers · @OpenAsks.Count open</h3>
+                                @foreach (var a in t.Asks)
+                                {
+                                    <div class="hx-ask-row"><PersonAvatar Name="@a.To.Name" Photo="@a.To.PhotoUrl" Size="26" Decorative="true" />
+                                        <span><b>@a.To.Name</b><small>@a.Question</small></span>
+                                        @if (a.AnsweredAt is not null) { <span class="hx-pill ok">Answered</span> }
+                                        else if (a.Late) { <span class="hx-pill red">Late</span> }
+                                        else { <span class="hx-pill amb">Waiting</span> }
+                                    </div>
+                                }
+                            </div>
+                        }
+                        <div class="hub-card"><h3><i data-lucide="users"></i>People · @t.People.Count</h3>
+                            @foreach (var g in t.People.GroupBy(p => p.Department ?? "No department"))
+                            {
+                                <div class="hx-dgroup">@g.Key</div>
+                                @foreach (var p in g)
+                                {
+                                    <div class="hx-prow"><PersonAvatar Name="@p.Name" Photo="@p.PhotoUrl" Size="26" Decorative="true" />
+                                        <span>@p.Name@if (p.Id == t.CreatedBy.Id) {<small>Started the topic</small>}</span>
+                                        @if (p.Id == Me) { <span class="hx-pill">You</span> }</div>
+                                }
+                            }
+                            @if (CanWrite)
+                            {
+                                <div class="hx-addp">
+                                    <input placeholder="Add someone who was missed" value="@addSearch" @oninput="SearchAddAsync" aria-label="Add a person" />
+                                    @foreach (var p in addResults)
+                                    {
+                                        <button type="button" class="hx-res @(addPerson == p.Id ? "busy" : "")" @onclick="() => AddPersonAsync(p)">
+                                            <PersonAvatar Name="@p.Name" Photo="@p.PhotoUrl" Size="22" Decorative="true" /><span>@p.Name<small>@p.Department</small></span><i data-lucide="plus"></i></button>
+                                    }
+                                    <small class="hx-muted">Adding someone lets them read the whole topic.</small>
+                                </div>
+                            }
+                        </div>
+                        <div class="hub-card"><h3><i data-lucide="paperclip"></i>Files · @t.Files.Count</h3>
+                            @if (t.Files.Count == 0) { <p class="hx-muted">No files yet.</p> }
+                            @foreach (var f in t.Files) { <a class="hub-file" href="@f.Url" target="_blank" rel="noopener"><span class="hx-fi">@FileTag(f.FileName, f.ContentType)</span><span><b>@f.FileName</b><small>@Size(f.Size) · @f.Uploader</small></span></a> }
+                        </div>
+                        <div class="hub-card note"><i data-lucide="lock"></i><span>Confidential. Only these @t.People.Count people can open this topic, its replies and files.</span></div>
+                    </aside>
+                }
+            </div>
+        }
+    </section>
+</div>
+
+@* ── New topic ─────────────────────────────────────────────────────────── *@
+@if (newOpen)
+{
+    <div class="hub-scrim" @onclick="CloseNew" @onclick:self="true">
+        <div class="hub-sheet" role="dialog" aria-modal="true" aria-labelledby="hub-new-title" @onclick:stopPropagation="true">
+            <div class="hub-sheet-h"><h2 id="hub-new-title">New topic</h2><button type="button" class="hub-btn sm" @onclick="CloseNew">Close</button></div>
+            <div class="hub-sheet-b">
+                <div class="hx-fs"><div class="hx-lb"><span class="hx-n">1</span>What is it?</div>
+                    <div class="hx-kinds">
+                        @foreach (var k in HubKinds.All)
+                        {
+                            <button type="button" class="hx-k k-@k @(sheet.Kind == k ? "on" : "")" aria-pressed="@(sheet.Kind == k ? "true" : "false")" @onclick="() => sheet.Kind = k">
+                                <b>@HubKinds.Label(k)</b><small>@KindHint(k)</small></button>
+                        }
+                    </div></div>
+                <label class="hx-fs"><span class="hx-lb"><span class="hx-n">2</span>Title</span><span class="hx-help">One line people understand without opening it.</span>
+                    <input @bind="sheet.Title" @bind:event="oninput" maxlength="200" placeholder="@KindTitle(sheet.Kind)" /></label>
+                <label class="hx-fs"><span class="hx-lb"><span class="hx-n">3</span>What do you need from them?</span><span class="hx-help">Ask for something clear: a decision, a number, a yes or no.</span>
+                    <textarea rows="3" @bind="sheet.Need" @bind:event="oninput" maxlength="4000" placeholder="@KindNeed(sheet.Kind)"></textarea></label>
+                <div class="hx-fs"><div class="hx-lb"><span class="hx-n">4</span>Answer needed by</div>
+                    <div class="hx-when">
+                        @foreach (var (code, label) in new[] { ("2d", "In 2 working days"), ("1w", "In 1 week"), ("2w", "In 2 weeks"), ("none", "No date") })
+                        {
+                            <button type="button" class="@(sheet.Due == code ? "on" : "")" @onclick="() => sheet.Due = code">@label</button>
+                        }
+                    </div></div>
+                <div class="hx-fs"><div class="hx-lb"><span class="hx-n">5</span>Who should join?</div><span class="hx-help">At least one person from another department. You are already in.</span>
+                    @if (sheet.People.Count > 0)
+                    {
+                        <div class="hx-picked">@foreach (var p in sheet.People) {
+                            <span class="hx-chipp"><PersonAvatar Name="@p.Name" Photo="@p.PhotoUrl" Size="22" Decorative="true" />@p.Name <small>@p.Department</small>
+                                <button type="button" aria-label="Remove @p.Name" @onclick="() => Unpick(p)">×</button></span>}</div>
+                    }
+                    <input class="hx-psearch" placeholder="Type a name, e.g. Dedi" value="@sheet.Search" @oninput="SheetSearchAsync" aria-label="Find a person" />
+                    @if (sheet.Results.Count > 0)
+                    {
+                        <div class="hx-sugg">@foreach (var p in sheet.Results) {
+                            <button type="button" @onclick="() => Pick(p)"><PersonAvatar Name="@p.Name" Photo="@p.PhotoUrl" Size="26" Decorative="true" /><span>@p.Name<small>@p.Department</small></span><span class="hx-plus">+</span></button>}</div>
+                    }
+                    else if (sheet.Suggested.Any(s => sheet.People.All(x => x.Id != s.Id)))
+                    {
+                        <div class="hx-lb2">People you often work with</div>
+                        <div class="hx-sugg">@foreach (var p in sheet.Suggested.Where(s => sheet.People.All(x => x.Id != s.Id))) {
+                            <button type="button" @onclick="() => Pick(p)"><PersonAvatar Name="@p.Name" Photo="@p.PhotoUrl" Size="26" Decorative="true" /><span>@p.Name<small>@p.Department</small></span><span class="hx-plus">+</span></button>}</div>
+                    }
+                    @if (sheet.People.Count > 0)
+                    {
+                        <div class="hx-tell"><i data-lucide="bell"></i><span><b>@sheet.People.Count @(sheet.People.Count == 1 ? "person" : "people")</b> will get a message on PC and phone.</span></div>
+                    }
+                </div>
+                <div class="hx-lockbox"><i data-lucide="lock"></i><div><b>Confidential</b>Only the people you invite can open this topic. Nobody else sees it, not even directors or department heads, unless you add them.</div></div>
+            </div>
+            <div class="hub-sheet-f">
+                <div class="hx-req">
+                    <div class="@(OtherDeptPicked ? "ok" : "")"><span class="hx-k">✓</span>At least 1 person from another department</div>
+                    <div class="@(TextOk ? "ok" : "")"><span class="hx-k">✓</span>A title and what you need</div>
+                </div>
+                @if (sheet.Error is not null) { <div class="hx-err">@sheet.Error</div> }
+                <div class="hub-row"><button type="button" class="hub-btn pri @(sheet.Sending ? "busy" : "")" disabled="@(!SheetOk)" @onclick="SendNewAsync"><i data-lucide="send"></i>Send to the people</button>
+                    <span class="hx-why">@SheetWhy</span></div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Mark as solved ────────────────────────────────────────────────────── *@
+@if (solveOpen && topic is not null)
+{
+    <div class="hub-scrim" @onclick="CloseSolve" @onclick:self="true">
+        <div class="hub-sheet" role="dialog" aria-modal="true" aria-labelledby="hub-solve-title" @onclick:stopPropagation="true">
+            <div class="hub-sheet-h"><h2 id="hub-solve-title">Mark as solved</h2><button type="button" class="hub-btn sm" @onclick="CloseSolve">Close</button></div>
+            <div class="hub-sheet-b">
+                <div class="hx-lockbox"><i data-lucide="info"></i><div>The topic moves to <b>Solved</b>. Everyone in it gets a message with the answer, so nobody has to ask again.</div></div>
+                <label class="hx-fs"><span class="hx-lb"><span class="hx-n">1</span>How was it solved?</span><span class="hx-help">One or two sentences. This is what people will read later.</span>
+                    <textarea rows="3" @bind="solve.Summary" @bind:event="oninput" maxlength="2000" autofocus></textarea></label>
+                <div class="hx-fs"><div class="hx-lb"><span class="hx-n">2</span>Is there still work to do?</div>
+                    <div class="hx-choice2">
+                        <button type="button" class="@(!solve.FollowUp ? "on" : "")" @onclick="() => SetFollowUp(false)">No, it's finished<small>Nothing left to do</small></button>
+                        <button type="button" class="@(solve.FollowUp ? "on" : "")" @onclick="() => SetFollowUp(true)">Yes, some follow-up<small>It goes to Projects with a name and a date</small></button>
+                    </div>
+                    @if (solve.FollowUp)
+                    {
+                        @if (solve.Projects.Count == 0)
+                        {
+                            <p class="hx-muted">You aren't in a project you can add tasks to. Create or join one in Projects first, or choose "No".</p>
+                        }
+                        else
+                        {
+                            @foreach (var k in solve.Tasks)
+                            {
+                                <div class="hx-trow">
+                                    <input placeholder="What needs doing?" @bind="k.Title" @bind:event="oninput" aria-label="What needs doing" />
+                                    <select @bind="k.Assignee" aria-label="Who">@foreach (var p in topic.People) {<option value="@p.Id">@p.Name</option>}</select>
+                                    <select @bind="k.Due" aria-label="By when"><option value="2d">In 2 working days</option><option value="1w">In 1 week</option><option value="2w">In 2 weeks</option><option value="none">No date</option></select>
+                                    <select @bind="k.Project" aria-label="Project">@foreach (var pr in solve.Projects) {<option value="@pr.Id">@pr.Name</option>}</select>
+                                    <button type="button" class="hx-x" aria-label="Remove task" @onclick="() => solve.Tasks.Remove(k)">×</button>
+                                </div>
+                            }
+                            <button type="button" class="hub-btn sm" @onclick="AddSolveTask"><i data-lucide="plus"></i>Add another task</button>
+                            <span class="hx-help">The person must be a member of that project.</span>
+                        }
+                    }
+                </div>
+            </div>
+            <div class="hub-sheet-f">
+                @if (solve.Error is not null) { <div class="hx-err">@solve.Error</div> }
+                <div class="hub-row"><button type="button" class="hub-btn ok @(solve.Sending ? "busy" : "")" @onclick="SendSolveAsync"><i data-lucide="check"></i>@(SolveTaskCount > 0 ? $"Mark as solved and add {SolveTaskCount} task{(SolveTaskCount > 1 ? "s" : "")}" : "Mark as solved")</button>
+                    <button type="button" class="hub-btn" @onclick="CloseSolve">Cancel</button></div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private RenderFragment PostView(HubPostDto p, bool kid) => __builder =>
+    {
+        <div class="hub-rp @(kid ? "kid" : "") @(p.IsNew ? "isnew" : "")" id="hub-p-@p.Id">
+            <PersonAvatar Name="@(p.Author?.Name)" Photo="@(p.Author?.PhotoUrl)" Size="@(kid ? 32 : 40)" Decorative="true" />
+            <div class="hub-rp-b">
+                <div class="hx-hd"><b>@(p.Author?.Name ?? "Former employee")</b><span>@(p.Author?.Department) · @When(p.CreatedAt)</span>@if (p.IsNew) {<span class="hx-newdot">New</span>}</div>
+                <div class="hx-tx">@p.Body</div>
+                @if (p.AskTo is not null)
+                {
+                    <span class="hub-askchip @(p.AskAnswered ? "ok" : "")"><i data-lucide="@(p.AskAnswered ? "check" : "at-sign")"></i>@(p.AskAnswered ? $"{p.AskToName} answered" : $"Needs an answer from {p.AskToName}")</span>
+                }
+                @if (p.Files.Count > 0)
+                {
+                    <div class="hub-files">@foreach (var f in p.Files) {<a class="hub-file" href="@f.Url" target="_blank" rel="noopener"><span class="hx-fi">@FileTag(f.FileName, f.ContentType)</span><span><b>@f.FileName</b><small>@Size(f.Size)</small></span></a>}</div>
+                }
+                @if (CanWrite) { <div class="hx-ft"><button type="button" @onclick="() => StartReply(p)"><i data-lucide="message-circle"></i>Reply</button></div> }
+            </div>
+        </div>
+    };
+
+    private static string KindHint(string k) => k switch
+    {
+        HubKinds.Problem => "something is going wrong",
+        HubKinds.Clarity => "a clear answer or follow up",
+        HubKinds.Idea => "a better way to do something",
+        HubKinds.Change => "stop, new design, new recipe",
+        HubKinds.Buy => "a big or long purchase",
+        _ => "anything else",
+    };
+
+    private static string KindTitle(string k) => k switch
+    {
+        HubKinds.Problem => "e.g. Carton supplier is 2 weeks late, line L3 may stop",
+        HubKinds.Clarity => "e.g. Who approves overtime for the trial run?",
+        HubKinds.Idea => "e.g. Use one plain inner box for all 25g sachets",
+        HubKinds.Change => "e.g. Kopi Mix Mocca 25g stops after June 2027",
+        HubKinds.Buy => "e.g. Latte laminate: supplier minimum lasts 54 months",
+        _ => "Write one clear line",
+    };
+
+    private static string KindNeed(string k) => k switch
+    {
+        HubKinds.Problem => "e.g. Purchasing: can the second supplier deliver this week? PPIC: which orders move if L3 stops?",
+        HubKinds.Clarity => "e.g. HC and Finance: who signs overtime that isn't in the plan?",
+        HubKinds.Idea => "e.g. Marketing: is this OK for the brand? Purchasing: does it lower the minimum order?",
+        HubKinds.Change => "e.g. Everyone: what stock, orders or line time do you still have for this product?",
+        HubKinds.Buy => "e.g. Marketing: will this product stay in this design until May 2031?",
+        _ => "What do you need from them?",
+    };
+}

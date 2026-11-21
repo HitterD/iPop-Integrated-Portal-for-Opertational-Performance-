@@ -1,0 +1,1426 @@
+<meta charset="utf-8">
+<title>iPop The Hub</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+/* Layout: iPop friendly shell. Forest-green frame, one light panel; topics list on the left, the discussion room on the right (like Chat). */
+:root{
+  --frame:#123528; --frame-2:#1a4535; --frame-3:#22533f; --frame-ink:#e7f2ec; --frame-ink-2:#a3c2b3; --frame-line:rgba(255,255,255,.10);
+  --bg:#f6f5f2; --surface:#ffffff; --surface-2:#f4f2ee; --line:#e8e5df; --line-2:#d9d5ce;
+  --ink:#1c1917; --ink-2:#44403c; --ink-3:#736d68; --ink-4:#a8a29e;
+  --accent:#2e9d6b; --accent-ink:#1d6646; --accent-soft:#dcf2e5;
+  --danger:#c93a2b; --danger-soft:#fdecea; --warn:#a85f05; --warn-soft:#fcf0dc; --ok:#23804e; --ok-soft:#e1f3e8; --info:#2f74b5; --info-soft:#e4effa;
+  --t-prob:#c93a2b; --t-prob-s:#fdecea; --t-clar:#2f74b5; --t-clar-s:#e4effa; --t-idea:#3f7d1f; --t-idea-s:#e7f3dc;
+  --t-chg:#5a4fb0; --t-chg-s:#ebe9f8; --t-buy:#a86b06; --t-buy-s:#fcf1da; --t-oth:#5b6b78; --t-oth-s:#e9edf0;
+  --hub:#0b6b7a; --hub-s:#dcf0f2;
+  --note:#fff7d6; --note-ink:#5b4a0c; --note-line:#ecd98a; --scrim:rgba(10,20,15,.45);
+  --sh-card:0 1px 2px rgba(25,24,22,.05); --sh-pop:0 18px 44px -14px rgba(25,24,22,.28);
+  --font:"Inter",-apple-system,"Segoe UI",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --frame:#0b2219; --frame-2:#133126; --frame-3:#1b3f31; --frame-ink:#e3efe8; --frame-ink-2:#93b3a4;
+  --bg:#151816; --surface:#1d211f; --surface-2:#252a27; --line:#2d3330; --line-2:#3a423d;
+  --ink:#ecefed; --ink-2:#c9cfcb; --ink-3:#99a39d; --ink-4:#6d7772;
+  --accent:#4cbf8a; --accent-ink:#86dcb2; --accent-soft:#1d3a2c;
+  --danger:#f07a6c; --danger-soft:#3a1f1c; --warn:#e8a447; --warn-soft:#382a16; --ok:#5fcf8f; --ok-soft:#173326; --info:#7db4ea; --info-soft:#1a2b3c;
+  --t-prob:#f07a6c; --t-prob-s:#3a1f1c; --t-clar:#7db4ea; --t-clar-s:#1a2b3c; --t-idea:#9bd46e; --t-idea-s:#1f3014;
+  --t-chg:#a99ff0; --t-chg-s:#25213f; --t-buy:#e8b04f; --t-buy-s:#372a14; --t-oth:#a9b7c2; --t-oth-s:#262d32;
+  --hub:#5cc4d1; --hub-s:#12333a;
+  --note:#2f2a17; --note-ink:#ecdca0; --note-line:#5a4e22; --scrim:rgba(0,0,0,.6);
+  --sh-card:0 1px 2px rgba(0,0,0,.3); --sh-pop:0 18px 44px -14px rgba(0,0,0,.6); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --frame:#0b2219; --frame-2:#133126; --frame-3:#1b3f31; --frame-ink:#e3efe8; --frame-ink-2:#93b3a4;
+  --bg:#151816; --surface:#1d211f; --surface-2:#252a27; --line:#2d3330; --line-2:#3a423d;
+  --ink:#ecefed; --ink-2:#c9cfcb; --ink-3:#99a39d; --ink-4:#6d7772;
+  --accent:#4cbf8a; --accent-ink:#86dcb2; --accent-soft:#1d3a2c;
+  --danger:#f07a6c; --danger-soft:#3a1f1c; --warn:#e8a447; --warn-soft:#382a16; --ok:#5fcf8f; --ok-soft:#173326; --info:#7db4ea; --info-soft:#1a2b3c;
+  --t-prob:#f07a6c; --t-prob-s:#3a1f1c; --t-clar:#7db4ea; --t-clar-s:#1a2b3c; --t-idea:#9bd46e; --t-idea-s:#1f3014;
+  --t-chg:#a99ff0; --t-chg-s:#25213f; --t-buy:#e8b04f; --t-buy-s:#372a14; --t-oth:#a9b7c2; --t-oth-s:#262d32;
+  --hub:#5cc4d1; --hub-s:#12333a;
+  --note:#2f2a17; --note-ink:#ecdca0; --note-line:#5a4e22; --scrim:rgba(0,0,0,.6);
+  --sh-card:0 1px 2px rgba(0,0,0,.3); --sh-pop:0 18px 44px -14px rgba(0,0,0,.6); color-scheme:dark}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--frame);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+.num{font-variant-numeric:tabular-nums}
+svg.i{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+h2,h3,h4{text-wrap:balance}
+
+/* ---------- shell ---------- */
+.shell{display:flex;min-height:100%}
+.sidebar{width:264px;flex:none;color:var(--frame-ink);padding:18px 0 14px 14px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh}
+.logo{display:flex;align-items:center;gap:10px;padding:4px 12px 12px;font-weight:800;font-size:19px}
+.logo b{width:34px;height:34px;border-radius:10px;background:linear-gradient(140deg,#4cd787,#1d6646);display:grid;place-items:center;font-size:15px;color:#fff}
+.navh{font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--frame-ink-2);padding:14px 14px 4px}
+.nav a{display:flex;align-items:center;gap:12px;padding:9px 14px;border-radius:12px 0 0 12px;color:var(--frame-ink);text-decoration:none;font-weight:600;font-size:15.5px;white-space:nowrap}
+.nav a svg{width:20px;height:20px}
+.nav a:hover{background:var(--frame-2)}
+.nav a.on{background:var(--bg);color:var(--ink)}
+.nav .badge{margin-left:auto;margin-right:12px;font-size:11px;font-weight:700;background:#e5484d;color:#fff;border-radius:99px;padding:0 7px;line-height:18px}
+.nav .newp{margin-left:auto;font-size:9.5px;font-weight:800;background:#f0c76a;color:#3b2c05;border-radius:5px;padding:1px 5px}
+.nav .newp+.badge{margin-left:6px}
+.navnote{margin:14px 14px 0;font-size:12px;color:var(--frame-ink-2);border-top:1px solid var(--frame-line);padding-top:12px;line-height:1.45}
+.me{margin-top:auto;margin-right:14px;display:flex;gap:10px;align-items:center;padding:10px;border-radius:14px;background:var(--frame-2)}
+.me small{display:block;color:var(--frame-ink-2);font-size:12px}
+.av{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;font-weight:700;font-size:12px;color:#fff;flex:none}
+.av.sm{width:24px;height:24px;font-size:9.5px;border-radius:7px}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{min-height:68px;display:flex;align-items:center;gap:12px;padding:10px max(16px,env(safe-area-inset-right,0px)) 10px 22px;color:var(--frame-ink);flex-wrap:wrap}
+.ttl h1{font-size:22px;margin:0;font-weight:700;letter-spacing:-.01em}
+.ttl small{display:block;color:var(--frame-ink-2);font-size:12.5px}
+.topbar .sp{flex:1}
+.seg{display:flex;background:var(--frame-2);border-radius:12px;padding:3px;gap:2px}
+.seg button{border:0;background:transparent;color:var(--frame-ink-2);border-radius:9px;padding:6px 10px;display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12.5px;font-weight:600}
+.seg button svg{width:15px;height:15px}
+.seg button[aria-pressed="true"]{background:var(--frame-ink);color:var(--frame)}
+.viewas{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--frame-ink-2)}
+.viewas select{background:var(--frame-2);border:1px solid var(--frame-line);color:var(--frame-ink);border-radius:10px;padding:7px 10px;font-weight:600}
+.viewas option{color:#1c1917;background:#fff}
+.panel{flex:1;background:var(--bg);border-top-left-radius:26px;min-width:0;display:flex;flex-direction:column}
+.tabbar{display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--line);padding:10px 24px 0;flex-wrap:wrap}
+.tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+.tabs a{padding:10px 14px 12px;color:var(--ink-3);text-decoration:none;font-weight:600;border-bottom:2px solid transparent;display:flex;align-items:center;gap:8px;white-space:nowrap;font-size:14.5px}
+.tabs a .ti{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:var(--ts);color:var(--tc)}
+.tabs a .ti svg{width:14px;height:14px}
+.tabs a.on{color:var(--tc);border-color:var(--tc)}
+.tabs a.on .ti{background:var(--tc);color:var(--surface)}
+.cnt{font-size:11px;background:var(--danger);color:#fff;border-radius:99px;padding:0 7px;font-weight:700;line-height:18px}
+.tabbar .sp{flex:1}
+.content{padding:18px 24px 40px;width:100%}
+
+/* ---------- common ---------- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--sh-card);padding:18px;min-width:0}
+.card h3{margin:0;font-size:15.5px;font-weight:700;display:flex;align-items:center;gap:9px}
+.sub{color:var(--ink-3);font-size:13px;margin:2px 0 0}
+.hd{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+.hic{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:var(--ts);color:var(--tc);flex:none}
+.hic svg{width:16px;height:16px}
+.btn{border:1px solid var(--line-2);background:var(--surface);border-radius:12px;padding:8px 14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;text-decoration:none;color:var(--ink)}
+.btn:hover{background:var(--surface-2)}
+.btn svg{width:16px;height:16px}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.pri:hover{filter:brightness(.95)}
+.btn:disabled{opacity:.4;cursor:not-allowed;filter:grayscale(.6)}
+.btn.hub{background:var(--hub);border-color:var(--hub);color:#fff}
+.btn.sm{padding:5px 10px;font-size:13px;border-radius:10px}
+.btn.ghost{border-color:transparent;background:transparent}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;border-radius:99px;padding:2px 9px;white-space:nowrap}
+.p-red{background:var(--danger-soft);color:var(--danger)} .p-amb{background:var(--warn-soft);color:var(--warn)} .p-grn{background:var(--ok-soft);color:var(--ok)} .p-blu{background:var(--info-soft);color:var(--info)} .p-gry{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line)}
+.p-hub{background:var(--hub-s);color:var(--hub)}
+.tp{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;border-radius:99px;padding:2px 9px;background:var(--ts);color:var(--tc);white-space:nowrap}
+.tp svg{width:13px;height:13px}
+.dchip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;border-radius:8px;padding:1px 8px;background:var(--surface-2);border:1px solid var(--line);color:var(--ink-2);white-space:nowrap}
+.dchip i{width:7px;height:7px;border-radius:50%}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.muted{color:var(--ink-3)}
+.id{color:var(--ink-4);font-size:12px;font-weight:500}
+.note{background:var(--note);color:var(--note-ink);border:1px solid var(--note-line);border-radius:14px;padding:9px 14px;font-size:13px;display:flex;gap:10px;align-items:flex-start;margin-bottom:14px}
+.note svg{margin-top:1px}
+.circle-av{display:flex}
+.circle-av .av{border:2px solid var(--surface);margin-left:-6px}
+.circle-av .av:first-child{margin-left:0}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;font-size:11.5px;color:var(--ink-3);font-weight:600;letter-spacing:.03em;text-transform:uppercase;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr:last-child td{border-bottom:0}
+td.r,th.r{text-align:right}
+.grid{display:grid;gap:16px}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.g2{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)}
+.kpi .lbl{font-size:12.5px;color:var(--ink-2);font-weight:600;display:flex;gap:8px;align-items:center}
+.kpi .val{font-size:30px;font-weight:800;letter-spacing:-.02em;color:var(--tc);line-height:1.25}
+.kpi .val small{font-size:15px}
+.kpi .foot{font-size:12.5px;color:var(--ink-3)}
+.kpi{background:var(--ts);border-color:transparent}
+.kic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:var(--surface);color:var(--tc)}
+.kic svg{width:15px;height:15px}
+
+/* ---------- topics: list + room ---------- */
+.hubwrap{display:grid;grid-template-columns:380px minmax(0,1fr);gap:16px;align-items:start}
+.tlist{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:12px;position:sticky;top:12px;max-height:calc(100vh - 160px);overflow:auto}
+.fchips{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 10px}
+.fchips button{border:1px solid var(--line);background:var(--surface);border-radius:99px;padding:4px 11px;font-size:12.5px;font-weight:600;color:var(--ink-2);cursor:pointer}
+.fchips button.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.lsec{font-size:11.5px;font-weight:700;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase;padding:10px 6px 6px}
+.titem{display:grid;grid-template-columns:4px minmax(0,1fr);gap:10px;padding:10px;border-radius:14px;cursor:pointer;border:1px solid transparent;text-align:left;width:100%;background:transparent}
+.titem:hover{background:var(--surface-2)}
+.titem.on{background:var(--surface-2);border-color:var(--line-2)}
+.titem .bar{border-radius:4px;background:var(--tc)}
+.titem b{display:block;font-size:14px;font-weight:600;line-height:1.3}
+.titem .m{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:5px;font-size:12px;color:var(--ink-3)}
+.titem.done b{color:var(--ink-3)}
+.prep{border:1px dashed var(--hub);background:var(--hub-s);border-radius:14px;padding:11px 12px;display:grid;gap:6px;margin-bottom:8px}
+.prep b{font-size:13.5px}
+.prep small{font-size:12.5px;color:var(--ink-2)}
+.room{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
+.rhead{display:grid;gap:8px}
+.rhead h2{margin:0;font-size:21px;letter-spacing:-.015em}
+.need{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:start;background:var(--ts);border-radius:14px;padding:12px 14px;margin-top:12px}
+.need .ic{width:34px;height:34px;border-radius:10px;background:var(--tc);color:var(--surface);display:grid;place-items:center}
+.need small{display:block;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--tc)}
+.need p{margin:2px 0 0;font-size:14px}
+.need .due{text-align:right;font-size:12.5px;color:var(--ink-2);white-space:nowrap}
+.need .due b{display:block;font-size:15px;color:var(--ink)}
+.decision{background:var(--ok-soft);border-radius:14px;padding:12px 14px;margin-top:12px;display:grid;gap:4px}
+.decision small{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ok)}
+.asks{margin-top:12px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.asks .h{padding:8px 12px;background:var(--surface-2);font-size:12px;font-weight:700;color:var(--ink-3);letter-spacing:.05em;text-transform:uppercase;display:flex;justify-content:space-between}
+.ask{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border-top:1px solid var(--line);font-size:13.5px}
+.ask small{display:block;color:var(--ink-3);font-size:12px}
+.msgs{display:grid;gap:4px;margin-top:14px}
+.msg{display:grid;grid-template-columns:32px minmax(0,1fr);gap:10px;padding:8px 0}
+.msg .who{font-size:13px;font-weight:700;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.msg .who span{font-weight:500;color:var(--ink-3);font-size:12px}
+.msg .b{font-size:14px;margin-top:2px;max-width:78ch}
+.msg .askto{display:inline-flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;font-weight:700;color:var(--hub);background:var(--hub-s);border-radius:8px;padding:2px 8px}
+.msg.sys{grid-template-columns:32px minmax(0,1fr)}
+.msg.sys .sic{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:var(--hub-s);color:var(--hub)}
+.msg.sys .b{color:var(--ink-2);font-size:13.5px}
+.file{display:inline-flex;align-items:center;gap:10px;margin-top:6px;border:1px solid var(--line);border-radius:12px;padding:8px 12px;background:var(--surface-2);font-size:13px;max-width:100%}
+.file .fi{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--danger-soft);color:var(--danger);font-size:10px;font-weight:800;flex:none}
+.file .fi.x{background:var(--ok-soft);color:var(--ok)}
+.file small{display:block;color:var(--ink-3);font-size:11.5px}
+.composer{margin-top:12px;border:1px solid var(--line-2);border-radius:16px;background:var(--surface);padding:10px;display:grid;gap:8px}
+.composer textarea{border:0;resize:vertical;min-height:52px;background:transparent;outline:none;font-size:14px}
+.composer .tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.composer select{border:1px solid var(--line-2);background:var(--surface);border-radius:10px;padding:5px 8px;font-size:13px}
+.composer .att{display:flex;gap:6px;flex-wrap:wrap}
+.side{display:grid;gap:12px;position:sticky;top:12px}
+.side .card{padding:14px}
+.prow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;padding:6px 0;font-size:13px}
+.prow small{display:block;color:var(--ink-3);font-size:12px}
+.dgroup{font-size:11.5px;font-weight:700;color:var(--ink-3);letter-spacing:.05em;text-transform:uppercase;margin-top:8px;display:flex;align-items:center;gap:6px}
+.dgroup i{width:7px;height:7px;border-radius:50%}
+.addp{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;margin-top:8px}
+.addp select{border:1px solid var(--line-2);border-radius:10px;padding:6px 8px;background:var(--surface);font-size:13px;min-width:0}
+.lnk{display:flex;gap:8px;align-items:center;padding:7px 0;font-size:13px;border-top:1px solid var(--line)}
+.lnk:first-of-type{border-top:0}
+.lnk a{color:var(--accent-ink);font-weight:600;text-decoration:none}
+.vis{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--ink-2);background:var(--surface-2);border-radius:10px;padding:8px 10px}
+.vis svg{width:15px;height:15px;margin-top:1px;color:var(--ink-3)}
+
+/* ---------- sheets ---------- */
+.scrim{position:fixed;inset:0;background:var(--scrim);display:flex;justify-content:flex-end;z-index:20}
+.sheet{width:min(640px,100%);background:var(--bg);height:100%;overflow:auto;padding:22px max(16px,env(safe-area-inset-right,0px)) 0 22px;box-shadow:var(--sh-pop);display:flex;flex-direction:column;gap:14px;margin:0}
+.sheet h2{margin:0;font-size:20px}
+.fs{display:grid;gap:8px}
+.fs>.lb{font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px}
+.fs>.lb .n{width:22px;height:22px;border-radius:7px;background:var(--hub);color:#fff;display:inline-grid;place-items:center;font-size:11.5px;font-weight:800}
+.fs>.lb .opt{font-weight:500;color:var(--ink-3);font-size:12.5px}
+.fs .help{font-size:12.5px;color:var(--ink-3);margin-top:-4px}
+.fs input[type=text],.fs textarea,.fs select{border:1px solid var(--line-2);background:var(--surface);border-radius:12px;padding:9px 12px;width:100%}
+.types{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.types label{border:1px solid var(--line-2);border-radius:12px;padding:9px 11px;cursor:pointer;font-size:12.5px;display:flex;gap:8px;align-items:flex-start;background:var(--surface);color:var(--ink-3)}
+.types label b{display:block;font-size:13.5px;color:var(--ink)}
+.types label:has(input:checked){border-color:var(--tc);background:var(--ts)}
+.types input{accent-color:var(--hub);margin-top:3px}
+.when{display:flex;gap:6px;flex-wrap:wrap}
+.when button{border:1px solid var(--line-2);background:var(--surface);border-radius:10px;padding:6px 12px;font-weight:600;font-size:13px;cursor:pointer}
+.when button.on{background:var(--hub-s);border-color:var(--hub);color:var(--hub)}
+.picked{display:flex;flex-wrap:wrap;gap:6px}
+.chipp{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line-2);background:var(--surface);border-radius:99px;padding:3px 4px 3px 4px;font-size:13px;font-weight:600}
+.chipp .av{width:22px;height:22px;font-size:9px;border-radius:99px}
+.chipp small{font-weight:500;color:var(--ink-3)}
+.chipp button{border:0;background:var(--surface-2);border-radius:99px;width:20px;height:20px;cursor:pointer;color:var(--ink-3);font-weight:700;line-height:1}
+.sugg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.sugg button{display:flex;gap:8px;align-items:center;border:1px dashed var(--line-2);background:transparent;border-radius:12px;padding:6px 8px;cursor:pointer;text-align:left;font-size:13px}
+.sugg button small{display:block;color:var(--ink-3);font-size:11.5px}
+.sugg button .plus{margin-left:auto;color:var(--hub);font-weight:800}
+.psearch{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px}
+.req{display:grid;gap:4px;font-size:13px}
+.req div{display:flex;gap:8px;align-items:center}
+.req .k{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;flex:none;background:var(--surface-2);border:1px solid var(--line-2);color:transparent}
+.req .k svg{width:11px;height:11px}
+.req .ok .k{background:var(--ok);border-color:var(--ok);color:#fff}
+.req .ok{color:var(--ink-2)}
+.sfoot{position:sticky;bottom:0;background:var(--bg);border-top:1px solid var(--line);padding:12px 0 calc(14px + env(safe-area-inset-bottom,0px));display:grid;gap:10px;margin-top:auto}
+.sfoot .why{font-size:13px;font-weight:600;color:var(--hub)}
+.visopt{display:grid;gap:6px}
+.visopt label{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line-2);border-radius:12px;padding:9px 12px;background:var(--surface);cursor:pointer;font-size:13px}
+.visopt label b{display:block;font-size:13.5px}
+.visopt input{accent-color:var(--hub);margin-top:3px}
+.drop{border:1.5px dashed var(--line-2);border-radius:12px;padding:12px;text-align:center;font-size:13px;color:var(--ink-3);cursor:pointer;background:var(--surface)}
+.trow{display:grid;grid-template-columns:minmax(0,1fr) 170px 120px auto;gap:6px;align-items:center}
+.trow input,.trow select{border:1px solid var(--line-2);border-radius:10px;padding:7px 9px;background:var(--surface);min-width:0;width:100%}
+.trow button{border:0;background:var(--surface-2);border-radius:8px;width:28px;height:28px;cursor:pointer}
+
+/* ---------- overview ---------- */
+.heat{border-collapse:separate;border-spacing:3px;font-size:12.5px;width:auto}
+.heat th:first-child{width:96px}
+.heat th{border:0;font-size:11.5px;text-transform:none;letter-spacing:0;padding:4px 6px;color:var(--ink-2)}
+.heat th.c{writing-mode:vertical-rl;transform:rotate(180deg);height:92px;vertical-align:bottom;text-align:left}
+.heat td{border:0;width:44px;height:36px;text-align:center;border-radius:8px;font-weight:700;padding:0}
+.heat td.self{background:transparent;color:var(--ink-4)}
+.esc{display:grid;grid-template-columns:4px minmax(0,1fr) auto;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);align-items:center}
+.esc:last-child{border-bottom:0}
+.esc .s{align-self:stretch;border-radius:4px}
+.esc b{font-weight:600}
+.esc small{display:block;color:var(--ink-3);font-size:12.5px}
+.bar2{display:grid;grid-template-columns:110px minmax(0,1fr) 64px;gap:10px;align-items:center;padding:6px 0;font-size:13px}
+.bar2 .tr{height:10px;border-radius:6px;background:var(--surface-2);overflow:hidden}
+.bar2 .tr span{display:block;height:100%;border-radius:6px}
+
+/* ---------- guide ---------- */
+.steps{display:grid;gap:10px}
+.st{display:grid;grid-template-columns:44px minmax(0,1fr);gap:14px;border:1px solid var(--line);border-radius:16px;padding:14px;background:var(--surface)}
+.st .n{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-weight:800;font-size:17px;background:var(--hub-s);color:var(--hub)}
+.st h4{margin:0;font-size:15.5px}
+.st p{margin:3px 0 0;font-size:13.5px;color:var(--ink-2);max-width:85ch}
+.sup{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.sup div{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--surface)}
+.sup b{display:block;margin-bottom:2px}
+.sup span{font-size:13.5px;color:var(--ink-2)}
+.sup .who{display:inline-block;margin-top:6px;font-size:11.5px;font-weight:700;color:var(--hub);background:var(--hub-s);border-radius:6px;padding:1px 7px}
+.qa{display:grid;gap:10px}
+.qa div{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--surface)}
+.qa b{display:block;margin-bottom:3px}
+.qa span{font-size:13.5px;color:var(--ink-2)}
+
+.toast{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:var(--sh-pop);border-radius:14px;padding:10px 16px;font-weight:600;display:flex;gap:8px;align-items:center;z-index:40;max-width:calc(100% - 32px)}
+.toast svg{color:var(--ok)}
+
+
+/* ---------- round 2: friendlier ---------- */
+.note .txt{min-width:0}
+.note.clamp .txt{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.note .more{margin-left:auto;border:0;background:transparent;color:var(--note-ink);font-weight:700;font-size:12.5px;cursor:pointer;white-space:nowrap;padding:0 2px;text-decoration:underline}
+.tsearch kbd{flex:none}
+.tsearch{display:flex;align-items:center;gap:8px;border:1px solid var(--line-2);border-radius:12px;padding:7px 10px;background:var(--surface);margin-bottom:8px}
+.tsearch input{border:0;outline:none;background:transparent;flex:1;min-width:0}
+.tsearch svg{width:16px;height:16px;color:var(--ink-4)}
+.fbar{display:flex;gap:6px;align-items:center;margin-bottom:6px}
+.fseg{display:flex;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:3px;flex:1}
+.fseg button{flex:1;border:0;background:transparent;border-radius:9px;padding:6px 8px;font-weight:600;font-size:13px;color:var(--ink-3);cursor:pointer;white-space:nowrap}
+.fseg button.on{background:var(--surface);color:var(--ink);box-shadow:var(--sh-card)}
+.fseg button .c{font-size:11px;background:var(--danger);color:#fff;border-radius:99px;padding:0 6px;margin-left:4px}
+.ftype{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:6px 8px;font-size:13px;max-width:140px}
+.titem .top{display:flex;gap:8px;align-items:flex-start}
+.titem .top b{flex:1;min-width:0}
+.titem .when{font-size:11.5px;color:var(--ink-4);white-space:nowrap;margin-top:2px}
+.titem .prev{display:block;font-size:12.5px;color:var(--ink-3);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.titem .prev b{display:inline;font-size:12.5px;color:var(--ink-2);font-weight:600}
+.titem.unread b{font-weight:800}
+.udot{width:9px;height:9px;border-radius:50%;background:var(--hub);flex:none;margin-top:6px}
+.yourturn{margin-top:12px;border:2px solid var(--hub);border-radius:16px;padding:14px;background:var(--surface);display:grid;gap:10px}
+.yourturn .h{display:flex;gap:10px;align-items:center}
+.yourturn .h b{font-size:15px}
+.yourturn .q{background:var(--hub-s);border-radius:12px;padding:10px 12px;font-size:14px}
+.yourturn .q small{display:block;font-size:12px;color:var(--ink-3);margin-bottom:2px}
+.yourturn textarea{border:1px solid var(--line-2);border-radius:12px;padding:9px 12px;min-height:64px;resize:vertical;background:var(--surface)}
+.ystep{font-size:12.5px;color:var(--ink-3)}
+.back{display:none}
+.phone-only{display:none!important}
+.tellbox{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--surface-2);border-radius:12px;padding:8px 12px;font-size:13px;color:var(--ink-2)}
+.tellbox b{color:var(--ink)}
+.tmock{border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:var(--sh-pop);padding:12px;margin-top:10px;max-width:420px}
+.tmock .app{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-3);margin-bottom:6px}
+.tmock .app b{width:18px;height:18px;border-radius:5px;background:linear-gradient(140deg,#4cd787,#1d6646);display:grid;place-items:center;color:#fff;font-size:9px}
+.tmock .tb{font-size:13px;color:var(--ink-2)}
+.tmock .bt{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:10px}
+.tmock .bt span{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:6px;text-align:center;font-size:12px;font-weight:600}
+.seen{color:var(--ok);font-size:12px}
+@media (max-width:1180px){
+  .hubwrap.has-room .tlist{display:none}
+  .hubwrap:not(.has-room) #roomBox{display:none}
+  .back{display:inline-flex;margin-bottom:10px}
+}
+@media (max-width:900px){.phone-only{display:inline-flex!important}}
+
+
+
+
+
+body.on-topics .content{padding-bottom:0;padding-top:12px}
+body.on-topics section[data-view="topics"]>.note{display:none}
+body.on-topics.show-note section[data-view="topics"]>.note{display:flex}
+.notechip{display:none;border:1px solid var(--note-line);background:var(--note);color:var(--note-ink);border-radius:99px;padding:4px 11px;font-size:12.5px;font-weight:700;cursor:pointer;margin-bottom:8px}
+body.on-topics .notechip{display:inline-flex}
+.chead{padding:10px 16px 8px;gap:5px}
+.chead .flow{margin:0}
+.chead .flow .s{padding:4px 10px}
+.chead .back{display:none}
+.chead .flow{flex-wrap:nowrap}
+.chead .flow .hint{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
+.chead .flow .meta{flex:none}
+.cfoot{padding:8px 14px 10px;gap:6px}
+.askbar{padding:6px 12px}
+@media (max-width:1500px){.chead .flow .meta .tp{display:none}.ctools .kb{display:none}}
+@media (max-height:760px){.chead h2{font-size:18px}.needbar{padding:6px 10px}.cwrite textarea{min-height:42px}.cwrite .btn{min-height:42px}}
+@media (max-width:1180px){.chead .back{display:inline-flex}}
+/* ---------- fixed chat panel: header pinned, thread scrolls, composer pinned ---------- */
+.hubwrap{align-items:stretch}
+.hubwrap .tlist{position:static;max-height:none;height:100%;overflow-y:auto}
+#roomBox{min-height:0;height:100%}
+#roomBox .room{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;height:100%;align-items:stretch}
+#roomBox .room.det{grid-template-columns:minmax(0,1fr) 320px}
+.chat{position:relative;display:flex;flex-direction:column;height:100%;min-height:0;background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--sh-card);overflow:hidden}
+.chead{padding:12px 18px 10px;border-bottom:1px solid var(--line);display:grid;gap:6px;flex:none}
+.chead .top{display:flex;align-items:flex-start;gap:12px}
+.chead h2{margin:0;font-size:20px;line-height:1.3;letter-spacing:-.01em;flex:1;min-width:0}
+.chead .meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;color:var(--ink-3)}
+.chead .acts{display:flex;gap:6px;flex:none}
+.chead .flow{margin:2px 0 0}
+.needbar{display:flex;gap:10px;align-items:flex-start;background:var(--ts);border-radius:12px;padding:8px 12px;font-size:14px;cursor:pointer;text-align:left;border:0;width:100%}
+.needbar b{color:var(--tc);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;margin-top:2px}
+.needbar span{flex:1;min-width:0;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;color:var(--ink)}
+.needbar.open span{-webkit-line-clamp:unset}
+.needbar em{font-style:normal;white-space:nowrap;font-size:12.5px;color:var(--ink-2)}
+.solvedline{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--ok-soft);border-radius:12px;padding:8px 12px;font-size:14px}
+.solvedline b{color:var(--ok)}
+.solvedline span{flex:1;min-width:200px}
+.cmid{position:relative;flex:1;min-height:0;display:flex}
+.cbody{flex:1;min-height:0;overflow-y:auto;padding:4px 18px 14px}
+.daysep{display:flex;align-items:center;gap:10px;margin:8px -18px 4px;padding:6px 18px;font-size:12px;font-weight:700;color:var(--ink-3);position:sticky;top:0;z-index:2;background:var(--surface)}
+.daysep::before,.daysep::after{content:"";flex:1;height:1px;background:var(--line)}
+.daysep span{background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:2px 10px}
+.newsep{display:flex;align-items:center;gap:10px;margin:10px 0 4px;font-size:12px;font-weight:800;color:var(--danger)}
+.newsep::before,.newsep::after{content:"";flex:1;height:1px;background:var(--danger)}
+.cbody .msg{position:relative;border-radius:12px;padding:8px 8px;margin:0 -8px}
+.cbody .msg:hover{background:var(--surface-2)}
+.cbody .msg .rbtn{position:absolute;top:6px;right:8px;opacity:0;border:1px solid var(--line-2);background:var(--surface);border-radius:8px;padding:3px 9px;font-size:12.5px;font-weight:700;cursor:pointer;color:var(--ink-2)}
+.cbody .msg:hover .rbtn,.cbody .msg .rbtn:focus{opacity:1}
+.quote{border-left:3px solid var(--hub);background:var(--surface-2);border-radius:0 8px 8px 0;padding:5px 10px;margin:4px 0 4px;font-size:13px;color:var(--ink-2)}
+.quote b{display:block;font-size:12px;color:var(--hub)}
+.jump{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);border:0;background:var(--hub);color:#fff;border-radius:99px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:var(--sh-pop);display:flex;gap:6px;align-items:center}
+.cfoot{flex:none;border-top:1px solid var(--line);padding:10px 14px 12px;background:var(--surface);display:grid;gap:8px}
+.askbar{display:flex;gap:10px;align-items:flex-start;background:var(--hub-s);border-radius:12px;padding:8px 12px;font-size:14px}
+.askbar .q{flex:1;min-width:0}
+.askbar .q small{display:block;font-size:12px;color:var(--ink-3)}
+.askbar .q b{color:var(--hub)}
+.replybar{display:flex;gap:10px;align-items:center;background:var(--surface-2);border-radius:10px;padding:6px 10px;font-size:13px;color:var(--ink-2)}
+.replybar span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.replybar button{border:0;background:transparent;font-weight:800;cursor:pointer;color:var(--ink-3);font-size:16px}
+.cwrite{display:flex;gap:8px;align-items:flex-end}
+.cwrite textarea{flex:1;min-width:0;border:1.5px solid var(--line-2);border-radius:14px;padding:10px 12px;resize:none;min-height:46px;max-height:140px;background:var(--surface);font-size:15px;outline:none}
+.cwrite textarea:focus{border-color:var(--hub)}
+.cwrite .btn{min-height:46px}
+.ctools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--ink-3)}
+.ctools select{border:1px solid var(--line-2);background:var(--surface);border-radius:10px;padding:4px 8px;font-size:13px}
+.ctools .att{display:flex;gap:6px;flex-wrap:wrap}
+.closedfoot{flex:none;border-top:1px solid var(--line);padding:12px 16px;display:flex;gap:10px;align-items:center;font-size:13.5px;color:var(--ink-2);background:var(--surface-2)}
+.details{height:100%;overflow-y:auto;display:grid;gap:12px;align-content:start;min-height:0}
+.details .card{padding:14px}
+.detbtn[aria-pressed="true"]{background:var(--surface-2);border-color:var(--ink-3)}
+.details .ask{padding:8px 0;border-top:1px solid var(--line)}
+.details .ask:first-of-type{border-top:0}
+@media (max-width:1400px){#roomBox .room.det{grid-template-columns:minmax(0,1fr) 290px}}
+@media (max-width:1180px){#roomBox .room.det{grid-template-columns:minmax(0,1fr)} #roomBox .room.det .chat{display:none}}
+
+
+
+/* ================= round 11: clear next step + micro-interactions ================= */
+/* list: one status sentence instead of a row of pills */
+.titem .say{display:flex;align-items:center;gap:6px;margin-top:4px;font-size:13px;font-weight:600}
+.titem .say i{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}
+.say.s-you{color:var(--hub)} .say.s-late{color:var(--danger)} .say.s-wait{color:var(--warn)} .say.s-new{color:var(--info)} .say.s-ok{color:var(--ok)} .say.s-on{color:var(--ink-2)}
+.titem .sub2{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden}
+.titem .sub2 .kind{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.titem .sub2 .circle-av .av{width:22px;height:22px;font-size:9px;border-radius:6px}
+.titem .kind{font-weight:700;color:var(--tc)}
+/* 3-step workflow strip */
+.howto{border:1px solid var(--line);background:var(--surface-2);border-radius:14px;padding:10px 12px;margin-bottom:10px}
+.howto .h{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;font-weight:800;color:var(--ink-2);letter-spacing:.02em}
+.howto .h button{border:0;background:transparent;color:var(--ink-3);font-weight:700;font-size:12.5px;cursor:pointer;text-decoration:underline}
+.howto ol{list-style:none;margin:8px 0 0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.howto li{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:6px 8px;position:relative}
+.howto li:not(:last-child)::after{content:"›";position:absolute;right:-6px;top:50%;transform:translateY(-52%);color:var(--ink-4);font-weight:800;font-size:13px}
+.howto .hp{margin:7px 0 0;font-size:12.5px;color:var(--ink-3);line-height:1.4}
+.howto li b{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink)}
+.howto li b span{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:var(--hub);color:#fff;font-size:10.5px}
+/* "Next step" card under the opening post */
+.nextstep{margin:14px 26px 0;border-radius:16px;padding:14px 16px;display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:12px;align-items:center;border:1.5px solid var(--nc);background:var(--ns)}
+.nextstep .ic{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--nc);color:#fff}
+.nextstep .ic svg{width:20px;height:20px}
+.nextstep small{display:block;font-size:11.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--nc)}
+.nextstep b{display:block;font-size:16px;line-height:1.35;color:var(--ink)}
+.nextstep p{margin:2px 0 0;font-size:13.5px;color:var(--ink-2)}
+.nextstep .acts{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.nextstep .acts .btn{background:var(--surface)}
+.nextstep .acts .btn.go{background:var(--nc);border-color:var(--nc);color:#fff}
+@media (max-width:1500px){.nextstep{margin-left:20px;margin-right:20px}}
+@media (max-width:900px){.nextstep{grid-template-columns:40px minmax(0,1fr)}.nextstep .acts{grid-column:1/-1;justify-content:flex-start}}
+/* toast with an action */
+.toast{display:flex;opacity:0;pointer-events:none;transform:translate(-50%,16px)}
+.toast.show{opacity:1;pointer-events:auto;transform:translate(-50%,0)}
+.toast .tact{border:0;background:var(--hub-s);color:var(--hub);font-weight:800;border-radius:9px;padding:4px 10px;cursor:pointer;margin-left:6px}
+/* busy button */
+.btn.busy{pointer-events:none;position:relative;color:transparent!important}
+.btn.busy::after{content:"";position:absolute;inset:0;margin:auto;width:16px;height:16px;border-radius:50%;border:2px solid currentColor;border-color:#fff #fff transparent transparent;animation:spin .7s linear infinite}
+.btn:not(.ok):not(.pri):not(.hub):not(.go).busy::after{border-color:var(--ink-2) var(--ink-2) transparent transparent}
+@keyframes spin{to{transform:rotate(360deg)}}
+.btn.done-tick{background:var(--ok-soft)!important;border-color:transparent!important;color:var(--ok)!important}
+kbd.k{font:700 11px var(--font);border:1px solid var(--line-2);border-bottom-width:2px;border-radius:6px;padding:0 5px;color:var(--ink-3);background:var(--surface)}
+@media (prefers-reduced-motion:no-preference){
+  .btn{transition:transform .12s ease,background-color .15s ease,box-shadow .15s ease,filter .15s}
+  .btn:hover{box-shadow:0 2px 8px -4px rgba(0,0,0,.25)}
+  .btn:active{transform:scale(.96)}
+  .titem{transition:background-color .15s ease,border-color .15s ease,transform .15s ease}
+  .titem:hover{transform:translateX(2px)}
+  .titem.enter{animation:rise .35s ease-out both}
+  .fseg button .n{display:inline-block;transition:color .2s}
+  .fseg button .n.bump{animation:bump .5s ease-out}
+  .udot{animation:pulse 2s ease-in-out infinite}
+  .toast{transition:opacity .22s ease,transform .26s cubic-bezier(.2,.9,.3,1.2)}
+  .scrim:not([hidden]){animation:fade .2s ease-out}
+  .scrim:not([hidden])>.sheet{animation:slide .28s cubic-bezier(.2,.8,.2,1)}
+  .rp{animation:rise .3s ease-out both}
+  .rp.kid,.inl{animation:rise .25s ease-out both}
+  .nextstep{animation:rise .35s ease-out both}
+  .nextstep .ic{animation:pop .45s cubic-bezier(.2,.9,.3,1.4) .1s both}
+  .flow .s.now b{animation:ring 1.8s ease-out 2}
+  .solvedcard{animation:pop .4s cubic-bezier(.2,.9,.3,1.3)}
+  .solvedcard svg path{stroke-dasharray:24;stroke-dashoffset:24;animation:draw .5s ease-out .15s forwards}
+  .chipp{animation:pop .25s ease-out}
+  .req div{transition:color .2s}
+  .req .k{transition:background-color .2s,border-color .2s,transform .2s}
+  .req .ok .k{transform:scale(1.12)}
+  #roomBox .tpanel{animation:fadeup .22s ease-out}
+  .howto{animation:rise .3s ease-out}
+}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes slide{from{transform:translateX(40px);opacity:.4}to{transform:none;opacity:1}}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes fadeup{from{opacity:.4;transform:translateY(4px)}to{opacity:1;transform:none}}
+@keyframes pop{0%{transform:scale(.9);opacity:0}70%{transform:scale(1.04);opacity:1}100%{transform:scale(1)}}
+@keyframes bump{0%{transform:scale(1)}40%{transform:scale(1.35)}100%{transform:scale(1)}}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--hub) 45%,transparent)}50%{box-shadow:0 0 0 5px transparent}}
+@keyframes ring{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--hub) 50%,transparent)}100%{box-shadow:0 0 0 8px transparent}}
+@keyframes draw{to{stroke-dashoffset:0}}
+
+/* ---------- threads layout (Threads / X style) ---------- */
+.tpanel{display:flex;flex-direction:column;height:100%;min-height:0;background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--sh-card);overflow:hidden}
+.tbar{flex:none;display:flex;align-items:center;gap:10px;padding:10px 18px;border-bottom:1px solid var(--line);background:var(--surface)}
+.tbar .stg{font-size:13px}
+.tbar .who{font-size:13.5px;color:var(--ink-3);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tbar .back{display:none}
+.tscroll{flex:1;min-height:0;overflow-y:auto;position:relative}
+.post{padding:20px 26px 18px;border-bottom:1px solid var(--line)}
+.post .ph{display:flex;gap:12px;align-items:center}
+.post .ph .av{width:44px;height:44px;border-radius:12px;font-size:14px}
+.post .ph b{display:block;font-size:15.5px}
+.post .ph small{display:block;color:var(--ink-3);font-size:13px}
+.post h2{margin:14px 0 6px;font-size:22px;line-height:1.3;letter-spacing:-.015em}
+.post .ask-txt{font-size:16.5px;line-height:1.6;color:var(--ink);margin:0;max-width:72ch}
+.post .facts{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px}
+.post .flow{margin-top:14px}
+.post .files{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.post .pacts{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.youask{margin:16px 26px 0;border:1.5px solid var(--hub);background:var(--hub-s);border-radius:14px;padding:12px 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.youask .q{flex:1;min-width:220px}
+.youask .q small{display:block;font-size:12.5px;color:var(--ink-3)}
+.youask .q b{font-size:15.5px;color:var(--ink)}
+.compose{display:grid;grid-template-columns:40px minmax(0,1fr);gap:12px;padding:16px 26px;border-bottom:1px solid var(--line)}
+.compose .av{width:40px;height:40px}
+.compose textarea{width:100%;border:0;outline:0;resize:none;background:transparent;font-size:16px;line-height:1.5;min-height:28px;max-height:220px;padding:8px 0}
+.compose .crow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.compose .crow select{border:1px solid var(--line-2);background:var(--surface);border-radius:10px;padding:5px 8px;font-size:13px}
+.compose .crow .lbl{font-size:13px;color:var(--ink-3);display:flex;gap:6px;align-items:center}
+.compose .crow .sp{flex:1}
+.sortbar{display:flex;align-items:center;gap:10px;padding:12px 26px 4px;font-size:13.5px;color:var(--ink-3)}
+.sortbar b{color:var(--ink);font-size:15px}
+.sortbar .sp{flex:1}
+.sortbar button{border:0;background:transparent;font-weight:700;color:var(--ink-2);cursor:pointer;padding:4px 6px;border-radius:8px}
+.sortbar button.on{background:var(--surface-2);color:var(--ink)}
+.tw{position:relative;border-bottom:1px solid var(--line);padding:4px 0 6px}
+.tw.has-kids::before{content:"";position:absolute;left:45px;top:62px;bottom:34px;width:2px;background:var(--line-2);border-radius:2px}
+.rp{display:grid;grid-template-columns:40px minmax(0,1fr);gap:12px;padding:14px 26px 4px}
+.rp .av{width:40px;height:40px}
+.rp .hd{display:flex;align-items:baseline;justify-content:flex-start;gap:8px;flex-wrap:wrap;margin:0}
+.rp .hd b{font-size:15px}
+.rp .hd span{font-size:13px;color:var(--ink-3)}
+.rp .tx{font-size:15.5px;line-height:1.6;margin-top:3px;color:var(--ink);max-width:72ch}
+.rp .rto{font-size:12.5px;color:var(--ink-3);margin-top:1px}
+.rp .rto b{color:var(--hub);font-weight:600}
+.rp .ft{display:flex;gap:14px;align-items:center;margin-top:6px;font-size:13px}
+.rp .ft button{border:0;background:transparent;color:var(--ink-3);font-weight:700;cursor:pointer;display:flex;gap:6px;align-items:center;padding:4px 6px;margin-left:-6px;border-radius:8px}
+.rp .ft button:hover{background:var(--surface-2);color:var(--ink)}
+.rp .ft svg{width:15px;height:15px}
+.rp .chip{display:inline-flex;gap:6px;align-items:center;font-size:12.5px;font-weight:700;color:var(--hub);background:var(--hub-s);border-radius:8px;padding:2px 8px;margin-top:6px}
+.rp .chip.ok{color:var(--ok);background:var(--ok-soft)}
+.rp .newdot{font-size:11px;font-weight:800;color:#fff;background:var(--hub);border-radius:99px;padding:0 7px;line-height:18px}
+.rp.kid{grid-template-columns:32px minmax(0,1fr);padding-left:76px;padding-top:10px}
+.rp.kid .av{width:32px;height:32px;font-size:11px;border-radius:9px}
+.rp.kid .tx{font-size:15px}
+.rp.flash{animation:flash 1.6s ease-out}
+@keyframes flash{from{background:var(--hub-s)}to{background:transparent}}
+.inl{display:grid;grid-template-columns:32px minmax(0,1fr);gap:10px;padding:8px 26px 12px 76px}
+.inl .av{width:32px;height:32px;font-size:11px;border-radius:9px}
+.inl .box{border:1.5px solid var(--line-2);border-radius:14px;padding:8px 10px;display:grid;gap:6px;background:var(--surface)}
+.inl .box:focus-within{border-color:var(--hub)}
+.inl textarea{border:0;outline:0;resize:none;background:transparent;font-size:15px;min-height:24px}
+.inl .crow{display:flex;gap:8px;justify-content:flex-end}
+.ev{display:flex;gap:10px;align-items:flex-start;padding:12px 26px;border-bottom:1px solid var(--line);font-size:13.5px;color:var(--ink-3)}
+.ev svg{width:16px;height:16px;flex:none;margin-top:2px;color:var(--hub)}
+.ev b{color:var(--ink-2)}
+.tend{padding:22px 26px 30px;text-align:center;color:var(--ink-4);font-size:13px}
+.solvedcard{margin:16px 26px 0;background:var(--ok-soft);border-radius:14px;padding:12px 14px;display:grid;gap:4px}
+.solvedcard b{color:var(--ok)}
+.solvedcard .what{font-size:15.5px;font-weight:600}
+.tojump{position:absolute;right:20px;bottom:18px;border:0;background:var(--hub);color:#fff;border-radius:99px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:var(--sh-pop);display:flex;gap:6px;align-items:center;z-index:3}
+html.big .rp .tx,html.big .post .ask-txt,html.big .compose textarea{font-size:18px}
+html.big .post h2{font-size:25px}
+@media (max-width:1500px){.post{padding:18px 20px 16px}.compose,.rp,.sortbar,.ev{padding-left:20px;padding-right:20px}.rp.kid,.inl{padding-left:66px}.tw.has-kids::before{left:39px}.youask,.solvedcard{margin-left:20px;margin-right:20px}}
+@media (max-width:1180px){.tbar .back{display:inline-flex}}
+
+/* ---------- status: new / ongoing / solved ---------- */
+.stg{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:800;border-radius:99px;padding:2px 10px;white-space:nowrap}
+.stg i{width:8px;height:8px;border-radius:50%;background:currentColor}
+.st-new{background:var(--info-soft);color:var(--info)}
+.st-on{background:var(--warn-soft);color:var(--warn)}
+.st-ok{background:var(--ok-soft);color:var(--ok)}
+.fseg{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+.fseg button{display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.2;padding:7px 4px}
+.fseg button .n{font-size:16px;font-weight:800;color:var(--ink)}
+.fseg button.on .n{color:var(--hub)}
+.fseg button small{font-size:12px;font-weight:600}
+.fhelp{font-size:12.5px;color:var(--ink-3);margin:2px 2px 8px}
+.flow{display:flex;align-items:center;gap:0;margin:12px 0 2px;flex-wrap:wrap}
+.flow .s{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--ink-4);padding:6px 12px;border-radius:99px;background:var(--surface-2);border:1px solid var(--line)}
+.flow .s b{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:11px;background:var(--line-2);color:var(--surface)}
+.flow .s.done{color:var(--ink-2)}
+.flow .s.done b{background:var(--ok)}
+.flow .s.now{color:var(--hub);border-color:var(--hub);background:var(--hub-s)}
+.flow .s.now b{background:var(--hub)}
+.flow .ln{width:22px;height:2px;background:var(--line-2)}
+.flow .ln.done{background:var(--ok)}
+.flow .hint{margin-left:12px;font-size:13px;color:var(--ink-3)}
+.solvebar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;border:1.5px solid var(--ok);background:var(--ok-soft);border-radius:14px;padding:12px 14px;margin-top:12px}
+.solvebar p{margin:0;flex:1;min-width:220px;font-size:14px;color:var(--ink)}
+.solvebar p b{color:var(--ok)}
+.btn.ok{background:var(--ok);border-color:var(--ok);color:#fff}
+.solved{display:grid;gap:6px;background:var(--ok-soft);border-radius:14px;padding:14px 16px;margin-top:12px}
+.solved .h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.solved .h b{font-size:16px;color:var(--ok)}
+.solved .what{font-size:15px;font-weight:600;color:var(--ink)}
+.solved ul{margin:2px 0 0;padding-left:18px;font-size:14px;color:var(--ink-2)}
+.solved .row .btn{background:var(--surface)}
+.titem.done .bar{background:var(--ok)}
+.titem .top .stg{margin-top:1px}
+.ovstage{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px}
+.ovstage button{border:1px solid var(--line);background:var(--surface);border-radius:16px;padding:14px 16px;text-align:left;cursor:pointer;display:grid;gap:2px;box-shadow:var(--sh-card)}
+.ovstage button:hover{border-color:var(--line-2)}
+.ovstage .n{font-size:28px;font-weight:800;line-height:1.1}
+.ovstage .l{font-weight:700;display:flex;gap:8px;align-items:center}
+.ovstage small{color:var(--ink-3);font-size:13px}
+.choice2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.choice2 button{border:1.5px solid var(--line-2);background:var(--surface);border-radius:12px;padding:10px 12px;font-weight:700;cursor:pointer;text-align:left}
+.choice2 button small{display:block;font-weight:500;color:var(--ink-3);font-size:12.5px}
+.choice2 button[aria-pressed="true"]{border-color:var(--ok);background:var(--ok-soft)}
+
+/* ---------- confidential ---------- */
+.lockbox{display:flex;gap:12px;align-items:flex-start;background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:13.5px;color:var(--ink-2)}
+.lockbox svg{width:20px;height:20px;color:var(--ink-2);margin-top:1px}
+.lockbox b{display:block;color:var(--ink);font-size:14.5px}
+.conf{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--line);border-radius:99px;padding:2px 9px;white-space:nowrap}
+.conf svg{width:13px;height:13px}
+.privnote{display:flex;gap:10px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:13px;color:var(--ink-3)}
+.privnote svg{width:16px;height:16px;flex:none}
+
+/* ---------- readable on a 15-inch laptop (1366-1600 wide, ~700 tall) ---------- */
+body{font-size:15px}
+.titem b{font-size:15px}
+.titem .prev,.titem .prev b{font-size:13.5px}
+.titem .m{font-size:12.5px}
+.pill,.tp{font-size:12.5px}
+.rhead h2{font-size:22px;line-height:1.3}
+.need p{font-size:15px}
+.need small{font-size:12px}
+.msg .who{font-size:14px}
+.msg .who span{font-size:12.5px}
+.msg .b{font-size:15px;line-height:1.55}
+.ask{font-size:14px}
+.ask small{font-size:13px}
+.composer textarea,.yourturn textarea{font-size:15px}
+.yourturn .q{font-size:15px}
+.card h3{font-size:16px}
+.sub{font-size:13.5px}
+.btn{font-size:14.5px;padding:9px 15px}
+.btn.sm{font-size:13.5px}
+.rhead .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+.textsize{display:flex;background:var(--frame-2);border-radius:12px;padding:3px;gap:2px}
+.textsize button{border:0;background:transparent;color:var(--frame-ink-2);border-radius:9px;padding:6px 11px;cursor:pointer;font-weight:700}
+.textsize button[aria-pressed="true"]{background:var(--frame-ink);color:var(--frame)}
+html.big body{font-size:17px}
+html.big .titem b{font-size:17px}
+html.big .msg .b,html.big .need p,html.big .yourturn .q,html.big .composer textarea,html.big .yourturn textarea{font-size:17px}
+html.big .rhead h2{font-size:25px}
+html.big .titem .prev,html.big .titem .prev b,html.big .ask{font-size:15px}
+html.big .pill,html.big .tp,html.big .titem .m{font-size:13.5px}
+html.big .btn{font-size:16px}
+@media (max-width:1700px){
+  .room{grid-template-columns:minmax(0,1fr)}
+  .side{position:static;grid-template-columns:repeat(3,minmax(0,1fr));align-items:start}
+}
+@media (max-width:1600px){
+  .sidebar{width:216px}
+  .logo{padding-bottom:6px}
+  .topbar{min-height:56px;padding-top:6px;padding-bottom:6px}
+  .ttl h1{font-size:19px}
+  .ttl small{display:none}
+  .seg button span{display:none}
+  .tabbar{padding:6px 20px 0}
+  .tabs a{padding:8px 12px 10px}
+  .content{padding:14px 20px 32px}
+  .hubwrap{grid-template-columns:330px minmax(0,1fr);gap:14px}
+  .tlist{max-height:calc(100vh - 128px);top:8px}
+  .card{padding:16px}
+  .g4{gap:12px}
+}
+@media (max-width:1400px){
+  .hubwrap{grid-template-columns:300px minmax(0,1fr)}
+  .side{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .titem .prev{display:none}
+}
+.tlist{overflow-x:hidden}
+.fbar{flex-wrap:wrap}
+.fbar .fseg{min-width:0}
+.ftype{max-width:none;width:100%}
+.fseg button{padding:7px 6px}
+@media (max-height:800px){
+  .note{padding:7px 12px;margin-bottom:10px}
+  .yourturn{padding:12px}
+  .need{padding:10px 12px}
+}
+
+@media (max-width:1440px){.room{grid-template-columns:minmax(0,1fr)}.side{position:static;grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:1180px){.hubwrap{grid-template-columns:minmax(0,1fr)}.tlist{position:static;max-height:none}.g4{grid-template-columns:repeat(2,minmax(0,1fr))}.g2{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:900px){
+  .sidebar{display:none}
+  .topbar{padding-left:max(16px,env(safe-area-inset-left,0px))}
+  .panel{border-top-left-radius:20px;border-top-right-radius:20px}
+  .tabbar{padding:8px 12px 0}
+  .content{padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+  .side{grid-template-columns:minmax(0,1fr)}
+  .types,.sugg,.sup{grid-template-columns:minmax(0,1fr)}
+  .trow{grid-template-columns:minmax(0,1fr)}
+  .need{grid-template-columns:auto minmax(0,1fr)} .need .due{grid-column:2;text-align:left}
+}
+@media (max-width:560px){.g4{grid-template-columns:minmax(0,1fr)}.viewas span,.seg button span{display:none}}
+@media (prefers-reduced-motion:no-preference){.view{animation:in .2s ease-out}@keyframes in{from{opacity:.5;transform:translateY(3px)}to{opacity:1;transform:none}}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-hub" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="m7 7 3 3M17 7l-3 3M7 17l3-3M17 17l-3-3"/></symbol>
+  <symbol id="i-kanban" viewBox="0 0 24 24"><path d="M6 5v14M12 5v9M18 5v6"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+  <symbol id="i-q" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></symbol>
+  <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.3h6c0-1 .4-1.8 1-2.3A7 7 0 0 0 12 2z"/></symbol>
+  <symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19H16a3.5 3.5 0 0 0 0-7H8a3.5 3.5 0 0 1 0-7h7.5"/></symbol>
+  <symbol id="i-cart" viewBox="0 0 24 24"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.7 12.3a2 2 0 0 0 2 1.7h7.6a2 2 0 0 0 2-1.6L21 8H6"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><path d="m21 12-8.5 8.5a5 5 0 0 1-7-7L14 5a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 8"/></symbol>
+  <symbol id="i-at" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 22V4M4 4h13l-2 4 2 4H4"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-4-6"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M11 18l-6-6 6-6"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></symbol>
+</svg>
+
+<div class="shell">
+  <aside class="sidebar" aria-label="Main menu">
+    <div class="logo"><b>iP</b>iPop</div>
+    <nav class="nav">
+      <div class="navh">Workspace</div>
+      <a href="#topics" class="on"><svg class="i"><use href="#i-hub"/></svg>The Hub<span class="newp">NEW</span><span class="badge" id="navBadge">1</span></a>
+      <a href="business-plan.html#project"><svg class="i"><use href="#i-kanban"/></svg>Projects</a>
+      <div class="navnote">Mockup: only The Hub and Projects. Other menus stay as they are today.</div>
+    </nav>
+    <div class="me"><span class="av" id="meAv">HS</span><div><div id="meName">Hendra S.</div><small id="meRole">General Manager</small></div></div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="ttl"><h1>The Hub</h1><small>Ask across departments. Decide in writing.</small></div>
+      <div class="sp"></div>
+      <div class="textsize" role="group" aria-label="Text size"><button type="button" data-size="normal" aria-pressed="true" title="Normal text">A</button><button type="button" data-size="big" aria-pressed="false" title="Bigger text" style="font-size:1.1em">A+</button></div>
+      <div class="seg" role="group" aria-label="Theme">
+        <button type="button" data-theme-set="light" aria-pressed="false"><svg class="i"><use href="#i-sun"/></svg><span>Light</span></button>
+        <button type="button" data-theme-set="dark" aria-pressed="false"><svg class="i"><use href="#i-moon"/></svg><span>Dark</span></button>
+        <button type="button" data-theme-set="system" aria-pressed="true"><svg class="i"><use href="#i-monitor"/></svg><span>System</span></button>
+      </div>
+      <label class="viewas"><span>View as</span>
+        <select id="role" aria-label="View the mockup as">
+          <option value="HS">GM · Hendra</option>
+          <option value="RA">Marketing · Rina</option>
+          <option value="DP">PPIC · Dedi</option>
+          <option value="YS">Purchasing · Yuli</option>
+        </select>
+      </label>
+    </header>
+
+    <div class="panel">
+      <div class="tabbar">
+        <nav class="tabs" aria-label="The Hub sections">
+          <a href="#topics" data-v="topics" style="--tc:var(--hub);--ts:var(--hub-s)"><span class="ti"><svg class="i"><use href="#i-chat"/></svg></span>Topics <span class="cnt" id="tabCnt">1</span></a>
+          <a href="#overview" data-v="overview" style="--tc:var(--accent);--ts:var(--accent-soft)"><span class="ti"><svg class="i"><use href="#i-grid"/></svg></span>Overview</a>
+          <a href="#guide" data-v="guide" style="--tc:var(--t-clar);--ts:var(--t-clar-s)"><span class="ti"><svg class="i"><use href="#i-book"/></svg></span>How it works</a>
+        </nav>
+        <span class="sp"></span>
+        <a class="btn phone-only" href="business-plan.html#project" style="margin-bottom:8px"><svg class="i"><use href="#i-kanban"/></svg>Projects</a>
+        <button class="btn hub" type="button" data-new style="margin-bottom:8px" title="Shortcut: N"><svg class="i"><use href="#i-plus"/></svg>New topic</button>
+      </div>
+
+      <main class="content">
+
+<!-- ================= TOPICS ================= -->
+<section class="view" data-view="topics" hidden>
+  <div class="note"><svg class="i"><use href="#i-info"/></svg><div><b>Catatan mockup:</b> The Hub adalah forum kolaborasi lintas departemen. Siapa pun bisa membuka topik (masalah, minta kejelasan, ide). Topik baru bisa dikirim kalau melibatkan <b>minimal 2 orang dari 2 departemen berbeda</b>. Setiap topik punya status <b>New → Ongoing → Solved</b>. Setiap topik <b>rahasia</b>: hanya orang yang diundang yang bisa membukanya, termasuk untuk Direksi. Untuk keputusan berisiko, <b>iPop menyiapkan topiknya</b> (kotak pink "Prepared by iPop"). Setiap topik ditutup dengan keputusan tertulis yang bisa langsung menjadi task di Projects. Ganti "View as" untuk melihat dari sisi tiap orang.</div></div>
+  <div><button type="button" class="notechip" id="noteChip">Mockup note</button></div>
+  <div class="hubwrap" id="hubWrap">
+    <aside class="tlist" aria-label="Topics">
+      <div class="howto" id="howto"><div class="h"><span>How a topic works</span><button type="button" id="howtoX">Got it</button></div>
+        <ol><li title="Start a topic and invite another department"><b><span>1</span>Ask</b></li><li title="Reply, add files, ask someone to answer"><b><span>2</span>Discuss</b></li><li title="Write the answer and mark it solved"><b><span>3</span>Solve</b></li></ol>
+        <p class="hp">Ask another department, talk it through, then write the answer and mark it <b>Solved</b>.</p></div>
+      <div id="prepBox"></div>
+      <label class="tsearch"><svg class="i"><use href="#i-search"/></svg><input id="tSearch" placeholder="Search topics, people, files" aria-label="Search topics"><kbd class="k" title="Press / to search">/</kbd></label>
+      <div class="fbar"><div class="fseg" id="fseg" role="group" aria-label="Show topics"></div></div>
+      <div class="fhelp" id="fhelp"></div>
+      <select class="ftype" id="ftype" aria-label="Kind of topic" style="margin-bottom:8px"></select>
+      <div id="tItems"></div>
+    </aside>
+    <div id="roomBox" style="min-width:0"></div>
+  </div>
+</section>
+
+<!-- ================= OVERVIEW ================= -->
+<section class="view" data-view="overview" hidden>
+  <div class="note"><svg class="i"><use href="#i-info"/></svg><div><b>Catatan mockup:</b> halaman untuk GM, Direksi, dan kepala departemen. Isinya: topik yang menunggu jawaban, siapa yang terlambat, dan <b>peta departemen mana yang sudah saling bicara</b>. Karena topik bersifat <b>rahasia</b>, GM/Direksi hanya melihat isi topik yang mereka ikuti; topik lain hanya muncul sebagai <b>angka</b>. Kotak kosong di peta menandai silo yang masih tersisa. Angka waktu respons per departemen hanya terlihat oleh kepala departemen dan GM.</div></div>
+  <div class="grid g4" id="ovKpi"></div>
+  <div class="ovstage" id="ovStage"></div>
+  <div class="grid g2" style="margin-top:16px;align-items:start">
+    <div class="card">
+      <div class="hd"><div><h3><span class="hic" style="--tc:var(--hub);--ts:var(--hub-s)"><svg class="i"><use href="#i-hub"/></svg></span>Which departments talk to each other</h3><p class="sub">Topics shared in the last 30 days · example data</p></div></div>
+      <div class="tbl-wrap"><table class="heat" id="heat"></table></div>
+      <p class="sub" style="margin-top:10px">Darker means more topics together. <b>Empty boxes are where silos may still be.</b> Example: Marketing and Warehouse shared no topic this month.</p>
+    </div>
+    <div class="grid" style="gap:16px;align-content:start">
+      <div class="card"><h3><span class="hic" style="--tc:var(--danger);--ts:var(--danger-soft)"><svg class="i"><use href="#i-bell"/></svg></span>Waiting too long</h3><p class="sub">Questions not answered on time</p><div id="ovEsc" style="margin-top:6px"></div></div>
+      <div class="card"><h3><span class="hic" style="--tc:var(--ok);--ts:var(--ok-soft)"><svg class="i"><use href="#i-flag"/></svg></span>Solved this month</h3><p class="sub">Each one has a written answer and follow-up tasks</p><div id="ovDec" style="margin-top:6px"></div></div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <div class="hd"><div><h3><span class="hic" style="--tc:var(--t-clar);--ts:var(--t-clar-s)"><svg class="i"><use href="#i-clock"/></svg></span>How fast each department answers</h3><p class="sub">Numbers only, no topic details · department heads and directors · example data</p></div></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Department</th><th class="r">Topics started</th><th class="r">Questions to them</th><th class="r">Waiting now</th><th class="r">Late</th><th>Typical first answer</th></tr></thead>
+      <tbody id="ovDept"></tbody>
+    </table></div>
+  </div>
+</section>
+
+<!-- ================= GUIDE ================= -->
+<section class="view" data-view="guide" hidden>
+  <div class="note"><svg class="i"><use href="#i-info"/></svg><div><b>Catatan mockup:</b> halaman panduan untuk user, dan bagian bawahnya untuk dibawa ke Pak Sonny: <b>apa yang perlu ada di luar platform</b> supaya The Hub benar-benar dipakai.</div></div>
+  <div class="grid g2" style="align-items:start">
+    <div class="card">
+      <h3><span class="hic" style="--tc:var(--hub);--ts:var(--hub-s)"><svg class="i"><use href="#i-hub"/></svg></span>How a topic works</h3><p class="sub">Every topic goes <b>New → Ongoing → Solved</b>. Most of the time it replaces a meeting.</p>
+      <div class="steps" style="margin-top:12px">
+        <div class="st"><span class="n">1</span><div><h4>Open a topic <span class="stg st-new" style="vertical-align:2px"><i></i>New</span></h4><p>Press <b>New topic</b>. Pick what it is (a problem, a question that needs a clear answer, an idea), write what you need from the others and by when. For big purchases and product changes, iPop prepares the topic for you.</p></div></div>
+        <div class="st"><span class="n">2</span><div><h4>Invite the right people first</h4><p>Add at least 1 person from another department; 2 people is enough. iPop suggests who usually helps with this kind of topic. <b>Send</b> stays off until someone from another department is in, because the point is to work across departments.</p></div></div>
+        <div class="st"><span class="n">3</span><div><h4>Everyone is told</h4><p>Each person gets a popup on PC and phone. Only invited people can open the topic. Forgot someone? Add them later; they see the whole history.</p><div class="tmock"><div class="app"><b>iP</b>iPop Notifier · now</div><b>Agus W. needs your answer by 13 Nov</b><div class="tb">Carton supplier is 2 weeks late, line L3 may stop on 20 Nov</div><div class="bt"><span>Open topic</span><span>Later</span></div></div></div></div>
+        <div class="st"><span class="n">4</span><div><h4>Talk it through, with files <span class="stg st-on" style="vertical-align:2px"><i></i>Ongoing</span></h4><p>The topic becomes Ongoing as soon as someone replies. Write like a chat, attach quotes, Excel or photos. When you need an answer from one person, pick <b>Needs an answer from</b>. iPop reminds them after 2 working days. After 3, their department head gets a reminder, without the topic details.</p></div></div>
+        <div class="st"><span class="n">5</span><div><h4>Mark as solved <span class="stg st-ok" style="vertical-align:2px"><i></i>Solved</span></h4><p>When the problem is solved, anyone in the topic presses <b>Mark as solved</b> and writes the answer in one or two sentences. If there is still follow-up work, it goes to Projects with a name and a date. Solved by mistake? Press <b>Reopen</b>.</p></div></div>
+      </div>
+    </div>
+    <div class="grid" style="gap:16px;align-content:start">
+      <div class="card">
+        <h3><span class="hic" style="--tc:var(--t-buy);--ts:var(--t-buy-s)"><svg class="i"><use href="#i-users"/></svg></span>What makes it work outside iPop</h3><p class="sub">For management. A platform alone does not change habits.</p>
+        <div class="sup" style="margin-top:12px">
+          <div><b>A rule for big decisions</b><span>Purchases above Rp 250 juta, orders that last over 12 months, machines, long leases and product stops need a Hub topic before approval.</span><span class="who">Management</span></div>
+          <div><b>Leaders answer in The Hub</b><span>When the GM and heads reply here instead of WhatsApp, everyone else follows.</span><span class="who">GM · heads</span></div>
+          <div><b>A champion in each department</b><span>One person who shows others how to open and close topics in the first 2 months.</span><span class="who">Each head</span></div>
+          <div><b>Answer times for heads</b><span>Heads see how fast their department answers. Used to help, not to punish.</span><span class="who">Heads</span></div>
+          <div><b>Monthly meeting uses Hub topics</b><span>Open and late topics are the agenda, so meetings are shorter and only for what can't be settled in writing.</span><span class="who">GM</span></div>
+          <div><b>Celebrate closed topics</b><span>Share the money saved or problems solved each month in News &amp; Memos.</span><span class="who">HC · GM</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3><span class="hic" style="--tc:var(--t-clar);--ts:var(--t-clar-s)"><svg class="i"><use href="#i-q"/></svg></span>Common questions</h3>
+        <div class="qa" style="margin-top:12px">
+          <div><b>Why can't I send to only my own department?</b><span>The Hub is for work across departments. For your own team, use Chat.</span></div>
+          <div><b>Who can read my topic?</b><span>Only the people you invite. Directors and department heads cannot open it unless you add them. Overview shows them numbers only, never the topic.</span></div>
+          <div><b>Is this instead of meetings?</b><span>For most questions, yes. If a topic really needs a meeting, press <b>Schedule a meeting</b> inside it and the people are already there.</span></div>
+          <div><b>What if nobody answers?</b><span>Reminder after 2 working days. After 3, their department head gets a reminder that they have a late answer, without the topic details.</span></div><div><b>Can I invite my head or a director?</b><span>Yes. Add them like anyone else when the topic needs them. Once added, they can read the whole topic.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+      </main>
+    </div>
+  </div>
+</div>
+
+<!-- ================= NEW TOPIC ================= -->
+<div class="scrim" id="newScrim" hidden>
+  <form class="sheet" id="newForm" aria-labelledby="newTitle">
+    <div class="row" style="justify-content:space-between"><h2 id="newTitle">New topic</h2><button type="button" class="btn sm" data-close-new>Close</button></div>
+    <div class="vis" id="newPrep" hidden><svg class="i"><use href="#i-sparkle"/></svg><span></span></div>
+
+    <div class="fs"><div class="lb"><span class="n">1</span>What is it?</div>
+      <div class="types" id="nType"></div>
+    </div>
+    <div class="fs"><label class="lb" for="nTitle"><span class="n">2</span>Title</label>
+      <div class="help" id="nHint">One line people understand without opening it.</div>
+      <input type="text" id="nTitle" placeholder="e.g. Carton supplier is 2 weeks late, line L3 may stop" autocomplete="off">
+    </div>
+    <div class="fs"><label class="lb" for="nNeed"><span class="n">3</span>What do you need from them?</label>
+      <div class="help">Ask for something clear: a decision, a number, a yes or no.</div>
+      <textarea id="nNeed" rows="3" placeholder="e.g. Purchasing: can we get cartons from the second supplier this week? PPIC: which orders move if we can't?"></textarea>
+    </div>
+    <div class="fs"><div class="lb"><span class="n">4</span>Answer needed by</div>
+      <div class="when" id="nWhen"><button type="button" data-w="13 Nov">In 2 days</button><button type="button" data-w="18 Nov" class="on">In 1 week</button><button type="button" data-w="25 Nov">In 2 weeks</button><button type="button" data-w="no date">No date</button></div>
+    </div>
+    <div class="fs"><div class="lb"><span class="n">5</span>Who should join?</div>
+      <div class="help">Add at least 1 person from another department. You are already in.</div>
+      <div class="picked" id="nPicked"></div>
+      <div class="tellbox" id="nTell"></div>
+      <div class="psearch"><select id="nPick" aria-label="Add a person"></select><button class="btn" type="button" id="nPickBtn"><svg class="i"><use href="#i-plus"/></svg>Add</button></div>
+      <div class="lb" style="font-size:12.5px;color:var(--ink-3);font-weight:600;margin-top:2px">Suggested for this kind of topic</div>
+      <div class="sugg" id="nSugg"></div>
+    </div>
+    <div class="fs"><div class="lb"><span class="n">6</span>Files <span class="opt">optional</span></div>
+      <div class="drop" id="nDrop" tabindex="0" role="button">Drop files here or click to add · PDF, Excel, photos</div>
+      <div class="att row" id="nFiles"></div>
+    </div>
+    <div class="lockbox"><svg class="i"><use href="#i-lock"/></svg><div><b>Confidential</b>Only the people you invite can open this topic. Nobody else sees it, not even directors or department heads, unless you add them.</div></div>
+
+    <div class="sfoot">
+      <div class="req" id="nReq"></div>
+      <div class="row"><button class="btn hub" type="submit" id="nSend" disabled><svg class="i"><use href="#i-send"/></svg>Send to the people</button><button class="btn" type="button" id="nDraft">Save draft</button><span class="why" id="nWhy"></span></div>
+    </div>
+  </form>
+</div>
+
+<!-- ================= CLOSE WITH DECISION ================= -->
+<div class="scrim" id="decScrim" hidden>
+  <form class="sheet" id="decForm" aria-labelledby="decTitle">
+    <div class="row" style="justify-content:space-between"><h2 id="decTitle">Mark as solved</h2><button type="button" class="btn sm" data-close-dec>Close</button></div>
+    <div class="vis"><svg class="i"><use href="#i-info"/></svg><span>The topic moves to <b>Solved</b>. Everyone in it gets a message with the answer, so nobody has to ask again.</span></div>
+    <div class="fs"><label class="lb" for="dText"><span class="n">1</span>How was it solved?</label><div class="help">One or two sentences. This is what people will read later.</div><textarea id="dText" rows="3"></textarea></div>
+    <div class="fs"><div class="lb"><span class="n">2</span>Is there still work to do?</div>
+      <div class="choice2" id="dNeed"><button type="button" data-dn="no">No, it's finished<small>Nothing left to do</small></button><button type="button" data-dn="yes">Yes, some follow-up<small>It goes to Projects with a name and date</small></button></div>
+      <div id="dTaskBox" hidden style="display:grid;gap:6px"><div id="dTasks" style="display:grid;gap:6px"></div>
+      <button type="button" class="btn sm" id="dAdd" style="justify-self:start"><svg class="i"><use href="#i-plus"/></svg>Add another task</button></div>
+    </div>
+    <div class="sfoot"><div class="row"><button class="btn ok" type="submit" id="dSave"><svg class="i"><use href="#i-check"/></svg>Mark as solved</button><button class="btn" type="button" data-close-dec>Cancel</button></div></div>
+  </form>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"><svg class="i"><use href="#i-check"/></svg><span id="toastMsg"></span><button type="button" class="tact" id="toastAct" hidden></button></div>
+
+<script>
+(function(){
+  const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
+  const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+  const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+  // ---------- theme ----------
+  function setTheme(t){ if(t==="system") document.documentElement.removeAttribute("data-theme"); else document.documentElement.dataset.theme=t;
+    $$("[data-theme-set]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.themeSet===t))); store.set("hub-theme",t); }
+  $$("[data-theme-set]").forEach(b=>b.addEventListener("click",()=>setTheme(b.dataset.themeSet)));
+  setTheme(store.get("hub-theme")||"system");
+  function setSize(z){ document.documentElement.classList.toggle("big",z==="big"); $$("[data-size]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.size===z))); store.set("hub-size",z); }
+  $$("[data-size]").forEach(b=>b.addEventListener("click",()=>setSize(b.dataset.size)));
+  setSize(store.get("hub-size")||"normal");
+
+  // ---------- people and departments (example data) ----------
+  const DEPT={"Marketing":"#cf6a4c","PPIC":"#3a86c8","Purchasing":"#d19a2a","Production":"#6f8290","Warehouse":"#2e9d6b","Finance":"#8a5cc2","R&D / QA":"#b4543a","Management":"#123528","GA":"#4b6b8a","Engineering":"#5c7f2a","HC":"#b0457a"};
+  const P={
+    RA:["Rina Agustina","Marketing"],DP:["Dedi Prasetyo","PPIC"],YS:["Yuli Setiawati","Purchasing"],AW:["Agus Wibowo","Production"],
+    MF:["Muhammad Faisal","Warehouse"],LT:["Lina Tanjung","Finance"],BK:["Budi Kurniawan","R&D / QA"],HS:["Hendra Santoso","Management"],
+    SM:["Sinta Maharani","GA"],TR:["Teguh Rahman","Engineering"],NP:["Nadia Putri","HC"]
+  };
+  const HEAD={Marketing:"Wulan Dewi",PPIC:"Arif Hidayat",Purchasing:"Bambang Susilo",Production:"Joko Santoso",Warehouse:"Rudi Hartono",Finance:"Maya Lestari","R&D / QA":"Fajar Nugraha",GA:"Sari Wijaya",Engineering:"Dimas Prakoso",HC:"Ratna Sari",Management:"Hendra Santoso"};
+  const ROLE={HS:"General Manager",RA:"Marketing",DP:"PPIC",YS:"Purchasing"};
+  const av=(c,sm)=>`<span class="av${sm?" sm":""}" style="background:${DEPT[P[c][1]]}" title="${P[c][0]}">${c}</span>`;
+  const short=c=>{const n=P[c][0].split(" ");return n[0]+" "+n[1][0]+".";};
+  const dchip=d=>`<span class="dchip"><i style="background:${DEPT[d]}"></i>${d}</span>`;
+  const depts=list=>[...new Set(list.map(c=>P[c][1]))];
+
+  const TYPES={
+    problem:{hint:"Say what is going wrong, since when, and what happens if nobody acts.",ph:"e.g. Carton supplier is 2 weeks late, line L3 may stop on 20 Nov",need:"e.g. Purchasing: can the second supplier deliver this week? PPIC: which orders move if L3 stops?",l:"Problem",d:"something is going wrong",c:"--t-prob",ic:"alert",sug:["YS","DP","AW","MF"]},
+    clarity:{hint:"Ask one clear question. Say who you think should answer it.",ph:"e.g. Who approves overtime for the Gula Aren trial run?",need:"e.g. HC and Finance: who signs overtime for a trial run that is not in the plan?",l:"Need clarity",d:"a clear answer or follow up",c:"--t-clar",ic:"q",sug:["LT","NP","AW","DP"]},
+    idea:{hint:"Say what you would change and what it saves (time, money, space).",ph:"e.g. Use one plain inner box for all 25g sachets",need:"e.g. Marketing: is this OK for the brand? Purchasing: does it lower the minimum order?",l:"Idea",d:"a better way to do something",c:"--t-idea",ic:"bulb",sug:["DP","YS","MF","RA"]},
+    change:{hint:"Say which product, what changes and from when. The team agrees the final date together.",ph:"e.g. Kopi Mix Mocca 25g stops after June 2027",need:"e.g. Everyone: what stock, orders or line time do you still have for Mocca?",l:"Product change",d:"stop, new design, new recipe",c:"--t-chg",ic:"route",sug:["DP","YS","AW","MF","LT","BK"]},
+    buy:{hint:"Say what you want to buy, how much, and how long it lasts. Marketing confirms the product lives that long.",ph:"e.g. Latte 25g laminate: supplier minimum lasts 54 months",need:"e.g. Marketing: will Latte 25g stay in this design until May 2031?",l:"Before you buy",d:"big or long purchase",c:"--t-buy",ic:"cart",sug:["RA","YS","LT","DP"]},
+    other:{hint:"Say what you need and from whom.",ph:"Write one clear line",need:"What do you need from them?",l:"Other",d:"anything else",c:"--t-oth",ic:"dots",sug:["HS","LT","NP"]}
+  };
+  const tv=t=>`--tc:var(${TYPES[t].c});--ts:var(${TYPES[t].c}-s)`;
+  const tpill=t=>`<span class="tp" style="${tv(t)}"><svg class="i"><use href="#i-${TYPES[t].ic}"/></svg>${TYPES[t].l}</span>`;
+
+  // ---------- topics (example data) ----------
+  const TOPICS=[
+    {id:"H-031",unread:["RA","HS"],type:"buy",sys:1,title:"Latte 25g sachet laminate: supplier minimum lasts 54 months",by:"DP",at:"9 Nov",due:"12 Nov",vis:"invited",
+     need:"Rina: will Latte 25g stay in this design until May 2031? Yuli and Lina: is buying in 4 deliveries better than one big order?",
+     people:["DP","RA","YS","LT"],
+     asks:[{to:"RA",q:"Will Latte 25g stay in this design until May 2031?",at:"9 Nov",state:"wait",note:"Seen 9 Nov · reminder sent 11 Nov · Head of Marketing gets a reminder on 12 Nov if still open"}],
+     files:[["Quote film supplier Nov 2026.pdf","PDF","312 KB","DP"],["Latte laminate usage 2024-2026.xlsx","XLS","48 KB","DP"]],
+     msgs:[
+      {sys:1,at:"9 Nov 08:02",t:"iPop prepared this topic because the order lasts <b>54 months</b> (more than 12) and costs <b>Rp 1,73 miliar</b> (more than Rp 250 juta). Marketing, Purchasing and Finance were invited."},
+      {w:"DP",at:"9 Nov 08:10",t:"The supplier's minimum is 15 juta sachets. With our stock that lasts until May 2031. Quote attached.",f:0},
+      {w:"DP",at:"9 Nov 08:11",t:"Rina, will Latte 25g stay in this design until May 2031?",ask:"RA"},
+      {w:"YS",at:"9 Nov 10:30",t:"The supplier can also do 4 deliveries at the minimum-order price, +Rp 3 per sachet."},
+      {w:"LT",at:"10 Nov 09:05",t:"4 deliveries cost about Rp 45 juta more in total, but the money goes out over 2 years. I'm fine with either, once Marketing answers.",f:1}
+     ]},
+    {id:"H-030",unread:["HS","DP"],type:"change",title:"Kopi Mix Mocca 25g stops after June 2027",by:"RA",at:"4 Nov",due:"18 Nov",vis:"invited",link:"Mocca 25g stops",
+     need:"Everyone: what do you still have or plan for Mocca (stock, orders, line time)? We pick the stop date on 18 Nov.",
+     people:["RA","DP","YS","AW","MF","LT","BK","HS"],
+     asks:[{to:"DP",q:"How much Mocca packaging is left, and how long does it last?",at:"4 Nov",state:"wait",late:1,note:"Seen 4 Nov · Head of PPIC got a reminder on 10 Nov (no topic details)"},{to:"YS",q:"Any open orders for Mocca packaging?",at:"4 Nov",state:"wait",late:1,note:"Not opened yet · Head of Purchasing got a reminder on 10 Nov (no topic details)"},{to:"AW",q:"What happens to line L4?",at:"4 Nov",state:"done"}],
+     files:[["Mocca sales 2025-2026.xlsx","XLS","61 KB","RA"],["WH-2 Mocca pallets.jpg","IMG","2,1 MB","MF"]],newCount:3,
+     msgs:[
+      {w:"RA",at:"4 Nov 09:00",t:"Sales are down 38% in 12 months and shelf space goes to Gula Aren 25g. I plan to stop Mocca after June 2027. Sales figures attached.",f:0},
+      {w:"RA",at:"4 Nov 09:02",t:"Dedi, how much Mocca packaging is left, and how long does it last?",ask:"DP"},
+      {w:"RA",at:"4 Nov 09:02",t:"Yuli, any open orders for Mocca packaging?",ask:"YS"},
+      {w:"AW",at:"5 Nov 13:40",t:"Line L4 will be 70% idle after the last run. Gula Aren can move there from April 2027."},
+      {sys:1,at:"10 Nov 08:00",t:"Dedi and Yuli have not answered for 3 working days. Their department heads got a reminder that they have a late answer. The heads cannot see this topic."},
+      {w:"HS",at:"10 Nov 08:40",t:"Yuli, I see a new carton order from 9 Nov. Please hold it until Dedi's numbers are in."},
+      {w:"MF",at:"10 Nov 09:15",t:"Warehouse side: 41 pallets of Mocca laminate in WH-2. If we stop in June we need that space back by August for Gula Aren."},
+      {w:"LT",at:"10 Nov 10:02",t:"Anything left over above Rp 250 juta needs the GM's sign-off and goes into the Q2 provision. Please give me numbers by Friday."},
+      {w:"BK",at:"10 Nov 11:30",t:"No impact on other formulas from R&D. The Mocca powder base is shared with Latte, so nothing to throw away there."},
+      {w:"AW",at:"10 Nov 13:05",t:"I can run the last Mocca batches in May so line L4 is free for the Gula Aren trial in June.",re:["RA","Sales are down 38% in a year, and shelf space goes to Gula Aren 25g."]},
+      {w:"RA",at:"11 Nov 08:20",t:"Thanks Agus, that works. Dedi, we still need the laminate count before the meeting on 18 Nov."},
+      {w:"YS",at:"11 Nov 09:40",t:"Sorry for the delay. The carton order PO-2611873 is on hold. The supplier accepts cancellation until 20 Nov.",re:["HS","Yuli, I see a new carton order from 9 Nov. Please hold it until Dedi's numbers are in."]},
+      {w:"HS",at:"11 Nov 10:10",t:"Good. Please cancel it unless Dedi's count shows we need it."},
+      {w:"MF",at:"12 Nov 07:55",t:"Photo of the WH-2 pallets attached, in case Finance needs it for the provision.",f:1}
+     ]},
+    {id:"H-029",unread:["YS","DP","HS"],type:"problem",title:"Carton supplier is 2 weeks late, line L3 may stop on 20 Nov",by:"AW",at:"10 Nov",due:"13 Nov",vis:"invited",
+     need:"Yuli: can the second supplier deliver this week? Dedi: which orders move if L3 stops? Faisal: how many days of cartons are in the warehouse?",
+     people:["AW","YS","DP","MF"],
+     asks:[{to:"YS",q:"Can the second supplier deliver this week?",at:"10 Nov",state:"wait"},{to:"MF",q:"How many days of cartons are in the warehouse?",at:"10 Nov",state:"done"}],
+     files:[["Photo carton stock WH-1.jpg","IMG","1,8 MB","MF"]],
+     msgs:[
+      {w:"AW",at:"10 Nov 07:45",t:"The main carton supplier moved our delivery to 1 December. Line L3 runs out on 20 November."},
+      {w:"AW",at:"10 Nov 07:46",t:"Yuli, can the second supplier deliver this week?",ask:"YS"},
+      {w:"MF",at:"10 Nov 09:20",t:"WH-1 has about 8 days of cartons. Photo attached.",f:0},
+      {w:"DP",at:"10 Nov 10:05",t:"If L3 stops, I can move the 3in1 order to L2 for 4 days. Not more."}
+     ]},
+    {id:"H-028",type:"idea",title:"Use the plain inner box for all 25g sachet products",by:"MF",at:"6 Nov",due:"25 Nov",vis:"invited",
+     need:"Rina: is a plain inner box OK for the brand? Dedi and Yuli: does it lower our stock and minimum orders?",
+     people:["MF","RA","DP","YS"],
+     asks:[{to:"RA",q:"Is a plain inner box OK for the brand?",at:"6 Nov",state:"done"}],
+     files:[],
+     msgs:[
+      {w:"MF",at:"6 Nov 14:00",t:"We keep 4 printed inner boxes for 25g products. One plain box would free 60 pallets and only needs one minimum order."},
+      {w:"RA",at:"7 Nov 09:15",t:"Fine for Latte and Original. Gula Aren needs printing for the launch year."},
+      {w:"YS",at:"7 Nov 11:00",t:"The supplier gives a better price on one design. I'll ask for numbers."}
+     ]},
+    {id:"H-027",type:"clarity",title:"Who approves overtime for the Gula Aren trial run?",by:"BK",at:"3 Nov",due:"5 Nov",vis:"invited",
+     need:"Nadia (HC) and Lina (Finance): who signs overtime for a trial run that is not in the production plan?",
+     people:["BK","NP","LT","AW"],asks:[],files:[],
+     msgs:[
+      {w:"BK",at:"3 Nov 10:00",t:"We need 2 Saturdays for the Gula Aren trial. It is not in the production plan, so I don't know who signs the overtime."},
+      {w:"NP",at:"3 Nov 13:20",t:"Overtime for trials is signed by the Production head, and Finance books it to the launch budget."}
+     ],
+     decision:{t:"Production head signs trial overtime. Finance books it to the Gula Aren launch budget.",by:"BK",at:"4 Nov",tasks:[["Send the overtime form for 14 and 21 Nov","AW","6 Nov"]]}},
+    {id:"H-026",type:"buy",title:"Warehouse WH-4 lease: 5 years or shorter?",by:"SM",at:"28 Oct",due:"2 Nov",vis:"invited",
+     need:"Marketing: how many years do we need the extra space? Finance: what does a shorter lease cost?",
+     people:["SM","RA","LT","MF"],asks:[],files:[["WH-4 lease offer.pdf","PDF","220 KB","SM"]],
+     msgs:[{w:"SM",at:"28 Oct 09:00",t:"The owner offers 5 years fixed. Offer attached.",f:0},{w:"RA",at:"29 Oct 10:10",t:"The volume is only sure for 3 years."},{w:"LT",at:"30 Oct 15:00",t:"3 + 2 option costs 4% more a year but saves Rp 400 juta if we leave after 3."}],
+     decision:{t:"Sign 3 years with a 2-year option instead of a fixed 5 years.",by:"SM",at:"2 Nov",tasks:[["Sign the 3 + 2 lease","SM","5 Nov"]]}}
+  ];
+  TOPICS.splice(3,0,{id:"H-032",type:"clarity",title:"Which artwork goes on the Gula Aren display box?",by:"RA",at:"11 Nov",due:"18 Nov",vis:"invited",
+     need:"Budi: which claims are approved for the display box? Dedi: when do you need the final file for the packaging order?",
+     people:["RA","BK","DP"],unread:["BK","DP","HS"],
+     asks:[{to:"BK",q:"Which claims are approved for the display box?",at:"11 Nov",state:"wait",note:"Sent 11 Nov · not opened yet"},{to:"DP",q:"When do you need the final file?",at:"11 Nov",state:"wait",note:"Seen 11 Nov"}],
+     files:[["Gula Aren display box v3.pdf","PDF","2,4 MB","RA"]],
+     msgs:[{w:"RA",at:"11 Nov 16:20",t:"Two artwork options are attached. I need to know which claims we may print, and by when PPIC needs the final file.",f:0,ask:"BK"}]});
+  const PREP={
+    DP:[{type:"buy",title:"Outer carton Latte 48×: order lasts 22 months",why:"Your order in the Oracle draft: 200.000 pcs, Rp 840 juta, lasts 22 months.",people:["RA","YS","LT"],need:"Rina: will Latte 25g stay in this carton design for 22 months? Yuli: can we split the order?"}],
+    YS:[{type:"buy",title:"PO-2611873 is for Mocca, which stops in June 2027",why:"Found in last night's Oracle import: Rp 1,05 miliar of cartons for a product that is stopping.",people:["RA","DP","LT"],need:"Rina and Dedi: should I cancel this order? The supplier accepts until 20 Nov."}]
+  };
+
+  let me="HS", cur=null, filter="mine";
+  const visible=t=>t.people.includes(me);
+  const stageOf=t=>t.decision?"solved":(t.msgs.some(m=>!m.sys&&m.w!==t.by)?"ongoing":"new");
+  const STAGE={new:["New","Nobody has replied yet","st-new"],ongoing:["Ongoing","People are working on it","st-on"],solved:["Solved","Done, with a written answer","st-ok"]};
+  const stagePill=t=>{ const k=stageOf(t); return `<span class="stg ${STAGE[k][2]}"><i></i>${STAGE[k][0]}</span>`; };
+  const waitingForMe=t=>t.asks.some(a=>a.to===me&&a.state==="wait");
+  const openAsks=t=>t.asks.filter(a=>a.state==="wait");
+
+  // ---------- list ----------
+  let q="";
+  const lastMsg=t=>{ for(let i=t.msgs.length-1;i>=0;i--){ if(!t.msgs[i].sys) return t.msgs[i]; } return null; };
+  const isUnread=t=>(t.unread||[]).includes(me);
+  const forMe=t=>!t.decision&&(waitingForMe(t)||isUnread(t)||t.by===me);
+  let lastSig="", lastCnt={};
+  function renderList(){
+    const prep=PREP[me]||[];
+    $("#prepBox").innerHTML=prep.map((p,i)=>`<div class="prep"><div class="row" style="gap:6px"><span class="pill p-hub"><svg class="i" style="width:13px;height:13px"><use href="#i-sparkle"/></svg>Prepared by iPop</span>${tpill(p.type)}</div><b>${p.title}</b><small>${p.why}</small><div class="row"><button class="btn sm hub" type="button" data-prep="${i}">Review and send</button><span class="muted" style="font-size:12px">Marketing is already invited</span></div></div>`).join("");
+    const vis=TOPICS.filter(visible);
+    const nMine=vis.filter(forMe).length;
+    const cnt=k=>vis.filter(t=>stageOf(t)===k).length;
+    $("#fseg").innerHTML=[["mine","For me",nMine],["new","New",cnt("new")],["ongoing","Ongoing",cnt("ongoing")],["solved","Solved",cnt("solved")]].map(([k,l,c])=>`<button type="button" data-f="${k}" class="${filter===k?"on":""}" aria-pressed="${filter===k}"><span class="n">${c}</span><small>${l}</small></button>`).join("");
+    $("#fhelp").textContent={mine:"Topics that need you, or that you started.",new:"Sent, but nobody has replied yet.",ongoing:"People are replying. Not solved yet.",solved:"Done. Each one has a written answer."}[filter]||"";
+    if(!$("#ftype").options.length) $("#ftype").innerHTML='<option value="">All kinds</option>'+Object.keys(TYPES).map(k=>`<option value="${k}">${TYPES[k].l}</option>`).join("");
+    const kind=$("#ftype").value;
+    let list=vis;
+    if(filter==="mine") list=list.filter(t=>forMe(t)||t.id===cur); else list=list.filter(t=>stageOf(t)===filter);
+    if(kind) list=list.filter(t=>t.type===kind);
+    if(q){ const w=q.toLowerCase(); list=list.filter(t=>(t.title+" "+t.need+" "+t.people.map(c=>P[c][0]).join(" ")+" "+t.files.map(f=>f[0]).join(" ")).toLowerCase().includes(w)); }
+    const item=t=>{
+      const w=openAsks(t), late=w.some(a=>a.late), mine=waitingForMe(t), lm=lastMsg(t), un=isUnread(t);
+      const lateWho=w.filter(a=>a.late).map(a=>short(a.to));
+      const say=t.decision?["s-ok",`Solved ${t.decision.at}`]:mine?["s-you",`Your answer is needed · by ${t.due}`]:lateWho.length?["s-late",`Late: ${lateWho.join(", ")}`]:w.length?["s-wait",`Waiting for ${w.map(a=>short(a.to)).join(", ")}`]:stageOf(t)==="new"?["s-new","Sent · no reply yet"]:["s-on",`Ongoing · ${t.msgs.filter(m=>!m.sys).length} replies`];
+      return `<button type="button" class="titem${cur===t.id?" on":""}${t.decision?" done":""}${un?" unread":""}" data-t="${t.id}" style="${tv(t.type)}"><span class="bar"></span><span style="min-width:0">
+        <span class="top"><b>${esc(t.title)}</b>${un?'<span class="udot" title="New messages"></span>':""}</span>
+        ${lm?`<span class="prev"><b>${short(lm.w)}:</b> ${esc(lm.t)}</span>`:""}
+        <span class="say ${say[0]}"><i></i>${say[1]}</span>
+        <span class="sub2"><span class="kind">${TYPES[t.type].l}</span>·<span class="circle-av">${t.people.slice(0,4).map(c=>av(c,1)).join("")}</span>${t.people.length} people</span></span></button>`;
+    };
+    const sig=filter+"|"+list.map(t=>t.id).join(",");
+    $("#tItems").innerHTML=list.length?list.map(item).join(""):`<div class="muted" style="padding:16px 8px;font-size:13.5px">${q?"No topic matches your search.":filter==="mine"?"Nothing needs you right now. Good work.":filter==="solved"?"No solved topics yet.":filter==="new"?"No new topics. Everything has a reply.":"Nothing ongoing."}</div>`;
+    if(sig!==lastSig){ $$("#tItems .titem").forEach((el,i)=>{ el.classList.add("enter"); el.style.animationDelay=Math.min(i,8)*30+"ms"; }); lastSig=sig; }
+    $$("#fseg [data-f]").forEach(b=>{ const k=b.dataset.f, v=b.querySelector(".n").textContent; if(lastCnt[k]!==undefined&&lastCnt[k]!==v) b.querySelector(".n").classList.add("bump"); lastCnt[k]=v; });
+    const hb=$("#howto"); if(hb) hb.hidden=store.get("hub-howto")==="off";
+    const n=vis.filter(t=>waitingForMe(t)).length;
+    $("#tabCnt").textContent=n; $("#tabCnt").hidden=!n; $("#navBadge").textContent=n; $("#navBadge").hidden=!n;
+  }
+  $("#tSearch").addEventListener("input",e=>{ q=e.target.value.trim(); renderList(); });
+  $("#ftype").addEventListener("change",renderList);
+
+  // ---------- room ----------
+  const TODAY="12 Nov";
+  let detOpen=innerWidth>=1600, toBottom=false, tSort="old", replyOpen=null, replyAt=null, flashId=null, keepScroll=null;
+  function fitHub(){ const w=$("#hubWrap"); if(!w||!w.offsetParent) return; const top=w.getBoundingClientRect().top+window.scrollY; w.style.height=Math.max(440,innerHeight-top-14)+"px"; }
+  addEventListener("resize",()=>{ fitHub(); });
+  function fileHtml(f){ const x=f[1]==="XLS"; return `<span class="file"><span class="fi${x?" x":""}">${f[1]}</span><span><b>${esc(f[0])}</b><small>${f[2]} · ${short(f[3])}</small></span></span>`; }
+  function renderRoom(){
+    const t=TOPICS.find(x=>x.id===cur&&visible(x));
+    if(!t){ $("#roomBox").innerHTML=`<div class="card" style="text-align:center;padding:48px 20px"><div class="hic" style="--tc:var(--hub);--ts:var(--hub-s);width:52px;height:52px;margin:0 auto 12px;border-radius:14px"><svg class="i"><use href="#i-hub"/></svg></div><h3 style="justify-content:center">Pick a topic, or start one</h3><p class="sub">Topics are for work across departments: problems, questions that need a clear answer, and ideas.</p><button class="btn hub" type="button" data-new style="margin-top:14px"><svg class="i"><use href="#i-plus"/></svg>New topic</button></div>`; return; }
+    const inTopic=t.people.includes(me);
+    const myAsks=t.decision?[]:t.asks.filter(a=>a.to===me&&a.state==="wait");
+    if(t.unread&&t.unread.includes(me)){ t.wasUnread=true; t.unread=t.unread.filter(c=>c!==me); }
+    const asksH=t.asks.length?`<div class="asks"><div class="h"><span>Needs an answer from</span><span>${openAsks(t).length} open</span></div>${t.asks.map(a=>`<div class="ask">${av(a.to,1)}<span><b>${P[a.to][0]}</b> · ${P[a.to][1]}<small>${esc(a.q)}</small>${a.state==="wait"&&a.note?`<small style="color:${a.late?"var(--danger)":"var(--ink-3)"}">${a.note}</small>`:""}</span>${a.state==="done"?'<span class="pill p-grn">Answered</span>':a.late?'<span class="pill p-red">3 days late</span>':a.to===me?'<span class="pill p-hub">You · answer above</span>':`<span class="pill p-amb">Asked ${a.at}</span>`}</div>`).join("")}</div>`:"";
+    const msgs=t.msgs.map(m=>m.sys?`<div class="msg sys"><span class="sic"><svg class="i" style="width:16px;height:16px"><use href="#i-sparkle"/></svg></span><div><div class="who">iPop <span>${m.at}</span></div><div class="b">${m.t}</div></div></div>`:
+      `<div class="msg">${av(m.w)}<div style="min-width:0"><div class="who">${P[m.w][0]} ${dchip(P[m.w][1])}<span>${m.at}</span></div><div class="b">${esc(m.t)}</div>${m.ask?`<span class="askto"><svg class="i" style="width:13px;height:13px"><use href="#i-at"/></svg>Needs an answer from ${short(m.ask)}</span>`:""}${m.f!==undefined?`<div>${fileHtml(t.files[m.f])}</div>`:""}${m.newf?`<div>${m.newf.map(fileHtml).join(" ")}</div>`:""}</div></div>`).join("");
+    const k=stageOf(t), o={new:0,ongoing:1,solved:2}[k];
+    const st=(i,l)=>`<span class="s ${i<o?"done":i===o?"now":""}"><b>${i<o?"✓":i+1}</b>${l}</span>`;
+    const hint={new:"Waiting for the first reply.",ongoing:openAsks(t).length?`Waiting for ${openAsks(t).map(a=>short(a.to)).join(", ")}.`:"Everyone has answered. Ready to mark as solved?",solved:"Done."}[k];
+    // build the thread: each reply hangs under the post it answers (one level, like Threads)
+    t.msgs.forEach((m,i)=>{ if(m.p===undefined&&m.re){ let j=-1; for(let x=i-1;x>=0;x--){ const c=t.msgs[x]; if(!c.sys&&c.w===m.re[0]&&c.t.slice(0,18)===m.re[1].slice(0,18)){ j=x; break; } }
+      if(j<0) for(let x=i-1;x>=0;x--){ if(!t.msgs[x].sys&&t.msgs[x].w===m.re[0]){ j=x; break; } } m.p=j; } });
+    const root=i=>{ let x=i; while(t.msgs[x]&&t.msgs[x].p!==undefined&&t.msgs[x].p>=0) x=t.msgs[x].p; return x; };
+    const newFrom=(t.wasUnread&&t.newCount)?t.msgs.length-t.newCount:9999;
+    const when=m=>{ const a=m.at.split(" "); const d=a[0]+" "+a[1]; return (d===TODAY?"Today":d)+(a[2]?" · "+a[2]:""); };
+    const answered=m=>m.ask&&t.asks.some(a=>a.to===m.ask&&a.state==="done");
+    const canWrite=inTopic&&!t.decision;
+    const rpHtml=(m,i,kid)=>`<div class="rp${kid?" kid":""}" id="m${i}">${av(m.w,kid)}<div style="min-width:0">
+        <div class="hd"><b>${P[m.w][0]}</b><span>${P[m.w][1]} · ${when(m)}</span>${i>=newFrom?'<span class="newdot">New</span>':""}</div>
+        ${kid&&t.msgs[m.p]?`<div class="rto">Replying to <b>${short(t.msgs[m.p].w)}</b></div>`:""}
+        <div class="tx">${esc(m.t)}</div>
+        ${m.ask?`<span class="chip${answered(m)?" ok":""}"><svg class="i" style="width:13px;height:13px"><use href="#i-${answered(m)?"check":"at"}"/></svg>${answered(m)?short(m.ask)+" answered":"Needs an answer from "+short(m.ask)}</span>`:""}
+        ${m.f!==undefined?`<div>${fileHtml(t.files[m.f])}</div>`:""}${m.newf?`<div>${m.newf.map(fileHtml).join(" ")}</div>`:""}
+        <div class="ft">${canWrite?`<button type="button" data-rto="${i}"><svg class="i"><use href="#i-chat"/></svg>Reply</button>`:""}</div>
+      </div></div>`;
+    // group: top-level posts with their replies
+    const groups=[]; const idx={};
+    t.msgs.forEach((m,i)=>{ if(m.sys){ groups.push({sys:m,i}); return; } const r=root(i);
+      if(r===i){ idx[i]=groups.length; groups.push({i,m,kids:[]}); } else { const g=groups[idx[r]]; if(g) g.kids.push(i); else { idx[i]=groups.length; groups.push({i,m,kids:[]}); } } });
+    let order=groups.slice(); if(tSort==="new") order.reverse();
+    const thread=order.map(g=>{
+      if(g.sys) return `<div class="ev"><svg class="i"><use href="#i-sparkle"/></svg><span>${g.sys.t} <span style="color:var(--ink-4)">· ${when(g.sys)}</span></span></div>`;
+      const kids=g.kids.map(i=>rpHtml(t.msgs[i],i,true)).join("");
+      return `<div class="tw${g.kids.length?" has-kids":""}">${rpHtml(g.m,g.i,false)}${kids}${replyOpen===g.i?`<div class="inl">${av(me,1)}<div class="box"><textarea id="inlText" rows="1" placeholder="Reply to ${short(t.msgs[replyAt].w)}" aria-label="Your reply"></textarea><div class="crow"><button class="btn sm" type="button" data-inl-x>Cancel</button><button class="btn pri sm" type="button" data-inl-send>Reply</button></div></div></div>`:""}</div>`;
+    }).join("");
+    const nReplies=t.msgs.filter(m=>!m.sys).length;
+    const byDept={}; t.people.forEach(c=>{(byDept[P[c][1]]=byDept[P[c][1]]||[]).push(c)});
+    const others=Object.keys(P).filter(c=>!t.people.includes(c));
+    const asked=myAsks[0], askedBy=asked?(t.msgs.find(x=>x.ask===me)||{}).w:null;
+    let nextStep="";
+    if(!t.decision&&inTopic&&!asked){
+      const w=openAsks(t), late=w.filter(a=>a.late), nRep=t.msgs.filter(m=>!m.sys&&m.w!==t.by).length;
+      const card=(nc,ns,ic,lbl,title,sub,acts)=>`<div class="nextstep" style="--nc:${nc};--ns:${ns}"><span class="ic"><svg class="i"><use href="#i-${ic}"/></svg></span><div><small>${lbl}</small><b>${title}</b>${sub?`<p>${sub}</p>`:""}</div><div class="acts">${acts}</div></div>`;
+      if(late.length) nextStep=card("var(--danger)","var(--danger-soft)","bell","Next step",`${late.map(a=>short(a.to)).join(" and ")} ${late.length>1?"have":"has"} not answered for 3 working days`,"Their department heads got a reminder too. A friendly nudge usually works.",`<button class="btn go" type="button" data-nudge="${late.map(a=>a.to).join(",")}"><svg class="i"><use href="#i-bell"/></svg>Remind ${late.length>1?"them":short(late[0].to)}</button>`);
+      else if(w.length) nextStep=card("var(--warn)","var(--warn-soft)","clock","Next step",`Waiting for ${w.map(a=>short(a.to)).join(" and ")}`,`They have until ${t.due}. iPop reminds them after 2 working days.`,`<button class="btn" type="button" data-nudge="${w.map(a=>a.to).join(",")}"><svg class="i"><use href="#i-bell"/></svg>Remind now</button>`);
+      else if(!nRep) nextStep=card("var(--info)","var(--info-soft)","send","Next step","Sent. Waiting for the first reply",`${t.people.length-1} ${t.people.length-1>1?"people were":"person was"} told on PC and phone.`,`<button class="btn" type="button" data-nudge="${t.people.filter(c=>c!==me).join(",")}"><svg class="i"><use href="#i-bell"/></svg>Remind them</button>`);
+      else nextStep=card("var(--ok)","var(--ok-soft)","check","Next step","Everyone has answered. Is it solved?","Write the answer in one or two sentences so nobody has to ask again.",`<button class="btn go" type="button" data-decide><svg class="i"><use href="#i-check"/></svg>Mark as solved</button><button class="btn" type="button" data-focus-reply>Not yet, reply</button>`);
+    }
+    $("#roomBox").innerHTML=`<div class="room${detOpen?" det":""}">
+      <section class="tpanel" aria-label="Topic">
+        <div class="tbar">
+          <button class="btn sm back" type="button" data-back><svg class="i"><use href="#i-back"/></svg>All topics</button>
+          ${stagePill(t)}<span class="who">${tpill(t.type)} <span class="conf" style="margin-left:4px"><svg class="i"><use href="#i-lock"/></svg>Confidential · ${t.people.length}</span></span>
+          ${canWrite?`<button class="btn ok sm" type="button" data-decide><svg class="i"><use href="#i-check"/></svg>Mark as solved</button>`:""}
+          <button class="btn sm detbtn" type="button" data-details aria-pressed="${detOpen}"><svg class="i"><use href="#i-users"/></svg>Details</button>
+        </div>
+        <div class="tscroll" id="tscroll">
+          <article class="post">
+            <div class="ph">${av(t.by)}<div><b>${P[t.by][0]}</b><small>${P[t.by][1]} · started ${t.at}${t.sys?" · prepared by iPop":""}</small></div></div>
+            <h2>${esc(t.title)}</h2>
+            <p class="ask-txt">${esc(t.need)}</p>
+            <div class="facts"><span class="pill p-gry"><svg class="i" style="width:13px;height:13px"><use href="#i-cal"/></svg>Answer by ${t.due}</span>${depts(t.people).map(dchip).join("")}</div>
+            <div class="flow" aria-label="Status">${st(0,"New")}<span class="ln ${o>0?"done":""}"></span>${st(1,"Ongoing")}<span class="ln ${o>1?"done":""}"></span>${st(2,"Solved")}<span class="hint">${hint}</span></div>
+          </article>
+          ${t.decision?`<div class="solvedcard"><span><svg class="i" style="width:16px;height:16px;color:var(--ok);vertical-align:-3px"><use href="#i-check"/></svg> <b>Solved ${t.decision.at}</b> <span class="muted" style="font-size:13px">· marked by ${P[t.decision.by][0]}</span></span><div class="what">${esc(t.decision.t)}</div>${t.decision.tasks.length?`<span class="muted" style="font-size:13.5px">${t.decision.tasks.length} follow-up task${t.decision.tasks.length>1?"s":""} in Projects</span>`:""}${inTopic?`<div><button class="btn sm" type="button" data-reopen style="background:var(--surface)">Not solved after all? Reopen</button></div>`:""}</div>`:""}
+          ${nextStep}
+          ${asked?`<div class="youask"><div class="q"><small style="font-weight:800;color:var(--hub);letter-spacing:.06em;text-transform:uppercase;font-size:11.5px">Your turn</small><small>${askedBy?P[askedBy][0]:"Someone"} asked you · ${asked.late?'<b style="color:var(--danger);font-size:12.5px">3 days late</b>':"answer by "+t.due}</small><b>${esc(asked.q)}</b></div><button class="btn sm" type="button" id="yLater" style="background:var(--surface)"><svg class="i"><use href="#i-clock"/></svg>I need more time</button></div>`:""}
+          ${canWrite?`<div class="compose">${av(me)}<div>
+            <textarea id="cText" rows="1" placeholder="${asked?"Write your answer…":"Post a reply…"}" aria-label="${asked?"Your answer":"Your reply"}"></textarea>
+            <div class="att" id="cFiles" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+            <div class="crow"><button class="btn sm ghost" type="button" id="cAttach"><svg class="i"><use href="#i-clip"/></svg>File</button>
+              <label class="lbl"><svg class="i" style="width:15px;height:15px"><use href="#i-at"/></svg>Ask<select id="cAsk" aria-label="Needs an answer from"><option value="">nobody</option>${t.people.filter(c=>c!==me).map(c=>`<option value="${c}">${P[c][0]}</option>`).join("")}</select></label>
+              <span class="sp"></span><button class="btn ${asked?"hub":"pri"}" type="button" id="cSend"><svg class="i"><use href="#i-send"/></svg>${asked?"Send answer":"Post"}</button></div>
+          </div></div>`:""}
+          <div class="sortbar"><b>${nReplies} ${nReplies===1?"reply":"replies"}</b><span class="sp"></span><button type="button" data-sort="old" class="${tSort==="old"?"on":""}">Oldest first</button><button type="button" data-sort="new" class="${tSort==="new"?"on":""}">Newest first</button></div>
+          ${thread}
+          <div class="tend">${t.decision?"This topic is solved. You can still read it and find it with search.":"That's everything so far."}</div>
+          <button class="tojump" type="button" id="tojump" hidden>New replies ↓</button>
+        </div>
+      </section>
+      ${detOpen?`<aside class="details" aria-label="Topic details">
+        ${t.asks.length?`<div class="card"><h3><span class="hic" style="--tc:var(--warn);--ts:var(--warn-soft)"><svg class="i"><use href="#i-at"/></svg></span>Answers · ${openAsks(t).length} open</h3><div style="margin-top:6px">${t.asks.map(a=>`<div class="ask">${av(a.to,1)}<span><b>${P[a.to][0]}</b><small>${esc(a.q)}</small>${a.state==="wait"&&a.note?`<small style="color:${a.late?"var(--danger)":"var(--ink-3)"}">${a.note}</small>`:""}</span>${a.state==="done"?'<span class="pill p-grn">Answered</span>':a.late?'<span class="pill p-red">Late</span>':`<span class="pill p-amb">Waiting</span>`}</div>`).join("")}</div></div>`:""}
+        <div class="card"><h3><span class="hic" style="--tc:var(--hub);--ts:var(--hub-s)"><svg class="i"><use href="#i-users"/></svg></span>People · ${t.people.length}</h3>
+          ${Object.keys(byDept).map(d=>`<div class="dgroup"><i style="background:${DEPT[d]}"></i>${d}</div>${byDept[d].map(c=>`<div class="prow">${av(c,1)}<span>${P[c][0]}${c===t.by?"<small>Started the topic</small>":""}</span>${c===me?'<span class="pill p-gry">You</span>':""}</div>`).join("")}`).join("")}
+          ${canWrite?`<div class="addp"><select id="addSel" aria-label="Add someone who was missed">${others.map(c=>`<option value="${c}">${P[c][0]} · ${P[c][1]}</option>`).join("")}</select><button class="btn sm" type="button" id="addBtn">Add</button></div><small class="muted" style="font-size:12px">Adding someone lets them read the whole topic.</small>`:""}
+        </div>
+        <div class="card"><h3><span class="hic" style="--tc:var(--t-oth);--ts:var(--t-oth-s)"><svg class="i"><use href="#i-file"/></svg></span>Files · ${t.files.length}</h3>${t.files.length?`<div style="display:grid;gap:4px;margin-top:6px">${t.files.map(fileHtml).join("")}</div>`:'<p class="sub" style="margin-top:6px">No files yet.</p>'}</div>
+        <div class="card"><h3><span class="hic" style="--tc:var(--accent);--ts:var(--accent-soft)"><svg class="i"><use href="#i-kanban"/></svg></span>More</h3><div style="margin-top:6px">
+          ${t.link?`<div class="lnk"><svg class="i" style="width:15px;height:15px"><use href="#i-kanban"/></svg><span>Project: <a href="business-plan.html#project">${t.link}</a> · 12 tasks</span></div>`:""}
+          ${canWrite?`<div class="lnk"><svg class="i" style="width:15px;height:15px"><use href="#i-users"/></svg><span>Easier to talk? <a href="#topics" data-meet>Book a meeting</a> with these ${t.people.length} people</span></div>`:""}
+          <div class="lnk"><svg class="i" style="width:15px;height:15px"><use href="#i-lock"/></svg><span>Confidential. Only these ${t.people.length} people can open it.</span></div>
+        </div></div>
+      </aside>`:""}
+    </div>`;
+    fitHub();
+    const sc=$("#tscroll");
+    const topIn=(el)=>el.getBoundingClientRect().top-sc.getBoundingClientRect().top+sc.scrollTop;
+    if(sc){
+      const target=flashId!==null?$("#m"+flashId):(newFrom<9999&&tSort==="old"?$("#m"+newFrom):null);
+      if(target){ sc.scrollTop=Math.max(0,topIn(target)-90); if(flashId!==null) target.classList.add("flash"); } else if(keepScroll!==null) sc.scrollTop=keepScroll;
+      flashId=null; keepScroll=null;
+      const tj=$("#tojump"); const nf=$("#m"+newFrom);
+      const upd=()=>{ tj.hidden=!nf||topIn(nf)<sc.scrollTop+sc.clientHeight; };
+      sc.addEventListener("scroll",upd); upd(); tj.addEventListener("click",()=>{ sc.scrollTo({top:topIn(nf)-90,behavior:"smooth"}); });
+    }
+    t.wasUnread=false;
+    const grow=el=>{ el.style.height="auto"; el.style.height=Math.min(220,el.scrollHeight)+"px"; };
+    const ct=$("#cText"); if(ct){ ct.addEventListener("input",()=>grow(ct)); ct.addEventListener("keydown",e=>{ if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); $("#cSend").click(); } }); }
+    const it=$("#inlText"); if(it){ it.addEventListener("input",()=>grow(it)); setTimeout(()=>it.focus(),20); it.addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); $("#roomBox [data-inl-send]").click(); } }); }
+    $$("#roomBox [data-rto]").forEach(b=>b.addEventListener("click",()=>{ replyAt=+b.dataset.rto; replyOpen=root(replyAt); keepScroll=sc.scrollTop; renderRoom(); }));
+    $$("#roomBox [data-sort]").forEach(b=>b.addEventListener("click",()=>{ tSort=b.dataset.sort; renderRoom(); }));
+    const ix=$("#roomBox [data-inl-x]"); if(ix) ix.addEventListener("click",()=>{ replyOpen=null; keepScroll=sc.scrollTop; renderRoom(); });
+    const is=$("#roomBox [data-inl-send]"); if(is) is.addEventListener("click",()=>{ if(!$("#inlText").value.trim()){ $("#inlText").focus(); toast("Write your reply first"); return; } busy(is,doInl,300); });
+    const doInl=()=>{
+      const txt=$("#inlText").value.trim();
+      const parent=t.msgs[replyAt]; t.msgs.push({w:me,at:TODAY+" "+new Date().toTimeString().slice(0,5),t:txt,p:replyAt});
+      const mineOpen=t.asks.filter(a=>a.to===me&&a.state==="wait"&&parent.ask===me); mineOpen.forEach(a=>{a.state="done";a.late=0;});
+      flashId=t.msgs.length-1; replyOpen=null; t.newCount=0; renderList(); renderRoom(); toast(`Replied to ${short(parent.w)}`);
+    };
+    if(canWrite){
+      let pend=[];
+      $("#cAttach").addEventListener("click",()=>{ const f=["Stock count "+(pend.length+1)+".xlsx","XLS","24 KB",me]; pend.push(f); $("#cFiles").innerHTML=pend.map(fileHtml).join(""); });
+      $("#cSend").addEventListener("click",()=>{ const tx=$("#cText").value.trim(); if(!tx&&!pend.length){ $("#cText").focus(); toast("Write something first"); return; } busy($("#cSend"),doSend); });
+      const doSend=()=>{
+        const txt=$("#cText").value.trim();
+        const ask=$("#cAsk").value;
+        const m={w:me,at:TODAY+" "+new Date().toTimeString().slice(0,5),t:txt||"Shared a file."};
+        const askMsg=asked?t.msgs.findIndex(x=>x.ask===me):-1; if(askMsg>=0) m.p=askMsg;
+        if(ask){ m.ask=ask; t.asks.push({to:ask,q:txt||"Please look at the file.",at:TODAY,state:"wait",note:"Reminder after 2 working days · their head gets a reminder after 3"}); }
+        if(pend.length){ m.newf=pend.slice(); t.files.push(...pend); }
+        t.msgs.push(m); t.newCount=0; flashId=t.msgs.length-1;
+        const mineOpen=t.asks.filter(a=>a.to===me&&a.state==="wait"); mineOpen.forEach(a=>{a.state="done"; a.late=0;});
+        renderList(); renderRoom();
+        toast(mineOpen.length?"Answer sent · everyone in the topic can see it":ask?`Posted · ${short(ask)} has to answer`:"Posted · "+(t.people.length-1)+" people were told");
+      };
+      $("#addBtn")&&$("#addBtn").addEventListener("click",()=>{ const c=$("#addSel").value; t.people.push(c); t.msgs.push({sys:1,at:TODAY,t:`${P[me][0]} added <b>${P[c][0]}</b> (${P[c][1]}). They can now read the whole topic.`}); renderList(); renderRoom(); toast(`${P[c][0]} added and told`); });
+    }
+    if(myAsks.length&&$("#yLater")){
+      $("#yLater").addEventListener("click",()=>{
+        const askMsg=t.msgs.findIndex(x=>x.ask===me);
+        t.msgs.push({w:me,at:TODAY+" "+new Date().toTimeString().slice(0,5),t:"I need a bit more time. I will answer by 16 Nov.",p:askMsg>=0?askMsg:undefined}); t.newCount=0; flashId=t.msgs.length-1;
+        myAsks.forEach(a=>{a.note="New answer date 16 Nov · set by "+short(me);});
+        renderRoom(); toast("Everyone knows you will answer by 16 Nov");
+      });
+    }
+  }
+  document.addEventListener("click",e=>{
+    const a=e.target.closest("[data-t]"); if(a){ cur=a.dataset.t; replyOpen=null; $("#hubWrap").classList.add("has-room"); window.scrollTo({top:0}); renderRoom(); renderList(); return; }
+    const ng=e.target.closest("[data-nudge]"); if(ng){ const who=ng.dataset.nudge.split(",").map(c=>short(c)); busy(ng,()=>{ ng.classList.add("done-tick"); ng.innerHTML='<svg class="i"><use href="#i-check"/></svg>Reminded'; ng.disabled=true; toast(`Reminder sent to ${who.join(", ")} on PC and phone`); }); return; }
+    if(e.target.closest("[data-focus-reply]")){ const c=$("#cText"); if(c){ c.scrollIntoView({behavior:"smooth",block:"center"}); c.focus(); } return; }
+    if(e.target.closest("[data-details]")){ detOpen=!detOpen; renderRoom(); return; }
+    const nb=e.target.closest("[data-needbar]"); if(nb){ nb.classList.toggle("open"); return; }
+    if(e.target.closest("[data-back]")){ $("#hubWrap").classList.remove("has-room"); renderList(); return; }
+    const f=e.target.closest("[data-f]"); if(f){ filter=f.dataset.f; renderList(); return; }
+    const p=e.target.closest("[data-prep]"); if(p){ openNew(PREP[me][+p.dataset.prep]); return; }
+    if(e.target.closest("[data-new]")){ openNew(); return; }
+    if(e.target.closest("[data-decide]")){ e.preventDefault(); openDecide(); return; }
+    if(e.target.closest("[data-reopen]")){ const t=TOPICS.find(x=>x.id===cur); if(t){ t.decision=null; t.msgs.push({sys:1,at:"12 Nov",t:`${P[me][0]} reopened the topic. It is <b>ongoing</b> again.`}); filter="ongoing"; renderList(); renderRoom(); toast("Reopened · the topic is ongoing again"); } return; }
+    if(e.target.closest("[data-meet]")){ e.preventDefault(); toast("Meeting sheet opened with the people already added"); return; }
+  });
+
+  // ---------- new topic ----------
+  let nType="problem", nPeople=[], nFiles=[], nWhen="18 Nov", nPrepRef=null;
+  $("#nType").innerHTML=Object.keys(TYPES).map(k=>`<label style="${tv(k)}"><input type="radio" name="nt" value="${k}"><span><b>${TYPES[k].l}</b>${TYPES[k].d}</span></label>`).join("");
+  function openNew(pre){
+    nPrepRef=pre||null;
+    nType=pre?pre.type:"problem"; nPeople=[me].concat(pre?pre.people.filter(c=>c!==me):[]); nFiles=[]; nWhen="18 Nov";
+    $$('#nType input').forEach(i=>i.checked=i.value===nType);
+    $("#nTitle").value=pre?pre.title:""; $("#nNeed").value=pre?pre.need:"";
+    $$("#nWhen button").forEach(b=>b.classList.toggle("on",b.dataset.w===nWhen));
+    $("#newPrep").hidden=!pre; if(pre) $("#newPrep span").textContent="iPop prepared this from Oracle. Check it, change what you want, then send. "+pre.why;
+    $("#nFiles").innerHTML=""; typeHelp(); renderNew(); $("#newScrim").hidden=false; setTimeout(()=>$(pre?"#nNeed":"#nTitle").focus(),30);
+  }
+  function typeHelp(){ const T=TYPES[nType]; $("#nHint").textContent=T.hint; $("#nTitle").placeholder=T.ph; $("#nNeed").placeholder=T.need; }
+  function renderNew(){
+    $("#nPicked").innerHTML=nPeople.map(c=>`<span class="chipp">${av(c,1)}${P[c][0]} <small>${P[c][1]}</small>${c===me?'<small style="padding-right:8px">· you</small>':`<button type="button" data-unpick="${c}" aria-label="Remove ${P[c][0]}">×</button>`}</span>`).join("");
+    const rest=Object.keys(P).filter(c=>!nPeople.includes(c));
+    $("#nPick").innerHTML=rest.map(c=>`<option value="${c}">${P[c][0]} · ${P[c][1]}</option>`).join("");
+    const sug=TYPES[nType].sug.filter(c=>!nPeople.includes(c));
+    $("#nSugg").innerHTML=sug.length?sug.map(c=>`<button type="button" data-pick="${c}">${av(c,1)}<span>${P[c][0]}<small>${P[c][1]}</small></span><span class="plus">+</span></button>`).join(""):'<span class="muted" style="font-size:12.5px">All suggestions added.</span>';
+    const dd=depts(nPeople);
+    $("#nTell").innerHTML=nPeople.length>1?`<svg class="i" style="width:16px;height:16px"><use href="#i-bell"/></svg><span><b>${nPeople.length-1} ${nPeople.length-1>1?"people":"person"}</b> in <b>${dd.length} department${dd.length>1?"s":""}</b> will get a popup on PC and phone.</span>`:'<svg class="i" style="width:16px;height:16px"><use href="#i-users"/></svg><span>Nobody added yet. Pick from the suggestions below.</span>';
+    const n=nPeople.length, d=dd.length, title=$("#nTitle").value.trim().length>4, need=$("#nNeed").value.trim().length>4;
+    const req=[[n>=2&&d>=2,`At least 1 person from another department${n>1?` (now ${n-1} ${n-1>1?"people":"person"}, ${d} department${d>1?"s":""})`:""}`],[title&&need,"A title and what you need"]];
+    $("#nReq").innerHTML=req.map(([ok,l])=>`<div class="${ok?"ok":""}"><span class="k"><svg class="i"><use href="#i-check"/></svg></span>${l}</div>`).join("");
+    const ok=req.every(r=>r[0]);
+    $("#nSend").disabled=!ok;
+    $("#nWhy").textContent=ok?"":n<2?"Add one person to send.":d<2?"Add someone from another department to send.":"Write a title and what you need.";
+  }
+  $("#nType").addEventListener("change",e=>{ nType=e.target.value; typeHelp(); renderNew(); });
+  ["nTitle","nNeed"].forEach(id=>$("#"+id).addEventListener("input",renderNew));
+  $("#nWhen").addEventListener("click",e=>{ const b=e.target.closest("[data-w]"); if(!b) return; nWhen=b.dataset.w; $$("#nWhen button").forEach(x=>x.classList.toggle("on",x===b)); });
+  $("#nPickBtn").addEventListener("click",()=>{ const c=$("#nPick").value; if(c){ nPeople.push(c); renderNew(); } });
+  $("#newForm").addEventListener("click",e=>{
+    const p=e.target.closest("[data-pick]"); if(p){ nPeople.push(p.dataset.pick); renderNew(); return; }
+    const u=e.target.closest("[data-unpick]"); if(u){ nPeople=nPeople.filter(c=>c!==u.dataset.unpick); renderNew(); return; }
+    if(e.target.closest("[data-close-new]")) $("#newScrim").hidden=true;
+  });
+  const addFile=()=>{ nFiles.push(["Supporting file "+(nFiles.length+1)+".pdf","PDF","120 KB",me]); $("#nFiles").innerHTML=nFiles.map(fileHtml).join(""); };
+  $("#nDrop").addEventListener("click",addFile); $("#nDrop").addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); addFile(); } });
+  $("#nDraft").addEventListener("click",()=>{ $("#newScrim").hidden=true; toast("Draft saved. Only you can see it."); });
+  $("#newScrim").addEventListener("click",e=>{ if(e.target.id==="newScrim") $("#newScrim").hidden=true; });
+  $("#newForm").addEventListener("submit",e=>{
+    e.preventDefault(); if($("#nSend").disabled) return;
+    if(!e.detail){ busy($("#nSend"),()=>$("#newForm").dispatchEvent(new CustomEvent("submit",{cancelable:true,detail:1})),450); return; }
+    const id="H-0"+(32+TOPICS.length-6);
+    const t={id,type:nType,sys:nPrepRef?1:0,title:$("#nTitle").value.trim(),by:me,at:"11 Nov",due:nWhen,vis:"invited",
+      need:$("#nNeed").value.trim(),people:nPeople.slice(),asks:[],files:nFiles.slice(),msgs:[]};
+    if(nPrepRef) t.msgs.push({sys:1,at:"11 Nov 08:00",t:"iPop prepared this topic from Oracle: "+esc(nPrepRef.why)});
+    t.msgs.push({w:me,at:"11 Nov "+new Date().toTimeString().slice(0,5),t:t.need,...(nFiles.length?{newf:nFiles.slice()}:{})});
+    t.unread=t.people.filter(c=>c!==me);
+    t.msgs.push({sys:1,at:"11 Nov",t:`${t.people.length-1} people were told on PC and phone. Answers are due by <b>${t.due}</b>.`});
+    TOPICS.unshift(t);
+    if(nPrepRef){ PREP[me]=PREP[me].filter(x=>x!==nPrepRef); }
+    $("#newScrim").hidden=true; cur=id; filter="mine"; $("#hubWrap").classList.add("has-room"); location.hash="topics"; renderList(); renderRoom();
+    { const n=t.people.length-1, d=depts(t.people).length; toast(`Sent to ${n} ${n>1?"people":"person"} in ${d} departments`); }
+  });
+
+  // ---------- close with decision ----------
+  let dRows=[], dNeed="no";
+  const DUE=["13 Nov","18 Nov","25 Nov","30 Nov"];
+  function openDecide(){
+    const t=TOPICS.find(x=>x.id===cur); if(!t) return;
+    const pre={ "H-031":["Buy the laminate in 4 deliveries at the minimum-order price. Marketing confirms the design each year.",[["Agree 4 deliveries with the film supplier","YS"],["Add Latte to the yearly design check","RA"]]],
+      "H-030":["Pick the stop date at the 18 Nov meeting. Hold the carton order until PPIC's numbers are in.",[["Count Mocca packaging left","DP"],["Hold PO-2611873","YS"]]],
+      "H-029":["Order 2 weeks of cartons from the second supplier. Move the 3in1 order to L2 if needed.",[["Order cartons from the second supplier","YS"],["Prepare L2 for 4 days","DP"]]],
+      "H-028":["Use the plain inner box for Latte and Original from Q1 2027. Gula Aren stays printed for its launch year.",[["Get a price for one plain box design","YS"]]] }[t.id]||["",[]];
+    $("#dText").value=pre[0]; dRows=pre[1].map(r=>({t:r[0],w:r[1],d:"18 Nov"})); dNeed=dRows.length?"yes":"no";
+    renderDec(t); $("#decScrim").hidden=false; setTimeout(()=>$("#dText").focus(),30);
+  }
+  function renderDec(t){
+    t=t||TOPICS.find(x=>x.id===cur);
+    $("#dTasks").innerHTML=dRows.length?dRows.map((r,i)=>`<div class="trow"><input value="${esc(r.t)}" data-dt="${i}" aria-label="Task"><select data-dw="${i}" aria-label="Who">${t.people.map(c=>`<option value="${c}"${c===r.w?" selected":""}>${P[c][0]} · ${P[c][1]}</option>`).join("")}</select><select data-dd="${i}" aria-label="Due">${DUE.map(d=>`<option${d===r.d?" selected":""}>${d}</option>`).join("")}</select><button type="button" data-dx="${i}" aria-label="Remove task">×</button></div>`).join(""):'<p class="sub">No tasks. Add one if someone has work to do.</p>';
+    $$("#dNeed [data-dn]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.dn===dNeed)));
+    $("#dTaskBox").hidden=dNeed!=="yes";
+    saveLabel();
+  }
+  function saveLabel(){ const n=dNeed==="yes"?dRows.filter(r=>r.t.trim()).length:0; $("#dSave").innerHTML=`<svg class="i"><use href="#i-check"/></svg>${n?`Mark as solved and add ${n} task${n>1?"s":""}`:"Mark as solved"}`; }
+  $("#dNeed").addEventListener("click",e=>{ const b=e.target.closest("[data-dn]"); if(!b) return; dNeed=b.dataset.dn; const t=TOPICS.find(x=>x.id===cur); if(dNeed==="yes"&&!dRows.length) dRows.push({t:"",w:t.people.find(c=>c!==me)||me,d:"18 Nov"}); renderDec(t); });
+  $("#dTasks").addEventListener("input",e=>{ const i=e.target.dataset.dt; if(i!==undefined){ dRows[+i].t=e.target.value; saveLabel(); } });
+  $("#dTasks").addEventListener("change",e=>{ const w=e.target.dataset.dw, d=e.target.dataset.dd; if(w!==undefined) dRows[+w].w=e.target.value; if(d!==undefined) dRows[+d].d=e.target.value; });
+  $("#dTasks").addEventListener("click",e=>{ const x=e.target.closest("[data-dx]"); if(x){ dRows.splice(+x.dataset.dx,1); renderDec(); } });
+  $("#dAdd").addEventListener("click",()=>{ const t=TOPICS.find(x=>x.id===cur); dRows.push({t:"",w:t.people.find(c=>c!==me)||me,d:"18 Nov"}); renderDec(); const ins=$$("#dTasks input"); ins[ins.length-1].focus(); });
+  $("#decForm").addEventListener("click",e=>{ if(e.target.closest("[data-close-dec]")) $("#decScrim").hidden=true; });
+  $("#decScrim").addEventListener("click",e=>{ if(e.target.id==="decScrim") $("#decScrim").hidden=true; });
+  $("#decForm").addEventListener("submit",e=>{
+    e.preventDefault(); const t=TOPICS.find(x=>x.id===cur); const txt=$("#dText").value.trim();
+    if(!txt){ $("#dText").focus(); toast("Write how it was solved first"); return; }
+    if(!$("#dSave").classList.contains("busy")&&!e.detail){ busy($("#dSave"),()=>$("#decForm").dispatchEvent(new CustomEvent("submit",{cancelable:true,detail:1}))); return; }
+    const tasks=dNeed==="yes"?dRows.filter(r=>r.t.trim()).map(r=>[r.t.trim(),r.w,r.d]):[];
+    t.decision={t:txt,by:me,at:"12 Nov",tasks}; t.asks.forEach(a=>{a.state="done";a.late=0;});
+    t.msgs.push({sys:1,at:"12 Nov",t:`${P[me][0]} marked the topic as <b>solved</b>.${tasks.length?` ${tasks.length} follow-up task${tasks.length>1?"s were":" was"} added to Projects.`:""} Everyone in it was told.`});
+    const prevFilter=filter;
+    $("#decScrim").hidden=true; filter="solved"; renderList(); renderRoom();
+    toast(tasks.length?`Solved · ${tasks.length} task${tasks.length>1?"s":""} added to Projects`:"Marked as solved · everyone was told",{label:"Undo",run:()=>{ t.decision=null; t.msgs.pop(); filter=prevFilter; renderList(); renderRoom(); toast("Undone · the topic is ongoing again"); }});
+  });
+
+  // ---------- overview ----------
+  function renderOverview(){
+    const k=(l,v,tc,ts,ic,f)=>`<div class="card kpi" style="--tc:${tc};--ts:${ts}"><div class="lbl"><span class="kic"><svg class="i"><use href="#i-${ic}"/></svg></span>${l}</div><div class="val num">${v}</div><div class="foot">${f}</div></div>`;
+    const open=TOPICS.filter(t=>!t.decision&&visible(t)), wait=TOPICS.filter(visible).reduce((s,t)=>s+openAsks(t).length,0), late=TOPICS.filter(visible).reduce((s,t)=>s+openAsks(t).filter(a=>a.late).length,0), dec=TOPICS.filter(t=>t.decision&&visible(t)).length;
+    $("#ovKpi").innerHTML=k("Not solved yet",open.length,"var(--hub)","var(--hub-s)","hub","New and ongoing, in your topics")+k("Waiting for an answer",wait,"var(--warn)","var(--warn-soft)","at",`${late} late, reminders sent`)+k("Solved this month",dec+9,"var(--ok)","var(--ok-soft)","flag","Each one with written tasks")+k("Typical first answer",'6 <small>hours</small>',"var(--t-clar)","var(--t-clar-s)","clock","Was 2–3 days by meeting");
+    const D=["Marketing","PPIC","Purchasing","Production","Warehouse","Finance","R&D / QA","GA"];
+    const M=[[0,6,4,2,0,5,3,1],[6,0,7,5,3,3,1,0],[4,7,0,3,2,4,1,1],[2,5,3,0,4,1,2,0],[0,3,2,4,0,1,0,1],[5,3,4,1,1,0,1,2],[3,1,1,2,0,1,0,0],[1,0,1,0,1,2,0,0]];
+    $("#heat").innerHTML=`<thead><tr><th></th>${D.map(d=>`<th class="c">${d}</th>`).join("")}</tr></thead><tbody>${D.map((d,i)=>`<tr><th style="text-align:right">${d}</th>${M[i].map((v,j)=>i===j?'<td class="self">·</td>':`<td style="background:${v?`color-mix(in srgb, var(--hub) ${Math.min(90,12+v*11)}%, var(--surface))`:"transparent"};color:${v>4?"#fff":"var(--ink-2)"};${v?"":"border:1.5px dashed var(--line-2)"}">${v||""}</td>`).join("")}</tr>`).join("")}</tbody>`;
+    const vt=TOPICS.filter(visible), sc=k=>vt.filter(t=>stageOf(t)===k).length;
+    $("#ovStage").innerHTML=["new","ongoing","solved"].map(k=>`<button type="button" data-go="${k}"><span class="l">${stagePill({decision:k==="solved"?1:null,msgs:k==="ongoing"?[{w:"x"}]:[],by:"y"})}</span><span class="n num">${sc(k)}</span><small>${STAGE[k][1]} · in your topics</small></button>`).join("");
+    const esc2=[]; let hidden=0;
+    TOPICS.forEach(t=>openAsks(t).forEach(a=>{ if(visible(t)) esc2.push([t,a]); else hidden++; }));
+    $("#ovEsc").innerHTML=esc2.length?esc2.map(([t,a])=>`<div class="esc"><span class="s" style="background:${a.late?"var(--danger)":"var(--warn)"}"></span><span style="min-width:0"><b>${P[a.to][0]} · ${P[a.to][1]}</b><small>${esc(a.q)} · ${t.id}${a.late?" · 3 days late, their head got a reminder":""}</small></span><button class="btn sm" type="button" data-t="${t.id}" data-go>Open</button></div>`).join(""):'<p class="sub">Nothing waiting. Everyone answered.</p>';
+    if(hidden) $("#ovEsc").innerHTML+=`<div class="privnote"><svg class="i"><use href="#i-lock"/></svg><span><b>${hidden} more</b> in topics you are not invited to. You see the number only, not the topic.</span></div>`;
+    const decHidden=TOPICS.filter(t=>t.decision&&!visible(t)).length;
+    $("#ovDec").innerHTML=TOPICS.filter(t=>t.decision&&visible(t)).map(t=>`<div class="esc"><span class="s" style="background:var(--ok)"></span><span style="min-width:0"><b>${esc(t.title)}</b><small>${esc(t.decision.t)}</small></span><button class="btn sm" type="button" data-t="${t.id}" data-go>Open</button></div>`).join("");
+    if(decHidden) $("#ovDec").innerHTML+=`<div class="privnote"><svg class="i"><use href="#i-lock"/></svg><span><b>${decHidden} more</b> decided in topics you are not invited to.</span></div>`;
+    const rows=[["Marketing",5,9,1,0,"4 hours"],["PPIC",4,11,2,1,"1 day"],["Purchasing",3,10,3,1,"9 hours"],["Production",6,5,0,0,"3 hours"],["Warehouse",3,4,0,0,"5 hours"],["Finance",1,7,0,0,"6 hours"],["R&D / QA",2,3,0,0,"8 hours"],["GA",1,2,0,0,"1 day"]];
+    $("#ovDept").innerHTML=rows.map(r=>`<tr><td>${dchip(r[0])}</td><td class="r num">${r[1]}</td><td class="r num">${r[2]}</td><td class="r num">${r[3]||"—"}</td><td class="r num">${r[4]?`<span class="pill p-red">${r[4]}</span>`:"—"}</td><td>${r[5]}</td></tr>`).join("");
+  }
+  document.addEventListener("click",e=>{ const g=e.target.closest("[data-go]"); if(g){ filter=g.dataset.go&&g.dataset.go!==""?g.dataset.go:"ongoing"; location.hash="topics"; } });
+
+  // ---------- routing + role ----------
+  const VIEWS=["topics","overview","guide"];
+  function show(){
+    let v=location.hash.slice(1); if(!VIEWS.includes(v)) v=me==="HS"?"overview":"topics";
+    $$(".view").forEach(s=>s.hidden=s.dataset.view!==v);
+    $$(".tabs a").forEach(a=>a.classList.toggle("on",a.dataset.v===v));
+    document.body.classList.toggle("on-topics",v==="topics");
+    if(v==="topics"){ window.scrollTo(0,0); renderRoom(); renderList(); } if(v==="overview") renderOverview();
+  }
+  addEventListener("hashchange",show);
+  function setRole(r,go){
+    me=r; const parts=P[r][0].split(" ");
+    $("#meAv").textContent=r; $("#meAv").style.background=DEPT[P[r][1]]; $("#meName").textContent=parts[0]+" "+parts[1][0]+"."; $("#meRole").textContent=ROLE[r];
+    const firstWait=TOPICS.find(t=>visible(t)&&waitingForMe(t));
+    cur=firstWait?firstWait.id:(TOPICS.find(visible)||{}).id||null;
+    filter=TOPICS.some(t=>visible(t)&&forMe(t))?"mine":"ongoing"; $("#hubWrap").classList.remove("has-room");
+    store.set("hub-role",r);
+    if(go){ const target=r==="HS"?"overview":"topics"; if(location.hash==="#"+target) show(); else location.hash=target; } else show();
+  }
+  $("#role").addEventListener("change",e=>setRole(e.target.value,true));
+
+  $$(".note").forEach(n=>{ const d=n.querySelector(":scope > div"); d.classList.add("txt"); n.classList.add("clamp"); const b=document.createElement("button"); b.type="button"; b.className="more"; b.textContent="Read more"; b.addEventListener("click",()=>{ const c=n.classList.toggle("clamp"); b.textContent=c?"Read more":"Show less"; fitHub(); }); n.appendChild(b); });
+  $("#noteChip").addEventListener("click",()=>{ document.body.classList.toggle("show-note"); $("#noteChip").textContent=document.body.classList.contains("show-note")?"Hide mockup note":"Mockup note"; fitHub(); });
+  let tt, tAct=null; function toast(m,act){ $("#toastMsg").textContent=m; const b=$("#toastAct"); tAct=act||null; b.hidden=!act; if(act) b.textContent=act.label; const el=$("#toast"); el.classList.remove("show"); void el.offsetWidth; el.classList.add("show"); clearTimeout(tt); tt=setTimeout(()=>el.classList.remove("show"),act?6000:2800); }
+  $("#toastAct").addEventListener("click",()=>{ const a=tAct; $("#toast").classList.remove("show"); if(a) a.run(); });
+  function busy(btn,fn,ms){ if(!btn){ fn(); return; } btn.classList.add("busy"); setTimeout(()=>{ btn.classList.remove("busy"); fn(); },ms||380); }
+  addEventListener("keydown",e=>{ if(e.key==="Escape"){ $("#newScrim").hidden=true; $("#decScrim").hidden=true; return; }
+    const typing=/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement||{}).tagName||"");
+    if(!typing&&document.body.classList.contains("on-topics")){ if(e.key==="/"){ e.preventDefault(); $("#tSearch").focus(); } else if(e.key==="n"||e.key==="N"){ e.preventDefault(); openNew(); } } });
+  $("#howtoX").addEventListener("click",()=>{ store.set("hub-howto","off"); $("#howto").hidden=true; fitHub(); });
+
+  const r0=store.get("hub-role"); const start=P[r0]&&ROLE[r0]?r0:"HS";
+  $("#role").value=start; setRole(start,false);
+})();
+</script>

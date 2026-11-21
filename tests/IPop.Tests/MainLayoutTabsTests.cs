@@ -105,7 +105,7 @@ public class MainLayoutTabsTests
         using var _c = ctx;
         var cut = ctx.Render<MoreSheet>(p => p.Add(x => x.Open, true));
         var tiles = cut.FindAll(".ph-mgrid .ph-mt").Select(e => e.GetAttribute("href")).ToArray();
-        Assert.Equal(["/dashboard", "/directory", "/notes", "/projects", "/tickets", "/news", "/notifications", "/files"], tiles);
+        Assert.Equal(["/dashboard", "/directory", "/notes", "/projects", "/tickets", "/hub", "/news", "/notifications", "/files"], tiles);
         Assert.Contains("Edit tabs", cut.Markup);
         Assert.Contains("4 pinned", cut.Find(".ph-more-edit").TextContent);
         Assert.Contains("Sign out", cut.Markup);

@@ -53,6 +53,7 @@ builder.Services.AddScoped<IPop.Web.Services.MailSeen>();
 builder.Services.AddScoped<IPop.Web.Services.MailReceiptsStore>();
 builder.Services.AddScoped<IPop.Web.Services.MailReadingPrefs>();
 builder.Services.AddScoped<IPop.Web.Services.TicketApi>();
+builder.Services.AddScoped<IPop.Web.Services.HubApi>();
 builder.Services.AddScoped<IPop.Web.Services.MailComposerHost>();
 builder.Services.AddScoped<IPop.Web.Services.LinkPreviewService>();
 builder.Services.AddScoped<IPop.Web.Services.NotificationState>(sp =>
