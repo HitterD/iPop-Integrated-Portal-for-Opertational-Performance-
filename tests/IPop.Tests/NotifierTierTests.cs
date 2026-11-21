@@ -65,7 +65,8 @@ public class NotifierTierTests
         Assert.Equal("act", s.TierFor("chat", "chat.message", "normal", true));    // leader/VIP
         Assert.Equal("act", s.TierFor("chat", "chat.emergency", "normal", false));
         Assert.Equal("act", s.TierFor("news", "memo.mandatory", "normal", false));
-        Assert.Equal("act", s.TierFor("chat", "chat.mention", "high", false));
+        Assert.Equal("info", s.TierFor("chat", "chat.mention", "high", false));   // a colleague's mention follows the chat tier
+        Assert.Equal("act", s.TierFor("mail", "mail.new", "high", false));        // other high priority always acts
     }
 
     [Fact]

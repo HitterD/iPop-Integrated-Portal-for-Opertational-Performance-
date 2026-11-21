@@ -189,7 +189,10 @@ public sealed record NotifierSettings
         fromLeaderOrVip
         || string.Equals(eventType, "chat.emergency", StringComparison.OrdinalIgnoreCase)
         || string.Equals(eventType, "memo.mandatory", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(priority, "high", StringComparison.OrdinalIgnoreCase);
+        // Priority high counts, except a chat @mention: every mention is published high (so the web bell rings), but
+        // a mention from a colleague is still only a Message (approved mockup); from a leader/VIP it is act above.
+        || (string.Equals(priority, "high", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(eventType, "chat.mention", StringComparison.OrdinalIgnoreCase));
 
     /// "act" | "msg" | "info" for a notification of <paramref name="kind"/> with these settings.
     public string TierFor(string kind, string? eventType, string? priority, bool fromLeaderOrVip)

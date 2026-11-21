@@ -10,6 +10,7 @@
     const u = String(i.targetUrl || '');
     const e = String(i.eventType || '').toLowerCase();
     if (e.startsWith('approval.')) return 'approval';
+    if (/^(meeting|calendar)\./.test(e)) return 'calendar';
     if (u.startsWith('/tickets') || u.startsWith('/idesk/tickets') || /^(ticket|tickets|idesk)\./.test(e)) return 'tickets';
     if (u.startsWith('/calendar') || u.includes('tab=scheduled') || u.includes('join=') || /^(meeting|calendar)\./.test(e)) return 'calendar';
     if (u.startsWith('/calls') || /^calls?\./.test(e)) return 'calls';

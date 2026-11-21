@@ -42,7 +42,8 @@
   }
 
   function alwaysAct(eventType, priority, fromLeaderOrVip) {
-    return !!fromLeaderOrVip || lower(eventType) === 'chat.emergency' || lower(eventType) === 'memo.mandatory' || lower(priority) === 'high';
+    return !!fromLeaderOrVip || lower(eventType) === 'chat.emergency' || lower(eventType) === 'memo.mandatory'
+      || (lower(priority) === 'high' && lower(eventType) !== 'chat.mention'); // a colleague's @mention stays a Message
   }
 
   // tiers = the settings' Tiers map (kind → act|msg|info); missing/unknown → the kind's default.

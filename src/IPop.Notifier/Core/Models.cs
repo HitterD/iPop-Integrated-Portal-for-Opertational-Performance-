@@ -55,6 +55,9 @@ public sealed record Notice(Guid Id, string Module, string EventType, string Tit
     private static string ModuleOfInbox(InboxItem i)
     {
         var url = i.TargetUrl ?? "";
+        // Servers since 1.5.0 send the full event type: a meeting reminder linking to /calls?tab=rooms is still Calendar.
+        var head = (i.EventType ?? "").Split('.', 2)[0].ToLowerInvariant();
+        if (head is "meeting" or "calendar") return "calendar";
         if (url.StartsWith("/tickets") || url.StartsWith("/idesk/tickets")) return "tickets";
         if (url.StartsWith("/calls?tab=scheduled") || url.StartsWith("/calls?tab=rooms&join") || url.StartsWith("/calendar")) return "calendar";
         if (url.StartsWith("/calls")) return "calls";
