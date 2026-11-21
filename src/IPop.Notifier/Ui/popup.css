@@ -176,9 +176,9 @@ body.card{background:var(--surface)}
 /* "2 of 9 pending": notifications from while the PC was off, shown one by one */
 .pending{display:flex;align-items:center;gap:8px;padding:9px 16px;font-size:var(--fs-meta);color:#8a4b00;background:#fff4e0;border-bottom:1px solid var(--sep);flex:none}
 .dark .pending{background:rgba(255,159,10,.14);color:#ffc069}
-.pending b{color:#b25000;font-weight:650}
-.pending svg{width:14px;height:14px;color:#b25000}
-.pending span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pending b{color:#b25000;font-weight:650;white-space:nowrap;flex:none}
+.pending svg{width:14px;height:14px;color:#b25000;flex:none}
+.pending span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .dark .pending b,.dark .pending svg{color:#ffb340}
 
 /* module colours (aligned.html .m-*): --m = icon chip, main button, status dot. --m-soft/--m-ink kept for older bits. */
