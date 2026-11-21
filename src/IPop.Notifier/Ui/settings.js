@@ -66,6 +66,7 @@
     drawCategories();
     $('#previews').innerHTML = SOUNDS.map(([k, n]) => `<div class="row"><span class="t">${esc(n)}</span><button class="btn" data-snd="${k}">${IC('play')}Play</button></div>`).join('');
     if (acc) {
+      $('#devRow').hidden = !acc.ict;
       $('#who').innerHTML = `Signed in as ${esc(acc.name || '…')}<small>Stays signed in — renews itself; ends after 90 days unused</small>`;
       $('#updT').firstChild.textContent = 'iPop Notifier ' + acc.version;
       $('#about').innerHTML = `<span>Version</span><span>${esc(acc.version)}</span><span>Computer</span><span>${esc(acc.computer)}</span><span>Server</span><span>${esc(acc.server)}</span>`;
@@ -106,6 +107,7 @@
     const snd = e.target.closest('[data-snd]'); if (snd) post({ type: 'preview', sound: snd.dataset.snd, volume: +$('#vol').value });
   });
   $('#vol').onchange = () => { save({ volume: +$('#vol').value }); post({ type: 'preview', sound: 'system', volume: +$('#vol').value }); };
+  $('#devices').onclick = () => post({ type: 'devices' });
   $('#signout').onclick = () => { if (confirm('Sign out of iPop Notifier on this PC?')) post({ type: 'signOut' }); };
 
   // ── Settings › Categories (1.5.0, docs/mockups/notifier/priority.html screen 6) ───────────────────────────

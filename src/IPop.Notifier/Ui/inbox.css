@@ -171,20 +171,42 @@ html.large .it .tl{font-size:17px}html.large .it .who{font-size:14.5px}html.larg
 .menu button svg.lucide{width:16px;height:16px;color:var(--ink-3)}
 html.large .menu button{font-size:16px;height:44px}
 .ib.on{background:var(--fill);color:var(--ink)}
-.summary{margin:0 18px 12px;padding:10px 12px;border-radius:12px;background:var(--sunk);display:flex;align-items:center;gap:6px;font-size:13.5px;color:var(--ink-2);flex-wrap:wrap}
-.summary>svg.lucide{color:var(--act);margin-right:2px}
-.summary.calm>svg.lucide{color:var(--accent)}
-.summary button{padding:3px 6px;border-radius:7px;white-space:nowrap;transition:background .15s}
-.summary button:hover{background:var(--fill)}
-.summary b{color:var(--ink);font-weight:650;display:inline-block}
-.summary .sep{width:3px;height:3px;border-radius:50%;background:var(--ink-4);flex:none}
-.chips{display:flex;gap:6px;padding:0 18px 8px;overflow-x:auto;scrollbar-width:none;flex:none}
-.chips::-webkit-scrollbar{display:none}
-.chips>.thumb{background:var(--ink);border-radius:999px}
-.chips button{height:32px;padding:0 12px;border-radius:999px;background:var(--fill-2);border:.5px solid var(--line);font-size:13.5px;font-weight:600;color:var(--ink-2);display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:color .25s,background .25s,border-color .25s}
-.chips button.on{background:transparent;color:var(--surface);border-color:transparent}
-.chips button.on .badge.g{background:rgba(255,255,255,.22);color:inherit}
-.dark .chips button.on .badge.g{background:rgba(0,0,0,.18)}
+.ihead .tools{margin-left:auto}
+/* 1.6.0 header tools: one group of equal 40px buttons, a hairline divider, then Full screen (no ⋯ menu). */
+.tgrp{display:flex;align-items:center;padding:3px;border-radius:13px;background:var(--fill-2);border:.5px solid var(--line)}
+.tgrp .tg{width:38px;height:36px;border-radius:10px;display:grid;place-items:center;color:var(--ink-2);transition:background .15s,color .15s,box-shadow .15s,transform .15s}
+.tgrp .tg:hover{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.tgrp .tg:active{transform:scale(.93)}
+.tgrp .tg[hidden]{display:none}
+.tgrp .tg svg.lucide{width:19px;height:19px}
+.tgrp .dv{width:1px;height:20px;background:var(--line);margin:0 2px;display:block}
+.tgrp .tg[hidden]+.dv,.tgrp .dv:has(+.tg[hidden]){display:none}
+html.large .tgrp .tg{width:44px;height:40px}
+.sbox{top:19px}
+/* Three plain counters (Act / Messages / Info): a tap filters. */
+.fsum{margin:0 18px 10px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;flex:none}
+.fsum[hidden]{display:none}
+.fsum button{display:flex;align-items:center;gap:10px;height:54px;padding:0 12px;border-radius:12px;background:var(--sunk);text-align:left;transition:background .15s,opacity .2s,transform .15s}
+.fsum button:hover{background:var(--fill)}
+.fsum button:active{transform:scale(.97)}
+.fsum b{font-size:20px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.fsum span{font-size:12.5px;line-height:1.2;color:var(--ink-3)}
+.fsum .t-act b{color:var(--act)}
+.fsum .t-msg b{color:var(--unread)}
+.fsum .t-info b{color:var(--ink-3)}
+.fsum button.zero{opacity:.55}
+.fsum button.zero b{color:var(--ink-3)}
+html.large .fsum button{height:62px}
+html.large .fsum span{font-size:14px}
+/* Filter: segmented control with four equal widths (no ragged pills). */
+.fseg{display:grid;grid-template-columns:repeat(4,1fr);margin:0 18px 8px;padding:3px;border-radius:12px;background:var(--fill);gap:0;flex:none;overflow:visible}
+.fseg>.thumb{background:var(--surface);border-radius:9px;box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.fseg button{height:36px;border-radius:9px;font-size:14px;font-weight:600;color:var(--ink-2);display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;background:none;border:0;padding:0 4px}
+.fseg button.on{color:var(--ink)}
+.fseg em{font-style:normal;font-size:12px;font-weight:700;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.fseg em:empty,.fseg em.zero{display:none}
+.fseg button.on em{color:var(--accent-ink)}
+html.large .fseg button{height:40px;font-size:15.5px}
 .ifoot{display:flex;align-items:center;gap:10px;padding:12px 18px;border-top:1px solid var(--sep)}
 .ifoot .lbl{font-size:14.5px;font-weight:550;transition:color .2s}
 .lbl.paused{color:var(--ink-3)}

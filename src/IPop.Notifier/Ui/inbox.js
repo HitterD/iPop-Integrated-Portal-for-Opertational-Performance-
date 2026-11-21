@@ -45,39 +45,22 @@
   function setNum(el, v) {
     const s = String(v > 99 ? '99+' : v);
     if (el.textContent !== s) { el.textContent = s; el.classList.remove('tick'); reflow(el); if (v > 0) el.classList.add('tick'); }
-    if (el.classList.contains('badge')) el.classList.toggle('zero', !v);
+    if (el.classList.contains('badge') || el.tagName === 'EM') el.classList.toggle('zero', !v);
   }
   addEventListener('resize', () => { placeAll(true); placeSearch(); });
-  // The search button sits just left of the header tools (mark all, settings, ⋯).
+  // The search button sits just left of the header tool group (mark all, settings | full screen).
   function placeSearch() {
     const tools = $('#ihead .tools');
-    if (tools.offsetWidth) $('#sbox').style.setProperty('--r', (tools.offsetWidth + 18 + 8) + 'px');
+    if (tools.offsetWidth) $('#sbox').style.setProperty('--r', (tools.offsetWidth + 16 + 8) + 'px');
   }
 
   // ── chrome: header, footer, window buttons ────────────────────────────────
   $$('[data-gear]').forEach(b => b.onclick = () => post({ type: 'settings' }));
   $$('[data-devices]').forEach(b => b.onclick = () => { closeMenu(); post({ type: 'devices' }); });
-  // ⋯ menu (1.5.1): Maximize/Restore and Devices (ICT). Closes on a click elsewhere, Esc or a choice.
-  const menu = $('#moreMenu'), moreBtn = $('#moreBtn');
-  function closeMenu() { if (menu.hidden) return; menu.hidden = true; moreBtn.classList.remove('on'); moreBtn.setAttribute('aria-expanded', 'false'); }
-  function openMenu() {
-    const max = isMax(), item = $('[data-maxitem]');
-    // Same rule as the title bar button: hidden when the window can't maximize.
-    item.hidden = !!$('#wide [data-max]') && $('#wide [data-max]').hidden;
-    item.innerHTML = IC(max ? 'minimize-2' : 'maximize-2') + `<span>${max ? 'Restore' : 'Maximize'}</span>`;
-    menu.hidden = false; moreBtn.classList.add('on'); moreBtn.setAttribute('aria-expanded', 'true');
-    window.icons();
-    const first = menu.querySelector('button:not([hidden])'); if (first) first.focus({ preventScroll: true });
-  }
-  moreBtn.onclick = e => { e.stopPropagation(); menu.hidden ? openMenu() : closeMenu(); };
-  $('[data-maxitem]').onclick = () => { closeMenu(); post({ type: 'maximize' }); };
-  document.addEventListener('mousedown', e => { if (!menu.hidden && !e.target.closest('#moreMenu,#moreBtn')) closeMenu(); }, true);
-  menu.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { e.stopPropagation(); closeMenu(); moreBtn.focus(); return; }
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    const bs = [...menu.querySelectorAll('button:not([hidden])')], i = bs.indexOf(document.activeElement);
-    bs[(i + (e.key === 'ArrowDown' ? 1 : bs.length - 1)) % bs.length].focus(); e.preventDefault();
-  });
+  // Full screen (1.6.0): a visible header button instead of the ⋯ menu; hidden when the window can't maximize.
+  function closeMenu() {}
+  $('[data-maxitem]').onclick = () => post({ type: 'maximize' });
+  function syncMaxItem() { const wm = $('#wide [data-max]'); $('[data-maxitem]').hidden = !!wm && wm.hidden; }
   $$('[data-min]').forEach(b => b.onclick = () => post({ type: 'minimize' }));
   $$('[data-close]').forEach(b => b.onclick = () => post({ type: 'close' }));
   $('[data-open]').onclick = () => post({ type: 'openIPop', path: '/notifications' });
@@ -95,6 +78,7 @@
     $$('[data-unread-text]').forEach(el => el.textContent = who + (ctx.unread ? ctx.unread + ' unread' : 'All caught up'));
     popupsUi(!!ctx.popups);
     $$('[data-devices]').forEach(b => b.hidden = !ctx.ict);
+    syncMaxItem();
     placeSearch();
     connection(!!ctx.connected);
     if (first || document.visibilityState === 'visible') load(false); else regroup();
@@ -201,16 +185,12 @@
   function counts() {
     const c = M.counts(threads);
     $$('[data-count]').forEach(el => { const k = el.dataset.count; setNum(el, k.startsWith('mod:') ? c.mod[k.slice(4)] || 0 : c[k] || 0); });
-    // 1.5.1: "2 approvals · 2 leaders · 1 ticket · 4 messages" — zero parts and their dots left out.
-    const parts = M.summaryParts(c);
+    // 1.6.0: three plain counters (Act / Messages / Info), no sparkle; zero ones fade back.
     const sum = $('#summary');
-    if (!loaded || failed) { sum.hidden = true; }
-    else if (!c.act && !c.msg) { sum.hidden = false; sum.className = 'summary calm'; sum.innerHTML = `${IC('sparkles')}<span>Nothing needs you right now${c.info ? ` · <b>${c.info}</b> for your info` : ''}</span>`; }
-    else {
-      sum.hidden = false; sum.className = 'summary';
-      // Only meetings starting soon (or other Needs action without a name of its own): say so once.
-      const shown = parts.length ? parts : [['act', c.act, 'need' + (c.act === 1 ? 's' : '') + ' action', 'act']];
-      sum.innerHTML = IC('sparkles') + shown.map((p, i) => `${i ? '<span class="sep"></span>' : ''}<button data-jump="${p[3]}"><b>${p[1]}</b> ${p[2]}</button>`).join('');
+    sum.hidden = !loaded || failed;
+    for (const k of ['act', 'msg', 'info']) {
+      const b = sum.querySelector(`[data-sum="${k}"]`); setNum(b, c[k] || 0);
+      b.closest('button').classList.toggle('zero', !c[k]);
     }
     if (isMax()) {
       const xs = wideItems();

@@ -14,24 +14,27 @@
     <span class="logo"><img src="ipop-mark.png" alt=""></span>
     <div class="ht"><h3>Notifications</h3><div class="s" data-unread-text>…</div></div>
     <div class="sbox" id="sbox" data-nodrag><button class="sbtn" title="Search"><i data-lucide="search"></i></button><input id="sq" placeholder="Search notifications" aria-label="Search notifications"><button class="sx" title="Close search"><i data-lucide="x"></i></button></div>
-    <div class="tools">
-      <button class="ib" data-all title="Mark all as read"><i data-lucide="check-check"></i></button>
-      <button class="ib" data-gear title="Settings"><i data-lucide="settings"></i></button>
-      <button class="ib" id="moreBtn" title="More" aria-haspopup="menu" aria-expanded="false"><i data-lucide="ellipsis"></i></button>
-    </div>
-    <!-- 1.5.1: Devices (ICT only) and Maximize live here; a double-click on the header still maximizes -->
-    <div class="menu" id="moreMenu" role="menu" hidden>
-      <button role="menuitem" data-maxitem><i data-lucide="maximize-2"></i><span>Maximize</span></button>
-      <button role="menuitem" data-devices hidden><i data-lucide="monitor"></i><span>Devices (ICT)</span></button>
+    <!-- 1.6.0 (docs/mockups/ipop-apple/notifications-v3.html): one tool group; Full screen is a visible button, no ⋯ menu
+         (Devices moved to Settings › Account). A double-click on the header still switches to full screen. -->
+    <div class="tools tgrp" data-nodrag>
+      <button class="tg" data-all title="Mark all as read" aria-label="Mark all as read"><i data-lucide="check-check"></i></button>
+      <button class="tg" data-gear title="Settings" aria-label="Settings"><i data-lucide="settings"></i></button>
+      <i class="dv" aria-hidden="true"></i>
+      <button class="tg" data-maxitem title="Full screen" aria-label="Full screen"><i data-lucide="maximize-2"></i></button>
     </div>
   </div>
   <div class="strip" data-conn><i></i><span>Reconnecting to iPop… your notifications are safe</span></div>
-  <div class="summary" id="summary"></div>
-  <div class="chips slider" id="chips"><span class="thumb"></span>
-    <button class="on" data-f="all">All <span class="badge g zero" data-count="all"></span></button>
-    <button data-f="act">Needs action <span class="badge act zero" data-count="act"></span></button>
-    <button data-f="msg">Messages <span class="badge g zero" data-count="msg"></span></button>
-    <button data-f="info">Info <span class="badge g zero" data-count="info"></span></button>
+  <!-- Three plain counters (no sparkle): click one to filter. -->
+  <div class="fsum" id="summary">
+    <button class="t-act" data-jump="act"><b data-sum="act">0</b><span>need you<br>to act</span></button>
+    <button class="t-msg" data-jump="msg"><b data-sum="msg">0</b><span>new<br>messages</span></button>
+    <button class="t-info" data-jump="info"><b data-sum="info">0</b><span>for your<br>info</span></button>
+  </div>
+  <div class="chips fseg slider" id="chips"><span class="thumb"></span>
+    <button class="on" data-f="all">All <em data-count="all"></em></button>
+    <button data-f="act">Act <em data-count="act"></em></button>
+    <button data-f="msg">Messages <em data-count="msg"></em></button>
+    <button data-f="info">Info <em data-count="info"></em></button>
   </div>
   <div class="ilist" id="smallList"></div>
   <div class="ifoot"><span class="sw" data-pt title="Popups"></span><span class="lbl" data-pt-label>Popups on</span><button class="btn g s" data-open><i data-lucide="arrow-up-right"></i>Open iPop</button></div>
@@ -42,7 +45,7 @@
   <div class="tbar" data-drag><div class="t"><img src="ipop-mark.png" alt="">iPop Notifier</div>
     <button class="tb" data-devices title="Devices (ICT)" hidden><i data-lucide="monitor"></i></button>
     <button class="tb" data-gear title="Settings"><i data-lucide="settings"></i></button>
-    <button class="tb" data-min title="Minimize"><i data-lucide="minus"></i></button><button class="tb" data-max title="Restore"></button><button class="tb x" data-close title="Close"><i data-lucide="x"></i></button></div>
+    <button class="tb" data-min title="Minimize"><i data-lucide="minus"></i></button><button class="tb" data-max data-small title="Back to the small window"></button><button class="tb x" data-close title="Close"><i data-lucide="x"></i></button></div>
   <div class="wgrid" id="wgrid">
     <aside class="side">
       <div class="brand"><img src="ipop-mark.png" alt=""><div><b>Notifications</b><span data-unread-text>…</span></div></div>

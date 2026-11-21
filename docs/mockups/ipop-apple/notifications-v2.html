@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Notifications refined (mockup v2 2026-11-21)</title>
+<script src="../notifier/lucide.min.js"></script>
+<style>
+:root{
+  --bg:#F5F5F7;--surface:#FFFFFF;--sunk:#F4F4F6;--fill:rgba(118,118,128,.10);--fill-2:rgba(118,118,128,.16);--sep:rgba(60,60,67,.11);--line:rgba(60,60,67,.20);
+  --ink:#1D1D1F;--ink-2:#3C3C43;--ink-3:#6E6E73;--accent:#2E9E5B;--accent-ink:#1C7A44;--accent-soft:#E7F5EC;
+  --danger:#E5372C;--frame:#123528;--frame-ink:#e7f2ec;
+  --shadow:0 0 0 .5px rgba(0,0,0,.06),0 4px 16px -8px rgba(0,0,0,.18);
+}
+.dark{
+  --bg:#0f0f10;--surface:#1C1C1E;--sunk:#232326;--fill:rgba(118,118,128,.20);--fill-2:rgba(118,118,128,.30);--sep:rgba(84,84,88,.45);--line:rgba(255,255,255,.14);
+  --ink:#F5F5F7;--ink-2:#D1D1D6;--ink-3:#98989D;--accent:#30D158;--accent-ink:#5EE08A;--accent-soft:rgba(48,209,88,.14);
+  --danger:#FF453A;--frame:#0b2219;--frame-ink:#e3efe8;
+  --shadow:0 0 0 .5px rgba(255,255,255,.07),0 4px 16px -8px rgba(0,0,0,.6);
+}
+/* module colour: icon tint only */
+.m-all{--m:#2E9E5B}.m-unread{--m:#2E9E5B}.m-mention{--m:#0A84C8}.m-chat{--m:#2E9E5B}.m-mail{--m:#0A6CFF}.m-tickets{--m:#E06A2C}
+.m-calendar{--m:#D97706}.m-projects{--m:#5562B8}.m-news{--m:#A3447F}.m-system{--m:#5B6B78}.m-call{--m:#E5372C}.m-snooze{--m:#7C5CC4}
+.dark .m-mail{--m:#3D95FF}.dark .m-tickets{--m:#FF8A4C}.dark .m-calendar{--m:#FFA94D}.dark .m-projects{--m:#8B96E6}.dark .m-news{--m:#D16BA8}.dark .m-system{--m:#93A3B0}.dark .m-chat,.dark .m-all,.dark .m-unread{--m:#4CD07D}.dark .m-mention{--m:#4DB3F0}.dark .m-call{--m:#FF6159}.dark .m-snooze{--m:#A88BEB}
+
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"SF Pro Text","Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;background:#d9dde1;-webkit-font-smoothing:antialiased}
+button,input,textarea{font:inherit;color:inherit;background:none;border:0}
+button{cursor:pointer}
+svg.lucide{width:18px;height:18px;stroke-width:1.9;flex:none}
+
+.doc{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:14px;padding:12px 28px;background:#0d2a1f;color:#e7f2ec}
+.doc h1{font-size:15px;font-weight:650;flex:1}
+.seg{display:flex;padding:3px;border-radius:10px;background:rgba(255,255,255,.10)}
+.seg button{height:30px;padding:0 14px;border-radius:8px;font-size:13px;font-weight:600;opacity:.8}
+.seg button.on{background:#fff;color:#123528;opacity:1}
+.stage{padding:24px 28px 40px;background:linear-gradient(135deg,#cfd8de,#e6ebee);transition:background .3s}
+.stage.dark{background:#1b1f22}
+.note{font-size:14px;color:#44505a;margin:0 4px 16px;max-width:1100px;line-height:1.6}
+.note b{color:#1d2a33}
+.stage.dark .note{color:#9aa5ad}.stage.dark .note b{color:#e3e8eb}
+.note ul{margin:6px 0 0 18px}
+
+/* ---------- shell (as today) ---------- */
+.app{display:flex;height:860px;border-radius:14px;overflow:hidden;background:var(--frame);box-shadow:0 20px 60px -20px rgba(0,0,0,.45);color:var(--ink)}
+.rail{width:72px;flex:none;display:flex;flex-direction:column;align-items:center;gap:22px;padding:18px 0;color:#b3d0c1}
+.rail .logo{width:36px;height:36px;border-radius:11px;background:linear-gradient(135deg,#2E9E5B,#ffc96b);margin-bottom:6px}
+.rail svg.lucide{width:22px;height:22px}
+.rail .on{align-self:flex-end;width:56px;height:46px;border-radius:14px 0 0 14px;background:var(--bg);color:var(--danger);display:grid;place-items:center}
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.tbar{height:72px;flex:none;display:flex;align-items:center;gap:14px;padding:0 24px 0 8px;color:var(--frame-ink)}
+.tbar h3{font-size:24px;font-weight:700;letter-spacing:-.01em}
+.tbar small{display:block;font-size:14px;opacity:.8;margin-top:2px}
+.tbar .sp{flex:1}
+.tbar .sch{width:440px;height:44px;border-radius:12px;background:rgba(255,255,255,.08);display:flex;align-items:center;gap:10px;padding:0 14px;font-size:15px;opacity:.9}
+.tbar .bell{position:relative;width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.08);display:grid;place-items:center}
+.tbar .bell i{position:absolute;top:-5px;right:-6px;min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:var(--danger);color:#fff;font:700 12px/22px system-ui;text-align:center;font-style:normal}
+.panel{flex:1;min-height:0;background:var(--bg);border-radius:20px 0 0 0;display:flex;flex-direction:column;padding:16px 20px 20px 18px;gap:14px}
+
+/* toolbar row (same place as today) */
+.trow{display:flex;align-items:center;gap:10px}
+.search{width:400px;height:42px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--sep);display:flex;align-items:center;gap:10px;padding:0 14px;color:var(--ink-3);font-size:15px}
+.search input{flex:1;outline:0;color:var(--ink)}
+.trow .sp{flex:1}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border-radius:11px;font-size:14.5px;font-weight:600;background:var(--surface);box-shadow:inset 0 0 0 1px var(--sep);color:var(--ink);white-space:nowrap;transition:transform .15s,background .15s}
+.btn:hover{background:var(--sunk)}.btn:active{transform:scale(.97)}
+.btn svg.lucide{width:17px;height:17px}
+.btn.pri{background:var(--accent);color:#fff;box-shadow:none}.btn.pri:hover{filter:brightness(1.05)}
+.btn.soft{background:var(--fill);box-shadow:none}.btn.soft:hover{background:var(--fill-2)}
+.btn.red{color:var(--danger)}
+
+.cols{flex:1;min-height:0;display:flex;gap:14px}
+
+/* ---------- 1. categories (left, vertical — like today) ---------- */
+.cats{width:250px;flex:none;display:flex;flex-direction:column}
+.cats .list{display:flex;flex-direction:column;gap:2px}
+.cat{display:flex;align-items:center;gap:12px;height:44px;padding:0 12px;border-radius:11px;font-size:15.5px;font-weight:500;color:var(--ink-2);text-align:left;transition:background .15s}
+.cat:hover{background:var(--fill)}
+.cat svg.lucide{width:20px;height:20px;color:var(--m)}
+.cat .c{margin-left:auto;min-width:26px;height:24px;padding:0 8px;border-radius:12px;font-size:13px;font-weight:700;display:grid;place-items:center;color:var(--ink-3)}
+.cat .c.new{background:var(--danger);color:#fff}
+.cat.on{background:var(--surface);box-shadow:var(--shadow);color:var(--ink);font-weight:650}
+.cats .lbl{font-size:12.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);padding:16px 12px 6px}
+.cats .foot{margin-top:auto;border-top:1px solid var(--sep);padding:14px 4px 2px;display:flex;align-items:center;gap:12px}
+.cats .foot b{display:block;font-size:15px;font-weight:600}
+.cats .foot small{display:block;font-size:13px;color:var(--ink-3)}
+.sw{width:46px;height:28px;border-radius:14px;background:var(--line);position:relative;flex:none;margin-left:auto;transition:background .2s;cursor:pointer}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .25s cubic-bezier(.32,.72,0,1)}
+.sw.on{background:var(--accent)}.sw.on::after{transform:translateX(18px)}
+
+/* ---------- 2. list ---------- */
+.lst{width:440px;flex:none;background:var(--surface);border-radius:16px;box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden}
+.lh{display:flex;align-items:center;gap:8px;padding:16px 16px 14px 20px;border-bottom:1px solid var(--sep)}
+.lh h4{font-size:20px;font-weight:700}
+.lh small{display:block;font-size:13.5px;color:var(--ink-3);margin-top:2px}
+.lh .sp{flex:1}
+.link{font-size:14.5px;font-weight:600;color:var(--accent-ink);padding:6px 8px;border-radius:8px}
+.link:hover{background:var(--accent-soft)}
+.ico{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;color:var(--ink-3)}
+.ico:hover{background:var(--fill);color:var(--ink)}
+.sc{flex:1;overflow:auto}
+.day{position:sticky;top:0;z-index:2;background:var(--surface);font-size:13px;font-weight:700;color:var(--ink-3);padding:12px 20px 6px}
+.n{position:relative;display:flex;gap:14px;padding:13px 18px 13px 26px;cursor:pointer;border-radius:0;transition:background .12s}
+.n:hover{background:var(--sunk)}
+.n+.n::before{content:"";position:absolute;left:80px;right:0;top:0;border-top:1px solid var(--sep)}
+.n.sel{background:var(--accent-soft)}
+.n.sel::after{content:"";position:absolute;left:0;top:8px;bottom:8px;width:4px;border-radius:0 3px 3px 0;background:var(--accent)}
+.n.sel+.n::before,.n.sel::before{display:none}
+.dot{position:absolute;left:10px;top:30px;width:9px;height:9px;border-radius:50%;background:var(--accent)}
+.n:not(.unread) .dot{display:none}
+.ic{width:42px;height:42px;border-radius:12px;flex:none;display:grid;place-items:center;color:var(--m);background:color-mix(in srgb,var(--m) 13%,transparent);position:relative}
+.ic svg.lucide{width:21px;height:21px}
+.ic .av{position:absolute;right:-5px;bottom:-5px;width:22px;height:22px;border-radius:7px;border:2px solid var(--surface);display:grid;place-items:center;font:700 9.5px/1 system-ui;color:#fff}
+.n.sel .ic .av{border-color:var(--accent-soft)}
+.bd{flex:1;min-width:0}
+.r1{display:flex;align-items:baseline;gap:10px}
+.ti{flex:1;min-width:0;font-size:15.5px;font-weight:500;color:var(--ink-2);line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.n.unread .ti{font-weight:700;color:var(--ink)}
+.tm{font-size:13px;color:var(--ink-3);flex:none}
+.n.unread .tm{color:var(--accent-ink);font-weight:600}
+.sn{font-size:14.5px;color:var(--ink-3);line-height:1.45;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.src{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12.5px;font-weight:600;color:var(--ink-3)}
+.src .cnt{height:20px;padding:0 7px;border-radius:10px;background:var(--accent);color:#fff;font-size:11.5px;display:grid;place-items:center}
+
+/* ---------- 3. detail ---------- */
+.det{flex:1;min-width:0;background:var(--surface);border-radius:16px;box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden}
+.dtool{display:flex;align-items:center;gap:6px;padding:12px 16px;border-bottom:1px solid var(--sep)}
+.dtool .sp{flex:1}
+.tb{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 12px;border-radius:10px;font-size:14px;font-weight:600;color:var(--ink-2)}
+.tb:hover{background:var(--fill);color:var(--ink)}
+.tb svg.lucide{width:17px;height:17px}
+.tb.red:hover{color:var(--danger);background:color-mix(in srgb,var(--danger) 10%,transparent)}
+.dbody{flex:1;overflow:auto;padding:26px 32px 32px}
+.dwrap{max-width:720px;display:flex;flex-direction:column;gap:20px}
+.who{display:flex;align-items:center;gap:14px}
+.who .ic{width:48px;height:48px;border-radius:14px}
+.who .ic svg.lucide{width:24px;height:24px}
+.who b{display:block;font-size:16px;font-weight:650}
+.who small{display:block;font-size:14px;color:var(--ink-3);margin-top:1px}
+.dt{font-size:26px;font-weight:700;letter-spacing:-.015em;line-height:1.25}
+.msgs{border-radius:14px;background:var(--sunk);padding:6px 0}
+.msg{display:flex;gap:12px;padding:10px 18px}
+.msg .a{width:34px;height:34px;border-radius:10px;flex:none;display:grid;place-items:center;font:700 12px/1 system-ui;color:#fff}
+.msg b{font-size:14.5px;font-weight:650}
+.msg span{font-size:12.5px;color:var(--ink-3);margin-left:8px}
+.msg p{font-size:16px;line-height:1.5;color:var(--ink);margin-top:2px}
+.msg.new p{font-weight:500}
+.msgs .older{display:block;width:100%;text-align:center;font-size:13.5px;font-weight:600;color:var(--accent-ink);padding:6px 0 8px}
+.reply{display:flex;gap:10px;align-items:flex-end}
+.reply .box{flex:1;min-height:48px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1.5px var(--line);display:flex;align-items:center;gap:10px;padding:0 14px;font-size:16px;color:var(--ink-3)}
+.reply .box:focus-within{box-shadow:inset 0 0 0 2px var(--accent)}
+.reply .box input{flex:1;outline:0;height:46px;color:var(--ink)}
+.reply .btn{height:48px;padding:0 20px;font-size:15.5px}
+.acts{display:flex;gap:10px;flex-wrap:wrap}
+.acts .btn{height:46px;padding:0 20px;font-size:15.5px}
+.body{font-size:16.5px;line-height:1.6;color:var(--ink-2)}
+/* info list (replaces From / Priority / Status table) */
+.info{border-radius:14px;background:var(--sunk);overflow:hidden}
+.info div{display:flex;align-items:center;gap:12px;padding:13px 18px;font-size:15px}
+.info div+div{border-top:1px solid var(--sep)}
+.info dt{color:var(--ink-3);width:120px;flex:none}
+.info dd{color:var(--ink);font-weight:550;display:flex;align-items:center;gap:8px}
+.pill{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:999px;font-size:13px;font-weight:650;background:var(--fill)}
+.pill.o{background:color-mix(in srgb,#E06A2C 14%,transparent);color:#C4561C}
+.pill.r{background:color-mix(in srgb,#E5372C 12%,transparent);color:#D0291F}
+.pill.g{background:var(--accent-soft);color:var(--accent-ink)}
+.dark .pill.o{color:#FF9A62}.dark .pill.r{color:#FF6B63}
+.pill svg.lucide{width:13px;height:13px}
+.hint{display:flex;gap:10px;align-items:center;font-size:13.5px;color:var(--ink-3)}
+.hint svg.lucide{width:16px;height:16px;color:var(--accent-ink)}
+.empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--ink-3);text-align:center;padding:40px}
+.empty .bigic{width:72px;height:72px;border-radius:22px;background:var(--accent-soft);color:var(--accent-ink);display:grid;place-items:center}
+.empty .bigic svg.lucide{width:34px;height:34px}
+.empty b{font-size:18px;color:var(--ink)}
+.empty span{font-size:15px;max-width:320px;line-height:1.5}
+.snz{position:relative}
+.menu{position:absolute;top:42px;left:0;z-index:5;width:230px;padding:6px;border-radius:14px;background:var(--surface);box-shadow:0 0 0 .5px rgba(0,0,0,.1),0 16px 40px -10px rgba(0,0,0,.35);display:none}
+.snz.open .menu{display:block}
+.menu button{display:flex;width:100%;align-items:center;justify-content:space-between;height:40px;padding:0 12px;border-radius:9px;font-size:14.5px}
+.menu button:hover{background:var(--fill)}
+.menu button span{color:var(--ink-3);font-size:13px}
+
+/* Notifier */
+.pair{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;margin-top:36px}
+.pw{width:440px;height:560px;display:flex;flex-direction:column;border-radius:12px;overflow:hidden;background:var(--surface);color:var(--ink);box-shadow:0 0 0 .5px rgba(0,0,0,.1),0 18px 40px -12px rgba(0,0,0,.3)}
+.pw .ttl{height:48px;flex:none;display:flex;align-items:center;gap:10px;padding:0 6px 0 16px;border-bottom:1px solid var(--sep)}
+.pw .ttl .lg{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#2E9E5B,#ffc96b)}
+.pw .ttl b{font-size:14px;flex:1}
+.pw .ptabs{display:flex;gap:4px;padding:10px 12px;border-bottom:1px solid var(--sep)}
+.pw .ptabs button{flex:1;height:34px;border-radius:9px;font-size:13.5px;font-weight:600;color:var(--ink-2)}
+.pw .ptabs button.on{background:var(--fill-2);color:var(--ink)}
+.pw .n{padding:12px 14px 12px 24px}
+.pw .n+.n::before{left:72px}
+.pw .foot{flex:none;display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--sep);font-size:13px;color:var(--ink-3)}
+.pw .foot .sp{flex:1}
+.pw .btn{height:34px;font-size:13.5px;padding:0 12px}
+.syncnote{flex:1;min-width:320px;max-width:560px;font-size:14.5px;line-height:1.7;color:#44505a}
+.syncnote b{color:#1d2a33}
+.syncnote ol{margin:8px 0 0 18px}
+.stage.dark .syncnote{color:#b4bec5}.stage.dark .syncnote b{color:#e3e8eb}
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>Notifications: today's layout, refined (v2). Click the rows and the categories, they work.</h1>
+  <div class="seg" id="theme"><button class="on" data-t="light">Light</button><button data-t="dark">Dark</button></div>
+</div>
+
+<div class="stage" id="stage">
+<p class="note"><b>The layout stays the same as today:</b> categories on the left (top to bottom), the list in the middle, details on the right. Only the details are refined:</p>
+<ul class="note" style="margin-top:-10px">
+  <li><b>Clear icons:</b> every module has its own icon and colour (Chat, Mail, iDesk, Meetings…), so items no longer all show the grey shield.</li>
+  <li><b>Bigger text</b> for 40+ users, and unread items are easy to spot (bold title + green dot + green time).</li>
+  <li><b>Chat history now exists:</b> one row per conversation ("3 new messages"). Click it and the right side shows the last messages plus a reply box.</li>
+  <li><b>The right side follows the item type:</b> chat shows messages + Reply, iDesk shows the ticket status + Reply in ticket, a meeting shows Join/Accept, a system item shows the plain message. The From/Priority/Status table is replaced by details that actually help.</li>
+  <li>Buttons at the top of the details have <b>labels</b> (Mark unread, Snooze, Delete), not just icons.</li>
+</ul>
+
+<div class="app" id="app">
+  <div class="rail"><div class="logo"></div><i data-lucide="layout-grid"></i><i data-lucide="notebook-pen"></i><i data-lucide="life-buoy"></i><i data-lucide="messages-square"></i><i data-lucide="message-circle"></i><i data-lucide="mail"></i><i data-lucide="newspaper"></i><i data-lucide="phone"></i><span class="on"><i data-lucide="bell"></i></span><i data-lucide="folder"></i><i data-lucide="calendar"></i></div>
+  <div class="main">
+    <div class="tbar"><div><h3>Notifications</h3><small>9 unread</small></div><span class="sp"></span><div class="sch"><i data-lucide="search"></i>Search people, chat, notes, mail…</div><span class="bell"><i data-lucide="bell"></i><i>9</i></span></div>
+    <div class="panel">
+      <div class="trow">
+        <label class="search"><i data-lucide="search"></i><input placeholder="Search notifications"></label>
+        <span class="sp"></span>
+        <button class="btn"><i data-lucide="check-check"></i>Mark all as read</button>
+        <button class="btn"><i data-lucide="sliders-horizontal"></i>Preferences</button>
+      </div>
+      <div class="cols">
+        <nav class="cats" id="cats">
+          <div class="list">
+            <button class="cat on m-all" data-f="all"><i data-lucide="inbox"></i>All<span class="c new">9</span></button>
+            <button class="cat m-unread" data-f="unread"><i data-lucide="circle-dot"></i>Unread<span class="c">9</span></button>
+            <button class="cat m-mention" data-f="mention"><i data-lucide="at-sign"></i>Mentions<span class="c">1</span></button>
+          </div>
+          <div class="lbl">By app</div>
+          <div class="list">
+            <button class="cat m-chat" data-f="chat"><i data-lucide="message-circle"></i>Chat<span class="c">3</span></button>
+            <button class="cat m-mail" data-f="mail"><i data-lucide="mail"></i>Mail<span class="c">1</span></button>
+            <button class="cat m-tickets" data-f="tickets"><i data-lucide="life-buoy"></i>iDesk<span class="c">2</span></button>
+            <button class="cat m-projects" data-f="projects"><i data-lucide="kanban"></i>Tasks<span class="c"></span></button>
+            <button class="cat m-calendar" data-f="calendar"><i data-lucide="calendar"></i>Meetings<span class="c">1</span></button>
+            <button class="cat m-news" data-f="news"><i data-lucide="newspaper"></i>Memos &amp; News<span class="c"></span></button>
+            <button class="cat m-system" data-f="system"><i data-lucide="shield-check"></i>System<span class="c">1</span></button>
+          </div>
+          <div class="lbl">Later</div>
+          <div class="list">
+            <button class="cat m-snooze" data-f="snoozed"><i data-lucide="alarm-clock"></i>Snoozed<span class="c">1</span></button>
+          </div>
+          <div class="foot"><i data-lucide="moon"></i><div><b>Do Not Disturb</b><small id="dndt">Off</small></div><span class="sw" id="dnd"></span></div>
+        </nav>
+
+        <section class="lst">
+          <div class="lh"><div><h4 id="lt">All</h4><small id="ls">9 unread</small></div><span class="sp"></span><button class="ico" title="Refresh"><i data-lucide="rotate-cw"></i></button><button class="link">Select</button></div>
+          <div class="sc" id="list"></div>
+        </section>
+
+        <section class="det" id="det"></section>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="pair">
+  <div class="pw" id="pw">
+    <div class="ttl"><span class="lg"></span><b>iPop Notifier</b><button class="ico"><i data-lucide="settings"></i></button><button class="ico"><i data-lucide="minus"></i></button><button class="ico"><i data-lucide="x"></i></button></div>
+    <div class="ptabs"><button class="on">All</button><button>Unread</button><button>Chat</button><button>iDesk</button><button>Mail</button></div>
+    <div class="sc" id="plist"></div>
+    <div class="foot"><i data-lucide="circle-check" style="width:15px;height:15px;color:var(--accent-ink)"></i>Same list as iPop<span class="sp"></span><button class="btn"><i data-lucide="external-link"></i>Open iPop</button></div>
+  </div>
+  <div class="syncnote">
+    <b>iPop Notifier shows the same list as the web page</b> (it is stored once on the server):
+    <ol>
+      <li>Each chat message updates <b>one row per conversation</b> ("Ursula · 3 new messages") instead of adding a new row every time, so the list does not fill up.</li>
+      <li>Read it in the Notifier and it is read on the web too, and the bell badge drops (the other way round as well).</li>
+      <li>Open the chat in /chat and its row is marked read automatically.</li>
+      <li>Snooze and Delete do the same thing everywhere.</li>
+      <li>Kept for 90 days. Read chat rows are removed after 30 days, since the messages stay in /chat.</li>
+    </ol>
+  </div>
+</div>
+</div>
+
+<script>
+const P={UR:'#B45B8C',YD:'#3A86C8',DK:'#6F8290',AP:'#C99A1E',HC:'#A3447F',ME:'#2E9E5B'};
+const items=[
+ {id:1,k:'chat',ic:'message-circle',av:'UR',day:'Today',t:'10:42',unread:1,title:'Ursula Rahmawati',sn:'bisa tolong remote sekarang? 🙏',src:'Chat · Direct message',cnt:3,
+  msgs:[['UR','Ursula','10:38','sudah saya cek, pelampung 9FE masih error'],['UR','Ursula','10:40','file nya saya kirim lewat Files ya'],['UR','Ursula','10:42','bisa tolong remote sekarang? 🙏']]},
+ {id:2,k:'mention',ic:'at-sign',av:'YD',day:'Today',t:'10:15',unread:1,title:'Yudi mentioned you in ICT Team',sn:'@Bagas tolong cek akses VPN untuk tim gudang Karawang sebelum jam 2',src:'Mention · ICT Team',
+  msgs:[['AP','Andi','10:12','VPN gudang Karawang ga bisa connect dari pagi'],['YD','Yudi','10:15','@Bagas tolong cek akses VPN untuk tim gudang Karawang sebelum jam 2']]},
+ {id:3,k:'call',cat:'chat',ic:'phone-missed',av:'DK',day:'Today',t:'09:58',unread:1,title:'Missed call from Dia Kartika',sn:'Voice call · rang for 30 seconds',src:'Calls'},
+ {id:4,k:'tickets',ic:'life-buoy',day:'Today',t:'09:31',unread:1,title:'PELAMPUNG 9FE TIDAK BISA DIBUKA',sn:'Ursula: "silahkan remote"',src:'iDesk · Ticket #2381',cnt:2,
+  msgs:[['UR','Ursula','09:20','sudah saya restart tetap tidak bisa'],['UR','Ursula','09:31','silahkan remote']]},
+ {id:5,k:'calendar',ic:'calendar-clock',day:'Today',t:'09:15',unread:1,title:'Weekly ICT sync starts in 15 minutes',sn:'Meeting room Bromo · 09:30 – 10:30',src:'Meetings'},
+ {id:6,k:'mail',ic:'mail',av:'HC',day:'Today',t:'08:05',unread:1,title:'Jadwal medical check-up November',sn:'HC Santos: Dengan hormat, berikut jadwal MCU untuk karyawan site Sepanjang…',src:'Mail'},
+ {id:7,k:'chat',ic:'users',day:'Today',t:'07:50',unread:1,title:'ICT Team',sn:'Andi: VPN gudang Karawang ga bisa connect dari pagi',src:'Chat · Group',cnt:4,
+  msgs:[['AP','Andi','07:41','pagi semua'],['DK','Dia','07:45','printer lt 2 sudah normal'],['AP','Andi','07:50','VPN gudang Karawang ga bisa connect dari pagi']]},
+ {id:8,k:'system',ic:'archive',day:'Yesterday',t:'23:47',unread:1,title:'Your EPop history is in iPop Mail',sn:'275 new messages from EPop were added under the label "Arsip EPop".',src:'System'},
+ {id:9,k:'tickets',ic:'circle-check-big',day:'Yesterday',t:'16:20',unread:0,title:'Printer tidak bisa ngeprint',sn:'Confirmed as fixed by Dia Kartika Lestari. The ticket is closed.',src:'iDesk · Ticket #2374',closed:1},
+ {id:10,k:'projects',ic:'kanban',day:'Yesterday',t:'14:02',unread:0,title:'Task assigned to you: Update firewall rules',sn:'Project ICT Infra 2026 · due Fri 28 Nov',src:'Tasks'},
+ {id:11,k:'news',ic:'megaphone',day:'Thursday',t:'08:00',unread:0,title:'Libur cuti bersama 24–26 Desember 2026',sn:'Human Capital: memo to all employees',src:'Memos & News'},
+ {id:12,k:'chat',ic:'message-circle',av:'DK',day:'Thursday',t:'Thu',unread:0,snoozed:1,title:'Dia Kartika',sn:'nanti tolong kirim laporan mingguan ya',src:'Chat · Direct message',
+  msgs:[['DK','Dia','15:10','nanti tolong kirim laporan mingguan ya']]},
+];
+const names={all:'All',unread:'Unread',mention:'Mentions',chat:'Chat',mail:'Mail',tickets:'iDesk',projects:'Tasks',calendar:'Meetings',news:'Memos & News',system:'System',snoozed:'Snoozed'};
+let filter='all',selId=1;
+const cls=it=>'m-'+(it.k==='mention'?'mention':it.k);
+const match=it=>filter==='all'?!it.snoozed:filter==='unread'?it.unread&&!it.snoozed:filter==='snoozed'?it.snoozed:filter==='chat'?(it.k==='chat'||it.k==='call'||it.k==='mention')&&!it.snoozed:it.k===filter&&!it.snoozed;
+function row(it){return `<div class="n ${cls(it)} ${it.unread?'unread':''} ${it.id===selId?'sel':''}" data-id="${it.id}"><span class="dot"></span>
+ <div class="ic"><i data-lucide="${it.ic}"></i>${it.av?`<span class="av" style="background:${P[it.av]}">${it.av}</span>`:''}</div>
+ <div class="bd"><div class="r1"><span class="ti">${it.title}</span><span class="tm">${it.t}</span></div><div class="sn">${it.sn}</div>
+ <div class="src">${it.src}${it.cnt&&it.unread?`<span class="cnt">${it.cnt} new</span>`:''}</div></div></div>`}
+function renderList(){
+  const L=items.filter(match);let h='',d='';
+  L.forEach(it=>{if(it.day!==d){d=it.day;h+=`<div class="day">${d}</div>`}h+=row(it)});
+  const u=L.filter(i=>i.unread).length;
+  document.getElementById('lt').textContent=names[filter];
+  document.getElementById('ls').textContent=L.length?`${L.length} notifications · ${u} unread`:'Nothing here';
+  document.getElementById('list').innerHTML=h||`<div class="empty"><div class="bigic"><i data-lucide="check-check"></i></div><b>You're all caught up</b><span>New messages, tickets and meetings show up here and in the iPop Notifier.</span></div>`;
+  if(!L.find(i=>i.id===selId)&&L[0])selId=L[0].id;
+  document.querySelectorAll('#list .n').forEach(n=>{n.classList.toggle('sel',+n.dataset.id===selId);n.onclick=()=>{selId=+n.dataset.id;const it=items.find(i=>i.id===selId);it.unread=0;renderAll()}});
+}
+const msgsHtml=m=>`<div class="msgs"><button class="older">Show earlier messages</button>${m.map(x=>`<div class="msg new"><span class="a" style="background:${P[x[0]]}">${x[0]}</span><div><b>${x[1]}</b><span>${x[2]}</span><p>${x[3]}</p></div></div>`).join('')}</div>`;
+const replyHtml=(ph,btn)=>`<div class="reply"><label class="box"><input placeholder="${ph}"><i data-lucide="smile"></i></label><button class="btn pri"><i data-lucide="send"></i>${btn}</button></div>`;
+function renderDet(){
+  const it=items.find(i=>i.id===selId),D=document.getElementById('det');
+  if(!it||!items.filter(match).length){D.innerHTML=`<div class="empty"><div class="bigic"><i data-lucide="bell"></i></div><b>Pick a notification</b><span>Its details and actions show here.</span></div>`;return}
+  let who='',main='';
+  const ic=`<div class="ic"><i data-lucide="${it.ic}"></i></div>`;
+  switch(it.k){
+   case 'chat':case 'mention':
+    who=`<div class="who ${cls(it)}">${ic}<div><b>${it.k==='mention'?'ICT Team':it.title}</b><small>${it.src} · ${it.day} at ${it.t}</small></div></div>`;
+    main=`<div class="dt">${it.k==='mention'?'Yudi mentioned you':it.cnt?it.cnt+' new messages':'New message'}</div>${msgsHtml(it.msgs)}${replyHtml('Reply to '+(it.k==='mention'?'ICT Team':it.title.split(' ')[0])+'…','Send')}
+     <div class="acts"><button class="btn soft"><i data-lucide="message-square"></i>Open in Chat</button></div><div class="hint"><i data-lucide="info"></i>Opening this chat in iPop marks it as read here and in the iPop Notifier.</div>`;break;
+   case 'call':
+    who=`<div class="who ${cls(it)}">${ic}<div><b>Dia Kartika Lestari</b><small>Calls · ${it.day} at ${it.t}</small></div></div>`;
+    main=`<div class="dt">${it.title}</div><div class="acts"><button class="btn pri" style="background:var(--accent)"><i data-lucide="phone"></i>Call back</button><button class="btn soft"><i data-lucide="message-circle"></i>Send a message</button></div>`;break;
+   case 'tickets':
+    who=`<div class="who ${cls(it)}">${ic}<div><b>iDesk</b><small>${it.src} · ${it.day} at ${it.t}</small></div></div>`;
+    main=`<div class="dt">${it.title}</div>
+     <dl class="info"><div><dt>Ticket</dt><dd>#${it.src.split('#')[1]}</dd></div><div><dt>Status</dt><dd>${it.closed?'<span class="pill g"><i data-lucide="circle-check"></i>Closed</span>':'<span class="pill o"><i data-lucide="loader"></i>In progress</span>'}</dd></div>${it.closed?'':'<div><dt>Priority</dt><dd><span class="pill r"><i data-lucide="flag"></i>High</span></dd></div>'}<div><dt>Requester</dt><dd>Ursula Rahmawati · Finance</dd></div></dl>
+     ${it.msgs?msgsHtml(it.msgs)+replyHtml('Reply in the ticket…','Send'):`<p class="body">${it.sn}</p>`}
+     <div class="acts"><button class="btn soft"><i data-lucide="external-link"></i>Open ticket</button></div>`;break;
+   case 'calendar':
+    who=`<div class="who ${cls(it)}">${ic}<div><b>Meetings</b><small>Today at 09:15</small></div></div>`;
+    main=`<div class="dt">${it.title}</div><dl class="info"><div><dt>When</dt><dd>Today, 09:30 – 10:30</dd></div><div><dt>Where</dt><dd>Meeting room Bromo (online)</dd></div><div><dt>Organiser</dt><dd>Yudi Pratama</dd></div><div><dt>People</dt><dd>7 invited · 5 accepted</dd></div></dl>
+     <div class="acts"><button class="btn pri"><i data-lucide="video"></i>Join meeting</button><button class="btn soft"><i data-lucide="check"></i>Accept</button><button class="btn soft">Decline</button></div>`;break;
+   case 'mail':
+    who=`<div class="who ${cls(it)}"><div class="ic"><i data-lucide="mail"></i></div><div><b>HC Santos</b><small>hc@santos.co.id · Today at 08:05</small></div></div>`;
+    main=`<div class="dt">${it.title}</div><p class="body">Dengan hormat, berikut jadwal MCU untuk karyawan site Sepanjang dan Karawang. Mohon hadir 15 menit sebelum jadwal dan berpuasa 10 jam sebelumnya…</p><div class="acts"><button class="btn pri"><i data-lucide="mail-open"></i>Read in Mail</button><button class="btn soft"><i data-lucide="reply"></i>Reply</button></div>`;break;
+   case 'projects':
+    who=`<div class="who ${cls(it)}">${ic}<div><b>Tasks</b><small>Yesterday at 14:02</small></div></div>`;
+    main=`<div class="dt">Update firewall rules</div><dl class="info"><div><dt>Project</dt><dd>ICT Infra 2026</dd></div><div><dt>Assigned by</dt><dd>Yudi Pratama</dd></div><div><dt>Due</dt><dd>Friday, 28 November</dd></div></dl><div class="acts"><button class="btn pri"><i data-lucide="external-link"></i>Open task</button></div>`;break;
+   case 'news':
+    who=`<div class="who ${cls(it)}">${ic}<div><b>Human Capital</b><small>Memo to all employees · Thursday at 08:00</small></div></div>`;
+    main=`<div class="dt">${it.title}</div><p class="body">Sehubungan dengan Hari Raya Natal, kantor pusat dan site Sepanjang/Karawang libur cuti bersama pada 24–26 Desember 2026. Operasional produksi mengikuti jadwal shift masing-masing.</p><div class="acts"><button class="btn pri"><i data-lucide="newspaper"></i>Read full memo</button></div>`;break;
+   default:
+    who=`<div class="who ${cls(it)}">${ic}<div><b>iPop</b><small>System · Yesterday at 23:47</small></div></div>`;
+    main=`<div class="dt">${it.title}</div><p class="body">275 new messages from EPop were added to Mail under the label "Arsip EPop".</p><div class="acts"><button class="btn pri"><i data-lucide="tag"></i>Open "Arsip EPop" in Mail</button></div>`;
+  }
+  D.innerHTML=`<div class="dtool"><button class="tb"><i data-lucide="mail"></i>Mark unread</button>
+   <span class="snz"><button class="tb" id="snzb"><i data-lucide="alarm-clock"></i>Snooze<i data-lucide="chevron-down" style="width:14px;height:14px"></i></button>
+    <div class="menu"><button>In 1 hour<span>11:42</span></button><button>This afternoon<span>14:00</span></button><button>Tomorrow morning<span>08:00</span></button><button>Next week<span>Mon 08:00</span></button></div></span>
+   <button class="tb"><i data-lucide="bell-off"></i>Mute ${names[it.k==='call'?'chat':it.k]}</button><span class="sp"></span><button class="tb red"><i data-lucide="trash-2"></i>Delete</button></div>
+   <div class="dbody"><div class="dwrap">${who}${main}</div></div>`;
+  const s=D.querySelector('.snz');D.querySelector('#snzb').onclick=e=>{e.stopPropagation();s.classList.toggle('open')};
+}
+function renderCounts(){
+  document.querySelectorAll('.cat').forEach(c=>{const f=c.dataset.f,o=filter;filter=f;const n=items.filter(match).filter(i=>f==='snoozed'||i.unread).length;filter=o;
+   const s=c.querySelector('.c');s.textContent=n||'';s.classList.toggle('new',f==='all'&&n>0)});
+  const u=items.filter(i=>i.unread&&!i.snoozed).length;
+  document.querySelector('.tbar small').textContent=u?u+' unread':'All caught up';
+  const bc=document.querySelector('.tbar .bell > i:last-child');bc.textContent=u;bc.style.display=u?'':'none';
+}
+function renderNotifier(){
+  let h='',d='';items.filter(i=>!i.snoozed).slice(0,7).forEach(it=>{if(it.day!==d){d=it.day;h+=`<div class="day">${d}</div>`}h+=row({...it,id:-1})});
+  document.getElementById('plist').innerHTML=h;
+  document.querySelectorAll('#plist .n').forEach((n,i)=>n.onclick=()=>{const it=items.filter(x=>!x.snoozed)[i];it.unread=0;selId=it.id;renderAll()});
+}
+function renderAll(){renderList();renderDet();renderCounts();renderNotifier();lucide.createIcons()}
+document.querySelectorAll('.cat').forEach(c=>c.onclick=()=>{filter=c.dataset.f;document.querySelectorAll('.cat').forEach(x=>x.classList.toggle('on',x===c));renderAll()});
+document.querySelector('.trow .btn').onclick=()=>{items.forEach(i=>i.unread=0);renderAll()};
+document.getElementById('dnd').onclick=e=>{e.target.classList.toggle('on');document.getElementById('dndt').textContent=e.target.classList.contains('on')?'On until 07:00':'Off'};
+document.addEventListener('click',()=>document.querySelectorAll('.snz.open').forEach(s=>s.classList.remove('open')));
+document.querySelectorAll('#theme button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#theme button').forEach(x=>x.classList.toggle('on',x===b));const d=b.dataset.t==='dark';document.getElementById('stage').classList.toggle('dark',d);document.getElementById('app').classList.toggle('dark',d);document.getElementById('pw').classList.toggle('dark',d)});
+renderAll();
+</script>
+</body>
+</html>

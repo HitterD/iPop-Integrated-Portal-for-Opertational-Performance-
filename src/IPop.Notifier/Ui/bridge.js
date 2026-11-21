@@ -63,9 +63,11 @@
     const max = document.documentElement.classList.contains('max');
     document.querySelectorAll('[data-max]').forEach(b => {
       if (canMax === false) { b.hidden = true; return; }
-      b.title = max ? 'Restore' : 'Maximize';
+      // The Inbox's full screen goes back to its small window (1.6.0): it says so and shows ⤡.
+      const small = b.hasAttribute('data-small');
+      b.title = max ? (small ? 'Back to the small window' : 'Restore') : 'Maximize';
       b.setAttribute('aria-label', b.title);
-      if (b.dataset.icon !== String(max)) { b.dataset.icon = String(max); b.innerHTML = window.IC ? IC(max ? 'copy' : 'square') : ''; }
+      if (b.dataset.icon !== String(max)) { b.dataset.icon = String(max); b.innerHTML = window.IC ? IC(max ? (small ? 'minimize-2' : 'copy') : 'square') : ''; }
     });
   }
   document.addEventListener('click', e => { if (e.target.closest('[data-max]')) post({ type: 'maximize' }); });

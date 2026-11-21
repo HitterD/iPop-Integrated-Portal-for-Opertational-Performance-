@@ -631,6 +631,9 @@ public static class ChatEndpoints
             if (latest is null) return Results.NoContent();
             if (!await svc.RecordReadAsync(userId.Value, latest.Id, ct)) return Results.Forbid();
             await RoomsChangedAsync(http, realtime, ct);
+            if (await IPop.Infrastructure.Notifications.ChatHistoryNotifications.SyncAfterReadAsync(db, userId.Value, roomId, ct)
+                && http.User.FindFirst("nik")?.Value is { } rn)
+                await realtime.ToUserAsync(rn, RealtimeEvents.NotificationsChanged, ct: ct);
             if (svc is IPop.Infrastructure.Chat.ChatService { LastReceiptChanged: false }) return Results.NoContent();
             var reader = await db.Users.AsNoTracking().Where(u => u.Id == userId.Value)
                 .Select(u => new { u.Name, u.PhotoPath }).FirstOrDefaultAsync(ct);

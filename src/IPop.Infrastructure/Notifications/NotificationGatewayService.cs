@@ -359,7 +359,7 @@ public sealed class NotificationGatewayService(
                 {
                     var mod = ClassifyEventType(request.EventType);
                     var muted = pref.MutedTypes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                    if (muted.Contains(mod, StringComparer.OrdinalIgnoreCase) || muted.Contains(request.EventType, StringComparer.OrdinalIgnoreCase))
+                    if (IPop.Application.Notifications.NotificationCategory.IsMuted(muted, request.EventType, request.TargetUrl, mod))
                     {
                         d.Channel = NotificationChannel.Push; // suppressed from realtime SignalR toast
                         silenced.Add(d.UserId);

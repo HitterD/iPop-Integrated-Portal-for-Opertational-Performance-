@@ -617,7 +617,9 @@ public sealed class NotifierApp : ApplicationContext
             server = api.Server.ToString(),
             version = AppInfo.Version,
             computer = Environment.MachineName,
+            ict = device.IctTools,
         });
+        settingsWindow.Devices += () => Post(ShowDevices);
         settingsWindow.SignOut += () => { manualSignOut = true; _ = api.SignOutAsync(); };
         settingsWindow.CheckUpdates += () => _ = CheckFromSettingsAsync();
         settingsWindow.UpdateNow += () => Post(() => { if (updater?.Pending is { } p) ShowUpdate(p); });

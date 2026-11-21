@@ -68,6 +68,8 @@ public sealed class SettingsWindow : BridgedWindow
     /// General › About: "Check for updates" and, when a version is ready, "Update now".
     public event Action? CheckUpdates;
     public event Action? UpdateNow;
+    /// Account › Devices (ICT): moved here from the Inbox's old ⋯ menu.
+    public event Action? Devices;
 
     public SettingsWindow(IPopClient api, SettingsService settings, Func<object> account) : base("settings.html", SettingsSize, api)
     {
@@ -105,6 +107,7 @@ public sealed class SettingsWindow : BridgedWindow
                 break;
             case "checkUpdates": CheckUpdates?.Invoke(); break;
             case "updateNow": UpdateNow?.Invoke(); break;
+            case "devices": Devices?.Invoke(); break;
             default: base.HandleMessage(type, msg); break;
         }
     }
