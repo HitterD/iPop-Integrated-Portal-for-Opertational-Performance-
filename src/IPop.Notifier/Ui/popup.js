@@ -661,7 +661,8 @@
       const s = new Date(src.startAt), e = new Date(src.endAt);
       const hm = d => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       view.chips = [{ t: `${s.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })} · ${hm(s)} – ${hm(e)}`, st: true },
-        (src.roomName || src.location) && { t: src.roomName || src.location },
+        // Where: Location ("SJA Hall · Kalosi", "Ruang Rapat Lt. 2"). MeetingDto.RoomName is the LiveKit room id, never shown.
+        src.location && { t: src.location },
         src.attendees?.length && { t: `${src.attendees.length} people` }].filter(Boolean);
       const notes = mt?.description || mt?.agenda || ev?.notes;
       view.body = `<p class="txt sel">${esc(notes || N.body)}</p>`;

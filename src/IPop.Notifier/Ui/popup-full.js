@@ -251,7 +251,7 @@
     const { N, view } = env, s = view.src, src = s.mt || s.ev;
     if (!src) return R.system(env);
     const st = new Date(src.startAt), en = new Date(src.endAt);
-    const room = src.roomName || src.location;
+    const room = src.location; // roomName is the LiveKit room id ("meeting-<guid>"), not a place
     const rows = [`${ic('clock')}${esc(hm(st))} – ${esc(hm(en))}${duration(st, en) ? ' · ' + esc(duration(st, en)) : ''}`,
       room && `${ic('map-pin')}${esc(room)}`,
       s.key && `${ic('video')}On an iPop meeting room`,

@@ -79,6 +79,14 @@ assert.match(tk, /Reply to Ursula/);
 assert.match(tk, /halo/);
 assert.doesNotMatch(tk, /class="steps"/, "a chat message on the technician side has no known step");
 assert.equal(F.render({ loaded: false, N: N({}), view: {}, files }).includes("skel"), true, "skeleton while loading");
+// Meeting: the place is Location; MeetingDto.RoomName is the LiveKit room id ("meeting-<guid>") and never shown.
+const mt = { id: "m1", title: "Budget", startAt: "2026-11-21T15:58:00Z", endAt: "2026-11-21T16:58:00Z", location: "Ruang Rapat Lt. 2",
+  roomName: "meeting-53f09019d2234a129be676f2195add35", organizerName: "Adrio", organizerNik: "0002", myResponse: "pending", attendees: [] };
+const meet = F.render({ loaded: true, nik: "0001", files, N: N({ module: "calendar", kind: "calendar", eventType: "meeting.invited" }), view: { src: { kind: "meeting", mt, invited: true } } });
+assert.match(meet, /Ruang Rapat Lt\. 2/);
+assert.doesNotMatch(meet, /meeting-53f0/, "no LiveKit room id as the place");
+const popupJs = fs.readFileSync(path.join(ui, "popup.js"), "utf8");
+assert.doesNotMatch(popupJs, /src\.roomName/, "the small card doesn't show the LiveKit room id either");
 
 // Wiring: popup.html loads popup-full.js before popup.js; ApiBridge allows the extra reads only.
 const html = fs.readFileSync(path.join(ui, "popup.html"), "utf8");
