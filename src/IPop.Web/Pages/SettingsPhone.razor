@@ -37,7 +37,7 @@
     <BottomSheet Open="mail" OpenChanged="v => mail = v" Title="Mail" Class="m-settings-dialog">
         <ChildContent><h3>Mail density</h3>@foreach (var d in new[] { MailListDensity.Compact, MailListDensity.Comfortable }) { <button type="button" aria-pressed="@(density == d ? "true" : "false")" @onclick="() => SetDensity(d)">@d</button> }</ChildContent>
     </BottomSheet>
-    <BottomSheet Open="devices" OpenChanged="v => devices = v" Title="Devices & sessions" Class="m-settings-dialog"><ChildContent><p>Link SJA Notifier on your computer. Signing out ends this session.</p><a href="/devices/link">Link a device</a><button type="button" @onclick="SignOut">Sign out this session</button></ChildContent></BottomSheet>
+    <BottomSheet Open="devices" OpenChanged="v => devices = v" Title="Devices & sessions" Class="m-settings-dialog"><ChildContent><p>Signing out ends this session.</p><button type="button" @onclick="SignOut">Sign out this session</button></ChildContent></BottomSheet>
     <BottomSheet Open="help" OpenChanged="v => help = v" Title="Help & tour" Class="m-settings-dialog"><ChildContent><p>Chat, mail, calls and your calendar are in the tabs. Find every other module under More. Use Edit tabs to pin your favourites.</p><p>For guided page tours, open iPop on a computer.</p><a href="/app">Install instructions</a></ChildContent></BottomSheet>
 }
 @code {

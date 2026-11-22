@@ -17,11 +17,9 @@ using IPop.Infrastructure.Mail;
 using IPop.Infrastructure.Persistence;
 using IPop.Infrastructure.Rbac;
 using IPop.Infrastructure.Notifications;
-using IPop.Infrastructure.Sja;
 using IPop.Infrastructure.Documents;
 using IPop.Application.Rbac;
 using IPop.Application.Notifications;
-using IPop.Application.Sja;
 using IPop.Application.Settings;
 using IPop.Infrastructure.Settings;
 using IPop.Application.Email;
@@ -429,8 +427,6 @@ builder.Services.AddHostedService<IPop.Infrastructure.Notifications.Notification
 builder.Services.AddHostedService<IPop.Infrastructure.Files.FileOperationWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Files.FileOperationRetentionWorker>();
 
-// Pairing perangkat SJA Notifier lewat NIK (Sja:AppSecret wajib di user-secrets/env).
-builder.Services.AddHttpClient<ISjaGateway, HttpSjaGateway>();
 
 // DevExpress Office File API (Word, Excel, PDF, PowerPoint, Skia Cross-Platform)
 builder.Services.AddDevExpressDocumentServices();
@@ -580,7 +576,6 @@ app.UseRateLimiter();
 app.UseMiddleware<IPop.Api.Diagnostics.UploadAdmissionMiddleware>();
 
 app.MapAuth();
-app.MapDeviceLink();
 app.MapHris();
 app.MapAdmin();
 app.MapAudit();

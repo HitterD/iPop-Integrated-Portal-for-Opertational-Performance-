@@ -71,7 +71,7 @@ public static class IdeskSignature
     }
 }
 
-/// Adapter for the iDesk integration API, modelled on HttpSjaGateway: each body is serialised once
+/// Adapter for the iDesk integration API, each body is serialised once
 /// and those exact bytes are signed and sent. Every call returns an <see cref="IdeskResult{T}"/>;
 /// transport trouble maps to Unreachable so the outbox can try again with the same externalRef.
 public sealed class HttpIdeskClient : IIdeskClient
