@@ -109,7 +109,7 @@ spec:
               image: ghcr.io/cloudnative-pg/postgresql:17
               command: ["/bin/sh", "/scripts/db-backup.sh"]
               env:
-                - { name: BACKUP_FOLDER, value: "SJA SPJ/ICT/backup/ipop-db-k3s-test" }
+                - { name: BACKUP_FOLDER, value: "SJA SPJ/ICT/backup/ipop-db" }
                 - name: PGPASSWORD
                   valueFrom: { secretKeyRef: { name: ipop-db-app, key: password } }
               volumeMounts:
@@ -148,7 +148,7 @@ spec:
               image: busybox:1.37
               command: ["/bin/sh", "/scripts/etcd-copy.sh"]
               env:
-                - { name: BACKUP_FOLDER, value: "SJA SPJ/ICT/backup/ipop-db-k3s-test" }
+                - { name: BACKUP_FOLDER, value: "SJA SPJ/ICT/backup/ipop-db" }
                 - name: NODE_NAME
                   valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
               volumeMounts:
