@@ -179,9 +179,10 @@ public class HrisSyncService(IPopDbContext db, IHrisGateway gateway,
                     eventType: "system.hris_sync",
                     title: "HRIS Sync Complete",
                     message: $"Directory sync finished: {inserted} new, {updated} updated, {deactivated} deactivated.",
-                    target: new NotificationTarget(All: true),
+                    // Admins only: sync results are operational detail, not news for every employee.
+                    target: new NotificationTarget(Role: "Admin"),
                     priority: "low",
-                    targetUrl: "/notifications/inbox",
+                    targetUrl: "/admin",
                     ct: ct);
             }
             catch

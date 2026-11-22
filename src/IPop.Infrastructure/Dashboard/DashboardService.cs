@@ -277,27 +277,29 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
         // ── Team online ──
         var online = await OnlineListAsync(userId, now, ct);
 
-        // ── System status ──
-        var status = new List<DashboardStatusItem>
+        // ── System status ── admins only: HRIS/mail/NAS health is operational detail, not for every employee
+        // (the page already hid it, but the API sent it to everyone).
+        var status = new List<DashboardStatusItem>();
+        if (isAdmin)
         {
-            liveKit is { IsConfigured: true }
+            status.Add(liveKit is { IsConfigured: true }
                 ? new("Chat & Calls", "ok", "LiveKit SFU")
-                : new("Chat & Calls", "ok", "Peer-to-peer calls"),
-        };
-        var system = await SystemStatusAsync(ct);
-        var outboxFailing = system.OutboxFailing;
-        status.Add(outboxFailing > 0
-            ? new("Mail", "warn", $"{outboxFailing} email(s) retrying")
-            : new("Mail", "ok", "Operational"));
-        status.Add(system.HrisStartedAt is not { } hrisAt
-            ? new("HRIS sync", "unknown", "No runs yet")
-            : new("HRIS sync", system.HrisSucceeded ? "ok" : "warn", "Last run " + LocalLabel(hrisAt, tz, localToday)));
-        var nas = await db.SynologyCredentials.AsNoTracking().Where(c => c.UserId == userId)
-            .Select(c => new { c.Server, c.IsInvalid }).ToListAsync(ct);
-        status.Add(nas.Count == 0
-            ? new("Synology NAS", "unknown", "Not connected")
-            : new("Synology NAS", nas.Any(n => n.IsInvalid) ? "warn" : "ok",
-                $"{nas.Count(n => !n.IsInvalid)} of {nas.Count} connected"));
+                : new("Chat & Calls", "ok", "Peer-to-peer calls"));
+            var system = await SystemStatusAsync(ct);
+            var outboxFailing = system.OutboxFailing;
+            status.Add(outboxFailing > 0
+                ? new("Mail", "warn", $"{outboxFailing} email(s) retrying")
+                : new("Mail", "ok", "Operational"));
+            status.Add(system.HrisStartedAt is not { } hrisAt
+                ? new("HRIS sync", "unknown", "No runs yet")
+                : new("HRIS sync", system.HrisSucceeded ? "ok" : "warn", "Last run " + LocalLabel(hrisAt, tz, localToday)));
+            var nas = await db.SynologyCredentials.AsNoTracking().Where(c => c.UserId == userId)
+                .Select(c => new { c.Server, c.IsInvalid }).ToListAsync(ct);
+            status.Add(nas.Count == 0
+                ? new("Synology NAS", "unknown", "Not connected")
+                : new("Synology NAS", nas.Any(n => n.IsInvalid) ? "warn" : "ok",
+                    $"{nas.Count(n => !n.IsInvalid)} of {nas.Count} connected"));
+        }
 
         return new DashboardDto(
             IPop.Application.PersonName.Display(me.Name) is { Length: > 0 } full ? full : "there",

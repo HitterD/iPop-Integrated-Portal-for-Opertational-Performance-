@@ -38,6 +38,26 @@ public class MailScheduleAndCountsTests
     }
 
     [Fact]
+    public async Task A_scheduled_mails_recipient_cannot_reach_it_before_delivery_but_the_sender_can()
+    {
+        using var t = new TestDb();
+        var sender = t.AddUser("SP_S"); var r = t.AddUser("SP_R");
+        var sent = await new MailService(t.Verify()).SendAsync(sender.Id, Scheduled(r.Nik), default);
+        var mailId = sent.MailId!.Value;
+        var image = new Attachment { Id = Guid.NewGuid(), Area = "mail", FileName = "a.png", ContentType = "image/png", Size = 1, Sha256 = "00",
+            StoragePath = "/x/a.png", UploaderId = sender.Id, CreatedAt = DateTime.UtcNow };
+        t.Db.Attachments.Add(image);
+        t.Db.MailInlineImages.Add(new MailInlineImage { MailId = mailId, AttachmentId = image.Id });
+        await t.Db.SaveChangesAsync();
+
+        await using var v = t.Verify();
+        // A "pending" row is not yet the recipient's mail: no PDF export request, no inline images.
+        Assert.Equal("mail_not_found", (await new MailService(v).RequestPdfExportAsync(r.Id, mailId, default)).Error);
+        Assert.Empty(MailInlineImages.ReadableLinks(v, r.Id));
+        Assert.Single(MailInlineImages.ReadableLinks(v, sender.Id));
+    }
+
+    [Fact]
     public async Task Cancel_after_the_scheduler_sent_it_says_already_sent_and_changes_nothing()
     {
         using var t = new TestDb();

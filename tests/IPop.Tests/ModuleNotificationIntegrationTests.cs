@@ -313,8 +313,10 @@ public class ModuleNotificationIntegrationTests
         var call = mockGateway.Calls[0];
         Assert.Equal("system", call.ClientSlug);
         Assert.Equal("system.hris_sync", call.EventType);
-        Assert.Equal("/notifications/inbox", call.TargetUrl);
-        Assert.True(call.Target.All);
+        Assert.Equal("/admin", call.TargetUrl);
+        // HRIS sync results are admin information: they once went to every employee (49k pushes).
+        Assert.False(call.Target.All);
+        Assert.Equal("Admin", call.Target.Role);
         Assert.Contains("HRIS Sync Complete", call.Title);
     }
 }

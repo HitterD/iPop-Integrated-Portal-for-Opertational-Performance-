@@ -200,7 +200,7 @@ public sealed class ProjectTimeService(IPopDbContext db) : IProjectTimeService
     {
         var cutoff = now.AddMinutes(-MaxTimerMinutes);
         var stale = await db.TaskTimeEntries.IgnoreQueryFilters().Include(e => e.Task)
-            .Where(e => e.EndedAt == null && e.StartedAt <= cutoff).Take(500).ToListAsync(ct);
+            .Where(e => e.EndedAt == null && e.StartedAt <= cutoff).OrderBy(e => e.StartedAt).ThenBy(e => e.Id).Take(500).ToListAsync(ct);
         if (stale.Count == 0) return [];
         foreach (var e in stale) Close(e, now);
         await db.SaveChangesAsync(ct);

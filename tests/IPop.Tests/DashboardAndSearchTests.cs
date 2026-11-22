@@ -109,7 +109,7 @@ public class DashboardAndSearchTests
     public async Task DashboardService_AggregatesKpisTasksAttentionAndAgenda()
     {
         using var t = new TestDb();
-        var me = t.AddUser("DASH_ME");
+        var me = t.AddAdmin("DASH_ME");
         me.Name = "Rina Wijaya";
         me.TimeZoneId = "UTC";
         var bob = t.AddUser("DASH_BOB");
@@ -173,6 +173,27 @@ public class DashboardAndSearchTests
         Assert.Equal(dto.OnlineCount, online.OnlineCount);
         Assert.Equal(dto.Online.Select(p => p.Nik), online.Online.Select(p => p.Nik));
         Assert.DoesNotContain(online.Online, p => p.Nik == "DASH_ME");
+    }
+
+    [Fact]
+    public async Task Dashboard_system_status_including_hris_is_only_sent_to_admins()
+    {
+        using var t = new TestDb();
+        var employee = t.AddUser("DASH_EMP");
+        var admin = t.AddAdmin("DASH_ADM");
+        t.Db.HrisSyncRuns.Add(new HrisSyncRun
+        {
+            Id = Guid.NewGuid(), StartedAt = DateTime.UtcNow.AddHours(-1), FinishedAt = DateTime.UtcNow.AddHours(-1),
+            Succeeded = false, Error = "connection refused (10.10.6.51:27080)",
+        });
+        await t.Db.SaveChangesAsync();
+
+        var forEmployee = (await new IPop.Infrastructure.Dashboard.DashboardService(t.Db).GetAsync(employee.Id))!;
+        var forAdmin = (await new IPop.Infrastructure.Dashboard.DashboardService(t.Db).GetAsync(admin.Id))!;
+
+        // The page hid the panel, but the API still sent HRIS/mail/NAS health to every employee.
+        Assert.Empty(forEmployee.Status);
+        Assert.Contains(forAdmin.Status, s => s.Label == "HRIS sync" && s.State == "warn");
     }
 
     [Fact]
@@ -383,7 +404,7 @@ public class DashboardAndSearchTests
     public async Task Dashboard_reads_each_shared_fact_once_and_reuses_system_status()
     {
         using var t = new TestDb();
-        var me = t.AddUser("QC_ME");
+        var me = t.AddAdmin("QC_ME"); // admins also read the shared system status
         var counter = new CommandCounter();
         var options = new DbContextOptionsBuilder<IPop.Infrastructure.Persistence.IPopDbContext>()
             .UseSqlite(t.Db.Database.GetDbConnection()).AddInterceptors(counter).Options;

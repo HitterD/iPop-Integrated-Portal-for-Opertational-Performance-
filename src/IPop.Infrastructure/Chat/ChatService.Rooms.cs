@@ -24,6 +24,19 @@ public sealed partial class ChatService
             return existing;
         }
 
+        // No unique key can stop two DMs for one pair (each new room has fresh ids), and two parallel
+        // "start chat" requests both passed the lookup above and split the conversation in two (proven on
+        // Postgres 2026-11-22). Serialize creation per pair with a transaction-scoped advisory lock and look again.
+        await using var tx = db.Database.IsNpgsql() && db.Database.CurrentTransaction is null
+            ? await db.Database.BeginTransactionAsync(ct) : null;
+        if (tx is not null)
+        {
+            var (lo, hi) = creatorId.CompareTo(recipientId) < 0 ? (creatorId, recipientId) : (recipientId, creatorId);
+            var lockKey = $"ipop-dm-{lo:N}-{hi:N}";
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtext({lockKey}))", ct);
+            if (await FindExistingDmAsync(creatorId, recipientId, ct) is { } created) { await tx.CommitAsync(ct); return created; }
+        }
+
         var now = DateTime.UtcNow;
         var room = new ChatRoom
         {
@@ -42,8 +55,9 @@ public sealed partial class ChatService
         try
         {
             await db.SaveChangesAsync(ct);
+            if (tx is not null) await tx.CommitAsync(ct);
         }
-        catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+        catch (DbUpdateException ex) when (tx is null && IsUniqueConstraintViolation(ex))
         {
             // Parallel race: another request created the same DM first — return it
             db.ChangeTracker.Clear();

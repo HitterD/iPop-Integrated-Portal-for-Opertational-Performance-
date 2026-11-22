@@ -43,21 +43,32 @@ public class AuthWorkflow(IPopDbContext db, IPasswordHasher hasher, ITokenServic
 
         if (!ok)
         {
-            user.FailedLoginCount++;
-            if (user.FailedLoginCount >= MaxFailedAttempts)
+            // Atomic in SQL: parallel wrong guesses each count (a read-modify-write lost increments, so
+            // guessing in parallel never reached the lockout). The row the lockout writes is then re-read.
+            var userId = user.Id;
+            await db.Users.Where(u => u.Id == userId)
+                .ExecuteUpdateAsync(s => s.SetProperty(u => u.FailedLoginCount, u => u.FailedLoginCount + 1), ct);
+            var failures = await db.Users.Where(u => u.Id == userId).Select(u => u.FailedLoginCount).SingleAsync(ct);
+            if (failures >= MaxFailedAttempts)
             {
-                user.LockedUntil = DateTime.UtcNow.Add(LockDuration);
-                user.FailedLoginCount = 0;
-                await db.SaveChangesAsync(ct);
+                var lockUntil = DateTime.UtcNow.Add(LockDuration);
+                await db.Users.Where(u => u.Id == userId).ExecuteUpdateAsync(s => s
+                    .SetProperty(u => u.LockedUntil, lockUntil)
+                    .SetProperty(u => u.FailedLoginCount, 0), ct);
                 await Audit(user.Nik, "auth.locked", "User", user.Nik, ip, ct);
                 return (null, new AuthError("locked", "Too many attempts. This account is locked for 15 minutes."), 423);
             }
-            await db.SaveChangesAsync(ct);
-            var left = MaxFailedAttempts - user.FailedLoginCount;
+            var left = MaxFailedAttempts - failures;
             return (null, new AuthError("invalid_credentials",
                 $"Incorrect ID or password. {left} attempt{(left == 1 ? "" : "s")} left."), 401);
         }
 
+        // Straight to the row: the loaded counter may be stale after parallel failures, and EF would skip a
+        // "0 -> 0" change it thinks is a no-op.
+        var okId = user.Id;
+        await db.Users.Where(u => u.Id == okId).ExecuteUpdateAsync(s => s
+            .SetProperty(u => u.FailedLoginCount, 0)
+            .SetProperty(u => u.LockedUntil, (DateTime?)null), ct);
         user.FailedLoginCount = 0;
         user.LockedUntil = null;
 
