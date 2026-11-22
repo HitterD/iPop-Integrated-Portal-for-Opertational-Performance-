@@ -179,7 +179,7 @@ window.ipopMicro = (() => {
     const r = item.getBoundingClientRect(), view = scroller ? scroller.getBoundingClientRect() : r;
     // Scrolled out of sight: the tab is gone, so the panel keeps its full corner.
     const gap = r.bottom <= view.top || r.top >= view.bottom ? 99 : Math.max(r.top, view.top) - panel.getBoundingClientRect().top;
-    const curve = Math.max(0, Math.min(18, gap));
+    const curve = Math.max(0, Math.min(24, gap));
     const corner = Math.max(0, Math.min(26, gap - curve));
     const root = document.documentElement.style;
     root.setProperty('--tab-curve', curve + 'px');

@@ -16,12 +16,18 @@ public sealed partial class NoteService
 
     public async Task<IReadOnlyList<NoteBoardTemplateDto>> GetBoardTemplatesAsync(Guid userId, CancellationToken ct)
     {
-        var rows = await (from t in db.NoteBoardTemplates.AsNoTracking()
+        var mine = await (from t in db.NoteBoardTemplates.AsNoTracking()
                           join u in db.Users.AsNoTracking() on t.OwnerId equals u.Id
-                          where t.OwnerId == userId || t.Shared
+                          where t.OwnerId == userId
                           orderby t.CreatedAt descending
-                          select new { t, u.Name }).Take(300).ToListAsync(ct);
-        return rows.Select(r => TplDto(r.t, userId, r.Name)).ToList();
+                          select new { t, u.Name }).Take(MaxBoardTemplatesPerUser).ToListAsync(ct);
+        var shared = await (from t in db.NoteBoardTemplates.AsNoTracking()
+                            join u in db.Users.AsNoTracking() on t.OwnerId equals u.Id
+                            where t.Shared && t.OwnerId != userId
+                            orderby t.CreatedAt descending
+                            select new { t, u.Name }).Take(200).ToListAsync(ct);
+        return mine.Concat(shared).OrderByDescending(r => r.t.CreatedAt)
+            .Select(r => TplDto(r.t, userId, r.Name)).ToList();
     }
 
     public async Task<NoteResult<NoteBoardTemplateDto>> SaveBoardTemplateAsync(Guid userId, SaveBoardTemplateRequest req, CancellationToken ct)

@@ -221,7 +221,7 @@ public static class MeetingEndpoints
                 await PublishBestEffortAsync(notifs, NotifyLog(http), "meeting.cancelled",
                     $"Meeting cancelled: {meeting!.Title}",
                     $"The meeting \"{meeting.Title}\" scheduled for {meeting.StartAt.ToLocalTime():dd MMM, HH:mm} has been cancelled.",
-                    attendeeUserIds.ToList(), "high", $"/calls?tab=scheduled&meeting={id}");
+                    attendeeUserIds.ToList(), "high", $"/calls?tab=scheduled&meeting={id}", userId.Value);
             }
 
             return Results.Ok(new { ok = true });
@@ -258,10 +258,10 @@ public static class MeetingEndpoints
                 var log = NotifyLog(http);
                 await PublishBestEffortAsync(notifs, log, "meeting.invited", $"Meeting invite: {dto.Title}",
                     InviteMessage(dto.OrganizerName, dto.Title, dto.StartAt, dto.Location, dto.RoomPassword),
-                    added.ToList(), "normal", link);
+                    added.ToList(), "normal", link, dto.OrganizerId);
                 await PublishBestEffortAsync(notifs, log, "meeting.updated", $"Meeting updated: {dto.Title}",
                     $"{dto.OrganizerName} updated \"{dto.Title}\".",
-                    others.ToList(), "normal", link);
+                    others.ToList(), "normal", link, dto.OrganizerId);
                 await CalendarDelegateEndpoints.ForwardInvitesAsync(db, notifs, log, added, dto.Title, dto.StartAt, dto.OrganizerName, null, ct);
             }
             return Results.Ok(dto);
@@ -608,7 +608,7 @@ public static class MeetingEndpoints
     {
         return PublishBestEffortAsync(notifs, log, "meeting.invited", $"Meeting invite: {dto.Title}",
             InviteMessage(dto.OrganizerName, dto.Title, dto.StartAt, dto.Location, dto.RoomPassword),
-            invited, "normal", $"/calls?tab=scheduled&meeting={dto.Id}");
+            invited, "normal", $"/calls?tab=scheduled&meeting={dto.Id}", dto.OrganizerId);
     }
 
     /// A meetings notification after a write that has already been saved. It runs on the
@@ -617,13 +617,14 @@ public static class MeetingEndpoints
     /// context") and turns a successful save into a 500. CancellationToken.None so a client
     /// disconnect can't abort it halfway; any failure is logged and never fails the request.
     public static async Task PublishBestEffortAsync(INotificationGatewayService? notifs, ILogger? log,
-        string eventType, string title, string message, IReadOnlyCollection<Guid> userIds, string priority, string? targetUrl)
+        string eventType, string title, string message, IReadOnlyCollection<Guid> userIds, string priority, string? targetUrl,
+        Guid? actorId = null)
     {
         if (notifs is null || userIds.Count == 0) return;
         try
         {
             await notifs.PublishInternalAsync("meetings", eventType, title, message,
-                new NotificationTarget(UserIds: userIds.ToList()), priority, targetUrl, CancellationToken.None);
+                new NotificationTarget(UserIds: userIds.ToList()), actorId, null, priority, targetUrl, CancellationToken.None);
         }
         catch (Exception ex)
         {

@@ -211,6 +211,12 @@ public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbCon
         if (GetNik() is { } nik)
             await realtime.ToUserAsync(nik, RealtimeEvents.ChatRoomsChanged, ct: Context.ConnectionAborted);
 
+        // The room's history row on /notifications and in the Notifier follows the chat: read here = read there.
+        var readRoom = await db.ChatMessages.AsNoTracking().Where(m => m.Id == messageId).Select(m => m.RoomId).FirstOrDefaultAsync(Context.ConnectionAborted);
+        if (readRoom != Guid.Empty && await IPop.Infrastructure.Notifications.ChatHistoryNotifications.SyncAfterReadAsync(db, userId.Value, readRoom, Context.ConnectionAborted)
+            && GetNik() is { } nik2)
+            await realtime.ToUserAsync(nik2, RealtimeEvents.NotificationsChanged, ct: Context.ConnectionAborted);
+
         // Build reader info for seen update notification
         var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, Context.ConnectionAborted);
         var roomId = await db.ChatMessages.AsNoTracking()

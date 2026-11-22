@@ -89,6 +89,7 @@ public sealed class NotificationGatewayService(
             Body = req.Body,
             WebhookUrl = req.WebhookUrl,
             TargetUrl = req.TargetUrl,
+            ActorUserId = req.ActorUserId,
             TargetEmployeeNik = req.Target.EmployeeNik,
             TargetDepartmentId = req.Target.DepartmentId,
             TargetRole = req.Target.Role,
@@ -225,7 +226,7 @@ public sealed class NotificationGatewayService(
         string priority = "normal",
         string? targetUrl = null,
         CancellationToken ct = default)
-        => PublishInternalCoreAsync(clientSlug, eventType, title, message, target, null, priority, targetUrl, ct);
+        => PublishInternalCoreAsync(clientSlug, eventType, title, message, target, null, priority, targetUrl, null, ct);
 
     public Task<NotificationEnqueueResult> PublishInternalAsync(
         string clientSlug,
@@ -237,7 +238,20 @@ public sealed class NotificationGatewayService(
         string priority = "normal",
         string? targetUrl = null,
         CancellationToken ct = default)
-        => PublishInternalCoreAsync(clientSlug, eventType, title, message, target, idempotencyKey, priority, targetUrl, ct);
+        => PublishInternalCoreAsync(clientSlug, eventType, title, message, target, idempotencyKey, priority, targetUrl, null, ct);
+
+    public Task<NotificationEnqueueResult> PublishInternalAsync(
+        string clientSlug,
+        string eventType,
+        string title,
+        string message,
+        NotificationTarget target,
+        Guid? actorUserId,
+        string? idempotencyKey,
+        string priority = "normal",
+        string? targetUrl = null,
+        CancellationToken ct = default)
+        => PublishInternalCoreAsync(clientSlug, eventType, title, message, target, idempotencyKey, priority, targetUrl, actorUserId, ct);
 
     private async Task<NotificationEnqueueResult> PublishInternalCoreAsync(
         string clientSlug,
@@ -248,6 +262,7 @@ public sealed class NotificationGatewayService(
         string? idempotencyKey,
         string priority,
         string? targetUrl,
+        Guid? actorUserId,
         CancellationToken ct)
     {
         var mod = string.IsNullOrWhiteSpace(clientSlug) ? "system" : clientSlug.Trim().ToLowerInvariant();
@@ -278,7 +293,8 @@ public sealed class NotificationGatewayService(
             Body: message,
             Target: target,
             WebhookUrl: null,
-            TargetUrl: targetUrl);
+            TargetUrl: targetUrl,
+            ActorUserId: actorUserId);
 
         return await EnqueueAsync(client.Id, req, ct);
     }
@@ -343,7 +359,7 @@ public sealed class NotificationGatewayService(
                 {
                     var mod = ClassifyEventType(request.EventType);
                     var muted = pref.MutedTypes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                    if (muted.Contains(mod, StringComparer.OrdinalIgnoreCase) || muted.Contains(request.EventType, StringComparer.OrdinalIgnoreCase))
+                    if (IPop.Application.Notifications.NotificationCategory.IsMuted(muted, request.EventType, request.TargetUrl, mod))
                     {
                         d.Channel = NotificationChannel.Push; // suppressed from realtime SignalR toast
                         silenced.Add(d.UserId);
@@ -542,7 +558,8 @@ public sealed class NotificationGatewayService(
             req?.Body ?? d.Request?.Body,
             req?.EventType ?? d.Request?.EventType,
             req?.Priority ?? d.Request?.Priority,
-            req?.TargetUrl ?? d.Request?.TargetUrl);
+            req?.TargetUrl ?? d.Request?.TargetUrl,
+            req?.ActorUserId ?? d.Request?.ActorUserId);
 
     private static NotificationEnqueueResult Fail(string code, string error) =>
         new(false, error, code, Guid.Empty, "", 0, default);

@@ -127,9 +127,10 @@ public sealed partial class MailInlineImages(IPopDbContext db, IAttachmentStore?
     }
 
     /// Links on mails the user takes part in (any recipient row, including "from") that were not recalled.
+    /// A scheduled mail's recipients ("pending" rows) see nothing until it is delivered.
     internal static IQueryable<MailInlineImage> ReadableLinks(IPopDbContext db, Guid userId) =>
         db.MailInlineImages.AsNoTracking().Where(l =>
-            db.MailRecipients.Any(r => r.MailId == l.MailId && r.UserId == userId)
+            db.MailRecipients.Any(r => r.MailId == l.MailId && r.UserId == userId && r.Folder != "pending")
             && db.Mails.Any(m => m.Id == l.MailId && m.Status != "recalled"));
 
     /// Records which images <paramref name="mailId"/> shows. Ids the user may not link are

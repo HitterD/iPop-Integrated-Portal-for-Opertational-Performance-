@@ -46,16 +46,20 @@ public sealed partial class NoteService
             updates.Select(u => new NoteUpdateDto(u.Id, Convert.ToBase64String(u.Data))).ToList()));
     }
 
+    private const int MaxPendingUpdatesPerPage = 2000;
+
     public async Task<NoteResult<long>> AppendUpdateAsync(Guid userId, Guid pageId, byte[] update, CancellationToken ct)
     {
         if (update.Length == 0 || update.Length > MaxUpdateBytes) return Fail<long>("invalid_update");
         var access = await GetAccessAsync(userId, pageId, ct);
         if (access < NoteAccess.Edit) return Fail<long>(Denied(access));
-        if (await db.NotePages.AsNoTracking().AnyAsync(p => p.Id == pageId && p.LockedAt != null, ct)) return Fail<long>("locked");
+        var page = await db.NotePages.FirstOrDefaultAsync(p => p.Id == pageId && p.DeletedAt == null, ct);
+        if (page is null) return Fail<long>("not_found");
+        if (page.LockedAt is not null) return Fail<long>("locked");
+        if (await db.NoteUpdates.CountAsync(u => u.PageId == pageId, ct) >= MaxPendingUpdatesPerPage) return Fail<long>("too_many_updates");
 
         var row = new NoteUpdate { PageId = pageId, UserId = userId, Data = update, CreatedAt = DateTime.UtcNow };
         db.NoteUpdates.Add(row);
-        var page = await db.NotePages.FirstAsync(p => p.Id == pageId, ct);
         page.UpdatedAt = row.CreatedAt;
         page.UpdatedById = userId;
         page.PendingContributors = AddContributor(page.PendingContributors, userId);
@@ -71,6 +75,12 @@ public sealed partial class NoteService
         return string.Join(',', ids.TakeLast(40));
     }
 
+    private static string CapText(string s, int max)
+    {
+        if (s.Length <= max) return s;
+        return char.IsHighSurrogate(s[max - 1]) ? s[..(max - 1)] : s[..max];
+    }
+
     /// Folds updates into the stored state. Refused when another snapshot landed first (the client
     /// reloads and retries), so a client can only ever delete updates it has actually merged.
     public async Task<NoteResult<NoteSnapshotResultDto>> SnapshotAsync(Guid userId, Guid pageId, NoteSnapshotRequest req,
@@ -79,6 +89,7 @@ public sealed partial class NoteService
         var access = await GetAccessAsync(userId, pageId, ct);
         if (access < NoteAccess.Edit) return Fail<NoteSnapshotResultDto>(Denied(access));
         if (await db.NotePages.AsNoTracking().AnyAsync(p => p.Id == pageId && p.LockedAt != null, ct)) return Fail<NoteSnapshotResultDto>("locked");
+        if (string.IsNullOrEmpty(req.State)) return Fail<NoteSnapshotResultDto>("invalid_update");
         byte[] state;
         try { state = Convert.FromBase64String(req.State); }
         catch (FormatException) { return Fail<NoteSnapshotResultDto>("invalid_update"); }
@@ -91,22 +102,31 @@ public sealed partial class NoteService
         // abort in between lost those edits.
         ct = CancellationToken.None;
         await using var tx = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(ct) : null;
-        // Compare-and-swap on the version: only one snapshot per base version can win.
-        var won = await db.NotePages.Where(p => p.Id == pageId && p.StateVersion == req.BaseVersion)
+        // Compare-and-swap on the version (and still live/unlocked): only one snapshot per base version can win.
+        var won = await db.NotePages.Where(p => p.Id == pageId && p.StateVersion == req.BaseVersion && p.DeletedAt == null && p.LockedAt == null)
             .ExecuteUpdateAsync(s => s.SetProperty(p => p.StateVersion, next), ct);
-        if (won == 0) { if (tx is not null) await tx.RollbackAsync(ct); return Fail<NoteSnapshotResultDto>("version_conflict"); }
+        if (won == 0)
+        {
+            if (tx is not null) await tx.RollbackAsync(ct);
+            var cur = await db.NotePages.AsNoTracking().Where(p => p.Id == pageId).Select(p => new { p.DeletedAt, p.LockedAt }).FirstOrDefaultAsync(ct);
+            if (cur is null || cur.DeletedAt is not null) return Fail<NoteSnapshotResultDto>("not_found");
+            if (cur.LockedAt is not null) return Fail<NoteSnapshotResultDto>("locked");
+            return Fail<NoteSnapshotResultDto>("version_conflict");
+        }
 
         var page = await db.NotePages.FirstAsync(p => p.Id == pageId, ct);
         await db.Entry(page).ReloadAsync(ct);
         page.YState = state;
         var text = req.PlainText ?? "";
-        page.PlainText = text; // Search indexes the complete editor text, not just its preview.
+        page.PlainText = CapText(text, MaxPlainTextLength);
         var flat = string.Join(' ', text.Split((char[])['\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries)).Trim();
-        page.Excerpt = flat.Length > 300 ? flat[..299] + "…" : flat;
+        page.Excerpt = flat.Length > 300 ? (Clean(flat, 299) ?? "") + "…" : flat;
         page.TodoDone = Math.Clamp(req.TodoDone, 0, 10000);
         page.TodoTotal = Math.Clamp(req.TodoTotal, 0, 10000);
+        page.UpdatedAt = at;
+        page.UpdatedById = userId;
 
-        var merged = req.MergedUpdateIds.Distinct().ToList();
+        var merged = (req.MergedUpdateIds ?? []).Distinct().ToList();
 
         var last = await db.NoteVersions.Where(v => v.PageId == pageId).MaxAsync(v => (DateTime?)v.CreatedAt, ct);
         var wroteVersion = false;
@@ -120,7 +140,7 @@ public sealed partial class NoteService
             page.PendingContributors = null;
             wroteVersion = true;
         }
-        await LinkReferencedAttachmentsAsync(pageId, state, ct);
+        await LinkReferencedAttachmentsAsync(userId, pageId, state, ct);
         if (req.TodoDue is not null) await SyncTodoDueAsync(pageId, req.TodoDue, ct);
         if (req.LinksTo is not null) await SyncLinksAsync(pageId, req.LinksTo, ct);
         await db.SaveChangesAsync(ct);
@@ -172,20 +192,22 @@ public sealed partial class NoteService
         var existing = await db.NoteTodoDues.Where(x => x.PageId == pageId).ToListAsync(ct);
         var wanted = new Dictionary<string, NoteTodoDueDto>();
         foreach (var i in items.Take(200))
-            if (!string.IsNullOrWhiteSpace(i.Key) && i.Key.Length <= 64 && DateOnly.TryParseExact(i.Due, "yyyy-MM-dd", out _)) wanted[i.Key] = i;
+            if (!string.IsNullOrWhiteSpace(i.Key) && i.Key.Length <= 64
+                && DateOnly.TryParseExact(i.Due, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out _))
+                wanted[i.Key] = i;
         foreach (var row in existing.Where(r => !wanted.ContainsKey(r.ItemKey))) db.NoteTodoDues.Remove(row);
         foreach (var (key, i) in wanted)
         {
-            var due = DateOnly.ParseExact(i.Due, "yyyy-MM-dd");
+            var due = DateOnly.ParseExact(i.Due, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
             var text = Clean(i.Text, 200) ?? "";
             var row = existing.FirstOrDefault(r => r.ItemKey == key);
             if (row is null)
             {
-                db.NoteTodoDues.Add(new NoteTodoDue { PageId = pageId, ItemKey = key, AssigneeId = i.AssigneeId, Due = due, Text = text, Done = i.Done });
+                db.NoteTodoDues.Add(new NoteTodoDue { PageId = pageId, ItemKey = key, AssigneeId = i.AssigneeId, Due = due, Text = text, Done = i.Done, TaskId = i.TaskId });
                 continue;
             }
             if (row.Due != due || row.AssigneeId != i.AssigneeId) { row.DayBeforeSentAt = null; row.DaySentAt = null; }
-            row.AssigneeId = i.AssigneeId; row.Due = due; row.Text = text; row.Done = i.Done;
+            row.AssigneeId = i.AssigneeId; row.Due = due; row.Text = text; row.Done = i.Done; row.TaskId = i.TaskId;
         }
     }
 
@@ -193,6 +215,7 @@ public sealed partial class NoteService
     {
         var access = await GetAccessAsync(userId, pageId, ct);
         if (access < NoteAccess.Edit) return Fail<string?>(Denied(access));
+        if (await db.NotePages.AsNoTracking().AnyAsync(p => p.Id == pageId && p.LockedAt != null, ct)) return Fail<string?>("locked");
         var template = await db.NotePages.AsNoTracking().Where(p => p.Id == pageId).Select(p => p.SeedTemplate).FirstAsync(ct);
         if (template is null) return Ok<string?>(null);
         var won = await db.NotePages.Where(p => p.Id == pageId && p.SeedTemplate == template)
@@ -237,19 +260,28 @@ public sealed partial class NoteService
     public async Task<NoteResult<NoteSharesDto>> GetSharesAsync(Guid userId, Guid pageId, CancellationToken ct)
     {
         var chain = await ChainAsync(pageId, ct);
-        if (chain.Count == 0 || chain.Any(n => n.DeletedAt != null)) return Fail<NoteSharesDto>("not_found");
+        if (chain.Count == 0 || chain.Any(n => n.DeletedAt != null) || chain[^1].ParentId != null) return Fail<NoteSharesDto>("not_found");
         var access = await AccessOnChainAsync(userId, chain, ct);
         if (access == NoteAccess.None) return Fail<NoteSharesDto>("not_found");
 
         var owner = await db.NotePages.AsNoTracking().Where(p => p.Id == pageId)
             .Select(p => new { p.OwnerId, p.Owner.Name, p.Owner.Nik, p.Owner.Position }).FirstAsync(ct);
-        var ids = chain.Select(n => n.Id).ToList();
-        var rows = await db.NoteShares.AsNoTracking().Where(s => ids.Contains(s.PageId)).OrderBy(s => s.CreatedAt)
+        var ids = new List<Guid> { pageId };
+        for (var i = 1; i < chain.Count; i++)
+        {
+            if (await AccessOnChainAsync(userId, chain.Skip(i).ToList(), ct) == NoteAccess.None) break;
+            ids.Add(chain[i].Id);
+        }
+        var rawRows = await db.NoteShares.AsNoTracking().Where(s => ids.Contains(s.PageId)).OrderBy(s => s.CreatedAt)
             .Select(s => new
             {
                 s.Id, s.PageId, s.UserId, UserName = s.User!.Name, UserNik = s.User.Nik, UserPosition = (string?)null,
                 s.RoomId, RoomType = s.Room!.Type, s.Level, PageTitle = s.Page.Title,
             }).ToListAsync(ct);
+        var rows = rawRows
+            .GroupBy(r => (r.PageId, r.UserId, r.RoomId))
+            .Select(g => g.OrderByDescending(x => NoteLevels.ToAccess(x.Level)).First())
+            .ToList();
 
         var roomIds = rows.Where(r => r.RoomId != null).Select(r => r.RoomId!.Value).Distinct().ToList();
         var memberCounts = roomIds.Count == 0 ? [] : await db.ChatRoomMembers.AsNoTracking()
@@ -303,10 +335,17 @@ public sealed partial class NoteService
             db.NoteShares.Add(share);
         }
         else share.Level = req.Level;
-        await db.SaveChangesAsync(ct);
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException)
+        {
+            db.ChangeTracker.Clear();
+            share = await db.NoteShares.FirstAsync(s => s.PageId == pageId
+                && (req.UserId != null ? s.UserId == req.UserId : s.RoomId == req.RoomId), ct);
+            if (share.Level != req.Level) { share.Level = req.Level; await db.SaveChangesAsync(ct); }
+        }
 
         var all = await GetSharesAsync(userId, pageId, ct);
-        return Ok(all.Data!.Shares.First(s => s.Id == share.Id));
+        return Ok(all.Data!.Shares.First(s => (req.UserId != null ? s.UserId == req.UserId : s.RoomId == req.RoomId) && s.InheritedFromId == null));
     }
 
     public async Task<NoteResult<bool>> UpdateShareAsync(Guid userId, Guid pageId, Guid shareId, string level, CancellationToken ct)
@@ -314,17 +353,26 @@ public sealed partial class NoteService
         var access = await GetAccessAsync(userId, pageId, ct);
         if (access < NoteAccess.Owner) return Fail<bool>(Denied(access));
         if (!NoteLevels.All.Contains(level)) return Fail<bool>("invalid_level");
-        var n = await db.NoteShares.Where(s => s.Id == shareId && s.PageId == pageId)
+        var target = await db.NoteShares.AsNoTracking().Where(s => s.Id == shareId && s.PageId == pageId)
+            .Select(s => new { s.UserId, s.RoomId }).FirstOrDefaultAsync(ct);
+        if (target is null) return Fail<bool>("not_found");
+        await db.NoteShares.Where(s => s.PageId == pageId
+                && (target.UserId != null ? s.UserId == target.UserId : s.RoomId == target.RoomId))
             .ExecuteUpdateAsync(s => s.SetProperty(x => x.Level, level), ct);
-        return n == 0 ? Fail<bool>("not_found") : Ok(true);
+        return Ok(true);
     }
 
     public async Task<NoteResult<bool>> RemoveShareAsync(Guid userId, Guid pageId, Guid shareId, CancellationToken ct)
     {
         var access = await GetAccessAsync(userId, pageId, ct);
         if (access < NoteAccess.Owner) return Fail<bool>(Denied(access));
-        var n = await db.NoteShares.Where(s => s.Id == shareId && s.PageId == pageId).ExecuteDeleteAsync(ct);
-        return n == 0 ? Fail<bool>("not_found") : Ok(true);
+        var target = await db.NoteShares.AsNoTracking().Where(s => s.Id == shareId && s.PageId == pageId)
+            .Select(s => new { s.UserId, s.RoomId }).FirstOrDefaultAsync(ct);
+        if (target is null) return Fail<bool>("not_found");
+        await db.NoteShares.Where(s => s.PageId == pageId
+                && (target.UserId != null ? s.UserId == target.UserId : s.RoomId == target.RoomId))
+            .ExecuteDeleteAsync(ct);
+        return Ok(true);
     }
 
     public async Task<NoteResult<NoteCardDto>> GetCardAsync(Guid userId, Guid pageId, string level, CancellationToken ct)
@@ -339,7 +387,7 @@ public sealed partial class NoteService
     public async Task<IReadOnlyList<Guid>> GetAudienceAsync(Guid pageId, CancellationToken ct)
     {
         var chain = await ChainAsync(pageId, ct);
-        if (chain.Count == 0 || chain.Any(n => n.DeletedAt != null)) return [];
+        if (chain.Count == 0 || chain.Any(n => n.DeletedAt != null) || chain[^1].ParentId != null) return [];
         var ids = chain.Select(n => n.Id).ToList();
         var users = chain.Select(n => n.OwnerId).ToHashSet();
         var shares = await db.NoteShares.AsNoTracking().Where(s => ids.Contains(s.PageId))
@@ -349,7 +397,8 @@ public sealed partial class NoteService
         if (rooms.Count > 0)
             users.UnionWith(await db.ChatRoomMembers.AsNoTracking().Where(m => rooms.Contains(m.RoomId) && m.LeftAt == null)
                 .Select(m => m.UserId).ToListAsync(ct));
-        return users.ToList();
+        if (users.Count == 0) return [];
+        return await db.Users.AsNoTracking().Where(u => users.Contains(u.Id) && u.IsActive).Select(u => u.Id).ToListAsync(ct);
     }
 
     // ── Comments ─────────────────────────────────────────────────────────────
@@ -439,7 +488,8 @@ public sealed partial class NoteService
     public async Task<NoteResult<NoteThreadDto>> EditCommentAsync(Guid userId, Guid pageId, Guid commentId, string body, CancellationToken ct)
     {
         var (c, access, _) = await CommentContextAsync(userId, pageId, commentId, ct);
-        if (c is null) return Fail<NoteThreadDto>(Denied(access));
+        if (access < NoteAccess.Comment) return Fail<NoteThreadDto>(Denied(access));
+        if (c is null) return Fail<NoteThreadDto>("not_found");
         if (c.AuthorId != userId) return Fail<NoteThreadDto>("forbidden");     // the guide comment has no author, so nobody edits it
         var clean = Clean(body, 2000);
         if (clean is null) return Fail<NoteThreadDto>("empty");
@@ -450,28 +500,31 @@ public sealed partial class NoteService
     public async Task<NoteResult<NoteThreadDto?>> DeleteCommentAsync(Guid userId, Guid pageId, Guid commentId, CancellationToken ct)
     {
         var (c, access, isOwner) = await CommentContextAsync(userId, pageId, commentId, ct);
-        if (c is null) return Fail<NoteThreadDto?>(Denied(access));
+        if (access < NoteAccess.Comment) return Fail<NoteThreadDto?>(Denied(access));
+        if (c is null) return Fail<NoteThreadDto?>("not_found");
         if (c.AuthorId != userId && !isOwner) return Fail<NoteThreadDto?>("forbidden");
         var threadId = c.ThreadId;
         db.NoteComments.Remove(c);
         await db.SaveChangesAsync(ct);
         if (!await db.NoteComments.AnyAsync(x => x.ThreadId == threadId, ct))
         {
-            await db.NoteThreads.Where(t => t.Id == threadId).ExecuteDeleteAsync(ct);
+            await db.NoteThreads.Where(t => t.Id == threadId && !db.NoteComments.Any(x => x.ThreadId == threadId)).ExecuteDeleteAsync(ct);
             return Ok<NoteThreadDto?>(null);                                   // the whole thread is gone
         }
-        return Ok<NoteThreadDto?>((await ThreadsForAsync(pageId, userId, threadId, ct)).First());
+        return Ok<NoteThreadDto?>((await ThreadsForAsync(pageId, userId, threadId, ct)).FirstOrDefault());
     }
 
     public async Task<NoteResult<NoteThreadDto>> ToggleReactionAsync(Guid userId, Guid pageId, Guid commentId, string emoji, CancellationToken ct)
     {
         var (c, access, _) = await CommentContextAsync(userId, pageId, commentId, ct);
-        if (c is null) return Fail<NoteThreadDto>(Denied(access));
+        if (access < NoteAccess.Comment) return Fail<NoteThreadDto>(Denied(access));
+        if (c is null) return Fail<NoteThreadDto>("not_found");
         if (!ReactionEmojis.Contains(emoji)) return Fail<NoteThreadDto>("invalid_style");
         var row = await db.NoteCommentReactions.FirstOrDefaultAsync(r => r.CommentId == commentId && r.UserId == userId && r.Emoji == emoji, ct);
         if (row is null) db.NoteCommentReactions.Add(new NoteCommentReaction { CommentId = commentId, UserId = userId, Emoji = emoji, CreatedAt = DateTime.UtcNow });
         else db.NoteCommentReactions.Remove(row);
-        await db.SaveChangesAsync(ct);
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException) { db.ChangeTracker.Clear(); }
         return Ok((await ThreadsForAsync(pageId, userId, c.ThreadId, ct)).First());
     }
 
@@ -526,10 +579,11 @@ public sealed partial class NoteService
 
     public async Task<NoteResult<bool>> AddGuideThreadAsync(Guid userId, Guid pageId, string quote, string anchor, CancellationToken ct)
     {
-        var page = await db.NotePages.AsNoTracking().FirstOrDefaultAsync(p => p.Id == pageId && p.IsGuide && p.OwnerId == userId, ct);
+        var page = await db.NotePages.AsNoTracking().FirstOrDefaultAsync(p => p.Id == pageId && p.IsGuide && p.OwnerId == userId && p.DeletedAt == null, ct);
         if (page is null) return Fail<bool>("not_found");
+        if (page.LockedAt is not null) return Fail<bool>("locked");
         if (await db.NoteThreads.AnyAsync(t => t.PageId == pageId, ct)) return Ok(false);
-        if (anchor.Length > 2000) return Fail<bool>("invalid_anchor");
+        if (anchor is null || anchor.Length > 2000) return Fail<bool>("invalid_anchor");
         var now = DateTime.UtcNow;
         var thread = new NoteThread { Id = Guid.NewGuid(), PageId = pageId, Quote = Clean(quote, 300), Anchor = anchor, CreatedById = userId, CreatedAt = now };
         thread.Comments.Add(new NoteComment
@@ -544,25 +598,30 @@ public sealed partial class NoteService
 
     // ── Attachments ──────────────────────────────────────────────────────────
 
+    private static readonly string[] RasterImageTypes =
+        ["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif", "image/bmp"];
+
     public async Task<NoteResult<bool>> CanUploadAsync(Guid userId, Guid pageId, CancellationToken ct)
     {
         var access = await GetAccessAsync(userId, pageId, ct);
-        return access >= NoteAccess.Edit ? Ok(true) : Fail<bool>(Denied(access));
+        if (access < NoteAccess.Edit) return Fail<bool>(Denied(access));
+        if (await db.NotePages.AsNoTracking().AnyAsync(p => p.Id == pageId && p.LockedAt != null, ct)) return Fail<bool>("locked");
+        return Ok(true);
     }
 
     private static readonly System.Text.RegularExpressions.Regex GuidText = new(
         "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// An image or file pasted from another page keeps its attachment id inside this page's content, but only the page it
-    /// was uploaded to is linked. Link every notes attachment the saved content mentions, so people who can open THIS page
-    /// can load it even when they cannot open the original (or the original is purged).
-    private async Task LinkReferencedAttachmentsAsync(Guid pageId, byte[] state, CancellationToken ct)
+    /// was uploaded to is linked. Link every notes attachment the saved content mentions (ONLY if the editor can already read it),
+    /// so people who can open THIS page can load it even when they cannot open the original (or the original is purged).
+    private async Task LinkReferencedAttachmentsAsync(Guid userId, Guid pageId, byte[] state, CancellationToken ct)
     {
         var ids = GuidText.Matches(System.Text.Encoding.Latin1.GetString(state)).Select(m => Guid.Parse(m.Value)).Distinct().Take(500).ToList();
         if (ids.Count == 0) return;
-        var known = await db.Attachments.AsNoTracking()
-            .Where(a => ids.Contains(a.Id) && a.Area == AttachmentAreas.Notes && a.DeletedAt == null).Select(a => a.Id).ToListAsync(ct);
-        if (known.Count == 0) return;
+        var allowed = await FilterReadableNotesAttachmentsAsync(userId, ids, ct);
+        if (allowed.Count == 0) return;
+        var known = allowed.Select(a => a.Id).ToList();
         var linked = await db.NoteAttachments.AsNoTracking().Where(a => a.PageId == pageId && known.Contains(a.AttachmentId))
             .Select(a => a.AttachmentId).ToListAsync(ct);
         foreach (var id in known.Except(linked)) db.NoteAttachments.Add(new NoteAttachment { AttachmentId = id, PageId = pageId });
@@ -571,7 +630,7 @@ public sealed partial class NoteService
     private async Task<bool> IsPageImageAsync(Guid pageId, Guid attachmentId, CancellationToken ct) =>
         await (from na in db.NoteAttachments.AsNoTracking()
                join a in db.Attachments.AsNoTracking() on na.AttachmentId equals a.Id
-               where na.PageId == pageId && na.AttachmentId == attachmentId && a.DeletedAt == null && a.ContentType.StartsWith("image/")
+               where na.PageId == pageId && na.AttachmentId == attachmentId && a.DeletedAt == null && RasterImageTypes.Contains(a.ContentType)
                select a.Id).AnyAsync(ct);
 
     public async Task<NoteResult<NotePageDto>> SetCoverImageAsync(Guid userId, Guid pageId, Guid attachmentId, CancellationToken ct) =>
@@ -581,12 +640,45 @@ public sealed partial class NoteService
     {
         var access = await GetAccessAsync(userId, pageId, ct);
         if (access == NoteAccess.None) return Fail<IReadOnlyList<NoteImageDto>>("not_found");
+        var thumbId = await db.NotePages.AsNoTracking().Where(p => p.Id == pageId).Select(p => p.ThumbnailId).FirstOrDefaultAsync(ct);
         var rows = await (from na in db.NoteAttachments.AsNoTracking()
                           join a in db.Attachments.AsNoTracking() on na.AttachmentId equals a.Id
-                          where na.PageId == pageId && a.DeletedAt == null && a.ContentType.StartsWith("image/")
+                          where na.PageId == pageId && a.DeletedAt == null && RasterImageTypes.Contains(a.ContentType)
+                              && (thumbId == null || a.Id != thumbId)
+                              && !NoteFilePreviewService.DerivedIds(db).Contains(a.Id)
                           orderby a.CreatedAt descending
                           select new NoteImageDto(a.Id, a.FileName, a.Size)).Take(60).ToListAsync(ct);
         return Ok<IReadOnlyList<NoteImageDto>>(rows);
+    }
+
+    public async Task<NoteResult<Guid?>> SetThumbnailAsync(Guid userId, Guid pageId, Guid attachmentId, CancellationToken ct)
+    {
+        var access = await GetAccessAsync(userId, pageId, ct);
+        if (access < NoteAccess.Edit) return Fail<Guid?>(Denied(access));
+        var page = await db.NotePages.FirstOrDefaultAsync(p => p.Id == pageId && p.DeletedAt == null, ct);
+        if (page is null) return Fail<Guid?>("not_found");
+        if (page.LockedAt is not null) return Fail<Guid?>("locked");
+        if (page.Kind != "board") return Fail<Guid?>("not_a_board");
+        // only a picture that was uploaded to THIS page can become its thumbnail
+        var linked = await (from na in db.NoteAttachments.AsNoTracking()
+                            join a in db.Attachments.AsNoTracking() on na.AttachmentId equals a.Id
+                            where na.PageId == pageId && na.AttachmentId == attachmentId && a.DeletedAt == null && RasterImageTypes.Contains(a.ContentType)
+                            select a.Id).AnyAsync(ct);
+        if (!linked) return Fail<Guid?>("invalid_image");
+        var old = page.ThumbnailId;
+        page.ThumbnailId = attachmentId;
+        page.ThumbnailAt = DateTime.UtcNow;
+        Guid? toDelete = null;
+        if (old is { } o && o != attachmentId && o != page.CoverImageId)
+        {
+            var oldLink = await db.NoteAttachments.FirstOrDefaultAsync(x => x.PageId == pageId && x.AttachmentId == o, ct);
+            if (oldLink is not null) db.NoteAttachments.Remove(oldLink);
+            if (!await db.NoteAttachments.AsNoTracking().AnyAsync(x => x.AttachmentId == o && x.PageId != pageId, ct))
+                toDelete = o;
+        }
+        // the thumbnail is bookkeeping, not an edit: it must not move "edited 2 min ago" or the page's UpdatedBy
+        await db.SaveChangesAsync(ct);
+        return Ok(toDelete);
     }
 
     public async Task LinkAttachmentAsync(Guid pageId, Guid attachmentId, CancellationToken ct)
@@ -638,6 +730,7 @@ public sealed partial class NoteService
     {
         var access = await GetAccessAsync(userId, pageId, ct);
         if (access < NoteAccess.Edit) return Fail<IReadOnlyList<Guid>>(Denied(access));
+        if (await db.NotePages.AsNoTracking().AnyAsync(p => p.Id == pageId && p.LockedAt != null, ct)) return Fail<IReadOnlyList<Guid>>("locked");
         return Ok(await MentionTargetsAsync(userId, pageId, mentions, ct));
     }
 }

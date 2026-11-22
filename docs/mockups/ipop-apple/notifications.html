@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Notifications redesign (mockup 2026-11-21)</title>
+<script src="../notifier/lucide.min.js"></script>
+<style>
+/* Tokens = iPop web v6 (shell/v6.css) + forest frame (shell/friendly.css) */
+:root{
+  --bg:#F5F5F7;--surface:#FFFFFF;--sunk:#F2F2F5;--fill:rgba(118,118,128,.12);--sep:rgba(60,60,67,.12);--line:rgba(60,60,67,.20);
+  --ink:#1D1D1F;--ink-2:#3C3C43;--ink-3:#6E6E73;--accent:#2E9E5B;--accent-ink:#1C7A44;--accent-soft:#E4F4EA;
+  --danger:#FF3B30;--danger-soft:#FFECEB;--frame:#123528;--frame-2:#1a4535;--frame-ink:#e7f2ec;
+  --shadow:0 0 0 .5px rgba(0,0,0,.08),0 10px 30px -14px rgba(0,0,0,.25);
+  --spring:cubic-bezier(.32,.72,0,1);
+}
+.dark{
+  --bg:#000;--surface:#1C1C1E;--sunk:#161618;--fill:rgba(118,118,128,.24);--sep:rgba(84,84,88,.50);--line:rgba(255,255,255,.14);
+  --ink:#F5F5F7;--ink-2:#D1D1D6;--ink-3:#98989D;--accent:#30D158;--accent-ink:#5EE08A;--accent-soft:rgba(48,209,88,.16);
+  --danger:#FF453A;--danger-soft:rgba(255,69,58,.16);--frame:#0b2219;--frame-2:#133126;--frame-ink:#e3efe8;
+  --shadow:0 0 0 .5px rgba(255,255,255,.08),0 10px 30px -14px rgba(0,0,0,.7);
+}
+/* module colour — used ONLY on the icon chip, the filter dot and the primary button */
+.m-chat{--m:#2E9E5B}.m-mail{--m:#0A6CFF}.m-tickets{--m:#E8743B}.m-calendar{--m:#E07800}.m-projects{--m:#5562B8}
+.m-news{--m:#9B3F78}.m-notes{--m:#C99A1E}.m-system{--m:#5B6B78}.m-call{--m:#FF3B30}
+.dark .m-chat{--m:#30D158}.dark .m-mail{--m:#0A84FF}.dark .m-tickets{--m:#FF8A4C}.dark .m-calendar{--m:#FF9F0A}
+.dark .m-projects{--m:#7480D6}.dark .m-news{--m:#C25A9A}.dark .m-notes{--m:#E0B43A}.dark .m-system{--m:#7C8C99}.dark .m-call{--m:#FF453A}
+
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,"SF Pro Text","Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;background:#d9dde1;color:#1d1d1f;-webkit-font-smoothing:antialiased}
+button,input{font:inherit;color:inherit;background:none;border:0}
+button{cursor:pointer}
+svg.lucide{width:18px;height:18px;stroke-width:1.9;flex:none}
+
+/* ---------- doc chrome ---------- */
+.top{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 28px;background:#0d2a1f;color:#e7f2ec}
+.top h1{font-size:15px;font-weight:650;flex:1}
+.seg{display:flex;padding:3px;border-radius:10px;background:rgba(255,255,255,.10)}
+.seg button{height:30px;padding:0 14px;border-radius:8px;font-size:13px;font-weight:600;opacity:.8}
+.seg button.on{background:#fff;color:#123528;opacity:1}
+.stage{padding:28px;transition:background .3s}
+.stage:not(.dark){background:linear-gradient(135deg,#cfd8de,#e6ebee)}
+.stage.dark{background:#1b1f22}
+h2{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#55606a;margin:6px 4px 10px}
+.note{font-size:14px;color:#44505a;margin:0 4px 18px;max-width:980px;line-height:1.55}
+.note b{color:#1d2a33}
+.stage.dark h2,.stage.dark .note{color:#9aa5ad}.stage.dark .note b{color:#dfe6ea}
+.sec{margin-bottom:56px}
+
+/* ---------- app shell (simplified) ---------- */
+.app{display:flex;height:780px;border-radius:14px;overflow:hidden;background:var(--frame);box-shadow:0 20px 60px -20px rgba(0,0,0,.45);color:var(--ink)}
+.rail{width:64px;flex:none;display:flex;flex-direction:column;align-items:center;gap:14px;padding:16px 0;color:#b3d0c1}
+.rail .logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#2E9E5B,#ffc96b);margin-bottom:10px}
+.rail svg.lucide{width:21px;height:21px}
+.rail .on{width:48px;height:42px;border-radius:12px 0 0 12px;background:var(--bg);color:var(--accent-ink);display:grid;place-items:center;margin-left:16px}
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.tbar{height:64px;flex:none;display:flex;align-items:center;gap:14px;padding:0 20px 0 8px;color:var(--frame-ink)}
+.tbar h3{font-size:22px;font-weight:700;letter-spacing:-.01em}
+.tbar small{display:block;font-size:13px;opacity:.75;font-weight:500}
+.tbar .sp{flex:1}
+.tbar .sch{width:340px;height:40px;border-radius:12px;background:rgba(255,255,255,.08);display:flex;align-items:center;gap:10px;padding:0 14px;font-size:14px;opacity:.85}
+.tbar .bell{position:relative;width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.08);display:grid;place-items:center}
+.tbar .bell i{position:absolute;top:-4px;right:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--danger);color:#fff;font:700 11px/20px system-ui;text-align:center;font-style:normal}
+.panel{flex:1;min-height:0;background:var(--bg);border-radius:18px 0 0 0;display:flex}
+
+/* ---------- shared atoms ---------- */
+.chip{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;color:#fff;background:var(--m);flex:none;position:relative}
+.chip svg.lucide{width:20px;height:20px}
+.chip .av{position:absolute;right:-5px;bottom:-5px;width:22px;height:22px;border-radius:7px;border:2px solid var(--surface);display:grid;place-items:center;font:700 9.5px/1 system-ui;color:#fff}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 14px;border-radius:10px;font-size:14px;font-weight:600;background:var(--fill);color:var(--ink);white-space:nowrap;transition:transform .15s var(--spring),background .15s}
+.btn:hover{background:var(--line)}.btn:active{transform:scale(.97)}
+.btn svg.lucide{width:16px;height:16px}
+.btn.pri{background:var(--m,var(--accent));color:#fff}.btn.pri:hover{filter:brightness(1.06)}
+.btn.ghost{background:none;color:var(--ink-2)}.btn.ghost:hover{background:var(--fill)}
+.btn.sm{height:32px;padding:0 11px;font-size:13px;border-radius:9px}
+.ico{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:var(--ink-3)}
+.ico:hover{background:var(--fill);color:var(--ink)}
+.ico svg.lucide{width:17px;height:17px}
+.pill{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:999px;font-size:12px;font-weight:650;background:var(--fill);color:var(--ink-2)}
+.pill.red{background:var(--danger-soft);color:var(--danger)}
+.pill svg.lucide{width:12px;height:12px}
+
+/* ================= OPTION B — feed ================= */
+.feed{flex:1;display:flex;flex-direction:column;min-width:0}
+.fhead{flex:none;padding:18px 28px 0;display:flex;flex-direction:column;gap:14px}
+.frow{display:flex;align-items:center;gap:10px}
+.fsearch{flex:1;max-width:420px;height:40px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--sep);display:flex;align-items:center;gap:10px;padding:0 14px;color:var(--ink-3);font-size:14px}
+.fsearch input{flex:1;outline:0;color:var(--ink)}
+.frow .sp{flex:1}
+.tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:14px;border-bottom:1px solid var(--sep);scrollbar-width:none}
+.tab{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:999px;font-size:14px;font-weight:600;color:var(--ink-2);background:var(--surface);box-shadow:inset 0 0 0 1px var(--sep);white-space:nowrap;transition:background .2s,color .2s}
+.tab .d{width:8px;height:8px;border-radius:50%;background:var(--m)}
+.tab b{font-size:12px;font-weight:700;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--fill);display:grid;place-items:center}
+.tab.on{background:var(--ink);color:var(--bg);box-shadow:none}
+.tab.on b{background:rgba(255,255,255,.2)}
+.dark .tab.on b{background:rgba(0,0,0,.15)}
+.tab:hover:not(.on){background:var(--sunk)}
+.flist{flex:1;overflow:auto;padding:6px 28px 28px}
+.grp{display:flex;align-items:center;gap:10px;margin:18px 0 8px;font-size:13px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em}
+.grp .sp{flex:1}
+.grp button{text-transform:none;letter-spacing:0;font-weight:600;color:var(--accent-ink);font-size:13px}
+.card{background:var(--surface);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+.n{position:relative;display:flex;gap:14px;padding:14px 18px 14px 22px;cursor:pointer;transition:background .15s}
+.n+.n{border-top:1px solid var(--sep)}
+.n:hover{background:var(--sunk)}
+.n.unread::before{content:"";position:absolute;left:8px;top:28px;width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.n .bd{flex:1;min-width:0}
+.n .l1{display:flex;align-items:baseline;gap:8px}
+.n .src{font-size:13px;color:var(--ink-3);font-weight:600}
+.n .t{margin-left:auto;font-size:13px;color:var(--ink-3);flex:none}
+.n .ti{font-size:16px;font-weight:600;color:var(--ink);margin-top:1px;line-height:1.35}
+.n:not(.unread) .ti{font-weight:500;color:var(--ink-2)}
+.n .sn{font-size:14.5px;color:var(--ink-2);line-height:1.45;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.n .sn b{color:var(--ink);font-weight:600}
+.n .meta{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.n .acts{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.n .hover{position:absolute;right:14px;top:10px;display:flex;gap:2px;padding:3px;border-radius:11px;background:var(--surface);box-shadow:var(--shadow);opacity:0;transform:translateY(-3px);transition:.18s var(--spring)}
+.n:hover .hover{opacity:1;transform:none}
+.n:hover .t{visibility:hidden}
+.stack{display:flex;margin-top:8px}
+.stack span{width:22px;height:22px;border-radius:7px;border:2px solid var(--surface);margin-left:-6px;display:grid;place-items:center;font:700 9px/1 system-ui;color:#fff}
+.stack span:first-child{margin-left:0}
+.stack em{font-style:normal;font-size:13px;color:var(--ink-3);margin-left:8px;align-self:center}
+/* inline quick reply */
+.qr{margin-top:12px;display:flex;gap:8px;align-items:flex-end}
+.qr .box{flex:1;min-height:40px;border-radius:12px;background:var(--sunk);box-shadow:inset 0 0 0 1px var(--line);display:flex;align-items:center;padding:0 12px;gap:8px;color:var(--ink-3);font-size:14.5px}
+.qr .box input{flex:1;outline:0;color:var(--ink);height:40px}
+.qr .box:focus-within{box-shadow:inset 0 0 0 2px var(--m)}
+.thread{margin-top:10px;border-radius:12px;background:var(--sunk);padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.thread p{font-size:14px;line-height:1.4;color:var(--ink-2)}
+.thread p b{color:var(--ink);font-weight:600}
+.thread p span{color:var(--ink-3);font-size:12px;margin-left:6px}
+.done{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:var(--accent-ink);margin-top:10px}
+/* side panel (preferences / filters) */
+.side{width:300px;flex:none;border-left:1px solid var(--sep);padding:20px;display:flex;flex-direction:column;gap:16px;overflow:auto;background:var(--bg)}
+.side h4{font-size:13px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em}
+.sbox{background:var(--surface);border-radius:14px;box-shadow:var(--shadow)}
+.srow{display:flex;align-items:center;gap:12px;padding:12px 14px;font-size:14.5px}
+.srow+.srow{border-top:1px solid var(--sep)}
+.srow .sp{flex:1}
+.srow small{display:block;font-size:12.5px;color:var(--ink-3)}
+.sw{width:42px;height:26px;border-radius:13px;background:var(--line);position:relative;flex:none;transition:background .2s}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .25s var(--spring)}
+.sw.on{background:var(--accent)}.sw.on::after{transform:translateX(16px)}
+.mini{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;color:#fff;background:var(--m);flex:none}
+.mini svg.lucide{width:14px;height:14px}
+.sync{display:flex;gap:12px;align-items:flex-start;padding:14px;font-size:13.5px;line-height:1.45;color:var(--ink-2)}
+.sync svg.lucide{color:var(--accent-ink);margin-top:1px}
+/* selection bar */
+.selbar[hidden]{display:none}.selbar{position:sticky;bottom:12px;margin:12px auto 0;width:max-content;display:flex;align-items:center;gap:6px;padding:6px 6px 6px 16px;border-radius:14px;background:var(--ink);color:var(--bg);box-shadow:0 12px 30px -10px rgba(0,0,0,.5);font-size:14px;font-weight:600}
+.selbar .btn{background:rgba(255,255,255,.12);color:var(--bg)}
+.dark .selbar .btn{background:rgba(0,0,0,.10)}
+/* empty state */
+.empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:46px 20px;text-align:center;color:var(--ink-3)}
+.empty .big{width:64px;height:64px;border-radius:20px;background:var(--accent-soft);color:var(--accent-ink);display:grid;place-items:center}
+.empty .big svg.lucide{width:30px;height:30px}
+.empty b{font-size:17px;color:var(--ink)}
+
+/* drawer (non-actionable item) */
+.drawer{position:absolute;right:0;top:0;bottom:0;width:440px;background:var(--surface);box-shadow:-20px 0 50px -20px rgba(0,0,0,.35);display:flex;flex-direction:column;border-radius:18px 0 0 0}
+.drawer .dh{display:flex;align-items:center;gap:6px;padding:12px 12px 12px 22px;border-bottom:1px solid var(--sep)}
+.drawer .dh .sp{flex:1}
+.drawer .db{flex:1;overflow:auto;padding:22px;display:flex;flex-direction:column;gap:16px}
+.drawer h5{font-size:22px;font-weight:700;line-height:1.3;letter-spacing:-.01em}
+.drawer .who{display:flex;gap:12px;align-items:center}
+.drawer .who b{display:block;font-size:15px}.drawer .who small{font-size:13px;color:var(--ink-3)}
+.drawer .msg{background:var(--sunk);border-radius:12px;padding:14px 16px;font-size:15.5px;line-height:1.55;color:var(--ink-2)}
+.drawer .df{padding:16px 22px 20px;border-top:1px solid var(--sep);display:flex;gap:8px}
+.drawer .df .btn.pri{flex:1;height:42px}
+
+/* ================= OPTION A — refined 3 columns ================= */
+.cats{width:240px;flex:none;padding:18px 12px;display:flex;flex-direction:column;gap:2px;border-right:1px solid var(--sep)}
+.cat{display:flex;align-items:center;gap:12px;height:40px;padding:0 12px;border-radius:10px;font-size:14.5px;font-weight:550;color:var(--ink-2)}
+.cat .mini{width:24px;height:24px;border-radius:7px}
+.cat b{margin-left:auto;font-size:12.5px;color:var(--ink-3);font-weight:650}
+.cat.on{background:var(--surface);box-shadow:var(--shadow);color:var(--ink)}
+.cat.on b{color:var(--accent-ink)}
+.cats hr{border:0;border-top:1px solid var(--sep);margin:10px 8px}
+.alist{width:420px;flex:none;border-right:1px solid var(--sep);display:flex;flex-direction:column;background:var(--surface)}
+.alist .ah{padding:16px 18px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--sep)}
+.alist .ah h4{font-size:18px;font-weight:700;flex:1}
+.alist .sc{flex:1;overflow:auto}
+.alist .n{padding:13px 16px 13px 22px}
+.alist .n.sel{background:var(--accent-soft)}
+.alist .n .ti{font-size:15px}
+.alist .n .sn{font-size:14px;-webkit-line-clamp:1}
+.adet{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--surface)}
+.adet .dh{display:flex;align-items:center;gap:6px;padding:12px 16px 12px 28px;border-bottom:1px solid var(--sep)}
+.adet .dh .sp{flex:1}
+.adet .db{flex:1;overflow:auto;padding:26px 28px;display:flex;flex-direction:column;gap:18px;max-width:760px}
+.bub{max-width:80%;padding:9px 13px;border-radius:16px;font-size:15px;line-height:1.45;background:var(--sunk);color:var(--ink)}
+.bub small{display:block;font-size:11.5px;color:var(--ink-3);margin-top:2px;text-align:right}
+.bub.me{align-self:flex-end;background:var(--accent);color:#fff}.bub.me small{color:rgba(255,255,255,.75)}
+.convo{display:flex;flex-direction:column;gap:6px;padding:16px;border-radius:14px;background:var(--bg)}
+
+/* ================= Notifier inbox ================= */
+.pair{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start}
+.pw{width:440px;height:600px;display:flex;flex-direction:column;border-radius:12px;overflow:hidden;background:var(--surface);color:var(--ink);box-shadow:0 0 0 .5px rgba(0,0,0,.1),0 18px 40px -12px rgba(0,0,0,.3)}
+.pw .ttl{height:48px;flex:none;display:flex;align-items:center;gap:10px;padding:0 6px 0 16px;border-bottom:1px solid var(--sep)}
+.pw .ttl .lg{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#2E9E5B,#ffc96b)}
+.pw .ttl b{font-size:14px;flex:1}
+.pw .tabs{padding:12px 14px 12px;gap:6px}
+.pw .tab{height:32px;padding:0 12px;font-size:13px}
+.pw .sc{flex:1;overflow:auto}
+.pw .n{padding:12px 14px 12px 22px;gap:12px}
+.pw .n .chip{width:36px;height:36px}
+.pw .n .ti{font-size:15px}.pw .n .sn{font-size:14px}
+.pw .foot{flex:none;display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--sep);font-size:13px;color:var(--ink-3)}
+.pw .foot .sp{flex:1}
+.syncnote{flex:1;min-width:300px;max-width:520px}
+.syncnote ol{margin:8px 0 0 18px;font-size:14px;line-height:1.7;color:#44505a}
+.stage.dark .syncnote ol{color:#b4bec5}
+.legend{display:grid;grid-template-columns:repeat(3,auto);gap:10px 18px;margin-top:16px;width:max-content}
+.legend span{display:flex;align-items:center;gap:8px;font-size:13.5px;color:#44505a}
+.stage.dark .legend span{color:#b4bec5}
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>Notifications redesign: feed (B, recommended) vs refined 3 columns (A) + Notifier Inbox in sync</h1>
+  <div class="seg" id="theme"><button class="on" data-t="light">Light</button><button data-t="dark">Dark</button></div>
+</div>
+
+<div class="stage" id="stage">
+
+<!-- ============ B ============ -->
+<div class="sec">
+<h2>Option B (recommended): feed with quick actions</h2>
+<p class="note"><b>Changes from today:</b> categories become chips across the top (one row, with counts) instead of a sidebar. The detail pane is removed: you act on each item where it is (<b>Reply</b>, <b>Join</b>, <b>Open</b>), and replies go straight to chat or the iDesk ticket. <b>Chat is grouped per conversation</b> ("Ursula · 3 new messages", with a preview of the last messages). @mentions and missed calls get their own rows. Opening the chat in /chat marks the group read automatically. Every module has its own colour and icon, so tickets no longer show the generic shield. Hover a row to get Mark read / Snooze / More. Preferences and DND move into the right panel, which also shows that the Notifier is in sync.</p>
+
+<div class="app">
+  <div class="rail"><div class="logo"></div><i data-lucide="layout-grid"></i><i data-lucide="notebook-pen"></i><i data-lucide="life-buoy"></i><i data-lucide="messages-square"></i><i data-lucide="mail"></i><i data-lucide="newspaper"></i><i data-lucide="phone"></i><span class="on"><i data-lucide="bell"></i></span><i data-lucide="folder"></i><i data-lucide="calendar"></i></div>
+  <div class="main">
+    <div class="tbar"><div><h3>Notifications</h3><small>12 unread</small></div><span class="sp"></span><div class="sch"><i data-lucide="search"></i>Search people, chat, notes, mail…</div><span class="bell"><i data-lucide="bell"></i><i>12</i></span></div>
+    <div class="panel">
+      <div class="feed">
+        <div class="fhead">
+          <div class="frow">
+            <label class="fsearch"><i data-lucide="search"></i><input placeholder="Search notifications"></label>
+            <button class="btn ghost"><i data-lucide="eye-off"></i>Unread only</button>
+            <span class="sp"></span>
+            <button class="btn ghost" id="selbtn"><i data-lucide="list-checks"></i>Select</button>
+            <button class="btn"><i data-lucide="check-check"></i>Mark all read</button>
+          </div>
+          <div class="tabs" id="tabsB">
+            <button class="tab on">All <b>12</b></button>
+            <button class="tab"><i data-lucide="at-sign" style="width:15px;height:15px"></i>Mentions <b>2</b></button>
+            <button class="tab m-chat"><span class="d"></span>Chat <b>5</b></button>
+            <button class="tab m-tickets"><span class="d"></span>iDesk <b>3</b></button>
+            <button class="tab m-mail"><span class="d"></span>Mail <b>1</b></button>
+            <button class="tab m-calendar"><span class="d"></span>Meetings</button>
+            <button class="tab m-projects"><span class="d"></span>Tasks</button>
+            <button class="tab m-news"><span class="d"></span>Memos &amp; News</button>
+            <button class="tab m-system"><span class="d"></span>System <b>1</b></button>
+            <button class="tab"><i data-lucide="alarm-clock" style="width:15px;height:15px"></i>Snoozed</button>
+          </div>
+        </div>
+        <div class="flist">
+          <div class="grp">Today<span class="sp"></span><button>Mark today read</button></div>
+          <div class="card">
+            <!-- chat group with inline reply open -->
+            <div class="n unread m-chat">
+              <div class="chip"><i data-lucide="message-circle"></i><span class="av" style="background:#B45B8C">UR</span></div>
+              <div class="bd">
+                <div class="l1"><span class="src">Chat · Direct message</span><span class="t">10:42</span></div>
+                <div class="ti">Ursula Rahmawati · 3 new messages</div>
+                <div class="thread">
+                  <p><b>Ursula</b> sudah saya cek, pelampung 9FE masih error <span>10:38</span></p>
+                  <p><b>Ursula</b> file nya saya kirim lewat Files ya <span>10:40</span></p>
+                  <p><b>Ursula</b> bisa tolong remote sekarang? 🙏 <span>10:42</span></p>
+                </div>
+                <div class="qr">
+                  <label class="box"><input value="Oke, saya remote 5 menit lagi" aria-label="Reply to Ursula"><i data-lucide="smile"></i></label>
+                  <button class="btn pri"><i data-lucide="send"></i>Send</button>
+                </div>
+              </div>
+              <div class="hover"><button class="ico" title="Mark read"><i data-lucide="check"></i></button><button class="ico" title="Snooze"><i data-lucide="alarm-clock"></i></button><button class="ico" title="More"><i data-lucide="ellipsis"></i></button></div>
+            </div>
+            <!-- mention -->
+            <div class="n unread m-chat">
+              <div class="chip"><i data-lucide="at-sign"></i><span class="av" style="background:#3A86C8">YD</span></div>
+              <div class="bd">
+                <div class="l1"><span class="src">Mention · ICT Team</span><span class="t">10:15</span></div>
+                <div class="ti">Yudi mentioned you</div>
+                <div class="sn"><b>@Bagas</b> tolong cek akses VPN untuk tim gudang Karawang sebelum jam 2</div>
+                <div class="acts"><button class="btn pri sm"><i data-lucide="reply"></i>Reply</button><button class="btn sm"><i data-lucide="message-square"></i>Open chat</button></div>
+              </div>
+              <div class="hover"><button class="ico"><i data-lucide="check"></i></button><button class="ico"><i data-lucide="alarm-clock"></i></button><button class="ico"><i data-lucide="ellipsis"></i></button></div>
+            </div>
+            <!-- missed call -->
+            <div class="n unread m-call">
+              <div class="chip"><i data-lucide="phone-missed"></i><span class="av" style="background:#6F8290">DK</span></div>
+              <div class="bd">
+                <div class="l1"><span class="src">Calls</span><span class="t">09:58</span></div>
+                <div class="ti">Missed voice call from Dia Kartika</div>
+                <div class="acts"><button class="btn pri sm"><i data-lucide="phone"></i>Call back</button><button class="btn sm"><i data-lucide="message-circle"></i>Message</button></div>
+              </div>
+              <div class="hover"><button class="ico"><i data-lucide="check"></i></button><button class="ico"><i data-lucide="alarm-clock"></i></button><button class="ico"><i data-lucide="ellipsis"></i></button></div>
+            </div>
+            <!-- iDesk ticket chat -->
+            <div class="n unread m-tickets">
+              <div class="chip"><i data-lucide="life-buoy"></i></div>
+              <div class="bd">
+                <div class="l1"><span class="src">iDesk · #TK-2381</span><span class="t">09:31</span></div>
+                <div class="ti">PELAMPUNG 9FE TIDAK BISA DIBUKA</div>
+                <div class="sn"><b>Ursula:</b> "silahkan remote" · 2 new messages</div>
+                <div class="meta"><span class="pill"><i data-lucide="circle-dot"></i>In progress</span><span class="pill red"><i data-lucide="flag"></i>High</span></div>
+                <div class="acts"><button class="btn pri sm"><i data-lucide="reply"></i>Reply in ticket</button><button class="btn sm"><i data-lucide="external-link"></i>Open ticket</button></div>
+              </div>
+              <div class="hover"><button class="ico"><i data-lucide="check"></i></button><button class="ico"><i data-lucide="alarm-clock"></i></button><button class="ico"><i data-lucide="ellipsis"></i></button></div>
+            </div>
+            <!-- meeting -->
+            <div class="n unread m-calendar">
+              <div class="chip"><i data-lucide="calendar-clock"></i></div>
+              <div class="bd">
+                <div class="l1"><span class="src">Meetings · starts in 15 min</span><span class="t">09:15</span></div>
+                <div class="ti">Weekly ICT sync · Meeting room Bromo</div>
+                <div class="stack"><span style="background:#3A86C8">YD</span><span style="background:#B45B8C">UR</span><span style="background:#6F8290">DK</span><span style="background:#C99A1E">+4</span><em>09:30 – 10:30</em></div>
+                <div class="acts"><button class="btn pri sm"><i data-lucide="video"></i>Join</button><button class="btn sm"><i data-lucide="check"></i>Accept</button><button class="btn sm">Decline</button></div>
+              </div>
+              <div class="hover"><button class="ico"><i data-lucide="check"></i></button><button class="ico"><i data-lucide="alarm-clock"></i></button><button class="ico"><i data-lucide="ellipsis"></i></button></div>
+            </div>
+          </div>
+
+          <div class="grp">Yesterday</div>
+          <div class="card">
+            <div class="n m-system">
+              <div class="chip"><i data-lucide="archive"></i></div>
+              <div class="bd">
+                <div class="l1"><span class="src">System</span><span class="t">23:47</span></div>
+                <div class="ti">Your EPop history is in iPop Mail</div>
+                <div class="sn">275 new messages from EPop were added under the label "Arsip EPop".</div>
+                <div class="acts"><button class="btn sm"><i data-lucide="tag"></i>Open "Arsip EPop"</button></div>
+              </div>
+            </div>
+            <div class="n m-tickets">
+              <div class="chip"><i data-lucide="circle-check-big"></i></div>
+              <div class="bd">
+                <div class="l1"><span class="src">iDesk · #TK-2374</span><span class="t">16:20</span></div>
+                <div class="ti">Printer tidak bisa ngeprint</div>
+                <div class="sn">Confirmed as fixed by Dia Kartika Lestari. The ticket is closed.</div>
+                <div class="done"><i data-lucide="circle-check"></i>Closed</div>
+              </div>
+            </div>
+            <div class="n m-mail">
+              <div class="chip"><i data-lucide="mail"></i><span class="av" style="background:#9B3F78">HC</span></div>
+              <div class="bd">
+                <div class="l1"><span class="src">Mail</span><span class="t">14:05</span></div>
+                <div class="ti">HC Santos · Jadwal medical check-up November</div>
+                <div class="sn">Dengan hormat, berikut jadwal MCU untuk karyawan site Sepanjang…</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="selbar" id="selbar" hidden><span>3 selected</span><button class="btn sm"><i data-lucide="check-check"></i>Mark read</button><button class="btn sm"><i data-lucide="alarm-clock"></i>Snooze</button><button class="btn sm"><i data-lucide="trash-2"></i>Delete</button><button class="btn sm"><i data-lucide="x"></i></button></div>
+        </div>
+      </div>
+
+      <aside class="side">
+        <h4>Focus</h4>
+        <div class="sbox">
+          <div class="srow"><i data-lucide="moon"></i><div class="sp">Do Not Disturb<small>No popups or sounds. History is still kept.</small></div><span class="sw"></span></div>
+          <div class="srow"><i data-lucide="clock-3"></i><div class="sp">Pause for 1 hour</div><i data-lucide="chevron-right" style="color:var(--ink-3)"></i></div>
+        </div>
+        <h4>Notify me about</h4>
+        <div class="sbox">
+          <div class="srow m-chat"><span class="mini"><i data-lucide="message-circle"></i></span><div class="sp">Chat<small>Direct messages + mentions</small></div><span class="sw on"></span></div>
+          <div class="srow m-tickets"><span class="mini"><i data-lucide="life-buoy"></i></span><div class="sp">iDesk</div><span class="sw on"></span></div>
+          <div class="srow m-mail"><span class="mini"><i data-lucide="mail"></i></span><div class="sp">Mail</div><span class="sw on"></span></div>
+          <div class="srow m-calendar"><span class="mini"><i data-lucide="calendar"></i></span><div class="sp">Meetings</div><span class="sw on"></span></div>
+          <div class="srow m-projects"><span class="mini"><i data-lucide="kanban"></i></span><div class="sp">Tasks</div><span class="sw on"></span></div>
+          <div class="srow m-news"><span class="mini"><i data-lucide="newspaper"></i></span><div class="sp">Memos &amp; News</div><span class="sw on"></span></div>
+          <div class="srow"><div class="sp" style="color:var(--accent-ink);font-weight:600">Sounds &amp; more…</div><i data-lucide="chevron-right" style="color:var(--ink-3)"></i></div>
+        </div>
+        <div class="sbox sync"><i data-lucide="monitor-check"></i><div><b style="color:var(--ink)">iPop Notifier is in sync</b><br>The same list on this PC. Anything you read here is read there too.</div></div>
+      </aside>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- B: drawer + empty -->
+<div class="sec">
+<h2>Option B: drawer for items you can't act on in the row, plus the empty state</h2>
+<p class="note">Clicking a long item (a memo or system message) opens a drawer on the right, and the list stays visible. Chat, iDesk and meeting rows open their module directly. When every filter is clear, an empty state is shown instead of a blank area.</p>
+<div class="app" style="height:560px">
+  <div class="rail"><div class="logo"></div><i data-lucide="layout-grid"></i><i data-lucide="messages-square"></i><i data-lucide="mail"></i><span class="on"><i data-lucide="bell"></i></span><i data-lucide="calendar"></i></div>
+  <div class="main">
+    <div class="tbar"><div><h3>Notifications</h3><small>All caught up</small></div><span class="sp"></span><span class="bell"><i data-lucide="bell"></i></span></div>
+    <div class="panel" style="position:relative">
+      <div class="feed">
+        <div class="fhead"><div class="tabs"><button class="tab">All</button><button class="tab on">Unread</button><button class="tab m-chat"><span class="d"></span>Chat</button><button class="tab m-tickets"><span class="d"></span>iDesk</button></div></div>
+        <div class="flist"><div class="card" style="margin-top:18px"><div class="empty"><div class="big"><i data-lucide="check-check"></i></div><b>You're all caught up</b><span>New messages, tickets and meetings show up here and in the iPop Notifier.</span><button class="btn" style="margin-top:6px">Show all notifications</button></div></div></div>
+      </div>
+      <div class="drawer m-news">
+        <div class="dh"><span class="pill" style="background:none;padding:0;font-size:13px;color:var(--ink-3)">Memos &amp; News · Thu 20 Nov, 08:00</span><span class="sp"></span><button class="ico" title="Mark unread"><i data-lucide="mail"></i></button><button class="ico" title="Snooze"><i data-lucide="alarm-clock"></i></button><button class="ico" title="Delete"><i data-lucide="trash-2"></i></button><button class="ico" title="Close"><i data-lucide="x"></i></button></div>
+        <div class="db">
+          <div class="who"><div class="chip"><i data-lucide="megaphone"></i></div><div><b>Human Capital</b><small>Memo to all employees</small></div></div>
+          <h5>Libur cuti bersama 24–26 Desember 2026</h5>
+          <div class="msg">Sehubungan dengan Hari Raya Natal, kantor pusat dan site Sepanjang/Karawang libur cuti bersama pada 24–26 Desember 2026. Operasional produksi mengikuti jadwal shift masing-masing.</div>
+        </div>
+        <div class="df"><button class="btn pri"><i data-lucide="external-link"></i>Read full memo</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ============ A ============ -->
+<div class="sec">
+<h2>Option A: today's 3 columns, refined</h2>
+<p class="note">Same structure as now, with module icons and colours, chat grouped per conversation, and a detail pane that shows the <b>actual conversation</b> with a reply box (instead of the From/Priority/Status table). Familiar, but the pane takes up a lot of space and most items still need a click before you can act on them.</p>
+<div class="app">
+  <div class="rail"><div class="logo"></div><i data-lucide="layout-grid"></i><i data-lucide="messages-square"></i><i data-lucide="mail"></i><span class="on"><i data-lucide="bell"></i></span><i data-lucide="calendar"></i></div>
+  <div class="main">
+    <div class="tbar"><div><h3>Notifications</h3><small>12 unread</small></div><span class="sp"></span><div class="sch"><i data-lucide="search"></i>Search people, chat, notes, mail…</div><span class="bell"><i data-lucide="bell"></i><i>12</i></span></div>
+    <div class="panel">
+      <div class="cats">
+        <div class="cat on"><i data-lucide="inbox"></i>All<b>12</b></div>
+        <div class="cat"><i data-lucide="at-sign"></i>Mentions<b>2</b></div>
+        <hr>
+        <div class="cat m-chat"><span class="mini"><i data-lucide="message-circle"></i></span>Chat<b>5</b></div>
+        <div class="cat m-tickets"><span class="mini"><i data-lucide="life-buoy"></i></span>iDesk<b>3</b></div>
+        <div class="cat m-mail"><span class="mini"><i data-lucide="mail"></i></span>Mail<b>1</b></div>
+        <div class="cat m-calendar"><span class="mini"><i data-lucide="calendar"></i></span>Meetings</div>
+        <div class="cat m-projects"><span class="mini"><i data-lucide="kanban"></i></span>Tasks</div>
+        <div class="cat m-news"><span class="mini"><i data-lucide="newspaper"></i></span>Memos &amp; News</div>
+        <div class="cat m-system"><span class="mini"><i data-lucide="shield"></i></span>System<b>1</b></div>
+        <hr>
+        <div class="cat"><i data-lucide="alarm-clock"></i>Snoozed</div>
+      </div>
+      <div class="alist">
+        <div class="ah"><h4>All</h4><button class="ico"><i data-lucide="list-checks"></i></button><button class="ico"><i data-lucide="check-check"></i></button></div>
+        <div class="sc">
+          <div class="grp" style="margin:14px 18px 6px">Today</div>
+          <div class="n unread sel m-chat"><div class="chip"><i data-lucide="message-circle"></i></div><div class="bd"><div class="l1"><span class="src">Chat</span><span class="t">10:42</span></div><div class="ti">Ursula Rahmawati · 3 new</div><div class="sn">bisa tolong remote sekarang? 🙏</div></div></div>
+          <div class="n unread m-chat"><div class="chip"><i data-lucide="at-sign"></i></div><div class="bd"><div class="l1"><span class="src">Mention · ICT Team</span><span class="t">10:15</span></div><div class="ti">Yudi mentioned you</div><div class="sn">@Bagas tolong cek akses VPN…</div></div></div>
+          <div class="n unread m-call"><div class="chip"><i data-lucide="phone-missed"></i></div><div class="bd"><div class="l1"><span class="src">Calls</span><span class="t">09:58</span></div><div class="ti">Missed call from Dia Kartika</div></div></div>
+          <div class="n unread m-tickets"><div class="chip"><i data-lucide="life-buoy"></i></div><div class="bd"><div class="l1"><span class="src">iDesk · #TK-2381</span><span class="t">09:31</span></div><div class="ti">PELAMPUNG 9FE TIDAK BISA DIBUKA</div><div class="sn">Ursula: "silahkan remote"</div></div></div>
+          <div class="n unread m-calendar"><div class="chip"><i data-lucide="calendar-clock"></i></div><div class="bd"><div class="l1"><span class="src">Meetings</span><span class="t">09:15</span></div><div class="ti">Weekly ICT sync · in 15 min</div></div></div>
+          <div class="grp" style="margin:14px 18px 6px">Yesterday</div>
+          <div class="n m-system"><div class="chip"><i data-lucide="archive"></i></div><div class="bd"><div class="l1"><span class="src">System</span><span class="t">23:47</span></div><div class="ti">Your EPop history is in iPop Mail</div></div></div>
+        </div>
+      </div>
+      <div class="adet m-chat">
+        <div class="dh"><div class="chip" style="width:32px;height:32px;border-radius:9px"><i data-lucide="message-circle" style="width:16px;height:16px"></i></div><b style="font-size:15px;margin-left:6px">Ursula Rahmawati</b><span class="sp"></span><button class="ico"><i data-lucide="mail"></i></button><button class="ico"><i data-lucide="alarm-clock"></i></button><button class="ico"><i data-lucide="trash-2"></i></button></div>
+        <div class="db">
+          <div class="convo">
+            <div class="bub">pagi pak, pelampung 9FE ga bisa dibuka lagi<small>10:20</small></div>
+            <div class="bub me">sudah dicoba restart?<small>10:31</small></div>
+            <div class="bub">sudah saya cek, pelampung 9FE masih error<small>10:38</small></div>
+            <div class="bub">file nya saya kirim lewat Files ya<small>10:40</small></div>
+            <div class="bub">bisa tolong remote sekarang? 🙏<small>10:42</small></div>
+          </div>
+          <div class="qr" style="margin:0"><label class="box"><input placeholder="Reply to Ursula…"><i data-lucide="smile"></i></label><button class="btn pri"><i data-lucide="send"></i>Send</button></div>
+          <button class="btn" style="align-self:flex-start"><i data-lucide="external-link"></i>Open in Chat</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ============ Notifier ============ -->
+<div class="sec">
+<h2>iPop Notifier Inbox: the same list, kept in sync</h2>
+<div class="pair">
+  <div class="pw">
+    <div class="ttl"><span class="lg"></span><b>iPop Notifier</b><button class="ico"><i data-lucide="settings"></i></button><button class="ico"><i data-lucide="minus"></i></button><button class="ico"><i data-lucide="x"></i></button></div>
+    <div class="tabs"><button class="tab on">All <b>12</b></button><button class="tab m-chat"><span class="d"></span>Chat <b>5</b></button><button class="tab m-tickets"><span class="d"></span>iDesk <b>3</b></button><button class="tab m-mail"><span class="d"></span>Mail</button></div>
+    <div class="sc">
+      <div class="grp" style="margin:4px 14px 6px">Today</div>
+      <div class="n unread m-chat"><div class="chip"><i data-lucide="message-circle"></i></div><div class="bd"><div class="l1"><span class="src">Chat</span><span class="t">10:42</span></div><div class="ti">Ursula Rahmawati · 3 new</div><div class="sn">bisa tolong remote sekarang? 🙏</div><div class="acts"><button class="btn pri sm"><i data-lucide="reply"></i>Reply</button><button class="btn sm"><i data-lucide="check"></i>Mark read</button></div></div></div>
+      <div class="n unread m-chat"><div class="chip"><i data-lucide="at-sign"></i></div><div class="bd"><div class="l1"><span class="src">Mention · ICT Team</span><span class="t">10:15</span></div><div class="ti">Yudi mentioned you</div><div class="sn">@Bagas tolong cek akses VPN…</div></div></div>
+      <div class="n unread m-call"><div class="chip"><i data-lucide="phone-missed"></i></div><div class="bd"><div class="l1"><span class="src">Calls</span><span class="t">09:58</span></div><div class="ti">Missed call from Dia Kartika</div></div></div>
+      <div class="n unread m-tickets"><div class="chip"><i data-lucide="life-buoy"></i></div><div class="bd"><div class="l1"><span class="src">iDesk · #TK-2381</span><span class="t">09:31</span></div><div class="ti">PELAMPUNG 9FE TIDAK BISA DIBUKA</div><div class="sn">Ursula: "silahkan remote"</div></div></div>
+    </div>
+    <div class="foot"><i data-lucide="circle-check" style="width:15px;height:15px;color:var(--accent-ink)"></i>In sync with iPop<span class="sp"></span><button class="btn sm"><i data-lucide="external-link"></i>Open iPop</button></div>
+  </div>
+  <div class="syncnote">
+    <p class="note" style="margin:0"><b>How the sync works</b> (one list on the server; the web page and the Notifier only display it):</p>
+    <ol>
+      <li>A new chat message arrives → the server updates the <b>chat group row</b> for that conversation (one row per chat, not one per message), then sends a toast/popup.</li>
+      <li>Read in the Notifier → also read on the web, the bell badge and the taskbar badge all go down together (and the other way round).</li>
+      <li>Open the chat in /chat → that chat's group row is marked read automatically.</li>
+      <li>Reply, Snooze and Delete do the same thing everywhere.</li>
+      <li>Kept for 90 days; read chat rows are removed after 30 days, since the messages are still in /chat.</li>
+    </ol>
+    <div class="legend">
+      <span class="m-chat"><span class="mini"><i data-lucide="message-circle"></i></span>Chat</span>
+      <span class="m-tickets"><span class="mini"><i data-lucide="life-buoy"></i></span>iDesk</span>
+      <span class="m-mail"><span class="mini"><i data-lucide="mail"></i></span>Mail</span>
+      <span class="m-calendar"><span class="mini"><i data-lucide="calendar"></i></span>Meetings</span>
+      <span class="m-projects"><span class="mini"><i data-lucide="kanban"></i></span>Tasks</span>
+      <span class="m-news"><span class="mini"><i data-lucide="newspaper"></i></span>Memos &amp; News</span>
+      <span class="m-call"><span class="mini"><i data-lucide="phone-missed"></i></span>Missed call</span>
+      <span class="m-system"><span class="mini"><i data-lucide="shield"></i></span>System</span>
+    </div>
+  </div>
+</div>
+</div>
+
+</div>
+<script>
+lucide.createIcons();
+document.getElementById("selbtn").onclick=()=>{const s=document.getElementById("selbar");s.hidden=!s.hidden};document.querySelector("#selbar .btn:last-child").onclick=()=>document.getElementById("selbar").hidden=true;
+document.querySelectorAll('#theme button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#theme button').forEach(x=>x.classList.toggle('on',x===b));
+  const d=b.dataset.t==='dark';document.getElementById('stage').classList.toggle('dark',d);
+  document.querySelectorAll('.app,.pw').forEach(a=>a.classList.toggle('dark',d));
+});
+document.querySelectorAll('.tabs').forEach(t=>t.addEventListener('click',e=>{const b=e.target.closest('.tab');if(!b)return;t.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===b))}));
+document.querySelectorAll('.sw').forEach(s=>s.onclick=()=>s.classList.toggle('on'));
+document.querySelectorAll('.n').forEach(n=>n.addEventListener('click',e=>{if(e.target.closest('button,input'))return;n.classList.remove('unread')}));
+</script>
+</body>

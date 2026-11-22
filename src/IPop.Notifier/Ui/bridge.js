@@ -15,6 +15,9 @@
     if (m.type === 'theme') {
       const h = document.documentElement;
       h.classList.toggle('dark', !!m.dark); h.classList.toggle('large', !!m.large);
+      // Settings › Appearance › Animations "Reduced" (1.5.1). Never prefers-reduced-motion: Windows "Animation
+      // effects" is off on many office PCs and must not take the Notifier's motion with it.
+      h.classList.toggle('reduce-motion', !!m.reduceMotion);
       if (m.mode) h.dataset.theme = m.mode;
     }
     if (m.type === 'winstate') winState(m);
@@ -40,9 +43,11 @@
     setTimeout(() => s.remove(), 3200);
   }
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // Chat text as people read it: mention tokens "@[Name](u:id)" / "@[all](all)" / project and task links → "@Name".
+  const plainChat = s => String(s ?? '').replace(/@\[([^\[\]\r\n]{1,100})\]\((?:all|[upt]:[0-9a-fA-F-]{36}|[0-9a-fA-F-]{36})\)/g, '@$1');
 
   window.app = {
-    post, api, image, snack, esc,
+    post, api, image, snack, esc, plainChat,
     on: (type, h) => (handlers[type] = handlers[type] || []).push(h),
     syncMax: () => syncMax(),
     ready: () => post({ type: 'ready' }),
@@ -58,9 +63,11 @@
     const max = document.documentElement.classList.contains('max');
     document.querySelectorAll('[data-max]').forEach(b => {
       if (canMax === false) { b.hidden = true; return; }
-      b.title = max ? 'Restore' : 'Maximize';
+      // The Inbox's full screen goes back to its small window (1.6.0): it says so and shows ⤡.
+      const small = b.hasAttribute('data-small');
+      b.title = max ? (small ? 'Back to the small window' : 'Restore') : 'Maximize';
       b.setAttribute('aria-label', b.title);
-      if (b.dataset.icon !== String(max)) { b.dataset.icon = String(max); b.innerHTML = window.IC ? IC(max ? 'copy' : 'square') : ''; }
+      if (b.dataset.icon !== String(max)) { b.dataset.icon = String(max); b.innerHTML = window.IC ? IC(max ? (small ? 'minimize-2' : 'copy') : 'square') : ''; }
     });
   }
   document.addEventListener('click', e => { if (e.target.closest('[data-max]')) post({ type: 'maximize' }); });
@@ -83,6 +90,8 @@
 
 // Icons: Lucide, the same set and names as iPop web (IPop.Web/Services/NotificationModules.cs).
 // IC() returns a placeholder; lucide.createIcons() turns it into the SVG (run after every render).
+// Motion is reduced only when the person chose Animations "Reduced" (html.reduce-motion, set from the theme message).
+window.reducedMotion = () => document.documentElement.classList.contains('reduce-motion');
 window.IC = (name, cls) => `<i data-lucide="${name}"${cls ? ` class="${cls}"` : ''}></i>`;
 window.icons = () => { try { window.lucide && window.lucide.createIcons({ attrs: { 'stroke-width': 1.9 } }); } catch { } };
 // Freshly rendered title bars get the right □ / Restore icon too.
@@ -100,4 +109,5 @@ window.MOD = {
 };
 window.initials = name => String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 window.avatarColor = name => { const p = ['#c2442e', '#7c4dd8', '#2563eb', '#1f8fa6', '#2e9e5b', '#d19a2a', '#a0457a', '#4f6b8f', '#5562b8']; let h = 0; for (const c of String(name || '')) h = (h * 31 + c.charCodeAt(0)) >>> 0; return p[h % p.length]; };
-window.timeShort = iso => { const d = new Date(iso); const now = new Date(); const same = d.toDateString() === now.toDateString(); return same ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
+// 24 h clock in the PC's own separator ("16.38" / "16:38"); other days "20 Nov 16.38".
+window.timeShort = iso => { const d = new Date(iso); const now = new Date(); const same = d.toDateString() === now.toDateString(); const t = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }); return same ? t : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' ' + t; };

@@ -1,0 +1,65 @@
+/* Files (1.5.0, docs/mockups/notifier/priority.html): tier/leader tokens, type badge colours, the .fm file card
+   (popups, Inbox), the download progress ring → tick, and the snackbar with actions ("Saved to Downloads · Open"). */
+:root{--act:#D9480F;--act-soft:#FFF0E6;--lead:#A16207;--lead-soft:#FEF6DC;--appr:#7C3AED;--appr-soft:#F1EBFE;--fill-2:rgba(118,118,128,.07);
+  --snack:#1d1d1f;--snack-ink:#fff;--snack-acc:#5EE08A;--ease:cubic-bezier(.2,.8,.2,1);--bounce:cubic-bezier(.34,1.56,.64,1)}
+html.dark{--act:#FF8A4C;--act-soft:rgba(255,138,76,.16);--lead:#F5C04A;--lead-soft:rgba(245,192,74,.15);--appr:#B794F6;--appr-soft:rgba(183,148,246,.16);--fill-2:rgba(118,118,128,.14);
+  --snack:#f5f5f7;--snack-ink:#1d1d1f;--snack-acc:#1C7A44}
+.ft{color:#fff;font-weight:800;letter-spacing:.03em;background:#6E6E73}
+.ft.pdf{background:#E5484D}.ft.xlsx{background:#1F8A4C}.ft.pptx{background:#D9622B}.ft.docx{background:#2B5FD9}.ft.jpg{background:#6E56CF}.ft.zip{background:#6E6E73}
+.ft.vid{background:#0F766E}.ft.aud{background:#B45309}
+.fmini{display:flex;flex-direction:column;gap:8px}
+.fm{display:flex;align-items:center;gap:10px;padding:8px 8px 8px 10px;border-radius:11px;border:.5px solid var(--line);background:var(--surface);transition:background .15s,border-color .2s;animation:fmIn .35s var(--spring) backwards}
+@keyframes fmIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.fm:hover{background:var(--fill-2)}
+.fm .ft{height:34px;width:34px;border-radius:8px;font-size:9.5px;display:grid;place-items:center;flex:none}
+.fm .mid{flex:1;min-width:0}
+.fm .fn{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+.fm .fs{font-size:12px;color:var(--ink-3)}
+.fm .ib{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;background:var(--fill-2);border:.5px solid var(--line);color:var(--ink-2);transition:background .15s,transform .15s,color .2s;flex:none}
+.fm .ib:hover{background:var(--fill)}
+.fm .ib:active{transform:scale(.93)}
+.fm .ib.na{opacity:.35;pointer-events:none}
+.fm .ib.done{color:var(--accent-ink)}
+.fm .ib svg.lucide{width:16px;height:16px}
+.ring{width:16px;height:16px;border-radius:50%;background:conic-gradient(var(--accent) calc(var(--p,0)*1%),var(--fill) 0);-webkit-mask:radial-gradient(circle,transparent 4.5px,#000 5px);mask:radial-gradient(circle,transparent 4.5px,#000 5px);flex:none}
+.ring.ind{background:conic-gradient(var(--accent) 25%,var(--fill) 0);animation:spin .8s linear infinite}
+.tk path{stroke-dasharray:24;stroke-dashoffset:24;animation:draw .45s var(--ease) .05s forwards}
+.wsnack{position:fixed;left:50%;bottom:18px;transform:translate(-50%,18px) scale(.96);opacity:0;z-index:99;background:var(--snack);color:var(--snack-ink);border-radius:12px;padding:6px 6px 6px 14px;min-height:42px;display:flex;align-items:center;gap:8px;font-size:13.5px;box-shadow:0 12px 30px -8px rgba(0,0,0,.45);transition:transform .4s var(--spring),opacity .25s;white-space:nowrap;max-width:calc(100% - 24px)}
+.wsnack.on{transform:translate(-50%,0);opacity:1}
+.wsnack>span{overflow:hidden;text-overflow:ellipsis}
+.wsnack b{font-weight:650}
+.wsnack button{height:30px;padding:0 10px;border-radius:8px;font-weight:650;color:var(--snack-acc);flex:none}
+.wsnack button:hover{background:rgba(127,127,127,.18)}
+.wsnack svg.lucide{width:17px;height:17px;color:var(--snack-acc)}
+html.reduce-motion .fm,html.reduce-motion .ring.ind{animation:none}
+/* big file card (Inbox reading pane, maximized popup): page-1 look; hover lifts + "Preview" overlay */
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.fc{border-radius:12px;border:.5px solid var(--line);background:var(--surface);overflow:hidden;display:flex;flex-direction:column;transition:transform .3s var(--spring),box-shadow .3s;animation:rise .4s var(--spring) backwards}
+.fc:hover{transform:translateY(-3px);box-shadow:var(--shadow-s)}
+.fc .th{height:108px;background:var(--sunk);display:grid;place-items:center;position:relative;overflow:hidden;cursor:zoom-in}
+.fc .th>*:first-child{transition:transform .45s var(--spring)}
+.fc:hover .th>*:first-child{transform:scale(1.05)}
+.fc .th .ov{position:absolute;inset:0;display:grid;place-items:center;background:color-mix(in srgb,var(--surface) 40%,transparent);backdrop-filter:blur(3px);opacity:0;transition:opacity .25s;font-size:13px;font-weight:650;color:var(--ink)}
+.fc .th .ov span{display:inline-flex;align-items:center;gap:6px;background:var(--surface);padding:6px 11px;border-radius:999px;box-shadow:var(--shadow-s);transform:translateY(6px);transition:transform .35s var(--spring)}
+.fc:hover .th .ov{opacity:1}.fc:hover .th .ov span{transform:none}
+.fc.np .th{cursor:default}.fc.np .th .ov{display:none}
+.fc .th .pg{width:70px;height:92px;background:#fff;border-radius:3px;box-shadow:0 2px 8px rgba(0,0,0,.18);margin-top:20px;padding:8px 7px;display:flex;flex-direction:column;gap:4px}
+.fc .th .pg i{display:block;height:3px;border-radius:2px;background:#d6d6dc}
+.fc .th .pg i.h{height:5px;width:60%;background:#9aa}
+.fc .th .xl{width:120px;height:80px;margin-top:22px;border-radius:3px;box-shadow:0 2px 8px rgba(0,0,0,.18);display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:13px;gap:1px;padding:1px;background:#d9e6dc}
+.fc .th .xl i{background:#fff}.fc .th .xl i.h{background:#cfe9d7}
+.fc .th .sl{width:128px;height:72px;margin-top:24px;border-radius:3px;box-shadow:0 2px 8px rgba(0,0,0,.18);background:linear-gradient(135deg,#123528,#2E9E5B)}
+.fc .th .im{width:100%;height:100%;object-fit:cover;display:block}
+.fc .th .gen{color:var(--ink-4)}.fc .th .gen svg.lucide{width:34px;height:34px}
+.fc .th .ft{position:absolute;left:8px;top:8px;height:20px;padding:0 6px;border-radius:5px;font-size:10.5px;display:grid;place-items:center;z-index:1}
+.fc .fi{padding:9px 11px 4px}
+.fc .fn{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fc .fs{font-size:12px;color:var(--ink-3);margin-top:1px}
+.fc .fa{display:flex;gap:6px;padding:6px 8px 9px}
+.fc .fa button{flex:1;height:30px;border-radius:7px;background:var(--fill-2);font-size:12.5px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px;color:var(--ink-2);transition:background .15s,transform .15s,color .2s}
+.fc .fa button:hover{background:var(--fill)}
+.fc .fa button:active{transform:scale(.95)}
+.fc .fa button.done{color:var(--accent-ink)}
+.fc .fa svg.lucide{width:14px;height:14px}
+.fc .fa button.na{opacity:.45;pointer-events:none}
+html.reduce-motion .fc{animation:none}

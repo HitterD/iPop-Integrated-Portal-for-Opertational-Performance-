@@ -21,7 +21,7 @@ public sealed class NotificationGateway(
 {
     private const string ChatClientId = "chat"; // well-known internal client for chat-originated notifications
 
-    public async Task SendMentionNotificationAsync(Guid recipientId, string senderName, string roomName, string preview, bool isHighPriority, CancellationToken ct, Guid? messageId = null, Guid? roomId = null)
+    public async Task SendMentionNotificationAsync(Guid recipientId, string senderName, string roomName, string preview, bool isHighPriority, CancellationToken ct, Guid? messageId = null, Guid? roomId = null, Guid? senderId = null)
     {
         logger.LogInformation("Notification: Mention for {RecipientId} from {Sender} in {Room}: {Preview}", recipientId, senderName, roomName, preview);
 
@@ -68,6 +68,7 @@ public sealed class NotificationGateway(
             Title = $"Mention in {roomName}",
             Body = preview,
             TargetUrl = targetUrl,
+            ActorUserId = senderId,
             Status = "delivered",
             AcceptedAt = now,
             DeliveredAt = now,
@@ -117,7 +118,8 @@ public sealed class NotificationGateway(
                 request.Body,
                 request.EventType,
                 request.Priority,
-                targetUrl);
+                targetUrl,
+                senderId);
 
             await broadcaster.BroadcastAsync(new[] { state }, ct);
         }
@@ -127,7 +129,7 @@ public sealed class NotificationGateway(
         }
     }
 
-    public async Task SendEmergencyNotificationAsync(IReadOnlyList<Guid> recipientIds, string senderName, string roomName, string content, CancellationToken ct, Guid? roomId = null)
+    public async Task SendEmergencyNotificationAsync(IReadOnlyList<Guid> recipientIds, string senderName, string roomName, string content, CancellationToken ct, Guid? roomId = null, Guid? senderId = null)
     {
         logger.LogWarning("EMERGENCY Notification: {Sender} in {Room} to {Count} recipients: {Content}", senderName, roomName, recipientIds.Count, content);
 
@@ -165,6 +167,7 @@ public sealed class NotificationGateway(
             Title = $"EMERGENCY in {roomName}",
             Body = content,
             TargetUrl = targetUrl,
+            ActorUserId = senderId,
             Status = "delivered",
             AcceptedAt = now,
             DeliveredAt = now,
@@ -197,7 +200,7 @@ public sealed class NotificationGateway(
         {
             var states = deliveries.Select(d => new NotificationDeliveryState(
                 request.Id, d.UserId, d.Status, d.Channel, d.AttemptCount, d.DeliveredAt, d.ReadAt, d.AcknowledgedAt,
-                request.Title, request.Body, request.EventType, request.Priority, targetUrl)).ToList();
+                request.Title, request.Body, request.EventType, request.Priority, targetUrl, senderId)).ToList();
 
             await broadcaster.BroadcastAsync(states, ct);
         }

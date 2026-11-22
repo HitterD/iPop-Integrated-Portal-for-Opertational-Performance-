@@ -36,6 +36,24 @@ public class AuthWorkflowTests
     }
 
     [Fact]
+    public async Task Parallel_wrong_passwords_each_count_toward_the_lockout()
+    {
+        using var t = new TestDb();
+        t.AddUser("20140312");
+        // Two requests that loaded the user before either saved: a read-modify-write counter lost one of
+        // the failures, so parallel guessing never reached the lockout.
+        await using var a = t.Verify();
+        await using var b = t.Verify();
+        await a.Users.SingleAsync(x => x.Nik == "20140312");
+        await b.Users.SingleAsync(x => x.Nik == "20140312");
+        Assert.Equal(401, (await NewWorkflow(a).LoginAsync(LoginReq("bad"), null, default)).Item3);
+        Assert.Equal(401, (await NewWorkflow(b).LoginAsync(LoginReq("bad"), null, default)).Item3);
+
+        await using var v = t.Verify();
+        Assert.Equal(2, (await v.Users.SingleAsync(x => x.Nik == "20140312")).FailedLoginCount);
+    }
+
+    [Fact]
     public async Task Login_FiveFailures_LocksFor15Min_AndCounterResetsOnSuccess()
     {
         using var t = new TestDb();

@@ -30,6 +30,8 @@ public static class AttachmentEndpoints
                 var opened = await store.OpenAsync(id, ct);
                 if (opened is null) return Results.NotFound();
                 var (meta, content) = opened.Value;
+                http.Response.Headers.CacheControl = "private, no-store";
+                http.Response.Headers["Content-Security-Policy"] = "sandbox; default-src 'none'";
                 return Results.File(content, meta.ContentType, meta.FileName);
             }
             catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }

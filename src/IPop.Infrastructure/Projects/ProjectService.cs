@@ -106,6 +106,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
                     title: $"New Project: {project.Name}",
                     message: $"You have been assigned as the owner of project {project.Name}.",
                     target: new NotificationTarget(UserId: ownerId),
+                    actorUserId: actorId,
+                    idempotencyKey: null,
                     priority: "normal",
                     targetUrl: $"/projects/{project.Id}",
                     ct: ct);
@@ -476,6 +478,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
                     title: $"Joined Project: {projectName}",
                     message: $"You have been added as {role} to project {projectName}.",
                     target: new NotificationTarget(UserId: targetUserId),
+                    actorUserId: actorId,
+                    idempotencyKey: null,
                     priority: "normal",
                     targetUrl: $"/projects/{projectId}",
                     ct: ct);
@@ -841,6 +845,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
                     title: $"Task Assignment: {task.Title}",
                     message: $"You have been assigned to task \"{task.Title}\" in {projectName}.",
                     target: new NotificationTarget(UserId: userId),
+                    actorUserId: actorId,
+                    idempotencyKey: null,
                     priority: "normal",
                     targetUrl: $"/projects/{task.ProjectId}?task={task.Id}",
                     ct: ct);

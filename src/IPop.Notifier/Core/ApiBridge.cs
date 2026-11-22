@@ -20,11 +20,19 @@ public static partial class ApiBridge
         ("GET", R($"^api/news/composer/posts/{G}/media$")),
         ("GET", R($"^api/projects/tasks/{G}$")),
         ("GET", R($"^api/notes/{G}/threads$")),
+        // 1.5.1 maximized popup (full layout per source): the task's comments and its subtasks (= the checklist), and
+        // the chat room (name, members, presence) — all read-only, the same rows the iPop page of that item shows.
+        ("GET", R($"^api/projects/tasks/{G}/comments$")),
+        ("GET", R($"^api/projects/{G}/tasks\\?parentId={G}$")),
+        ("GET", R($"^api/chat/rooms/{G}$")),
         ("GET", R($"^api/chat/rooms/{G}/messages\\?page=1&pageSize=\\d+$")),
         ("GET", R("^api/notifications/v1/inbox\\?[a-zA-Z0-9=&]*$")),
         ("GET", R("^api/notifications/v1/unread-count$")),
         ("GET", R("^api/notifier/devices(\\?q=[^&]{0,80})?$")),
         ("GET", R("^api/notifier/me$")),
+        // 1.5.0 priority inbox: my leaders + VIPs, and the VIP picker (q is plain text, ≤ 80 characters).
+        ("GET", R("^api/notifier/leaders$")),
+        ("GET", R("^api/notifier/people\\?q=[^&]{1,80}$")),
         ("GET", R($"^api/notifier/remote/sessions/{G}/join$")),
         ("GET", R($"^api/notifier/remote/sessions/{G}$")),
         ("GET", R("^api/notifier/remote/media$")),
@@ -40,7 +48,7 @@ public static partial class ApiBridge
         ("POST", R($"^api/projects/tasks/{G}/move$")),
         ("POST", R($"^api/notes/{G}/threads/{G}/replies$")),
         ("POST", R($"^api/chat/rooms/{G}/messages$")),
-        ("POST", R($"^api/notifications/v1/notifications/{G}/(read|unread|snooze|acknowledge)$")),
+        ("POST", R($"^api/notifications/v1/notifications/{G}/(read|unread|snooze|unsnooze|acknowledge)$")),
         ("POST", R("^api/notifications/v1/inbox/read-all$")),
         ("POST", R("^api/notifications/v1/read-by-target$")),
     ];
@@ -54,6 +62,18 @@ public static partial class ApiBridge
         R($"^api/photos/{G}(/large)?$"),
         R($"^api/news/composer/media/{G}\\?t=[A-Za-z0-9_\\-]+$"),
     ];
+
+    /// Files the app may download for a page (Download, Preview, Open in app — 1.5.0). The bytes never reach the page
+    /// as such: they are saved to Downloads or the viewer's media cache by the app. iDesk ticket attachments are not
+    /// here: iPop only knows their names (TicketAttachmentDto / TicketMessageDto carry no id or route).
+    private static readonly Regex[] Downloads =
+    [
+        R($"^api/mail/attachments/{G}/download$"),
+        R($"^api/chat/attachments/{G}/download$"),
+        R($"^api/attachments/{G}$"),
+    ];
+
+    public static bool IsDownload(string path) => Downloads.Any(r => r.IsMatch(path));
 
     private static Regex R(string p) => new(p, RegexOptions.CultureInvariant);
 

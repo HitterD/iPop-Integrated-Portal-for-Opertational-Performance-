@@ -24,6 +24,10 @@ public class NotePage
     public Guid? CoverImageId { get; set; }
     /// Vertical focus of the photo inside the cover band, 0 (top) .. 100 (bottom).
     public int CoverPosY { get; set; } = 50;
+    /// Whiteboards only: a small picture of the board (a notes attachment linked to this page) shown on the Whiteboards list.
+    /// Replaced, never accumulated: the previous one is deleted when a new one is saved.
+    public Guid? ThumbnailId { get; set; }
+    public DateTime? ThumbnailAt { get; set; }
     public required string Accent { get; set; }
     public required string Font { get; set; }
     public bool FullWidth { get; set; }
@@ -226,6 +230,9 @@ public class NoteTodoDue
     public bool Done { get; set; }
     public DateTime? DayBeforeSentAt { get; set; }
     public DateTime? DaySentAt { get; set; }
+    /// The Projects task this to-do was turned into ("→ Task"); reported with each save. Null = no task. (Not a foreign key: a task
+    /// that is deleted in Projects must not block saving the note.)
+    public Guid? TaskId { get; set; }
 }
 
 /// One emoji by one person on one comment. A person has at most one row per emoji per comment (toggle).
@@ -244,4 +251,45 @@ public class NoteAttachment
 {
     public Guid AttachmentId { get; set; }
     public Guid PageId { get; set; }
+}
+
+/// Preview of a file in a page (Notes "file card"), made once on first view and reused: the page count, a picture of
+/// page 1 and, for Word/PowerPoint, the file converted to PDF. The derived files are ordinary notes attachments linked to
+/// the page(s) the file is in, so they follow page access and are purged with the page like any other file.
+public class NoteFilePreview
+{
+    /// The attached file this preview is for.
+    public Guid AttachmentId { get; set; }
+    /// pdf | word | slides | sheet | image | video | audio | text | none
+    public required string Kind { get; set; }
+    /// Pages (PDF/Word/PowerPoint) or sheets (Excel); null when unknown or not counted (too big, failed).
+    public int? Pages { get; set; }
+    /// Word/PowerPoint converted to PDF (null for other kinds or when the conversion failed).
+    public Guid? PdfAttachmentId { get; set; }
+    /// Picture of page 1 (for an image: the image itself).
+    public Guid? ThumbAttachmentId { get; set; }
+    /// Why the preview could not be made ("conversion_failed", "too_large"); null when it worked.
+    public string? Error { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+/// "Repeat…" on a page: a new copy of the page is made on a schedule. The page is the template: each run copies its content as it is at
+/// that moment into a new page next to it (same parent, so the same people can open it), titled "Name — 24 Nov 2026", owned by whoever set
+/// the repeat up. At most one page per rule per local day (<see cref="LastCreatedFor"/>).
+public class NoteRecurrence
+{
+    public Guid Id { get; set; }
+    /// The page that is copied (the template). Deleting it deletes the rule.
+    public Guid PageId { get; set; }
+    /// Who set it up: the owner of every page it makes, and the person asked to be able to edit the template.
+    public Guid OwnerId { get; set; }
+    /// RRULE subset: FREQ=DAILY|WEEKLY|MONTHLY;INTERVAL;BYDAY;BYMONTHDAY. "Workdays" is WEEKLY;BYDAY=MO,TU,WE,TH,FR.
+    public required string Rule { get; set; }
+    /// First day this rule may create a page (the day it was set up, in local time): never back-fills missed days.
+    public DateOnly StartsOn { get; set; }
+    public bool Enabled { get; set; } = true;
+    /// The local day the last page was made for (null = none yet). A run never makes a second page for the same day.
+    public DateOnly? LastCreatedFor { get; set; }
+    public Guid? LastPageId { get; set; }
+    public DateTime CreatedAt { get; set; }
 }

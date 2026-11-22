@@ -130,7 +130,7 @@
                     </button>
                     <b class="mlx-title">@ListTitle</b>
                     <small class="mlx-count">@(Phone.IsPhone && activeFolder == MailFolder.Inbox && labelFilter is null ? $"{FolderBadge(MailFolder.Inbox):N0} unread" : AllCount.ToString("N0"))</small>
-                    @if (NewCount > 0 && activeFolder == MailFolder.Inbox) { <span class="mlx-new">@NewCount new</span> }
+                    @if (NewCount > 0 && activeFolder == MailFolder.Inbox && labelFilter is null) { <span class="mlx-new">@NewCount new</span> }
                 </div>
                 <div class="mlx-search-wrap">
                     <label class="mlx-search" @onkeydown="OnSearchKey">
@@ -215,14 +215,14 @@
                     <div class="mlx-lsel" aria-label="Bulk actions">
                         <b>@selected.Count selected</b>
                         <button type="button" title="Mark read" @onclick="ToolbarMarkRead"><i data-lucide="mail-open"></i><span>Mark read</span></button>
-                        @if (activeFolder == MailFolder.Trash)
+                        @if (SelectionInTrash)
                         {
                             <button type="button" title="Restore" @onclick="BulkRestore"><i data-lucide="inbox"></i><span>Restore</span></button>
                             <button type="button" class="danger" title="Delete forever (cannot be undone)" @onclick="BulkPermanent"><i data-lucide="trash"></i><span>Delete forever</span></button>
                         }
                         else
                         {
-                            @if (activeFolder == MailFolder.Archive)
+                            @if ((labelFilter is null ? activeFolder : SelectionFolder) == MailFolder.Archive)
                             {
                                 <button type="button" title="Move to Inbox" @onclick="() => BulkMove(MailFolder.Inbox)"><i data-lucide="inbox"></i><span>Inbox</span></button>
                             }
@@ -260,7 +260,7 @@
                 }
             </div>
 
-            @if (activeFolder == MailFolder.Trash)
+            @if (activeFolder == MailFolder.Trash && labelFilter is null)
             {
                 <div class="mlx-trash" role="note">
                     <i data-lucide="info"></i>
@@ -573,7 +573,7 @@
 {
     <MailSettingsModal Section="@settingsSection"
                        OnClose="CloseSettings"
-                       OnLabelsChanged="LoadLabelsAsync"
+                       OnLabelsChanged="OnLabelsEdited"
                        OnUseTemplate="UseTemplateFromSettings" />
 }
 
@@ -873,7 +873,6 @@
         if (Auth.IsAuthenticated)
         {
             await ReloadAll();
-            await LoadLabelsAsync();
             await JS.InvokeVoidAsync("ipop.icons");
         }
         _mailSub = Auth.On(IPop.Application.Realtime.RealtimeEvents.MailChanged, OnMailChanged);
@@ -911,7 +910,7 @@
             bool? unreadOnly = tabFilter == "unread" ? true : null;
             bool? starredOnly = tabFilter == "starred" ? true : null;
 
-            var c = await MailSvc.GetCountsAsync();
+            var c = await CountsAndLabelsAsync();
             var fresh = new List<MailSummary>();
             var total = 0;
             var pages = Math.Max(1, page);
@@ -970,18 +969,19 @@
 
     public async Task ReloadAll()
     {
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         await LoadPage(1);
-        await LoadLabelsAsync();
     }
 
     private void UpdateHeader()
     {
-        var title = FolderLabel(activeFolder);
+        // A label view spans folders: it is titled by the label, not by the folder underneath.
+        var title = labelFilter is { } lbl ? $"Label · {lbl}" : FolderLabel(activeFolder);
         Layout.SetHeader(title);
         var total = AllCount;
         var msgs = $"{total} {(total == 1 ? "message" : "messages")} · synced {lastSyncedTime}";
+        if (labelFilter is not null) { Layout.SetSubtitle(msgs); return; }
         // Only the Inbox has a real unread count; elsewhere a hard-coded "0 unread" contradicted
         // the Unread chip, and Sent/Drafts/Scheduled have no "unread" at all.
         var sub = activeFolder == MailFolder.Inbox ? $"{UnreadCount} unread · {msgs}" : msgs;
@@ -1102,7 +1102,7 @@
     }
 
     // ── Counts Helpers ──
-    private int AllCount => activeFolder switch
+    private int AllCount => labelFilter is not null ? pageTotal : activeFolder switch
     {
         MailFolder.Inbox => counts?.InboxTotal ?? pageTotal,
         MailFolder.Sent => counts?.SentTotal ?? pageTotal,
@@ -1114,12 +1114,13 @@
         _ => pageTotal
     };
 
-    private int UnreadCount => activeFolder == MailFolder.Inbox
+    private int UnreadCount => activeFolder == MailFolder.Inbox && labelFilter is null
         ? (counts?.InboxUnread ?? 0)
         : Items.Count(i => !i.IsRead);
 
     // The Starred tab filters the open folder: in the Inbox count only starred Inbox mail (the sidebar keeps all).
-    private int StarredCount => activeFolder == MailFolder.Inbox ? (counts?.InboxStarred ?? 0)
+    private int StarredCount => labelFilter is not null ? Items.Count(i => i.IsStarred)
+        : activeFolder == MailFolder.Inbox ? (counts?.InboxStarred ?? 0)
         : activeFolder == MailFolder.Starred ? (counts?.StarredTotal ?? 0)
         : Items.Count(i => i.IsStarred);
 
@@ -1144,7 +1145,9 @@
     {
         search = string.Join(" ", new[] { advFrom, advQuery }.Where(s => !string.IsNullOrWhiteSpace(s)));
         labelFilter = string.IsNullOrWhiteSpace(advLabel) ? null : advLabel;
+        UpdateHeader();
         await LoadPage(1);
+        UpdateHeader();
     }
 
     private int AdvancedCount =>
@@ -1201,7 +1204,8 @@
     private async Task ResetAdvancedSearch()
     {
         advFrom = ""; advQuery = ""; advDateFrom = null; advDateTo = null; advHasAttachment = false; advLabel = "";
-        labelFilter = null; search = "";
+        labelFilter = null; search = ""; tabFilter = "all";
+        UpdateHeader();
         await LoadPage(1);
     }
 
@@ -1222,6 +1226,27 @@
         }
     }
 
+    /// Folder counts plus label badges: every move/delete/restore changes both, so they are
+    /// always re-read together (label counts used to stay stale until a full reload).
+    private async Task<MailCounts?> CountsAndLabelsAsync()
+    {
+        var c = MailSvc.GetCountsAsync();
+        await Task.WhenAll(c, LoadLabelsAsync());
+        return await c;
+    }
+
+    /// Labels changed in Settings: a deleted label that is open leaves its view.
+    private async Task OnLabelsEdited()
+    {
+        await LoadLabelsAsync();
+        if (labelFilter is { } open && !serverLabels.Any(l => l.Name == open))
+        {
+            labelFilter = null; advLabel = "";
+            UpdateHeader();
+            await LoadPage(1);
+        }
+    }
+
     private async Task LoadLabelsAsync()
     {
         try
@@ -1234,15 +1259,11 @@
     private async Task ToggleLabelFilter(string name)
     {
         mFolderSheet = false;
-        if (labelFilter == name)
-        {
-            labelFilter = null;
-        }
-        else
-        {
-            labelFilter = name;
-        }
+        labelFilter = labelFilter == name ? null : name;
+        advLabel = labelFilter ?? "";
+        UpdateHeader();
         await LoadPage(1);
+        UpdateHeader();
     }
 
     /// The plain first page of a folder (no search or filters) is what a return visit shows
@@ -1366,7 +1387,10 @@
     private async Task SelectFolder(MailFolder f)
     {
         mFolderSheet = false;
-        if (activeFolder == f) { await LoadPage(1); return; }
+        // A label view spans folders, so picking a folder leaves it.
+        var leftLabel = labelFilter is not null;
+        labelFilter = null; advLabel = "";
+        if (activeFolder == f) { if (leftLabel) UpdateHeader(); await LoadPage(1); return; }
         activeFolder = f;
         selected.Clear();
         selectedMail = null;
@@ -1389,7 +1413,7 @@
         detail = fetched;
         _ = Notifs.MarkReadByTargetAsync("mail", id);
 
-        if (activeFolder == MailFolder.Draft && detail is not null)
+        if (detail?.Folder == "draft")
         {
             WithComposer(c => c.OpenDraft(detail));
             return;
@@ -1398,7 +1422,7 @@
         if (detail?.Folder == "inbox" && !detail.IsRead)
         {
             await MailSvc.MarkReadAsync(id);
-            var c = await MailSvc.GetCountsAsync();
+            var c = await CountsAndLabelsAsync();
             if (c is not null) counts = c;
             UpdateHeader();
             await RefreshLoadedAsync();
@@ -1558,7 +1582,7 @@
                 Toasts.Show("Could not mark the selected messages as read.", ToastKind.Error);
                 return;
             }
-            counts = await MailSvc.GetCountsAsync();
+            counts = await CountsAndLabelsAsync();
             UpdateHeader();
             await RefreshLoadedAsync();
             Toasts.Show("Marked as read.", ToastKind.Success);
@@ -1584,14 +1608,14 @@
         await MailSvc.ToggleStarAsync(id);
         await ReloadDetail();
         await RefreshLoadedAsync();
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
     });
 
     private Task MarkUnread(Guid id) => RunAction(async () =>
     {
         await MailSvc.MarkUnreadAsync(id);
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         BackToList();
         await RefreshLoadedAsync();
@@ -1601,7 +1625,7 @@
     {
         if (item.IsRead) await MailSvc.MarkUnreadAsync(item.Id);
         else await MailSvc.MarkReadAsync(item.Id);
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         await RefreshLoadedAsync();
     });
@@ -1609,7 +1633,8 @@
     private Task QuickDelete(Guid id) => RunAction(async () =>
     {
         Action? undoAfter = null;
-        if (activeFolder == MailFolder.Trash)
+        var origin = RowFolder(id);
+        if (origin == MailFolder.Trash)
         {
             if (!await Confirm.AskAsync("Delete forever?", "This message will be permanently deleted from your mailbox. This cannot be undone.", "Delete forever", danger: true)) return;
             var res = await MailSvc.DeleteAsync(id);
@@ -1620,11 +1645,11 @@
             // /move never hard-deletes, even for a trashed message listed under Starred.
             var res = await MailSvc.MoveAsync(id, MailFolder.Trash);
             if (res?.Success != true) { Toasts.Show("Could not move the message to Trash.", ToastKind.Error); return; }
-            undoAfter = () => ShowMoveUndo(new[] { id }, activeFolder == MailFolder.Starred ? MailFolder.Inbox : activeFolder, MailFolder.Trash);
+            undoAfter = () => ShowMoveUndo(new[] { id }, origin, MailFolder.Trash);
         }
-        await LeaveRowsAsync([id]);
+        await LeaveRowsAsync([id], MailFolder.Trash);
         if (selectedMail == id) BackToList();
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         await RefreshLoadedAsync();
         undoAfter?.Invoke();
@@ -1643,7 +1668,7 @@
         if (res.IsSuccessStatusCode)
         {
             Toasts.Show("Message recalled.", ToastKind.Success);
-            counts = await MailSvc.GetCountsAsync();
+            counts = await CountsAndLabelsAsync();
             UpdateHeader();
             await RefreshLoadedAsync();
         }
@@ -1662,8 +1687,8 @@
         var origin = Enum.TryParse<MailFolder>(DetailFolder, true, out var o) ? o : MailFolder.Inbox;
         var res = await MailSvc.MoveAsync(id, f);
         if (res?.Success != true) { Toasts.Show($"Could not move the message to {FolderLabel(f)}.", ToastKind.Error); return; }
-        await LeaveRowsAsync([id]);
-        counts = await MailSvc.GetCountsAsync();
+        await LeaveRowsAsync([id], f);
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         BackToList();
         await RefreshLoadedAsync();
@@ -1676,10 +1701,15 @@
         var text = ids.Count == 1 ? $"Moved to {FolderLabel(target)}" : $"Moved {ids.Count} items to {FolderLabel(target)}";
         Toasts.ShowUndo(text, async () =>
         {
-            if (!await MailSvc.BulkMoveAsync(ids, origin)) { Toasts.Show("Could not undo.", ToastKind.Error); return; }
+            // Out of Trash only Restore works (it also puts drafts/sent mail back where they were);
+            // /bulk/move skips trashed rows and used to "succeed" while restoring nothing.
+            var undone = target == MailFolder.Trash
+                ? await MailSvc.BulkRestoreAsync(ids)
+                : await MailSvc.BulkMoveAsync(ids, origin);
+            if (!undone) { Toasts.Show("Could not undo.", ToastKind.Error); return; }
             // The toast outlives the page: after navigating away, don't touch another page's header.
             if (_disposed) return;
-            counts = await MailSvc.GetCountsAsync();
+            counts = await CountsAndLabelsAsync();
             UpdateHeader();
             foreach (var rid in ids) returningIds.Add(rid);
             await RefreshLoadedAsync();
@@ -1697,9 +1727,12 @@
     /// #9: rows leaving the folder slide out first, then are dropped locally (and from the
     /// first-page cache) so the refresh that follows cannot flash them back in.
     /// Starred lists mail from every folder, so a move there does not remove the row.
-    private async Task LeaveRowsAsync(IReadOnlyCollection<Guid> ids)
+    /// <paramref name="target"/>: where the rows went. A label view lists every folder but Trash, so
+    /// there only rows moved to (or deleted from) Trash leave the list.
+    private async Task LeaveRowsAsync(IReadOnlyCollection<Guid> ids, MailFolder? target = null)
     {
         if (ids.Count == 0 || activeFolder == MailFolder.Starred) return;
+        if (labelFilter is not null && target != MailFolder.Trash) return;
         var gone = ids.ToHashSet();
         var shown = Items.Where(m => gone.Contains(m.Id)).Select(m => m.Id).Take(40).ToList();
         if (shown.Count > 0)
@@ -1730,6 +1763,26 @@
         builder.AddContent(5, t[(at + q.Length)..]);
     };
 
+    /// A row's own folder. In a folder view it is that folder; Starred and a label view span folders,
+    /// so there the server's per-row folder decides which actions apply.
+    private MailFolder RowFolder(MailSummary? item)
+    {
+        if (labelFilter is null && activeFolder != MailFolder.Starred) return activeFolder;
+        return Enum.TryParse<MailFolder>(item?.Folder ?? "", true, out var f) ? f : MailFolder.Inbox;
+    }
+    private MailFolder RowFolder(Guid id) => RowFolder(Items.FirstOrDefault(i => i.Id == id));
+
+    /// The folder all selected rows share, or null when the selection mixes folders.
+    private MailFolder? SelectionFolder
+    {
+        get
+        {
+            var folders = selected.Select(RowFolder).Distinct().ToList();
+            return folders.Count == 1 ? folders[0] : null;
+        }
+    }
+    private bool SelectionInTrash => labelFilter is null ? activeFolder == MailFolder.Trash : SelectionFolder == MailFolder.Trash;
+
     /// The open message's own folder. Starred shows mail from every folder (Trash included),
     /// so actions go by this rather than by the folder being browsed.
     private string DetailFolder => detail?.Folder?.ToLowerInvariant() ?? "";
@@ -1738,7 +1791,7 @@
     {
         if (detail is null) return;
         if (!await MailSvc.BulkRestoreAsync([detail.Id])) { Toasts.Show("Could not restore the message.", ToastKind.Error); return; }
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         BackToList();
         await RefreshLoadedAsync();
@@ -1752,8 +1805,8 @@
         if (!await Confirm.AskAsync("Delete forever?", "This message will be permanently deleted from your mailbox. This cannot be undone.", "Delete forever", danger: true)) return;
         var res = await MailSvc.DeleteAsync(id);
         if (res?.Success != true) { Toasts.Show("Could not delete the message.", ToastKind.Error); return; }
-        await LeaveRowsAsync([id]);
-        counts = await MailSvc.GetCountsAsync();
+        await LeaveRowsAsync([id], MailFolder.Trash);
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         if (selectedMail == id) BackToList();
         await RefreshLoadedAsync();
@@ -1765,7 +1818,7 @@
         if (!await MailSvc.BulkRestoreAsync([id])) { Toasts.Show("Could not restore the message.", ToastKind.Error); return; }
         await LeaveRowsAsync([id]);
         if (selectedMail == id) BackToList();
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         await RefreshLoadedAsync();
         Toasts.Show("Restored.", ToastKind.Success);
@@ -1773,14 +1826,15 @@
 
     private Task QuickMove(Guid id, MailFolder f) => RunAction(async () =>
     {
+        var origin = RowFolder(id) is MailFolder.Archive ? MailFolder.Archive : MailFolder.Inbox;
         var res = await MailSvc.MoveAsync(id, f);
         if (res?.Success != true) { Toasts.Show($"Could not move the message to {FolderLabel(f)}.", ToastKind.Error); return; }
-        await LeaveRowsAsync([id]);
+        await LeaveRowsAsync([id], f);
         if (selectedMail == id) BackToList();
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         await RefreshLoadedAsync();
-        ShowMoveUndo(new[] { id }, activeFolder == MailFolder.Trash || activeFolder == MailFolder.Archive ? activeFolder : MailFolder.Inbox, f);
+        ShowMoveUndo(new[] { id }, origin, f);
     });
 
     // ── Labels (manual) ──
@@ -2055,11 +2109,13 @@
     {
         if (selected.Count == 0) return;
         var ids = selected.ToList();
-        var origin = activeFolder is MailFolder.Trash or MailFolder.Archive ? activeFolder : MailFolder.Inbox;
-        if (!await MailSvc.BulkMoveAsync(ids, f)) { Toasts.Show($"Could not move the selected messages to {FolderLabel(f)}.", ToastKind.Error); return; }
+        var origin = SelectionFolder is MailFolder.Archive ? MailFolder.Archive : MailFolder.Inbox;
+        var moved = await MailSvc.BulkMoveCountAsync(ids, f);
+        if (moved is null) { Toasts.Show($"Could not move the selected messages to {FolderLabel(f)}.", ToastKind.Error); return; }
+        if (moved == 0) { Toasts.Show($"These messages can't be moved to {FolderLabel(f)}.", ToastKind.Error); await RefreshLoadedAsync(); return; }
         selected.Clear();
-        await LeaveRowsAsync(ids);
-        counts = await MailSvc.GetCountsAsync();
+        await LeaveRowsAsync(ids, f);
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         await RefreshLoadedAsync();
         ShowMoveUndo(ids, origin, f);
@@ -2073,7 +2129,7 @@
         if (!await MailSvc.BulkRestoreAsync(ids)) { Toasts.Show("Could not restore the selected messages.", ToastKind.Error); return; }
         selected.Clear();
         await LeaveRowsAsync(ids);
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         await RefreshLoadedAsync();
         // Sent mail goes back to Sent and drafts to Drafts, so no single folder name fits.
@@ -2084,7 +2140,7 @@
     {
         if (selected.Count == 0) return;
         if (!await MailSvc.BulkStarAsync(selected.ToList())) { Toasts.Show("Could not update stars.", ToastKind.Error); return; }
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         await RefreshLoadedAsync();
     });
@@ -2099,9 +2155,9 @@
         var ids = selected.ToList();
         if (!await MailSvc.BulkDeleteAsync(ids)) { Toasts.Show("Could not delete the selected messages.", ToastKind.Error); return; }
         selected.Clear();
-        await LeaveRowsAsync(ids);
+        await LeaveRowsAsync(ids, MailFolder.Trash);
         if (selectedMail is { } open && ids.Contains(open)) BackToList();
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         await RefreshLoadedAsync();
         Toasts.Show("Deleted forever.", ToastKind.Success);
@@ -2110,7 +2166,7 @@
     private async Task MarkAllRead()
     {
         await MailSvc.MarkAllReadAsync(activeFolder);
-        counts = await MailSvc.GetCountsAsync();
+        counts = await CountsAndLabelsAsync();
         UpdateHeader();
         await RefreshLoadedAsync();
     }
@@ -2542,20 +2598,21 @@
     /// Hover quick actions on a list row (Recall for Sent, Restore / Move for Trash / Archive, Delete, Pin, Star, Read).
     private RenderFragment RowActions(MailSummary item) => __builder =>
     {
-        @if (activeFolder == MailFolder.Sent)
+        var rf = RowFolder(item);
+        @if (rf == MailFolder.Sent)
         {
             <button type="button" title="Recall message" aria-label="Recall message" @onclick="() => ConfirmRecall(item.Id)"><i data-lucide="undo-2"></i></button>
         }
-        @if (activeFolder == MailFolder.Trash)
+        @if (rf == MailFolder.Trash)
         {
             <button type="button" title="Restore" aria-label="Restore" @onclick="() => QuickRestore(item.Id)"><i data-lucide="inbox"></i></button>
         }
-        else if (activeFolder == MailFolder.Archive)
+        else if (rf == MailFolder.Archive)
         {
             <button type="button" title="Move to Inbox" aria-label="Move to Inbox" @onclick="() => QuickMove(item.Id, MailFolder.Inbox)"><i data-lucide="inbox"></i></button>
         }
-        <button type="button" class="@(activeFolder == MailFolder.Trash ? "danger" : "")" title="@(activeFolder == MailFolder.Trash ? "Delete forever" : "Move to Trash")"
-                aria-label="@(activeFolder == MailFolder.Trash ? "Delete forever" : "Move to Trash")" @onclick="() => QuickDelete(item.Id)"><i data-lucide="trash-2"></i></button>
+        <button type="button" class="@(rf == MailFolder.Trash ? "danger" : "")" title="@(rf == MailFolder.Trash ? "Delete forever" : "Move to Trash")"
+                aria-label="@(rf == MailFolder.Trash ? "Delete forever" : "Move to Trash")" @onclick="() => QuickDelete(item.Id)"><i data-lucide="trash-2"></i></button>
         <button type="button" class="@(item.IsPinned ? "active" : "")" title="@(item.IsPinned ? "Unpin" : "Pin")" aria-label="@(item.IsPinned ? "Unpin" : "Pin")" @onclick="() => TogglePin(item.Id)"><i data-lucide="pin"></i></button>
         <button type="button" class="@(item.IsStarred ? "active" : "")" title="@(item.IsStarred ? "Unstar" : "Star")" aria-label="@(item.IsStarred ? "Unstar" : "Star")" @onclick="() => ToggleStar(item.Id)"><i data-lucide="star"></i></button>
         <button type="button" title="@(item.IsRead ? "Mark unread" : "Mark read")" aria-label="@(item.IsRead ? "Mark unread" : "Mark read")" @onclick="() => QuickToggleRead(item)"><i data-lucide="@(item.IsRead ? "mail-x" : "mail-check")"></i></button>

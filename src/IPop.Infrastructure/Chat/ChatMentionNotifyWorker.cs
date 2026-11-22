@@ -64,7 +64,7 @@ public sealed class ChatMentionNotifyWorker(IServiceScopeFactory scopeFactory, I
                             // A DM has no name: title it after the sender rather than a generic "Chat".
                             var roomName = mention.Message.Room?.Name ?? senderName;
                             await gateway.SendMentionNotificationAsync(mention.UserId, senderName, roomName, preview, true, stoppingToken,
-                                mention.MessageId, mention.Message.RoomId);
+                                mention.MessageId, mention.Message.RoomId, mention.Message.SenderId);
                             mention.NotifiedAt = DateTime.UtcNow;
                         }
                         catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)

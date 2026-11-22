@@ -139,12 +139,14 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<NoteComment> NoteComments => Set<NoteComment>();
     public DbSet<NoteCommentReaction> NoteCommentReactions => Set<NoteCommentReaction>();
     public DbSet<NoteTodoDue> NoteTodoDues => Set<NoteTodoDue>();
+    public DbSet<NoteRecurrence> NoteRecurrences => Set<NoteRecurrence>();
     public DbSet<NoteLink> NoteLinks => Set<NoteLink>();
     public DbSet<NoteTemplate> NoteTemplates => Set<NoteTemplate>();
     public DbSet<NoteView> NoteViews => Set<NoteView>();
     public DbSet<NoteLibraryItem> NoteLibraryItems => Set<NoteLibraryItem>();
     public DbSet<NoteBoardTemplate> NoteBoardTemplates => Set<NoteBoardTemplate>();
     public DbSet<NoteAttachment> NoteAttachments => Set<NoteAttachment>();
+    public DbSet<NoteFilePreview> NoteFilePreviews => Set<NoteFilePreview>();
 
     // News & Memos entities (single table with type enum: news/announcement/memo)
     public DbSet<NewsPost> NewsPosts => Set<NewsPost>();
@@ -185,6 +187,12 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<TicketUserState> TicketUserStates => Set<TicketUserState>();
     public DbSet<TicketRefCounter> TicketRefCounters => Set<TicketRefCounter>();
     public DbSet<IdeskWebhookReceipt> IdeskWebhookReceipts => Set<IdeskWebhookReceipt>();
+    public DbSet<HubTopic> HubTopics => Set<HubTopic>();
+    public DbSet<HubMember> HubMembers => Set<HubMember>();
+    public DbSet<HubPost> HubPosts => Set<HubPost>();
+    public DbSet<HubAsk> HubAsks => Set<HubAsk>();
+    public DbSet<HubAttachment> HubAttachments => Set<HubAttachment>();
+    public DbSet<HubNote> HubNotes => Set<HubNote>();
 
     private static readonly HallRoom[] HallRooms_Seed =
     [
@@ -1493,6 +1501,15 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.FromPageId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.ToPageId).OnDelete(DeleteBehavior.Cascade);
         });
+        b.Entity<NoteRecurrence>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Rule).HasMaxLength(200);
+            e.HasIndex(x => x.PageId).IsUnique();
+            e.HasIndex(x => new { x.Enabled, x.OwnerId });
+            e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.PageId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
+        });
         b.Entity<NoteTodoDue>(e =>
         {
             e.HasKey(x => new { x.PageId, x.ItemKey });
@@ -1514,11 +1531,63 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasIndex(x => x.PageId);
             e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.PageId).OnDelete(DeleteBehavior.Cascade);
         });
+        b.Entity<NoteFilePreview>(e =>
+        {
+            e.HasKey(x => x.AttachmentId);   // one preview per file: a second viewer opening it at the same time cannot make another
+            e.Property(x => x.Kind).HasMaxLength(16);
+            e.Property(x => x.Error).HasMaxLength(64);
+            e.HasIndex(x => x.ThumbAttachmentId);
+        });
         b.Entity<SearchHistory>(e =>
         {
             e.HasIndex(x => new { x.UserId, x.SearchedAt });
             e.Property(x => x.Query).HasMaxLength(200);
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        // ── The Hub (docs/superpowers/specs/2026-11-21-the-hub-design.md) ──
+        b.Entity<HubTopic>(e =>
+        {
+            e.Property(x => x.Kind).HasMaxLength(16);
+            e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.Need).HasMaxLength(4000);
+            e.Property(x => x.SolvedSummary).HasMaxLength(2000);
+            e.HasIndex(x => x.LastActivityAt);
+            e.HasOne(x => x.CreatedBy).WithMany().HasForeignKey(x => x.CreatedById).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<HubMember>(e =>
+        {
+            e.HasKey(x => new { x.TopicId, x.UserId });
+            e.HasIndex(x => x.UserId);
+            e.HasOne<HubTopic>().WithMany().HasForeignKey(x => x.TopicId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<HubPost>(e =>
+        {
+            e.Property(x => x.Body).HasMaxLength(8000);
+            e.Property(x => x.Kind).HasMaxLength(16);
+            e.HasIndex(x => new { x.TopicId, x.CreatedAt });
+            e.HasOne<HubTopic>().WithMany().HasForeignKey(x => x.TopicId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Author).WithMany().HasForeignKey(x => x.AuthorId).OnDelete(DeleteBehavior.SetNull);
+        });
+        b.Entity<HubAsk>(e =>
+        {
+            e.Property(x => x.Question).HasMaxLength(500);
+            e.HasIndex(x => new { x.ToUserId, x.AnsweredAt });
+            e.HasIndex(x => x.TopicId);
+            e.HasOne<HubTopic>().WithMany().HasForeignKey(x => x.TopicId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.ToUser).WithMany().HasForeignKey(x => x.ToUserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<HubAttachment>(e =>
+        {
+            e.HasKey(x => new { x.TopicId, x.AttachmentId });
+            e.HasIndex(x => x.AttachmentId);
+            e.HasOne<HubTopic>().WithMany().HasForeignKey(x => x.TopicId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<HubNote>(e =>
+        {
+            e.HasKey(x => new { x.PostId, x.UserId });
+            e.HasOne<HubPost>().WithMany().HasForeignKey(x => x.PostId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<Ticket>(e =>
         {

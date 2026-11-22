@@ -66,6 +66,16 @@ public class NotifierSettingsTests
     }
 
     [Fact]
+    public void Animations_default_on_and_only_reduced_turns_them_down()
+    {
+        Assert.Equal("on", NotifierSettings.Parse(null).Animations);
+        Assert.Equal("on", NotifierSettings.Parse("""{"animations":"off"}""").Animations);
+        var s = NotifierSettings.Parse("""{"animations":"reduced"}""");
+        Assert.Equal("reduced", s.Animations);
+        Assert.Equal("reduced", NotifierSettings.Parse(s.ToJson()).Animations);
+    }
+
+    [Fact]
     public async Task Non_object_body_is_rejected()
     {
         using var t = new TestDb();
@@ -81,8 +91,11 @@ public class NotifierSettingsTests
     [InlineData("chat.mention", "chat")]
     [InlineData("project.task_assigned", "projects")]
     [InlineData("news.published", "news")]
+    [InlineData("memo.mandatory", "news")]   // a live memo popup loads the post (article + Acknowledge), not the info card
+    [InlineData("memo.reminder", "news")]
     [InlineData("note.comment", "notes")]
     [InlineData("system.hris_sync_failed", "system")]
+    [InlineData("system.epop_import", "system")]   // links to /mail, still iPop's own notice
     [InlineData(null, "system")]
     public void Event_types_map_to_modules(string? eventType, string module) => Assert.Equal(module, NotifierSettings.ModuleOf(eventType));
 }

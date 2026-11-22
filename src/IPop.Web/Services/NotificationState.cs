@@ -740,5 +740,7 @@ public class NotificationState : IDisposable
         bool IsRead,
         string Priority,
         string? TargetUrl = null,
-        DateTime? SnoozedUntil = null);
+        DateTime? SnoozedUntil = null,
+        Guid? ActorId = null,
+        string? ActorName = null);
 }

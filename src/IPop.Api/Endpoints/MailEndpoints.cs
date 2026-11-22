@@ -474,6 +474,7 @@ public static class MailEndpoints
             }
             // mode=preview → inline (iframe); default → unduhan dengan nama dari subjek.
             var download = !string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase);
+            bytes = IPop.Infrastructure.Documents.PdfTitle.Set(bytes, string.IsNullOrWhiteSpace(models[0].Subject) ? "(no subject)" : models[0].Subject);
             return Results.File(bytes, "application/pdf",
                 download ? PdfFileName(models[0].Subject, id) : null);
         });
@@ -639,7 +640,7 @@ public static class MailEndpoints
 
             // Access rule: only participants of the linked mail — or the uploader for pending orphans.
             var canAccess = attachment.MailId is { } linkedMailId
-                ? await db.MailRecipients.AnyAsync(r => r.MailId == linkedMailId && r.UserId == userId.Value, ct)
+                ? await db.MailRecipients.AnyAsync(r => r.MailId == linkedMailId && r.UserId == userId.Value && r.Folder != "pending", ct)
                 : IsPendingUploadOf(attachment, userId.Value);
             if (!canAccess) return Results.Forbid();
 
@@ -693,7 +694,7 @@ public static class MailEndpoints
                 .FirstOrDefaultAsync(a => a.Id == id && a.ThumbnailPath != null, ct);
             if (attachment is null) return Results.NotFound();
             var canAccess = attachment.MailId is { } linkedMailId
-                ? await db.MailRecipients.AnyAsync(r => r.MailId == linkedMailId && r.UserId == userId.Value, ct)
+                ? await db.MailRecipients.AnyAsync(r => r.MailId == linkedMailId && r.UserId == userId.Value && r.Folder != "pending", ct)
                 : IsPendingUploadOf(attachment, userId.Value);
             if (!canAccess) return Results.Forbid();
             if (!IsRasterImageMime(attachment.MimeType)) return Results.NotFound();
@@ -746,15 +747,18 @@ public static class MailEndpoints
         // ──────────────────────────────────────────────────────────────────────
 
         // GET /api/mail/labels — label milik pengguna + jumlah surat terlabel.
-        g.MapGet("/labels", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>        {
+        // Count = mails the user still holds outside Trash (Archive counts), same rule as the label view.
+        g.MapGet("/labels", async (HttpContext http, IPopDbContext db, IMailService svc, CancellationToken ct) =>
+        {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
-            var rows = await db.MailLabels.AsNoTracking()
+            var labels = await db.MailLabels.AsNoTracking()
                 .Where(l => l.UserId == userId.Value)
                 .OrderBy(l => l.Name)
-                .Select(l => new MailLabelDto(l.Id, l.Name, l.Color, l.Assignments.Count))
+                .Select(l => new { l.Id, l.Name, l.Color })
                 .ToListAsync(ct);
-            return Results.Ok(rows);
+            var counts = await svc.GetLabelCountsAsync(userId.Value, ct);
+            return Results.Ok(labels.Select(l => new MailLabelDto(l.Id, l.Name, l.Color, counts.GetValueOrDefault(l.Id))).ToList());
         });
 
         // POST /api/mail/labels — buat label (nama unik per pengguna).
@@ -1010,7 +1014,7 @@ public static class MailEndpoints
             if (userId is null) return Results.Unauthorized();
             var label = await db.MailLabels.AsNoTracking().FirstOrDefaultAsync(l => l.Id == labelId && l.UserId == userId.Value, ct);
             if (label is null) return Results.Json(new { code = "label_not_found", message = "Label not found." }, statusCode: 404);
-            var canSee = await db.MailRecipients.AnyAsync(r => r.MailId == mailId && r.UserId == userId.Value, ct);
+            var canSee = await db.MailRecipients.AnyAsync(r => r.MailId == mailId && r.UserId == userId.Value && r.Folder != "pending", ct);
             if (!canSee) return Results.Json(new { code = "mail_not_found", message = "Mail not found." }, statusCode: 404);
 
             var exists = await db.MailLabelAssignments.AnyAsync(a => a.LabelId == labelId && a.MailId == mailId, ct);

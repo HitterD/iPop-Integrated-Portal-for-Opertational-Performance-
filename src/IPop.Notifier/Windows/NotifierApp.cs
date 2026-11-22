@@ -12,6 +12,10 @@ public sealed class NotifierApp : ApplicationContext
     private readonly SettingsService settings;
     private readonly DeviceReporter device;
     private readonly PopupManager popups;
+    private readonly Leaders leaders;
+    private ViewerWindow? viewer;
+    /// Unread "Needs action" in the Inbox (tray tooltip, taskbar badge).
+    private int actUnread;
     private readonly NotifyIcon tray;
     private readonly Control ui = new();
     private readonly System.Windows.Forms.Timer tick = new() { Interval = 5000 };
@@ -25,6 +29,9 @@ public sealed class NotifierApp : ApplicationContext
     private SignInWindow? signIn;
     private int unread;
     private bool connected;
+    private DateTime? lastConnectedAt;
+    private bool manualSignOut;
+    private readonly ToolStripMenuItem reconnectItem;
     private readonly ToolStripMenuItem devicesItem;
     private readonly ToolStripMenuItem popupsItem;
     private readonly ToolStripMenuItem pendingItem;
@@ -37,9 +44,13 @@ public sealed class NotifierApp : ApplicationContext
         settings = new SettingsService(api, state);
         Theme.LargeText = settings.Current.TextSize == "large";
         Theme.Mode = settings.Current.Theme;
+        Theme.ReducedMotion = settings.Current.Animations == "reduced";
         Theme.FollowWindows();
         device = new DeviceReporter(api);
-        popups = new PopupManager(api, settings, state, device);
+        leaders = new Leaders(api);
+        popups = new PopupManager(api, settings, state, device, leaders) { PageContext = PageContext };
+        leaders.Changed += () => Post(() => { popups.RefreshContext(); _ = RefreshUnreadAsync(); });
+        BridgedWindow.PreviewRequested += (files, index) => Post(() => ShowViewer(files, index));
         api.SignedOut += () => Post(OnSignedOut);
         api.BeforeSessionChanged = TeardownSessionAsync;
         api.ConfirmAccountSwitch = (nik, name) =>
@@ -55,7 +66,15 @@ public sealed class NotifierApp : ApplicationContext
         };
         popups.CountChanged += UpdateTray;
         device.Beat += () => Post(() => { api.WebBaseOverride = device.WebBase; devicesItem!.Visible = device.IctTools; UpdateTray(); });
-        settings.Changed += s => Post(() => { Theme.LargeText = s.TextSize == "large"; Theme.Mode = s.Theme; UpdateTray(); });
+        settings.Changed += s => Post(() =>
+        {
+            Theme.LargeText = s.TextSize == "large"; Theme.Mode = s.Theme; Theme.ReducedMotion = s.Animations == "reduced"; UpdateTray();
+            // Tiers or VIPs may have changed: open windows and the counts follow, and the VIP names reload.
+            popups.RefreshContext();
+            if (!api.IsSignedIn || session.IsCancellationRequested) return;
+            _ = RefreshUnreadAsync();
+            _ = leaders.LoadAsync(session.Token);
+        });
 
         Toasts.Init();
         Toasts.Open += path => Post(() => OpenIPop(path));
@@ -73,6 +92,8 @@ public sealed class NotifierApp : ApplicationContext
         menu.Items.Add(pendingItem);
         popupsItem = new ToolStripMenuItem("Pause popups for 1 hour", null, (_, _) => TogglePause());
         menu.Items.Add(popupsItem);
+        reconnectItem = new ToolStripMenuItem("Reconnect now", null, (_, _) => _ = ReconnectNowAsync()) { Visible = false };
+        menu.Items.Add(reconnectItem);
         menu.Items.Add(new ToolStripSeparator());
         devicesItem = new ToolStripMenuItem("Devices (ICT)", null, (_, _) => ShowDevices()) { Visible = false };
         menu.Items.Add(devicesItem);
@@ -85,7 +106,13 @@ public sealed class NotifierApp : ApplicationContext
         tray = new NotifyIcon { Icon = AppIcon.Icon, Text = "iPop Notifier", ContextMenuStrip = menu, Visible = true };
         tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ShowInbox(); };
 
-        tick.Tick += (_, _) => { popups.Release(); PinTray(); };
+        tick.Tick += (_, _) =>
+        {
+            popups.Release(); PinTray();
+            // Leaders change rarely (approver chain imports): every 30 minutes is enough.
+            if (api.IsSignedIn && leaders.LoadedAt is { } at && DateTime.UtcNow - at > Leaders.Every && !session.IsCancellationRequested)
+                _ = leaders.LoadAsync(session.Token);
+        };
         tick.Start();
 
         if (api.IsSignedIn) _ = StartSessionAsync();
@@ -116,6 +143,9 @@ public sealed class NotifierApp : ApplicationContext
         Toasts.Account = api.Session?.Server + "|" + api.Session?.Nik + "|" + generation;
         await settings.LoadAsync(ct);
         if (ct.IsCancellationRequested || generation != api.Generation || !api.IsSignedIn) return;
+        // Before the feed: the first live notification and the backlog already know who is a leader.
+        await leaders.LoadAsync(ct);
+        if (ct.IsCancellationRequested || generation != api.Generation || !api.IsSignedIn) return;
         _ = device.RunAsync(ct);
         feed = new Feed(api, state);
         feed.Received += n => Post(() => { if (generation != api.Generation || ct.IsCancellationRequested) return; popups.Show(n); _ = RefreshUnreadAsync(); });
@@ -125,7 +155,12 @@ public sealed class NotifierApp : ApplicationContext
         feed.ChatToast += t => Post(() => { if (generation == api.Generation && !ct.IsCancellationRequested) OnChatToast(t); });
         feed.Remote += (ev, n) => Post(() => { if (generation == api.Generation && !ct.IsCancellationRequested) OnRemote(ev, n); });
         feed.ReleasePublished += OnReleasePublished;
-        feed.ConnectionChanged += c => Post(() => { connected = c; UpdateTray(); if (inbox is { IsDisposed: false }) inbox.Connection(c); });
+        feed.ConnectionChanged += c => Post(() =>
+        {
+            if (generation != api.Generation || ct.IsCancellationRequested) return;
+            if (c) lastConnectedAt = DateTime.Now;
+            connected = c; UpdateTray(); if (inbox is { IsDisposed: false }) inbox.Connection(c);
+        });
         try { await feed.StartAsync(ct); } catch (OperationCanceledException) { }
         await RefreshUnreadAsync();
     }
@@ -176,15 +211,24 @@ public sealed class NotifierApp : ApplicationContext
         catch { Post(() => tray.ShowBalloonTip(5000, "Remote help", "Couldn't reach iPop.", ToolTipIcon.Warning)); }
     }
 
+    /// Chat ("desktopToast"): Messages tier = a toast as before (none with "Hide Messages toasts"); a leader's or VIP's
+    /// message, or an emergency, needs action = its own popup window (chat loader: last messages + inline reply).
     private void OnChatToast(ToastPayload t)
     {
         var s = settings.Effective(DateTime.UtcNow);
-        if (s.DeliveryFor("chat") == "off") return;
-        var urgent = t.RequireInteraction;
-        if (!urgent && (s.Popups != "on" || popups.Held(new Notice(Guid.Empty, "chat", "chat.message", t.Title, t.Body, "normal", t.Url, DateTime.UtcNow), s))) return;
+        var emergency = t.RequireInteraction || t.Tag.StartsWith("emergency:", StringComparison.Ordinal);
+        var n = new Notice(ChatNoticeId(t), "chat", emergency ? "chat.emergency" : "chat.message", t.Title, t.Body,
+            emergency ? "high" : "normal", t.Url, DateTime.UtcNow, t.SenderId).Classified(s, leaders);
+        if (n.NeedsAction) { popups.ShowChat(n); return; }
+        if (s.HideMessageToasts) return;
+        if (s.Popups != "on" || popups.Held(n, s)) return;
         Toasts.ShowChat(t);
         Sounds.Play(t.Title.Contains(" · ") ? "group" : "dm", s);
     }
+
+    /// A stable id per chat toast (PopupManager keeps one window per conversation anyway).
+    private static Guid ChatNoticeId(ToastPayload t) =>
+        new(System.Security.Cryptography.MD5.HashData(System.Text.Encoding.UTF8.GetBytes("chat|" + t.Tag + "|" + t.Url)));
 
     private async Task SendChatAsync(string room, string text)
     {
@@ -209,10 +253,24 @@ public sealed class NotifierApp : ApplicationContext
         catch { Post(() => tray.ShowBalloonTip(4000, "iDesk", "Your reply wasn't sent (no connection).", ToolTipIcon.Warning)); }
     }
 
+    /// Unread count from the server, and how many unread need action: the newest 100 unread, classified here with
+    /// the settings and leaders (the server doesn't know the person's tiers).
     private async Task RefreshUnreadAsync()
     {
         var n = await api.GetJsonAsync("api/notifications/v1/unread-count");
-        if (n?["unread"] is { } u) { unread = u.GetValue<int>(); Post(UpdateTray); }
+        if (n?["unread"] is { } u) unread = u.GetValue<int>();
+        var act = 0;
+        if (unread > 0)
+        {
+            var page = await (feed ?? new Feed(api, state)).InboxAsync("unread", 1, 100);
+            if (page is null) act = actUnread;
+            else
+            {
+                var s = settings.Effective(DateTime.UtcNow);
+                act = page.Items.Count(i => Notice.From(i).Classified(s, leaders).NeedsAction);
+            }
+        }
+        Post(() => { actUnread = act; popups.ActCount = act; UpdateTray(); });
     }
 
     private int pinTries;
@@ -405,6 +463,8 @@ public sealed class NotifierApp : ApplicationContext
                 Toasts.ClearAll();
                 popups.CloseAll();
                 inbox?.Close(); inbox = null;
+                viewer?.Close(); viewer = null;
+                leaders.Reset(); actUnread = 0;
                 settingsWindow?.Close(); settingsWindow = null;
                 devices?.Close(); devices = null;
                 devicesItem.Visible = false;
@@ -420,14 +480,31 @@ public sealed class NotifierApp : ApplicationContext
         await done.Task;
     }
 
+    /// Tray > Reconnect now: drop the live connection and start it again (the retry timer can wait up to a minute).
+    private async Task ReconnectNowAsync()
+    {
+        if (!api.IsSignedIn) return;
+        var old = feed;
+        feed = null;
+        try { if (old is not null) await old.StopAsync(); } catch { }
+        Log.Info("hub", "reconnect requested from the tray");
+        await StartSessionAsync();
+    }
+
     private void OnSignedOut()
     {
         session.Cancel();
         _ = feed?.StopAsync();
         popups.CloseAll();
         inbox?.Hide();
-        unread = 0;
+        viewer?.Close(); viewer = null;
+        unread = 0; actUnread = 0;
+        lastConnectedAt = null;
         UpdateTray();
+        // The server ended this session (password changed, 90 days unused): say so. A sign-out the person chose in
+        // Settings needs no explanation.
+        if (!manualSignOut) tray.ShowBalloonTip(6000, "iPop Notifier", "Your iPop session ended. Sign in again to keep getting notifications.", ToolTipIcon.Warning);
+        manualSignOut = false;
         ShowSignIn();
     }
 
@@ -441,8 +518,12 @@ public sealed class NotifierApp : ApplicationContext
         var pending = popups.BacklogCount;
         pendingItem.Visible = pending > 0;
         pendingItem.Text = $"Skip {pending} pending notification{(pending == 1 ? "" : "s")} (keep unread)";
-        var status = remoteActive ? "ICT is connected" : !api.IsSignedIn ? "signed out" : !connected ? "connecting…" : s.Popups != "on" ? "popups paused"
-            : pending > 0 ? $"{pending} pending · {count} unread" : count > 0 ? $"{count} unread" : "up to date";
+        var offline = lastConnectedAt is { } at ? $"reconnecting · last {at:HH:mm}" : "connecting…";
+        reconnectItem.Visible = api.IsSignedIn && !connected;
+        // 1.5.0: "N need action · M unread" (the tray tooltip holds 63 characters).
+        var counts = actUnread > 0 ? $"{actUnread} need action · {count} unread" : count > 0 ? $"{count} unread" : "up to date";
+        var status = remoteActive ? "ICT is connected" : !api.IsSignedIn ? "signed out" : !connected ? offline : s.Popups != "on" ? "popups paused · " + counts
+            : pending > 0 ? $"{pending} pending · {counts}" : counts;
         var text = "iPop Notifier" + (AppInfo.Flavour.Length > 0 ? " (" + AppInfo.Flavour + ")" : "") + " — " + status;
         tray.Text = text.Length > 63 ? text[..63] : text;
         var old = tray.Icon;
@@ -451,15 +532,40 @@ public sealed class NotifierApp : ApplicationContext
         if (inbox is { IsDisposed: false, Visible: true }) inbox.Refresh();
     }
 
-    private object InboxContext() => new
+    /// What the pages may know to classify (1.5.0): effective tiers per kind, leaders (id, name, department, reason)
+    /// and VIPs (id, name, department; ids straight from the settings). Never NIK or position.
+    private sealed record Classifying(IReadOnlyDictionary<string, string> Tiers, object Leaders, object Vips, bool HideMessageToasts, bool UrgentBreaksThrough);
+
+    private Classifying PageContext()
     {
-        name = device.DisplayName ?? api.Session?.Name ?? "",
-        unread,
-        popups = settings.Current.Popups == "on",
-        held = state.Held,
-        ict = device.IctTools,
-        connected = feed?.Connected ?? connected,
-    };
+        var s = settings.Effective(DateTime.UtcNow);
+        var named = leaders.VipList.ToDictionary(p => p.Id);
+        return new Classifying(
+            s.Tiers,
+            leaders.LeaderList.Select(p => new { id = p.Id, name = p.Name, department = p.Department, reason = p.Reason }).ToList(),
+            s.Vips.Select(id => new { id, name = named.GetValueOrDefault(id)?.Name, department = named.GetValueOrDefault(id)?.Department }).ToList(),
+            s.HideMessageToasts, s.UrgentBreaksThrough);
+    }
+
+    private object InboxContext()
+    {
+        var c = PageContext();
+        return new
+        {
+            name = device.DisplayName ?? api.Session?.Name ?? "",
+            // The maximized Inbox's chat pane tells my own messages apart (MessageDto.SenderNik), as the popups do.
+            nik = api.Session?.Nik,
+            unread,
+            act = actUnread,
+            tiers = c.Tiers,
+            leaders = c.Leaders,
+            vips = c.Vips,
+            popups = settings.Current.Popups == "on",
+            held = state.Held,
+            ict = device.IctTools,
+            connected = feed?.Connected ?? connected,
+        };
+    }
 
     private void ShowInbox()
     {
@@ -488,8 +594,8 @@ public sealed class NotifierApp : ApplicationContext
                 if (n is null) return;
                 state.Shown.Remove(n.Id);
                 state.Held.Remove(n.Id);
-                var notice = Notice.From(n);
-                popups.Show(notice with { Priority = "high" });
+                // The person asked for this one: it opens as a window whatever Busy/meeting/pause/"Toast" say.
+                popups.OpenFromInbox(Notice.From(n));
                 break;
         }
     }
@@ -511,8 +617,10 @@ public sealed class NotifierApp : ApplicationContext
             server = api.Server.ToString(),
             version = AppInfo.Version,
             computer = Environment.MachineName,
+            ict = device.IctTools,
         });
-        settingsWindow.SignOut += () => _ = api.SignOutAsync();
+        settingsWindow.Devices += () => Post(ShowDevices);
+        settingsWindow.SignOut += () => { manualSignOut = true; _ = api.SignOutAsync(); };
         settingsWindow.CheckUpdates += () => _ = CheckFromSettingsAsync();
         settingsWindow.UpdateNow += () => Post(() => { if (updater?.Pending is { } p) ShowUpdate(p); });
         settingsWindow.PopupStyleChanged += () => Post(popups.Restyle);
@@ -526,6 +634,17 @@ public sealed class NotifierApp : ApplicationContext
         devices = new DevicesWindow(api);
         devices.RemoteRequested += (id, mode) => _ = StartRemoteAsync(id, mode);
         devices.Show();
+    }
+
+    /// One viewer window for every Preview click (popups, Inbox…), reused while it is open.
+    private void ShowViewer(JsonNode files, int index)
+    {
+        if (!api.IsSignedIn) return;
+        if (viewer is { IsDisposed: false }) { viewer.Show(files, index); return; }
+        viewer = new ViewerWindow(api, files, index);
+        viewer.FormClosed += (_, _) => viewer = null;
+        viewer.Show();
+        viewer.Activate();
     }
 
     private void OpenIPop(string path) => _ = Integration.OpenTargetAsync(api, path);
@@ -584,18 +703,42 @@ public sealed class NotifierApp : ApplicationContext
     {
         updater ??= new Updater(api);
         await Task.Delay(TimeSpan.FromSeconds(45));
-        var lastCheck = DateTime.MinValue;
+        var nextCheck = DateTime.MinValue;
+        var failures = 0;
+        string? failedFor = null;
         while (true)
         {
-            if (DateTime.UtcNow - lastCheck >= TimeSpan.FromHours(6) || kicked || updater.ContextChanged)
+            // One bad minute (an unexpected error anywhere below) never ends the loop: 1.4.7 would stop checking for
+            // updates until the app was restarted.
+            try
             {
-                kicked = false;
-                lastCheck = DateTime.UtcNow;
-                await updater.CheckAsync();
+                // A failed check backs off (1, 5, 15, 60 min); a release announcement or a different account/server
+                // than the one that failed checks at once.
+                var changed = updater.ContextChanged && updater.ContextKey != failedFor;
+                if (DateTime.UtcNow >= nextCheck || kicked || changed)
+                {
+                    kicked = false;
+                    var r = await updater.CheckAsync();
+                    if (r == Updater.Result.Failed)
+                    {
+                        failures++;
+                        failedFor = updater.ContextKey;
+                        nextCheck = DateTime.UtcNow + IPop.Application.Notifier.NotifierUpdatePolicy.RetryDelay(failures);
+                    }
+                    else
+                    {
+                        failures = 0; failedFor = null;
+                        nextCheck = DateTime.UtcNow + TimeSpan.FromHours(6);
+                    }
+                }
+                // A call in iPop (browser or phone) counts as busy too: no restart in the middle of it.
+                if (updater.Pending is not null) inCall = await InCallAsync();
+                Post(StepUpdate);
             }
-            // A call in iPop (browser or phone) counts as busy too: no restart in the middle of it.
-            if (updater.Pending is not null) inCall = await InCallAsync();
-            Post(StepUpdate);
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Log.Warn("update", "update loop: " + ex.GetType().Name + " " + ex.Message);
+            }
             // Re-evaluate every minute (Later timer, idle install); a publish signal wakes it at once.
             await updateKick.WaitAsync(TimeSpan.FromMinutes(1));
         }

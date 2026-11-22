@@ -15,7 +15,7 @@
     <ApplicationIcon>Assets\ipop.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <!-- Canonical release version. Scripts read this default; -Version overrides both build and packaging. -->
-    <Version>1.4.7</Version>
+    <Version>1.6.0</Version>
     <Product>iPop Notifier</Product>
     <AssemblyTitle>iPop Notifier</AssemblyTitle>
     <Company>PT Santos Jaya Abadi</Company>
@@ -50,6 +50,7 @@
     <Compile Include="..\IPop.Application\Notifier\PopupLayout.cs" Link="Core\PopupLayout.cs" />
     <!-- Browser sign-in (1.4.3): loopback listener, redirect rules, short codes (tested in IPop.Tests). -->
     <Compile Include="..\IPop.Application\Notifier\NotifierLoopback.cs" Link="Core\NotifierLoopback.cs" />
+    <Compile Include="..\IPop.Application\Notifier\NotifierAuthGate.cs" Link="Core\NotifierAuthGate.cs" />
   </ItemGroup>
 
 </Project>

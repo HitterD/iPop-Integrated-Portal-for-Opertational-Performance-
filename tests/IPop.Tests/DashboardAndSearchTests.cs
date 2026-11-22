@@ -109,7 +109,7 @@ public class DashboardAndSearchTests
     public async Task DashboardService_AggregatesKpisTasksAttentionAndAgenda()
     {
         using var t = new TestDb();
-        var me = t.AddUser("DASH_ME");
+        var me = t.AddAdmin("DASH_ME");
         me.Name = "Rina Wijaya";
         me.TimeZoneId = "UTC";
         var bob = t.AddUser("DASH_BOB");
@@ -173,6 +173,27 @@ public class DashboardAndSearchTests
         Assert.Equal(dto.OnlineCount, online.OnlineCount);
         Assert.Equal(dto.Online.Select(p => p.Nik), online.Online.Select(p => p.Nik));
         Assert.DoesNotContain(online.Online, p => p.Nik == "DASH_ME");
+    }
+
+    [Fact]
+    public async Task Dashboard_system_status_including_hris_is_only_sent_to_admins()
+    {
+        using var t = new TestDb();
+        var employee = t.AddUser("DASH_EMP");
+        var admin = t.AddAdmin("DASH_ADM");
+        t.Db.HrisSyncRuns.Add(new HrisSyncRun
+        {
+            Id = Guid.NewGuid(), StartedAt = DateTime.UtcNow.AddHours(-1), FinishedAt = DateTime.UtcNow.AddHours(-1),
+            Succeeded = false, Error = "connection refused (10.10.6.51:27080)",
+        });
+        await t.Db.SaveChangesAsync();
+
+        var forEmployee = (await new IPop.Infrastructure.Dashboard.DashboardService(t.Db).GetAsync(employee.Id))!;
+        var forAdmin = (await new IPop.Infrastructure.Dashboard.DashboardService(t.Db).GetAsync(admin.Id))!;
+
+        // The page hid the panel, but the API still sent HRIS/mail/NAS health to every employee.
+        Assert.Empty(forEmployee.Status);
+        Assert.Contains(forAdmin.Status, s => s.Label == "HRIS sync" && s.State == "warn");
     }
 
     [Fact]
@@ -383,7 +404,7 @@ public class DashboardAndSearchTests
     public async Task Dashboard_reads_each_shared_fact_once_and_reuses_system_status()
     {
         using var t = new TestDb();
-        var me = t.AddUser("QC_ME");
+        var me = t.AddAdmin("QC_ME"); // admins also read the shared system status
         var counter = new CommandCounter();
         var options = new DbContextOptionsBuilder<IPop.Infrastructure.Persistence.IPopDbContext>()
             .UseSqlite(t.Db.Database.GetDbConnection()).AddInterceptors(counter).Options;
@@ -399,14 +420,15 @@ public class DashboardAndSearchTests
         // Roles, department and project memberships used to be read twice per Dashboard (once more by the calendar's news part).
         Assert.Single(first, q => q.Contains("\"UserRoles\"") && q.Contains("\"Name\"") && !q.Contains("EXISTS"));
         // The standalone membership read; the projects/milestones queries also name the table in subqueries.
-        Assert.Single(first, q => q.TrimStart().StartsWith("SELECT \"p\".\"ProjectId\"") && q.Contains("FROM \"ProjectMembers\" AS \"p\"\nWHERE"));
+        Assert.Single(first, q => q.TrimStart().StartsWith("SELECT \"p\".\"ProjectId\"") && q.Replace("\r\n", "\n").Contains("FROM \"ProjectMembers\" AS \"p\"\nWHERE"));
         Assert.Single(first, q => q.Contains("FROM \"MailRecipients\""));
         Assert.Contains(first, q => q.Contains("\"EmailOutbox\""));
         Assert.DoesNotContain(counter.Texts, q => q.Contains("\"EmailOutbox\"") || q.Contains("\"HrisSyncRuns\""));
-        // Permission checks are stubbed here (production caches them). Measured 37 after missed calls moved to
-        // COUNT + LIMIT (one extra statement, but no longer sized by the account's history). The message lists
-        // every read so a new one is easy to spot.
-        Assert.True(first.Count <= 37, $"{first.Count} commands:\n" + string.Join("\n", first.Select(q => q.Replace("\n", " ")[..Math.Min(100, q.Replace("\n", " ").Length)])));
+        // Permission checks are stubbed here (production caches them). The Notes calendar feed adds one
+        // bounded NoteTodoDues read to the previous 37-query budget. Keep it a single query, not one per note.
+        Assert.Single(first, q => q.Contains("FROM \"NoteTodoDues\""));
+        // The message lists every read so an unexpected extra query is easy to spot.
+        Assert.True(first.Count <= 38, $"{first.Count} commands:\n" + string.Join("\n", first.Select(q => q.Replace("\n", " ")[..Math.Min(100, q.Replace("\n", " ").Length)])));
     }
 
     private sealed class CommandCounter : Microsoft.EntityFrameworkCore.Diagnostics.DbCommandInterceptor

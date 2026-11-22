@@ -120,6 +120,13 @@ public partial class Files
         }
         try
         {
+            // PDFs open from a URL that ends in the file name (viewer title, tab and "Save" show the real name).
+            if (previewMime == "application/pdf" && await Media.ViewFileAsync(server, it.Path, it.Size, it.Mtime) is { } named)
+            {
+                if (previewItem != it) return;
+                previewUrl = named;
+                return;
+            }
             var res = await Auth.SendAsync(HttpMethod.Get, $"/api/files/download?server={server}&path={Uri.EscapeDataString(it.Path)}");
             if (!res.IsSuccessStatusCode) { previewError = "Could not load preview."; return; }
             var bytes = await res.Content.ReadAsByteArrayAsync();

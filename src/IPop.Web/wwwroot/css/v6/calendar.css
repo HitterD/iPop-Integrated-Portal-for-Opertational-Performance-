@@ -701,6 +701,9 @@ body:has(.cs-sheet) .confirm-center { z-index: 1071; }
 /* Holidays and tickets in the grid */
 .src-holidays { --src: #d9480f; } :root[data-theme="dark"] .src-holidays { --src: #ff8a4c; }
 .src-tickets { --src: #0a84ff; }
+/* To-dos from Notes (assigned to me, with a due date) */
+.src-notes { --src: #7e57c2; }
+:root[data-theme="dark"] .src-notes { --src: #b39ddb; }
 .dw-tl .tag.hol { background: color-mix(in srgb, #d9480f 14%, transparent); color: #d9480f; }
 @media (prefers-reduced-motion: reduce) {
   .cal-prefill, .cal-repeat-pop, .cal-repeat-sum, .cal-repeat-days button.on, .cal-scope, .cal-scope-backdrop { animation: none; }

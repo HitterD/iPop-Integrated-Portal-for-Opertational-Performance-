@@ -66,9 +66,9 @@ public sealed partial class InternalLinkResolver(
         if (m.Success && Guid.TryParse(m.Groups["id"].Value, out var noteId))
         {
             if (!await perms.IsAllowedAsync(viewerId, "notes.read", null, ct)) return page;
-            var result = await notes.GetPageAsync(viewerId, noteId, ct);
+            var result = await notes.GetLinkSummaryAsync(viewerId, noteId, ct);
             if (!result.Success || result.Data is not { } note) return page;
-            return new InternalLinkDto("page", note.Id, note.Title, "Note", display);
+            return new InternalLinkDto("page", note.Id, string.IsNullOrWhiteSpace(note.Title) ? "Untitled" : note.Title, "Note", display);
         }
 
         return page;

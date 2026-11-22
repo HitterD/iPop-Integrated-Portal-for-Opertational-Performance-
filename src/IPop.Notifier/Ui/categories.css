@@ -1,0 +1,80 @@
+/* Settings › Categories (Notifier 1.5.0) — docs/mockups/notifier/priority.html screen 6. Tokens: app.css + files.css. */
+:root{--unread:#0A6CFF;--shadow:0 0 0 .5px rgba(0,0,0,.10),0 18px 40px -12px rgba(0,0,0,.28)}
+html.dark{--unread:#0A84FF;--shadow:0 0 0 .5px rgba(255,255,255,.10),0 18px 40px -12px rgba(0,0,0,.7)}
+.m-system{--m:var(--sys)}.m-calendar{--m:var(--cal)}.m-mail{--m:var(--mail)}.m-news{--m:var(--news)}.m-tickets{--m:var(--tix)}.m-projects{--m:var(--proj)}
+.m-chat{--m:var(--chat)}.m-notes{--m:var(--notes)}.m-calls{--m:var(--calls)}.m-approval{--m:var(--appr)}
+@keyframes tick{0%{transform:scale(1)}40%{transform:scale(1.38)}100%{transform:scale(1)}}
+@keyframes newIn{0%{opacity:0;transform:translateY(-10px) scale(.98);max-height:0;padding-top:0;padding-bottom:0}70%{max-height:150px}100%{opacity:1;transform:none;max-height:150px}}
+.tick{animation:tick .45s var(--bounce)}
+/* sliding indicators: settings nav + tier segments */
+.slider{position:relative}
+.slider>.thumb{position:absolute;top:0;left:0;pointer-events:none;z-index:0;transition:transform .42s var(--spring),width .42s var(--spring),height .42s var(--spring)}
+.slider>button,.slider>a{position:relative;z-index:1;transition:color .25s}
+.side.slider>.thumb{background:var(--accent-soft);border-radius:9px}
+.side.slider a.on{background:transparent}
+.lead{font-size:14.5px;color:var(--ink-3);margin:-8px 0 18px;max-width:680px;line-height:1.5}
+.tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px}
+.tier{border-radius:14px;padding:14px 16px;background:var(--surface);box-shadow:0 0 0 1px var(--sep);transition:transform .3s var(--spring)}
+.tier:hover{transform:translateY(-2px)}
+.tier h5{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;margin-bottom:6px}
+.tier h5 .kinds{margin-left:auto;font-size:12px;font-weight:650;color:var(--ink-3);white-space:nowrap}
+.tier h5 .kinds b{display:inline-block;font-weight:700;color:var(--ink)}
+.tier p{font-size:13.5px;color:var(--ink-2);line-height:1.5}
+.tier .how{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.tier .how span{font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px;background:var(--sunk);color:var(--ink-2);display:inline-flex;align-items:center;gap:4px}
+.tier .how svg.lucide{width:12px;height:12px}
+.tierdot{width:12px;height:12px;border-radius:4px;flex:none}
+.box{border-radius:14px;background:var(--surface);box-shadow:0 0 0 1px var(--sep);margin-bottom:22px}
+.box>.bh:first-child{border-radius:14px 14px 0 0}
+.bh{padding:12px 16px;background:var(--sunk);display:flex;align-items:center;gap:10px;font-size:14px;font-weight:650;flex-wrap:wrap}
+.bh span{font-weight:500;color:var(--ink-3);font-size:13px}
+.bh svg.lucide{width:17px;height:17px}
+.bh .vipn{margin-left:auto}
+.srow{display:flex;align-items:center;gap:12px;padding:10px 16px;border-top:1px solid var(--sep);transition:background .15s;min-height:56px}
+.box>.srow:first-child,.bh+div>.srow:first-child,.bh+.srow{border-top:0}
+.srow:hover{background:var(--fill-2)}
+.srow.new{animation:newIn .55s var(--spring) backwards}
+.srow .tx{flex:1;min-width:0}
+.srow .t1{font-size:14.5px;font-weight:600}
+.srow .t2{font-size:12.5px;color:var(--ink-3);margin-top:1px}
+.srow .none{font-size:13.5px;color:var(--ink-3)}
+.ico{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--m) 13%,transparent);color:var(--m);flex:none}
+.ico svg.lucide{width:17px;height:17px}
+.ico img{width:19px;height:19px;object-fit:contain}
+.tseg{display:inline-flex;background:var(--fill);border-radius:9px;padding:2px;gap:2px;flex:none}
+.tseg>.thumb{background:var(--surface);border-radius:7px;box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.tseg button{height:30px;padding:0 11px;border-radius:7px;font-size:12.5px;font-weight:650;color:var(--ink-3);display:inline-flex;align-items:center;gap:6px}
+.tseg button i{width:8px;height:8px;border-radius:50%;display:block;transition:transform .3s var(--bounce)}
+.tseg button.on i{transform:scale(1.25)}
+.tseg.t-act button.on{color:var(--act)}.tseg.t-msg button.on{color:var(--unread)}.tseg.t-info button.on{color:var(--ink)}
+.pp{display:flex;align-items:center;gap:10px;min-width:0}
+.pp>div:last-child{min-width:0}
+.pp .t2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.avatar{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font-weight:700;font-size:12px;color:#fff;flex:none}
+.rm{color:var(--ink-4);width:30px;height:30px;border-radius:8px;display:grid;place-items:center;transition:background .15s,color .15s;flex:none}
+.rm:hover{background:var(--danger-soft);color:var(--danger)}
+.rm svg.lucide{width:16px;height:16px}
+.auto{font-size:12px;font-weight:600;color:var(--ink-3);background:var(--fill-2);padding:3px 8px;border-radius:6px;display:inline-flex;gap:4px;align-items:center;white-space:nowrap}
+.auto svg.lucide{width:12px;height:12px}
+.addp{display:flex;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid var(--sep);position:relative}
+.search{flex:1;max-width:360px;height:36px;border-radius:10px;background:var(--fill-2);border:.5px solid var(--line);display:flex;align-items:center;gap:8px;padding:0 10px;color:var(--ink-3);font-size:14px;transition:box-shadow .25s,background .2s}
+.search:focus-within{background:var(--surface);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 28%,transparent)}
+.search input{flex:1;min-width:0;border:0;background:none;outline:none;color:var(--ink)}
+.search svg.lucide{width:16px;height:16px}
+.sugg{position:absolute;left:16px;top:calc(100% - 4px);width:360px;max-width:calc(100% - 32px);background:var(--surface);border-radius:12px;box-shadow:var(--shadow);padding:6px;opacity:0;transform:translateY(-6px) scale(.98);transform-origin:top left;pointer-events:none;transition:opacity .2s,transform .3s var(--spring);z-index:20}
+.sugg.on{opacity:1;transform:none;pointer-events:auto}
+.sugg button{display:flex;align-items:center;gap:10px;width:100%;padding:6px 8px;border-radius:8px;text-align:left}
+.sugg button:hover,.sugg button.hl{background:var(--fill)}
+.sugg button .avatar{width:30px;height:30px;border-radius:8px;font-size:11px}
+.sugg button .t1{font-size:14px;font-weight:600}.sugg button .t2{font-size:12px;color:var(--ink-3)}
+.sugg button[disabled]{opacity:.5;cursor:default}
+.sugg .none{font-size:13px;color:var(--ink-3);padding:8px}
+.resetl{font-size:13px;color:var(--accent-ink);font-weight:600;margin-left:auto;padding:4px 8px;border-radius:7px}
+.resetl:hover{background:var(--accent-soft)}
+.saved{position:fixed;top:60px;right:28px;z-index:10;display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:var(--accent-soft);color:var(--accent-ink);font-size:13px;font-weight:650;opacity:0;transform:translateY(-6px);transition:opacity .25s,transform .35s var(--spring);pointer-events:none}
+.saved.on{opacity:1;transform:none}
+.saved.warn{background:#fff4e0;color:#8a4b00}
+.dark .saved.warn{background:rgba(255,159,10,.14);color:#ffc069}
+.saved svg{width:15px;height:15px}
+@media (max-width:900px){.tiers{grid-template-columns:1fr}.tseg button{padding:0 8px}}
+html.reduce-motion *,html.reduce-motion *::before,html.reduce-motion *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;animation-delay:0ms!important;transition-duration:.01ms!important}

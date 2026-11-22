@@ -58,7 +58,7 @@ spec:
     - kind: Rule
       match: (Host(`ipop.santos.co.id`) || Host(`ipop.192.168.2.89.nip.io`) || Host(`192.168.2.89`)) && PathPrefix(`/onlyoffice`)
       priority: 100
-      middlewares: [{ name: onlyoffice-headers }, { name: strip-onlyoffice }]
+      middlewares: [{ name: strip-onlyoffice }]   # stripPrefix already sends X-Forwarded-Prefix; adding it again made "/onlyoffice, /onlyoffice"
       services: [{ name: onlyoffice, port: 80 }]
     - kind: Rule
       match: Host(`ipop.santos.co.id`) || Host(`ipop.192.168.2.89.nip.io`) || Host(`192.168.2.89`)
@@ -89,7 +89,7 @@ spec:
     - kind: Rule
       match: (Host(`ipop.santos.co.id`) || Host(`ipop.192.168.2.89.nip.io`) || Host(`192.168.2.89`)) && PathPrefix(`/onlyoffice`)
       priority: 100
-      middlewares: [{ name: onlyoffice-headers }, { name: strip-onlyoffice }]
+      middlewares: [{ name: strip-onlyoffice }]   # stripPrefix already sends X-Forwarded-Prefix; adding it again made "/onlyoffice, /onlyoffice"
       services: [{ name: onlyoffice, port: 80 }]
     - kind: Rule
       match: Host(`ipop.santos.co.id`) || Host(`ipop.192.168.2.89.nip.io`) || Host(`192.168.2.89`)

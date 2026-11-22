@@ -1,0 +1,68 @@
+/* File viewer (mockup docs/mockups/notifier/priority.html screen 5): always dark, the file in the middle,
+   toolbar on top, the message's files on the right. */
+html,body{background:#1c1c1e}
+body{color:#f5f5f7}
+.vw{height:100%;display:flex;flex-direction:column;background:#1c1c1e;color:#f5f5f7;--line:rgba(255,255,255,.14);--fill:rgba(118,118,128,.24);--accent:#30D158;--accent-ink:#5EE08A;--snack:#f5f5f7;--snack-ink:#1d1d1f;--snack-acc:#1C7A44}
+.vtb{height:36px;flex:none;display:flex;align-items:center;padding-left:14px}
+.vtb .t{font-size:12px;color:#98989d;display:flex;align-items:center;gap:8px}
+.vtb .t img{width:16px;height:16px;border-radius:4px;background:#fff;padding:1px}
+.vtb .sp,.vtool .sp{flex:1}
+.vw .wc{color:#aaa}.vw .wc:hover{background:rgba(255,255,255,.1);color:#fff}.vw .wc.x:hover{background:#e81123}
+.vtool{display:flex;align-items:center;gap:10px;padding:4px 16px 12px;border-bottom:1px solid rgba(255,255,255,.08);flex:none;min-width:0}
+.vtool .ft{height:28px;padding:0 8px;border-radius:7px;font-size:11px;display:grid;place-items:center;flex:none}
+.vmeta{min-width:0}
+.vtool .nm{font-size:15px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vtool .mt{font-size:12.5px;color:#98989d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.zoom{display:inline-flex;align-items:center;gap:4px}.zoom[hidden]{display:none}
+.zv{font-size:12.5px;color:#c7c7cc;width:46px;text-align:center;display:inline-block}
+.zv.tick{animation:tick .45s var(--bounce)}
+@keyframes tick{0%{transform:scale(1)}40%{transform:scale(1.38)}100%{transform:scale(1)}}
+.vbtn{height:34px;padding:0 12px;border-radius:8px;background:rgba(255,255,255,.1);color:#f5f5f7;font-size:13.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:background .15s,transform .15s;flex:none}
+.vbtn:hover{background:rgba(255,255,255,.17)}
+.vbtn:active{transform:scale(.95)}
+.vbtn:disabled{opacity:.45;cursor:default}
+.vbtn.p{background:#30D158;color:#06210f}
+.vbtn.p .ring{--accent:#06210f;--fill:rgba(6,33,15,.25)}
+.vbtn svg.lucide{width:16px;height:16px}
+.vbody{flex:1;position:relative;display:flex;min-height:0}
+.vstage{flex:1;overflow:auto;display:flex;justify-content:center;padding:28px;min-width:0}
+.vcontent{display:flex;flex-direction:column;align-items:center;gap:12px;width:100%;min-height:100%}
+.vcontent.inL{animation:slideL .42s var(--spring)}.vcontent.inR{animation:slideR .42s var(--spring)}.vcontent.inZ{animation:zoomIn .45s var(--spring)}.vcontent.inF{animation:fade .35s var(--spring)}
+@keyframes slideL{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:none}}
+@keyframes slideR{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:none}}
+@keyframes zoomIn{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:none}}
+.vpdf{flex:1;width:100%;min-height:400px;border:0;border-radius:6px;background:#fff;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+.vimgw{flex:1;width:100%;display:flex;justify-content:center;align-items:flex-start}
+.vimg{max-width:100%;border-radius:6px;box-shadow:0 10px 40px rgba(0,0,0,.5);transform:scale(var(--z,1));transform-origin:top center;transition:transform .35s var(--spring)}
+video.vmed{max-width:100%;max-height:100%;border-radius:6px;box-shadow:0 10px 40px rgba(0,0,0,.5);background:#000}
+audio.vmed{width:min(560px,100%);margin-top:18vh}
+.vconv{font-size:12px;color:#c7c7cc;background:rgba(255,255,255,.08);padding:5px 11px;border-radius:999px;display:inline-flex;align-items:center;gap:7px;flex:none}
+.vconv svg.lucide{width:13px;height:13px}
+.vconv .spin{width:12px;height:12px;border-radius:50%;border:1.5px solid currentColor;border-right-color:transparent;animation:spin .7s linear infinite;flex:none}
+.skel2{width:min(600px,100%);height:640px;background:#fff;border-radius:4px;padding:54px 60px;display:flex;flex-direction:column;gap:12px;box-shadow:0 10px 40px rgba(0,0,0,.5);flex:none}
+.skel2.wide{width:min(720px,100%);height:405px}
+.sk{height:10px;border-radius:5px;background:linear-gradient(90deg,#ececf0 30%,#f8f8fa 50%,#ececf0 70%);background-size:300% 100%;animation:shimmer 1.3s linear infinite}
+.sk.h{height:20px;width:55%}.sk.s{width:70%}.sk.t{height:90px}
+@keyframes shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
+.only{margin-top:12vh;width:min(420px,100%);background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:28px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center}
+.only .ft{width:56px;height:56px;border-radius:14px;font-size:13px;display:grid;place-items:center}
+.only b{font-size:17px}
+.only p{font-size:13.5px;color:#c7c7cc;line-height:1.5}
+.only .row{display:flex;gap:8px;margin-top:4px}
+.vnav{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.12);backdrop-filter:blur(10px);display:grid;place-items:center;color:#fff;transition:background .15s,transform .2s var(--spring);z-index:3}
+.vnav:hover{background:rgba(255,255,255,.22)}
+.vnav.l:active{transform:translateY(-50%) translateX(-3px) scale(.94)}.vnav.r:active{transform:translateY(-50%) translateX(3px) scale(.94)}
+.vnav.l{left:16px}.vnav.r{right:216px}
+.one .vnav,.one .vthumbs{display:none}
+.one .vnav.r{right:16px}
+.vthumbs{width:200px;flex:none;border-left:1px solid rgba(255,255,255,.08);padding:14px;display:flex;flex-direction:column;gap:8px;overflow-y:auto}
+.vthumbs .h{font-size:11.5px;font-weight:700;letter-spacing:.06em;color:#98989d;text-transform:uppercase;margin-bottom:2px}
+.vt{border-radius:10px;padding:8px;background:rgba(255,255,255,.05);display:flex;gap:9px;align-items:center;cursor:pointer;border:1.5px solid transparent;transition:background .15s,border-color .25s,transform .25s var(--spring);text-align:left;color:inherit;width:100%;flex:none}
+.vt:hover{background:rgba(255,255,255,.09);transform:translateX(-2px)}
+.vt.on{border-color:#30D158;background:rgba(48,209,88,.1)}
+.vt .ft{width:30px;height:30px;border-radius:7px;font-size:9px;display:grid;place-items:center;flex:none}
+.vt>div{min-width:0}
+.vt .n{font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vt .s{font-size:11.5px;color:#98989d}
+@media (max-width:820px){.vthumbs{display:none}.vnav.r{right:16px}}
+html.reduce-motion :is(.vcontent,.sk,.vconv .spin,.zv.tick){animation:none!important}html.reduce-motion :is(.vimg,.vnav,.vt){transition:none}

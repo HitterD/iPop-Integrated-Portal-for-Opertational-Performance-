@@ -20,7 +20,8 @@ public record NotificationEnqueueRequest(
     string Body,
     NotificationTarget Target,
     string? WebhookUrl = null,
-    string? TargetUrl = null);
+    string? TargetUrl = null,
+    Guid? ActorUserId = null);
 
 /// Result of EnqueueAsync. When successful, RequestId + the created deliveries are returned.
 public record NotificationEnqueueResult(
@@ -56,7 +57,8 @@ public record NotificationDeliveryState(
     string? Body = null,
     string? EventType = null,
     string? Priority = null,
-    string? TargetUrl = null);
+    string? TargetUrl = null,
+    Guid? ActorId = null);
 
 /// Status codes surfaced from the service. Use — not free strings — at the API boundary.
 public static class NotificationErrors

@@ -33,7 +33,7 @@
         <nav class="nav-scroll" aria-label="Main">
         @foreach (var group in NavGroups)
         {
-            var items = group.Items.Where(i => !i.AdminOnly || Auth.CanOpenAdmin).ToList();
+            var items = group.Items.Where(i => (!i.AdminOnly || Auth.CanOpenAdmin) && (i.Perm is null || Auth.Can(i.Perm))).ToList();
             @if (items.Count > 0)
             {
                 <div class="nav-group nav-g-@group.Key">
@@ -334,7 +334,7 @@
         }
     }
 
-    private record NavItem(string Label, string Icon, string Href, string? BadgeKey = null, bool AdminOnly = false, string? Tip = null)
+    private record NavItem(string Label, string Icon, string Href, string? BadgeKey = null, bool AdminOnly = false, string? Tip = null, string? Perm = null)
     {
         public string Tip { get; init; } = Tip ?? Label;
     }
@@ -349,6 +349,7 @@
             new("Projects", "kanban", "/projects"),
             new("Notes", "notebook-pen", "/notes"),
             new("Tickets", "life-buoy", "/tickets", BadgeKey: "tickets"),
+            new("The Hub", "messages-square", "/hub", BadgeKey: "hub", Tip: "The Hub: ask other departments, decide in writing", Perm: "hub.use"),
         ]),
         new("Communication", "comm", [
             new("Chat", "message-circle", "/chat", BadgeKey: "chat"),

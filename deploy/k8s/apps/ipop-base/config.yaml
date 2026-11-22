@@ -10,7 +10,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-2"
 data:
-  Workers__Outbound: "false"                                                    # CUTOVER: "true"
+  Workers__Outbound: "true"
   # .NET's background GC thread (".NET BGC") crashes with a general protection fault on these
   # KVM nodes (Ubuntu 26.04, kernel 7.0); non-concurrent GC ran 17/17 clean. Also baked into the images.
   DOTNET_gcConcurrent: "0"
@@ -45,10 +45,10 @@ data:
   AndroidApp__LatestPath: "/data/android/latest.json"
   # ONLYOFFICE runs in the cluster; the browser reaches it through the same host at /onlyoffice.
   OnlyOffice__ServerUrl: "http://onlyoffice.ipop.svc"
-  OnlyOffice__PublicServerUrl: "http://ipop.192.168.2.89.nip.io/onlyoffice"     # CUTOVER: https://ipop.santos.co.id/onlyoffice
+  OnlyOffice__PublicServerUrl: "https://ipop.santos.co.id/onlyoffice"
   OnlyOffice__InternalApiUrl: "http://ipop-api.ipop.svc"
   # LiveKit in the cluster: browsers use the public host (/rtc), the API talks to it directly.
-  Calls__LiveKit__Url: "ws://ipop.192.168.2.89.nip.io"                         # CUTOVER: wss://ipop.santos.co.id
+  Calls__LiveKit__Url: "wss://ipop.santos.co.id"
   Calls__LiveKit__ServerUrl: "http://livekit.ipop.svc:7880"
   # 1:1 calls: STUN on LiveKit's port 3478 (ipop-01, or ipop-02 after a failover). TURN relay stays off
   # as on the old host: it needs a sharedSecret (pentest V-02); inside the LAN STUN is enough.

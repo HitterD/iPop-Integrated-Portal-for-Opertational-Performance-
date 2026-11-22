@@ -60,7 +60,7 @@ public static class Toasts
             .AddAppLogoOverride(Logo, ToastGenericAppLogoCrop.Default)
             .AddAttributionText("iPop · Chat")
             .AddText(t.Title, hintMaxLines: 1)
-            .AddText(t.Body);
+            .AddText(t.Body.Length > 200 ? t.Body[..200] + "…" : t.Body);
         if (room is not null)
         {
             b.AddInputTextBox("reply", placeHolderContent: "Type a reply…")

@@ -83,7 +83,10 @@ public record MailSummaryDto(
     DateTime? ScheduledAt = null,
     bool IsMuted = false,
     /// Label yang menempel pada surat ini (Fase 3 — Surat Lanjutan).
-    IReadOnlyList<string>? Labels = null);
+    IReadOnlyList<string>? Labels = null,
+    /// The reader's own folder for this row ("inbox", "sent", "archive"…). Lists that span folders
+    /// (Starred, a label) need it to offer the right actions per row.
+    string? Folder = null);
 
 public record PagedResult<T>(IReadOnlyList<T> Items, int TotalCount, int Page, int PageSize);
 

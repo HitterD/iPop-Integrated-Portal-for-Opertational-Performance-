@@ -19,6 +19,8 @@ public sealed class Updater(IPopClient api)
     private string? managerFeed;
     private string? checkedContext;
     private string Context => api.Server + "|" + (api.Session?.Nik ?? "signed-out");
+    /// Who/where the next check is for; a change (sign-in, sign-out, switch) is worth checking again at once.
+    public string ContextKey => Context;
     public bool ContextChanged => checkedContext != Context;
     private readonly NotifierUpdateState timing = new(Path.Combine(SessionStore.Folder, "update.json"));
     private bool mandatory;

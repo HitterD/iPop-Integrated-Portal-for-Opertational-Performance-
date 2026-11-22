@@ -14,6 +14,8 @@ public static class NoteCoverImage
 {
     public const long MaxBytes = 10L * 1024 * 1024;
     public const int MaxWidth = 2000;
+    public const int MaxHeight = 2000;
+    public const long MaxPixels = 40_000_000;
 
     public sealed record Result(byte[] Bytes, string ContentType, string Extension, int Width, int Height);
 
@@ -28,10 +30,18 @@ public static class NoteCoverImage
             var format = Image.DetectFormat(input);
             if (format is not (JpegFormat or PngFormat or WebpFormat)) { error = format is null ? "not_an_image" : "unsupported_format"; return null; }
             input.Position = 0;
+            var info = Image.Identify(input);
+            if (info is null || info.Width <= 0 || info.Height <= 0) { error = "not_an_image"; return null; }
+            if ((long)info.Width * info.Height > MaxPixels) { error = "too_large"; return null; }
+            input.Position = 0;
             using var image = Image.Load(input);
             image.Mutate(x => x.AutoOrient());
-            if (image.Width > MaxWidth)
-                image.Mutate(x => x.Resize(new ResizeOptions { Size = new Size(MaxWidth, 0), Mode = ResizeMode.Max }));
+            image.Metadata.ExifProfile = null;
+            image.Metadata.XmpProfile = null;
+            image.Metadata.IptcProfile = null;
+            image.Metadata.IccProfile = null;
+            if (image.Width > MaxWidth || image.Height > MaxHeight)
+                image.Mutate(x => x.Resize(new ResizeOptions { Size = new Size(MaxWidth, MaxHeight), Mode = ResizeMode.Max }));
             using var ms = new MemoryStream();
             // PNG keeps its transparency; everything else is re-encoded as JPEG (small, and drops EXIF/GPS from phone photos).
             if (format is PngFormat) { image.SaveAsPng(ms); return new Result(ms.ToArray(), "image/png", ".png", image.Width, image.Height); }

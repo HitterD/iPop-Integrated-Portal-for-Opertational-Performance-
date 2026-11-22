@@ -1,4 +1,8 @@
+using System.Collections.Concurrent;
 using System.Security.Claims;
+using IPop.Application.Approval;
+using IPop.Application.Documents;
+using IPop.Application.Notifier;
 using IPop.Core.Entities;
 using IPop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -12,10 +16,19 @@ public record NotifierDeviceRow(Guid Id, string MachineName, string? WindowsUser
     string? LocalIps, string? RemoteIp, DateTime LastSeenAt, bool Online, string UserName, string? Department, string? Site,
     bool Unattended = false, bool HelperService = false);
 
+/// A leader of the signed-in person for the Notifier's priority inbox. Reason = why ("Manager", "General Manager",
+/// "BOD / GM level"). Never NIK or position (office rule).
+public record NotifierLeader(Guid Id, string Name, string? Department, string Reason);
+public record NotifierPerson(Guid Id, string Name, string? Department);
+public record NotifierLeaders(IReadOnlyList<NotifierLeader> Leaders, IReadOnlyList<NotifierPerson> Vips);
+
 /// iPop Notifier desktop app (docs/notifier/PLAN.md):
 ///   POST /api/notifier/devices/register  — the app reports this PC (sign-in and every heartbeat)
 ///   GET  /api/notifier/devices           — ICT/IT department or Admin: every PC for remote help (mockup v2 §3)
 ///   GET  /api/notifier/me                — who may see the hidden ICT menu
+///   GET  /api/notifier/leaders           — my leaders (approver chain + GM/Director/BOD) and my VIPs (1.5.0 priority inbox)
+///   GET  /api/notifier/people?q=         — VIP picker: active people by name/email
+///   POST /api/notifier/convert-preview   — Word/PowerPoint/Excel bytes → PDF for the viewer (nothing stored)
 /// Settings live in /api/me/ui-prefs/notifier (UiPrefsEndpoints).
 public static class NotifierEndpoints
 {
@@ -73,8 +86,166 @@ public static class NotifierEndpoints
             return Results.Ok(await ListAsync(db, q, DateTime.UtcNow, ct));
         });
 
+        g.MapGet("/leaders", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await MyId(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            return Results.Ok(await LeadersAsync(db, userId.Value, DateTime.UtcNow, ct));
+        });
+
+        g.MapGet("/people", async (string? q, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await MyId(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            return Results.Ok(await PeopleAsync(db, userId.Value, q, ct));
+        });
+
+        g.MapPost("/convert-preview", async (string? name, HttpContext http, IWordDocumentService word, IPresentationService slides,
+            ISpreadsheetService sheets, CancellationToken ct) =>
+        {
+            var (status, pdf, message) = await ConvertPreviewAsync(http.Request.Body, http.Request.ContentLength, name, word, slides, sheets, ct);
+            if (status != 200) return Results.Json(new { message }, statusCode: status);
+            var file = Path.GetFileName(name ?? "preview");
+            return Results.File(IPop.Infrastructure.Documents.PdfTitle.Set(pdf!, file), "application/pdf",
+                $"{Path.GetFileNameWithoutExtension(file)}.pdf");
+        }).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MaxPreviewBytes + 1));
+
         return app;
     }
+
+    // ── 1.5.0 priority inbox (docs/notifier/PRIORITY-150.md) ────────────────────
+
+    public const long MaxPreviewBytes = 60L * 1024 * 1024;
+    private static readonly SemaphoreSlim Conversions = new(2, 2);
+    private static readonly TimeSpan LeadersTtl = TimeSpan.FromMinutes(10);
+    private static readonly ConcurrentDictionary<Guid, (DateTime At, IReadOnlyList<NotifierLeader> Leaders)> LeadersCache = new();
+    public const string TopLevelReason = "BOD / GM level";
+    private static readonly string[] TopLevels = ["GENERAL MANAGER", "DIRECTOR"];
+
+    /// My leaders: everyone in my own approver chain (reason = the slot's label), every GM/Director (by the HC
+    /// workbook's level) and everyone sitting in slot 8 (GM) or 9 (Director) of any chain ("BOD / GM level"), minus
+    /// me. Leaders are cached 10 minutes per person; VIPs are read fresh from my Notifier settings.
+    public static async Task<NotifierLeaders> LeadersAsync(IPopDbContext db, Guid userId, DateTime now, CancellationToken ct)
+    {
+        IReadOnlyList<NotifierLeader> leaders;
+        if (LeadersCache.TryGetValue(userId, out var hit) && now - hit.At < LeadersTtl) leaders = hit.Leaders;
+        else
+        {
+            leaders = await ComputeLeadersAsync(db, userId, ct);
+            LeadersCache[userId] = (now, leaders);
+        }
+
+        var prefs = await db.UserUiPrefs.AsNoTracking().Where(p => p.UserId == userId && p.Key == "notifier").Select(p => p.Json).FirstOrDefaultAsync(ct);
+        var vipIds = NotifierSettings.Parse(prefs).Vips;
+        var found = vipIds.Count == 0 ? [] : await db.Users.AsNoTracking().Where(u => vipIds.Contains(u.Id) && u.IsActive)
+            .Select(u => new NotifierPerson(u.Id, u.Name, u.Department != null ? u.Department.Name : null)).ToListAsync(ct);
+        var byId = found.ToDictionary(v => v.Id);
+        var vips = vipIds.Where(byId.ContainsKey).Select(id => byId[id]).ToList();   // in the order the person added them
+        return new NotifierLeaders(leaders, vips);
+    }
+
+    /// Drops the cached leaders (tests; a chain import could call it too).
+    public static void ForgetLeaders(Guid? userId = null)
+    {
+        if (userId is { } id) LeadersCache.TryRemove(id, out _);
+        else LeadersCache.Clear();
+    }
+
+    private static async Task<IReadOnlyList<NotifierLeader>> ComputeLeadersAsync(IPopDbContext db, Guid userId, CancellationToken ct)
+    {
+        var myNik = await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.Nik).FirstOrDefaultAsync(ct);
+        if (myNik is null) return [];
+        var reasonByNik = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var mine = await db.ApproverChains.AsNoTracking().FirstOrDefaultAsync(c => c.Nik == myNik, ct);
+        if (mine is not null)
+        {
+            var slots = mine.Slots;
+            for (var i = 0; i < ApproverChain.SlotCount; i++)
+                if (slots[i] is { Length: > 0 } nik) reasonByNik.TryAdd(nik.Trim(), ApproverSlots.Labels[i]);
+        }
+
+        var top = await db.ApproverChains.AsNoTracking()
+            .Where(c => c.SourceLevel != null && TopLevels.Contains(c.SourceLevel.Trim().ToUpper()))
+            .Select(c => c.Nik).ToListAsync(ct);
+        var slotTop = await db.ApproverChains.AsNoTracking()
+            .Where(c => c.Slot8Nik != null || c.Slot9Nik != null)
+            .Select(c => new { c.Slot8Nik, c.Slot9Nik }).ToListAsync(ct);
+        foreach (var nik in top.Concat(slotTop.SelectMany(s => new[] { s.Slot8Nik, s.Slot9Nik })).OfType<string>())
+            if (nik.Trim().Length > 0) reasonByNik.TryAdd(nik.Trim(), TopLevelReason);
+        reasonByNik.Remove(myNik);
+        if (reasonByNik.Count == 0) return [];
+
+        var niks = reasonByNik.Keys.ToList();
+        var users = await db.Users.AsNoTracking().Where(u => niks.Contains(u.Nik) && u.IsActive && u.Id != userId)
+            .Select(u => new { u.Id, u.Nik, u.Name, Department = u.Department != null ? u.Department.Name : null }).ToListAsync(ct);
+        // My own chain first (slot order), then the GM/BOD level, each by name.
+        var order = ApproverSlots.Labels.Select((l, i) => (l, i)).ToDictionary(x => x.l, x => x.i);
+        return users
+            .Select(u => new NotifierLeader(u.Id, u.Name, u.Department, reasonByNik[u.Nik]))
+            .OrderBy(l => order.GetValueOrDefault(l.Reason, int.MaxValue)).ThenBy(l => l.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// VIP picker: up to 12 active people (not me) whose name or email contains <paramref name="q"/> (2+ characters).
+    public static async Task<List<NotifierPerson>> PeopleAsync(IPopDbContext db, Guid userId, string? q, CancellationToken ct)
+    {
+        var term = (q ?? "").Trim().ToLowerInvariant();
+        if (term.Length < 2) return [];
+        if (term.Length > 100) term = term[..100];
+        return await db.Users.AsNoTracking()
+            .Where(u => u.IsActive && u.Id != userId && (u.Name.ToLower().Contains(term) || u.Email.ToLower().Contains(term)))
+            .OrderBy(u => u.Name).Take(12)
+            .Select(u => new NotifierPerson(u.Id, u.Name, u.Department != null ? u.Department.Name : null))
+            .ToListAsync(ct);
+    }
+
+    /// 200 + PDF, 413 over 60 MB, 415 not Word/PowerPoint (.pptx)/Excel, 400 empty, 422 the file couldn't be converted.
+    /// Two conversions at a time; the rest wait. The app already holds the bytes (downloaded with the person's own
+    /// access), so there is no access check and nothing is stored.
+    public static async Task<(int Status, byte[]? Pdf, string? Message)> ConvertPreviewAsync(Stream body, long? length, string? name,
+        IWordDocumentService word, IPresentationService slides, ISpreadsheetService sheets, CancellationToken ct)
+    {
+        const string tooLarge = "This file is too large to preview (60 MB at most).";
+        var ext = Path.GetExtension(name ?? "").ToLowerInvariant();
+        var kind = ext switch
+        {
+            ".doc" or ".docx" or ".rtf" or ".odt" => "word",
+            ".pptx" => "slides",
+            ".xlsx" or ".xls" or ".xlsm" or ".csv" => "sheet",
+            _ => null,
+        };
+        if (kind is null) return (415, null, "Only Word, PowerPoint (.pptx) and Excel files can be previewed.");
+        if (length > MaxPreviewBytes) return (413, null, tooLarge);
+
+        using var buffer = new MemoryStream();
+        var chunk = new byte[81920];
+        int n;
+        while ((n = await body.ReadAsync(chunk, ct)) > 0)
+        {
+            if (buffer.Length + n > MaxPreviewBytes) return (413, null, tooLarge);
+            buffer.Write(chunk, 0, n);
+        }
+        if (buffer.Length == 0) return (400, null, "The file is empty.");
+        buffer.Position = 0;
+
+        await Conversions.WaitAsync(ct);
+        try
+        {
+            var pdf = kind switch
+            {
+                "word" => await word.ConvertToPdfAsync(buffer, ct),
+                "slides" => await slides.ConvertToPdfAsync(buffer, ct),
+                _ => await sheets.ConvertToPdfAsync(buffer, ext, ct),
+            };
+            return (200, pdf, null);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return (422, null, "This file couldn't be prepared for preview. Download it to open it.");
+        }
+        finally { Conversions.Release(); }
+    }
+
 
     /// 204 saved, 400 invalid. Upserts by (user, device key); trims everything to the column sizes.
     public static async Task<int> RegisterAsync(IPopDbContext db, Guid userId, NotifierDeviceReport r, string? remoteIp, DateTime now, CancellationToken ct)

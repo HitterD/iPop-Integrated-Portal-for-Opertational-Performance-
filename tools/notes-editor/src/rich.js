@@ -89,13 +89,28 @@ export const NoteImage = Node.create({
       size: { default: 0, parseHTML: e => +e.getAttribute('data-size') || 0 },
       // Width is a % of the text column so it fits on phones too; older images are full width.
       width: { default: 100, parseHTML: e => Math.min(100, Math.max(15, +e.getAttribute('data-width') || 100)) },
+      originalWidth: { default: null, parseHTML: e => Math.max(0, +e.getAttribute('data-original-width') || 0) || null },
+      originalSize: { default: false, parseHTML: e => e.getAttribute('data-original-size') === 'true' },
       align: { default: 'center', parseHTML: e => ['left', 'right'].includes(e.getAttribute('data-align')) ? e.getAttribute('data-align') : 'center' },
       caption: { default: '', parseHTML: e => e.getAttribute('data-caption') || '' },
+      // A picture pasted from a web page before it is saved here: its web address. The pasting editor copies it into the page
+      // (then `id` is set and `src` cleared); if that fails it stays as a picture shown from the website, marked "External".
+      src: { default: null, parseHTML: e => e.getAttribute('data-src') || null },
     };
   },
-  parseHTML() { return [{ tag: 'figure[data-image]' }]; },
+  parseHTML() {
+    return [
+      { tag: 'figure[data-image]', priority: 60 },
+      // <img> from other apps and web pages: web and data: pictures only (blob: addresses die with the tab they came from)
+      { tag: 'img[src]', getAttrs: e => {
+        const src = e.getAttribute('src') || '';
+        if (!/^(https?:|data:image\/(png|jpe?g|gif|webp);base64,)/i.test(src)) return false;
+        return { src, name: (e.getAttribute('alt') || '').slice(0, 120) };
+      } },
+    ];
+  },
   renderHTML({ node: { attrs: a } }) {
-    return ['figure', { 'data-image': '', 'data-id': a.id, 'data-name': a.name, 'data-size': a.size, 'data-width': a.width, 'data-align': a.align, 'data-caption': a.caption }];
+    return ['figure', { 'data-image': '', 'data-id': a.id, 'data-name': a.name, 'data-size': a.size, 'data-width': a.width, 'data-original-width': a.originalWidth, 'data-original-size': String(a.originalSize), 'data-align': a.align, 'data-caption': a.caption, ...(a.src ? { 'data-src': a.src } : {}) }];
   },
   addOptions() { return { host: null }; },
   addNodeView() {
@@ -133,7 +148,7 @@ export const NoteImage = Node.create({
             const up = () => {
               cancelResize();
               const snap = SNAPS.find(s => Math.abs(pct - s) <= 5);
-              set({ width: snap ?? pct });
+              set({ width: snap ?? pct, originalSize: false });
             };
             cancelResize = () => {
               window.removeEventListener('pointermove', move);
@@ -154,7 +169,7 @@ export const NoteImage = Node.create({
 
       const paint = n => {
         dom.className = `nt-img al-${n.attrs.align}`;
-        dom.style.setProperty('--w', `${n.attrs.width}%`);
+        dom.style.setProperty('--w', n.attrs.originalSize && n.attrs.originalWidth > 0 ? `min(100%, ${n.attrs.originalWidth}px)` : `${n.attrs.width}%`);
         if (editable) { if (document.activeElement !== capEl) capEl.value = n.attrs.caption || ''; }
         else { capEl.textContent = n.attrs.caption || ''; capEl.hidden = !n.attrs.caption; }
       };
@@ -163,12 +178,21 @@ export const NoteImage = Node.create({
         const img = document.createElement('img'); img.src = url; img.alt = node.attrs.caption || node.attrs.name; img.draggable = false;
         box.replaceChildren(img);
       }).catch(() => { box.querySelector('.nt-img-wait').textContent = "Couldn't load the image"; });
+      else if (node.attrs.src) {
+        // not saved here (yet): shown straight from the website, no cookies or referrer sent
+        const img = document.createElement('img'); img.src = node.attrs.src; img.alt = node.attrs.caption || node.attrs.name || ''; img.draggable = false;
+        img.referrerPolicy = 'no-referrer';
+        img.onerror = () => { box.innerHTML = '<span class="nt-img-wait">Couldn’t load the picture from the website</span>'; };
+        const tag = el('span', 'nt-img-ext', 'External');
+        tag.title = 'Shown from the website it was copied from. It disappears if that website removes it.';
+        box.replaceChildren(img, tag);
+      }
 
       const view = () => { const all = pageImages(editor.state.doc); openLightbox(host, all, all.findIndex(x => x.id === node.attrs.id)); };
       dom.addEventListener(editable ? 'dblclick' : 'click', e => { if (!e.target.closest('input,.rs')) view(); });
       return {
         dom,
-        update(n) { if (n.type.name !== 'noteImage' || n.attrs.id !== node.attrs.id) return false; node = n; paint(n); return true; },
+        update(n) { if (n.type.name !== 'noteImage' || n.attrs.id !== node.attrs.id || n.attrs.src !== node.attrs.src) return false; node = n; paint(n); return true; },
         ignoreMutation: () => true,
         stopEvent: e => !!e.target.closest?.('input,.rs'),
         destroy: () => cancelResize(),
@@ -412,6 +436,9 @@ export const RichTaskItem = TaskItem.extend({
       assigneeName: { default: null, keepOnSplit: false, parseHTML: e => e.getAttribute('data-assignee'), renderHTML: a => a.assigneeName ? { 'data-assignee': a.assigneeName } : {} },
       completedOn: { default: null, keepOnSplit: false, parseHTML: e => validDue(e.getAttribute('data-completed')), renderHTML: a => a.completedOn ? { 'data-completed': a.completedOn } : {} },
       due: { default: null, keepOnSplit: false, parseHTML: e => validDue(e.getAttribute('data-due')), renderHTML: a => a.due ? { 'data-due': a.due } : {} },
+      // The Projects task this to-do was turned into ("→ Task"). Survives edits to the text; sent with every save so the server can complete it.
+      taskId: { default: null, keepOnSplit: false, parseHTML: e => (/^[0-9a-f-]{36}$/i.test(e.getAttribute('data-task-id') || '') ? e.getAttribute('data-task-id') : null), renderHTML: a => a.taskId ? { 'data-task-id': a.taskId } : {} },
+      taskName: { default: null, keepOnSplit: false, parseHTML: e => e.getAttribute('data-task-name'), renderHTML: a => a.taskName ? { 'data-task-name': a.taskName } : {} },
     };
   },
 });
@@ -435,7 +462,7 @@ export function todoInsertPos(doc, pos) {
 const todoKey = new PluginKey('todoExtras');
 export const TodoExtras = Extension.create({
   name: 'todoExtras',
-  addOptions() { return { onMenu: null, onChip: null }; },
+  addOptions() { return { onMenu: null, onChip: null, onOpenTask: null }; },
   addProseMirrorPlugins() {
     const editor = this.editor, opts = this.options;
     return [new Plugin({
@@ -496,8 +523,8 @@ function buildTodoDecorations(state, editor, opts) {
       }, { side: -1, key: `tp-${done}-${total}`, ignoreSelection: true }));
     }
     if (t !== 'taskItem' || node.firstChild?.type.name !== 'paragraph') return;
-    const { assigneeId, assigneeName, due, checked, completedOn } = node.attrs;
-    if (!assigneeId && !due && !completedOn && !editable) return;
+    const { assigneeId, assigneeName, due, checked, completedOn, taskId } = node.attrs;
+    if (!assigneeId && !due && !completedOn && !taskId && !editable) return;
     const at = pos + 1 + node.firstChild.nodeSize - 1;
     decos.push(Decoration.widget(at, (view, getPos) => {
       const d = el('span', 'nt-tmeta');
@@ -508,6 +535,7 @@ function buildTodoDecorations(state, editor, opts) {
         c.title = !checked && due < today ? 'Overdue' : 'Due date';
         d.append(c);
       }
+      if (taskId) { const c = el('button', 'chip task', `▣ ${esc(node.attrs.taskName || 'Task')}`); c.title = 'Open the task in Projects'; c.dataset.task = taskId; d.append(c); }
       if (checked && completedOn) d.append(el('span', 'chip done', `✓ Done ${esc(fmtDue(completedOn))}`));
       if (editable) { const m = el('button', 'more', '⋯'); m.title = 'Photo, file, sub-item, assignee, due date'; m.setAttribute('aria-label', 'To-do options'); d.append(m); }
       d.querySelectorAll('button').forEach(b => { b.type = 'button'; b.tabIndex = -1; });
@@ -516,11 +544,12 @@ function buildTodoDecorations(state, editor, opts) {
         const b = e.target.closest('button'); if (!b || !editable) return;
         const it = taskItemAt(view.state.doc, getPos());
         if (!it) return;
+        if (b.dataset.task) { opts.onOpenTask?.(b.dataset.task); return; }
         if (b.classList.contains('more')) opts.onMenu?.(it.pos, b);
         else opts.onChip?.(it.pos, b, b.classList.contains('who') ? 'who' : 'due');
       });
       return d;
-    }, { side: 1, key: `tm-${assigneeId}-${assigneeName}-${due}-${checked}-${completedOn}-${editable}-${due && due < today}`, ignoreSelection: true, stopEvent: () => true }));
+    }, { side: 1, key: `tm-${assigneeId}-${assigneeName}-${due}-${checked}-${completedOn}-${editable}-${due && due < today}-${taskId}-${node.attrs.taskName}`, ignoreSelection: true, stopEvent: () => true }));
   });
   return DecorationSet.create(state.doc, decos);
 }
@@ -557,9 +586,10 @@ export function createRichUi(editor, host) {
     imgBar.innerHTML = n.type.name === 'noteGallery'
       ? '<button data-i="view">View</button><button data-i="ungroup">Ungroup</button><span class="div"></span><button data-i="del" class="danger">Delete</button>'
       : (inTodo ? '' : ['left', 'center', 'right'].map(x => `<button data-i="al-${x}" class="${a.align === x ? 'on' : ''}" title="Align ${x}">${cap(x)}</button>`).join('')
-        + '<span class="div"></span>' + [['S', 33], ['M', 60], ['Full', 100]].map(([k, v]) => `<button data-i="w-${v}" class="${a.width === v ? 'on' : ''}">${k}</button>`).join('')
+        + '<span class="div"></span>' + [['S', 33], ['M', 60], ['Full', 100]].map(([k, v]) => `<button data-i="w-${v}" class="${!a.originalSize && a.width === v ? 'on' : ''}">${k}</button>`).join('')
+        + (a.originalWidth > 0 ? `<button data-i="original" class="${a.originalSize ? 'on' : ''}" title="Original size, up to the page width">Original</button>` : '')
         + '<span class="div"></span><button data-i="cap">Caption</button>')
-        + '<button data-i="view">View</button><button data-i="dl">Download</button><span class="div"></span><button data-i="del" class="danger">Delete</button>';
+        + `<button data-i="view">View</button><button data-i="copy" title="Copy the picture (Ctrl C) — paste it in another note, Chat, Mail or Word">Copy</button>${a.id ? '<button data-i="dl">Download</button>' : ''}<span class="div"></span><button data-i="del" class="danger">Delete</button>`;
     const dom = editor.view.nodeDOM(sel.from);
     if (dom) above(imgBar, (dom.querySelector?.('.nt-img-frame') || dom).getBoundingClientRect());
   }
@@ -567,10 +597,12 @@ export function createRichUi(editor, host) {
     const b = e.target.closest('[data-i]'); const n = nodeAt(imgPos); if (!b || !n) return;
     const k = b.dataset.i;
     if (k.startsWith('al-')) setAttrs(imgPos, { align: k.slice(3) });
-    else if (k.startsWith('w-')) setAttrs(imgPos, { width: +k.slice(2) });
+    else if (k.startsWith('w-')) setAttrs(imgPos, { width: +k.slice(2), originalSize: false });
+    else if (k === 'original' && n.attrs.originalWidth > 0) setAttrs(imgPos, { originalSize: true });
     else if (k === 'cap') { editor.view.nodeDOM(imgPos)?.querySelector('input.nt-img-cap')?.focus(); imgBar.classList.remove('show'); return; }
     else if (k === 'view') { const all = pageImages(editor.state.doc); const id = n.type.name === 'noteGallery' ? galleryItems(n)[0]?.id : n.attrs.id; openLightbox(host, all, all.findIndex(x => x.id === id)); }
     else if (k === 'dl') download(host, n.attrs.id, n.attrs.name);
+    else if (k === 'copy') { host.copyImage?.(n).then(ok => host.toast?.(ok ? 'Picture copied' : 'Couldn’t copy the picture — right-click it and choose Copy image')); }
     else if (k === 'del') editor.chain().focus().deleteRange({ from: imgPos, to: imgPos + n.nodeSize }).run();
     else if (k === 'ungroup') editor.chain().focus().insertContentAt({ from: imgPos, to: imgPos + n.nodeSize }, galleryItems(n).map(it => ({ type: 'noteImage', attrs: { ...it, size: it.size || 0 } }))).run();
     syncImg();
@@ -706,7 +738,8 @@ export function createRichUi(editor, host) {
       + '<div class="mi" data-m="sub"><span class="sw">↳</span>Add sub-item<span class="ds">Tab</span></div><hr>'
       + `<div class="mi" data-m="who"><span class="sw">@</span>${n?.attrs.assigneeId ? 'Change person' : 'Assign person'}</div>`
       + (n?.attrs.assigneeId ? '<div class="mi" data-m="unwho"><span class="sw">⊘</span>Remove person</div>' : '')
-      + `<div class="mi" data-m="due"><span class="sw">📅</span>${n?.attrs.due ? 'Change due date' : 'Due date'}</div><hr>`
+      + `<div class="mi" data-m="due"><span class="sw">📅</span>${n?.attrs.due ? 'Change due date' : 'Due date'}</div>`
+      + (n?.attrs.taskId ? '<div class="mi" data-m="task-open"><span class="sw">▣</span>Open task in Projects</div>' : '<div class="mi" data-m="task"><span class="sw">▣</span>Make a task in Projects…<span class="ds">→ Task</span></div>') + '<hr>'
       + '<div class="mi danger" data-m="del"><span class="sw">🗑</span>Delete item</div>';
     place(todoMenu, anchor.getBoundingClientRect(), { align: 'right' });
   }
@@ -729,6 +762,15 @@ export function createRichUi(editor, host) {
       case 'who': openPeople(itemPos, anchor); break;
       case 'unwho': setItemAttrs({ assigneeId: null, assigneeName: null }); break;
       case 'due': openDue(itemPos, anchor); break;
+      case 'task-open': host.openTask?.(n.attrs.taskId); break;
+      case 'task': {
+        const pos = itemPos;
+        const text = (n.firstChild?.textContent ?? '').trim();
+        host.todoToTask?.({ id: pos, text, dueIso: n.attrs.due || null, assigneeId: n.attrs.assigneeId || null, assigneeName: n.attrs.assigneeName || null })
+          .then(t => { if (t) { const cur = nodeAt(pos); if (cur?.type.name === 'taskItem') setAttrs(pos, { taskId: t.id, taskName: t.project ? `${t.project}` : 'Task' }); host.toast?.(`Task created in ${t.project || 'Projects'}`); } })
+          .catch(() => host.toast?.('Couldn’t create the task'));
+        break;
+      }
       case 'del': editor.chain().focus().deleteRange({ from: itemPos, to: itemPos + n.nodeSize }).run(); break;
     }
   });

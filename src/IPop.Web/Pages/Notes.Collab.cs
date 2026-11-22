@@ -28,6 +28,87 @@ public partial class Notes
         await InvokeAsync(StateHasChanged);
     }
     private Guid? focusThread;
+
+    // ── Margin comments (desktop) ────────────────────────────────────────────
+    // Open threads anchored to text are cards in the right margin, level with their text. When the screen is too narrow (or the
+    // page is full width) they become count bubbles beside the line, and a click opens the thread in a popover. The side drawer
+    // is only for All / Resolved. The editor bundle measures positions (margin-comments.js); here we only render.
+    private ElementReference pageWrapRef, pageRef, marginRef;
+    private IJSObjectReference? marginJs;
+    private bool marginMode;
+    private Guid? bubbleThread;
+    private int bubbleX, bubbleY;
+
+    private bool MarginMode => marginMode && !Phone.IsPhone && note?.Kind != "board" && !(note?.FullWidth ?? false);
+
+    /// Open threads pinned to text, in the order they appear on the page is decided in the browser; here: oldest first.
+    private IEnumerable<NoteThreadDto> OpenAnchoredThreads =>
+        threads.Where(t => t.ResolvedAt is null && t.Anchor is not null).OrderBy(t => t.CreatedAt);
+
+    /// Called after every render: (re)creates the margin layout once the page is on screen, and re-measures.
+    private async Task MarginAfterRenderAsync()
+    {
+        if (module is null || Phone.IsPhone || view != View.Page || note is null || note.Kind == "board" || editor is null)
+        {
+            if (marginJs is not null && (Phone.IsPhone || view != View.Page || note is null || note.Kind == "board")) await DisposeMarginAsync();
+            return;
+        }
+        if (marginCreating) return;
+        marginCreating = true;
+        var pageId = note.Id;
+        var ed = editor;
+        try
+        {
+            if (marginJs is null || marginFor != pageId)
+            {
+                await DisposeMarginAsync();
+                if (disposed || note?.Id != pageId || editor != ed || Phone.IsPhone || view != View.Page) return;
+                var js = await ed.InvokeAsync<IJSObjectReference>("margin", scrollRef, pageRef, marginRef, selfRef);
+                if (disposed || note?.Id != pageId || editor != ed || Phone.IsPhone || view != View.Page)
+                {
+                    await TryJsAsync(async () => { await js.InvokeVoidAsync("destroy"); await js.DisposeAsync(); });
+                    return;
+                }
+                marginFor = pageId;
+                marginJs = js;
+            }
+            if (marginJs is not null) await marginJs.InvokeVoidAsync("layout");
+        }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+        finally { marginCreating = false; }
+    }
+    private Guid? marginFor;
+    private bool marginCreating;
+
+    private async Task DisposeMarginAsync()
+    {
+        var js = marginJs; marginJs = null; marginFor = null;
+        if (js is null) return;
+        try { await js.InvokeVoidAsync("destroy"); await js.DisposeAsync(); }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+    }
+
+    [JSInvokable]
+    public void OnMarginMode(string mode)
+    {
+        var on = mode == "margin";
+        if (on == marginMode) return;
+        marginMode = on;
+        StateHasChanged();
+    }
+
+    private async Task OpenBubble(Guid id)
+    {
+        bubbleThread = bubbleThread == id ? null : id;
+        focusThread = id;
+        if (bubbleThread is not null && marginJs is not null)
+        {
+            try { var pos = await marginJs.InvokeAsync<int[]>("bubbleAt", id); bubbleX = pos[0]; bubbleY = pos[1]; } catch (JSException) { }
+        }
+        await PushThreadsAsync();
+    }
     private readonly Dictionary<Guid, string?> replies = [];
     private CommentDraft? draft;
     private Guid? cmtMentionTarget;
@@ -80,7 +161,7 @@ public partial class Notes
     {
         if (!CanComment) return;
         draft = new CommentDraft(quote.Length > 300 ? quote[..300] + "…" : quote, anchor);
-        commentsOpen = true;
+        commentsOpen = !(MarginMode && anchor is not null);   // wide screen + text selected: the box appears in the margin next to the text; otherwise the drawer opens
         focusDraft = true;
         StateHasChanged();
     }
@@ -89,8 +170,12 @@ public partial class Notes
     public async Task OnThreadClick(string id)
     {
         if (!Guid.TryParse(id, out var g)) return;
+        var resolved = threads.FirstOrDefault(t => t.Id == g) is { ResolvedAt: not null };
+        // an open thread on a wide screen is already in the margin: just lift its card; everything else uses the drawer / popover
+        if (!Phone.IsPhone && !resolved && MarginMode) { focusThread = g; await PushThreadsAsync(); StateHasChanged(); return; }
+        if (!Phone.IsPhone && !resolved && note?.Kind != "board") { await OpenBubble(g); StateHasChanged(); return; }
         commentsOpen = true;
-        if (threads.FirstOrDefault(t => t.Id == g) is { ResolvedAt: not null }) showResolved = true;
+        if (resolved) showResolved = true;
         focusThread = g;
         await PushThreadsAsync();
         StateHasChanged();
@@ -99,7 +184,8 @@ public partial class Notes
     private async Task FocusThread(Guid id)
     {
         focusThread = id;
-        if (editor is not null) await editor.InvokeVoidAsync("focusThread", id);
+        if (editor is not null) await TryJsAsync(() => editor.InvokeVoidAsync("focusThread", id).AsTask());
+        if (marginJs is not null) await TryJsAsync(() => marginJs.InvokeVoidAsync("layout").AsTask());
     }
 
     private void ToggleComments() => commentsOpen = !commentsOpen;
@@ -166,14 +252,18 @@ public partial class Notes
 
     private async Task PostDraft()
     {
-        if (note is null || draft is null || string.IsNullOrWhiteSpace(draft.Body) || busy) return;
+        if (note is null || !CanComment || draft is null || string.IsNullOrWhiteSpace(draft.Body) || busy) return;
+        var pageId = note.Id;
+        var curDraft = draft;
         busy = true;
         try
         {
-            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notes/{note.Id}/threads",
-                new CreateNoteThreadRequest(draft.Quote, draft.Anchor, draft.Body.Trim(), ResolveCommentMentions(draft.Body)));
+            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notes/{pageId}/threads",
+                new CreateNoteThreadRequest(curDraft.Quote, curDraft.Anchor, curDraft.Body.Trim(), ResolveCommentMentions(curDraft.Body)));
+            if (disposed || note?.Id != pageId) return;
             if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't post your comment", ToastKind.Error); return; }
             var t = await res.Content.ReadFromJsonAsync<NoteThreadDto>(Json);
+            if (disposed || note?.Id != pageId) return;
             draft = null;
             if (t is not null)
             {
@@ -193,14 +283,16 @@ public partial class Notes
 
     private async Task Reply(NoteThreadDto t)
     {
-        if (note is null) return;
+        if (note is null || !CanComment) return;
+        var pageId = note.Id;
         var body = replies.GetValueOrDefault(t.Id)?.Trim();
         if (string.IsNullOrEmpty(body)) return;
         replies[t.Id] = null;
-        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notes/{note.Id}/threads/{t.Id}/replies", new NoteReplyRequest(body, ResolveCommentMentions(body)));
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notes/{pageId}/threads/{t.Id}/replies", new NoteReplyRequest(body, ResolveCommentMentions(body)));
+        if (disposed || note?.Id != pageId) return;
         if (!res.IsSuccessStatusCode) { replies[t.Id] = body; Toasts.Show("Couldn't send your reply", ToastKind.Error); return; }
         var updated = await res.Content.ReadFromJsonAsync<NoteThreadDto>(Json);
-        if (updated is not null) threads = threads.Select(x => x.Id == updated.Id ? updated : x).ToList();
+        if (!disposed && note?.Id == pageId && updated is not null) threads = threads.Select(x => x.Id == updated.Id ? updated : x).ToList();
     }
 
     // ── Edit / delete / react ────────────────────────────────────────────────
@@ -231,9 +323,12 @@ public partial class Notes
     private async Task SaveEditAsync(NoteThreadDto t, NoteCommentDto c)
     {
         if (note is null || string.IsNullOrWhiteSpace(editText)) return;
-        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/notes/{note.Id}/comments/{c.Id}", new { body = editText.Trim() });
+        var pageId = note.Id;
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/notes/{pageId}/comments/{c.Id}", new { body = editText.Trim() });
+        if (disposed || note?.Id != pageId) return;
         if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't save your edit", ToastKind.Error); return; }
         var updated = await res.Content.ReadFromJsonAsync<NoteThreadDto>(Json);
+        if (disposed || note?.Id != pageId) return;
         if (updated is not null) threads = threads.Select(x => x.Id == updated.Id ? updated : x).ToList();
         CancelEdit();
     }
@@ -241,9 +336,12 @@ public partial class Notes
     private async Task DeleteCommentAsync(NoteThreadDto t, NoteCommentDto c)
     {
         if (note is null) return;
+        var pageId = note.Id;
         var detail = t.Comments.Count == 1 ? "It is the only comment in this thread, so the thread goes with it." : "This can't be undone.";
         if (!await Confirm.AskAsync("Delete this comment?", detail, "Delete")) return;
-        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/notes/{note.Id}/comments/{c.Id}");
+        if (disposed || note?.Id != pageId) return;
+        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/notes/{pageId}/comments/{c.Id}");
+        if (disposed || note?.Id != pageId) return;
         if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't delete the comment", ToastKind.Error); return; }
         await LoadThreadsAsync();
     }
@@ -251,18 +349,22 @@ public partial class Notes
     private async Task ReactAsync(NoteThreadDto t, NoteCommentDto c, string emoji)
     {
         if (note is null || !CanComment) return;
+        var pageId = note.Id;
         reactionPickerFor = null;
-        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/notes/{note.Id}/comments/{c.Id}/reactions", new { emoji });
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/notes/{pageId}/comments/{c.Id}/reactions", new { emoji });
+        if (disposed || note?.Id != pageId) return;
         if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't add your reaction", ToastKind.Error); return; }
         var updated = await res.Content.ReadFromJsonAsync<NoteThreadDto>(Json);
-        if (updated is not null) threads = threads.Select(x => x.Id == updated.Id ? updated : x).ToList();
+        if (!disposed && note?.Id == pageId && updated is not null) threads = threads.Select(x => x.Id == updated.Id ? updated : x).ToList();
     }
 
     private async Task Resolve(NoteThreadDto t)
     {
         if (note is null) return;
+        var pageId = note.Id;
         var resolve = t.ResolvedAt is null;
-        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/notes/{note.Id}/threads/{t.Id}/resolved", new { resolved = resolve });
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/notes/{pageId}/threads/{t.Id}/resolved", new { resolved = resolve });
+        if (disposed || note?.Id != pageId) return;
         if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't update the comment", ToastKind.Error); return; }
         threads = threads.Select(x => x.Id == t.Id ? x with { ResolvedAt = resolve ? DateTime.UtcNow : null } : x).ToList();
         note = note with { OpenThreads = threads.Count(x => x.ResolvedAt is null) };
@@ -291,7 +393,10 @@ public partial class Notes
     private async Task LoadSharesAsync()
     {
         if (note is null) return;
-        shares = await Auth.GetAsync<NoteSharesDto>($"/api/notes/{note.Id}/shares");
+        var pageId = note.Id;
+        var loaded = await Auth.GetAsync<NoteSharesDto>($"/api/notes/{pageId}/shares");
+        if (disposed || note?.Id != pageId) return;
+        shares = loaded;
     }
 
     private async Task OpenSendTab()
@@ -425,9 +530,13 @@ public partial class Notes
     private async Task OpenHistory()
     {
         if (note is null) return;
+        var pageId = note.Id;
         pop = Pop.History; versions = null; selVersion = null; selVersionState = null;
-        if (editor is not null) await editor.InvokeVoidAsync("flushNow");
-        versions = await Auth.GetAsync<List<NoteVersionDto>>($"/api/notes/{note.Id}/versions") ?? [];
+        showDiff = false; diffLines = null; namingVersion = false; renameVersionText = ""; newVersionName = "";
+        if (editor is not null) await TryJsAsync(() => editor.InvokeVoidAsync("flushNow").AsTask());
+        var loaded = await Auth.GetAsync<List<NoteVersionDto>>($"/api/notes/{pageId}/versions") ?? [];
+        if (disposed || note?.Id != pageId || pop != Pop.History) return;
+        versions = loaded;
         if (versions.Count > 0) await SelectVersion(versions[0].Id);
     }
 
@@ -439,7 +548,7 @@ public partial class Notes
         if (note is null || !Guid.TryParse(versionId, out var vid)) return;
         await OpenHistory();
         if (versions?.Any(v => v.Id == vid) == true) await SelectVersion(vid);
-        await InvokeAsync(StateHasChanged);
+        if (!disposed) await InvokeAsync(StateHasChanged);
     }
 
     /// "Send to Chat" from the board's menu: the page's Share dialog, on the chat tab.
@@ -449,7 +558,7 @@ public partial class Notes
         if (!IsOwner) return;
         await OpenShare();
         await OpenSendTab();
-        await InvokeAsync(StateHasChanged);
+        if (!disposed) await InvokeAsync(StateHasChanged);
     }
 
     private record VersionState(string State);
@@ -457,12 +566,15 @@ public partial class Notes
     private async Task SelectVersion(Guid vid)
     {
         if (note is null) return;
+        var pageId = note.Id;
         selVersion = vid;
-        var v = await Auth.GetAsync<VersionState>($"/api/notes/{note.Id}/versions/{vid}");
-        if (selVersion != vid || v is null) return;
+        showDiff = false; diffLines = null; namingVersion = false;
+        var v = await Auth.GetAsync<VersionState>($"/api/notes/{pageId}/versions/{vid}");
+        if (disposed || note?.Id != pageId || selVersion != vid || v is null) return;
         selVersionState = v.State;
         StateHasChanged();
         await Task.Yield();
+        if (disposed || note?.Id != pageId || selVersion != vid) return;
         await RenderPreviewAsync();
     }
 
@@ -486,17 +598,23 @@ public partial class Notes
 
     private async Task RestoreVersion()
     {
-        if (editor is null || selVersionState is null || versions is null) return;
-        var v = versions.First(x => x.Id == selVersion);
+        if (note is null || !CanEdit || editor is null || selVersionState is null || versions is null) return;
+        var pageId = note.Id;
+        var state = selVersionState;
+        var v = versions.FirstOrDefault(x => x.Id == selVersion);
+        if (v is null) return;
         if (!await Confirm.AskAsync("Restore this version?", $"The page content will be replaced with the version from {StampDate(v.CreatedAt)}. The current version stays in the history.", "Restore", danger: false)) return;
+        if (disposed || note?.Id != pageId || !CanEdit || editor is null) return;
         busy = true;
         try
         {
-            await editor.InvokeVoidAsync("restore", selVersionState);
+            await editor.InvokeVoidAsync("restore", state);
             await DestroyPreviewAsync();
             pop = Pop.None;
             Toasts.Show("Version restored", ToastKind.Success);
         }
+        catch (JSException) { Toasts.Show("Couldn't restore this version", ToastKind.Error); }
+        catch (JSDisconnectedException) { }
         finally { busy = false; }
     }
 }

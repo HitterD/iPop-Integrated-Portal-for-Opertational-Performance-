@@ -298,6 +298,9 @@ public static class CallEndpoints
         var count = await svc.MarkHistorySeenAsync(userId.Value, callId, ct);
         var nik = http.User.FindFirst("nik")!.Value;
         await realtime.ToUserAsync(nik, RealtimeEvents.BadgeChanged, new RealtimeArgs("calls", count), ct);
+        // Missed-call rows on /notifications and in the Notifier follow Recents.
+        if (await IPop.Infrastructure.Notifications.MissedCallNotifications.MarkSeenAsync(db, userId.Value, callId, ct) > 0)
+            await realtime.ToUserAsync(nik, RealtimeEvents.NotificationsChanged, ct: ct);
         return Results.Ok(new { count });
     }
 

@@ -22,7 +22,16 @@ import { Details, DetailsContent } from '@tiptap/extension-details';
 import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
 import { FindReplace, createFindBar, Columns, Column, DateChip, EmojiShortcodes, ToggleSummary, wordStats, BlockId, findBlock, ensureBlockId, uploadXhr, createUploadTray, blockTexts, diffLines, foldSame } from './extras.js';
-import { Placeholder } from '@tiptap/extensions';
+import { NotePlaceholder } from './placeholder.js';
+import { Symbols } from './symbols.js';
+import { ListNumbering } from './lists.js';
+import { LineBreakMarkers } from './linebreak-markers.js';
+import { handleClearsMarker, nestedHandleRule } from './handle-position.js';
+import { moveBlockTr } from './block-menu.js';
+import { createMarginLayout } from './margin-comments.js';
+import { sliceText, cleanOfficeHtml, preferFiles } from './paste.js';
+import { pictureClipboard } from './clip-images.js';
+import { pastedImageWidth } from './image-size.js';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCaret from '@tiptap/extension-collaboration-caret';
 import Mention from '@tiptap/extension-mention';
@@ -32,7 +41,7 @@ import * as Y from 'yjs';
 import { Awareness, encodeAwarenessUpdate, applyAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness';
 import * as signalR from '@microsoft/signalr';
 
-import { BlockBackground, Callout, NoteWidget, NoteToc, HeadingFlash, SubPage, NoteFile, CommentHighlights, commentKey, countTodos, todoDueItems, releaseBlobs, esc, flashKey, loadBlob } from './nodes.js';
+import { BlockBackground, Callout, NoteWidget, NoteToc, HeadingFlash, SubPage, NoteFile, CommentHighlights, commentKey, countTodos, todoDueItems, todoTaskItems, releaseBlobs, esc, flashKey, loadBlob } from './nodes.js';
 import { SlashMenu, mentionSuggestion, phoneMentionKey, createToolbar, createHandle, createBlockMenu, place } from './menus.js';
 import { NoteImage, NoteGallery, NoteBookmark, NoteEmbed, RichTaskItem, TodoExtras, tableExtensions, taskItemAt, todoInsertPos, createRichUi, closeLightboxes } from './rich.js';
 import { TEMPLATES, GUIDE_COMMENT_TEXT } from './templates.js';
@@ -63,7 +72,7 @@ function baseExtensions(host, { collab = true, rich = {} } = {}) {
     TextStyle, Color, BackgroundColor,
     Details.configure({ persist: true, HTMLAttributes: { class: 'nt-toggle' } }), ToggleSummary, DetailsContent,
     CodeBlockLowlight.configure({ lowlight, defaultLanguage: null, HTMLAttributes: { class: 'nt-code' } }),
-    Columns, Column, DateChip, EmojiShortcodes, BlockId,
+    Columns, Column, DateChip, EmojiShortcodes, Symbols, ListNumbering, LineBreakMarkers, BlockId,
     BlockBackground, Callout,
     NoteWidget.configure({ host: () => host }),
     NoteToc, HeadingFlash,
@@ -164,7 +173,19 @@ export async function mount(el, opts) {
   const palette = ['#0A84FF', '#5856D6', '#AF52DE', '#FF2D55', '#FF9500', '#34C759', '#30B0C7', '#A2845E'];
   // who has a profile photo (nik -> photo id), read once for org charts
   let photoMapP = null;
-  const photoMap = () => (photoMapP ||= api('/api/photos').then(r => (r.ok ? r.json() : {})).catch(() => ({}))); 
+  const photoMap = () => (photoMapP ||= api('/api/photos').then(r => (r.ok ? r.json() : {})).catch(() => ({})));
+  // File cards: one preview-info request per file per page view (the server converts on the first one and remembers it).
+  const fileInfos = new Map(), fileInfoDone = new Map();
+  const filePreviewInfo = id => {
+    if (!fileInfos.has(id)) {
+      const p = api(`/api/notes/${pageId}/files/${id}/preview-info`).then(r => (r.ok ? r.json() : null)).catch(() => null);
+      fileInfos.set(id, p);
+      p.then(v => { if (v) fileInfoDone.set(id, v); else fileInfos.delete(id); });   // a failure (NAS away) is asked again next time
+    }
+    return fileInfos.get(id);
+  };
+  // What is known so far, for the viewer: { fileId: pdfId } of files it shows through their converted PDF.
+  const filePreviews = () => Object.fromEntries([...fileInfoDone].filter(([, v]) => v.pdfId).map(([id, v]) => [id, v.pdfId]));
   const host = {
     drawDoc: () => ydoc,
     drawAwareness: () => awareness,
@@ -227,6 +248,9 @@ export async function mount(el, opts) {
       createMany: steps => makeTasksDialog(steps.map(s => ({ id: s.id, text: s.title, pic: s.pic, dueIso: s.due, description: s.description })), { fromSteps: true })
         .then(out => out.map(o => ({ stepId: o.stickyId, task: o.task }))),
     },
+    /// "→ Task" on a to-do: { id, text, dueIso, assigneeId, assigneeName } → { id, title, projectId, project } | null
+    todoToTask: async t => (await makeTasksDialog([t], { fromTodo: true }))[0]?.task ?? null,
+    openTask: id => call('OnOpenTask', id),
     drawPages: { info: id => pages.get(id), open: id => call('OnOpenPage', id), all: () => [...pages.values()].filter(p => p.id !== pageId) },
     drawTaskSearch: async q => {
       let projects = [];
@@ -386,10 +410,15 @@ export async function mount(el, opts) {
     setAccent: k => { accent = k; call('SetAccent', k); accentListeners.forEach(f => f()); },
     onAccent: f => accentListeners.add(f),
     pageInfo: id => pages.get(id),
+    // File cards: what the server knows about a file in this page (kind, pages, picture of page 1, PDF), asked once per file.
+    filePreview: id => filePreviewInfo(id),
+    // Preview → the full-screen viewer (Blazor), with every file of this page for ← →.
+    previewFile: (id, files) => { document.activeElement?.blur?.(); call('OnPreviewFile', id, files, filePreviews()); },
     openPage: id => call('OnOpenPage', id),
     toast: m => call('OnToast', m),
     canComment: () => canComment,
     createSubPage: () => net.invokeMethodAsync('CreateSubPage').catch(() => null),
+    createWhiteboard: () => net.invokeMethodAsync('CreateWhiteboard').catch(() => null),
     pickFiles: (accept, pos) => pickFiles(accept, pos),
     apiBase,
     tablePicker: () => rich?.tablePicker(),
@@ -455,7 +484,27 @@ export async function mount(el, opts) {
   let lostEarly = false; // access lost while the page was still loading (stopEditing isn't ready yet)
   hub.on('noteAccessLost', pid => { if (pid !== pageId) return; if (loaded) stopEditing('not_found'); else lostEarly = true; });
   hub.onreconnecting(() => { if (loaded) status('offline'); });
-  hub.onreconnected(async () => { await join(); await refetch(); flush(); sendAwareness([ydoc.clientID]); });
+  hub.onreconnected(() => resync());
+  // Automatic reconnect gives up after ~70 s (laptop asleep, Wi-Fi gone, server restarted). Without this the page stayed
+  // "Offline — changes will save when you reconnect" forever and never reconnected until a reload: keep trying, slower.
+  let restartTimer = 0, restartWait = 5000;
+  hub.onclose(() => {
+    if (closing || destroyed || refused || !loaded) return;
+    status('offline'); parkUnsent();
+    clearTimeout(restartTimer); restartTimer = setTimeout(restart, restartWait);
+  });
+  async function restart() {
+    if (closing || destroyed || refused || hub.state !== signalR.HubConnectionState.Disconnected) return;
+    try { await hub.start(); restartWait = 5000; await resync(); }
+    catch { restartWait = Math.min(restartWait * 2, 60000); if (hub.state === signalR.HubConnectionState.Disconnected && !closing) restartTimer = setTimeout(restart, restartWait); }
+  }
+  async function resync() {
+    try { await join(); await refetch(); }
+    catch (err) { if (err?.message === 'forbidden' || err?.message === '404') stopEditing('not_found'); return; }
+    flush(); sendAwareness([ydoc.clientID]);
+  }
+  // The owner changed this person's level (e.g. Can edit → Can view): the page reopens with the new access.
+  hub.on('noteAccessChanged', pid => { if (pid === pageId && loaded && !closing) call('OnAccessChanged'); });
 
   async function join() {
     const ok = await hub.invoke('JoinPage', pageId).catch(() => false);
@@ -476,8 +525,10 @@ export async function mount(el, opts) {
   }
 
   await hub.start();
-  await join();
-  await refetch();
+  // Joining or loading can still fail (access removed meanwhile, server error): the caller gets the error and never gets a
+  // handle to destroy(), so close the connection here or it stays open (and keeps reconnecting) until the tab closes.
+  try { await join(); await refetch(); }
+  catch (err) { await hub.stop().catch(() => {}); throw err; }
   loaded = true;
   for (const m of early.splice(0)) { Y.applyUpdate(ydoc, unb64(m.data), 'remote'); unmerged.add(m.id); }
 
@@ -544,7 +595,7 @@ export async function mount(el, opts) {
     try {
       const r = await api(`/api/notes/${pageId}/snapshot`, { method: 'POST', json: {
         state: b64(Y.encodeStateAsUpdate(ydoc)), baseVersion: version, mergedUpdateIds: ids,
-        plainText: editor.getText({ blockSeparator: '\n' }), todoDone: done, todoTotal: total, todoDue: todoDueItems(editor.state.doc), linksTo: pageLinkIds(editor.state.doc),
+        plainText: editor.getText({ blockSeparator: '\n' }), todoDone: done, todoTotal: total, todoDue: todoDueItems(editor.state.doc), todoTasks: todoTaskItems(editor.state.doc), linksTo: pageLinkIds(editor.state.doc),
       } });
       if (r.ok) { version = (await r.json()).version; ids.forEach(i => unmerged.delete(i)); }
       else if (r.status === 403 || r.status === 404) stopEditing(r.status === 404 ? 'not_found' : 'forbidden');
@@ -557,14 +608,17 @@ export async function mount(el, opts) {
   // Title = the sticky's text without @names and dates; an @name that matches a project member becomes the assignee;
   // a date in the text (25 Nov, 2026-11-25, 25/11) becomes the due date. The project list holds only projects the person can add to.
   const LAST_PROJECT = 'ipop.wb.lastProject';
-  async function makeTasksDialog(stickies, { fromSteps = false } = {}) {
+  async function makeTasksDialog(stickies, { fromSteps = false, fromTodo = false } = {}) {
     let projects = [];
     try { const r = await api('/api/projects/writable'); if (r.ok) projects = await r.json(); } catch { /* none */ }
     for (const p of projects) projectNames.set(p.id, p.name);
     if (!projects.length) { host.toast('You are not a member of a project you can add tasks to.'); return []; }
     let last = null; try { last = localStorage.getItem(LAST_PROJECT); } catch { /* blocked */ }
     // diagram steps already carry PIC (shape data) and a due date (chained from durations); stickies are parsed
-    const parsed = fromSteps
+    const parsed = fromTodo
+      // a to-do already has its person and date as data (not typed into the text): assignee by id, date as chosen
+      ? stickies.map(t => ({ ...t, title: t.text, who: null, due: t.dueIso ? { iso: `${t.dueIso}T00:00:00Z`, label: new Date(`${t.dueIso}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) } : null }))
+      : fromSteps
       ? stickies.map(s => ({ ...s, title: s.text, who: s.pic || null, due: s.dueIso ? { iso: s.dueIso, label: new Date(`${s.dueIso}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) } : null }))
       : stickies.map(s => ({ ...s, ...parseSticky(s.text) }));
     return new Promise(resolve => {
@@ -573,7 +627,7 @@ export async function mount(el, opts) {
       layer.innerHTML = `<div class="nt-taskdlg" role="dialog" aria-modal="true" aria-label="Make tasks">
         <h4>Make ${parsed.length === 1 ? 'a task' : `${parsed.length} tasks`}</h4>
         <label class="nt-taskdlg-f">Project<select data-project>${projects.map(p => `<option value="${p.id}" ${p.id === last ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
-        <ul class="nt-taskdlg-list">${parsed.map(t => `<li><b>${esc(t.title || 'Untitled task')}</b><span>${[t.who ? '@' + esc(t.who) : '', t.due ? esc(t.due.label) : ''].filter(Boolean).join(' · ') || 'No one yet'}</span></li>`).join('')}</ul>
+        <ul class="nt-taskdlg-list">${parsed.map(t => `<li><b>${esc(t.title || 'Untitled task')}</b><span>${[t.who ? '@' + esc(t.who) : t.assigneeName ? '@' + esc(t.assigneeName) : '', t.due ? esc(t.due.label) : ''].filter(Boolean).join(' · ') || 'No one yet'}</span></li>`).join('')}</ul>
         <div class="nt-taskdlg-acts"><button type="button" data-x>Cancel</button><button type="button" data-ok class="pri">Create ${parsed.length === 1 ? 'task' : `${parsed.length} tasks`}</button></div>
       </div>`;
       document.body.appendChild(layer);
@@ -594,7 +648,7 @@ export async function mount(el, opts) {
             const r = await api(`/api/projects/${projectId}/tasks`, { method: 'POST', json: { projectId, parentTaskId: null, title: (t.title || 'Untitled task').slice(0, 300), description: fromSteps ? (t.description || null) : t.text !== t.title ? t.text : null, status: 'todo', priority: null, startDate: null, dueDate: t.due?.iso ?? null, estimatedHours: null, dependencies: null, tags: null } });
             if (!r.ok) continue;
             const task = await r.json();
-            const who = t.who && members.find(m => String(m.name).toLowerCase().startsWith(t.who.toLowerCase()) || String(m.name).toLowerCase().split(' ').some(w => w === t.who.toLowerCase()));
+            const who = (fromTodo && t.assigneeId && members.find(m => String(m.userId) === String(t.assigneeId))) || t.who && members.find(m => String(m.name).toLowerCase().startsWith(t.who.toLowerCase()) || String(m.name).toLowerCase().split(' ').some(w => w === t.who.toLowerCase()));
             if (who) await api(`/api/projects/tasks/${task.id}/assignees`, { method: 'POST', json: { userId: who.userId, role: 'assignee' } }).catch(() => {});
             out.push({ stickyId: t.id, task: { id: task.id, title: task.title, status: task.status, due: t.due?.label ?? null, people: who ? [String(who.name).split(' ')[0]] : [], project: projectNames.get(projectId), projectId } });
           } catch { /* skipped */ }
@@ -628,35 +682,84 @@ export async function mount(el, opts) {
   // ── Editor ───────────────────────────────────────────────────────────────
   let editor = null;
   let handlePos = -1;
+  let handleNodeType = null;   // the block the drag handle sits next to (a list item moves it left of its marker)
+  // Pictures in and out of the clipboard (clip-images.js): pasted web pictures are saved into the page.
+  const pics = pictureClipboard(() => editor, {
+    loadBlob: id => loadBlob(host, id),
+    toast: m => host.toast(m),
+    async upload(file) {
+      const form = new FormData(); form.append('file', file, file.name);
+      const r = await uploadXhr(`${apiBase}/api/notes/${pageId}/uploads`, form, await token());
+      return r.ok ? r.json : null;
+    },
+    async importUrl(url) {
+      const r = await api(`/api/notes/${pageId}/uploads/from-url`, { method: 'POST', json: { url } });
+      return r.status === 200 ? r.json() : null;
+    },
+  });
+  host.copyImage = node => pics.copy(node);
   const handleEl = createHandle(host);
   const Keys = Extension.create({
     name: 'noteKeys',
-    addKeyboardShortcuts() { return { 'Mod-Shift-m': () => { commentSelection(); return true; } }; },
+    addKeyboardShortcuts() {
+      // the block the caret is in (top level of its list / column / callout), for duplicate and move
+      const blockAt = () => {
+        const { $from } = this.editor.state.selection;
+        for (let d = $from.depth; d > 0; d--) {
+          const parent = $from.node(d - 1).type.name;
+          if (['doc', 'column', 'callout', 'detailsContent', 'blockquote'].includes(parent)) return { pos: $from.before(d), node: $from.node(d) };
+        }
+        return null;
+      };
+      const move = dir => { const b = blockAt(); const tr = b && moveBlockTr(this.editor.state, b.pos, dir); if (tr) this.editor.view.dispatch(tr.scrollIntoView()); return !!b; };
+      return {
+        'Mod-Shift-m': () => { commentSelection(); return true; },
+        'Mod-Alt-0': () => this.editor.commands.setParagraph(),
+        'Mod-Alt-1': () => this.editor.commands.toggleHeading({ level: 1 }),
+        'Mod-Alt-2': () => this.editor.commands.toggleHeading({ level: 2 }),
+        'Mod-Alt-3': () => this.editor.commands.toggleHeading({ level: 3 }),
+        'Mod-Shift-9': () => this.editor.commands.toggleTaskList(),
+        'Mod-Alt-c': () => this.editor.commands.toggleCodeBlock(),
+        'Mod-d': () => { const b = blockAt(); if (b) this.editor.chain().insertContentAt(b.pos + b.node.nodeSize, b.node.toJSON()).run(); return true; },
+        'Mod-Shift-ArrowUp': () => move(-1),
+        'Mod-Shift-ArrowDown': () => move(1),
+      };
+    },
   });
 
   editor = new Editor({
     element: el,
     editable: canEdit,
     extensions: [
-      ...baseExtensions(host, { rich: { onMenu: (pos, a) => rich?.openTodoMenu(pos, a), onChip: (pos, a, k) => rich?.onChip(pos, a, k) } }),
+      ...baseExtensions(host, { rich: { onMenu: (pos, a) => rich?.openTodoMenu(pos, a), onChip: (pos, a, k) => rich?.onChip(pos, a, k), onOpenTask: id => host.openTask(id) } }),
       Collaboration.configure({ document: ydoc, field: FIELD }),
       CollaborationCaret.configure({ provider: { awareness }, user: { name: opts.user.name, nik: opts.user.nik, color: opts.user.color } }),
-      Placeholder.configure({
-        includeChildren: true,
-        placeholder: ({ node }) => node.type.name === 'heading' ? `Heading ${node.attrs.level}` : node.type.name === 'detailsSummary' ? 'Toggle' : "Type '/' for commands…",
-      }),
+      NotePlaceholder,
       SlashMenu.configure({ host }),
       FindReplace,
       CommentHighlights.configure({ resolve: resolveAnchor, onClick: id => call('OnThreadClick', id) }),
       Keys,
       ...(canEdit ? [DragHandle.configure({
         render: () => handleEl,
-        onNodeChange: ({ pos }) => { handlePos = pos ?? -1; },
+        // Inside lists, quotes, callouts, toggles and columns every row (also a nested list item) gets its own handle, not just the
+        // outermost block; plain paragraphs and headings keep the top-level handle. Near the left edge the whole list is grabbed.
+        // (a rule, not TipTap's allowedContainers: that option drops every top-level block — see nestedHandleRule)
+        nested: { rules: [nestedHandleRule(['bulletList', 'orderedList', 'taskList', 'blockquote', 'callout', 'detailsContent', 'column'])], edgeDetection: 'left' },
+        // A list item's number / bullet / checkbox is drawn LEFT of the item box: put the handle left of the marker, never on it.
+        computePositionConfig: { placement: 'left-start', middleware: [handleClearsMarker(() => ({ type: handleNodeType, el: handlePos >= 0 ? editor?.view.nodeDOM(handlePos) : null }))] },
+        onNodeChange: ({ node, pos }) => { handlePos = pos ?? -1; handleNodeType = node?.type.name ?? null; },
       })] : []),
     ],
     editorProps: {
       attributes: { class: 'nt-editor', spellcheck: 'true' },
-      handlePaste: (view, event) => dropFiles(event.clipboardData?.files, todoInsertPos(view.state.doc, view.state.selection.from))
+      // Text other apps get from a copy: one line per paragraph, list markers kept (not a blank line between every block).
+      clipboardTextSerializer: slice => sliceText(slice.content),
+      // Word / Outlook HTML: real lists instead of "·" paragraphs, without Office's styles.
+      transformPastedHTML: html => { try { return cleanOfficeHtml(html); } catch { return html; } },
+      transformPasted: slice => pics.editorProps.transformPasted(slice),
+      handleDOMEvents: pics.editorProps.handleDOMEvents,
+      // A copied picture or screenshot is a file; a Word/Excel copy also carries a picture of itself, so text wins there.
+      handlePaste: (view, event) => (preferFiles(event.clipboardData) && dropFiles(event.clipboardData?.files, todoInsertPos(view.state.doc, view.state.selection.from), true))
         || !!rich?.handlePasteUrl(event),
       handleDrop: (view, event, _slice, moved) => {
         if (moved || !event.dataTransfer?.files?.length) return false;
@@ -693,14 +796,48 @@ export async function mount(el, opts) {
       .then(inst => {
         if (closing) { inst.destroy(); return; }
         board = inst;
+        startBoardThumbnail(inst);
         // "Use template → As a new board page": the new page puts the chosen template on itself once (within 2 minutes)
         try {
           const pend = JSON.parse(sessionStorage.getItem('ipop.wb.pendingTemplate') || 'null');
           if (pend?.key && Date.now() - pend.at < 120000 && canEdit && inst.count() === 0) { sessionStorage.removeItem('ipop.wb.pendingTemplate'); inst.applyTemplate(pend.key, { howTo: pend.howTo !== false, examples: pend.examples !== false }); }
+          // "Templates" on the Whiteboards list: a blank board that opens with the Template Center showing
+          const wantCenter = JSON.parse(sessionStorage.getItem('ipop.wb.openCenter') || 'null');
+          if (wantCenter && Date.now() - wantCenter.at < 120000 && canEdit) { sessionStorage.removeItem('ipop.wb.openCenter'); setTimeout(() => inst.openCenter?.(), 300); }
         } catch { /* blocked */ }
       })
       .catch(() => host.toast('Couldn’t load the whiteboard tools. Check your connection and reload the page.'));
   }
+
+  // The Whiteboards list shows a small picture of each board. Drawn here (the board knows how), a few seconds after the last edit
+  // by someone who can edit, then uploaded; the server keeps one per board. Skipped for an empty board, a pop-out tab and viewers.
+  let thumbTimer = 0, thumbBusy = false, thumbSig = '';
+  function startBoardThumbnail(inst) {
+    if (!canEdit || opts.boardOnly) return;
+    const sceneMap = () => ydoc.getMap('wb:board');
+    const schedule = () => { clearTimeout(thumbTimer); thumbTimer = setTimeout(draw, 6000); };
+    async function draw() {
+      if (closing || thumbBusy || !board) return;
+      const count = board.count();
+      if (!count) return;
+      // changed since the last picture? (element count + the doc size is enough to skip idle re-uploads)
+      const sig = `${count}:${Y.encodeStateVector(ydoc).length}:${[...sceneMap().keys()].length}`;
+      if (sig === thumbSig) return;
+      thumbBusy = true;
+      try {
+        const png = await board.png({ dark: false, scale: 0.5 });
+        if (!png || closing) return;
+        const form = new FormData(); form.append('file', png, 'board.png');
+        const r = await api(`/api/notes/${pageId}/thumbnail`, { method: 'POST', body: form });
+        if (r.ok) thumbSig = sig;
+      } catch { /* the list keeps the previous picture */ }
+      finally { thumbBusy = false; }
+    }
+    ydoc.on('update', (_u, origin) => { if (origin !== 'remote') schedule(); });
+    // a board opened and left without edits still gets its first picture
+    setTimeout(() => { if (!closing && !pageHasThumbnail) draw(); }, 4000);
+  }
+  const pageHasThumbnail = !!opts.hasThumbnail;
 
   const toolbar = createToolbar(editor, host);
   // Find & replace (Ctrl+F while the page has focus) and the word-count pill.
@@ -712,8 +849,10 @@ export async function mount(el, opts) {
     return true;
   };
   // Opened from a block link (?b=<id>): wait for the page to arrive, then scroll to the block and flash it.
-  const wantBlock = new URLSearchParams(location.search).get('b');
-  if (wantBlock) {
+  // Also called by Blazor (scrollToBlock) when a ?b= link to this same page is opened while it is already open.
+  let seekTimer = 0;
+  function seekBlock(wantBlock) {
+    clearTimeout(seekTimer);
     let tries = 0;
     const seek = () => {
       if (closing || editor.isDestroyed) return;
@@ -724,10 +863,12 @@ export async function mount(el, opts) {
         const dom = editor.view.nodeDOM(pos);
         (dom?.nodeType === 1 ? dom : dom?.parentElement)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
         setTimeout(() => { try { if (!editor.isDestroyed) editor.view.dispatch(editor.state.tr.setMeta(flashKey, null).setMeta('addToHistory', false)); } catch { /* closed */ } }, 1800);
-      } else if (++tries < 25) setTimeout(seek, 300);
+      } else if (++tries < 25) seekTimer = setTimeout(seek, 300);
     };
     seek();
   }
+  const wantBlock = new URLSearchParams(location.search).get('b');
+  if (wantBlock) seekBlock(wantBlock);
   const findBar = createFindBar(editor, host);
   el.before(findBar.dom);
   const stats = document.createElement('div');
@@ -765,6 +906,7 @@ export async function mount(el, opts) {
   // Progress (tutorial ring + sidebar pill) follows the checkboxes.
   let lastProgress = '';
   const progress = debounce(() => {
+    if (closing) return;   // a tick right before leaving must not land on the next page's counters
     const { done, total } = countTodos(editor.state.doc);
     const k = `${done}/${total}`;
     if (k !== lastProgress) { lastProgress = k; call('OnProgress', done, total); }
@@ -849,7 +991,7 @@ export async function mount(el, opts) {
   // Only people who can open the page are ever notified (the server checks again). Tagging someone
   // without access asks the owner to share the page; otherwise the tag stays as plain text.
   const mentionQueue = new Map();
-  const sendMentions = debounce(async () => {
+  const sendMentionsNow = async () => {
     if (!mentionQueue.size) return;
     // The notification quotes the paragraph the mention sits in (not wherever the cursor happens to be by now).
     // Typed then deleted (or undone) before the batch went out: nobody to notify.
@@ -858,7 +1000,9 @@ export async function mount(el, opts) {
     for (const [context, ids] of contexts) {
       await api(`/api/notes/${pageId}/mentions`, { method: 'POST', json: { userIds: ids, context } }).catch(() => {});
     }
-  }, 4000);
+  };
+  // Batched for 4 s; leaving the page sends what is waiting (destroy), so a tag typed just before leaving still notifies.
+  const sendMentions = debounce(sendMentionsNow, 4000);
   function queueMention(p) {
     if (!canEdit) return;
     if (p.hasAccess === false) { offerShare(p); paintAccess(); return; }
@@ -950,7 +1094,7 @@ export async function mount(el, opts) {
     };
     input.click();
   }
-  function dropFiles(files, pos) {
+  function dropFiles(files, pos, pasted = false) {
     if (!canEdit || !files?.length) return false;
     const list = [...files];
     (async () => {
@@ -974,6 +1118,10 @@ export async function mount(el, opts) {
           row.done();
           const u = r.json;
           const node = { type: u.contentType?.startsWith('image/') ? 'noteImage' : 'noteFile', attrs: { id: u.id, name: u.fileName, size: u.size } };
+          if (node.type === 'noteImage' && pasted) {
+            const originalWidth = await pastedImageWidth(f);
+            if (originalWidth) Object.assign(node.attrs, { originalWidth, originalSize: true });
+          }
           if (closing) return;
           const at = Math.min(toAbs(rel) ?? editor.state.doc.content.size, editor.state.doc.content.size);
           const before = editor.state.doc.content.size;
@@ -1034,6 +1182,31 @@ export async function mount(el, opts) {
       if (r) editor.view.domAtPos(r.from)?.node?.parentElement?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     },
     setAccent(k) { accent = k; accentListeners.forEach(f => f()); },
+    /// Comments in the page margin (margin-comments.js): measures where each commented text is and where the cards fit.
+    /// scroller = the page's scroll area, page = the page column, cards = the margin column; net gets OnMarginMode('margin'|'bubbles').
+    margin(scroller, page, cards, netRef) {
+      const root = () => editor?.view?.dom;
+      const lay = createMarginLayout({
+        scroller, page, cards, editorRoot: root,
+        draftTop: () => { const { from } = editor.state.selection; try { const c = editor.view.coordsAtPos(from); return c.top - scroller.getBoundingClientRect().top + scroller.scrollTop - 8; } catch { return 0; } },
+        onMode: m => { try { netRef.invokeMethodAsync('OnMarginMode', m).catch(() => {}); } catch { /* disposed */ } },
+      });
+      // anything that changes the text moves the cards
+      const onUpd = () => lay.schedule();
+      editor.on('update', onUpd);
+      return {
+        layout: () => lay.layout(),
+        reveal: id => lay.reveal(id),
+        /// where a thread's popover goes: just below its highlighted text, kept on screen
+        bubbleAt: id => {
+          const el = root()?.querySelector(`[data-thread="${CSS.escape(String(id))}"]`);
+          if (!el) return [Math.round(innerWidth / 2 - 160), 120];
+          const r = el.getBoundingClientRect();
+          return [Math.max(12, Math.min(Math.round(r.left), innerWidth - 332)), Math.max(60, Math.min(Math.round(r.bottom + 8), innerHeight - 260))];
+        },
+        destroy: () => { editor?.off?.('update', onUpd); lay.destroy(); },
+      };
+    },
     /// Page locked / unlocked (own action or someone else's): the text becomes read-only or editable again in place.
     setLocked(on) {
       if (closing) return;
@@ -1072,6 +1245,7 @@ export async function mount(el, opts) {
     /// The page as it is right now, as a base64 Yjs state (for comparing with a saved version).
     currentState() { return b64(Y.encodeStateAsUpdate(ydoc)); },
     focus() { if (!closing) editor.commands.focus('start'); },
+    scrollToBlock(id) { if (!closing && id) seekBlock(String(id)); },
     restore(state) {
       if (closing || !canEdit) return;
       const tmp = new Y.Doc();
@@ -1086,8 +1260,10 @@ export async function mount(el, opts) {
     async destroy() {
       if (closing) return;
       closing = true;
-      scheduleSnapshot.cancel();
+      scheduleSnapshot.cancel(); clearTimeout(thumbTimer); clearTimeout(restartTimer); clearTimeout(seekTimer); progress.cancel(); checkAccess.cancel();
       try { await flush(); await snapshot(); } catch { /* best effort */ }
+      sendMentions.cancel();
+      if (canEdit && !refused) await sendMentionsNow().catch(() => {});
       destroyed = true;
       removeAwarenessStates(awareness, [ydoc.clientID], 'local');
       await hub.invoke('LeavePage', pageId).catch(() => {});
@@ -1115,6 +1291,10 @@ export function hotkeys(net) {
     const k = e.key.toLowerCase();
     if (k === 'n' && e.altKey && !e.ctrlKey && !e.metaKey) {
       e.preventDefault(); e.stopImmediatePropagation(); net.invokeMethodAsync('OnHotkey', 'new').catch(() => {});
+    }
+    // Ctrl S: Notes saves by itself; instead of the browser's "Save page as HTML", push anything pending and say so.
+    if (k === 's' && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+      e.preventDefault(); e.stopImmediatePropagation(); net.invokeMethodAsync('OnHotkey', 'save').catch(() => {});
     }
   };
   window.addEventListener('keydown', onKey, true);

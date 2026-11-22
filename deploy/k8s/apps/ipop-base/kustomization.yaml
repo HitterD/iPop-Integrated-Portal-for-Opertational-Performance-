@@ -9,3 +9,10 @@ resources:
   - migrate-job.yaml
   - api.yaml
   - web.yaml
+# Internal services (iDesk, NAS with SJA certs) are signed by SJA-ROOT-CA. Windows trusted it through the
+# machine store; Linux containers need it explicitly (otherwise "PartialChain" on every iDesk call).
+configMapGenerator:
+  - name: sja-root-ca
+    files: [sja-root-ca.crt]
+generatorOptions:
+  disableNameSuffixHash: true

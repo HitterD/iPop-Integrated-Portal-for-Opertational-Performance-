@@ -53,7 +53,15 @@ public record NoteResult<T>(T? Data, string? Error)
 /// (a sub-page shared on its own shows as a root).
 public record NoteListItemDto(Guid Id, Guid? ParentId, string Title, string? Emoji, string Access,
     bool IsMine, bool IsShared, bool IsFavorite, bool IsGuide, int TodoDone, int TodoTotal,
-    DateTime UpdatedAt, string OwnerName, int SortOrder = 0, string Kind = "page");
+    DateTime UpdatedAt, string OwnerName, int SortOrder = 0, string Kind = "page",
+    /// Two lines of the page text for the Notes list cards (null for boards and empty pages).
+    string? Excerpt = null,
+    /// Cover for the list cards: a gradient key, or a photo (attachment id) that wins over it.
+    string? Cover = null, Guid? CoverImageId = null,
+    /// Whiteboards: the saved picture of the board (attachment id) and when it was taken.
+    Guid? ThumbnailId = null, DateTime? ThumbnailAt = null, string? OwnerNik = null, DateTime? CreatedAt = null, bool IsLocked = false);
+
+public record NoteLinkSummaryDto(Guid Id, string Title, string? Emoji);
 
 public record NoteSidebarDto(IReadOnlyList<NoteListItemDto> Pages, IReadOnlyList<Guid> Recent, int TrashCount = 0);
 
@@ -89,10 +97,25 @@ public record NoteDocDto(string? State, long Version, IReadOnlyList<NoteUpdateDt
 /// A page that links to the current page. Only pages the viewer can open are ever listed.
 public record NoteBacklinkDto(Guid Id, string Title, string? Emoji, string? Excerpt);
 
-public record NoteTodoDueDto(string Key, Guid? AssigneeId, string Due, string Text, bool Done);
+/// "→ Task": make a Projects task from a to-do. Everything comes from the editor (it is the person's own action; the Projects
+/// service still checks they can add tasks to that project and that the assignee is a member).
+public record NoteTodoTaskRequest(string Title, Guid ProjectId, string? Due, Guid? AssigneeId);
+public record NoteTodoTaskDto(Guid TaskId, Guid ProjectId, string Title, string ProjectName, bool Assigned);
+/// A to-do that points at a Projects task, as reported with a save: ticking it completes the task.
+public record NoteTodoTaskLinkDto(Guid TaskId, bool Done);
+
+/// What a repeat run made: the new page and everyone who can open it except its owner (they are told about the new page).
+public record NoteRecurrenceRunDto(Guid PageId, string Title, IReadOnlyList<Guid> NotifyUserIds);
+
+/// "Repeat…" on a page: what is stored, in the words the dialog shows.
+public record NoteRecurrenceDto(Guid PageId, string Rule, string Description, bool Enabled, DateOnly StartsOn, DateOnly? LastCreatedFor, Guid? LastPageId);
+public record SetNoteRecurrenceRequest(string Kind, IReadOnlyList<string>? Days, int? MonthDay);
+
+public record NoteTodoDueDto(string Key, Guid? AssigneeId, string Due, string Text, bool Done, Guid? TaskId = null);
 
 public record NoteSnapshotRequest(string State, long BaseVersion, IReadOnlyList<long> MergedUpdateIds,
-    string? PlainText, int TodoDone, int TodoTotal, IReadOnlyList<NoteTodoDueDto>? TodoDue = null, IReadOnlyList<Guid>? LinksTo = null);
+    string? PlainText, int TodoDone, int TodoTotal, IReadOnlyList<NoteTodoDueDto>? TodoDue = null, IReadOnlyList<Guid>? LinksTo = null,
+    IReadOnlyList<NoteTodoTaskLinkDto>? TodoTasks = null);
 
 public record NoteSnapshotResultDto(long Version);
 
@@ -168,6 +191,11 @@ public record NoteSearchPageDto(IReadOnlyList<NoteSearchRowDto> Items, int Total
 /// Chat card payload, stored as "[note]" + json in ChatMessage.Content.
 public record NoteImageDto(Guid Id, string FileName, long Size);
 
+/// A file in a page, for its card and the viewer. Kind: pdf | word | slides | sheet | image | video | audio | text | none.
+/// Pages counts pages (Unit "pages") or sheets (Unit "sheets"); null when unknown. ThumbnailId is a picture of page 1 (an image
+/// is its own thumbnail), PdfId the file converted to PDF (Word/PowerPoint). Previewable = the viewer can show it.
+public record NoteFilePreviewDto(string Kind, int? Pages, string? Unit, Guid? ThumbnailId, Guid? PdfId, bool Previewable, string? Error);
+
 public record NoteCardDto(Guid Id, string Title, string? Emoji, string? Cover, string Accent, string Level, string? Excerpt,
     Guid? CoverImageId = null, int CoverPosY = 50);
 
@@ -192,6 +220,8 @@ public interface INoteService
     Task<IReadOnlyList<NoteListItemDto>> GetTrashAsync(Guid userId, CancellationToken ct);
 
     Task<NoteResult<NotePageDto>> GetPageAsync(Guid userId, Guid pageId, CancellationToken ct);
+    /// Lightweight read-only summary (title/emoji) for internal link previews without recording visits or views.
+    Task<NoteResult<NoteLinkSummaryDto>> GetLinkSummaryAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task<NoteResult<NotePageDto>> CreateAsync(Guid userId, CreateNoteRequest req, CancellationToken ct);
     Task<NoteResult<NotePageDto>> UpdateMetaAsync(Guid userId, Guid pageId, UpdateNoteMetaRequest req, CancellationToken ct);
     /// Lock or unlock a page. Needs edit access; a locked page refuses every change until it is unlocked.
@@ -208,6 +238,7 @@ public interface INoteService
     Task<NoteResult<bool>> TrashAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task<NoteResult<bool>> RestoreAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task<NoteResult<bool>> PurgeAsync(Guid userId, Guid pageId, CancellationToken ct);
+    Task<NoteResult<IReadOnlyList<Guid>>> PurgeWithOrphansAsync(Guid userId, Guid pageId, CancellationToken ct);
 
     Task<NoteResult<NoteDocDto>> GetDocAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task<NoteResult<long>> AppendUpdateAsync(Guid userId, Guid pageId, byte[] update, CancellationToken ct);
@@ -231,7 +262,7 @@ public interface INoteService
     Task<IReadOnlyList<NoteLibraryItemDto>> GetLibraryAsync(Guid userId, CancellationToken ct);
     Task<NoteResult<NoteLibraryItemDto>> SaveLibraryItemAsync(Guid userId, SaveLibraryItemRequest req, CancellationToken ct);
     Task<NoteResult<NoteLibraryItemDto>> UpdateLibraryItemAsync(Guid userId, Guid itemId, UpdateLibraryItemRequest req, CancellationToken ct);
-    Task<NoteResult<bool>> DeleteLibraryItemAsync(Guid userId, Guid itemId, CancellationToken ct);
+    Task<NoteResult<bool>> DeleteLibraryItemAsync(Guid userId, Guid itemId, CancellationToken ct, bool isAdmin = false);
 
     /// Whiteboard templates: mine + every shared one (Team templates).
     Task<IReadOnlyList<NoteBoardTemplateDto>> GetBoardTemplatesAsync(Guid userId, CancellationToken ct);
@@ -274,7 +305,18 @@ public interface INoteService
     Task<NoteResult<bool>> CanUploadAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task LinkAttachmentAsync(Guid pageId, Guid attachmentId, CancellationToken ct);
     /// Makes an already-uploaded, page-linked image the page's cover (Can edit). Image-only; replaces a gradient.
+    /// A repeating page's run: copies the template page as it is now into a new page next to it, owned by <paramref name="ownerId"/>
+    /// (the person who set the repeat up), titled <paramref name="title"/>. Shares are not copied: the new page sits in the same parent,
+    /// so it is open to the same people as the template. Returns the new page id and who can open it (to tell them).
+    Task<NoteResult<NoteRecurrenceRunDto>> CreateRecurringCopyAsync(Guid templatePageId, Guid ownerId, string title, CancellationToken ct);
+    Task<NoteResult<NoteRecurrenceDto?>> GetRecurrenceAsync(Guid userId, Guid pageId, CancellationToken ct);
+    /// Sets (or changes) how a page repeats; needs edit access. The first page is made on the first matching day from today on.
+    Task<NoteResult<NoteRecurrenceDto>> SetRecurrenceAsync(Guid userId, Guid pageId, SetNoteRecurrenceRequest req, DateOnly today, CancellationToken ct);
+    Task<NoteResult<bool>> StopRecurrenceAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task<NoteResult<NotePageDto>> SetCoverImageAsync(Guid userId, Guid pageId, Guid attachmentId, CancellationToken ct);
+    /// Whiteboards: stores the picture the editor drew of the board as the page's thumbnail (replacing the previous one).
+    /// Returns the attachment id that is no longer used so the caller can delete it from the store.
+    Task<NoteResult<Guid?>> SetThumbnailAsync(Guid userId, Guid pageId, Guid attachmentId, CancellationToken ct);
     /// Images attached to this page (newest first), for "pick from this page".
     Task<NoteResult<IReadOnlyList<NoteImageDto>>> GetPageImagesAsync(Guid userId, Guid pageId, CancellationToken ct);
 

@@ -1,4 +1,5 @@
 @using IPop.Application.Notes
+@inject IJSRuntime JS
 <PhoneScreen Title="Notes" Class="m-notes-list">
     <Below>
         <label class="m-notes-search"><i data-lucide="search"></i><input aria-label="Search notes" placeholder="Search notes" value="@Search" @oninput="OnSearch" /></label>
@@ -32,17 +33,29 @@
                 </div>
             }
             <h2 class="m-notes-section">@(filter == "favorites" ? "Favorites" : "My pages")</h2>
-            @if (filter == "favorites") { foreach (var itemPage in Sidebar.Pages.Where(p => p.IsFavorite)) { @Row(itemPage, 0, false) } }
+            @if (filter == "favorites")
+            {
+                var favs = Sidebar.Pages.Where(p => p.IsFavorite).ToList();
+                @if (favs.Count == 0) { <p class="m-notes-empty">Starred pages appear here.</p> }
+                else { foreach (var itemPage in favs) { @Row(itemPage, 0, false) } }
+            }
             else
             {
-                @foreach (var itemPage in Sidebar.Pages.Where(p => p.ParentId is null && p.IsMine).OrderBy(p => p.SortOrder > 0).ThenByDescending(p => p.SortOrder > 0 ? DateTime.MinValue : p.UpdatedAt).ThenBy(p => p.SortOrder)) { @Row(itemPage, 0, true) }
+                var mineRoots = Sidebar.Pages.Where(p => p.ParentId is null && p.IsMine).OrderBy(p => p.SortOrder > 0).ThenByDescending(p => p.SortOrder > 0 ? DateTime.MinValue : p.UpdatedAt).ThenBy(p => p.SortOrder).ToList();
+                @if (mineRoots.Count == 0) { <p class="m-notes-empty">Tap New page to create your first page.</p> }
+                else { foreach (var itemPage in mineRoots) { @Row(itemPage, 0, true) } }
                 <h2 class="m-notes-section">Shared with me</h2>
-                @foreach (var itemPage in Sidebar.Pages.Where(p => p.ParentId is null && !p.IsMine).OrderBy(p => p.Title)) { @Row(itemPage, 0, true) }
+                var sharedRoots = Sidebar.Pages.Where(p => p.ParentId is null && !p.IsMine).OrderBy(p => Title(p.Title), StringComparer.CurrentCultureIgnoreCase).ToList();
+                @if (sharedRoots.Count == 0) { <p class="m-notes-empty">Pages shared with you appear here.</p> }
+                else { foreach (var itemPage in sharedRoots) { @Row(itemPage, 0, true) } }
             }
-            @if (Sidebar.Pages.Count == 0) { <p class="m-notes-empty">Tap New page to create your first page.</p> }
+            @if (OnTrash.HasDelegate)
+            {
+                <button type="button" class="m-notes-page-row" @onclick="OnTrash"><span><i data-lucide="trash-2"></i></span><span>Trash@(Sidebar.TrashCount > 0 ? $" ({Sidebar.TrashCount})" : "")</span></button>
+            }
         }
         <p class="m-notes-import">Import from Notion, Markdown or HTML? Open on a computer.</p>
-        <Fab Icon="square-pen" Label="New page" OnClick="OnCreate" Visible="@(!Creating)" />
+        <Fab Icon="square-pen" Label="New page" OnClick="OnCreate" Visible="@(CanCreate && !Creating)" />
     </ChildContent>
 </PhoneScreen>
 @code {
@@ -52,11 +65,19 @@
     [Parameter] public IReadOnlyList<NoteSearchHitDto>? Hits { get; set; }
     [Parameter] public EventCallback<Guid> OnOpen { get; set; }
     [Parameter] public EventCallback OnCreate { get; set; }
+    [Parameter] public EventCallback OnTrash { get; set; }
+    [Parameter] public bool CanCreate { get; set; } = true;
     [Parameter] public bool Creating { get; set; }
     private string filter = "recent";
     private readonly HashSet<Guid> expanded = [];
     private static readonly (string Key, string Label)[] Filters = [("recent", "Recent"), ("favorites", "Favorites"), ("all", "All")];
     private IEnumerable<NoteListItemDto> Recent => Sidebar?.Recent.Select(id => Sidebar.Pages.FirstOrDefault(p => p.Id == id)).OfType<NoteListItemDto>().Take(8) ?? [];
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+    }
     private static string Title(string title) => string.IsNullOrWhiteSpace(title) ? "Untitled" : title;
     private void Toggle(Guid id) { if (!expanded.Remove(id)) expanded.Add(id); }
     private RenderFragment Row(NoteListItemDto itemPage, int depth, bool tree) => @<div>

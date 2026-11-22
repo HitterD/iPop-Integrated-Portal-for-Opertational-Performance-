@@ -131,6 +131,10 @@ public sealed class MailService(AuthState Auth, HttpClient http)
 
     public async Task<bool> BulkMoveAsync(IReadOnlyList<Guid> ids, MailFolder f, CancellationToken ct = default)
         => (await PostAsync<object?>("/api/mail/bulk/move", new BatchMove(ids, F(f)), ct)) is not null;
+    /// Bulk move with the server's count of rows actually moved (null on failure).
+    public async Task<int?> BulkMoveCountAsync(IReadOnlyList<Guid> ids, MailFolder f, CancellationToken ct = default)
+        => (await PostAsync<BulkResult>("/api/mail/bulk/move", new BatchMove(ids, F(f)), ct))?.Affected;
+    private sealed record BulkResult(int Affected, string? Error);
     public async Task<bool> BulkStarAsync(IReadOnlyList<Guid> ids, CancellationToken ct = default)
         => (await PostAsync<object?>("/api/mail/bulk/star", new BatchIds(ids), ct)) is not null;
     public async Task<bool> BulkDeleteAsync(IReadOnlyList<Guid> ids, CancellationToken ct = default)

@@ -50,66 +50,108 @@
     private ElementReference boardRef, editorRef;
     private IJSObjectReference? module, editor;
     private DotNetObjectReference<NotesBoard>? selfRef;
-    private bool mounted, disposed;
+    private bool mounted, mountPending, creating, disposed;
+    private Guid? lastId;
+    private string? lastDrawingId;
+    private int loadSeq;
+
+    private bool CanWriteNotes => Auth.Can("notes.write");
+    private bool HasEditAccess => CanWriteNotes && note?.Access is "owner" or "edit";
 
     private string StatusText => saveState switch
     {
         "saving" => "Saving…",
         "offline" => "Offline — changes will save when you reconnect",
         "locked" => "Changes can't be saved here",
-        _ => note?.Access is "owner" or "edit" && note.LockedAt is null ? "Live with your Notes tab" : note?.Access == "comment" ? "Can comment" : "View only",
+        _ => HasEditAccess && note?.LockedAt is null ? "Live with your Notes tab" : CanWriteNotes && note?.Access == "comment" ? "Can comment" : "View only",
     };
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnParametersSetAsync()
     {
-        selfRef = DotNetObjectReference.Create(this);
+        if (disposed || (selfRef is not null && lastId == Id && lastDrawingId == DrawingId)) return;
+        selfRef ??= DotNetObjectReference.Create(this);
+        lastId = Id;
+        lastDrawingId = DrawingId;
+        var seq = ++loadSeq;
+        await UnmountEditorAsync();
+        if (seq != loadSeq || disposed) return;
+        note = null; error = null; saveState = "saved"; mountPending = false;
         var res = await Auth.SendAsync(HttpMethod.Get, $"/api/notes/{Id}");
+        if (seq != loadSeq || disposed) return;
         if (res.StatusCode == System.Net.HttpStatusCode.NotFound) { error = "not_found"; return; }
         if (!res.IsSuccessStatusCode) { error = "forbidden"; return; }
-        note = await res.Content.ReadFromJsonAsync<NotePageDto>(new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
-        if (note is null) error = "not_found";
+        var loaded = await res.Content.ReadFromJsonAsync<NotePageDto>(new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        if (seq != loadSeq || disposed) return;
+        if (loaded is null || (loaded.Kind != "board" && string.IsNullOrWhiteSpace(DrawingId)))
+        {
+            error = "not_found";
+            return;
+        }
+        note = loaded;
+        mountPending = true;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (disposed) return;
-        await JS.InvokeVoidAsync("ipop.icons");
-        if (mounted || note is null) return;
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch (JSException) { } catch (JSDisconnectedException) { return; }
+        if (disposed || !mountPending || mounted || note is null) return;
+        mountPending = false;
         mounted = true;
+        var curNote = note;
+        var seq = loadSeq;
         try
         {
             module ??= await JS.InvokeAsync<IJSObjectReference>("import", EditorModule);
+            if (disposed || seq != loadSeq || note?.Id != curNote.Id) return;
             var me = Auth.Me;
-            editor = await module.InvokeAsync<IJSObjectReference>("mount", editorRef, new
+            var ed = await module.InvokeAsync<IJSObjectReference>("mount", editorRef, new
             {
                 apiBase = Http.BaseAddress?.ToString() ?? "",
-                pageId = note.Id,
-                access = note.Access,
+                pageId = curNote.Id,
+                access = CanWriteNotes ? curNote.Access : "view",
                 user = new { name = me?.Name ?? "Me", nik = me?.Nik ?? "", color = AvatarPalette.For(me?.Nik) },
-                accent = note.Accent,
+                accent = curNote.Accent,
                 pages = Array.Empty<object>(),
                 dotnet = selfRef,
                 kind = "board",
-                locked = note.LockedAt is not null,
+                locked = curNote.LockedAt is not null,
                 boardEl = boardRef,
                 boardOnly = true,
                 notesAdmin = Auth.Can("notes.admin"),
-                drawingId = note.Kind == "board" ? null : DrawingId,
+                drawingId = curNote.Kind == "board" ? null : DrawingId,
             });
+            if (disposed || seq != loadSeq || note?.Id != curNote.Id)
+            {
+                try { await ed.InvokeVoidAsync("destroy"); await ed.DisposeAsync(); } catch (JSException) { } catch (JSDisconnectedException) { }
+                return;
+            }
+            editor = ed;
         }
         catch (JSException ex)
         {
+            if (disposed || seq != loadSeq) return;
+            mounted = false;
             error = ex.Message.Contains("forbidden") ? "forbidden" : null;
             if (error is null) Toasts.Show("Couldn't open the board. Try reloading the page.", ToastKind.Error);
             StateHasChanged();
         }
+        catch (JSDisconnectedException) { }
+    }
+
+    private async Task UnmountEditorAsync()
+    {
+        mounted = false;
+        var ed = editor; editor = null;
+        if (ed is null) return;
+        try { await ed.InvokeVoidAsync("destroy"); await ed.DisposeAsync(); } catch (JSDisconnectedException) { } catch (JSException) { }
     }
 
     // ── Callbacks the editor makes (the subset a board needs) ────────────────
     [JSInvokable]
     public async Task<string?> GetToken()
     {
-        await Auth.TryRestoreAsync();
+        if (Notes.TokenExpiresSoon(Auth.AccessToken)) await Auth.TryRestoreAsync();
         return Auth.AccessToken;
     }
     [JSInvokable] public void OnStatus(string s) { saveState = s; StateHasChanged(); }
@@ -132,28 +174,80 @@
     [JSInvokable]
     public void OnRefused(string reason, bool unsaved)
     {
-        Toasts.Show(unsaved ? "You can no longer edit this board. Your last changes were not saved." : "You can no longer edit this board.", ToastKind.Error);
+        if (reason == "locked" && note is not null)
+        {
+            saveState = "locked";
+            note = note with { LockedAt = note.LockedAt ?? DateTime.UtcNow };
+        }
+        else if (reason == "forbidden" && note is not null)
+        {
+            saveState = "saved";
+            note = note with { Access = "view" };
+        }
+        else if (reason == "not_found" && note is not null)
+        {
+            error = "not_found";
+        }
+        var why = reason switch
+        {
+            "not_found" => "You no longer have access to this board",
+            "locked" => "This board was locked, so your last change wasn't saved",
+            _ => "You no longer have edit access to this board",
+        };
+        Toasts.Show(unsaved ? $"{why}. Your last changes were not saved." : why + ".", ToastKind.Error);
+        StateHasChanged();
     }
     [JSInvokable]
     public void OnMeta(NotePageDto m)
     {
         if (note?.Id != m.Id) return;
-        note = m with { Access = note.Access };
+        note = m with { Access = note.Access, IsFavorite = note.IsFavorite, Breadcrumb = note.Breadcrumb, Rooms = note.Rooms };
         _ = editor?.InvokeVoidAsync("setLocked", m.LockedAt is not null);
         StateHasChanged();
     }
     [JSInvokable]
     public async Task OnBoardLockToggle()
     {
-        if (note is null || note.Access is not ("owner" or "edit")) return;
+        if (note is null || !HasEditAccess) return;
         var lockIt = note.LockedAt is null;
         var res = await Auth.SendAsync(HttpMethod.Put, $"/api/notes/{note.Id}/lock", new { locked = lockIt });
+        if (disposed || note is null) return;
         if (!res.IsSuccessStatusCode) { Toasts.Show(lockIt ? "Couldn't lock the board" : "Couldn't unlock the board", ToastKind.Error); return; }
         note = note with { LockedAt = lockIt ? DateTime.UtcNow : null };
-        if (editor is not null) await editor.InvokeVoidAsync("setLocked", lockIt);
+        if (editor is not null) try { await editor.InvokeVoidAsync("setLocked", lockIt); } catch (JSException) { }
         Toasts.Show(lockIt ? "Board locked. Everyone can still view, comment and vote." : "Board unlocked.", ToastKind.Success);
         StateHasChanged();
     }
+    [JSInvokable]
+    public async Task OnNewBoardFromTemplate(string title)
+    {
+        if (creating || !CanWriteNotes || note is null) return;
+        creating = true;
+        try
+        {
+            var parent = note.Access is "owner" or "edit" ? note.ParentId : null;
+            var name = string.IsNullOrWhiteSpace(title) ? "Whiteboard" : title.Trim()[..Math.Min(100, title.Trim().Length)];
+            var res = await Auth.SendAsync(HttpMethod.Post, "/api/notes", new CreateNoteRequest(parent, name, null, null, null, null, "board"));
+            if (disposed) return;
+            if (!res.IsSuccessStatusCode)
+            {
+                try { await JS.InvokeVoidAsync("sessionStorage.removeItem", "ipop.wb.pendingTemplate"); } catch (JSException) { }
+                Toasts.Show("Couldn't create the board", ToastKind.Error);
+                return;
+            }
+            var created = await res.Content.ReadFromJsonAsync<NotePageDto>(new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+            if (created is not null) Nav.NavigateTo($"/notes/{created.Id}/board");
+        }
+        finally { creating = false; }
+    }
+    [JSInvokable] public void OnRestoreVersionId(string versionId) => Nav.NavigateTo($"/notes/{Id}");
+    [JSInvokable]
+    public void OnShareFromBoard()
+    {
+        if (note?.Access != "owner") { Toasts.Show("Only the owner can share this board", ToastKind.Info); return; }
+        Nav.NavigateTo($"/notes/{Id}");
+    }
+    [JSInvokable] public Task<object?> CreateWhiteboard() => Task.FromResult<object?>(null);
     [JSInvokable] public Task SetAccent(string k) => Task.CompletedTask;
     [JSInvokable] public Task<object?> CreateSubPage() => Task.FromResult<object?>(null);
     [JSInvokable] public void OnPhoneMention(object _) { }
@@ -161,7 +255,7 @@
     public async ValueTask DisposeAsync()
     {
         disposed = true;
-        try { if (editor is not null) { await editor.InvokeVoidAsync("destroy"); await editor.DisposeAsync(); } } catch (JSDisconnectedException) { } catch (JSException) { }
+        await UnmountEditorAsync();
         try { if (module is not null) await module.DisposeAsync(); } catch (JSDisconnectedException) { }
         selfRef?.Dispose();
     }

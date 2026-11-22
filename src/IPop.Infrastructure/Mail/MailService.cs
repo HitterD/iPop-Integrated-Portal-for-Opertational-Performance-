@@ -303,6 +303,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
 
         db.MailRecipients.Remove(recipient);
         await db.SaveChangesAsync(ct);
+        await DropOrphanLabelsAsync(userId, [mailId], ct);
         await SyncUserAsync(userId, ct);
         return new SendMailResult(true, mailId, null);
     }
@@ -356,7 +357,11 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
 
         IQueryable<MailRecipient> query = db.MailRecipients.AsNoTracking().Where(r => r.UserId == userId);
 
-        if (folder == MailFolder.Starred)
+        // A label is its own view (Gmail-like): every folder except Trash, so the list matches the
+        // label's badge count (GetLabelCountsAsync uses the same rule).
+        if (!string.IsNullOrWhiteSpace(search?.Label))
+            query = query.Where(r => r.Folder != "trash" && r.Folder != "pending");
+        else if (folder == MailFolder.Starred)
             query = query.Where(r => r.IsStarred);
         else
             query = query.Where(r => r.Folder == FolderToString(folder));
@@ -427,7 +432,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
             .Take(pageSize)
             .Select(r => new
             {
-                r.MailId, r.IsStarred, r.IsRead, r.IsPinned, r.IsMuted,
+                r.MailId, r.IsStarred, r.IsRead, r.IsPinned, r.IsMuted, r.Folder,
                 Row = new MailRow(r.Mail.Id, r.Mail.SenderId, r.Mail.Sender.Name, r.Mail.Sender.Nik, r.Mail.Subject,
                     r.Mail.Body.Substring(0, SnippetSourceChars), r.Mail.SentAt, r.Mail.CreatedAt, r.Mail.HasAttachment,
                     r.Mail.ThreadCount, r.Mail.ThreadRootId, r.Mail.InReplyToId, r.Mail.Importance, r.Mail.ScheduledAt),
@@ -447,7 +452,8 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
 
         var dtos = items.Select(r => ToSummaryFromRow(r.Row, r.IsStarred, r.IsRead, r.IsPinned, r.IsMuted) with
         {
-            Labels = labelByMail.TryGetValue(r.MailId, out var lbls) ? lbls : null
+            Labels = labelByMail.TryGetValue(r.MailId, out var lbls) ? lbls : null,
+            Folder = r.Folder,
         }).ToList();
         return new PagedResult<MailSummaryDto>(dtos, totalCount, page, pageSize);
     }
@@ -470,6 +476,33 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
             Get("sent"), Get("draft"), rows.Where(r => r.IsStarred).Sum(r => r.Count),
             Get("archive"), Get("trash"), Get("scheduled"),
             rows.Where(r => r.Folder == "inbox" && r.IsStarred).Sum(r => r.Count));
+    }
+
+    /// Label badge counts: distinct mails carrying each of the user's labels that the user still has
+    /// outside Trash. Archive counts; Trash and hard-deleted mail do not.
+    public async Task<IReadOnlyDictionary<Guid, int>> GetLabelCountsAsync(Guid userId, CancellationToken ct)
+    {
+        var live = db.MailRecipients.Where(r => r.UserId == userId && r.Folder != "trash" && r.Folder != "pending").Select(r => r.MailId);
+        var rows = await db.MailLabelAssignments.AsNoTracking()
+            .Where(a => a.Label.UserId == userId && live.Contains(a.MailId))
+            .GroupBy(a => a.LabelId)
+            .Select(g => new { g.Key, Count = g.Select(a => a.MailId).Distinct().Count() })
+            .ToListAsync(ct);
+        return rows.ToDictionary(x => x.Key, x => x.Count);
+    }
+
+    /// The user's labels go with their last copy of a mail: once they no longer hold any row for it
+    /// (delete forever, Empty Trash, discard draft), their assignments on it are removed.
+    private async Task DropOrphanLabelsAsync(Guid userId, IReadOnlyCollection<Guid>? mailIds, CancellationToken ct)
+    {
+        var q = db.MailLabelAssignments.Where(a => a.Label.UserId == userId
+            && !db.MailRecipients.Any(r => r.UserId == userId && r.MailId == a.MailId));
+        if (mailIds is not null)
+        {
+            if (mailIds.Count == 0) return;
+            q = q.Where(a => mailIds.Contains(a.MailId));
+        }
+        await q.ExecuteDeleteAsync(ct);
     }
 
     public async Task<PagedResult<MailSummaryDto>> GetThreadAsync(Guid userId, Guid threadRootId, int page, int pageSize, CancellationToken ct)
@@ -842,6 +875,10 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
 
         if (recipient.Folder == "trash" && FolderToString(folder) != "trash")
             return new SendMailResult(false, null, "mail_trashed");
+        // Drafts and scheduled mail only leave their folder for Trash, and a scheduled one is
+        // cancelled first so it is never delivered from Trash. Restore brings it back as a draft.
+        if (folder == MailFolder.Trash && recipient.Folder is "draft" or "scheduled")
+            return await DeleteAsync(userId, mailId, ct);
 
         var status = await db.Mails.Where(m => m.Id == mailId).Select(m => m.Status).FirstOrDefaultAsync(ct);
         var folderStr = recipient.Folder == "trash" ? "trash" : MoveTarget(recipient, status, folder);
@@ -874,6 +911,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         {
             db.MailRecipients.Remove(recipient);
             await db.SaveChangesAsync(ct);
+            await DropOrphanLabelsAsync(userId, [mailId], ct);
             await SyncUserAsync(userId, ct);
             return new SendMailResult(true, mailId, null);
         }
@@ -887,8 +925,10 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
     public async Task<int> EmptyTrashAsync(Guid userId, CancellationToken ct)
     {
         // One DELETE instead of tracking and removing every row.
+        var trashed = await db.MailRecipients.Where(r => r.UserId == userId && r.Folder == "trash").Select(r => r.MailId).ToListAsync(ct);
         var count = await db.MailRecipients.Where(r => r.UserId == userId && r.Folder == "trash").ExecuteDeleteAsync(ct);
         if (count == 0) return 0;
+        await DropOrphanLabelsAsync(userId, trashed, ct);
         await SyncUserAsync(userId, ct);
         return count;
     }
@@ -923,6 +963,14 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         if (folder is not (MailFolder.Inbox or MailFolder.Sent or MailFolder.Archive or MailFolder.Trash))
             return new BulkResultDto(0, "invalid_folder");
 
+        if (folder == MailFolder.Trash)
+        {
+            // Scheduled mail is cancelled first (see DeleteAsync); drafts go to Trash like any row.
+            var scheduled = await db.MailRecipients
+                .Where(r => r.UserId == userId && mailIds.Contains(r.MailId) && r.Folder == "scheduled")
+                .Select(r => r.MailId).ToListAsync(ct);
+            foreach (var id in scheduled) await CancelScheduleAsync(userId, id, ct);
+        }
         var rows = await db.MailRecipients
             .Include(r => r.Mail)
             .Where(r => r.UserId == userId && mailIds.Contains(r.MailId) && r.Folder != "trash")
@@ -930,6 +978,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         var moved = 0;
         foreach (var r in rows)
         {
+            if (folder == MailFolder.Trash && r.Folder == "draft") { r.Folder = "trash"; moved++; continue; }
             if (MoveTarget(r, r.Mail.Status, folder) is not { } target) continue;
             r.Folder = target;
             moved++;
@@ -974,6 +1023,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
         foreach (var r in rows.Except(permanent)) r.Folder = "trash";
         foreach (var r in permanent) db.MailRecipients.Remove(r);
         await db.SaveChangesAsync(ct);
+        await DropOrphanLabelsAsync(userId, permanent.Select(r => r.MailId).ToList(), ct);
         await SyncUserAsync(userId, ct);
         return new BulkResultDto(rows.Count);
     }
@@ -1027,7 +1077,7 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
     public async Task<SendMailResult> RequestPdfExportAsync(Guid userId, Guid mailId, CancellationToken ct)
     {
         var isParticipant = await db.MailRecipients
-            .AnyAsync(r => r.MailId == mailId && r.UserId == userId, ct);
+            .AnyAsync(r => r.MailId == mailId && r.UserId == userId && r.Folder != "pending", ct);
         if (!isParticipant) return new SendMailResult(false, null, "mail_not_found");
 
         var mail = await db.Mails.FindAsync([mailId], ct);
@@ -1251,9 +1301,11 @@ public sealed partial class MailService(IPopDbContext db, INotificationGatewaySe
             title: $"New email from {mail.Sender?.Name ?? "Someone"}",
             message: string.IsNullOrWhiteSpace(preview) ? mail.Subject : $"{mail.Subject} — {preview}",
             target: new NotificationTarget(UserIds: recipientIds),
+            actorUserId: mail.SenderId,
             // Stable per mail: a retry after a failed job save returns the existing notification (no second toast).
             idempotencyKey: $"new-{mail.Id:N}",
-            priority: mail.Importance == "high" ? "high" : "normal",
+            // Mass mail ("All staff", department blasts) is published low: the Notifier files it under For your info.
+            priority: mail.IsMass ? "low" : mail.Importance == "high" ? "high" : "normal",
             targetUrl: $"/mail?mailId={mail.Id}",
             ct: ct);
         // A rejected request (validation) won't succeed on retry; only exceptions are retried.

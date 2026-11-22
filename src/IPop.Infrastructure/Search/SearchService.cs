@@ -49,6 +49,7 @@ public class SearchService(IPopDbContext db, IEnumerable<ISearchModuleProvider>?
         // 1. People / Users
         var users = await db.Users.AsNoTracking().Include(u => u.Department)
             .Where(u => u.IsActive && (u.Name.ToLower().Contains(q) || (u.Email != null && u.Email.ToLower().Contains(q))))
+            .OrderBy(u => u.Name).ThenBy(u => u.Id)
             .Take(5)
             .ToListAsync(ct);
 
@@ -87,6 +88,7 @@ public class SearchService(IPopDbContext db, IEnumerable<ISearchModuleProvider>?
 
         var projects = await db.Projects.AsNoTracking()
             .Where(p => p.IsActive && (isAdmin || isMemberProjectIds.Contains(p.Id)) && p.Name.ToLower().Contains(q))
+            .OrderBy(p => p.Name).ThenBy(p => p.Id)
             .Take(4)
             .ToListAsync(ct);
 
@@ -102,6 +104,7 @@ public class SearchService(IPopDbContext db, IEnumerable<ISearchModuleProvider>?
 
         var tasks = await db.ProjectTasks.AsNoTracking()
             .Where(t => (isAdmin || isMemberProjectIds.Contains(t.ProjectId)) && t.Title.ToLower().Contains(q))
+            .OrderByDescending(t => t.UpdatedAt).ThenBy(t => t.Id)
             .Take(4)
             .ToListAsync(ct);
 
@@ -124,7 +127,7 @@ public class SearchService(IPopDbContext db, IEnumerable<ISearchModuleProvider>?
             var visibleNews = await IPop.Infrastructure.News.NewsService.VisiblePostIdsAsync(db, userId, ct);
             newsQuery = newsQuery.Where(n => visibleNews.Contains(n.Id));
         }
-        var news = await newsQuery.Take(4).ToListAsync(ct);
+        var news = await newsQuery.OrderByDescending(n => n.PublishAt ?? n.CreatedAt).ThenBy(n => n.Id).Take(4).ToListAsync(ct);
 
         foreach (var n in news)
         {
@@ -139,6 +142,7 @@ public class SearchService(IPopDbContext db, IEnumerable<ISearchModuleProvider>?
         // 4. Mail
         var mails = await db.MailRecipients.AsNoTracking()
             .Where(r => r.UserId == userId && r.Folder != "trash" && r.Mail.Subject.ToLower().Contains(q))
+            .OrderByDescending(r => r.CreatedAt).ThenBy(r => r.Id)
             .Take(4)
             .Select(r => new { r.MailId, r.Mail.Subject, r.Mail.Sender.Name, r.Mail.SentAt })
             .ToListAsync(ct);

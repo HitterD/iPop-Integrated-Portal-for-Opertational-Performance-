@@ -6,6 +6,7 @@ using IPop.Application.Attachments;
 using IPop.Application.Chat;
 using IPop.Application.Notes;
 using IPop.Application.Notifications;
+using IPop.Application.Projects;
 using IPop.Application.Rbac;
 using IPop.Application.Realtime;
 using IPop.Infrastructure.Persistence;
@@ -29,6 +30,7 @@ public static class NotesEndpoints
     public record SendToChatRequest(Guid RoomId, string Level, string? Message);
     public record DocMentionRequest(IReadOnlyList<Guid> UserIds, string? Context);
     public record NoteUploadDto(Guid Id, string FileName, string ContentType, long Size, string Url);
+    public record FromUrlRequest(string? Url);
 
     public static IEndpointRouteBuilder MapNotes(this IEndpointRouteBuilder app)
     {
@@ -58,7 +60,7 @@ public static class NotesEndpoints
             CancellationToken ct) => Run(http, async me =>
         {
             var r = await svc.SetLockedAsync(me.Id, id, req.Locked, ct);
-            if (r.Success) await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteMeta", r.Data, ct);
+            if (r.Success) await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteMeta", PublicMeta(r.Data!), ct);
             return From(r);
         })).RequirePermission("notes.write");
 
@@ -75,7 +77,7 @@ public static class NotesEndpoints
             var r = await svc.UpdateMetaAsync(me.Id, id, req, ct);
             if (r.Success)
             {
-                await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteMeta", r.Data, ct);
+                await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteMeta", PublicMeta(r.Data!), ct);
                 if (req.Title is not null || req.Emoji is not null) await ChangedAsync(svc, rt, http, id, ct);
             }
             return From(r);
@@ -85,19 +87,19 @@ public static class NotesEndpoints
             Run(http, async me => From(await svc.SetFavoriteAsync(me.Id, id, req.Favorite, ct))));
 
         g.MapDelete("/{id:guid}", (Guid id, HttpContext http, INoteService svc, IRealtime rt, IHubContext<NotesHub> hub,
-            CancellationToken ct) => Run(http, async me =>
+            IPermissionEvaluator perms, CancellationToken ct) => Run(http, async me =>
         {
             var audience = await svc.GetAudienceAsync(id, ct);
             var r = await svc.TrashAsync(me.Id, id, ct);
             if (r.Success)
             {
                 await PushAsync(rt, http, audience, ct);
-                await NotesHub.EvictLostAccessAsync(hub, svc, id, ct);   // a trashed page (and its sub-pages) is no longer live content
+                await NotesHub.EvictAllPodsAsync(hub, svc, id, ct, perms);   // a trashed page (and its sub-pages) is no longer live content
             }
             return From(r);
         })).RequirePermission("notes.write");
         g.MapPost("/{id:guid}/move", (Guid id, MoveNoteRequest req, HttpContext http, INoteService svc, IRealtime rt,
-            IHubContext<NotesHub> hub, CancellationToken ct) => Run(http, async me =>
+            IHubContext<NotesHub> hub, IPermissionEvaluator perms, CancellationToken ct) => Run(http, async me =>
         {
             // Old and new audiences both need the refresh: some lose the page, others gain it.
             var before = await svc.GetAudienceAsync(id, ct);
@@ -105,7 +107,7 @@ public static class NotesEndpoints
             if (r.Success)
             {
                 await PushAsync(rt, http, before.Union(await svc.GetAudienceAsync(id, ct)).ToList(), ct);
-                await NotesHub.EvictLostAccessAsync(hub, svc, id, ct);   // moving out from under a shared parent drops its inherited viewers
+                await NotesHub.EvictAllPodsAsync(hub, svc, id, ct, perms);   // moving out from under a shared parent drops its inherited viewers
             }
             return From(r);
         })).RequirePermission("notes.write");
@@ -129,14 +131,39 @@ public static class NotesEndpoints
             if (r.Success) await ChangedAsync(svc, rt, http, id, ct);
             return From(r);
         })).RequirePermission("notes.write");
-        g.MapDelete("/{id:guid}/purge", (Guid id, HttpContext http, INoteService svc, CancellationToken ct) =>
-            Run(http, async me => From(await svc.PurgeAsync(me.Id, id, ct)))).RequirePermission("notes.write");
+        g.MapDelete("/{id:guid}/purge", (Guid id, HttpContext http, INoteService svc, IPopDbContext db, IAttachmentStore store,
+            ILoggerFactory logs, CancellationToken ct) => Run(http, async me =>
+        {
+            var r = await svc.PurgeWithOrphansAsync(me.Id, id, ct);
+            if (r.Success && r.Data is { Count: > 0 } orphans)
+                await IPop.Infrastructure.Notes.NotesTrashWorker.DeleteOrphanAttachmentsAsync(db, store, orphans, logs.CreateLogger("IPop.Notes"), ct);
+            return From(r, _ => Results.Ok(true));
+        })).RequirePermission("notes.write");
 
         // ── Document ─────────────────────────────────────────────────────────
         g.MapGet("/{id:guid}/doc", (Guid id, HttpContext http, INoteService svc, CancellationToken ct) =>
             Run(http, async me => From(await svc.GetDocAsync(me.Id, id, ct))));
-        g.MapPost("/{id:guid}/snapshot", (Guid id, NoteSnapshotRequest req, HttpContext http, INoteService svc, CancellationToken ct) =>
-            Run(http, async me => From(await svc.SnapshotAsync(me.Id, id, req, ct)))).RequirePermission("notes.write");
+        g.MapPost("/{id:guid}/snapshot", (Guid id, NoteSnapshotRequest req, HttpContext http, INoteService svc, IProjectService projects,
+            IPopDbContext db, IPermissionEvaluator perms, ILoggerFactory logs, CancellationToken ct) =>
+            Run(http, async me =>
+            {
+                var result = await svc.SnapshotAsync(me.Id, id, req, ct);
+                // A to-do that was ticked in the note completes the Projects task it was turned into ("→ Task"). Best effort: the page is
+                // already saved, and a person who cannot change that task simply leaves it as it is.
+                if (result.Success && req.TodoTasks is { Count: > 0 }
+                    && await perms.IsAllowedAsync(me.Id, "projects.write", null, ct))
+                {
+                    var stateText = req.State is not null ? System.Text.Encoding.Latin1.GetString(Convert.FromBase64String(req.State)) : "";
+                    var knownTaskIds = (await db.NoteTodoDues.AsNoTracking()
+                        .Where(x => x.PageId == id && x.TaskId != null).Select(x => x.TaskId!.Value).ToListAsync(ct)).ToHashSet();
+                    var validTasks = req.TodoTasks
+                        .Where(t => knownTaskIds.Contains(t.TaskId) || stateText.Contains(t.TaskId.ToString("D"), StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+                    if (validTasks.Count > 0)
+                        await CompleteTasksOfDoneTodosAsync(db, projects, me.Id, validTasks, logs.CreateLogger("IPop.Notes"), ct);
+                }
+                return From(result);
+            })).RequirePermission("notes.write");
         g.MapPost("/{id:guid}/seed", (Guid id, HttpContext http, INoteService svc, CancellationToken ct) =>
             Run(http, async me => From(await svc.ClaimSeedAsync(me.Id, id, ct), t => new { template = t }))).RequirePermission("notes.write");
         g.MapGet("/{id:guid}/versions", (Guid id, HttpContext http, INoteService svc, CancellationToken ct) =>
@@ -158,8 +185,8 @@ public static class NotesEndpoints
             Run(http, async me => From(await svc.SaveLibraryItemAsync(me.Id, req, ct)))).RequirePermission("notes.write");
         g.MapPatch("/library/{itemId:guid}", (Guid itemId, UpdateLibraryItemRequest req, HttpContext http, INoteService svc, CancellationToken ct) =>
             Run(http, async me => From(await svc.UpdateLibraryItemAsync(me.Id, itemId, req, ct)))).RequirePermission("notes.write");
-        g.MapDelete("/library/{itemId:guid}", (Guid itemId, HttpContext http, INoteService svc, CancellationToken ct) =>
-            Run(http, async me => From(await svc.DeleteLibraryItemAsync(me.Id, itemId, ct)))).RequirePermission("notes.write");
+        g.MapDelete("/library/{itemId:guid}", (Guid itemId, HttpContext http, INoteService svc, IPermissionEvaluator perms, CancellationToken ct) =>
+            Run(http, async me => From(await svc.DeleteLibraryItemAsync(me.Id, itemId, ct, await perms.IsAllowedAsync(me.Id, "notes.admin", null, ct))))).RequirePermission("notes.write");
 
         // ── Whiteboard templates (Template Center: My templates + Team templates) ──
         g.MapGet("/board-templates", (HttpContext http, INoteService svc, CancellationToken ct) =>
@@ -181,7 +208,7 @@ public static class NotesEndpoints
             Run(http, async me =>
             {
                 var r = await svc.CreateFromTemplateAsync(me.Id, templateId, req, ct);
-                if (r.Success) await PushAsync(rt, http, [me.Id], ct);
+                if (r.Success) await ChangedAsync(svc, rt, http, r.Data!.Id, ct);
                 return From(r);
             })).RequirePermission("notes.write");
         g.MapDelete("/templates/{templateId:guid}", (Guid templateId, HttpContext http, INoteService svc, CancellationToken ct) =>
@@ -197,27 +224,32 @@ public static class NotesEndpoints
             if (r.Success)
             {
                 await ChangedAsync(svc, rt, http, id, ct);
-                if (req.UserId is { } uid) await NotifyAsync(notify, uid, "note.shared", $"{me.Name} shared a note with you",
+                if (req.UserId is { } uid) await NotifyAsync(notify, me.Id, uid, "note.shared", $"{me.Name} shared a note with you",
                     await TitleAsync(http, id, ct), id, ct);
             }
             return From(r);
         })).RequirePermission("notes.write");
         g.MapPatch("/{id:guid}/shares/{shareId:guid}", (Guid id, Guid shareId, ShareLevelRequest req, HttpContext http, INoteService svc,
-            IRealtime rt, CancellationToken ct) => Run(http, async me =>
+            IRealtime rt, IHubContext<NotesHub> hub, IPermissionEvaluator perms, CancellationToken ct) => Run(http, async me =>
         {
             var r = await svc.UpdateShareAsync(me.Id, id, shareId, req.Level, ct);
-            if (r.Success) await ChangedAsync(svc, rt, http, id, ct);
+            if (r.Success)
+            {
+                await ChangedAsync(svc, rt, http, id, ct);
+                await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteAccessChanged", id, ct);
+                await NotesHub.EvictAllPodsAsync(hub, svc, id, ct, perms);
+            }
             return From(r);
         })).RequirePermission("notes.write");
         g.MapDelete("/{id:guid}/shares/{shareId:guid}", (Guid id, Guid shareId, HttpContext http, INoteService svc, IRealtime rt,
-            IHubContext<NotesHub> hub, CancellationToken ct) => Run(http, async me =>
+            IHubContext<NotesHub> hub, IPermissionEvaluator perms, CancellationToken ct) => Run(http, async me =>
         {
             var before = await svc.GetAudienceAsync(id, ct);
             var r = await svc.RemoveShareAsync(me.Id, id, shareId, ct);
             if (r.Success)
             {
                 await PushAsync(rt, http, before, ct);
-                await NotesHub.EvictLostAccessAsync(hub, svc, id, ct);   // open tabs of whoever lost access stop receiving it
+                await NotesHub.EvictAllPodsAsync(hub, svc, id, ct, perms);   // open tabs of whoever lost access stop receiving it
             }
             return From(r);
         })).RequirePermission("notes.write");
@@ -226,13 +258,23 @@ public static class NotesEndpoints
         g.MapPost("/{id:guid}/send", (Guid id, SendToChatRequest req, HttpContext http, INoteService svc, IChatService chat,
             IChatNotifier chatNotifier, IRealtime rt, CancellationToken ct) => Run(http, async me =>
         {
+            var existingShares = await svc.GetSharesAsync(me.Id, id, ct);
+            var alreadyShared = existingShares.Success && existingShares.Data!.Shares.Any(s => s.RoomId == req.RoomId && s.InheritedFromId is null);
             var share = await svc.AddShareAsync(me.Id, id, new AddNoteShareRequest(null, req.RoomId, req.Level), ct);
             if (!share.Success) return Error(share.Error!);
             var card = await svc.GetCardAsync(me.Id, id, req.Level, ct);
-            if (!card.Success) return Error(card.Error!);
+            if (!card.Success)
+            {
+                if (!alreadyShared) await svc.RemoveShareAsync(me.Id, id, share.Data!.Id, CancellationToken.None);
+                return Error(card.Error!);
+            }
             var sent = await chat.SendMessageAsync(me.Id, new SendMessageRequest(req.RoomId,
                 CardPrefix + JsonSerializer.Serialize(card.Data, Json), Guid.NewGuid(), null, "note"), ct);
-            if (!sent.Success) return Error(sent.Error ?? "send_failed");
+            if (!sent.Success)
+            {
+                if (!alreadyShared) await svc.RemoveShareAsync(me.Id, id, share.Data!.Id, CancellationToken.None);
+                return Error(sent.Error ?? "send_failed");
+            }
             await chatNotifier.NotifyNewMessageAsync(req.RoomId, sent.Message!, ct);
             var note = req.Message?.Trim();
             if (!string.IsNullOrEmpty(note))
@@ -256,7 +298,7 @@ public static class NotesEndpoints
             await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteThreads", id, ct);
             var title = await TitleAsync(http, id, ct);
             foreach (var uid in r.Data!.NotifyUserIds)
-                await NotifyAsync(notify, uid, "note.mention", $"{me.Name} mentioned you in {title}", req.Body, id, ct);
+                await NotifyAsync(notify, me.Id, uid, "note.mention", $"{me.Name} mentioned you in {title}", req.Body, id, ct);
             return Results.Ok(r.Data.Thread);
         }));
         g.MapPost("/{id:guid}/threads/{threadId:guid}/replies", (Guid id, Guid threadId, NoteReplyRequest req, HttpContext http,
@@ -267,7 +309,7 @@ public static class NotesEndpoints
             await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteThreads", id, ct);
             var title = await TitleAsync(http, id, ct);
             foreach (var uid in r.Data!.NotifyUserIds)
-                await NotifyAsync(notify, uid, "note.comment", $"{me.Name} replied to a comment in {title}", req.Body, id, ct);
+                await NotifyAsync(notify, me.Id, uid, "note.comment", $"{me.Name} replied to a comment in {title}", req.Body, id, ct);
             return Results.Ok(r.Data.Thread);
         }));
         g.MapPut("/{id:guid}/threads/{threadId:guid}/resolved", (Guid id, Guid threadId, ResolveRequest req, HttpContext http,
@@ -284,7 +326,7 @@ public static class NotesEndpoints
             var r = await svc.EditCommentAsync(me.Id, id, commentId, req.Body, ct);
             if (r.Success) await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteThreads", id, ct);
             return From(r);
-        })).RequirePermission("notes.write");
+        }));
         g.MapDelete("/{id:guid}/comments/{commentId:guid}", (Guid id, Guid commentId, HttpContext http,
             INoteService svc, IHubContext<NotesHub> hub, CancellationToken ct) => Run(http, async me =>
         {
@@ -292,14 +334,14 @@ public static class NotesEndpoints
             if (!r.Success) return Error(r.Error!);
             await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteThreads", id, ct);
             return Results.Ok(new { threadRemoved = r.Data is null, thread = r.Data });
-        })).RequirePermission("notes.write");
+        }));
         g.MapPut("/{id:guid}/comments/{commentId:guid}/reactions", (Guid id, Guid commentId, ReactionRequest req, HttpContext http,
             INoteService svc, IHubContext<NotesHub> hub, CancellationToken ct) => Run(http, async me =>
         {
             var r = await svc.ToggleReactionAsync(me.Id, id, commentId, req.Emoji, ct);
             if (r.Success) await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteThreads", id, ct);
             return From(r);
-        })).RequirePermission("notes.write");
+        }));
         // An @mention typed into the page body notifies the people who can open it.
         g.MapPost("/{id:guid}/mentions", (Guid id, DocMentionRequest req, HttpContext http, INoteService svc,
             INotificationGatewayService notify, CancellationToken ct) => Run(http, async me =>
@@ -308,7 +350,7 @@ public static class NotesEndpoints
             if (!r.Success) return Error(r.Error!);
             var title = await TitleAsync(http, id, ct);
             foreach (var uid in r.Data!)
-                await NotifyAsync(notify, uid, "note.mention", $"{me.Name} mentioned you in {title}", req.Context, id, ct);
+                await NotifyAsync(notify, me.Id, uid, "note.mention", $"{me.Name} mentioned you in {title}", req.Context, id, ct);
             return Results.Ok(new { notified = r.Data.Count });
         })).RequirePermission("notes.write");
         // Mentions already in the page: which of these people can open it (the rest render greyed).
@@ -329,7 +371,7 @@ public static class NotesEndpoints
             {
                 await using var stream = file.OpenReadStream();
                 var stored = await store.PutAsync(AttachmentAreas.Notes, file.FileName,
-                    string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType, stream, me.Id, ct);
+                    SanitizeNoteContentType(file.FileName, file.ContentType), stream, me.Id, ct);
                 await svc.LinkAttachmentAsync(id, stored.Id, ct);
                 return Results.Ok(new NoteUploadDto(stored.Id, stored.FileName, stored.ContentType, stored.Size, $"/api/attachments/{stored.Id}"));
             }
@@ -341,7 +383,42 @@ public static class NotesEndpoints
             {
                 return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502);
             }
-        }).DisableAntiforgery().RequirePermission("notes.write");
+        }).DisableAntiforgery().RequirePermission("notes.write").RequireRateLimiting(ChatEndpoints.UploadRateLimitPolicy);
+
+        // A picture pasted from a web page (the clipboard only has its address): fetched server-side and stored like an upload.
+        // 204 = it couldn't be fetched (private address, not a picture, too big, site refused): the editor keeps it as a link.
+        g.MapPost("/{id:guid}/uploads/from-url", async Task<IResult> (Guid id, FromUrlRequest req, HttpContext http, INoteService svc,
+            IAttachmentStore store, IPop.Infrastructure.Links.SafeHttpFetcher fetcher, CancellationToken ct) =>
+        {
+            var me = await MeAsync(http);
+            if (me is null) return Results.Unauthorized();
+            var can = await svc.CanUploadAsync(me.Id, id, ct);
+            if (!can.Success) return Error(can.Error!);
+            var img = await WebImageImport.FetchAsync(fetcher, req.Url, ct);
+            if (img is null) return Results.NoContent();
+            try
+            {
+                await using var stream = new MemoryStream(img.Bytes, writable: false);
+                var stored = await store.PutAsync(AttachmentAreas.Notes, img.FileName, img.ContentType, stream, me.Id, ct);
+                await svc.LinkAttachmentAsync(id, stored.Id, ct);
+                return Results.Ok(new NoteUploadDto(stored.Id, stored.FileName, stored.ContentType, stored.Size, $"/api/attachments/{stored.Id}"));
+            }
+            catch (AttachmentRejectedException ex) { return Results.Json(new { code = ex.Code, message = ex.Message }, statusCode: 422); }
+            catch (IPop.Application.Files.SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
+        }).RequirePermission("notes.write").RequireRateLimiting(LinkPreviewEndpoints.RateLimitPolicy);
+
+        // ── File cards ───────────────────────────────────────────────────────
+        // What the card and the viewer need for a file in this page: kind, page/sheet count, picture of page 1 and (Word/PowerPoint)
+        // the file as PDF. Made on the first call and remembered; 404 when the caller can't open the page or the file isn't in it.
+        g.MapGet("/{id:guid}/files/{attachmentId:guid}/preview-info", async Task<IResult> (Guid id, Guid attachmentId, HttpContext http,
+            IPop.Infrastructure.Notes.NoteFilePreviewService previews, CancellationToken ct) =>
+        {
+            var me = await MeAsync(http);
+            if (me is null) return Results.Unauthorized();
+            try { return From(await previews.GetAsync(me.Id, id, attachmentId, ct)); }
+            catch (IPop.Application.Files.SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
+            catch (FileNotFoundException) { return Results.Json(new { code = "file_missing", message = "The file is missing from storage." }, statusCode: 502); }
+        });
 
         // ── Photo cover ──────────────────────────────────────────────────────
         // Images already in this page, for "pick from this page" in the cover picker.
@@ -350,17 +427,16 @@ public static class NotesEndpoints
 
         // Upload a new cover photo: validated by content, shrunk, stored on the NAS like any note image, then set as the cover.
         g.MapPost("/{id:guid}/cover", async Task<IResult> (Guid id, IFormFile file, HttpContext http, INoteService svc, IAttachmentStore store,
-            IRealtime rt, IHubContext<NotesHub> hub, CancellationToken ct) =>
+            IPopDbContext db, IRealtime rt, IHubContext<NotesHub> hub, CancellationToken ct) =>
         {
             var me = await MeAsync(http);
             if (me is null) return Results.Unauthorized();
             var can = await svc.CanUploadAsync(me.Id, id, ct);
             if (!can.Success) return Error(can.Error!);
-            await using var input = file.OpenReadStream();
-            await using var buffered = new MemoryStream();
-            await input.CopyToAsync(buffered, ct);
-            buffered.Position = 0;
-            var prepared = NoteCoverImage.Prepare(buffered, buffered.Length, out var problem);
+            using var buffered = await ReadCappedAsync(file, NoteCoverImage.MaxBytes, ct);
+            NoteCoverImage.Result? prepared = null;
+            string? problem = buffered is null ? "too_large" : null;
+            if (buffered is not null) prepared = NoteCoverImage.Prepare(buffered, buffered.Length, out problem);
             if (prepared is null)
                 return Results.Json(new { code = problem, message = problem switch
                 {
@@ -376,8 +452,12 @@ public static class NotesEndpoints
                     prepared.ContentType, body, me.Id, ct);
                 await svc.LinkAttachmentAsync(id, stored.Id, ct);
                 var set = await svc.SetCoverImageAsync(me.Id, id, stored.Id, ct);
-                if (!set.Success) return Error(set.Error!);
-                await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteMeta", set.Data, ct);
+                if (!set.Success)
+                {
+                    await UnlinkAndDeleteAttachmentAsync(db, store, id, stored.Id, ct);
+                    return Error(set.Error!);
+                }
+                await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteMeta", PublicMeta(set.Data!), ct);
                 return Results.Ok(set.Data);
             }
             catch (AttachmentRejectedException ex)
@@ -388,12 +468,139 @@ public static class NotesEndpoints
             {
                 return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502);
             }
-        }).DisableAntiforgery().RequirePermission("notes.write");
+        }).DisableAntiforgery().RequirePermission("notes.write").RequireRateLimiting(ChatEndpoints.UploadRateLimitPolicy);
+
+        // ── To-do → Task ─────────────────────────────────────────────────────
+        // "→ Task" on a to-do: a Projects task made by the person themselves. They must be able to edit the page AND add tasks to the
+        // chosen project (the Projects service checks the second, and that the assignee is a member of that project).
+        g.MapPost("/{id:guid}/todo-task", (Guid id, NoteTodoTaskRequest req, HttpContext http, INoteService svc, IProjectService projects,
+            IPopDbContext db, IRealtime rt, CancellationToken ct) => Run(http, async me =>
+        {
+            var can = await svc.CanUploadAsync(me.Id, id, ct);   // edit access to the page
+            if (!can.Success) return Error(can.Error!);
+            var title = (req.Title ?? "").Trim();
+            if (title.Length == 0) title = "To-do from Notes";
+            if (title.Length > 300) title = title[..300];
+            DateTime? due = DateTime.TryParseExact(req.Due, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var d) ? d : null;
+            var pageTitle = await db.NotePages.AsNoTracking().Where(p => p.Id == id).Select(p => p.Title).FirstOrDefaultAsync(ct);
+            var created = await projects.CreateTaskAsync(me.Id, new CreateTaskRequest(req.ProjectId, null, title,
+                string.IsNullOrWhiteSpace(pageTitle) ? "From a note." : $"From the note “{pageTitle}”.", "todo", null, null, due, null, null, null), ct);
+            if (!created.Success) return Results.Json(new { code = created.Error, message = created.Error }, statusCode: created.Error == "forbidden" ? 403 : 422);
+            var task = created.Task!;
+            var assigned = req.AssigneeId is { } who && (await projects.AssignUserAsync(me.Id, task.Id, who, null, ct)).Success;
+            var projectName = await db.Projects.AsNoTracking().Where(p => p.Id == req.ProjectId).Select(p => p.Name).FirstOrDefaultAsync(ct) ?? "";
+            try { await rt.ToAllAsync(RealtimeEvents.ProjectChanged, req.ProjectId); } catch (Exception) { /* advisory */ }
+            return Results.Ok(new NoteTodoTaskDto(task.Id, req.ProjectId, task.Title, projectName, assigned));
+        })).RequirePermission("notes.write").RequirePermission("projects.write");
+
+        // ── Repeat… ──────────────────────────────────────────────────────────
+        // A page that repeats: a copy of it is made on a schedule (NotesRecurrenceWorker). The day is judged in Jakarta time.
+        g.MapGet("/{id:guid}/repeat", (Guid id, HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.GetRecurrenceAsync(me.Id, id, ct), r => r is null ? Results.NoContent() : Results.Ok(r))));
+        g.MapPut("/{id:guid}/repeat", (Guid id, SetNoteRecurrenceRequest req, HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.SetRecurrenceAsync(me.Id, id, req,
+                DateOnly.FromDateTime(NoteRecurrenceRules.LocalNow(DateTime.UtcNow)), ct))))
+            .RequirePermission("notes.write");
+        g.MapDelete("/{id:guid}/repeat", (Guid id, HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => From(await svc.StopRecurrenceAsync(me.Id, id, ct)))).RequirePermission("notes.write");
+
+        // ── Whiteboard thumbnail ─────────────────────────────────────────────
+        // The editor draws a small picture of the board and uploads it here after the board is saved. One per board: the previous
+        // one is removed from the NAS. This is not an edit (no "edited just now"), so it never wakes other people's editors.
+        g.MapPost("/{id:guid}/thumbnail", async Task<IResult> (Guid id, IFormFile file, HttpContext http, INoteService svc, IAttachmentStore store,
+            IPopDbContext db, IHubContext<NotesHub> hub, CancellationToken ct) =>
+        {
+            var me = await MeAsync(http);
+            if (me is null) return Results.Unauthorized();
+            var can = await svc.CanUploadAsync(me.Id, id, ct);
+            if (!can.Success) return Error(can.Error!);
+            using var buffered = await ReadCappedAsync(file, NoteBoardThumbnail.MaxBytes, ct);
+            NoteBoardThumbnail.Result? prepared = null;
+            string? problem = buffered is null ? "too_large" : null;
+            if (buffered is not null) prepared = NoteBoardThumbnail.Prepare(buffered, buffered.Length, out problem);
+            if (prepared is null)
+                return Results.Json(new { code = problem, message = "That isn't a usable picture." }, statusCode: problem == "too_large" ? 413 : 422);
+            try
+            {
+                await using var body = new MemoryStream(prepared.Bytes);
+                var stored = await store.PutAsync(AttachmentAreas.Notes, "board-thumbnail" + prepared.Extension, prepared.ContentType, body, me.Id, ct);
+                await svc.LinkAttachmentAsync(id, stored.Id, ct);
+                var set = await svc.SetThumbnailAsync(me.Id, id, stored.Id, ct);
+                if (!set.Success)
+                {
+                    await UnlinkAndDeleteAttachmentAsync(db, store, id, stored.Id, ct);   // not a board / no access: don't leave the file behind
+                    return Error(set.Error!);
+                }
+                if (set.Data is { } replaced) await store.DeleteAsync(replaced, ct);
+                await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteThumbnail", id, stored.Id, ct);
+                return Results.Ok(new { id = stored.Id });
+            }
+            catch (AttachmentRejectedException ex) { return Results.Json(new { code = ex.Code, message = ex.Message }, statusCode: 422); }
+            catch (IPop.Application.Files.SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
+        }).DisableAntiforgery().RequirePermission("notes.write").RequireRateLimiting(ChatEndpoints.UploadRateLimitPolicy);
 
         return app;
     }
 
+    /// Done to-dos that point at a Projects task: that task becomes "done" (once; a task that is already done, or that the person cannot
+    /// change, is left alone). Un-ticking the to-do does not reopen the task: the task is the system of record for work.
+    internal static async Task CompleteTasksOfDoneTodosAsync(IPopDbContext db, IProjectService projects, Guid userId,
+        IReadOnlyList<NoteTodoTaskLinkDto> todos, ILogger log, CancellationToken ct)
+    {
+        var ids = todos.Where(t => t.Done).Select(t => t.TaskId).Distinct().Take(50).ToList();
+        if (ids.Count == 0) return;
+        var open = await db.ProjectTasks.AsNoTracking().Where(t => ids.Contains(t.Id) && t.Status != "done").Select(t => t.Id).ToListAsync(ct);
+        foreach (var taskId in open)
+        {
+            try
+            {
+                var r = await projects.UpdateTaskAsync(userId, taskId, new UpdateTaskRequest(null, null, "done", null, null, null, null, null, null, null, null, null, null, null), ct);
+                if (!r.Success) log.LogInformation("Note to-do could not complete task {Task}: {Error}", taskId, r.Error);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning(ex, "Completing task {Task} from a note failed", taskId); }
+        }
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
+
+    /// Strips per-viewer fields (breadcrumb, access, DM room labels) before broadcasting metadata to a shared page group.
+    private static NotePageDto PublicMeta(NotePageDto p) => p with { Access = "", IsFavorite = false, Breadcrumb = [], Rooms = [] };
+
+    private static string SanitizeNoteContentType(string? fileName, string? contentType)
+    {
+        var ext = Path.GetExtension(fileName ?? "").ToLowerInvariant();
+        var ct = string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType.Trim().ToLowerInvariant();
+        var semi = ct.IndexOf(';');
+        if (semi >= 0) ct = ct[..semi].Trim();
+        if (ext is ".svg" or ".html" or ".htm" or ".xhtml"
+            || ct is "image/svg+xml" or "text/html" or "application/xhtml+xml" or "text/xml" or "application/xml")
+            return "application/octet-stream";
+        return ct;
+    }
+
+    private static async Task<MemoryStream?> ReadCappedAsync(IFormFile file, long maxBytes, CancellationToken ct)
+    {
+        if (file.Length > maxBytes) return null;
+        await using var input = file.OpenReadStream();
+        var ms = new MemoryStream((int)Math.Min(file.Length > 0 ? file.Length : 4096, maxBytes));
+        var buf = new byte[81920];
+        long total = 0;
+        int n;
+        while ((n = await input.ReadAsync(buf, ct)) > 0)
+        {
+            total += n;
+            if (total > maxBytes) { await ms.DisposeAsync(); return null; }
+            ms.Write(buf, 0, n);
+        }
+        ms.Position = 0;
+        return ms;
+    }
+
+    private static async Task UnlinkAndDeleteAttachmentAsync(IPopDbContext db, IAttachmentStore store, Guid pageId, Guid attachmentId, CancellationToken ct)
+    {
+        await db.NoteAttachments.Where(x => x.PageId == pageId && x.AttachmentId == attachmentId).ExecuteDeleteAsync(ct);
+        await store.DeleteAsync(attachmentId, ct);
+    }
 
     private record Me(Guid Id, string Nik, string Name);
 
@@ -423,6 +630,7 @@ public static class NotesEndpoints
 
     private static IResult From<T>(NoteResult<T> r) => r.Success ? Results.Ok(r.Data) : Error(r.Error!);
     private static IResult From<T>(NoteResult<T> r, Func<T?, object> map) => r.Success ? Results.Ok(map(r.Data)) : Error(r.Error!);
+    private static IResult From<T>(NoteResult<T> r, Func<T?, IResult> choose) => r.Success ? choose(r.Data) : Error(r.Error!);
 
     private static async Task<string> TitleAsync(HttpContext http, Guid id, CancellationToken ct)
     {
@@ -443,7 +651,7 @@ public static class NotesEndpoints
         await rt.ToUsersAsync(niks, RealtimeEvents.NotesChanged, null, ct);
     }
 
-    private static async Task NotifyAsync(INotificationGatewayService notify, Guid userId, string evt, string title, string? message,
+    private static async Task NotifyAsync(INotificationGatewayService notify, Guid actorId, Guid userId, string evt, string title, string? message,
         Guid pageId, CancellationToken ct)
     {
         try
@@ -451,7 +659,7 @@ public static class NotesEndpoints
             var body = message ?? "";
             await notify.PublishInternalAsync(clientSlug: "notes", eventType: evt, title: title,
                 message: body.Length > 200 ? body[..200] + "…" : body, target: new NotificationTarget(UserId: userId),
-                priority: "normal", targetUrl: $"/notes/{pageId}", ct: ct);
+                actorUserId: actorId, idempotencyKey: null, priority: "normal", targetUrl: $"/notes/{pageId}", ct: ct);
         }
         catch
         {

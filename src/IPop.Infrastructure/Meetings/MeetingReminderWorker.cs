@@ -71,6 +71,7 @@ public sealed class MeetingReminderWorker(IServiceScopeFactory scopeFactory, ILo
         var due = await db.MeetingReminders
             .Where(r => r.SentAt == null && r.SendAt <= now)
             .Join(db.Meetings.Where(m => m.Status != MeetingStatus.Cancelled), r => r.MeetingId, m => m.Id, (r, m) => new { r.Id, r.UserId, r.SendAt, Meeting = m })
+            .OrderBy(x => x.SendAt).ThenBy(x => x.Id) // a backlog over 200 drains oldest-first, none starves
             .Take(200)
             .ToListAsync(ct);
         if (due.Count == 0) return 0;

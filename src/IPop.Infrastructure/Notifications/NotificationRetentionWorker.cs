@@ -18,6 +18,7 @@ public class NotificationRetentionWorker(
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(24);
     public const int SessionRetentionDays = 30;
+    public const int ChatHistoryRetentionDays = 30;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -55,6 +56,19 @@ public class NotificationRetentionWorker(
             var deletedDeliveries = await db.NotificationDeliveries
                 .Where(d => (d.Status == "read" || d.Status == "acknowledged" || d.Status == "failed" || (d.Status == "delivered" && d.Channel == "push"))
                             && (d.DeliveredAt != null ? d.DeliveredAt < cutoff : d.UpdatedAt < cutoff))
+                .ExecuteDeleteAsync(ct);
+
+            // Chat history rows ("Ursula · 3 new messages") and missed calls: read ones go after 30 days — the
+            // messages and call history themselves stay in /chat and /calls.
+            var chatCutoff = DateTime.UtcNow.AddDays(-ChatHistoryRetentionDays);
+            deletedDeliveries += await db.NotificationDeliveries
+                .Where(d => (d.Request.EventType == ChatHistoryNotifications.EventType || d.Request.EventType == MissedCallNotifications.EventType)
+                            && (d.Status == "read" || d.Status == "acknowledged")
+                            && (d.ReadAt != null ? d.ReadAt < chatCutoff : d.UpdatedAt < chatCutoff))
+                .ExecuteDeleteAsync(ct);
+            await db.NotificationRequests
+                .Where(r => (r.EventType == ChatHistoryNotifications.EventType || r.EventType == MissedCallNotifications.EventType)
+                            && r.UpdatedAt < chatCutoff && !db.NotificationDeliveries.Any(d => d.RequestId == r.Id))
                 .ExecuteDeleteAsync(ct);
 
             // Sign-in sessions: every refresh rotates into a new row and nothing removed the old ones (64,749 rows on

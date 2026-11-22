@@ -30,7 +30,7 @@ public static class ProjectCommentMentions
             try
             {
                 await gateway.PublishInternalAsync("projects", "project.task_mention", $"{author} mentioned you in {task.Title}",
-                    $"\"{snippet}\" · {task.ProjectName}", new NotificationTarget(UserId: m.UserId), "normal",
+                    $"\"{snippet}\" · {task.ProjectName}", new NotificationTarget(UserId: m.UserId), authorId, null, "normal",
                     $"/projects/{task.ProjectId}?task={taskId}", ct);
                 sent++;
             }

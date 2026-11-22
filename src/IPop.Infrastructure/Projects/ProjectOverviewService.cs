@@ -290,10 +290,10 @@ public sealed class ProjectOverviewService(IPopDbContext db, INotificationGatewa
             {
                 if (request.ToUserId != userId)
                     await gateway.PublishInternalAsync("projects", "project.task_assigned", $"Task Assignment: {task.Title}",
-                        $"\"{task.Title}\" in {projectName} was moved to you.", new NotificationTarget(UserId: request.ToUserId), "normal", url, ct);
+                        $"\"{task.Title}\" in {projectName} was moved to you.", new NotificationTarget(UserId: request.ToUserId), userId, null, "normal", url, ct);
                 if (request.FromUserId != userId)
                     await gateway.PublishInternalAsync("projects", "project.task_unassigned", $"Task moved: {task.Title}",
-                        $"\"{task.Title}\" in {projectName} was moved to {to}.", new NotificationTarget(UserId: request.FromUserId), "normal", url, ct);
+                        $"\"{task.Title}\" in {projectName} was moved to {to}.", new NotificationTarget(UserId: request.FromUserId), userId, null, "normal", url, ct);
             }
             catch (Exception) { /* the change is saved; the notices are advisory */ }
         }

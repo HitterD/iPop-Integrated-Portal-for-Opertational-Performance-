@@ -25,7 +25,8 @@ public sealed record PushPayload(
     string? DeliveryId = null,
     string? JobId = null,
     string? Acct = null,
-    string? Sender = null);
+    string? Sender = null,
+    Guid? SenderId = null);
 
 /// Web Push from the durable outbox. A <see cref="PushJob"/> is expanded once into one
 /// <see cref="PushDelivery"/> per browser; each delivery is sent and retried on its own, and the
@@ -33,7 +34,8 @@ public sealed record PushPayload(
 /// user may no longer see (left room, muted, preview off, call already answered). Runs in
 /// <see cref="PushWorker"/>, never on a request.
 public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport, IDataProtectionProvider dataProtection,
-    ILogger<PushDispatcher> log, IDesktopToastSink? desktop = null, INativePushTransport? native = null)
+    ILogger<PushDispatcher> log, IDesktopToastSink? desktop = null, INativePushTransport? native = null,
+    IPop.Application.Realtime.IRealtime? realtime = null)
 {
     private bool NativeOn => native is { IsConfigured: true };
     private bool AnyOn => transport.IsConfigured || NativeOn;
@@ -117,6 +119,8 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
         // iPop Notifier (desktop app): chat messages have no gateway notification, so their toast goes to the app here,
         // with the same mute/block/quiet-hours audience as the browser toast. Independent of Web Push being configured.
         var desktopUsers = await DesktopUsersAsync(job, now, ct);
+        if (job.Kind == "chat") await ChatHistoryAsync(job, ct);
+        if (job.Kind == "call") await MissedCallHistoryAsync(job, ct);
         if (!AnyOn)
         {
             job.LastError = "push-disabled";
@@ -397,9 +401,79 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
 
         return new Audience("chat", recipients.ToList(),
             uid => recipients.Contains(uid)
-                ? new PushPayload("chat", title, previewOff.Contains(uid) ? "New message" : preview, url, tag, RequireInteraction: emergency)
+                ? new PushPayload("chat", title, previewOff.Contains(uid) ? "New message" : preview, url, tag, RequireInteraction: emergency,
+                    SenderId: msg.SenderId)
                 : null,
             emergency, msg.CreatedAt + TimeSpan.FromHours(emergency ? 1 : 12));
+    }
+
+    /// Every call change queues a "call" job: once the call is over, missed-call rows for the people who missed it.
+    private async Task MissedCallHistoryAsync(PushJob job, CancellationToken ct)
+    {
+        try
+        {
+            if (job.RefId is not { } callId || await LoadCallAsync(callId, ct) is not { } room) return;
+            var added = await IPop.Infrastructure.Notifications.MissedCallNotifications.SyncAsync(db, room, ct);
+            IPop.Infrastructure.Notifications.ChatHistoryNotifications.DetachRows(db);
+            if (added.Count > 0 && realtime is not null)
+            {
+                var niks = await db.Users.AsNoTracking().Where(u => added.Contains(u.Id)).Select(u => u.Nik).ToListAsync(ct);
+                await realtime.ToUsersAsync(niks, IPop.Application.Realtime.RealtimeEvents.NotificationsChanged, ct: ct);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            IPop.Infrastructure.Notifications.ChatHistoryNotifications.DetachRows(db);
+            log.LogWarning("Missed-call row for job {JobId} failed ({Error}).", job.Id, ex.GetType().Name);
+        }
+    }
+
+    /// Chat history row ("Ursula · 3 new messages") for every other member who would see this message: not for a muted
+    /// or archived room, a blocked sender, or the person @-mentioned in it (the mention row covers it). Quiet hours and
+    /// Busy still keep history (they only silence the toast). Failure never blocks the toast.
+    private async Task ChatHistoryAsync(PushJob job, CancellationToken ct)
+    {
+        try
+        {
+            var msg = await db.ChatMessages.AsNoTracking().Where(m => m.Id == job.RefId)
+                .Select(m => new { m.Id, m.RoomId, m.SenderId, SenderName = m.Sender.Name, m.Type, m.Content, m.IsDeleted, m.CreatedAt,
+                    m.ThreadParentId, RoomType = m.Room.Type, RoomName = m.Room.Name, Files = m.Attachments.Count })
+                .FirstOrDefaultAsync(ct);
+            if (msg is null || msg.IsDeleted || msg.Type is "system" or "emergency" || msg.ThreadParentId is not null) return;
+            var now = DateTime.UtcNow;
+            var members = await db.ChatRoomMembers.AsNoTracking()
+                .Where(m => m.RoomId == msg.RoomId && m.LeftAt == null && m.UserId != msg.SenderId && m.User.IsActive)
+                .Select(m => m.UserId).ToListAsync(ct);
+            if (members.Count == 0) return;
+            var quietRoom = await db.ChatRoomUserSettings.AsNoTracking()
+                .Where(s => s.RoomId == msg.RoomId && members.Contains(s.UserId)
+                    && (s.IsArchived || (s.IsMuted && (s.MuteExpiresAt == null || s.MuteExpiresAt > now))))
+                .Select(s => s.UserId).ToListAsync(ct);
+            var blockers = await db.UserBlocks.AsNoTracking().Where(b => b.BlockedUserId == msg.SenderId && members.Contains(b.UserId))
+                .Select(b => b.UserId).ToListAsync(ct);
+            var mentioned = await db.ChatMentions.AsNoTracking().Where(m => m.MessageId == msg.Id && !m.SuppressNotification)
+                .Select(m => m.UserId).ToListAsync(ct);
+            var recipients = members.Except(quietRoom).Except(blockers).Except(mentioned).ToList();
+            var isGroup = msg.RoomType == "group";
+            var preview = msg.Type == "sticker" ? "🎨 Sticker" : ChatPreview(msg.Content, msg.Files);
+            var name = isGroup ? (string.IsNullOrWhiteSpace(msg.RoomName) ? "Group" : msg.RoomName!) : msg.SenderName;
+            var body = isGroup ? $"{msg.SenderName}: {preview}" : preview;
+            var changed = await IPop.Infrastructure.Notifications.ChatHistoryNotifications.UpsertAsync(db, msg.RoomId, msg.SenderId, name, body,
+                recipients, msg.CreatedAt, ct);
+            IPop.Infrastructure.Notifications.ChatHistoryNotifications.DetachRows(db);
+            if (changed.Count > 0 && realtime is not null)
+            {
+                var niks = await db.Users.AsNoTracking().Where(u => changed.Contains(u.Id)).Select(u => u.Nik).ToListAsync(ct);
+                await realtime.ToUsersAsync(niks, IPop.Application.Realtime.RealtimeEvents.NotificationsChanged, ct: ct);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            IPop.Infrastructure.Notifications.ChatHistoryNotifications.DetachRows(db);
+            log.LogWarning("Chat history row for job {JobId} failed ({Error}).", job.Id, ex.GetType().Name);
+        }
     }
 
     /// Gateway notifications (mentions, emergencies, module events). The producer filtered the
@@ -423,7 +497,7 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
                 .Where(m => m.RoomId == rid && m.LeftAt == null && users.Contains(m.UserId)).Select(m => m.UserId).ToListAsync(ct);
         if (!emergency)
         {
-            var silenced = await SilencedAsync(db, users, eventType, priority, now, ct);
+            var silenced = await SilencedAsync(db, users, eventType, priority, now, ct, req.TargetUrl);
             users = users.Where(u => !silenced.Contains(u)).ToList();
         }
         var recipients = users.ToHashSet();
@@ -526,13 +600,13 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
     /// Users whose preferences silence this event now: a muted type, or quiet hours unless
     /// the event is high priority and they let important ones through.
     internal static async Task<HashSet<Guid>> SilencedAsync(IPopDbContext db, IReadOnlyCollection<Guid> userIds,
-        string eventType, string priority, DateTime now, CancellationToken ct)
+        string eventType, string priority, DateTime now, CancellationToken ct, string? targetUrl = null)
     {
         var prefs = await db.NotificationPreferences.AsNoTracking()
             .Where(p => userIds.Contains(p.UserId) && (p.QuietHoursEnabled || p.MutedTypes != ""))
             .Select(p => new { Pref = p, p.User.TimeZoneId })
             .ToListAsync(ct);
-        var silenced = prefs.Where(x => IsSilenced(x.Pref, x.TimeZoneId, eventType, priority, now))
+        var silenced = prefs.Where(x => IsSilenced(x.Pref, x.TimeZoneId, eventType, priority, now, targetUrl))
             .Select(x => x.Pref.UserId).ToHashSet();
         silenced.UnionWith(await BusyAsync(db, userIds, now, ct));
         return silenced;
@@ -549,13 +623,14 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
             .Select(u => u.Id).ToList();
     }
 
-    internal static bool IsSilenced(NotificationPreference pref, string? timeZoneId, string eventType, string priority, DateTime now)
+    internal static bool IsSilenced(NotificationPreference pref, string? timeZoneId, string eventType, string priority, DateTime now,
+        string? targetUrl = null)
     {
         if (!string.IsNullOrWhiteSpace(pref.MutedTypes))
         {
             var muted = pref.MutedTypes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (muted.Contains(NotificationGatewayService.ClassifyEventType(eventType), StringComparer.OrdinalIgnoreCase)
-                || muted.Contains(eventType, StringComparer.OrdinalIgnoreCase))
+            if (IPop.Application.Notifications.NotificationCategory.IsMuted(muted, eventType, targetUrl,
+                    NotificationGatewayService.ClassifyEventType(eventType)))
                 return true;
         }
         if (pref.QuietHoursEnabled && !(priority == "high" && pref.AllowImportant))

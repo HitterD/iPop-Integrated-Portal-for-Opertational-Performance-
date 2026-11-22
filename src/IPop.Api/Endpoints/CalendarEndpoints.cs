@@ -143,7 +143,7 @@ public static partial class CalendarEndpoints
                 await MeetingEndpoints.NotifyCalendarChangedAsync(db, realtime, sPeople.Append(sOwner).Append(userId.Value), ct);
                 await MeetingEndpoints.PublishBestEffortAsync(notifs, MeetingEndpoints.NotifyLog(http), "meeting.cancelled",
                     $"Meetings cancelled: {sTitle}", $"{count} upcoming \"{sTitle}\" meetings have been cancelled.",
-                    sPeople.Where(a => a != userId.Value).ToList(), "high", "/calendar");
+                    sPeople.Where(a => a != userId.Value).ToList(), "high", "/calendar", sOwner);
                 if (sActed is { } seriesActor) await CalendarDelegateEndpoints.NotifyOwnerOfChangeAsync(db, notifs, MeetingEndpoints.NotifyLog(http), sOwner, seriesActor, "deleted", sTitle, ct);
                 return Results.NoContent();
             }
@@ -154,7 +154,7 @@ public static partial class CalendarEndpoints
             var log = MeetingEndpoints.NotifyLog(http);
             await NotifyChangedAsync(db, realtime, meetingId, attendees.Append(ownerId).Append(userId.Value), ct);
             await MeetingEndpoints.PublishBestEffortAsync(notifs, log, "meeting.cancelled",
-                $"Meeting cancelled: {title}", $"\"{title}\" has been cancelled.", attendees.Where(a => a != userId.Value).ToList(), "high", "/calendar");
+                $"Meeting cancelled: {title}", $"\"{title}\" has been cancelled.", attendees.Where(a => a != userId.Value).ToList(), "high", "/calendar", ownerId);
             if (actedBy is { } by) await CalendarDelegateEndpoints.NotifyOwnerOfChangeAsync(db, notifs, log, ownerId, by, meetingId is null ? "deleted" : "cancelled", title, ct);
             return Results.NoContent();
         });
@@ -173,21 +173,21 @@ public static partial class CalendarEndpoints
     // ── Feed ──────────────────────────────────────────────────────────────────
 
     /// Which module sources the caller may read (mirrors each module's own read permission).
-    public sealed record FeedAccess(bool Projects, bool Mail, bool Chat, bool News, bool Tickets = true)
+    public sealed record FeedAccess(bool Projects, bool Mail, bool Chat, bool News, bool Tickets = true, bool Notes = true)
     {
-        public static readonly FeedAccess All = new(true, true, true, true);
+        public static readonly FeedAccess All = new(true, true, true, true, true, true);
 
         public static async Task<FeedAccess> ForAsync(IPermissionEvaluator perms, Guid userId, CancellationToken ct)
         {
             var access = await IPop.Application.Calendar.CalendarFeedAccess.ForAsync(perms, userId, ct);
-            return new(access.Projects, access.Mail, access.Chat, access.News, access.Tickets);
+            return new(access.Projects, access.Mail, access.Chat, access.News, access.Tickets, access.Notes);
         }
     }
 
     public static async Task<List<CalendarFeedItem>> BuildFeedAsync(IPopDbContext db, Guid userId, DateTime from, DateTime to, FeedAccess access, CancellationToken ct)
     {
         var items = await IPop.Infrastructure.Calendar.CalendarFeedService.BuildAsync(db, userId, from, to,
-            new IPop.Application.Calendar.CalendarFeedAccess(access.Projects, access.Mail, access.Chat, access.News, access.Tickets), ct);
+            new IPop.Application.Calendar.CalendarFeedAccess(access.Projects, access.Mail, access.Chat, access.News, access.Tickets, access.Notes), ct);
         return items.Select(i => new CalendarFeedItem(i.Id, i.Source, i.Kind, i.Title, i.StartAt, i.EndAt, i.AllDay,
             i.Url, i.Subtitle, i.EventId, i.MeetingId, i.Rsvp, i.CanEdit, i.Location, i.Link, i.Visibility, i.MeetingKind, i.RoomKey)).ToList();
     }
@@ -496,7 +496,8 @@ public static partial class CalendarEndpoints
             : null;
         await MeetingEndpoints.PublishBestEffortAsync(notifs, log, "meeting.invited", $"Meeting invite: {ev.Title}",
             MeetingEndpoints.InviteMessage(who, ev.Title, ev.StartAt, place?.Location, place?.RoomPassword),
-            invited.Where(i => i != sentBy).ToList(), "normal", $"/calendar?event={ev.Id}&date={ev.StartAt.ToLocalTime():yyyy-MM-dd}");
+            invited.Where(i => i != sentBy).ToList(), "normal", $"/calendar?event={ev.Id}&date={ev.StartAt.ToLocalTime():yyyy-MM-dd}",
+            organizerId);
         await CalendarDelegateEndpoints.ForwardInvitesAsync(db, notifs, log, invited, ev.Title, ev.StartAt, organizer, sentBy, ct);
     }
 

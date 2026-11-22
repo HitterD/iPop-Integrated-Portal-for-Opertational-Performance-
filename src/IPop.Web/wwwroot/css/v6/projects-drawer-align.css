@@ -1,0 +1,50 @@
+/* Full task editor (ProjectTaskDrawer, opened by ⤢ / New task) — same look as the v2 quick panel (.pv2p).
+   Desktop only: the phone keeps its own sheet. Layout and functions are unchanged; only the surface changes:
+   docked to the right edge like .pv2p (no floating card), flat sections with hairline dividers instead of
+   coloured cards, v2 type scale, compact header. Loads after projects-drawer.css / projects-friendly.css. */
+@media (min-width: 901px) {
+  /* panel: docked right, full height, square edge, v2 border + shadow */
+  .task-drawer.v6-task-drawer { top: 0; right: 0; bottom: 0; width: min(560px, 100vw); max-width: 100vw; }
+  .v6-task-drawer .task-drawer-inner { border-radius: 0; border-left: 1px solid var(--line); box-shadow: 0 18px 44px -14px rgba(20, 24, 22, .28); animation: pv2-slidein .4s var(--pv2-smooth, ease); }
+  .task-drawer-backdrop { background: rgba(0, 0, 0, .10); }
+
+  /* header: same height/rhythm as .pv2p-h .top */
+  .v6-task-drawer .task-drawer-head { padding: 12px 14px 12px 20px; border-bottom: 1px solid var(--line); }
+  .v6-task-drawer .td-project-name { font-size: 12px; color: var(--ink-3); }
+  .v6-task-drawer .td-round { width: 28px; height: 28px; border-radius: 8px; background: none; color: var(--ink-3); }
+  .v6-task-drawer .td-round:hover:not(:disabled) { background: var(--surface-3, var(--tray)); color: var(--ink); }
+  .v6-task-drawer .td-round .lucide { width: 14px; height: 14px; }
+
+  /* body + title: v2 scale */
+  .v6-task-drawer .task-drawer-body.td-body { padding: 14px 20px 30px; gap: 16px; }
+  .v6-task-drawer .td-title, .td-grouped .td-title { font-size: 18px; font-weight: 650; letter-spacing: -.2px; }
+
+  /* status: one row of compact chips (v2 pill height), not a tall grey tray */
+  .v6-task-drawer .td-status-pills.td-status-seg { display: flex; flex-wrap: wrap; gap: 6px; padding: 0; background: none; border-radius: 0; }
+  .v6-task-drawer .td-status-seg .td-status-pill { height: 28px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 12.5px; }
+  /* the chosen status is filled with its own colour (as the v2 status pill); the dot is hidden on it */
+  .v6-task-drawer .td-status-pills.td-status-seg .td-status-pill.on, [data-theme] .v6-task-drawer .td-status-pills.td-status-seg .td-status-pill.on { border-color: transparent; box-shadow: none; font-weight: 600; background: var(--st, var(--fill)); color: #fff; }
+  .v6-task-drawer .td-status-seg .td-status-pill.on .col-dot { display: none; }
+
+  /* overdue: a quiet inline row instead of a red card */
+  .v6-task-drawer .td-overdue { background: none; border: 0; border-radius: 0; padding: 0; gap: 8px; }
+  .v6-task-drawer .td-overdue-text { color: var(--danger); font-size: 13px; }
+  .v6-task-drawer .td-overdue-btn { height: 26px; padding: 0 9px; border-radius: 8px; font-size: 12px; }
+
+  /* get started: a plain checklist, no green card */
+  .v6-task-drawer .td-starter { background: none; border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: 14px 0 0; }
+
+  /* sections: flat, hairline divider on top, no coloured icon tiles, small-caps heading like v2 ("CHECKLIST") */
+  .v6-task-drawer .td-group { background: none; border: 0; border-top: 1px solid var(--line); border-radius: 0; }
+  .v6-task-drawer .td-group-head { padding: 14px 0 10px; border-radius: 0; }
+  .v6-task-drawer button.td-group-head:hover { background: none; }
+  .v6-task-drawer button.td-group-head:hover .td-group-t b { color: var(--ink); }
+  .v6-task-drawer .td-group-ic { display: none; }
+  .v6-task-drawer .td-group-t b { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+  .v6-task-drawer .td-group-t small { display: none; }
+  .v6-task-drawer .td-group-body { padding: 0 0 14px; }
+  .v6-task-drawer .td-group-body.td-properties { grid-template-columns: 110px minmax(0, 1fr); gap: 8px 12px; }
+  .v6-task-drawer .td-group .td-label { font-size: 12.5px; color: var(--ink-3); }
+  .v6-task-drawer .td-group .task-evidence-section { background: none; border: 0; padding: 0; }
+  [data-theme="dark"] .v6-task-drawer .td-group { background: none; }
+}

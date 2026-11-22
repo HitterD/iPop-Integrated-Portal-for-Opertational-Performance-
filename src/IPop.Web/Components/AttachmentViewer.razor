@@ -10,7 +10,7 @@
 @if (Attachment is not null)
 {
     var att = Attachment;
-    var kind = ChatAttachments.Kind(att);
+    var kind = KindOf(att);
 
     <div class="att-viewer" role="dialog" aria-modal="true" aria-label="@att.FileName">
         <div class="av-backdrop" @onclick="RequestClose"></div>
@@ -141,6 +141,17 @@
     /// Raised when the user navigates to a sibling so the parent can keep its own selection in sync.
     [Parameter] public EventCallback<AttachmentDto> OnNavigate { get; set; }
 
+    /// Optional: a server-made PDF of a file the browser cannot draw (Word .doc/.rtf/.odt, PowerPoint .pptx). When it returns an
+    /// attachment id (already registered with the shared store), the file is shown as that PDF; Download still saves the original.
+    /// Null (Chat, Projects) keeps the "No in-browser preview" card.
+    [Parameter] public Func<AttachmentDto, Guid?>? ConvertedPdf { get; set; }
+
+    private Guid? ConvertedPdfOf(AttachmentDto att) =>
+        ConvertedPdf is not null && ChatAttachments.Kind(att) is AttachmentKind.LegacyDoc or AttachmentKind.Slides ? ConvertedPdf(att) : null;
+
+    /// What the viewer draws: a file with a converted PDF is drawn as a PDF.
+    private AttachmentKind KindOf(AttachmentDto att) => ConvertedPdfOf(att) is not null ? AttachmentKind.Pdf : ChatAttachments.Kind(att);
+
     private ElementReference imageRef;
     private DotNetObjectReference<AttachmentViewer>? selfRef;
 
@@ -184,8 +195,9 @@
 
     private async Task LoadAsync(AttachmentDto att)
     {
-        var kind = ChatAttachments.Kind(att);
+        var kind = KindOf(att);
         var id = att.Id;
+        var bytesId = ConvertedPdfOf(att) ?? id;
 
         try
         {
@@ -221,8 +233,17 @@
                     else error = MediaStream.Explain(reason, kind == AttachmentKind.Video);
                     break;
 
+                case AttachmentKind.Pdf:
+                    // Named URL: the PDF viewer, its tab and "Save" show the real file name, not a blob id
+                    // (a converted Office file opens as "<name>.pdf").
+                    var named = await Media.ViewChatAsync(bytesId, Att.IsShared(bytesId)) ?? await Att.GetAsync(bytesId, thumb: false);
+                    if (loadedId != id) return;
+                    blobUrl = named;
+                    if (blobUrl is null) error = "This file could not be loaded.";
+                    break;
+
                 default:
-                    var url = await Att.GetAsync(id, thumb: false);
+                    var url = await Att.GetAsync(bytesId, thumb: false);
                     if (loadedId != id) return;
                     blobUrl = url;
                     if (blobUrl is null) error = "This file could not be loaded.";
@@ -262,7 +283,7 @@
             if (Attachment?.Id != att.Id) return;
         }
 
-        var kind = ChatAttachments.Kind(att);
+        var kind = KindOf(att);
 
         if (kind == AttachmentKind.Image && blobUrl is not null && !zoomBound)
         {
@@ -302,12 +323,15 @@
     {
         if (Attachment is null) return;
         Media.Forget(blobUrl);
-        error = MediaStream.Explain(null, ChatAttachments.Kind(Attachment) == AttachmentKind.Video);
+        error = MediaStream.Explain(null, KindOf(Attachment) == AttachmentKind.Video);
     }
 
     private async Task OpenTab()
     {
-        if (blobUrl is not null) await JS.InvokeVoidAsync("ipop.openBlobTab", blobUrl);
+        if (blobUrl is null || Attachment is null) return;
+        // Images get a named URL too; a PDF already has one (blobUrl is the named ticket URL).
+        var named = KindOf(Attachment) == AttachmentKind.Image ? await Media.ViewChatAsync(Attachment.Id, Att.IsShared(Attachment.Id)) : null;
+        await JS.InvokeVoidAsync("ipop.openBlobTab", named ?? blobUrl);
     }
 
     private async Task Print() => await JS.InvokeVoidAsync("ipop.printFrame", "av-pdf");

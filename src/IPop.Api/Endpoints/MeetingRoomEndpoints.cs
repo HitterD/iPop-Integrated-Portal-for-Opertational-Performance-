@@ -63,7 +63,7 @@ public static class MeetingRoomEndpoints
                 // (awaited in sequence: one DbContext).
                 await MeetingEndpoints.PublishBestEffortAsync(notifs, log, "meeting.invited", $"Meeting invite: {title}",
                     MeetingEndpoints.InviteMessage(name, title, start, m.Location, m.RoomPassword), invited, "normal",
-                    $"/calls?tab=scheduled&meeting={meetingId}");
+                    $"/calls?tab=scheduled&meeting={meetingId}", me);
                 await CalendarDelegateEndpoints.ForwardInvitesAsync(db, notifs, log, invited, title, start, name, null, ct);
             }
             // The booking stands even when joining fails (e.g. media down): the client can join from the card.

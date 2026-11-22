@@ -26,7 +26,7 @@
 
   /* ---------- Module colours (tiles, Edit tabs rows) ---------- */
   .c-dash { background: #3a86c8; } .c-dir { background: #2f7f8f; } .c-notes { background: #d19a2a; }
-  .c-proj { background: #5562b8; } .c-tix { background: #cf6a4c; } .c-news { background: #a0457a; }
+  .c-proj { background: #5562b8; } .c-tix { background: #cf6a4c; } .c-hub { background: #0b6b7a; } .c-news { background: #a0457a; }
   .c-notif { background: #e5484d; } .c-files { background: #8a6d1c; } .c-admin { background: #6f8290; }
   .c-chat { background: #2e9e5b; } .c-mail { background: #0a84ff; } .c-calls { background: #1f8fa6; }
   .c-cal { background: #ff9f0a; } .c-gray { background: #8e8e93; } .c-red { background: var(--ph-red); }

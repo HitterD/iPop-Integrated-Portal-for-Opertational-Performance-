@@ -14,26 +14,37 @@ public sealed partial class NoteService
     {
         if (req.Pages is not { Count: > 0 } || req.Pages.Count > NoteImport.MaxPages) return Fail<ImportNotesResultDto>("invalid_import");
         if (!NoteImport.Sources.Contains(req.Source)) return Fail<ImportNotesResultDto>("invalid_import");
+        var baseDepth = 0;
         if (req.ParentId is { } parentId)
         {
-            var access = await GetAccessAsync(userId, parentId, ct);
+            var chain = await ChainAsync(parentId, ct);
+            if (chain.Count == 0 || chain.Any(n => n.DeletedAt != null) || chain[^1].ParentId != null)
+                return Fail<ImportNotesResultDto>("not_found");
+            baseDepth = chain.Count;
+            if (baseDepth >= MaxDepth) return Fail<ImportNotesResultDto>("max_depth");
+            var access = await AccessOnChainAsync(userId, chain, ct);
             if (access < NoteAccess.Edit) return Fail<ImportNotesResultDto>(Denied(access));
         }
 
         // Parents must come before their children, so the tree can be built in one pass.
         var ids = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        var depths = new Dictionary<string, int>(StringComparer.Ordinal);
         var now = DateTime.UtcNow;
         var order = new Dictionary<Guid, int>();
         var pages = new List<NotePage>(req.Pages.Count);
         foreach (var p in req.Pages)
         {
-            if (string.IsNullOrEmpty(p.Key) || ids.ContainsKey(p.Key)) return Fail<ImportNotesResultDto>("invalid_import");
+            if (p is null || string.IsNullOrEmpty(p.Key) || ids.ContainsKey(p.Key)) return Fail<ImportNotesResultDto>("invalid_import");
             Guid? parent = req.ParentId;
+            var depth = baseDepth + 1;
             if (p.ParentKey is { } pk)
             {
                 if (!ids.TryGetValue(pk, out var pid)) return Fail<ImportNotesResultDto>("invalid_import");
                 parent = pid;
+                depth = depths[pk] + 1;
             }
+            if (depth > MaxDepth) return Fail<ImportNotesResultDto>("max_depth");
+            depths[p.Key] = depth;
             var id = Guid.NewGuid();
             ids[p.Key] = id;
             var siblings = parent ?? Guid.Empty;

@@ -86,7 +86,7 @@
                             @foreach (var o in CustomStatuses)
                             {
                                 var on = o == cur;
-                                <button type="button" role="radio" aria-checked="@(on ? "true" : "false")" class="td-status-pill @o.Stage @(on ? "on" : "")" disabled="@(ReadOnly || statusBusy)" @onclick="() => ChangeStatus(o.Stage, ProjectStatusUi.RealId(o))">
+                                <button type="button" role="radio" aria-checked="@(on ? "true" : "false")" class="td-status-pill @o.Stage @(on ? "on" : "")" style="--st:@ProjectStatusUi.SafeColor(o.Color)" disabled="@(ReadOnly || statusBusy)" @onclick="() => ChangeStatus(o.Stage, ProjectStatusUi.RealId(o))">
                                     <span class="col-dot" style="background:@ProjectStatusUi.SafeColor(o.Color)"></span>@o.Label
                                 </button>
                             }

@@ -23,6 +23,7 @@ public static class PhoneTabs
         new("Notes", "notebook-pen", "/notes", "c-notes"),
         new("Projects", "kanban", "/projects", "c-proj"),
         new("Tickets", "life-buoy", "/tickets", "c-tix", BadgeKey: "tickets"),
+        new("The Hub", "messages-square", "/hub", "c-hub", BadgeKey: "hub"),
         new("News & Memos", "newspaper", "/news", "c-news", BadgeKey: "news"),
         new("Notifications", "bell", "/notifications", "c-notif", BadgeKey: "notif"),
         new("Files", "folder", "/files", "c-files"),

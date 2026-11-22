@@ -72,4 +72,5 @@ svg.s{width:15px;height:15px}
 @keyframes sk{from{background-position:200% 0}to{background-position:-200% 0}}
 .snack{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);padding:8px 14px;border-radius:999px;background:var(--ink);color:var(--glass);font-size:12.5px;font-weight:600;
   animation:winIn .3s var(--spring);z-index:99;max-width:90%;text-align:center}
-@media (prefers-reduced-motion: reduce){*{animation-duration:.01s !important;transition:none !important}}
+/* Settings › Appearance › Animations "Reduced" (html.reduce-motion, 1.5.1) — never Windows' own setting */
+html.reduce-motion *{animation-duration:.01s !important;transition:none !important}

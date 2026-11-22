@@ -1,17 +1,19 @@
 using IPop.Application.Attachments;
 using IPop.Application.Notes;
+using IPop.Application.Rbac;
 using IPop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 namespace IPop.Infrastructure.Notes;
 
 /// Files in a note are readable by anyone who can open the page; an unlinked upload only by its uploader.
-public sealed class NotesAttachmentPolicy(IPopDbContext db, INoteService notes) : IAttachmentAccessPolicy
+public sealed class NotesAttachmentPolicy(IPopDbContext db, INoteService notes, IPermissionEvaluator? perms = null) : IAttachmentAccessPolicy
 {
     public string Area => AttachmentAreas.Notes;
 
     public async Task<bool> CanReadAsync(Guid attachmentId, Guid userId, CancellationToken ct)
     {
+        if (perms is not null && !await perms.IsAllowedAsync(userId, "notes.read", null, ct)) return false;
         var att = await db.Attachments.AsNoTracking()
             .Where(a => a.Id == attachmentId && a.DeletedAt == null)
             .Select(a => new { a.UploaderId }).FirstOrDefaultAsync(ct);
@@ -22,7 +24,7 @@ public sealed class NotesAttachmentPolicy(IPopDbContext db, INoteService notes) 
             .Where(a => a.AttachmentId == attachmentId).Select(a => a.PageId).ToListAsync(ct);
         foreach (var pageId in pageIds)
             if (await notes.GetAccessAsync(userId, pageId, ct) > NoteAccess.None) return true;
-        if (pageIds.Count > 0 && att.UploaderId != userId) return false;
+        if (pageIds.Count > 0) return false;
 
         return att.UploaderId == userId;
     }
