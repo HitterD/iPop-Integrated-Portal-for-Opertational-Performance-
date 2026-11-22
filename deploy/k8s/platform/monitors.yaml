@@ -29,30 +29,6 @@ spec:
       path: /metrics
       interval: 60s
 ---
-# Blackbox-style check without extra software: Prometheus scrapes iPop's /healthz through the
-# in-cluster service, so "is iPop answering" is a plain metric (up{job="ipop-api"}).
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: ipop-api
-  namespace: ipop
-spec:
-  # /healthz answers JSON; Prometheus 3 rejects a non-metrics Content-Type unless a fallback is set,
-  # which kept up{job="ipop-api"} at 0 (a permanent false TargetDown since 2026-11-12, so a real outage
-  # would not have stood out).
-  fallbackScrapeProtocol: PrometheusText0.0.4
-  selector:
-    matchLabels: { app.kubernetes.io/name: ipop-api }
-  endpoints:
-    - port: http
-      path: /healthz
-      interval: 30s
-      scrapeTimeout: 10s
-      metricRelabelings:
-        - action: drop
-          sourceLabels: [__name__]
-          regex: ".+"
----
 # Longhorn's own NetworkPolicy only lets Longhorn pods reach the manager; allow Prometheus to scrape it.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
