@@ -44,6 +44,9 @@ spec:
           image: ipop-api
           imagePullPolicy: IfNotPresent
           ports: [{ containerPort: 8080, name: http }]
+          env:
+            # System CAs + SJA-ROOT-CA (.NET reads every directory in this list).
+            - { name: SSL_CERT_DIR, value: "/etc/ssl/certs:/etc/ssl/sja" }
           envFrom:
             - configMapRef: { name: ipop-api-env }
             - secretRef: { name: ipop-api-secrets }
@@ -55,6 +58,7 @@ spec:
             # Certificate that encrypts the DataProtection key ring (secret ipop-dp-cert: dp.pfx + password).
             # Optional: without it the key ring stays unencrypted as before (the configured path is then missing).
             - { name: dp-cert, mountPath: /secrets/dp, readOnly: true }
+            - { name: sja-root-ca, mountPath: /etc/ssl/sja, readOnly: true }
           startupProbe:
             httpGet: { path: /healthz, port: http }
             periodSeconds: 5
@@ -89,6 +93,8 @@ spec:
             secretName: ipop-dp-cert
             optional: true
             items: [{ key: dp.pfx, path: dp.pfx }]
+        - name: sja-root-ca
+          configMap: { name: sja-root-ca }
 ---
 apiVersion: v1
 kind: Service
