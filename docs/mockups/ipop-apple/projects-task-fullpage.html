@@ -1,0 +1,442 @@
+<title>Projects Task Full Page</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one interactive iPop window. Quick view floats as a soft sheet over the board; ⤢ grows the same sheet into the full page. */
+:root{
+  --frame:#173a2c;--frame-2:#21493a;--frame-ink:#e9f1ec;--frame-ink-2:#a8c0b3;
+  --canvas:#f3f2ee;--surface:#fff;--surface-2:#f8f7f4;--surface-3:#efede8;--line:#ece9e4;--line-2:#ddd9d1;
+  --ink:#1c1f23;--ink-2:#5b636b;--ink-3:#8f959c;--accent:#2e9d6b;--accent-soft:#e3f4eb;--on-accent:#fff;
+  --danger:#d8452e;--danger-soft:#fdefeb;--info:#2f6fed;--info-soft:#ecf2ff;
+  --s-todo:#b9bcc0;--s-doing:#fdab3d;--s-stuck:#e2445c;--s-review:#579bfc;--s-done:#00c875;
+  --note:#fff8dc;--note-ink:#6b5300;--scrim:rgba(20,28,24,.18);
+  --sh-1:0 1px 2px rgba(20,24,22,.04),0 2px 8px -4px rgba(20,24,22,.08);
+  --sh-sheet:0 24px 60px -20px rgba(20,24,22,.30),0 4px 14px -6px rgba(20,24,22,.10);
+  --smooth:cubic-bezier(.32,.72,0,1);--spring:cubic-bezier(.34,1.56,.64,1);--ease:cubic-bezier(.16,1,.3,1);
+  --font:-apple-system,"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --canvas:#121513;--surface:#1b1f1d;--surface-2:#202523;--surface-3:#282e2b;--line:#2a302d;--line-2:#39403c;
+  --ink:#e8ebe9;--ink-2:#a9b1ac;--ink-3:#7f8883;--accent:#3fb880;--accent-soft:#1d3a2c;
+  --danger:#f0735e;--danger-soft:#38201b;--info-soft:#1d2740;--note:#383114;--note-ink:#f0d98a;--scrim:rgba(0,0,0,.35);
+  --sh-sheet:0 24px 60px -20px rgba(0,0,0,.6),0 4px 14px -6px rgba(0,0,0,.4);color-scheme:dark}}
+:root[data-theme="dark"]{
+  --canvas:#121513;--surface:#1b1f1d;--surface-2:#202523;--surface-3:#282e2b;--line:#2a302d;--line-2:#39403c;
+  --ink:#e8ebe9;--ink-2:#a9b1ac;--ink-3:#7f8883;--accent:#3fb880;--accent-soft:#1d3a2c;
+  --danger:#f0735e;--danger-soft:#38201b;--info-soft:#1d2740;--note:#383114;--note-ink:#f0d98a;--scrim:rgba(0,0,0,.35);
+  --sh-sheet:0 24px 60px -20px rgba(0,0,0,.6),0 4px 14px -6px rgba(0,0,0,.4);color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--canvas);color:var(--ink);font-family:var(--font);font-size:13px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:0}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+svg.lucide{width:15px;height:15px;stroke-width:1.9;flex:none}
+.wrap{max-width:1500px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+header.top h1{font-size:21px;margin:0 0 4px;letter-spacing:-.01em;text-wrap:balance}
+header.top p{margin:0;color:var(--ink-2);max-width:86ch;line-height:1.55}
+.switch{display:flex;flex-wrap:wrap;gap:4px;background:var(--surface-3);padding:4px;border-radius:12px;width:max-content;max-width:100%}
+.switch a{padding:7px 13px;border-radius:9px;color:var(--ink-2);text-decoration:none;font-weight:600;font-size:12.5px;transition:background .2s,color .2s}
+.switch a.on{background:var(--surface);color:var(--ink);box-shadow:var(--sh-1)}
+.notes{background:var(--note);color:var(--note-ink);border-radius:14px;padding:12px 16px;line-height:1.6;font-size:12.5px}
+.notes ul{margin:4px 0 0;padding-left:18px}
+.screen{display:none}.screen.on{display:flex;flex-direction:column;gap:12px}
+.scroll-x{overflow-x:auto;border-radius:18px;padding-bottom:2px}
+
+/* ---------- window ---------- */
+.win{min-width:1340px;height:840px;display:flex;border-radius:18px;overflow:hidden;background:var(--frame);box-shadow:0 30px 80px -30px rgba(20,24,22,.35);border:1px solid var(--line-2)}
+.shell{width:200px;flex:none;color:var(--frame-ink);padding:16px 0 16px 12px;display:flex;flex-direction:column;gap:2px}
+.shell .sec{font-size:10px;letter-spacing:.09em;color:var(--frame-ink-2);margin:14px 10px 4px;font-weight:700}
+.shell .it{padding:9px 12px;border-radius:11px 0 0 11px;font-weight:600;font-size:13.5px;display:flex;align-items:center;gap:11px;color:var(--frame-ink)}
+.shell .it svg{width:17px;height:17px}
+.shell .it.on{background:var(--canvas);color:var(--frame)}
+.app{flex:1;min-width:0;display:flex;background:var(--canvas);border-radius:16px 0 0 16px}
+.win.fs .app{border-radius:0}
+.plist{width:220px;flex:none;padding:16px 12px;display:flex;flex-direction:column;gap:4px;border-right:1px solid var(--line);transition:margin .45s var(--smooth),opacity .3s}
+.plist.hide{margin-left:-220px;opacity:0}
+.plist .q{display:flex;gap:6px;margin-bottom:8px}
+.plist .q span{flex:1;height:32px;border-radius:10px;background:var(--surface);color:var(--ink-3);display:flex;align-items:center;gap:7px;padding:0 10px;font-size:12px;box-shadow:var(--sh-1)}
+.plist .q b{width:32px;height:32px;border-radius:10px;background:var(--accent);color:var(--on-accent);display:grid;place-items:center}
+.plist .r{padding:8px 10px;border-radius:10px;display:flex;align-items:center;gap:9px;font-weight:600;color:var(--ink-2)}
+.plist .r svg{color:var(--accent)}
+.plist .r.sel{background:var(--surface);color:var(--ink);box-shadow:var(--sh-1)}
+.plist .r small{margin-left:auto;color:var(--ink-3);font-weight:600;font-variant-numeric:tabular-nums}
+.pdot{width:9px;height:9px;border-radius:3px;background:var(--info);flex:none}
+
+.stage{flex:1;min-width:0;position:relative;overflow:hidden;background:var(--surface)}
+.boardwrap{position:absolute;inset:0;display:flex;flex-direction:column;transition:transform .55s var(--smooth),filter .55s var(--smooth)}
+.stage.full .boardwrap{transform:scale(.97);filter:blur(2px)}
+.crumb{display:flex;align-items:center;gap:8px;padding:12px 22px 0;color:var(--ink-3);font-size:12px}
+.crumb .sp{flex:1}
+.pill-btn{display:inline-flex;align-items:center;gap:6px;border-radius:9px;padding:5px 10px;color:var(--ink-2);font-size:12px;font-weight:600;transition:background .15s}
+.pill-btn:hover{background:var(--surface-3)}
+kbd{font:600 10px var(--font);background:var(--surface-3);border-radius:5px;padding:1px 5px;color:var(--ink-3)}
+.phead{padding:8px 22px 0;display:flex;flex-direction:column;gap:8px}
+.phead h2{margin:0;font-size:21px;letter-spacing:-.01em}
+.meta{display:flex;align-items:center;gap:10px;color:var(--ink-2);font-size:12px;flex-wrap:wrap}
+.bar{height:6px;border-radius:9px;background:var(--surface-3);width:220px;overflow:hidden;display:flex}
+.bar i{display:block;height:100%}
+.late{color:var(--danger);font-weight:600}
+.tabs{display:flex;gap:4px;padding:12px 22px 10px}
+.tabs span{padding:6px 11px;border-radius:9px;font-weight:600;color:var(--ink-2);display:inline-flex;gap:6px;align-items:center}
+.tabs .on{background:var(--accent-soft);color:var(--accent)}
+.board{flex:1;display:flex;gap:14px;padding:6px 22px 22px;overflow:hidden;background:var(--canvas);padding-top:16px}
+.col{width:250px;flex:none;display:flex;flex-direction:column;gap:8px}
+.col h4{margin:0 4px 4px;font-size:13px;display:flex;align-items:center;gap:8px}
+.col h4 i{width:9px;height:9px;border-radius:50%}
+.col h4 small{color:var(--ink-3);font-weight:600}
+.kc{background:var(--surface);border-radius:13px;padding:11px 12px;display:flex;flex-direction:column;gap:6px;box-shadow:var(--sh-1);text-align:left;transition:transform .25s var(--spring),box-shadow .2s;border:1.5px solid transparent}
+.kc:hover{transform:translateY(-2px);box-shadow:0 8px 20px -10px rgba(20,24,22,.25)}
+.kc:active{transform:scale(.98)}
+.kc .g{font-size:11px;color:var(--ink-3);display:flex;gap:6px;align-items:center}
+.kc .g i{width:7px;height:7px;border-radius:50%;background:var(--danger)}
+.kc b{font-size:13px;font-weight:600;line-height:1.38}
+.kc .d{font-size:11.5px;color:var(--danger);font-weight:600;display:flex;gap:5px;align-items:center}
+.kc .d svg{width:12px;height:12px}
+.kc.sel{border-color:var(--accent)}
+.kc.done b{text-decoration:line-through;color:var(--ink-3)}
+.scrim{position:absolute;inset:0;background:var(--scrim);opacity:0;pointer-events:none;transition:opacity .45s var(--smooth)}
+.stage.full .scrim{opacity:1}
+
+/* ---------- the sheet: quick view ⇄ full page ---------- */
+.sheet{position:absolute;top:10px;right:10px;bottom:10px;left:calc(100% - 450px);background:var(--surface);border-radius:18px;box-shadow:var(--sh-sheet);overflow:hidden;
+  transition:left .56s var(--smooth),top .56s var(--smooth),right .56s var(--smooth),bottom .56s var(--smooth),border-radius .56s var(--smooth),transform .4s var(--smooth),opacity .3s;z-index:2}
+.sheet.closed{transform:translateX(40px);opacity:0;pointer-events:none}
+.stage.full .sheet{left:0;top:0;right:0;bottom:0;border-radius:0;box-shadow:none}
+.layer{position:absolute;top:0;bottom:0;right:0;display:flex;flex-direction:column}
+.q-layer{width:440px;transition:opacity .16s,transform .3s var(--smooth)}
+.stage.full .q-layer{opacity:0;transform:translateX(-24px);pointer-events:none}
+.f-layer{width:var(--stage-w,900px);opacity:0;pointer-events:none;transition:opacity .2s}
+.stage.full .f-layer{opacity:1;pointer-events:auto}
+.rv{opacity:0;transform:translateY(10px);transition:opacity .12s,transform .12s}
+.stage.full .rv{opacity:1;transform:none;transition:opacity .42s var(--ease) calc(var(--d,0) * 45ms + 180ms),transform .5s var(--ease) calc(var(--d,0) * 45ms + 180ms)}
+.ghost{position:absolute;z-index:5;margin:0;font-weight:700;letter-spacing:-.01em;transform-origin:0 0;pointer-events:none;white-space:nowrap}
+
+.ib{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:var(--ink-2);transition:background .15s,transform .2s var(--spring)}
+.ib:hover{background:var(--surface-3)}
+.ib:active{transform:scale(.9)}
+.ib.hl{color:var(--accent)}
+.ib.hl:hover{background:var(--accent-soft)}
+
+/* quick layer */
+.qh{padding:16px 18px 0;display:flex;flex-direction:column;gap:8px}
+.qh .row{display:flex;align-items:center;gap:6px;color:var(--ink-3);font-size:12px}
+.qh .row .sp{flex:1}
+.qh h3{margin:0;font-size:19px;font-weight:700;letter-spacing:-.01em;line-height:1.3}
+.qtabs{display:flex;gap:4px;margin-top:4px}
+.qtabs span{padding:6px 11px;border-radius:9px;font-weight:600;color:var(--ink-2)}
+.qtabs .on{background:var(--surface-3);color:var(--ink)}
+.qkv{display:grid;grid-template-columns:96px 1fr;gap:6px 8px;padding:16px 18px;align-items:center}
+.qkv>.k{color:var(--ink-3);display:flex;gap:7px;align-items:center;font-size:12.5px}
+.qkv>.v{padding:5px 8px;border-radius:8px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-height:32px}
+.qkv>.v:hover{background:var(--surface-2)}
+.spill{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;color:#fff;font-weight:600;font-size:12px;background:var(--c);transition:background .3s}
+.av{width:22px;height:22px;border-radius:7px;background:var(--accent);color:#fff;display:inline-grid;place-items:center;font-size:9.5px;font-weight:700;flex:none}
+.hint{margin:auto 18px 16px;background:var(--surface-2);border-radius:12px;padding:10px 12px;color:var(--ink-2);font-size:12px;line-height:1.5;display:flex;gap:8px}
+.hint svg{color:var(--accent);margin-top:2px}
+
+/* full layer */
+.ftop{display:flex;align-items:center;gap:6px;padding:12px 20px;font-size:12.5px;color:var(--ink-2)}
+.back{display:inline-flex;align-items:center;gap:4px;border-radius:10px;padding:6px 12px 6px 8px;font-weight:600;color:var(--ink);background:var(--surface-2);transition:background .15s,transform .2s var(--spring)}
+.back:hover{background:var(--surface-3)}.back:active{transform:scale(.96)}
+.path{display:flex;gap:6px;align-items:center;color:var(--ink-3);margin-left:8px}
+.path b{color:var(--ink-2);font-weight:600}
+.ftop .sp{flex:1}
+.navseg{display:flex;align-items:center;background:var(--surface-2);border-radius:10px;padding:2px}
+.navseg span{padding:0 6px;font-variant-numeric:tabular-nums;color:var(--ink-3);font-size:12px;min-width:44px;text-align:center}
+.fbody{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:0}
+.fmain{overflow:auto;padding:8px 44px 48px;scrollbar-width:thin}
+.fmain-in{max-width:780px;margin:0 auto;display:flex;flex-direction:column;gap:26px}
+.fgrp{display:inline-flex;gap:7px;align-items:center;font-size:12px;color:var(--ink-3);font-weight:600}
+.fgrp i{width:8px;height:8px;border-radius:50%;background:var(--danger)}
+.ftitle{display:flex;flex-direction:column;gap:12px}
+.ftitle h1{margin:0;font-size:29px;line-height:1.22;letter-spacing:-.015em;font-weight:700;text-wrap:balance}
+.seg{position:relative;display:flex;flex-wrap:wrap;gap:2px;background:var(--surface-2);border-radius:12px;padding:3px;width:max-content;max-width:100%}
+.seg .ind{position:absolute;top:3px;height:calc(100% - 6px);border-radius:9px;background:var(--c,var(--s-doing));transition:left .42s var(--spring),width .42s var(--spring),background .3s;box-shadow:0 4px 12px -4px var(--c)}
+.seg button{position:relative;z-index:1;padding:7px 13px;border-radius:9px;font-weight:600;font-size:12.5px;color:var(--ink-2);display:inline-flex;gap:7px;align-items:center;transition:color .25s}
+.seg button i{width:7px;height:7px;border-radius:50%;background:var(--c);transition:background .25s}
+.seg button.on{color:#fff}.seg button.on i{background:#fff}
+.alert{display:flex;align-items:center;gap:10px;background:var(--danger-soft);color:var(--danger);border-radius:14px;padding:10px 12px 10px 14px;font-weight:600;font-size:12.5px}
+.alert .sp{flex:1}
+.alert button{background:var(--surface);border-radius:9px;padding:6px 11px;color:inherit;font-weight:600;font-size:12px;display:inline-flex;gap:6px;align-items:center;box-shadow:var(--sh-1)}
+.props{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 24px}
+.prop{display:grid;grid-template-columns:118px 1fr;align-items:center;min-height:38px}
+.prop .k{color:var(--ink-3);display:flex;gap:8px;align-items:center;font-size:12.5px}
+.prop .v{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:5px 8px;border-radius:9px;font-weight:600;transition:background .15s;min-width:0}
+.prop .v:hover{background:var(--surface-2)}
+.prop .v.muted{color:var(--ink-3);font-weight:500}
+.chips{display:flex;gap:3px;flex-wrap:wrap}
+.chip{padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:600;color:var(--ink-2);background:var(--surface-2);transition:background .2s,color .2s,transform .2s var(--spring)}
+.chip:active{transform:scale(.92)}
+.chip.on{background:var(--ink);color:var(--surface)}
+.addp{border-radius:999px;padding:3px 9px;color:var(--ink-3);font-size:11.5px;font-weight:600;background:var(--surface-2);display:inline-flex;gap:4px;align-items:center}
+.addp svg{width:12px;height:12px}
+.sec{display:flex;flex-direction:column;gap:10px}
+.sec-h{display:flex;align-items:center;gap:8px}
+.sec-h h3{margin:0;font-size:14.5px;letter-spacing:-.005em;display:flex;gap:8px;align-items:center}
+.sec-h h3 svg{color:var(--ink-3)}
+.sec-h small{color:var(--ink-3);font-weight:600;font-variant-numeric:tabular-nums}
+.sec-h .sp{flex:1}
+.lnk{color:var(--accent);font-weight:600;font-size:12.5px;display:inline-flex;gap:5px;align-items:center;padding:4px 8px;border-radius:8px}
+.lnk:hover{background:var(--accent-soft)}
+.desc{background:var(--surface-2);border-radius:14px;padding:14px 18px;line-height:1.65;font-size:13.5px}
+.desc p{margin:0 0 6px}.desc ol{margin:0;padding-left:20px}
+.meter{height:6px;background:var(--surface-3);border-radius:9px;overflow:hidden}
+.meter i{display:block;height:100%;background:var(--accent);border-radius:9px;transition:width .5s var(--spring)}
+.cl{display:flex;flex-direction:column;gap:2px}
+.li{display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:10px;transition:background .15s;text-align:left;width:100%}
+.li:hover{background:var(--surface-2)}
+.ck{width:18px;height:18px;border-radius:50%;border:1.8px solid var(--line-2);flex:none;display:grid;place-items:center;transition:background .25s,border-color .25s,transform .3s var(--spring)}
+.ck svg{width:11px;height:11px;color:#fff;stroke-width:3;opacity:0;transform:scale(.4);transition:opacity .2s,transform .3s var(--spring)}
+.li.dn .ck{background:var(--accent);border-color:var(--accent);transform:scale(1.08)}
+.li.dn .ck svg{opacity:1;transform:none}
+.li .t{flex:1;min-width:0;transition:color .25s}
+.li.dn .t{text-decoration:line-through;color:var(--ink-3)}
+.li .mini{font-size:11.5px;color:var(--ink-3)}
+.li.add{color:var(--ink-3)}
+.files{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.file{border-radius:14px;overflow:hidden;background:var(--surface-2);transition:transform .25s var(--spring)}
+.file:hover{transform:translateY(-2px)}
+.file .th{aspect-ratio:16/10;max-width:100%;background:linear-gradient(135deg,var(--frame),var(--frame-2));color:var(--frame-ink);font-size:11px;padding:10px;font-weight:700;border-radius:14px}
+.file .th.b{background:linear-gradient(135deg,#dfeee6,#c9e1d4);color:#24533c}
+.file .fn{padding:8px 10px;font-size:11.5px;display:flex;flex-direction:column;gap:2px;font-weight:600}
+.file .fn small{color:var(--ink-3);font-weight:500}
+.drop{border:1.5px dashed var(--line-2);border-radius:14px;display:flex;flex-direction:column;gap:6px;align-items:center;justify-content:center;color:var(--ink-3);font-size:12px;text-align:center;padding:10px;min-height:140px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.box{background:var(--surface-2);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.timer{display:flex;align-items:center;gap:12px}
+.play{width:38px;height:38px;border-radius:12px;background:var(--accent);color:#fff;display:grid;place-items:center;transition:transform .25s var(--spring)}
+.play:active{transform:scale(.9)}
+.timer b{font-size:21px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.dep{display:flex;align-items:center;gap:8px;font-size:12.5px}
+.dep .k{font-size:11.5px;color:var(--ink-3);width:72px}
+.mspill{padding:2px 8px;border-radius:999px;color:#fff;font-size:10.5px;font-weight:700;background:var(--c)}
+
+.fside{margin:0 12px 12px 0;border-radius:18px;background:var(--surface-2);display:flex;flex-direction:column;min-height:0}
+.stabs{display:flex;gap:2px;margin:10px;background:var(--surface-3);padding:3px;border-radius:11px}
+.stabs button{flex:1;padding:6px 8px;border-radius:9px;font-weight:600;color:var(--ink-2);font-size:12.5px;transition:background .2s,color .2s}
+.stabs button.on{background:var(--surface);color:var(--ink);box-shadow:var(--sh-1)}
+.feed{flex:1;overflow:auto;padding:4px 14px 14px;display:flex;flex-direction:column;gap:14px}
+.cm{display:flex;gap:9px}
+.bub{flex:1;background:var(--surface);border-radius:4px 14px 14px 14px;padding:9px 12px;line-height:1.5;min-width:0;box-shadow:var(--sh-1)}
+.who{display:flex;gap:6px;align-items:baseline;font-weight:700;font-size:12.5px;margin-bottom:2px}
+.who small{color:var(--ink-3);font-weight:500}
+.ev{display:flex;gap:9px;align-items:center;color:var(--ink-3);font-size:12px;padding-left:6px}
+.ev i{width:6px;height:6px;border-radius:50%;background:var(--line-2);flex:none}
+.ev b{color:var(--ink-2);font-weight:600}
+.composer{margin:0 10px 10px;border-radius:14px;background:var(--surface);padding:10px 12px;display:flex;flex-direction:column;gap:10px;box-shadow:var(--sh-1)}
+.composer .ph{color:var(--ink-3)}
+.composer .act{display:flex;align-items:center;gap:2px;color:var(--ink-3)}
+.composer .act .sp{flex:1}
+.send{background:var(--accent);color:#fff;border-radius:9px;padding:6px 12px;font-weight:600;display:inline-flex;gap:6px;align-items:center}
+.ffoot{display:flex;align-items:center;gap:8px;padding:0 20px 12px;color:var(--ink-3);font-size:11.5px}
+.ffoot svg{color:var(--accent);width:13px;height:13px}
+.ffoot .sp{flex:1}
+.swap{animation:swapIn .38s var(--ease)}
+@keyframes swapIn{from{opacity:0;transform:translateY(var(--dir,12px))}to{opacity:1;transform:none}}
+
+.timeline{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.tl{background:var(--surface);border-radius:14px;padding:12px 14px;box-shadow:var(--sh-1);display:flex;flex-direction:column;gap:4px;line-height:1.5}
+.tl b{font-size:12.5px}
+.tl span{color:var(--ink-2);font-size:12px}
+.tl em{font-style:normal;font-size:11px;color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums}
+.callout{position:absolute;z-index:6;background:var(--ink);color:var(--surface);font-size:11.5px;font-weight:600;padding:6px 10px;border-radius:9px;white-space:nowrap;pointer-events:none;animation:bob 2.4s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(-3px)}}
+.compare{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.cc{background:var(--surface);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;line-height:1.55;box-shadow:var(--sh-1)}
+.cc h4{margin:0;font-size:13.5px}.cc p{margin:0;color:var(--ink-2);font-size:12.5px}
+.cc .take{color:var(--accent);font-weight:600;font-size:12px}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:.01ms!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>Projects: quick view → full page</h1>
+    <p>Try it below. Click a card to open the quick view. Click <b>⤢</b> (or double-click a card) and the same sheet grows into the full page: the board steps back, the title glides into place, and the sections settle in one after another. <b>Back</b> or <b>Esc</b> shrinks it back into the quick view. ↑/↓ moves to the previous/next task.</p>
+  </header>
+  <nav class="switch" id="sw">
+    <a href="#demo">Quick view → Full page</a>
+    <a href="#default">Default layout</a>
+    <a href="#fullscreen">Full screen</a>
+    <a href="#research">What others do</a>
+  </nav>
+
+  <section class="screen" id="s-demo">
+    <div class="scroll-x"><div class="win" id="win-demo"></div></div>
+    <div class="timeline">
+      <div class="tl"><em>0 ms</em><b>Click ⤢</b><span>The button presses in (scale .9). The quick view content slides slightly left and fades out within 160 ms.</span></div>
+      <div class="tl"><em>0–560 ms</em><b>The sheet grows</b><span>Its left edge moves to the edge of the workspace and the rounded corners flatten. The board behind shrinks to 97%, blurs a little and dims.</span></div>
+      <div class="tl"><em>0–560 ms</em><b>The title glides</b><span>The task name moves from the quick view header to the full page title and grows from 19 px to 29 px. It's the same element, so your eye follows it.</span></div>
+      <div class="tl"><em>180–600 ms</em><b>Content settles in</b><span>Sections rise 10 px and fade in one by one, 45 ms apart. Updates on the right fade in last.</span></div>
+      <div class="tl"><em>Back / Esc</em><b>Reverse</b><span>Content fades fast, the sheet shrinks back to the right, and the title returns to the header. The board is still where you left it.</span></div>
+    </div>
+  </section>
+
+  <section class="screen" id="s-default">
+    <div class="notes"><b>Fix 1.</b> /projects opens like this for everyone: iPop sidebar + project list + board. Saved full-screen preferences are reset once, and full screen turns on only from the button or F.</div>
+    <div class="scroll-x"><div class="win" id="win-default"></div></div>
+  </section>
+
+  <section class="screen" id="s-fullscreen">
+    <div class="notes"><b>Fix 2.</b> Full screen hides only the iPop sidebar and topbar. The project list stays as a real column and slides away or back with the <b>panel</b> button. The board never goes blank. Try the button in the window.</div>
+    <div class="scroll-x"><div class="win fs" id="win-fs"></div></div>
+  </section>
+
+  <section class="screen" id="s-research">
+    <div class="compare">
+      <div class="cc"><h4>monday.com: Item page</h4><p>The side panel expands into a full item page: name on top, column values as a property grid, Updates / Files / Activity log.</p><div class="take">Taken: property grid, Updates with @mention.</div></div>
+      <div class="cc"><h4>ClickUp: Task view</h4><p>Work on the left (status, properties, description, subtasks, checklist, attachments) and activity/comments in a fixed right pane with the composer at the bottom.</p><div class="take">Taken: the two-pane split.</div></div>
+      <div class="cc"><h4>Linear</h4><p>Issue pages open with a smooth expand from the peek view, and J/K moves through issues without going back to the list.</p><div class="take">Taken: sheet-grows transition, ↑/↓ navigation, shareable URL.</div></div>
+      <div class="cc"><h4>Asana / Notion</h4><p>Pane ⇄ full page share one layout, and the description is a real editor that sits right under the title.</p><div class="take">Taken: one component, two sizes, with description as the hero.</div></div>
+    </div>
+  </section>
+</div>
+
+<script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+<script>
+const I=n=>`<i data-lucide="${n}"></i>`;
+const icons=()=>{try{lucide.createIcons({icons:lucide.icons})}catch(e){}};
+const ST=[["Not started","--s-todo"],["Working on it","--s-doing"],["Stuck","--s-stuck"],["Ready to check","--s-review"],["Done","--s-done"]];
+const TASKS=[
+ {id:1,t:"Mobile App Sound bermasalah",g:"Mobile",gc:"var(--info)",s:0,due:"29 Nov 2026",late:0,who:[],desc:"<p>The notification sound doesn't play on Android when the app is in the background.</p>",cl:[["Reproduce on Samsung A54",1],["Check FCM channel sound setting",0]],files:0,col:0},
+ {id:2,t:"Mobile App tidak bisa membuat Project",g:"Mobile",gc:"var(--info)",s:0,due:"29 Nov 2026",late:0,who:[],desc:"<p>The New project button does nothing on phones.</p>",cl:[],files:0,col:0},
+ {id:3,t:"Siku2 terlalu tajam",g:"Web issue",gc:"var(--danger)",s:1,due:"19 Nov 2026",late:3,who:["IP"],desc:"<p>Corner radius on cards and modals is too sharp compared with the iPop design. It should be 12px, but some places use 4px.</p><ol><li>Project cards in Board view</li><li>Confirm dialog in Mail</li><li>Image viewer in Chat</li></ol>",cl:[["Audit every radius in projects-v2.css",1],["Fix Mail confirm dialog",0],["Fix Chat image viewer",0]],files:2,col:1},
+ {id:4,t:"preview PDF di Chat nama nya random",g:"Web issue",gc:"var(--danger)",s:1,due:"19 Nov 2026",late:3,who:["IP"],desc:"<p>The PDF preview shows a GUID instead of the original file name.</p>",cl:[["Keep original name on upload",1],["Show name in viewer header",1]],files:1,col:1},
+ {id:5,t:"Department tidak sesuai",g:"Web issue",gc:"var(--danger)",s:3,due:"",late:0,who:["IP"],desc:"<p>Some users show the wrong department in Directory.</p>",cl:[],files:0,col:3},
+ {id:6,t:"Menu mark as read di Calls",g:"Web issue",gc:"var(--danger)",s:4,due:"",late:0,who:["JK"],desc:"<p>Add Mark as read to the Calls list menu.</p>",cl:[["Add menu item",1]],files:0,col:4}
+];
+let cur=TASKS[2];
+
+function shell(){return `<aside class="shell"><div class="sec">WORKSPACE</div>
+ <div class="it">${I("layout-grid")}Dashboard</div><div class="it">${I("users")}Directory</div><div class="it on">${I("kanban")}Projects</div><div class="it">${I("notebook-pen")}Notes</div><div class="it">${I("life-buoy")}Tickets</div>
+ <div class="sec">COMMUNICATION</div><div class="it">${I("message-circle")}Chat</div><div class="it">${I("mail")}Mail</div><div class="it">${I("phone")}Calls &amp; Meetings</div></aside>`}
+function plist(){return `<div class="plist"><div class="q"><span>${I("search")}Find a project</span><b>${I("plus")}</b></div>
+ <div class="r">${I("check")}My work</div><div class="r">${I("layout-grid")}All projects</div>
+ <div class="r sel"><i class="pdot"></i>Bug/Fitur<small>53%</small></div><div class="r"><i class="pdot"></i>Project iPop<small>0%</small></div></div>`}
+function boardHTML(fs,n){return `<div class="boardwrap">
+ <div class="crumb">${fs?`<button class="pill-btn" data-act="rail">${I("panel-left")}</button>`:I("panel-left")} Projects ${I("chevron-right")} 2026<span class="sp"></span>
+ <button class="pill-btn" data-act="${fs?'':'gofs'}">${I(fs?"minimize-2":"maximize-2")}${fs?"Exit full screen":"Full screen"} <kbd>${fs?"Esc":"F"}</kbd></button></div>
+ <div class="phead"><h2>Bug/Fitur</h2><div class="meta"><span class="bar"><i style="width:40%;background:var(--s-done)"></i><i style="width:6%;background:var(--s-review)"></i><i style="width:13%;background:var(--s-doing)"></i></span><b>53% done</b> 8 of 15 tasks · Due 04 Oct 2026 <span class="late">· 3 late</span></div></div>
+ <div class="tabs"><span>${I("layout-dashboard")}Overview</span><span>${I("table")}Table</span><span class="on">${I("kanban")}Board</span><span>${I("gantt-chart")}Gantt</span><span>${I("calendar")}Calendar</span><span>${I("bar-chart-3")}Reports</span></div>
+ <div class="board">${ST.slice(0,n).map(([l,c],ci)=>{const ts=TASKS.filter(t=>t.col===ci);return `<div class="col"><h4><i style="background:var(${c})"></i>${l}<small>${ts.length}</small></h4>${ts.map(t=>`<button class="kc ${t===cur?'sel':''} ${t.s===4?'done':''}" data-id="${t.id}"><span class="g"><i style="background:${t.gc}"></i>${t.g}</span><b>${t.t}</b>${t.due?`<span class="d" style="${t.late?'':'color:var(--ink-3)'}">${I("calendar")}${t.due.slice(0,6)}</span>`:''}</button>`).join('')}</div>`}).join('')}</div></div>`}
+
+function qHTML(t){const [l,c]=ST[t.s];return `<div class="qh"><div class="row"><i class="pdot" style="background:${t.gc}"></i>${t.g}<span class="sp"></span>
+ <button class="ib" title="Copy link">${I("link")}</button><button class="ib hl" data-act="expand" title="Open full page (Shift+Enter)">${I("maximize-2")}</button><button class="ib" data-act="close" title="Close (Esc)">${I("x")}</button></div>
+ <h3 id="q-title">${t.t}</h3><div class="qtabs"><span class="on">Details</span><span>Updates</span><span>Activity</span></div></div>
+ <div class="qkv"><span class="k">${I("circle-dot")}Status</span><span class="v"><span class="spill" style="--c:var(${c})">${l}${I("chevron-down")}</span></span>
+ <span class="k">${I("users")}Owner</span><span class="v">${t.who.length?t.who.map(w=>`<span class="av">${w}</span>`).join('')+(t.who[0]==='IP'?'IPop':''):'<span style="color:var(--ink-3)">Nobody yet</span>'}</span>
+ <span class="k">${I("calendar")}Due</span><span class="v">${t.due||'<span style="color:var(--ink-3)">No date</span>'}${t.late?` <span class="late">· ${t.late} days late</span>`:''}</span>
+ <span class="k">${I("flag")}Priority</span><span class="v"><span class="chips"><span class="chip on">None</span><span class="chip">Low</span><span class="chip">Medium</span><span class="chip">High</span></span></span>
+ <span class="k">${I("layers")}Group</span><span class="v">${t.g}</span>
+ <span class="k">${I("list-checks")}Checklist</span><span class="v">${t.cl.filter(x=>x[1]).length} of ${t.cl.length}</span></div>
+ <div class="hint">${I("sparkles")}<span>Need more room? <b>⤢</b> opens this task as a full page with the description, checklist, files and updates side by side.</span></div>`}
+
+function fMain(t){const done=t.cl.filter(x=>x[1]).length;return `
+ <div class="ftitle rv" style="--d:0"><span class="fgrp"><i style="background:${t.gc}"></i>${t.g} · created by IPop Administrator, 12 Nov 2026</span><h1 id="f-title">${t.t}</h1>
+  <div class="seg" id="seg"><span class="ind"></span>${ST.map(([l,c],i)=>`<button class="${i===t.s?'on':''}" style="--c:var(${c})" data-st="${i}"><i></i>${l}</button>`).join('')}</div></div>
+ ${t.late?`<div class="alert rv" style="--d:1">${I("alarm-clock")}Overdue since ${t.due} (${t.late} days)<span class="sp"></span><button>${I("calendar-plus")}Extend deadline</button></div>`:''}
+ <div class="props rv" style="--d:2">
+  <div class="prop"><span class="k">${I("users")}Assignees</span><span class="v">${t.who.map(w=>`<span class="av">${w}</span>${w==='IP'?'IPop Administrator':'Joko K.'}`).join('')}<button class="addp">${I("plus")}Add</button></span></div>
+  <div class="prop"><span class="k">${I("flag")}Priority</span><span class="v"><span class="chips" data-chips><span class="chip on">None</span><span class="chip">Low</span><span class="chip">Med</span><span class="chip">High</span><span class="chip">Urgent</span></span></span></div>
+  <div class="prop"><span class="k">${I("calendar")}Start</span><span class="v muted">Set start date</span></div>
+  <div class="prop"><span class="k">${I("layers")}Group</span><span class="v"><i class="pdot" style="background:${t.gc}"></i>${t.g}${I("chevron-down")}</span></div>
+  <div class="prop"><span class="k">${I("calendar-check")}Due</span><span class="v" style="${t.late?'color:var(--danger)':''}">${t.due||'<span style="color:var(--ink-3);font-weight:500">Set due date</span>'}</span></div>
+  <div class="prop"><span class="k">${I("repeat")}Repeat</span><span class="v muted">Does not repeat</span></div></div>
+ <div class="sec rv" style="--d:3"><div class="sec-h"><h3>${I("file-text")}Description</h3></div><div class="desc">${t.desc}</div></div>
+ <div class="sec rv" style="--d:4"><div class="sec-h"><h3>${I("list-checks")}Checklist</h3><small id="clc">${done} of ${t.cl.length}</small><span class="sp"></span></div>
+  ${t.cl.length?`<div class="meter"><i id="clm" style="width:${Math.round(done/t.cl.length*100)}%"></i></div>`:''}
+  <div class="cl">${t.cl.map((x,i)=>`<button class="li ${x[1]?'dn':''}" data-cl="${i}"><span class="ck">${I("check")}</span><span class="t">${x[0]}</span></button>`).join('')}<div class="li add">${I("plus")}Add an item and press Enter</div></div></div>
+ <div class="sec rv" style="--d:5"><div class="sec-h"><h3>${I("paperclip")}Evidence &amp; files</h3><small>${t.files}</small><span class="sp"></span><button class="lnk">${I("plus")}Add file</button></div>
+  <div class="files">${t.files?`<div class="file"><div class="th">iPop · Workspace</div><div class="fn">board-radius.png<small>412 KB · 20 Nov</small></div></div>`:''}${t.files>1?`<div class="file"><div class="th b">Dashboard · Good afternoon</div><div class="fn">dashboard-cards.png<small>380 KB · 20 Nov</small></div></div>`:''}<div class="drop">${I("upload-cloud")}Drop or paste files here<small>up to 500 MB</small></div></div></div>
+ <div class="two rv" style="--d:6"><div class="box"><div class="sec-h"><h3>${I("git-branch")}Dependencies</h3><span class="sp"></span><button class="lnk">${I("plus")}Add</button></div>
+  <div class="dep"><span class="k">Waiting on</span><span class="mspill" style="--c:var(--s-done)">Done</span>Whiteboard component</div><div class="dep"><span class="k">Blocks</span><span style="color:var(--ink-3)">Nothing yet</span></div></div>
+  <div class="box"><div class="sec-h"><h3>${I("timer")}Time</h3></div><div class="timer"><button class="play">${I("play")}</button><div><b>0:00:00</b><div style="color:var(--ink-3);font-size:12px">logged · estimate 2h</div></div></div></div></div>`}
+
+function fHTML(t){const i=TASKS.indexOf(t)+1;return `<div class="ftop rv" style="--d:0">
+ <button class="back" data-act="back">${I("chevron-left")}Board</button>
+ <span class="path">Bug/Fitur ${I("chevron-right")} <b id="f-grp">${t.g}</b></span><span class="sp"></span>
+ <span class="navseg"><button class="ib" data-act="prev" title="Previous task (↑)">${I("chevron-up")}</button><span id="f-pos">${i} / ${TASKS.length}</span><button class="ib" data-act="next" title="Next task (↓)">${I("chevron-down")}</button></span>
+ <button class="ib" title="Copy link">${I("link")}</button><button class="ib" data-act="back" title="Open as panel">${I("minimize-2")}</button><button class="ib" title="More">${I("more-horizontal")}</button></div>
+ <div class="fbody"><div class="fmain"><div class="fmain-in" id="fmain">${fMain(t)}</div></div>
+ <aside class="fside rv" style="--d:5"><div class="stabs"><button class="on">Updates 2</button><button>Activity</button><button>Files</button></div>
+  <div class="feed"><div class="cm"><span class="av" style="background:#8a6a3a">JK</span><div class="bub"><div class="who">Joko K.<small>20 Nov, 09:12</small></div>The Mail confirm dialog also seems to use 4px. Can you check it too?</div></div>
+  <div class="ev"><i></i><span><b>IPop</b> changed status to <b>Working on it</b> · 20 Nov</span></div>
+  <div class="cm"><span class="av">IP</span><div class="bub"><div class="who">IPop Administrator<small>20 Nov, 10:40</small></div>Noted, I've added it to the checklist. Screenshots are in Evidence.</div></div>
+  <div class="ev"><i></i><span><b>IPop</b> added 2 files · 20 Nov</span></div><div class="ev"><i></i><span><b>IPop</b> created this task · 12 Nov</span></div></div>
+  <div class="composer"><span class="ph">Write an update… type @ to mention someone</span><div class="act"><button class="ib">${I("paperclip")}</button><button class="ib">${I("at-sign")}</button><button class="ib">${I("smile")}</button><span class="sp"></span><button class="send">${I("send")}Send</button></div></div></aside></div>
+ <div class="ffoot rv" style="--d:6">${I("check-circle-2")}Every change saves by itself<span class="sp"></span><kbd>↑</kbd><kbd>↓</kbd> next task · <kbd>Esc</kbd> back to panel</div>`}
+
+/* ---------- demo window ---------- */
+const W=document.getElementById('win-demo');
+W.innerHTML=shell()+`<div class="app">${plist()}<div class="stage" id="stage"><div id="bw"></div><div class="scrim"></div>
+ <div class="sheet" id="sheet"><div class="layer q-layer" id="ql"></div><div class="layer f-layer" id="fl"></div></div></div></div>`;
+const stage=document.getElementById('stage'),sheet=document.getElementById('sheet'),ql=document.getElementById('ql'),fl=document.getElementById('fl');
+let full=false,busy=false;
+const reduced=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
+function renderBoard(){document.getElementById('bw').outerHTML=`<div id="bw" style="position:absolute;inset:0">${boardHTML(false,5)}</div>`}
+function renderQ(){ql.innerHTML=qHTML(cur)}
+function renderF(){fl.innerHTML=fHTML(cur)}
+function sizeF(){stage.style.setProperty('--stage-w',stage.clientWidth+'px')}
+function placeInd(instant){const seg=document.getElementById('seg');if(!seg)return;const on=seg.querySelector('button.on'),ind=seg.querySelector('.ind');if(!on)return;
+ if(instant)ind.style.transition='none';ind.style.left=on.offsetLeft+'px';ind.style.width=on.offsetWidth+'px';ind.style.setProperty('--c',getComputedStyle(on).getPropertyValue('--c'));
+ if(instant){void ind.offsetWidth;ind.style.transition=''}}
+function all(){renderBoard();renderQ();renderF();icons();sizeF();placeInd(true)}
+all();
+
+function rel(el){const r=el.getBoundingClientRect(),s=stage.getBoundingClientRect();return {x:r.left-s.left,y:r.top-s.top,w:r.width,h:r.height}}
+function glide(fromEl,toRect,fromSize,toSize,done){
+ const a=rel(fromEl),g=document.createElement('h2');g.className='ghost';g.textContent=cur.t;
+ g.style.cssText=`left:${a.x}px;top:${a.y}px;font-size:${fromSize}px;max-width:none;color:var(--ink)`;stage.appendChild(g);
+ const k=toSize/fromSize;
+ g.animate([{transform:'translate(0,0) scale(1)'},{transform:`translate(${toRect.x-a.x}px,${toRect.y-a.y}px) scale(${k})`}],{duration:560,easing:'cubic-bezier(.32,.72,0,1)',fill:'forwards'})
+  .finished.then(()=>{g.remove();done&&done()});}
+function expand(){if(full||busy)return;busy=true;sizeF();
+ const qt=document.getElementById('q-title'),ft=document.getElementById('f-title');
+ const fr=ft.getBoundingClientRect(),flr=fl.getBoundingClientRect(),sr=stage.getBoundingClientRect();
+ const target={x:fr.left-flr.left,y:fr.top-flr.top};  // f-layer sits at stage 0,0 when full
+ if(reduced()){stage.classList.add('full');full=true;busy=false;return}
+ qt.style.visibility='hidden';ft.style.visibility='hidden';
+ glide(qt,target,19,29,()=>{ft.style.visibility='';qt.style.visibility='';busy=false});
+ stage.classList.add('full');full=true;}
+function collapse(){if(!full||busy)return;busy=true;
+ const qt=document.getElementById('q-title'),ft=document.getElementById('f-title');
+ // quick title lands at: sheet quick rect (stage w - 450 + 10 offset) + its offset inside q-layer
+ const qlr=ql.getBoundingClientRect(),qtr=qt.getBoundingClientRect();
+ const target={x:(stage.clientWidth-10-440)+(qtr.left-qlr.left),y:10+(qtr.top-qlr.top)};
+ if(reduced()){stage.classList.remove('full');full=false;busy=false;return}
+ qt.style.visibility='hidden';ft.style.visibility='hidden';
+ glide(ft,target,29,19,()=>{qt.style.visibility='';ft.style.visibility='';busy=false});
+ stage.classList.remove('full');full=false;}
+function openQuick(t){cur=t;sheet.classList.remove('closed');renderBoard();renderQ();renderF();icons();placeInd(true);
+ if(!reduced())sheet.animate([{transform:'translateX(36px)',opacity:.4},{transform:'none',opacity:1}],{duration:380,easing:'cubic-bezier(.16,1,.3,1)'})}
+function step(d){let i=TASKS.indexOf(cur)+d;if(i<0||i>=TASKS.length)return;cur=TASKS[i];
+ const m=document.getElementById('fmain');m.innerHTML=fMain(cur);m.style.setProperty('--dir',d>0?'14px':'-14px');m.classList.remove('swap');void m.offsetWidth;m.classList.add('swap');
+ document.getElementById('f-pos').textContent=`${i+1} / ${TASKS.length}`;document.getElementById('f-grp').textContent=cur.g;
+ renderQ();renderBoard();icons();placeInd(true)}
+
+W.addEventListener('click',e=>{const b=e.target.closest('[data-act],[data-id],[data-st],[data-cl],.chip');if(!b||!W.contains(b))return;
+ if(b.dataset.id){const t=TASKS.find(x=>x.id==b.dataset.id);if(full)return;if(e.shiftKey){openQuick(t);requestAnimationFrame(expand)}else openQuick(t);return}
+ if(b.dataset.st){cur.s=+b.dataset.st;b.parentNode.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));placeInd(false);
+   if(!reduced())b.animate([{transform:'scale(.92)'},{transform:'scale(1)'}],{duration:320,easing:'cubic-bezier(.34,1.56,.64,1)'});return}
+ if(b.dataset.cl){const i=+b.dataset.cl;cur.cl[i][1]^=1;b.classList.toggle('dn');const d=cur.cl.filter(x=>x[1]).length;
+   document.getElementById('clc').textContent=`${d} of ${cur.cl.length}`;const m=document.getElementById('clm');if(m)m.style.width=Math.round(d/cur.cl.length*100)+'%';return}
+ if(b.classList.contains('chip')){b.parentNode.querySelectorAll('.chip').forEach(x=>x.classList.toggle('on',x===b));return}
+ const a=b.dataset.act;if(a==='expand')expand();else if(a==='back')collapse();else if(a==='close')sheet.classList.add('closed');else if(a==='prev')step(-1);else if(a==='next')step(1);});
+W.addEventListener('dblclick',e=>{const c=e.target.closest('[data-id]');if(c&&!full){openQuick(TASKS.find(x=>x.id==c.dataset.id));setTimeout(expand,60)}});
+document.addEventListener('keydown',e=>{if(!document.getElementById('s-demo').classList.contains('on'))return;
+ if(e.key==='Escape'){if(full)collapse();else sheet.classList.add('closed')}
+ else if(full&&e.key==='ArrowDown'){e.preventDefault();step(1)}else if(full&&e.key==='ArrowUp'){e.preventDefault();step(-1)}
+ else if(!full&&e.key==='Enter'&&e.shiftKey)expand();});
+addEventListener('resize',()=>{sizeF();placeInd(true)});
+
+/* ---------- static windows ---------- */
+document.getElementById('win-default').innerHTML=shell()+`<div class="app">${plist()}<div class="stage">${boardHTML(false,4)}</div></div>`;
+const FS=document.getElementById('win-fs');
+FS.innerHTML=`<div class="app">${plist()}<div class="stage">${boardHTML(true,5)}</div></div>`;
+FS.addEventListener('click',e=>{if(e.target.closest('[data-act="rail"]'))FS.querySelector('.plist').classList.toggle('hide')});
+icons();
+
+const ids=['demo','default','fullscreen','research'];
+function show(){const h=location.hash.slice(1),id=ids.includes(h)?h:'demo';
+ ids.forEach(i=>document.getElementById('s-'+i).classList.toggle('on',i===id));
+ document.querySelectorAll('#sw a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+id));
+ if(id==='demo')requestAnimationFrame(()=>{sizeF();placeInd(true)});}
+addEventListener('hashchange',show);show();
+</script>

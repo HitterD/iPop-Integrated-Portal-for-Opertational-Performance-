@@ -8,7 +8,7 @@
     el.addEventListener('animationend', () => el.classList.remove(cls), { once: true });
   }
   // ---- full screen workspace (class proj-fs on .proj-workspace, html.proj-fs-open) ----
-  const FS_KEY = 'ipop.projects.fs';
+  const FS_KEY = 'ipop.projects.fs2'; // fs → fs2: full screen is no longer the default, old saved "on" is dropped
   const ROOT_CLS = 'proj-fs-open';
   // Anything that is open on top of the workspace: Esc and F must leave those alone.
   const OVERLAYS = '.proj-modal, .pv2-scrim, .rep-scrim, .evidence-modal-backdrop, .task-drawer, .confirm-center, .confirm-backdrop, .pcal-pop, .cs-sheet, .modal-backdrop';
@@ -56,7 +56,7 @@
           // v2 modals close on Esc via their own keydown, which needs focus inside; after a re-render focus can sit on <body>.
           const v2m = document.querySelector('.pv2-scrim .pv2-modal');
           if (v2m && !v2m.contains(document.activeElement)) { const x = v2m.querySelector('.pv2-mh [aria-label="Close"]'); if (x) { e.preventDefault(); x.click(); return; } }
-          if (document.querySelector(OVERLAYS) || document.getElementById('pv2-panel')) return;
+          if (document.querySelector(OVERLAYS) || document.getElementById('pv2-panel') || document.getElementById('tdp')) return;
           const pop = document.querySelector(POPOVERS);
           if (pop) { pop.click(); return; }
           if (on) dotNet.invokeMethodAsync('FullScreenKey', false).catch(() => {});
@@ -335,7 +335,8 @@
   });
 
   // ---- Stage 4: overview ring animation + task panel keys ----
-  let panelHandler = null;
+  let panelHandler = null, pageHandler = null, lastPanel = null;
+  const reducedMotion = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   Object.assign(window.ipopPv2, {
     // Count the progress ring up from 0 to its --pv2o-t target (skipped with reduced motion).
     ringAnim() {
@@ -367,6 +368,106 @@
       document.addEventListener('keydown', panelHandler, true);
     },
     panelKeysOff() { if (panelHandler) { document.removeEventListener('keydown', panelHandler, true); panelHandler = null; } },
+
+    // ---- Full-page task (Components/Projects/ProjectTaskPage.razor, #tdp) ----
+    // Esc goes back to the board, Up/Down step through the view; typing fields and open popups keep their keys.
+    taskPageKeys(dotNet) {
+      if (pageHandler) { document.removeEventListener('keydown', pageHandler, true); pageHandler = null; }
+      if (!dotNet) return;
+      pageHandler = e => {
+        if (e.defaultPrevented || !document.getElementById('tdp')) return;
+        if (e.key !== 'Escape' && e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+        if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+        if (document.querySelector('.proj-modal, .pv2-scrim, .rep-scrim, .evidence-modal-backdrop, .confirm-center, .confirm-backdrop, .modal-backdrop, .av-backdrop, .attachment-viewer, .nas-picker'))
+          return;
+        const pop = document.querySelector('#tdp .tp-catch, .dp-pop, .app-select-pop.on');
+        if (pop) { if (e.key === 'Escape' && pop.classList.contains('tp-catch')) { e.preventDefault(); pop.click(); } return; }
+        if (typing(e.target)) { if (e.key === 'Escape') e.target.blur(); return; }
+        e.preventDefault();
+        dotNet.invokeMethodAsync('PageKey', e.key).catch(() => {});
+      };
+      document.addEventListener('keydown', pageHandler, true);
+    },
+    // Every render: the status pill slides under the selected segment (spring, like the mockup).
+    taskPageSync(root) {
+      if (!root) return;
+      const seg = root.querySelector('.tp-seg'), ind = seg && seg.querySelector('.tp-seg-ind'), on = seg && seg.querySelector('button.on');
+      if (!seg || !ind) return;
+      if (!on) { ind.style.height = '0px'; return; }
+      const first = !seg.classList.contains('ready');
+      if (first) ind.style.transition = 'none';
+      ind.style.left = on.offsetLeft + 'px'; ind.style.top = on.offsetTop + 'px';
+      ind.style.width = on.offsetWidth + 'px'; ind.style.height = on.offsetHeight + 'px';
+      ind.style.setProperty('--c', getComputedStyle(on).getPropertyValue('--c'));
+      if (first) { void ind.offsetWidth; ind.style.transition = ''; seg.classList.add('ready'); }
+    },
+    // Quick view -> full page (mockup timeline): the sheet grows from the side panel's rectangle to the whole canvas
+    // (560 ms, corners flatten), the board behind steps back, the task title glides from the panel header into place
+    // (19 -> 29 px) and the sections rise in 45 ms apart (.tp-in, CSS).
+    taskPageEnter(root) {
+      if (!root || !root.animate) return;
+      const from = lastPanel; lastPanel = null;
+      if (reducedMotion()) return;
+      root.classList.add('tp-in');
+      setTimeout(() => root.classList.remove('tp-in'), 1300);
+      const ease = 'cubic-bezier(.32,.72,0,1)';
+      if (!from) { root.animate([{ opacity: 0, transform: 'scale(.985)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: ease }); return; }
+      const r = root.getBoundingClientRect();
+      const top = Math.max(0, from.rect.top - r.top), left = Math.max(0, from.rect.left - r.left);
+      const right = Math.max(0, r.right - from.rect.right), bottom = Math.max(0, r.bottom - from.rect.bottom);
+      root.animate([
+        { clipPath: `inset(${top}px ${right}px ${bottom}px ${left}px round 18px)`, boxShadow: '0 24px 60px -20px rgba(20,24,22,.3)' },
+        { clipPath: 'inset(0px 0px 0px 0px round 0px)', boxShadow: '0 0 0 0 rgba(20,24,22,0)' }
+      ], { duration: 560, easing: ease });
+      const board = root.parentElement && root.parentElement.querySelector('.proj-canvas-body');
+      if (board) board.animate([{ transform: 'none', filter: 'none', opacity: 1 }, { transform: 'scale(.97)', filter: 'blur(2px)', opacity: .55 }], { duration: 560, easing: ease });
+      const title = root.querySelector('.tp-title');
+      if (title && from.title) {
+        const tr = title.getBoundingClientRect();
+        const g = document.createElement('div');
+        g.className = 'tp-ghost';
+        g.textContent = from.title.text;
+        g.style.cssText = `left:${from.title.rect.left}px;top:${from.title.rect.top}px;font-size:${from.title.size}px;line-height:1.3;`;
+        document.body.appendChild(g);
+        const k = parseFloat(getComputedStyle(title).fontSize) / from.title.size;
+        title.style.opacity = '0';
+        g.animate([{ transform: 'translate(0,0) scale(1)' }, { transform: `translate(${tr.left - from.title.rect.left}px,${tr.top - from.title.rect.top}px) scale(${k})` }],
+          { duration: 560, easing: ease, fill: 'forwards' })
+          .finished.catch(() => {}).then(() => { g.remove(); title.style.opacity = ''; });
+      }
+    },
+    // Full page -> quick view: content fades fast, the sheet shrinks back to the side panel's place on the right.
+    taskPageLeave(root) {
+      if (!root || !root.animate || reducedMotion()) return Promise.resolve();
+      const r = root.getBoundingClientRect();
+      const left = Math.max(0, r.width - Math.min(480, r.width));
+      const ease = 'cubic-bezier(.32,.72,0,1)';
+      root.querySelectorAll('.tp-main-in, .tp-side, .tp-foot').forEach(el => el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, fill: 'forwards' }));
+      const a = root.animate([
+        { clipPath: 'inset(0px 0px 0px 0px round 0px)' },
+        { clipPath: `inset(10px 10px 10px ${left}px round 18px)` }
+      ], { duration: 340, easing: ease, fill: 'forwards' });
+      return a.finished.catch(() => {});
+    },
+    // ↑/↓ on the full page: the work column slides in from the direction of travel.
+    taskPageStep(root, delta) {
+      if (!root || reducedMotion()) return;
+      root.style.setProperty('--tp-dir', delta > 0 ? '14px' : '-14px');
+      root.classList.remove('tp-swap'); void root.offsetWidth; root.classList.add('tp-swap');
+      setTimeout(() => root.classList.remove('tp-swap'), 450);
+    },
+    blurActive() { const a = document.activeElement; if (a && a.blur) a.blur(); },
+    focusById(id) { const el = document.getElementById(id); if (el) { el.focus(); const v = el.value || ''; try { el.setSelectionRange(v.length, v.length); } catch (_) { } } },
+    // Called by the side panel's maximize button just before the page swaps it out: remember where it was.
+    rememberPanel() {
+      const p = document.getElementById('pv2-panel');
+      if (!p) { lastPanel = null; return; }
+      const h = p.querySelector('.pv2p-h h2');
+      lastPanel = {
+        rect: p.getBoundingClientRect(),
+        title: h ? { rect: h.getBoundingClientRect(), text: h.textContent, size: parseFloat(getComputedStyle(h).fontSize) || 18 } : null
+      };
+    },
   });
 
   // ---- Table field-column resize: pointer capture on the handle, widths live in a CSS variable while dragging,

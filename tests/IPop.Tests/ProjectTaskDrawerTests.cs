@@ -276,4 +276,73 @@ public class ProjectTaskDrawerTests
         cut.FindAll("button.td-quick").First(b => b.TextContent == "Today").Click();
         Assert.Contains("1 of 3", cut.Find(".td-starter").TextContent);
     }
+
+    [Fact]
+    public void Full_page_task_view_splits_work_and_updates_and_goes_back_to_the_board()
+    {
+        using var ctx = NewContext(out _);
+        var a = MakeTask("A"); var b = MakeTask("B", "doing", DateTime.Today.AddDays(-3));
+        var back = 0;
+        ProjectTaskDto? navigated = null;
+        var moves = new List<string>();
+        var cut = ctx.Render<ProjectTaskPage>(p => p
+            .Add(x => x.Task, b)
+            .Add(x => x.NavTasks, new List<ProjectTaskDto> { a, b })
+            .Add(x => x.OnNavigate, (ProjectTaskDto t) => navigated = t)
+            .Add(x => x.OnStatusChange, ((ProjectTaskDto Task, string NewStatus, Guid? StatusOptionId) m) => moves.Add(m.NewStatus))
+            .Add(x => x.OnBackToPanel, () => back++));
+
+        // Its own page UI inside the canvas: no drawer markup, no modal backdrop.
+        Assert.Empty(cut.FindAll(".task-drawer, .task-drawer-backdrop, .td-group, .td-starter"));
+        var root = cut.Find("#tdp.tp");
+        Assert.Equal("region", root.GetAttribute("role"));
+        // Work on the left (status segment, overdue, properties, description, checklist, files, deps + time) …
+        Assert.Equal(new[] { "To Do", "In Progress", "Review", "Done" },
+            cut.FindAll(".tp-seg button").Select(x => x.TextContent.Trim()));
+        Assert.Contains("Overdue since", cut.Find(".tp-alert").TextContent);
+        Assert.Equal(6, cut.FindAll(".tp-prop").Count);
+        Assert.NotNull(cut.Find("textarea.tp-desc"));
+        Assert.Equal(2, cut.FindAll(".tp-two .tp-box").Count);
+        // … the conversation on the right, composer pinned.
+        Assert.Equal(3, cut.FindAll(".tp-side .tp-stabs button").Count);
+        Assert.NotNull(cut.Find(".tp-side .tp-composer textarea"));
+        Assert.Equal("2 / 2", cut.Find(".tp-pos").TextContent.Trim());
+
+        cut.FindAll(".tp-seg button").First(x => x.TextContent.Contains("Done")).Click();
+        Assert.Equal("done", Assert.Single(moves));
+        cut.Find("[data-act=prev]").Click();
+        cut.WaitForAssertion(() => Assert.Same(a, navigated));
+        cut.Find("[data-act=back]").Click();
+        cut.WaitForAssertion(() => Assert.Equal(1, back));
+        cut.Find("[data-act=to-panel]").Click();
+        cut.WaitForAssertion(() => Assert.Equal(2, back));
+    }
+
+    [Fact]
+    public void Viewer_full_page_reads_but_cannot_write()
+    {
+        using var ctx = NewContext(out _);
+        var cut = ctx.Render<ProjectTaskPage>(p => p.Add(x => x.Task, MakeTask("Read only")).Add(x => x.ReadOnly, true));
+        Assert.Empty(cut.FindAll("textarea.tp-title, textarea.tp-desc, .tp-composer, .tp-add, .tp-li.add"));
+        Assert.All(cut.FindAll(".tp-seg button"), x => Assert.True(x.HasAttribute("disabled")));
+        Assert.Contains("View only", cut.Find(".tp-foot").TextContent);
+    }
+
+    [Fact]
+    public void Desktop_full_page_renders_in_the_canvas_and_phones_keep_the_sheet()
+    {
+        var page = RepoFile("src/IPop.Web/Pages/Projects.razor");
+        Assert.Contains("@if (showTaskEditor && editingTask is not null && fullEditor && !Phone.IsPhone)", page);
+        Assert.Contains("@if (showTaskEditor && editingTask is not null && Phone.IsPhone)", page);
+        Assert.Contains("<ProjectTaskPage Task=\"editingTask\"", page);
+        Assert.Contains("OnBackToPanel=\"BackToPanel\"", page);
+        // Projects opens with the iPop sidebar + project list; full screen keeps the list as a column.
+        Assert.Contains("private bool fullScreen;", page);
+        Assert.DoesNotContain("pv2-rail-scrim", page);
+        Assert.Contains("ipop.projects.fs2", RepoFile("src/IPop.Web/wwwroot/js/projects-v2.js"));
+        var css = RepoFile("src/IPop.Web/wwwroot/css/v6/projects-v2-stage4b.css");
+        var fs = css[css.IndexOf("full screen: hides only the iPop shell", StringComparison.Ordinal)..];
+        Assert.StartsWith("full screen", fs);
+        Assert.Contains("@media (max-width: 900px)", fs[..300]);
+    }
 }

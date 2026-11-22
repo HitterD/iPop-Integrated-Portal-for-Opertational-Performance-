@@ -81,10 +81,6 @@ else
 {
 <div class="proj-workspace pv2-ws @(mDetail ? "m-detail" : "") @(fullScreen ? "proj-fs" : "") @(fullScreen && railOpen ? "pv2-rail-open" : "")">
     @* Left Project Navigator Sidebar (in a wrapper so the full screen layout can slide the column to 0) *@
-    @if (fullScreen && railOpen)
-    {
-        <div class="pv2-rail-scrim" @onclick="() => railOpen = false"></div>
-    }
     <div class="pv2-rail">
     <ProjectSidebar
         Projects="filteredProjects"
@@ -345,6 +341,18 @@ else
                     </div>
                 }
             </div>
+            @if (showTaskEditor && editingTask is not null && fullEditor && !Phone.IsPhone)
+            {
+                <ProjectTaskPage Task="editingTask" Subtasks="subtasks" Members="projectMembers" Groups="projectGroups" Options="statusOptions"
+                    AllTasks="AllCurrentTasks" NavTasks="DrawerNavTasks" ProjectName="@(selectedProject?.Name ?? "Project")"
+                    ReadOnly="@(!CanWriteTasks)" CurrentUserNik="@currentUserNik"
+                    OnBackToPanel="BackToPanel" OnNavigate="OpenTaskEditor"
+                    OnStatusChange="HandleStatusChangeDirect" OnToggleAssignee="HandleToggleAssignee"
+                    OnToggleSubtask="HandleToggleSubtask" OnAddSubtask="HandleAddSubtask"
+                    OnPriority="HandlePanelPriority" OnDue="HandlePanelDue" OnStart="HandlePanelStart"
+                    OnMoveToGroup="HandleMoveTaskToGroup" OnRequestExtension="OpenExtensionModal" OnDelete="HandleDeleteTask"
+                    OnTaskChanged="HandleDrawerTaskChanged" />
+            }
             @if (showTaskEditor && editingTask is not null && !fullEditor && !Phone.IsPhone)
             {
                 <ProjectTaskPanel Task="editingTask" Subtasks="subtasks" Members="projectMembers" Groups="projectGroups" Options="statusOptions"
@@ -394,7 +402,7 @@ else
         OnCancel="() => { showExtensionModal = false; extensionTask = null; }" />
 }
 
-@if (showTaskEditor && editingTask is not null && (fullEditor || Phone.IsPhone))
+@if (showTaskEditor && editingTask is not null && Phone.IsPhone)
 {
     <ProjectTaskDrawer @ref="taskDrawer" CustomStatuses="statusOptions" PhoneLayout="Phone.IsPhone"
         ReadOnly="@(!CanWriteTasks)"
@@ -477,8 +485,9 @@ else
     private bool sidebarCollapsed = false;
 
     // ── Projects v2: full screen, view tabs ──
-    // Full screen is on by default on desktop; the choice is remembered in localStorage (ipop.projects.fs).
-    private bool fullScreen = true;
+    // Full screen is off by default (iPop sidebar + project list + board); turning it on is remembered in
+    // localStorage (ipop.projects.fs2 — the old key stored the earlier "on by default" and is ignored).
+    private bool fullScreen;
     private bool railOpen;
     private int fsNoticeKey;
     private bool fsInit;
@@ -549,7 +558,7 @@ else
     private async Task SetFullScreen(bool on, bool persist)
     {
         fullScreen = on;
-        railOpen = false; // the project list starts hidden on every full screen entry
+        railOpen = true; // full screen hides only the iPop shell; the project list stays as a column (panel button hides it)
         fsNoticeKey++;    // restarts the 5 s breathing on the "Exit full screen" notice
         StateHasChanged();
         try { await JS.InvokeVoidAsync("ipopPv2.setFullScreen", on, persist); } catch { }
@@ -570,7 +579,7 @@ else
         fsInit = true;
         string? pref = null;
         try { pref = await JS.InvokeAsync<string?>("ipopPv2.fullScreenPref"); } catch { }
-        if (pref == "0") fullScreen = false;
+        if (pref == "1") { fullScreen = true; railOpen = true; }
         _fsRef ??= DotNetObjectReference.Create(this);
         try
         {
@@ -1173,7 +1182,9 @@ else
             var taskIdStr = QueryValue("task");
             if (!string.IsNullOrEmpty(taskIdStr) && Guid.TryParse(taskIdStr, out var targetTask))
             {
+                var wantFull = QueryValue("full") == "1" && !Phone.IsPhone;
                 await HighlightTask(targetTask);
+                if (wantFull && editingTask?.Id == targetTask) { fullEditor = true; StateHasChanged(); }
                 Nav.NavigateTo($"/projects/{ProjectId.Value}", replace: true);
             }
         }
@@ -2076,6 +2087,14 @@ else
         await Task.WhenAll(LoadSubtasks(t.Id), LoadFieldValues(t.Id));
         StateHasChanged();
         await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    /// Full page → quick view (Back, Esc, "Open as panel"): the same task stays open in the side panel.
+    private void BackToPanel()
+    {
+        fullEditor = false;
+        focusNewTaskTitle = false;
+        StateHasChanged();
     }
 
     private bool openingNewTask;

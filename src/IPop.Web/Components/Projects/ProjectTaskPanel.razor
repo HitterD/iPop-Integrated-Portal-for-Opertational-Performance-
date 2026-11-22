@@ -8,7 +8,7 @@
 @implements IDisposable
 
 @* Projects v2 task detail side panel (docs/mockups/ipop-apple/projects-v2.html panel()): a 480px quick view that slides in
-   inside the workspace. The full drawer (ProjectTaskDrawer) stays the complete editor, reachable with the maximize button. *@
+   inside the workspace. The maximize button grows it into the dedicated full-page task view (ProjectTaskDrawer PageLayout). *@
 @if (Task is not null)
 {
     var t = Task;
@@ -21,7 +21,7 @@
                 <i class="pv2p-dot" style="background:@(group is null ? "var(--ink-3)" : ProjectStatusUi.SafeColor(group.Color))"></i>@(group?.Name ?? ProjectName)
                 <span class="pv2-sp"></span>
                 <button type="button" class="pv2p-ib" title="Copy link" aria-label="Copy link" @onclick="CopyLink"><i data-lucide="link"></i></button>
-                <button type="button" class="pv2p-ib" data-act="open-full" title="Open full editor" aria-label="Open full editor" @onclick="() => OnOpenFull.InvokeAsync(t)"><i data-lucide="maximize-2"></i></button>
+                <button type="button" class="pv2p-ib" data-act="open-full" title="Open full page (Shift+Enter)" aria-label="Open full page" @onclick="() => OpenFull(t)"><i data-lucide="maximize-2"></i></button>
                 <button type="button" class="pv2p-ib" data-act="close" title="Close (Esc)" aria-label="Close" @onclick="() => OnClose.InvokeAsync()"><i data-lucide="x"></i></button>
             </div>
             <h2>@t.Title</h2>
@@ -491,6 +491,14 @@
     private async Task OnKey(KeyboardEventArgs e)
     {
         if (e.Key == "Escape") await OnClose.InvokeAsync();
+        else if (e.Key == "Enter" && e.ShiftKey && Task is not null) await OpenFull(Task);
+    }
+
+    /// The full page animates out of this panel's rectangle, so remember it before the page swaps the panel out.
+    private async Task OpenFull(ProjectTaskDto t)
+    {
+        try { await JS.InvokeVoidAsync("ipopPv2.rememberPanel"); } catch { /* no JS (tests) */ }
+        await OnOpenFull.InvokeAsync(t);
     }
 
     /// Called from js/projects-v2.js: Escape closes, arrows step through the current view's order.

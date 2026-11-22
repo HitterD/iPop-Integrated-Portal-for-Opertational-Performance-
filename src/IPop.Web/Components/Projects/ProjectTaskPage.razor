@@ -1,0 +1,749 @@
+@using IPop.Application.Projects
+@using System.Globalization
+@using System.Net.Http.Json
+@inject IPop.Web.Services.AuthState Auth
+@inject IPop.Web.Services.TimerState Timer
+@inject IPop.Web.Services.ToastService Toasts
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@implements IAsyncDisposable
+
+@* Projects: the dedicated full-page task view (docs/mockups/ipop-apple/projects-task-fullpage.html, screen "Quick view → Full page").
+   Opened from the side panel's maximize button; fills the Projects canvas (iPop sidebar + project list stay).
+   Left = the work (title, status segment, overdue, properties, description, checklist, files, dependencies + time),
+   right = the conversation (Updates / Activity / Files, composer pinned). Its own UI: no drawer markup reused. *@
+@if (Task is not null)
+{
+    var t = Task;
+    var group = Groups.FirstOrDefault(g => g.Id == t.GroupId);
+    var gColor = group is null ? "var(--ink-3)" : ProjectStatusUi.SafeColor(group.Color);
+    var cur = ProjectStatusUi.Resolve(t, Options);
+    var late = IsLate(t);
+    var done = Subtasks.Count(s => s.Status == "done");
+    var nav = NavIndex();
+    <section class="tp" id="tdp" role="region" aria-label="Task: @t.Title" @ref="rootRef" data-attach-scope="@(ReadOnly ? null : "")">
+        <header class="tp-top">
+            <button type="button" class="tp-back" data-act="back" title="Back to the board (Esc)" @onclick="BackToPanel"><i data-lucide="chevron-left"></i>Board</button>
+            <span class="tp-path">@ProjectName<i data-lucide="chevron-right"></i><b><i class="tp-dot" style="background:@gColor"></i>@(group?.Name ?? "No group")</b></span>
+            <span class="tp-sp"></span>
+            @if (!ReadOnly && savedFlash is not null) { <span class="tp-saved" aria-live="polite"><i data-lucide="check"></i>@savedFlash</span> }
+            @if (nav >= 0)
+            {
+                <span class="tp-navseg" role="group" aria-label="Task navigation">
+                    <button type="button" class="tp-ib" data-act="prev" title="Previous task (↑)" aria-label="Previous task" disabled="@(nav <= 0)" @onclick="() => Step(-1)"><i data-lucide="chevron-up"></i></button>
+                    <span class="tp-pos" aria-live="polite">@(nav + 1) / @NavTasks.Count</span>
+                    <button type="button" class="tp-ib" data-act="next" title="Next task (↓)" aria-label="Next task" disabled="@(nav >= NavTasks.Count - 1)" @onclick="() => Step(1)"><i data-lucide="chevron-down"></i></button>
+                </span>
+            }
+            <button type="button" class="tp-ib" title="Copy link" aria-label="Copy link" @onclick="CopyLink"><i data-lucide="link"></i></button>
+            <button type="button" class="tp-ib" data-act="to-panel" title="Open as panel" aria-label="Open as panel" @onclick="BackToPanel"><i data-lucide="minimize-2"></i></button>
+            <span class="tp-menu-host">
+                <button type="button" class="tp-ib" title="More" aria-label="More" aria-haspopup="menu" aria-expanded="@(moreOpen ? "true" : "false")" @onclick="() => { CloseAll(); moreOpen = true; }"><i data-lucide="more-horizontal"></i></button>
+                @if (moreOpen)
+                {
+                    <div class="tp-catch" @onclick="CloseAll"></div>
+                    <div class="tp-pop tp-pop-right" role="menu">
+                        <button type="button" role="menuitem" class="danger" disabled="@ReadOnly" @onclick="Delete"><i data-lucide="trash-2"></i>Delete task</button>
+                    </div>
+                }
+            </span>
+        </header>
+
+        <div class="tp-body">
+            <div class="tp-main">
+                <div class="tp-main-in">
+                    <div class="tp-head tp-rv" style="--d:0">
+                        <span class="tp-grp"><i class="tp-dot" style="background:@gColor"></i>@(group?.Name ?? "No group") · created by @t.CreatedByName, @t.CreatedAt.ToLocalTime().ToString("d MMM yyyy", CultureInfo.InvariantCulture)</span>
+                        @if (ReadOnly)
+                        {
+                            <h1 class="tp-title">@t.Title</h1>
+                        }
+                        else
+                        {
+                            <textarea class="tp-title" id="tp-title" rows="1" aria-label="Task title" maxlength="300" @bind="title" @bind:after="SaveTitle" @onkeydown="TitleKey"></textarea>
+                        }
+                        <div class="tp-seg" role="radiogroup" aria-label="Status" id="tp-seg">
+                            <span class="tp-seg-ind" aria-hidden="true"></span>
+                            @foreach (var o in OptionList)
+                            {
+                                var oo = o;
+                                var on = oo == cur;
+                                <button type="button" role="radio" aria-checked="@(on ? "true" : "false")" class="@(on ? "on" : "")" style="--c:@ProjectStatusUi.SafeColor(oo.Color)"
+                                        disabled="@(ReadOnly || busy)" @onclick="() => PickStatus(oo)"><i></i>@oo.Label</button>
+                            }
+                        </div>
+                    </div>
+
+                    @if (late)
+                    {
+                        <div class="tp-alert tp-rv" style="--d:1" role="alert">
+                            <i data-lucide="alarm-clock"></i>Overdue since @t.DueDate!.Value.ToString("d MMM yyyy", CultureInfo.InvariantCulture) (@LateDays(t) @(LateDays(t) == 1 ? "day" : "days"))
+                            <span class="tp-sp"></span>
+                            @if (!ReadOnly) { <button type="button" @onclick="() => OnRequestExtension.InvokeAsync(t)"><i data-lucide="calendar-plus"></i>Extend deadline</button> }
+                        </div>
+                    }
+
+                    <div class="tp-props tp-card tp-rv" style="--d:2">
+                        <div class="tp-prop">
+                            <span class="k"><i data-lucide="users"></i>Assignees</span>
+                            <span class="v tp-menu-host">
+                                @foreach (var a in t.Assignees)
+                                {
+                                    <span class="tp-person"><PersonAvatar Nik="@a.Nik" Name="@a.Name" Size="22" Decorative="true" />@a.Name</span>
+                                }
+                                @if (t.Assignees.Count == 0 && ReadOnly) { <span class="tp-muted">Nobody yet</span> }
+                                @if (!ReadOnly)
+                                {
+                                    <button type="button" class="tp-add" data-act="assign" aria-haspopup="dialog" aria-expanded="@(assignOpen ? "true" : "false")" @onclick="() => { CloseAll(); assignOpen = true; }"><i data-lucide="plus"></i>@(t.Assignees.Count == 0 ? "Add person" : "Add")</button>
+                                }
+                                @if (assignOpen)
+                                {
+                                    <div class="tp-catch" @onclick="CloseAll"></div>
+                                    <div class="tp-pop" role="dialog" aria-label="Assign people">
+                                        @foreach (var m in Members.Where(m => m.Role != "viewer"))
+                                        {
+                                            var mm = m;
+                                            var on = t.Assignees.Any(a => a.UserId == mm.UserId);
+                                            <button type="button" role="menuitemcheckbox" aria-checked="@(on ? "true" : "false")" class="@(on ? "on" : "")" @onclick="() => OnToggleAssignee.InvokeAsync((t.Id, mm.UserId, on))">
+                                                <PersonAvatar Nik="@mm.Nik" Name="@mm.Name" Size="22" Decorative="true" /><span>@mm.Name</span>
+                                                @if (on) { <i data-lucide="check" class="tp-check"></i> }
+                                            </button>
+                                        }
+                                        @if (!Members.Any(m => m.Role != "viewer")) { <div class="tp-muted" style="padding:8px">Add people to the project first (Members).</div> }
+                                    </div>
+                                }
+                            </span>
+                        </div>
+                        <div class="tp-prop">
+                            <span class="k"><i data-lucide="flag"></i>Priority</span>
+                            <span class="v">
+                                <span class="tp-chips" role="radiogroup" aria-label="Priority">
+                                    @foreach (var (key, label) in Priorities)
+                                    {
+                                        var k = key;
+                                        var on = (t.Priority ?? "") == k;
+                                        <button type="button" role="radio" aria-checked="@(on ? "true" : "false")" class="tp-chip p-@(string.IsNullOrEmpty(k) ? "none" : k) @(on ? "on" : "")" disabled="@ReadOnly" @onclick="() => OnPriority.InvokeAsync((t, string.IsNullOrEmpty(k) ? null : k))">@if (k != "") { <i></i> }@label</button>
+                                    }
+                                </span>
+                            </span>
+                        </div>
+                        <div class="tp-prop">
+                            <span class="k"><i data-lucide="calendar"></i>Start</span>
+                            <span class="v">
+                                <AppDatePicker TValue="DateTime?" Value="t.StartDate" Disabled="ReadOnly" Compact="true" AllowClear="true" Class="tp-dp" Placeholder="Set start date" AriaLabel="Start date"
+                                               ValueChanged="d => OnStart.InvokeAsync((t, d))" />
+                            </span>
+                        </div>
+                        <div class="tp-prop">
+                            <span class="k"><i data-lucide="layers"></i>Group</span>
+                            <span class="v tp-menu-host">
+                                <button type="button" class="tp-field" disabled="@(ReadOnly || Groups.Count < 2)" aria-haspopup="menu" aria-expanded="@(groupOpen ? "true" : "false")" @onclick="() => { CloseAll(); groupOpen = true; }">
+                                    <i class="tp-dot" style="background:@gColor"></i>@(group?.Name ?? "No group")@if (!ReadOnly && Groups.Count > 1) { <i data-lucide="chevron-down"></i> }
+                                </button>
+                                @if (groupOpen)
+                                {
+                                    <div class="tp-catch" @onclick="CloseAll"></div>
+                                    <div class="tp-pop" role="menu" aria-label="Move to group">
+                                        @foreach (var g in Groups)
+                                        {
+                                            var gg = g;
+                                            <button type="button" role="menuitemradio" aria-checked="@(gg.Id == t.GroupId ? "true" : "false")" class="@(gg.Id == t.GroupId ? "on" : "")" @onclick="() => MoveGroup(gg.Id)">
+                                                <i class="tp-dot" style="background:@ProjectStatusUi.SafeColor(gg.Color)"></i><span>@gg.Name</span>
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                            </span>
+                        </div>
+                        <div class="tp-prop">
+                            <span class="k"><i data-lucide="calendar-check"></i>Due</span>
+                            <span class="v @(late ? "late" : "")">
+                                <AppDatePicker TValue="DateTime?" Value="t.DueDate" Disabled="ReadOnly" Compact="true" AllowClear="true" Class="tp-dp" Placeholder="Set due date" AriaLabel="Due date"
+                                               ValueChanged="d => OnDue.InvokeAsync((t, d))" />
+                            </span>
+                        </div>
+                        <div class="tp-prop">
+                            <span class="k"><i data-lucide="repeat"></i>Repeat</span>
+                            <span class="v ro tp-muted">@(t.IsRecurring ? "Repeats" : "Does not repeat")</span>
+                        </div>
+                    </div>
+
+                    <div class="tp-sec tp-card tp-rv" style="--d:3">
+                        <div class="tp-sec-h"><h3><span class="tp-ic c-blue"><i data-lucide="file-text"></i></span>Description</h3></div>
+                        @if (ReadOnly)
+                        {
+                            <div class="tp-desc">@(string.IsNullOrWhiteSpace(desc) ? "No description." : desc)</div>
+                        }
+                        else
+                        {
+                            <textarea class="tp-desc" id="tp-desc" rows="4" aria-label="Description" placeholder="Describe the task: what, where, and anything the team should know…"
+                                      @bind="desc" @bind:after="SaveDesc"></textarea>
+                        }
+                    </div>
+
+                    <div class="tp-sec tp-card tp-rv" style="--d:4">
+                        <div class="tp-sec-h"><h3><span class="tp-ic c-green"><i data-lucide="list-checks"></i></span>Checklist</h3><small class="pv2-num">@done of @Subtasks.Count</small></div>
+                        @if (Subtasks.Count > 0) { <div class="tp-meter" role="img" aria-label="@done of @Subtasks.Count done"><i style="width:@(100 * done / Subtasks.Count)%"></i></div> }
+                        <div class="tp-cl">
+                            @foreach (var st in Subtasks)
+                            {
+                                var sub = st;
+                                var d = sub.Status == "done";
+                                <button type="button" class="tp-li @(d ? "dn" : "")" @key="sub.Id" role="checkbox" aria-checked="@(d ? "true" : "false")" disabled="@ReadOnly" @onclick="() => OnToggleSubtask.InvokeAsync(sub)">
+                                    <span class="tp-ck"><i data-lucide="check"></i></span><span class="tx">@sub.Title</span>
+                                </button>
+                            }
+                            @if (!ReadOnly)
+                            {
+                                <label class="tp-li add"><i data-lucide="plus"></i><input type="text" maxlength="200" placeholder="Add an item and press Enter" aria-label="Add a checklist item" @bind="newItem" @bind:event="oninput" @onkeydown="AddItemKey" /></label>
+                            }
+                            else if (Subtasks.Count == 0) { <div class="tp-muted" style="padding:6px 10px">No checklist yet.</div> }
+                        </div>
+                    </div>
+
+                    <div class="tp-sec tp-card tp-rv" style="--d:5">
+                        <div class="tp-sec-h"><h3><span class="tp-ic c-violet"><i data-lucide="paperclip"></i></span>Evidence &amp; files</h3><small class="pv2-num">@files.Count</small></div>
+                        <div class="tp-files" data-attach-zone="@(ReadOnly ? null : "")" data-attach-default data-attach-title="Drop to attach" data-attach-hint="Photos or documents up to 25 MB">
+                            <TaskFiles ReadOnly="ReadOnly" TaskId="t.Id" Kind="attachment" Files="files" UploadLabel="Add or drop files" MyUserId="MyUserId" IsOwner="IsOwner" OnChanged="LoadFiles" OnOpen="OpenViewer" />
+                        </div>
+                    </div>
+
+                    <div class="tp-two tp-rv" style="--d:6">
+                        <div class="tp-box tp-card">
+                            <div class="tp-sec-h"><h3><span class="tp-ic c-amber"><i data-lucide="git-branch"></i></span>Dependencies</h3>
+                                @if (!ReadOnly)
+                                {
+                                    <span class="tp-menu-host tp-push">
+                                        <button type="button" class="tp-lnk" data-act="add-dep" @onclick="() => { CloseAll(); depOpen = true; }"><i data-lucide="plus"></i>Add</button>
+                                        @if (depOpen)
+                                        {
+                                            <div class="tp-catch" @onclick="CloseAll"></div>
+                                            <div class="tp-pop tp-pop-right" role="dialog" aria-label="Add dependency">
+                                                <input type="search" class="tp-q" placeholder="Search tasks" aria-label="Search tasks" @bind="depQuery" @bind:event="oninput" />
+                                                @foreach (var c in Candidates)
+                                                {
+                                                    var cc = c;
+                                                    <button type="button" @onclick="() => AddDep(cc.Id)"><span>@cc.Title</span></button>
+                                                }
+                                                @if (!Candidates.Any()) { <div class="tp-muted" style="padding:8px">No other tasks to wait for.</div> }
+                                            </div>
+                                        }
+                                    </span>
+                                }
+                            </div>
+                            @foreach (var dd in t.DependsOn ?? [])
+                            {
+                                var dep = dd;
+                                var o = OptionList.FirstOrDefault(x => x.Stage == dep.Status);
+                                <div class="tp-dep"><span class="k">Waiting on</span><span class="tp-mini" style="--c:@ProjectStatusUi.SafeColor(o?.Color)">@(o?.Label ?? ProjectStatusUi.StageLabel(dep.Status))</span><span class="nm">@dep.Title</span>
+                                    @if (!ReadOnly) { <button type="button" class="tp-ib sm" aria-label="Remove dependency @dep.Title" @onclick="() => RemoveDep(dep.Id)"><i data-lucide="x"></i></button> }
+                                </div>
+                            }
+                            @if (Successors.Any())
+                            {
+                                @foreach (var s in Successors)
+                                {
+                                    <div class="tp-dep"><span class="k">Blocks</span><span class="nm">@s.Title</span></div>
+                                }
+                            }
+                            else if ((t.DependsOn?.Count ?? 0) == 0) { <div class="tp-dep"><span class="k">Blocks</span><span class="tp-muted">Nothing yet</span></div> }
+                            @if (depError is not null) { <div class="tp-err" role="alert">@depError</div> }
+                        </div>
+                        <div class="tp-box tp-card">
+                            <div class="tp-sec-h"><h3><span class="tp-ic c-teal"><i data-lucide="timer"></i></span>Time</h3></div>
+                            <div class="tp-timer">
+                                @if (!ReadOnly && (time?.CanTrack ?? false))
+                                {
+                                    <button type="button" class="tp-play @(running ? "run" : "")" aria-pressed="@(running ? "true" : "false")" title="@(running ? "Stop" : "Start") timer" aria-label="@(running ? "Stop" : "Start") timer" disabled="@timerBusy" @onclick="ToggleTimer"><i data-lucide="@(running ? "pause" : "play")"></i></button>
+                                }
+                                <div><b class="pv2-num" id="tp-clock">@Clock()</b><small>@(running ? "running · " : "")logged@(t.EstimatedHours is > 0 ? $" · estimate {t.EstimatedHours:0.#}h" : "")</small></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <aside class="tp-side tp-rv" style="--d:5" aria-label="Updates and activity">
+                <div class="tp-stabs" role="tablist">
+                    <button type="button" role="tab" class="@(side == "updates" ? "on" : "")" aria-selected="@(side == "updates" ? "true" : "false")" @onclick='() => side = "updates"'>Updates@(comments.Count > 0 ? " " + comments.Count : "")</button>
+                    <button type="button" role="tab" class="@(side == "activity" ? "on" : "")" aria-selected="@(side == "activity" ? "true" : "false")" @onclick='() => side = "activity"'>Activity</button>
+                    <button type="button" role="tab" class="@(side == "files" ? "on" : "")" aria-selected="@(side == "files" ? "true" : "false")" @onclick='() => side = "files"'>Files@(files.Count > 0 ? " " + files.Count : "")</button>
+                </div>
+                <div class="tp-feed">
+                    @if (side == "activity")
+                    {
+                        @foreach (var a in activity)
+                        {
+                            <div class="tp-ev"><i></i><span><b>@a.Actor</b> @a.Action@(string.IsNullOrEmpty(a.Detail) ? "" : $" · {a.Detail}") · @a.At.ToLocalTime().ToString("d MMM", CultureInfo.InvariantCulture)</span></div>
+                        }
+                        @if (activity.Count == 0) { <div class="tp-empty"><i data-lucide="history"></i>No activity yet.</div> }
+                    }
+                    else if (side == "files")
+                    {
+                        @foreach (var f in files)
+                        {
+                            var ff = f;
+                            <button type="button" class="tp-frow" @onclick="() => OpenViewer((TaskFiles.ToDto(ff), files.Select(TaskFiles.ToDto).ToList()))"><i data-lucide="file"></i><span>@ff.FileName<small>@ff.UploadedByName · @ff.CreatedAt.ToLocalTime().ToString("d MMM", CultureInfo.InvariantCulture)</small></span></button>
+                        }
+                        @if (files.Count == 0) { <div class="tp-empty"><i data-lucide="paperclip"></i>No files yet.</div> }
+                    }
+                    else
+                    {
+                        @foreach (var item in Timeline)
+                        {
+                            if (item.Comment is { } c)
+                            {
+                                <div class="tp-cm @(c.ParentId is null ? "" : "reply")" @key="c.Id">
+                                    <PersonAvatar Nik="@c.AuthorNik" Name="@c.Author" Size="26" Decorative="true" />
+                                    <div class="tp-bub"><div class="who">@c.Author<small>@c.At.ToLocalTime().ToString("d MMM, HH:mm", CultureInfo.InvariantCulture)</small></div>@c.Text</div>
+                                </div>
+                            }
+                            else if (item.Event is { } ev)
+                            {
+                                <div class="tp-ev"><i></i><span><b>@ev.Actor</b> @ev.Action · @ev.At.ToLocalTime().ToString("d MMM", CultureInfo.InvariantCulture)</span></div>
+                            }
+                        }
+                        @if (comments.Count == 0 && activity.Count == 0) { <div class="tp-empty"><i data-lucide="messages-square"></i>No updates yet. Write the first one below.</div> }
+                    }
+                </div>
+                @if (!ReadOnly)
+                {
+                    <div class="tp-composer">
+                        @if (MentionMatches.Count > 0)
+                        {
+                            <div class="tp-mention" role="listbox" aria-label="Mention someone">
+                                @foreach (var m in MentionMatches)
+                                {
+                                    var mm = m;
+                                    <button type="button" role="option" @onmousedown:preventDefault="true" @onclick="() => PickMention(mm)"><PersonAvatar Nik="@mm.Nik" Name="@mm.Name" Size="20" Decorative="true" /><span>@mm.Name</span></button>
+                                }
+                            </div>
+                        }
+                        <textarea id="tp-compose" rows="2" aria-label="Write an update" placeholder="Write an update… type @@ to mention someone" @bind="draft" @bind:event="oninput" @onkeydown="ComposerKey"></textarea>
+                        <div class="tp-act">
+                            <button type="button" class="tp-ib" title="Mention someone" aria-label="Mention someone" @onclick="StartMention"><i data-lucide="at-sign"></i></button>
+                            <span class="tp-sp"></span>
+                            <button type="button" class="tp-send" disabled="@(string.IsNullOrWhiteSpace(draft) || sending)" @onclick="Send"><i data-lucide="send"></i>Send</button>
+                        </div>
+                    </div>
+                }
+            </aside>
+        </div>
+        <footer class="tp-foot"><i data-lucide="circle-check"></i>@(ReadOnly ? "View only" : "Every change saves by itself")<span class="tp-sp"></span><kbd>↑</kbd><kbd>↓</kbd> next task · <kbd>Esc</kbd> back to the board</footer>
+    </section>
+    <IPop.Web.Components.AttachmentViewer Attachment="viewerFile" Siblings="viewerSiblings" OnClose="() => viewerFile = null" OnNavigate="a => viewerFile = a" />
+}
+
+@code {
+    [Parameter] public ProjectTaskDto? Task { get; set; }
+    [Parameter] public IReadOnlyList<ProjectTaskDto> Subtasks { get; set; } = [];
+    [Parameter] public IReadOnlyList<ProjectMemberDto> Members { get; set; } = [];
+    [Parameter] public IReadOnlyList<ProjectGroupDto> Groups { get; set; } = [];
+    [Parameter] public IReadOnlyList<ProjectStatusOptionDto> Options { get; set; } = [];
+    [Parameter] public IReadOnlyList<ProjectTaskDto> AllTasks { get; set; } = [];
+    [Parameter] public IReadOnlyList<ProjectTaskDto> NavTasks { get; set; } = [];
+    [Parameter] public string ProjectName { get; set; } = "Project";
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public string? CurrentUserNik { get; set; }
+    /// Back / Esc / "Open as panel": the same task goes back to the side panel quick view.
+    [Parameter] public EventCallback OnBackToPanel { get; set; }
+    [Parameter] public EventCallback<ProjectTaskDto> OnNavigate { get; set; }
+    [Parameter] public EventCallback<(ProjectTaskDto Task, string NewStatus, Guid? StatusOptionId)> OnStatusChange { get; set; }
+    [Parameter] public EventCallback<(Guid TaskId, Guid UserId, bool IsAssigned)> OnToggleAssignee { get; set; }
+    [Parameter] public EventCallback<ProjectTaskDto> OnToggleSubtask { get; set; }
+    [Parameter] public EventCallback<string> OnAddSubtask { get; set; }
+    [Parameter] public EventCallback<(ProjectTaskDto Task, string? Priority)> OnPriority { get; set; }
+    [Parameter] public EventCallback<(ProjectTaskDto Task, DateTime? Due)> OnDue { get; set; }
+    [Parameter] public EventCallback<(ProjectTaskDto Task, DateTime? Start)> OnStart { get; set; }
+    [Parameter] public EventCallback<(Guid TaskId, Guid GroupId)> OnMoveToGroup { get; set; }
+    [Parameter] public EventCallback<ProjectTaskDto> OnRequestExtension { get; set; }
+    [Parameter] public EventCallback<Guid> OnDelete { get; set; }
+    /// Title / description / dependencies saved here: the page reloads its views with the fresh task.
+    [Parameter] public EventCallback<ProjectTaskDto?> OnTaskChanged { get; set; }
+    [Parameter] public DateTime? Today { get; set; }
+
+    private static readonly (string Key, string Label)[] Priorities = [("", "None"), ("low", "Low"), ("medium", "Med"), ("high", "High"), ("urgent", "Urgent")];
+
+    private ElementReference rootRef;
+    private string title = "", newItem = "", depQuery = "", draft = "", side = "updates";
+    private string? desc, depError, savedFlash;
+    private bool moreOpen, assignOpen, groupOpen, depOpen, busy, timerBusy, sending, entered, keysOn, leaving;
+    private Guid loadedFor;
+    private object? loadedVersion;
+    private string? descBase;
+    private List<Comment> comments = [];
+    private List<TaskActivityTimeline.TaskActivityItem> activity = [];
+    private List<TaskFiles.TaskFileDto> files = [];
+    private TaskTimeDto? time;
+    private System.Threading.Timer? tick;
+    private IPop.Application.Chat.AttachmentDto? viewerFile;
+    private IReadOnlyList<IPop.Application.Chat.AttachmentDto>? viewerSiblings;
+    private DotNetObjectReference<ProjectTaskPage>? self;
+
+    private sealed record Comment(Guid Id, string Author, string AuthorNik, string Text, Guid? ParentId, DateTime At);
+    private sealed record FeedItem(DateTime At, Comment? Comment, TaskActivityTimeline.TaskActivityItem? Event);
+    private record CommentRow(Guid Id, string AuthorName, string AuthorNik, string Content, Guid? ParentCommentId, DateTime CreatedAt);
+    private record ActivityRow(Guid Id, string ActorName, string Action, string? OldValue, string? NewValue, DateTime CreatedAt);
+    private record ActivityPage(List<ActivityRow> Items, int TotalCount, int Page, int PageSize);
+
+    private IReadOnlyList<ProjectStatusOptionDto> OptionList => Options.Count == 0 ? ProjectStatusUi.StageDefaults : Options;
+    private bool running => Task is not null && Timer.IsRunning(Task.Id);
+    private Guid? MyUserId => CurrentUserNik is { } nik ? Members.FirstOrDefault(m => m.Nik == nik)?.UserId : null;
+    private bool IsOwner => CurrentUserNik is { } nik && Members.Any(m => m.Nik == nik && m.Role == "owner");
+    private DateTime TodayDate => (Today ?? DateTime.Today).Date;
+
+    /// Updates tab: comments and the main status/file events in one conversation, oldest first.
+    private IEnumerable<FeedItem> Timeline =>
+        comments.Select(c => new FeedItem(c.At, c, null))
+            .Concat(activity.Where(a => !a.Action.Contains("comment")).Take(20).Select(a => new FeedItem(a.At, null, a)))
+            .OrderBy(x => x.At);
+
+    private IEnumerable<ProjectTaskDto> Successors =>
+        Task is null ? [] : AllTasks.Where(x => x.DependsOn?.Any(d => d.Id == Task.Id) == true).ToList();
+
+    private IEnumerable<ProjectTaskDto> Candidates
+    {
+        get
+        {
+            if (Task is null) return [];
+            var taken = (Task.DependsOn ?? []).Select(d => d.Id).ToHashSet();
+            var q = depQuery.Trim();
+            return AllTasks.Where(x => x.Id != Task.Id && x.Id != Task.ParentTaskId && !taken.Contains(x.Id)
+                    && (q.Length == 0 || x.Title.Contains(q, StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(x => x.Status == "done").ThenBy(x => x.Title, StringComparer.OrdinalIgnoreCase).Take(30);
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        Timer.Changed += OnTimerChanged;
+        tick = new System.Threading.Timer(_ => { if (running) _ = InvokeAsync(StateHasChanged); }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Task is null) return;
+        if (Task.Id == loadedFor && ReferenceEquals(Task, loadedVersion)) return;
+        var other = Task.Id != loadedFor;
+        loadedVersion = Task;
+        var clean = TaskEvidenceHelper.Parse(Task.Description).CleanDescription;
+        if (other)
+        {
+            loadedFor = Task.Id;
+            title = Task.Title; desc = clean; descBase = clean;
+            CloseAll(); depError = null; side = "updates";
+            comments = []; activity = []; files = []; time = null;
+        }
+        else
+        {
+            // Live refresh: take the server's values unless the user is mid-edit on them.
+            if (title == Task.Title || string.IsNullOrWhiteSpace(title)) title = Task.Title;
+            if (desc == descBase) desc = clean;
+            descBase = clean;
+        }
+        await System.Threading.Tasks.Task.WhenAll(LoadDiscussion(), LoadFiles(), LoadTime());
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Task is null) return;
+        try
+        {
+            await JS.InvokeVoidAsync("ipop.icons");
+            if (!keysOn) { self ??= DotNetObjectReference.Create(this); await JS.InvokeVoidAsync("ipopPv2.taskPageKeys", self); keysOn = true; }
+            if (!entered) { entered = true; await JS.InvokeVoidAsync("ipopPv2.taskPageEnter", rootRef); }
+            await JS.InvokeVoidAsync("ipopPv2.taskPageSync", rootRef);
+        }
+        catch { /* no JS (tests / prerender) */ }
+    }
+
+    private void CloseAll() { moreOpen = assignOpen = groupOpen = depOpen = false; }
+
+    private async Task Flash(string text)
+    {
+        savedFlash = text;
+        StateHasChanged();
+        await System.Threading.Tasks.Task.Delay(1800);
+        if (savedFlash == text) { savedFlash = null; StateHasChanged(); }
+    }
+
+    private async Task BackToPanel()
+    {
+        if (leaving) return;
+        leaving = true;
+        try
+        {
+            await SaveTitle();
+            await SaveDesc();
+            try { await JS.InvokeVoidAsync("ipopPv2.taskPageLeave", rootRef); } catch { }
+            await OnBackToPanel.InvokeAsync();
+        }
+        finally { leaving = false; }
+    }
+
+    private async Task Step(int delta)
+    {
+        var i = NavIndex();
+        if (i < 0) return;
+        var next = i + delta;
+        if (next < 0 || next >= NavTasks.Count) return;
+        await SaveTitle();
+        await SaveDesc();
+        try { await JS.InvokeVoidAsync("ipopPv2.taskPageStep", rootRef, delta); } catch { }
+        await OnNavigate.InvokeAsync(NavTasks[next]);
+    }
+
+    /// js/projects-v2.js taskPageKeys: Esc → board, ↑/↓ → neighbouring task in the current view.
+    [JSInvokable]
+    public Task PageKey(string key) => InvokeAsync(() => key == "Escape" ? BackToPanel() : Step(key == "ArrowUp" ? -1 : 1));
+
+    private int NavIndex() { if (Task is null) return -1; for (var i = 0; i < NavTasks.Count; i++) if (NavTasks[i].Id == Task.Id) return i; return -1; }
+
+    private async Task PickStatus(ProjectStatusOptionDto o)
+    {
+        if (ReadOnly || Task is null || busy) return;
+        busy = true;
+        try { await OnStatusChange.InvokeAsync((Task, o.Stage, ProjectStatusUi.RealId(o))); }
+        finally { busy = false; }
+    }
+
+    private async Task TitleKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") { try { await JS.InvokeVoidAsync("ipopPv2.blurActive"); } catch { } }
+    }
+
+    private Task SaveTitle()
+    {
+        if (ReadOnly || Task is null) return System.Threading.Tasks.Task.CompletedTask;
+        var v = (title ?? "").Replace("\n", " ").Trim();
+        if (v.Length == 0) { title = Task.Title; return System.Threading.Tasks.Task.CompletedTask; }
+        if (v == Task.Title) return System.Threading.Tasks.Task.CompletedTask;
+        title = v;
+        return Save(Task with { Title = v }, "Title saved");
+    }
+
+    private Task SaveDesc()
+    {
+        if (ReadOnly || Task is null) return System.Threading.Tasks.Task.CompletedTask;
+        var parsed = TaskEvidenceHelper.Parse(Task.Description);
+        if ((desc ?? "") == parsed.CleanDescription) return System.Threading.Tasks.Task.CompletedTask;
+        // Keep any legacy evidence block that lives at the end of the description.
+        var full = TaskEvidenceHelper.Serialize(desc, parsed.Evidence);
+        descBase = desc;
+        return Save(Task with { Description = full }, "Description saved");
+    }
+
+    private async Task Save(ProjectTaskDto t, string ok)
+    {
+        var req = new UpdateTaskRequest(t.Title, t.Description, null, t.Priority ?? "", t.StartDate, t.DueDate,
+            t.EstimatedHours, null, null, null, null, null, null, t.Tags ?? "",
+            ClearStartDate: t.StartDate is null, ClearDueDate: t.DueDate is null, ClearEstimatedHours: t.EstimatedHours is null);
+        try
+        {
+            using var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{t.Id}", req);
+            if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't save the change. Try again.", IPop.Web.Services.ToastKind.Error); return; }
+            ProjectTaskDto? fresh = null;
+            try { fresh = await res.Content.ReadFromJsonAsync<ProjectTaskDto>(); } catch { }
+            await OnTaskChanged.InvokeAsync(fresh);
+            _ = Flash(ok);
+        }
+        catch { Toasts.Show("Couldn't save the change. Try again.", IPop.Web.Services.ToastKind.Error); }
+    }
+
+    private async Task AddItemKey(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter" || string.IsNullOrWhiteSpace(newItem) || ReadOnly) return;
+        var text = newItem.Trim();
+        newItem = "";
+        await OnAddSubtask.InvokeAsync(text);
+    }
+
+    private async Task MoveGroup(Guid id)
+    {
+        CloseAll();
+        if (Task is null || Task.GroupId == id) return;
+        await OnMoveToGroup.InvokeAsync((Task.Id, id));
+    }
+
+    private async Task Delete()
+    {
+        CloseAll();
+        if (Task is null || ReadOnly) return;
+        await OnDelete.InvokeAsync(Task.Id);
+    }
+
+    private Task AddDep(Guid id)
+    {
+        CloseAll(); depQuery = "";
+        return SaveDeps((Task!.DependsOn ?? []).Select(d => new TaskLinkRequest(d.Id, d.LinkType, d.LagDays)).Append(new TaskLinkRequest(id)).ToList());
+    }
+
+    private Task RemoveDep(Guid id) =>
+        SaveDeps((Task!.DependsOn ?? []).Where(d => d.Id != id).Select(d => new TaskLinkRequest(d.Id, d.LinkType, d.LagDays)).ToList());
+
+    private async Task SaveDeps(List<TaskLinkRequest> links)
+    {
+        if (ReadOnly || Task is null) return;
+        depError = null;
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{Task.Id}/dependencies", new SetTaskDependenciesRequest(links.Select(l => l.DependsOnTaskId).ToList(), links));
+        if (res.IsSuccessStatusCode)
+        {
+            ProjectTaskDto? fresh = null;
+            try { fresh = await res.Content.ReadFromJsonAsync<ProjectTaskDto>(); } catch { }
+            await OnTaskChanged.InvokeAsync(fresh);
+            return;
+        }
+        var body = await res.Content.ReadAsStringAsync();
+        depError = body.Contains("dependency_cycle") ? "Not allowed: that task already waits on this one (indirectly)."
+            : body.Contains("too_many_dependencies") ? "A task can have at most 20 dependencies."
+            : body.Contains("forbidden") ? "You don't have access to change this task."
+            : "Couldn't save the dependency.";
+    }
+
+    // ---- data ----
+    private async Task LoadDiscussion()
+    {
+        var id = Task!.Id;
+        try
+        {
+            var rows = await Auth.GetAsync<List<CommentRow>>($"/api/projects/tasks/{id}/comments") ?? [];
+            var acts = await Auth.GetAsync<ActivityPage>($"/api/projects/tasks/{id}/activity?pageSize=50");
+            if (Task?.Id != id) return;
+            comments = rows.Select(c => new Comment(c.Id, c.AuthorName, c.AuthorNik, c.Content, c.ParentCommentId, c.CreatedAt)).ToList();
+            activity = (acts?.Items ?? []).Select(a => new TaskActivityTimeline.TaskActivityItem(a.ActorName, ActivityLabel(a.Action), a.NewValue ?? a.OldValue, a.CreatedAt)).ToList();
+        }
+        catch { }
+    }
+
+    public async Task LoadFiles()
+    {
+        if (Task is null) return;
+        var id = Task.Id;
+        try
+        {
+            var rows = await Auth.GetAsync<List<TaskFiles.TaskFileDto>>($"/api/projects/tasks/{id}/files");
+            if (Task?.Id != id) return;
+            files = rows ?? [];
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { }
+    }
+
+    private async Task LoadTime()
+    {
+        var id = Task!.Id;
+        try
+        {
+            var fresh = await Auth.GetAsync<TaskTimeDto>($"/api/projects/tasks/{id}/time");
+            if (Task?.Id == id) time = fresh;
+        }
+        catch { }
+    }
+
+    private void OnTimerChanged() => _ = InvokeAsync(async () => { if (Task is null) return; await LoadTime(); StateHasChanged(); });
+
+    private async Task ToggleTimer()
+    {
+        if (ReadOnly || Task is null) return;
+        timerBusy = true;
+        try
+        {
+            var err = Timer.IsRunning(Task.Id) ? await Timer.StopTimerAsync() : await Timer.StartTimerAsync(Task.Id);
+            if (err is not null) Toasts.Show("Couldn't change the timer. Try again.", IPop.Web.Services.ToastKind.Error);
+            await LoadTime();
+        }
+        finally { timerBusy = false; }
+    }
+
+    private int LoggedSeconds()
+    {
+        var s = (time?.TotalMinutes ?? 0) * 60;
+        if (running && Timer.Running is { } r) s += (int)(DateTime.UtcNow - r.StartedAt).TotalSeconds;
+        return s;
+    }
+    private string Clock() { var s = LoggedSeconds(); return $"{s / 3600}:{s % 3600 / 60:00}:{s % 60:00}"; }
+
+    // ---- composer (@mention like TaskDiscussion) ----
+    private List<ProjectMemberDto> MentionMatches
+    {
+        get
+        {
+            var at = draft.LastIndexOf('@');
+            if (at < 0 || (at > 0 && !char.IsWhiteSpace(draft[at - 1]))) return [];
+            var q = draft[(at + 1)..];
+            if (q.Contains(' ') && q.Length > 24) return [];
+            return Members.Where(m => q.Length == 0 || m.Name.Contains(q, StringComparison.OrdinalIgnoreCase)).Take(6).ToList();
+        }
+    }
+
+    private void PickMention(ProjectMemberDto m)
+    {
+        var at = draft.LastIndexOf('@');
+        if (at < 0) return;
+        draft = draft[..at] + "@" + m.Name + " ";
+    }
+
+    private async Task StartMention()
+    {
+        if (!draft.EndsWith('@')) draft += (draft.Length == 0 || draft.EndsWith(' ') ? "" : " ") + "@";
+        try { await JS.InvokeVoidAsync("ipopPv2.focusById", "tp-compose"); } catch { }
+    }
+
+    private async Task ComposerKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && (e.CtrlKey || e.MetaKey)) await Send();
+    }
+
+    private async Task Send()
+    {
+        if (ReadOnly || Task is null || string.IsNullOrWhiteSpace(draft) || sending) return;
+        sending = true;
+        var text = draft.Trim();
+        try
+        {
+            using var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/tasks/{Task.Id}/comments", new { content = text, parentCommentId = (Guid?)null });
+            if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't send the update. Try again.", IPop.Web.Services.ToastKind.Error); return; }
+            draft = "";
+            await LoadDiscussion();
+        }
+        catch { Toasts.Show("Couldn't send the update. Try again.", IPop.Web.Services.ToastKind.Error); }
+        finally { sending = false; }
+    }
+
+    private void OpenViewer((IPop.Application.Chat.AttachmentDto Open, IReadOnlyList<IPop.Application.Chat.AttachmentDto> All) pick)
+    {
+        viewerSiblings = pick.All;
+        viewerFile = pick.Open;
+    }
+
+    private async Task CopyLink()
+    {
+        if (Task is null) return;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", $"{Nav.BaseUri}projects/{Task.ProjectId}?task={Task.Id}&full=1");
+            Toasts.Show("Link copied.", IPop.Web.Services.ToastKind.Success);
+        }
+        catch { }
+    }
+
+    private bool IsLate(ProjectTaskDto t) => t.Status != "done" && t.DueDate.HasValue && t.DueDate.Value.Date < TodayDate;
+    private int LateDays(ProjectTaskDto t) => (TodayDate - t.DueDate!.Value.Date).Days;
+
+    private static string ActivityLabel(string action) => action switch
+    {
+        "comment_added" => "added a comment", "comment_replied" => "replied to a comment", "comment_deleted" => "deleted a comment",
+        "attachment_added" => "added an attachment", "file_added" => "added a file", "file_removed" => "removed a file",
+        "attachment_removed" => "removed an attachment", "status_changed" => "changed status", "title_changed" => "changed title",
+        "priority_changed" => "changed priority", "due_changed" => "changed deadline", "assignee_added" => "assigned someone",
+        "assignee_removed" => "unassigned someone", "created" => "created this task", var x => x.Replace('_', ' ')
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        Timer.Changed -= OnTimerChanged;
+        tick?.Dispose();
+        try { if (keysOn) await JS.InvokeVoidAsync("ipopPv2.taskPageKeys", (object?)null); } catch { }
+        self?.Dispose();
+    }
+}
