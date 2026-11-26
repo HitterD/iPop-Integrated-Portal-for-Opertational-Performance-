@@ -53,15 +53,11 @@ public static class NotifierEndpoints
         {
             var userId = await MyId(http, db, ct);
             if (userId is null) return Results.Unauthorized();
-            var machine = string.Concat((http.Request.Query["machine"].ToString() is { Length: > 0 } m ? m : "pc").Where(char.IsAsciiLetterOrDigit).Take(40));
             using var reader = new StreamReader(http.Request.Body);
-            var buf = new char[65536];
-            var n = await reader.ReadBlockAsync(buf, ct);
-            var dir = Path.Combine(cfg["Notifier:LogPath"] ?? Path.Combine(AppContext.BaseDirectory, "notifier-logs"));
-            Directory.CreateDirectory(dir);
-            await File.WriteAllTextAsync(Path.Combine(dir, $"{machine}-{userId:N}.log"), new string(buf, 0, n), ct);
-            return Results.NoContent();
-        });
+            var dir = cfg["Notifier:LogPath"] ?? Path.Combine(AppContext.BaseDirectory, "notifier-logs");
+            var status = await IPop.Api.Notifier.NotifierDeviceLogs.SaveAsync(db, userId.Value, http.Request.Query["machine"].ToString(), reader, dir, ct);
+            return status == 204 ? Results.NoContent() : Results.NotFound(new { message = "This PC isn't registered for your account." });
+        }).RequireRateLimiting(IPop.Api.Notifier.NotifierDeviceLogs.RateLimitPolicy);
 
         g.MapGet("/me", async (HttpContext http, IPopDbContext db, IConfiguration cfg, CancellationToken ct) =>
         {
@@ -118,7 +114,13 @@ public static class NotifierEndpoints
     public const long MaxPreviewBytes = 60L * 1024 * 1024;
     private static readonly SemaphoreSlim Conversions = new(2, 2);
     private static readonly TimeSpan LeadersTtl = TimeSpan.FromMinutes(10);
-    private static readonly ConcurrentDictionary<Guid, (DateTime At, IReadOnlyList<NotifierLeader> Leaders)> LeadersCache = new();
+    /// Per person: their leaders, with the chain version they were built from. Bounded (oldest half dropped beyond
+    /// <see cref="MaxCachedPeople"/>); a chain write (ApproverChainVersion) invalidates every entry at once.
+    private static readonly ConcurrentDictionary<Guid, (DateTime At, long Version, IReadOnlyList<NotifierLeader> Leaders)> LeadersCache = new();
+    private const int MaxCachedPeople = 5000;
+    /// The BOD / GM level is the same for everyone: computed once per <see cref="LeadersTtl"/> (or chain change).
+    private static (DateTime At, long Version, IReadOnlyCollection<string> Niks)? topLevel;
+    private static readonly SemaphoreSlim TopGate = new(1, 1);
     public const string TopLevelReason = "BOD / GM level";
     private static readonly string[] TopLevels = ["GENERAL MANAGER", "DIRECTOR"];
 
@@ -128,11 +130,13 @@ public static class NotifierEndpoints
     public static async Task<NotifierLeaders> LeadersAsync(IPopDbContext db, Guid userId, DateTime now, CancellationToken ct)
     {
         IReadOnlyList<NotifierLeader> leaders;
-        if (LeadersCache.TryGetValue(userId, out var hit) && now - hit.At < LeadersTtl) leaders = hit.Leaders;
+        var version = ApproverChainVersion.Current;
+        if (LeadersCache.TryGetValue(userId, out var hit) && now - hit.At < LeadersTtl && hit.Version == version) leaders = hit.Leaders;
         else
         {
-            leaders = await ComputeLeadersAsync(db, userId, ct);
-            LeadersCache[userId] = (now, leaders);
+            leaders = await ComputeLeadersAsync(db, userId, await TopLevelNiksAsync(db, now, ct), ct);
+            if (LeadersCache.Count >= MaxCachedPeople) TrimCache();
+            LeadersCache[userId] = (now, version, leaders);
         }
 
         var prefs = await db.UserUiPrefs.AsNoTracking().Where(p => p.UserId == userId && p.Key == "notifier").Select(p => p.Json).FirstOrDefaultAsync(ct);
@@ -149,9 +153,41 @@ public static class NotifierEndpoints
     {
         if (userId is { } id) LeadersCache.TryRemove(id, out _);
         else LeadersCache.Clear();
+        topLevel = null;
     }
 
-    private static async Task<IReadOnlyList<NotifierLeader>> ComputeLeadersAsync(IPopDbContext db, Guid userId, CancellationToken ct)
+    private static void TrimCache()
+    {
+        foreach (var k in LeadersCache.OrderBy(e => e.Value.At).Take(LeadersCache.Count / 2).Select(e => e.Key).ToList())
+            LeadersCache.TryRemove(k, out _);
+    }
+
+    /// Every GM/Director by the workbook level plus everyone in slot 8 (GM) or 9 (Director) of any chain.
+    private static async Task<IReadOnlyCollection<string>> TopLevelNiksAsync(IPopDbContext db, DateTime now, CancellationToken ct)
+    {
+        var version = ApproverChainVersion.Current;
+        // Only the real (PostgreSQL) database is cached, as ApprovalService does: test databases never share it.
+        var cacheable = db.Database.IsNpgsql();
+        if (cacheable && topLevel is { } t && now - t.At < LeadersTtl && t.Version == version) return t.Niks;
+        await TopGate.WaitAsync(ct);
+        try
+        {
+            if (cacheable && topLevel is { } t2 && now - t2.At < LeadersTtl && t2.Version == version) return t2.Niks;
+            var top = await db.ApproverChains.AsNoTracking()
+                .Where(c => c.SourceLevel != null && TopLevels.Contains(c.SourceLevel.Trim().ToUpper()))
+                .Select(c => c.Nik).ToListAsync(ct);
+            var slotTop = await db.ApproverChains.AsNoTracking()
+                .Where(c => c.Slot8Nik != null || c.Slot9Nik != null)
+                .Select(c => new { c.Slot8Nik, c.Slot9Nik }).ToListAsync(ct);
+            var niks = top.Concat(slotTop.SelectMany(s => new[] { s.Slot8Nik, s.Slot9Nik })).OfType<string>()
+                .Select(n => n.Trim()).Where(n => n.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (cacheable) topLevel = (now, version, niks);
+            return niks;
+        }
+        finally { TopGate.Release(); }
+    }
+
+    private static async Task<IReadOnlyList<NotifierLeader>> ComputeLeadersAsync(IPopDbContext db, Guid userId, IReadOnlyCollection<string> topNiks, CancellationToken ct)
     {
         var myNik = await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.Nik).FirstOrDefaultAsync(ct);
         if (myNik is null) return [];
@@ -164,14 +200,7 @@ public static class NotifierEndpoints
                 if (slots[i] is { Length: > 0 } nik) reasonByNik.TryAdd(nik.Trim(), ApproverSlots.Labels[i]);
         }
 
-        var top = await db.ApproverChains.AsNoTracking()
-            .Where(c => c.SourceLevel != null && TopLevels.Contains(c.SourceLevel.Trim().ToUpper()))
-            .Select(c => c.Nik).ToListAsync(ct);
-        var slotTop = await db.ApproverChains.AsNoTracking()
-            .Where(c => c.Slot8Nik != null || c.Slot9Nik != null)
-            .Select(c => new { c.Slot8Nik, c.Slot9Nik }).ToListAsync(ct);
-        foreach (var nik in top.Concat(slotTop.SelectMany(s => new[] { s.Slot8Nik, s.Slot9Nik })).OfType<string>())
-            if (nik.Trim().Length > 0) reasonByNik.TryAdd(nik.Trim(), TopLevelReason);
+        foreach (var nik in topNiks) reasonByNik.TryAdd(nik, TopLevelReason);
         reasonByNik.Remove(myNik);
         if (reasonByNik.Count == 0) return [];
 
@@ -308,9 +337,13 @@ public static class NotifierEndpoints
 
     private static string? Cut(string? s, int max) => string.IsNullOrWhiteSpace(s) ? null : s.Trim() is var t && t.Length > max ? t[..max] : s.Trim();
 
-    private static Task<Guid?> MyId(HttpContext http, IPopDbContext db, CancellationToken ct)
+    /// The caller: the token's user id (sub) first, as the notification gateway does; only a token without it falls
+    /// back to the NIK claim (review M5). No NIK claim either = nobody (never "the user whose NIK is null").
+    internal static async Task<Guid?> MyId(HttpContext http, IPopDbContext db, CancellationToken ct)
     {
+        if (IPop.Api.Auth.CurrentUser.IdFromToken(http.User) is { } fromToken) return fromToken;
         var nik = http.User.FindFirstValue("nik");
-        return db.Users.AsNoTracking().Where(u => u.Nik == nik).Select(u => (Guid?)u.Id).FirstOrDefaultAsync(ct);
+        if (string.IsNullOrEmpty(nik)) return null;
+        return await db.Users.AsNoTracking().Where(u => u.Nik == nik).Select(u => (Guid?)u.Id).FirstOrDefaultAsync(ct);
     }
 }

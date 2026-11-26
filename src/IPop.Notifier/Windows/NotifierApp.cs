@@ -4,7 +4,7 @@ using IPop.Notifier.Core;
 namespace IPop.Notifier.Windows;
 
 /// The tray app: icon + menu, sign-in, live feed, popups, Inbox, Settings, ICT Devices, links and self-update.
-public sealed class NotifierApp : ApplicationContext
+public sealed partial class NotifierApp : ApplicationContext
 {
     private readonly SessionStore store = new();
     private readonly LocalState state = LocalState.Load();
@@ -19,6 +19,10 @@ public sealed class NotifierApp : ApplicationContext
     private readonly NotifyIcon tray;
     private readonly Control ui = new();
     private readonly System.Windows.Forms.Timer tick = new() { Interval = 5000 };
+    /// Bursts (a thread or "Mark all read" echoes one "changed" per call, new notifications arrive together): the
+    /// unread counts and the open Inbox reload once, ~500 ms after the last trigger (review M2).
+    private readonly System.Windows.Forms.Timer unreadSoon = new() { Interval = 500 };
+    private readonly System.Windows.Forms.Timer inboxSoon = new() { Interval = 500 };
     private CancellationTokenSource session = new();
     private Feed? feed;
     private InboxWindow? inbox;
@@ -42,6 +46,7 @@ public sealed class NotifierApp : ApplicationContext
         api = new IPopClient(store);
         Integration.Api = api;
         settings = new SettingsService(api, state);
+        settings.ApplyStartWithWindows();
         Theme.LargeText = settings.Current.TextSize == "large";
         Theme.Mode = settings.Current.Theme;
         Theme.ReducedMotion = settings.Current.Animations == "reduced";
@@ -49,7 +54,7 @@ public sealed class NotifierApp : ApplicationContext
         device = new DeviceReporter(api);
         leaders = new Leaders(api);
         popups = new PopupManager(api, settings, state, device, leaders) { PageContext = PageContext };
-        leaders.Changed += () => Post(() => { popups.RefreshContext(); _ = RefreshUnreadAsync(); });
+        leaders.Changed += () => Post(() => { popups.RefreshContext(); RefreshUnreadSoon(); });
         BridgedWindow.PreviewRequested += (files, index) => Post(() => ShowViewer(files, index));
         api.SignedOut += () => Post(OnSignedOut);
         api.BeforeSessionChanged = TeardownSessionAsync;
@@ -72,7 +77,7 @@ public sealed class NotifierApp : ApplicationContext
             // Tiers or VIPs may have changed: open windows and the counts follow, and the VIP names reload.
             popups.RefreshContext();
             if (!api.IsSignedIn || session.IsCancellationRequested) return;
-            _ = RefreshUnreadAsync();
+            RefreshUnreadSoon();
             _ = leaders.LoadAsync(session.Token);
         });
 
@@ -114,8 +119,13 @@ public sealed class NotifierApp : ApplicationContext
                 _ = leaders.LoadAsync(session.Token);
         };
         tick.Start();
+        unreadSoon.Tick += (_, _) => { unreadSoon.Stop(); _ = RefreshUnreadAsync(); };
+        inboxSoon.Tick += (_, _) => { inboxSoon.Stop(); if (inbox is { IsDisposed: false, Visible: true }) inbox.Refresh(); };
 
         if (api.IsSignedIn) _ = StartSessionAsync();
+        // Started by Windows (Run key): open iPop too, once, when this PC wants it (IPopAppLauncher).
+        if (args.Contains("--background"))
+            _ = IPopAppLauncher.RunAtLoginAsync(() => settings.OpenIPopAtLogin, () => api.IsSignedIn, () => feed?.Connected == true, () => api.Web, CancellationToken.None);
         else { ShowSignIn(); if (args.Contains("--first-run")) OpenBrowserSignIn(); }
 
         foreach (var a in args.Where(a => a.StartsWith(AppInfo.UrlScheme + ":", StringComparison.OrdinalIgnoreCase)
@@ -148,10 +158,10 @@ public sealed class NotifierApp : ApplicationContext
         if (ct.IsCancellationRequested || generation != api.Generation || !api.IsSignedIn) return;
         _ = device.RunAsync(ct);
         feed = new Feed(api, state);
-        feed.Received += n => Post(() => { if (generation != api.Generation || ct.IsCancellationRequested) return; popups.Show(n); _ = RefreshUnreadAsync(); });
-        feed.Backlog += items => Post(() => { if (generation != api.Generation || ct.IsCancellationRequested) return; popups.ShowBacklog(items); _ = RefreshUnreadAsync(); });
-        feed.TicketChatRead += refs => Post(() => { foreach (var r in refs) Toasts.RemoveTicket(r); _ = RefreshUnreadAsync(); });
-        feed.ReadElsewhere += () => _ = RefreshUnreadAsync();
+        feed.Received += n => Post(() => { if (generation != api.Generation || ct.IsCancellationRequested) return; popups.Show(n); RefreshUnreadSoon(); });
+        feed.Backlog += items => Post(() => { if (generation != api.Generation || ct.IsCancellationRequested) return; popups.ShowBacklog(items); RefreshUnreadSoon(); });
+        feed.TicketChatRead += refs => Post(() => { foreach (var r in refs) Toasts.RemoveTicket(r); RefreshUnreadSoon(); });
+        feed.ReadElsewhere += () => Post(RefreshUnreadSoon);
         feed.ChatToast += t => Post(() => { if (generation == api.Generation && !ct.IsCancellationRequested) OnChatToast(t); });
         feed.Remote += (ev, n) => Post(() => { if (generation == api.Generation && !ct.IsCancellationRequested) OnRemote(ev, n); });
         feed.ReleasePublished += OnReleasePublished;
@@ -253,8 +263,11 @@ public sealed class NotifierApp : ApplicationContext
         catch { Post(() => tray.ShowBalloonTip(4000, "iDesk", "Your reply wasn't sent (no connection).", ToolTipIcon.Warning)); }
     }
 
-    /// Unread count from the server, and how many unread need action: the newest 100 unread, classified here with
-    /// the settings and leaders (the server doesn't know the person's tiers).
+    /// Unread count from the server, and how many unread threads need action (the Inbox's rule, InboxThreads): the
+    /// newest 100 unread, classified here with the settings and leaders (the server doesn't know the person's tiers).
+    /// Restarts the 500 ms wait (UI thread): many triggers in a row = one reload.
+    private void RefreshUnreadSoon() { unreadSoon.Stop(); unreadSoon.Start(); }
+
     private async Task RefreshUnreadAsync()
     {
         var n = await api.GetJsonAsync("api/notifications/v1/unread-count");
@@ -267,7 +280,7 @@ public sealed class NotifierApp : ApplicationContext
             else
             {
                 var s = settings.Effective(DateTime.UtcNow);
-                act = page.Items.Count(i => Notice.From(i).Classified(s, leaders).NeedsAction);
+                act = InboxThreads.CountNeedsAction(page.Items.Select(i => (i.Id, i.TargetUrl, Notice.From(i).Classified(s, leaders).NeedsAction)));
             }
         }
         Post(() => { actUnread = act; popups.ActCount = act; UpdateTray(); });
@@ -289,149 +302,12 @@ public sealed class NotifierApp : ApplicationContext
     private void ShowSignIn()
     {
         if (signIn is { IsDisposed: false }) { signIn.Activate(); return; }
-        signIn = new SignInWindow(api);
+        signIn = new SignInWindow(api, settings);
         signIn.SignedIn += () => Post(() => { EndBrowserSignIn(); _ = StartSessionAsync(); tray.ShowBalloonTip(3000, "iPop Notifier", "You're signed in. Notifications will appear here.", ToolTipIcon.Info); });
         signIn.WithBrowser += (again, server) => Post(() => { if (!api.IsSignedIn) api.SignInServer = server; OpenBrowserSignIn(again); });
         signIn.PastedCode += code => Post(() => OnPastedCode(code));
         signIn.Show();
         signIn.Activate();
-    }
-
-    // ── "Sign in with browser": OAuth loopback (1.4.3; flow in NotifierLoopback) ─────────────────────────
-    //  click → PKCE verifier + state (kept here) → listen on http://127.0.0.1:{random}/callback → open the default
-    //  browser ONCE at /notifier/connect?state&challenge&redirect&pc → the person clicks Authorize (or Decline)
-    //  → the tab comes back to the loopback with code + state → state checked, code redeemed with the verifier
-    //  → the tab gets "iPop Notifier is connected". Fallback: the short code from the page, pasted in this window.
-    //  Clicks while an attempt runs do nothing; after 20 s "Open browser again" starts a fresh attempt + one tab.
-    //  The listener stops after one handled callback or 5 minutes. Nothing is broadcast; no address is compared.
-
-    private sealed class BrowserSignIn(IPopClient.BrowserAttempt attempt, string server)
-    {
-        public IPopClient.BrowserAttempt Attempt { get; } = attempt;
-        public string Server { get; } = server;
-        public LoopbackCallbackServer? Listener { get; set; }
-        private int finished;
-        /// One way out per attempt: the callback, a pasted code, a timeout, a new attempt or a password sign-in.
-        public bool TryFinish() => Interlocked.Exchange(ref finished, 1) == 0;
-        public bool IsFinished => Volatile.Read(ref finished) == 1;
-        public void Stop() => Listener?.Stop();
-    }
-
-    private BrowserSignIn? browser;
-
-    private void OpenBrowserSignIn() => OpenBrowserSignIn(again: false);
-
-    private void OpenBrowserSignIn(bool again)
-    {
-        if (api.IsSignedIn) return;
-        if (browser is { IsFinished: false } live && (!again || DateTime.UtcNow - live.Attempt.StartedAt < TimeSpan.FromSeconds(20)))
-        {
-            BrowserState("opened");
-            signIn?.Activate();
-            return;
-        }
-        EndBrowserSignIn();
-        var b = new BrowserSignIn(IPopClient.NewBrowserAttempt(), api.Server.ToString());
-        try { b.Listener = LoopbackCallbackServer.Start(b.Attempt.State, cb => OnBrowserCallbackAsync(b, cb), IPopClient.AttemptLifetime); }
-        catch (Exception ex)
-        {
-            // No loopback port (security software): the short code from the page still works.
-            Log.Warn("signin", "browser: loopback listener failed: " + ex.Message);
-        }
-        browser = b;
-        // Without a listener the page still shows the short code; its redirect then reaches nothing.
-        var redirect = b.Listener?.RedirectUri ?? "http://127.0.0.1:1024/callback";
-        var url = NotifierLoopback.ConnectUrl(api.Web, b.Attempt.State, b.Attempt.Challenge, redirect, Environment.MachineName);
-        Log.Info("signin", "browser: opened the connect page" + (b.Listener is null ? " (no loopback)" : $" (port {b.Listener.Port})"));
-        Integration.OpenUrl(url);
-        BrowserState("opened");
-        var watch = b.Listener?.Finished ?? Task.Delay(IPopClient.AttemptLifetime);
-        watch.ContinueWith(_ => Post(() =>
-        {
-            if (browser != b || !b.TryFinish()) return;
-            browser = null;
-            Log.Info("signin", "browser: no answer within 5 minutes");
-            BrowserState("expired", "The sign-in timed out. Choose Sign in with browser to try again.");
-        }), TaskScheduler.Default);
-    }
-
-    private void EndBrowserSignIn()
-    {
-        var b = browser;
-        browser = null;
-        if (b is null) return;
-        b.TryFinish();
-        b.Stop();
-    }
-
-    private void BrowserState(string state, string? message = null) => Post(() => signIn?.Send(new { type = "browserState", state, message }));
-
-    /// GET /callback on the loopback with the right state (the listener checks it before this runs).
-    private async Task<LoopbackAnswer> OnBrowserCallbackAsync(BrowserSignIn b, LoopbackCallback cb)
-    {
-        if (cb.Error is not null)
-        {
-            if (!b.TryFinish()) return new(LoopbackPages.Handled(), true);
-            Post(() => { if (browser == b) browser = null; });
-            Log.Info("signin", "browser: declined in the browser");
-            BrowserState("denied", "Sign-in cancelled in the browser. You can try again or sign in here.");
-            return new(LoopbackPages.Cancelled(), true);
-        }
-        if (cb.Code is not { Length: > 0 } code)
-            return new(LoopbackPages.Error("This sign-in link is incomplete. Choose Sign in with browser in iPop Notifier again."), false);
-        if (!b.TryFinish()) return new(LoopbackPages.Handled(), true);
-        Log.Info("signin", "browser: Authorize was clicked");
-        BrowserState("approving");
-        var r = await RedeemAsync(b, code, null, pasted: false);
-        return new(r.Ok ? LoopbackPages.Success(r.Name ?? api.Session?.Name) : LoopbackPages.Error(r.Error ?? "Couldn't sign in from the browser."), true);
-    }
-
-    /// "Paste code from browser": the short code shown under "Not connected?" on the page.
-    private async void OnPastedCode(string? typed)
-    {
-        var b = browser;
-        if (b is null || b.IsFinished)
-        {
-            signIn?.Send(new { type = "pasteResult", ok = false, message = "Choose Sign in with browser first, then paste the code from that page." });
-            return;
-        }
-        if (NotifierLoopback.NormalizeShortCode(typed) is null)
-        {
-            signIn?.Send(new { type = "pasteResult", ok = false, message = "The code has 8 letters and digits, like ABCD-2345." });
-            return;
-        }
-        Log.Info("signin", "browser: pasted code");
-        var r = await RedeemAsync(b, null, typed, pasted: true);
-        if (!r.Ok) signIn?.Send(new { type = "pasteResult", ok = false, message = r.Error ?? "That code didn't work." });
-    }
-
-    private async Task<IPopClient.LinkResult> RedeemAsync(BrowserSignIn b, string? code, string? shortCode, bool pasted)
-    {
-        var previous = api.Session?.Nik;
-        IPopClient.LinkResult r;
-        try { r = await api.RedeemBrowserCodeAsync(b.Server, b.Attempt, code, shortCode, CancellationToken.None); }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException) { r = new(false, "Can't reach iPop. Check the network and try again.", null, false, "network"); }
-        // A mistyped short code can be fixed and pasted again (the server burns it after 5 wrong tries).
-        var retry = pasted && !r.Ok && r.Code is "invalid" or "busy" or "network";
-        if (!retry) b.TryFinish();
-        Post(() =>
-        {
-            if (retry) return;
-            if (browser == b) { browser = null; b.Stop(); }
-            if (!r.Ok)
-            {
-                Log.Warn("signin", "browser sign-in refused: " + (r.Code ?? r.Error));
-                if (api.IsSignedIn) return; // a late answer after this PC already signed in another way
-                if (signIn is { IsDisposed: false }) BrowserState("failed", r.Error ?? "Couldn't sign in from the browser.");
-                else tray.ShowBalloonTip(5000, "iPop Notifier", r.Error ?? "Couldn't sign in from the browser.", ToolTipIcon.Warning);
-                return;
-            }
-            if (signIn is { IsDisposed: false }) signIn.Close();
-            _ = StartSessionAsync();
-            Integration.SetStartWithWindows(true);
-            Toasts.ShowSignedIn(r.Name ?? api.Session?.Name ?? "", switched: previous is not null && r.Switched);
-        });
-        return r;
     }
 
     /// Complete teardown before credentials change, even on same-account relinking.
@@ -529,7 +405,7 @@ public sealed class NotifierApp : ApplicationContext
         var old = tray.Icon;
         tray.Icon = remoteActive ? AppIcon.Remote : AppIcon.Tray(count > 0);
         if (old is not null && old != AppIcon.Icon && old != tray.Icon) old.Dispose();
-        if (inbox is { IsDisposed: false, Visible: true }) inbox.Refresh();
+        if (inbox is { IsDisposed: false, Visible: true }) { inboxSoon.Stop(); inboxSoon.Start(); }
     }
 
     /// What the pages may know to classify (1.5.0): effective tiers per kind, leaders (id, name, department, reason)

@@ -114,7 +114,9 @@ public sealed class Updater(IPopClient api)
 
     private UpdateManager Manager()
     {
-        var fallback = AppInfo.UpdateFeed ?? new Uri(api.Server, "download/notifier/").ToString();
+        // Packages always come from the fixed server (or the Trial build's feed), never from the server someone signed
+        // in to (review H2): a typed-in server can't hand out an "update".
+        var fallback = IPop.Application.Notifier.NotifierServerRules.UpdateFiles(AppInfo.DefaultServer, AppInfo.UpdateFeed);
         // The channel source reads the current session for every check, including after sign-in/out.
         // Retain the manager used for downloading/applying; only a different server's feed replaces it.
         if (manager is null || managerFeed != fallback)
@@ -127,10 +129,13 @@ public sealed class Updater(IPopClient api)
         return manager;
     }
 
+    private static bool SignedInIsFixed(IPopClient api) =>
+        IPop.Application.Notifier.NotifierServerRules.ChannelFromSignedInServer(api.Server, AppInfo.DefaultServer, AppInfo.Trial);
+
     /// "mandatory" for the version this person should run (false on an older server).
     private async Task<(bool Mandatory, string? Version)> ChannelAsync(CancellationToken ct)
     {
-        if (!api.IsSignedIn) return (false, null);
+        if (!api.IsSignedIn || !SignedInIsFixed(api)) return (false, null);
         var n = await api.GetJsonAsync("api/notifier/update", ct);
         return (n?["mandatory"]?.GetValue<bool>() == true, n?["version"]?.GetValue<string>());
     }
@@ -142,7 +147,8 @@ public sealed class Updater(IPopClient api)
 
         public async Task<VelopackAssetFeed> GetReleaseFeed(IVelopackLogger logger, string? appId, string channel, Guid? stagingId = null, VelopackAsset? latestLocalRelease = null)
         {
-            if (!api.IsSignedIn) return await web.GetReleaseFeed(logger, appId, channel, stagingId, latestLocalRelease);
+            // Only the fixed server picks the channel (pilot/all); any other server gets the public feed of the fixed one.
+            if (!api.IsSignedIn || !SignedInIsFixed(api)) return await web.GetReleaseFeed(logger, appId, channel, stagingId, latestLocalRelease);
             try
             {
                 using var res = await api.SendAsync(HttpMethod.Get, "api/notifier/update/feed");

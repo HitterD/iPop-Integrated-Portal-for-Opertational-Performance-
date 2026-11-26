@@ -40,12 +40,47 @@ public sealed class SettingsService(IPopClient api, LocalState state)
         return s.Popups == "until" && s.OffUntil is { } until && until.ToUniversalTime() <= now ? s with { Popups = "on", OffUntil = null } : s;
     }
 
+    /// Once, on a PC upgraded from a version where "Start with Windows" roamed: keep what it had (the cached copy).
+    /// Then the Run key follows this PC's choice on every start (an update may move the exe).
+    public void ApplyStartWithWindows()
+    {
+        if (!state.StartWithWindowsMigrated)
+        {
+            state.StartWithWindows ??= NotifierSettings.Parse(state.SettingsJson).StartWithWindows;
+            state.StartWithWindowsMigrated = true;
+            state.Save();
+        }
+        Integration.SetStartWithWindows(StartWithWindows);
+    }
+
     private void Apply(NotifierSettings s)
     {
         Current = s;
         state.SettingsJson = s.ToJson();
         state.Save();
-        Integration.SetStartWithWindows(s.StartWithWindows);
         Changed?.Invoke(s);
     }
+
+    /// "Start with Windows" on this PC only (review M1): saved in LocalState, never on the server.
+    public bool StartWithWindows => state.StartWithWindows ?? true;
+
+    public void SetStartWithWindows(bool on)
+    {
+        state.StartWithWindows = on;
+        state.StartWithWindowsMigrated = true;
+        state.Save();
+        Integration.SetStartWithWindows(on);
+    }
+
+    /// "Open iPop when Windows starts" on this PC only (default on; IPopAppLauncher).
+    public bool OpenIPopAtLogin => state.OpenIPopAtLogin ?? true;
+
+    public void SetOpenIPopAtLogin(bool on)
+    {
+        state.OpenIPopAtLogin = on;
+        state.Save();
+    }
+
+    /// A sign-in that didn't ask (browser sign-in): turn autostart on only when nobody chose "off" on this PC.
+    public void EnsureStartWithWindowsDefault() => Integration.SetStartWithWindows(StartWithWindows);
 }

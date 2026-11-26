@@ -9,6 +9,7 @@ using Xunit;
 namespace IPop.Tests;
 
 /// Admin › Approval: who sees which Administration sections, and the approver editor.
+[Collection("ApproverChains")] // chain writes bump ApproverChainVersion, read by the Notifier leaders cache
 public class AdminApprovalRenderTests
 {
     private sealed class Api(Func<HttpRequestMessage, string> body) : HttpMessageHandler

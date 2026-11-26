@@ -12,7 +12,7 @@ namespace IPop.Api.Endpoints;
 /// send notifications centrally. Client auth is header-based: X-Client-Id + X-Client-Secret
 /// (v1 simple check, not full OAuth). Rate limiting is a stub (per-second counter in memory).
 /// </summary>
-public static class NotificationGatewayEndpoints
+public static partial class NotificationGatewayEndpoints
 {
     /// <summary>
     /// In-memory sliding-window rate limiter (v1 stub). Keyed by client id; a real limiter
@@ -504,13 +504,14 @@ public static class NotificationGatewayEndpoints
         // of their NotificationDelivery rows). Filtered by module type + read status,
         // paginated, newest first. This backs /notifications/inbox in Blazor.
         // ────────────────────────────────────────────────────────────────────────
-        v1.MapGet("/inbox", async (string? type, string? status, int? page, int? pageSize, string? category, string? q,
+        // summary=false (the Notifier): only the page and its total, no unread / per-category / snoozed counts.
+        v1.MapGet("/inbox", async (string? type, string? status, int? page, int? pageSize, string? category, string? q, bool? summary,
             HttpContext http, IPopDbContext db, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
 
-            var result = await ListInboxCore(db, userId.Value, type, status, page ?? 1, pageSize ?? 20, ct, category, q);
+            var result = await ListInboxCore(db, userId.Value, type, status, page ?? 1, pageSize ?? 20, ct, category, q, summary ?? true);
             return Results.Ok(result);
         }).RequireAuthorization();
 
@@ -582,135 +583,6 @@ public static class NotificationGatewayEndpoints
                 r.AcceptedAt, r.DeliveredAt, r.FailedAt, r.Deliveries.Count))
             .ToListAsync(ct);
         return new GatewayRequestListResult(items, total, [], p, size);
-    }
-
-    /// <summary>
-    /// Per-user inbox query. The delivery's request carries the event metadata (title, body,
-    /// priority, event type); the delivery row carries the per-user state (read/acknowledged,
-    /// channel, delivered time). Type is derived from the client's EventType so module filters
-    /// (chat/mail/news/project/system) work uniformly even though event types are free-form.
-    /// </summary>
-    internal static async Task<InboxListResult> ListInboxCore(
-        IPopDbContext db, Guid userId, string? type, string? status, int page, int pageSize, CancellationToken ct,
-        string? category = null, string? search = null)
-    {
-        var p = Math.Max(1, page);
-        var size = Math.Clamp(pageSize, 1, 100);
-
-        var q = db.NotificationDeliveries.AsNoTracking()
-            .Where(d => d.UserId == userId);
-
-        // Category (NotificationCategory.Of) is decided in code from event type + link, so pick the matching rows by id.
-        if (!string.IsNullOrWhiteSpace(category) && NotificationCategory.All.Contains(category.Trim().ToLowerInvariant()))
-        {
-            var cat = category.Trim().ToLowerInvariant();
-            var ids = (await db.NotificationDeliveries.AsNoTracking().Where(d => d.UserId == userId)
-                    .Select(d => new { d.Id, d.Request.EventType, d.Request.TargetUrl }).ToListAsync(ct))
-                .Where(r => NotificationCategory.Of(r.EventType, r.TargetUrl) == cat).Select(r => r.Id).ToList();
-            q = q.Where(d => ids.Contains(d.Id));
-        }
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            var term = search.Trim().ToLowerInvariant();
-            q = q.Where(d => d.Request.Title.ToLower().Contains(term) || d.Request.Body.ToLower().Contains(term));
-        }
-
-        if (!string.IsNullOrWhiteSpace(type))
-        {
-            var t = type.Trim().ToLowerInvariant();
-            // EF can't translate ClassifyEventType — express the same predicate with
-            // string operations it supports (StartsWith), mirrored on the module naming
-            // convention (chat.mention, mail.new, memo.ack, task.assigned...).
-            q = t switch
-            {
-                "chat" => q.Where(d => d.Request.EventType.StartsWith("chat.")),
-                "mail" => q.Where(d => d.Request.EventType.StartsWith("mail.")),
-                "news" => q.Where(d => d.Request.EventType.StartsWith("news.") || d.Request.EventType.StartsWith("memo.")),
-                "project" => q.Where(d => d.Request.EventType.StartsWith("project.") || d.Request.EventType.StartsWith("task.")),
-                "system" => q.Where(d => !d.Request.EventType.StartsWith("chat.") && !d.Request.EventType.StartsWith("mail.") &&
-                            !d.Request.EventType.StartsWith("news.") && !d.Request.EventType.StartsWith("memo.") &&
-                            !d.Request.EventType.StartsWith("project.") && !d.Request.EventType.StartsWith("task.")),
-                _ => q,
-            };
-        }
-        var now = DateTime.UtcNow;
-        if (!string.IsNullOrWhiteSpace(status))
-        {
-            var s = status.Trim().ToLowerInvariant();
-            q = s switch
-            {
-                "snoozed" => q.Where(d => d.SnoozedUntil != null && d.SnoozedUntil > now),
-                "read" => q.Where(d => d.Status == NotificationStatus.Read || d.Status == NotificationStatus.Acknowledged),
-                "unread" => q.Where(d => d.Status != NotificationStatus.Read && d.Status != NotificationStatus.Acknowledged && (d.SnoozedUntil == null || d.SnoozedUntil <= now)),
-                _ => q,
-            };
-        }
-        else
-        {
-            q = q.Where(d => d.SnoozedUntil == null || d.SnoozedUntil <= now);
-        }
-
-        var total = await q.CountAsync(ct);
-        var unread = await db.NotificationDeliveries.AsNoTracking()
-            .CountAsync(d => d.UserId == userId &&
-                d.Status != NotificationStatus.Read &&
-                d.Status != NotificationStatus.Acknowledged &&
-                (d.SnoozedUntil == null || d.SnoozedUntil <= now), ct);
-
-        // Newest first: the per-recipient timestamp (DeliveredAt, else UpdatedAt) leads.
-        // ClassifyEventType is not translatable to SQL — pull the raw event type and map in memory.
-        var rows = await q
-            .OrderByDescending(d => d.DeliveredAt ?? d.UpdatedAt)
-            .Skip((p - 1) * size).Take(size)
-            .Select(d => new
-            {
-                d.RequestId,
-                d.Request.EventType,
-                d.Request.Title,
-                d.Request.Body,
-                d.Request.Priority,
-                d.Request.TargetUrl,
-                Source = d.Request.Client.ClientId,
-                d.DeliveredAt,
-                d.UpdatedAt,
-                d.Status,
-                d.SnoozedUntil,
-                d.Request.ActorUserId,
-            })
-            .ToListAsync(ct);
-
-        // Who caused each row (name only: never NIK or position).
-        var actorIds = rows.Where(r => r.ActorUserId != null).Select(r => r.ActorUserId!.Value).Distinct().ToList();
-        var actorNames = actorIds.Count == 0 ? new Dictionary<Guid, string>()
-            : await db.Users.AsNoTracking().Where(u => actorIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.Name, ct);
-
-        // Unread per category (snoozed excluded) for the page's sidebar: the list itself is paged.
-        var unreadRows = await db.NotificationDeliveries.AsNoTracking()
-            .Where(d => d.UserId == userId && d.Status != NotificationStatus.Read && d.Status != NotificationStatus.Acknowledged
-                && (d.SnoozedUntil == null || d.SnoozedUntil <= now))
-            .Select(d => new { d.Request.EventType, d.Request.TargetUrl }).ToListAsync(ct);
-        var byCategory = unreadRows.GroupBy(r => NotificationCategory.Of(r.EventType, r.TargetUrl))
-            .ToDictionary(g => g.Key, g => g.Count());
-        var snoozedCount = await db.NotificationDeliveries.AsNoTracking()
-            .CountAsync(d => d.UserId == userId && d.SnoozedUntil != null && d.SnoozedUntil > now, ct);
-
-        var items = rows.Select(r => new InboxItemRow(
-            r.RequestId,
-            ClassifyEventType(r.EventType),
-            r.Title,
-            r.Body,
-            r.Source,
-            r.DeliveredAt ?? r.UpdatedAt,
-            r.Status == NotificationStatus.Read || r.Status == NotificationStatus.Acknowledged,
-            r.Priority,
-            r.TargetUrl,
-            r.SnoozedUntil,
-            r.ActorUserId,
-            r.ActorUserId is { } a ? actorNames.GetValueOrDefault(a) : null,
-            r.EventType,
-            NotificationCategory.Of(r.EventType, r.TargetUrl))).ToList();
-
-        return new InboxListResult(items, total, unread, p, size, byCategory, snoozedCount);
     }
 
     /// <summary>Maps a client EventType to a module kind for the inbox filter: chat/mail/news/project/system.</summary>

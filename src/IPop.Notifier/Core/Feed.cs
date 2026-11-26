@@ -113,7 +113,7 @@ public sealed class Feed(IPopClient api, LocalState state) : IAsyncDisposable
     {
         try
         {
-            using var res = await api.SendAsync(HttpMethod.Get, $"api/notifications/v1/inbox?page={page}&pageSize={size}" + (status is null ? "" : "&status=" + status), null, ct);
+            using var res = await api.SendAsync(HttpMethod.Get, $"api/notifications/v1/inbox?page={page}&pageSize={size}&summary=false" + (status is null ? "" : "&status=" + status), null, ct);
             return res.IsSuccessStatusCode ? await res.Content.ReadFromJsonAsync<InboxPage>(IPopClient.Json, ct) : null;
         }
         catch { return null; }

@@ -6,7 +6,7 @@
   $('[data-close]').onclick = () => app.post({ type: 'close' });
   $('#auto').onclick = e => { e.preventDefault(); $('#auto').classList.toggle('on'); };
   $('#adv').onclick = () => document.body.classList.toggle('showsrv');
-  app.on('init', m => { $('#server').value = m.server; });
+  app.on('init', m => { $('#server').value = m.server; if (m.autostart === false) $('#auto').classList.remove('on'); });
   app.on('error', m => {
     $('#go').disabled = false; $('#go').textContent = 'Sign in';
     const e = $('#err'); e.textContent = m.message || 'Couldn\'t sign in.'; e.classList.remove('shake'); void e.offsetWidth; e.classList.add('shake');

@@ -10,6 +10,7 @@ namespace IPop.Tests;
 
 /// /api/approval: own chain without NIKs, slot validation, import token + directory permission, and
 /// the /api/admin/org group opened to directory.manage.
+[Collection("ApproverChains")] // chain writes bump ApproverChainVersion, read by the Notifier leaders cache
 public class ApprovalEndpointsTests
 {
     private static readonly DateTime Now = new(2026, 11, 2, 8, 0, 0, DateTimeKind.Utc);

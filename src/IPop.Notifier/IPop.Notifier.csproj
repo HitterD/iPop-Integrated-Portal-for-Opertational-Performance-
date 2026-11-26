@@ -51,6 +51,8 @@
     <!-- Browser sign-in (1.4.3): loopback listener, redirect rules, short codes (tested in IPop.Tests). -->
     <Compile Include="..\IPop.Application\Notifier\NotifierLoopback.cs" Link="Core\NotifierLoopback.cs" />
     <Compile Include="..\IPop.Application\Notifier\NotifierAuthGate.cs" Link="Core\NotifierAuthGate.cs" />
+    <!-- Which server may sign in (https only in release) and where updates come from (review H2). -->
+    <Compile Include="..\IPop.Application\Notifier\NotifierServerRules.cs" Link="Core\NotifierServerRules.cs" />
   </ItemGroup>
 
 </Project>

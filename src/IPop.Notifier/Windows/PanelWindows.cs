@@ -81,7 +81,10 @@ public sealed class SettingsWindow : BridgedWindow
         StartPosition = FormStartPosition.CenterScreen;
     }
 
-    protected override void OnReady() => Send(new { type = "settings", settings = settings.Current, account = account() });
+    protected override void OnReady() => Send(new { type = "settings", settings = settings.Current, account = account(), pc = Pc() });
+
+    /// Settings that belong to this PC, not the account (review M1).
+    private object Pc() => new { startWithWindows = settings.StartWithWindows, openIPopAtLogin = settings.OpenIPopAtLogin };
 
     /// The answer of a "Check for updates" click: notInstalled | upToDate | ready (+ version) | failed.
     public void UpdateResult(object result) { if (!IsDisposed) Send(new { type = "updateResult", result }); }
@@ -97,6 +100,11 @@ public sealed class SettingsWindow : BridgedWindow
                 var ok = await settings.SaveAsync(next);
                 Send(new { type = "saved", ok, settings = settings.Current });
                 if (styleChanged) PopupStyleChanged?.Invoke();
+                break;
+            case "pc":
+                if (msg?["startWithWindows"] is { } sw) settings.SetStartWithWindows(sw.GetValue<bool>());
+                if (msg?["openIPopAtLogin"] is { } oi) settings.SetOpenIPopAtLogin(oi.GetValue<bool>());
+                Send(new { type = "pc", pc = Pc() });
                 break;
             case "preview":
                 Sounds.Play(msg?["sound"]?.GetValue<string>() ?? "system", settings.Current with { Sound = true, Volume = msg?["volume"]?.GetValue<int>() ?? settings.Current.Volume });
@@ -124,32 +132,42 @@ public sealed class SignInWindow : HtmlWindow
     /// "Paste code from browser": the short code that page shows when the browser couldn't reach the app.
     public event Action<string?>? PastedCode;
 
-    public SignInWindow(IPopClient api) : base("signin.html", new Size(480, 760))
+    private readonly SettingsService settings;
+
+    public SignInWindow(IPopClient api, SettingsService settings) : base("signin.html", new Size(480, 760))
     {
         this.api = api;
+        this.settings = settings;
         Text = "iPop Notifier — Sign in";
         StartPosition = FormStartPosition.CenterScreen;
     }
 
-    protected override void OnReady() => Send(new { type = "init", server = api.Session?.Server ?? AppInfo.DefaultServer, version = AppInfo.Version });
+    protected override void OnReady() => Send(new { type = "init", server = api.Session?.Server ?? AppInfo.DefaultServer, version = AppInfo.Version, autostart = settings.StartWithWindows });
 
-    /// The "Server…" field: an absolute http(s) address, else null (the default server).
-    private static string? ServerOf(JsonNode? msg)
+    /// The "Server…" field: empty = the default server; an https address (http too in Debug/Trial builds); anything
+    /// else = an error in the window, never a silent switch to another server.
+    private bool TryServerOf(JsonNode? msg, out string? server)
     {
-        var server = msg?["server"]?.GetValue<string>()?.Trim();
-        if (string.IsNullOrEmpty(server) || !Uri.TryCreate(server, UriKind.Absolute, out var su) || su.Scheme is not ("https" or "http")) return null;
-        return su.GetLeftPart(UriPartial.Path).TrimEnd('/') + "/";
+        server = null;
+        var typed = msg?["server"]?.GetValue<string>()?.Trim();
+        if (string.IsNullOrEmpty(typed)) return true;
+        server = IPop.Application.Notifier.NotifierServerRules.AcceptServer(typed, AppInfo.AllowHttpServer);
+        if (server is not null) return true;
+        Send(new { type = "error", message = AppInfo.AllowHttpServer ? "Type a full server address, like https://ipop.santos.co.id." : "The server address must start with https://." });
+        return false;
     }
 
     protected override async void HandleMessage(string type, JsonNode? msg)
     {
-        if (type == "withBrowser") { WithBrowser?.Invoke(msg?["again"]?.GetValue<bool>() == true, ServerOf(msg)); return; }
+        if (type == "withBrowser") { if (TryServerOf(msg, out var bs)) WithBrowser?.Invoke(msg?["again"]?.GetValue<bool>() == true, bs); return; }
         if (type == "pasteCode") { PastedCode?.Invoke(msg?["code"]?.GetValue<string>()); return; }
         if (type != "signIn") { base.HandleMessage(type, msg); return; }
         var nik = msg?["nik"]?.GetValue<string>()?.Trim() ?? "";
         var password = msg?["password"]?.GetValue<string>() ?? "";
-        var server = ServerOf(msg) ?? AppInfo.DefaultServer;
-        Integration.SetStartWithWindows(msg?["autostart"]?.GetValue<bool>() != false);
+        if (!TryServerOf(msg, out var typed)) return;
+        var server = typed ?? AppInfo.DefaultServer;
+        // This PC's choice (LocalState), so loading the roaming settings after sign-in can't turn it back on.
+        settings.SetStartWithWindows(msg?["autostart"]?.GetValue<bool>() != false);
         try
         {
             var r = await api.SignInAsync(server, nik, password, CancellationToken.None);

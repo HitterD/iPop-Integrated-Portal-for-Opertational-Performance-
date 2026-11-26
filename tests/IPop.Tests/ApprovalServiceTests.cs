@@ -6,6 +6,7 @@ using Xunit;
 namespace IPop.Tests;
 
 /// Approver chains: compaction for display, ManagerNik sync, history, bulk edits.
+[Collection("ApproverChains")] // chain writes bump ApproverChainVersion, read by the Notifier leaders cache
 public class ApprovalServiceTests
 {
     private static readonly DateTime Now = new(2026, 11, 2, 8, 0, 0, DateTimeKind.Utc);

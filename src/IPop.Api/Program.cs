@@ -122,6 +122,10 @@ builder.Services.AddRateLimiter(o =>
     o.AddPolicy(IPop.Api.Endpoints.ChatEndpoints.UploadRateLimitPolicy, http => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
         http.User.FindFirst("nik")?.Value ?? http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1) }));
+    // Notifier log uploads (remote help start + end): 2 per signed-in user per minute (review H3).
+    o.AddPolicy(IPop.Api.Notifier.NotifierDeviceLogs.RateLimitPolicy, http => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+        http.User.FindFirst("nik")?.Value ?? http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 2, Window = TimeSpan.FromMinutes(1) }));
     // iDesk webhook is anonymous (HMAC-signed); iDesk itself sends at most 120/min.
     o.AddPolicy(IPop.Api.Endpoints.TicketEndpoints.WebhookRateLimitPolicy, http => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
         http.Connection.RemoteIpAddress?.ToString() ?? "unknown",

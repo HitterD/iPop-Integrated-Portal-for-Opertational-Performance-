@@ -12,6 +12,16 @@ public sealed class LocalState
     public List<Guid> Held { get; set; } = [];
     public string? SettingsJson { get; set; }
 
+    /// "Start with Windows" for THIS PC (review M1): null = never chosen here (on, the installer default). Not part of
+    /// the roaming settings, so turning it off on one PC never removes it on another, and a server load can't undo
+    /// the sign-in window's choice.
+    public bool? StartWithWindows { get; set; }
+    /// Whether this PC ever had the per-PC switch; a PC upgraded from an older version takes over the last roaming
+    /// value once (see SettingsService).
+    public bool StartWithWindowsMigrated { get; set; }
+    /// "Open iPop when Windows starts" for THIS PC: null = never chosen (on).
+    public bool? OpenIPopAtLogin { get; set; }
+
     private static string FilePath => Path.Combine(SessionStore.Folder, "state.json");
     private static readonly object Gate = new();
 

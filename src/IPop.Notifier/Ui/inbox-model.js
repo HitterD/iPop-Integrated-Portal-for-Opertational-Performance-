@@ -121,6 +121,12 @@
     return out;
   }
 
+  // Needs action = an act-tier thread that is still unread. Once read it is an ordinary row of its day (still in
+  // All / its module, shown as read). The summary card, the Act chip, the section and the tray all use this rule.
+  const needsAction = t => t.tier === 'act' && !!t.unread;
+  // Which list group a thread is drawn in: 'act' (unread Needs action), 'msg' or 'info'. A read act thread is a Message.
+  const groupOf = t => needsAction(t) ? 'act' : t.tier === 'info' ? 'info' : 'msg';
+
   // Unread threads per tier, leaders, approvals, iDesk tickets waiting on me (Needs action) and module.
   function counts(threads) {
     const c = { all: 0, act: 0, msg: 0, info: 0, lead: 0, appr: 0, tix: 0, mod: {} };
@@ -138,7 +144,8 @@
   // Sidebar / chip filter: all | act | msg | info | lead | appr | <module key>.
   function inView(t, f) {
     if (!f || f === 'all') return true;
-    if (f === 'act' || f === 'msg' || f === 'info') return t.tier === f;
+    if (f === 'act') return needsAction(t);
+    if (f === 'msg' || f === 'info') return t.tier === f;
     if (f === 'lead') return !!t.leader;
     if (f === 'appr') return t.approval;
     return t.mod === f;
@@ -192,7 +199,7 @@
     ].filter(p => p[1] > 0);
   }
 
-  const api = { moduleOf, threadKey, ticketParts, ticketStatus, assignedToMe, lineOf, group, counts, inView, matches, dayLabel, clock, relTime, summaryParts };
+  const api = { needsAction, groupOf, moduleOf, threadKey, ticketParts, ticketStatus, assignedToMe, lineOf, group, counts, inView, matches, dayLabel, clock, relTime, summaryParts };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.inboxModel = api;
 })(typeof window !== 'undefined' ? window : globalThis);
