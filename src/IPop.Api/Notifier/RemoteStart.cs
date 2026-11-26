@@ -36,16 +36,16 @@ public static class RemoteStart
             if (string.IsNullOrEmpty(req.Password) && !(machine!.LockedUntil > now))
                 return new Result(428, new { code = "password", message = "Enter the access password.", machine = device.MachineName, user = device.User.Name, remoteId,
                     triesLeft = RemoteAccess.TriesLeft(machine) });
-            var check = RemoteAccess.Verify(machine!, req.Password, hasher, now);
-            if (check != RemoteAccess.Check.Ok)
+            var check = await RemoteAccess.VerifyAsync(db, machine!.Id, req.Password, hasher, now, ct);
+            if (check.Check != RemoteAccess.Check.Ok)
             {
-                var locked = check == RemoteAccess.Check.Locked;
+                var locked = check.Check == RemoteAccess.Check.Locked;
                 db.RemoteSessions.Add(Row(helperId, device, mode, unattended: true, now, locked ? "locked" : "denied"));
                 await db.SaveChangesAsync(ct);
                 return new Result(locked ? 423 : 403, new
                 {
                     code = locked ? "locked" : "wrong", machine = device.MachineName, user = device.User.Name, remoteId,
-                    triesLeft = RemoteAccess.TriesLeft(machine!), lockedUntil = machine!.LockedUntil,
+                    triesLeft = check.TriesLeft, lockedUntil = check.LockedUntil,
                     message = locked ? $"Access to {device.MachineName} is locked" : $"{device.MachineName} did not accept that password.",
                 });
             }
