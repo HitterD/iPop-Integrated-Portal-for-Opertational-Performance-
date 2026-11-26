@@ -59,7 +59,8 @@ public sealed class IncomingFiles(Func<string> folder, long maxBytes)
     public static string Clean(string? name)
     {
         var n = Path.GetFileName((name ?? "").Replace('/', '\\').Split('\\').LastOrDefault() ?? "");
-        var bad = Path.GetInvalidFileNameChars();
+        // Windows' forbidden characters on every OS (the tests run on Linux too, where only '/' is forbidden).
+        var bad = Path.GetInvalidFileNameChars().Concat("<>:\"/\\|?*").ToHashSet();
         n = string.Concat(n.Select(c => bad.Contains(c) || char.IsControl(c) ? '_' : c)).Trim().TrimEnd('.', ' ');
         if (n.Length == 0) n = "file";
         return n.Length > 150 ? n[..150] : n;
