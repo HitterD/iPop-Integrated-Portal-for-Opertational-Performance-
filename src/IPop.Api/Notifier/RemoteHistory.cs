@@ -51,10 +51,13 @@ public static class RemoteHistory
         return list.OrderByDescending(r => r.At).Take(1000).ToList();
     }
 
+    /// A cell Excel would run as a formula (=, +, -, @, tab, CR first) gets a leading apostrophe: shown as text.
+    public static string Cell(string v) => v.Length > 0 && v[0] is '=' or '+' or '-' or '@' or '\t' or '\r' ? "'" + v : v;
+
     public static byte[] Csv(IEnumerable<RemoteHistoryRow> rows)
     {
         var sb = new StringBuilder("When (UTC),ICT,PC,Unattended,Length (s),Mode,Result,Files,Change\r\n");
-        static string C(string? v) => v is null ? "" : "\"" + v.Replace("\"", "\"\"").Replace("\n", "; ") + "\"";
+        static string C(string? v) => v is null ? "" : "\"" + Cell(v).Replace("\"", "\"\"").Replace("\n", "; ") + "\"";
         foreach (var r in rows)
             sb.Append($"{r.At:yyyy-MM-dd HH:mm:ss},{C(r.Who)},{C(r.Pc)},{(r.Ua is null ? "" : "yes")},{r.Seconds},{r.Mode},{C(Results.GetValueOrDefault(r.Result, r.Result))},{C(r.Files)},{C(r.What)}\r\n");
         return new UTF8Encoding(true).GetBytes(sb.ToString());

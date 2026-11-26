@@ -3,6 +3,7 @@ using IPop.Api.Notifier;
 using IPop.Application.Notifier;
 using IPop.Core.Entities;
 using IPop.Infrastructure.Auth;
+using IPop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
@@ -165,7 +166,7 @@ public class RemotePolicyTests
             new RemoteSession { Id = Guid.NewGuid(), HelperId = h.Id, TargetUserId = d.UserId, DeviceId = d.Id, Room = "b", Status = "asking", AskSeconds = 60, RequestedAt = now.AddSeconds(-36) },
             new RemoteSession { Id = Guid.NewGuid(), HelperId = h.Id, TargetUserId = d.UserId, DeviceId = d.Id, Room = "c", Status = "active", RequestedAt = now.AddMinutes(-5), StartedAt = now.AddMinutes(-5), AliveAt = now.AddMinutes(-3) });
         await t.Db.SaveChangesAsync();
-        Assert.Equal(2, await RemoteSweepWorker.SweepAsync(t.Db, now, default));
+        Assert.Equal(2, (await RemoteSweepWorker.SweepAsync(t.Db, now, default)).Count);
         var rows = await t.Verify().RemoteSessions.OrderBy(s => s.Room).Select(s => s.Status).ToListAsync();
         Assert.Equal(["expired", "asking", "ended"], rows);
     }
@@ -225,5 +226,72 @@ public class RemotePolicyTests
         Assert.Equal(3, all.Count);
         Assert.Contains(all, r => r.Result == "cfg");
         Assert.Contains("\"Done\"", System.Text.Encoding.UTF8.GetString(RemoteHistory.Csv(mine)));
+    }
+
+    [Fact]
+    public async Task Rejoin_rechecks_the_policy()
+    {
+        using var t = new TestDb();
+        var (h, d, m) = await SeedAsync(t, "J1");
+        var now = DateTime.UtcNow;
+        var s = new RemoteSession { Id = Guid.NewGuid(), HelperId = h.Id, TargetUserId = d.UserId, DeviceId = d.Id, Room = "r", Status = "active", RequestedAt = now, StartedAt = now, AliveAt = now };
+        t.Db.RemoteSessions.Add(s);
+        await t.Db.SaveChangesAsync();
+        // The helper isn't ICT in this test DB: give them Admin so only the policy decides.
+        Assert.Null(await RemoteRevocation.StillAllowedAsync(t.Db, s, new RemotePolicy(), true, default));
+        Assert.Equal("off", await RemoteRevocation.StillAllowedAsync(t.Db, s, new RemotePolicy { RemoteOn = false }, true, default));
+        Assert.Equal("blocked", await RemoteRevocation.StillAllowedAsync(t.Db, s, new RemotePolicy { People = new() { [h.Id] = false } }, true, default));
+        Assert.Equal("blocked", await RemoteRevocation.StillAllowedAsync(t.Db, s, new RemotePolicy(), false, default)); // no ICT/Admin role any more
+        t.Db.RemoteHelperBlocks.Add(new RemoteHelperBlock { UserId = h.Id, SetById = h.Id, CreatedAt = now });
+        await t.Db.SaveChangesAsync();
+        Assert.Equal("blocked", await RemoteRevocation.StillAllowedAsync(t.Db, s, new RemotePolicy(), true, default));
+        t.Db.RemoteHelperBlocks.RemoveRange(t.Db.RemoteHelperBlocks);
+        m.Excluded = true; await t.Db.SaveChangesAsync();
+        Assert.Equal("excluded", await RemoteRevocation.StillAllowedAsync(t.Db, s, new RemotePolicy(), true, default));
+    }
+
+    [Fact]
+    public async Task Excluding_blocking_or_switching_off_ends_every_running_session_not_only_unattended()
+    {
+        using var t = new TestDb();
+        var (h, d, m) = await SeedAsync(t, "J2");
+        var other = t.AddUser("J2O");
+        var now = DateTime.UtcNow;
+        RemoteSession S(Guid helper, bool ua, string status = "active") => new() { Id = Guid.NewGuid(), HelperId = helper, TargetUserId = d.UserId, DeviceId = d.Id, Room = "r", Status = status, Unattended = ua, RequestedAt = now, StartedAt = now, AliveAt = now };
+        t.Db.RemoteSessions.AddRange(S(h.Id, false), S(h.Id, true), S(other.Id, false, "asking"));
+        await t.Db.SaveChangesAsync();
+
+        var byPc = await RemoteRevocation.MachineAsync(t.Db, m.Id, now, default);
+        Assert.Equal(3, byPc.Count);
+        Assert.All(byPc, x => Assert.Equal("revoked", x.EndedBy));
+        await t.Db.SaveChangesAsync();
+
+        t.Db.RemoteSessions.AddRange(S(h.Id, false), S(other.Id, false));
+        await t.Db.SaveChangesAsync();
+        Assert.Single(await RemoteRevocation.HelperAsync(t.Db, h.Id, now, default));
+        await t.Db.SaveChangesAsync();
+        Assert.Single(await RemoteRevocation.PolicyAsync(t.Db, new RemotePolicy { Mode = "list", People = new() { [h.Id] = true } }, now, default)); // "other" not listed
+        await t.Db.SaveChangesAsync();
+        t.Db.RemoteSessions.Add(S(h.Id, false));
+        await t.Db.SaveChangesAsync();
+        Assert.Single(await RemoteRevocation.PolicyAsync(t.Db, new RemotePolicy { RemoteOn = false }, now, default));
+    }
+
+    [Theory]
+    [InlineData("=HYPERLINK(\"http://x\")", "'=HYPERLINK(\"http://x\")")]
+    [InlineData("+1", "'+1")]
+    [InlineData("-cmd", "'-cmd")]
+    [InlineData("@SUM(A1)", "'@SUM(A1)")]
+    [InlineData("	x", "'	x")]
+    [InlineData("PC-QC-0024", "PC-QC-0024")]
+    public void Csv_cells_that_look_like_formulas_are_text(string v, string expected) => Assert.Equal(expected, RemoteHistory.Cell(v));
+
+    [Fact]
+    public void Csv_export_has_no_live_formulas()
+    {
+        var rows = new[] { new RemoteHistoryRow(DateTime.UtcNow, "=cmd|' /C calc'!A0", null, "+PC", null, 60, "control", "done", "@evil.xlsx", null) };
+        var csv = System.Text.Encoding.UTF8.GetString(RemoteHistory.Csv(rows));
+        Assert.DoesNotContain(",\"=", csv); Assert.DoesNotContain(",\"+", csv); Assert.DoesNotContain(",\"@", csv);
+        Assert.Contains("\"'=cmd", csv);
     }
 }
