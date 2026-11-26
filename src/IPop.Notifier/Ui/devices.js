@@ -21,7 +21,7 @@
     const online = rows.filter(d => d.online).length;
     $('#cnt').textContent = `${rows.length} computer${rows.length === 1 ? '' : 's'} · ${online} online`;
     $('#devs').innerHTML = rows.map((d, i) => `<div class="dev ${sel === d.id ? 'on' : ''}" data-i="${i}"><span class="pc">${IC((d.osVersion || '').includes('Laptop') ? 'laptop' : 'monitor')}<i class="dot ${d.online ? '' : 'off'}"></i></span>
-      <span class="m"><b>${esc(d.machineName)}</b><small>${esc(d.userName)} · ${d.online ? esc(firstIp(d)) : 'last seen ' + esc(ago(d.lastSeenAt))}${d.remoteId ? ` · <span class="mono">${fmtId(d.remoteId)}</span>` : ''}</small></span>${d.unattended ? '<span class="ua">UNATTENDED</span>' : ''}</div>`).join('')
+      <span class="m"><b>${esc(d.machineName)}</b><small>${esc(d.userName)} · ${d.online ? esc(firstIp(d)) : 'last seen ' + esc(ago(d.lastSeenAt))}${d.remoteId ? ` · <span class="mono">${fmtId(d.remoteId)}</span>` : ''}</small></span>${d.conflict ? '<span class="ua" title="Conflicting reports for this PC">CHECK</span>' : d.unattended ? '<span class="ua">UNATTENDED</span>' : ''}</div>`).join('')
       + notInstalled.map(d => `<div class="dev na"><span class="pc na">${IC('monitor-off')}</span><span class="m"><b>${esc(d.machineName)}</b><small>Notifier not installed${d.ip ? ' · ' + esc(d.ip) : ''}</small></span><span class="stt">NOT INSTALLED</span></div>`).join('')
       || '<div class="empty">No computers found</div>';
     const cur = rows.find(d => d.id === sel); if (cur) show(cur);
@@ -35,6 +35,7 @@
   async function show(d) {
     const canRemote = me.canRemote && d.online;
     $('#detail').innerHTML = `<h3>${esc(d.machineName)}</h3><div class="sub">${d.online ? 'Online · iPop Notifier ' + esc(d.appVersion || '') : 'Offline · last seen ' + esc(ago(d.lastSeenAt))}</div>
+      ${d.conflict ? `<div class="urow" style="margin:0 0 14px;color:var(--cal)">${IC('triangle-alert')}<span class="t"><b>Conflicting reports for this PC</b><small>Another Notifier reports the same computer name with a different Windows ID, or this PC is seen from two addresses. Connect by name is blocked until it is checked.</small></span></div>` : ''}
       <div class="kv">${d.remoteId ? `<span>Remote ID</span><span class="sel"><span class="mono" style="font-weight:650">${fmtId(d.remoteId)}</span> <span class="stt" style="margin-left:6px">fixed</span></span>` : ''}<span>User</span><span>${esc(d.userName)}${d.department || d.site ? ` (${esc([d.department, d.site].filter(Boolean).join(' · '))})` : ''}</span>
       <span>Windows user</span><span>${esc(d.windowsUser || '—')}</span>
       <span>IP address</span><span class="sel">${esc(d.localIps || '—')}</span>

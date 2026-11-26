@@ -15,7 +15,7 @@ public record NotifierDeviceReport(string DeviceKey, string MachineName, string?
 public record NotifierDeviceRow(Guid Id, string MachineName, string? WindowsUser, string? OsVersion, string? AppVersion,
     string? LocalIps, string? RemoteIp, DateTime LastSeenAt, bool Online, string UserName, string? Department, string? Site,
     bool Unattended = false, bool HelperService = false, Guid? MachineId = null, string? RemoteId = null,
-    bool UnattendedSwitch = false, bool HasPassword = false, DateTime? LockedUntil = null);
+    bool UnattendedSwitch = false, bool HasPassword = false, DateTime? LockedUntil = null, bool Conflict = false);
 
 /// A leader of the signed-in person for the Notifier's priority inbox. Reason = why ("Manager", "General Manager",
 /// "BOD / GM level"). Never NIK or position (office rule).
@@ -80,7 +80,12 @@ public static class NotifierEndpoints
             var userId = await MyId(http, db, ct);
             if (userId is null) return Results.Unauthorized();
             if (!await IsIctOrAdminAsync(db, userId.Value, http.User.IsInRole("Admin"), ct)) return Results.Forbid();
-            return Results.Ok(await ListAsync(db, q, DateTime.UtcNow, ct));
+            var now = DateTime.UtcNow;
+            var rows = await ListAsync(db, q, now, ct);
+            // Reports that disagree about one PC (same name with another MachineGuid, or one PC from two addresses):
+            // flagged so ICT checks before connecting (review PR #5).
+            var conflicts = await IPop.Api.Notifier.RemoteMachines.ConflictsAsync(db, now, ct);
+            return Results.Ok(rows.Select(r => r.MachineId is { } m && conflicts.Contains(m) ? r with { Conflict = true } : r));
         });
 
         g.MapGet("/leaders", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>
@@ -300,7 +305,15 @@ public static class NotifierEndpoints
         row.LastSeenAt = now;
         // One 9-digit remote ID per physical PC, shared by everyone who signs in to Windows on it (BIGIS #8).
         await IPop.Api.Notifier.RemoteMachines.LinkAsync(db, row, r.MachineGuid, now, ct);
-        await db.SaveChangesAsync(ct);
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException) when (db.ChangeTracker.Entries<RemoteMachine>().Any(e => e.State == EntityState.Added))
+        {
+            // Two Notifiers on one PC signed in at the same moment and both created its machine (unique MachineKey /
+            // ConnectId): drop ours, link to the one that won, save again.
+            foreach (var e in db.ChangeTracker.Entries<RemoteMachine>().Where(e => e.State == EntityState.Added).ToList()) e.State = EntityState.Detached;
+            await IPop.Api.Notifier.RemoteMachines.LinkAsync(db, row, r.MachineGuid, now, ct);
+            await db.SaveChangesAsync(ct);
+        }
         return 204;
     }
 

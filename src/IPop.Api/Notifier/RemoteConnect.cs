@@ -58,6 +58,21 @@ public static class RemoteConnect
         if (pick is null) return (null, new Problem(404, "unknown", "That computer isn't known."));
         if (pick.LastSeenAt < since)
             return (null, new Problem(409, "offline", $"{pick.MachineName} is offline", pick.MachineName, pick.User.Name, pick.Machine?.ConnectId, pick.LastSeenAt));
+        if (await InconsistentAsync(db, pick, since, ct) is { } why)
+            return (null, new Problem(409, "conflict", why, pick.MachineName, pick.User.Name, pick.Machine?.ConnectId));
         return (pick, null);
+    }
+
+    /// The Notifier picked for a PC must agree with the PC (review PR #5, spoofing): same computer name as the
+    /// machine, and every Notifier online on that machine reports from the same address. Otherwise a second report
+    /// may be pretending to be this PC, so nobody is asked until an Administrator looks at Devices.
+    public static async Task<string?> InconsistentAsync(IPopDbContext db, NotifierDevice pick, DateTime since, CancellationToken ct)
+    {
+        if (pick.Machine is not { } m) return null;
+        if (!string.Equals(pick.MachineName.Trim(), m.ComputerName, StringComparison.OrdinalIgnoreCase))
+            return $"{pick.MachineName} doesn't match the PC registered for this ID. Check it in Devices.";
+        var ips = await db.NotifierDevices.AsNoTracking().Where(d => d.MachineId == m.Id && d.LastSeenAt >= since)
+            .Select(d => d.RemoteIp ?? "").Distinct().Take(3).ToListAsync(ct);
+        return ips.Count > 1 ? $"{m.ComputerName} is reported from more than one address. Check it in Devices before connecting." : null;
     }
 }
