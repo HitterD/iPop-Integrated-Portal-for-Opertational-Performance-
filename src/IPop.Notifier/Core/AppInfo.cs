@@ -32,6 +32,20 @@ public static class AppInfo
     /// iPop Files' existing "Open in File Explorer" link (ipop://open?server=…&amp;path=…), now answered by this app.
     public const string FilesScheme = "ipop";
 
+    /// Debug and Trial builds may sign in to a plain http server (QA copies on the LAN); release builds need https.
+    public const bool AllowHttpServer =
+#if DEBUG || TRIAL
+        true;
+#else
+        false;
+#endif
+    public const bool Trial =
+#if TRIAL
+        true;
+#else
+        false;
+#endif
+
     public static string Version { get; } =
         Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "1.0.0";
 

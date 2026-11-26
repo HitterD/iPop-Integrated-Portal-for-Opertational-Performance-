@@ -133,22 +133,28 @@ public sealed class SignInWindow : HtmlWindow
 
     protected override void OnReady() => Send(new { type = "init", server = api.Session?.Server ?? AppInfo.DefaultServer, version = AppInfo.Version });
 
-    /// The "Server…" field: an absolute http(s) address, else null (the default server).
-    private static string? ServerOf(JsonNode? msg)
+    /// The "Server…" field: empty = the default server; an https address (http too in Debug/Trial builds); anything
+    /// else = an error in the window, never a silent switch to another server.
+    private bool TryServerOf(JsonNode? msg, out string? server)
     {
-        var server = msg?["server"]?.GetValue<string>()?.Trim();
-        if (string.IsNullOrEmpty(server) || !Uri.TryCreate(server, UriKind.Absolute, out var su) || su.Scheme is not ("https" or "http")) return null;
-        return su.GetLeftPart(UriPartial.Path).TrimEnd('/') + "/";
+        server = null;
+        var typed = msg?["server"]?.GetValue<string>()?.Trim();
+        if (string.IsNullOrEmpty(typed)) return true;
+        server = IPop.Application.Notifier.NotifierServerRules.AcceptServer(typed, AppInfo.AllowHttpServer);
+        if (server is not null) return true;
+        Send(new { type = "error", message = AppInfo.AllowHttpServer ? "Type a full server address, like https://ipop.santos.co.id." : "The server address must start with https://." });
+        return false;
     }
 
     protected override async void HandleMessage(string type, JsonNode? msg)
     {
-        if (type == "withBrowser") { WithBrowser?.Invoke(msg?["again"]?.GetValue<bool>() == true, ServerOf(msg)); return; }
+        if (type == "withBrowser") { if (TryServerOf(msg, out var bs)) WithBrowser?.Invoke(msg?["again"]?.GetValue<bool>() == true, bs); return; }
         if (type == "pasteCode") { PastedCode?.Invoke(msg?["code"]?.GetValue<string>()); return; }
         if (type != "signIn") { base.HandleMessage(type, msg); return; }
         var nik = msg?["nik"]?.GetValue<string>()?.Trim() ?? "";
         var password = msg?["password"]?.GetValue<string>() ?? "";
-        var server = ServerOf(msg) ?? AppInfo.DefaultServer;
+        if (!TryServerOf(msg, out var typed)) return;
+        var server = typed ?? AppInfo.DefaultServer;
         Integration.SetStartWithWindows(msg?["autostart"]?.GetValue<bool>() != false);
         try
         {
