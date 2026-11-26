@@ -216,15 +216,36 @@
   function drawLeaders() {
     const el = $('#leaders');
     if (!leaders.length) { el.innerHTML = `<div class="srow"><span class="none">No leaders found in the org chart yet. Add people as VIPs below.</span></div>`; window.icons(); return; }
-    // The approver chain one by one; the BOD / GM level folded into one row when it is long.
+    // The approver chain one by one; the BOD / GM level folded into one group row when it is long. The group opens
+    // (click, Enter or Space) into the full list, A–Z, and closes with "Show less" (above or below the list).
     const bod = leaders.filter(l => /BOD|GM level/i.test(l.reason || '')), chain = leaders.filter(l => !bod.includes(l));
     const one = l => `<div class="srow"><div class="pp">${avatar(l.name, '#A16207')}<div><div class="t1">${esc(l.name)}</div><div class="t2">${esc(l.department || '')}</div></div></div><span style="flex:1"></span><span class="auto">${IC('git-fork')}${esc(l.reason || 'Leader')} · org chart</span></div>`;
     let h = chain.map(one).join('');
-    if (bod.length > 3) h += `<div class="srow"><div class="pp"><div class="avatar" style="background:var(--ink-3)">+${bod.length}</div><div><div class="t1">Board of Directors &amp; GMs</div><div class="t2" title="${esc(bod.map(b => b.name).join(', '))}">${esc(bod.slice(0, 2).map(b => b.name).join(', '))}${bod.length > 2 ? `, and ${bod.length - 2} more` : ''}</div></div></div><span style="flex:1"></span><span class="auto">${IC('building-2')}BOD / GM level</span></div>`;
-    else h += bod.map(one).join('');
+    if (bod.length > 3) {
+      const az = [...bod].sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }));
+      const member = l => `<div class="srow bodm"><div class="pp">${avatar(l.name)}<div><div class="t1">${esc(l.name)}</div><div class="t2">${esc(l.department || '')}</div></div></div><span style="flex:1"></span><span class="auto">${IC('building-2')}BOD / GM level</span></div>`;
+      h += `<div class="srow bodg" id="bodg" role="button" tabindex="0" aria-expanded="${bodOpen}" aria-controls="bodlist"><div class="pp"><div class="avatar" style="background:var(--ink-3)">+${bod.length}</div><div><div class="t1">Board of Directors &amp; GMs (${bod.length})</div>`
+        + `<div class="t2">${esc(az.slice(0, 2).map(b => b.name).join(', '))}, and ${bod.length - 2} more</div></div></div><span style="flex:1"></span>`
+        + `<span class="bodt">${bodOpen ? 'Show less' : 'Show all'}${IC(bodOpen ? 'chevron-up' : 'chevron-down')}</span></div>`
+        + `<div class="bodl" id="bodlist" ${bodOpen ? '' : 'hidden'}>${az.map(member).join('')}<div class="srow bodm"><button class="link" data-bodless>${IC('chevron-up')}Show less</button></div></div>`;
+    } else h += bod.map(one).join('');
     el.innerHTML = h;
     window.icons();
   }
+  let bodOpen = false;
+  function toggleBod(open) {
+    bodOpen = open;
+    drawLeaders();
+    const g = $('#bodg'); if (g) g.focus({ preventScroll: !open });
+  }
+  $('#leaders').addEventListener('click', e => {
+    if (e.target.closest('[data-bodless]')) return toggleBod(false);
+    if (e.target.closest('#bodg')) toggleBod(!bodOpen);
+  });
+  $('#leaders').addEventListener('keydown', e => {
+    if (!e.target.matches('#bodg') || (e.key !== 'Enter' && e.key !== ' ')) return;
+    e.preventDefault(); toggleBod(!bodOpen);
+  });
   const vipName = id => vipPeople.find(x => same(x.id, id)) || { id, name: '…', department: '' };
   function vipRow(id, isNew) {
     const p = vipName(id);
