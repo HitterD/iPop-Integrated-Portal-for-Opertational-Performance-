@@ -71,6 +71,7 @@
     R.desk = desk;
     return gen;
   }
+  R.capture = capture; // QA: the capture path alone (multi-monitor crop) without a LiveKit room
   R.publishScreen = async (preset, screen) => {
     const p = PRESETS[preset] || PRESETS.auto;
     R.screen = screen || R.screen;
