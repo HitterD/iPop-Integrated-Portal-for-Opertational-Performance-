@@ -60,8 +60,9 @@
         var pending = await Auth.GetAsync<Pending>($"/api/sso/pending/{Uri.EscapeDataString(Req)}");
         if (pending is null) { error = "This sign-in link has expired. Go back to the app and try again."; return; }
         client = pending.Client;
+        // No pause here: the card shows who is signing in while the approve call runs, and every link into iDesk
+        // passes this page, so a fixed wait only made each click slower.
         StateHasChanged();
-        await Task.Delay(400); // long enough to read who is signing in
         using var res = await Auth.SendAsync(HttpMethod.Post, "/api/sso/approve", new { req = Req });
         if (!res.IsSuccessStatusCode) { error = "This sign-in link has expired. Go back to the app and try again."; return; }
         var ok = await System.Net.Http.Json.HttpContentJsonExtensions.ReadFromJsonAsync<Approved>(res.Content);
