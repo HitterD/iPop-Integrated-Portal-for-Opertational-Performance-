@@ -67,6 +67,29 @@ assert.equal(th.filter(t => m.inView(t, "all")).length, 5);
 assert.ok(m.matches(chat, "FIRST"), "search looks inside older updates too");
 assert.ok(!m.matches(news, "zzz"));
 
+// Needs action = act AND unread (H1): a read approval leaves the section, the card and the Act chip, and stays in
+// All as a read row of its day; the summary card and the section agree.
+const na = m.group([
+  row({ eventType: "approval.requested", targetUrl: "/spp/9" }),
+  row({ eventType: "approval.requested", targetUrl: "/spp/8", isRead: true }),
+  row({ eventType: "chat.message", type: "chat", targetUrl: `/chat/${ROOM}`, actorId: BOSS, isRead: true }),
+  row({ eventType: "chat.message", type: "chat", title: "Ana", targetUrl: "/chat/x" }),
+], ctx);
+const [apprOpen, apprDone, bossRead, plain] = na;
+assert.equal(apprDone.tier, "act", "the tier itself does not change when read");
+assert.equal(m.needsAction(apprOpen), true);
+assert.equal(m.needsAction(apprDone), false, "read → not Needs action any more");
+assert.equal(m.needsAction(bossRead), false);
+assert.deepEqual(na.filter(t => m.inView(t, "act")).map(t => t.id), [apprOpen.id], "Act chip / maximized Needs action: unread only");
+assert.equal(na.filter(t => m.inView(t, "all")).length, 4, "read ones stay in All");
+assert.equal(na.filter(m.needsAction).length, m.counts(na).act, "summary card = section");
+assert.deepEqual(na.map(m.groupOf), ["act", "msg", "msg", "msg"], "a read act thread is drawn with Messages");
+assert.equal(m.groupOf(news), "info");
+// Marking the open one read empties Needs action.
+apprOpen.items.forEach(x => (x.isRead = true)); apprOpen.unread = false;
+assert.equal(na.filter(m.needsAction).length, 0);
+assert.equal(m.counts(na).act, 0);
+
 // settings move a kind
 const moved = m.group([row({ eventType: "news.published", type: "news" })], { tiers: { news: "msg" } });
 assert.equal(moved[0].tier, "msg");

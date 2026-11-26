@@ -27,6 +27,7 @@
   <ItemGroup>
     <!-- The Notifier is a WinForms app; its pure link rules are compiled in directly. -->
     <Compile Include="..\..\src\IPop.Notifier\Core\IPopLinks.cs" Link="Notifier\IPopLinks.cs" />
+    <Compile Include="..\..\src\IPop.Notifier\Core\InboxThreads.cs" Link="Notifier\InboxThreads.cs" />
   </ItemGroup>
 
 </Project>

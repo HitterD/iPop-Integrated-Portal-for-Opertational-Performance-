@@ -253,8 +253,8 @@ public sealed class NotifierApp : ApplicationContext
         catch { Post(() => tray.ShowBalloonTip(4000, "iDesk", "Your reply wasn't sent (no connection).", ToolTipIcon.Warning)); }
     }
 
-    /// Unread count from the server, and how many unread need action: the newest 100 unread, classified here with
-    /// the settings and leaders (the server doesn't know the person's tiers).
+    /// Unread count from the server, and how many unread threads need action (the Inbox's rule, InboxThreads): the
+    /// newest 100 unread, classified here with the settings and leaders (the server doesn't know the person's tiers).
     private async Task RefreshUnreadAsync()
     {
         var n = await api.GetJsonAsync("api/notifications/v1/unread-count");
@@ -267,7 +267,7 @@ public sealed class NotifierApp : ApplicationContext
             else
             {
                 var s = settings.Effective(DateTime.UtcNow);
-                act = page.Items.Count(i => Notice.From(i).Classified(s, leaders).NeedsAction);
+                act = InboxThreads.CountNeedsAction(page.Items.Select(i => (i.Id, i.TargetUrl, Notice.From(i).Classified(s, leaders).NeedsAction)));
             }
         }
         Post(() => { actUnread = act; popups.ActCount = act; UpdateTray(); });

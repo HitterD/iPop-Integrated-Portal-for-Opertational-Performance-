@@ -207,9 +207,10 @@
     const xs = threads.filter(t => M.matches(t, st.q)), f = st.f;
     let h = '', i = 0;
     const R = t => row(t, i++, o);
-    const act = xs.filter(t => t.tier === 'act');
+    // Needs action = unread act threads only (inboxModel.needsAction); a read one sits in its day like any other row.
+    const act = xs.filter(M.needsAction);
     if ((f === 'all' || f === 'act') && act.length) h += `<div class="grp act">${IC('zap')}Needs action<span class="ln"></span></div><div class="pinbox">${act.map(R).join('')}</div>`;
-    const rest = xs.filter(t => t.tier !== 'act' && (f === 'all' || f === t.tier));
+    const rest = xs.filter(t => !M.needsAction(t) && (f === 'all' || (f !== 'act' && f === t.tier)));
     h += byDay(rest, R);
     if (!h) h = st.q ? emptyHtml('No matches', `Nothing contains “${st.q}”.`) : emptyHtml('You’re all caught up', f === 'all' ? 'New notifications from iPop and iDesk appear here.' : 'Nothing waiting in this category.');
     if (!st.q) h += moreHtml();
@@ -264,7 +265,10 @@
       r.classList.toggle('read', !t.unread);
       const b = r.querySelector('[data-a="read"]'); if (b) { b.innerHTML = IC(t.unread ? 'check' : 'mail'); b.title = t.unread ? 'Mark as read' : 'Mark as unread'; }
     });
-    if (isMax() && st.view === 'table') drawTable({ still: true });
+    // Read/unread moves a thread in or out of Needs action: draw the list again (the open one stays selected).
+    if (!isMax()) drawSmall({ still: true });
+    else if (st.view === 'table') drawTable({ still: true });
+    else { drawList({ still: true }); markSel(); }
     const rb = $('#rpane [data-ra="read"]');
     if (rb && st.sel === t.key) rb.innerHTML = IC(t.unread ? 'check' : 'mail') + (t.unread ? 'Mark as read' : 'Mark as unread');
     counts(); window.icons();
@@ -350,7 +354,8 @@
     counts(); window.icons();
   }
   const viewName = f => (VIEWS.find(v => v[0] === f) || [f, modName(f)])[1];
-  const wideItems = () => threads.filter(t => M.inView(t, st.wf) && M.matches(t, st.wq));
+  // The thread being read stays in the list while it is selected, even after it left the view (read in Needs action).
+  const wideItems = () => threads.filter(t => (M.inView(t, st.wf) || t.key === st.sel) && M.matches(t, st.wq));
 
   // ── maximized: list ────────────────────────────────────────────────────────
   function drawList(o) {
@@ -360,7 +365,8 @@
     const xs = wideItems();
     let h = '', i = 0;
     const R = t => row(t, i++, Object.assign({}, o, { sel: st.sel }));
-    if (st.wf === 'all') ['act', 'msg', 'info'].forEach(tr => { const g = xs.filter(t => t.tier === tr); if (g.length) h += `<div class="grp ${tr === 'act' ? 'act' : ''}">${TIER[tr][0]}<span class="ln"></span></div>` + g.map(R).join(''); });
+    // All: unread Needs action first, then Messages / For your info (a read act thread goes with Messages).
+    if (st.wf === 'all') ['act', 'msg', 'info'].forEach(tr => { const g = xs.filter(t => M.groupOf(t) === tr); if (g.length) h += `<div class="grp ${tr === 'act' ? 'act' : ''}">${TIER[tr][0]}<span class="ln"></span></div>` + g.map(R).join(''); });
     else h += byDay(xs, R);
     el.innerHTML = (h || emptyHtml(st.wq ? 'No matches' : 'You’re all caught up', st.wq ? 'Try another word.' : 'Nothing here right now.')) + (st.wq ? '' : moreHtml());
   }
@@ -604,7 +610,7 @@
     const xs = tableItems();
     let h = `<thead><tr><th style="width:26px"></th><th>Priority</th><th>From</th><th style="width:42%">Subject</th><th>Module</th><th><span class="s ${st.tsort === 'asc' ? 'asc' : ''}" id="tsort" title="Sort by time">Time ${IC('arrow-down')}</span></th><th>Status</th><th></th></tr></thead><tbody>`;
     ['act', 'msg', 'info'].forEach(tr => {
-      const g = xs.filter(t => t.tier === tr); if (!g.length) return;
+      const g = xs.filter(t => M.groupOf(t) === tr); if (!g.length) return;
       h += `<tr class="g ${tr === 'act' ? 'act' : ''} ${st.col[tr] ? 'col' : ''}" data-g="${tr}"><td colspan="8"><span class="gi"><i data-lucide="chevron-down" class="chev"></i><span class="tierdot" style="background:${TIER[tr][1]}"></span>${TIER[tr][0]} <span class="badge g">${g.length}</span></span></td></tr>`;
       if (st.col[tr]) return;
       h += g.map(t => {
