@@ -108,6 +108,8 @@ body:not(.fs) .fsbar{display:none}
 .ovl[hidden]{display:none}
 #ended i[data-lucide],#ended svg.lucide{width:42px;height:42px}
 </style>
+<link rel="stylesheet" href="remote-v3.css">
+<link rel="stylesheet" href="remote-viewer-v3.css">
 </head>
 <body>
 <div class="ttl" data-drag><span class="logo"><img src="ipop-mark.png" alt=""></span><b id="pc" style="flex:none">Remote help</b><span class="mono" id="rid"></span><span class="who" id="who"></span>
@@ -120,10 +122,11 @@ body:not(.fs) .fsbar{display:none}
   <span class="sp"></span>
   <div class="seg" id="quality" title="Auto adjusts to the network"><button data-q="auto" class="on"><i data-lucide="wand-sparkles"></i>Auto</button><button data-q="smooth">Smooth</button><button data-q="quality">Sharp</button></div>
   <button class="tb" id="keys" title="Special keys"><i data-lucide="keyboard"></i>Keys<i data-lucide="chevron-down"></i></button>
+  <div class="seg" id="fitSeg" title="Screen size"><button data-f="fit" class="on"><i data-lucide="scan"></i>Fit</button><button data-f="actual">1:1</button><button data-f="fill">Fill</button></div>
   <button class="tb on" id="clip" title="Clipboard sync: text, images and files"><i data-lucide="clipboard-copy"></i>Clipboard</button>
   <span class="sp"></span>
   <button class="tb" data-p="files"><i data-lucide="file-up"></i>Files</button>
-  <button class="tb" data-p="chat"><i data-lucide="message-circle"></i>Chat</button>
+  <button class="tb" data-p="chat"><i data-lucide="message-circle"></i>Chat<i class="dotn" id="chatDot" hidden></i></button>
   <button class="tb on" data-p="media"><i data-lucide="image"></i>Media</button>
   <button class="tb" id="umin" title="Minimise the media window on the user's screen"><i data-lucide="panel-bottom-close"></i><span>Minimise</span></button>
   <span style="flex:1"></span>
@@ -145,7 +148,7 @@ body:not(.fs) .fsbar{display:none}
       <div class="pane on" id="p-media"><div class="mgrid" id="mgrid"></div>
         <div class="row2"><span class="sw" id="sound"></span>Video sound</div>
         <div class="row2"><span class="sw on" id="showMedia"></span>Show media window</div></div>
-      <div class="pane" id="p-chat"><div class="note"><i data-lucide="lock"></i>Chat isn't saved — it ends with the session</div><div id="msgs"></div></div>
+      <div class="pane" id="p-chat"><div class="note"><i data-lucide="lock"></i>Kept while this session lasts, gone afterwards</div><div id="msgs"></div></div>
       <div class="pane" id="p-files"><label class="drop" id="drop"><i data-lucide="upload-cloud"></i><span>Drop files to send</span><small>or copy them — clipboard sync carries files too</small><input type="file" multiple hidden id="pick"></label><div id="flist"></div></div>
     </div>
     <div class="compose" id="compose"><input id="chatIn" placeholder="Message…" maxlength="1000"><button id="chatSend"><i data-lucide="send"></i></button></div>
@@ -158,6 +161,10 @@ body:not(.fs) .fsbar{display:none}
 <script src="livekit-client.umd.js"></script>
 <script src="remote.js"></script>
 <script src="remote-viewer.js"></script>
+<script src="remote-xfer.js"></script>
+<script src="remote-viewer-files.js"></script>
+<script src="remote-viewer-recon.js"></script>
 <script src="remote-viewer-tools.js"></script>
+<script src="remote-viewer-prefs.js"></script>
 </body>
 </html>

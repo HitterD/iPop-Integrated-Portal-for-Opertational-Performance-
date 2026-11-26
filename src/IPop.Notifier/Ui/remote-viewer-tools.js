@@ -5,7 +5,7 @@
   const R = window.remote, { post } = window.app;
   const $ = s => document.querySelector(s);
   const fmtId = id => id && id.length === 9 ? `${id.slice(0, 3)} ${id.slice(3, 6)} ${id.slice(6)}` : (id || '');
-  let monitors = { current: 0, count: 1, switchable: false, items: [] };
+  let monitors = { current: 0, count: 1, switchable: false, items: [] }, lastCount = 0;
 
   function start(m) { if (m.remoteId) $('#rid').textContent = fmtId(m.remoteId); }
 
@@ -33,7 +33,7 @@
 
   function fromHost(m) {
     if (m.t === 'perms') return perms(m.list, m.mode);
-    monitors = m;
+    monitors = m; if (!lastCount) lastCount = m.count;
     const cur = m.items.find(i => i.index === m.current) || m.items[0];
     $('#monName').textContent = cur ? (cur.index === -1 ? 'All' : cur.name.replace(' · Main', '')) : 'Monitor 1';
     $('#monOf').textContent = m.current === -1 ? `${m.count}/${m.count}` : `${(m.current || 0) + 1}/${m.count}`;
@@ -82,21 +82,41 @@
     if (b.machine) $('#pc').textContent = b.machine;
     if (b.user) $('#who').textContent = '· ' + b.user;
     if (b.remoteId) $('#rid').textContent = fmtId(b.remoteId);
+    const first = (b.user || '').split(' ')[0] || 'The user';
+    const hhmm = iso => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
     switch (b.code) {
       case 'offline':
         return ended('monitor-off', '#aeaeb2', `${b.machine} is offline`, `Last seen ${b.lastSeenAt ? agoLong(b.lastSeenAt) + ' ago' : 'a while ago'}. The Notifier on that PC is not answering.`, true);
+      case 'declined':
+        return ended('hand', '#ff453a', `${first} declined`, 'They chose not to share their screen.', true);
+      case 'expired':
+        return ended('timer-off', '#ff9f0a', 'No answer', `${first} did not answer within ${b.askSeconds || 30} seconds.`, true);
       case 'notinstalled':
         return ended('package-x', '#aeaeb2', `Notifier is not installed on ${b.machine}`, 'This PC is in Active Directory but cannot be controlled yet. Ask the user to install iPop Notifier.');
-      case 'locked': {
-        const tick = () => { if (!$('#ended').classList.contains('on')) return; $('#endedSub').textContent = `Too many wrong passwords. Try again in ${left(b.lockedUntil)}, or ask an Administrator to unlock it in Devices.`; };
-        ended('shield-alert', '#ff453a', `Access to ${b.machine} is locked`, '');
-        tick(); const t = setInterval(() => { if (new Date(b.lockedUntil) <= Date.now()) { clearInterval(t); return; } tick(); }, 1000);
-        return;
-      }
+      case 'locked':
+        return ended('shield-alert', '#ff453a', `Access to ${b.machine} is locked`, `Too many wrong passwords. Try again at ${hhmm(b.lockedUntil || Date.now())}, or ask an Administrator to unlock it in Devices.`);
+      case 'excluded':
+        return ended('ban', '#ff453a', `${b.machine} is excluded from remote help`, 'An Administrator excluded this PC. Ask an Administrator if you need access.');
+      case 'blocked':
+        return ended('user-x', '#ff453a', 'Remote help is switched off for you', 'An Administrator blocked remote help for your account. Ask them to allow it in Settings › Remote.');
+      case 'off':
+        return ended('ban', '#ff453a', 'Remote help is switched off for the whole company', 'An Administrator turned it off in Settings › Remote.');
+      case 'rate':
+        return ended('clock', '#ff9f0a', 'Too many connection attempts', b.message || 'Try again in a few minutes.');
+      case 'lost':
+        return ended('wifi-off', '#ff453a', 'Connection lost', `Couldn't reconnect after ${b.attempts || 6} tries. The session was saved to the history.`, true);
       default:
-        return ended('circle-alert', '#ff9f0a', 'Couldn\'t connect', b.message || 'Try again in a moment.', true);
+        return ended('circle-alert', '#ff9f0a', "Couldn't connect", b.message || 'Try again in a moment.', true);
     }
   }
 
-  window.viewerTools = { start, joined, fromHost, problem };
+  // The user's monitors changed during the session (mockup png/30): the picker updates, the button flashes, a toast.
+  function monChange(count) {
+    const what = count > lastCount ? 'A monitor was connected' : count < lastCount ? 'A monitor was disconnected' : 'The screen resolution changed';
+    lastCount = count;
+    const b = $('#mon'); b.classList.add('flash'); setTimeout(() => b.classList.remove('flash'), 1800);
+    app.snack(`${what} · ${count} monitor${count === 1 ? '' : 's'} now`);
+  }
+
+  window.viewerTools = { start, joined, fromHost, problem, monChange };
 })();

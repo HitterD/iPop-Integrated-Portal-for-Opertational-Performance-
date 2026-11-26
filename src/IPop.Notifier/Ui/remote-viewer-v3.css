@@ -1,0 +1,43 @@
+/* Remote help v3 (BIGIS #8): rules from the approved mockup ipop-remote-v3 (mock/mock.css), unchanged except the
+   window scope (.w-xxx → this page). Generated once; edit here from now on. */
+.dotn{position:absolute;right:4px;top:6px;width:9px;height:9px;border-radius:50%;background:var(--danger);box-shadow:0 0 0 2px var(--glass-2,var(--bg))}
+.tbar [data-p=chat]{position:relative}
+.tb.dim{opacity:.6}
+.msg .mt2{display:block;font-size:10.5px;opacity:.65;margin-top:2px;text-align:right}
+.stage.scroll{display:block}
+.recon{position:absolute;inset:0;z-index:20;display:grid;place-items:center;background:rgba(8,14,11,.72);backdrop-filter:blur(3px)}
+.recon[hidden]{display:none}
+.rc{display:flex;flex-direction:column;align-items:center;gap:10px;color:#e7f2ec;text-align:center;padding:26px 34px;border-radius:18px;background:rgba(20,24,22,.88)}
+.rc svg{width:38px;height:38px;color:#ff9f0a}
+.rc b{font-size:19px;color:#fff}
+.rc span{opacity:.85;font-size:13.5px}
+.rc .fx{height:36px;padding:0 16px;border-radius:10px;background:#fff;color:#123528;font-weight:700;margin-top:4px}
+.rc .dots{display:flex;gap:7px}
+.rc .dots i{width:8px;height:8px;border-radius:50%;background:#ff9f0a;animation:dot 1.2s infinite}
+.rc .dots i:nth-child(2){animation-delay:.2s}
+.rc .dots i:nth-child(3){animation-delay:.4s}
+body.fsmode .ttl{display:none}
+body.fsmode .tbar{display:none}
+body.fsmode .side{display:none}
+body.fsmode .fsbar{display:flex;position:absolute}
+body:not(.fsmode) .fsbar{display:none}
+body.tbhide .tbar{margin-top:-52px;opacity:0;transition:.3s}
+.tbar{transition:.3s}
+.menu button small{margin-left:14px}
+.pop.monpop{z-index:60}
+.side .body{max-height:none}
+.drop{cursor:default}
+.note{display:flex}
+#fitSeg button svg{width:13px;height:13px}
+.rc{min-width:420px}
+.rc #rcIc svg{width:38px;height:38px;color:#ff9f0a}
+.rbar{width:100%;height:5px;border-radius:3px;background:rgba(255,255,255,.18);overflow:hidden}
+.rbar i{display:block;height:100%;width:0;background:#ff9f0a;transition:width .9s linear}
+#mon.flash{animation:flash 1.8s ease-out}
+.tbar .tb{padding:0 9px}
+.tbar{gap:3px}
+.tbar{flex-wrap:nowrap}
+.tbar .tb{padding:0 8px;gap:5px}
+#umin span{display:none}
+#umin{padding:0 9px}
+.tbar .seg button{padding:0 8px}

@@ -116,6 +116,13 @@ public static partial class Downloads
         }
     }
 
+    /// A file streamed in by remote help: internet zone mark, and Show in folder works for it.
+    public static void MarkSaved(string file, Uri server)
+    {
+        MarkFromInternet(file, server);
+        lock (Gate) Saved.Add(Path.GetFullPath(file));
+    }
+
     private static string Done(IPopClient api, string file)
     {
         MarkFromInternet(file, api.Server);
@@ -155,7 +162,7 @@ public static partial class Downloads
     }
 
     /// Zone.Identifier (internet zone), as a browser writes it.
-    private static void MarkFromInternet(string file, Uri server)
+    internal static void MarkFromInternet(string file, Uri server)
     {
         try { File.WriteAllText(file + ":Zone.Identifier", $"[ZoneTransfer]\r\nZoneId=3\r\nHostUrl={server.GetLeftPart(UriPartial.Authority)}/\r\n"); }
         catch { }

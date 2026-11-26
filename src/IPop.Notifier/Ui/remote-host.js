@@ -1,44 +1,48 @@
+// The user's PC: hidden page that shares the screen through LiveKit and passes the helper's data to the app.
+// 1.8 v3: rejoins with a fresh token when the app asks (network drop, sleep, crash); files stream both ways in
+// batches (remote-xfer.js) — never a whole file in memory.
 (function () {
   const R = window.remote, { post } = window.app;
   window.addEventListener('error', e => post({ type: 'log', text: 'error: ' + (e.message || e) }));
   window.addEventListener('unhandledrejection', e => post({ type: 'log', text: 'rejection: ' + (e.reason && e.reason.message || e.reason) }));
-  let stats = null;
 
+  const joined = () => { const s = R.screenPub?.track?.mediaStreamTrack?.getSettings(); post({ type: 'joined', w: s?.width, h: s?.height, fps: s?.frameRate }); };
   app.on('join', async m => {
-    try {
-      const s = await (await R.join(m.info, m.quality, m.screen)) && R.screenPub?.track?.mediaStreamTrack?.getSettings();
-      post({ type: 'joined', w: s?.width, h: s?.height, fps: s?.frameRate });
-    } catch (e) { post({ type: 'failed', message: String(e && (e.name + ': ' + e.message) || e) }); }
+    try { R.screen = m.screen; await R.join(m.info, m.quality, m.screen); joined(); }
+    catch (e) { post({ type: 'failed', message: String(e && (e.name + ': ' + e.message) || e) }); }
   });
-  let preset = 'auto';
-  app.on('quality', async m => { preset = m.preset || 'auto'; try { await R.publishScreen(preset); } catch (e) { post({ type: 'log', text: 'quality ' + e.message }); } });
-  // Another monitor (or All) picked by the helper: re-publish with the new crop.
-  app.on('screen', async m => { try { await R.publishScreen(preset, m.screen); } catch (e) { post({ type: 'log', text: 'screen ' + e.message }); } });
+  app.on('rejoin', async m => {
+    try { R.screen = m.screen || R.screen; await R.rejoin(m.info, R.screen); joined(); }
+    catch (e) { post({ type: 'rejoinFailed', message: String(e && e.message || e) }); }
+  });
+  app.on('noop', () => { });
+  app.on('quality', async m => { try { await R.publishScreen(m.preset || 'auto'); } catch (e) { post({ type: 'log', text: 'quality ' + e.message }); } });
+  // Another monitor (or All) picked, or the displays changed: re-publish with the new crop.
+  app.on('screen', async m => { R.screen = m.screen; if (!R.room) return; try { await R.publishScreen(R.preset || 'auto', m.screen); } catch (e) { post({ type: 'log', text: 'screen ' + e.message }); } });
   app.on('leave', async () => { await R.leave(); post({ type: 'left' }); });
   app.on('send', m => {
     if (m.topic === 'clip' && m.msg) return R.sendClip(m.msg.kind, m.msg.text, m.msg.data).catch(e => post({ type: 'log', text: 'clip send ' + e.message }));
     R.sendReliable(m.msg, m.topic || 'ctl');
   });
-  app.on('sendFile', async m => {
-    // A file the user picked (clipboard copy or Send file): bytes arrive from the app as base64.
-    const bin = Uint8Array.from(atob(m.data), c => c.charCodeAt(0));
-    const f = new File([bin], m.name, { type: m.mime || 'application/octet-stream' });
-    await R.sendFile(f, m.topic || 'file', p => post({ type: 'fileProgress', id: m.id, p }));
-    post({ type: 'fileSent', id: m.id, name: m.name });
-  });
 
-  R.onData = (m, topic) => post({ type: 'data', topic, msg: m });
+  // A file on this PC going to ICT: the app serves it from disk by token; we stream it into LiveKit.
+  app.on('sendUrl', async m => {
+    const out = (state, p) => post({ type: 'xferOut', id: m.id, state, p, token: m.token });
+    let last = 0;
+    try {
+      const r = await xfer.send({ url: m.url, name: m.name, size: m.size }, { id: m.id, topic: m.topic || 'file',
+        onProgress: (sent, size) => { const now = performance.now(); if (now - last > 250) { last = now; out('run', size ? sent / size : 0); } } });
+      out(r === 'cancel' ? 'cancel' : 'done', 1);
+    } catch (e) { post({ type: 'log', text: 'send file ' + (e && e.message) }); out('fail', 0); }
+  });
+  app.on('xferCancel', m => { xfer.cancelSend(m.id); if (m.reason === 'cancel') xfer.cancelReceive(m.id); else R.sendReliable({ t: 'xfer', id: m.id, op: 'fail', msg: m.reason }, 'xfer'); });
+
+  R.onData = (m, topic) => { if (topic === 'xfer') return xfer.onPeer(m); post({ type: 'data', topic, msg: m }); };
   R.onPeer = (p, joined) => post({ type: 'peer', identity: p.identity, name: p.name, joined });
   R.onDisconnected = reason => post({ type: 'disconnected', reason: String(reason ?? '') });
   R.onReconnecting = on => post({ type: 'reconnecting', on });
-  // Files over 200 MB are refused before reading them into memory (the app refuses them again before saving).
-  const MAX = 200 * 1024 * 1024;
-  const receive = topic => async (reader, from) => {
-    if ((reader.info.size || 0) > MAX) { post({ type: 'log', text: `refused ${topic} ${reader.info.name}: ${reader.info.size} bytes` }); return; }
-    const bytes = await R.readAll(reader);
-    if (bytes.length > MAX) return;
-    post({ type: 'file', topic, name: reader.info.name, mime: reader.info.mimeType, from: from?.identity || '', data: R.b64(bytes) });
-  };
+  // Files from ICT: streamed to the app in batches; it writes them to disk and enforces the limit again.
+  const receive = topic => (reader, from) => xfer.receive(reader, { max: R.maxFileBytes || 0, topic, from: from?.identity || '' });
   R.onFile = receive('file');
   R.onClipFile = receive('clip-file');
   R.onClipData = async reader => {
@@ -46,6 +50,7 @@
     const isText = (reader.info.mimeType || '').startsWith('text/');
     post({ type: 'data', topic: 'clip', msg: isText ? { kind: 'text', text: new TextDecoder().decode(bytes) } : { kind: 'image', data: R.b64(bytes) } });
   };
+  app.on('limits', m => { R.maxFileBytes = m.maxFileBytes || 0; });
 
   app.ready();
 })();

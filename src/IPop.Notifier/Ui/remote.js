@@ -16,6 +16,7 @@
   // Quality "Auto" (1.8.0): the host publishes simulcast layers and LiveKit picks one per viewer (dynacast on the
   // host, adaptive stream on the viewer), so a slow network gets a lighter picture instead of stalls.
   R.join = async (info, quality, screen) => {
+    R.maxFileBytes = info.maxFileBytes || R.maxFileBytes || 0;
     R.role = info.role; R.mode = info.mode; R.helper = info.helper || '';
     const room = R.room = new LK.Room({
       adaptiveStream: info.role !== 'host', dynacast: info.role === 'host',
@@ -35,8 +36,17 @@
     room.registerByteStreamHandler('clip-file', async (reader, from) => (R.onClipFile || (() => { }))(reader, from));
     room.registerByteStreamHandler('clip-data', async (reader, from) => (R.onClipData || (() => { }))(reader, from));
     await room.connect(info.url, info.token, { autoSubscribe: true });
-    if (R.role === 'host') await R.publishScreen(quality || 'auto', screen);
+    if (R.role === 'host') await R.publishScreen(quality || R.preset || 'auto', screen);
     return room;
+  };
+
+  /// Rejoin after a drop (BIGIS #8 v3): leave whatever is left of the old room and join again with a fresh token
+  /// from /join. The screen is published again on the host; the viewer re-attaches the track (onTrack).
+  R.rejoin = async (info, screen) => {
+    const old = R.room; R.room = null; R.screenPub = null;
+    try { await old?.disconnect(); } catch { }
+    try { R.desk?.stop(); } catch { }
+    return R.join(info, R.preset || 'auto', screen || R.screen);
   };
 
   // ── host: screen ───────────────────────────────────────────────────────
@@ -73,7 +83,7 @@
   }
   R.capture = capture; // QA: the capture path alone (multi-monitor crop) without a LiveKit room
   R.publishScreen = async (preset, screen) => {
-    const p = PRESETS[preset] || PRESETS.auto;
+    const p = PRESETS[preset] || PRESETS.auto; R.preset = preset;
     R.screen = screen || R.screen;
     if (R.screenPub) { await R.room.localParticipant.unpublishTrack(R.screenPub.track); R.screenPub = null; try { R.desk?.stop(); } catch { } }
     const mst = await capture(p, R.screen);
@@ -130,17 +140,6 @@
 
   R.input = obj => sendLossy(obj);
   R.inputReliable = obj => sendReliable(obj, 'in');
-
-  // Files: LiveKit byte streams (chunked, with progress); the receiving app saves them to Downloads.
-  R.sendFile = async (file, topic = 'file', onProgress) => {
-    const writer = await R.room.localParticipant.streamBytes({ name: file.name, totalSize: file.size, mimeType: file.type || 'application/octet-stream', topic });
-    const chunk = 64 * 1024; let sent = 0;
-    for (let off = 0; off < file.size; off += chunk) {
-      const buf = new Uint8Array(await file.slice(off, off + chunk).arrayBuffer());
-      await writer.write(buf); sent += buf.length; onProgress && onProgress(sent / file.size);
-    }
-    await writer.close();
-  };
 
   R.readAll = async reader => {
     const parts = []; let n = 0;

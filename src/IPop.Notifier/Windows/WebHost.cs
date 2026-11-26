@@ -8,7 +8,7 @@ namespace IPop.Notifier.Windows;
 
 /// One WebView2 environment for every window of the app (shared browser process = light, even with 10+ windows).
 /// UI files are served from the app folder at https://notifier.ipop/ — never from the network.
-public static class WebHost
+public static partial class WebHost
 {
     public const string Origin = "https://notifier.ipop/";
     public const string HttpOrigin = "http://notifier.ipop/";
@@ -17,7 +17,7 @@ public static class WebHost
 
     public static Task<CoreWebView2Environment> EnvironmentAsync() => env ??= CoreWebView2Environment.CreateAsync(null,
         Path.Combine(SessionStore.Folder, "WebView2"),
-        new CoreWebView2EnvironmentOptions("--disable-features=msSmartScreenProtection --renderer-process-limit=3 --auto-select-desktop-capture-source=\"Entire screen\" --enable-usermedia-screen-capturing --unsafely-treat-insecure-origin-as-secure=http://notifier.ipop,http://media.notifier.ipop" + QaDebugPort()));
+        new CoreWebView2EnvironmentOptions("--disable-features=msSmartScreenProtection --renderer-process-limit=3 --auto-select-desktop-capture-source=\"Entire screen\" --enable-usermedia-screen-capturing --unsafely-treat-insecure-origin-as-secure=http://notifier.ipop,http://media.notifier.ipop,http://files.notifier.ipop" + QaDebugPort()));
 
     private static string QaDebugPort()
     {
@@ -44,6 +44,10 @@ public static class WebHost
         // Remote-help media (pictures/videos from the helper), cached in the data folder; read-only to pages.
         Directory.CreateDirectory(MediaCache);
         core.SetVirtualHostNameToFolderMapping("media.notifier.ipop", MediaCache, CoreWebView2HostResourceAccessKind.DenyCors);
+        // Remote-help files the person picked to send: streamed from disk by token, remote pages only (1.8 v3).
+        if (page.StartsWith("remote-")) ServeOutgoingFiles(core);
+        // The page's renderer crashed: the window decides (the remote host restarts itself and rejoins).
+        core.ProcessFailed += (_, e) => onMessage("processFailed", new JsonObject { ["kind"] = e.ProcessFailedKind.ToString() });
         var s = core.Settings;
         s.AreDevToolsEnabled = false;
 #if DEBUG

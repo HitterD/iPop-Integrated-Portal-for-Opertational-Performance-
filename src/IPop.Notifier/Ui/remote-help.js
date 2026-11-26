@@ -9,17 +9,20 @@
   // The prompt lists what the helper may do; the user can untick clipboard or file transfer (and mouse/keyboard).
   // Only ticked items are allowed — the app refuses the rest on this PC (RemoteHost.Data.cs).
   const PERMS = [['control', 'mouse-pointer-2', 'Mouse and keyboard'], ['clipboard', 'clipboard-copy', 'Clipboard'], ['files', 'file-up', 'File transfer']];
-  let allowed = new Set(['control', 'clipboard']);
+  let allowed = new Set(['control', 'clipboard']), max = new Set(['control', 'clipboard', 'files']);
+  // Ticks start from the company default (or the person's own, Settings › Remote); what an Administrator switched off
+  // for this PC is greyed out ("not available on this PC").
   function drawOpts(view) {
-    $('#aOpts').innerHTML = PERMS.filter(([k]) => !(view && k === 'control')).map(([k, ic, t]) => `<span class="pr" data-k="${k}"><span class="cb${allowed.has(k) ? '' : ' off'}">${allowed.has(k) ? IC('check') : ''}</span>${IC(ic)}${t}</span>`).join('')
+    $('#aOpts').innerHTML = PERMS.filter(([k]) => !(view && k === 'control')).map(([k, ic, t]) => { const ok = max.has(k); return `<span class="pr${ok ? '' : ' dis'}" data-k="${k}"><span class="cb${allowed.has(k) ? '' : ' off'}">${allowed.has(k) ? IC('check') : ''}</span>${IC(ic)}${t}${ok ? '' : ' <small style="color:var(--ink-3)">· not available on this PC</small>'}</span>`; }).join('')
       + (view ? `<span>${IC('eye')}View only</span>` : '') + `<span>${IC('shield-check')}Logged in iPop · never recorded</span>`;
   }
   let viewOnly = false;
-  $('#aOpts').onclick = e => { const r = e.target.closest('.pr'); if (!r) return; const k = r.dataset.k; allowed.has(k) ? allowed.delete(k) : allowed.add(k); drawOpts(viewOnly); };
+  $('#aOpts').onclick = e => { const r = e.target.closest('.pr'); if (!r || r.classList.contains('dis')) return; const k = r.dataset.k; allowed.has(k) ? allowed.delete(k) : allowed.add(k); drawOpts(viewOnly); };
   app.on('ask', m => {
     document.body.className = 'ask';
     viewOnly = m.mode === 'view';
-    allowed = new Set(viewOnly ? ['clipboard'] : ['control', 'clipboard']);
+    max = new Set((m.max || 'control,clipboard,files').split(',').filter(Boolean));
+    allowed = new Set((m.defaults || 'control,clipboard').split(',').filter(k => max.has(k) && !(viewOnly && k === 'control')));
     $('#aAv').textContent = m.initials; $('#aTitle').textContent = m.joining ? `${m.helper} from ICT wants to watch` : `${m.helper} from ICT wants to help`;
     $('#aSub').textContent = m.joining ? 'Someone is already helping · view only' : 'Remote help · ' + (m.from ? 'from ' + m.from : m.machine);
     $('#aText').textContent = viewOnly ? `${m.helper.split(' ')[0]} will see your screen but can't click or type.` : `${m.helper.split(' ')[0]} will see your screen and can use the mouse and keyboard. You can end it any time.`;
@@ -49,6 +52,9 @@
     document.body.classList.toggle('ua', unattended);
     $('#fSub').textContent = unattended ? 'connected unattended · you can keep working' : m.mode === 'view' ? 'is watching this PC · you can keep working' : 'is helping on this PC · you can keep working';
     chips(m.perms, m.mode);
+    $('#fileBtn').hidden = !(m.perms || '').split(',').includes('files');
+    $('#tlim').textContent = 'up to ' + lim(m.maxFileBytes || limit); if (m.maxFileBytes) limit = m.maxFileBytes;
+    $('#msgs').innerHTML = ''; $('#tflist').innerHTML = ''; $('#tx').hidden = true; openChat(false);
     started = Date.now(); clearInterval(timer);
     timer = setInterval(() => { const s = Math.floor((Date.now() - started) / 1000); $('#tm').textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); }, 1000);
     show({ kind: 'default' });
@@ -70,14 +76,42 @@
   }
   app.on('media', show);
 
-  // Chat (not saved)
+  // Chat: kept while the session lasts (never stored). A message from ICT opens the chat and beeps once.
+  let chatOn = false;
+  const openChat = on => { chatOn = on; $('#chat').classList.toggle('on', on); if (on) $('#tdot').hidden = true; };
   function addMsg(text, me) { const d = document.createElement('div'); d.className = 'msg ' + (me ? 'me' : 'them'); d.textContent = text; $('#msgs').appendChild(d); d.scrollIntoView({ block: 'end' }); }
-  app.on('chat', m => { addMsg(m.text, false); $('#chat').classList.add('on'); });
-  $('#chatBtn').onclick = () => { $('#chat').classList.toggle('on'); if ($('#chat').classList.contains('on')) $('#chatIn').focus(); };
-  $('#chatX').onclick = () => $('#chat').classList.remove('on');
+  app.on('chat', m => { addMsg(m.text, false); if (!chatOn) { $('#tdot').hidden = false; openChat(true); } });
+  $('#chatBtn').onclick = () => { openChat(!chatOn); if (chatOn) $('#chatIn').focus(); };
+  $('#chatX').onclick = () => openChat(false);
   const send = () => { const v = $('#chatIn').value.trim(); if (!v) return; post({ type: 'chatSend', text: v }); addMsg(v, true); $('#chatIn').value = ''; };
   $('#chatSend').onclick = send;
   $('#chatIn').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); send(); } });
+
+  // Files both ways (mockup png/32): rows from the app; "Send a file to ICT" opens the file picker on this PC.
+  const fmtSize = b => b >= 1073741824 ? (b / 1073741824).toFixed(1) + ' GB' : b >= 1048576 ? (b / 1048576).toFixed(b >= 10485760 ? 0 : 1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+  const lim = b => { const mb = Math.round(b / 1048576); return mb >= 1024 ? mb / 1024 + ' GB' : mb + ' MB'; };
+  let limit = 2048 * 1048576;
+  const showFiles = () => { $('#tx').hidden = false; openChat(true); };
+  $('#fileBtn').onclick = showFiles;
+  $('#tsend').onclick = () => post({ type: 'sendFile' });
+  app.on('xfer', t => {
+    if (t.limit) limit = t.limit;
+    if (t.dir === 'up') showFiles();
+    let el = document.querySelector(`#tflist .file[data-t="${t.id}"]`);
+    if (!el) { el = document.createElement('div'); el.className = 'file'; el.dataset.t = t.id; $('#tflist').prepend(el); }
+    const lab = t.dir === 'up' ? 'From ICT' : 'To ICT', pct = Math.round((t.p || 0) * 100);
+    let sub, act = '';
+    if (t.state === 'run') { sub = `${lab} · ${pct}% · ${fmtSize(t.size * (t.p || 0))} of ${fmtSize(t.size)}`; act = `<button class="fx" data-a="cancel">${IC('x')}Cancel</button>`; }
+    else if (t.state === 'done') sub = `${lab} · ${t.dir === 'up' ? 'saved to Downloads' : 'saved to Downloads'} · ${fmtSize(t.size)}`;
+    else if (t.state === 'cancel') sub = `${lab} · cancelled`;
+    else if (t.state === 'big') sub = `${lab} · Too large: the limit is ${lim(limit)} per file`;
+    else sub = `${lab} · ${t.state === 'notallowed' ? 'File transfer is not allowed in this session' : 'The connection was interrupted'}`;
+    el.className = 'file' + (t.state === 'fail' || t.state === 'big' ? ' err' : t.state === 'cancel' ? ' off' : t.state === 'done' ? ' ok' : '');
+    el.innerHTML = `<span class="fi">${IC(t.dir === 'up' ? 'file-down' : 'file-up')}</span><span class="m"><b>${esc(t.name)}</b><small>${esc(sub)}</small>${t.state === 'run' ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}</span>${act}`;
+    el.onclick = e => { if (e.target.closest('[data-a=cancel]')) post({ type: 'xferAction', id: t.id, action: 'cancel' }); };
+  });
+  app.on('limit', m => { limit = m.bytes || limit; $('#tlim').textContent = 'up to ' + lim(limit); });
+
   $('#endBtn').onclick = () => post({ type: 'endSession' });
   app.ready();
 })();

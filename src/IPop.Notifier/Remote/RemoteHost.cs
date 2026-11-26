@@ -24,6 +24,8 @@ public sealed partial class RemoteHost(IPopClient api, Action<string, string, To
     private System.Windows.Forms.Timer? stat, alive;
     private string lastStat = "";
     public bool Active => sessionId is not null;
+    /// "control,clipboard" the person wants ticked by default (Settings › Remote › On the user's PC); null = company.
+    public string? UserDefaults { get; set; }
     public Guid? SessionId => sessionId;
     public event Action<bool>? ActiveChanged;
 
@@ -46,7 +48,11 @@ public sealed partial class RemoteHost(IPopClient api, Action<string, string, To
 
         var ask = new HelpWindow(api, this, asking: true);
         var from = m["from"]?.GetValue<string>();
-        ask.Shown += (_, _) => ask.Send(new { type = "ask", helper, initials, machine = Environment.MachineName, from, mode, joining, seconds = 30 });
+        var seconds = m["askSeconds"]?.GetValue<int>() is > 0 and var sec ? sec : 30;
+        var max = m["max"]?.GetValue<string>() ?? "control,clipboard,files";
+        // The person's own default ticks (Settings › Remote) win over the company default, within the PC's maximum.
+        var defaults = UserDefaults is { } mine ? mine : m["defaults"]?.GetValue<string>() ?? "control,clipboard";
+        ask.Shown += (_, _) => ask.Send(new { type = "ask", helper, initials, machine = Environment.MachineName, from, mode, joining, seconds, defaults, max });
         var answered = false;
         ask.Answered += async (allow, allowed) =>
         {
@@ -62,7 +68,7 @@ public sealed partial class RemoteHost(IPopClient api, Action<string, string, To
             }
             catch (Exception ex) { Log.Error("remote", "answer failed", ex); balloon("Remote help", "Couldn't reach iPop to answer.", ToolTipIcon.Warning); }
         };
-        var timer = new System.Windows.Forms.Timer { Interval = 30_000 };
+        var timer = new System.Windows.Forms.Timer { Interval = seconds * 1000 };
         timer.Tick += (_, _) => { timer.Dispose(); if (!answered && !ask.IsDisposed) { answered = true; ask.Close(); _ = api.SendAsync(HttpMethod.Post, $"api/notifier/remote/sessions/{id}/answer", new { allow = false }); } };
         timer.Start();
         ask.Show();
@@ -83,18 +89,21 @@ public sealed partial class RemoteHost(IPopClient api, Action<string, string, To
         if (join is null) { Log.Warn("remote", "join returned nothing"); Stop("error"); balloon("Remote help", "Couldn't start remote help.", ToolTipIcon.Warning); return; }
         // The server's record of what the user allowed is the one that counts (it also covers unattended sessions).
         perms = RemotePermissions.Parse(join["permissions"]?.GetValue<string>());
+        lastJoin = join;
+        ApplyLimits(join);
+        HookSystem();
         mode = perms.ClampMode(join["mode"]?.GetValue<string>() ?? mode);
         clipSync = perms.Clipboard;
         Log.Info("remote", $"joining room {join["room"]} url={join["url"]} role={join["role"]} mode={mode} perms={perms.ToList()}");
 
         clip = new ClipWatcher(() =>
         {
-            if (Clip.Read() is { } c) ClipboardChanged(c.Payload ?? new JsonObject(), c.FileBytes is not null, c.FileName, c.FileBytes);
+            if (Clip.Read() is { } c) ClipboardChanged(c.Payload ?? new JsonObject(), c.Payload is null && c.FileName is not null, c.FileName, c.FileBytes);
         });
         frame = new SessionFrame(bounds, $"ICT is connected · {helper}");
         frame.Show();
         help = new HelpWindow(api, this, asking: false);
-        help.Shown += (_, _) => help.Send(new { type = "help", helper, initials, mode, unattended, perms = perms.ToList() });
+        help.Shown += (_, _) => help.Send(new { type = "help", helper, initials, mode, unattended, perms = perms.ToList(), maxFileBytes });
         help.Show();
         stat = new System.Windows.Forms.Timer { Interval = 2000 };
         stat.Tick += (_, _) => SendInputStat();
@@ -136,33 +145,45 @@ public sealed partial class RemoteHost(IPopClient api, Action<string, string, To
         switch (type)
         {
             case "joined":
+                JoinResult(true);
                 // The helper learns what may be used and which monitors exist.
                 page?.Send(new { type = "send", topic = "ctl", msg = new { t = "perms", list = perms.ToList(), mode } });
                 SendMonitors();
                 break;
+            case "rejoinFailed":
+                JoinResult(false);
+                break;
+            case "processFailed":
+                OnPageCrashed(m?["kind"]?.GetValue<string>() ?? "");
+                break;
             case "failed":
+                if (pendingJoin is not null) { JoinResult(false); break; }
                 Log.Error("remote", "share failed: " + (m?["message"]?.GetValue<string>() ?? ""));
                 balloon("Remote help", "The screen couldn't be shared: " + (m?["message"]?.GetValue<string>() ?? ""), ToolTipIcon.Warning);
                 _ = EndAsync("error");
                 break;
             case "disconnected":
-                if (sessionId is not null) _ = EndAsync("error");
+                // Not the end: LiveKit gave up its own reconnect, so we rejoin with a fresh token (BIGIS #8 v3).
+                if (sessionId is not null && m?["reason"]?.GetValue<string>() is not ("CLIENT_INITIATED" or "1")) _ = RejoinAsync("network");
                 break;
+            case "xferBegin": if (m is not null) XferBegin(m); break;
+            case "xferChunk": if (m is not null) XferChunk(m); break;
+            case "xferEnd": if (m is not null) XferEnd(m); break;
+            case "xferRefused": Refuse(m?["topic"]?.GetValue<string>()); break;
+            case "xferOut": if (m is not null) XferOut(m); break;
             case "data":
                 OnData(m?["topic"]?.GetValue<string>(), m?["msg"]);
                 break;
             case "peer":
                 if (m?["joined"]?.GetValue<bool>() == true && m["identity"]?.GetValue<string>()?.StartsWith("helper:") == true)
                 {
+                    HelperBack();
                     page?.Send(new { type = "send", topic = "ctl", msg = new { t = "perms", list = perms.ToList(), mode } });
                     SendMonitors();
                 }
-                // The helper left without saying bye (window closed, network): end here too after a grace period.
+                // The helper left without saying bye (window closed, network): end after 30 s unless they come back.
                 if (m?["joined"]?.GetValue<bool>() == false && m["identity"]?.GetValue<string>()?.StartsWith("helper:") == true)
-                    _ = Task.Delay(8000).ContinueWith(_ => { if (sessionId is not null) Post(() => _ = EndAsync("helper")); });
-                break;
-            case "file":
-                SaveIncoming(m);
+                    HelperLeft();
                 break;
         }
     }
@@ -205,7 +226,7 @@ public sealed partial class RemoteHost(IPopClient api, Action<string, string, To
         try { page?.Send(new { type = "send", topic = "ctl", msg = new { t = "bye" } }); } catch { }
         if (notifyServer)
         {
-            try { using var _ = await api.SendAsync(HttpMethod.Post, $"api/notifier/remote/sessions/{id}/end", new { files = string.Join('\n', files) }); } catch { }
+            try { using var _ = await api.SendAsync(HttpMethod.Post, $"api/notifier/remote/sessions/{id}/end", new { files = string.Join('\n', files), reason = by == "lost" ? "lost" : null }); } catch { }
         }
         Stop(by);
         balloon("Remote help ended", $"{helper} is no longer connected. See Settings → Account for the history.", ToolTipIcon.Info);
@@ -226,6 +247,9 @@ public sealed partial class RemoteHost(IPopClient api, Action<string, string, To
         Log.Info("remote", $"stop by={by} played={input.Played} refused={input.Refused} lastErr={input.LastError}");
         input.ReleaseAll();
         sessionId = null;
+        rejoinRun++;
+        UnhookSystem();
+        CloseFiles();
         try { page?.Send(new { type = "leave" }); } catch { }
         var p = page; page = null;
         _ = Task.Delay(1500).ContinueWith(_ => Post(() => p?.Dispose()));

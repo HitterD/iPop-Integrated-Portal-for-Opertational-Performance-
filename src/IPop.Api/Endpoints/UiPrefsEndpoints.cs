@@ -17,7 +17,7 @@ namespace IPop.Api.Endpoints;
 public static class UiPrefsEndpoints
 {
     public const int MaxJsonBytes = 2048;
-    private static readonly string[] Keys = ["tabs", "notif-card", "dash-order", "notifier", "wb-pens", "wb-tpl-recent"];
+    private static readonly string[] Keys = ["tabs", "notif-card", "dash-order", "notifier", "wb-pens", "wb-tpl-recent", "remote"];
 
     public static IEndpointRouteBuilder MapUiPrefs(this IEndpointRouteBuilder app)
     {
@@ -48,6 +48,7 @@ public static class UiPrefsEndpoints
         if (key == "tabs")
             return (200, JsonSerializer.Serialize(PhoneTabs.Resolve(ReadStrings(json), isAdmin)));
         if (key == "notifier") return (200, IPop.Application.Notifier.NotifierSettings.Parse(json).ToJson());
+        if (key == "remote") return (200, IPop.Application.Notifier.RemotePrefs.Parse(json).ToJson());
         return json is null ? (204, null) : (200, json);
     }
 
@@ -65,11 +66,13 @@ public static class UiPrefsEndpoints
             "notifier" => value.ValueKind == JsonValueKind.Object,
             "wb-pens" => IsPenList(value),
             "wb-tpl-recent" => ReadStrings(json) is { Count: <= 6 } recent && recent.All(s => s.Length is > 0 and <= 64),
+            "remote" => value.ValueKind == JsonValueKind.Object,
             _ => false,
         };
         if (!ok) return 400;
         // Store only the normalised form: unknown fields and out-of-range values never reach the database.
         if (key == "notifier") json = IPop.Application.Notifier.NotifierSettings.Parse(json).ToJson();
+        if (key == "remote") json = IPop.Application.Notifier.RemotePrefs.Parse(json).ToJson();
         var row = await db.UserUiPrefs.FirstOrDefaultAsync(p => p.UserId == userId && p.Key == key, ct);
         if (row is null)
         {

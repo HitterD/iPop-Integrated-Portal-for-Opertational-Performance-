@@ -9,8 +9,6 @@ namespace IPop.Notifier.Remote;
 public sealed partial class RemoteHost
 {
     private int refusedData;
-    /// Largest file the helper can send (same as the clipboard's 200 MB file limit).
-    private const long MaxIncomingBytes = 200L * 1024 * 1024;
 
     private void OnData(string? topic, JsonNode? msg)
     {
@@ -84,35 +82,11 @@ public sealed partial class RemoteHost
         help.Send(new { type = "media", kind = url is null ? "default" : kind, url, sound = m["sound"]?.GetValue<bool>() == true });
     }
 
-    /// A file from the helper: "file" needs file transfer, "clip-file" the clipboard.
-    private void SaveIncoming(JsonNode? m)
-    {
-        if (m is null || sessionId is null) return;
-        var topic = m["topic"]?.GetValue<string>();
-        if (!perms.Accepts(topic, mode) || (topic == "clip-file" && !clipSync)) { Refuse(topic); return; }
-        var name = Path.GetFileName(m["name"]?.GetValue<string>() ?? "file");
-        // Size cap before decoding (base64 is 4/3 of the bytes), and a bad payload must never take the host down.
-        var data = m["data"]?.GetValue<string>() ?? "";
-        if (data.Length > MaxIncomingBytes / 3 * 4 + 4) { Log.Warn("remote", $"refused {topic} {name}: over {MaxIncomingBytes / 1048576} MB"); return; }
-        byte[] bytes;
-        try { bytes = Convert.FromBase64String(data); }
-        catch (FormatException) { Log.Warn("remote", $"refused {topic} {name}: not base64"); return; }
-        try
-        {
-            if (topic == "clip-file") { Clip.SetFile(name, bytes); return; }
-            Downloads.Save(name, bytes);
-        }
-        catch (Exception ex) { Log.Warn("remote", $"couldn't save {name}: {ex.GetType().Name}"); return; }
-        files.Add(name);
-        balloon("File from ICT", $"{name} was saved to Downloads.", ToolTipIcon.Info);
-    }
-
     /// The user copied something while sync is on (and the clipboard is allowed): send it to the helper.
     internal void ClipboardChanged(JsonNode payload, bool isFile, string? name, byte[]? fileBytes)
     {
         if (sessionId is null || !clipSync || !perms.Clipboard || page is null) return;
-        if (isFile && name is not null && fileBytes is not null)
-            page.Send(new { type = "sendFile", topic = "clip-file", id = Guid.NewGuid().ToString("N"), name, mime = "application/octet-stream", data = Convert.ToBase64String(fileBytes) });
-        else page.Send(new { type = "send", topic = "clip", msg = payload });
+        if (isFile && name is not null) SendPath(name, "clip-file"); // a copied file: streamed from disk, never read whole
+        else if (!isFile) page.Send(new { type = "send", topic = "clip", msg = payload });
     }
 }
