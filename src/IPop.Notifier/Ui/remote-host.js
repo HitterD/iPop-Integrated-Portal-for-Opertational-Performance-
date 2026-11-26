@@ -31,8 +31,12 @@
   R.onPeer = (p, joined) => post({ type: 'peer', identity: p.identity, name: p.name, joined });
   R.onDisconnected = reason => post({ type: 'disconnected', reason: String(reason ?? '') });
   R.onReconnecting = on => post({ type: 'reconnecting', on });
+  // Files over 200 MB are refused before reading them into memory (the app refuses them again before saving).
+  const MAX = 200 * 1024 * 1024;
   const receive = topic => async (reader, from) => {
+    if ((reader.info.size || 0) > MAX) { post({ type: 'log', text: `refused ${topic} ${reader.info.name}: ${reader.info.size} bytes` }); return; }
     const bytes = await R.readAll(reader);
+    if (bytes.length > MAX) return;
     post({ type: 'file', topic, name: reader.info.name, mime: reader.info.mimeType, from: from?.identity || '', data: R.b64(bytes) });
   };
   R.onFile = receive('file');

@@ -13,7 +13,8 @@ public sealed partial class NotifierApp
     private readonly Dictionary<Guid, IPop.Notifier.Remote.ViewerWindow> viewers = [];
     private RemoteBookWindow? remoteBook;
     private RemotePasswordWindow? passwordWindow;
-    /// Passwords "remembered for this session" (in memory only, per remote ID; gone when the app quits or signs out).
+    /// Passwords "remembered for this session" (in memory only, per PC). Kept only while that PC's viewer is open:
+    /// dropped when its session ends or its window closes (review PR #5), and on sign-out.
     private readonly Dictionary<string, string> rememberedPasswords = [];
     private bool remoteActive;
 
@@ -26,7 +27,7 @@ public sealed partial class NotifierApp
             case "remoteRequest": remoteHost.OnRequest(n, api.Session?.DeviceKey ?? ""); break;
             case "remoteAnswer": if (viewers.TryGetValue(id, out var v)) v.Answer(n["status"]?.GetValue<string>() ?? ""); break;
             case "remoteEnded":
-                if (viewers.TryGetValue(id, out var w)) w.Ended(n["endedBy"]?.GetValue<string>());
+                if (viewers.TryGetValue(id, out var w)) { w.Ended(n["endedBy"]?.GetValue<string>()); rememberedPasswords.Clear(); }
                 remoteHost.OnEnded(n);
                 break;
         }
@@ -130,7 +131,9 @@ public sealed partial class NotifierApp
             type = "start", sessionId = id, status = body["status"]?.GetValue<string>(), machine = body["machine"]?.GetValue<string>() ?? target ?? "Remote help",
             user = body["user"]?.GetValue<string>() ?? "", remoteId = body["remoteId"]?.GetValue<string>(), problem,
         });
+        var key = deviceId?.ToString() ?? target ?? "";
         if (id != Guid.Empty) { viewers[id] = v; v.FormClosed += (_, _) => viewers.Remove(id); }
+        v.FormClosed += (_, _) => rememberedPasswords.Remove(key);
         v.RetryRequested += () => { v.Close(); _ = ConnectAsync(deviceId, target, mode, null, askUser: false); };
         v.Show();
     }

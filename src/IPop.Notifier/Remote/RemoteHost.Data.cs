@@ -9,6 +9,8 @@ namespace IPop.Notifier.Remote;
 public sealed partial class RemoteHost
 {
     private int refusedData;
+    /// Largest file the helper can send (same as the clipboard's 200 MB file limit).
+    private const long MaxIncomingBytes = 200L * 1024 * 1024;
 
     private void OnData(string? topic, JsonNode? msg)
     {
@@ -73,9 +75,10 @@ public sealed partial class RemoteHost
         var kind = m["kind"]?.GetValue<string>() ?? "default";
         var id = m["id"]?.GetValue<string>();
         string? url = null;
-        if (kind != "default" && Guid.TryParse(id, out var att))
+        if (kind != "default" && Guid.TryParse(id, out var att) && sessionId is { } sid)
         {
-            var bytes = await api.GetBytesAsync($"api/attachments/{att}");
+            // Only this session's helper's own "My media" (the server checks owner + active session; review PR #5).
+            var bytes = await api.GetBytesAsync($"api/notifier/remote/sessions/{sid}/media/{att}");
             if (bytes is { Length: > 0 }) url = await help.PutMediaAsync(bytes, kind == "video" ? "video/mp4" : "image/jpeg");
         }
         help.Send(new { type = "media", kind = url is null ? "default" : kind, url, sound = m["sound"]?.GetValue<bool>() == true });
@@ -88,9 +91,18 @@ public sealed partial class RemoteHost
         var topic = m["topic"]?.GetValue<string>();
         if (!perms.Accepts(topic, mode) || (topic == "clip-file" && !clipSync)) { Refuse(topic); return; }
         var name = Path.GetFileName(m["name"]?.GetValue<string>() ?? "file");
-        var bytes = Convert.FromBase64String(m["data"]?.GetValue<string>() ?? "");
-        if (topic == "clip-file") { Clip.SetFile(name, bytes); return; }
-        Downloads.Save(name, bytes);
+        // Size cap before decoding (base64 is 4/3 of the bytes), and a bad payload must never take the host down.
+        var data = m["data"]?.GetValue<string>() ?? "";
+        if (data.Length > MaxIncomingBytes / 3 * 4 + 4) { Log.Warn("remote", $"refused {topic} {name}: over {MaxIncomingBytes / 1048576} MB"); return; }
+        byte[] bytes;
+        try { bytes = Convert.FromBase64String(data); }
+        catch (FormatException) { Log.Warn("remote", $"refused {topic} {name}: not base64"); return; }
+        try
+        {
+            if (topic == "clip-file") { Clip.SetFile(name, bytes); return; }
+            Downloads.Save(name, bytes);
+        }
+        catch (Exception ex) { Log.Warn("remote", $"couldn't save {name}: {ex.GetType().Name}"); return; }
         files.Add(name);
         balloon("File from ICT", $"{name} was saved to Downloads.", ToolTipIcon.Info);
     }
