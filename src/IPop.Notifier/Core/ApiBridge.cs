@@ -50,6 +50,8 @@ public static partial class ApiBridge
         ("POST", R($"^api/chat/rooms/{G}/messages$")),
         ("POST", R($"^api/notifications/v1/notifications/{G}/(read|unread|snooze|unsnooze|acknowledge)$")),
         ("POST", R("^api/notifications/v1/inbox/read-all$")),
+        // Many at once (a thread, Mark all read on a filtered view): one call instead of one per notification.
+        ("POST", R("^api/notifications/v1/notifications/bulk-read$")),
         ("POST", R("^api/notifications/v1/read-by-target$")),
     ];
 

@@ -504,13 +504,14 @@ public static class NotificationGatewayEndpoints
         // of their NotificationDelivery rows). Filtered by module type + read status,
         // paginated, newest first. This backs /notifications/inbox in Blazor.
         // ────────────────────────────────────────────────────────────────────────
-        v1.MapGet("/inbox", async (string? type, string? status, int? page, int? pageSize, string? category, string? q,
+        // summary=false (the Notifier): only the page and its total, no unread / per-category / snoozed counts.
+        v1.MapGet("/inbox", async (string? type, string? status, int? page, int? pageSize, string? category, string? q, bool? summary,
             HttpContext http, IPopDbContext db, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
 
-            var result = await ListInboxCore(db, userId.Value, type, status, page ?? 1, pageSize ?? 20, ct, category, q);
+            var result = await ListInboxCore(db, userId.Value, type, status, page ?? 1, pageSize ?? 20, ct, category, q, summary ?? true);
             return Results.Ok(result);
         }).RequireAuthorization();
 
@@ -592,7 +593,7 @@ public static class NotificationGatewayEndpoints
     /// </summary>
     internal static async Task<InboxListResult> ListInboxCore(
         IPopDbContext db, Guid userId, string? type, string? status, int page, int pageSize, CancellationToken ct,
-        string? category = null, string? search = null)
+        string? category = null, string? search = null, bool summary = true)
     {
         var p = Math.Max(1, page);
         var size = Math.Clamp(pageSize, 1, 100);
@@ -600,15 +601,9 @@ public static class NotificationGatewayEndpoints
         var q = db.NotificationDeliveries.AsNoTracking()
             .Where(d => d.UserId == userId);
 
-        // Category (NotificationCategory.Of) is decided in code from event type + link, so pick the matching rows by id.
+        // Category: NotificationCategory.Of as one SQL CASE (NotificationCategorySql), never every delivery in memory.
         if (!string.IsNullOrWhiteSpace(category) && NotificationCategory.All.Contains(category.Trim().ToLowerInvariant()))
-        {
-            var cat = category.Trim().ToLowerInvariant();
-            var ids = (await db.NotificationDeliveries.AsNoTracking().Where(d => d.UserId == userId)
-                    .Select(d => new { d.Id, d.Request.EventType, d.Request.TargetUrl }).ToListAsync(ct))
-                .Where(r => NotificationCategory.Of(r.EventType, r.TargetUrl) == cat).Select(r => r.Id).ToList();
-            q = q.Where(d => ids.Contains(d.Id));
-        }
+            q = q.Where(NotificationCategorySql.Is(category.Trim().ToLowerInvariant()));
         if (!string.IsNullOrWhiteSpace(search))
         {
             var term = search.Trim().ToLowerInvariant();
@@ -651,7 +646,7 @@ public static class NotificationGatewayEndpoints
         }
 
         var total = await q.CountAsync(ct);
-        var unread = await db.NotificationDeliveries.AsNoTracking()
+        var unread = !summary ? 0 : await db.NotificationDeliveries.AsNoTracking()
             .CountAsync(d => d.UserId == userId &&
                 d.Status != NotificationStatus.Read &&
                 d.Status != NotificationStatus.Acknowledged &&
@@ -684,14 +679,13 @@ public static class NotificationGatewayEndpoints
         var actorNames = actorIds.Count == 0 ? new Dictionary<Guid, string>()
             : await db.Users.AsNoTracking().Where(u => actorIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.Name, ct);
 
-        // Unread per category (snoozed excluded) for the page's sidebar: the list itself is paged.
-        var unreadRows = await db.NotificationDeliveries.AsNoTracking()
+        // Unread per category (snoozed excluded) for the page's sidebar: the list itself is paged. Grouped in SQL.
+        var byCategory = !summary ? null : (await db.NotificationDeliveries.AsNoTracking()
             .Where(d => d.UserId == userId && d.Status != NotificationStatus.Read && d.Status != NotificationStatus.Acknowledged
                 && (d.SnoozedUntil == null || d.SnoozedUntil <= now))
-            .Select(d => new { d.Request.EventType, d.Request.TargetUrl }).ToListAsync(ct);
-        var byCategory = unreadRows.GroupBy(r => NotificationCategory.Of(r.EventType, r.TargetUrl))
-            .ToDictionary(g => g.Key, g => g.Count());
-        var snoozedCount = await db.NotificationDeliveries.AsNoTracking()
+            .Select(NotificationCategorySql.Of).GroupBy(c => c).Select(g => new { g.Key, Count = g.Count() }).ToListAsync(ct))
+            .ToDictionary(g => g.Key, g => g.Count);
+        var snoozedCount = !summary ? 0 : await db.NotificationDeliveries.AsNoTracking()
             .CountAsync(d => d.UserId == userId && d.SnoozedUntil != null && d.SnoozedUntil > now, ct);
 
         var items = rows.Select(r => new InboxItemRow(

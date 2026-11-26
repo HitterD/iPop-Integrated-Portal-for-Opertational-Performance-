@@ -19,6 +19,10 @@ public sealed partial class NotifierApp : ApplicationContext
     private readonly NotifyIcon tray;
     private readonly Control ui = new();
     private readonly System.Windows.Forms.Timer tick = new() { Interval = 5000 };
+    /// Bursts (a thread or "Mark all read" echoes one "changed" per call, new notifications arrive together): the
+    /// unread counts and the open Inbox reload once, ~500 ms after the last trigger (review M2).
+    private readonly System.Windows.Forms.Timer unreadSoon = new() { Interval = 500 };
+    private readonly System.Windows.Forms.Timer inboxSoon = new() { Interval = 500 };
     private CancellationTokenSource session = new();
     private Feed? feed;
     private InboxWindow? inbox;
@@ -50,7 +54,7 @@ public sealed partial class NotifierApp : ApplicationContext
         device = new DeviceReporter(api);
         leaders = new Leaders(api);
         popups = new PopupManager(api, settings, state, device, leaders) { PageContext = PageContext };
-        leaders.Changed += () => Post(() => { popups.RefreshContext(); _ = RefreshUnreadAsync(); });
+        leaders.Changed += () => Post(() => { popups.RefreshContext(); RefreshUnreadSoon(); });
         BridgedWindow.PreviewRequested += (files, index) => Post(() => ShowViewer(files, index));
         api.SignedOut += () => Post(OnSignedOut);
         api.BeforeSessionChanged = TeardownSessionAsync;
@@ -73,7 +77,7 @@ public sealed partial class NotifierApp : ApplicationContext
             // Tiers or VIPs may have changed: open windows and the counts follow, and the VIP names reload.
             popups.RefreshContext();
             if (!api.IsSignedIn || session.IsCancellationRequested) return;
-            _ = RefreshUnreadAsync();
+            RefreshUnreadSoon();
             _ = leaders.LoadAsync(session.Token);
         });
 
@@ -115,6 +119,8 @@ public sealed partial class NotifierApp : ApplicationContext
                 _ = leaders.LoadAsync(session.Token);
         };
         tick.Start();
+        unreadSoon.Tick += (_, _) => { unreadSoon.Stop(); _ = RefreshUnreadAsync(); };
+        inboxSoon.Tick += (_, _) => { inboxSoon.Stop(); if (inbox is { IsDisposed: false, Visible: true }) inbox.Refresh(); };
 
         if (api.IsSignedIn) _ = StartSessionAsync();
         // Started by Windows (Run key): open iPop too, once, when this PC wants it (IPopAppLauncher).
@@ -152,10 +158,10 @@ public sealed partial class NotifierApp : ApplicationContext
         if (ct.IsCancellationRequested || generation != api.Generation || !api.IsSignedIn) return;
         _ = device.RunAsync(ct);
         feed = new Feed(api, state);
-        feed.Received += n => Post(() => { if (generation != api.Generation || ct.IsCancellationRequested) return; popups.Show(n); _ = RefreshUnreadAsync(); });
-        feed.Backlog += items => Post(() => { if (generation != api.Generation || ct.IsCancellationRequested) return; popups.ShowBacklog(items); _ = RefreshUnreadAsync(); });
-        feed.TicketChatRead += refs => Post(() => { foreach (var r in refs) Toasts.RemoveTicket(r); _ = RefreshUnreadAsync(); });
-        feed.ReadElsewhere += () => _ = RefreshUnreadAsync();
+        feed.Received += n => Post(() => { if (generation != api.Generation || ct.IsCancellationRequested) return; popups.Show(n); RefreshUnreadSoon(); });
+        feed.Backlog += items => Post(() => { if (generation != api.Generation || ct.IsCancellationRequested) return; popups.ShowBacklog(items); RefreshUnreadSoon(); });
+        feed.TicketChatRead += refs => Post(() => { foreach (var r in refs) Toasts.RemoveTicket(r); RefreshUnreadSoon(); });
+        feed.ReadElsewhere += () => Post(RefreshUnreadSoon);
         feed.ChatToast += t => Post(() => { if (generation == api.Generation && !ct.IsCancellationRequested) OnChatToast(t); });
         feed.Remote += (ev, n) => Post(() => { if (generation == api.Generation && !ct.IsCancellationRequested) OnRemote(ev, n); });
         feed.ReleasePublished += OnReleasePublished;
@@ -259,6 +265,9 @@ public sealed partial class NotifierApp : ApplicationContext
 
     /// Unread count from the server, and how many unread threads need action (the Inbox's rule, InboxThreads): the
     /// newest 100 unread, classified here with the settings and leaders (the server doesn't know the person's tiers).
+    /// Restarts the 500 ms wait (UI thread): many triggers in a row = one reload.
+    private void RefreshUnreadSoon() { unreadSoon.Stop(); unreadSoon.Start(); }
+
     private async Task RefreshUnreadAsync()
     {
         var n = await api.GetJsonAsync("api/notifications/v1/unread-count");
@@ -396,7 +405,7 @@ public sealed partial class NotifierApp : ApplicationContext
         var old = tray.Icon;
         tray.Icon = remoteActive ? AppIcon.Remote : AppIcon.Tray(count > 0);
         if (old is not null && old != AppIcon.Icon && old != tray.Icon) old.Dispose();
-        if (inbox is { IsDisposed: false, Visible: true }) inbox.Refresh();
+        if (inbox is { IsDisposed: false, Visible: true }) { inboxSoon.Stop(); inboxSoon.Start(); }
     }
 
     /// What the pages may know to classify (1.5.0): effective tiers per kind, leaders (id, name, department, reason)

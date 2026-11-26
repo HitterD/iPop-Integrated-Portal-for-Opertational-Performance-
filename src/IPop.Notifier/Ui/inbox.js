@@ -113,7 +113,7 @@
     if (loading) return; loading = true;
     if (!loaded) skeleton();
     const p = more ? page + 1 : 1;
-    const r = await api('GET', `api/notifications/v1/inbox?page=${p}&pageSize=${PAGE}`);
+    const r = await api('GET', `api/notifications/v1/inbox?page=${p}&pageSize=${PAGE}&summary=false`);
     loading = false;
     if (!r.ok) {
       if (!loaded) { failed = true; drawAll(); }
@@ -278,9 +278,16 @@
     if (!ids.length) return [];
     const apply = v => { t.items.forEach(x => { if (ids.includes(x.id)) x.isRead = v; }); t.unread = t.items.some(x => !x.isRead); paintRead(t); };
     apply(read);
-    const res = await Promise.all(ids.map(id => api('POST', `api/notifications/v1/notifications/${id}/${read ? 'read' : 'unread'}`)));
+    // Read: one bulk call for the whole thread. Unread: only the newest one (one call).
+    const res = read ? [await bulkRead(ids)] : await Promise.all(ids.map(id => api('POST', `api/notifications/v1/notifications/${id}/unread`)));
     if (res.some(r => !r.ok)) { apply(!read); if (!quiet) F.snack(`${IC('circle-alert')}<span>Couldn't reach iPop — try again</span>`); return []; }
     return ids;
+  }
+  // POST notifications/bulk-read (≤ 500 ids a call): one server round-trip and one "changed" echo per batch.
+  async function bulkRead(ids) {
+    let ok = true;
+    for (let i = 0; i < ids.length; i += 500) ok = (await api('POST', 'api/notifications/v1/notifications/bulk-read', { requestIds: ids.slice(i, i + 500) })).ok && ok;
+    return { ok };
   }
   async function toggleRead(t) {
     const read = t.unread;
@@ -291,7 +298,8 @@
   async function undoRead(t, ids, wasRead) {
     t.items.forEach(x => { if (ids.includes(x.id)) x.isRead = !wasRead; });
     t.unread = t.items.some(x => !x.isRead); paintRead(t);
-    await Promise.all(ids.map(id => api('POST', `api/notifications/v1/notifications/${id}/${wasRead ? 'unread' : 'read'}`)));
+    if (wasRead) await Promise.all(ids.map(id => api('POST', `api/notifications/v1/notifications/${id}/unread`)));
+    else await bulkRead(ids);
   }
   function collapse(el) {
     return new Promise(res => {
@@ -330,7 +338,7 @@
     todo.forEach((t, k) => setTimeout(() => { t.items.forEach(x => x.isRead = true); t.unread = false; paintRead(t); }, rm() ? 0 : Math.min(k, 20) * 55));
     const ids = [...before.values()].flat();
     const ok = everything ? (await api('POST', 'api/notifications/v1/inbox/read-all')).ok
-      : (await Promise.all(ids.map(id => api('POST', `api/notifications/v1/notifications/${id}/read`)))).every(r => r.ok);
+      : (await bulkRead(ids)).ok;
     setTimeout(() => {
       if (!ok) { F.snack(`${IC('circle-alert')}<span>Some couldn't be marked — try again</span>`); load(false); return; }
       F.snack(`${CHECK}<span><b>${todo.length}</b> marked as read</span>`, [['Undo', async () => {
