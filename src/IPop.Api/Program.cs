@@ -284,6 +284,7 @@ builder.Services.AddScoped<IChatNotifier, ChatNotifier>();
 builder.Services.AddScoped<IStickerService, IPop.Infrastructure.Chat.StickerService>();
 builder.Services.AddScoped<INotificationGateway, NotificationGateway>();
 builder.Services.AddHostedService<ChatAttachmentGcWorker>();
+builder.Services.AddHostedService<IPop.Api.Notifier.RemoteSweepWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Mail.MailAttachmentGcWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Notes.NotesTrashWorker>();
 if (outboundWorkers) builder.Services.AddHostedService<IPop.Infrastructure.Notes.NotesReminderWorker>();
@@ -654,6 +655,7 @@ app.MapUiPrefs();
 app.MapNotifier();
 app.MapRemote();
 app.MapRemoteMachines();
+app.MapRemoteAdmin();
 IPop.Api.Notifier.NotifierLinkEndpoints.MapNotifierLink(app);
 if (IPop.Api.Sso.SsoSetup.Enabled(app.Configuration))
 {

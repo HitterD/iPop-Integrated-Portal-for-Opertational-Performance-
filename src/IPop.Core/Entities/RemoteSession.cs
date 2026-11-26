@@ -18,6 +18,8 @@ public class RemoteSession
     /// The PC is marked unattended by Admin: no prompt was shown.
     public bool Unattended { get; set; }
     public DateTime RequestedAt { get; set; }
+    /// How long the user had to answer (company policy at request time); 0 = the old fixed 30 s.
+    public int AskSeconds { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime? EndedAt { get; set; }
     /// The user's PC confirms every 30 s that it is still sharing. A session that stopped confirming (PC crashed,

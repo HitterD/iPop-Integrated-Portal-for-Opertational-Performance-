@@ -13,7 +13,8 @@ public record RemoteFavouriteRequest(bool On);
 
 /// One row of the Remote window (address book): a physical PC with its remote ID, the person on it now, and online.
 public record RemoteBookRow(Guid DeviceId, Guid? MachineId, string MachineName, string? RemoteId, string UserName, string? Ip,
-    bool Online, DateTime LastSeenAt, bool Unattended, bool Favourite, DateTime? LastConnectedAt, bool Laptop);
+    bool Online, DateTime LastSeenAt, bool Unattended, bool Favourite, DateTime? LastConnectedAt, bool Laptop,
+    string? Alias = null, string? Group = null, bool Excluded = false, string? BusyBy = null);
 
 /// BIGIS #8 phase 1a — per-PC remote ID, the Remote window's address book (favourites + recent), and the Admin's
 /// unattended password (hash only; never returned).
@@ -46,15 +47,17 @@ public static class RemoteMachineEndpoints
         });
 
         g.MapPut("/machines/{id:guid}/password", async (Guid id, RemotePasswordRequest req, HttpContext http, IPopDbContext db, IPasswordHasher hasher,
-            IHubContext<IPop.Api.Notifications.NotificationHub> hub, IPop.Infrastructure.Calls.ILiveKitRoomAdmin liveKit, ILogger<RemoteMachine> log, CancellationToken ct) =>
+            IPop.Application.Settings.ISettings settings, IHubContext<IPop.Api.Notifications.NotificationHub> hub, IPop.Infrastructure.Calls.ILiveKitRoomAdmin liveKit, ILogger<RemoteMachine> log, CancellationToken ct) =>
         {
             if (!http.User.IsInRole("Admin")) return Results.Forbid();
             var me = await RemoteEndpoints.Me(http, db, ct);
             if (me is null) return Results.Unauthorized();
-            if (RemoteAccess.CheckNewPassword(req.Password) is { } why) return Results.BadRequest(new { message = why });
+            var policy = await RemotePolicyStore.GetAsync(settings, ct);
+            if (RemoteAccess.CheckNewPassword(req.Password, policy.MinPassword) is { } why) return Results.BadRequest(new { message = why });
             var m = await db.RemoteMachines.FirstOrDefaultAsync(x => x.Id == id, ct);
             if (m is null) return Results.NotFound();
             var revoked = await RemoteAccess.SetPasswordAsync(db, m, req.Password!, me.Value.Id, hasher, DateTime.UtcNow, ct);
+            RemoteAudit.Add(db, m.Id, me.Value.Id, "Unattended password changed", DateTime.UtcNow);
             await db.SaveChangesAsync(ct);
             await TellRevokedAsync(hub, liveKit, log, revoked, ct);
             log.LogInformation("Remote help: {Admin} set the unattended password on {Machine} ({RemoteId}); {Count} session(s) revoked.",
@@ -71,6 +74,7 @@ public static class RemoteMachineEndpoints
             var m = await db.RemoteMachines.FirstOrDefaultAsync(x => x.Id == id, ct);
             if (m is null) return Results.NotFound();
             var revoked = await RemoteAccess.RemoveAsync(db, m, me.Value.Id, DateTime.UtcNow, ct);
+            RemoteAudit.Add(db, m.Id, me.Value.Id, "Unattended access removed", DateTime.UtcNow);
             await db.SaveChangesAsync(ct);
             await TellRevokedAsync(hub, liveKit, log, revoked, ct);
             log.LogInformation("Remote help: {Admin} removed unattended access on {Machine} ({RemoteId}).", http.User.FindFirstValue("nik"), m.ComputerName, m.ConnectId);
@@ -104,8 +108,14 @@ public static class RemoteMachineEndpoints
         var since = now - NotifierDevice.OnlineWindow;
         var devices = await db.NotifierDevices.AsNoTracking().OrderByDescending(d => d.LastSeenAt).Take(2000)
             .Select(d => new { d.Id, d.MachineId, d.MachineName, d.LastSeenAt, d.LocalIps, d.RemoteIp, d.OsVersion, User = d.User.Name,
-                RemoteId = d.Machine != null ? d.Machine.ConnectId : null, Ua = d.Machine != null && d.Machine.Unattended && d.Machine.PasswordHash != null })
+                RemoteId = d.Machine != null ? d.Machine.ConnectId : null, Ua = d.Machine != null && d.Machine.Unattended && d.Machine.PasswordHash != null,
+                Alias = d.Machine != null ? d.Machine.Alias : null, Group = d.Machine != null && d.Machine.Group != null ? d.Machine.Group : d.User.Department != null ? d.User.Department.Name : null,
+                Excluded = d.Machine != null && d.Machine.Excluded })
             .ToListAsync(ct);
+        // Who is helping which PC now ("IN SESSION"; Connect then offers Join view-only).
+        var alive = now - RemoteEndpoints.AliveWindow;
+        var busy = await db.RemoteSessions.AsNoTracking().Where(s => s.Status == "active" && (s.AliveAt ?? s.StartedAt) > alive && s.Device.MachineId != null)
+            .Select(s => new { s.Device.MachineId, s.Helper.Name }).ToListAsync(ct);
         var favs = await FavouritesAsync(db, me, ct);
         var recent = await db.RemoteSessions.AsNoTracking().Where(s => s.HelperId == me && s.Device.MachineId != null)
             .GroupBy(s => s.Device.MachineId).Select(x => new { Id = x.Key!.Value, At = x.Max(s => s.RequestedAt) })
@@ -113,7 +123,8 @@ public static class RemoteMachineEndpoints
         var rows = devices.GroupBy(d => d.MachineId ?? d.Id).Select(x => x.First()).Take(500).Select(d => new RemoteBookRow(
             d.Id, d.MachineId, d.MachineName, d.RemoteId, d.User, (d.LocalIps ?? "").Split(',')[0].Trim() is { Length: > 0 } ip ? ip : d.RemoteIp,
             d.LastSeenAt >= since, d.LastSeenAt, d.Ua, d.MachineId is { } m && favs.Contains(m),
-            recent.FirstOrDefault(r => r.Id == d.MachineId)?.At, (d.OsVersion ?? "").Contains("Laptop"))).ToList();
+            recent.FirstOrDefault(r => r.Id == d.MachineId)?.At, (d.OsVersion ?? "").Contains("Laptop"),
+            d.Alias, d.Group, d.Excluded, busy.FirstOrDefault(b => b.MachineId == d.MachineId)?.Name)).ToList();
         return new { rows, recent = recent.Select(r => r.Id), notInstalled = Array.Empty<object>() };
     }
 

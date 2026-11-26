@@ -31,6 +31,20 @@ public class RemoteMachine
     public DateTime? LockedUntil { get; set; }
     public DateTime CreatedAt { get; set; }
 
+    // ── Admin settings per PC (Devices, BIGIS #8 v3) ──
+    /// Shown instead of the computer name ("Lobby kiosk"); null = the computer name.
+    public string? Alias { get; set; }
+    /// Group tab in Remote; null = the department of the person seen last on the PC.
+    public string? Group { get; set; }
+    /// Unattended still shows the user an Allow prompt (the password is needed too).
+    public bool AlwaysAsk { get; set; }
+    /// What ICT may do unattended ("control,clipboard,files"); null = everything the PC allows.
+    public string? UnattendedPermissions { get; set; }
+    /// The most the user can allow on this PC; null = everything.
+    public string? AllowedPermissions { get; set; }
+    /// Nobody may connect to this PC, not even Admins.
+    public bool Excluded { get; set; }
+
     /// Unattended access is on only with the Admin switch and a password.
     public bool UnattendedActive => Unattended && PasswordHash is not null;
 }

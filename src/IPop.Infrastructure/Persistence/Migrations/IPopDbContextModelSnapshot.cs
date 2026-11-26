@@ -4133,6 +4133,10 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<string>("Monitors")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("OsVersion")
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
@@ -5621,6 +5625,35 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("PushSubscriptions");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.RemoteAuditEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ActorId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("MachineId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("What")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("At");
+
+                    b.HasIndex("MachineId", "At");
+
+                    b.ToTable("RemoteAuditEntries", (string)null);
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.RemoteHelperBlock", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -5643,6 +5676,17 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Alias")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("AllowedPermissions")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<bool>("AlwaysAsk")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("ComputerName")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -5656,8 +5700,15 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("Excluded")
+                        .HasColumnType("boolean");
+
                     b.Property<int>("FailedCount")
                         .HasColumnType("integer");
+
+                    b.Property<string>("Group")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
 
                     b.Property<DateTime?>("LockedUntil")
                         .HasColumnType("timestamp with time zone");
@@ -5679,6 +5730,10 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("Unattended")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("UnattendedPermissions")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.HasKey("Id");
 
@@ -5734,6 +5789,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime?>("AliveAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("AskSeconds")
+                        .HasColumnType("integer");
 
                     b.Property<Guid>("DeviceId")
                         .HasColumnType("uuid");
@@ -8790,6 +8848,15 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.RemoteAuditEntry", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.RemoteMachine", null)
+                        .WithMany()
+                        .HasForeignKey("MachineId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.RemoteHelperBlock", b =>

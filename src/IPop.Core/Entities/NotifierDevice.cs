@@ -29,6 +29,8 @@ public class NotifierDevice
     public Guid? MachineId { get; set; }
     /// The optional admin-installed helper service runs on this PC (UAC, lock screen, Ctrl+Alt+Del).
     public bool HelperService { get; set; }
+    /// Monitors the app reports ("1920×1080 + 1366×768"), for Devices.
+    public string? Monitors { get; set; }
     public DateTime FirstSeenAt { get; set; }
     public DateTime LastSeenAt { get; set; }
 

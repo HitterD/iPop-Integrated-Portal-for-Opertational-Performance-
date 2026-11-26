@@ -14,13 +14,18 @@ public static class RemoteAccess
 
     public enum Check { Ok, Wrong, Locked, NotSet }
 
-    public sealed record Outcome(Check Check, int TriesLeft, DateTime? LockedUntil);
+    public sealed record Outcome(Check Check, int TriesLeft, DateTime? LockedUntil)
+    {
+        /// This very attempt set the lock (exactly one request does).
+        public bool JustLocked { get; init; }
+    }
 
     /// Ok resets the counter; Wrong counts and locks on the fifth; Locked while the lock runs (the password is not
     /// even checked then, so guessing during a lock teaches nothing).
     /// Every change is one conditional UPDATE on the row (review PR #5): parallel wrong guesses each count, and only
     /// one of them sets the lock — no read-increment-save that two requests could both base on the same count.
-    public static async Task<Outcome> VerifyAsync(IPopDbContext db, Guid machineId, string? password, IPasswordHasher hasher, DateTime now, CancellationToken ct)
+    public static async Task<Outcome> VerifyAsync(IPopDbContext db, Guid machineId, string? password, IPasswordHasher hasher, DateTime now, CancellationToken ct,
+        int maxFailed = RemoteMachine.MaxFailedPasswords, TimeSpan? lockFor = null)
     {
         var m = await db.RemoteMachines.AsNoTracking().Where(x => x.Id == machineId)
             .Select(x => new { x.Unattended, x.PasswordHash, x.LockedUntil }).FirstOrDefaultAsync(ct);
@@ -35,28 +40,28 @@ public static class RemoteAccess
             // Only if nobody locked it meanwhile.
             var reset = await db.RemoteMachines.Where(x => x.Id == machineId && x.LockedUntil == null)
                 .ExecuteUpdateAsync(s => s.SetProperty(x => x.FailedCount, 0), ct);
-            return reset == 1 ? new(Check.Ok, RemoteMachine.MaxFailedPasswords, null) : await LockedAsync(db, machineId, ct);
+            return reset == 1 ? new(Check.Ok, maxFailed, null) : await LockedAsync(db, machineId, ct);
         }
         var counted = await db.RemoteMachines.Where(x => x.Id == machineId && x.LockedUntil == null)
             .ExecuteUpdateAsync(s => s.SetProperty(x => x.FailedCount, x => x.FailedCount + 1), ct);
         if (counted == 0) return await LockedAsync(db, machineId, ct);
-        var until = now + RemoteMachine.LockFor;
-        var locked = await db.RemoteMachines.Where(x => x.Id == machineId && x.LockedUntil == null && x.FailedCount >= RemoteMachine.MaxFailedPasswords)
+        var until = now + (lockFor ?? RemoteMachine.LockFor);
+        var locked = await db.RemoteMachines.Where(x => x.Id == machineId && x.LockedUntil == null && x.FailedCount >= maxFailed)
             .ExecuteUpdateAsync(s => s.SetProperty(x => x.LockedUntil, until).SetProperty(x => x.FailedCount, 0), ct);
-        if (locked == 1) return new(Check.Locked, 0, until);
+        if (locked == 1) return new(Check.Locked, 0, until) { JustLocked = true };
         var after = await db.RemoteMachines.AsNoTracking().Where(x => x.Id == machineId).Select(x => new { x.FailedCount, x.LockedUntil }).FirstAsync(ct);
         return after.LockedUntil > now ? new(Check.Locked, 0, after.LockedUntil)
-            : new(Check.Wrong, Math.Max(0, RemoteMachine.MaxFailedPasswords - after.FailedCount), null);
+            : new(Check.Wrong, Math.Max(0, maxFailed - after.FailedCount), null);
     }
 
     private static async Task<Outcome> LockedAsync(IPopDbContext db, Guid machineId, CancellationToken ct) =>
         new(Check.Locked, 0, await db.RemoteMachines.AsNoTracking().Where(x => x.Id == machineId).Select(x => x.LockedUntil).FirstOrDefaultAsync(ct));
 
-    public static int TriesLeft(RemoteMachine m) => Math.Max(0, RemoteMachine.MaxFailedPasswords - m.FailedCount);
+    public static int TriesLeft(RemoteMachine m, int maxFailed = RemoteMachine.MaxFailedPasswords) => Math.Max(0, maxFailed - m.FailedCount);
 
     /// Null when fine, else the message for the Administrator.
-    public static string? CheckNewPassword(string? password) =>
-        string.IsNullOrEmpty(password) || password.Length < RemoteMachine.MinPasswordLength ? $"Use at least {RemoteMachine.MinPasswordLength} characters."
+    public static string? CheckNewPassword(string? password, int min = RemoteMachine.MinPasswordLength) =>
+        string.IsNullOrEmpty(password) || password.Length < min ? $"Use at least {min} characters."
         : password.Length > 128 ? "Use 128 characters or fewer."
         : null;
 

@@ -3,6 +3,7 @@ using IPop.Api.Notifier;
 using IPop.Application.Attachments;
 using IPop.Application.Auth;
 using IPop.Application.Calls;
+using IPop.Application.Notifier;
 using IPop.Core.Entities;
 using IPop.Infrastructure.Persistence;
 using Microsoft.AspNetCore.SignalR;
@@ -11,9 +12,10 @@ using Microsoft.EntityFrameworkCore;
 namespace IPop.Api.Endpoints;
 
 public record RemoteStartRequest(Guid? DeviceId, string? Mode, string? Target = null, string? Password = null, bool? AskUser = null,
-    string? FromMachine = null);
+    string? FromMachine = null, bool? JoinViewOnly = null);
 public record RemoteAnswerRequest(bool Allow, IReadOnlyList<string>? Permissions = null);
-public record RemoteEndRequest(string? Files);
+/// Reason "lost" = the viewer gave up reconnecting (logged as "Connection lost").
+public record RemoteEndRequest(string? Files, string? Reason = null);
 public record RemoteUnattendedRequest(bool Unattended);
 public record RemoteHelperRequest(bool Allowed);
 
@@ -42,20 +44,27 @@ public static class RemoteEndpoints
         // ICT → ask a PC (by device, 9-digit ID or computer name). Unattended PCs need the access password instead of
         // the prompt; it is checked here (RemoteStart) and every attempt is logged.
         g.MapPost("/sessions", async (RemoteStartRequest req, HttpContext http, IPopDbContext db, ILiveKitTokenService lk, IPasswordHasher hasher,
+            IPop.Application.Settings.ISettings settings, IPop.Application.Notifications.INotificationGatewayService notifs,
             IHubContext<IPop.Api.Notifications.NotificationHub> hub, CancellationToken ct) =>
         {
             var me = await Me(http, db, ct);
             if (me is null) return Results.Unauthorized();
-            if (!await CanHelpAsync(db, me.Value.Id, http.User.IsInRole("Admin"), ct)) return Results.Forbid();
+            if (!await NotifierEndpoints.IsIctOrAdminAsync(db, me.Value.Id, http.User.IsInRole("Admin"), ct)) return Results.Forbid();
+            if (await db.RemoteHelperBlocks.AsNoTracking().AnyAsync(b => b.UserId == me.Value.Id, ct))
+                return Results.Json(new { code = "blocked", title = "Remote help is switched off for you", message = "An Administrator blocked remote help for your account." }, statusCode: 403);
             if (!lk.IsConfigured) return Results.Json(new { message = "Remote help needs LiveKit, which isn't set up on this server." }, statusCode: 503);
             var now = DateTime.UtcNow;
+            var policy = await RemotePolicyStore.GetAsync(settings, ct);
             var r = await RemoteStart.StartAsync(db, hasher, me.Value.Id,
-                new RemoteStart.Request(req.DeviceId, req.Target, req.Mode, req.Password, req.AskUser == true, req.FromMachine), now, ct);
+                new RemoteStart.Request(req.DeviceId, req.Target, req.Mode, req.Password, req.AskUser == true, req.FromMachine), now, ct, policy, req.JoinViewOnly == true);
+            if (r.JustLocked && policy.NotifyAdminOnLock && r.Device is { } locked)
+                await RemoteNotices.PcLockedAsync(notifs, locked.Machine?.Alias ?? locked.MachineName, policy.LockMinutes, ct);
             if (r.Session is not { } session) return Results.Json(r.Body, statusCode: r.Status);
             await hub.Clients.User(r.Device!.UserId.ToString()).SendAsync("remoteRequest", new
             {
                 sessionId = session.Id, deviceKey = r.Device.DeviceKey, helper = me.Value.Name, helperInitials = Initials(me.Value.Name),
-                mode = session.Mode, unattended = session.Unattended, joining = r.Joining, expiresAt = now + AskTimeout,
+                mode = session.Mode, unattended = session.Unattended, joining = r.Joining, expiresAt = now + AskWindow(session), askSeconds = (int)AskWindow(session).TotalSeconds,
+                defaults = policy.DefaultPerms.And(RemotePolicyStore.PcMax(r.Device.Machine)).List, max = RemotePolicyStore.PcMax(r.Device.Machine).List,
                 permissions = session.Permissions, from = Cut(req.FromMachine, 64),
             }, ct);
             return Results.Ok(r.Body);
@@ -67,19 +76,26 @@ public static class RemoteEndpoints
         {
             var me = await Me(http, db, ct);
             if (me is null) return Results.Unauthorized();
-            var s = await db.RemoteSessions.FirstOrDefaultAsync(x => x.Id == id && x.TargetUserId == me.Value.Id, ct);
+            var s = await db.RemoteSessions.Include(x => x.Device).ThenInclude(d => d.Machine).FirstOrDefaultAsync(x => x.Id == id && x.TargetUserId == me.Value.Id, ct);
             if (s is null) return Results.NotFound();
             var status = Answer(s, req.Allow, DateTime.UtcNow);
-            // What the user ticked in the prompt (old Notifiers send nothing = everything, as their prompt said).
+            // What the user ticked in the prompt (old Notifiers send nothing = everything, as their prompt said), never
+            // more than an Administrator allows on this PC.
             if (status == "active" && s.Permissions is null)
-                s.Permissions = RemoteAccess.Permissions(req.Permissions ?? RemoteAccess.AllPermissions.Split(','), s.Mode);
+            {
+                var asked = RemotePerms.Parse(string.Join(',', req.Permissions ?? RemoteAccess.AllPermissions.Split(','))).And(RemotePolicyStore.PcMax(s.Device.Machine));
+                s.Permissions = RemoteAccess.Permissions(asked.List.Split(',', StringSplitOptions.RemoveEmptyEntries), s.Mode);
+            }
             await db.SaveChangesAsync(ct);
             await hub.Clients.User(s.HelperId.ToString()).SendAsync("remoteAnswer", new { sessionId = s.Id, status, permissions = s.Permissions }, ct);
             return Results.Ok(new { status });
         });
 
         // Either side: the LiveKit room + token once the session is active.
-        g.MapGet("/sessions/{id:guid}/join", async (Guid id, HttpContext http, IPopDbContext db, ILiveKitTokenService lk, CancellationToken ct) =>
+        // Also the rejoin path (BIGIS #8 v3): a client whose LiveKit connection dropped asks again for a fresh token while
+        // the session is still "active" (the heartbeat window outlasts the reconnect window).
+        g.MapGet("/sessions/{id:guid}/join", async (Guid id, HttpContext http, IPopDbContext db, ILiveKitTokenService lk,
+            IPop.Application.Settings.ISettings settings, CancellationToken ct) =>
         {
             var me = await Me(http, db, ct);
             if (me is null) return Results.Unauthorized();
@@ -91,8 +107,10 @@ public static class RemoteEndpoints
             var token = lk.GenerateToken(s.Room, (isHost ? "host:" : "helper:") + me.Value.Id, me.Value.Name, TokenLifetime,
                 sources: isHost ? ["screen_share"] : []);
             var remoteId = await db.NotifierDevices.AsNoTracking().Where(d => d.Id == s.DeviceId).Select(d => d.Machine != null ? d.Machine.ConnectId : null).FirstOrDefaultAsync(ct);
+            var p = await RemotePolicyStore.GetAsync(settings, ct);
             return Results.Ok(new { url = lk.PublicUrl, token, room = s.Room, role = isHost ? "host" : "helper", mode = s.Mode,
                 permissions = s.Permissions ?? RemoteAccess.AllPermissions, remoteId, unattended = s.Unattended,
+                maxFileBytes = p.MaxFileBytes, reconnectAttempts = p.ReconnectAttempts, reconnectSeconds = p.ReconnectSeconds, quality = p.Quality,
                 helper = await db.Users.AsNoTracking().Where(u => u.Id == s.HelperId).Select(u => u.Name).FirstAsync(ct) });
         });
 
@@ -132,14 +150,22 @@ public static class RemoteEndpoints
         });
 
         g.MapPost("/sessions/{id:guid}/end", async (Guid id, RemoteEndRequest req, HttpContext http, IPopDbContext db,
-            IHubContext<IPop.Api.Notifications.NotificationHub> hub, IPop.Infrastructure.Calls.ILiveKitRoomAdmin liveKit, ILogger<RemoteSession> log, CancellationToken ct) =>
+            IHubContext<IPop.Api.Notifications.NotificationHub> hub, IPop.Infrastructure.Calls.ILiveKitRoomAdmin liveKit,
+            IPop.Application.Notifications.INotificationGatewayService notifs, ILogger<RemoteSession> log, CancellationToken ct) =>
         {
             var me = await Me(http, db, ct);
             if (me is null) return Results.Unauthorized();
-            var s = await db.RemoteSessions.FirstOrDefaultAsync(x => x.Id == id && (x.HelperId == me.Value.Id || x.TargetUserId == me.Value.Id), ct);
+            var s = await db.RemoteSessions.Include(x => x.Helper).FirstOrDefaultAsync(x => x.Id == id && (x.HelperId == me.Value.Id || x.TargetUserId == me.Value.Id), ct);
             if (s is null) return Results.NotFound();
-            End(s, s.HelperId == me.Value.Id ? "helper" : "user", req.Files, DateTime.UtcNow);
+            var wasActive = s.Status == "active";
+            End(s, s.HelperId == me.Value.Id ? (req.Reason == "lost" ? "lost" : "helper") : "user", req.Files, DateTime.UtcNow);
             await db.SaveChangesAsync(ct);
+            // The user's Inbox gets a short note (who, how long, files); one per session (idempotency key).
+            if (wasActive && s.StartedAt is { } st)
+            {
+                try { await RemoteNotices.SummaryAsync(notifs, s.TargetUserId, s.Helper.Name, s.EndedAt - st, s.Mode, s.Files, s.Id, ct); }
+                catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning(ex, "Remote help: summary for {Session} not sent.", s.Id); }
+            }
             var other = s.HelperId == me.Value.Id ? s.TargetUserId : s.HelperId;
             await hub.Clients.User(other.ToString()).SendAsync("remoteEnded", new { sessionId = s.Id, endedBy = s.EndedBy }, ct);
             // The other side also leaves LiveKit on the server, whatever its app does with the hub message. A second ICT
@@ -187,6 +213,7 @@ public static class RemoteEndpoints
             if (d?.Machine is not { } m) return Results.NotFound();
             m.Unattended = req.Unattended;
             m.SetById = (await Me(http, db, ct))?.Id ?? m.SetById;
+            RemoteAudit.Add(db, m.Id, m.SetById, req.Unattended ? "Unattended access switched on" : "Unattended access switched off", DateTime.UtcNow);
             if (!req.Unattended) d.Unattended = false; // the old per-device flag must not switch it back on
             var revoked = req.Unattended ? [] : await RemoteAccess.RevokeAsync(db, m.Id, DateTime.UtcNow, ct);
             await db.SaveChangesAsync(ct);
@@ -279,10 +306,13 @@ public static class RemoteEndpoints
     }
 
     /// "active" when allowed in time, "declined" otherwise, "expired" after the 30 s prompt. Idempotent once decided.
+    /// The session's own answer time (policy at request time); rows from before v3 have 0 = 30 s.
+    public static TimeSpan AskWindow(RemoteSession s) => s.AskSeconds > 0 ? TimeSpan.FromSeconds(s.AskSeconds) : AskTimeout;
+
     public static string Answer(RemoteSession s, bool allow, DateTime now)
     {
         if (s.Status != "asking") return s.Status;
-        if (now > s.RequestedAt + AskTimeout + TimeSpan.FromSeconds(5)) { s.Status = "expired"; s.EndedAt = now; s.EndedBy = "timeout"; return s.Status; }
+        if (now > s.RequestedAt + AskWindow(s) + TimeSpan.FromSeconds(5)) { s.Status = "expired"; s.EndedAt = now; s.EndedBy = "timeout"; return s.Status; }
         if (allow) { s.Status = "active"; s.StartedAt = now; s.AliveAt = now; }
         else { s.Status = "declined"; s.EndedAt = now; s.EndedBy = "user"; }
         return s.Status;
@@ -327,17 +357,12 @@ public static class RemoteEndpoints
     }
 }
 
-/// "My media" files: readable by their owner, and by a user whose PC that owner is helping right now
-/// (the user's app shows the picture or video). Nobody else.
+/// "My media" files: readable only by their owner (their own gallery). The user being helped gets a picture or video
+/// through the session route (/sessions/{id}/media/{attachmentId}), which checks the session — one path, not two.
 public sealed class RemoteMediaPolicy(IPopDbContext db) : IAttachmentAccessPolicy
 {
     public string Area => AttachmentAreas.Remote;
 
-    public async Task<bool> CanReadAsync(Guid attachmentId, Guid userId, CancellationToken ct)
-    {
-        var owner = await db.RemoteMedia.AsNoTracking().Where(m => m.AttachmentId == attachmentId).Select(m => (Guid?)m.OwnerId).FirstOrDefaultAsync(ct);
-        if (owner is null) return false;
-        if (owner == userId) return true;
-        return await db.RemoteSessions.AsNoTracking().AnyAsync(s => s.HelperId == owner && s.TargetUserId == userId && s.Status == "active", ct);
-    }
+    public Task<bool> CanReadAsync(Guid attachmentId, Guid userId, CancellationToken ct) =>
+        db.RemoteMedia.AsNoTracking().AnyAsync(m => m.AttachmentId == attachmentId && m.OwnerId == userId, ct);
 }
