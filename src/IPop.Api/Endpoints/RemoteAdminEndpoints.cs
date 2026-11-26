@@ -37,11 +37,15 @@ public static class RemoteAdminEndpoints
             return Results.Ok(new { policy = p, people, isAdmin });
         });
 
-        g.MapPut("/policy", async (RemotePolicy req, HttpContext http, IPopDbContext db, ISettings settings, CancellationToken ct) =>
+        g.MapPut("/policy", async (RemotePolicy req, HttpContext http, IPopDbContext db, ISettings settings,
+            IHubContext<IPop.Api.Notifications.NotificationHub> hub, IPop.Infrastructure.Calls.ILiveKitRoomAdmin liveKit, ILogger<RemoteMachine> log, CancellationToken ct) =>
         {
             if (!http.User.IsInRole("Admin")) return Results.Forbid();
             var p = req.Normalize();
             await RemotePolicyStore.SaveAsync(settings, p, http.User.FindFirstValue("nik"), ct);
+            // Remote switched off, or people taken off the list: their running sessions end now (review PR #5).
+            var revoked = await RemoteRevocation.PolicyAsync(db, p, DateTime.UtcNow, ct);
+            if (revoked.Count > 0) { await db.SaveChangesAsync(ct); await RemoteMachineEndpoints.TellRevokedAsync(hub, liveKit, log, revoked, ct); }
             return Results.Ok(p);
         });
 
@@ -56,8 +60,10 @@ public static class RemoteAdminEndpoints
             var now = DateTime.UtcNow;
             foreach (var c in changes) RemoteAudit.Add(db, m.Id, me.Value.Id, c, now);
             // Excluding a PC or narrowing what unattended may do ends running unattended sessions there.
-            var revoke = req.Excluded == true || req.UnattendedPermissions is not null || req.AllowedPermissions is not null;
-            var revoked = revoke && changes.Count > 0 ? await RemoteAccess.RevokeAsync(db, m.Id, now, ct) : [];
+            // Excluded: every session on the PC ends (prompt-based ones too). Narrower permissions: unattended ones end.
+            var revoked = changes.Count == 0 ? []
+                : req.Excluded == true ? await RemoteRevocation.MachineAsync(db, m.Id, now, ct)
+                : req.UnattendedPermissions is not null || req.AllowedPermissions is not null ? await RemoteAccess.RevokeAsync(db, m.Id, now, ct) : [];
             await db.SaveChangesAsync(ct);
             await RemoteMachineEndpoints.TellRevokedAsync(hub, liveKit, log, revoked, ct);
             return Results.Ok(new { m.Alias, m.Group, m.AlwaysAsk, m.UnattendedPermissions, m.AllowedPermissions, m.Excluded, changes });
@@ -81,6 +87,8 @@ public static class RemoteAdminEndpoints
             if (me is null) return Results.Unauthorized();
             var isAdmin = http.User.IsInRole("Admin");
             if (!await NotifierEndpoints.IsIctOrAdminAsync(db, me.Value.Id, isAdmin, ct)) return Results.Forbid();
+            // A helper an Administrator blocked from Remote no longer reads the history either (review PR #5).
+            if (!isAdmin && await db.RemoteHelperBlocks.AsNoTracking().AnyAsync(b => b.UserId == me.Value.Id, ct)) return Results.Forbid();
             var rows = await RemoteHistory.ListAsync(db, isAdmin ? person : me.Value.Id, isAdmin, result, q, ct);
             return csv == true ? Results.File(RemoteHistory.Csv(rows), "text/csv", "remote-sessions.csv") : Results.Ok(rows);
         });

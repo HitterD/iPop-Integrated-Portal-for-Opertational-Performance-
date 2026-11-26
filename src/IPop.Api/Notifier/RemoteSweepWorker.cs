@@ -23,7 +23,11 @@ public sealed class RemoteSweepWorker(IServiceScopeFactory scopes, ILogger<Remot
                 await using var scope = scopes.CreateAsyncScope();
                 var db = scope.ServiceProvider.GetRequiredService<IPopDbContext>();
                 var now = DateTime.UtcNow;
-                await SweepAsync(db, now, ct);
+                var ended = await SweepAsync(db, now, ct);
+                // Sessions the sweep closed leave LiveKit too (a client that is still there loses the room).
+                if (ended.Count > 0)
+                    await Endpoints.RemoteMachineEndpoints.TellRevokedAsync(scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.SignalR.IHubContext<IPop.Api.Notifications.NotificationHub>>(),
+                        scope.ServiceProvider.GetRequiredService<IPop.Infrastructure.Calls.ILiveKitRoomAdmin>(), log, ended.Where(s => s.Status == "ended"), ct);
                 if (now - lastPurge > TimeSpan.FromHours(23))
                 {
                     var p = await RemotePolicyStore.GetAsync(scope.ServiceProvider.GetRequiredService<ISettings>(), ct);
@@ -36,18 +40,18 @@ public sealed class RemoteSweepWorker(IServiceScopeFactory scopes, ILogger<Remot
         } while (await timer.WaitForNextTickAsync(ct));
     }
 
-    /// Expires unanswered prompts and closes silent sessions. Returns how many rows changed.
-    public static async Task<int> SweepAsync(IPopDbContext db, DateTime now, CancellationToken ct)
+    /// Expires unanswered prompts and closes silent sessions. Returns the rows it changed.
+    public static async Task<List<RemoteSession>> SweepAsync(IPopDbContext db, DateTime now, CancellationToken ct)
     {
+        var changed = new List<RemoteSession>();
         var asking = await db.RemoteSessions.Where(s => s.Status == "asking").ToListAsync(ct);
-        var n = 0;
         foreach (var s in asking.Where(s => now > s.RequestedAt + Endpoints.RemoteEndpoints.AskWindow(s) + TimeSpan.FromSeconds(5)))
-        { s.Status = "expired"; s.EndedAt = now; s.EndedBy = "timeout"; n++; }
+        { s.Status = "expired"; s.EndedAt = now; s.EndedBy = "timeout"; changed.Add(s); }
         var stale = await db.RemoteSessions
             .Where(s => s.Status == "active" && (s.AliveAt ?? s.StartedAt) <= now - Endpoints.RemoteEndpoints.AliveWindow).ToListAsync(ct);
-        foreach (var s in stale) { s.Status = "ended"; s.EndedAt = s.AliveAt ?? s.StartedAt ?? now; s.EndedBy = "timeout"; n++; }
-        if (n > 0) await db.SaveChangesAsync(ct);
-        return n;
+        foreach (var s in stale) { s.Status = "ended"; s.EndedAt = s.AliveAt ?? s.StartedAt ?? now; s.EndedBy = "timeout"; changed.Add(s); }
+        if (changed.Count > 0) await db.SaveChangesAsync(ct);
+        return changed;
     }
 
     /// Deletes finished sessions and Admin change entries older than <paramref name="days"/>.

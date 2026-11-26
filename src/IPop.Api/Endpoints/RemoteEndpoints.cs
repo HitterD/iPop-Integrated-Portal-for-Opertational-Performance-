@@ -29,7 +29,9 @@ public static class RemoteEndpoints
     public static readonly TimeSpan AskTimeout = TimeSpan.FromSeconds(30);
     /// LiveKit join token: checked only when connecting (a running session stays; LiveKit refreshes the token of a
     /// connected client itself). Short, so a token taken from a log or memory is useless after 10 minutes (review PR #5).
-    public static readonly TimeSpan TokenLifetime = TimeSpan.FromMinutes(10);
+    /// LiveKit join token: checked only when connecting; every (re)join asks /join for a new one, which re-checks the
+    /// policy. Short, so a leaked token is useless within minutes and a revoked helper can't come back on an old one.
+    public static readonly TimeSpan TokenLifetime = TimeSpan.FromMinutes(3);
     /// Without a heartbeat from the user's PC for this long, an "active" session is treated as over.
     public static readonly TimeSpan AliveWindow = TimeSpan.FromSeconds(90);
     public static readonly TimeSpan LogRetention = TimeSpan.FromDays(365);
@@ -95,19 +97,29 @@ public static class RemoteEndpoints
         // Also the rejoin path (BIGIS #8 v3): a client whose LiveKit connection dropped asks again for a fresh token while
         // the session is still "active" (the heartbeat window outlasts the reconnect window).
         g.MapGet("/sessions/{id:guid}/join", async (Guid id, HttpContext http, IPopDbContext db, ILiveKitTokenService lk,
-            IPop.Application.Settings.ISettings settings, CancellationToken ct) =>
+            IPop.Application.Settings.ISettings settings, IHubContext<IPop.Api.Notifications.NotificationHub> hub,
+            IPop.Infrastructure.Calls.ILiveKitRoomAdmin liveKit, ILogger<RemoteSession> log, CancellationToken ct) =>
         {
             var me = await Me(http, db, ct);
             if (me is null) return Results.Unauthorized();
-            var s = await db.RemoteSessions.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+            var s = await db.RemoteSessions.FirstOrDefaultAsync(x => x.Id == id, ct);
             if (s is null || (s.HelperId != me.Value.Id && s.TargetUserId != me.Value.Id)) return Results.NotFound();
             if (s.Status != "active") return Results.Json(new { status = s.Status }, statusCode: 409);
+            var p = await RemotePolicyStore.GetAsync(settings, ct);
+            // The policy holds on every (re)join, not only at connect (review PR #5).
+            var helperAdmin = await db.Users.AsNoTracking().Where(u => u.Id == s.HelperId).AnyAsync(u => u.UserRoles.Any(r => r.Role.Name == "Admin"), ct);
+            if (await RemoteRevocation.StillAllowedAsync(db, s, p, helperAdmin, ct) is { } why)
+            {
+                s.Status = "ended"; s.EndedAt = DateTime.UtcNow; s.EndedBy = "revoked";
+                await db.SaveChangesAsync(ct);
+                await RemoteMachineEndpoints.TellRevokedAsync(hub, liveKit, log, [s], ct);
+                return Results.Json(new { status = "ended", code = why }, statusCode: 409);
+            }
             var isHost = s.TargetUserId == me.Value.Id;
             // Only the PC being helped publishes video; the helper sends input/clipboard/files/chat as data.
             var token = lk.GenerateToken(s.Room, (isHost ? "host:" : "helper:") + me.Value.Id, me.Value.Name, TokenLifetime,
                 sources: isHost ? ["screen_share"] : []);
             var remoteId = await db.NotifierDevices.AsNoTracking().Where(d => d.Id == s.DeviceId).Select(d => d.Machine != null ? d.Machine.ConnectId : null).FirstOrDefaultAsync(ct);
-            var p = await RemotePolicyStore.GetAsync(settings, ct);
             return Results.Ok(new { url = lk.PublicUrl, token, room = s.Room, role = isHost ? "host" : "helper", mode = s.Mode,
                 permissions = s.Permissions ?? RemoteAccess.AllPermissions, remoteId, unattended = s.Unattended,
                 maxFileBytes = p.MaxFileBytes, reconnectAttempts = p.ReconnectAttempts, reconnectSeconds = p.ReconnectSeconds, quality = p.Quality,
@@ -235,14 +247,18 @@ public static class RemoteEndpoints
             return Results.Ok(rows);
         });
 
-        g.MapPut("/helpers/{userId:guid}", async (Guid userId, RemoteHelperRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        g.MapPut("/helpers/{userId:guid}", async (Guid userId, RemoteHelperRequest req, HttpContext http, IPopDbContext db,
+            IHubContext<IPop.Api.Notifications.NotificationHub> hub, IPop.Infrastructure.Calls.ILiveKitRoomAdmin liveKit, ILogger<RemoteSession> log, CancellationToken ct) =>
         {
             if (!http.User.IsInRole("Admin")) return Results.Forbid();
             var me = await Me(http, db, ct);
             var row = await db.RemoteHelperBlocks.FirstOrDefaultAsync(b => b.UserId == userId, ct);
             if (req.Allowed && row is not null) db.RemoteHelperBlocks.Remove(row);
             if (!req.Allowed && row is null) db.RemoteHelperBlocks.Add(new RemoteHelperBlock { UserId = userId, SetById = me!.Value.Id, CreatedAt = DateTime.UtcNow });
+            // A blocked helper's running sessions end now, everywhere (review PR #5).
+            var revoked = req.Allowed ? [] : await RemoteRevocation.HelperAsync(db, userId, DateTime.UtcNow, ct);
             await db.SaveChangesAsync(ct);
+            await RemoteMachineEndpoints.TellRevokedAsync(hub, liveKit, log, revoked, ct);
             return Results.NoContent();
         });
 

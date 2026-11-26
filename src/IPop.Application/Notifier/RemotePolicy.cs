@@ -34,7 +34,10 @@ public sealed record RemotePolicy
     public static readonly int[] MinPasswordOptions = [8, 10, 12, 16];
     public static readonly int[] MaxFileOptions = [200, 1024, 2048, 5120];
     public static readonly int[] ReconnectAttemptOptions = [3, 5, 6, 8];
+    /// Every option stays under the server's heartbeat window (90 s, RemoteEndpoints.AliveWindow): the user's PC keeps
+    /// sending /alive while it rejoins, so the sweep never ends a session that is still reconnecting (review PR #5).
     public static readonly int[] ReconnectSecondOptions = [15, 30, 60];
+    public const int MaxReconnectSeconds = 60;
     public static readonly int[] LockAttemptOptions = [3, 5, 10];
     public static readonly int[] LockMinuteOptions = [5, 15, 60];
     public static readonly int[] RateOptions = [5, 10, 20, 50];
@@ -53,7 +56,7 @@ public sealed record RemotePolicy
         Quality = Quality is "smooth" or "quality" ? Quality : "auto",
         MaxFileMB = Snap(MaxFileMB, MaxFileOptions),
         ReconnectAttempts = Snap(ReconnectAttempts, ReconnectAttemptOptions),
-        ReconnectSeconds = Snap(ReconnectSeconds, ReconnectSecondOptions),
+        ReconnectSeconds = Math.Min(MaxReconnectSeconds, Snap(ReconnectSeconds, ReconnectSecondOptions)),
         LockAttempts = Snap(LockAttempts, LockAttemptOptions),
         LockMinutes = Snap(LockMinutes, LockMinuteOptions),
         RatePerHour = Snap(RatePerHour, RateOptions),
