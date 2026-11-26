@@ -25,7 +25,9 @@ public static class RemoteEndpoints
 {
     public const string ConnectRateLimitPolicy = "remote-connect";
     public static readonly TimeSpan AskTimeout = TimeSpan.FromSeconds(30);
-    public static readonly TimeSpan TokenLifetime = TimeSpan.FromHours(4);
+    /// LiveKit join token: checked only when connecting (a running session stays; LiveKit refreshes the token of a
+    /// connected client itself). Short, so a token taken from a log or memory is useless after 10 minutes (review PR #5).
+    public static readonly TimeSpan TokenLifetime = TimeSpan.FromMinutes(10);
     /// Without a heartbeat from the user's PC for this long, an "active" session is treated as over.
     public static readonly TimeSpan AliveWindow = TimeSpan.FromSeconds(90);
     public static readonly TimeSpan LogRetention = TimeSpan.FromDays(365);
@@ -103,6 +105,20 @@ public static class RemoteEndpoints
             return s is null ? Results.NotFound() : Results.Ok(new { s.Status, s.EndedBy, s.StartedAt, s.Permissions });
         });
 
+        // User's PC: a "My media" picture/video the helper of THIS session chose to show (review PR #5). The attachment must
+        // belong to that helper and the session must be active; any other id from the data channel gets 404.
+        g.MapGet("/sessions/{id:guid}/media/{attachmentId:guid}", async (Guid id, Guid attachmentId, HttpContext http, IPopDbContext db,
+            IAttachmentStore store, CancellationToken ct) =>
+        {
+            var me = await Me(http, db, ct);
+            if (me is null) return Results.Unauthorized();
+            var s = await db.RemoteSessions.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && x.TargetUserId == me.Value.Id && x.Status == "active", ct);
+            if (s is null) return Results.NotFound();
+            if (!await db.RemoteMedia.AsNoTracking().AnyAsync(m => m.AttachmentId == attachmentId && m.OwnerId == s.HelperId, ct)) return Results.NotFound();
+            var file = await store.OpenAsync(attachmentId, ct);
+            return file is { } f ? Results.Stream(f.Content, f.Meta.ContentType) : Results.NotFound();
+        });
+
         g.MapPost("/sessions/{id:guid}/alive", async (Guid id, HttpContext http, IPopDbContext db, CancellationToken ct) =>
         {
             var me = await Me(http, db, ct);
@@ -116,7 +132,7 @@ public static class RemoteEndpoints
         });
 
         g.MapPost("/sessions/{id:guid}/end", async (Guid id, RemoteEndRequest req, HttpContext http, IPopDbContext db,
-            IHubContext<IPop.Api.Notifications.NotificationHub> hub, CancellationToken ct) =>
+            IHubContext<IPop.Api.Notifications.NotificationHub> hub, IPop.Infrastructure.Calls.ILiveKitRoomAdmin liveKit, ILogger<RemoteSession> log, CancellationToken ct) =>
         {
             var me = await Me(http, db, ct);
             if (me is null) return Results.Unauthorized();
@@ -126,6 +142,16 @@ public static class RemoteEndpoints
             await db.SaveChangesAsync(ct);
             var other = s.HelperId == me.Value.Id ? s.TargetUserId : s.HelperId;
             await hub.Clients.User(other.ToString()).SendAsync("remoteEnded", new { sessionId = s.Id, endedBy = s.EndedBy }, ct);
+            // The other side also leaves LiveKit on the server, whatever its app does with the hub message. A second ICT
+            // watching the same room keeps their own session, so only this session's two identities go.
+            if (liveKit.IsConfigured)
+                foreach (var identity in new[] { "host:" + s.TargetUserId, "helper:" + s.HelperId })
+                {
+                    if (await db.RemoteSessions.AnyAsync(x => x.Room == s.Room && x.Id != s.Id && x.Status == "active"
+                        && (identity == "host:" + x.TargetUserId || identity == "helper:" + x.HelperId), ct)) continue;
+                    try { await liveKit.RemoveAsync(s.Room, identity, ct); }
+                    catch (Exception ex) when (ex is not OperationCanceledException) { log.LogWarning(ex, "Remote help: couldn't remove {Identity} from {Room}.", identity, s.Room); }
+                }
             return Results.NoContent();
         });
 
@@ -154,7 +180,7 @@ public static class RemoteEndpoints
         // Admin only: the PC's "Connect without asking the user" switch (BIGIS #8: on the PC, not the device; it takes
         // effect only with a password — RemoteMachineEndpoints). Turning it off revokes unattended sessions.
         g.MapPut("/devices/{id:guid}/unattended", async (Guid id, RemoteUnattendedRequest req, HttpContext http, IPopDbContext db,
-            IHubContext<IPop.Api.Notifications.NotificationHub> hub, ILogger<RemoteSession> log, CancellationToken ct) =>
+            IHubContext<IPop.Api.Notifications.NotificationHub> hub, IPop.Infrastructure.Calls.ILiveKitRoomAdmin liveKit, ILogger<RemoteSession> log, CancellationToken ct) =>
         {
             if (!http.User.IsInRole("Admin")) return Results.Forbid();
             var d = await db.NotifierDevices.Include(x => x.Machine).FirstOrDefaultAsync(x => x.Id == id, ct);
@@ -164,7 +190,7 @@ public static class RemoteEndpoints
             if (!req.Unattended) d.Unattended = false; // the old per-device flag must not switch it back on
             var revoked = req.Unattended ? [] : await RemoteAccess.RevokeAsync(db, m.Id, DateTime.UtcNow, ct);
             await db.SaveChangesAsync(ct);
-            await RemoteMachineEndpoints.TellRevokedAsync(hub, revoked, ct);
+            await RemoteMachineEndpoints.TellRevokedAsync(hub, liveKit, log, revoked, ct);
             log.LogInformation("Remote help: {Admin} set unattended={Value} on {Machine} ({RemoteId}).", http.User.FindFirstValue("nik"), req.Unattended, m.ComputerName, m.ConnectId);
             return Results.NoContent();
         });

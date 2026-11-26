@@ -46,7 +46,7 @@ public static class RemoteMachineEndpoints
         });
 
         g.MapPut("/machines/{id:guid}/password", async (Guid id, RemotePasswordRequest req, HttpContext http, IPopDbContext db, IPasswordHasher hasher,
-            IHubContext<IPop.Api.Notifications.NotificationHub> hub, ILogger<RemoteMachine> log, CancellationToken ct) =>
+            IHubContext<IPop.Api.Notifications.NotificationHub> hub, IPop.Infrastructure.Calls.ILiveKitRoomAdmin liveKit, ILogger<RemoteMachine> log, CancellationToken ct) =>
         {
             if (!http.User.IsInRole("Admin")) return Results.Forbid();
             var me = await RemoteEndpoints.Me(http, db, ct);
@@ -56,14 +56,14 @@ public static class RemoteMachineEndpoints
             if (m is null) return Results.NotFound();
             var revoked = await RemoteAccess.SetPasswordAsync(db, m, req.Password!, me.Value.Id, hasher, DateTime.UtcNow, ct);
             await db.SaveChangesAsync(ct);
-            await TellRevokedAsync(hub, revoked, ct);
+            await TellRevokedAsync(hub, liveKit, log, revoked, ct);
             log.LogInformation("Remote help: {Admin} set the unattended password on {Machine} ({RemoteId}); {Count} session(s) revoked.",
                 http.User.FindFirstValue("nik"), m.ComputerName, m.ConnectId, revoked.Count);
             return Results.NoContent();
         });
 
         g.MapDelete("/machines/{id:guid}/password", async (Guid id, HttpContext http, IPopDbContext db,
-            IHubContext<IPop.Api.Notifications.NotificationHub> hub, ILogger<RemoteMachine> log, CancellationToken ct) =>
+            IHubContext<IPop.Api.Notifications.NotificationHub> hub, IPop.Infrastructure.Calls.ILiveKitRoomAdmin liveKit, ILogger<RemoteMachine> log, CancellationToken ct) =>
         {
             if (!http.User.IsInRole("Admin")) return Results.Forbid();
             var me = await RemoteEndpoints.Me(http, db, ct);
@@ -72,7 +72,7 @@ public static class RemoteMachineEndpoints
             if (m is null) return Results.NotFound();
             var revoked = await RemoteAccess.RemoveAsync(db, m, me.Value.Id, DateTime.UtcNow, ct);
             await db.SaveChangesAsync(ct);
-            await TellRevokedAsync(hub, revoked, ct);
+            await TellRevokedAsync(hub, liveKit, log, revoked, ct);
             log.LogInformation("Remote help: {Admin} removed unattended access on {Machine} ({RemoteId}).", http.User.FindFirstValue("nik"), m.ComputerName, m.ConnectId);
             return Results.NoContent();
         });
@@ -80,11 +80,22 @@ public static class RemoteMachineEndpoints
         return app;
     }
 
-    /// Both sides of each revoked session hear "remoteEnded" (the PC stops sharing, the viewer shows why).
-    public static async Task TellRevokedAsync(IHubContext<IPop.Api.Notifications.NotificationHub> hub, IEnumerable<RemoteSession> revoked, CancellationToken ct)
+    /// Each revoked session ends on both sides: "remoteEnded" over the hub (the apps show why), and LiveKit drops both
+    /// participants from the room on the server (review PR #5) — so a client that ignores the hub message, or never
+    /// gets it, still loses the stream and the data channel. LiveKit errors are logged, never fatal.
+    public static async Task TellRevokedAsync(IHubContext<IPop.Api.Notifications.NotificationHub> hub, IPop.Infrastructure.Calls.ILiveKitRoomAdmin? liveKit,
+        ILogger? log, IEnumerable<RemoteSession> revoked, CancellationToken ct)
     {
         foreach (var s in revoked)
+        {
             await hub.Clients.Users([s.HelperId.ToString(), s.TargetUserId.ToString()]).SendAsync("remoteEnded", new { sessionId = s.Id, endedBy = "revoked" }, ct);
+            if (liveKit is not { IsConfigured: true }) continue;
+            foreach (var identity in new[] { "host:" + s.TargetUserId, "helper:" + s.HelperId })
+            {
+                try { await liveKit.RemoveAsync(s.Room, identity, ct); }
+                catch (Exception ex) when (ex is not OperationCanceledException) { log?.LogWarning(ex, "Remote help: couldn't remove {Identity} from {Room}.", identity, s.Room); }
+            }
+        }
     }
 
     /// One row per PC (the Notifier seen last on it), newest first; my favourites and the PCs I connected to lately.
