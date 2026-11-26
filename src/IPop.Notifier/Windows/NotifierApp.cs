@@ -42,6 +42,7 @@ public sealed partial class NotifierApp : ApplicationContext
         api = new IPopClient(store);
         Integration.Api = api;
         settings = new SettingsService(api, state);
+        settings.ApplyStartWithWindows();
         Theme.LargeText = settings.Current.TextSize == "large";
         Theme.Mode = settings.Current.Theme;
         Theme.ReducedMotion = settings.Current.Animations == "reduced";
@@ -289,7 +290,7 @@ public sealed partial class NotifierApp : ApplicationContext
     private void ShowSignIn()
     {
         if (signIn is { IsDisposed: false }) { signIn.Activate(); return; }
-        signIn = new SignInWindow(api);
+        signIn = new SignInWindow(api, settings);
         signIn.SignedIn += () => Post(() => { EndBrowserSignIn(); _ = StartSessionAsync(); tray.ShowBalloonTip(3000, "iPop Notifier", "You're signed in. Notifications will appear here.", ToolTipIcon.Info); });
         signIn.WithBrowser += (again, server) => Post(() => { if (!api.IsSignedIn) api.SignInServer = server; OpenBrowserSignIn(again); });
         signIn.PastedCode += code => Post(() => OnPastedCode(code));

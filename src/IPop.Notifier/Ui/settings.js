@@ -18,7 +18,10 @@
   const SOUNDS = [['mail', 'Mail · Envelope'], ['tickets', 'iDesk · Lifeline'], ['meeting', 'Meeting · Doorbell'], ['dm', 'Chat · Bubble'], ['group', 'Group chat · Pebble'],
     ['mention', 'Mention · Spark'], ['project', 'Projects · Tasker'], ['announce', 'News · Herald'], ['notes', 'Notes · Paper'], ['system', 'System · Ping']];
 
-  app.on('settings', m => { S = m.settings; draw(m.account); loadLeaders(); requestAnimationFrame(() => thumb($('#nav'), true)); });
+  // pc = this PC's own settings (Start with Windows), never synced to iPop.
+  let PC = {};
+  app.on('pc', m => { PC = m.pc || {}; drawPc(); });
+  app.on('settings', m => { S = m.settings; PC = m.pc || {}; draw(m.account); loadLeaders(); requestAnimationFrame(() => thumb($('#nav'), true)); });
   app.on('saved', m => {
     S = m.settings;
     const el = $('#saved');
@@ -59,7 +62,7 @@
     pill('#popups', pop); pill('#meet', S.duringMeetings); pill('#pos', S.position);
     $('#urgent').classList.toggle('on', S.urgentBreaksThrough);
     $('#vol').value = S.volume; $('#sound').classList.toggle('on', S.sound);
-    $('#autostart').classList.toggle('on', S.startWithWindows);
+    drawPc();
     pill('#textsize', S.textSize || 'normal');
     pill('#anim', S.animations || 'on');
     document.querySelectorAll('#theme .th').forEach(b => b.classList.toggle('on', b.dataset.t === (S.theme || 'system')));
@@ -72,6 +75,7 @@
       $('#about').innerHTML = `<span>Version</span><span>${esc(acc.version)}</span><span>Computer</span><span>${esc(acc.computer)}</span><span>Server</span><span>${esc(acc.server)}</span>`;
     }
   }
+  function drawPc() { $('#autostart').classList.toggle('on', PC.startWithWindows !== false); }
   function pill(sel, v) { const p = typeof sel === 'string' ? $(sel) : sel; p.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); }
 
   function save(patch) {
@@ -102,7 +106,7 @@
       if (sw.id === 'urgent' || sw.id === 'breakthrough') return save({ urgentBreaksThrough: on });
       if (sw.id === 'hidemsg') return save({ hideMessageToasts: on });
       if (sw.id === 'sound') return save({ sound: on });
-      if (sw.id === 'autostart') return save({ startWithWindows: on });
+      if (sw.id === 'autostart') { PC.startWithWindows = on; drawPc(); return post({ type: 'pc', startWithWindows: on }); }
     }
     const snd = e.target.closest('[data-snd]'); if (snd) post({ type: 'preview', sound: snd.dataset.snd, volume: +$('#vol').value });
   });

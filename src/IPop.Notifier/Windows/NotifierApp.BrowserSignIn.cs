@@ -136,7 +136,7 @@ public sealed partial class NotifierApp
             }
             if (signIn is { IsDisposed: false }) signIn.Close();
             _ = StartSessionAsync();
-            Integration.SetStartWithWindows(true);
+            settings.EnsureStartWithWindowsDefault(); // never overrides an "off" chosen on this PC
             Toasts.ShowSignedIn(r.Name ?? api.Session?.Name ?? "", switched: previous is not null && r.Switched);
         });
         return r;

@@ -81,7 +81,10 @@ public sealed class SettingsWindow : BridgedWindow
         StartPosition = FormStartPosition.CenterScreen;
     }
 
-    protected override void OnReady() => Send(new { type = "settings", settings = settings.Current, account = account() });
+    protected override void OnReady() => Send(new { type = "settings", settings = settings.Current, account = account(), pc = Pc() });
+
+    /// Settings that belong to this PC, not the account (review M1).
+    private object Pc() => new { startWithWindows = settings.StartWithWindows };
 
     /// The answer of a "Check for updates" click: notInstalled | upToDate | ready (+ version) | failed.
     public void UpdateResult(object result) { if (!IsDisposed) Send(new { type = "updateResult", result }); }
@@ -97,6 +100,10 @@ public sealed class SettingsWindow : BridgedWindow
                 var ok = await settings.SaveAsync(next);
                 Send(new { type = "saved", ok, settings = settings.Current });
                 if (styleChanged) PopupStyleChanged?.Invoke();
+                break;
+            case "pc":
+                if (msg?["startWithWindows"] is { } sw) settings.SetStartWithWindows(sw.GetValue<bool>());
+                Send(new { type = "pc", pc = Pc() });
                 break;
             case "preview":
                 Sounds.Play(msg?["sound"]?.GetValue<string>() ?? "system", settings.Current with { Sound = true, Volume = msg?["volume"]?.GetValue<int>() ?? settings.Current.Volume });
@@ -124,14 +131,17 @@ public sealed class SignInWindow : HtmlWindow
     /// "Paste code from browser": the short code that page shows when the browser couldn't reach the app.
     public event Action<string?>? PastedCode;
 
-    public SignInWindow(IPopClient api) : base("signin.html", new Size(480, 760))
+    private readonly SettingsService settings;
+
+    public SignInWindow(IPopClient api, SettingsService settings) : base("signin.html", new Size(480, 760))
     {
         this.api = api;
+        this.settings = settings;
         Text = "iPop Notifier — Sign in";
         StartPosition = FormStartPosition.CenterScreen;
     }
 
-    protected override void OnReady() => Send(new { type = "init", server = api.Session?.Server ?? AppInfo.DefaultServer, version = AppInfo.Version });
+    protected override void OnReady() => Send(new { type = "init", server = api.Session?.Server ?? AppInfo.DefaultServer, version = AppInfo.Version, autostart = settings.StartWithWindows });
 
     /// The "Server…" field: empty = the default server; an https address (http too in Debug/Trial builds); anything
     /// else = an error in the window, never a silent switch to another server.
@@ -155,7 +165,8 @@ public sealed class SignInWindow : HtmlWindow
         var password = msg?["password"]?.GetValue<string>() ?? "";
         if (!TryServerOf(msg, out var typed)) return;
         var server = typed ?? AppInfo.DefaultServer;
-        Integration.SetStartWithWindows(msg?["autostart"]?.GetValue<bool>() != false);
+        // This PC's choice (LocalState), so loading the roaming settings after sign-in can't turn it back on.
+        settings.SetStartWithWindows(msg?["autostart"]?.GetValue<bool>() != false);
         try
         {
             var r = await api.SignInAsync(server, nik, password, CancellationToken.None);
