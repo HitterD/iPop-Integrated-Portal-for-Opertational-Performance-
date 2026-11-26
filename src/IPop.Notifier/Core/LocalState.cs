@@ -19,6 +19,8 @@ public sealed class LocalState
     /// Whether this PC ever had the per-PC switch; a PC upgraded from an older version takes over the last roaming
     /// value once (see SettingsService).
     public bool StartWithWindowsMigrated { get; set; }
+    /// "Open iPop when Windows starts" for THIS PC: null = never chosen (on).
+    public bool? OpenIPopAtLogin { get; set; }
 
     private static string FilePath => Path.Combine(SessionStore.Folder, "state.json");
     private static readonly object Gate = new();

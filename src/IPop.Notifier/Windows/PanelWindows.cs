@@ -84,7 +84,7 @@ public sealed class SettingsWindow : BridgedWindow
     protected override void OnReady() => Send(new { type = "settings", settings = settings.Current, account = account(), pc = Pc() });
 
     /// Settings that belong to this PC, not the account (review M1).
-    private object Pc() => new { startWithWindows = settings.StartWithWindows };
+    private object Pc() => new { startWithWindows = settings.StartWithWindows, openIPopAtLogin = settings.OpenIPopAtLogin };
 
     /// The answer of a "Check for updates" click: notInstalled | upToDate | ready (+ version) | failed.
     public void UpdateResult(object result) { if (!IsDisposed) Send(new { type = "updateResult", result }); }
@@ -103,6 +103,7 @@ public sealed class SettingsWindow : BridgedWindow
                 break;
             case "pc":
                 if (msg?["startWithWindows"] is { } sw) settings.SetStartWithWindows(sw.GetValue<bool>());
+                if (msg?["openIPopAtLogin"] is { } oi) settings.SetOpenIPopAtLogin(oi.GetValue<bool>());
                 Send(new { type = "pc", pc = Pc() });
                 break;
             case "preview":

@@ -117,6 +117,9 @@ public sealed partial class NotifierApp : ApplicationContext
         tick.Start();
 
         if (api.IsSignedIn) _ = StartSessionAsync();
+        // Started by Windows (Run key): open iPop too, once, when this PC wants it (IPopAppLauncher).
+        if (args.Contains("--background"))
+            _ = IPopAppLauncher.RunAtLoginAsync(() => settings.OpenIPopAtLogin, () => api.IsSignedIn, () => feed?.Connected == true, () => api.Web, CancellationToken.None);
         else { ShowSignIn(); if (args.Contains("--first-run")) OpenBrowserSignIn(); }
 
         foreach (var a in args.Where(a => a.StartsWith(AppInfo.UrlScheme + ":", StringComparison.OrdinalIgnoreCase)

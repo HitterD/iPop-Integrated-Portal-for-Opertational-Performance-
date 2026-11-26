@@ -29,9 +29,34 @@ public static class BrowserTabs
         return false;
     }
 
+    /// "Open iPop when Windows starts": is iPop already open — an installed iPop app window, or an iPop tab in a
+    /// browser window (any tab, not only the selected one)? Read-only: nothing is selected or raised.
+    public static bool AnyIPopOpen()
+    {
+        try
+        {
+            foreach (var hwnd in ChromiumWindows())
+            {
+                var title = WindowTitle(hwnd);
+                if (IPopLinks.IsIPopTitle(title)) return true; // the app window, or a browser showing an iPop tab
+                if (IsBrowserTitle(title) && Tabs(hwnd, IPopLinks.IsIPopTitle).Count > 0) return true;
+            }
+        }
+        catch (Exception ex) { Log.Warn("open-at-login", "look for iPop: " + ex.Message); }
+        return false;
+    }
+
     // ── Windows ─────────────────────────────────────────────────────────────────
 
-    private static List<nint> BrowserWindows()
+    private static List<nint> BrowserWindows() => ChromiumWindows().Where(h => IsBrowserTitle(WindowTitle(h))).ToList();
+
+    /// Browser windows end with the browser name; installed web apps (the iPop app itself) do not.
+    private static bool IsBrowserTitle(string title) =>
+        title.EndsWith(" - Google Chrome", StringComparison.Ordinal) || title.EndsWith(" Edge", StringComparison.Ordinal)
+        || title.EndsWith(" - Brave", StringComparison.Ordinal);
+
+    /// Every visible Chromium top-level window: browsers and installed web apps.
+    private static List<nint> ChromiumWindows()
     {
         var list = new List<nint>();
         EnumWindows((h, _) =>
@@ -39,12 +64,7 @@ public static class BrowserTabs
             if (!IsWindowVisible(h)) return true;
             var cls = new StringBuilder(64);
             GetClassNameW(h, cls, cls.Capacity);
-            if (cls.ToString() != "Chrome_WidgetWin_1") return true;
-            var title = WindowTitle(h);
-            // Browser windows end with the browser name; installed web apps (the iPop app itself) do not.
-            if (title.EndsWith(" - Google Chrome", StringComparison.Ordinal) || title.EndsWith(" Edge", StringComparison.Ordinal)
-                || title.EndsWith(" - Brave", StringComparison.Ordinal))
-                list.Add(h);
+            if (cls.ToString() == "Chrome_WidgetWin_1" && WindowTitle(h).Length > 0) list.Add(h);
             return true;
         }, 0);
         return list;

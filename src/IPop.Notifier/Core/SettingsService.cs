@@ -72,6 +72,15 @@ public sealed class SettingsService(IPopClient api, LocalState state)
         Integration.SetStartWithWindows(on);
     }
 
+    /// "Open iPop when Windows starts" on this PC only (default on; IPopAppLauncher).
+    public bool OpenIPopAtLogin => state.OpenIPopAtLogin ?? true;
+
+    public void SetOpenIPopAtLogin(bool on)
+    {
+        state.OpenIPopAtLogin = on;
+        state.Save();
+    }
+
     /// A sign-in that didn't ask (browser sign-in): turn autostart on only when nobody chose "off" on this PC.
     public void EnsureStartWithWindowsDefault() => Integration.SetStartWithWindows(StartWithWindows);
 }

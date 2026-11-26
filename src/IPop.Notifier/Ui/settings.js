@@ -75,7 +75,10 @@
       $('#about').innerHTML = `<span>Version</span><span>${esc(acc.version)}</span><span>Computer</span><span>${esc(acc.computer)}</span><span>Server</span><span>${esc(acc.server)}</span>`;
     }
   }
-  function drawPc() { $('#autostart').classList.toggle('on', PC.startWithWindows !== false); }
+  function drawPc() {
+    $('#autostart').classList.toggle('on', PC.startWithWindows !== false);
+    $('#openipop').classList.toggle('on', PC.openIPopAtLogin !== false);
+  }
   function pill(sel, v) { const p = typeof sel === 'string' ? $(sel) : sel; p.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); }
 
   function save(patch) {
@@ -106,6 +109,7 @@
       if (sw.id === 'urgent' || sw.id === 'breakthrough') return save({ urgentBreaksThrough: on });
       if (sw.id === 'hidemsg') return save({ hideMessageToasts: on });
       if (sw.id === 'sound') return save({ sound: on });
+      if (sw.id === 'openipop') { PC.openIPopAtLogin = on; drawPc(); return post({ type: 'pc', openIPopAtLogin: on }); }
       if (sw.id === 'autostart') { PC.startWithWindows = on; drawPc(); return post({ type: 'pc', startWithWindows: on }); }
     }
     const snd = e.target.closest('[data-snd]'); if (snd) post({ type: 'preview', sound: snd.dataset.snd, volume: +$('#vol').value });
