@@ -6,7 +6,9 @@ namespace IPop.Notifier.Remote;
 public sealed class RemoteRejoin(int attempts = 6, int seconds = 60)
 {
     public int Attempts { get; } = Math.Clamp(attempts, 1, 20);
-    public TimeSpan Window { get; } = TimeSpan.FromSeconds(Math.Clamp(seconds, 5, 300));
+    /// At most 60 s: under the server's 90 s heartbeat window, and the PC keeps sending /alive while it rejoins (the
+    /// heartbeat timer belongs to the session, not to the LiveKit page), so the sweep can't end a session mid-rejoin.
+    public TimeSpan Window { get; } = TimeSpan.FromSeconds(Math.Clamp(seconds, 5, 60));
 
     /// When try <paramref name="n"/> (1-based) is due, counted from the drop.
     public TimeSpan DueAt(int n) => n <= 1 ? TimeSpan.Zero : TimeSpan.FromTicks(Window.Ticks * (n - 1) / Attempts);

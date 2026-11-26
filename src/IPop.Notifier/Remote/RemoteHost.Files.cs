@@ -33,7 +33,13 @@ public sealed partial class RemoteHost
         if (sessionId is null || !perms.Accepts(topic, mode) || (topic == "clip-file" && !clipSync))
         { Refuse(topic); page?.Send(new { type = "xferCancel", id, reason = "notallowed" }); return; }
         var e = incoming.Begin(id, name, size);
-        if (e is null) { page?.Send(new { type = "xferCancel", id, reason = "big" }); return; }
+        if (e is null)
+        {
+            var why = IncomingFiles.Reason(incoming.LastRefusal);
+            page?.Send(new { type = "xferCancel", id, reason = why });
+            help?.Send(new { type = "xfer", id, name, size, dir = "up", state = why == "big" ? "big" : "fail", p = 0.0, limit = maxFileBytes, reason = why });
+            return;
+        }
         xfers[id] = (e.Name, size, "down", topic);
         help?.Send(new { type = "xfer", id, name = e.Name, size, dir = "up", state = "run", p = 0.0 });
     }
@@ -59,7 +65,7 @@ public sealed partial class RemoteHost
         catch (Exception ex) { Log.Warn("remote", "saving a file failed: " + ex.GetType().Name); path = null; }
         if (!xfers.Remove(id, out var x)) return;
         if (path is null) { XferShow(id, reason is "cancel" ? "cancel" : reason is "big" ? "big" : "fail", 0, x); return; }
-        if (x.Topic == "clip-file") { Clip.SetFileFromPath(path); return; }
+        if (x.Topic == "clip-file") { IPop.Notifier.Core.Downloads.MarkSaved(path, api.Server); Clip.SetFileFromPath(path); return; }
         IPop.Notifier.Core.Downloads.MarkSaved(path, api.Server);
         files.Add(Path.GetFileName(path));
         help?.Send(new { type = "xfer", id, name = Path.GetFileName(path), size = x.Size, dir = "up", state = "done", p = 1.0 });

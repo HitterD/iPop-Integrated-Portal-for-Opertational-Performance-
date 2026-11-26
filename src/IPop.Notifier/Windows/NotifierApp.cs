@@ -146,6 +146,7 @@ public sealed partial class NotifierApp : ApplicationContext
 
     private async Task StartSessionAsync()
     {
+        SweepOrphanParts();
         session.Cancel();
         session = new CancellationTokenSource();
         var ct = session.Token;

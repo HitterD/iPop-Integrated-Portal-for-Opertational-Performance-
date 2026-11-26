@@ -23,7 +23,7 @@ public sealed class RemoteStreamingTests : IDisposable
         var path = f.End("x1", true);
         Assert.Equal(Path.Combine(dir, "report.xlsx"), path);
         Assert.Equal(300, new FileInfo(path!).Length);
-        Assert.Empty(Directory.GetFiles(dir, "*.part"));
+        Assert.Empty(Directory.GetFiles(dir, "*" + IncomingFiles.PartExtension));
     }
 
     [Fact]
@@ -89,6 +89,86 @@ public sealed class RemoteStreamingTests : IDisposable
         Assert.NotNull(f.Begin("dup", "a", 1));
         Assert.Null(f.Begin("dup", "b", 1));
         f.AbortAll();
+    }
+
+    [Fact]
+    public void The_senders_id_never_reaches_the_path()
+    {
+        var f = New();
+        var e = f.Begin(@"..\..\..\Windows\evil", "a.txt", 1);
+        Assert.NotNull(e);
+        Assert.Equal(Path.GetFullPath(dir), Path.GetDirectoryName(Path.GetFullPath(e!.PartPath)));
+        Assert.DoesNotContain("evil", e.PartPath);
+        // Two ids with the same first characters: two separate files, no overwrite.
+        var g = f.Begin(@"..\..\..\Windows\evil2", "b.txt", 1);
+        Assert.NotEqual(e.PartPath, g!.PartPath);
+        f.AbortAll();
+    }
+
+    [Fact]
+    public void At_most_two_files_at_once()
+    {
+        var f = New();
+        Assert.NotNull(f.Begin("a", "1.txt", 1));
+        Assert.NotNull(f.Begin("b", "2.txt", 1));
+        Assert.Null(f.Begin("c", "3.txt", 1));
+        Assert.Equal(IncomingFiles.Refusal.TooMany, f.LastRefusal);
+        Assert.Equal("busy", IncomingFiles.Reason(f.LastRefusal));
+        f.Abort("a");
+        Assert.NotNull(f.Begin("c", "3.txt", 1));
+        f.AbortAll();
+    }
+
+    [Fact]
+    public void A_file_that_doesnt_fit_on_the_disk_is_refused()
+    {
+        var f = new IncomingFiles(() => dir, 10L * 1024 * 1024 * 1024, _ => 500L * 1024 * 1024);
+        Assert.Null(f.Begin("big", "a.iso", 400L * 1024 * 1024)); // 400 MB + 200 MB headroom > 500 MB free
+        Assert.Equal(IncomingFiles.Refusal.NoSpace, f.LastRefusal);
+        Assert.NotNull(f.Begin("ok", "b.iso", 200L * 1024 * 1024));
+        f.AbortAll();
+    }
+
+    [Fact]
+    public void An_unwritable_folder_is_a_refusal_not_a_crash()
+    {
+        var file = Path.Combine(Path.GetTempPath(), "ipop-notadir-" + Guid.NewGuid().ToString("N"));
+        File.WriteAllText(file, "x");
+        try
+        {
+            var f = new IncomingFiles(() => Path.Combine(file, "sub"), 1024);
+            Assert.Null(f.Begin("a", "a.txt", 1));
+            Assert.Equal(IncomingFiles.Refusal.Io, f.LastRefusal);
+        }
+        finally { File.Delete(file); }
+    }
+
+    [Theory]
+    [InlineData("CON", "_CON")]
+    [InlineData("nul.txt", "_nul.txt")]
+    [InlineData("COM1.log", "_COM1.log")]
+    [InlineData("lpt9", "_lpt9")]
+    [InlineData("console.txt", "console.txt")]
+    public void Windows_device_names_are_renamed(string name, string expected) => Assert.Equal(expected, IncomingFiles.Clean(name));
+
+    [Fact]
+    public void Old_orphan_parts_are_swept_new_ones_kept()
+    {
+        Directory.CreateDirectory(dir);
+        var old = Path.Combine(dir, ".abc" + IncomingFiles.PartExtension);
+        var fresh = Path.Combine(dir, ".def" + IncomingFiles.PartExtension);
+        var other = Path.Combine(dir, "keep.txt");
+        File.WriteAllText(old, ""); File.WriteAllText(fresh, ""); File.WriteAllText(other, "");
+        File.SetLastWriteTimeUtc(old, DateTime.UtcNow.AddDays(-2));
+        File.SetLastWriteTimeUtc(other, DateTime.UtcNow.AddDays(-2));
+        Assert.Equal(1, IncomingFiles.SweepOrphans(dir, DateTime.UtcNow));
+        Assert.False(File.Exists(old)); Assert.True(File.Exists(fresh)); Assert.True(File.Exists(other));
+    }
+
+    [Fact]
+    public void Rejoin_never_waits_longer_than_the_heartbeat_window_allows()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(60), new RemoteRejoin(6, 300).Window);
     }
 
     [Fact]

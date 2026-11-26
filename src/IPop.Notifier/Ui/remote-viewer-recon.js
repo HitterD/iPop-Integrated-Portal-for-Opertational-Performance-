@@ -59,7 +59,7 @@
     else if (state === 'awake' || state === 'unlocked') cause = 'network';
     if (active) show(1, 0);
   }
-  function setPolicy(info) { attempts = info.reconnectAttempts || attempts; seconds = info.reconnectSeconds || seconds; }
+  function setPolicy(info) { attempts = info.reconnectAttempts || attempts; seconds = Math.min(60, info.reconnectSeconds || seconds); } // ≤ 60 s: under the server's 90 s heartbeat window
 
   (window.__qa = window.__qa || {}).recon = (c, a, el) => { cause = c; show(a, el); }; // screenshots/QA
   window.viewerRecon = { start, stop, hint, setPolicy, get active() { return active; }, endButton: $('#rcEnd') };

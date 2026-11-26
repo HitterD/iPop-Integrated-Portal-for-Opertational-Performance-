@@ -105,7 +105,7 @@
     else if (t.state === 'done') sub = `${lab} · ${t.dir === 'up' ? 'saved to Downloads' : 'saved to Downloads'} · ${fmtSize(t.size)}`;
     else if (t.state === 'cancel') sub = `${lab} · cancelled`;
     else if (t.state === 'big') sub = `${lab} · Too large: the limit is ${lim(limit)} per file`;
-    else sub = `${lab} · ${t.state === 'notallowed' ? 'File transfer is not allowed in this session' : 'The connection was interrupted'}`;
+    else sub = `${lab} · ${t.reason === 'busy' ? 'Two files are already on the way. Try again when one is done' : t.reason === 'space' ? 'Not enough free disk space on this PC' : t.state === 'notallowed' ? 'File transfer is not allowed in this session' : 'The connection was interrupted'}`;
     el.className = 'file' + (t.state === 'fail' || t.state === 'big' ? ' err' : t.state === 'cancel' ? ' off' : t.state === 'done' ? ' ok' : '');
     el.innerHTML = `<span class="fi">${IC(t.dir === 'up' ? 'file-down' : 'file-up')}</span><span class="m"><b>${esc(t.name)}</b><small>${esc(sub)}</small>${t.state === 'run' ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}</span>${act}`;
     el.onclick = e => { if (e.target.closest('[data-a=cancel]')) post({ type: 'xferAction', id: t.id, action: 'cancel' }); };

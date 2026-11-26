@@ -131,6 +131,9 @@ public sealed partial class RemoteHost
         Log.Error("remote", "host page crashed: " + kind);
         if (sessionId is null) return;
         pageCrashed = true;
+        // The crashed page's streams are gone: their half-written files too.
+        incoming.AbortAll();
+        xfers.Clear();
         _ = RejoinAsync("crash");
     }
 

@@ -26,7 +26,7 @@ internal sealed class ViewerFiles(Action<object> send, Func<Uri> server)
         {
             case "xferBegin":
                 var e = incoming.Begin(id, m?["name"]?.GetValue<string>(), m?["size"]?.GetValue<long>() ?? 0);
-                if (e is null) { send(new { type = "xferSaved", id, path = (string?)null, reason = "big" }); return true; }
+                if (e is null) { send(new { type = "xferSaved", id, path = (string?)null, reason = IncomingFiles.Reason(incoming.LastRefusal) }); return true; }
                 topics[id] = m?["topic"]?.GetValue<string>() ?? "file";
                 return true;
             case "xferChunk":
@@ -41,7 +41,7 @@ internal sealed class ViewerFiles(Action<object> send, Func<Uri> server)
                 try { path = incoming.End(id, m?["ok"]?.GetValue<bool>() == true); }
                 catch (Exception ex) { Log.Warn("viewer", "saving a file failed: " + ex.GetType().Name); }
                 topics.Remove(id, out var topic);
-                if (path is not null && topic == "clip-file") { Clip.SetFileFromPath(path); send(new { type = "toast", text = Path.GetFileName(path) + " copied — paste it here" }); return true; }
+                if (path is not null && topic == "clip-file") { Core.Downloads.MarkSaved(path, server()); Clip.SetFileFromPath(path); send(new { type = "toast", text = Path.GetFileName(path) + " copied — paste it here" }); return true; }
                 if (path is not null) Core.Downloads.MarkSaved(path, server());
                 send(new { type = "xferSaved", id, path, reason = m?["reason"]?.GetValue<string>() });
                 return true;

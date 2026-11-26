@@ -55,8 +55,19 @@ public sealed partial class NotifierApp
         return remotePrefs;
     }
 
+    private static int orphanSweep;
+
+    /// Once per app run: ".part" files a crash or power loss left in the receive folders (older than a day) go.
+    private void SweepOrphanParts()
+    {
+        if (Interlocked.Exchange(ref orphanSweep, 1) == 1) return;
+        var dirs = new[] { Core.Downloads.Folder, ViewerFiles.DefaultFolder(), remotePrefs?["saveDir"]?.GetValue<string>() };
+        _ = Task.Run(() => { foreach (var d in dirs) if (!string.IsNullOrWhiteSpace(d)) IncomingFiles.SweepOrphans(d!, DateTime.UtcNow); });
+    }
+
     private RemoteHost NewRemoteHost()
     {
+        SweepOrphanParts();
         var h = new RemoteHost(api, (t, b, i) => tray.ShowBalloonTip(5000, t, b, i));
         // While ICT is connected the tray icon wears the green ring (mockup remote: always-on cue).
         h.ActiveChanged += on => Post(() => { remoteActive = on; UpdateTray(); });
@@ -65,6 +76,7 @@ public sealed partial class NotifierApp
 
     private void ShowRemoteBook()
     {
+        SweepOrphanParts();
         if (!device.IctTools) return;
         if (remoteBook is { IsDisposed: false }) { remoteBook.Activate(); return; }
         remoteBook = new RemoteBookWindow(api, device.DisplayName);

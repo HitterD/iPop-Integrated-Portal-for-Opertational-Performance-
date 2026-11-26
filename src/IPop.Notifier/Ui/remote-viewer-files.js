@@ -10,6 +10,9 @@
   let maxBytes = 2048 * 1048576, saveDir = 'Downloads\\iPop Remote', allowed = false;
   const fmtSize = b => b >= 1073741824 ? (b / 1073741824).toFixed(1) + ' GB' : b >= 1048576 ? (b / 1048576).toFixed(b >= 10485760 ? 0 : 1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
   const lim = b => { const mb = Math.round(b / 1048576); return mb >= 1024 ? mb / 1024 + ' GB' : mb + ' MB'; };
+  // Why a transfer was refused (the receiving app's reason): limit, two already running, disk full, notallowed.
+  const why = r => r === 'big' ? `Too large: the limit is ${lim(maxBytes)} per file` : r === 'busy' ? 'Two files are already on the way. Try again when one is done'
+    : r === 'space' ? 'Not enough free disk space on the other PC' : r === 'notallowed' ? 'File transfer is not allowed in this session' : 'The connection was interrupted';
 
   function draw(t) {
     let el = document.querySelector(`#flist .file[data-t="${t.id}"]`);
@@ -18,12 +21,13 @@
     const pct = Math.round(t.p * 100);
     let sub, act = '';
     if (t.state === 'run') { sub = `${lab} · ${pct}% · ${fmtSize(t.size * t.p)} of ${fmtSize(t.size)}`; act = `<button class="fx" data-a="cancel" title="Cancel">${IC('x')}Cancel</button>`; }
+    else if (t.state === 'queued') { sub = `${lab} · waiting for another file to finish…`; act = `<button class="fx" data-a="cancel" title="Cancel">${IC('x')}Cancel</button>`; }
     else if (t.state === 'wait') { sub = `${lab} · waiting for the connection…`; act = `<button class="fx" data-a="cancel" title="Cancel">${IC('x')}Cancel</button>`; }
     else if (t.state === 'done') { sub = `${lab} · delivered · ${fmtSize(t.size)}`; act = t.dir === 'down' && t.path ? `<button class="fx" data-a="open">${IC('folder-open')}Show</button>` : ''; }
     else if (t.state === 'cancel') { sub = `${lab} · cancelled`; act = t.retry ? `<button class="fx" data-a="retry">${IC('rotate-cw')}Retry</button>` : ''; }
     else { sub = `${lab} · ${t.msg || 'failed'}`; act = t.state === 'big' || !t.retry ? '' : `<button class="fx" data-a="retry">${IC('rotate-cw')}Retry</button>`; }
     el.className = 'file' + (t.state === 'fail' || t.state === 'big' ? ' err' : t.state === 'cancel' ? ' off' : t.state === 'done' ? ' ok' : '');
-    el.innerHTML = `<span class="fi">${IC(t.dir === 'up' ? 'file-up' : 'file-down')}</span><span class="m"><b>${esc(t.name)}</b><small>${esc(sub)}</small>${t.state === 'run' || t.state === 'wait' ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}</span>${act}`;
+    el.innerHTML = `<span class="fi">${IC(t.dir === 'up' ? 'file-up' : 'file-down')}</span><span class="m"><b>${esc(t.name)}</b><small>${esc(sub)}</small>${t.state === 'run' || t.state === 'wait' || t.state === 'queued' ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}</span>${act}`;
     el.onclick = e => {
       const a = e.target.closest('[data-a]')?.dataset.a;
       if (a === 'cancel') cancel(t);
@@ -33,6 +37,7 @@
   }
 
   function cancel(t) {
+    if (t.state === 'queued') { t.state = 'cancel'; draw(t); return; }
     if (t.dir === 'up') xfer.cancelSend(t.id); else xfer.cancelReceive(t.id);
     t.state = 'cancel'; draw(t);
   }
@@ -43,15 +48,21 @@
     rows.set(t.id, t);
     if (!allowed) { t.state = 'fail'; t.msg = 'File transfer is not allowed in this session'; t.retry = null; return draw(t); }
     if (file.size > maxBytes) { t.state = 'big'; t.msg = `Too large: the limit is ${lim(maxBytes)} per file`; return draw(t); }
-    draw(t);
+    // At most two files at a time per session (the receiver refuses a third); the rest wait here in order.
+    t.state = 'queued'; t.msg = ''; draw(t);
+    while (active >= 2) await new Promise(r => queue.push(r));
+    if (t.state === 'cancel') { (queue.shift() || (() => { }))(); return; }
+    active++; t.state = 'run'; draw(t);
     let last = 0;
     try {
       const r = await xfer.send(file, { id: t.id, topic: 'file', onProgress: (sent, size) => {
         t.p = size ? sent / size : 1; const now = performance.now(); if (now - last > 200) { last = now; draw(t); } } });
       if (r === 'cancel') { t.state = 'cancel'; } else if (t.state === 'run') { t.state = 'done'; t.p = 1; viewerFiles.sent.push(file.name); }
     } catch { if (t.state !== 'cancel') { t.state = 'fail'; t.msg = 'The connection was interrupted'; } }
+    finally { active--; (queue.shift() || (() => { }))(); }
     draw(t);
   }
+  let active = 0; const queue = [];
 
   // From the user: the app writes the batches to disk (".part"), renamed when complete.
   function receive(reader, from) {
@@ -65,13 +76,13 @@
 
   // The app's answers for incoming files.
   app.on('xferProgress', m => { const t = rows.get(m.id); if (!t) return; t.p = t.size ? m.n / t.size : 0; draw(t); });
-  app.on('xferSaved', m => { const t = rows.get(m.id); if (!t) return; if (m.path) { t.state = 'done'; t.p = 1; t.path = m.path; } else if (t.state !== 'cancel') { t.state = m.reason === 'big' ? 'big' : 'fail'; t.msg = m.reason === 'big' ? `Too large: the limit is ${lim(maxBytes)} per file` : 'The connection was interrupted'; } draw(t); });
+  app.on('xferSaved', m => { const t = rows.get(m.id); if (!t) return; if (m.path) { t.state = 'done'; t.p = 1; t.path = m.path; } else if (t.state !== 'cancel') { t.state = m.reason === 'big' ? 'big' : 'fail'; t.msg = m.reason === 'space' ? 'Not enough free disk space on this PC' : m.reason === 'busy' ? 'Two files are already on the way. Try again when one is done' : why(m.reason); } draw(t); });
   // The user cancelled or the other side refused.
   function onPeer(m) {
     xfer.onPeer(m);
     const t = rows.get(m.id); if (!t) return;
     if (m.op === 'cancel' && t.state === 'run') { t.state = 'cancel'; t.retry = null; }
-    if (m.op === 'fail' && t.state === 'run') { t.state = m.msg === 'big' ? 'big' : 'fail'; t.msg = m.msg === 'big' ? `Too large: the limit is ${lim(maxBytes)} per file` : m.msg === 'notallowed' ? 'File transfer is not allowed in this session' : 'The connection was interrupted'; }
+    if (m.op === 'fail' && t.state === 'run') { t.state = m.msg === 'big' ? 'big' : 'fail'; t.msg = why(m.msg); }
     draw(t);
   }
   // While reconnecting, running rows show "waiting for the connection"; they fail if the session ends.
