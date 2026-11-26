@@ -337,9 +337,13 @@ public static class NotifierEndpoints
 
     private static string? Cut(string? s, int max) => string.IsNullOrWhiteSpace(s) ? null : s.Trim() is var t && t.Length > max ? t[..max] : s.Trim();
 
-    private static Task<Guid?> MyId(HttpContext http, IPopDbContext db, CancellationToken ct)
+    /// The caller: the token's user id (sub) first, as the notification gateway does; only a token without it falls
+    /// back to the NIK claim (review M5). No NIK claim either = nobody (never "the user whose NIK is null").
+    internal static async Task<Guid?> MyId(HttpContext http, IPopDbContext db, CancellationToken ct)
     {
+        if (IPop.Api.Auth.CurrentUser.IdFromToken(http.User) is { } fromToken) return fromToken;
         var nik = http.User.FindFirstValue("nik");
-        return db.Users.AsNoTracking().Where(u => u.Nik == nik).Select(u => (Guid?)u.Id).FirstOrDefaultAsync(ct);
+        if (string.IsNullOrEmpty(nik)) return null;
+        return await db.Users.AsNoTracking().Where(u => u.Nik == nik).Select(u => (Guid?)u.Id).FirstOrDefaultAsync(ct);
     }
 }
