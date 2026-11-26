@@ -40,6 +40,11 @@ public static partial class ApiBridge
         ("POST", R("^api/notifier/remote/sessions$")),
         ("POST", R($"^api/notifier/remote/sessions/{G}/(end|answer)$")),
         ("PUT", R($"^api/notifier/remote/devices/{G}/unattended$")),
+        // 1.8.0 Remote window (address book) + the Admin's unattended password (hash kept on the server only).
+        ("GET", R("^api/notifier/remote/book$")),
+        ("PUT", R($"^api/notifier/remote/machines/{G}/favourite$")),
+        ("PUT", R($"^api/notifier/remote/machines/{G}/password$")),
+        ("DELETE", R($"^api/notifier/remote/machines/{G}/password$")),
         ("POST", R("^api/mail/send$")),
         ("POST", R($"^api/mail/{G}/read$")),
         ("POST", R($"^api/meetings/{G}/rsvp$")),

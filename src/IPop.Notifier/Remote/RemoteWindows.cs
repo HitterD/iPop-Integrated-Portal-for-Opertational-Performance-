@@ -10,7 +10,8 @@ public sealed class HelpWindow : BridgedWindow
 {
     private readonly RemoteHost host;
     private readonly bool asking;
-    public event Action<bool>? Answered;
+    /// Allow / Decline, with what the user ticked ("control", "clipboard", "files").
+    public event Action<bool, string[]>? Answered;
     private Size full;
 
     public HelpWindow(IPopClient api, RemoteHost host, bool asking)
@@ -71,7 +72,10 @@ public sealed class HelpWindow : BridgedWindow
     {
         switch (type)
         {
-            case "answer": Answered?.Invoke(msg?["allow"]?.GetValue<bool>() == true); break;
+            case "answer":
+                var allowed = msg?["perms"] is System.Text.Json.Nodes.JsonArray a ? a.Select(x => x?.GetValue<string>() ?? "").Where(x => x.Length > 0).ToArray() : [];
+                Answered?.Invoke(msg?["allow"]?.GetValue<bool>() == true, allowed);
+                break;
             case "mediaMin": SetMinimised(msg?["min"]?.GetValue<bool>() == true); break;
             case "chatSend": host.ChatFromUser(msg?["text"]?.GetValue<string>() ?? ""); break;
             case "endSession": _ = host.EndAsync("user"); break;
@@ -110,6 +114,12 @@ public sealed class ViewerWindow : BridgedWindow
     public void Answer(string status) { Log.Info("remote", $"viewer answer {SessionId} {status}"); Send(new { type = "answer", status }); }
     public void Ended(string? by) => Send(new { type = "remoteEnded", endedBy = by });
 
+    /// A connect that didn't start (offline, wrong password, locked…): the viewer shows the matching screen.
+    public void Problem(int status, JsonNode? body) => Send(new { type = "problem", status, body });
+
+    /// "Try again" on the offline / couldn't-connect screen.
+    public event Action? RetryRequested;
+
     private void OnClipboard()
     {
         // Whatever the helper copies on their own PC goes over, so they can paste it into the user's screen.
@@ -125,6 +135,7 @@ public sealed class ViewerWindow : BridgedWindow
         switch (type)
         {
             case "log": Log.Info("viewer", msg?["text"]?.GetValue<string>() ?? ""); break;
+            case "retry": RetryRequested?.Invoke(); break;
             case "maximize": WindowState = WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized; break;
             case "fullscreen": SetFullScreen(msg?["on"]?.GetValue<bool>() == true); break;
             case "setClipboard": Clip.Apply(msg!); break;

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss: http: https:; media-src 'self' blob: data:; img-src 'self' data: blob:">
 <link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="remote-kit.css">
 <style>
 /* ICT viewer (mockup remote.html §1, left). */
 body{display:flex;flex-direction:column;background:#111}
@@ -99,17 +100,25 @@ body:not(.fs) .fsbar{display:none}
 .ended.on{display:flex}
 .ended b{font-size:20px}
 .ended button{height:38px;padding:0 16px;border-radius:10px;background:#fff;color:#123528;font-weight:700}
+/* 1.8.0 (mockup ipop-remote-v2 prop-viewer): Monitor picker, remote ID, what the user allowed */
+.tb .of{font-size:11px;color:var(--ink-3);font-weight:700}
+.seg button:disabled{opacity:.4;cursor:default}
+.mon{cursor:pointer;background:none}.mon:disabled{opacity:.45;cursor:default}
+#rid{font-size:12.5px;color:var(--ink-3);margin-left:4px}
+.ovl[hidden]{display:none}
+#ended i[data-lucide],#ended svg.lucide{width:42px;height:42px}
 </style>
 </head>
 <body>
-<div class="ttl" data-drag><span class="logo"><img src="ipop-mark.png" alt=""></span><b id="pc">Remote help</b><span class="who" id="who"></span>
+<div class="ttl" data-drag><span class="logo"><img src="ipop-mark.png" alt=""></span><b id="pc" style="flex:none">Remote help</b><span class="mono" id="rid"></span><span class="who" id="who"></span>
   <span class="live warn" id="live"><i></i><span id="liveTxt">Connecting</span></span>
   <span class="stats"><span><i data-lucide="gauge"></i><b id="fps">–</b> fps</span><span><i data-lucide="activity"></i><b id="ping">–</b> ms</span><span id="res"></span><span id="inp" title="Mouse and keyboard on the user's PC"></span></span>
   <button class="wc" data-min title="Minimize"></button><button class="wc" data-max title="Maximize"></button><button class="wc x" data-close title="End and close"></button></div>
 <div class="tbar">
+  <button class="tb" id="mon" title="Choose monitor" disabled><i data-lucide="monitor"></i><span id="monName">Monitor 1</span> <span class="of" id="monOf">1/1</span><i data-lucide="chevron-down"></i></button><span class="sp"></span>
   <div class="seg" id="mode"><button data-m="control" class="on"><i data-lucide="mouse-pointer-2"></i>Control</button><button data-m="view"><i data-lucide="eye"></i>View only</button></div>
   <span class="sp"></span>
-  <div class="seg" id="quality"><button data-q="smooth" class="on">Smoothest</button><button data-q="quality">Best quality</button></div>
+  <div class="seg" id="quality" title="Auto adjusts to the network"><button data-q="auto" class="on"><i data-lucide="wand-sparkles"></i>Auto</button><button data-q="smooth">Smooth</button><button data-q="quality">Sharp</button></div>
   <button class="tb" id="keys" title="Special keys"><i data-lucide="keyboard"></i>Keys<i data-lucide="chevron-down"></i></button>
   <button class="tb on" id="clip" title="Clipboard sync: text, images and files"><i data-lucide="clipboard-copy"></i>Clipboard</button>
   <span class="sp"></span>
@@ -124,6 +133,7 @@ body:not(.fs) .fsbar{display:none}
 <div class="main">
   <div class="stage" id="stage" tabindex="0">
     <div class="wait" id="wait"><img src="ipop-mark.png" alt=""><b id="waitTxt">Waiting for the user to allow…</b><span id="waitSub"></span><div class="dots"><i></i><i></i><i></i></div></div>
+    <div class="ovl" id="perms" hidden style="left:14px;top:14px"><i data-lucide="shield-check"></i><span id="permsTxt"></span></div>
     <div class="ghost" id="ghost" hidden><i data-lucide="eye-off"></i><span>Your media is showing on the user's screen (hidden from you)</span></div>
     <div class="locked" id="locked"><i data-lucide="lock" id="lockIc"></i><b id="lockT">The user's PC is locked</b><small id="lockS"></small></div>
     <div class="ended" id="ended"><i data-lucide="circle-check" style="width:42px;height:42px;color:#30d158"></i><b id="endedTxt">Remote help ended</b><span id="endedSub"></span><button data-close>Close</button></div>
@@ -148,5 +158,6 @@ body:not(.fs) .fsbar{display:none}
 <script src="livekit-client.umd.js"></script>
 <script src="remote.js"></script>
 <script src="remote-viewer.js"></script>
+<script src="remote-viewer-tools.js"></script>
 </body>
 </html>

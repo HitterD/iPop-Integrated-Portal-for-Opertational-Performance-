@@ -13,10 +13,12 @@
   const sendReliable = (obj, topic = 'ctl') => R.room?.localParticipant.publishData(ENC.encode(JSON.stringify(obj)), { reliable: true, topic });
   R.sendReliable = sendReliable;
 
-  R.join = async (info, quality) => {
+  // Quality "Auto" (1.8.0): the host publishes simulcast layers and LiveKit picks one per viewer (dynacast on the
+  // host, adaptive stream on the viewer), so a slow network gets a lighter picture instead of stalls.
+  R.join = async (info, quality, screen) => {
     R.role = info.role; R.mode = info.mode; R.helper = info.helper || '';
     const room = R.room = new LK.Room({
-      adaptiveStream: false, dynacast: false,
+      adaptiveStream: info.role !== 'host', dynacast: info.role === 'host',
       publishDefaults: { videoCodec: 'h264', backupCodec: false, simulcast: false, degradationPreference: 'maintain-framerate' },
     });
     room.on(LK.RoomEvent.DataReceived, (payload, participant, kind, topic) => {
@@ -33,34 +35,59 @@
     room.registerByteStreamHandler('clip-file', async (reader, from) => (R.onClipFile || (() => { }))(reader, from));
     room.registerByteStreamHandler('clip-data', async (reader, from) => (R.onClipData || (() => { }))(reader, from));
     await room.connect(info.url, info.token, { autoSubscribe: true });
-    if (R.role === 'host') await R.publishScreen(quality || 'smooth');
+    if (R.role === 'host') await R.publishScreen(quality || 'auto', screen);
     return room;
   };
 
   // ── host: screen ───────────────────────────────────────────────────────
-  // The app answers getDisplayMedia itself (WebView2 picks the monitor, no picker), so no Chrome prompt appears.
+  // One monitor: getDisplayMedia, answered by the app itself (no picker). Several monitors (1.8.0): the whole desktop
+  // through getUserMedia('screen'), cropped frame by frame to the monitor the helper picked (screen.crop; none = All).
   const PRESETS = {
-    smooth: { maxW: 1920, maxH: 1080, fps: 60, bitrate: 8_000_000 },
-    quality: { maxW: 2560, maxH: 1440, fps: 30, bitrate: 12_000_000 },
+    auto: { maxW: 1920, maxH: 1080, fps: 30, bitrate: 6_000_000, simulcast: true, degrade: 'balanced', hint: 'detail' },
+    smooth: { maxW: 1920, maxH: 1080, fps: 60, bitrate: 8_000_000, degrade: 'maintain-framerate', hint: 'motion' },
+    quality: { maxW: 2560, maxH: 1440, fps: 30, bitrate: 12_000_000, degrade: 'maintain-resolution', hint: 'detail' },
   };
-  R.publishScreen = async preset => {
-    const p = PRESETS[preset] || PRESETS.smooth;
-    if (R.screenPub) { await R.room.localParticipant.unpublishTrack(R.screenPub.track); R.screenPub = null; }
-    const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: { frameRate: { ideal: p.fps, max: p.fps }, width: { max: p.maxW }, height: { max: p.maxH }, cursor: 'always' },
-      audio: false,
-    });
-    const mst = stream.getVideoTracks()[0];
-    try { mst.contentHint = preset === 'quality' ? 'detail' : 'motion'; } catch { }
+  async function capture(p, screen) {
+    if (!screen || !screen.multi) {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: { ideal: p.fps, max: p.fps }, width: { max: p.maxW }, height: { max: p.maxH }, cursor: 'always' }, audio: false,
+      });
+      return stream.getVideoTracks()[0];
+    }
+    const v = screen.virtual;
+    const desk = (await navigator.mediaDevices.getUserMedia({ audio: false, video: { mandatory: {
+      chromeMediaSource: 'screen', minWidth: v.w, maxWidth: v.w, minHeight: v.h, maxHeight: v.h, maxFrameRate: p.fps } } })).getVideoTracks()[0];
+    const c = screen.crop;
+    if (!c) return desk;
+    const gen = new MediaStreamTrackGenerator({ kind: 'video' });
+    const rect = { x: c.x & ~1, y: c.y & ~1, width: c.w & ~1, height: c.h & ~1 };
+    new MediaStreamTrackProcessor({ track: desk }).readable.pipeThrough(new TransformStream({
+      transform(frame, out) {
+        try { out.enqueue(new VideoFrame(frame, { visibleRect: rect })); } catch { }
+        frame.close();
+      },
+    })).pipeTo(gen.writable).catch(() => { });
+    gen.addEventListener('ended', () => desk.stop());
+    R.desk = desk;
+    return gen;
+  }
+  R.publishScreen = async (preset, screen) => {
+    const p = PRESETS[preset] || PRESETS.auto;
+    R.screen = screen || R.screen;
+    if (R.screenPub) { await R.room.localParticipant.unpublishTrack(R.screenPub.track); R.screenPub = null; try { R.desk?.stop(); } catch { } }
+    const mst = await capture(p, R.screen);
+    try { mst.contentHint = p.hint; } catch { }
     const track = new LK.LocalVideoTrack(mst, undefined, false);
     R.screenPub = await R.room.localParticipant.publishTrack(track, {
-      source: LK.Track.Source.ScreenShare, videoCodec: 'h264', simulcast: false,
+      source: LK.Track.Source.ScreenShare, videoCodec: 'h264', simulcast: !!p.simulcast,
+      screenShareSimulcastLayers: p.simulcast ? [LK.ScreenSharePresets.h720fps15] : undefined,
       screenShareEncoding: { maxBitrate: p.bitrate, maxFramerate: p.fps },
       videoEncoding: { maxBitrate: p.bitrate, maxFramerate: p.fps },
-      degradationPreference: preset === 'quality' ? 'maintain-resolution' : 'maintain-framerate',
+      degradationPreference: p.degrade,
     });
     const s = mst.getSettings();
-    sendReliable({ t: 'screen', w: s.width, h: s.height, fps: s.frameRate, preset });
+    const c = R.screen?.crop;
+    sendReliable({ t: 'screen', w: c ? c.w : s.width, h: c ? c.h : s.height, fps: s.frameRate, preset });
     return s;
   };
 

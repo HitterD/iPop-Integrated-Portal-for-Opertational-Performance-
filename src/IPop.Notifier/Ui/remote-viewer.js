@@ -17,6 +17,8 @@
   app.on('start', async m => {
     sessionId = m.sessionId;
     $('#pc').textContent = m.machine; $('#who').textContent = '· ' + m.user;
+    if (window.viewerTools) viewerTools.start(m);
+    if (m.problem) return viewerTools.problem(m.problem);
     if (m.status === 'active') return join();
     $('#waitTxt').textContent = 'Waiting for ' + m.user.split(' ')[0] + ' to allow…';
     $('#waitSub').textContent = 'They have 30 seconds to answer.';
@@ -35,7 +37,8 @@
     showEnded(status === 'declined' ? 'The user declined' : 'No answer', status === 'declined' ? 'They chose not to share their screen.' : 'The request timed out after 30 seconds.');
   }
   app.on('answer', m => answer(m.status));
-  app.on('remoteEnded', m => showEnded('Remote help ended', m.endedBy === 'user' ? 'The user ended the session.' : ''));
+  app.on('remoteEnded', m => m.endedBy === 'revoked' ? showRevoked() : showEnded('Remote help ended', m.endedBy === 'user' ? 'The user ended the session.' : ''));
+  const showRevoked = () => showEnded('Unattended access was changed', 'An Administrator changed or removed the access password for this PC, so the session ended.');
   app.on('clipboard', m => { if (clipOn && R.room) R.sendClip(m.kind, m.text, m.data).catch(e => log('clip send ' + e.message)); });
   app.on('clipFile', async m => {
     if (!clipOn || !R.room) return;
@@ -64,7 +67,8 @@
       if (topic === 'chat') addMsg(m.text, false);
       if (topic === 'clip' && clipOn) post({ type: 'setClipboard', kind: m.kind, text: m.text, data: m.data });
       if (m.t === 'screen') $('#res').textContent = `${m.w}×${m.h} · H.264`;
-      if (m.t === 'bye') showEnded('Remote help ended', 'The user ended the session.');
+      if (m.t === 'bye') m.reason === 'revoked' ? showRevoked() : showEnded('Remote help ended', 'The user ended the session.');
+      if (m.t === 'perms' || m.t === 'monitors') viewerTools.fromHost(m);
       if (m.t === 'inStat') inputStat(m);
     };
     R.onFile = async reader => { const b = await R.readAll(reader); post({ type: 'saveFile', name: reader.info.name, data: R.b64(b) }); addFile(reader.info.name, b.length, 'From the user · saved to Downloads', 1); };
@@ -79,6 +83,7 @@
     R.onDisconnected = () => { if (!ended) showEnded('Connection lost', 'The user\'s PC went offline or the network dropped.'); };
     R.onPeer = (p, joined) => { if (!joined && p.identity.startsWith('host:') && !ended) showEnded('Remote help ended', 'The user\'s PC left the session.'); };
     try { await R.join(r.json); log('connected; peers ' + R.room.remoteParticipants.size); } catch (e) { log('connect failed ' + (e.name + ': ' + e.message)); return showEnded('Couldn\'t connect', String(e.message || e)); }
+    viewerTools.joined(r.json);
     setMode(r.json.mode);
     sendMedia();
     statsLoop();
@@ -139,6 +144,7 @@
     ended = true; R.leave(); live('Ended', 'off');
     $('#wait').style.display = 'none'; $('#endedTxt').textContent = title; $('#endedSub').textContent = sub || ''; $('#ended').classList.add('on');
   }
+  window.viewer = { showEnded, live, setMode: m => setMode(m) };
 
   // ── input ──────────────────────────────────────────────────────────────
   let mode = 'control';
@@ -148,7 +154,7 @@
     if (R.room) R.sendReliable({ t: 'mode', mode: m });
     live(m === 'view' ? 'Viewing' : 'Controlling', '');
   }
-  $('#mode').onclick = e => { const b = e.target.closest('button'); if (b) setMode(b.dataset.m); };
+  $('#mode').onclick = e => { const b = e.target.closest('button'); if (b && !b.disabled) setMode(b.dataset.m); };
   $('#quality').onclick = e => {
     const b = e.target.closest('button'); if (!b) return;
     document.querySelectorAll('#quality button').forEach(x => x.classList.toggle('on', x === b));
@@ -214,7 +220,7 @@
   };
 
   // ── clipboard ──────────────────────────────────────────────────────────
-  $('#clip').onclick = () => { clipOn = !clipOn; $('#clip').classList.toggle('on', clipOn); R.sendReliable({ t: 'clipSync', on: clipOn }); post({ type: 'clipSync', on: clipOn }); };
+  $('#clip').onclick = () => { if ($('#clip').disabled) return; clipOn = !clipOn; $('#clip').classList.toggle('on', clipOn); R.sendReliable({ t: 'clipSync', on: clipOn }); post({ type: 'clipSync', on: clipOn }); };
 
   // ── side panel ─────────────────────────────────────────────────────────
   let panel = 'media';

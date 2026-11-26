@@ -6,11 +6,14 @@
 
   app.on('join', async m => {
     try {
-      const s = await (await R.join(m.info, m.quality)) && R.screenPub?.track?.mediaStreamTrack?.getSettings();
+      const s = await (await R.join(m.info, m.quality, m.screen)) && R.screenPub?.track?.mediaStreamTrack?.getSettings();
       post({ type: 'joined', w: s?.width, h: s?.height, fps: s?.frameRate });
     } catch (e) { post({ type: 'failed', message: String(e && (e.name + ': ' + e.message) || e) }); }
   });
-  app.on('quality', async m => { try { await R.publishScreen(m.preset); } catch { } });
+  let preset = 'auto';
+  app.on('quality', async m => { preset = m.preset || 'auto'; try { await R.publishScreen(preset); } catch (e) { post({ type: 'log', text: 'quality ' + e.message }); } });
+  // Another monitor (or All) picked by the helper: re-publish with the new crop.
+  app.on('screen', async m => { try { await R.publishScreen(preset, m.screen); } catch (e) { post({ type: 'log', text: 'screen ' + e.message }); } });
   app.on('leave', async () => { await R.leave(); post({ type: 'left' }); });
   app.on('send', m => {
     if (m.topic === 'clip' && m.msg) return R.sendClip(m.msg.kind, m.msg.text, m.msg.data).catch(e => post({ type: 'log', text: 'clip send ' + e.message }));

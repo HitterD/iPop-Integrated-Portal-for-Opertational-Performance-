@@ -17,7 +17,7 @@ public static class WebHost
 
     public static Task<CoreWebView2Environment> EnvironmentAsync() => env ??= CoreWebView2Environment.CreateAsync(null,
         Path.Combine(SessionStore.Folder, "WebView2"),
-        new CoreWebView2EnvironmentOptions("--disable-features=msSmartScreenProtection --renderer-process-limit=3 --auto-select-desktop-capture-source=\"Entire screen\" --unsafely-treat-insecure-origin-as-secure=http://notifier.ipop,http://media.notifier.ipop" + QaDebugPort()));
+        new CoreWebView2EnvironmentOptions("--disable-features=msSmartScreenProtection --renderer-process-limit=3 --auto-select-desktop-capture-source=\"Entire screen\" --enable-usermedia-screen-capturing --unsafely-treat-insecure-origin-as-secure=http://notifier.ipop,http://media.notifier.ipop" + QaDebugPort()));
 
     private static string QaDebugPort()
     {

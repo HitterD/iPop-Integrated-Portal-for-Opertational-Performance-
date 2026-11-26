@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' http://media.notifier.ipop data: blob:; media-src 'self' http://media.notifier.ipop data: blob:">
 <link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="remote-kit.css">
 <style>
 /* User's screen: "ICT is helping you" (mockup remote.html §1, right) and the Allow prompt (§2). The app keeps this
    window out of screen capture, so the helper never sees it in the stream. */
@@ -64,6 +65,13 @@ body.ask .ttl,body.ask .media,body.ask .foot,body.ask .chatbox{display:none}
 .ask-box .acts button{height:44px;border-radius:12px;font-weight:700;font-size:15px;flex:1}
 .ask-box .no{background:var(--fill)}
 .ask-box .yes{background:var(--green);color:#fff}
+/* 1.8.0 (mockup ipop-remote-v2 prop-ask / prop-help): permission checklist and the chips of what ICT may do */
+.ask-box .opts .pr{display:flex;align-items:center;gap:10px;font-size:14.5px;cursor:pointer}
+.ask-box .opts .pr.dis{cursor:default}
+.chips{display:flex;gap:8px;padding:10px 16px 0;flex-wrap:wrap;background:rgba(0,0,0,.25);flex:none}
+.chips span{display:flex;gap:5px;align-items:center;font-size:12px;font-weight:650;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.1)}
+.chips span.off{background:rgba(255,255,255,.06);opacity:.6}
+body.min .chips,body.ua .chips{display:none}
 .count{height:4px;border-radius:2px;background:var(--fill);overflow:hidden}
 .count i{display:block;height:100%;background:var(--ink-4);width:100%}
 </style>
@@ -79,6 +87,7 @@ body.ask .ttl,body.ask .media,body.ask .foot,body.ask .chatbox{display:none}
 <div class="ttl" data-drag><span class="logo"><img src="ipop-mark.png" alt=""></span><b>ICT is helping you <small id="hName"></small></b>
   <span class="t"><i data-lucide="timer"></i><span id="tm">00:00</span></span><button class="wc" data-min title="Minimise"></button></div>
 <div class="media" id="media"></div>
+<div class="chips" id="chips"></div>
 <div class="foot"><span class="av" id="fAv">IT</span><span class="who"><b id="fName">ICT</b><small id="fSub">is helping on this PC · you can keep working</small></span>
   <button class="chat" id="chatBtn"><i data-lucide="message-circle"></i>Chat</button>
   <button class="end" id="endBtn"><i data-lucide="phone-off"></i>End session</button></div>
