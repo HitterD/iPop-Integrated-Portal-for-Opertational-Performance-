@@ -4125,6 +4125,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
+                    b.Property<Guid?>("MachineId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("MachineName")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -4151,6 +4154,8 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("LastSeenAt");
+
+                    b.HasIndex("MachineId");
 
                     b.HasIndex("UserId", "DeviceKey")
                         .IsUnique();
@@ -5632,6 +5637,60 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("RemoteHelperBlocks");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.RemoteMachine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ComputerName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ConnectId")
+                        .IsRequired()
+                        .HasMaxLength(9)
+                        .HasColumnType("character varying(9)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("FailedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("LockedUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MachineKey")
+                        .IsRequired()
+                        .HasMaxLength(110)
+                        .HasColumnType("character varying(110)");
+
+                    b.Property<string>("PasswordHash")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("PasswordUpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("SetById")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Unattended")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConnectId")
+                        .IsUnique();
+
+                    b.HasIndex("MachineKey")
+                        .IsUnique();
+
+                    b.ToTable("RemoteMachines");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.RemoteMedia", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5697,6 +5756,10 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Permissions")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<DateTime>("RequestedAt")
                         .HasColumnType("timestamp with time zone");
@@ -8138,11 +8201,18 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("IPop.Core.Entities.NotifierDevice", b =>
                 {
+                    b.HasOne("IPop.Core.Entities.RemoteMachine", "Machine")
+                        .WithMany()
+                        .HasForeignKey("MachineId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("IPop.Core.Entities.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Machine");
 
                     b.Navigation("User");
                 });

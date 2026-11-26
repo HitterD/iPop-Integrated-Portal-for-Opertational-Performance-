@@ -10,11 +10,12 @@ using Microsoft.EntityFrameworkCore;
 namespace IPop.Api.Endpoints;
 
 public record NotifierDeviceReport(string DeviceKey, string MachineName, string? WindowsUser, string? OsVersion,
-    string? AppVersion, IReadOnlyList<string>? LocalIps);
+    string? AppVersion, IReadOnlyList<string>? LocalIps, string? MachineGuid = null);
 
 public record NotifierDeviceRow(Guid Id, string MachineName, string? WindowsUser, string? OsVersion, string? AppVersion,
     string? LocalIps, string? RemoteIp, DateTime LastSeenAt, bool Online, string UserName, string? Department, string? Site,
-    bool Unattended = false, bool HelperService = false);
+    bool Unattended = false, bool HelperService = false, Guid? MachineId = null, string? RemoteId = null,
+    bool UnattendedSwitch = false, bool HasPassword = false, DateTime? LockedUntil = null);
 
 /// A leader of the signed-in person for the Notifier's priority inbox. Reason = why ("Manager", "General Manager",
 /// "BOD / GM level"). Never NIK or position (office rule).
@@ -297,6 +298,8 @@ public static class NotifierEndpoints
         row.LocalIps = ips.Count == 0 ? null : Cut(string.Join(", ", ips), 256);
         row.RemoteIp = Cut(remoteIp, 64);
         row.LastSeenAt = now;
+        // One 9-digit remote ID per physical PC, shared by everyone who signs in to Windows on it (BIGIS #8).
+        await IPop.Api.Notifier.RemoteMachines.LinkAsync(db, row, r.MachineGuid, now, ct);
         await db.SaveChangesAsync(ct);
         return 204;
     }
@@ -324,14 +327,18 @@ public static class NotifierEndpoints
         if (!string.IsNullOrWhiteSpace(q))
         {
             var term = $"%{q.Trim()}%";
-            query = query.Where(d => EF.Functions.ILike(d.MachineName, term) || EF.Functions.ILike(d.User.Name, term)
+            var digits = IPop.Api.Notifier.RemoteMachines.ParseId(q);
+            query = query.Where(d => (digits != null && d.Machine != null && d.Machine.ConnectId == digits) || EF.Functions.ILike(d.MachineName, term) || EF.Functions.ILike(d.User.Name, term)
                 || EF.Functions.ILike(d.User.Nik, term) || (d.RemoteIp != null && EF.Functions.ILike(d.RemoteIp, term))
                 || (d.LocalIps != null && EF.Functions.ILike(d.LocalIps, term)));
         }
         return await query.OrderByDescending(d => d.LastSeenAt).Take(500)
             .Select(d => new NotifierDeviceRow(d.Id, d.MachineName, d.WindowsUser, d.OsVersion, d.AppVersion, d.LocalIps, d.RemoteIp,
                 d.LastSeenAt, d.LastSeenAt >= since, d.User.Name, d.User.Department != null ? d.User.Department.Name : null,
-                d.User.Site != null ? d.User.Site.Name : null, d.Unattended, d.HelperService))
+                d.User.Site != null ? d.User.Site.Name : null,
+                d.Machine != null && d.Machine.Unattended && d.Machine.PasswordHash != null, d.HelperService, d.MachineId,
+                d.Machine != null ? d.Machine.ConnectId : null, d.Machine != null && d.Machine.Unattended,
+                d.Machine != null && d.Machine.PasswordHash != null, d.Machine != null ? d.Machine.LockedUntil : null))
             .ToListAsync(ct);
     }
 
