@@ -61,5 +61,6 @@
   }
   function setPolicy(info) { attempts = info.reconnectAttempts || attempts; seconds = info.reconnectSeconds || seconds; }
 
+  (window.__qa = window.__qa || {}).recon = (c, a, el) => { cause = c; show(a, el); }; // screenshots/QA
   window.viewerRecon = { start, stop, hint, setPolicy, get active() { return active; }, endButton: $('#rcEnd') };
 })();

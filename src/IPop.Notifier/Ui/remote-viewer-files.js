@@ -19,7 +19,7 @@
     let sub, act = '';
     if (t.state === 'run') { sub = `${lab} · ${pct}% · ${fmtSize(t.size * t.p)} of ${fmtSize(t.size)}`; act = `<button class="fx" data-a="cancel" title="Cancel">${IC('x')}Cancel</button>`; }
     else if (t.state === 'wait') { sub = `${lab} · waiting for the connection…`; act = `<button class="fx" data-a="cancel" title="Cancel">${IC('x')}Cancel</button>`; }
-    else if (t.state === 'done') { sub = `${lab} · ${t.dir === 'down' ? 'saved to ' + saveDir.split('\\').slice(-2).join('\\') : 'delivered'} · ${fmtSize(t.size)}`; act = t.dir === 'down' && t.path ? `<button class="fx" data-a="open">${IC('folder-open')}Show</button>` : ''; }
+    else if (t.state === 'done') { sub = `${lab} · delivered · ${fmtSize(t.size)}`; act = t.dir === 'down' && t.path ? `<button class="fx" data-a="open">${IC('folder-open')}Show</button>` : ''; }
     else if (t.state === 'cancel') { sub = `${lab} · cancelled`; act = t.retry ? `<button class="fx" data-a="retry">${IC('rotate-cw')}Retry</button>` : ''; }
     else { sub = `${lab} · ${t.msg || 'failed'}`; act = t.state === 'big' || !t.retry ? '' : `<button class="fx" data-a="retry">${IC('rotate-cw')}Retry</button>`; }
     el.className = 'file' + (t.state === 'fail' || t.state === 'big' ? ' err' : t.state === 'cancel' ? ' off' : t.state === 'done' ? ' ok' : '');
@@ -100,4 +100,5 @@
   drop.addEventListener('drop', e => pick(e.dataTransfer.files));
 
   window.viewerFiles = { sendOne, pick, receive, onPeer, paused, ended, setup, setAllowed, sideNote, sent: [] };
+  (window.__qa = window.__qa || {}).fileRow = t => { rows.set(t.id, t); draw(t); }; // screenshots/QA: draw a row without LiveKit
 })();

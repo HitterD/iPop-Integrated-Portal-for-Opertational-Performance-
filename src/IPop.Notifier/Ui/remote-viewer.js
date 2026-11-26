@@ -267,6 +267,7 @@
 
   // Chat (never stored)
   // Chat: kept for the session only (never stored), with the time each message came.
+  (window.__qa = window.__qa || {}).msg = (t, me) => addMsg(t, me); // screenshots/QA
   function addMsg(text, me) {
     const d = document.createElement('div'); d.className = 'msg ' + (me ? 'me' : 'them'); d.textContent = text;
     const t = document.createElement('small'); t.className = 'mt2'; t.textContent = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
