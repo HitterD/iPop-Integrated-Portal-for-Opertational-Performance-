@@ -32,6 +32,8 @@
     <Compile Include="..\..\src\IPop.Notifier\Core\StartupPlan.cs" Link="Notifier\StartupPlan.cs" />
     <Compile Include="..\..\src\IPop.Notifier\Core\TicketLinks.cs" Link="Notifier\TicketLinks.cs" />
     <Compile Include="..\..\src\IPop.Notifier\Remote\RemotePermissions.cs" Link="Notifier\RemotePermissions.cs" />
+    <Compile Include="..\..\src\IPop.Notifier\Remote\IncomingFiles.cs" Link="Notifier\IncomingFiles.cs" />
+    <Compile Include="..\..\src\IPop.Notifier\Remote\RemoteRejoin.cs" Link="Notifier\RemoteRejoin.cs" />
   </ItemGroup>
 
 </Project>

@@ -14,7 +14,7 @@
     $('#title').textContent = wrong ? 'Wrong password' : 'Enter access password';
     const left = m.triesLeft ?? 5;
     $('#text').innerHTML = `<b>${esc(m.machine)}</b> <span class="mono">${esc(fmtId(m.remoteId))}</span> `
-      + (wrong ? `did not accept that password. ${left} ${left === 1 ? 'try' : 'tries'} left, then this PC locks for 15 minutes.`
+      + (wrong ? `did not accept that password. ${left} ${left === 1 ? 'try' : 'tries'} left, then this PC locks for ${m.lockMinutes || 15} minutes.`
         : 'can be reached without asking the user. Enter the password set by an Administrator.');
     $('#fld').className = 'fld ' + (wrong ? 'e' : 'f');
     $('#eye').innerHTML = IC(wrong ? 'circle-alert' : 'eye');

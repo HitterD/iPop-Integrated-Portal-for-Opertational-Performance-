@@ -8,8 +8,8 @@ namespace IPop.Notifier.Remote;
 public sealed class RemoteBookWindow : BridgedWindow
 {
     public static readonly Size BookSize = new(1100, 720);
-    /// (device id, typed target): exactly one is set.
-    public event Action<Guid?, string?>? ConnectRequested;
+    /// (device id, typed target, join view-only): one of the first two is set.
+    public event Action<Guid?, string?, bool>? ConnectRequested;
     private readonly string? me;
 
     public RemoteBookWindow(IPopClient api, string? displayName) : base("remote-book.html", BookSize, api)
@@ -21,15 +21,24 @@ public sealed class RemoteBookWindow : BridgedWindow
         StartPosition = FormStartPosition.CenterScreen;
     }
 
-    protected override void OnReady() => Send(new { type = "who", name = me });
+    protected override async void OnReady()
+    {
+        var info = await Api.GetJsonAsync("api/notifier/me");
+        Send(new { type = "who", name = me, isAdmin = info?["isAdmin"]?.GetValue<bool>() == true });
+    }
 
     public void Toast(string text) => Send(new { type = "toast", text });
+    /// A connect the company policy stopped (Remote off, blocked, excluded, too many…): the red banner here.
+    public void Banner(object b) { Send(new { type = "banner", b }); Activate(); }
+    /// Someone else is helping that PC: "Join view-only" or Cancel.
+    public void Busy(object b) { Send(new { type = "busy", b }); Activate(); }
 
     protected override void HandleMessage(string type, JsonNode? msg)
     {
         if (type != "connect") { base.HandleMessage(type, msg); return; }
-        if (Guid.TryParse(msg?["deviceId"]?.GetValue<string>(), out var id)) ConnectRequested?.Invoke(id, null);
-        else if (msg?["target"]?.GetValue<string>() is { Length: > 0 and <= 80 } t) ConnectRequested?.Invoke(null, t);
+        var join = msg?["joinViewOnly"]?.GetValue<bool>() == true;
+        if (Guid.TryParse(msg?["deviceId"]?.GetValue<string>(), out var id)) ConnectRequested?.Invoke(id, null, join);
+        else if (msg?["target"]?.GetValue<string>() is { Length: > 0 and <= 80 } t) ConnectRequested?.Invoke(null, t, join);
     }
 }
 
@@ -49,8 +58,8 @@ public sealed class RemotePasswordWindow : IPop.Notifier.Windows.HtmlWindow
         TopMost = true;
     }
 
-    public void Present(string? machine, string? remoteId, string? helper, int? triesLeft, bool wrong) =>
-        Send(new { type = "show", machine, remoteId, helper, triesLeft, wrong });
+    public void Present(string? machine, string? remoteId, string? helper, int? triesLeft, bool wrong, int lockMinutes = 15) =>
+        Send(new { type = "show", machine, remoteId, helper, triesLeft, wrong, lockMinutes });
 
     protected override void HandleMessage(string type, JsonNode? msg)
     {

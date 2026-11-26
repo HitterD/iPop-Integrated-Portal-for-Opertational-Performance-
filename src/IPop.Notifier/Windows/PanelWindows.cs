@@ -116,6 +116,11 @@ public sealed class SettingsWindow : BridgedWindow
             case "checkUpdates": CheckUpdates?.Invoke(); break;
             case "updateNow": UpdateNow?.Invoke(); break;
             case "devices": Devices?.Invoke(); break;
+            // Settings › Remote › "Save received files in": a folder picker on this PC.
+            case "pickFolder":
+                using (var f = new FolderBrowserDialog { Description = "Save received files in", UseDescriptionForTitle = true, InitialDirectory = msg?["current"]?.GetValue<string>() ?? "" })
+                    if (f.ShowDialog(this) == DialogResult.OK) Send(new { type = "folderPicked", path = f.SelectedPath });
+                break;
             default: base.HandleMessage(type, msg); break;
         }
     }

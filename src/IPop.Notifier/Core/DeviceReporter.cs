@@ -63,6 +63,7 @@ public sealed class DeviceReporter(IPopClient api)
         localIps = LocalIps(),
         // Same for every Windows user on this PC, so the server gives the PC one 9-digit remote ID (1.8.0).
         machineGuid = MachineGuid(),
+        monitors = string.Join(" + ", Screen.AllScreens.OrderByDescending(s => s.Primary).Select(s => $"{s.Bounds.Width}×{s.Bounds.Height}")),
     };
 
     /// HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid (64-bit view; readable without admin rights).

@@ -45,6 +45,14 @@ public static partial class ApiBridge
         ("PUT", R($"^api/notifier/remote/machines/{G}/favourite$")),
         ("PUT", R($"^api/notifier/remote/machines/{G}/password$")),
         ("DELETE", R($"^api/notifier/remote/machines/{G}/password$")),
+        // BIGIS #8 v3: history, company policy (Admins save it; the server checks), per-PC Admin settings, unlock.
+        ("GET", R("^api/notifier/remote/history$")),
+        ("GET", R("^api/notifier/remote/policy$")),
+        ("PUT", R("^api/notifier/remote/policy$")),
+        ("PUT", R($"^api/notifier/remote/machines/{G}/settings$")),
+        ("POST", R($"^api/notifier/remote/machines/{G}/unlock$")),
+        ("GET", R("^api/me/ui-prefs/remote$")),
+        ("PUT", R("^api/me/ui-prefs/remote$")),
         ("POST", R("^api/mail/send$")),
         ("POST", R($"^api/mail/{G}/read$")),
         ("POST", R($"^api/meetings/{G}/rsvp$")),
@@ -78,6 +86,7 @@ public static partial class ApiBridge
         R($"^api/mail/attachments/{G}/download$"),
         R($"^api/chat/attachments/{G}/download$"),
         R($"^api/attachments/{G}$"),
+        R(@"^api/notifier/remote/history\?csv=true$"),
     ];
 
     public static bool IsDownload(string path) => Downloads.Any(r => r.IsMatch(path));
