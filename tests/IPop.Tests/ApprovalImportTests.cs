@@ -6,6 +6,7 @@ using Xunit;
 namespace IPop.Tests;
 
 /// Workbook → preview plan → apply in one transaction.
+[Collection("ApproverChains")] // chain writes bump ApproverChainVersion, read by the Notifier leaders cache
 public class ApprovalImportTests
 {
     private static readonly DateTime Now = new(2026, 11, 2, 8, 0, 0, DateTimeKind.Utc);

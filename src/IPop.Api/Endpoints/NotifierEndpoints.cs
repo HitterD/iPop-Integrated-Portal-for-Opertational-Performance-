@@ -114,7 +114,13 @@ public static class NotifierEndpoints
     public const long MaxPreviewBytes = 60L * 1024 * 1024;
     private static readonly SemaphoreSlim Conversions = new(2, 2);
     private static readonly TimeSpan LeadersTtl = TimeSpan.FromMinutes(10);
-    private static readonly ConcurrentDictionary<Guid, (DateTime At, IReadOnlyList<NotifierLeader> Leaders)> LeadersCache = new();
+    /// Per person: their leaders, with the chain version they were built from. Bounded (oldest half dropped beyond
+    /// <see cref="MaxCachedPeople"/>); a chain write (ApproverChainVersion) invalidates every entry at once.
+    private static readonly ConcurrentDictionary<Guid, (DateTime At, long Version, IReadOnlyList<NotifierLeader> Leaders)> LeadersCache = new();
+    private const int MaxCachedPeople = 5000;
+    /// The BOD / GM level is the same for everyone: computed once per <see cref="LeadersTtl"/> (or chain change).
+    private static (DateTime At, long Version, IReadOnlyCollection<string> Niks)? topLevel;
+    private static readonly SemaphoreSlim TopGate = new(1, 1);
     public const string TopLevelReason = "BOD / GM level";
     private static readonly string[] TopLevels = ["GENERAL MANAGER", "DIRECTOR"];
 
@@ -124,11 +130,13 @@ public static class NotifierEndpoints
     public static async Task<NotifierLeaders> LeadersAsync(IPopDbContext db, Guid userId, DateTime now, CancellationToken ct)
     {
         IReadOnlyList<NotifierLeader> leaders;
-        if (LeadersCache.TryGetValue(userId, out var hit) && now - hit.At < LeadersTtl) leaders = hit.Leaders;
+        var version = ApproverChainVersion.Current;
+        if (LeadersCache.TryGetValue(userId, out var hit) && now - hit.At < LeadersTtl && hit.Version == version) leaders = hit.Leaders;
         else
         {
-            leaders = await ComputeLeadersAsync(db, userId, ct);
-            LeadersCache[userId] = (now, leaders);
+            leaders = await ComputeLeadersAsync(db, userId, await TopLevelNiksAsync(db, now, ct), ct);
+            if (LeadersCache.Count >= MaxCachedPeople) TrimCache();
+            LeadersCache[userId] = (now, version, leaders);
         }
 
         var prefs = await db.UserUiPrefs.AsNoTracking().Where(p => p.UserId == userId && p.Key == "notifier").Select(p => p.Json).FirstOrDefaultAsync(ct);
@@ -145,9 +153,41 @@ public static class NotifierEndpoints
     {
         if (userId is { } id) LeadersCache.TryRemove(id, out _);
         else LeadersCache.Clear();
+        topLevel = null;
     }
 
-    private static async Task<IReadOnlyList<NotifierLeader>> ComputeLeadersAsync(IPopDbContext db, Guid userId, CancellationToken ct)
+    private static void TrimCache()
+    {
+        foreach (var k in LeadersCache.OrderBy(e => e.Value.At).Take(LeadersCache.Count / 2).Select(e => e.Key).ToList())
+            LeadersCache.TryRemove(k, out _);
+    }
+
+    /// Every GM/Director by the workbook level plus everyone in slot 8 (GM) or 9 (Director) of any chain.
+    private static async Task<IReadOnlyCollection<string>> TopLevelNiksAsync(IPopDbContext db, DateTime now, CancellationToken ct)
+    {
+        var version = ApproverChainVersion.Current;
+        // Only the real (PostgreSQL) database is cached, as ApprovalService does: test databases never share it.
+        var cacheable = db.Database.IsNpgsql();
+        if (cacheable && topLevel is { } t && now - t.At < LeadersTtl && t.Version == version) return t.Niks;
+        await TopGate.WaitAsync(ct);
+        try
+        {
+            if (cacheable && topLevel is { } t2 && now - t2.At < LeadersTtl && t2.Version == version) return t2.Niks;
+            var top = await db.ApproverChains.AsNoTracking()
+                .Where(c => c.SourceLevel != null && TopLevels.Contains(c.SourceLevel.Trim().ToUpper()))
+                .Select(c => c.Nik).ToListAsync(ct);
+            var slotTop = await db.ApproverChains.AsNoTracking()
+                .Where(c => c.Slot8Nik != null || c.Slot9Nik != null)
+                .Select(c => new { c.Slot8Nik, c.Slot9Nik }).ToListAsync(ct);
+            var niks = top.Concat(slotTop.SelectMany(s => new[] { s.Slot8Nik, s.Slot9Nik })).OfType<string>()
+                .Select(n => n.Trim()).Where(n => n.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (cacheable) topLevel = (now, version, niks);
+            return niks;
+        }
+        finally { TopGate.Release(); }
+    }
+
+    private static async Task<IReadOnlyList<NotifierLeader>> ComputeLeadersAsync(IPopDbContext db, Guid userId, IReadOnlyCollection<string> topNiks, CancellationToken ct)
     {
         var myNik = await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.Nik).FirstOrDefaultAsync(ct);
         if (myNik is null) return [];
@@ -160,14 +200,7 @@ public static class NotifierEndpoints
                 if (slots[i] is { Length: > 0 } nik) reasonByNik.TryAdd(nik.Trim(), ApproverSlots.Labels[i]);
         }
 
-        var top = await db.ApproverChains.AsNoTracking()
-            .Where(c => c.SourceLevel != null && TopLevels.Contains(c.SourceLevel.Trim().ToUpper()))
-            .Select(c => c.Nik).ToListAsync(ct);
-        var slotTop = await db.ApproverChains.AsNoTracking()
-            .Where(c => c.Slot8Nik != null || c.Slot9Nik != null)
-            .Select(c => new { c.Slot8Nik, c.Slot9Nik }).ToListAsync(ct);
-        foreach (var nik in top.Concat(slotTop.SelectMany(s => new[] { s.Slot8Nik, s.Slot9Nik })).OfType<string>())
-            if (nik.Trim().Length > 0) reasonByNik.TryAdd(nik.Trim(), TopLevelReason);
+        foreach (var nik in topNiks) reasonByNik.TryAdd(nik, TopLevelReason);
         reasonByNik.Remove(myNik);
         if (reasonByNik.Count == 0) return [];
 

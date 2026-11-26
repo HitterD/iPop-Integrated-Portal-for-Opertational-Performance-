@@ -48,7 +48,8 @@ public sealed class ApprovalService(IPopDbContext db, Func<DateTime> now) : IApp
     // Only the real (PostgreSQL) database is cached; test databases (SQLite, one per test) never share a cache.
     private static (DateTime At, Lookups Value)? _lookups;
     private static readonly TimeSpan LookupsFor = TimeSpan.FromSeconds(30);
-    internal static void ForgetLookups() => _lookups = null;
+    /// Also tells chain-based caches elsewhere (the Notifier's leaders) that chains changed.
+    internal static void ForgetLookups() { _lookups = null; IPop.Application.Approval.ApproverChainVersion.Bump(); }
 
     private async Task<Lookups> LoadLookupsAsync(CancellationToken ct)
     {

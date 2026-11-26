@@ -18,6 +18,7 @@ namespace IPop.Tests;
 /// Notifier 1.5.0 priority inbox, server side (docs/notifier/PRIORITY-150.md "Server (API)"): who caused a
 /// notification is stored and shown, mass mail is low priority, leaders/people lists never carry NIK or position,
 /// and the preview converter only takes Office files up to 60 MB.
+[Collection("ApproverChains")] // chain writes bump ApproverChainVersion, read by the Notifier leaders cache
 public class NotifierPriorityTests
 {
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
@@ -255,6 +256,25 @@ public class NotifierPriorityTests
         Assert.Single(cached.Leaders);
         Assert.Single(cached.Vips);
         Assert.Equal(2, (await NotifierEndpoints.LeadersAsync(t.Verify(), me.Id, now.AddMinutes(11), default)).Leaders.Count);
+    }
+
+    [Fact]
+    public async Task A_chain_write_drops_cached_leaders_and_the_bod_gm_level_at_once()
+    {
+        using var t = new TestDb();
+        var me = Person(t, "V000", "Me");
+        var mgr = Person(t, "V001", "Mgr");
+        var dir = Person(t, "V002", "Dir");
+        Chain(t, me.Nik, null, (1, mgr.Nik));
+        NotifierEndpoints.ForgetLeaders(me.Id);
+        var now = DateTime.UtcNow;
+        Assert.Single((await NotifierEndpoints.LeadersAsync(t.Verify(), me.Id, now, default)).Leaders);
+
+        Chain(t, "V9", null, (9, dir.Nik));                    // someone else's chain gets a Director
+        Assert.Single((await NotifierEndpoints.LeadersAsync(t.Verify(), me.Id, now.AddMinutes(1), default)).Leaders);
+        IPop.Application.Approval.ApproverChainVersion.Bump();  // what an approval import / edit does
+        var fresh = await NotifierEndpoints.LeadersAsync(t.Verify(), me.Id, now.AddMinutes(2), default);
+        Assert.Contains(fresh.Leaders, l => l.Name == "Dir" && l.Reason == NotifierEndpoints.TopLevelReason);
     }
 
     [Fact]
