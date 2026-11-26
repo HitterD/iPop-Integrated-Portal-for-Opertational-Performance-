@@ -2,6 +2,7 @@ using IPop.Api.Endpoints;
 using IPop.Api.Notifier;
 using IPop.Core.Entities;
 using IPop.Infrastructure.Auth;
+using IPop.Infrastructure.Calls;
 using IPop.Notifier.Remote;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -56,12 +57,158 @@ public class RemoteMachineTests
         await NotifierEndpoints.RegisterAsync(t.Db, a.Id, Report("dev-dddddddd1", "PC-OLD", null), null, now, default);
         var before = (await t.Verify().RemoteMachines.SingleAsync()).ConnectId;
         await NotifierEndpoints.RegisterAsync(t.Db, a.Id, Report("dev-dddddddd1", "PC-OLD", Guid1), null, now, default);
-        // A second person still on the old Notifier lands on the same PC.
-        await NotifierEndpoints.RegisterAsync(t.Db, b.Id, Report("dev-dddddddd2", "PC-OLD", null), null, now, default);
+        // A second person whose Notifier reports the PC's GUID joins it; one on an old Notifier (name only) does not:
+        // a name alone is not proof of being on that PC (review PR #5).
+        await NotifierEndpoints.RegisterAsync(t.Db, b.Id, Report("dev-dddddddd2", "PC-OLD", Guid1), null, now, default);
         await using var v = t.Verify();
         var m = Assert.Single(await v.RemoteMachines.ToListAsync());
         Assert.Equal(before, m.ConnectId);
         Assert.StartsWith(Guid1, m.MachineKey);
+        Assert.All(await v.NotifierDevices.ToListAsync(), d => Assert.Equal(m.Id, d.MachineId));
+    }
+
+    [Fact]
+    public async Task A_name_only_report_from_someone_else_never_gets_the_PCs_ID()
+    {
+        using var t = new TestDb();
+        var owner = t.AddUser("SP1"); var attacker = t.AddUser("SP2");
+        var now = DateTime.UtcNow;
+        await NotifierEndpoints.RegisterAsync(t.Db, owner.Id, Report("dev-spoof0001", "PC-FIN-007", Guid1), "10.0.0.7", now, default);
+        await NotifierEndpoints.RegisterAsync(t.Db, attacker.Id, Report("dev-spoof0002", "PC-FIN-007", null), "10.0.0.66", now, default);
+        await using var v = t.Verify();
+        var devices = await v.NotifierDevices.ToListAsync();
+        var real = devices.Single(d => d.UserId == owner.Id).MachineId;
+        var fake = devices.Single(d => d.UserId == attacker.Id).MachineId;
+        Assert.NotEqual(real, fake);
+        Assert.Equal(2, await v.RemoteMachines.CountAsync());
+    }
+
+    [Fact]
+    public async Task A_name_only_PC_with_another_persons_Notifier_is_not_adopted_by_a_GUID_report()
+    {
+        using var t = new TestDb();
+        var owner = t.AddUser("SP3"); var attacker = t.AddUser("SP4");
+        var now = DateTime.UtcNow;
+        await NotifierEndpoints.RegisterAsync(t.Db, owner.Id, Report("dev-spoof0003", "PC-HR-1", null), null, now, default);
+        var id = (await t.Verify().RemoteMachines.SingleAsync()).ConnectId;
+        await NotifierEndpoints.RegisterAsync(t.Db, attacker.Id, Report("dev-spoof0004", "PC-HR-1", Guid1), null, now, default);
+        await using var v = t.Verify();
+        var attackerMachine = await v.RemoteMachines.SingleAsync(m => m.Id == v.NotifierDevices.Single(d => d.UserId == attacker.Id).MachineId);
+        Assert.NotEqual(id, attackerMachine.ConnectId);
+        Assert.Equal("|PC-HR-1", (await v.RemoteMachines.SingleAsync(m => m.ConnectId == id)).MachineKey);
+    }
+
+    [Fact]
+    public async Task Connect_refuses_a_PC_reported_from_two_addresses_and_Devices_flags_it()
+    {
+        using var t = new TestDb();
+        var helper = t.AddUser("SP5H"); var a = t.AddUser("SP5A"); var b = t.AddUser("SP5B");
+        var now = DateTime.UtcNow;
+        await NotifierEndpoints.RegisterAsync(t.Db, a.Id, Report("dev-spoof0005", "PC-QC-1", Guid1), "10.0.0.5", now, default);
+        await NotifierEndpoints.RegisterAsync(t.Db, b.Id, Report("dev-spoof0006", "PC-QC-1", Guid1), "10.9.9.9", now, default);
+        var m = await t.Verify().RemoteMachines.SingleAsync();
+        var r = await RemoteStart.StartAsync(t.Db, Hasher, helper.Id, new(null, m.ConnectId, "control", null, false, null), now, default);
+        Assert.Equal(409, r.Status);
+        Assert.Contains("\"conflict\"", System.Text.Json.JsonSerializer.Serialize(r.Body));
+        Assert.Contains(m.Id, await RemoteMachines.ConflictsAsync(t.Db, now, default));
+    }
+
+    [Fact]
+    public async Task The_same_name_with_two_GUIDs_is_flagged()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("SP6A"); var b = t.AddUser("SP6B");
+        var now = DateTime.UtcNow;
+        await NotifierEndpoints.RegisterAsync(t.Db, a.Id, Report("dev-spoof0007", "PC-X", Guid1), "10.0.0.1", now, default);
+        await NotifierEndpoints.RegisterAsync(t.Db, b.Id, Report("dev-spoof0008", "PC-X", Guid.NewGuid().ToString()), "10.0.0.2", now, default);
+        Assert.Equal(2, (await RemoteMachines.ConflictsAsync(t.Db, now, default)).Count);
+    }
+
+    [Fact]
+    public async Task Two_Notifiers_of_one_PC_registering_at_once_end_on_one_machine()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("RC1"); var b = t.AddUser("RC2");
+        var now = DateTime.UtcNow;
+        await NotifierEndpoints.RegisterAsync(t.Db, a.Id, Report("dev-race00001", "PC-OTHER", null), null, now, default);
+        // b's Notifier decides "no machine yet"; just before it saves, a's Notifier on the same PC saves that machine.
+        var race = new RaceFirst(t.Options, a.Id);
+        var opts = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<IPop.Infrastructure.Persistence.IPopDbContext>(t.Options).AddInterceptors(race).Options;
+        await using var dbB = new IPop.Infrastructure.Persistence.IPopDbContext(opts);
+        Assert.Equal(204, await NotifierEndpoints.RegisterAsync(dbB, b.Id, Report("dev-race00002", "PC-RACE", Guid1), null, now, default));
+        Assert.True(race.Fired);
+        await using var v = t.Verify();
+        var m = Assert.Single(await v.RemoteMachines.Where(x => x.ComputerName == "PC-RACE").ToListAsync());
+        Assert.Equal("111222333", m.ConnectId); // the machine that won, not a second one
+        Assert.All(await v.NotifierDevices.ToListAsync(), d => Assert.Equal(m.Id, d.MachineId));
+    }
+
+    [Fact]
+    public async Task Revoking_drops_both_sides_from_the_LiveKit_room()
+    {
+        using var t = new TestDb();
+        var (helper, device, m) = await SeedAsync(t, "LK1");
+        var s = Session(helper, device, unattended: true);
+        t.Db.RemoteSessions.Add(s);
+        await t.Db.SaveChangesAsync();
+        var revoked = await RemoteAccess.RemoveAsync(t.Db, m, helper.Id, DateTime.UtcNow, default);
+        await t.Db.SaveChangesAsync();
+        var lk = new MeetingRoomServiceTests.FakeRoomAdmin();
+        var hub = new NullHub();
+        await RemoteMachineEndpoints.TellRevokedAsync(hub, lk, null, revoked, default);
+        Assert.Equal(["host:" + device.UserId, "helper:" + helper.Id], lk.Removed.Where(r => r.Room == s.Room).Select(r => r.Identity));
+        Assert.Equal(1, hub.Sent); // one "remoteEnded" to both people
+    }
+
+    [Fact]
+    public void Join_tokens_are_short_lived() => Assert.True(RemoteEndpoints.TokenLifetime <= TimeSpan.FromMinutes(10));
+
+    /// Counts hub sends; nothing is delivered.
+    private sealed class NullHub : Microsoft.AspNetCore.SignalR.IHubContext<IPop.Api.Notifications.NotificationHub>
+    {
+        private readonly NullClients clients = new();
+        public int Sent => clients.Sent;
+        public Microsoft.AspNetCore.SignalR.IHubClients Clients => clients;
+        public Microsoft.AspNetCore.SignalR.IGroupManager Groups => throw new NotSupportedException();
+    }
+
+    private sealed class NullClients : Microsoft.AspNetCore.SignalR.IHubClients, Microsoft.AspNetCore.SignalR.IClientProxy
+    {
+        public int Sent;
+        public Task SendCoreAsync(string method, object?[] args, CancellationToken ct = default) { Interlocked.Increment(ref Sent); return Task.CompletedTask; }
+        public Microsoft.AspNetCore.SignalR.IClientProxy All => this;
+        public Microsoft.AspNetCore.SignalR.IClientProxy AllExcept(IReadOnlyList<string> excluded) => this;
+        public Microsoft.AspNetCore.SignalR.IClientProxy Client(string connectionId) => this;
+        public Microsoft.AspNetCore.SignalR.IClientProxy Clients(IReadOnlyList<string> connectionIds) => this;
+        public Microsoft.AspNetCore.SignalR.IClientProxy Group(string groupName) => this;
+        public Microsoft.AspNetCore.SignalR.IClientProxy GroupExcept(string groupName, IReadOnlyList<string> excluded) => this;
+        public Microsoft.AspNetCore.SignalR.IClientProxy Groups(IReadOnlyList<string> groupNames) => this;
+        public Microsoft.AspNetCore.SignalR.IClientProxy User(string userId) => this;
+        public Microsoft.AspNetCore.SignalR.IClientProxy Users(IReadOnlyList<string> userIds) => this;
+    }
+
+    /// Before the first save that adds a machine, another request saves the same PC (as a concurrent sign-in would).
+    private sealed class RaceFirst(Microsoft.EntityFrameworkCore.DbContextOptions<IPop.Infrastructure.Persistence.IPopDbContext> options, Guid otherUser)
+        : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
+    {
+        public bool Fired { get; private set; }
+        public override async ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> SavingChangesAsync(
+            Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData e, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result, CancellationToken ct = default)
+        {
+            var added = e.Context!.ChangeTracker.Entries<RemoteMachine>().FirstOrDefault(x => x.State == Microsoft.EntityFrameworkCore.EntityState.Added);
+            if (!Fired && added is not null)
+            {
+                Fired = true;
+                await using var other = new IPop.Infrastructure.Persistence.IPopDbContext(options);
+                var m = new RemoteMachine { Id = Guid.NewGuid(), MachineKey = added.Entity.MachineKey, ComputerName = added.Entity.ComputerName, ConnectId = "111222333", CreatedAt = DateTime.UtcNow };
+                other.RemoteMachines.Add(m);
+                await other.SaveChangesAsync(ct);
+                var dev = await other.NotifierDevices.FirstAsync(d => d.UserId == otherUser, ct);
+                dev.MachineName = m.ComputerName; dev.MachineId = m.Id;
+                await other.SaveChangesAsync(ct);
+            }
+            return result;
+        }
     }
 
     [Fact]
@@ -71,7 +218,7 @@ public class RemoteMachineTests
         var ids = new List<int>();
         for (var i = 0; i < 40; i++)
         {
-            var m = await RemoteMachines.EnsureAsync(t.Db, null, "PC-" + i, DateTime.UtcNow, default);
+            var m = await RemoteMachines.EnsureAsync(t.Db, Guid.NewGuid(), null, "PC-" + i, DateTime.UtcNow, default);
             ids.Add(int.Parse(m!.ConnectId));
         }
         await t.Db.SaveChangesAsync();
@@ -93,49 +240,76 @@ public class RemoteMachineTests
     }
 
     [Fact]
-    public void The_password_is_stored_as_an_Argon2_hash_and_verified()
+    public async Task The_password_is_stored_as_an_Argon2_hash_and_verified()
     {
-        var m = Machine("correct horse battery");
+        using var t = new TestDb();
+        var m = await StoredAsync(t, "correct horse battery");
         Assert.DoesNotContain("correct horse battery", m.PasswordHash);
-        Assert.Equal(RemoteAccess.Check.Ok, RemoteAccess.Verify(m, "correct horse battery", Hasher, DateTime.UtcNow));
-        Assert.Equal(RemoteAccess.Check.Wrong, RemoteAccess.Verify(m, "wrong one!!", Hasher, DateTime.UtcNow));
+        Assert.Equal(RemoteAccess.Check.Ok, (await RemoteAccess.VerifyAsync(t.Db, m.Id, "correct horse battery", Hasher, DateTime.UtcNow, default)).Check);
+        Assert.Equal(RemoteAccess.Check.Wrong, (await RemoteAccess.VerifyAsync(t.Db, m.Id, "wrong one!!", Hasher, DateTime.UtcNow, default)).Check);
     }
 
     [Fact]
-    public void Five_wrong_passwords_lock_the_PC_for_15_minutes_then_it_opens_again()
+    public async Task Five_wrong_passwords_lock_the_PC_for_15_minutes_then_it_opens_again()
     {
-        var m = Machine("secret-password-1");
+        using var t = new TestDb();
+        var m = await StoredAsync(t, "secret-password-1");
         var now = DateTime.UtcNow;
         for (var i = 1; i <= 4; i++)
         {
-            Assert.Equal(RemoteAccess.Check.Wrong, RemoteAccess.Verify(m, "nope", Hasher, now));
-            Assert.Equal(5 - i, RemoteAccess.TriesLeft(m));
+            var r = await RemoteAccess.VerifyAsync(t.Db, m.Id, "nope", Hasher, now, default);
+            Assert.Equal(RemoteAccess.Check.Wrong, r.Check);
+            Assert.Equal(5 - i, r.TriesLeft);
         }
-        Assert.Equal(RemoteAccess.Check.Locked, RemoteAccess.Verify(m, "nope", Hasher, now));
+        Assert.Equal(RemoteAccess.Check.Locked, (await RemoteAccess.VerifyAsync(t.Db, m.Id, "nope", Hasher, now, default)).Check);
         // Even the right password is refused while locked.
-        Assert.Equal(RemoteAccess.Check.Locked, RemoteAccess.Verify(m, "secret-password-1", Hasher, now.AddMinutes(14)));
-        Assert.Equal(RemoteAccess.Check.Ok, RemoteAccess.Verify(m, "secret-password-1", Hasher, now.AddMinutes(16)));
-        Assert.Null(m.LockedUntil);
-        Assert.Equal(0, m.FailedCount);
+        Assert.Equal(RemoteAccess.Check.Locked, (await RemoteAccess.VerifyAsync(t.Db, m.Id, "secret-password-1", Hasher, now.AddMinutes(14), default)).Check);
+        Assert.Equal(RemoteAccess.Check.Ok, (await RemoteAccess.VerifyAsync(t.Db, m.Id, "secret-password-1", Hasher, now.AddMinutes(16), default)).Check);
+        var row = await t.Verify().RemoteMachines.SingleAsync();
+        Assert.Null(row.LockedUntil);
+        Assert.Equal(0, row.FailedCount);
     }
 
     [Fact]
-    public void A_right_password_resets_the_count()
+    public async Task A_right_password_resets_the_count()
     {
-        var m = Machine("secret-password-2");
-        RemoteAccess.Verify(m, "x", Hasher, DateTime.UtcNow);
-        RemoteAccess.Verify(m, "y", Hasher, DateTime.UtcNow);
-        Assert.Equal(RemoteAccess.Check.Ok, RemoteAccess.Verify(m, "secret-password-2", Hasher, DateTime.UtcNow));
-        Assert.Equal(5, RemoteAccess.TriesLeft(m));
+        using var t = new TestDb();
+        var m = await StoredAsync(t, "secret-password-2");
+        await RemoteAccess.VerifyAsync(t.Db, m.Id, "x", Hasher, DateTime.UtcNow, default);
+        await RemoteAccess.VerifyAsync(t.Db, m.Id, "y", Hasher, DateTime.UtcNow, default);
+        var ok = await RemoteAccess.VerifyAsync(t.Db, m.Id, "secret-password-2", Hasher, DateTime.UtcNow, default);
+        Assert.Equal(RemoteAccess.Check.Ok, ok.Check);
+        Assert.Equal(0, (await t.Verify().RemoteMachines.SingleAsync()).FailedCount);
     }
 
     [Fact]
-    public void Unattended_needs_the_switch_and_a_password()
+    public async Task Parallel_wrong_passwords_each_count_and_lock_exactly_once()
+    {
+        // Ten guesses at once from separate requests (own DbContext each): a read-increment-save would lose counts.
+        using var t = new TestDb();
+        var m = await StoredAsync(t, "secret-password-3");
+        var now = DateTime.UtcNow;
+        var results = await Task.WhenAll(Enumerable.Range(0, 10).Select(async i =>
+        {
+            await using var db = new IPop.Infrastructure.Persistence.IPopDbContext(t.Options);
+            return await RemoteAccess.VerifyAsync(db, m.Id, "guess" + i, Hasher, now, default);
+        }));
+        Assert.Equal(4, results.Count(r => r.Check == RemoteAccess.Check.Wrong));
+        Assert.Equal(6, results.Count(r => r.Check == RemoteAccess.Check.Locked));
+        var row = await t.Verify().RemoteMachines.SingleAsync();
+        Assert.Equal(now + RemoteMachine.LockFor, row.LockedUntil);
+    }
+
+    [Fact]
+    public async Task Unattended_needs_the_switch_and_a_password()
     {
         var m = Machine();
         m.Unattended = true;
         Assert.False(m.UnattendedActive);
-        Assert.Equal(RemoteAccess.Check.NotSet, RemoteAccess.Verify(m, "anything", Hasher, DateTime.UtcNow));
+        using var t = new TestDb();
+        t.Db.RemoteMachines.Add(m);
+        await t.Db.SaveChangesAsync();
+        Assert.Equal(RemoteAccess.Check.NotSet, (await RemoteAccess.VerifyAsync(t.Db, m.Id, "anything", Hasher, DateTime.UtcNow, default)).Check);
         m.PasswordHash = Hasher.Hash("long-enough-pw");
         Assert.True(m.UnattendedActive);
         m.Unattended = false;
@@ -279,6 +453,14 @@ public class RemoteMachineTests
     {
         Assert.Equal("clipboard,files", RemoteAccess.Permissions(["control", "clipboard", "files", "bogus"], "view"));
         Assert.Equal("control,files", RemoteAccess.Permissions(["FILES", "control"], "control"));
+    }
+
+    private static async Task<RemoteMachine> StoredAsync(TestDb t, string password)
+    {
+        var m = Machine(password);
+        t.Db.RemoteMachines.Add(m);
+        await t.Db.SaveChangesAsync();
+        return m;
     }
 
     private static RemoteMachine Machine(string? password = null) => new()
