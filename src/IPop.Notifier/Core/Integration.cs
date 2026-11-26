@@ -106,19 +106,19 @@ public static class Integration
     /// Short system sound for "someone asks to remote this PC" (the prompt must not be missed).
     public static void Chime() { try { System.Media.SystemSounds.Asterisk.Play(); } catch { } }
 
-    /// Opens an iPop notification target in the browser. A ticket chat for the assigned agent
-    /// (/idesk/tickets/{id}) lives only in iDesk: iPop answers the iDesk link (signed in through "Sign in with
-    /// iPop"), so it opens on the iDesk site, never as an iPop page.
+    /// Opens a notification target. A ticket (my own /tickets/{id} or, as the assigned agent, /idesk/tickets/{id})
+    /// opens on the iDesk site through the link iPop answers (signed in through "Sign in with iPop"); only a ticket
+    /// without an iDesk link yet (still sending) falls back to the iPop page. Everything else is an iPop page.
     public static async Task OpenTargetAsync(IPopClient api, string? path)
     {
         path = string.IsNullOrEmpty(path) ? "/notifications" : path;
-        const string idesk = "/idesk/tickets/";
-        if (path.StartsWith(idesk) && path.Length >= idesk.Length + 36 && Guid.TryParse(path.AsSpan(idesk.Length, 36), out var id))
+        if (TicketLinks.LinkRequest(path) is { } request)
         {
-            var link = (await api.GetJsonAsync($"api/tickets/idesk/{id}/link"))?["url"]?.GetValue<string>();
+            var link = (await api.GetJsonAsync(request))?["url"]?.GetValue<string>();
             if (link is { Length: > 0 }) { OpenUrl(link); return; }
-            Log.Warn("open", "no iDesk link for " + id);
-            return;
+            Log.Warn("open", "no iDesk link for " + path);
+            // An agent's iDesk ticket has no iPop page to fall back to.
+            if (path.StartsWith("/idesk/", StringComparison.OrdinalIgnoreCase)) return;
         }
         OpenIPopPage(api, path);
     }
