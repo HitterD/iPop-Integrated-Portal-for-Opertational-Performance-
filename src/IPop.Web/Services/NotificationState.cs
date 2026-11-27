@@ -221,7 +221,7 @@ public class NotificationState : IDisposable
 
         // Add to floating banners queue (max 3 concurrent) — kecuali preferensi membisukan.
         // Prioritas diteruskan agar AllowImportant bisa menembus jam senyap untuk "high".
-        var suppress = ShouldSuppress(item.Type, item.Priority);
+        var suppress = ShouldSuppress(delivery.EventType ?? "system", delivery.TargetUrl, item.Priority);
         // Busy: no banner or sound; the bell still counts it. Emergencies always break through.
         if (suppress || (_auth.IsBusy && !IsEmergency(delivery.EventType))) return;
 
@@ -316,10 +316,10 @@ public class NotificationState : IDisposable
     public bool CurrentShowPreview => _prefs.ShowPreview;
     public bool CurrentPlaySound => _prefs.PlaySound;
 
-    private bool ShouldSuppress(string type, string? priority = null)
+    internal bool ShouldSuppress(string eventType, string? targetUrl = null, string? priority = null)
     {
         if (!_prefs.EnableNotifications) return true; // notifikasi dinonaktifkan sepenuhnya
-        if (_prefs.MutedTypes.Contains(type, StringComparer.OrdinalIgnoreCase)) return true;
+        if (NotificationCategory.IsMuted(_prefs.MutedTypes, eventType, targetUrl, ClassifyEventType(eventType))) return true;
         return IsInQuietHours(_prefs, priority);
     }
 
@@ -415,10 +415,10 @@ public class NotificationState : IDisposable
         if (!ShouldBannerChat(m, currentPath))
         {
             // A message landing in the conversation on screen gets only a soft tick.
-            if (IsTickChat(m, currentPath) && !ShouldSuppress("chat") && !_auth.IsBusy) PlaySound("ipopSound.play", "tick");
+            if (IsTickChat(m, currentPath) && !ShouldSuppress(ChatMessageType, $"/chat/{m.Message.RoomId:D}") && !_auth.IsBusy) PlaySound("ipopSound.play", "tick");
             return;
         }
-        if (ShouldSuppress("chat") || _auth.IsBusy) return;
+        if (ShouldSuppress(ChatMessageType, $"/chat/{m.Message.RoomId:D}") || _auth.IsBusy) return;
 
         var roomId = m.Message.RoomId;
         var count = 1;

@@ -1,4 +1,40 @@
+using IPop.Application.Notifications;
+
 namespace IPop.Web.Services;
+
+/// Shared UI definition for the 8 notification preference categories so Notifications Preferences,
+/// NotificationSettingsDialog, and Phone settings never drift out of sync.
+public sealed record NotificationCategoryInfo(string Id, string Label, string Icon, string Description);
+
+public static class NotificationCategories
+{
+    public static readonly IReadOnlyList<NotificationCategoryInfo> All =
+    [
+        new(NotificationCategory.Mention, "Mentions", "at-sign", "Direct mentions in chat and notes"),
+        new(NotificationCategory.Chat, "Chat", "message-circle", "Direct and group messages"),
+        new(NotificationCategory.Mail, "Mail", "mail", "Incoming emails and deliveries"),
+        new(NotificationCategory.Tickets, "iDesk", "life-buoy", "Support ticket updates and replies"),
+        new(NotificationCategory.Task, "Tasks", "kanban", "Assignments and deadlines"),
+        new(NotificationCategory.Meeting, "Meetings & Calls", "calendar", "Incoming, missed calls and meetings"),
+        new(NotificationCategory.News, "Memos & News", "newspaper", "Announcements and required-reading memos"),
+        new(NotificationCategory.System, "System", "shield-check", "Updates and maintenance"),
+    ];
+
+    /// Parses comma-separated MutedTypes, normalizing legacy aliases ("call" -> "meeting", "project" -> "task")
+    /// to match NotificationCategory.IsMuted.
+    public static HashSet<string> ParseMuted(string? mutedTypes)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(mutedTypes)) return set;
+        foreach (var raw in mutedTypes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (raw.Equals("call", StringComparison.OrdinalIgnoreCase)) set.Add(NotificationCategory.Meeting);
+            else if (raw.Equals("project", StringComparison.OrdinalIgnoreCase)) set.Add(NotificationCategory.Task);
+            else set.Add(raw);
+        }
+        return set;
+    }
+}
 
 /// Which iPop module a notification belongs to, so banners and the bell tray can wear that
 /// module's colour, icon and name. The shell item only carries the coarse type
