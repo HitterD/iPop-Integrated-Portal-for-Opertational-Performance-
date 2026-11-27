@@ -22,12 +22,18 @@ public class NotifierDevice
     /// IPs the PC reports for itself (comma separated) and the address the server saw.
     public string? LocalIps { get; set; }
     public string? RemoteIp { get; set; }
-    /// Admin marked this PC for remote help without the Allow prompt (kiosk, server).
+    /// Before 1.8.0: Admin marked this PC unattended. Kept only to carry the switch over to the PC's
+    /// <see cref="RemoteMachine"/> (it then still needs a password); nothing reads it for access any more.
     public bool Unattended { get; set; }
+    /// The physical PC (one remote ID for every person on it); null until the app reported it.
+    public Guid? MachineId { get; set; }
     /// The optional admin-installed helper service runs on this PC (UAC, lock screen, Ctrl+Alt+Del).
     public bool HelperService { get; set; }
+    /// Monitors the app reports ("1920×1080 + 1366×768"), for Devices.
+    public string? Monitors { get; set; }
     public DateTime FirstSeenAt { get; set; }
     public DateTime LastSeenAt { get; set; }
 
     public User User { get; set; } = default!;
+    public RemoteMachine? Machine { get; set; }
 }

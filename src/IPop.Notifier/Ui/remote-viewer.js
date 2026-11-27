@@ -14,12 +14,15 @@
   document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => end());
 
   // ── session ────────────────────────────────────────────────────────────
+  let userName = '', askSeconds = 30;
   app.on('start', async m => {
-    sessionId = m.sessionId;
+    sessionId = m.sessionId; userName = m.user || ''; askSeconds = m.askSeconds || 30;
     $('#pc').textContent = m.machine; $('#who').textContent = '· ' + m.user;
+    if (window.viewerTools) viewerTools.start(m);
+    if (m.problem) return viewerTools.problem(m.problem);
     if (m.status === 'active') return join();
     $('#waitTxt').textContent = 'Waiting for ' + m.user.split(' ')[0] + ' to allow…';
-    $('#waitSub').textContent = 'They have 30 seconds to answer.';
+    $('#waitSub').textContent = `They have ${m.askSeconds || 30} seconds to answer.`;
     // The answer also arrives over the hub; polling covers the case where it came before this page was ready.
     for (let i = 0; i < 40 && !joining && !ended; i++) {
       await new Promise(r => setTimeout(r, 1000));
@@ -32,16 +35,16 @@
   function answer(status) {
     if (status === 'active') return join();
     if (joining || ended) return;
-    showEnded(status === 'declined' ? 'The user declined' : 'No answer', status === 'declined' ? 'They chose not to share their screen.' : 'The request timed out after 30 seconds.');
+    viewerTools.problem({ body: { code: status === 'declined' ? 'declined' : 'expired', user: userName, askSeconds } });
   }
   app.on('answer', m => answer(m.status));
-  app.on('remoteEnded', m => showEnded('Remote help ended', m.endedBy === 'user' ? 'The user ended the session.' : ''));
+  app.on('remoteEnded', m => m.endedBy === 'revoked' ? showRevoked() : showEnded('Remote help ended', m.endedBy === 'user' ? 'The user ended the session.' : ''));
+  const showRevoked = () => showEnded('Unattended access was changed', 'An Administrator changed or removed the access password for this PC, so the session ended.');
   app.on('clipboard', m => { if (clipOn && R.room) R.sendClip(m.kind, m.text, m.data).catch(e => log('clip send ' + e.message)); });
   app.on('clipFile', async m => {
     if (!clipOn || !R.room) return;
-    const bin = Uint8Array.from(atob(m.data), c => c.charCodeAt(0));
-    await R.sendFile(new File([bin], m.name, { type: m.mime }), 'clip-file');
-    addFile(m.name, m.data.length * 0.75, 'Copied to the user · ready to paste', 1);
+    try { await xfer.send({ url: m.url, name: m.name, size: m.size }, { id: xfer.newId(), topic: 'clip-file' }); snack(m.name + ' copied to the user · ready to paste'); }
+    catch { snack('The copied file could not be sent'); }
   });
 
   let joining = false;
@@ -52,6 +55,7 @@
     const r = await api('GET', `api/notifier/remote/sessions/${sessionId}/join`);
     log('join ' + r.status + ' ' + (r.json ? r.json.url + ' ' + r.json.room : ''));
     if (!r.ok) return showEnded('Couldn\'t connect', r.json?.message || 'Try again in a moment.');
+    info = r.json; viewerRecon.setPolicy(info); viewerFiles.setup(info, viewerPrefs.get());
     R.onTrack = track => {
       if (track.kind !== 'video') return;
       video = track.attach(); video.muted = true; video.playsInline = true;
@@ -61,24 +65,33 @@
       stage.focus();
     };
     R.onData = (m, topic) => {
+      if (topic === 'xfer') return viewerFiles.onPeer(m);
       if (topic === 'chat') addMsg(m.text, false);
+      if (m.t === 'pc') viewerRecon.hint(m.state);
+      if (m.t === 'monchange') viewerTools.monChange(m.count);
       if (topic === 'clip' && clipOn) post({ type: 'setClipboard', kind: m.kind, text: m.text, data: m.data });
       if (m.t === 'screen') $('#res').textContent = `${m.w}×${m.h} · H.264`;
-      if (m.t === 'bye') showEnded('Remote help ended', 'The user ended the session.');
+      if (m.t === 'bye') m.reason === 'revoked' ? showRevoked() : showEnded('Remote help ended', 'The user ended the session.');
+      if (m.t === 'perms' || m.t === 'monitors') viewerTools.fromHost(m);
+      if (m.t === 'perms') viewerFiles.setAllowed(m.list);
       if (m.t === 'inStat') inputStat(m);
     };
-    R.onFile = async reader => { const b = await R.readAll(reader); post({ type: 'saveFile', name: reader.info.name, data: R.b64(b) }); addFile(reader.info.name, b.length, 'From the user · saved to Downloads', 1); };
+    R.onFile = (reader, from) => viewerFiles.receive(reader, from);
     R.onClipData = async reader => {
       const b = await R.readAll(reader);
       if (!clipOn) return;
       if ((reader.info.mimeType || '').startsWith('text/')) post({ type: 'setClipboard', kind: 'text', text: new TextDecoder().decode(b) });
       else post({ type: 'setClipboard', kind: 'image', data: R.b64(b) });
     };
-    R.onClipFile = async reader => { const b = await R.readAll(reader); post({ type: 'setClipboardFile', name: reader.info.name, data: R.b64(b) }); snack('File copied — paste it here'); };
-    R.onReconnecting = on => live(on ? 'Reconnecting' : 'Controlling', on ? 'warn' : '');
-    R.onDisconnected = () => { if (!ended) showEnded('Connection lost', 'The user\'s PC went offline or the network dropped.'); };
-    R.onPeer = (p, joined) => { if (!joined && p.identity.startsWith('host:') && !ended) showEnded('Remote help ended', 'The user\'s PC left the session.'); };
+    R.onClipFile = (reader, from) => xfer.receive(reader, { max: info.maxFileBytes, topic: 'clip-file', from: from?.identity || '' });
+    R.onReconnecting = on => live(on ? 'Reconnecting' : mode === 'view' ? 'Viewing' : 'Controlling', on ? 'warn' : '');
+    // LiveKit gave up its own short reconnect: rejoin with fresh tokens until the policy's window runs out.
+    R.onDisconnected = () => { if (!ended) reconnect('network'); };
+    // The user's PC left the room: it is reconnecting (network, sleep, crash) unless it said bye.
+    R.onPeer = (p, joined) => { if (p.identity.startsWith('host:') && !ended) { if (!joined) hostGone = setTimeout(() => reconnect(), 4000); else clearTimeout(hostGone); } };
     try { await R.join(r.json); log('connected; peers ' + R.room.remoteParticipants.size); } catch (e) { log('connect failed ' + (e.name + ': ' + e.message)); return showEnded('Couldn\'t connect', String(e.message || e)); }
+    viewerTools.joined(r.json);
+    viewerPrefs.applyQuality(R);
     setMode(r.json.mode);
     sendMedia();
     statsLoop();
@@ -114,8 +127,24 @@
 
   function live(text, cls) { $('#liveTxt').textContent = text; $('#live').className = 'live ' + (cls || ''); }
 
+  // ── reconnect (BIGIS #8 v3) ───────────────────────────────────────────
+  let hostGone = null, info = {};
+  function reconnect(why) {
+    if (ended || viewerRecon.active) return;
+    live('Reconnecting', 'warn');
+    viewerRecon.start(sessionId, why, async fresh => {
+      try { await R.rejoin(fresh); info = fresh; return true; } catch (e) { log('rejoin ' + e.message); return false; }
+    }, async reason => {
+      if (reason === 'over') return showEnded('Remote help ended', 'The session was ended on the other side.');
+      await api('POST', `api/notifier/remote/sessions/${sessionId}/end`, { files: viewerFiles.sent.join('\n'), reason: 'lost' });
+      viewerTools.problem({ body: { code: 'lost', attempts: info.reconnectAttempts || 6 } });
+    }, () => { live(mode === 'view' ? 'Viewing' : 'Controlling', ''); setMode(mode); sendMedia(); });
+  }
+  viewerRecon.endButton.onclick = () => end();
+
   async function statsLoop() {
-    while (R.room && !ended) {
+    while (!ended) {
+      if (!R.room) { await new Promise(r => setTimeout(r, 1000)); continue; }
       const s = await R.stats();
       const f = $('#fps'), p = $('#ping');
       f.textContent = s.fps || '–'; f.className = s.fps >= 50 ? 'ok' : s.fps >= 25 ? 'mid' : 'bad';
@@ -129,16 +158,17 @@
     if (!ended && sessionId) {
       ended = true;
       try { R.sendReliable({ t: 'bye' }); } catch { }
-      await api('POST', `api/notifier/remote/sessions/${sessionId}/end`, { files: files.join('\n') });
+      await api('POST', `api/notifier/remote/sessions/${sessionId}/end`, { files: viewerFiles.sent.join('\n') });
       await R.leave();
     }
     post({ type: 'close' });
   }
   $('#end').onclick = end;
   function showEnded(title, sub) {
-    ended = true; R.leave(); live('Ended', 'off');
+    ended = true; R.leave(); live('Ended', 'off'); viewerRecon.stop(); viewerFiles.ended();
     $('#wait').style.display = 'none'; $('#endedTxt').textContent = title; $('#endedSub').textContent = sub || ''; $('#ended').classList.add('on');
   }
+  window.viewer = { showEnded, live, setMode: m => setMode(m), showPanel: p => showPanel(p), get video() { return video; } };
 
   // ── input ──────────────────────────────────────────────────────────────
   let mode = 'control';
@@ -148,7 +178,7 @@
     if (R.room) R.sendReliable({ t: 'mode', mode: m });
     live(m === 'view' ? 'Viewing' : 'Controlling', '');
   }
-  $('#mode').onclick = e => { const b = e.target.closest('button'); if (b) setMode(b.dataset.m); };
+  $('#mode').onclick = e => { const b = e.target.closest('button'); if (b && !b.disabled) setMode(b.dataset.m); };
   $('#quality').onclick = e => {
     const b = e.target.closest('button'); if (!b) return;
     document.querySelectorAll('#quality button').forEach(x => x.classList.toggle('on', x === b));
@@ -214,7 +244,7 @@
   };
 
   // ── clipboard ──────────────────────────────────────────────────────────
-  $('#clip').onclick = () => { clipOn = !clipOn; $('#clip').classList.toggle('on', clipOn); R.sendReliable({ t: 'clipSync', on: clipOn }); post({ type: 'clipSync', on: clipOn }); };
+  $('#clip').onclick = () => { if ($('#clip').disabled) return; clipOn = !clipOn; $('#clip').classList.toggle('on', clipOn); R.sendReliable({ t: 'clipSync', on: clipOn }); post({ type: 'clipSync', on: clipOn }); };
 
   // ── side panel ─────────────────────────────────────────────────────────
   let panel = 'media';
@@ -225,7 +255,8 @@
     document.querySelectorAll('.tbar [data-p]').forEach(b => b.classList.toggle('on', b.dataset.p === p));
     document.querySelectorAll('.pane').forEach(x => x.classList.toggle('on', x.id === 'p-' + p));
     $('#compose').classList.toggle('on', p === 'chat');
-    const t = { media: ['Media', 'Shown only on the user\'s screen'], chat: ['Chat', 'Not saved'], files: ['Files', 'Both ways · saved to Downloads'] }[p];
+    const t = { media: ['Media', 'Shown only on the user\'s screen'], chat: ['Chat', 'Kept for this session'], files: ['Files', viewerFiles.sideNote()] }[p];
+    if (p === 'chat') $('#chatDot').hidden = true;
     $('#sideTitle').textContent = t[0]; $('#sideNote').textContent = t[1];
     if (p === 'chat') setTimeout(() => $('#chatIn').focus(), 50);
   }
@@ -235,37 +266,22 @@
   });
 
   // Chat (never stored)
+  // Chat: kept for the session only (never stored), with the time each message came.
+  (window.__qa = window.__qa || {}).msg = (t, me) => addMsg(t, me); // screenshots/QA
   function addMsg(text, me) {
     const d = document.createElement('div'); d.className = 'msg ' + (me ? 'me' : 'them'); d.textContent = text;
+    const t = document.createElement('small'); t.className = 'mt2'; t.textContent = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    d.appendChild(t);
     $('#msgs').appendChild(d); d.scrollIntoView({ block: 'end' });
-    if (!me && panel !== 'chat') { $('.tbar [data-p=chat]').classList.add('on'); snack('Message from the user'); }
+    if (!me) { viewerPrefs.chatSound(); if (panel !== 'chat') { $('#chatDot').hidden = false; snack('Message from ' + (userName.split(' ')[0] || 'the user')); } }
   }
   const sendChat = () => { const v = $('#chatIn').value.trim(); if (!v || !R.room) return; R.sendReliable({ text: v }, 'chat'); addMsg(v, true); $('#chatIn').value = ''; };
   $('#chatSend').onclick = sendChat;
   $('#chatIn').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); sendChat(); } e.stopPropagation(); });
 
-  // Files
-  function addFile(name, size, sub, progress) {
-    const el = document.createElement('div'); el.className = 'file';
-    el.innerHTML = `<span class="fi">${IC('file')}</span><span class="m"><b>${esc(name)}</b><small>${esc(sub)} · ${fmt(size)}</small><div class="bar"><i style="width:${(progress || 0) * 100}%"></i></div></span>`;
-    $('#flist').prepend(el); return el;
-  }
-  const fmt = b => b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
-  async function sendFiles(list) {
-    if (!R.room) return;
-    for (const f of list) {
-      const el = addFile(f.name, f.size, 'To the user', 0);
-      try { await R.sendFile(f, 'file', p => el.querySelector('.bar i').style.width = (p * 100) + '%'); el.querySelector('small').textContent = 'To the user · saved to their Downloads · ' + fmt(f.size); files.push(f.name); }
-      catch { el.querySelector('small').textContent = 'Not sent — try again'; }
-    }
-  }
-  $('#pick').onchange = e => { sendFiles([...e.target.files]); e.target.value = ''; };
-  const drop = $('#drop');
-  ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
-  ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
-  drop.addEventListener('drop', e => sendFiles([...e.dataTransfer.files]));
+  // Dropping files on the picture sends them too (streamed; see remote-viewer-files.js).
   stage.addEventListener('dragover', e => e.preventDefault());
-  stage.addEventListener('drop', e => { e.preventDefault(); showPanel('files'); sendFiles([...e.dataTransfer.files]); });
+  stage.addEventListener('drop', e => { e.preventDefault(); showPanel('files'); viewerFiles.pick(e.dataTransfer.files); });
 
   // Media (My media gallery; shown only on the user's screen)
   async function loadMedia() {

@@ -39,6 +39,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<UserUiPref> UserUiPrefs => Set<UserUiPref>();
     public DbSet<NotifierDevice> NotifierDevices => Set<NotifierDevice>();
     public DbSet<RemoteSession> RemoteSessions => Set<RemoteSession>();
+    public DbSet<RemoteMachine> RemoteMachines => Set<RemoteMachine>();
     public DbSet<RemoteMedia> RemoteMedia => Set<RemoteMedia>();
     public DbSet<RemoteHelperBlock> RemoteHelperBlocks => Set<RemoteHelperBlock>();
 
@@ -206,7 +207,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     protected override void OnModelCreating(ModelBuilder b)
     {
         // "Sign in with iPop" (OpenIddict): applications, authorizations, scopes, tokens.
-        b.UseOpenIddict();
+        b.UseOpenIddict(); RemoteModelConfiguration.Apply(b); // remote help v3 parts live in RemoteModelConfiguration.cs
         b.Entity<HallRoom>(e =>
         {
             e.HasIndex(x => x.Key).IsUnique();
@@ -329,6 +330,16 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.LocalIps).HasMaxLength(256);
             e.Property(x => x.RemoteIp).HasMaxLength(64);
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Machine).WithMany().HasForeignKey(x => x.MachineId).OnDelete(DeleteBehavior.SetNull);
+        });
+        b.Entity<RemoteMachine>(e =>
+        {
+            e.HasIndex(x => x.MachineKey).IsUnique();
+            e.HasIndex(x => x.ConnectId).IsUnique();
+            e.Property(x => x.MachineKey).HasMaxLength(110);
+            e.Property(x => x.ComputerName).HasMaxLength(64);
+            e.Property(x => x.ConnectId).HasMaxLength(9);
+            e.Property(x => x.PasswordHash).HasMaxLength(200);
         });
         b.Entity<RemoteSession>(e =>
         {
@@ -340,6 +351,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Status).HasMaxLength(16);
             e.Property(x => x.EndedBy).HasMaxLength(16);
             e.Property(x => x.Files).HasMaxLength(4000);
+            e.Property(x => x.Permissions).HasMaxLength(64);
             e.HasOne(x => x.Helper).WithMany().HasForeignKey(x => x.HelperId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.TargetUser).WithMany().HasForeignKey(x => x.TargetUserId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Device).WithMany().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.Cascade);

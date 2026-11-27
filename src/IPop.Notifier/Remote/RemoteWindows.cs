@@ -10,7 +10,8 @@ public sealed class HelpWindow : BridgedWindow
 {
     private readonly RemoteHost host;
     private readonly bool asking;
-    public event Action<bool>? Answered;
+    /// Allow / Decline, with what the user ticked ("control", "clipboard", "files").
+    public event Action<bool, string[]>? Answered;
     private Size full;
 
     public HelpWindow(IPopClient api, RemoteHost host, bool asking)
@@ -71,9 +72,14 @@ public sealed class HelpWindow : BridgedWindow
     {
         switch (type)
         {
-            case "answer": Answered?.Invoke(msg?["allow"]?.GetValue<bool>() == true); break;
+            case "answer":
+                var allowed = msg?["perms"] is System.Text.Json.Nodes.JsonArray a ? a.Select(x => x?.GetValue<string>() ?? "").Where(x => x.Length > 0).ToArray() : [];
+                Answered?.Invoke(msg?["allow"]?.GetValue<bool>() == true, allowed);
+                break;
             case "mediaMin": SetMinimised(msg?["min"]?.GetValue<bool>() == true); break;
             case "chatSend": host.ChatFromUser(msg?["text"]?.GetValue<string>() ?? ""); break;
+            case "sendFile": host.SendFileToIct(); break;
+            case "xferAction": host.XferAction(msg?["id"]?.GetValue<string>() ?? "", msg?["action"]?.GetValue<string>() ?? ""); break;
             case "endSession": _ = host.EndAsync("user"); break;
             case "close": break; // Esc must not end the session or hide the window
             default: base.HandleMessage(type, msg); break;
@@ -89,8 +95,11 @@ public sealed class ViewerWindow : BridgedWindow
     private bool clipOn = true;
     public Guid SessionId { get; }
 
+    private readonly ViewerFiles files;
+
     public ViewerWindow(IPopClient api, Guid sessionId, object start) : base("remote-viewer.html", WindowSizes.Get("remote", new Size(1360, 860)), api)
     {
+        files = new ViewerFiles(Send, () => api.Server);
         SessionId = sessionId;
         this.start = start;
         SizeKey = "remote";
@@ -110,13 +119,25 @@ public sealed class ViewerWindow : BridgedWindow
     public void Answer(string status) { Log.Info("remote", $"viewer answer {SessionId} {status}"); Send(new { type = "answer", status }); }
     public void Ended(string? by) => Send(new { type = "remoteEnded", endedBy = by });
 
+    /// A connect that didn't start (offline, wrong password, locked…): the viewer shows the matching screen.
+    public void Problem(int status, JsonNode? body) => Send(new { type = "problem", status, body });
+
+    /// "Try again" on the offline / couldn't-connect screen.
+    public event Action? RetryRequested;
+    /// The ICT changed a viewer preference in the toolbar (e.g. Fit / 1:1 / Fill): remembered in Settings › Remote.
+    public event Action<string, string>? RemotePref;
+
+    /// The save folder and file limit for this session (Settings › Remote and the company policy).
+    public void ConfigureFiles(string? saveDir, long maxBytes) => files.Configure(saveDir, maxBytes);
+
     private void OnClipboard()
     {
         // Whatever the helper copies on their own PC goes over, so they can paste it into the user's screen.
         if (!clipOn) return;
         var r = Clip.Read();
         if (r is not { } v) return;
-        if (v.FileBytes is not null) Send(new { type = "clipFile", name = v.FileName, mime = "application/octet-stream", data = Convert.ToBase64String(v.FileBytes) });
+        if (v.Payload is null && v.FileName is { } path && OutgoingFiles.Add(path) is { } token)
+            Send(new { type = "clipFile", name = Path.GetFileName(path), size = new FileInfo(path).Length, url = OutgoingFiles.Url(token) });
         else if (v.Payload is not null) Send(new { type = "clipboard", kind = v.Payload["kind"]?.GetValue<string>(), text = v.Payload["text"]?.GetValue<string>(), data = v.Payload["data"]?.GetValue<string>() });
     }
 
@@ -125,12 +146,13 @@ public sealed class ViewerWindow : BridgedWindow
         switch (type)
         {
             case "log": Log.Info("viewer", msg?["text"]?.GetValue<string>() ?? ""); break;
+            case "xferBegin" or "xferChunk" or "xferEnd" or "xferRefused": files.Handle(type, msg); break;
+            case "remotePref": RemotePref?.Invoke(msg?["key"]?.GetValue<string>() ?? "", msg?["value"]?.GetValue<string>() ?? ""); break;
+            case "retry": RetryRequested?.Invoke(); break;
             case "maximize": WindowState = WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized; break;
             case "fullscreen": SetFullScreen(msg?["on"]?.GetValue<bool>() == true); break;
             case "setClipboard": Clip.Apply(msg!); break;
-            case "setClipboardFile": Clip.SetFile(msg?["name"]?.GetValue<string>() ?? "file", Convert.FromBase64String(msg?["data"]?.GetValue<string>() ?? "")); break;
             case "clipSync": clipOn = msg?["on"]?.GetValue<bool>() == true; break;
-            case "saveFile": Downloads.Save(msg?["name"]?.GetValue<string>() ?? "file", Convert.FromBase64String(msg?["data"]?.GetValue<string>() ?? "")); break;
             case "uploadMedia":
                 var result = await UploadMediaAsync(msg);
                 Send(new { type = "mediaUploaded", error = result });
@@ -178,6 +200,7 @@ public sealed class ViewerWindow : BridgedWindow
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
         _ = Log.UploadAsync(Api);
+        files.Close();
         clip?.Dispose();
         base.OnFormClosed(e);
     }

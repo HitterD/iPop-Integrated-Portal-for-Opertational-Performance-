@@ -1,0 +1,18 @@
+/* Remote help v3 (BIGIS #8): rules from the approved mockup ipop-remote-v3 (mock/mock.css), unchanged except the
+   window scope (.w-xxx → this page). Generated once; edit here from now on. */
+.hbar{display:flex;gap:8px;align-items:center;padding:12px 14px 6px}
+.hbar select{height:34px;border-radius:9px;border:0;background:var(--fill);padding:0 10px;font-size:13px;font-weight:600}
+.hbar .btn{height:34px;border-radius:9px;border:0;background:var(--fill);padding:0 10px;font-size:13px;font-weight:600}
+.hsum{padding:0 16px 8px;font-size:12.5px;color:var(--ink-3)}
+table.log{margin:0 14px;width:calc(100% - 28px);border-collapse:collapse;font-size:13px}
+table.log th{text-align:left;color:var(--ink-3);font-weight:600;padding:8px 6px;border-bottom:.5px solid var(--sep)}
+table.log td{padding:8px 6px;border-bottom:.5px solid var(--sep)}
+td.fl{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-3)}
+.dev:hover{background:var(--fill)}
+table.log td .ua{font-size:9.5px;padding:1px 5px}
+.banner{display:flex;gap:12px;align-items:center;margin:10px 14px 0;padding:10px 14px;border-radius:12px;background:var(--danger-soft);color:var(--danger)}
+.banner[hidden]{display:none}
+.banner span{flex:1;font-size:13.5px}
+.banner b{display:block;color:var(--ink)}
+.banner small{display:block;color:var(--ink-2);font-size:12.5px;margin-top:1px}
+.banner svg{width:20px;height:20px;flex:none}

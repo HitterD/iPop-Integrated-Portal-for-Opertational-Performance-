@@ -1,0 +1,42 @@
+/* Remote help 1.8.0 (BIGIS #8, mockup ipop-remote-v2): parts shared by the Remote window, Devices, the viewer, the
+   permission prompt and the password dialog. Rules copied from the approved mockup (mock/mock.css) unchanged. */
+.tag{display:inline-flex;align-items:center;font-size:10.5px;font-weight:800;color:#fff;background:#7c3aed;padding:2px 7px;border-radius:6px;letter-spacing:.03em}
+.mono{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;font-variant-numeric:tabular-nums;letter-spacing:.03em}
+.ab-conn{padding:16px 18px 14px;border-bottom:1px solid var(--sep);background:linear-gradient(180deg,var(--accent-soft),transparent)}
+.ab-conn .lab{font-size:13px;color:var(--ink-3);font-weight:600;margin-bottom:8px}
+.ab-conn .row{display:flex;gap:10px}
+.cin{flex:1;height:50px;border-radius:12px;background:var(--surface);box-shadow:0 0 0 1.5px var(--accent);display:flex;align-items:center;gap:10px;padding:0 14px;font-size:17px}
+.cin .cur{width:1.5px;height:22px;background:var(--accent);animation:blink 1s steps(1) infinite}@keyframes blink{50%{opacity:0}}
+.cin .m{margin-left:auto;font-size:13px;color:var(--ink-3)}
+.go{height:50px;padding:0 24px;border-radius:12px;background:var(--accent);color:#fff;font-weight:700;font-size:16px;display:flex;align-items:center;gap:8px}
+.ab-conn .hint{font-size:12.5px;color:var(--ink-3);margin-top:8px;display:flex;gap:16px}
+.ab-conn .hint span{display:flex;gap:6px;align-items:center}
+.grp{font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);padding:12px 14px 4px;display:flex;align-items:center;gap:8px}
+.dev .cn{margin-left:auto;display:flex;align-items:center;gap:6px;flex:none}
+.dev .btnc{height:32px;padding:0 13px;border-radius:9px;background:var(--accent);color:#fff;font-weight:650;font-size:13px;display:flex;align-items:center;gap:6px}
+.dev .btnc.dis{background:var(--fill);color:var(--ink-4)}
+.dev .did{font-size:12.5px;color:var(--ink-2);margin-right:8px}
+.stt{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--fill);color:var(--ink-3);white-space:nowrap}
+.stt.on{background:var(--accent-soft);color:var(--accent-ink)}
+.pc.na{background:transparent;box-shadow:inset 0 0 0 1.5px var(--line);color:var(--ink-4)}
+.dev.na{opacity:.78}
+.cb{width:22px;height:22px;border-radius:7px;background:var(--accent);display:grid;place-items:center;color:#fff;flex:none}
+.cb.off{background:transparent;box-shadow:inset 0 0 0 1.8px var(--line)}.cb svg{width:14px!important;height:14px!important;stroke-width:3!important;color:#fff}
+.fld{height:44px;border-radius:11px;background:var(--fill);display:flex;align-items:center;gap:9px;padding:0 13px;font-size:16px}
+.fld.f{box-shadow:0 0 0 2px var(--accent);background:var(--surface)}.fld.e{box-shadow:0 0 0 2px var(--danger);background:var(--danger-soft)}
+.fld .dots{flex:1;letter-spacing:.2em;font-size:19px}.fld svg{color:var(--ink-3)}
+.card2{border-radius:14px;background:var(--bg);box-shadow:inset 0 0 0 .5px var(--sep);padding:14px 16px;margin:18px 0 6px}
+.card2 h4{font-size:14.5px;display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.card2 .r{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-2);margin:9px 0}
+.card2 .r small{color:var(--ink-3);font-size:12.5px}
+.card2 .b{display:flex;gap:8px;margin-top:10px}
+.card2 .b button{height:34px;padding:0 14px;border-radius:9px;background:var(--fill);font-weight:650;font-size:13px}.card2 .b button.p{background:var(--accent);color:#fff}
+.pop{position:absolute;z-index:30;background:var(--glass);color:var(--ink);border-radius:13px;box-shadow:0 24px 60px -18px rgba(0,0,0,.55),0 0 0 .5px rgba(0,0,0,.14);padding:12px}
+.mons{display:flex;gap:10px}.mon{width:132px;border-radius:10px;padding:6px;box-shadow:0 0 0 .5px var(--sep);text-align:center;font-size:12px;font-weight:650;color:var(--ink-2)}
+.mon.on{box-shadow:0 0 0 2.5px var(--accent);background:var(--accent-soft)}.mon .th{height:62px;border-radius:6px;background:linear-gradient(135deg,#1d4e6b,#7aa6b8);margin-bottom:5px}.mon small{display:block;color:var(--ink-3);font-weight:500;font-size:11px}
+.ovl{position:absolute;display:flex;align-items:center;gap:8px;padding:6px 11px;border-radius:9px;background:rgba(0,0,0,.62);color:#fff;font-size:12.5px;z-index:5}.ovl svg{width:15px;height:15px}
+.dlgwin{display:flex;flex-direction:column;height:100%}.dlgwin .body{flex:1;padding:22px 24px;display:flex;flex-direction:column;gap:13px}
+.dlgwin h3{font-size:19px}.dlgwin p{font-size:14px;color:var(--ink-2);line-height:1.5}
+.dlgwin .ic{width:50px;height:50px;border-radius:14px;display:grid;place-items:center;color:#fff;background:#6f8290}
+.dlgwin .acts{display:flex;gap:10px;margin-top:auto}.dlgwin .acts button{flex:1;height:44px;border-radius:12px;font-weight:700;font-size:15px;background:var(--fill)}.dlgwin .acts button.p{background:var(--accent);color:#fff}
+.dlgwin .row2{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-2)}

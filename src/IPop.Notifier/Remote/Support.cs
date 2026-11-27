@@ -38,6 +38,21 @@ public static class Clip
         catch { /* clipboard held by another app; the next copy works */ }
     }
 
+    /// A file already written to disk (streamed in by IncomingFiles) goes on the clipboard as a file drop.
+    public static void SetFileFromPath(string path)
+    {
+        try
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "iPopRemote");
+            Directory.CreateDirectory(dir);
+            var dest = Path.Combine(dir, Path.GetFileName(path));
+            File.Move(path, dest, overwrite: true);
+            LastSetHash = "file:" + dest;
+            Clipboard.SetFileDropList(new StringCollection { dest });
+        }
+        catch { }
+    }
+
     public static void SetFile(string name, byte[] bytes)
     {
         try
@@ -61,10 +76,9 @@ public static class Clip
             {
                 var path = Clipboard.GetFileDropList().Cast<string>().FirstOrDefault();
                 if (path is null || !File.Exists(path) || "file:" + path == LastSetHash) return null;
-                var info = new FileInfo(path);
-                if (info.Length > 200L * 1024 * 1024) return null;
                 LastSetHash = "file:" + path;
-                return (null, info.Name, File.ReadAllBytes(path));
+                // The full path, not the bytes: the session streams it from disk (2 GB files stay out of memory).
+                return (null, path, null);
             }
             if (Clipboard.ContainsImage())
             {

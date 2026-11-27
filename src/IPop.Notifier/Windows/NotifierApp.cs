@@ -28,8 +28,6 @@ public sealed partial class NotifierApp : ApplicationContext
     private InboxWindow? inbox;
     private SettingsWindow? settingsWindow;
     private DevicesWindow? devices;
-    private IPop.Notifier.Remote.RemoteHost? remoteHost;
-    private readonly Dictionary<Guid, IPop.Notifier.Remote.ViewerWindow> viewers = [];
     private SignInWindow? signIn;
     private int unread;
     private bool connected;
@@ -148,6 +146,7 @@ public sealed partial class NotifierApp : ApplicationContext
 
     private async Task StartSessionAsync()
     {
+        SweepOrphanParts();
         session.Cancel();
         session = new CancellationTokenSource();
         var ct = session.Token;
@@ -175,52 +174,6 @@ public sealed partial class NotifierApp : ApplicationContext
         });
         try { await feed.StartAsync(ct); } catch (OperationCanceledException) { }
         await RefreshUnreadAsync();
-    }
-
-    private void OnRemote(string ev, System.Text.Json.Nodes.JsonNode n)
-    {
-        remoteHost ??= NewRemoteHost();
-        Guid.TryParse(n["sessionId"]?.GetValue<string>(), out var id);
-        switch (ev)
-        {
-            case "remoteRequest": remoteHost.OnRequest(n, api.Session?.DeviceKey ?? ""); break;
-            case "remoteAnswer": if (viewers.TryGetValue(id, out var v)) v.Answer(n["status"]?.GetValue<string>() ?? ""); break;
-            case "remoteEnded":
-                if (viewers.TryGetValue(id, out var w)) w.Ended(n["endedBy"]?.GetValue<string>());
-                remoteHost.OnEnded(n);
-                break;
-        }
-    }
-
-    private IPop.Notifier.Remote.RemoteHost NewRemoteHost()
-    {
-        var h = new IPop.Notifier.Remote.RemoteHost(api, (t, b, i) => tray.ShowBalloonTip(5000, t, b, i));
-        // While ICT is connected the tray icon wears the green ring (mockup remote: always-on cue).
-        h.ActiveChanged += on => Post(() => { remoteActive = on; UpdateTray(); });
-        return h;
-    }
-
-    private bool remoteActive;
-
-    /// Devices → Remote help / View only: ask the PC, then open the viewer.
-    private async Task StartRemoteAsync(Guid deviceId, string mode)
-    {
-        try
-        {
-            using var res = await api.SendAsync(HttpMethod.Post, "api/notifier/remote/sessions", new { deviceId, mode });
-            var body = System.Text.Json.Nodes.JsonNode.Parse(await res.Content.ReadAsStringAsync());
-            if (!res.IsSuccessStatusCode) { Post(() => tray.ShowBalloonTip(5000, "Remote help", body?["message"]?.GetValue<string>() ?? "Couldn't start remote help.", ToolTipIcon.Warning)); return; }
-            var id = Guid.Parse(body!["sessionId"]!.GetValue<string>());
-            Post(() =>
-            {
-                var v = new IPop.Notifier.Remote.ViewerWindow(api, id, new { type = "start", sessionId = id, status = body["status"]?.GetValue<string>(),
-                    machine = body["machine"]?.GetValue<string>(), user = body["user"]?.GetValue<string>() });
-                viewers[id] = v;
-                v.FormClosed += (_, _) => viewers.Remove(id);
-                v.Show();
-            });
-        }
-        catch { Post(() => tray.ShowBalloonTip(5000, "Remote help", "Couldn't reach iPop.", ToolTipIcon.Warning)); }
     }
 
     /// Chat ("desktopToast"): Messages tier = a toast as before (none with "Hide Messages toasts"); a leader's or VIP's
@@ -345,6 +298,7 @@ public sealed partial class NotifierApp : ApplicationContext
                 leaders.Reset(); actUnread = 0;
                 settingsWindow?.Close(); settingsWindow = null;
                 devices?.Close(); devices = null;
+                CloseRemoteWindows();
                 devicesItem.Visible = false;
                 device.Reset();
                 unread = 0; connected = false;
@@ -511,6 +465,7 @@ public sealed partial class NotifierApp : ApplicationContext
         if (devices is { IsDisposed: false }) { devices.Activate(); return; }
         devices = new DevicesWindow(api);
         devices.RemoteRequested += (id, mode) => _ = StartRemoteAsync(id, mode);
+        devices.OpenRemoteRequested += ShowRemoteBook;
         devices.Show();
     }
 
@@ -553,6 +508,7 @@ public sealed partial class NotifierApp : ApplicationContext
             case "inbox": ShowInbox(); break;
             case "settings": ShowSettings(); break;
             case "devices": ShowDevices(); break;
+            case "remote" when device.IctTools && q["device"] is null: ShowRemoteBook(); break;
             // ipop-notifier://remote?device=<id>&mode=view — same as Devices → Remote help (the server still checks
             // the ICT role, and the user still has to allow it).
             case "remote" when device.IctTools && Guid.TryParse(q["device"], out var dev):

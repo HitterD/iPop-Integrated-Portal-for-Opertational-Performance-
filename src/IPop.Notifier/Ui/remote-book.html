@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="remote-kit.css">
+<style>
+/* Remote window / address book (1.8.0, mockup ipop-remote-v2 prop-remote): devices.html's console + the connect box. */
+body{display:flex;flex-direction:column}
+.console{flex:1;display:grid;grid-template-columns:320px 1fr;min-height:0;animation:winIn .4s var(--spring)}
+.left{border-right:1px solid var(--sep);background:var(--bg);display:flex;flex-direction:column;min-height:0}
+.left .h{padding:14px;display:flex;align-items:center;gap:8px;font-weight:700}
+.left .h img{width:28px;height:28px;border-radius:8px;background:#fff;padding:4px;object-fit:contain;box-shadow:0 0 0 1px var(--sep)}
+.lock{margin-left:auto;font-size:11px;font-weight:700;color:#fff;background:#6f8290;padding:2px 8px;border-radius:999px}
+.srch{margin:0 14px 10px;height:40px;border-radius:9px;background:var(--fill);display:flex;align-items:center;gap:8px;padding:0 10px;color:var(--ink-3)}
+.srch input{flex:1;border:0;background:none;outline:none;font-size:14px}
+.cnt{padding:0 14px 8px;font-size:12.5px;color:var(--ink-3)}
+.devs{flex:1;overflow:auto}
+.dev{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-top:.5px solid var(--sep);transition:background .15s}
+.dev:hover,.dev.on{background:var(--fill)}
+.pc{width:42px;height:42px;border-radius:11px;display:grid;place-items:center;background:#6f8290;color:#fff;font-size:16px;flex:none;position:relative}
+.pc i.dot{position:absolute;right:-2px;bottom:-2px;width:12px;height:12px;border-radius:50%;background:#34c759;box-shadow:0 0 0 2px var(--card)}
+.pc i.dot.off{background:var(--ink-4)}
+.pc svg{width:20px;height:20px}
+.ua{margin-left:auto;font-size:10.5px;font-weight:700;color:var(--cal);background:rgba(255,159,10,.15);padding:2px 7px;border-radius:999px;flex:none}
+.dev .m{min-width:0}
+.dev b{display:block;font-size:14.5px}.dev small{display:block;font-size:12px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.empty{padding:60px 20px;text-align:center;color:var(--ink-3)}
+.console{grid-template-columns:220px 1fr}.left .nv{height:38px;display:flex;align-items:center;gap:10px;padding:0 14px;font-size:14px;font-weight:600;color:var(--ink-2);margin:0 8px;border-radius:9px;cursor:pointer}
+.left .nv.on{background:var(--fill);color:var(--ink)}.left .nv small{margin-left:auto;color:var(--ink-3)}.left .sec{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-4);padding:14px 22px 4px}
+.left .nv.dis{cursor:default}
+.left{overflow:auto}
+.dev .m{flex:1}
+.cin input{flex:1;min-width:0;border:0;background:none;outline:none;font:inherit;font-weight:650;font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;letter-spacing:.03em}
+.cin input::placeholder{font-family:-apple-system,"Segoe UI",system-ui,sans-serif;font-weight:500;letter-spacing:0;color:var(--ink-4)}
+.cin .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:45%}
+.go:disabled{opacity:.5;cursor:default}
+.dev .fav.on{color:#e0a000}
+</style>
+<link rel="stylesheet" href="remote-v3.css">
+<link rel="stylesheet" href="remote-book-v3.css">
+</head>
+<body>
+<div class="ttl" data-drag><span class="logo"><img src="ipop-mark.png" alt=""></span><b>iPop Notifier: Remote</b><small id="who"></small><button class="wc" data-min title="Minimize"></button><button class="wc" data-max title="Maximize"></button><button class="wc x" data-close title="Close"></button></div>
+<div class="console"><div class="left"><div class="h"><img src="ipop-mark.png" alt="">Remote<span class="lock">ICT only</span></div>
+  <div class="nv on" data-v="all"><i data-lucide="monitor"></i>All PCs<small id="nAll"></small></div>
+  <div class="nv" data-v="fav"><i data-lucide="star"></i>Favourites<small id="nFav"></small></div>
+  <div class="nv" data-v="recent"><i data-lucide="history"></i>Recent<small id="nRecent"></small></div>
+  <div class="nv" data-v="grp"><i data-lucide="folder-tree"></i>Groups<small id="nGrp"></small></div>
+  <div class="nv" data-v="hist"><i data-lucide="clipboard-list"></i>Session history<small id="nHist"></small></div>
+  <div class="sec">Status</div>
+  <div class="nv" data-v="online"><i data-lucide="circle"></i>Online<small id="nOn"></small></div>
+  <div class="nv" data-v="offline"><i data-lucide="circle-off"></i>Offline<small id="nOff"></small></div>
+  <div class="nv" data-v="na"><i data-lucide="package-x"></i>Not installed<small id="nNa"></small></div>
+  <div id="groups"></div>
+  <div class="sec">Source</div>
+  <div class="nv dis" title="Active Directory comes in phase 1b"><i data-lucide="network"></i>Active Directory<small>1b</small></div></div>
+<div style="display:flex;flex-direction:column;min-height:0"><div class="ab-conn"><div class="lab">Enter a remote ID or computer name</div>
+  <div class="row"><label class="cin"><i data-lucide="monitor-smartphone"></i><input id="target" maxlength="80" autocomplete="off" spellcheck="false" placeholder="482 913 576"><span class="m" id="match"></span></label><button class="go" id="go"><i data-lucide="screen-share"></i>Connect</button></div>
+  <div class="hint"><span><i data-lucide="keyboard"></i>9-digit ID, PC name or user name</span><span><i data-lucide="shield-check"></i>The user gets an Allow prompt (unless unattended)</span></div></div>
+  <div class="banner" id="banner" hidden></div>
+  <label class="srch" style="margin:12px 14px 6px"><i data-lucide="search"></i><input id="q" placeholder="Search name, NIK, PC, IP, ID…"></label><div class="cnt" id="cnt"></div>
+  <div class="devs" id="devs"></div></div></div>
+<script src="lucide.min.js"></script>
+<script src="bridge.js"></script>
+<script src="remote-book.js"></script>
+<script src="remote-book-history.js"></script>
+</body>
+</html>

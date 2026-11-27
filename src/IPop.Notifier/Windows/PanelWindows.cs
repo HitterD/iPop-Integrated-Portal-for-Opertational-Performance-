@@ -116,6 +116,11 @@ public sealed class SettingsWindow : BridgedWindow
             case "checkUpdates": CheckUpdates?.Invoke(); break;
             case "updateNow": UpdateNow?.Invoke(); break;
             case "devices": Devices?.Invoke(); break;
+            // Settings › Remote › "Save received files in": a folder picker on this PC.
+            case "pickFolder":
+                using (var f = new FolderBrowserDialog { Description = "Save received files in", UseDescriptionForTitle = true, InitialDirectory = msg?["current"]?.GetValue<string>() ?? "" })
+                    if (f.ShowDialog(this) == DialogResult.OK) Send(new { type = "folderPicked", path = f.SelectedPath });
+                break;
             default: base.HandleMessage(type, msg); break;
         }
     }
@@ -232,9 +237,12 @@ public sealed class DevicesWindow : BridgedWindow
     }
 
     public event Action<Guid, string>? RemoteRequested;
+    /// "Remote" next to the title (1.8.0): the Remote window with the ID box.
+    public event Action? OpenRemoteRequested;
 
     protected override void HandleMessage(string type, JsonNode? msg)
     {
+        if (type == "openRemote") { OpenRemoteRequested?.Invoke(); return; }
         if (type == "remote" && Guid.TryParse(msg?["deviceId"]?.GetValue<string>(), out var dev)) { RemoteRequested?.Invoke(dev, msg?["mode"]?.GetValue<string>() == "view" ? "view" : "control"); return; }
         if (type != "rdp") { base.HandleMessage(type, msg); return; }
         // Windows Remote Desktop to a plain IPv4 address only (the value comes from the device list).

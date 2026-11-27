@@ -1,0 +1,9 @@
+/* Remote help v3 (BIGIS #8): rules from the approved mockup ipop-remote-v3 (mock/mock.css), unchanged except the
+   window scope (.w-xxx → this page). Generated once; edit here from now on. */
+.row select{height:30px}
+.kbtn{min-width:120px;font-family:ui-monospace,Consolas,monospace;font-size:12.5px}
+.kbtn.on{background:var(--accent-soft);color:var(--accent-ink)}
+.btn{height:30px;padding:0 12px;border-radius:8px;background:var(--fill);font-weight:600;font-size:12.5px}
+.tag{font-size:10.5px}
+.box{margin-bottom:18px}
+.row .t svg{vertical-align:-3px;margin-right:4px}

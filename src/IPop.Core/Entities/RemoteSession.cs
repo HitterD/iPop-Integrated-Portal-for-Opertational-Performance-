@@ -12,17 +12,23 @@ public class RemoteSession
     public required string Room { get; set; }
     /// "control" | "view"
     public string Mode { get; set; } = "control";
-    /// "asking" | "declined" | "active" | "ended" | "expired"
+    /// "asking" | "declined" | "active" | "ended" | "expired"; unattended attempts that never started: "denied"
+    /// (wrong password) | "locked" (too many wrong passwords)
     public string Status { get; set; } = "asking";
     /// The PC is marked unattended by Admin: no prompt was shown.
     public bool Unattended { get; set; }
     public DateTime RequestedAt { get; set; }
+    /// How long the user had to answer (company policy at request time); 0 = the old fixed 30 s.
+    public int AskSeconds { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime? EndedAt { get; set; }
     /// The user's PC confirms every 30 s that it is still sharing. A session that stopped confirming (PC crashed,
     /// app killed, network gone) no longer counts as running, so it can't swallow the next request.
     public DateTime? AliveAt { get; set; }
-    /// "helper" | "user" | "timeout" | "error"
+    /// What the user allowed in the prompt (all three when unattended): "control,clipboard,files" (comma list).
+    /// The user's PC enforces it; the helper's viewer shows it.
+    public string? Permissions { get; set; }
+    /// "helper" | "user" | "timeout" | "error" | "revoked" (the unattended password changed or access was removed)
     public string? EndedBy { get; set; }
     /// File names sent either way, newline separated (names only, no content).
     public string? Files { get; set; }

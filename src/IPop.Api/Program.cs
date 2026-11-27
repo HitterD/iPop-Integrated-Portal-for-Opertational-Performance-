@@ -122,6 +122,10 @@ builder.Services.AddRateLimiter(o =>
     o.AddPolicy(IPop.Api.Endpoints.ChatEndpoints.UploadRateLimitPolicy, http => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
         http.User.FindFirst("nik")?.Value ?? http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1) }));
+    // Remote help connects (BIGIS #8): 20 per helper per minute on top of the per-PC password lockout.
+    o.AddPolicy(IPop.Api.Endpoints.RemoteEndpoints.ConnectRateLimitPolicy, http => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+        http.User.FindFirst("nik")?.Value ?? http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 20, Window = TimeSpan.FromMinutes(1) }));
     // Notifier log uploads (remote help start + end): 2 per signed-in user per minute (review H3).
     o.AddPolicy(IPop.Api.Notifier.NotifierDeviceLogs.RateLimitPolicy, http => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
         http.User.FindFirst("nik")?.Value ?? http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
@@ -280,6 +284,7 @@ builder.Services.AddScoped<IChatNotifier, ChatNotifier>();
 builder.Services.AddScoped<IStickerService, IPop.Infrastructure.Chat.StickerService>();
 builder.Services.AddScoped<INotificationGateway, NotificationGateway>();
 builder.Services.AddHostedService<ChatAttachmentGcWorker>();
+builder.Services.AddHostedService<IPop.Api.Notifier.RemoteSweepWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Mail.MailAttachmentGcWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Notes.NotesTrashWorker>();
 if (outboundWorkers) builder.Services.AddHostedService<IPop.Infrastructure.Notes.NotesReminderWorker>();
@@ -649,6 +654,8 @@ app.MapMe();
 app.MapUiPrefs();
 app.MapNotifier();
 app.MapRemote();
+app.MapRemoteMachines();
+app.MapRemoteAdmin();
 IPop.Api.Notifier.NotifierLinkEndpoints.MapNotifierLink(app);
 if (IPop.Api.Sso.SsoSetup.Enabled(app.Configuration))
 {

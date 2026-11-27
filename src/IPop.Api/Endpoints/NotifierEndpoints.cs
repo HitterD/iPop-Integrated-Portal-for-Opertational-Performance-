@@ -10,11 +10,14 @@ using Microsoft.EntityFrameworkCore;
 namespace IPop.Api.Endpoints;
 
 public record NotifierDeviceReport(string DeviceKey, string MachineName, string? WindowsUser, string? OsVersion,
-    string? AppVersion, IReadOnlyList<string>? LocalIps);
+    string? AppVersion, IReadOnlyList<string>? LocalIps, string? MachineGuid = null, string? Monitors = null);
 
 public record NotifierDeviceRow(Guid Id, string MachineName, string? WindowsUser, string? OsVersion, string? AppVersion,
     string? LocalIps, string? RemoteIp, DateTime LastSeenAt, bool Online, string UserName, string? Department, string? Site,
-    bool Unattended = false, bool HelperService = false);
+    bool Unattended = false, bool HelperService = false, Guid? MachineId = null, string? RemoteId = null,
+    bool UnattendedSwitch = false, bool HasPassword = false, DateTime? LockedUntil = null, bool Conflict = false,
+    string? Alias = null, string? Group = null, bool AlwaysAsk = false, string? UnattendedPermissions = null, string? AllowedPermissions = null,
+    bool Excluded = false, string? Monitors = null);
 
 /// A leader of the signed-in person for the Notifier's priority inbox. Reason = why ("Manager", "General Manager",
 /// "BOD / GM level"). Never NIK or position (office rule).
@@ -79,7 +82,12 @@ public static class NotifierEndpoints
             var userId = await MyId(http, db, ct);
             if (userId is null) return Results.Unauthorized();
             if (!await IsIctOrAdminAsync(db, userId.Value, http.User.IsInRole("Admin"), ct)) return Results.Forbid();
-            return Results.Ok(await ListAsync(db, q, DateTime.UtcNow, ct));
+            var now = DateTime.UtcNow;
+            var rows = await ListAsync(db, q, now, ct);
+            // Reports that disagree about one PC (same name with another MachineGuid, or one PC from two addresses):
+            // flagged so ICT checks before connecting (review PR #5).
+            var conflicts = await IPop.Api.Notifier.RemoteMachines.ConflictsAsync(db, now, ct);
+            return Results.Ok(rows.Select(r => r.MachineId is { } m && conflicts.Contains(m) ? r with { Conflict = true } : r));
         });
 
         g.MapGet("/leaders", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>
@@ -296,8 +304,19 @@ public static class NotifierEndpoints
         row.AppVersion = Cut(r.AppVersion, 32);
         row.LocalIps = ips.Count == 0 ? null : Cut(string.Join(", ", ips), 256);
         row.RemoteIp = Cut(remoteIp, 64);
+        row.Monitors = Cut(r.Monitors, 200) ?? row.Monitors;
         row.LastSeenAt = now;
-        await db.SaveChangesAsync(ct);
+        // One 9-digit remote ID per physical PC, shared by everyone who signs in to Windows on it (BIGIS #8).
+        await IPop.Api.Notifier.RemoteMachines.LinkAsync(db, row, r.MachineGuid, now, ct);
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException) when (db.ChangeTracker.Entries<RemoteMachine>().Any(e => e.State == EntityState.Added))
+        {
+            // Two Notifiers on one PC signed in at the same moment and both created its machine (unique MachineKey /
+            // ConnectId): drop ours, link to the one that won, save again.
+            foreach (var e in db.ChangeTracker.Entries<RemoteMachine>().Where(e => e.State == EntityState.Added).ToList()) e.State = EntityState.Detached;
+            await IPop.Api.Notifier.RemoteMachines.LinkAsync(db, row, r.MachineGuid, now, ct);
+            await db.SaveChangesAsync(ct);
+        }
         return 204;
     }
 
@@ -324,14 +343,22 @@ public static class NotifierEndpoints
         if (!string.IsNullOrWhiteSpace(q))
         {
             var term = $"%{q.Trim()}%";
-            query = query.Where(d => EF.Functions.ILike(d.MachineName, term) || EF.Functions.ILike(d.User.Name, term)
+            var digits = IPop.Api.Notifier.RemoteMachines.ParseId(q);
+            query = query.Where(d => (digits != null && d.Machine != null && d.Machine.ConnectId == digits) || EF.Functions.ILike(d.MachineName, term) || EF.Functions.ILike(d.User.Name, term)
                 || EF.Functions.ILike(d.User.Nik, term) || (d.RemoteIp != null && EF.Functions.ILike(d.RemoteIp, term))
                 || (d.LocalIps != null && EF.Functions.ILike(d.LocalIps, term)));
         }
         return await query.OrderByDescending(d => d.LastSeenAt).Take(500)
             .Select(d => new NotifierDeviceRow(d.Id, d.MachineName, d.WindowsUser, d.OsVersion, d.AppVersion, d.LocalIps, d.RemoteIp,
                 d.LastSeenAt, d.LastSeenAt >= since, d.User.Name, d.User.Department != null ? d.User.Department.Name : null,
-                d.User.Site != null ? d.User.Site.Name : null, d.Unattended, d.HelperService))
+                d.User.Site != null ? d.User.Site.Name : null,
+                d.Machine != null && d.Machine.Unattended && d.Machine.PasswordHash != null, d.HelperService, d.MachineId,
+                d.Machine != null ? d.Machine.ConnectId : null, d.Machine != null && d.Machine.Unattended,
+                d.Machine != null && d.Machine.PasswordHash != null, d.Machine != null ? d.Machine.LockedUntil : null, false,
+                d.Machine != null ? d.Machine.Alias : null,
+                d.Machine != null && d.Machine.Group != null ? d.Machine.Group : d.User.Department != null ? d.User.Department.Name : null,
+                d.Machine != null && d.Machine.AlwaysAsk, d.Machine != null ? d.Machine.UnattendedPermissions : null,
+                d.Machine != null ? d.Machine.AllowedPermissions : null, d.Machine != null && d.Machine.Excluded, d.Monitors))
             .ToListAsync(ct);
     }
 
