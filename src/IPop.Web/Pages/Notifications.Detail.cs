@@ -202,8 +202,9 @@ public partial class Notifications
         Nav.NavigateTo("/calls?tab=recents");
     }
 
-    private void NavigateToTarget(NotificationItemDto item)
+    private async Task NavigateToTarget(NotificationItemDto item)
     {
+        if (!item.IsRead) await MarkReadAsync(item.Id);
         if (TargetOf(item) is { } target) Nav.NavigateTo(target);
     }
 

@@ -24,6 +24,7 @@ public partial class Tickets
     [Inject] private ToastService Toasts { get; set; } = default!;
     [Inject] private ConfirmService Confirm { get; set; } = default!;
     [Inject] private NavigationManager Nav { get; set; } = default!;
+    [Inject] private NotificationState Notifs { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
     [Inject] private CalendarLinks CalLinks { get; set; } = default!;
 
@@ -207,6 +208,7 @@ public partial class Tickets
             detail = d;
             detailMissing = false;
             ClearMotionLater();
+            _ = Notifs.MarkReadByTargetAsync("ticket", id);
             if (msgsFor != id || (live && d.UnreadMessages > 0)) _ = InvokeAsync(() => LoadMessagesAsync(id));
         }
         else if (r.Status == TicketCallStatus.NotFound) { detail = null; detailMissing = true; }
